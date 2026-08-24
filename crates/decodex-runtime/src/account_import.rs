@@ -190,7 +190,9 @@ struct ExpiryClaims {
 	exp: i64,
 }
 
-fn parse_shared_codex(bytes: &[u8]) -> Result<ImportedCredential, CredentialImportError> {
+pub(crate) fn parse_shared_codex(
+	bytes: &[u8],
+) -> Result<ImportedCredential, CredentialImportError> {
 	let mut auth: SharedCodexAuth =
 		serde_json::from_slice(bytes).map_err(|_| CredentialImportError::InvalidCredential)?;
 	if auth.auth_mode.as_deref().is_some_and(|mode| mode != "chatgpt")

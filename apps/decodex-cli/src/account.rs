@@ -1,4 +1,4 @@
-//! Operator account client over the same-UID V2.6 daemon protocol.
+//! Operator account client over the same-UID V2.9 daemon protocol.
 
 use std::path::{Path, PathBuf};
 
@@ -27,16 +27,14 @@ pub enum AccountCommand {
 	Enroll(EnrollArgs),
 	/// Import one owner-private versioned credential file.
 	Import(ImportArgs),
-	/// Project one exact daemon account into normal shared Codex auth.
-	UseInCodex(AdministrationArgs),
 	/// Enable new work admission for one account.
 	Enable(AdministrationArgs),
 	/// Disable new work admission for one account.
 	Disable(AdministrationArgs),
 	/// Log out and tombstone one account.
 	Logout(OperationAccountArgs),
-	/// Select one fixed account.
-	SetFixedSelection(FixedSelectionArgs),
+	/// Refresh, project, and select one account through one daemon-owned Route command.
+	Route(RouteArgs),
 	/// Select balanced initial account routing.
 	SetBalancedSelection(RoutingRevisionArgs),
 	/// Replace the complete deterministic account order.
@@ -111,7 +109,9 @@ pub struct OperationAccountArgs {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Args)]
-pub struct FixedSelectionArgs {
+pub struct RouteArgs {
+	#[arg(long)]
+	operation_id: String,
 	#[arg(long)]
 	account_id: String,
 	#[arg(long)]
@@ -194,37 +194,32 @@ pub async fn execute(
 			};
 			return render("profile", format, client.profile(account_id, args.include_email).await);
 		},
-		AccountCommand::CodexProjection =>
-			return render("codex_projection", format, client.codex_auth_projection().await),
-		AccountCommand::UseInCodex(args) => {
-			let input = (
-				entity(&args.account_id),
-				revision(args.expected_revision),
-				idempotency_key(args.idempotency_key),
-			);
-			let (Ok(account_id), Ok(account_revision), Ok(key)) = input else {
-				return invalid_input();
-			};
-			return render_command(
-				format,
-				client.use_account_in_codex(account_id, account_revision, key).await,
-			);
+		AccountCommand::CodexProjection => {
+			return render("codex_projection", format, client.codex_auth_projection().await);
 		},
-		AccountCommand::SetFixedSelection(args) => {
+		AccountCommand::Route(args) => {
 			let input = (
+				entity(&args.operation_id),
 				entity(&args.account_id),
 				revision(args.expected_account_revision),
 				revision(args.expected_revision),
 				idempotency_key(args.idempotency_key),
 			);
-			let (Ok(account_id), Ok(account_revision), Ok(routing_revision), Ok(key)) = input
+			let (
+				Ok(operation_id),
+				Ok(account_id),
+				Ok(account_revision),
+				Ok(routing_revision),
+				Ok(key),
+			) = input
 			else {
 				return invalid_input();
 			};
 			return render_command(
 				format,
 				client
-					.set_fixed_account_selection(
+					.route_account(
+						operation_id,
 						account_id,
 						account_revision,
 						routing_revision,
@@ -326,10 +321,12 @@ fn prepare_command(command: AccountCommand) -> Result<PreparedCommand, CommandOu
 			CommandPayload::RecoverAccountOperation {
 				operation_id: entity(&args.operation_id)?,
 				action: match args.action {
-					RecoveryAction::Reconcile =>
-						AccountManualRecoveryActionDto::ReconcileExactStoreState,
-					RecoveryAction::CancelBeforeEffect =>
-						AccountManualRecoveryActionDto::CancelBeforeEffect,
+					RecoveryAction::Reconcile => {
+						AccountManualRecoveryActionDto::ReconcileExactStoreState
+					},
+					RecoveryAction::CancelBeforeEffect => {
+						AccountManualRecoveryActionDto::CancelBeforeEffect
+					},
 				},
 			},
 			Some(EntityRevision(args.expected_revision)),
@@ -339,8 +336,7 @@ fn prepare_command(command: AccountCommand) -> Result<PreparedCommand, CommandOu
 		| AccountCommand::Inspect(_)
 		| AccountCommand::Profile(_)
 		| AccountCommand::CodexProjection
-		| AccountCommand::UseInCodex(_)
-		| AccountCommand::SetFixedSelection(_)
+		| AccountCommand::Route(_)
 		| AccountCommand::SetBalancedSelection(_)
 		| AccountCommand::SetAccountOrder(_) => Err(invalid_input()),
 	}
@@ -527,27 +523,31 @@ mod tests {
 	}
 
 	#[test]
-	fn projection_status_and_use_in_codex_are_distinct_from_routing() {
+	fn projection_status_remains_read_only_while_route_is_one_command() {
 		let status = Cli::try_parse_from(["decodex", "account", "codex-projection"])
 			.expect("projection status must parse");
-		let use_in_codex = Cli::try_parse_from([
+		let route = Cli::try_parse_from([
 			"decodex",
 			"account",
-			"use-in-codex",
+			"route",
+			"--operation-id",
+			OPERATION_ID,
 			"--account-id",
 			ACCOUNT_ID,
-			"--expected-revision",
+			"--expected-account-revision",
 			"7",
+			"--expected-revision",
+			"2",
 			"--idempotency-key",
-			"use-in-codex",
+			"route-account",
 		])
-		.expect("explicit Codex projection must parse");
+		.expect("daemon-owned Route must parse");
 
 		assert!(matches!(status.command, Command::Account(AccountCommand::CodexProjection)));
 		assert!(matches!(
-			use_in_codex.command,
-			Command::Account(AccountCommand::UseInCodex(args))
-				if args.expected_revision == 7
+			route.command,
+			Command::Account(AccountCommand::Route(args))
+				if args.expected_account_revision == 7 && args.expected_revision == 2
 		));
 		assert!(
 			Cli::try_parse_from(["decodex", "account", "rename", "--account-id", ACCOUNT_ID,])
@@ -556,21 +556,7 @@ mod tests {
 	}
 
 	#[test]
-	fn routing_uses_three_explicit_subcommands_without_the_combined_alias() {
-		let fixed = Cli::try_parse_from([
-			"decodex",
-			"account",
-			"set-fixed-selection",
-			"--account-id",
-			ACCOUNT_ID,
-			"--expected-account-revision",
-			"4",
-			"--expected-revision",
-			"2",
-			"--idempotency-key",
-			"fixed-selection",
-		])
-		.expect("fixed selection must parse");
+	fn routing_uses_route_balanced_and_order_without_split_fixed_projection_commands() {
 		let balanced = Cli::try_parse_from([
 			"decodex",
 			"account",
@@ -595,11 +581,6 @@ mod tests {
 		.expect("account order must parse");
 
 		assert!(matches!(
-			fixed.command,
-			Command::Account(AccountCommand::SetFixedSelection(args))
-				if args.expected_account_revision == 4 && args.expected_revision == 2
-		));
-		assert!(matches!(
 			balanced.command,
 			Command::Account(AccountCommand::SetBalancedSelection(args))
 				if args.expected_revision == 2
@@ -609,7 +590,8 @@ mod tests {
 			Command::Account(AccountCommand::SetAccountOrder(args))
 				if args.order == vec![ACCOUNT_ID.to_owned()]
 		));
-		assert!(Cli::try_parse_from(["decodex", "account", "route"]).is_err());
+		assert!(Cli::try_parse_from(["decodex", "account", "use-in-codex"]).is_err());
+		assert!(Cli::try_parse_from(["decodex", "account", "set-fixed-selection"]).is_err());
 	}
 
 	#[test]

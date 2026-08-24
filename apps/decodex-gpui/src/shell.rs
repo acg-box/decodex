@@ -390,8 +390,9 @@ fn connection_presentation(view: ConnectionView) -> ConnectionPresentation {
 				CompatibilityReason::InvalidEndpoint => "Selected endpoint is not supported",
 				CompatibilityReason::ProtocolMajor => "Protocol generation does not match",
 				CompatibilityReason::ProtocolMinor => "Protocol revision is not supported",
-				CompatibilityReason::PublicationIdentityUnavailable =>
-					"Publication identity is unavailable",
+				CompatibilityReason::PublicationIdentityUnavailable => {
+					"Publication identity is unavailable"
+				},
 			}
 			.into(),
 			color: 0xef4444,
@@ -422,8 +423,9 @@ const fn startup_failure(failure: ClientFailure) -> &'static str {
 		ClientFailure::ProfileMissing => "Selected server profile is missing",
 		ClientFailure::UnsafeHostPath => "Client configuration path is unsafe",
 		ClientFailure::ServerIdentityUnavailable => "Stable server identity is unavailable",
-		ClientFailure::RemoteMutationUnsupported =>
-			"Reset-card operations require a local pinned profile",
+		ClientFailure::RemoteMutationUnsupported => {
+			"Reset-card operations require a local pinned profile"
+		},
 		ClientFailure::LocalTransportDisabled => "Local daemon transport is disabled",
 		ClientFailure::RemoteTransportDisabled => "Remote daemon transport is disabled",
 		ClientFailure::LocalTransportUnsupported => "Local daemon transport is unsupported",
@@ -813,16 +815,20 @@ impl Shell {
 				mode: AccountSelectionModeDto::Fixed(primary.account_id.clone()),
 				order: vec![primary.account_id, reserve.account_id, research.account_id],
 			}),
+			pending_route: None,
 			can_manage: true,
+			can_route: true,
 		};
 		let health_checks = DoctorComponent::ALL
 			.into_iter()
 			.map(|component| {
 				let status = match component {
-					DoctorComponent::AppServerCapability(_) | DoctorComponent::BlobIntegrity =>
-						DoctorStatus::Unknown(DoctorIssue::NotProbed),
-					DoctorComponent::ManagedRepository =>
-						DoctorStatus::Unavailable(DoctorIssue::Disabled),
+					DoctorComponent::AppServerCapability(_) | DoctorComponent::BlobIntegrity => {
+						DoctorStatus::Unknown(DoctorIssue::NotProbed)
+					},
+					DoctorComponent::ManagedRepository => {
+						DoctorStatus::Unavailable(DoctorIssue::Disabled)
+					},
 					DoctorComponent::PluginReadiness => DoctorStatus::Unknown(DoctorIssue::Plugin),
 					_ => DoctorStatus::Ready,
 				};
@@ -1560,8 +1566,9 @@ const fn input_error_label(error: QuickTaskInputError) -> &'static str {
 		QuickTaskInputError::NotReady => "The selected Quick Task is not ready for this command.",
 		QuickTaskInputError::NotInterruptible => "The selected turn is not running.",
 		QuickTaskInputError::IdentityUnavailable => "A command identity could not be created.",
-		QuickTaskInputError::WorkingDirectoryUnavailable =>
-			"The local Quick Task working directory is unavailable.",
+		QuickTaskInputError::WorkingDirectoryUnavailable => {
+			"The local Quick Task working directory is unavailable."
+		},
 	}
 }
 
@@ -2266,8 +2273,9 @@ fn component_label(component: DoctorComponent) -> &'static str {
 
 fn component_presentation(status: Option<DoctorStatus>) -> HealthPresentation {
 	match status {
-		Some(DoctorStatus::Ready) =>
-			HealthPresentation { label: "Ready", detail: "", color: 0x22c55e },
+		Some(DoctorStatus::Ready) => {
+			HealthPresentation { label: "Ready", detail: "", color: 0x22c55e }
+		},
 		Some(DoctorStatus::Unavailable(DoctorIssue::Disabled))
 		| Some(DoctorStatus::Unknown(DoctorIssue::Disabled)) => HealthPresentation {
 			label: "Disabled",
@@ -2585,18 +2593,32 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.as_ref()
 		.is_some_and(|routing| routing.mode == AccountSelectionModeDto::Balanced);
 	let can_manage = snapshot.can_manage;
+	let can_route = snapshot.can_route;
+	let pending_target = snapshot.pending_route.as_ref().map(|pending| &pending.account_id);
 	let rows = snapshot
 		.accounts
 		.iter()
 		.enumerate()
 		.map(|(index, account)| {
-			account_pool_row(account, index, fixed == Some(&account.account_id), can_manage, cx)
+			account_pool_row(
+				account,
+				index,
+				fixed == Some(&account.account_id),
+				pending_target,
+				can_manage,
+				can_route,
+				cx,
+			)
 		})
 		.collect::<Vec<_>>();
-	let status = shell
-		.account_status
+	let status = snapshot
+		.pending_route
 		.as_ref()
-		.map(SharedString::to_string)
+		.map(|_| {
+			"Quit ChatGPT and keep it closed until Pending changes to Routed, then reopen it."
+				.to_owned()
+		})
+		.or_else(|| shell.account_status.as_ref().map(SharedString::to_string))
 		.or_else(|| account_command_label(snapshot.command).map(str::to_owned))
 		.unwrap_or_else(|| accounts_load_label(snapshot.load).to_owned());
 	let count = snapshot.accounts.len();
@@ -2795,13 +2817,18 @@ fn account_pool_row(
 	account: &AccountDto,
 	index: usize,
 	fixed: bool,
+	pending_target: Option<&EntityId>,
 	can_manage: bool,
+	can_route: bool,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let account_id = account.account_id.clone();
 	let toggle_account_id = account.account_id.clone();
 	let enabled = account.enabled;
-	let pin_enabled = can_manage && enabled && !fixed;
+	let pending = pending_target == Some(&account.account_id);
+	let has_pending_route = pending_target.is_some();
+	let keeps_current_route = fixed && has_pending_route && !pending;
+	let pin_enabled = can_route && enabled && (!fixed || keeps_current_route) && !pending;
 	let toggle_enabled = can_manage;
 	let state_color = account_state_color(account);
 	let short_id = account.account_id.as_str().get(..8).unwrap_or(account.account_id.as_str());
@@ -2898,7 +2925,15 @@ fn account_pool_row(
 									shell.select_fixed_account(&account_id, cx);
 								}))
 						})
-						.child(if fixed { "Pinned" } else { "Route" }),
+						.child(if pending {
+							"Pending"
+						} else if keeps_current_route {
+							"Keep"
+						} else if fixed {
+							"Pinned"
+						} else {
+							"Route"
+						}),
 				)
 				.child(
 					div()
@@ -3018,8 +3053,9 @@ fn account_command_label(command: AccountCommandState) -> Option<&'static str> {
 		AccountCommandState::Sending => Some("Sending account command…"),
 		AccountCommandState::AwaitingResult => Some("Waiting for durable account result…"),
 		AccountCommandState::Accepted => Some("Account pool updated."),
-		AccountCommandState::OutcomeUnknown =>
-			Some("Outcome is unknown. Refresh readback before another account change."),
+		AccountCommandState::OutcomeUnknown => {
+			Some("Outcome is unknown. Refresh readback before another account change.")
+		},
 		AccountCommandState::Refused => Some("The account change was refused. Refresh and retry."),
 	}
 }
@@ -3068,8 +3104,9 @@ fn command_status(command: QuickTaskCommandState) -> Option<&'static str> {
 		QuickTaskCommandState::AwaitingResult => Some("Waiting for durable result"),
 		QuickTaskCommandState::Accepted => Some("Command accepted"),
 		QuickTaskCommandState::ManualRecovery(action) => Some(recovery_action_label(action)),
-		QuickTaskCommandState::OutcomeUnknown =>
-			Some("Connection interrupted. Decodex will check durable state before continuing."),
+		QuickTaskCommandState::OutcomeUnknown => {
+			Some("Connection interrupted. Decodex will check durable state before continuing.")
+		},
 		QuickTaskCommandState::Refused => Some("The command was refused."),
 	}
 }
@@ -3077,37 +3114,51 @@ fn command_status(command: QuickTaskCommandState) -> Option<&'static str> {
 fn recovery_action_label(action: QuickTaskRecoveryAction) -> &'static str {
 	match action {
 		QuickTaskRecoveryAction::ResumeRouting => "Resume the pending account route.",
-		QuickTaskRecoveryAction::CreateRoutingSuccessor =>
-			"Create a new conversation and route it explicitly.",
-		QuickTaskRecoveryAction::ResumeEstablishment =>
-			"Resume the selected account session establishment.",
+		QuickTaskRecoveryAction::CreateRoutingSuccessor => {
+			"Create a new conversation and route it explicitly."
+		},
+		QuickTaskRecoveryAction::ResumeEstablishment => {
+			"Resume the selected account session establishment."
+		},
 		QuickTaskRecoveryAction::ConfigureAccount => "Configure an account before continuing.",
 		QuickTaskRecoveryAction::EnableAccount => "Enable the selected account before continuing.",
-		QuickTaskRecoveryAction::EnrollCredentials =>
-			"Enroll account credentials before continuing.",
-		QuickTaskRecoveryAction::ResolveAccountOperation =>
-			"Resolve the unsettled account operation before continuing.",
-		QuickTaskRecoveryAction::RepairCredentialStore =>
-			"Repair the protected credential store before continuing.",
-		QuickTaskRecoveryAction::RestoreProviderAgreement =>
-			"Restore provider account agreement before continuing.",
+		QuickTaskRecoveryAction::EnrollCredentials => {
+			"Enroll account credentials before continuing."
+		},
+		QuickTaskRecoveryAction::ResolveAccountOperation => {
+			"Resolve the unsettled account operation before continuing."
+		},
+		QuickTaskRecoveryAction::RepairCredentialStore => {
+			"Repair the protected credential store before continuing."
+		},
+		QuickTaskRecoveryAction::RestoreProviderAgreement => {
+			"Restore provider account agreement before continuing."
+		},
 		QuickTaskRecoveryAction::RefreshQuota => "Refresh account quota before continuing.",
-		QuickTaskRecoveryAction::UpgradeCodex =>
-			"Use a Codex build with the required app-server methods.",
-		QuickTaskRecoveryAction::SelectWorkingDirectory =>
-			"Select an owned local working directory before continuing.",
-		QuickTaskRecoveryAction::StartNewConversation =>
-			"This thread cannot resume. Start a new conversation.",
-		QuickTaskRecoveryAction::ResolvePriorActiveTurn =>
-			"Resolve the prior active turn before continuing.",
-		QuickTaskRecoveryAction::ResolvePriorAttempt =>
-			"Resolve the prior provider attempt before continuing.",
-		QuickTaskRecoveryAction::RestoreProcessReadiness =>
-			"Restore process readiness before continuing.",
-		QuickTaskRecoveryAction::WaitForCurrentCommand =>
-			"Wait for the current command or turn to settle.",
-		QuickTaskRecoveryAction::RefreshConversation =>
-			"Refresh this conversation before continuing.",
+		QuickTaskRecoveryAction::UpgradeCodex => {
+			"Use a Codex build with the required app-server methods."
+		},
+		QuickTaskRecoveryAction::SelectWorkingDirectory => {
+			"Select an owned local working directory before continuing."
+		},
+		QuickTaskRecoveryAction::StartNewConversation => {
+			"This thread cannot resume. Start a new conversation."
+		},
+		QuickTaskRecoveryAction::ResolvePriorActiveTurn => {
+			"Resolve the prior active turn before continuing."
+		},
+		QuickTaskRecoveryAction::ResolvePriorAttempt => {
+			"Resolve the prior provider attempt before continuing."
+		},
+		QuickTaskRecoveryAction::RestoreProcessReadiness => {
+			"Restore process readiness before continuing."
+		},
+		QuickTaskRecoveryAction::WaitForCurrentCommand => {
+			"Wait for the current command or turn to settle."
+		},
+		QuickTaskRecoveryAction::RefreshConversation => {
+			"Refresh this conversation before continuing."
+		},
 	}
 }
 
@@ -3115,8 +3166,9 @@ fn quick_task_load_status(load: QuickTasksLoadState) -> &'static str {
 	match load {
 		QuickTasksLoadState::NeverRequested => "Quick Tasks have not loaded.",
 		QuickTasksLoadState::Loading => "Loading Quick Tasks",
-		QuickTasksLoadState::Ready =>
-			"Local task list loaded. Open or refresh a task for latest Codex state.",
+		QuickTasksLoadState::Ready => {
+			"Local task list loaded. Open or refresh a task for latest Codex state."
+		},
 		QuickTasksLoadState::Offline => "Offline. Retained conversation state remains visible.",
 		QuickTasksLoadState::Unavailable => "Quick Task state is temporarily unavailable.",
 		QuickTasksLoadState::Refused => "Quick Task readback was refused.",
@@ -3126,12 +3178,15 @@ fn quick_task_load_status(load: QuickTasksLoadState) -> &'static str {
 fn quick_task_refresh_status(refresh: QuickTaskRefreshState) -> Option<String> {
 	match refresh {
 		QuickTaskRefreshState::Idle => None,
-		QuickTaskRefreshState::Refreshing { completed, total, archived, failed } =>
-			Some(format!("Syncing {completed}/{total} · {archived} archived · {failed} skipped")),
-		QuickTaskRefreshState::Complete { checked, archived, failed } =>
-			Some(format!("{checked} checked · {archived} archived · {failed} skipped")),
-		QuickTaskRefreshState::Stopped { checked, total, archived, failed } =>
-			Some(format!("Stopped {checked}/{total} · {archived} archived · {failed} skipped")),
+		QuickTaskRefreshState::Refreshing { completed, total, archived, failed } => {
+			Some(format!("Syncing {completed}/{total} · {archived} archived · {failed} skipped"))
+		},
+		QuickTaskRefreshState::Complete { checked, archived, failed } => {
+			Some(format!("{checked} checked · {archived} archived · {failed} skipped"))
+		},
+		QuickTaskRefreshState::Stopped { checked, total, archived, failed } => {
+			Some(format!("Stopped {checked}/{total} · {archived} archived · {failed} skipped"))
+		},
 	}
 }
 
@@ -4027,17 +4082,20 @@ fn quick_task_transcript(
 	let history_status = history.map_or_else(
 		|| (!has_rows).then_some("Conversation history is not connected."),
 		|history| match history.load {
-			HistoryLoadState::Inactive =>
-				(!has_rows).then_some("Select a conversation or start a new conversation."),
-			HistoryLoadState::InitialLoading | HistoryLoadState::RefreshingVisible =>
+			HistoryLoadState::Inactive => {
+				(!has_rows).then_some("Select a conversation or start a new conversation.")
+			},
+			HistoryLoadState::InitialLoading | HistoryLoadState::RefreshingVisible => {
 				Some(if has_rows {
 					"Syncing earlier context"
 				} else {
 					"Loading conversation history"
-				}),
+				})
+			},
 			HistoryLoadState::PrefetchingAdjacent | HistoryLoadState::Visible => None,
-			HistoryLoadState::RetryableUnavailable(_) =>
-				Some("History is temporarily unavailable. Reconnect or retry."),
+			HistoryLoadState::RetryableUnavailable(_) => {
+				Some("History is temporarily unavailable. Reconnect or retry.")
+			},
 			HistoryLoadState::ClosedUnavailable(_) => Some("History readback was refused."),
 		},
 	);
@@ -5101,10 +5159,12 @@ mod tests {
 			.into_iter()
 			.map(|component| {
 				let status = match component {
-					DoctorComponent::AppServerCapability(_) | DoctorComponent::BlobIntegrity =>
-						DoctorStatus::Unknown(DoctorIssue::NotProbed),
-					DoctorComponent::ManagedRepository =>
-						DoctorStatus::Unavailable(DoctorIssue::Disabled),
+					DoctorComponent::AppServerCapability(_) | DoctorComponent::BlobIntegrity => {
+						DoctorStatus::Unknown(DoctorIssue::NotProbed)
+					},
+					DoctorComponent::ManagedRepository => {
+						DoctorStatus::Unavailable(DoctorIssue::Disabled)
+					},
 					DoctorComponent::PluginReadiness => DoctorStatus::Unknown(DoctorIssue::Plugin),
 					_ => DoctorStatus::Ready,
 				};

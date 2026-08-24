@@ -53,6 +53,16 @@ MIGRATIONS = (
         "account_reauthentication_takeover",
         ROOT / "database/migrations/0008_account_reauthentication_takeover.sql",
     ),
+    (
+        9,
+        "durable_account_route",
+        ROOT / "database/migrations/0009_durable_account_route.sql",
+    ),
+    (
+        10,
+        "pending_account_route_progress",
+        ROOT / "database/migrations/0010_pending_account_route_progress.sql",
+    ),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831

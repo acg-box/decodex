@@ -16,13 +16,13 @@ use tempfile::TempDir;
 
 use decodex_protocol::{
 	CURRENT_VERSION, Channel, ClientProfile, CommandEnvelope, ConversationHistoryPage,
-	ConversationHistoryResult, CorrelationId, Cursor, DoctorReport, EntityId, EntityRevision,
-	EventEnvelope, EventPayload, HistoryCursorToken, QueryEnvelope, QueryPayload,
-	PAPER_INVESTMENT_DOMAIN_PACK_ID, DEVELOPMENT_DOMAIN_PACK_ID, ProgramCycleDraftDto,
-	ProgramEvidenceDraftDto, ProgramNodeKind, ProgramReviewClassification, ProgramReviewDraftDto,
-	QueryResultEnvelope, QueryResultPayload, QuickTaskState, QuickTaskWorkingDirectory,
-	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerInstanceId, SessionCheckpoint,
-	SnapshotEnvelope, SnapshotItem, WireText,
+	ConversationHistoryResult, CorrelationId, Cursor, DEVELOPMENT_DOMAIN_PACK_ID, DoctorReport,
+	EntityId, EntityRevision, EventEnvelope, EventPayload, HistoryCursorToken,
+	PAPER_INVESTMENT_DOMAIN_PACK_ID, ProgramCycleDraftDto, ProgramEvidenceDraftDto,
+	ProgramNodeKind, ProgramReviewClassification, ProgramReviewDraftDto, QueryEnvelope,
+	QueryPayload, QueryResultEnvelope, QueryResultPayload, QuickTaskState,
+	QuickTaskWorkingDirectory, RetainedSessionConfig, RetainedSessionFailure, ServerId,
+	ServerInstanceId, SessionCheckpoint, SnapshotEnvelope, SnapshotItem, WireText,
 };
 
 use crate::{
@@ -102,16 +102,16 @@ fn production_cache_parent_normalizes_only_fixed_platform_prefix() {
 }
 
 #[test]
-fn production_client_cache_authority_is_valid_at_protocol_v2_6() {
+fn production_client_cache_authority_is_valid_at_protocol_v2_9() {
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let fixture_temp_dir =
 		temporary.path().canonicalize().expect("fixture temporary directory canonicalizes");
 	let config = retained_config(&fixture_temp_dir.join("config-cache-parent"), SERVER);
 	let lifecycle = ClientLifecycle::production_with_temp_dir(config, &fixture_temp_dir)
-		.expect("production lifecycle constructs at protocol V2.6");
+		.expect("production lifecycle constructs at protocol V2.9");
 
 	assert_eq!(CURRENT_VERSION.major, 2);
-	assert_eq!(CURRENT_VERSION.minor, 6);
+	assert_eq!(CURRENT_VERSION.minor, 9);
 	assert_eq!(CLIENT_CACHE_SCHEMA_GENERATION, 1);
 	assert!(lifecycle.cache.is_some(), "the production client cache opens");
 	let encoded =
@@ -813,8 +813,9 @@ async fn run_with_io_dispatches_history_and_restarts_from_head_after_reconnect()
 	let routes = queries
 		.iter()
 		.map(|query| match &query.payload {
-			QueryPayload::GetConversationHistory { conversation_id, after, .. } =>
-				(conversation_id.clone(), after.clone()),
+			QueryPayload::GetConversationHistory { conversation_id, after, .. } => {
+				(conversation_id.clone(), after.clone())
+			},
 			_ => panic!("history pager sends only ConversationHistory queries"),
 		})
 		.collect::<Vec<_>>();
@@ -2333,8 +2334,7 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 	const PAPER_OBJECTIVE_ID: &str = "d5000000-0000-4000-8000-000000000001";
 	const PAPER_WORK_ITEM_ID: &str = "d6000000-0000-4000-8000-000000000001";
 	const PAPER_REVIEW_ID: &str = "e1000000-0000-4000-8000-000000000001";
-	const PAPER_DETERMINISTIC_EVIDENCE_ID: &str =
-		"e2000000-0000-4000-8000-000000000001";
+	const PAPER_DETERMINISTIC_EVIDENCE_ID: &str = "e2000000-0000-4000-8000-000000000001";
 	const PAPER_EXTERNAL_EVIDENCE_ID: &str = "e3000000-0000-4000-8000-000000000001";
 
 	fn text(value: &str) -> WireText {
@@ -2360,10 +2360,7 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 		.canonicalize()
 		.expect("live test working directory canonicalizes");
 	let working_directory = QuickTaskWorkingDirectory::new(
-		working_directory
-			.to_str()
-			.expect("live test working directory is UTF-8")
-			.to_owned(),
+		working_directory.to_str().expect("live test working directory is UTF-8").to_owned(),
 	)
 	.expect("live test working directory is accepted");
 	let profile = ClientProfile::load_default(None).expect("the live profile is configured");
@@ -2430,10 +2427,7 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 						&& pack.relations.len() == 2 =>
 				{
 					assert_eq!(
-						pack.entities
-							.iter()
-							.map(|entity| entity.id.as_str())
-							.collect::<Vec<_>>(),
+						pack.entities.iter().map(|entity| entity.id.as_str()).collect::<Vec<_>>(),
 						vec![
 							"4ab46bd9-8378-494b-aa14-db4408b814ef",
 							"19639395-365c-4060-b160-9833783a33d4",
@@ -2441,12 +2435,15 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 						],
 					);
 					break;
-				}
-				Some(_) => {}
+				},
+				Some(_) => {},
 			}
 		}
 		assert!(
-			!matches!(snapshot.command, ProgramCommandState::OutcomeUnknown | ProgramCommandState::Refused),
+			!matches!(
+				snapshot.command,
+				ProgramCommandState::OutcomeUnknown | ProgramCommandState::Refused
+			),
 			"Development Pack binding did not settle: {:?}",
 			snapshot.command,
 		);
@@ -2461,12 +2458,7 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 	}
 
 	let paper_program_id = entity(PAPER_PROGRAM_ID);
-	if !programs
-		.snapshot()
-		.programs
-		.iter()
-		.any(|program| program.program_id == paper_program_id)
-	{
+	if !programs.snapshot().programs.iter().any(|program| program.program_id == paper_program_id) {
 		programs
 			.create(ProgramCycleDraftDto {
 				program_id: paper_program_id.clone(),
@@ -2529,9 +2521,8 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 	let paper_projection_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
 	let mut paper_cycle = loop {
 		let snapshot = programs.snapshot();
-		if let Some(cycle) = snapshot
-			.cycle
-			.filter(|cycle| cycle.program.program_id == paper_program_id)
+		if let Some(cycle) =
+			snapshot.cycle.filter(|cycle| cycle.program.program_id == paper_program_id)
 		{
 			let pack = cycle.domain_pack.as_ref().expect("paper Program has an immutable Pack");
 			assert_eq!(pack.descriptor.id.as_str(), PAPER_INVESTMENT_DOMAIN_PACK_ID);
@@ -2549,7 +2540,10 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 			break cycle;
 		}
 		assert!(
-			!matches!(snapshot.command, ProgramCommandState::OutcomeUnknown | ProgramCommandState::Refused),
+			!matches!(
+				snapshot.command,
+				ProgramCommandState::OutcomeUnknown | ProgramCommandState::Refused
+			),
 			"paper Program command did not settle: {:?}",
 			snapshot.command,
 		);
@@ -2689,13 +2683,18 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 		}) {
 			let pack = cycle.domain_pack.as_ref().expect("completed paper Pack projection");
 			assert_eq!(pack.descriptor.id.as_str(), PAPER_INVESTMENT_DOMAIN_PACK_ID);
-			assert!(pack.relations.iter().any(|relation| {
-				relation.kind.as_str() == "finance.compared_with"
-			}));
+			assert!(
+				pack.relations
+					.iter()
+					.any(|relation| { relation.kind.as_str() == "finance.compared_with" })
+			);
 			break;
 		}
 		assert!(
-			!matches!(snapshot.command, ProgramCommandState::OutcomeUnknown | ProgramCommandState::Refused),
+			!matches!(
+				snapshot.command,
+				ProgramCommandState::OutcomeUnknown | ProgramCommandState::Refused
+			),
 			"paper Review did not settle: {:?}; prior cycle revision was {}",
 			snapshot.command,
 			paper_cycle.program.revision.0,

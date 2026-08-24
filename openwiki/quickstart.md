@@ -87,6 +87,22 @@ ProviderAttempt state, and exact command receipts. Missing or stale quota data m
 unknown capacity; it is not fabricated exhaustion. A current known depleted fact still
 blocks that account.
 
+Account Route is one daemon-owned command coordinated by `decodexd`'s
+`SharedAuthCoordinator`. While Codex runs, the coordinator performs read-only stable-auth
+following: it observes stable metadata and imports known source rotations without writing the
+shared auth file. A Route that cannot safely cut over returns `AccountRoutePending`, a confirmed
+typed success backed by one durable receipt that can later become terminal; restart-transient
+account readiness keeps it pending. A newer explicit Route atomically supersedes an older pending
+target, and replay of the old command returns `route_superseded`. Swift and GPUI keep other ready
+targets selectable; the current routed target becomes a `Keep` action while another target is
+pending. After natural external Codex quiescence, `decodexd` rechecks the exact source
+auth version, refreshes the target as needed, and performs the shared-auth write with an exact-source
+CAS before committing fixed routing and its Route receipt. If shared auth already names the target,
+`decodexd` may reconcile credentials and routing without rewriting `auth.json` even while Codex
+runs. Cross-account `auth.json` writes still require natural external Codex quiescence because
+running Codex caches account auth. The menu-bar app has no Route workflow state. `decodexd` never
+controls the Codex process.
+
 The runtime keeps the mature Codex app-server protocol and safety harness. It does not
 replace Codex with a new agent kernel. It preserves exact account binding, pre-spawn
 fencing, one dispatch authorization, positive-only terminal evidence, and restart-safe

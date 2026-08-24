@@ -606,6 +606,72 @@ final class ResetCardArchitectureTests: XCTestCase {
 		)
 	}
 
+	func testRouteIsOneDaemonOwnedCommandWithoutSwiftPreparationState() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let store = try String(
+			contentsOf: sourceURL.appendingPathComponent("ResetCardStore.swift"),
+			encoding: .utf8
+		)
+		let client = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountControlCLIClient.swift"),
+			encoding: .utf8
+		)
+		let actions = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountControlViews.swift"),
+			encoding: .utf8
+		)
+
+		XCTAssertTrue(store.contains("accountControlClient.routeAccount("))
+		XCTAssertFalse(store.contains("PendingAccountRoutePreparation"))
+		XCTAssertFalse(store.contains("pendingAccountRoutePreparations"))
+		XCTAssertFalse(store.contains("applyImmediateRouteAccountRefresh"))
+		XCTAssertFalse(store.contains("refreshAccountCredentials("))
+		XCTAssertFalse(store.contains("useAccountInCodex("))
+		XCTAssertFalse(store.contains("setFixedSelection("))
+		XCTAssertTrue(client.contains(#"operation: "route_account""#))
+		XCTAssertFalse(client.contains(#"operation: "use_account_in_codex""#))
+		XCTAssertFalse(client.contains(#"operation: "set_fixed_selection""#))
+		XCTAssertTrue(store.contains("guard pendingRoute == nil"))
+		XCTAssertTrue(store.contains("&& pendingRoute == nil"))
+		XCTAssertTrue(store.contains("pendingRoute?.accountID != accountID"))
+		XCTAssertTrue(store.contains("replacesPendingRoute = pendingRoute != nil"))
+		XCTAssertTrue(actions.contains("title: isPendingTarget"))
+		XCTAssertTrue(actions.contains(#"? "Pending""#))
+		XCTAssertTrue(actions.contains(#"keepsCurrentRoute ? "Keep""#))
+		XCTAssertTrue(
+			actions.contains("keep it closed until Pending changes to Routed")
+		)
+		XCTAssertTrue(
+			actions.contains("store.pendingRoute?.accountID != state.account.accountID")
+		)
+	}
+
+	func testMenuBarOwnerDisablesAutomaticAndSuddenTermination() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp/DecodexApp.swift")
+		let source = try String(contentsOf: sourceURL, encoding: .utf8)
+		XCTAssertTrue(source.contains("disableAutomaticTermination"))
+		XCTAssertTrue(source.contains("disableSuddenTermination"))
+		XCTAssertTrue(source.contains("automaticTerminationSupportEnabled = false"))
+		XCTAssertTrue(source.contains("applicationShouldTerminateAfterLastWindowClosed"))
+
+		let scriptURL = sourceURL
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("script/build_and_run.sh")
+		let script = try String(contentsOf: scriptURL, encoding: .utf8)
+		XCTAssertTrue(script.contains("<key>NSSupportsAutomaticTermination</key>"))
+		XCTAssertTrue(script.contains("<key>NSSupportsSuddenTermination</key>"))
+	}
+
 	func testProductionSourceUsesOnlyTheNativeResetCardAuthority() throws {
 		let testsURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
@@ -726,7 +792,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 			compatibility.contains("decodexNativeClientABIVersion: UInt32 = 1")
 		)
 		XCTAssertTrue(
-			compatibility.contains("decodexNativeArtifactCohort: UInt32 = 2")
+			compatibility.contains("decodexNativeArtifactCohort: UInt32 = 5")
 		)
 		XCTAssertTrue(
 			compatibility.contains("static func openLibrary(at libraryURL: URL)")

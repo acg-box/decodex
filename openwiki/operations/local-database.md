@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Local Database Operations"
+openwiki_generated: true
+---
+
 # Local Database Operations
 
 Status: current operator and validation workflow.
@@ -37,8 +43,20 @@ operation indexes atomically. A binary rollback across this schema boundary must
 matching pre-upgrade private database backup; an older daemon does not accept a newer
 migration ledger.
 
-The account-login restoration repair adds no schema migration. Artifact cohort 2 changes the
-strict local result/FFI shape. On startup, the daemon can compensate only the exact pre-repair
+Schema version 9 adds one nullable, credential-negative `request_json` column to command
+receipts. Only a reserved `route_account` receipt must contain this value. The partial index
+supports bounded startup recovery. On daemon startup, the runtime releases only interrupted
+Route leases and completes one recovery pass before it accepts protocol commands.
+
+Schema version 10 adds the nullable `progress_json` column to the existing command receipt,
+retaining schema 9 request authority while recording credential-negative pending Route progress.
+A unique partial index permits at most one reserved `route_account` receipt, and triggers keep
+progress restricted to that pending Route state. The migration is additive and preserves
+existing receipt rows.
+
+The account-login restoration repair adds no schema migration. The current protocol uses exact
+artifact cohort 5; older cohort notes below are historical evidence for the prior repair and not
+current compatibility guidance. Artifact cohort 3 changes the strict local result/FFI shape. On startup, the daemon can compensate only the exact pre-repair
 `StoreApplied` enrollment collision described by the account-lifecycle contract; it deletes the
 proved orphan credential and cancels that operation. Installation therefore upgrades the signed
 daemon, CLI, App executable, and App FFI as one cohort while retaining the pre-install database
@@ -69,7 +87,7 @@ The macOS installer:
    `~/.decodex` as its stable working directory;
 5. starts the daemon; and
 6. runs doctor and account-list readback through the installed CLI, which proves the
-   running daemon uses the same protocol 2.6 and artifact cohort 2.
+   running daemon uses the same protocol 2.9 and artifact cohort 5.
 
 It does not install former server store, create roles or databases, manage a socket directory, or
 resolve a database password.

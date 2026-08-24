@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 
 let decodexNativeClientABIVersion: UInt32 = 1
-let decodexNativeArtifactCohort: UInt32 = 2
+let decodexNativeArtifactCohort: UInt32 = 5
 
 enum DecodexNativeCompatibility {
 	private typealias Version = @convention(c) () -> UInt32

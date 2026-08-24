@@ -27,11 +27,11 @@ pub use self::{
 		DoctorReport, DoctorStatus, MAX_DOCTOR_CHECKS,
 	},
 	domain_pack::{
-		DomainEntityDto, DomainEntityFieldDto, DomainPackCapabilityDto,
+		DEVELOPMENT_DOMAIN_PACK_ID, DomainEntityDto, DomainEntityFieldDto, DomainPackCapabilityDto,
 		DomainPackCapabilityStatus, DomainPackContractError, DomainPackDescriptorDto,
 		DomainPackProjectionDto, DomainPackViewKind, DomainRelationDto,
-		DEVELOPMENT_DOMAIN_PACK_ID, PAPER_INVESTMENT_DOMAIN_PACK_ID,
 		MAX_DOMAIN_PACK_CAPABILITIES, MAX_DOMAIN_PACK_ENTITIES, MAX_DOMAIN_PACK_RELATIONS,
+		PAPER_INVESTMENT_DOMAIN_PACK_ID,
 	},
 	local_transport::{
 		LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal,
@@ -39,11 +39,11 @@ pub use self::{
 	},
 	program_cycle::{
 		MAX_PROGRAM_EDGES, MAX_PROGRAM_LIST_ITEMS, MAX_PROGRAM_LIST_VALUES, MAX_PROGRAM_NODES,
-			ProgramContinuationDraftDto, ProgramCycleContractError, ProgramCycleDraftDto,
-			ProgramCycleDto, ProgramCycleResult, ProgramEdgeDto, ProgramEvidenceDraftDto,
-			ProgramListResult, ProgramNodeDto,
-		ProgramNodeFieldDto, ProgramNodeKind, ProgramRelationKind, ProgramReviewClassification,
-		ProgramReviewDraftDto, ProgramState, ProgramSummaryDto,
+		ProgramContinuationDraftDto, ProgramCycleContractError, ProgramCycleDraftDto,
+		ProgramCycleDto, ProgramCycleResult, ProgramEdgeDto, ProgramEvidenceDraftDto,
+		ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto, ProgramNodeKind,
+		ProgramRelationKind, ProgramReviewClassification, ProgramReviewDraftDto, ProgramState,
+		ProgramSummaryDto,
 	},
 	quick_task::{
 		MAX_QUICK_TASK_LIST_SIZE, MAX_QUICK_TASK_MODEL_BYTES,
@@ -64,24 +64,24 @@ pub use self::{
 		AccountObservedStateDto, AccountOperationKindDto, AccountOperationPhaseDto,
 		AccountProfileDailyUsageDto, AccountProfileDto, AccountProfileEmailDto,
 		AccountProfileErrorDto, AccountProfileResult, AccountProviderDto, AccountQuotaErrorDto,
-		AccountQuotaStateDto, AccountQuotaWindowDto, AccountRoutingControlDto,
-		AccountSelectionModeDto, AccountSelectionRecoveryDto, AccountUnsettledOperationDto,
-		AccountsResult, CausationId, Channel, ClientCommandId, ClientHello, ClientMessage,
-		CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandOutcome, CommandPayload,
-		CommandReceipt, CommandResultEnvelope, ConversationHistoryPage, ConversationHistoryResult,
-		CorrelationId, Cursor, EntityId, EntityRevision, EventEnvelope, EventPayload,
-		ExecutionConsumerDto, ExecutionDecisionDto, ExecutionDecisionQueryError,
-		ExecutionDecisionResult, ExecutionQuotaExclusionDto, ExecutionQuotaWindowDto,
-		ExecutionRouteBlockerDto, ExecutionRouteCauseDto, ExecutionRouteDto, HistoryArtifactId,
-		HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference,
-		HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
-		HistoryMediaType, HistoryMetadata, HistoryMetadataValue, HistoryPayloadDto,
-		HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole, IdempotencyKey,
-		IdempotencyKeyError, MAX_ACCOUNT_PROFILE_DAILY_USAGE, MAX_HISTORY_INLINE_BYTES,
-		MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
-		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
-		MAX_PROJECT_LIST_ITEMS, MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES,
-		MAX_WORK_ITEM_BOARD_OBJECTIVES, MAX_WORK_ITEM_BOARD_PAGE_SIZE,
+		AccountQuotaStateDto, AccountQuotaWindowDto, AccountRoutePendingDto,
+		AccountRoutingControlDto, AccountSelectionModeDto, AccountSelectionRecoveryDto,
+		AccountUnsettledOperationDto, AccountsResult, CausationId, Channel, ClientCommandId,
+		ClientHello, ClientMessage, CodexAuthProjectionResult, CommandEnvelope, CommandError,
+		CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope,
+		ConversationHistoryPage, ConversationHistoryResult, CorrelationId, Cursor, EntityId,
+		EntityRevision, EventEnvelope, EventPayload, ExecutionConsumerDto, ExecutionDecisionDto,
+		ExecutionDecisionQueryError, ExecutionDecisionResult, ExecutionQuotaExclusionDto,
+		ExecutionQuotaWindowDto, ExecutionRouteBlockerDto, ExecutionRouteCauseDto,
+		ExecutionRouteDto, HistoryArtifactId, HistoryArtifactReference, HistoryArtifactRevision,
+		HistoryBlobLength, HistoryBlobReference, HistoryCursorToken, HistoryItemDto,
+		HistoryItemKindDto, HistoryItemStatusDto, HistoryMediaType, HistoryMetadata,
+		HistoryMetadataValue, HistoryPayloadDto, HistoryQueryError, HistorySideEffectState,
+		HistoryText, HistoryTurnRole, IdempotencyKey, IdempotencyKeyError,
+		MAX_ACCOUNT_PROFILE_DAILY_USAGE, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
+		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
+		MAX_IDEMPOTENCY_KEY_BYTES, MAX_PROJECT_LIST_ITEMS, MAX_RESET_CARD_ITEMS,
+		MAX_WIRE_TEXT_BYTES, MAX_WORK_ITEM_BOARD_OBJECTIVES, MAX_WORK_ITEM_BOARD_PAGE_SIZE,
 		MAX_WORK_ITEM_BOARD_RELATIONS, MAX_WORK_ITEM_BOARD_TITLE_BYTES, ProjectList,
 		ProjectListContractError, ProjectListResult, ProjectSummary, QueryEnvelope, QueryId,
 		QueryPayload, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ReconnectMode,
@@ -102,9 +102,9 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 6 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 9 };
 /// Build/protocol cohort that must agree across the daemon and every local consumer.
-pub const CURRENT_ARTIFACT_COHORT: u32 = 2;
+pub const CURRENT_ARTIFACT_COHORT: u32 = 5;
 /// The lower bound of the exact-current protocol window.
 ///
 /// This equals [`CURRENT_VERSION`]. The name remains to avoid an unrelated

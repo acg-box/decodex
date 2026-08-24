@@ -23,14 +23,13 @@ use decodex_core::{DecodexRoot, LocalTrustPolicy};
 use decodex_protocol::{
 	AccountLoginInstallMode, AccountLoginMethod, AccountLoginRequest, AccountLoginRequestEnvelope,
 	AccountLoginStart, AccountLoginState, AccountLoginStatus, AccountsResult, CURRENT_VERSION,
-	CausationId, Channel, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope, CommandError,
-	CommandPayload, CorrelationId, Cursor,
-	DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId,
-	EntityRevision, EventPayload, IdempotencyKey, LocalTransportAuthority, LocalTransportRefusal,
-	LocalTransportStream, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload,
-	QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal, ResetCardDescriptorDto,
-	ResetCardOperationResult, ResultPayload, ResumeCursor, ServerId, ServerInstanceId,
-	ServerMessage, SnapshotItem, VersionRefusal, WireText,
+	CausationId, Channel, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope,
+	CommandError, CommandPayload, CorrelationId, Cursor, DoctorCheck, DoctorComponent, DoctorIssue,
+	DoctorReport, DoctorStatus, EntityId, EntityRevision, EventPayload, IdempotencyKey,
+	LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream, ProtocolVersion,
+	QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition, ReconnectMode,
+	Refusal, ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, ResumeCursor,
+	ServerId, ServerInstanceId, ServerMessage, SnapshotItem, VersionRefusal, WireText,
 };
 use decodex_runtime::{
 	ActorCommandDeadlineClass, Application, ApplicationPublication, ProtocolServer, ServerConfig,
@@ -234,10 +233,7 @@ impl Application for FixtureApplication {
 		future::ready(result)
 	}
 
-	async fn account_login<'a>(
-		&'a self,
-		request: &'a AccountLoginRequest,
-	) -> AccountLoginStatus {
+	async fn account_login<'a>(&'a self, request: &'a AccountLoginRequest) -> AccountLoginStatus {
 		self.state.lock().expect("test state mutex poisoned").login_requests += 1;
 		let state = match request {
 			AccountLoginRequest::Start { start } => match start.method {
@@ -556,8 +552,8 @@ async fn exact_current_and_pre_payload_version_refusals_use_real_websockets() {
 		panic!("expected welcome");
 	};
 	assert_eq!(welcome.version, CURRENT_VERSION);
-	assert_eq!(welcome.supported.minimum_minor, 6);
-	assert_eq!(welcome.supported.maximum_minor, 6);
+	assert_eq!(welcome.supported.minimum_minor, 9);
+	assert_eq!(welcome.supported.maximum_minor, 9);
 	assert!(welcome.instance_id.is_some());
 	assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
 	execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
@@ -638,9 +634,11 @@ async fn account_login_exchange_does_not_advance_or_enter_retained_state() {
 	};
 	assert_eq!(after.cursor, before.cursor);
 	assert_eq!(after.items, before.items);
-	assert!(!serde_json::to_string(&after)
-		.expect("serialize credential-negative snapshot")
-		.contains(response.status.session_id.as_str()));
+	assert!(
+		!serde_json::to_string(&after)
+			.expect("serialize credential-negative snapshot")
+			.contains(response.status.session_id.as_str())
+	);
 
 	drop(second);
 	bound.shutdown().await.expect("shutdown ephemeral account-login server");

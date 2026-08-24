@@ -19,17 +19,15 @@ use tokio_tungstenite::{
 use crate::{
 	AccountInitialSelectionResult, AccountInspectResult, AccountLoginRequest,
 	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, AccountLoginStart,
-	AccountLoginStatus, AccountObservationSignal,
-	AccountProfileEmailDto, AccountProfileResult, AccountSelectionModeDto, AccountsResult,
-	CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage,
-	CodexAuthProjectionResult,
-	CommandEnvelope, CommandError, CommandOutcome, CommandPayload, CorrelationId, DoctorReport,
-	EntityId, EntityRevision, IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId,
-	QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope,
-	ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult, ResultPayload,
-	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal,
-	WorkItemBoardPageSize, WorkItemBoardProjectId, WorkItemBoardResult, WorkItemBoardWorkItemId,
-	WorkItemState,
+	AccountLoginStatus, AccountObservationSignal, AccountProfileEmailDto, AccountProfileResult,
+	AccountSelectionModeDto, AccountsResult, CURRENT_ARTIFACT_COHORT, CURRENT_VERSION,
+	ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult, CommandEnvelope,
+	CommandError, CommandOutcome, CommandPayload, CorrelationId, DoctorReport, EntityId,
+	EntityRevision, IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload,
+	QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope, ResetCardDescriptorDto,
+	ResetCardInventoryResult, ResetCardOperationResult, ResultPayload, RetainedSessionConfig,
+	RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal, WorkItemBoardPageSize,
+	WorkItemBoardProjectId, WorkItemBoardResult, WorkItemBoardWorkItemId, WorkItemState,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 };
 use decodex_core::{
@@ -466,8 +464,9 @@ impl ResetCardClient {
 			QueryResultPayload::ResetCards(result) => {
 				let mismatched = match &result {
 					ResetCardInventoryResult::Available { account_id, .. }
-					| ResetCardInventoryResult::ObservationFailed { account_id, .. } =>
-						account_id != &expected_account_id,
+					| ResetCardInventoryResult::ObservationFailed { account_id, .. } => {
+						account_id != &expected_account_id
+					},
 					ResetCardInventoryResult::Unavailable { .. } => false,
 				};
 				if mismatched { Err(ClientFailure::ProtocolMalformed) } else { Ok(result) }
@@ -537,8 +536,9 @@ impl ResetCardClient {
 
 		match result {
 			Ok(response) => Ok(response),
-			Err(failure) if dispatch_attempted.load(Ordering::Acquire) =>
-				Ok(ResetCardConsumeResponse::PotentiallyDispatched { failure }),
+			Err(failure) if dispatch_attempted.load(Ordering::Acquire) => {
+				Ok(ResetCardConsumeResponse::PotentiallyDispatched { failure })
+			},
 			Err(failure) => Err(failure),
 		}
 	}
@@ -580,8 +580,9 @@ impl ResetCardClient {
 					}
 					return Ok(CompletedOneShot::new(result.payload, socket));
 				},
-				ServerMessage::Event(event) =>
-					self.verify_version_and_server(event.version, &event.server_id)?,
+				ServerMessage::Event(event) => {
+					self.verify_version_and_server(event.version, &event.server_id)?
+				},
 				ServerMessage::Refusal(refusal) => return Err(self.refusal_failure(refusal)),
 				_ => return Err(ClientFailure::ProtocolMalformed),
 			}
@@ -675,12 +676,14 @@ impl ResetCardClient {
 						) if result_account_id == account_id
 							&& result_descriptor == descriptor
 							&& entity_revision == expected_revision =>
+						{
 							Ok(ResetCardConsumeResponse::Accepted {
 								account_id,
 								descriptor,
 								state,
 								entity_revision,
-							}),
+							})
+						},
 						(
 							CommandOutcome::Succeeded,
 							Some(entity_revision),
@@ -693,15 +696,19 @@ impl ResetCardClient {
 						) if result_account_id == account_id
 							&& result_descriptor == descriptor
 							&& entity_revision == expected_revision =>
+						{
 							Ok(ResetCardConsumeResponse::Accepted {
 								account_id,
 								descriptor,
 								state: ResetCardOperationResult::Completed { outcome },
 								entity_revision,
-							}),
+							})
+						},
 						(CommandOutcome::Rejected, None, None, Some(error))
 							if !matches!(&error, CommandError::AcceptanceUnknown) =>
-							Ok(ResetCardConsumeResponse::Rejected { error }),
+						{
+							Ok(ResetCardConsumeResponse::Rejected { error })
+						},
 						(
 							CommandOutcome::AcceptanceUnknown,
 							None,
@@ -715,8 +722,9 @@ impl ResetCardClient {
 
 					return response.map(|value| CompletedOneShot::new(value, socket));
 				},
-				ServerMessage::Event(event) =>
-					self.verify_version_and_server(event.version, &event.server_id)?,
+				ServerMessage::Event(event) => {
+					self.verify_version_and_server(event.version, &event.server_id)?
+				},
 				ServerMessage::Refusal(refusal) => return Err(self.refusal_failure(refusal)),
 				_ => return Err(ClientFailure::ProtocolMalformed),
 			}
@@ -785,8 +793,9 @@ impl ResetCardClient {
 
 					return Ok(socket);
 				},
-				ServerMessage::Event(event) =>
-					self.verify_version_and_server(event.version, &event.server_id)?,
+				ServerMessage::Event(event) => {
+					self.verify_version_and_server(event.version, &event.server_id)?
+				},
 				ServerMessage::Refusal(refusal) => return Err(self.refusal_failure(refusal)),
 				_ => return Err(ClientFailure::ProtocolMalformed),
 			}
@@ -857,7 +866,7 @@ impl ResetCardClient {
 	}
 }
 
-/// Read-only V2.6 client for bounded canonical WorkItem board pages.
+/// Read-only V2.9 client for bounded canonical WorkItem board pages.
 pub struct WorkItemBoardClient {
 	transport: ResetCardClient,
 }
@@ -928,7 +937,10 @@ impl AccountLoginClient {
 	}
 
 	/// Start or idempotently read one exact daemon-owned login session.
-	pub async fn start(&self, start: AccountLoginStart) -> Result<AccountLoginStatus, ClientFailure> {
+	pub async fn start(
+		&self,
+		start: AccountLoginStart,
+	) -> Result<AccountLoginStatus, ClientFailure> {
 		let expected_session_id = start.session_id.clone();
 		self.exchange(
 			"decodex-account-login-start",
@@ -939,10 +951,7 @@ impl AccountLoginClient {
 	}
 
 	/// Read one daemon-lifetime login status without retaining it in a client cache.
-	pub async fn status(
-		&self,
-		session_id: EntityId,
-	) -> Result<AccountLoginStatus, ClientFailure> {
+	pub async fn status(&self, session_id: EntityId) -> Result<AccountLoginStatus, ClientFailure> {
 		let expected_session_id = session_id.clone();
 		self.exchange(
 			"decodex-account-login-status",
@@ -953,10 +962,7 @@ impl AccountLoginClient {
 	}
 
 	/// Cancel one session and wait for daemon-owned terminal cleanup.
-	pub async fn cancel(
-		&self,
-		session_id: EntityId,
-	) -> Result<AccountLoginStatus, ClientFailure> {
+	pub async fn cancel(&self, session_id: EntityId) -> Result<AccountLoginStatus, ClientFailure> {
 		let expected_session_id = session_id.clone();
 		self.exchange(
 			"decodex-account-login-cancel",
@@ -976,12 +982,10 @@ impl AccountLoginClient {
 		if request.validate().is_err() {
 			return Err(ClientFailure::ProtocolMalformed);
 		}
-		let completed = time::timeout(
-			self.transport.timeout,
-			self.exchange_inner(request_identity, request),
-		)
-		.await
-		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		let completed =
+			time::timeout(self.transport.timeout, self.exchange_inner(request_identity, request))
+				.await
+				.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		let status = completed.value.status;
 		if status.session_id != *expected_session_id || status.validate().is_err() {
@@ -1019,9 +1023,9 @@ impl AccountLoginClient {
 					}
 					return Ok(CompletedOneShot::new(response, socket));
 				},
-				ServerMessage::Event(event) => self
-					.transport
-					.verify_version_and_server(event.version, &event.server_id)?,
+				ServerMessage::Event(event) => {
+					self.transport.verify_version_and_server(event.version, &event.server_id)?
+				},
 				ServerMessage::Refusal(refusal) => {
 					return Err(self.transport.refusal_failure(refusal));
 				},
@@ -1055,7 +1059,7 @@ pub enum AccountCommandResponse {
 	},
 }
 
-/// Same-UID V2.6 client for daemon-owned account queries and lifecycle commands.
+/// Same-UID V2.9 client for daemon-owned account queries and lifecycle commands.
 pub struct AccountClient {
 	transport: ResetCardClient,
 }
@@ -1136,12 +1140,14 @@ impl AccountClient {
 			QueryResultPayload::AccountProfile(result) => {
 				let matches = match &result {
 					AccountProfileResult::Current(profile)
-					| AccountProfileResult::Cached { profile, .. } =>
+					| AccountProfileResult::Cached { profile, .. } => {
 						profile.account_id == expected
 							&& (include_email
-								|| matches!(profile.email, AccountProfileEmailDto::Redacted)),
-					AccountProfileResult::Unavailable { email, .. } =>
-						include_email || matches!(email, AccountProfileEmailDto::Redacted),
+								|| matches!(profile.email, AccountProfileEmailDto::Redacted))
+					},
+					AccountProfileResult::Unavailable { email, .. } => {
+						include_email || matches!(email, AccountProfileEmailDto::Redacted)
+					},
 				};
 				if matches { Ok(result) } else { Err(ClientFailure::ProtocolMalformed) }
 			},
@@ -1229,16 +1235,17 @@ impl AccountClient {
 		}
 	}
 
-	/// Select one fixed account under routing-control and target-account revision guards.
-	pub async fn set_fixed_account_selection(
+	/// Refresh, project, and select one account through one daemon-owned Route command.
+	pub async fn route_account(
 		&self,
+		operation_id: EntityId,
 		account_id: EntityId,
 		expected_account_revision: EntityRevision,
 		expected_routing_revision: EntityRevision,
 		idempotency_key: IdempotencyKey,
 	) -> Result<AccountCommandResponse, ClientFailure> {
 		self.execute(
-			CommandPayload::SetFixedAccountSelection { account_id, expected_account_revision },
+			CommandPayload::RouteAccount { operation_id, account_id, expected_account_revision },
 			Some(expected_routing_revision),
 			idempotency_key,
 		)
@@ -1274,22 +1281,7 @@ impl AccountClient {
 		.await
 	}
 
-	/// Project one exact account into Codex shared auth without changing Decodex routing.
-	pub async fn use_account_in_codex(
-		&self,
-		account_id: EntityId,
-		expected_account_revision: EntityRevision,
-		idempotency_key: IdempotencyKey,
-	) -> Result<AccountCommandResponse, ClientFailure> {
-		self.execute(
-			CommandPayload::UseAccountInCodex { account_id },
-			Some(expected_account_revision),
-			idempotency_key,
-		)
-		.await
-	}
-
-	/// Execute one V2.6 lifecycle command exactly once on one connection.
+	/// Execute one exact-current lifecycle command exactly once on one connection.
 	pub async fn execute(
 		&self,
 		payload: CommandPayload,
@@ -1298,16 +1290,15 @@ impl AccountClient {
 	) -> Result<AccountCommandResponse, ClientFailure> {
 		self.transport.require_local_profile()?;
 		if !matches!(
-				&payload,
-				CommandPayload::EnrollAccountFromSharedCodex { .. }
-					| CommandPayload::ImportAccountCredentialFile { .. }
+			&payload,
+			CommandPayload::EnrollAccountFromSharedCodex { .. }
+				| CommandPayload::ImportAccountCredentialFile { .. }
 				| CommandPayload::SetAccountEnabled { .. }
 				| CommandPayload::LogoutAccount { .. }
-				| CommandPayload::SetFixedAccountSelection { .. }
+				| CommandPayload::RouteAccount { .. }
 				| CommandPayload::SetBalancedAccountSelection
 				| CommandPayload::SetAccountOrder { .. }
 				| CommandPayload::RefreshAccount { .. }
-				| CommandPayload::UseAccountInCodex { .. }
 				| CommandPayload::RecoverAccountOperation { .. }
 		) {
 			return Err(ClientFailure::ProtocolMalformed);
@@ -1328,8 +1319,9 @@ impl AccountClient {
 		};
 		match result {
 			Ok(response) => Ok(response),
-			Err(failure) if dispatch_attempted.load(Ordering::Acquire) =>
-				Ok(AccountCommandResponse::PotentiallyDispatched { failure }),
+			Err(failure) if dispatch_attempted.load(Ordering::Acquire) => {
+				Ok(AccountCommandResponse::PotentiallyDispatched { failure })
+			},
 			Err(failure) => Err(failure),
 		}
 	}
@@ -1393,13 +1385,17 @@ impl AccountClient {
 					) {
 						(CommandOutcome::Succeeded, Some(entity_revision), Some(result), None)
 							if account_result_matches(&payload, entity_revision, &result) =>
+						{
 							Ok(AccountCommandResponse::Applied {
 								entity_revision,
 								result: Box::new(result),
-							}),
+							})
+						},
 						(CommandOutcome::Rejected, None, None, Some(error))
 							if !matches!(error, CommandError::AcceptanceUnknown) =>
-							Ok(AccountCommandResponse::Rejected { error }),
+						{
+							Ok(AccountCommandResponse::Rejected { error })
+						},
 						(
 							CommandOutcome::AcceptanceUnknown,
 							None,
@@ -1413,8 +1409,9 @@ impl AccountClient {
 
 					return response.map(|value| CompletedOneShot::new(value, socket));
 				},
-				ServerMessage::Event(event) =>
-					self.transport.verify_version_and_server(event.version, &event.server_id)?,
+				ServerMessage::Event(event) => {
+					self.transport.verify_version_and_server(event.version, &event.server_id)?
+				},
 				ServerMessage::Refusal(refusal) => {
 					return Err(self.transport.refusal_failure(refusal));
 				},
@@ -1449,31 +1446,43 @@ fn account_result_matches(
 		| (
 			CommandPayload::RefreshAccount { account_id, .. },
 			ResultPayload::AccountChanged { account },
-		)
-			=> account_id == &account.account_id && entity_revision == account.account_revision,
+		) => account_id == &account.account_id && entity_revision == account.account_revision,
 		(
 			CommandPayload::EnrollAccountFromSharedCodex { account_id, .. }
 			| CommandPayload::ImportAccountCredentialFile { account_id, .. },
 			ResultPayload::AccountRestored { requested_account_id, account },
-		) =>
+		) => {
 			account_id == requested_account_id
 				&& account.account_id != *requested_account_id
-				&& entity_revision == account.account_revision,
+				&& entity_revision == account.account_revision
+		},
 		(
 			CommandPayload::LogoutAccount { account_id, .. },
 			ResultPayload::AccountLoggedOut { account_id: result_id, tombstone_revision },
 		) => account_id == result_id && *tombstone_revision == entity_revision,
 		(
-			CommandPayload::SetFixedAccountSelection { account_id, .. },
-			ResultPayload::AccountRoutingChanged { routing },
-		) =>
-			routing.revision == entity_revision
-				&& routing.mode == AccountSelectionModeDto::Fixed(account_id.clone()),
+			CommandPayload::RouteAccount { account_id, .. },
+			ResultPayload::AccountRouted { account, routing, projection_digest: _ },
+		) => {
+			account.account_id == *account_id
+				&& account.account_revision.0 > 0
+				&& routing.revision == entity_revision
+				&& routing.mode == AccountSelectionModeDto::Fixed(account_id.clone())
+		},
+		(
+			CommandPayload::RouteAccount { operation_id, account_id, .. },
+			ResultPayload::AccountRoutePending { pending },
+		) => {
+			pending.operation_id == *operation_id
+				&& pending.account_id == *account_id
+				&& pending.routing_revision == entity_revision
+		},
 		(
 			CommandPayload::SetBalancedAccountSelection,
 			ResultPayload::AccountRoutingChanged { routing },
-		) =>
-			routing.revision == entity_revision && routing.mode == AccountSelectionModeDto::Balanced,
+		) => {
+			routing.revision == entity_revision && routing.mode == AccountSelectionModeDto::Balanced
+		},
 		(
 			CommandPayload::SetAccountOrder { order },
 			ResultPayload::AccountRoutingChanged { routing },
@@ -1482,15 +1491,6 @@ fn account_result_matches(
 			CommandPayload::RecoverAccountOperation { operation_id, .. },
 			ResultPayload::AccountOperationRecovered { operation_id: result_id, .. },
 		) => operation_id == result_id,
-		(
-			CommandPayload::UseAccountInCodex { account_id },
-			ResultPayload::CodexAuthProjected {
-				account_id: result_id,
-				account_revision,
-				projection_digest: _,
-			},
-		) =>
-			account_id == result_id && entity_revision == *account_revision && entity_revision.0 > 0,
 		_ => false,
 	}
 }
@@ -1556,12 +1556,14 @@ impl Display for ClientFailure {
 			Self::ProfileMissing => "selected profile is missing",
 			Self::UnsafeHostPath => "client configuration path is unsafe",
 			Self::ServerIdentityUnavailable => "stable server identity is unavailable",
-			Self::RemoteMutationUnsupported =>
-				"reset-card operations require a local pinned profile",
+			Self::RemoteMutationUnsupported => {
+				"reset-card operations require a local pinned profile"
+			},
 			Self::LocalTransportDisabled => "local daemon transport is disabled",
 			Self::RemoteTransportDisabled => "remote daemon transport is disabled",
-			Self::LocalTransportUnsupported =>
-				"local daemon transport is unsupported on this platform",
+			Self::LocalTransportUnsupported => {
+				"local daemon transport is unsupported on this platform"
+			},
 			Self::UnsafeLocalEndpoint => "local daemon endpoint is unsafe",
 			Self::LocalPeerIdentityUnavailable => "local daemon peer identity is unavailable",
 			Self::LocalPeerUidMismatch => "local daemon peer UID does not match",
@@ -1574,8 +1576,9 @@ impl Display for ClientFailure {
 			Self::ProtocolMalformed => "daemon protocol response is malformed",
 			Self::ProtocolViolation => "daemon refused the protocol operation",
 			Self::ProtocolBackpressure => "daemon protocol backpressure limit was reached",
-			Self::ApplicationAcceptanceUnknown =>
-				"daemon could not establish whether application acceptance committed",
+			Self::ApplicationAcceptanceUnknown => {
+				"daemon could not establish whether application acceptance committed"
+			},
 		})
 	}
 }
@@ -1596,8 +1599,9 @@ fn map_config_error(error: ConfigError) -> ClientFailure {
 	match error {
 		ConfigError::UnsupportedVersion => ClientFailure::ConfigurationVersion,
 		ConfigError::MissingProfile => ClientFailure::ProfileMissing,
-		ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. }) =>
-			ClientFailure::ConfigurationMissing,
+		ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. }) => {
+			ClientFailure::ConfigurationMissing
+		},
 		ConfigError::Path(_) => ClientFailure::UnsafeHostPath,
 		_ => ClientFailure::ConfigurationMalformed,
 	}
@@ -1615,18 +1619,22 @@ fn map_identity_error(error: ConfigError) -> ClientFailure {
 fn map_local_transport_failure(failure: LocalTransportRefusal) -> ClientFailure {
 	match failure {
 		LocalTransportRefusal::Disabled => ClientFailure::LocalTransportDisabled,
-		LocalTransportRefusal::InvalidPolicy | LocalTransportRefusal::ConfigurationUnavailable =>
-			ClientFailure::ConfigurationMalformed,
+		LocalTransportRefusal::InvalidPolicy | LocalTransportRefusal::ConfigurationUnavailable => {
+			ClientFailure::ConfigurationMalformed
+		},
 		LocalTransportRefusal::UnsupportedPlatform => ClientFailure::LocalTransportUnsupported,
-		LocalTransportRefusal::EffectiveUidMismatch | LocalTransportRefusal::PeerUidMismatch =>
-			ClientFailure::LocalPeerUidMismatch,
+		LocalTransportRefusal::EffectiveUidMismatch | LocalTransportRefusal::PeerUidMismatch => {
+			ClientFailure::LocalPeerUidMismatch
+		},
 		LocalTransportRefusal::UnsafeDirectory
 		| LocalTransportRefusal::UnsafeEndpoint
 		| LocalTransportRefusal::EndpointReplaced => ClientFailure::UnsafeLocalEndpoint,
-		LocalTransportRefusal::PeerCredentialsUnavailable =>
-			ClientFailure::LocalPeerIdentityUnavailable,
-		LocalTransportRefusal::EndpointUnavailable | LocalTransportRefusal::EndpointInUse =>
-			ClientFailure::ProtocolDisconnected,
+		LocalTransportRefusal::PeerCredentialsUnavailable => {
+			ClientFailure::LocalPeerIdentityUnavailable
+		},
+		LocalTransportRefusal::EndpointUnavailable | LocalTransportRefusal::EndpointInUse => {
+			ClientFailure::ProtocolDisconnected
+		},
 	}
 }
 
@@ -1651,10 +1659,12 @@ fn map_receive_error(error: tokio_tungstenite::tungstenite::Error) -> ClientFail
 
 fn map_refusal(refusal: Refusal) -> ClientFailure {
 	match refusal {
-		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. }) =>
-			ClientFailure::ProtocolMajorMismatch,
-		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. }) =>
-			ClientFailure::ProtocolMinorMismatch,
+		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. }) => {
+			ClientFailure::ProtocolMajorMismatch
+		},
+		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. }) => {
+			ClientFailure::ProtocolMinorMismatch
+		},
 		Refusal::ArtifactCohortMismatch { .. } => ClientFailure::ArtifactCohortMismatch,
 		Refusal::ServerIdentityMismatch { .. } => ClientFailure::ServerIdentityMismatch,
 		Refusal::ProtocolViolation { .. } => ClientFailure::ProtocolViolation,
@@ -1672,7 +1682,8 @@ fn version_failure(version: ProtocolVersion) -> ClientFailure {
 
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests {
-	#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
+	#[cfg(unix)]
+	use std::os::unix::fs::PermissionsExt as _;
 	use std::{fs, time::Duration};
 
 	use futures_util::{SinkExt as _, StreamExt as _};
@@ -1681,11 +1692,13 @@ mod tests {
 	use tokio_tungstenite::{self, tungstenite::Message};
 
 	use crate::{
-		AccountClient, AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto,
-		AccountProfileResult, CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, Channel, ClientCommandId,
-		ClientFailure,
-		ClientMessage, ClientProfile, CommandError, CommandOutcome, CommandReceipt,
-		CommandResultEnvelope, CorrelationId, Cursor, DoctorCheck, DoctorClient, DoctorComponent,
+		AccountClient, AccountCommandResponse, AccountProfileDto, AccountProfileEmailDto,
+		AccountProfileErrorDto,
+		AccountProfileResult, AccountRoutePendingDto, CURRENT_ARTIFACT_COHORT, CURRENT_VERSION,
+		Channel, ClientCommandId,
+		ClientFailure, ClientMessage, ClientProfile, CommandError, CommandOutcome, CommandPayload,
+		CommandReceipt, CommandResultEnvelope, CorrelationId, Cursor, DoctorCheck, DoctorClient,
+		DoctorComponent,
 		DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision, EventEnvelope,
 		EventPayload, IdempotencyKey, LocalTransportAuthority, PREVIOUS_MINOR_VERSION, ProfileKind,
 		ProtocolVersion, QueryId, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition,
@@ -1737,6 +1750,128 @@ mod tests {
 				.collect(),
 		)
 		.expect("test operation must succeed")
+	}
+
+	#[test]
+	fn account_route_pending_is_a_typed_success_for_the_exact_route() {
+		let operation_id =
+			EntityId::new("30000000-0000-4000-8000-000000000001").expect("operation ID");
+		let account_id =
+			EntityId::new("40000000-0000-4000-8000-000000000001").expect("account ID");
+		let command = CommandPayload::RouteAccount {
+			operation_id: operation_id.clone(),
+			account_id: account_id.clone(),
+			expected_account_revision: EntityRevision(7),
+		};
+		let result = ResultPayload::AccountRoutePending {
+			pending: AccountRoutePendingDto {
+				operation_id,
+				account_id,
+				routing_revision: EntityRevision(9),
+			},
+		};
+		assert!(super::account_result_matches(&command, EntityRevision(9), &result));
+		assert!(!super::account_result_matches(&command, EntityRevision(10), &result));
+	}
+
+	#[tokio::test]
+	async fn account_client_returns_pending_route_as_confirmed_applied_state() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.expect("test listener must bind");
+		let operation_id =
+			EntityId::new("30000000-0000-4000-8000-000000000001").expect("operation ID");
+		let account_id =
+			EntityId::new("40000000-0000-4000-8000-000000000001").expect("account ID");
+		let expected_operation_id = operation_id.clone();
+		let expected_account_id = account_id.clone();
+		let task = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.expect("test connection must arrive");
+			let mut socket =
+				tokio_tungstenite::accept_async(stream).await.expect("test socket must upgrade");
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.expect("initial response must send");
+			}
+			let Message::Text(request) = socket
+				.next()
+				.await
+				.expect("command must arrive")
+				.expect("command must decode")
+			else {
+				panic!("expected text command")
+			};
+			let ClientMessage::Command(command) =
+				serde_json::from_str::<ClientMessage>(&request).expect("typed command")
+			else {
+				panic!("expected command")
+			};
+			assert!(matches!(
+				command.payload,
+				CommandPayload::RouteAccount {
+					ref operation_id,
+					ref account_id,
+					expected_account_revision: EntityRevision(7),
+				} if operation_id == &expected_operation_id && account_id == &expected_account_id
+			));
+			socket
+				.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					client_command_id: command.client_command_id.clone(),
+					idempotency_key: command.idempotency_key.clone(),
+					disposition: ReceiptDisposition::Executed,
+					original_client_command_id: command.client_command_id.clone(),
+				})))
+				.await
+				.unwrap();
+			socket
+				.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					client_command_id: command.client_command_id,
+					idempotency_key: command.idempotency_key,
+					outcome: CommandOutcome::Succeeded,
+					entity_revision: Some(EntityRevision(9)),
+					payload: Some(ResultPayload::AccountRoutePending {
+						pending: AccountRoutePendingDto {
+							operation_id: expected_operation_id,
+							account_id: expected_account_id,
+							routing_revision: EntityRevision(9),
+						},
+					}),
+					error: None,
+				})))
+				.await
+				.unwrap();
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let response = AccountClient::new(ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).unwrap(),
+		))
+		.route_account(
+			operation_id.clone(),
+			account_id.clone(),
+			EntityRevision(7),
+			EntityRevision(9),
+			IdempotencyKey::new("pending-route-key").unwrap(),
+		)
+		.await
+		.unwrap();
+		assert!(matches!(
+			response,
+			AccountCommandResponse::Applied {
+				entity_revision: EntityRevision(9),
+				result,
+			} if matches!(
+				&*result,
+				ResultPayload::AccountRoutePending { pending }
+					if pending.operation_id == operation_id && pending.account_id == account_id
+			)
+		));
+		task.await.unwrap();
 	}
 
 	fn profile_result(account_id: &str, email: AccountProfileEmailDto) -> AccountProfileResult {
@@ -1935,12 +2070,12 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_6_window() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 6 });
+	fn protocol_constants_expose_only_the_exact_v2_9_window() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 9 });
 		assert_eq!(PREVIOUS_MINOR_VERSION, CURRENT_VERSION);
 		assert_eq!(
 			SupportedVersions::current(),
-			SupportedVersions { major: 2, minimum_minor: 6, maximum_minor: 6 },
+			SupportedVersions { major: 2, minimum_minor: 9, maximum_minor: 9 },
 		);
 		assert!(WireText::new("bounded").is_ok());
 	}
@@ -2345,10 +2480,7 @@ max_entry_bytes = 0
 				ClientFailure::ProtocolMinorMismatch,
 			),
 			(
-				Refusal::ArtifactCohortMismatch {
-					expected: CURRENT_ARTIFACT_COHORT,
-					actual: None,
-				},
+				Refusal::ArtifactCohortMismatch { expected: CURRENT_ARTIFACT_COHORT, actual: None },
 				ClientFailure::ArtifactCohortMismatch,
 			),
 			(
@@ -3105,26 +3237,6 @@ max_entry_bytes = 0
 			.unwrap_err();
 
 		assert_eq!(failure, ClientFailure::ProtocolDisconnected);
-	}
-
-	#[test]
-	fn use_account_in_codex_result_requires_exact_account_and_revision() {
-		let account_id =
-			EntityId::new("41234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
-		let command = crate::CommandPayload::UseAccountInCodex { account_id: account_id.clone() };
-		let exact = ResultPayload::CodexAuthProjected {
-			account_id: account_id.clone(),
-			account_revision: EntityRevision(11),
-			projection_digest: crate::Sha256Digest::new("a".repeat(64)).unwrap(),
-		};
-		let stale = ResultPayload::CodexAuthProjected {
-			account_id,
-			account_revision: EntityRevision(10),
-			projection_digest: crate::Sha256Digest::new("a".repeat(64)).unwrap(),
-		};
-
-		assert!(super::account_result_matches(&command, EntityRevision(11), &exact));
-		assert!(!super::account_result_matches(&command, EntityRevision(11), &stale));
 	}
 
 	#[tokio::test]

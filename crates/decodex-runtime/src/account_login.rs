@@ -32,8 +32,7 @@ use crate::{
 	application::{
 		account_changed_publication, account_enrollment_publication,
 		account_lifecycle_command_error, decode_account_command_receipt,
-		encode_account_command_receipt,
-		map_account_store_command_error as map_store_error,
+		encode_account_command_receipt, map_account_store_command_error as map_store_error,
 	},
 };
 
@@ -151,9 +150,8 @@ impl AccountLoginManager {
 		let worker_start = start.clone();
 		let authority = self.authority.clone();
 		let provider = self.provider.clone();
-		let worker = thread::Builder::new()
-			.name("decodexd-account-login".to_owned())
-			.spawn(move || {
+		let worker =
+			thread::Builder::new().name("decodexd-account-login".to_owned()).spawn(move || {
 				let result = run_login_session(
 					&worker_shared,
 					worker_start,
@@ -197,9 +195,8 @@ impl AccountLoginManager {
 	async fn cancel(&self, session_id: &EntityId) -> AccountLoginStatus {
 		let (shared, worker) = {
 			let mut slot = self.lock_session();
-			let Some(session) = slot
-				.as_mut()
-				.filter(|session| &session.start.session_id == session_id)
+			let Some(session) =
+				slot.as_mut().filter(|session| &session.start.session_id == session_id)
 			else {
 				return failed(session_id.clone(), AccountLoginFailure::SessionNotFound);
 			};
@@ -209,10 +206,7 @@ impl AccountLoginManager {
 		if let Some(worker) = worker
 			&& !join_worker(worker).await
 		{
-			shared.set_status(failed(
-				session_id.clone(),
-				AccountLoginFailure::ServiceUnavailable,
-			));
+			shared.set_status(failed(session_id.clone(), AccountLoginFailure::ServiceUnavailable));
 		}
 		let current = shared.status();
 		if is_terminal(&current) {
@@ -239,11 +233,7 @@ impl AccountLoginManager {
 			let Some(session) = slot.as_mut() else {
 				return;
 			};
-			(
-				Arc::clone(&session.shared),
-				session.start.session_id.clone(),
-				session.worker.take(),
-			)
+			(Arc::clone(&session.shared), session.start.session_id.clone(), session.worker.take())
 		};
 		if let Some(worker) = worker
 			&& !join_worker(worker).await
@@ -281,11 +271,11 @@ impl Drop for AccountLoginManager {
 				session.worker.take()
 			});
 		if let Some(worker) = worker {
-			let _ = thread::Builder::new()
-				.name("decodexd-account-login-drop".to_owned())
-				.spawn(move || {
+			let _ = thread::Builder::new().name("decodexd-account-login-drop".to_owned()).spawn(
+				move || {
 					let _ = worker.join();
-				});
+				},
+			);
 		}
 	}
 }
@@ -327,14 +317,7 @@ fn run_login_session(
 		let status = if is_terminal(&current) {
 			current
 		} else if error == ProviderError::Cancelled {
-			status(
-				session_id.clone(),
-				AccountLoginState::Cancelled,
-				None,
-				None,
-				None,
-				None,
-			)
+			status(session_id.clone(), AccountLoginState::Cancelled, None, None, None, None)
 		} else {
 			failed(session_id.clone(), map_provider_error(error))
 		};
@@ -348,14 +331,8 @@ fn run_login_session(
 		},
 	};
 	if shared.cancellation.is_cancelled() {
-		let status = status(
-			session_id.clone(),
-			AccountLoginState::Cancelled,
-			None,
-			None,
-			None,
-			None,
-		);
+		let status =
+			status(session_id.clone(), AccountLoginState::Cancelled, None, None, None, None);
 		return finalize_login_status(&mut home, session_id, status);
 	}
 	shared.set_status(status(
@@ -413,10 +390,7 @@ fn publish_provider_event(shared: &Shared, session_id: &EntityId, event: LoginEv
 	match converted {
 		Ok(status) => shared.set_status(status),
 		Err(_) => {
-			shared.set_status(failed(
-				session_id.clone(),
-				AccountLoginFailure::LoginFailed,
-			));
+			shared.set_status(failed(session_id.clone(), AccountLoginFailure::LoginFailed));
 			shared.cancellation.cancel();
 		},
 	}
@@ -502,8 +476,8 @@ impl AccountLoginInstallAuthority {
 			AccountLoginInstallMode::Enroll { idempotency_key, .. }
 			| AccountLoginInstallMode::Reauthenticate { idempotency_key, .. } => idempotency_key,
 		};
-		let identity = CommandIdentity::new(idempotency_key.as_str(), &request)
-			.map_err(map_store_error)?;
+		let identity =
+			CommandIdentity::new(idempotency_key.as_str(), &request).map_err(map_store_error)?;
 		let claim = self
 			.store
 			.reserve_account_command(&identity, kind, &entity_id, expected_revision)
@@ -511,8 +485,10 @@ impl AccountLoginInstallAuthority {
 			.map_err(map_store_error)?;
 		let lease = match claim {
 			AccountCommandReceiptClaim::Owned(lease) => lease,
-			AccountCommandReceiptClaim::Replayed(value) => {
-				return decode_account_command_receipt(value).map_err(|_| CommandError::AcceptanceUnknown)?;
+			AccountCommandReceiptClaim::Pending(value)
+			| AccountCommandReceiptClaim::Replayed(value) => {
+				return decode_account_command_receipt(value)
+					.map_err(|_| CommandError::AcceptanceUnknown)?;
 			},
 		};
 		let source = credential_path.to_str().ok_or_else(invalid_request)?;
@@ -520,7 +496,8 @@ impl AccountLoginInstallAuthority {
 			AccountLoginInstallMode::Enroll { operation_id, account_id, enabled, .. } => {
 				let operation_id = AccountOperationId::new(operation_id.as_str())
 					.map_err(|_| invalid_request())?;
-				let account_id = AccountId::new(account_id.as_str()).map_err(|_| invalid_request())?;
+				let account_id =
+					AccountId::new(account_id.as_str()).map_err(|_| invalid_request())?;
 				let requested_account_id = account_id.clone();
 				self.accounts
 					.enroll_from_credential_file_command(
@@ -531,14 +508,14 @@ impl AccountLoginInstallAuthority {
 						source,
 						move |result| {
 							encode_account_command_receipt(
-								&result
-									.map_err(account_lifecycle_command_error)
-									.and_then(|account| {
+								&result.map_err(account_lifecycle_command_error).and_then(
+									|account| {
 										account_enrollment_publication(
 											&requested_account_id,
 											account.clone(),
 										)
-									}),
+									},
+								),
 							)
 						},
 					)
@@ -553,7 +530,8 @@ impl AccountLoginInstallAuthority {
 			} => {
 				let operation_id = AccountOperationId::new(operation_id.as_str())
 					.map_err(|_| invalid_request())?;
-				let account_id = AccountId::new(account_id.as_str()).map_err(|_| invalid_request())?;
+				let account_id =
+					AccountId::new(account_id.as_str()).map_err(|_| invalid_request())?;
 				let expected_revision = i64::try_from(expected_revision.0)
 					.ok()
 					.filter(|value| *value > 0)
@@ -573,11 +551,9 @@ impl AccountLoginInstallAuthority {
 						source,
 						|result| {
 							encode_account_command_receipt(
-								&result
-									.map_err(account_lifecycle_command_error)
-									.and_then(|account| {
-										account_changed_publication(account.clone())
-									}),
+								&result.map_err(account_lifecycle_command_error).and_then(
+									|account| account_changed_publication(account.clone()),
+								),
 							)
 						},
 					)
@@ -658,10 +634,11 @@ fn resolved_account_id(
 		| AccountLoginInstallMode::Reauthenticate { account_id, .. } => account_id,
 	};
 	match (&start.install_mode, result) {
-		(
-			AccountLoginInstallMode::Enroll { .. },
-			ResultPayload::AccountChanged { account },
-		) if &account.account_id == requested => Ok(account.account_id.clone()),
+		(AccountLoginInstallMode::Enroll { .. }, ResultPayload::AccountChanged { account })
+			if &account.account_id == requested =>
+		{
+			Ok(account.account_id.clone())
+		},
 		(
 			AccountLoginInstallMode::Enroll { .. },
 			ResultPayload::AccountRestored { requested_account_id, account },
@@ -689,28 +666,24 @@ fn map_install_error(error: &CommandError) -> AccountLoginFailure {
 				AccountLoginFailure::CredentialStoreUnavailable
 			},
 			AccountCommandRejectionDto::OperationNotFound
-			| AccountCommandRejectionDto::ManualRecoveryRequired => {
-				AccountLoginFailure::RecoveryChanged
-			},
+			| AccountCommandRejectionDto::ManualRecoveryRequired => AccountLoginFailure::RecoveryChanged,
 			AccountCommandRejectionDto::AccountNotFound
 			| AccountCommandRejectionDto::CredentialAbsent
 			| AccountCommandRejectionDto::LifecycleUnready
+			| AccountCommandRejectionDto::SharedAuthOwnerBusy
 			| AccountCommandRejectionDto::OperationUnsettled
 			| AccountCommandRejectionDto::InvalidRequest
 			| AccountCommandRejectionDto::AccountInUse
-			| AccountCommandRejectionDto::RoutingOrderInvalid => {
-				AccountLoginFailure::AccountUnavailable
-			},
-			AccountCommandRejectionDto::StaleRoutingControl => AccountLoginFailure::AccountChanged,
+			| AccountCommandRejectionDto::RoutingOrderInvalid => AccountLoginFailure::AccountUnavailable,
+			AccountCommandRejectionDto::StaleRoutingControl
+			| AccountCommandRejectionDto::RouteSuperseded => AccountLoginFailure::AccountChanged,
 		},
 		CommandError::AcceptanceUnknown => AccountLoginFailure::OutcomeUnknown,
 		CommandError::IdempotencyConflict
 		| CommandError::IdempotencyCapacityExceeded { .. }
 		| CommandError::ApplicationUnavailable { .. }
 		| CommandError::QuickTaskUnavailable { .. }
-		| CommandError::QuickTaskRecoveryRequired { .. } => {
-			AccountLoginFailure::ServiceUnavailable
-		},
+		| CommandError::QuickTaskRecoveryRequired { .. } => AccountLoginFailure::ServiceUnavailable,
 	}
 }
 
@@ -774,9 +747,7 @@ mod tests {
 				operation_id: entity("028f0f9e-7b6e-4a31-8f4c-1d2e3f405163"),
 				account_id: entity("038f0f9e-7b6e-4a31-8f4c-1d2e3f405164"),
 				expected_revision: EntityRevision(7),
-				recovery_operation_id: Some(entity(
-					"048f0f9e-7b6e-4a31-8f4c-1d2e3f405165",
-				)),
+				recovery_operation_id: Some(entity("048f0f9e-7b6e-4a31-8f4c-1d2e3f405165")),
 				idempotency_key: IdempotencyKey::new("account-login-fixture")
 					.expect("fixture idempotency key"),
 			},
@@ -803,23 +774,15 @@ mod tests {
 	#[tokio::test(flavor = "current_thread")]
 	async fn singleton_returns_same_session_and_rejects_another_active_session() {
 		let manager = AccountLoginManager::unavailable_for_test();
-		let first = start(
-			"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162",
-			AccountLoginMethod::BrowserRedirect,
-		);
+		let first =
+			start("018f0f9e-7b6e-4a31-8f4c-1d2e3f405162", AccountLoginMethod::BrowserRedirect);
 		let shared = Arc::new(Shared::new(first.session_id.clone(), first.method));
-		*manager.lock_session() = Some(Session {
-			start: first.clone(),
-			shared: Arc::clone(&shared),
-			worker: None,
-		});
+		*manager.lock_session() =
+			Some(Session { start: first.clone(), shared: Arc::clone(&shared), worker: None });
 		let runtime = Handle::current();
 
 		assert_eq!(manager.start(first.clone(), runtime.clone()).await, shared.status());
-		let second = start(
-			"058f0f9e-7b6e-4a31-8f4c-1d2e3f405166",
-			AccountLoginMethod::DeviceCode,
-		);
+		let second = start("058f0f9e-7b6e-4a31-8f4c-1d2e3f405166", AccountLoginMethod::DeviceCode);
 		assert_eq!(
 			manager.start(second.clone(), runtime).await.failure,
 			Some(AccountLoginFailure::Busy)
@@ -829,10 +792,8 @@ mod tests {
 	#[tokio::test(flavor = "current_thread")]
 	async fn cancel_joins_off_runtime_after_terminal_cleanup() {
 		let manager = AccountLoginManager::unavailable_for_test();
-		let start = start(
-			"068f0f9e-7b6e-4a31-8f4c-1d2e3f405167",
-			AccountLoginMethod::BrowserRedirect,
-		);
+		let start =
+			start("068f0f9e-7b6e-4a31-8f4c-1d2e3f405167", AccountLoginMethod::BrowserRedirect);
 		let shared = Arc::new(Shared::new(start.session_id.clone(), start.method));
 		let worker_shared = Arc::clone(&shared);
 		let worker_session_id = start.session_id.clone();
@@ -854,19 +815,17 @@ mod tests {
 				None,
 			));
 		});
-		*manager.lock_session() = Some(Session {
-			start: start.clone(),
-			shared,
-			worker: Some(worker),
-		});
+		*manager.lock_session() =
+			Some(Session { start: start.clone(), shared, worker: Some(worker) });
 
 		tokio::spawn(async move {
 			tokio::task::yield_now().await;
 			let _ = release_sender.send(());
 		});
-		let result = tokio::time::timeout(Duration::from_secs(1), manager.cancel(&start.session_id))
-			.await
-			.expect("current-thread cancellation must not deadlock");
+		let result =
+			tokio::time::timeout(Duration::from_secs(1), manager.cancel(&start.session_id))
+				.await
+				.expect("current-thread cancellation must not deadlock");
 
 		assert_eq!(result.state, AccountLoginState::Cancelled);
 		assert!(manager.lock_session().as_ref().is_some_and(|session| session.worker.is_none()));
@@ -875,10 +834,7 @@ mod tests {
 	#[tokio::test(flavor = "current_thread")]
 	async fn shutdown_signals_then_joins_off_runtime() {
 		let manager = AccountLoginManager::unavailable_for_test();
-		let start = start(
-			"088f0f9e-7b6e-4a31-8f4c-1d2e3f405169",
-			AccountLoginMethod::DeviceCode,
-		);
+		let start = start("088f0f9e-7b6e-4a31-8f4c-1d2e3f405169", AccountLoginMethod::DeviceCode);
 		let shared = Arc::new(Shared::new(start.session_id.clone(), start.method));
 		let worker_shared = Arc::clone(&shared);
 		let runtime = Handle::current();
@@ -908,10 +864,7 @@ mod tests {
 	#[test]
 	fn manager_drop_cancels_and_reaps_its_worker_off_thread() {
 		let manager = AccountLoginManager::unavailable_for_test();
-		let start = start(
-			"078f0f9e-7b6e-4a31-8f4c-1d2e3f405168",
-			AccountLoginMethod::DeviceCode,
-		);
+		let start = start("078f0f9e-7b6e-4a31-8f4c-1d2e3f405168", AccountLoginMethod::DeviceCode);
 		let shared = Arc::new(Shared::new(start.session_id.clone(), start.method));
 		let worker_shared = Arc::clone(&shared);
 		let settled = Arc::new(AtomicBool::new(false));

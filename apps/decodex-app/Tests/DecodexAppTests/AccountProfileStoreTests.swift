@@ -987,7 +987,8 @@ private actor PerAccountGenerationClient: AccountControlClient, AccountProfileCl
 				revision: 1,
 				mode: .balanced,
 				order: [firstAccount.accountID, secondAccount.accountID]
-			)
+			),
+			pendingRoute: nil
 		)
 	}
 
@@ -1158,16 +1159,6 @@ private actor PerAccountGenerationClient: AccountControlClient, AccountProfileCl
 		throw AccountControlError.applicationUnavailable
 	}
 
-	func setFixedSelection(
-		authority _: ResetCardAuthority?,
-		accountID _: String,
-		expectedAccountRevision _: UInt64,
-		expectedRoutingRevision _: UInt64,
-		idempotencyKey _: String
-	) async throws -> AccountControlResult {
-		throw AccountControlError.applicationUnavailable
-	}
-
 	func setBalancedSelection(
 		authority _: ResetCardAuthority?,
 		expectedRoutingRevision _: UInt64,
@@ -1180,15 +1171,6 @@ private actor PerAccountGenerationClient: AccountControlClient, AccountProfileCl
 		authority _: ResetCardAuthority?,
 		order _: [String],
 		expectedRoutingRevision _: UInt64,
-		idempotencyKey _: String
-	) async throws -> AccountControlResult {
-		throw AccountControlError.applicationUnavailable
-	}
-
-	func useAccountInCodex(
-		authority _: ResetCardAuthority?,
-		accountID _: String,
-		expectedRevision _: UInt64,
 		idempotencyKey _: String
 	) async throws -> AccountControlResult {
 		throw AccountControlError.applicationUnavailable

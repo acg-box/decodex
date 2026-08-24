@@ -36,10 +36,14 @@ struct AccountPrimaryActionsView: View {
 	var body: some View {
 		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
 			CompactAccountActionButton(
-				title: presentation.isCurrent ? "Routed" : "Route",
-				symbol: presentation.isCurrent
-					? "point.3.connected.trianglepath.dotted"
-					: "arrow.triangle.branch",
+				title: isPendingTarget
+					? "Pending"
+					: (keepsCurrentRoute ? "Keep" : (presentation.isCurrent ? "Routed" : "Route")),
+				symbol: isPendingTarget
+					? "clock"
+					: (presentation.isCurrent
+						? "point.3.connected.trianglepath.dotted"
+						: "arrow.triangle.branch"),
 				isActive: presentation.isCurrent,
 				isDisabled: presentation.isDisabled,
 				isVisuallyDisabled: presentation.isVisuallyDisabled,
@@ -48,9 +52,13 @@ struct AccountPrimaryActionsView: View {
 					state.account.accountID,
 					activity: .route
 				),
-				help: presentation.isCurrent
-					? "This account is used by Decodex routing and new Codex processes."
-					: "Route Decodex and use this account for new Codex processes."
+				help: isPendingTarget
+					? "Quit ChatGPT and keep it closed until Pending changes to Routed, then reopen it."
+					: (keepsCurrentRoute
+						? "Keep this account and replace the other pending route."
+						: (presentation.isCurrent
+						? "This account is used by Decodex routing and new Codex processes."
+						: "Route Decodex and use this account for new Codex processes."))
 			) {
 				Task {
 					await store.routeAccount(state.account.accountID)
@@ -66,7 +74,11 @@ struct AccountPrimaryActionsView: View {
 	}
 
 	private var isRouteCurrent: Bool {
-		isCodexProjection && isFixed
+		isCodexProjection && isFixed && store.pendingRoute == nil
+	}
+
+	private var keepsCurrentRoute: Bool {
+		isCodexProjection && isFixed && store.pendingRoute != nil && isPendingTarget == false
 	}
 
 	private var presentation: AccountRouteActionPresentation {
@@ -80,7 +92,11 @@ struct AccountPrimaryActionsView: View {
 	}
 
 	private var canSelect: Bool {
-		state.routeCapability == .ready
+		state.routeCapability == .ready && store.pendingRoute?.accountID != state.account.accountID
+	}
+
+	private var isPendingTarget: Bool {
+		store.pendingRoute?.accountID == state.account.accountID
 	}
 
 	private var isFixed: Bool {
@@ -189,6 +205,7 @@ struct AccountUtilityActionsView: View {
 
 	private var lifecycleActionIsDisabled: Bool {
 		store.canPerformDirectAccountControl == false
+			|| store.pendingRoute != nil
 			|| store.isAccountControlInProgress
 			|| store.submittingKey != nil
 	}

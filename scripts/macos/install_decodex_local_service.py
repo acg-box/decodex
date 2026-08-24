@@ -1147,10 +1147,15 @@ def account_ids_from_result(document: dict[str, Any]) -> Optional[list[str]]:
     ):
         return None
     data = result.get("data")
-    if not isinstance(data, dict) or set(data) != {"accounts", "routing"}:
+    if not isinstance(data, dict) or set(data) != {
+        "accounts",
+        "routing",
+        "pending_route",
+    }:
         return None
     accounts = data.get("accounts")
     routing = data.get("routing")
+    pending_route = data.get("pending_route")
     if not isinstance(accounts, list) or not isinstance(routing, dict):
         return None
     account_ids: list[str] = []
@@ -1178,6 +1183,17 @@ def account_ids_from_result(document: dict[str, Any]) -> Optional[list[str]]:
             return None
     elif set(mode) != {"mode", "account_id"} or mode.get("account_id") not in account_ids:
         return None
+    if pending_route is not None:
+        if (
+            not isinstance(pending_route, dict)
+            or set(pending_route)
+            != {"operation_id", "account_id", "routing_revision"}
+            or not isinstance(pending_route.get("operation_id"), str)
+            or not UUID_PATTERN.fullmatch(pending_route["operation_id"])
+            or pending_route.get("account_id") not in account_ids
+            or pending_route.get("routing_revision") != revision
+        ):
+            return None
     return account_ids
 
 

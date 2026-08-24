@@ -10,7 +10,8 @@ use std::{
 	time::Duration,
 };
 
-#[cfg(target_os = "macos")] use crate::host_credentials::SqliteCredentialStore;
+#[cfg(target_os = "macos")]
+use crate::host_credentials::SqliteCredentialStore;
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
 	account_api::AccountApiRuntime,
@@ -18,7 +19,10 @@ use crate::{
 	account_observation::AccountObservationService,
 	account_profile::AccountProfileRuntime,
 	account_service::{AccountService, OpenAiCredentialRefresher},
-	application::{ProductStore, ProductStoreUnavailableReason, ServiceApplication},
+	application::{
+		ProductStore, ProductStoreUnavailableReason, ServiceApplication,
+		recover_pending_account_routes_once,
+	},
 	managed_repository_runtime::{
 		ManagedRepositoryCapability, ManagedRepositoryReadiness, ManagedRepositoryUnavailableReason,
 	},
@@ -160,22 +164,33 @@ impl ServiceBootstrap {
 		let account_observations = match (&accounts, &account_api) {
 			(Some(accounts), Some(account_api))
 				if account_profiles.is_some() || reset_cards.is_some() =>
+			{
 				Some(AccountObservationService::new(
 					Arc::clone(accounts),
 					Some(Arc::clone(account_api)),
 					account_profiles.clone(),
 					reset_cards.clone(),
-				)),
+				))
+			},
 			_ => None,
 		};
+		if let (ProductStore::Available(store), Some(accounts)) = (&store, &accounts) {
+			let _ = store.release_interrupted_account_route_claims().await;
+			recover_pending_account_routes_once(
+				Arc::clone(accounts),
+				store,
+				account_observations.as_ref(),
+			)
+			.await;
+		}
 		let account_login = match (&store, &accounts) {
-			(ProductStore::Available(store), Some(accounts)) => Some(Arc::new(
-				crate::account_login::AccountLoginManager::new(
+			(ProductStore::Available(store), Some(accounts)) => {
+				Some(Arc::new(crate::account_login::AccountLoginManager::new(
 					store.clone(),
 					Arc::clone(accounts),
 					account_observations.clone(),
-				),
-			)),
+				)))
+			},
 			_ => None,
 		};
 		let server = ProtocolServer::new(
@@ -303,20 +318,27 @@ fn compose_quick_tasks(composition: QuickTaskComposition) -> QuickTaskCapability
 		execution_authorization,
 		launch_profile,
 	) {
-		(None, _, _, _, _, _, _) =>
-			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::ProductState),
-		(_, None, _, _, _, _, _) =>
-			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::BlobStore),
-		(_, _, None, _, _, _, _) =>
-			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::AccountService),
-		(_, _, _, None, _, _, _) =>
-			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::ProcessGeneration),
-		(_, _, _, _, None, _, _) =>
-			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::ProviderAttempt),
-		(_, _, _, _, _, None, _) =>
-			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::ExecutionAuthorization),
-		(_, _, _, _, _, _, None) =>
-			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::AppServerProfile),
+		(None, _, _, _, _, _, _) => {
+			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::ProductState)
+		},
+		(_, None, _, _, _, _, _) => {
+			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::BlobStore)
+		},
+		(_, _, None, _, _, _, _) => {
+			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::AccountService)
+		},
+		(_, _, _, None, _, _, _) => {
+			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::ProcessGeneration)
+		},
+		(_, _, _, _, None, _, _) => {
+			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::ProviderAttempt)
+		},
+		(_, _, _, _, _, None, _) => {
+			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::ExecutionAuthorization)
+		},
+		(_, _, _, _, _, _, None) => {
+			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::AppServerProfile)
+		},
 		(
 			Some(store),
 			Some(blob_store),
@@ -368,8 +390,9 @@ async fn bootstrap_with_authority(
 	let (process_generations, process_generation_readiness) = match sqlite.clone() {
 		Some(store) => match ProcessGenerationControl::start(store).await {
 			Ok(control) => (Some(control), ProcessGenerationReadiness::Ready),
-			Err(ProcessSupervisorError::Platform) =>
-				(None, ProcessGenerationReadiness::PlatformUnavailable),
+			Err(ProcessSupervisorError::Platform) => {
+				(None, ProcessGenerationReadiness::PlatformUnavailable)
+			},
 			Err(_) => (None, ProcessGenerationReadiness::ProductStateUnavailable),
 		},
 		None => (None, ProcessGenerationReadiness::ProductStateUnavailable),
@@ -628,14 +651,16 @@ fn managed_repository_doctor(capability: &ManagedRepositoryCapability) -> Doctor
 fn quick_task_doctor(capability: &QuickTaskCapability) -> DoctorStatus {
 	match capability.readiness() {
 		QuickTaskReadiness::Ready => DoctorStatus::Ready,
-		QuickTaskReadiness::Unavailable(QuickTaskUnavailableReason::ProductState) =>
-			DoctorStatus::Unavailable(DoctorIssue::DatabaseNotConfigured),
+		QuickTaskReadiness::Unavailable(QuickTaskUnavailableReason::ProductState) => {
+			DoctorStatus::Unavailable(DoctorIssue::DatabaseNotConfigured)
+		},
 		QuickTaskReadiness::Unavailable(
 			QuickTaskUnavailableReason::AccountService
 			| QuickTaskUnavailableReason::ExecutionAuthorization,
 		) => DoctorStatus::Unavailable(DoctorIssue::Authentication),
-		QuickTaskReadiness::Unavailable(QuickTaskUnavailableReason::UnsupportedPlatform) =>
-			DoctorStatus::Unavailable(DoctorIssue::Disabled),
+		QuickTaskReadiness::Unavailable(QuickTaskUnavailableReason::UnsupportedPlatform) => {
+			DoctorStatus::Unavailable(DoctorIssue::Disabled)
+		},
 		QuickTaskReadiness::Unavailable(
 			QuickTaskUnavailableReason::BlobStore
 			| QuickTaskUnavailableReason::ProcessGeneration
@@ -730,8 +755,9 @@ fn host_directory(path: &Path) -> Result<(), HostDirectoryError> {
 fn config_issue(error: ConfigError) -> DoctorIssue {
 	match error {
 		ConfigError::UnsupportedVersion => DoctorIssue::ConfigurationVersion,
-		ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. }) =>
-			DoctorIssue::ConfigurationMissing,
+		ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. }) => {
+			DoctorIssue::ConfigurationMissing
+		},
 		ConfigError::Path(
 			PathError::UnsafeRoot
 			| PathError::CodexOwnedRoot
@@ -771,11 +797,13 @@ pub(crate) async fn validate_local_database(root: DecodexRoot) -> Result<(), Loc
 
 const fn local_database_error(error: decodex_database::DatabaseError) -> LocalDatabaseError {
 	match sqlite_bootstrap_failure(error) {
-		BootstrapFailure::UnsafeHostPath | BootstrapFailure::UnsafeAuthority =>
-			LocalDatabaseError::UnsafeHostPath,
+		BootstrapFailure::UnsafeHostPath | BootstrapFailure::UnsafeAuthority => {
+			LocalDatabaseError::UnsafeHostPath
+		},
 		BootstrapFailure::Incompatible => LocalDatabaseError::Incompatible,
-		BootstrapFailure::Unreachable | BootstrapFailure::Authentication =>
-			LocalDatabaseError::Unavailable,
+		BootstrapFailure::Unreachable | BootstrapFailure::Authentication => {
+			LocalDatabaseError::Unavailable
+		},
 	}
 }
 
@@ -785,8 +813,9 @@ fn connect_database(paths: &DecodexPaths) -> (ProductStore, DoctorStatus, Doctor
 		Ok(store) => (ProductStore::Available(store), DoctorStatus::Ready, vault),
 		Err(error) => {
 			let (reason, issue, vault) = match sqlite_bootstrap_failure(error) {
-				BootstrapFailure::Authentication =>
-					unreachable!("SQLite has no database authentication"),
+				BootstrapFailure::Authentication => {
+					unreachable!("SQLite has no database authentication")
+				},
 				BootstrapFailure::Unreachable => (
 					ProductStoreUnavailableReason::Unreachable,
 					DoctorIssue::DatabaseUnreachable,

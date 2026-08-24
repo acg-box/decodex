@@ -1,4 +1,4 @@
-//! Structured JSON envelopes for the exact-current V2.6 WebSocket connection.
+//! Structured JSON envelopes for the exact-current V2.9 WebSocket connection.
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
@@ -22,17 +22,16 @@ use serde_json::Error;
 
 use crate::{
 	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, DoctorReport, ProtocolVersion,
-	QuickTaskExecutionSettings, QuickTaskListCursor,
-	QuickTaskListResult, QuickTaskListSize, QuickTaskRecoveryAction, QuickTaskResult,
-	QuickTaskSummary, QuickTaskTurnOutcome, QuickTaskWorkingDirectory, SupportedVersions,
-	VersionRefusal,
+	QuickTaskExecutionSettings, QuickTaskListCursor, QuickTaskListResult, QuickTaskListSize,
+	QuickTaskRecoveryAction, QuickTaskResult, QuickTaskSummary, QuickTaskTurnOutcome,
+	QuickTaskWorkingDirectory, SupportedVersions, VersionRefusal,
 	program_cycle::{
 		ProgramContinuationDraftDto, ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult,
 		ProgramListResult, ProgramReviewDraftDto,
 	},
 };
 
-/// Maximum UTF-8 size of any human-readable text carried by V2.6.
+/// Maximum UTF-8 size of any human-readable text carried by V2.9.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
 /// Maximum UTF-8 size of one logical-command idempotency key.
 pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
@@ -157,7 +156,7 @@ impl<'de> Deserialize<'de> for HistoryCursorToken {
 	}
 }
 
-/// A string-backed wire scalar exceeded its V2.6 byte limit.
+/// A string-backed wire scalar exceeded its V2.9 byte limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WireScalarTooLong {
 	actual_bytes: usize,
@@ -178,7 +177,7 @@ impl Display for WireScalarTooLong {
 	}
 }
 
-/// Closed construction failures for the V2.6 WorkItem board contract.
+/// Closed construction failures for the V2.9 WorkItem board contract.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WorkItemBoardContractError {
 	/// An identity was not canonical lowercase RFC 9562 UUID-v4 text.
@@ -280,7 +279,7 @@ impl<'de> Deserialize<'de> for WorkItemBoardTitle {
 #[serde(transparent)]
 pub struct WorkItemBoardPageSize(u16);
 impl WorkItemBoardPageSize {
-	/// Construct a page size inside the closed V2.6 protocol bound.
+	/// Construct a page size inside the closed V2.9 protocol bound.
 	pub const fn new(value: u16) -> Result<Self, WorkItemBoardContractError> {
 		if value == 0 || value > MAX_WORK_ITEM_BOARD_PAGE_SIZE {
 			Err(WorkItemBoardContractError::InvalidPageSize)
@@ -445,8 +444,9 @@ impl Display for IdempotencyKeyError {
 		formatter.write_str(match self {
 			Self::Empty => "idempotency key is empty",
 			Self::TooLong => "idempotency key exceeds the 256-byte maximum",
-			Self::SurroundingWhitespace =>
-				"idempotency key contains leading or trailing whitespace",
+			Self::SurroundingWhitespace => {
+				"idempotency key contains leading or trailing whitespace"
+			},
 			Self::ControlCharacter => "idempotency key contains a control character",
 		})
 	}
@@ -559,7 +559,7 @@ pub struct ResumeCursor {
 	pub server_id: ServerId,
 	/// Ephemeral publication epoch that issued the cursor.
 	///
-	/// A V2.6 resume requires this field. Older hello envelopes can omit it
+	/// A V2.9 resume requires this field. Older hello envelopes can omit it
 	/// only so negotiation can return a typed version refusal.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
@@ -615,7 +615,7 @@ pub struct ServerWelcome {
 	pub server_id: ServerId,
 	/// Ephemeral identity of the in-memory publication epoch.
 	///
-	/// This is present in the exact-current V2.6 welcome.
+	/// This is present in the exact-current V2.9 welcome.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
@@ -1745,7 +1745,7 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. The V2.6 account contract accepts 300 and 10080 minutes only.
+	/// Exact window duration. The V2.9 account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -1914,6 +1914,70 @@ pub struct AccountRoutingControlDto {
 	/// Complete deterministic order of visible accounts.
 	pub order: Vec<EntityId>,
 }
+
+/// Durable daemon-owned Route intent that has not acquired shared-auth writer authority.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountRoutePendingDto {
+	/// Stable Route operation identity.
+	pub operation_id: EntityId,
+	/// Desired account identity.
+	pub account_id: EntityId,
+	/// Routing revision fenced when the intent was accepted.
+	pub routing_revision: EntityRevision,
+}
+
+impl Serialize for AccountRoutePendingDto {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		if !is_canonical_uuid(self.operation_id.as_str())
+			|| !is_canonical_uuid(self.account_id.as_str())
+			|| self.routing_revision.0 == 0
+		{
+			return Err(S::Error::custom("pending account Route is invalid"));
+		}
+		#[derive(Serialize)]
+		struct Raw<'a> {
+			operation_id: &'a EntityId,
+			account_id: &'a EntityId,
+			routing_revision: EntityRevision,
+		}
+		Raw {
+			operation_id: &self.operation_id,
+			account_id: &self.account_id,
+			routing_revision: self.routing_revision,
+		}
+		.serialize(serializer)
+	}
+}
+
+impl<'de> Deserialize<'de> for AccountRoutePendingDto {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(deny_unknown_fields)]
+		struct Raw {
+			operation_id: EntityId,
+			account_id: EntityId,
+			routing_revision: EntityRevision,
+		}
+		let raw = Raw::deserialize(deserializer)?;
+		if !is_canonical_uuid(raw.operation_id.as_str())
+			|| !is_canonical_uuid(raw.account_id.as_str())
+			|| raw.routing_revision.0 == 0
+		{
+			return Err(D::Error::custom("pending account Route is invalid"));
+		}
+		Ok(Self {
+			operation_id: raw.operation_id,
+			account_id: raw.account_id,
+			routing_revision: raw.routing_revision,
+		})
+	}
+}
 impl Serialize for AccountRoutingControlDto {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -2015,10 +2079,12 @@ impl Serialize for AccountInitialSelectionResult {
 
 		validate_initial_selection_result(self).map_err(S::Error::custom)?;
 		let raw = match self {
-			Self::Selected { account_id, account_revision } =>
-				RawResult::Selected { account_id, account_revision: *account_revision },
-			Self::RecoveryRequired { account_id, action } =>
-				RawResult::RecoveryRequired { account_id, action: *action },
+			Self::Selected { account_id, account_revision } => {
+				RawResult::Selected { account_id, account_revision: *account_revision }
+			},
+			Self::RecoveryRequired { account_id, action } => {
+				RawResult::RecoveryRequired { account_id, action: *action }
+			},
 			Self::Unavailable => RawResult::Unavailable,
 		};
 		raw.serialize(serializer)
@@ -2038,10 +2104,12 @@ impl<'de> Deserialize<'de> for AccountInitialSelectionResult {
 		}
 
 		let result = match RawResult::deserialize(deserializer)? {
-			RawResult::Selected { account_id, account_revision } =>
-				Self::Selected { account_id, account_revision },
-			RawResult::RecoveryRequired { account_id, action } =>
-				Self::RecoveryRequired { account_id, action },
+			RawResult::Selected { account_id, account_revision } => {
+				Self::Selected { account_id, account_revision }
+			},
+			RawResult::RecoveryRequired { account_id, action } => {
+				Self::RecoveryRequired { account_id, action }
+			},
 			RawResult::Unavailable => Self::Unavailable,
 		};
 		validate_initial_selection_result(&result).map_err(D::Error::custom)?;
@@ -2069,6 +2137,8 @@ pub enum AccountsResult {
 		/// Routing controls with an exact account permutation, when that capability read
 		/// succeeded.
 		routing: Option<AccountRoutingControlDto>,
+		/// One authoritative pending Route intent, when Codex still owns shared auth.
+		pending_route: Option<AccountRoutePendingDto>,
 	},
 	/// The account authority could not return a safe snapshot.
 	Unavailable,
@@ -2170,13 +2240,22 @@ impl Serialize for AccountsResult {
 		#[derive(Serialize)]
 		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
 		enum Raw<'a> {
-			Available { accounts: &'a [AccountDto], routing: Option<&'a AccountRoutingControlDto> },
+			Available {
+				accounts: &'a [AccountDto],
+				routing: Option<&'a AccountRoutingControlDto>,
+				pending_route: Option<&'a AccountRoutePendingDto>,
+			},
 			Unavailable,
 		}
 		let raw = match self {
-			Self::Available { accounts, routing } => {
-				validate_accounts_result(accounts, routing.as_ref()).map_err(S::Error::custom)?;
-				Raw::Available { accounts, routing: routing.as_ref() }
+			Self::Available { accounts, routing, pending_route } => {
+				validate_accounts_result(accounts, routing.as_ref(), pending_route.as_ref())
+					.map_err(S::Error::custom)?;
+				Raw::Available {
+					accounts,
+					routing: routing.as_ref(),
+					pending_route: pending_route.as_ref(),
+				}
 			},
 			Self::Unavailable => Raw::Unavailable,
 		};
@@ -2191,13 +2270,18 @@ impl<'de> Deserialize<'de> for AccountsResult {
 		#[derive(Deserialize)]
 		#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 		enum Raw {
-			Available { accounts: Vec<AccountDto>, routing: Option<AccountRoutingControlDto> },
+			Available {
+				accounts: Vec<AccountDto>,
+				routing: Option<AccountRoutingControlDto>,
+				pending_route: Option<AccountRoutePendingDto>,
+			},
 			Unavailable,
 		}
 		match Raw::deserialize(deserializer)? {
-			Raw::Available { accounts, routing } => {
-				validate_accounts_result(&accounts, routing.as_ref()).map_err(D::Error::custom)?;
-				Ok(Self::Available { accounts, routing })
+			Raw::Available { accounts, routing, pending_route } => {
+				validate_accounts_result(&accounts, routing.as_ref(), pending_route.as_ref())
+					.map_err(D::Error::custom)?;
+				Ok(Self::Available { accounts, routing, pending_route })
 			},
 			Raw::Unavailable => Ok(Self::Unavailable),
 		}
@@ -2276,7 +2360,7 @@ impl AccountObservationSignal {
 	}
 }
 
-/// Live queries available through the exact-current V2.6 protocol.
+/// Live queries available through the exact-current V2.9 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
@@ -2378,7 +2462,7 @@ impl QueryPayload {
 	}
 }
 
-/// Commands available through the exact-current V2.6 protocol.
+/// Commands available through the exact-current V2.9 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
@@ -2551,11 +2635,13 @@ pub enum CommandPayload {
 		/// Canonical account identity.
 		account_id: EntityId,
 	},
-	/// Select one fixed account under routing-control and account revision guards.
-	SetFixedAccountSelection {
-		/// Canonical fixed account identity.
+	/// Refresh, project, and select one account as one daemon-owned Route command.
+	RouteAccount {
+		/// Stable finite credential-refresh operation identity.
+		operation_id: EntityId,
+		/// Canonical routed account identity.
 		account_id: EntityId,
-		/// Exact optimistic revision of the fixed account.
+		/// Exact optimistic revision of the routed account before preparation.
 		expected_account_revision: EntityRevision,
 	},
 	/// Select balanced initial account routing under the routing-control revision guard.
@@ -2569,11 +2655,6 @@ pub enum CommandPayload {
 	RefreshAccount {
 		/// Stable finite lifecycle operation identity.
 		operation_id: EntityId,
-		/// Canonical account identity.
-		account_id: EntityId,
-	},
-	/// Project one exact daemon-owned account into the normal Codex shared auth file.
-	UseAccountInCodex {
 		/// Canonical account identity.
 		account_id: EntityId,
 	},
@@ -2753,21 +2834,26 @@ pub enum EventPayload {
 		/// Complete updated routing controls.
 		routing: AccountRoutingControlDto,
 	},
+	/// One daemon-owned Route command completed as one coherent projection.
+	AccountRouted {
+		/// Complete credential-negative routed account projection.
+		account: Box<AccountDto>,
+		/// Complete updated routing controls.
+		routing: AccountRoutingControlDto,
+		/// Credential-negative digest of the projected account binding.
+		projection_digest: Sha256Digest,
+	},
+	/// One daemon-owned Route intent is durable and waiting for natural Codex exit.
+	AccountRoutePending {
+		/// Complete credential-negative pending intent.
+		pending: AccountRoutePendingDto,
+	},
 	/// One explicit account-operation recovery action completed.
 	AccountOperationRecovered {
 		/// Stable recovered operation identity.
 		operation_id: EntityId,
 		/// Finite recovery disposition.
 		outcome: AccountManualRecoveryOutcomeDto,
-	},
-	/// One exact account credential was projected into Codex shared auth.
-	CodexAuthProjected {
-		/// Canonical projected account identity.
-		account_id: EntityId,
-		/// Exact unchanged account revision used for the projection.
-		account_revision: EntityRevision,
-		/// Credential-negative digest of the projected account binding.
-		projection_digest: Sha256Digest,
 	},
 }
 impl EventPayload {
@@ -2901,6 +2987,20 @@ pub enum ResultPayload {
 		/// Complete updated routing controls.
 		routing: AccountRoutingControlDto,
 	},
+	/// One daemon-owned Route command completed as one coherent projection.
+	AccountRouted {
+		/// Complete credential-negative routed account projection.
+		account: Box<AccountDto>,
+		/// Complete updated routing controls.
+		routing: AccountRoutingControlDto,
+		/// Credential-negative digest of the projected account binding.
+		projection_digest: Sha256Digest,
+	},
+	/// One Route action was accepted into daemon-owned background coordination.
+	AccountRoutePending {
+		/// Complete credential-negative pending intent.
+		pending: AccountRoutePendingDto,
+	},
 	/// One explicit credential-operation recovery action completed.
 	AccountOperationRecovered {
 		/// Stable recovered operation identity.
@@ -2908,18 +3008,16 @@ pub enum ResultPayload {
 		/// Finite recovery disposition.
 		outcome: AccountManualRecoveryOutcomeDto,
 	},
-	/// One exact account credential was projected into Codex shared auth.
-	CodexAuthProjected {
-		/// Canonical projected account identity.
-		account_id: EntityId,
-		/// Exact unchanged account revision used for the projection.
-		account_revision: EntityRevision,
-		/// Credential-negative digest of the projected account binding.
-		projection_digest: Sha256Digest,
-	},
 }
 
-/// Typed live-query results available through the exact-current V2.6 protocol.
+impl ResultPayload {
+	/// An evolving durable receipt must be replayed by the application, not transport memory.
+	pub const fn is_evolving_receipt(&self) -> bool {
+		matches!(self, Self::AccountRoutePending { .. })
+	}
+}
+
+/// Typed live-query results available through the exact-current V2.9 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
@@ -3827,6 +3925,10 @@ pub enum AccountCommandRejectionDto {
 	ProviderMismatch,
 	/// Another lifecycle gate prevents the request.
 	LifecycleUnready,
+	/// A live or uncertain Codex process may still own the shared refresh-token family.
+	SharedAuthOwnerBusy,
+	/// A newer explicit Route replaced this pending Route before shared-auth projection.
+	RouteSuperseded,
 	/// Routing order is not an exact visible-account permutation.
 	RoutingOrderInvalid,
 	/// An explicit reconciliation command is required.
@@ -3865,12 +3967,12 @@ pub enum Refusal {
 	},
 }
 
-/// Serialize a message using the only V2.6 wire encoding.
+/// Serialize a message using the only V2.9 wire encoding.
 pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 	serde_json::to_string(message)
 }
 
-/// Parse a client message using the only V2.6 wire encoding.
+/// Parse a client message using the only V2.9 wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
 	validate_client_message(&decoded).map_err(|reason| {
@@ -3884,25 +3986,35 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 		ClientMessage::Hello(hello)
 			if hello.version == crate::CURRENT_VERSION
 				&& hello.resume.as_ref().is_some_and(|resume| resume.instance_id.is_none()) =>
-			Err("current protocol resume requires a publication instance"),
+		{
+			Err("current protocol resume requires a publication instance")
+		},
 		ClientMessage::Hello(_) => Ok(()),
 		ClientMessage::Query(query) => match &query.payload {
 			QueryPayload::GetProgramCycle { program_id }
 				if !is_canonical_uuid(program_id.as_str()) =>
-				Err("Program query identity is not canonical"),
+			{
+				Err("Program query identity is not canonical")
+			},
 			QueryPayload::ListQuickTasks { after, .. }
 				if after.as_ref().is_some_and(|cursor| {
 					!is_canonical_uuid(cursor.conversation_id().as_str())
 				}) =>
-				Err("Quick Task list cursor identity is not canonical"),
+			{
+				Err("Quick Task list cursor identity is not canonical")
+			},
 			QueryPayload::GetQuickTask { conversation_id }
 				if !is_canonical_uuid(conversation_id.as_str()) =>
-				Err("Quick Task conversation identity is not canonical"),
+			{
+				Err("Quick Task conversation identity is not canonical")
+			},
 			QueryPayload::GetResetCards { account_id }
 			| QueryPayload::InspectAccount { account_id }
 			| QueryPayload::GetAccountProfile { account_id, .. }
 				if !is_canonical_uuid(account_id.as_str()) =>
-				Err("account query identity is not canonical"),
+			{
+				Err("account query identity is not canonical")
+			},
 			_ => Ok(()),
 		},
 		ClientMessage::Command(command) => validate_account_command(command),
@@ -3970,12 +4082,13 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 				Err("reset-card account identity or revision is invalid")
 			}
 		},
-		CommandPayload::EnrollAccountFromSharedCodex { operation_id, account_id, .. } =>
+		CommandPayload::EnrollAccountFromSharedCodex { operation_id, account_id, .. } => {
 			validate_account_install_command(
 				operation_id,
 				account_id,
 				command.expected_revision.is_none(),
-			),
+			)
+		},
 		CommandPayload::ImportAccountCredentialFile {
 			operation_id,
 			account_id,
@@ -4004,21 +4117,20 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 			validate_canonical_account(account_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
 		},
-		CommandPayload::UseAccountInCodex { account_id } => {
-			validate_canonical_account(account_id)?;
-			positive_expected.then_some(()).ok_or("account revision is required")
-		},
-		CommandPayload::SetFixedAccountSelection { account_id, expected_account_revision } => {
+		CommandPayload::RouteAccount { operation_id, account_id, expected_account_revision } => {
+			validate_canonical_operation(operation_id)?;
 			validate_canonical_account(account_id)?;
 			if !positive_expected || expected_account_revision.0 == 0 {
-				return Err("account routing or target account revision is invalid");
+				return Err("account Route revisions are invalid");
 			}
 			Ok(())
 		},
-		CommandPayload::SetBalancedAccountSelection =>
-			positive_expected.then_some(()).ok_or("account routing revision is required"),
-		CommandPayload::SetAccountOrder { order } =>
-			validate_account_order_command(order, positive_expected),
+		CommandPayload::SetBalancedAccountSelection => {
+			positive_expected.then_some(()).ok_or("account routing revision is required")
+		},
+		CommandPayload::SetAccountOrder { order } => {
+			validate_account_order_command(order, positive_expected)
+		},
 		CommandPayload::RecoverAccountOperation { operation_id, .. } => {
 			validate_canonical_operation(operation_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
@@ -4084,7 +4196,7 @@ fn validate_work_item_command(command: &CommandEnvelope) -> Result<(), &'static 
 				Ok(())
 			}
 		},
-		CommandPayload::StartWorkItem { work_item_id, project_id, conversation_id } =>
+		CommandPayload::StartWorkItem { work_item_id, project_id, conversation_id } => {
 			if positive_expected
 				&& is_canonical_uuid(work_item_id.as_str())
 				&& is_canonical_uuid(project_id.as_str())
@@ -4093,7 +4205,8 @@ fn validate_work_item_command(command: &CommandEnvelope) -> Result<(), &'static 
 				Ok(())
 			} else {
 				Err("WorkItem start identity or revision is invalid")
-			},
+			}
+		},
 		CommandPayload::AcceptWorkItem {
 			work_item_id,
 			project_id,
@@ -4143,7 +4256,7 @@ fn validate_quick_task_command(command: &CommandEnvelope) -> Result<(), &'static
 				Err("Quick Task recovery identity or revision is invalid")
 			}
 		},
-		CommandPayload::SubmitQuickTaskTurn { conversation_id, turn_id, message, .. } =>
+		CommandPayload::SubmitQuickTaskTurn { conversation_id, turn_id, message, .. } => {
 			if positive_expected
 				&& is_canonical_uuid(conversation_id.as_str())
 				&& is_canonical_uuid(turn_id.as_str())
@@ -4152,7 +4265,8 @@ fn validate_quick_task_command(command: &CommandEnvelope) -> Result<(), &'static
 				Ok(())
 			} else {
 				Err("Quick Task turn identity, revision, or message is invalid")
-			},
+			}
+		},
 		CommandPayload::InterruptQuickTask { conversation_id, turn_id } => {
 			if positive_expected
 				&& is_canonical_uuid(conversation_id.as_str())
@@ -4235,8 +4349,9 @@ fn validate_initial_selection_result(
 				.then_some(())
 				.ok_or("selected account revision is not positive")
 		},
-		AccountInitialSelectionResult::RecoveryRequired { account_id, .. } =>
-			account_id.as_ref().map_or(Ok(()), validate_canonical_account),
+		AccountInitialSelectionResult::RecoveryRequired { account_id, .. } => {
+			account_id.as_ref().map_or(Ok(()), validate_canonical_account)
+		},
 		AccountInitialSelectionResult::Unavailable => Ok(()),
 	}
 }
@@ -4244,6 +4359,7 @@ fn validate_initial_selection_result(
 fn validate_accounts_result(
 	accounts: &[AccountDto],
 	routing: Option<&AccountRoutingControlDto>,
+	pending_route: Option<&AccountRoutePendingDto>,
 ) -> Result<(), &'static str> {
 	if accounts.len() > 512 {
 		return Err("account result exceeds cardinality bound");
@@ -4272,6 +4388,20 @@ fn validate_accounts_result(
 			&& !universe.contains(account_id.as_str())
 		{
 			return Err("fixed account target is outside the account universe");
+		}
+	}
+	if let Some(pending) = pending_route {
+		if !is_canonical_uuid(pending.operation_id.as_str())
+			|| !is_canonical_uuid(pending.account_id.as_str())
+			|| pending.routing_revision.0 == 0
+			|| !universe.contains(pending.account_id.as_str())
+		{
+			return Err("pending account Route is invalid");
+		}
+		if let Some(routing) = routing
+			&& pending.routing_revision != routing.revision
+		{
+			return Err("pending account Route revision is stale");
 		}
 	}
 	Ok(())
@@ -4508,7 +4638,9 @@ fn validate_quota_window(
 		(None, AccountQuotaStateDto::Unknown) => Ok(()),
 		(Some(observed), AccountQuotaStateDto::Current { used_percent, resets_at_unix_micros })
 			if observed > 0 && used_percent <= 100 && resets_at_unix_micros > observed =>
-			Ok(()),
+		{
+			Ok(())
+		},
 		(Some(observed), AccountQuotaStateDto::Error { .. }) if observed > 0 => Ok(()),
 		_ => Err("account quota observation shape is invalid"),
 	}
@@ -4528,13 +4660,13 @@ mod tests {
 		AccountLifecycleReadinessDto, AccountObservationSignal, AccountObservedStateDto,
 		AccountProfileDailyUsageDto, AccountProfileDto, AccountProfileEmailDto,
 		AccountProfileErrorDto, AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto,
-		AccountsResult, CURRENT_VERSION, CausationId, ClientCommandId, CodexAuthProjectionResult,
-		CommandError, CorrelationId, EntityId, EventPayload, HistoryCursorToken, HistoryText,
-		IdempotencyKey, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
-		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
-		MAX_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES,
-		MAX_WORK_ITEM_BOARD_PAGE_SIZE, ProgramContinuationDraftDto, ProgramCycleDraftDto, QueryId,
-		QueryResultPayload,
+		AccountRoutePendingDto, AccountsResult, CURRENT_VERSION, CausationId, ClientCommandId,
+		CodexAuthProjectionResult, CommandError, CorrelationId, EntityId, EventPayload,
+		HistoryCursorToken, HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES,
+		MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
+		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
+		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, MAX_WORK_ITEM_BOARD_PAGE_SIZE,
+		ProgramContinuationDraftDto, ProgramCycleDraftDto, QueryId, QueryResultPayload,
 		QuickTaskRecoveryAction, QuickTaskState, QuickTaskSummary, QuickTaskWorkingDirectory,
 		ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId,
 		Sha256Digest, WireText, WorkItemBoardContractError, WorkItemBoardLeadId, WorkItemBoardPage,
@@ -4642,11 +4774,31 @@ mod tests {
 				seven_day_quota: unknown_quota(10_080),
 			}],
 			routing: None,
+			pending_route: None,
 		};
 
 		let encoded = serde_json::to_value(&result).expect("account rows should serialize");
 		assert!(encoded["data"]["routing"].is_null());
 		assert_eq!(serde_json::from_value::<AccountsResult>(encoded).unwrap(), result);
+	}
+
+	#[test]
+	fn pending_account_route_is_exact_typed_and_credential_negative() {
+		let pending = AccountRoutePendingDto {
+			operation_id: EntityId::new("33333333-3333-4333-8333-333333333333").unwrap(),
+			account_id: EntityId::new("11111111-1111-4111-8111-111111111111").unwrap(),
+			routing_revision: EntityRevision(9),
+		};
+		let payload = ResultPayload::AccountRoutePending { pending: pending.clone() };
+		let encoded = serde_json::to_value(&payload).unwrap();
+		assert_eq!(encoded["name"], "account_route_pending");
+		assert_eq!(encoded["data"]["pending"]["routing_revision"], 9);
+		assert_eq!(serde_json::from_value::<ResultPayload>(encoded).unwrap(), payload);
+		assert!(payload.is_evolving_receipt());
+
+		let mut invalid = serde_json::to_value(pending).unwrap();
+		invalid["routing_revision"] = serde_json::json!(0);
+		assert!(serde_json::from_value::<AccountRoutePendingDto>(invalid).is_err());
 	}
 
 	#[test]
@@ -4671,10 +4823,9 @@ mod tests {
 
 	#[test]
 	fn retired_credential_file_command_names_do_not_decode() {
-		for retired_name in [
-			"enroll_account_from_credential_file",
-			"reauthenticate_account_from_credential_file",
-		] {
+		for retired_name in
+			["enroll_account_from_credential_file", "reauthenticate_account_from_credential_file"]
+		{
 			assert!(
 				serde_json::from_value::<CommandPayload>(serde_json::json!({
 					"name": retired_name,
@@ -4783,9 +4934,7 @@ mod tests {
 			causation_id: None,
 			payload: CommandPayload::ContinueProgram { continuation: Box::new(continuation) },
 		});
-		assert!(
-			decode_client_message(&serde_json::to_string(&missing_revision).unwrap()).is_err()
-		);
+		assert!(decode_client_message(&serde_json::to_string(&missing_revision).unwrap()).is_err());
 
 		let mut invalid = draft;
 		invalid.work_item_id = invalid.objective_id.clone();
@@ -4956,12 +5105,15 @@ mod tests {
 	}
 
 	#[test]
-	fn account_routing_commands_have_three_clean_break_wire_shapes() {
+	fn account_routing_commands_have_one_route_and_two_policy_wire_shapes() {
 		let account_id =
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let other_id =
 			EntityId::new("11234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
-		let fixed = CommandPayload::SetFixedAccountSelection {
+		let operation_id =
+			EntityId::new("21234567-89ab-4def-8123-456789abcdef").expect("canonical operation ID");
+		let route = CommandPayload::RouteAccount {
+			operation_id: operation_id.clone(),
 			account_id: account_id.clone(),
 			expected_account_revision: EntityRevision(7),
 		};
@@ -4970,10 +5122,11 @@ mod tests {
 			CommandPayload::SetAccountOrder { order: vec![other_id.clone(), account_id.clone()] };
 
 		assert_eq!(
-			serde_json::to_value(&fixed).unwrap(),
+			serde_json::to_value(&route).unwrap(),
 			serde_json::json!({
-				"name": "set_fixed_account_selection",
+				"name": "route_account",
 				"arguments": {
+					"operation_id": operation_id.as_str(),
 					"account_id": account_id.as_str(),
 					"expected_account_revision": 7,
 				},
@@ -5018,7 +5171,8 @@ mod tests {
 			decode_client_message(&encoded).is_err()
 		};
 		assert!(is_rejected(
-			CommandPayload::SetFixedAccountSelection {
+			CommandPayload::RouteAccount {
+				operation_id,
 				account_id: account_id.clone(),
 				expected_account_revision: EntityRevision(0),
 			},
@@ -5056,49 +5210,14 @@ mod tests {
 			}),
 		);
 		assert_eq!(serde_json::from_value::<CommandError>(encoded).unwrap(), duplicate_provider);
-	}
 
-	#[test]
-	fn use_account_in_codex_is_a_separate_credential_negative_command() {
-		let account_id =
-			EntityId::new("21234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
-		let command = CommandPayload::UseAccountInCodex { account_id: account_id.clone() };
-		let result = ResultPayload::CodexAuthProjected {
-			account_id: account_id.clone(),
-			account_revision: EntityRevision(9),
-			projection_digest: Sha256Digest::new("a".repeat(64)).unwrap(),
+		let superseded = CommandError::AccountCommandRejected {
+			rejection: AccountCommandRejectionDto::RouteSuperseded,
+			actual_revision: None,
 		};
-
 		assert_eq!(
-			serde_json::to_value(&command).unwrap(),
-			serde_json::json!({
-				"name": "use_account_in_codex",
-				"arguments": {"account_id": account_id.as_str()},
-			}),
-		);
-		assert_eq!(
-			serde_json::to_value(&result).unwrap(),
-			serde_json::json!({
-				"name": "codex_auth_projected",
-				"data": {
-					"account_id": account_id.as_str(),
-					"account_revision": 9,
-					"projection_digest": "a".repeat(64),
-				},
-			}),
-		);
-		assert!(!command.is_supported_in(crate::ProtocolVersion { major: 1, minor: 5 }));
-		assert!(!command.is_supported_in(crate::ProtocolVersion { major: 2, minor: 4 }));
-		assert!(command.is_supported_in(CURRENT_VERSION));
-		assert!(
-			serde_json::from_value::<CommandPayload>(serde_json::json!({
-				"name": "use_account_in_codex",
-				"arguments": {
-					"account_id": account_id.as_str(),
-					"route": true,
-				},
-			}))
-			.is_err(),
+			serde_json::to_value(superseded).unwrap()["rejection"],
+			"route_superseded",
 		);
 	}
 
@@ -5512,8 +5631,8 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":6},"#,
-				r#""artifact_cohort":2,"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":9},"#,
+				r#""artifact_cohort":5,"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -5522,7 +5641,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":6},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":9},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -5564,7 +5683,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":6},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":9},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -5807,7 +5926,7 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
 		let legacy = crate::ProtocolVersion { major: 1, minor: 5 };
-		let future = crate::ProtocolVersion { major: 2, minor: 7 };
+		let future = crate::ProtocolVersion { major: 2, minor: 10 };
 		let query = QueryPayload::GetAccountProfile {
 			account_id: account_id.clone(),
 			include_email: false,

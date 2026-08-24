@@ -18,9 +18,13 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize, de::IgnoredAny};
+use sha2::{Digest as _, Sha256};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
-use crate::host_credentials::CredentialSecretBundle;
+use crate::{
+	account_import::{ImportedCredential, parse_shared_codex},
+	host_credentials::CredentialSecretBundle,
+};
 
 const AUTH_FILE_NAME: &CStr = c"auth.json";
 const CODEX_DIRECTORY_NAME: &CStr = c".codex";
@@ -30,25 +34,173 @@ const TEMP_CREATE_ATTEMPTS: u64 = 8;
 static PROJECTION_LOCK: Mutex<()> = Mutex::new(());
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
-/// Project one exact ChatGPT bundle into the normal Codex shared auth file.
-pub(crate) fn project_shared_codex_auth(
-	bundle: &CredentialSecretBundle,
-	provider_account_id: &str,
-) -> Result<(), CodexAuthProjectionError> {
-	let home = codex_home()?;
-	project_shared_codex_auth_at(&home, bundle, provider_account_id, ProjectionFault::None)
+/// Credential-negative metadata used to coalesce stable shared-auth reads.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum SharedCodexAuthFileStamp {
+	Absent,
+	Present {
+		device: u64,
+		inode: u64,
+		length: u64,
+		modified_seconds: i64,
+		modified_nanoseconds: i64,
+	},
 }
 
+/// Exact credential-negative source version required by the final Route CAS.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct SharedCodexAuthVersion {
+	pub(crate) stamp: SharedCodexAuthFileStamp,
+	pub(crate) sha256: Option<[u8; 32]>,
+}
+
+/// One stable, bounded read of the normal shared Codex auth source.
+pub(crate) enum SharedCodexAuthSnapshot {
+	Managed { version: SharedCodexAuthVersion, credential: ImportedCredential },
+	Unmanaged { version: SharedCodexAuthVersion },
+}
+
+impl SharedCodexAuthSnapshot {
+	pub(crate) const fn version(&self) -> &SharedCodexAuthVersion {
+		match self {
+			Self::Managed { version, .. } | Self::Unmanaged { version } => version,
+		}
+	}
+}
+
+/// Read only the exact metadata needed by the daemon's stable-read coalescer.
+pub(crate) fn read_shared_codex_auth_stamp()
+-> Result<SharedCodexAuthFileStamp, CodexAuthProjectionError> {
+	let home = codex_home()?;
+	let _guard = PROJECTION_LOCK.lock().map_err(|_| CodexAuthProjectionError::Unavailable)?;
+	let directory = open_codex_directory(&home)?;
+	let identity = directory_identity(&directory)?;
+	let stamp = read_file_stamp(&directory)?;
+	let current = open_codex_directory(&home)?;
+	if directory_identity(&current)? != identity {
+		return Err(CodexAuthProjectionError::UnsafePath);
+	}
+	Ok(stamp)
+}
+
+/// Read one source only while its metadata remains equal to two prior poll observations.
+pub(crate) fn read_shared_codex_auth_snapshot(
+	expected: &SharedCodexAuthFileStamp,
+) -> Result<SharedCodexAuthSnapshot, CodexAuthProjectionError> {
+	let home = codex_home()?;
+	let _guard = PROJECTION_LOCK.lock().map_err(|_| CodexAuthProjectionError::Unavailable)?;
+	let directory = open_codex_directory(&home)?;
+	let identity = directory_identity(&directory)?;
+	let snapshot = read_snapshot_from_directory(&directory, expected)?;
+	let current = open_codex_directory(&home)?;
+	if directory_identity(&current)? != identity {
+		return Err(CodexAuthProjectionError::UnsafePath);
+	}
+	Ok(snapshot)
+}
+
+/// Project one exact target only while the complete stable source version remains current.
+pub(crate) fn project_shared_codex_auth_cas(
+	bundle: &CredentialSecretBundle,
+	provider_account_id: &str,
+	expected_source: &SharedCodexAuthVersion,
+) -> Result<(), CodexAuthProjectionError> {
+	let home = codex_home()?;
+	project_shared_codex_auth_cas_at(
+		&home,
+		bundle,
+		provider_account_id,
+		expected_source,
+		ProjectionFault::None,
+	)
+}
+
+fn project_shared_codex_auth_cas_at(
+	home: &Path,
+	bundle: &CredentialSecretBundle,
+	provider_account_id: &str,
+	expected_source: &SharedCodexAuthVersion,
+	fault: ProjectionFault,
+) -> Result<(), CodexAuthProjectionError> {
+	let _guard = PROJECTION_LOCK.lock().map_err(|_| CodexAuthProjectionError::Unavailable)?;
+	let directory = open_codex_directory(home)?;
+	let identity = directory_identity(&directory)?;
+	if read_file_version(&directory)? != *expected_source {
+		return Err(CodexAuthProjectionError::SourceChanged);
+	}
+	let mutation = project_to_directory_inner(
+		&directory,
+		bundle,
+		provider_account_id,
+		None,
+		Some(expected_source),
+		fault,
+	)?;
+	let current =
+		open_codex_directory(home).map_err(|error| after_projection_error(mutation, error))?;
+	let current_identity =
+		directory_identity(&current).map_err(|error| after_projection_error(mutation, error))?;
+	if current_identity != identity {
+		return Err(after_projection_error(mutation, CodexAuthProjectionError::UnsafePath));
+	}
+	Ok(())
+}
+
+#[cfg(test)]
 fn project_shared_codex_auth_at(
 	home: &Path,
 	bundle: &CredentialSecretBundle,
 	provider_account_id: &str,
 	fault: ProjectionFault,
 ) -> Result<(), CodexAuthProjectionError> {
+	project_shared_codex_auth_with_precondition_at(home, bundle, provider_account_id, None, fault)
+}
+
+#[cfg(test)]
+fn project_shared_codex_auth_with_precondition_at(
+	home: &Path,
+	bundle: &CredentialSecretBundle,
+	provider_account_id: &str,
+	expected_source: Option<(&CredentialSecretBundle, &str)>,
+	fault: ProjectionFault,
+) -> Result<(), CodexAuthProjectionError> {
 	let _guard = PROJECTION_LOCK.lock().map_err(|_| CodexAuthProjectionError::Unavailable)?;
 	let directory = open_codex_directory(home)?;
 	let identity = directory_identity(&directory)?;
-	let mutation = project_to_directory_inner(&directory, bundle, provider_account_id, fault)?;
+	let expected_target = if let Some((expected_bundle, expected_provider_account_id)) =
+		expected_source
+	{
+		let before = inspect_target(&directory)?;
+		let id_token = bundle.id_token().ok_or(CodexAuthProjectionError::MissingIdentityToken)?;
+		let target_is_current =
+			current_auth_matches(&directory, bundle, id_token, provider_account_id)?;
+		let source_is_current = if target_is_current {
+			true
+		} else {
+			let expected_id_token =
+				expected_bundle.id_token().ok_or(CodexAuthProjectionError::MissingIdentityToken)?;
+			current_auth_matches(
+				&directory,
+				expected_bundle,
+				expected_id_token,
+				expected_provider_account_id,
+			)?
+		};
+		if !source_is_current || inspect_target(&directory)? != before {
+			return Err(CodexAuthProjectionError::SourceChanged);
+		}
+		Some(before)
+	} else {
+		None
+	};
+	let mutation = project_to_directory_inner(
+		&directory,
+		bundle,
+		provider_account_id,
+		expected_target,
+		None,
+		fault,
+	)?;
 	#[cfg(test)]
 	if fault == ProjectionFault::AfterRenamePathRevalidation {
 		return Err(after_projection_error(mutation, CodexAuthProjectionError::Unavailable));
@@ -62,41 +214,6 @@ fn project_shared_codex_auth_at(
 	}
 
 	Ok(())
-}
-
-/// Read only the non-secret provider identity from the exact safe shared Codex auth file.
-pub(crate) fn read_shared_codex_auth_identity()
--> Result<SharedCodexAuthIdentity, CodexAuthProjectionError> {
-	let home = codex_home()?;
-	let _guard = PROJECTION_LOCK.lock().map_err(|_| CodexAuthProjectionError::Unavailable)?;
-	let directory = open_codex_directory(&home)?;
-	let identity = directory_identity(&directory)?;
-	let result = read_identity_from_directory(&directory)?;
-	let current = open_codex_directory(&home)?;
-	if directory_identity(&current)? != identity {
-		return Err(CodexAuthProjectionError::UnsafePath);
-	}
-	Ok(result)
-}
-
-/// Compare the complete safe shared Codex token projection with one exact host-store bundle.
-pub(crate) fn shared_codex_auth_matches(
-	bundle: &CredentialSecretBundle,
-	provider_account_id: &str,
-) -> Result<bool, CodexAuthProjectionError> {
-	let Some(id_token) = bundle.id_token() else {
-		return Ok(false);
-	};
-	let home = codex_home()?;
-	let _guard = PROJECTION_LOCK.lock().map_err(|_| CodexAuthProjectionError::Unavailable)?;
-	let directory = open_codex_directory(&home)?;
-	let identity = directory_identity(&directory)?;
-	let matches = current_auth_matches(&directory, bundle, id_token, provider_account_id)?;
-	let current = open_codex_directory(&home)?;
-	if directory_identity(&current)? != identity {
-		return Err(CodexAuthProjectionError::UnsafePath);
-	}
-	Ok(matches)
 }
 
 fn codex_home() -> Result<PathBuf, CodexAuthProjectionError> {
@@ -115,14 +232,23 @@ fn project_to_directory(
 	bundle: &CredentialSecretBundle,
 	provider_account_id: &str,
 ) -> Result<(), CodexAuthProjectionError> {
-	project_to_directory_inner(directory, bundle, provider_account_id, ProjectionFault::None)
-		.map(|_| ())
+	project_to_directory_inner(
+		directory,
+		bundle,
+		provider_account_id,
+		None,
+		None,
+		ProjectionFault::None,
+	)
+	.map(|_| ())
 }
 
 fn project_to_directory_inner(
 	directory: &File,
 	bundle: &CredentialSecretBundle,
 	provider_account_id: &str,
+	expected_target: Option<Option<TargetIdentity>>,
+	expected_version: Option<&SharedCodexAuthVersion>,
 	fault: ProjectionFault,
 ) -> Result<ProjectionMutation, CodexAuthProjectionError> {
 	#[cfg(not(test))]
@@ -133,12 +259,20 @@ fn project_to_directory_inner(
 	{
 		return Err(CodexAuthProjectionError::InvalidCredential);
 	}
+	if let Some(expected_version) = expected_version
+		&& read_file_version(directory)? != *expected_version
+	{
+		return Err(CodexAuthProjectionError::SourceChanged);
+	}
 	let id_token = bundle.id_token().ok_or(CodexAuthProjectionError::MissingIdentityToken)?;
 	if current_auth_matches(directory, bundle, id_token, provider_account_id)? {
 		return Ok(ProjectionMutation::AlreadyCurrent);
 	}
 	let encoded = encode_auth(bundle, id_token, provider_account_id)?;
 	let original = inspect_target(directory)?;
+	if expected_target.is_some_and(|expected| expected != original) {
+		return Err(CodexAuthProjectionError::SourceChanged);
+	}
 	let (mut temporary, temporary_name) = create_temporary(directory)?;
 	temporary
 		.write_all(&encoded)
@@ -149,7 +283,16 @@ fn project_to_directory_inner(
 		TemporaryEntry { directory: directory.as_raw_fd(), name: temporary_name, renamed: false };
 
 	if inspect_target(directory)? != original {
-		return Err(CodexAuthProjectionError::UnsafePath);
+		return Err(if expected_target.is_some() {
+			CodexAuthProjectionError::SourceChanged
+		} else {
+			CodexAuthProjectionError::UnsafePath
+		});
+	}
+	if let Some(expected_version) = expected_version
+		&& read_file_version(directory)? != *expected_version
+	{
+		return Err(CodexAuthProjectionError::SourceChanged);
 	}
 	#[cfg(test)]
 	if fault == ProjectionFault::BeforeRename {
@@ -324,8 +467,8 @@ struct IdentityOnlyAuth {
 	auth_mode: String,
 	#[serde(rename = "OPENAI_API_KEY", default)]
 	_api_key: Option<IgnoredAny>,
-	#[serde(default)]
-	tokens: Option<IdentityOnlyTokens>,
+	#[serde(default, rename = "tokens")]
+	_tokens: Option<IdentityOnlyTokens>,
 	#[serde(rename = "last_refresh", default)]
 	_last_refresh: Option<IgnoredAny>,
 }
@@ -339,9 +482,11 @@ struct IdentityOnlyTokens {
 	_access_token: Option<IgnoredAny>,
 	#[serde(rename = "refresh_token", default)]
 	_refresh_token: Option<IgnoredAny>,
-	account_id: String,
+	#[serde(rename = "account_id")]
+	_account_id: String,
 }
 
+#[cfg(test)]
 fn read_identity_from_directory(
 	directory: &File,
 ) -> Result<SharedCodexAuthIdentity, CodexAuthProjectionError> {
@@ -360,8 +505,8 @@ fn read_identity_from_directory(
 		return Ok(SharedCodexAuthIdentity::Unmanaged);
 	}
 	let account_id = auth
-		.tokens
-		.map(|tokens| tokens.account_id)
+		._tokens
+		.map(|tokens| tokens._account_id)
 		.filter(|account_id| {
 			!account_id.is_empty()
 				&& account_id.len() <= 512
@@ -369,6 +514,82 @@ fn read_identity_from_directory(
 		})
 		.ok_or(CodexAuthProjectionError::Unavailable)?;
 	Ok(SharedCodexAuthIdentity::Chatgpt { provider_account_id: account_id })
+}
+
+fn read_snapshot_from_directory(
+	directory: &File,
+	expected: &SharedCodexAuthFileStamp,
+) -> Result<SharedCodexAuthSnapshot, CodexAuthProjectionError> {
+	let actual = read_file_stamp(directory)?;
+	if &actual != expected {
+		return Err(CodexAuthProjectionError::SourceChanged);
+	}
+	if matches!(actual, SharedCodexAuthFileStamp::Absent) {
+		return Ok(SharedCodexAuthSnapshot::Unmanaged {
+			version: SharedCodexAuthVersion { stamp: actual, sha256: None },
+		});
+	}
+
+	let mut target = open_target_readonly(directory)?;
+	validate_target_file(&target)?;
+	if file_stamp(&target)? != actual {
+		return Err(CodexAuthProjectionError::SourceChanged);
+	}
+	let bytes = read_bounded(&mut target)?;
+	if file_stamp(&target)? != actual || read_file_stamp(directory)? != actual {
+		return Err(CodexAuthProjectionError::SourceChanged);
+	}
+	let version =
+		SharedCodexAuthVersion { stamp: actual, sha256: Some(Sha256::digest(&bytes).into()) };
+	let auth = serde_json::from_slice::<IdentityOnlyAuth>(&bytes)
+		.map_err(|_| CodexAuthProjectionError::Unavailable)?;
+	if auth.auth_mode != "chatgpt" {
+		return Ok(SharedCodexAuthSnapshot::Unmanaged { version });
+	}
+	let credential =
+		parse_shared_codex(&bytes).map_err(|_| CodexAuthProjectionError::Unavailable)?;
+	Ok(SharedCodexAuthSnapshot::Managed { version, credential })
+}
+
+fn read_file_version(directory: &File) -> Result<SharedCodexAuthVersion, CodexAuthProjectionError> {
+	let stamp = read_file_stamp(directory)?;
+	if matches!(stamp, SharedCodexAuthFileStamp::Absent) {
+		return Ok(SharedCodexAuthVersion { stamp, sha256: None });
+	}
+	let mut target = open_target_readonly(directory)?;
+	validate_target_file(&target)?;
+	if file_stamp(&target)? != stamp {
+		return Err(CodexAuthProjectionError::SourceChanged);
+	}
+	let bytes = read_bounded(&mut target)?;
+	if file_stamp(&target)? != stamp || read_file_stamp(directory)? != stamp {
+		return Err(CodexAuthProjectionError::SourceChanged);
+	}
+	Ok(SharedCodexAuthVersion { stamp, sha256: Some(Sha256::digest(&bytes).into()) })
+}
+
+fn read_file_stamp(directory: &File) -> Result<SharedCodexAuthFileStamp, CodexAuthProjectionError> {
+	if inspect_target(directory)?.is_none() {
+		return Ok(SharedCodexAuthFileStamp::Absent);
+	}
+	let target = open_target_readonly(directory)?;
+	validate_target_file(&target)?;
+	let stamp = file_stamp(&target)?;
+	if inspect_target(directory)? != Some(file_identity(&target)?) {
+		return Err(CodexAuthProjectionError::SourceChanged);
+	}
+	Ok(stamp)
+}
+
+fn file_stamp(file: &File) -> Result<SharedCodexAuthFileStamp, CodexAuthProjectionError> {
+	let metadata = file.metadata().map_err(|_| CodexAuthProjectionError::Unavailable)?;
+	Ok(SharedCodexAuthFileStamp::Present {
+		device: metadata.dev(),
+		inode: metadata.ino(),
+		length: metadata.size(),
+		modified_seconds: metadata.mtime(),
+		modified_nanoseconds: metadata.mtime_nsec(),
+	})
 }
 
 fn read_bounded(file: &mut File) -> Result<Zeroizing<Vec<u8>>, CodexAuthProjectionError> {
@@ -792,11 +1013,13 @@ pub(crate) enum CodexAuthProjectionError {
 	UnsafePath,
 	Unavailable,
 	OutcomeUnknown,
+	SourceChanged,
 	MissingIdentityToken,
 	InvalidCredential,
 }
 
 /// Credential-negative identity read from the normal shared Codex auth file.
+#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum SharedCodexAuthIdentity {
 	Chatgpt {
@@ -821,8 +1044,10 @@ mod tests {
 		CodexAuthProjectionError, PinnedSandboxFixtureHome, ProjectionFault,
 		SharedCodexAuthIdentity, current_auth_matches, open_codex_directory,
 		open_exact_sandbox_root, open_exact_sandbox_root_after_metadata,
-		open_pinned_sandbox_codex_directory, project_shared_codex_auth_at, project_to_directory,
-		read_identity_from_directory,
+		open_pinned_sandbox_codex_directory, project_shared_codex_auth_at,
+		project_shared_codex_auth_cas_at, project_shared_codex_auth_with_precondition_at,
+		project_to_directory, read_file_stamp, read_identity_from_directory,
+		read_snapshot_from_directory,
 	};
 	use crate::host_credentials::CredentialSecretBundle;
 
@@ -1011,6 +1236,90 @@ mod tests {
 		let auth = read_auth(home.path());
 		assert_eq!(auth["tokens"]["account_id"], "provider-two");
 		assert_eq!(auth["tokens"]["id_token"], "id-two");
+	}
+
+	#[test]
+	fn conditional_projection_preserves_a_source_that_changed_before_replace() {
+		let home = fixture_home();
+		let directory = open_codex_directory(home.path()).unwrap();
+		let first = bundle(Some("id-one"), "one");
+		let second = bundle(Some("id-two"), "two");
+		let concurrent = bundle(Some("id-three"), "three");
+		project_to_directory(&directory, &first, "provider-one").unwrap();
+
+		project_shared_codex_auth_with_precondition_at(
+			home.path(),
+			&second,
+			"provider-two",
+			Some((&first, "provider-one")),
+			ProjectionFault::None,
+		)
+		.unwrap();
+		assert_eq!(read_auth(home.path())["tokens"]["account_id"], "provider-two");
+
+		project_to_directory(&directory, &concurrent, "provider-three").unwrap();
+		assert_eq!(
+			project_shared_codex_auth_with_precondition_at(
+				home.path(),
+				&second,
+				"provider-two",
+				Some((&first, "provider-one")),
+				ProjectionFault::None,
+			),
+			Err(CodexAuthProjectionError::SourceChanged),
+		);
+		assert_eq!(read_auth(home.path())["tokens"]["account_id"], "provider-three");
+	}
+
+	#[test]
+	fn exact_version_cas_preserves_changed_unmanaged_and_absent_sources() {
+		let home = fixture_home();
+		let directory = open_codex_directory(home.path()).unwrap();
+		let target = home.path().join(".codex/auth.json");
+		let absent_stamp = read_file_stamp(&directory).unwrap();
+		let absent = read_snapshot_from_directory(&directory, &absent_stamp).unwrap();
+		fs::write(&target, br#"{"auth_mode":"apikey","OPENAI_API_KEY":null}"#).unwrap();
+		fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
+		assert_eq!(
+			project_shared_codex_auth_cas_at(
+				home.path(),
+				&bundle(Some("id-target"), "target"),
+				"provider-target",
+				absent.version(),
+				ProjectionFault::None,
+			),
+			Err(CodexAuthProjectionError::SourceChanged),
+		);
+
+		let unmanaged_stamp = read_file_stamp(&directory).unwrap();
+		let unmanaged = read_snapshot_from_directory(&directory, &unmanaged_stamp).unwrap();
+		fs::write(&target, br#"{"auth_mode":"apikey","OPENAI_API_KEY":"changed"}"#).unwrap();
+		assert_eq!(
+			project_shared_codex_auth_cas_at(
+				home.path(),
+				&bundle(Some("id-target"), "target"),
+				"provider-target",
+				unmanaged.version(),
+				ProjectionFault::None,
+			),
+			Err(CodexAuthProjectionError::SourceChanged),
+		);
+		assert_eq!(read_auth(home.path())["OPENAI_API_KEY"], "changed");
+	}
+
+	#[test]
+	fn partial_shared_auth_is_unavailable_and_is_never_interpreted_as_absent() {
+		let home = fixture_home();
+		let directory = open_codex_directory(home.path()).unwrap();
+		let target = home.path().join(".codex/auth.json");
+		fs::write(&target, b"{").unwrap();
+		fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
+		let stamp = read_file_stamp(&directory).unwrap();
+		assert!(matches!(
+			read_snapshot_from_directory(&directory, &stamp),
+			Err(CodexAuthProjectionError::Unavailable)
+		));
+		assert_eq!(fs::read(&target).unwrap(), b"{");
 	}
 
 	#[test]

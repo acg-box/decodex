@@ -62,11 +62,7 @@ pub enum AccountLifecycleMutationOutcome {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AccountEnrollmentResolution {
 	Fresh { account_id: AccountId },
-	Restore {
-		account_id: AccountId,
-		account_revision: i64,
-		previous_credential: CredentialBinding,
-	},
+	Restore { account_id: AccountId, account_revision: i64, previous_credential: CredentialBinding },
 	AlreadyEnrolled { account_id: AccountId, account_revision: i64 },
 }
 
@@ -110,9 +106,8 @@ pub enum AccountCommandKind {
 	Enroll,
 	Import,
 	SetEnabled,
-	UseInCodex,
+	Route,
 	Logout,
-	SetFixedSelection,
 	SetBalancedSelection,
 	SetAccountOrder,
 	Refresh,
@@ -125,9 +120,8 @@ impl AccountCommandKind {
 			Self::Enroll => "enroll_account",
 			Self::Import => "import_account_credential_file",
 			Self::SetEnabled => "set_account_enabled",
-			Self::UseInCodex => "use_account_in_codex",
+			Self::Route => "route_account",
 			Self::Logout => "logout_account",
-			Self::SetFixedSelection => "set_fixed_account_selection",
 			Self::SetBalancedSelection => "set_balanced_account_selection",
 			Self::SetAccountOrder => "set_account_order",
 			Self::Refresh => "refresh_account",
@@ -138,8 +132,18 @@ impl AccountCommandKind {
 
 pub struct AccountCommandReceiptLease(CommandReservation);
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingAccountRouteCommand {
+	pub idempotency_key: String,
+	pub request_sha256: String,
+	pub request_json: String,
+	pub expected_routing_revision: i64,
+	pub progress: Option<Value>,
+}
+
 pub enum AccountCommandReceiptClaim {
 	Owned(AccountCommandReceiptLease),
+	Pending(Value),
 	Replayed(Value),
 }
 
@@ -208,7 +212,204 @@ impl SqliteStore {
 		let command = command.clone();
 		let entity_id = entity_id.to_owned();
 		self.run(move |connection| {
-			reserve_command_sync(connection, command, kind, entity_id, expected_revision)
+			reserve_command_sync(
+				connection,
+				command,
+				kind,
+				entity_id,
+				expected_revision,
+				None,
+				false,
+				None,
+			)
+		})
+		.await
+	}
+
+	pub async fn reserve_account_route_command(
+		&self,
+		command: &CommandIdentity,
+		expected_routing_revision: i64,
+		request_json: &str,
+	) -> Result<AccountCommandReceiptClaim, StoreError> {
+		self.reserve_account_route_command_inner(
+			command,
+			expected_routing_revision,
+			request_json,
+			None,
+		)
+		.await
+	}
+
+	pub async fn reserve_replacing_account_route_command(
+		&self,
+		command: &CommandIdentity,
+		expected_routing_revision: i64,
+		request_json: &str,
+		superseded_response: &Value,
+	) -> Result<AccountCommandReceiptClaim, StoreError> {
+		validate_account_command_response(superseded_response)?;
+		self.reserve_account_route_command_inner(
+			command,
+			expected_routing_revision,
+			request_json,
+			Some(superseded_response.clone()),
+		)
+		.await
+	}
+
+	async fn reserve_account_route_command_inner(
+		&self,
+		command: &CommandIdentity,
+		expected_routing_revision: i64,
+		request_json: &str,
+		superseded_response: Option<Value>,
+	) -> Result<AccountCommandReceiptClaim, StoreError> {
+		validate_routing_revision(expected_routing_revision)?;
+		let request_value: Value = serde_json::from_str(request_json)
+			.map_err(|_| StoreError::InvalidInput("account Route request is invalid"))?;
+		if request_json.len() > 64 * 1024 {
+			return Err(StoreError::InvalidInput("account Route request is invalid"));
+		}
+		ensure_credential_negative_json(&request_value)?;
+		let command = command.clone();
+		let request_json = request_json.to_owned();
+		let superseded_response = superseded_response
+			.map(|response| serde_json::to_string(&response))
+			.transpose()
+			.map_err(|_| StoreError::InvalidInput("account Route result is invalid"))?;
+		self.run(move |connection| {
+			reserve_command_sync(
+				connection,
+				command,
+				AccountCommandKind::Route,
+				"account-routing".to_owned(),
+				Some(expected_routing_revision),
+				Some(request_json),
+				false,
+				superseded_response,
+			)
+		})
+		.await
+	}
+
+	pub async fn read_pending_account_route_commands(
+		&self,
+		limit: u16,
+	) -> Result<Vec<PendingAccountRouteCommand>, StoreError> {
+		validate_limit(limit, "pending account Route limit must be between 1 and 512")?;
+		self.run(move |connection| {
+			let mut statement = connection
+				.prepare(
+					"SELECT idempotency_key, request_sha256, request_json, expected_revision,
+					        progress_json
+					 FROM command_receipts
+					 WHERE protocol = ?1 AND operation = 'route_account' AND state = 'reserved'
+					 ORDER BY reserved_at_micros, idempotency_key LIMIT ?2",
+				)
+				.map_err(sql_error)?;
+			let rows = statement
+				.query_map(params![ACCOUNT_COMMAND_PROTOCOL, limit], |row| {
+					Ok(PendingAccountRouteCommand {
+						idempotency_key: row.get(0)?,
+						request_sha256: row.get(1)?,
+						request_json: row.get(2)?,
+						expected_routing_revision: row.get(3)?,
+						progress: row
+							.get::<_, Option<String>>(4)?
+							.map(|value| serde_json::from_str(&value))
+							.transpose()
+							.map_err(|error| {
+								rusqlite::Error::FromSqlConversionFailure(
+									4,
+									rusqlite::types::Type::Text,
+									Box::new(error),
+								)
+							})?,
+					})
+				})
+				.map_err(sql_error)?;
+			rows.collect::<Result<Vec<_>, _>>().map_err(sql_error)
+		})
+		.await
+	}
+
+	/// Expire Route leases left by the previous daemon before the listener accepts commands.
+	pub async fn release_interrupted_account_route_claims(&self) -> Result<u64, StoreError> {
+		self.run(move |connection| {
+			let changed = connection
+				.execute(
+					"UPDATE command_receipts
+					 SET claim_expires_at_micros = reserved_at_micros + 1
+					 WHERE protocol = ?1 AND operation = 'route_account' AND state = 'reserved'",
+					params![ACCOUNT_COMMAND_PROTOCOL],
+				)
+				.map_err(sql_error)?;
+			u64::try_from(changed)
+				.map_err(|_| StoreError::InvalidInput("account Route claim count is invalid"))
+		})
+		.await
+	}
+
+	pub async fn reclaim_account_route_command(
+		&self,
+		pending: &PendingAccountRouteCommand,
+	) -> Result<AccountCommandReceiptClaim, StoreError> {
+		let command = CommandIdentity {
+			key: pending.idempotency_key.clone(),
+			request_hash: pending.request_sha256.clone(),
+		};
+		let expected = pending.expected_routing_revision;
+		let request_json = pending.request_json.clone();
+		self.run(move |connection| {
+			reserve_command_sync(
+				connection,
+				command,
+				AccountCommandKind::Route,
+				"account-routing".to_owned(),
+				Some(expected),
+				Some(request_json),
+				true,
+				None,
+			)
+		})
+		.await
+	}
+
+	/// Retain one replayable pending result while releasing the Route lease to the daemon worker.
+	pub async fn defer_account_route_command(
+		&self,
+		lease: AccountCommandReceiptLease,
+		progress: &Value,
+	) -> Result<(), StoreError> {
+		validate_account_command_response(progress)?;
+		let progress = serde_json::to_string(progress)
+			.map_err(|_| StoreError::InvalidInput("account Route progress is invalid"))?;
+		self.run(move |connection| {
+			let now = unix_micros().map_err(StoreError::from)?;
+			let changed = connection
+				.execute(
+					"UPDATE command_receipts
+					 SET progress_json = ?1,
+					     claim_expires_at_micros = MAX(?2, reserved_at_micros + 1)
+					 WHERE protocol = ?3 AND idempotency_key = ?4 AND request_sha256 = ?5
+					   AND operation = 'route_account' AND state = 'reserved'
+					   AND claim_token = ?6 AND claim_expires_at_micros > ?2",
+					params![
+						progress,
+						now,
+						lease.0.protocol,
+						lease.0.key,
+						lease.0.request_hash,
+						lease.0.claim_token,
+					],
+				)
+				.map_err(sql_error)?;
+			if changed == 1 {
+				Ok(())
+			} else {
+				Err(StoreError::OwnershipLost("account Route command lease"))
+			}
 		})
 		.await
 	}
@@ -526,7 +727,8 @@ impl SqliteStore {
 		.await
 	}
 
-	pub async fn set_fixed_account_selection_command<F>(
+	/// Commit one fixed Route and its complete public result in one transaction.
+	pub async fn route_account_command<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
 		expected_routing_revision: i64,
@@ -535,7 +737,9 @@ impl SqliteStore {
 		build_response: F,
 	) -> Result<Value, StoreError>
 	where
-		F: FnOnce(&RoutingControlOutcome) -> Result<Value, StoreError> + Send + 'static,
+		F: FnOnce(&RoutingControlOutcome, Option<&AccountRecord>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
 	{
 		validate_routing_revision(expected_routing_revision)?;
 		validate_account_revision(expected_account_revision)?;
@@ -544,13 +748,20 @@ impl SqliteStore {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
-			let outcome = set_fixed_routing_sync(
+			let outcome = route_fixed_routing_sync(
 				&transaction,
 				expected_routing_revision,
 				&account_id,
 				expected_account_revision,
 			)?;
-			let response = build_response(&outcome)?;
+			let account = if matches!(outcome, RoutingControlOutcome::Updated { .. }) {
+				read_account_registry_sync(&transaction, Some(account_id.as_str()), 1)?
+					.into_iter()
+					.next()
+			} else {
+				None
+			};
+			let response = build_response(&outcome, account.as_ref())?;
 			validate_account_command_response(&response)?;
 			finish_command_sync(&transaction, &lease.0, &response)?;
 			transaction.commit().map_err(sql_error)?;
@@ -822,12 +1033,16 @@ impl SqliteStore {
 	}
 }
 
+#[allow(clippy::too_many_arguments)] // One transaction needs the exact command identity, descriptor, reclaim mode, and optional supersession result.
 fn reserve_command_sync(
 	connection: &mut Connection,
 	command: CommandIdentity,
 	kind: AccountCommandKind,
 	entity_id: String,
 	expected_revision: Option<i64>,
+	request_json: Option<String>,
+	reclaim_pending_route: bool,
+	superseded_response: Option<String>,
 ) -> Result<AccountCommandReceiptClaim, StoreError> {
 	let transaction =
 		connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
@@ -835,7 +1050,7 @@ fn reserve_command_sync(
 	let existing = transaction
 		.query_row(
 			"SELECT request_sha256, operation, entity_id, expected_revision, state,
-			        response_json, claim_expires_at_micros
+			        response_json, claim_expires_at_micros, request_json, progress_json
 			 FROM command_receipts WHERE protocol = ?1 AND idempotency_key = ?2",
 			params![ACCOUNT_COMMAND_PROTOCOL, command.key],
 			|row| {
@@ -847,18 +1062,32 @@ fn reserve_command_sync(
 					row.get::<_, String>(4)?,
 					row.get::<_, Option<String>>(5)?,
 					row.get::<_, Option<i64>>(6)?,
+					row.get::<_, Option<String>>(7)?,
+					row.get::<_, Option<String>>(8)?,
 				))
 			},
 		)
 		.optional()
 		.map_err(sql_error)?;
 	let receipt_exists = existing.is_some();
-	if let Some((request, operation, stored_entity, revision, state, response, expires)) = existing
+	if let Some((
+		request,
+		operation,
+		stored_entity,
+		revision,
+		state,
+		response,
+		expires,
+		stored_json,
+		progress,
+	)) = existing
 	{
 		if request != command.request_hash
 			|| operation != kind.as_str()
 			|| stored_entity != entity_id
 			|| revision != expected_revision
+			|| (kind == AccountCommandKind::Route
+				&& stored_json.as_deref() != request_json.as_deref())
 		{
 			return Err(StoreError::IdempotencyConflict);
 		}
@@ -869,8 +1098,47 @@ fn reserve_command_sync(
 			transaction.commit().map_err(sql_error)?;
 			return Ok(AccountCommandReceiptClaim::Replayed(response));
 		}
+		if !reclaim_pending_route && let Some(progress) = progress {
+			let progress = serde_json::from_str(&progress)
+				.map_err(|_| incompatible("account Route progress"))?;
+			transaction.commit().map_err(sql_error)?;
+			return Ok(AccountCommandReceiptClaim::Pending(progress));
+		}
 		if expires.is_some_and(|expires| expires > now) {
 			return Err(StoreError::OwnershipLost("command receipt claim is active"));
+		}
+	}
+	if !receipt_exists
+		&& kind == AccountCommandKind::Route
+		&& !reclaim_pending_route
+		&& let Some(superseded_response) = superseded_response.as_ref()
+		&& let Some((pending_key, claim_expires_at)) = transaction
+			.query_row(
+				"SELECT idempotency_key, claim_expires_at_micros
+				 FROM command_receipts
+				 WHERE protocol = ?1 AND operation = 'route_account' AND state = 'reserved'",
+				params![ACCOUNT_COMMAND_PROTOCOL],
+				|row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?)),
+			)
+			.optional()
+			.map_err(sql_error)?
+	{
+		if claim_expires_at.is_some_and(|expires| expires > now) {
+			return Err(StoreError::OwnershipLost("pending account Route is active"));
+		}
+		let changed = transaction
+			.execute(
+				"UPDATE command_receipts
+				 SET state = 'completed_success', response_json = ?1, claim_token = NULL,
+				     claim_expires_at_micros = NULL, completed_at_micros = ?2,
+				     progress_json = NULL
+				 WHERE protocol = ?3 AND idempotency_key = ?4
+				   AND operation = 'route_account' AND state = 'reserved'",
+				params![superseded_response, now, ACCOUNT_COMMAND_PROTOCOL, pending_key],
+			)
+			.map_err(sql_error)?;
+		if changed != 1 {
+			return Err(StoreError::OwnershipLost("pending account Route supersession"));
 		}
 	}
 
@@ -892,8 +1160,9 @@ fn reserve_command_sync(
 				"INSERT INTO command_receipts (
 				   protocol, idempotency_key, request_sha256, operation, entity_id,
 				   expected_revision, state, response_json, claim_token,
-				   claim_expires_at_micros, reserved_at_micros, completed_at_micros
-				 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'reserved', NULL, ?7, ?8, ?9, NULL)",
+					   claim_expires_at_micros, reserved_at_micros, completed_at_micros,
+				   request_json, progress_json
+				 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'reserved', NULL, ?7, ?8, ?9, NULL, ?10, NULL)",
 				params![
 					ACCOUNT_COMMAND_PROTOCOL,
 					command.key,
@@ -904,6 +1173,7 @@ fn reserve_command_sync(
 					claim_token,
 					expires,
 					now,
+					request_json,
 				],
 			)
 			.map_err(sql_error)?;
@@ -928,7 +1198,8 @@ fn finish_command_sync(
 		.execute(
 			"UPDATE command_receipts
 			 SET state = 'completed_success', response_json = ?1, claim_token = NULL,
-			     claim_expires_at_micros = NULL, completed_at_micros = ?2
+			     claim_expires_at_micros = NULL, completed_at_micros = ?2,
+			     progress_json = NULL
 			 WHERE protocol = ?3 AND idempotency_key = ?4 AND request_sha256 = ?5
 			   AND state = 'reserved' AND claim_token = ?6 AND claim_expires_at_micros > ?2",
 			params![
@@ -996,19 +1267,25 @@ fn prepare_operation_sync(
 
 	let account = account_base_sync(connection, &preparation.account_id)?;
 	let rejection = match preparation.kind {
-		AccountOperationKind::Enroll | AccountOperationKind::Import =>
-			enrollment_rejection_sync(connection, preparation, account.as_ref())?,
+		AccountOperationKind::Enroll | AccountOperationKind::Import => {
+			enrollment_rejection_sync(connection, preparation, account.as_ref())?
+		},
 		AccountOperationKind::Refresh | AccountOperationKind::Logout => match account {
 			None => Some(AccountLifecycleRejection::AccountMissing),
-			Some(ref account) if account.tombstoned =>
-				Some(AccountLifecycleRejection::AccountMissing),
+			Some(ref account) if account.tombstoned => {
+				Some(AccountLifecycleRejection::AccountMissing)
+			},
 			Some(ref account)
 				if preparation.expected_account_revision != Some(account.revision) =>
-				Some(AccountLifecycleRejection::StaleAccount),
+			{
+				Some(AccountLifecycleRejection::StaleAccount)
+			},
 			Some(_)
 				if credential_binding_sync(connection, &preparation.account_id)?
 					!= preparation.expected =>
-				Some(AccountLifecycleRejection::StaleAccount),
+			{
+				Some(AccountLifecycleRejection::StaleAccount)
+			},
 			Some(_) => None,
 		},
 	};
@@ -1711,12 +1988,9 @@ fn resolve_account_enrollment_sync(
 		.optional()
 		.map_err(sql_error)?;
 	let Some(existing) = existing else {
-		return Ok(AccountEnrollmentResolution::Fresh {
-			account_id: requested_account_id.clone(),
-		});
+		return Ok(AccountEnrollmentResolution::Fresh { account_id: requested_account_id.clone() });
 	};
-	let account_id =
-		AccountId::new(existing).map_err(|_| incompatible("account identity"))?;
+	let account_id = AccountId::new(existing).map_err(|_| incompatible("account identity"))?;
 	let account = account_base_sync(connection, &account_id)?
 		.ok_or_else(|| incompatible("account enrollment resolution"))?;
 	if !account.tombstoned {
@@ -1737,12 +2011,8 @@ fn resolve_account_enrollment_sync(
 			return Err(incompatible("tombstoned account enrollment state"));
 		}
 	}
-	let previous_credential = tombstone_predecessor_credential_sync(
-		connection,
-		&account_id,
-		account.revision,
-		provider,
-	)?;
+	let previous_credential =
+		tombstone_predecessor_credential_sync(connection, &account_id, account.revision, provider)?;
 	Ok(AccountEnrollmentResolution::Restore {
 		account_id,
 		account_revision: account.revision,
@@ -1759,9 +2029,8 @@ fn is_legacy_tombstone_enrollment_collision_sync(
 		|| !matches!(
 			operation.phase,
 			AccountOperationPhase::StoreApplied | AccountOperationPhase::RecoveryRequired
-		)
-		|| (operation.phase == AccountOperationPhase::RecoveryRequired
-			&& operation.recovery_code.as_deref() != Some(RECOVERY_CODE))
+		) || (operation.phase == AccountOperationPhase::RecoveryRequired
+		&& operation.recovery_code.as_deref() != Some(RECOVERY_CODE))
 		|| operation.expected_account_revision.is_some()
 		|| operation.expected.is_some()
 		|| operation.requested_display_label.is_none()
@@ -1770,8 +2039,7 @@ fn is_legacy_tombstone_enrollment_collision_sync(
 		return Ok(false);
 	}
 	let Some(target) = operation.target.as_ref() else { return Ok(false) };
-	if target.version.get() != 1
-		|| account_base_sync(connection, &operation.account_id)?.is_some()
+	if target.version.get() != 1 || account_base_sync(connection, &operation.account_id)?.is_some()
 	{
 		return Ok(false);
 	}
@@ -1786,10 +2054,7 @@ fn is_legacy_tombstone_enrollment_collision_sync(
 			"SELECT account_id, revision FROM accounts
 			 WHERE provider = ?1 AND provider_account_id = ?2
 			   AND tombstoned_at_micros IS NOT NULL",
-			params![
-				provider_text(target.provider.provider()),
-				target.provider.account_id(),
-			],
+			params![provider_text(target.provider.provider()), target.provider.account_id(),],
 			|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
 		)
 		.optional()
@@ -1840,8 +2105,8 @@ fn tombstone_predecessor_credential_sync(
 	let (binding, predecessor_revision) = predecessor;
 	let binding = parse_binding_json(binding.as_deref())?
 		.ok_or_else(|| incompatible("tombstoned account credential history"))?;
-	let predecessor_revision = predecessor_revision
-		.ok_or_else(|| incompatible("tombstoned account revision history"))?;
+	let predecessor_revision =
+		predecessor_revision.ok_or_else(|| incompatible("tombstoned account revision history"))?;
 	if predecessor_revision.checked_add(1) != Some(account_revision)
 		|| binding.provider != *provider
 	{
@@ -2081,6 +2346,36 @@ fn set_fixed_routing_sync(
 	Ok(RoutingControlOutcome::Updated { routing: read_routing_control_sync(connection)? })
 }
 
+fn route_fixed_routing_sync(
+	connection: &Connection,
+	expected_routing_revision: i64,
+	account_id: &AccountId,
+	expected_account_revision: i64,
+) -> Result<RoutingControlOutcome, StoreError> {
+	let routing = read_routing_control_sync(connection)?;
+	if routing.revision != expected_routing_revision {
+		return Ok(RoutingControlOutcome::StaleRoutingControl { revision: routing.revision });
+	}
+	let Some(account) = account_base_sync(connection, account_id)? else {
+		return Ok(RoutingControlOutcome::AccountMissing);
+	};
+	if account.tombstoned {
+		return Ok(RoutingControlOutcome::AccountMissing);
+	}
+	if account.revision != expected_account_revision {
+		return Ok(RoutingControlOutcome::StaleAccount { revision: account.revision });
+	}
+	if routing.mode == AccountSelectionMode::Fixed(account_id.clone()) {
+		return Ok(RoutingControlOutcome::Updated { routing });
+	}
+	set_fixed_routing_sync(
+		connection,
+		expected_routing_revision,
+		account_id,
+		expected_account_revision,
+	)
+}
+
 fn set_balanced_routing_sync(
 	connection: &Connection,
 	expected_routing_revision: i64,
@@ -2088,6 +2383,9 @@ fn set_balanced_routing_sync(
 	let routing = read_routing_control_sync(connection)?;
 	if routing.revision != expected_routing_revision {
 		return Ok(RoutingControlOutcome::StaleRoutingControl { revision: routing.revision });
+	}
+	if pending_account_route_exists_sync(connection)? {
+		return Ok(RoutingControlOutcome::InvalidRequest);
 	}
 	let revision =
 		routing.revision.checked_add(1).ok_or(StoreError::CapacityExhausted("routing revision"))?;
@@ -2109,6 +2407,9 @@ fn set_account_order_sync(
 	let routing = read_routing_control_sync(connection)?;
 	if routing.revision != expected_routing_revision {
 		return Ok(RoutingControlOutcome::StaleRoutingControl { revision: routing.revision });
+	}
+	if pending_account_route_exists_sync(connection)? {
+		return Ok(RoutingControlOutcome::InvalidRequest);
 	}
 	let visible = routing.order.iter().cloned().collect::<BTreeSet<_>>();
 	let proposed = order.iter().cloned().collect::<BTreeSet<_>>();
@@ -2133,6 +2434,19 @@ fn set_account_order_sync(
 	}
 	bump_routing_revision(connection, now)?;
 	Ok(RoutingControlOutcome::Updated { routing: read_routing_control_sync(connection)? })
+}
+
+fn pending_account_route_exists_sync(connection: &Connection) -> Result<bool, StoreError> {
+	connection
+		.query_row(
+			"SELECT EXISTS (
+			   SELECT 1 FROM command_receipts
+			   WHERE protocol = ?1 AND operation = 'route_account' AND state = 'reserved'
+			 )",
+			params![ACCOUNT_COMMAND_PROTOCOL],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)
 }
 
 fn compact_routing_order(connection: &Connection, now: i64) -> Result<(), StoreError> {
@@ -2479,17 +2793,19 @@ fn validate_account_command_response(value: &Value) -> Result<(), StoreError> {
 
 fn ensure_credential_negative_json(value: &Value) -> Result<(), StoreError> {
 	match value {
-		Value::Object(entries) =>
+		Value::Object(entries) => {
 			for (key, value) in entries {
 				if decodex_core::is_credential_metadata_key(key) {
 					return Err(StoreError::CredentialRejected);
 				}
 				ensure_credential_negative_json(value)?;
-			},
-		Value::Array(entries) =>
+			}
+		},
+		Value::Array(entries) => {
 			for value in entries {
 				ensure_credential_negative_json(value)?;
-			},
+			}
+		},
 		Value::String(value) if decodex_core::contains_credential_material(value) => {
 			return Err(StoreError::CredentialRejected);
 		},

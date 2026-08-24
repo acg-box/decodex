@@ -28,7 +28,8 @@ final class AccountControlNativeClientTests: XCTestCase {
 				    \(controlAccountJSON(accountID: accountID, alias: "Iris", revision: 7)),
 				    \(controlUnsettledAccountJSON(accountID: secondAccountID, operationID: operationID))
 				  ],
-				  "routing":{"revision":9,"mode":{"mode":"fixed","account_id":"\(secondAccountID)"},"order":["\(secondAccountID)","\(accountID)"]}
+				  "routing":{"revision":9,"mode":{"mode":"fixed","account_id":"\(secondAccountID)"},"order":["\(secondAccountID)","\(accountID)"]},
+				  "pending_route":{"operation_id":"\(operationID)","account_id":"\(accountID)","routing_revision":9}
 				}}
 				"""
 			)
@@ -46,6 +47,14 @@ final class AccountControlNativeClientTests: XCTestCase {
 			)
 		)
 		XCTAssertEqual(snapshot.accounts.map(\.accountID), [secondAccountID, accountID])
+		XCTAssertEqual(
+			snapshot.pendingRoute,
+			AccountRoutePending(
+				operationID: operationID,
+				accountID: accountID,
+				routingRevision: 9
+			)
+		)
 		XCTAssertEqual(snapshot.accounts[1].credentialBinding?.version, 3)
 		XCTAssertEqual(
 			snapshot.accounts[0].unsettledOperation,
@@ -54,6 +63,44 @@ final class AccountControlNativeClientTests: XCTestCase {
 				kind: .refresh,
 				phase: .recoveryRequired,
 				recoveryCode: "provider_identity_changed"
+			)
+		)
+	}
+
+	func testRouteDecodesDurablePendingResult() async throws {
+		let authority = authority
+		let operationID = operationID
+		let accountID = accountID
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "route_account",
+				authority: authority,
+				data: """
+				{"outcome":"applied","data":{"entity_revision":9,
+				  "result":{"name":"account_route_pending","data":{"pending":{
+				    "operation_id":"\(operationID)","account_id":"\(accountID)","routing_revision":9
+				  }}}}}
+				"""
+			)
+		}
+
+		let result = try await client.routeAccount(
+			authority: authority,
+			operationID: operationID,
+			accountID: accountID,
+			expectedAccountRevision: 7,
+			expectedRoutingRevision: 9,
+			idempotencyKey: idempotencyKey
+		)
+
+		XCTAssertEqual(
+			result,
+			.routePending(
+				AccountRoutePending(
+					operationID: operationID,
+					accountID: accountID,
+					routingRevision: 9
+				)
 			)
 		)
 	}
@@ -76,11 +123,12 @@ final class AccountControlNativeClientTests: XCTestCase {
 				{"outcome":"current","data":{"account_id":"\(accountID)",
 				  "account_revision":7,"projection_digest":"\(String(repeating: "c", count: 64))"}}
 				"""
-			case "use_account_in_codex":
+			case "route_account":
 				payload = """
-				{"outcome":"applied","data":{"entity_revision":7,
-				  "result":{"name":"codex_auth_projected","data":{
-				    "account_id":"\(accountID)","account_revision":7,
+				{"outcome":"applied","data":{"entity_revision":10,
+				  "result":{"name":"account_routed","data":{
+				    "account":\(controlAccountJSON(accountID: accountID, alias: "Iris", revision: 8)),
+				    "routing":{"revision":10,"mode":{"mode":"fixed","account_id":"\(accountID)"},"order":["\(accountID)","\(secondAccountID)"]},
 				    "projection_digest":"\(String(repeating: "c", count: 64))"}}}}
 				"""
 			case "logout_account":
@@ -88,12 +136,6 @@ final class AccountControlNativeClientTests: XCTestCase {
 				{"outcome":"applied","data":{"entity_revision":8,
 				  "result":{"name":"account_logged_out","data":{"account_id":"\(accountID)","tombstone_revision":8}}}}
 				"""
-			case "set_fixed_selection":
-				payload = controlRoutingAppliedJSON(
-					revision: 10,
-					mode: #"{"mode":"fixed","account_id":"\#(accountID)"}"#,
-					order: [accountID, secondAccountID]
-				)
 			case "set_balanced_selection":
 				payload = controlRoutingAppliedJSON(
 					revision: 10,
@@ -137,10 +179,12 @@ final class AccountControlNativeClientTests: XCTestCase {
 				projectionDigest: String(repeating: "c", count: 64)
 			)
 		)
-		_ = try await client.useAccountInCodex(
+		_ = try await client.routeAccount(
 			authority: authority,
+			operationID: operationID,
 			accountID: accountID,
-			expectedRevision: 7,
+			expectedAccountRevision: 7,
+			expectedRoutingRevision: 9,
 			idempotencyKey: idempotencyKey
 		)
 		_ = try await client.setAccountEnabled(
@@ -157,13 +201,6 @@ final class AccountControlNativeClientTests: XCTestCase {
 			expectedRevision: 7,
 			idempotencyKey: idempotencyKey
 		)
-		_ = try await client.setFixedSelection(
-			authority: authority,
-			accountID: accountID,
-			expectedAccountRevision: 7,
-			expectedRoutingRevision: 9,
-			idempotencyKey: idempotencyKey
-		)
 		_ = try await client.setBalancedSelection(
 			authority: authority,
 			expectedRoutingRevision: 9,
@@ -175,21 +212,13 @@ final class AccountControlNativeClientTests: XCTestCase {
 			expectedRoutingRevision: 9,
 			idempotencyKey: idempotencyKey
 		)
-		_ = try await client.refreshAccountCredentials(
-			authority: authority,
-			operationID: operationID,
-			accountID: accountID,
-			expectedRevision: 7,
-			idempotencyKey: idempotencyKey
-		)
 		let requests = try recorder.requests.map { try nativeJSONObject($0.data) }
 		XCTAssertEqual(
 			requests.compactMap { $0["operation"] as? String },
 			[
-				"enroll_account", "get_codex_auth_projection", "use_account_in_codex",
+				"enroll_account", "get_codex_auth_projection", "route_account",
 				"disable_account",
-				"logout_account", "set_fixed_selection",
-				"set_balanced_selection", "set_account_order", "refresh_account",
+				"logout_account", "set_balanced_selection", "set_account_order",
 			]
 		)
 		XCTAssertEqual(
@@ -200,29 +229,23 @@ final class AccountControlNativeClientTests: XCTestCase {
 			]
 		)
 		XCTAssertEqual(Set(requests[1].keys), ["schema", "operation"])
-		XCTAssertEqual(requests[2]["expected_revision"] as? NSNumber, 7)
+		XCTAssertEqual(requests[2]["operation_id"] as? String, operationID)
+		XCTAssertEqual(requests[2]["expected_account_revision"] as? NSNumber, 7)
+		XCTAssertEqual(requests[2]["expected_routing_revision"] as? NSNumber, 9)
 		XCTAssertEqual(requests[3]["enabled"] as? Bool, nil)
 		XCTAssertEqual(requests[3]["expected_revision"] as? NSNumber, 7)
 		XCTAssertEqual(requests[4]["operation_id"] as? String, operationID)
-		XCTAssertEqual(requests[5]["expected_account_revision"] as? NSNumber, 7)
-		XCTAssertEqual(requests[5]["expected_routing_revision"] as? NSNumber, 9)
-		XCTAssertEqual(Set(requests[6].keys), [
+		XCTAssertEqual(Set(requests[5].keys), [
 			"schema", "operation", "expected_routing_revision", "idempotency_key",
 		])
 		XCTAssertEqual(
-			requests[7]["order"] as? [String],
+			requests[6]["order"] as? [String],
 			[secondAccountID, accountID]
 		)
-		XCTAssertEqual(Set(requests[7].keys), [
+		XCTAssertEqual(Set(requests[6].keys), [
 			"schema", "operation", "order", "expected_routing_revision", "idempotency_key",
 		])
-		XCTAssertEqual(Set(requests[8].keys), [
-			"schema", "operation", "operation_id", "account_id", "expected_revision",
-			"idempotency_key",
-		])
-		XCTAssertEqual(requests[8]["operation_id"] as? String, operationID)
-		XCTAssertEqual(requests[8]["expected_revision"] as? NSNumber, 7)
-		XCTAssertEqual(recorder.requests.map(\.authority), Array(repeating: authority, count: 9))
+		XCTAssertEqual(recorder.requests.map(\.authority), Array(repeating: authority, count: 7))
 	}
 
 	func testAccountOrderRejectsAContradictoryAppliedOrder() async throws {
@@ -254,7 +277,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 		}
 	}
 
-	func testUseInCodexRejectsNoncanonicalIdentityRevisionAndAuthorityBeforeDispatch() async {
+	func testRouteRejectsInvalidIdentityRevisionsAndAuthorityBeforeDispatch() async {
 		let recorder = NativeRequestRecorder()
 		let authority = authority
 		let client = DecodexNativeClient { request, requestedAuthority in
@@ -266,17 +289,20 @@ final class AccountControlNativeClientTests: XCTestCase {
 			serverID: serverID
 		)
 		let uppercaseAccountID = "abcdefab-cdef-4abc-8def-abcdefabcdef".uppercased()
-		let inputs: [(ResetCardAuthority?, String, UInt64)] = [
-			(authority, uppercaseAccountID, 1),
-			(authority, accountID, 0),
-			(invalidAuthority, accountID, 1),
+		let inputs: [(ResetCardAuthority?, String, UInt64, UInt64)] = [
+			(authority, uppercaseAccountID, 1, 1),
+			(authority, accountID, 0, 1),
+			(authority, accountID, 1, 0),
+			(invalidAuthority, accountID, 1, 1),
 		]
-		for (authority, accountID, revision) in inputs {
+		for (authority, accountID, accountRevision, routingRevision) in inputs {
 			do {
-				_ = try await client.useAccountInCodex(
+				_ = try await client.routeAccount(
 					authority: authority,
+					operationID: operationID,
 					accountID: accountID,
-					expectedRevision: revision,
+					expectedAccountRevision: accountRevision,
+					expectedRoutingRevision: routingRevision,
 					idempotencyKey: idempotencyKey
 				)
 				XCTFail("Invalid account command must fail")
@@ -287,42 +313,6 @@ final class AccountControlNativeClientTests: XCTestCase {
 			}
 		}
 		XCTAssertTrue(recorder.requests.isEmpty)
-	}
-
-	func testFixedSelectionDecodesStrictAppliedRoutingResult() async throws {
-		let authority = authority
-		let accountID = accountID
-		let secondAccountID = secondAccountID
-		let client = DecodexNativeClient { _, _ in
-			nativeSuccess(
-				operation: "set_fixed_selection",
-				authority: authority,
-				data: controlRoutingAppliedJSON(
-					revision: 10,
-					mode: #"{"mode":"fixed","account_id":"\#(accountID)"}"#,
-					order: [accountID, secondAccountID]
-				)
-			)
-		}
-
-		let result = try await client.setFixedSelection(
-			authority: authority,
-			accountID: accountID,
-			expectedAccountRevision: 7,
-			expectedRoutingRevision: 9,
-			idempotencyKey: idempotencyKey
-		)
-
-		XCTAssertEqual(
-			result,
-			AccountControlResult.routingChanged(
-				AccountRoutingControl(
-					revision: 10,
-					mode: .fixed(accountID: accountID),
-					order: [accountID, secondAccountID]
-				)
-			)
-		)
 	}
 
 	func testTypedRejectionRetainsCurrentOwningRevision() async throws {
@@ -352,6 +342,35 @@ final class AccountControlNativeClientTests: XCTestCase {
 				error,
 				.rejected(.staleRoutingControl, actualRevision: 10)
 			)
+		}
+	}
+
+	func testSupersededRouteDecodesAsATerminalTypedRejection() async throws {
+		let authority = authority
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "route_account",
+				authority: authority,
+				data: """
+				{"outcome":"rejected","data":{"error":{
+				  "reason":"account_command_rejected",
+				  "rejection":"route_superseded"
+				}}}
+				"""
+			)
+		}
+		do {
+			_ = try await client.routeAccount(
+				authority: authority,
+				operationID: operationID,
+				accountID: accountID,
+				expectedAccountRevision: 7,
+				expectedRoutingRevision: 9,
+				idempotencyKey: idempotencyKey
+			)
+			XCTFail("Superseded Route must not appear applied")
+		} catch let error as AccountControlError {
+			XCTAssertEqual(error, .rejected(.routeSuperseded, actualRevision: nil))
 		}
 	}
 

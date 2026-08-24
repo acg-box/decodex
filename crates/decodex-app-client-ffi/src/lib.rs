@@ -43,10 +43,8 @@ struct NativeClient {
 
 impl NativeClient {
 	fn record_login_status(&self, status: &AccountLoginStatus) {
-		let mut active = self
-			.active_login_session
-			.lock()
-			.unwrap_or_else(std::sync::PoisonError::into_inner);
+		let mut active =
+			self.active_login_session.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
 		if matches!(
 			status.state,
 			AccountLoginState::Completed | AccountLoginState::Failed | AccountLoginState::Cancelled
@@ -60,10 +58,7 @@ impl NativeClient {
 	}
 
 	fn take_active_login_session(&self) -> Option<EntityId> {
-		self.active_login_session
-			.lock()
-			.unwrap_or_else(std::sync::PoisonError::into_inner)
-			.take()
+		self.active_login_session.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take()
 	}
 }
 
@@ -139,8 +134,9 @@ enum Request {
 		expected_revision: u64,
 		idempotency_key: String,
 	},
-	SetFixedSelection {
+	RouteAccount {
 		schema: String,
+		operation_id: String,
 		account_id: String,
 		expected_account_revision: u64,
 		expected_routing_revision: u64,
@@ -155,13 +151,6 @@ enum Request {
 		schema: String,
 		order: Vec<String>,
 		expected_routing_revision: u64,
-		idempotency_key: String,
-	},
-	RefreshAccount {
-		schema: String,
-		operation_id: String,
-		account_id: String,
-		expected_revision: u64,
 		idempotency_key: String,
 	},
 	StartAccountEnrollment {
@@ -191,12 +180,6 @@ enum Request {
 		schema: String,
 		session_id: String,
 	},
-	UseAccountInCodex {
-		schema: String,
-		account_id: String,
-		expected_revision: u64,
-		idempotency_key: String,
-	},
 	FastModeStatus {
 		schema: String,
 	},
@@ -220,15 +203,13 @@ impl Request {
 			Self::EnableAccount { .. } => "enable_account",
 			Self::DisableAccount { .. } => "disable_account",
 			Self::LogoutAccount { .. } => "logout_account",
-			Self::SetFixedSelection { .. } => "set_fixed_selection",
+			Self::RouteAccount { .. } => "route_account",
 			Self::SetBalancedSelection { .. } => "set_balanced_selection",
 			Self::SetAccountOrder { .. } => "set_account_order",
-			Self::RefreshAccount { .. } => "refresh_account",
 			Self::StartAccountEnrollment { .. } => "start_account_enrollment",
 			Self::StartAccountReauthentication { .. } => "start_account_reauthentication",
 			Self::PollAccountReauthentication { .. } => "poll_account_reauthentication",
 			Self::CancelAccountReauthentication { .. } => "cancel_account_reauthentication",
-			Self::UseAccountInCodex { .. } => "use_account_in_codex",
 			Self::FastModeStatus { .. } => "fast_mode_status",
 			Self::SetFastMode { .. } => "set_fast_mode",
 		}
@@ -247,15 +228,13 @@ impl Request {
 			| Self::EnableAccount { schema, .. }
 			| Self::DisableAccount { schema, .. }
 			| Self::LogoutAccount { schema, .. }
-			| Self::SetFixedSelection { schema, .. }
+			| Self::RouteAccount { schema, .. }
 			| Self::SetBalancedSelection { schema, .. }
 			| Self::SetAccountOrder { schema, .. }
-			| Self::RefreshAccount { schema, .. }
 			| Self::StartAccountEnrollment { schema, .. }
 			| Self::StartAccountReauthentication { schema, .. }
 			| Self::PollAccountReauthentication { schema, .. }
 			| Self::CancelAccountReauthentication { schema, .. }
-			| Self::UseAccountInCodex { schema, .. }
 			| Self::FastModeStatus { schema }
 			| Self::SetFastMode { schema, .. } => schema,
 		}
@@ -331,8 +310,9 @@ impl From<ResetCardConsumeResponse> for ResetCardConsumeDto {
 				entity_revision,
 			} => Self::Accepted { account_id, descriptor, state, entity_revision },
 			ResetCardConsumeResponse::Rejected { error } => Self::Rejected { error },
-			ResetCardConsumeResponse::PotentiallyDispatched { failure } =>
-				Self::PotentiallyDispatched { failure },
+			ResetCardConsumeResponse::PotentiallyDispatched { failure } => {
+				Self::PotentiallyDispatched { failure }
+			},
 		}
 	}
 }
@@ -695,13 +675,16 @@ async fn execute_request(
 	match request {
 		Request::ListAccounts { .. } => list_accounts(profile).await,
 		Request::GetResetCards { account_id, .. } => get_reset_cards(profile, account_id).await,
-		Request::GetAccountProfile { account_id, include_email, .. } =>
-			get_account_profile(profile, account_id, include_email).await,
+		Request::GetAccountProfile { account_id, include_email, .. } => {
+			get_account_profile(profile, account_id, include_email).await
+		},
 		Request::GetCodexAuthProjection { .. } => get_codex_auth_projection(profile).await,
-		Request::WaitForAccountObservation { after_generation, request_refresh, .. } =>
-			wait_for_account_observation(profile, after_generation, request_refresh).await,
-		Request::ResetCardStatus { idempotency_key, .. } =>
-			get_reset_card_status(profile, idempotency_key).await,
+		Request::WaitForAccountObservation { after_generation, request_refresh, .. } => {
+			wait_for_account_observation(profile, after_generation, request_refresh).await
+		},
+		Request::ResetCardStatus { idempotency_key, .. } => {
+			get_reset_card_status(profile, idempotency_key).await
+		},
 		Request::UseResetCard {
 			account_id,
 			granted_at_unix_seconds,
@@ -709,7 +692,7 @@ async fn execute_request(
 			expected_revision,
 			idempotency_key,
 			..
-		} =>
+		} => {
 			consume_reset_card(
 				profile,
 				account_id,
@@ -718,51 +701,52 @@ async fn execute_request(
 				expected_revision,
 				idempotency_key,
 			)
-			.await,
-		Request::EnrollAccount { operation_id, account_id, enabled, idempotency_key, .. } =>
-			enroll_account(profile, operation_id, account_id, enabled, idempotency_key).await,
-		Request::EnableAccount { account_id, expected_revision, idempotency_key, .. } =>
-			set_account_enabled(profile, account_id, true, expected_revision, idempotency_key).await,
-		Request::DisableAccount { account_id, expected_revision, idempotency_key, .. } =>
+			.await
+		},
+		Request::EnrollAccount { operation_id, account_id, enabled, idempotency_key, .. } => {
+			enroll_account(profile, operation_id, account_id, enabled, idempotency_key).await
+		},
+		Request::EnableAccount { account_id, expected_revision, idempotency_key, .. } => {
+			set_account_enabled(profile, account_id, true, expected_revision, idempotency_key).await
+		},
+		Request::DisableAccount { account_id, expected_revision, idempotency_key, .. } => {
 			set_account_enabled(profile, account_id, false, expected_revision, idempotency_key)
-				.await,
+				.await
+		},
 		Request::LogoutAccount {
 			operation_id,
 			account_id,
 			expected_revision,
 			idempotency_key,
 			..
-		} =>
+		} => {
 			logout_account(profile, operation_id, account_id, expected_revision, idempotency_key)
-				.await,
-		Request::SetFixedSelection {
+				.await
+		},
+		Request::RouteAccount {
+			operation_id,
 			account_id,
 			expected_account_revision,
 			expected_routing_revision,
 			idempotency_key,
 			..
-		} =>
-			set_fixed_selection(
+		} => {
+			route_account(
 				profile,
+				operation_id,
 				account_id,
 				expected_account_revision,
 				expected_routing_revision,
 				idempotency_key,
 			)
-			.await,
-		Request::SetBalancedSelection { expected_routing_revision, idempotency_key, .. } =>
-			set_balanced_selection(profile, expected_routing_revision, idempotency_key).await,
-		Request::SetAccountOrder { order, expected_routing_revision, idempotency_key, .. } =>
-			set_account_order(profile, order, expected_routing_revision, idempotency_key).await,
-		Request::RefreshAccount {
-			operation_id,
-			account_id,
-			expected_revision,
-			idempotency_key,
-			..
-		} =>
-			refresh_account(profile, operation_id, account_id, expected_revision, idempotency_key)
-				.await,
+			.await
+		},
+		Request::SetBalancedSelection { expected_routing_revision, idempotency_key, .. } => {
+			set_balanced_selection(profile, expected_routing_revision, idempotency_key).await
+		},
+		Request::SetAccountOrder { order, expected_routing_revision, idempotency_key, .. } => {
+			set_account_order(profile, order, expected_routing_revision, idempotency_key).await
+		},
 		Request::StartAccountEnrollment {
 			session_id,
 			operation_id,
@@ -811,12 +795,12 @@ async fn execute_request(
 			)
 			.await
 		},
-		Request::PollAccountReauthentication { session_id, .. } =>
-			poll_account_reauthentication(&native_client, profile, session_id).await,
-		Request::CancelAccountReauthentication { session_id, .. } =>
-			cancel_account_reauthentication(&native_client, profile, session_id).await,
-		Request::UseAccountInCodex { account_id, expected_revision, idempotency_key, .. } =>
-			use_account_in_codex(profile, account_id, expected_revision, idempotency_key).await,
+		Request::PollAccountReauthentication { session_id, .. } => {
+			poll_account_reauthentication(&native_client, profile, session_id).await
+		},
+		Request::CancelAccountReauthentication { session_id, .. } => {
+			cancel_account_reauthentication(&native_client, profile, session_id).await
+		},
 		Request::FastModeStatus { .. } => fast_mode_status(),
 		Request::SetFastMode { enabled, .. } => set_fast_mode(enabled),
 	}
@@ -917,21 +901,6 @@ async fn logout_account(
 		.await
 }
 
-async fn refresh_account(
-	profile: ClientProfile,
-	operation_id: String,
-	account_id: String,
-	expected_revision: u64,
-	idempotency_key: String,
-) -> Result<Value, RequestFailure> {
-	let payload = CommandPayload::RefreshAccount {
-		operation_id: entity_id(&operation_id)?,
-		account_id: entity_id(&account_id)?,
-	};
-	execute_account_command(profile, payload, Some(revision(expected_revision)?), idempotency_key)
-		.await
-}
-
 async fn start_account_reauthentication(
 	native_client: &NativeClient,
 	profile: ClientProfile,
@@ -954,10 +923,8 @@ async fn start_account_reauthentication(
 			idempotency_key: parse_idempotency_key(input.idempotency_key)?,
 		},
 	};
-	let status = AccountLoginClient::new(profile)
-		.start(start)
-		.await
-		.map_err(RequestFailure::Client)?;
+	let status =
+		AccountLoginClient::new(profile).start(start).await.map_err(RequestFailure::Client)?;
 	native_client.record_login_status(&status);
 	to_value(status)
 }
@@ -977,10 +944,8 @@ async fn start_account_enrollment(
 			idempotency_key: parse_idempotency_key(input.idempotency_key)?,
 		},
 	};
-	let status = AccountLoginClient::new(profile)
-		.start(start)
-		.await
-		.map_err(RequestFailure::Client)?;
+	let status =
+		AccountLoginClient::new(profile).start(start).await.map_err(RequestFailure::Client)?;
 	native_client.record_login_status(&status);
 	to_value(status)
 }
@@ -1068,15 +1033,17 @@ async fn consume_reset_card(
 	to_value(ResetCardConsumeDto::from(response))
 }
 
-async fn set_fixed_selection(
+async fn route_account(
 	profile: ClientProfile,
+	operation_id: String,
 	account_id: String,
 	expected_account_revision: u64,
 	expected_routing_revision: u64,
 	idempotency_key: String,
 ) -> Result<Value, RequestFailure> {
 	let response = AccountClient::new(profile)
-		.set_fixed_account_selection(
+		.route_account(
+			entity_id(&operation_id)?,
 			entity_id(&account_id)?,
 			revision(expected_account_revision)?,
 			revision(expected_routing_revision)?,
@@ -1116,23 +1083,6 @@ async fn set_account_order(
 		.set_account_order(
 			order,
 			revision(expected_routing_revision)?,
-			parse_idempotency_key(idempotency_key)?,
-		)
-		.await
-		.map_err(RequestFailure::Client)?;
-	to_value(response)
-}
-
-async fn use_account_in_codex(
-	profile: ClientProfile,
-	account_id: String,
-	expected_revision: u64,
-	idempotency_key: String,
-) -> Result<Value, RequestFailure> {
-	let response = AccountClient::new(profile)
-		.use_account_in_codex(
-			entity_id(&account_id)?,
-			revision(expected_revision)?,
 			parse_idempotency_key(idempotency_key)?,
 		)
 		.await
@@ -1322,33 +1272,15 @@ mod tests {
 	}
 
 	#[test]
-	fn refresh_request_is_operation_and_account_revision_fenced() {
+	fn route_request_is_operation_account_and_routing_revision_fenced() {
 		let request = serde_json::from_str::<Request>(&format!(
-			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"refresh_account","operation_id":"028f0f9e-7b6e-4a31-8f4c-1d2e3f405163","account_id":"{ACCOUNT_ID}","expected_revision":7,"idempotency_key":"refresh-test"}}"#
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"route_account","operation_id":"028f0f9e-7b6e-4a31-8f4c-1d2e3f405163","account_id":"{ACCOUNT_ID}","expected_account_revision":7,"expected_routing_revision":9,"idempotency_key":"route-account-test"}}"#
 		))
-		.expect("refresh request must decode");
+		.expect("Route request must decode");
 
-		assert_eq!(request.operation(), "refresh_account");
+		assert_eq!(request.operation(), "route_account");
 		assert!(serde_json::from_str::<Request>(&format!(
-			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"refresh_account","account_id":"{ACCOUNT_ID}","expected_revision":7,"idempotency_key":"refresh-test"}}"#
-		))
-		.is_err());
-		assert!(serde_json::from_str::<Request>(&format!(
-			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"refresh_account","operation_id":"028f0f9e-7b6e-4a31-8f4c-1d2e3f405163","account_id":"{ACCOUNT_ID}","idempotency_key":"refresh-test"}}"#
-		))
-		.is_err());
-	}
-
-	#[test]
-	fn use_in_codex_request_is_account_revision_fenced() {
-		let request = serde_json::from_str::<Request>(&format!(
-			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"use_account_in_codex","account_id":"{ACCOUNT_ID}","expected_revision":7,"idempotency_key":"use-account-test"}}"#
-		))
-		.expect("use-in-Codex request must decode");
-
-		assert_eq!(request.operation(), "use_account_in_codex");
-		assert!(serde_json::from_str::<Request>(&format!(
-			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"use_account_in_codex","account_id":"{ACCOUNT_ID}","idempotency_key":"use-account-test"}}"#
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"route_account","operation_id":"028f0f9e-7b6e-4a31-8f4c-1d2e3f405163","account_id":"{ACCOUNT_ID}","expected_account_revision":7,"idempotency_key":"route-account-test"}}"#
 		))
 		.is_err());
 	}
