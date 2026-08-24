@@ -789,6 +789,16 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(script.contains("linker-flavor=ld64.lld"))
 		XCTAssertTrue(script.contains("NATIVE_CLIENT_MIN_SYSTEM_VERSION=\"11.0\""))
 		XCTAssertTrue(
+			script.contains(
+				#"DEFAULT_SIGN_IDENTITY="aurevoirxavier.hk@gmail.com""#
+			)
+		)
+		let developerIDPreference = try XCTUnwrap(
+			script.range(of: #""Developer ID Application:" "Apple Development:""#)
+		)
+		XCTAssertLessThan(developerIDPreference.lowerBound, script.endIndex)
+		XCTAssertTrue(script.contains(#"SIGN_TIMESTAMP_FLAGS=(--timestamp)"#))
+		XCTAssertTrue(
 			compatibility.contains("decodexNativeClientABIVersion: UInt32 = 1")
 		)
 		XCTAssertTrue(

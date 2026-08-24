@@ -9,7 +9,7 @@ BUNDLE_ID="${DECODEX_APP_BUNDLE_ID:-space.decodex.app}"
 BUNDLE_DISPLAY_NAME="${DECODEX_APP_DISPLAY_NAME:-Decodex}"
 MIN_SYSTEM_VERSION="27.0"
 NATIVE_CLIENT_MIN_SYSTEM_VERSION="11.0"
-DEFAULT_SIGN_IDENTITY="x@acg.box"
+DEFAULT_SIGN_IDENTITY="aurevoirxavier.hk@gmail.com"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKTREE_ROOT="$(git -C "$ROOT_DIR" rev-parse --show-toplevel)"
@@ -35,6 +35,7 @@ BUILD_ROOT=""
 BUILD_BINARY=""
 NATIVE_CLIENT_BINARY=""
 RESOLVED_SIGN_IDENTITY=""
+SIGN_TIMESTAMP_FLAGS=()
 RUST_PROFILE="release"
 RUST_HOST=""
 RUST_LLD=""
@@ -124,29 +125,25 @@ PLIST
 }
 
 resolve_signing_identity() {
-	local requested_identity identity_list identity
+	local requested_identity identity_list identity preferred_prefix
 
 	requested_identity="${DECODEX_APP_SIGN_IDENTITY:-$DEFAULT_SIGN_IDENTITY}"
 	identity_list="$(security find-identity -v -p codesigning 2>/dev/null || true)"
-	if [[ -n "$requested_identity" ]]; then
+	for preferred_prefix in "Developer ID Application:" "Apple Development:" ""; do
 		while IFS= read -r line; do
 			identity="${line#*\"}"
 			identity="${identity%%\"*}"
-			if [[ -n "$identity" && "$identity" == *"$requested_identity"* ]]; then
+			if [[ -n "$identity" \
+				&& "$identity" == *"$requested_identity"* \
+				&& ( -z "$preferred_prefix" || "$identity" == "$preferred_prefix"* ) ]]; then
 				RESOLVED_SIGN_IDENTITY="$identity"
+				if [[ "$identity" == Developer\ ID\ Application:* ]]; then
+					SIGN_TIMESTAMP_FLAGS=(--timestamp)
+				fi
 				return 0
 			fi
 		done <<<"$identity_list"
-	fi
-
-	while IFS= read -r line; do
-		identity="${line#*\"}"
-		identity="${identity%%\"*}"
-		if [[ -n "$identity" && "$identity" == Apple\ Development:* ]]; then
-			RESOLVED_SIGN_IDENTITY="$identity"
-			return 0
-		fi
-	done <<<"$identity_list"
+	done
 
 	return 1
 }
@@ -165,6 +162,7 @@ sign_staged_app_bundle() {
 	codesign \
 		--force \
 		--options runtime \
+		"${SIGN_TIMESTAMP_FLAGS[@]}" \
 		--sign "$RESOLVED_SIGN_IDENTITY" \
 		"$APP_NATIVE_CLIENT"
 
@@ -174,6 +172,7 @@ sign_staged_app_bundle() {
 			--force \
 			--deep \
 			--options runtime \
+			"${SIGN_TIMESTAMP_FLAGS[@]}" \
 			--sign "$RESOLVED_SIGN_IDENTITY" \
 			--entitlements "$entitlements_file" \
 			"$APP_BUNDLE"
@@ -182,6 +181,7 @@ sign_staged_app_bundle() {
 			--force \
 			--deep \
 			--options runtime \
+			"${SIGN_TIMESTAMP_FLAGS[@]}" \
 			--sign "$RESOLVED_SIGN_IDENTITY" \
 			"$APP_BUNDLE"
 	fi

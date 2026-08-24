@@ -224,9 +224,12 @@ The bundle contains only:
 - app and status-item icon resources
 
 The script builds the Rust native client and Swift app in release mode, signs
-the native library and app with the selected Apple Development identity,
-enables hardened runtime, and verifies the staged bundle. Set
-`DECODEX_APP_SIGN_IDENTITY` to select a signing identity and
+the native library and app with the selected Apple signing identity, enables
+hardened runtime, and verifies the staged bundle. The default selector is the
+current paid developer account. A matching `Developer ID Application` identity
+is preferred and receives a secure timestamp; `Apple Development` remains valid
+for local development. The script fails closed instead of signing with another
+account. Set `DECODEX_APP_SIGN_IDENTITY` to select a signing identity and
 `DECODEX_APP_STAGE_DIR` to select a staging directory.
 If the active developer directory lacks the required SwiftUI macros, the script
 uses `/Applications/Xcode-beta.app/Contents/Developer`.
