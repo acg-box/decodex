@@ -115,6 +115,9 @@ fn main() {
 			.is_ok_and(|shell| shell.read(cx).was_launched_as_login_item(cx));
 		main_window.borrow_mut().replace(window);
 		if launched_as_login_item {
+			#[cfg(target_os = "macos")]
+			order_out_native_windows();
+			#[cfg(not(target_os = "macos"))]
 			cx.hide();
 		} else {
 			activate_main_window(&window, cx);
@@ -139,6 +142,18 @@ fn activate_native_application() {
 
 	let main_thread = MainThreadMarker::new().expect("GPUI application callback runs on main thread");
 	NSApplication::sharedApplication(main_thread).activate();
+}
+
+#[cfg(target_os = "macos")]
+fn order_out_native_windows() {
+	use objc2::MainThreadMarker;
+	use objc2_app_kit::NSApplication;
+
+	let main_thread = MainThreadMarker::new().expect("GPUI application callback runs on main thread");
+	let application = NSApplication::sharedApplication(main_thread);
+	for window in application.windows().iter() {
+		window.orderOut(None);
+	}
 }
 
 fn compose_lifecycle(

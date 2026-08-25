@@ -133,6 +133,8 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertIn("keyAELaunchedAsLogInItem", launch_at_login)
         self.assertIn("on_window_should_close", main)
         self.assertIn("on_reopen", main)
+        self.assertIn("order_out_native_windows();", main)
+        self.assertIn("window.orderOut(None);", main)
         for daemon_owned_path in (
             "database/migrations/0011_desktop_settings.sql",
             "database/src/desktop_settings.rs",
