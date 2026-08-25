@@ -1,9 +1,4 @@
 [workspace]
-exclude = [
-	"apps/decodex",
-	"apps/decodex-app",
-	"spikes/gpui",
-]
 members = [
 	"apps/decodex-cli",
 	"apps/decodex-gpui",

@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "ProcessGeneration Authority"
+openwiki_generated: true
+---
+
 # ProcessGeneration Authority
 
 Status: normative current domain authority. Candidate-5 Quick Task composition is an

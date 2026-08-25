@@ -1,3 +1,0 @@
-mod progress_checkpoint_classifier_allows_public_projection;
-mod progress_checkpoint_preserves_private_payload_and_publishes_projection;
-mod progress_checkpoint_suspicious_classifier_replaces_public_summary;

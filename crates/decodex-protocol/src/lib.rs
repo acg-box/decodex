@@ -69,7 +69,8 @@ pub use self::{
 		AccountUnsettledOperationDto, AccountsResult, CausationId, Channel, ClientCommandId,
 		ClientHello, ClientMessage, CodexAuthProjectionResult, CommandEnvelope, CommandError,
 		CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope,
-		ConversationHistoryPage, ConversationHistoryResult, CorrelationId, Cursor, EntityId,
+		ConversationHistoryPage, ConversationHistoryResult, CorrelationId, Cursor,
+		DESKTOP_SETTINGS_ENTITY_ID, DesktopSettingsDto, DesktopSettingsResult, EntityId,
 		EntityRevision, EventEnvelope, EventPayload, ExecutionConsumerDto, ExecutionDecisionDto,
 		ExecutionDecisionQueryError, ExecutionDecisionResult, ExecutionQuotaExclusionDto,
 		ExecutionQuotaWindowDto, ExecutionRouteBlockerDto, ExecutionRouteCauseDto,
@@ -102,9 +103,9 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 9 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 10 };
 /// Build/protocol cohort that must agree across the daemon and every local consumer.
-pub const CURRENT_ARTIFACT_COHORT: u32 = 5;
+pub const CURRENT_ARTIFACT_COHORT: u32 = 6;
 /// The lower bound of the exact-current protocol window.
 ///
 /// This equals [`CURRENT_VERSION`]. The name remains to avoid an unrelated

@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "XY-1368 retained-title freeze"
+openwiki_generated: true
+---
+
 # XY-1368 retained-title freeze
 
 XY-1364 remains the historical V14-V21 acceptance. XY-1368 adds V22 to that accepted core.

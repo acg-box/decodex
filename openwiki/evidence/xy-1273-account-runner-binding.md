@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "XY-1273 account and runner boundary evidence"
+openwiki_generated: true
+---
+
 # XY-1273 account and runner boundary evidence
 
 Status: implementation candidate, intentionally unstaged and uncommitted.

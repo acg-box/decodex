@@ -866,7 +866,7 @@ impl ResetCardClient {
 	}
 }
 
-/// Read-only V2.9 client for bounded canonical WorkItem board pages.
+/// Read-only V2.10 client for bounded canonical WorkItem board pages.
 pub struct WorkItemBoardClient {
 	transport: ResetCardClient,
 }
@@ -1059,7 +1059,7 @@ pub enum AccountCommandResponse {
 	},
 }
 
-/// Same-UID V2.9 client for daemon-owned account queries and lifecycle commands.
+/// Same-UID V2.10 client for daemon-owned account queries and lifecycle commands.
 pub struct AccountClient {
 	transport: ResetCardClient,
 }
@@ -2070,12 +2070,12 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_9_window() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 9 });
+	fn protocol_constants_expose_only_the_exact_v2_10_window() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 10 });
 		assert_eq!(PREVIOUS_MINOR_VERSION, CURRENT_VERSION);
 		assert_eq!(
 			SupportedVersions::current(),
-			SupportedVersions { major: 2, minimum_minor: 9, maximum_minor: 9 },
+			SupportedVersions { major: 2, minimum_minor: 10, maximum_minor: 10 },
 		);
 		assert!(WireText::new("bounded").is_ok());
 	}

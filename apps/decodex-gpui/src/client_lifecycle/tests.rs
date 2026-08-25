@@ -102,16 +102,16 @@ fn production_cache_parent_normalizes_only_fixed_platform_prefix() {
 }
 
 #[test]
-fn production_client_cache_authority_is_valid_at_protocol_v2_9() {
+fn production_client_cache_authority_is_valid_at_protocol_v2_10() {
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let fixture_temp_dir =
 		temporary.path().canonicalize().expect("fixture temporary directory canonicalizes");
 	let config = retained_config(&fixture_temp_dir.join("config-cache-parent"), SERVER);
 	let lifecycle = ClientLifecycle::production_with_temp_dir(config, &fixture_temp_dir)
-		.expect("production lifecycle constructs at protocol V2.9");
+		.expect("production lifecycle constructs at protocol V2.10");
 
 	assert_eq!(CURRENT_VERSION.major, 2);
-	assert_eq!(CURRENT_VERSION.minor, 9);
+	assert_eq!(CURRENT_VERSION.minor, 10);
 	assert_eq!(CLIENT_CACHE_SCHEMA_GENERATION, 1);
 	assert!(lifecycle.cache.is_some(), "the production client cache opens");
 	let encoded =
@@ -201,8 +201,10 @@ impl FakeSession {
 
 			if let Some(query) = query {
 				self.query_cursor += 1;
-
-				return query;
+				if matches!(query.payload, QueryPayload::GetConversationHistory { .. }) {
+					return query;
+				}
+				continue;
 			}
 
 			notified.await;
@@ -315,7 +317,7 @@ impl FakeSession {
 }
 
 #[gpui::test]
-fn production_owner_closes_connected_session_and_reaches_terminal_shutdown(
+fn production_owner_keeps_the_session_after_window_close_and_stops_only_on_app_quit(
 	cx: &mut gpui::TestAppContext,
 ) {
 	use crate::shell::{Shell, retain_lifecycle_task};
@@ -325,13 +327,11 @@ fn production_owner_closes_connected_session_and_reaches_terminal_shutdown(
 	let mut lifecycle = lifecycle(&root);
 	let cancellation = lifecycle.cancellation();
 	let views = lifecycle.observe_views();
-	let initial_view = lifecycle.view();
 	let io = FakeIo::new(root, vec![connected(vec![SessionAction::AwaitCancellation], None)]);
 	let closed = io.closed.clone();
 	let (shell, visual) = cx.add_window_view(|window, cx| {
 		Shell::new(window, cx, ConnectionView::Connecting { attempt: 1 })
 	});
-	let window_id = visual.update(|window, _| window.window_handle().window_id());
 	let background = visual.spawn(|_| async move {
 		let mut io = io;
 
@@ -339,11 +339,9 @@ fn production_owner_closes_connected_session_and_reaches_terminal_shutdown(
 	});
 	let owner = visual.update(|_, cx| {
 		retain_lifecycle_task(
-			window_id,
 			shell.downgrade(),
 			cancellation,
 			views,
-			initial_view,
 			background,
 			cx,
 		)
@@ -356,15 +354,16 @@ fn production_owner_closes_connected_session_and_reaches_terminal_shutdown(
 		visual.executor().advance_clock(Duration::from_millis(40));
 		visual.run_until_parked();
 	}
+	assert_eq!(*closed.lock().expect("close count is available"), 0);
+	assert!(owner.read_with(visual, |owner, _| owner.is_running()));
+
+	visual.cx.update(|cx| cx.shutdown());
+	for _ in 0..4 {
+		visual.executor().advance_clock(Duration::from_millis(40));
+		visual.run_until_parked();
+	}
 
 	assert_eq!(*closed.lock().expect("close count is available"), 1);
-	assert_eq!(owner.read_with(visual, |owner, _| owner.last_view()), ConnectionView::Stopped);
-	assert!(owner.read_with(visual, |owner, _| {
-		owner
-			.observed_views()
-			.windows(2)
-			.any(|views| views == [ConnectionView::ShuttingDown, ConnectionView::Stopped])
-	}));
 	assert!(!owner.read_with(visual, |owner, _| owner.is_running()));
 }
 
@@ -509,7 +508,8 @@ impl LifecycleIo for FakeIo {
 
 	async fn send_query(&mut self, query: QueryEnvelope) -> Result<(), RetainedSessionFailure> {
 		assert_eq!(query.version, CURRENT_VERSION);
-		if let Some(control) = self.pending_send.as_ref() {
+		let controlled = matches!(query.payload, QueryPayload::GetConversationHistory { .. });
+		if controlled && let Some(control) = self.pending_send.as_ref() {
 			let attempt = control.attempts.fetch_add(1, Ordering::SeqCst) + 1;
 
 			if attempt == 1 {
@@ -527,7 +527,7 @@ impl LifecycleIo for FakeIo {
 		}
 		self.sent_queries.lock().expect("query log is available").push(query);
 		self.query_notify.notify_waiters();
-		if let Some(control) = self.pending_send.as_ref() {
+		if controlled && let Some(control) = self.pending_send.as_ref() {
 			control.completed.fetch_add(1, Ordering::SeqCst);
 		}
 
@@ -805,23 +805,25 @@ async fn run_with_io_dispatches_history_and_restarts_from_head_after_reconnect()
 
 	let queries = sent_queries.lock().expect("query log is available");
 
-	assert_eq!(queries.len(), 3);
-	assert_ne!(queries[0].query_id, queries[1].query_id);
-	assert_ne!(queries[0].query_id, queries[2].query_id);
-	assert_ne!(queries[1].query_id, queries[2].query_id);
-
 	let routes = queries
 		.iter()
-		.map(|query| match &query.payload {
+		.filter_map(|query| match &query.payload {
 			QueryPayload::GetConversationHistory { conversation_id, after, .. } => {
-				(conversation_id.clone(), after.clone())
+				Some((query.query_id.clone(), conversation_id.clone(), after.clone()))
 			},
-			_ => panic!("history pager sends only ConversationHistory queries"),
+			_ => None,
 		})
 		.collect::<Vec<_>>();
+	assert_eq!(routes.len(), 3);
+	assert_ne!(routes[0].0, routes[1].0);
+	assert_ne!(routes[0].0, routes[2].0);
+	assert_ne!(routes[1].0, routes[2].0);
 
 	assert_eq!(
-		routes,
+		routes
+			.into_iter()
+			.map(|(_, conversation_id, after)| (conversation_id, after))
+			.collect::<Vec<_>>(),
 		vec![
 			(entity("conversation-run"), None),
 			(entity("conversation-run"), Some(history_cursor("cursor-1"))),
@@ -915,7 +917,8 @@ async fn history_cache_io_begins_only_after_send_and_fresh_admission() {
 	let query = sent_queries
 		.lock()
 		.expect("query log is available")
-		.first()
+		.iter()
+		.find(|query| matches!(query.payload, QueryPayload::GetConversationHistory { .. }))
 		.cloned()
 		.expect("successful history send is recorded");
 	let server_id = server(SERVER);
@@ -993,7 +996,13 @@ async fn pending_history_send_blocks_replacement_until_settlement() {
 	}
 
 	assert_eq!(control.attempts(), 1);
-	assert!(sent_queries.lock().expect("query log is available").is_empty());
+	assert!(
+		sent_queries
+			.lock()
+			.expect("query log is available")
+			.iter()
+			.all(|query| !matches!(query.payload, QueryPayload::GetConversationHistory { .. }))
+	);
 
 	control.release_first();
 
@@ -1027,7 +1036,13 @@ async fn pending_history_send_blocks_replacement_until_settlement() {
 	assert!(upgraded, "matching replacement result must become current");
 	assert_eq!(control.attempts(), 2);
 
-	let queries = sent_queries.lock().expect("query log is available").clone();
+	let queries = sent_queries
+		.lock()
+		.expect("query log is available")
+		.iter()
+		.filter(|query| matches!(query.payload, QueryPayload::GetConversationHistory { .. }))
+		.cloned()
+		.collect::<Vec<_>>();
 
 	assert_eq!(queries.len(), 2);
 	assert_ne!(queries[0].query_id, queries[1].query_id);

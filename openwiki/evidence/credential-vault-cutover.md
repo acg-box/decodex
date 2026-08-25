@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Credential Vault Cutover Evidence"
+openwiki_generated: true
+---
+
 # Credential Vault Cutover Evidence
 
 Status: accepted historical donor evidence. redb is no longer the target credential
@@ -23,8 +29,8 @@ former server store remains the credential-negative Account Registry. It stores 
 revision, lifecycle state, routing, quota observations, provider binding, credential
 version, and fingerprint evidence. It does not store a token or credential blob.
 
-`decodexd` is the only normal vault reader and writer. GPUI, the native app, the menu bar,
-Swift, and the CLI remain protocol clients. One Codex App Server process still has one
+`decodexd` is the only normal vault reader and writer. GPUI and the CLI remain protocol
+clients; the optional menu-bar item is part of GPUI. One Codex App Server process still has one
 immutable Account UUID and provider binding for its lifetime.
 
 ## Protected offline transfer

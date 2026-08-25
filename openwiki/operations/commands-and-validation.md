@@ -1,490 +1,129 @@
+---
+type: "Runbook"
+title: "Commands And Validation"
+description: "Current source, test, package, and runtime validation entrypoints for Decodex."
+tags: [operations, validation, rust, macos, sqlite]
+openwiki:
+  roles: [operations, testing]
+  change_kinds: [validation, runtime, desktop, packaging]
+  source_paths: [Makefile.toml, scripts/vnext/local_database_gate.py, scripts/macos/stage_decodex_gpui.sh, tests/scripts/test_vnext_architecture.py]
+---
+
 # Commands And Validation
 
-Status: historical former server store command catalog. Use
-[Local database operations](local-database.md) for current initialization, installation,
-transfer, and acceptance commands.
+Use the smallest command that proves the changed contract, then broaden for shared
+runtime, protocol, database, or packaging changes. Use the stable Rust channel for every
+build and test command.
 
-Use this page to choose the command boundary for current work. `Makefile.toml` owns
-implemented task names. This document owns the target behavior for the latest-schema,
-runtime-authority, Candidate-5, and local database reset commands.
+## Active owner map
 
-There are no external or deployed users. Local former server store data is disposable. Database
-acceptance starts from one empty former server store 18 target and the one unversioned latest
-schema. Existing migration commands and harness modes are superseded and must not be used
-as acceptance for this reset.
+- `database/`: SQLite schema, migrations, adapters, and restart evidence.
+- `crates/decodex-core/`: mechanism-neutral domain types, configuration, and paths.
+- `crates/decodex-codex/`: Codex app-server contracts.
+- `crates/decodex-runtime/`: daemon application services and product behavior.
+- `crates/decodex-protocol/`: typed same-UID protocol and clients.
+- `apps/decodexd/`: the only background service composition root.
+- `apps/decodex-cli/`: supported protocol CLI.
+- `apps/decodex-gpui/`: the only macOS GUI and `Decodex.app` packaging source.
+- `apps/radar/` and `apps/decodex-publisher/`: independent auxiliary CLIs.
+- `database/transfer/`: one-shot read-only account transfer.
 
-## Task runner authority
+## Focused database and architecture checks
 
-The broad repository gate remains:
+```sh
+python3 scripts/vnext/local_database_gate.py
+python3 -m unittest tests/scripts/test_vnext_architecture.py
+python3 -m unittest tests/scripts/test_account_login_architecture.py
+cargo +stable test -p decodex-database
+cargo +stable test -p decodex-protocol
+cargo +stable test -p decodex-runtime
+```
+
+The local database gate builds a fresh owner-private root, runs daemon initialization and
+validation, checks all migration digests and the exact table inventory, and proves the
+normal runtime dependency boundary. It does not use a second database server or client
+store.
+
+## CLI and daemon checks
+
+```sh
+cargo +stable run -p decodexd -- --version
+cargo +stable run -p decodex-cli -- status
+cargo +stable run -p decodex-cli -- doctor --output json
+cargo +stable test -p decodex-cli --all-targets
+cargo +stable test -p decodexd --all-targets
+```
+
+The active CLI command inventory is `artifact-cohort` (hidden), `status`, `doctor`,
+`reset-card`, `account`, and `fast-mode`. It does not own repository orchestration,
+commit, landing, or service supervision.
+
+## GPUI checks
+
+The complete GPUI build needs an Xcode developer directory with the Metal compiler on
+the current macOS development host.
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+  cargo +stable test -p decodex-gpui --all-targets --features visual-capture
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+  cargo +stable clippy -p decodex-gpui --all-targets --features visual-capture -- -D warnings
+```
+
+GPUI is a protocol-only client. Its persistent desktop-setting controller must not depend
+on `decodex-database`, `rusqlite`, credentials, or provider engines.
+
+## Native macOS application checks
+
+```sh
+scripts/macos/test_decodex_app_stage.sh
+scripts/macos/run_decodex_gpui_accessibility_gate.swift --help
+python3 -m unittest tests.scripts.test_install_decodex_local_service
+```
+
+The stage test builds exactly one GUI bundle named `Decodex.app`. It verifies the bundle
+name, display name, executable, identifier, icon, signature, and absence of nested login
+items, helper UIs, and client frameworks.
+
+A native runtime acceptance run must also prove:
+
+1. the main Decodex window belongs to the staged GPUI executable;
+2. **Show Decodex in the menu bar** changes through `decodexd`;
+3. one status item appears or disappears without a second process; and
+4. the setting survives daemon and application restart.
+
+## Repository gate
+
+The repository task runner defines the broad gate:
 
 ```sh
 cargo make check
 ```
 
-Repository validation runs locally. The repository intentionally has no tracked
-GitHub Actions workflow. Future Actions may automate tag/release publication, but
-must not run on pull requests, `merge_group`, or branch pushes. The active
-`apps/decodex-cli` does not provide repository commit, landing, or Git-hook commands and
-does not read, require, or wait for CI. Local validation evidence and landing authority
-are separate: the reviewed Git/GitHub workflow uses the exact PR identity, base/head
-object IDs, clean task worktree, signed merge, compare-and-swap push, and final readback
-where required.
+When stable-only policy prevents a task-runner subcommand from using its configured
+formatter toolchain, run the stable build, lint, test, Node, architecture, database, and
+package checks separately and record the exact formatter gap. Do not override a build or
+test with a numbered or non-stable Rust compiler.
 
-For a documentation-only or narrow source change, run the smallest relevant check and
-state the narrowed scope. The agent automation gate for hosts without full Xcode remains:
+## Radar, Publisher, automations, and site
 
 ```sh
-cargo make check-automations
-```
-
-`cargo make check-automations` is valid only when the diff does not touch GPUI, its
-dependencies, or Apple GPU/build integration. Those surfaces require the broad gate on a
-host with full Xcode and Metal tools.
-
-The broad checks do not start a live former server store fixture. Use the product-native gate for
-latest-schema and current-authority acceptance; the migration-era former server store tasks are
-retired.
-
-## Current repository checks
-
-| Purpose | Implemented command |
-| --- | --- |
-| Broad repository check | `cargo make check` |
-| Agent automation check outside GPUI/Apple build surfaces | `cargo make check-automations` |
-| Node advisory/provenance/signature audit | `cargo make audit-node` |
-| Rust type check | `cargo make check-rust` or `cargo check --all-features --all-targets --workspace` |
-| Rust tests | `cargo make test` or `cargo nextest run --workspace --all-targets --all-features` |
-| vNext dependency architecture | `cargo make test-vnext-architecture` |
-| CLI diagnostic/process matrix | `cargo make test-vnext-cli-diagnostics` |
-| Product-native latest-schema and current-authority gate | `cargo make test-vnext-latest-schema` |
-| Rust formatting check | `cargo make fmt-rust-check` |
-| TOML formatting check | `cargo make fmt-toml-check` |
-| Rust lint | `cargo make lint-rust`; use `cargo make lint-rust-headless` to exclude only `decodex-gpui` |
-| Read-only Vstyle audit | `cargo make audit-vstyle-rust` |
-| Site type check | `cargo make check-node` or `npm --prefix site run check` |
-| Site build | `cargo make build` or `npm --prefix site run build` |
-
-`cargo make lint-rust` runs one isolated Clippy process for each selected workspace package.
-It runs all selected packages and fails if any package fails.
-
-The product-native task is the sole canonical latest-schema and current-authority gate.
-The other commands are current source checks and do not replace it. Do not cite a
-migration-era former server store subcommand, numbered-ledger result, or historical restore
-receipt as latest-schema evidence.
-
-## Latest-schema command boundary
-
-`decodexd bootstrap-latest-schema` owns empty-target bootstrap, and
-`decodexd validate-current-authority` owns read-only current-authority validation. The
-sole canonical repository gate is `cargo make test-vnext-latest-schema`; it orchestrates
-both product commands against one private former server store 18 target. Do not invent aliases or
-split bootstrap and current-authority validation into separate repository gates.
-
-There are three separate operations:
-
-1. **Empty-target bootstrap** resolves the schema-owner credential, proves a clean
-   target, executes `crates/decodex-server-store/schema.sql` once in one transaction, verifies
-   the result, and commits. A database failure emits one bounded credential-negative
-   `decodex/bootstrap-report/1` JSON line. The report identifies one closed phase and
-   operation across pre-schema verification, schema application, post-schema verification,
-   or final commit. It includes SQLSTATE and the one-based original-statement byte position
-   only when former server store supplies them; it includes no SQL text or database message. A
-   post-schema report retains each completed authority component in collection order. A
-   rollback failure is secondary closed evidence and never replaces the primary failure.
-   The command does not add a second validator or digest-harvest command.
-2. **Current-authority validation** is read-only and verifies the live catalog and
-   configured runtime authority. It resolves no schema-owner credential and executes no
-   DDL.
-3. **Local account authority restore** is the hidden
-   `decodexd restore-local-account-authority --root ROOT --schema-owner-user USER
-   [--schema-owner-credential-env-var ENV]` command. It reads one strict
-   `decodex/local-account-authority-restore/1` JSON document from stdin after the daemon
-   is stopped and the replacement database has the fresh latest schema. It retains the
-   existing same-UID local transport namespace, proves every exact host-vault binding
-   before former server store mutation and again before commit, restores only current account and
-   routing rows, and proves exact readback.
-
-The restore stdin is at most 512 KiB and contains at most 512 accounts. Every object
-rejects unknown, omitted, and duplicate fields. The command accepts no display label,
-token data, SQL, legacy path, or manifest directory. It persists no input document or
-receipt. Its only output is one JSON object with `classification` and `account_count`.
-
-Normal `decodexd` serve is not any of these commands. It uses only the runtime credential,
-executes zero DDL, and invokes current-authority validation before it retains the store.
-
-No daemon path applies numbered SQL or performs schema administration. The three hidden
-commands above are the complete operator surface for latest-schema bootstrap,
-current-authority validation, and local account authority restore.
-
-## Source-freeze validation order
-
-After the implementation source is frozen, use this order:
-
-1. reverse scan retired schema names, paths, dependencies, credentials, and commands;
-2. bootstrap one fresh former server store 18 empty target;
-3. run the same bootstrap again and prove nonempty refusal with no change;
-4. start `decodexd` with only runtime credentials and prove zero DDL/no schema owner;
-5. run exact current catalog/configured-authority and adversarial negative checks;
-6. parse and execute every changed adapter SQL path against the fresh database;
-7. run Candidate-5 domain, transport, and account-observation checks;
-8. run the hidden local account authority restore and exact readback scenario; and
-9. run the applicable repository aggregate, UI, package, and live exact-build checks.
-
-Do not add Phase A/B, a preparation pass, a digest-only child, a schema receipt, or a
-second aggregate. No historical upgrade or migration proof belongs in this order.
-
-## Reverse scan
-
-The reverse scan is read-only and must find no active executable or acceptance reference
-to:
-
-- `crates/decodex-server-store/migrations` or numbered `V<integer>__*.sql` files;
-- Refinery dependency, macro, runner, target version, or error type;
-- `public.refinery_schema_history` or another schema-history relation;
-- latest-version constants, `run_through_*`, prefix checks, upgrade branches, or
-  migration-source includes/parsers;
-- schema-owner credentials in normal daemon configuration/startup;
-- migration receipts, finalizers, rollback/fallback code, Phase A/B schema flows, or
-  S0/R1/R2 acceptance;
-- `SchemaManager`, schema registry, generator pipeline, bootstrap facade, or cutover
-  coordinator;
-- executable schema ownership in `spikes/vnext-storage`; or
-- tests, scripts, task-runner entries, docs, and manifests that require any retired
-  mechanism.
-
-The scan may find explicit negative/supersession text in active authority documents and
-clearly labeled historical evidence. Classify those hits; do not treat them as executable
-drift.
-
-## Empty-target bootstrap validation
-
-Use one isolated former server store 18 target with data checksums and TCP disabled unless a
-separate accepted test requires it. The command must verify the configured Unix-socket
-directory, endpoint descriptor identity, expected server UID, and kernel peer UID before
-it sends authentication data.
-
-Prove all of these outcomes:
-
-- only the explicit operator invocation resolves the schema-owner credential;
-- a clean target matches the accepted fresh-database catalog baseline, apart from
-  externally provisioned login roles, with no user-created schema, relation, function,
-  type, extension, or other product object;
-- `pgcrypto` and the complete latest schema execute in one transaction;
-- SQL, verification, disconnect, and injected failure before commit leave no partial
-  Decodex schema;
-- final enums, relations, constraints, indexes, functions, triggers, dependencies,
-  owners, grants, `schema_fingerprint`, and runtime authority are exact;
-- every accepted runtime function has the required safe settings and body;
-- every accepted trigger is enabled and bound to its final function; and
-- the second invocation fails before DDL and leaves the exact catalog unchanged.
-
-Do not run the executable storage spike as bootstrap or proof.
-
-## Runtime-only startup validation
-
-Instrument the database boundary or use an equivalent independent oracle. Start
-`decodexd` with the schema-owner credential absent and prove:
-
-- runtime credential resolution only;
-- zero DDL and zero extension/schema creation;
-- no access to latest schema bytes for execution, numbered SQL, or a schema-history table;
-- exact current catalog, dependency, ownership, ACL, function, trigger, semantic, and
-  configured-authority checks;
-- typed unavailable results for missing, extra, changed, unsafe, unreachable, or
-  authentication-failed authority; and
-- bounded doctor/status revalidation with no mutation or endpoint repinning.
-
-Adversarial cases cover PUBLIC/runtime grants, inherited and `SET ROLE` paths, object
-ownership, DDL, `TRUNCATE`, grant options, trigger bypass, unsafe search path/function
-settings, overloads, default ACLs, extension membership, external cascades, rules,
-policies, RLS, sequence mutation, trigger/body drift, and fingerprint forgery.
-
-## Adapter SQL validation
-
-Every SQL statement in adapters and tests must target the final schema. Parse and execute
-the affected commands against the fresh bootstrapped database. Cover exact request and
-response construction, stable rejection, replay, rollback, serialization/deadlock retry,
-concurrency, strict readback, and hostile identity cross-links.
-
-Do not keep old/new query branches or fixtures for an old catalog. Remove tests whose only
-claim is migration order, upgrade compatibility, or schema-history integrity. Preserve
-and retarget tests that protect current domain semantics, ACLs, crash behavior,
-reconciliation, or exact readback.
-
-## Candidate-5 validation
-
-The complete boundary is in
-[vNext Gates](../specs/vnext-gates.md#candidate-5-quick-task-gate) and
-[vNext Authority](../specs/vnext-authority.md#quick-task-thread-establishment).
-
-Validation must prove:
-
-- exact `L0`/`L6` lineage and complete routing evidence;
-- one sole Routing Decision account selector;
-- atomic first account/profile/session/plan cluster;
-- atomic one-winner first Turn and first Message admission;
-- selected-account HostCredentialStore pre-spawn fence without re-selection;
-- exact Turn locks across ProcessGeneration, thread, and ProviderAttempt effects;
-- `Fresh`/`Replayed`/`Rejected`/`Unknown` behavior and definite pre-effect refusal;
-- final exact trigger bodies/bindings without a broad starting-session bypass;
-- existing same-thread and Context Pack behavior;
-- positive-only ProcessGeneration and ProviderAttempt reconciliation;
-- same-UID transport ordering, completion, and shutdown; and
-- preservation of current-main account observations and cache reads.
-
-For account observation preservation, prove different accounts progress concurrently;
-Reset Card work precedes profile observation within one account; repeated wakes coalesce;
-publication is revision/cache-generation fenced; an incomplete or count-mismatched Reset Card
-detail read gets one bounded retry and cannot replace a same-revision complete public inventory;
-new quota facts still publish; and Reset Card/profile queries read daemon cache or persisted
-projection without joining, waiting for, or starting provider refresh work.
-
-## Local database reset validation
-
-Use disposable local state and a test HostCredentialStore. The reviewed operator action
-must:
-
-1. stop the daemon and prove the stopped state with the existing local transport
-   namespace;
-2. supply only credential-negative Account UUID, enabled state, account revision,
-   provider binding, credential version/fingerprint, and store binding for every retained
-   account, plus routing revision, mode, fixed target, and complete order;
-3. bootstrap the latest schema on the replacement database;
-4. run `decodexd restore-local-account-authority` with the bounded transient document on
-   stdin;
-5. prove every `HostCredentialStore::read_exact` binding before former server store mutation and
-   again before commit;
-6. prove exact Account Registry and `HostCredentialStore` agreement, every retained
-   account's enabled state, revision, and binding, and the routing
-   revision/mode/fixed-target/order tuple; and
-7. start the daemon only after current-authority verification passes.
-
-For `fixed` mode, require one non-null target that belongs to the retained account set
-and complete order. For `balanced` mode, require a null target. Require the order to be a
-duplicate-free permutation of all retained accounts, including disabled accounts.
-Readback must compare each enabled value and the exact mode, target, order, revision, and
-membership as one tuple.
-
-Refuse any target other than the fresh canonical latest schema with zero accounts, the
-initial empty routing authority, one active bootstrap execution epoch, empty unrelated
-tables, and untouched identity sequences. A refused host-vault fence or readback rolls
-back. Do not restore profiles, quotas, operations, conversations, sessions, process
-generations, attempts, usage, or historical rows.
-
-Instrument the existing `HostCredentialStore` owner boundary. For credential agreement
-only, that owner may perform a confined in-process exact read, recompute and compare the
-credential fingerprint and binding, and return only a typed credential-negative
-agreement result. The operator action and result must not expose, serialize, copy, log,
-persist, rotate, delete, or return token bytes. The check must create no public product
-or migration API, generic attestation framework, metadata sidecar, generic import API,
-migration state, backup/rollback, receipt/finalizer, or fallback. A failed readback
-leaves the daemon stopped.
-
-## Credential vault validation
-
-The accepted macOS runtime uses only `RedbCredentialStore` during normal startup. Prove
-the following boundaries without reading or printing credential values:
-
-- create, exact read, immediate-successor compare-and-swap rotate, exact delete, and
-  duplicate-provider rejection are atomic;
-- a failed multi-record write publishes no partial destination state;
-- a committed record survives close and reopen, and a second writer is refused;
-- the fixed vault path refuses symbolic links, wrong ownership, wrong type, unsafe mode,
-  and a link count other than one;
-- normal daemon composition, account restoration, and account operations do not contain
-  a Keychain adapter or fallback;
-- the macOS installer starts the directly signed daemon executable and verifies its
-  owner, mode, link count, digest, hardened runtime, and signing team without a daemon
-  app bundle, provisioning profile, Keychain entitlement, or Python wrapper; and
-- after service restart, every registry binding is ready and one fixed account can use
-  the exact redb record to start the canonical Codex App Server and complete the
-  production read-only initialize, account-read, and thread-list probe.
-
-The completed local cutover used a temporary stopped-daemon transfer bridge. It copied
-the complete registry snapshot in one immediate vault transaction and then proved exact
-idempotent replay. That bridge is removed from the final command and feature surface.
-It is evidence, not a supported migration API. See
-[Credential-vault cutover evidence](../evidence/credential-vault-cutover.md).
-
-A full Quick Task is not valid evidence for credential storage when an independent
-routing gate refuses before process spawn. Record that refusal separately and do not
-change quota or routing policy as part of a credential-vault acceptance run.
-
-## Owner path source map
-
-- `crates/decodex-core/`: domain/application contracts, typed paths/configuration, blobs,
-  cache, and pure decision values.
-- `crates/decodex-protocol/`: exact-current same-UID local protocol and clients.
-- `crates/decodex-server-store/schema.sql`: sole executable latest schema.
-- `crates/decodex-server-store/src/schema.rs` or the final equivalent module: clean-target
-  bootstrap transaction and post-execution verification. The exact file name is an
-  implementation choice; its ownership contract is fixed.
-- `crates/decodex-server-store/`: current former server store adapters and read-only authority
-  verification.
-- `crates/decodex-codex/`: typed app-server adapter and runtime-negotiated capability profiles.
-- `crates/decodex-runtime/`: daemon service assembly, Account Service,
-  ProcessSupervisor, ProviderAttemptService, account observations, and stateless execution
-  coordination.
-- `apps/decodexd/`: server composition and exact hidden operator command surface.
-- `apps/decodex-cli/` and `apps/decodex-gpui/`: protocol clients.
-- `apps/decodex-app/`: credential-negative native account client.
-- `apps/decodex/`: frozen v0.2 provenance only.
-- `spikes/vnext-storage/`: historical feasibility source only; no executable schema or
-  validation owner.
-- `site/`, Radar, Publisher, and automations: auxiliary surfaces with their own
-  checks.
-
-## Targeted Rust checks
-
-Common current source checks include:
-
-```sh
-cargo check --all-features --all-targets --workspace
-cargo nextest run --workspace --all-targets --all-features
-cargo make test-vnext-architecture
-cargo test -p decodex-core --all-targets --all-features
-cargo test -p decodex-core -p decodex-protocol -p decodex-server-store -p decodex-codex -p decodex-runtime
-```
-
-The task runner exposes one canonical product-native gate for latest-schema bootstrap and
-current-authority validation:
-
-```sh
-cargo make test-vnext-latest-schema
-```
-
-It resolves former server store 18 through `DECODEX_POSTGRES_18_BINDIR` or `pg_config` on `PATH`,
-builds the real `decodexd` binary, and uses only a disposable private target. A test that
-still initializes through numbered SQL is not evidence for this reset. On bootstrap
-failure, the gate requires the command's one canonical bootstrap report and validates its
-closed phase, operation, category, and available authority prefix. Its private former server store
-server records verbose error identity but suppresses failed-statement logging. Failure
-evidence is owner-private, content-addressed, and bounded per file and in total; an
-oversized file retains deterministic head and tail segments so the error header and final
-shutdown state both survive. The gate does not run a second bootstrap to collect
-diagnostics.
-
-The existing `account-contract` stage first runs the bounded ignored runtime test
-`local_account_authority::tests::local_account_restore_command_proves_two_exact_credential_fences_and_readback`,
-then runs `server-store_account_routing_contract` against the same private target and
-environment. The runtime test uses a module-private read-exact-only credential-store
-double; it does not use the live redb vault.
-
-## CLI discovery
-
-The active vNext CLI source starts in `apps/decodex-cli/src/lib.rs`. Current supported
-account and Reset Card discovery includes:
-
-The exact active root command inventory is `artifact-cohort` (hidden), `status`,
-`doctor`, `reset-card`, `account`, and `fast-mode`. `commit`, `land`, and `git-hook`
-are not active vNext CLI commands.
-
-```sh
-decodex account list
-decodex account profile --account-id UUID
-decodex account profile --account-id UUID --include-email
-decodex fast-mode status
-decodex fast-mode set --enabled BOOL
-decodex reset-card list --account UUID
-decodex reset-card use \
-  --account UUID \
-  --granted-at UNIX_SECONDS \
-  --expires-at UNIX_SECONDS \
-  --expected-revision REVISION \
-  --idempotency-key KEY \
-  --yes
-decodex reset-card status --idempotency-key KEY
-```
-
-Account profile and Reset Card list are daemon-owned reads. They do not contact the
-provider or join account observation work. Create and persist a Reset Card key before
-`use`; after a potentially dispatched result, query status with the same key rather than
-creating another effect.
-
-No public schema-administration, database migration, or local reset API is implied by
-these commands.
-
-## App-server checks
-
-For app-server integration work:
-
-```sh
-codex app-server generate-json-schema --experimental --out target/decodex-app-server-schema-check
-cargo test -p decodex-codex --all-targets --all-features
-cargo test -p decodex-runtime macos_attested_spawn --lib
-cargo test -p decodex-runtime live_read_only_probe_negotiates_without_dispatch -- --ignored
-```
-
-The runtime supervisor verifies the user's executable identity and generated schema before
-spawn, without a fixed Codex release/version allowlist. Raw protocol handles do not leave
-ProcessSupervisor. The live probe remains
-read-only and does not establish global title discovery or product dispatch.
-
-## Automation checks
-
-```sh
+cargo +stable test -p radar
+cargo +stable test -p decodex-publisher
 python3 automations/decodex/scripts/config/render_automation_plan.py --json
 python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json
-cargo make test-automations
-```
-
-Rendering and evaluation do not write scheduler state. Apply automation definitions only
-through their owning lifecycle tool and read back every field.
-
-## Static site checks
-
-```sh
-npm --prefix site install
 npm --prefix site run check
 npm --prefix site run build
-npm --prefix site run dev
 ```
 
-## Native macOS app checks
+These surfaces have separate artifact authority. Their passing checks do not prove the
+daemon, SQLite, protocol, or macOS application contracts.
 
-```sh
-swift build --package-path apps/decodex-app -c release
-swift test --package-path apps/decodex-app -c release
-apps/decodex-app/script/build_and_run.sh
-scripts/macos/test_decodex_app_stage.sh
-python3 -m unittest tests.scripts.test_install_decodex_local_service
-```
+## Completion checklist
 
-The staged app contains no daemon, legacy account pool, helper, loopback server,
-`:8192` client, schema owner, or database migration tool. The local-service installer
-must use the accepted empty-target operator bootstrap for a new database and must start
-normal `decodexd` only after bootstrap completes. It does not read an old account pool.
-
-## Radar and Publisher checks
-
-```sh
-radar --help
-radar validate .agent/automations/radar/cache/site-content/signals
-cargo test -p radar
-decodex-publisher validate-social
-cargo test -p decodex-publisher
-```
-
-## Historical command surfaces
-
-Frozen v0.2 commands, old migration harness modes, retained-title freeze commands,
-numbered-schema tests, storage-spike execution, and private-artifact validation phases are
-historical provenance. Do not run them as latest-schema, Candidate-5, or release
-acceptance. A still-useful current domain test must be moved or retargeted to the latest
-schema owner.
-
-## Practical checklist
-
-- Schema change: edit only the one latest schema and substantive schema/verification
-  owner; run the one product-native gate for fresh bootstrap, second refusal, and both
-  runtime-only current-authority validations.
-- Adapter SQL change: parse and execute against a fresh latest-schema database; add no
-  compatibility branch.
-- Candidate-5 change: prove sole selection, atomic admission, exact fences, ambiguity,
-  account observation/cache preservation, and transport shutdown.
-- Account change: test secret-negative storage/protocol and Registry/store/service
-  authority.
-- Public projection change: test bounds, redaction, and public/private split.
-- Automation, site, or app change: run that surface's own checks.
-- Completion claim: name exact source revision, exact implemented command names, gate
-  scope, and any remaining source drift.
+- Run the focused regression that can fail for the changed behavior.
+- Run architecture checks after ownership or packaging changes.
+- Run a real build for every changed executable or bundle.
+- Run `git diff --check` and review the complete diff.
+- Reverse-scan removed names, paths, commands, app identities, tests, and documentation.
+- State any unrun live UI, signing, installer, or repository-gate evidence exactly.

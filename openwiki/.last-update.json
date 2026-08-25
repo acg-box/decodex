@@ -1,6 +1,8 @@
 {
-  "updatedAt": "2026-07-26T01:44:08.726Z",
+  "updatedAt": "2026-08-25T10:37:17.879Z",
   "command": "update",
-  "gitHead": "58c5f4dd1e0eec45ba09ff3db506b84e3364d8da",
-  "model": "gpt-5.6-sol-nosystem"
+  "gitHead": "a1fc351ca2a43d299e35e511efc1035f88f00776",
+  "model": "gpt-5.6-luna-nosystem",
+  "status": "complete",
+  "language": "en"
 }

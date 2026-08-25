@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Decodex Content Automation"
+openwiki_generated: true
+---
+
 # Decodex Content Automation
 
 This runbook defines the autonomous research, editorial, publication, and

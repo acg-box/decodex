@@ -1,2 +1,0 @@
-mod daemon_tick_clears_terminal_mapping_without_worktree_before_retained_land;
-mod daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning;

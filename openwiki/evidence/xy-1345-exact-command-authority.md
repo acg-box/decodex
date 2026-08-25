@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "XY-1345 Exact former server store Command-Authority Proof"
+openwiki_generated: true
+---
+
 # XY-1345 Exact former server store Command-Authority Proof
 
 Status: superseded historical provenance for XY-1345. The deleted non-production

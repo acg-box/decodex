@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Adaptive Program And Extension Architecture"
+openwiki_generated: true
+---
+
 # Adaptive Program And Extension Architecture
 
 Status: accepted product direction; Repeatable Program Loop V1 and the built-in Domain

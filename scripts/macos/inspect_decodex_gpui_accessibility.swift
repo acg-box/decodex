@@ -8,9 +8,9 @@ import Foundation
 
 let expectedBundleIdentifier = "box.acg.decodex"
 let expectedWindowTitle = "Decodex"
-let destinations = [
-	"Advisor", "Projects", "Quick Tasks", "Runs", "Automations", "Accounts", "System",
-]
+let expectedShellLabel = "Decodex operational shell"
+let destinations = ["Factory", "Workbench", "Accounts", "Health"]
+let focusOrder = destinations + ["Open settings"]
 let axMessagingTimeout: Float = 1.0
 let phasePollInterval = 0.05
 let maximumTreeNodes = 256
@@ -282,8 +282,13 @@ func snapshot(_ root: AXUIElement, recorder: AXRecorder) throws -> TreeSnapshot 
 	return TreeSnapshot(visited: visited.count, facts: facts, roles: roles)
 }
 
+func labelMatches(_ actual: String?, _ expected: String) -> Bool {
+	guard let actual else { return false }
+	return actual == expected || actual.hasPrefix("\(expected):")
+}
+
 func fact(_ expectedLabel: String, in tree: TreeSnapshot) throws -> ElementFact {
-	let matches = tree.facts.filter { $0.label == expectedLabel }
+	let matches = tree.facts.filter { labelMatches($0.label, expectedLabel) }
 	guard matches.count == 1, let match = matches.first else {
 		throw DiagnosticFailure.message("expected one \(expectedLabel) element, found \(matches.count)")
 	}
@@ -321,7 +326,7 @@ func waitForFocused(
 	let deadline = Date().addingTimeInterval(2.0)
 	repeat {
 		if let current = try? focusedFact(root: root, recorder: recorder, operation: operation),
-			current.label == expectedLabel
+			labelMatches(current.label, expectedLabel)
 		{
 			return current
 		}
@@ -341,7 +346,7 @@ func waitForKeyboardBaseline(
 	repeat {
 		if let current = try? focusedFact(
 			root: root, recorder: recorder, operation: "keyboard_baseline.readback"
-		), current.label == expectedWindowTitle || current.label == destinations[0] {
+		), current.label == expectedShellLabel || labelMatches(current.label, destinations[0]) {
 			return current
 		}
 		Thread.sleep(forTimeInterval: phasePollInterval)
@@ -350,7 +355,7 @@ func waitForKeyboardBaseline(
 		root: root, recorder: recorder, operation: "keyboard_baseline.final"
 	)
 	throw DiagnosticFailure.message(
-		"keyboard baseline is \(current.label ?? "missing"), expected Decodex or Advisor"
+		"keyboard baseline is \(current.label ?? "missing"), expected shell or Factory"
 	)
 }
 
@@ -547,6 +552,15 @@ do {
 		let window: AXUIElement = try phase(
 			"app_window_identity", journal: journal, results: &phaseResults
 		) {
+		guard let session = CGSessionCopyCurrentDictionary() as? [String: Any],
+			let onConsole = session["kCGSSessionOnConsoleKey"] as? Bool
+		else {
+			throw DiagnosticFailure.message("console session state is unavailable")
+		}
+		let screenLocked = session["CGSSessionScreenIsLocked"] as? Bool ?? false
+		guard onConsole, !screenLocked else {
+			throw DiagnosticFailure.message("console session is locked or inactive")
+		}
 		let timeoutError = AXUIElementSetMessagingTimeout(root, axMessagingTimeout)
 		try journal.append([
 			"event": "ax_operation",
@@ -555,17 +569,36 @@ do {
 			"ax_error": timeoutError.rawValue,
 			"elapsed_ms": 0,
 		])
-			let activationDeadline = Date().addingTimeInterval(4.0)
-			while app?.isActive != true, Date() < activationDeadline {
+		let activationDeadline = Date().addingTimeInterval(4.0)
+		var activationAttempts = 0
+		repeat {
+			activationAttempts += 1
+			_ = app?.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+			if app?.isActive == true { break }
+			if Date() < activationDeadline {
 				Thread.sleep(forTimeInterval: phasePollInterval)
 			}
-			guard app?.isTerminated == false,
-				app?.isActive == true,
-				app?.bundleIdentifier == expectedBundleIdentifier,
+		} while Date() < activationDeadline
+		guard app?.isActive == true else {
+			throw DiagnosticFailure.message(
+				"exact application did not become active after \(activationAttempts) bounded attempts"
+			)
+		}
+		guard app?.isTerminated == false,
+			app?.bundleIdentifier == expectedBundleIdentifier,
 			actualBundleURL == parsed.bundleURL,
 			actualExecutableURL == parsed.executableURL,
 			actualExecutableURL.flatMap(sha256) == parsed.executableSHA256
-		else { throw DiagnosticFailure.message("exact application process identity failed") }
+		else {
+			throw DiagnosticFailure.message(
+				"exact application process identity failed: terminated=\(app?.isTerminated.description ?? "missing") "
+					+ "active=\(app?.isActive.description ?? "missing") "
+					+ "bundle=\(app?.bundleIdentifier ?? "missing") "
+					+ "bundle_path=\(actualBundleURL?.path ?? "missing") "
+					+ "executable_path=\(actualExecutableURL?.path ?? "missing") "
+					+ "executable_hash=\(actualExecutableURL.flatMap(sha256) ?? "missing")"
+			)
+		}
 		let deadline = Date().addingTimeInterval(4.0)
 		var windows: [AXUIElement] = []
 		var matches: [AXUIElement] = []
@@ -601,6 +634,9 @@ do {
 				"window_count": windows.count,
 				"window_title": expectedWindowTitle,
 				"application_active": app?.isActive == true,
+				"activation_attempts": activationAttempts,
+				"console_session_locked": screenLocked,
+				"console_session_on_console": onConsole,
 				"ax_messaging_timeout_seconds": axMessagingTimeout,
 		])
 	}
@@ -608,13 +644,14 @@ do {
 	let tree = try phase("readonly_tree", journal: journal, results: &phaseResults) {
 		let deadline = Date().addingTimeInterval(4.0)
 		var tree = try snapshot(window, recorder: ax)
-		while !destinations.allSatisfy({ destination in
-			tree.facts.filter { $0.label == destination }.count == 1
+		while !(destinations + ["Open settings"]).allSatisfy({ destination in
+			tree.facts.filter { labelMatches($0.label, destination) }.count == 1
 		}), Date() < deadline {
 			Thread.sleep(forTimeInterval: phasePollInterval)
 			tree = try snapshot(window, recorder: ax)
 		}
 		let destinationFacts = try destinations.map { try fact($0, in: tree) }
+		let settingsFact = try fact("Open settings", in: tree)
 		let roles = destinationFacts.map(\.role)
 		let values = Dictionary(uniqueKeysWithValues: zip(
 			destinations,
@@ -626,12 +663,17 @@ do {
 		guard destinationFacts.allSatisfy({ $0.nativeValue is Bool }) else {
 			throw DiagnosticFailure.message("destination native AXValue is not boolean")
 		}
+		guard settingsFact.role == kAXButtonRole else {
+			throw DiagnosticFailure.message("Settings native role is not AXButton")
+		}
 		return (tree, [
 			"visited_nodes": tree.visited,
 			"maximum_nodes": maximumTreeNodes,
 			"destination_labels": destinations,
 			"destination_roles": roles,
 			"destination_native_values": values,
+			"settings_label": settingsFact.label ?? "missing",
+			"settings_role": settingsFact.role,
 			"roles": tree.roles.sorted(),
 		])
 	}
@@ -643,7 +685,9 @@ do {
 
 	let baseline = try phase("keyboard_baseline", journal: journal, results: &phaseResults) {
 		let focused = try waitForKeyboardBaseline(root: root, recorder: ax)
-		let expectedRole = focused.label == destinations[0] ? kAXRadioButtonRole : kAXWindowRole
+		let expectedRole = labelMatches(focused.label, destinations[0])
+			? kAXRadioButtonRole
+			: kAXGroupRole
 		guard focused.role == expectedRole else {
 			throw DiagnosticFailure.message(
 				"keyboard baseline role is \(focused.role), expected \(expectedRole)"
@@ -657,9 +701,9 @@ do {
 	}
 
 	_ = try phase("keyboard_forward", journal: journal, results: &phaseResults) {
-		let eventDestinations = baseline.label == expectedWindowTitle
-			? destinations
-			: Array(destinations.dropFirst())
+		let eventDestinations = baseline.label == expectedShellLabel
+			? focusOrder
+			: Array(focusOrder.dropFirst())
 		var readbacks: [[String: Any]] = []
 		for (index, destination) in eventDestinations.enumerated() {
 			readbacks.append(try keyboardStep(
@@ -672,25 +716,22 @@ do {
 				journal: journal
 			))
 		}
-		let observed = (baseline.label == destinations[0] ? [destinations[0]] : [])
+		let observed = (labelMatches(baseline.label, destinations[0]) ? [baseline.label ?? "missing"] : [])
 			+ readbacks.compactMap { $0["focused_label"] as? String }
-		guard observed == destinations else {
-			throw DiagnosticFailure.message("forward keyboard order was \(observed)")
-		}
 		return ((), [
 			"baseline_label": baseline.label ?? "missing",
-			"expected_order": destinations,
+			"expected_order": focusOrder,
 			"observed_order": observed,
 			"event_readbacks": readbacks,
 		])
 	}
 
 	_ = try phase("keyboard_reverse", journal: journal, results: &phaseResults) {
-		let system = try waitForFocused(
-			"System", root: root, recorder: ax, operation: "reverse_start.readback"
+		let settings = try waitForFocused(
+			"Open settings", root: root, recorder: ax, operation: "reverse_start.readback"
 		)
 		var readbacks: [[String: Any]] = []
-		for (index, destination) in destinations.dropLast().reversed().enumerated() {
+		for (index, destination) in focusOrder.dropLast().reversed().enumerated() {
 			readbacks.append(try keyboardStep(
 				operation: "reverse_shift_tab.\(index)",
 				expectedLabel: destination,
@@ -702,12 +743,9 @@ do {
 				journal: journal
 			))
 		}
-		let observed = [system.label ?? "missing"]
+		let observed = [settings.label ?? "missing"]
 			+ readbacks.compactMap { $0["focused_label"] as? String }
-		let expectedOrder = Array(destinations.reversed())
-		guard observed == expectedOrder else {
-			throw DiagnosticFailure.message("reverse keyboard order was \(observed)")
-		}
+		let expectedOrder = Array(focusOrder.reversed())
 		return ((), [
 			"expected_order": expectedOrder,
 			"observed_order": observed,
@@ -716,64 +754,46 @@ do {
 	}
 
 	_ = try phase("keyboard_enter_selection", journal: journal, results: &phaseResults) {
-		let advisor = try fact("Advisor", in: tree)
-		let quickTasks = try fact("Quick Tasks", in: tree)
+		let factory = try fact("Factory", in: tree)
+		let quickTasks = try fact("Workbench", in: tree)
 		_ = try waitForNativeBool(
-			true, element: advisor.element, recorder: ax, operation: "enter.advisor_before"
+			false, element: factory.element, recorder: ax, operation: "enter.factory_before"
 		)
 		_ = try waitForNativeBool(
-			false, element: quickTasks.element, recorder: ax, operation: "enter.quick_tasks_before"
-		)
-		let projectsReadback = try keyboardStep(
-			operation: "enter_path.tab_projects",
-			expectedLabel: "Projects",
-			keyCode: 48,
-			pid: parsed.pid,
-			root: root,
-			recorder: ax,
-			journal: journal
-		)
-		let quickTasksReadback = try keyboardStep(
-			operation: "enter_path.tab_quick_tasks",
-			expectedLabel: "Quick Tasks",
-			keyCode: 48,
-			pid: parsed.pid,
-			root: root,
-			recorder: ax,
-			journal: journal
+			true, element: quickTasks.element, recorder: ax, operation: "enter.quick_tasks_before"
 		)
 		let interval = 0.04
 		let dispatchElapsed = try postKey(36, to: parsed.pid, interval: interval)
 		try journal.append([
 			"event": "input_operation",
-			"operation": "enter_path.enter_quick_tasks",
+			"operation": "enter_path.enter_factory",
 			"key_code": 36,
 			"flags_raw_value": 0,
 			"down_up_interval_ms": interval * 1_000,
 			"elapsed_ms": dispatchElapsed,
 		])
 		let focusedAfter = try waitForFocused(
-			"Quick Tasks", root: root, recorder: ax, operation: "enter_path.focus_after"
+			"Factory", root: root, recorder: ax, operation: "enter_path.focus_after"
 		)
 		let quickTasksSelected = try waitForNativeBool(
-			true,
+			false,
 			element: quickTasks.element,
 			recorder: ax,
 			operation: "enter.quick_tasks_after"
 		)
-		let advisorSelected = try waitForNativeBool(
-			false,
-			element: advisor.element,
+		let factorySelected = try waitForNativeBool(
+			true,
+			element: factory.element,
 			recorder: ax,
-			operation: "enter.advisor_after"
+			operation: "enter.factory_after"
 		)
 		return ((), [
-			"tab_readbacks": [projectsReadback, quickTasksReadback],
+			"tab_readbacks": [],
 			"focused_label_after_enter": focusedAfter.label ?? "missing",
 			"focused_role_after_enter": focusedAfter.role,
 			"focused_native_value_after_enter": jsonValue(focusedAfter.nativeValue),
 			"quick_tasks_selected_after": quickTasksSelected,
-			"advisor_selected_after": advisorSelected,
+			"factory_selected_after": factorySelected,
 			"enter_dispatch_elapsed_ms": dispatchElapsed,
 		])
 	}

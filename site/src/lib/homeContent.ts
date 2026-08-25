@@ -2,41 +2,41 @@ const decodexGitHubUrl = "https://github.com/acg-box/decodex";
 
 const productLoops = [
   {
-    title: "Project registry",
-    body: "Explicit service configs, workflow policy, identity routing, and queue eligibility.",
+    title: "Quick Tasks",
+    body: "Start or continue real Codex threads with durable conversation and attempt evidence.",
   },
   {
-    title: "Retained lanes",
-    body: "Issue intake, attempt state, progress evidence, and recovery paths for long-running work.",
+    title: "Account routing",
+    body: "Use daemon-owned accounts, quota observations, and fixed or balanced routing.",
   },
   {
-    title: "Operator surface",
-    body: "Local status, account-pool controls, lane inspection, interrupts, and steer requests.",
+    title: "Adaptive Programs",
+    body: "Repeat bounded evidence-backed Program cycles through the ordinary Quick Task runtime.",
   },
   {
-    title: "Delivery policy",
-    body: "Commit, review handoff, landing, closeout, and cleanup stay tied to repository authority.",
+    title: "One local product",
+    body: "Decodex.app presents the product while decodexd owns behavior and persistent SQLite state.",
   },
 ];
 
 const commands = [
-  "decodex serve --listen-address 127.0.0.1:8192",
-  "decodex status --live",
-  "decodex diagnose --json",
-  "decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>",
+  "decodex status",
+  "decodex doctor --output json",
+  "decodex account list",
+  "cargo run -p decodex-gpui",
 ];
 
 const docs = [
   {
-    title: "Runtime contract",
-    href: `${decodexGitHubUrl}/blob/main/openwiki/specs/contracts-and-data.md`,
+    title: "Local product contract",
+    href: `${decodexGitHubUrl}/blob/main/openwiki/specs/local-product-v1.md`,
   },
   {
-    title: "Operator control",
-    href: `${decodexGitHubUrl}/blob/main/openwiki/workflows/runtime-operator-workflows.md`,
+    title: "Commands and validation",
+    href: `${decodexGitHubUrl}/blob/main/openwiki/operations/commands-and-validation.md`,
   },
   {
-    title: "Project workflow",
+    title: "Runtime architecture",
     href: `${decodexGitHubUrl}/blob/main/openwiki/architecture/runtime-architecture.md`,
   },
 ];

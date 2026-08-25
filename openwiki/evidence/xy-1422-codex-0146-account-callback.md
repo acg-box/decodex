@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Codex 0.146.0-alpha.9.2 account-callback receipt"
+openwiki_generated: true
+---
+
 # Codex 0.146.0-alpha.9.2 account-callback receipt
 
 Date: 2026-08-02

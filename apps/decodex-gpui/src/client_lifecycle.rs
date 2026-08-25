@@ -22,10 +22,14 @@ use decodex_protocol::{
 };
 
 use crate::{
+	account_profile::{AccountProfileController, AccountProfileRouteOutcome},
 	accounts::{AccountDispatch, AccountRouteOutcome, AccountsController},
 	client_cache::{
 		CacheAuthority, CacheError, CacheLimits, ClientCache, GenerationInspection,
 		ObjectCertainty, ObjectInput,
+	},
+	desktop_settings::{
+		DesktopSettingsController, DesktopSettingsDispatch, DesktopSettingsRouteOutcome,
 	},
 	health_query::{HealthDispatch, HealthQuery, HealthRouteOutcome},
 	history_pager::{HistoryDispatch, HistoryPager, HistoryRouteOutcome},
@@ -206,6 +210,8 @@ enum Delivery<C> {
 enum SessionStep<C> {
 	Delivery(Box<Result<Delivery<C>, RetainedSessionFailure>>),
 	Account(AccountDispatch),
+	AccountProfile(QueryEnvelope),
+	DesktopSettings(DesktopSettingsDispatch),
 	Health(HealthDispatch),
 	History(HistoryDispatch),
 	Program(ProgramDispatch),
@@ -327,6 +333,8 @@ pub(crate) struct ClientLifecycle {
 	cache_authority: CacheAuthority,
 	cache: Option<ClientCache>,
 	accounts: AccountsController,
+	account_profile: AccountProfileController,
+	desktop_settings: DesktopSettingsController,
 	health_query: HealthQuery,
 	history_pager: HistoryPager,
 	programs: Programs,
@@ -391,6 +399,8 @@ impl ClientLifecycle {
 			cache_authority,
 			cache,
 			accounts: AccountsController::production(),
+			account_profile: AccountProfileController::production(),
+			desktop_settings: DesktopSettingsController::production(),
 			health_query: HealthQuery::production(),
 			history_pager,
 			programs: Programs::production(),
@@ -446,6 +456,16 @@ impl ClientLifecycle {
 	/// Clone the presentation-neutral account-pool controller.
 	pub(crate) fn accounts(&self) -> AccountsController {
 		self.accounts.clone()
+	}
+
+	/// Clone the presentation-neutral selected account-profile controller.
+	pub(crate) fn account_profile(&self) -> AccountProfileController {
+		self.account_profile.clone()
+	}
+
+	/// Clone the presentation-neutral persistent desktop settings controller.
+	pub(crate) fn desktop_settings(&self) -> DesktopSettingsController {
+		self.desktop_settings.clone()
 	}
 
 	/// Clone the presentation-neutral ordinary Quick Tasks controller.
@@ -514,6 +534,8 @@ impl ClientLifecycle {
 				connected_checkpoint.as_ref(),
 			);
 			self.accounts.bind_session(generation, self.server_id.clone());
+			self.account_profile.bind_session(generation, self.server_id.clone());
+			self.desktop_settings.bind_session(generation, self.server_id.clone());
 			self.health_query.bind_session(generation, self.server_id.clone());
 			self.history_pager.bind_session(generation, self.server_id.clone());
 			self.programs.bind_session(generation, self.server_id.clone());
@@ -523,6 +545,8 @@ impl ClientLifecycle {
 				self.run_connected_session(io, generation, connected_checkpoint.is_none()).await;
 
 			self.accounts.session_ended(generation);
+			self.account_profile.session_ended(generation);
+			self.desktop_settings.session_ended(generation);
 			self.health_query.session_ended(generation);
 			self.history_pager.session_ended(generation);
 			self.programs.session_ended(generation);
@@ -564,6 +588,8 @@ impl ClientLifecycle {
 	{
 		loop {
 			let accounts = self.accounts.clone();
+			let account_profile = self.account_profile.clone();
+			let desktop_settings = self.desktop_settings.clone();
 			let health_query = self.health_query.clone();
 			let history_pager = self.history_pager.clone();
 			let programs = self.programs.clone();
@@ -574,6 +600,10 @@ impl ClientLifecycle {
 				delivery = io.next() => SessionStep::Delivery(Box::new(delivery)),
 				dispatch = accounts.next_dispatch(generation, &server_id),
 					if !requires_snapshot => SessionStep::Account(dispatch),
+				dispatch = account_profile.next_dispatch(generation, &server_id),
+					if !requires_snapshot => SessionStep::AccountProfile(dispatch),
+				dispatch = desktop_settings.next_dispatch(generation, &server_id),
+					if !requires_snapshot => SessionStep::DesktopSettings(dispatch),
 				dispatch = health_query.next_dispatch(generation, &server_id),
 					if !requires_snapshot => SessionStep::Health(dispatch),
 				dispatch = history_pager.next_dispatch(generation, &server_id),
@@ -604,6 +634,25 @@ impl ClientLifecycle {
 					{
 						return failure;
 					},
+				SessionStep::DesktopSettings(dispatch) => {
+					if let Some(command) = dispatch.command() {
+						let send_result = io.send_command(command.clone()).await;
+						if let Err(failure) = send_result {
+							self.desktop_settings.command_send_failed(&dispatch);
+							return failure;
+						}
+						self.desktop_settings.command_sent(&dispatch);
+					} else if let Some(query) = dispatch.query()
+						&& let Err(failure) = io.send_query(query.clone()).await
+					{
+						return failure;
+					}
+				},
+				SessionStep::AccountProfile(query) => {
+					if let Err(failure) = io.send_query(query).await {
+						return failure;
+					}
+				},
 				SessionStep::Health(dispatch) => {
 					if let Err(failure) = io.send_query(dispatch.envelope().clone()).await {
 						return failure;
@@ -705,6 +754,7 @@ impl ClientLifecycle {
 						self.programs.apply_event(&quick_task_event);
 						self.work_items.apply_event(&quick_task_event);
 						self.accounts.apply_event(&quick_task_event);
+						self.desktop_settings.apply_event(&quick_task_event);
 						let checkpoint = match io.confirm_applied(confirmation) {
 							Ok(checkpoint) => checkpoint,
 							Err(_) => return self.confirmation_failure(),
@@ -721,44 +771,34 @@ impl ClientLifecycle {
 						}
 					},
 					Ok(Delivery::CommandReceipt(receipt)) => {
-						let _ = self.accounts.route_receipt(generation, &self.server_id, &receipt);
-						let _ = self.programs.route_receipt(generation, &self.server_id, &receipt);
-						let _ =
-							self.quick_tasks.route_receipt(generation, &self.server_id, &receipt);
-						let _ =
-							self.work_items.route_receipt(generation, &self.server_id, &receipt);
+						self.route_command_receipt(generation, &receipt);
 					},
 					Ok(Delivery::CommandResult(result)) => {
-						let _ = self.accounts.route_command_result(
-							generation,
-							&self.server_id,
-							&result,
-						);
-						let _ = self.programs.route_command_result(
-							generation,
-							&self.server_id,
-							&result,
-						);
-						let _ = self.quick_tasks.route_command_result(
-							generation,
-							&self.server_id,
-							&result,
-						);
-						if let Some(conversation_id) =
-							self.quick_tasks.take_history_reload_request()
-						{
-							let _ = self.history_pager.reload_if_open(&conversation_id);
-						}
-						let _ = self.work_items.route_command_result(
-							generation,
-							&self.server_id,
-							&result,
-						);
+						self.route_command_delivery(generation, &result);
 					},
 					Err(failure) => return failure,
 				},
 			}
 		}
+	}
+
+	fn route_command_receipt(&self, generation: u64, receipt: &CommandReceipt) {
+		let _ = self.accounts.route_receipt(generation, &self.server_id, receipt);
+		let _ = self.desktop_settings.route_receipt(generation, &self.server_id, receipt);
+		let _ = self.programs.route_receipt(generation, &self.server_id, receipt);
+		let _ = self.quick_tasks.route_receipt(generation, &self.server_id, receipt);
+		let _ = self.work_items.route_receipt(generation, &self.server_id, receipt);
+	}
+
+	fn route_command_delivery(&self, generation: u64, result: &CommandResultEnvelope) {
+		let _ = self.accounts.route_command_result(generation, &self.server_id, result);
+		let _ = self.desktop_settings.route_command_result(generation, &self.server_id, result);
+		let _ = self.programs.route_command_result(generation, &self.server_id, result);
+		let _ = self.quick_tasks.route_command_result(generation, &self.server_id, result);
+		if let Some(conversation_id) = self.quick_tasks.take_history_reload_request() {
+			let _ = self.history_pager.reload_if_open(&conversation_id);
+		}
+		let _ = self.work_items.route_command_result(generation, &self.server_id, result);
 	}
 
 	fn begin_attempt(&mut self, attempt: u8) -> Result<u64, ()> {
@@ -847,6 +887,18 @@ impl ClientLifecycle {
 		match self.accounts.route_query_result(generation, &self.server_id, &result) {
 			AccountRouteOutcome::Fresh | AccountRouteOutcome::Refused => return Ok(()),
 			AccountRouteOutcome::Unmatched => {},
+		}
+		match self.account_profile.route_result(generation, &self.server_id, &result) {
+			AccountProfileRouteOutcome::Fresh | AccountProfileRouteOutcome::Refused => {
+				return Ok(());
+			},
+			AccountProfileRouteOutcome::Unmatched => {},
+		}
+		match self.desktop_settings.route_query_result(generation, &self.server_id, &result) {
+			DesktopSettingsRouteOutcome::Fresh | DesktopSettingsRouteOutcome::Refused => {
+				return Ok(());
+			},
+			DesktopSettingsRouteOutcome::Unmatched => {},
 		}
 		match self.programs.route_query_result(generation, &self.server_id, &result) {
 			ProgramRouteOutcome::Fresh | ProgramRouteOutcome::Refused => return Ok(()),

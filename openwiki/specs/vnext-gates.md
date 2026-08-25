@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Decodex vNext Gate Manifest"
+openwiki_generated: true
+---
+
 # Decodex vNext Gate Manifest
 
 Status: historical former server store gate manifest. The current acceptance boundary is the

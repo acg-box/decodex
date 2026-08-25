@@ -1,8 +1,0 @@
-mod autonomy_config_defaults_to_latent_only;
-mod parses_autonomy_objective_and_policy_references;
-mod parses_codex_review_levels;
-mod rejects_autonomy_embedded_policy_bodies_and_execution_budgets;
-mod rejects_autonomy_execution_flags_without_required_authority_references;
-mod rejects_legacy_codex_review_fields;
-mod rejects_removed_codex_goal_field;
-mod rejects_unknown_codex_review_level;

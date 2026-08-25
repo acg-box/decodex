@@ -9,7 +9,7 @@ use crate::{
 
 /// Maximum UTF-8 bytes in one provider authorization or verification URL.
 ///
-/// This preserves the established MenuBar browser-login acceptance boundary.
+/// This preserves the established native browser-login acceptance boundary.
 pub const MAX_ACCOUNT_LOGIN_URL_BYTES: usize = 8 * 1_024;
 
 /// Bounded provider URL carried only by the ephemeral account-login exchange.

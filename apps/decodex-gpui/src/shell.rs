@@ -1,32 +1,46 @@
 //! Production GPUI window, navigation, focus, and lifecycle rendering boundary.
 
-use std::{future::Future, pin::Pin, sync::mpsc::Receiver, time::Duration};
+use std::{
+	future::Future,
+	pin::Pin,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+		mpsc::{self, Receiver},
+	},
+	time::Duration,
+};
 
 use gpui::{
-	Animation, AnimationExt, AnyElement, App, BoxShadow, Context, Entity, FocusHandle, Focusable,
-	FontWeight, Global, Hsla, KeyBinding, MouseButton, Render, Role, SharedString, Subscription,
-	Task, WeakEntity, Window, WindowControlArea, WindowHandle, WindowId, actions, div, ease_in_out,
-	img, prelude::*, px, rgb, rgba,
+	Animation, AnimationExt, AnyElement, App, BoxShadow, ClipboardItem, Context, Entity,
+	FocusHandle, Focusable, FontWeight, Global, Hsla, KeyBinding, MouseButton, Render, Role,
+	SharedString, Subscription, Task, WeakEntity, Window, WindowControlArea, WindowHandle,
+	actions, div, ease_in_out, img, prelude::*, px, rgb, rgba,
 };
 
 use decodex_protocol::{
-	AccountDto, AccountLifecycleReadinessDto, AccountObservedStateDto, AccountQuotaStateDto,
-	AccountQuotaWindowDto, AccountSelectionModeDto, AppServerCapability, ClientFailure,
-	DoctorComponent, DoctorIssue, DoctorStatus, EntityId, HistoryItemDto, HistoryItemKindDto,
-	HistoryItemStatusDto, HistoryPayloadDto, HistoryTurnRole, QuickTaskRecoveryAction,
-	QuickTaskState, QuickTaskSummary, WorkItemBoardCard, WorkItemState,
+	AccountDto, AccountLifecycleReadinessDto, AccountLoginInstallMode, AccountLoginMethod,
+	AccountLoginStart, AccountLoginState, AccountLoginStatus, AccountObservedStateDto,
+	AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto, AccountSelectionModeDto,
+	AppServerCapability, ClientFailure, DoctorComponent, DoctorIssue, DoctorStatus, EntityId,
+	HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryTurnRole,
+	IdempotencyKey, QuickTaskRecoveryAction, QuickTaskState, QuickTaskSummary, WorkItemBoardCard,
+	WorkItemState,
 };
 
 use crate::{
+	account_login::AccountLoginController,
+	account_profile::{AccountProfileController, AccountProfileLoadState, AccountProfileSnapshot},
 	accounts::{
 		AccountCommandState, AccountInputError, AccountsController, AccountsLoadState,
-		AccountsSnapshot,
+		AccountsSnapshot, canonical_uuid_v4,
 	},
 	client_lifecycle::{
 		ClientLifecycle, CompatibilityReason, ConnectionView, LifecycleCancellation,
 		QuarantineReason, QuarantineRecovery,
 	},
 	composer_input::{self, ComposerEvent, ComposerInput, MAX_COMPOSER_BYTES, SubmitComposer},
+	desktop_settings::{DesktopSettingsController, DesktopSettingsSnapshot},
 	factory_surface::{FactoryEvent, FactoryRoute, FactorySurface, app_icon_path},
 	health_query::{HealthLoadState, HealthQuery, HealthSnapshot},
 	history_pager::{HistoryLoadState, HistoryPageSource, HistoryPager, HistorySnapshot},
@@ -340,7 +354,7 @@ impl Destination {
 			Self::Automations => "Operate scheduled and event-driven work.",
 			Self::Accounts => "Open multi-account routing and recovery.",
 			Self::Health => "Inspect daemon and app-server readiness.",
-			Self::Settings => "Configure the window and menu bar companion.",
+			Self::Settings => "Configure the window and in-process menu bar.",
 		}
 	}
 }
@@ -519,6 +533,18 @@ pub(crate) struct Shell {
 	composer: Entity<ComposerInput>,
 	factory: Entity<FactorySurface>,
 	settings: Entity<SettingsSurface>,
+	account_login: Option<Arc<AccountLoginController>>,
+	account_login_status: Option<AccountLoginStatus>,
+	account_login_error: Option<SharedString>,
+	account_login_updates: Option<Receiver<Result<AccountLoginStatus, ClientFailure>>>,
+	account_login_task: Option<Task<()>>,
+	account_login_cancellation: Option<Arc<AtomicBool>>,
+	opened_account_login_url: Option<String>,
+	pending_account_logout: Option<EntityId>,
+	account_profile_controller: AccountProfileController,
+	account_profile: AccountProfileSnapshot,
+	desktop_settings: DesktopSettingsController,
+	desktop_settings_snapshot: DesktopSettingsSnapshot,
 	accounts_controller: AccountsController,
 	accounts: AccountsSnapshot,
 	account_status: Option<SharedString>,
@@ -565,7 +591,12 @@ impl Shell {
 			shell.handle_factory_event(event, cx);
 		})
 		.detach();
-		let settings = cx.new(SettingsSurface::new);
+		let desktop_settings = DesktopSettingsController::production();
+		let desktop_settings_snapshot = desktop_settings.snapshot();
+		let account_profile_controller = AccountProfileController::production();
+		let account_profile = account_profile_controller.snapshot();
+		let settings_controller = desktop_settings.clone();
+		let settings = cx.new(|cx| SettingsSurface::new(settings_controller, cx));
 		let accounts_controller = AccountsController::production();
 		let accounts = accounts_controller.snapshot();
 		let health_query = HealthQuery::production();
@@ -597,6 +628,18 @@ impl Shell {
 			composer,
 			factory,
 			settings,
+			account_login: None,
+			account_login_status: None,
+			account_login_error: None,
+			account_login_updates: None,
+			account_login_task: None,
+			account_login_cancellation: None,
+			opened_account_login_url: None,
+			pending_account_logout: None,
+			account_profile_controller,
+			account_profile,
+			desktop_settings,
+			desktop_settings_snapshot,
 			accounts_controller,
 			accounts,
 			account_status: None,
@@ -617,6 +660,18 @@ impl Shell {
 			input_status: None,
 			titlebar_drag_pending: false,
 		}
+	}
+
+	pub(crate) fn with_account_login(
+		mut self,
+		account_login: Option<Arc<AccountLoginController>>,
+	) -> Self {
+		self.account_login = account_login;
+		self
+	}
+
+	pub(crate) fn was_launched_as_login_item(&self, cx: &App) -> bool {
+		self.settings.read(cx).was_launched_as_login_item()
 	}
 
 	#[cfg(feature = "visual-capture")]
@@ -1222,6 +1277,28 @@ impl Shell {
 		cx.notify();
 	}
 
+	fn bind_desktop_settings(
+		&mut self,
+		desktop_settings: DesktopSettingsController,
+		cx: &mut Context<Self>,
+	) {
+		self.desktop_settings = desktop_settings.clone();
+		self.desktop_settings_snapshot = desktop_settings.snapshot();
+		self.settings.update(cx, |settings, cx| {
+			settings.bind_controller(desktop_settings, cx);
+		});
+	}
+
+	fn bind_account_profile(
+		&mut self,
+		account_profile: AccountProfileController,
+		cx: &mut Context<Self>,
+	) {
+		self.account_profile_controller = account_profile;
+		self.account_profile = self.account_profile_controller.snapshot();
+		cx.notify();
+	}
+
 	fn bind_quick_tasks(
 		&mut self,
 		quick_tasks: QuickTasks,
@@ -1314,6 +1391,225 @@ impl Shell {
 			.map(Into::into);
 		self.synchronize_accounts();
 		cx.notify();
+	}
+
+	fn logout_account(&mut self, account_id: &EntityId, cx: &mut Context<Self>) {
+		if self.pending_account_logout.as_ref() != Some(account_id) {
+			self.pending_account_logout = Some(account_id.clone());
+			self.account_status =
+				Some("Select Log out again to confirm credential deletion.".into());
+			cx.notify();
+			return;
+		}
+		self.pending_account_logout = None;
+		self.account_status = self
+			.accounts_controller
+			.logout(account_id)
+			.err()
+			.map(account_input_error_label)
+			.map(Into::into);
+		self.synchronize_accounts();
+		cx.notify();
+	}
+
+	fn move_account(&mut self, account_id: &EntityId, offset: isize, cx: &mut Context<Self>) {
+		self.account_status = self
+			.accounts_controller
+			.move_account(account_id, offset)
+			.err()
+			.map(account_input_error_label)
+			.map(Into::into);
+		self.synchronize_accounts();
+		cx.notify();
+	}
+
+	fn show_account_profile(&mut self, account_id: EntityId, cx: &mut Context<Self>) {
+		self.account_profile_controller.select(account_id);
+		self.account_profile = self.account_profile_controller.snapshot();
+		cx.notify();
+	}
+
+	fn close_account_profile(&mut self, cx: &mut Context<Self>) {
+		self.account_profile_controller.close();
+		self.account_profile = self.account_profile_controller.snapshot();
+		cx.notify();
+	}
+
+	fn refresh_account_profile(&mut self, cx: &mut Context<Self>) {
+		let _ = self.account_profile_controller.refresh();
+		self.account_profile = self.account_profile_controller.snapshot();
+		cx.notify();
+	}
+
+	fn start_account_enrollment(&mut self, method: AccountLoginMethod, cx: &mut Context<Self>) {
+		let start = account_login_start(method, None);
+		self.start_account_login(start, cx);
+	}
+
+	fn start_account_reauthentication(
+		&mut self,
+		account_id: EntityId,
+		expected_revision: decodex_protocol::EntityRevision,
+		cx: &mut Context<Self>,
+	) {
+		let start = account_login_start(
+			AccountLoginMethod::DeviceCode,
+			Some((account_id, expected_revision)),
+		);
+		self.start_account_login(start, cx);
+	}
+
+	fn start_account_login(
+		&mut self,
+		start: Result<AccountLoginStart, SharedString>,
+		cx: &mut Context<Self>,
+	) {
+		if self.account_login_task.is_some() {
+			self.account_login_error = Some("An account login is already active.".into());
+			cx.notify();
+			return;
+		}
+		let Some(controller) = self.account_login.clone() else {
+			self.account_login_error =
+				Some("The local account-login client is unavailable.".into());
+			cx.notify();
+			return;
+		};
+		let Ok(start) = start else {
+			self.account_login_error = start.err();
+			cx.notify();
+			return;
+		};
+
+		let cancellation = Arc::new(AtomicBool::new(false));
+		let task_cancellation = Arc::clone(&cancellation);
+		let (updates, receiver) = mpsc::channel();
+		self.account_login_status = None;
+		self.account_login_error = None;
+		self.opened_account_login_url = None;
+		self.account_login_updates = Some(receiver);
+		self.account_login_cancellation = Some(cancellation);
+		self.account_login_task = Some(cx.background_executor().spawn(async move {
+			let runtime = tokio::runtime::Builder::new_current_thread()
+				.enable_all()
+				.build()
+				.expect("build the bounded account-login runtime");
+			runtime.block_on(async move {
+				let mut status = match controller.start(start).await {
+					Ok(status) => status,
+					Err(failure) => {
+						let _ = updates.send(Err(failure));
+						return;
+					},
+				};
+				loop {
+					let terminal = matches!(
+						status.state,
+						AccountLoginState::Completed
+							| AccountLoginState::Failed
+							| AccountLoginState::Cancelled
+					);
+					let session_id = status.session_id.clone();
+					if updates.send(Ok(status)).is_err() || terminal {
+						return;
+					}
+					tokio::time::sleep(Duration::from_millis(350)).await;
+					let next = if task_cancellation.load(Ordering::Acquire) {
+						controller.cancel(session_id).await
+					} else {
+						controller.status(session_id).await
+					};
+					match next {
+						Ok(next) => status = next,
+						Err(failure) => {
+							let _ = updates.send(Err(failure));
+							return;
+						},
+					}
+				}
+			});
+		}));
+		cx.notify();
+	}
+
+	fn cancel_account_login(&mut self, cx: &mut Context<Self>) {
+		if let Some(cancellation) = &self.account_login_cancellation {
+			cancellation.store(true, Ordering::Release);
+			self.account_login_error = Some("Cancelling account login…".into());
+			cx.notify();
+		}
+	}
+
+	fn poll_account_login(&mut self, cx: &mut Context<Self>) {
+		let updates = self
+			.account_login_updates
+			.as_ref()
+			.map(|receiver| receiver.try_iter().collect::<Vec<_>>())
+			.unwrap_or_default();
+		if updates.is_empty() {
+			return;
+		}
+		for update in updates {
+			match update {
+				Ok(status) => {
+					if let Some(url) = status.authorization_url.as_ref()
+						&& self.opened_account_login_url.as_deref() != Some(url.as_str())
+					{
+						self.opened_account_login_url = Some(url.as_str().to_owned());
+						cx.open_url(url.as_str());
+					}
+					let terminal = matches!(
+						status.state,
+						AccountLoginState::Completed
+							| AccountLoginState::Failed
+							| AccountLoginState::Cancelled
+					);
+					if status.state == AccountLoginState::Completed {
+						let _ = self.accounts_controller.refresh();
+					}
+					self.account_login_error = None;
+					self.account_login_status = Some(status);
+					if terminal {
+						self.account_login_task = None;
+						self.account_login_cancellation = None;
+						self.account_login_updates = None;
+					}
+				},
+				Err(failure) => {
+					self.account_login_error = Some(startup_failure(failure).into());
+					self.account_login_task = None;
+					self.account_login_cancellation = None;
+					self.account_login_updates = None;
+				},
+			}
+		}
+		self.synchronize_accounts();
+		cx.notify();
+	}
+
+	fn copy_account_login_code(&mut self, cx: &mut Context<Self>) {
+		if let Some(code) = self
+			.account_login_status
+			.as_ref()
+			.and_then(|status| status.prompt.as_ref())
+			.map(|prompt| prompt.user_code.as_str().to_owned())
+		{
+			cx.write_to_clipboard(ClipboardItem::new_string(code));
+			self.account_login_error = Some("Login code copied.".into());
+			cx.notify();
+		}
+	}
+
+	fn open_account_login_url(&mut self, cx: &mut Context<Self>) {
+		let url =
+			self.account_login_status.as_ref().and_then(|status| {
+				status.authorization_url.as_ref().map(|url| url.as_str()).or_else(|| {
+					status.prompt.as_ref().map(|prompt| prompt.verification_url.as_str())
+				})
+			});
+		if let Some(url) = url {
+			cx.open_url(url);
+		}
 	}
 
 	fn synchronize_work_items(&mut self, cx: &mut Context<Self>) {
@@ -1557,6 +1853,14 @@ impl Shell {
 	}
 }
 
+impl Drop for Shell {
+	fn drop(&mut self) {
+		if let Some(cancellation) = &self.account_login_cancellation {
+			cancellation.store(true, Ordering::Release);
+		}
+	}
+}
+
 const fn input_error_label(error: QuickTaskInputError) -> &'static str {
 	match error {
 		QuickTaskInputError::Offline => "Quick Tasks are offline.",
@@ -1581,10 +1885,7 @@ impl Global for LifecycleOwnerGlobal {}
 pub(crate) struct LifecycleOwner {
 	cancellation: LifecycleCancellation,
 	task: Option<Task<()>>,
-	last_view: ConnectionView,
 	running: bool,
-	#[cfg(test)]
-	observed_views: Vec<ConnectionView>,
 	_subscriptions: Vec<Subscription>,
 }
 
@@ -1594,16 +1895,15 @@ impl LifecycleOwner {
 		views: Receiver<ConnectionView>,
 		background: Task<R>,
 		shell: WeakEntity<Shell>,
-		initial_view: ConnectionView,
 		cx: &mut Context<Self>,
 	) -> Self {
 		let task = cx.spawn(async move |owner, cx| {
 			let background = background;
 			loop {
-				publish_views(&owner, &shell, &views, cx);
+				publish_views(&shell, &views, cx);
 				if background.is_ready() {
 					let _ = background.await;
-					publish_views(&owner, &shell, &views, cx);
+					publish_views(&shell, &views, cx);
 					let _ = owner.update(cx, |owner, _| owner.running = false);
 
 					return;
@@ -1615,15 +1915,13 @@ impl LifecycleOwner {
 		Self {
 			cancellation,
 			task: Some(task),
-			last_view: initial_view,
 			running: true,
-			#[cfg(test)]
-			observed_views: vec![initial_view],
 			_subscriptions: vec![cx.on_app_quit(|owner, _| owner.shutdown())],
 		}
 	}
 
 	fn shutdown(&mut self) -> Pin<Box<dyn Future<Output = ()> + 'static>> {
+		self.running = false;
 		self.cancellation.cancel();
 		let task = self.task.take();
 
@@ -1635,18 +1933,8 @@ impl LifecycleOwner {
 	}
 
 	#[cfg(test)]
-	pub(crate) fn last_view(&self) -> ConnectionView {
-		self.last_view
-	}
-
-	#[cfg(test)]
 	pub(crate) fn is_running(&self) -> bool {
 		self.running
-	}
-
-	#[cfg(test)]
-	pub(crate) fn observed_views(&self) -> &[ConnectionView] {
-		&self.observed_views
 	}
 }
 
@@ -1657,9 +1945,10 @@ pub(crate) fn retain_lifecycle(
 ) {
 	let cancellation = lifecycle.cancellation();
 	let views = lifecycle.observe_views();
-	let initial_view = lifecycle.view();
 	let shell = window.entity(cx).expect("the production shell window remains open");
 	let accounts = lifecycle.accounts();
+	let account_profile = lifecycle.account_profile();
+	let desktop_settings = lifecycle.desktop_settings();
 	let health_query = lifecycle.health_query();
 	let quick_tasks = lifecycle.quick_tasks();
 	let programs = lifecycle.programs();
@@ -1667,6 +1956,8 @@ pub(crate) fn retain_lifecycle(
 	let history_pager = lifecycle.history_pager();
 	shell.update(cx, |shell, cx| {
 		shell.bind_accounts(accounts, cx);
+		shell.bind_account_profile(account_profile, cx);
+		shell.bind_desktop_settings(desktop_settings, cx);
 		shell.bind_health_query(health_query, cx);
 		shell.bind_quick_tasks(quick_tasks, history_pager, cx);
 		shell.bind_programs(programs, cx);
@@ -1682,22 +1973,18 @@ pub(crate) fn retain_lifecycle(
 		runtime.block_on(lifecycle.run())
 	});
 	retain_lifecycle_task(
-		window.window_id(),
 		shell,
 		cancellation,
 		views,
-		initial_view,
 		background,
 		cx,
 	);
 }
 
 pub(crate) fn retain_lifecycle_task<R: 'static>(
-	window_id: WindowId,
 	shell: WeakEntity<Shell>,
 	cancellation: LifecycleCancellation,
 	views: Receiver<ConnectionView>,
-	initial_view: ConnectionView,
 	background: Task<R>,
 	cx: &mut App,
 ) -> Entity<LifecycleOwner> {
@@ -1705,39 +1992,28 @@ pub(crate) fn retain_lifecycle_task<R: 'static>(
 		!cx.has_global::<LifecycleOwnerGlobal>(),
 		"the application retains exactly one lifecycle owner"
 	);
-	let owner =
-		cx.new(|cx| LifecycleOwner::new(cancellation, views, background, shell, initial_view, cx));
-	let weak_owner = owner.downgrade();
-	let close_subscription = cx.on_window_closed(move |cx, closed_id| {
-		if closed_id == window_id {
-			let _ = weak_owner.update(cx, |owner, _| owner.cancellation.cancel());
-		}
-	});
-	owner.update(cx, |owner, _| owner._subscriptions.push(close_subscription));
+	let owner = cx.new(|cx| LifecycleOwner::new(cancellation, views, background, shell, cx));
 	cx.set_global(LifecycleOwnerGlobal { _owner: owner.clone() });
 
 	owner
 }
 
 fn publish_views(
-	owner: &WeakEntity<LifecycleOwner>,
 	shell: &WeakEntity<Shell>,
 	views: &Receiver<ConnectionView>,
 	cx: &mut gpui::AsyncApp,
 ) {
 	while let Ok(view) = views.try_recv() {
-		let _ = owner.update(cx, |owner, _| {
-			owner.last_view = view;
-			#[cfg(test)]
-			owner.observed_views.push(view);
-		});
 		let _ = shell.update(cx, |shell, cx| {
 			shell.connection = view;
 			cx.notify();
 		});
 	}
 	let _ = shell.update(cx, |shell, cx| {
+		shell.poll_account_login(cx);
 		let accounts = shell.accounts_controller.snapshot();
+		let account_profile = shell.account_profile_controller.snapshot();
+		let desktop_settings = shell.desktop_settings.snapshot();
 		let health = shell.health_query.snapshot();
 		let quick = shell.quick_tasks.snapshot();
 		let program = shell.programs.snapshot();
@@ -1746,6 +2022,15 @@ fn publish_views(
 
 		if accounts != shell.accounts {
 			shell.accounts = accounts;
+			cx.notify();
+		}
+		if account_profile != shell.account_profile {
+			shell.account_profile = account_profile;
+			cx.notify();
+		}
+		if desktop_settings != shell.desktop_settings_snapshot {
+			shell.desktop_settings_snapshot = desktop_settings;
+			shell.settings.update(cx, SettingsSurface::synchronize);
 			cx.notify();
 		}
 		if health != shell.health {
@@ -2582,35 +2867,47 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 		.into_any_element()
 }
 
-fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> {
 	let snapshot = &shell.accounts;
 	let fixed = snapshot.routing.as_ref().and_then(|routing| match &routing.mode {
 		AccountSelectionModeDto::Fixed(account_id) => Some(account_id),
 		AccountSelectionModeDto::Balanced => None,
 	});
-	let balanced = snapshot
-		.routing
-		.as_ref()
-		.is_some_and(|routing| routing.mode == AccountSelectionModeDto::Balanced);
-	let can_manage = snapshot.can_manage;
-	let can_route = snapshot.can_route;
 	let pending_target = snapshot.pending_route.as_ref().map(|pending| &pending.account_id);
-	let rows = snapshot
+	let account_count = snapshot.accounts.len();
+	snapshot
 		.accounts
 		.iter()
 		.enumerate()
 		.map(|(index, account)| {
 			account_pool_row(
 				account,
-				index,
-				fixed == Some(&account.account_id),
-				pending_target,
-				can_manage,
-				can_route,
+				AccountRowPresentation {
+					index,
+					account_count,
+					fixed: fixed == Some(&account.account_id),
+					pending_target,
+					can_manage: snapshot.can_manage,
+					can_route: snapshot.can_route,
+					login_available: shell.account_login.is_some()
+						&& shell.account_login_task.is_none(),
+					logout_pending: shell.pending_account_logout.as_ref()
+						== Some(&account.account_id),
+				},
 				cx,
 			)
 		})
-		.collect::<Vec<_>>();
+		.collect()
+}
+
+fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let snapshot = &shell.accounts;
+	let rows = account_pool_rows(shell, cx);
+	let balanced = snapshot
+		.routing
+		.as_ref()
+		.is_some_and(|routing| routing.mode == AccountSelectionModeDto::Balanced);
+	let can_manage = snapshot.can_manage;
 	let status = snapshot
 		.pending_route
 		.as_ref()
@@ -2724,10 +3021,14 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 										.child("Refresh"),
 								),
 						),
-				)
-				.child(
-					div()
-						.id("account-list")
+					)
+					.child(account_login_controls(shell, cx))
+					.when(shell.account_profile.selected.is_some(), |content| {
+						content.child(account_profile_panel(shell, cx))
+					})
+					.child(
+						div()
+							.id("account-list")
 						.flex_1()
 						.min_h_0()
 						.overflow_y_scroll()
@@ -2755,7 +3056,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 											.font_family("SF Mono")
 											.text_size(px(8.0))
 											.text_color(rgb(WB_TEXT_FAINT))
-											.child("Enroll or recover credentials from the menu bar surface."),
+											.child("Use Account access above to enroll credentials through decodexd."),
 									),
 							)
 						})
@@ -2813,15 +3114,375 @@ fn account_mode_button(
 		.into_any_element()
 }
 
-fn account_pool_row(
-	account: &AccountDto,
+fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let busy = shell.account_login_task.is_some();
+	let available = shell.account_login.is_some();
+	let prompt = shell.account_login_status.as_ref().and_then(|status| status.prompt.as_ref()).map(
+		|prompt| {
+			(prompt.user_code.as_str().to_owned(), prompt.verification_url.as_str().to_owned())
+		},
+	);
+	let status = shell
+		.account_login_error
+		.as_ref()
+		.map(SharedString::to_string)
+		.or_else(|| shell.account_login_status.as_ref().map(account_login_status_label))
+		.unwrap_or_else(|| {
+			"Add or refresh credentials through the daemon-owned login service.".into()
+		});
+
+	div()
+		.id("account-login-controls")
+		.px_4()
+		.py_3()
+		.flex()
+		.items_center()
+		.justify_between()
+		.gap_4()
+		.rounded(px(10.0))
+		.border_1()
+		.border_color(rgba(0xffffff0f))
+		.bg(rgba(ui_theme::SURFACE_MATERIAL))
+		.child(
+			div()
+				.flex_1()
+				.min_w_0()
+				.flex()
+				.flex_col()
+				.gap_1()
+				.child(
+					div()
+						.font_family("SF Mono")
+						.text_size(px(8.0))
+						.text_color(rgb(WB_BLUE))
+						.child("ACCOUNT ACCESS"),
+				)
+				.child(div().text_size(px(9.5)).text_color(rgb(WB_TEXT_MUTED)).child(status))
+				.when_some(prompt, |details, (code, url)| {
+					details.child(account_login_prompt(code, url))
+				}),
+		)
+		.child(
+			div()
+				.flex()
+				.items_center()
+				.gap_2()
+				.child(
+					account_login_button("account-login-browser", "Browser", available && !busy)
+						.when(available && !busy, |button| {
+							button.on_click(cx.listener(|shell, _, _, cx| {
+								shell.start_account_enrollment(
+									AccountLoginMethod::BrowserRedirect,
+									cx,
+								);
+							}))
+						}),
+				)
+				.child(
+					account_login_button("account-login-device", "Device code", available && !busy)
+						.when(available && !busy, |button| {
+							button.on_click(cx.listener(|shell, _, _, cx| {
+								shell.start_account_enrollment(AccountLoginMethod::DeviceCode, cx);
+							}))
+						}),
+				)
+				.when(
+					shell.account_login_status.as_ref().is_some_and(|status| {
+						status.prompt.is_some() || status.authorization_url.is_some()
+					}),
+					|actions| {
+						actions
+							.child(
+								account_login_button("account-login-copy", "Copy code", true)
+									.on_click(cx.listener(|shell, _, _, cx| {
+										shell.copy_account_login_code(cx);
+									})),
+							)
+							.child(
+								account_login_button("account-login-open", "Open", true).on_click(
+									cx.listener(|shell, _, _, cx| {
+										shell.open_account_login_url(cx);
+									}),
+								),
+							)
+					},
+				)
+				.when(busy, |actions| {
+					actions.child(
+						account_login_button("account-login-cancel", "Cancel", true).on_click(
+							cx.listener(|shell, _, _, cx| {
+								shell.cancel_account_login(cx);
+							}),
+						),
+					)
+				}),
+		)
+		.into_any_element()
+}
+
+fn account_login_prompt(code: String, url: String) -> AnyElement {
+	div()
+		.pt_1()
+		.flex()
+		.items_center()
+		.gap_2()
+		.child(
+			div().font_family("SF Mono").text_size(px(11.0)).text_color(rgb(WB_TEXT)).child(code),
+		)
+		.child(
+			div()
+				.max_w(px(360.0))
+				.overflow_hidden()
+				.whitespace_nowrap()
+				.text_ellipsis()
+				.font_family("SF Mono")
+				.text_size(px(7.5))
+				.text_color(rgb(WB_TEXT_FAINT))
+				.child(url),
+		)
+		.into_any_element()
+}
+
+fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let selected = shell
+		.account_profile
+		.selected
+		.as_ref()
+		.map(|account| account.as_str().to_owned())
+		.unwrap_or_default();
+	let (status, facts) = match shell.account_profile.result.as_ref() {
+		Some(AccountProfileResult::Current(profile)) => {
+			("Current provider profile".to_owned(), account_profile_facts(profile))
+		},
+		Some(AccountProfileResult::Cached { profile, refresh_error }) => (
+			format!("Cached profile; refresh failed: {refresh_error:?}"),
+			account_profile_facts(profile),
+		),
+		Some(AccountProfileResult::Unavailable { error, plan_type, .. }) => (
+			format!("Profile unavailable: {error:?}"),
+			plan_type
+				.as_ref()
+				.map(|plan| vec![format!("PLAN {}", plan.as_str())])
+				.unwrap_or_default(),
+		),
+		None => (account_profile_load_label(shell.account_profile.load).to_owned(), Vec::new()),
+	};
+
+	div()
+		.id("account-profile-panel")
+		.px_4()
+		.py_3()
+		.flex()
+		.items_center()
+		.justify_between()
+		.gap_4()
+		.rounded(px(10.0))
+		.border_1()
+		.border_color(rgba(0x60a5fa28))
+		.bg(rgba(0x60a5fa08))
+		.child(
+			div()
+				.flex_1()
+				.min_w_0()
+				.flex()
+				.flex_col()
+				.gap_2()
+				.child(
+					div()
+						.flex()
+						.items_center()
+						.gap_2()
+						.child(
+							div()
+								.font_family("SF Mono")
+								.text_size(px(8.0))
+								.text_color(rgb(WB_BLUE))
+								.child("ACCOUNT PROFILE"),
+						)
+						.child(
+							div()
+								.font_family("SF Mono")
+								.text_size(px(7.5))
+								.text_color(rgb(WB_TEXT_FAINT))
+								.child(selected),
+						),
+				)
+				.child(div().text_size(px(9.5)).text_color(rgb(WB_TEXT_MUTED)).child(status))
+				.child(div().flex().flex_wrap().gap_2().children(facts.into_iter().map(|fact| {
+					div()
+						.px_2()
+						.py_1()
+						.rounded(px(5.0))
+						.bg(rgba(0xffffff08))
+						.font_family("SF Mono")
+						.text_size(px(7.5))
+						.text_color(rgb(WB_TEXT_FAINT))
+						.child(fact)
+				}))),
+		)
+		.child(
+			div()
+				.flex()
+				.items_center()
+				.gap_2()
+				.child(
+					account_login_button(
+						"account-profile-refresh",
+						"Refresh",
+						shell.account_profile.can_refresh,
+					)
+					.when(shell.account_profile.can_refresh, |button| {
+						button.on_click(cx.listener(|shell, _, _, cx| {
+							shell.refresh_account_profile(cx);
+						}))
+					}),
+				)
+				.child(
+					account_login_button("account-profile-close", "Close", true)
+						.on_click(cx.listener(|shell, _, _, cx| shell.close_account_profile(cx))),
+				),
+		)
+		.into_any_element()
+}
+
+fn account_profile_facts(profile: &decodex_protocol::AccountProfileDto) -> Vec<String> {
+	let mut facts = Vec::new();
+	if let Some(plan) = &profile.plan_type {
+		facts.push(format!("PLAN {}", plan.as_str()));
+	}
+	if let Some(tokens) = profile.lifetime_tokens {
+		facts.push(format!("LIFETIME {tokens} TOKENS"));
+	}
+	if let Some(tokens) = profile.peak_daily_tokens {
+		facts.push(format!("PEAK DAY {tokens}"));
+	}
+	if let Some(days) = profile.current_streak_days {
+		facts.push(format!("STREAK {days} DAYS"));
+	}
+	if let Some(seconds) = profile.longest_task_seconds {
+		facts.push(format!("LONGEST TASK {seconds}S"));
+	}
+	if !profile.daily_usage.is_empty() {
+		facts.push(format!("{} DAILY POINTS", profile.daily_usage.len()));
+	}
+	facts
+}
+
+const fn account_profile_load_label(load: AccountProfileLoadState) -> &'static str {
+	match load {
+		AccountProfileLoadState::Closed => "Select an account profile.",
+		AccountProfileLoadState::Loading => "Loading the daemon-owned profile…",
+		AccountProfileLoadState::Ready => "Profile loaded.",
+		AccountProfileLoadState::Offline => "Profile is offline.",
+		AccountProfileLoadState::Refused => "The profile response was refused.",
+	}
+}
+
+fn account_login_button(
+	id: &'static str,
+	label: &'static str,
+	enabled: bool,
+) -> gpui::Stateful<gpui::Div> {
+	div()
+		.id(id)
+		.role(Role::Button)
+		.aria_label(label)
+		.h(px(27.0))
+		.px_3()
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(px(7.0))
+		.border_1()
+		.border_color(rgba(0xffffff14))
+		.text_size(px(8.5))
+		.text_color(rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
+		.opacity(if enabled { 1.0 } else { 0.55 })
+		.when(enabled, |button| {
+			button
+				.cursor_pointer()
+				.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
+				.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
+		})
+		.child(label)
+}
+
+fn account_login_status_label(status: &AccountLoginStatus) -> String {
+	match status.state {
+		AccountLoginState::OpeningBrowser => "Preparing browser login…".into(),
+		AccountLoginState::RequestingCode => "Requesting a device code…".into(),
+		AccountLoginState::WaitingForBrowser => {
+			"Complete sign-in in the browser, then return to Decodex.".into()
+		},
+		AccountLoginState::Installing => "Installing the verified account through decodexd…".into(),
+		AccountLoginState::Completed => status.resolved_account_id.as_ref().map_or_else(
+			|| "Account login completed.".into(),
+			|account_id| format!("Account {} is ready.", account_id.as_str()),
+		),
+		AccountLoginState::Failed => status.failure.map_or_else(
+			|| "Account login failed.".into(),
+			|failure| format!("Account login failed: {failure:?}."),
+		),
+		AccountLoginState::Cancelled => "Account login was cancelled.".into(),
+	}
+}
+
+fn account_login_start(
+	method: AccountLoginMethod,
+	existing: Option<(EntityId, decodex_protocol::EntityRevision)>,
+) -> Result<AccountLoginStart, SharedString> {
+	let next_entity = || {
+		canonical_uuid_v4()
+			.map_err(account_input_error_label)
+			.and_then(|value| EntityId::new(value).map_err(|_| "Login identity is invalid."))
+			.map_err(SharedString::from)
+	};
+	let session_id = next_entity()?;
+	let operation_id = next_entity()?;
+	let command_identity =
+		canonical_uuid_v4().map_err(account_input_error_label).map_err(SharedString::from)?;
+	let idempotency_key = IdempotencyKey::new(format!("account-login/{command_identity}"))
+		.map_err(|_| SharedString::from("Login command identity is invalid."))?;
+	let install_mode = if let Some((account_id, expected_revision)) = existing {
+		AccountLoginInstallMode::Reauthenticate {
+			operation_id,
+			account_id,
+			expected_revision,
+			recovery_operation_id: None,
+			idempotency_key,
+		}
+	} else {
+		AccountLoginInstallMode::Enroll {
+			operation_id,
+			account_id: next_entity()?,
+			enabled: true,
+			idempotency_key,
+		}
+	};
+	let start = AccountLoginStart { session_id, method, install_mode };
+	start.validate().map_err(|_| SharedString::from("Login request is invalid."))?;
+	Ok(start)
+}
+
+#[derive(Clone, Copy)]
+struct AccountRowPresentation<'a> {
 	index: usize,
+	account_count: usize,
 	fixed: bool,
-	pending_target: Option<&EntityId>,
+	pending_target: Option<&'a EntityId>,
 	can_manage: bool,
 	can_route: bool,
+	login_available: bool,
+	logout_pending: bool,
+}
+
+fn account_pool_row(
+	account: &AccountDto,
+	presentation: AccountRowPresentation<'_>,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
+	let AccountRowPresentation { index, fixed, pending_target, can_manage, can_route, .. } =
+		presentation;
 	let account_id = account.account_id.clone();
 	let toggle_account_id = account.account_id.clone();
 	let enabled = account.enabled;
@@ -2969,7 +3630,141 @@ fn account_pool_row(
 						.child(if enabled { "Enabled" } else { "Disabled" }),
 				),
 		)
+		.child(account_management_actions(account, &presentation, cx))
 		.into_any_element()
+}
+
+fn account_management_actions(
+	account: &AccountDto,
+	presentation: &AccountRowPresentation<'_>,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	let index = presentation.index;
+	let can_move_up = presentation.can_manage && index > 0;
+	let can_move_down = presentation.can_manage && index + 1 < presentation.account_count;
+	let up_account_id = account.account_id.clone();
+	let down_account_id = account.account_id.clone();
+	let login_account_id = account.account_id.clone();
+	let profile_account_id = account.account_id.clone();
+	let logout_account_id = account.account_id.clone();
+	let login_account_revision = account.account_revision;
+
+	div()
+		.flex()
+		.flex_col()
+		.items_end()
+		.gap_1()
+		.child(
+			div()
+				.flex()
+				.items_center()
+				.gap_1()
+				.child(
+					account_row_action("account-up", index, "Move up", "\u{2191}", can_move_up)
+						.when(can_move_up, |button| {
+							button.on_click(cx.listener(move |shell, _, _, cx| {
+								shell.move_account(&up_account_id, -1, cx);
+							}))
+						}),
+				)
+				.child(
+					account_row_action(
+						"account-profile",
+						index,
+						"Show account profile",
+						"Profile",
+						true,
+					)
+					.on_click(cx.listener(move |shell, _, _, cx| {
+						shell.show_account_profile(profile_account_id.clone(), cx);
+					})),
+				)
+				.child(
+					account_row_action(
+						"account-down",
+						index,
+						"Move down",
+						"\u{2193}",
+						can_move_down,
+					)
+					.when(can_move_down, |button| {
+						button.on_click(cx.listener(move |shell, _, _, cx| {
+							shell.move_account(&down_account_id, 1, cx);
+						}))
+					}),
+				),
+		)
+		.child(
+			div()
+				.flex()
+				.items_center()
+				.gap_1()
+				.child(
+					account_row_action(
+						"account-login",
+						index,
+						"Refresh account login",
+						"Login",
+						presentation.login_available,
+					)
+					.when(presentation.login_available, |button| {
+						button.on_click(cx.listener(move |shell, _, _, cx| {
+							shell.start_account_reauthentication(
+								login_account_id.clone(),
+								login_account_revision,
+								cx,
+							);
+						}))
+					}),
+				)
+				.child(
+					account_row_action(
+						"account-logout",
+						index,
+						"Log out account",
+						if presentation.logout_pending { "Confirm" } else { "Log out" },
+						presentation.can_manage,
+					)
+					.when(presentation.can_manage, |button| {
+						button.on_click(cx.listener(move |shell, _, _, cx| {
+							shell.logout_account(&logout_account_id, cx);
+						}))
+					}),
+				),
+		)
+		.into_any_element()
+}
+
+fn account_row_action(
+	id: &'static str,
+	index: usize,
+	aria_label: &'static str,
+	label: &'static str,
+	enabled: bool,
+) -> gpui::Stateful<gpui::Div> {
+	div()
+		.id((id, index))
+		.role(Role::Button)
+		.aria_label(aria_label)
+		.h(px(23.0))
+		.px_2()
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(px(6.0))
+		.border_1()
+		.border_color(rgba(0xffffff10))
+		.font_family("SF Mono")
+		.text_size(px(7.5))
+		.text_color(rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
+		.opacity(if enabled { 1.0 } else { 0.5 })
+		.when(enabled, |button| {
+			button
+				.cursor_pointer()
+				.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
+				.active(|element| element.opacity(0.82))
+		})
+		.child(label)
 }
 
 fn account_quota(label: &'static str, quota: AccountQuotaWindowDto) -> Option<AnyElement> {
@@ -4801,6 +5596,34 @@ mod tests {
 				("Settings", true),
 			]
 		);
+	}
+
+	#[test]
+	fn account_login_presentations_create_only_daemon_install_requests() {
+		let enrollment = account_login_start(AccountLoginMethod::BrowserRedirect, None)
+			.expect("browser enrollment request");
+		assert!(enrollment.validate().is_ok());
+		assert!(matches!(
+			enrollment.install_mode,
+			AccountLoginInstallMode::Enroll { enabled: true, .. }
+		));
+
+		let account_id =
+			EntityId::new("10000000-0000-4000-8000-000000000001").expect("account identity");
+		let reauthentication = account_login_start(
+			AccountLoginMethod::DeviceCode,
+			Some((account_id.clone(), decodex_protocol::EntityRevision(4))),
+		)
+		.expect("device reauthentication request");
+		assert!(matches!(
+			reauthentication.install_mode,
+			AccountLoginInstallMode::Reauthenticate {
+				account_id: selected,
+				expected_revision: decodex_protocol::EntityRevision(4),
+				recovery_operation_id: None,
+				..
+			} if selected == account_id
+		));
 	}
 
 	#[test]

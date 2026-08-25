@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "ProviderAttempt Authority"
+openwiki_generated: true
+---
+
 # ProviderAttempt Authority
 
 Status: normative current external-turn effect authority. Candidate-5 initial-thread

@@ -1,3 +1,0 @@
-mod persistent_open_backfills_protocol_event_summaries_from_legacy_journal;
-mod persistent_open_keeps_protocol_backfill_marker_when_later_migration_fails;
-mod persistent_open_preserves_future_schema_version;

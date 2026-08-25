@@ -1,8 +1,9 @@
 //! Production Decodex GPUI macOS composition root.
 
-mod accounts;
-#[allow(dead_code, reason = "account login presentation is composed by the existing MenuBar app")]
 mod account_login;
+mod account_profile;
+mod accounts;
+mod bundled_daemon;
 #[cfg_attr(
 	not(test),
 	allow(
@@ -13,6 +14,7 @@ mod account_login;
 mod client_cache;
 mod client_lifecycle;
 mod composer_input;
+mod desktop_settings;
 mod factory_surface;
 mod health_query;
 #[cfg_attr(
@@ -24,21 +26,27 @@ mod health_query;
 )]
 mod history_pager;
 mod programs;
+mod native_menu_bar;
 mod quick_tasks;
 mod settings_surface;
 mod shell;
 mod ui_theme;
 mod work_items;
 
+#[cfg(target_os = "macos")]
+use objc2 as _;
+use std::{cell::RefCell, rc::Rc, sync::Arc};
+
 use gpui::{
-	App, AppContext as _, Bounds, WindowBackgroundAppearance, WindowBounds, WindowOptions, point,
-	px, size,
+	App, AppContext as _, Bounds, WindowBackgroundAppearance, WindowBounds, WindowHandle,
+	WindowOptions, point, px, size,
 };
 use gpui_platform::application;
 
-use decodex_protocol::ClientProfile;
+use decodex_protocol::{ClientFailure, ClientProfile};
 
 use crate::{
+	account_login::AccountLoginController,
 	client_lifecycle::{
 		ClientLifecycle, CompatibilityReason, ConnectionView, QuarantineReason, QuarantineRecovery,
 	},
@@ -46,9 +54,25 @@ use crate::{
 };
 
 fn main() {
-	application().run(|cx: &mut App| {
+	let application = application();
+	let main_window: Rc<RefCell<Option<WindowHandle<Shell>>>> = Rc::new(RefCell::new(None));
+	application.on_reopen({
+		let main_window = Rc::clone(&main_window);
+		move |cx| {
+			if let Some(window) = main_window.borrow().as_ref() {
+				activate_main_window(window, cx);
+			}
+		}
+	});
+	application.run(move |cx: &mut App| {
 		shell::bind_keys(cx);
-		let (initial_connection, lifecycle) = compose_lifecycle();
+		let profile = ClientProfile::load_default(None);
+		if let Ok(profile) = profile.as_ref()
+			&& let Ok(Some(daemon)) = bundled_daemon::BundledDaemonGuard::launch_for_profile(profile)
+		{
+			bundled_daemon::retain(daemon, cx);
+		}
+		let (initial_connection, lifecycle, account_login) = compose_lifecycle(profile);
 		let bounds = Bounds::centered(None, size(px(1248.0), px(840.0)), cx);
 		let window = cx
 			.open_window(
@@ -66,7 +90,12 @@ fn main() {
 					show: false,
 					..Default::default()
 				},
-				|window, cx| cx.new(|cx| Shell::new(window, cx, initial_connection)),
+				move |window, cx| {
+					let account_login = account_login.clone();
+					cx.new(|cx| {
+						Shell::new(window, cx, initial_connection).with_account_login(account_login)
+					})
+				},
 			)
 			.expect("open the Decodex production window");
 
@@ -74,32 +103,77 @@ fn main() {
 			shell::retain_lifecycle(window, lifecycle, cx);
 		}
 		window
-			.update(cx, |_, window, _| window.activate_window())
-			.expect("activate after the accessibility adapter is installed");
-		cx.activate(true);
+			.update(cx, |_, window, cx| {
+				window.on_window_should_close(cx, |_, cx| {
+					cx.hide();
+					false
+				});
+			})
+			.expect("install the Decodex close-to-background behavior");
+		let launched_as_login_item = window
+			.entity(cx)
+			.is_ok_and(|shell| shell.read(cx).was_launched_as_login_item(cx));
+		main_window.borrow_mut().replace(window);
+		if launched_as_login_item {
+			cx.hide();
+		} else {
+			activate_main_window(&window, cx);
+		}
 	});
 }
 
-fn compose_lifecycle() -> (ConnectionView, Option<ClientLifecycle>) {
-	let profile = match ClientProfile::load_default(None) {
+fn activate_main_window(window: &WindowHandle<Shell>, cx: &mut App) {
+	window
+		.update(cx, |_, window, _| window.activate_window())
+		.expect("activate the retained Decodex window");
+	#[cfg(target_os = "macos")]
+	activate_native_application();
+	#[cfg(not(target_os = "macos"))]
+	cx.activate(true);
+}
+
+#[cfg(target_os = "macos")]
+fn activate_native_application() {
+	use objc2::MainThreadMarker;
+	use objc2_app_kit::NSApplication;
+
+	let main_thread = MainThreadMarker::new().expect("GPUI application callback runs on main thread");
+	NSApplication::sharedApplication(main_thread).activate();
+}
+
+fn compose_lifecycle(
+	profile: Result<ClientProfile, ClientFailure>,
+)
+-> (ConnectionView, Option<ClientLifecycle>, Option<Arc<AccountLoginController>>) {
+	let profile = match profile {
 		Ok(profile) => profile,
 		Err(failure) => {
-			return (ConnectionView::Incompatible(CompatibilityReason::Startup(failure)), None);
+			return (
+				ConnectionView::Incompatible(CompatibilityReason::Startup(failure)),
+				None,
+				None,
+			);
 		},
 	};
+	let account_login = Arc::new(AccountLoginController::new(profile.clone()));
 	let config = match profile.retained_session_config() {
 		Ok(config) => config,
 		Err(_) => {
-			return (ConnectionView::Incompatible(CompatibilityReason::InvalidEndpoint), None);
+			return (
+				ConnectionView::Incompatible(CompatibilityReason::InvalidEndpoint),
+				None,
+				None,
+			);
 		},
 	};
 	match ClientLifecycle::production(config) {
-		Ok(lifecycle) => (lifecycle.view(), Some(lifecycle)),
+		Ok(lifecycle) => (lifecycle.view(), Some(lifecycle), Some(account_login)),
 		Err(_) => (
 			ConnectionView::Quarantined {
 				reason: QuarantineReason::CacheRootUnsafe,
 				recovery: QuarantineRecovery::OperatorRequired,
 			},
+			None,
 			None,
 		),
 	}

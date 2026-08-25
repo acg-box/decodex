@@ -54,15 +54,17 @@ A unique partial index permits at most one reserved `route_account` receipt, and
 progress restricted to that pending Route state. The migration is additive and preserves
 existing receipt rows.
 
+Schema version 11 adds the singleton `desktop_settings` table. `decodexd` is its only
+reader and writer. The positive revision guards the **Show Decodex in the menu bar**
+preference; GPUI reads and changes it only through protocol 2.10.
+
 The account-login restoration repair adds no schema migration. The current protocol uses exact
-artifact cohort 5; older cohort notes below are historical evidence for the prior repair and not
-current compatibility guidance. Artifact cohort 3 changes the strict local result/FFI shape. On startup, the daemon can compensate only the exact pre-repair
+artifact cohort 6. On startup, the daemon can compensate only the exact pre-repair
 `StoreApplied` enrollment collision described by the account-lifecycle contract; it deletes the
 proved orphan credential and cancels that operation. Installation therefore upgrades the signed
-daemon, CLI, App executable, and App FFI as one cohort while retaining the pre-install database
-rollback copy. The App and the staging verifier use one Swift compatibility source for the native
-ABI and artifact cohort. The staging gate must load the actual signed staged dylib through that
-shared check before installation.
+daemon, CLI, and GPUI application as one cohort while retaining the pre-install database rollback
+copy. The application bundle contains no native client library because GPUI links the protocol
+client directly.
 
 ## Fresh installation
 
@@ -87,7 +89,7 @@ The macOS installer:
    `~/.decodex` as its stable working directory;
 5. starts the daemon; and
 6. runs doctor and account-list readback through the installed CLI, which proves the
-   running daemon uses the same protocol 2.9 and artifact cohort 5.
+   running daemon uses the same protocol 2.10 and artifact cohort 6.
 
 It does not install former server store, create roles or databases, manage a socket directory, or
 resolve a database password.

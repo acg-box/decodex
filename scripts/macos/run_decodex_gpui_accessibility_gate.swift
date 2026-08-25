@@ -122,7 +122,7 @@ func processPath(_ pid: pid_t) -> String {
 func parseConfiguration() throws -> Configuration {
 	let script = normalized(URL(fileURLWithPath: CommandLine.arguments[0]))
 	let root = script.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-	var app = root.appendingPathComponent("target/decodex-gpui/Decodex.app")
+	var app = root.appendingPathComponent("target/decodex-app/Decodex.app")
 	var output: URL?
 	var index = 1
 	while index < CommandLine.arguments.count {
@@ -417,7 +417,7 @@ func main() throws -> Bool {
 				&& app.executableURL.map(normalized) == executableURL
 		}
 		guard launchIdentityValid else { throw GateError.message("exact app launch identity failed") }
-		_ = app.activate(options: [.activateAllWindows])
+		_ = app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
 
 		FileManager.default.createFile(atPath: inspectorStdoutURL.path, contents: nil)
 		FileManager.default.createFile(atPath: inspectorStderrURL.path, contents: nil)

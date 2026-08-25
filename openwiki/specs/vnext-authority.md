@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Decodex vNext Authority Contract"
+openwiki_generated: true
+---
+
 # Decodex vNext Authority Contract
 
 Status: historical former server store contract. The current normative slice is the
@@ -119,7 +125,7 @@ replayed.
 | Repository files and worktrees | Git/filesystem on the `decodexd` host |
 | PR/check/merge readback | GitHub |
 | Large tool output and evidence bytes | content-addressed local blob store, with former server store metadata |
-| GPUI local state | bounded disposable cache only; SQLite is permitted only here |
+| GPUI local state | bounded disposable presentation cache only; product persistence is forbidden |
 | Account product state | former server store Account Registry; it stores credential-negative identity, independent enabled state, observed health, routing mode/order, quota, usage/profile/history, credential-version evidence, and finite operation receipts |
 | Credentials | narrow versioned HostCredentialStore; on macOS its sole normal adapter is the daemon-owned redb file at `~/.decodex/server/credentials.redb`; former server store and clients never store or receive credential bytes |
 | v0.2 state | Final vNext runtime and installer read none. The reviewed local database reset may preserve the complete credential-negative account/routing/binding tuple, including each enabled state and the mode-valid fixed target, and rebind it to unchanged host-vault records. Only the existing HostCredentialStore owner may perform a confined in-process read for typed credential-negative agreement; no token bytes leave that owner. |
@@ -127,7 +133,8 @@ replayed.
 former server store is not event sourced and no graph database is used. Stable IDs plus correlated
 activity derive graph/timeline projections. `decodexd` is the sole product scheduler,
 app-server child owner, mutation coordinator, and repository-side-effect owner. GPUI,
-SwiftUI menubar, CLI, and MCP are clients/adapters over common application services; they
+CLI, and MCP are clients/adapters over common application services; the menu-bar item is
+part of GPUI. They
 never read former server store, rollout files, blobs, or repositories directly. The first release is single-host
 and has no worker registry or distributed mesh. Remote UI may be added only through the
 protocol security gate.
@@ -244,7 +251,7 @@ receipt. Exact replay returns those bytes; conflicting reuse fails before effect
 
 Manual reset-card use is a common vNext application service. `decodexd` is its sole
 credential-vault reader, direct provider API client, opaque provider-credit resolver,
-mutation coordinator, and external-effect owner. CLI and SwiftUI are clients. They cannot
+mutation coordinator, and external-effect owner. CLI and GPUI are clients. They cannot
 read credentials, launch a Codex app-server for this operation, receive a provider credit ID,
 or own effect retry.
 
@@ -298,10 +305,9 @@ rollback, or remain unknown. A deterministic pre-effect business rejection must 
 the claimed receipt with a closed replayable rejection. A mechanical failure leaves the
 receipt pending and cannot become a rejection.
 
-Swift may persist only a bounded credential-negative recovery handle that includes the
-profile and server authority. Journal corruption must be preserved and must block new
-use. One cross-process critical section must cover the last persisted-handle check,
-consume invocation, dispatch classification, and terminal handle removal.
+Clients persist no separate product recovery journal. `decodexd` owns the durable
+credential-negative reset-card receipt and exact readback. A client keeps only transient
+presentation state and uses the original idempotency key when status readback is required.
 
 <a id="private-artifact-authority"></a>
 
@@ -1325,7 +1331,7 @@ The first implementation write set is only
 `apps/decodex-gpui/src/client_lifecycle/tests.rs`, plus
 `apps/decodex-gpui/Cargo.toml` solely to add the existing workspace `libc` dependency.
 `client_cache.rs`, `main.rs`, the root `Cargo.toml`, and all protocol, runtime, former server store,
-account, Swift, and FFI paths remain unchanged. Hand-written Darwin FFI, any new crate or
+account and desktop-presentation paths remain unchanged. Hand-written Darwin FFI, any new crate or
 framework, a generic cache framework, a ledger, a protocol change, and a user-visible
 destination remain prohibited. The active XY-1427 account lane owns `Cargo.lock`;
 regeneration and integration of that lockfile is one deferred mechanical step after

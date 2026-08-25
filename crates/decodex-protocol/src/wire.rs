@@ -1,4 +1,4 @@
-//! Structured JSON envelopes for the exact-current V2.9 WebSocket connection.
+//! Structured JSON envelopes for the exact-current V2.10 WebSocket connection.
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
@@ -31,7 +31,7 @@ use crate::{
 	},
 };
 
-/// Maximum UTF-8 size of any human-readable text carried by V2.9.
+/// Maximum UTF-8 size of any human-readable text carried by V2.10.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
 /// Maximum UTF-8 size of one logical-command idempotency key.
 pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
@@ -156,7 +156,7 @@ impl<'de> Deserialize<'de> for HistoryCursorToken {
 	}
 }
 
-/// A string-backed wire scalar exceeded its V2.9 byte limit.
+/// A string-backed wire scalar exceeded its V2.10 byte limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WireScalarTooLong {
 	actual_bytes: usize,
@@ -177,7 +177,7 @@ impl Display for WireScalarTooLong {
 	}
 }
 
-/// Closed construction failures for the V2.9 WorkItem board contract.
+/// Closed construction failures for the V2.10 WorkItem board contract.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WorkItemBoardContractError {
 	/// An identity was not canonical lowercase RFC 9562 UUID-v4 text.
@@ -279,7 +279,7 @@ impl<'de> Deserialize<'de> for WorkItemBoardTitle {
 #[serde(transparent)]
 pub struct WorkItemBoardPageSize(u16);
 impl WorkItemBoardPageSize {
-	/// Construct a page size inside the closed V2.9 protocol bound.
+	/// Construct a page size inside the closed V2.10 protocol bound.
 	pub const fn new(value: u16) -> Result<Self, WorkItemBoardContractError> {
 		if value == 0 || value > MAX_WORK_ITEM_BOARD_PAGE_SIZE {
 			Err(WorkItemBoardContractError::InvalidPageSize)
@@ -537,6 +537,47 @@ pub struct Cursor(pub u64);
 #[serde(transparent)]
 pub struct EntityRevision(pub u64);
 
+/// Stable singleton identity for daemon-owned desktop settings.
+pub const DESKTOP_SETTINGS_ENTITY_ID: &str = "desktop-settings";
+
+/// Complete persistent desktop settings projection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopSettingsDto {
+	/// Whether the sole Decodex application exposes its in-process menu-bar item.
+	pub show_in_menu_bar: bool,
+	/// Positive optimistic revision of this singleton projection.
+	pub revision: EntityRevision,
+}
+
+impl DesktopSettingsDto {
+	/// Construct one valid positive-revision desktop settings projection.
+	pub const fn new(
+		show_in_menu_bar: bool,
+		revision: EntityRevision,
+	) -> Result<Self, &'static str> {
+		if revision.0 == 0 {
+			return Err("desktop settings revision must be positive");
+		}
+		Ok(Self { show_in_menu_bar, revision })
+	}
+
+	/// Validate an untrusted decoded desktop settings projection.
+	pub const fn is_valid(self) -> bool {
+		self.revision.0 > 0
+	}
+}
+
+/// Daemon-owned desktop settings readback.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DesktopSettingsResult {
+	/// Complete current persistent settings.
+	Available(DesktopSettingsDto),
+	/// The daemon's product store is unavailable.
+	Unavailable,
+}
+
 /// First client message and optional reconnect position.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ClientHello {
@@ -559,7 +600,7 @@ pub struct ResumeCursor {
 	pub server_id: ServerId,
 	/// Ephemeral publication epoch that issued the cursor.
 	///
-	/// A V2.9 resume requires this field. Older hello envelopes can omit it
+	/// A V2.10 resume requires this field. Older hello envelopes can omit it
 	/// only so negotiation can return a typed version refusal.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
@@ -615,7 +656,7 @@ pub struct ServerWelcome {
 	pub server_id: ServerId,
 	/// Ephemeral identity of the in-memory publication epoch.
 	///
-	/// This is present in the exact-current V2.9 welcome.
+	/// This is present in the exact-current V2.10 welcome.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
@@ -1745,7 +1786,7 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. The V2.9 account contract accepts 300 and 10080 minutes only.
+	/// Exact window duration. The V2.10 account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -2360,10 +2401,12 @@ impl AccountObservationSignal {
 	}
 }
 
-/// Live queries available through the exact-current V2.9 protocol.
+/// Live queries available through the exact-current V2.10 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
+	/// Read the complete daemon-owned desktop settings projection.
+	GetDesktopSettings,
 	/// List bounded current Programs for the Factory selector.
 	ListPrograms,
 	/// Read one complete current Program causal projection.
@@ -2462,10 +2505,15 @@ impl QueryPayload {
 	}
 }
 
-/// Commands available through the exact-current V2.9 protocol.
+/// Commands available through the exact-current V2.10 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
+	/// Replace the persistent menu-bar preference for the sole Decodex application.
+	SetDesktopSettings {
+		/// Whether Decodex.app shows its same-process status item.
+		show_in_menu_bar: bool,
+	},
 	/// Atomically create one bounded pre-execution Program semantic chain.
 	CreateProgramCycle {
 		/// Complete V1 Program charter and finite causal chain.
@@ -2749,6 +2797,11 @@ pub enum Channel {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EventPayload {
+	/// Persistent desktop settings changed.
+	DesktopSettingsChanged {
+		/// Complete current settings after the committed change.
+		settings: DesktopSettingsDto,
+	},
 	/// One complete Program causal projection changed.
 	ProgramCycleChanged {
 		/// Current authoritative projection.
@@ -2892,6 +2945,11 @@ pub enum CommandOutcome {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ResultPayload {
+	/// Persistent desktop settings changed.
+	DesktopSettingsChanged {
+		/// Complete current settings after the committed change.
+		settings: DesktopSettingsDto,
+	},
 	/// One Program semantic command committed.
 	ProgramCycleChanged {
 		/// Current authoritative projection.
@@ -3017,10 +3075,12 @@ impl ResultPayload {
 	}
 }
 
-/// Typed live-query results available through the exact-current V2.9 protocol.
+/// Typed live-query results available through the exact-current V2.10 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
+	/// Complete daemon-owned desktop settings projection.
+	DesktopSettings(DesktopSettingsResult),
 	/// Bounded current Program selector projection.
 	Programs(ProgramListResult),
 	/// One exact complete Program causal projection.
@@ -3967,12 +4027,12 @@ pub enum Refusal {
 	},
 }
 
-/// Serialize a message using the only V2.9 wire encoding.
+/// Serialize a message using the only V2.10 wire encoding.
 pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 	serde_json::to_string(message)
 }
 
-/// Parse a client message using the only V2.9 wire encoding.
+/// Parse a client message using the only V2.10 wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
 	validate_client_message(&decoded).map_err(|reason| {
@@ -3991,6 +4051,7 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 		},
 		ClientMessage::Hello(_) => Ok(()),
 		ClientMessage::Query(query) => match &query.payload {
+			QueryPayload::GetDesktopSettings => Ok(()),
 			QueryPayload::GetProgramCycle { program_id }
 				if !is_canonical_uuid(program_id.as_str()) =>
 			{
@@ -4031,6 +4092,9 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static str> {
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
 	match &command.payload {
+		CommandPayload::SetDesktopSettings { .. } => {
+			positive_expected.then_some(()).ok_or("desktop settings revision is required")
+		},
 		CommandPayload::CreateProgramCycle { draft } => {
 			if command.expected_revision.is_some() || draft.validate().is_err() {
 				Err("Program cycle create contract is invalid")
@@ -5631,8 +5695,8 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":9},"#,
-				r#""artifact_cohort":5,"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":10},"#,
+				r#""artifact_cohort":6,"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -5641,7 +5705,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":9},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":10},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -5683,7 +5747,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":9},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":10},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -5926,7 +5990,7 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
 		let legacy = crate::ProtocolVersion { major: 1, minor: 5 };
-		let future = crate::ProtocolVersion { major: 2, minor: 10 };
+		let future = crate::ProtocolVersion { major: 2, minor: 11 };
 		let query = QueryPayload::GetAccountProfile {
 			account_id: account_id.clone(),
 			include_email: false,
