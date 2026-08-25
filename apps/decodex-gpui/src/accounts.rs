@@ -31,6 +31,7 @@ pub(crate) struct AccountsSnapshot {
 	pub(crate) pending_route: Option<AccountRoutePendingDto>,
 	pub(crate) can_manage: bool,
 	pub(crate) can_route: bool,
+	pub(crate) route_restart_notice: bool,
 }
 
 /// Finite account-pool readback state.
@@ -177,9 +178,6 @@ impl AccountsController {
 
 	pub(crate) fn select_fixed(&self, account_id: &EntityId) -> Result<(), AccountInputError> {
 		let mut state = self.lock();
-		if state.pending_route.as_ref().is_some_and(|pending| &pending.account_id == account_id) {
-			return Err(AccountInputError::Busy);
-		}
 		let account_revision = state
 			.accounts
 			.iter()
@@ -191,6 +189,11 @@ impl AccountsController {
 			.as_ref()
 			.map(|routing| routing.revision)
 			.ok_or(AccountInputError::RoutingUnavailable)?;
+		if state.routing.as_ref().is_some_and(|routing| {
+			matches!(&routing.mode, AccountSelectionModeDto::Fixed(current) if current == account_id)
+		}) {
+			return Ok(());
+		}
 		let operation_id = EntityId::new(canonical_uuid_v4()?)
 			.map_err(|_| AccountInputError::IdentityUnavailable)?;
 		state.queue_command(
@@ -398,6 +401,7 @@ impl AccountsController {
 				state.upsert_account((**account).clone());
 				state.routing = Some(routing.clone());
 				state.pending_route = None;
+				state.route_restart_notice = true;
 				state.sort_accounts();
 			},
 			EventPayload::AccountRoutePending { pending } => {
@@ -584,6 +588,7 @@ struct State {
 	accounts: Vec<AccountDto>,
 	routing: Option<AccountRoutingControlDto>,
 	pending_route: Option<AccountRoutePendingDto>,
+	route_restart_notice: bool,
 }
 
 impl State {
@@ -602,6 +607,7 @@ impl State {
 			accounts: Vec::new(),
 			routing: None,
 			pending_route: None,
+			route_restart_notice: false,
 		}
 	}
 
@@ -622,8 +628,9 @@ impl State {
 			accounts: self.accounts.clone(),
 			routing: self.routing.clone(),
 			pending_route: self.pending_route.clone(),
-			can_manage: idle && self.pending_route.is_none(),
+			can_manage: idle,
 			can_route: idle,
+			route_restart_notice: self.route_restart_notice,
 		}
 	}
 
@@ -677,6 +684,7 @@ impl State {
 			causation_id: None::<CausationId>,
 			payload,
 		});
+		self.route_restart_notice = false;
 		self.command = AccountCommandState::Sending;
 		Ok(())
 	}
@@ -752,6 +760,8 @@ impl State {
 			{
 				self.upsert_account((**account).clone());
 				self.routing = Some(routing.clone());
+				self.pending_route = None;
+				self.route_restart_notice = true;
 				self.sort_accounts();
 				true
 			},
@@ -844,7 +854,7 @@ pub(crate) fn canonical_uuid_v4() -> Result<String, AccountInputError> {
 mod tests {
 	use decodex_protocol::{
 		AccountLifecycleReadinessDto, AccountObservedStateDto, AccountQuotaStateDto,
-		AccountQuotaWindowDto, WireText,
+		AccountQuotaWindowDto, Sha256Digest, WireText,
 	};
 
 	use super::*;
@@ -921,7 +931,7 @@ mod tests {
 					query_id: query.query_id,
 					payload: QueryResultPayload::Accounts(AccountsResult::Available {
 						accounts: vec![second.clone(), first.clone()],
-						routing: Some(routing),
+						routing: Some(routing.clone()),
 						pending_route: None,
 					}),
 				},
@@ -935,24 +945,53 @@ mod tests {
 		controller
 			.select_fixed(&second.account_id)
 			.expect("ready account can become the fixed route");
-		let AccountDispatch::Command(command) =
-			controller.try_take_dispatch(2, &server).expect("fixed selection queues one command")
-		else {
-			panic!("fixed selection must dispatch a command")
-		};
+		let dispatch =
+			controller.try_take_dispatch(2, &server).expect("fixed selection queues one command");
+		let command = dispatch.command().expect("fixed selection dispatches a command").clone();
 		assert_eq!(command.expected_revision, Some(EntityRevision(5)));
 		assert!(matches!(
-			command.payload,
+			&command.payload,
 			CommandPayload::RouteAccount {
-				ref operation_id,
-				ref account_id,
+				operation_id,
+				account_id,
 				expected_account_revision: EntityRevision(7),
 			} if account_id == &second.account_id && operation_id.as_str().len() == 36
 		));
+		controller.command_sent(&dispatch);
+		let routed = AccountRoutingControlDto {
+			revision: EntityRevision(6),
+			mode: AccountSelectionModeDto::Fixed(second.account_id.clone()),
+			order: routing.order,
+		};
+		assert_eq!(
+			controller.route_command_result(
+				2,
+				&server,
+				&CommandResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: server.clone(),
+					client_command_id: command.client_command_id,
+					idempotency_key: command.idempotency_key,
+					outcome: CommandOutcome::Succeeded,
+					entity_revision: Some(routed.revision),
+					payload: Some(ResultPayload::AccountRouted {
+						account: Box::new(second.clone()),
+						routing: routed.clone(),
+						projection_digest: Sha256Digest::new("a".repeat(64)).unwrap(),
+					}),
+					error: None,
+				},
+			),
+			AccountRouteOutcome::Fresh
+		);
+		let routed_snapshot = controller.snapshot();
+		assert_eq!(routed_snapshot.routing, Some(routed));
+		assert!(routed_snapshot.route_restart_notice);
+		assert!(routed_snapshot.pending_route.is_none());
 	}
 
 	#[test]
-	fn current_fixed_account_can_replace_a_different_pending_route() {
+	fn legacy_pending_snapshot_does_not_trigger_a_second_route_for_the_current_target() {
 		let controller = AccountsController::production();
 		let server = server();
 		let first = account("10000000-0000-4000-8000-000000000001", "Primary", true, 3);
@@ -992,18 +1031,10 @@ mod tests {
 			AccountRouteOutcome::Fresh
 		);
 		let snapshot = controller.snapshot();
-		assert!(!snapshot.can_manage);
+		assert!(snapshot.can_manage);
 		assert!(snapshot.can_route);
-		assert!(controller.select_fixed(&first.account_id).is_err());
-		controller.select_fixed(&second.account_id).expect("new target replaces pending Route");
-		let AccountDispatch::Command(command) = controller.try_take_dispatch(2, &server).unwrap()
-		else {
-			panic!("replacement must dispatch a command")
-		};
-		assert!(matches!(
-			command.payload,
-			CommandPayload::RouteAccount { account_id, .. } if account_id == second.account_id
-		));
+		controller.select_fixed(&second.account_id).expect("current target is an exact no-op");
+		assert!(controller.try_take_dispatch(2, &server).is_none());
 	}
 
 	#[test]

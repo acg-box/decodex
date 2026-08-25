@@ -6,7 +6,7 @@ tags: [local-product, sqlite, protocol, gpui, macos, evidence]
 openwiki:
   roles: [testing, architecture, workflow]
   change_kinds: [lifecycle, public-api, validation, desktop, packaging]
-  source_paths: [database/src/lib.rs, database/src/desktop_settings.rs, database/migrations/0011_desktop_settings.sql, crates/decodex-runtime/src/application.rs, crates/decodex-protocol/src/wire.rs, apps/decodex-gpui/src/client_lifecycle.rs, apps/decodex-gpui/src/settings_surface.rs, apps/decodex-gpui/src/bundled_daemon.rs, scripts/macos/stage_decodex_app.sh, scripts/macos/test_decodex_app_stage.sh]
+  source_paths: [database/src/lib.rs, database/src/desktop_settings.rs, database/migrations/0011_desktop_settings.sql, crates/decodex-runtime/src/application.rs, crates/decodex-protocol/src/wire.rs, apps/decodex-gpui/src/main.rs, apps/decodex-gpui/src/client_lifecycle.rs, apps/decodex-gpui/src/settings_surface.rs, apps/decodex-gpui/src/bundled_daemon.rs, scripts/macos/stage_decodex_app.sh, scripts/macos/test_decodex_app_stage.sh]
   test_paths: [database/src/desktop_settings.rs, tests/scripts/test_vnext_architecture.py, tests/scripts/test_account_login_architecture.py, apps/decodex-gpui/src/accounts.rs, apps/decodex-gpui/src/account_profile.rs, apps/decodex-gpui/src/desktop_settings.rs, apps/decodex-gpui/src/shell.rs, scripts/macos/test_decodex_app_stage.sh]
   invariants: [decodexd is the only normal SQLite owner.; GPUI and CLI are protocol-only clients.; Decodex.app is the only macOS GUI bundle.; The optional menu-bar item runs in the GPUI process.; Persistent desktop settings are revision-guarded in SQLite.; Reset Card consumption has no GUI claim without daemon-owned restart discovery.]
   validation_commands: [python3 scripts/vnext/local_database_gate.py, python3 -m unittest tests/scripts/test_vnext_architecture.py tests/scripts/test_account_login_architecture.py, cargo +stable test -p decodex-protocol --all-targets, DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo +stable test -p decodex-gpui --all-targets --features visual-capture, scripts/macos/test_decodex_app_stage.sh]
@@ -35,11 +35,16 @@ Static architecture tests prove:
 - GPUI and CLI do not depend on SQLite, redb, or the database crate;
 - the retired Control application, Swift companion, native client bridge, and GPUI spike
   are absent;
-- only `apps/decodex-gpui` owns the active GUI source; and
+- only `apps/decodex-gpui` owns the active GUI source;
+- login-item startup orders out native windows instead of presenting the main window; and
 - staging contains no nested login item, helper UI, or client framework.
 
 The one-shot database transfer tool remains separate. Radar and Publisher remain
 independent auxiliary CLIs.
+
+`tests/scripts/test_vnext_architecture.py` statically checks the login-item branch for
+`order_out_native_windows()` and `window.orderOut(None)`, protecting the quiet-startup
+contract without requiring a live macOS window session.
 
 ## Protocol and GPUI evidence
 
@@ -88,7 +93,9 @@ That earlier receipt reported `passed: true` and was inspected before its isolat
 runtime-evidence directory was removed. The later source change replaced GPUI's
 deprecated macOS activation path with main-thread `NSApplication.activate()` and made
 the inspector retry activation, require positive active readback, and fail early for a
-locked or inactive console.
+locked or inactive console. A subsequent quiet-login repair makes the login-item branch call
+`order_out_native_windows`, which orders out native windows created during background startup;
+ordinary reopen continues through `activate_main_window`.
 
 The cold gate for the exact final binary cannot complete in the current environment.
 `CGSessionCopyCurrentDictionary` reports `kCGSSessionOnConsoleKey=1` and

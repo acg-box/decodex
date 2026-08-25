@@ -472,7 +472,6 @@ final class ResetCardStore {
 
 	var canBeginEnrollment: Bool {
 		accountControlClient != nil
-			&& pendingRoute == nil
 			&& canPerformDirectAccountControl
 			&& isAccountControlInProgress == false
 	}
@@ -483,7 +482,6 @@ final class ResetCardStore {
 		}
 		let accountIDs = accounts.map { $0.account.accountID }
 		return accountControlClient != nil
-			&& pendingRoute == nil
 			&& accountIDs.count > 1
 			&& accountIDs.count == routing.order.count
 			&& Set(accountIDs) == Set(routing.order)
@@ -909,12 +907,6 @@ final class ResetCardStore {
 			}
 			if let accountControlClient {
 				let snapshotGeneration = beginAccountSnapshotRequest()
-				projectionReadGeneration = beginCodexProjectionRequest()
-				projectionReadTask = Task { [accountControlClient] in
-					try? await accountControlClient.codexAuthProjection(
-						authority: retainedAuthority
-					)
-				}
 				let snapshot = try await accountControlClient.accountSnapshot(
 					authority: retainedAuthority
 				)
@@ -1015,6 +1007,17 @@ final class ResetCardStore {
 			}
 			if backgroundObservation == false {
 				refreshSkeletonIsPublished = true
+			}
+			if let accountControlClient {
+				// The account snapshot is the authoritative read fence. Publish it before
+				// requesting the shared-auth projection so a completed Route cannot be
+				// combined with a projection captured before that commit.
+				projectionReadGeneration = beginCodexProjectionRequest()
+				projectionReadTask = Task { [accountControlClient] in
+					try? await accountControlClient.codexAuthProjection(
+						authority: retainedAuthority
+					)
+				}
 			}
 
 			let inventoryReads = self.inventoryReads
@@ -1290,13 +1293,22 @@ final class ResetCardStore {
 	}
 
 	func canRouteAccount(_ accountID: String) -> Bool {
-		guard pendingRoute?.accountID != accountID else {
-			return false
-		}
 		guard let state = accounts.first(where: { $0.account.accountID == accountID }) else {
 			return false
 		}
-		return state.routeCapability == .ready
+		guard state.routeCapability == .ready else {
+			return false
+		}
+		let isFixedRoute: Bool
+		if let routing,
+			case .fixed(let fixedAccountID) = routing.mode
+		{
+			isFixedRoute = fixedAccountID == accountID
+		} else {
+			isFixedRoute = false
+		}
+		return isFixedRoute == false
+			|| isCodexProjection(accountID) == false
 	}
 
 	func enrollFromSharedCodex(enabled: Bool = true) async {
@@ -1335,8 +1347,7 @@ final class ResetCardStore {
 		_ accountID: String,
 		enabled: Bool
 	) async {
-		guard pendingRoute == nil,
-			let account = accountRecord(accountID),
+		guard let account = accountRecord(accountID),
 			let accountControlClient
 		else {
 			presentAccountControlUnavailable()
@@ -1360,8 +1371,7 @@ final class ResetCardStore {
 	}
 
 	func logoutAccount(_ accountID: String) async {
-		guard pendingRoute == nil,
-			let account = accountRecord(accountID),
+		guard let account = accountRecord(accountID),
 			let accountControlClient
 		else {
 			presentAccountControlUnavailable()
@@ -1388,10 +1398,8 @@ final class ResetCardStore {
 
 	func routeAccount(_ accountID: String) async {
 		guard let account = accountRecord(accountID),
-			canRouteAccount(accountID),
 			let routing,
-			routing.order.contains(accountID),
-			let accountControlClient
+			routing.order.contains(accountID)
 		else {
 			presentAccountControlUnavailable()
 			return
@@ -1403,8 +1411,13 @@ final class ResetCardStore {
 		} else {
 			needsFixedRouting = true
 		}
-		let replacesPendingRoute = pendingRoute != nil
-		guard needsCodexProjection || needsFixedRouting || replacesPendingRoute else {
+		guard needsCodexProjection || needsFixedRouting else {
+			return
+		}
+		guard canRouteAccount(accountID),
+			let accountControlClient
+		else {
+			presentAccountControlUnavailable()
 			return
 		}
 
@@ -1428,8 +1441,7 @@ final class ResetCardStore {
 	}
 
 	func selectBalancedAccounts() async {
-		guard pendingRoute == nil,
-			let routing,
+		guard let routing,
 			let accountControlClient
 		else {
 			presentAccountControlUnavailable()
@@ -2265,14 +2277,9 @@ final class ResetCardStore {
 		}
 		do {
 			let snapshotGeneration = beginAccountSnapshotRequest()
-			let projectionGeneration = beginCodexProjectionRequest()
-			async let snapshotRead = accountControlClient.accountSnapshot(
+			let snapshot = try await accountControlClient.accountSnapshot(
 				authority: establishedAuthority
 			)
-			async let projectionRead = try? accountControlClient.codexAuthProjection(
-				authority: establishedAuthority
-			)
-			let snapshot = try await snapshotRead
 			guard snapshotGeneration == accountSnapshotRequestGeneration else {
 				return
 			}
@@ -2341,7 +2348,13 @@ final class ResetCardStore {
 					)
 				)
 			}
-			if let projection = await projectionRead,
+			// Keep the same snapshot-before-projection fence in background skeleton
+			// reconciliation. The usable rows above are already published while this
+			// transient projection read is pending.
+			let projectionGeneration = beginCodexProjectionRequest()
+			if let projection = try? await accountControlClient.codexAuthProjection(
+				authority: establishedAuthority
+			),
 				applyCodexAuthProjection(
 					projection,
 					generation: projectionGeneration

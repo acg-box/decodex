@@ -1956,7 +1956,7 @@ pub struct AccountRoutingControlDto {
 	pub order: Vec<EntityId>,
 }
 
-/// Durable daemon-owned Route intent that has not acquired shared-auth writer authority.
+/// Legacy durable Route intent retained for exact decode and one-time startup recovery.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AccountRoutePendingDto {
 	/// Stable Route operation identity.
@@ -2178,7 +2178,7 @@ pub enum AccountsResult {
 		/// Routing controls with an exact account permutation, when that capability read
 		/// succeeded.
 		routing: Option<AccountRoutingControlDto>,
-		/// One authoritative pending Route intent, when Codex still owns shared auth.
+		/// One legacy pending Route intent awaiting startup compatibility recovery.
 		pending_route: Option<AccountRoutePendingDto>,
 	},
 	/// The account authority could not return a safe snapshot.
@@ -2896,7 +2896,7 @@ pub enum EventPayload {
 		/// Credential-negative digest of the projected account binding.
 		projection_digest: Sha256Digest,
 	},
-	/// One daemon-owned Route intent is durable and waiting for natural Codex exit.
+	/// A legacy durable Route intent was recovered from a pre-immediate implementation.
 	AccountRoutePending {
 		/// Complete credential-negative pending intent.
 		pending: AccountRoutePendingDto,
@@ -3054,7 +3054,7 @@ pub enum ResultPayload {
 		/// Credential-negative digest of the projected account binding.
 		projection_digest: Sha256Digest,
 	},
-	/// One Route action was accepted into daemon-owned background coordination.
+	/// A legacy durable Route result retained for decode and startup recovery compatibility.
 	AccountRoutePending {
 		/// Complete credential-negative pending intent.
 		pending: AccountRoutePendingDto,
@@ -3069,7 +3069,7 @@ pub enum ResultPayload {
 }
 
 impl ResultPayload {
-	/// An evolving durable receipt must be replayed by the application, not transport memory.
+	/// A legacy evolving receipt must be replayed by the application, not transport memory.
 	pub const fn is_evolving_receipt(&self) -> bool {
 		matches!(self, Self::AccountRoutePending { .. })
 	}

@@ -12,7 +12,10 @@ HELPERS="$CONTENTS/Helpers"
 MENU_BAR_PACKAGE="$ROOT/apps/decodex-gpui/menubar"
 MENU_BAR_LIBRARY="libDecodexMenuBar.dylib"
 NATIVE_CLIENT_LIBRARY="libdecodex_app_client_ffi.dylib"
-SIGN_IDENTITY=${DECODEX_APP_SIGN_IDENTITY:?set DECODEX_APP_SIGN_IDENTITY to a Developer ID or Apple Development identity}
+DEFAULT_SIGN_IDENTITY="4EBCADF6B4D513E45CE33EC6934C08DBB0F03D7F"
+DEFAULT_SIGN_TEAM_IDENTIFIER="4N949UKQ55"
+SIGN_IDENTITY=${DECODEX_APP_SIGN_IDENTITY:-$DEFAULT_SIGN_IDENTITY}
+SIGN_TEAM_IDENTIFIER=${DECODEX_APP_SIGN_TEAM_IDENTIFIER:-$DEFAULT_SIGN_TEAM_IDENTIFIER}
 DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode-beta.app/Contents/Developer}
 export DEVELOPER_DIR
 
@@ -20,6 +23,16 @@ if [ "$SIGN_IDENTITY" = "-" ]; then
 	echo "Decodex.app requires a stable Apple codesigning identity; ad-hoc signing is unsupported." >&2
 	exit 2
 fi
+
+verify_signing_team() {
+	signed_path=$1
+	details=$(codesign -dvvv "$signed_path" 2>&1)
+	actual_team=$(printf '%s\n' "$details" | sed -n 's/^TeamIdentifier=//p')
+	if [ "$actual_team" != "$SIGN_TEAM_IDENTIFIER" ]; then
+		echo "Decodex signing team '$actual_team' does not match '$SIGN_TEAM_IDENTIFIER'." >&2
+		exit 2
+	fi
+}
 
 cargo +stable build --locked --release --bin decodex-gpui
 cargo +stable build --locked --release --bin decodexd
@@ -54,7 +67,16 @@ codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \
 codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \
 	--identifier box.acg.decodex.menu-bar "$FRAMEWORKS/$MENU_BAR_LIBRARY"
 codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" "$APP"
+for signed_path in \
+	"$HELPERS/decodexd" \
+	"$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY" \
+	"$FRAMEWORKS/$MENU_BAR_LIBRARY"
+do
+	codesign --verify --strict --verbose=2 "$signed_path"
+	verify_signing_team "$signed_path"
+done
 codesign --verify --deep --strict --verbose=2 "$APP"
+verify_signing_team "$APP"
 plutil -lint "$CONTENTS/Info.plist"
 test "$(plutil -extract CFBundleIdentifier raw "$CONTENTS/Info.plist")" = box.acg.decodex
 test "$(plutil -extract CFBundleExecutable raw "$CONTENTS/Info.plist")" = decodex-gpui

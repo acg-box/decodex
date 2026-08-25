@@ -57,7 +57,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertNil(store.message)
 	}
 
-	func testNewRouteCanReplaceADifferentPendingTarget() async throws {
+	func testLegacyPendingSnapshotDoesNotBlockOrdinaryRouteSelection() async throws {
 		let secondID = "22222222-2222-4222-8222-222222222222"
 		let first = accountRecord()
 		let second = accountRecord(accountID: secondID, alias: "Second")
@@ -80,7 +80,7 @@ final class AccountControlStoreTests: XCTestCase {
 		)
 		await store.refresh()
 
-		XCTAssertFalse(store.canRouteAccount(accountID))
+		XCTAssertTrue(store.canRouteAccount(accountID))
 		XCTAssertTrue(store.canRouteAccount(secondID))
 		await store.routeAccount(secondID)
 		let routeRequest = await client.routeRequest()
@@ -89,7 +89,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertNil(store.pendingRoute)
 	}
 
-	func testCurrentRouteCanCancelADifferentPendingTarget() async throws {
+	func testCurrentRouteRemainsNoOpWhenLegacyPendingSnapshotIsPresent() async throws {
 		let secondID = "22222222-2222-4222-8222-222222222222"
 		let first = accountRecord()
 		let second = accountRecord(accountID: secondID, alias: "Second")
@@ -122,12 +122,12 @@ final class AccountControlStoreTests: XCTestCase {
 		)
 		await store.refresh()
 
-		XCTAssertTrue(store.canRouteAccount(accountID))
+		XCTAssertFalse(store.canRouteAccount(accountID))
 		await store.routeAccount(accountID)
 		let routeRequest = await client.routeRequest()
-		XCTAssertEqual(routeRequest?.accountID, accountID)
+		XCTAssertNil(routeRequest)
 		XCTAssertEqual(store.routing?.mode, .fixed(accountID: accountID))
-		XCTAssertNil(store.pendingRoute)
+		XCTAssertNotNil(store.pendingRoute)
 	}
 
 	func testDirectActionsWaitForTheCurrentSkeletonBeforeDispatch() async throws {
@@ -1032,6 +1032,204 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertFalse(store.isRefreshing)
 	}
 
+	func testStartupReadCannotPublishProjectionCapturedBeforeCommittedRouteSnapshot() async throws {
+		let targetAccountID = "22222222-2222-4222-8222-222222222222"
+		let sourceAccount = accountRecord()
+		let targetAccount = accountRecord(
+			accountID: targetAccountID,
+			alias: "Account 00000-00002"
+		)
+		let client = AccountControlStoreClient(
+			account: sourceAccount,
+			secondaryAccount: targetAccount,
+			authority: authority,
+			suspendsSnapshot: true,
+			suspendsProjection: true,
+			capturesProjectionBeforeWait: true,
+			routing: AccountRoutingControl(
+				revision: 9,
+				mode: .fixed(accountID: accountID),
+				order: [accountID, targetAccountID]
+			),
+			pendingRoute: AccountRoutePending(
+				operationID: "33333333-3333-4333-8333-333333333333",
+				accountID: targetAccountID,
+				routingRevision: 9
+			),
+			projection: .current(
+				accountID: accountID,
+				accountRevision: sourceAccount.accountRevision,
+				projectionDigest: String(repeating: "a", count: 64)
+			)
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		let refreshTask = Task { await store.refresh() }
+		for _ in 0 ..< 200 {
+			if await client.snapshotIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		guard await client.snapshotIsPending() else {
+			await client.releaseSnapshot()
+			await client.releaseProjection()
+			await refreshTask.value
+			return XCTFail("The startup snapshot did not enter the pending state.")
+		}
+		for _ in 0 ..< 200 {
+			if await client.projectionReadCount() > 0 {
+				break
+			}
+			await Task.yield()
+		}
+		let startupProjectionReadsBeforeCommit = await client.projectionReadCount()
+		XCTAssertEqual(
+			startupProjectionReadsBeforeCommit,
+			0,
+			"Projection must not start before the authoritative snapshot returns."
+		)
+
+		let committedTarget = accountRecord(
+			accountID: targetAccountID,
+			alias: "Account 00000-00002",
+			revision: 8
+		)
+		await client.commitRoute(
+			account: committedTarget,
+			routing: AccountRoutingControl(
+				revision: 10,
+				mode: .fixed(accountID: targetAccountID),
+				order: [accountID, targetAccountID]
+			),
+			projection: .current(
+				accountID: targetAccountID,
+				accountRevision: committedTarget.accountRevision,
+				projectionDigest: String(repeating: "b", count: 64)
+			)
+		)
+		await client.releaseSnapshot()
+		await client.releaseProjection()
+		await refreshTask.value
+
+		XCTAssertEqual(store.routing?.mode, .fixed(accountID: targetAccountID))
+		XCTAssertNil(store.pendingRoute)
+		XCTAssertTrue(store.isCodexProjection(targetAccountID))
+		XCTAssertFalse(store.isCodexProjection(accountID))
+		XCTAssertFalse(store.canRouteAccount(targetAccountID))
+
+		await store.routeAccount(targetAccountID)
+		let routeRequest = await client.routeRequest()
+		XCTAssertNil(routeRequest, "The committed target must not send a second Route.")
+	}
+
+	func testBackgroundSkeletonCannotPublishProjectionCapturedBeforeCommittedRouteSnapshot()
+		async throws
+	{
+		let targetAccountID = "22222222-2222-4222-8222-222222222222"
+		let sourceAccount = accountRecord()
+		let targetAccount = accountRecord(
+			accountID: targetAccountID,
+			alias: "Account 00000-00002"
+		)
+		let client = AccountControlStoreClient(
+			account: sourceAccount,
+			secondaryAccount: targetAccount,
+			authority: authority,
+			suspendsSnapshotAfterFirstRead: true,
+			suspendsProjectionAfterFirstRead: true,
+			capturesProjectionBeforeWait: true,
+			routing: AccountRoutingControl(
+				revision: 9,
+				mode: .fixed(accountID: accountID),
+				order: [accountID, targetAccountID]
+			),
+			projection: .current(
+				accountID: accountID,
+				accountRevision: sourceAccount.accountRevision,
+				projectionDigest: String(repeating: "a", count: 64)
+			)
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+		await store.logoutAccount(accountID)
+		for _ in 0 ..< 200 {
+			if await client.snapshotIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		guard await client.snapshotIsPending() else {
+			await client.releaseSnapshot()
+			await client.releaseProjection()
+			return XCTFail("The background skeleton snapshot did not enter the pending state.")
+		}
+		for _ in 0 ..< 200 {
+			if await client.projectionReadCount() > 1 {
+				break
+			}
+			await Task.yield()
+		}
+		let skeletonProjectionReadsBeforeCommit = await client.projectionReadCount()
+		XCTAssertEqual(
+			skeletonProjectionReadsBeforeCommit,
+			1,
+			"Background projection must wait for its authoritative snapshot."
+		)
+
+		let committedTarget = accountRecord(
+			accountID: targetAccountID,
+			alias: "Account 00000-00002",
+			revision: 8
+		)
+		await client.commitRoute(
+			account: committedTarget,
+			routing: AccountRoutingControl(
+				revision: 10,
+				mode: .fixed(accountID: targetAccountID),
+				order: [accountID, targetAccountID]
+			),
+			projection: .current(
+				accountID: targetAccountID,
+				accountRevision: committedTarget.accountRevision,
+				projectionDigest: String(repeating: "b", count: 64)
+			)
+		)
+		await client.releaseSnapshot()
+		await client.releaseProjection()
+		for _ in 0 ..< 200 {
+			if store.isRefreshingAccountSkeleton == false,
+				await client.projectionReadCount() >= 2
+			{
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		XCTAssertEqual(store.routing?.mode, .fixed(accountID: targetAccountID))
+		XCTAssertNil(store.pendingRoute)
+		XCTAssertTrue(store.isCodexProjection(targetAccountID))
+		XCTAssertFalse(store.isCodexProjection(accountID))
+		XCTAssertFalse(store.canRouteAccount(targetAccountID))
+
+		await store.routeAccount(targetAccountID)
+		let routeRequest = await client.routeRequest()
+		XCTAssertNil(routeRequest, "The committed target must not send a second Route.")
+	}
+
 	func testDepletedAccountCanBeDisabledWhileDetailReadIsPending() async throws {
 		let account = accountRecord(
 			observedState: .depleted,
@@ -1768,7 +1966,10 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 	private let inventoryGate: AccountControlReadGate?
 	private let snapshotGate: AccountControlReadGate?
 	private let projectionGate: AccountControlReadGate?
+	private let snapshotWaitsAfterFirstRead: Bool
+	private let projectionWaitsAfterFirstRead: Bool
 	private let capturesSnapshotBeforeWait: Bool
+	private let capturesProjectionBeforeWait: Bool
 	private let routeGate: AccountControlReadGate?
 	private let enrollmentGate: AccountControlReadGate?
 	private let inventoryRevisionOverride: UInt64?
@@ -1816,9 +2017,12 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		secondaryAccount: ResetCardAccountRecord? = nil,
 		authority: ResetCardAuthority,
 		suspendsInventory: Bool = false,
+		suspendsSnapshot: Bool = false,
 		suspendsSnapshotAfterFirstRead: Bool = false,
 		suspendsProjection: Bool = false,
+		suspendsProjectionAfterFirstRead: Bool = false,
 		capturesSnapshotBeforeWait: Bool = false,
+		capturesProjectionBeforeWait: Bool = false,
 		suspendsRoute: Bool = false,
 		suspendsEnrollment: Bool = false,
 		inventoryRevisionOverride: UInt64? = nil,
@@ -1842,9 +2046,16 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		self.authority = authority
 		self.projection = projection
 		inventoryGate = suspendsInventory ? AccountControlReadGate() : nil
-		snapshotGate = suspendsSnapshotAfterFirstRead ? AccountControlReadGate() : nil
-		projectionGate = suspendsProjection ? AccountControlReadGate() : nil
+		snapshotGate = suspendsSnapshot || suspendsSnapshotAfterFirstRead
+			? AccountControlReadGate()
+			: nil
+		projectionGate = suspendsProjection || suspendsProjectionAfterFirstRead
+			? AccountControlReadGate()
+			: nil
+		snapshotWaitsAfterFirstRead = suspendsSnapshotAfterFirstRead
+		projectionWaitsAfterFirstRead = suspendsProjectionAfterFirstRead
 		self.capturesSnapshotBeforeWait = capturesSnapshotBeforeWait
+		self.capturesProjectionBeforeWait = capturesProjectionBeforeWait
 		routeGate = suspendsRoute ? AccountControlReadGate() : nil
 		enrollmentGate = suspendsEnrollment ? AccountControlReadGate() : nil
 		self.inventoryRevisionOverride = inventoryRevisionOverride
@@ -1881,7 +2092,9 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 			uniqueKeysWithValues: availableAccounts.map { ($0.accountID, $0) }
 		)
 		let capturedAccounts = routing.order.compactMap { accountsByID[$0] }
-		if snapshotReadCount > 1, let snapshotGate {
+		if let snapshotGate,
+			snapshotReadCount > (snapshotWaitsAfterFirstRead ? 1 : 0)
+		{
 			await snapshotGate.wait()
 		}
 		return AccountControlSnapshot(
@@ -2140,6 +2353,21 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		secondaryAccount = account
 	}
 
+	func commitRoute(
+		account committedAccount: ResetCardAccountRecord,
+		routing committedRouting: AccountRoutingControl,
+		projection committedProjection: CodexAuthProjection
+	) {
+		if account.accountID == committedAccount.accountID {
+			account = committedAccount
+		} else if secondaryAccount?.accountID == committedAccount.accountID {
+			secondaryAccount = committedAccount
+		}
+		routing = committedRouting
+		pendingRoute = nil
+		projection = committedProjection
+	}
+
 	func enrollFromSharedCodex(
 		authority: ResetCardAuthority?,
 		operationID: String,
@@ -2182,11 +2410,16 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		authority: ResetCardAuthority?
 	) async throws -> CodexAuthProjection {
 		projectionReads += 1
-		await projectionGate?.wait()
+		let capturedProjection = projection
+		if let projectionGate,
+			projectionReads > (projectionWaitsAfterFirstRead ? 1 : 0)
+		{
+			await projectionGate.wait()
+		}
 		if let projectionError {
 			throw projectionError
 		}
-		return projection
+		return capturesProjectionBeforeWait ? capturedProjection : projection
 	}
 
 	func setProjectionError(_ error: AccountControlError?) {
