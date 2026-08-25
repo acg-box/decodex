@@ -45,14 +45,11 @@ migration ledger.
 
 Schema version 9 adds one nullable, credential-negative `request_json` column to command
 receipts. Only a reserved `route_account` receipt must contain this value. The partial index
-supports bounded startup recovery. On daemon startup, the runtime releases only interrupted
-Route leases and completes one recovery pass before it accepts protocol commands.
-
-Schema version 10 adds the nullable `progress_json` column to the existing command receipt,
-retaining schema 9 request authority while recording credential-negative pending Route progress.
-A unique partial index permits at most one reserved `route_account` receipt, and triggers keep
-progress restricted to that pending Route state. The migration is additive and preserves
-existing receipt rows.
+supports bounded startup recovery. Schema version 10 adds nullable `progress_json` for decoding
+legacy pending Route progress and a unique partial index for at most one reserved receipt. These
+columns and constraints are compatibility storage: current Route is synchronous and does not
+normally create Pending state. On daemon startup, the runtime performs the one bounded legacy
+Route recovery pass before accepting protocol commands.
 
 Schema version 11 adds the singleton `desktop_settings` table. `decodexd` is its only
 reader and writer. The positive revision guards the **Show Decodex in the menu bar**

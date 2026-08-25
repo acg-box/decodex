@@ -37,7 +37,7 @@ The app embeds presentation and local-service payloads, while `decodexd` remains
 
 - the owner-only local protocol listener;
 - the bundled SQLite product database;
-- account credentials, routing, quota observations, and login installation;
+- account credentials, synchronous exact-source routing, quota observations, and login installation;
 - conversations, history, runtime sessions, process generations, and provider attempts;
 - Program state and domain projections;
 - Codex app-server child lifecycles; and

@@ -9,8 +9,8 @@ openwiki:
   source_paths: [crates/decodex-runtime/src/account_login.rs, crates/decodex-protocol/src/wire.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, crates/decodex-runtime/src/auth_projection.rs, crates/decodex-runtime/src/shared_auth_coordinator.rs, crates/decodex-runtime/src/host_credentials/sqlite_store.rs, database/src/account_lifecycle.rs, database/src/desktop_settings.rs, database/migrations/0009_durable_account_route.sql, database/migrations/0010_pending_account_route_progress.sql, database/migrations/0011_desktop_settings.sql, crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/domain_packs/decodex.dev-1.0.0.json, crates/decodex-runtime/domain_packs/decodex.paper-investment-1.0.0.json, crates/decodex-codex/src/quick_task.rs, crates/decodex-protocol/src/domain_pack.rs, database/migrations/0007_builtin_domain_pack_binding.sql, database/src/program_cycles.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/desktop_settings.rs, apps/decodex-gpui/src/settings_surface.rs, apps/decodex-gpui/src/shell.rs]
   symbols: [SharedAuthCoordinator, AccountService::route_account_command, recover_pending_account_routes_once, AccountRoutePendingDto, QuickTaskExecutionSettings, QuickTaskRecoveryAction, control_thread, ExactSubmittedTurnReadback, UnknownQuickTaskAttemptReadback, TranscriptRow]
   test_paths: [crates/decodex-runtime/src/shared_auth_coordinator.rs, crates/decodex-runtime/src/account_service.rs, database/src/account_lifecycle.rs, database/src/desktop_settings.rs, crates/decodex-protocol/src/wire.rs, tests/scripts/test_account_login_architecture.py, tests/scripts/test_vnext_architecture.py, crates/decodex-protocol/src/account_login.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/auth_projection.rs, database/tests/quick_task_restart.rs, database/src/program_cycles.rs, crates/decodex-protocol/src/domain_pack.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/src/application.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/desktop_settings.rs, apps/decodex-gpui/src/client_lifecycle/tests.rs]
-  invariants: [Exact thread lifecycle readback precedes local archive commit.; Missing per-thread archive fields require exact filtered-list membership.; Composer content clears only after explicit submission acceptance.; A queued prompt remains visible until durable history contains it.; Adjacent assistant fragments with the same Turn identity render as one response.; A validated fresh history head replaces the old retained page window before its continuation is rebuilt.; Unknown ProviderAttempt evidence is never replay authority.; An inconclusive Turn becomes product-usable only after positive exact process death.; A successor Context Pack excludes the successor Turn itself.; Durable terminal evidence can finish an interrupted local Turn terminalization.; Fast is request-scoped and never mutates global Codex configuration.; A live account process generation rejects a second request before provider effect.; Re-enrollment restores the sole tombstoned provider owner and returns its resolved UUID.; A structured terminal device denial cannot remain pending.; SharedAuthCoordinator requires two equal metadata observations before stable readback and never projects while Codex may be running.; A pending Route preserves one command identity and routing revision until recovery can resume it.; Each Program has at most one immutable built-in Domain Pack identity.; Domain entity identities are derived from the Program and exact Pack digest.; Program capability admission precedes QuickTaskRuntime and ProviderAttempt creation.; GPUI alone renders bounded Pack projections.]
-  validation_commands: [cargo test -p decodex-runtime shared_auth_coordinator::tests, cargo test -p decodex-runtime account_service::tests::pending_route_waits_for_natural_quiescence_then_commits_from_the_same_receipt, cargo test -p decodex-protocol account_route_pending, cargo test -p database pending_route_fences_balanced_and_order_revision_changes, cargo test --workspace --all-targets]
+  invariants: [Exact thread lifecycle readback precedes local archive commit.; Missing per-thread archive fields require exact filtered-list membership.; Composer content clears only after explicit submission acceptance.; A queued prompt remains visible until durable history contains it.; Adjacent assistant fragments with the same Turn identity render as one response.; A validated fresh history head replaces the old retained page window before its continuation is rebuilt.; Unknown ProviderAttempt evidence is never replay authority.; An inconclusive Turn becomes product-usable only after positive exact process death.; A successor Context Pack excludes the successor Turn itself.; Durable terminal evidence can finish an interrupted local Turn terminalization.; Fast is request-scoped and never mutates global Codex configuration.; A live account process generation rejects a second request before provider effect.; Re-enrollment restores the sole tombstoned provider owner and returns its resolved UUID.; A structured terminal device denial cannot remain pending.; Route is synchronous exact-source CAS/readback with no Codex process/liveness wait.; Passive shared-auth following imports only same-account non-older rotations without writing auth.json.; AccountRoutePending is legacy-decode and one-time-startup-recovery compatibility state only.; Each Program has at most one immutable built-in Domain Pack identity.; Domain entity identities are derived from the Program and exact Pack digest.; Program capability admission precedes QuickTaskRuntime and ProviderAttempt creation.; GPUI alone renders bounded Pack projections.]
+  validation_commands: [cargo test -p decodex-runtime shared_auth_coordinator::tests, cargo test -p decodex-runtime account_service::tests::cross_account_route_is_synchronous_even_when_codex_may_be_running, cargo test -p decodex-runtime account_service::tests::stable_known_account_same_expiry_rotation_imports_once_without_provider_work, cargo test -p decodex-protocol account_route_pending, cargo test -p database pending_route_fences_balanced_and_order_revision_changes, cargo test --workspace --all-targets]
 ---
 
 # Local Product V1 Contract
@@ -427,64 +427,50 @@ appear in Debug output, protocol data, logs, migration output, or transfer repor
 
 GPUI sends one `RouteAccount` command with one Route operation UUID, the target Account UUID
 and revision, the routing revision, and one idempotency key. GPUI does not run a refresh,
-projection, or fixed-selection workflow. It applies the daemon's authoritative `AccountRouted` or `AccountRoutePending` result,
-including the target Account, routing control, credential-negative projection digest, and pending
-Route when present.
+projection, or fixed-selection workflow. It applies the daemon's authoritative `AccountRouted`
+result, including the target Account, routing control, and credential-negative projection digest.
+`AccountRoutePending` is retained only so older receipts can be decoded and recovered at startup.
 
 `AccountService` holds one routing lock across Route, balanced selection, and order changes.
-One daemon-wide `SharedAuthCoordinator` owns Codex liveness observation, stable shared-auth reads,
-and the conditional projection seam; there is no client-side or second coordinator. A stable read
-requires two equal file-metadata observations. `SharedAuthCoordinator` owns the poll state,
-including the candidate stamp, consecutive observation count, and already-handled stamp; it
-returns `Waiting`, `Unavailable`, `Unchanged`, or `Changed` rather than exposing a partial
-snapshot as current. A partial or unavailable read is retryable without inventing a new metadata
-change. While Codex may be running, the coordinator may absorb a valid newer same-identity managed
-bundle into SQLite, but never writes shared auth. Ordinary refresh returns `OwnerBusy` before
-provider work when no such bundle was absorbed. Route's target refresh uses the `ProvedInactive`
-policy after natural Codex exit instead. Its production liveness port is conservative: uncertainty
-is `MayBeRunning`, so projection fails closed; on macOS, inaccessible unrelated PIDs and Decodex-owned
-attested app-server descendants are ignored, while external ChatGPT/Codex writers block cutover.
-Test ports cover these liveness and file boundaries.
+One daemon-wide `SharedAuthCoordinator` owns exact source reads, stable passive-following polls,
+and the exact-source projection seam; there is no client-side or second coordinator. A stable
+passive read requires two equal file-metadata observations. While following shared auth, the
+coordinator may import only a valid newer same-account managed bundle into SQLite and never writes
+shared auth. Route itself is synchronous and performs its exact-source CAS/readback directly; it
+has no Codex process/liveness wait or normal Pending result.
 
 Route coordinates the normal shared `~/.codex/auth.json`. If the file is absent or unmanaged, the
 Route can continue with the target. A managed identity naming another enrolled Account is first
 reconciled into that source Account using a stable account-scoped operation derived from the Route
-operation UUID. Unknown, unreadable, unsafe, or inconsistent managed identity fails closed. After
-natural exit, Route rechecks the exact stable source stamp and snapshot, refreshes the target, and
-projects the target only with an exact-source compare-and-swap. The writer uses one same-directory
-mode-0600 temporary file, synchronization, atomic rename, exact readback, and parent synchronization;
-source drift fails before rename, while an already-current target is idempotent.
+operation UUID. Unknown, unreadable, unsafe, or inconsistent managed identity fails closed. Route rechecks the exact source stamp and snapshot as part of the same synchronous command,
+refreshes the target when needed, and projects the target only with an exact-source
+compare-and-swap. It does not wait for Codex Desktop or an app-server process to exit. The writer
+uses one same-directory mode-0600 temporary file, synchronization, atomic rename, exact readback,
+and parent synchronization; source drift fails before rename, while an already-current target is
+idempotent.
 
-If Codex may be running, Route does not pretend a cross-account switch is complete. Migrations
-`0009_durable_account_route.sql` and `0010_pending_account_route_progress.sql` retain one
-credential-negative, replayable pending `route_account` receipt with optional progress, protected
-by one pending Route invariant. `AccountService::route_account_command` first fences account and
-routing revisions under the routing lock, then returns `AccountRoutePending` as a confirmed typed
-success before any projection write when liveness or stable-read prerequisites are not satisfied.
-The durable receipt can later become terminal; restart-transient account readiness keeps it pending.
-A newer explicit Route target atomically supersedes the older pending target, and replay of the old
-command returns `route_superseded`. GPUI retains other ready accounts as selectable and
-can submit a new target. The current fixed target remains a `Keep` action so it can cancel a
-different pending target. The daemon reclaims pending work at startup and through
-`recover_pending_account_routes_once`, then resumes from the same operation identity after natural
-exit; recovery can settle a stale routing revision without writing shared auth. Fixed routing commits
-only after target refresh and exact-source cutover succeed. If shared auth is already the target,
-`decodexd` may reconcile credentials and routing without rewriting `auth.json`, even while Codex
-runs. Cross-account auth projection still requires natural external Codex quiescence because a
-running Codex caches account auth. The protocol's `AccountRoutePendingDto` carries only the
-operation ID, target account ID, and fenced routing revision, so clients render authoritative
-Pending state without owning workflow state.
+Route executes synchronously under the routing lock. `AccountService::route_account_command`
+reads the exact shared-auth source, performs any same-account source reconciliation, refreshes the
+target when needed, performs exact-source CAS/write/readback, and commits fixed routing and the
+receipt only after success. It does not wait for Codex liveness or return a normal Pending state.
+`AccountRoutePending` and `AccountRoutePendingDto`, plus migrations
+`0009_durable_account_route.sql` and `0010_pending_account_route_progress.sql`, remain only to
+decode legacy receipts and support the one-time `recover_pending_account_routes_once` startup
+recovery pass. They are not a client-owned retry workflow. Passive following imports only same-
+account non-older rotations into daemon credentials and never writes `auth.json`.
 Client disconnect or application exit does not cancel admitted daemon work.
 
 Focused implementation checks are in `crates/decodex-runtime/src/shared_auth_coordinator.rs`
-for stable-read and liveness behavior, `crates/decodex-runtime/src/account_service.rs` for
+for stable-read and exact-source coordination, `crates/decodex-runtime/src/account_service.rs` for
 same-receipt pending recovery, `database/src/account_lifecycle.rs` for revision fencing, and
 `crates/decodex-protocol/src/wire.rs` for pending-result validation. Run the focused tests before
 the workspace suite; generated indexes and client projections are not hand-edited as part of this
 contract.
 
-The app has one Route button and projects the daemon's authoritative Pending state; it does not
-maintain a separate preparation workflow. Account, profile, inventory, quota, and aggregate values
+The app has one Route button and applies the daemon's authoritative terminal Route result. It does
+not project a normal Pending state or maintain a separate preparation workflow. The retained
+`AccountRoutePending` UI/protocol shapes exist only to decode and recover older receipts during the
+one-time startup compatibility pass. Account, profile, inventory, quota, and aggregate values
 follow authoritative revisions. Any displayed reset-card `Total` is derived from the registry-backed
 account observation, not preserved as a client-owned value across partial reads. Retryable partial
 account reads retain safe prior projections and retry using bounded delays.

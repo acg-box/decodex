@@ -87,21 +87,15 @@ ProviderAttempt state, and exact command receipts. Missing or stale quota data m
 unknown capacity; it is not fabricated exhaustion. A current known depleted fact still
 blocks that account.
 
-Account Route is one daemon-owned command coordinated by `decodexd`'s
-`SharedAuthCoordinator`. While Codex runs, the coordinator performs read-only stable-auth
-following: it observes stable metadata and imports known source rotations without writing the
-shared auth file. A Route that cannot safely cut over returns `AccountRoutePending`, a confirmed
-typed success backed by one durable receipt that can later become terminal; restart-transient
-account readiness keeps it pending. A newer explicit Route atomically supersedes an older pending
-target, and replay of the old command returns `route_superseded`. GPUI keeps other ready
-targets selectable; the current routed target becomes a `Keep` action while another target is
-pending. After natural external Codex quiescence, `decodexd` rechecks the exact source
-auth version, refreshes the target as needed, and performs the shared-auth write with an exact-source
-CAS before committing fixed routing and its Route receipt. If shared auth already names the target,
-`decodexd` may reconcile credentials and routing without rewriting `auth.json` even while Codex
-runs. Cross-account `auth.json` writes still require natural external Codex quiescence because
-running Codex caches account auth. The optional in-process menu-bar item has no Route workflow
-state. `decodexd` never controls the Codex process.
+Account Route is one daemon-owned synchronous command coordinated by `decodexd`'s
+`SharedAuthCoordinator`. The command reads the exact shared-auth source, reconciles a known source
+rotation, refreshes the target when required, performs exact-source CAS/write/readback, and commits
+fixed routing only after those checks succeed. Route has no Codex process/liveness wait and no
+normal `AccountRoutePending`. Passive shared-auth following uses stable metadata observations to
+import only same-account non-older rotations into daemon credentials; it never writes `auth.json`.
+`AccountRoutePending` remains only for legacy receipt decoding and one-time startup recovery. The
+optional in-process menu-bar item has no Route workflow state. `decodexd` never controls the Codex
+process.
 
 The runtime keeps the mature Codex app-server protocol and safety harness. It does not
 replace Codex with a new agent kernel. It preserves exact account binding, pre-spawn
