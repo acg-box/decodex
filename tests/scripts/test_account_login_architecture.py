@@ -31,7 +31,6 @@ class AccountLoginArchitectureTests(unittest.TestCase):
 			toml("crates/decodex-runtime/Cargo.toml")["dependencies"],
 		)
 		for manifest in (
-			"crates/decodex-app-client-ffi/Cargo.toml",
 			"apps/decodex-gpui/Cargo.toml",
 			"crates/decodex-protocol/Cargo.toml",
 		):
@@ -40,11 +39,18 @@ class AccountLoginArchitectureTests(unittest.TestCase):
 					"decodex-account-login", toml(manifest)["dependencies"]
 				)
 
-	def test_provider_engine_and_temporary_home_left_the_ffi(self) -> None:
-		ffi = ROOT / "crates/decodex-app-client-ffi"
-		self.assertFalse((ffi / "src/source_login_adapter.rs").exists())
-		self.assertFalse((ffi / "src/account_reauthentication.rs").exists())
-		bridge = read("crates/decodex-app-client-ffi/src/lib.rs")
+	def test_native_menu_bridge_is_protocol_only_and_gpui_has_no_provider_engine(self) -> None:
+		ffi = toml("crates/decodex-app-client-ffi/Cargo.toml")
+		self.assertIn("crates/decodex-app-client-ffi", toml("Cargo.toml")["workspace"]["members"])
+		self.assertIn("decodex-protocol", ffi["dependencies"])
+		for forbidden_dependency in (
+			"decodex-account-login",
+			"decodex-database",
+			"decodex-runtime",
+			"reqwest",
+		):
+			self.assertNotIn(forbidden_dependency, ffi["dependencies"])
+		bridge = read("apps/decodex-gpui/src/account_login.rs")
 		for forbidden in (
 			"source_login_adapter",
 			"LoginHome",
@@ -58,13 +64,12 @@ class AccountLoginArchitectureTests(unittest.TestCase):
 		):
 			with self.subTest(marker=forbidden):
 				self.assertNotIn(forbidden, bridge)
-		dependencies = toml("crates/decodex-app-client-ffi/Cargo.toml")["dependencies"]
+		dependencies = toml("apps/decodex-gpui/Cargo.toml")["dependencies"]
 		for provider_dependency in (
 			"base64",
 			"getrandom",
 			"httparse",
 			"reqwest",
-			"sha2",
 			"time",
 			"url",
 			"zeroize",
@@ -163,20 +168,19 @@ class AccountLoginArchitectureTests(unittest.TestCase):
 					str(path.relative_to(ROOT)),
 				)
 
-	def test_both_desktop_frontends_are_protocol_only(self) -> None:
-		ffi = read("crates/decodex-app-client-ffi/src/lib.rs")
+	def test_the_only_desktop_frontend_is_protocol_only(self) -> None:
+		self.assertFalse((ROOT / "apps/decodex-app").exists())
 		gpui = read("apps/decodex-gpui/src/account_login.rs")
-		for source in (ffi, gpui):
-			self.assertIn("AccountLoginClient", source)
-			for forbidden in (
-				"reqwest",
-				"TcpListener",
-				"auth.json",
-				"OAUTH_CLIENT_ID",
-				"LoginHome",
-			):
-				with self.subTest(marker=forbidden):
-					self.assertNotIn(forbidden, source)
+		self.assertIn("AccountLoginClient", gpui)
+		for forbidden in (
+			"reqwest",
+			"TcpListener",
+			"auth.json",
+			"OAUTH_CLIENT_ID",
+			"LoginHome",
+		):
+			with self.subTest(marker=forbidden):
+				self.assertNotIn(forbidden, gpui)
 
 
 if __name__ == "__main__":

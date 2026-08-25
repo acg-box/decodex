@@ -1,6 +1,12 @@
 //! Deterministic native screenshot capture for the Codex Workbench design review.
 
 #[allow(dead_code)]
+#[path = "../account_login.rs"]
+mod account_login;
+#[allow(dead_code)]
+#[path = "../account_profile.rs"]
+mod account_profile;
+#[allow(dead_code)]
 #[path = "../accounts.rs"]
 mod accounts;
 #[allow(dead_code)]
@@ -13,6 +19,9 @@ mod client_lifecycle;
 #[path = "../composer_input.rs"]
 mod composer_input;
 #[allow(dead_code)]
+#[path = "../desktop_settings.rs"]
+mod desktop_settings;
+#[allow(dead_code)]
 #[path = "../factory_surface.rs"]
 mod factory_surface;
 #[allow(dead_code)]
@@ -21,6 +30,9 @@ mod health_query;
 #[allow(dead_code)]
 #[path = "../history_pager.rs"]
 mod history_pager;
+#[allow(dead_code)]
+#[path = "../native_menu_bar.rs"]
+mod native_menu_bar;
 #[allow(dead_code)]
 #[path = "../programs.rs"]
 mod programs;
@@ -40,6 +52,7 @@ mod ui_theme;
 #[path = "../work_items.rs"]
 mod work_items;
 
+#[cfg(target_os = "macos")] use objc2 as _;
 use std::path::PathBuf;
 
 use gpui::{AppContext as _, VisualTestAppContext, px, size};

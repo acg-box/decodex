@@ -93,15 +93,15 @@ following: it observes stable metadata and imports known source rotations withou
 shared auth file. A Route that cannot safely cut over returns `AccountRoutePending`, a confirmed
 typed success backed by one durable receipt that can later become terminal; restart-transient
 account readiness keeps it pending. A newer explicit Route atomically supersedes an older pending
-target, and replay of the old command returns `route_superseded`. Swift and GPUI keep other ready
+target, and replay of the old command returns `route_superseded`. GPUI keeps other ready
 targets selectable; the current routed target becomes a `Keep` action while another target is
 pending. After natural external Codex quiescence, `decodexd` rechecks the exact source
 auth version, refreshes the target as needed, and performs the shared-auth write with an exact-source
 CAS before committing fixed routing and its Route receipt. If shared auth already names the target,
 `decodexd` may reconcile credentials and routing without rewriting `auth.json` even while Codex
 runs. Cross-account `auth.json` writes still require natural external Codex quiescence because
-running Codex caches account auth. The menu-bar app has no Route workflow state. `decodexd` never
-controls the Codex process.
+running Codex caches account auth. The optional in-process menu-bar item has no Route workflow
+state. `decodexd` never controls the Codex process.
 
 The runtime keeps the mature Codex app-server protocol and safety harness. It does not
 replace Codex with a new agent kernel. It preserves exact account binding, pre-spawn
@@ -179,13 +179,29 @@ base. It does not make deferred extension or multi-agent surfaces partially avai
   and temporary login-home lifecycle; only `crates/decodex-runtime/` depends on it.
 - `crates/decodex-runtime/src/account_login.rs` owns the singleton daemon login manager,
   memory-only Start/Status/Cancel service, cancellation joins, and AccountService installation.
-- `crates/decodex-app-client-ffi/src/lib.rs` and `apps/decodex-gpui/src/account_login.rs`
-  are protocol-only presentation seams; they never receive credential paths or bytes.
+- `apps/decodex-gpui/src/account_login.rs` is the sole native account-login presentation seam;
+  it never receives credential paths or bytes.
+- `database/src/desktop_settings.rs`, `crates/decodex-protocol/src/wire.rs`, and
+  `apps/decodex-gpui/src/desktop_settings.rs` keep the menu-bar preference daemon-owned and
+  protocol-only.
 - `database/src/program_cycles.rs` owns the atomic Program aggregate and Review rules.
 - `crates/decodex-runtime/domain_packs/` owns the two exact built-in declarative manifests.
 - `crates/decodex-runtime/fixtures/` owns frozen offline Pack data and source metadata.
 - `apps/decodexd/` is the only server composition root.
 - `apps/decodex-cli/` and `apps/decodex-gpui/` are protocol-only clients.
+- `apps/decodex-gpui/` is the only macOS GUI and stages as `Decodex.app`; its optional
+  menu-bar item is a signed embedded Swift library loaded in the same process.
+- `scripts/macos/stage_decodex_app.sh` is the canonical signed app builder; it embeds
+  `decodexd` for local profiles and does not create a nested login-item app.
+
+## Task routing
+
+| Change area or user intent | Relevant wiki page | Exact source entry points | Important symbols or types | Focused tests | Minimal validation command |
+| --- | --- | --- | --- | --- | --- |
+| Change the signed macOS app bundle | [Runtime architecture](architecture/runtime-architecture.md) | `scripts/macos/stage_decodex_app.sh`, `apps/decodex-gpui/packaging/Info.plist` | `Decodex.app`, `decodex-gpui`, `DECODEX_APP_SIGN_IDENTITY` | `scripts/macos/test_decodex_app_stage.sh` | `scripts/macos/test_decodex_app_stage.sh` |
+| Change local daemon startup from the GUI | [Runtime architecture](architecture/runtime-architecture.md) | `apps/decodex-gpui/src/bundled_daemon.rs`, `apps/decodex-gpui/src/main.rs` | `BundledDaemonGuard`, `bundled_daemon_path`, `lifetime_channel` | bundled-daemon unit tests in `apps/decodex-gpui/src/bundled_daemon.rs` | `cargo +stable test -p decodex-gpui --all-targets` |
+| Change the menu-bar presentation bridge | [Runtime architecture](architecture/runtime-architecture.md) | `apps/decodex-gpui/menubar/Sources/DecodexApp/DecodexApp.swift`, `apps/decodex-gpui/src/native_menu_bar.rs` | `decodex_menu_bar_create`, `decodex_menu_bar_set_visible`, `DecodexMenuBarHost` | `apps/decodex-gpui/menubar/Tests/DecodexAppTests/` | `swift test --package-path apps/decodex-gpui/menubar` |
+| Validate or package the desktop surface | [Commands and validation](operations/commands-and-validation.md) | `scripts/macos/test_decodex_app_stage.sh`, `scripts/macos/run_decodex_gpui_accessibility_gate.swift` | bundle shape, signing team, exported ABI | app stage test and GPUI visual-capture tests | `scripts/macos/test_decodex_app_stage.sh` |
 
 ## First commands
 

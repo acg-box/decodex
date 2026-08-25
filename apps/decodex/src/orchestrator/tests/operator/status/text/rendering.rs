@@ -1,3 +1,0 @@
-mod operator_status_text_renders_human_readable_sections;
-mod operator_status_text_sanitizes_private_protocol_activity_details;
-mod operator_status_text_surfaces_github_cli_authority;

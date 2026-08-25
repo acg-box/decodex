@@ -61,13 +61,17 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         execution_controls = read(
             "database/migrations/0003_quick_task_execution_controls.sql"
         )
+        desktop_settings = read("database/migrations/0011_desktop_settings.sql")
         self.assertIn("schema_migrations", migrations)
         self.assertIn("0002_nonempty_task_instructions.sql", migrations)
         self.assertIn("0003_quick_task_execution_controls.sql", migrations)
+        self.assertIn("0011_desktop_settings.sql", migrations)
         self.assertIn("BETWEEN 1 AND 65536", repair)
         self.assertIn("Follow the user request for this task.", repair)
         for column in ("model", "reasoning_effort", "fast"):
             self.assertIn(f"ADD COLUMN {column}", execution_controls)
+        self.assertIn("CREATE TABLE desktop_settings", desktop_settings)
+        self.assertIn("show_in_menu_bar", desktop_settings)
         self.assertIn("TransactionBehavior::Immediate", migrations)
         self.assertIn("PRAGMA foreign_keys = ON", migrations)
         self.assertIn("PRAGMA synchronous = FULL", migrations)
@@ -93,6 +97,86 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
                 self.assertNotIn("decodex-database", dependencies)
                 self.assertNotIn("rusqlite", dependencies)
                 self.assertNotIn("redb", dependencies)
+
+    def test_gpui_is_the_only_macos_gui_and_loads_the_original_swift_menu_bar(self) -> None:
+        for retired in (
+            "apps/decodex",
+            "apps/decodex-app",
+            "spikes/gpui",
+        ):
+            with self.subTest(retired=retired):
+                self.assertFalse((ROOT / retired).exists())
+        workspace = toml("Cargo.toml")["workspace"]
+        self.assertNotIn("exclude", workspace)
+        self.assertEqual(
+            [member for member in workspace["members"] if member.endswith("-gpui")],
+            ["apps/decodex-gpui"],
+        )
+        settings = read("apps/decodex-gpui/src/settings_surface.rs")
+        main = read("apps/decodex-gpui/src/main.rs")
+        native_menu_bar = read("apps/decodex-gpui/src/native_menu_bar.rs")
+        launch_at_login = read(
+            "apps/decodex-gpui/menubar/Sources/DecodexApp/LaunchAtLoginController.swift"
+        )
+        swift_menu_bar = read(
+            "apps/decodex-gpui/menubar/Sources/DecodexApp/StatusPanelController.swift"
+        )
+        staging = read("scripts/macos/stage_decodex_app.sh")
+        plist = read("apps/decodex-gpui/packaging/Info.plist")
+        self.assertIn("NSStatusBar", swift_menu_bar)
+        self.assertIn("libDecodexMenuBar.dylib", native_menu_bar)
+        self.assertIn("decodex_menu_bar_set_visible", native_menu_bar)
+        self.assertIn("SetDesktopSettings", read("apps/decodex-gpui/src/desktop_settings.rs"))
+        self.assertIn("Show Decodex in the menu bar", settings)
+        self.assertIn("SMAppService", launch_at_login)
+        self.assertIn("service: SMAppService = .mainApp", launch_at_login)
+        self.assertIn("keyAELaunchedAsLogInItem", launch_at_login)
+        self.assertIn("on_window_should_close", main)
+        self.assertIn("on_reopen", main)
+        for daemon_owned_path in (
+            "database/migrations/0011_desktop_settings.sql",
+            "database/src/desktop_settings.rs",
+            "crates/decodex-protocol/src/wire.rs",
+            "crates/decodex-runtime/src/application.rs",
+        ):
+            with self.subTest(daemon_owned_path=daemon_owned_path):
+                daemon_owned = read(daemon_owned_path)
+                self.assertNotIn("launch_at_login", daemon_owned)
+                self.assertNotIn("LaunchAtLogin", daemon_owned)
+        self.assertIn("NSApplication::sharedApplication(main_thread).activate();", main)
+        self.assertLess(
+            main.index("window.activate_window()"),
+            main.index("activate_native_application();"),
+        )
+        for retired in (
+            "NSWorkspace",
+            "NSUserDefaults",
+            "Library/LoginItems/DecodexMenuBar.app",
+        ):
+            with self.subTest(retired=retired):
+                self.assertNotIn(retired, settings + staging + native_menu_bar)
+        self.assertIn('APP="$STAGE_ROOT/Decodex.app"', staging)
+        self.assertIn('HELPERS="$CONTENTS/Helpers"', staging)
+        self.assertIn('cp "$ROOT/target/release/decodexd" "$HELPERS/decodexd"', staging)
+        self.assertIn("--product DecodexMenuBar", staging)
+        self.assertIn("DECODEX_APP_SIGN_IDENTITY:?", staging)
+        self.assertIn("ad-hoc signing is unsupported", staging)
+        self.assertNotIn("DecodexMenuBar.app", staging)
+        self.assertTrue((ROOT / "crates/decodex-app-client-ffi").is_dir())
+        self.assertIn("<string>Decodex</string>", plist)
+        self.assertIn("<string>box.acg.decodex</string>", plist)
+        bundle_plists = sorted(ROOT.glob("apps/*/packaging/Info.plist"))
+        self.assertEqual(
+            [path.relative_to(ROOT).as_posix() for path in bundle_plists],
+            ["apps/decodex-gpui/packaging/Info.plist"],
+        )
+        self.assertNotIn("LSBackgroundOnly", plist)
+        service_stage = read("scripts/macos/stage_decodex_local_service.sh")
+        self.assertIn(
+            'install -m 755 "$ROOT/target/$PROFILE/decodexd" "$STAGE_ROOT/decodexd"',
+            service_stage,
+        )
+        self.assertNotIn(".app", service_stage)
 
     def test_shared_auth_coordinator_is_read_only_until_quiescent_cutover(self) -> None:
         coordinator = read(

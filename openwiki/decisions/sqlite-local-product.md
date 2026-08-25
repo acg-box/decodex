@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "SQLite Local-Product Decision"
+openwiki_generated: true
+---
+
 # SQLite Local-Product Decision
 
 Status: accepted and implemented.
@@ -25,7 +31,8 @@ The first product deployment has these facts:
 
 1. One user owns one local Decodex root.
 2. One `decodexd` process owns product mutations.
-3. GPUI, menu bar, and CLI clients communicate through one same-UID protocol.
+3. GPUI and CLI clients communicate through one same-UID protocol. The optional menu-bar
+   item is an in-process GPUI surface, not another client or process.
 4. Multi-machine workers are a possible future product, not a current requirement.
 
 Under these facts, a separate server database adds packaging, bootstrap, roles, sockets,

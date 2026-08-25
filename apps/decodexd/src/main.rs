@@ -1,5 +1,8 @@
 //! Sole Decodex vNext server composition root.
 
+#[cfg(unix)]
+mod parent_lifetime;
+
 use std::{error::Error, path::PathBuf};
 
 use clap::{Parser, Subcommand};
@@ -19,7 +22,11 @@ enum Command {
 	#[command(hide = true)]
 	ArtifactCohort,
 	/// Serve the same-UID Decodex vNext protocol.
-	Serve,
+	Serve {
+		/// Inherited Unix socket whose EOF binds this daemon to one desktop-app lifetime.
+		#[arg(long, hide = true)]
+		parent_fd: Option<i32>,
+	},
 	/// Initialize or upgrade the bundled SQLite product database.
 	#[command(hide = true)]
 	InitializeLocalDatabase {
@@ -37,7 +44,8 @@ enum Command {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
 	match Cli::parse().command {
-		None | Some(Command::Serve) => serve().await,
+		None => serve(None).await,
+		Some(Command::Serve { parent_fd }) => serve(parent_fd).await,
 		Some(Command::ArtifactCohort) => {
 			println!(
 				"{}",
@@ -60,13 +68,49 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	}
 }
 
-async fn serve() -> Result<(), Box<dyn Error>> {
+async fn serve(parent_fd: Option<i32>) -> Result<(), Box<dyn Error>> {
+	#[cfg(unix)]
+	let mut parent_lifetime = parent_fd
+		.map(parent_lifetime::ParentLifetime::from_inherited_fd)
+		.transpose()?;
+	#[cfg(not(unix))]
+	if parent_fd.is_some() {
+		return Err("parent lifetime channel is unsupported on this platform".into());
+	}
 	let bootstrap = ServiceComposition::bootstrap_default().await;
 	let mut bound = bootstrap.bind(ServerConfig::default()).await?;
 	let mut signals = ShutdownSignals::new()?;
 
 	println!("decodexd serving WebSocket /v1/ws over same-UID local transport");
 
+	#[cfg(unix)]
+	if let Some(parent_lifetime) = parent_lifetime.as_mut() {
+		tokio::select! {
+			result = bound.wait() => {
+				result?;
+			},
+			signal = signals.recv() => {
+				signal?;
+				bound.shutdown().await?;
+			},
+			parent = parent_lifetime.wait_for_parent_exit() => {
+				parent?;
+				bound.shutdown().await?;
+			},
+		}
+	} else {
+		wait_for_shutdown(&mut bound, &mut signals).await?;
+	}
+	#[cfg(not(unix))]
+	wait_for_shutdown(&mut bound, &mut signals).await?;
+
+	Ok(())
+}
+
+async fn wait_for_shutdown(
+	bound: &mut decodex_runtime::BoundServer,
+	signals: &mut ShutdownSignals,
+) -> Result<(), Box<dyn Error>> {
 	tokio::select! {
 		result = bound.wait() => {
 			result?;
@@ -76,7 +120,6 @@ async fn serve() -> Result<(), Box<dyn Error>> {
 			bound.shutdown().await?;
 		},
 	}
-
 	Ok(())
 }
 
@@ -133,7 +176,10 @@ mod tests {
 		assert!(default.command.is_none());
 
 		let explicit = Cli::try_parse_from(["decodexd", "serve"]).expect("parse explicit serve");
-		assert!(matches!(explicit.command, Some(Command::Serve)));
+		assert!(matches!(explicit.command, Some(Command::Serve { parent_fd: None })));
+		let parent = Cli::try_parse_from(["decodexd", "serve", "--parent-fd", "9"])
+			.expect("parse bundled parent lifetime");
+		assert!(matches!(parent.command, Some(Command::Serve { parent_fd: Some(9) })));
 
 		let initialize = Cli::try_parse_from([
 			"decodexd",

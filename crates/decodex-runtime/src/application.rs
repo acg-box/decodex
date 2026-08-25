@@ -24,10 +24,11 @@ use decodex_database::{
 	AccountCommandReceiptLease, AccountLifecycleRejection,
 	BindProgramDomainPack as StoreBindProgramDomainPack, CommandIdentity,
 	ContinueProgram as StoreContinueProgram, CreateProgramCycle as StoreCreateProgramCycle,
-	DatabaseError, DomainPackIdentity, HistoryCursor, HistoryEntry, OrdinaryTaskConversationCursor,
-	OrdinaryTaskConversationProjection, OrdinaryTaskConversationReadback,
-	OrdinaryTaskPreSessionState, ProgramCycleRecord, ProgramEvidenceInput, ProgramSummaryRecord,
-	RecordProgramReview, RoutingControlOutcome, SqliteStore, StoreError,
+	DatabaseError, DesktopSettings as StoreDesktopSettings, DomainPackIdentity, HistoryCursor,
+	HistoryEntry, OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,
+	OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ProgramCycleRecord,
+	ProgramEvidenceInput, ProgramSummaryRecord, RecordProgramReview, RoutingControlOutcome,
+	SqliteStore, StoreError,
 };
 use decodex_protocol::{
 	AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,
@@ -40,23 +41,23 @@ use decodex_protocol::{
 	AccountRoutingControlDto, AccountSelectionModeDto, AccountSelectionRecoveryDto,
 	AccountUnsettledOperationDto, AccountsResult, CausationId, Channel, CodexAuthProjectionResult,
 	CommandEnvelope, CommandError, CommandPayload, ConversationHistoryPage,
-	ConversationHistoryResult, CorrelationId, DoctorCheck, DoctorComponent, DoctorIssue,
-	DoctorReport, DoctorStatus, EntityId, EntityRevision, EventPayload,
-	ExecutionDecisionQueryError, ExecutionDecisionResult, HistoryArtifactId,
-	HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference,
-	HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
-	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
-	MAX_HISTORY_PAGE_SIZE, ProgramContinuationDraftDto, ProgramCycleDraftDto, ProgramCycleDto,
-	ProgramCycleResult, ProgramEdgeDto, ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto,
-	ProgramNodeKind, ProgramRelationKind, ProgramReviewDraftDto, ProgramSummaryDto,
-	ProjectListResult, QueryEnvelope, QueryPayload, QueryResultPayload,
-	QuickTaskExecutionSettings as QuickTaskExecutionSettingsDto, QuickTaskListCursor,
-	QuickTaskListPage, QuickTaskListResult, QuickTaskReadError, QuickTaskRecoveryAction,
-	QuickTaskResult, QuickTaskState, QuickTaskSummary, QuickTaskTurnOutcome,
-	ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult, ResetCardObservationDto,
-	ResetCardOperationResult, ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem,
-	WireText, WorkItemBoardPageSize, WorkItemBoardProjectId, WorkItemBoardQueryError,
-	WorkItemBoardResult, WorkItemBoardWorkItemId,
+	ConversationHistoryResult, CorrelationId, DESKTOP_SETTINGS_ENTITY_ID, DesktopSettingsDto,
+	DesktopSettingsResult, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus,
+	EntityId, EntityRevision, EventPayload, ExecutionDecisionQueryError, ExecutionDecisionResult,
+	HistoryArtifactId, HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength,
+	HistoryBlobReference, HistoryCursorToken, HistoryItemDto, HistoryItemKindDto,
+	HistoryItemStatusDto, HistoryPayloadDto, HistoryQueryError, HistorySideEffectState,
+	HistoryText, HistoryTurnRole, MAX_HISTORY_PAGE_SIZE, ProgramContinuationDraftDto,
+	ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult, ProgramEdgeDto, ProgramListResult,
+	ProgramNodeDto, ProgramNodeFieldDto, ProgramNodeKind, ProgramRelationKind,
+	ProgramReviewDraftDto, ProgramSummaryDto, ProjectListResult, QueryEnvelope, QueryPayload,
+	QueryResultPayload, QuickTaskExecutionSettings as QuickTaskExecutionSettingsDto,
+	QuickTaskListCursor, QuickTaskListPage, QuickTaskListResult, QuickTaskReadError,
+	QuickTaskRecoveryAction, QuickTaskResult, QuickTaskState, QuickTaskSummary,
+	QuickTaskTurnOutcome, ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult,
+	ResetCardObservationDto, ResetCardOperationResult, ResetCardOutcome, ResultPayload,
+	Sha256Digest, SnapshotItem, WireText, WorkItemBoardPageSize, WorkItemBoardProjectId,
+	WorkItemBoardQueryError, WorkItemBoardResult, WorkItemBoardWorkItemId,
 };
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -522,6 +523,51 @@ async fn recover_pending_account_routes(
 }
 
 impl ServiceApplication {
+	async fn desktop_settings(&self) -> DesktopSettingsResult {
+		let ProductStore::Available(store) = &self.store else {
+			return DesktopSettingsResult::Unavailable;
+		};
+		store
+			.read_desktop_settings()
+			.await
+			.ok()
+			.and_then(|settings| desktop_settings_dto(settings).ok())
+			.map_or(DesktopSettingsResult::Unavailable, DesktopSettingsResult::Available)
+	}
+
+	async fn execute_desktop_settings(
+		&self,
+		command: &CommandEnvelope,
+	) -> Result<ApplicationPublication, CommandError> {
+		let CommandPayload::SetDesktopSettings { show_in_menu_bar } = &command.payload else {
+			return Err(application_unavailable("desktop settings command is invalid"));
+		};
+		let expected = command.expected_revision.ok_or_else(|| {
+			application_unavailable("desktop settings expected revision is required")
+		})?;
+		let expected_revision = i64::try_from(expected.0)
+			.map_err(|_| application_unavailable("desktop settings revision is invalid"))?;
+		let ProductStore::Available(store) = &self.store else {
+			return Err(application_unavailable("desktop settings store is unavailable"));
+		};
+		let settings = store
+			.set_show_in_menu_bar(expected_revision, *show_in_menu_bar)
+			.await
+			.map_err(desktop_settings_command_error)?;
+		let settings = desktop_settings_dto(settings)
+			.map_err(|_| application_unavailable("desktop settings projection is invalid"))?;
+		let entity_id = EntityId::new(DESKTOP_SETTINGS_ENTITY_ID)
+			.expect("desktop settings entity identity is bounded");
+
+		Ok(ApplicationPublication {
+			channel: Channel::Control,
+			entity_id,
+			entity_revision: settings.revision,
+			result: ResultPayload::DesktopSettingsChanged { settings },
+			event: EventPayload::DesktopSettingsChanged { settings },
+		})
+	}
+
 	async fn account_list(&self) -> AccountsResult {
 		let Some(service) = &self.accounts else {
 			return AccountsResult::Unavailable;
@@ -1937,6 +1983,9 @@ impl Application for ServiceApplication {
 		command: &'a CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
 		match &command.payload {
+			CommandPayload::SetDesktopSettings { .. } => {
+				self.execute_desktop_settings(command).await
+			},
 			CommandPayload::CreateProgramCycle { .. }
 			| CommandPayload::BindProgramDomainPack { .. }
 			| CommandPayload::ContinueProgram { .. }
@@ -2034,6 +2083,9 @@ impl Application for ServiceApplication {
 
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
+			QueryPayload::GetDesktopSettings => {
+				QueryResultPayload::DesktopSettings(self.desktop_settings().await)
+			},
 			QueryPayload::ListPrograms => QueryResultPayload::Programs(self.program_list().await),
 			QueryPayload::GetProgramCycle { program_id } => {
 				QueryResultPayload::ProgramCycle(self.program_cycle(program_id).await)
@@ -4128,6 +4180,26 @@ fn command_reset_error(error: ResetCardServiceError, expected: EntityRevision) -
 		ResetCardServiceError::IdempotencyConflict => CommandError::IdempotencyConflict,
 		ResetCardServiceError::AcceptanceUnknown => CommandError::AcceptanceUnknown,
 		_ => application_unavailable(reset_error_message(error)),
+	}
+}
+
+fn desktop_settings_dto(settings: StoreDesktopSettings) -> Result<DesktopSettingsDto, ()> {
+	let revision = u64::try_from(settings.revision).map(EntityRevision).map_err(|_| ())?;
+	DesktopSettingsDto::new(settings.show_in_menu_bar, revision).map_err(|_| ())
+}
+
+fn desktop_settings_command_error(error: StoreError) -> CommandError {
+	match error {
+		StoreError::RevisionConflict { expected: Some(expected), actual: Some(actual), .. } => {
+			match (u64::try_from(expected), u64::try_from(actual)) {
+				(Ok(expected), Ok(actual)) => CommandError::ExpectedRevisionMismatch {
+					expected: EntityRevision(expected),
+					actual: EntityRevision(actual),
+				},
+				_ => application_unavailable("desktop settings revision is invalid"),
+			}
+		},
+		_ => application_unavailable("desktop settings store is unavailable"),
 	}
 }
 

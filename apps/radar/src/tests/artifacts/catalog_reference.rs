@@ -51,12 +51,13 @@ fn current_multi_agent_v2_references_do_not_require_assign_task() {
 	let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
 		.parent()
 		.and_then(Path::parent)
-		.expect("apps/decodex should live two levels under the repo root");
+		.expect("apps/radar should live two levels under the repo root");
 	let mut offenders = Vec::new();
 
 	for relative_root in [
 		"README.md",
-		"apps/decodex/src",
+		"apps/decodex-gpui/src",
+		"crates/decodex-runtime/src",
 		"automations/radar/skills",
 		"scripts",
 		".agent/automations/radar/cache/site-content/signals",

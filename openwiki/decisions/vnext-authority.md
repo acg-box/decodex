@@ -1,11 +1,15 @@
+---
+type: "Reference"
+title: "Decodex vNext Authority Decision"
+openwiki_generated: true
+---
+
 # Decodex vNext Authority Decision
 
 Status: historical former server store design record. Its storage, migration, and delivery
 authority is superseded by the
 [SQLite local-product decision](sqlite-local-product.md). Retain this page only to
 explain earlier choices and reusable domain invariants.
-
-Owner issue: [XY-1260](https://linear.app/hack-ink/issue/XY-1260/promote-the-vnext-authority-contract-and-supersede-lane-authority-v2)
 
 ## No-migration reset
 
@@ -324,7 +328,8 @@ work for an explicit decision.
 - A shared normal `~/.codex` owns persistent Codex rollout and thread visibility.
   Decodex maps only threads that it created.
 - `decodexd` alone owns scheduling, app-server children, product mutations, repository
-  side effects, and adapters. GPUI, SwiftUI, CLI, and MCP are clients.
+  side effects, and adapters. GPUI, CLI, and MCP are clients. The optional menu-bar item is
+  part of the GPUI process.
 - `ProductStore` represents verified former server store only. Quick Task and ManagedRepository
   startup projections are independent and cannot overwrite product-store readiness.
 - former server store Account Registry owns credential-negative account state. One

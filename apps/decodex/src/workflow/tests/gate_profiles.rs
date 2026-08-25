@@ -1,6 +1,0 @@
-mod falls_back_to_full_gate_for_ambiguous_profile_matches;
-mod falls_back_to_full_gate_for_mixed_docs_and_runtime_changes;
-mod parses_named_gate_profile;
-mod rejects_gate_profile_paths_that_escape_repo;
-mod rejects_incomplete_gate_profiles;
-mod selects_matching_gate_profile_when_all_changed_files_match_profile_paths;

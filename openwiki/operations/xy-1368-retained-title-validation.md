@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "XY-1368 retained-title validation"
+openwiki_generated: true
+---
+
 # XY-1368 retained-title validation
 
 > **Superseded historical provenance.** This document records the former V1-V32

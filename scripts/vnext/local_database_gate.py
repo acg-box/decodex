@@ -63,6 +63,11 @@ MIGRATIONS = (
         "pending_account_route_progress",
         ROOT / "database/migrations/0010_pending_account_route_progress.sql",
     ),
+    (
+        11,
+        "desktop_settings",
+        ROOT / "database/migrations/0011_desktop_settings.sql",
+    ),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
@@ -111,6 +116,7 @@ REQUIRED_TABLES = frozenset(
         "program_evidence",
         "program_reviews",
         "program_domain_pack_bindings",
+        "desktop_settings",
     }
 )
 

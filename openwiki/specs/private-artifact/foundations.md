@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Private-artifact foundations (retired design)"
+openwiki_generated: true
+---
+
 # Private-artifact foundations (retired design)
 
 Status: frozen historical, non-executable design evidence.
@@ -23,7 +29,7 @@ bytes. former server store does not independently attest those bytes.
 
 The concrete former server store adapter owns transaction order. There is no production
 private-artifact store trait and no alternate runtime store. The daemon owns one
-private-artifact execution lane. GPUI, SwiftUI, CLI, MCP, protocol clients, and
+private-artifact execution lane. GPUI, CLI, MCP, protocol clients, and
 downstream consumers do not read former server store, CAS, private paths, or descriptors.
 V1 is single-host and has no worker registry or distributed effect mesh.
 

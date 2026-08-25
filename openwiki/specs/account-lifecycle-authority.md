@@ -139,8 +139,9 @@ the official `redb` crate so the storage engine does not re-resolve a checked pa
 
 The vault uses one ACID write transaction for each store operation and immediate
 durability before success. `redb` supplies restart recovery and one-writer exclusion.
-The daemon is the only normal reader and writer. GPUI, the native app, the menu bar,
-Swift, and the CLI remain credential-negative protocol clients. There is no normal
+The daemon is the only normal reader and writer. Decodex.app GPUI and the CLI remain
+credential-negative protocol clients. The optional menu-bar item is part of the GPUI
+process and does not create another client. There is no normal
 Keychain read, dual read, fallback, token export, or remote vault sync.
 
 The application-layer vault is plaintext. Its v1 security boundary is the private
@@ -229,7 +230,7 @@ stable-read prerequisites keep the receipt pending until recovery can prove the 
 A newer explicit Route target atomically supersedes the older pending target under the routing
 lock. The newer target remains the authoritative pending target; replaying the old command returns
 the typed `route_superseded` rejection. This does not make other eligible accounts unavailable:
-Swift and GPUI keep other ready targets selectable while a pending Route exists, and submit a new
+GPUI keeps other ready targets selectable while a pending Route exists, and submits a new
 explicit Route when the operator changes target. If the operator wants to retain the current fixed
 target, that current row remains actionable as `Keep` and supersedes the other pending target.
 
@@ -248,7 +249,8 @@ rewriting the file. Fixed routing is committed only after the target refresh and
 cutover succeed; `OwnerBusy` is not a normal post-quiescence Route outcome.
 
 The projection affects future Codex launches and new app-server processes. It does not claim to
-hot-switch an already running Codex process. The Swift menu-bar, GPUI, and CLI are UI/protocol-only
+hot-switch an already running Codex process. The GPUI main-window and menu-bar presentations, and
+the CLI, are protocol-only
 clients: they submit one Route intent and apply one authoritative result. They do not read
 credentials, write shared auth, refresh providers, own retry state, or control Codex processes.
 `decodexd` never starts, stops, signals, rebinds, or otherwise controls the Codex process. There
@@ -346,7 +348,7 @@ and live callback preflights pass. Initial token projection alone is insufficien
 The supported macOS bridge runs one bounded source-derived login adapter in process. It offers
 automatic browser redirect and structured device code without launching a Codex CLI or
 app-server child. Both methods use one owner-private temporary home without changing ambient
-`~/.codex`. Swift receives only the browser authorize URL, or the device verification URL and
+`~/.codex`. GPUI receives only the browser authorize URL, or the device verification URL and
 one-time code, plus closed session state. On successful login, the daemon opens that private
 `auth.json`, verifies the exact provider identity and current account revision, journals an
 existing-account `Refresh`, and applies only the immediate next HostCredentialStore version by

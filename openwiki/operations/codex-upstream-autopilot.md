@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Codex Upstream Adaptation"
+openwiki_generated: true
+---
+
 # Codex Upstream Adaptation
 
 This runbook defines the agent-led loop that keeps Decodex compatible with the

@@ -31,6 +31,17 @@ restart, and continue without duplicate dispatch.
   account and Codex thread.
 - GPUI and CLI are same-UID Unix WebSocket clients. They do not open SQLite, credential
   files, or Codex authentication files.
+- The GPUI product is the sole macOS GUI and is packaged as `Decodex.app`. The bundle
+  contains a signed `decodexd` for local profiles and the original native Swift menu-bar
+  presentation as an in-process dynamic library. It contains no second app or UI process.
+- A local app session starts and owns the bundled daemon only when it must. It can reuse a
+  compatible independently started daemon without stopping it. A remote profile starts no
+  local daemon. The standalone `decodex` and `decodexd` binaries remain independent build
+  and distribution products.
+- **Show Decodex in the menu bar** is a daemon-owned product preference. **Launch Decodex
+  at login** is an independent macOS `SMAppService.mainApp` preference and is not stored in
+  SQLite. Closing the main window hides Decodex and retains the protocol session, native
+  menu bar, and app-owned daemon. **Quit Decodex** stops the app and only its owned daemon.
 
 Normal startup does not require a separate database server, redb, or Keychain. A one-shot tool
 can import the existing account pool from the retired redb vault during upgrade. It opens
@@ -85,7 +96,7 @@ and evidence. They are not a second speculative execution engine.
 - `crates/decodex-protocol/`: bounded same-UID protocol.
 - `apps/decodexd/`: daemon composition root.
 - `apps/decodex-cli/`: diagnostic and product command client.
-- `apps/decodex-gpui/`: desktop client.
+- `apps/decodex-gpui/`: the only desktop GUI and `Decodex.app` packaging source.
 - `openwiki/`: current product, architecture, operations, and evidence authority.
 
 ## Development
@@ -99,6 +110,8 @@ python3 -m unittest tests/scripts/test_vnext_architecture.py
 cargo test -p decodex-database --all-targets
 cargo test -p decodex-database-transfer
 cargo test -p decodexd
+DECODEX_APP_SIGN_IDENTITY="Apple Development: Example (TEAMID)" \
+  scripts/macos/test_decodex_app_stage.sh
 cargo make check
 ```
 

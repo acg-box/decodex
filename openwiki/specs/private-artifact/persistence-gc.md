@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Private-artifact persistence and garbage collection (retired design)"
+openwiki_generated: true
+---
+
 # Private-artifact persistence and garbage collection (retired design)
 
 Status: frozen historical, non-executable design evidence.

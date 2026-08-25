@@ -150,8 +150,8 @@ than one public command per ontology noun:
   path exceeded the kernel Unix-socket path bound. The fixture now uses `/private/tmp`;
   SIGINT, SIGTERM, and SIGKILL stale-socket recovery pass 3/3.
 - The vNext architecture suite passes 10 tests. The staged macOS app passes strict
-  codesign verification and includes the optional menubar app through the existing
-  packaging flow.
+  codesign verification. Current packaging stages no nested UI; the optional menu-bar
+  item runs in the GPUI process.
 - Isolated native dogfood created one persisted Program through GPUI. AX readback showed
   the selector, five pre-execution nodes, causal graph, and matching timeline. After both
   daemon and GPUI restart, a fresh session reopened the same named Program and projection.

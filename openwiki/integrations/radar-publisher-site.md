@@ -1,9 +1,15 @@
+---
+type: "Reference"
+title: "Radar, Publisher, And Site Contracts"
+openwiki_generated: true
+---
+
 # Radar, Publisher, And Site Contracts
 
 This page covers auxiliary evidence and public surfaces that surround the Decodex
 runtime. For the compact automation contract, read [Radar Publisher
-contracts](radar-publisher-contracts.md). For the design reasons, read [Design
-rationale](../decisions/design-rationale.md).
+contracts](radar-publisher-contracts.md). For the product boundary, read [Runtime
+architecture](../architecture/runtime-architecture.md).
 
 ## Radar scope
 

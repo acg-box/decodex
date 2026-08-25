@@ -1,3 +1,0 @@
-mod exited_retry_child_keeps_queued_claim_when_no_run_attempt_was_persisted;
-mod exited_successful_child_marks_recent_run_succeeded_before_cleanup;
-mod exited_unsuccessful_child_does_not_downgrade_persisted_success;

@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Private-artifact model, codec, and reducer (retired design)"
+openwiki_generated: true
+---
+
 # Private-artifact model, codec, and reducer (retired design)
 
 Status: frozen historical, non-executable design evidence.

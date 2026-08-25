@@ -1,3 +1,0 @@
-mod deletes_branch_after_worktree_cleanup;
-mod preserves_worktree_when_branch_delete_fails;
-mod uses_persisted_lifecycle_authority;

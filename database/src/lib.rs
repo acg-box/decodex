@@ -8,6 +8,7 @@ mod command;
 mod continuations;
 mod conversations;
 mod credentials;
+mod desktop_settings;
 mod error;
 mod migrations;
 mod process_generations;
@@ -53,6 +54,7 @@ pub use self::{
 		UnknownQuickTaskAttemptReadback,
 	},
 	credentials::{CredentialKey, CredentialRecord},
+	desktop_settings::DesktopSettings,
 	error::{BootstrapFailure, DatabaseError, StoreError},
 	process_generations::{
 		FreshProcessGenerationFence, PrepareProcessGenerationOutcome, ProcessGenerationMutation,
@@ -310,6 +312,33 @@ mod tests {
 	const OPERATION_THREE: &str = "20000000-0000-4000-8000-000000000003";
 	const DIGEST_ONE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 	const DIGEST_TWO: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+	const SCHEMA_TEN_MIGRATIONS: [(&str, &str); 10] = [
+		("local_product", include_str!("../migrations/0001_local_product.sql")),
+		(
+			"nonempty_task_instructions",
+			include_str!("../migrations/0002_nonempty_task_instructions.sql"),
+		),
+		(
+			"quick_task_execution_controls",
+			include_str!("../migrations/0003_quick_task_execution_controls.sql"),
+		),
+		("context_pack_fallback", include_str!("../migrations/0004_context_pack_fallback.sql")),
+		("adaptive_factory_spine", include_str!("../migrations/0005_adaptive_factory_spine.sql")),
+		("repeatable_program_loop", include_str!("../migrations/0006_repeatable_program_loop.sql")),
+		(
+			"builtin_domain_pack_binding",
+			include_str!("../migrations/0007_builtin_domain_pack_binding.sql"),
+		),
+		(
+			"account_reauthentication_takeover",
+			include_str!("../migrations/0008_account_reauthentication_takeover.sql"),
+		),
+		("durable_account_route", include_str!("../migrations/0009_durable_account_route.sql")),
+		(
+			"pending_account_route_progress",
+			include_str!("../migrations/0010_pending_account_route_progress.sql"),
+		),
+	];
 
 	fn fixture_key(version: u64, digest: &str, operation: &str) -> CredentialKey {
 		CredentialKey {
@@ -516,6 +545,99 @@ mod tests {
 		assert_eq!(ambiguity.recovery_code.as_deref(), Some("provider_refresh_ambiguous"));
 		assert!(ambiguity.recovery_operation_id.is_none());
 		assert!(ambiguity.superseded_by_operation_id.is_none());
+	}
+
+	#[tokio::test]
+	async fn upgrades_exact_v10_ledger_with_default_desktop_settings_and_preserved_facts() {
+		let directory = tempdir().expect("temporary directory");
+		let path = directory.path().join("decodex.sqlite3");
+		let connection = Connection::open(&path).expect("open V10 fixture");
+		migrations::configure(&connection).expect("configure V10 fixture");
+		let digests = migrations::expected_migration_digests();
+		for (index, (name, source)) in SCHEMA_TEN_MIGRATIONS.into_iter().enumerate() {
+			connection.execute_batch(source).expect("apply V10 migration fixture");
+			connection
+				.execute(
+					"INSERT INTO schema_migrations (version, name, sha256, applied_at_micros)
+					 VALUES (?1, ?2, ?3, ?4)",
+					rusqlite::params![(index + 1) as i64, name, digests[index], (index + 1) as i64],
+				)
+				.expect("record V10 migration fixture");
+		}
+		connection
+			.pragma_update(None, "application_id", migrations::APPLICATION_ID)
+			.expect("set V10 application identity");
+		connection.pragma_update(None, "user_version", 10).expect("set V10 version");
+		connection
+			.execute(
+				"INSERT INTO account_identities (account_id, created_at_micros) VALUES (?1, 10)",
+				rusqlite::params![ACCOUNT],
+			)
+			.expect("seed V10 account identity");
+		connection
+			.execute(
+				"UPDATE role_profiles
+				 SET revision = 10,
+				     instructions = 'Preserve this schema-10 task profile.',
+				     updated_at_micros = 10
+				 WHERE role = 'task'",
+				[],
+			)
+			.expect("seed V10 task profile");
+		assert_eq!(
+			connection
+				.query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row.get::<_, i64>(0))
+				.expect("count V10 migration ledger"),
+			10
+		);
+		drop(connection);
+
+		let store = SqliteStore::open_test(&path).expect("upgrade exact V10 fixture");
+		assert_eq!(
+			store.read_desktop_settings().await.expect("read migrated desktop settings"),
+			super::DesktopSettings { show_in_menu_bar: true, revision: 1 }
+		);
+		let (version, migration_name, migration_digest, account_created_at, profile) = store
+			.with_connection(|connection| {
+				let version = connection
+					.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+					.map_err(super::error::sqlite_error)?;
+				let (migration_name, migration_digest) = connection
+					.query_row(
+						"SELECT name, sha256 FROM schema_migrations WHERE version = 11",
+						[],
+						|row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+					)
+					.map_err(super::error::sqlite_error)?;
+				let account_created_at = connection
+					.query_row(
+						"SELECT created_at_micros FROM account_identities WHERE account_id = ?1",
+						rusqlite::params![ACCOUNT],
+						|row| row.get::<_, i64>(0),
+					)
+					.map_err(super::error::sqlite_error)?;
+				let profile = connection
+					.query_row(
+						"SELECT revision, instructions, updated_at_micros
+						 FROM role_profiles WHERE role = 'task'",
+						[],
+						|row| {
+							Ok((
+								row.get::<_, i64>(0)?,
+								row.get::<_, String>(1)?,
+								row.get::<_, i64>(2)?,
+							))
+						},
+					)
+					.map_err(super::error::sqlite_error)?;
+				Ok((version, migration_name, migration_digest, account_created_at, profile))
+			})
+			.expect("read V11 upgrade evidence");
+		assert_eq!(version, 11);
+		assert_eq!(migration_name, "desktop_settings");
+		assert_eq!(migration_digest, digests[10]);
+		assert_eq!(account_created_at, 10);
+		assert_eq!(profile, (10, "Preserve this schema-10 task profile.".to_owned(), 10));
 	}
 
 	#[test]

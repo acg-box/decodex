@@ -16,6 +16,7 @@ mod ui_theme;
 #[path = "../work_items.rs"]
 mod work_items;
 
+#[cfg(target_os = "macos")] use objc2 as _;
 use std::path::PathBuf;
 
 use gpui::{AppContext as _, VisualTestAppContext, px, size};

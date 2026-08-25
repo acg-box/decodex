@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Private-artifact operations and delivery (retired design)"
+openwiki_generated: true
+---
+
 # Private-artifact operations and delivery (retired design)
 
 Status: frozen historical, non-executable design evidence.
@@ -133,7 +139,7 @@ AR-PKG owns only this fixed package. AR-CUT stacks directly on its exact frozen
 identity and owns only these seven projection paths:
 
 - `openwiki/decisions/vnext-authority.md`
-- `openwiki/decisions/design-rationale.md`
+- `openwiki/decisions/sqlite-local-product.md`
 - `openwiki/specs/vnext-authority.md`
 - `openwiki/specs/vnext-gates.md`
 - `openwiki/architecture/runtime-architecture.md`

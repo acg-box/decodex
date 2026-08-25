@@ -3349,7 +3349,7 @@ impl FactorySurface {
 							.mt_1()
 							.text_size(px(10.5))
 							.text_color(rgb(TEXT_MUTED))
-							.child("Available in the optional embedded menu bar surface"),
+							.child("Available in the Accounts destination in Decodex"),
 					),
 			)
 			.into_any_element()
