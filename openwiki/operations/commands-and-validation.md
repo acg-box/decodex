@@ -6,7 +6,7 @@ tags: [operations, validation, rust, macos, sqlite]
 openwiki:
   roles: [operations, testing]
   change_kinds: [validation, runtime, desktop, packaging]
-  source_paths: [Makefile.toml, scripts/vnext/local_database_gate.py, scripts/macos/stage_decodex_gpui.sh, tests/scripts/test_vnext_architecture.py]
+  source_paths: [Makefile.toml, scripts/vnext/local_database_gate.py, scripts/macos/stage_decodex_app.sh, scripts/macos/test_decodex_app_stage.sh, tests/scripts/test_vnext_architecture.py]
 ---
 
 # Commands And Validation
@@ -61,7 +61,9 @@ commit, landing, or service supervision.
 ## GPUI checks
 
 The complete GPUI build needs an Xcode developer directory with the Metal compiler on
-the current macOS development host.
+the current macOS development host. The signed app staging path additionally needs the
+Apple signing identity named by `DECODEX_APP_SIGN_IDENTITY` and SwiftPM support for the
+embedded menu-bar library.
 
 ```sh
 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
@@ -76,14 +78,20 @@ on `decodex-database`, `rusqlite`, credentials, or provider engines.
 ## Native macOS application checks
 
 ```sh
+DECODEX_APP_SIGN_IDENTITY="Apple Development: ..." \
+  scripts/macos/stage_decodex_app.sh
 scripts/macos/test_decodex_app_stage.sh
 scripts/macos/run_decodex_gpui_accessibility_gate.swift --help
 python3 -m unittest tests.scripts.test_install_decodex_local_service
 ```
 
-The stage test builds exactly one GUI bundle named `Decodex.app`. It verifies the bundle
-name, display name, executable, identifier, icon, signature, and absence of nested login
-items, helper UIs, and client frameworks.
+`stage_decodex_app.sh` is the canonical release-shaped builder and requires a stable Apple
+codesigning identity; ad-hoc signing is intentionally rejected. It builds `decodex-gpui`,
+`decodexd`, the native client FFI, and the Swift menu-bar library, then signs one
+`Decodex.app`. The stage test verifies the bundle name, display name, executable, identifier,
+icon, signatures, one-app shape, embedded helper/library counts, and required ABI symbols.
+It also proves that no nested login-item app is present. The former
+`stage_decodex_gpui.sh` entrypoint was deleted and must not be used.
 
 A native runtime acceptance run must also prove:
 

@@ -190,7 +190,18 @@ base. It does not make deferred extension or multi-agent surfaces partially avai
 - `apps/decodexd/` is the only server composition root.
 - `apps/decodex-cli/` and `apps/decodex-gpui/` are protocol-only clients.
 - `apps/decodex-gpui/` is the only macOS GUI and stages as `Decodex.app`; its optional
-  menu-bar item runs in the same process.
+  menu-bar item is a signed embedded Swift library loaded in the same process.
+- `scripts/macos/stage_decodex_app.sh` is the canonical signed app builder; it embeds
+  `decodexd` for local profiles and does not create a nested login-item app.
+
+## Task routing
+
+| Change area or user intent | Relevant wiki page | Exact source entry points | Important symbols or types | Focused tests | Minimal validation command |
+| --- | --- | --- | --- | --- | --- |
+| Change the signed macOS app bundle | [Runtime architecture](architecture/runtime-architecture.md) | `scripts/macos/stage_decodex_app.sh`, `apps/decodex-gpui/packaging/Info.plist` | `Decodex.app`, `decodex-gpui`, `DECODEX_APP_SIGN_IDENTITY` | `scripts/macos/test_decodex_app_stage.sh` | `scripts/macos/test_decodex_app_stage.sh` |
+| Change local daemon startup from the GUI | [Runtime architecture](architecture/runtime-architecture.md) | `apps/decodex-gpui/src/bundled_daemon.rs`, `apps/decodex-gpui/src/main.rs` | `BundledDaemonGuard`, `bundled_daemon_path`, `lifetime_channel` | bundled-daemon unit tests in `apps/decodex-gpui/src/bundled_daemon.rs` | `cargo +stable test -p decodex-gpui --all-targets` |
+| Change the menu-bar presentation bridge | [Runtime architecture](architecture/runtime-architecture.md) | `apps/decodex-gpui/menubar/Sources/DecodexApp/DecodexApp.swift`, `apps/decodex-gpui/src/native_menu_bar.rs` | `decodex_menu_bar_create`, `decodex_menu_bar_set_visible`, `DecodexMenuBarHost` | `apps/decodex-gpui/menubar/Tests/DecodexAppTests/` | `swift test --package-path apps/decodex-gpui/menubar` |
+| Validate or package the desktop surface | [Commands and validation](operations/commands-and-validation.md) | `scripts/macos/test_decodex_app_stage.sh`, `scripts/macos/run_decodex_gpui_accessibility_gate.swift` | bundle shape, signing team, exported ABI | app stage test and GPUI visual-capture tests | `scripts/macos/test_decodex_app_stage.sh` |
 
 ## First commands
 

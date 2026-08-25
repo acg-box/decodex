@@ -6,7 +6,7 @@ tags: [local-product, sqlite, protocol, gpui, macos, evidence]
 openwiki:
   roles: [testing, architecture, workflow]
   change_kinds: [lifecycle, public-api, validation, desktop, packaging]
-  source_paths: [database/src/lib.rs, database/src/desktop_settings.rs, database/migrations/0011_desktop_settings.sql, crates/decodex-runtime/src/application.rs, crates/decodex-protocol/src/wire.rs, apps/decodex-gpui/src/client_lifecycle.rs, apps/decodex-gpui/src/settings_surface.rs, scripts/macos/stage_decodex_gpui.sh]
+  source_paths: [database/src/lib.rs, database/src/desktop_settings.rs, database/migrations/0011_desktop_settings.sql, crates/decodex-runtime/src/application.rs, crates/decodex-protocol/src/wire.rs, apps/decodex-gpui/src/client_lifecycle.rs, apps/decodex-gpui/src/settings_surface.rs, apps/decodex-gpui/src/bundled_daemon.rs, scripts/macos/stage_decodex_app.sh, scripts/macos/test_decodex_app_stage.sh]
   test_paths: [database/src/desktop_settings.rs, tests/scripts/test_vnext_architecture.py, tests/scripts/test_account_login_architecture.py, apps/decodex-gpui/src/accounts.rs, apps/decodex-gpui/src/account_profile.rs, apps/decodex-gpui/src/desktop_settings.rs, apps/decodex-gpui/src/shell.rs, scripts/macos/test_decodex_app_stage.sh]
   invariants: [decodexd is the only normal SQLite owner.; GPUI and CLI are protocol-only clients.; Decodex.app is the only macOS GUI bundle.; The optional menu-bar item runs in the GPUI process.; Persistent desktop settings are revision-guarded in SQLite.; Reset Card consumption has no GUI claim without daemon-owned restart discovery.]
   validation_commands: [python3 scripts/vnext/local_database_gate.py, python3 -m unittest tests/scripts/test_vnext_architecture.py tests/scripts/test_account_login_architecture.py, cargo +stable test -p decodex-protocol --all-targets, DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo +stable test -p decodex-gpui --all-targets --features visual-capture, scripts/macos/test_decodex_app_stage.sh]
@@ -66,10 +66,13 @@ desktop consolidation.
 
 ## Bundle and native runtime evidence
 
-The release staging test built and signed one `Decodex.app` with identifier
-`box.acg.decodex` and executable `decodex-gpui`. It proved there was exactly one `.app`
-under the stage root and no `Contents/Library/LoginItems`, `Contents/Helpers`, or
-`Contents/Frameworks` directory.
+The current release staging test builds and signs one `Decodex.app` with identifier
+`box.acg.decodex` and executable `decodex-gpui`. The bundle contains the signed
+`Contents/Helpers/decodexd`, `Contents/Frameworks/libDecodexMenuBar.dylib`, and
+`Contents/Frameworks/libdecodex_app_client_ffi.dylib` payloads. It proves there is exactly
+one `.app` under the stage root, one helper, two framework files, matching signing teams,
+and no `Contents/Library/LoginItems` directory. This preserves one GUI process and one
+product authority while allowing local profiles to launch the embedded daemon.
 
 Before the final native activation repair, the accessibility gate launched the staged
 bundle and passed:
@@ -116,7 +119,8 @@ No current document or test claims that GPUI supports Reset Card consumption.
 
 ## Remaining evidence boundary
 
-The staged application uses an ad hoc hardened-runtime signature for local validation.
+The staged application now requires the stable Apple signing identity supplied through
+`DECODEX_APP_SIGN_IDENTITY`; ad-hoc signing is rejected by the canonical stage script.
 Developer ID distribution, notarization, and installation into `/Applications` were not
 part of this repository-writing task. The local native checks prove source-built bundle
 shape. A final unlocked cold accessibility run remains required to re-accept exact-source

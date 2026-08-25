@@ -63,9 +63,11 @@ The application is presentation-only:
 - Accounts, quotas, routing, login, Quick Tasks, Programs, history, Health, and settings
   use typed protocol clients or retained-session controllers.
 - The application never opens SQLite, account credentials, or Codex authentication files.
-- The optional status item uses `NSStatusBar` inside the same process.
+- The optional status item uses `NSStatusBar` inside the same `Decodex.app` process through
+  the signed embedded `libDecodexMenuBar.dylib` host.
 - The **Show Decodex in the menu bar** preference is read and changed through `decodexd`.
-- The bundle contains no nested login item, helper UI, client FFI library, or daemon.
+- The bundle contains no nested login-item app or helper UI; its signed embedded payloads are
+  the local `decodexd` helper, the native client FFI library, and the menu-bar library.
 
 ```sh
 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
