@@ -1,3 +1,18 @@
+---
+type: "Architecture Decision"
+title: "SQLite Local-Product Decision"
+description: "Accepted decision for a single-daemon desktop product using bundled SQLite as the normal Decodex product-state authority, with a separate one-shot redb transfer boundary."
+tags: [architecture, decision, sqlite, storage]
+openwiki:
+  roles: [architecture, repository, operations]
+  change_kinds: [persistence, migration, installation]
+  source_paths: [Cargo.toml, database/src/lib.rs, database/src/migrations.rs, database/transfer/src/main.rs, crates/decodex-runtime/src/bootstrap.rs]
+  symbols: [SqliteStore, ServiceBootstrap]
+  test_paths: [database/tests/quick_task_restart.rs, database/transfer/tests/transfer.rs, scripts/vnext/local_database_gate.py]
+  invariants: ["decodexd is the sole normal product-state writer.", "Clients use the daemon protocol and never open SQLite directly.", "The retired redb vault is accessed only by the one-shot transfer tool."]
+  validation_commands: ["cargo make test-local-database", "cargo test -p decodex-database --all-targets", "cargo test -p decodex-database-transfer"]
+---
+
 # SQLite Local-Product Decision
 
 Status: accepted and implemented.

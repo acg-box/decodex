@@ -1,3 +1,10 @@
+---
+type: "Historical Specification"
+title: "Decodex vNext Authority Contract"
+description: "Historical former server-store authority contract retained for reusable domain and lifecycle invariants; current storage authority is SQLite."
+tags: [history, authority, superseded, specification]
+---
+
 # Decodex vNext Authority Contract
 
 Status: historical former server store contract. The current normative slice is the

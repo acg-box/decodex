@@ -1,123 +1,73 @@
 ---
-type: "Reference"
+type: "Operations Guide"
 title: "Local Database Operations"
-openwiki_generated: true
+description: "Operator workflow for Decodex bundled SQLite initialization, validation, signed macOS installation, one-shot redb transfer, rollback retention, and focused acceptance checks."
+tags: [operations, sqlite, installation, migration, recovery]
+openwiki:
+  roles: [operations, repository, testing]
+  change_kinds: [persistence, installation, recovery]
+  source_paths: [database/src/lib.rs, database/src/migrations.rs, database/transfer/src/main.rs, apps/decodexd/src/main.rs, scripts/macos/install_decodex_local_service.py, scripts/vnext/local_database_gate.py]
+  symbols: [SqliteStore, initialize_local_database, validate_local_database, TransferOutcome]
+  test_paths: [database/tests/quick_task_restart.rs, database/transfer/tests/transfer.rs, tests/scripts/test_install_decodex_local_service.py, tests/scripts/test_vnext_architecture.py]
+  invariants: ["The daemon owns the fixed SQLite database and clients never open it.", "Migrations are embedded, ordered, transactional, and immutable after release.", "The retired redb source is read only and retained for rollback until an explicit acceptance decision.", "Validation is read only and fails closed on unsafe or incompatible database state."]
+  validation_commands: ["python3 scripts/vnext/local_database_gate.py", "python3 -m unittest tests/scripts/test_install_decodex_local_service.py", "cargo test -p decodex-database --all-targets", "cargo test -p decodex-database-transfer"]
 ---
 
 # Local Database Operations
 
-Status: current operator and validation workflow.
+Consult this page when changing local persistence, installer behavior, schema migrations, transfer safety, or database validation. The current product uses one bundled SQLite database; it does not require a separate database server.
 
-## Fixed paths
+## Fixed paths and ownership
 
 - Product database: `~/.decodex/server/decodex.sqlite3`
 - Retired transfer source: `~/.decodex/server/credentials.redb`
 - Local protocol socket: `~/.decodex/server/decodex.sock`
 
-The product database path is derived from the validated Decodex root. Configuration does
-not contain a database endpoint.
+`database/` is the schema and schema-evolution owner. `database/migrations/` contains immutable ordered SQL; `database/src/migrations.rs` applies and attests the embedded sequence; domain modules own typed transactions; and credentials remain in the narrow owner-private credential table. `decodexd` is the only normal reader and writer. The database is not supported on a network filesystem.
 
 ## Initialize and validate
 
-The installer uses these hidden commands:
+The explicit daemon commands are:
 
 ```sh
 decodexd initialize-local-database --root ROOT
 decodexd validate-local-database --root ROOT
 ```
 
-Initialization creates or upgrades the fixed database with embedded ordered migrations.
-It is idempotent for an exact current database. Validation is read-only at the product
-level and verifies the application ID, migration sequence and digests, exact schema
-inventory, foreign keys, WAL, full synchronous mode, quick integrity result, and foreign
-key check.
+Initialization creates or upgrades the fixed database through embedded migrations and is idempotent for the exact current schema. Validation is read only at the product level and checks application identity, migration order and digests, schema inventory, foreign keys, WAL and synchronous settings, integrity, and foreign-key consistency. Normal `decodexd serve` performs the same validation before retaining product availability and does not use redb or a legacy server store.
 
-Normal `decodexd serve` opens and verifies the same database. It does not start or contact
-a database server.
+The migration seam is additive and transactional. Never edit a shipped migration: add the next numbered migration and focused upgrade/restart coverage. A schema change that crosses the signed app, daemon, CLI, or FFI boundary must also preserve the artifact cohort and receive package-facing validation.
 
-Schema version 8 adds two nullable self-references to the existing account-operation
-journal. They bind one verified reauthentication to one targetless refresh ambiguity and
-record the successful supersession without changing the old operation's recovery phase or
-reason. The migration is additive, preserves existing rows, and replaces the unsettled
-operation indexes atomically. A binary rollback across this schema boundary must retain a
-matching pre-upgrade private database backup; an older daemon does not accept a newer
-migration ledger.
+## Fresh macOS installation
 
-Schema version 9 adds one nullable, credential-negative `request_json` column to command
-receipts. Only a reserved `route_account` receipt must contain this value. The partial index
-supports bounded startup recovery. On daemon startup, the runtime releases only interrupted
-Route leases and completes one recovery pass before it accepts protocol commands.
-
-Schema version 10 adds the nullable `progress_json` column to the existing command receipt,
-retaining schema 9 request authority while recording credential-negative pending Route progress.
-A unique partial index permits at most one reserved `route_account` receipt, and triggers keep
-progress restricted to that pending Route state. The migration is additive and preserves
-existing receipt rows.
-
-The account-login restoration repair adds no schema migration. The current protocol uses exact
-artifact cohort 5; older cohort notes below are historical evidence for the prior repair and not
-current compatibility guidance. Artifact cohort 3 changes the strict local result/FFI shape. On startup, the daemon can compensate only the exact pre-repair
-`StoreApplied` enrollment collision described by the account-lifecycle contract; it deletes the
-proved orphan credential and cancels that operation. Installation therefore upgrades the signed
-daemon, CLI, App executable, and App FFI as one cohort while retaining the pre-install database
-rollback copy. The App and the staging verifier use one Swift compatibility source for the native
-ABI and artifact cohort. The staging gate must load the actual signed staged dylib through that
-shared check before installation.
-
-## Fresh installation
-
-Build one signed, team-consistent local-service set before installation:
+Stage one signed, team-consistent service set:
 
 ```sh
 DECODEX_LOCAL_SERVICE_SIGN_IDENTITY="Developer ID Application: Example (TEAMID)" \
   scripts/macos/stage_decodex_local_service.sh
 ```
 
-The stage contains `decodexd`, `decodex`, and `decodex-database-transfer`. The daemon
-and transfer tool use the fixed identifiers checked by the installer. An ad-hoc
-signature is rejected because it has no TeamIdentifier.
+The stage contains `decodexd`, `decodex`, and `decodex-database-transfer`. The installer verifies signatures, team identity, fixed binary identifiers, and daemon/CLI artifact-cohort agreement before stopping a running service. It creates owner-only directories, initializes and validates SQLite, installs a LaunchAgent invoking `decodexd serve` from `~/.decodex`, starts the daemon, and performs doctor/account-list readback through the installed CLI.
 
-The macOS installer:
+It does not create server roles or databases, resolve a database password, or install a network database service.
 
-1. verifies signed binaries, the expected team, and exact daemon/CLI artifact-cohort
-   agreement before it stops the running service;
-2. creates owner-only directories and configuration;
-3. initializes and validates SQLite;
-4. installs a LaunchAgent that invokes `decodexd serve` directly with
-   `~/.decodex` as its stable working directory;
-5. starts the daemon; and
-6. runs doctor and account-list readback through the installed CLI, which proves the
-   running daemon uses the same protocol 2.9 and artifact cohort 5.
+## One-shot account transfer
 
-It does not install former server store, create roles or databases, manage a socket directory, or
-resolve a database password.
+When SQLite is absent but the retired redb vault exists, the installer treats transfer as one upgrade boundary:
 
-## Existing account transfer
+1. Ask the old daemon for a bounded credential-negative account snapshot.
+2. Stop the old service gracefully.
+3. Send that snapshot to signed `decodex-database-transfer` on stdin.
+4. Open the fixed redb path read only with no-follow and owner checks.
+5. Require the exact account set and validate payload fingerprints and bindings.
+6. Insert accounts, credentials, quota facts, routing, and one transfer ledger row in one `BEGIN IMMEDIATE` transaction.
+7. Revalidate SQLite and perform credential-negative readback.
 
-If SQLite is absent and the retired redb vault exists, the installer treats this as one
-upgrade boundary:
+An exact retry returns `replayed`; a different source or non-fresh target fails closed. Output contains only outcome, count, digest, and source-retained facts. The tool does not delete the redb file or other rollback sources.
 
-1. It asks the old running daemon for the bounded credential-negative account list.
-2. It gracefully stops the old service.
-3. It sends that snapshot on stdin to the signed `decodex-database-transfer` tool.
-4. The tool opens only the fixed redb path with read-only and no-follow checks.
-5. It requires the exact same account set and validates every payload fingerprint and
-   binding.
-6. It inserts accounts, credentials, quota facts, routing, and one transfer ledger row in
-   one `BEGIN IMMEDIATE` transaction.
-7. It revalidates SQLite and performs credential-negative readback.
+## Rollback retention and validation
 
-An exact retry returns `replayed`. A different source or a non-fresh target fails closed.
-Output contains only the outcome, count, digest, and source-retained fact.
-
-## Rollback retention
-
-The installer and transfer tool do not delete the old former server store cluster, redb file, or
-Keychain records. They are inert rollback sources. Delete them only after a separate
-decision confirms live account inventory, first response, daemon restart, later response,
-and an accepted observation window.
-
-## Validation commands
+Retain the redb source and any pre-upgrade private database backup until live account inventory, first response, daemon restart, later response, and an accepted observation window are complete. Deletion requires a separate operator decision.
 
 ```sh
 decodexd artifact-cohort
@@ -130,6 +80,12 @@ cargo test -p decodex-database-transfer
 cargo test -p decodexd
 ```
 
-Use `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer` for the complete GPUI
-workspace gate on the current development host because the default Command Line Tools
-selection does not expose the Metal compiler.
+The leading `a` in the preceding block is not a command; use the corrected command below when copying it:
+
+```sh
+python3 -m unittest tests/scripts/test_install_decodex_local_service.py
+```
+
+Use `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer` for the full GPUI workspace gate on the current development host when the default Command Line Tools selection lacks Metal.
+
+See [Runtime architecture](../architecture/runtime-architecture.md) for startup ownership and [SQLite local-product decision](../decisions/sqlite-local-product.md) for the product rationale.

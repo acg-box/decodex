@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Recovery And Landing"
+openwiki_generated: true
+---
+
 # Recovery And Landing
 
 This page is the consolidated operator guide for Decodex lane recovery and landing decisions. It expands the recovery summaries in [Operator Runbooks](operator-runbooks.md) and the command map in [Runtime Operator Workflows](../workflows/runtime-operator-workflows.md) without replacing command-specific source references there.

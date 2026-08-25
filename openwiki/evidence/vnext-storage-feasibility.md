@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "vNext former server store, blob, and cache feasibility"
+openwiki_generated: true
+---
+
 # vNext former server store, blob, and cache feasibility
 
 Status: XY-1264 gate evidence; candidate handoff to Manager for acceptance and merge.
@@ -90,6 +96,7 @@ and broader fault-injection thresholds.
 | No exactly-once claim | explicit at-least-once plus receipt/readback reconciliation contract |
 
 The full commands, local layout, recovery steps, cleanup, and operational failure modes
+<!-- openwiki: broken internal link [../../spikes/vnext-storage/README.md] file "../../spikes/vnext-storage/README.md" does not exist. Fix the href or restore the target, then delete this comment. -->
 are in [`spikes/vnext-storage/README.md`](../../spikes/vnext-storage/README.md).
 
 ## Boundaries and falsifiers

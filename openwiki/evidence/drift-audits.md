@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Drift Audits"
+openwiki_generated: true
+---
+
 # Drift Audits
 
 Evidence pages are public-safe proof notes for claims that need durable reuse across OpenWiki pages. They do not replace source, tests, runtime SQLite, private evidence, tracker state, or operator commands as implementation authority. Keep private runtime evidence in Decodex storage; keep OpenWiki evidence limited to source anchors, reverse checks, validation/readback commands, status, and stop conditions.

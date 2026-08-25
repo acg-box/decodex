@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "XY-1357 natural quota timestamp evidence"
+openwiki_generated: true
+---
+
 # XY-1357 natural quota timestamp evidence
 
 Status: **pass for the XY-1304 timestamp-precision input only**.

@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Retired private-artifact design archive"
+openwiki_generated: true
+---
+
 # Retired private-artifact design archive
 
 Status: XY-1403 Option 1 exact-candidate review is approved for commit

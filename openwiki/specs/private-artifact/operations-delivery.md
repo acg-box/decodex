@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Private-artifact operations and delivery (retired design)"
+openwiki_generated: true
+---
+
 # Private-artifact operations and delivery (retired design)
 
 Status: frozen historical, non-executable design evidence.

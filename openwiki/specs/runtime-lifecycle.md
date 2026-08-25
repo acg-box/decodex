@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Runtime Lifecycle"
+openwiki_generated: true
+---
+
 # Runtime Lifecycle
 
 Scope: current v0.2 behavior only. For vNext target implementation, the

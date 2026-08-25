@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Lane Authority V2 Gate Manifest"
+openwiki_generated: true
+---
+
 # Lane Authority V2 Gate Manifest
 
 Status: superseded and frozen by the [vNext authority decision](../decisions/vnext-authority.md).

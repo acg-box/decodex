@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Private-artifact executor and platform contract (retired design)"
+openwiki_generated: true
+---
+
 # Private-artifact executor and platform contract (retired design)
 
 Status: frozen historical, non-executable design evidence.

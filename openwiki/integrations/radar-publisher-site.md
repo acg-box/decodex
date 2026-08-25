@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Radar, Publisher, And Site Contracts"
+openwiki_generated: true
+---
+
 # Radar, Publisher, And Site Contracts
 
 This page covers auxiliary evidence and public surfaces that surround the Decodex

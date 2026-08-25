@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Lane Authority V2 Checkpoints"
+openwiki_generated: true
+---
+
 # Lane Authority V2 Checkpoints
 
 Status: frozen historical ledger. [XY-1260](../decisions/vnext-authority.md) superseded

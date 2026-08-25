@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Operator Runbooks"
+openwiki_generated: true
+---
+
 # Operator Runbooks
 
 This page is the operational map for Decodex recovery, GitHub/Linear handling, release readiness, and control-plane workflows. For the consolidated recovery and landing decision guide, see [Recovery And Landing](recovery-and-landing.md).

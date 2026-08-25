@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Radar And Publisher Contracts"
+openwiki_generated: true
+---
+
 # Radar And Publisher Contracts
 
 Radar and Publisher are separate auxiliary tools. They do not form a workflow

@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "XY-1262 Codex runtime proof"
+openwiki_generated: true
+---
+
 # XY-1262 Codex runtime proof
 
 Status: gate evidence at repository revision `f9d6c4e70198e94e5b9461b8cac7518ae14d41ef`.

@@ -1,3 +1,10 @@
+---
+type: "Historical Architecture Decision"
+title: "Decodex vNext Authority Decision"
+description: "Historical former server-store authority decision retained for rationale and domain invariants; storage, migration, and delivery authority is superseded by the SQLite local-product decision."
+tags: [history, architecture, authority, superseded]
+---
+
 # Decodex vNext Authority Decision
 
 Status: historical former server store design record. Its storage, migration, and delivery

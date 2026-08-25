@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Lane Authority V2"
+openwiki_generated: true
+---
+
 # Lane Authority V2
 
 Status: superseded and frozen by [XY-1260](vnext-authority.md). Historical architecture

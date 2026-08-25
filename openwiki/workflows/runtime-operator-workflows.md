@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Runtime Operator Workflows"
+openwiki_generated: true
+---
+
 # Runtime Operator Workflows
 
 This page is the operator-task map for Decodex. It describes what commands do, where they enter source, and what future agents should verify when changing them. For recovery and landing decision boundaries, see [Recovery And Landing](../operations/recovery-and-landing.md).

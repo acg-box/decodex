@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "XY-1372 private-artifact capability evidence"
+openwiki_generated: true
+---
+
 # XY-1372 private-artifact capability evidence
 
 Status: historical accepted feasibility evidence for the exact frozen matrix. This
@@ -9,7 +15,9 @@ XY-1372 proves platform feasibility. It does not implement the API, enable a pro
 composition root, authorize a downstream experiment, create a current platform
 requirement, or restore the retired private-artifact lane. The current disposition
 is in the [vNext authority decision](../decisions/vnext-authority.md),
+<!-- openwiki: broken internal link [../specs/vnext-authority.md#private-artifact-authority] heading anchor "private-artifact-authority" does not exist in "../specs/vnext-authority.md". Fix the href or restore the target, then delete this comment. -->
 [vNext contract](../specs/vnext-authority.md#private-artifact-authority), and
+<!-- openwiki: broken internal link [../specs/vnext-gates.md#xy-1372-private-artifact-capability-and-consumption-gate] heading anchor "xy-1372-private-artifact-capability-and-consumption-gate" does not exist in "../specs/vnext-gates.md". Fix the href or restore the target, then delete this comment. -->
 [gate manifest](../specs/vnext-gates.md#xy-1372-private-artifact-capability-and-consumption-gate).
 
 ## Evidence identity and integrity

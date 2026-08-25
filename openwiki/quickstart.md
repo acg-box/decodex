@@ -165,7 +165,8 @@ base. It does not make deferred extension or multi-agent surfaces partially avai
 ## Repository map
 
 - `database/` owns bundled SQLite, immutable ordered migrations, database adapters, and
-  local persistence tests.
+  local persistence tests. `database/transfer/` is the separate one-shot redb-to-SQLite
+  upgrade tool.
 - `database/transfer/` is the separate one-shot redb-to-SQLite upgrade tool. Normal
   daemon startup does not link redb.
 - `crates/decodex-core/` owns mechanism-neutral domain types and fixed local paths.
@@ -186,6 +187,17 @@ base. It does not make deferred extension or multi-agent surfaces partially avai
 - `crates/decodex-runtime/fixtures/` owns frozen offline Pack data and source metadata.
 - `apps/decodexd/` is the only server composition root.
 - `apps/decodex-cli/` and `apps/decodex-gpui/` are protocol-only clients.
+
+## Task routing
+
+| Change area or user intent | Wiki page | Exact source entry points | Important symbols or types | Focused tests | Minimal validation |
+| --- | --- | --- | --- | --- | --- |
+| Local schema, persistence, or account transfer | [Local database operations](operations/local-database.md) | `database/src/lib.rs`, `database/src/migrations.rs`, `database/transfer/src/main.rs` | `SqliteStore`, migration runner, transfer outcome | `database/tests/quick_task_restart.rs`, `database/transfer/tests/transfer.rs` | `cargo make test-local-database` |
+| Daemon startup, readiness, or transport | [Runtime architecture](architecture/runtime-architecture.md) | `crates/decodex-runtime/src/bootstrap.rs`, `apps/decodexd/src/main.rs` | `ServiceBootstrap`, readiness projections, `BoundServer` | `crates/decodex-runtime/tests/bootstrap_doctor.rs`, `apps/decodexd/tests/cli.rs` | `cargo test -p decodex-runtime bootstrap` |
+| Account login or credential installation | [Account login authority](specs/account-login-authority.md) | `crates/decodex-account-login/src/lib.rs`, `crates/decodex-runtime/src/account_login.rs`, `crates/decodex-protocol/src/account_login.rs` | `AccountLoginManager`, `AccountLoginClient`, `AccountLoginInstallAuthority` | `tests/scripts/test_account_login_architecture.py`, account-login package tests | `python3 -m unittest tests/scripts/test_account_login_architecture.py` |
+| Quick Task, process, or provider-attempt behavior | [Local Product V1 contract](specs/local-product-v1.md) | `crates/decodex-runtime/src/quick_task.rs`, `crates/decodex-runtime/src/process_supervisor.rs`, `crates/decodex-runtime/src/provider_attempt_service.rs` | `QuickTaskRuntime`, `ProcessGenerationControl`, `ProviderAttemptControl` | `database/tests/quick_task_restart.rs`, focused runtime tests | `cargo test -p decodex-runtime quick_task` |
+| Native macOS accounts or Reset Cards | [Automations and auxiliary tools](integrations/plugins-automations-and-auxiliary-tools.md) | `apps/decodex-app/Sources/DecodexApp/ResetCardStore.swift`, `AccountControlCLIClient.swift` | `ResetCardStore`, account-control client | `apps/decodex-app/Tests/DecodexAppTests/ResetCardArchitectureTests.swift` | `swift test --package-path apps/decodex-app` |
+| Validation, task-runner, or release checks | [Commands and validation](operations/commands-and-validation.md) | `Makefile.toml`, `scripts/vnext/local_database_gate.py` | `test-local-database`, `test-headless`, `lint-rust` | `tests/scripts/test_vnext_architecture.py` | `cargo make test-headless` |
 
 ## First commands
 
@@ -221,3 +233,7 @@ decodexd validate-local-database --root ROOT
   rollback-window decision authorizes deletion.
 - Treat multi-machine deployment as a later server-mode architecture, not a generic
   database abstraction added to the desktop product now.
+
+## Backlog
+
+- General multi-machine deployment and a server-mode storage authority remain deferred; source anchor: `README.md` deferred surfaces.

@@ -1,3 +1,18 @@
+---
+type: "Integration Reference"
+title: "Automations And Auxiliary Tools"
+description: "Boundaries for Decodex automations, Radar, the deterministic Publisher, and the native macOS client that support but do not replace daemon-owned runtime authority."
+tags: [integrations, automation, radar, publisher, macos]
+openwiki:
+  roles: [integration, operations, repository]
+  change_kinds: [public-api, workflow, validation]
+  source_paths: [automations/portfolio.toml, apps/radar/src/lib.rs, apps/decodex-publisher/src/lib.rs, apps/decodex-app/Sources/DecodexApp/ResetCardStore.swift]
+  symbols: [ResetCardStore]
+  test_paths: [automations/decodex/scripts/config/tests/test_portfolio.py, apps/decodex-app/Tests/DecodexAppTests/ResetCardArchitectureTests.swift]
+  invariants: ["Auxiliary tools do not become Decodex runtime or storage authorities.", "Native app mutations go through the daemon protocol."]
+  validation_commands: ["cargo make test-automations", "swift test --package-path apps/decodex-app"]
+---
+
 # Automations And Auxiliary Tools
 
 This page covers repository areas that support the runtime but are not the core scheduler.

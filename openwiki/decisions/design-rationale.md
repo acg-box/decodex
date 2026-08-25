@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Design Rationale"
+openwiki_generated: true
+---
+
 # Design Rationale
 
 Scope: current v0.2 rationale and historical decisions. For the vNext target, the

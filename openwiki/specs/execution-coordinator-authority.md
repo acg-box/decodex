@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Stateless Execution Coordination"
+openwiki_generated: true
+---
+
 # Stateless Execution Coordination
 
 Status: normative current owner composition plus the accepted Candidate-5 Quick Task

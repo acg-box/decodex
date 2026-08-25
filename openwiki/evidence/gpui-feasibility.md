@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "XY-1263 GPUI feasibility evidence"
+openwiki_generated: true
+---
+
 # XY-1263 GPUI feasibility evidence
 
 Status: accepted exact-pin foundation evidence. The normalized current-main

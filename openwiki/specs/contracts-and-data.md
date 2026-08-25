@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Contracts And Data"
+openwiki_generated: true
+---
+
 # Contracts And Data
 
 Scope: current v0.2 behavior only. For vNext target implementation, the

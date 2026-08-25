@@ -1,3 +1,9 @@
+---
+type: "Reference"
+title: "Private-artifact authority retirement decision"
+openwiki_generated: true
+---
+
 # Private-artifact authority retirement decision
 
 Status: XY-1403 Option 1 exact-candidate review is approved for commit
