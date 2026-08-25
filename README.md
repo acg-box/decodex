@@ -69,6 +69,14 @@ depleted observation still blocks that account. Fixed routing keeps the selected
 balanced routing prefers known available capacity and then follows configured order
 through unknown accounts.
 
+Account Route reads the current shared Codex auth file once and uses an exact-source
+compare-and-swap write with readback. It commits fixed routing only after that write succeeds.
+A locally valid target does not contact the provider. A new Route never waits for running
+Codex processes and never creates normal Pending state. Changed source auth, missing or expired
+credentials, and revision drift return terminal typed failures. Legacy Pending receipts remain
+decode and startup-recovery state only. Restart ChatGPT or Codex after Route to load the selected
+account there; Decodex does not stop or restart those applications.
+
 Account affinity is conversation-scoped. The first route binds one account to the
 RuntimeSession and Codex thread. Later turns keep that account even if the global routing
 default changes. A different conversation can select a different account. If the bound
@@ -110,7 +118,8 @@ python3 -m unittest tests/scripts/test_vnext_architecture.py
 cargo test -p decodex-database --all-targets
 cargo test -p decodex-database-transfer
 cargo test -p decodexd
-DECODEX_APP_SIGN_IDENTITY="Apple Development: Example (TEAMID)" \
+DECODEX_APP_SIGN_IDENTITY="4EBCADF6B4D513E45CE33EC6934C08DBB0F03D7F" \
+DECODEX_APP_SIGN_TEAM_IDENTIFIER="4N949UKQ55" \
   scripts/macos/test_decodex_app_stage.sh
 cargo make check
 ```

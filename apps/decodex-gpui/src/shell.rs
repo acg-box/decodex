@@ -873,6 +873,7 @@ impl Shell {
 			pending_route: None,
 			can_manage: true,
 			can_route: true,
+			route_restart_notice: false,
 		};
 		let health_checks = DoctorComponent::ALL
 			.into_iter()
@@ -2873,7 +2874,6 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 		AccountSelectionModeDto::Fixed(account_id) => Some(account_id),
 		AccountSelectionModeDto::Balanced => None,
 	});
-	let pending_target = snapshot.pending_route.as_ref().map(|pending| &pending.account_id);
 	let account_count = snapshot.accounts.len();
 	snapshot
 		.accounts
@@ -2886,7 +2886,6 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 					index,
 					account_count,
 					fixed: fixed == Some(&account.account_id),
-					pending_target,
 					can_manage: snapshot.can_manage,
 					can_route: snapshot.can_route,
 					login_available: shell.account_login.is_some()
@@ -2909,12 +2908,8 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.is_some_and(|routing| routing.mode == AccountSelectionModeDto::Balanced);
 	let can_manage = snapshot.can_manage;
 	let status = snapshot
-		.pending_route
-		.as_ref()
-		.map(|_| {
-			"Quit ChatGPT and keep it closed until Pending changes to Routed, then reopen it."
-				.to_owned()
-		})
+		.route_restart_notice
+		.then(|| "Route succeeded. Restart ChatGPT or Codex to load this account.".to_owned())
 		.or_else(|| shell.account_status.as_ref().map(SharedString::to_string))
 		.or_else(|| account_command_label(snapshot.command).map(str::to_owned))
 		.unwrap_or_else(|| accounts_load_label(snapshot.load).to_owned());
@@ -3465,11 +3460,10 @@ fn account_login_start(
 }
 
 #[derive(Clone, Copy)]
-struct AccountRowPresentation<'a> {
+struct AccountRowPresentation {
 	index: usize,
 	account_count: usize,
 	fixed: bool,
-	pending_target: Option<&'a EntityId>,
 	can_manage: bool,
 	can_route: bool,
 	login_available: bool,
@@ -3478,18 +3472,14 @@ struct AccountRowPresentation<'a> {
 
 fn account_pool_row(
 	account: &AccountDto,
-	presentation: AccountRowPresentation<'_>,
+	presentation: AccountRowPresentation,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let AccountRowPresentation { index, fixed, pending_target, can_manage, can_route, .. } =
-		presentation;
+	let AccountRowPresentation { index, fixed, can_manage, can_route, .. } = presentation;
 	let account_id = account.account_id.clone();
 	let toggle_account_id = account.account_id.clone();
 	let enabled = account.enabled;
-	let pending = pending_target == Some(&account.account_id);
-	let has_pending_route = pending_target.is_some();
-	let keeps_current_route = fixed && has_pending_route && !pending;
-	let pin_enabled = can_route && enabled && (!fixed || keeps_current_route) && !pending;
+	let pin_enabled = can_route && enabled && !fixed;
 	let toggle_enabled = can_manage;
 	let state_color = account_state_color(account);
 	let short_id = account.account_id.as_str().get(..8).unwrap_or(account.account_id.as_str());
@@ -3586,12 +3576,8 @@ fn account_pool_row(
 									shell.select_fixed_account(&account_id, cx);
 								}))
 						})
-						.child(if pending {
-							"Pending"
-						} else if keeps_current_route {
-							"Keep"
-						} else if fixed {
-							"Pinned"
+						.child(if fixed {
+							"Routed"
 						} else {
 							"Route"
 						}),
@@ -3636,7 +3622,7 @@ fn account_pool_row(
 
 fn account_management_actions(
 	account: &AccountDto,
-	presentation: &AccountRowPresentation<'_>,
+	presentation: &AccountRowPresentation,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let index = presentation.index;

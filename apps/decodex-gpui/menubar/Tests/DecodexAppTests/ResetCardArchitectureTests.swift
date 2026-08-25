@@ -635,19 +635,16 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(client.contains(#"operation: "route_account""#))
 		XCTAssertFalse(client.contains(#"operation: "use_account_in_codex""#))
 		XCTAssertFalse(client.contains(#"operation: "set_fixed_selection""#))
-		XCTAssertTrue(store.contains("guard pendingRoute == nil"))
-		XCTAssertTrue(store.contains("&& pendingRoute == nil"))
-		XCTAssertTrue(store.contains("pendingRoute?.accountID != accountID"))
-		XCTAssertTrue(store.contains("replacesPendingRoute = pendingRoute != nil"))
-		XCTAssertTrue(actions.contains("title: isPendingTarget"))
-		XCTAssertTrue(actions.contains(#"? "Pending""#))
-		XCTAssertTrue(actions.contains(#"keepsCurrentRoute ? "Keep""#))
-		XCTAssertTrue(
-			actions.contains("keep it closed until Pending changes to Routed")
-		)
-		XCTAssertTrue(
-			actions.contains("store.pendingRoute?.accountID != state.account.accountID")
-		)
+		XCTAssertFalse(store.contains("guard pendingRoute == nil"))
+		XCTAssertFalse(store.contains("&& pendingRoute == nil"))
+		XCTAssertFalse(store.contains("pendingRoute?.accountID != accountID"))
+		XCTAssertFalse(store.contains("replacesPendingRoute = pendingRoute != nil"))
+		XCTAssertFalse(actions.contains("isPendingTarget"))
+		XCTAssertFalse(actions.contains(#"? "Pending""#))
+		XCTAssertFalse(actions.contains("keepsCurrentRoute"))
+		XCTAssertFalse(actions.contains("Quit ChatGPT"))
+		XCTAssertTrue(actions.contains("Restart ChatGPT afterward"))
+		XCTAssertTrue(actions.contains("Decodex does not restart it"))
 	}
 
 	func testMenuBarOwnerDisablesAutomaticAndSuddenTermination() throws {
@@ -795,6 +792,15 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(script.contains("--bin decodexd"))
 		XCTAssertTrue(script.contains("--product DecodexMenuBar"))
 		XCTAssertTrue(script.contains(#"cp "$ROOT/target/release/decodexd" "$HELPERS/decodexd""#))
+		XCTAssertTrue(
+			script.contains(
+				#"DEFAULT_SIGN_IDENTITY="4EBCADF6B4D513E45CE33EC6934C08DBB0F03D7F""#
+			)
+		)
+		XCTAssertTrue(
+			script.contains(#"DEFAULT_SIGN_TEAM_IDENTIFIER="4N949UKQ55""#)
+		)
+		XCTAssertTrue(script.contains(#"verify_signing_team "$APP""#))
 		XCTAssertTrue(
 			compatibility.contains("decodexNativeClientABIVersion: UInt32 = 1")
 		)

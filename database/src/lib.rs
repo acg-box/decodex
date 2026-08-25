@@ -1038,6 +1038,138 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn redundant_route_to_the_pending_target_preserves_the_original_receipt() {
+		let directory = tempdir().expect("temporary directory");
+		let path = directory.path().join("decodex.sqlite3");
+		let store = SqliteStore::open_test(&path).expect("initialize store");
+		let routing = store.read_account_routing_control().await.expect("read routing");
+		let first_request = format!(
+			r#"{{"name":"route_account","arguments":{{"operation_id":"{OPERATION_ONE}","account_id":"{ACCOUNT}","expected_account_revision":1}}}}"#,
+		);
+		let first =
+			CommandIdentity::new("first-same-target-route", first_request.as_bytes()).unwrap();
+		let first_lease = match store
+			.reserve_account_route_command(&first, routing.revision, &first_request)
+			.await
+			.unwrap()
+		{
+			AccountCommandReceiptClaim::Owned(lease) => lease,
+			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
+				panic!("first Route replayed")
+			},
+		};
+		let first_progress = json!({"status": "pending-first"});
+		store.defer_account_route_command(first_lease, &first_progress).await.unwrap();
+
+		let second_request = format!(
+			r#"{{"name":"route_account","arguments":{{"operation_id":"{OPERATION_TWO}","account_id":"{ACCOUNT}","expected_account_revision":1}}}}"#,
+		);
+		let second =
+			CommandIdentity::new("second-same-target-route", second_request.as_bytes()).unwrap();
+		let superseded = json!({"outcome": "rejected", "reason": "route_superseded"});
+		assert!(matches!(
+			store
+				.reserve_replacing_account_route_command(
+					&second,
+					routing.revision,
+					&second_request,
+					&superseded,
+				)
+				.await
+				.unwrap(),
+			AccountCommandReceiptClaim::Replayed(value) if value == superseded
+		));
+		assert!(matches!(
+			store
+				.reserve_account_route_command(&first, routing.revision, &first_request)
+				.await
+				.unwrap(),
+			AccountCommandReceiptClaim::Pending(value) if value == first_progress
+		));
+		let pending = store.read_pending_account_route_commands(8).await.unwrap();
+		assert_eq!(pending.len(), 1);
+		assert_eq!(pending[0].idempotency_key, "first-same-target-route");
+
+		drop(store);
+		let reopened = SqliteStore::open_test(&path).expect("reopen store");
+		assert!(matches!(
+			reopened
+				.reserve_account_route_command(&first, routing.revision, &first_request)
+				.await
+				.unwrap(),
+			AccountCommandReceiptClaim::Pending(value) if value == first_progress
+		));
+		assert!(matches!(
+			reopened
+				.reserve_replacing_account_route_command(
+					&second,
+					routing.revision,
+					&second_request,
+					&superseded,
+				)
+				.await
+				.unwrap(),
+			AccountCommandReceiptClaim::Replayed(value) if value == superseded
+		));
+		let pending = reopened.read_pending_account_route_commands(8).await.unwrap();
+		assert_eq!(pending.len(), 1);
+		assert_eq!(pending[0].idempotency_key, "first-same-target-route");
+	}
+
+	#[tokio::test]
+	async fn same_target_route_with_a_new_account_fence_supersedes_the_old_receipt() {
+		let directory = tempdir().expect("temporary directory");
+		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
+			.expect("initialize store");
+		let routing = store.read_account_routing_control().await.expect("read routing");
+		let first_request = format!(
+			r#"{{"name":"route_account","arguments":{{"operation_id":"{OPERATION_ONE}","account_id":"{ACCOUNT}","expected_account_revision":1}}}}"#,
+		);
+		let first = CommandIdentity::new("first-fenced-route", first_request.as_bytes()).unwrap();
+		let first_lease = match store
+			.reserve_account_route_command(&first, routing.revision, &first_request)
+			.await
+			.unwrap()
+		{
+			AccountCommandReceiptClaim::Owned(lease) => lease,
+			_ => panic!("first Route replayed"),
+		};
+		store
+			.defer_account_route_command(first_lease, &json!({"status": "pending-first"}))
+			.await
+			.unwrap();
+
+		let second_request = format!(
+			r#"{{"name":"route_account","arguments":{{"operation_id":"{OPERATION_TWO}","account_id":"{ACCOUNT}","expected_account_revision":2}}}}"#,
+		);
+		let second =
+			CommandIdentity::new("second-fenced-route", second_request.as_bytes()).unwrap();
+		let superseded = json!({"outcome": "rejected", "reason": "route_superseded"});
+		assert!(matches!(
+			store
+				.reserve_replacing_account_route_command(
+					&second,
+					routing.revision,
+					&second_request,
+					&superseded,
+				)
+				.await
+				.unwrap(),
+			AccountCommandReceiptClaim::Owned(_)
+		));
+		assert!(matches!(
+			store
+				.reserve_account_route_command(&first, routing.revision, &first_request)
+				.await
+				.unwrap(),
+			AccountCommandReceiptClaim::Replayed(value) if value == superseded
+		));
+		let pending = store.read_pending_account_route_commands(8).await.unwrap();
+		assert_eq!(pending.len(), 1);
+		assert_eq!(pending[0].idempotency_key, "second-fenced-route");
+	}
+
+	#[tokio::test]
 	async fn pending_route_fences_balanced_and_order_revision_changes() {
 		let directory = tempdir().expect("temporary directory");
 		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))

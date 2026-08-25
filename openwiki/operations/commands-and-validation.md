@@ -6,7 +6,7 @@ tags: [operations, validation, rust, macos, sqlite]
 openwiki:
   roles: [operations, testing]
   change_kinds: [validation, runtime, desktop, packaging]
-  source_paths: [Makefile.toml, scripts/vnext/local_database_gate.py, scripts/macos/stage_decodex_app.sh, scripts/macos/test_decodex_app_stage.sh, tests/scripts/test_vnext_architecture.py]
+  source_paths: [Makefile.toml, apps/decodex-gpui/src/main.rs, scripts/vnext/local_database_gate.py, scripts/macos/stage_decodex_app.sh, scripts/macos/test_decodex_app_stage.sh, tests/scripts/test_vnext_architecture.py]
 ---
 
 # Commands And Validation
@@ -96,9 +96,11 @@ It also proves that no nested login-item app is present. The former
 A native runtime acceptance run must also prove:
 
 1. the main Decodex window belongs to the staged GPUI executable;
-2. **Show Decodex in the menu bar** changes through `decodexd`;
-3. one status item appears or disappears without a second process; and
-4. the setting survives daemon and application restart.
+2. a login-item launch leaves native windows ordered out rather than presenting the main window;
+3. an ordinary reopen activates the main window;
+4. **Show Decodex in the menu bar** changes through `decodexd`;
+5. one status item appears or disappears without a second process; and
+6. the setting survives daemon and application restart.
 
 ## Repository gate
 

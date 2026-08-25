@@ -60,6 +60,13 @@ persists the singleton preference in SQLite. The embedded host creates or remove
 `NSStatusItem` on the main thread. There is no nested `.app`, login-item bundle, secondary GUI
 executable, or UI-to-UI protocol.
 
+The launch lifecycle distinguishes ordinary activation from login-item startup. When
+`Shell::was_launched_as_login_item` is true, the macOS path calls `order_out_native_windows`
+and orders out every native application window, keeping a background login launch quiet. A
+normal reopen still calls `activate_main_window`, which activates both the GPUI window and
+`NSApplication`. This is presentation-only behavior; it does not change daemon ownership or
+menu-bar state.
+
 ## Executable and bundle inventory
 
 | Surface | Classification | Product authority | Distribution |
@@ -151,4 +158,6 @@ cargo +stable test --workspace --all-targets --all-features
 
 The app-stage test proves the single-bundle shape. Runtime or visual acceptance must
 also launch the staged application, confirm its main window, toggle the setting, and
-observe the status item in the same application process.
+observe the status item in the same application process. Login-item acceptance must additionally
+verify that startup leaves native windows ordered out, while a later ordinary reopen activates
+the main window.
