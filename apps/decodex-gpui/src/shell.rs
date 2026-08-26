@@ -1004,7 +1004,7 @@ impl Shell {
 			can_retry: false,
 			last_stale_cancellation: None,
 		});
-		let programs = Programs::visual_closed_cycle();
+		let programs = Programs::visual_development_three_cycle();
 		shell.program = programs.snapshot();
 		shell.programs = programs.clone();
 		shell.factory.update(cx, |factory, cx| factory.bind_programs(programs, cx));

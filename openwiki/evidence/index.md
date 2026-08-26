@@ -3,6 +3,7 @@
 - [Adaptive Factory Spine V1 Evidence](adaptive-factory-spine-v1.md) - Implementation, restart, protocol, GPUI, and dogfood evidence for the first bounded Program feedback cycle.
 - [Built-in Domain Pack Pressure Test V1 Evidence](builtin-domain-pack-pressure-test-v1.md) - Implementation, capability, GPUI, live execution, and restart evidence for Development and Paper Investment built-in Domain Packs.
 - [Credential Vault Cutover Evidence](credential-vault-cutover.md)
+- [Program Graph Surface V1 Evidence](program-graph-surface-v1.md) - Architecture, interaction, accessibility, deterministic layout, visual capture, and validation evidence for the bounded native Program Graph Surface.
 - [Repeatable Program Loop V1 Evidence](repeatable-program-loop-v1.md) - Implementation, restart, replay, GPUI, and three-cycle live evidence for manual sequential Program continuation.
 - [SQLite Local-Product Evidence](sqlite-local-product.md) - Current automated and native evidence for daemon-owned SQLite, protocol-only clients, and the single Decodex.app desktop architecture.
 - [XY-1262 Codex runtime proof](vnext-codex-runtime-proof.md)

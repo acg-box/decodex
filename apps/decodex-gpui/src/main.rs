@@ -27,6 +27,7 @@ mod health_query;
 mod history_pager;
 mod programs;
 mod native_menu_bar;
+mod program_graph;
 mod quick_tasks;
 mod settings_surface;
 mod shell;

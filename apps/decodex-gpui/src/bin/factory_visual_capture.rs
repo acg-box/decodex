@@ -7,6 +7,9 @@ mod composer_input;
 #[path = "../factory_surface.rs"]
 mod factory_surface;
 #[allow(dead_code)]
+#[path = "../program_graph.rs"]
+mod program_graph;
+#[allow(dead_code)]
 #[path = "../programs.rs"]
 mod programs;
 #[allow(dead_code)]
@@ -23,10 +26,49 @@ use gpui::{AppContext as _, VisualTestAppContext, px, size};
 
 use crate::{factory_surface::FactorySurface, programs::Programs, work_items::WorkItems};
 
+#[derive(Clone, Copy)]
+enum VisualScenario {
+	Development,
+	PaperInvestment,
+}
+
+impl VisualScenario {
+	fn from_environment() -> gpui::Result<Self> {
+		match std::env::var("DECODEX_VISUAL_SCENARIO") {
+			Ok(value) if value == "development" => Ok(Self::Development),
+			Ok(value) if value == "paper-investment" => Ok(Self::PaperInvestment),
+			Err(std::env::VarError::NotPresent) => Ok(Self::Development),
+			Ok(value) => Err(std::io::Error::new(
+				std::io::ErrorKind::InvalidInput,
+				format!(
+					"unsupported DECODEX_VISUAL_SCENARIO {value:?}; expected development or paper-investment"
+				),
+			)
+			.into()),
+			Err(error) => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, error).into()),
+		}
+	}
+
+	fn default_output(self) -> PathBuf {
+		PathBuf::from(match self {
+			Self::Development => "target/visual-tests/program-graph-development-three-cycle.png",
+			Self::PaperInvestment => "target/visual-tests/program-graph-paper-investment.png",
+		})
+	}
+
+	fn programs(self) -> Programs {
+		match self {
+			Self::Development => Programs::visual_development_three_cycle(),
+			Self::PaperInvestment => Programs::visual_paper_investment(),
+		}
+	}
+}
+
 fn main() -> gpui::Result<()> {
+	let scenario = VisualScenario::from_environment()?;
 	let output = std::env::var_os("DECODEX_VISUAL_OUTPUT")
 		.map(PathBuf::from)
-		.unwrap_or_else(|| PathBuf::from("target/visual-tests/factory-operate.png"));
+		.unwrap_or_else(|| scenario.default_output());
 	if let Some(parent) = output.parent() {
 		std::fs::create_dir_all(parent)?;
 	}
@@ -40,7 +82,7 @@ fn main() -> gpui::Result<()> {
 		cx.new(|cx| {
 			let mut surface = FactorySurface::new(cx);
 			surface.bind_work_items(WorkItems::visual_no_projects(), cx);
-			surface.bind_programs(Programs::visual_closed_cycle(), cx);
+			surface.bind_programs(scenario.programs(), cx);
 			surface
 		})
 	})?;

@@ -34,6 +34,9 @@ mod history_pager;
 #[path = "../native_menu_bar.rs"]
 mod native_menu_bar;
 #[allow(dead_code)]
+#[path = "../program_graph.rs"]
+mod program_graph;
+#[allow(dead_code)]
 #[path = "../programs.rs"]
 mod programs;
 #[allow(dead_code)]
