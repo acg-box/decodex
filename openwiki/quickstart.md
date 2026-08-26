@@ -7,6 +7,17 @@ openwiki:
   roles: [repository, architecture, workflow]
   change_kinds: [navigation]
   source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-protocol/src/quick_task.rs, database/src/lib.rs]
+verified:
+  - by: openwiki/0.4.0
+    at: 2026-08-26T21:13:26.303Z
+sources:
+  - id: openwiki-source-e3cbf7660b5f77bbecd437c5
+    resource: repo://apps/decodex-gpui/src/bin/factory_visual_capture.rs
+  - id: openwiki-source-4d0807cef0e852e926ce0974
+    resource: repo://apps/decodex-gpui/src/factory_surface.rs
+  - id: openwiki-source-31df4748243df01f1137f62f
+    resource: repo://apps/decodex-gpui/src/program_graph.rs
+generated: {by: "codex", at: "2026-08-26T21:13:26.303Z"}
 ---
 
 # OpenWiki Quickstart
@@ -55,6 +66,9 @@ one-shot transfer tool.
 - [Built-in Domain Pack Pressure Test V1 evidence](evidence/builtin-domain-pack-pressure-test-v1.md):
   immutable Pack binding, namespaced domain projections, frozen Treasury provenance,
   fail-before-attempt capability checks, GPUI evidence, and two-domain live restart proof.
+- [Program Graph Surface V1 evidence](evidence/program-graph-surface-v1.md): the private
+  host renderer, deterministic layered Program and Domain Pack lenses, bounded viewport,
+  synchronized selection, keyboard and accessibility behavior, and inspected captures.
 - [Adaptive Factory Spine V1 evidence](evidence/adaptive-factory-spine-v1.md): the exact
   historical first-cycle boundary, causal projection, restart proof, and local dogfood
   record.
@@ -195,6 +209,7 @@ base. It does not make deferred extension or multi-agent surfaces partially avai
 | Change the signed macOS app bundle | [Runtime architecture](architecture/runtime-architecture.md) | `scripts/macos/stage_decodex_app.sh`, `apps/decodex-gpui/packaging/Info.plist` | `Decodex.app`, `decodex-gpui`, `DECODEX_APP_SIGN_IDENTITY` | `scripts/macos/test_decodex_app_stage.sh` | `scripts/macos/test_decodex_app_stage.sh` |
 | Change local daemon startup from the GUI or login-item visibility | [Runtime architecture](architecture/runtime-architecture.md) | `apps/decodex-gpui/src/bundled_daemon.rs`, `apps/decodex-gpui/src/main.rs` | `BundledDaemonGuard`, `bundled_daemon_path`, `lifetime_channel`, `order_out_native_windows`, `activate_main_window` | `tests/scripts/test_vnext_architecture.py`, bundled-daemon unit tests in `apps/decodex-gpui/src/bundled_daemon.rs` | `cargo +stable test -p decodex-gpui --all-targets` |
 | Change the menu-bar presentation bridge | [Runtime architecture](architecture/runtime-architecture.md) | `apps/decodex-gpui/menubar/Sources/DecodexApp/DecodexApp.swift`, `apps/decodex-gpui/src/native_menu_bar.rs` | `decodex_menu_bar_create`, `decodex_menu_bar_set_visible`, `DecodexMenuBarHost` | `apps/decodex-gpui/menubar/Tests/DecodexAppTests/` | `swift test --package-path apps/decodex-gpui/menubar` |
+| Change the Program or Domain Pack graph layout, viewport, selection, keyboard, accessibility, or capture evidence | [Program Graph Surface V1 evidence](evidence/program-graph-surface-v1.md) | `apps/decodex-gpui/src/program_graph.rs`, `apps/decodex-gpui/src/factory_surface.rs`, `apps/decodex-gpui/src/programs.rs`, `apps/decodex-gpui/src/bin/factory_visual_capture.rs` | `ProgramGraphSurface`, `GraphLayout`, `GraphViewport`, `ProgramGraphEvent`, `VisualScenario` | colocated graph, Factory, Program fixture, keyboard, mapping, and minimum-size tests | `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo +stable test -p decodex-gpui --all-targets --features visual-capture` |
 | Validate or package the desktop surface | [Commands and validation](operations/commands-and-validation.md) | `scripts/macos/test_decodex_app_stage.sh`, `scripts/macos/run_decodex_gpui_accessibility_gate.swift` | bundle shape, signing team, exported ABI | app stage test and GPUI visual-capture tests | `scripts/macos/test_decodex_app_stage.sh` |
 
 ## First commands

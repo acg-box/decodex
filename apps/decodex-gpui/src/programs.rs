@@ -120,7 +120,7 @@ impl Programs {
 	}
 
 	#[cfg(feature = "visual-capture")]
-	pub(crate) fn visual_closed_cycle() -> Self {
+	pub(crate) fn visual_paper_investment() -> Self {
 		use decodex_protocol::{
 			DomainEntityDto, DomainEntityFieldDto, DomainPackCapabilityDto,
 			DomainPackCapabilityStatus, DomainPackDescriptorDto, DomainPackProjectionDto,
@@ -517,6 +517,280 @@ impl Programs {
 			state.session = Some(SessionBinding {
 				generation: 1,
 				server_id: ServerId::new("visual-programs")
+					.expect("visual server identity is bounded"),
+			});
+			state.load = ProgramsLoadState::Ready;
+			state.programs = vec![program];
+			state.selected = Some(program_id);
+			state.cycle = Some(cycle);
+		}
+		programs
+	}
+
+	#[cfg(feature = "visual-capture")]
+	pub(crate) fn visual_development_three_cycle() -> Self {
+		use decodex_protocol::{
+			DEVELOPMENT_DOMAIN_PACK_ID, DomainEntityDto, DomainEntityFieldDto,
+			DomainPackCapabilityDto, DomainPackCapabilityStatus, DomainPackDescriptorDto,
+			DomainPackProjectionDto, DomainPackViewKind, DomainRelationDto, EntityRevision,
+			ProgramCycleDto, ProgramEdgeDto, ProgramNodeDto, ProgramNodeFieldDto,
+			ProgramRelationKind, Sha256Digest, WireText,
+		};
+
+		let snapshot = Self::visual_paper_investment().snapshot();
+		let mut paper = snapshot.cycle.expect("paper visual Program cycle");
+		let id = |value: &str| EntityId::new(value).expect("visual Program identity is valid");
+		let text = |value: &str| WireText::new(value).expect("visual Program text is bounded");
+		let field = |label: &str, value: &str| ProgramNodeFieldDto {
+			label: text(label),
+			value: text(value),
+		};
+		let node = |id: EntityId,
+		            kind: ProgramNodeKind,
+		            title: &str,
+		            summary: &str,
+		            state: &str,
+		            source: Option<&str>,
+		            conversation_id: Option<EntityId>,
+		            fields: Vec<ProgramNodeFieldDto>,
+		            offset: i64| ProgramNodeDto {
+			id,
+			kind,
+			title: text(title),
+			summary: text(summary),
+			state: text(state),
+			source: source.map(text),
+			observed_at_micros: Some(1_786_000_000_000_000 + offset),
+			conversation_id,
+			fields,
+		};
+		let program_id = paper.program.program_id.clone();
+		let review_2_id = id("81000000-0000-4000-8000-000000000017");
+		let signal_3_id = id("81000000-0000-4000-8000-000000000018");
+		let claim_3_id = id("81000000-0000-4000-8000-000000000019");
+		let proposal_3_id = id("81000000-0000-4000-8000-000000000020");
+		let objective_3_id = id("81000000-0000-4000-8000-000000000021");
+		let work_item_3_id = id("81000000-0000-4000-8000-000000000022");
+		let conversation_3_id = id("10000000-0000-4000-8000-000000000003");
+		let deterministic_3_id = id("81000000-0000-4000-8000-000000000023");
+		let external_3_id = id("81000000-0000-4000-8000-000000000024");
+		let review_3_id = id("81000000-0000-4000-8000-000000000025");
+		paper.nodes.extend([
+			node(
+				signal_3_id.clone(),
+				ProgramNodeKind::Signal,
+				"Signal",
+				"Two safe continuations left the Domain Pack boundary as the next uncertainty.",
+				"observed",
+				Some("Second Program Review"),
+				None,
+				Vec::new(),
+				18,
+			),
+			node(
+				claim_3_id.clone(),
+				ProgramNodeKind::Claim,
+				"Claim",
+				"One host-owned projection can support a real development lens without new authority.",
+				"current",
+				None,
+				None,
+				Vec::new(),
+				19,
+			),
+			node(
+				proposal_3_id.clone(),
+				ProgramNodeKind::Proposal,
+				"Proposal",
+				"Pressure-test the closed Program vocabulary with the built-in Development Pack.",
+				"non_executable",
+				None,
+				None,
+				vec![
+					field("Expected effect", "One reusable host graph across two domain lenses"),
+					field("Risk", "A Pack becomes a second execution or storage owner"),
+				],
+				20,
+			),
+			node(
+				objective_3_id.clone(),
+				ProgramNodeKind::Objective,
+				"Objective",
+				"Bind, execute, review, restart, and reopen the Development projection.",
+				"achieved",
+				None,
+				None,
+				vec![field("Validation", "Exact Pack digest, restart, and projection readback")],
+				21,
+			),
+			node(
+				work_item_3_id.clone(),
+				ProgramNodeKind::WorkItem,
+				"Prove the built-in Domain Pack boundary",
+				"Validate one development projection through the ordinary Quick Task path.",
+				"done",
+				None,
+				Some(conversation_3_id.clone()),
+				vec![field("Working directory", "/Users/x/code/acg-box/decodex")],
+				22,
+			),
+			node(
+				conversation_3_id.clone(),
+				ProgramNodeKind::Run,
+				"Codex Quick Task",
+				"The third cycle used the same account, process, and provider safety path.",
+				"ready",
+				None,
+				Some(conversation_3_id.clone()),
+				Vec::new(),
+				23,
+			),
+			node(
+				deterministic_3_id.clone(),
+				ProgramNodeKind::Evidence,
+				"Deterministic validation",
+				"Pack registry, protocol, SQLite, runtime, GPUI, and restart checks passed.",
+				"deterministic_validation",
+				Some("Repository gates"),
+				None,
+				Vec::new(),
+				24,
+			),
+			node(
+				external_3_id.clone(),
+				ProgramNodeKind::Evidence,
+				"External evidence",
+				"The three-cycle Program and Development lens remained exact after restart.",
+				"external",
+				Some("Signed local GPUI dogfood"),
+				None,
+				Vec::new(),
+				25,
+			),
+			node(
+				review_3_id.clone(),
+				ProgramNodeKind::Review,
+				"Program Review",
+				"Three cycles now prove the bounded sequential Program and host projection boundary.",
+				"capability_progress",
+				None,
+				None,
+				Vec::new(),
+				26,
+			),
+		]);
+		let edge = |from: EntityId, to: EntityId, kind| ProgramEdgeDto { from, to, kind };
+		paper.edges.extend([
+			edge(review_2_id, signal_3_id.clone(), ProgramRelationKind::Continues),
+			edge(signal_3_id, claim_3_id.clone(), ProgramRelationKind::Supports),
+			edge(claim_3_id, proposal_3_id.clone(), ProgramRelationKind::Justifies),
+			edge(proposal_3_id, objective_3_id.clone(), ProgramRelationKind::Proposes),
+			edge(objective_3_id, work_item_3_id.clone(), ProgramRelationKind::DecomposesTo),
+			edge(work_item_3_id.clone(), conversation_3_id.clone(), ProgramRelationKind::Executes),
+			edge(work_item_3_id.clone(), deterministic_3_id.clone(), ProgramRelationKind::Produces),
+			edge(work_item_3_id.clone(), external_3_id.clone(), ProgramRelationKind::Produces),
+			edge(deterministic_3_id, review_3_id.clone(), ProgramRelationKind::Supports),
+			edge(external_3_id, review_3_id.clone(), ProgramRelationKind::Supports),
+			edge(review_3_id, program_id.clone(), ProgramRelationKind::Validates),
+		]);
+		paper.program.name = text("Adaptive Factory Spine");
+		paper.program.purpose = text("Make several Codex tasks one explainable feedback system.");
+		paper.program.revision = EntityRevision(6);
+		paper.program.updated_at_micros = 1_786_000_000_000_026;
+		let program = paper.program.clone();
+		let cycle = ProgramCycleDto::new(
+			program.clone(),
+			paper.non_goals,
+			paper.review_policy,
+			paper.nodes,
+			paper.edges,
+		)
+		.expect("three-cycle development visual Program is valid");
+
+		let domain_field = |label: &str, value: &str| DomainEntityFieldDto {
+			label: text(label),
+			value: text(value),
+		};
+		let repository = id("92000000-0000-4000-8000-000000000001");
+		let change = id("92000000-0000-4000-8000-000000000002");
+		let validation = id("92000000-0000-4000-8000-000000000003");
+		let domain_pack = DomainPackProjectionDto::new(
+			DomainPackDescriptorDto {
+				id: text(DEVELOPMENT_DOMAIN_PACK_ID),
+				version: text("1.0.0"),
+				digest: Sha256Digest::new(
+					"cdecdff922ef1ec29fbe48cc5b72877fa70cce564bbb783272dd47ce614dc146",
+				)
+				.expect("visual Development Pack digest"),
+				name: text("Software Development"),
+				namespace: text("dev"),
+				view: DomainPackViewKind::GraphInspector,
+				capabilities: vec![DomainPackCapabilityDto {
+					id: text("codex.quick_task"),
+					status: DomainPackCapabilityStatus::Granted,
+				}],
+				entity_types: vec![
+					text("dev.repository"),
+					text("dev.change"),
+					text("dev.validation"),
+				],
+				relation_types: vec![text("dev.contains"), text("dev.validated_by")],
+			},
+			vec![
+				DomainEntityDto {
+					id: repository.clone(),
+					kind: text("dev.repository"),
+					title: text("decodex"),
+					summary: program.purpose.clone(),
+					state: text("active"),
+					source: Some(text("/Users/x/code/acg-box/decodex")),
+					fields: vec![domain_field("Program cycles", "3")],
+				},
+				DomainEntityDto {
+					id: change.clone(),
+					kind: text("dev.change"),
+					title: text("Prove the built-in Domain Pack boundary"),
+					summary: text(
+						"Validate one development projection through the ordinary Quick Task path.",
+					),
+					state: text("done"),
+					source: Some(
+						WireText::new(format!("codex://threads/{}", conversation_3_id.as_str()))
+							.expect("visual Conversation source is bounded"),
+					),
+					fields: vec![domain_field("Work item", work_item_3_id.as_str())],
+				},
+				DomainEntityDto {
+					id: validation.clone(),
+					kind: text("dev.validation"),
+					title: text("Latest Program review"),
+					summary: text(
+						"Three cycles prove the bounded sequential Program and host projection boundary.",
+					),
+					state: text("capability_progress"),
+					source: Some(text("Signed local GPUI dogfood")),
+					fields: vec![domain_field("Evidence records", "2")],
+				},
+			],
+			vec![
+				DomainRelationDto {
+					from: repository,
+					to: change.clone(),
+					kind: text("dev.contains"),
+				},
+				DomainRelationDto { from: change, to: validation, kind: text("dev.validated_by") },
+			],
+			&program_id,
+		)
+		.expect("visual Development Pack is valid");
+		let cycle = cycle.with_domain_pack(domain_pack).expect("visual Development Pack attaches");
+		let programs = Self::production();
+		{
+			let mut state = programs.lock();
+			state.active = true;
+			state.session = Some(SessionBinding {
+				generation: 1,
+				server_id: ServerId::new("visual-development-programs")
 					.expect("visual server identity is bounded"),
 			});
 			state.load = ProgramsLoadState::Ready;
@@ -1261,8 +1535,9 @@ fn canonical_uuid_v4() -> Result<String, ProgramInputError> {
 #[cfg(test)]
 mod tests {
 	use decodex_protocol::{
-		Channel, Cursor, EntityRevision, PAPER_INVESTMENT_DOMAIN_PACK_ID, ProgramState,
-		QuickTaskState, QuickTaskSummary, QuickTaskWorkingDirectory, WireText,
+		Channel, Cursor, DEVELOPMENT_DOMAIN_PACK_ID, EntityRevision,
+		PAPER_INVESTMENT_DOMAIN_PACK_ID, ProgramRelationKind, ProgramState, QuickTaskState,
+		QuickTaskSummary, QuickTaskWorkingDirectory, WireText,
 	};
 
 	use super::*;
@@ -1277,8 +1552,8 @@ mod tests {
 
 	#[cfg(feature = "visual-capture")]
 	#[test]
-	fn visual_program_preserves_two_review_linked_cycles() {
-		let snapshot = Programs::visual_closed_cycle().snapshot();
+	fn paper_visual_program_preserves_two_review_linked_cycles() {
+		let snapshot = Programs::visual_paper_investment().snapshot();
 		let cycle = snapshot.cycle.expect("visual Program cycle");
 
 		assert_eq!(
@@ -1309,6 +1584,34 @@ mod tests {
 				.iter()
 				.any(|relation| { relation.kind.as_str() == "finance.compared_with" })
 		);
+	}
+
+	#[cfg(feature = "visual-capture")]
+	#[test]
+	fn development_visual_program_preserves_real_three_cycle_shape() {
+		let snapshot = Programs::visual_development_three_cycle().snapshot();
+		let cycle = snapshot.cycle.expect("development visual Program cycle");
+		assert_eq!(
+			cycle.nodes.iter().filter(|node| node.kind == ProgramNodeKind::Signal).count(),
+			3
+		);
+		assert_eq!(
+			cycle.nodes.iter().filter(|node| node.kind == ProgramNodeKind::Review).count(),
+			3
+		);
+		assert_eq!(
+			cycle.edges.iter().filter(|edge| edge.kind == ProgramRelationKind::Continues).count(),
+			2
+		);
+		assert_eq!(
+			cycle.edges.iter().filter(|edge| edge.kind == ProgramRelationKind::Validates).count(),
+			3
+		);
+		assert_eq!(cycle.program.revision, EntityRevision(6));
+		let pack = cycle.domain_pack.expect("visual Development Pack");
+		assert_eq!(pack.descriptor.id.as_str(), DEVELOPMENT_DOMAIN_PACK_ID);
+		assert_eq!(pack.entities.len(), 3);
+		assert_eq!(pack.relations.len(), 2);
 	}
 
 	#[test]

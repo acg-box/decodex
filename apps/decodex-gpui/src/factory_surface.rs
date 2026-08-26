@@ -6,9 +6,9 @@
 use std::path::PathBuf;
 
 use gpui::{
-	Animation, AnimationExt, AnyElement, App, Bounds, BoxShadow, Context, Entity, EventEmitter,
-	Focusable, FontWeight, Hsla, KeyBinding, PathBuilder, Pixels, Render, Role, SharedString,
-	Window, actions, canvas, div, ease_in_out, point, prelude::*, px, rgb, rgba,
+	AnyElement, App, Bounds, BoxShadow, Context, Entity, EventEmitter, Focusable, FontWeight, Hsla,
+	KeyBinding, PathBuilder, Pixels, Render, Role, SharedString, Window, actions, canvas, div,
+	point, prelude::*, px, rgb, rgba,
 };
 
 use decodex_protocol::{
@@ -21,6 +21,7 @@ use decodex_protocol::{
 
 use crate::{
 	composer_input::{ComposerEvent, ComposerInput, SubmitComposer},
+	program_graph::{self, ProgramGraphEvent, ProgramGraphSurface},
 	programs::{
 		ProgramCommandState, ProgramInputError, Programs, ProgramsLoadState, ProgramsSnapshot,
 		entity_id,
@@ -49,6 +50,7 @@ const AMBER: u32 = ui_theme::AMBER;
 actions!(factory_surface, [ToggleFactoryLauncher, CloseFactoryOverlay]);
 
 pub(crate) fn bind_keys(cx: &mut App) {
+	program_graph::bind_keys(cx);
 	cx.bind_keys([
 		KeyBinding::new("cmd-k", ToggleFactoryLauncher, None),
 		KeyBinding::new("escape", CloseFactoryOverlay, None),
@@ -330,6 +332,12 @@ struct ProgramContinuationInputs {
 	working_directory: Entity<ComposerInput>,
 }
 
+struct ProgramInspectorSelection<'a> {
+	node: Option<&'a ProgramNodeDto>,
+	domain: Option<&'a DomainEntityDto>,
+	program: bool,
+}
+
 impl ProgramContinuationInputs {
 	fn new(cx: &mut Context<FactorySurface>) -> Self {
 		let input = |index, placeholder, label, cx: &mut Context<FactorySurface>| {
@@ -390,7 +398,7 @@ pub(crate) struct FactorySurface {
 	work_item_status: Option<SharedString>,
 	programs: Option<Programs>,
 	programs_snapshot: Option<ProgramsSnapshot>,
-	program_selection: Option<EntityId>,
+	program_graph: Entity<ProgramGraphSurface>,
 	program_pack: ProgramPackChoice,
 	program_inputs: ProgramCreationInputs,
 	program_review_inputs: ProgramReviewInputs,
@@ -439,6 +447,16 @@ impl FactorySurface {
 		let program_inputs = ProgramCreationInputs::new(cx);
 		let program_review_inputs = ProgramReviewInputs::new(cx);
 		let program_continuation_inputs = ProgramContinuationInputs::new(cx);
+		let program_graph = cx.new(ProgramGraphSurface::new);
+		cx.subscribe(&program_graph, |_surface, _, event: &ProgramGraphEvent, cx| match event {
+			ProgramGraphEvent::SelectionChanged => cx.notify(),
+			ProgramGraphEvent::OpenConversation(conversation_id) => {
+				cx.emit(FactoryEvent::OpenWorkItemConversation {
+					conversation_id: conversation_id.clone(),
+				});
+			},
+		})
+		.detach();
 		for input in program_inputs
 			.all()
 			.into_iter()
@@ -470,7 +488,7 @@ impl FactorySurface {
 			work_item_status: None,
 			programs: None,
 			programs_snapshot: None,
-			program_selection: None,
+			program_graph,
 			program_pack: ProgramPackChoice::Development,
 			program_inputs,
 			program_review_inputs,
@@ -485,7 +503,7 @@ impl FactorySurface {
 	pub(crate) fn bind_programs(&mut self, programs: Programs, cx: &mut Context<Self>) {
 		self.programs = Some(programs.clone());
 		self.programs_snapshot = Some(programs.snapshot());
-		self.reconcile_program_selection();
+		self.synchronize_program_graph(cx);
 		cx.notify();
 	}
 
@@ -507,33 +525,14 @@ impl FactorySurface {
 				self.program_status = None;
 			}
 			self.programs_snapshot = Some(snapshot);
-			self.reconcile_program_selection();
+			self.synchronize_program_graph(cx);
 			cx.notify();
 		}
 	}
 
-	fn reconcile_program_selection(&mut self) {
-		let Some(cycle) =
-			self.programs_snapshot.as_ref().and_then(|snapshot| snapshot.cycle.as_ref())
-		else {
-			self.program_selection = None;
-			return;
-		};
-		if self.program_selection.as_ref().is_some_and(|selected| {
-			cycle.nodes.iter().any(|node| &node.id == selected)
-				|| cycle
-					.domain_pack
-					.as_ref()
-					.is_some_and(|pack| pack.entities.iter().any(|entity| &entity.id == selected))
-		}) {
-			return;
-		}
-		self.program_selection = cycle
-			.domain_pack
-			.as_ref()
-			.and_then(|pack| pack.entities.first())
-			.map(|entity| entity.id.clone())
-			.or_else(|| cycle.nodes.first().map(|node| node.id.clone()));
+	fn synchronize_program_graph(&mut self, cx: &mut Context<Self>) {
+		let cycle = self.programs_snapshot.as_ref().and_then(|snapshot| snapshot.cycle.clone());
+		self.program_graph.update(cx, |graph, cx| graph.set_cycle(cycle, cx));
 	}
 
 	pub(crate) fn bind_work_items(&mut self, work_items: WorkItems, cx: &mut Context<Self>) {
@@ -777,7 +776,7 @@ impl FactorySurface {
 		};
 		if programs.select(program_id) {
 			self.programs_snapshot = Some(programs.snapshot());
-			self.program_selection = None;
+			self.synchronize_program_graph(cx);
 			self.program_continuation_visible = false;
 			self.program_status = None;
 			cx.notify();
@@ -880,8 +879,9 @@ impl FactorySurface {
 	}
 
 	fn select_program_node(&mut self, node_id: EntityId, cx: &mut Context<Self>) {
-		self.program_selection = Some(node_id);
-		cx.notify();
+		self.program_graph.update(cx, |graph, cx| {
+			graph.select(node_id, cx);
+		});
 	}
 
 	fn start_program_work_item(&mut self, cx: &mut Context<Self>) {
@@ -1393,11 +1393,11 @@ impl FactorySurface {
 			return self.program_intake(snapshot, cx);
 		}
 		let cycle = snapshot.cycle.as_ref().expect("checked Program cycle");
-		let selected_node = self
-			.program_selection
+		let selected = self.program_graph.read(cx).selected().cloned();
+		let selected_node = selected
 			.as_ref()
 			.and_then(|selected| cycle.nodes.iter().find(|node| &node.id == selected));
-		let selected_domain = self.program_selection.as_ref().and_then(|selected| {
+		let selected_domain = selected.as_ref().and_then(|selected| {
 			cycle
 				.domain_pack
 				.as_ref()
@@ -1427,6 +1427,7 @@ impl FactorySurface {
 			.aria_label("Authoritative Program causal graph")
 			.flex_1()
 			.min_h_0()
+			.h_full()
 			.w_full()
 			.min_w(px(FACTORY_MIN_WIDTH))
 			.flex()
@@ -1477,12 +1478,14 @@ impl FactorySurface {
 									.child("SQLITE AUTHORITY · LIVE PROJECTION"),
 							),
 					)
-					.child(self.program_domain_graph(cycle, cx))
-					.child(self.program_graph(cycle, cx)),
+					.child(self.program_graph.clone()),
 			)
 			.child(self.program_inspector(
-				selected_node,
-				selected_domain,
+				ProgramInspectorSelection {
+					node: selected_node,
+					domain: selected_domain,
+					program: selected.as_ref() == Some(&cycle.program.program_id),
+				},
 				cycle,
 				can_review,
 				can_continue,
@@ -1737,178 +1740,9 @@ impl FactorySurface {
 			.into_any_element()
 	}
 
-	fn program_graph(
-		&self,
-		cycle: &decodex_protocol::ProgramCycleDto,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		let selected = self.program_selection.clone();
-		let cycle_count =
-			cycle.nodes.iter().filter(|node| node.kind == ProgramNodeKind::Signal).count();
-		let mut current_cycle = 0;
-		let mut graph = div()
-			.id("program-graph-strip")
-			.flex_1()
-			.min_h_0()
-			.p_3()
-			.flex()
-			.items_center()
-			.overflow_x_scroll()
-			.border_1()
-			.border_color(rgba(0xffffff12))
-			.rounded(px(12.0))
-			.bg(rgba(ui_theme::SURFACE_MATERIAL));
-		for (index, node) in cycle.nodes.iter().enumerate() {
-			if index > 0 {
-				let relation = cycle
-					.edges
-					.iter()
-					.find(|edge| edge.to == node.id)
-					.map(|edge| relation_label(edge.kind))
-					.unwrap_or("relates");
-				graph = graph.child(program_edge(relation));
-			}
-			if node.kind == ProgramNodeKind::Signal {
-				current_cycle += 1;
-				graph = graph
-					.child(program_cycle_boundary(current_cycle, current_cycle == cycle_count));
-			}
-			graph = graph.child(program_node_card(node, selected.as_ref() == Some(&node.id), cx));
-		}
-		graph.into_any_element()
-	}
-
-	fn program_domain_graph(
-		&self,
-		cycle: &decodex_protocol::ProgramCycleDto,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		let Some(pack) = cycle.domain_pack.as_ref() else {
-			return div()
-				.id("program-domain-unbound")
-				.h(px(86.0))
-				.min_h(px(86.0))
-				.px_4()
-				.flex()
-				.items_center()
-				.justify_between()
-				.border_1()
-				.border_color(rgba(0xf0a64a35))
-				.rounded(px(10.0))
-				.bg(rgba(0xf0a64a0a))
-				.child(
-					div()
-						.flex()
-						.flex_col()
-						.gap_1()
-						.child(
-							div()
-								.font_family("SF Mono")
-								.text_size(px(8.0))
-								.text_color(rgb(AMBER))
-								.child("LEGACY PROGRAM · DOMAIN PACK UNBOUND"),
-						)
-						.child(div().text_size(px(9.0)).text_color(rgb(TEXT_MUTED)).child(
-							"Bind one built-in Pack once to enable a domain projection and Program execution.",
-						)),
-				)
-				.into_any_element();
-		};
-		let selected = self.program_selection.clone();
-		let capability = pack
-			.descriptor
-			.capabilities
-			.first()
-			.map(|capability| {
-				format!(
-					"{} · {}",
-					capability.id.as_str(),
-					match capability.status {
-						DomainPackCapabilityStatus::Granted => "GRANTED",
-						DomainPackCapabilityStatus::Unavailable => "UNAVAILABLE",
-					}
-				)
-			})
-			.unwrap_or_else(|| "NO CAPABILITIES".to_owned());
-		let mut graph = div()
-			.id("program-domain-graph")
-			.h(px(206.0))
-			.min_h(px(206.0))
-			.p_3()
-			.flex()
-			.flex_col()
-			.gap_2()
-			.border_1()
-			.border_color(rgba(0xffffff16))
-			.rounded(px(12.0))
-			.bg(rgba(ui_theme::SURFACE_MATERIAL))
-			.child(
-				div()
-					.flex()
-					.items_center()
-					.justify_between()
-					.child(
-						div()
-							.flex()
-							.items_center()
-							.gap_2()
-							.child(
-								div()
-									.font_family("SF Mono")
-									.text_size(px(8.0))
-									.text_color(rgb(BLUE))
-									.child("DOMAIN LENS"),
-							)
-							.child(
-								div()
-									.text_size(px(10.0))
-									.font_weight(FontWeight::SEMIBOLD)
-									.child(pack.descriptor.name.as_str().to_owned()),
-							)
-							.child(
-								div()
-									.font_family("SF Mono")
-									.text_size(px(7.0))
-									.text_color(rgb(TEXT_FAINT))
-									.child(format!("v{}", pack.descriptor.version.as_str())),
-							),
-					)
-					.child(
-						div()
-							.font_family("SF Mono")
-							.text_size(px(7.0))
-							.text_color(rgb(GREEN))
-							.child(capability),
-					),
-			);
-		let mut strip = div()
-			.id("program-domain-entity-strip")
-			.flex_1()
-			.min_h_0()
-			.flex()
-			.items_center()
-			.overflow_x_scroll();
-		for (index, entity) in pack.entities.iter().enumerate() {
-			if index > 0 {
-				let relation = pack
-					.relations
-					.iter()
-					.find(|relation| relation.to == entity.id)
-					.map(|relation| domain_relation_label(relation.kind.as_str()))
-					.unwrap_or_else(|| "relates".to_owned());
-				strip = strip.child(program_edge(&relation));
-			}
-			strip =
-				strip.child(domain_entity_card(entity, selected.as_ref() == Some(&entity.id), cx));
-		}
-		graph = graph.child(strip);
-		graph.into_any_element()
-	}
-
 	fn program_inspector(
 		&self,
-		selected: Option<&ProgramNodeDto>,
-		selected_domain: Option<&DomainEntityDto>,
+		selection: ProgramInspectorSelection<'_>,
 		cycle: &decodex_protocol::ProgramCycleDto,
 		can_review: bool,
 		can_continue: bool,
@@ -1933,7 +1767,42 @@ impl FactorySurface {
 					.text_color(rgb(TEXT_FAINT))
 					.child("SEMANTIC INSPECTOR"),
 			);
-		if let Some(node) = selected {
+		if selection.program {
+			panel = panel
+				.child(
+					div()
+						.flex()
+						.items_center()
+						.gap_2()
+						.child(div().size(px(8.0)).rounded_full().bg(rgb(TEXT)))
+						.child(
+							div()
+								.text_size(px(13.0))
+								.font_weight(FontWeight::SEMIBOLD)
+								.child(cycle.program.name.as_str().to_owned()),
+						),
+				)
+				.child(
+					div()
+						.font_family("SF Mono")
+						.text_size(px(8.0))
+						.text_color(rgb(TEXT_MUTED))
+						.child(format!(
+							"PROGRAM · {} · REV {}",
+							cycle.program.state.as_str(),
+							cycle.program.revision.0
+						)),
+				)
+				.child(
+					div()
+						.text_size(px(10.0))
+						.text_color(rgb(TEXT_MUTED))
+						.child(cycle.program.purpose.as_str().to_owned()),
+				)
+				.child(program_pulse_section("IDENTITY", cycle.program.program_id.as_str()))
+				.child(program_pulse_section("REVIEW POLICY", cycle.review_policy.as_str()));
+		}
+		if let Some(node) = selection.node {
 			panel = panel
 				.child(
 					div()
@@ -1983,7 +1852,7 @@ impl FactorySurface {
 				));
 			}
 		}
-		if let Some(entity) = selected_domain {
+		if let Some(entity) = selection.domain {
 			let color = domain_entity_color(entity.kind.as_str());
 			panel = panel
 				.child(
@@ -3153,7 +3022,7 @@ impl FactorySurface {
 		else {
 			return div().into_any_element();
 		};
-		let selected = self.program_selection.clone();
+		let selected = self.program_graph.read(cx).selected().cloned();
 		let origin = cycle.nodes.iter().filter_map(|node| node.observed_at_micros).min();
 		let mut cycle_number = 0;
 		let moments = cycle.nodes.iter().enumerate().map(|(index, node)| {
@@ -3524,6 +3393,8 @@ impl Render for FactorySurface {
 					.id("factory-canvas-scroll")
 					.flex_1()
 					.min_h_0()
+					.flex()
+					.flex_col()
 					.overflow_x_scroll()
 					.child(self.factory_canvas(cx)),
 			)
@@ -3537,17 +3408,7 @@ impl Render for FactorySurface {
 							self.program_timeline(cx)
 						} else {
 							self.replay_panel(cx)
-						})
-						.with_animation(
-							"factory-timeline-reveal",
-							Animation::new(ui_theme::MOTION_PANEL).with_easing(ease_in_out),
-							|element, delta| {
-								element
-									.opacity(0.3 + delta * 0.7)
-									.relative()
-									.top(px((1.0 - delta) * 14.0))
-							},
-						),
+						}),
 				)
 			});
 
@@ -4051,120 +3912,6 @@ fn relative_timeline_time(delta_micros: i64) -> String {
 	}
 }
 
-fn program_edge(label: &str) -> AnyElement {
-	div()
-		.w(px(66.0))
-		.min_w(px(66.0))
-		.flex()
-		.flex_col()
-		.items_center()
-		.gap_1()
-		.child(
-			div()
-				.font_family("SF Mono")
-				.text_size(px(7.0))
-				.text_color(rgb(BLUE))
-				.child(label.to_owned()),
-		)
-		.child(div().w_full().border_t_1().border_color(rgb(BLUE)))
-		.child(div().font_family("SF Mono").text_size(px(8.0)).text_color(rgb(BLUE)).child("→"))
-		.into_any_element()
-}
-
-fn program_cycle_boundary(number: usize, current: bool) -> AnyElement {
-	div()
-		.w(px(54.0))
-		.min_w(px(54.0))
-		.flex()
-		.flex_col()
-		.items_center()
-		.gap_1()
-		.child(
-			div()
-				.font_family("SF Mono")
-				.text_size(px(8.0))
-				.font_weight(FontWeight::SEMIBOLD)
-				.text_color(rgb(if current { GREEN } else { TEXT_FAINT }))
-				.child(format!("C{number}")),
-		)
-		.child(
-			div()
-				.font_family("SF Mono")
-				.text_size(px(6.5))
-				.text_color(rgb(TEXT_FAINT))
-				.child(if current { "CURRENT" } else { "HISTORY" }),
-		)
-		.into_any_element()
-}
-
-fn program_node_card(
-	node: &ProgramNodeDto,
-	selected: bool,
-	cx: &mut Context<FactorySurface>,
-) -> AnyElement {
-	let node_id = node.id.clone();
-	let color = program_node_color(node.kind);
-	div()
-		.id(format!("program-node/{}", node.id.as_str()))
-		.role(Role::Button)
-		.aria_label(format!("Inspect {} {}", node_kind_label(node.kind), node.title.as_str()))
-		.w(px(178.0))
-		.min_w(px(178.0))
-		.min_h(px(148.0))
-		.p_3()
-		.flex()
-		.flex_col()
-		.gap_2()
-		.border_1()
-		.border_color(if selected { rgb(color) } else { rgba(0xffffff16) })
-		.rounded(px(10.0))
-		.bg(if selected {
-			rgba(ui_theme::SURFACE_RAISED_MATERIAL)
-		} else {
-			rgba(ui_theme::SURFACE_MATERIAL)
-		})
-		.cursor_pointer()
-		.hover(|style| style.border_color(rgba(0xffffff2c)))
-		.on_click(cx.listener(move |surface, _, _, cx| {
-			surface.select_program_node(node_id.clone(), cx);
-		}))
-		.child(
-			div()
-				.flex()
-				.items_center()
-				.justify_between()
-				.child(
-					div()
-						.font_family("SF Mono")
-						.text_size(px(7.5))
-						.text_color(rgb(color))
-						.child(node_kind_label(node.kind)),
-				)
-				.child(
-					div()
-						.font_family("SF Mono")
-						.text_size(px(7.0))
-						.text_color(rgb(TEXT_FAINT))
-						.child(node.state.as_str().to_owned()),
-				),
-		)
-		.child(
-			div()
-				.text_size(px(11.0))
-				.font_weight(FontWeight::SEMIBOLD)
-				.child(node.title.as_str().to_owned()),
-		)
-		.child(
-			div()
-				.max_h(px(64.0))
-				.overflow_hidden()
-				.text_size(px(9.0))
-				.text_color(rgb(TEXT_MUTED))
-				.child(node.summary.as_str().to_owned()),
-		)
-		.into_any_element()
-}
-
 fn program_pack_choice(
 	pack: ProgramPackChoice,
 	selected: bool,
@@ -4218,82 +3965,6 @@ fn program_pack_choice(
 		.into_any_element()
 }
 
-fn domain_entity_card(
-	entity: &DomainEntityDto,
-	selected: bool,
-	cx: &mut Context<FactorySurface>,
-) -> AnyElement {
-	let entity_id = entity.id.clone();
-	let color = domain_entity_color(entity.kind.as_str());
-	div()
-		.id(format!("domain-entity/{}", entity.id.as_str()))
-		.role(Role::Button)
-		.aria_label(format!("Inspect {} {}", entity.kind.as_str(), entity.title.as_str()))
-		.w(px(178.0))
-		.min_w(px(178.0))
-		.min_h(px(126.0))
-		.p_3()
-		.flex()
-		.flex_col()
-		.gap_2()
-		.border_1()
-		.border_color(if selected { rgb(color) } else { rgba(0xffffff16) })
-		.rounded(px(10.0))
-		.bg(if selected {
-			rgba(ui_theme::SURFACE_RAISED_MATERIAL)
-		} else {
-			rgba(ui_theme::SURFACE_MATERIAL)
-		})
-		.cursor_pointer()
-		.hover(|style| style.border_color(rgba(0xffffff34)))
-		.on_click(cx.listener(move |surface, _, _, cx| {
-			surface.select_program_node(entity_id.clone(), cx);
-		}))
-		.child(
-			div()
-				.flex()
-				.items_center()
-				.justify_between()
-				.child(
-					div()
-						.font_family("SF Mono")
-						.text_size(px(7.0))
-						.text_color(rgb(color))
-						.child(domain_kind_label(entity.kind.as_str())),
-				)
-				.child(
-					div()
-						.font_family("SF Mono")
-						.text_size(px(7.0))
-						.text_color(rgb(TEXT_FAINT))
-						.child(entity.state.as_str().to_owned()),
-				),
-		)
-		.child(
-			div()
-				.text_size(px(11.0))
-				.font_weight(FontWeight::SEMIBOLD)
-				.child(entity.title.as_str().to_owned()),
-		)
-		.child(
-			div()
-				.max_h(px(48.0))
-				.overflow_hidden()
-				.text_size(px(8.5))
-				.text_color(rgb(TEXT_MUTED))
-				.child(entity.summary.as_str().to_owned()),
-		)
-		.into_any_element()
-}
-
-fn domain_kind_label(kind: &str) -> String {
-	kind.rsplit('.').next().unwrap_or(kind).replace('_', " ").to_uppercase()
-}
-
-fn domain_relation_label(kind: &str) -> String {
-	kind.rsplit('.').next().unwrap_or(kind).replace('_', " ")
-}
-
 fn domain_entity_color(kind: &str) -> u32 {
 	if kind.starts_with("finance.") { GREEN } else { BLUE }
 }
@@ -4317,20 +3988,6 @@ const fn node_kind_label(kind: ProgramNodeKind) -> &'static str {
 		ProgramNodeKind::Run => "CODEX RUN",
 		ProgramNodeKind::Evidence => "EVIDENCE",
 		ProgramNodeKind::Review => "REVIEW",
-	}
-}
-
-const fn relation_label(kind: decodex_protocol::ProgramRelationKind) -> &'static str {
-	match kind {
-		decodex_protocol::ProgramRelationKind::Continues => "continues",
-		decodex_protocol::ProgramRelationKind::Observes => "observes",
-		decodex_protocol::ProgramRelationKind::Supports => "supports",
-		decodex_protocol::ProgramRelationKind::Justifies => "justifies",
-		decodex_protocol::ProgramRelationKind::Proposes => "proposes",
-		decodex_protocol::ProgramRelationKind::DecomposesTo => "decomposes",
-		decodex_protocol::ProgramRelationKind::Executes => "executes",
-		decodex_protocol::ProgramRelationKind::Produces => "produces",
-		decodex_protocol::ProgramRelationKind::Validates => "validates",
 	}
 }
 
@@ -4789,6 +4446,34 @@ mod tests {
 		assert!(instructions.contains("Do not use live data"));
 		assert!(working_directory.is_empty());
 		visual.update(|window, cx| window.draw(cx).clear());
+	}
+
+	#[cfg(feature = "visual-capture")]
+	#[gpui::test]
+	fn three_cycle_program_graph_keeps_one_selection_at_minimum_laptop_size(
+		cx: &mut TestAppContext,
+	) {
+		let (surface, visual) = open_factory(cx);
+		let programs = Programs::visual_development_three_cycle();
+		let cycle = programs.snapshot().cycle.expect("visual development cycle");
+		let run = cycle
+			.nodes
+			.iter()
+			.rev()
+			.find(|node| node.kind == ProgramNodeKind::Run)
+			.expect("latest visual Run")
+			.clone();
+		surface.update(visual, |surface, cx| {
+			surface.bind_programs(programs, cx);
+			surface.select_program_node(run.id.clone(), cx);
+		});
+		let selected = surface
+			.read_with(visual, |surface, cx| surface.program_graph.read(cx).selected().cloned());
+		assert_eq!(selected, Some(run.id));
+		visual.update(|window, cx| {
+			window.resize(size(px(1_180.0), px(720.0)));
+			window.draw(cx).clear();
+		});
 	}
 
 	#[test]

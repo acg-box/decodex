@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:1955ff44795591d4beef3aaac26c0d992de8c6966c7a48b6ec11f3dcd3c52528",
+  "claims": [
+    {
+      "id": "claim_49898b42f27b41d4b263129b7ff26c6a",
+      "statement": "Program Graph Surface V1 maps the bounded Program cycle and Domain Pack projections into distinct Program and Domain lenses that reuse one private GPUI graph input, layout, viewport, and renderer owner.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L1577-L1651",
+          "version": "repo-lines-v1:sha256:4dc2265f0699454383d7aafac3fadc11a9d684cedb0f84711d41e36bf9529f0e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4M2QwMzllYjFmZDU1ZGY2MmZhMzczYjFjNDUxOTcxYzM1OTkxM2YxODE4MjgwM2MxY2VhYmZkZDNmNmMyMTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4ZWE3YTFjZTIzMDc4ZWRkNWRjNjdlNTAwYTg3ZDUxYjAwY2MwMGRlNDBiNWRiOWFhODU3N2ZhMjlkZjkyMGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxMWJjOWYxZmYyZDQ5MTE0NmFjMzY1MmIwMmRmZmZkNTNlNzQzY2I3YTE0YmFiM2FlOGQ3NGQzNzM4ZDgyYTAifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L78-L150",
+          "version": "repo-lines-v1:sha256:26749a32818ca695217d355fe2a0590a9239e20122307ed4643c39ac15f400ca:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxZDgzOWZiOGYzYjFmYjRjNjAzNDYzMzFkZTU0ZjQ1YWU1NGM3NmU0NzI1OGRkOTYyNjljODEyZjU3OGIxNjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2ZjBkZTFjM2M3OGMzMmRhY2FlZmExNDJjMDNmOTIxN2M0MDY0ZGZjMDM3MDBjM2U5ZGIzMTZhYjJhMmE2NjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmMDQ5Zjg4YmFhY2I0MWRmMjRhYmM3NDZjYzk0NWI2ZmJiMjM0NDc1MDVhM2UzODZiNTIxZDc4MTg2NzNjZDcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3ef88c6096e84a4aadc2531112e94d5e",
+      "statement": "The private graph cache keys layout by sorted stable node identities and exact from-relation-to edge identities, so presentation-only changes can reuse the existing positions.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L100-L150",
+          "version": "repo-lines-v1:sha256:b5d17b43b37f0e99e9bc7aaf6b6d75ec095648aa28a43a6a01fab671961d71e5:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3ZWI3ZDg4ZDdjMjBjMzY2ZGJjNmFhYWRiZDcwZmE5MzIzNjJkMzY3M2MyZmFlZDYwZDdjZmJjNTE5ZGZjNWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmMDQ5Zjg4YmFhY2I0MWRmMjRhYmM3NDZjYzk0NWI2ZmJiMjM0NDc1MDVhM2UzODZiNTIxZDc4MTg2NzNjZDcifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L232-L260",
+          "version": "repo-lines-v1:sha256:97ed99ecb6c3fbdbd89200ace6e88c9602b79785b235e6f294330ce91d5f4069:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlNDg1ODIyNTYzYTE0NDhhZWZhYzUzZjQ0OWMwNDM3ZjIwOTFmMmExZGI1NTY1NThjNWM4MDU1ODI0NzBmZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3MDc3MzAxMTY5ZmU4NjAxYWE4YzYzZWE0Y2ZiZGRjMTgxODQ3ZjAxZmU2ZmM5YjlkMWFkNGQ5N2NhOWRkZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2ZDViZDJlMzY0NTlhZmNlNGYxZDY3MGIxNThlYTRhYzMzMzI1MTdjMmI0MDE4MTU3NzY0NDhiMDM2NWU4NWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a5f26384786c47398037329e53120e15",
+      "statement": "The layered layout fails closed on empty, duplicate, or dangling input; excludes declared feedback from forward ranking; breaks any remaining cycle deterministically; and assigns stable ranks and rows for branches and merges.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L1666-L1845",
+          "version": "repo-lines-v1:sha256:5136dfddea42be967702935d5867cd68c08ff269e33ec7434df561bc2057b1a3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5M2E2NzQwOTQ1ODI0YjMxOGUxMjQ3ZTY1ZDk5NmExODhiNzY0ZWQ0YzkxMTEyZWM0YWUzZmJlNzE4YWRiYjgyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1ZDg3NmFiNDgxMzk3ZDgzNTFiNjQyMzU2M2E1ODM1MGI2NGZjNGMzZmUwMDY2NzkwNjM1OGFlOTBjN2I4OGJlIn0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L1921-L2044",
+          "version": "repo-lines-v1:sha256:ab63433f5dd5769990efbc6ca462e7b27cd5806d7f85b622d9bf53f009d59e31:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4MDI5NmEzYzA0NzhmMTEzMWQxYzM0NTgyNGIwOWQ4YzEzMGQ4NzZhZDNkOTc3NjY2OGQyMjYxNWM5MzViMDMyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhYzZiZjY2ZmJkNzI5YjhhNTFmMTU3MWMyZmQ0OTRjNjM2NWFkMmVlMzI5ZjViODkyMWJkY2I0Njk2ZGM5OWQxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0OTNhOTBmYTJiYjNkMzVjNTIzMWIyZmE2MGIyOWU5NWI0NTA5MzAyZWUxNmMyOWZkNTIwZjZmNDA1MGNiYjIwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3NmE0YTQ3OGU1MGVhMDdmYjAyMTkzMzdiNDhhYmRiNWFlMzUyZGE3MjY4NzZmNzk5NjlkNzhmZTM4ZWY3NWIwIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_6568f9a24d8c4f169470f0b9195637a3",
+      "statement": "Each graph lens has a finite bounded viewport with Fit, zoom, pan, and 100-percent reset; zoom and pan are clamped, and static scenes change only through projection, viewport, selection, focus, or size-driven rendering state.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L263-L329",
+          "version": "repo-lines-v1:sha256:ebc98433422af46055ad97861d27d6dde85e4c8b4963c6318f2de1ab285d433d:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxNDA5YTRkYmVjY2QwMzMzNzY2NWM4MDM4NmM4MjczYzE4MWQ3NmNlMWZiNmUxOWQ2ZGNhZTdlOWFhOWFkYzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxY2I5MzVlYzc4YzlmYTdlOGQ0MDM0NTBkN2Y1NTk4M2E0ZmIzNGE1MjI4ZDQyNDRkMDc2OWEwNGJhNDc0Y2MifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L571-L700",
+          "version": "repo-lines-v1:sha256:106dad53b51b2fa27e6d8190ceb07b8cd80326f335e9517209cbf2566cf8dae5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxZDc4M2FiZjk3ODUxZTU4NGY5ZDI5NTg1ZDA0ODU5MWNiZTcyYmMyMDE5NzY1YzYzYzA1NTJkNmE2Y2VhNWIzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzNTI4NjI5MmFlYmE3ODA4MzQwMzI3YTdjZDQ0ZTJhMjU1YzIyOGRkMjhkMjk5NTFmMDQzNDBjMGNjOTFkNWYxIn0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L948-L1018",
+          "version": "repo-lines-v1:sha256:f234968eb69f1c20880491a8858aa505147abee41d74a826a2530543e2939c97:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjNWVlY2JlNmZkMDU4NDFiODQ3ODJmNDZlNDZlMzJmY2FmZTI2ZWFlZWNlMzFlZWMwNTNiZmE4MGUwMjFkZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5Njk0Zjg0NDg0Mjk4ZjcwYmMxZWY3ZTQyMGYyODdiMTk3M2E3YjJjMGU3MjkyMDk4OThiY2U4ZjkzMDY2ODUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJjYzNmN2VhYzVkYTY4M2RlYzUwOWYyNGVlODVkMTBjMzIwOWU1MDA2NzAxMWY4ZTk0MTM4MTU4OWYzNzlhNTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5ac5537a2b0b4e52b03cfbd2ae0745a7",
+      "statement": "One selected EntityId synchronizes graph focus and clicks with the Factory semantic inspector and causal timeline, and activation opens the exact Conversation only when the selected Program node carries that Conversation identity.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/factory_surface.rs#L3019-L3082",
+          "version": "repo-lines-v1:sha256:0470c61c1033cd25cd829b6495b9db5338f18397f38de192d1ba07af13f864d0:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmYjhkY2Q4MTg1MTM2OWIyNjgyMzlkOGQ2MDIxZjFlM2I5NjRhMTgzYzI5MGQ1NWViMDE4NGJjZjhkODU2YTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5NDZiNzU2NTVlMTQ1ZWJmY2Y1YzQ1YjczMTJjZWVjMWE5MDI0ZDA1MDQwMTc4ZGViM2QwNDFkM2E4ODBiMzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjYjdlZWZjOWNiMWMyYWZhOGIwZmM3NjdlZjFlNTEyZTRlNmY4OTljMWQ4OWI3OGVmZDg5NWY3NTRkYjNkOWEifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/factory_surface.rs#L533-L536",
+          "version": "repo-lines-v1:sha256:564ab3a05735456c3df5deec71832f4fa48ace59e9ef0406a3fbf5a37f05e4e9:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWNlMzE1OTE5YzYxZGQyNjU1NzVkNmZiNGU0MzkxMWQ2ZjY0OTZiOGEzY2NjOTVkOGNjMDFlN2MwYzFkMTRmYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdjZGE4MmRhNjA2MjM4ZTA1ZTYyMzk5NTY5YzVlZTAzOTkzNDE5NjQ4YWU1ZDQzYTJiZjhjZDYzNDdmODI2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjJmMmZmNWZlZWM2MGY1ODdjOGZhZTRlODdmODA5YTY2MWNmZmVkNmI0N2FhZTVmNmQ2YTI2NTNhYTg5NTJlZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmM2NDRmZGE4NzY2ZWU2NTI1ZDA5YjllNTEwM2M4NjhlNmJlMGNmNTBjZjAxMjI1ZDVlNjdkODJhYTcxMjFhNCJ9"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L391-L548",
+          "version": "repo-lines-v1:sha256:1e2cc027b3730960dc08ee142e1cdc13d2c5f499a058b37d32f1443e16880f9a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkYTcxZTk4MGVjMjY4ZmFlNTI1NTI2MDA4NmQ4MjRlN2NhNmZmZDUyMTFmZTEyNTUzZmVlNjRhYTI2YTM1MjU0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3ZjEyZDM0YjE1MTVkZjY0OGYzNTg1MTYwN2M5YzY0MzA2MmM0NDc3NThiNDNiZDRiZmZkM2U1NWMyNDg2OTRhIn0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L702-L755",
+          "version": "repo-lines-v1:sha256:9da6c6ef94d3f02097b1e3a0f023b397757ba8769e3d87e7cc9440033e0429e8:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3NzViZTM0MmQ4ZmU2MGE3OTAxOGQ2ODQ4ODk3MzQyMTBmOTA2OWVlNzE5YWE1MjRiOWU1NTdmYTk4ZDIzYTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzOTYzZjA2NmUyZjRlOGY0ZjhlYTBkMmEyYmYwNWYwOGViMjZjZDlmM2MzYmYzZDY1ZDBmNmI4MDUxM2E3MGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d9900cd12e3c449b8c7fd4f1c8c21e99",
+      "statement": "Graph nodes and viewport controls are native keyboard-focusable GPUI elements with semantic accessibility labels, and each lens exposes the selected node's incoming, outgoing, and feedback relations as native text.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L1020-L1068",
+          "version": "repo-lines-v1:sha256:d4fec1f2c8554c2834409acef71df9a0552a700b02a93cff629aed90aef603ec:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmYzdhNTM2YzgxYmU0YWE1MDQyMmU3ZTdjMGE4ZjMxMjQxNzBhNzZjNjU3NDQ4MTA3ZmJjYjZhM2NkNGZlODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVjNTMxOTg1OWZkNDY5MDNiZDM2MWQ2YmJmN2NjZGIwYzgzNWRiNWQ2NTYzY2RlMjgxZDg1MTdjYmZlOTExMDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNDUzNGVjMmNlZGI4MTk5OWVkYmRlOWQxZWZiYzc5OGE5NzdhZTc2M2ZhZWYxZDRmNDZiMmYzNGE2ODFiODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3MTg1ZGI1MTg4YzliYjMyZjFiYzU3YmZlM2E3OWIxMGUxMGE4Y2NiZTg5Mzc4ZDBlMTdjODRhZWYxOGZmNTIifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L1284-L1382",
+          "version": "repo-lines-v1:sha256:70be44533fd0760c5d8b14ffe03476f14ffa356746f4895c48ec87ed97c0a201:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1MDZhZGRjYzljMzk2MWY0YThmMDY5ZmJiM2ViMzNiMjhhN2RiYmEzYmI3ODRlYTc1OTk3MjgxNmI4NTRmMDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5Y2YyMWVmNmNlZDU5Yzg0MmVhYjcyMDY1MjI5YWE3YWFjNmQ0ZmY3NTVmZWIwNTgwNDM2YmNlM2MxM2MxMGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNDUzNGVjMmNlZGI4MTk5OWVkYmRlOWQxZWZiYzc5OGE5NzdhZTc2M2ZhZWYxZDRmNDZiMmYzNGE2ODFiODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzY2EyY2MzMmQyNTJjODliYmEyZjQ4ZjFiOWE0MzQ3NjA2Mjg3Nzg1MjY3YWFhMTc0NjQzNjM5Nzc5YjZhMzYifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L42-L70",
+          "version": "repo-lines-v1:sha256:0e00a4d39d23af380d77b342973a18060184d162660e72d34b8a1a1d871d19ce:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzZjVkYmRhNTI2ZmUxMmMxMGZkY2JiYTEyOWQ0NDhhMDkxOTIwNGY1Yjc4MzcyZmQyM2ZhOTE0ZGQ5NTdmZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxOWRjZGIxMGFmYmNhZTM0MGIwYjY4NzRiODZmMWY0Y2I4M2Y3OWRhYWM4NTQ0NzhlNjVkNjkyMWNkMTU1N2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlMzlkY2MwZjBlYzZkZjA5YTI2NGRlNGJjYjhhMmQ3MzBmNzU2NDkzY2RkNDg3NzQ4OGRhOTA3YzEzYzg4NjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_efccfe5072964fe6acd3e863b8ad1a14",
+      "statement": "The visual-capture harness selects separate Development and Paper Investment scenarios; the fixtures preserve a three-cycle Development Program and the bounded Paper Investment projection without entering the production data path.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/bin/factory_visual_capture.rs#L29-L102",
+          "version": "repo-lines-v1:sha256:a8abde7048c22f3fbeead5b7e4ef6c8fa0d3d0cd34c1696c271cfca49a91c840:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2MWEyNTI1NzkyNDgyM2UyOGYzYjMwMjkzMTY0YjNkYTRjZjBkMzZlM2JiYWZkMjAxZmY5YTA4ZTkzZjc0NzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmMTIyNGQzOTRmMDEzNjNjYzA1YmIyN2YwMTRmNmVkZTE3Y2NiZDNiMGZiMDdmNWVmY2M3YWUwMDFjNWU0Y2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRhYWYwMWQ4MTNkNGYwMjE5YzkxZmMzNjg0ODc1OGViZWRmMGUxMjhmOGE5Mzg2MmMzZTE3Y2NlYThjMzYwNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/programs.rs#L120-L529",
+          "version": "repo-lines-v1:sha256:f7eb86d01b5bbb5d83d91469aff63676e2933e875789d2d416fa99c5011107e7:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3NDU2MDgxZGY5ZTVlMmU2NmEzODU0Y2MwNmI3MGNmM2NlYjBmNDY3NmQyNWI5ZDQwODM0YmVmOGYxZTllMmQ2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmNDE4NmU3Yzk3ZDc3NmViNjBmZjcxYmJhMTcwOTlmMDM5ZDY1MWMwN2U2NjhhNDQ2MzA4ZDdlNmI0MDlkMjc3In0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/programs.rs#L530-L802",
+          "version": "repo-lines-v1:sha256:f6417de739cdc45bb4c8a0e502bcdded904e44a58c996cbab182f684136339ee:eyJzZWxlY3RlZExpbmVDb3VudCI6MjczLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2NGYzYjdhNzUyZjlmMTk0ZWM3MTM1NTlkZTU2ZDZjNjU1ZTBlYWY0OTZlODM2NTIwNzUzOGVjZjRjMDBhYTdkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzNzEwYmNiZWU5ZmM0YzMxMTA2YTliMTQwZTVhNmIxYmEyNzUwNjkwZGI2OTJlZWFiNjkwYjJjOTFlZmI4YjJmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwNDY0YmY0MTQ1M2UwOTVmZGVhZTc5MjUxOTVjN2QxYjQwZjEyNWFlZmIxNTIwZmY0MTY5ZDg0MmE5ZTIzY2U5In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_b05821b4d8124b0bbd2beeed78e3a2d3",
+      "statement": "Focused tests cover branches, merges, multiple Program cycles, feedback, stable ordering, invalid projections, viewport bounds, cache reuse, exact DTO mapping, selection, Conversation mapping, keyboard navigation, and the minimum laptop draw size.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/factory_surface.rs#L4450-L4482",
+          "version": "repo-lines-v1:sha256:1673b21476cbae0b8103e4c960e25a1dc71aa35ad70ff832456aa5bc091081aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI4OGY4MmFlNTY0YWU0MGEzNmFhMjNhZGVmNTYwOWQ0MmMwM2JmYjg3MTI3ZjUxMGE1YTVkOTQ3ZWQ3NmMyMjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc5ZmIzYThmOGM2NmJmYWM2YzYwNzk2NGMyMmEyM2ZjNjM0MmEwNDdhMzJjYjllNTE5ZmUxYmVkNmVlYjRhZWUifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L1904-L2152",
+          "version": "repo-lines-v1:sha256:f949160bd2560bc9c53707ce7fce786965ba3609a06998a9c60c1ff0ffc1bb79:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQ5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2I4OTgzZDgyNjI4MTRlYmMzMGVlNDIwMDYzMzJhN2NkOTg3NTY2OTQ5MWI1NzE3YTUzMTUxMjRhZjVlYTY0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1MGFhZjU0M2IwYjMxYmJmMjMyMGM2NWE2NTU5YTcyMjA1YjMxZGNmNzNhYWRkYmM2NmI0ODI4ZTYxN2E2YWZhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/programs.rs#L1548-L1615",
+          "version": "repo-lines-v1:sha256:d9dea500852702b7cf311fbbbe2e5f84219d76e05fa8109870f11ce66c1da9ef:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0MjIwYzQ5M2I4YmVkOWVhNmFhMTcxNjI0YjAxODI3ODk0MGVlMTRlMTc5YWJmZDhjNGIwYjJhNGRiYjU1MWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY0NDYyYTJmM2FiMjMxZTBjMmIwNWQwMjUyNmU0YTkzM2M1YzQ3N2EzZDMyOGE1MjUyMjZlMmU3M2FiNzRhNmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ0MjU5OWVjYjljOGNlMzYwZTFmN2NiYjRkNTY5MDIzZDYxY2ExYWNkYjYwODczYjVmZjYxNTc4OTU4M2JhZDgifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.0",
+    "at": "2026-08-26T21:13:26.303Z"
+  }
+}

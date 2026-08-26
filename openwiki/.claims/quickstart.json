@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:e53e9d31b596bd1399618af6542bc17a4f884ed67cc828e808e3d95c3f597b1b",
+  "claims": [
+    {
+      "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
+      "statement": "Decodex GPUI owns a private bounded Program Graph Surface that renders the Program causal and Domain Pack projections from protocol DTOs without adding a second product-state authority.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/factory_surface.rs#L533-L536",
+          "version": "repo-lines-v1:sha256:564ab3a05735456c3df5deec71832f4fa48ace59e9ef0406a3fbf5a37f05e4e9:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWNlMzE1OTE5YzYxZGQyNjU1NzVkNmZiNGU0MzkxMWQ2ZjY0OTZiOGEzY2NjOTVkOGNjMDFlN2MwYzFkMTRmYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdjZGE4MmRhNjA2MjM4ZTA1ZTYyMzk5NTY5YzVlZTAzOTkzNDE5NjQ4YWU1ZDQzYTJiZjhjZDYzNDdmODI2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjJmMmZmNWZlZWM2MGY1ODdjOGZhZTRlODdmODA5YTY2MWNmZmVkNmI0N2FhZTVmNmQ2YTI2NTNhYTg5NTJlZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmM2NDRmZGE4NzY2ZWU2NTI1ZDA5YjllNTEwM2M4NjhlNmJlMGNmNTBjZjAxMjI1ZDVlNjdkODJhYTcxMjFhNCJ9"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L1-L19",
+          "version": "repo-lines-v1:sha256:10d3c7c7bd900ddb2b08f17410907066d8538e7e0e3a846f963e599b5080f553:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkNzU5Y2VkMDNkYzEwYjZiOGM2OGM2YTM3MzEzYmE2MGU0NjY4OGI2ZGMyN2Q5OTkyYjY0ZDhmNmZhNTcyMTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmMThkYjM5NjdhZTdlZjE0OTA0NTNkYTBiYzQwNjFiNjc1NDBmYjEzY2E2NDI2Zjg5YjgxNDhlOThhMjBjNzQifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L1577-L1651",
+          "version": "repo-lines-v1:sha256:4dc2265f0699454383d7aafac3fadc11a9d684cedb0f84711d41e36bf9529f0e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4M2QwMzllYjFmZDU1ZGY2MmZhMzczYjFjNDUxOTcxYzM1OTkxM2YxODE4MjgwM2MxY2VhYmZkZDNmNmMyMTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4ZWE3YTFjZTIzMDc4ZWRkNWRjNjdlNTAwYTg3ZDUxYjAwY2MwMGRlNDBiNWRiOWFhODU3N2ZhMjlkZjkyMGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxMWJjOWYxZmYyZDQ5MTE0NmFjMzY1MmIwMmRmZmZkNTNlNzQzY2I3YTE0YmFiM2FlOGQ3NGQzNzM4ZDgyYTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_47309cff8741452783c174c8b950ab6a",
+      "statement": "The Program Graph Surface validation path includes deterministic layout and mapping tests, keyboard and selection tests, a minimum laptop-size GPUI draw, and separate Development and Paper Investment visual-capture scenarios.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/bin/factory_visual_capture.rs#L29-L102",
+          "version": "repo-lines-v1:sha256:a8abde7048c22f3fbeead5b7e4ef6c8fa0d3d0cd34c1696c271cfca49a91c840:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2MWEyNTI1NzkyNDgyM2UyOGYzYjMwMjkzMTY0YjNkYTRjZjBkMzZlM2JiYWZkMjAxZmY5YTA4ZTkzZjc0NzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmMTIyNGQzOTRmMDEzNjNjYzA1YmIyN2YwMTRmNmVkZTE3Y2NiZDNiMGZiMDdmNWVmY2M3YWUwMDFjNWU0Y2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRhYWYwMWQ4MTNkNGYwMjE5YzkxZmMzNjg0ODc1OGViZWRmMGUxMjhmOGE5Mzg2MmMzZTE3Y2NlYThjMzYwNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/factory_surface.rs#L4450-L4482",
+          "version": "repo-lines-v1:sha256:1673b21476cbae0b8103e4c960e25a1dc71aa35ad70ff832456aa5bc091081aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI4OGY4MmFlNTY0YWU0MGEzNmFhMjNhZGVmNTYwOWQ0MmMwM2JmYjg3MTI3ZjUxMGE1YTVkOTQ3ZWQ3NmMyMjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc5ZmIzYThmOGM2NmJmYWM2YzYwNzk2NGMyMmEyM2ZjNjM0MmEwNDdhMzJjYjllNTE5ZmUxYmVkNmVlYjRhZWUifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/program_graph.rs#L1904-L2152",
+          "version": "repo-lines-v1:sha256:f949160bd2560bc9c53707ce7fce786965ba3609a06998a9c60c1ff0ffc1bb79:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQ5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2I4OTgzZDgyNjI4MTRlYmMzMGVlNDIwMDYzMzJhN2NkOTg3NTY2OTQ5MWI1NzE3YTUzMTUxMjRhZjVlYTY0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1MGFhZjU0M2IwYjMxYmJmMjMyMGM2NWE2NTU5YTcyMjA1YjMxZGNmNzNhYWRkYmM2NmI0ODI4ZTYxN2E2YWZhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.0",
+    "at": "2026-08-26T21:13:26.303Z"
+  }
+}
