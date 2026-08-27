@@ -13,10 +13,11 @@ use tokio::sync::Notify;
 
 use decodex_protocol::{
 	AccountDto, AccountRoutePendingDto, AccountRoutingControlDto, AccountSelectionModeDto,
-	AccountsResult, CURRENT_VERSION, CausationId, ClientCommandId, CommandEnvelope, CommandOutcome,
-	CommandPayload, CommandReceipt, CommandResultEnvelope, CorrelationId, EntityId, EntityRevision,
-	EventEnvelope, EventPayload, IdempotencyKey, QueryEnvelope, QueryId, QueryPayload,
-	QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ResultPayload, ServerId,
+	AccountsResult, CURRENT_VERSION, CausationId, ClientCommandId,
+	CommandEnvelope, CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope,
+	CorrelationId, EntityId, EntityRevision, EventEnvelope, EventPayload, IdempotencyKey,
+	QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload,
+	ReceiptDisposition, ResultPayload, ServerId,
 };
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
@@ -31,7 +32,7 @@ pub(crate) struct AccountsSnapshot {
 	pub(crate) pending_route: Option<AccountRoutePendingDto>,
 	pub(crate) can_manage: bool,
 	pub(crate) can_route: bool,
-	pub(crate) route_restart_notice: bool,
+	pub(crate) route_reopen_notice: bool,
 }
 
 /// Finite account-pool readback state.
@@ -401,7 +402,7 @@ impl AccountsController {
 				state.upsert_account((**account).clone());
 				state.routing = Some(routing.clone());
 				state.pending_route = None;
-				state.route_restart_notice = true;
+				state.route_reopen_notice = true;
 				state.sort_accounts();
 			},
 			EventPayload::AccountRoutePending { pending } => {
@@ -588,7 +589,7 @@ struct State {
 	accounts: Vec<AccountDto>,
 	routing: Option<AccountRoutingControlDto>,
 	pending_route: Option<AccountRoutePendingDto>,
-	route_restart_notice: bool,
+	route_reopen_notice: bool,
 }
 
 impl State {
@@ -607,7 +608,7 @@ impl State {
 			accounts: Vec::new(),
 			routing: None,
 			pending_route: None,
-			route_restart_notice: false,
+			route_reopen_notice: false,
 		}
 	}
 
@@ -630,7 +631,7 @@ impl State {
 			pending_route: self.pending_route.clone(),
 			can_manage: idle,
 			can_route: idle,
-			route_restart_notice: self.route_restart_notice,
+			route_reopen_notice: self.route_reopen_notice,
 		}
 	}
 
@@ -684,7 +685,7 @@ impl State {
 			causation_id: None::<CausationId>,
 			payload,
 		});
-		self.route_restart_notice = false;
+		self.route_reopen_notice = false;
 		self.command = AccountCommandState::Sending;
 		Ok(())
 	}
@@ -761,7 +762,7 @@ impl State {
 				self.upsert_account((**account).clone());
 				self.routing = Some(routing.clone());
 				self.pending_route = None;
-				self.route_restart_notice = true;
+				self.route_reopen_notice = true;
 				self.sort_accounts();
 				true
 			},
@@ -986,7 +987,7 @@ mod tests {
 		);
 		let routed_snapshot = controller.snapshot();
 		assert_eq!(routed_snapshot.routing, Some(routed));
-		assert!(routed_snapshot.route_restart_notice);
+		assert!(routed_snapshot.route_reopen_notice);
 		assert!(routed_snapshot.pending_route.is_none());
 	}
 
@@ -1024,6 +1025,7 @@ mod tests {
 							.unwrap(),
 							account_id: first.account_id.clone(),
 							routing_revision: EntityRevision(5),
+							wait_reason: decodex_protocol::AccountRouteWaitReasonDto::SharedAuthStabilizing,
 						}),
 					}),
 				},

@@ -624,6 +624,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 			contentsOf: sourceURL.appendingPathComponent("AccountControlViews.swift"),
 			encoding: .utf8
 		)
+		let section = try String(
+			contentsOf: sourceURL.appendingPathComponent("ResetCardSectionView.swift"),
+			encoding: .utf8
+		)
 
 		XCTAssertTrue(store.contains("accountControlClient.routeAccount("))
 		XCTAssertFalse(store.contains("PendingAccountRoutePreparation"))
@@ -633,18 +637,24 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(store.contains("useAccountInCodex("))
 		XCTAssertFalse(store.contains("setFixedSelection("))
 		XCTAssertTrue(client.contains(#"operation: "route_account""#))
+		XCTAssertTrue(client.contains("AccountRouteWaitReason"))
+		XCTAssertTrue(client.contains(#"case waitReason = "wait_reason""#))
 		XCTAssertFalse(client.contains(#"operation: "use_account_in_codex""#))
 		XCTAssertFalse(client.contains(#"operation: "set_fixed_selection""#))
-		XCTAssertFalse(store.contains("guard pendingRoute == nil"))
-		XCTAssertFalse(store.contains("&& pendingRoute == nil"))
-		XCTAssertFalse(store.contains("pendingRoute?.accountID != accountID"))
-		XCTAssertFalse(store.contains("replacesPendingRoute = pendingRoute != nil"))
-		XCTAssertFalse(actions.contains("isPendingTarget"))
-		XCTAssertFalse(actions.contains(#"? "Pending""#))
-		XCTAssertFalse(actions.contains("keepsCurrentRoute"))
-		XCTAssertFalse(actions.contains("Quit ChatGPT"))
-		XCTAssertTrue(actions.contains("Restart ChatGPT afterward"))
-		XCTAssertTrue(actions.contains("Decodex does not restart it"))
+		XCTAssertTrue(store.contains("guard pendingRoute == nil"))
+		XCTAssertTrue(store.contains("&& pendingRoute == nil"))
+		XCTAssertTrue(store.contains("pendingRoute?.accountID != accountID"))
+		XCTAssertTrue(store.contains("replacesPendingRoute = pendingRoute != nil"))
+		XCTAssertTrue(actions.contains("title: isPendingTarget"))
+		XCTAssertTrue(actions.contains(#"? "Pending""#))
+		XCTAssertTrue(actions.contains("keepsCurrentRoute"))
+		XCTAssertTrue(actions.contains("keep ChatGPT or Codex closed until Pending changes to Routed"))
+		XCTAssertTrue(actions.contains("AccountRoutePendingStatusView"))
+		XCTAssertTrue(actions.contains("PID \\(blocker.pid)"))
+		XCTAssertTrue(section.contains("AccountRoutePendingStatusView(pending: pending)"))
+		XCTAssertTrue(
+			actions.contains("store.pendingRoute?.accountID != state.account.accountID")
+		)
 	}
 
 	func testMenuBarOwnerDisablesAutomaticAndSuddenTermination() throws {
@@ -805,7 +815,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 			compatibility.contains("decodexNativeClientABIVersion: UInt32 = 1")
 		)
 		XCTAssertTrue(
-			compatibility.contains("decodexNativeArtifactCohort: UInt32 = 6")
+			compatibility.contains("decodexNativeArtifactCohort: UInt32 = 7")
 		)
 		XCTAssertTrue(
 			compatibility.contains("static func openLibrary(at libraryURL: URL)")

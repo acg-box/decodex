@@ -866,7 +866,7 @@ impl ResetCardClient {
 	}
 }
 
-/// Read-only V2.10 client for bounded canonical WorkItem board pages.
+/// Read-only V2.11 client for bounded canonical WorkItem board pages.
 pub struct WorkItemBoardClient {
 	transport: ResetCardClient,
 }
@@ -1059,7 +1059,7 @@ pub enum AccountCommandResponse {
 	},
 }
 
-/// Same-UID V2.10 client for daemon-owned account queries and lifecycle commands.
+/// Same-UID V2.11 client for daemon-owned account queries and lifecycle commands.
 pub struct AccountClient {
 	transport: ResetCardClient,
 }
@@ -1694,8 +1694,8 @@ mod tests {
 	use crate::{
 		AccountClient, AccountCommandResponse, AccountProfileDto, AccountProfileEmailDto,
 		AccountProfileErrorDto,
-		AccountProfileResult, AccountRoutePendingDto, CURRENT_ARTIFACT_COHORT, CURRENT_VERSION,
-		Channel, ClientCommandId,
+		AccountProfileResult, AccountRoutePendingDto, AccountRouteWaitReasonDto,
+		CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, Channel, ClientCommandId,
 		ClientFailure, ClientMessage, ClientProfile, CommandError, CommandOutcome, CommandPayload,
 		CommandReceipt, CommandResultEnvelope, CorrelationId, Cursor, DoctorCheck, DoctorClient,
 		DoctorComponent,
@@ -1768,6 +1768,7 @@ mod tests {
 				operation_id,
 				account_id,
 				routing_revision: EntityRevision(9),
+				wait_reason: AccountRouteWaitReasonDto::SharedAuthStabilizing,
 			},
 		};
 		assert!(super::account_result_matches(&command, EntityRevision(9), &result));
@@ -1838,6 +1839,7 @@ mod tests {
 							operation_id: expected_operation_id,
 							account_id: expected_account_id,
 							routing_revision: EntityRevision(9),
+							wait_reason: AccountRouteWaitReasonDto::SharedAuthStabilizing,
 						},
 					}),
 					error: None,
@@ -2070,12 +2072,12 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_10_window() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 10 });
+	fn protocol_constants_expose_only_the_exact_v2_11_window() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 11 });
 		assert_eq!(PREVIOUS_MINOR_VERSION, CURRENT_VERSION);
 		assert_eq!(
 			SupportedVersions::current(),
-			SupportedVersions { major: 2, minimum_minor: 10, maximum_minor: 10 },
+			SupportedVersions { major: 2, minimum_minor: 11, maximum_minor: 11 },
 		);
 		assert!(WireText::new("bounded").is_ok());
 	}

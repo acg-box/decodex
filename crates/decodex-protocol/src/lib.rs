@@ -64,8 +64,10 @@ pub use self::{
 		AccountObservedStateDto, AccountOperationKindDto, AccountOperationPhaseDto,
 		AccountProfileDailyUsageDto, AccountProfileDto, AccountProfileEmailDto,
 		AccountProfileErrorDto, AccountProfileResult, AccountProviderDto, AccountQuotaErrorDto,
-		AccountQuotaStateDto, AccountQuotaWindowDto, AccountRoutePendingDto,
-		AccountRoutingControlDto, AccountSelectionModeDto, AccountSelectionRecoveryDto,
+		AccountQuotaStateDto, AccountQuotaWindowDto, AccountRouteAuthHomeDto,
+		AccountRouteBlockingProcessDto, AccountRoutePendingDto, AccountRouteProcessBlockerDto,
+		AccountRouteWaitReasonDto, AccountRoutingControlDto, AccountSelectionModeDto,
+		AccountSelectionRecoveryDto,
 		AccountUnsettledOperationDto, AccountsResult, CausationId, Channel, ClientCommandId,
 		ClientHello, ClientMessage, CodexAuthProjectionResult, CommandEnvelope, CommandError,
 		CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope,
@@ -79,7 +81,8 @@ pub use self::{
 		HistoryItemKindDto, HistoryItemStatusDto, HistoryMediaType, HistoryMetadata,
 		HistoryMetadataValue, HistoryPayloadDto, HistoryQueryError, HistorySideEffectState,
 		HistoryText, HistoryTurnRole, IdempotencyKey, IdempotencyKeyError,
-		MAX_ACCOUNT_PROFILE_DAILY_USAGE, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
+		MAX_ACCOUNT_PROFILE_DAILY_USAGE, MAX_ACCOUNT_ROUTE_PROCESS_BLOCKERS,
+		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
 		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
 		MAX_IDEMPOTENCY_KEY_BYTES, MAX_PROJECT_LIST_ITEMS, MAX_RESET_CARD_ITEMS,
 		MAX_WIRE_TEXT_BYTES, MAX_WORK_ITEM_BOARD_OBJECTIVES, MAX_WORK_ITEM_BOARD_PAGE_SIZE,
@@ -103,9 +106,9 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 10 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 11 };
 /// Build/protocol cohort that must agree across the daemon and every local consumer.
-pub const CURRENT_ARTIFACT_COHORT: u32 = 6;
+pub const CURRENT_ARTIFACT_COHORT: u32 = 7;
 /// The lower bound of the exact-current protocol window.
 ///
 /// This equals [`CURRENT_VERSION`]. The name remains to avoid an unrelated

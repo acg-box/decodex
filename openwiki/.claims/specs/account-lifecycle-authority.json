@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:dcf93765d9714e854d938ac9ee56f79c2607fe789c718eb67def0c379db06117",
+  "claims": [
+    {
+      "id": "claim_d7063028d6a742dfa815d671fa660272",
+      "statement": "A cross-account Route retains one credential-negative Pending receipt while an external Codex process may own the old refresh-token family, and completes the exact-source projection and fixed-routing commit only after quiescence.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1013-L1358",
+          "version": "repo-lines-v1:sha256:c25d324df980fe664f720ac88628df356122ed701e4665ff4082aa9c8efb2afd:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQ2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3MWIxNTk0NDQwYTY0MWFkODI0NzQ1MzA1MmRjZmJiMDlkZTZkODZiZTE5MWZjYTQ0ZWVlNjNhNGYxMjYzZGZkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzNjBiODhhMDVkNWI1Mzg0NzYwMjI5YmU2MDU3MmZlNjJiMWMyOWNkYzU3ZWRiNWU2OTUxZGFhNGZkNDZjODAzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJiYzYxOWNjNzMzMjBjYTk5ODE3ZWEyNGRlY2NlODg0ZTdmMTFmOTRlOTAyN2U2YzFmNTUxMmFmYzZjMGE5ZmNlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0ZGU4NjFhNDM2YTBhNzcyYTNmNjUxZmRhYjJkNzExODMwYjUyMDZhNTJkYjY0YTJmZDIwYjlmMjk2ZThjNWViIn0"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs#L266-L276",
+          "version": "repo-lines-v1:sha256:46dcd7353efa1c17c69f952f23066439d4ddf2164395e478f78ca4d2e119f545:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmYzZkNWU2YzkyOTM0NWVmZGU5ZjcwMDg2MzFhYWNjNjA2NzcyNzAwOGU5ZGI3NzQwZTE5YmY4MjdhYWMyNmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjOWZkNWE2ZGQ2YmJkMmQ5MGU3NTlmNmQ5OTU3ZmZhZWFhNTNhMWNmNGYzMWEyNWRmNjc4NTg3YjNlYmYxMWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmZWZjNjBhYTRlNWI0ZjI0ZGY4OTdhZjkzOWQ0MjBlMmY5MmM5YjFkZDQ0Zjc1OWRlZGU3Yjc0OTY1MTg4YjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFhMmY2NTdlZjM0NGJiZWVlOWEwZmUxMjBiNDFhZGFhY2JlYWQwYzBlMjJiYTYzNTNhMmQyOTJiYWM4ZjZlMDkifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs#L303-L789",
+          "version": "repo-lines-v1:sha256:01b2a65c9ef1e33c3941574d066c00477733a807ba76fe1b3c17448e43f16279:eyJzZWxlY3RlZExpbmVDb3VudCI6NDg3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5NzI3MDc2YmZhMjUyYmE4NTFjYzViYzBlMWNjOGQ2ZmFmYzI3NjgxNDk3MGZkNzc0MjIzYzUyMjQ1OGFmYWRhIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJmNGJkNTY2MWE4MDEyM2FiZGI1ZTMyMzM4OGVkMGQwNGMwYjBiMTJlNDUxOGM3MzM5Y2Y0MGNiZTY0YzQ5MGRjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwOTUzOWJjMDE4NGY2YjM1NDc2YzM5ZjI5M2UwNDQzYzY5ZjA4ZWE1ZTkyZGQ4Mzc5ODgzNTgzMmRjYTI4YWRlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjZjQ3OWJhY2FiYWE4MmUzYzQ0OWRlYmEyNDYwN2E3YjZiYWY0MGYyNmM2ZDlkZjFmNzY4ODE0NTdkNmU3ZDZkIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_c63559de68b5435796f4662f7be9c106",
+      "statement": "Pending Route creation immediately wakes recovery; while Pending work exists, recovery checks every 100 milliseconds and rechecks command identity, routing revision, account readiness, and external Codex liveness before reclaiming the original receipt, while the idle cadence remains one second and a newer compatible Route can supersede it.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L3303-L3325",
+          "version": "repo-lines-v1:sha256:292eb1d9090cff0042d868367dddba109e6dbae12bcc0f0af2dc0e38bf1cf97f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjMGMwOGUzM2E1M2JiN2U3MDUyYWY4NDg5YmRmMzc4MDY4ODdlOTViM2FlYmE2NDEyNGE0MjNmOTI1ODE1OTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4NzY5YTZhZmQ3YTJmMGQzYTI1NzVmOGY1ZDQwMTE2MzM3NmI5MzM2MjFhZGM2ZjJkNDI0ZTBjNjMyYjcxNDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjYTVkYmUwN2RjMjRkOTc0MzMzZDBmNzkwN2Y2YmNkNDFiZTVjYzczYmQ4YjlkNmZmOGJkMTE0MDVmMTI5ZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5NTI1YjExMTk0Mzc0MTMyNDA3MDgwZWU0ZDU1YTE2ZDIwOTEzZjc3YzEzNDczNzE0Njc0OTkxZTZhYTU4NWYifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/application.rs#L413-L538",
+          "version": "repo-lines-v1:sha256:587de368a1668e1bc910f993e8298155cda4c709337552d510c9b35b93f4b02a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5YmY2MTY3NTk4MjFjNzQ5ZTExMTVjMTIxNDZlNjZlYmYwMGU5ZWViMmU5MjlmZTZiMWYzYThhNGFhYzk0NjdmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxZDFjNThlNjgwMWJhMDg0MDlkMjY4MWUyZDBiMzczZWIyNGEwMzZhOGNiOGY3Y2NiOTVjZDEzOWFiNjQxNWE4In0"
+        },
+        {
+          "resource": "repo://database/src/account_lifecycle.rs#L1048-L1155",
+          "version": "repo-lines-v1:sha256:84dd82815a2e2e544d0c7fec08a44d25eb3713efba617073fed857db0c5d2d15:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2NzZlMjg2ZTVhZWJkYzUyMDY4YmY0MWM4YTJiYzhkMWYyNmU0ODhiNzExZDc4MWU0NzY1NjU5Yjg2ZDk0MTFiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2I5MDExNTAyNTgwNzhmYzYwNzdhMTI4OWIxZTIxNWQ2NGI0YTExNmY1MTc4ODY2ZGM0MmVjOTVjZjk5ZDAyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyMTljODMyZGEyMWIxODRmYWRkMjA3NjYxODU4YzRhMWE1MGFiMGY3NTIzZjQ3OGJlMmI0MjM4NjYwNDJiYmZlIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_f8c6d3a7f9674b7cb7dbba5618c43deb",
+      "statement": "Passive shared-auth following requires a stable two-poll source and imports only one known same-account bundle that is not older than the current credential.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L654-L823",
+          "version": "repo-lines-v1:sha256:5a85272cacaa143adc987048c469e5d48ab969a52f82b097867d80b3575628c0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhOTZlZGFkODUyNjY1OGFlZjUxMDRlYTU4NmJjNmExMjgwZTZlODQ3Yjg3MTA5OTQyMGM5OGI0MzZhNTg2OTU1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwYjhkMzg1MzQzZDYxNThjMzRlZjg3ZmU2NGM2MWFhNzZhMmU2YzBhMTQxOGExNjZhODFjYzE1OWEzOGRmY2RkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2N2NjMTJlYjgyMWQ4NGRjNDdlNzVlMWI4ZWU2ODM5ZTU2ZTU1ZTcwZjkwNWUzMTk3NDcxYzVkMzNjM2RkNmNiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhZmYyMGZmYjU3ZDZkNTg5ZjViYzgwOWMyOTAzYTM0YWRmMTRhYzZiMmUzODdiYjY0MGY0NmU1NzkyNzg5M2NjIn0"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs#L185-L245",
+          "version": "repo-lines-v1:sha256:ddaaf7ee519bc1c7cd715da3d32b5a4dd2e4af6a0f9bfcffd19356a3a8742699:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyNDMxYmQxMDcyYzk5MDYwNzc4ZmRkMDQ3ZmE2YjM2ZmJkNzZkN2RmZmI0MDJlOWRjMjk0OTQwOGNjNWU3NmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3YWI0NGUzOWVmNTNiM2I2OTNjZWMzNDZmOGI5Y2JjOWM1OGNkNzQ0M2MwNTZhZTM5ZjNmMzMyYjk4MDY4NWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4ZmE5YjBjMGQ4NzY0NGQyOTg0MzQ2NTY4M2VjOWRjMWI0N2IzZWUwZGJmMWUxODMzNzE1MWUwOTgzYzk4NGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5NWQ4NTFmZjlhMmRmNWI4OTg4NzNkMzFjOTQ4NjhiMWM4ZWM4MmI4MzFhNjczYWQ4MTRjZGFmZWE1YmZkZjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f9e30bb6ea9948e79759fc010053f9b4",
+      "statement": "A Decodex refresh of the exact projected family captures the shared source version, conditionally mirrors its successor, and adopts a valid non-older Codex winner after source drift without making a second provider refresh.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1794-L1887",
+          "version": "repo-lines-v1:sha256:577e9ce40fa2bca0f598e544a265e0216694720b93867f1f52d4c6ed6a7bb6fe:eyJzZWxlY3RlZExpbmVDb3VudCI6OTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyOWVjZDU3OGU1NmE0ODhhNDQ4ZmM2MGU2YmNiMDdjNDZlNGYwNWIxY2VkMDI2MmQxMzFhMmFhZTFmM2EwM2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkM2UxNTU2NmQ1MDkzMjA4YzU4MmI5ZTFjNDA0YTYzNzM0MjM4YzcwZjhkZjg1ZTRlOGRjNDk0OTk3NWVlOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjMzQ4NWJmMTY4YmM4NDRiMjk2YjYzYTQxOTg1MzMxMzQ4MTZmM2I4NWFlYmVlNTU3NmE2ODYxYjUyYTdiZTIifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L2815-L2931",
+          "version": "repo-lines-v1:sha256:eb72521235fe80d26c3ee84974a07dba4c6c102f94ee38bc7c6dc0636a526214:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyMzQ3ZTI1NWJlMzNmZjU4NWEwOTBkMWRhNzk5ZWQyMDZjY2M3MjViZWE2MTc3ZTdmNjI1NzAyNzBkODU2ZGU2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI4YmJkNjE0MGEyYmEyMTgzYjEwOTk5MmU4ZDhhOTYwMDk3MjdkNGIzYjVhMThjYTRkZTEwOWEyNjU4NzY2ZWRmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0ZDNlMTU1NjZkNTA5MzIwOGM1ODJiOWUxYzQwNGE2MzczNDIzOGM3MGY4ZGY4NWU0ZThkYzQ5NDk5NzVlZTk1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1NzcxOWM1Mzc5NWNkZTI1OGViY2QwZjI4MGEyNjU5NTRjMjFiOTI2OTA1MGU4NDc5MDIzOTRiMDc2NWNlMjNiIn0"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5668-L5820",
+          "version": "repo-lines-v1:sha256:36031bd9b217a1138f19f884e91a7de36e4cf0d31c437dcbc9237e283c59dac1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3M2Y5OGVhZDgzNjU2MjE4YTkzMDU5NTAxZjg2MmE0ODM1MDc5MzQ2YmU4MWE2MmQ2NzhhMmFmOTY2ZjA4NzM0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJiMjU2ZjRhYjQ5NTRkMzQxZDkyNGFiNjZlZGQ0MDBkYmIzYmEzNWRiYTMwYTdhMDUzMTlhYWMzOTgxZDFkZTJkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjZDdiMWY3MTQyZjBiMDZhMmRiZjI3MDJkN2E3MGJkZTc1YWM1ODRiM2M4YzQ4OGVlYTA2Yzk4NDM4NDgwNjA2In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_c61aea0d2e524e149f408fdebf6472cf",
+      "statement": "A generation-bound refresh callback can return a registry successor only when the provider identity is unchanged, the credential version is strictly newer, the account revision is not older, and the original generation remains active.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1940-L1985",
+          "version": "repo-lines-v1:sha256:03361ee355660422b22e69254d6f31e75ef0cbd76c966702723b3fae24ec38ab:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiZTZkYjExMTFhMDczNmE3ZDhiMTkzZjE5MTBmNDA2NWNmNzg3NGVkN2NlMmM3ZWJhYzBkYzRmYTliN2E1OGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmMjc2Y2VkOTkwOGZlMDI4NzRkOGZhMGQyZTY0ZDVjM2VmMTQ3YTNhYmRjN2YwNmY4ZTE1ZTUwMzNjM2VlNmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNhMThkNGQzNjIwNTMyNWE4OTc2MzEwNmFjOTE4ZjQ4M2E5NTY4MzcxZmE1M2E1NjQ0OWQ5OTc5YzYzNDA0NDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxYmYwNDUxMDc3MzRlMmZkZGRiNTUzYzFiNTY3NGU5ZDhhZDA0NmVkMWVmZTZkYjZhZDM4MDE4ODU4YzBmMDMifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L2934-L2955",
+          "version": "repo-lines-v1:sha256:96bc2ed1d3a6154a9e3a037052bbe4cefe5d9ed21104a55c8a473ec5ce295183:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5ZDVlMTQzN2ExOTAwNjk4NzM3ODYyMjMzMmYyYTVkY2IzMzIxZDFlMTdiYzYzNzM0ZDE1MjliNGUwMTRjOWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjNWM5NzhmYzUwNmVhZjFlOWFjNDBmYWE0YmE1ZjU4Mjg0NWNlZDE0ZWI0NDg1MzdjOTRmYjE1ZTZlYTYyZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1ZTNjNmM5MzUwYTg5NTJjZmRmZTk2MTBjMWY3MGMwNzM5YTkyY2NiNzc4MTgzM2VlY2E0ODU5YTNkOTg1MGYifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L4647-L4664",
+          "version": "repo-lines-v1:sha256:5db3bdc1a0ca3f07592e890d957b0d499401e0cd707c080977d43fc7e2076b18:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhOTYzMjVjYjUxYmFlYzliZmNiMDY3M2Q2Y2Q3YWY0NTJlZDVkZjI0NGU5YWE5YzNhMjAxMWI1ZDg0ODA3ZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIzNjY1MGJlYTE3MDY4OWVmYzFiNGUwNTc4ZjFhNTUyM2I4ODQzMWFiNTUwN2JmNmYzNTdhYWU2OGFlNmQ0ZmIifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L7804-L7824",
+          "version": "repo-lines-v1:sha256:63b67879b75dd26e6da8943a6f94aade880d9173bcb2d75f54f15887f54a280b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkZjgzNTcwYTkwNjgwNGE0MDQyZjNjMjYwZmU3NGNiYmRhMDc2NjhmNTQ2Mzg2MjY0NDQwNTA1YmRiMGZkOWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxMjU2OGQwZjc1MDQ0YjczNmVkMTg0YzllMmQ3NDhiMjRiZjNkMzNlMTVkYjNjMWRmZjFlOWQ1MmNjNzRkOTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7d593ab52eb2493c9831608219c7942d",
+      "statement": "GPUI and CLI show Pending or the authoritative terminal Route projection; Pending displays a bounded concrete PID/process blocker or exact typed fallback reason and tells the user what must close or recover, terminal completion says the app can be reopened, and Decodex never signals or restarts the process.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift#L32-L203",
+          "version": "repo-lines-v1:sha256:b0124179d068b95d226823895f1c59261664941518aa93c39583cf4fedfe5490:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlODhlYzkxZDBiMzkwNDIwYTM2NWUxOGZiYWQwMWFmY2Y2NmY3ZWVmMDQ0OTMwYThkMTVmMDY3MjA0YmQwNjk5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwYWYzZDM2YmQ1MWZkN2FmNTU4MDdiYTZhZDM0MDRkMjUyZTY0YTJiZDg5MTI3ZTZkMWY4ZTM2NjYxYjQ0ZGU4In0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/AccountPanelPresentationTests.swift#L37-L81",
+          "version": "repo-lines-v1:sha256:4adb70dfd5864a8928e3fd1decfede2c8c9bdb4d47ddeb79aa041b7d568eea48:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlNDExOWQ2MTcwMDY2Nzk2ZDQyODAzNTk1MDY3NWU4MTI2ZDU5NDgwY2IzODg0ZjhhMmE3NjI3YTA2YjIwZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiZDU1NmU2NWM4MTcxNzgyMGM2ZGVkYjFmNTE4ZjI4ZDAwZGJmM2JlMThlOWM3YmFiOGNhNzQ3NzA5NmI5MDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY0ZmM1N2EzMWYxOWFhMzc1OTk2MWMzN2JmZGQ1MzNiZjNkNjBmYmEwNDZlZGNlNjVkYjIxZWM3N2NmYzI0NjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2MTc4YWYwZDkzNjc2YWIxN2E3ZTNjNTQ0Yjk4OWJkNmYzNDZjYWQ1Njg2ZjEwMDE0Yjc5NTI2MGFhMjQwN2UifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L2903-L3130",
+          "version": "repo-lines-v1:sha256:f1ce16f3bcf12e44f488bdd18941636b21f6c3675f8dfb0d69060f6971a655c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4NzU4M2JjMGNjMDFmYTgyMmE5M2JlODg0ZjM3ZmJmODA5YjA5YjkxMDgwNWJkZjc2MDhhMmU0OGRkMjI0MGI0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2OWVmM2Y0MDhkMzJmYjNhOWYwMTM3NzI1YjNiZjAyNWRkODE3NzhhNWZlMGUyMmNiZTNkMzRiNjNjZTVhNjI5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0ZDAxNzMyOTk1MDMzNTE1NmViOGYwNTcxMDYzMzMyMzZmMDZlOTE5ZDg4NTZjYjdlMjlmODI3NzExMjMzYTFhIn0"
+        },
+        {
+          "resource": "repo://tests/scripts/test_vnext_architecture.py#L188-L220",
+          "version": "repo-lines-v1:sha256:ed57ffaf1af93e48d27be3b1fc736b01cc7343477e2441921550a4216fef444c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyYmFiMzhhNzkwNDZmNDFiOGM1ZmQzYTNjNWI5ODYzY2I4YmU0NzQ4MTU2MjBlNDgzZTlhYTAzMWRkMTcwODkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzNjRhZDA3OGQ0NzNkYmYxZmE1MmMwMjkwMGRiYzAwZWMyMWZlMjQ4OTMxZTA0MDE1MjE4MTYxZTdhZDM5Y2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2ZDU4OWVmZDk0NDhmNmUyNDY4ZTlkYzQyMWI3N2ZkYzRhZThhNWQwYmVhMjJkZGIxNDg0MmQ0ZmVmYWM3ZTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkMjE0YzY4ZGJlZDYzMzE2ZmZjMzVhNWE3MDM2NjllMGMyZTJkMDdlOWIzY2UxNjY5OTY5M2QzNTg3NWYxZjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6e39050bb0f549b2b6f8f88dbbe5e642",
+      "statement": "Official ChatGPT and Codex bundle executables strictly block cross-account cutover, daemon descendants are excluded, and an independent Codex CLI is ignored only when bounded same-UID metadata proves an existing canonical CODEX_HOME distinct from the shared home; absent or withheld home evidence remains a visible fail-closed blocker.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs#L303-L789",
+          "version": "repo-lines-v1:sha256:01b2a65c9ef1e33c3941574d066c00477733a807ba76fe1b3c17448e43f16279:eyJzZWxlY3RlZExpbmVDb3VudCI6NDg3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5NzI3MDc2YmZhMjUyYmE4NTFjYzViYzBlMWNjOGQ2ZmFmYzI3NjgxNDk3MGZkNzc0MjIzYzUyMjQ1OGFmYWRhIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJmNGJkNTY2MWE4MDEyM2FiZGI1ZTMyMzM4OGVkMGQwNGMwYjBiMTJlNDUxOGM3MzM5Y2Y0MGNiZTY0YzQ5MGRjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwOTUzOWJjMDE4NGY2YjM1NDc2YzM5ZjI5M2UwNDQzYzY5ZjA4ZWE1ZTkyZGQ4Mzc5ODgzNTgzMmRjYTI4YWRlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjZjQ3OWJhY2FiYWE4MmUzYzQ0OWRlYmEyNDYwN2E3YjZiYWY0MGYyNmM2ZDlkZjFmNzY4ODE0NTdkNmU3ZDZkIn0"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs#L877-L1110",
+          "version": "repo-lines-v1:sha256:de84c7e6e777fb6cf619a3a0a0e3032a375c62538258a0162d71677ac31a87c9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjM0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJjNWUyZjgxNWJhNzM0MDdkZTkxYmUxNDZlZTRhMTg4ZjEzNDAzMDAyYzZjNjEyYWRkYTdiMzBiMjk3NjlkNGE5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1NDViZTg2NmU3YWNkMWI2ZjkwMjYwMTZiNjM2ODIzZjVjMjlkMjlkZDU5YTcwY2E4M2U2NGZmZDlmYTRiMzAxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI2M2NjMGMzMmEzOWI2Y2U2ZmFjOTg3ZDZmM2RkYzE4MDRmZjYwZTU1NGY2OWYzODMzMWUzNGU2M2U0NjJkOTMwIn0"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.2",
+    "at": "2026-08-27T10:25:21.174Z"
+  }
+}

@@ -29,7 +29,11 @@ final class AccountControlNativeClientTests: XCTestCase {
 				    \(controlUnsettledAccountJSON(accountID: secondAccountID, operationID: operationID))
 				  ],
 				  "routing":{"revision":9,"mode":{"mode":"fixed","account_id":"\(secondAccountID)"},"order":["\(secondAccountID)","\(accountID)"]},
-				  "pending_route":{"operation_id":"\(operationID)","account_id":"\(accountID)","routing_revision":9}
+				  "pending_route":{"operation_id":"\(operationID)","account_id":"\(accountID)","routing_revision":9,
+				    "wait_reason":{"reason":"external_codex","data":{"blockers":[
+				      {"pid":44662,"process":"chatgpt","auth_home":"shared"},
+				      {"pid":44768,"process":"codex","auth_home":"shared"}
+				    ],"omitted":0}}}
 				}}
 				"""
 			)
@@ -52,7 +56,22 @@ final class AccountControlNativeClientTests: XCTestCase {
 			AccountRoutePending(
 				operationID: operationID,
 				accountID: accountID,
-				routingRevision: 9
+				routingRevision: 9,
+				waitReason: .externalCodex(
+					blockers: [
+						AccountRouteProcessBlocker(
+							pid: 44662,
+							process: .chatgpt,
+							authHome: .shared
+						),
+						AccountRouteProcessBlocker(
+							pid: 44768,
+							process: .codex,
+							authHome: .shared
+						),
+					],
+					omitted: 0
+				)
 			)
 		)
 		XCTAssertEqual(snapshot.accounts[1].credentialBinding?.version, 3)
@@ -78,7 +97,11 @@ final class AccountControlNativeClientTests: XCTestCase {
 				data: """
 				{"outcome":"applied","data":{"entity_revision":9,
 				  "result":{"name":"account_route_pending","data":{"pending":{
-				    "operation_id":"\(operationID)","account_id":"\(accountID)","routing_revision":9
+				    "operation_id":"\(operationID)","account_id":"\(accountID)","routing_revision":9,
+				    "wait_reason":{"reason":"external_codex","data":{"blockers":[
+				      {"pid":44662,"process":"chatgpt","auth_home":"shared"},
+				      {"pid":44768,"process":"codex","auth_home":"shared"}
+				    ],"omitted":0}}
 				  }}}}}
 				"""
 			)
@@ -99,7 +122,47 @@ final class AccountControlNativeClientTests: XCTestCase {
 				AccountRoutePending(
 					operationID: operationID,
 					accountID: accountID,
-					routingRevision: 9
+					routingRevision: 9,
+					waitReason: .externalCodex(
+						blockers: [
+							AccountRouteProcessBlocker(
+								pid: 44662,
+								process: .chatgpt,
+								authHome: .shared
+							),
+							AccountRouteProcessBlocker(
+								pid: 44768,
+								process: .codex,
+								authHome: .shared
+							),
+						],
+						omitted: 0
+					)
+				)
+			)
+		)
+	}
+
+	func testPendingRouteRejectsInvalidBlockerAndReadinessReasons() throws {
+		let prefix = """
+		{"operation_id":"\(operationID)","account_id":"\(accountID)","routing_revision":9,
+		"wait_reason":
+		"""
+		XCTAssertThrowsError(
+			try JSONDecoder().decode(
+				AccountRoutePending.self,
+				from: Data(
+					"\(prefix){\"reason\":\"external_codex\",\"data\":{\"blockers\":[],\"omitted\":0}}}"
+						.utf8
+				)
+			)
+		)
+		XCTAssertThrowsError(
+			try JSONDecoder().decode(
+				AccountRoutePending.self,
+				from: Data(
+					"\(prefix){\"reason\":\"account_readiness\",\"data\":{\"readiness\":\"ready\"}}}"
+						.utf8
 				)
 			)
 		)

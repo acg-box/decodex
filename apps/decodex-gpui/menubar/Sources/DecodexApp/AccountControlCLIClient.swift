@@ -55,22 +55,30 @@ struct AccountRoutePending: Decodable, Equatable, Sendable {
 	let operationID: String
 	let accountID: String
 	let routingRevision: UInt64
+	let waitReason: AccountRouteWaitReason
 
-	init(operationID: String, accountID: String, routingRevision: UInt64) {
+	init(
+		operationID: String,
+		accountID: String,
+		routingRevision: UInt64,
+		waitReason: AccountRouteWaitReason
+	) {
 		self.operationID = operationID
 		self.accountID = accountID
 		self.routingRevision = routingRevision
+		self.waitReason = waitReason
 	}
 
 	init(from decoder: Decoder) throws {
 		try requireExactFields(
 			in: decoder,
-			expected: ["operation_id", "account_id", "routing_revision"]
+			expected: ["operation_id", "account_id", "routing_revision", "wait_reason"]
 		)
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		operationID = try container.decode(String.self, forKey: .operationID)
 		accountID = try container.decode(String.self, forKey: .accountID)
 		routingRevision = try container.decode(UInt64.self, forKey: .routingRevision)
+		waitReason = try container.decode(AccountRouteWaitReason.self, forKey: .waitReason)
 		guard DecodexNativeClient.isCanonicalAccountID(operationID),
 			DecodexNativeClient.isCanonicalAccountID(accountID),
 			routingRevision > 0
@@ -83,6 +91,138 @@ struct AccountRoutePending: Decodable, Equatable, Sendable {
 		case operationID = "operation_id"
 		case accountID = "account_id"
 		case routingRevision = "routing_revision"
+		case waitReason = "wait_reason"
+	}
+}
+
+enum AccountRouteBlockingProcess: String, Decodable, Equatable, Sendable {
+	case chatgpt
+	case codex
+}
+
+enum AccountRouteAuthHome: String, Decodable, Equatable, Sendable {
+	case shared
+	case unknown
+}
+
+struct AccountRouteProcessBlocker: Decodable, Equatable, Sendable {
+	let pid: UInt32
+	let process: AccountRouteBlockingProcess
+	let authHome: AccountRouteAuthHome
+
+	init(
+		pid: UInt32,
+		process: AccountRouteBlockingProcess,
+		authHome: AccountRouteAuthHome
+	) {
+		self.pid = pid
+		self.process = process
+		self.authHome = authHome
+	}
+
+	init(from decoder: Decoder) throws {
+		try requireExactFields(in: decoder, expected: ["pid", "process", "auth_home"])
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		pid = try container.decode(UInt32.self, forKey: .pid)
+		process = try container.decode(AccountRouteBlockingProcess.self, forKey: .process)
+		authHome = try container.decode(AccountRouteAuthHome.self, forKey: .authHome)
+		guard pid > 0 else {
+			throw AccountControlError.invalidResponse
+		}
+	}
+
+	private enum CodingKeys: String, CodingKey {
+		case pid
+		case process
+		case authHome = "auth_home"
+	}
+}
+
+enum AccountRouteWaitReason: Decodable, Equatable, Sendable {
+	case externalCodex(blockers: [AccountRouteProcessBlocker], omitted: UInt16)
+	case codexObservationUnavailable
+	case accountReadiness(ResetCardLifecycleReadiness)
+	case sharedAuthStabilizing
+	case sharedAuthUnavailable
+	case projectionReadback
+
+	init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		switch try container.decode(String.self, forKey: .reason) {
+		case "external_codex":
+			try requireExactFields(in: decoder, expected: ["reason", "data"])
+			let data = try container.decode(ExternalCodexData.self, forKey: .data)
+			guard data.blockers.isEmpty == false,
+				data.blockers.count <= 8,
+				data.omitted == 0 || data.blockers.count == 8,
+				Set(data.blockers.map(\.pid)).count == data.blockers.count
+			else {
+				throw AccountControlError.invalidResponse
+			}
+			self = .externalCodex(blockers: data.blockers, omitted: data.omitted)
+		case "codex_observation_unavailable":
+			try requireExactFields(in: decoder, expected: ["reason"])
+			self = .codexObservationUnavailable
+		case "account_readiness":
+			try requireExactFields(in: decoder, expected: ["reason", "data"])
+			let data = try container.decode(AccountReadinessData.self, forKey: .data)
+			guard [
+				ResetCardLifecycleReadiness.storeUnavailable,
+				.storeMismatch,
+				.operationUnsettled,
+				.callbackCapabilityUnready,
+			].contains(data.readiness) else {
+				throw AccountControlError.invalidResponse
+			}
+			self = .accountReadiness(data.readiness)
+		case "shared_auth_stabilizing":
+			try requireExactFields(in: decoder, expected: ["reason"])
+			self = .sharedAuthStabilizing
+		case "shared_auth_unavailable":
+			try requireExactFields(in: decoder, expected: ["reason"])
+			self = .sharedAuthUnavailable
+		case "projection_readback":
+			try requireExactFields(in: decoder, expected: ["reason"])
+			self = .projectionReadback
+		default:
+			throw AccountControlError.invalidResponse
+		}
+	}
+
+	private struct ExternalCodexData: Decodable {
+		let blockers: [AccountRouteProcessBlocker]
+		let omitted: UInt16
+
+		init(from decoder: Decoder) throws {
+			try requireExactFields(in: decoder, expected: ["blockers", "omitted"])
+			let container = try decoder.container(keyedBy: CodingKeys.self)
+			blockers = try container.decode([AccountRouteProcessBlocker].self, forKey: .blockers)
+			omitted = try container.decode(UInt16.self, forKey: .omitted)
+		}
+
+		private enum CodingKeys: String, CodingKey {
+			case blockers
+			case omitted
+		}
+	}
+
+	private struct AccountReadinessData: Decodable {
+		let readiness: ResetCardLifecycleReadiness
+
+		init(from decoder: Decoder) throws {
+			try requireExactFields(in: decoder, expected: ["readiness"])
+			let container = try decoder.container(keyedBy: CodingKeys.self)
+			readiness = try container.decode(ResetCardLifecycleReadiness.self, forKey: .readiness)
+		}
+
+		private enum CodingKeys: String, CodingKey {
+			case readiness
+		}
+	}
+
+	private enum CodingKeys: String, CodingKey {
+		case reason
+		case data
 	}
 }
 

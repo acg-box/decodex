@@ -34,6 +34,43 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertTrue(presentation.usesDisabledEnvironment)
 	}
 
+	func testPendingRouteNamesConcreteSharedAuthBlockers() {
+		let pending = AccountRoutePending(
+			operationID: "33333333-3333-4333-8333-333333333333",
+			accountID: "11111111-1111-4111-8111-111111111111",
+			routingRevision: 9,
+			waitReason: .externalCodex(
+				blockers: [
+					AccountRouteProcessBlocker(
+						pid: 44662,
+						process: .chatgpt,
+						authHome: .shared
+					),
+					AccountRouteProcessBlocker(
+						pid: 44768,
+						process: .codex,
+						authHome: .unknown
+					),
+				],
+				omitted: 0
+			)
+		)
+
+		XCTAssertEqual(
+			pending.statusText,
+			"Waiting for ChatGPT PID 44662 and 1 more process to quit."
+		)
+		XCTAssertTrue(pending.helpText.contains("Codex PID 44768; auth home unknown"))
+
+		let hostingView = NSHostingView(
+			rootView: AccountRoutePendingStatusView(pending: pending)
+				.frame(width: 276)
+		)
+		hostingView.layoutSubtreeIfNeeded()
+		XCTAssertGreaterThan(hostingView.fittingSize.height, 0)
+		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 52)
+	}
+
 	func testRouteCapabilityDoesNotDependOnQuickTaskCallbackReadiness() {
 		let authority = ResetCardAuthority(
 			profileName: "local",

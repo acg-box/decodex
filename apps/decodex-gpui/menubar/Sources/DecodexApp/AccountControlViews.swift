@@ -36,10 +36,14 @@ struct AccountPrimaryActionsView: View {
 	var body: some View {
 		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
 			CompactAccountActionButton(
-				title: presentation.isCurrent ? "Routed" : "Route",
-				symbol: presentation.isCurrent
-					? "point.3.connected.trianglepath.dotted"
-					: "arrow.triangle.branch",
+				title: isPendingTarget
+					? "Pending"
+					: (keepsCurrentRoute ? "Keep" : (presentation.isCurrent ? "Routed" : "Route")),
+				symbol: isPendingTarget
+					? "clock"
+					: (presentation.isCurrent
+						? "point.3.connected.trianglepath.dotted"
+						: "arrow.triangle.branch"),
 				isActive: presentation.isCurrent,
 				isDisabled: presentation.isDisabled,
 				isVisuallyDisabled: presentation.isVisuallyDisabled,
@@ -48,9 +52,14 @@ struct AccountPrimaryActionsView: View {
 					state.account.accountID,
 					activity: .route
 				),
-				help: presentation.isCurrent
-					? "This account is used by Decodex routing and new Codex processes. Restart ChatGPT to load it there."
-					: "Route Decodex now. Restart ChatGPT afterward to load this account; Decodex does not restart it."
+				help: isPendingTarget
+					? store.pendingRoute?.helpText
+						?? "Keep ChatGPT or Codex closed until Pending changes to Routed, then reopen it."
+					: (keepsCurrentRoute
+						? "Keep this account and replace the other pending route."
+						: (presentation.isCurrent
+							? "This account is synchronized for Decodex and Codex."
+							: "Synchronize this account for Decodex and Codex."))
 			) {
 				Task {
 					await store.routeAccount(state.account.accountID)
@@ -66,7 +75,11 @@ struct AccountPrimaryActionsView: View {
 	}
 
 	private var isRouteCurrent: Bool {
-		isCodexProjection && isFixed
+		isCodexProjection && isFixed && store.pendingRoute == nil
+	}
+
+	private var keepsCurrentRoute: Bool {
+		isCodexProjection && isFixed && store.pendingRoute != nil && isPendingTarget == false
 	}
 
 	private var presentation: AccountRouteActionPresentation {
@@ -80,7 +93,11 @@ struct AccountPrimaryActionsView: View {
 	}
 
 	private var canSelect: Bool {
-		state.routeCapability == .ready
+		state.routeCapability == .ready && store.pendingRoute?.accountID != state.account.accountID
+	}
+
+	private var isPendingTarget: Bool {
+		store.pendingRoute?.accountID == state.account.accountID
 	}
 
 	private var isFixed: Bool {
@@ -88,6 +105,100 @@ struct AccountPrimaryActionsView: View {
 			return false
 		}
 		return accountID == state.account.accountID
+	}
+}
+
+struct AccountRoutePendingStatusView: View {
+	let pending: AccountRoutePending
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.related) {
+			Image(systemName: "clock.arrow.circlepath")
+				.font(PanelFont.tertiary)
+				.foregroundStyle(PanelPalette.warning(colorScheme))
+				.accessibilityHidden(true)
+
+			Text(pending.statusText)
+				.font(PanelFont.tertiary)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.fixedSize(horizontal: false, vertical: true)
+				.frame(maxWidth: .infinity, alignment: .leading)
+		}
+		.help(pending.helpText)
+		.accessibilityElement(children: .ignore)
+		.accessibilityLabel(pending.statusText)
+		.accessibilityHint(pending.helpText)
+	}
+}
+
+extension AccountRoutePending {
+	var statusText: String {
+		switch waitReason {
+		case .externalCodex(let blockers, let omitted):
+			let total = blockers.count + Int(omitted)
+			let first = blockers.first.map(Self.blockerLabel) ?? "Codex"
+			if total == 1 {
+				return "Waiting for \(first) to quit."
+			}
+			let remaining = total - 1
+			let noun = remaining == 1 ? "process" : "Codex processes"
+			return "Waiting for \(first) and \(remaining) more \(noun) to quit."
+		case .codexObservationUnavailable:
+			return "Waiting for safe Codex process inspection."
+		case .accountReadiness(let readiness):
+			return Self.accountReadinessStatus(readiness)
+		case .sharedAuthStabilizing:
+			return "Waiting for shared Codex auth to stabilize."
+		case .sharedAuthUnavailable:
+			return "Shared Codex auth is unavailable or unsafe."
+		case .projectionReadback:
+			return "Verifying the atomic auth.json update."
+		}
+	}
+
+	var helpText: String {
+		switch waitReason {
+		case .externalCodex(let blockers, let omitted):
+			var labels = blockers.map(Self.blockerLabel)
+			if omitted > 0 {
+				labels.append("\(omitted) more")
+			}
+			return "Quit \(labels.joined(separator: ", ")), then keep ChatGPT or Codex closed until Pending changes to Routed. Reopen it after routing completes."
+		case .codexObservationUnavailable:
+			return "Decodex could not prove which Codex process owns the shared auth home, so the account switch remains safely blocked."
+		case .accountReadiness(let readiness):
+			return "\(Self.accountReadinessStatus(readiness)) Decodex retries automatically."
+		case .sharedAuthStabilizing:
+			return "Decodex is waiting for two matching auth.json observations before the atomic update."
+		case .sharedAuthUnavailable:
+			return "Check ~/.codex ownership, permissions, and path safety. Decodex retries automatically."
+		case .projectionReadback:
+			return "The auth.json update may have completed. Decodex is reading it back before routing is committed."
+		}
+	}
+
+	private static func blockerLabel(_ blocker: AccountRouteProcessBlocker) -> String {
+		let process = blocker.process == .chatgpt ? "ChatGPT" : "Codex"
+		let uncertainty = blocker.authHome == .unknown ? "; auth home unknown" : ""
+		return "\(process) PID \(blocker.pid)\(uncertainty)"
+	}
+
+	private static func accountReadinessStatus(
+		_ readiness: ResetCardLifecycleReadiness
+	) -> String {
+		switch readiness {
+		case .storeUnavailable:
+			return "Waiting for the credential store."
+		case .storeMismatch:
+			return "Waiting for credential binding reconciliation."
+		case .operationUnsettled:
+			return "Waiting for the current account operation to settle."
+		case .callbackCapabilityUnready:
+			return "Waiting for Codex refresh callback readiness."
+		case .ready, .credentialAbsent, .providerMismatch, .tombstoned:
+			return "Waiting for target account readiness."
+		}
 	}
 }
 
@@ -189,6 +300,7 @@ struct AccountUtilityActionsView: View {
 
 	private var lifecycleActionIsDisabled: Bool {
 		store.canPerformDirectAccountControl == false
+			|| store.pendingRoute != nil
 			|| store.isAccountControlInProgress
 			|| store.submittingKey != nil
 	}

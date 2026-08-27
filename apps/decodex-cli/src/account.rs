@@ -1,4 +1,4 @@
-//! Operator account client over the same-UID V2.10 daemon protocol.
+//! Operator account client over the same-UID V2.11 daemon protocol.
 
 use std::path::{Path, PathBuf};
 

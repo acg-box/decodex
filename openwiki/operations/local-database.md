@@ -2,6 +2,31 @@
 type: "Reference"
 title: "Local Database Operations"
 openwiki_generated: true
+sources:
+  - id: openwiki-source-35eca69c3013fea5ba400887
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DecodexNativeCompatibility.swift
+  - id: openwiki-source-cc0439b23243c3697ba49199
+    resource: repo://crates/decodex-protocol/src/lib.rs
+  - id: openwiki-source-268229e2b9f21dae93c32513
+    resource: repo://crates/decodex-protocol/src/wire.rs
+  - id: openwiki-source-f4724776aade804ebf838e2e
+    resource: repo://crates/decodex-runtime/src/account_service.rs
+  - id: openwiki-source-a09c082db4ad1473c4d1e557
+    resource: repo://crates/decodex-runtime/src/application.rs
+  - id: openwiki-source-a67672a943dfe221574b2501
+    resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
+  - id: openwiki-source-a89c2fe187b4f7bf37dc206d
+    resource: repo://database/migrations/0009_durable_account_route.sql
+  - id: openwiki-source-7fe11c5074beaf147aac2be4
+    resource: repo://database/migrations/0010_pending_account_route_progress.sql
+  - id: openwiki-source-63bea5f3704fcd7e4b161192
+    resource: repo://database/src/account_lifecycle.rs
+  - id: openwiki-source-76081c1a47ca8cf32593de34
+    resource: repo://scripts/macos/test_decodex_app_stage.sh
+generated: { by: "codex", at: "2026-08-27T10:25:21.174Z" }
+verified:
+  - by: openwiki/0.4.2
+    at: 2026-08-27T10:25:21.174Z
 ---
 
 # Local Database Operations
@@ -46,17 +71,40 @@ migration ledger.
 Schema version 9 adds one nullable, credential-negative `request_json` column to command
 receipts. Only a reserved `route_account` receipt must contain this value. The partial index
 supports bounded startup recovery. Schema version 10 adds nullable `progress_json` for decoding
-legacy pending Route progress and a unique partial index for at most one reserved receipt. These
-columns and constraints are compatibility storage: current Route is synchronous and does not
-normally create Pending state. On daemon startup, the runtime performs the one bounded legacy
-Route recovery pass before accepting protocol commands.
+pending Route progress and a unique partial index for at most one reserved receipt. Pending is a
+current accepted handoff state when an external Codex process may still own the old refresh-token
+family or when the exact shared-auth source is not stable enough to replace. The daemon retains the
+original request, account and routing revision fences, and idempotency receipt. Startup and the
+bounded background recovery loop reclaim that same receipt only after re-reading those fences and
+the current external Codex liveness state. Creating Pending immediately wakes the recovery loop.
+While any Pending Route exists, the loop checks every 100 milliseconds; without Pending work it
+uses a one-second idle cadence. A long Pending state therefore means that liveness still observes
+an auth-owning Codex process or another readiness fence, not that the timer is slow. Decodex does
+not terminate or restart Codex.
+
+Pending carries one closed operator reason. A concrete process wait lists at most eight positive
+PIDs, identifies each as ChatGPT or Codex, and states whether the normal shared auth home is proved
+or unknown. Official ChatGPT/Codex bundle executables always block. A standalone Codex CLI is
+ignored only when same-UID process metadata proves that its effective `CODEX_HOME` is an existing
+canonical directory distinct from the normal shared home. If macOS withholds environment metadata,
+the CLI remains a visible `auth home unknown` blocker. Other reasons name account readiness,
+shared-source stability or availability, process-observation availability, or atomic projection
+readback. Operators should quit the listed process or repair the displayed readiness boundary;
+they should not wait for a longer timer.
+
+After a Route projects an account, ordinary same-account refreshes remain journaled account
+operations. A successful Decodex refresh conditionally mirrors its successor to the exact shared
+auth source. If Codex rotates that source first, Decodex imports the valid non-older Codex bundle as
+the winner through a new deterministic credential rotation; it does not write the losing refresh
+token back to `auth.json`. Receipts and progress remain credential-negative throughout this
+convergence.
 
 Schema version 11 adds the singleton `desktop_settings` table. `decodexd` is its only
 reader and writer. The positive revision guards the **Show Decodex in the menu bar**
-preference; GPUI reads and changes it only through protocol 2.10.
+preference; GPUI reads and changes it only through protocol 2.11.
 
 The account-login restoration repair adds no schema migration. The current protocol uses exact
-artifact cohort 6. On startup, the daemon can compensate only the exact pre-repair
+artifact cohort 7. On startup, the daemon can compensate only the exact pre-repair
 `StoreApplied` enrollment collision described by the account-lifecycle contract; it deletes the
 proved orphan credential and cancels that operation. Installation therefore upgrades the signed
 daemon, CLI, and GPUI application as one cohort while retaining the pre-install database rollback
@@ -86,7 +134,7 @@ The macOS installer:
    `~/.decodex` as its stable working directory;
 5. starts the daemon; and
 6. runs doctor and account-list readback through the installed CLI, which proves the
-   running daemon uses the same protocol 2.10 and artifact cohort 6.
+   running daemon uses the same protocol 2.11 and artifact cohort 7.
 
 It does not install former server store, create roles or databases, manage a socket directory, or
 resolve a database password.

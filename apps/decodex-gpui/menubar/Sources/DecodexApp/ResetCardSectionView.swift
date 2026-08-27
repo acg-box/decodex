@@ -208,6 +208,13 @@ struct ResetCardAccountRow: View {
 				)
 			}
 
+			if let pending = store.pendingRoute,
+				pending.accountID == state.account.accountID
+			{
+				AccountRoutePendingStatusView(pending: pending)
+					.transition(.panelInline)
+			}
+
 			if exceptionalStatusText != nil {
 				exceptionalStatus
 					.transition(.panelInline)

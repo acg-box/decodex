@@ -53,7 +53,7 @@ plutil -extract CFBundleIconFile raw "$info" | grep -qx 'AppIcon'
 plutil -extract LSMinimumSystemVersion raw "$info" | grep -qx '27.0'
 plutil -extract NSSupportsAutomaticTermination raw "$info" | grep -qx 'false'
 plutil -extract NSSupportsSuddenTermination raw "$info" | grep -qx 'false'
-"$contents/Helpers/decodexd" artifact-cohort | grep -q '"artifact_cohort":6'
+"$contents/Helpers/decodexd" artifact-cohort | grep -q '"artifact_cohort":7'
 nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_menu_bar_create' >/dev/null
 nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_menu_bar_set_visible' >/dev/null
 nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_menu_bar_launch_at_login_status' >/dev/null
