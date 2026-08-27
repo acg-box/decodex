@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 STAGE_ROOT=${DECODEX_LOCAL_SERVICE_STAGE_DIR:-"$ROOT/target/decodex-local-service"}
 SIGN_IDENTITY=${DECODEX_LOCAL_SERVICE_SIGN_IDENTITY:?set DECODEX_LOCAL_SERVICE_SIGN_IDENTITY to a Developer ID or Apple Development identity}
-PROFILE=final-release
+PROFILE=release
 
 if [[ $SIGN_IDENTITY == "-" ]]; then
 	echo "error: an ad-hoc signature has no TeamIdentifier and cannot be installed" >&2

@@ -68,6 +68,5 @@ vergen-gitcl       = { version = "10.0", features = ["cargo"] }
 wait-timeout       = { version = "0.2.1" }
 zeroize            = { version = "1.9" }
 
-[profile.final-release]
-inherits = "release"
-lto      = true
+[profile.release]
+lto = "thin"
