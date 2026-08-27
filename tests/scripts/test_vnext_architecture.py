@@ -185,24 +185,27 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         )
         self.assertNotIn(".app", service_stage)
 
-    def test_shared_auth_route_uses_exact_source_cas_without_process_gating(self) -> None:
+    def test_shared_auth_coordinator_is_read_only_until_quiescent_cutover(self) -> None:
         coordinator = read(
             "crates/decodex-runtime/src/shared_auth_coordinator.rs"
         )
         application = read("crates/decodex-runtime/src/application.rs")
         account_service = read("crates/decodex-runtime/src/account_service.rs")
-        for removed in (
-            "proc_listpids",
-            "proc_pidpath",
-            "CodexLiveness",
-            "CodexLivenessPort",
-            "MayBeRunning",
-            "Quiescent",
-            "project_if_quiescent",
-        ):
-            self.assertNotIn(removed, coordinator)
+        wire = read("crates/decodex-protocol/src/wire.rs")
+        menu = read(
+            "apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift"
+        )
+        self.assertIn("proc_listpids", coordinator)
+        self.assertIn("proc_pidpath", coordinator)
+        self.assertIn("KERN_PROCARGS2", coordinator)
+        self.assertIn("Zeroizing::new", coordinator)
+        self.assertIn("CodexLiveness::MayBeRunning", coordinator)
+        self.assertIn("MacosCodexHomeRelation::Isolated", coordinator)
+        self.assertIn("CodexLivenessObservation::Blocked", coordinator)
         self.assertIn("project_shared_codex_auth_cas", coordinator)
-        self.assertIn("read_current_exact", coordinator)
+        self.assertIn("AccountRouteWaitReasonDto", wire)
+        self.assertIn("AccountRoutePendingStatusView", menu)
+        self.assertIn("PID \\(blocker.pid)", menu)
         for forbidden in (
             "std::process::Command",
             "libc::kill",
@@ -210,12 +213,10 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
             "SIGKILL",
         ):
             self.assertNotIn(forbidden, coordinator)
-        self.assertNotIn("shared_auth_may_be_running", application)
-        self.assertIn("reclaim_account_route_command", application)
-        self.assertIn("follow_shared_auth_changes", application)
-        self.assertNotIn("async fn recover_pending_account_routes(", application)
-        self.assertNotIn("defer_route_command", account_service)
-        self.assertNotIn("project_if_quiescent", account_service)
+        self.assertLess(
+            application.index("shared_auth_may_be_running"),
+            application.index("reclaim_account_route_command"),
+        )
         self.assertNotIn("reproject_shared", account_service)
 
     def test_credentials_are_narrow_and_daemon_private(self) -> None:

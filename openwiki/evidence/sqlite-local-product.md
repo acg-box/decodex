@@ -10,6 +10,19 @@ openwiki:
   test_paths: [database/src/desktop_settings.rs, tests/scripts/test_vnext_architecture.py, tests/scripts/test_account_login_architecture.py, apps/decodex-gpui/src/accounts.rs, apps/decodex-gpui/src/account_profile.rs, apps/decodex-gpui/src/desktop_settings.rs, apps/decodex-gpui/src/shell.rs, scripts/macos/test_decodex_app_stage.sh]
   invariants: [decodexd is the only normal SQLite owner.; GPUI and CLI are protocol-only clients.; Decodex.app is the only macOS GUI bundle.; The optional menu-bar item runs in the GPUI process.; Persistent desktop settings are revision-guarded in SQLite.; Reset Card consumption has no GUI claim without daemon-owned restart discovery.]
   validation_commands: [python3 scripts/vnext/local_database_gate.py, python3 -m unittest tests/scripts/test_vnext_architecture.py tests/scripts/test_account_login_architecture.py, cargo +stable test -p decodex-protocol --all-targets, DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo +stable test -p decodex-gpui --all-targets --features visual-capture, scripts/macos/test_decodex_app_stage.sh]
+verified:
+  - by: openwiki/0.4.2
+    at: 2026-08-27T10:25:21.174Z
+sources:
+  - id: openwiki-source-98e7b23c4cc276d20fcb4649
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
+  - id: openwiki-source-1291f5243fa6c9cb52149bda
+    resource: repo://apps/decodex-gpui/src/shell.rs
+  - id: openwiki-source-cc0439b23243c3697ba49199
+    resource: repo://crates/decodex-protocol/src/lib.rs
+  - id: openwiki-source-268229e2b9f21dae93c32513
+    resource: repo://crates/decodex-protocol/src/wire.rs
+generated: { by: "codex", at: "2026-08-27T10:25:21.174Z" }
 ---
 
 # SQLite Local-Product Evidence
@@ -48,11 +61,18 @@ contract without requiring a live macOS window session.
 
 ## Protocol and GPUI evidence
 
-Protocol 2.10 with artifact cohort 6 adds one desktop-settings query, command, result,
-and event. The command requires the current positive revision. `decodexd` commits the
-SQLite change and publishes one complete `DesktopSettingsDto`. GPUI's retained-session
-controller routes only exact query, receipt, result, and event identities before the
-Settings presentation changes `NSStatusItem` visibility.
+Protocol 2.11 with artifact cohort 7 keeps the desktop-settings query, command, result,
+and event and adds one closed, credential-negative `AccountRouteWaitReason` to every Pending
+Route. Concrete external blockers carry only a bounded PID, `ChatGPT` or `Codex` identity,
+and shared-versus-unknown auth-home evidence. Other variants name process-observation,
+account-readiness, source-stability, source-availability, or projection-readback waits. The
+cohort fence prevents older daemon, native bridge, and GUI artifacts from accepting this new
+exact wire shape.
+
+The desktop-setting command still requires the current positive revision. `decodexd` commits
+the SQLite change and publishes one complete `DesktopSettingsDto`. GPUI's retained-session
+controller routes only exact query, receipt, result, and event identities before the Settings
+presentation changes `NSStatusItem` visibility.
 
 Focused GPUI tests prove:
 
@@ -61,6 +81,8 @@ Focused GPUI tests prove:
   commands;
 - quota rows render only current provider observations;
 - account profile is one exact selected-account query;
+- Pending Route results reject malformed blocker/readiness shapes and render the current PID or
+  exact typed fallback reason in both desktop surfaces;
 - desktop-setting commands accept only the matching daemon result; and
 - the simulated menu-bar host owns one in-process item.
 

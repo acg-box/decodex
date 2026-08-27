@@ -5402,7 +5402,7 @@ mod tests {
 	}
 
 	#[test]
-	fn manual_bound_fixture_preserves_shared_auth_pool_and_plugin_files() {
+	fn process_scoped_projection_uses_selected_account_and_preserves_shared_home_metadata() {
 		let temp = TempDir::new().unwrap();
 		let home = temp.path().join("home");
 		let codex_home = home.join(".codex");
@@ -5411,7 +5411,10 @@ mod tests {
 		fs::create_dir_all(&plugin_dir).unwrap();
 
 		let fixtures = [
-			(codex_home.join("auth.json"), b"{}".as_slice()),
+			(
+				codex_home.join("auth.json"),
+				br#"{"tokens":{"account_id":"codex-desktop-provider"}}"#.as_slice(),
+			),
 			(
 				codex_home.join("account-pool.json"),
 				br#"{"account_id":"10000000-0000-4000-8000-000000000001","state":"available"}"#
@@ -5422,11 +5425,27 @@ mod tests {
 
 		for (path, contents) in &fixtures {
 			fs::write(path, contents).unwrap();
+			fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
 		}
 
 		let before = fixtures
 			.iter()
-			.map(|(path, _)| (path.clone(), fs::read(path).unwrap()))
+			.map(|(path, _)| {
+				let metadata = fs::metadata(path).unwrap();
+				(
+					path.clone(),
+					fs::read(path).unwrap(),
+					metadata.dev(),
+					metadata.ino(),
+					metadata.len(),
+					metadata.mtime(),
+					metadata.mtime_nsec(),
+					metadata.ctime(),
+					metadata.ctime_nsec(),
+					metadata.mode(),
+					metadata.nlink(),
+				)
+			})
 			.collect::<Vec<_>>();
 		let bound_account = AccountBinding::for_test(codex_home);
 		let result = ReadOnlyProbe::new_for_test(
@@ -5440,8 +5459,31 @@ mod tests {
 
 		assert_eq!(result.account_id, bound_account.account_id().clone());
 
-		for (path, contents) in before {
-			assert_eq!(fs::read(path).unwrap(), contents);
+		for (
+			path,
+			bytes,
+			device,
+			inode,
+			length,
+			modified_seconds,
+			modified_nanoseconds,
+			changed_seconds,
+			changed_nanoseconds,
+			mode,
+			link_count,
+		) in before
+		{
+			let metadata = fs::metadata(&path).unwrap();
+			assert_eq!(fs::read(path).unwrap(), bytes);
+			assert_eq!(metadata.dev(), device);
+			assert_eq!(metadata.ino(), inode);
+			assert_eq!(metadata.len(), length);
+			assert_eq!(metadata.mtime(), modified_seconds);
+			assert_eq!(metadata.mtime_nsec(), modified_nanoseconds);
+			assert_eq!(metadata.ctime(), changed_seconds);
+			assert_eq!(metadata.ctime_nsec(), changed_nanoseconds);
+			assert_eq!(metadata.mode(), mode);
+			assert_eq!(metadata.nlink(), link_count);
 		}
 	}
 

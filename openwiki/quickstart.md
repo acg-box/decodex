@@ -7,17 +7,35 @@ openwiki:
   roles: [repository, architecture, workflow]
   change_kinds: [navigation]
   source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-protocol/src/quick_task.rs, database/src/lib.rs]
-verified:
-  - by: openwiki/0.4.0
-    at: 2026-08-26T21:13:26.303Z
 sources:
+  - id: openwiki-source-98e7b23c4cc276d20fcb4649
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
+  - id: openwiki-source-a5028d07257122cad396830e
+    resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/AccountPanelPresentationTests.swift
   - id: openwiki-source-e3cbf7660b5f77bbecd437c5
     resource: repo://apps/decodex-gpui/src/bin/factory_visual_capture.rs
   - id: openwiki-source-4d0807cef0e852e926ce0974
     resource: repo://apps/decodex-gpui/src/factory_surface.rs
   - id: openwiki-source-31df4748243df01f1137f62f
     resource: repo://apps/decodex-gpui/src/program_graph.rs
-generated: {by: "codex", at: "2026-08-26T21:13:26.303Z"}
+  - id: openwiki-source-1291f5243fa6c9cb52149bda
+    resource: repo://apps/decodex-gpui/src/shell.rs
+  - id: openwiki-source-cc0439b23243c3697ba49199
+    resource: repo://crates/decodex-protocol/src/lib.rs
+  - id: openwiki-source-268229e2b9f21dae93c32513
+    resource: repo://crates/decodex-protocol/src/wire.rs
+  - id: openwiki-source-f4724776aade804ebf838e2e
+    resource: repo://crates/decodex-runtime/src/account_service.rs
+  - id: openwiki-source-a09c082db4ad1473c4d1e557
+    resource: repo://crates/decodex-runtime/src/application.rs
+  - id: openwiki-source-a67672a943dfe221574b2501
+    resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
+  - id: openwiki-source-a9515596a887b940d069c74e
+    resource: repo://tests/scripts/test_vnext_architecture.py
+generated: { by: "codex", at: "2026-08-27T10:25:21.174Z" }
+verified:
+  - by: openwiki/0.4.2
+    at: 2026-08-27T10:25:21.174Z
 ---
 
 # OpenWiki Quickstart
@@ -101,15 +119,25 @@ ProviderAttempt state, and exact command receipts. Missing or stale quota data m
 unknown capacity; it is not fabricated exhaustion. A current known depleted fact still
 blocks that account.
 
-Account Route is one daemon-owned synchronous command coordinated by `decodexd`'s
-`SharedAuthCoordinator`. The command reads the exact shared-auth source, reconciles a known source
-rotation, refreshes the target when required, performs exact-source CAS/write/readback, and commits
-fixed routing only after those checks succeed. Route has no Codex process/liveness wait and no
-normal `AccountRoutePending`. Passive shared-auth following uses stable metadata observations to
-import only same-account non-older rotations into daemon credentials; it never writes `auth.json`.
-`AccountRoutePending` remains only for legacy receipt decoding and one-time startup recovery. The
-optional in-process menu-bar item has no Route workflow state. `decodexd` never controls the Codex
-process.
+Account Route intentionally synchronizes the selected Decodex account to shared Codex auth. One
+daemon-owned `SharedAuthCoordinator` observes the exact source and external Codex liveness. A
+cross-account Route remains credential-negative Pending while a running or uncertain Codex process
+can still own the previous refresh-token family. After quiescence, the daemon refreshes the target
+when required, performs exact-source CAS/write/readback, and commits fixed routing through the same
+receipt. Decodex never terminates or restarts Codex. While Pending, the app displays either a
+bounded ChatGPT/Codex PID blocker or one exact typed process, readiness, source, or readback reason.
+Official app executables strictly block. A standalone CLI is ignored only when best-effort same-UID
+metadata proves an isolated canonical `CODEX_HOME`; unknown home evidence stays visibly fail-closed.
+The terminal result says that the synchronized account is ready and the app can be reopened.
+Creating Pending immediately wakes recovery, and active Pending work is checked every 100
+milliseconds; a long wait means that the displayed gate remains open, not that recovery is using
+its one-second idle cadence. Protocol 2.11 and artifact cohort 7 fence this exact diagnostic shape
+across the daemon and desktop clients.
+
+Same-account refresh uses a separate live convergence rule. Decodex conditionally mirrors a
+successful successor only from the exact projected source. If Codex rotates first, Decodex imports
+the valid non-older winner without a second provider call and never restores the losing refresh
+token. Stable passive following applies the same non-older same-account rule for later rotations.
 
 The runtime keeps the mature Codex app-server protocol and safety harness. It does not
 replace Codex with a new agent kernel. It preserves exact account binding, pre-spawn

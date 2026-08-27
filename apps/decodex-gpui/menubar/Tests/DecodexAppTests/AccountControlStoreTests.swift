@@ -57,7 +57,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertNil(store.message)
 	}
 
-	func testLegacyPendingSnapshotDoesNotBlockOrdinaryRouteSelection() async throws {
+	func testNewRouteCanReplaceADifferentPendingTarget() async throws {
 		let secondID = "22222222-2222-4222-8222-222222222222"
 		let first = accountRecord()
 		let second = accountRecord(accountID: secondID, alias: "Second")
@@ -68,7 +68,8 @@ final class AccountControlStoreTests: XCTestCase {
 			pendingRoute: AccountRoutePending(
 				operationID: "33333333-3333-4333-8333-333333333333",
 				accountID: accountID,
-				routingRevision: 9
+				routingRevision: 9,
+				waitReason: .sharedAuthStabilizing
 			)
 		)
 		let fixture = pendingFixture()
@@ -80,7 +81,7 @@ final class AccountControlStoreTests: XCTestCase {
 		)
 		await store.refresh()
 
-		XCTAssertTrue(store.canRouteAccount(accountID))
+		XCTAssertFalse(store.canRouteAccount(accountID))
 		XCTAssertTrue(store.canRouteAccount(secondID))
 		await store.routeAccount(secondID)
 		let routeRequest = await client.routeRequest()
@@ -89,7 +90,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertNil(store.pendingRoute)
 	}
 
-	func testCurrentRouteRemainsNoOpWhenLegacyPendingSnapshotIsPresent() async throws {
+	func testCurrentRouteCanCancelADifferentPendingTarget() async throws {
 		let secondID = "22222222-2222-4222-8222-222222222222"
 		let first = accountRecord()
 		let second = accountRecord(accountID: secondID, alias: "Second")
@@ -105,7 +106,8 @@ final class AccountControlStoreTests: XCTestCase {
 			pendingRoute: AccountRoutePending(
 				operationID: "33333333-3333-4333-8333-333333333333",
 				accountID: secondID,
-				routingRevision: 9
+				routingRevision: 9,
+				waitReason: .sharedAuthStabilizing
 			),
 			projection: .current(
 				accountID: accountID,
@@ -122,12 +124,12 @@ final class AccountControlStoreTests: XCTestCase {
 		)
 		await store.refresh()
 
-		XCTAssertFalse(store.canRouteAccount(accountID))
+		XCTAssertTrue(store.canRouteAccount(accountID))
 		await store.routeAccount(accountID)
 		let routeRequest = await client.routeRequest()
-		XCTAssertNil(routeRequest)
+		XCTAssertEqual(routeRequest?.accountID, accountID)
 		XCTAssertEqual(store.routing?.mode, .fixed(accountID: accountID))
-		XCTAssertNotNil(store.pendingRoute)
+		XCTAssertNil(store.pendingRoute)
 	}
 
 	func testDirectActionsWaitForTheCurrentSkeletonBeforeDispatch() async throws {
@@ -1054,7 +1056,8 @@ final class AccountControlStoreTests: XCTestCase {
 			pendingRoute: AccountRoutePending(
 				operationID: "33333333-3333-4333-8333-333333333333",
 				accountID: targetAccountID,
-				routingRevision: 9
+				routingRevision: 9,
+				waitReason: .sharedAuthStabilizing
 			),
 			projection: .current(
 				accountID: accountID,

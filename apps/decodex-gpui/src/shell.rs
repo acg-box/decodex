@@ -21,11 +21,12 @@ use gpui::{
 use decodex_protocol::{
 	AccountDto, AccountLifecycleReadinessDto, AccountLoginInstallMode, AccountLoginMethod,
 	AccountLoginStart, AccountLoginState, AccountLoginStatus, AccountObservedStateDto,
-	AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto, AccountSelectionModeDto,
-	AppServerCapability, ClientFailure, DoctorComponent, DoctorIssue, DoctorStatus, EntityId,
-	HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryTurnRole,
-	IdempotencyKey, QuickTaskRecoveryAction, QuickTaskState, QuickTaskSummary, WorkItemBoardCard,
-	WorkItemState,
+	AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto, AccountRouteAuthHomeDto,
+	AccountRouteBlockingProcessDto, AccountRoutePendingDto, AccountRouteWaitReasonDto,
+	AccountSelectionModeDto, AppServerCapability, ClientFailure, DoctorComponent, DoctorIssue,
+	DoctorStatus, EntityId, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
+	HistoryPayloadDto, HistoryTurnRole, IdempotencyKey, QuickTaskRecoveryAction, QuickTaskState,
+	QuickTaskSummary, WorkItemBoardCard, WorkItemState,
 };
 
 use crate::{
@@ -873,7 +874,7 @@ impl Shell {
 			pending_route: None,
 			can_manage: true,
 			can_route: true,
-			route_restart_notice: false,
+			route_reopen_notice: false,
 		};
 		let health_checks = DoctorComponent::ALL
 			.into_iter()
@@ -2908,8 +2909,14 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.is_some_and(|routing| routing.mode == AccountSelectionModeDto::Balanced);
 	let can_manage = snapshot.can_manage;
 	let status = snapshot
-		.route_restart_notice
-		.then(|| "Route succeeded. Restart ChatGPT or Codex to load this account.".to_owned())
+		.pending_route
+		.as_ref()
+		.map(account_route_pending_label)
+		.or_else(|| {
+			snapshot
+				.route_reopen_notice
+				.then(|| "Route succeeded. You can reopen ChatGPT or Codex now.".to_owned())
+		})
 		.or_else(|| shell.account_status.as_ref().map(SharedString::to_string))
 		.or_else(|| account_command_label(snapshot.command).map(str::to_owned))
 		.unwrap_or_else(|| accounts_load_label(snapshot.load).to_owned());
@@ -3076,6 +3083,50 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				),
 		)
 		.into_any_element()
+}
+
+fn account_route_pending_label(pending: &AccountRoutePendingDto) -> String {
+	match &pending.wait_reason {
+		AccountRouteWaitReasonDto::ExternalCodex { blockers, omitted } => {
+			let mut labels = blockers
+				.iter()
+				.map(|blocker| {
+					let process = match blocker.process {
+						AccountRouteBlockingProcessDto::Chatgpt => "ChatGPT",
+						AccountRouteBlockingProcessDto::Codex => "Codex",
+					};
+					let uncertainty = match blocker.auth_home {
+						AccountRouteAuthHomeDto::Shared => "",
+						AccountRouteAuthHomeDto::Unknown => "; auth home unknown",
+					};
+					format!("{process} PID {}{uncertainty}", blocker.pid)
+				})
+				.collect::<Vec<_>>();
+		if *omitted > 0 {
+			labels.push(format!("{omitted} more"));
+		}
+		format!(
+			"Route pending. Quit {}. Keep ChatGPT or Codex closed until routing completes.",
+			labels.join(", ")
+		)
+		},
+		AccountRouteWaitReasonDto::CodexObservationUnavailable => {
+			"Route pending. Codex process ownership could not be inspected safely.".to_owned()
+		},
+		AccountRouteWaitReasonDto::AccountReadiness { readiness } => format!(
+			"Route pending. Target account readiness is {}.",
+			account_readiness_label(*readiness)
+		),
+		AccountRouteWaitReasonDto::SharedAuthStabilizing => {
+			"Route pending. Waiting for stable shared Codex auth.".to_owned()
+		},
+		AccountRouteWaitReasonDto::SharedAuthUnavailable => {
+			"Route pending. Shared Codex auth is unavailable or unsafe.".to_owned()
+		},
+		AccountRouteWaitReasonDto::ProjectionReadback => {
+			"Route pending. Verifying the atomic shared-auth update.".to_owned()
+		},
+	}
 }
 
 fn account_mode_button(
@@ -5940,6 +5991,27 @@ mod tests {
 				},
 			)
 			.is_some()
+		);
+	}
+
+	#[test]
+	fn pending_route_status_names_the_blocking_process() {
+		let pending = AccountRoutePendingDto {
+			operation_id: EntityId::new("30000000-0000-4000-8000-000000000001").unwrap(),
+			account_id: EntityId::new("10000000-0000-4000-8000-000000000001").unwrap(),
+			routing_revision: decodex_protocol::EntityRevision(9),
+			wait_reason: AccountRouteWaitReasonDto::ExternalCodex {
+				blockers: vec![decodex_protocol::AccountRouteProcessBlockerDto {
+					pid: 44_662,
+					process: AccountRouteBlockingProcessDto::Chatgpt,
+					auth_home: AccountRouteAuthHomeDto::Shared,
+				}],
+				omitted: 0,
+			},
+		};
+		assert_eq!(
+			account_route_pending_label(&pending),
+			"Route pending. Quit ChatGPT PID 44662. Keep ChatGPT or Codex closed until routing completes."
 		);
 	}
 

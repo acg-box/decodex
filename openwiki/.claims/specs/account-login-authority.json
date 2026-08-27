@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:693ff94ca6e95437f3be9a6b43088d85559bb30aea6c0ab7fc3fae9964bdef1f",
+  "claims": [
+    {
+      "id": "claim_a3c49fc4897341d8af55579dc54de44e",
+      "statement": "Every current local account-login client and daemon must negotiate exact protocol 2.11 and artifact cohort 7; a version or cohort mismatch is refused before account-login exchange data is accepted.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-protocol/src/client.rs#L250-L280",
+          "version": "repo-lines-v1:sha256:c1b459ec30c0b5a73a630d4db78771155586cef088c3cf1b6948b4931db1598e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhOGUyNjhhMTA2YTNhMzZlMWZhNDQ0ZGIzMGQwMGQ4MTFlYzZmNjVmZDRjNzViYmJkZTRiYzE1Y2FkNjc5M2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNDQzYmE5ZTQwNjBkNTVlYjNiN2M1Zjg1MDYwZWQ0ZThjZjE2OTJmYWVhZDdkZjAxN2IxNWJlNTJiNTY2MTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5YjkxNDVmODhiYzM2ZDk3Zjc3M2U2ZWFhZTExNDYzNTgwMTQwYTBkZmE1NzhlZDRjMDc5MjU4MTY1YzA3ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxMTg5MzIxMTBkMmQ2NjBmYWQ1OGIzYjhhZmE2MWM1MjE1NDQxZTBhYmU4ODczMTk2OTA2ZGViZjY2MGFjY2IifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L108-L162",
+          "version": "repo-lines-v1:sha256:afcd685392ff94d91a030dd02a9e74e93987c373fce12ad6de735f620b3b4948:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiNjgxMDczOTI3Y2QxOWE2NjdhMTdmMmI2YTM5ZDQwYzhlOGM5MzlkZDFlNzlkZGYxODIxOGIzNjRhMGI2YTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5ZjM4MmZmZWU2ZDFiMGFhNjUxZDc2N2YwMzczYmNjMTMyMTZlNDNiYzNjMmRkMGY4OGI2OTAzYzRmZjU4YmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwYzg1YzIyZWVjY2FmNWRkMTBiNjU2MjFhZDVjNTExMGMxOTU1OTczOTFiMDk5NGQ4ZTgxMzU2YTI0Y2JmNDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4ZmM1NmUzOWRlNjQ0ZWM0NDdhZDM2NWYxMTI1YTM5NTBmMTA1MTM3NzZkMDU5NWM3OGFkMzEzNDc3ZGIyMjkifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/wire.rs#L580-L670",
+          "version": "repo-lines-v1:sha256:589552b5306bf8ffaa2db68887001c64dea2f343a820856280828e41658ae742:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjM2U0NTFmYzk3ZDNlYjdmMjA4NjJkNTBkNDc1YWFkNDlhNGE1NTYyYTg1NTUzNzMyMDdiNWVjNGZhOWMwOWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzZTFmMzFlZTViNTE4MTNlNTAxZmEzYTkxNTUyYzNjZWU3MTlmYWQwMTQ3ZDQ3ZGNiMjQ1MGJmZDM4NmI5ZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNiMWFlNjdmMjE1NWZjMDVhMzZlMGY3MDUwN2I1ODI0NzMxODk4NGI5ZDUyNzZhZDU4ODkwYTY4ZjVmZThlZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY0M2Y2YjU2ZGE4MWZmYWEzODhlYTcwZGE3ZDI3Mjc1ODFjYTRiZmZlNmJjYjY3Zjg5OTVmYzIzNDkxNDE1YWUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.2",
+    "at": "2026-08-27T10:25:21.174Z"
+  }
+}

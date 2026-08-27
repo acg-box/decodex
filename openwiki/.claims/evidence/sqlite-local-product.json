@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:8d7736b4ba211e4236f2f46490b573b6e40ef7f5dad24aa9bc679d0de7c08731",
+  "claims": [
+    {
+      "id": "claim_57467868d3114a4f8efa994a912c927d",
+      "statement": "The exact local wire contract is protocol 2.11 with artifact cohort 7, and every pending account Route carries one validated credential-negative wait reason with a bounded concrete blocker list or a closed typed fallback.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L108-L116",
+          "version": "repo-lines-v1:sha256:53580d5cda74d1e06d80ddc27cc3d418b6c408c2c79fa52b0f2e1ec69c97884f:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2I2ODEwNzM5MjdjZDE5YTY2N2ExN2YyYjZhMzlkNDBjOGU4YzkzOWRkMWU3OWRkZjE4MjE4YjM2NGEwYjZhNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzkzNTRlYmE2ODEzNGY3YWU5ZGQwM2I4OTE1NjhjN2JhMjFmZGMwYzU4MTgyOTVmYTE2NTI2YTE1ZmU3ODM0MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjBjODVjMjJlZWNjYWY1ZGQxMGI2NTYyMWFkNWM1MTEwYzE5NTU5NzM5MWIwOTk0ZDhlODEzNTZhMjRjYmY0NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTY1YjA5NDkxMGM5NjczMTAxMzg2NTlmNmVlOGNjYzU2ZWViYWY4YTRmODU1ZmZlMGNiNjg1NzQxMGUwMTQ1NCJ9"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/wire.rs#L1961-L2077",
+          "version": "repo-lines-v1:sha256:07ac20e237c480477d7188a30139921ed862a5c07687162572e194189f14f56a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2ODgxYmUzNGIyN2FlNGMzZWQzY2RiNDQwMDI2MTllMjYzMmMzYzY4Nzk4ZDAwYTMwMjRlNWYwMmYyZWJiM2FkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMDg5NDc3MjI4ZjRhNmNiM2QyMmY0YjZmYmNlMzJlZGFkNjc1NjQwM2QwODhmYzM1MzM4ZGRlZDhmY2I3YzRkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmOThhMjZiNDUxYTUwMGFmYTg5YThmODg2OTUyMzUxYWM5ZjU2ZmU3Mzg0YTVmODBiNmQyZjU5NGMwOGIyZTUyIn0"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/wire.rs#L4529-L4567",
+          "version": "repo-lines-v1:sha256:b720f742ec6f09f0da127700df9319b2df5fff786bd87d1032fcea193e9516c8:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkMzU3MWNmOWU1YTFmNDA1NjI4ZTA1MDI3MGJjOWY2NDMyYzhkZmE0MjIyNzMxNDNhNzVlZmQzMWFjOGM2ODkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxYmUzNWQzZWU5ZGFiM2Y3ZGFhOTkxY2RkN2ViYzNjYmJjYjQzYzIxYTFiNTE0ZmM3MDQ5NDNiZTFjOTY3ZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5ZTFhOTVhZDA0ZDdkN2E1OTlhMDU5N2VjZjhhZmYwMzkwNzEzMmUwNmQyNmEyN2VlZmY1YmE0OTVmNjMxM2UifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_eef2e728370842198097ff38abf18e7a",
+      "statement": "Both desktop account surfaces render a pending Route's concrete process PID and auth-home certainty or its exact typed fallback reason without receiving credential values.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift#L111-L203",
+          "version": "repo-lines-v1:sha256:6ddc83c5a193819ca0987720a6e788a2833ddf65f0a9cbbdfa9d988ac8e46ae7:eyJzZWxlY3RlZExpbmVDb3VudCI6OTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiYzQ5ODczZDc0OGViZjljN2EwYjAzYzE2ODQ1MTJiNTNjNTFiOWY5MjYwOWIzMDg3MWIwYWMxYmExOTQxNWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhZjNkMzZiZDUxZmQ3YWY1NTgwN2JhNmFkMzQwNGQyNTJlNjRhMmJkODkxMjdlNmQxZjhlMzY2NjFiNDRkZTgifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3088-L3130",
+          "version": "repo-lines-v1:sha256:6c3928af1599e587d6dec8bb9c1a92e8ec60c3078be65726ee39882e8cf4ba33:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1OTFiN2VkNzk3ZGM0MTBlNmI4Yjk0ZDkwNGM2MTYzYWQ4OGE3MjJiZWY2YzJjZjRmZDBkOGVjNTdhNjUzY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNDUzNGVjMmNlZGI4MTk5OWVkYmRlOWQxZWZiYzc5OGE5NzdhZTc2M2ZhZWYxZDRmNDZiMmYzNGE2ODFiODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkMDE3MzI5OTUwMzM1MTU2ZWI4ZjA1NzEwNjMzMzIzNmYwNmU5MTlkODg1NmNiN2UyOWY4Mjc3MTEyMzNhMWEifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.2",
+    "at": "2026-08-27T10:25:21.174Z"
+  }
+}

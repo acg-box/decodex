@@ -176,7 +176,7 @@ impl ServiceBootstrap {
 		};
 		if let (ProductStore::Available(store), Some(accounts)) = (&store, &accounts) {
 			let _ = store.release_interrupted_account_route_claims().await;
-			recover_pending_account_routes_once(
+			let _ = recover_pending_account_routes_once(
 				Arc::clone(accounts),
 				store,
 				account_observations.as_ref(),

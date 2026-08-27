@@ -472,6 +472,7 @@ final class ResetCardStore {
 
 	var canBeginEnrollment: Bool {
 		accountControlClient != nil
+			&& pendingRoute == nil
 			&& canPerformDirectAccountControl
 			&& isAccountControlInProgress == false
 	}
@@ -482,6 +483,7 @@ final class ResetCardStore {
 		}
 		let accountIDs = accounts.map { $0.account.accountID }
 		return accountControlClient != nil
+			&& pendingRoute == nil
 			&& accountIDs.count > 1
 			&& accountIDs.count == routing.order.count
 			&& Set(accountIDs) == Set(routing.order)
@@ -1293,11 +1295,17 @@ final class ResetCardStore {
 	}
 
 	func canRouteAccount(_ accountID: String) -> Bool {
+		guard pendingRoute?.accountID != accountID else {
+			return false
+		}
 		guard let state = accounts.first(where: { $0.account.accountID == accountID }) else {
 			return false
 		}
 		guard state.routeCapability == .ready else {
 			return false
+		}
+		if pendingRoute != nil {
+			return true
 		}
 		let isFixedRoute: Bool
 		if let routing,
@@ -1307,8 +1315,7 @@ final class ResetCardStore {
 		} else {
 			isFixedRoute = false
 		}
-		return isFixedRoute == false
-			|| isCodexProjection(accountID) == false
+		return isFixedRoute == false || isCodexProjection(accountID) == false
 	}
 
 	func enrollFromSharedCodex(enabled: Bool = true) async {
@@ -1347,7 +1354,8 @@ final class ResetCardStore {
 		_ accountID: String,
 		enabled: Bool
 	) async {
-		guard let account = accountRecord(accountID),
+		guard pendingRoute == nil,
+			let account = accountRecord(accountID),
 			let accountControlClient
 		else {
 			presentAccountControlUnavailable()
@@ -1371,7 +1379,8 @@ final class ResetCardStore {
 	}
 
 	func logoutAccount(_ accountID: String) async {
-		guard let account = accountRecord(accountID),
+		guard pendingRoute == nil,
+			let account = accountRecord(accountID),
 			let accountControlClient
 		else {
 			presentAccountControlUnavailable()
@@ -1398,8 +1407,10 @@ final class ResetCardStore {
 
 	func routeAccount(_ accountID: String) async {
 		guard let account = accountRecord(accountID),
+			canRouteAccount(accountID),
 			let routing,
-			routing.order.contains(accountID)
+			routing.order.contains(accountID),
+			let accountControlClient
 		else {
 			presentAccountControlUnavailable()
 			return
@@ -1411,13 +1422,8 @@ final class ResetCardStore {
 		} else {
 			needsFixedRouting = true
 		}
-		guard needsCodexProjection || needsFixedRouting else {
-			return
-		}
-		guard canRouteAccount(accountID),
-			let accountControlClient
-		else {
-			presentAccountControlUnavailable()
+		let replacesPendingRoute = pendingRoute != nil
+		guard needsCodexProjection || needsFixedRouting || replacesPendingRoute else {
 			return
 		}
 
@@ -1441,7 +1447,8 @@ final class ResetCardStore {
 	}
 
 	func selectBalancedAccounts() async {
-		guard let routing,
+		guard pendingRoute == nil,
+			let routing,
 			let accountControlClient
 		else {
 			presentAccountControlUnavailable()

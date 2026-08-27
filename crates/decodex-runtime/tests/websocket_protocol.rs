@@ -552,8 +552,8 @@ async fn exact_current_and_pre_payload_version_refusals_use_real_websockets() {
 		panic!("expected welcome");
 	};
 	assert_eq!(welcome.version, CURRENT_VERSION);
-	assert_eq!(welcome.supported.minimum_minor, 10);
-	assert_eq!(welcome.supported.maximum_minor, 10);
+	assert_eq!(welcome.supported.minimum_minor, 11);
+	assert_eq!(welcome.supported.maximum_minor, 11);
 	assert!(welcome.instance_id.is_some());
 	assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
 	execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
