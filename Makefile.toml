@@ -1,5 +1,9 @@
 # Decodex workspace tasks.
 
+[config]
+default_to_workspace = false
+skip_core_tasks      = true
+
 # Audit
 # | task                    | type      | cwd  |
 # | ----------------------- | --------- | ---- |
@@ -13,7 +17,6 @@
 # | prepare-node            | command   | site |
 
 [tasks.audit-node]
-workspace = false
 dependencies = [
 	"audit-node-lock",
 	"prepare-node",
@@ -23,7 +26,6 @@ dependencies = [
 ]
 
 [tasks.audit-node-advisories]
-workspace = false
 cwd = "site"
 dependencies = ["audit-node-lock"]
 command = "npm"
@@ -33,7 +35,6 @@ args = [
 ]
 
 [tasks.audit-node-signatures]
-workspace = false
 cwd = "site"
 dependencies = ["audit-node-lock"]
 command = "npm"
@@ -43,7 +44,6 @@ args = [
 ]
 
 [tasks.audit-node-lock]
-workspace = false
 command = "python3"
 args = [
 	"scripts/audit_node_lock.py",
@@ -51,7 +51,6 @@ args = [
 ]
 
 [tasks.audit-node-provenance]
-workspace = false
 dependencies = ["prepare-node"]
 command = "python3"
 args = [
@@ -59,7 +58,6 @@ args = [
 ]
 
 [tasks.audit-node-runtime]
-workspace = false
 command = "python3"
 args = [
 	"scripts/audit_node_lock.py",
@@ -67,14 +65,12 @@ args = [
 ]
 
 [tasks.audit-vstyle-rust]
-workspace = false
 command = "python3"
 args = [
 	"scripts/vstyle_audit.py",
 ]
 
 [tasks.prepare-node]
-workspace = false
 cwd = "site"
 dependencies = ["audit-node-lock"]
 command = "npm"
@@ -97,7 +93,6 @@ args = [
 
 [tasks.check]
 clear = true
-workspace = false
 dependencies = [
 	"audit-node",
 	"build",
@@ -110,7 +105,6 @@ dependencies = [
 
 [tasks.check-automations]
 clear = true
-workspace = false
 dependencies = [
 	"audit-node",
 	"build",
@@ -123,7 +117,6 @@ dependencies = [
 
 [tasks.check-automations-sandboxed]
 clear = true
-workspace = false
 dependencies = [
 	"build",
 	"check-node",
@@ -135,7 +128,6 @@ dependencies = [
 
 [tasks.check-sandboxed]
 clear = true
-workspace = false
 dependencies = [
 	"build",
 	"check-node",
@@ -146,13 +138,11 @@ dependencies = [
 ]
 
 [tasks.check-node]
-workspace = false
 dependencies = [
 	"check-node-types",
 ]
 
 [tasks.check-node-types]
-workspace = false
 cwd = "site"
 dependencies = ["audit-node-lock"]
 command = "npm"
@@ -162,20 +152,20 @@ args = [
 ]
 
 [tasks.check-rust]
-workspace = false
 command = "cargo"
 args = [
 	"check",
+	"--locked",
 	"--all-features",
 	"--all-targets",
 	"--workspace",
 ]
 
 [tasks.check-rust-headless]
-workspace = false
 command = "cargo"
 args = [
 	"check",
+	"--locked",
 	"--all-features",
 	"--all-targets",
 	"--workspace",
@@ -191,13 +181,11 @@ args = [
 
 [tasks.build]
 clear = true
-workspace = false
 dependencies = [
 	"build-node",
 ]
 
 [tasks.build-node]
-workspace = false
 cwd = "site"
 dependencies = ["audit-node-lock"]
 command = "npm"
@@ -219,28 +207,24 @@ args = [
 # | fmt-toml-check | extend    |     |
 
 [tasks.fmt]
-workspace = false
 dependencies = [
 	"fmt-rust",
 	"fmt-toml",
 ]
 
 [tasks.fmt-check]
-workspace = false
 dependencies = [
 	"fmt-rust-check",
 	"fmt-toml-check",
 ]
 
 [tasks.fmt-check-sandboxed]
-workspace = false
 dependencies = [
 	"fmt-rust-check-sandboxed",
 	"fmt-toml-check",
 ]
 
 [tasks.fmt-rust]
-workspace = false
 command = "rustup"
 args = [
 	"run",
@@ -263,7 +247,6 @@ args = [
 ]
 
 [tasks.fmt-rust-check-sandboxed]
-workspace = false
 command = "${DECODEX_TRUSTED_NIGHTLY_CARGO_FMT}"
 args = [
 	"--all",
@@ -272,7 +255,6 @@ args = [
 ]
 
 [tasks.fmt-toml]
-workspace = false
 command = "taplo"
 args = [
 	"fmt",
@@ -293,18 +275,15 @@ args = [
 # | lint-rust-headless | command | |
 
 [tasks.lint]
-workspace = false
 dependencies = [
 	"lint-rust",
 ]
 
 [tasks.lint-rust]
-workspace = false
 command = "python3"
 args = ["scripts/lint_rust_workspace.py"]
 
 [tasks.lint-rust-headless]
-workspace = false
 command = "python3"
 args = ["scripts/lint_rust_workspace.py", "--headless"]
 
@@ -315,18 +294,17 @@ args = ["scripts/lint_rust_workspace.py", "--headless"]
 # | lint-rust-fix | command   |     |
 
 [tasks.lint-fix]
-workspace = false
 dependencies = [
 	"lint-rust-fix",
 ]
 
 [tasks.lint-rust-fix]
-workspace = false
 command = "cargo"
 args = [
 	"clippy",
 	"--fix",
 	"--allow-dirty",
+	"--locked",
 	"--all-features",
 	"--all-targets",
 	"--workspace",
@@ -366,7 +344,6 @@ args = [
 
 [tasks.test]
 clear = true
-workspace = false
 dependencies = [
 	"test-automations",
 	"test-gate-contract",
@@ -377,7 +354,6 @@ dependencies = [
 ]
 
 [tasks.test-automations]
-workspace = false
 command = "python3"
 args = [
 	"-m",
@@ -387,7 +363,6 @@ args = [
 
 [tasks.test-sandboxed]
 clear = true
-workspace = false
 dependencies = [
 	"test-automations",
 	"test-gate-contract",
@@ -399,7 +374,6 @@ dependencies = [
 
 [tasks.test-headless]
 clear = true
-workspace = false
 dependencies = [
 	"test-automations",
 	"test-gate-contract",
@@ -411,7 +385,6 @@ dependencies = [
 
 [tasks.test-headless-sandboxed]
 clear = true
-workspace = false
 dependencies = [
 	"test-automations",
 	"test-gate-contract",
@@ -422,7 +395,6 @@ dependencies = [
 ]
 
 [tasks.test-gate-contract]
-workspace = false
 command = "python3"
 args = [
 	"-m",
@@ -433,22 +405,22 @@ args = [
 ]
 
 [tasks.test-rust]
-workspace = false
 command = "cargo"
 args = [
 	"nextest",
 	"run",
+	"--locked",
 	"--workspace",
 	"--all-targets",
 	"--all-features",
 ]
 
 [tasks.test-rust-headless]
-workspace = false
 command = "cargo"
 args = [
 	"nextest",
 	"run",
+	"--locked",
 	"--workspace",
 	"--all-targets",
 	"--all-features",
@@ -457,7 +429,6 @@ args = [
 ]
 
 [tasks.test-vnext-architecture]
-workspace = false
 command = "python3"
 args = [
 	"-m",
@@ -466,14 +437,12 @@ args = [
 ]
 
 [tasks.test-vnext-cli-diagnostics]
-workspace = false
 command = "python3"
 args = [
 	"scripts/vnext/cli_diagnostics_test.py",
 ]
 
 [tasks.test-local-database]
-workspace = false
 command = "python3"
 args = [
 	"scripts/vnext/local_database_gate.py",

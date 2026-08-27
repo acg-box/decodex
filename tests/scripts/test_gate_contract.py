@@ -17,7 +17,9 @@ class GateContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         with (REPO_ROOT / "Makefile.toml").open("rb") as source:
-            cls.tasks = tomllib.load(source)["tasks"]
+            document = tomllib.load(source)
+        cls.config = document["config"]
+        cls.tasks = document["tasks"]
         spec = importlib.util.spec_from_file_location(
             "decodex_local_database_gate",
             REPO_ROOT / "scripts/vnext/local_database_gate.py",
@@ -38,8 +40,39 @@ class GateContractTests(unittest.TestCase):
     def test_active_rust_toolchain_remains_stable(self) -> None:
         with (REPO_ROOT / "rust-toolchain.toml").open("rb") as source:
             toolchain = tomllib.load(source)["toolchain"]
-        self.assertEqual(toolchain["channel"], "stable")
-        self.assertIn("rustfmt", toolchain["components"])
+        self.assertEqual(
+            toolchain,
+            {
+                "channel": "stable",
+                "components": ["clippy"],
+                "profile": "minimal",
+            },
+        )
+
+    def test_cargo_make_uses_global_workspace_defaults(self) -> None:
+        self.assertEqual(
+            self.config,
+            {"default_to_workspace": False, "skip_core_tasks": True},
+        )
+        self.assertTrue(all("workspace" not in task for task in self.tasks.values()))
+
+    def test_direct_cargo_validation_tasks_use_the_lockfile(self) -> None:
+        for task_name in (
+            "check-rust",
+            "check-rust-headless",
+            "lint-rust-fix",
+            "test-rust",
+            "test-rust-headless",
+        ):
+            with self.subTest(task=task_name):
+                task = self.tasks[task_name]
+                self.assertEqual(task["command"], "cargo")
+                self.assertIn("--locked", task["args"])
+
+    def test_cargo_uses_the_standard_thin_release_profile(self) -> None:
+        with (REPO_ROOT / "Cargo.toml").open("rb") as source:
+            cargo_manifest = tomllib.load(source)
+        self.assertEqual(cargo_manifest["profile"], {"release": {"lto": "thin"}})
 
     def test_blocking_test_aggregates_include_the_local_database_gate(self) -> None:
         for task_name in ("test", "test-sandboxed", "test-headless", "test-headless-sandboxed"):
@@ -53,7 +86,6 @@ class GateContractTests(unittest.TestCase):
         self.assertEqual(
             self.tasks["test-local-database"],
             {
-                "workspace": False,
                 "command": "python3",
                 "args": ["scripts/vnext/local_database_gate.py"],
             },
