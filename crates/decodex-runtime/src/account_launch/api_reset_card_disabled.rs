@@ -1,4 +1,4 @@
-//! Explicitly unavailable reset-card capability for the bounded SQLite Quick Task slice.
+//! Explicitly unavailable reset-card capability for the bounded SQLite Conversation slice.
 
 use std::sync::Arc;
 

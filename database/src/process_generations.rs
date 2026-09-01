@@ -12,7 +12,7 @@ use decodex_core::{
 use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
 
 use crate::{
-	FreshQuickTaskProcessGeneration, SqliteStore, StoreError, account_lifecycle::sql_error,
+	FreshConversationProcessGeneration, SqliteStore, StoreError, account_lifecycle::sql_error,
 	unix_micros,
 };
 
@@ -47,7 +47,7 @@ pub struct ProcessGenerationMutation {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessGenerationRejection {
 	IdentityConflict,
-	QuickTaskAuthorityUnavailable,
+	ConversationAuthorityUnavailable,
 	RestoreAuthorityUnavailable,
 	AccountMissing,
 	AccountQuarantined,
@@ -77,19 +77,19 @@ pub enum ProcessGenerationMutationOutcome {
 }
 
 impl SqliteStore {
-	/// Persist one Quick Task generation intent before process creation.
+	/// Persist one Conversation generation intent before process creation.
 	#[allow(clippy::too_many_lines)] // Keep one atomic generation-admission transaction together.
-	pub async fn prepare_quick_task_bound_process_generation(
+	pub async fn prepare_conversation_bound_process_generation(
 		&self,
 		intent: &ProcessGenerationIntent,
 		binding: &ProcessGenerationAccountBinding,
-		admission: FreshQuickTaskProcessGeneration,
+		admission: FreshConversationProcessGeneration,
 	) -> Result<PrepareProcessGenerationOutcome, StoreError> {
 		if admission.generation_id() != &intent.generation_id
 			|| intent.account_id != admission.readback().request.selected_account_id
 		{
 			return Err(StoreError::InvalidInput(
-				"Quick Task admission and ProcessGeneration identity differ",
+				"Conversation admission and ProcessGeneration identity differ",
 			));
 		}
 		let intent = intent.clone();
@@ -116,7 +116,7 @@ impl SqliteStore {
 				.map_err(sql_error)?;
 			if !receipt_matches {
 				return Ok(PrepareProcessGenerationOutcome::Rejected {
-					rejection: ProcessGenerationRejection::QuickTaskAuthorityUnavailable,
+					rejection: ProcessGenerationRejection::ConversationAuthorityUnavailable,
 					actual: empty_mutation(),
 				});
 			}

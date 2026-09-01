@@ -26,8 +26,7 @@ use crate::{
 	EntityRevision, IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload,
 	QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope, ResetCardDescriptorDto,
 	ResetCardInventoryResult, ResetCardOperationResult, ResultPayload, RetainedSessionConfig,
-	RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal, WorkItemBoardPageSize,
-	WorkItemBoardProjectId, WorkItemBoardResult, WorkItemBoardWorkItemId, WorkItemState,
+	RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 };
 use decodex_core::{
@@ -464,9 +463,8 @@ impl ResetCardClient {
 			QueryResultPayload::ResetCards(result) => {
 				let mismatched = match &result {
 					ResetCardInventoryResult::Available { account_id, .. }
-					| ResetCardInventoryResult::ObservationFailed { account_id, .. } => {
-						account_id != &expected_account_id
-					},
+					| ResetCardInventoryResult::ObservationFailed { account_id, .. } =>
+						account_id != &expected_account_id,
 					ResetCardInventoryResult::Unavailable { .. } => false,
 				};
 				if mismatched { Err(ClientFailure::ProtocolMalformed) } else { Ok(result) }
@@ -536,9 +534,8 @@ impl ResetCardClient {
 
 		match result {
 			Ok(response) => Ok(response),
-			Err(failure) if dispatch_attempted.load(Ordering::Acquire) => {
-				Ok(ResetCardConsumeResponse::PotentiallyDispatched { failure })
-			},
+			Err(failure) if dispatch_attempted.load(Ordering::Acquire) =>
+				Ok(ResetCardConsumeResponse::PotentiallyDispatched { failure }),
 			Err(failure) => Err(failure),
 		}
 	}
@@ -580,9 +577,8 @@ impl ResetCardClient {
 					}
 					return Ok(CompletedOneShot::new(result.payload, socket));
 				},
-				ServerMessage::Event(event) => {
-					self.verify_version_and_server(event.version, &event.server_id)?
-				},
+				ServerMessage::Event(event) =>
+					self.verify_version_and_server(event.version, &event.server_id)?,
 				ServerMessage::Refusal(refusal) => return Err(self.refusal_failure(refusal)),
 				_ => return Err(ClientFailure::ProtocolMalformed),
 			}
@@ -676,14 +672,12 @@ impl ResetCardClient {
 						) if result_account_id == account_id
 							&& result_descriptor == descriptor
 							&& entity_revision == expected_revision =>
-						{
 							Ok(ResetCardConsumeResponse::Accepted {
 								account_id,
 								descriptor,
 								state,
 								entity_revision,
-							})
-						},
+							}),
 						(
 							CommandOutcome::Succeeded,
 							Some(entity_revision),
@@ -696,19 +690,15 @@ impl ResetCardClient {
 						) if result_account_id == account_id
 							&& result_descriptor == descriptor
 							&& entity_revision == expected_revision =>
-						{
 							Ok(ResetCardConsumeResponse::Accepted {
 								account_id,
 								descriptor,
 								state: ResetCardOperationResult::Completed { outcome },
 								entity_revision,
-							})
-						},
+							}),
 						(CommandOutcome::Rejected, None, None, Some(error))
 							if !matches!(&error, CommandError::AcceptanceUnknown) =>
-						{
-							Ok(ResetCardConsumeResponse::Rejected { error })
-						},
+							Ok(ResetCardConsumeResponse::Rejected { error }),
 						(
 							CommandOutcome::AcceptanceUnknown,
 							None,
@@ -722,9 +712,8 @@ impl ResetCardClient {
 
 					return response.map(|value| CompletedOneShot::new(value, socket));
 				},
-				ServerMessage::Event(event) => {
-					self.verify_version_and_server(event.version, &event.server_id)?
-				},
+				ServerMessage::Event(event) =>
+					self.verify_version_and_server(event.version, &event.server_id)?,
 				ServerMessage::Refusal(refusal) => return Err(self.refusal_failure(refusal)),
 				_ => return Err(ClientFailure::ProtocolMalformed),
 			}
@@ -793,9 +782,8 @@ impl ResetCardClient {
 
 					return Ok(socket);
 				},
-				ServerMessage::Event(event) => {
-					self.verify_version_and_server(event.version, &event.server_id)?
-				},
+				ServerMessage::Event(event) =>
+					self.verify_version_and_server(event.version, &event.server_id)?,
 				ServerMessage::Refusal(refusal) => return Err(self.refusal_failure(refusal)),
 				_ => return Err(ClientFailure::ProtocolMalformed),
 			}
@@ -862,65 +850,6 @@ impl ResetCardClient {
 			ClientFailure::ServerIdentityMismatch
 		} else {
 			map_refusal(refusal.refusal)
-		}
-	}
-}
-
-/// Read-only V2.11 client for bounded canonical WorkItem board pages.
-pub struct WorkItemBoardClient {
-	transport: ResetCardClient,
-}
-impl WorkItemBoardClient {
-	/// Build a board client over one selected pinned server profile.
-	pub const fn new(profile: ClientProfile) -> Self {
-		Self { transport: ResetCardClient::new(profile) }
-	}
-
-	/// Selected client profile.
-	pub const fn profile(&self) -> &ClientProfile {
-		self.transport.profile()
-	}
-
-	/// Read one exact Project/filter/cursor page without mutation or execution authority.
-	pub async fn page(
-		&self,
-		project_id: WorkItemBoardProjectId,
-		state: Option<WorkItemState>,
-		after: Option<WorkItemBoardWorkItemId>,
-		page_size: WorkItemBoardPageSize,
-	) -> Result<WorkItemBoardResult, ClientFailure> {
-		let expected_project_id = project_id.clone();
-		let expected_after = after.clone();
-		let completed = time::timeout(
-			CLIENT_TIMEOUT,
-			self.transport.query_inner(
-				"decodex-work-item-board-page",
-				QueryPayload::GetWorkItemBoardPage { project_id, state, after, page_size },
-			),
-		)
-		.await
-		.map_err(|_| ClientFailure::ProtocolTimeout)??;
-		close_one_shot_socket(completed.socket).await;
-		let payload = completed.value;
-
-		match payload {
-			QueryResultPayload::WorkItemBoard(result) => {
-				if matches!(
-					&result,
-					WorkItemBoardResult::Page(page)
-						if !page.matches_request(
-							&expected_project_id,
-							state,
-							expected_after.as_ref(),
-							page_size,
-						)
-				) {
-					Err(ClientFailure::ProtocolMalformed)
-				} else {
-					Ok(result)
-				}
-			},
-			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
 }
@@ -1023,9 +952,8 @@ impl AccountLoginClient {
 					}
 					return Ok(CompletedOneShot::new(response, socket));
 				},
-				ServerMessage::Event(event) => {
-					self.transport.verify_version_and_server(event.version, &event.server_id)?
-				},
+				ServerMessage::Event(event) =>
+					self.transport.verify_version_and_server(event.version, &event.server_id)?,
 				ServerMessage::Refusal(refusal) => {
 					return Err(self.transport.refusal_failure(refusal));
 				},
@@ -1059,7 +987,7 @@ pub enum AccountCommandResponse {
 	},
 }
 
-/// Same-UID V2.11 client for daemon-owned account queries and lifecycle commands.
+/// Same-UID V2.12 client for daemon-owned account queries and lifecycle commands.
 pub struct AccountClient {
 	transport: ResetCardClient,
 }
@@ -1140,14 +1068,12 @@ impl AccountClient {
 			QueryResultPayload::AccountProfile(result) => {
 				let matches = match &result {
 					AccountProfileResult::Current(profile)
-					| AccountProfileResult::Cached { profile, .. } => {
+					| AccountProfileResult::Cached { profile, .. } =>
 						profile.account_id == expected
 							&& (include_email
-								|| matches!(profile.email, AccountProfileEmailDto::Redacted))
-					},
-					AccountProfileResult::Unavailable { email, .. } => {
-						include_email || matches!(email, AccountProfileEmailDto::Redacted)
-					},
+								|| matches!(profile.email, AccountProfileEmailDto::Redacted)),
+					AccountProfileResult::Unavailable { email, .. } =>
+						include_email || matches!(email, AccountProfileEmailDto::Redacted),
 				};
 				if matches { Ok(result) } else { Err(ClientFailure::ProtocolMalformed) }
 			},
@@ -1319,9 +1245,8 @@ impl AccountClient {
 		};
 		match result {
 			Ok(response) => Ok(response),
-			Err(failure) if dispatch_attempted.load(Ordering::Acquire) => {
-				Ok(AccountCommandResponse::PotentiallyDispatched { failure })
-			},
+			Err(failure) if dispatch_attempted.load(Ordering::Acquire) =>
+				Ok(AccountCommandResponse::PotentiallyDispatched { failure }),
 			Err(failure) => Err(failure),
 		}
 	}
@@ -1385,17 +1310,13 @@ impl AccountClient {
 					) {
 						(CommandOutcome::Succeeded, Some(entity_revision), Some(result), None)
 							if account_result_matches(&payload, entity_revision, &result) =>
-						{
 							Ok(AccountCommandResponse::Applied {
 								entity_revision,
 								result: Box::new(result),
-							})
-						},
+							}),
 						(CommandOutcome::Rejected, None, None, Some(error))
 							if !matches!(error, CommandError::AcceptanceUnknown) =>
-						{
-							Ok(AccountCommandResponse::Rejected { error })
-						},
+							Ok(AccountCommandResponse::Rejected { error }),
 						(
 							CommandOutcome::AcceptanceUnknown,
 							None,
@@ -1409,9 +1330,8 @@ impl AccountClient {
 
 					return response.map(|value| CompletedOneShot::new(value, socket));
 				},
-				ServerMessage::Event(event) => {
-					self.transport.verify_version_and_server(event.version, &event.server_id)?
-				},
+				ServerMessage::Event(event) =>
+					self.transport.verify_version_and_server(event.version, &event.server_id)?,
 				ServerMessage::Refusal(refusal) => {
 					return Err(self.transport.refusal_failure(refusal));
 				},
@@ -1451,11 +1371,10 @@ fn account_result_matches(
 			CommandPayload::EnrollAccountFromSharedCodex { account_id, .. }
 			| CommandPayload::ImportAccountCredentialFile { account_id, .. },
 			ResultPayload::AccountRestored { requested_account_id, account },
-		) => {
+		) =>
 			account_id == requested_account_id
 				&& account.account_id != *requested_account_id
-				&& entity_revision == account.account_revision
-		},
+				&& entity_revision == account.account_revision,
 		(
 			CommandPayload::LogoutAccount { account_id, .. },
 			ResultPayload::AccountLoggedOut { account_id: result_id, tombstone_revision },
@@ -1463,26 +1382,23 @@ fn account_result_matches(
 		(
 			CommandPayload::RouteAccount { account_id, .. },
 			ResultPayload::AccountRouted { account, routing, projection_digest: _ },
-		) => {
+		) =>
 			account.account_id == *account_id
 				&& account.account_revision.0 > 0
 				&& routing.revision == entity_revision
-				&& routing.mode == AccountSelectionModeDto::Fixed(account_id.clone())
-		},
+				&& routing.mode == AccountSelectionModeDto::Fixed(account_id.clone()),
 		(
 			CommandPayload::RouteAccount { operation_id, account_id, .. },
 			ResultPayload::AccountRoutePending { pending },
-		) => {
+		) =>
 			pending.operation_id == *operation_id
 				&& pending.account_id == *account_id
-				&& pending.routing_revision == entity_revision
-		},
+				&& pending.routing_revision == entity_revision,
 		(
 			CommandPayload::SetBalancedAccountSelection,
 			ResultPayload::AccountRoutingChanged { routing },
-		) => {
-			routing.revision == entity_revision && routing.mode == AccountSelectionModeDto::Balanced
-		},
+		) =>
+			routing.revision == entity_revision && routing.mode == AccountSelectionModeDto::Balanced,
 		(
 			CommandPayload::SetAccountOrder { order },
 			ResultPayload::AccountRoutingChanged { routing },
@@ -1556,14 +1472,12 @@ impl Display for ClientFailure {
 			Self::ProfileMissing => "selected profile is missing",
 			Self::UnsafeHostPath => "client configuration path is unsafe",
 			Self::ServerIdentityUnavailable => "stable server identity is unavailable",
-			Self::RemoteMutationUnsupported => {
-				"reset-card operations require a local pinned profile"
-			},
+			Self::RemoteMutationUnsupported =>
+				"reset-card operations require a local pinned profile",
 			Self::LocalTransportDisabled => "local daemon transport is disabled",
 			Self::RemoteTransportDisabled => "remote daemon transport is disabled",
-			Self::LocalTransportUnsupported => {
-				"local daemon transport is unsupported on this platform"
-			},
+			Self::LocalTransportUnsupported =>
+				"local daemon transport is unsupported on this platform",
 			Self::UnsafeLocalEndpoint => "local daemon endpoint is unsafe",
 			Self::LocalPeerIdentityUnavailable => "local daemon peer identity is unavailable",
 			Self::LocalPeerUidMismatch => "local daemon peer UID does not match",
@@ -1576,9 +1490,8 @@ impl Display for ClientFailure {
 			Self::ProtocolMalformed => "daemon protocol response is malformed",
 			Self::ProtocolViolation => "daemon refused the protocol operation",
 			Self::ProtocolBackpressure => "daemon protocol backpressure limit was reached",
-			Self::ApplicationAcceptanceUnknown => {
-				"daemon could not establish whether application acceptance committed"
-			},
+			Self::ApplicationAcceptanceUnknown =>
+				"daemon could not establish whether application acceptance committed",
 		})
 	}
 }
@@ -1599,9 +1512,8 @@ fn map_config_error(error: ConfigError) -> ClientFailure {
 	match error {
 		ConfigError::UnsupportedVersion => ClientFailure::ConfigurationVersion,
 		ConfigError::MissingProfile => ClientFailure::ProfileMissing,
-		ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. }) => {
-			ClientFailure::ConfigurationMissing
-		},
+		ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. }) =>
+			ClientFailure::ConfigurationMissing,
 		ConfigError::Path(_) => ClientFailure::UnsafeHostPath,
 		_ => ClientFailure::ConfigurationMalformed,
 	}
@@ -1619,22 +1531,18 @@ fn map_identity_error(error: ConfigError) -> ClientFailure {
 fn map_local_transport_failure(failure: LocalTransportRefusal) -> ClientFailure {
 	match failure {
 		LocalTransportRefusal::Disabled => ClientFailure::LocalTransportDisabled,
-		LocalTransportRefusal::InvalidPolicy | LocalTransportRefusal::ConfigurationUnavailable => {
-			ClientFailure::ConfigurationMalformed
-		},
+		LocalTransportRefusal::InvalidPolicy | LocalTransportRefusal::ConfigurationUnavailable =>
+			ClientFailure::ConfigurationMalformed,
 		LocalTransportRefusal::UnsupportedPlatform => ClientFailure::LocalTransportUnsupported,
-		LocalTransportRefusal::EffectiveUidMismatch | LocalTransportRefusal::PeerUidMismatch => {
-			ClientFailure::LocalPeerUidMismatch
-		},
+		LocalTransportRefusal::EffectiveUidMismatch | LocalTransportRefusal::PeerUidMismatch =>
+			ClientFailure::LocalPeerUidMismatch,
 		LocalTransportRefusal::UnsafeDirectory
 		| LocalTransportRefusal::UnsafeEndpoint
 		| LocalTransportRefusal::EndpointReplaced => ClientFailure::UnsafeLocalEndpoint,
-		LocalTransportRefusal::PeerCredentialsUnavailable => {
-			ClientFailure::LocalPeerIdentityUnavailable
-		},
-		LocalTransportRefusal::EndpointUnavailable | LocalTransportRefusal::EndpointInUse => {
-			ClientFailure::ProtocolDisconnected
-		},
+		LocalTransportRefusal::PeerCredentialsUnavailable =>
+			ClientFailure::LocalPeerIdentityUnavailable,
+		LocalTransportRefusal::EndpointUnavailable | LocalTransportRefusal::EndpointInUse =>
+			ClientFailure::ProtocolDisconnected,
 	}
 }
 
@@ -1659,12 +1567,10 @@ fn map_receive_error(error: tokio_tungstenite::tungstenite::Error) -> ClientFail
 
 fn map_refusal(refusal: Refusal) -> ClientFailure {
 	match refusal {
-		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. }) => {
-			ClientFailure::ProtocolMajorMismatch
-		},
-		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. }) => {
-			ClientFailure::ProtocolMinorMismatch
-		},
+		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. }) =>
+			ClientFailure::ProtocolMajorMismatch,
+		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. }) =>
+			ClientFailure::ProtocolMinorMismatch,
 		Refusal::ArtifactCohortMismatch { .. } => ClientFailure::ArtifactCohortMismatch,
 		Refusal::ServerIdentityMismatch { .. } => ClientFailure::ServerIdentityMismatch,
 		Refusal::ProtocolViolation { .. } => ClientFailure::ProtocolViolation,
@@ -1682,8 +1588,7 @@ fn version_failure(version: ProtocolVersion) -> ClientFailure {
 
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests {
-	#[cfg(unix)]
-	use std::os::unix::fs::PermissionsExt as _;
+	#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
 	use std::{fs, time::Duration};
 
 	use futures_util::{SinkExt as _, StreamExt as _};
@@ -1693,20 +1598,17 @@ mod tests {
 
 	use crate::{
 		AccountClient, AccountCommandResponse, AccountProfileDto, AccountProfileEmailDto,
-		AccountProfileErrorDto,
-		AccountProfileResult, AccountRoutePendingDto, AccountRouteWaitReasonDto,
-		CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, Channel, ClientCommandId,
-		ClientFailure, ClientMessage, ClientProfile, CommandError, CommandOutcome, CommandPayload,
-		CommandReceipt, CommandResultEnvelope, CorrelationId, Cursor, DoctorCheck, DoctorClient,
-		DoctorComponent,
-		DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision, EventEnvelope,
-		EventPayload, IdempotencyKey, LocalTransportAuthority, PREVIOUS_MINOR_VERSION, ProfileKind,
-		ProtocolVersion, QueryId, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition,
-		ReconnectMode, Refusal, RefusalEnvelope, ResetCardClient, ResetCardConsumeResponse,
-		ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, RetainedSessionFailure,
-		ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope, SupportedVersions,
-		VersionRefusal, WireText, WorkItemBoardClient, WorkItemBoardPage, WorkItemBoardPageSize,
-		WorkItemBoardProjectId, WorkItemBoardResult, WorkItemState,
+		AccountProfileErrorDto, AccountProfileResult, AccountRoutePendingDto,
+		AccountRouteWaitReasonDto, CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, Channel,
+		ClientCommandId, ClientFailure, ClientMessage, ClientProfile, CommandError, CommandOutcome,
+		CommandPayload, CommandReceipt, CommandResultEnvelope, CorrelationId, Cursor, DoctorCheck,
+		DoctorClient, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId,
+		EntityRevision, EventEnvelope, EventPayload, IdempotencyKey, LocalTransportAuthority,
+		PREVIOUS_MINOR_VERSION, ProfileKind, ProtocolVersion, QueryId, QueryResultEnvelope,
+		QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal, RefusalEnvelope,
+		ResetCardClient, ResetCardConsumeResponse, ResetCardDescriptorDto,
+		ResetCardOperationResult, ResultPayload, RetainedSessionFailure, ServerId, ServerMessage,
+		ServerWelcome, SnapshotEnvelope, SupportedVersions, VersionRefusal, WireText,
 	};
 	use decodex_core::{DecodexRoot, LocalTrustPolicy, ServerIdentity};
 
@@ -1756,8 +1658,7 @@ mod tests {
 	fn account_route_pending_is_a_typed_success_for_the_exact_route() {
 		let operation_id =
 			EntityId::new("30000000-0000-4000-8000-000000000001").expect("operation ID");
-		let account_id =
-			EntityId::new("40000000-0000-4000-8000-000000000001").expect("account ID");
+		let account_id = EntityId::new("40000000-0000-4000-8000-000000000001").expect("account ID");
 		let command = CommandPayload::RouteAccount {
 			operation_id: operation_id.clone(),
 			account_id: account_id.clone(),
@@ -1781,8 +1682,7 @@ mod tests {
 		let mut listener = authority.bind().await.expect("test listener must bind");
 		let operation_id =
 			EntityId::new("30000000-0000-4000-8000-000000000001").expect("operation ID");
-		let account_id =
-			EntityId::new("40000000-0000-4000-8000-000000000001").expect("account ID");
+		let account_id = EntityId::new("40000000-0000-4000-8000-000000000001").expect("account ID");
 		let expected_operation_id = operation_id.clone();
 		let expected_account_id = account_id.clone();
 		let task = tokio::spawn(async move {
@@ -1794,11 +1694,8 @@ mod tests {
 			for response in initial(SERVER_ID) {
 				socket.send(response).await.expect("initial response must send");
 			}
-			let Message::Text(request) = socket
-				.next()
-				.await
-				.expect("command must arrive")
-				.expect("command must decode")
+			let Message::Text(request) =
+				socket.next().await.expect("command must arrive").expect("command must decode")
 			else {
 				panic!("expected text command")
 			};
@@ -2072,47 +1969,14 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_11_window() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 11 });
+	fn protocol_constants_expose_only_the_exact_v2_12_window() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 12 });
 		assert_eq!(PREVIOUS_MINOR_VERSION, CURRENT_VERSION);
 		assert_eq!(
 			SupportedVersions::current(),
-			SupportedVersions { major: 2, minimum_minor: 11, maximum_minor: 11 },
+			SupportedVersions { major: 2, minimum_minor: 12, maximum_minor: 12 },
 		);
 		assert!(WireText::new("bounded").is_ok());
-	}
-
-	#[tokio::test]
-	async fn work_item_board_client_rejects_an_exact_page_echo_mismatch() {
-		let requested_project =
-			WorkItemBoardProjectId::new("10000000-0000-4000-8000-000000000001").unwrap();
-		let echoed_project =
-			WorkItemBoardProjectId::new("10000000-0000-4000-8000-000000000002").unwrap();
-		let page_size = WorkItemBoardPageSize::new(2).unwrap();
-		let page = WorkItemBoardPage::new(
-			echoed_project,
-			Some(WorkItemState::Planned),
-			None,
-			page_size,
-			Vec::new(),
-			None,
-		)
-		.expect("mismatched echo must remain internally valid");
-		let response = typed(ServerMessage::QueryResult(QueryResultEnvelope {
-			version: CURRENT_VERSION,
-			server_id: ServerId::new(SERVER_ID).unwrap(),
-			query_id: QueryId::new("decodex-work-item-board-page").unwrap(),
-			payload: QueryResultPayload::WorkItemBoard(WorkItemBoardResult::Page(page)),
-		}));
-		let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![response]).await;
-
-		assert_eq!(
-			WorkItemBoardClient::new(profile)
-				.page(requested_project, Some(WorkItemState::Planned), None, page_size,)
-				.await,
-			Err(ClientFailure::ProtocolMalformed),
-		);
-		task.await.expect("test server must settle");
 	}
 
 	#[tokio::test]

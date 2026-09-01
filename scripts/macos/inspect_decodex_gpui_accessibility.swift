@@ -760,7 +760,7 @@ do {
 			false, element: factory.element, recorder: ax, operation: "enter.factory_before"
 		)
 		_ = try waitForNativeBool(
-			true, element: quickTasks.element, recorder: ax, operation: "enter.quick_tasks_before"
+			true, element: quickTasks.element, recorder: ax, operation: "enter.conversations_before"
 		)
 		let interval = 0.04
 		let dispatchElapsed = try postKey(36, to: parsed.pid, interval: interval)
@@ -779,7 +779,7 @@ do {
 			false,
 			element: quickTasks.element,
 			recorder: ax,
-			operation: "enter.quick_tasks_after"
+			operation: "enter.conversations_after"
 		)
 		let factorySelected = try waitForNativeBool(
 			true,
@@ -792,7 +792,7 @@ do {
 			"focused_label_after_enter": focusedAfter.label ?? "missing",
 			"focused_role_after_enter": focusedAfter.role,
 			"focused_native_value_after_enter": jsonValue(focusedAfter.nativeValue),
-			"quick_tasks_selected_after": quickTasksSelected,
+			"conversations_selected_after": quickTasksSelected,
 			"factory_selected_after": factorySelected,
 			"enter_dispatch_elapsed_ms": dispatchElapsed,
 		])

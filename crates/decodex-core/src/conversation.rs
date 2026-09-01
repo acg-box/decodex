@@ -52,6 +52,8 @@ domain_id!(ArtifactId, "artifact");
 
 /// Largest domain-owned title accepted before persistence or protocol rendering.
 pub const MAX_CONVERSATION_TITLE_BYTES: usize = 512;
+/// Largest exact opaque provider-thread identity accepted across app-server and persistence.
+pub const MAX_PROVIDER_THREAD_ID_BYTES: usize = 512;
 /// Largest payload retained inline in durable-store history rows.
 pub const MAX_INLINE_HISTORY_BYTES: usize = 16 * 1_024;
 /// Maximum number of fields in one normalized history metadata projection.

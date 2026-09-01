@@ -19,6 +19,9 @@ mod client_lifecycle;
 #[path = "../composer_input.rs"]
 mod composer_input;
 #[allow(dead_code)]
+#[path = "../conversations.rs"]
+mod conversations;
+#[allow(dead_code)]
 #[path = "../desktop_settings.rs"]
 mod desktop_settings;
 #[allow(dead_code)]
@@ -40,9 +43,6 @@ mod program_graph;
 #[path = "../programs.rs"]
 mod programs;
 #[allow(dead_code)]
-#[path = "../quick_tasks.rs"]
-mod quick_tasks;
-#[allow(dead_code)]
 #[path = "../settings_surface.rs"]
 mod settings_surface;
 #[allow(dead_code)]
@@ -52,10 +52,8 @@ mod shell;
 #[path = "../ui_theme.rs"]
 mod ui_theme;
 #[allow(dead_code)]
-#[path = "../work_items.rs"]
-mod work_items;
-
-#[cfg(target_os = "macos")] use objc2 as _;
+#[cfg(target_os = "macos")]
+use objc2 as _;
 use std::path::PathBuf;
 
 use gpui::{AppContext as _, VisualTestAppContext, px, size};
@@ -77,7 +75,7 @@ fn main() -> gpui::Result<()> {
 		Ok("accounts") => Destination::Accounts,
 		Ok("health") => Destination::Health,
 		Ok("settings") => Destination::Settings,
-		_ => Destination::QuickTasks,
+		_ => Destination::Conversations,
 	};
 	let left_sidebar_visible = std::env::var("DECODEX_VISUAL_SIDEBAR").as_deref() != Ok("hidden");
 	let inspector_visible = std::env::var("DECODEX_VISUAL_CONTEXT").as_deref() != Ok("hidden");

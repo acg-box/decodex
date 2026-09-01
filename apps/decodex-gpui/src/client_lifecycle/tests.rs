@@ -16,13 +16,13 @@ use tempfile::TempDir;
 
 use decodex_protocol::{
 	CURRENT_VERSION, Channel, ClientProfile, CommandEnvelope, ConversationHistoryPage,
-	ConversationHistoryResult, CorrelationId, Cursor, DEVELOPMENT_DOMAIN_PACK_ID, DoctorReport,
-	EntityId, EntityRevision, EventEnvelope, EventPayload, HistoryCursorToken,
-	PAPER_INVESTMENT_DOMAIN_PACK_ID, ProgramCycleDraftDto, ProgramEvidenceDraftDto,
-	ProgramNodeKind, ProgramReviewClassification, ProgramReviewDraftDto, QueryEnvelope,
-	QueryPayload, QueryResultEnvelope, QueryResultPayload, QuickTaskState,
-	QuickTaskWorkingDirectory, RetainedSessionConfig, RetainedSessionFailure, ServerId,
-	ServerInstanceId, SessionCheckpoint, SnapshotEnvelope, SnapshotItem, WireText,
+	ConversationHistoryResult, ConversationState, ConversationWorkingDirectory, CorrelationId,
+	Cursor, DEVELOPMENT_DOMAIN_PACK_ID, DoctorReport, EntityId, EntityRevision, EventEnvelope,
+	EventPayload, HistoryCursorToken, PAPER_INVESTMENT_DOMAIN_PACK_ID, ProgramCycleDraftDto,
+	ProgramEvidenceDraftDto, ProgramNodeKind, ProgramReviewClassification, ProgramReviewDraftDto,
+	QueryEnvelope, QueryPayload, QueryResultEnvelope, QueryResultPayload, RetainedSessionConfig,
+	RetainedSessionFailure, ServerId, ServerInstanceId, SessionCheckpoint, SnapshotEnvelope,
+	SnapshotItem, WireText,
 };
 
 use crate::{
@@ -112,16 +112,16 @@ fn production_cache_parent_normalizes_only_fixed_platform_prefix() {
 }
 
 #[test]
-fn production_client_cache_authority_is_valid_at_protocol_v2_11() {
+fn production_client_cache_authority_is_valid_at_protocol_v2_12() {
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let fixture_temp_dir =
 		temporary.path().canonicalize().expect("fixture temporary directory canonicalizes");
 	let config = retained_config(&fixture_temp_dir.join("config-cache-parent"), SERVER);
 	let lifecycle = ClientLifecycle::production_with_temp_dir(config, &fixture_temp_dir)
-		.expect("production lifecycle constructs at protocol V2.11");
+		.expect("production lifecycle constructs at protocol V2.12");
 
 	assert_eq!(CURRENT_VERSION.major, 2);
-	assert_eq!(CURRENT_VERSION.minor, 11);
+	assert_eq!(CURRENT_VERSION.minor, 12);
 	assert_eq!(CLIENT_CACHE_SCHEMA_GENERATION, 1);
 	assert!(lifecycle.cache.is_some(), "the production client cache opens");
 	let encoded =
@@ -812,9 +812,8 @@ async fn run_with_io_dispatches_history_and_restarts_from_head_after_reconnect()
 	let routes = queries
 		.iter()
 		.filter_map(|query| match &query.payload {
-			QueryPayload::GetConversationHistory { conversation_id, after, .. } => {
-				Some((query.query_id.clone(), conversation_id.clone(), after.clone()))
-			},
+			QueryPayload::GetConversationHistory { conversation_id, after, .. } =>
+				Some((query.query_id.clone(), conversation_id.clone(), after.clone())),
 			_ => None,
 		})
 		.collect::<Vec<_>>();
@@ -1571,10 +1570,7 @@ async fn app_owned_transport_recovery_is_bounded_and_protocol_failure_never_rest
 		(0..5).map(|_| ConnectAction::Fail(RetainedSessionFailure::Disconnected)).collect();
 	let mut io = FakeIo::new(root, failures);
 
-	assert_eq!(
-		disconnected_lifecycle.run_with_io(&mut io).await,
-		RunResult::RetryExhausted
-	);
+	assert_eq!(disconnected_lifecycle.run_with_io(&mut io).await, RunResult::RetryExhausted);
 	assert_eq!(recovery.attempts.load(Ordering::SeqCst), 3);
 
 	let protocol_temporary = TempDir::new().expect("temporary directory is available");
@@ -2162,30 +2158,30 @@ fn test_fixture_uses_only_typed_bounded_cache_content() {
 
 #[tokio::test]
 #[ignore = "requires the user's live Decodex daemon and creates two conversations plus one later turn"]
-async fn live_daemon_accepts_sequential_quick_tasks_and_returns_history() {
-	use crate::quick_tasks::{QuickTaskCommandState, QuickTasksLoadState};
+async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
+	use crate::conversations::{ConversationCommandState, ConversationsLoadState};
 
 	let profile = ClientProfile::load_default(None).expect("the live profile is configured");
 	let config =
 		profile.retained_session_config().expect("the live retained session is configured");
 	let mut lifecycle =
 		ClientLifecycle::production(config).expect("the production lifecycle is available");
-	let quick_tasks = lifecycle.quick_tasks();
+	let conversations = lifecycle.conversations();
 	let history = lifecycle.history_pager();
 	let cancellation = lifecycle.cancellation();
-	quick_tasks.activate();
+	conversations.activate();
 
 	let run = lifecycle.run();
 	tokio::pin!(run);
 	let ready_deadline = tokio::time::Instant::now() + Duration::from_secs(20);
 	loop {
-		let snapshot = quick_tasks.snapshot();
-		if snapshot.load == QuickTasksLoadState::Ready && snapshot.can_submit {
+		let snapshot = conversations.snapshot();
+		if snapshot.load == ConversationsLoadState::Ready && snapshot.can_submit {
 			break;
 		}
-		assert!(tokio::time::Instant::now() < ready_deadline, "Quick Tasks did not become ready");
+		assert!(tokio::time::Instant::now() < ready_deadline, "Conversations did not become ready");
 		tokio::select! {
-			result = &mut run => panic!("live lifecycle stopped before Quick Tasks became ready: {result:?}"),
+			result = &mut run => panic!("live lifecycle stopped before Conversations became ready: {result:?}"),
 			() = tokio::time::sleep(Duration::from_millis(50)) => {},
 		}
 	}
@@ -2193,24 +2189,24 @@ async fn live_daemon_accepts_sequential_quick_tasks_and_returns_history() {
 	let mut first_conversation = None;
 	let mut first_history_items = 0;
 	for ordinal in 1..=2 {
-		quick_tasks.begin_new();
-		quick_tasks
+		conversations.begin_new();
+		conversations
 			.create(&format!(
 				"Reply briefly with: Decodex sequential live smoke {ordinal} is working."
 			))
 			.expect("the live composer command is accepted for dispatch");
 		let accepted_deadline = tokio::time::Instant::now() + Duration::from_secs(120);
 		let conversation_id = loop {
-			let snapshot = quick_tasks.snapshot();
+			let snapshot = conversations.snapshot();
 			match snapshot.command {
-				QuickTaskCommandState::ManualRecovery(action) => {
+				ConversationCommandState::ManualRecovery(action) => {
 					panic!("the live daemon requested manual recovery before starting: {action:?}")
 				},
-				QuickTaskCommandState::OutcomeUnknown => {
+				ConversationCommandState::OutcomeUnknown => {
 					panic!("the live daemon could not determine whether the command was accepted")
 				},
-				QuickTaskCommandState::Refused => {
-					panic!("the live daemon refused the composed Quick Task")
+				ConversationCommandState::Refused => {
+					panic!("the live daemon refused the composed Conversation")
 				},
 				_ => {},
 			}
@@ -2220,13 +2216,13 @@ async fn live_daemon_accepts_sequential_quick_tasks_and_returns_history() {
 					.iter()
 					.find(|task| &task.conversation_id == conversation_id)
 					.expect("the selected conversation has a projection");
-				if task.state == QuickTaskState::Ready {
+				if task.state == ConversationState::Ready {
 					break conversation_id.clone();
 				}
 			}
 			assert!(
 				tokio::time::Instant::now() < accepted_deadline,
-				"the live daemon did not finish the composed Quick Task; load={:?}, command={:?}, state={:?}",
+				"the live daemon did not finish the composed Conversation; load={:?}, command={:?}, state={:?}",
 				snapshot.load,
 				snapshot.command,
 				snapshot.selected_task().map(|task| task.state),
@@ -2280,30 +2276,32 @@ async fn live_daemon_accepts_sequential_quick_tasks_and_returns_history() {
 	}
 
 	let first_conversation = first_conversation.expect("the first live conversation completed");
-	assert!(quick_tasks.select(first_conversation.clone()));
-	let baseline_session_revision = quick_tasks
+	assert!(conversations.select(first_conversation.clone()));
+	let baseline_session_revision = conversations
 		.snapshot()
 		.selected_task()
 		.and_then(|task| task.runtime_session_revision)
 		.expect("the completed first conversation has a RuntimeSession revision");
-	quick_tasks
+	conversations
 		.submit("Reply briefly with: Decodex same-thread rehydration is working.")
 		.expect("the later live turn is accepted for dispatch");
 	let continuation_deadline = tokio::time::Instant::now() + Duration::from_secs(120);
 	loop {
-		let snapshot = quick_tasks.snapshot();
+		let snapshot = conversations.snapshot();
 		match snapshot.command {
-			QuickTaskCommandState::ManualRecovery(action) => {
+			ConversationCommandState::ManualRecovery(action) => {
 				panic!("the live daemon requested manual recovery during rehydration: {action:?}")
 			},
-			QuickTaskCommandState::OutcomeUnknown => {
+			ConversationCommandState::OutcomeUnknown => {
 				panic!("the live daemon could not determine the later-turn outcome")
 			},
-			QuickTaskCommandState::Refused => panic!("the live daemon refused the later live turn"),
+			ConversationCommandState::Refused => {
+				panic!("the live daemon refused the later live turn")
+			},
 			_ => {},
 		}
 		if snapshot.selected_task().is_some_and(|task| {
-			task.state == QuickTaskState::Ready
+			task.state == ConversationState::Ready
 				&& task
 					.runtime_session_revision
 					.is_some_and(|revision| revision > baseline_session_revision)
@@ -2373,8 +2371,8 @@ async fn live_daemon_accepts_sequential_quick_tasks_and_returns_history() {
 #[ignore = "requires the user's live Decodex daemon; binds the dogfood Pack and creates one paper-only Program conversation"]
 async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 	use crate::{
+		conversations::{ConversationCommandState, ConversationsLoadState},
 		programs::{ProgramCommandState, ProgramsLoadState},
-		quick_tasks::{QuickTaskCommandState, QuickTasksLoadState},
 	};
 
 	const PAPER_PROGRAM_ID: &str = "d1000000-0000-4000-8000-000000000001";
@@ -2409,7 +2407,7 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 		.expect("live test working directory exists")
 		.canonicalize()
 		.expect("live test working directory canonicalizes");
-	let working_directory = QuickTaskWorkingDirectory::new(
+	let working_directory = ConversationWorkingDirectory::new(
 		working_directory.to_str().expect("live test working directory is UTF-8").to_owned(),
 	)
 	.expect("live test working directory is accepted");
@@ -2419,26 +2417,26 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 	let mut lifecycle =
 		ClientLifecycle::production(config).expect("the production lifecycle is available");
 	let programs = lifecycle.programs();
-	let quick_tasks = lifecycle.quick_tasks();
+	let conversations = lifecycle.conversations();
 	let cancellation = lifecycle.cancellation();
 	programs.activate();
-	quick_tasks.activate();
+	conversations.activate();
 
 	let run = lifecycle.run();
 	tokio::pin!(run);
 	let ready_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
 	loop {
 		let program_snapshot = programs.snapshot();
-		let task_snapshot = quick_tasks.snapshot();
+		let task_snapshot = conversations.snapshot();
 		if program_snapshot.load == ProgramsLoadState::Ready
-			&& task_snapshot.load == QuickTasksLoadState::Ready
+			&& task_snapshot.load == ConversationsLoadState::Ready
 			&& task_snapshot.can_submit
 		{
 			break;
 		}
 		assert!(
 			tokio::time::Instant::now() < ready_deadline,
-			"live Program and Quick Task controllers did not become ready: programs={:?}, tasks={:?}",
+			"live Program and Conversation controllers did not become ready: programs={:?}, tasks={:?}",
 			program_snapshot.load,
 			task_snapshot.load,
 		);
@@ -2555,7 +2553,7 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 					"The conclusion reports 20 observations and the exact first, last, minimum, maximum, and range spreads.",
 				)],
 				validation_criteria: vec![text(
-					"The bound Quick Task settles without live data or an external action.",
+					"The bound Conversation settles without live data or an external action.",
 				)],
 				work_item_title: text("Verify the June 2025 Treasury 2s10s thesis"),
 				work_item_instructions: text(
@@ -2615,11 +2613,11 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 			.expect("paper WorkItem is projected")
 			.clone();
 		let conversation_id = if let Some(conversation_id) = work_item.conversation_id.clone() {
-			quick_tasks.select_when_available(conversation_id.clone());
+			conversations.select_when_available(conversation_id.clone());
 			conversation_id
 		} else {
-			quick_tasks.begin_new();
-			let submission = quick_tasks
+			conversations.begin_new();
+			let submission = conversations
 				.create_for_program_work_item(
 					&format!(
 						"Decodex Program WorkItem {}\n\n{}",
@@ -2629,32 +2627,32 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 					work_item.id.clone(),
 					working_directory.clone(),
 				)
-				.expect("paper WorkItem Quick Task queues");
+				.expect("paper WorkItem Conversation queues");
 			programs.expect_execution(submission.conversation_id.clone());
 			submission.conversation_id
 		};
 
 		let execution_deadline = tokio::time::Instant::now() + Duration::from_secs(180);
 		loop {
-			let snapshot = quick_tasks.snapshot();
+			let snapshot = conversations.snapshot();
 			match snapshot.command {
-				QuickTaskCommandState::ManualRecovery(action) => {
-					panic!("paper Quick Task requested manual recovery: {action:?}")
+				ConversationCommandState::ManualRecovery(action) => {
+					panic!("paper Conversation requested manual recovery: {action:?}")
 				},
-				QuickTaskCommandState::OutcomeUnknown => {
-					panic!("paper Quick Task acceptance remained unknown")
+				ConversationCommandState::OutcomeUnknown => {
+					panic!("paper Conversation acceptance remained unknown")
 				},
-				QuickTaskCommandState::Refused => panic!("paper Quick Task was refused"),
+				ConversationCommandState::Refused => panic!("paper Conversation was refused"),
 				_ => {},
 			}
 			if snapshot.tasks.iter().any(|task| {
-				task.conversation_id == conversation_id && task.state == QuickTaskState::Ready
+				task.conversation_id == conversation_id && task.state == ConversationState::Ready
 			}) {
 				break;
 			}
 			assert!(
 				tokio::time::Instant::now() < execution_deadline,
-				"paper Quick Task did not reach terminal ready state: {:?}",
+				"paper Conversation did not reach terminal ready state: {:?}",
 				snapshot
 					.tasks
 					.iter()
@@ -2709,7 +2707,7 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 					evidence_id: entity(PAPER_EXTERNAL_EVIDENCE_ID),
 					source: text("Codex app-server and SQLite readback"),
 					summary: text(
-						"The bound paper-only Codex Quick Task reached positive terminal evidence through the ordinary ProviderAttempt path.",
+						"The bound paper-only Codex Conversation reached positive terminal evidence through the ordinary ProviderAttempt path.",
 					),
 					observed_at_micros,
 				},
@@ -2768,42 +2766,42 @@ async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 
 #[tokio::test]
 #[ignore = "requires the user's live Decodex daemon and reconciles local projections with Codex"]
-async fn live_daemon_reconciles_archived_quick_tasks() {
-	use crate::quick_tasks::{QuickTaskRefreshState, QuickTasksLoadState};
+async fn live_daemon_reconciles_archived_conversations() {
+	use crate::conversations::{ConversationRefreshState, ConversationsLoadState};
 
 	let profile = ClientProfile::load_default(None).expect("the live profile is configured");
 	let config =
 		profile.retained_session_config().expect("the live retained session is configured");
 	let mut lifecycle =
 		ClientLifecycle::production(config).expect("the production lifecycle is available");
-	let quick_tasks = lifecycle.quick_tasks();
+	let conversations = lifecycle.conversations();
 	let cancellation = lifecycle.cancellation();
-	quick_tasks.activate();
+	conversations.activate();
 
 	let run = lifecycle.run();
 	tokio::pin!(run);
 	let ready_deadline = tokio::time::Instant::now() + Duration::from_secs(20);
 	let initial_count = loop {
-		let snapshot = quick_tasks.snapshot();
-		if snapshot.load == QuickTasksLoadState::Ready && snapshot.can_submit {
+		let snapshot = conversations.snapshot();
+		if snapshot.load == ConversationsLoadState::Ready && snapshot.can_submit {
 			break snapshot.tasks.len();
 		}
-		assert!(tokio::time::Instant::now() < ready_deadline, "Quick Tasks did not become ready");
+		assert!(tokio::time::Instant::now() < ready_deadline, "Conversations did not become ready");
 		tokio::select! {
-			result = &mut run => panic!("live lifecycle stopped before Quick Tasks became ready: {result:?}"),
+			result = &mut run => panic!("live lifecycle stopped before Conversations became ready: {result:?}"),
 			() = tokio::time::sleep(Duration::from_millis(50)) => {},
 		}
 	};
 
-	quick_tasks.refresh_all().expect("the live provider reconciliation starts");
+	conversations.refresh_all().expect("the live provider reconciliation starts");
 	let refresh_deadline = tokio::time::Instant::now() + Duration::from_secs(600);
 	let (checked, archived, failed) = loop {
-		let snapshot = quick_tasks.snapshot();
+		let snapshot = conversations.snapshot();
 		match snapshot.refresh {
-			QuickTaskRefreshState::Complete { checked, archived, failed } => {
+			ConversationRefreshState::Complete { checked, archived, failed } => {
 				break (checked, archived, failed);
 			},
-			QuickTaskRefreshState::Stopped { checked, total, archived, failed } => panic!(
+			ConversationRefreshState::Stopped { checked, total, archived, failed } => panic!(
 				"live provider reconciliation stopped at {checked}/{total}; archived={archived}, failed={failed}"
 			),
 			_ => {},
@@ -2818,7 +2816,7 @@ async fn live_daemon_reconciles_archived_quick_tasks() {
 			() = tokio::time::sleep(Duration::from_millis(50)) => {},
 		}
 	};
-	let final_count = quick_tasks.snapshot().tasks.len();
+	let final_count = conversations.snapshot().tasks.len();
 	eprintln!(
 		"live reconciliation: initial={initial_count}, final={final_count}, checked={checked}, archived={archived}, skipped={failed}"
 	);

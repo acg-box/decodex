@@ -11,10 +11,12 @@ version.workspace    = true
 [dependencies]
 decodex-core      = { workspace = true }
 futures-util      = { workspace = true }
+percent-encoding  = { workspace = true }
 serde             = { workspace = true }
 serde_json        = { workspace = true }
 tokio             = { workspace = true }
 tokio-tungstenite = { workspace = true }
+url               = { workspace = true }
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 libc = { workspace = true }

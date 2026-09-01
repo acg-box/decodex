@@ -360,7 +360,7 @@ fn run_login_session(
 
 fn publish_provider_event(shared: &Shared, session_id: &EntityId, event: LoginEvent) {
 	let converted = match event {
-		LoginEvent::BrowserAuthorization { authorization_url } => {
+		LoginEvent::BrowserAuthorization { authorization_url } =>
 			AccountLoginUrl::new(authorization_url).map(|authorization_url| {
 				status(
 					session_id.clone(),
@@ -370,9 +370,8 @@ fn publish_provider_event(shared: &Shared, session_id: &EntityId, event: LoginEv
 					None,
 					None,
 				)
-			})
-		},
-		LoginEvent::DeviceAuthorization { verification_url, user_code } => {
+			}),
+		LoginEvent::DeviceAuthorization { verification_url, user_code } =>
 			AccountLoginUrl::new(verification_url).and_then(|verification_url| {
 				WireText::new(user_code).map(|user_code| {
 					status(
@@ -384,8 +383,7 @@ fn publish_provider_event(shared: &Shared, session_id: &EntityId, event: LoginEv
 						None,
 					)
 				})
-			})
-		},
+			}),
 	};
 	match converted {
 		Ok(status) => shared.set_status(status),
@@ -417,9 +415,8 @@ fn finalize_login_status(
 fn map_provider_error(error: ProviderError) -> AccountLoginFailure {
 	match error {
 		ProviderError::TimedOut => AccountLoginFailure::LoginTimedOut,
-		ProviderError::DeviceAuthorizationRejected => {
-			AccountLoginFailure::DeviceAuthorizationRejected
-		},
+		ProviderError::DeviceAuthorizationRejected =>
+			AccountLoginFailure::DeviceAuthorizationRejected,
 		ProviderError::Persistence => AccountLoginFailure::ServiceUnavailable,
 		ProviderError::Cancelled
 		| ProviderError::Unavailable
@@ -636,15 +633,12 @@ fn resolved_account_id(
 	match (&start.install_mode, result) {
 		(AccountLoginInstallMode::Enroll { .. }, ResultPayload::AccountChanged { account })
 			if &account.account_id == requested =>
-		{
-			Ok(account.account_id.clone())
-		},
+			Ok(account.account_id.clone()),
 		(
 			AccountLoginInstallMode::Enroll { .. },
 			ResultPayload::AccountRestored { requested_account_id, account },
-		) if requested_account_id == requested && account.account_id != *requested => {
-			Ok(account.account_id.clone())
-		},
+		) if requested_account_id == requested && account.account_id != *requested =>
+			Ok(account.account_id.clone()),
 		(
 			AccountLoginInstallMode::Reauthenticate { .. },
 			ResultPayload::AccountChanged { account },
@@ -658,13 +652,11 @@ fn map_install_error(error: &CommandError) -> AccountLoginFailure {
 		CommandError::ExpectedRevisionMismatch { .. } => AccountLoginFailure::AccountChanged,
 		CommandError::AccountCommandRejected { rejection, .. } => match rejection {
 			AccountCommandRejectionDto::ProviderMismatch => AccountLoginFailure::AccountMismatch,
-			AccountCommandRejectionDto::ProviderAlreadyEnrolled => {
-				AccountLoginFailure::ProviderAlreadyEnrolled
-			},
+			AccountCommandRejectionDto::ProviderAlreadyEnrolled =>
+				AccountLoginFailure::ProviderAlreadyEnrolled,
 			AccountCommandRejectionDto::StaleAccount => AccountLoginFailure::AccountChanged,
-			AccountCommandRejectionDto::CredentialStoreUnavailable => {
-				AccountLoginFailure::CredentialStoreUnavailable
-			},
+			AccountCommandRejectionDto::CredentialStoreUnavailable =>
+				AccountLoginFailure::CredentialStoreUnavailable,
 			AccountCommandRejectionDto::OperationNotFound
 			| AccountCommandRejectionDto::ManualRecoveryRequired => AccountLoginFailure::RecoveryChanged,
 			AccountCommandRejectionDto::AccountNotFound
@@ -682,8 +674,8 @@ fn map_install_error(error: &CommandError) -> AccountLoginFailure {
 		CommandError::IdempotencyConflict
 		| CommandError::IdempotencyCapacityExceeded { .. }
 		| CommandError::ApplicationUnavailable { .. }
-		| CommandError::QuickTaskUnavailable { .. }
-		| CommandError::QuickTaskRecoveryRequired { .. } => AccountLoginFailure::ServiceUnavailable,
+		| CommandError::ConversationUnavailable { .. }
+		| CommandError::ConversationRecoveryRequired { .. } => AccountLoginFailure::ServiceUnavailable,
 	}
 }
 

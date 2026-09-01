@@ -1,6 +1,6 @@
-//! `decodexd` lifecycle assembly and the same-UID V2.11 local connection owner.
+//! `decodexd` lifecycle assembly and the same-UID V2.12 local connection owner.
 //!
-//! Account-process and routing composition remain crate-private. The ordinary Quick Task owner
+//! Account-process and routing composition remain crate-private. The ordinary Conversation owner
 //! composes them without exporting raw process, routing, or provider-dispatch facades.
 
 mod account_api;
@@ -14,16 +14,15 @@ mod account_service;
 mod application;
 mod auth_projection;
 mod bootstrap;
+mod conversation;
 mod domain_packs;
 #[expect(dead_code, reason = "sealed until the accepted GitHub-effect composition owner")]
 pub(crate) mod github_effects;
 mod host_credentials;
-#[path = "managed_repository_disabled.rs"]
-mod managed_repository_runtime;
+#[path = "managed_repository_disabled.rs"] mod managed_repository_runtime;
 mod process_platform;
 mod process_supervisor;
 mod provider_attempt_service;
-mod quick_task;
 mod routing_orchestration;
 mod shared_auth_coordinator;
 mod supervised_validation;
@@ -35,6 +34,7 @@ pub use account_service::{
 };
 pub use application::{Application, ApplicationEventPublication, ApplicationPublication};
 pub use bootstrap::{LocalDatabaseError, ServiceBootstrap};
+pub use conversation::ConversationReadiness;
 pub use decodex_core::DecodexRoot;
 pub use decodex_protocol::ServerId;
 pub use host_credentials::{
@@ -54,7 +54,6 @@ pub use provider_attempt_service::{
 	ProviderAttemptReconciliation, ProviderAttemptServiceError, ProviderEvidenceLookupError,
 	ProviderPositiveEvidenceSource,
 };
-pub use quick_task::QuickTaskReadiness;
 pub use supervised_validation::{
 	ProtectedWorktreeFingerprint, ProtectedWorktreeStateProbe, SupervisedValidationEvidence,
 	ValidationAcceptance, ValidationCancellation, ValidationCommandAuthority, ValidationRejection,
@@ -65,8 +64,7 @@ pub use websocket::{
 	ServerConfig, ServerError, SpawnId, TerminationPrimary, TerminationReceipt,
 };
 
-#[cfg(test)]
-use {tempfile as _, tokio_tungstenite as _};
+#[cfg(test)] use {tempfile as _, tokio_tungstenite as _};
 
 /// The vNext service assembly selected by the `decodexd` composition root.
 #[derive(Clone, Copy, Debug)]

@@ -14,6 +14,7 @@ mod bundled_daemon;
 mod client_cache;
 mod client_lifecycle;
 mod composer_input;
+mod conversations;
 mod desktop_settings;
 mod factory_surface;
 mod health_query;
@@ -25,17 +26,14 @@ mod health_query;
 	)
 )]
 mod history_pager;
-mod programs;
 mod native_menu_bar;
 mod program_graph;
-mod quick_tasks;
+mod programs;
 mod settings_surface;
 mod shell;
 mod ui_theme;
-mod work_items;
 
-#[cfg(target_os = "macos")]
-use objc2 as _;
+#[cfg(target_os = "macos")] use objc2 as _;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use gpui::{
@@ -113,9 +111,8 @@ fn main() {
 				});
 			})
 			.expect("install the Decodex close-to-background behavior");
-		let launched_as_login_item = window
-			.entity(cx)
-			.is_ok_and(|shell| shell.read(cx).was_launched_as_login_item(cx));
+		let launched_as_login_item =
+			window.entity(cx).is_ok_and(|shell| shell.read(cx).was_launched_as_login_item(cx));
 		main_window.borrow_mut().replace(window);
 		if launched_as_login_item {
 			#[cfg(target_os = "macos")]
@@ -143,7 +140,8 @@ fn activate_native_application() {
 	use objc2::MainThreadMarker;
 	use objc2_app_kit::NSApplication;
 
-	let main_thread = MainThreadMarker::new().expect("GPUI application callback runs on main thread");
+	let main_thread =
+		MainThreadMarker::new().expect("GPUI application callback runs on main thread");
 	NSApplication::sharedApplication(main_thread).activate();
 }
 
@@ -152,7 +150,8 @@ fn order_out_native_windows() {
 	use objc2::MainThreadMarker;
 	use objc2_app_kit::NSApplication;
 
-	let main_thread = MainThreadMarker::new().expect("GPUI application callback runs on main thread");
+	let main_thread =
+		MainThreadMarker::new().expect("GPUI application callback runs on main thread");
 	let application = NSApplication::sharedApplication(main_thread);
 	for window in application.windows().iter() {
 		window.orderOut(None);

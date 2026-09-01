@@ -273,19 +273,47 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertIn('process_listener_loss_restarts_exact_owned_daemon', supervisor_test)
         self.assertIn('process_recovery_never_terminates_independently_managed_daemon', supervisor_test)
 
-    def test_quick_task_restart_contract_is_executable(self) -> None:
-        test = read("database/tests/quick_task_restart.rs")
+    def test_conversation_restart_contract_is_executable(self) -> None:
+        test = read("database/tests/conversation_restart.rs")
         self.assertIn("read_ordinary_runtime_session_for_resume", test)
         self.assertIn("ContinuationPlanKind::SameThread", test)
         self.assertIn("PrepareProviderAttemptOutcome::Replayed", test)
         self.assertIn("restart must not create a duplicate dispatch intent", test)
 
-    def test_deferred_capabilities_do_not_keep_a_second_store_alive(self) -> None:
+    def test_provider_thread_identity_has_one_bound_and_one_url_projector(self) -> None:
+        core = read("crates/decodex-core/src/conversation.rs")
+        codex = read("crates/decodex-codex/src/protocol.rs")
+        protocol = read("crates/decodex-protocol/src/conversation.rs")
+        resume = read("crates/decodex-runtime/src/provider_attempt_service.rs")
         application = read("crates/decodex-runtime/src/application.rs")
+        packs = read("crates/decodex-runtime/src/domain_packs.rs")
+        shell = read("apps/decodex-gpui/src/shell.rs")
+        self.assertIn("MAX_PROVIDER_THREAD_ID_BYTES: usize = 512", core)
+        self.assertIn("decodex_core::MAX_PROVIDER_THREAD_ID_BYTES", codex)
+        self.assertIn("pub use decodex_core::MAX_PROVIDER_THREAD_ID_BYTES", protocol)
+        self.assertIn("ExactThreadId::new(response.codex_thread_id.clone())", resume)
+        for consumer in (application, packs, shell):
+            self.assertIn(".codex_url()", consumer)
+            self.assertNotIn('format!("codex://threads/', consumer)
+
+    def test_retired_board_does_not_keep_protocol_or_runtime_surface_alive(self) -> None:
+        application = read("crates/decodex-runtime/src/application.rs")
+        protocol = read("crates/decodex-protocol/src/wire.rs")
         managed_repository = read("crates/decodex-runtime/src/managed_repository_disabled.rs")
         reset_card = read("crates/decodex-runtime/src/account_launch/api_reset_card_disabled.rs")
         self.assertIn("ExecutionDecisionQueryError::ProductStateUnavailable", application)
-        self.assertIn("WorkItemBoardQueryError::ProductStateUnavailable", application)
+        for retired in (
+            "WorkItemBoard",
+            "ListProjects",
+            "GetWorkItemBoardPage",
+            "RegisterProject",
+            "CreateWorkItem",
+            "StartWorkItem",
+            "AcceptWorkItem",
+        ):
+            self.assertNotIn(retired, application)
+            self.assertNotIn(retired, protocol)
+        self.assertFalse((ROOT / "apps/decodex-gpui/src/work_items.rs").exists())
         self.assertIn("ManagedRepositoryUnavailableReason", managed_repository)
         self.assertIn("ProductStateUnavailable", reset_card)
         for retired in (

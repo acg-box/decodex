@@ -1,8 +1,8 @@
 //! RuntimeSession thread-establishment and restart readback authority.
 
 use decodex_core::{
-	AccountId, AccountState, ConversationId, ProcessExecutionEpochId, ProcessGenerationId,
-	RuntimeSessionId, RuntimeSessionState, TurnId,
+	AccountId, AccountState, ConversationId, MAX_PROVIDER_THREAD_ID_BYTES, ProcessExecutionEpochId,
+	ProcessGenerationId, RuntimeSessionId, RuntimeSessionState, TurnId,
 };
 use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
 use sha2::{Digest as _, Sha256};
@@ -15,7 +15,7 @@ use crate::{
 
 /// Exact Conversation, RuntimeSession, and active revision-one Turn coordinates before spawn.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PrepareQuickTaskProcessGeneration {
+pub struct PrepareConversationProcessGeneration {
 	pub conversation_id: ConversationId,
 	pub expected_conversation_revision: i64,
 	pub runtime_session_id: RuntimeSessionId,
@@ -29,14 +29,14 @@ pub struct PrepareQuickTaskProcessGeneration {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct QuickTaskProcessGenerationReadback {
-	pub request: PrepareQuickTaskProcessGeneration,
+pub struct ConversationProcessGenerationReadback {
+	pub request: PrepareConversationProcessGeneration,
 	pub admission_revision: Option<i64>,
-	pub rejection: Option<QuickTaskProcessGenerationRejection>,
+	pub rejection: Option<ConversationProcessGenerationRejection>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum QuickTaskProcessGenerationRejection {
+pub enum ConversationProcessGenerationRejection {
 	MissingTurn,
 	InactiveTurn,
 	StaleTurn,
@@ -46,14 +46,14 @@ pub enum QuickTaskProcessGenerationRejection {
 
 /// One-use pre-spawn admission. Replays cannot construct this type.
 #[derive(Debug, Eq, PartialEq)]
-pub struct FreshQuickTaskProcessGeneration {
+pub struct FreshConversationProcessGeneration {
 	idempotency_key: String,
 	request_sha256: String,
-	readback: QuickTaskProcessGenerationReadback,
+	readback: ConversationProcessGenerationReadback,
 }
 
-impl FreshQuickTaskProcessGeneration {
-	pub const fn readback(&self) -> &QuickTaskProcessGenerationReadback {
+impl FreshConversationProcessGeneration {
+	pub const fn readback(&self) -> &ConversationProcessGenerationReadback {
 		&self.readback
 	}
 
@@ -71,15 +71,15 @@ impl FreshQuickTaskProcessGeneration {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum PrepareQuickTaskProcessGenerationOutcome {
-	Fresh(FreshQuickTaskProcessGeneration),
-	Replayed(QuickTaskProcessGenerationReadback),
-	Rejected(QuickTaskProcessGenerationReadback),
-	Unknown(QuickTaskProcessGenerationReadback),
+pub enum PrepareConversationProcessGenerationOutcome {
+	Fresh(FreshConversationProcessGeneration),
+	Replayed(ConversationProcessGenerationReadback),
+	Rejected(ConversationProcessGenerationReadback),
+	Unknown(ConversationProcessGenerationReadback),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ReconcileQuickTaskThreadEstablishment {
+pub struct ReconcileConversationThreadEstablishment {
 	pub conversation_id: ConversationId,
 	pub expected_conversation_revision: i64,
 	pub runtime_session_id: RuntimeSessionId,
@@ -93,24 +93,24 @@ pub struct ReconcileQuickTaskThreadEstablishment {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum QuickTaskPreEffectEvidenceKind {
+pub enum ConversationPreEffectEvidenceKind {
 	AdmissionRejected,
 	SpawnNotCreated,
 	ProcessDead,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct QuickTaskThreadStartNonEffect {
+pub struct ConversationThreadStartNonEffect {
 	pub process_generation_revision: Option<i64>,
-	pub kind: QuickTaskPreEffectEvidenceKind,
+	pub kind: ConversationPreEffectEvidenceKind,
 	pub evidence_id: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum QuickTaskThreadEstablishmentReadback {
+pub enum ConversationThreadEstablishmentReadback {
 	Bound(RuntimeSessionThreadBindingReadback),
 	Fenced(RuntimeSessionThreadFenceReadback),
-	DefinitelyNotStarted(QuickTaskThreadStartNonEffect),
+	DefinitelyNotStarted(ConversationThreadStartNonEffect),
 	Unknown,
 }
 
@@ -312,11 +312,11 @@ pub struct OrdinaryRuntimeSessionResumeReadback {
 }
 
 impl SqliteStore {
-	pub async fn prepare_quick_task_process_generation(
+	pub async fn prepare_conversation_process_generation(
 		&self,
 		idempotency_key: &str,
-		request: &PrepareQuickTaskProcessGeneration,
-	) -> Result<PrepareQuickTaskProcessGenerationOutcome, StoreError> {
+		request: &PrepareConversationProcessGeneration,
+	) -> Result<PrepareConversationProcessGenerationOutcome, StoreError> {
 		validate_key(idempotency_key)?;
 		let key = idempotency_key.to_owned();
 		let request = request.clone();
@@ -337,18 +337,18 @@ impl SqliteStore {
 				if stored_sha != request_sha256 {
 					return Err(StoreError::IdempotencyConflict);
 				}
-				let readback = QuickTaskProcessGenerationReadback {
+				let readback = ConversationProcessGenerationReadback {
 					request,
 					admission_revision: Some(1),
 					rejection: None,
 				};
 				transaction.commit().map_err(sql_error)?;
-				return Ok(PrepareQuickTaskProcessGenerationOutcome::Replayed(readback));
+				return Ok(PrepareConversationProcessGenerationOutcome::Replayed(readback));
 			}
 			let authority = process_admission_authority(&transaction, &request)?;
 			if let Some(rejection) = authority {
-				return Ok(PrepareQuickTaskProcessGenerationOutcome::Rejected(
-					QuickTaskProcessGenerationReadback {
+				return Ok(PrepareConversationProcessGenerationOutcome::Rejected(
+					ConversationProcessGenerationReadback {
 						request,
 						admission_revision: None,
 						rejection: Some(rejection),
@@ -365,17 +365,19 @@ impl SqliteStore {
 					params![key, request_sha256, request.process_generation_id.as_str(), now],
 				)
 				.map_err(sql_error)?;
-			let readback = QuickTaskProcessGenerationReadback {
+			let readback = ConversationProcessGenerationReadback {
 				request,
 				admission_revision: Some(1),
 				rejection: None,
 			};
 			transaction.commit().map_err(sql_error)?;
-			Ok(PrepareQuickTaskProcessGenerationOutcome::Fresh(FreshQuickTaskProcessGeneration {
-				idempotency_key: key,
-				request_sha256,
-				readback,
-			}))
+			Ok(PrepareConversationProcessGenerationOutcome::Fresh(
+				FreshConversationProcessGeneration {
+					idempotency_key: key,
+					request_sha256,
+					readback,
+				},
+			))
 		})
 		.await
 	}
@@ -504,6 +506,9 @@ impl SqliteStore {
 		validate_sha(&binding.successful_response.response_sha256)?;
 		if binding.successful_response.response_id != binding.thread_start_request_id
 			|| binding.successful_response.codex_thread_id.is_empty()
+			|| binding.successful_response.codex_thread_id.len() > MAX_PROVIDER_THREAD_ID_BYTES
+			|| binding.successful_response.codex_thread_id.chars().any(char::is_control)
+			|| binding.successful_response.codex_thread_id.contains(['"', '\\'])
 		{
 			return Err(StoreError::InvalidInput("RuntimeSession thread binding is invalid"));
 		}
@@ -596,10 +601,10 @@ impl SqliteStore {
 		.await
 	}
 
-	pub async fn reconcile_quick_task_thread_establishment(
+	pub async fn reconcile_conversation_thread_establishment(
 		&self,
-		request: &ReconcileQuickTaskThreadEstablishment,
-	) -> Result<QuickTaskThreadEstablishmentReadback, StoreError> {
+		request: &ReconcileConversationThreadEstablishment,
+	) -> Result<ConversationThreadEstablishmentReadback, StoreError> {
 		let request = request.clone();
 		self.run(move |connection| {
 			let admission_sha256 = reconciliation_process_admission_sha(&request);
@@ -613,10 +618,10 @@ impl SqliteStore {
 				.optional()
 				.map_err(sql_error)?;
 			match state {
-				Some((Some(_), Some(_))) => Ok(QuickTaskThreadEstablishmentReadback::Bound(
+				Some((Some(_), Some(_))) => Ok(ConversationThreadEstablishmentReadback::Bound(
 					read_thread_binding(connection, &request.runtime_session_id)?,
 				)),
-				Some((Some(_), None)) => Ok(QuickTaskThreadEstablishmentReadback::Fenced(
+				Some((Some(_), None)) => Ok(ConversationThreadEstablishmentReadback::Fenced(
 					read_thread_fence(connection, &request.runtime_session_id)?,
 				)),
 				_ => {
@@ -638,14 +643,14 @@ impl SqliteStore {
 					if let Some((state, revision, evidence)) = generation {
 						return Ok(match (state.as_str(), evidence) {
 							("dead", Some(evidence_id)) =>
-								QuickTaskThreadEstablishmentReadback::DefinitelyNotStarted(
-									QuickTaskThreadStartNonEffect {
+								ConversationThreadEstablishmentReadback::DefinitelyNotStarted(
+									ConversationThreadStartNonEffect {
 										process_generation_revision: Some(revision),
-										kind: QuickTaskPreEffectEvidenceKind::ProcessDead,
+										kind: ConversationPreEffectEvidenceKind::ProcessDead,
 										evidence_id,
 									},
 								),
-							_ => QuickTaskThreadEstablishmentReadback::Unknown,
+							_ => ConversationThreadEstablishmentReadback::Unknown,
 						});
 					}
 					let admission_evidence = connection
@@ -658,12 +663,12 @@ impl SqliteStore {
 						)
 						.map_err(sql_error)?;
 					Ok(admission_evidence.map_or(
-						QuickTaskThreadEstablishmentReadback::Unknown,
+						ConversationThreadEstablishmentReadback::Unknown,
 						|evidence_id| {
-							QuickTaskThreadEstablishmentReadback::DefinitelyNotStarted(
-								QuickTaskThreadStartNonEffect {
+							ConversationThreadEstablishmentReadback::DefinitelyNotStarted(
+								ConversationThreadStartNonEffect {
 									process_generation_revision: None,
-									kind: QuickTaskPreEffectEvidenceKind::AdmissionRejected,
+									kind: ConversationPreEffectEvidenceKind::AdmissionRejected,
 									evidence_id,
 								},
 							)
@@ -778,8 +783,8 @@ impl SqliteStore {
 
 fn process_admission_authority(
 	transaction: &rusqlite::Transaction<'_>,
-	request: &PrepareQuickTaskProcessGeneration,
-) -> Result<Option<QuickTaskProcessGenerationRejection>, StoreError> {
+	request: &PrepareConversationProcessGeneration,
+) -> Result<Option<ConversationProcessGenerationRejection>, StoreError> {
 	let turn = transaction
 		.query_row(
 			"SELECT t.status, t.revision,
@@ -844,12 +849,12 @@ fn process_admission_authority(
 		.optional()
 		.map_err(sql_error)?;
 	Ok(match turn {
-		None => Some(QuickTaskProcessGenerationRejection::MissingTurn),
+		None => Some(ConversationProcessGenerationRejection::MissingTurn),
 		Some((status, _, _)) if status != "active" =>
-			Some(QuickTaskProcessGenerationRejection::InactiveTurn),
+			Some(ConversationProcessGenerationRejection::InactiveTurn),
 		Some((_, revision, _)) if revision != request.expected_turn_revision =>
-			Some(QuickTaskProcessGenerationRejection::StaleTurn),
-		Some((_, _, false)) => Some(QuickTaskProcessGenerationRejection::AuthorityUnavailable),
+			Some(ConversationProcessGenerationRejection::StaleTurn),
+		Some((_, _, false)) => Some(ConversationProcessGenerationRejection::AuthorityUnavailable),
 		Some((_, _, true)) => None,
 	})
 }
@@ -1142,7 +1147,7 @@ pub(crate) fn read_stored_runtime_session(
 	})
 }
 
-fn process_admission_sha(request: &PrepareQuickTaskProcessGeneration) -> String {
+fn process_admission_sha(request: &PrepareConversationProcessGeneration) -> String {
 	digest(&[
 		request.conversation_id.as_str(),
 		&request.expected_conversation_revision.to_string(),
@@ -1157,7 +1162,9 @@ fn process_admission_sha(request: &PrepareQuickTaskProcessGeneration) -> String 
 	])
 }
 
-fn reconciliation_process_admission_sha(request: &ReconcileQuickTaskThreadEstablishment) -> String {
+fn reconciliation_process_admission_sha(
+	request: &ReconcileConversationThreadEstablishment,
+) -> String {
 	digest(&[
 		request.conversation_id.as_str(),
 		&request.expected_conversation_revision.to_string(),

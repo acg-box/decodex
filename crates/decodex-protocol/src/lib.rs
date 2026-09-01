@@ -3,11 +3,11 @@
 
 mod account_login;
 mod client;
+mod conversation;
 mod doctor;
 mod domain_pack;
 mod local_transport;
 mod program_cycle;
-mod quick_task;
 mod retained_session;
 mod wire;
 
@@ -20,7 +20,17 @@ pub use self::{
 	},
 	client::{
 		AccountClient, AccountCommandResponse, AccountLoginClient, ClientFailure, ClientProfile,
-		DoctorClient, ProfileKind, ResetCardClient, ResetCardConsumeResponse, WorkItemBoardClient,
+		DoctorClient, ProfileKind, ResetCardClient, ResetCardConsumeResponse,
+	},
+	conversation::{
+		ConversationContractError, ConversationExecutionSettings, ConversationListCursor,
+		ConversationListPage, ConversationListResult, ConversationListSize, ConversationModel,
+		ConversationProgramContext, ConversationReadError, ConversationReasoningEffort,
+		ConversationRecoveryAction, ConversationResult, ConversationState, ConversationSummary,
+		ConversationTitle, ConversationTurnOutcome, ConversationUnavailableReason,
+		ConversationWorkingDirectory, MAX_CONVERSATION_LIST_SIZE, MAX_CONVERSATION_MODEL_BYTES,
+		MAX_CONVERSATION_TITLE_BYTES, MAX_CONVERSATION_WORKING_DIRECTORY_BYTES,
+		MAX_PROVIDER_THREAD_ID_BYTES, ProviderThreadId,
 	},
 	doctor::{
 		AppServerCapability, DoctorCheck, DoctorComponent, DoctorContractError, DoctorIssue,
@@ -45,14 +55,6 @@ pub use self::{
 		ProgramRelationKind, ProgramReviewClassification, ProgramReviewDraftDto, ProgramState,
 		ProgramSummaryDto,
 	},
-	quick_task::{
-		MAX_QUICK_TASK_LIST_SIZE, MAX_QUICK_TASK_MODEL_BYTES,
-		MAX_QUICK_TASK_WORKING_DIRECTORY_BYTES, QuickTaskContractError, QuickTaskExecutionSettings,
-		QuickTaskListCursor, QuickTaskListPage, QuickTaskListResult, QuickTaskListSize,
-		QuickTaskModel, QuickTaskReadError, QuickTaskReasoningEffort, QuickTaskRecoveryAction,
-		QuickTaskResult, QuickTaskState, QuickTaskSummary, QuickTaskTurnOutcome,
-		QuickTaskUnavailableReason, QuickTaskWorkingDirectory,
-	},
 	retained_session::{
 		ApplicationConfirmation, RetainedSession, RetainedSessionConfig, RetainedSessionFailure,
 		SessionCancellation, SessionCheckpoint, SessionDelivery,
@@ -67,12 +69,11 @@ pub use self::{
 		AccountQuotaStateDto, AccountQuotaWindowDto, AccountRouteAuthHomeDto,
 		AccountRouteBlockingProcessDto, AccountRoutePendingDto, AccountRouteProcessBlockerDto,
 		AccountRouteWaitReasonDto, AccountRoutingControlDto, AccountSelectionModeDto,
-		AccountSelectionRecoveryDto,
-		AccountUnsettledOperationDto, AccountsResult, CausationId, Channel, ClientCommandId,
-		ClientHello, ClientMessage, CodexAuthProjectionResult, CommandEnvelope, CommandError,
-		CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope,
-		ConversationHistoryPage, ConversationHistoryResult, CorrelationId, Cursor,
-		DESKTOP_SETTINGS_ENTITY_ID, DesktopSettingsDto, DesktopSettingsResult, EntityId,
+		AccountSelectionRecoveryDto, AccountUnsettledOperationDto, AccountsResult, CausationId,
+		Channel, ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult,
+		CommandEnvelope, CommandError, CommandOutcome, CommandPayload, CommandReceipt,
+		CommandResultEnvelope, ConversationHistoryPage, ConversationHistoryResult, CorrelationId,
+		Cursor, DESKTOP_SETTINGS_ENTITY_ID, DesktopSettingsDto, DesktopSettingsResult, EntityId,
 		EntityRevision, EventEnvelope, EventPayload, ExecutionConsumerDto, ExecutionDecisionDto,
 		ExecutionDecisionQueryError, ExecutionDecisionResult, ExecutionQuotaExclusionDto,
 		ExecutionQuotaWindowDto, ExecutionRouteBlockerDto, ExecutionRouteCauseDto,
@@ -82,22 +83,15 @@ pub use self::{
 		HistoryMetadataValue, HistoryPayloadDto, HistoryQueryError, HistorySideEffectState,
 		HistoryText, HistoryTurnRole, IdempotencyKey, IdempotencyKeyError,
 		MAX_ACCOUNT_PROFILE_DAILY_USAGE, MAX_ACCOUNT_ROUTE_PROCESS_BLOCKERS,
-		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
-		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
-		MAX_IDEMPOTENCY_KEY_BYTES, MAX_PROJECT_LIST_ITEMS, MAX_RESET_CARD_ITEMS,
-		MAX_WIRE_TEXT_BYTES, MAX_WORK_ITEM_BOARD_OBJECTIVES, MAX_WORK_ITEM_BOARD_PAGE_SIZE,
-		MAX_WORK_ITEM_BOARD_RELATIONS, MAX_WORK_ITEM_BOARD_TITLE_BYTES, ProjectList,
-		ProjectListContractError, ProjectListResult, ProjectSummary, QueryEnvelope, QueryId,
-		QueryPayload, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ReconnectMode,
-		Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardDescriptorError, ResetCardError,
+		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
+		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
+		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, QueryEnvelope, QueryId, QueryPayload,
+		QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal,
+		RefusalEnvelope, ResetCardDescriptorDto, ResetCardDescriptorError, ResetCardError,
 		ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
 		ResetCardOutcome, ResultPayload, ResumeCursor, ServerId, ServerInstanceId, ServerMessage,
 		ServerWelcome, Sha256Digest, SnapshotEnvelope, SnapshotItem, WireScalarTooLong, WireText,
-		WorkItemBoardCard, WorkItemBoardContractError, WorkItemBoardLeadId,
-		WorkItemBoardObjectiveId, WorkItemBoardPage, WorkItemBoardPageSize, WorkItemBoardProgramId,
-		WorkItemBoardProjectId, WorkItemBoardQueryError, WorkItemBoardResult, WorkItemBoardTitle,
-		WorkItemBoardWorkItemId, WorkItemPriority, WorkItemState, decode_client_message,
-		encode_server_message,
+		decode_client_message, encode_server_message,
 	},
 };
 
@@ -106,9 +100,9 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 11 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 12 };
 /// Build/protocol cohort that must agree across the daemon and every local consumer.
-pub const CURRENT_ARTIFACT_COHORT: u32 = 7;
+pub const CURRENT_ARTIFACT_COHORT: u32 = 8;
 /// The lower bound of the exact-current protocol window.
 ///
 /// This equals [`CURRENT_VERSION`]. The name remains to avoid an unrelated
@@ -204,7 +198,7 @@ mod tests {
 		assert_eq!(CURRENT_VERSION.negotiate(), Ok(CURRENT_VERSION));
 		assert_eq!(PREVIOUS_MINOR_VERSION.negotiate(), Ok(PREVIOUS_MINOR_VERSION));
 		assert!(matches!(
-			ProtocolVersion { major: 2, minor: 0 }.negotiate(),
+			ProtocolVersion { major: 2, minor: 11 }.negotiate(),
 			Err(VersionRefusal::UnsupportedMinor { .. })
 		));
 	}

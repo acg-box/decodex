@@ -8,7 +8,7 @@ pub use decodex_core::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	QuickTaskWorkingDirectory,
+	ConversationWorkingDirectory,
 	domain_pack::{DomainPackProjectionDto, is_namespaced_symbol},
 	wire::{EntityId, EntityRevision, MAX_WIRE_TEXT_BYTES, WireText},
 };
@@ -58,7 +58,7 @@ pub struct ProgramCycleDraftDto {
 	pub validation_criteria: Vec<WireText>,
 	pub work_item_title: WireText,
 	pub work_item_instructions: WireText,
-	pub working_directory: QuickTaskWorkingDirectory,
+	pub working_directory: ConversationWorkingDirectory,
 }
 
 impl ProgramCycleDraftDto {
@@ -132,7 +132,7 @@ pub struct ProgramContinuationDraftDto {
 	pub validation_criteria: Vec<WireText>,
 	pub work_item_title: WireText,
 	pub work_item_instructions: WireText,
-	pub working_directory: QuickTaskWorkingDirectory,
+	pub working_directory: ConversationWorkingDirectory,
 }
 
 impl ProgramContinuationDraftDto {

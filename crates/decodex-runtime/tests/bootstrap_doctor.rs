@@ -1,8 +1,7 @@
 //! SQLite bootstrap and authoritative doctor protocol fixtures.
 #![allow(unused_crate_dependencies)]
 
-#[cfg(unix)]
-use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+#[cfg(unix)] use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 use std::{fs, fs::OpenOptions, io::Write as _};
 
 use futures_util::{SinkExt as _, StreamExt as _};
@@ -370,7 +369,7 @@ async fn assert_exact_current_doctor_queries(
 	send(
 		&mut future,
 		ClientMessage::Hello(ClientHello {
-			version: ProtocolVersion { major: 2, minor: 12 },
+			version: ProtocolVersion { major: 2, minor: 13 },
 			artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
 			expected_server_id: Some(server_id.clone()),
 			resume: None,
@@ -378,7 +377,7 @@ async fn assert_exact_current_doctor_queries(
 	)
 	.await;
 	let ServerMessage::Refusal(refusal) = receive(&mut future).await else {
-		panic!("expected V2.12 minor-version refusal");
+		panic!("expected V2.13 minor-version refusal");
 	};
 	assert!(matches!(
 		refusal.refusal,
@@ -424,7 +423,7 @@ async fn assert_exact_current_doctor_queries(
 	send(
 		&mut current,
 		ClientMessage::Query(doctor_query(
-			ProtocolVersion { major: 2, minor: 12 },
+			ProtocolVersion { major: 2, minor: 13 },
 			"future-query-on-current-session",
 		)),
 	)

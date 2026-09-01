@@ -13,10 +13,11 @@ use decodex_core::{
 	RoutingCommandOutcome, RuntimeSessionId, TurnId,
 };
 use decodex_database::{
-	BindQuickTaskContinuation, ContinuationPlanEffect, CreateQuickTaskRoutingSuccessor,
-	PlanContinuation, PlanInitialThreadContinuation, PrepareProviderAttemptOutcome,
-	QuickTaskInitialRoute, QuickTaskInitialRouteOutcome, QuickTaskRoutingSuccessor,
-	QuickTaskRoutingSuccessorOutcome, RouteQuickTaskInitial, SqliteStore,
+	BindConversationContinuation, ContinuationPlanEffect, ConversationInitialRoute,
+	ConversationInitialRouteOutcome, ConversationRoutingSuccessor,
+	ConversationRoutingSuccessorOutcome, CreateConversationRoutingSuccessor, PlanContinuation,
+	PlanInitialThreadContinuation, PrepareProviderAttemptOutcome, RouteConversationInitial,
+	SqliteStore,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -32,7 +33,7 @@ pub(crate) struct ExecutionCommand {
 	/// Exact-command key for the whole initial Account Registry route transaction.
 	routing_idempotency_key: String,
 	/// Exact open Conversation coordinates. The product store generates route and Turn identities.
-	routing: RouteQuickTaskInitial,
+	routing: RouteConversationInitial,
 }
 
 impl ExecutionCommand {
@@ -44,11 +45,11 @@ impl ExecutionCommand {
 	) -> Self {
 		Self {
 			routing_idempotency_key: routing_scoped_key("route", operation_key),
-			routing: RouteQuickTaskInitial { conversation_id, expected_conversation_revision },
+			routing: RouteConversationInitial { conversation_id, expected_conversation_revision },
 		}
 	}
 
-	fn exact(routing_idempotency_key: String, routing: RouteQuickTaskInitial) -> Self {
+	fn exact(routing_idempotency_key: String, routing: RouteConversationInitial) -> Self {
 		Self { routing_idempotency_key, routing }
 	}
 }
@@ -58,7 +59,7 @@ pub(crate) struct ContinuationExecutionCommand {
 	/// Exact-command key for the immutable continuation routing binding.
 	binding_idempotency_key: String,
 	/// Existing session and original route lineage to bind.
-	binding: BindQuickTaskContinuation,
+	binding: BindConversationContinuation,
 	/// Exact-command key for same-thread or same-account Context Pack planning.
 	continuation_idempotency_key: String,
 	/// Stable Continuation Planning operation identity.
@@ -69,7 +70,7 @@ pub(crate) struct ContinuationExecutionCommand {
 	fallback_runtime_session_id: String,
 	/// Preallocated Context Pack identity.
 	fallback_context_pack_id: String,
-	/// Complete ordinary Quick Task Context Pack.
+	/// Complete ordinary Conversation Context Pack.
 	fallback_context_pack: ContextPack,
 }
 
@@ -87,7 +88,7 @@ impl ContinuationExecutionCommand {
 	) -> Self {
 		Self {
 			binding_idempotency_key: routing_scoped_key("continuation-binding", operation_key),
-			binding: BindQuickTaskContinuation {
+			binding: BindConversationContinuation {
 				operation_id: routing_uuid("continuation-binding-operation", &[operation_key]),
 				conversation_id,
 				expected_conversation_revision,
@@ -110,7 +111,7 @@ pub(crate) struct RoutingSuccessorExecutionCommand {
 	/// Exact key for Conversation-owned successor creation.
 	successor_idempotency_key: String,
 	/// Waiting/no-route source and expected revision.
-	successor: CreateQuickTaskRoutingSuccessor,
+	successor: CreateConversationRoutingSuccessor,
 	/// Exact key for the new Conversation's route transaction.
 	routing_idempotency_key: String,
 }
@@ -124,7 +125,7 @@ impl RoutingSuccessorExecutionCommand {
 	) -> Self {
 		Self {
 			successor_idempotency_key: routing_scoped_key("routing-successor", operation_key),
-			successor: CreateQuickTaskRoutingSuccessor {
+			successor: CreateConversationRoutingSuccessor {
 				source_conversation_id,
 				expected_source_revision,
 			},
@@ -135,7 +136,7 @@ impl RoutingSuccessorExecutionCommand {
 
 /// Result after the Conversation successor command commits before routing starts.
 pub(crate) struct RoutingSuccessorExecutionOutcome {
-	pub successor: QuickTaskRoutingSuccessor,
+	pub successor: ConversationRoutingSuccessor,
 	pub routing: PreProcessOutcome,
 }
 
@@ -237,14 +238,14 @@ impl ExecutionCoordinator {
 		command: &ExecutionCommand,
 	) -> PreProcessOutcome {
 		let route = match store
-			.route_quick_task_initial(&command.routing_idempotency_key, &command.routing)
+			.route_conversation_initial(&command.routing_idempotency_key, &command.routing)
 			.await
 		{
-			Ok(QuickTaskInitialRouteOutcome::Fresh(route))
-			| Ok(QuickTaskInitialRouteOutcome::Replayed(route)) => route,
+			Ok(ConversationInitialRouteOutcome::Fresh(route))
+			| Ok(ConversationInitialRouteOutcome::Replayed(route)) => route,
 			Ok(
-				QuickTaskInitialRouteOutcome::Rejected(_)
-				| QuickTaskInitialRouteOutcome::ReplayedRejection(_),
+				ConversationInitialRouteOutcome::Rejected(_)
+				| ConversationInitialRouteOutcome::ReplayedRejection(_),
 			)
 			| Err(_) => return failed(ExecutionFailureKind::Other),
 		};
@@ -270,7 +271,7 @@ impl ExecutionCoordinator {
 		store: &SqliteStore,
 		conversation_id: &ConversationId,
 	) -> PreProcessOutcome {
-		let route = match store.read_quick_task_initial_route(conversation_id).await {
+		let route = match store.read_conversation_initial_route(conversation_id).await {
 			Ok(Some(route))
 				if route.decision.kind == AccountRegistryRoutingDecisionKind::Selected =>
 				route,
@@ -286,15 +287,15 @@ impl ExecutionCoordinator {
 		command: &RoutingSuccessorExecutionCommand,
 	) -> Result<RoutingSuccessorExecutionOutcome, ExecutionFailureKind> {
 		let successor = match store
-			.create_quick_task_routing_successor(
+			.create_conversation_routing_successor(
 				&command.successor_idempotency_key,
 				&command.successor,
 			)
 			.await
 		{
-			Ok(QuickTaskRoutingSuccessorOutcome::Fresh(successor))
-			| Ok(QuickTaskRoutingSuccessorOutcome::Replayed(successor)) => successor,
-			Ok(QuickTaskRoutingSuccessorOutcome::Rejected { .. }) | Err(_) => {
+			Ok(ConversationRoutingSuccessorOutcome::Fresh(successor))
+			| Ok(ConversationRoutingSuccessorOutcome::Replayed(successor)) => successor,
+			Ok(ConversationRoutingSuccessorOutcome::Rejected { .. }) | Err(_) => {
 				return Err(ExecutionFailureKind::Other);
 			},
 		};
@@ -303,7 +304,7 @@ impl ExecutionCoordinator {
 				store,
 				&ExecutionCommand::exact(
 					command.routing_idempotency_key.clone(),
-					RouteQuickTaskInitial {
+					RouteConversationInitial {
 						conversation_id: successor.successor_conversation_id.clone(),
 						expected_conversation_revision: successor.successor_revision,
 					},
@@ -321,7 +322,7 @@ impl ExecutionCoordinator {
 		command: &ContinuationExecutionCommand,
 	) -> PreProcessOutcome {
 		let binding = match store
-			.bind_quick_task_continuation(&command.binding_idempotency_key, &command.binding)
+			.bind_conversation_continuation(&command.binding_idempotency_key, &command.binding)
 			.await
 		{
 			Ok(RoutingCommandOutcome::Success(binding)) => binding,
@@ -371,7 +372,7 @@ impl ExecutionCoordinator {
 	async fn plan_selected_initial(
 		&self,
 		store: &SqliteStore,
-		route: QuickTaskInitialRoute,
+		route: ConversationInitialRoute,
 	) -> PreProcessOutcome {
 		let Some(selected_account_id) = route.decision.selected_account_id.clone() else {
 			return failed(ExecutionFailureKind::Other);

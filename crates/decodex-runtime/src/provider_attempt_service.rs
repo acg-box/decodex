@@ -13,6 +13,7 @@ use std::{
 	time::Duration,
 };
 
+use decodex_codex::ExactThreadId;
 use decodex_core::{
 	AccountId, ContinuationPlanKind, ExecutionConsumer, ProcessExecutionEpochId,
 	ProcessGenerationId, ProviderAttempt, ProviderAttemptConsumer, ProviderAttemptId,
@@ -225,7 +226,7 @@ impl FreshRuntimeSessionResume {
 			|| response.response_id != request.request_id
 			|| !is_lower_sha256(&request.request_sha256)
 			|| !is_lower_sha256(&response.response_sha256)
-			|| !is_canonical_uuid(&response.codex_thread_id)
+			|| ExactThreadId::new(response.codex_thread_id.clone()).is_err()
 		{
 			return Err(ProviderAttemptServiceError::AuthorityConflict);
 		}
@@ -522,7 +523,7 @@ impl ProviderAttemptControl {
 		}
 		self.inner
 			.store
-			.reconcile_quick_task_terminalizations(RECONCILIATION_PAGE_SIZE)
+			.reconcile_conversation_terminalizations(RECONCILIATION_PAGE_SIZE)
 			.await
 			.map_err(|_| ProviderAttemptServiceError::ProductState)?;
 		Ok(())
@@ -633,14 +634,7 @@ impl ProviderAttemptService {
 					Some(RuntimeSessionBindingReceipt::from_binding(&binding)),
 				),
 			ProviderAttemptRuntimeAuthority::ExistingSessionResume(resume)
-				if plan.plan.kind == ContinuationPlanKind::SameThread
-					&& resume.runtime_session_id == plan.plan.source_runtime_session_id
-					&& resume.runtime_session_revision
-						== plan.plan.source_runtime_session_revision
-					&& plan.plan.codex_thread_id.as_deref()
-						== Some(resume.response.codex_thread_id.as_str())
-					&& resume.process_generation_id == *process.generation_id()
-					&& resume.process_generation_revision == process.revision() =>
+				if existing_session_resume_matches(plan, process, &resume) =>
 				(resume.process_execution_epoch_id, None),
 			_ => return Err(ProviderAttemptServiceError::AuthorityConflict),
 		};
@@ -699,6 +693,19 @@ impl ProviderAttemptService {
 	}
 }
 
+fn existing_session_resume_matches(
+	plan: &ContinuationPlanEffect,
+	process: &FencedProcess,
+	resume: &FreshRuntimeSessionResume,
+) -> bool {
+	plan.plan.kind == ContinuationPlanKind::SameThread
+		&& resume.runtime_session_id == plan.plan.source_runtime_session_id
+		&& resume.runtime_session_revision == plan.plan.source_runtime_session_revision
+		&& plan.plan.codex_thread_id.as_deref() == Some(resume.response.codex_thread_id.as_str())
+		&& resume.process_generation_id == *process.generation_id()
+		&& resume.process_generation_revision == process.revision()
+}
+
 fn diagnostic(attempt: ProviderAttempt) -> ProviderAttemptDiagnostic {
 	ProviderAttemptDiagnostic {
 		attempt_id: attempt.attempt_id,
@@ -727,10 +734,226 @@ fn is_lower_sha256(value: &str) -> bool {
 		&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-fn is_canonical_uuid(value: &str) -> bool {
-	value.len() == 36
-		&& value.bytes().enumerate().all(|(index, byte)| match index {
-			8 | 13 | 18 | 23 => byte == b'-',
-			_ => byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte),
-		})
+#[cfg(test)]
+mod tests {
+	use decodex_core::{
+		AccountId, ContinuationPlan, ConversationId, ExecutionConsumer, ProcessExecutionEpochId,
+		ProcessGenerationId, ProviderAttemptConsumer, ProviderAttemptId,
+		ProviderAttemptPreparation, ProviderAttemptState, ProviderDuplicateRisk, ProviderRequestId,
+		ProviderRequestKey, ProviderRequestKeys, RuntimeSessionId, TurnId,
+	};
+	use decodex_database::{ContinuationPlanEffect, PrepareProviderAttemptOutcome, SqliteStore};
+	use rusqlite::Connection;
+	use tempfile::tempdir;
+
+	use super::{
+		FreshRuntimeSessionResume, RuntimeSessionResumeRequest, SuccessfulRuntimeSessionResume,
+		existing_session_resume_matches,
+	};
+	use crate::process_supervisor::FencedProcess;
+
+	#[test]
+	fn opaque_provider_thread_resume_crosses_the_real_post_restart_authority_gate() {
+		let runtime_session_id = RuntimeSessionId::new("41000000-0000-4000-8000-000000000001")
+			.expect("runtime session identity");
+		let generation_id = ProcessGenerationId::new("42000000-0000-4000-8000-000000000001")
+			.expect("process generation identity");
+		let process = FencedProcess::for_test(generation_id, 3);
+		let opaque_thread = "provider/thread?after#restart%opaque";
+		let resume = FreshRuntimeSessionResume::new(
+			runtime_session_id.clone(),
+			4,
+			&process,
+			ProcessExecutionEpochId::new("43000000-0000-4000-8000-000000000001")
+				.expect("execution epoch identity"),
+			RuntimeSessionResumeRequest { request_id: 7, request_sha256: "a".repeat(64) },
+			SuccessfulRuntimeSessionResume {
+				response_id: 7,
+				response_sha256: "b".repeat(64),
+				codex_thread_id: opaque_thread.to_owned(),
+			},
+		)
+		.expect("opaque provider thread resume is valid");
+		let conversation_id = ConversationId::new("44000000-0000-4000-8000-000000000001")
+			.expect("Conversation identity");
+		let plan = ContinuationPlanEffect {
+			plan: ContinuationPlan {
+				plan_id: "post-restart-plan".to_owned(),
+				operation_id: "post-restart-operation".to_owned(),
+				routing_decision_id: "post-restart-route".to_owned(),
+				consumer: ExecutionConsumer::ConversationTurn {
+					conversation_id: conversation_id.clone(),
+					conversation_revision: 1,
+					source_runtime_session_id: Some(runtime_session_id.clone()),
+					source_runtime_session_revision: Some(4),
+					turn_id: TurnId::new("45000000-0000-4000-8000-000000000001")
+						.expect("Turn identity"),
+				},
+				conversation_id,
+				source_runtime_session_id: runtime_session_id,
+				source_runtime_session_revision: 4,
+				selected_account_id: AccountId::new("46000000-0000-4000-8000-000000000001")
+					.expect("account identity"),
+				kind: decodex_core::ContinuationPlanKind::SameThread,
+				codex_thread_id: Some(opaque_thread.to_owned()),
+				fallback_context_pack_id: None,
+				fallback_runtime_session_id: None,
+				same_thread_evidence: None,
+				replay_permitted: false,
+				dispatch_enabled: false,
+				planned_at_micros: 1,
+			},
+			runtime_session: None,
+			fallback_context_pack: None,
+			uncertain_predecessor_attempt_id: None,
+		};
+
+		assert!(existing_session_resume_matches(&plan, &process, &resume));
+	}
+
+	#[test]
+	fn runtime_resume_rejects_513_bytes_before_provider_attempt_authority() {
+		let process = FencedProcess::for_test(
+			ProcessGenerationId::new("42000000-0000-4000-8000-000000000002")
+				.expect("process generation identity"),
+			3,
+		);
+		let result = FreshRuntimeSessionResume::new(
+			RuntimeSessionId::new("41000000-0000-4000-8000-000000000002")
+				.expect("runtime session identity"),
+			4,
+			&process,
+			ProcessExecutionEpochId::new("43000000-0000-4000-8000-000000000002")
+				.expect("execution epoch identity"),
+			RuntimeSessionResumeRequest { request_id: 8, request_sha256: "a".repeat(64) },
+			SuccessfulRuntimeSessionResume {
+				response_id: 8,
+				response_sha256: "b".repeat(64),
+				codex_thread_id: "x".repeat(decodex_core::MAX_PROVIDER_THREAD_ID_BYTES + 1),
+			},
+		);
+		assert!(matches!(result, Err(super::ProviderAttemptServiceError::AuthorityConflict)));
+	}
+
+	#[tokio::test]
+	async fn reconstructed_service_executes_real_opaque_resume_preparation_once() {
+		let directory = tempdir().expect("temporary product root");
+		let canonical = directory.path().canonicalize().expect("canonical temporary root");
+		let root = decodex_core::DecodexRoot::new(canonical).expect("typed Decodex root");
+		let paths = root.paths();
+		let store = SqliteStore::open(&paths).expect("initialize SQLite authority");
+		drop(store);
+		let connection = Connection::open(paths.product_database_file())
+			.expect("open isolated fixture database");
+		connection
+			.execute_batch(include_str!("../tests/fixtures/opaque_resume_authority.sql"))
+			.expect("seed exact post-restart authority");
+		drop(connection);
+
+		let reopened = SqliteStore::open(&paths).expect("reconstruct SQLite service authority");
+		let control = super::ProviderAttemptControl::start(reopened)
+			.await
+			.expect("reconstruct ProviderAttempt service");
+		let runtime_session_id = RuntimeSessionId::new("41000000-0000-4000-8000-000000000001")
+			.expect("runtime session identity");
+		let conversation_id = ConversationId::new("44000000-0000-4000-8000-000000000001")
+			.expect("Conversation identity");
+		let turn_id = TurnId::new("45000000-0000-4000-8000-000000000001").expect("Turn identity");
+		let process = FencedProcess::for_test(
+			ProcessGenerationId::new("42000000-0000-4000-8000-000000000001")
+				.expect("process generation identity"),
+			3,
+		);
+		let opaque_thread = "provider/thread?after#restart%opaque";
+		let plan = ContinuationPlanEffect {
+			plan: ContinuationPlan {
+				plan_id: "4a000000-0000-4000-8000-000000000001".to_owned(),
+				operation_id: "4d000000-0000-4000-8000-000000000001".to_owned(),
+				routing_decision_id: "4b000000-0000-4000-8000-000000000001".to_owned(),
+				consumer: ExecutionConsumer::ConversationTurn {
+					conversation_id: conversation_id.clone(),
+					conversation_revision: 1,
+					source_runtime_session_id: Some(runtime_session_id.clone()),
+					source_runtime_session_revision: Some(4),
+					turn_id: turn_id.clone(),
+				},
+				conversation_id: conversation_id.clone(),
+				source_runtime_session_id: runtime_session_id.clone(),
+				source_runtime_session_revision: 4,
+				selected_account_id: AccountId::new("46000000-0000-4000-8000-000000000001")
+					.expect("account identity"),
+				kind: decodex_core::ContinuationPlanKind::SameThread,
+				codex_thread_id: Some(opaque_thread.to_owned()),
+				fallback_context_pack_id: None,
+				fallback_runtime_session_id: None,
+				same_thread_evidence: None,
+				replay_permitted: false,
+				dispatch_enabled: false,
+				planned_at_micros: 1,
+			},
+			runtime_session: None,
+			fallback_context_pack: None,
+			uncertain_predecessor_attempt_id: None,
+		};
+		let preparation = ProviderAttemptPreparation::new(
+			ProviderAttemptId::new("50000000-0000-4000-8000-000000000001")
+				.expect("attempt identity"),
+			ProviderAttemptConsumer::ConversationTurn { conversation_id, turn_id },
+			"4a000000-0000-4000-8000-000000000001",
+			ProviderRequestId::new("51000000-0000-4000-8000-000000000001")
+				.expect("provider request identity"),
+			"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+			ProviderRequestKeys::new(
+				None,
+				Some(ProviderRequestKey::new("opaque-restart-correlation").expect("provider key")),
+			)
+			.expect("provider keys"),
+			ProviderDuplicateRisk::OriginalIntent,
+		)
+		.expect("ProviderAttempt preparation");
+		let fresh_resume = || {
+			FreshRuntimeSessionResume::new(
+				runtime_session_id.clone(),
+				4,
+				&process,
+				ProcessExecutionEpochId::new("43000000-0000-4000-8000-000000000001")
+					.expect("execution epoch identity"),
+				RuntimeSessionResumeRequest { request_id: 9, request_sha256: "a".repeat(64) },
+				SuccessfulRuntimeSessionResume {
+					response_id: 9,
+					response_sha256: "b".repeat(64),
+					codex_thread_id: opaque_thread.to_owned(),
+				},
+			)
+			.expect("opaque post-restart resume")
+		};
+
+		let first = control
+			.prepare(
+				&plan,
+				&process,
+				&preparation,
+				super::ProviderAttemptRuntimeAuthority::ExistingSessionResume(fresh_resume()),
+			)
+			.await
+			.expect("prepare real post-restart ProviderAttempt");
+		assert!(matches!(first, PrepareProviderAttemptOutcome::Fresh(_)));
+		let replay = control
+			.prepare(
+				&plan,
+				&process,
+				&preparation,
+				super::ProviderAttemptRuntimeAuthority::ExistingSessionResume(fresh_resume()),
+			)
+			.await
+			.expect("replay exact ProviderAttempt preparation");
+		assert!(matches!(
+			replay,
+			PrepareProviderAttemptOutcome::Replayed(ref mutation)
+				if mutation.state == ProviderAttemptState::Prepared && mutation.revision == 1
+		));
+		let attempts = control.diagnostics(None, None, 8).await.expect("read attempts");
+		assert_eq!(attempts.len(), 1);
+		assert_eq!(attempts[0].state, ProviderAttemptState::Prepared);
+	}
 }

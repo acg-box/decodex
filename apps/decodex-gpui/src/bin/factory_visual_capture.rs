@@ -16,15 +16,13 @@ mod programs;
 #[path = "../ui_theme.rs"]
 mod ui_theme;
 #[allow(dead_code)]
-#[path = "../work_items.rs"]
-mod work_items;
-
-#[cfg(target_os = "macos")] use objc2 as _;
+#[cfg(target_os = "macos")]
+use objc2 as _;
 use std::path::PathBuf;
 
 use gpui::{AppContext as _, VisualTestAppContext, px, size};
 
-use crate::{factory_surface::FactorySurface, programs::Programs, work_items::WorkItems};
+use crate::{factory_surface::FactorySurface, programs::Programs};
 
 #[derive(Clone, Copy)]
 enum VisualScenario {
@@ -81,7 +79,6 @@ fn main() -> gpui::Result<()> {
 	let window = cx.open_offscreen_window(size(px(1_490.0), px(1_092.0)), |_, cx| {
 		cx.new(|cx| {
 			let mut surface = FactorySurface::new(cx);
-			surface.bind_work_items(WorkItems::visual_no_projects(), cx);
 			surface.bind_programs(scenario.programs(), cx);
 			surface
 		})

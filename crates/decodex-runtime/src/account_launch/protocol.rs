@@ -7,8 +7,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use zeroize::{Zeroize as _, Zeroizing};
 
 use decodex_codex::{
-	DecodexThreadSearchTerm, ExactThreadFacts, ExactThreadId, QuickTaskTurnStatus, ThreadCreatedAt,
-	ThreadCwd, ThreadId, ThreadProvenance, ThreadSummary, ThreadTitle,
+	ConversationTurnStatus, DecodexThreadSearchTerm, ExactThreadFacts, ExactThreadId,
+	ThreadCreatedAt, ThreadCwd, ThreadId, ThreadProvenance, ThreadSummary, ThreadTitle,
 };
 
 #[doc(hidden)]
@@ -233,12 +233,12 @@ pub enum ProtocolTurnStatus {
 	InProgress,
 }
 impl ProtocolTurnStatus {
-	pub const fn into_quick_task(self) -> QuickTaskTurnStatus {
+	pub const fn into_conversation(self) -> ConversationTurnStatus {
 		match self {
-			Self::Completed => QuickTaskTurnStatus::Completed,
-			Self::Interrupted => QuickTaskTurnStatus::Interrupted,
-			Self::Failed => QuickTaskTurnStatus::Failed,
-			Self::InProgress => QuickTaskTurnStatus::InProgress,
+			Self::Completed => ConversationTurnStatus::Completed,
+			Self::Interrupted => ConversationTurnStatus::Interrupted,
+			Self::Failed => ConversationTurnStatus::Failed,
+			Self::InProgress => ConversationTurnStatus::InProgress,
 		}
 	}
 }

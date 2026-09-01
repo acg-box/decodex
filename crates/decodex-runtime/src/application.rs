@@ -17,7 +17,7 @@ use decodex_core::{
 	HistoryItemKind, ItemStatus, ObjectiveId, PossibleSideEffects, ProductState, ProgramClaimId,
 	ProgramEvidenceId, ProgramId, ProgramObservationId, ProgramProposalId, ProgramReviewId,
 	ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp, RuntimeSessionState, TurnId,
-	TurnRole, WorkItemId, WorkItemState,
+	TurnRole, WorkItemId,
 };
 use decodex_database::{
 	AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
@@ -37,29 +37,28 @@ use decodex_protocol::{
 	AccountManualRecoveryOutcomeDto, AccountObservedStateDto, AccountOperationKindDto,
 	AccountOperationPhaseDto, AccountProfileDailyUsageDto, AccountProfileDto,
 	AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult, AccountProviderDto,
-	AccountQuotaErrorDto, AccountQuotaStateDto, AccountQuotaWindowDto, AccountRoutePendingDto,
-	AccountRouteAuthHomeDto, AccountRouteBlockingProcessDto, AccountRouteProcessBlockerDto,
+	AccountQuotaErrorDto, AccountQuotaStateDto, AccountQuotaWindowDto, AccountRouteAuthHomeDto,
+	AccountRouteBlockingProcessDto, AccountRoutePendingDto, AccountRouteProcessBlockerDto,
 	AccountRouteWaitReasonDto, AccountRoutingControlDto, AccountSelectionModeDto,
-	AccountSelectionRecoveryDto,
-	AccountUnsettledOperationDto, AccountsResult, CausationId, Channel, CodexAuthProjectionResult,
-	CommandEnvelope, CommandError, CommandPayload, ConversationHistoryPage,
-	ConversationHistoryResult, CorrelationId, DESKTOP_SETTINGS_ENTITY_ID, DesktopSettingsDto,
-	DesktopSettingsResult, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus,
-	EntityId, EntityRevision, EventPayload, ExecutionDecisionQueryError, ExecutionDecisionResult,
-	HistoryArtifactId, HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength,
-	HistoryBlobReference, HistoryCursorToken, HistoryItemDto, HistoryItemKindDto,
-	HistoryItemStatusDto, HistoryPayloadDto, HistoryQueryError, HistorySideEffectState,
-	HistoryText, HistoryTurnRole, MAX_HISTORY_PAGE_SIZE, ProgramContinuationDraftDto,
-	ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult, ProgramEdgeDto, ProgramListResult,
-	ProgramNodeDto, ProgramNodeFieldDto, ProgramNodeKind, ProgramRelationKind,
-	ProgramReviewDraftDto, ProgramSummaryDto, ProjectListResult, QueryEnvelope, QueryPayload,
-	QueryResultPayload, QuickTaskExecutionSettings as QuickTaskExecutionSettingsDto,
-	QuickTaskListCursor, QuickTaskListPage, QuickTaskListResult, QuickTaskReadError,
-	QuickTaskRecoveryAction, QuickTaskResult, QuickTaskState, QuickTaskSummary,
-	QuickTaskTurnOutcome, ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult,
-	ResetCardObservationDto, ResetCardOperationResult, ResetCardOutcome, ResultPayload,
-	Sha256Digest, SnapshotItem, WireText, WorkItemBoardPageSize, WorkItemBoardProjectId,
-	WorkItemBoardQueryError, WorkItemBoardResult, WorkItemBoardWorkItemId,
+	AccountSelectionRecoveryDto, AccountUnsettledOperationDto, AccountsResult, CausationId,
+	Channel, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
+	ConversationExecutionSettings as ConversationExecutionSettingsDto, ConversationHistoryPage,
+	ConversationHistoryResult, ConversationListCursor, ConversationListPage,
+	ConversationListResult, ConversationProgramContext, ConversationReadError,
+	ConversationRecoveryAction, ConversationResult, ConversationState, ConversationSummary,
+	ConversationTitle, ConversationTurnOutcome, CorrelationId, DESKTOP_SETTINGS_ENTITY_ID,
+	DesktopSettingsDto, DesktopSettingsResult, DoctorCheck, DoctorComponent, DoctorIssue,
+	DoctorReport, DoctorStatus, EntityId, EntityRevision, EventPayload,
+	ExecutionDecisionQueryError, ExecutionDecisionResult, HistoryArtifactId,
+	HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference,
+	HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
+	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
+	MAX_HISTORY_PAGE_SIZE, ProgramContinuationDraftDto, ProgramCycleDraftDto, ProgramCycleDto,
+	ProgramCycleResult, ProgramEdgeDto, ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto,
+	ProgramNodeKind, ProgramRelationKind, ProgramReviewDraftDto, ProgramSummaryDto,
+	ProviderThreadId, QueryEnvelope, QueryPayload, QueryResultPayload, ResetCardDescriptorDto,
+	ResetCardError, ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
+	ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem, WireText,
 };
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -84,16 +83,17 @@ use crate::{
 		AccountRouteResult, AccountRouteWaitReason, AccountService, CodexAuthProjectionInspection,
 		stable_account_alias,
 	},
-	shared_auth_coordinator::{CodexAuthHomeEvidence, CodexAuthOwnerKind},
-	domain_packs::{self, DomainPackError, QUICK_TASK_CAPABILITY},
-	managed_repository_runtime::ManagedRepositoryCapability,
-	quick_task::{
-		ControlQuickTask, CreateQuickTask, QuickTaskCapability, QuickTaskControlOutcome,
-		QuickTaskExecutionSettings as RuntimeQuickTaskExecutionSettings, QuickTaskLocalState,
-		QuickTaskManualRecovery, QuickTaskOutcome, QuickTaskProjection, QuickTaskReadback,
-		QuickTaskRuntime, QuickTaskTerminalState, RecoverQuickTask, SubmitQuickTaskTurn,
+	conversation::{
+		ControlConversation, ConversationCapability, ConversationControlOutcome,
+		ConversationExecutionSettings as RuntimeConversationExecutionSettings,
+		ConversationLocalState, ConversationManualRecovery, ConversationOutcome,
+		ConversationProjection, ConversationReadback, ConversationRuntime,
+		ConversationTerminalState, CreateConversation, RecoverConversation, SubmitConversationTurn,
 	},
+	domain_packs::{self, CONVERSATION_CAPABILITY, DomainPackError},
+	managed_repository_runtime::ManagedRepositoryCapability,
 	routing_orchestration::{ExecutionCoordinator, RoutingSuccessorExecutionCommand},
+	shared_auth_coordinator::{CodexAuthHomeEvidence, CodexAuthOwnerKind},
 };
 
 /// The only mutation/observation seam reachable from the WebSocket server.
@@ -186,8 +186,8 @@ impl ApplicationPublication {
 	pub(crate) fn publishes_event(&self) -> bool {
 		!matches!(
 			&self.result,
-			ResultPayload::QuickTaskConversationAccepted { .. }
-				| ResultPayload::QuickTaskInterruptAccepted { .. }
+			ResultPayload::ConversationAccepted { .. }
+				| ResultPayload::ConversationInterruptAccepted { .. }
 		)
 	}
 }
@@ -266,13 +266,11 @@ impl ProductStore {
 		match store.revalidate().await {
 			Ok(()) => DoctorStatus::Ready,
 			Err(error) => DoctorStatus::Unavailable(match error {
-				DatabaseError::Incompatible | DatabaseError::Corrupt => {
-					DoctorIssue::DatabaseIncompatible
-				},
+				DatabaseError::Incompatible | DatabaseError::Corrupt =>
+					DoctorIssue::DatabaseIncompatible,
 				DatabaseError::UnsafePath => DoctorIssue::UnsafeHostPath,
-				DatabaseError::Unavailable | DatabaseError::Closed => {
-					DoctorIssue::DatabaseUnreachable
-				},
+				DatabaseError::Unavailable | DatabaseError::Closed =>
+					DoctorIssue::DatabaseUnreachable,
 				DatabaseError::Conflict
 				| DatabaseError::NotFound
 				| DatabaseError::AlreadyExists => DoctorIssue::Integrity,
@@ -303,7 +301,7 @@ pub(crate) struct ServiceApplication {
 	reset_cards: Option<ApiResetCardRuntime>,
 	account_observations: Option<AccountObservationService>,
 	account_login: Option<Arc<crate::account_login::AccountLoginManager>>,
-	quick_tasks: QuickTaskCapability,
+	conversations: ConversationCapability,
 	doctor: DoctorReport,
 }
 impl ServiceApplication {
@@ -315,7 +313,7 @@ impl ServiceApplication {
 		provider_attempts: Option<ProviderAttemptControl>,
 		codex: CodexAdapter,
 		blob_store: Option<BlobStore>,
-		quick_tasks: QuickTaskCapability,
+		conversations: ConversationCapability,
 		doctor: DoctorReport,
 	) -> Self {
 		let (publication_stop, _) = watch::channel(false);
@@ -332,7 +330,7 @@ impl ServiceApplication {
 			reset_cards: None,
 			account_observations: None,
 			account_login: None,
-			quick_tasks,
+			conversations,
 			doctor,
 		}
 	}
@@ -516,14 +514,14 @@ async fn recover_pending_account_routes(
 		if *stop.borrow() {
 			return;
 		}
-		let has_pending_routes =
-			recover_pending_account_routes_once(Arc::clone(&accounts), &store, observations.as_ref())
-				.await;
-		let retry_delay = if has_pending_routes {
-			PENDING_ROUTE_RETRY_DELAY
-		} else {
-			IDLE_ROUTE_RETRY_DELAY
-		};
+		let has_pending_routes = recover_pending_account_routes_once(
+			Arc::clone(&accounts),
+			&store,
+			observations.as_ref(),
+		)
+		.await;
+		let retry_delay =
+			if has_pending_routes { PENDING_ROUTE_RETRY_DELAY } else { IDLE_ROUTE_RETRY_DELAY };
 
 		tokio::select! {
 			biased;
@@ -601,16 +599,13 @@ impl ServiceApplication {
 		let routing =
 			service.routing_control().await.ok().and_then(|routing| routing_dto(routing).ok());
 		let pending_route = match &self.store {
-			ProductStore::Available(store) => match store
-				.read_pending_account_route_commands(2)
-				.await
-			{
-				Ok(pending) if pending.is_empty() => None,
-				Ok(pending) if pending.len() == 1 => {
-					pending_account_route_dto(service, &pending[0]).await.ok()
+			ProductStore::Available(store) =>
+				match store.read_pending_account_route_commands(2).await {
+					Ok(pending) if pending.is_empty() => None,
+					Ok(pending) if pending.len() == 1 =>
+						pending_account_route_dto(service, &pending[0]).await.ok(),
+					Ok(_) | Err(_) => return AccountsResult::Unavailable,
 				},
-				Ok(_) | Err(_) => return AccountsResult::Unavailable,
-			},
 			ProductStore::Unavailable(_) => None,
 		};
 		match accounts {
@@ -654,13 +649,11 @@ impl ServiceApplication {
 				match result {
 					(Ok(account_id), Ok(account_revision), Ok(projection_digest))
 						if account_revision.0 > 0 =>
-					{
 						CodexAuthProjectionResult::Current {
 							account_id,
 							account_revision,
 							projection_digest,
-						}
-					},
+						},
 					_ => CodexAuthProjectionResult::Unavailable,
 				}
 			},
@@ -690,22 +683,19 @@ impl ServiceApplication {
 				.unwrap_or_else(|()| {
 					unavailable_account_profile(AccountProfileErrorDto::ProductStateUnavailable)
 				}),
-			AccountProfileRuntimeResult::Cached { profile, refresh_error } => {
+			AccountProfileRuntimeResult::Cached { profile, refresh_error } =>
 				match account_profile_dto(profile) {
 					Ok(profile) => AccountProfileResult::Cached {
 						profile: Box::new(profile),
 						refresh_error: account_profile_error_dto(refresh_error),
 					},
-					Err(()) => {
-						unavailable_account_profile(AccountProfileErrorDto::ProductStateUnavailable)
-					},
-				}
-			},
-			AccountProfileRuntimeResult::Unavailable { claims, error } => {
+					Err(()) =>
+						unavailable_account_profile(AccountProfileErrorDto::ProductStateUnavailable),
+				},
+			AccountProfileRuntimeResult::Unavailable { claims, error } =>
 				account_profile_unavailable_dto(claims, error).unwrap_or_else(|()| {
 					unavailable_account_profile(AccountProfileErrorDto::ProductStateUnavailable)
-				})
-			},
+				}),
 		}
 	}
 
@@ -721,9 +711,8 @@ impl ServiceApplication {
 				EntityId::new(selected.account.account_id.as_str().to_owned()),
 				u64::try_from(selected.account.revision).map(EntityRevision),
 			) {
-				(Ok(account_id), Ok(account_revision)) => {
-					AccountInitialSelectionResult::Selected { account_id, account_revision }
-				},
+				(Ok(account_id), Ok(account_revision)) =>
+					AccountInitialSelectionResult::Selected { account_id, account_revision },
 				_ => AccountInitialSelectionResult::Unavailable,
 			},
 			Err(failure) => {
@@ -922,12 +911,10 @@ impl ServiceApplication {
 				let operation_id = operation_id_from_wire(operation_id)?;
 				let expected = required_expected_revision(command)?;
 				let action = match action {
-					AccountManualRecoveryActionDto::ReconcileExactStoreState => {
-						AccountManualRecoveryAction::ReconcileExactStoreState
-					},
-					AccountManualRecoveryActionDto::CancelBeforeEffect => {
-						AccountManualRecoveryAction::CancelBeforeEffect
-					},
+					AccountManualRecoveryActionDto::ReconcileExactStoreState =>
+						AccountManualRecoveryAction::ReconcileExactStoreState,
+					AccountManualRecoveryActionDto::CancelBeforeEffect =>
+						AccountManualRecoveryAction::CancelBeforeEffect,
 				};
 				let publication_operation_id = operation_id.clone();
 				service
@@ -971,9 +958,8 @@ impl ServiceApplication {
 										)
 									})
 									.and_then(account_changed_publication),
-								AccountAdministrationOutcome::Rejected { rejection, revision } => {
-									Err(lifecycle_rejection(*rejection, *revision))
-								},
+								AccountAdministrationOutcome::Rejected { rejection, revision } =>
+									Err(lifecycle_rejection(*rejection, *revision)),
 							};
 							encode_account_command_receipt(&result)
 						},
@@ -1092,9 +1078,8 @@ impl ServiceApplication {
 					},
 				}
 			},
-			Err(error) => {
-				ResetCardInventoryResult::Unavailable { error: protocol_reset_error(error) }
-			},
+			Err(error) =>
+				ResetCardInventoryResult::Unavailable { error: protocol_reset_error(error) },
 		}
 	}
 
@@ -1153,43 +1138,29 @@ impl ServiceApplication {
 					.transpose();
 
 				match (items, next_cursor) {
-					(Ok(items), Ok(next_cursor)) => {
+					(Ok(items), Ok(next_cursor)) =>
 						ConversationHistoryResult::Page(ConversationHistoryPage {
 							items,
 							next_cursor,
-						})
-					},
+						}),
 					_ => ConversationHistoryResult::Unavailable {
 						error: HistoryQueryError::IntegrityUnavailable,
 					},
 				}
 			},
-			Err(StoreError::InvalidInput(_)) => {
-				ConversationHistoryResult::Unavailable { error: HistoryQueryError::InvalidRequest }
-			},
+			Err(StoreError::InvalidInput(_)) =>
+				ConversationHistoryResult::Unavailable { error: HistoryQueryError::InvalidRequest },
 			Err(StoreError::CapacityExhausted(_)) => ConversationHistoryResult::Unavailable {
 				error: HistoryQueryError::ResourceExhausted,
 			},
-			Err(StoreError::Blob(_) | StoreError::Incompatible(_)) => {
+			Err(StoreError::Blob(_) | StoreError::Incompatible(_)) =>
 				ConversationHistoryResult::Unavailable {
 					error: HistoryQueryError::IntegrityUnavailable,
-				}
-			},
+				},
 			Err(_) => ConversationHistoryResult::Unavailable {
 				error: HistoryQueryError::ProductStateUnavailable,
 			},
 		}
-	}
-
-	async fn work_item_board_page(
-		&self,
-		project_id: &WorkItemBoardProjectId,
-		state: Option<WorkItemState>,
-		after: Option<&WorkItemBoardWorkItemId>,
-		page_size: WorkItemBoardPageSize,
-	) -> WorkItemBoardResult {
-		let _ = (project_id, state, after, page_size);
-		WorkItemBoardResult::Unavailable { error: WorkItemBoardQueryError::ProductStateUnavailable }
 	}
 
 	async fn program_list(&self) -> ProgramListResult {
@@ -1226,22 +1197,28 @@ impl ServiceApplication {
 	}
 
 	async fn program_cycle_dto(&self, record: ProgramCycleRecord) -> Result<ProgramCycleDto, ()> {
-		let domain_pack = domain_packs::projection(&record).map_err(|_| ())?;
 		let mut run_states = Vec::new();
+		let mut provider_threads = HashMap::new();
 		for work_item in &record.work_items {
 			let Some(conversation_id) = work_item.conversation_id.as_ref() else {
 				continue;
 			};
 			let entity_id = EntityId::new(conversation_id.as_str()).map_err(|_| ())?;
-			let state = match self.quick_task_get(&entity_id).await {
-				QuickTaskResult::Available(summary) => quick_task_state_text(summary.state),
-				QuickTaskResult::RoutingSuccessorRedirect { .. } => "routing_successor",
-				QuickTaskResult::NotFound => "archived",
-				QuickTaskResult::Unavailable { .. } => "unavailable",
+			let state = match self.conversation_get(&entity_id).await {
+				ConversationResult::Available(summary) => {
+					if let Some(thread_id) = summary.codex_thread_id {
+						provider_threads.insert(conversation_id.clone(), thread_id);
+					}
+					conversation_state_text(summary.state)
+				},
+				ConversationResult::RoutingSuccessorRedirect { .. } => "routing_successor",
+				ConversationResult::NotFound => "archived",
+				ConversationResult::Unavailable { .. } => "unavailable",
 			};
 			run_states.push((conversation_id.clone(), state));
 		}
-		let cycle = program_cycle_dto(record, &run_states)?;
+		let domain_pack = domain_packs::projection(&record, &provider_threads).map_err(|_| ())?;
+		let cycle = program_cycle_dto(record, &run_states, &provider_threads)?;
 		match domain_pack {
 			Some(domain_pack) => cycle.with_domain_pack(domain_pack).map_err(|_| ()),
 			None => Ok(cycle),
@@ -1315,31 +1292,31 @@ impl ServiceApplication {
 		})
 	}
 
-	async fn quick_task_row(
+	async fn conversation_row(
 		&self,
 		conversation_id: &ConversationId,
-	) -> Result<Option<OrdinaryTaskConversationProjection>, QuickTaskReadError> {
+	) -> Result<Option<OrdinaryTaskConversationProjection>, ConversationReadError> {
 		let ProductStore::Available(store) = &self.store else {
-			return Err(QuickTaskReadError::ProductStateUnavailable);
+			return Err(ConversationReadError::ProductStateUnavailable);
 		};
 		let mut rows = store
 			.read_ordinary_task_conversations(Some(conversation_id), None, 2)
 			.await
-			.map_err(|error| quick_task_read_error(&error))?;
+			.map_err(|error| conversation_read_error(&error))?;
 		if rows.len() > 1 {
-			return Err(QuickTaskReadError::IntegrityUnavailable);
+			return Err(ConversationReadError::IntegrityUnavailable);
 		}
 		Ok(rows.pop())
 	}
 
-	async fn quick_task_list(
+	async fn conversation_list(
 		&self,
-		after: Option<&QuickTaskListCursor>,
+		after: Option<&ConversationListCursor>,
 		page_size: u16,
-	) -> QuickTaskListResult {
+	) -> ConversationListResult {
 		let ProductStore::Available(store) = &self.store else {
-			return QuickTaskListResult::Unavailable {
-				error: QuickTaskReadError::ProductStateUnavailable,
+			return ConversationListResult::Unavailable {
+				error: ConversationReadError::ProductStateUnavailable,
 			};
 		};
 		let after = match after
@@ -1354,19 +1331,23 @@ impl ServiceApplication {
 		{
 			Ok(after) => after,
 			Err(()) => {
-				return QuickTaskListResult::Unavailable {
-					error: QuickTaskReadError::InvalidRequest,
+				return ConversationListResult::Unavailable {
+					error: ConversationReadError::InvalidRequest,
 				};
 			},
 		};
 		let requested = usize::from(page_size);
 		let Some(limit) = requested.checked_add(1) else {
-			return QuickTaskListResult::Unavailable { error: QuickTaskReadError::InvalidRequest };
+			return ConversationListResult::Unavailable {
+				error: ConversationReadError::InvalidRequest,
+			};
 		};
 		let rows = match store.read_ordinary_task_conversations(None, after.as_ref(), limit).await {
 			Ok(rows) => rows,
 			Err(error) => {
-				return QuickTaskListResult::Unavailable { error: quick_task_read_error(&error) };
+				return ConversationListResult::Unavailable {
+					error: conversation_read_error(&error),
+				};
 			},
 		};
 		let mut rows = match rows
@@ -1380,8 +1361,8 @@ impl ServiceApplication {
 		{
 			Ok(rows) => rows,
 			Err(()) => {
-				return QuickTaskListResult::Unavailable {
-					error: QuickTaskReadError::IntegrityUnavailable,
+				return ConversationListResult::Unavailable {
+					error: ConversationReadError::IntegrityUnavailable,
 				};
 			},
 		};
@@ -1391,7 +1372,7 @@ impl ServiceApplication {
 		}
 		let next_cursor = if has_more {
 			rows.last().and_then(|row| {
-				QuickTaskListCursor::new(
+				ConversationListCursor::new(
 					row.updated_at_micros,
 					EntityId::new(row.conversation_id.as_str()).ok()?,
 				)
@@ -1401,49 +1382,51 @@ impl ServiceApplication {
 			None
 		};
 		if has_more && next_cursor.is_none() {
-			return QuickTaskListResult::Unavailable {
-				error: QuickTaskReadError::IntegrityUnavailable,
+			return ConversationListResult::Unavailable {
+				error: ConversationReadError::IntegrityUnavailable,
 			};
 		}
 		let conversations = rows
 			.into_iter()
 			.map(|row| {
 				let projection = self
-					.quick_tasks
+					.conversations
 					.runtime()
 					.and_then(|runtime| runtime.projection(&row.conversation_id));
-				quick_task_summary_from_row(row, projection)
+				conversation_summary_from_row(row, projection)
 			})
 			.collect::<Result<Vec<_>, _>>();
 		match conversations.and_then(|conversations| {
-			QuickTaskListPage::new(conversations, next_cursor).map_err(|_| ())
+			ConversationListPage::new(conversations, next_cursor).map_err(|_| ())
 		}) {
-			Ok(page) => QuickTaskListResult::Available(page),
-			Err(()) => {
-				QuickTaskListResult::Unavailable { error: QuickTaskReadError::IntegrityUnavailable }
+			Ok(page) => ConversationListResult::Available(page),
+			Err(()) => ConversationListResult::Unavailable {
+				error: ConversationReadError::IntegrityUnavailable,
 			},
 		}
 	}
 
-	async fn quick_task_get(&self, conversation_id: &EntityId) -> QuickTaskResult {
+	async fn conversation_get(&self, conversation_id: &EntityId) -> ConversationResult {
 		let Ok(conversation_id) = ConversationId::new(conversation_id.as_str()) else {
-			return QuickTaskResult::Unavailable { error: QuickTaskReadError::InvalidRequest };
+			return ConversationResult::Unavailable {
+				error: ConversationReadError::InvalidRequest,
+			};
 		};
-		let projection = match self.quick_task_row(&conversation_id).await {
+		let projection = match self.conversation_row(&conversation_id).await {
 			Ok(Some(projection)) => projection,
-			Ok(None) => return QuickTaskResult::NotFound,
-			Err(error) => return QuickTaskResult::Unavailable { error },
+			Ok(None) => return ConversationResult::NotFound,
+			Err(error) => return ConversationResult::Unavailable { error },
 		};
 		match projection {
 			OrdinaryTaskConversationProjection::Current(row) => {
 				let local = self
-					.quick_tasks
+					.conversations
 					.runtime()
 					.and_then(|runtime| runtime.projection(&conversation_id));
-				match quick_task_summary_from_row(row, local) {
-					Ok(summary) => QuickTaskResult::Available(summary),
-					Err(()) => QuickTaskResult::Unavailable {
-						error: QuickTaskReadError::IntegrityUnavailable,
+				match conversation_summary_from_row(row, local) {
+					Ok(summary) => ConversationResult::Available(summary),
+					Err(()) => ConversationResult::Unavailable {
+						error: ConversationReadError::IntegrityUnavailable,
 					},
 				}
 			},
@@ -1458,23 +1441,22 @@ impl ServiceApplication {
 				EntityId::new(successor_conversation_id.as_str()),
 				u64::try_from(successor_conversation_revision),
 			) {
-				(Ok(source), Ok(source_revision), Ok(successor), Ok(successor_revision)) => {
-					QuickTaskResult::RoutingSuccessorRedirect {
+				(Ok(source), Ok(source_revision), Ok(successor), Ok(successor_revision)) =>
+					ConversationResult::RoutingSuccessorRedirect {
 						source_conversation_id: source,
 						source_conversation_revision: EntityRevision(source_revision),
 						successor_conversation_id: successor,
 						successor_conversation_revision: EntityRevision(successor_revision),
-					}
-				},
-				_ => {
-					QuickTaskResult::Unavailable { error: QuickTaskReadError::IntegrityUnavailable }
+					},
+				_ => ConversationResult::Unavailable {
+					error: ConversationReadError::IntegrityUnavailable,
 				},
 			},
-			OrdinaryTaskConversationProjection::Archived { .. } => QuickTaskResult::NotFound,
+			OrdinaryTaskConversationProjection::Archived { .. } => ConversationResult::NotFound,
 		}
 	}
 
-	async fn publish_quick_task_routing_successor(
+	async fn publish_conversation_routing_successor(
 		&self,
 		source_conversation_id: &ConversationId,
 		source_revision: i64,
@@ -1483,12 +1465,13 @@ impl ServiceApplication {
 	) -> Result<ApplicationPublication, CommandError> {
 		let successor_id =
 			EntityId::new(successor_conversation_id.as_str().to_owned()).map_err(|_| {
-				application_unavailable("Quick Task successor identity is incompatible")
+				application_unavailable("Conversation successor identity is incompatible")
 			})?;
-		let QuickTaskResult::Available(successor) = self.quick_task_get(&successor_id).await else {
-			return Err(application_unavailable("Quick Task successor readback is unavailable"));
+		let ConversationResult::Available(successor) = self.conversation_get(&successor_id).await
+		else {
+			return Err(application_unavailable("Conversation successor readback is unavailable"));
 		};
-		quick_task_routing_successor_publication(
+		conversation_routing_successor_publication(
 			source_conversation_id,
 			source_revision,
 			successor_conversation_id,
@@ -1497,35 +1480,35 @@ impl ServiceApplication {
 		)
 	}
 
-	async fn quick_task_command_row(
+	async fn conversation_command_row(
 		&self,
 		conversation_id: &ConversationId,
 		expected: Option<EntityRevision>,
 	) -> Result<OrdinaryTaskConversationReadback, CommandError> {
 		let projection = self
-			.quick_task_row(conversation_id)
+			.conversation_row(conversation_id)
 			.await
-			.map_err(|_| application_unavailable("Quick Task readback is unavailable"))?
-			.ok_or_else(quick_task_conflict)?;
+			.map_err(|_| application_unavailable("Conversation readback is unavailable"))?
+			.ok_or_else(conversation_conflict)?;
 		let OrdinaryTaskConversationProjection::Current(row) = projection else {
-			return Err(quick_task_conflict());
+			return Err(conversation_conflict());
 		};
 		let actual = EntityRevision(
-			u64::try_from(row.conversation_revision).map_err(|_| quick_task_conflict())?,
+			u64::try_from(row.conversation_revision).map_err(|_| conversation_conflict())?,
 		);
-		let expected = expected.ok_or_else(quick_task_conflict)?;
+		let expected = expected.ok_or_else(conversation_conflict)?;
 		if expected != actual {
 			return Err(CommandError::ExpectedRevisionMismatch { expected, actual });
 		}
 		Ok(row)
 	}
 
-	async fn execute_create_quick_task(
+	async fn execute_create_conversation(
 		&self,
-		runtime: &QuickTaskRuntime,
+		runtime: &ConversationRuntime,
 		command: &CommandEnvelope,
-	) -> Result<QuickTaskOutcome, CommandError> {
-		let CommandPayload::CreateQuickTask {
+	) -> Result<ConversationOutcome, CommandError> {
+		let CommandPayload::CreateConversation {
 			conversation_id,
 			work_item_id,
 			message,
@@ -1533,20 +1516,20 @@ impl ServiceApplication {
 			execution,
 		} = &command.payload
 		else {
-			return Err(quick_task_conflict());
+			return Err(conversation_conflict());
 		};
 		if command.expected_revision.is_some() || message.as_str().trim().is_empty() {
-			return Err(quick_task_conflict());
+			return Err(conversation_conflict());
 		}
 		let conversation_id =
-			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
+			ConversationId::new(conversation_id.as_str()).map_err(|_| conversation_conflict())?;
 		let work_item_id = work_item_id
 			.as_ref()
 			.map(|work_item_id| WorkItemId::new(work_item_id.as_str()))
 			.transpose()
-			.map_err(|_| quick_task_conflict())?;
+			.map_err(|_| conversation_conflict())?;
 		Ok(runtime
-			.create(CreateQuickTask {
+			.create(CreateConversation {
 				operation_key: command.idempotency_key.as_str().to_owned(),
 				correlation_id: command.correlation_id.as_str().to_owned(),
 				causation_id: command.causation_id.as_ref().map(|id| id.as_str().to_owned()),
@@ -1559,25 +1542,25 @@ impl ServiceApplication {
 			.await)
 	}
 
-	async fn execute_quick_task_recovery(
+	async fn execute_conversation_recovery(
 		&self,
-		runtime: &QuickTaskRuntime,
+		runtime: &ConversationRuntime,
 		command: &CommandEnvelope,
-	) -> Result<QuickTaskOutcome, CommandError> {
+	) -> Result<ConversationOutcome, CommandError> {
 		let conversation_id = match &command.payload {
-			CommandPayload::ResumeQuickTaskRouting { conversation_id } => conversation_id,
-			CommandPayload::ResumeQuickTaskEstablishment { conversation_id } => conversation_id,
-			_ => return Err(quick_task_conflict()),
+			CommandPayload::ResumeConversationRouting { conversation_id } => conversation_id,
+			CommandPayload::ResumeConversationEstablishment { conversation_id } => conversation_id,
+			_ => return Err(conversation_conflict()),
 		};
 		let conversation_id =
-			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
-		let row = self.quick_task_command_row(&conversation_id, command.expected_revision).await?;
+			ConversationId::new(conversation_id.as_str()).map_err(|_| conversation_conflict())?;
+		let row =
+			self.conversation_command_row(&conversation_id, command.expected_revision).await?;
 		let recoverable = match &command.payload {
-			CommandPayload::ResumeQuickTaskRouting { .. } => {
+			CommandPayload::ResumeConversationRouting { .. } =>
 				row.runtime_session_id.is_none()
-					&& row.pre_session_state == Some(OrdinaryTaskPreSessionState::RoutingPending)
-			},
-			CommandPayload::ResumeQuickTaskEstablishment { .. } => {
+					&& row.pre_session_state == Some(OrdinaryTaskPreSessionState::RoutingPending),
+			CommandPayload::ResumeConversationEstablishment { .. } =>
 				(row.runtime_session_id.is_none()
 					&& row.pre_session_state
 						== Some(OrdinaryTaskPreSessionState::EstablishmentPending))
@@ -1587,14 +1570,13 @@ impl ServiceApplication {
 						&& !row.has_acknowledged_turn
 						&& !row.has_active_provider_attempt
 						&& !row.has_unknown_provider_attempt
-						&& (!row.has_admitted_user_turn || row.active_turn_id.is_some()))
-			},
+						&& (!row.has_admitted_user_turn || row.active_turn_id.is_some())),
 			_ => false,
 		};
 		if !recoverable {
-			return Err(quick_task_conflict());
+			return Err(conversation_conflict());
 		}
-		let recovery = RecoverQuickTask {
+		let recovery = RecoverConversation {
 			operation_key: command.idempotency_key.as_str().to_owned(),
 			correlation_id: command.correlation_id.as_str().to_owned(),
 			causation_id: command.causation_id.as_ref().map(|id| id.as_str().to_owned()),
@@ -1602,46 +1584,47 @@ impl ServiceApplication {
 			expected_conversation_revision: row.conversation_revision,
 		};
 		Ok(match &command.payload {
-			CommandPayload::ResumeQuickTaskRouting { .. } => runtime.resume_routing(recovery).await,
-			CommandPayload::ResumeQuickTaskEstablishment { .. } => {
-				runtime.resume_establishment(recovery).await
-			},
-			_ => return Err(quick_task_conflict()),
+			CommandPayload::ResumeConversationRouting { .. } =>
+				runtime.resume_routing(recovery).await,
+			CommandPayload::ResumeConversationEstablishment { .. } =>
+				runtime.resume_establishment(recovery).await,
+			_ => return Err(conversation_conflict()),
 		})
 	}
 
-	async fn execute_quick_task_routing_successor(
+	async fn execute_conversation_routing_successor(
 		&self,
 		command: &CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
-		let CommandPayload::CreateQuickTaskRoutingSuccessor { conversation_id } = &command.payload
+		let CommandPayload::CreateConversationRoutingSuccessor { conversation_id } =
+			&command.payload
 		else {
-			return Err(quick_task_conflict());
+			return Err(conversation_conflict());
 		};
 		let source_conversation_id =
-			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
+			ConversationId::new(conversation_id.as_str()).map_err(|_| conversation_conflict())?;
 		let projection = self
-			.quick_task_row(&source_conversation_id)
+			.conversation_row(&source_conversation_id)
 			.await
-			.map_err(|_| application_unavailable("Quick Task readback is unavailable"))?
-			.ok_or_else(quick_task_conflict)?;
+			.map_err(|_| application_unavailable("Conversation readback is unavailable"))?
+			.ok_or_else(conversation_conflict)?;
 		match projection {
-			OrdinaryTaskConversationProjection::Archived { .. } => Err(quick_task_conflict()),
+			OrdinaryTaskConversationProjection::Archived { .. } => Err(conversation_conflict()),
 			OrdinaryTaskConversationProjection::RoutingSuccessorRedirect {
 				source_conversation_id: redirected_source,
 				source_revision,
 				successor_conversation_id,
 				successor_conversation_revision,
 			} => {
-				let expected = command.expected_revision.ok_or_else(quick_task_conflict)?;
+				let expected = command.expected_revision.ok_or_else(conversation_conflict)?;
 				let source_revision_wire =
-					u64::try_from(source_revision).map_err(|_| quick_task_conflict())?;
+					u64::try_from(source_revision).map_err(|_| conversation_conflict())?;
 				if redirected_source != source_conversation_id
 					|| expected.0.checked_add(1) != Some(source_revision_wire)
 				{
-					return Err(quick_task_conflict());
+					return Err(conversation_conflict());
 				}
-				self.publish_quick_task_routing_successor(
+				self.publish_conversation_routing_successor(
 					&redirected_source,
 					source_revision,
 					&successor_conversation_id,
@@ -1651,9 +1634,10 @@ impl ServiceApplication {
 			},
 			OrdinaryTaskConversationProjection::Current(row) => {
 				let actual = EntityRevision(
-					u64::try_from(row.conversation_revision).map_err(|_| quick_task_conflict())?,
+					u64::try_from(row.conversation_revision)
+						.map_err(|_| conversation_conflict())?,
 				);
-				let expected = command.expected_revision.ok_or_else(quick_task_conflict)?;
+				let expected = command.expected_revision.ok_or_else(conversation_conflict)?;
 				if expected != actual {
 					return Err(CommandError::ExpectedRevisionMismatch { expected, actual });
 				}
@@ -1665,11 +1649,11 @@ impl ServiceApplication {
 								| OrdinaryTaskPreSessionState::NoRoute
 						)
 					) {
-					return Err(quick_task_conflict());
+					return Err(conversation_conflict());
 				}
 				let ProductStore::Available(store) = &self.store else {
 					return Err(application_unavailable(
-						"Quick Task successor persistence is unavailable",
+						"Conversation successor persistence is unavailable",
 					));
 				};
 				let operation_key = command.idempotency_key.as_str().to_owned();
@@ -1681,12 +1665,12 @@ impl ServiceApplication {
 				let result = ExecutionCoordinator
 					.successor_to_route(store, &execution)
 					.await
-					.map_err(|_| quick_task_conflict())?;
+					.map_err(|_| conversation_conflict())?;
 				let relation = result.successor;
-				if let QuickTaskCapability::Ready(runtime) = &self.quick_tasks {
+				if let ConversationCapability::Ready(runtime) = &self.conversations {
 					runtime
 						.start_preplanned_initial(
-							RecoverQuickTask {
+							RecoverConversation {
 								operation_key,
 								correlation_id: command.correlation_id.as_str().to_owned(),
 								causation_id: command
@@ -1700,7 +1684,7 @@ impl ServiceApplication {
 						)
 						.await;
 				}
-				self.publish_quick_task_routing_successor(
+				self.publish_conversation_routing_successor(
 					&relation.source_conversation_id,
 					relation.source_revision,
 					&relation.successor_conversation_id,
@@ -1711,12 +1695,12 @@ impl ServiceApplication {
 		}
 	}
 
-	async fn execute_submit_quick_task_turn(
+	async fn execute_submit_conversation_turn(
 		&self,
-		runtime: &QuickTaskRuntime,
+		runtime: &ConversationRuntime,
 		command: &CommandEnvelope,
-	) -> Result<QuickTaskOutcome, CommandError> {
-		let CommandPayload::SubmitQuickTaskTurn {
+	) -> Result<ConversationOutcome, CommandError> {
+		let CommandPayload::SubmitConversationTurn {
 			conversation_id,
 			turn_id,
 			message,
@@ -1724,17 +1708,17 @@ impl ServiceApplication {
 			execution,
 		} = &command.payload
 		else {
-			return Err(quick_task_conflict());
+			return Err(conversation_conflict());
 		};
 		if message.as_str().trim().is_empty() {
-			return Err(quick_task_conflict());
+			return Err(conversation_conflict());
 		}
 		let conversation_id =
-			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
-		let turn_id = TurnId::new(turn_id.as_str()).map_err(|_| quick_task_conflict())?;
-		self.quick_task_command_row(&conversation_id, command.expected_revision).await?;
+			ConversationId::new(conversation_id.as_str()).map_err(|_| conversation_conflict())?;
+		let turn_id = TurnId::new(turn_id.as_str()).map_err(|_| conversation_conflict())?;
+		self.conversation_command_row(&conversation_id, command.expected_revision).await?;
 		Ok(runtime
-			.submit_turn(SubmitQuickTaskTurn {
+			.submit_turn(SubmitConversationTurn {
 				operation_key: command.idempotency_key.as_str().to_owned(),
 				correlation_id: command.correlation_id.as_str().to_owned(),
 				causation_id: command.causation_id.as_ref().map(|id| id.as_str().to_owned()),
@@ -1747,58 +1731,59 @@ impl ServiceApplication {
 			.await)
 	}
 
-	async fn execute_interrupt_quick_task(
+	async fn execute_interrupt_conversation(
 		&self,
-		runtime: &QuickTaskRuntime,
+		runtime: &ConversationRuntime,
 		command: &CommandEnvelope,
-	) -> Result<QuickTaskOutcome, CommandError> {
-		let CommandPayload::InterruptQuickTask { conversation_id, turn_id } = &command.payload
+	) -> Result<ConversationOutcome, CommandError> {
+		let CommandPayload::InterruptConversation { conversation_id, turn_id } = &command.payload
 		else {
-			return Err(quick_task_conflict());
+			return Err(conversation_conflict());
 		};
 		let conversation_id =
-			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
-		let turn_id = TurnId::new(turn_id.as_str()).map_err(|_| quick_task_conflict())?;
-		let row = self.quick_task_command_row(&conversation_id, command.expected_revision).await?;
+			ConversationId::new(conversation_id.as_str()).map_err(|_| conversation_conflict())?;
+		let turn_id = TurnId::new(turn_id.as_str()).map_err(|_| conversation_conflict())?;
+		let row =
+			self.conversation_command_row(&conversation_id, command.expected_revision).await?;
 		let Some(projection) = runtime.projection(&conversation_id) else {
-			return Err(CommandError::QuickTaskRecoveryRequired {
+			return Err(CommandError::ConversationRecoveryRequired {
 				action: if row.active_turn_id.as_ref() == Some(&turn_id) {
-					QuickTaskRecoveryAction::ResolvePriorActiveTurn
+					ConversationRecoveryAction::ResolvePriorActiveTurn
 				} else {
-					QuickTaskRecoveryAction::StartNewConversation
+					ConversationRecoveryAction::StartNewConversation
 				},
 			});
 		};
 		if projection.readback.active_turn_id.as_ref() != Some(&turn_id) {
-			return Err(quick_task_conflict());
+			return Err(conversation_conflict());
 		}
 		Ok(runtime.interrupt(&conversation_id))
 	}
 
-	async fn execute_control_quick_task(
+	async fn execute_control_conversation(
 		&self,
-		runtime: &QuickTaskRuntime,
+		runtime: &ConversationRuntime,
 		command: &CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
 		let (conversation_id, archive) = match &command.payload {
-			CommandPayload::RefreshQuickTask { conversation_id } => (conversation_id, false),
-			CommandPayload::ArchiveQuickTask { conversation_id } => (conversation_id, true),
-			_ => return Err(quick_task_conflict()),
+			CommandPayload::RefreshConversation { conversation_id } => (conversation_id, false),
+			CommandPayload::ArchiveConversation { conversation_id } => (conversation_id, true),
+			_ => return Err(conversation_conflict()),
 		};
 		let core_id =
-			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
-		let row = self.quick_task_command_row(&core_id, command.expected_revision).await?;
+			ConversationId::new(conversation_id.as_str()).map_err(|_| conversation_conflict())?;
+		let row = self.conversation_command_row(&core_id, command.expected_revision).await?;
 		if row.has_active_provider_attempt {
-			return Err(quick_task_busy());
+			return Err(conversation_busy());
 		}
 		if row.active_turn_id.is_some() != row.active_turn_revision.is_some() {
-			return Err(quick_task_conflict());
+			return Err(conversation_conflict());
 		}
-		let runtime_session_id = row.runtime_session_id.ok_or_else(quick_task_conflict)?;
+		let runtime_session_id = row.runtime_session_id.ok_or_else(conversation_conflict)?;
 		let runtime_session_revision =
-			row.runtime_session_revision.ok_or_else(quick_task_conflict)?;
+			row.runtime_session_revision.ok_or_else(conversation_conflict)?;
 		match runtime
-			.control_thread(ControlQuickTask {
+			.control_thread(ControlConversation {
 				operation_key: command.idempotency_key.as_str().to_owned(),
 				conversation_id: core_id,
 				expected_conversation_revision: row.conversation_revision,
@@ -1810,93 +1795,90 @@ impl ServiceApplication {
 			})
 			.await
 		{
-			QuickTaskControlOutcome::Current => {
-				let QuickTaskResult::Available(conversation) =
-					self.quick_task_get(conversation_id).await
+			ConversationControlOutcome::Current => {
+				let ConversationResult::Available(conversation) =
+					self.conversation_get(conversation_id).await
 				else {
 					return Err(application_unavailable(
-						"Quick Task refresh readback is unavailable",
+						"Conversation refresh readback is unavailable",
 					));
 				};
-				quick_task_command_publication(conversation, false)
+				conversation_command_publication(conversation, false)
 			},
-			QuickTaskControlOutcome::Archived { conversation_revision } => {
+			ConversationControlOutcome::Archived { conversation_revision } => {
 				let revision = EntityRevision(
-					u64::try_from(conversation_revision).map_err(|_| quick_task_conflict())?,
+					u64::try_from(conversation_revision).map_err(|_| conversation_conflict())?,
 				);
 				Ok(ApplicationPublication {
 					channel: Channel::ConversationStream,
 					entity_id: conversation_id.clone(),
 					entity_revision: revision,
-					result: ResultPayload::QuickTaskArchived {
+					result: ResultPayload::ConversationArchived {
 						conversation_id: conversation_id.clone(),
 						conversation_revision: revision,
 					},
-					event: EventPayload::QuickTaskArchived {
+					event: EventPayload::ConversationArchived {
 						conversation_id: conversation_id.clone(),
 						conversation_revision: revision,
 					},
 				})
 			},
-			QuickTaskControlOutcome::Busy => Err(quick_task_busy()),
-			QuickTaskControlOutcome::Conflict => Err(quick_task_conflict()),
-			QuickTaskControlOutcome::OutcomeUnknown => Err(CommandError::AcceptanceUnknown),
-			QuickTaskControlOutcome::Unavailable => {
-				Err(application_unavailable("Quick Task thread control is unavailable"))
-			},
+			ConversationControlOutcome::Busy => Err(conversation_busy()),
+			ConversationControlOutcome::Conflict => Err(conversation_conflict()),
+			ConversationControlOutcome::OutcomeUnknown => Err(CommandError::AcceptanceUnknown),
+			ConversationControlOutcome::Unavailable =>
+				Err(application_unavailable("Conversation thread control is unavailable")),
 		}
 	}
 
-	async fn execute_quick_task(
+	async fn execute_conversation(
 		&self,
 		command: &CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
-		if matches!(&command.payload, CommandPayload::CreateQuickTaskRoutingSuccessor { .. }) {
-			return self.execute_quick_task_routing_successor(command).await;
+		if matches!(&command.payload, CommandPayload::CreateConversationRoutingSuccessor { .. }) {
+			return self.execute_conversation_routing_successor(command).await;
 		}
-		if let CommandPayload::CreateQuickTask { work_item_id: Some(work_item_id), .. } =
+		if let CommandPayload::CreateConversation { work_item_id: Some(work_item_id), .. } =
 			&command.payload
 		{
 			let work_item_id =
-				WorkItemId::new(work_item_id.as_str()).map_err(|_| quick_task_conflict())?;
-			authorize_program_capability(&self.store, &work_item_id, QUICK_TASK_CAPABILITY).await?;
+				WorkItemId::new(work_item_id.as_str()).map_err(|_| conversation_conflict())?;
+			authorize_program_capability(&self.store, &work_item_id, CONVERSATION_CAPABILITY)
+				.await?;
 		}
-		let runtime = match &self.quick_tasks {
-			QuickTaskCapability::Ready(runtime) => runtime,
-			QuickTaskCapability::Unavailable(reason) => {
-				return Err(CommandError::QuickTaskUnavailable { unavailable_reason: *reason });
+		let runtime = match &self.conversations {
+			ConversationCapability::Ready(runtime) => runtime,
+			ConversationCapability::Unavailable(reason) => {
+				return Err(CommandError::ConversationUnavailable { unavailable_reason: *reason });
 			},
 		};
 		if matches!(
 			&command.payload,
-			CommandPayload::RefreshQuickTask { .. } | CommandPayload::ArchiveQuickTask { .. }
+			CommandPayload::RefreshConversation { .. } | CommandPayload::ArchiveConversation { .. }
 		) {
-			return self.execute_control_quick_task(runtime, command).await;
+			return self.execute_control_conversation(runtime, command).await;
 		}
 		let outcome = match &command.payload {
-			CommandPayload::CreateQuickTask { .. } => {
-				self.execute_create_quick_task(runtime, command).await?
-			},
-			CommandPayload::ResumeQuickTaskRouting { .. }
-			| CommandPayload::ResumeQuickTaskEstablishment { .. } => {
-				self.execute_quick_task_recovery(runtime, command).await?
-			},
-			CommandPayload::SubmitQuickTaskTurn { .. } => {
-				self.execute_submit_quick_task_turn(runtime, command).await?
-			},
-			CommandPayload::InterruptQuickTask { .. } => {
-				self.execute_interrupt_quick_task(runtime, command).await?
-			},
-			_ => return Err(quick_task_conflict()),
+			CommandPayload::CreateConversation { .. } =>
+				self.execute_create_conversation(runtime, command).await?,
+			CommandPayload::ResumeConversationRouting { .. }
+			| CommandPayload::ResumeConversationEstablishment { .. } =>
+				self.execute_conversation_recovery(runtime, command).await?,
+			CommandPayload::SubmitConversationTurn { .. } =>
+				self.execute_submit_conversation_turn(runtime, command).await?,
+			CommandPayload::InterruptConversation { .. } =>
+				self.execute_interrupt_conversation(runtime, command).await?,
+			_ => return Err(conversation_conflict()),
 		};
-		let (conversation_id, interrupt) = quick_task_command_projection(outcome)?;
+		let (conversation_id, interrupt) = conversation_command_projection(outcome)?;
 		let conversation_id = EntityId::new(conversation_id.as_str().to_owned())
-			.map_err(|_| application_unavailable("Quick Task projection is unavailable"))?;
-		let QuickTaskResult::Available(conversation) = self.quick_task_get(&conversation_id).await
+			.map_err(|_| application_unavailable("Conversation projection is unavailable"))?;
+		let ConversationResult::Available(conversation) =
+			self.conversation_get(&conversation_id).await
 		else {
-			return Err(application_unavailable("Quick Task projection is unavailable"));
+			return Err(application_unavailable("Conversation projection is unavailable"));
 		};
-		quick_task_command_publication(conversation, interrupt)
+		conversation_command_publication(conversation, interrupt)
 	}
 }
 
@@ -1919,7 +1901,7 @@ async fn authorize_program_capability(
 
 impl Application for ServiceApplication {
 	fn has_publication_source(&self) -> bool {
-		self.quick_tasks.runtime().is_some() || self.account_route_events.is_some()
+		self.conversations.runtime().is_some() || self.account_route_events.is_some()
 	}
 
 	fn begin_shutdown(&self) {
@@ -1927,7 +1909,7 @@ impl Application for ServiceApplication {
 		if let Some(manager) = &self.account_login {
 			manager.begin_shutdown();
 		}
-		if let Some(runtime) = self.quick_tasks.runtime() {
+		if let Some(runtime) = self.conversations.runtime() {
 			runtime.begin_shutdown();
 		}
 		if let Some(runtime) = &self.reset_cards {
@@ -1939,7 +1921,7 @@ impl Application for ServiceApplication {
 		if let Some(manager) = &self.account_login {
 			manager.wait_for_shutdown().await;
 		}
-		if let Some(runtime) = self.quick_tasks.runtime() {
+		if let Some(runtime) = self.conversations.runtime() {
 			runtime.wait_for_shutdown().await;
 		}
 		if let Some(runtime) = &self.reset_cards {
@@ -2001,27 +1983,20 @@ impl Application for ServiceApplication {
 		command: &'a CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
 		match &command.payload {
-			CommandPayload::SetDesktopSettings { .. } => {
-				self.execute_desktop_settings(command).await
-			},
+			CommandPayload::SetDesktopSettings { .. } =>
+				self.execute_desktop_settings(command).await,
 			CommandPayload::CreateProgramCycle { .. }
 			| CommandPayload::BindProgramDomainPack { .. }
 			| CommandPayload::ContinueProgram { .. }
 			| CommandPayload::RecordProgramReview { .. } => self.execute_program_command(command).await,
-			CommandPayload::RegisterProject { .. }
-			| CommandPayload::CreateWorkItem { .. }
-			| CommandPayload::StartWorkItem { .. }
-			| CommandPayload::AcceptWorkItem { .. } => Err(application_unavailable(
-				"managed Factory commands are not available in Local Product V1",
-			)),
-			CommandPayload::CreateQuickTask { .. }
-			| CommandPayload::ResumeQuickTaskRouting { .. }
-			| CommandPayload::CreateQuickTaskRoutingSuccessor { .. }
-			| CommandPayload::ResumeQuickTaskEstablishment { .. }
-			| CommandPayload::SubmitQuickTaskTurn { .. }
-			| CommandPayload::RefreshQuickTask { .. }
-			| CommandPayload::ArchiveQuickTask { .. }
-			| CommandPayload::InterruptQuickTask { .. } => self.execute_quick_task(command).await,
+			CommandPayload::CreateConversation { .. }
+			| CommandPayload::ResumeConversationRouting { .. }
+			| CommandPayload::CreateConversationRoutingSuccessor { .. }
+			| CommandPayload::ResumeConversationEstablishment { .. }
+			| CommandPayload::SubmitConversationTurn { .. }
+			| CommandPayload::RefreshConversation { .. }
+			| CommandPayload::ArchiveConversation { .. }
+			| CommandPayload::InterruptConversation { .. } => self.execute_conversation(command).await,
 			CommandPayload::EnrollAccountFromSharedCodex { .. }
 			| CommandPayload::ImportAccountCredentialFile { .. }
 			| CommandPayload::SetAccountEnabled { .. }
@@ -2036,14 +2011,13 @@ impl Application for ServiceApplication {
 				self.request_account_observation_refresh();
 				Ok(publication)
 			},
-			CommandPayload::RefreshSystemObservation { .. } => {
+			CommandPayload::RefreshSystemObservation { .. } =>
 				Err(CommandError::ApplicationUnavailable {
 					message: WireText::new(
 						"foundation refresh is superseded by typed doctor/status",
 					)
 					.expect("service message is bounded"),
-				})
-			},
+				}),
 			CommandPayload::ConsumeResetCard { account_id, descriptor } => {
 				let Some(runtime) = &self.reset_cards else {
 					return Err(application_unavailable(
@@ -2101,61 +2075,42 @@ impl Application for ServiceApplication {
 
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
-			QueryPayload::GetDesktopSettings => {
-				QueryResultPayload::DesktopSettings(self.desktop_settings().await)
-			},
+			QueryPayload::GetDesktopSettings =>
+				QueryResultPayload::DesktopSettings(self.desktop_settings().await),
 			QueryPayload::ListPrograms => QueryResultPayload::Programs(self.program_list().await),
-			QueryPayload::GetProgramCycle { program_id } => {
-				QueryResultPayload::ProgramCycle(self.program_cycle(program_id).await)
-			},
-			QueryPayload::ListProjects => {
-				QueryResultPayload::Projects(ProjectListResult::Unavailable)
-			},
-			QueryPayload::ListQuickTasks { after, page_size } => QueryResultPayload::QuickTasks(
-				self.quick_task_list(after.as_ref(), page_size.get()).await,
-			),
-			QueryPayload::GetQuickTask { conversation_id } => {
-				QueryResultPayload::QuickTask(self.quick_task_get(conversation_id).await)
-			},
-			QueryPayload::GetDoctorStatus => {
-				QueryResultPayload::DoctorStatus(self.refreshed_doctor().await)
-			},
-			QueryPayload::GetExecutionDecision { decision_id } => {
-				QueryResultPayload::ExecutionDecision(self.execution_decision(decision_id).await)
-			},
-			QueryPayload::GetConversationHistory { conversation_id, after, page_size } => {
+			QueryPayload::GetProgramCycle { program_id } =>
+				QueryResultPayload::ProgramCycle(self.program_cycle(program_id).await),
+			QueryPayload::ListConversations { after, page_size } =>
+				QueryResultPayload::Conversations(
+					self.conversation_list(after.as_ref(), page_size.get()).await,
+				),
+			QueryPayload::GetConversation { conversation_id } =>
+				QueryResultPayload::Conversation(self.conversation_get(conversation_id).await),
+			QueryPayload::GetDoctorStatus =>
+				QueryResultPayload::DoctorStatus(self.refreshed_doctor().await),
+			QueryPayload::GetExecutionDecision { decision_id } =>
+				QueryResultPayload::ExecutionDecision(self.execution_decision(decision_id).await),
+			QueryPayload::GetConversationHistory { conversation_id, after, page_size } =>
 				QueryResultPayload::ConversationHistory(
 					self.conversation_history(conversation_id, after.as_ref(), *page_size).await,
-				)
-			},
-			QueryPayload::GetWorkItemBoardPage { project_id, state, after, page_size } => {
-				QueryResultPayload::WorkItemBoard(
-					self.work_item_board_page(project_id, *state, after.as_ref(), *page_size).await,
-				)
-			},
-			QueryPayload::GetResetCards { account_id } => {
-				QueryResultPayload::ResetCards(self.reset_card_inventory(account_id).await)
-			},
-			QueryPayload::GetResetCardOperation { idempotency_key } => {
+				),
+			QueryPayload::GetResetCards { account_id } =>
+				QueryResultPayload::ResetCards(self.reset_card_inventory(account_id).await),
+			QueryPayload::GetResetCardOperation { idempotency_key } =>
 				QueryResultPayload::ResetCardOperation(
 					self.reset_card_operation(idempotency_key.as_str()).await,
-				)
-			},
+				),
 			QueryPayload::ListAccounts => QueryResultPayload::Accounts(self.account_list().await),
-			QueryPayload::InspectAccount { account_id } => {
-				QueryResultPayload::Account(self.account_inspect(account_id).await)
-			},
-			QueryPayload::GetAccountProfile { account_id, include_email } => {
+			QueryPayload::InspectAccount { account_id } =>
+				QueryResultPayload::Account(self.account_inspect(account_id).await),
+			QueryPayload::GetAccountProfile { account_id, include_email } =>
 				QueryResultPayload::AccountProfile(
 					self.account_profile(account_id, *include_email).await,
-				)
-			},
-			QueryPayload::GetInitialAccountSelection => {
-				QueryResultPayload::InitialAccountSelection(self.initial_account_selection().await)
-			},
-			QueryPayload::GetCodexAuthProjection => {
-				QueryResultPayload::CodexAuthProjection(self.codex_auth_projection().await)
-			},
+				),
+			QueryPayload::GetInitialAccountSelection =>
+				QueryResultPayload::InitialAccountSelection(self.initial_account_selection().await),
+			QueryPayload::GetCodexAuthProjection =>
+				QueryResultPayload::CodexAuthProjection(self.codex_auth_projection().await),
 			QueryPayload::WaitForAccountObservation { after_generation, request_refresh } => {
 				if request_refresh == &Some(true) {
 					self.request_account_observation_refresh();
@@ -2169,11 +2124,11 @@ impl Application for ServiceApplication {
 	}
 
 	async fn next_publication(&self) -> Option<ApplicationEventPublication> {
-		match (self.quick_tasks.runtime(), self.account_route_events.as_ref()) {
+		match (self.conversations.runtime(), self.account_route_events.as_ref()) {
 			(None, None) => None,
 			(Some(runtime), None) => loop {
 				let outcome = runtime.next_event().await?;
-				if let Some(publication) = self.quick_task_event_publication(outcome).await {
+				if let Some(publication) = self.conversation_event_publication(outcome).await {
 					return Some(publication);
 				}
 			},
@@ -2184,7 +2139,7 @@ impl Application for ServiceApplication {
 						let Some(outcome) = outcome else {
 							return self.next_account_route_publication().await;
 						};
-						if let Some(publication) = self.quick_task_event_publication(outcome).await {
+						if let Some(publication) = self.conversation_event_publication(outcome).await {
 							return Some(publication);
 						}
 					},
@@ -2234,53 +2189,60 @@ impl ServiceApplication {
 	}
 }
 
-fn quick_task_read_error(error: &StoreError) -> QuickTaskReadError {
+fn conversation_read_error(error: &StoreError) -> ConversationReadError {
 	match error {
-		StoreError::InvalidInput(_) => QuickTaskReadError::InvalidRequest,
-		StoreError::Incompatible(_) | StoreError::CredentialRejected => {
-			QuickTaskReadError::IntegrityUnavailable
-		},
-		_ => QuickTaskReadError::ProductStateUnavailable,
+		StoreError::InvalidInput(_) => ConversationReadError::InvalidRequest,
+		StoreError::Incompatible(_) | StoreError::CredentialRejected =>
+			ConversationReadError::IntegrityUnavailable,
+		_ => ConversationReadError::ProductStateUnavailable,
 	}
 }
 
-fn quick_task_summary_from_row(
+fn conversation_summary_from_row(
 	row: OrdinaryTaskConversationReadback,
-	projection: Option<QuickTaskProjection>,
-) -> Result<QuickTaskSummary, ()> {
+	projection: Option<ConversationProjection>,
+) -> Result<ConversationSummary, ()> {
 	let projection_updated_at_micros = row.updated_at_micros;
+	let (title, codex_thread_id, program) = conversation_presentation(&row)?;
 	if let Some(projection) = projection {
 		let readback = &projection.readback;
 		if readback.conversation_id != row.conversation_id
 			|| readback.conversation_revision != Some(row.conversation_revision)
 			|| readback.runtime_session_id.as_ref() != row.runtime_session_id.as_ref()
 			|| readback.runtime_session_revision != row.runtime_session_revision
+			|| readback.codex_thread_id.as_deref() != row.codex_thread_id.as_deref()
 		{
 			return Err(());
 		}
-		return quick_task_summary_from_readback(
+		return conversation_summary_from_readback(
 			projection.readback,
 			projection.recovery,
 			projection_updated_at_micros,
+			title,
+			codex_thread_id,
+			program,
 		);
 	}
 	if let Some(pre_session_state) = row.pre_session_state {
 		let (state, recovery_action) = match pre_session_state {
-			OrdinaryTaskPreSessionState::RoutingPending => {
-				(QuickTaskState::RoutingPending, QuickTaskRecoveryAction::ResumeRouting)
-			},
-			OrdinaryTaskPreSessionState::EstablishmentPending => {
-				(QuickTaskState::EstablishmentPending, QuickTaskRecoveryAction::ResumeEstablishment)
-			},
-			OrdinaryTaskPreSessionState::QuotaExhausted => {
-				(QuickTaskState::QuotaExhausted, QuickTaskRecoveryAction::CreateRoutingSuccessor)
-			},
-			OrdinaryTaskPreSessionState::NoRoute => {
-				(QuickTaskState::NoRoute, QuickTaskRecoveryAction::CreateRoutingSuccessor)
-			},
+			OrdinaryTaskPreSessionState::RoutingPending =>
+				(ConversationState::RoutingPending, ConversationRecoveryAction::ResumeRouting),
+			OrdinaryTaskPreSessionState::EstablishmentPending => (
+				ConversationState::EstablishmentPending,
+				ConversationRecoveryAction::ResumeEstablishment,
+			),
+			OrdinaryTaskPreSessionState::QuotaExhausted => (
+				ConversationState::QuotaExhausted,
+				ConversationRecoveryAction::CreateRoutingSuccessor,
+			),
+			OrdinaryTaskPreSessionState::NoRoute =>
+				(ConversationState::NoRoute, ConversationRecoveryAction::CreateRoutingSuccessor),
 		};
-		return QuickTaskSummary::new(
+		return ConversationSummary::new(
 			EntityId::new(row.conversation_id.as_str().to_owned()).map_err(|_| ())?,
+			title,
+			codex_thread_id,
+			program,
 			EntityRevision(u64::try_from(row.conversation_revision).map_err(|_| ())?),
 			projection_updated_at_micros,
 			None,
@@ -2302,48 +2264,50 @@ fn quick_task_summary_from_row(
 		&& (!row.has_admitted_user_turn || row.active_turn_id.is_some())
 	{
 		(
-			QuickTaskState::Establishing,
+			ConversationState::Establishing,
 			row.active_turn_id,
-			Some(QuickTaskRecoveryAction::ResumeEstablishment),
+			Some(ConversationRecoveryAction::ResumeEstablishment),
 		)
 	} else if row.has_unknown_provider_attempt {
-		(QuickTaskState::OutcomeUnknown, row.active_turn_id, None)
+		(ConversationState::OutcomeUnknown, row.active_turn_id, None)
 	} else if row.has_active_provider_attempt {
 		(
-			QuickTaskState::ManualRecovery,
+			ConversationState::ManualRecovery,
 			row.active_turn_id,
-			Some(QuickTaskRecoveryAction::ResolvePriorAttempt),
+			Some(ConversationRecoveryAction::ResolvePriorAttempt),
 		)
 	} else if row.active_turn_id.is_some() {
 		(
-			QuickTaskState::ManualRecovery,
+			ConversationState::ManualRecovery,
 			row.active_turn_id,
-			Some(QuickTaskRecoveryAction::ResolvePriorActiveTurn),
+			Some(ConversationRecoveryAction::ResolvePriorActiveTurn),
 		)
 	} else {
 		match runtime_session_state {
 			RuntimeSessionState::Starting => (
-				QuickTaskState::ManualRecovery,
+				ConversationState::ManualRecovery,
 				None,
-				Some(QuickTaskRecoveryAction::StartNewConversation),
+				Some(ConversationRecoveryAction::StartNewConversation),
 			),
-			RuntimeSessionState::Active if row.has_acknowledged_turn => {
-				(QuickTaskState::Ready, None, None)
-			},
+			RuntimeSessionState::Active if row.has_acknowledged_turn =>
+				(ConversationState::Ready, None, None),
 			RuntimeSessionState::Active => (
-				QuickTaskState::ManualRecovery,
+				ConversationState::ManualRecovery,
 				None,
-				Some(QuickTaskRecoveryAction::StartNewConversation),
+				Some(ConversationRecoveryAction::StartNewConversation),
 			),
 			RuntimeSessionState::Ended | RuntimeSessionState::Diverged => (
-				QuickTaskState::ManualRecovery,
+				ConversationState::ManualRecovery,
 				None,
-				Some(QuickTaskRecoveryAction::StartNewConversation),
+				Some(ConversationRecoveryAction::StartNewConversation),
 			),
 		}
 	};
-	QuickTaskSummary::new(
+	ConversationSummary::new(
 		EntityId::new(row.conversation_id.as_str().to_owned()).map_err(|_| ())?,
+		title,
+		codex_thread_id,
+		program,
 		EntityRevision(u64::try_from(row.conversation_revision).map_err(|_| ())?),
 		projection_updated_at_micros,
 		Some(EntityId::new(runtime_session_id.as_str().to_owned()).map_err(|_| ())?),
@@ -2358,11 +2322,14 @@ fn quick_task_summary_from_row(
 	.map_err(|_| ())
 }
 
-fn quick_task_summary_from_readback(
-	readback: QuickTaskReadback,
-	recovery: Option<QuickTaskManualRecovery>,
+fn conversation_summary_from_readback(
+	readback: ConversationReadback,
+	recovery: Option<ConversationManualRecovery>,
 	projection_updated_at_micros: i64,
-) -> Result<QuickTaskSummary, ()> {
+	title: ConversationTitle,
+	codex_thread_id: Option<ProviderThreadId>,
+	program: Option<ConversationProgramContext>,
+) -> Result<ConversationSummary, ()> {
 	let conversation_revision = readback.conversation_revision.ok_or(())?;
 	let runtime_session_id = readback
 		.runtime_session_id
@@ -2375,18 +2342,21 @@ fn quick_task_summary_from_readback(
 		.transpose()
 		.map_err(|_| ())?;
 	let state = match readback.state {
-		QuickTaskLocalState::RoutingPending => QuickTaskState::RoutingPending,
-		QuickTaskLocalState::EstablishmentPending => QuickTaskState::EstablishmentPending,
-		QuickTaskLocalState::QuotaExhausted => QuickTaskState::QuotaExhausted,
-		QuickTaskLocalState::NoRoute => QuickTaskState::NoRoute,
-		QuickTaskLocalState::Establishing => QuickTaskState::Establishing,
-		QuickTaskLocalState::Ready => QuickTaskState::Ready,
-		QuickTaskLocalState::Running => QuickTaskState::Running,
-		QuickTaskLocalState::ManualRecovery => QuickTaskState::ManualRecovery,
-		QuickTaskLocalState::OutcomeUnknown => QuickTaskState::OutcomeUnknown,
+		ConversationLocalState::RoutingPending => ConversationState::RoutingPending,
+		ConversationLocalState::EstablishmentPending => ConversationState::EstablishmentPending,
+		ConversationLocalState::QuotaExhausted => ConversationState::QuotaExhausted,
+		ConversationLocalState::NoRoute => ConversationState::NoRoute,
+		ConversationLocalState::Establishing => ConversationState::Establishing,
+		ConversationLocalState::Ready => ConversationState::Ready,
+		ConversationLocalState::Running => ConversationState::Running,
+		ConversationLocalState::ManualRecovery => ConversationState::ManualRecovery,
+		ConversationLocalState::OutcomeUnknown => ConversationState::OutcomeUnknown,
 	};
-	QuickTaskSummary::new(
+	ConversationSummary::new(
 		EntityId::new(readback.conversation_id.as_str().to_owned()).map_err(|_| ())?,
+		title,
+		codex_thread_id,
+		program,
 		EntityRevision(u64::try_from(conversation_revision).map_err(|_| ())?),
 		projection_updated_at_micros,
 		runtime_session_id,
@@ -2398,113 +2368,134 @@ fn quick_task_summary_from_readback(
 			.transpose()
 			.map_err(|_| ())?,
 		match state {
-			QuickTaskState::RoutingPending => Some(QuickTaskRecoveryAction::ResumeRouting),
-			QuickTaskState::EstablishmentPending => {
-				Some(QuickTaskRecoveryAction::ResumeEstablishment)
-			},
-			QuickTaskState::QuotaExhausted | QuickTaskState::NoRoute => {
-				Some(QuickTaskRecoveryAction::CreateRoutingSuccessor)
-			},
-			_ => recovery.map(quick_task_recovery_action),
+			ConversationState::RoutingPending => Some(ConversationRecoveryAction::ResumeRouting),
+			ConversationState::EstablishmentPending =>
+				Some(ConversationRecoveryAction::ResumeEstablishment),
+			ConversationState::QuotaExhausted | ConversationState::NoRoute =>
+				Some(ConversationRecoveryAction::CreateRoutingSuccessor),
+			_ => recovery.map(conversation_recovery_action),
 		},
 	)
 	.map_err(|_| ())
 }
 
-const fn quick_task_recovery_action(action: QuickTaskManualRecovery) -> QuickTaskRecoveryAction {
+fn conversation_presentation(
+	row: &OrdinaryTaskConversationReadback,
+) -> Result<(ConversationTitle, Option<ProviderThreadId>, Option<ConversationProgramContext>), ()> {
+	let title = ConversationTitle::new(row.title.clone()).map_err(|_| ())?;
+	let codex_thread_id =
+		row.codex_thread_id.clone().map(ProviderThreadId::new).transpose().map_err(|_| ())?;
+	let program = row
+		.program_work_item
+		.as_ref()
+		.map(|context| {
+			ConversationProgramContext::new(
+				EntityId::new(context.program_id.as_str().to_owned()).map_err(|_| ())?,
+				EntityId::new(context.work_item_id.as_str().to_owned()).map_err(|_| ())?,
+				title.clone(),
+				WireText::new(context.instructions.clone()).map_err(|_| ())?,
+				context.state,
+				EntityRevision(context.revision),
+			)
+			.map_err(|_| ())
+		})
+		.transpose()?;
+	Ok((title, codex_thread_id, program))
+}
+
+const fn conversation_recovery_action(
+	action: ConversationManualRecovery,
+) -> ConversationRecoveryAction {
 	match action {
-		QuickTaskManualRecovery::EnableAccount => QuickTaskRecoveryAction::EnableAccount,
-		QuickTaskManualRecovery::EnrollCredentials => QuickTaskRecoveryAction::EnrollCredentials,
-		QuickTaskManualRecovery::ResolveAccountOperation => {
-			QuickTaskRecoveryAction::ResolveAccountOperation
-		},
-		QuickTaskManualRecovery::RepairCredentialStore => {
-			QuickTaskRecoveryAction::RepairCredentialStore
-		},
-		QuickTaskManualRecovery::RestoreProviderAgreement => {
-			QuickTaskRecoveryAction::RestoreProviderAgreement
-		},
-		QuickTaskManualRecovery::RefreshQuota => QuickTaskRecoveryAction::RefreshQuota,
-		QuickTaskManualRecovery::SelectedAccountDrift => {
-			QuickTaskRecoveryAction::StartNewConversation
-		},
-		QuickTaskManualRecovery::SelectedAccountReadiness => {
-			QuickTaskRecoveryAction::ConfigureAccount
-		},
-		QuickTaskManualRecovery::UpgradeCodex => QuickTaskRecoveryAction::UpgradeCodex,
-		QuickTaskManualRecovery::SelectWorkingDirectory => {
-			QuickTaskRecoveryAction::SelectWorkingDirectory
-		},
-		QuickTaskManualRecovery::PriorActiveTurn => QuickTaskRecoveryAction::ResolvePriorActiveTurn,
-		QuickTaskManualRecovery::PriorAttemptUnresolved => {
-			QuickTaskRecoveryAction::ResolvePriorAttempt
-		},
-		QuickTaskManualRecovery::ProcessUnavailable => {
-			QuickTaskRecoveryAction::RestoreProcessReadiness
-		},
-		QuickTaskManualRecovery::MissingLocalProcess
-		| QuickTaskManualRecovery::MissingThread
-		| QuickTaskManualRecovery::IncompatibleThread => QuickTaskRecoveryAction::StartNewConversation,
+		ConversationManualRecovery::EnableAccount => ConversationRecoveryAction::EnableAccount,
+		ConversationManualRecovery::EnrollCredentials =>
+			ConversationRecoveryAction::EnrollCredentials,
+		ConversationManualRecovery::ResolveAccountOperation =>
+			ConversationRecoveryAction::ResolveAccountOperation,
+		ConversationManualRecovery::RepairCredentialStore =>
+			ConversationRecoveryAction::RepairCredentialStore,
+		ConversationManualRecovery::RestoreProviderAgreement =>
+			ConversationRecoveryAction::RestoreProviderAgreement,
+		ConversationManualRecovery::RefreshQuota => ConversationRecoveryAction::RefreshQuota,
+		ConversationManualRecovery::SelectedAccountDrift =>
+			ConversationRecoveryAction::StartNewConversation,
+		ConversationManualRecovery::SelectedAccountReadiness =>
+			ConversationRecoveryAction::ConfigureAccount,
+		ConversationManualRecovery::UpgradeCodex => ConversationRecoveryAction::UpgradeCodex,
+		ConversationManualRecovery::SelectWorkingDirectory =>
+			ConversationRecoveryAction::SelectWorkingDirectory,
+		ConversationManualRecovery::PriorActiveTurn =>
+			ConversationRecoveryAction::ResolvePriorActiveTurn,
+		ConversationManualRecovery::PriorAttemptUnresolved =>
+			ConversationRecoveryAction::ResolvePriorAttempt,
+		ConversationManualRecovery::ProcessUnavailable =>
+			ConversationRecoveryAction::RestoreProcessReadiness,
+		ConversationManualRecovery::MissingLocalProcess
+		| ConversationManualRecovery::MissingThread
+		| ConversationManualRecovery::IncompatibleThread =>
+			ConversationRecoveryAction::StartNewConversation,
 	}
 }
 
-const fn quick_task_conflict() -> CommandError {
-	CommandError::QuickTaskRecoveryRequired { action: QuickTaskRecoveryAction::RefreshConversation }
-}
-
-const fn quick_task_busy() -> CommandError {
-	CommandError::QuickTaskRecoveryRequired {
-		action: QuickTaskRecoveryAction::WaitForCurrentCommand,
+const fn conversation_conflict() -> CommandError {
+	CommandError::ConversationRecoveryRequired {
+		action: ConversationRecoveryAction::RefreshConversation,
 	}
 }
 
-fn quick_task_command_projection(
-	outcome: QuickTaskOutcome,
+const fn conversation_busy() -> CommandError {
+	CommandError::ConversationRecoveryRequired {
+		action: ConversationRecoveryAction::WaitForCurrentCommand,
+	}
+}
+
+fn conversation_command_projection(
+	outcome: ConversationOutcome,
 ) -> Result<(ConversationId, bool), CommandError> {
 	let (readback, interrupt) = match outcome {
-		QuickTaskOutcome::PreSession(readback)
-		| QuickTaskOutcome::Started { readback, .. }
-		| QuickTaskOutcome::Terminal { readback, .. } => (readback, false),
-		QuickTaskOutcome::InterruptRequested(readback) => (readback, true),
-		QuickTaskOutcome::ManualRecovery { action, .. } => {
-			return Err(CommandError::QuickTaskRecoveryRequired {
-				action: quick_task_recovery_action(action),
+		ConversationOutcome::PreSession(readback)
+		| ConversationOutcome::Started { readback, .. }
+		| ConversationOutcome::Terminal { readback, .. } => (readback, false),
+		ConversationOutcome::InterruptRequested(readback) => (readback, true),
+		ConversationOutcome::ManualRecovery { action, .. } => {
+			return Err(CommandError::ConversationRecoveryRequired {
+				action: conversation_recovery_action(action),
 			});
 		},
-		QuickTaskOutcome::Unknown { .. } => return Err(CommandError::AcceptanceUnknown),
-		QuickTaskOutcome::Busy(_) => return Err(quick_task_busy()),
-		QuickTaskOutcome::Conflict => return Err(quick_task_conflict()),
-		QuickTaskOutcome::Streaming { .. } | QuickTaskOutcome::Unavailable => {
-			return Err(application_unavailable("Quick Task execution is unavailable"));
+		ConversationOutcome::Unknown { .. } => return Err(CommandError::AcceptanceUnknown),
+		ConversationOutcome::Busy(_) => return Err(conversation_busy()),
+		ConversationOutcome::Conflict => return Err(conversation_conflict()),
+		ConversationOutcome::Streaming { .. } | ConversationOutcome::Unavailable => {
+			return Err(application_unavailable("Conversation execution is unavailable"));
 		},
 	};
 	Ok((readback.conversation_id, interrupt))
 }
 
-fn quick_task_command_publication(
-	conversation: QuickTaskSummary,
+fn conversation_command_publication(
+	conversation: ConversationSummary,
 	interrupt: bool,
 ) -> Result<ApplicationPublication, CommandError> {
 	let entity_id = conversation.conversation_id.clone();
 	let entity_revision = conversation.conversation_revision;
 	let result = if interrupt {
-		ResultPayload::QuickTaskInterruptAccepted { conversation: conversation.clone() }
+		ResultPayload::ConversationInterruptAccepted { conversation: conversation.clone() }
 	} else {
-		ResultPayload::QuickTaskConversationAccepted { conversation: conversation.clone() }
+		ResultPayload::ConversationAccepted { conversation: conversation.clone() }
 	};
 	Ok(ApplicationPublication {
 		channel: Channel::ConversationStream,
 		entity_id,
 		entity_revision,
 		result,
-		event: EventPayload::QuickTaskConversationChanged { conversation },
+		event: EventPayload::ConversationChanged { conversation },
 	})
 }
 
 fn runtime_execution_settings(
-	settings: &QuickTaskExecutionSettingsDto,
-) -> RuntimeQuickTaskExecutionSettings {
-	RuntimeQuickTaskExecutionSettings {
+	settings: &ConversationExecutionSettingsDto,
+) -> RuntimeConversationExecutionSettings {
+	RuntimeConversationExecutionSettings {
 		model: settings.model.as_str().to_owned(),
 		reasoning_effort: settings.reasoning_effort.as_str().to_owned(),
 		fast: settings.fast,
@@ -2643,6 +2634,7 @@ fn program_summary_dto(record: ProgramSummaryRecord) -> Result<ProgramSummaryDto
 fn program_cycle_dto(
 	record: ProgramCycleRecord,
 	run_states: &[(ConversationId, &'static str)],
+	provider_threads: &HashMap<ConversationId, ProviderThreadId>,
 ) -> Result<ProgramCycleDto, ()> {
 	let node_order = program_node_order(&record)?;
 	let program = ProgramSummaryDto {
@@ -2778,10 +2770,15 @@ fn program_cycle_dto(
 			nodes.push(ProgramNodeDto {
 				id: run_id.clone(),
 				kind: ProgramNodeKind::Run,
-				title: wire("Codex Quick Task")?,
+				title: wire("Codex Conversation")?,
 				summary: wire("Execution through the existing Codex app-server worker path")?,
 				state: wire(state)?,
-				source: None,
+				source: provider_threads
+					.get(&conversation_id)
+					.map(|thread_id| {
+						thread_id.codex_url().map_err(|_| ()).and_then(|url| wire(url.to_string()))
+					})
+					.transpose()?,
 				observed_at_micros: None,
 				conversation_id: Some(run_id),
 				fields: Vec::new(),
@@ -2799,9 +2796,8 @@ fn program_cycle_dto(
 			id: evidence_id,
 			kind: ProgramNodeKind::Evidence,
 			title: wire(match evidence.kind {
-				decodex_core::ProgramEvidenceKind::DeterministicValidation => {
-					"Deterministic validation"
-				},
+				decodex_core::ProgramEvidenceKind::DeterministicValidation =>
+					"Deterministic validation",
 				decodex_core::ProgramEvidenceKind::External => "External evidence",
 			})?,
 			summary: wire(evidence.summary)?,
@@ -2977,35 +2973,33 @@ fn wire(value: impl Into<String>) -> Result<WireText, ()> {
 	WireText::new(value).map_err(|_| ())
 }
 
-const fn quick_task_state_text(state: QuickTaskState) -> &'static str {
+const fn conversation_state_text(state: ConversationState) -> &'static str {
 	match state {
-		QuickTaskState::RoutingPending => "routing_pending",
-		QuickTaskState::EstablishmentPending => "establishment_pending",
-		QuickTaskState::QuotaExhausted => "quota_exhausted",
-		QuickTaskState::NoRoute => "no_route",
-		QuickTaskState::Establishing => "establishing",
-		QuickTaskState::Ready => "ready",
-		QuickTaskState::Running => "running",
-		QuickTaskState::ManualRecovery => "manual_recovery",
-		QuickTaskState::OutcomeUnknown => "outcome_unknown",
+		ConversationState::RoutingPending => "routing_pending",
+		ConversationState::EstablishmentPending => "establishment_pending",
+		ConversationState::QuotaExhausted => "quota_exhausted",
+		ConversationState::NoRoute => "no_route",
+		ConversationState::Establishing => "establishing",
+		ConversationState::Ready => "ready",
+		ConversationState::Running => "running",
+		ConversationState::ManualRecovery => "manual_recovery",
+		ConversationState::OutcomeUnknown => "outcome_unknown",
 	}
 }
 
 fn program_command_error(error: StoreError) -> CommandError {
 	match error {
 		StoreError::IdempotencyConflict => CommandError::IdempotencyConflict,
-		StoreError::RevisionConflict { expected: Some(expected), actual: Some(actual), .. } => {
+		StoreError::RevisionConflict { expected: Some(expected), actual: Some(actual), .. } =>
 			match (u64::try_from(expected), u64::try_from(actual)) {
 				(Ok(expected), Ok(actual)) => CommandError::ExpectedRevisionMismatch {
 					expected: EntityRevision(expected),
 					actual: EntityRevision(actual),
 				},
 				_ => application_unavailable("Program command conflicts with current state"),
-			}
-		},
-		StoreError::Database(_) | StoreError::Incompatible(_) => {
-			application_unavailable("Program storage is unavailable")
-		},
+			},
+		StoreError::Database(_) | StoreError::Incompatible(_) =>
+			application_unavailable("Program storage is unavailable"),
 		_ => application_unavailable("Program command conflicts with current state"),
 	}
 }
@@ -3016,50 +3010,49 @@ fn domain_pack_command_error(error: DomainPackError) -> CommandError {
 		DomainPackError::BindingMissing => "Program Domain Pack is not bound",
 		DomainPackError::BindingMismatch => "Program Domain Pack binding is incompatible",
 		DomainPackError::CapabilityDenied => "Domain Pack does not grant this capability",
-		DomainPackError::RegistryInvalid | DomainPackError::ProjectionInvalid => {
-			"Domain Pack registry is unavailable"
-		},
+		DomainPackError::RegistryInvalid | DomainPackError::ProjectionInvalid =>
+			"Domain Pack registry is unavailable",
 	})
 }
 
-fn quick_task_routing_successor_publication(
+fn conversation_routing_successor_publication(
 	source_conversation_id: &ConversationId,
 	source_revision: i64,
 	successor_conversation_id: &ConversationId,
 	successor_revision: i64,
-	successor: QuickTaskSummary,
+	successor: ConversationSummary,
 ) -> Result<ApplicationPublication, CommandError> {
 	let successor_revision =
-		EntityRevision(u64::try_from(successor_revision).map_err(|_| quick_task_conflict())?);
+		EntityRevision(u64::try_from(successor_revision).map_err(|_| conversation_conflict())?);
 	if successor.conversation_id.as_str() != successor_conversation_id.as_str()
 		|| successor.conversation_revision != successor_revision
 	{
-		return Err(quick_task_conflict());
+		return Err(conversation_conflict());
 	}
 	let source_conversation_id = EntityId::new(source_conversation_id.as_str().to_owned())
-		.map_err(|_| quick_task_conflict())?;
+		.map_err(|_| conversation_conflict())?;
 	let source_conversation_revision =
-		EntityRevision(u64::try_from(source_revision).map_err(|_| quick_task_conflict())?);
+		EntityRevision(u64::try_from(source_revision).map_err(|_| conversation_conflict())?);
 	Ok(ApplicationPublication {
 		channel: Channel::ConversationStream,
 		entity_id: successor.conversation_id.clone(),
 		entity_revision: successor.conversation_revision,
-		result: ResultPayload::QuickTaskRoutingSuccessorAccepted {
+		result: ResultPayload::ConversationRoutingSuccessorAccepted {
 			source_conversation_id,
 			source_conversation_revision,
 			successor: successor.clone(),
 		},
-		event: EventPayload::QuickTaskConversationChanged { conversation: successor },
+		event: EventPayload::ConversationChanged { conversation: successor },
 	})
 }
 
 impl ServiceApplication {
-	async fn quick_task_event_publication(
+	async fn conversation_event_publication(
 		&self,
-		outcome: QuickTaskOutcome,
+		outcome: ConversationOutcome,
 	) -> Option<ApplicationEventPublication> {
 		match outcome {
-			QuickTaskOutcome::Streaming { readback, history_item_id, text } => {
+			ConversationOutcome::Streaming { readback, history_item_id, text } => {
 				let correlation_id =
 					CorrelationId::new(readback.correlation_id.as_deref()?).ok()?;
 				let causation_id =
@@ -3074,70 +3067,70 @@ impl ServiceApplication {
 					channel: Channel::ConversationStream,
 					entity_id,
 					entity_revision: EntityRevision(1),
-					event: EventPayload::QuickTaskMessageDelta {
+					event: EventPayload::ConversationMessageDelta {
 						conversation_id,
 						turn_id,
 						delta: text,
 					},
 				})
 			},
-			QuickTaskOutcome::Terminal { readback, turn_id, state, .. } => {
-				let conversation = self.quick_task_event_summary(&readback).await?;
-				quick_task_terminal_publication(readback, turn_id, state, conversation)
+			ConversationOutcome::Terminal { readback, turn_id, state, .. } => {
+				let conversation = self.conversation_event_summary(&readback).await?;
+				conversation_terminal_publication(readback, turn_id, state, conversation)
 			},
-			QuickTaskOutcome::Unknown { readback, .. } => {
-				let conversation = self.quick_task_event_summary(&readback).await?;
-				quick_task_summary_publication(readback, conversation, "unknown")
+			ConversationOutcome::Unknown { readback, .. } => {
+				let conversation = self.conversation_event_summary(&readback).await?;
+				conversation_summary_publication(readback, conversation, "unknown")
 			},
-			QuickTaskOutcome::ManualRecovery { readback, .. } => {
-				let conversation = self.quick_task_event_summary(&readback).await?;
-				quick_task_summary_publication(readback, conversation, "recovery")
+			ConversationOutcome::ManualRecovery { readback, .. } => {
+				let conversation = self.conversation_event_summary(&readback).await?;
+				conversation_summary_publication(readback, conversation, "recovery")
 			},
-			QuickTaskOutcome::PreSession(_)
-			| QuickTaskOutcome::Started { .. }
-			| QuickTaskOutcome::Busy(_)
-			| QuickTaskOutcome::Conflict
-			| QuickTaskOutcome::InterruptRequested(_)
-			| QuickTaskOutcome::Unavailable => None,
+			ConversationOutcome::PreSession(_)
+			| ConversationOutcome::Started { .. }
+			| ConversationOutcome::Busy(_)
+			| ConversationOutcome::Conflict
+			| ConversationOutcome::InterruptRequested(_)
+			| ConversationOutcome::Unavailable => None,
 		}
 	}
 
-	async fn quick_task_event_summary(
+	async fn conversation_event_summary(
 		&self,
-		readback: &QuickTaskReadback,
-	) -> Option<QuickTaskSummary> {
+		readback: &ConversationReadback,
+	) -> Option<ConversationSummary> {
 		let conversation_id = EntityId::new(readback.conversation_id.as_str().to_owned()).ok()?;
-		match self.quick_task_get(&conversation_id).await {
-			QuickTaskResult::Available(summary) => Some(summary),
+		match self.conversation_get(&conversation_id).await {
+			ConversationResult::Available(summary) => Some(summary),
 			_ => None,
 		}
 	}
 }
 
-fn quick_task_terminal_publication(
-	readback: QuickTaskReadback,
+fn conversation_terminal_publication(
+	readback: ConversationReadback,
 	turn_id: TurnId,
-	state: QuickTaskTerminalState,
-	conversation: QuickTaskSummary,
+	state: ConversationTerminalState,
+	conversation: ConversationSummary,
 ) -> Option<ApplicationEventPublication> {
-	let mut publication = quick_task_summary_publication(readback, conversation, "terminal")?;
-	let EventPayload::QuickTaskConversationChanged { conversation } = publication.event else {
+	let mut publication = conversation_summary_publication(readback, conversation, "terminal")?;
+	let EventPayload::ConversationChanged { conversation } = publication.event else {
 		return None;
 	};
-	publication.event = EventPayload::QuickTaskTurnFinished {
+	publication.event = EventPayload::ConversationTurnFinished {
 		conversation,
 		turn_id: EntityId::new(turn_id.as_str().to_owned()).ok()?,
 		outcome: match state {
-			QuickTaskTerminalState::Succeeded => QuickTaskTurnOutcome::Succeeded,
-			QuickTaskTerminalState::Failed => QuickTaskTurnOutcome::Failed,
+			ConversationTerminalState::Succeeded => ConversationTurnOutcome::Succeeded,
+			ConversationTerminalState::Failed => ConversationTurnOutcome::Failed,
 		},
 	};
 	Some(publication)
 }
 
-fn quick_task_summary_publication(
-	readback: QuickTaskReadback,
-	conversation: QuickTaskSummary,
+fn conversation_summary_publication(
+	readback: ConversationReadback,
+	conversation: ConversationSummary,
 	phase: &'static str,
 ) -> Option<ApplicationEventPublication> {
 	let correlation_id = CorrelationId::new(readback.correlation_id.as_deref()?).ok()?;
@@ -3151,95 +3144,8 @@ fn quick_task_summary_publication(
 		channel: Channel::ConversationStream,
 		entity_id,
 		entity_revision: EntityRevision(1),
-		event: EventPayload::QuickTaskConversationChanged { conversation },
+		event: EventPayload::ConversationChanged { conversation },
 	})
-}
-
-#[cfg(any())]
-fn work_item_board_page_dto(
-	project_id: WorkItemBoardProjectId,
-	state: Option<WorkItemState>,
-	after: Option<WorkItemBoardWorkItemId>,
-	page_size: WorkItemBoardPageSize,
-	items: Vec<StoredWorkItem>,
-) -> Result<WorkItemBoardPage, ()> {
-	let requested = usize::from(page_size.get());
-	let maximum_observation = requested.checked_add(1).ok_or(())?;
-	if items.len() > maximum_observation {
-		return Err(());
-	}
-
-	let mut cards =
-		items.into_iter().map(work_item_board_card_dto).collect::<Result<Vec<_>, _>>()?;
-	if cards.iter().any(|card| {
-		card.project_id() != &project_id || state.is_some_and(|expected| card.state() != expected)
-	}) || cards.windows(2).any(|pair| pair[0].work_item_id() >= pair[1].work_item_id())
-		|| after
-			.as_ref()
-			.is_some_and(|cursor| cards.first().is_some_and(|card| card.work_item_id() <= cursor))
-	{
-		return Err(());
-	}
-
-	let has_more = cards.len() > requested;
-	if has_more {
-		cards.pop().ok_or(())?;
-	}
-	let next_cursor =
-		if has_more { Some(cards.last().ok_or(())?.work_item_id().clone()) } else { None };
-
-	WorkItemBoardPage::new(project_id, state, after, page_size, cards, next_cursor).map_err(|_| ())
-}
-
-#[cfg(any())]
-fn work_item_board_card_dto(stored: StoredWorkItem) -> Result<WorkItemBoardCard, ()> {
-	let StoredWorkItem { work_item, edges, accepted_revision } = stored;
-	let work_item_id = WorkItemBoardWorkItemId::new(work_item.id().as_str()).map_err(|_| ())?;
-	let project_id =
-		WorkItemBoardProjectId::new(work_item.project_id().as_str()).map_err(|_| ())?;
-	let lead_id =
-		WorkItemBoardLeadId::new(work_item.declared_lead_id().as_str()).map_err(|_| ())?;
-	let program_id = work_item
-		.program()
-		.map(|program| WorkItemBoardProgramId::new(program.program_id().as_str()))
-		.transpose()
-		.map_err(|_| ())?;
-	let objective_ids = work_item
-		.objectives()
-		.iter()
-		.map(|objective| WorkItemBoardObjectiveId::new(objective.objective_id().as_str()))
-		.collect::<Result<Vec<_>, _>>()
-		.map_err(|_| ())?;
-	let mut depends_on_ids = Vec::new();
-	let mut blocked_by_ids = Vec::new();
-
-	for edge in edges {
-		if edge.work_item_id() != work_item.id() || edge.project_id() != work_item.project_id() {
-			return Err(());
-		}
-		let related =
-			WorkItemBoardWorkItemId::new(edge.related_work_item_id().as_str()).map_err(|_| ())?;
-		match edge.kind() {
-			WorkItemEdgeKind::DependsOn => depends_on_ids.push(related),
-			WorkItemEdgeKind::BlockedBy => blocked_by_ids.push(related),
-		}
-	}
-
-	WorkItemBoardCard::new(
-		work_item_id,
-		project_id,
-		lead_id,
-		program_id,
-		objective_ids,
-		depends_on_ids,
-		blocked_by_ids,
-		WorkItemBoardTitle::new(work_item.title()).map_err(|_| ())?,
-		work_item.priority(),
-		work_item.state(),
-		EntityRevision(work_item.revision()),
-		accepted_revision.map(EntityRevision),
-	)
-	.map_err(|_| ())
 }
 
 #[cfg(any())]
@@ -3296,9 +3202,8 @@ fn execution_decision_dto(readback: ExecutionDecisionReadback) -> Result<Executi
 			causes,
 			quota_exclusions,
 		},
-		RoutingDecisionKind::WaitingReconciliation => {
-			ExecutionRouteDto::WaitingReconciliation { causes }
-		},
+		RoutingDecisionKind::WaitingReconciliation =>
+			ExecutionRouteDto::WaitingReconciliation { causes },
 		RoutingDecisionKind::NoRoute if !causes.is_empty() => ExecutionRouteDto::NoRoute { causes },
 		RoutingDecisionKind::NoRoute => return Err(()),
 	};
@@ -3485,22 +3390,17 @@ fn profile_wire_text(value: String, maximum: usize) -> Result<WireText, ()> {
 
 const fn account_profile_error_dto(error: AccountProfileRuntimeError) -> AccountProfileErrorDto {
 	match error {
-		AccountProfileRuntimeError::AccountUnavailable => {
-			AccountProfileErrorDto::AccountUnavailable
-		},
-		AccountProfileRuntimeError::ProductStateUnavailable => {
-			AccountProfileErrorDto::ProductStateUnavailable
-		},
-		AccountProfileRuntimeError::CredentialUnavailable => {
-			AccountProfileErrorDto::CredentialUnavailable
-		},
+		AccountProfileRuntimeError::AccountUnavailable =>
+			AccountProfileErrorDto::AccountUnavailable,
+		AccountProfileRuntimeError::ProductStateUnavailable =>
+			AccountProfileErrorDto::ProductStateUnavailable,
+		AccountProfileRuntimeError::CredentialUnavailable =>
+			AccountProfileErrorDto::CredentialUnavailable,
 		AccountProfileRuntimeError::Unauthorized => AccountProfileErrorDto::Unauthorized,
-		AccountProfileRuntimeError::ProviderUnavailable => {
-			AccountProfileErrorDto::ProviderUnavailable
-		},
-		AccountProfileRuntimeError::ProtocolUnavailable => {
-			AccountProfileErrorDto::ProtocolUnavailable
-		},
+		AccountProfileRuntimeError::ProviderUnavailable =>
+			AccountProfileErrorDto::ProviderUnavailable,
+		AccountProfileRuntimeError::ProtocolUnavailable =>
+			AccountProfileErrorDto::ProtocolUnavailable,
 		AccountProfileRuntimeError::AccountChanged => AccountProfileErrorDto::AccountChanged,
 	}
 }
@@ -3542,13 +3442,11 @@ fn account_dto(account: AccountRecord) -> Result<AccountDto, ()> {
 				},
 				phase: match operation.phase {
 					AccountOperationPhase::Prepared => AccountOperationPhaseDto::Prepared,
-					AccountOperationPhase::ProviderEffectPending => {
-						AccountOperationPhaseDto::ProviderEffectPending
-					},
+					AccountOperationPhase::ProviderEffectPending =>
+						AccountOperationPhaseDto::ProviderEffectPending,
 					AccountOperationPhase::StoreApplied => AccountOperationPhaseDto::StoreApplied,
-					AccountOperationPhase::RecoveryRequired => {
-						AccountOperationPhaseDto::RecoveryRequired
-					},
+					AccountOperationPhase::RecoveryRequired =>
+						AccountOperationPhaseDto::RecoveryRequired,
 					AccountOperationPhase::Committed | AccountOperationPhase::Cancelled => {
 						return Err(());
 					},
@@ -3605,44 +3503,34 @@ const fn lifecycle_readiness_dto(
 ) -> AccountLifecycleReadinessDto {
 	match readiness {
 		AccountLifecycleReadiness::Ready => AccountLifecycleReadinessDto::Ready,
-		AccountLifecycleReadiness::CredentialAbsent => {
-			AccountLifecycleReadinessDto::CredentialAbsent
-		},
-		AccountLifecycleReadiness::StoreUnavailable => {
-			AccountLifecycleReadinessDto::StoreUnavailable
-		},
+		AccountLifecycleReadiness::CredentialAbsent =>
+			AccountLifecycleReadinessDto::CredentialAbsent,
+		AccountLifecycleReadiness::StoreUnavailable =>
+			AccountLifecycleReadinessDto::StoreUnavailable,
 		AccountLifecycleReadiness::StoreMismatch => AccountLifecycleReadinessDto::StoreMismatch,
-		AccountLifecycleReadiness::ProviderMismatch => {
-			AccountLifecycleReadinessDto::ProviderMismatch
-		},
-		AccountLifecycleReadiness::OperationUnsettled => {
-			AccountLifecycleReadinessDto::OperationUnsettled
-		},
-		AccountLifecycleReadiness::CallbackCapabilityUnready => {
-			AccountLifecycleReadinessDto::CallbackCapabilityUnready
-		},
+		AccountLifecycleReadiness::ProviderMismatch =>
+			AccountLifecycleReadinessDto::ProviderMismatch,
+		AccountLifecycleReadiness::OperationUnsettled =>
+			AccountLifecycleReadinessDto::OperationUnsettled,
+		AccountLifecycleReadiness::CallbackCapabilityUnready =>
+			AccountLifecycleReadinessDto::CallbackCapabilityUnready,
 		AccountLifecycleReadiness::Tombstoned => AccountLifecycleReadinessDto::Tombstoned,
 	}
 }
 
 const fn selection_recovery_dto(recovery: AccountSelectionRecovery) -> AccountSelectionRecoveryDto {
 	match recovery {
-		AccountSelectionRecovery::ConfigureFixedAccount => {
-			AccountSelectionRecoveryDto::ConfigureFixedAccount
-		},
+		AccountSelectionRecovery::ConfigureFixedAccount =>
+			AccountSelectionRecoveryDto::ConfigureFixedAccount,
 		AccountSelectionRecovery::EnableAccount => AccountSelectionRecoveryDto::EnableAccount,
-		AccountSelectionRecovery::EnrollCredentials => {
-			AccountSelectionRecoveryDto::EnrollCredentials
-		},
-		AccountSelectionRecovery::ResolveCredentialOperation => {
-			AccountSelectionRecoveryDto::ResolveCredentialOperation
-		},
-		AccountSelectionRecovery::RepairCredentialStore => {
-			AccountSelectionRecoveryDto::RepairCredentialStore
-		},
-		AccountSelectionRecovery::RestoreProviderAgreement => {
-			AccountSelectionRecoveryDto::RestoreProviderAgreement
-		},
+		AccountSelectionRecovery::EnrollCredentials =>
+			AccountSelectionRecoveryDto::EnrollCredentials,
+		AccountSelectionRecovery::ResolveCredentialOperation =>
+			AccountSelectionRecoveryDto::ResolveCredentialOperation,
+		AccountSelectionRecovery::RepairCredentialStore =>
+			AccountSelectionRecoveryDto::RepairCredentialStore,
+		AccountSelectionRecovery::RestoreProviderAgreement =>
+			AccountSelectionRecoveryDto::RestoreProviderAgreement,
 		AccountSelectionRecovery::RefreshQuota => AccountSelectionRecoveryDto::RefreshQuota,
 		AccountSelectionRecovery::UpgradeCodex => AccountSelectionRecoveryDto::UpgradeCodex,
 	}
@@ -3666,31 +3554,23 @@ fn account_command_descriptor(
 		})
 		.transpose()?;
 	let descriptor = match &command.payload {
-		CommandPayload::EnrollAccountFromSharedCodex { account_id, .. } => {
-			(AccountCommandKind::Enroll, account_id.as_str())
-		},
-		CommandPayload::ImportAccountCredentialFile { account_id, .. } => {
-			(AccountCommandKind::Import, account_id.as_str())
-		},
-		CommandPayload::SetAccountEnabled { account_id, .. } => {
-			(AccountCommandKind::SetEnabled, account_id.as_str())
-		},
-		CommandPayload::LogoutAccount { account_id, .. } => {
-			(AccountCommandKind::Logout, account_id.as_str())
-		},
+		CommandPayload::EnrollAccountFromSharedCodex { account_id, .. } =>
+			(AccountCommandKind::Enroll, account_id.as_str()),
+		CommandPayload::ImportAccountCredentialFile { account_id, .. } =>
+			(AccountCommandKind::Import, account_id.as_str()),
+		CommandPayload::SetAccountEnabled { account_id, .. } =>
+			(AccountCommandKind::SetEnabled, account_id.as_str()),
+		CommandPayload::LogoutAccount { account_id, .. } =>
+			(AccountCommandKind::Logout, account_id.as_str()),
 		CommandPayload::RouteAccount { .. } => (AccountCommandKind::Route, "account-routing"),
-		CommandPayload::SetBalancedAccountSelection => {
-			(AccountCommandKind::SetBalancedSelection, "account-routing")
-		},
-		CommandPayload::SetAccountOrder { .. } => {
-			(AccountCommandKind::SetAccountOrder, "account-routing")
-		},
-		CommandPayload::RefreshAccount { account_id, .. } => {
-			(AccountCommandKind::Refresh, account_id.as_str())
-		},
-		CommandPayload::RecoverAccountOperation { operation_id, .. } => {
-			(AccountCommandKind::Recover, operation_id.as_str())
-		},
+		CommandPayload::SetBalancedAccountSelection =>
+			(AccountCommandKind::SetBalancedSelection, "account-routing"),
+		CommandPayload::SetAccountOrder { .. } =>
+			(AccountCommandKind::SetAccountOrder, "account-routing"),
+		CommandPayload::RefreshAccount { account_id, .. } =>
+			(AccountCommandKind::Refresh, account_id.as_str()),
+		CommandPayload::RecoverAccountOperation { operation_id, .. } =>
+			(AccountCommandKind::Recover, operation_id.as_str()),
 		_ => return Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None)),
 	};
 	Ok((descriptor.0, descriptor.1.to_owned(), expected))
@@ -3935,7 +3815,7 @@ async fn pending_account_route_dto(
 
 fn account_route_wait_reason_dto(reason: AccountRouteWaitReason) -> AccountRouteWaitReasonDto {
 	match reason {
-		AccountRouteWaitReason::ExternalCodex { blockers, omitted } => {
+		AccountRouteWaitReason::ExternalCodex { blockers, omitted } =>
 			AccountRouteWaitReasonDto::ExternalCodex {
 				blockers: blockers
 					.into_iter()
@@ -3952,25 +3832,18 @@ fn account_route_wait_reason_dto(reason: AccountRouteWaitReason) -> AccountRoute
 					})
 					.collect(),
 				omitted,
-			}
-		},
-		AccountRouteWaitReason::CodexObservationUnavailable => {
-			AccountRouteWaitReasonDto::CodexObservationUnavailable
-		},
-		AccountRouteWaitReason::AccountReadiness(readiness) => {
+			},
+		AccountRouteWaitReason::CodexObservationUnavailable =>
+			AccountRouteWaitReasonDto::CodexObservationUnavailable,
+		AccountRouteWaitReason::AccountReadiness(readiness) =>
 			AccountRouteWaitReasonDto::AccountReadiness {
 				readiness: lifecycle_readiness_dto(readiness),
-			}
-		},
-		AccountRouteWaitReason::SharedAuthStabilizing => {
-			AccountRouteWaitReasonDto::SharedAuthStabilizing
-		},
-		AccountRouteWaitReason::SharedAuthUnavailable => {
-			AccountRouteWaitReasonDto::SharedAuthUnavailable
-		},
-		AccountRouteWaitReason::ProjectionReadback => {
-			AccountRouteWaitReasonDto::ProjectionReadback
-		},
+			},
+		AccountRouteWaitReason::SharedAuthStabilizing =>
+			AccountRouteWaitReasonDto::SharedAuthStabilizing,
+		AccountRouteWaitReason::SharedAuthUnavailable =>
+			AccountRouteWaitReasonDto::SharedAuthUnavailable,
+		AccountRouteWaitReason::ProjectionReadback => AccountRouteWaitReasonDto::ProjectionReadback,
 	}
 }
 
@@ -3989,16 +3862,14 @@ fn routing_command_result(
 			AccountCommandRejectionDto::StaleAccount,
 			u64::try_from(*revision).ok().map(EntityRevision),
 		)),
-		RoutingControlOutcome::AccountMissing => {
-			Err(account_rejection(AccountCommandRejectionDto::AccountNotFound, None))
-		},
+		RoutingControlOutcome::AccountMissing =>
+			Err(account_rejection(AccountCommandRejectionDto::AccountNotFound, None)),
 		RoutingControlOutcome::InvalidOrder { revision } => Err(account_rejection(
 			AccountCommandRejectionDto::RoutingOrderInvalid,
 			u64::try_from(*revision).ok().map(EntityRevision),
 		)),
-		RoutingControlOutcome::InvalidRequest => {
-			Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None))
-		},
+		RoutingControlOutcome::InvalidRequest =>
+			Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None)),
 	}
 }
 
@@ -4018,9 +3889,8 @@ fn account_recovery_publication(
 	let outcome = match outcome {
 		AccountManualRecoveryOutcome::Committed => AccountManualRecoveryOutcomeDto::Committed,
 		AccountManualRecoveryOutcome::Cancelled => AccountManualRecoveryOutcomeDto::Cancelled,
-		AccountManualRecoveryOutcome::StillRequiresRecovery => {
-			AccountManualRecoveryOutcomeDto::StillRequiresRecovery
-		},
+		AccountManualRecoveryOutcome::StillRequiresRecovery =>
+			AccountManualRecoveryOutcomeDto::StillRequiresRecovery,
 	};
 	Ok(ApplicationPublication {
 		channel: Channel::AccountsHealth,
@@ -4044,19 +3914,16 @@ fn account_rejection(
 fn lifecycle_rejection(rejection: AccountLifecycleRejection, revision: i64) -> CommandError {
 	let reason = match rejection {
 		AccountLifecycleRejection::IdentityConflict => AccountCommandRejectionDto::ProviderMismatch,
-		AccountLifecycleRejection::OperationUnsettled => {
-			AccountCommandRejectionDto::OperationUnsettled
-		},
+		AccountLifecycleRejection::OperationUnsettled =>
+			AccountCommandRejectionDto::OperationUnsettled,
 		AccountLifecycleRejection::InvalidRequest => AccountCommandRejectionDto::InvalidRequest,
 		AccountLifecycleRejection::AccountMissing => AccountCommandRejectionDto::AccountNotFound,
 		AccountLifecycleRejection::StaleAccount => AccountCommandRejectionDto::StaleAccount,
 		AccountLifecycleRejection::AccountInUse => AccountCommandRejectionDto::AccountInUse,
-		AccountLifecycleRejection::OperationMissing => {
-			AccountCommandRejectionDto::OperationNotFound
-		},
-		AccountLifecycleRejection::StaleOperation => {
-			AccountCommandRejectionDto::ManualRecoveryRequired
-		},
+		AccountLifecycleRejection::OperationMissing =>
+			AccountCommandRejectionDto::OperationNotFound,
+		AccountLifecycleRejection::StaleOperation =>
+			AccountCommandRejectionDto::ManualRecoveryRequired,
 	};
 	account_rejection(
 		reason,
@@ -4067,54 +3934,38 @@ fn lifecycle_rejection(rejection: AccountLifecycleRejection, revision: i64) -> C
 pub(crate) fn account_lifecycle_command_error(error: AccountLifecycleError) -> CommandError {
 	match error {
 		AccountLifecycleError::OperationRejected(rejection) => lifecycle_rejection(rejection, 0),
-		AccountLifecycleError::AccountMissing => {
-			account_rejection(AccountCommandRejectionDto::AccountNotFound, None)
-		},
-		AccountLifecycleError::CredentialAbsent => {
-			account_rejection(AccountCommandRejectionDto::CredentialAbsent, None)
-		},
-		AccountLifecycleError::ProviderMismatch => {
-			account_rejection(AccountCommandRejectionDto::ProviderMismatch, None)
-		},
-		AccountLifecycleError::StaleAccount => {
-			account_rejection(AccountCommandRejectionDto::StaleAccount, None)
-		},
-		AccountLifecycleError::InvalidOperation => {
-			account_rejection(AccountCommandRejectionDto::InvalidRequest, None)
-		},
-		AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled) => {
-			account_rejection(AccountCommandRejectionDto::OperationUnsettled, None)
-		},
-		AccountLifecycleError::NotReady(AccountLifecycleReadiness::CredentialAbsent) => {
-			account_rejection(AccountCommandRejectionDto::CredentialAbsent, None)
-		},
-		AccountLifecycleError::NotReady(AccountLifecycleReadiness::ProviderMismatch) => {
-			account_rejection(AccountCommandRejectionDto::ProviderMismatch, None)
-		},
-		AccountLifecycleError::NotReady(_) => {
-			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None)
-		},
-		AccountLifecycleError::AccountDisabled => {
-			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None)
-		},
-		AccountLifecycleError::CredentialStore(CredentialStoreError::DuplicateProvider) => {
-			account_rejection(AccountCommandRejectionDto::ProviderAlreadyEnrolled, None)
-		},
-		AccountLifecycleError::CredentialStore(_) => {
-			account_rejection(AccountCommandRejectionDto::CredentialStoreUnavailable, None)
-		},
-		AccountLifecycleError::CredentialImport => {
-			account_rejection(AccountCommandRejectionDto::InvalidRequest, None)
-		},
-		AccountLifecycleError::Refresh(crate::CredentialRefreshError::OwnerBusy) => {
-			account_rejection(AccountCommandRejectionDto::SharedAuthOwnerBusy, None)
-		},
-		AccountLifecycleError::Refresh(_) => {
-			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None)
-		},
-		AccountLifecycleError::Persistence(_) | AccountLifecycleError::CoordinatorUnavailable => {
-			application_unavailable("account service is unavailable")
-		},
+		AccountLifecycleError::AccountMissing =>
+			account_rejection(AccountCommandRejectionDto::AccountNotFound, None),
+		AccountLifecycleError::CredentialAbsent =>
+			account_rejection(AccountCommandRejectionDto::CredentialAbsent, None),
+		AccountLifecycleError::ProviderMismatch =>
+			account_rejection(AccountCommandRejectionDto::ProviderMismatch, None),
+		AccountLifecycleError::StaleAccount =>
+			account_rejection(AccountCommandRejectionDto::StaleAccount, None),
+		AccountLifecycleError::InvalidOperation =>
+			account_rejection(AccountCommandRejectionDto::InvalidRequest, None),
+		AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled) =>
+			account_rejection(AccountCommandRejectionDto::OperationUnsettled, None),
+		AccountLifecycleError::NotReady(AccountLifecycleReadiness::CredentialAbsent) =>
+			account_rejection(AccountCommandRejectionDto::CredentialAbsent, None),
+		AccountLifecycleError::NotReady(AccountLifecycleReadiness::ProviderMismatch) =>
+			account_rejection(AccountCommandRejectionDto::ProviderMismatch, None),
+		AccountLifecycleError::NotReady(_) =>
+			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None),
+		AccountLifecycleError::AccountDisabled =>
+			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None),
+		AccountLifecycleError::CredentialStore(CredentialStoreError::DuplicateProvider) =>
+			account_rejection(AccountCommandRejectionDto::ProviderAlreadyEnrolled, None),
+		AccountLifecycleError::CredentialStore(_) =>
+			account_rejection(AccountCommandRejectionDto::CredentialStoreUnavailable, None),
+		AccountLifecycleError::CredentialImport =>
+			account_rejection(AccountCommandRejectionDto::InvalidRequest, None),
+		AccountLifecycleError::Refresh(crate::CredentialRefreshError::OwnerBusy) =>
+			account_rejection(AccountCommandRejectionDto::SharedAuthOwnerBusy, None),
+		AccountLifecycleError::Refresh(_) =>
+			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None),
+		AccountLifecycleError::Persistence(_) | AccountLifecycleError::CoordinatorUnavailable =>
+			application_unavailable("account service is unavailable"),
 	}
 }
 
@@ -4127,12 +3978,10 @@ fn account_operation_command_error(_error: AccountLifecycleError) -> CommandErro
 pub(crate) fn map_account_store_command_error(error: StoreError) -> CommandError {
 	match error {
 		StoreError::IdempotencyConflict => CommandError::IdempotencyConflict,
-		StoreError::InvalidInput(_) | StoreError::CredentialRejected => {
-			account_rejection(AccountCommandRejectionDto::InvalidRequest, None)
-		},
-		StoreError::CapacityExhausted(_) => {
-			application_unavailable("account command receipt capacity is unavailable")
-		},
+		StoreError::InvalidInput(_) | StoreError::CredentialRejected =>
+			account_rejection(AccountCommandRejectionDto::InvalidRequest, None),
+		StoreError::CapacityExhausted(_) =>
+			application_unavailable("account command receipt capacity is unavailable"),
 		StoreError::Database(_) | StoreError::OwnershipLost(_) => CommandError::AcceptanceUnknown,
 		_ => application_unavailable("account command receipt store is unavailable"),
 	}
@@ -4173,20 +4022,17 @@ pub(crate) fn decode_account_command_receipt(
 			entity_revision,
 			result,
 			event,
-		} if schema == ACCOUNT_COMMAND_RECEIPT_SCHEMA && entity_revision.0 > 0 => {
+		} if schema == ACCOUNT_COMMAND_RECEIPT_SCHEMA && entity_revision.0 > 0 =>
 			Ok(Ok(ApplicationPublication {
 				channel: Channel::AccountsHealth,
 				entity_id,
 				entity_revision,
 				result: *result,
 				event: *event,
-			}))
-		},
+			})),
 		StoredAccountCommandOutcome::Rejected { schema, error }
 			if schema == ACCOUNT_COMMAND_RECEIPT_SCHEMA =>
-		{
-			Ok(Err(error))
-		},
+			Ok(Err(error)),
 		_ => Err(()),
 	}
 }
@@ -4206,18 +4052,14 @@ fn quota_dto(observation: AccountQuotaWindowObservation) -> Result<AccountQuotaW
 			observation.observed_at_unix_micros,
 			AccountQuotaStateDto::Error {
 				error: match error {
-					AccountQuotaObservationError::ProviderUnavailable => {
-						AccountQuotaErrorDto::ProviderUnavailable
-					},
-					AccountQuotaObservationError::ProtocolUnavailable => {
-						AccountQuotaErrorDto::ProtocolUnavailable
-					},
-					AccountQuotaObservationError::AccountMismatch => {
-						AccountQuotaErrorDto::AccountMismatch
-					},
-					AccountQuotaObservationError::UnsupportedWindow => {
-						AccountQuotaErrorDto::UnsupportedWindow
-					},
+					AccountQuotaObservationError::ProviderUnavailable =>
+						AccountQuotaErrorDto::ProviderUnavailable,
+					AccountQuotaObservationError::ProtocolUnavailable =>
+						AccountQuotaErrorDto::ProtocolUnavailable,
+					AccountQuotaObservationError::AccountMismatch =>
+						AccountQuotaErrorDto::AccountMismatch,
+					AccountQuotaObservationError::UnsupportedWindow =>
+						AccountQuotaErrorDto::UnsupportedWindow,
 				},
 			},
 		),
@@ -4235,12 +4077,11 @@ fn quota_dto(observation: AccountQuotaWindowObservation) -> Result<AccountQuotaW
 
 fn command_reset_error(error: ResetCardServiceError, expected: EntityRevision) -> CommandError {
 	match error {
-		ResetCardServiceError::ExpectedRevisionMismatch { actual } if actual >= 0 => {
+		ResetCardServiceError::ExpectedRevisionMismatch { actual } if actual >= 0 =>
 			CommandError::ExpectedRevisionMismatch {
 				expected,
 				actual: EntityRevision(u64::try_from(actual).unwrap_or(0)),
-			}
-		},
+			},
 		ResetCardServiceError::IdempotencyConflict => CommandError::IdempotencyConflict,
 		ResetCardServiceError::AcceptanceUnknown => CommandError::AcceptanceUnknown,
 		_ => application_unavailable(reset_error_message(error)),
@@ -4254,15 +4095,14 @@ fn desktop_settings_dto(settings: StoreDesktopSettings) -> Result<DesktopSetting
 
 fn desktop_settings_command_error(error: StoreError) -> CommandError {
 	match error {
-		StoreError::RevisionConflict { expected: Some(expected), actual: Some(actual), .. } => {
+		StoreError::RevisionConflict { expected: Some(expected), actual: Some(actual), .. } =>
 			match (u64::try_from(expected), u64::try_from(actual)) {
 				(Ok(expected), Ok(actual)) => CommandError::ExpectedRevisionMismatch {
 					expected: EntityRevision(expected),
 					actual: EntityRevision(actual),
 				},
 				_ => application_unavailable("desktop settings revision is invalid"),
-			}
-		},
+			},
 		_ => application_unavailable("desktop settings store is unavailable"),
 	}
 }
@@ -4277,15 +4117,13 @@ const fn reset_error_message(error: ResetCardServiceError) -> &'static str {
 	match error {
 		ResetCardServiceError::InvalidRequest => "reset-card request is invalid",
 		ResetCardServiceError::AccountNotFound => "reset-card account is not configured",
-		ResetCardServiceError::AccountStateRejected => {
-			"reset-card account state rejects manual use"
-		},
+		ResetCardServiceError::AccountStateRejected =>
+			"reset-card account state rejects manual use",
 		ResetCardServiceError::AccountChanged
 		| ResetCardServiceError::ExpectedRevisionMismatch { .. } => "reset-card account revision changed",
 		ResetCardServiceError::VaultUnavailable => "reset-card credential vault is unavailable",
-		ResetCardServiceError::SchemaUnsupported => {
-			"stored reset-card result is incompatible with the current provider API"
-		},
+		ResetCardServiceError::SchemaUnsupported =>
+			"stored reset-card result is incompatible with the current provider API",
 		ResetCardServiceError::ProviderUnavailable => "reset-card provider is unavailable",
 		ResetCardServiceError::InventoryIncomplete => "reset-card inventory is incomplete",
 		ResetCardServiceError::InventoryChanged => "selected reset card changed",
@@ -4293,9 +4131,8 @@ const fn reset_error_message(error: ResetCardServiceError) -> &'static str {
 		ResetCardServiceError::ResourceExhausted => "reset-card process capacity is exhausted",
 		ResetCardServiceError::ProductStateUnavailable => "reset-card product state is unavailable",
 		ResetCardServiceError::IdempotencyConflict => "reset-card idempotency key conflicts",
-		ResetCardServiceError::AcceptanceUnknown => {
-			"reset-card durable acceptance could not be established"
-		},
+		ResetCardServiceError::AcceptanceUnknown =>
+			"reset-card durable acceptance could not be established",
 	}
 }
 
@@ -4333,12 +4170,10 @@ const fn operation_result(status: ResetCardOperationStatus) -> ResetCardOperatio
 		ResetCardOperationStatus::NotFound => ResetCardOperationResult::NotFound,
 		ResetCardOperationStatus::Prepared => ResetCardOperationResult::Prepared,
 		ResetCardOperationStatus::EffectAmbiguous => ResetCardOperationResult::EffectAmbiguous,
-		ResetCardOperationStatus::Completed(outcome) => {
-			ResetCardOperationResult::Completed { outcome: protocol_outcome(outcome) }
-		},
-		ResetCardOperationStatus::FailedBeforeEffect(error) => {
-			ResetCardOperationResult::FailedBeforeEffect { error: failure_reset_error(error) }
-		},
+		ResetCardOperationStatus::Completed(outcome) =>
+			ResetCardOperationResult::Completed { outcome: protocol_outcome(outcome) },
+		ResetCardOperationStatus::FailedBeforeEffect(error) =>
+			ResetCardOperationResult::FailedBeforeEffect { error: failure_reset_error(error) },
 	}
 }
 
@@ -4374,9 +4209,8 @@ fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {
 		})
 		.transpose()?;
 	let payload = match (entry.inline_text, entry.blob_hash, entry.blob_byte_length) {
-		(Some(text), None, None) => {
-			HistoryPayloadDto::Inline { text: HistoryText::new(text).map_err(|_| ())? }
-		},
+		(Some(text), None, None) =>
+			HistoryPayloadDto::Inline { text: HistoryText::new(text).map_err(|_| ())? },
 		(None, Some(hash), Some(byte_length)) => HistoryPayloadDto::Blob(HistoryBlobReference {
 			sha256: Sha256Digest::new(hash.to_hex()).map_err(|_| ())?,
 			byte_length: HistoryBlobLength::new(byte_length).map_err(|_| ())?,
@@ -4439,30 +4273,31 @@ mod tests {
 		ProgramEvidenceRecord, ProgramObjectiveRecord, ProgramProposalRecord, ProgramReviewRecord,
 		ProgramSignalRecord, ProgramWorkItemRecord, SqliteStore,
 	};
-		use decodex_protocol::{
-			AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto,
-			AccountRouteAuthHomeDto, AccountRoutePendingDto, AccountRouteWaitReasonDto, Channel,
-			CommandError, EntityId, EntityRevision, EventPayload, ProgramNodeKind, ProgramRelationKind,
-			QuickTaskRecoveryAction, QuickTaskState, ResetCardError, ResetCardOperationResult,
-			ResultPayload,
-		};
-
-		use super::{
-			ACCOUNT_COMMAND_RECEIPT_SCHEMA, AccountLifecycleError, AccountProfileClaimsView,
-			AccountProfileRuntimeError, AccountProfileView, AccountRouteWaitReason,
-			ApplicationPublication, ProductStore, ResetCardServiceError, StoredAccountCommandOutcome,
-			account_dto,
-			account_lifecycle_command_error, account_profile_dto, account_profile_unavailable_dto,
-			account_route_receipt_committed, account_route_wait_reason_dto,
-			authorize_program_capability,
-		decode_account_command_receipt, encode_account_command_receipt, lifecycle_rejection,
-		operation_query_result, program_cycle_dto, protocol_reset_error,
-		quick_task_summary_from_row, quota_dto,
+	use decodex_protocol::{
+		AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto,
+		AccountRouteAuthHomeDto, AccountRoutePendingDto, AccountRouteWaitReasonDto, Channel,
+		CommandError, ConversationRecoveryAction, ConversationState, EntityId, EntityRevision,
+		EventPayload, ProgramNodeKind, ProgramRelationKind, ResetCardError,
+		ResetCardOperationResult, ResultPayload,
 	};
-		use crate::domain_packs::{QUICK_TASK_CAPABILITY, resolve_identity};
-		use crate::shared_auth_coordinator::{
+	use std::collections::HashMap;
+
+	use super::{
+		ACCOUNT_COMMAND_RECEIPT_SCHEMA, AccountLifecycleError, AccountProfileClaimsView,
+		AccountProfileRuntimeError, AccountProfileView, AccountRouteWaitReason,
+		ApplicationPublication, ProductStore, ResetCardServiceError, StoredAccountCommandOutcome,
+		account_dto, account_lifecycle_command_error, account_profile_dto,
+		account_profile_unavailable_dto, account_route_receipt_committed,
+		account_route_wait_reason_dto, authorize_program_capability, conversation_summary_from_row,
+		decode_account_command_receipt, encode_account_command_receipt, lifecycle_rejection,
+		operation_query_result, program_cycle_dto, protocol_reset_error, quota_dto,
+	};
+	use crate::{
+		domain_packs::{CONVERSATION_CAPABILITY, resolve_identity},
+		shared_auth_coordinator::{
 			CodexAuthHomeEvidence, CodexAuthOwnerBlocker, CodexAuthOwnerKind,
-		};
+		},
+	};
 
 	fn program_preflight_fixture(
 		sequence: u64,
@@ -4483,7 +4318,7 @@ mod tests {
 			non_goals: vec!["Do not contact a provider.".to_owned()],
 			review_policy: "Require deterministic and external evidence.".to_owned(),
 			signal_source: "runtime test".to_owned(),
-			signal_summary: "A Program requests one bounded Quick Task.".to_owned(),
+			signal_summary: "A Program requests one bounded Conversation.".to_owned(),
 			signal_observed_at_micros: 1,
 			claim_statement: "Pack admission must precede worker admission.".to_owned(),
 			proposal_summary: "Run the deny-by-default preflight.".to_owned(),
@@ -4546,7 +4381,7 @@ mod tests {
 			let error = authorize_program_capability(
 				&product_store,
 				&fixture.work_item_id,
-				QUICK_TASK_CAPABILITY,
+				CONVERSATION_CAPABILITY,
 			)
 			.await
 			.expect_err("Pack preflight must reject");
@@ -4780,7 +4615,8 @@ mod tests {
 			}],
 		};
 
-		let projection = program_cycle_dto(record, &[]).expect("two-cycle projection");
+		let projection =
+			program_cycle_dto(record, &[], &HashMap::new()).expect("two-cycle projection");
 		assert_eq!(
 			projection.nodes.iter().map(|node| node.kind).collect::<Vec<_>>(),
 			vec![
@@ -4806,73 +4642,19 @@ mod tests {
 		}));
 	}
 
-	#[cfg(any())]
-	const BOARD_PROJECT: &str = "10000000-0000-4000-8000-000000000001";
-	#[cfg(any())]
-	const OTHER_PROJECT: &str = "10000000-0000-4000-8000-000000000002";
-	#[cfg(any())]
-	const BOARD_LEAD: &str = "30000000-0000-4000-8000-000000000001";
-
-	#[cfg(any())]
-	fn stored_work_item(
-		work_item_id: &str,
-		project_id: &str,
-		accepted_revision: Option<u64>,
-	) -> StoredWorkItem {
-		let project_id = ProjectId::new(project_id).expect("fixture Project ID must be valid");
-		let lead_id = AgentId::new(BOARD_LEAD).expect("fixture Lead ID must be valid");
-		let provenance = WorkItemProvenance::new(
-			lead_id.clone(),
-			WorkItemCorrelationId::new("60000000-0000-4000-8000-000000000001")
-				.expect("fixture correlation ID must be valid"),
-			"Board projection fixture",
-		)
-		.expect("fixture provenance must be valid");
-		let work_item = WorkItem::new(
-			WorkItemId::new(work_item_id).expect("fixture WorkItem ID must be valid"),
-			project_id,
-			lead_id,
-			None,
-			Vec::new(),
-			"Board item",
-			"Exercise bounded board projection.",
-			WorkItemPriority::Medium,
-			vec!["The projection is accepted.".to_owned()],
-			vec!["The projection is validated.".to_owned()],
-			WorkItemTimestamp::from_unix_microseconds(1).unwrap(),
-			provenance,
-		)
-		.expect("fixture WorkItem must be valid");
-
-		StoredWorkItem { work_item, edges: Vec::new(), accepted_revision }
-	}
-
-	#[cfg(any())]
-	fn mapped_board_result(items: Vec<StoredWorkItem>) -> WorkItemBoardResult {
-		match work_item_board_page_dto(
-			WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap(),
-			None,
-			None,
-			WorkItemBoardPageSize::new(2).unwrap(),
-			items,
-		) {
-			Ok(page) => WorkItemBoardResult::Page(page),
-			Err(()) => WorkItemBoardResult::Unavailable {
-				error: WorkItemBoardQueryError::IntegrityUnavailable,
-			},
-		}
-	}
-
-	fn pre_session_quick_task(
+	fn pre_session_conversation(
 		state: OrdinaryTaskPreSessionState,
 		decision_id: Option<&str>,
 	) -> OrdinaryTaskConversationReadback {
 		OrdinaryTaskConversationReadback {
 			conversation_id: ConversationId::new("40000000-0000-4000-8000-000000001276").unwrap(),
+			title: "Conversation fixture".to_owned(),
 			conversation_revision: 1,
 			runtime_session_id: None,
 			runtime_session_revision: None,
 			runtime_session_state: None,
+			codex_thread_id: None,
+			program_work_item: None,
 			has_acknowledged_turn: false,
 			active_turn_id: None,
 			active_turn_revision: None,
@@ -4886,14 +4668,14 @@ mod tests {
 	}
 
 	#[test]
-	fn quick_task_projection_distinguishes_routing_and_establishment_recovery() {
-		let routing = quick_task_summary_from_row(
-			pre_session_quick_task(OrdinaryTaskPreSessionState::RoutingPending, None),
+	fn conversation_projection_distinguishes_routing_and_establishment_recovery() {
+		let routing = conversation_summary_from_row(
+			pre_session_conversation(OrdinaryTaskPreSessionState::RoutingPending, None),
 			None,
 		)
 		.unwrap();
-		let establishment = quick_task_summary_from_row(
-			pre_session_quick_task(
+		let establishment = conversation_summary_from_row(
+			pre_session_conversation(
 				OrdinaryTaskPreSessionState::EstablishmentPending,
 				Some("41000000-0000-4000-8000-000000001276"),
 			),
@@ -4901,12 +4683,12 @@ mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(routing.state, QuickTaskState::RoutingPending);
-		assert_eq!(routing.recovery_action, Some(QuickTaskRecoveryAction::ResumeRouting));
-		assert_eq!(establishment.state, QuickTaskState::EstablishmentPending);
+		assert_eq!(routing.state, ConversationState::RoutingPending);
+		assert_eq!(routing.recovery_action, Some(ConversationRecoveryAction::ResumeRouting));
+		assert_eq!(establishment.state, ConversationState::EstablishmentPending);
 		assert_eq!(
 			establishment.recovery_action,
-			Some(QuickTaskRecoveryAction::ResumeEstablishment),
+			Some(ConversationRecoveryAction::ResumeEstablishment),
 		);
 	}
 
@@ -4914,6 +4696,7 @@ mod tests {
 	fn terminal_session_projection_never_reopens_routing_recovery() {
 		let row = OrdinaryTaskConversationReadback {
 			conversation_id: ConversationId::new("40000000-0000-4000-8000-000000001276").unwrap(),
+			title: "Conversation fixture".to_owned(),
 			conversation_revision: 1,
 			runtime_session_id: Some(
 				decodex_core::RuntimeSessionId::new("42000000-0000-4000-8000-000000001276")
@@ -4921,6 +4704,8 @@ mod tests {
 			),
 			runtime_session_revision: Some(4),
 			runtime_session_state: Some(RuntimeSessionState::Ended),
+			codex_thread_id: None,
+			program_work_item: None,
 			has_acknowledged_turn: true,
 			active_turn_id: None,
 			active_turn_revision: None,
@@ -4931,62 +4716,12 @@ mod tests {
 			routing_decision_id: Some("41000000-0000-4000-8000-000000001276".to_owned()),
 			updated_at_micros: 1,
 		};
-		let projection = quick_task_summary_from_row(row, None).unwrap();
-		assert_eq!(projection.state, QuickTaskState::ManualRecovery);
-		assert_eq!(projection.recovery_action, Some(QuickTaskRecoveryAction::StartNewConversation),);
-	}
-
-	#[test]
-	#[cfg(any())]
-	fn board_lookahead_maps_one_extra_row_and_refuses_malformed_or_cross_project_data() {
-		let result = mapped_board_result(vec![
-			stored_work_item("20000000-0000-4000-8000-000000000001", BOARD_PROJECT, Some(1)),
-			stored_work_item("20000000-0000-4000-8000-000000000002", BOARD_PROJECT, Some(1)),
-			stored_work_item("20000000-0000-4000-8000-000000000003", BOARD_PROJECT, Some(1)),
-		]);
-		let WorkItemBoardResult::Page(page) = &result else {
-			panic!("bounded lookahead must produce a page");
-		};
-
+		let projection = conversation_summary_from_row(row, None).unwrap();
+		assert_eq!(projection.state, ConversationState::ManualRecovery);
 		assert_eq!(
-			page.cards().iter().map(|card| card.work_item_id().as_str()).collect::<Vec<_>>(),
-			vec!["20000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000002",]
+			projection.recovery_action,
+			Some(ConversationRecoveryAction::StartNewConversation),
 		);
-		assert_eq!(
-			page.next_cursor().map(|cursor| cursor.as_str()),
-			Some("20000000-0000-4000-8000-000000000002")
-		);
-		let encoded = serde_json::to_value(result).expect("valid page must serialize");
-		assert!(encoded["data"].get("total").is_none());
-		assert!(encoded["data"].get("total_count").is_none());
-		assert!(encoded["data"].get("exhaustive").is_none());
-
-		for (case, items) in [
-			(
-				"malformed accepted revision",
-				vec![stored_work_item(
-					"20000000-0000-4000-8000-000000000001",
-					BOARD_PROJECT,
-					Some(0),
-				)],
-			),
-			(
-				"cross-project card",
-				vec![stored_work_item(
-					"20000000-0000-4000-8000-000000000001",
-					OTHER_PROJECT,
-					Some(1),
-				)],
-			),
-		] {
-			assert_eq!(
-				mapped_board_result(items),
-				WorkItemBoardResult::Unavailable {
-					error: WorkItemBoardQueryError::IntegrityUnavailable,
-				},
-				"{case}",
-			);
-		}
 	}
 
 	#[test]

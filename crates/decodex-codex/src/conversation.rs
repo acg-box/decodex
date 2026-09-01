@@ -1,4 +1,4 @@
-//! Pure bounded facts for the ordinary Quick Task app-server conversation.
+//! Pure bounded facts for the ordinary Conversation app-server conversation.
 //!
 //! These values do not select an account, launch a process, authorize dispatch, retain
 //! credentials, or perform app-server I/O. Runtime must prove its ProcessGeneration and
@@ -19,28 +19,28 @@ use zeroize::Zeroizing;
 use crate::{ExactThreadId, ThreadCwd, protocol::MAX_APP_SERVER_FRAME_BYTES};
 
 /// Maximum UTF-8 bytes in one caller-selected model identifier.
-pub const MAX_QUICK_TASK_MODEL_BYTES: usize = 128;
+pub const MAX_CONVERSATION_MODEL_BYTES: usize = 128;
 /// Maximum UTF-8 bytes in one caller-selected reasoning-effort value.
-pub const MAX_QUICK_TASK_REASONING_EFFORT_BYTES: usize = 32;
+pub const MAX_CONVERSATION_REASONING_EFFORT_BYTES: usize = 32;
 /// Maximum UTF-8 bytes in developer instructions.
-pub const MAX_QUICK_TASK_INSTRUCTIONS_BYTES: usize = 64 * 1_024;
+pub const MAX_CONVERSATION_INSTRUCTIONS_BYTES: usize = 64 * 1_024;
 /// Maximum UTF-8 bytes in one text input item.
-pub const MAX_QUICK_TASK_TEXT_BYTES: usize = 256 * 1_024;
+pub const MAX_CONVERSATION_TEXT_BYTES: usize = 256 * 1_024;
 /// Maximum text items in one turn request.
-pub const MAX_QUICK_TASK_INPUT_ITEMS: usize = 16;
+pub const MAX_CONVERSATION_INPUT_ITEMS: usize = 16;
 /// Maximum aggregate UTF-8 bytes in one turn request.
-pub const MAX_QUICK_TASK_INPUT_BYTES: usize = 256 * 1_024;
+pub const MAX_CONVERSATION_INPUT_BYTES: usize = 256 * 1_024;
 /// Maximum UTF-8 bytes in an exact Codex turn identifier.
 pub const MAX_EXACT_TURN_ID_BYTES: usize = 1_024;
-/// Maximum bytes accepted from one exact Quick Task method result payload.
-pub const MAX_QUICK_TASK_RESPONSE_BYTES: usize = MAX_APP_SERVER_FRAME_BYTES;
+/// Maximum bytes accepted from one exact Conversation method result payload.
+pub const MAX_CONVERSATION_RESPONSE_BYTES: usize = MAX_APP_SERVER_FRAME_BYTES;
 
-/// Closed ordinary Quick Task app-server method set.
+/// Closed ordinary Conversation app-server method set.
 ///
 /// `turn/steer` is intentionally absent. Ordinary conversation sends subsequent user input
 /// through another `turn/start`; this contract owns no active-turn steering workflow.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum QuickTaskMethod {
+pub enum ConversationMethod {
 	/// Start one durable thread.
 	ThreadStart,
 	/// Resume one caller-supplied exact thread.
@@ -52,7 +52,7 @@ pub enum QuickTaskMethod {
 	/// Explicitly archive one exact thread.
 	ThreadArchive,
 }
-impl QuickTaskMethod {
+impl ConversationMethod {
 	/// Complete bounded method inventory.
 	pub const ALL: [Self; 5] = [
 		Self::ThreadStart,
@@ -74,15 +74,15 @@ impl QuickTaskMethod {
 	}
 }
 
-/// Closed notification set needed to project one ordinary Quick Task turn.
+/// Closed notification set needed to project one ordinary Conversation turn.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum QuickTaskNotification {
+pub enum ConversationNotification {
 	/// Bounded user-visible model text.
 	AgentMessageDelta,
 	/// Terminal state for one exact turn.
 	TurnCompleted,
 }
-impl QuickTaskNotification {
+impl ConversationNotification {
 	/// Complete bounded notification inventory.
 	pub const ALL: [Self; 2] = [Self::AgentMessageDelta, Self::TurnCompleted];
 
@@ -97,7 +97,7 @@ impl QuickTaskNotification {
 
 /// Closed request-construction or response-decoding failure that never echoes rejected input.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum QuickTaskContractError {
+pub enum ConversationContractError {
 	/// The exact thread identifier is empty, oversized, or unsafe for an exact request.
 	InvalidThreadId,
 	/// The exact turn identifier is empty, oversized, or unsafe for an exact request.
@@ -142,14 +142,14 @@ pub enum QuickTaskContractError {
 
 /// Bounded caller-selected model identifier.
 #[derive(Clone, Eq, PartialEq)]
-pub struct QuickTaskModel(String);
-impl QuickTaskModel {
+pub struct ConversationModel(String);
+impl ConversationModel {
 	/// Validate explicit caller model input without choosing a default.
-	pub fn new(value: impl Into<String>) -> Result<Self, QuickTaskContractError> {
+	pub fn new(value: impl Into<String>) -> Result<Self, ConversationContractError> {
 		let value = value.into();
 
-		validate_label(&value, MAX_QUICK_TASK_MODEL_BYTES)
-			.map_err(|()| QuickTaskContractError::InvalidModel)?;
+		validate_label(&value, MAX_CONVERSATION_MODEL_BYTES)
+			.map_err(|()| ConversationContractError::InvalidModel)?;
 
 		Ok(Self(value))
 	}
@@ -159,12 +159,12 @@ impl QuickTaskModel {
 		&self.0
 	}
 }
-impl Debug for QuickTaskModel {
+impl Debug for ConversationModel {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str("QuickTaskModel([REDACTED])")
+		formatter.write_str("ConversationModel([REDACTED])")
 	}
 }
-impl Serialize for QuickTaskModel {
+impl Serialize for ConversationModel {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
@@ -175,14 +175,14 @@ impl Serialize for QuickTaskModel {
 
 /// Bounded caller-selected reasoning-effort value.
 #[derive(Clone, Eq, PartialEq)]
-pub struct QuickTaskReasoningEffort(String);
-impl QuickTaskReasoningEffort {
+pub struct ConversationReasoningEffort(String);
+impl ConversationReasoningEffort {
 	/// Validate explicit caller reasoning input without choosing a default.
-	pub fn new(value: impl Into<String>) -> Result<Self, QuickTaskContractError> {
+	pub fn new(value: impl Into<String>) -> Result<Self, ConversationContractError> {
 		let value = value.into();
 
-		validate_label(&value, MAX_QUICK_TASK_REASONING_EFFORT_BYTES)
-			.map_err(|()| QuickTaskContractError::InvalidReasoningEffort)?;
+		validate_label(&value, MAX_CONVERSATION_REASONING_EFFORT_BYTES)
+			.map_err(|()| ConversationContractError::InvalidReasoningEffort)?;
 
 		Ok(Self(value))
 	}
@@ -192,12 +192,12 @@ impl QuickTaskReasoningEffort {
 		&self.0
 	}
 }
-impl Debug for QuickTaskReasoningEffort {
+impl Debug for ConversationReasoningEffort {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str("QuickTaskReasoningEffort([REDACTED])")
+		formatter.write_str("ConversationReasoningEffort([REDACTED])")
 	}
 }
-impl Serialize for QuickTaskReasoningEffort {
+impl Serialize for ConversationReasoningEffort {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
@@ -211,11 +211,11 @@ impl Serialize for QuickTaskReasoningEffort {
 pub struct ExactTurnId(Zeroizing<String>);
 impl ExactTurnId {
 	/// Validate and retain one exact protocol identifier byte-for-byte.
-	pub fn new(value: impl Into<String>) -> Result<Self, QuickTaskContractError> {
+	pub fn new(value: impl Into<String>) -> Result<Self, ConversationContractError> {
 		let value = Zeroizing::new(value.into());
 
 		validate_exact_id(value.as_str(), MAX_EXACT_TURN_ID_BYTES)
-			.map_err(|()| QuickTaskContractError::InvalidTurnId)?;
+			.map_err(|()| ConversationContractError::InvalidTurnId)?;
 
 		Ok(Self(value))
 	}
@@ -241,14 +241,14 @@ impl Serialize for ExactTurnId {
 
 /// Bounded caller-supplied developer instructions.
 #[derive(Clone, Eq, PartialEq)]
-pub struct QuickTaskInstructions(Zeroizing<String>);
-impl QuickTaskInstructions {
+pub struct ConversationInstructions(Zeroizing<String>);
+impl ConversationInstructions {
 	/// Validate and retain exact developer instructions.
-	pub fn new(value: impl Into<String>) -> Result<Self, QuickTaskContractError> {
+	pub fn new(value: impl Into<String>) -> Result<Self, ConversationContractError> {
 		let value = Zeroizing::new(value.into());
 
-		validate_content(value.as_str(), MAX_QUICK_TASK_INSTRUCTIONS_BYTES)
-			.map_err(|()| QuickTaskContractError::InvalidInstructions)?;
+		validate_content(value.as_str(), MAX_CONVERSATION_INSTRUCTIONS_BYTES)
+			.map_err(|()| ConversationContractError::InvalidInstructions)?;
 
 		Ok(Self(value))
 	}
@@ -258,12 +258,12 @@ impl QuickTaskInstructions {
 		self.0.as_str()
 	}
 }
-impl Debug for QuickTaskInstructions {
+impl Debug for ConversationInstructions {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str("QuickTaskInstructions([REDACTED])")
+		formatter.write_str("ConversationInstructions([REDACTED])")
 	}
 }
-impl Serialize for QuickTaskInstructions {
+impl Serialize for ConversationInstructions {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
@@ -274,14 +274,14 @@ impl Serialize for QuickTaskInstructions {
 
 /// Bounded caller-supplied user text.
 #[derive(Clone, Eq, PartialEq)]
-pub struct QuickTaskText(Zeroizing<String>);
-impl QuickTaskText {
+pub struct ConversationText(Zeroizing<String>);
+impl ConversationText {
 	/// Validate and retain one exact user text item.
-	pub fn new(value: impl Into<String>) -> Result<Self, QuickTaskContractError> {
+	pub fn new(value: impl Into<String>) -> Result<Self, ConversationContractError> {
 		let value = Zeroizing::new(value.into());
 
-		validate_content(value.as_str(), MAX_QUICK_TASK_TEXT_BYTES)
-			.map_err(|()| QuickTaskContractError::InvalidText)?;
+		validate_content(value.as_str(), MAX_CONVERSATION_TEXT_BYTES)
+			.map_err(|()| ConversationContractError::InvalidText)?;
 
 		Ok(Self(value))
 	}
@@ -291,12 +291,12 @@ impl QuickTaskText {
 		self.0.as_str()
 	}
 }
-impl Debug for QuickTaskText {
+impl Debug for ConversationText {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str("QuickTaskText([REDACTED])")
+		formatter.write_str("ConversationText([REDACTED])")
 	}
 }
-impl Serialize for QuickTaskText {
+impl Serialize for ConversationText {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
@@ -307,17 +307,17 @@ impl Serialize for QuickTaskText {
 
 /// Nonempty mechanically bounded text input for one turn.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct QuickTaskTurnInput {
-	items: Vec<QuickTaskText>,
+pub struct ConversationTurnInput {
+	items: Vec<ConversationText>,
 }
-impl QuickTaskTurnInput {
+impl ConversationTurnInput {
 	/// Construct one single-item text input.
-	pub fn text(value: impl Into<String>) -> Result<Self, QuickTaskContractError> {
-		Ok(Self { items: vec![QuickTaskText::new(value)?] })
+	pub fn text(value: impl Into<String>) -> Result<Self, ConversationContractError> {
+		Ok(Self { items: vec![ConversationText::new(value)?] })
 	}
 
 	/// Construct one bounded ordered text collection.
-	pub fn from_texts<I, S>(values: I) -> Result<Self, QuickTaskContractError>
+	pub fn from_texts<I, S>(values: I) -> Result<Self, ConversationContractError>
 	where
 		I: IntoIterator<Item = S>,
 		S: Into<String>,
@@ -326,54 +326,55 @@ impl QuickTaskTurnInput {
 		let mut total_bytes = 0_usize;
 
 		for value in values {
-			if items.len() == MAX_QUICK_TASK_INPUT_ITEMS {
-				return Err(QuickTaskContractError::InputItemLimitExceeded);
+			if items.len() == MAX_CONVERSATION_INPUT_ITEMS {
+				return Err(ConversationContractError::InputItemLimitExceeded);
 			}
 
-			let text = QuickTaskText::new(value)?;
+			let text = ConversationText::new(value)?;
 
 			total_bytes = total_bytes
 				.checked_add(text.as_str().len())
-				.ok_or(QuickTaskContractError::InputByteLimitExceeded)?;
-			if total_bytes > MAX_QUICK_TASK_INPUT_BYTES {
-				return Err(QuickTaskContractError::InputByteLimitExceeded);
+				.ok_or(ConversationContractError::InputByteLimitExceeded)?;
+			if total_bytes > MAX_CONVERSATION_INPUT_BYTES {
+				return Err(ConversationContractError::InputByteLimitExceeded);
 			}
 
 			items.push(text);
 		}
 
 		if items.is_empty() {
-			return Err(QuickTaskContractError::InputItemLimitExceeded);
+			return Err(ConversationContractError::InputItemLimitExceeded);
 		}
 
 		Ok(Self { items })
 	}
 
 	/// Return accepted text items in app-server order.
-	pub fn items(&self) -> &[QuickTaskText] {
+	pub fn items(&self) -> &[ConversationText] {
 		&self.items
 	}
 }
 
 /// Bounded non-ephemeral `thread/start` request facts.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct QuickTaskThreadStartRequest {
-	model: QuickTaskModel,
+pub struct ConversationThreadStartRequest {
+	model: ConversationModel,
 	cwd: ThreadCwd,
-	developer_instructions: QuickTaskInstructions,
+	developer_instructions: ConversationInstructions,
 	fast: bool,
 }
-impl QuickTaskThreadStartRequest {
+impl ConversationThreadStartRequest {
 	/// Accept explicit caller configuration for one durable thread.
 	pub fn new(
 		model: impl Into<String>,
 		cwd: impl Into<String>,
 		developer_instructions: impl Into<String>,
-	) -> Result<Self, QuickTaskContractError> {
+	) -> Result<Self, ConversationContractError> {
 		Ok(Self {
-			model: QuickTaskModel::new(model)?,
-			cwd: ThreadCwd::from_protocol(cwd).map_err(|_| QuickTaskContractError::InvalidCwd)?,
-			developer_instructions: QuickTaskInstructions::new(developer_instructions)?,
+			model: ConversationModel::new(model)?,
+			cwd: ThreadCwd::from_protocol(cwd)
+				.map_err(|_| ConversationContractError::InvalidCwd)?,
+			developer_instructions: ConversationInstructions::new(developer_instructions)?,
 			fast: false,
 		})
 	}
@@ -385,7 +386,7 @@ impl QuickTaskThreadStartRequest {
 	}
 
 	/// Caller-selected model sent to the app server.
-	pub fn model(&self) -> &QuickTaskModel {
+	pub fn model(&self) -> &ConversationModel {
 		&self.model
 	}
 
@@ -395,21 +396,21 @@ impl QuickTaskThreadStartRequest {
 	}
 
 	/// Exact bounded developer instructions.
-	pub fn developer_instructions(&self) -> &QuickTaskInstructions {
+	pub fn developer_instructions(&self) -> &ConversationInstructions {
 		&self.developer_instructions
 	}
 
-	/// Ordinary Quick Task creation is always persistent.
+	/// Ordinary Conversation creation is always persistent.
 	pub const fn ephemeral(&self) -> bool {
 		false
 	}
 }
-impl Serialize for QuickTaskThreadStartRequest {
+impl Serialize for ConversationThreadStartRequest {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{
-		let mut request = serializer.serialize_struct("QuickTaskThreadStartRequest", 5)?;
+		let mut request = serializer.serialize_struct("ConversationThreadStartRequest", 5)?;
 
 		request.serialize_field("model", self.model.as_str())?;
 		request.serialize_field("cwd", self.cwd.as_str())?;
@@ -422,17 +423,17 @@ impl Serialize for QuickTaskThreadStartRequest {
 
 /// Bounded successful durable `thread/start` response facts.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct QuickTaskThreadStartResponse {
+pub struct ConversationThreadStartResponse {
 	thread_id: ExactThreadId,
 	cwd: ThreadCwd,
-	model: QuickTaskModel,
-	reasoning_effort: Option<QuickTaskReasoningEffort>,
+	model: ConversationModel,
+	reasoning_effort: Option<ConversationReasoningEffort>,
 }
-impl QuickTaskThreadStartResponse {
+impl ConversationThreadStartResponse {
 	fn from_wire(
-		request: &QuickTaskThreadStartRequest,
-		wire: QuickTaskThreadStartResponseWire,
-	) -> Result<Self, QuickTaskContractError> {
+		request: &ConversationThreadStartRequest,
+		wire: ConversationThreadStartResponseWire,
+	) -> Result<Self, ConversationContractError> {
 		wire.validate_private_facts()?;
 		let facts = validate_thread_response_facts(
 			ThreadResponseContext::Start,
@@ -441,7 +442,7 @@ impl QuickTaskThreadStartResponse {
 			wire.thread,
 			wire.cwd.into_string(),
 			wire.model,
-			wire.reasoning_effort.map(QuickTaskReasoningEffortWire::into_string),
+			wire.reasoning_effort.map(ConversationReasoningEffortWire::into_string),
 		)?;
 
 		Ok(Self {
@@ -463,21 +464,21 @@ impl QuickTaskThreadStartResponse {
 	}
 
 	/// Actual bounded model reported by the app server.
-	pub fn model(&self) -> &QuickTaskModel {
+	pub fn model(&self) -> &ConversationModel {
 		&self.model
 	}
 
 	/// Actual bounded reasoning effort reported by the app server, when present.
-	pub fn reasoning_effort(&self) -> Option<&QuickTaskReasoningEffort> {
+	pub fn reasoning_effort(&self) -> Option<&ConversationReasoningEffort> {
 		self.reasoning_effort.as_ref()
 	}
 }
 
 /// Decode one bounded exact `thread/start` result and bind it to its request facts.
-pub fn decode_quick_task_thread_start_response(
-	request: &QuickTaskThreadStartRequest,
+pub fn decode_conversation_thread_start_response(
+	request: &ConversationThreadStartRequest,
 	bytes: &[u8],
-) -> Result<QuickTaskThreadStartResponse, QuickTaskContractError> {
+) -> Result<ConversationThreadStartResponse, ConversationContractError> {
 	validate_thread_response_shape(
 		bytes,
 		THREAD_START_RESPONSE_FIELDS,
@@ -485,7 +486,7 @@ pub fn decode_quick_task_thread_start_response(
 	)?;
 	let wire = decode_response_wire(bytes)?;
 
-	QuickTaskThreadStartResponse::from_wire(request, wire)
+	ConversationThreadStartResponse::from_wire(request, wire)
 }
 
 /// Bounded exact-ID `thread/resume` request facts.
@@ -493,26 +494,27 @@ pub fn decode_quick_task_thread_start_response(
 /// This shape has no history or rollout-path field, so no alternate thread can take
 /// precedence over `thread_id`.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct QuickTaskThreadResumeRequest {
+pub struct ConversationThreadResumeRequest {
 	thread_id: ExactThreadId,
-	model: QuickTaskModel,
+	model: ConversationModel,
 	cwd: ThreadCwd,
-	developer_instructions: QuickTaskInstructions,
+	developer_instructions: ConversationInstructions,
 	fast: bool,
 }
-impl QuickTaskThreadResumeRequest {
+impl ConversationThreadResumeRequest {
 	/// Accept one exact thread and explicit caller configuration.
 	pub fn new(
 		thread_id: ExactThreadId,
 		model: impl Into<String>,
 		cwd: impl Into<String>,
 		developer_instructions: impl Into<String>,
-	) -> Result<Self, QuickTaskContractError> {
+	) -> Result<Self, ConversationContractError> {
 		Ok(Self {
 			thread_id,
-			model: QuickTaskModel::new(model)?,
-			cwd: ThreadCwd::from_protocol(cwd).map_err(|_| QuickTaskContractError::InvalidCwd)?,
-			developer_instructions: QuickTaskInstructions::new(developer_instructions)?,
+			model: ConversationModel::new(model)?,
+			cwd: ThreadCwd::from_protocol(cwd)
+				.map_err(|_| ConversationContractError::InvalidCwd)?,
+			developer_instructions: ConversationInstructions::new(developer_instructions)?,
 			fast: false,
 		})
 	}
@@ -529,7 +531,7 @@ impl QuickTaskThreadResumeRequest {
 	}
 
 	/// Caller-selected model sent to the app server.
-	pub fn model(&self) -> &QuickTaskModel {
+	pub fn model(&self) -> &ConversationModel {
 		&self.model
 	}
 
@@ -539,21 +541,21 @@ impl QuickTaskThreadResumeRequest {
 	}
 
 	/// Exact bounded developer instructions.
-	pub fn developer_instructions(&self) -> &QuickTaskInstructions {
+	pub fn developer_instructions(&self) -> &ConversationInstructions {
 		&self.developer_instructions
 	}
 
-	/// Ordinary Quick Task resume requests load metadata without turn history.
+	/// Ordinary Conversation resume requests load metadata without turn history.
 	pub const fn exclude_turns(&self) -> bool {
 		true
 	}
 }
-impl Serialize for QuickTaskThreadResumeRequest {
+impl Serialize for ConversationThreadResumeRequest {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{
-		let mut request = serializer.serialize_struct("QuickTaskThreadResumeRequest", 6)?;
+		let mut request = serializer.serialize_struct("ConversationThreadResumeRequest", 6)?;
 
 		request.serialize_field("threadId", self.thread_id.as_str())?;
 		request.serialize_field("model", self.model.as_str())?;
@@ -567,17 +569,17 @@ impl Serialize for QuickTaskThreadResumeRequest {
 
 /// Bounded successful exact-ID `thread/resume` response facts.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct QuickTaskThreadResumeResponse {
+pub struct ConversationThreadResumeResponse {
 	thread_id: ExactThreadId,
 	cwd: ThreadCwd,
-	model: QuickTaskModel,
-	reasoning_effort: Option<QuickTaskReasoningEffort>,
+	model: ConversationModel,
+	reasoning_effort: Option<ConversationReasoningEffort>,
 }
-impl QuickTaskThreadResumeResponse {
+impl ConversationThreadResumeResponse {
 	fn from_wire(
-		request: &QuickTaskThreadResumeRequest,
-		wire: QuickTaskThreadResumeResponseWire,
-	) -> Result<Self, QuickTaskContractError> {
+		request: &ConversationThreadResumeRequest,
+		wire: ConversationThreadResumeResponseWire,
+	) -> Result<Self, ConversationContractError> {
 		wire.validate_private_facts()?;
 		let facts = validate_thread_response_facts(
 			ThreadResponseContext::Resume(request.thread_id()),
@@ -586,7 +588,7 @@ impl QuickTaskThreadResumeResponse {
 			wire.thread,
 			wire.cwd.into_string(),
 			wire.model,
-			wire.reasoning_effort.map(QuickTaskReasoningEffortWire::into_string),
+			wire.reasoning_effort.map(ConversationReasoningEffortWire::into_string),
 		)?;
 
 		Ok(Self {
@@ -608,21 +610,21 @@ impl QuickTaskThreadResumeResponse {
 	}
 
 	/// Actual bounded model reported by the app server.
-	pub fn model(&self) -> &QuickTaskModel {
+	pub fn model(&self) -> &ConversationModel {
 		&self.model
 	}
 
 	/// Actual bounded reasoning effort reported by the app server, when present.
-	pub fn reasoning_effort(&self) -> Option<&QuickTaskReasoningEffort> {
+	pub fn reasoning_effort(&self) -> Option<&ConversationReasoningEffort> {
 		self.reasoning_effort.as_ref()
 	}
 }
 
 /// Decode one bounded exact `thread/resume` result and bind it to its request facts.
-pub fn decode_quick_task_thread_resume_response(
-	request: &QuickTaskThreadResumeRequest,
+pub fn decode_conversation_thread_resume_response(
+	request: &ConversationThreadResumeRequest,
 	bytes: &[u8],
-) -> Result<QuickTaskThreadResumeResponse, QuickTaskContractError> {
+) -> Result<ConversationThreadResumeResponse, ConversationContractError> {
 	validate_thread_response_shape(
 		bytes,
 		THREAD_RESUME_RESPONSE_FIELDS,
@@ -630,17 +632,17 @@ pub fn decode_quick_task_thread_resume_response(
 	)?;
 	let wire = decode_response_wire(bytes)?;
 
-	QuickTaskThreadResumeResponse::from_wire(request, wire)
+	ConversationThreadResumeResponse::from_wire(request, wire)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct QuickTaskTextInput<'a>(&'a QuickTaskText);
-impl Serialize for QuickTaskTextInput<'_> {
+struct ConversationTextInput<'a>(&'a ConversationText);
+impl Serialize for ConversationTextInput<'_> {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{
-		let mut input = serializer.serialize_struct("QuickTaskTextInput", 2)?;
+		let mut input = serializer.serialize_struct("ConversationTextInput", 2)?;
 
 		input.serialize_field("type", "text")?;
 		input.serialize_field("text", self.0.as_str())?;
@@ -648,8 +650,8 @@ impl Serialize for QuickTaskTextInput<'_> {
 	}
 }
 
-struct QuickTaskTextInputs<'a>(&'a [QuickTaskText]);
-impl Serialize for QuickTaskTextInputs<'_> {
+struct ConversationTextInputs<'a>(&'a [ConversationText]);
+impl Serialize for ConversationTextInputs<'_> {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
@@ -657,7 +659,7 @@ impl Serialize for QuickTaskTextInputs<'_> {
 		let mut inputs = serializer.serialize_seq(Some(self.0.len()))?;
 
 		for item in self.0 {
-			inputs.serialize_element(&QuickTaskTextInput(item))?;
+			inputs.serialize_element(&ConversationTextInput(item))?;
 		}
 
 		inputs.end()
@@ -666,27 +668,27 @@ impl Serialize for QuickTaskTextInputs<'_> {
 
 /// Bounded `turn/start` request facts with explicit caller-selected execution settings.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct QuickTaskTurnStartRequest {
+pub struct ConversationTurnStartRequest {
 	thread_id: ExactThreadId,
-	input: QuickTaskTurnInput,
-	model: QuickTaskModel,
-	reasoning_effort: QuickTaskReasoningEffort,
+	input: ConversationTurnInput,
+	model: ConversationModel,
+	reasoning_effort: ConversationReasoningEffort,
 	fast: bool,
 	client_user_message_id: Option<String>,
 }
-impl QuickTaskTurnStartRequest {
+impl ConversationTurnStartRequest {
 	/// Accept one bounded turn without selecting or defaulting model settings.
 	pub fn new(
 		thread_id: ExactThreadId,
-		input: QuickTaskTurnInput,
+		input: ConversationTurnInput,
 		model: impl Into<String>,
 		reasoning_effort: impl Into<String>,
-	) -> Result<Self, QuickTaskContractError> {
+	) -> Result<Self, ConversationContractError> {
 		Ok(Self {
 			thread_id,
 			input,
-			model: QuickTaskModel::new(model)?,
-			reasoning_effort: QuickTaskReasoningEffort::new(reasoning_effort)?,
+			model: ConversationModel::new(model)?,
+			reasoning_effort: ConversationReasoningEffort::new(reasoning_effort)?,
 			fast: false,
 			client_user_message_id: None,
 		})
@@ -704,10 +706,10 @@ impl QuickTaskTurnStartRequest {
 	pub fn with_client_user_message_id(
 		mut self,
 		client_user_message_id: impl Into<String>,
-	) -> Result<Self, QuickTaskContractError> {
+	) -> Result<Self, ConversationContractError> {
 		let client_user_message_id = client_user_message_id.into();
 		validate_exact_id(&client_user_message_id, MAX_EXACT_TURN_ID_BYTES)
-			.map_err(|()| QuickTaskContractError::InvalidTurnId)?;
+			.map_err(|()| ConversationContractError::InvalidTurnId)?;
 		self.client_user_message_id = Some(client_user_message_id);
 		Ok(self)
 	}
@@ -718,29 +720,29 @@ impl QuickTaskTurnStartRequest {
 	}
 
 	/// Bounded ordered text input.
-	pub fn input(&self) -> &QuickTaskTurnInput {
+	pub fn input(&self) -> &ConversationTurnInput {
 		&self.input
 	}
 
 	/// Caller-selected model.
-	pub fn model(&self) -> &QuickTaskModel {
+	pub fn model(&self) -> &ConversationModel {
 		&self.model
 	}
 
 	/// Caller-selected reasoning effort.
-	pub fn reasoning_effort(&self) -> &QuickTaskReasoningEffort {
+	pub fn reasoning_effort(&self) -> &ConversationReasoningEffort {
 		&self.reasoning_effort
 	}
 }
-impl Serialize for QuickTaskTurnStartRequest {
+impl Serialize for ConversationTurnStartRequest {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{
-		let mut request = serializer.serialize_struct("QuickTaskTurnStartRequest", 6)?;
+		let mut request = serializer.serialize_struct("ConversationTurnStartRequest", 6)?;
 
 		request.serialize_field("threadId", self.thread_id.as_str())?;
-		request.serialize_field("input", &QuickTaskTextInputs(self.input.items()))?;
+		request.serialize_field("input", &ConversationTextInputs(self.input.items()))?;
 		request.serialize_field("model", self.model.as_str())?;
 		request.serialize_field("effort", self.reasoning_effort.as_str())?;
 		request.serialize_field("serviceTier", &self.fast.then_some("priority"))?;
@@ -751,7 +753,7 @@ impl Serialize for QuickTaskTurnStartRequest {
 
 /// Closed turn state retained from one typed app-server response.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum QuickTaskTurnStatus {
+pub enum ConversationTurnStatus {
 	/// Turn remains active.
 	InProgress,
 	/// Turn completed normally.
@@ -764,12 +766,14 @@ pub enum QuickTaskTurnStatus {
 
 /// Bounded successful `turn/start` response facts.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct QuickTaskTurnStartResponse {
+pub struct ConversationTurnStartResponse {
 	turn_id: ExactTurnId,
-	status: QuickTaskTurnStatus,
+	status: ConversationTurnStatus,
 }
-impl QuickTaskTurnStartResponse {
-	fn from_wire(wire: QuickTaskTurnStartResponseWire) -> Result<Self, QuickTaskContractError> {
+impl ConversationTurnStartResponse {
+	fn from_wire(
+		wire: ConversationTurnStartResponseWire,
+	) -> Result<Self, ConversationContractError> {
 		wire.turn.validate_start_facts()?;
 
 		Ok(Self {
@@ -784,29 +788,29 @@ impl QuickTaskTurnStartResponse {
 	}
 
 	/// Closed state returned for the turn.
-	pub const fn status(&self) -> QuickTaskTurnStatus {
+	pub const fn status(&self) -> ConversationTurnStatus {
 		self.status
 	}
 }
 
 /// Decode one bounded exact `turn/start` result.
-pub fn decode_quick_task_turn_start_response(
+pub fn decode_conversation_turn_start_response(
 	bytes: &[u8],
-) -> Result<QuickTaskTurnStartResponse, QuickTaskContractError> {
+) -> Result<ConversationTurnStartResponse, ConversationContractError> {
 	validate_turn_start_response_shape(bytes)?;
 	let wire = decode_response_wire(bytes)?;
 
-	QuickTaskTurnStartResponse::from_wire(wire)
+	ConversationTurnStartResponse::from_wire(wire)
 }
 
 /// Exact `turn/interrupt` request facts.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct QuickTaskTurnInterruptRequest {
+pub struct ConversationTurnInterruptRequest {
 	thread_id: ExactThreadId,
 	turn_id: ExactTurnId,
 }
-impl QuickTaskTurnInterruptRequest {
+impl ConversationTurnInterruptRequest {
 	/// Bind an interrupt to one exact thread and active turn.
 	pub fn new(thread_id: ExactThreadId, turn_id: ExactTurnId) -> Self {
 		Self { thread_id, turn_id }
@@ -828,32 +832,32 @@ impl QuickTaskTurnInterruptRequest {
 /// This fact records only protocol acceptance. Terminal turn state still comes from typed
 /// notification or readback evidence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct QuickTaskTurnInterruptResponse {
+pub struct ConversationTurnInterruptResponse {
 	_private: (),
 }
-impl QuickTaskTurnInterruptResponse {
-	fn from_wire(_: QuickTaskEmptySuccessWire) -> Self {
+impl ConversationTurnInterruptResponse {
+	fn from_wire(_: ConversationEmptySuccessWire) -> Self {
 		Self { _private: () }
 	}
 }
 
 /// Decode one bounded exact empty `turn/interrupt` result.
-pub fn decode_quick_task_turn_interrupt_response(
+pub fn decode_conversation_turn_interrupt_response(
 	bytes: &[u8],
-) -> Result<QuickTaskTurnInterruptResponse, QuickTaskContractError> {
+) -> Result<ConversationTurnInterruptResponse, ConversationContractError> {
 	validate_empty_response_shape(bytes)?;
 	let wire = decode_response_wire(bytes)?;
 
-	Ok(QuickTaskTurnInterruptResponse::from_wire(wire))
+	Ok(ConversationTurnInterruptResponse::from_wire(wire))
 }
 
 /// Exact explicit `thread/archive` request facts.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct QuickTaskThreadArchiveRequest {
+pub struct ConversationThreadArchiveRequest {
 	thread_id: ExactThreadId,
 }
-impl QuickTaskThreadArchiveRequest {
+impl ConversationThreadArchiveRequest {
 	/// Bind explicit archive to one exact thread.
 	pub fn new(thread_id: ExactThreadId) -> Self {
 		Self { thread_id }
@@ -870,52 +874,52 @@ impl QuickTaskThreadArchiveRequest {
 /// This fact records only protocol acceptance. It does not replace exact archived-state
 /// readback or durable duplicate-prevention authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct QuickTaskThreadArchiveResponse {
+pub struct ConversationThreadArchiveResponse {
 	_private: (),
 }
-impl QuickTaskThreadArchiveResponse {
-	fn from_wire(_: QuickTaskEmptySuccessWire) -> Self {
+impl ConversationThreadArchiveResponse {
+	fn from_wire(_: ConversationEmptySuccessWire) -> Self {
 		Self { _private: () }
 	}
 }
 
 /// Decode one bounded exact empty `thread/archive` result.
-pub fn decode_quick_task_thread_archive_response(
+pub fn decode_conversation_thread_archive_response(
 	bytes: &[u8],
-) -> Result<QuickTaskThreadArchiveResponse, QuickTaskContractError> {
+) -> Result<ConversationThreadArchiveResponse, ConversationContractError> {
 	validate_empty_response_shape(bytes)?;
 	let wire = decode_response_wire(bytes)?;
 
-	Ok(QuickTaskThreadArchiveResponse::from_wire(wire))
+	Ok(ConversationThreadArchiveResponse::from_wire(wire))
 }
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct QuickTaskThreadStartResponseWire {
-	thread: QuickTaskThreadResponseWire,
+struct ConversationThreadStartResponseWire {
+	thread: ConversationThreadResponseWire,
 	model: String,
 	model_provider: String,
 	service_tier: Option<String>,
-	cwd: QuickTaskAbsolutePathWire,
+	cwd: ConversationAbsolutePathWire,
 	#[serde(default)]
-	runtime_workspace_roots: Vec<QuickTaskAbsolutePathWire>,
+	runtime_workspace_roots: Vec<ConversationAbsolutePathWire>,
 	#[serde(default)]
-	instruction_sources: Vec<QuickTaskInstructionSourceWire>,
-	approval_policy: QuickTaskAskForApprovalWire,
-	approvals_reviewer: QuickTaskApprovalsReviewerWire,
-	sandbox: QuickTaskSandboxPolicyWire,
+	instruction_sources: Vec<ConversationInstructionSourceWire>,
+	approval_policy: ConversationAskForApprovalWire,
+	approvals_reviewer: ConversationApprovalsReviewerWire,
+	sandbox: ConversationSandboxPolicyWire,
 	#[serde(default)]
-	active_permission_profile: Option<QuickTaskActivePermissionProfileWire>,
-	reasoning_effort: Option<QuickTaskReasoningEffortWire>,
+	active_permission_profile: Option<ConversationActivePermissionProfileWire>,
+	reasoning_effort: Option<ConversationReasoningEffortWire>,
 	#[serde(default)]
-	multi_agent_mode: QuickTaskMultiAgentModeWire,
+	multi_agent_mode: ConversationMultiAgentModeWire,
 }
-impl QuickTaskThreadStartResponseWire {
-	fn validate_private_facts(&self) -> Result<(), QuickTaskContractError> {
+impl ConversationThreadStartResponseWire {
+	fn validate_private_facts(&self) -> Result<(), ConversationContractError> {
 		self.sandbox.validate()?;
-		if self.multi_agent_mode != QuickTaskMultiAgentModeWire::ExplicitRequestOnly {
-			return Err(QuickTaskContractError::ResponseSemanticMismatch);
+		if self.multi_agent_mode != ConversationMultiAgentModeWire::ExplicitRequestOnly {
+			return Err(ConversationContractError::ResponseSemanticMismatch);
 		}
 
 		Ok(())
@@ -925,39 +929,39 @@ impl QuickTaskThreadStartResponseWire {
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct QuickTaskThreadResumeResponseWire {
-	thread: QuickTaskThreadResponseWire,
+struct ConversationThreadResumeResponseWire {
+	thread: ConversationThreadResponseWire,
 	model: String,
 	model_provider: String,
 	service_tier: Option<String>,
-	cwd: QuickTaskAbsolutePathWire,
+	cwd: ConversationAbsolutePathWire,
 	#[serde(default)]
-	runtime_workspace_roots: Vec<QuickTaskAbsolutePathWire>,
+	runtime_workspace_roots: Vec<ConversationAbsolutePathWire>,
 	#[serde(default)]
-	instruction_sources: Vec<QuickTaskInstructionSourceWire>,
-	approval_policy: QuickTaskAskForApprovalWire,
-	approvals_reviewer: QuickTaskApprovalsReviewerWire,
-	sandbox: QuickTaskSandboxPolicyWire,
+	instruction_sources: Vec<ConversationInstructionSourceWire>,
+	approval_policy: ConversationAskForApprovalWire,
+	approvals_reviewer: ConversationApprovalsReviewerWire,
+	sandbox: ConversationSandboxPolicyWire,
 	#[serde(default)]
-	active_permission_profile: Option<QuickTaskActivePermissionProfileWire>,
-	reasoning_effort: Option<QuickTaskReasoningEffortWire>,
+	active_permission_profile: Option<ConversationActivePermissionProfileWire>,
+	reasoning_effort: Option<ConversationReasoningEffortWire>,
 	#[serde(default)]
-	multi_agent_mode: QuickTaskMultiAgentModeWire,
+	multi_agent_mode: ConversationMultiAgentModeWire,
 	#[serde(default)]
-	initial_turns_page: Option<QuickTaskForbiddenValueWire>,
+	initial_turns_page: Option<ConversationForbiddenValueWire>,
 	#[serde(default)]
 	turns_backwards_cursor: Option<String>,
 	#[serde(default)]
 	items_backwards_cursor: Option<String>,
 }
-impl QuickTaskThreadResumeResponseWire {
-	fn validate_private_facts(&self) -> Result<(), QuickTaskContractError> {
+impl ConversationThreadResumeResponseWire {
+	fn validate_private_facts(&self) -> Result<(), ConversationContractError> {
 		self.sandbox.validate()?;
-		if self.multi_agent_mode != QuickTaskMultiAgentModeWire::ExplicitRequestOnly {
-			return Err(QuickTaskContractError::ResponseSemanticMismatch);
+		if self.multi_agent_mode != ConversationMultiAgentModeWire::ExplicitRequestOnly {
+			return Err(ConversationContractError::ResponseSemanticMismatch);
 		}
 		if self.initial_turns_page.is_some() {
-			return Err(QuickTaskContractError::UnexpectedResponseCollection);
+			return Err(ConversationContractError::UnexpectedResponseCollection);
 		}
 
 		Ok(())
@@ -967,53 +971,53 @@ impl QuickTaskThreadResumeResponseWire {
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct QuickTaskThreadResponseWire {
+struct ConversationThreadResponseWire {
 	id: String,
 	#[serde(default)]
-	extra: Option<QuickTaskThreadExtraWire>,
+	extra: Option<ConversationThreadExtraWire>,
 	session_id: String,
 	forked_from_id: Option<String>,
 	parent_thread_id: Option<String>,
 	preview: String,
 	ephemeral: bool,
 	#[serde(default)]
-	history_mode: QuickTaskThreadHistoryModeWire,
+	history_mode: ConversationThreadHistoryModeWire,
 	model_provider: String,
 	created_at: i64,
 	updated_at: i64,
 	recency_at: Option<i64>,
-	status: QuickTaskThreadStatusWire,
+	status: ConversationThreadStatusWire,
 	path: Option<String>,
-	cwd: QuickTaskAbsolutePathWire,
+	cwd: ConversationAbsolutePathWire,
 	cli_version: String,
-	source: QuickTaskSessionSourceWire,
+	source: ConversationSessionSourceWire,
 	can_accept_direct_input: Option<bool>,
-	thread_source: Option<QuickTaskThreadSourceWire>,
+	thread_source: Option<ConversationThreadSourceWire>,
 	agent_nickname: Option<String>,
 	agent_role: Option<String>,
-	git_info: Option<QuickTaskGitInfoWire>,
+	git_info: Option<ConversationGitInfoWire>,
 	name: Option<String>,
 	#[serde(default)]
-	section: Option<QuickTaskThreadSectionWire>,
+	section: Option<ConversationThreadSectionWire>,
 	#[serde(default)]
 	section_entered_at: Option<i64>,
-	turns: Vec<QuickTaskForbiddenValueWire>,
+	turns: Vec<ConversationForbiddenValueWire>,
 }
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct QuickTaskThreadSectionWire {
+struct ConversationThreadSectionWire {
 	id: String,
 	name: String,
 	#[serde(default)]
-	appearance: Option<QuickTaskThreadSectionAppearanceWire>,
+	appearance: Option<ConversationThreadSectionAppearanceWire>,
 }
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct QuickTaskThreadSectionAppearanceWire {
+struct ConversationThreadSectionAppearanceWire {
 	icon: Option<String>,
 	color: Option<String>,
 }
@@ -1021,7 +1025,7 @@ struct QuickTaskThreadSectionAppearanceWire {
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct QuickTaskGitInfoWire {
+struct ConversationGitInfoWire {
 	sha: Option<String>,
 	branch: Option<String>,
 	origin_url: Option<String>,
@@ -1029,16 +1033,16 @@ struct QuickTaskGitInfoWire {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct QuickTaskThreadExtraWire {}
+struct ConversationThreadExtraWire {}
 
 #[derive(Clone, Eq, PartialEq)]
-struct QuickTaskAbsolutePathWire(String);
-impl QuickTaskAbsolutePathWire {
+struct ConversationAbsolutePathWire(String);
+impl ConversationAbsolutePathWire {
 	fn into_string(self) -> String {
 		self.0
 	}
 }
-impl<'de> Deserialize<'de> for QuickTaskAbsolutePathWire {
+impl<'de> Deserialize<'de> for ConversationAbsolutePathWire {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: Deserializer<'de>,
@@ -1054,23 +1058,23 @@ impl<'de> Deserialize<'de> for QuickTaskAbsolutePathWire {
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(transparent)]
-struct QuickTaskInstructionSourceWire(String);
+struct ConversationInstructionSourceWire(String);
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "kebab-case")]
-enum QuickTaskAskForApprovalWire {
+enum ConversationAskForApprovalWire {
 	#[serde(rename = "untrusted")]
 	UnlessTrusted,
 	OnRequest,
-	Granular(QuickTaskGranularApprovalWire),
+	Granular(ConversationGranularApprovalWire),
 	Never,
 }
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct QuickTaskGranularApprovalWire {
+struct ConversationGranularApprovalWire {
 	sandbox_approval: bool,
 	rules: bool,
 	#[serde(default)]
@@ -1081,7 +1085,7 @@ struct QuickTaskGranularApprovalWire {
 }
 
 #[derive(Deserialize)]
-enum QuickTaskApprovalsReviewerWire {
+enum ConversationApprovalsReviewerWire {
 	#[serde(rename = "user")]
 	User,
 	#[serde(rename = "auto_review")]
@@ -1091,7 +1095,7 @@ enum QuickTaskApprovalsReviewerWire {
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct QuickTaskActivePermissionProfileWire {
+struct ConversationActivePermissionProfileWire {
 	id: String,
 	#[serde(default)]
 	extends: Option<String>,
@@ -1100,26 +1104,26 @@ struct QuickTaskActivePermissionProfileWire {
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
-enum QuickTaskSandboxPolicyWire {
+enum ConversationSandboxPolicyWire {
 	DangerFullAccess,
 	#[serde(rename_all = "camelCase")]
 	ReadOnly {
 		#[serde(default)]
 		network_access: bool,
 		#[serde(default)]
-		access: Option<QuickTaskLegacyReadOnlyAccessWire>,
+		access: Option<ConversationLegacyReadOnlyAccessWire>,
 	},
 	#[serde(rename_all = "camelCase")]
 	ExternalSandbox {
 		#[serde(default)]
-		network_access: QuickTaskNetworkAccessWire,
+		network_access: ConversationNetworkAccessWire,
 	},
 	#[serde(rename_all = "camelCase")]
 	WorkspaceWrite {
 		#[serde(default)]
-		writable_roots: Vec<QuickTaskAbsolutePathWire>,
+		writable_roots: Vec<ConversationAbsolutePathWire>,
 		#[serde(default)]
-		read_only_access: Option<QuickTaskLegacyReadOnlyAccessWire>,
+		read_only_access: Option<ConversationLegacyReadOnlyAccessWire>,
 		#[serde(default)]
 		network_access: bool,
 		#[serde(default)]
@@ -1128,16 +1132,17 @@ enum QuickTaskSandboxPolicyWire {
 		exclude_slash_tmp: bool,
 	},
 }
-impl QuickTaskSandboxPolicyWire {
-	fn validate(&self) -> Result<(), QuickTaskContractError> {
+impl ConversationSandboxPolicyWire {
+	fn validate(&self) -> Result<(), ConversationContractError> {
 		match self {
 			Self::ReadOnly {
-				access: Some(QuickTaskLegacyReadOnlyAccessWire::Restricted), ..
+				access: Some(ConversationLegacyReadOnlyAccessWire::Restricted),
+				..
 			}
 			| Self::WorkspaceWrite {
-				read_only_access: Some(QuickTaskLegacyReadOnlyAccessWire::Restricted),
+				read_only_access: Some(ConversationLegacyReadOnlyAccessWire::Restricted),
 				..
-			} => Err(QuickTaskContractError::MalformedResponse),
+			} => Err(ConversationContractError::MalformedResponse),
 			_ => Ok(()),
 		}
 	}
@@ -1145,14 +1150,14 @@ impl QuickTaskSandboxPolicyWire {
 
 #[derive(Clone, Copy, Deserialize, Eq, PartialEq)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
-enum QuickTaskLegacyReadOnlyAccessWire {
+enum ConversationLegacyReadOnlyAccessWire {
 	FullAccess,
 	Restricted,
 }
 
 #[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
-enum QuickTaskNetworkAccessWire {
+enum ConversationNetworkAccessWire {
 	#[default]
 	Restricted,
 	Enabled,
@@ -1160,7 +1165,7 @@ enum QuickTaskNetworkAccessWire {
 
 #[allow(dead_code)]
 #[derive(Clone, Eq, PartialEq)]
-enum QuickTaskReasoningEffortWire {
+enum ConversationReasoningEffortWire {
 	None,
 	Minimal,
 	Low,
@@ -1171,7 +1176,7 @@ enum QuickTaskReasoningEffortWire {
 	Ultra,
 	Custom(String),
 }
-impl QuickTaskReasoningEffortWire {
+impl ConversationReasoningEffortWire {
 	fn into_string(self) -> String {
 		match self {
 			Self::None => "none".to_owned(),
@@ -1186,7 +1191,7 @@ impl QuickTaskReasoningEffortWire {
 		}
 	}
 }
-impl<'de> Deserialize<'de> for QuickTaskReasoningEffortWire {
+impl<'de> Deserialize<'de> for ConversationReasoningEffortWire {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: Deserializer<'de>,
@@ -1212,7 +1217,7 @@ impl<'de> Deserialize<'de> for QuickTaskReasoningEffortWire {
 #[allow(dead_code)]
 #[derive(Clone, Default, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
-enum QuickTaskMultiAgentModeWire {
+enum ConversationMultiAgentModeWire {
 	None,
 	Custom(String),
 	#[default]
@@ -1222,7 +1227,7 @@ enum QuickTaskMultiAgentModeWire {
 
 #[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
-enum QuickTaskThreadHistoryModeWire {
+enum ConversationThreadHistoryModeWire {
 	#[default]
 	Legacy,
 	Paginated,
@@ -1231,19 +1236,19 @@ enum QuickTaskThreadHistoryModeWire {
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
-enum QuickTaskThreadStatusWire {
+enum ConversationThreadStatusWire {
 	NotLoaded,
 	Idle,
 	SystemError,
 	Active {
 		#[serde(rename = "activeFlags")]
-		active_flags: Vec<QuickTaskThreadActiveFlagWire>,
+		active_flags: Vec<ConversationThreadActiveFlagWire>,
 	},
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-enum QuickTaskThreadActiveFlagWire {
+enum ConversationThreadActiveFlagWire {
 	WaitingOnApproval,
 	WaitingOnUserInput,
 }
@@ -1251,14 +1256,14 @@ enum QuickTaskThreadActiveFlagWire {
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-enum QuickTaskSessionSourceWire {
+enum ConversationSessionSourceWire {
 	Cli,
 	#[serde(rename = "vscode")]
 	VsCode,
 	Exec,
 	AppServer,
 	Custom(String),
-	SubAgent(QuickTaskSubAgentSourceWire),
+	SubAgent(ConversationSubAgentSourceWire),
 	#[serde(other)]
 	Unknown,
 }
@@ -1266,10 +1271,10 @@ enum QuickTaskSessionSourceWire {
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum QuickTaskSubAgentSourceWire {
+enum ConversationSubAgentSourceWire {
 	Review,
 	Compact,
-	ThreadSpawn(QuickTaskThreadSpawnSourceWire),
+	ThreadSpawn(ConversationThreadSpawnSourceWire),
 	MemoryConsolidation,
 	Other(String),
 }
@@ -1277,11 +1282,11 @@ enum QuickTaskSubAgentSourceWire {
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct QuickTaskThreadSpawnSourceWire {
-	parent_thread_id: QuickTaskUuidWire,
+struct ConversationThreadSpawnSourceWire {
+	parent_thread_id: ConversationUuidWire,
 	depth: i32,
 	#[serde(default)]
-	agent_path: Option<QuickTaskAgentPathWire>,
+	agent_path: Option<ConversationAgentPathWire>,
 	#[serde(default)]
 	agent_nickname: Option<String>,
 	#[serde(default)]
@@ -1291,21 +1296,21 @@ struct QuickTaskThreadSpawnSourceWire {
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(transparent)]
-struct QuickTaskUuidWire(#[serde(deserialize_with = "deserialize_canonical_uuid")] String);
+struct ConversationUuidWire(#[serde(deserialize_with = "deserialize_canonical_uuid")] String);
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(transparent)]
-struct QuickTaskAgentPathWire(#[serde(deserialize_with = "deserialize_agent_path")] String);
+struct ConversationAgentPathWire(#[serde(deserialize_with = "deserialize_agent_path")] String);
 
 #[allow(dead_code)]
-enum QuickTaskThreadSourceWire {
+enum ConversationThreadSourceWire {
 	User,
 	Subagent,
 	Feature(String),
 	MemoryConsolidation,
 }
-impl<'de> Deserialize<'de> for QuickTaskThreadSourceWire {
+impl<'de> Deserialize<'de> for ConversationThreadSourceWire {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: Deserializer<'de>,
@@ -1322,39 +1327,39 @@ impl<'de> Deserialize<'de> for QuickTaskThreadSourceWire {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct QuickTaskTurnStartResponseWire {
-	turn: QuickTaskTurnResponseWire,
+struct ConversationTurnStartResponseWire {
+	turn: ConversationTurnResponseWire,
 }
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct QuickTaskTurnResponseWire {
+struct ConversationTurnResponseWire {
 	id: String,
-	items: Vec<QuickTaskForbiddenValueWire>,
+	items: Vec<ConversationForbiddenValueWire>,
 	#[serde(default)]
-	items_view: QuickTaskTurnItemsViewWire,
-	status: QuickTaskTurnStatusWire,
-	error: Option<QuickTaskTurnErrorWire>,
+	items_view: ConversationTurnItemsViewWire,
+	status: ConversationTurnStatusWire,
+	error: Option<ConversationTurnErrorWire>,
 	started_at: Option<i64>,
 	completed_at: Option<i64>,
 	duration_ms: Option<i64>,
 }
-impl QuickTaskTurnResponseWire {
-	fn validate_start_facts(&self) -> Result<(), QuickTaskContractError> {
+impl ConversationTurnResponseWire {
+	fn validate_start_facts(&self) -> Result<(), ConversationContractError> {
 		if !self.items.is_empty() {
-			return Err(QuickTaskContractError::UnexpectedResponseCollection);
+			return Err(ConversationContractError::UnexpectedResponseCollection);
 		}
-		if self.status != QuickTaskTurnStatusWire::InProgress {
-			return Err(QuickTaskContractError::InvalidTurnStatus);
+		if self.status != ConversationTurnStatusWire::InProgress {
+			return Err(ConversationContractError::InvalidTurnStatus);
 		}
-		if self.items_view != QuickTaskTurnItemsViewWire::NotLoaded
+		if self.items_view != ConversationTurnItemsViewWire::NotLoaded
 			|| self.error.is_some()
 			|| self.started_at.is_some()
 			|| self.completed_at.is_some()
 			|| self.duration_ms.is_some()
 		{
-			return Err(QuickTaskContractError::ResponseSemanticMismatch);
+			return Err(ConversationContractError::ResponseSemanticMismatch);
 		}
 
 		Ok(())
@@ -1363,7 +1368,7 @@ impl QuickTaskTurnResponseWire {
 
 #[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
-enum QuickTaskTurnItemsViewWire {
+enum ConversationTurnItemsViewWire {
 	NotLoaded,
 	Summary,
 	#[default]
@@ -1372,19 +1377,19 @@ enum QuickTaskTurnItemsViewWire {
 
 #[derive(Clone, Copy, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
-enum QuickTaskTurnStatusWire {
+enum ConversationTurnStatusWire {
 	Completed,
 	Interrupted,
 	Failed,
 	InProgress,
 }
-impl QuickTaskTurnStatusWire {
-	const fn into_contract(self) -> QuickTaskTurnStatus {
+impl ConversationTurnStatusWire {
+	const fn into_contract(self) -> ConversationTurnStatus {
 		match self {
-			Self::Completed => QuickTaskTurnStatus::Completed,
-			Self::Interrupted => QuickTaskTurnStatus::Interrupted,
-			Self::Failed => QuickTaskTurnStatus::Failed,
-			Self::InProgress => QuickTaskTurnStatus::InProgress,
+			Self::Completed => ConversationTurnStatus::Completed,
+			Self::Interrupted => ConversationTurnStatus::Interrupted,
+			Self::Failed => ConversationTurnStatus::Failed,
+			Self::InProgress => ConversationTurnStatus::InProgress,
 		}
 	}
 }
@@ -1392,9 +1397,9 @@ impl QuickTaskTurnStatusWire {
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct QuickTaskTurnErrorWire {
+struct ConversationTurnErrorWire {
 	message: String,
-	codex_error_info: Option<QuickTaskCodexErrorInfoWire>,
+	codex_error_info: Option<ConversationCodexErrorInfoWire>,
 	#[serde(default)]
 	additional_details: Option<String>,
 }
@@ -1402,48 +1407,48 @@ struct QuickTaskTurnErrorWire {
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-enum QuickTaskCodexErrorInfoWire {
+enum ConversationCodexErrorInfoWire {
 	ContextWindowExceeded,
 	SessionBudgetExceeded,
 	UsageLimitExceeded,
 	ServerOverloaded,
 	CyberPolicy,
-	HttpConnectionFailed(QuickTaskHttpStatusWire),
-	ResponseStreamConnectionFailed(QuickTaskHttpStatusWire),
+	HttpConnectionFailed(ConversationHttpStatusWire),
+	ResponseStreamConnectionFailed(ConversationHttpStatusWire),
 	InternalServerError,
 	Unauthorized,
 	BadRequest,
 	ThreadRollbackFailed,
 	SandboxError,
-	ResponseStreamDisconnected(QuickTaskHttpStatusWire),
-	ResponseTooManyFailedAttempts(QuickTaskHttpStatusWire),
-	ActiveTurnNotSteerable(QuickTaskActiveTurnNotSteerableWire),
+	ResponseStreamDisconnected(ConversationHttpStatusWire),
+	ResponseTooManyFailedAttempts(ConversationHttpStatusWire),
+	ActiveTurnNotSteerable(ConversationActiveTurnNotSteerableWire),
 	Other,
 }
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct QuickTaskHttpStatusWire {
+struct ConversationHttpStatusWire {
 	http_status_code: Option<u16>,
 }
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct QuickTaskActiveTurnNotSteerableWire {
-	turn_kind: QuickTaskNonSteerableTurnKindWire,
+struct ConversationActiveTurnNotSteerableWire {
+	turn_kind: ConversationNonSteerableTurnKindWire,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-enum QuickTaskNonSteerableTurnKindWire {
+enum ConversationNonSteerableTurnKindWire {
 	Review,
 	Compact,
 }
 
-enum QuickTaskForbiddenValueWire {}
-impl<'de> Deserialize<'de> for QuickTaskForbiddenValueWire {
+enum ConversationForbiddenValueWire {}
+impl<'de> Deserialize<'de> for ConversationForbiddenValueWire {
 	fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
 	where
 		D: Deserializer<'de>,
@@ -1454,13 +1459,13 @@ impl<'de> Deserialize<'de> for QuickTaskForbiddenValueWire {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct QuickTaskEmptySuccessWire {}
+struct ConversationEmptySuccessWire {}
 
 struct ValidatedThreadResponseFacts {
 	thread_id: ExactThreadId,
 	cwd: ThreadCwd,
-	model: QuickTaskModel,
-	reasoning_effort: Option<QuickTaskReasoningEffort>,
+	model: ConversationModel,
+	reasoning_effort: Option<ConversationReasoningEffort>,
 }
 
 #[derive(Clone, Copy)]
@@ -1472,43 +1477,43 @@ enum ThreadResponseContext<'a> {
 fn validate_thread_response_facts(
 	context: ThreadResponseContext<'_>,
 	expected_cwd: &ThreadCwd,
-	expected_model: &QuickTaskModel,
-	thread: QuickTaskThreadResponseWire,
+	expected_model: &ConversationModel,
+	thread: ConversationThreadResponseWire,
 	response_cwd: String,
 	response_model: String,
 	response_reasoning_effort: Option<String>,
-) -> Result<ValidatedThreadResponseFacts, QuickTaskContractError> {
+) -> Result<ValidatedThreadResponseFacts, ConversationContractError> {
 	if thread.ephemeral {
-		return Err(QuickTaskContractError::EphemeralThreadRejected);
+		return Err(ConversationContractError::EphemeralThreadRejected);
 	}
 	if !thread.turns.is_empty() {
-		return Err(QuickTaskContractError::UnexpectedResponseCollection);
+		return Err(ConversationContractError::UnexpectedResponseCollection);
 	}
 
 	let thread_id =
-		ExactThreadId::new(thread.id).map_err(|_| QuickTaskContractError::InvalidThreadId)?;
+		ExactThreadId::new(thread.id).map_err(|_| ConversationContractError::InvalidThreadId)?;
 	if matches!(context, ThreadResponseContext::Resume(expected) if expected != &thread_id) {
-		return Err(QuickTaskContractError::ThreadIdMismatch);
+		return Err(ConversationContractError::ThreadIdMismatch);
 	}
 
 	let thread_cwd = ThreadCwd::from_protocol(thread.cwd.into_string())
-		.map_err(|_| QuickTaskContractError::InvalidCwd)?;
-	let cwd =
-		ThreadCwd::from_protocol(response_cwd).map_err(|_| QuickTaskContractError::InvalidCwd)?;
+		.map_err(|_| ConversationContractError::InvalidCwd)?;
+	let cwd = ThreadCwd::from_protocol(response_cwd)
+		.map_err(|_| ConversationContractError::InvalidCwd)?;
 	if expected_cwd != &cwd {
-		return Err(QuickTaskContractError::CwdMismatch);
+		return Err(ConversationContractError::CwdMismatch);
 	}
 	if matches!(context, ThreadResponseContext::Start) && thread_cwd != cwd {
-		return Err(QuickTaskContractError::CwdMismatch);
+		return Err(ConversationContractError::CwdMismatch);
 	}
 
-	let model = QuickTaskModel::new(response_model)?;
+	let model = ConversationModel::new(response_model)?;
 	if expected_model != &model {
-		return Err(QuickTaskContractError::ModelMismatch);
+		return Err(ConversationContractError::ModelMismatch);
 	}
 
 	let reasoning_effort =
-		response_reasoning_effort.map(QuickTaskReasoningEffort::new).transpose()?;
+		response_reasoning_effort.map(ConversationReasoningEffort::new).transpose()?;
 
 	Ok(ValidatedThreadResponseFacts { thread_id, cwd, model, reasoning_effort })
 }
@@ -1602,32 +1607,32 @@ fn validate_thread_response_shape(
 	bytes: &[u8],
 	response_fields: &[&str],
 	required_response_fields: &[&str],
-) -> Result<(), QuickTaskContractError> {
+) -> Result<(), ConversationContractError> {
 	let value = decode_bounded_response_value(bytes)?;
 	let response = response_object(&value)?;
 	validate_object_fields(response, response_fields, required_response_fields)?;
 	if response.get("initialTurnsPage").is_some_and(|page| !page.is_null()) {
-		return Err(QuickTaskContractError::UnexpectedResponseCollection);
+		return Err(ConversationContractError::UnexpectedResponseCollection);
 	}
 
 	let thread = response
 		.get("thread")
 		.and_then(Value::as_object)
-		.ok_or(QuickTaskContractError::MalformedResponse)?;
+		.ok_or(ConversationContractError::MalformedResponse)?;
 	validate_object_fields(thread, THREAD_RESPONSE_FIELDS, THREAD_RESPONSE_REQUIRED_FIELDS)?;
 
 	let turns = thread
 		.get("turns")
 		.and_then(Value::as_array)
-		.ok_or(QuickTaskContractError::MalformedResponse)?;
+		.ok_or(ConversationContractError::MalformedResponse)?;
 	if !turns.is_empty() {
-		return Err(QuickTaskContractError::UnexpectedResponseCollection);
+		return Err(ConversationContractError::UnexpectedResponseCollection);
 	}
 
 	Ok(())
 }
 
-fn validate_turn_start_response_shape(bytes: &[u8]) -> Result<(), QuickTaskContractError> {
+fn validate_turn_start_response_shape(bytes: &[u8]) -> Result<(), ConversationContractError> {
 	let value = decode_bounded_response_value(bytes)?;
 	let response = response_object(&value)?;
 	validate_object_fields(
@@ -1639,69 +1644,69 @@ fn validate_turn_start_response_shape(bytes: &[u8]) -> Result<(), QuickTaskContr
 	let turn = response
 		.get("turn")
 		.and_then(Value::as_object)
-		.ok_or(QuickTaskContractError::MalformedResponse)?;
+		.ok_or(ConversationContractError::MalformedResponse)?;
 	validate_object_fields(turn, TURN_RESPONSE_FIELDS, TURN_RESPONSE_REQUIRED_FIELDS)?;
 
 	let items = turn
 		.get("items")
 		.and_then(Value::as_array)
-		.ok_or(QuickTaskContractError::MalformedResponse)?;
+		.ok_or(ConversationContractError::MalformedResponse)?;
 	if !items.is_empty() {
-		return Err(QuickTaskContractError::UnexpectedResponseCollection);
+		return Err(ConversationContractError::UnexpectedResponseCollection);
 	}
 
 	Ok(())
 }
 
-fn validate_empty_response_shape(bytes: &[u8]) -> Result<(), QuickTaskContractError> {
+fn validate_empty_response_shape(bytes: &[u8]) -> Result<(), ConversationContractError> {
 	let value = decode_bounded_response_value(bytes)?;
 	let response = response_object(&value)?;
 	validate_object_fields(response, &[], &[])
 }
 
-fn decode_bounded_response_value(bytes: &[u8]) -> Result<Value, QuickTaskContractError> {
-	if bytes.len() > MAX_QUICK_TASK_RESPONSE_BYTES {
-		return Err(QuickTaskContractError::ResponseLimitExceeded);
+fn decode_bounded_response_value(bytes: &[u8]) -> Result<Value, ConversationContractError> {
+	if bytes.len() > MAX_CONVERSATION_RESPONSE_BYTES {
+		return Err(ConversationContractError::ResponseLimitExceeded);
 	}
 
-	serde_json::from_slice(bytes).map_err(|_| QuickTaskContractError::MalformedResponse)
+	serde_json::from_slice(bytes).map_err(|_| ConversationContractError::MalformedResponse)
 }
 
-fn decode_response_wire<'de, T>(bytes: &'de [u8]) -> Result<T, QuickTaskContractError>
+fn decode_response_wire<'de, T>(bytes: &'de [u8]) -> Result<T, ConversationContractError>
 where
 	T: Deserialize<'de>,
 {
-	if bytes.len() > MAX_QUICK_TASK_RESPONSE_BYTES {
-		return Err(QuickTaskContractError::ResponseLimitExceeded);
+	if bytes.len() > MAX_CONVERSATION_RESPONSE_BYTES {
+		return Err(ConversationContractError::ResponseLimitExceeded);
 	}
 
 	serde_json::from_slice(bytes).map_err(|error| {
 		let message = error.to_string();
 
 		if message.contains("unknown field") {
-			QuickTaskContractError::UnknownResponseField
+			ConversationContractError::UnknownResponseField
 		} else if message.contains("missing field") {
-			QuickTaskContractError::MissingResponseField
+			ConversationContractError::MissingResponseField
 		} else {
-			QuickTaskContractError::MalformedResponse
+			ConversationContractError::MalformedResponse
 		}
 	})
 }
 
-fn response_object(value: &Value) -> Result<&Map<String, Value>, QuickTaskContractError> {
-	value.as_object().ok_or(QuickTaskContractError::MalformedResponse)
+fn response_object(value: &Value) -> Result<&Map<String, Value>, ConversationContractError> {
+	value.as_object().ok_or(ConversationContractError::MalformedResponse)
 }
 
 fn validate_object_fields(
 	object: &Map<String, Value>,
 	allowed: &[&str],
 	required: &[&str],
-) -> Result<(), QuickTaskContractError> {
+) -> Result<(), ConversationContractError> {
 	if object.keys().any(|field| !allowed.contains(&field.as_str())) {
-		return Err(QuickTaskContractError::UnknownResponseField);
+		return Err(ConversationContractError::UnknownResponseField);
 	}
 	if required.iter().any(|field| !object.contains_key(*field)) {
-		return Err(QuickTaskContractError::MissingResponseField);
+		return Err(ConversationContractError::MissingResponseField);
 	}
 
 	Ok(())
@@ -1795,24 +1800,24 @@ mod tests {
 	use crate::ExactThreadId;
 
 	use super::{
-		MAX_QUICK_TASK_RESPONSE_BYTES, QuickTaskContractError, QuickTaskThreadResumeRequest,
-		QuickTaskThreadStartRequest, QuickTaskTurnInput, QuickTaskTurnStartRequest,
-		QuickTaskTurnStatus, decode_quick_task_thread_archive_response,
-		decode_quick_task_thread_resume_response, decode_quick_task_thread_start_response,
-		decode_quick_task_turn_interrupt_response, decode_quick_task_turn_start_response,
+		ConversationContractError, ConversationThreadResumeRequest, ConversationThreadStartRequest,
+		ConversationTurnInput, ConversationTurnStartRequest, ConversationTurnStatus,
+		MAX_CONVERSATION_RESPONSE_BYTES, decode_conversation_thread_archive_response,
+		decode_conversation_thread_resume_response, decode_conversation_thread_start_response,
+		decode_conversation_turn_interrupt_response, decode_conversation_turn_start_response,
 	};
 
 	fn exact_thread() -> ExactThreadId {
 		ExactThreadId::new("thread-1").expect("fixture thread ID must be valid")
 	}
 
-	fn start_request() -> QuickTaskThreadStartRequest {
-		QuickTaskThreadStartRequest::new("gpt-5", "/workspace", "Follow the request.")
+	fn start_request() -> ConversationThreadStartRequest {
+		ConversationThreadStartRequest::new("gpt-5", "/workspace", "Follow the request.")
 			.expect("fixture start request must be valid")
 	}
 
-	fn resume_request() -> QuickTaskThreadResumeRequest {
-		QuickTaskThreadResumeRequest::new(
+	fn resume_request() -> ConversationThreadResumeRequest {
+		ConversationThreadResumeRequest::new(
 			exact_thread(),
 			"gpt-5",
 			"/workspace",
@@ -1889,9 +1894,9 @@ mod tests {
 
 	#[test]
 	fn turn_execution_settings_include_model_effort_and_explicit_fast_tier() {
-		let turn = QuickTaskTurnStartRequest::new(
+		let turn = ConversationTurnStartRequest::new(
 			exact_thread(),
-			QuickTaskTurnInput::text("Continue.").expect("turn input is valid"),
+			ConversationTurnInput::text("Continue.").expect("turn input is valid"),
 			"gpt-5.6-terra",
 			"xhigh",
 		)
@@ -1911,11 +1916,11 @@ mod tests {
 	}
 
 	#[test]
-	fn pinned_method_results_mint_only_typed_quick_task_success() {
+	fn pinned_method_results_mint_only_typed_conversation_success() {
 		let start_request = start_request();
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
 		let thread_bytes = serde_json::to_vec(&canonical).expect("fixture response must serialize");
-		let start = decode_quick_task_thread_start_response(&start_request, &thread_bytes)
+		let start = decode_conversation_thread_start_response(&start_request, &thread_bytes)
 			.expect("pinned thread/start response must decode");
 
 		assert_eq!(start.thread_id().as_str(), "thread-1");
@@ -1926,21 +1931,21 @@ mod tests {
 		let mut canonical_auto_review = canonical.clone();
 		canonical_auto_review["approvalsReviewer"] = json!("auto_review");
 		assert!(
-			decode_quick_task_thread_start_response(
+			decode_conversation_thread_start_response(
 				&start_request,
 				&serde_json::to_vec(&canonical_auto_review).unwrap(),
 			)
 			.is_ok()
 		);
 
-		let resume = decode_quick_task_thread_resume_response(&resume_request(), &thread_bytes)
+		let resume = decode_conversation_thread_resume_response(&resume_request(), &thread_bytes)
 			.expect("pinned thread/resume response must decode");
 
 		assert_eq!(resume.thread_id().as_str(), "thread-1");
 		assert_eq!(resume.cwd().as_str(), "/workspace");
 		assert_eq!(resume.model().as_str(), "gpt-5");
 
-		let turn = decode_quick_task_turn_start_response(
+		let turn = decode_conversation_turn_start_response(
 			&serde_json::to_vec(&json!({
 				"turn": {
 					"id": "turn-1",
@@ -1954,9 +1959,9 @@ mod tests {
 		.expect("pinned turn/start response must decode");
 
 		assert_eq!(turn.turn_id().as_str(), "turn-1");
-		assert_eq!(turn.status(), QuickTaskTurnStatus::InProgress);
-		assert!(decode_quick_task_turn_interrupt_response(b"{}").is_ok());
-		assert!(decode_quick_task_thread_archive_response(b"{}").is_ok());
+		assert_eq!(turn.status(), ConversationTurnStatus::InProgress);
+		assert!(decode_conversation_turn_interrupt_response(b"{}").is_ok());
+		assert!(decode_conversation_thread_archive_response(b"{}").is_ok());
 	}
 
 	#[test]
@@ -1976,11 +1981,11 @@ mod tests {
 			let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
 
 			assert!(
-				decode_quick_task_thread_start_response(&start_request(), &bytes).is_ok(),
+				decode_conversation_thread_start_response(&start_request(), &bytes).is_ok(),
 				"thread/start must accept {case} section fields",
 			);
 			assert!(
-				decode_quick_task_thread_resume_response(&resume_request(), &bytes).is_ok(),
+				decode_conversation_thread_resume_response(&resume_request(), &bytes).is_ok(),
 				"thread/resume must accept {case} section fields",
 			);
 		}
@@ -2020,11 +2025,11 @@ mod tests {
 			let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
 
 			assert!(
-				decode_quick_task_thread_start_response(&start_request(), &bytes).is_ok(),
+				decode_conversation_thread_start_response(&start_request(), &bytes).is_ok(),
 				"thread/start must accept {case} section appearance",
 			);
 			assert!(
-				decode_quick_task_thread_resume_response(&resume_request(), &bytes).is_ok(),
+				decode_conversation_thread_resume_response(&resume_request(), &bytes).is_ok(),
 				"thread/resume must accept {case} section appearance",
 			);
 		}
@@ -2034,21 +2039,25 @@ mod tests {
 	fn malformed_or_unknown_thread_section_appearance_fields_are_rejected() {
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
 		let cases = [
-			("non-object appearance", json!("folder"), QuickTaskContractError::MalformedResponse),
+			(
+				"non-object appearance",
+				json!("folder"),
+				ConversationContractError::MalformedResponse,
+			),
 			(
 				"non-string icon",
 				json!({"icon": 1, "color": null}),
-				QuickTaskContractError::MalformedResponse,
+				ConversationContractError::MalformedResponse,
 			),
 			(
 				"non-string color",
 				json!({"icon": null, "color": true}),
-				QuickTaskContractError::MalformedResponse,
+				ConversationContractError::MalformedResponse,
 			),
 			(
 				"unknown appearance field",
 				json!({"icon": null, "color": null, "unexpected": true}),
-				QuickTaskContractError::UnknownResponseField,
+				ConversationContractError::UnknownResponseField,
 			),
 		];
 
@@ -2062,12 +2071,12 @@ mod tests {
 			let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
 
 			assert_eq!(
-				decode_quick_task_thread_start_response(&start_request(), &bytes).map(|_| ()),
+				decode_conversation_thread_start_response(&start_request(), &bytes).map(|_| ()),
 				Err(expected),
 				"thread/start {case}",
 			);
 			assert_eq!(
-				decode_quick_task_thread_resume_response(&resume_request(), &bytes).map(|_| ()),
+				decode_conversation_thread_resume_response(&resume_request(), &bytes).map(|_| ()),
 				Err(expected),
 				"thread/resume {case}",
 			);
@@ -2078,27 +2087,35 @@ mod tests {
 	fn malformed_or_unknown_thread_section_fields_are_rejected() {
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
 		let cases = [
-			("missing id", json!({"name": "Active"}), QuickTaskContractError::MissingResponseField),
+			(
+				"missing id",
+				json!({"name": "Active"}),
+				ConversationContractError::MissingResponseField,
+			),
 			(
 				"missing name",
 				json!({"id": "section-1"}),
-				QuickTaskContractError::MissingResponseField,
+				ConversationContractError::MissingResponseField,
 			),
 			(
 				"non-string id",
 				json!({"id": 1, "name": "Active"}),
-				QuickTaskContractError::MalformedResponse,
+				ConversationContractError::MalformedResponse,
 			),
 			(
 				"non-string name",
 				json!({"id": "section-1", "name": 1}),
-				QuickTaskContractError::MalformedResponse,
+				ConversationContractError::MalformedResponse,
 			),
-			("non-object section", json!("section-1"), QuickTaskContractError::MalformedResponse),
+			(
+				"non-object section",
+				json!("section-1"),
+				ConversationContractError::MalformedResponse,
+			),
 			(
 				"unknown nested field",
 				json!({"id": "section-1", "name": "Active", "unexpected": true}),
-				QuickTaskContractError::UnknownResponseField,
+				ConversationContractError::UnknownResponseField,
 			),
 		];
 
@@ -2107,7 +2124,7 @@ mod tests {
 			response["thread"]["section"] = section;
 
 			assert_eq!(
-				decode_quick_task_thread_start_response(
+				decode_conversation_thread_start_response(
 					&start_request(),
 					&serde_json::to_vec(&response).expect("fixture response must serialize"),
 				)
@@ -2121,13 +2138,13 @@ mod tests {
 		malformed_entered_at["thread"]["sectionEnteredAt"] = json!("2");
 
 		assert_eq!(
-			decode_quick_task_thread_start_response(
+			decode_conversation_thread_start_response(
 				&start_request(),
 				&serde_json::to_vec(&malformed_entered_at)
 					.expect("fixture response must serialize"),
 			)
 			.map(|_| ()),
-			Err(QuickTaskContractError::MalformedResponse),
+			Err(ConversationContractError::MalformedResponse),
 			"non-integer section-entered timestamp",
 		);
 	}
@@ -2138,7 +2155,7 @@ mod tests {
 		response["thread"]["cwd"] = json!("/persisted");
 		let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
 
-		let resume = decode_quick_task_thread_resume_response(&resume_request(), &bytes)
+		let resume = decode_conversation_thread_resume_response(&resume_request(), &bytes)
 			.expect("resume must allow distinct persisted thread metadata cwd");
 
 		assert_eq!(resume.cwd().as_str(), "/workspace");
@@ -2150,12 +2167,12 @@ mod tests {
 		response["thread"]["cwd"] = json!("/persisted");
 
 		assert_eq!(
-			decode_quick_task_thread_resume_response(
+			decode_conversation_thread_resume_response(
 				&resume_request(),
 				&serde_json::to_vec(&response).expect("fixture response must serialize"),
 			)
 			.map(|_| ()),
-			Err(QuickTaskContractError::CwdMismatch),
+			Err(ConversationContractError::CwdMismatch),
 		);
 	}
 
@@ -2165,12 +2182,12 @@ mod tests {
 		response["thread"]["cwd"] = json!("/persisted");
 
 		assert_eq!(
-			decode_quick_task_thread_start_response(
+			decode_conversation_thread_start_response(
 				&start_request(),
 				&serde_json::to_vec(&response).expect("fixture response must serialize"),
 			)
 			.map(|_| ()),
-			Err(QuickTaskContractError::CwdMismatch),
+			Err(ConversationContractError::CwdMismatch),
 		);
 	}
 
@@ -2180,17 +2197,17 @@ mod tests {
 		response["thread"]["cwd"] = json!("persisted");
 
 		assert_eq!(
-			decode_quick_task_thread_resume_response(
+			decode_conversation_thread_resume_response(
 				&resume_request(),
 				&serde_json::to_vec(&response).expect("fixture response must serialize"),
 			)
 			.map(|_| ()),
-			Err(QuickTaskContractError::MalformedResponse),
+			Err(ConversationContractError::MalformedResponse),
 		);
 	}
 
 	#[test]
-	fn malformed_or_unknown_wire_shape_failures_never_mint_quick_task_success() {
+	fn malformed_or_unknown_wire_shape_failures_never_mint_conversation_success() {
 		let start_request = start_request();
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
 
@@ -2222,45 +2239,45 @@ mod tests {
 		let cases = [
 			(
 				"unknown nested field",
-				decode_quick_task_thread_start_response(
+				decode_conversation_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&unknown_nested).unwrap(),
 				)
 				.map(|_| ()),
-				QuickTaskContractError::UnknownResponseField,
+				ConversationContractError::UnknownResponseField,
 			),
 			(
 				"legacy approvals reviewer",
-				decode_quick_task_thread_start_response(
+				decode_conversation_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&legacy_reviewer).unwrap(),
 				)
 				.map(|_| ()),
-				QuickTaskContractError::MalformedResponse,
+				ConversationContractError::MalformedResponse,
 			),
 			(
 				"legacy thread-spawn agent type",
-				decode_quick_task_thread_start_response(
+				decode_conversation_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&legacy_agent_type).unwrap(),
 				)
 				.map(|_| ()),
-				QuickTaskContractError::UnknownResponseField,
+				ConversationContractError::UnknownResponseField,
 			),
 			(
 				"duplicate nested field",
-				decode_quick_task_thread_start_response(&start_request, &duplicate_nested)
+				decode_conversation_thread_start_response(&start_request, &duplicate_nested)
 					.map(|_| ()),
-				QuickTaskContractError::MalformedResponse,
+				ConversationContractError::MalformedResponse,
 			),
 			(
 				"malformed nested value",
-				decode_quick_task_thread_start_response(
+				decode_conversation_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&malformed_nested).unwrap(),
 				)
 				.map(|_| ()),
-				QuickTaskContractError::MalformedResponse,
+				ConversationContractError::MalformedResponse,
 			),
 		];
 
@@ -2270,7 +2287,7 @@ mod tests {
 	}
 
 	#[test]
-	fn semantic_identity_collection_or_bounds_failures_never_mint_quick_task_success() {
+	fn semantic_identity_collection_or_bounds_failures_never_mint_conversation_success() {
 		let start_request = start_request();
 		let resume_request = resume_request();
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
@@ -2295,57 +2312,57 @@ mod tests {
 				"status": "inProgress",
 			},
 		});
-		let oversized = vec![b' '; MAX_QUICK_TASK_RESPONSE_BYTES + 1];
+		let oversized = vec![b' '; MAX_CONVERSATION_RESPONSE_BYTES + 1];
 
 		let cases = [
 			(
 				"nonempty turns",
-				decode_quick_task_thread_start_response(
+				decode_conversation_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&nonempty_turns).unwrap(),
 				)
 				.map(|_| ()),
-				QuickTaskContractError::UnexpectedResponseCollection,
+				ConversationContractError::UnexpectedResponseCollection,
 			),
 			(
 				"nonempty items",
-				decode_quick_task_turn_start_response(
+				decode_conversation_turn_start_response(
 					&serde_json::to_vec(&nonempty_items).unwrap(),
 				)
 				.map(|_| ()),
-				QuickTaskContractError::UnexpectedResponseCollection,
+				ConversationContractError::UnexpectedResponseCollection,
 			),
 			(
 				"wrong thread",
-				decode_quick_task_thread_resume_response(
+				decode_conversation_thread_resume_response(
 					&resume_request,
 					&serde_json::to_vec(&wrong_thread).unwrap(),
 				)
 				.map(|_| ()),
-				QuickTaskContractError::ThreadIdMismatch,
+				ConversationContractError::ThreadIdMismatch,
 			),
 			(
 				"wrong model",
-				decode_quick_task_thread_start_response(
+				decode_conversation_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&wrong_model).unwrap(),
 				)
 				.map(|_| ()),
-				QuickTaskContractError::ModelMismatch,
+				ConversationContractError::ModelMismatch,
 			),
 			(
 				"wrong cwd",
-				decode_quick_task_thread_start_response(
+				decode_conversation_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&wrong_cwd).unwrap(),
 				)
 				.map(|_| ()),
-				QuickTaskContractError::CwdMismatch,
+				ConversationContractError::CwdMismatch,
 			),
 			(
 				"oversized result",
-				decode_quick_task_turn_interrupt_response(&oversized).map(|_| ()),
-				QuickTaskContractError::ResponseLimitExceeded,
+				decode_conversation_turn_interrupt_response(&oversized).map(|_| ()),
+				ConversationContractError::ResponseLimitExceeded,
 			),
 		];
 

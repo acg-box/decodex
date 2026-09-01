@@ -65,16 +65,16 @@ use crate::account_launch::{
 #[cfg(test)] use decodex_codex::schema::SchemaMarker;
 use decodex_codex::{
 	ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, Capability, CapabilityCache,
-	CapabilityProfile, ExactSubmittedTurnReadback, ExactThreadId, ExactThreadListFilter,
-	ExactThreadListResult, ExactThreadReadResult, ExactTurnId, LiveMethodOutcome,
-	LossyThreadHistory, MAX_EXACT_THREAD_LIST_RESULTS, MAX_EXACT_THREAD_READ_ITEMS,
-	MAX_EXACT_THREAD_READ_TURNS, MAX_EXACT_TURN_ASSISTANT_BYTES, MethodObservation,
-	NormalizedEvent, QuickTaskMessageDelta, QuickTaskThreadResumeRequest,
-	QuickTaskThreadStartRequest, QuickTaskTurnInterruptRequest, QuickTaskTurnInterruptResponse,
-	QuickTaskTurnStartRequest, ThreadSummary, TurnStatus, UnavailableReason,
-	decode_quick_task_thread_resume_response, decode_quick_task_thread_start_response,
-	decode_quick_task_turn_interrupt_response, decode_quick_task_turn_start_response,
-	normalize_event, project_quick_task_message_delta,
+	CapabilityProfile, ConversationMessageDelta, ConversationThreadResumeRequest,
+	ConversationThreadStartRequest, ConversationTurnInterruptRequest,
+	ConversationTurnInterruptResponse, ConversationTurnStartRequest, ExactSubmittedTurnReadback,
+	ExactThreadId, ExactThreadListFilter, ExactThreadListResult, ExactThreadReadResult,
+	ExactTurnId, LiveMethodOutcome, LossyThreadHistory, MAX_EXACT_THREAD_LIST_RESULTS,
+	MAX_EXACT_THREAD_READ_ITEMS, MAX_EXACT_THREAD_READ_TURNS, MAX_EXACT_TURN_ASSISTANT_BYTES,
+	MethodObservation, NormalizedEvent, ThreadSummary, TurnStatus, UnavailableReason,
+	decode_conversation_thread_resume_response, decode_conversation_thread_start_response,
+	decode_conversation_turn_interrupt_response, decode_conversation_turn_start_response,
+	normalize_event, project_conversation_message_delta,
 	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES},
 };
 use decodex_core::{
@@ -83,11 +83,11 @@ use decodex_core::{
 	ProcessIsolationKind, ProcessRunnerIdentity, ProviderAttemptId, TurnId,
 };
 use decodex_database::{
-	BindRuntimeSessionThread, CodexAccountCapabilityAttestation, FreshProviderDispatchFence,
-	FreshQuickTaskProcessGeneration, FreshRuntimeSessionThreadStart,
+	BindRuntimeSessionThread, CodexAccountCapabilityAttestation,
+	FreshConversationProcessGeneration, FreshProviderDispatchFence, FreshRuntimeSessionThreadStart,
 	SuccessfulRuntimeSessionThreadStart,
 };
-use decodex_protocol::MAX_QUICK_TASK_WORKING_DIRECTORY_BYTES;
+use decodex_protocol::MAX_CONVERSATION_WORKING_DIRECTORY_BYTES;
 
 use crate::process_supervisor::{FencedProcess, ProcessGenerationControl, ProcessSupervisorError};
 
@@ -103,7 +103,7 @@ const PRIVATE_STDIO_CAPABILITY_ID: &str =
 	"codex-app-server-private-stdio-disabled-ephemeral-startup-v1";
 const STDIO_ONLY_ATTESTED_PLATFORM: &str = "macos-aarch64";
 const PROTOCOL_QUEUE_CAPACITY: usize = 64;
-const MAX_QUICK_TASK_BUFFERED_EVENTS: usize = PROTOCOL_QUEUE_CAPACITY;
+const MAX_CONVERSATION_BUFFERED_EVENTS: usize = PROTOCOL_QUEUE_CAPACITY;
 const THREAD_LIST_LIMIT: usize = 100;
 const MAX_EXACT_THREAD_STATE_SCAN_PAGES: usize = 64;
 const THREAD_LIST_PROBE_SEARCH_TERM: &str = "decodex-capability-probe-no-match-6f5aa91b28cf4bc6";
@@ -604,7 +604,7 @@ impl AttestedAppServerProfile {
 			capability: self.capability,
 			timeout,
 			guard,
-			quick_task_pre_spawn_check: None,
+			conversation_pre_spawn_check: None,
 		})
 	}
 }
@@ -616,7 +616,7 @@ fn validated_working_directory(command: &AppServerCommand) -> Result<String, Pro
 		.filter(|value| {
 			value.starts_with('/')
 				&& !value.is_empty()
-				&& value.len() <= MAX_QUICK_TASK_WORKING_DIRECTORY_BYTES
+				&& value.len() <= MAX_CONVERSATION_WORKING_DIRECTORY_BYTES
 				&& !value.chars().any(char::is_control)
 				&& !decodex_core::contains_credential_material(value)
 		})
@@ -715,11 +715,11 @@ pub(crate) struct AttestedAppServerLaunch {
 	capability: ExactBuildLaunchCapability,
 	timeout: Duration,
 	guard: RunnerPermit,
-	quick_task_pre_spawn_check: Option<Arc<dyn QuickTaskPreSpawnCheck>>,
+	conversation_pre_spawn_check: Option<Arc<dyn ConversationPreSpawnCheck>>,
 }
 
-/// Final synchronous check owned by Quick Task and executed at the child creation boundary.
-pub(crate) trait QuickTaskPreSpawnCheck: Send + Sync {
+/// Final synchronous check owned by Conversation and executed at the child creation boundary.
+pub(crate) trait ConversationPreSpawnCheck: Send + Sync {
 	fn validate_at_spawn_boundary(&self) -> Result<(), ()>;
 	fn working_directory_descriptor(&self) -> i32;
 }
@@ -736,7 +736,7 @@ impl AttestedAppServerLaunch {
 		profile.bind(working_directory, binding, timeout, guard)
 	}
 
-	/// Bind one Quick Task launch to its command-selected working directory.
+	/// Bind one Conversation launch to its command-selected working directory.
 	pub(crate) fn bind_selected_working_directory(
 		profile: AttestedAppServerProfile,
 		working_directory: PathBuf,
@@ -754,10 +754,10 @@ impl AttestedAppServerLaunch {
 		binding: AccountBinding,
 		timeout: Duration,
 		guard: RunnerPermit,
-		pre_spawn_check: Arc<dyn QuickTaskPreSpawnCheck>,
+		pre_spawn_check: Arc<dyn ConversationPreSpawnCheck>,
 	) -> Result<Self, ProbeError> {
 		let mut launch = profile.bind(working_directory, binding, timeout, guard)?;
-		launch.quick_task_pre_spawn_check = Some(pre_spawn_check);
+		launch.conversation_pre_spawn_check = Some(pre_spawn_check);
 		Ok(launch)
 	}
 
@@ -800,7 +800,7 @@ impl AttestedAppServerLaunch {
 			capability,
 			timeout,
 			guard,
-			quick_task_pre_spawn_check,
+			conversation_pre_spawn_check,
 		} = self;
 		if ExactBuildLaunchCapability::attest_profile(&command)? != capability {
 			return Err(SupervisionError::LaunchCapabilityUnavailable);
@@ -810,23 +810,23 @@ impl AttestedAppServerLaunch {
 			binding,
 			guard,
 			capability,
-			quick_task_pre_spawn_check.as_deref(),
+			conversation_pre_spawn_check.as_deref(),
 		)?;
 
 		Ok(AttestedProcessChild { process, build, generated, timeout, initialized: false })
 	}
 }
 
-/// Consume one fresh exact Quick Task admission before the ordinary supervisor may spawn.
-pub(crate) async fn spawn_admitted_quick_task_process(
+/// Consume one fresh exact Conversation admission before the ordinary supervisor may spawn.
+pub(crate) async fn spawn_admitted_conversation_process(
 	control: &ProcessGenerationControl,
-	admission: FreshQuickTaskProcessGeneration,
+	admission: FreshConversationProcessGeneration,
 	execution_authorization: ProcessExecutionAuthorization,
 	mut launch: AttestedAppServerLaunch,
-	pre_spawn_check: Arc<dyn QuickTaskPreSpawnCheck>,
+	pre_spawn_check: Arc<dyn ConversationPreSpawnCheck>,
 ) -> Result<FencedProcess, ProcessSupervisorError> {
-	launch.quick_task_pre_spawn_check = Some(pre_spawn_check);
-	control.spawn_fenced_quick_task(admission, execution_authorization, launch).await
+	launch.conversation_pre_spawn_check = Some(pre_spawn_check);
+	control.spawn_fenced_conversation(admission, execution_authorization, launch).await
 }
 
 /// Exact newly spawned protocol child plus immutable build evidence and capacity authority.
@@ -863,18 +863,18 @@ impl AttestedProcessChild {
 	pub(crate) fn initialize_ordinary_turns(
 		&mut self,
 		vault: &dyn CredentialVault,
-	) -> Result<(), QuickTaskProcessError> {
+	) -> Result<(), ConversationProcessError> {
 		if self.initialized {
-			return Err(QuickTaskProcessError::Unavailable);
+			return Err(ConversationProcessError::Unavailable);
 		}
 		self.generated
 			.contract()
-			.check_quick_task_contract()
-			.map_err(|_| QuickTaskProcessError::Incompatible)?;
+			.check_conversation_contract()
+			.map_err(|_| ConversationProcessError::Incompatible)?;
 		let mut cache = CapabilityCache::default();
 		let mut negotiation = ProbeNegotiation::new(&mut cache, &self.build, &self.generated);
 		initialize_probe(&mut self.process, Some(vault), self.timeout, &mut negotiation)
-			.map_err(|_| QuickTaskProcessError::Unavailable)?;
+			.map_err(|_| ConversationProcessError::Unavailable)?;
 		self.initialized = true;
 		Ok(())
 	}
@@ -882,12 +882,12 @@ impl AttestedProcessChild {
 	/// Reserve the exact `thread/start` frame before its durable fence is committed.
 	pub(crate) fn prepare_ordinary_thread_start(
 		&mut self,
-		request: &QuickTaskThreadStartRequest,
-	) -> Result<PreparedThreadStart, QuickTaskProcessError> {
+		request: &ConversationThreadStartRequest,
+	) -> Result<PreparedThreadStart, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
 		Ok(PreparedThreadStart {
 			request: request.clone(),
-			wire: self.process.prepare_quick_task_request("thread/start", request)?,
+			wire: self.process.prepare_conversation_request("thread/start", request)?,
 		})
 	}
 
@@ -896,19 +896,19 @@ impl AttestedProcessChild {
 		&mut self,
 		prepared: PreparedThreadStart,
 		authority: FreshRuntimeSessionThreadStart,
-	) -> Result<EstablishedOrdinaryThread, QuickTaskProcessError> {
+	) -> Result<EstablishedOrdinaryThread, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
 		let PreparedThreadStart { request, wire } = prepared;
 		let readback = authority.readback();
 		if readback.thread_start_request_id != wire.request_id
 			|| readback.thread_start_request_sha256.as_str() != wire.request_sha256.as_str()
 		{
-			return Err(QuickTaskProcessError::Incompatible);
+			return Err(ConversationProcessError::Incompatible);
 		}
 		let request_id = wire.request_id;
 		let request_sha256 = wire.request_sha256.clone();
-		let success = self.process.quick_task_request(wire, self.timeout, true, |bytes| {
-			decode_quick_task_thread_start_response(&request, bytes)
+		let success = self.process.conversation_request(wire, self.timeout, true, |bytes| {
+			decode_conversation_thread_start_response(&request, bytes)
 		})?;
 		let codex_thread_id = success.value.thread_id().as_str().to_owned();
 		let binding = authority.into_binding(SuccessfulRuntimeSessionThreadStart {
@@ -924,12 +924,12 @@ impl AttestedProcessChild {
 	/// Resume one exact normal Codex thread and return exact positive wire facts.
 	pub(crate) fn resume_ordinary_thread(
 		&mut self,
-		request: &QuickTaskThreadResumeRequest,
-	) -> Result<ResumedOrdinaryThread, QuickTaskProcessError> {
+		request: &ConversationThreadResumeRequest,
+	) -> Result<ResumedOrdinaryThread, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
-		let wire = self.process.prepare_quick_task_request("thread/resume", request)?;
-		let success = self.process.quick_task_request(wire, self.timeout, false, |bytes| {
-			decode_quick_task_thread_resume_response(request, bytes)
+		let wire = self.process.prepare_conversation_request("thread/resume", request)?;
+		let success = self.process.conversation_request(wire, self.timeout, false, |bytes| {
+			decode_conversation_thread_resume_response(request, bytes)
 		})?;
 		Ok(ResumedOrdinaryThread {
 			codex_thread_id: success.value.thread_id().as_str().to_owned(),
@@ -945,12 +945,12 @@ impl AttestedProcessChild {
 	pub(crate) fn prepare_ordinary_turn_start(
 		&mut self,
 		attempt_id: ProviderAttemptId,
-		request: &QuickTaskTurnStartRequest,
-	) -> Result<PreparedTurnStart, QuickTaskProcessError> {
+		request: &ConversationTurnStartRequest,
+	) -> Result<PreparedTurnStart, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
 		Ok(PreparedTurnStart {
 			attempt_id,
-			wire: self.process.prepare_quick_task_request("turn/start", request)?,
+			wire: self.process.prepare_conversation_request("turn/start", request)?,
 		})
 	}
 
@@ -959,17 +959,17 @@ impl AttestedProcessChild {
 		&mut self,
 		prepared: PreparedTurnStart,
 		authority: FreshProviderDispatchFence,
-	) -> Result<StartedOrdinaryTurn, QuickTaskProcessError> {
+	) -> Result<StartedOrdinaryTurn, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
 		let PreparedTurnStart { attempt_id, wire } = prepared;
 		if authority.attempt_id() != &attempt_id {
-			return Err(QuickTaskProcessError::Incompatible);
+			return Err(ConversationProcessError::Incompatible);
 		}
-		let success = self.process.quick_task_request(
+		let success = self.process.conversation_request(
 			wire,
 			self.timeout,
 			true,
-			decode_quick_task_turn_start_response,
+			decode_conversation_turn_start_response,
 		)?;
 		Ok(StartedOrdinaryTurn {
 			turn_id: success.value.turn_id().as_str().to_owned(),
@@ -983,32 +983,39 @@ impl AttestedProcessChild {
 	pub(crate) fn next_ordinary_turn_event(
 		&mut self,
 		wait: Duration,
-	) -> Result<Option<QuickTaskProcessEvent>, QuickTaskProcessError> {
+	) -> Result<Option<ConversationProcessEvent>, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
-		self.process.next_quick_task_event(wait)
+		self.process.next_conversation_event(wait)
 	}
 
 	/// Interrupt one exact active turn. Terminal state still comes from a typed notification.
 	pub(crate) fn interrupt_ordinary_turn(
 		&mut self,
-		request: &QuickTaskTurnInterruptRequest,
-	) -> Result<Vec<QuickTaskProcessEvent>, QuickTaskProcessError> {
+		request: &ConversationTurnInterruptRequest,
+	) -> Result<Vec<ConversationProcessEvent>, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
-		let wire = self.process.prepare_quick_task_request("turn/interrupt", request)?;
+		let wire = self.process.prepare_conversation_request("turn/interrupt", request)?;
 		self.process
-			.quick_task_request(wire, self.timeout, true, decode_quick_task_turn_interrupt_response)
-			.map(|success: QuickTaskProcessSuccess<QuickTaskTurnInterruptResponse>| success.events)
+			.conversation_request(
+				wire,
+				self.timeout,
+				true,
+				decode_conversation_turn_interrupt_response,
+			)
+			.map(|success: ConversationProcessSuccess<ConversationTurnInterruptResponse>| {
+				success.events
+			})
 	}
 
 	/// Read one exact durable thread for explicit user reconciliation.
 	pub(crate) fn read_exact_ordinary_thread(
 		&mut self,
 		thread_id: &ExactThreadId,
-	) -> Result<ExactThreadReadResult, QuickTaskProcessError> {
+	) -> Result<ExactThreadReadResult, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
 		self.process
 			.read_exact_thread(thread_id, self.timeout)
-			.map_err(|_| QuickTaskProcessError::Unavailable)
+			.map_err(|_| ConversationProcessError::Unavailable)
 	}
 
 	/// Read one exact thread and correlate one caller-stable user-message identity.
@@ -1016,39 +1023,39 @@ impl AttestedProcessChild {
 		&mut self,
 		thread_id: &ExactThreadId,
 		client_user_message_id: &TurnId,
-	) -> Result<ExactThreadReadResult, QuickTaskProcessError> {
+	) -> Result<ExactThreadReadResult, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
 		self.process
 			.read_exact_thread_for_client(thread_id, client_user_message_id.as_str(), self.timeout)
-			.map_err(|_| QuickTaskProcessError::Unavailable)
+			.map_err(|_| ConversationProcessError::Unavailable)
 	}
 
 	/// Reconcile one exact archive mutation through same-process pre/post readback.
 	pub(crate) fn archive_exact_ordinary_thread(
 		&mut self,
 		thread_id: &ExactThreadId,
-	) -> Result<ArchiveReconciliationOutcome, QuickTaskProcessError> {
+	) -> Result<ArchiveReconciliationOutcome, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
 		Ok(self.process.reconcile_archive(thread_id, self.timeout))
 	}
 
 	/// Confirm bounded process cleanup after an explicit control operation.
-	pub(crate) fn shutdown(self) -> Result<(), QuickTaskProcessError> {
+	pub(crate) fn shutdown(self) -> Result<(), ConversationProcessError> {
 		self.process
 			.shutdown(Duration::from_secs(1))
 			.map(|_| ())
-			.map_err(|_| QuickTaskProcessError::Unavailable)
+			.map_err(|_| ConversationProcessError::Unavailable)
 	}
 
-	fn require_ordinary_turns_initialized(&self) -> Result<(), QuickTaskProcessError> {
-		self.initialized.then_some(()).ok_or(QuickTaskProcessError::Unavailable)
+	fn require_ordinary_turns_initialized(&self) -> Result<(), ConversationProcessError> {
+		self.initialized.then_some(()).ok_or(ConversationProcessError::Unavailable)
 	}
 }
 
 /// Exact request facts reserved before a RuntimeSession thread-start fence.
 pub(crate) struct PreparedThreadStart {
-	request: QuickTaskThreadStartRequest,
-	wire: PreparedQuickTaskRequest,
+	request: ConversationThreadStartRequest,
+	wire: PreparedConversationRequest,
 }
 impl PreparedThreadStart {
 	pub(crate) const fn request_id(&self) -> i64 {
@@ -1064,7 +1071,7 @@ impl PreparedThreadStart {
 pub(crate) struct EstablishedOrdinaryThread {
 	pub(crate) codex_thread_id: String,
 	pub(crate) binding: BindRuntimeSessionThread,
-	pub(crate) events: Vec<QuickTaskProcessEvent>,
+	pub(crate) events: Vec<ConversationProcessEvent>,
 }
 
 /// Successful exact-thread resume facts ready for one affine runtime proof.
@@ -1074,13 +1081,13 @@ pub(crate) struct ResumedOrdinaryThread {
 	pub(crate) request_sha256: String,
 	pub(crate) response_id: i64,
 	pub(crate) response_sha256: String,
-	pub(crate) events: Vec<QuickTaskProcessEvent>,
+	pub(crate) events: Vec<ConversationProcessEvent>,
 }
 
 /// Exact `turn/start` request reserved before generic ProviderAttempt preparation.
 pub(crate) struct PreparedTurnStart {
 	attempt_id: ProviderAttemptId,
-	wire: PreparedQuickTaskRequest,
+	wire: PreparedConversationRequest,
 }
 impl PreparedTurnStart {
 	pub(crate) const fn request_id(&self) -> i64 {
@@ -1095,15 +1102,15 @@ impl PreparedTurnStart {
 /// Successful `turn/start` response plus notifications observed before that response.
 pub(crate) struct StartedOrdinaryTurn {
 	pub(crate) turn_id: String,
-	pub(crate) status: decodex_codex::QuickTaskTurnStatus,
+	pub(crate) status: decodex_codex::ConversationTurnStatus,
 	pub(crate) response_sha256: String,
-	pub(crate) events: Vec<QuickTaskProcessEvent>,
+	pub(crate) events: Vec<ConversationProcessEvent>,
 }
 
 /// Closed user-visible event set emitted by the private ordinary-turn child gateway.
-pub(crate) enum QuickTaskProcessEvent {
+pub(crate) enum ConversationProcessEvent {
 	/// One bounded assistant-message delta.
-	MessageDelta(QuickTaskMessageDelta),
+	MessageDelta(ConversationMessageDelta),
 	/// One exact turn reached a terminal app-server notification.
 	TurnCompleted {
 		/// Opaque exact provider turn identity.
@@ -1117,7 +1124,7 @@ pub(crate) enum QuickTaskProcessEvent {
 
 /// Closed private-gateway failure that never embeds provider or credential text.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum QuickTaskProcessError {
+pub(crate) enum ConversationProcessError {
 	/// No method bytes were admitted because initialization or local authority was unavailable.
 	Unavailable,
 	/// The exact app-server method rejected the request with a bounded response witness.
@@ -1130,23 +1137,23 @@ pub(crate) enum QuickTaskProcessError {
 	Ambiguous { request_id: i64, request_sha256: String },
 }
 
-struct PreparedQuickTaskRequest {
+struct PreparedConversationRequest {
 	request_id: i64,
 	request_sha256: String,
 	frame: ZeroizingOutboundFrame,
 }
 
-struct QuickTaskWireReceipt {
+struct ConversationWireReceipt {
 	request_id: i64,
 	request_sha256: String,
 	response_id: i64,
 	response_sha256: String,
 }
 
-struct QuickTaskProcessSuccess<T> {
+struct ConversationProcessSuccess<T> {
 	value: T,
-	wire: QuickTaskWireReceipt,
-	events: Vec<QuickTaskProcessEvent>,
+	wire: ConversationWireReceipt,
+	events: Vec<ConversationProcessEvent>,
 }
 
 /// Exact active-account identity retained only in zeroizing, redacted process memory.
@@ -1375,7 +1382,7 @@ impl SupervisedProcess {
 		binding: AccountBinding,
 		guard: RunnerPermit,
 		capability: ExactBuildLaunchCapability,
-		pre_spawn_check: Option<&dyn QuickTaskPreSpawnCheck>,
+		pre_spawn_check: Option<&dyn ConversationPreSpawnCheck>,
 	) -> Result<Self, SupervisionError> {
 		verify_canonical_executable_identity(&command)?;
 		run_before_spawn_test(&command);
@@ -1598,49 +1605,49 @@ impl SupervisedProcess {
 		}
 	}
 
-	fn prepare_quick_task_request<P>(
+	fn prepare_conversation_request<P>(
 		&mut self,
 		method: &'static str,
 		params: &P,
-	) -> Result<PreparedQuickTaskRequest, QuickTaskProcessError>
+	) -> Result<PreparedConversationRequest, ConversationProcessError>
 	where
 		P: Serialize,
 	{
 		let request_id = self.next_request_id;
 		if self.abandoned_request_ids.contains(&request_id) {
-			return Err(QuickTaskProcessError::Incompatible);
+			return Err(ConversationProcessError::Incompatible);
 		}
 		self.next_request_id =
-			request_id.checked_add(1).ok_or(QuickTaskProcessError::Incompatible)?;
+			request_id.checked_add(1).ok_or(ConversationProcessError::Incompatible)?;
 		let frame = exact_request_frame(request_id, method, params)
-			.map_err(|_| QuickTaskProcessError::Incompatible)?;
+			.map_err(|_| ConversationProcessError::Incompatible)?;
 		let request_id =
-			i64::try_from(request_id).map_err(|_| QuickTaskProcessError::Incompatible)?;
+			i64::try_from(request_id).map_err(|_| ConversationProcessError::Incompatible)?;
 		let request_sha256 = frame.sha256();
-		Ok(PreparedQuickTaskRequest { request_id, request_sha256, frame })
+		Ok(PreparedConversationRequest { request_id, request_sha256, frame })
 	}
 
-	fn quick_task_request<R>(
+	fn conversation_request<R>(
 		&mut self,
-		prepared: PreparedQuickTaskRequest,
+		prepared: PreparedConversationRequest,
 		timeout: Duration,
 		invalid_response_is_ambiguous: bool,
-		decode: impl FnOnce(&[u8]) -> Result<R, decodex_codex::QuickTaskContractError>,
-	) -> Result<QuickTaskProcessSuccess<R>, QuickTaskProcessError> {
-		let PreparedQuickTaskRequest { request_id, request_sha256, frame } = prepared;
+		decode: impl FnOnce(&[u8]) -> Result<R, decodex_codex::ConversationContractError>,
+	) -> Result<ConversationProcessSuccess<R>, ConversationProcessError> {
+		let PreparedConversationRequest { request_id, request_sha256, frame } = prepared;
 		let request_id_u64 =
-			u64::try_from(request_id).map_err(|_| QuickTaskProcessError::Incompatible)?;
+			u64::try_from(request_id).map_err(|_| ConversationProcessError::Incompatible)?;
 		let invalid_response = || {
 			if invalid_response_is_ambiguous {
-				QuickTaskProcessError::Ambiguous {
+				ConversationProcessError::Ambiguous {
 					request_id,
 					request_sha256: request_sha256.clone(),
 				}
 			} else {
-				QuickTaskProcessError::Incompatible
+				ConversationProcessError::Incompatible
 			}
 		};
-		let ambiguous = || QuickTaskProcessError::Ambiguous {
+		let ambiguous = || ConversationProcessError::Ambiguous {
 			request_id,
 			request_sha256: request_sha256.clone(),
 		};
@@ -1655,7 +1662,7 @@ impl SupervisedProcess {
 				let _ = self.abandon_request(request_id_u64);
 				return Err(ambiguous());
 			}
-			let line = match self.receive_quick_task_frame(remaining) {
+			let line = match self.receive_conversation_frame(remaining) {
 				Ok(Some(line)) => line,
 				Ok(None) | Err(_) => {
 					let _ = self.abandon_request(request_id_u64);
@@ -1679,9 +1686,9 @@ impl SupervisedProcess {
 					(Some(result), None) => {
 						let bytes = serde_json::to_vec(&result).map_err(|_| invalid_response())?;
 						let value = decode(&bytes).map_err(|_| invalid_response())?;
-						Ok(QuickTaskProcessSuccess {
+						Ok(ConversationProcessSuccess {
 							value,
-							wire: QuickTaskWireReceipt {
+							wire: ConversationWireReceipt {
 								request_id,
 								request_sha256: request_sha256.clone(),
 								response_id: i64::try_from(response.id)
@@ -1691,17 +1698,17 @@ impl SupervisedProcess {
 							events,
 						})
 					},
-					(None, Some(_)) => Err(QuickTaskProcessError::Rejected { witness_digest }),
+					(None, Some(_)) => Err(ConversationProcessError::Rejected { witness_digest }),
 					_ => Err(invalid_response()),
 				};
 			}
 			if header.id.is_none() {
 				let event =
-					decode_quick_task_process_event(&line).map_err(|_| invalid_response())?;
+					decode_conversation_process_event(&line).map_err(|_| invalid_response())?;
 				let Some(event) = event else {
 					continue;
 				};
-				if events.len() >= MAX_QUICK_TASK_BUFFERED_EVENTS {
+				if events.len() >= MAX_CONVERSATION_BUFFERED_EVENTS {
 					return Err(invalid_response());
 				}
 				events.push(event);
@@ -1716,38 +1723,40 @@ impl SupervisedProcess {
 		}
 	}
 
-	fn next_quick_task_event(
+	fn next_conversation_event(
 		&mut self,
 		wait: Duration,
-	) -> Result<Option<QuickTaskProcessEvent>, QuickTaskProcessError> {
+	) -> Result<Option<ConversationProcessEvent>, ConversationProcessError> {
 		let line = match self.stdout.recv_timeout(wait) {
 			Ok(line) => line.into_contiguous(),
 			Err(RecvTimeoutError::Timeout) => return Ok(None),
-			Err(RecvTimeoutError::Disconnected) => return Err(QuickTaskProcessError::Unavailable),
+			Err(RecvTimeoutError::Disconnected) =>
+				return Err(ConversationProcessError::Unavailable),
 		};
-		// Quick Task message notifications can contain ordinary JSON escapes. The frame remains
+		// Conversation message notifications can contain ordinary JSON escapes. The frame remains
 		// zeroizing and mechanically bounded; the landed typed contract validates its projection.
 		let header: InboundHeader =
-			serde_json::from_slice(&line).map_err(|_| QuickTaskProcessError::Incompatible)?;
+			serde_json::from_slice(&line).map_err(|_| ConversationProcessError::Incompatible)?;
 		if let (Some(id), Some(method)) = (header.id, header.method.as_deref()) {
 			self.service_inbound_request(id, method, &line)
-				.map_err(|_| QuickTaskProcessError::Unavailable)?;
+				.map_err(|_| ConversationProcessError::Unavailable)?;
 			return Ok(None);
 		}
 		if header.id.is_some() {
-			return Err(QuickTaskProcessError::Incompatible);
+			return Err(ConversationProcessError::Incompatible);
 		}
-		decode_quick_task_process_event(&line)
+		decode_conversation_process_event(&line)
 	}
 
-	fn receive_quick_task_frame(
+	fn receive_conversation_frame(
 		&mut self,
 		wait: Duration,
-	) -> Result<Option<Zeroizing<Vec<u8>>>, QuickTaskProcessError> {
+	) -> Result<Option<Zeroizing<Vec<u8>>>, ConversationProcessError> {
 		let line = match self.stdout.recv_timeout(wait) {
 			Ok(line) => line.into_contiguous(),
 			Err(RecvTimeoutError::Timeout) => return Ok(None),
-			Err(RecvTimeoutError::Disconnected) => return Err(QuickTaskProcessError::Unavailable),
+			Err(RecvTimeoutError::Disconnected) =>
+				return Err(ConversationProcessError::Unavailable),
 		};
 		Ok(Some(line))
 	}
@@ -2155,7 +2164,7 @@ fn project_exact_submitted_turn(
 	};
 	let provider_turn_id = ExactTurnId::new(turn.id.as_str().to_owned())
 		.map_err(|_| ExactReconciliationError::InvalidResult)?;
-	let status = turn.status.into_quick_task();
+	let status = turn.status.into_conversation();
 	let mut assistant_text = String::new();
 	for item in &turn.items {
 		if item.kind.as_str() != "agentMessage" {
@@ -2176,10 +2185,10 @@ fn project_exact_submitted_turn(
 		client_user_message_id,
 		provider_turn_id.as_str(),
 		match status {
-			decodex_codex::QuickTaskTurnStatus::Completed => "completed",
-			decodex_codex::QuickTaskTurnStatus::Interrupted => "interrupted",
-			decodex_codex::QuickTaskTurnStatus::Failed => "failed",
-			decodex_codex::QuickTaskTurnStatus::InProgress => "in_progress",
+			decodex_codex::ConversationTurnStatus::Completed => "completed",
+			decodex_codex::ConversationTurnStatus::Interrupted => "interrupted",
+			decodex_codex::ConversationTurnStatus::Failed => "failed",
+			decodex_codex::ConversationTurnStatus::InProgress => "in_progress",
 		},
 		assistant_text.as_str(),
 	] {
@@ -2197,17 +2206,17 @@ fn project_exact_submitted_turn(
 	.map_err(|_| ExactReconciliationError::InvalidResult)
 }
 
-fn decode_quick_task_process_event(
+fn decode_conversation_process_event(
 	bytes: &[u8],
-) -> Result<Option<QuickTaskProcessEvent>, QuickTaskProcessError> {
-	if let Some(delta) =
-		project_quick_task_message_delta(bytes).map_err(|_| QuickTaskProcessError::Incompatible)?
+) -> Result<Option<ConversationProcessEvent>, ConversationProcessError> {
+	if let Some(delta) = project_conversation_message_delta(bytes)
+		.map_err(|_| ConversationProcessError::Incompatible)?
 	{
-		return Ok(Some(QuickTaskProcessEvent::MessageDelta(delta)));
+		return Ok(Some(ConversationProcessEvent::MessageDelta(delta)));
 	}
-	match normalize_event(bytes).map_err(|_| QuickTaskProcessError::Incompatible)? {
+	match normalize_event(bytes).map_err(|_| ConversationProcessError::Incompatible)? {
 		NormalizedEvent::TurnCompleted { turn_id, status, .. } =>
-			Ok(Some(QuickTaskProcessEvent::TurnCompleted {
+			Ok(Some(ConversationProcessEvent::TurnCompleted {
 				turn_id: turn_id.as_str().to_owned(),
 				status,
 				witness_digest: hex_digest(&Sha256::digest(bytes)),
@@ -2293,7 +2302,7 @@ fn spawn_attested_protocol_process(
 	binding: &AccountBinding,
 	guard: RunnerPermit,
 	capability: ExactBuildLaunchCapability,
-	pre_spawn_check: Option<&dyn QuickTaskPreSpawnCheck>,
+	pre_spawn_check: Option<&dyn ConversationPreSpawnCheck>,
 	sender: SyncSender<InboundFrame>,
 	protocol_limit_exceeded: Arc<AtomicBool>,
 ) -> Result<(ProcessGroupOwner, Box<dyn Write + Send>), SupervisionError> {
@@ -7318,7 +7327,7 @@ mod tests {
 			.expect("project exact submitted Turn")
 			.expect("stable client identity is present");
 		assert_eq!(matched.provider_turn_id().as_str(), "provider-turn-1");
-		assert_eq!(matched.status(), decodex_codex::QuickTaskTurnStatus::Completed);
+		assert_eq!(matched.status(), decodex_codex::ConversationTurnStatus::Completed);
 		assert_eq!(matched.assistant_text(), "Hello world");
 		assert_eq!(matched.witness_digest().len(), 64);
 

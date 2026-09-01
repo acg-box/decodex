@@ -1,37 +1,30 @@
-//! Structured JSON envelopes for the exact-current V2.11 WebSocket connection.
+//! Structured JSON envelopes for the exact-current V2.12 WebSocket connection.
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
 	MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_RESET_CARD_ITEMS,
-	WorkItemPriority, WorkItemState,
 };
 
 use std::{
 	collections::HashSet,
 	fmt::{Display, Formatter},
-	path::PathBuf,
 };
 
-use decodex_core::{
-	AgentId as CoreAgentId, ObjectiveId as CoreObjectiveId, ProgramId as CoreProgramId,
-	ProjectId as CoreProjectId, ProjectRepositoryBinding, RepositoryIdentity,
-	WorkItemId as CoreWorkItemId, contains_credential_material,
-};
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _, ser::Error as _};
 use serde_json::Error;
 
 use crate::{
-	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, DoctorReport, ProtocolVersion,
-	QuickTaskExecutionSettings, QuickTaskListCursor, QuickTaskListResult, QuickTaskListSize,
-	QuickTaskRecoveryAction, QuickTaskResult, QuickTaskSummary, QuickTaskTurnOutcome,
-	QuickTaskWorkingDirectory, SupportedVersions, VersionRefusal,
+	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, ConversationExecutionSettings,
+	ConversationListCursor, ConversationListResult, ConversationListSize,
+	ConversationRecoveryAction, ConversationResult, ConversationSummary, ConversationTurnOutcome,
+	ConversationWorkingDirectory, DoctorReport, ProtocolVersion, SupportedVersions, VersionRefusal,
 	program_cycle::{
 		ProgramContinuationDraftDto, ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult,
 		ProgramListResult, ProgramReviewDraftDto,
 	},
 };
 
-/// Maximum UTF-8 size of any human-readable text carried by V2.11.
+/// Maximum UTF-8 size of any human-readable text carried by V2.12.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
 /// Maximum UTF-8 size of one logical-command idempotency key.
 pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
@@ -40,16 +33,6 @@ pub const MAX_HISTORY_INLINE_BYTES: usize = 16 * 1_024;
 /// Maximum history items returned in one WebSocket query result. This keeps the worst-case
 /// encoded result below the default 256-KiB transport frame bound.
 pub const MAX_HISTORY_PAGE_SIZE: u16 = 8;
-/// Maximum WorkItem cards returned in one board page.
-pub const MAX_WORK_ITEM_BOARD_PAGE_SIZE: u16 = 16;
-/// Maximum Objective identities retained by one board card.
-pub const MAX_WORK_ITEM_BOARD_OBJECTIVES: usize = decodex_core::MAX_WORK_ITEM_OBJECTIVES;
-/// Maximum combined dependency and blocker identities retained by one board card.
-pub const MAX_WORK_ITEM_BOARD_RELATIONS: usize = decodex_core::MAX_WORK_ITEM_READINESS_RELATIONS;
-/// Maximum UTF-8 bytes in one board-card title.
-pub const MAX_WORK_ITEM_BOARD_TITLE_BYTES: usize = decodex_core::MAX_WORK_ITEM_TITLE_BYTES;
-/// Maximum Projects returned by the first local Project selector.
-pub const MAX_PROJECT_LIST_ITEMS: usize = 64;
 /// Maximum daily usage facts retained and returned for one account profile.
 pub const MAX_ACCOUNT_PROFILE_DAILY_USAGE: usize = 36;
 /// Maximum concrete process blockers returned for one pending account Route.
@@ -158,7 +141,7 @@ impl<'de> Deserialize<'de> for HistoryCursorToken {
 	}
 }
 
-/// A string-backed wire scalar exceeded its V2.11 byte limit.
+/// A string-backed wire scalar exceeded its V2.12 byte limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WireScalarTooLong {
 	actual_bytes: usize,
@@ -176,131 +159,6 @@ impl Display for WireScalarTooLong {
 			"wire scalar is {} bytes; maximum is {}",
 			self.actual_bytes, self.maximum_bytes
 		)
-	}
-}
-
-/// Closed construction failures for the V2.11 WorkItem board contract.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum WorkItemBoardContractError {
-	/// An identity was not canonical lowercase RFC 9562 UUID-v4 text.
-	InvalidIdentity,
-	/// A title was empty, oversized, credential-bearing, or contained control characters.
-	InvalidTitle,
-	/// A requested page size was outside the closed protocol bound.
-	InvalidPageSize,
-	/// A card violated its revision, collection, or relation invariants.
-	InvalidCard,
-	/// A page violated its request echo, ordering, cursor, filter, or size invariants.
-	InvalidPage,
-}
-impl Display for WorkItemBoardContractError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str(match self {
-			Self::InvalidIdentity => "invalid canonical WorkItem board identity",
-			Self::InvalidTitle => "invalid bounded WorkItem board title",
-			Self::InvalidPageSize => "invalid WorkItem board page size",
-			Self::InvalidCard => "invalid WorkItem board card",
-			Self::InvalidPage => "invalid WorkItem board page",
-		})
-	}
-}
-
-macro_rules! work_item_board_id {
-	($name:ident, $domain:ty, $label:literal) => {
-		#[doc = concat!("Canonical ", $label, " identity in one WorkItem board observation.")]
-		#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-		#[serde(transparent)]
-		pub struct $name(String);
-		impl $name {
-			#[doc = concat!("Parse one canonical ", $label, " UUID-v4 identity.")]
-			pub fn new(value: impl Into<String>) -> Result<Self, WorkItemBoardContractError> {
-				let value = value.into();
-				<$domain>::new(value.clone())
-					.map_err(|_| WorkItemBoardContractError::InvalidIdentity)?;
-
-				Ok(Self(value))
-			}
-
-			#[doc = concat!("Borrow the canonical ", $label, " identity.")]
-			pub fn as_str(&self) -> &str {
-				&self.0
-			}
-		}
-		impl<'de> Deserialize<'de> for $name {
-			fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-			where
-				D: Deserializer<'de>,
-			{
-				Self::new(String::deserialize(deserializer)?).map_err(D::Error::custom)
-			}
-		}
-	};
-}
-
-work_item_board_id!(WorkItemBoardProjectId, CoreProjectId, "Project");
-work_item_board_id!(WorkItemBoardWorkItemId, CoreWorkItemId, "WorkItem");
-work_item_board_id!(WorkItemBoardLeadId, CoreAgentId, "Lead");
-work_item_board_id!(WorkItemBoardProgramId, CoreProgramId, "Program");
-work_item_board_id!(WorkItemBoardObjectiveId, CoreObjectiveId, "Objective");
-
-/// Bounded credential-negative title carried by one WorkItem board card.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-#[serde(transparent)]
-pub struct WorkItemBoardTitle(String);
-impl WorkItemBoardTitle {
-	/// Validate one persisted WorkItem title for the bounded board projection.
-	pub fn new(value: impl Into<String>) -> Result<Self, WorkItemBoardContractError> {
-		let value = value.into();
-		if value.is_empty()
-			|| value.len() > MAX_WORK_ITEM_BOARD_TITLE_BYTES
-			|| value.chars().any(char::is_control)
-			|| contains_credential_material(&value)
-		{
-			return Err(WorkItemBoardContractError::InvalidTitle);
-		}
-
-		Ok(Self(value))
-	}
-
-	/// Borrow the bounded display title.
-	pub fn as_str(&self) -> &str {
-		&self.0
-	}
-}
-impl<'de> Deserialize<'de> for WorkItemBoardTitle {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		Self::new(String::deserialize(deserializer)?).map_err(D::Error::custom)
-	}
-}
-
-/// Positive bounded card count requested for one WorkItem board page.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(transparent)]
-pub struct WorkItemBoardPageSize(u16);
-impl WorkItemBoardPageSize {
-	/// Construct a page size inside the closed V2.11 protocol bound.
-	pub const fn new(value: u16) -> Result<Self, WorkItemBoardContractError> {
-		if value == 0 || value > MAX_WORK_ITEM_BOARD_PAGE_SIZE {
-			Err(WorkItemBoardContractError::InvalidPageSize)
-		} else {
-			Ok(Self(value))
-		}
-	}
-
-	/// Return the requested card count.
-	pub const fn get(self) -> u16 {
-		self.0
-	}
-}
-impl<'de> Deserialize<'de> for WorkItemBoardPageSize {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		Self::new(u16::deserialize(deserializer)?).map_err(D::Error::custom)
 	}
 }
 
@@ -446,9 +304,8 @@ impl Display for IdempotencyKeyError {
 		formatter.write_str(match self {
 			Self::Empty => "idempotency key is empty",
 			Self::TooLong => "idempotency key exceeds the 256-byte maximum",
-			Self::SurroundingWhitespace => {
-				"idempotency key contains leading or trailing whitespace"
-			},
+			Self::SurroundingWhitespace =>
+				"idempotency key contains leading or trailing whitespace",
 			Self::ControlCharacter => "idempotency key contains a control character",
 		})
 	}
@@ -602,7 +459,7 @@ pub struct ResumeCursor {
 	pub server_id: ServerId,
 	/// Ephemeral publication epoch that issued the cursor.
 	///
-	/// A V2.11 resume requires this field. Older hello envelopes can omit it
+	/// A V2.12 resume requires this field. Older hello envelopes can omit it
 	/// only so negotiation can return a typed version refusal.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
@@ -658,7 +515,7 @@ pub struct ServerWelcome {
 	pub server_id: ServerId,
 	/// Ephemeral identity of the in-memory publication epoch.
 	///
-	/// This is present in the exact-current V2.11 welcome.
+	/// This is present in the exact-current V2.12 welcome.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
@@ -1788,7 +1645,7 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. The V2.11 account contract accepts 300 and 10080 minutes only.
+	/// Exact window duration. The V2.12 account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -2177,12 +2034,10 @@ impl Serialize for AccountInitialSelectionResult {
 
 		validate_initial_selection_result(self).map_err(S::Error::custom)?;
 		let raw = match self {
-			Self::Selected { account_id, account_revision } => {
-				RawResult::Selected { account_id, account_revision: *account_revision }
-			},
-			Self::RecoveryRequired { account_id, action } => {
-				RawResult::RecoveryRequired { account_id, action: *action }
-			},
+			Self::Selected { account_id, account_revision } =>
+				RawResult::Selected { account_id, account_revision: *account_revision },
+			Self::RecoveryRequired { account_id, action } =>
+				RawResult::RecoveryRequired { account_id, action: *action },
 			Self::Unavailable => RawResult::Unavailable,
 		};
 		raw.serialize(serializer)
@@ -2202,12 +2057,10 @@ impl<'de> Deserialize<'de> for AccountInitialSelectionResult {
 		}
 
 		let result = match RawResult::deserialize(deserializer)? {
-			RawResult::Selected { account_id, account_revision } => {
-				Self::Selected { account_id, account_revision }
-			},
-			RawResult::RecoveryRequired { account_id, action } => {
-				Self::RecoveryRequired { account_id, action }
-			},
+			RawResult::Selected { account_id, account_revision } =>
+				Self::Selected { account_id, account_revision },
+			RawResult::RecoveryRequired { account_id, action } =>
+				Self::RecoveryRequired { account_id, action },
 			RawResult::Unavailable => Self::Unavailable,
 		};
 		validate_initial_selection_result(&result).map_err(D::Error::custom)?;
@@ -2458,7 +2311,7 @@ impl AccountObservationSignal {
 	}
 }
 
-/// Live queries available through the exact-current V2.11 protocol.
+/// Live queries available through the exact-current V2.12 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
@@ -2471,18 +2324,16 @@ pub enum QueryPayload {
 		/// Stable Program identity.
 		program_id: EntityId,
 	},
-	/// List active internal Projects available to the WorkItem board.
-	ListProjects,
 	/// List one bounded deterministic page of ordinary Task conversations.
-	ListQuickTasks {
+	ListConversations {
 		/// Last fully applied most-recent-first keyset position.
 		#[serde(skip_serializing_if = "Option::is_none")]
-		after: Option<QuickTaskListCursor>,
+		after: Option<ConversationListCursor>,
 		/// Positive requested Conversation count inside the public bound.
-		page_size: QuickTaskListSize,
+		page_size: ConversationListSize,
 	},
-	/// Read one exact ordinary Quick Task.
-	GetQuickTask {
+	/// Read one exact ordinary Conversation.
+	GetConversation {
 		/// Stable logical Conversation identity.
 		conversation_id: EntityId,
 	},
@@ -2503,19 +2354,6 @@ pub enum QueryPayload {
 		after: Option<HistoryCursorToken>,
 		/// Requested item count, bounded again by the daemon.
 		page_size: u16,
-	},
-	/// Read one bounded deterministic Project WorkItem board page.
-	GetWorkItemBoardPage {
-		/// Canonical Project identity whose WorkItems may inhabit the page.
-		project_id: WorkItemBoardProjectId,
-		/// Optional exact lifecycle lane filter.
-		#[serde(skip_serializing_if = "Option::is_none")]
-		state: Option<WorkItemState>,
-		/// Last fully applied WorkItem identity in the canonical keyset order.
-		#[serde(skip_serializing_if = "Option::is_none")]
-		after: Option<WorkItemBoardWorkItemId>,
-		/// Positive requested card count inside the protocol bound.
-		page_size: WorkItemBoardPageSize,
 	},
 	/// Read one bounded current reset-card observation.
 	GetResetCards {
@@ -2562,7 +2400,7 @@ impl QueryPayload {
 	}
 }
 
-/// Commands available through the exact-current V2.11 protocol.
+/// Commands available through the exact-current V2.12 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
@@ -2593,50 +2431,8 @@ pub enum CommandPayload {
 		/// Complete terminal review input.
 		review: Box<ProgramReviewDraftDto>,
 	},
-	/// Register one current local repository as an active Project and canonical Lead.
-	RegisterProject {
-		/// Caller-generated Project identity used when this repository is new.
-		project_id: WorkItemBoardProjectId,
-		/// Caller-generated canonical Lead identity used when this repository is new.
-		lead_id: WorkItemBoardLeadId,
-		/// Stable bounded repository identity.
-		repository_identity: WireText,
-		/// Exact normalized absolute path on the local daemon host.
-		repository_root: WireText,
-	},
-	/// Create one internal WorkItem and assess its initial readiness.
-	CreateWorkItem {
-		/// Caller-generated canonical WorkItem identity.
-		work_item_id: WorkItemBoardWorkItemId,
-		/// Existing active Project that owns the WorkItem.
-		project_id: WorkItemBoardProjectId,
-		/// Bounded operator-authored title.
-		title: WorkItemBoardTitle,
-		/// Concrete Codex execution request.
-		description: WireText,
-	},
-	/// Start one real Codex Conversation for an exact ready WorkItem revision.
-	StartWorkItem {
-		/// Canonical WorkItem identity.
-		work_item_id: WorkItemBoardWorkItemId,
-		/// Exact owning Project identity.
-		project_id: WorkItemBoardProjectId,
-		/// Caller-generated ordinary Conversation identity.
-		conversation_id: EntityId,
-	},
-	/// Record human review acceptance and complete an exact WorkItem revision.
-	AcceptWorkItem {
-		/// Canonical WorkItem identity.
-		work_item_id: WorkItemBoardWorkItemId,
-		/// Exact owning Project identity.
-		project_id: WorkItemBoardProjectId,
-		/// Caller-generated immutable acceptance identity.
-		acceptance_id: EntityId,
-		/// Bounded review evidence summary.
-		evidence_summary: WireText,
-	},
 	/// Create one ordinary conversation and submit its first turn.
-	CreateQuickTask {
+	CreateConversation {
 		/// Caller-generated stable logical Conversation identity.
 		conversation_id: EntityId,
 		/// Optional exact causal WorkItem binding for a Factory execution.
@@ -2645,27 +2441,27 @@ pub enum CommandPayload {
 		/// Bounded user-authored message.
 		message: HistoryText,
 		/// Untrusted server-host working directory selected for this process lineage.
-		working_directory: QuickTaskWorkingDirectory,
+		working_directory: ConversationWorkingDirectory,
 		/// Explicit execution settings for this user send.
-		execution: QuickTaskExecutionSettings,
+		execution: ConversationExecutionSettings,
 	},
 	/// Resume the sole initial route for one routing-pending Conversation.
-	ResumeQuickTaskRouting {
+	ResumeConversationRouting {
 		/// Stable routing-pending Conversation identity.
 		conversation_id: EntityId,
 	},
 	/// Create and route one fresh successor for a waiting/no-route Conversation.
-	CreateQuickTaskRoutingSuccessor {
+	CreateConversationRoutingSuccessor {
 		/// Stable waiting/no-route source Conversation identity.
 		conversation_id: EntityId,
 	},
 	/// Resume only initial session establishment from one selected decision.
-	ResumeQuickTaskEstablishment {
+	ResumeConversationEstablishment {
 		/// Stable establishment-pending Conversation identity.
 		conversation_id: EntityId,
 	},
 	/// Submit one subsequent turn on the exact existing Codex thread.
-	SubmitQuickTaskTurn {
+	SubmitConversationTurn {
 		/// Stable logical Conversation identity.
 		conversation_id: EntityId,
 		/// Caller-generated stable logical Turn identity.
@@ -2673,22 +2469,22 @@ pub enum CommandPayload {
 		/// Bounded user-authored message.
 		message: HistoryText,
 		/// Untrusted server-host working directory used if the thread must be re-established.
-		working_directory: QuickTaskWorkingDirectory,
+		working_directory: ConversationWorkingDirectory,
 		/// Explicit execution settings for this user send.
-		execution: QuickTaskExecutionSettings,
+		execution: ConversationExecutionSettings,
 	},
 	/// Reconcile one selected Decodex task with its exact Codex archive state.
-	RefreshQuickTask {
+	RefreshConversation {
 		/// Stable logical Conversation identity.
 		conversation_id: EntityId,
 	},
 	/// Archive one selected exact Codex thread and its Decodex projection.
-	ArchiveQuickTask {
+	ArchiveConversation {
 		/// Stable logical Conversation identity.
 		conversation_id: EntityId,
 	},
-	/// Interrupt one exact active Quick Task turn.
-	InterruptQuickTask {
+	/// Interrupt one exact active Conversation turn.
+	InterruptConversation {
 		/// Stable logical Conversation identity.
 		conversation_id: EntityId,
 		/// Exact active logical Turn identity.
@@ -2864,23 +2660,13 @@ pub enum EventPayload {
 		/// Current authoritative projection.
 		cycle: Box<ProgramCycleDto>,
 	},
-	/// One active Project became available to the local Factory.
-	ProjectChanged {
-		/// Complete bounded selector projection.
-		project: ProjectSummary,
-	},
-	/// One canonical internal WorkItem changed.
-	WorkItemChanged {
-		/// Complete current board projection.
-		work_item: WorkItemBoardCard,
-	},
 	/// The bounded presentation projection of one ordinary Task conversation changed.
-	QuickTaskConversationChanged {
+	ConversationChanged {
 		/// Complete credential-negative ordinary projection plus local overlay.
-		conversation: QuickTaskSummary,
+		conversation: ConversationSummary,
 	},
 	/// One bounded user-visible assistant-message delta arrived for an active turn.
-	QuickTaskMessageDelta {
+	ConversationMessageDelta {
 		/// Exact logical Conversation identity.
 		conversation_id: EntityId,
 		/// Exact logical Turn identity.
@@ -2889,16 +2675,16 @@ pub enum EventPayload {
 		delta: HistoryText,
 	},
 	/// One ordinary Turn reached a definite evidence-backed terminal outcome.
-	QuickTaskTurnFinished {
+	ConversationTurnFinished {
 		/// Complete ordinary Conversation projection after the Turn settled.
-		conversation: QuickTaskSummary,
+		conversation: ConversationSummary,
 		/// Exact logical Turn that settled.
 		turn_id: EntityId,
 		/// Definite positive or failed outcome.
-		outcome: QuickTaskTurnOutcome,
+		outcome: ConversationTurnOutcome,
 	},
 	/// One ordinary Conversation was verified archived and left the active projection.
-	QuickTaskArchived {
+	ConversationArchived {
 		/// Stable logical Conversation identity.
 		conversation_id: EntityId,
 		/// Exact committed archived revision.
@@ -3012,44 +2798,27 @@ pub enum ResultPayload {
 		/// Current authoritative projection.
 		cycle: Box<ProgramCycleDto>,
 	},
-	/// One local repository is registered as an active Project.
-	ProjectRegistered {
-		/// Complete bounded selector projection.
-		project: ProjectSummary,
-	},
-	/// One internal WorkItem create or acceptance command completed.
-	WorkItemChanged {
-		/// Complete current board projection.
-		work_item: WorkItemBoardCard,
-	},
-	/// One internal WorkItem started its bound ordinary Codex Conversation.
-	WorkItemStarted {
-		/// Complete running WorkItem projection.
-		work_item: WorkItemBoardCard,
-		/// Complete current ordinary Conversation projection.
-		conversation: QuickTaskSummary,
-	},
 	/// An ordinary Conversation create or later-Turn command reached a closed accepted state.
-	QuickTaskConversationAccepted {
+	ConversationAccepted {
 		/// Complete current ordinary projection after acceptance.
-		conversation: QuickTaskSummary,
+		conversation: ConversationSummary,
 	},
 	/// A waiting/no-route source was archived in favor of one routed successor.
-	QuickTaskRoutingSuccessorAccepted {
+	ConversationRoutingSuccessorAccepted {
 		/// Archived source Conversation identity.
 		source_conversation_id: EntityId,
 		/// Exact archived source revision.
 		source_conversation_revision: EntityRevision,
 		/// Complete current projection of the direct successor.
-		successor: QuickTaskSummary,
+		successor: ConversationSummary,
 	},
 	/// An interrupt request reached the exact daemon-local active Turn handle.
-	QuickTaskInterruptAccepted {
+	ConversationInterruptAccepted {
 		/// Complete current ordinary projection; completion later returns it to `ready`.
-		conversation: QuickTaskSummary,
+		conversation: ConversationSummary,
 	},
 	/// One explicit refresh or archive verified that the Codex thread is archived.
-	QuickTaskArchived {
+	ConversationArchived {
 		/// Stable logical Conversation identity.
 		conversation_id: EntityId,
 		/// Exact committed archived revision.
@@ -3132,7 +2901,7 @@ impl ResultPayload {
 	}
 }
 
-/// Typed live-query results available through the exact-current V2.11 protocol.
+/// Typed live-query results available through the exact-current V2.12 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
@@ -3142,20 +2911,16 @@ pub enum QueryResultPayload {
 	Programs(ProgramListResult),
 	/// One exact complete Program causal projection.
 	ProgramCycle(ProgramCycleResult),
-	/// Active internal Project selector contents.
-	Projects(ProjectListResult),
-	/// Bounded current Quick Task destination projection.
-	QuickTasks(QuickTaskListResult),
-	/// One exact ordinary Quick Task readback.
-	QuickTask(QuickTaskResult),
+	/// Bounded current Conversation destination projection.
+	Conversations(ConversationListResult),
+	/// One exact ordinary Conversation readback.
+	Conversation(ConversationResult),
 	/// Bounded authoritative doctor/status readback.
 	DoctorStatus(DoctorReport),
 	/// Immutable execution-consumer and exact route-cause projection.
 	ExecutionDecision(ExecutionDecisionResult),
 	/// Bounded daemon-owned logical-conversation history result.
 	ConversationHistory(ConversationHistoryResult),
-	/// Bounded canonical WorkItem board observation.
-	WorkItemBoard(WorkItemBoardResult),
 	/// Bounded current reset-card observation or a closed unavailable reason.
 	ResetCards(ResetCardInventoryResult),
 	/// Durable reset-card operation state.
@@ -3172,459 +2937,6 @@ pub enum QueryResultPayload {
 	CodexAuthProjection(CodexAuthProjectionResult),
 	/// One daemon account-observation change or bounded heartbeat.
 	AccountObservation(AccountObservationSignal),
-}
-
-/// One minimal canonical WorkItem card for a native Project board.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct WorkItemBoardCard {
-	work_item_id: WorkItemBoardWorkItemId,
-	project_id: WorkItemBoardProjectId,
-	lead_id: WorkItemBoardLeadId,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	program_id: Option<WorkItemBoardProgramId>,
-	objective_ids: Vec<WorkItemBoardObjectiveId>,
-	depends_on_ids: Vec<WorkItemBoardWorkItemId>,
-	blocked_by_ids: Vec<WorkItemBoardWorkItemId>,
-	title: WorkItemBoardTitle,
-	description: WireText,
-	priority: WorkItemPriority,
-	state: WorkItemState,
-	revision: EntityRevision,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	accepted_revision: Option<EntityRevision>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	conversation_id: Option<EntityId>,
-}
-impl WorkItemBoardCard {
-	/// Construct one strict card from a canonical persisted WorkItem projection.
-	#[allow(clippy::too_many_arguments)]
-	pub fn new(
-		work_item_id: WorkItemBoardWorkItemId,
-		project_id: WorkItemBoardProjectId,
-		lead_id: WorkItemBoardLeadId,
-		program_id: Option<WorkItemBoardProgramId>,
-		objective_ids: Vec<WorkItemBoardObjectiveId>,
-		depends_on_ids: Vec<WorkItemBoardWorkItemId>,
-		blocked_by_ids: Vec<WorkItemBoardWorkItemId>,
-		title: WorkItemBoardTitle,
-		description: WireText,
-		priority: WorkItemPriority,
-		state: WorkItemState,
-		revision: EntityRevision,
-		accepted_revision: Option<EntityRevision>,
-		conversation_id: Option<EntityId>,
-	) -> Result<Self, WorkItemBoardContractError> {
-		let relation_count = depends_on_ids
-			.len()
-			.checked_add(blocked_by_ids.len())
-			.ok_or(WorkItemBoardContractError::InvalidCard)?;
-		if objective_ids.len() > MAX_WORK_ITEM_BOARD_OBJECTIVES
-			|| relation_count > MAX_WORK_ITEM_BOARD_RELATIONS
-			|| revision.0 == 0
-			|| accepted_revision.is_some_and(|accepted| accepted.0 == 0 || accepted > revision)
-			|| conversation_id
-				.as_ref()
-				.is_some_and(|conversation_id| !is_canonical_uuid(conversation_id.as_str()))
-			|| !strictly_sorted(&objective_ids)
-			|| !strictly_sorted(&depends_on_ids)
-			|| !strictly_sorted(&blocked_by_ids)
-		{
-			return Err(WorkItemBoardContractError::InvalidCard);
-		}
-
-		let mut relation_ids = HashSet::with_capacity(relation_count);
-		if depends_on_ids
-			.iter()
-			.chain(&blocked_by_ids)
-			.any(|id| id == &work_item_id || !relation_ids.insert(id.as_str()))
-		{
-			return Err(WorkItemBoardContractError::InvalidCard);
-		}
-		drop(relation_ids);
-
-		Ok(Self {
-			work_item_id,
-			project_id,
-			lead_id,
-			program_id,
-			objective_ids,
-			depends_on_ids,
-			blocked_by_ids,
-			title,
-			description,
-			priority,
-			state,
-			revision,
-			accepted_revision,
-			conversation_id,
-		})
-	}
-
-	/// Canonical WorkItem identity.
-	pub const fn work_item_id(&self) -> &WorkItemBoardWorkItemId {
-		&self.work_item_id
-	}
-
-	/// Canonical owning Project identity.
-	pub const fn project_id(&self) -> &WorkItemBoardProjectId {
-		&self.project_id
-	}
-
-	/// Canonical Lead identity.
-	pub const fn lead_id(&self) -> &WorkItemBoardLeadId {
-		&self.lead_id
-	}
-
-	/// Optional canonical Program identity.
-	pub fn program_id(&self) -> Option<&WorkItemBoardProgramId> {
-		self.program_id.as_ref()
-	}
-
-	/// Sorted unique canonical Objective identities.
-	pub fn objective_ids(&self) -> &[WorkItemBoardObjectiveId] {
-		&self.objective_ids
-	}
-
-	/// Sorted unique exact dependency identities.
-	pub fn depends_on_ids(&self) -> &[WorkItemBoardWorkItemId] {
-		&self.depends_on_ids
-	}
-
-	/// Sorted unique exact blocker identities.
-	pub fn blocked_by_ids(&self) -> &[WorkItemBoardWorkItemId] {
-		&self.blocked_by_ids
-	}
-
-	/// Bounded display title.
-	pub const fn title(&self) -> &WorkItemBoardTitle {
-		&self.title
-	}
-
-	/// Bounded concrete execution request.
-	pub const fn description(&self) -> &WireText {
-		&self.description
-	}
-
-	/// Closed canonical priority.
-	pub const fn priority(&self) -> WorkItemPriority {
-		self.priority
-	}
-
-	/// Closed canonical lifecycle state.
-	pub const fn state(&self) -> WorkItemState {
-		self.state
-	}
-
-	/// Positive current WorkItem revision.
-	pub const fn revision(&self) -> EntityRevision {
-		self.revision
-	}
-
-	/// Latest accepted exact revision as an observation only.
-	pub const fn accepted_revision(&self) -> Option<EntityRevision> {
-		self.accepted_revision
-	}
-
-	/// Current ordinary Conversation bound to this WorkItem, when execution has started.
-	pub fn conversation_id(&self) -> Option<&EntityId> {
-		self.conversation_id.as_ref()
-	}
-}
-impl<'de> Deserialize<'de> for WorkItemBoardCard {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		#[derive(Deserialize)]
-		#[serde(deny_unknown_fields)]
-		struct RawCard {
-			work_item_id: WorkItemBoardWorkItemId,
-			project_id: WorkItemBoardProjectId,
-			lead_id: WorkItemBoardLeadId,
-			program_id: Option<WorkItemBoardProgramId>,
-			objective_ids: Vec<WorkItemBoardObjectiveId>,
-			depends_on_ids: Vec<WorkItemBoardWorkItemId>,
-			blocked_by_ids: Vec<WorkItemBoardWorkItemId>,
-			title: WorkItemBoardTitle,
-			description: WireText,
-			priority: WorkItemPriority,
-			state: WorkItemState,
-			revision: EntityRevision,
-			accepted_revision: Option<EntityRevision>,
-			conversation_id: Option<EntityId>,
-		}
-
-		let raw = RawCard::deserialize(deserializer)?;
-		Self::new(
-			raw.work_item_id,
-			raw.project_id,
-			raw.lead_id,
-			raw.program_id,
-			raw.objective_ids,
-			raw.depends_on_ids,
-			raw.blocked_by_ids,
-			raw.title,
-			raw.description,
-			raw.priority,
-			raw.state,
-			raw.revision,
-			raw.accepted_revision,
-			raw.conversation_id,
-		)
-		.map_err(D::Error::custom)
-	}
-}
-
-/// One strict bounded page with the exact request identity echoed.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct WorkItemBoardPage {
-	project_id: WorkItemBoardProjectId,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	state: Option<WorkItemState>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	after: Option<WorkItemBoardWorkItemId>,
-	page_size: WorkItemBoardPageSize,
-	cards: Vec<WorkItemBoardCard>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	next_cursor: Option<WorkItemBoardWorkItemId>,
-}
-impl WorkItemBoardPage {
-	/// Construct one verified page from a canonical ordered store observation.
-	pub fn new(
-		project_id: WorkItemBoardProjectId,
-		state: Option<WorkItemState>,
-		after: Option<WorkItemBoardWorkItemId>,
-		page_size: WorkItemBoardPageSize,
-		cards: Vec<WorkItemBoardCard>,
-		next_cursor: Option<WorkItemBoardWorkItemId>,
-	) -> Result<Self, WorkItemBoardContractError> {
-		let requested = usize::from(page_size.get());
-		if cards.len() > requested
-			|| cards.iter().any(|card| {
-				card.project_id() != &project_id
-					|| state.is_some_and(|expected| card.state() != expected)
-			}) || cards.windows(2).any(|pair| pair[0].work_item_id() >= pair[1].work_item_id())
-			|| after.as_ref().is_some_and(|cursor| {
-				cards.first().is_some_and(|card| card.work_item_id() <= cursor)
-			}) {
-			return Err(WorkItemBoardContractError::InvalidPage);
-		}
-
-		match (&next_cursor, cards.last()) {
-			(Some(next), Some(last)) if cards.len() == requested && next == last.work_item_id() => {
-			},
-			(Some(_), _) => return Err(WorkItemBoardContractError::InvalidPage),
-			(None, _) => {},
-		}
-
-		Ok(Self { project_id, state, after, page_size, cards, next_cursor })
-	}
-
-	/// Whether this page echoes one exact requested Project/filter/cursor/size identity.
-	pub fn matches_request(
-		&self,
-		project_id: &WorkItemBoardProjectId,
-		state: Option<WorkItemState>,
-		after: Option<&WorkItemBoardWorkItemId>,
-		page_size: WorkItemBoardPageSize,
-	) -> bool {
-		&self.project_id == project_id
-			&& self.state == state
-			&& self.after.as_ref() == after
-			&& self.page_size == page_size
-	}
-
-	/// Canonical requested Project identity.
-	pub const fn project_id(&self) -> &WorkItemBoardProjectId {
-		&self.project_id
-	}
-
-	/// Exact optional requested lifecycle filter.
-	pub const fn state(&self) -> Option<WorkItemState> {
-		self.state
-	}
-
-	/// Exact optional requested keyset cursor.
-	pub fn after(&self) -> Option<&WorkItemBoardWorkItemId> {
-		self.after.as_ref()
-	}
-
-	/// Exact requested page size.
-	pub const fn page_size(&self) -> WorkItemBoardPageSize {
-		self.page_size
-	}
-
-	/// Strictly ordered unique cards.
-	pub fn cards(&self) -> &[WorkItemBoardCard] {
-		&self.cards
-	}
-
-	/// Cursor for a known subsequent page, never a total-size claim.
-	pub fn next_cursor(&self) -> Option<&WorkItemBoardWorkItemId> {
-		self.next_cursor.as_ref()
-	}
-}
-impl<'de> Deserialize<'de> for WorkItemBoardPage {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		#[derive(Deserialize)]
-		#[serde(deny_unknown_fields)]
-		struct RawPage {
-			project_id: WorkItemBoardProjectId,
-			state: Option<WorkItemState>,
-			after: Option<WorkItemBoardWorkItemId>,
-			page_size: WorkItemBoardPageSize,
-			cards: Vec<WorkItemBoardCard>,
-			next_cursor: Option<WorkItemBoardWorkItemId>,
-		}
-
-		let raw = RawPage::deserialize(deserializer)?;
-		Self::new(raw.project_id, raw.state, raw.after, raw.page_size, raw.cards, raw.next_cursor)
-			.map_err(D::Error::custom)
-	}
-}
-
-/// Result of one bounded read-only WorkItem board observation.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
-pub enum WorkItemBoardResult {
-	/// One strict page without a total or exhaustive-board claim.
-	Page(WorkItemBoardPage),
-	/// Closed unavailable result without infrastructure detail.
-	Unavailable {
-		/// Stable reason class.
-		error: WorkItemBoardQueryError,
-	},
-}
-
-/// Closed WorkItem board query failure classes safe for remote clients.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkItemBoardQueryError {
-	/// Request Project, filter, cursor, or bound was invalid.
-	InvalidRequest,
-	/// Authoritative product state was unavailable.
-	ProductStateUnavailable,
-	/// Persisted page facts failed strict integrity verification.
-	IntegrityUnavailable,
-}
-
-/// Closed construction failures for the local Project selector.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProjectListContractError {
-	/// Repository identity or Project collection shape was invalid.
-	InvalidProjection,
-}
-impl Display for ProjectListContractError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str("invalid bounded Project projection")
-	}
-}
-
-/// One active Project available to the WorkItem board.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct ProjectSummary {
-	project_id: WorkItemBoardProjectId,
-	lead_id: WorkItemBoardLeadId,
-	repository_identity: WireText,
-}
-impl ProjectSummary {
-	/// Construct one credential-negative Project selector entry.
-	pub fn new(
-		project_id: WorkItemBoardProjectId,
-		lead_id: WorkItemBoardLeadId,
-		repository_identity: WireText,
-	) -> Result<Self, ProjectListContractError> {
-		if repository_identity.as_str().is_empty()
-			|| repository_identity.as_str().chars().any(char::is_control)
-			|| contains_credential_material(repository_identity.as_str())
-		{
-			return Err(ProjectListContractError::InvalidProjection);
-		}
-		Ok(Self { project_id, lead_id, repository_identity })
-	}
-
-	/// Canonical Project identity.
-	pub const fn project_id(&self) -> &WorkItemBoardProjectId {
-		&self.project_id
-	}
-
-	/// Canonical active Lead identity.
-	pub const fn lead_id(&self) -> &WorkItemBoardLeadId {
-		&self.lead_id
-	}
-
-	/// Stable repository identity shown to the operator.
-	pub const fn repository_identity(&self) -> &WireText {
-		&self.repository_identity
-	}
-}
-impl<'de> Deserialize<'de> for ProjectSummary {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		#[derive(Deserialize)]
-		#[serde(deny_unknown_fields)]
-		struct Raw {
-			project_id: WorkItemBoardProjectId,
-			lead_id: WorkItemBoardLeadId,
-			repository_identity: WireText,
-		}
-		let raw = Raw::deserialize(deserializer)?;
-		Self::new(raw.project_id, raw.lead_id, raw.repository_identity).map_err(D::Error::custom)
-	}
-}
-
-/// Strict bounded active-Project selector contents.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct ProjectList {
-	projects: Vec<ProjectSummary>,
-}
-impl ProjectList {
-	/// Construct an identity-ordered bounded Project list.
-	pub fn new(projects: Vec<ProjectSummary>) -> Result<Self, ProjectListContractError> {
-		if projects.len() > MAX_PROJECT_LIST_ITEMS
-			|| projects.windows(2).any(|pair| pair[0].project_id() >= pair[1].project_id())
-		{
-			return Err(ProjectListContractError::InvalidProjection);
-		}
-		Ok(Self { projects })
-	}
-
-	/// Active Projects in canonical identity order.
-	pub fn projects(&self) -> &[ProjectSummary] {
-		&self.projects
-	}
-}
-impl<'de> Deserialize<'de> for ProjectList {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		#[derive(Deserialize)]
-		#[serde(deny_unknown_fields)]
-		struct Raw {
-			projects: Vec<ProjectSummary>,
-		}
-		Self::new(Raw::deserialize(deserializer)?.projects).map_err(D::Error::custom)
-	}
-}
-
-/// Result of one bounded Project selector query.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
-pub enum ProjectListResult {
-	/// Current active Projects.
-	Available(ProjectList),
-	/// Product-store or projection integrity was unavailable.
-	Unavailable,
-}
-
-fn strictly_sorted<T: Ord>(values: &[T]) -> bool {
-	values.windows(2).all(|pair| pair[0] < pair[1])
 }
 
 /// Result of an immutable Routing Decision route-decision observation.
@@ -3992,17 +3304,17 @@ pub enum CommandError {
 		/// Bounded operator-facing explanation.
 		message: WireText,
 	},
-	/// Quick Task execution was unavailable when this daemon process assembled its owners.
-	QuickTaskUnavailable {
+	/// Conversation execution was unavailable when this daemon process assembled its owners.
+	ConversationUnavailable {
 		/// Closed startup reason. No credential, path, account, or provider text is representable.
-		unavailable_reason: crate::QuickTaskUnavailableReason,
+		unavailable_reason: crate::ConversationUnavailableReason,
 	},
 	/// The application could not establish whether durable acceptance committed.
 	AcceptanceUnknown,
 	/// Account selection or immutable account affinity requires an explicit user action.
-	QuickTaskRecoveryRequired {
+	ConversationRecoveryRequired {
 		/// Closed recovery action safe for direct presentation.
-		action: QuickTaskRecoveryAction,
+		action: ConversationRecoveryAction,
 	},
 	/// A stable account-domain guard rejected the logical command before a new effect.
 	AccountCommandRejected {
@@ -4084,12 +3396,12 @@ pub enum Refusal {
 	},
 }
 
-/// Serialize a message using the only V2.11 wire encoding.
+/// Serialize a message using the only V2.12 wire encoding.
 pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 	serde_json::to_string(message)
 }
 
-/// Parse a client message using the only V2.11 wire encoding.
+/// Parse a client message using the only V2.12 wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
 	validate_client_message(&decoded).map_err(|reason| {
@@ -4103,36 +3415,26 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 		ClientMessage::Hello(hello)
 			if hello.version == crate::CURRENT_VERSION
 				&& hello.resume.as_ref().is_some_and(|resume| resume.instance_id.is_none()) =>
-		{
-			Err("current protocol resume requires a publication instance")
-		},
+			Err("current protocol resume requires a publication instance"),
 		ClientMessage::Hello(_) => Ok(()),
 		ClientMessage::Query(query) => match &query.payload {
 			QueryPayload::GetDesktopSettings => Ok(()),
 			QueryPayload::GetProgramCycle { program_id }
 				if !is_canonical_uuid(program_id.as_str()) =>
-			{
-				Err("Program query identity is not canonical")
-			},
-			QueryPayload::ListQuickTasks { after, .. }
+				Err("Program query identity is not canonical"),
+			QueryPayload::ListConversations { after, .. }
 				if after.as_ref().is_some_and(|cursor| {
 					!is_canonical_uuid(cursor.conversation_id().as_str())
 				}) =>
-			{
-				Err("Quick Task list cursor identity is not canonical")
-			},
-			QueryPayload::GetQuickTask { conversation_id }
+				Err("Conversation list cursor identity is not canonical"),
+			QueryPayload::GetConversation { conversation_id }
 				if !is_canonical_uuid(conversation_id.as_str()) =>
-			{
-				Err("Quick Task conversation identity is not canonical")
-			},
+				Err("Conversation conversation identity is not canonical"),
 			QueryPayload::GetResetCards { account_id }
 			| QueryPayload::InspectAccount { account_id }
 			| QueryPayload::GetAccountProfile { account_id, .. }
 				if !is_canonical_uuid(account_id.as_str()) =>
-			{
-				Err("account query identity is not canonical")
-			},
+				Err("account query identity is not canonical"),
 			_ => Ok(()),
 		},
 		ClientMessage::Command(command) => validate_account_command(command),
@@ -4149,9 +3451,8 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static str> {
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
 	match &command.payload {
-		CommandPayload::SetDesktopSettings { .. } => {
-			positive_expected.then_some(()).ok_or("desktop settings revision is required")
-		},
+		CommandPayload::SetDesktopSettings { .. } =>
+			positive_expected.then_some(()).ok_or("desktop settings revision is required"),
 		CommandPayload::CreateProgramCycle { draft } => {
 			if command.expected_revision.is_some() || draft.validate().is_err() {
 				Err("Program cycle create contract is invalid")
@@ -4159,7 +3460,7 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 				Ok(())
 			}
 		},
-		CommandPayload::BindProgramDomainPack { program_id, domain_pack_id } => {
+		CommandPayload::BindProgramDomainPack { program_id, domain_pack_id } =>
 			if !positive_expected
 				|| !is_canonical_uuid(program_id.as_str())
 				|| !crate::domain_pack::is_namespaced_symbol(domain_pack_id.as_str())
@@ -4167,8 +3468,7 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 				Err("Program Domain Pack binding contract is invalid")
 			} else {
 				Ok(())
-			}
-		},
+			},
 		CommandPayload::ContinueProgram { continuation } => {
 			if !positive_expected || continuation.validate().is_err() {
 				Err("Program continuation contract is invalid")
@@ -4183,18 +3483,14 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 				Ok(())
 			}
 		},
-		CommandPayload::RegisterProject { .. } => validate_project_command(command),
-		CommandPayload::CreateWorkItem { .. }
-		| CommandPayload::StartWorkItem { .. }
-		| CommandPayload::AcceptWorkItem { .. } => validate_work_item_command(command),
-		CommandPayload::CreateQuickTask { .. }
-		| CommandPayload::ResumeQuickTaskRouting { .. }
-		| CommandPayload::CreateQuickTaskRoutingSuccessor { .. }
-		| CommandPayload::ResumeQuickTaskEstablishment { .. }
-		| CommandPayload::SubmitQuickTaskTurn { .. }
-		| CommandPayload::RefreshQuickTask { .. }
-		| CommandPayload::ArchiveQuickTask { .. }
-		| CommandPayload::InterruptQuickTask { .. } => validate_quick_task_command(command),
+		CommandPayload::CreateConversation { .. }
+		| CommandPayload::ResumeConversationRouting { .. }
+		| CommandPayload::CreateConversationRoutingSuccessor { .. }
+		| CommandPayload::ResumeConversationEstablishment { .. }
+		| CommandPayload::SubmitConversationTurn { .. }
+		| CommandPayload::RefreshConversation { .. }
+		| CommandPayload::ArchiveConversation { .. }
+		| CommandPayload::InterruptConversation { .. } => validate_conversation_command(command),
 		CommandPayload::RefreshSystemObservation { .. } => Ok(()),
 		CommandPayload::ConsumeResetCard { account_id, .. } => {
 			if is_canonical_uuid(account_id.as_str()) && positive_expected {
@@ -4203,13 +3499,12 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 				Err("reset-card account identity or revision is invalid")
 			}
 		},
-		CommandPayload::EnrollAccountFromSharedCodex { operation_id, account_id, .. } => {
+		CommandPayload::EnrollAccountFromSharedCodex { operation_id, account_id, .. } =>
 			validate_account_install_command(
 				operation_id,
 				account_id,
 				command.expected_revision.is_none(),
-			)
-		},
+			),
 		CommandPayload::ImportAccountCredentialFile {
 			operation_id,
 			account_id,
@@ -4246,12 +3541,10 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 			}
 			Ok(())
 		},
-		CommandPayload::SetBalancedAccountSelection => {
-			positive_expected.then_some(()).ok_or("account routing revision is required")
-		},
-		CommandPayload::SetAccountOrder { order } => {
-			validate_account_order_command(order, positive_expected)
-		},
+		CommandPayload::SetBalancedAccountSelection =>
+			positive_expected.then_some(()).ok_or("account routing revision is required"),
+		CommandPayload::SetAccountOrder { order } =>
+			validate_account_order_command(order, positive_expected),
 		CommandPayload::RecoverAccountOperation { operation_id, .. } => {
 			validate_canonical_operation(operation_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
@@ -4276,86 +3569,10 @@ fn validate_account_order_command(
 	Ok(())
 }
 
-fn validate_project_command(command: &CommandEnvelope) -> Result<(), &'static str> {
-	let CommandPayload::RegisterProject {
-		project_id,
-		lead_id,
-		repository_identity,
-		repository_root,
-	} = &command.payload
-	else {
-		unreachable!("Project validation requires a Project command");
-	};
-	let identity = RepositoryIdentity::new(repository_identity.as_str().to_owned())
-		.map_err(|_| "Project repository identity is invalid")?;
-	let root = PathBuf::from(repository_root.as_str());
-	if command.expected_revision.is_some()
-		|| !is_canonical_uuid(project_id.as_str())
-		|| !is_canonical_uuid(lead_id.as_str())
-		|| ProjectRepositoryBinding::new(identity, root.clone(), root).is_err()
-	{
-		Err("Project registration identity, revision, or path is invalid")
-	} else {
-		Ok(())
-	}
-}
-
-fn validate_work_item_command(command: &CommandEnvelope) -> Result<(), &'static str> {
+fn validate_conversation_command(command: &CommandEnvelope) -> Result<(), &'static str> {
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
 	match &command.payload {
-		CommandPayload::CreateWorkItem { work_item_id, project_id, description, .. } => {
-			let description = description.as_str();
-			if command.expected_revision.is_some()
-				|| !is_canonical_uuid(work_item_id.as_str())
-				|| !is_canonical_uuid(project_id.as_str())
-				|| description.trim().is_empty()
-				|| description.chars().any(char::is_control)
-				|| contains_credential_material(description)
-			{
-				Err("WorkItem create identity, revision, or description is invalid")
-			} else {
-				Ok(())
-			}
-		},
-		CommandPayload::StartWorkItem { work_item_id, project_id, conversation_id } => {
-			if positive_expected
-				&& is_canonical_uuid(work_item_id.as_str())
-				&& is_canonical_uuid(project_id.as_str())
-				&& is_canonical_uuid(conversation_id.as_str())
-			{
-				Ok(())
-			} else {
-				Err("WorkItem start identity or revision is invalid")
-			}
-		},
-		CommandPayload::AcceptWorkItem {
-			work_item_id,
-			project_id,
-			acceptance_id,
-			evidence_summary,
-		} => {
-			let evidence = evidence_summary.as_str();
-			if positive_expected
-				&& is_canonical_uuid(work_item_id.as_str())
-				&& is_canonical_uuid(project_id.as_str())
-				&& is_canonical_uuid(acceptance_id.as_str())
-				&& !evidence.trim().is_empty()
-				&& !evidence.chars().any(char::is_control)
-				&& !contains_credential_material(evidence)
-			{
-				Ok(())
-			} else {
-				Err("WorkItem acceptance identity, revision, or evidence is invalid")
-			}
-		},
-		_ => unreachable!("WorkItem validation requires a WorkItem command"),
-	}
-}
-
-fn validate_quick_task_command(command: &CommandEnvelope) -> Result<(), &'static str> {
-	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
-	match &command.payload {
-		CommandPayload::CreateQuickTask { conversation_id, work_item_id, message, .. } => {
+		CommandPayload::CreateConversation { conversation_id, work_item_id, message, .. } =>
 			if command.expected_revision.is_some()
 				|| !is_canonical_uuid(conversation_id.as_str())
 				|| work_item_id
@@ -4363,21 +3580,20 @@ fn validate_quick_task_command(command: &CommandEnvelope) -> Result<(), &'static
 					.is_some_and(|work_item_id| !is_canonical_uuid(work_item_id.as_str()))
 				|| message.as_str().trim().is_empty()
 			{
-				Err("Quick Task create identity, revision, or message is invalid")
+				Err("Conversation create identity, revision, or message is invalid")
 			} else {
 				Ok(())
-			}
-		},
-		CommandPayload::ResumeQuickTaskRouting { conversation_id }
-		| CommandPayload::CreateQuickTaskRoutingSuccessor { conversation_id }
-		| CommandPayload::ResumeQuickTaskEstablishment { conversation_id } => {
+			},
+		CommandPayload::ResumeConversationRouting { conversation_id }
+		| CommandPayload::CreateConversationRoutingSuccessor { conversation_id }
+		| CommandPayload::ResumeConversationEstablishment { conversation_id } => {
 			if positive_expected && is_canonical_uuid(conversation_id.as_str()) {
 				Ok(())
 			} else {
-				Err("Quick Task recovery identity or revision is invalid")
+				Err("Conversation recovery identity or revision is invalid")
 			}
 		},
-		CommandPayload::SubmitQuickTaskTurn { conversation_id, turn_id, message, .. } => {
+		CommandPayload::SubmitConversationTurn { conversation_id, turn_id, message, .. } =>
 			if positive_expected
 				&& is_canonical_uuid(conversation_id.as_str())
 				&& is_canonical_uuid(turn_id.as_str())
@@ -4385,28 +3601,27 @@ fn validate_quick_task_command(command: &CommandEnvelope) -> Result<(), &'static
 			{
 				Ok(())
 			} else {
-				Err("Quick Task turn identity, revision, or message is invalid")
-			}
-		},
-		CommandPayload::InterruptQuickTask { conversation_id, turn_id } => {
+				Err("Conversation turn identity, revision, or message is invalid")
+			},
+		CommandPayload::InterruptConversation { conversation_id, turn_id } => {
 			if positive_expected
 				&& is_canonical_uuid(conversation_id.as_str())
 				&& is_canonical_uuid(turn_id.as_str())
 			{
 				Ok(())
 			} else {
-				Err("Quick Task interrupt identity or revision is invalid")
+				Err("Conversation interrupt identity or revision is invalid")
 			}
 		},
-		CommandPayload::RefreshQuickTask { conversation_id }
-		| CommandPayload::ArchiveQuickTask { conversation_id } => {
+		CommandPayload::RefreshConversation { conversation_id }
+		| CommandPayload::ArchiveConversation { conversation_id } => {
 			if positive_expected && is_canonical_uuid(conversation_id.as_str()) {
 				Ok(())
 			} else {
-				Err("Quick Task control identity or revision is invalid")
+				Err("Conversation control identity or revision is invalid")
 			}
 		},
-		_ => unreachable!("Quick Task validation requires a Quick Task command"),
+		_ => unreachable!("Conversation validation requires a Conversation command"),
 	}
 }
 
@@ -4470,9 +3685,8 @@ fn validate_initial_selection_result(
 				.then_some(())
 				.ok_or("selected account revision is not positive")
 		},
-		AccountInitialSelectionResult::RecoveryRequired { account_id, .. } => {
-			account_id.as_ref().map_or(Ok(()), validate_canonical_account)
-		},
+		AccountInitialSelectionResult::RecoveryRequired { account_id, .. } =>
+			account_id.as_ref().map_or(Ok(()), validate_canonical_account),
 		AccountInitialSelectionResult::Unavailable => Ok(()),
 	}
 }
@@ -4797,9 +4011,7 @@ fn validate_quota_window(
 		(None, AccountQuotaStateDto::Unknown) => Ok(()),
 		(Some(observed), AccountQuotaStateDto::Current { used_percent, resets_at_unix_micros })
 			if observed > 0 && used_percent <= 100 && resets_at_unix_micros > observed =>
-		{
-			Ok(())
-		},
+			Ok(()),
 		(Some(observed), AccountQuotaStateDto::Error { .. }) if observed > 0 => Ok(()),
 		_ => Err("account quota observation shape is invalid"),
 	}
@@ -4821,64 +4033,21 @@ mod tests {
 		AccountProfileErrorDto, AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto,
 		AccountRouteAuthHomeDto, AccountRouteBlockingProcessDto, AccountRoutePendingDto,
 		AccountRouteProcessBlockerDto, AccountRouteWaitReasonDto, AccountsResult, CURRENT_VERSION,
-		CausationId, ClientCommandId, CodexAuthProjectionResult, CommandError, CorrelationId, EntityId,
-		EventPayload,
-		HistoryCursorToken, HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES,
-		MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
-		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
-		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, MAX_WORK_ITEM_BOARD_PAGE_SIZE,
+		CausationId, ClientCommandId, CodexAuthProjectionResult, CommandError,
+		ConversationRecoveryAction, ConversationState, ConversationSummary,
+		ConversationWorkingDirectory, CorrelationId, EntityId, EventPayload, HistoryCursorToken,
+		HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
+		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
+		MAX_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES,
 		ProgramContinuationDraftDto, ProgramCycleDraftDto, QueryId, QueryResultPayload,
-		QuickTaskRecoveryAction, QuickTaskState, QuickTaskSummary, QuickTaskWorkingDirectory,
 		ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId,
-		Sha256Digest, WireText, WorkItemBoardContractError, WorkItemBoardLeadId, WorkItemBoardPage,
-		WorkItemBoardPageSize, WorkItemBoardProjectId, WorkItemBoardResult,
-		WorkItemBoardWorkItemId, WorkItemState,
+		Sha256Digest, WireText,
 		wire::{
 			ClientHello, ClientMessage, CommandEnvelope, CommandPayload, Cursor, EntityRevision,
 			QueryEnvelope, QueryPayload, ResetCardInventoryResult, ResetCardOperationResult,
 			ResumeCursor, decode_client_message,
 		},
 	};
-
-	const BOARD_PROJECT: &str = "10000000-0000-4000-8000-000000000001";
-	const OTHER_PROJECT: &str = "10000000-0000-4000-8000-000000000002";
-	const BOARD_ITEM_1: &str = "20000000-0000-4000-8000-000000000001";
-	const BOARD_ITEM_2: &str = "20000000-0000-4000-8000-000000000002";
-	const BOARD_ITEM_3: &str = "20000000-0000-4000-8000-000000000003";
-	const BOARD_LEAD: &str = "30000000-0000-4000-8000-000000000001";
-
-	fn board_card_value(work_item_id: &str) -> serde_json::Value {
-		serde_json::json!({
-			"work_item_id": work_item_id,
-			"project_id": BOARD_PROJECT,
-			"lead_id": BOARD_LEAD,
-			"program_id": null,
-			"objective_ids": [],
-			"depends_on_ids": [],
-			"blocked_by_ids": [],
-			"title": "Implement board page",
-			"description": "Connect the internal board to one real Codex conversation.",
-			"priority": "medium",
-			"state": "planned",
-			"revision": 2,
-			"accepted_revision": 1,
-			"conversation_id": null,
-		})
-	}
-
-	fn board_page_value() -> serde_json::Value {
-		serde_json::json!({
-			"project_id": BOARD_PROJECT,
-			"state": "planned",
-			"after": null,
-			"page_size": 2,
-			"cards": [
-				board_card_value(BOARD_ITEM_1),
-				board_card_value(BOARD_ITEM_2),
-			],
-			"next_cursor": BOARD_ITEM_2,
-		})
-	}
 
 	#[test]
 	fn retired_stale_quota_state_is_rejected() {
@@ -5053,10 +4222,10 @@ mod tests {
 			proposal_evidence_need: text("Deterministic and external evidence"),
 			objective_outcome: text("One closed cycle is visible in GPUI"),
 			acceptance_criteria: vec![text("The causal cycle reopens after restart")],
-			validation_criteria: vec![text("The Quick Task request is not replayed")],
+			validation_criteria: vec![text("The Conversation request is not replayed")],
 			work_item_title: text("Implement the bounded slice"),
 			work_item_instructions: text("Return one deterministic result"),
-			working_directory: QuickTaskWorkingDirectory::new("/tmp/decodex")
+			working_directory: ConversationWorkingDirectory::new("/tmp/decodex")
 				.expect("canonical working directory"),
 		};
 		let message = ClientMessage::Command(CommandEnvelope {
@@ -5092,7 +4261,7 @@ mod tests {
 			validation_criteria: vec![text("Replay creates no duplicate")],
 			work_item_title: text("Continue the Program"),
 			work_item_instructions: text("Execute one finite next step"),
-			working_directory: QuickTaskWorkingDirectory::new("/tmp/decodex").unwrap(),
+			working_directory: ConversationWorkingDirectory::new("/tmp/decodex").unwrap(),
 		};
 		let continuation_message = ClientMessage::Command(CommandEnvelope {
 			version: CURRENT_VERSION,
@@ -5131,84 +4300,111 @@ mod tests {
 		});
 		assert!(decode_client_message(&serde_json::to_string(&invalid).unwrap()).is_err());
 	}
-
 	#[test]
-	fn project_registration_is_one_strict_local_repository_command() {
-		let payload = CommandPayload::RegisterProject {
-			project_id: WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap(),
-			lead_id: WorkItemBoardLeadId::new("31000000-0000-4000-8000-000000000001").unwrap(),
-			repository_identity: WireText::new("local/decodex-0123456789ab").unwrap(),
-			repository_root: WireText::new("/Users/x/code/acg-box/decodex").unwrap(),
-		};
-		let command = ClientMessage::Command(CommandEnvelope {
-			version: CURRENT_VERSION,
-			client_command_id: ClientCommandId::new("project-register").unwrap(),
-			idempotency_key: IdempotencyKey::new("project/register").unwrap(),
-			expected_revision: None,
-			correlation_id: CorrelationId::new(BOARD_PROJECT).unwrap(),
-			causation_id: None,
-			payload: payload.clone(),
-		});
-		let encoded = serde_json::to_string(&command).unwrap();
-		assert!(decode_client_message(&encoded).is_ok());
-		assert!(encoded.contains(r#""name":"register_project""#));
-		assert!(
-			serde_json::to_string(&ClientMessage::Command(CommandEnvelope {
-				expected_revision: Some(EntityRevision(1)),
-				..match command {
-					ClientMessage::Command(command) => command,
-					_ => unreachable!(),
+	fn retired_work_item_board_messages_fail_exact_decode() {
+		let command_arguments = [
+			(
+				"register_project",
+				serde_json::json!({
+					"project_id": "10000000-0000-4000-8000-000000000001",
+					"lead_id": "30000000-0000-4000-8000-000000000001",
+					"repository_identity": "local/decodex-0123456789ab",
+					"repository_root": "/Users/x/code/acg-box/decodex"
+				}),
+			),
+			(
+				"create_work_item",
+				serde_json::json!({
+					"work_item_id": "20000000-0000-4000-8000-000000000001",
+					"project_id": "10000000-0000-4000-8000-000000000001",
+					"title": "Implement the real conversation",
+					"description": "Execute one real Codex conversation."
+				}),
+			),
+			(
+				"start_work_item",
+				serde_json::json!({
+					"work_item_id": "20000000-0000-4000-8000-000000000001",
+					"project_id": "10000000-0000-4000-8000-000000000001",
+					"conversation_id": "40000000-0000-4000-8000-000000000001"
+				}),
+			),
+			(
+				"accept_work_item",
+				serde_json::json!({
+					"work_item_id": "20000000-0000-4000-8000-000000000001",
+					"project_id": "10000000-0000-4000-8000-000000000001",
+					"acceptance_id": "50000000-0000-4000-8000-000000000001",
+					"evidence_summary": "Verified provider evidence."
+				}),
+			),
+		];
+
+		for (index, (name, arguments)) in command_arguments.into_iter().enumerate() {
+			let message = serde_json::json!({
+				"type": "command",
+				"data": {
+					"version": CURRENT_VERSION,
+					"client_command_id": format!("retired-board-command-{index}"),
+					"idempotency_key": format!("retired/board/{index}"),
+					"expected_revision": null,
+					"correlation_id": format!("retired-board-correlation-{index}"),
+					"causation_id": null,
+					"payload": {"name": name, "arguments": arguments}
 				}
-			}))
-			.ok()
-			.and_then(|encoded| decode_client_message(&encoded).ok())
-			.is_none()
-		);
-		let CommandPayload::RegisterProject { project_id, lead_id, repository_identity, .. } =
-			payload
-		else {
-			unreachable!()
-		};
-		let invalid = CommandPayload::RegisterProject {
-			project_id,
-			lead_id,
-			repository_identity,
-			repository_root: WireText::new("relative/decodex").unwrap(),
-		};
-		let invalid = ClientMessage::Command(CommandEnvelope {
-			version: CURRENT_VERSION,
-			client_command_id: ClientCommandId::new("project-register-invalid").unwrap(),
-			idempotency_key: IdempotencyKey::new("project/register-invalid").unwrap(),
-			expected_revision: None,
-			correlation_id: CorrelationId::new(BOARD_PROJECT).unwrap(),
-			causation_id: None,
-			payload: invalid,
-		});
-		assert!(decode_client_message(&serde_json::to_string(&invalid).unwrap()).is_err());
+			});
+			assert!(
+				decode_client_message(&message.to_string()).is_err(),
+				"retired command {name} must not decode",
+			);
+		}
+
+		for payload in [
+			serde_json::json!({"name": "list_projects"}),
+			serde_json::json!({
+				"name": "get_work_item_board_page",
+				"arguments": {
+					"project_id": "10000000-0000-4000-8000-000000000001",
+					"state": "planned",
+					"after": null,
+					"page_size": 16
+				}
+			}),
+		] {
+			let message = serde_json::json!({
+				"type": "query",
+				"data": {
+					"version": CURRENT_VERSION,
+					"query_id": "retired-board-query",
+					"payload": payload
+				}
+			});
+			assert!(decode_client_message(&message.to_string()).is_err());
+		}
 	}
 
 	#[test]
-	fn quick_task_routing_recovery_has_clean_break_wire_shapes() {
+	fn conversation_routing_recovery_has_clean_break_wire_shapes() {
 		let source =
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical source ID");
 		let successor =
 			EntityId::new("11234567-89ab-4def-8123-456789abcdef").expect("canonical successor ID");
-		let create = CommandPayload::CreateQuickTask {
+		let create = CommandPayload::CreateConversation {
 			conversation_id: source.clone(),
 			work_item_id: None,
 			message: HistoryText::new("route this request").expect("bounded message"),
-			working_directory: QuickTaskWorkingDirectory::new("/tmp/work")
+			working_directory: ConversationWorkingDirectory::new("/tmp/work")
 				.expect("bounded working directory"),
-			execution: crate::QuickTaskExecutionSettings::new(
-				crate::QuickTaskModel::new("gpt-5.6-sol").expect("bounded model"),
-				crate::QuickTaskReasoningEffort::High,
+			execution: crate::ConversationExecutionSettings::new(
+				crate::ConversationModel::new("gpt-5.6-sol").expect("bounded model"),
+				crate::ConversationReasoningEffort::High,
 				false,
 			),
 		};
 		assert_eq!(
 			serde_json::to_value(&create).unwrap(),
 			serde_json::json!({
-				"name": "create_quick_task",
+				"name": "create_conversation",
 				"arguments": {
 					"conversation_id": source.as_str(),
 					"message": "route this request",
@@ -5223,16 +4419,18 @@ mod tests {
 		);
 		for (payload, name) in [
 			(
-				CommandPayload::ResumeQuickTaskRouting { conversation_id: source.clone() },
-				"resume_quick_task_routing",
+				CommandPayload::ResumeConversationRouting { conversation_id: source.clone() },
+				"resume_conversation_routing",
 			),
 			(
-				CommandPayload::CreateQuickTaskRoutingSuccessor { conversation_id: source.clone() },
-				"create_quick_task_routing_successor",
+				CommandPayload::CreateConversationRoutingSuccessor {
+					conversation_id: source.clone(),
+				},
+				"create_conversation_routing_successor",
 			),
 			(
-				CommandPayload::ResumeQuickTaskEstablishment { conversation_id: source.clone() },
-				"resume_quick_task_establishment",
+				CommandPayload::ResumeConversationEstablishment { conversation_id: source.clone() },
+				"resume_conversation_establishment",
 			),
 		] {
 			assert_eq!(
@@ -5245,24 +4443,27 @@ mod tests {
 		}
 		assert!(
 			serde_json::from_value::<CommandPayload>(serde_json::json!({
-				"name": "retry_quick_task_routing",
+				"name": "retry_conversation_routing",
 				"arguments": {"conversation_id": source.as_str()},
 			}))
 			.is_err()
 		);
 
-		let successor_summary = QuickTaskSummary::new(
+		let successor_summary = ConversationSummary::new(
 			successor.clone(),
+			crate::ConversationTitle::new("Route conversation").unwrap(),
+			None,
+			None,
 			EntityRevision(1),
 			1,
 			None,
 			None,
-			QuickTaskState::RoutingPending,
+			ConversationState::RoutingPending,
 			None,
-			Some(QuickTaskRecoveryAction::ResumeRouting),
+			Some(ConversationRecoveryAction::ResumeRouting),
 		)
 		.expect("routing-pending successor projection is valid");
-		let result = ResultPayload::QuickTaskRoutingSuccessorAccepted {
+		let result = ResultPayload::ConversationRoutingSuccessorAccepted {
 			source_conversation_id: source.clone(),
 			source_conversation_revision: EntityRevision(2),
 			successor: successor_summary,
@@ -5270,12 +4471,13 @@ mod tests {
 		assert_eq!(
 			serde_json::to_value(result).unwrap(),
 			serde_json::json!({
-				"name": "quick_task_routing_successor_accepted",
+				"name": "conversation_routing_successor_accepted",
 				"data": {
 					"source_conversation_id": source.as_str(),
 					"source_conversation_revision": 2,
 					"successor": {
 						"conversation_id": successor.as_str(),
+						"title": "Route conversation",
 						"conversation_revision": 1,
 						"projection_updated_at_micros": 1,
 						"state": "routing_pending",
@@ -5397,10 +4599,7 @@ mod tests {
 			rejection: AccountCommandRejectionDto::RouteSuperseded,
 			actual_revision: None,
 		};
-		assert_eq!(
-			serde_json::to_value(superseded).unwrap()["rejection"],
-			"route_superseded",
-		);
+		assert_eq!(serde_json::to_value(superseded).unwrap()["rejection"], "route_superseded",);
 	}
 
 	#[test]
@@ -5495,135 +4694,6 @@ mod tests {
 		assert!(encoded.contains("\"name\":\"get_doctor_status\""));
 		assert_eq!(serde_json::from_str::<ClientMessage>(&encoded).unwrap(), message);
 	}
-
-	#[test]
-	fn work_item_board_query_is_exact_current_and_round_trips_a_canonical_page() {
-		let project_id = WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap();
-		let page_size = WorkItemBoardPageSize::new(2).unwrap();
-		let page =
-			serde_json::from_value::<WorkItemBoardPage>(board_page_value()).expect("valid page");
-		let payload = QueryPayload::GetWorkItemBoardPage {
-			project_id: project_id.clone(),
-			state: Some(WorkItemState::Planned),
-			after: None,
-			page_size,
-		};
-
-		assert!(payload.is_supported_in(CURRENT_VERSION));
-		assert!(!payload.is_supported_in(crate::ProtocolVersion { major: 1, minor: 6 }));
-		assert!(page.matches_request(&project_id, Some(WorkItemState::Planned), None, page_size,));
-		assert_eq!(page.cards().len(), 2);
-		assert_eq!(page.next_cursor().map(|cursor| cursor.as_str()), Some(BOARD_ITEM_2));
-
-		let result = WorkItemBoardResult::Page(page);
-		let encoded_result = serde_json::to_value(&result).expect("valid result must serialize");
-		assert!(encoded_result["data"].get("total").is_none());
-		assert!(encoded_result["data"].get("total_count").is_none());
-		assert_eq!(serde_json::from_value::<WorkItemBoardResult>(encoded_result).unwrap(), result);
-
-		let message = ClientMessage::Query(QueryEnvelope {
-			version: CURRENT_VERSION,
-			query_id: QueryId::new("work-item-board").unwrap(),
-			payload,
-		});
-		let encoded = serde_json::to_string(&message).unwrap();
-
-		assert!(encoded.contains(r#""name":"get_work_item_board_page""#));
-		assert_eq!(decode_client_message(&encoded).unwrap(), message);
-	}
-
-	#[test]
-	fn work_item_board_card_and_page_matrix_rejects_noncanonical_shapes() {
-		assert_eq!(
-			WorkItemBoardProjectId::new("not-a-project"),
-			Err(WorkItemBoardContractError::InvalidIdentity)
-		);
-		assert_eq!(
-			super::WorkItemBoardTitle::new(""),
-			Err(WorkItemBoardContractError::InvalidTitle)
-		);
-		assert_eq!(WorkItemBoardPageSize::new(0), Err(WorkItemBoardContractError::InvalidPageSize));
-		assert_eq!(
-			WorkItemBoardPageSize::new(MAX_WORK_ITEM_BOARD_PAGE_SIZE + 1),
-			Err(WorkItemBoardContractError::InvalidPageSize)
-		);
-
-		let mut zero_revision = board_card_value(BOARD_ITEM_1);
-		zero_revision["revision"] = serde_json::json!(0);
-		let mut duplicate_relation = board_card_value(BOARD_ITEM_1);
-		duplicate_relation["depends_on_ids"] = serde_json::json!([BOARD_ITEM_3, BOARD_ITEM_3]);
-		let mut cross_bucket_relation = board_card_value(BOARD_ITEM_1);
-		cross_bucket_relation["depends_on_ids"] = serde_json::json!([BOARD_ITEM_3]);
-		cross_bucket_relation["blocked_by_ids"] = serde_json::json!([BOARD_ITEM_3]);
-		let mut self_relation = board_card_value(BOARD_ITEM_1);
-		self_relation["blocked_by_ids"] = serde_json::json!([BOARD_ITEM_1]);
-		let mut unknown_card_field = board_card_value(BOARD_ITEM_1);
-		unknown_card_field["unknown"] = serde_json::json!(true);
-
-		for (case, value) in [
-			("zero revision", zero_revision),
-			("duplicate relation", duplicate_relation),
-			("cross-bucket relation", cross_bucket_relation),
-			("self relation", self_relation),
-			("unknown card field", unknown_card_field),
-		] {
-			assert!(serde_json::from_value::<super::WorkItemBoardCard>(value).is_err(), "{case}");
-		}
-
-		let mut wrong_project = board_page_value();
-		wrong_project["project_id"] = serde_json::json!(OTHER_PROJECT);
-		let mut wrong_filter = board_page_value();
-		wrong_filter["state"] = serde_json::json!("ready");
-		let mut wrong_order = board_page_value();
-		wrong_order["cards"].as_array_mut().unwrap().swap(0, 1);
-		let mut wrong_cursor = board_page_value();
-		wrong_cursor["after"] = serde_json::json!(BOARD_ITEM_1);
-		let mut inconsistent_next_cursor = board_page_value();
-		inconsistent_next_cursor["next_cursor"] = serde_json::json!(BOARD_ITEM_1);
-		let mut unknown_page_field = board_page_value();
-		unknown_page_field["total_count"] = serde_json::json!(2);
-
-		for (case, value) in [
-			("wrong project", wrong_project),
-			("wrong filter", wrong_filter),
-			("wrong order", wrong_order),
-			("wrong cursor", wrong_cursor),
-			("inconsistent next cursor", inconsistent_next_cursor),
-			("unknown page field", unknown_page_field),
-		] {
-			assert!(serde_json::from_value::<WorkItemBoardPage>(value).is_err(), "{case}");
-		}
-
-		let page = serde_json::from_value::<WorkItemBoardPage>(board_page_value()).unwrap();
-		let other_project = WorkItemBoardProjectId::new(OTHER_PROJECT).unwrap();
-		let other_cursor = WorkItemBoardWorkItemId::new(BOARD_ITEM_3).unwrap();
-
-		assert!(!page.matches_request(
-			&other_project,
-			Some(WorkItemState::Planned),
-			None,
-			WorkItemBoardPageSize::new(2).unwrap(),
-		));
-		assert!(!page.matches_request(
-			&WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap(),
-			Some(WorkItemState::Ready),
-			None,
-			WorkItemBoardPageSize::new(2).unwrap(),
-		));
-		assert!(!page.matches_request(
-			&WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap(),
-			Some(WorkItemState::Planned),
-			Some(&other_cursor),
-			WorkItemBoardPageSize::new(2).unwrap(),
-		));
-		assert!(!page.matches_request(
-			&WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap(),
-			Some(WorkItemState::Planned),
-			None,
-			WorkItemBoardPageSize::new(1).unwrap(),
-		));
-	}
-
 	#[test]
 	fn public_wire_boundaries_reject_unknown_fields() {
 		let command = serde_json::json!({
@@ -5813,8 +4883,8 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":11},"#,
-				r#""artifact_cohort":7,"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":12},"#,
+				r#""artifact_cohort":8,"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -5823,7 +4893,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":11},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":12},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -5865,7 +4935,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":11},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":12},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -6108,7 +5178,7 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
 		let legacy = crate::ProtocolVersion { major: 1, minor: 5 };
-		let future = crate::ProtocolVersion { major: 2, minor: 12 };
+		let future = crate::ProtocolVersion { major: 2, minor: 13 };
 		let query = QueryPayload::GetAccountProfile {
 			account_id: account_id.clone(),
 			include_email: false,
@@ -6129,16 +5199,6 @@ mod tests {
 		assert!(query.is_supported_in(CURRENT_VERSION));
 		assert!(command.is_supported_in(CURRENT_VERSION));
 		assert!(event.is_supported_in(CURRENT_VERSION));
-		let board_query = QueryPayload::GetWorkItemBoardPage {
-			project_id: WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap(),
-			state: None,
-			after: None,
-			page_size: WorkItemBoardPageSize::new(1).unwrap(),
-		};
-		for version in [legacy, future] {
-			assert!(!board_query.is_supported_in(version));
-		}
-		assert!(board_query.is_supported_in(CURRENT_VERSION));
 	}
 
 	#[test]

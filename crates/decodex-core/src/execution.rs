@@ -10,7 +10,7 @@ use crate::{ConversationId, ManagedExecutionId, ManagedRunId, RuntimeSessionId, 
 /// its domain owner.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ExecutionConsumer {
-	/// One ordinary Conversation turn. Quick Task uses this variant.
+	/// One ordinary Conversation turn. Conversation uses this variant.
 	ConversationTurn {
 		/// Owning logical Conversation.
 		conversation_id: ConversationId,

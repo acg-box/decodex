@@ -242,9 +242,8 @@ impl Application for FixtureApplication {
 				AccountLoginMethod::BrowserRedirect => AccountLoginState::OpeningBrowser,
 				AccountLoginMethod::DeviceCode => AccountLoginState::RequestingCode,
 			},
-			AccountLoginRequest::Status { .. } | AccountLoginRequest::Cancel { .. } => {
-				AccountLoginState::Cancelled
-			},
+			AccountLoginRequest::Status { .. } | AccountLoginRequest::Cancel { .. } =>
+				AccountLoginState::Cancelled,
 		};
 		AccountLoginStatus {
 			session_id: request.session_id().clone(),
@@ -554,8 +553,8 @@ async fn exact_current_and_pre_payload_version_refusals_use_real_websockets() {
 		panic!("expected welcome");
 	};
 	assert_eq!(welcome.version, CURRENT_VERSION);
-	assert_eq!(welcome.supported.minimum_minor, 11);
-	assert_eq!(welcome.supported.maximum_minor, 11);
+	assert_eq!(welcome.supported.minimum_minor, 12);
+	assert_eq!(welcome.supported.maximum_minor, 12);
 	assert!(welcome.instance_id.is_some());
 	assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
 	execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
@@ -1539,13 +1538,9 @@ async fn replacement_publication_stops_service_without_unlinking_replacement() {
 	assert_eq!(receipt.cleanup_refusal, Some(LocalTransportRefusal::EndpointReplaced));
 	assert!(socket_path.exists(), "cleanup must preserve an unowned replacement");
 	assert!(matches!(
-		server(
-			"replacement-contender",
-			FixtureApplication::default(),
-			ServerConfig::default(),
-		)
-		.bind(transport)
-		.await,
+		server("replacement-contender", FixtureApplication::default(), ServerConfig::default(),)
+			.bind(transport)
+			.await,
 		Err(ServerError::LocalTransport(LocalTransportRefusal::EndpointInUse))
 	));
 

@@ -7,12 +7,12 @@ use serde::{Serialize, Serializer};
 use sha2::{Digest as _, Sha256};
 use zeroize::Zeroizing;
 
-use crate::quick_task::{ExactTurnId, QuickTaskTurnStatus};
+use crate::conversation::{ConversationTurnStatus, ExactTurnId};
 
 pub(crate) const MAX_APP_SERVER_FRAME_BYTES: usize = 1_024 * 1_024;
 
 /// Maximum UTF-8 bytes in an executable Codex thread identifier.
-pub const MAX_EXACT_THREAD_ID_BYTES: usize = 1_024;
+pub const MAX_EXACT_THREAD_ID_BYTES: usize = decodex_core::MAX_PROVIDER_THREAD_ID_BYTES;
 /// Maximum UTF-8 bytes in a Decodex-owned list search term.
 pub const MAX_THREAD_SEARCH_TERM_BYTES: usize = 512;
 /// Maximum UTF-8 bytes in a Codex thread title.
@@ -342,7 +342,7 @@ pub enum LossyThreadHistory {
 #[derive(Clone, Eq, PartialEq)]
 pub struct ExactSubmittedTurnReadback {
 	provider_turn_id: ExactTurnId,
-	status: QuickTaskTurnStatus,
+	status: ConversationTurnStatus,
 	assistant_text: String,
 	witness_digest: String,
 }
@@ -350,7 +350,7 @@ impl ExactSubmittedTurnReadback {
 	#[doc(hidden)]
 	pub fn from_protocol(
 		provider_turn_id: ExactTurnId,
-		status: QuickTaskTurnStatus,
+		status: ConversationTurnStatus,
 		assistant_text: String,
 		witness_digest: String,
 	) -> Result<Self, &'static str> {
@@ -371,7 +371,7 @@ impl ExactSubmittedTurnReadback {
 	}
 
 	/// Current exact provider Turn state.
-	pub const fn status(&self) -> QuickTaskTurnStatus {
+	pub const fn status(&self) -> ConversationTurnStatus {
 		self.status
 	}
 

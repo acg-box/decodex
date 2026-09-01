@@ -1,4 +1,4 @@
-//! Operator account client over the same-UID V2.11 daemon protocol.
+//! Operator account client over the same-UID V2.12 daemon protocol.
 
 use std::path::{Path, PathBuf};
 
@@ -321,12 +321,10 @@ fn prepare_command(command: AccountCommand) -> Result<PreparedCommand, CommandOu
 			CommandPayload::RecoverAccountOperation {
 				operation_id: entity(&args.operation_id)?,
 				action: match args.action {
-					RecoveryAction::Reconcile => {
-						AccountManualRecoveryActionDto::ReconcileExactStoreState
-					},
-					RecoveryAction::CancelBeforeEffect => {
-						AccountManualRecoveryActionDto::CancelBeforeEffect
-					},
+					RecoveryAction::Reconcile =>
+						AccountManualRecoveryActionDto::ReconcileExactStoreState,
+					RecoveryAction::CancelBeforeEffect =>
+						AccountManualRecoveryActionDto::CancelBeforeEffect,
 				},
 			},
 			Some(EntityRevision(args.expected_revision)),

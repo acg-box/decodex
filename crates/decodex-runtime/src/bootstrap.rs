@@ -10,8 +10,7 @@ use std::{
 	time::Duration,
 };
 
-#[cfg(target_os = "macos")]
-use crate::host_credentials::SqliteCredentialStore;
+#[cfg(target_os = "macos")] use crate::host_credentials::SqliteCredentialStore;
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
 	account_api::AccountApiRuntime,
@@ -23,6 +22,7 @@ use crate::{
 		ProductStore, ProductStoreUnavailableReason, ServiceApplication,
 		recover_pending_account_routes_once,
 	},
+	conversation::{ConversationCapability, ConversationReadiness, ConversationRuntime},
 	managed_repository_runtime::{
 		ManagedRepositoryCapability, ManagedRepositoryReadiness, ManagedRepositoryUnavailableReason,
 	},
@@ -30,7 +30,6 @@ use crate::{
 		ProcessGenerationControl, ProcessGenerationReadiness, ProcessSupervisorError,
 	},
 	provider_attempt_service::{ProviderAttemptControl, ProviderAttemptReadiness},
-	quick_task::{QuickTaskCapability, QuickTaskReadiness, QuickTaskRuntime},
 };
 use decodex_codex::CodexAdapter;
 use decodex_core::{
@@ -39,9 +38,9 @@ use decodex_core::{
 };
 use decodex_database::{BootstrapFailure, SqliteStore};
 use decodex_protocol::{
-	AppServerCapability, CURRENT_VERSION, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport,
-	DoctorStatus, LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal,
-	QuickTaskUnavailableReason, ServerId,
+	AppServerCapability, CURRENT_VERSION, ConversationUnavailableReason, DoctorCheck,
+	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, LocalTransportAuthority,
+	LocalTransportListener, LocalTransportRefusal, ServerId,
 };
 
 const ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT: Duration = Duration::from_secs(30);
@@ -89,7 +88,7 @@ pub struct ServiceBootstrap {
 	account_profiles: Option<AccountProfileRuntime>,
 	account_api: Option<Arc<AccountApiRuntime>>,
 	reset_cards: Option<ApiResetCardRuntime>,
-	quick_tasks: QuickTaskCapability,
+	conversations: ConversationCapability,
 	doctor: DoctorReport,
 	// Keep the one acquired daemon capability last so an unbound bootstrap
 	// releases it after every mutation service and application dependency.
@@ -116,9 +115,9 @@ impl ServiceBootstrap {
 		self.managed_repositories.readiness()
 	}
 
-	/// Return the independent immutable Quick Task startup projection.
-	pub const fn quick_task_readiness(&self) -> QuickTaskReadiness {
-		self.quick_tasks.readiness()
+	/// Return the independent immutable Conversation startup projection.
+	pub const fn conversation_readiness(&self) -> ConversationReadiness {
+		self.conversations.readiness()
 	}
 
 	/// Return the independent ProcessGeneration service readiness.
@@ -156,7 +155,7 @@ impl ServiceBootstrap {
 			account_profiles,
 			account_api,
 			reset_cards,
-			quick_tasks,
+			conversations,
 			doctor,
 			daemon_authority,
 		} = self;
@@ -164,14 +163,12 @@ impl ServiceBootstrap {
 		let account_observations = match (&accounts, &account_api) {
 			(Some(accounts), Some(account_api))
 				if account_profiles.is_some() || reset_cards.is_some() =>
-			{
 				Some(AccountObservationService::new(
 					Arc::clone(accounts),
 					Some(Arc::clone(account_api)),
 					account_profiles.clone(),
 					reset_cards.clone(),
-				))
-			},
+				)),
 			_ => None,
 		};
 		if let (ProductStore::Available(store), Some(accounts)) = (&store, &accounts) {
@@ -184,13 +181,12 @@ impl ServiceBootstrap {
 			.await;
 		}
 		let account_login = match (&store, &accounts) {
-			(ProductStore::Available(store), Some(accounts)) => {
+			(ProductStore::Available(store), Some(accounts)) =>
 				Some(Arc::new(crate::account_login::AccountLoginManager::new(
 					store.clone(),
 					Arc::clone(accounts),
 					account_observations.clone(),
-				)))
-			},
+				))),
 			_ => None,
 		};
 		let server = ProtocolServer::new(
@@ -202,7 +198,7 @@ impl ServiceBootstrap {
 				provider_attempts,
 				CodexAdapter::unavailable(),
 				blob_store,
-				quick_tasks,
+				conversations,
 				doctor,
 			)
 			.with_accounts(accounts)
@@ -218,7 +214,7 @@ impl ServiceBootstrap {
 struct DoctorInputs {
 	configuration: DoctorStatus,
 	product_store: DoctorStatus,
-	quick_task: DoctorStatus,
+	conversation: DoctorStatus,
 	server_identity: DoctorStatus,
 	shared_home: DoctorStatus,
 	managed_repository: DoctorStatus,
@@ -288,7 +284,7 @@ fn bootstrap_managed_repositories() -> ManagedRepositoryCapability {
 }
 
 #[cfg(target_os = "macos")]
-struct QuickTaskComposition {
+struct ConversationComposition {
 	store: Option<SqliteStore>,
 	blob_store: Option<BlobStore>,
 	accounts: Option<Arc<AccountService>>,
@@ -299,8 +295,8 @@ struct QuickTaskComposition {
 }
 
 #[cfg(target_os = "macos")]
-fn compose_quick_tasks(composition: QuickTaskComposition) -> QuickTaskCapability {
-	let QuickTaskComposition {
+fn compose_conversations(composition: ConversationComposition) -> ConversationCapability {
+	let ConversationComposition {
 		store,
 		blob_store,
 		accounts,
@@ -318,27 +314,21 @@ fn compose_quick_tasks(composition: QuickTaskComposition) -> QuickTaskCapability
 		execution_authorization,
 		launch_profile,
 	) {
-		(None, _, _, _, _, _, _) => {
-			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::ProductState)
-		},
-		(_, None, _, _, _, _, _) => {
-			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::BlobStore)
-		},
-		(_, _, None, _, _, _, _) => {
-			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::AccountService)
-		},
-		(_, _, _, None, _, _, _) => {
-			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::ProcessGeneration)
-		},
-		(_, _, _, _, None, _, _) => {
-			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::ProviderAttempt)
-		},
-		(_, _, _, _, _, None, _) => {
-			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::ExecutionAuthorization)
-		},
-		(_, _, _, _, _, _, None) => {
-			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::AppServerProfile)
-		},
+		(None, _, _, _, _, _, _) =>
+			ConversationCapability::Unavailable(ConversationUnavailableReason::ProductState),
+		(_, None, _, _, _, _, _) =>
+			ConversationCapability::Unavailable(ConversationUnavailableReason::BlobStore),
+		(_, _, None, _, _, _, _) =>
+			ConversationCapability::Unavailable(ConversationUnavailableReason::AccountService),
+		(_, _, _, None, _, _, _) =>
+			ConversationCapability::Unavailable(ConversationUnavailableReason::ProcessGeneration),
+		(_, _, _, _, None, _, _) =>
+			ConversationCapability::Unavailable(ConversationUnavailableReason::ProviderAttempt),
+		(_, _, _, _, _, None, _) => ConversationCapability::Unavailable(
+			ConversationUnavailableReason::ExecutionAuthorization,
+		),
+		(_, _, _, _, _, _, None) =>
+			ConversationCapability::Unavailable(ConversationUnavailableReason::AppServerProfile),
 		(
 			Some(store),
 			Some(blob_store),
@@ -348,7 +338,7 @@ fn compose_quick_tasks(composition: QuickTaskComposition) -> QuickTaskCapability
 			Some(execution_authorization),
 			Some(launch_profile),
 		) => match RunnerCapacity::daemon() {
-			Ok(capacity) => QuickTaskCapability::Ready(QuickTaskRuntime::new(
+			Ok(capacity) => ConversationCapability::Ready(ConversationRuntime::new(
 				store,
 				blob_store,
 				accounts,
@@ -358,7 +348,8 @@ fn compose_quick_tasks(composition: QuickTaskComposition) -> QuickTaskCapability
 				launch_profile,
 				capacity,
 			)),
-			Err(_) => QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::RunnerCapacity),
+			Err(_) =>
+				ConversationCapability::Unavailable(ConversationUnavailableReason::RunnerCapacity),
 		},
 	}
 }
@@ -373,7 +364,7 @@ async fn bootstrap_with_authority(
 	let (server_id, identity_status) = server_identity(identity);
 	let blob_store = BlobStore::open(paths.clone());
 	#[cfg(target_os = "macos")]
-	let quick_task_blob_store = match &blob_store {
+	let conversation_blob_store = match &blob_store {
 		Ok(store) => Some(store.clone()),
 		Err(_) => None,
 	};
@@ -390,9 +381,8 @@ async fn bootstrap_with_authority(
 	let (process_generations, process_generation_readiness) = match sqlite.clone() {
 		Some(store) => match ProcessGenerationControl::start(store).await {
 			Ok(control) => (Some(control), ProcessGenerationReadiness::Ready),
-			Err(ProcessSupervisorError::Platform) => {
-				(None, ProcessGenerationReadiness::PlatformUnavailable)
-			},
+			Err(ProcessSupervisorError::Platform) =>
+				(None, ProcessGenerationReadiness::PlatformUnavailable),
 			Err(_) => (None, ProcessGenerationReadiness::ProductStateUnavailable),
 		},
 		None => (None, ProcessGenerationReadiness::ProductStateUnavailable),
@@ -409,7 +399,7 @@ async fn bootstrap_with_authority(
 	let managed_repositories = bootstrap_managed_repositories();
 	let managed_repository = managed_repository_doctor(&managed_repositories);
 	#[cfg(target_os = "macos")]
-	let (accounts, account_profiles, account_api, reset_cards, quick_task_launch_profile) =
+	let (accounts, account_profiles, account_api, reset_cards, conversation_launch_profile) =
 		match sqlite.clone() {
 			Some(store) => {
 				let (service, profiles, api, runtime, launch_profile, status) =
@@ -431,25 +421,25 @@ async fn bootstrap_with_authority(
 		(None, None, None, None)
 	};
 	#[cfg(target_os = "macos")]
-	let quick_tasks = compose_quick_tasks(QuickTaskComposition {
+	let conversations = compose_conversations(ConversationComposition {
 		store: sqlite,
-		blob_store: quick_task_blob_store,
+		blob_store: conversation_blob_store,
 		accounts: accounts.as_ref().map(Arc::clone),
 		process_generations: process_generations.clone(),
 		provider_attempts: provider_attempts.clone(),
 		execution_authorization: process_execution_authorization,
-		launch_profile: quick_task_launch_profile,
+		launch_profile: conversation_launch_profile,
 	});
 	#[cfg(not(target_os = "macos"))]
-	let quick_tasks =
-		QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::UnsupportedPlatform);
-	let quick_task = quick_task_doctor(&quick_tasks);
+	let conversations =
+		ConversationCapability::Unavailable(ConversationUnavailableReason::UnsupportedPlatform);
+	let conversation = conversation_doctor(&conversations);
 	let doctor = doctor_report(
 		server_id.clone(),
 		DoctorInputs {
 			configuration: config_status,
 			product_store,
-			quick_task,
+			conversation,
 			server_identity: identity_status,
 			shared_home,
 			managed_repository,
@@ -471,7 +461,7 @@ async fn bootstrap_with_authority(
 		account_profiles,
 		account_api,
 		reset_cards,
-		quick_tasks,
+		conversations,
 		doctor,
 		daemon_authority: Ok(listener),
 	}
@@ -533,15 +523,15 @@ async fn bootstrap_macos_account_runtime(
 			Err(issue) => return unavailable_macos_account_runtime(None, None, issue),
 		};
 	let _ = service.reconcile_startup().await;
-	// Quick Tasks may still use the optional Codex process adapter, but account health no longer
+	// Conversations may still use the optional Codex process adapter, but account health no longer
 	// depends on its executable, callback, schema, or version.  Failure here only disables that
 	// separate capability.
-	let quick_task_launch_profile = AttestedAppServerProfile::attest(
+	let conversation_launch_profile = AttestedAppServerProfile::attest(
 		paths.root().as_path().to_owned(),
 		ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT,
 	)
 	.ok();
-	if let Some(profile) = &quick_task_launch_profile {
+	if let Some(profile) = &conversation_launch_profile {
 		let _ = service.attest_callback_capability(profile.account_callback_attestation()).await;
 	}
 	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
@@ -557,7 +547,7 @@ async fn bootstrap_macos_account_runtime(
 		None => DoctorStatus::Unavailable(DoctorIssue::Authentication),
 	};
 	let reset_cards = None;
-	(Some(service), account_profiles, api, reset_cards, quick_task_launch_profile, status)
+	(Some(service), account_profiles, api, reset_cards, conversation_launch_profile, status)
 }
 
 fn bootstrap_without_authority(
@@ -568,13 +558,14 @@ fn bootstrap_without_authority(
 	let server_id = unavailable_server_id();
 	let managed_repositories =
 		ManagedRepositoryCapability::unavailable(ManagedRepositoryUnavailableReason::ProductStore);
-	let quick_tasks = QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::ProductState);
+	let conversations =
+		ConversationCapability::Unavailable(ConversationUnavailableReason::ProductState);
 	let doctor = doctor_report(
 		server_id.clone(),
 		DoctorInputs {
 			configuration,
 			product_store,
-			quick_task: quick_task_doctor(&quick_tasks),
+			conversation: conversation_doctor(&conversations),
 			server_identity: DoctorStatus::Unknown(DoctorIssue::NotProbed),
 			shared_home: DoctorStatus::Unknown(DoctorIssue::NotProbed),
 			managed_repository: managed_repository_doctor(&managed_repositories),
@@ -596,7 +587,7 @@ fn bootstrap_without_authority(
 		account_profiles: None,
 		account_api: None,
 		reset_cards: None,
-		quick_tasks,
+		conversations,
 		doctor,
 		daemon_authority: Err(refusal),
 	}
@@ -606,13 +597,14 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 	let server_id = unavailable_server_id();
 	let managed_repositories =
 		ManagedRepositoryCapability::unavailable(ManagedRepositoryUnavailableReason::ProductStore);
-	let quick_tasks = QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::ProductState);
+	let conversations =
+		ConversationCapability::Unavailable(ConversationUnavailableReason::ProductState);
 	let doctor = doctor_report(
 		server_id.clone(),
 		DoctorInputs {
 			configuration: DoctorStatus::Unavailable(issue),
 			product_store: DoctorStatus::Unavailable(DoctorIssue::DatabaseNotConfigured),
-			quick_task: quick_task_doctor(&quick_tasks),
+			conversation: conversation_doctor(&conversations),
 			server_identity: DoctorStatus::Unavailable(DoctorIssue::ServerIdentityUnavailable),
 			shared_home: DoctorStatus::Unknown(DoctorIssue::NotProbed),
 			managed_repository: managed_repository_doctor(&managed_repositories),
@@ -634,7 +626,7 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		account_profiles: None,
 		account_api: None,
 		reset_cards: None,
-		quick_tasks,
+		conversations,
 		doctor,
 		daemon_authority: Err(LocalTransportRefusal::ConfigurationUnavailable),
 	}
@@ -655,25 +647,23 @@ fn managed_repository_doctor(capability: &ManagedRepositoryCapability) -> Doctor
 	}
 }
 
-fn quick_task_doctor(capability: &QuickTaskCapability) -> DoctorStatus {
+fn conversation_doctor(capability: &ConversationCapability) -> DoctorStatus {
 	match capability.readiness() {
-		QuickTaskReadiness::Ready => DoctorStatus::Ready,
-		QuickTaskReadiness::Unavailable(QuickTaskUnavailableReason::ProductState) => {
-			DoctorStatus::Unavailable(DoctorIssue::DatabaseNotConfigured)
-		},
-		QuickTaskReadiness::Unavailable(
-			QuickTaskUnavailableReason::AccountService
-			| QuickTaskUnavailableReason::ExecutionAuthorization,
+		ConversationReadiness::Ready => DoctorStatus::Ready,
+		ConversationReadiness::Unavailable(ConversationUnavailableReason::ProductState) =>
+			DoctorStatus::Unavailable(DoctorIssue::DatabaseNotConfigured),
+		ConversationReadiness::Unavailable(
+			ConversationUnavailableReason::AccountService
+			| ConversationUnavailableReason::ExecutionAuthorization,
 		) => DoctorStatus::Unavailable(DoctorIssue::Authentication),
-		QuickTaskReadiness::Unavailable(QuickTaskUnavailableReason::UnsupportedPlatform) => {
-			DoctorStatus::Unavailable(DoctorIssue::Disabled)
-		},
-		QuickTaskReadiness::Unavailable(
-			QuickTaskUnavailableReason::BlobStore
-			| QuickTaskUnavailableReason::ProcessGeneration
-			| QuickTaskUnavailableReason::ProviderAttempt
-			| QuickTaskUnavailableReason::AppServerProfile
-			| QuickTaskUnavailableReason::RunnerCapacity,
+		ConversationReadiness::Unavailable(ConversationUnavailableReason::UnsupportedPlatform) =>
+			DoctorStatus::Unavailable(DoctorIssue::Disabled),
+		ConversationReadiness::Unavailable(
+			ConversationUnavailableReason::BlobStore
+			| ConversationUnavailableReason::ProcessGeneration
+			| ConversationUnavailableReason::ProviderAttempt
+			| ConversationUnavailableReason::AppServerProfile
+			| ConversationUnavailableReason::RunnerCapacity,
 		) => DoctorStatus::Unavailable(DoctorIssue::Integrity),
 	}
 }
@@ -682,7 +672,7 @@ fn doctor_report(server_id: ServerId, inputs: DoctorInputs) -> DoctorReport {
 	let mut checks = vec![
 		DoctorCheck::new(DoctorComponent::Configuration, inputs.configuration),
 		DoctorCheck::new(DoctorComponent::ProductStore, inputs.product_store),
-		DoctorCheck::new(DoctorComponent::QuickTask, inputs.quick_task),
+		DoctorCheck::new(DoctorComponent::Conversation, inputs.conversation),
 		DoctorCheck::new(DoctorComponent::Protocol, DoctorStatus::Ready),
 		DoctorCheck::new(DoctorComponent::ProtocolVersion, DoctorStatus::Ready),
 		DoctorCheck::new(DoctorComponent::ServerIdentity, inputs.server_identity),
@@ -762,9 +752,8 @@ fn host_directory(path: &Path) -> Result<(), HostDirectoryError> {
 fn config_issue(error: ConfigError) -> DoctorIssue {
 	match error {
 		ConfigError::UnsupportedVersion => DoctorIssue::ConfigurationVersion,
-		ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. }) => {
-			DoctorIssue::ConfigurationMissing
-		},
+		ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. }) =>
+			DoctorIssue::ConfigurationMissing,
 		ConfigError::Path(
 			PathError::UnsafeRoot
 			| PathError::CodexOwnedRoot
@@ -804,13 +793,11 @@ pub(crate) async fn validate_local_database(root: DecodexRoot) -> Result<(), Loc
 
 const fn local_database_error(error: decodex_database::DatabaseError) -> LocalDatabaseError {
 	match sqlite_bootstrap_failure(error) {
-		BootstrapFailure::UnsafeHostPath | BootstrapFailure::UnsafeAuthority => {
-			LocalDatabaseError::UnsafeHostPath
-		},
+		BootstrapFailure::UnsafeHostPath | BootstrapFailure::UnsafeAuthority =>
+			LocalDatabaseError::UnsafeHostPath,
 		BootstrapFailure::Incompatible => LocalDatabaseError::Incompatible,
-		BootstrapFailure::Unreachable | BootstrapFailure::Authentication => {
-			LocalDatabaseError::Unavailable
-		},
+		BootstrapFailure::Unreachable | BootstrapFailure::Authentication =>
+			LocalDatabaseError::Unavailable,
 	}
 }
 

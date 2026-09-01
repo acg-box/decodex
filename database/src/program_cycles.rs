@@ -6,10 +6,10 @@ use std::{
 };
 
 use decodex_core::{
-	ConversationId, ObjectiveId, ObjectiveState, ProgramClaimId, ProgramEvidenceId,
-	ProgramEvidenceKind, ProgramId, ProgramObservationId, ProgramProposalId,
+	ConversationId, MAX_PROGRAM_PROJECTION_NODES, ObjectiveId, ObjectiveState, ProgramClaimId,
+	ProgramEvidenceId, ProgramEvidenceKind, ProgramId, ProgramObservationId, ProgramProposalId,
 	ProgramReviewClassification, ProgramReviewId, ProgramState, WorkItemId, WorkItemState,
-	MAX_PROGRAM_PROJECTION_NODES, contains_credential_material,
+	contains_credential_material,
 };
 use rusqlite::{Connection, OptionalExtension as _, Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
@@ -214,7 +214,7 @@ pub struct ProgramObjectiveRecord {
 	pub updated_at_micros: i64,
 }
 
-/// Persisted WorkItem and its optional ordinary Quick Task binding.
+/// Persisted WorkItem and its optional ordinary Conversation binding.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ProgramWorkItemRecord {
 	pub work_item_id: WorkItemId,
@@ -352,47 +352,42 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			if let Some(domain_pack) = &create.domain_pack {
-				insert_domain_pack_binding(
-					&transaction,
-					&create.program_id,
-					domain_pack,
-					now,
-				)?;
+				insert_domain_pack_binding(&transaction, &create.program_id, domain_pack, now)?;
 			}
-				transaction
-					.execute(
-						"INSERT INTO program_entities (entity_id, program_id, kind)
+			transaction
+				.execute(
+					"INSERT INTO program_entities (entity_id, program_id, kind)
 						 VALUES (?1, ?1, 'program')",
-						params![create.program_id.as_str()],
-					)
-					.map_err(sql_error)?;
-				insert_program_step(
-					&transaction,
-					&ProgramStep {
-						program_id: &create.program_id,
-						predecessor_review_id: None,
-						signal_id: &create.signal_id,
-						claim_id: &create.claim_id,
-						proposal_id: &create.proposal_id,
-						objective_id: &create.objective_id,
-						work_item_id: &create.work_item_id,
-						signal_source: &create.signal_source,
-						signal_summary: &create.signal_summary,
-						signal_observed_at_micros: create.signal_observed_at_micros,
-						claim_statement: &create.claim_statement,
-						proposal_summary: &create.proposal_summary,
-						proposal_expected_effect: &create.proposal_expected_effect,
-						proposal_risk: &create.proposal_risk,
-						proposal_evidence_need: &create.proposal_evidence_need,
-						objective_outcome: &create.objective_outcome,
-						acceptance_criteria: &create.acceptance_criteria,
-						validation_criteria: &create.validation_criteria,
-						work_item_title: &create.work_item_title,
-						work_item_instructions: &create.work_item_instructions,
-						working_directory: &create.working_directory,
-					},
-					now,
-				)?;
+					params![create.program_id.as_str()],
+				)
+				.map_err(sql_error)?;
+			insert_program_step(
+				&transaction,
+				&ProgramStep {
+					program_id: &create.program_id,
+					predecessor_review_id: None,
+					signal_id: &create.signal_id,
+					claim_id: &create.claim_id,
+					proposal_id: &create.proposal_id,
+					objective_id: &create.objective_id,
+					work_item_id: &create.work_item_id,
+					signal_source: &create.signal_source,
+					signal_summary: &create.signal_summary,
+					signal_observed_at_micros: create.signal_observed_at_micros,
+					claim_statement: &create.claim_statement,
+					proposal_summary: &create.proposal_summary,
+					proposal_expected_effect: &create.proposal_expected_effect,
+					proposal_risk: &create.proposal_risk,
+					proposal_evidence_need: &create.proposal_evidence_need,
+					objective_outcome: &create.objective_outcome,
+					acceptance_criteria: &create.acceptance_criteria,
+					validation_criteria: &create.validation_criteria,
+					work_item_title: &create.work_item_title,
+					work_item_instructions: &create.work_item_instructions,
+					working_directory: &create.working_directory,
+				},
+				now,
+			)?;
 			let record = read_program_cycle(&transaction, &create.program_id)?
 				.ok_or_else(|| incompatible("created Program cycle"))?;
 			write_receipt(
@@ -407,7 +402,7 @@ impl SqliteStore {
 			transaction.commit().map_err(sql_error)?;
 			Ok(record)
 		})
-			.await
+		.await
 	}
 
 	/// Bind one built-in Domain Pack to an existing Program exactly once.
@@ -585,9 +580,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			if unreviewed != 0 {
-				return Err(StoreError::InvalidInput(
-					"Program already has an unreviewed cycle",
-				));
+				return Err(StoreError::InvalidInput("Program already has an unreviewed cycle"));
 			}
 			let terminal_reviews: i64 = transaction
 				.query_row(
@@ -734,12 +727,8 @@ impl SqliteStore {
 			};
 			let program_id =
 				ProgramId::new(program_id).map_err(|_| incompatible("Program identity"))?;
-			let domain_pack = optional_pack_binding(
-				pack_id,
-				pack_version,
-				pack_digest,
-				bound_at_micros,
-			)?;
+			let domain_pack =
+				optional_pack_binding(pack_id, pack_version, pack_digest, bound_at_micros)?;
 			Ok(Some(ProgramWorkItemDomainPack { program_id, domain_pack }))
 		})
 		.await
@@ -1140,10 +1129,9 @@ fn validate_pack_identity(identity: &DomainPackIdentity) -> Result<(), StoreErro
 			&& value.len() <= 128
 			&& value.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
 			&& value.as_bytes().last().is_some_and(u8::is_ascii_alphanumeric)
-			&& value
-				.bytes()
-				.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b".-".contains(&byte))
-			&& value.contains('.')
+			&& value.bytes().all(|byte| {
+				byte.is_ascii_lowercase() || byte.is_ascii_digit() || b".-".contains(&byte)
+			}) && value.contains('.')
 			&& !value.contains("..")
 	};
 	let version_parts = identity.pack_version.split('.').collect::<Vec<_>>();
@@ -1557,12 +1545,8 @@ fn optional_pack_binding(
 	match (pack_id, pack_version, pack_digest, bound_at_micros) {
 		(None, None, None, None) => Ok(None),
 		(Some(pack_id), Some(pack_version), Some(pack_digest), Some(bound_at_micros)) => {
-			let binding = ProgramDomainPackBinding {
-				pack_id,
-				pack_version,
-				pack_digest,
-				bound_at_micros,
-			};
+			let binding =
+				ProgramDomainPackBinding { pack_id, pack_version, pack_digest, bound_at_micros };
 			validate_persisted_pack_binding(&binding)?;
 			Ok(Some(binding))
 		},
@@ -1570,9 +1554,7 @@ fn optional_pack_binding(
 	}
 }
 
-fn validate_persisted_pack_binding(
-	binding: &ProgramDomainPackBinding,
-) -> Result<(), StoreError> {
+fn validate_persisted_pack_binding(binding: &ProgramDomainPackBinding) -> Result<(), StoreError> {
 	validate_pack_identity(&DomainPackIdentity {
 		pack_id: binding.pack_id.clone(),
 		pack_version: binding.pack_version.clone(),
@@ -1623,7 +1605,7 @@ fn parse_objective_state_sql(value: &str) -> rusqlite::Result<ObjectiveState> {
 	}
 }
 
-fn parse_work_item_state_sql(value: &str) -> rusqlite::Result<WorkItemState> {
+pub(crate) fn parse_work_item_state_sql(value: &str) -> rusqlite::Result<WorkItemState> {
 	match value {
 		"ready" => Ok(WorkItemState::Ready),
 		"running" => Ok(WorkItemState::Running),
@@ -1755,7 +1737,7 @@ mod tests {
 	use tempfile::tempdir;
 
 	use super::*;
-	use crate::CreateQuickTaskConversation;
+	use crate::CreateConversationRecord;
 
 	fn id<T>(
 		value: &str,
@@ -1770,9 +1752,8 @@ mod tests {
 			domain_pack: Some(DomainPackIdentity {
 				pack_id: "decodex.dev".to_owned(),
 				pack_version: "1.0.0".to_owned(),
-				pack_digest:
-					"1111111111111111111111111111111111111111111111111111111111111111"
-						.to_owned(),
+				pack_digest: "1111111111111111111111111111111111111111111111111111111111111111"
+					.to_owned(),
 			}),
 			signal_id: id("31000000-0000-4000-8000-000000000001", ProgramObservationId::new),
 			claim_id: id("32000000-0000-4000-8000-000000000001", ProgramClaimId::new),
@@ -1883,9 +1864,8 @@ mod tests {
 		let identity = DomainPackIdentity {
 			pack_id: "decodex.dev".to_owned(),
 			pack_version: "1.0.0".to_owned(),
-			pack_digest:
-				"2222222222222222222222222222222222222222222222222222222222222222"
-					.to_owned(),
+			pack_digest: "2222222222222222222222222222222222222222222222222222222222222222"
+				.to_owned(),
 		};
 		let binding = BindProgramDomainPack {
 			program_id: create.program_id.clone(),
@@ -1894,12 +1874,12 @@ mod tests {
 		};
 		let command =
 			CommandIdentity::new("program-bind-pack", b"bind pack").expect("command identity");
-		let bound = store
-			.bind_program_domain_pack(&command, &binding)
-			.await
-			.expect("bind Pack");
+		let bound = store.bind_program_domain_pack(&command, &binding).await.expect("bind Pack");
 		assert_eq!(bound.program.revision, 2);
-		assert_eq!(bound.domain_pack.as_ref().map(|pack| pack.pack_id.as_str()), Some("decodex.dev"));
+		assert_eq!(
+			bound.domain_pack.as_ref().map(|pack| pack.pack_id.as_str()),
+			Some("decodex.dev")
+		);
 		assert_eq!(
 			store.bind_program_domain_pack(&command, &binding).await.expect("replay"),
 			bound
@@ -1969,7 +1949,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn quick_task_creation_binds_one_work_item_in_the_same_transaction() {
+	async fn conversation_creation_binds_one_work_item_in_the_same_transaction() {
 		let directory = tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
@@ -1985,10 +1965,10 @@ mod tests {
 		let conversation_id = ConversationId::new("36000000-0000-4000-8000-000000000001")
 			.expect("Conversation identity");
 		store
-			.create_quick_task_conversation(
-				&CommandIdentity::new("program-quick-task-1", b"program Quick Task")
+			.create_conversation(
+				&CommandIdentity::new("program-conversation-1", b"program Conversation")
 					.expect("command identity"),
-				&CreateQuickTaskConversation {
+				&CreateConversationRecord {
 					conversation_id: conversation_id.clone(),
 					work_item_id: Some(create.work_item_id.clone()),
 					title: "Program work".to_owned(),
@@ -2000,14 +1980,27 @@ mod tests {
 				},
 			)
 			.await
-			.expect("create bound Quick Task");
+			.expect("create bound Conversation");
 		let record = store
 			.program_cycle(&create.program_id)
 			.await
 			.expect("read Program")
 			.expect("Program exists");
 		assert_eq!(record.work_items[0].state, WorkItemState::Running);
-		assert_eq!(record.work_items[0].conversation_id, Some(conversation_id));
+		assert_eq!(record.work_items[0].conversation_id, Some(conversation_id.clone()));
+		let projection = store
+			.read_ordinary_task_conversations(Some(&conversation_id), None, 1)
+			.await
+			.expect("read bound Conversation");
+		assert!(matches!(
+			projection.as_slice(),
+			[crate::OrdinaryTaskConversationProjection::Current(row)]
+				if row.title == create.work_item_title
+					&& row.program_work_item.as_ref().is_some_and(|context|
+						context.program_id == create.program_id
+						&& context.work_item_id == create.work_item_id
+						&& context.instructions == create.work_item_instructions)
+		));
 	}
 
 	#[tokio::test]
@@ -2027,10 +2020,10 @@ mod tests {
 		let conversation_id = ConversationId::new("36000000-0000-4000-8000-000000000001")
 			.expect("Conversation identity");
 		store
-			.create_quick_task_conversation(
-				&CommandIdentity::new("program-quick-task-1", b"program Quick Task")
+			.create_conversation(
+				&CommandIdentity::new("program-conversation-1", b"program Conversation")
 					.expect("command identity"),
-				&CreateQuickTaskConversation {
+				&CreateConversationRecord {
 					conversation_id: conversation_id.clone(),
 					work_item_id: Some(create.work_item_id.clone()),
 					title: "Program work".to_owned(),
@@ -2042,7 +2035,7 @@ mod tests {
 				},
 			)
 			.await
-			.expect("create bound Quick Task");
+			.expect("create bound Conversation");
 
 		// This unit fixture isolates the review predicate. The provider owner has its own
 		// complete foreign-key and mutation tests; here we provide its exact settled public facts.
@@ -2121,11 +2114,8 @@ mod tests {
 		);
 		assert_eq!(reviewed.objectives[0].state, ObjectiveState::Active);
 
-		let continuation = continuation_fixture(
-			&create,
-			review.review_id.clone(),
-			reviewed.program.revision,
-		);
+		let continuation =
+			continuation_fixture(&create, review.review_id.clone(), reviewed.program.revision);
 		let continue_command = CommandIdentity::new("program-continue-1", b"program continue")
 			.expect("continuation command");
 		let continued = store
@@ -2137,10 +2127,7 @@ mod tests {
 		assert_eq!(continued.work_items.len(), 2);
 		assert_eq!(continued.objectives[0].state, ObjectiveState::Abandoned);
 		assert_eq!(continued.objectives[1].state, ObjectiveState::Active);
-		assert_eq!(
-			continued.signals[1].predecessor_review_id.as_ref(),
-			Some(&review.review_id)
-		);
+		assert_eq!(continued.signals[1].predecessor_review_id.as_ref(), Some(&review.review_id));
 		assert_eq!(
 			store
 				.continue_program(&continue_command, &continuation)

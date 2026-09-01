@@ -211,7 +211,7 @@ def inspect_database(path: Path) -> dict[str, object]:
         task_profile = connection.execute(
             "SELECT revision, instructions FROM role_profiles WHERE role = 'task'"
         ).fetchone()
-        quick_task_request_columns = {
+        conversation_request_columns = {
             row[1]: (row[2], row[3], row[4])
             for row in connection.execute("PRAGMA table_info(quick_task_requests)")
         }
@@ -247,8 +247,8 @@ def inspect_database(path: Path) -> dict[str, object]:
     if task_profile is None or task_profile[0] != 2 or not task_profile[1]:
         raise GateFailure("Task RoleProfile does not satisfy the executable contract")
     for column in ("model", "reasoning_effort", "fast"):
-        if column not in quick_task_request_columns:
-            raise GateFailure("Quick Task execution settings are missing")
+        if column not in conversation_request_columns:
+            raise GateFailure("Conversation execution settings are missing")
     if "predecessor_review_id" not in program_signal_columns:
         raise GateFailure("Program continuation lineage is missing")
     for column in ("program_id", "pack_id", "pack_version", "pack_digest"):
@@ -262,10 +262,10 @@ def inspect_database(path: Path) -> dict[str, object]:
         "migration_sha256": [migration[2] for migration in expected_migrations],
         "schema_version": user_version,
         "table_count": len(tables),
-        "quick_task_execution_columns": sorted(
+        "conversation_execution_columns": sorted(
             column
             for column in ("model", "reasoning_effort", "fast")
-            if column in quick_task_request_columns
+            if column in conversation_request_columns
         ),
         "program_continuation_lineage": "predecessor_review_id",
         "program_domain_pack_binding": "immutable",
