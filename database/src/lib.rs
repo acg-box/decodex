@@ -6,6 +6,7 @@ mod account_profiles;
 mod accounts;
 mod command;
 mod continuations;
+mod conversation_routing;
 mod conversations;
 mod credentials;
 mod desktop_settings;
@@ -14,7 +15,6 @@ mod migrations;
 mod process_generations;
 mod program_cycles;
 mod provider_attempts;
-mod quick_task_routing;
 mod role_profiles;
 mod runtime_sessions;
 mod transfers;
@@ -36,22 +36,27 @@ pub use self::{
 	continuations::{
 		ContextPackRecord, ContinuationPlanEffect, PlanContinuation, PlanInitialThreadContinuation,
 	},
+	conversation_routing::{
+		BindConversationContinuation, ConversationContinuationBinding, ConversationInitialRoute,
+		ConversationInitialRouteOutcome, RouteConversationInitial,
+	},
 	conversations::{
-		AdmitInitialQuickTaskTurn, ArchiveLocalQuickTaskConversation,
-		ArchiveLocalQuickTaskConversationOutcome, ArchiveQuickTaskConversation,
-		ArchiveQuickTaskConversationOutcome, ArchivedQuickTaskConversation,
-		CreateQuickTaskConversation, CreateQuickTaskRoutingSuccessor, HistoryCursor, HistoryEntry,
-		HistoryPage, InitialQuickTaskTurnAdmissionOutcome, InitialQuickTaskTurnAdmissionReadback,
-		InitialQuickTaskTurnAdmissionRejection, OrdinaryTaskConversationCursor,
-		OrdinaryTaskConversationProjection, OrdinaryTaskConversationReadback,
-		OrdinaryTaskPreSessionState, PendingQuickTaskTerminalizationReadback,
-		QuickTaskAssistantPrefixReadback, QuickTaskRequest, QuickTaskRoutingSuccessor,
-		QuickTaskRoutingSuccessorOutcome, QuickTaskTerminalizationOutcome,
-		QuickTaskTerminalizationReadback, ReconcileStrandedQuickTaskTurn,
-		ReconcileStrandedQuickTaskTurnOutcome, RecordHistoryItem, RecoverUnknownQuickTaskTurn,
-		RecoverUnknownQuickTaskTurnOutcome, RecoveredUnknownQuickTaskTurn, StoredConversation,
-		TerminalizeQuickTaskTurn, TurnReservationOutcome, TurnReservationReadback,
-		UnknownQuickTaskAttemptReadback,
+		AdmitInitialConversationTurn, ArchiveConversationOutcome, ArchiveConversationRecord,
+		ArchiveLocalConversationOutcome, ArchiveLocalConversationRecord,
+		ArchivedConversationRecord, ConversationAssistantPrefixReadback, ConversationRequest,
+		ConversationRoutingSuccessor, ConversationRoutingSuccessorOutcome,
+		ConversationTerminalizationOutcome, ConversationTerminalizationReadback,
+		CreateConversationRecord, CreateConversationRoutingSuccessor, HistoryCursor, HistoryEntry,
+		HistoryPage, InitialConversationTurnAdmissionOutcome,
+		InitialConversationTurnAdmissionReadback, InitialConversationTurnAdmissionRejection,
+		OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,
+		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState,
+		PendingConversationTerminalizationReadback, ProgramWorkItemContextReadback,
+		ReconcileStrandedConversationTurn, ReconcileStrandedConversationTurnOutcome,
+		RecordHistoryItem, RecoverUnknownConversationTurn, RecoverUnknownConversationTurnOutcome,
+		RecoveredUnknownConversationTurn, StoredConversation, TerminalizeConversationTurn,
+		TurnReservationOutcome, TurnReservationReadback, UnknownConversationAttemptReadback,
+		bounded_conversation_title,
 	},
 	credentials::{CredentialKey, CredentialRecord},
 	desktop_settings::DesktopSettings,
@@ -72,23 +77,19 @@ pub use self::{
 		PrepareProviderAttemptOutcome, ProviderAttemptMutation, ProviderAttemptMutationOutcome,
 		ProviderAttemptRejection, RuntimeSessionBindingReceipt,
 	},
-	quick_task_routing::{
-		BindQuickTaskContinuation, QuickTaskContinuationBinding, QuickTaskInitialRoute,
-		QuickTaskInitialRouteOutcome, RouteQuickTaskInitial,
-	},
 	role_profiles::RoleProfileRole,
 	runtime_sessions::{
-		BindRuntimeSessionThread, BindRuntimeSessionThreadOutcome, FenceRuntimeSessionThreadStart,
-		FenceRuntimeSessionThreadStartOutcome, FreshQuickTaskProcessGeneration,
+		BindRuntimeSessionThread, BindRuntimeSessionThreadOutcome,
+		ConversationPreEffectEvidenceKind, ConversationProcessGenerationReadback,
+		ConversationProcessGenerationRejection, ConversationThreadEstablishmentReadback,
+		ConversationThreadStartNonEffect, FenceRuntimeSessionThreadStart,
+		FenceRuntimeSessionThreadStartOutcome, FreshConversationProcessGeneration,
 		FreshRuntimeSessionThreadStart, OrdinaryRuntimeSessionResumeReadback,
-		PrepareQuickTaskProcessGeneration, PrepareQuickTaskProcessGenerationOutcome,
-		QuickTaskPreEffectEvidenceKind, QuickTaskProcessGenerationReadback,
-		QuickTaskProcessGenerationRejection, QuickTaskThreadEstablishmentReadback,
-		QuickTaskThreadStartNonEffect, ReconcileQuickTaskThreadEstablishment,
-		RuntimeSessionAccountSnapshot, RuntimeSessionProfileSnapshot,
-		RuntimeSessionThreadBindingReadback, RuntimeSessionThreadEstablishmentRejection,
-		RuntimeSessionThreadFenceReadback, StoredRuntimeSession,
-		SuccessfulRuntimeSessionThreadStart,
+		PrepareConversationProcessGeneration, PrepareConversationProcessGenerationOutcome,
+		ReconcileConversationThreadEstablishment, RuntimeSessionAccountSnapshot,
+		RuntimeSessionProfileSnapshot, RuntimeSessionThreadBindingReadback,
+		RuntimeSessionThreadEstablishmentRejection, RuntimeSessionThreadFenceReadback,
+		StoredRuntimeSession, SuccessfulRuntimeSessionThreadStart,
 	},
 	transfers::{
 		LocalAccountTransfer, LocalAccountTransferBatch, LocalAccountTransferError,
@@ -96,8 +97,7 @@ pub use self::{
 	},
 };
 
-#[cfg(unix)]
-use std::os::unix::fs::MetadataExt as _;
+#[cfg(unix)] use std::os::unix::fs::MetadataExt as _;
 use std::{
 	fs::File,
 	path::{Path, PathBuf},
@@ -235,8 +235,7 @@ impl SqliteStore {
 	#[cfg(test)]
 	fn open_test(path: &Path) -> Result<Self, DatabaseError> {
 		use std::fs::OpenOptions;
-		#[cfg(unix)]
-		use std::os::unix::fs::OpenOptionsExt as _;
+		#[cfg(unix)] use std::os::unix::fs::OpenOptionsExt as _;
 
 		let mut options = OpenOptions::new();
 		options.read(true).write(true).create(true);
@@ -284,8 +283,7 @@ pub(crate) fn unix_micros() -> Result<i64, DatabaseError> {
 #[cfg(test)]
 mod tests {
 	use std::fs;
-	#[cfg(unix)]
-	use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _, symlink};
+	#[cfg(unix)] use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _, symlink};
 
 	use rusqlite::Connection;
 	use serde_json::json;
@@ -1004,7 +1002,8 @@ mod tests {
 		let second_request = format!(
 			r#"{{"name":"route_account","arguments":{{"operation_id":"{OPERATION_TWO}","account_id":"{second_account}","expected_account_revision":1}}}}"#,
 		);
-		let second = CommandIdentity::new("second-pending-route", second_request.as_bytes()).unwrap();
+		let second =
+			CommandIdentity::new("second-pending-route", second_request.as_bytes()).unwrap();
 		let superseded = json!({"outcome": "rejected", "reason": "route_superseded"});
 		assert!(matches!(
 			store

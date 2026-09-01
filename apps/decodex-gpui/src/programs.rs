@@ -235,7 +235,7 @@ impl Programs {
 			node(
 				conversation_id.clone(),
 				ProgramNodeKind::Run,
-				"Codex Quick Task",
+				"Codex Conversation",
 				"Execution used the existing app-server worker path.",
 				"ready",
 				None,
@@ -327,7 +327,7 @@ impl Programs {
 				work_item_2_id.clone(),
 				ProgramNodeKind::WorkItem,
 				"Prove Repeatable Program Loop V1",
-				"Exercise one additional cycle through the ordinary Quick Task path.",
+				"Exercise one additional cycle through the ordinary Conversation path.",
 				"done",
 				None,
 				Some(conversation_2_id.clone()),
@@ -337,7 +337,7 @@ impl Programs {
 			node(
 				conversation_2_id.clone(),
 				ProgramNodeKind::Run,
-				"Codex Quick Task",
+				"Codex Conversation",
 				"The second cycle reused the existing app-server worker path.",
 				"ready",
 				None,
@@ -441,7 +441,7 @@ impl Programs {
 				namespace: text("finance"),
 				view: DomainPackViewKind::GraphInspector,
 				capabilities: vec![DomainPackCapabilityDto {
-					id: text("codex.quick_task"),
+					id: text("codex.conversation"),
 					status: DomainPackCapabilityStatus::Granted,
 				}],
 				entity_types: vec![
@@ -627,7 +627,7 @@ impl Programs {
 				work_item_3_id.clone(),
 				ProgramNodeKind::WorkItem,
 				"Prove the built-in Domain Pack boundary",
-				"Validate one development projection through the ordinary Quick Task path.",
+				"Validate one development projection through the ordinary Conversation path.",
 				"done",
 				None,
 				Some(conversation_3_id.clone()),
@@ -637,7 +637,7 @@ impl Programs {
 			node(
 				conversation_3_id.clone(),
 				ProgramNodeKind::Run,
-				"Codex Quick Task",
+				"Codex Conversation",
 				"The third cycle used the same account, process, and provider safety path.",
 				"ready",
 				None,
@@ -726,7 +726,7 @@ impl Programs {
 				namespace: text("dev"),
 				view: DomainPackViewKind::GraphInspector,
 				capabilities: vec![DomainPackCapabilityDto {
-					id: text("codex.quick_task"),
+					id: text("codex.conversation"),
 					status: DomainPackCapabilityStatus::Granted,
 				}],
 				entity_types: vec![
@@ -751,13 +751,10 @@ impl Programs {
 					kind: text("dev.change"),
 					title: text("Prove the built-in Domain Pack boundary"),
 					summary: text(
-						"Validate one development projection through the ordinary Quick Task path.",
+						"Validate one development projection through the ordinary Conversation path.",
 					),
 					state: text("done"),
-					source: Some(
-						WireText::new(format!("codex://threads/{}", conversation_3_id.as_str()))
-							.expect("visual Conversation source is bounded"),
-					),
+					source: None,
 					fields: vec![domain_field("Work item", work_item_3_id.as_str())],
 				},
 				DomainEntityDto {
@@ -843,8 +840,9 @@ impl Programs {
 
 	/// Remember the exact Conversation that is about to bind the selected Program WorkItem.
 	///
-	/// The binding commits inside the ordinary Quick Task transaction. The subsequent Quick Task
-	/// publication is therefore the first safe point at which to refresh the Program projection.
+	/// The binding commits inside the ordinary Conversation transaction. The subsequent
+	/// Conversation publication is therefore the first safe point at which to refresh the Program
+	/// projection.
 	pub(crate) fn expect_execution(&self, conversation_id: EntityId) {
 		let mut state = self.lock();
 		state.pending_execution = Some(conversation_id);
@@ -1047,8 +1045,8 @@ impl Programs {
 		let mut query_queued = false;
 		match &event.payload {
 			EventPayload::ProgramCycleChanged { cycle } => state.apply_cycle((**cycle).clone()),
-			EventPayload::QuickTaskConversationChanged { conversation }
-			| EventPayload::QuickTaskTurnFinished { conversation, .. }
+			EventPayload::ConversationChanged { conversation }
+			| EventPayload::ConversationTurnFinished { conversation, .. }
 				if state.pending_execution.as_ref() == Some(&conversation.conversation_id)
 					|| state.cycle.as_ref().is_some_and(|cycle| {
 						cycle.nodes.iter().any(|node| {
@@ -1448,29 +1446,25 @@ struct InFlightCommand {
 
 fn command_matches_cycle(command: &CommandEnvelope, cycle: &ProgramCycleDto) -> bool {
 	match &command.payload {
-		CommandPayload::CreateProgramCycle { draft } => {
-			cycle.program.program_id == draft.program_id
-		},
-		CommandPayload::BindProgramDomainPack { program_id, domain_pack_id } => {
+		CommandPayload::CreateProgramCycle { draft } =>
+			cycle.program.program_id == draft.program_id,
+		CommandPayload::BindProgramDomainPack { program_id, domain_pack_id } =>
 			cycle.program.program_id == *program_id
 				&& cycle
 					.domain_pack
 					.as_ref()
-					.is_some_and(|projection| projection.descriptor.id == *domain_pack_id)
-		},
-		CommandPayload::ContinueProgram { continuation } => {
+					.is_some_and(|projection| projection.descriptor.id == *domain_pack_id),
+		CommandPayload::ContinueProgram { continuation } =>
 			cycle.program.program_id == continuation.program_id
 				&& cycle.nodes.iter().any(|node| {
 					node.kind == ProgramNodeKind::Signal && node.id == continuation.signal_id
-				})
-		},
-		CommandPayload::RecordProgramReview { review } => {
+				}),
+		CommandPayload::RecordProgramReview { review } =>
 			cycle.program.program_id == review.program_id
 				&& cycle
 					.nodes
 					.iter()
-					.any(|node| node.kind == ProgramNodeKind::Review && node.id == review.review_id)
-		},
+					.any(|node| node.kind == ProgramNodeKind::Review && node.id == review.review_id),
 		_ => false,
 	}
 }
@@ -1535,9 +1529,8 @@ fn canonical_uuid_v4() -> Result<String, ProgramInputError> {
 #[cfg(test)]
 mod tests {
 	use decodex_protocol::{
-		Channel, Cursor, DEVELOPMENT_DOMAIN_PACK_ID, EntityRevision,
-		PAPER_INVESTMENT_DOMAIN_PACK_ID, ProgramRelationKind, ProgramState, QuickTaskState,
-		QuickTaskSummary, QuickTaskWorkingDirectory, WireText,
+		Channel, ConversationState, ConversationSummary, ConversationWorkingDirectory, Cursor,
+		EntityRevision, PAPER_INVESTMENT_DOMAIN_PACK_ID, ProgramState, WireText,
 	};
 
 	use super::*;
@@ -1600,16 +1593,24 @@ mod tests {
 			3
 		);
 		assert_eq!(
-			cycle.edges.iter().filter(|edge| edge.kind == ProgramRelationKind::Continues).count(),
+			cycle
+				.edges
+				.iter()
+				.filter(|edge| edge.kind == decodex_protocol::ProgramRelationKind::Continues)
+				.count(),
 			2
 		);
 		assert_eq!(
-			cycle.edges.iter().filter(|edge| edge.kind == ProgramRelationKind::Validates).count(),
+			cycle
+				.edges
+				.iter()
+				.filter(|edge| edge.kind == decodex_protocol::ProgramRelationKind::Validates)
+				.count(),
 			3
 		);
 		assert_eq!(cycle.program.revision, EntityRevision(6));
 		let pack = cycle.domain_pack.expect("visual Development Pack");
-		assert_eq!(pack.descriptor.id.as_str(), DEVELOPMENT_DOMAIN_PACK_ID);
+		assert_eq!(pack.descriptor.id.as_str(), decodex_protocol::DEVELOPMENT_DOMAIN_PACK_ID);
 		assert_eq!(pack.entities.len(), 3);
 		assert_eq!(pack.relations.len(), 2);
 	}
@@ -1689,7 +1690,7 @@ mod tests {
 			validation_criteria: vec![text("Restart readback has no duplicate.")],
 			work_item_title: text("Exercise the second Program cycle"),
 			work_item_instructions: text("Complete one finite local verification task."),
-			working_directory: QuickTaskWorkingDirectory::new("/tmp/decodex")
+			working_directory: ConversationWorkingDirectory::new("/tmp/decodex")
 				.expect("working directory"),
 		};
 
@@ -1722,8 +1723,12 @@ mod tests {
 			state.selected = Some(program_id.clone());
 			state.pending_execution = Some(conversation_id.clone());
 		}
-		let conversation = QuickTaskSummary::new(
+		let conversation = ConversationSummary::new(
 			conversation_id.clone(),
+			decodex_protocol::ConversationTitle::new("Program execution")
+				.expect("test title is valid"),
+			None,
+			None,
 			EntityRevision(1),
 			1,
 			Some(
@@ -1731,11 +1736,11 @@ mod tests {
 					.expect("RuntimeSession identity"),
 			),
 			Some(EntityRevision(1)),
-			QuickTaskState::Ready,
+			ConversationState::Ready,
 			None,
 			None,
 		)
-		.expect("Quick Task projection");
+		.expect("Conversation projection");
 		programs.apply_event(&EventEnvelope {
 			version: CURRENT_VERSION,
 			server_id,
@@ -1746,7 +1751,7 @@ mod tests {
 			correlation_id: CorrelationId::new("program-refresh-test")
 				.expect("correlation identity"),
 			causation_id: None,
-			payload: EventPayload::QuickTaskConversationChanged { conversation },
+			payload: EventPayload::ConversationChanged { conversation },
 		});
 		{
 			let state = programs.lock();

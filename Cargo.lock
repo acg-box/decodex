@@ -1575,11 +1575,13 @@ dependencies = [
  "decodex-core",
  "futures-util",
  "libc",
+ "percent-encoding",
  "serde",
  "serde_json",
  "tempfile",
  "tokio",
  "tokio-tungstenite",
+ "url",
 ]
 
 [[package]]
@@ -1613,6 +1615,7 @@ dependencies = [
  "futures-util",
  "libc",
  "reqwest",
+ "rusqlite",
  "security-framework",
  "serde",
  "serde_json",

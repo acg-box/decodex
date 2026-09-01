@@ -235,7 +235,7 @@ mod tests {
 			namespace: text("dev"),
 			view: DomainPackViewKind::GraphInspector,
 			capabilities: vec![DomainPackCapabilityDto {
-				id: text("codex.quick_task"),
+				id: text("codex.conversation"),
 				status: DomainPackCapabilityStatus::Granted,
 			}],
 			entity_types: vec![text("dev.repository")],

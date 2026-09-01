@@ -1,18 +1,22 @@
 //! Daemon-owned registry and deterministic projections for built-in Domain Packs.
 
-use std::{collections::HashSet, sync::OnceLock};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::OnceLock,
+};
 
+use decodex_core::ConversationId;
 use decodex_database::{DomainPackIdentity, ProgramCycleRecord, ProgramDomainPackBinding};
 use decodex_protocol::{
 	DEVELOPMENT_DOMAIN_PACK_ID, DomainEntityDto, DomainEntityFieldDto, DomainPackCapabilityDto,
 	DomainPackCapabilityStatus, DomainPackDescriptorDto, DomainPackProjectionDto,
-	DomainPackViewKind, DomainRelationDto, EntityId, PAPER_INVESTMENT_DOMAIN_PACK_ID, Sha256Digest,
-	WireText,
+	DomainPackViewKind, DomainRelationDto, EntityId, PAPER_INVESTMENT_DOMAIN_PACK_ID,
+	ProviderThreadId, Sha256Digest, WireText,
 };
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 
-pub(crate) const QUICK_TASK_CAPABILITY: &str = "codex.quick_task";
+pub(crate) const CONVERSATION_CAPABILITY: &str = "codex.quick_task";
 
 const MANIFEST_SCHEMA: &str = "decodex/domain-pack/1";
 const MANIFEST_DIGEST_DOMAIN: &[u8] = b"decodex-domain-pack-manifest-v1\0";
@@ -163,13 +167,14 @@ pub(crate) fn authorize(
 
 pub(crate) fn projection(
 	record: &ProgramCycleRecord,
+	provider_threads: &HashMap<ConversationId, ProviderThreadId>,
 ) -> Result<Option<DomainPackProjectionDto>, DomainPackError> {
 	let Some(binding) = record.domain_pack.as_ref() else {
 		return Ok(None);
 	};
 	let pack = validated_pack(Some(binding))?;
 	let projection = match pack.kind {
-		BuiltInPackKind::Development => development_projection(pack, record),
+		BuiltInPackKind::Development => development_projection(pack, record, provider_threads),
 		BuiltInPackKind::PaperInvestment => paper_projection(pack, record, &registry()?.treasury),
 	}?;
 	Ok(Some(projection))
@@ -267,6 +272,7 @@ fn validate_descriptor(descriptor: &DomainPackDescriptorDto) -> Result<(), Domai
 fn development_projection(
 	pack: &BuiltInDomainPack,
 	record: &ProgramCycleRecord,
+	provider_threads: &HashMap<ConversationId, ProviderThreadId>,
 ) -> Result<DomainPackProjectionDto, DomainPackError> {
 	let work_item = record.work_items.last().ok_or(DomainPackError::ProjectionInvalid)?;
 	let repository_id = stable_entity_id(record, pack, "repository")?;
@@ -291,7 +297,12 @@ fn development_projection(
 		source: work_item
 			.conversation_id
 			.as_ref()
-			.map(|id| text(format!("codex://threads/{}", id.as_str())))
+			.and_then(|id| provider_threads.get(id))
+			.map(|id| {
+				id.codex_url()
+					.map_err(|_| DomainPackError::ProjectionInvalid)
+					.and_then(|url| text(url.to_string()))
+			})
 			.transpose()?,
 		fields: vec![field("Work item", work_item.work_item_id.as_str())?],
 	};
@@ -676,11 +687,16 @@ mod tests {
 	#[test]
 	fn projections_are_stable_and_domain_distinct() {
 		let development = program(DEVELOPMENT_DOMAIN_PACK_ID);
-		let first = projection(&development).expect("projection").expect("bound projection");
-		let second = projection(&development).expect("projection").expect("bound projection");
+		let provider_threads = HashMap::new();
+		let first = projection(&development, &provider_threads)
+			.expect("projection")
+			.expect("bound projection");
+		let second = projection(&development, &provider_threads)
+			.expect("projection")
+			.expect("bound projection");
 		assert_eq!(first, second);
 		assert_eq!(first.entities.len(), 3);
-		let paper = projection(&program(PAPER_INVESTMENT_DOMAIN_PACK_ID))
+		let paper = projection(&program(PAPER_INVESTMENT_DOMAIN_PACK_ID), &provider_threads)
 			.expect("projection")
 			.expect("bound projection");
 		assert_eq!(paper.entities.len(), 4);
@@ -688,18 +704,53 @@ mod tests {
 	}
 
 	#[test]
+	fn development_projection_uses_only_the_authoritative_provider_thread_url() {
+		let mut development = program(DEVELOPMENT_DOMAIN_PACK_ID);
+		let conversation_id = ConversationId::new("36000000-0000-4000-8000-000000000001")
+			.expect("fixture Conversation identity");
+		development.work_items[0].conversation_id = Some(conversation_id.clone());
+		let without_binding = projection(&development, &HashMap::new())
+			.expect("projection")
+			.expect("bound projection");
+		let change = without_binding
+			.entities
+			.iter()
+			.find(|entity| entity.kind.as_str() == "dev.change")
+			.expect("development change");
+		assert!(change.source.is_none());
+
+		let mut provider_threads = HashMap::new();
+		provider_threads.insert(
+			conversation_id,
+			ProviderThreadId::new("provider-thread:opaque-1").expect("provider thread identity"),
+		);
+		let with_binding = projection(&development, &provider_threads)
+			.expect("projection")
+			.expect("bound projection");
+		let change = with_binding
+			.entities
+			.iter()
+			.find(|entity| entity.kind.as_str() == "dev.change")
+			.expect("development change");
+		assert_eq!(
+			change.source.as_ref().map(WireText::as_str),
+			Some("codex://threads/provider-thread:opaque-1")
+		);
+	}
+
+	#[test]
 	fn binding_and_capabilities_are_closed_before_execution() {
 		let mut record = program(DEVELOPMENT_DOMAIN_PACK_ID);
 		let binding = record.domain_pack.as_ref().expect("binding");
-		assert_eq!(authorize(Some(binding), QUICK_TASK_CAPABILITY), Ok(()));
+		assert_eq!(authorize(Some(binding), CONVERSATION_CAPABILITY), Ok(()));
 		assert_eq!(resolve_identity("decodex.unknown"), Err(DomainPackError::UnknownPack));
 		assert_eq!(
 			authorize(Some(binding), "finance.place_order"),
 			Err(DomainPackError::CapabilityDenied)
 		);
-		assert_eq!(authorize(None, QUICK_TASK_CAPABILITY), Err(DomainPackError::BindingMissing));
+		assert_eq!(authorize(None, CONVERSATION_CAPABILITY), Err(DomainPackError::BindingMissing));
 		record.domain_pack.as_mut().expect("binding").pack_digest.replace_range(0..1, "0");
-		assert_eq!(projection(&record), Err(DomainPackError::BindingMismatch));
+		assert_eq!(projection(&record, &HashMap::new()), Err(DomainPackError::BindingMismatch));
 		let paper = resolve_identity(PAPER_INVESTMENT_DOMAIN_PACK_ID).expect("paper Pack");
 		assert!(
 			!registry()

@@ -1,4 +1,4 @@
-//! Native bounded text input for the Quick Task composer.
+//! Native bounded text input for the Conversation composer.
 
 use std::ops::Range;
 
@@ -69,7 +69,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 	]);
 }
 
-/// Quick Task composer input and its native text-input lifecycle.
+/// Conversation composer input and its native text-input lifecycle.
 pub(crate) struct ComposerInput {
 	focus_handle: FocusHandle,
 	placeholder: SharedString,
@@ -89,7 +89,7 @@ impl ComposerInput {
 		Self::build(
 			tab_index,
 			"Message Codex…",
-			"Quick Task message",
+			"Conversation message",
 			ComposerAppearance::Workbench,
 			cx,
 		)
@@ -484,7 +484,7 @@ impl Render for ComposerInput {
 		let focus_handle = self.focus_handle.clone();
 		let workbench = self.appearance == ComposerAppearance::Workbench;
 		div()
-			.id("quick-task-composer-input")
+			.id("conversation-composer-input")
 			.key_context("ComposerInput")
 			.role(Role::TextInput)
 			.aria_label(self.aria_label.clone())

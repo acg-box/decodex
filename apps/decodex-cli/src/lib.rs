@@ -122,7 +122,7 @@ pub enum Command {
 	/// Observe and consume reset cards through the common daemon authority.
 	#[command(subcommand)]
 	ResetCard(reset_card::ResetCardCommand),
-	/// Manage daemon-owned accounts through the same-UID V2.11 protocol.
+	/// Manage daemon-owned accounts through the same-UID V2.12 protocol.
 	#[command(subcommand)]
 	Account(account::AccountCommand),
 	/// Read or update the current user's local Codex Fast mode setting.
@@ -295,9 +295,8 @@ fn render_failure(
 			.expect("closed failure serialization cannot fail"),
 			false,
 		),
-		OutputFormat::Human => {
-			(format!("decodex {} failed: {failure}", command_name(command)), true)
-		},
+		OutputFormat::Human =>
+			(format!("decodex {} failed: {failure}", command_name(command)), true),
 	};
 
 	CommandOutput { text, exit_code: 2, error_stream }
@@ -324,15 +323,14 @@ fn render_human(
 	);
 
 	match command {
-		DiagnosticCommand::Doctor => {
+		DiagnosticCommand::Doctor =>
 			for check in report.checks() {
 				output.push_str(&format!(
 					"\n{}: {}",
 					component_name(check.component),
 					status_name(check.status),
 				));
-			}
-		},
+			},
 		DiagnosticCommand::Status => {
 			output.push_str("\nstates:");
 
@@ -397,7 +395,7 @@ fn component_name(component: DoctorComponent) -> &'static str {
 	match component {
 		DoctorComponent::Configuration => "configuration",
 		DoctorComponent::ProductStore => "product_store",
-		DoctorComponent::QuickTask => "quick_task",
+		DoctorComponent::Conversation => "conversation",
 		DoctorComponent::Protocol => "protocol",
 		DoctorComponent::ProtocolVersion => "protocol_version",
 		DoctorComponent::ServerIdentity => "server_identity",
@@ -601,10 +599,9 @@ mod tests {
 	#[test]
 	fn status_retains_ready_unavailable_and_unknown_states() {
 		let statuses = DoctorComponent::ALL.map(|component| match component {
-			DoctorComponent::ProductStore => {
-				DoctorStatus::Unavailable(DoctorIssue::DatabaseUnreachable)
-			},
-			DoctorComponent::QuickTask => DoctorStatus::Unknown(DoctorIssue::NotProbed),
+			DoctorComponent::ProductStore =>
+				DoctorStatus::Unavailable(DoctorIssue::DatabaseUnreachable),
+			DoctorComponent::Conversation => DoctorStatus::Unknown(DoctorIssue::NotProbed),
 			_ => DoctorStatus::Ready,
 		});
 
@@ -618,7 +615,7 @@ mod tests {
 
 		assert!(output.text().contains("17 ready, 1 unavailable, 1 unknown"));
 		assert!(output.text().contains("product_store=unavailable(database_unreachable)"));
-		assert!(output.text().contains("quick_task=unknown(not_probed)"));
+		assert!(output.text().contains("conversation=unknown(not_probed)"));
 	}
 
 	#[test]

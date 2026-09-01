@@ -50,8 +50,7 @@ use crate::{
 #[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
 const REFRESH_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
 #[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
-pub(crate) const PROCESS_TEST_REFRESH_ENDPOINT_ENV: &str =
-	"DECODEX_PROCESS_TEST_REFRESH_ENDPOINT";
+pub(crate) const PROCESS_TEST_REFRESH_ENDPOINT_ENV: &str = "DECODEX_PROCESS_TEST_REFRESH_ENDPOINT";
 const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const MAX_ACCOUNT_READ: u16 = 512;
 const MAX_UNSETTLED_ACCOUNT_OPERATION_READ: u16 = 1_024;
@@ -258,10 +257,7 @@ pub(crate) struct AccountRoutePending {
 /// Current credential-negative reason why an accepted Route cannot finish yet.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum AccountRouteWaitReason {
-	ExternalCodex {
-		blockers: Vec<CodexAuthOwnerBlocker>,
-		omitted: u16,
-	},
+	ExternalCodex { blockers: Vec<CodexAuthOwnerBlocker>, omitted: u16 },
 	CodexObservationUnavailable,
 	AccountReadiness(AccountLifecycleReadiness),
 	SharedAuthStabilizing,
@@ -272,9 +268,8 @@ pub(crate) enum AccountRouteWaitReason {
 impl AccountRouteWaitReason {
 	fn from_liveness(observation: CodexLivenessObservation) -> Self {
 		match observation {
-			CodexLivenessObservation::Blocked { blockers, omitted } => {
-				Self::ExternalCodex { blockers, omitted }
-			},
+			CodexLivenessObservation::Blocked { blockers, omitted } =>
+				Self::ExternalCodex { blockers, omitted },
 			CodexLivenessObservation::Unavailable => Self::CodexObservationUnavailable,
 			CodexLivenessObservation::Quiescent => Self::SharedAuthStabilizing,
 		}
@@ -366,8 +361,7 @@ impl CredentialRefreshPort for OpenAiCredentialRefresher {
 fn refresh_endpoint() -> Result<String, CredentialRefreshError> {
 	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
 	{
-		return process_acceptance_fixture_endpoint()
-			.ok_or(CredentialRefreshError::Unavailable);
+		return process_acceptance_fixture_endpoint().ok_or(CredentialRefreshError::Unavailable);
 	}
 
 	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
@@ -1278,9 +1272,8 @@ impl AccountService {
 				.await;
 		}
 		let final_source = match self.shared_auth.read_current_stable() {
-			StableSharedAuthRead::Ready(snapshot) if snapshot.version() == &shared_auth.version => {
-				*snapshot
-			},
+			StableSharedAuthRead::Ready(snapshot) if snapshot.version() == &shared_auth.version =>
+				*snapshot,
 			StableSharedAuthRead::Ready(_) | StableSharedAuthRead::Waiting => {
 				return self
 					.defer_route_command(
@@ -1663,19 +1656,16 @@ impl AccountService {
 		let resolution = self.store.resolve_account_enrollment(&account_id, &provider).await?;
 		let (resolved_account_id, expected_account_revision, previous_credential) =
 			match &resolution {
-				AccountEnrollmentResolution::Fresh { account_id } => {
-					(account_id.clone(), None, None)
-				},
+				AccountEnrollmentResolution::Fresh { account_id } =>
+					(account_id.clone(), None, None),
 				AccountEnrollmentResolution::Restore {
 					account_id,
 					account_revision,
 					previous_credential,
-				} => {
-					(account_id.clone(), Some(*account_revision), Some(previous_credential.clone()))
-				},
-				AccountEnrollmentResolution::AlreadyEnrolled { .. } => {
-					(account_id.clone(), None, None)
-				},
+				} =>
+					(account_id.clone(), Some(*account_revision), Some(previous_credential.clone())),
+				AccountEnrollmentResolution::AlreadyEnrolled { .. } =>
+					(account_id.clone(), None, None),
 			};
 		let lock = self.lock_for(&resolved_account_id)?;
 		let _guard = lock.lock().await;
@@ -1689,12 +1679,10 @@ impl AccountService {
 				.await;
 		}
 		let target_version = match previous_credential.as_ref() {
-			Some(previous) => {
-				previous.version.successor().map_err(|_| AccountLifecycleError::InvalidOperation)?
-			},
-			None => {
-				CredentialVersion::new(1).map_err(|_| AccountLifecycleError::InvalidOperation)?
-			},
+			Some(previous) =>
+				previous.version.successor().map_err(|_| AccountLifecycleError::InvalidOperation)?,
+			None =>
+				CredentialVersion::new(1).map_err(|_| AccountLifecycleError::InvalidOperation)?,
 		};
 		let target =
 			bundle.binding_for(&resolved_account_id, &operation_id, target_version, &provider)?;
@@ -1772,7 +1760,7 @@ impl AccountService {
 		match phase {
 			AccountOperationPhase::Prepared
 			| AccountOperationPhase::StoreApplied
-			| AccountOperationPhase::Committed => {
+			| AccountOperationPhase::Committed =>
 				self.complete_account_operation_success(
 					lease,
 					&operation_id,
@@ -1780,9 +1768,8 @@ impl AccountService {
 					AccountOperationPhase::Committed,
 					build_response,
 				)
-				.await
-			},
-			AccountOperationPhase::Cancelled => {
+				.await,
+			AccountOperationPhase::Cancelled =>
 				self.complete_account_operation_error(
 					lease,
 					&operation_id,
@@ -1792,10 +1779,9 @@ impl AccountService {
 					AccountLifecycleError::InvalidOperation,
 					build_response,
 				)
-				.await
-			},
+				.await,
 			AccountOperationPhase::RecoveryRequired
-			| AccountOperationPhase::ProviderEffectPending => {
+			| AccountOperationPhase::ProviderEffectPending =>
 				self.complete_account_operation_error(
 					lease,
 					&operation_id,
@@ -1805,8 +1791,7 @@ impl AccountService {
 					AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled),
 					build_response,
 				)
-				.await
-			},
+				.await,
 		}
 	}
 
@@ -1873,28 +1858,19 @@ impl AccountService {
 				if same_refresh_bundle(stored.bundle(), &latest.bundle) {
 					return Ok(RefreshResolution::Current);
 				}
-				if let Some(winner) = matching_shared_refresh(
-					current,
-					stored.bundle(),
-					now_unix_micros,
-					Ok(latest),
-				) {
+				if let Some(winner) =
+					matching_shared_refresh(current, stored.bundle(), now_unix_micros, Ok(latest))
+				{
 					return Ok(RefreshResolution::Rotate {
 						refreshed: winner,
 						projected_source: None,
 					});
 				}
 				return Err(CredentialRefreshError::OwnerBusy);
-			} else if let Some(shared) = matching_shared_refresh(
-				current,
-				stored.bundle(),
-				now_unix_micros,
-				Ok(credential),
-			) {
-				return Ok(RefreshResolution::Rotate {
-					refreshed: shared,
-					projected_source: None,
-				});
+			} else if let Some(shared) =
+				matching_shared_refresh(current, stored.bundle(), now_unix_micros, Ok(credential))
+			{
+				return Ok(RefreshResolution::Rotate { refreshed: shared, projected_source: None });
 			} else {
 				return Err(CredentialRefreshError::OwnerBusy);
 			}
@@ -1995,17 +1971,15 @@ impl AccountService {
 		if let Some(operation) = self.store.read_account_operation(&operation_id).await? {
 			self.require_operation_identity(&operation, account_id, AccountOperationKind::Refresh)?;
 			return match self.reconcile_operation(&operation).await? {
-				ReconciliationDisposition::Committed => {
+				ReconciliationDisposition::Committed =>
 					self.project_committed_refresh_result(
 						&operation_id,
 						account_id,
 						callback_generation,
 					)
-					.await
-				},
-				ReconciliationDisposition::Cancelled => {
-					Err(AccountLifecycleError::InvalidOperation)
-				},
+					.await,
+				ReconciliationDisposition::Cancelled =>
+					Err(AccountLifecycleError::InvalidOperation),
 				ReconciliationDisposition::Manual => Err(AccountLifecycleError::NotReady(
 					AccountLifecycleReadiness::OperationUnsettled,
 				)),
@@ -2052,9 +2026,8 @@ impl AccountService {
 		}
 		let refreshed = match supplied_refresh {
 			Some(refreshed) => Ok(RefreshResolution::Rotate { refreshed, projected_source: None }),
-			None => {
-				self.refresh_or_reconcile_shared(account_id, current, stored, shared_family).await
-			},
+			None =>
+				self.refresh_or_reconcile_shared(account_id, current, stored, shared_family).await,
 		};
 		let resolution = match refreshed {
 			Ok(refreshed) => refreshed,
@@ -2090,9 +2063,8 @@ impl AccountService {
 			},
 		};
 		let (refreshed, projected_source) = match resolution {
-			RefreshResolution::Rotate { refreshed, projected_source } => {
-				(refreshed, projected_source)
-			},
+			RefreshResolution::Rotate { refreshed, projected_source } =>
+				(refreshed, projected_source),
 			RefreshResolution::Current => {
 				self.recover_or_cancel(
 					&operation_id,
@@ -2253,7 +2225,7 @@ impl AccountService {
 				)
 				.await
 			},
-			ReauthenticationReplayDisposition::Cancel => {
+			ReauthenticationReplayDisposition::Cancel =>
 				self.complete_account_operation_error(
 					lease,
 					operation_id,
@@ -2263,9 +2235,8 @@ impl AccountService {
 					AccountLifecycleError::InvalidOperation,
 					build_response,
 				)
-				.await
-			},
-			ReauthenticationReplayDisposition::Recover => {
+				.await,
+			ReauthenticationReplayDisposition::Recover =>
 				self.complete_account_operation_error(
 					lease,
 					operation_id,
@@ -2275,8 +2246,7 @@ impl AccountService {
 					AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled),
 					build_response,
 				)
-				.await
-			},
+				.await,
 		}
 	}
 
@@ -2347,11 +2317,10 @@ impl AccountService {
 			provider: imported.provider.clone(),
 		};
 		let preparation_outcome = match recovery_operation_id {
-			Some(recovery_operation_id) => {
+			Some(recovery_operation_id) =>
 				self.store
 					.prepare_account_reauthentication_takeover(&preparation, recovery_operation_id)
-					.await?
-			},
+					.await?,
 			None => self.store.prepare_account_operation(&preparation).await?,
 		};
 		let phase = match preparation_outcome {
@@ -2731,9 +2700,8 @@ impl AccountService {
 			},
 		};
 		let (refreshed, projected_source) = match resolution {
-			RefreshResolution::Rotate { refreshed, projected_source } => {
-				(refreshed, projected_source)
-			},
+			RefreshResolution::Rotate { refreshed, projected_source } =>
+				(refreshed, projected_source),
 			RefreshResolution::Current => {
 				return self
 					.complete_account_operation_success(
@@ -2915,13 +2883,11 @@ impl AccountService {
 			*snapshot,
 			current_unix_micros()?,
 		) {
-			SharedRefreshConvergence::Current | SharedRefreshConvergence::Unrelated => {
-				self.project_refresh_result(account_id, target, callback_generation).await
-			},
-			SharedRefreshConvergence::Winner(winner) => {
+			SharedRefreshConvergence::Current | SharedRefreshConvergence::Unrelated =>
+				self.project_refresh_result(account_id, target, callback_generation).await,
+			SharedRefreshConvergence::Winner(winner) =>
 				self.adopt_shared_refresh_winner(account_id, target, winner, callback_generation)
-					.await
-			},
+					.await,
 			SharedRefreshConvergence::Previous(version) if allow_previous_projection => {
 				let _ = self.shared_auth.project_exact_source(
 					target_bundle,
@@ -2938,9 +2904,8 @@ impl AccountService {
 				))
 				.await
 			},
-			SharedRefreshConvergence::Previous(_) | SharedRefreshConvergence::Conflict => {
-				Err(AccountLifecycleError::Refresh(CredentialRefreshError::OwnerBusy))
-			},
+			SharedRefreshConvergence::Previous(_) | SharedRefreshConvergence::Conflict =>
+				Err(AccountLifecycleError::Refresh(CredentialRefreshError::OwnerBusy)),
 		}
 	}
 
@@ -3008,9 +2973,8 @@ impl AccountService {
 			self.require_operation_identity(&operation, account_id, AccountOperationKind::Logout)?;
 			return match self.reconcile_operation(&operation).await? {
 				ReconciliationDisposition::Committed => self.load_account(account_id).await,
-				ReconciliationDisposition::Cancelled => {
-					Err(AccountLifecycleError::InvalidOperation)
-				},
+				ReconciliationDisposition::Cancelled =>
+					Err(AccountLifecycleError::InvalidOperation),
 				ReconciliationDisposition::Manual => Err(AccountLifecycleError::NotReady(
 					AccountLifecycleReadiness::OperationUnsettled,
 				)),
@@ -3392,12 +3356,9 @@ impl AccountService {
 						AccountLifecycleMutationOutcome::Applied(mutation)
 						| AccountLifecycleMutationOutcome::Replayed(mutation)
 							if mutation.phase == target =>
-						{
-							account.ok_or(AccountLifecycleError::AccountMissing)
-						},
-						AccountLifecycleMutationOutcome::Rejected { rejection, .. } => {
-							Err(AccountLifecycleError::OperationRejected(*rejection))
-						},
+							account.ok_or(AccountLifecycleError::AccountMissing),
+						AccountLifecycleMutationOutcome::Rejected { rejection, .. } =>
+							Err(AccountLifecycleError::OperationRejected(*rejection)),
 						_ => Err(AccountLifecycleError::InvalidOperation),
 					};
 					build_response(result)
@@ -3435,12 +3396,9 @@ impl AccountService {
 						AccountLifecycleMutationOutcome::Applied(mutation)
 						| AccountLifecycleMutationOutcome::Replayed(mutation)
 							if mutation.phase == target =>
-						{
-							error
-						},
-						AccountLifecycleMutationOutcome::Rejected { rejection, .. } => {
-							AccountLifecycleError::OperationRejected(*rejection)
-						},
+							error,
+						AccountLifecycleMutationOutcome::Rejected { rejection, .. } =>
+							AccountLifecycleError::OperationRejected(*rejection),
 						_ => AccountLifecycleError::InvalidOperation,
 					};
 					build_response(Err(error))
@@ -3498,14 +3456,11 @@ impl AccountService {
 						AccountLifecycleMutationOutcome::Applied(mutation)
 						| AccountLifecycleMutationOutcome::Replayed(mutation)
 							if mutation.phase == target =>
-						{
 							account
 								.ok_or(AccountLifecycleError::AccountMissing)
-								.map(|account| (result, account))
-						},
-						AccountLifecycleMutationOutcome::Rejected { rejection, .. } => {
-							Err(AccountLifecycleError::OperationRejected(*rejection))
-						},
+								.map(|account| (result, account)),
+						AccountLifecycleMutationOutcome::Rejected { rejection, .. } =>
+							Err(AccountLifecycleError::OperationRejected(*rejection)),
 						_ => Err(AccountLifecycleError::InvalidOperation),
 					};
 					build_response(value)
@@ -3672,9 +3627,8 @@ impl AccountService {
 				AccountOperationPhase::Committed,
 				AccountManualRecoveryAction::ReconcileExactStoreState,
 			) => Some(AccountManualRecoveryOutcome::Committed),
-			(AccountOperationPhase::Cancelled, AccountManualRecoveryAction::CancelBeforeEffect) => {
-				Some(AccountManualRecoveryOutcome::Cancelled)
-			},
+			(AccountOperationPhase::Cancelled, AccountManualRecoveryAction::CancelBeforeEffect) =>
+				Some(AccountManualRecoveryOutcome::Cancelled),
 			(AccountOperationPhase::Committed | AccountOperationPhase::Cancelled, _) => {
 				return Err(AccountLifecycleError::InvalidOperation);
 			},
@@ -3688,12 +3642,10 @@ impl AccountService {
 			return Err(AccountLifecycleError::StaleAccount);
 		}
 		let outcome = match action {
-			AccountManualRecoveryAction::ReconcileExactStoreState => {
-				self.recover_from_exact_store(&operation).await?
-			},
-			AccountManualRecoveryAction::CancelBeforeEffect => {
-				self.cancel_proven_before_effect(&operation).await?
-			},
+			AccountManualRecoveryAction::ReconcileExactStoreState =>
+				self.recover_from_exact_store(&operation).await?,
+			AccountManualRecoveryAction::CancelBeforeEffect =>
+				self.cancel_proven_before_effect(&operation).await?,
 		};
 		let account = self.load_account(&operation.account_id).await?;
 		Ok((outcome, account))
@@ -3751,9 +3703,8 @@ impl AccountService {
 				AccountOperationPhase::Committed,
 				AccountManualRecoveryAction::ReconcileExactStoreState,
 			) => Some(AccountManualRecoveryOutcome::Committed),
-			(AccountOperationPhase::Cancelled, AccountManualRecoveryAction::CancelBeforeEffect) => {
-				Some(AccountManualRecoveryOutcome::Cancelled)
-			},
+			(AccountOperationPhase::Cancelled, AccountManualRecoveryAction::CancelBeforeEffect) =>
+				Some(AccountManualRecoveryOutcome::Cancelled),
 			(AccountOperationPhase::Committed | AccountOperationPhase::Cancelled, _) => {
 				return self
 					.complete_recovery_command_error(
@@ -3809,18 +3760,15 @@ impl AccountService {
 				) => operation.expected.as_ref().is_some_and(|expected| {
 					self.credentials.read_exact(&operation.account_id, expected).is_ok()
 				}),
-				(AccountOperationPhase::RecoveryRequired, AccountOperationKind::Logout) => {
+				(AccountOperationPhase::RecoveryRequired, AccountOperationKind::Logout) =>
 					operation.expected.as_ref().is_some_and(|expected| {
 						self.credentials.read_exact(&operation.account_id, expected).is_ok()
-					})
-				},
+					}),
 				(AccountOperationPhase::RecoveryRequired, AccountOperationKind::Refresh)
 					if operation.recovery_operation_id.is_some() =>
-				{
 					operation.expected.as_ref().is_some_and(|expected| {
 						self.credentials.read_exact(&operation.account_id, expected).is_ok()
-					})
-				},
+					}),
 				_ => false,
 			};
 			let (target, outcome) = if proven {
@@ -3946,12 +3894,10 @@ impl AccountService {
 				.await;
 		}
 		let recovery_code = match operation.kind {
-			AccountOperationKind::Enroll | AccountOperationKind::Import => {
-				"credential_import_reconciliation"
-			},
-			AccountOperationKind::Refresh if operation.target.is_none() => {
-				PROVIDER_REFRESH_OUTCOME_UNKNOWN
-			},
+			AccountOperationKind::Enroll | AccountOperationKind::Import =>
+				"credential_import_reconciliation",
+			AccountOperationKind::Refresh if operation.target.is_none() =>
+				PROVIDER_REFRESH_OUTCOME_UNKNOWN,
 			AccountOperationKind::Refresh => "credential_refresh_reconciliation",
 			AccountOperationKind::Logout => "credential_logout_reconciliation",
 		};
@@ -4266,9 +4212,8 @@ impl AccountService {
 			return Ok(match self.reconcile_operation(operation).await? {
 				ReconciliationDisposition::Committed => AccountManualRecoveryOutcome::Committed,
 				ReconciliationDisposition::Cancelled => AccountManualRecoveryOutcome::Cancelled,
-				ReconciliationDisposition::Manual => {
-					AccountManualRecoveryOutcome::StillRequiresRecovery
-				},
+				ReconciliationDisposition::Manual =>
+					AccountManualRecoveryOutcome::StillRequiresRecovery,
 			});
 		}
 		let proven_applied = match operation.kind {
@@ -4342,18 +4287,15 @@ impl AccountService {
 					Err(CredentialStoreError::NotFound)
 				)
 			}),
-			(AccountOperationPhase::RecoveryRequired, AccountOperationKind::Logout) => {
+			(AccountOperationPhase::RecoveryRequired, AccountOperationKind::Logout) =>
 				operation.expected.as_ref().is_some_and(|expected| {
 					self.credentials.read_exact(&operation.account_id, expected).is_ok()
-				})
-			},
+				}),
 			(AccountOperationPhase::RecoveryRequired, AccountOperationKind::Refresh)
 				if operation.recovery_operation_id.is_some() =>
-			{
 				operation.expected.as_ref().is_some_and(|expected| {
 					self.credentials.read_exact(&operation.account_id, expected).is_ok()
-				})
-			},
+				}),
 			_ => false,
 		};
 		if !proven {
@@ -4380,9 +4322,8 @@ impl AccountService {
 			return Ok(disposition);
 		}
 		match operation.kind {
-			AccountOperationKind::Enroll | AccountOperationKind::Import => {
-				self.reconcile_import_operation(operation).await
-			},
+			AccountOperationKind::Enroll | AccountOperationKind::Import =>
+				self.reconcile_import_operation(operation).await,
 			AccountOperationKind::Refresh => self.reconcile_refresh_operation(operation).await,
 			AccountOperationKind::Logout => self.reconcile_logout_operation(operation).await,
 		}
@@ -4405,9 +4346,8 @@ impl AccountService {
 				self.commit_store_applied(&operation.operation_id).await?;
 				Ok(Some(ReconciliationDisposition::Committed))
 			},
-			AccountOperationPhase::Prepared | AccountOperationPhase::ProviderEffectPending => {
-				Ok(None)
-			},
+			AccountOperationPhase::Prepared | AccountOperationPhase::ProviderEffectPending =>
+				Ok(None),
 		}
 	}
 
@@ -4420,7 +4360,7 @@ impl AccountService {
 		}
 		let target = operation.target.as_ref().ok_or(AccountLifecycleError::InvalidOperation)?;
 		match self.credentials.read_exact(&operation.account_id, target) {
-			Ok(_) => {
+			Ok(_) =>
 				if self.credentials.delete(&operation.account_id, target).is_err() {
 					if operation.phase == AccountOperationPhase::StoreApplied {
 						accepted_phase(
@@ -4435,8 +4375,7 @@ impl AccountService {
 						)?;
 					}
 					return Ok(Some(ReconciliationDisposition::Manual));
-				}
-			},
+				},
 			Err(CredentialStoreError::NotFound) => {},
 			Err(_) => {
 				if operation.phase == AccountOperationPhase::StoreApplied {
@@ -4488,9 +4427,7 @@ impl AccountService {
 			Ok(_) => self.commit_reconciled_operation(operation).await,
 			Err(CredentialStoreError::NotFound)
 				if operation.phase == AccountOperationPhase::Prepared =>
-			{
-				self.cancel_reconciled_operation(operation).await
-			},
+				self.cancel_reconciled_operation(operation).await,
 			Err(_) => self.mark_manual(operation, "credential_import_reconciliation").await,
 		}
 	}
@@ -4505,15 +4442,12 @@ impl AccountService {
 				operation.target.as_ref(),
 				|binding| self.credentials.read_exact(&operation.account_id, binding).map(|_| ()),
 			) {
-				PreparedRefreshReconciliation::StoreApplied => {
-					self.commit_reconciled_operation(operation).await
-				},
-				PreparedRefreshReconciliation::NotApplied => {
-					self.cancel_reconciled_operation(operation).await
-				},
-				PreparedRefreshReconciliation::RecoveryRequired => {
-					self.mark_manual(operation, "credential_reauthentication_reconciliation").await
-				},
+				PreparedRefreshReconciliation::StoreApplied =>
+					self.commit_reconciled_operation(operation).await,
+				PreparedRefreshReconciliation::NotApplied =>
+					self.cancel_reconciled_operation(operation).await,
+				PreparedRefreshReconciliation::RecoveryRequired =>
+					self.mark_manual(operation, "credential_reauthentication_reconciliation").await,
 			};
 		}
 		let Some(target) = operation.target.as_ref() else {
@@ -4532,9 +4466,8 @@ impl AccountService {
 		let expected =
 			operation.expected.as_ref().ok_or(AccountLifecycleError::InvalidOperation)?;
 		match self.credentials.delete(&operation.account_id, expected) {
-			Ok(()) | Err(CredentialStoreError::NotFound) => {
-				self.commit_reconciled_operation(operation).await
-			},
+			Ok(()) | Err(CredentialStoreError::NotFound) =>
+				self.commit_reconciled_operation(operation).await,
 			Err(_) => self.mark_manual(operation, "credential_logout_reconciliation").await,
 		}
 	}
@@ -4841,12 +4774,10 @@ fn matching_shared_refresh(
 				&& imported.bundle.access_token_expires_at_unix_micros()
 					>= current_bundle.access_token_expires_at_unix_micros()
 				&& !same_refresh_bundle(current_bundle, &imported.bundle) =>
-		{
 			Some(CredentialRefreshResult {
 				returned_provider: imported.provider,
 				bundle: imported.bundle,
-			})
-		},
+			}),
 		Ok(_) | Err(_) => None,
 	}
 }
@@ -4903,9 +4834,8 @@ where
 		Ok(()) => PreparedRefreshReconciliation::StoreApplied,
 		Err(CredentialStoreError::Unavailable) => PreparedRefreshReconciliation::RecoveryRequired,
 		Err(_) => match expected {
-			Some(expected) if read_exact(expected).is_ok() => {
-				PreparedRefreshReconciliation::NotApplied
-			},
+			Some(expected) if read_exact(expected).is_ok() =>
+				PreparedRefreshReconciliation::NotApplied,
 			Some(_) | None => PreparedRefreshReconciliation::RecoveryRequired,
 		},
 	}
@@ -4921,30 +4851,25 @@ where
 	F: FnMut(&CredentialBinding) -> Result<(), CredentialStoreError>,
 {
 	match phase {
-		AccountOperationPhase::Committed | AccountOperationPhase::StoreApplied => {
-			ReauthenticationReplayDisposition::Complete
-		},
+		AccountOperationPhase::Committed | AccountOperationPhase::StoreApplied =>
+			ReauthenticationReplayDisposition::Complete,
 		AccountOperationPhase::Cancelled => ReauthenticationReplayDisposition::Cancel,
 		AccountOperationPhase::Prepared => {
 			match classify_prepared_refresh_reconciliation(expected, target, read_exact) {
-				PreparedRefreshReconciliation::StoreApplied => {
-					ReauthenticationReplayDisposition::Complete
-				},
-				PreparedRefreshReconciliation::NotApplied => {
-					ReauthenticationReplayDisposition::Cancel
-				},
-				PreparedRefreshReconciliation::RecoveryRequired => {
-					ReauthenticationReplayDisposition::Recover
-				},
+				PreparedRefreshReconciliation::StoreApplied =>
+					ReauthenticationReplayDisposition::Complete,
+				PreparedRefreshReconciliation::NotApplied =>
+					ReauthenticationReplayDisposition::Cancel,
+				PreparedRefreshReconciliation::RecoveryRequired =>
+					ReauthenticationReplayDisposition::Recover,
 			}
 		},
-		AccountOperationPhase::ProviderEffectPending | AccountOperationPhase::RecoveryRequired => {
+		AccountOperationPhase::ProviderEffectPending | AccountOperationPhase::RecoveryRequired =>
 			if target.is_some_and(|target| read_exact(target).is_ok()) {
 				ReauthenticationReplayDisposition::Complete
 			} else {
 				ReauthenticationReplayDisposition::Recover
-			}
-		},
+			},
 	}
 }
 
@@ -4998,9 +4923,8 @@ enum SharedAuthProjectionError {
 
 const fn projection_error(error: CodexAuthProjectionError) -> AccountLifecycleError {
 	match error {
-		CodexAuthProjectionError::UnsafePath | CodexAuthProjectionError::InvalidCredential => {
-			AccountLifecycleError::CredentialImport
-		},
+		CodexAuthProjectionError::UnsafePath | CodexAuthProjectionError::InvalidCredential =>
+			AccountLifecycleError::CredentialImport,
 		CodexAuthProjectionError::MissingIdentityToken => AccountLifecycleError::CredentialAbsent,
 		CodexAuthProjectionError::Unavailable
 		| CodexAuthProjectionError::OutcomeUnknown
@@ -5014,9 +4938,8 @@ fn accepted_phase(
 	match outcome {
 		AccountLifecycleMutationOutcome::Applied(mutation)
 		| AccountLifecycleMutationOutcome::Replayed(mutation) => Ok(mutation.phase),
-		AccountLifecycleMutationOutcome::Rejected { rejection, .. } => {
-			Err(AccountLifecycleError::OperationRejected(rejection))
-		},
+		AccountLifecycleMutationOutcome::Rejected { rejection, .. } =>
+			Err(AccountLifecycleError::OperationRejected(rejection)),
 	}
 }
 
@@ -5028,15 +4951,12 @@ const fn store_error_observation(
 	error: CredentialStoreError,
 ) -> (AccountStoreObservation, AccountLifecycleReadiness) {
 	match error {
-		CredentialStoreError::Unavailable => {
-			(AccountStoreObservation::Unavailable, AccountLifecycleReadiness::StoreUnavailable)
-		},
-		CredentialStoreError::ProviderMismatch => {
-			(AccountStoreObservation::ProviderMismatch, AccountLifecycleReadiness::ProviderMismatch)
-		},
-		CredentialStoreError::NotFound => {
-			(AccountStoreObservation::Missing, AccountLifecycleReadiness::StoreMismatch)
-		},
+		CredentialStoreError::Unavailable =>
+			(AccountStoreObservation::Unavailable, AccountLifecycleReadiness::StoreUnavailable),
+		CredentialStoreError::ProviderMismatch =>
+			(AccountStoreObservation::ProviderMismatch, AccountLifecycleReadiness::ProviderMismatch),
+		CredentialStoreError::NotFound =>
+			(AccountStoreObservation::Missing, AccountLifecycleReadiness::StoreMismatch),
 		_ => (AccountStoreObservation::Mismatch, AccountLifecycleReadiness::StoreMismatch),
 	}
 }
@@ -5130,27 +5050,25 @@ mod tests {
 	};
 	use serde_json::json;
 
+	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
+	use super::process_test_refresh_endpoint_is_safe;
 	use super::{
 		ACCOUNT_ALIAS_WORDS, AccountLifecycleError, AccountRouteFailure, AccountRouteResult,
 		AccountRouteWaitReason, AccountService, CodexAuthProjectionError, CredentialImportError,
-		CredentialRefreshError,
-		CredentialRefreshPort, CredentialRefreshResult, CredentialSecretBundle,
-		CredentialStoreError, HostCredentialStore, ImportedCredential,
+		CredentialRefreshError, CredentialRefreshPort, CredentialRefreshResult,
+		CredentialSecretBundle, CredentialStoreError, HostCredentialStore, ImportedCredential,
 		PROVIDER_REFRESH_OUTCOME_UNKNOWN, PreparedRefreshReconciliation,
 		ReauthenticationReplayDisposition, RefreshResponse, accepted_phase,
-		access_token_needs_refresh, account_lock_for, classify_prepared_refresh_reconciliation,
-		classify_reauthentication_replay, codex_auth_projection_digest, credential_refresh_result,
-		callback_uses_current_successor, decode_chatgpt_identity, matching_shared_refresh,
-		projection_binding,
-		reauthentication_current, reauthentication_target, recover_rejected_refresh_from_shared,
-		refreshed_credential_target, require_refreshed_access_token_for_observation,
-		resolve_reauthentication_store_effect, route_resume_revision_is_valid,
-		stable_account_alias,
+		access_token_needs_refresh, account_lock_for, callback_uses_current_successor,
+		classify_prepared_refresh_reconciliation, classify_reauthentication_replay,
+		codex_auth_projection_digest, credential_refresh_result, decode_chatgpt_identity,
+		matching_shared_refresh, projection_binding, reauthentication_current,
+		reauthentication_target, recover_rejected_refresh_from_shared, refreshed_credential_target,
+		require_refreshed_access_token_for_observation, resolve_reauthentication_store_effect,
+		route_resume_revision_is_valid, stable_account_alias,
 	};
 	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
 	use super::{REFRESH_ENDPOINT, refresh_endpoint};
-	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
-	use super::process_test_refresh_endpoint_is_safe;
 	use std::{
 		collections::{HashMap, HashSet, VecDeque},
 		fs,
@@ -6333,14 +6251,8 @@ mod tests {
 			assert_eq!(response["outcome"], "routed");
 			assert_eq!(response["account_id"], account_id.as_str());
 			assert_eq!(response["projection_digest"].as_str().map(str::len), Some(64));
-			assert_exact_route_readback(
-				&store,
-				&credentials,
-				&shared_auth,
-				account_id,
-				provider,
-			)
-			.await;
+			assert_exact_route_readback(&store, &credentials, &shared_auth, account_id, provider)
+				.await;
 		}
 
 		drop(service);
@@ -6582,24 +6494,24 @@ mod tests {
 		let operation_id = AccountOperationId::new("22000000-0000-4000-8000-000000000072")
 			.expect("Route operation");
 		let response_builder = |result| {
-				Ok(match result {
-					Ok(AccountRouteResult::Pending(pending)) => {
-						let wait_reason = match pending.wait_reason {
-							AccountRouteWaitReason::ExternalCodex { blockers, omitted } => json!({
-								"reason": "external_codex",
-								"pids": blockers.into_iter().map(|blocker| blocker.pid).collect::<Vec<_>>(),
-								"omitted": omitted,
-							}),
-							_ => json!({"reason": "unexpected"}),
-						};
-						json!({
-							"outcome": "pending",
-							"operation_id": pending.operation_id.as_str(),
-							"account_id": pending.account_id.as_str(),
-							"routing_revision": pending.routing_revision,
-							"wait_reason": wait_reason,
-						})
-					},
+			Ok(match result {
+				Ok(AccountRouteResult::Pending(pending)) => {
+					let wait_reason = match pending.wait_reason {
+						AccountRouteWaitReason::ExternalCodex { blockers, omitted } => json!({
+							"reason": "external_codex",
+							"pids": blockers.into_iter().map(|blocker| blocker.pid).collect::<Vec<_>>(),
+							"omitted": omitted,
+						}),
+						_ => json!({"reason": "unexpected"}),
+					};
+					json!({
+						"outcome": "pending",
+						"operation_id": pending.operation_id.as_str(),
+						"account_id": pending.account_id.as_str(),
+						"routing_revision": pending.routing_revision,
+						"wait_reason": wait_reason,
+					})
+				},
 				Ok(AccountRouteResult::Committed(commit)) => json!({
 					"outcome": "routed",
 					"routing_revision": commit.routing.revision,
@@ -6752,10 +6664,10 @@ mod tests {
 				Arc::clone(&credentials),
 				Arc::new(UnusedCredentialRefresher),
 			)
-				.with_shared_auth_coordinator(test_coordinator(
-					Arc::clone(&shared_auth_file) as Arc<dyn SharedAuthFilePort>,
-					CodexLiveness::MayBeRunning,
-				)),
+			.with_shared_auth_coordinator(test_coordinator(
+				Arc::clone(&shared_auth_file) as Arc<dyn SharedAuthFilePort>,
+				CodexLiveness::MayBeRunning,
+			)),
 		);
 		assert_eq!(
 			service.pending_route_wait_reason(&target).await,
@@ -6764,9 +6676,12 @@ mod tests {
 			)
 		);
 		time::sleep(Duration::from_millis(2)).await;
-		let _ =
-			crate::application::recover_pending_account_routes_once(Arc::clone(&service), &store, None)
-				.await;
+		let _ = crate::application::recover_pending_account_routes_once(
+			Arc::clone(&service),
+			&store,
+			None,
+		)
+		.await;
 		assert_eq!(store.read_pending_account_route_commands(1).await.unwrap().len(), 1);
 
 		assert!(
@@ -6782,7 +6697,8 @@ mod tests {
 				.await
 				.unwrap()
 		);
-		let _ = crate::application::recover_pending_account_routes_once(service, &store, None).await;
+		let _ =
+			crate::application::recover_pending_account_routes_once(service, &store, None).await;
 		assert!(store.read_pending_account_route_commands(1).await.unwrap().is_empty());
 		assert_eq!(
 			store.read_account_routing_control().await.unwrap().mode,
@@ -7009,7 +6925,8 @@ mod tests {
 			)),
 		);
 		time::sleep(Duration::from_millis(2)).await;
-		let _ = crate::application::recover_pending_account_routes_once(service, &store, None).await;
+		let _ =
+			crate::application::recover_pending_account_routes_once(service, &store, None).await;
 
 		assert!(store.read_pending_account_route_commands(1).await.unwrap().is_empty());
 		assert_eq!(shared_auth_file.projections.load(Ordering::Relaxed), 0);
@@ -7031,10 +6948,8 @@ mod tests {
 		let enrollment_operation = AccountOperationId::new("22000000-0000-4000-8000-000000000031")
 			.expect("enrollment operation");
 		let initial_bundle = shared_bundle(provider.account_id(), "initial-access", 2_000_000);
-		let shared_auth_file = Arc::new(RefreshRaceSharedAuthFile::new(
-			provider.account_id(),
-			initial_bundle.clone(),
-		));
+		let shared_auth_file =
+			Arc::new(RefreshRaceSharedAuthFile::new(provider.account_id(), initial_bundle.clone()));
 		let initial_binding = initial_bundle
 			.binding_for(
 				&account_id,
@@ -7199,10 +7114,7 @@ mod tests {
 		let refreshed = service.inspect(&account_id).await.expect("read refreshed account").account;
 		assert_eq!(refreshed.revision, 2);
 		assert_eq!(refreshed.credential.as_ref(), Some(&refreshed_binding));
-		assert_eq!(
-			shared_auth_file.current_tokens().0,
-			"refreshed-access"
-		);
+		assert_eq!(shared_auth_file.current_tokens().0, "refreshed-access");
 		assert_eq!(shared_auth_file.project_attempts.load(Ordering::Relaxed), 1);
 		let operation = store
 			.read_account_operation(&refresh_operation)
@@ -8107,7 +8019,7 @@ mod tests {
 	}
 
 	#[test]
-	fn quick_task_callback_accepts_only_a_newer_same_provider_sqlite_successor() {
+	fn conversation_callback_accepts_only_a_newer_same_provider_sqlite_successor() {
 		let initial = binding("callback-provider", 3);
 		let process = ProcessGenerationAccountBinding::new(7, initial.clone(), "a".repeat(64))
 			.expect("process binding");

@@ -1,4 +1,4 @@
-//! Public-API proof of one exact Quick Task continuation after reopening SQLite.
+//! Public-API proof of one exact Conversation continuation after reopening SQLite.
 
 use getrandom as _;
 use rusqlite as _;
@@ -24,18 +24,20 @@ use decodex_core::{
 	SameThreadContinuationEvidence, TurnId, TurnRole, compile_context_pack,
 };
 use decodex_database::{
-	AdmitInitialQuickTaskTurn, AuthorizeProviderDispatchOutcome, BindQuickTaskContinuation,
+	AdmitInitialConversationTurn, AuthorizeProviderDispatchOutcome, BindConversationContinuation,
 	BindRuntimeSessionThreadOutcome, CodexAccountCapabilityAttestation, CommandIdentity,
-	CreateQuickTaskConversation, CredentialKey, CredentialRecord, FenceRuntimeSessionThreadStart,
-	FenceRuntimeSessionThreadStartOutcome, InitialQuickTaskTurnAdmissionOutcome,
-	LocalAccountTransfer, LocalAccountTransferBatch, LocalAccountTransferOutcome, PlanContinuation,
-	PlanInitialThreadContinuation, PrepareProcessGenerationOutcome, PrepareProviderAttemptOutcome,
-	PrepareQuickTaskProcessGeneration, PrepareQuickTaskProcessGenerationOutcome,
-	ProcessGenerationMutationOutcome, ProviderAttemptMutationOutcome, QuickTaskInitialRouteOutcome,
-	QuickTaskPreEffectEvidenceKind, QuickTaskTerminalizationOutcome,
-	QuickTaskThreadEstablishmentReadback, ReconcileQuickTaskThreadEstablishment, RecordHistoryItem,
-	RouteQuickTaskInitial, RoutingControlOutcome, RuntimeSessionBindingReceipt, SqliteStore,
-	SuccessfulRuntimeSessionThreadStart, TerminalizeQuickTaskTurn, TurnReservationOutcome,
+	ConversationInitialRouteOutcome, ConversationPreEffectEvidenceKind,
+	ConversationTerminalizationOutcome, ConversationThreadEstablishmentReadback,
+	CreateConversationRecord, CredentialKey, CredentialRecord, FenceRuntimeSessionThreadStart,
+	FenceRuntimeSessionThreadStartOutcome, InitialConversationTurnAdmissionOutcome,
+	LocalAccountTransfer, LocalAccountTransferBatch, LocalAccountTransferOutcome,
+	OrdinaryTaskConversationProjection, PlanContinuation, PlanInitialThreadContinuation,
+	PrepareConversationProcessGeneration, PrepareConversationProcessGenerationOutcome,
+	PrepareProcessGenerationOutcome, PrepareProviderAttemptOutcome,
+	ProcessGenerationMutationOutcome, ProviderAttemptMutationOutcome,
+	ReconcileConversationThreadEstablishment, RecordHistoryItem, RouteConversationInitial,
+	RoutingControlOutcome, RuntimeSessionBindingReceipt, SqliteStore,
+	SuccessfulRuntimeSessionThreadStart, TerminalizeConversationTurn, TurnReservationOutcome,
 };
 use tempfile::tempdir;
 use zeroize::Zeroizing;
@@ -62,7 +64,6 @@ const DEATH_EVIDENCE_ID: &str = "11000000-0000-4000-8000-000000000001";
 const REHYDRATED_GENERATION_ID: &str = "12000000-0000-4000-8000-000000000001";
 const PROVIDER_ACCOUNT_ID: &str = "fixture-provider-account";
 const ALTERNATE_PROVIDER_ACCOUNT_ID: &str = "fixture-provider-account-2";
-const CODEX_THREAD_ID: &str = "fixture-codex-thread";
 const PROVIDER_TURN_ID: &str = "fixture-provider-turn-1";
 const DIGEST_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const DIGEST_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -71,7 +72,8 @@ const DIGEST_D: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Keep one complete persisted execution and restart proof together.
-async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_duplicate_dispatch() {
+async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_duplicate_dispatch()
+{
 	let temporary = tempdir().expect("temporary Decodex root");
 	let canonical_root = temporary.path().canonicalize().expect("canonical temporary root");
 	let root = DecodexRoot::new(canonical_root).expect("typed Decodex root");
@@ -82,12 +84,12 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 
 	let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation identity");
 	let conversation_command =
-		CommandIdentity::new("quick-task-conversation", b"create restart conversation")
+		CommandIdentity::new("conversation-conversation", b"create restart conversation")
 			.expect("conversation command");
 	let conversation = store
-		.create_quick_task_conversation(
+		.create_conversation(
 			&conversation_command,
-			&CreateQuickTaskConversation {
+			&CreateConversationRecord {
 				conversation_id: conversation_id.clone(),
 				work_item_id: None,
 				title: "SQLite restart proof".to_owned(),
@@ -99,28 +101,28 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 			},
 		)
 		.await
-		.expect("create Quick Task conversation");
+		.expect("create Conversation conversation");
 	assert_eq!(conversation.revision, 1);
 
 	let route = match store
-		.route_quick_task_initial(
-			"quick-task-route",
-			&RouteQuickTaskInitial {
+		.route_conversation_initial(
+			"conversation-route",
+			&RouteConversationInitial {
 				conversation_id: conversation_id.clone(),
 				expected_conversation_revision: 1,
 			},
 		)
 		.await
-		.expect("route initial Quick Task")
+		.expect("route initial Conversation")
 	{
-		QuickTaskInitialRouteOutcome::Fresh(route) => route,
+		ConversationInitialRouteOutcome::Fresh(route) => route,
 		other => panic!("initial route was not fresh: {other:?}"),
 	};
 	assert_eq!(route.decision.selected_account_id.as_ref(), Some(&account_id));
 
 	let initial_plan = match store
 		.plan_initial_thread_continuation(
-			"quick-task-initial-plan",
+			"conversation-initial-plan",
 			&PlanInitialThreadContinuation {
 				operation_id: "91000000-0000-4000-8000-000000000001".to_owned(),
 				routing_decision_id: route.decision_id.clone(),
@@ -143,10 +145,10 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 	assert_eq!(initial_session.account_snapshot.source_account_id, account_id);
 
 	let initial_admission = store
-		.admit_initial_quick_task_turn(
+		.admit_initial_conversation_turn(
 			&blob_store,
-			"quick-task-initial-admission",
-			&AdmitInitialQuickTaskTurn {
+			"conversation-initial-admission",
+			&AdmitInitialConversationTurn {
 				expected_conversation_revision: 1,
 				expected_runtime_session_revision: 1,
 				continuation_plan_id: INITIAL_PLAN_ID.to_owned(),
@@ -165,15 +167,15 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 		.expect("admit initial user Turn");
 	assert!(matches!(
 		initial_admission,
-		InitialQuickTaskTurnAdmissionOutcome::Fresh(ref admission)
+		InitialConversationTurnAdmissionOutcome::Fresh(ref admission)
 			if admission.turn.turn_id == route.turn_id && admission.turn.revision == 1
 	));
 
 	let generation_id = ProcessGenerationId::new(GENERATION_ID).expect("generation identity");
 	let process_admission = match store
-		.prepare_quick_task_process_generation(
-			"quick-task-process-admission",
-			&PrepareQuickTaskProcessGeneration {
+		.prepare_conversation_process_generation(
+			"conversation-process-admission",
+			&PrepareConversationProcessGeneration {
 				conversation_id: conversation_id.clone(),
 				expected_conversation_revision: 1,
 				runtime_session_id: initial_session.runtime_session_id.clone(),
@@ -189,11 +191,11 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 		.await
 		.expect("admit process generation")
 	{
-		PrepareQuickTaskProcessGenerationOutcome::Fresh(admission) => admission,
+		PrepareConversationProcessGenerationOutcome::Fresh(admission) => admission,
 		other => panic!("process admission was not fresh: {other:?}"),
 	};
 	let pre_spawn_readback = store
-		.reconcile_quick_task_thread_establishment(&ReconcileQuickTaskThreadEstablishment {
+		.reconcile_conversation_thread_establishment(&ReconcileConversationThreadEstablishment {
 			conversation_id: conversation_id.clone(),
 			expected_conversation_revision: 1,
 			runtime_session_id: initial_session.runtime_session_id.clone(),
@@ -209,10 +211,10 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 		.expect("reconcile admitted generation before spawn");
 	assert!(matches!(
 		pre_spawn_readback,
-		QuickTaskThreadEstablishmentReadback::DefinitelyNotStarted(ref evidence)
+		ConversationThreadEstablishmentReadback::DefinitelyNotStarted(ref evidence)
 			if evidence.process_generation_revision.is_none()
-				&& evidence.kind == QuickTaskPreEffectEvidenceKind::AdmissionRejected
-				&& evidence.evidence_id == "quick-task-process-admission"
+				&& evidence.kind == ConversationPreEffectEvidenceKind::AdmissionRejected
+				&& evidence.evidence_id == "conversation-process-admission"
 	));
 	let execution_epoch_id =
 		ProcessExecutionEpochId::new(EXECUTION_EPOCH_ID).expect("execution epoch identity");
@@ -234,7 +236,7 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 	let process_binding = ProcessGenerationAccountBinding::new(1, credential.clone(), DIGEST_C)
 		.expect("process account binding");
 	let process_fence = match store
-		.prepare_quick_task_bound_process_generation(&intent, &process_binding, process_admission)
+		.prepare_conversation_bound_process_generation(&intent, &process_binding, process_admission)
 		.await
 		.expect("fence process generation")
 	{
@@ -269,7 +271,7 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 
 	let thread_authority = match store
 		.fence_runtime_session_thread_start(
-			"quick-task-thread-fence",
+			"conversation-thread-fence",
 			&FenceRuntimeSessionThreadStart {
 				conversation_id: conversation_id.clone(),
 				expected_conversation_revision: 1,
@@ -291,13 +293,21 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 		FenceRuntimeSessionThreadStartOutcome::Fresh(authority) => authority,
 		other => panic!("thread-start fence was not fresh: {other:?}"),
 	};
+	let codex_thread_id = "x".repeat(decodex_core::MAX_PROVIDER_THREAD_ID_BYTES);
 	let thread_binding = thread_authority.into_binding(SuccessfulRuntimeSessionThreadStart {
 		response_id: 1,
 		response_sha256: DIGEST_B.to_owned(),
-		codex_thread_id: CODEX_THREAD_ID.to_owned(),
+		codex_thread_id: codex_thread_id.clone(),
 	});
+	let mut oversized_binding = thread_binding.clone();
+	oversized_binding.successful_response.codex_thread_id =
+		"x".repeat(decodex_core::MAX_PROVIDER_THREAD_ID_BYTES + 1);
+	assert!(matches!(
+		store.bind_runtime_session_thread("oversized-provider-thread", &oversized_binding).await,
+		Err(decodex_database::StoreError::InvalidInput(_))
+	));
 	let bound_session = match store
-		.bind_runtime_session_thread("quick-task-thread-binding", &thread_binding)
+		.bind_runtime_session_thread("conversation-thread-binding", &thread_binding)
 		.await
 		.expect("bind Codex thread")
 	{
@@ -305,7 +315,7 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 		other => panic!("thread binding was not applied: {other:?}"),
 	};
 	assert_eq!(bound_session.revision, 3);
-	assert_eq!(bound_session.codex_thread_id, CODEX_THREAD_ID);
+	assert_eq!(bound_session.codex_thread_id, codex_thread_id);
 
 	let attempt_id = ProviderAttemptId::new(ATTEMPT_ID).expect("attempt identity");
 	let request_id = ProviderRequestId::new(REQUEST_ID).expect("provider request identity");
@@ -353,7 +363,7 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 	store
 		.record_history_item(
 			&blob_store,
-			&CommandIdentity::new("quick-task-assistant-history", b"assistant reply")
+			&CommandIdentity::new("conversation-assistant-history", b"assistant reply")
 				.expect("assistant history command"),
 			&history_item(
 				&conversation_id,
@@ -376,7 +386,7 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 		ProviderTerminalOutcome::Succeeded,
 		provider_key,
 		Some("fixture-provider-receipt".to_owned()),
-		Some(CODEX_THREAD_ID.to_owned()),
+		Some(codex_thread_id.clone()),
 		Some(PROVIDER_TURN_ID.to_owned()),
 		DIGEST_D,
 	)
@@ -390,9 +400,9 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 			if mutation.revision == 3 && mutation.state == ProviderAttemptState::Succeeded
 	));
 	let terminalized = match store
-		.terminalize_quick_task_turn(
-			"quick-task-terminalization",
-			&TerminalizeQuickTaskTurn {
+		.terminalize_conversation_turn(
+			"conversation-terminalization",
+			&TerminalizeConversationTurn {
 				conversation_id: conversation_id.clone(),
 				expected_conversation_revision: 1,
 				runtime_session_id: initial_session.runtime_session_id.clone(),
@@ -404,15 +414,15 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 				expected_provider_attempt_revision: 3,
 				provider_evidence_id: evidence_id,
 				provider_outcome: ProviderTerminalOutcome::Succeeded,
-				provider_thread_id: CODEX_THREAD_ID.to_owned(),
+				provider_thread_id: codex_thread_id.clone(),
 				provider_turn_id: PROVIDER_TURN_ID.to_owned(),
 			},
 		)
 		.await
-		.expect("terminalize Quick Task Turn")
+		.expect("terminalize Conversation Turn")
 	{
-		QuickTaskTerminalizationOutcome::Applied(readback) => readback,
-		other => panic!("Quick Task terminalization was not applied: {other:?}"),
+		ConversationTerminalizationOutcome::Applied(readback) => readback,
+		other => panic!("Conversation terminalization was not applied: {other:?}"),
 	};
 	assert_eq!(terminalized.runtime_session_revision, 4);
 	assert_eq!(
@@ -458,17 +468,27 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 		other => panic!("account routing did not update: {other:?}"),
 	};
 	assert_eq!(changed_routing.mode, AccountSelectionMode::Fixed(alternate_account_id.clone()));
+	let projection = reopened
+		.read_ordinary_task_conversations(Some(&conversation_id), None, 1)
+		.await
+		.expect("read durable Conversation projection after restart");
+	assert!(matches!(
+		projection.as_slice(),
+		[OrdinaryTaskConversationProjection::Current(row)]
+			if row.title == "SQLite restart proof"
+				&& row.codex_thread_id.as_deref() == Some(codex_thread_id.as_str())
+	));
 
 	let alternate_conversation_id =
 		ConversationId::new(ALTERNATE_CONVERSATION_ID).expect("alternate conversation identity");
 	reopened
-		.create_quick_task_conversation(
+		.create_conversation(
 			&CommandIdentity::new(
-				"alternate-quick-task-conversation",
+				"alternate-conversation-conversation",
 				b"create alternate conversation",
 			)
 			.expect("alternate conversation command"),
-			&CreateQuickTaskConversation {
+			&CreateConversationRecord {
 				conversation_id: alternate_conversation_id.clone(),
 				work_item_id: None,
 				title: "Independent account affinity proof".to_owned(),
@@ -480,19 +500,19 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 			},
 		)
 		.await
-		.expect("create alternate Quick Task conversation");
+		.expect("create alternate Conversation conversation");
 	let alternate_route = match reopened
-		.route_quick_task_initial(
-			"alternate-quick-task-route",
-			&RouteQuickTaskInitial {
+		.route_conversation_initial(
+			"alternate-conversation-route",
+			&RouteConversationInitial {
 				conversation_id: alternate_conversation_id,
 				expected_conversation_revision: 1,
 			},
 		)
 		.await
-		.expect("route alternate Quick Task")
+		.expect("route alternate Conversation")
 	{
-		QuickTaskInitialRouteOutcome::Fresh(route) => route,
+		ConversationInitialRouteOutcome::Fresh(route) => route,
 		other => panic!("alternate initial route was not fresh: {other:?}"),
 	};
 	assert_eq!(
@@ -508,7 +528,7 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 		.expect("active RuntimeSession survives restart");
 	assert_eq!(resume.runtime_session_id, initial_session.runtime_session_id);
 	assert_eq!(resume.runtime_session_revision, 4);
-	assert_eq!(resume.codex_thread_id, CODEX_THREAD_ID);
+	assert_eq!(resume.codex_thread_id, codex_thread_id);
 	assert_eq!(resume.source_account_id, account_id);
 	assert_eq!(resume.next_turn_sequence, 3);
 	assert!(resume.has_acknowledged_turn);
@@ -529,7 +549,7 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 		reopened
 			.reserve_user_turn_with_history_item(
 				&blob_store,
-				&CommandIdentity::new("quick-task-later-turn", b"continue after restart")
+				&CommandIdentity::new("conversation-later-turn", b"continue after restart")
 					.expect("later Turn command"),
 				&later_history,
 			)
@@ -539,9 +559,9 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 			if reservation.turn_id == later_turn_id && reservation.sequence == 3
 	));
 	let continuation_binding = match reopened
-		.bind_quick_task_continuation(
-			"quick-task-continuation-route",
-			&BindQuickTaskContinuation {
+		.bind_conversation_continuation(
+			"conversation-continuation-route",
+			&BindConversationContinuation {
 				operation_id: "a1000000-0000-4000-8000-000000000001".to_owned(),
 				conversation_id: conversation_id.clone(),
 				expected_conversation_revision: 1,
@@ -583,7 +603,7 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 	let continuation = match reopened
 		.plan_continuation(
 			&blob_store,
-			"quick-task-continuation-plan",
+			"conversation-continuation-plan",
 			&continuation_request,
 			&fallback_pack,
 		)
@@ -596,7 +616,7 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 		},
 	};
 	assert_eq!(continuation.plan.kind, ContinuationPlanKind::SameThread);
-	assert_eq!(continuation.plan.codex_thread_id.as_deref(), Some(CODEX_THREAD_ID));
+	assert_eq!(continuation.plan.codex_thread_id.as_deref(), Some(codex_thread_id.as_str()));
 	assert_eq!(continuation.plan.source_runtime_session_id, resume.runtime_session_id);
 	assert_eq!(continuation.plan.source_runtime_session_revision, 4);
 	assert_eq!(continuation.plan.selected_account_id, account_id);
@@ -613,9 +633,9 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 		ProcessGenerationId::new(REHYDRATED_GENERATION_ID).expect("rehydrated generation identity");
 	assert!(matches!(
 		reopened
-			.prepare_quick_task_process_generation(
-				"quick-task-rehydrated-process-admission",
-				&PrepareQuickTaskProcessGeneration {
+			.prepare_conversation_process_generation(
+				"conversation-rehydrated-process-admission",
+				&PrepareConversationProcessGeneration {
 					conversation_id: conversation_id.clone(),
 					expected_conversation_revision: 1,
 					runtime_session_id: resume.runtime_session_id.clone(),
@@ -630,7 +650,7 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 			)
 			.await
 			.expect("admit rehydrated process generation"),
-		PrepareQuickTaskProcessGenerationOutcome::Fresh(_)
+		PrepareConversationProcessGenerationOutcome::Fresh(_)
 	));
 
 	assert!(matches!(

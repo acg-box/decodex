@@ -161,7 +161,7 @@ struct ResetCardAccountState: Identifiable, Equatable {
 
 /// Route admission is an account-control capability, not an account-data refresh state.
 /// The optional Codex callback capability is intentionally not part of this gate; direct
-/// provider observations and account routing remain usable while Quick Task capability is
+/// provider observations and account routing remain usable while Conversation capability is
 /// independently settling.
 enum AccountRouteCapability: Equatable {
 	case ready

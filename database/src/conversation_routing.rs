@@ -1,4 +1,4 @@
-//! Durable account routing for ordinary Quick Task conversations.
+//! Durable account routing for ordinary Conversation conversations.
 
 use decodex_core::{
 	AccountId, AccountLifecycleReadiness, AccountQuotaDisposition, AccountQuotaObservationError,
@@ -22,14 +22,14 @@ use crate::{
 
 /// Exact Conversation coordinates for its sole initial account route.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RouteQuickTaskInitial {
+pub struct RouteConversationInitial {
 	pub conversation_id: ConversationId,
 	pub expected_conversation_revision: i64,
 }
 
 /// Immutable initial route and database-owned prospective Turn.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct QuickTaskInitialRoute {
+pub struct ConversationInitialRoute {
 	pub decision_id: String,
 	pub operation_id: String,
 	pub snapshot: AccountRegistryRoutingSnapshot,
@@ -41,16 +41,16 @@ pub struct QuickTaskInitialRoute {
 
 /// Exact initial route result with stable replay classification.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum QuickTaskInitialRouteOutcome {
-	Fresh(QuickTaskInitialRoute),
-	Replayed(QuickTaskInitialRoute),
+pub enum ConversationInitialRouteOutcome {
+	Fresh(ConversationInitialRoute),
+	Replayed(ConversationInitialRoute),
 	Rejected(RoutingRejection),
 	ReplayedRejection(RoutingRejection),
 }
 
-/// Exact non-selecting continuation binding over one active Quick Task session.
+/// Exact non-selecting continuation binding over one active Conversation session.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BindQuickTaskContinuation {
+pub struct BindConversationContinuation {
 	pub operation_id: String,
 	pub conversation_id: ConversationId,
 	pub expected_conversation_revision: i64,
@@ -61,7 +61,7 @@ pub struct BindQuickTaskContinuation {
 
 /// Immutable lineage for one later Turn.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct QuickTaskContinuationBinding {
+pub struct ConversationContinuationBinding {
 	pub decision_id: String,
 	pub consumer: ExecutionConsumer,
 	pub initial_decision_id: String,
@@ -75,11 +75,11 @@ pub struct QuickTaskContinuationBinding {
 impl SqliteStore {
 	/// Route one open ordinary Conversation from one transactionally captured registry universe.
 	#[allow(clippy::too_many_lines)] // Keep one atomic initial-route decision together.
-	pub async fn route_quick_task_initial(
+	pub async fn route_conversation_initial(
 		&self,
 		idempotency_key: &str,
-		request: &RouteQuickTaskInitial,
-	) -> Result<QuickTaskInitialRouteOutcome, StoreError> {
+		request: &RouteConversationInitial,
+	) -> Result<ConversationInitialRouteOutcome, StoreError> {
 		validate_key(idempotency_key)?;
 		if request.expected_conversation_revision <= 0 {
 			return Err(StoreError::InvalidInput("Conversation revision must be positive"));
@@ -106,7 +106,7 @@ impl SqliteStore {
 				}
 				let route = read_initial_route_by_id(&transaction, &decision_id)?;
 				transaction.commit().map_err(sql_error)?;
-				return Ok(QuickTaskInitialRouteOutcome::Replayed(route));
+				return Ok(ConversationInitialRouteOutcome::Replayed(route));
 			}
 
 			let conversation_matches: bool = transaction
@@ -124,7 +124,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			if !conversation_matches {
-				return Ok(QuickTaskInitialRouteOutcome::Rejected(RoutingRejection {
+				return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
 					operation: "route_quick_task_initial".to_owned(),
 					code: "conversation_mismatch".to_owned(),
 				}));
@@ -141,7 +141,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			if already_bound {
-				return Ok(QuickTaskInitialRouteOutcome::Rejected(RoutingRejection {
+				return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
 					operation: "route_quick_task_initial".to_owned(),
 					code: "initial_routing_already_bound".to_owned(),
 				}));
@@ -149,7 +149,7 @@ impl SqliteStore {
 
 			let accounts = read_account_registry_sync(&transaction, None, 512)?;
 			if accounts.is_empty() {
-				return Ok(QuickTaskInitialRouteOutcome::Rejected(RoutingRejection {
+				return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
 					operation: "route_quick_task_initial".to_owned(),
 					code: "routing_authority_unavailable".to_owned(),
 				}));
@@ -217,7 +217,7 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
-			let route = QuickTaskInitialRoute {
+			let route = ConversationInitialRoute {
 				decision_id,
 				operation_id,
 				snapshot,
@@ -233,16 +233,16 @@ impl SqliteStore {
 				decision,
 			};
 			transaction.commit().map_err(sql_error)?;
-			Ok(QuickTaskInitialRouteOutcome::Fresh(route))
+			Ok(ConversationInitialRouteOutcome::Fresh(route))
 		})
 		.await
 	}
 
 	/// Read the immutable initial route without consulting current account authority.
-	pub async fn read_quick_task_initial_route(
+	pub async fn read_conversation_initial_route(
 		&self,
 		conversation_id: &ConversationId,
-	) -> Result<Option<QuickTaskInitialRoute>, StoreError> {
+	) -> Result<Option<ConversationInitialRoute>, StoreError> {
 		let conversation_id = conversation_id.clone();
 		self.run(move |connection| {
 			let decision_id = connection
@@ -262,17 +262,17 @@ impl SqliteStore {
 
 	/// Bind one later Turn to the original selected account without selecting again.
 	#[allow(clippy::too_many_lines)] // Keep one atomic continuation binding together.
-	pub async fn bind_quick_task_continuation(
+	pub async fn bind_conversation_continuation(
 		&self,
 		idempotency_key: &str,
-		request: &BindQuickTaskContinuation,
-	) -> Result<RoutingCommandOutcome<QuickTaskContinuationBinding>, StoreError> {
+		request: &BindConversationContinuation,
+	) -> Result<RoutingCommandOutcome<ConversationContinuationBinding>, StoreError> {
 		validate_key(idempotency_key)?;
 		if request.expected_conversation_revision <= 0
 			|| request.expected_source_runtime_session_revision <= 0
 		{
 			return Err(StoreError::InvalidInput(
-				"Quick Task continuation coordinates are invalid",
+				"Conversation continuation coordinates are invalid",
 			));
 		}
 		let key = idempotency_key.to_owned();
@@ -388,7 +388,7 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
-			let binding = QuickTaskContinuationBinding {
+			let binding = ConversationContinuationBinding {
 				decision_id,
 				consumer: ExecutionConsumer::ConversationTurn {
 					conversation_id: request.conversation_id,
@@ -548,7 +548,7 @@ fn read_routing_control(
 fn read_initial_route_by_id(
 	connection: &rusqlite::Connection,
 	decision_id: &str,
-) -> Result<QuickTaskInitialRoute, StoreError> {
+) -> Result<ConversationInitialRoute, StoreError> {
 	let row = connection
 		.query_row(
 			"SELECT operation_id, conversation_id, turn_id, conversation_revision,
@@ -600,7 +600,7 @@ fn read_initial_route_by_id(
 				.map_err(|_| StoreError::Incompatible("routing exclusions JSON".to_owned()))?,
 		)?,
 	};
-	Ok(QuickTaskInitialRoute {
+	Ok(ConversationInitialRoute {
 		decision_id: decision_id.to_owned(),
 		operation_id: row.0,
 		snapshot,
@@ -620,7 +620,7 @@ fn read_initial_route_by_id(
 fn read_continuation_binding(
 	connection: &rusqlite::Connection,
 	decision_id: &str,
-) -> Result<QuickTaskContinuationBinding, StoreError> {
+) -> Result<ConversationContinuationBinding, StoreError> {
 	let row = connection
 		.query_row(
 			"SELECT d.conversation_id, d.turn_id, d.conversation_revision,
@@ -657,7 +657,7 @@ fn read_continuation_binding(
 		TurnId::new(row.1).map_err(|_| StoreError::Incompatible("Turn identity".to_owned()))?;
 	let runtime_session_id = RuntimeSessionId::new(row.3)
 		.map_err(|_| StoreError::Incompatible("RuntimeSession identity".to_owned()))?;
-	Ok(QuickTaskContinuationBinding {
+	Ok(ConversationContinuationBinding {
 		decision_id: decision_id.to_owned(),
 		consumer: ExecutionConsumer::ConversationTurn {
 			conversation_id,
@@ -952,11 +952,11 @@ fn parse_quota_error(value: &str) -> Result<AccountQuotaObservationError, StoreE
 	}
 }
 
-fn route_request_sha(request: &RouteQuickTaskInitial) -> String {
+fn route_request_sha(request: &RouteConversationInitial) -> String {
 	digest(&[request.conversation_id.as_str(), &request.expected_conversation_revision.to_string()])
 }
 
-fn continuation_request_sha(request: &BindQuickTaskContinuation) -> String {
+fn continuation_request_sha(request: &BindConversationContinuation) -> String {
 	digest(&[
 		&request.operation_id,
 		request.conversation_id.as_str(),

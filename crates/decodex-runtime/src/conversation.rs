@@ -21,10 +21,10 @@ use std::{
 };
 
 use decodex_codex::{
-	ArchiveReconciliationOutcome, ExactSubmittedTurnReadback, ExactThreadId, ExactThreadReadResult,
-	MAX_QUICK_TASK_INPUT_BYTES, QuickTaskThreadResumeRequest, QuickTaskThreadStartRequest,
-	QuickTaskTurnInput, QuickTaskTurnInterruptRequest, QuickTaskTurnStartRequest,
-	QuickTaskTurnStatus, TurnStatus,
+	ArchiveReconciliationOutcome, ConversationThreadResumeRequest, ConversationThreadStartRequest,
+	ConversationTurnInput, ConversationTurnInterruptRequest, ConversationTurnStartRequest,
+	ConversationTurnStatus, ExactSubmittedTurnReadback, ExactThreadId, ExactThreadReadResult,
+	MAX_CONVERSATION_INPUT_BYTES, TurnStatus,
 };
 use decodex_core::{
 	AccountId, AccountLifecycleReadiness, AccountOperationId, ContextPack, ContextPackInput,
@@ -39,21 +39,22 @@ use decodex_core::{
 	RuntimeSessionState, TurnId, TurnRole, WorkItemId, compile_context_pack,
 };
 use decodex_database::{
-	AdmitInitialQuickTaskTurn, ArchiveLocalQuickTaskConversation,
-	ArchiveLocalQuickTaskConversationOutcome, ArchiveQuickTaskConversation,
-	ArchiveQuickTaskConversationOutcome, AuthorizeProviderDispatchOutcome,
-	BindRuntimeSessionThreadOutcome, CommandIdentity, CreateQuickTaskConversation,
-	FenceRuntimeSessionThreadStart, FenceRuntimeSessionThreadStartOutcome,
-	FreshQuickTaskProcessGeneration, InitialQuickTaskTurnAdmissionOutcome,
-	OrdinaryRuntimeSessionResumeReadback, PendingQuickTaskTerminalizationReadback,
-	PrepareQuickTaskProcessGeneration, PrepareQuickTaskProcessGenerationOutcome,
-	ProviderAttemptMutationOutcome, QuickTaskTerminalizationOutcome,
-	QuickTaskThreadEstablishmentReadback, ReconcileQuickTaskThreadEstablishment,
-	ReconcileStrandedQuickTaskTurn, ReconcileStrandedQuickTaskTurnOutcome, RecordHistoryItem,
-	RecoverUnknownQuickTaskTurn, RecoverUnknownQuickTaskTurnOutcome, RoleProfileRole, SqliteStore,
-	StoreError, TerminalizeQuickTaskTurn, TurnReservationOutcome, UnknownQuickTaskAttemptReadback,
+	AdmitInitialConversationTurn, ArchiveConversationOutcome, ArchiveConversationRecord,
+	ArchiveLocalConversationOutcome, ArchiveLocalConversationRecord,
+	AuthorizeProviderDispatchOutcome, BindRuntimeSessionThreadOutcome, CommandIdentity,
+	ConversationTerminalizationOutcome, ConversationThreadEstablishmentReadback,
+	CreateConversationRecord, FenceRuntimeSessionThreadStart,
+	FenceRuntimeSessionThreadStartOutcome, FreshConversationProcessGeneration,
+	InitialConversationTurnAdmissionOutcome, OrdinaryRuntimeSessionResumeReadback,
+	PendingConversationTerminalizationReadback, PrepareConversationProcessGeneration,
+	PrepareConversationProcessGenerationOutcome, ProviderAttemptMutationOutcome,
+	ReconcileConversationThreadEstablishment, ReconcileStrandedConversationTurn,
+	ReconcileStrandedConversationTurnOutcome, RecordHistoryItem, RecoverUnknownConversationTurn,
+	RecoverUnknownConversationTurnOutcome, RoleProfileRole, SqliteStore, StoreError,
+	TerminalizeConversationTurn, TurnReservationOutcome, UnknownConversationAttemptReadback,
+	bounded_conversation_title,
 };
-use decodex_protocol::{HistoryText, MAX_HISTORY_INLINE_BYTES, QuickTaskUnavailableReason};
+use decodex_protocol::{ConversationUnavailableReason, HistoryText, MAX_HISTORY_INLINE_BYTES};
 use sha2::{Digest as _, Sha256};
 use tokio::{
 	sync::{Mutex as AsyncMutex, mpsc as tokio_mpsc},
@@ -79,10 +80,10 @@ use crate::{
 use crate::account_launch::process::{
 	AccountBinding, AccountIdentity, AccountRefreshCallback as ProcessAccountRefreshCallback,
 	AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild,
-	ChatgptRefreshProjection, CredentialProjection, CredentialVault, CredentialVaultError,
-	EstablishedOrdinaryThread, PreparedThreadStart, PreparedTurnStart, QuickTaskPreSpawnCheck,
-	QuickTaskProcessError, QuickTaskProcessEvent, ResumedOrdinaryThread, StartedOrdinaryTurn,
-	spawn_admitted_quick_task_process,
+	ChatgptRefreshProjection, ConversationPreSpawnCheck, ConversationProcessError,
+	ConversationProcessEvent, CredentialProjection, CredentialVault, CredentialVaultError,
+	EstablishedOrdinaryThread, PreparedThreadStart, PreparedTurnStart, ResumedOrdinaryThread,
+	StartedOrdinaryTurn, spawn_admitted_conversation_process,
 };
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
@@ -184,7 +185,7 @@ fn open_selected_path(
 	Ok(components)
 }
 
-impl QuickTaskPreSpawnCheck for SelectedWorkingDirectory {
+impl ConversationPreSpawnCheck for SelectedWorkingDirectory {
 	fn validate_at_spawn_boundary(&self) -> Result<(), ()> {
 		self.revalidate()
 	}
@@ -295,14 +296,14 @@ fn selected_directory_from_descriptor(descriptor: i32) -> Result<File, ()> {
 
 /// Explicit request-scoped execution settings carried on every user send.
 #[derive(Clone)]
-pub(crate) struct QuickTaskExecutionSettings {
+pub(crate) struct ConversationExecutionSettings {
 	pub model: String,
 	pub reasoning_effort: String,
 	pub fast: bool,
 }
 
 /// First ordinary Turn input. Settings are explicit and survive pre-session recovery.
-pub(crate) struct CreateQuickTask {
+pub(crate) struct CreateConversation {
 	pub operation_key: String,
 	pub correlation_id: String,
 	pub causation_id: Option<String>,
@@ -310,11 +311,11 @@ pub(crate) struct CreateQuickTask {
 	pub work_item_id: Option<WorkItemId>,
 	pub message: String,
 	pub working_directory: String,
-	pub execution: QuickTaskExecutionSettings,
+	pub execution: ConversationExecutionSettings,
 }
 
 /// Public recovery coordinates. Message, directory, and route authority come from durable state.
-pub(crate) struct RecoverQuickTask {
+pub(crate) struct RecoverConversation {
 	pub operation_key: String,
 	pub correlation_id: String,
 	pub causation_id: Option<String>,
@@ -323,7 +324,7 @@ pub(crate) struct RecoverQuickTask {
 }
 
 /// Later ordinary Turn input over the exact existing RuntimeSession.
-pub(crate) struct SubmitQuickTaskTurn {
+pub(crate) struct SubmitConversationTurn {
 	pub operation_key: String,
 	pub correlation_id: String,
 	pub causation_id: Option<String>,
@@ -331,11 +332,11 @@ pub(crate) struct SubmitQuickTaskTurn {
 	pub turn_id: TurnId,
 	pub message: String,
 	pub working_directory: String,
-	pub execution: QuickTaskExecutionSettings,
+	pub execution: ConversationExecutionSettings,
 }
 
 /// Explicit selected-thread reconciliation request.
-pub(crate) struct ControlQuickTask {
+pub(crate) struct ControlConversation {
 	pub operation_key: String,
 	pub conversation_id: ConversationId,
 	pub expected_conversation_revision: i64,
@@ -347,7 +348,7 @@ pub(crate) struct ControlQuickTask {
 }
 
 /// Closed selected-thread control result.
-pub(crate) enum QuickTaskControlOutcome {
+pub(crate) enum ConversationControlOutcome {
 	Current,
 	Archived { conversation_revision: i64 },
 	Busy,
@@ -366,7 +367,7 @@ enum ControlThreadObservation {
 	Archived,
 }
 
-struct InitialQuickTaskExecution {
+struct InitialConversationExecution {
 	operation_key: String,
 	correlation_id: String,
 	causation_id: Option<String>,
@@ -374,12 +375,12 @@ struct InitialQuickTaskExecution {
 	turn_id: TurnId,
 	message: String,
 	working_directory: String,
-	execution: QuickTaskExecutionSettings,
+	execution: ConversationExecutionSettings,
 }
 
 /// Daemon-local projection. It is never serialized or accepted as durable authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct QuickTaskReadback {
+pub(crate) struct ConversationReadback {
 	pub operation_key: Option<String>,
 	pub correlation_id: Option<String>,
 	pub causation_id: Option<String>,
@@ -390,12 +391,12 @@ pub(crate) struct QuickTaskReadback {
 	pub codex_thread_id: Option<String>,
 	pub process_generation_id: Option<ProcessGenerationId>,
 	pub active_turn_id: Option<TurnId>,
-	pub state: QuickTaskLocalState,
+	pub state: ConversationLocalState,
 }
 
 /// Closed local lifecycle projection with no durable transition power.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum QuickTaskLocalState {
+pub(crate) enum ConversationLocalState {
 	RoutingPending,
 	EstablishmentPending,
 	QuotaExhausted,
@@ -409,14 +410,14 @@ pub(crate) enum QuickTaskLocalState {
 
 /// Bounded daemon-local overlay for one durable ordinary Conversation projection.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct QuickTaskProjection {
-	pub readback: QuickTaskReadback,
-	pub recovery: Option<QuickTaskManualRecovery>,
+pub(crate) struct ConversationProjection {
+	pub readback: ConversationReadback,
+	pub recovery: Option<ConversationManualRecovery>,
 }
 
 /// Typed manual action after definite missing or incompatible authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum QuickTaskManualRecovery {
+pub(crate) enum ConversationManualRecovery {
 	EnableAccount,
 	EnrollCredentials,
 	ResolveAccountOperation,
@@ -437,7 +438,7 @@ pub(crate) enum QuickTaskManualRecovery {
 
 /// Closed ambiguity location. None permits retry, search, or thread adoption.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum QuickTaskAmbiguity {
+pub(crate) enum ConversationAmbiguity {
 	ProcessGeneration,
 	ThreadStart,
 	ThreadBind,
@@ -449,69 +450,69 @@ pub(crate) enum QuickTaskAmbiguity {
 
 /// Positive terminal state retained from exact provider evidence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum QuickTaskTerminalState {
+pub(crate) enum ConversationTerminalState {
 	Succeeded,
 	Failed,
 }
 
 /// Complete application-facing synchronous results and asynchronous events.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum QuickTaskOutcome {
-	PreSession(QuickTaskReadback),
+pub(crate) enum ConversationOutcome {
+	PreSession(ConversationReadback),
 	Started {
-		readback: QuickTaskReadback,
+		readback: ConversationReadback,
 		provider_turn_id: String,
 	},
 	Streaming {
-		readback: QuickTaskReadback,
+		readback: ConversationReadback,
 		history_item_id: HistoryItemId,
 		text: HistoryText,
 	},
 	Terminal {
-		readback: QuickTaskReadback,
+		readback: ConversationReadback,
 		turn_id: TurnId,
-		state: QuickTaskTerminalState,
+		state: ConversationTerminalState,
 		provider_turn_id: String,
 	},
 	Unknown {
-		readback: QuickTaskReadback,
-		ambiguity: QuickTaskAmbiguity,
+		readback: ConversationReadback,
+		ambiguity: ConversationAmbiguity,
 	},
 	ManualRecovery {
-		readback: QuickTaskReadback,
-		action: QuickTaskManualRecovery,
+		readback: ConversationReadback,
+		action: ConversationManualRecovery,
 	},
-	Busy(QuickTaskReadback),
+	Busy(ConversationReadback),
 	Conflict,
-	InterruptRequested(QuickTaskReadback),
+	InterruptRequested(ConversationReadback),
 	Unavailable,
 }
 
-/// Typed Quick Task readiness projected by daemon bootstrap and Doctor.
+/// Typed Conversation readiness projected by daemon bootstrap and Doctor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum QuickTaskReadiness {
+pub enum ConversationReadiness {
 	/// Every fallible dependency owner returned one validated dependency.
 	Ready,
-	/// Quick Task is closed for one redacted startup reason.
-	Unavailable(QuickTaskUnavailableReason),
+	/// Conversation is closed for one redacted startup reason.
+	Unavailable(ConversationUnavailableReason),
 }
 
-/// Immutable daemon-lifetime Quick Task capability.
+/// Immutable daemon-lifetime Conversation capability.
 #[derive(Clone)]
-pub(crate) enum QuickTaskCapability {
-	Ready(QuickTaskRuntime),
-	Unavailable(QuickTaskUnavailableReason),
+pub(crate) enum ConversationCapability {
+	Ready(ConversationRuntime),
+	Unavailable(ConversationUnavailableReason),
 }
 
-impl QuickTaskCapability {
-	pub(crate) const fn readiness(&self) -> QuickTaskReadiness {
+impl ConversationCapability {
+	pub(crate) const fn readiness(&self) -> ConversationReadiness {
 		match self {
-			Self::Ready(_) => QuickTaskReadiness::Ready,
-			Self::Unavailable(reason) => QuickTaskReadiness::Unavailable(*reason),
+			Self::Ready(_) => ConversationReadiness::Ready,
+			Self::Unavailable(reason) => ConversationReadiness::Unavailable(*reason),
 		}
 	}
 
-	pub(crate) const fn runtime(&self) -> Option<&QuickTaskRuntime> {
+	pub(crate) const fn runtime(&self) -> Option<&ConversationRuntime> {
 		match self {
 			Self::Ready(runtime) => Some(runtime),
 			Self::Unavailable(_) => None,
@@ -519,13 +520,13 @@ impl QuickTaskCapability {
 	}
 }
 
-/// Ordinary use-case composition. It owns no durable Quick Task state.
+/// Ordinary use-case composition. It owns no durable Conversation state.
 #[derive(Clone)]
-pub(crate) struct QuickTaskRuntime {
-	inner: Arc<QuickTaskRuntimeInner>,
+pub(crate) struct ConversationRuntime {
+	inner: Arc<ConversationRuntimeInner>,
 }
 
-struct QuickTaskRuntimeInner {
+struct ConversationRuntimeInner {
 	store: SqliteStore,
 	blob_store: decodex_core::BlobStore,
 	accounts: Arc<AccountService>,
@@ -535,8 +536,8 @@ struct QuickTaskRuntimeInner {
 	launch_profile: AttestedAppServerProfile,
 	capacity: Arc<RunnerCapacity>,
 	local: Mutex<BTreeMap<String, LocalTask>>,
-	events: tokio_mpsc::Sender<QuickTaskOutcome>,
-	event_receiver: AsyncMutex<tokio_mpsc::Receiver<QuickTaskOutcome>>,
+	events: tokio_mpsc::Sender<ConversationOutcome>,
+	event_receiver: AsyncMutex<tokio_mpsc::Receiver<ConversationOutcome>>,
 	event_stream_closed: tokio::sync::watch::Sender<bool>,
 	workers: AsyncMutex<JoinSet<()>>,
 	shutting_down: Arc<std::sync::atomic::AtomicBool>,
@@ -558,8 +559,8 @@ enum LocalTaskState {
 		commands: mpsc::SyncSender<WorkerCommand>,
 	},
 	Recovery {
-		readback: QuickTaskReadback,
-		action: QuickTaskManualRecovery,
+		readback: ConversationReadback,
+		action: ConversationManualRecovery,
 	},
 }
 
@@ -590,14 +591,14 @@ enum WorkerCommand {
 }
 
 enum WorkerOutput {
-	Event(QuickTaskProcessEvent),
+	Event(ConversationProcessEvent),
 	Failed,
 }
 
 enum ReservedTurnRefusal {
 	Conflict,
 	Unavailable,
-	Recovery(QuickTaskManualRecovery),
+	Recovery(ConversationManualRecovery),
 }
 
 enum PreparedCancellationDisposition {
@@ -607,21 +608,21 @@ enum PreparedCancellationDisposition {
 }
 
 enum ExistingSessionPlanningRefusal {
-	Recovery(QuickTaskManualRecovery),
+	Recovery(ConversationManualRecovery),
 	Conflict,
 	Unknown,
 }
 
 const fn continuation_recovery(
 	rejection: ContinuationRejection,
-) -> Option<QuickTaskManualRecovery> {
+) -> Option<ConversationManualRecovery> {
 	match rejection {
 		ContinuationRejection::SelectedAccountDrift =>
-			Some(QuickTaskManualRecovery::SelectedAccountDrift),
+			Some(ConversationManualRecovery::SelectedAccountDrift),
 		ContinuationRejection::SelectedAccountReadinessRequired =>
-			Some(QuickTaskManualRecovery::SelectedAccountReadiness),
+			Some(ConversationManualRecovery::SelectedAccountReadiness),
 		ContinuationRejection::SelectedAccountQuotaRequired =>
-			Some(QuickTaskManualRecovery::RefreshQuota),
+			Some(ConversationManualRecovery::RefreshQuota),
 		_ => None,
 	}
 }
@@ -668,7 +669,7 @@ struct AdmittedLaterTurn {
 
 struct RehydratedTurnAdmission {
 	readback: OrdinaryRuntimeSessionResumeReadback,
-	durable_readback: QuickTaskReadback,
+	durable_readback: ConversationReadback,
 	sequence: i64,
 }
 
@@ -686,8 +687,8 @@ struct RehydratedAccountRevision {
 struct RehydratedProcessAdmission {
 	account: RehydratedAccountRevision,
 	working_directory: String,
-	admission: FreshQuickTaskProcessGeneration,
-	establishment: ReconcileQuickTaskThreadEstablishment,
+	admission: FreshConversationProcessGeneration,
+	establishment: ReconcileConversationThreadEstablishment,
 }
 
 struct RehydratedProcessLaunch {
@@ -703,7 +704,7 @@ enum InitialRouteAction {
 	Preplanned(Box<PreProcessOutcome>),
 }
 
-impl QuickTaskRuntime {
+impl ConversationRuntime {
 	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new(
 		store: SqliteStore,
@@ -718,7 +719,7 @@ impl QuickTaskRuntime {
 		let (events, event_receiver) = tokio_mpsc::channel(EVENT_QUEUE_CAPACITY);
 		let (event_stream_closed, _) = tokio::sync::watch::channel(false);
 		Self {
-			inner: Arc::new(QuickTaskRuntimeInner {
+			inner: Arc::new(ConversationRuntimeInner {
 				store,
 				blob_store,
 				accounts,
@@ -737,9 +738,9 @@ impl QuickTaskRuntime {
 		}
 	}
 
-	pub(crate) async fn create(&self, command: CreateQuickTask) -> QuickTaskOutcome {
+	pub(crate) async fn create(&self, command: CreateConversation) -> ConversationOutcome {
 		if self.is_shutting_down() {
-			return QuickTaskOutcome::Unavailable;
+			return ConversationOutcome::Unavailable;
 		}
 		if let Err(outcome) = self.reserve_initial(&command) {
 			return *outcome;
@@ -748,9 +749,9 @@ impl QuickTaskRuntime {
 		let outcome = self.create_inner(command).await;
 		if matches!(
 			&outcome,
-			QuickTaskOutcome::PreSession(_)
-				| QuickTaskOutcome::Unavailable
-				| QuickTaskOutcome::Conflict
+			ConversationOutcome::PreSession(_)
+				| ConversationOutcome::Unavailable
+				| ConversationOutcome::Conflict
 		) {
 			self.remove_establishing(&conversation_id);
 		}
@@ -758,30 +759,33 @@ impl QuickTaskRuntime {
 	}
 
 	/// Resume the sole initial route from product-store-owned request coordinates.
-	pub(crate) async fn resume_routing(&self, command: RecoverQuickTask) -> QuickTaskOutcome {
+	pub(crate) async fn resume_routing(&self, command: RecoverConversation) -> ConversationOutcome {
 		self.resume_initial(command, InitialRouteAction::Route).await
 	}
 
 	/// Resume only first-session planning from one committed selected decision.
-	pub(crate) async fn resume_establishment(&self, command: RecoverQuickTask) -> QuickTaskOutcome {
+	pub(crate) async fn resume_establishment(
+		&self,
+		command: RecoverConversation,
+	) -> ConversationOutcome {
 		self.resume_initial(command, InitialRouteAction::ResumeEstablishment).await
 	}
 
 	/// Start lifecycle work from an already routed successor without invoking routing persistence.
 	pub(crate) async fn start_preplanned_initial(
 		&self,
-		command: RecoverQuickTask,
+		command: RecoverConversation,
 		routing: PreProcessOutcome,
 	) {
 		if self.is_shutting_down() || command.expected_conversation_revision <= 0 {
 			return;
 		}
-		let request = match self.inner.store.read_quick_task_request(&command.conversation_id).await
-		{
-			Ok(Some(request)) => request,
-			Ok(None) | Err(_) => return,
-		};
-		let initial = CreateQuickTask {
+		let request =
+			match self.inner.store.read_conversation_request(&command.conversation_id).await {
+				Ok(Some(request)) => request,
+				Ok(None) | Err(_) => return,
+			};
+		let initial = CreateConversation {
 			operation_key: command.operation_key,
 			correlation_id: command.correlation_id,
 			causation_id: command.causation_id,
@@ -789,7 +793,7 @@ impl QuickTaskRuntime {
 			work_item_id: None,
 			message: request.message,
 			working_directory: request.working_directory,
-			execution: QuickTaskExecutionSettings {
+			execution: ConversationExecutionSettings {
 				model: request.model,
 				reasoning_effort: request.reasoning_effort,
 				fast: request.fast,
@@ -806,19 +810,19 @@ impl QuickTaskRuntime {
 
 	async fn resume_initial(
 		&self,
-		command: RecoverQuickTask,
+		command: RecoverConversation,
 		action: InitialRouteAction,
-	) -> QuickTaskOutcome {
+	) -> ConversationOutcome {
 		if self.is_shutting_down() || command.expected_conversation_revision <= 0 {
-			return QuickTaskOutcome::Unavailable;
+			return ConversationOutcome::Unavailable;
 		}
-		let request = match self.inner.store.read_quick_task_request(&command.conversation_id).await
-		{
-			Ok(Some(request)) => request,
-			Ok(None) | Err(_) => return QuickTaskOutcome::Unavailable,
-		};
+		let request =
+			match self.inner.store.read_conversation_request(&command.conversation_id).await {
+				Ok(Some(request)) => request,
+				Ok(None) | Err(_) => return ConversationOutcome::Unavailable,
+			};
 		self.run_reserved_initial(
-			CreateQuickTask {
+			CreateConversation {
 				operation_key: command.operation_key,
 				correlation_id: command.correlation_id,
 				causation_id: command.causation_id,
@@ -826,7 +830,7 @@ impl QuickTaskRuntime {
 				work_item_id: None,
 				message: request.message,
 				working_directory: request.working_directory,
-				execution: QuickTaskExecutionSettings {
+				execution: ConversationExecutionSettings {
 					model: request.model,
 					reasoning_effort: request.reasoning_effort,
 					fast: request.fast,
@@ -840,10 +844,10 @@ impl QuickTaskRuntime {
 
 	async fn run_reserved_initial(
 		&self,
-		command: CreateQuickTask,
+		command: CreateConversation,
 		conversation_revision: i64,
 		action: InitialRouteAction,
-	) -> QuickTaskOutcome {
+	) -> ConversationOutcome {
 		if let Err(outcome) = self.reserve_initial(&command) {
 			return *outcome;
 		}
@@ -851,9 +855,9 @@ impl QuickTaskRuntime {
 		let outcome = self.establish_first_session(command, conversation_revision, action).await;
 		if matches!(
 			&outcome,
-			QuickTaskOutcome::PreSession(_)
-				| QuickTaskOutcome::Unavailable
-				| QuickTaskOutcome::Conflict
+			ConversationOutcome::PreSession(_)
+				| ConversationOutcome::Unavailable
+				| ConversationOutcome::Conflict
 		) {
 			self.remove_establishing(&conversation_id);
 		}
@@ -861,13 +865,14 @@ impl QuickTaskRuntime {
 	}
 
 	#[allow(clippy::too_many_lines)]
-	async fn create_inner(&self, command: CreateQuickTask) -> QuickTaskOutcome {
+	async fn create_inner(&self, command: CreateConversation) -> ConversationOutcome {
+		let title = bounded_conversation_title(&command.message);
 		let conversation_command = match exact_command(
 			"conversation",
 			&command.operation_key,
 			&[
 				command.conversation_id.as_str(),
-				"Quick Task",
+				"Conversation",
 				&command.message,
 				&command.working_directory,
 				&command.execution.model,
@@ -877,17 +882,17 @@ impl QuickTaskRuntime {
 			],
 		) {
 			Ok(command) => command,
-			Err(()) => return QuickTaskOutcome::Conflict,
+			Err(()) => return ConversationOutcome::Conflict,
 		};
 		let conversation = match self
 			.inner
 			.store
-			.create_quick_task_conversation(
+			.create_conversation(
 				&conversation_command,
-				&CreateQuickTaskConversation {
+				&CreateConversationRecord {
 					conversation_id: command.conversation_id.clone(),
 					work_item_id: command.work_item_id.clone(),
-					title: "Quick Task".to_owned(),
+					title,
 					message: command.message.clone(),
 					working_directory: command.working_directory.clone(),
 					model: command.execution.model.clone(),
@@ -907,10 +912,10 @@ impl QuickTaskRuntime {
 	#[allow(clippy::too_many_lines)]
 	async fn establish_first_session(
 		&self,
-		command: CreateQuickTask,
+		command: CreateConversation,
 		conversation_revision: i64,
 		action: InitialRouteAction,
-	) -> QuickTaskOutcome {
+	) -> ConversationOutcome {
 		let outcome = match action {
 			InitialRouteAction::Route => {
 				let execution = ExecutionCommand::initial_thread(
@@ -932,28 +937,28 @@ impl QuickTaskRuntime {
 				return self.pre_session(
 					&command,
 					conversation_revision,
-					QuickTaskLocalState::QuotaExhausted,
+					ConversationLocalState::QuotaExhausted,
 				);
 			},
 			PreProcessOutcome::EstablishmentPending => {
 				return self.pre_session(
 					&command,
 					conversation_revision,
-					QuickTaskLocalState::EstablishmentPending,
+					ConversationLocalState::EstablishmentPending,
 				);
 			},
 			PreProcessOutcome::NoRoute => {
 				return self.pre_session(
 					&command,
 					conversation_revision,
-					QuickTaskLocalState::NoRoute,
+					ConversationLocalState::NoRoute,
 				);
 			},
 			PreProcessOutcome::FailedClosed(_) => {
 				return self.pre_session(
 					&command,
 					conversation_revision,
-					QuickTaskLocalState::RoutingPending,
+					ConversationLocalState::RoutingPending,
 				);
 			},
 		};
@@ -968,9 +973,9 @@ impl QuickTaskRuntime {
 			} if conversation_id == &command.conversation_id
 				&& *revision == conversation_revision =>
 				turn_id.clone(),
-			_ => return QuickTaskOutcome::Conflict,
+			_ => return ConversationOutcome::Conflict,
 		};
-		let command = InitialQuickTaskExecution {
+		let command = InitialConversationExecution {
 			operation_key: scoped_key("initial-lifecycle", &decision.decision_id),
 			correlation_id: command.correlation_id,
 			causation_id: command.causation_id,
@@ -982,7 +987,7 @@ impl QuickTaskRuntime {
 		};
 		let working_directory = command.working_directory.clone();
 		let Some(session) = plan.runtime_session.clone() else {
-			return QuickTaskOutcome::Conflict;
+			return ConversationOutcome::Conflict;
 		};
 		if decision.consumer != consumer
 			|| plan.plan.consumer != consumer
@@ -999,7 +1004,7 @@ impl QuickTaskRuntime {
 			|| session.account_snapshot.source_account_id != plan.plan.selected_account_id
 			|| session.account_snapshot.source_revision <= 0
 		{
-			return QuickTaskOutcome::Conflict;
+			return ConversationOutcome::Conflict;
 		}
 		let runtime_session_id = session.runtime_session_id.clone();
 		let selected_account_id = plan.plan.selected_account_id.clone();
@@ -1009,15 +1014,15 @@ impl QuickTaskRuntime {
 			&[command.operation_key.as_str(), command.turn_id.as_str()],
 		)) {
 			Ok(value) => value,
-			Err(_) => return QuickTaskOutcome::Conflict,
+			Err(_) => return ConversationOutcome::Conflict,
 		};
 		let turn_admission = match self
 			.inner
 			.store
-			.admit_initial_quick_task_turn(
+			.admit_initial_conversation_turn(
 				&self.inner.blob_store,
 				&scoped_key("initial-turn-admission", &command.operation_key),
-				&AdmitInitialQuickTaskTurn {
+				&AdmitInitialConversationTurn {
 					expected_conversation_revision: conversation_revision,
 					expected_runtime_session_revision: session.revision,
 					continuation_plan_id: plan.plan.plan_id.clone(),
@@ -1043,8 +1048,8 @@ impl QuickTaskRuntime {
 			.await
 		{
 			Ok(
-				InitialQuickTaskTurnAdmissionOutcome::Fresh(admission)
-				| InitialQuickTaskTurnAdmissionOutcome::Replayed(admission),
+				InitialConversationTurnAdmissionOutcome::Fresh(admission)
+				| InitialConversationTurnAdmissionOutcome::Replayed(admission),
 			) if admission.routing_decision_id == decision.decision_id
 				&& admission.continuation_plan_id == plan.plan.plan_id
 				&& admission.history_item_id == history_item_id
@@ -1053,17 +1058,17 @@ impl QuickTaskRuntime {
 				&& admission.turn.status == decodex_core::TurnStatus::Active
 				&& admission.turn.revision == 1 =>
 				admission,
-			Ok(_) => return QuickTaskOutcome::Conflict,
+			Ok(_) => return ConversationOutcome::Conflict,
 			Err(error)
 				if turn_reservation_is_definite(&error)
 					|| turn_reservation_is_integrity_failure(&error) =>
 			{
-				return QuickTaskOutcome::Conflict;
+				return ConversationOutcome::Conflict;
 			},
 			Err(_) => {
 				return self
 					.ambiguous(
-						QuickTaskReadback {
+						ConversationReadback {
 							operation_key: Some(command.operation_key.clone()),
 							correlation_id: Some(command.correlation_id.clone()),
 							causation_id: command.causation_id.clone(),
@@ -1074,9 +1079,9 @@ impl QuickTaskRuntime {
 							codex_thread_id: None,
 							process_generation_id: None,
 							active_turn_id: Some(command.turn_id.clone()),
-							state: QuickTaskLocalState::OutcomeUnknown,
+							state: ConversationLocalState::OutcomeUnknown,
 						},
-						QuickTaskAmbiguity::TurnFinalization,
+						ConversationAmbiguity::TurnFinalization,
 					)
 					.await;
 			},
@@ -1084,9 +1089,9 @@ impl QuickTaskRuntime {
 		if turn_admission.turn.status != decodex_core::TurnStatus::Active
 			|| turn_admission.turn.revision != 1
 		{
-			return QuickTaskOutcome::Conflict;
+			return ConversationOutcome::Conflict;
 		}
-		let created = QuickTaskReadback {
+		let created = ConversationReadback {
 			operation_key: Some(command.operation_key.clone()),
 			correlation_id: Some(command.correlation_id.clone()),
 			causation_id: command.causation_id.clone(),
@@ -1097,7 +1102,7 @@ impl QuickTaskRuntime {
 			codex_thread_id: None,
 			process_generation_id: None,
 			active_turn_id: Some(command.turn_id.clone()),
-			state: QuickTaskLocalState::Establishing,
+			state: ConversationLocalState::Establishing,
 		};
 		let generation_id = match ProcessGenerationId::new(derived_uuid(
 			"process-generation",
@@ -1115,7 +1120,7 @@ impl QuickTaskRuntime {
 					.await;
 			},
 		};
-		let process_request = PrepareQuickTaskProcessGeneration {
+		let process_request = PrepareConversationProcessGeneration {
 			conversation_id: command.conversation_id.clone(),
 			expected_conversation_revision: conversation_revision,
 			runtime_session_id: runtime_session_id.clone(),
@@ -1127,7 +1132,7 @@ impl QuickTaskRuntime {
 			selected_account_id: selected_account_id.clone(),
 			process_generation_id: generation_id.clone(),
 		};
-		let establishment = ReconcileQuickTaskThreadEstablishment {
+		let establishment = ReconcileConversationThreadEstablishment {
 			conversation_id: command.conversation_id.clone(),
 			expected_conversation_revision: conversation_revision,
 			runtime_session_id: runtime_session_id.clone(),
@@ -1142,14 +1147,14 @@ impl QuickTaskRuntime {
 		let admission = match self
 			.inner
 			.store
-			.prepare_quick_task_process_generation(
+			.prepare_conversation_process_generation(
 				&scoped_key("process-admission", &command.operation_key),
 				&process_request,
 			)
 			.await
 		{
-			Ok(PrepareQuickTaskProcessGenerationOutcome::Fresh(admission)) => admission,
-			Ok(PrepareQuickTaskProcessGenerationOutcome::Rejected(_)) => {
+			Ok(PrepareConversationProcessGenerationOutcome::Fresh(admission)) => admission,
+			Ok(PrepareConversationProcessGenerationOutcome::Rejected(_)) => {
 				return self
 					.reconcile_pre_effect(
 						&command.operation_key,
@@ -1161,8 +1166,8 @@ impl QuickTaskRuntime {
 					.await;
 			},
 			Ok(
-				PrepareQuickTaskProcessGenerationOutcome::Replayed(_)
-				| PrepareQuickTaskProcessGenerationOutcome::Unknown(_),
+				PrepareConversationProcessGenerationOutcome::Replayed(_)
+				| PrepareConversationProcessGenerationOutcome::Unknown(_),
 			)
 			| Err(_) => {
 				return self
@@ -1171,7 +1176,9 @@ impl QuickTaskRuntime {
 						&command.turn_id,
 						created,
 						&establishment,
-						ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::ProcessUnavailable),
+						ReservedTurnRefusal::Recovery(
+							ConversationManualRecovery::ProcessUnavailable,
+						),
 					)
 					.await;
 			},
@@ -1198,11 +1205,11 @@ impl QuickTaskRuntime {
 					.await;
 			},
 		};
-		let spawned = QuickTaskReadback {
+		let spawned = ConversationReadback {
 			process_generation_id: Some(process.generation_id().clone()),
 			..created.clone()
 		};
-		let request = match QuickTaskThreadStartRequest::new(
+		let request = match ConversationThreadStartRequest::new(
 			command.execution.model.clone(),
 			working_directory.clone(),
 			session.profile_snapshot.instructions.clone(),
@@ -1218,7 +1225,9 @@ impl QuickTaskRuntime {
 						&command.turn_id,
 						spawned,
 						&establishment,
-						ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::IncompatibleThread),
+						ReservedTurnRefusal::Recovery(
+							ConversationManualRecovery::IncompatibleThread,
+						),
 					)
 					.await;
 			},
@@ -1233,7 +1242,9 @@ impl QuickTaskRuntime {
 						&command.turn_id,
 						spawned,
 						&establishment,
-						ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::ProcessUnavailable),
+						ReservedTurnRefusal::Recovery(
+							ConversationManualRecovery::ProcessUnavailable,
+						),
 					)
 					.await;
 			},
@@ -1292,9 +1303,9 @@ impl QuickTaskRuntime {
 			|| fence_readback.thread_start_request_sha256 != prepared.request_sha256()
 		{
 			self.terminate_process(&process).await;
-			return self.ambiguous(spawned, QuickTaskAmbiguity::ThreadStart).await;
+			return self.ambiguous(spawned, ConversationAmbiguity::ThreadStart).await;
 		}
-		let fenced = QuickTaskReadback {
+		let fenced = ConversationReadback {
 			operation_key: Some(command.operation_key.clone()),
 			correlation_id: Some(command.correlation_id.clone()),
 			causation_id: command.causation_id.clone(),
@@ -1305,7 +1316,7 @@ impl QuickTaskRuntime {
 			codex_thread_id: None,
 			process_generation_id: Some(process.generation_id().clone()),
 			active_turn_id: Some(command.turn_id.clone()),
-			state: QuickTaskLocalState::Establishing,
+			state: ConversationLocalState::Establishing,
 		};
 		let established = match self.start_thread(&process, prepared, authority).await {
 			Ok(established) => established,
@@ -1317,14 +1328,16 @@ impl QuickTaskRuntime {
 						&command.turn_id,
 						fenced,
 						&establishment,
-						ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::ProcessUnavailable),
+						ReservedTurnRefusal::Recovery(
+							ConversationManualRecovery::ProcessUnavailable,
+						),
 					)
 					.await;
 			},
 		};
 		if !established.events.is_empty() {
 			self.terminate_process(&process).await;
-			return self.ambiguous(fenced, QuickTaskAmbiguity::ThreadStart).await;
+			return self.ambiguous(fenced, ConversationAmbiguity::ThreadStart).await;
 		}
 		let binding_key = scoped_key("thread-bind", &command.operation_key);
 		let binding = match self
@@ -1338,18 +1351,18 @@ impl QuickTaskRuntime {
 			Ok(BindRuntimeSessionThreadOutcome::Rejected(_)) | Err(_) => match self
 				.inner
 				.store
-				.reconcile_quick_task_thread_establishment(&establishment)
+				.reconcile_conversation_thread_establishment(&establishment)
 				.await
 			{
-				Ok(QuickTaskThreadEstablishmentReadback::Bound(binding)) => binding,
+				Ok(ConversationThreadEstablishmentReadback::Bound(binding)) => binding,
 				Ok(
-					QuickTaskThreadEstablishmentReadback::Fenced(_)
-					| QuickTaskThreadEstablishmentReadback::DefinitelyNotStarted(_)
-					| QuickTaskThreadEstablishmentReadback::Unknown,
+					ConversationThreadEstablishmentReadback::Fenced(_)
+					| ConversationThreadEstablishmentReadback::DefinitelyNotStarted(_)
+					| ConversationThreadEstablishmentReadback::Unknown,
 				)
 				| Err(_) => {
 					self.terminate_process(&process).await;
-					return self.ambiguous(fenced, QuickTaskAmbiguity::ThreadBind).await;
+					return self.ambiguous(fenced, ConversationAmbiguity::ThreadBind).await;
 				},
 			},
 		};
@@ -1376,7 +1389,7 @@ impl QuickTaskRuntime {
 			|| binding.codex_thread_id != established.binding.successful_response.codex_thread_id
 		{
 			self.terminate_process(&process).await;
-			return self.ambiguous(fenced, QuickTaskAmbiguity::ThreadBind).await;
+			return self.ambiguous(fenced, ConversationAmbiguity::ThreadBind).await;
 		}
 		let local = LocalSession {
 			operation_key: command.operation_key.clone(),
@@ -1401,10 +1414,10 @@ impl QuickTaskRuntime {
 			self.terminate_process(&local.process).await;
 			let readback = session_readback(
 				&local,
-				QuickTaskLocalState::OutcomeUnknown,
+				ConversationLocalState::OutcomeUnknown,
 				Some(command.turn_id.clone()),
 			);
-			return self.ambiguous(readback, QuickTaskAmbiguity::ThreadBind).await;
+			return self.ambiguous(readback, ConversationAmbiguity::ThreadBind).await;
 		}
 		self.dispatch_turn(
 			&command.operation_key,
@@ -1426,21 +1439,21 @@ impl QuickTaskRuntime {
 	#[allow(clippy::too_many_lines)]
 	async fn establish_context_fallback(
 		&self,
-		command: SubmitQuickTaskTurn,
+		command: SubmitConversationTurn,
 		turn_sequence: i64,
 		decision: PersistedDecisionProvenance,
 		plan: decodex_database::ContinuationPlanEffect,
 		prior_session: Option<LocalSession>,
-	) -> QuickTaskOutcome {
+	) -> ConversationOutcome {
 		let working_directory = command.working_directory.clone();
 		let conversation_revision = plan.plan.consumer.domain_revision();
 		let Some(runtime_session) = plan.runtime_session.clone() else {
-			return QuickTaskOutcome::Conflict;
+			return ConversationOutcome::Conflict;
 		};
 		let Some(context_pack) =
 			plan.fallback_context_pack.as_ref().map(|record| record.pack.clone())
 		else {
-			return QuickTaskOutcome::Conflict;
+			return ConversationOutcome::Conflict;
 		};
 		if plan.plan.kind != decodex_core::ContinuationPlanKind::ContextPackFallback
 			|| plan.plan.consumer
@@ -1463,14 +1476,14 @@ impl QuickTaskRuntime {
 			|| runtime_session.account_snapshot.source_account_id != plan.plan.selected_account_id
 			|| context_pack.conversation_id() != &command.conversation_id
 		{
-			return QuickTaskOutcome::Conflict;
+			return ConversationOutcome::Conflict;
 		}
 		if let Some(prior) = &prior_session {
 			self.terminate_process(&prior.process).await;
 		}
 		let runtime_session_id = runtime_session.runtime_session_id.clone();
 		let selected_account_id = runtime_session.account_snapshot.source_account_id.clone();
-		let created = QuickTaskReadback {
+		let created = ConversationReadback {
 			operation_key: Some(command.operation_key.clone()),
 			correlation_id: Some(command.correlation_id.clone()),
 			causation_id: command.causation_id.clone(),
@@ -1481,14 +1494,14 @@ impl QuickTaskRuntime {
 			codex_thread_id: None,
 			process_generation_id: None,
 			active_turn_id: Some(command.turn_id.clone()),
-			state: QuickTaskLocalState::Establishing,
+			state: ConversationLocalState::Establishing,
 		};
 		let generation_id = ProcessGenerationId::new(derived_uuid(
 			"fallback-process-generation",
 			&[command.operation_key.as_str(), command.conversation_id.as_str()],
 		))
 		.expect("derived UUID-v4 is valid");
-		let process_request = PrepareQuickTaskProcessGeneration {
+		let process_request = PrepareConversationProcessGeneration {
 			conversation_id: command.conversation_id.clone(),
 			expected_conversation_revision: conversation_revision,
 			runtime_session_id: runtime_session_id.clone(),
@@ -1500,7 +1513,7 @@ impl QuickTaskRuntime {
 			selected_account_id: selected_account_id.clone(),
 			process_generation_id: generation_id.clone(),
 		};
-		let establishment = ReconcileQuickTaskThreadEstablishment {
+		let establishment = ReconcileConversationThreadEstablishment {
 			conversation_id: command.conversation_id.clone(),
 			expected_conversation_revision: conversation_revision,
 			runtime_session_id: runtime_session_id.clone(),
@@ -1515,14 +1528,14 @@ impl QuickTaskRuntime {
 		let admission = match self
 			.inner
 			.store
-			.prepare_quick_task_process_generation(
+			.prepare_conversation_process_generation(
 				&scoped_key("process-admission", &command.operation_key),
 				&process_request,
 			)
 			.await
 		{
-			Ok(PrepareQuickTaskProcessGenerationOutcome::Fresh(admission)) => admission,
-			Ok(PrepareQuickTaskProcessGenerationOutcome::Rejected(_)) => {
+			Ok(PrepareConversationProcessGenerationOutcome::Fresh(admission)) => admission,
+			Ok(PrepareConversationProcessGenerationOutcome::Rejected(_)) => {
 				return self
 					.reconcile_pre_effect(
 						&command.operation_key,
@@ -1534,8 +1547,8 @@ impl QuickTaskRuntime {
 					.await;
 			},
 			Ok(
-				PrepareQuickTaskProcessGenerationOutcome::Replayed(_)
-				| PrepareQuickTaskProcessGenerationOutcome::Unknown(_),
+				PrepareConversationProcessGenerationOutcome::Replayed(_)
+				| PrepareConversationProcessGenerationOutcome::Unknown(_),
 			)
 			| Err(_) => {
 				return self
@@ -1544,7 +1557,9 @@ impl QuickTaskRuntime {
 						&command.turn_id,
 						created,
 						&establishment,
-						ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::ProcessUnavailable),
+						ReservedTurnRefusal::Recovery(
+							ConversationManualRecovery::ProcessUnavailable,
+						),
 					)
 					.await;
 			},
@@ -1571,11 +1586,11 @@ impl QuickTaskRuntime {
 					.await;
 			},
 		};
-		let spawned = QuickTaskReadback {
+		let spawned = ConversationReadback {
 			process_generation_id: Some(process.generation_id().clone()),
 			..created.clone()
 		};
-		let request = match QuickTaskThreadStartRequest::new(
+		let request = match ConversationThreadStartRequest::new(
 			command.execution.model.clone(),
 			working_directory.clone(),
 			runtime_session.profile_snapshot.instructions.clone(),
@@ -1591,7 +1606,9 @@ impl QuickTaskRuntime {
 						&command.turn_id,
 						spawned,
 						&establishment,
-						ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::IncompatibleThread),
+						ReservedTurnRefusal::Recovery(
+							ConversationManualRecovery::IncompatibleThread,
+						),
 					)
 					.await;
 			},
@@ -1606,7 +1623,9 @@ impl QuickTaskRuntime {
 						&command.turn_id,
 						spawned,
 						&establishment,
-						ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::ProcessUnavailable),
+						ReservedTurnRefusal::Recovery(
+							ConversationManualRecovery::ProcessUnavailable,
+						),
 					)
 					.await;
 			},
@@ -1642,7 +1661,7 @@ impl QuickTaskRuntime {
 							spawned,
 							&establishment,
 							ReservedTurnRefusal::Recovery(
-								QuickTaskManualRecovery::ProcessUnavailable,
+								ConversationManualRecovery::ProcessUnavailable,
 							),
 						)
 						.await;
@@ -1662,9 +1681,9 @@ impl QuickTaskRuntime {
 			|| fence_readback.process_generation_revision != process.revision()
 		{
 			self.terminate_process(&process).await;
-			return self.ambiguous(spawned, QuickTaskAmbiguity::ThreadStart).await;
+			return self.ambiguous(spawned, ConversationAmbiguity::ThreadStart).await;
 		}
-		let fenced = QuickTaskReadback {
+		let fenced = ConversationReadback {
 			runtime_session_revision: Some(fence_readback.revision),
 			..spawned
 		};
@@ -1678,7 +1697,9 @@ impl QuickTaskRuntime {
 						&command.turn_id,
 						fenced,
 						&establishment,
-						ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::ProcessUnavailable),
+						ReservedTurnRefusal::Recovery(
+							ConversationManualRecovery::ProcessUnavailable,
+						),
 					)
 					.await;
 			},
@@ -1695,13 +1716,13 @@ impl QuickTaskRuntime {
 			Ok(BindRuntimeSessionThreadOutcome::Rejected(_)) | Err(_) => match self
 				.inner
 				.store
-				.reconcile_quick_task_thread_establishment(&establishment)
+				.reconcile_conversation_thread_establishment(&establishment)
 				.await
 			{
-				Ok(QuickTaskThreadEstablishmentReadback::Bound(binding)) => binding,
+				Ok(ConversationThreadEstablishmentReadback::Bound(binding)) => binding,
 				_ => {
 					self.terminate_process(&process).await;
-					return self.ambiguous(fenced, QuickTaskAmbiguity::ThreadBind).await;
+					return self.ambiguous(fenced, ConversationAmbiguity::ThreadBind).await;
 				},
 			},
 		};
@@ -1716,7 +1737,7 @@ impl QuickTaskRuntime {
 			|| binding.codex_thread_id != established.codex_thread_id
 		{
 			self.terminate_process(&process).await;
-			return self.ambiguous(fenced, QuickTaskAmbiguity::ThreadBind).await;
+			return self.ambiguous(fenced, ConversationAmbiguity::ThreadBind).await;
 		}
 		let local = LocalSession {
 			operation_key: command.operation_key.clone(),
@@ -1753,10 +1774,10 @@ impl QuickTaskRuntime {
 				.ambiguous(
 					session_readback(
 						&local,
-						QuickTaskLocalState::OutcomeUnknown,
+						ConversationLocalState::OutcomeUnknown,
 						Some(command.turn_id.clone()),
 					),
-					QuickTaskAmbiguity::ThreadBind,
+					ConversationAmbiguity::ThreadBind,
 				)
 				.await;
 		}
@@ -1835,7 +1856,7 @@ impl QuickTaskRuntime {
 			optional_sources.push(source);
 		}
 		let max_bytes = MAX_CONTEXT_PACK_BYTES.min(
-			MAX_QUICK_TASK_INPUT_BYTES
+			MAX_CONVERSATION_INPUT_BYTES
 				.checked_sub(message_bytes)
 				.filter(|available| *available >= MIN_CONTEXT_PACK_BYTES)
 				.ok_or(StoreError::InvalidInput(
@@ -1951,7 +1972,7 @@ impl QuickTaskRuntime {
 	) -> Result<FreshRuntimeSessionResume, SameThreadResumeRefusal> {
 		let thread_id = ExactThreadId::new(session.codex_thread_id.clone())
 			.map_err(|_| SameThreadResumeRefusal::IncompatibleThread)?;
-		let request = QuickTaskThreadResumeRequest::new(
+		let request = ConversationThreadResumeRequest::new(
 			thread_id,
 			session.model.clone(),
 			session.working_directory.clone(),
@@ -1961,11 +1982,13 @@ impl QuickTaskRuntime {
 		.map_err(|_| SameThreadResumeRefusal::IncompatibleThread)?;
 		let resumed =
 			self.resume_thread(&session.process, request).await.map_err(|error| match error {
-				QuickTaskProcessError::Rejected { .. } => SameThreadResumeRefusal::MissingThread,
-				QuickTaskProcessError::Incompatible => SameThreadResumeRefusal::IncompatibleThread,
-				QuickTaskProcessError::Unavailable => SameThreadResumeRefusal::ProcessUnavailable,
-				QuickTaskProcessError::ControlLost | QuickTaskProcessError::Ambiguous { .. } =>
-					SameThreadResumeRefusal::Ambiguous,
+				ConversationProcessError::Rejected { .. } => SameThreadResumeRefusal::MissingThread,
+				ConversationProcessError::Incompatible =>
+					SameThreadResumeRefusal::IncompatibleThread,
+				ConversationProcessError::Unavailable =>
+					SameThreadResumeRefusal::ProcessUnavailable,
+				ConversationProcessError::ControlLost
+				| ConversationProcessError::Ambiguous { .. } => SameThreadResumeRefusal::Ambiguous,
 			})?;
 		if !resumed.events.is_empty() {
 			return Err(SameThreadResumeRefusal::Ambiguous);
@@ -1988,15 +2011,15 @@ impl QuickTaskRuntime {
 		.map_err(|_| SameThreadResumeRefusal::IncompatibleThread)
 	}
 
-	pub(crate) async fn submit_turn(&self, command: SubmitQuickTaskTurn) -> QuickTaskOutcome {
+	pub(crate) async fn submit_turn(&self, command: SubmitConversationTurn) -> ConversationOutcome {
 		if self.is_shutting_down() {
-			return QuickTaskOutcome::Unavailable;
+			return ConversationOutcome::Unavailable;
 		}
 		let mut session = match self.reserve_later_turn(&command) {
 			Ok(session) => session,
 			Err(outcome) => match *outcome {
-				outcome @ QuickTaskOutcome::ManualRecovery {
-					action: QuickTaskManualRecovery::MissingLocalProcess,
+				outcome @ ConversationOutcome::ManualRecovery {
+					action: ConversationManualRecovery::MissingLocalProcess,
 					..
 				} => return self.submit_rehydrated_turn(command, outcome).await,
 				outcome => return outcome,
@@ -2014,9 +2037,9 @@ impl QuickTaskRuntime {
 
 	async fn admit_later_turn(
 		&self,
-		command: &SubmitQuickTaskTurn,
+		command: &SubmitConversationTurn,
 		mut session: LocalSession,
-	) -> Result<AdmittedLaterTurn, Box<QuickTaskOutcome>> {
+	) -> Result<AdmittedLaterTurn, Box<ConversationOutcome>> {
 		let sequence = session.next_user_sequence;
 		let turn_reservation = match self
 			.reserve_user_turn(
@@ -2032,14 +2055,14 @@ impl QuickTaskRuntime {
 			Ok(reservation) => reservation,
 			Err(error) if turn_reservation_is_definite(&error) => {
 				self.restore_ready(session);
-				return Err(Box::new(QuickTaskOutcome::Conflict));
+				return Err(Box::new(ConversationOutcome::Conflict));
 			},
 			Err(error) if turn_reservation_is_integrity_failure(&error) => {
 				let outcome = self
 					.recover_active_turn(
 						session,
 						command.turn_id.clone(),
-						QuickTaskManualRecovery::PriorActiveTurn,
+						ConversationManualRecovery::PriorActiveTurn,
 					)
 					.await;
 				return Err(Box::new(outcome));
@@ -2049,7 +2072,7 @@ impl QuickTaskRuntime {
 					.ambiguous_session(
 						session,
 						command.turn_id.clone(),
-						QuickTaskAmbiguity::TurnFinalization,
+						ConversationAmbiguity::TurnFinalization,
 					)
 					.await;
 				return Err(Box::new(outcome));
@@ -2057,7 +2080,7 @@ impl QuickTaskRuntime {
 		};
 		if !turn_admits_execution(&turn_reservation) {
 			self.restore_ready(session);
-			return Err(Box::new(QuickTaskOutcome::Conflict));
+			return Err(Box::new(ConversationOutcome::Conflict));
 		}
 		session.next_user_sequence = sequence.saturating_add(1);
 		if !self.set_preparing(session.clone()) {
@@ -2079,9 +2102,9 @@ impl QuickTaskRuntime {
 
 	async fn submit_admitted_turn(
 		&self,
-		command: SubmitQuickTaskTurn,
+		command: SubmitConversationTurn,
 		admitted: AdmittedLaterTurn,
-	) -> QuickTaskOutcome {
+	) -> ConversationOutcome {
 		let AdmittedLaterTurn { session, sequence, consumer } = admitted;
 		let (decision, plan) = match self
 			.plan_existing_session(ExistingSessionPlanningInput {
@@ -2121,7 +2144,7 @@ impl QuickTaskRuntime {
 					.ambiguous_session(
 						session,
 						command.turn_id.clone(),
-						QuickTaskAmbiguity::TurnFinalization,
+						ConversationAmbiguity::TurnFinalization,
 					)
 					.await;
 			},
@@ -2138,7 +2161,7 @@ impl QuickTaskRuntime {
 					.finalize_bound_recovery(
 						session,
 						&command.turn_id,
-						QuickTaskManualRecovery::MissingThread,
+						ConversationManualRecovery::MissingThread,
 					)
 					.await;
 			},
@@ -2147,7 +2170,7 @@ impl QuickTaskRuntime {
 					.finalize_bound_recovery(
 						session,
 						&command.turn_id,
-						QuickTaskManualRecovery::IncompatibleThread,
+						ConversationManualRecovery::IncompatibleThread,
 					)
 					.await;
 			},
@@ -2156,7 +2179,7 @@ impl QuickTaskRuntime {
 					.finalize_bound_recovery(
 						session,
 						&command.turn_id,
-						QuickTaskManualRecovery::ProcessUnavailable,
+						ConversationManualRecovery::ProcessUnavailable,
 					)
 					.await;
 			},
@@ -2165,7 +2188,7 @@ impl QuickTaskRuntime {
 					.ambiguous_session(
 						session,
 						command.turn_id.clone(),
-						QuickTaskAmbiguity::ThreadResume,
+						ConversationAmbiguity::ThreadResume,
 					)
 					.await;
 			},
@@ -2196,7 +2219,7 @@ impl QuickTaskRuntime {
 		message: String,
 		context_pack: Option<ContextPack>,
 		runtime_authority: ProviderAttemptRuntimeAuthority,
-	) -> QuickTaskOutcome {
+	) -> ConversationOutcome {
 		let thread_id = match ExactThreadId::new(session.codex_thread_id.clone()) {
 			Ok(thread_id) => thread_id,
 			Err(_) => {
@@ -2204,7 +2227,7 @@ impl QuickTaskRuntime {
 					.finalize_bound_recovery(
 						session,
 						&turn_id,
-						QuickTaskManualRecovery::IncompatibleThread,
+						ConversationManualRecovery::IncompatibleThread,
 					)
 					.await;
 			},
@@ -2212,9 +2235,9 @@ impl QuickTaskRuntime {
 		let input = match match context_pack {
 			Some(context_pack) =>
 				context_pack.render_model_input().map_err(|_| ()).and_then(|context| {
-					QuickTaskTurnInput::from_texts([context, message]).map_err(|_| ())
+					ConversationTurnInput::from_texts([context, message]).map_err(|_| ())
 				}),
-			None => QuickTaskTurnInput::text(message).map_err(|_| ()),
+			None => ConversationTurnInput::text(message).map_err(|_| ()),
 		} {
 			Ok(input) => input,
 			Err(_) => {
@@ -2223,7 +2246,7 @@ impl QuickTaskRuntime {
 					.await;
 			},
 		};
-		let request = match QuickTaskTurnStartRequest::new(
+		let request = match ConversationTurnStartRequest::new(
 			thread_id,
 			input,
 			session.model.clone(),
@@ -2356,11 +2379,11 @@ impl QuickTaskRuntime {
 						self.recover_active_turn(
 							session,
 							turn_id,
-							QuickTaskManualRecovery::PriorAttemptUnresolved,
+							ConversationManualRecovery::PriorAttemptUnresolved,
 						)
 						.await,
 					PreparedCancellationDisposition::Ambiguous =>
-						self.ambiguous_session(session, turn_id, QuickTaskAmbiguity::TurnStart)
+						self.ambiguous_session(session, turn_id, ConversationAmbiguity::TurnStart)
 							.await,
 				};
 			},
@@ -2376,13 +2399,13 @@ impl QuickTaskRuntime {
 					.recover_active_turn(
 						session,
 						turn_id,
-						QuickTaskManualRecovery::PriorAttemptUnresolved,
+						ConversationManualRecovery::PriorAttemptUnresolved,
 					)
 					.await;
 			},
 			PostProcessOutcome::EffectOrPersistenceAmbiguity => {
 				return self
-					.ambiguous_session(session, turn_id, QuickTaskAmbiguity::TurnStart)
+					.ambiguous_session(session, turn_id, ConversationAmbiguity::TurnStart)
 					.await;
 			},
 		};
@@ -2396,65 +2419,69 @@ impl QuickTaskRuntime {
 					self.recover_active_turn(
 						session,
 						turn_id,
-						QuickTaskManualRecovery::PriorAttemptUnresolved,
+						ConversationManualRecovery::PriorAttemptUnresolved,
 					)
 					.await,
 				PreparedCancellationDisposition::Ambiguous =>
-					self.ambiguous_session(session, turn_id, QuickTaskAmbiguity::TurnStart).await,
+					self.ambiguous_session(session, turn_id, ConversationAmbiguity::TurnStart).await,
 			};
 		}
-		let authorization =
-			match self.inner.provider_attempts.authorize_dispatch(fresh, &session.process).await {
-				Ok(AuthorizeProviderDispatchOutcome::Fresh(fence)) => fence,
-				Ok(
-					AuthorizeProviderDispatchOutcome::Replayed(actual)
-					| AuthorizeProviderDispatchOutcome::Rejected { actual, .. },
-				) if matches!(
-					actual.state,
-					ProviderAttemptState::Prepared | ProviderAttemptState::Canceled
-				) =>
-				{
-					return match self.cancel_prepared_exact(&attempt_id, prepared_revision).await {
-						PreparedCancellationDisposition::Canceled =>
-							self.finalize_bound_refusal(
-								session,
-								&turn_id,
-								ReservedTurnRefusal::Conflict,
-							)
+		let authorization = match self
+			.inner
+			.provider_attempts
+			.authorize_dispatch(fresh, &session.process)
+			.await
+		{
+			Ok(AuthorizeProviderDispatchOutcome::Fresh(fence)) => fence,
+			Ok(
+				AuthorizeProviderDispatchOutcome::Replayed(actual)
+				| AuthorizeProviderDispatchOutcome::Rejected { actual, .. },
+			) if matches!(
+				actual.state,
+				ProviderAttemptState::Prepared | ProviderAttemptState::Canceled
+			) =>
+			{
+				return match self.cancel_prepared_exact(&attempt_id, prepared_revision).await {
+					PreparedCancellationDisposition::Canceled =>
+						self.finalize_bound_refusal(
+							session,
+							&turn_id,
+							ReservedTurnRefusal::Conflict,
+						)
+						.await,
+					PreparedCancellationDisposition::Conflict =>
+						self.recover_active_turn(
+							session,
+							turn_id,
+							ConversationManualRecovery::PriorAttemptUnresolved,
+						)
+						.await,
+					PreparedCancellationDisposition::Ambiguous =>
+						self.ambiguous_session(session, turn_id, ConversationAmbiguity::TurnStart)
 							.await,
-						PreparedCancellationDisposition::Conflict =>
-							self.recover_active_turn(
-								session,
-								turn_id,
-								QuickTaskManualRecovery::PriorAttemptUnresolved,
-							)
-							.await,
-						PreparedCancellationDisposition::Ambiguous =>
-							self.ambiguous_session(session, turn_id, QuickTaskAmbiguity::TurnStart)
-								.await,
-					};
-				},
-				Ok(
-					AuthorizeProviderDispatchOutcome::Replayed(actual)
-					| AuthorizeProviderDispatchOutcome::Rejected { actual, .. },
-				) => {
-					if actual.state == ProviderAttemptState::DispatchAuthorized {
-						let _ = self
-							.inner
-							.provider_attempts
-							.mark_unknown(&attempt_id, actual.revision)
-							.await;
-					}
-					return self
-						.ambiguous_session(session, turn_id, QuickTaskAmbiguity::TurnStart)
+				};
+			},
+			Ok(
+				AuthorizeProviderDispatchOutcome::Replayed(actual)
+				| AuthorizeProviderDispatchOutcome::Rejected { actual, .. },
+			) => {
+				if actual.state == ProviderAttemptState::DispatchAuthorized {
+					let _ = self
+						.inner
+						.provider_attempts
+						.mark_unknown(&attempt_id, actual.revision)
 						.await;
-				},
-				Err(_) => {
-					return self
-						.ambiguous_session(session, turn_id, QuickTaskAmbiguity::TurnStart)
-						.await;
-				},
-			};
+				}
+				return self
+					.ambiguous_session(session, turn_id, ConversationAmbiguity::TurnStart)
+					.await;
+			},
+			Err(_) => {
+				return self
+					.ambiguous_session(session, turn_id, ConversationAmbiguity::TurnStart)
+					.await;
+			},
+		};
 		let authorized_revision = authorization.attempt_revision();
 		if authorization.attempt_id() != &attempt_id
 			|| authorization.process_generation_id() != session.process.generation_id()
@@ -2463,7 +2490,7 @@ impl QuickTaskRuntime {
 			let _ =
 				self.inner.provider_attempts.mark_unknown(&attempt_id, authorized_revision).await;
 			return self
-				.ambiguous_session(session, turn_id.clone(), QuickTaskAmbiguity::TurnStart)
+				.ambiguous_session(session, turn_id.clone(), ConversationAmbiguity::TurnStart)
 				.await;
 		}
 		let started = match self.start_turn(&session.process, prepared, authorization).await {
@@ -2475,7 +2502,7 @@ impl QuickTaskRuntime {
 					.mark_unknown(&attempt_id, authorized_revision)
 					.await;
 				return self
-					.ambiguous_session(session, turn_id.clone(), QuickTaskAmbiguity::TurnStart)
+					.ambiguous_session(session, turn_id.clone(), ConversationAmbiguity::TurnStart)
 					.await;
 			},
 		};
@@ -2511,17 +2538,17 @@ impl QuickTaskRuntime {
 				.ambiguous_session(
 					session,
 					context.logical_turn_id.clone(),
-					QuickTaskAmbiguity::ActiveTurn,
+					ConversationAmbiguity::ActiveTurn,
 				)
 				.await;
 		}
 		let readback = session_readback(
 			&session,
-			QuickTaskLocalState::Running,
+			ConversationLocalState::Running,
 			Some(context.logical_turn_id.clone()),
 		);
 		let outcome =
-			QuickTaskOutcome::Started { readback, provider_turn_id: started.turn_id.clone() };
+			ConversationOutcome::Started { readback, provider_turn_id: started.turn_id.clone() };
 		let runtime = self.clone();
 		workers.spawn(async move {
 			runtime.drive_turn(context, started, command_receiver).await;
@@ -2542,23 +2569,23 @@ impl QuickTaskRuntime {
 				Ok(true) => return,
 				Ok(false) => {},
 				Err(()) => {
-					self.mark_active_unknown(&context, QuickTaskAmbiguity::ActiveTurn).await;
+					self.mark_active_unknown(&context, ConversationAmbiguity::ActiveTurn).await;
 					return;
 				},
 			}
 		}
-		if started.status != QuickTaskTurnStatus::InProgress {
+		if started.status != ConversationTurnStatus::InProgress {
 			let status = match started.status {
-				QuickTaskTurnStatus::Completed => TurnStatus::Completed,
-				QuickTaskTurnStatus::Interrupted => TurnStatus::Interrupted,
-				QuickTaskTurnStatus::Failed => TurnStatus::Failed,
-				QuickTaskTurnStatus::InProgress => unreachable!(),
+				ConversationTurnStatus::Completed => TurnStatus::Completed,
+				ConversationTurnStatus::Interrupted => TurnStatus::Interrupted,
+				ConversationTurnStatus::Failed => TurnStatus::Failed,
+				ConversationTurnStatus::InProgress => unreachable!(),
 			};
 			let handled = self
 				.handle_process_event(
 					&context,
 					&mut assistant_ordinal,
-					QuickTaskProcessEvent::TurnCompleted {
+					ConversationProcessEvent::TurnCompleted {
 						turn_id: context.provider_turn_id.clone(),
 						status,
 						witness_digest: started.response_sha256,
@@ -2566,7 +2593,7 @@ impl QuickTaskRuntime {
 				)
 				.await;
 			if handled != Ok(true) {
-				self.mark_active_unknown(&context, QuickTaskAmbiguity::ActiveTurn).await;
+				self.mark_active_unknown(&context, ConversationAmbiguity::ActiveTurn).await;
 			}
 			return;
 		}
@@ -2614,7 +2641,7 @@ impl QuickTaskRuntime {
 		drop(outputs);
 		let _ = worker.await;
 		if !terminal {
-			self.mark_active_unknown(&context, QuickTaskAmbiguity::ActiveTurn).await;
+			self.mark_active_unknown(&context, ConversationAmbiguity::ActiveTurn).await;
 		}
 	}
 
@@ -2622,10 +2649,10 @@ impl QuickTaskRuntime {
 		&self,
 		context: &TurnContext,
 		assistant_ordinal: &mut i32,
-		event: QuickTaskProcessEvent,
+		event: ConversationProcessEvent,
 	) -> Result<bool, ()> {
 		match event {
-			QuickTaskProcessEvent::MessageDelta(delta) => {
+			ConversationProcessEvent::MessageDelta(delta) => {
 				if delta.thread_id().as_str() != context.session.codex_thread_id.as_str()
 					|| delta.turn_id().as_str() != context.provider_turn_id.as_str()
 				{
@@ -2690,10 +2717,10 @@ impl QuickTaskRuntime {
 					*assistant_ordinal = (*assistant_ordinal).checked_add(1).ok_or(())?;
 					let readback = session_readback(
 						&context.session,
-						QuickTaskLocalState::Running,
+						ConversationLocalState::Running,
 						Some(context.logical_turn_id.clone()),
 					);
-					self.emit(QuickTaskOutcome::Streaming {
+					self.emit(ConversationOutcome::Streaming {
 						readback,
 						history_item_id,
 						text: bounded_text,
@@ -2703,7 +2730,7 @@ impl QuickTaskRuntime {
 				}
 				Ok(false)
 			},
-			QuickTaskProcessEvent::TurnCompleted { turn_id, status, witness_digest } => {
+			ConversationProcessEvent::TurnCompleted { turn_id, status, witness_digest } => {
 				if turn_id != context.provider_turn_id {
 					return Err(());
 				}
@@ -2723,9 +2750,9 @@ impl QuickTaskRuntime {
 	) -> Result<(), ()> {
 		let (terminal, outcome) = match status {
 			TurnStatus::Completed =>
-				(QuickTaskTerminalState::Succeeded, ProviderTerminalOutcome::Succeeded),
+				(ConversationTerminalState::Succeeded, ProviderTerminalOutcome::Succeeded),
 			TurnStatus::Interrupted | TurnStatus::Failed =>
-				(QuickTaskTerminalState::Failed, ProviderTerminalOutcome::FailedDefinitive),
+				(ConversationTerminalState::Failed, ProviderTerminalOutcome::FailedDefinitive),
 			TurnStatus::InProgress | TurnStatus::Unknown => return Err(()),
 		};
 		let evidence_id = ProviderEvidenceId::new(derived_uuid(
@@ -2759,7 +2786,7 @@ impl QuickTaskRuntime {
 			_ => return Err(()),
 		}
 		let terminal_attempt_revision = context.authorized_revision.checked_add(1).ok_or(())?;
-		let terminalization = TerminalizeQuickTaskTurn {
+		let terminalization = TerminalizeConversationTurn {
 			conversation_id: context.session.conversation_id.clone(),
 			expected_conversation_revision: context.session.conversation_revision,
 			runtime_session_id: context.session.runtime_session_id.clone(),
@@ -2777,17 +2804,17 @@ impl QuickTaskRuntime {
 		let terminalization = match self
 			.inner
 			.store
-			.terminalize_quick_task_turn(
+			.terminalize_conversation_turn(
 				&scoped_key("turn-terminalization", context.attempt_id.as_str()),
 				&terminalization,
 			)
 			.await
 			.map_err(|_| ())?
 		{
-			QuickTaskTerminalizationOutcome::Applied(readback)
-			| QuickTaskTerminalizationOutcome::Replayed(readback) => readback,
-			QuickTaskTerminalizationOutcome::Rejected
-			| QuickTaskTerminalizationOutcome::Unknown => return Err(()),
+			ConversationTerminalizationOutcome::Applied(readback)
+			| ConversationTerminalizationOutcome::Replayed(readback) => readback,
+			ConversationTerminalizationOutcome::Rejected
+			| ConversationTerminalizationOutcome::Unknown => return Err(()),
 		};
 		let mut session = context.session.clone();
 		session.runtime_session_revision = terminalization.runtime_session_revision;
@@ -2795,12 +2822,12 @@ impl QuickTaskRuntime {
 		let sequence_increment = if has_assistant_turn { 2 } else { 1 };
 		session.next_user_sequence =
 			context.logical_turn_sequence.saturating_add(sequence_increment);
-		let readback = session_readback(&session, QuickTaskLocalState::Ready, None);
+		let readback = session_readback(&session, ConversationLocalState::Ready, None);
 		if self.retire_process(&session.process).await {
 			if !self.remove_active_if(&context.attempt_id, &session.conversation_id) {
 				return Err(());
 			}
-			self.emit(QuickTaskOutcome::Terminal {
+			self.emit(ConversationOutcome::Terminal {
 				readback,
 				turn_id: context.logical_turn_id.clone(),
 				state: terminal,
@@ -2809,52 +2836,55 @@ impl QuickTaskRuntime {
 			.await;
 		} else {
 			let mut recovery = readback;
-			recovery.state = QuickTaskLocalState::ManualRecovery;
+			recovery.state = ConversationLocalState::ManualRecovery;
 			if !self.set_recovery_if_active(
 				&context.attempt_id,
 				recovery.clone(),
-				QuickTaskManualRecovery::ProcessUnavailable,
+				ConversationManualRecovery::ProcessUnavailable,
 			) {
 				return Err(());
 			}
-			self.emit(QuickTaskOutcome::ManualRecovery {
+			self.emit(ConversationOutcome::ManualRecovery {
 				readback: recovery,
-				action: QuickTaskManualRecovery::ProcessUnavailable,
+				action: ConversationManualRecovery::ProcessUnavailable,
 			})
 			.await;
 		}
 		Ok(())
 	}
 
-	pub(crate) fn interrupt(&self, conversation_id: &ConversationId) -> QuickTaskOutcome {
+	pub(crate) fn interrupt(&self, conversation_id: &ConversationId) -> ConversationOutcome {
 		let mut local = self.local();
 		let Some(task) = local.get_mut(conversation_id.as_str()) else {
-			return QuickTaskOutcome::ManualRecovery {
-				readback: empty_readback(conversation_id, QuickTaskLocalState::ManualRecovery),
-				action: QuickTaskManualRecovery::MissingLocalProcess,
+			return ConversationOutcome::ManualRecovery {
+				readback: empty_readback(conversation_id, ConversationLocalState::ManualRecovery),
+				action: ConversationManualRecovery::MissingLocalProcess,
 			};
 		};
 		match &task.state {
 			LocalTaskState::Active { session, turn_id, commands, .. } => {
-				let readback =
-					session_readback(session, QuickTaskLocalState::Running, Some(turn_id.clone()));
+				let readback = session_readback(
+					session,
+					ConversationLocalState::Running,
+					Some(turn_id.clone()),
+				);
 				match commands.try_send(WorkerCommand::Interrupt) {
-					Ok(()) => QuickTaskOutcome::InterruptRequested(readback),
-					Err(mpsc::TrySendError::Full(_)) => QuickTaskOutcome::Busy(readback),
-					Err(mpsc::TrySendError::Disconnected(_)) => QuickTaskOutcome::Unknown {
+					Ok(()) => ConversationOutcome::InterruptRequested(readback),
+					Err(mpsc::TrySendError::Full(_)) => ConversationOutcome::Busy(readback),
+					Err(mpsc::TrySendError::Disconnected(_)) => ConversationOutcome::Unknown {
 						readback,
-						ambiguity: QuickTaskAmbiguity::ActiveTurn,
+						ambiguity: ConversationAmbiguity::ActiveTurn,
 					},
 				}
 			},
-			_ => QuickTaskOutcome::Conflict,
+			_ => ConversationOutcome::Conflict,
 		}
 	}
 
 	pub(crate) fn projection(
 		&self,
 		conversation_id: &ConversationId,
-	) -> Option<QuickTaskProjection> {
+	) -> Option<ConversationProjection> {
 		let local = self.local();
 		let task = local.get(conversation_id.as_str())?;
 		if matches!(&task.state, LocalTaskState::Establishing) {
@@ -2863,23 +2893,23 @@ impl QuickTaskRuntime {
 		let readback = local_readback(conversation_id, task);
 		let recovery = match &task.state {
 			LocalTaskState::Recovery { action, .. }
-				if readback.state == QuickTaskLocalState::ManualRecovery =>
+				if readback.state == ConversationLocalState::ManualRecovery =>
 				Some(*action),
 			_ => None,
 		};
-		Some(QuickTaskProjection { readback, recovery })
+		Some(ConversationProjection { readback, recovery })
 	}
 
 	/// Refresh or archive one exact selected Codex thread without dispatching a model turn.
 	pub(crate) async fn control_thread(
 		&self,
-		command: ControlQuickTask,
-	) -> QuickTaskControlOutcome {
+		command: ControlConversation,
+	) -> ConversationControlOutcome {
 		if self.is_shutting_down()
 			|| command.expected_conversation_revision <= 0
 			|| command.expected_runtime_session_revision <= 0
 		{
-			return QuickTaskControlOutcome::Unavailable;
+			return ConversationControlOutcome::Unavailable;
 		}
 		{
 			let local = self.local();
@@ -2887,7 +2917,7 @@ impl QuickTaskRuntime {
 				match &task.state {
 					LocalTaskState::Active { .. }
 					| LocalTaskState::Preparing(_)
-					| LocalTaskState::Establishing => return QuickTaskControlOutcome::Busy,
+					| LocalTaskState::Establishing => return ConversationControlOutcome::Busy,
 					LocalTaskState::Recovery { .. } => {},
 					LocalTaskState::Ready(_) => {},
 				}
@@ -2901,7 +2931,7 @@ impl QuickTaskRuntime {
 		{
 			Ok(Some(session)) => session,
 			Ok(None) => return self.archive_local_control_thread(&command).await,
-			Err(_) => return QuickTaskControlOutcome::Unavailable,
+			Err(_) => return ConversationControlOutcome::Unavailable,
 		};
 		if session.conversation_revision != command.expected_conversation_revision
 			|| session.runtime_session_id != command.runtime_session_id
@@ -2909,22 +2939,22 @@ impl QuickTaskRuntime {
 			|| session.active_turn_id != command.active_turn_id
 			|| session.active_turn_revision != command.active_turn_revision
 		{
-			return QuickTaskControlOutcome::Conflict;
+			return ConversationControlOutcome::Conflict;
 		}
-		let request = match self.inner.store.read_quick_task_request(&command.conversation_id).await
-		{
-			Ok(Some(request)) => request,
-			Ok(None) => return QuickTaskControlOutcome::Conflict,
-			Err(_) => return QuickTaskControlOutcome::Unavailable,
-		};
+		let request =
+			match self.inner.store.read_conversation_request(&command.conversation_id).await {
+				Ok(Some(request)) => request,
+				Ok(None) => return ConversationControlOutcome::Conflict,
+				Err(_) => return ConversationControlOutcome::Unavailable,
+			};
 		let pending_terminalization = match self
 			.inner
 			.store
-			.read_pending_quick_task_terminalization(&command.conversation_id)
+			.read_pending_conversation_terminalization(&command.conversation_id)
 			.await
 		{
 			Ok(pending) => pending,
-			Err(_) => return QuickTaskControlOutcome::Unavailable,
+			Err(_) => return ConversationControlOutcome::Unavailable,
 		};
 		if let Some(pending) = pending_terminalization.as_ref() {
 			if session.has_unresolved_provider_attempt
@@ -2935,14 +2965,14 @@ impl QuickTaskRuntime {
 				|| session.active_turn_id.as_ref() != Some(&pending.user_turn_id)
 				|| session.active_turn_revision != Some(pending.user_turn_revision)
 			{
-				return QuickTaskControlOutcome::Conflict;
+				return ConversationControlOutcome::Conflict;
 			}
 			if let Err(outcome) = self.finish_pending_terminalization(pending).await {
 				return outcome;
 			}
 			self.remove_recovery_projection(&command.conversation_id);
 			if !command.archive {
-				return QuickTaskControlOutcome::Current;
+				return ConversationControlOutcome::Current;
 			}
 			session = match self
 				.inner
@@ -2951,23 +2981,23 @@ impl QuickTaskRuntime {
 				.await
 			{
 				Ok(Some(session)) => session,
-				_ => return QuickTaskControlOutcome::Unavailable,
+				_ => return ConversationControlOutcome::Unavailable,
 			};
 		}
 		if session.has_unresolved_process_generation {
-			return QuickTaskControlOutcome::Conflict;
+			return ConversationControlOutcome::Conflict;
 		}
 		let unknown = match self
 			.inner
 			.store
-			.read_unknown_quick_task_attempt_for_recovery(&command.conversation_id)
+			.read_unknown_conversation_attempt_for_recovery(&command.conversation_id)
 			.await
 		{
 			Ok(unknown) => unknown,
-			Err(_) => return QuickTaskControlOutcome::Unavailable,
+			Err(_) => return ConversationControlOutcome::Unavailable,
 		};
 		if session.has_unresolved_provider_attempt != unknown.is_some() {
-			return QuickTaskControlOutcome::Conflict;
+			return ConversationControlOutcome::Conflict;
 		}
 		let mut observed_archived = None;
 		if let Some(unknown) = unknown.as_ref() {
@@ -2980,7 +3010,7 @@ impl QuickTaskRuntime {
 				|| session.active_turn_id.as_ref() != Some(&unknown.user_turn_id)
 				|| session.active_turn_revision != Some(unknown.user_turn_revision)
 			{
-				return QuickTaskControlOutcome::Conflict;
+				return ConversationControlOutcome::Conflict;
 			}
 			let observation = self
 				.observe_control_thread(
@@ -3000,10 +3030,10 @@ impl QuickTaskRuntime {
 					readback.submitted_turn
 				},
 				Ok(ControlThreadObservation::Archived) => {
-					return QuickTaskControlOutcome::Conflict;
+					return ConversationControlOutcome::Conflict;
 				},
 				Err(outcome) if unknown.process_generation_is_dead => {
-					if !matches!(outcome, QuickTaskControlOutcome::Unavailable) {
+					if !matches!(outcome, ConversationControlOutcome::Unavailable) {
 						return outcome;
 					}
 					None
@@ -3011,18 +3041,18 @@ impl QuickTaskRuntime {
 				Err(outcome) => return outcome,
 			};
 			let reconciled = match submitted {
-				Some(readback) if readback.status() != QuickTaskTurnStatus::InProgress =>
+				Some(readback) if readback.status() != ConversationTurnStatus::InProgress =>
 					self.reconcile_exact_unknown_turn(unknown, &readback).await,
 				Some(_) | None if unknown.process_generation_is_dead =>
 					self.close_unknown_control_turn(unknown).await,
-				Some(_) | None => Err(QuickTaskControlOutcome::Busy),
+				Some(_) | None => Err(ConversationControlOutcome::Busy),
 			};
 			if let Err(outcome) = reconciled {
 				return outcome;
 			}
 			self.remove_recovery_projection(&command.conversation_id);
 			if !command.archive && observed_archived != Some(true) {
-				return QuickTaskControlOutcome::Current;
+				return ConversationControlOutcome::Current;
 			}
 			session = match self
 				.inner
@@ -3031,7 +3061,7 @@ impl QuickTaskRuntime {
 				.await
 			{
 				Ok(Some(session)) => session,
-				_ => return QuickTaskControlOutcome::Unavailable,
+				_ => return ConversationControlOutcome::Unavailable,
 			};
 		} else if let (Some(turn_id), Some(turn_revision)) =
 			(session.active_turn_id.as_ref(), session.active_turn_revision)
@@ -3064,7 +3094,7 @@ impl QuickTaskRuntime {
 			}
 		};
 		if !archived {
-			return QuickTaskControlOutcome::Current;
+			return ConversationControlOutcome::Current;
 		}
 		let persistence = match exact_command(
 			"archive-conversation",
@@ -3078,14 +3108,14 @@ impl QuickTaskRuntime {
 			],
 		) {
 			Ok(command) => command,
-			Err(()) => return QuickTaskControlOutcome::Conflict,
+			Err(()) => return ConversationControlOutcome::Conflict,
 		};
 		let archived = match self
 			.inner
 			.store
-			.archive_quick_task_conversation(
+			.archive_conversation(
 				&persistence,
-				&ArchiveQuickTaskConversation {
+				&ArchiveConversationRecord {
 					conversation_id: command.conversation_id.clone(),
 					expected_conversation_revision: session.conversation_revision,
 					runtime_session_id: session.runtime_session_id,
@@ -3094,12 +3124,12 @@ impl QuickTaskRuntime {
 			)
 			.await
 		{
-			Ok(ArchiveQuickTaskConversationOutcome::Applied(archived))
-			| Ok(ArchiveQuickTaskConversationOutcome::Replayed(archived)) => archived,
-			Ok(ArchiveQuickTaskConversationOutcome::Rejected) => {
-				return QuickTaskControlOutcome::Conflict;
+			Ok(ArchiveConversationOutcome::Applied(archived))
+			| Ok(ArchiveConversationOutcome::Replayed(archived)) => archived,
+			Ok(ArchiveConversationOutcome::Rejected) => {
+				return ConversationControlOutcome::Conflict;
 			},
-			Err(_) => return QuickTaskControlOutcome::OutcomeUnknown,
+			Err(_) => return ConversationControlOutcome::OutcomeUnknown,
 		};
 		let process = {
 			let mut local = self.local();
@@ -3111,19 +3141,21 @@ impl QuickTaskRuntime {
 		if let Some(process) = process {
 			self.terminate_process(&process).await;
 		}
-		QuickTaskControlOutcome::Archived { conversation_revision: archived.conversation_revision }
+		ConversationControlOutcome::Archived {
+			conversation_revision: archived.conversation_revision,
+		}
 	}
 
 	async fn reconcile_exact_unknown_turn(
 		&self,
-		unknown: &UnknownQuickTaskAttemptReadback,
+		unknown: &UnknownConversationAttemptReadback,
 		readback: &ExactSubmittedTurnReadback,
-	) -> Result<(), QuickTaskControlOutcome> {
+	) -> Result<(), ConversationControlOutcome> {
 		let outcome = match readback.status() {
-			QuickTaskTurnStatus::Completed => ProviderTerminalOutcome::Succeeded,
-			QuickTaskTurnStatus::Interrupted | QuickTaskTurnStatus::Failed =>
+			ConversationTurnStatus::Completed => ProviderTerminalOutcome::Succeeded,
+			ConversationTurnStatus::Interrupted | ConversationTurnStatus::Failed =>
 				ProviderTerminalOutcome::FailedDefinitive,
-			QuickTaskTurnStatus::InProgress => return Err(QuickTaskControlOutcome::Busy),
+			ConversationTurnStatus::InProgress => return Err(ConversationControlOutcome::Busy),
 		};
 		let assistant_turn =
 			self.reconcile_recovered_assistant(unknown, readback.assistant_text()).await?;
@@ -3131,7 +3163,7 @@ impl QuickTaskRuntime {
 			"provider-evidence",
 			&[unknown.attempt_id.as_str()],
 		))
-		.map_err(|_| QuickTaskControlOutcome::Conflict)?;
+		.map_err(|_| ConversationControlOutcome::Conflict)?;
 		let evidence = ProviderPositiveEvidence::new(
 			evidence_id.clone(),
 			unknown.attempt_id.clone(),
@@ -3144,22 +3176,22 @@ impl QuickTaskRuntime {
 			Some(readback.provider_turn_id().as_str().to_owned()),
 			readback.witness_digest(),
 		)
-		.map_err(|_| QuickTaskControlOutcome::Conflict)?;
+		.map_err(|_| ConversationControlOutcome::Conflict)?;
 		match self
 			.inner
 			.provider_attempts
 			.record_positive_evidence(&evidence)
 			.await
-			.map_err(|_| QuickTaskControlOutcome::OutcomeUnknown)?
+			.map_err(|_| ConversationControlOutcome::OutcomeUnknown)?
 		{
 			ProviderAttemptReconciliation::PositiveEvidenceRecorded { state }
 			| ProviderAttemptReconciliation::AlreadyTerminal { state }
 				if state == outcome.state() => {},
-			_ => return Err(QuickTaskControlOutcome::Conflict),
+			_ => return Err(ConversationControlOutcome::Conflict),
 		}
 		let terminal_attempt_revision =
-			unknown.attempt_revision.checked_add(1).ok_or(QuickTaskControlOutcome::Conflict)?;
-		let terminalization = TerminalizeQuickTaskTurn {
+			unknown.attempt_revision.checked_add(1).ok_or(ConversationControlOutcome::Conflict)?;
+		let terminalization = TerminalizeConversationTurn {
 			conversation_id: unknown.conversation_id.clone(),
 			expected_conversation_revision: unknown.conversation_revision,
 			runtime_session_id: unknown.runtime_session_id.clone(),
@@ -3177,38 +3209,39 @@ impl QuickTaskRuntime {
 		match self
 			.inner
 			.store
-			.terminalize_quick_task_turn(
+			.terminalize_conversation_turn(
 				&scoped_key("turn-terminalization", unknown.attempt_id.as_str()),
 				&terminalization,
 			)
 			.await
-			.map_err(|_| QuickTaskControlOutcome::OutcomeUnknown)?
+			.map_err(|_| ConversationControlOutcome::OutcomeUnknown)?
 		{
-			QuickTaskTerminalizationOutcome::Applied(_)
-			| QuickTaskTerminalizationOutcome::Replayed(_) => Ok(()),
-			QuickTaskTerminalizationOutcome::Rejected => Err(QuickTaskControlOutcome::Conflict),
-			QuickTaskTerminalizationOutcome::Unknown =>
-				Err(QuickTaskControlOutcome::OutcomeUnknown),
+			ConversationTerminalizationOutcome::Applied(_)
+			| ConversationTerminalizationOutcome::Replayed(_) => Ok(()),
+			ConversationTerminalizationOutcome::Rejected =>
+				Err(ConversationControlOutcome::Conflict),
+			ConversationTerminalizationOutcome::Unknown =>
+				Err(ConversationControlOutcome::OutcomeUnknown),
 		}
 	}
 
 	async fn finish_pending_terminalization(
 		&self,
-		pending: &PendingQuickTaskTerminalizationReadback,
-	) -> Result<(), QuickTaskControlOutcome> {
+		pending: &PendingConversationTerminalizationReadback,
+	) -> Result<(), ConversationControlOutcome> {
 		let assistant_turn = self
 			.inner
 			.store
-			.read_quick_task_assistant_prefix(
+			.read_conversation_assistant_prefix(
 				&self.inner.blob_store,
 				&pending.conversation_id,
 				&pending.runtime_session_id,
 				pending.user_turn_sequence,
 			)
 			.await
-			.map_err(|_| QuickTaskControlOutcome::Unavailable)?
+			.map_err(|_| ConversationControlOutcome::Unavailable)?
 			.map(|prefix| (prefix.turn_id, prefix.turn_revision));
-		let terminalization = TerminalizeQuickTaskTurn {
+		let terminalization = TerminalizeConversationTurn {
 			conversation_id: pending.conversation_id.clone(),
 			expected_conversation_revision: pending.conversation_revision,
 			runtime_session_id: pending.runtime_session_id.clone(),
@@ -3226,39 +3259,40 @@ impl QuickTaskRuntime {
 		match self
 			.inner
 			.store
-			.terminalize_quick_task_turn(
+			.terminalize_conversation_turn(
 				&scoped_key("turn-terminalization", pending.attempt_id.as_str()),
 				&terminalization,
 			)
 			.await
-			.map_err(|_| QuickTaskControlOutcome::OutcomeUnknown)?
+			.map_err(|_| ConversationControlOutcome::OutcomeUnknown)?
 		{
-			QuickTaskTerminalizationOutcome::Applied(_)
-			| QuickTaskTerminalizationOutcome::Replayed(_) => Ok(()),
-			QuickTaskTerminalizationOutcome::Rejected => Err(QuickTaskControlOutcome::Conflict),
-			QuickTaskTerminalizationOutcome::Unknown =>
-				Err(QuickTaskControlOutcome::OutcomeUnknown),
+			ConversationTerminalizationOutcome::Applied(_)
+			| ConversationTerminalizationOutcome::Replayed(_) => Ok(()),
+			ConversationTerminalizationOutcome::Rejected =>
+				Err(ConversationControlOutcome::Conflict),
+			ConversationTerminalizationOutcome::Unknown =>
+				Err(ConversationControlOutcome::OutcomeUnknown),
 		}
 	}
 
 	async fn reconcile_recovered_assistant(
 		&self,
-		unknown: &UnknownQuickTaskAttemptReadback,
+		unknown: &UnknownConversationAttemptReadback,
 		assistant_text: &str,
-	) -> Result<Option<(TurnId, i64)>, QuickTaskControlOutcome> {
+	) -> Result<Option<(TurnId, i64)>, ConversationControlOutcome> {
 		let prefix = self
 			.inner
 			.store
-			.read_quick_task_assistant_prefix(
+			.read_conversation_assistant_prefix(
 				&self.inner.blob_store,
 				&unknown.conversation_id,
 				&unknown.runtime_session_id,
 				unknown.user_turn_sequence,
 			)
 			.await
-			.map_err(|_| QuickTaskControlOutcome::Unavailable)?;
+			.map_err(|_| ConversationControlOutcome::Unavailable)?;
 		if prefix.as_ref().is_some_and(|prefix| prefix.turn_revision != 1) {
-			return Err(QuickTaskControlOutcome::Conflict);
+			return Err(ConversationControlOutcome::Conflict);
 		}
 		let (assistant_turn_id, assistant_sequence, mut ordinal, suffix) = match prefix.as_ref() {
 			Some(prefix) if assistant_text.starts_with(&prefix.text) => (
@@ -3267,18 +3301,18 @@ impl QuickTaskRuntime {
 				prefix.next_ordinal,
 				&assistant_text[prefix.text.len()..],
 			),
-			Some(_) => return Err(QuickTaskControlOutcome::Conflict),
+			Some(_) => return Err(ConversationControlOutcome::Conflict),
 			None if assistant_text.is_empty() => return Ok(None),
 			None => (
 				TurnId::new(derived_uuid(
 					"recovered-assistant-turn",
 					&[unknown.attempt_id.as_str()],
 				))
-				.map_err(|_| QuickTaskControlOutcome::Conflict)?,
+				.map_err(|_| ConversationControlOutcome::Conflict)?,
 				unknown
 					.user_turn_sequence
 					.checked_add(1)
-					.ok_or(QuickTaskControlOutcome::Conflict)?,
+					.ok_or(ConversationControlOutcome::Conflict)?,
 				0,
 				assistant_text,
 			),
@@ -3287,17 +3321,17 @@ impl QuickTaskRuntime {
 		while offset < suffix.len() {
 			let end = history_chunk_end(suffix, offset);
 			if end == offset {
-				return Err(QuickTaskControlOutcome::Conflict);
+				return Err(ConversationControlOutcome::Conflict);
 			}
 			let bounded = HistoryText::new(suffix[offset..end].to_owned())
-				.map_err(|_| QuickTaskControlOutcome::Conflict)?;
+				.map_err(|_| ConversationControlOutcome::Conflict)?;
 			let ordinal_text = ordinal.to_string();
 			let sequence_text = assistant_sequence.to_string();
 			let history_item_id = HistoryItemId::new(derived_uuid(
 				"assistant-history",
 				&[unknown.attempt_id.as_str(), &ordinal_text],
 			))
-			.map_err(|_| QuickTaskControlOutcome::Conflict)?;
+			.map_err(|_| ConversationControlOutcome::Conflict)?;
 			let persistence = exact_command(
 				"assistant-history",
 				history_item_id.as_str(),
@@ -3312,7 +3346,7 @@ impl QuickTaskRuntime {
 					bounded.as_str(),
 				],
 			)
-			.map_err(|_| QuickTaskControlOutcome::Conflict)?;
+			.map_err(|_| ConversationControlOutcome::Conflict)?;
 			self.inner
 				.store
 				.record_history_item(
@@ -3337,8 +3371,8 @@ impl QuickTaskRuntime {
 					},
 				)
 				.await
-				.map_err(|_| QuickTaskControlOutcome::OutcomeUnknown)?;
-			ordinal = ordinal.checked_add(1).ok_or(QuickTaskControlOutcome::Conflict)?;
+				.map_err(|_| ConversationControlOutcome::OutcomeUnknown)?;
+			ordinal = ordinal.checked_add(1).ok_or(ConversationControlOutcome::Conflict)?;
 			offset = end;
 		}
 		Ok(Some((assistant_turn_id, 1)))
@@ -3346,13 +3380,13 @@ impl QuickTaskRuntime {
 
 	async fn close_unknown_control_turn(
 		&self,
-		unknown: &UnknownQuickTaskAttemptReadback,
-	) -> Result<(), QuickTaskControlOutcome> {
+		unknown: &UnknownConversationAttemptReadback,
+	) -> Result<(), ConversationControlOutcome> {
 		let history_item_id = HistoryItemId::new(derived_uuid(
 			"interrupted-turn-status",
 			&[unknown.attempt_id.as_str()],
 		))
-		.map_err(|_| QuickTaskControlOutcome::Conflict)?;
+		.map_err(|_| ConversationControlOutcome::Conflict)?;
 		let persistence = exact_command(
 			"recover-unknown-turn",
 			unknown.attempt_id.as_str(),
@@ -3369,13 +3403,13 @@ impl QuickTaskRuntime {
 				history_item_id.as_str(),
 			],
 		)
-		.map_err(|_| QuickTaskControlOutcome::Conflict)?;
+		.map_err(|_| ConversationControlOutcome::Conflict)?;
 		let recovered = self
 			.inner
 			.store
-			.recover_unknown_quick_task_turn(
+			.recover_unknown_conversation_turn(
 				&persistence,
-				&RecoverUnknownQuickTaskTurn {
+				&RecoverUnknownConversationTurn {
 					conversation_id: unknown.conversation_id.clone(),
 					expected_conversation_revision: unknown.conversation_revision,
 					runtime_session_id: unknown.runtime_session_id.clone(),
@@ -3389,15 +3423,15 @@ impl QuickTaskRuntime {
 				},
 			)
 			.await
-			.map_err(|_| QuickTaskControlOutcome::OutcomeUnknown)?;
+			.map_err(|_| ConversationControlOutcome::OutcomeUnknown)?;
 		match recovered {
-			RecoverUnknownQuickTaskTurnOutcome::Applied(readback)
-			| RecoverUnknownQuickTaskTurnOutcome::Replayed(readback)
+			RecoverUnknownConversationTurnOutcome::Applied(readback)
+			| RecoverUnknownConversationTurnOutcome::Replayed(readback)
 				if unknown.user_turn_revision.checked_add(1) == Some(readback.turn_revision) =>
 				Ok(()),
-			RecoverUnknownQuickTaskTurnOutcome::Applied(_)
-			| RecoverUnknownQuickTaskTurnOutcome::Replayed(_)
-			| RecoverUnknownQuickTaskTurnOutcome::Rejected => Err(QuickTaskControlOutcome::Conflict),
+			RecoverUnknownConversationTurnOutcome::Applied(_)
+			| RecoverUnknownConversationTurnOutcome::Replayed(_)
+			| RecoverUnknownConversationTurnOutcome::Rejected => Err(ConversationControlOutcome::Conflict),
 		}
 	}
 
@@ -3413,10 +3447,10 @@ impl QuickTaskRuntime {
 
 	async fn reconcile_control_turn(
 		&self,
-		command: &ControlQuickTask,
+		command: &ControlConversation,
 		turn_id: &TurnId,
 		expected_turn_revision: i64,
-	) -> Result<(), QuickTaskControlOutcome> {
+	) -> Result<(), ConversationControlOutcome> {
 		let persistence = exact_command(
 			"reconcile-stranded-turn",
 			&command.operation_key,
@@ -3429,13 +3463,13 @@ impl QuickTaskRuntime {
 				&expected_turn_revision.to_string(),
 			],
 		)
-		.map_err(|_| QuickTaskControlOutcome::Conflict)?;
+		.map_err(|_| ConversationControlOutcome::Conflict)?;
 		let outcome = self
 			.inner
 			.store
-			.reconcile_stranded_quick_task_turn(
+			.reconcile_stranded_conversation_turn(
 				&persistence,
-				&ReconcileStrandedQuickTaskTurn {
+				&ReconcileStrandedConversationTurn {
 					conversation_id: command.conversation_id.clone(),
 					expected_conversation_revision: command.expected_conversation_revision,
 					runtime_session_id: command.runtime_session_id.clone(),
@@ -3445,15 +3479,15 @@ impl QuickTaskRuntime {
 				},
 			)
 			.await
-			.map_err(|_| QuickTaskControlOutcome::OutcomeUnknown)?;
+			.map_err(|_| ConversationControlOutcome::OutcomeUnknown)?;
 		match outcome {
-			ReconcileStrandedQuickTaskTurnOutcome::Applied { turn_revision }
-			| ReconcileStrandedQuickTaskTurnOutcome::Replayed { turn_revision }
+			ReconcileStrandedConversationTurnOutcome::Applied { turn_revision }
+			| ReconcileStrandedConversationTurnOutcome::Replayed { turn_revision }
 				if expected_turn_revision.checked_add(1) == Some(turn_revision) => {},
-			ReconcileStrandedQuickTaskTurnOutcome::Applied { .. }
-			| ReconcileStrandedQuickTaskTurnOutcome::Replayed { .. }
-			| ReconcileStrandedQuickTaskTurnOutcome::Rejected => {
-				return Err(QuickTaskControlOutcome::Conflict);
+			ReconcileStrandedConversationTurnOutcome::Applied { .. }
+			| ReconcileStrandedConversationTurnOutcome::Replayed { .. }
+			| ReconcileStrandedConversationTurnOutcome::Rejected => {
+				return Err(ConversationControlOutcome::Conflict);
 			},
 		}
 		let mut local = self.local();
@@ -3468,8 +3502,8 @@ impl QuickTaskRuntime {
 
 	async fn archive_local_control_thread(
 		&self,
-		command: &ControlQuickTask,
-	) -> QuickTaskControlOutcome {
+		command: &ControlConversation,
+	) -> ConversationControlOutcome {
 		match (command.active_turn_id.as_ref(), command.active_turn_revision) {
 			(Some(turn_id), Some(turn_revision)) => {
 				if let Err(outcome) =
@@ -3479,7 +3513,7 @@ impl QuickTaskRuntime {
 				}
 			},
 			(None, None) => {},
-			_ => return QuickTaskControlOutcome::Conflict,
+			_ => return ConversationControlOutcome::Conflict,
 		}
 		let persistence = match exact_command(
 			"archive-local-conversation",
@@ -3492,14 +3526,14 @@ impl QuickTaskRuntime {
 			],
 		) {
 			Ok(command) => command,
-			Err(()) => return QuickTaskControlOutcome::Conflict,
+			Err(()) => return ConversationControlOutcome::Conflict,
 		};
 		let archived = match self
 			.inner
 			.store
-			.archive_local_quick_task_conversation(
+			.archive_local_conversation(
 				&persistence,
-				&ArchiveLocalQuickTaskConversation {
+				&ArchiveLocalConversationRecord {
 					conversation_id: command.conversation_id.clone(),
 					expected_conversation_revision: command.expected_conversation_revision,
 					runtime_session_id: command.runtime_session_id.clone(),
@@ -3508,15 +3542,17 @@ impl QuickTaskRuntime {
 			)
 			.await
 		{
-			Ok(ArchiveLocalQuickTaskConversationOutcome::Applied(archived))
-			| Ok(ArchiveLocalQuickTaskConversationOutcome::Replayed(archived)) => archived,
-			Ok(ArchiveLocalQuickTaskConversationOutcome::Rejected) => {
-				return QuickTaskControlOutcome::Conflict;
+			Ok(ArchiveLocalConversationOutcome::Applied(archived))
+			| Ok(ArchiveLocalConversationOutcome::Replayed(archived)) => archived,
+			Ok(ArchiveLocalConversationOutcome::Rejected) => {
+				return ConversationControlOutcome::Conflict;
 			},
-			Err(_) => return QuickTaskControlOutcome::OutcomeUnknown,
+			Err(_) => return ConversationControlOutcome::OutcomeUnknown,
 		};
 		self.local().remove(command.conversation_id.as_str());
-		QuickTaskControlOutcome::Archived { conversation_revision: archived.conversation_revision }
+		ConversationControlOutcome::Archived {
+			conversation_revision: archived.conversation_revision,
+		}
 	}
 
 	async fn observe_control_thread(
@@ -3527,13 +3563,13 @@ impl QuickTaskRuntime {
 		working_directory: &str,
 		thread_id: &str,
 		operation: ControlThreadOperation,
-	) -> Result<ControlThreadObservation, QuickTaskControlOutcome> {
+	) -> Result<ControlThreadObservation, ConversationControlOutcome> {
 		let credential = self
 			.inner
 			.accounts
 			.process_credential(account_id, account_revision)
 			.await
-			.map_err(|_| QuickTaskControlOutcome::Unavailable)?;
+			.map_err(|_| ConversationControlOutcome::Unavailable)?;
 		let profile = self.inner.launch_profile.clone();
 		let capacity = Arc::clone(&self.inner.capacity);
 		let accounts = Arc::clone(&self.inner.accounts);
@@ -3545,24 +3581,24 @@ impl QuickTaskRuntime {
 			"thread-control-process",
 			&[operation_key, thread_id.as_str()],
 		))
-		.map_err(|_| QuickTaskControlOutcome::Conflict)?;
+		.map_err(|_| ConversationControlOutcome::Conflict)?;
 		task::spawn_blocking(move || {
 			let selected = Arc::new(
 				SelectedWorkingDirectory::acquire(&working_directory)
-					.map_err(|()| QuickTaskControlOutcome::Unavailable)?,
+					.map_err(|()| ConversationControlOutcome::Unavailable)?,
 			);
 			let callback: Arc<dyn ProcessAccountRefreshCallback> =
-				Arc::new(QuickTaskRefreshCallback { accounts, runtime, generation_id });
+				Arc::new(ConversationRefreshCallback { accounts, runtime, generation_id });
 			let binding =
 				AccountBinding::shared_home_bound(account_id.clone(), credential.binding, callback)
-					.map_err(|_| QuickTaskControlOutcome::Unavailable)?;
-			let vault = QuickTaskCredentialVault {
+					.map_err(|_| ConversationControlOutcome::Unavailable)?;
+			let vault = ConversationCredentialVault {
 				account_id: account_id.clone(),
 				stored: credential.stored,
 			};
 			let permit = capacity
 				.reserve(account_id, account_revision)
-				.map_err(|_| QuickTaskControlOutcome::Unavailable)?;
+				.map_err(|_| ConversationControlOutcome::Unavailable)?;
 			let launch = AttestedAppServerLaunch::bind_selected_control_working_directory(
 				profile,
 				working_directory.into(),
@@ -3571,24 +3607,24 @@ impl QuickTaskRuntime {
 				permit,
 				selected,
 			)
-			.map_err(|_| QuickTaskControlOutcome::Unavailable)?;
-			let mut child = launch.spawn().map_err(|_| QuickTaskControlOutcome::Unavailable)?;
+			.map_err(|_| ConversationControlOutcome::Unavailable)?;
+			let mut child = launch.spawn().map_err(|_| ConversationControlOutcome::Unavailable)?;
 			if child.initialize_ordinary_turns(&vault).is_err() {
 				let _ = child.shutdown();
-				return Err(QuickTaskControlOutcome::Unavailable);
+				return Err(ConversationControlOutcome::Unavailable);
 			}
 			drop(credential.launch_guard);
 			let thread_id =
-				ExactThreadId::new(thread_id).map_err(|_| QuickTaskControlOutcome::Conflict)?;
+				ExactThreadId::new(thread_id).map_err(|_| ConversationControlOutcome::Conflict)?;
 			let observation = match operation {
 				ControlThreadOperation::Archive => match child
 					.archive_exact_ordinary_thread(&thread_id)
-					.map_err(|_| QuickTaskControlOutcome::OutcomeUnknown)
+					.map_err(|_| ConversationControlOutcome::OutcomeUnknown)
 				{
 					Ok(ArchiveReconciliationOutcome::Archived)
 					| Ok(ArchiveReconciliationOutcome::AlreadyArchived) => Ok(ControlThreadObservation::Archived),
 					Ok(ArchiveReconciliationOutcome::Unverified(_)) | Err(_) =>
-						Err(QuickTaskControlOutcome::OutcomeUnknown),
+						Err(ConversationControlOutcome::OutcomeUnknown),
 				},
 				ControlThreadOperation::Read { client_user_message_id } => {
 					let readback = match client_user_message_id.as_ref() {
@@ -3598,17 +3634,17 @@ impl QuickTaskRuntime {
 					};
 					readback
 						.map(ControlThreadObservation::Read)
-						.map_err(|_| QuickTaskControlOutcome::Unavailable)
+						.map_err(|_| ConversationControlOutcome::Unavailable)
 				},
 			};
-			child.shutdown().map_err(|_| QuickTaskControlOutcome::OutcomeUnknown)?;
+			child.shutdown().map_err(|_| ConversationControlOutcome::OutcomeUnknown)?;
 			observation
 		})
 		.await
-		.map_err(|_| QuickTaskControlOutcome::Unavailable)?
+		.map_err(|_| ConversationControlOutcome::Unavailable)?
 	}
 
-	pub(crate) async fn next_event(&self) -> Option<QuickTaskOutcome> {
+	pub(crate) async fn next_event(&self) -> Option<ConversationOutcome> {
 		let mut closed = self.inner.event_stream_closed.subscribe();
 		let mut receiver = self.inner.event_receiver.lock().await;
 		if *closed.borrow() {
@@ -3717,8 +3753,8 @@ impl QuickTaskRuntime {
 	async fn prepare_thread_start(
 		&self,
 		process: &FencedProcess,
-		request: QuickTaskThreadStartRequest,
-	) -> Result<PreparedThreadStart, QuickTaskProcessError> {
+		request: ConversationThreadStartRequest,
+	) -> Result<PreparedThreadStart, ConversationProcessError> {
 		let control = self.inner.process_generations.clone();
 		let process = process.clone();
 		match task::spawn_blocking(move || {
@@ -3728,7 +3764,7 @@ impl QuickTaskRuntime {
 		.await
 		{
 			Ok(Ok(result)) => result,
-			Ok(Err(_)) | Err(_) => Err(QuickTaskProcessError::Unavailable),
+			Ok(Err(_)) | Err(_) => Err(ConversationProcessError::Unavailable),
 		}
 	}
 
@@ -3737,13 +3773,13 @@ impl QuickTaskRuntime {
 		process: &FencedProcess,
 		prepared: PreparedThreadStart,
 		authority: decodex_database::FreshRuntimeSessionThreadStart,
-	) -> Result<EstablishedOrdinaryThread, QuickTaskProcessError> {
+	) -> Result<EstablishedOrdinaryThread, ConversationProcessError> {
 		let fence = authority.readback();
 		if &fence.process_generation_id != process.generation_id()
 			|| fence.process_generation_revision != process.revision()
 			|| fence.process_execution_epoch_id != self.inner.execution_authorization.epoch_id
 		{
-			return Err(QuickTaskProcessError::Incompatible);
+			return Err(ConversationProcessError::Incompatible);
 		}
 		let control = self.inner.process_generations.clone();
 		let process = process.clone();
@@ -3755,16 +3791,16 @@ impl QuickTaskRuntime {
 		.await
 		{
 			Ok(Ok(result)) => result,
-			Ok(Err(_)) => Err(QuickTaskProcessError::Unavailable),
-			Err(_) => Err(QuickTaskProcessError::ControlLost),
+			Ok(Err(_)) => Err(ConversationProcessError::Unavailable),
+			Err(_) => Err(ConversationProcessError::ControlLost),
 		}
 	}
 
 	async fn resume_thread(
 		&self,
 		process: &FencedProcess,
-		request: QuickTaskThreadResumeRequest,
-	) -> Result<ResumedOrdinaryThread, QuickTaskProcessError> {
+		request: ConversationThreadResumeRequest,
+	) -> Result<ResumedOrdinaryThread, ConversationProcessError> {
 		let control = self.inner.process_generations.clone();
 		let process = process.clone();
 		match task::spawn_blocking(move || {
@@ -3773,8 +3809,8 @@ impl QuickTaskRuntime {
 		.await
 		{
 			Ok(Ok(result)) => result,
-			Ok(Err(_)) => Err(QuickTaskProcessError::Unavailable),
-			Err(_) => Err(QuickTaskProcessError::ControlLost),
+			Ok(Err(_)) => Err(ConversationProcessError::Unavailable),
+			Err(_) => Err(ConversationProcessError::ControlLost),
 		}
 	}
 
@@ -3782,8 +3818,8 @@ impl QuickTaskRuntime {
 		&self,
 		process: &FencedProcess,
 		attempt_id: ProviderAttemptId,
-		request: QuickTaskTurnStartRequest,
-	) -> Result<PreparedTurnStart, QuickTaskProcessError> {
+		request: ConversationTurnStartRequest,
+	) -> Result<PreparedTurnStart, ConversationProcessError> {
 		let control = self.inner.process_generations.clone();
 		let process = process.clone();
 		match task::spawn_blocking(move || {
@@ -3794,7 +3830,7 @@ impl QuickTaskRuntime {
 		.await
 		{
 			Ok(Ok(result)) => result,
-			Ok(Err(_)) | Err(_) => Err(QuickTaskProcessError::Unavailable),
+			Ok(Err(_)) | Err(_) => Err(ConversationProcessError::Unavailable),
 		}
 	}
 
@@ -3803,7 +3839,7 @@ impl QuickTaskRuntime {
 		process: &FencedProcess,
 		prepared: PreparedTurnStart,
 		authority: decodex_database::FreshProviderDispatchFence,
-	) -> Result<StartedOrdinaryTurn, QuickTaskProcessError> {
+	) -> Result<StartedOrdinaryTurn, ConversationProcessError> {
 		let control = self.inner.process_generations.clone();
 		let process = process.clone();
 		match task::spawn_blocking(move || {
@@ -3813,8 +3849,8 @@ impl QuickTaskRuntime {
 		.await
 		{
 			Ok(Ok(result)) => result,
-			Ok(Err(_)) => Err(QuickTaskProcessError::Unavailable),
-			Err(_) => Err(QuickTaskProcessError::ControlLost),
+			Ok(Err(_)) => Err(ConversationProcessError::Unavailable),
+			Err(_) => Err(ConversationProcessError::ControlLost),
 		}
 	}
 
@@ -3822,9 +3858,9 @@ impl QuickTaskRuntime {
 		&self,
 		account_id: &AccountId,
 		account_revision: i64,
-		admission: FreshQuickTaskProcessGeneration,
+		admission: FreshConversationProcessGeneration,
 		working_directory: &str,
-	) -> Result<FencedProcess, QuickTaskManualRecovery> {
+	) -> Result<FencedProcess, ConversationManualRecovery> {
 		let credential = self
 			.inner
 			.accounts
@@ -3838,16 +3874,17 @@ impl QuickTaskRuntime {
 	async fn launch_process_with_credential(
 		&self,
 		account_id: &AccountId,
-		admission: FreshQuickTaskProcessGeneration,
+		admission: FreshConversationProcessGeneration,
 		credential: AccountProcessCredential,
 		working_directory: &str,
-	) -> Result<FencedProcess, QuickTaskManualRecovery> {
+	) -> Result<FencedProcess, ConversationManualRecovery> {
 		let generation_id = admission.readback().request.process_generation_id.clone();
-		let callback: Arc<dyn ProcessAccountRefreshCallback> = Arc::new(QuickTaskRefreshCallback {
-			accounts: Arc::clone(&self.inner.accounts),
-			runtime: tokio::runtime::Handle::current(),
-			generation_id: generation_id.clone(),
-		});
+		let callback: Arc<dyn ProcessAccountRefreshCallback> =
+			Arc::new(ConversationRefreshCallback {
+				accounts: Arc::clone(&self.inner.accounts),
+				runtime: tokio::runtime::Handle::current(),
+				generation_id: generation_id.clone(),
+			});
 		let profile = self.inner.launch_profile.clone();
 		let capacity = Arc::clone(&self.inner.capacity);
 		let working_directory = working_directory.to_owned();
@@ -3856,7 +3893,7 @@ impl QuickTaskRuntime {
 			task::spawn_blocking(move || {
 				let selected_working_directory = Arc::new(
 					SelectedWorkingDirectory::acquire(&working_directory)
-						.map_err(|()| QuickTaskManualRecovery::SelectWorkingDirectory)?,
+						.map_err(|()| ConversationManualRecovery::SelectWorkingDirectory)?,
 				);
 				let account_revision = credential.binding.account_revision;
 				let binding = AccountBinding::shared_home_bound(
@@ -3864,15 +3901,15 @@ impl QuickTaskRuntime {
 					credential.binding,
 					callback,
 				)
-				.map_err(|_| QuickTaskManualRecovery::ProcessUnavailable)?;
-				let vault = QuickTaskCredentialVault {
+				.map_err(|_| ConversationManualRecovery::ProcessUnavailable)?;
+				let vault = ConversationCredentialVault {
 					account_id: account_id_for_launch.clone(),
 					stored: credential.stored,
 				};
 				let launch_guard = credential.launch_guard;
-				let permit = capacity
-					.reserve(account_id_for_launch, account_revision)
-					.map_err(|_: CapacityExhausted| QuickTaskManualRecovery::ProcessUnavailable)?;
+				let permit = capacity.reserve(account_id_for_launch, account_revision).map_err(
+					|_: CapacityExhausted| ConversationManualRecovery::ProcessUnavailable,
+				)?;
 				let launch = AttestedAppServerLaunch::bind_selected_working_directory(
 					profile,
 					working_directory.into(),
@@ -3880,11 +3917,11 @@ impl QuickTaskRuntime {
 					PROCESS_TIMEOUT,
 					permit,
 				)
-				.map_err(|_| QuickTaskManualRecovery::ProcessUnavailable)?;
+				.map_err(|_| ConversationManualRecovery::ProcessUnavailable)?;
 				selected_working_directory
 					.revalidate()
-					.map_err(|()| QuickTaskManualRecovery::ProcessUnavailable)?;
-				Ok::<_, QuickTaskManualRecovery>((
+					.map_err(|()| ConversationManualRecovery::ProcessUnavailable)?;
+				Ok::<_, ConversationManualRecovery>((
 					launch,
 					vault,
 					launch_guard,
@@ -3892,8 +3929,8 @@ impl QuickTaskRuntime {
 				))
 			})
 			.await
-			.map_err(|_| QuickTaskManualRecovery::ProcessUnavailable)??;
-		let mut process = spawn_admitted_quick_task_process(
+			.map_err(|_| ConversationManualRecovery::ProcessUnavailable)??;
+		let mut process = spawn_admitted_conversation_process(
 			&self.inner.process_generations,
 			admission,
 			self.inner.execution_authorization.clone(),
@@ -3901,12 +3938,12 @@ impl QuickTaskRuntime {
 			selected_working_directory.clone(),
 		)
 		.await
-		.map_err(|_| QuickTaskManualRecovery::ProcessUnavailable)?;
+		.map_err(|_| ConversationManualRecovery::ProcessUnavailable)?;
 		let selected_working_directory_is_current =
 			task::spawn_blocking(move || selected_working_directory.revalidate()).await;
 		if !matches!(selected_working_directory_is_current, Ok(Ok(()))) {
 			self.terminate_process(&process).await;
-			return Err(QuickTaskManualRecovery::ProcessUnavailable);
+			return Err(ConversationManualRecovery::ProcessUnavailable);
 		}
 		drop(launch_guard);
 		let process_for_init = process.clone();
@@ -3919,23 +3956,23 @@ impl QuickTaskRuntime {
 		.await;
 		match initialized {
 			Ok(Ok(Ok(()))) => {},
-			Ok(Ok(Err(QuickTaskProcessError::Incompatible))) => {
+			Ok(Ok(Err(ConversationProcessError::Incompatible))) => {
 				self.terminate_process(&process).await;
-				return Err(QuickTaskManualRecovery::UpgradeCodex);
+				return Err(ConversationManualRecovery::UpgradeCodex);
 			},
 			_ => {
 				self.terminate_process(&process).await;
-				return Err(QuickTaskManualRecovery::ProcessUnavailable);
+				return Err(ConversationManualRecovery::ProcessUnavailable);
 			},
 		}
 		if self.inner.process_generations.mark_spawned_ready(&mut process).await.is_err() {
 			self.terminate_process(&process).await;
-			return Err(QuickTaskManualRecovery::ProcessUnavailable);
+			return Err(ConversationManualRecovery::ProcessUnavailable);
 		}
 		Ok(process)
 	}
 
-	async fn mark_active_unknown(&self, context: &TurnContext, ambiguity: QuickTaskAmbiguity) {
+	async fn mark_active_unknown(&self, context: &TurnContext, ambiguity: ConversationAmbiguity) {
 		let _ = self
 			.inner
 			.provider_attempts
@@ -3944,11 +3981,11 @@ impl QuickTaskRuntime {
 		self.terminate_process(&context.session.process).await;
 		let readback = session_readback(
 			&context.session,
-			QuickTaskLocalState::OutcomeUnknown,
+			ConversationLocalState::OutcomeUnknown,
 			Some(context.logical_turn_id.clone()),
 		);
-		self.set_recovery(readback.clone(), QuickTaskManualRecovery::MissingLocalProcess);
-		self.emit(QuickTaskOutcome::Unknown { readback, ambiguity }).await;
+		self.set_recovery(readback.clone(), ConversationManualRecovery::MissingLocalProcess);
+		self.emit(ConversationOutcome::Unknown { readback, ambiguity }).await;
 	}
 
 	async fn terminate_process(&self, process: &FencedProcess) {
@@ -3970,18 +4007,21 @@ impl QuickTaskRuntime {
 		)
 	}
 
-	fn reserve_initial(&self, command: &CreateQuickTask) -> Result<(), Box<QuickTaskOutcome>> {
+	fn reserve_initial(
+		&self,
+		command: &CreateConversation,
+	) -> Result<(), Box<ConversationOutcome>> {
 		let mut local = self.local();
 		if let Some(existing) = local.get(command.conversation_id.as_str()) {
 			let readback = local_readback(&command.conversation_id, existing);
 			return Err(Box::new(if existing.operation_key == command.operation_key {
-				QuickTaskOutcome::Busy(readback)
+				ConversationOutcome::Busy(readback)
 			} else {
-				QuickTaskOutcome::Conflict
+				ConversationOutcome::Conflict
 			}));
 		}
 		if local.len() >= MAX_LOCAL_TASKS {
-			return Err(Box::new(QuickTaskOutcome::Unavailable));
+			return Err(Box::new(ConversationOutcome::Unavailable));
 		}
 		local.insert(
 			command.conversation_id.as_str().to_owned(),
@@ -3995,9 +4035,9 @@ impl QuickTaskRuntime {
 
 	async fn submit_rehydrated_turn(
 		&self,
-		command: SubmitQuickTaskTurn,
-		missing_local_process: QuickTaskOutcome,
-	) -> QuickTaskOutcome {
+		command: SubmitConversationTurn,
+		missing_local_process: ConversationOutcome,
+	) -> ConversationOutcome {
 		let admission = match self.admit_rehydrated_turn(&command, missing_local_process).await {
 			Ok(admission) => admission,
 			Err(outcome) => return *outcome,
@@ -4029,9 +4069,9 @@ impl QuickTaskRuntime {
 
 	async fn admit_rehydrated_turn(
 		&self,
-		command: &SubmitQuickTaskTurn,
-		missing_local_process: QuickTaskOutcome,
-	) -> Result<RehydratedTurnAdmission, Box<QuickTaskOutcome>> {
+		command: &SubmitConversationTurn,
+		missing_local_process: ConversationOutcome,
+	) -> Result<RehydratedTurnAdmission, Box<ConversationOutcome>> {
 		let readback = match self
 			.inner
 			.store
@@ -4042,7 +4082,7 @@ impl QuickTaskRuntime {
 			Ok(None) => {
 				return Err(Box::new(remap_recovery(
 					missing_local_process,
-					QuickTaskManualRecovery::MissingThread,
+					ConversationManualRecovery::MissingThread,
 				)));
 			},
 			Err(
@@ -4052,22 +4092,22 @@ impl QuickTaskRuntime {
 			) => {
 				return Err(Box::new(remap_recovery(
 					missing_local_process,
-					QuickTaskManualRecovery::IncompatibleThread,
+					ConversationManualRecovery::IncompatibleThread,
 				)));
 			},
 			Err(error) => return Err(Box::new(store_outcome(error))),
 		};
 		let mut durable_readback = ordinary_resume_readback(&readback, command);
 		if readback.has_active_turn {
-			return Err(Box::new(QuickTaskOutcome::ManualRecovery {
+			return Err(Box::new(ConversationOutcome::ManualRecovery {
 				readback: durable_readback,
-				action: QuickTaskManualRecovery::PriorActiveTurn,
+				action: ConversationManualRecovery::PriorActiveTurn,
 			}));
 		}
 		if readback.has_unresolved_provider_attempt {
-			return Err(Box::new(QuickTaskOutcome::ManualRecovery {
+			return Err(Box::new(ConversationOutcome::ManualRecovery {
 				readback: durable_readback,
-				action: QuickTaskManualRecovery::PriorAttemptUnresolved,
+				action: ConversationManualRecovery::PriorAttemptUnresolved,
 			}));
 		}
 
@@ -4085,24 +4125,24 @@ impl QuickTaskRuntime {
 		{
 			Ok(reservation) => reservation,
 			Err(error) if turn_reservation_is_definite(&error) => {
-				return Err(Box::new(QuickTaskOutcome::Conflict));
+				return Err(Box::new(ConversationOutcome::Conflict));
 			},
 			Err(error) if turn_reservation_is_integrity_failure(&error) => {
 				durable_readback.active_turn_id = Some(command.turn_id.clone());
-				return Err(Box::new(QuickTaskOutcome::ManualRecovery {
+				return Err(Box::new(ConversationOutcome::ManualRecovery {
 					readback: durable_readback,
-					action: QuickTaskManualRecovery::PriorActiveTurn,
+					action: ConversationManualRecovery::PriorActiveTurn,
 				}));
 			},
 			Err(_) => {
 				durable_readback.active_turn_id = Some(command.turn_id.clone());
 				let outcome =
-					self.ambiguous(durable_readback, QuickTaskAmbiguity::TurnFinalization).await;
+					self.ambiguous(durable_readback, ConversationAmbiguity::TurnFinalization).await;
 				return Err(Box::new(outcome));
 			},
 		};
 		if !turn_admits_execution(&turn_reservation) {
-			return Err(Box::new(QuickTaskOutcome::Conflict));
+			return Err(Box::new(ConversationOutcome::Conflict));
 		}
 		durable_readback.active_turn_id = Some(command.turn_id.clone());
 		Ok(RehydratedTurnAdmission { readback, durable_readback, sequence })
@@ -4110,9 +4150,9 @@ impl QuickTaskRuntime {
 
 	async fn plan_rehydrated_turn(
 		&self,
-		command: &SubmitQuickTaskTurn,
+		command: &SubmitConversationTurn,
 		admission: RehydratedTurnAdmission,
-	) -> Result<RehydratedTurnPlan, Box<QuickTaskOutcome>> {
+	) -> Result<RehydratedTurnPlan, Box<ConversationOutcome>> {
 		let consumer = ExecutionConsumer::ConversationTurn {
 			conversation_id: command.conversation_id.clone(),
 			conversation_revision: admission.readback.conversation_revision,
@@ -4159,7 +4199,7 @@ impl QuickTaskRuntime {
 			},
 			Err(ExistingSessionPlanningRefusal::Unknown) => {
 				let outcome = self
-					.ambiguous(admission.durable_readback, QuickTaskAmbiguity::TurnFinalization)
+					.ambiguous(admission.durable_readback, ConversationAmbiguity::TurnFinalization)
 					.await;
 				return Err(Box::new(outcome));
 			},
@@ -4169,9 +4209,9 @@ impl QuickTaskRuntime {
 
 	async fn load_rehydrated_account_revision(
 		&self,
-		command: &SubmitQuickTaskTurn,
+		command: &SubmitConversationTurn,
 		planned: RehydratedTurnPlan,
-	) -> Result<RehydratedAccountRevision, Box<QuickTaskOutcome>> {
+	) -> Result<RehydratedAccountRevision, Box<ConversationOutcome>> {
 		match self.inner.accounts.inspect(&planned.admission.readback.source_account_id).await {
 			Ok(inspection)
 				if inspection.account.account_id
@@ -4184,7 +4224,7 @@ impl QuickTaskRuntime {
 				let refusal = if result.is_ok() {
 					ReservedTurnRefusal::Conflict
 				} else {
-					ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::ProcessUnavailable)
+					ReservedTurnRefusal::Recovery(ConversationManualRecovery::ProcessUnavailable)
 				};
 				let outcome = self
 					.finalize_initial_refusal(
@@ -4201,9 +4241,9 @@ impl QuickTaskRuntime {
 
 	async fn prepare_rehydrated_process(
 		&self,
-		command: &SubmitQuickTaskTurn,
+		command: &SubmitConversationTurn,
 		account: RehydratedAccountRevision,
-	) -> Result<RehydratedProcessAdmission, Box<QuickTaskOutcome>> {
+	) -> Result<RehydratedProcessAdmission, Box<ConversationOutcome>> {
 		let working_directory = command.working_directory.clone();
 		let generation_id = match ProcessGenerationId::new(derived_uuid(
 			"rehydrated-process-generation",
@@ -4223,7 +4263,7 @@ impl QuickTaskRuntime {
 			},
 		};
 		let readback = &account.planned.admission.readback;
-		let process_request = PrepareQuickTaskProcessGeneration {
+		let process_request = PrepareConversationProcessGeneration {
 			conversation_id: command.conversation_id.clone(),
 			expected_conversation_revision: readback.conversation_revision,
 			runtime_session_id: readback.runtime_session_id.clone(),
@@ -4235,7 +4275,7 @@ impl QuickTaskRuntime {
 			selected_account_id: readback.source_account_id.clone(),
 			process_generation_id: generation_id.clone(),
 		};
-		let establishment = ReconcileQuickTaskThreadEstablishment {
+		let establishment = ReconcileConversationThreadEstablishment {
 			conversation_id: command.conversation_id.clone(),
 			expected_conversation_revision: readback.conversation_revision,
 			runtime_session_id: readback.runtime_session_id.clone(),
@@ -4250,21 +4290,21 @@ impl QuickTaskRuntime {
 		let admission = match self
 			.inner
 			.store
-			.prepare_quick_task_process_generation(
+			.prepare_conversation_process_generation(
 				&scoped_key("process-admission", &command.operation_key),
 				&process_request,
 			)
 			.await
 		{
-			Ok(PrepareQuickTaskProcessGenerationOutcome::Fresh(admission)) => admission,
+			Ok(PrepareConversationProcessGenerationOutcome::Fresh(admission)) => admission,
 			result => {
 				let refusal = if matches!(
 					result,
-					Ok(PrepareQuickTaskProcessGenerationOutcome::Rejected(_))
+					Ok(PrepareConversationProcessGenerationOutcome::Rejected(_))
 				) {
 					ReservedTurnRefusal::Conflict
 				} else {
-					ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::ProcessUnavailable)
+					ReservedTurnRefusal::Recovery(ConversationManualRecovery::ProcessUnavailable)
 				};
 				let outcome = self
 					.reconcile_pre_effect(
@@ -4283,9 +4323,9 @@ impl QuickTaskRuntime {
 
 	async fn launch_rehydrated_process(
 		&self,
-		command: &SubmitQuickTaskTurn,
+		command: &SubmitConversationTurn,
 		preparation: RehydratedProcessAdmission,
-	) -> Result<RehydratedProcessLaunch, Box<QuickTaskOutcome>> {
+	) -> Result<RehydratedProcessLaunch, Box<ConversationOutcome>> {
 		let RehydratedProcessAdmission { account, working_directory, admission, establishment } =
 			preparation;
 		let RehydratedAccountRevision { planned, launch_account_revision } = account;
@@ -4338,9 +4378,9 @@ impl QuickTaskRuntime {
 
 	async fn resume_rehydrated_turn(
 		&self,
-		command: SubmitQuickTaskTurn,
+		command: SubmitConversationTurn,
 		launch: RehydratedProcessLaunch,
-	) -> QuickTaskOutcome {
+	) -> ConversationOutcome {
 		let RehydratedProcessLaunch { decision, plan, session, sequence } = launch;
 		let resume = match self.resume_same_thread(&session).await {
 			Ok(resume) => resume,
@@ -4349,7 +4389,7 @@ impl QuickTaskRuntime {
 					.finalize_bound_recovery(
 						session,
 						&command.turn_id,
-						QuickTaskManualRecovery::MissingThread,
+						ConversationManualRecovery::MissingThread,
 					)
 					.await;
 			},
@@ -4358,7 +4398,7 @@ impl QuickTaskRuntime {
 					.finalize_bound_recovery(
 						session,
 						&command.turn_id,
-						QuickTaskManualRecovery::IncompatibleThread,
+						ConversationManualRecovery::IncompatibleThread,
 					)
 					.await;
 			},
@@ -4367,7 +4407,7 @@ impl QuickTaskRuntime {
 					.finalize_bound_recovery(
 						session,
 						&command.turn_id,
-						QuickTaskManualRecovery::ProcessUnavailable,
+						ConversationManualRecovery::ProcessUnavailable,
 					)
 					.await;
 			},
@@ -4376,7 +4416,7 @@ impl QuickTaskRuntime {
 					.ambiguous_session(
 						session,
 						command.turn_id.clone(),
-						QuickTaskAmbiguity::ThreadResume,
+						ConversationAmbiguity::ThreadResume,
 					)
 					.await;
 			},
@@ -4391,11 +4431,11 @@ impl QuickTaskRuntime {
 		{
 			let readback = session_readback(
 				&session,
-				QuickTaskLocalState::ManualRecovery,
+				ConversationLocalState::ManualRecovery,
 				Some(command.turn_id.clone()),
 			);
 			self.terminate_process(&session.process).await;
-			return self.ambiguous(readback, QuickTaskAmbiguity::ThreadResume).await;
+			return self.ambiguous(readback, ConversationAmbiguity::ThreadResume).await;
 		}
 		self.dispatch_turn(
 			&command.operation_key,
@@ -4416,13 +4456,13 @@ impl QuickTaskRuntime {
 		operation_key: &str,
 		conversation_id: &ConversationId,
 		session: &LocalSession,
-	) -> Result<(), Box<QuickTaskOutcome>> {
+	) -> Result<(), Box<ConversationOutcome>> {
 		let mut local = self.local();
 		if local.contains_key(conversation_id.as_str()) {
-			return Err(Box::new(QuickTaskOutcome::Conflict));
+			return Err(Box::new(ConversationOutcome::Conflict));
 		}
 		if local.len() >= MAX_LOCAL_TASKS {
-			return Err(Box::new(QuickTaskOutcome::Unavailable));
+			return Err(Box::new(ConversationOutcome::Unavailable));
 		}
 		local.insert(
 			conversation_id.as_str().to_owned(),
@@ -4436,16 +4476,16 @@ impl QuickTaskRuntime {
 
 	fn reserve_later_turn(
 		&self,
-		command: &SubmitQuickTaskTurn,
-	) -> Result<LocalSession, Box<QuickTaskOutcome>> {
+		command: &SubmitConversationTurn,
+	) -> Result<LocalSession, Box<ConversationOutcome>> {
 		let mut local = self.local();
 		let Some(task) = local.get_mut(command.conversation_id.as_str()) else {
-			return Err(Box::new(QuickTaskOutcome::ManualRecovery {
+			return Err(Box::new(ConversationOutcome::ManualRecovery {
 				readback: empty_readback(
 					&command.conversation_id,
-					QuickTaskLocalState::ManualRecovery,
+					ConversationLocalState::ManualRecovery,
 				),
-				action: QuickTaskManualRecovery::MissingLocalProcess,
+				action: ConversationManualRecovery::MissingLocalProcess,
 			}));
 		};
 		let current = std::mem::replace(&mut task.state, LocalTaskState::Establishing);
@@ -4453,7 +4493,7 @@ impl QuickTaskRuntime {
 			LocalTaskState::Ready(mut session) => {
 				if session.working_directory != command.working_directory {
 					task.state = LocalTaskState::Ready(session);
-					return Err(Box::new(QuickTaskOutcome::Conflict));
+					return Err(Box::new(ConversationOutcome::Conflict));
 				}
 				session.operation_key = command.operation_key.clone();
 				session.correlation_id = command.correlation_id.clone();
@@ -4465,24 +4505,22 @@ impl QuickTaskRuntime {
 			other => {
 				task.state = other;
 				Err(Box::new(match &task.state {
-					LocalTaskState::Preparing(session) => QuickTaskOutcome::Busy(session_readback(
-						session,
-						QuickTaskLocalState::Ready,
-						None,
-					)),
+					LocalTaskState::Preparing(session) => ConversationOutcome::Busy(
+						session_readback(session, ConversationLocalState::Ready, None),
+					),
 					LocalTaskState::Active { session, turn_id, .. } =>
-						QuickTaskOutcome::Busy(session_readback(
+						ConversationOutcome::Busy(session_readback(
 							session,
-							QuickTaskLocalState::Running,
+							ConversationLocalState::Running,
 							Some(turn_id.clone()),
 						)),
 					LocalTaskState::Recovery { readback, action } =>
-						QuickTaskOutcome::ManualRecovery {
+						ConversationOutcome::ManualRecovery {
 							readback: readback.clone(),
 							action: *action,
 						},
 					LocalTaskState::Establishing | LocalTaskState::Ready(_) =>
-						QuickTaskOutcome::Conflict,
+						ConversationOutcome::Conflict,
 				}))
 			},
 		}
@@ -4578,8 +4616,8 @@ impl QuickTaskRuntime {
 	fn set_recovery_if_active(
 		&self,
 		attempt_id: &ProviderAttemptId,
-		readback: QuickTaskReadback,
-		action: QuickTaskManualRecovery,
+		readback: ConversationReadback,
+		action: ConversationManualRecovery,
 	) -> bool {
 		let mut local = self.local();
 		let Some(task) = local.get_mut(readback.conversation_id.as_str()) else {
@@ -4607,7 +4645,7 @@ impl QuickTaskRuntime {
 		}
 	}
 
-	fn set_recovery(&self, readback: QuickTaskReadback, action: QuickTaskManualRecovery) {
+	fn set_recovery(&self, readback: ConversationReadback, action: ConversationManualRecovery) {
 		let mut local = self.local();
 		if let Some(task) = local.get_mut(readback.conversation_id.as_str()) {
 			task.state = LocalTaskState::Recovery { readback, action };
@@ -4653,11 +4691,11 @@ impl QuickTaskRuntime {
 		&self,
 		session: LocalSession,
 		turn_id: TurnId,
-		action: QuickTaskManualRecovery,
-	) -> QuickTaskOutcome {
+		action: ConversationManualRecovery,
+	) -> ConversationOutcome {
 		self.terminate_process(&session.process).await;
 		self.recover(
-			session_readback(&session, QuickTaskLocalState::ManualRecovery, Some(turn_id)),
+			session_readback(&session, ConversationLocalState::ManualRecovery, Some(turn_id)),
 			action,
 		)
 		.await
@@ -4687,21 +4725,25 @@ impl QuickTaskRuntime {
 		session: LocalSession,
 		turn_id: &TurnId,
 		refusal: ReservedTurnRefusal,
-	) -> QuickTaskOutcome {
+	) -> ConversationOutcome {
 		if self.finalize_reserved_turn(&session.operation_key, turn_id).await.is_err() {
 			return self
-				.ambiguous_session(session, turn_id.clone(), QuickTaskAmbiguity::TurnFinalization)
+				.ambiguous_session(
+					session,
+					turn_id.clone(),
+					ConversationAmbiguity::TurnFinalization,
+				)
 				.await;
 		}
 		if !session.has_acknowledged_turn {
-			return self.recover_session(session, QuickTaskManualRecovery::MissingThread).await;
+			return self.recover_session(session, ConversationManualRecovery::MissingThread).await;
 		}
 		self.restore_ready(session.clone());
 		match refusal {
-			ReservedTurnRefusal::Conflict => QuickTaskOutcome::Conflict,
-			ReservedTurnRefusal::Unavailable => QuickTaskOutcome::Unavailable,
-			ReservedTurnRefusal::Recovery(action) => QuickTaskOutcome::ManualRecovery {
-				readback: session_readback(&session, QuickTaskLocalState::Ready, None),
+			ReservedTurnRefusal::Conflict => ConversationOutcome::Conflict,
+			ReservedTurnRefusal::Unavailable => ConversationOutcome::Unavailable,
+			ReservedTurnRefusal::Recovery(action) => ConversationOutcome::ManualRecovery {
+				readback: session_readback(&session, ConversationLocalState::Ready, None),
 				action,
 			},
 		}
@@ -4711,11 +4753,15 @@ impl QuickTaskRuntime {
 		&self,
 		session: LocalSession,
 		turn_id: &TurnId,
-		action: QuickTaskManualRecovery,
-	) -> QuickTaskOutcome {
+		action: ConversationManualRecovery,
+	) -> ConversationOutcome {
 		if self.finalize_reserved_turn(&session.operation_key, turn_id).await.is_err() {
 			return self
-				.ambiguous_session(session, turn_id.clone(), QuickTaskAmbiguity::TurnFinalization)
+				.ambiguous_session(
+					session,
+					turn_id.clone(),
+					ConversationAmbiguity::TurnFinalization,
+				)
 				.await;
 		}
 		self.recover_session(session, action).await
@@ -4725,25 +4771,25 @@ impl QuickTaskRuntime {
 		&self,
 		operation_key: &str,
 		turn_id: &TurnId,
-		mut readback: QuickTaskReadback,
-		coordinates: &ReconcileQuickTaskThreadEstablishment,
+		mut readback: ConversationReadback,
+		coordinates: &ReconcileConversationThreadEstablishment,
 		refusal: ReservedTurnRefusal,
-	) -> QuickTaskOutcome {
+	) -> ConversationOutcome {
 		readback.process_generation_id = Some(coordinates.process_generation_id.clone());
-		match self.inner.store.reconcile_quick_task_thread_establishment(coordinates).await {
-			Ok(QuickTaskThreadEstablishmentReadback::DefinitelyNotStarted(_)) =>
+		match self.inner.store.reconcile_conversation_thread_establishment(coordinates).await {
+			Ok(ConversationThreadEstablishmentReadback::DefinitelyNotStarted(_)) =>
 				self.finalize_initial_refusal(operation_key, turn_id, readback, refusal).await,
-			Ok(QuickTaskThreadEstablishmentReadback::Fenced(fence)) => {
+			Ok(ConversationThreadEstablishmentReadback::Fenced(fence)) => {
 				readback.runtime_session_revision = Some(fence.revision);
-				self.ambiguous(readback, QuickTaskAmbiguity::ThreadStart).await
+				self.ambiguous(readback, ConversationAmbiguity::ThreadStart).await
 			},
-			Ok(QuickTaskThreadEstablishmentReadback::Bound(binding)) => {
+			Ok(ConversationThreadEstablishmentReadback::Bound(binding)) => {
 				readback.runtime_session_revision = Some(binding.revision);
 				readback.codex_thread_id = Some(binding.codex_thread_id);
-				self.ambiguous(readback, QuickTaskAmbiguity::ThreadBind).await
+				self.ambiguous(readback, ConversationAmbiguity::ThreadBind).await
 			},
-			Ok(QuickTaskThreadEstablishmentReadback::Unknown) | Err(_) =>
-				self.ambiguous(readback, QuickTaskAmbiguity::ProcessGeneration).await,
+			Ok(ConversationThreadEstablishmentReadback::Unknown) | Err(_) =>
+				self.ambiguous(readback, ConversationAmbiguity::ProcessGeneration).await,
 		}
 	}
 
@@ -4751,46 +4797,49 @@ impl QuickTaskRuntime {
 		&self,
 		operation_key: &str,
 		turn_id: &TurnId,
-		readback: QuickTaskReadback,
+		readback: ConversationReadback,
 		refusal: ReservedTurnRefusal,
-	) -> QuickTaskOutcome {
+	) -> ConversationOutcome {
 		if self.finalize_reserved_turn(operation_key, turn_id).await.is_err() {
-			return self.ambiguous(readback, QuickTaskAmbiguity::TurnFinalization).await;
+			return self.ambiguous(readback, ConversationAmbiguity::TurnFinalization).await;
 		}
 		match refusal {
-			ReservedTurnRefusal::Conflict => QuickTaskOutcome::Conflict,
-			ReservedTurnRefusal::Unavailable => QuickTaskOutcome::Unavailable,
+			ReservedTurnRefusal::Conflict => ConversationOutcome::Conflict,
+			ReservedTurnRefusal::Unavailable => ConversationOutcome::Unavailable,
 			ReservedTurnRefusal::Recovery(action) => self.recover(readback, action).await,
 		}
 	}
 
 	async fn recover(
 		&self,
-		mut readback: QuickTaskReadback,
-		action: QuickTaskManualRecovery,
-	) -> QuickTaskOutcome {
-		readback.state = QuickTaskLocalState::ManualRecovery;
+		mut readback: ConversationReadback,
+		action: ConversationManualRecovery,
+	) -> ConversationOutcome {
+		readback.state = ConversationLocalState::ManualRecovery;
 		self.set_recovery(readback.clone(), action);
-		QuickTaskOutcome::ManualRecovery { readback, action }
+		ConversationOutcome::ManualRecovery { readback, action }
 	}
 
 	async fn recover_session(
 		&self,
 		session: LocalSession,
-		action: QuickTaskManualRecovery,
-	) -> QuickTaskOutcome {
+		action: ConversationManualRecovery,
+	) -> ConversationOutcome {
 		self.terminate_process(&session.process).await;
-		self.recover(session_readback(&session, QuickTaskLocalState::ManualRecovery, None), action)
-			.await
+		self.recover(
+			session_readback(&session, ConversationLocalState::ManualRecovery, None),
+			action,
+		)
+		.await
 	}
 
 	fn pre_session(
 		&self,
-		command: &CreateQuickTask,
+		command: &CreateConversation,
 		conversation_revision: i64,
-		state: QuickTaskLocalState,
-	) -> QuickTaskOutcome {
-		QuickTaskOutcome::PreSession(QuickTaskReadback {
+		state: ConversationLocalState,
+	) -> ConversationOutcome {
+		ConversationOutcome::PreSession(ConversationReadback {
 			operation_key: Some(command.operation_key.clone()),
 			correlation_id: Some(command.correlation_id.clone()),
 			causation_id: command.causation_id.clone(),
@@ -4807,29 +4856,33 @@ impl QuickTaskRuntime {
 
 	async fn ambiguous(
 		&self,
-		mut readback: QuickTaskReadback,
-		ambiguity: QuickTaskAmbiguity,
-	) -> QuickTaskOutcome {
-		readback.state = QuickTaskLocalState::OutcomeUnknown;
-		self.set_recovery(readback.clone(), QuickTaskManualRecovery::MissingLocalProcess);
-		QuickTaskOutcome::Unknown { readback, ambiguity }
+		mut readback: ConversationReadback,
+		ambiguity: ConversationAmbiguity,
+	) -> ConversationOutcome {
+		readback.state = ConversationLocalState::OutcomeUnknown;
+		self.set_recovery(readback.clone(), ConversationManualRecovery::MissingLocalProcess);
+		ConversationOutcome::Unknown { readback, ambiguity }
 	}
 
 	async fn ambiguous_session(
 		&self,
 		session: LocalSession,
 		active_turn_id: TurnId,
-		ambiguity: QuickTaskAmbiguity,
-	) -> QuickTaskOutcome {
+		ambiguity: ConversationAmbiguity,
+	) -> ConversationOutcome {
 		self.terminate_process(&session.process).await;
 		self.ambiguous(
-			session_readback(&session, QuickTaskLocalState::OutcomeUnknown, Some(active_turn_id)),
+			session_readback(
+				&session,
+				ConversationLocalState::OutcomeUnknown,
+				Some(active_turn_id),
+			),
 			ambiguity,
 		)
 		.await
 	}
 
-	async fn emit(&self, outcome: QuickTaskOutcome) {
+	async fn emit(&self, outcome: ConversationOutcome) {
 		let _ = self.inner.events.send(outcome).await;
 	}
 
@@ -4876,48 +4929,54 @@ fn run_event_loop(
 	commands: mpsc::Receiver<WorkerCommand>,
 	shutting_down: &std::sync::atomic::AtomicBool,
 	output: &tokio_mpsc::Sender<WorkerOutput>,
-) -> Result<(), QuickTaskProcessError> {
+) -> Result<(), ConversationProcessError> {
 	let thread_id =
-		ExactThreadId::new(thread_id).map_err(|_| QuickTaskProcessError::Incompatible)?;
+		ExactThreadId::new(thread_id).map_err(|_| ConversationProcessError::Incompatible)?;
 	let provider_turn_id = decodex_codex::ExactTurnId::new(provider_turn_id)
-		.map_err(|_| QuickTaskProcessError::Incompatible)?;
+		.map_err(|_| ConversationProcessError::Incompatible)?;
 	let deadline = Instant::now() + TURN_TIMEOUT;
 	loop {
 		if shutting_down.load(std::sync::atomic::Ordering::Acquire) || Instant::now() >= deadline {
 			let request =
-				QuickTaskTurnInterruptRequest::new(thread_id.clone(), provider_turn_id.clone());
+				ConversationTurnInterruptRequest::new(thread_id.clone(), provider_turn_id.clone());
 			let _ = child.interrupt_ordinary_turn(&request);
-			return Err(QuickTaskProcessError::Unavailable);
+			return Err(ConversationProcessError::Unavailable);
 		}
 		match commands.try_recv() {
 			Ok(WorkerCommand::Interrupt) => {
-				let request =
-					QuickTaskTurnInterruptRequest::new(thread_id.clone(), provider_turn_id.clone());
+				let request = ConversationTurnInterruptRequest::new(
+					thread_id.clone(),
+					provider_turn_id.clone(),
+				);
 				for event in child.interrupt_ordinary_turn(&request)? {
 					output
 						.blocking_send(WorkerOutput::Event(event))
-						.map_err(|_| QuickTaskProcessError::Unavailable)?;
+						.map_err(|_| ConversationProcessError::Unavailable)?;
 				}
 			},
 			Ok(WorkerCommand::Shutdown) => {
-				let request =
-					QuickTaskTurnInterruptRequest::new(thread_id.clone(), provider_turn_id.clone());
+				let request = ConversationTurnInterruptRequest::new(
+					thread_id.clone(),
+					provider_turn_id.clone(),
+				);
 				let _ = child.interrupt_ordinary_turn(&request);
-				return Err(QuickTaskProcessError::Unavailable);
+				return Err(ConversationProcessError::Unavailable);
 			},
 			Err(mpsc::TryRecvError::Empty) => {},
 			Err(mpsc::TryRecvError::Disconnected) => {
-				let request =
-					QuickTaskTurnInterruptRequest::new(thread_id.clone(), provider_turn_id.clone());
+				let request = ConversationTurnInterruptRequest::new(
+					thread_id.clone(),
+					provider_turn_id.clone(),
+				);
 				let _ = child.interrupt_ordinary_turn(&request);
-				return Err(QuickTaskProcessError::Unavailable);
+				return Err(ConversationProcessError::Unavailable);
 			},
 		}
 		if let Some(event) = child.next_ordinary_turn_event(EVENT_POLL)? {
-			let terminal = matches!(&event, QuickTaskProcessEvent::TurnCompleted { .. });
+			let terminal = matches!(&event, ConversationProcessEvent::TurnCompleted { .. });
 			output
 				.blocking_send(WorkerOutput::Event(event))
-				.map_err(|_| QuickTaskProcessError::Unavailable)?;
+				.map_err(|_| ConversationProcessError::Unavailable)?;
 			if terminal {
 				return Ok(());
 			}
@@ -4925,12 +4984,12 @@ fn run_event_loop(
 	}
 }
 
-struct QuickTaskCredentialVault {
+struct ConversationCredentialVault {
 	account_id: AccountId,
 	stored: crate::StoredCredential,
 }
 
-impl CredentialVault for QuickTaskCredentialVault {
+impl CredentialVault for ConversationCredentialVault {
 	fn project(
 		&self,
 		account_id: &AccountId,
@@ -4950,9 +5009,9 @@ impl CredentialVault for QuickTaskCredentialVault {
 	}
 }
 
-impl Debug for QuickTaskCredentialVault {
+impl Debug for ConversationCredentialVault {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str("QuickTaskCredentialVault([REDACTED])")
+		formatter.write_str("ConversationCredentialVault([REDACTED])")
 	}
 }
 
@@ -4968,13 +5027,13 @@ fn same_local_process(left: &LocalSession, right: &LocalSession) -> bool {
 		&& left.process.identity() == right.process.identity()
 }
 
-struct QuickTaskRefreshCallback {
+struct ConversationRefreshCallback {
 	accounts: Arc<AccountService>,
 	runtime: tokio::runtime::Handle,
 	generation_id: ProcessGenerationId,
 }
 
-impl ProcessAccountRefreshCallback for QuickTaskRefreshCallback {
+impl ProcessAccountRefreshCallback for ConversationRefreshCallback {
 	fn refresh(
 		&self,
 		account_id: &AccountId,
@@ -5007,9 +5066,9 @@ impl ProcessAccountRefreshCallback for QuickTaskRefreshCallback {
 
 fn ordinary_resume_readback(
 	readback: &OrdinaryRuntimeSessionResumeReadback,
-	command: &SubmitQuickTaskTurn,
-) -> QuickTaskReadback {
-	QuickTaskReadback {
+	command: &SubmitConversationTurn,
+) -> ConversationReadback {
+	ConversationReadback {
 		operation_key: Some(command.operation_key.clone()),
 		correlation_id: Some(command.correlation_id.clone()),
 		causation_id: command.causation_id.clone(),
@@ -5020,16 +5079,16 @@ fn ordinary_resume_readback(
 		codex_thread_id: Some(readback.codex_thread_id.clone()),
 		process_generation_id: None,
 		active_turn_id: None,
-		state: QuickTaskLocalState::ManualRecovery,
+		state: ConversationLocalState::ManualRecovery,
 	}
 }
 
 fn session_readback(
 	session: &LocalSession,
-	state: QuickTaskLocalState,
+	state: ConversationLocalState,
 	active_turn_id: Option<TurnId>,
-) -> QuickTaskReadback {
-	QuickTaskReadback {
+) -> ConversationReadback {
+	ConversationReadback {
 		operation_key: Some(session.operation_key.clone()),
 		correlation_id: Some(session.correlation_id.clone()),
 		causation_id: session.causation_id.clone(),
@@ -5044,19 +5103,22 @@ fn session_readback(
 	}
 }
 
-fn remap_recovery(outcome: QuickTaskOutcome, action: QuickTaskManualRecovery) -> QuickTaskOutcome {
+fn remap_recovery(
+	outcome: ConversationOutcome,
+	action: ConversationManualRecovery,
+) -> ConversationOutcome {
 	match outcome {
-		QuickTaskOutcome::ManualRecovery { readback, .. } =>
-			QuickTaskOutcome::ManualRecovery { readback, action },
+		ConversationOutcome::ManualRecovery { readback, .. } =>
+			ConversationOutcome::ManualRecovery { readback, action },
 		outcome => outcome,
 	}
 }
 
 fn empty_readback(
 	conversation_id: &ConversationId,
-	state: QuickTaskLocalState,
-) -> QuickTaskReadback {
-	QuickTaskReadback {
+	state: ConversationLocalState,
+) -> ConversationReadback {
+	ConversationReadback {
 		operation_key: None,
 		correlation_id: None,
 		causation_id: None,
@@ -5071,49 +5133,49 @@ fn empty_readback(
 	}
 }
 
-fn local_readback(conversation_id: &ConversationId, task: &LocalTask) -> QuickTaskReadback {
+fn local_readback(conversation_id: &ConversationId, task: &LocalTask) -> ConversationReadback {
 	match &task.state {
 		LocalTaskState::Establishing =>
-			empty_readback(conversation_id, QuickTaskLocalState::Establishing),
+			empty_readback(conversation_id, ConversationLocalState::Establishing),
 		LocalTaskState::Preparing(session) =>
-			session_readback(session, QuickTaskLocalState::Ready, None),
+			session_readback(session, ConversationLocalState::Ready, None),
 		LocalTaskState::Ready(session) =>
-			session_readback(session, QuickTaskLocalState::Ready, None),
+			session_readback(session, ConversationLocalState::Ready, None),
 		LocalTaskState::Active { session, turn_id, .. } =>
-			session_readback(session, QuickTaskLocalState::Running, Some(turn_id.clone())),
+			session_readback(session, ConversationLocalState::Running, Some(turn_id.clone())),
 		LocalTaskState::Recovery { readback, .. } => readback.clone(),
 	}
 }
 
-fn account_recovery(error: AccountLifecycleError) -> QuickTaskManualRecovery {
+fn account_recovery(error: AccountLifecycleError) -> ConversationManualRecovery {
 	match error {
-		AccountLifecycleError::AccountDisabled => QuickTaskManualRecovery::EnableAccount,
+		AccountLifecycleError::AccountDisabled => ConversationManualRecovery::EnableAccount,
 		AccountLifecycleError::CredentialAbsent
 		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::CredentialAbsent) =>
-			QuickTaskManualRecovery::EnrollCredentials,
+			ConversationManualRecovery::EnrollCredentials,
 		AccountLifecycleError::CredentialStore(_)
 		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::StoreUnavailable)
 		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::StoreMismatch) =>
-			QuickTaskManualRecovery::RepairCredentialStore,
+			ConversationManualRecovery::RepairCredentialStore,
 		AccountLifecycleError::OperationRejected(_)
 		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled) =>
-			QuickTaskManualRecovery::ResolveAccountOperation,
-		AccountLifecycleError::StaleAccount => QuickTaskManualRecovery::SelectedAccountDrift,
+			ConversationManualRecovery::ResolveAccountOperation,
+		AccountLifecycleError::StaleAccount => ConversationManualRecovery::SelectedAccountDrift,
 		AccountLifecycleError::ProviderMismatch
 		| AccountLifecycleError::Refresh(_)
 		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::ProviderMismatch) =>
-			QuickTaskManualRecovery::RestoreProviderAgreement,
+			ConversationManualRecovery::RestoreProviderAgreement,
 		AccountLifecycleError::NotReady(AccountLifecycleReadiness::CallbackCapabilityUnready) =>
-			QuickTaskManualRecovery::UpgradeCodex,
+			ConversationManualRecovery::UpgradeCodex,
 		AccountLifecycleError::AccountMissing
 		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::Tombstoned) =>
-			QuickTaskManualRecovery::MissingLocalProcess,
+			ConversationManualRecovery::MissingLocalProcess,
 		AccountLifecycleError::Persistence(_)
 		| AccountLifecycleError::CoordinatorUnavailable
 		| AccountLifecycleError::InvalidOperation
 		| AccountLifecycleError::CredentialImport
 		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::Ready) =>
-			QuickTaskManualRecovery::ProcessUnavailable,
+			ConversationManualRecovery::ProcessUnavailable,
 	}
 }
 
@@ -5142,14 +5204,14 @@ fn turn_reservation_is_integrity_failure(error: &StoreError) -> bool {
 	matches!(error, StoreError::Incompatible(_) | StoreError::UnsafeHostPath)
 }
 
-fn store_outcome(error: decodex_database::StoreError) -> QuickTaskOutcome {
+fn store_outcome(error: decodex_database::StoreError) -> ConversationOutcome {
 	match error {
 		decodex_database::StoreError::IdempotencyConflict
 		| decodex_database::StoreError::OperationIdConflict
 		| decodex_database::StoreError::RevisionConflict { .. }
 		| decodex_database::StoreError::InvalidInput(_)
-		| decodex_database::StoreError::CredentialRejected => QuickTaskOutcome::Conflict,
-		_ => QuickTaskOutcome::Unavailable,
+		| decodex_database::StoreError::CredentialRejected => ConversationOutcome::Conflict,
+		_ => ConversationOutcome::Unavailable,
 	}
 }
 
@@ -5253,7 +5315,7 @@ mod tests {
 	use decodex_database::{TurnReservationOutcome, TurnReservationReadback};
 
 	use super::{
-		QuickTaskManualRecovery, account_recovery, continuation_recovery, derived_uuid,
+		ConversationManualRecovery, account_recovery, continuation_recovery, derived_uuid,
 		request_digest, scoped_key, turn_admits_execution,
 	};
 	use crate::account_service::AccountLifecycleError;
@@ -5306,19 +5368,19 @@ mod tests {
 	fn account_failures_preserve_typed_manual_recovery() {
 		assert_eq!(
 			account_recovery(AccountLifecycleError::AccountDisabled),
-			QuickTaskManualRecovery::EnableAccount
+			ConversationManualRecovery::EnableAccount
 		);
 		assert_eq!(
 			account_recovery(AccountLifecycleError::ProviderMismatch),
-			QuickTaskManualRecovery::RestoreProviderAgreement
+			ConversationManualRecovery::RestoreProviderAgreement
 		);
 		assert_eq!(
 			account_recovery(AccountLifecycleError::StaleAccount),
-			QuickTaskManualRecovery::SelectedAccountDrift
+			ConversationManualRecovery::SelectedAccountDrift
 		);
 		assert_eq!(
 			account_recovery(AccountLifecycleError::AccountMissing),
-			QuickTaskManualRecovery::MissingLocalProcess
+			ConversationManualRecovery::MissingLocalProcess
 		);
 	}
 
@@ -5326,15 +5388,15 @@ mod tests {
 	fn continuation_account_recovery_is_typed_without_reselection() {
 		assert_eq!(
 			continuation_recovery(ContinuationRejection::SelectedAccountDrift),
-			Some(QuickTaskManualRecovery::SelectedAccountDrift),
+			Some(ConversationManualRecovery::SelectedAccountDrift),
 		);
 		assert_eq!(
 			continuation_recovery(ContinuationRejection::SelectedAccountReadinessRequired),
-			Some(QuickTaskManualRecovery::SelectedAccountReadiness),
+			Some(ConversationManualRecovery::SelectedAccountReadiness),
 		);
 		assert_eq!(
 			continuation_recovery(ContinuationRejection::SelectedAccountQuotaRequired),
-			Some(QuickTaskManualRecovery::RefreshQuota),
+			Some(ConversationManualRecovery::RefreshQuota),
 		);
 		assert_eq!(continuation_recovery(ContinuationRejection::SameThreadUnavailable), None);
 	}

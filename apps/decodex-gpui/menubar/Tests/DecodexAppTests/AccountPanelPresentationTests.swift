@@ -168,7 +168,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertEqual(FastModeClientError.unavailable.errorDescription, "Restart Decodex.")
 	}
 
-	func testRouteCapabilityDoesNotDependOnQuickTaskCallbackReadiness() {
+	func testRouteCapabilityDoesNotDependOnConversationCallbackReadiness() {
 		let authority = ResetCardAuthority(
 			profileName: "local",
 			serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"

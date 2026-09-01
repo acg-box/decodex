@@ -2,7 +2,7 @@ const decodexGitHubUrl = "https://github.com/acg-box/decodex";
 
 const productLoops = [
   {
-    title: "Quick Tasks",
+    title: "Conversations",
     body: "Start or continue real Codex threads with durable conversation and attempt evidence.",
   },
   {
@@ -11,7 +11,7 @@ const productLoops = [
   },
   {
     title: "Adaptive Programs",
-    body: "Repeat bounded evidence-backed Program cycles through the ordinary Quick Task runtime.",
+    body: "Repeat bounded evidence-backed Program cycles through the ordinary Conversation runtime.",
   },
   {
     title: "One local product",

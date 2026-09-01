@@ -766,8 +766,8 @@ const fn command_error_name(error: &CommandError) -> &'static str {
 		CommandError::IdempotencyConflict => "idempotency_conflict",
 		CommandError::IdempotencyCapacityExceeded { .. } => "idempotency_capacity_exceeded",
 		CommandError::ApplicationUnavailable { .. } => "application_unavailable",
-		CommandError::QuickTaskUnavailable { .. } => "quick_task_unavailable",
-		CommandError::QuickTaskRecoveryRequired { .. } => "quick_task_recovery_required",
+		CommandError::ConversationUnavailable { .. } => "conversation_unavailable",
+		CommandError::ConversationRecoveryRequired { .. } => "conversation_recovery_required",
 		CommandError::AcceptanceUnknown => "acceptance_unknown",
 		CommandError::AccountCommandRejected { .. } => "account_command_rejected",
 	}

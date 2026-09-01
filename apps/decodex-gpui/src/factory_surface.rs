@@ -1,44 +1,33 @@
-//! Codex-only Agent Factory presentation slice for the native GPUI control room.
-//!
-//! Operate mode renders authoritative internal WorkItems. Inspect and Replay remain
-//! presentation previews until their corresponding graph projections exist.
+//! Program-only Adaptive Factory presentation for the native GPUI shell.
 
 use std::path::PathBuf;
 
 use gpui::{
-	AnyElement, App, Bounds, BoxShadow, Context, Entity, EventEmitter, Focusable, FontWeight, Hsla,
-	KeyBinding, PathBuilder, Pixels, Render, Role, SharedString, Window, actions, canvas, div,
-	point, prelude::*, px, rgb, rgba,
+	AnyElement, App, Context, Entity, EventEmitter, FontWeight, Render, Role, SharedString, Window,
+	div, prelude::*, px, rgb, rgba,
 };
 
 use decodex_protocol::{
-	DEVELOPMENT_DOMAIN_PACK_ID, DomainEntityDto, DomainPackCapabilityStatus, EntityId,
-	MAX_PROGRAM_NODES, PAPER_INVESTMENT_DOMAIN_PACK_ID, ProgramContinuationDraftDto,
-	ProgramCycleDraftDto, ProgramNodeDto, ProgramNodeKind, ProgramReviewClassification,
-	ProgramReviewDraftDto, QuickTaskWorkingDirectory, WireText, WorkItemBoardCard,
-	WorkItemBoardProjectId, WorkItemState,
+	ConversationWorkingDirectory, DEVELOPMENT_DOMAIN_PACK_ID, DomainEntityDto,
+	DomainPackCapabilityStatus, EntityId, MAX_PROGRAM_NODES, PAPER_INVESTMENT_DOMAIN_PACK_ID,
+	ProgramContinuationDraftDto, ProgramCycleDraftDto, ProgramNodeDto, ProgramNodeKind,
+	ProgramReviewClassification, ProgramReviewDraftDto, WireText,
 };
 
 use crate::{
-	composer_input::{ComposerEvent, ComposerInput, SubmitComposer},
+	composer_input::{ComposerEvent, ComposerInput},
 	program_graph::{self, ProgramGraphEvent, ProgramGraphSurface},
 	programs::{
 		ProgramCommandState, ProgramInputError, Programs, ProgramsLoadState, ProgramsSnapshot,
 		entity_id,
 	},
 	ui_theme,
-	work_items::{
-		WorkItemCommandState, WorkItemInputError, WorkItems, WorkItemsLoadState, WorkItemsSnapshot,
-	},
 };
 
-const REPLAY_HEIGHT: f32 = 134.0;
 const FACTORY_MIN_WIDTH: f32 = 1_180.0;
 const COMPLETE_PROGRAM_CYCLE_NODE_COST: usize = 9;
-
 const SURFACE: u32 = ui_theme::CANVAS;
 const SURFACE_OVERLAY: u32 = ui_theme::SURFACE_OVERLAY;
-const LINE: u32 = ui_theme::LINE_STRONG;
 const LINE_MUTED: u32 = ui_theme::LINE;
 const TEXT: u32 = ui_theme::TEXT;
 const TEXT_MUTED: u32 = ui_theme::TEXT_MUTED;
@@ -47,131 +36,20 @@ const BLUE: u32 = ui_theme::BLUE;
 const GREEN: u32 = ui_theme::GREEN;
 const AMBER: u32 = ui_theme::AMBER;
 
-actions!(factory_surface, [ToggleFactoryLauncher, CloseFactoryOverlay]);
-
 pub(crate) fn bind_keys(cx: &mut App) {
 	program_graph::bind_keys(cx);
-	cx.bind_keys([
-		KeyBinding::new("cmd-k", ToggleFactoryLauncher, None),
-		KeyBinding::new("escape", CloseFactoryOverlay, None),
-	]);
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum FactoryRoute {
-	QuickTasks,
-	Accounts,
-	Health,
-	Settings,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum FactoryEvent {
-	OpenRoute(FactoryRoute),
-	StartCodexConversation {
-		context: &'static str,
-		message: String,
-	},
 	StartProgramWorkItem {
 		work_item_id: EntityId,
 		message: String,
-		working_directory: QuickTaskWorkingDirectory,
+		working_directory: ConversationWorkingDirectory,
 	},
-	OpenWorkItemConversation {
+	OpenProgramConversation {
 		conversation_id: EntityId,
 	},
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum FactoryMode {
-	Operate,
-	Inspect,
-	Replay,
-}
-
-impl FactoryMode {
-	const ALL: [Self; 3] = [Self::Operate, Self::Inspect, Self::Replay];
-
-	const fn label(self) -> &'static str {
-		match self {
-			Self::Operate => "OPERATE",
-			Self::Inspect => "INSPECT",
-			Self::Replay => "REPLAY",
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum FactorySelection {
-	Brief,
-	Coordinator,
-	RuntimeWork,
-	RuntimeAgent,
-	GpuiWork,
-	GpuiAgent,
-	Artifact,
-	Review,
-	ReleaseGate,
-	Policy,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ConversationTarget {
-	Coordinator,
-	RuntimeWork,
-	RuntimeAgent,
-	GpuiWork,
-	GpuiAgent,
-	Review,
-}
-
-impl ConversationTarget {
-	const fn title(self) -> &'static str {
-		match self {
-			Self::Coordinator => "Coordinator · Codex Lead",
-			Self::RuntimeWork => "Work · Runtime",
-			Self::RuntimeAgent => "Codex Instance · Codex-1",
-			Self::GpuiWork => "Work · GPUI",
-			Self::GpuiAgent => "Codex Instance · Codex-2",
-			Self::Review => "Review · Independent Codex",
-		}
-	}
-
-	const fn context(self) -> &'static str {
-		match self {
-			Self::Coordinator => "Release vNext / coordinator",
-			Self::RuntimeWork => "Release vNext / runtime work",
-			Self::RuntimeAgent => "Release vNext / Codex-1 runtime instance",
-			Self::GpuiWork => "Release vNext / GPUI work",
-			Self::GpuiAgent => "Release vNext / Codex-2 GPUI instance",
-			Self::Review => "Release vNext / independent review",
-		}
-	}
-
-	const fn account(self) -> &'static str {
-		match self {
-			Self::Coordinator => "Codex-1",
-			Self::RuntimeWork | Self::RuntimeAgent => "Codex-1",
-			Self::GpuiWork | Self::GpuiAgent => "Codex-2",
-			Self::Review => "Codex-3 · retained review",
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ReplayMoment {
-	Brief,
-	Parallel,
-	Integrated,
-	Checks,
-	Review,
-	Gate,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum GateState {
-	NeedsDecision,
-	Approved,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -379,23 +257,8 @@ impl ProgramContinuationInputs {
 	}
 }
 
-/// One self-contained native surface. Its state is presentation-only.
+/// One Program-only native surface backed by daemon projections.
 pub(crate) struct FactorySurface {
-	mode: FactoryMode,
-	selection: FactorySelection,
-	replay: ReplayMoment,
-	gate: GateState,
-	conversation: Option<ConversationTarget>,
-	show_launcher: bool,
-	timeline_visible: bool,
-	composer: Entity<ComposerInput>,
-	composer_status: Option<SharedString>,
-	work_items: Option<WorkItems>,
-	work_items_snapshot: Option<WorkItemsSnapshot>,
-	repository_root: Entity<ComposerInput>,
-	work_item_title: Entity<ComposerInput>,
-	work_item_description: Entity<ComposerInput>,
-	work_item_status: Option<SharedString>,
 	programs: Option<Programs>,
 	programs_snapshot: Option<ProgramsSnapshot>,
 	program_graph: Entity<ProgramGraphSurface>,
@@ -413,37 +276,6 @@ impl EventEmitter<FactoryEvent> for FactorySurface {}
 
 impl FactorySurface {
 	pub(crate) fn new(cx: &mut Context<Self>) -> Self {
-		let composer = cx.new(|cx| ComposerInput::new(0, cx));
-		cx.subscribe(&composer, |surface, _, _: &ComposerEvent, cx| {
-			surface.composer_status = None;
-			cx.notify();
-		})
-		.detach();
-		let work_item_title = cx
-			.new(|cx| ComposerInput::with_placeholder(1, "Work item title", "Work item title", cx));
-		let work_item_description = cx.new(|cx| {
-			ComposerInput::with_placeholder(
-				2,
-				"Describe the concrete result Codex should deliver",
-				"Work item description",
-				cx,
-			)
-		});
-		let repository_root = cx.new(|cx| {
-			ComposerInput::with_placeholder(
-				3,
-				"/absolute/path/to/repository",
-				"Local repository path",
-				cx,
-			)
-		});
-		for input in [&work_item_title, &work_item_description, &repository_root] {
-			cx.subscribe(input, |surface, _, _: &ComposerEvent, cx| {
-				surface.work_item_status = None;
-				cx.notify();
-			})
-			.detach();
-		}
 		let program_inputs = ProgramCreationInputs::new(cx);
 		let program_review_inputs = ProgramReviewInputs::new(cx);
 		let program_continuation_inputs = ProgramContinuationInputs::new(cx);
@@ -451,7 +283,7 @@ impl FactorySurface {
 		cx.subscribe(&program_graph, |_surface, _, event: &ProgramGraphEvent, cx| match event {
 			ProgramGraphEvent::SelectionChanged => cx.notify(),
 			ProgramGraphEvent::OpenConversation(conversation_id) => {
-				cx.emit(FactoryEvent::OpenWorkItemConversation {
+				cx.emit(FactoryEvent::OpenProgramConversation {
 					conversation_id: conversation_id.clone(),
 				});
 			},
@@ -469,23 +301,7 @@ impl FactorySurface {
 			})
 			.detach();
 		}
-
 		Self {
-			mode: FactoryMode::Operate,
-			selection: FactorySelection::ReleaseGate,
-			replay: ReplayMoment::Gate,
-			gate: GateState::NeedsDecision,
-			conversation: None,
-			show_launcher: false,
-			timeline_visible: true,
-			composer,
-			composer_status: None,
-			work_items: None,
-			work_items_snapshot: None,
-			repository_root,
-			work_item_title,
-			work_item_description,
-			work_item_status: None,
 			programs: None,
 			programs_snapshot: None,
 			program_graph,
@@ -535,100 +351,6 @@ impl FactorySurface {
 		self.program_graph.update(cx, |graph, cx| graph.set_cycle(cycle, cx));
 	}
 
-	pub(crate) fn bind_work_items(&mut self, work_items: WorkItems, cx: &mut Context<Self>) {
-		self.work_items = Some(work_items.clone());
-		self.work_items_snapshot = Some(work_items.snapshot());
-		cx.notify();
-	}
-
-	pub(crate) fn synchronize_work_items(&mut self, cx: &mut Context<Self>) {
-		let Some(work_items) = self.work_items.as_ref() else {
-			return;
-		};
-		let snapshot = work_items.snapshot();
-		if self.work_items_snapshot.as_ref() != Some(&snapshot) {
-			self.work_items_snapshot = Some(snapshot);
-			cx.notify();
-		}
-	}
-
-	fn create_work_item(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-		let Some(work_items) = self.work_items.as_ref() else {
-			self.work_item_status = Some("Factory authority is not connected.".into());
-			cx.notify();
-			return;
-		};
-		let title = self.work_item_title.read(cx).content().to_owned();
-		let description = self.work_item_description.read(cx).content().to_owned();
-		match work_items.create(&title, &description) {
-			Ok(()) => {
-				self.work_item_title.update(cx, |input, cx| input.clear(cx));
-				self.work_item_description.update(cx, |input, cx| input.clear(cx));
-				self.work_item_status = Some("Creating persisted Work Item…".into());
-			},
-			Err(error) => self.work_item_status = Some(work_item_error_label(error).into()),
-		}
-		self.work_items_snapshot = Some(work_items.snapshot());
-		cx.notify();
-	}
-
-	fn register_project(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-		let Some(work_items) = self.work_items.as_ref() else {
-			self.work_item_status = Some("Factory authority is not connected.".into());
-			cx.notify();
-			return;
-		};
-		let repository_root = self.repository_root.read(cx).content().to_owned();
-		match work_items.register_project(&repository_root) {
-			Ok(()) => {
-				self.repository_root.update(cx, |input, cx| input.clear(cx));
-				self.work_item_status = Some("Registering local repository…".into());
-			},
-			Err(error) => self.work_item_status = Some(work_item_error_label(error).into()),
-		}
-		self.work_items_snapshot = Some(work_items.snapshot());
-		cx.notify();
-	}
-
-	fn start_work_item(&mut self, card: WorkItemBoardCard, cx: &mut Context<Self>) {
-		let Some(work_items) = self.work_items.as_ref() else {
-			return;
-		};
-		match work_items.start(&card) {
-			Ok(()) => self.work_item_status = Some("Starting real Codex conversation…".into()),
-			Err(error) => self.work_item_status = Some(work_item_error_label(error).into()),
-		}
-		self.work_items_snapshot = Some(work_items.snapshot());
-		cx.notify();
-	}
-
-	fn accept_work_item(&mut self, card: WorkItemBoardCard, cx: &mut Context<Self>) {
-		let Some(work_items) = self.work_items.as_ref() else {
-			return;
-		};
-		match work_items.accept(&card) {
-			Ok(()) => self.work_item_status = Some("Recording human acceptance…".into()),
-			Err(error) => self.work_item_status = Some(work_item_error_label(error).into()),
-		}
-		self.work_items_snapshot = Some(work_items.snapshot());
-		cx.notify();
-	}
-
-	fn select_work_item_project(
-		&mut self,
-		project_id: WorkItemBoardProjectId,
-		cx: &mut Context<Self>,
-	) {
-		let Some(work_items) = self.work_items.as_ref() else {
-			return;
-		};
-		if work_items.select_project(project_id) {
-			self.work_items_snapshot = Some(work_items.snapshot());
-			self.work_item_status = None;
-			cx.notify();
-		}
-	}
-
 	fn create_program(&mut self, cx: &mut Context<Self>) {
 		let Some(programs) = self.programs.as_ref() else {
 			self.program_status = Some("Program authority is not connected.".into());
@@ -644,7 +366,7 @@ impl FactorySurface {
 				WireText::new(value).map_err(|_| ProgramInputError::InvalidDraft)
 			};
 			let objective = text(&self.program_inputs.objective)?;
-			let working_directory = QuickTaskWorkingDirectory::new(
+			let working_directory = ConversationWorkingDirectory::new(
 				self.program_inputs.working_directory.read(cx).content().trim().to_owned(),
 			)
 			.map_err(|_| ProgramInputError::InvalidDraft)?;
@@ -679,7 +401,7 @@ impl FactorySurface {
 				acceptance_criteria: vec![objective],
 				validation_criteria: vec![
 					WireText::new(
-						"The bound Quick Task settles and the review cites reproducible evidence.",
+						"The bound Conversation settles and the review cites reproducible evidence.",
 					)
 					.expect("fixed Program validation criterion is bounded"),
 				],
@@ -811,7 +533,7 @@ impl FactorySurface {
 				WireText::new(value).map_err(|_| ProgramInputError::InvalidDraft)
 			};
 			let objective = text(&self.program_continuation_inputs.objective)?;
-			let working_directory = QuickTaskWorkingDirectory::new(
+			let working_directory = ConversationWorkingDirectory::new(
 				self.program_continuation_inputs
 					.working_directory
 					.read(cx)
@@ -846,7 +568,7 @@ impl FactorySurface {
 				acceptance_criteria: vec![objective],
 				validation_criteria: vec![
 					WireText::new(
-						"The bound Quick Task settles and the review cites reproducible evidence.",
+						"The bound Conversation settles and the review cites reproducible evidence.",
 					)
 					.expect("fixed Program validation criterion is bounded"),
 				],
@@ -903,7 +625,7 @@ impl FactorySurface {
 			.fields
 			.iter()
 			.find(|field| field.label.as_str() == "Working directory")
-			.and_then(|field| QuickTaskWorkingDirectory::new(field.value.as_str()).ok())
+			.and_then(|field| ConversationWorkingDirectory::new(field.value.as_str()).ok())
 		else {
 			self.program_status = Some("The WorkItem working directory is invalid.".into());
 			cx.notify();
@@ -914,7 +636,7 @@ impl FactorySurface {
 			message: work_item.summary.as_str().to_owned(),
 			working_directory: directory,
 		});
-		self.program_status = Some("Starting the bound Codex Quick Task…".into());
+		self.program_status = Some("Starting the bound Codex Conversation…".into());
 		cx.notify();
 	}
 
@@ -970,301 +692,6 @@ impl FactorySurface {
 		}
 		self.programs_snapshot = Some(programs.snapshot());
 		cx.notify();
-	}
-
-	fn select_mode(&mut self, mode: FactoryMode, cx: &mut Context<Self>) {
-		self.mode = mode;
-		if mode == FactoryMode::Inspect && self.conversation.is_none() {
-			self.conversation = Some(ConversationTarget::GpuiWork);
-			self.selection = FactorySelection::GpuiWork;
-		}
-		if mode == FactoryMode::Replay {
-			self.conversation = None;
-		}
-		cx.notify();
-	}
-
-	fn select_entity(
-		&mut self,
-		selection: FactorySelection,
-		conversation: Option<ConversationTarget>,
-		window: &mut Window,
-		cx: &mut Context<Self>,
-	) {
-		self.selection = selection;
-		self.show_launcher = false;
-		self.conversation = conversation;
-		if conversation.is_some() {
-			self.mode = FactoryMode::Inspect;
-			window.focus(&self.composer.focus_handle(cx), cx);
-		}
-		cx.notify();
-	}
-
-	fn select_replay(&mut self, replay: ReplayMoment, cx: &mut Context<Self>) {
-		self.replay = replay;
-		self.mode = FactoryMode::Replay;
-		self.conversation = None;
-		cx.notify();
-	}
-
-	fn approve_gate(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-		self.gate = GateState::Approved;
-		self.selection = FactorySelection::ReleaseGate;
-		self.replay = ReplayMoment::Gate;
-		cx.notify();
-	}
-
-	fn toggle_launcher(
-		&mut self,
-		_: &ToggleFactoryLauncher,
-		_: &mut Window,
-		cx: &mut Context<Self>,
-	) {
-		self.show_launcher = !self.show_launcher;
-		cx.notify();
-	}
-
-	fn close_overlay(&mut self, _: &CloseFactoryOverlay, _: &mut Window, cx: &mut Context<Self>) {
-		self.show_launcher = false;
-		self.conversation = None;
-		self.mode = FactoryMode::Operate;
-		cx.notify();
-	}
-
-	fn submit_conversation(
-		&mut self,
-		_: &SubmitComposer,
-		window: &mut Window,
-		cx: &mut Context<Self>,
-	) {
-		self.start_live_conversation(window, cx);
-		cx.stop_propagation();
-	}
-
-	fn start_live_conversation(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-		let Some(target) = self.conversation else {
-			return;
-		};
-		let message = self.composer.read(cx).content().trim().to_owned();
-		if message.is_empty() {
-			self.composer_status = Some("Enter a message for Codex.".into());
-			cx.notify();
-			return;
-		}
-
-		self.composer.update(cx, |composer, cx| composer.clear(cx));
-		self.composer_status = Some("Opening the live Quick Task conversation…".into());
-		cx.emit(FactoryEvent::StartCodexConversation { context: target.context(), message });
-		cx.notify();
-	}
-
-	fn embedded_toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
-		if self.programs_snapshot.is_some() {
-			return self.program_toolbar(cx);
-		}
-		let workspace = self
-			.work_items_snapshot
-			.as_ref()
-			.and_then(WorkItemsSnapshot::selected_project_summary)
-			.map(|project| project.repository_identity().as_str().to_owned())
-			.unwrap_or_else(|| "No active project".to_owned());
-		let work_item_count =
-			self.work_items_snapshot.as_ref().map_or(0, |snapshot| snapshot.cards.len());
-		let timeline_available =
-			self.mode != FactoryMode::Operate || self.work_items_snapshot.is_none();
-		let timeline_visible = self.timeline_visible;
-		let tabs = FactoryMode::ALL.into_iter().enumerate().map(|(index, mode)| {
-			let active = self.mode == mode;
-			div()
-				.id(("embedded-factory-mode", index))
-				.role(Role::Tab)
-				.aria_label(mode.label())
-				.aria_selected(active)
-				.h(px(28.0))
-				.px_3()
-				.flex()
-				.items_center()
-				.rounded(px(7.0))
-				.border_1()
-				.border_color(if active { rgba(0xffffff18) } else { rgba(0x00000000) })
-				.bg(if active { rgba(0xffffff10) } else { rgba(0x00000000) })
-				.text_size(px(9.0))
-				.font_weight(if active { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
-				.text_color(if active { rgb(TEXT) } else { rgb(TEXT_MUTED) })
-				.cursor_pointer()
-				.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(TEXT)))
-				.active(|element| element.bg(rgba(0xffffff1c)).opacity(0.82))
-				.focus_visible(|element| element.border_color(rgb(BLUE)))
-				.on_click(cx.listener(move |surface, _, _, cx| surface.select_mode(mode, cx)))
-				.child(mode.label())
-		});
-
-		div()
-			.id("factory-embedded-toolbar")
-			.role(Role::Navigation)
-			.aria_label("Factory controls")
-			.h(px(44.0))
-			.min_h(px(44.0))
-			.px_3()
-			.flex()
-			.items_center()
-			.gap_3()
-			.border_b_1()
-			.border_color(rgba(0xffffff0e))
-			.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL))
-			.child(
-				div()
-					.w(px(300.0))
-					.min_w(px(220.0))
-					.flex()
-					.items_center()
-					.gap_3()
-					.child(
-						div()
-							.text_size(px(11.0))
-							.font_weight(FontWeight::SEMIBOLD)
-							.text_color(rgb(TEXT))
-							.child("Factory"),
-					)
-					.child(
-						div()
-							.min_w_0()
-							.overflow_hidden()
-							.whitespace_nowrap()
-							.text_ellipsis()
-							.font_family("SF Mono")
-							.text_size(px(8.0))
-							.text_color(rgb(TEXT_FAINT))
-							.child(workspace),
-					),
-			)
-			.child(
-				div()
-					.id("factory-mode-tabs")
-					.flex_1()
-					.flex()
-					.items_center()
-					.justify_center()
-					.gap_1()
-					.children(tabs),
-			)
-			.child(
-				div()
-					.w(px(300.0))
-					.min_w(px(250.0))
-					.flex()
-					.items_center()
-					.justify_end()
-					.gap_2()
-					.child(
-						div()
-							.font_family("SF Mono")
-							.text_size(px(8.0))
-							.text_color(rgb(TEXT_FAINT))
-							.child(format!("{work_item_count} work items")),
-					)
-					.when(timeline_available, |controls| {
-						controls.child(
-							div()
-								.id("toggle-factory-timeline")
-								.role(Role::Button)
-								.aria_label("Toggle Factory causal timeline")
-								.aria_expanded(timeline_visible)
-								.h(px(27.0))
-								.px_3()
-								.flex()
-								.items_center()
-								.rounded(px(7.0))
-								.border_1()
-								.border_color(if timeline_visible {
-									rgba(0xffffff20)
-								} else {
-									rgba(0xffffff10)
-								})
-								.bg(if timeline_visible {
-									rgba(0xffffff10)
-								} else {
-									rgba(0x00000000)
-								})
-								.text_size(px(9.0))
-								.text_color(if timeline_visible {
-									rgb(TEXT)
-								} else {
-									rgb(TEXT_MUTED)
-								})
-								.cursor_pointer()
-								.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(TEXT)))
-								.active(|element| element.bg(rgba(0xffffff1c)).opacity(0.82))
-								.focus_visible(|element| element.border_color(rgb(BLUE)))
-								.on_click(cx.listener(|surface, _, _, cx| {
-									surface.timeline_visible = !surface.timeline_visible;
-									cx.notify();
-								}))
-								.child("Timeline"),
-						)
-					})
-					.child(
-						div()
-							.id("factory-command-launcher")
-							.role(Role::Button)
-							.aria_label("Open command launcher")
-							.h(px(27.0))
-							.px_3()
-							.flex()
-							.items_center()
-							.rounded(px(7.0))
-							.border_1()
-							.border_color(rgba(0xffffff10))
-							.text_size(px(9.0))
-							.text_color(rgb(TEXT_MUTED))
-							.cursor_pointer()
-							.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(TEXT)))
-							.active(|element| element.bg(rgba(0xffffff1c)).opacity(0.82))
-							.focus_visible(|element| element.border_color(rgb(BLUE)))
-							.on_click(cx.listener(|surface, _, _, cx| {
-								surface.show_launcher = !surface.show_launcher;
-								cx.notify();
-							}))
-							.child("Commands"),
-					),
-			)
-			.into_any_element()
-	}
-
-	fn factory_canvas(&self, cx: &mut Context<Self>) -> AnyElement {
-		if self.programs_snapshot.is_some() {
-			return self.program_factory_canvas(cx);
-		}
-		if self.mode == FactoryMode::Operate && self.work_items_snapshot.is_some() {
-			return self.live_factory_canvas(cx);
-		}
-		let mut root = div()
-			.id("factory-spatial-map")
-			.role(Role::Image)
-			.aria_label(
-				"Codex factory map with plan, parallel build, integration, review and release workcells",
-			)
-			.flex_1()
-			.min_h_0()
-			.w_full()
-			.min_w(px(FACTORY_MIN_WIDTH))
-			.relative()
-			.overflow_hidden()
-			.bg(rgba(ui_theme::SURFACE_MATERIAL))
-			.child(canvas_context())
-			.child(self.plan_cell(cx))
-			.child(self.parallel_cell(cx))
-			.child(self.integration_cell(cx))
-			.child(self.review_cell(cx))
-			.child(self.release_cell(cx))
-			.child(factory_wiring(self.gate == GateState::Approved));
-
-		if self.selection == FactorySelection::ReleaseGate {
-			root = root.child(self.gate_sheet(cx));
-		}
-
-		root.into_any_element()
 	}
 
 	fn program_toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -1521,114 +948,114 @@ impl FactorySurface {
 			.enumerate()
 			.map(|(index, (input, label))| program_input_field(index, label, input.clone()));
 		div()
-			.id("program-intake")
-			.flex_1()
-			.min_h_0()
-			.w_full()
-			.p_5()
-			.flex()
-			.justify_center()
-			.overflow_y_scroll()
-			.child(
-				div()
-					.w_full()
-					.max_w(px(940.0))
-					.flex()
-					.flex_col()
-					.gap_4()
-					.child(
-						div()
-							.flex()
-							.items_end()
-							.justify_between()
-							.child(
-								div()
-									.flex()
-									.flex_col()
-									.gap_2()
-									.child(
-										div()
-											.text_size(px(18.0))
-											.font_weight(FontWeight::SEMIBOLD)
-											.child("Create one closed Program cycle"),
-									)
-									.child(
-										div()
-											.max_w(px(650.0))
-											.text_size(px(10.5))
-											.text_color(rgb(TEXT_MUTED))
-											.child("One signal becomes one explicit claim, proposal, objective and Codex WorkItem. The proposal itself never executes."),
-									),
-							)
-							.child(
-								div()
-									.font_family("SF Mono")
-									.text_size(px(8.0))
-									.text_color(load_color(snapshot.load))
-									.child(program_load_label(snapshot.load)),
-							),
-						)
-						.child(
-							div()
-								.flex()
-								.flex_col()
-								.gap_2()
-								.child(
-									div()
-										.font_family("SF Mono")
-										.text_size(px(8.0))
-										.text_color(rgb(TEXT_FAINT))
-										.child("DOMAIN PACK · IMMUTABLE AFTER CREATE"),
-								)
-								.child(div().grid().grid_cols(2).gap_3().children(pack_choices)),
-						)
-						.when(
-							self.program_pack == ProgramPackChoice::PaperInvestment,
-							|form| {
-								form.child(program_action_button(
-									"load-paper-example",
-									"LOAD TREASURY EXAMPLE",
-									GREEN,
-									true,
-									cx,
-									|surface, cx| surface.load_paper_example(cx),
-								))
-							},
-						)
-						.child(
-							div()
-							.grid()
-							.grid_cols(2)
-							.gap_3()
-							.children(fields),
-					)
-					.when_some(self.program_status.clone(), |form, status| {
-						form.child(div().text_size(px(9.0)).text_color(rgb(TEXT_MUTED)).child(status))
-					})
-					.child(
-						div()
-							.id("create-program-cycle")
-							.role(Role::Button)
-							.aria_label("Create persisted Program cycle")
-							.h(px(38.0))
-							.flex()
-							.items_center()
-							.justify_center()
-							.rounded(px(8.0))
-							.bg(if snapshot.can_mutate { rgb(TEXT) } else { rgb(SURFACE_OVERLAY) })
-							.text_size(px(10.0))
-							.font_weight(FontWeight::SEMIBOLD)
-							.text_color(if snapshot.can_mutate { rgb(SURFACE) } else { rgb(TEXT_FAINT) })
-							.when(snapshot.can_mutate, |button| {
-								button
-									.cursor_pointer()
-									.hover(|style| style.opacity(0.9))
-									.on_click(cx.listener(|surface, _, _, cx| surface.create_program(cx)))
-							})
-							.child("CREATE PROGRAM CYCLE"),
-					),
-			)
-			.into_any_element()
+            .id("program-intake")
+            .flex_1()
+            .min_h_0()
+            .w_full()
+            .p_5()
+            .flex()
+            .justify_center()
+            .overflow_y_scroll()
+            .child(
+                div()
+                    .w_full()
+                    .max_w(px(940.0))
+                    .flex()
+                    .flex_col()
+                    .gap_4()
+                    .child(
+                        div()
+                            .flex()
+                            .items_end()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .text_size(px(18.0))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .child("Create one closed Program cycle"),
+                                    )
+                                    .child(
+                                        div()
+                                            .max_w(px(650.0))
+                                            .text_size(px(10.5))
+                                            .text_color(rgb(TEXT_MUTED))
+                                            .child("One signal becomes one explicit claim, proposal, objective and Codex WorkItem. The proposal itself never executes."),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .font_family("SF Mono")
+                                    .text_size(px(8.0))
+                                    .text_color(load_color(snapshot.load))
+                                    .child(program_load_label(snapshot.load)),
+                            ),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .font_family("SF Mono")
+                                        .text_size(px(8.0))
+                                        .text_color(rgb(TEXT_FAINT))
+                                        .child("DOMAIN PACK · IMMUTABLE AFTER CREATE"),
+                                )
+                                .child(div().grid().grid_cols(2).gap_3().children(pack_choices)),
+                        )
+                        .when(
+                            self.program_pack == ProgramPackChoice::PaperInvestment,
+                            |form| {
+                                form.child(program_action_button(
+                                    "load-paper-example",
+                                    "LOAD TREASURY EXAMPLE",
+                                    GREEN,
+                                    true,
+                                    cx,
+                                    |surface, cx| surface.load_paper_example(cx),
+                                ))
+                            },
+                        )
+                        .child(
+                            div()
+                            .grid()
+                            .grid_cols(2)
+                            .gap_3()
+                            .children(fields),
+                    )
+                    .when_some(self.program_status.clone(), |form, status| {
+                        form.child(div().text_size(px(9.0)).text_color(rgb(TEXT_MUTED)).child(status))
+                    })
+                    .child(
+                        div()
+                            .id("create-program-cycle")
+                            .role(Role::Button)
+                            .aria_label("Create persisted Program cycle")
+                            .h(px(38.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(8.0))
+                            .bg(if snapshot.can_mutate { rgb(TEXT) } else { rgb(SURFACE_OVERLAY) })
+                            .text_size(px(10.0))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(if snapshot.can_mutate { rgb(SURFACE) } else { rgb(TEXT_FAINT) })
+                            .when(snapshot.can_mutate, |button| {
+                                button
+                                    .cursor_pointer()
+                                    .hover(|style| style.opacity(0.9))
+                                    .on_click(cx.listener(|surface, _, _, cx| surface.create_program(cx)))
+                            })
+                            .child("CREATE PROGRAM CYCLE"),
+                    ),
+            )
+            .into_any_element()
 	}
 
 	fn program_pulse(
@@ -1726,7 +1153,7 @@ impl FactorySurface {
 					true,
 					cx,
 					move |_, cx| {
-						cx.emit(FactoryEvent::OpenWorkItemConversation {
+						cx.emit(FactoryEvent::OpenProgramConversation {
 							conversation_id: conversation_id.clone(),
 						});
 					},
@@ -1845,7 +1272,7 @@ impl FactorySurface {
 					true,
 					cx,
 					move |_, cx| {
-						cx.emit(FactoryEvent::OpenWorkItemConversation {
+						cx.emit(FactoryEvent::OpenProgramConversation {
 							conversation_id: conversation_id.clone(),
 						});
 					},
@@ -2114,908 +1541,6 @@ impl FactorySurface {
 			.into_any_element()
 	}
 
-	fn live_factory_canvas(&self, cx: &mut Context<Self>) -> AnyElement {
-		let snapshot = self
-			.work_items_snapshot
-			.as_ref()
-			.expect("live Factory canvas requires a WorkItem snapshot");
-		let project = snapshot
-			.selected_project_summary()
-			.map(|project| project.repository_identity().as_str())
-			.unwrap_or("No active Project");
-		let ready = snapshot
-			.cards
-			.iter()
-			.filter(|card| card.state() == WorkItemState::Ready)
-			.cloned()
-			.collect::<Vec<_>>();
-		let running = snapshot
-			.cards
-			.iter()
-			.filter(|card| card.state() == WorkItemState::Running)
-			.cloned()
-			.collect::<Vec<_>>();
-		let review = snapshot
-			.cards
-			.iter()
-			.filter(|card| card.state() == WorkItemState::Review)
-			.cloned()
-			.collect::<Vec<_>>();
-		let done = snapshot
-			.cards
-			.iter()
-			.filter(|card| card.state() == WorkItemState::Done)
-			.cloned()
-			.collect::<Vec<_>>();
-		let can_mutate = snapshot.can_mutate;
-		let selected_project = snapshot.selected_project.clone();
-		let project_tabs = snapshot.projects.iter().enumerate().map(|(index, project)| {
-			let project_id = project.project_id().clone();
-			let active = selected_project.as_ref() == Some(&project_id);
-			let label = project.repository_identity().as_str().to_owned();
-			div()
-				.id(("factory-project", index))
-				.role(Role::Tab)
-				.aria_label(format!("Select Project {label}"))
-				.aria_selected(active)
-				.h(px(24.0))
-				.px_2()
-				.flex()
-				.items_center()
-				.rounded(px(6.0))
-				.border_1()
-				.border_color(if active { rgba(0xffffff24) } else { rgba(0xffffff0d) })
-				.bg(if active {
-					rgba(ui_theme::SURFACE_OVERLAY_MATERIAL)
-				} else {
-					rgba(0x00000000)
-				})
-				.text_size(px(8.5))
-				.text_color(if active { rgb(TEXT) } else { rgb(TEXT_FAINT) })
-				.cursor_pointer()
-				.on_click(cx.listener(move |surface, _, _, cx| {
-					surface.select_work_item_project(project_id.clone(), cx);
-				}))
-				.child(label)
-		});
-
-		div()
-			.id("live-work-item-factory")
-			.role(Role::Group)
-			.aria_label("Live internal Work Item factory")
-			.flex_1()
-			.min_h_0()
-			.w_full()
-			.min_w(px(FACTORY_MIN_WIDTH))
-			.flex()
-			.flex_col()
-			.bg(rgba(ui_theme::SURFACE_MATERIAL))
-			.child(
-				div()
-					.h(px(74.0))
-					.min_h(px(74.0))
-					.px_5()
-					.flex()
-					.items_center()
-					.justify_between()
-					.border_b_1()
-					.border_color(rgba(0xffffff10))
-					.child(
-						div()
-							.flex()
-							.flex_col()
-							.gap_1()
-							.child(
-								div()
-									.flex()
-									.items_center()
-									.gap_2()
-									.child(div().size(px(6.0)).rounded_full().bg(rgb(GREEN)))
-									.child(
-										div()
-											.text_size(px(13.0))
-											.font_weight(FontWeight::SEMIBOLD)
-											.child(project.to_owned()),
-									),
-							)
-							.child(
-								div()
-									.font_family("SF Mono")
-									.text_size(px(8.5))
-									.text_color(rgb(TEXT_FAINT))
-									.child(live_load_label(snapshot.load)),
-							),
-					)
-					.child(
-						div().flex().items_center().gap_2().children(project_tabs).child(
-							div()
-								.ml_2()
-								.font_family("SF Mono")
-								.text_size(px(9.0))
-								.text_color(command_color(snapshot.command, snapshot.can_mutate))
-								.child(live_command_label(snapshot.command, snapshot.can_mutate)),
-						),
-					),
-			)
-			.child(
-				div()
-					.id("factory-live-lanes")
-					.flex_1()
-					.min_h_0()
-					.p_4()
-					.flex()
-					.gap_3()
-					.child(self.work_item_intake(can_mutate, cx))
-					.child(live_lane("READY", "Queued for Codex", BLUE, ready, can_mutate, cx))
-					.child(live_lane("RUNNING", "Codex App Server", AMBER, running, can_mutate, cx))
-					.child(live_lane("REVIEW", "Human decision", GREEN, review, can_mutate, cx))
-					.child(live_lane(
-						"DONE",
-						"Accepted evidence",
-						TEXT_MUTED,
-						done,
-						can_mutate,
-						cx,
-					)),
-			)
-			.into_any_element()
-	}
-
-	fn work_item_intake(&self, can_mutate: bool, cx: &mut Context<Self>) -> AnyElement {
-		let no_project = self
-			.work_items_snapshot
-			.as_ref()
-			.is_some_and(|snapshot| snapshot.load == WorkItemsLoadState::NoProjects);
-		let available = can_mutate
-			&& self
-				.work_items_snapshot
-				.as_ref()
-				.is_some_and(|snapshot| snapshot.selected_project.is_some());
-		let panel = div()
-			.id("work-item-intake")
-			.w(px(244.0))
-			.min_w(px(244.0))
-			.p_3()
-			.flex()
-			.flex_col()
-			.gap_3()
-			.border_1()
-			.border_color(rgba(0xffffff14))
-			.rounded(px(10.0))
-			.bg(rgba(ui_theme::SURFACE_MATERIAL))
-			.child(
-				div()
-					.flex()
-					.flex_col()
-					.gap_1()
-					.child(
-						div()
-							.text_size(px(11.0))
-							.font_weight(FontWeight::SEMIBOLD)
-							.child("NEW WORK ITEM"),
-					)
-					.child(
-						div()
-							.text_size(px(9.0))
-							.text_color(rgb(TEXT_FAINT))
-							.child("One concrete Codex result"),
-					),
-			)
-			.when(no_project, |panel| {
-				panel
-					.child(div().h(px(42.0)).child(self.repository_root.clone()))
-					.child(
-						div()
-							.text_size(px(8.5))
-							.text_color(rgb(TEXT_FAINT))
-							.child("Register one canonical local Git worktree. No scan or import."),
-					)
-					.child(
-						div()
-							.id("register-project")
-							.role(Role::Button)
-							.aria_label("Register local repository as Project")
-							.h(px(34.0))
-							.flex()
-							.items_center()
-							.justify_center()
-							.rounded(px(7.0))
-							.bg(if can_mutate { rgb(TEXT) } else { rgb(SURFACE_OVERLAY) })
-							.text_size(px(10.0))
-							.font_weight(FontWeight::SEMIBOLD)
-							.text_color(if can_mutate { rgb(SURFACE) } else { rgb(TEXT_FAINT) })
-							.when(can_mutate, |button| {
-								button.cursor_pointer().hover(|style| style.opacity(0.9)).on_click(
-									cx.listener(|surface, _, window, cx| {
-										surface.register_project(window, cx);
-									}),
-								)
-							})
-							.child("REGISTER REPOSITORY"),
-					)
-			})
-			.when(!no_project, |panel| {
-				panel
-					.child(div().h(px(42.0)).child(self.work_item_title.clone()))
-					.child(div().h(px(66.0)).child(self.work_item_description.clone()))
-					.child(
-						div()
-							.id("create-work-item")
-							.role(Role::Button)
-							.aria_label("Create internal Work Item")
-							.h(px(34.0))
-							.flex()
-							.items_center()
-							.justify_center()
-							.rounded(px(7.0))
-							.bg(if available { rgb(TEXT) } else { rgb(SURFACE_OVERLAY) })
-							.text_size(px(10.0))
-							.font_weight(FontWeight::SEMIBOLD)
-							.text_color(if available { rgb(SURFACE) } else { rgb(TEXT_FAINT) })
-							.when(available, |button| {
-								button.cursor_pointer().hover(|style| style.opacity(0.9)).on_click(
-									cx.listener(|surface, _, window, cx| {
-										surface.create_work_item(window, cx);
-									}),
-								)
-							})
-							.child("CREATE"),
-					)
-			})
-			.when_some(self.work_item_status.clone(), |panel, status| {
-				panel.child(div().text_size(px(9.0)).text_color(rgb(TEXT_MUTED)).child(status))
-			});
-		panel.into_any_element()
-	}
-
-	fn plan_cell(&self, cx: &mut Context<Self>) -> AnyElement {
-		workcell(
-			"plan-cell",
-			42.0,
-			80.0,
-			274.0,
-			310.0,
-			"PLAN",
-			"[A1:D4]",
-			matches!(self.selection, FactorySelection::Brief | FactorySelection::Coordinator),
-			vec![
-				self.entity_node(
-					"goal-node",
-					35.0,
-					83.0,
-					FactorySelection::Brief,
-					None,
-					MarkerKind::Square,
-					TEXT,
-					"GOAL · Ship vNext",
-					"(Goal)",
-					cx,
-				),
-				edge_label(58.0, 145.0, "requires", TEXT_MUTED),
-				self.entity_node(
-					"coordinator-node",
-					35.0,
-					171.0,
-					FactorySelection::Coordinator,
-					Some(ConversationTarget::Coordinator),
-					MarkerKind::Diamond,
-					BLUE,
-					"COORDINATOR · Codex Lead",
-					"(bounded AgentInstance)",
-					cx,
-				),
-				self.entity_node(
-					"run-node",
-					35.0,
-					241.0,
-					FactorySelection::Brief,
-					None,
-					MarkerKind::Square,
-					TEXT,
-					"RUN · Release vNext",
-					"(Run)",
-					cx,
-				),
-			],
-		)
-	}
-
-	fn parallel_cell(&self, cx: &mut Context<Self>) -> AnyElement {
-		let branch = |id: &'static str, top: f32, children: Vec<AnyElement>| {
-			div()
-				.id(id)
-				.absolute()
-				.left(px(22.0))
-				.top(px(top))
-				.w(px(486.0))
-				.h(px(147.0))
-				.border_1()
-				.border_color(rgba(0xffffff0d))
-				.rounded(px(9.0))
-				.bg(rgba(0xffffff05))
-				.children(children)
-				.into_any_element()
-		};
-
-		workcell(
-			"parallel-cell",
-			360.0,
-			80.0,
-			530.0,
-			399.0,
-			"PARALLEL BUILD",
-			"[A3:E8]",
-			matches!(
-				self.selection,
-				FactorySelection::RuntimeWork
-					| FactorySelection::RuntimeAgent
-					| FactorySelection::GpuiWork
-					| FactorySelection::GpuiAgent
-			),
-			vec![
-				branch(
-					"runtime-branch",
-					71.0,
-					vec![
-						self.entity_node(
-							"runtime-work-node",
-							20.0,
-							20.0,
-							FactorySelection::RuntimeWork,
-							Some(ConversationTarget::RuntimeWork),
-							MarkerKind::Square,
-							BLUE,
-							"WORK · Runtime",
-							"(Work)",
-							cx,
-						),
-						edge_label(160.0, 25.0, "assigned_to", BLUE),
-						self.entity_node(
-							"runtime-agent-node",
-							248.0,
-							20.0,
-							FactorySelection::RuntimeAgent,
-							Some(ConversationTarget::RuntimeAgent),
-							MarkerKind::Diamond,
-							BLUE,
-							"CODEX INSTANCE · Codex-1",
-							"(AgentInstance)",
-							cx,
-						),
-						edge_label(40.0, 93.0, "produces", GREEN),
-						self.entity_node(
-							"runtime-account-node",
-							248.0,
-							91.0,
-							FactorySelection::RuntimeAgent,
-							Some(ConversationTarget::RuntimeAgent),
-							MarkerKind::Square,
-							BLUE,
-							"ACCOUNT · Codex-1",
-							"(Resource)",
-							cx,
-						),
-					],
-				),
-				branch(
-					"gpui-branch",
-					231.0,
-					vec![
-						self.entity_node(
-							"gpui-work-node",
-							20.0,
-							20.0,
-							FactorySelection::GpuiWork,
-							Some(ConversationTarget::GpuiWork),
-							MarkerKind::Square,
-							BLUE,
-							"WORK · GPUI",
-							"(Work)",
-							cx,
-						),
-						edge_label(160.0, 25.0, "assigned_to", BLUE),
-						self.entity_node(
-							"gpui-agent-node",
-							248.0,
-							20.0,
-							FactorySelection::GpuiAgent,
-							Some(ConversationTarget::GpuiAgent),
-							MarkerKind::Diamond,
-							BLUE,
-							"CODEX INSTANCE · Codex-2",
-							"(AgentInstance)",
-							cx,
-						),
-						edge_label(40.0, 93.0, "produces", GREEN),
-						self.entity_node(
-							"gpui-account-node",
-							248.0,
-							91.0,
-							FactorySelection::GpuiAgent,
-							Some(ConversationTarget::GpuiAgent),
-							MarkerKind::Square,
-							BLUE,
-							"ACCOUNT · Codex-2",
-							"(Resource)",
-							cx,
-						),
-					],
-				),
-			],
-		)
-	}
-
-	fn integration_cell(&self, cx: &mut Context<Self>) -> AnyElement {
-		workcell(
-			"integration-cell",
-			360.0,
-			496.0,
-			530.0,
-			214.0,
-			"INTEGRATION",
-			"[E4:H9]",
-			self.selection == FactorySelection::Artifact,
-			vec![self.entity_node(
-				"artifact-node",
-				140.0,
-				94.0,
-				FactorySelection::Artifact,
-				None,
-				MarkerKind::Square,
-				GREEN,
-				"ARTIFACT · rev-3f7c9a22",
-				"(Artifact)",
-				cx,
-			)],
-		)
-	}
-
-	fn review_cell(&self, cx: &mut Context<Self>) -> AnyElement {
-		workcell(
-			"review-cell",
-			906.0,
-			80.0,
-			218.0,
-			206.0,
-			"REVIEW",
-			"[A8:D10]",
-			self.selection == FactorySelection::Review,
-			vec![
-				self.entity_node(
-					"review-node",
-					25.0,
-					83.0,
-					FactorySelection::Review,
-					Some(ConversationTarget::Review),
-					MarkerKind::Diamond,
-					GREEN,
-					"REVIEW · Independent Codex",
-					"(Review)",
-					cx,
-				),
-				edge_label(120.0, 126.0, "Approved", GREEN),
-			],
-		)
-	}
-
-	fn release_cell(&self, cx: &mut Context<Self>) -> AnyElement {
-		let approved = self.gate == GateState::Approved;
-		let gate_color = if approved { GREEN } else { AMBER };
-		let state = if approved { "Approved" } else { "Needs decision" };
-
-		workcell(
-			"release-cell",
-			1_136.0,
-			278.0,
-			300.0,
-			378.0,
-			"RELEASE",
-			"[B11:G12]",
-			matches!(self.selection, FactorySelection::ReleaseGate | FactorySelection::Policy),
-			vec![
-				self.entity_node(
-					"release-gate-node",
-					42.0,
-					83.0,
-					FactorySelection::ReleaseGate,
-					None,
-					MarkerKind::Diamond,
-					gate_color,
-					"GATE · Release approval",
-					state,
-					cx,
-				),
-				self.entity_node(
-					"release-policy-node",
-					25.0,
-					282.0,
-					FactorySelection::Policy,
-					None,
-					MarkerKind::Square,
-					TEXT,
-					"POLICY · Release policy",
-					"(Policy)",
-					cx,
-				),
-			],
-		)
-	}
-
-	#[allow(clippy::too_many_arguments)]
-	fn entity_node(
-		&self,
-		id: &'static str,
-		left: f32,
-		top: f32,
-		selection: FactorySelection,
-		conversation: Option<ConversationTarget>,
-		marker_kind: MarkerKind,
-		color: u32,
-		title: &'static str,
-		detail: &'static str,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		let selected = self.selection == selection;
-		let (entity_type, entity_name) = title.split_once(" · ").unwrap_or((title, ""));
-		div()
-			.id(id)
-			.role(Role::Button)
-			.aria_label(format!("{title} {detail}"))
-			.absolute()
-			.left(px(left))
-			.top(px(top))
-			.max_w(px(380.0))
-			.px_2()
-			.py_1()
-			.flex()
-			.items_start()
-			.gap_2()
-			.rounded(px(7.0))
-			.cursor_pointer()
-			.when(selected, |node| {
-				node.bg(rgba(0xffffff0d)).border_1().border_color(rgba(0xffffff14))
-			})
-			.hover(|node| node.bg(rgba(0xffffff0a)))
-			.on_click(cx.listener(move |surface, _, window, cx| {
-				surface.select_entity(selection, conversation, window, cx);
-			}))
-			.child(marker(marker_kind, color, selected))
-			.child(
-				div()
-					.min_w_0()
-					.flex()
-					.flex_col()
-					.gap_1()
-					.child(
-						div()
-							.flex()
-							.items_center()
-							.gap_2()
-							.child(
-								div()
-									.font_family("SF Mono")
-									.text_size(px(8.5))
-									.text_color(rgb(color))
-									.child(entity_type),
-							)
-							.when(!entity_name.is_empty(), |row| {
-								row.child(
-									div()
-										.text_size(px(11.5))
-										.font_weight(FontWeight::MEDIUM)
-										.text_color(rgb(TEXT))
-										.child(entity_name),
-								)
-							}),
-					)
-					.child(
-						div()
-							.font_family("SF Mono")
-							.text_size(px(8.5))
-							.text_color(rgb(TEXT_FAINT))
-							.child(detail),
-					),
-			)
-			.into_any_element()
-	}
-
-	fn gate_sheet(&self, cx: &mut Context<Self>) -> AnyElement {
-		let approved = self.gate == GateState::Approved;
-		let state = if approved { "Approved" } else { "Needs decision" };
-		let state_color = if approved { GREEN } else { AMBER };
-		let action = if approved { "Release accepted" } else { "Accept release" };
-		let relation = |verb: &'static str, object: &'static str| {
-			div()
-				.h(px(22.0))
-				.flex()
-				.items_center()
-				.child(
-					div()
-						.w(px(104.0))
-						.font_family("SF Mono")
-						.text_size(px(8.5))
-						.text_color(rgb(TEXT_FAINT))
-						.child(verb),
-				)
-				.child(div().text_size(px(10.5)).text_color(rgb(TEXT_MUTED)).child(object))
-		};
-
-		div()
-			.id("release-gate-sheet")
-			.role(Role::Dialog)
-			.aria_label(format!("Release approval gate: {state}"))
-			.absolute()
-			.right(px(20.0))
-			.bottom(px(18.0))
-			.w(px(392.0))
-			.p_4()
-			.flex()
-			.flex_col()
-			.text_color(rgb(TEXT))
-			.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
-			.border_1()
-			.border_color(rgba(0xffffff1f))
-			.rounded(px(12.0))
-			.shadow(vec![
-				BoxShadow::new(px(0.0), px(18.0), Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.52 })
-					.blur_radius(px(42.0))
-					.spread_radius(px(-10.0)),
-			])
-			.child(
-				div()
-					.flex()
-					.items_center()
-					.justify_between()
-					.child(
-						div()
-							.flex()
-							.flex_col()
-							.gap_1()
-							.child(
-								div()
-									.font_family("SF Mono")
-									.text_size(px(8.5))
-									.text_color(rgb(state_color))
-									.child("GATE"),
-							)
-							.child(
-								div()
-									.text_size(px(14.0))
-									.font_weight(FontWeight::SEMIBOLD)
-									.child("Release approval"),
-							),
-					)
-					.child(
-						div()
-							.h(px(24.0))
-							.px_2()
-							.flex()
-							.items_center()
-							.gap_2()
-							.rounded_full()
-							.bg(rgba(0xffffff0a))
-							.border_1()
-							.border_color(rgba(0xffffff12))
-							.text_size(px(9.5))
-							.text_color(rgb(state_color))
-							.child(div().size(px(6.0)).rounded_full().bg(rgb(state_color)))
-							.child(state),
-					),
-			)
-			.child(
-				div()
-					.mt_3()
-					.px_3()
-					.py_2()
-					.rounded(px(8.0))
-					.bg(rgba(0x00000029))
-					.border_1()
-					.border_color(rgba(0xffffff0d))
-					.child(relation("requires", "Integrated revision"))
-					.child(relation("satisfied_by", "Independent review"))
-					.child(relation("governed_by", "Release policy")),
-			)
-			.child(
-				div()
-					.mt_3()
-					.flex()
-					.items_center()
-					.justify_between()
-					.child(
-						div()
-							.flex()
-							.items_center()
-							.gap_2()
-							.child(
-								div()
-									.font_family("SF Mono")
-									.text_size(px(8.5))
-									.text_color(rgb(TEXT_FAINT))
-									.child("EVIDENCE"),
-							)
-							.child(
-								div()
-									.px_2()
-									.py_1()
-									.rounded(px(6.0))
-									.bg(rgba(0x73ca9114))
-									.text_size(px(9.5))
-									.text_color(rgb(GREEN))
-									.child("12 checks passed"),
-							),
-					)
-					.child(
-						div()
-							.id("accept-release")
-							.role(Role::Button)
-							.aria_label(action)
-							.w(px(128.0))
-							.h(px(32.0))
-							.flex()
-							.items_center()
-							.justify_center()
-							.rounded(px(8.0))
-							.bg(rgb(state_color))
-							.text_size(px(10.0))
-							.font_weight(FontWeight::SEMIBOLD)
-							.text_color(rgb(0x17130d))
-							.cursor_pointer()
-							.when(!approved, |button| {
-								button.hover(|style| style.opacity(0.9)).on_click(cx.listener(
-									|surface, _, window, cx| {
-										surface.approve_gate(window, cx);
-									},
-								))
-							})
-							.child(action),
-					),
-			)
-			.into_any_element()
-	}
-
-	fn replay_panel(&self, cx: &mut Context<Self>) -> AnyElement {
-		let events = [
-			(ReplayMoment::Brief, 210.0, "15:42", "Goal accepted", TEXT),
-			(ReplayMoment::Parallel, 390.0, "15:48", "Parallel work\nstarted", TEXT),
-			(ReplayMoment::Integrated, 770.0, "15:55", "Integrated revision\nrev-3f7c9a22", TEXT),
-			(ReplayMoment::Checks, 932.0, "16:03", "12 checks passed", GREEN),
-			(ReplayMoment::Review, 1_088.0, "16:08", "Review approved", GREEN),
-			(
-				ReplayMoment::Gate,
-				1_238.0,
-				"16:10",
-				if self.gate == GateState::Approved {
-					"Release gate ·\nApproved"
-				} else {
-					"Release gate ·\nNeeds decision"
-				},
-				if self.gate == GateState::Approved { GREEN } else { AMBER },
-			),
-		];
-
-		let mut panel = div()
-			.id("causal-replay")
-			.role(Role::Group)
-			.aria_label("Causal replay timeline")
-			.h(px(REPLAY_HEIGHT))
-			.min_h(px(REPLAY_HEIGHT))
-			.w_full()
-			.min_w(px(FACTORY_MIN_WIDTH))
-			.relative()
-			.border_t_1()
-			.border_color(rgba(0xffffff12))
-			.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
-			.child(replay_wiring(self.gate == GateState::Approved))
-			.child(
-				div()
-					.absolute()
-					.left(px(20.0))
-					.top(px(24.0))
-					.text_size(px(11.5))
-					.font_weight(FontWeight::SEMIBOLD)
-					.child("CAUSAL REPLAY"),
-			)
-			.child(
-				div()
-					.absolute()
-					.left(px(20.0))
-					.top(px(48.0))
-					.w(px(150.0))
-					.font_family("SF Mono")
-					.text_size(px(8.5))
-					.text_color(rgb(TEXT_FAINT))
-					.child("DEMO · reconstruct exact state"),
-			)
-			.child(edge_label(278.0, 28.0, "fan_out", BLUE))
-			.child(edge_label(668.0, 26.0, "produces", GREEN))
-			.child(edge_label(832.0, 42.0, "blocks", GREEN))
-			.child(edge_label(988.0, 42.0, "reviews", GREEN))
-			.child(edge_label(1_146.0, 42.0, "blocks", GREEN))
-			.child(
-				div()
-					.absolute()
-					.left(px(476.0))
-					.top(px(22.0))
-					.font_family("SF Mono")
-					.text_size(px(8.5))
-					.text_color(rgb(TEXT_FAINT))
-					.child("Runtime · Codex-1"),
-			)
-			.child(
-				div()
-					.absolute()
-					.left(px(476.0))
-					.top(px(58.0))
-					.font_family("SF Mono")
-					.text_size(px(8.5))
-					.text_color(rgb(TEXT_FAINT))
-					.child("GPUI · Codex-2"),
-			);
-
-		for (index, (moment, x, time, label, color)) in events.into_iter().enumerate() {
-			let selected = self.replay == moment;
-			panel = panel.child(
-				div()
-					.id(("replay-event", index))
-					.role(Role::Button)
-					.aria_label(format!("{time} {}", label.replace('\n', " ")))
-					.absolute()
-					.left(px(x - 34.0))
-					.top(px(37.0))
-					.w(px(132.0))
-					.flex()
-					.flex_col()
-					.items_center()
-					.gap_1()
-					.text_center()
-					.text_size(px(9.5))
-					.cursor_pointer()
-					.on_click(cx.listener(move |surface, _, _, cx| {
-						surface.select_replay(moment, cx);
-					}))
-					.child(
-						div()
-							.size(px(if selected { 14.0 } else { 11.0 }))
-							.border_1()
-							.border_color(rgb(color))
-							.rounded(px(3.0))
-							.when(selected, |marker| marker.bg(rgb(color))),
-					)
-					.child(
-						div()
-							.font_family("SF Mono")
-							.text_size(px(8.5))
-							.text_color(rgb(color))
-							.child(time),
-					)
-					.child(stacked_text(label, color)),
-			);
-		}
-
-		panel
-			.child(
-				div()
-					.absolute()
-					.right(px(35.0))
-					.top(px(49.0))
-					.size(px(10.0))
-					.border_1()
-					.border_color(rgb(LINE_MUTED))
-					.rounded(px(3.0)),
-			)
-			.child(
-				div()
-					.absolute()
-					.right(px(26.0))
-					.top(px(72.0))
-					.font_family("SF Mono")
-					.text_size(px(8.5))
-					.text_color(rgb(TEXT_FAINT))
-					.child("NOW"),
-			)
-			.into_any_element()
-	}
-
 	fn program_timeline(&self, cx: &mut Context<Self>) -> AnyElement {
 		let Some(cycle) =
 			self.programs_snapshot.as_ref().and_then(|snapshot| snapshot.cycle.as_ref())
@@ -3124,621 +1649,42 @@ impl FactorySurface {
 			)
 			.into_any_element()
 	}
-
-	fn launcher(&self, cx: &mut Context<Self>) -> AnyElement {
-		let route_item = |id: &'static str,
-		                  label: &'static str,
-		                  detail: &'static str,
-		                  route: FactoryRoute,
-		                  cx: &mut Context<Self>| {
-			div()
-				.id(id)
-				.role(Role::Button)
-				.aria_label(label)
-				.px_4()
-				.py_3()
-				.flex()
-				.flex_col()
-				.gap_1()
-				.rounded(px(7.0))
-				.border_1()
-				.border_color(rgba(0x00000000))
-				.cursor_pointer()
-				.hover(|style| style.bg(rgb(0x1a232a)))
-				.active(|style| style.bg(rgba(0xffffff18)).opacity(0.82))
-				.focus_visible(|style| style.border_color(rgb(BLUE)))
-				.on_click(cx.listener(move |surface, _, _, cx| {
-					cx.emit(FactoryEvent::OpenRoute(route));
-					surface.show_launcher = false;
-					cx.notify();
-				}))
-				.child(label)
-				.child(div().text_size(px(10.5)).text_color(rgb(TEXT_MUTED)).child(detail))
-		};
-
-		div()
-			.id("factory-launcher")
-			.role(Role::Dialog)
-			.aria_label("Decodex workspace launcher")
-			.absolute()
-			.right(px(20.0))
-			.top(px(58.0))
-			.w(px(272.0))
-			.py_2()
-			.border_1()
-			.border_color(rgb(LINE))
-			.rounded_md()
-			.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
-			.text_size(px(12.0))
-			.child(
-				div()
-					.px_4()
-					.py_2()
-					.text_size(px(10.0))
-					.text_color(rgb(TEXT_MUTED))
-					.child("WORKSPACES"),
-			)
-			.child(route_item(
-				"launcher-quick-tasks",
-				"Quick Tasks",
-				"Live free-form Codex conversations",
-				FactoryRoute::QuickTasks,
-				cx,
-			))
-			.child(route_item(
-				"launcher-health",
-				"System Health",
-				"Daemon and capability readiness",
-				FactoryRoute::Health,
-				cx,
-			))
-			.child(route_item(
-				"launcher-accounts",
-				"Accounts",
-				"Multi-account readiness and desktop controls",
-				FactoryRoute::Accounts,
-				cx,
-			))
-			.child(route_item(
-				"launcher-settings",
-				"Settings",
-				"Desktop surfaces and product preferences",
-				FactoryRoute::Settings,
-				cx,
-			))
-			.child(
-				div()
-					.px_4()
-					.py_3()
-					.border_t_1()
-					.border_color(rgb(LINE_MUTED))
-					.child("Account management")
-					.child(
-						div()
-							.mt_1()
-							.text_size(px(10.5))
-							.text_color(rgb(TEXT_MUTED))
-							.child("Available in the Accounts destination in Decodex"),
-					),
-			)
-			.into_any_element()
-	}
-
-	fn conversation_drawer(
-		&self,
-		target: ConversationTarget,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		let timeline_visible = self.timeline_visible
-			&& (self.mode != FactoryMode::Operate || self.work_items_snapshot.is_none());
-		let status = self
-			.composer_status
-			.as_ref()
-			.map_or_else(|| "Enter sends through the live Quick Task path.".into(), Clone::clone);
-
-		div()
-			.id("factory-conversation-drawer")
-			.role(Role::Dialog)
-			.aria_label(format!("Conversation with {}", target.title()))
-			.absolute()
-			.right(px(0.0))
-			.top(px(56.0))
-			.bottom(px(if timeline_visible { REPLAY_HEIGHT + 12.0 } else { 12.0 }))
-			.w(px(420.0))
-			.flex()
-			.flex_col()
-			.border_l_1()
-			.border_color(rgb(LINE))
-			.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
-			.child(
-				div()
-					.h(px(84.0))
-					.min_h(px(84.0))
-					.px_5()
-					.flex()
-					.items_center()
-					.justify_between()
-					.border_b_1()
-					.border_color(rgb(LINE_MUTED))
-					.child(
-						div()
-							.flex()
-							.flex_col()
-							.gap_2()
-							.child(div().text_size(px(11.0)).text_color(rgb(TEXT_MUTED)).child("CONVERSATION"))
-							.child(div().text_size(px(14.0)).child(target.title()))
-							.child(
-								div()
-									.text_size(px(10.5))
-									.text_color(rgb(BLUE))
-									.child(format!("{} · {}", target.context(), target.account())),
-							),
-					)
-					.child(
-						div()
-							.id("close-factory-conversation")
-							.role(Role::Button)
-							.aria_label("Close conversation")
-							.px_2()
-							.py_1()
-							.text_size(px(10.0))
-							.text_color(rgb(TEXT_MUTED))
-							.cursor_pointer()
-							.on_click(cx.listener(|surface, _, _, cx| {
-								surface.conversation = None;
-								surface.mode = FactoryMode::Operate;
-								cx.notify();
-							}))
-							.child("CLOSE"),
-					),
-			)
-			.child(
-				div()
-					.flex_1()
-					.min_h_0()
-					.px_5()
-					.py_5()
-					.flex()
-					.flex_col()
-					.gap_4()
-					.child(message_block(
-						"COORDINATOR",
-						"Keep this thread scoped to the selected work and its exact revision.",
-						TEXT_MUTED,
-					))
-					.child(message_block(
-						"CODEX",
-						match target {
-							ConversationTarget::GpuiWork | ConversationTarget::GpuiAgent =>
-								"The native Operate surface is isolated from runtime authority. I can explain the GPUI branch or start a live implementation task.",
-							ConversationTarget::RuntimeWork | ConversationTarget::RuntimeAgent =>
-								"The runtime branch owns exact process, attempt and recovery evidence. Ask about one boundary or start a live task.",
-							ConversationTarget::Coordinator =>
-								"I can propose decomposition and typed coordination commands. Decodex remains the scheduler and state authority.",
-							ConversationTarget::Review =>
-								"Independent review is bound to the integrated revision and evidence set. Ask about a finding or acceptance risk.",
-						},
-						TEXT,
-					)),
-			)
-			.child(
-				div()
-					.p_4()
-					.flex()
-					.flex_col()
-					.gap_3()
-					.border_t_1()
-					.border_color(rgb(LINE_MUTED))
-					.child(div().h(px(44.0)).child(self.composer.clone()))
-					.child(
-						div()
-							.flex()
-							.items_center()
-							.justify_between()
-							.child(div().text_size(px(10.0)).text_color(rgb(TEXT_MUTED)).child(status))
-							.child(
-								div()
-									.id("send-factory-conversation")
-									.role(Role::Button)
-									.aria_label("Send to live Codex Quick Task")
-									.px_3()
-									.py_2()
-									.border_1()
-									.border_color(rgb(BLUE))
-									.rounded_sm()
-									.text_size(px(10.5))
-									.text_color(rgb(BLUE))
-									.cursor_pointer()
-									.hover(|style| style.bg(rgb(0x14263a)))
-									.on_click(cx.listener(|surface, _, window, cx| {
-										surface.start_live_conversation(window, cx);
-									}))
-									.child("SEND TO CODEX"),
-							),
-					),
-			)
-			.into_any_element()
-	}
 }
 
 impl Render for FactorySurface {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		let program_timeline = self.programs_snapshot.is_some();
-		let timeline_available = if program_timeline {
-			self.programs_snapshot.as_ref().and_then(|snapshot| snapshot.cycle.as_ref()).is_some()
-		} else {
-			self.mode != FactoryMode::Operate || self.work_items_snapshot.is_none()
-		};
-		let operating_deck = div()
-			.id("factory-operating-deck")
-			.m_3()
-			.flex_1()
-			.min_w_0()
-			.min_h_0()
-			.flex()
-			.flex_col()
-			.overflow_hidden()
-			.rounded(px(14.0))
-			.border_1()
-			.border_color(rgba(0xffffff14))
-			.bg(rgba(ui_theme::SURFACE_MATERIAL))
-			.shadow(vec![
-				BoxShadow::new(px(0.0), px(18.0), Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.46 })
-					.blur_radius(px(42.0))
-					.spread_radius(px(-12.0)),
-			])
-			.child(self.embedded_toolbar(cx))
-			.child(
-				div()
-					.id("factory-canvas-scroll")
-					.flex_1()
-					.min_h_0()
-					.flex()
-					.flex_col()
-					.overflow_x_scroll()
-					.child(self.factory_canvas(cx)),
-			)
-			.when(timeline_available && self.timeline_visible, |deck| {
-				deck.child(
-					div()
-						.id("factory-timeline-scroll")
-						.w_full()
-						.overflow_x_scroll()
-						.child(if program_timeline {
-							self.program_timeline(cx)
-						} else {
-							self.replay_panel(cx)
-						}),
-				)
-			});
-
-		let mut root = div()
-			.id("factory-surface")
-			.role(Role::Main)
-			.aria_label("Decodex Codex factory control room")
-			.on_action(cx.listener(Self::toggle_launcher))
-			.on_action(cx.listener(Self::close_overlay))
-			.on_action(cx.listener(Self::submit_conversation))
-			.size_full()
-			.min_w_0()
-			.min_h_0()
-			.relative()
-			.flex()
-			.flex_col()
-			.overflow_hidden()
-			.bg(rgba(0x00000000))
-			.text_color(rgb(TEXT))
-			.font_family(".SystemUIFont")
-			.child(operating_deck);
-
-		if self.show_launcher {
-			root = root.child(self.launcher(cx));
-		}
-		if let Some(target) = self.conversation {
-			root = root.child(self.conversation_drawer(target, cx));
-		}
-
-		root
-	}
-}
-
-fn live_lane(
-	title: &'static str,
-	detail: &'static str,
-	color: u32,
-	cards: Vec<WorkItemBoardCard>,
-	can_mutate: bool,
-	cx: &mut Context<FactorySurface>,
-) -> AnyElement {
-	let count = cards.len();
-	div()
-		.id(format!("work-item-lane/{title}"))
-		.flex_1()
-		.min_w(px(172.0))
-		.p_3()
-		.flex()
-		.flex_col()
-		.gap_3()
-		.border_1()
-		.border_color(rgba(0xffffff14))
-		.rounded(px(10.0))
-		.bg(rgba(ui_theme::SURFACE_MATERIAL))
-		.child(
+		let body = if self.programs_snapshot.is_some() {
 			div()
-				.flex()
-				.items_start()
-				.justify_between()
-				.child(
-					div()
-						.flex()
-						.flex_col()
-						.gap_1()
-						.child(
-							div()
-								.flex()
-								.items_center()
-								.gap_2()
-								.child(div().size(px(6.0)).rounded_full().bg(rgb(color)))
-								.child(
-									div()
-										.text_size(px(10.0))
-										.font_weight(FontWeight::SEMIBOLD)
-										.text_color(rgb(color))
-										.child(title),
-								),
-						)
-						.child(div().text_size(px(8.5)).text_color(rgb(TEXT_FAINT)).child(detail)),
-				)
-				.child(
-					div()
-						.font_family("SF Mono")
-						.text_size(px(9.0))
-						.text_color(rgb(TEXT_FAINT))
-						.child(count.to_string()),
-				),
-		)
-		.child(
-			div()
-				.id(format!("work-item-lane-scroll/{title}"))
 				.flex_1()
 				.min_h_0()
 				.flex()
 				.flex_col()
-				.gap_2()
-				.overflow_y_scroll()
-				.when(cards.is_empty(), |lane| {
-					lane.child(
-						div()
-							.mt_2()
-							.p_3()
-							.border_1()
-							.border_color(rgba(0xffffff0d))
-							.rounded(px(8.0))
-							.text_size(px(9.0))
-							.text_color(rgb(TEXT_FAINT))
-							.child("No work in this station"),
-					)
-				})
-				.children(
-					cards.into_iter().map(|card| live_work_item_card(card, color, can_mutate, cx)),
-				),
-		)
-		.into_any_element()
-}
-
-fn live_work_item_card(
-	card: WorkItemBoardCard,
-	color: u32,
-	can_mutate: bool,
-	cx: &mut Context<FactorySurface>,
-) -> AnyElement {
-	let title = card.title().as_str().to_owned();
-	let description = card.description().as_str().to_owned();
-	let revision = card.revision().0;
-	let conversation_id = card.conversation_id().cloned();
-	let state = card.state();
-	let mutation_action = match state {
-		WorkItemState::Ready => Some("START CODEX"),
-		WorkItemState::Review => Some("ACCEPT"),
-		_ => None,
-	};
-	let open_action = match state {
-		WorkItemState::Running => Some("OPEN"),
-		WorkItemState::Review => Some("REVIEW"),
-		WorkItemState::Done => Some("RESULT"),
-		_ => None,
-	};
-	let button_card = card.clone();
-	let open_conversation = conversation_id.clone();
-	div()
-		.id(format!("work-item-card/{}", card.work_item_id().as_str()))
-		.p_3()
-		.flex()
-		.flex_col()
-		.gap_2()
-		.border_1()
-		.border_color(rgba(0xffffff16))
-		.rounded(px(8.0))
-		.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL))
-		.child(
+				.child(self.program_toolbar(cx))
+				.child(self.program_factory_canvas(cx))
+				.child(self.program_timeline(cx))
+				.into_any_element()
+		} else {
 			div()
-				.flex()
-				.items_start()
-				.gap_2()
-				.child(div().mt_1().size(px(7.0)).min_w(px(7.0)).bg(rgb(color)))
-				.child(
-					div()
-						.flex_1()
-						.text_size(px(10.5))
-						.font_weight(FontWeight::MEDIUM)
-						.text_color(rgb(TEXT))
-						.child(title),
-				),
-		)
-		.child(
-			div()
-				.max_h(px(48.0))
-				.overflow_hidden()
-				.text_size(px(9.0))
-				.text_color(rgb(TEXT_MUTED))
-				.child(description),
-		)
-		.child(
-			div()
+				.flex_1()
 				.flex()
 				.items_center()
-				.justify_between()
-				.child(
-					div()
-						.font_family("SF Mono")
-						.text_size(px(8.0))
-						.text_color(rgb(TEXT_FAINT))
-						.child(format!("rev {revision}")),
-				)
-				.child(
-					div()
-						.flex()
-						.items_center()
-						.gap_1()
-						.when_some(
-							open_action.zip(open_conversation),
-							|actions, (label, conversation_id)| {
-								actions.child(
-									div()
-										.id(format!(
-											"work-item-open/{}",
-											button_card.work_item_id().as_str()
-										))
-										.role(Role::Button)
-										.aria_label(format!("Open Work Item {label}"))
-										.px_2()
-										.h(px(25.0))
-										.flex()
-										.items_center()
-										.rounded(px(6.0))
-										.border_1()
-										.border_color(rgb(LINE_MUTED))
-										.text_size(px(8.0))
-										.text_color(rgb(TEXT_MUTED))
-										.cursor_pointer()
-										.hover(|style| {
-											style.bg(rgba(0xffffff0d)).text_color(rgb(TEXT))
-										})
-										.on_click(cx.listener(move |_, _, _, cx| {
-											cx.emit(FactoryEvent::OpenWorkItemConversation {
-												conversation_id: conversation_id.clone(),
-											});
-										}))
-										.child(label),
-								)
-							},
-						)
-						.when_some(mutation_action, |actions, action| {
-							actions.child(
-								div()
-									.id(format!(
-										"work-item-action/{}",
-										button_card.work_item_id().as_str()
-									))
-									.role(Role::Button)
-									.aria_label(action)
-									.px_2()
-									.h(px(25.0))
-									.flex()
-									.items_center()
-									.rounded(px(6.0))
-									.border_1()
-									.border_color(if can_mutate {
-										rgb(color)
-									} else {
-										rgb(LINE_MUTED)
-									})
-									.text_size(px(8.0))
-									.text_color(if can_mutate {
-										rgb(color)
-									} else {
-										rgb(TEXT_FAINT)
-									})
-									.when(can_mutate, |button| {
-										button
-											.cursor_pointer()
-											.hover(|style| style.bg(rgba(0xffffff0d)))
-											.on_click(cx.listener(move |surface, _, _, cx| {
-												match state {
-													WorkItemState::Ready => {
-														surface.start_work_item(
-															button_card.clone(),
-															cx,
-														);
-													},
-													WorkItemState::Review => {
-														surface.accept_work_item(
-															button_card.clone(),
-															cx,
-														);
-													},
-													_ => {},
-												}
-											}))
-									})
-									.child(action),
-							)
-						}),
-				),
-		)
-		.into_any_element()
-}
-
-const fn live_load_label(load: WorkItemsLoadState) -> &'static str {
-	match load {
-		WorkItemsLoadState::NeverRequested => "AUTHORITY · waiting",
-		WorkItemsLoadState::LoadingProjects => "AUTHORITY · loading projects",
-		WorkItemsLoadState::LoadingBoard => "AUTHORITY · loading work items",
-		WorkItemsLoadState::Ready => "PRODUCT STORE · current",
-		WorkItemsLoadState::NoProjects => "NO ACTIVE PROJECT · register one project first",
-		WorkItemsLoadState::Offline => "AUTHORITY · offline",
-		WorkItemsLoadState::Unavailable => "AUTHORITY · unavailable",
-		WorkItemsLoadState::Refused => "AUTHORITY · refused unsafe projection",
-	}
-}
-
-const fn live_command_label(command: WorkItemCommandState, can_mutate: bool) -> &'static str {
-	if !can_mutate && matches!(command, WorkItemCommandState::Idle | WorkItemCommandState::Accepted)
-	{
-		return "LOCKED";
-	}
-	match command {
-		WorkItemCommandState::Idle => "READY",
-		WorkItemCommandState::Sending => "SENDING",
-		WorkItemCommandState::AwaitingResult => "AWAITING COMMIT",
-		WorkItemCommandState::Accepted => "COMMITTED",
-		WorkItemCommandState::OutcomeUnknown => "READBACK REQUIRED",
-		WorkItemCommandState::Refused => "REFUSED",
-	}
-}
-
-fn command_color(command: WorkItemCommandState, can_mutate: bool) -> gpui::Rgba {
-	if !can_mutate && matches!(command, WorkItemCommandState::Idle | WorkItemCommandState::Accepted)
-	{
-		return rgb(TEXT_FAINT);
-	}
-	rgb(match command {
-		WorkItemCommandState::Idle | WorkItemCommandState::Accepted => GREEN,
-		WorkItemCommandState::Sending | WorkItemCommandState::AwaitingResult => AMBER,
-		WorkItemCommandState::OutcomeUnknown | WorkItemCommandState::Refused => 0xef6b73,
-	})
-}
-
-const fn work_item_error_label(error: WorkItemInputError) -> &'static str {
-	match error {
-		WorkItemInputError::Offline => "Factory authority is offline.",
-		WorkItemInputError::Busy => "Wait for the current Work Item command.",
-		WorkItemInputError::NoProject => "No active Project is selected.",
-		WorkItemInputError::InvalidTitle => "Enter a short concrete title.",
-		WorkItemInputError::InvalidDescription => "Enter a concrete description within the limit.",
-		WorkItemInputError::InvalidRepository => "Enter one normalized absolute local Git path.",
-		WorkItemInputError::InvalidState => "The Work Item is not in the required lifecycle state.",
-		WorkItemInputError::IdentityUnavailable => "A command identity could not be created.",
+				.justify_center()
+				.text_size(px(11.0))
+				.text_color(rgb(TEXT_MUTED))
+				.child("Program authority is not connected.")
+				.into_any_element()
+		};
+		div()
+			.id("adaptive-program-factory")
+			.role(Role::Main)
+			.aria_label("Adaptive Program factory")
+			.size_full()
+			.min_w(px(FACTORY_MIN_WIDTH))
+			.flex()
+			.flex_col()
+			.bg(rgba(ui_theme::SURFACE_MATERIAL))
+			.text_color(rgb(TEXT))
+			.child(body)
 	}
 }
 
@@ -3754,9 +1700,8 @@ const fn program_error_label(error: ProgramInputError) -> &'static str {
 	match error {
 		ProgramInputError::Offline => "Program authority is offline.",
 		ProgramInputError::Busy => "Wait for the current Program operation.",
-		ProgramInputError::InvalidDraft => {
-			"Complete every field with bounded credential-free text."
-		},
+		ProgramInputError::InvalidDraft =>
+			"Complete every field with bounded credential-free text.",
 		ProgramInputError::NoSelection => "Select one Program first.",
 		ProgramInputError::IdentityUnavailable => "A stable Program identity could not be created.",
 	}
@@ -3991,363 +1936,6 @@ const fn node_kind_label(kind: ProgramNodeKind) -> &'static str {
 	}
 }
 
-#[derive(Clone, Copy)]
-enum MarkerKind {
-	Square,
-	Diamond,
-}
-
-fn marker(kind: MarkerKind, color: u32, selected: bool) -> AnyElement {
-	match kind {
-		MarkerKind::Square => div()
-			.mt_1()
-			.size(px(13.0))
-			.min_w(px(13.0))
-			.border_1()
-			.border_color(rgb(color))
-			.when(selected, |marker| marker.bg(rgb(color)))
-			.into_any_element(),
-		MarkerKind::Diamond => canvas(
-			|_, _, _| (),
-			move |bounds, _, window, _| {
-				let center = point(bounds.origin.x + px(7.0), bounds.origin.y + px(7.0));
-				let mut builder =
-					if selected { PathBuilder::fill() } else { PathBuilder::stroke(px(1.4)) };
-				builder.move_to(point(center.x, center.y - px(6.0)));
-				builder.line_to(point(center.x + px(6.0), center.y));
-				builder.line_to(point(center.x, center.y + px(6.0)));
-				builder.line_to(point(center.x - px(6.0), center.y));
-				builder.close();
-				if let Ok(path) = builder.build() {
-					window.paint_path(path, rgb(color));
-				}
-			},
-		)
-		.mt_1()
-		.size(px(14.0))
-		.min_w(px(14.0))
-		.into_any_element(),
-	}
-}
-
-#[allow(clippy::too_many_arguments)]
-fn workcell(
-	id: &'static str,
-	left: f32,
-	top: f32,
-	width: f32,
-	height: f32,
-	title: &'static str,
-	coordinates: &'static str,
-	active: bool,
-	children: Vec<AnyElement>,
-) -> AnyElement {
-	div()
-		.id(id)
-		.role(Role::Group)
-		.aria_label(format!("{title} workcell {coordinates}"))
-		.absolute()
-		.left(px(left))
-		.top(px(top))
-		.w(px(width))
-		.h(px(height))
-		.border_1()
-		.border_color(if active { rgba(0xffffff26) } else { rgba(0xffffff12) })
-		.rounded(px(11.0))
-		.bg(if active {
-			rgba(ui_theme::SURFACE_RAISED_MATERIAL)
-		} else {
-			rgba(ui_theme::SURFACE_MATERIAL)
-		})
-		.when(active, |cell| {
-			cell.shadow(vec![
-				BoxShadow::new(px(0.0), px(8.0), Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.28 })
-					.blur_radius(px(24.0))
-					.spread_radius(px(-10.0)),
-			])
-		})
-		.child(
-			div()
-				.absolute()
-				.left(px(16.0))
-				.top(px(15.0))
-				.flex()
-				.items_center()
-				.gap_2()
-				.child(
-					div()
-						.text_size(px(12.0))
-						.font_weight(FontWeight::SEMIBOLD)
-						.text_color(if active { rgb(TEXT) } else { rgb(TEXT_MUTED) })
-						.child(title),
-				)
-				.child(
-					div()
-						.font_family("SF Mono")
-						.text_size(px(8.0))
-						.text_color(rgb(TEXT_FAINT))
-						.child(coordinates),
-				),
-		)
-		.children(children)
-		.into_any_element()
-}
-
-fn edge_label(left: f32, top: f32, label: &'static str, color: u32) -> AnyElement {
-	div()
-		.absolute()
-		.left(px(left))
-		.top(px(top))
-		.font_family("SF Mono")
-		.text_size(px(8.0))
-		.text_color(rgb(color))
-		.child(label)
-		.into_any_element()
-}
-
-fn message_block(author: &'static str, message: &'static str, color: u32) -> AnyElement {
-	div()
-		.p_4()
-		.flex()
-		.flex_col()
-		.gap_2()
-		.border_1()
-		.border_color(rgb(LINE_MUTED))
-		.rounded_sm()
-		.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL))
-		.child(div().text_size(px(9.5)).text_color(rgb(TEXT_MUTED)).child(author))
-		.child(div().text_size(px(11.5)).text_color(rgb(color)).child(message))
-		.into_any_element()
-}
-
-fn stacked_text(label: &'static str, color: u32) -> AnyElement {
-	div()
-		.flex()
-		.flex_col()
-		.items_center()
-		.text_color(rgb(color))
-		.children(label.lines().map(|line| div().child(line)))
-		.into_any_element()
-}
-
-fn canvas_context() -> AnyElement {
-	div()
-		.absolute()
-		.top(px(16.0))
-		.left(px(20.0))
-		.right(px(20.0))
-		.flex()
-		.items_start()
-		.justify_between()
-		.child(
-			div()
-				.flex()
-				.flex_col()
-				.gap_1()
-				.child(
-					div()
-						.flex()
-						.items_center()
-						.gap_2()
-						.child(div().size(px(6.0)).rounded_full().bg(rgb(BLUE)))
-						.child(
-							div()
-								.text_size(px(12.0))
-								.font_weight(FontWeight::SEMIBOLD)
-								.child("Release vNext"),
-						),
-				)
-				.child(
-					div()
-						.font_family("SF Mono")
-						.text_size(px(8.0))
-						.text_color(rgb(TEXT_FAINT))
-						.child("DETERMINISTIC GRAPH · 12 ENTITIES · 16 RELATIONS"),
-				),
-		)
-		.child(
-			div()
-				.pt_1()
-				.font_family("SF Mono")
-				.text_size(px(8.0))
-				.text_color(rgb(TEXT_FAINT))
-				.child("CODEX FACTORY / OPERATE"),
-		)
-		.into_any_element()
-}
-
-fn factory_wiring(gate_approved: bool) -> AnyElement {
-	canvas(
-		|_, _, _| (),
-		move |bounds, _, window, _| {
-			// Plan semantics and hand-off into the first parallel work branch.
-			paint_polyline(window, bounds, &[(92.0, 181.0), (92.0, 199.0)], LINE, true);
-			paint_polyline(window, bounds, &[(92.0, 268.0), (92.0, 326.0)], LINE, true);
-			paint_polyline(
-				window,
-				bounds,
-				&[(316.0, 264.0), (334.0, 264.0), (334.0, 190.0), (402.0, 190.0)],
-				BLUE,
-				true,
-			);
-			paint_arrow(window, bounds, (392.0, 190.0), (402.0, 190.0), BLUE);
-
-			// Typed assignment and account relations inside both parallel branches.
-			paint_polyline(window, bounds, &[(520.0, 190.0), (632.0, 190.0)], BLUE, false);
-			paint_arrow(window, bounds, (622.0, 190.0), (632.0, 190.0), BLUE);
-			paint_polyline(window, bounds, &[(657.0, 214.0), (657.0, 254.0)], BLUE, true);
-			paint_polyline(window, bounds, &[(520.0, 350.0), (632.0, 350.0)], BLUE, false);
-			paint_arrow(window, bounds, (622.0, 350.0), (632.0, 350.0), BLUE);
-			paint_polyline(window, bounds, &[(657.0, 374.0), (657.0, 414.0)], BLUE, true);
-
-			// Both work branches produce one integrated revision.
-			paint_polyline(
-				window,
-				bounds,
-				&[(418.0, 208.0), (418.0, 270.0), (498.0, 270.0), (498.0, 468.0)],
-				GREEN,
-				true,
-			);
-			paint_polyline(
-				window,
-				bounds,
-				&[(418.0, 368.0), (418.0, 430.0), (498.0, 430.0), (498.0, 468.0)],
-				GREEN,
-				true,
-			);
-			paint_polyline(
-				window,
-				bounds,
-				&[(498.0, 468.0), (520.0, 468.0), (520.0, 591.0)],
-				GREEN,
-				false,
-			);
-			paint_arrow(window, bounds, (520.0, 581.0), (520.0, 591.0), GREEN);
-
-			// Integrated evidence is independently reviewed and also satisfies release policy.
-			paint_polyline(
-				window,
-				bounds,
-				&[(780.0, 606.0), (1_008.0, 606.0), (1_008.0, 296.0), (1_008.0, 286.0)],
-				LINE,
-				true,
-			);
-			paint_arrow(window, bounds, (1_008.0, 296.0), (1_008.0, 286.0), LINE);
-			paint_polyline(
-				window,
-				bounds,
-				&[(780.0, 606.0), (1_030.0, 606.0), (1_030.0, 576.0), (1_157.0, 576.0)],
-				LINE,
-				true,
-			);
-			paint_arrow(window, bounds, (1_147.0, 576.0), (1_157.0, 576.0), LINE);
-
-			// Review and policy converge on the release gate, which anchors causal replay.
-			paint_polyline(
-				window,
-				bounds,
-				&[(1_124.0, 190.0), (1_194.0, 190.0), (1_194.0, 362.0)],
-				GREEN,
-				true,
-			);
-			paint_arrow(window, bounds, (1_194.0, 352.0), (1_194.0, 362.0), GREEN);
-			paint_polyline(window, bounds, &[(1_194.0, 560.0), (1_194.0, 410.0)], LINE, true);
-			paint_arrow(window, bounds, (1_194.0, 420.0), (1_194.0, 410.0), LINE);
-			paint_polyline(
-				window,
-				bounds,
-				&[(1_204.0, 376.0), (1_238.0, 376.0), (1_238.0, 900.0)],
-				if gate_approved { GREEN } else { AMBER },
-				false,
-			);
-		},
-	)
-	.absolute()
-	.size_full()
-	.into_any_element()
-}
-
-fn replay_wiring(gate_approved: bool) -> AnyElement {
-	canvas(
-		|_, _, _| (),
-		move |bounds, _, window, _| {
-			paint_polyline(window, bounds, &[(210.0, 54.0), (390.0, 54.0)], LINE, true);
-			paint_polyline(
-				window,
-				bounds,
-				&[(390.0, 54.0), (480.0, 29.0), (674.0, 29.0), (770.0, 54.0)],
-				BLUE,
-				false,
-			);
-			paint_polyline(
-				window,
-				bounds,
-				&[(390.0, 54.0), (480.0, 66.0), (674.0, 66.0), (770.0, 54.0)],
-				BLUE,
-				false,
-			);
-			paint_polyline(window, bounds, &[(770.0, 54.0), (1_088.0, 54.0)], GREEN, true);
-			paint_polyline(window, bounds, &[(1_088.0, 54.0), (1_430.0, 54.0)], LINE, true);
-			paint_polyline(
-				window,
-				bounds,
-				&[(1_238.0, 0.0), (1_238.0, 54.0)],
-				if gate_approved { GREEN } else { AMBER },
-				false,
-			);
-		},
-	)
-	.absolute()
-	.size_full()
-	.into_any_element()
-}
-
-fn paint_polyline(
-	window: &mut Window,
-	bounds: Bounds<Pixels>,
-	points: &[(f32, f32)],
-	color: u32,
-	dashed: bool,
-) {
-	let mut builder = PathBuilder::stroke(px(1.0));
-	if dashed {
-		builder = builder.dash_array(&[px(5.0), px(4.0)]);
-	}
-	if let Some((x, y)) = points.first().copied() {
-		builder.move_to(point(bounds.origin.x + px(x), bounds.origin.y + px(y)));
-		for (x, y) in points.iter().copied().skip(1) {
-			builder.line_to(point(bounds.origin.x + px(x), bounds.origin.y + px(y)));
-		}
-		if let Ok(path) = builder.build() {
-			window.paint_path(path, rgb(color));
-		}
-	}
-}
-
-fn paint_arrow(
-	window: &mut Window,
-	bounds: Bounds<Pixels>,
-	from: (f32, f32),
-	to: (f32, f32),
-	color: u32,
-) {
-	let mut builder = PathBuilder::stroke(px(1.0));
-	let (fx, fy) = from;
-	let (tx, ty) = to;
-	builder.move_to(point(bounds.origin.x + px(fx), bounds.origin.y + px(fy)));
-	builder.line_to(point(bounds.origin.x + px(tx), bounds.origin.y + px(ty)));
-	let direction = if ty >= fy { 1.0 } else { -1.0 };
-	builder.move_to(point(bounds.origin.x + px(tx), bounds.origin.y + px(ty)));
-	builder
-		.line_to(point(bounds.origin.x + px(tx - 4.0), bounds.origin.y + px(ty - 5.0 * direction)));
-	builder.move_to(point(bounds.origin.x + px(tx), bounds.origin.y + px(ty)));
-	builder
-		.line_to(point(bounds.origin.x + px(tx + 4.0), bounds.origin.y + px(ty - 5.0 * direction)));
-	if let Ok(path) = builder.build() {
-		window.paint_path(path, rgb(color));
-	}
-}
-
 pub(crate) fn app_icon_path() -> PathBuf {
 	let packaged = std::env::current_exe()
 		.ok()
@@ -4359,133 +1947,4 @@ pub(crate) fn app_icon_path() -> PathBuf {
 		PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 			.join("../../assets/app-icon/generated/app-icon-flat.png")
 	})
-}
-
-#[cfg(test)]
-mod tests {
-	use gpui::{TestAppContext, VisualTestContext, size};
-
-	use super::*;
-	use crate::composer_input;
-
-	fn open_factory(
-		cx: &mut TestAppContext,
-	) -> (gpui::Entity<FactorySurface>, &mut VisualTestContext) {
-		cx.update(|cx| {
-			composer_input::bind_keys(cx);
-			bind_keys(cx);
-		});
-		cx.add_window_view(|_, cx| FactorySurface::new(cx))
-	}
-
-	#[gpui::test]
-	fn default_projection_matches_the_selected_gate_state(cx: &mut TestAppContext) {
-		let (surface, visual) = open_factory(cx);
-		let state = surface.read_with(visual, |surface, _| {
-			(surface.mode, surface.selection, surface.replay, surface.gate, surface.conversation)
-		});
-		assert_eq!(
-			state,
-			(
-				FactoryMode::Operate,
-				FactorySelection::ReleaseGate,
-				ReplayMoment::Gate,
-				GateState::NeedsDecision,
-				None,
-			)
-		);
-	}
-
-	#[gpui::test]
-	fn entity_conversation_and_gate_transitions_are_bounded(cx: &mut TestAppContext) {
-		let (surface, visual) = open_factory(cx);
-		surface.update(visual, |surface, cx| {
-			surface.selection = FactorySelection::GpuiWork;
-			surface.conversation = Some(ConversationTarget::GpuiWork);
-			surface.mode = FactoryMode::Inspect;
-			cx.notify();
-		});
-		assert_eq!(
-			surface.read_with(visual, |surface, _| surface.conversation),
-			Some(ConversationTarget::GpuiWork)
-		);
-
-		surface.update(visual, |surface, cx| {
-			surface.gate = GateState::Approved;
-			surface.selection = FactorySelection::ReleaseGate;
-			surface.replay = ReplayMoment::Gate;
-			cx.notify();
-		});
-		assert_eq!(surface.read_with(visual, |surface, _| surface.gate), GateState::Approved);
-	}
-
-	#[gpui::test]
-	fn selected_design_viewport_draws_without_layout_failure(cx: &mut TestAppContext) {
-		let (_surface, visual) = open_factory(cx);
-		visual.update(|window, cx| {
-			window.resize(size(px(1_490.0), px(1_092.0)));
-			window.draw(cx).clear();
-		});
-	}
-
-	#[gpui::test]
-	fn paper_example_selects_the_pack_and_prefills_the_bounded_intake(cx: &mut TestAppContext) {
-		let (surface, visual) = open_factory(cx);
-		surface.update(visual, |surface, cx| surface.load_paper_example(cx));
-		let (pack, name, instructions, working_directory) =
-			surface.read_with(visual, |surface, cx| {
-				(
-					surface.program_pack,
-					surface.program_inputs.name.read(cx).content().to_owned(),
-					surface.program_inputs.work_item_instructions.read(cx).content().to_owned(),
-					surface.program_inputs.working_directory.read(cx).content().to_owned(),
-				)
-			});
-		assert_eq!(pack, ProgramPackChoice::PaperInvestment);
-		assert_eq!(name, "June Treasury Curve Research");
-		assert!(instructions.contains("Do not use live data"));
-		assert!(working_directory.is_empty());
-		visual.update(|window, cx| window.draw(cx).clear());
-	}
-
-	#[cfg(feature = "visual-capture")]
-	#[gpui::test]
-	fn three_cycle_program_graph_keeps_one_selection_at_minimum_laptop_size(
-		cx: &mut TestAppContext,
-	) {
-		let (surface, visual) = open_factory(cx);
-		let programs = Programs::visual_development_three_cycle();
-		let cycle = programs.snapshot().cycle.expect("visual development cycle");
-		let run = cycle
-			.nodes
-			.iter()
-			.rev()
-			.find(|node| node.kind == ProgramNodeKind::Run)
-			.expect("latest visual Run")
-			.clone();
-		surface.update(visual, |surface, cx| {
-			surface.bind_programs(programs, cx);
-			surface.select_program_node(run.id.clone(), cx);
-		});
-		let selected = surface
-			.read_with(visual, |surface, cx| surface.program_graph.read(cx).selected().cloned());
-		assert_eq!(selected, Some(run.id));
-		visual.update(|window, cx| {
-			window.resize(size(px(1_180.0), px(720.0)));
-			window.draw(cx).clear();
-		});
-	}
-
-	#[test]
-	fn application_icon_resolves_to_an_existing_asset() {
-		assert!(app_icon_path().is_file());
-	}
-
-	#[test]
-	fn program_timeline_uses_relative_compact_time() {
-		assert_eq!(relative_timeline_time(0), "T+0µs");
-		assert_eq!(relative_timeline_time(42), "T+42µs");
-		assert_eq!(relative_timeline_time(42_000), "T+42ms");
-		assert_eq!(relative_timeline_time(42_000_000), "T+42s");
-	}
 }

@@ -1,11 +1,12 @@
-//! Ordinary Quick Task conversations, turns, and normalized history.
+//! Ordinary Conversation conversations, turns, and normalized history.
 
 use decodex_core::{
 	AccountId, ArtifactId, BlobHash, BlobStore, ConversationId, HistoryItemId, HistoryItemKind,
 	HistoryMediaType, HistoryMetadata, ItemStatus, MAX_BLOB_BYTES, MAX_CONTEXT_RECENT_ITEMS,
-	MAX_INLINE_HISTORY_BYTES, PossibleSideEffects, ProcessGenerationId, ProviderAttemptId,
-	ProviderEvidenceId, ProviderRequestId, ProviderRequestKey, ProviderTerminalOutcome,
-	RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole, TurnStatus, WorkItemId,
+	MAX_INLINE_HISTORY_BYTES, PossibleSideEffects, ProcessGenerationId, ProgramId,
+	ProviderAttemptId, ProviderEvidenceId, ProviderRequestId, ProviderRequestKey,
+	ProviderTerminalOutcome, RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole, TurnStatus,
+	WorkItemId, WorkItemState, contains_credential_material,
 };
 use rusqlite::{OptionalExtension as _, Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
@@ -19,10 +20,11 @@ use crate::{
 
 const MAX_PAGE_SIZE: u16 = 100;
 const MAX_RECOVERED_ASSISTANT_BYTES: usize = 256 * 1_024;
+const MAX_CONVERSATION_TITLE_BYTES: usize = 96;
 
-/// Create one ordinary Quick Task conversation and retain its original request.
+/// Create one ordinary Conversation conversation and retain its original request.
 #[derive(Clone, Debug)]
-pub struct CreateQuickTaskConversation {
+pub struct CreateConversationRecord {
 	pub conversation_id: ConversationId,
 	pub work_item_id: Option<WorkItemId>,
 	pub title: String,
@@ -35,7 +37,7 @@ pub struct CreateQuickTaskConversation {
 
 /// Immutable original request coordinates.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct QuickTaskRequest {
+pub struct ConversationRequest {
 	pub message: String,
 	pub working_directory: String,
 	pub model: String,
@@ -45,7 +47,7 @@ pub struct QuickTaskRequest {
 
 /// Exact active projection that may be closed after provider archive verification.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ArchiveQuickTaskConversation {
+pub struct ArchiveConversationRecord {
 	pub conversation_id: ConversationId,
 	pub expected_conversation_revision: i64,
 	pub runtime_session_id: RuntimeSessionId,
@@ -54,21 +56,21 @@ pub struct ArchiveQuickTaskConversation {
 
 /// Durable archived projection returned by the atomic local close.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct ArchivedQuickTaskConversation {
+pub struct ArchivedConversationRecord {
 	pub conversation_id: ConversationId,
 	pub conversation_revision: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ArchiveQuickTaskConversationOutcome {
-	Applied(ArchivedQuickTaskConversation),
-	Replayed(ArchivedQuickTaskConversation),
+pub enum ArchiveConversationOutcome {
+	Applied(ArchivedConversationRecord),
+	Replayed(ArchivedConversationRecord),
 	Rejected,
 }
 
 /// Exact provider-less starting projection that can be closed without a Codex mutation.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ArchiveLocalQuickTaskConversation {
+pub struct ArchiveLocalConversationRecord {
 	pub conversation_id: ConversationId,
 	pub expected_conversation_revision: i64,
 	pub runtime_session_id: RuntimeSessionId,
@@ -76,15 +78,15 @@ pub struct ArchiveLocalQuickTaskConversation {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ArchiveLocalQuickTaskConversationOutcome {
-	Applied(ArchivedQuickTaskConversation),
-	Replayed(ArchivedQuickTaskConversation),
+pub enum ArchiveLocalConversationOutcome {
+	Applied(ArchivedConversationRecord),
+	Replayed(ArchivedConversationRecord),
 	Rejected,
 }
 
 /// Exact inactive-owner coordinates for one admitted turn with no possible provider effect.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ReconcileStrandedQuickTaskTurn {
+pub struct ReconcileStrandedConversationTurn {
 	pub conversation_id: ConversationId,
 	pub expected_conversation_revision: i64,
 	pub runtime_session_id: RuntimeSessionId,
@@ -94,7 +96,7 @@ pub struct ReconcileStrandedQuickTaskTurn {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ReconcileStrandedQuickTaskTurnOutcome {
+pub enum ReconcileStrandedConversationTurnOutcome {
 	Applied { turn_revision: i64 },
 	Replayed { turn_revision: i64 },
 	Rejected,
@@ -102,7 +104,7 @@ pub enum ReconcileStrandedQuickTaskTurnOutcome {
 
 /// Exact active unknown provider attempt that may be reconciled without replay.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct UnknownQuickTaskAttemptReadback {
+pub struct UnknownConversationAttemptReadback {
 	pub conversation_id: ConversationId,
 	pub conversation_revision: i64,
 	pub runtime_session_id: RuntimeSessionId,
@@ -123,7 +125,7 @@ pub struct UnknownQuickTaskAttemptReadback {
 
 /// Durable positive evidence that still needs the Conversation Turn terminalization transaction.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PendingQuickTaskTerminalizationReadback {
+pub struct PendingConversationTerminalizationReadback {
 	pub conversation_id: ConversationId,
 	pub conversation_revision: i64,
 	pub runtime_session_id: RuntimeSessionId,
@@ -141,7 +143,7 @@ pub struct PendingQuickTaskTerminalizationReadback {
 
 /// Close one product-visible Turn after exact process death, while retaining its unknown attempt.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RecoverUnknownQuickTaskTurn {
+pub struct RecoverUnknownConversationTurn {
 	pub conversation_id: ConversationId,
 	pub expected_conversation_revision: i64,
 	pub runtime_session_id: RuntimeSessionId,
@@ -155,20 +157,20 @@ pub struct RecoverUnknownQuickTaskTurn {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct RecoveredUnknownQuickTaskTurn {
+pub struct RecoveredUnknownConversationTurn {
 	pub turn_revision: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum RecoverUnknownQuickTaskTurnOutcome {
-	Applied(RecoveredUnknownQuickTaskTurn),
-	Replayed(RecoveredUnknownQuickTaskTurn),
+pub enum RecoverUnknownConversationTurnOutcome {
+	Applied(RecoveredUnknownConversationTurn),
+	Replayed(RecoveredUnknownConversationTurn),
 	Rejected,
 }
 
 /// Existing assistant prefix for one interrupted active user Turn.
 #[derive(Clone, Eq, PartialEq)]
-pub struct QuickTaskAssistantPrefixReadback {
+pub struct ConversationAssistantPrefixReadback {
 	pub turn_id: TurnId,
 	pub turn_revision: i64,
 	pub turn_sequence: i64,
@@ -176,10 +178,10 @@ pub struct QuickTaskAssistantPrefixReadback {
 	pub next_ordinal: i32,
 }
 
-impl std::fmt::Debug for QuickTaskAssistantPrefixReadback {
+impl std::fmt::Debug for ConversationAssistantPrefixReadback {
 	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		formatter
-			.debug_struct("QuickTaskAssistantPrefixReadback")
+			.debug_struct("ConversationAssistantPrefixReadback")
 			.field("turn_id", &self.turn_id)
 			.field("turn_revision", &self.turn_revision)
 			.field("turn_sequence", &self.turn_sequence)
@@ -191,13 +193,13 @@ impl std::fmt::Debug for QuickTaskAssistantPrefixReadback {
 
 /// Create a new routing conversation after a waiting or no-route decision.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CreateQuickTaskRoutingSuccessor {
+pub struct CreateConversationRoutingSuccessor {
 	pub source_conversation_id: ConversationId,
 	pub expected_source_revision: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct QuickTaskRoutingSuccessor {
+pub struct ConversationRoutingSuccessor {
 	pub source_conversation_id: ConversationId,
 	pub source_revision: i64,
 	pub successor_conversation_id: ConversationId,
@@ -206,9 +208,9 @@ pub struct QuickTaskRoutingSuccessor {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum QuickTaskRoutingSuccessorOutcome {
-	Fresh(QuickTaskRoutingSuccessor),
-	Replayed(QuickTaskRoutingSuccessor),
+pub enum ConversationRoutingSuccessorOutcome {
+	Fresh(ConversationRoutingSuccessor),
+	Replayed(ConversationRoutingSuccessor),
 	Rejected { code: String, replayed: bool },
 }
 
@@ -234,7 +236,7 @@ pub enum TurnReservationOutcome {
 }
 
 #[derive(Clone, Debug)]
-pub struct AdmitInitialQuickTaskTurn {
+pub struct AdmitInitialConversationTurn {
 	pub expected_conversation_revision: i64,
 	pub expected_runtime_session_revision: i64,
 	pub continuation_plan_id: String,
@@ -242,7 +244,7 @@ pub struct AdmitInitialQuickTaskTurn {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct InitialQuickTaskTurnAdmissionReadback {
+pub struct InitialConversationTurnAdmissionReadback {
 	pub routing_decision_id: String,
 	pub continuation_plan_id: String,
 	pub turn: TurnReservationReadback,
@@ -251,7 +253,7 @@ pub struct InitialQuickTaskTurnAdmissionReadback {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum InitialQuickTaskTurnAdmissionRejection {
+pub enum InitialConversationTurnAdmissionRejection {
 	InvalidInput,
 	AuthorityUnavailable,
 	InitialAdmissionConflict,
@@ -259,14 +261,14 @@ pub enum InitialQuickTaskTurnAdmissionRejection {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum InitialQuickTaskTurnAdmissionOutcome {
-	Fresh(InitialQuickTaskTurnAdmissionReadback),
-	Replayed(InitialQuickTaskTurnAdmissionReadback),
-	Rejected { rejection: InitialQuickTaskTurnAdmissionRejection, replayed: bool },
+pub enum InitialConversationTurnAdmissionOutcome {
+	Fresh(InitialConversationTurnAdmissionReadback),
+	Replayed(InitialConversationTurnAdmissionReadback),
+	Rejected { rejection: InitialConversationTurnAdmissionRejection, replayed: bool },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TerminalizeQuickTaskTurn {
+pub struct TerminalizeConversationTurn {
 	pub conversation_id: ConversationId,
 	pub expected_conversation_revision: i64,
 	pub runtime_session_id: RuntimeSessionId,
@@ -283,7 +285,7 @@ pub struct TerminalizeQuickTaskTurn {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct QuickTaskTerminalizationReadback {
+pub struct ConversationTerminalizationReadback {
 	pub runtime_session_revision: i64,
 	pub user_turn_revision: i64,
 	pub assistant_turn_revision: Option<i64>,
@@ -291,9 +293,9 @@ pub struct QuickTaskTerminalizationReadback {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum QuickTaskTerminalizationOutcome {
-	Applied(QuickTaskTerminalizationReadback),
-	Replayed(QuickTaskTerminalizationReadback),
+pub enum ConversationTerminalizationOutcome {
+	Applied(ConversationTerminalizationReadback),
+	Replayed(ConversationTerminalizationReadback),
 	Rejected,
 	Unknown,
 }
@@ -307,10 +309,13 @@ pub struct OrdinaryTaskConversationCursor {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OrdinaryTaskConversationReadback {
 	pub conversation_id: ConversationId,
+	pub title: String,
 	pub conversation_revision: i64,
 	pub runtime_session_id: Option<RuntimeSessionId>,
 	pub runtime_session_revision: Option<i64>,
 	pub runtime_session_state: Option<RuntimeSessionState>,
+	pub codex_thread_id: Option<String>,
+	pub program_work_item: Option<ProgramWorkItemContextReadback>,
 	pub has_acknowledged_turn: bool,
 	pub active_turn_id: Option<TurnId>,
 	pub active_turn_revision: Option<i64>,
@@ -322,7 +327,19 @@ pub struct OrdinaryTaskConversationReadback {
 	pub updated_at_micros: i64,
 }
 
+/// Exact Program WorkItem context bound to one ordinary Conversation.
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProgramWorkItemContextReadback {
+	pub program_id: ProgramId,
+	pub work_item_id: WorkItemId,
+	pub title: String,
+	pub instructions: String,
+	pub state: WorkItemState,
+	pub revision: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::large_enum_variant)] // Current owns the complete bounded projection; other cases stay scalar.
 pub enum OrdinaryTaskConversationProjection {
 	Current(OrdinaryTaskConversationReadback),
 	Archived {
@@ -422,12 +439,12 @@ struct Payload {
 }
 
 impl SqliteStore {
-	pub async fn create_quick_task_conversation(
+	pub async fn create_conversation(
 		&self,
 		command: &CommandIdentity,
-		create: &CreateQuickTaskConversation,
+		create: &CreateConversationRecord,
 	) -> Result<StoredConversation, StoreError> {
-		validate_quick_task_conversation(create)?;
+		validate_conversation_conversation(create)?;
 		let command = command.clone();
 		let create = create.clone();
 		self.run(move |connection| {
@@ -516,10 +533,10 @@ impl SqliteStore {
 		.await
 	}
 
-	pub async fn read_quick_task_request(
+	pub async fn read_conversation_request(
 		&self,
 		conversation_id: &ConversationId,
-	) -> Result<Option<QuickTaskRequest>, StoreError> {
+	) -> Result<Option<ConversationRequest>, StoreError> {
 		let conversation_id = conversation_id.clone();
 		self.run(move |connection| {
 			connection
@@ -530,7 +547,7 @@ impl SqliteStore {
 				 WHERE q.conversation_id = ?1 AND c.state = 'active'",
 					params![conversation_id.as_str()],
 					|row| {
-						Ok(QuickTaskRequest {
+						Ok(ConversationRequest {
 							message: row.get(0)?,
 							working_directory: row.get(1)?,
 							model: row.get(2)?,
@@ -546,10 +563,10 @@ impl SqliteStore {
 	}
 
 	/// Read one exact active unknown attempt for account-bound, no-replay reconciliation.
-	pub async fn read_unknown_quick_task_attempt_for_recovery(
+	pub async fn read_unknown_conversation_attempt_for_recovery(
 		&self,
 		conversation_id: &ConversationId,
-	) -> Result<Option<UnknownQuickTaskAttemptReadback>, StoreError> {
+	) -> Result<Option<UnknownConversationAttemptReadback>, StoreError> {
 		let conversation_id = conversation_id.clone();
 		self.run(move |connection| {
 			let mut statement = connection
@@ -599,15 +616,15 @@ impl SqliteStore {
 				.map_err(sql_error)?;
 			let mut rows = selected.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
 			if rows.len() > 1 {
-				return Err(incompatible("unknown Quick Task attempt authority"));
+				return Err(incompatible("unknown Conversation attempt authority"));
 			}
 			let Some(row) = rows.pop() else {
 				return Ok(None);
 			};
 			if row.0 <= 0 || row.2 <= 0 || row.5 <= 0 || row.7 <= 0 || row.8 <= 0 || row.10 <= 0 {
-				return Err(incompatible("unknown Quick Task attempt coordinates"));
+				return Err(incompatible("unknown Conversation attempt coordinates"));
 			}
-			Ok(Some(UnknownQuickTaskAttemptReadback {
+			Ok(Some(UnknownConversationAttemptReadback {
 				conversation_id,
 				conversation_revision: row.0,
 				runtime_session_id: RuntimeSessionId::new(row.1)
@@ -637,10 +654,10 @@ impl SqliteStore {
 	}
 
 	/// Read one exact positive provider result whose active Turn has not yet terminalized.
-	pub async fn read_pending_quick_task_terminalization(
+	pub async fn read_pending_conversation_terminalization(
 		&self,
 		conversation_id: &ConversationId,
-	) -> Result<Option<PendingQuickTaskTerminalizationReadback>, StoreError> {
+	) -> Result<Option<PendingConversationTerminalizationReadback>, StoreError> {
 		let conversation_id = conversation_id.clone();
 		self.run(move |connection| {
 			let mut statement = connection
@@ -683,15 +700,15 @@ impl SqliteStore {
 				.map_err(sql_error)?;
 			let mut rows = selected.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
 			if rows.len() > 1 {
-				return Err(incompatible("pending Quick Task terminalization authority"));
+				return Err(incompatible("pending Conversation terminalization authority"));
 			}
 			let Some(row) = rows.pop() else {
 				return Ok(None);
 			};
 			if row.0 <= 0 || row.2 <= 0 || row.5 <= 0 || row.6 <= 0 || row.8 <= 0 {
-				return Err(incompatible("pending Quick Task terminalization coordinates"));
+				return Err(incompatible("pending Conversation terminalization coordinates"));
 			}
-			Ok(Some(PendingQuickTaskTerminalizationReadback {
+			Ok(Some(PendingConversationTerminalizationReadback {
 				conversation_id,
 				conversation_revision: row.0,
 				runtime_session_id: RuntimeSessionId::new(row.1)
@@ -715,13 +732,13 @@ impl SqliteStore {
 	}
 
 	/// Read the exact durable assistant prefix already captured for one active user Turn.
-	pub async fn read_quick_task_assistant_prefix(
+	pub async fn read_conversation_assistant_prefix(
 		&self,
 		blob_store: &BlobStore,
 		conversation_id: &ConversationId,
 		runtime_session_id: &RuntimeSessionId,
 		user_turn_sequence: i64,
-	) -> Result<Option<QuickTaskAssistantPrefixReadback>, StoreError> {
+	) -> Result<Option<ConversationAssistantPrefixReadback>, StoreError> {
 		if user_turn_sequence <= 0 {
 			return Err(StoreError::InvalidInput("assistant prefix sequence is invalid"));
 		}
@@ -808,7 +825,7 @@ impl SqliteStore {
 		}
 		let next_ordinal =
 			i32::try_from(items.len()).map_err(|_| incompatible("assistant recovery ordinal"))?;
-		Ok(Some(QuickTaskAssistantPrefixReadback {
+		Ok(Some(ConversationAssistantPrefixReadback {
 			turn_id: TurnId::new(turn_id).map_err(|_| incompatible("assistant Turn identity"))?,
 			turn_revision,
 			turn_sequence: assistant_sequence,
@@ -818,15 +835,15 @@ impl SqliteStore {
 	}
 
 	/// Atomically close one provider-verified archived Conversation and its sole active session.
-	pub async fn archive_quick_task_conversation(
+	pub async fn archive_conversation(
 		&self,
 		command: &CommandIdentity,
-		request: &ArchiveQuickTaskConversation,
-	) -> Result<ArchiveQuickTaskConversationOutcome, StoreError> {
+		request: &ArchiveConversationRecord,
+	) -> Result<ArchiveConversationOutcome, StoreError> {
 		if request.expected_conversation_revision <= 0
 			|| request.expected_runtime_session_revision <= 0
 		{
-			return Err(StoreError::InvalidInput("Quick Task archive coordinates are invalid"));
+			return Err(StoreError::InvalidInput("Conversation archive coordinates are invalid"));
 		}
 		let command = command.clone();
 		let request = request.clone();
@@ -841,9 +858,9 @@ impl SqliteStore {
 				request.conversation_id.as_str(),
 			)? {
 				let archived = serde_json::from_str(&response)
-					.map_err(|_| incompatible("Quick Task archive receipt"))?;
+					.map_err(|_| incompatible("Conversation archive receipt"))?;
 				transaction.commit().map_err(sql_error)?;
-				return Ok(ArchiveQuickTaskConversationOutcome::Replayed(archived));
+				return Ok(ArchiveConversationOutcome::Replayed(archived));
 			}
 			let authority = transaction
 				.query_row(
@@ -874,14 +891,14 @@ impl SqliteStore {
 			let Some((conversation_revision, session_revision, active_turn, active_attempt)) =
 				authority
 			else {
-				return Ok(ArchiveQuickTaskConversationOutcome::Rejected);
+				return Ok(ArchiveConversationOutcome::Rejected);
 			};
 			if conversation_revision != request.expected_conversation_revision
 				|| session_revision != request.expected_runtime_session_revision
 				|| active_turn
 				|| active_attempt
 			{
-				return Ok(ArchiveQuickTaskConversationOutcome::Rejected);
+				return Ok(ArchiveConversationOutcome::Rejected);
 			}
 			let now = unix_micros().map_err(StoreError::from)?;
 			let session_changed = transaction
@@ -909,9 +926,9 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			if session_changed != 1 || conversation_changed != 1 {
-				return Ok(ArchiveQuickTaskConversationOutcome::Rejected);
+				return Ok(ArchiveConversationOutcome::Rejected);
 			}
-			let archived = ArchivedQuickTaskConversation {
+			let archived = ArchivedConversationRecord {
 				conversation_id: request.conversation_id,
 				conversation_revision: request.expected_conversation_revision + 1,
 			};
@@ -921,28 +938,28 @@ impl SqliteStore {
 				"archive_quick_task_conversation",
 				archived.conversation_id.as_str(),
 				&serde_json::to_string(&archived)
-					.map_err(|_| incompatible("Quick Task archive receipt"))?,
+					.map_err(|_| incompatible("Conversation archive receipt"))?,
 				now,
 			)?;
 			transaction.commit().map_err(sql_error)?;
-			Ok(ArchiveQuickTaskConversationOutcome::Applied(archived))
+			Ok(ArchiveConversationOutcome::Applied(archived))
 		})
 		.await
 	}
 
 	/// Fail one stale admitted user Turn only when durable authority proves no live process or
 	/// provider attempt can still own an effect.
-	pub async fn reconcile_stranded_quick_task_turn(
+	pub async fn reconcile_stranded_conversation_turn(
 		&self,
 		command: &CommandIdentity,
-		request: &ReconcileStrandedQuickTaskTurn,
-	) -> Result<ReconcileStrandedQuickTaskTurnOutcome, StoreError> {
+		request: &ReconcileStrandedConversationTurn,
+	) -> Result<ReconcileStrandedConversationTurnOutcome, StoreError> {
 		if request.expected_conversation_revision <= 0
 			|| request.expected_runtime_session_revision <= 0
 			|| request.expected_turn_revision <= 0
 		{
 			return Err(StoreError::InvalidInput(
-				"stranded Quick Task Turn coordinates are invalid",
+				"stranded Conversation Turn coordinates are invalid",
 			));
 		}
 		let command = command.clone();
@@ -959,9 +976,9 @@ impl SqliteStore {
 			)? {
 				let turn_revision = response
 					.parse::<i64>()
-					.map_err(|_| incompatible("stranded Quick Task Turn receipt"))?;
+					.map_err(|_| incompatible("stranded Conversation Turn receipt"))?;
 				transaction.commit().map_err(sql_error)?;
-				return Ok(ReconcileStrandedQuickTaskTurnOutcome::Replayed { turn_revision });
+				return Ok(ReconcileStrandedConversationTurnOutcome::Replayed { turn_revision });
 			}
 			let now = unix_micros().map_err(StoreError::from)?;
 			let changed = transaction
@@ -1001,7 +1018,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			if changed != 1 {
-				return Ok(ReconcileStrandedQuickTaskTurnOutcome::Rejected);
+				return Ok(ReconcileStrandedConversationTurnOutcome::Rejected);
 			}
 			transaction
 				.execute(
@@ -1020,7 +1037,7 @@ impl SqliteStore {
 				now,
 			)?;
 			transaction.commit().map_err(sql_error)?;
-			Ok(ReconcileStrandedQuickTaskTurnOutcome::Applied { turn_revision })
+			Ok(ReconcileStrandedConversationTurnOutcome::Applied { turn_revision })
 		})
 		.await
 	}
@@ -1029,18 +1046,18 @@ impl SqliteStore {
 	///
 	/// The ProviderAttempt intentionally remains `unknown`; this transaction only closes the
 	/// product-visible active Turn and records a concise durable status item.
-	pub async fn recover_unknown_quick_task_turn(
+	pub async fn recover_unknown_conversation_turn(
 		&self,
 		command: &CommandIdentity,
-		request: &RecoverUnknownQuickTaskTurn,
-	) -> Result<RecoverUnknownQuickTaskTurnOutcome, StoreError> {
+		request: &RecoverUnknownConversationTurn,
+	) -> Result<RecoverUnknownConversationTurnOutcome, StoreError> {
 		if request.expected_conversation_revision <= 0
 			|| request.expected_runtime_session_revision <= 0
 			|| request.expected_user_turn_revision <= 0
 			|| request.expected_attempt_revision <= 0
 		{
 			return Err(StoreError::InvalidInput(
-				"unknown Quick Task recovery coordinates are invalid",
+				"unknown Conversation recovery coordinates are invalid",
 			));
 		}
 		let command = command.clone();
@@ -1056,9 +1073,9 @@ impl SqliteStore {
 				request.attempt_id.as_str(),
 			)? {
 				let recovered = serde_json::from_str(&response)
-					.map_err(|_| incompatible("unknown Quick Task recovery receipt"))?;
+					.map_err(|_| incompatible("unknown Conversation recovery receipt"))?;
 				transaction.commit().map_err(sql_error)?;
-				return Ok(RecoverUnknownQuickTaskTurnOutcome::Replayed(recovered));
+				return Ok(RecoverUnknownConversationTurnOutcome::Replayed(recovered));
 			}
 			let authority: bool = transaction
 				.query_row(
@@ -1096,7 +1113,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			if !authority || history_exists(&transaction, &request.history_item_id)? {
-				return Ok(RecoverUnknownQuickTaskTurnOutcome::Rejected);
+				return Ok(RecoverUnknownConversationTurnOutcome::Rejected);
 			}
 			let now = unix_micros().map_err(StoreError::from)?;
 			let changed = transaction
@@ -1114,7 +1131,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			if changed != 1 {
-				return Ok(RecoverUnknownQuickTaskTurnOutcome::Rejected);
+				return Ok(RecoverUnknownConversationTurnOutcome::Rejected);
 			}
 			let history_sequence: i64 = transaction
 				.query_row(
@@ -1144,7 +1161,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			touch_conversation(&transaction, &request.conversation_id, now)?;
-			let recovered = RecoveredUnknownQuickTaskTurn {
+			let recovered = RecoveredUnknownConversationTurn {
 				turn_revision: request.expected_user_turn_revision + 1,
 			};
 			write_receipt(
@@ -1153,26 +1170,26 @@ impl SqliteStore {
 				"recover_unknown_quick_task_turn",
 				request.attempt_id.as_str(),
 				&serde_json::to_string(&recovered)
-					.map_err(|_| incompatible("unknown Quick Task recovery receipt"))?,
+					.map_err(|_| incompatible("unknown Conversation recovery receipt"))?,
 				now,
 			)?;
 			transaction.commit().map_err(sql_error)?;
-			Ok(RecoverUnknownQuickTaskTurnOutcome::Applied(recovered))
+			Ok(RecoverUnknownConversationTurnOutcome::Applied(recovered))
 		})
 		.await
 	}
 
 	/// Close one provider-less starting session after all possible external effects are terminal.
-	pub async fn archive_local_quick_task_conversation(
+	pub async fn archive_local_conversation(
 		&self,
 		command: &CommandIdentity,
-		request: &ArchiveLocalQuickTaskConversation,
-	) -> Result<ArchiveLocalQuickTaskConversationOutcome, StoreError> {
+		request: &ArchiveLocalConversationRecord,
+	) -> Result<ArchiveLocalConversationOutcome, StoreError> {
 		if request.expected_conversation_revision <= 0
 			|| request.expected_runtime_session_revision <= 0
 		{
 			return Err(StoreError::InvalidInput(
-				"local Quick Task archive coordinates are invalid",
+				"local Conversation archive coordinates are invalid",
 			));
 		}
 		let command = command.clone();
@@ -1188,9 +1205,9 @@ impl SqliteStore {
 				request.conversation_id.as_str(),
 			)? {
 				let archived = serde_json::from_str(&response)
-					.map_err(|_| incompatible("local Quick Task archive receipt"))?;
+					.map_err(|_| incompatible("local Conversation archive receipt"))?;
 				transaction.commit().map_err(sql_error)?;
-				return Ok(ArchiveLocalQuickTaskConversationOutcome::Replayed(archived));
+				return Ok(ArchiveLocalConversationOutcome::Replayed(archived));
 			}
 			let now = unix_micros().map_err(StoreError::from)?;
 			let session_changed = transaction
@@ -1237,9 +1254,9 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			if session_changed != 1 || conversation_changed != 1 {
-				return Ok(ArchiveLocalQuickTaskConversationOutcome::Rejected);
+				return Ok(ArchiveLocalConversationOutcome::Rejected);
 			}
-			let archived = ArchivedQuickTaskConversation {
+			let archived = ArchivedConversationRecord {
 				conversation_id: request.conversation_id,
 				conversation_revision: request.expected_conversation_revision + 1,
 			};
@@ -1249,20 +1266,20 @@ impl SqliteStore {
 				"archive_local_quick_task_conversation",
 				archived.conversation_id.as_str(),
 				&serde_json::to_string(&archived)
-					.map_err(|_| incompatible("local Quick Task archive receipt"))?,
+					.map_err(|_| incompatible("local Conversation archive receipt"))?,
 				now,
 			)?;
 			transaction.commit().map_err(sql_error)?;
-			Ok(ArchiveLocalQuickTaskConversationOutcome::Applied(archived))
+			Ok(ArchiveLocalConversationOutcome::Applied(archived))
 		})
 		.await
 	}
 
-	pub async fn create_quick_task_routing_successor(
+	pub async fn create_conversation_routing_successor(
 		&self,
 		idempotency_key: &str,
-		request: &CreateQuickTaskRoutingSuccessor,
-	) -> Result<QuickTaskRoutingSuccessorOutcome, StoreError> {
+		request: &CreateConversationRoutingSuccessor,
+	) -> Result<ConversationRoutingSuccessorOutcome, StoreError> {
 		validate_key(idempotency_key)?;
 		if request.expected_source_revision <= 0 {
 			return Err(StoreError::InvalidInput(
@@ -1286,7 +1303,7 @@ impl SqliteStore {
 				if stored_sha != request_sha { return Err(StoreError::IdempotencyConflict); }
 				let successor = read_routing_successor(&transaction, &request.source_conversation_id, &successor_id)?;
 				transaction.commit().map_err(sql_error)?;
-				return Ok(QuickTaskRoutingSuccessorOutcome::Replayed(successor));
+				return Ok(ConversationRoutingSuccessorOutcome::Replayed(successor));
 			}
 			let source = transaction.query_row(
 				"SELECT c.title, q.message, q.working_directory, q.model, q.reasoning_effort,
@@ -1305,12 +1322,12 @@ impl SqliteStore {
 				)),
 			).optional().map_err(sql_error)?;
 			let Some((title, message, working_directory, model, reasoning_effort, fast, routing_decision_id, decision_kind, revision)) = source else {
-				return Ok(QuickTaskRoutingSuccessorOutcome::Rejected {
+				return Ok(ConversationRoutingSuccessorOutcome::Rejected {
 					code: "source_authority_unavailable".to_owned(), replayed: false,
 				});
 			};
 			if revision != request.expected_source_revision || !matches!(decision_kind.as_str(), "waiting" | "no_route") {
-				return Ok(QuickTaskRoutingSuccessorOutcome::Rejected {
+				return Ok(ConversationRoutingSuccessorOutcome::Rejected {
 					code: "source_authority_mismatch".to_owned(), replayed: false,
 				});
 			}
@@ -1341,7 +1358,7 @@ impl SqliteStore {
 				 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
 				params![request.source_conversation_id.as_str(), successor_id, routing_decision_id, key, request_sha, now],
 			).map_err(sql_error)?;
-			let successor = QuickTaskRoutingSuccessor {
+			let successor = ConversationRoutingSuccessor {
 				source_conversation_id: request.source_conversation_id,
 				source_revision: revision + 1,
 				successor_conversation_id: ConversationId::new(successor_id)
@@ -1350,16 +1367,16 @@ impl SqliteStore {
 				source_routing_decision_id: routing_decision_id,
 			};
 			transaction.commit().map_err(sql_error)?;
-			Ok(QuickTaskRoutingSuccessorOutcome::Fresh(successor))
+			Ok(ConversationRoutingSuccessorOutcome::Fresh(successor))
 		}).await
 	}
 
-	pub async fn admit_initial_quick_task_turn(
+	pub async fn admit_initial_conversation_turn(
 		&self,
 		blob_store: &BlobStore,
 		idempotency_key: &str,
-		request: &AdmitInitialQuickTaskTurn,
-	) -> Result<InitialQuickTaskTurnAdmissionOutcome, StoreError> {
+		request: &AdmitInitialConversationTurn,
+	) -> Result<InitialConversationTurnAdmissionOutcome, StoreError> {
 		validate_key(idempotency_key)?;
 		validate_initial_admission(request)?;
 		let payload = publish_payload(blob_store, &request.message.text)?;
@@ -1377,11 +1394,11 @@ impl SqliteStore {
 				"admit_initial_quick_task_turn",
 				request.message.conversation_id.as_str(),
 			)? {
-				let admission: InitialQuickTaskTurnAdmissionReadback =
+				let admission: InitialConversationTurnAdmissionReadback =
 					serde_json::from_str(&response)
 						.map_err(|_| incompatible("initial admission receipt"))?;
 				transaction.commit().map_err(sql_error)?;
-				return Ok(InitialQuickTaskTurnAdmissionOutcome::Replayed(admission));
+				return Ok(InitialConversationTurnAdmissionOutcome::Replayed(admission));
 			}
 			let authority = transaction
 				.query_row(
@@ -1405,16 +1422,16 @@ impl SqliteStore {
 				.optional()
 				.map_err(sql_error)?;
 			let Some(routing_decision_id) = authority else {
-				return Ok(InitialQuickTaskTurnAdmissionOutcome::Rejected {
-					rejection: InitialQuickTaskTurnAdmissionRejection::AuthorityUnavailable,
+				return Ok(InitialConversationTurnAdmissionOutcome::Rejected {
+					rejection: InitialConversationTurnAdmissionRejection::AuthorityUnavailable,
 					replayed: false,
 				});
 			};
 			if read_turn(&transaction, &request.message.turn_id)?.is_some()
 				|| history_exists(&transaction, &request.message.history_item_id)?
 			{
-				return Ok(InitialQuickTaskTurnAdmissionOutcome::Rejected {
-					rejection: InitialQuickTaskTurnAdmissionRejection::InitialAdmissionConflict,
+				return Ok(InitialConversationTurnAdmissionOutcome::Rejected {
+					rejection: InitialConversationTurnAdmissionRejection::InitialAdmissionConflict,
 					replayed: false,
 				});
 			}
@@ -1422,7 +1439,7 @@ impl SqliteStore {
 			insert_turn(&transaction, &request.message, now)?;
 			insert_history(&transaction, &request.message, &payload, now)?;
 			touch_conversation(&transaction, &request.message.conversation_id, now)?;
-			let admission = InitialQuickTaskTurnAdmissionReadback {
+			let admission = InitialConversationTurnAdmissionReadback {
 				routing_decision_id,
 				continuation_plan_id: request.continuation_plan_id,
 				turn: TurnReservationReadback {
@@ -1444,15 +1461,13 @@ impl SqliteStore {
 				now,
 			)?;
 			transaction.commit().map_err(sql_error)?;
-			Ok(InitialQuickTaskTurnAdmissionOutcome::Fresh(admission))
+			Ok(InitialConversationTurnAdmissionOutcome::Fresh(admission))
 		})
 		.await
 	}
 }
 
-fn validate_quick_task_conversation(
-	create: &CreateQuickTaskConversation,
-) -> Result<(), StoreError> {
+fn validate_conversation_conversation(create: &CreateConversationRecord) -> Result<(), StoreError> {
 	if create.title.is_empty()
 		|| create.title.len() > 512
 		|| create.message.is_empty()
@@ -1468,13 +1483,15 @@ fn validate_quick_task_conversation(
 			create.reasoning_effort.as_str(),
 			"low" | "medium" | "high" | "xhigh" | "max" | "ultra"
 		) {
-		return Err(StoreError::InvalidInput("initial Quick Task Conversation request is invalid"));
+		return Err(StoreError::InvalidInput(
+			"initial Conversation Conversation request is invalid",
+		));
 	}
 	credential_negative(&create.title)?;
 	credential_negative(&create.message)
 }
 
-fn validate_initial_admission(request: &AdmitInitialQuickTaskTurn) -> Result<(), StoreError> {
+fn validate_initial_admission(request: &AdmitInitialConversationTurn) -> Result<(), StoreError> {
 	let message = &request.message;
 	if request.expected_conversation_revision <= 0
 		|| request.expected_runtime_session_revision != 1
@@ -1487,23 +1504,25 @@ fn validate_initial_admission(request: &AdmitInitialQuickTaskTurn) -> Result<(),
 		|| message.expected_revision.is_some()
 		|| message.artifact.is_some()
 	{
-		return Err(StoreError::InvalidInput("initial Quick Task admission shape is invalid"));
+		return Err(StoreError::InvalidInput("initial Conversation admission shape is invalid"));
 	}
 	validate_history_item(message)
 }
 
-fn validate_terminalization(request: &TerminalizeQuickTaskTurn) -> Result<(), StoreError> {
+fn validate_terminalization(request: &TerminalizeConversationTurn) -> Result<(), StoreError> {
 	if request.expected_conversation_revision <= 0
 		|| request.expected_runtime_session_revision <= 0
 		|| request.expected_user_turn_revision <= 0
 		|| request.expected_provider_attempt_revision <= 0
 		|| request.assistant_turn.as_ref().is_some_and(|(_, revision)| *revision <= 0)
 		|| request.provider_thread_id.is_empty()
-		|| request.provider_thread_id.len() > 512
+		|| request.provider_thread_id.len() > decodex_core::MAX_PROVIDER_THREAD_ID_BYTES
 		|| request.provider_turn_id.is_empty()
 		|| request.provider_turn_id.len() > 256
 	{
-		return Err(StoreError::InvalidInput("Quick Task terminalization coordinates are invalid"));
+		return Err(StoreError::InvalidInput(
+			"Conversation terminalization coordinates are invalid",
+		));
 	}
 	Ok(())
 }
@@ -1517,7 +1536,7 @@ fn validate_history_item(mutation: &RecordHistoryItem) -> Result<(), StoreError>
 		|| mutation.artifact.is_some()
 	{
 		return Err(StoreError::InvalidInput(
-			"history item is invalid for the local Quick Task slice",
+			"history item is invalid for the local Conversation slice",
 		));
 	}
 	credential_negative(&mutation.text)?;
@@ -1830,7 +1849,7 @@ fn read_routing_successor(
 	transaction: &Transaction<'_>,
 	source_id: &ConversationId,
 	successor_id: &str,
-) -> Result<QuickTaskRoutingSuccessor, StoreError> {
+) -> Result<ConversationRoutingSuccessor, StoreError> {
 	let row = transaction
 		.query_row(
 			"SELECT s.revision, n.revision, r.source_routing_decision_id
@@ -1842,7 +1861,7 @@ fn read_routing_successor(
 			|row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)),
 		)
 		.map_err(sql_error)?;
-	Ok(QuickTaskRoutingSuccessor {
+	Ok(ConversationRoutingSuccessor {
 		source_conversation_id: source_id.clone(),
 		source_revision: row.0,
 		successor_conversation_id: ConversationId::new(successor_id.to_owned())
@@ -1888,9 +1907,69 @@ fn conversation_projection(
 	if row.1 != "active" || row.2 <= 0 || row.3 <= 0 {
 		return Err(incompatible("ordinary Task Conversation lifecycle"));
 	}
+	let presentation = connection
+		.query_row(
+			"SELECT c.title, q.message, item.program_id, item.work_item_id, item.title,
+			 item.instructions, item.state, item.revision
+			 FROM conversations AS c
+			 JOIN quick_task_requests AS q USING (conversation_id)
+			 LEFT JOIN program_work_item_executions AS execution USING (conversation_id)
+			 LEFT JOIN program_work_items AS item USING (work_item_id)
+			 WHERE c.conversation_id = ?1",
+			params![conversation_id.as_str()],
+			|row| {
+				Ok((
+					row.get::<_, String>(0)?,
+					row.get::<_, String>(1)?,
+					row.get::<_, Option<String>>(2)?,
+					row.get::<_, Option<String>>(3)?,
+					row.get::<_, Option<String>>(4)?,
+					row.get::<_, Option<String>>(5)?,
+					row.get::<_, Option<String>>(6)?,
+					row.get::<_, Option<i64>>(7)?,
+				))
+			},
+		)
+		.map_err(sql_error)?;
+	let program_work_item = match (
+		presentation.2,
+		presentation.3,
+		presentation.4,
+		presentation.5,
+		presentation.6,
+		presentation.7,
+	) {
+		(None, None, None, None, None, None) => None,
+		(
+			Some(program_id),
+			Some(work_item_id),
+			Some(title),
+			Some(instructions),
+			Some(state),
+			Some(revision),
+		) => Some(ProgramWorkItemContextReadback {
+			program_id: ProgramId::new(program_id)
+				.map_err(|_| incompatible("Program binding identity"))?,
+			work_item_id: WorkItemId::new(work_item_id)
+				.map_err(|_| incompatible("Program WorkItem binding identity"))?,
+			title,
+			instructions,
+			state: crate::program_cycles::parse_work_item_state_sql(&state).map_err(sql_error)?,
+			revision: u64::try_from(revision)
+				.ok()
+				.filter(|revision| *revision > 0)
+				.ok_or_else(|| incompatible("Program WorkItem binding revision"))?,
+		}),
+		_ => return Err(incompatible("Program WorkItem binding projection")),
+	};
+	let fallback_title = bounded_conversation_title(&presentation.1);
+	let title = program_work_item.as_ref().map_or_else(
+		|| conversation_display_title(&presentation.0, &presentation.1),
+		|work_item| safe_display_title(&work_item.title, &fallback_title),
+	);
 	let session = connection
 		.query_row(
-			"SELECT runtime_session_id, revision, state, has_acknowledged_turn
+			"SELECT runtime_session_id, revision, state, has_acknowledged_turn, codex_thread_id
 		 FROM runtime_sessions WHERE conversation_id = ?1 AND state IN ('starting', 'active')",
 			params![conversation_id.as_str()],
 			|row| {
@@ -1899,6 +1978,7 @@ fn conversation_projection(
 					row.get::<_, i64>(1)?,
 					row.get::<_, String>(2)?,
 					row.get::<_, bool>(3)?,
+					row.get::<_, Option<String>>(4)?,
 				))
 			},
 		)
@@ -1956,14 +2036,16 @@ fn conversation_projection(
 		runtime_session_revision,
 		runtime_session_state,
 		has_acknowledged_turn,
+		codex_thread_id,
 	) = match session {
-		Some((id, revision, state, acknowledged)) => (
+		Some((id, revision, state, acknowledged, codex_thread_id)) => (
 			Some(RuntimeSessionId::new(id).map_err(|_| incompatible("RuntimeSession identity"))?),
 			Some(revision),
 			Some(parse_runtime_session_state(&state)?),
 			acknowledged,
+			codex_thread_id,
 		),
-		None => (None, None, None, false),
+		None => (None, None, None, false, None),
 	};
 	let routing_decision_id = route.as_ref().map(|value| value.0.clone());
 	let pre_session_state = if runtime_session_id.is_some() {
@@ -1980,10 +2062,13 @@ fn conversation_projection(
 	};
 	Ok(OrdinaryTaskConversationProjection::Current(OrdinaryTaskConversationReadback {
 		conversation_id,
+		title,
 		conversation_revision: row.2,
 		runtime_session_id,
 		runtime_session_revision,
 		runtime_session_state,
+		codex_thread_id,
+		program_work_item,
 		has_acknowledged_turn,
 		active_turn_id: active_turn
 			.as_ref()
@@ -1998,6 +2083,46 @@ fn conversation_projection(
 		routing_decision_id,
 		updated_at_micros: row.3,
 	}))
+}
+
+/// Derive one normalized, bounded, credential-negative title from the first user request.
+pub fn bounded_conversation_title(message: &str) -> String {
+	let normalized = message.split_whitespace().collect::<Vec<_>>().join(" ");
+	safe_display_title(&normalized, "Private conversation")
+}
+
+fn conversation_display_title(persisted: &str, first_request: &str) -> String {
+	let persisted = persisted.split_whitespace().collect::<Vec<_>>().join(" ");
+	let generic = persisted.eq_ignore_ascii_case("quick task")
+		|| persisted.eq_ignore_ascii_case("program work")
+		|| persisted.eq_ignore_ascii_case("conversation");
+	if generic || persisted.is_empty() {
+		bounded_conversation_title(first_request)
+	} else {
+		safe_display_title(&persisted, &bounded_conversation_title(first_request))
+	}
+}
+
+fn safe_display_title(value: &str, fallback: &str) -> String {
+	let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
+	if value.is_empty()
+		|| value.chars().any(char::is_control)
+		|| contains_credential_material(&value)
+	{
+		return fallback.to_owned();
+	}
+	truncate_utf8(&value, MAX_CONVERSATION_TITLE_BYTES).to_owned()
+}
+
+fn truncate_utf8(value: &str, max_bytes: usize) -> &str {
+	if value.len() <= max_bytes {
+		return value;
+	}
+	let mut end = max_bytes;
+	while !value.is_char_boundary(end) {
+		end -= 1;
+	}
+	value[..end].trim_end()
 }
 
 fn turn_matches(
@@ -2026,7 +2151,7 @@ fn turn_matches(
 		.map_err(sql_error)
 }
 
-fn initial_admission_digest(request: &AdmitInitialQuickTaskTurn, payload: &Payload) -> String {
+fn initial_admission_digest(request: &AdmitInitialConversationTurn, payload: &Payload) -> String {
 	digest(&[
 		&request.expected_conversation_revision.to_string(),
 		&request.expected_runtime_session_revision.to_string(),
@@ -2040,7 +2165,7 @@ fn initial_admission_digest(request: &AdmitInitialQuickTaskTurn, payload: &Paylo
 	])
 }
 
-fn terminalization_digest(request: &TerminalizeQuickTaskTurn) -> String {
+fn terminalization_digest(request: &TerminalizeConversationTurn) -> String {
 	let assistant_id =
 		request.assistant_turn.as_ref().map(|value| value.0.as_str()).unwrap_or_default();
 	let assistant_revision =
@@ -2211,11 +2336,11 @@ fn incompatible(reason: &'static str) -> StoreError {
 
 impl SqliteStore {
 	#[allow(clippy::too_many_lines)] // Keep one atomic turn-and-history terminalization together.
-	pub async fn terminalize_quick_task_turn(
+	pub async fn terminalize_conversation_turn(
 		&self,
 		idempotency_key: &str,
-		request: &TerminalizeQuickTaskTurn,
-	) -> Result<QuickTaskTerminalizationOutcome, StoreError> {
+		request: &TerminalizeConversationTurn,
+	) -> Result<ConversationTerminalizationOutcome, StoreError> {
 		validate_key(idempotency_key)?;
 		validate_terminalization(request)?;
 		let key = idempotency_key.to_owned();
@@ -2232,10 +2357,10 @@ impl SqliteStore {
 				"terminalize_quick_task_turn",
 				request.provider_attempt_id.as_str(),
 			)? {
-				let readback: QuickTaskTerminalizationReadback = serde_json::from_str(&response)
+				let readback: ConversationTerminalizationReadback = serde_json::from_str(&response)
 					.map_err(|_| incompatible("terminalization receipt"))?;
 				transaction.commit().map_err(sql_error)?;
-				return Ok(QuickTaskTerminalizationOutcome::Replayed(readback));
+				return Ok(ConversationTerminalizationOutcome::Replayed(readback));
 			}
 			let expected_state = match request.provider_outcome {
 				ProviderTerminalOutcome::Succeeded => "succeeded",
@@ -2304,7 +2429,7 @@ impl SqliteStore {
 					)
 				})?;
 			if !attempt_matches || !session_matches || !user_matches || !assistant_matches {
-				return Ok(QuickTaskTerminalizationOutcome::Rejected);
+				return Ok(ConversationTerminalizationOutcome::Rejected);
 			}
 			let now = unix_micros().map_err(StoreError::from)?;
 			let turn_state = match request.provider_outcome {
@@ -2334,7 +2459,7 @@ impl SqliteStore {
 				params![request.runtime_session_id.as_str(), request.provider_turn_id, now],
 			).map_err(sql_error)?;
 			touch_conversation(&transaction, &request.conversation_id, now)?;
-			let readback = QuickTaskTerminalizationReadback {
+			let readback = ConversationTerminalizationReadback {
 				runtime_session_revision: request.expected_runtime_session_revision + 1,
 				user_turn_revision: request.expected_user_turn_revision + 1,
 				assistant_turn_revision: request
@@ -2354,18 +2479,18 @@ impl SqliteStore {
 				now,
 			)?;
 			transaction.commit().map_err(sql_error)?;
-			Ok(QuickTaskTerminalizationOutcome::Applied(readback))
+			Ok(ConversationTerminalizationOutcome::Applied(readback))
 		})
 		.await
 	}
 
 	/// SQLite terminalization is one transaction, so there is no partially committed work.
-	pub async fn reconcile_quick_task_terminalizations(
+	pub async fn reconcile_conversation_terminalizations(
 		&self,
 		limit: u16,
 	) -> Result<u16, StoreError> {
 		if !(1..=256).contains(&limit) {
-			return Err(StoreError::InvalidInput("Quick Task terminalization bound is invalid"));
+			return Err(StoreError::InvalidInput("Conversation terminalization bound is invalid"));
 		}
 		Ok(0)
 	}
@@ -2852,15 +2977,16 @@ mod archive_tests {
 	use tempfile::tempdir;
 
 	use super::{
-		ArchiveLocalQuickTaskConversation, ArchiveLocalQuickTaskConversationOutcome,
-		ArchiveQuickTaskConversation, ArchiveQuickTaskConversationOutcome,
-		CreateQuickTaskConversation, OrdinaryTaskConversationProjection,
-		ReconcileStrandedQuickTaskTurn, ReconcileStrandedQuickTaskTurnOutcome,
-		RecoverUnknownQuickTaskTurn, RecoverUnknownQuickTaskTurnOutcome, TerminalizeQuickTaskTurn,
+		ArchiveConversationOutcome, ArchiveConversationRecord, ArchiveLocalConversationOutcome,
+		ArchiveLocalConversationRecord, CreateConversationRecord,
+		OrdinaryTaskConversationProjection, ReconcileStrandedConversationTurn,
+		ReconcileStrandedConversationTurnOutcome, RecoverUnknownConversationTurn,
+		RecoverUnknownConversationTurnOutcome, TerminalizeConversationTurn,
+		bounded_conversation_title,
 	};
 	use crate::{
-		CommandIdentity, PlanContinuation, PrepareProviderAttemptOutcome,
-		ProviderAttemptMutationOutcome, QuickTaskTerminalizationOutcome, SqliteStore,
+		CommandIdentity, ConversationTerminalizationOutcome, PlanContinuation,
+		PrepareProviderAttemptOutcome, ProviderAttemptMutationOutcome, SqliteStore,
 		error::sqlite_error,
 	};
 
@@ -2877,10 +3003,10 @@ mod archive_tests {
 	async fn seed_provider_less_starting_task(store: &SqliteStore) {
 		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
 		store
-			.create_quick_task_conversation(
+			.create_conversation(
 				&CommandIdentity::new("create-local-fixture", b"create local fixture")
 					.expect("create command"),
-				&CreateQuickTaskConversation {
+				&CreateConversationRecord {
 					conversation_id,
 					work_item_id: None,
 					title: "Local fixture".to_owned(),
@@ -2935,6 +3061,52 @@ mod archive_tests {
 				Ok(())
 			})
 			.expect("seed provider-less starting RuntimeSession");
+	}
+
+	#[test]
+	fn derived_conversation_titles_are_normalized_and_sidebar_bounded() {
+		let title = bounded_conversation_title(&format!(
+			"  Verify\n\t{}  ",
+			"the persisted provider conversation ".repeat(10)
+		));
+		assert!(!title.contains('\n'));
+		assert!(!title.contains('\t'));
+		assert!(title.len() <= super::MAX_CONVERSATION_TITLE_BYTES);
+		assert!(title.starts_with("Verify the persisted provider conversation"));
+	}
+
+	#[tokio::test]
+	async fn unsafe_legacy_title_degrades_without_hiding_the_conversation() {
+		let directory = tempdir().expect("temporary database directory");
+		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
+			.expect("initialize database");
+		seed_provider_less_starting_task(&store).await;
+		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
+
+		for unsafe_title in
+			["Authorization: Bearer abcdefghijklmnopqrstuvwxyz", "Legacy\u{0007}control title"]
+		{
+			store
+				.with_connection(|connection| {
+					connection
+						.execute(
+							"UPDATE conversations SET title = ?2 WHERE conversation_id = ?1",
+							params![CONVERSATION_ID, unsafe_title],
+						)
+						.map_err(sqlite_error)?;
+					Ok(())
+				})
+				.expect("seed unsafe legacy title");
+			let projection = store
+				.read_ordinary_task_conversations(Some(&conversation_id), None, 1)
+				.await
+				.expect("unsafe title must not fail projection");
+			assert!(matches!(
+				projection.as_slice(),
+				[OrdinaryTaskConversationProjection::Current(row)]
+					if row.conversation_id == conversation_id && row.title == "Start this task."
+			));
+		}
 	}
 
 	fn seed_active_user_turn(store: &SqliteStore) {
@@ -3107,10 +3279,10 @@ mod archive_tests {
 		let runtime_session_id =
 			RuntimeSessionId::new(RUNTIME_SESSION_ID).expect("RuntimeSession ID");
 		store
-			.create_quick_task_conversation(
+			.create_conversation(
 				&CommandIdentity::new("create-archive-fixture", b"create archive fixture")
 					.expect("create command"),
-				&CreateQuickTaskConversation {
+				&CreateConversationRecord {
 					conversation_id: conversation_id.clone(),
 					work_item_id: None,
 					title: "Archive fixture".to_owned(),
@@ -3171,7 +3343,7 @@ mod archive_tests {
 			})
 			.expect("seed active RuntimeSession");
 
-		let archive = ArchiveQuickTaskConversation {
+		let archive = ArchiveConversationRecord {
 			conversation_id: conversation_id.clone(),
 			expected_conversation_revision: 1,
 			runtime_session_id: runtime_session_id.clone(),
@@ -3180,20 +3352,20 @@ mod archive_tests {
 		let command =
 			CommandIdentity::new("archive-fixture", b"archive fixture").expect("archive command");
 		let archived = match store
-			.archive_quick_task_conversation(&command, &archive)
+			.archive_conversation(&command, &archive)
 			.await
 			.expect("archive verified conversation")
 		{
-			ArchiveQuickTaskConversationOutcome::Applied(archived) => archived,
+			ArchiveConversationOutcome::Applied(archived) => archived,
 			other => panic!("archive was not applied: {other:?}"),
 		};
 		assert_eq!(archived.conversation_revision, 2);
 		assert!(matches!(
 			store
-				.archive_quick_task_conversation(&command, &archive)
+				.archive_conversation(&command, &archive)
 				.await
 				.expect("replay archive command"),
-			ArchiveQuickTaskConversationOutcome::Replayed(ref replayed)
+			ArchiveConversationOutcome::Replayed(ref replayed)
 				if replayed == &archived
 		));
 
@@ -3216,7 +3388,7 @@ mod archive_tests {
 				.is_empty()
 		);
 		assert_eq!(
-			store.read_quick_task_request(&conversation_id).await.expect("read archived request"),
+			store.read_conversation_request(&conversation_id).await.expect("read archived request"),
 			None
 		);
 		let session: (String, i64, Option<i64>) = store
@@ -3243,7 +3415,7 @@ mod archive_tests {
 			.expect("initialize database");
 		seed_provider_less_starting_task(&store).await;
 		seed_active_user_turn(&store);
-		let request = ReconcileStrandedQuickTaskTurn {
+		let request = ReconcileStrandedConversationTurn {
 			conversation_id: ConversationId::new(CONVERSATION_ID).expect("conversation ID"),
 			expected_conversation_revision: 1,
 			runtime_session_id: RuntimeSessionId::new(RUNTIME_SESSION_ID)
@@ -3252,37 +3424,37 @@ mod archive_tests {
 			turn_id: TurnId::new(TURN_ID).expect("Turn ID"),
 			expected_turn_revision: 1,
 		};
-		let stale = ReconcileStrandedQuickTaskTurn {
+		let stale = ReconcileStrandedConversationTurn {
 			expected_runtime_session_revision: 2,
 			..request.clone()
 		};
 		assert_eq!(
 			store
-				.reconcile_stranded_quick_task_turn(
+				.reconcile_stranded_conversation_turn(
 					&CommandIdentity::new("stale-turn-reconcile", b"stale coordinates")
 						.expect("stale command"),
 					&stale,
 				)
 				.await
 				.expect("reject stale coordinates"),
-			ReconcileStrandedQuickTaskTurnOutcome::Rejected
+			ReconcileStrandedConversationTurnOutcome::Rejected
 		);
 
 		let command = CommandIdentity::new("exact-turn-reconcile", b"exact coordinates")
 			.expect("exact command");
 		assert_eq!(
 			store
-				.reconcile_stranded_quick_task_turn(&command, &request)
+				.reconcile_stranded_conversation_turn(&command, &request)
 				.await
 				.expect("reconcile stranded Turn"),
-			ReconcileStrandedQuickTaskTurnOutcome::Applied { turn_revision: 2 }
+			ReconcileStrandedConversationTurnOutcome::Applied { turn_revision: 2 }
 		);
 		assert_eq!(
 			store
-				.reconcile_stranded_quick_task_turn(&command, &request)
+				.reconcile_stranded_conversation_turn(&command, &request)
 				.await
 				.expect("replay reconciliation"),
-			ReconcileStrandedQuickTaskTurnOutcome::Replayed { turn_revision: 2 }
+			ReconcileStrandedConversationTurnOutcome::Replayed { turn_revision: 2 }
 		);
 		let turn: (String, i64, Option<i64>) = store
 			.with_connection(|connection| {
@@ -3310,12 +3482,12 @@ mod archive_tests {
 		seed_unknown_provider_attempt(&store);
 		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
 		let before = store
-			.read_unknown_quick_task_attempt_for_recovery(&conversation_id)
+			.read_unknown_conversation_attempt_for_recovery(&conversation_id)
 			.await
 			.expect("read active unknown attempt")
 			.expect("unknown attempt exists");
 		assert!(!before.process_generation_is_dead);
-		let request = RecoverUnknownQuickTaskTurn {
+		let request = RecoverUnknownConversationTurn {
 			conversation_id: conversation_id.clone(),
 			expected_conversation_revision: 1,
 			runtime_session_id: RuntimeSessionId::new(RUNTIME_SESSION_ID)
@@ -3333,41 +3505,41 @@ mod archive_tests {
 			.expect("recovery command");
 		assert_eq!(
 			store
-				.recover_unknown_quick_task_turn(&command, &request)
+				.recover_unknown_conversation_turn(&command, &request)
 				.await
 				.expect("reject recovery without death evidence"),
-			RecoverUnknownQuickTaskTurnOutcome::Rejected
+			RecoverUnknownConversationTurnOutcome::Rejected
 		);
 
 		record_exact_process_death(&store);
 		assert!(
 			store
-				.read_unknown_quick_task_attempt_for_recovery(&conversation_id)
+				.read_unknown_conversation_attempt_for_recovery(&conversation_id)
 				.await
 				.expect("read dead unknown attempt")
 				.expect("unknown attempt remains active")
 				.process_generation_is_dead
 		);
 		let recovered = store
-			.recover_unknown_quick_task_turn(&command, &request)
+			.recover_unknown_conversation_turn(&command, &request)
 			.await
 			.expect("recover exact dead unknown Turn");
 		assert!(matches!(
 			recovered,
-			RecoverUnknownQuickTaskTurnOutcome::Applied(ref readback)
+			RecoverUnknownConversationTurnOutcome::Applied(ref readback)
 				if readback.turn_revision == 2
 		));
 		assert!(matches!(
 			store
-				.recover_unknown_quick_task_turn(&command, &request)
+				.recover_unknown_conversation_turn(&command, &request)
 				.await
 				.expect("replay exact recovery"),
-			RecoverUnknownQuickTaskTurnOutcome::Replayed(ref readback)
+			RecoverUnknownConversationTurnOutcome::Replayed(ref readback)
 				if readback.turn_revision == 2
 		));
 		assert_eq!(
 			store
-				.read_unknown_quick_task_attempt_for_recovery(&conversation_id)
+				.read_unknown_conversation_attempt_for_recovery(&conversation_id)
 				.await
 				.expect("read recovered projection"),
 			None
@@ -3438,14 +3610,14 @@ mod archive_tests {
 		));
 
 		let pending = store
-			.read_pending_quick_task_terminalization(&conversation_id)
+			.read_pending_conversation_terminalization(&conversation_id)
 			.await
 			.expect("read pending terminalization")
 			.expect("positive evidence remains terminalizable");
 		assert_eq!(pending.attempt_revision, 2);
 		assert_eq!(pending.provider_outcome, ProviderTerminalOutcome::Succeeded);
 		assert_eq!(pending.provider_turn_id, "provider-turn-recovered");
-		let terminalization = TerminalizeQuickTaskTurn {
+		let terminalization = TerminalizeConversationTurn {
 			conversation_id: pending.conversation_id.clone(),
 			expected_conversation_revision: pending.conversation_revision,
 			runtime_session_id: pending.runtime_session_id.clone(),
@@ -3462,14 +3634,14 @@ mod archive_tests {
 		};
 		assert!(matches!(
 			store
-				.terminalize_quick_task_turn("pending-terminalization", &terminalization)
+				.terminalize_conversation_turn("pending-terminalization", &terminalization)
 				.await
 				.expect("terminalize from durable evidence"),
-			QuickTaskTerminalizationOutcome::Applied(_)
+			ConversationTerminalizationOutcome::Applied(_)
 		));
 		assert_eq!(
 			store
-				.read_pending_quick_task_terminalization(&conversation_id)
+				.read_pending_conversation_terminalization(&conversation_id)
 				.await
 				.expect("read terminalized projection"),
 			None
@@ -3489,7 +3661,7 @@ mod archive_tests {
 		seed_unknown_provider_attempt(&store);
 		record_exact_process_death(&store);
 		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
-		let recovery = RecoverUnknownQuickTaskTurn {
+		let recovery = RecoverUnknownConversationTurn {
 			conversation_id: conversation_id.clone(),
 			expected_conversation_revision: 1,
 			runtime_session_id: RuntimeSessionId::new(RUNTIME_SESSION_ID)
@@ -3505,14 +3677,14 @@ mod archive_tests {
 		};
 		assert!(matches!(
 			store
-				.recover_unknown_quick_task_turn(
+				.recover_unknown_conversation_turn(
 					&CommandIdentity::new("fallback-recover", b"fallback recovery")
 						.expect("recovery command"),
 					&recovery,
 				)
 				.await
 				.expect("recover unknown predecessor"),
-			RecoverUnknownQuickTaskTurnOutcome::Applied(_)
+			RecoverUnknownConversationTurnOutcome::Applied(_)
 		));
 		store
 			.with_connection(|connection| {
@@ -3829,7 +4001,7 @@ mod archive_tests {
 			.expect("initialize database");
 		seed_provider_less_starting_task(&store).await;
 		seed_active_user_turn(&store);
-		let archive = ArchiveLocalQuickTaskConversation {
+		let archive = ArchiveLocalConversationRecord {
 			conversation_id: ConversationId::new(CONVERSATION_ID).expect("conversation ID"),
 			expected_conversation_revision: 1,
 			runtime_session_id: RuntimeSessionId::new(RUNTIME_SESSION_ID)
@@ -3838,14 +4010,14 @@ mod archive_tests {
 		};
 		assert_eq!(
 			store
-				.archive_local_quick_task_conversation(
+				.archive_local_conversation(
 					&CommandIdentity::new("unsafe-local-archive", b"active turn")
 						.expect("unsafe archive command"),
 					&archive,
 				)
 				.await
 				.expect("reject unsafe local archive"),
-			ArchiveLocalQuickTaskConversationOutcome::Rejected
+			ArchiveLocalConversationOutcome::Rejected
 		);
 		store
 			.with_connection(|connection| {
@@ -3862,20 +4034,20 @@ mod archive_tests {
 		let command = CommandIdentity::new("safe-local-archive", b"no active owner")
 			.expect("safe archive command");
 		let archived = match store
-			.archive_local_quick_task_conversation(&command, &archive)
+			.archive_local_conversation(&command, &archive)
 			.await
 			.expect("archive safe local projection")
 		{
-			ArchiveLocalQuickTaskConversationOutcome::Applied(archived) => archived,
+			ArchiveLocalConversationOutcome::Applied(archived) => archived,
 			other => panic!("local archive was not applied: {other:?}"),
 		};
 		assert_eq!(archived.conversation_revision, 2);
 		assert!(matches!(
 			store
-				.archive_local_quick_task_conversation(&command, &archive)
+				.archive_local_conversation(&command, &archive)
 				.await
 				.expect("replay local archive"),
-			ArchiveLocalQuickTaskConversationOutcome::Replayed(ref replayed)
+			ArchiveLocalConversationOutcome::Replayed(ref replayed)
 				if replayed == &archived
 		));
 		let states: (String, String) = store

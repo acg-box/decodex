@@ -22,7 +22,7 @@ use decodex_core::{
 	ProcessGenerationId, ProcessGenerationIntent, ProcessGenerationState, ProcessIdentity,
 };
 use decodex_database::{
-	FreshQuickTaskProcessGeneration, PrepareProcessGenerationOutcome, ProcessGenerationMutation,
+	FreshConversationProcessGeneration, PrepareProcessGenerationOutcome, ProcessGenerationMutation,
 	ProcessGenerationMutationOutcome, SqliteStore,
 };
 use sha2::{Digest as _, Sha256};
@@ -313,6 +313,21 @@ pub(crate) struct FencedProcess {
 	revision: i64,
 }
 impl FencedProcess {
+	#[cfg(test)]
+	pub(crate) fn for_test(generation_id: ProcessGenerationId, revision: i64) -> Self {
+		let boot_id = ProcessBootIdentity::new("runtime-resume-test").expect("test boot identity");
+		let identity = ProcessIdentity::new(
+			boot_id,
+			42_001,
+			decodex_core::ProcessStartIdentity::new("runtime-resume-start")
+				.expect("test process start identity"),
+			42_001,
+			42_001,
+		)
+		.expect("test process identity");
+		Self { generation_id, identity, revision }
+	}
+
 	pub(crate) fn generation_id(&self) -> &ProcessGenerationId {
 		&self.generation_id
 	}
@@ -607,10 +622,10 @@ impl ProcessGenerationControl {
 		Ok(ProcessGenerationTermination::DeathUnproved)
 	}
 
-	/// Spawn only after the durable ProcessGeneration insert re-locks Quick Task Turn authority.
-	pub(crate) async fn spawn_fenced_quick_task(
+	/// Spawn only after the durable ProcessGeneration insert re-locks Conversation Turn authority.
+	pub(crate) async fn spawn_fenced_conversation(
 		&self,
-		admission: FreshQuickTaskProcessGeneration,
+		admission: FreshConversationProcessGeneration,
 		execution_authorization: ProcessExecutionAuthorization,
 		launch: AttestedAppServerLaunch,
 	) -> Result<FencedProcess, ProcessSupervisorError> {
@@ -623,7 +638,7 @@ impl ProcessGenerationControl {
 		generation_id: ProcessGenerationId,
 		execution_authorization: ProcessExecutionAuthorization,
 		launch: AttestedAppServerLaunch,
-		admission: FreshQuickTaskProcessGeneration,
+		admission: FreshConversationProcessGeneration,
 	) -> Result<FencedProcess, ProcessSupervisorError> {
 		let intent = launch.derive_intent(
 			generation_id,
@@ -635,7 +650,7 @@ impl ProcessGenerationControl {
 		let preparation = self
 			.inner
 			.store
-			.prepare_quick_task_bound_process_generation(&intent, &account_binding, admission)
+			.prepare_conversation_bound_process_generation(&intent, &account_binding, admission)
 			.await
 			.map_err(|_| ProcessSupervisorError::ProductState)?;
 		let fence = match preparation {

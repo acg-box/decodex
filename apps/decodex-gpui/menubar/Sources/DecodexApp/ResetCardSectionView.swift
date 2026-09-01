@@ -446,7 +446,7 @@ struct ResetCardAccountRow: View {
 			return "Account update pending"
 		case .callbackCapabilityUnready:
 			// Account health and usage come from the direct provider API. The callback
-			// capability only gates Quick Task routing, so it is not an account-data
+			// capability only gates Conversation routing, so it is not an account-data
 			// error here.
 			break
 		case .tombstoned:

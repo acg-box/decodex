@@ -7,7 +7,7 @@ pub const AUTOMATIC_FALLBACK_WAKE_GATE: &str = "XY-1304";
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DispatchPath {
 	/// Initial account selection or a new task after explicit manual recovery.
-	OrdinaryQuickTask,
+	OrdinaryConversation,
 	/// Automatic continuation of one conversation on another account.
 	AutomaticCrossAccountFallback,
 	/// Automatic retry after every eligible account was depleted.
@@ -57,7 +57,7 @@ impl DispatchGate {
 		Self
 	}
 
-	/// Deny production I/O without treating XY-1304 as an ordinary Quick Task prerequisite.
+	/// Deny production I/O without treating XY-1304 as an ordinary Conversation prerequisite.
 	pub const fn authorize(self, operation: DispatchOperation) -> Result<(), DispatchDenied> {
 		Err(DispatchDenied { operation, failed_gate: LIVE_ROUTING_GATE })
 	}
@@ -89,7 +89,7 @@ mod tests {
 
 		assert_eq!(AUTOMATIC_FALLBACK_WAKE_GATE, "XY-1304");
 		for (path, expected) in [
-			(DispatchPath::OrdinaryQuickTask, false),
+			(DispatchPath::OrdinaryConversation, false),
 			(DispatchPath::AutomaticCrossAccountFallback, true),
 			(DispatchPath::AllDepletedWake, true),
 		] {

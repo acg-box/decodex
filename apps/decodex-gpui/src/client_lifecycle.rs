@@ -28,14 +28,13 @@ use crate::{
 		CacheAuthority, CacheError, CacheLimits, ClientCache, GenerationInspection,
 		ObjectCertainty, ObjectInput,
 	},
+	conversations::{ConversationDispatch, ConversationRouteOutcome, Conversations},
 	desktop_settings::{
 		DesktopSettingsController, DesktopSettingsDispatch, DesktopSettingsRouteOutcome,
 	},
 	health_query::{HealthDispatch, HealthQuery, HealthRouteOutcome},
 	history_pager::{HistoryDispatch, HistoryPager, HistoryRouteOutcome},
 	programs::{ProgramDispatch, ProgramRouteOutcome, Programs},
-	quick_tasks::{QuickTaskDispatch, QuickTaskRouteOutcome, QuickTasks},
-	work_items::{WorkItemDispatch, WorkItemRouteOutcome, WorkItems},
 };
 
 pub(crate) trait AppOwnedDaemonRecovery: Send + Sync {
@@ -220,8 +219,7 @@ enum SessionStep<C> {
 	Health(HealthDispatch),
 	History(HistoryDispatch),
 	Program(ProgramDispatch),
-	QuickTask(QuickTaskDispatch),
-	WorkItem(WorkItemDispatch),
+	Conversation(ConversationDispatch),
 }
 
 /// The single private seam around retained-session operations and retry time.
@@ -277,12 +275,10 @@ impl LifecycleIo for TokioIo {
 
 	async fn next(&mut self) -> Result<Delivery<Self::Confirmation>, RetainedSessionFailure> {
 		match self.session.as_mut().ok_or(RetainedSessionFailure::Closed)?.next().await? {
-			SessionDelivery::Snapshot { snapshot, confirmation } => {
-				Ok(Delivery::Snapshot { snapshot, confirmation })
-			},
-			SessionDelivery::Event { event, confirmation } => {
-				Ok(Delivery::Event { event, confirmation })
-			},
+			SessionDelivery::Snapshot { snapshot, confirmation } =>
+				Ok(Delivery::Snapshot { snapshot, confirmation }),
+			SessionDelivery::Event { event, confirmation } =>
+				Ok(Delivery::Event { event, confirmation }),
 			SessionDelivery::QueryResult(result) => Ok(Delivery::QueryResult(result)),
 			SessionDelivery::CommandReceipt(receipt) => Ok(Delivery::CommandReceipt(receipt)),
 			SessionDelivery::CommandResult(result) => Ok(Delivery::CommandResult(result)),
@@ -345,8 +341,7 @@ pub(crate) struct ClientLifecycle {
 	health_query: HealthQuery,
 	history_pager: HistoryPager,
 	programs: Programs,
-	quick_tasks: QuickTasks,
-	work_items: WorkItems,
+	conversations: Conversations,
 	state: HashMap<String, AppliedEntity>,
 	last_cursor: Option<Cursor>,
 	binding: Option<CacheBinding>,
@@ -412,8 +407,7 @@ impl ClientLifecycle {
 			health_query: HealthQuery::production(),
 			history_pager,
 			programs: Programs::production(),
-			quick_tasks: QuickTasks::production(),
-			work_items: WorkItems::production(),
+			conversations: Conversations::production(),
 			state: HashMap::new(),
 			last_cursor: None,
 			binding: None,
@@ -485,19 +479,14 @@ impl ClientLifecycle {
 		self.desktop_settings.clone()
 	}
 
-	/// Clone the presentation-neutral ordinary Quick Tasks controller.
-	pub(crate) fn quick_tasks(&self) -> QuickTasks {
-		self.quick_tasks.clone()
+	/// Clone the presentation-neutral ordinary Conversations controller.
+	pub(crate) fn conversations(&self) -> Conversations {
+		self.conversations.clone()
 	}
 
 	/// Clone the presentation-neutral Adaptive Factory Program controller.
 	pub(crate) fn programs(&self) -> Programs {
 		self.programs.clone()
-	}
-
-	/// Clone the presentation-neutral internal WorkItem controller.
-	pub(crate) fn work_items(&self) -> WorkItems {
-		self.work_items.clone()
 	}
 
 	/// Run the bounded lifecycle without spawning or detaching any work.
@@ -557,8 +546,7 @@ impl ClientLifecycle {
 			self.health_query.bind_session(generation, self.server_id.clone());
 			self.history_pager.bind_session(generation, self.server_id.clone());
 			self.programs.bind_session(generation, self.server_id.clone());
-			self.quick_tasks.bind_session(generation, self.server_id.clone());
-			self.work_items.bind_session(generation, self.server_id.clone());
+			self.conversations.bind_session(generation, self.server_id.clone());
 			let failure =
 				self.run_connected_session(io, generation, connected_checkpoint.is_none()).await;
 
@@ -568,8 +556,7 @@ impl ClientLifecycle {
 			self.health_query.session_ended(generation);
 			self.history_pager.session_ended(generation);
 			self.programs.session_ended(generation);
-			self.quick_tasks.session_ended(generation);
-			self.work_items.session_ended(generation);
+			self.conversations.session_ended(generation);
 			if self.quarantine.is_none() {
 				self.set_view(ConnectionView::ShuttingDown);
 			}
@@ -612,8 +599,7 @@ impl ClientLifecycle {
 			let health_query = self.health_query.clone();
 			let history_pager = self.history_pager.clone();
 			let programs = self.programs.clone();
-			let quick_tasks = self.quick_tasks.clone();
-			let work_items = self.work_items.clone();
+			let conversations = self.conversations.clone();
 			let server_id = self.server_id.clone();
 			let step = tokio::select! {
 				delivery = io.next() => SessionStep::Delivery(Box::new(delivery)),
@@ -629,10 +615,8 @@ impl ClientLifecycle {
 					if !requires_snapshot => SessionStep::History(dispatch),
 				dispatch = programs.next_dispatch(generation, &server_id),
 					if !requires_snapshot => SessionStep::Program(dispatch),
-				dispatch = quick_tasks.next_dispatch(generation, &server_id),
-					if !requires_snapshot => SessionStep::QuickTask(dispatch),
-				dispatch = work_items.next_dispatch(generation, &server_id),
-					if !requires_snapshot => SessionStep::WorkItem(dispatch),
+				dispatch = conversations.next_dispatch(generation, &server_id),
+					if !requires_snapshot => SessionStep::Conversation(dispatch),
 			};
 
 			if self.ensure_generation(generation).is_err() {
@@ -640,7 +624,7 @@ impl ClientLifecycle {
 			}
 
 			match step {
-				SessionStep::Account(dispatch) => {
+				SessionStep::Account(dispatch) =>
 					if let Some(command) = dispatch.command() {
 						let send_result = io.send_command(command.clone()).await;
 						if let Err(failure) = send_result {
@@ -652,8 +636,7 @@ impl ClientLifecycle {
 						&& let Err(failure) = io.send_query(query.clone()).await
 					{
 						return failure;
-					}
-				},
+					},
 				SessionStep::DesktopSettings(dispatch) => {
 					if let Some(command) = dispatch.command() {
 						let send_result = io.send_command(command.clone()).await;
@@ -692,7 +675,7 @@ impl ClientLifecycle {
 						self.history_pager.lookup_sent_request(&send_token);
 					}
 				},
-				SessionStep::Program(dispatch) => {
+				SessionStep::Program(dispatch) =>
 					if let Some(command) = dispatch.command() {
 						let send_result = io.send_command(command.clone()).await;
 						if let Err(failure) = send_result {
@@ -704,36 +687,20 @@ impl ClientLifecycle {
 						&& let Err(failure) = io.send_query(query.clone()).await
 					{
 						return failure;
-					}
-				},
-				SessionStep::QuickTask(dispatch) => {
+					},
+				SessionStep::Conversation(dispatch) =>
 					if let Some(command) = dispatch.command() {
 						let send_result = io.send_command(command.clone()).await;
 						if let Err(failure) = send_result {
-							self.quick_tasks.command_send_failed(&dispatch);
+							self.conversations.command_send_failed(&dispatch);
 							return failure;
 						}
-						self.quick_tasks.command_sent(&dispatch);
+						self.conversations.command_sent(&dispatch);
 					} else if let Some(query) = dispatch.query()
 						&& let Err(failure) = io.send_query(query.clone()).await
 					{
 						return failure;
-					}
-				},
-				SessionStep::WorkItem(dispatch) => {
-					if let Some(command) = dispatch.command() {
-						let send_result = io.send_command(command.clone()).await;
-						if let Err(failure) = send_result {
-							self.work_items.command_send_failed(&dispatch);
-							return failure;
-						}
-						self.work_items.command_sent(&dispatch);
-					} else if let Some(query) = dispatch.query()
-						&& let Err(failure) = io.send_query(query.clone()).await
-					{
-						return failure;
-					}
-				},
+					},
 				SessionStep::Delivery(delivery) => match *delivery {
 					Ok(Delivery::Snapshot { snapshot, confirmation }) => {
 						let cursor = snapshot.cursor;
@@ -762,22 +729,21 @@ impl ClientLifecycle {
 							return RetainedSessionFailure::PublicationOrder;
 						}
 						let cursor = event.cursor;
-						let quick_task_event = event.clone();
+						let conversation_event = event.clone();
 						let inspection = match self.apply_event(generation, event) {
 							Ok(inspection) => inspection,
 							Err(failure) => return failure,
 						};
-						if let EventPayload::QuickTaskTurnFinished { conversation, .. } =
-							&quick_task_event.payload
+						if let EventPayload::ConversationTurnFinished { conversation, .. } =
+							&conversation_event.payload
 						{
 							let _ =
 								self.history_pager.reload_if_open(&conversation.conversation_id);
 						}
-						self.quick_tasks.apply_event(&quick_task_event);
-						self.programs.apply_event(&quick_task_event);
-						self.work_items.apply_event(&quick_task_event);
-						self.accounts.apply_event(&quick_task_event);
-						self.desktop_settings.apply_event(&quick_task_event);
+						self.conversations.apply_event(&conversation_event);
+						self.programs.apply_event(&conversation_event);
+						self.accounts.apply_event(&conversation_event);
+						self.desktop_settings.apply_event(&conversation_event);
 						let checkpoint = match io.confirm_applied(confirmation) {
 							Ok(checkpoint) => checkpoint,
 							Err(_) => return self.confirmation_failure(),
@@ -809,19 +775,17 @@ impl ClientLifecycle {
 		let _ = self.accounts.route_receipt(generation, &self.server_id, receipt);
 		let _ = self.desktop_settings.route_receipt(generation, &self.server_id, receipt);
 		let _ = self.programs.route_receipt(generation, &self.server_id, receipt);
-		let _ = self.quick_tasks.route_receipt(generation, &self.server_id, receipt);
-		let _ = self.work_items.route_receipt(generation, &self.server_id, receipt);
+		let _ = self.conversations.route_receipt(generation, &self.server_id, receipt);
 	}
 
 	fn route_command_delivery(&self, generation: u64, result: &CommandResultEnvelope) {
 		let _ = self.accounts.route_command_result(generation, &self.server_id, result);
 		let _ = self.desktop_settings.route_command_result(generation, &self.server_id, result);
 		let _ = self.programs.route_command_result(generation, &self.server_id, result);
-		let _ = self.quick_tasks.route_command_result(generation, &self.server_id, result);
-		if let Some(conversation_id) = self.quick_tasks.take_history_reload_request() {
+		let _ = self.conversations.route_command_result(generation, &self.server_id, result);
+		if let Some(conversation_id) = self.conversations.take_history_reload_request() {
 			let _ = self.history_pager.reload_if_open(&conversation_id);
 		}
-		let _ = self.work_items.route_command_result(generation, &self.server_id, result);
 	}
 
 	fn begin_attempt(&mut self, attempt: u8) -> Result<u64, ()> {
@@ -867,9 +831,7 @@ impl ClientLifecycle {
 			Ok(Some(inspection))
 				if inspection.generation == binding.generation
 					&& inspection.authority == self.cache_authority =>
-			{
-				Some(binding.checkpoint)
-			},
+				Some(binding.checkpoint),
 			_ => {
 				self.enter_quarantine(
 					QuarantineReason::ContentAttestation,
@@ -892,7 +854,7 @@ impl ClientLifecycle {
 				if let (Some(conversation_id), Some(page)) =
 					(snapshot.conversation_id.as_ref(), snapshot.visible.as_ref())
 				{
-					self.quick_tasks.reconcile_durable_history(conversation_id, page);
+					self.conversations.reconcile_durable_history(conversation_id, page);
 				}
 				Ok(())
 			},
@@ -929,19 +891,14 @@ impl ClientLifecycle {
 			ProgramRouteOutcome::Fresh | ProgramRouteOutcome::Refused => return Ok(()),
 			ProgramRouteOutcome::Unmatched => {},
 		}
-		match self.work_items.route_query_result(generation, &self.server_id, &result) {
-			WorkItemRouteOutcome::Fresh | WorkItemRouteOutcome::Refused => return Ok(()),
-			WorkItemRouteOutcome::Unmatched => {},
-		}
-		match self.quick_tasks.route_query_result(generation, &self.server_id, &result) {
-			QuickTaskRouteOutcome::Fresh | QuickTaskRouteOutcome::Refused => return Ok(()),
-			QuickTaskRouteOutcome::Unmatched => {},
+		match self.conversations.route_query_result(generation, &self.server_id, &result) {
+			ConversationRouteOutcome::Fresh | ConversationRouteOutcome::Refused => return Ok(()),
+			ConversationRouteOutcome::Unmatched => {},
 		}
 		match self.health_query.route_result(generation, &self.server_id, &result) {
 			HealthRouteOutcome::Unmatched => self.route_history_result(generation, result),
-			HealthRouteOutcome::Fresh | HealthRouteOutcome::Refused | HealthRouteOutcome::Stale => {
-				Ok(())
-			},
+			HealthRouteOutcome::Fresh | HealthRouteOutcome::Refused | HealthRouteOutcome::Stale =>
+				Ok(()),
 		}
 	}
 
@@ -1215,14 +1172,12 @@ impl ClientLifecycle {
 			RetainedSessionFailure::OperationTimeout
 				| RetainedSessionFailure::Closed
 				| RetainedSessionFailure::Disconnected
-		) {
-			if self
-				.app_owned_daemon
-				.as_ref()
-				.is_some_and(|supervisor| !supervisor.recover_transport())
-			{
-				self.app_owned_daemon = None;
-			}
+		) && self
+			.app_owned_daemon
+			.as_ref()
+			.is_some_and(|supervisor| !supervisor.recover_transport())
+		{
+			self.app_owned_daemon = None;
 		}
 	}
 
@@ -1346,7 +1301,7 @@ fn initialize_cache(
 				Err(_) => unsafe_cache_quarantine(),
 			}
 		},
-		Err(error) if is_disposable_corruption(error) => {
+		Err(error) if is_disposable_corruption(error) =>
 			if ClientCache::dispose_all(root).is_ok() {
 				match ClientCache::open(root, limits, authority) {
 					Ok(cache) => (
@@ -1360,8 +1315,7 @@ fn initialize_cache(
 				}
 			} else {
 				unsafe_cache_quarantine()
-			}
-		},
+			},
 		Err(_) => unsafe_cache_quarantine(),
 	}
 }

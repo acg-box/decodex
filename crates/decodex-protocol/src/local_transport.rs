@@ -15,8 +15,7 @@ use std::{
 	fmt::{Debug, Display, Formatter},
 	path::{Path, PathBuf},
 };
-#[cfg(target_os = "macos")]
-use std::{fs::File, os::fd::RawFd};
+#[cfg(target_os = "macos")] use std::{fs::File, os::fd::RawFd};
 
 use decodex_core::{DecodexPaths, LocalTrustPolicy};
 
@@ -78,7 +77,7 @@ impl tokio::io::AsyncWrite for LocalTransportStream {
 	}
 }
 
-/// The complete V2.11 local endpoint authority.
+/// The complete V2.12 local endpoint authority.
 #[derive(Clone, Eq, PartialEq)]
 pub struct LocalTransportAuthority {
 	paths: DecodexPaths,
@@ -259,9 +258,8 @@ impl LocalTransportListener {
 	fn release(&mut self, report: bool) -> Result<(), LocalTransportRefusal> {
 		let result =
 			match (self.listener.as_ref(), self.binding.as_ref(), self.namespace_lock.as_ref()) {
-				(Some(listener), Some(binding), Some(namespace_lock)) => {
-					platform::remove_publication(&self.authority, listener, binding, namespace_lock)
-				},
+				(Some(listener), Some(binding), Some(namespace_lock)) =>
+					platform::remove_publication(&self.authority, listener, binding, namespace_lock),
 				_ => Err(LocalTransportRefusal::EndpointUnavailable),
 			};
 
@@ -337,9 +335,8 @@ impl Display for LocalTransportRefusal {
 			Self::InvalidPolicy => "local transport policy is invalid",
 			Self::ConfigurationUnavailable => "local transport configuration is unavailable",
 			Self::UnsupportedPlatform => "local peer identity is unsupported on this platform",
-			Self::EffectiveUidMismatch => {
-				"process effective UID does not match the local service owner"
-			},
+			Self::EffectiveUidMismatch =>
+				"process effective UID does not match the local service owner",
 			Self::UnsafeDirectory => "local endpoint directory is unsafe",
 			Self::UnsafeEndpoint => "local endpoint or namespace lock is unsafe",
 			Self::EndpointUnavailable => "local endpoint is unavailable",
@@ -451,9 +448,7 @@ mod platform {
 				if identity.file == initial.file
 					&& identity.links == initial.links
 					&& secure_socket(identity, authority.service_owner_uid) =>
-			{
-				identity
-			},
+				identity,
 			_ => {
 				directory.remove_if_file_identity(&namespace_lock, STAGE_NAME, initial);
 				drop(listener);

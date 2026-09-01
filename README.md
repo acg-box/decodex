@@ -14,7 +14,7 @@ execution kernel for one thread. Decodex adds the durable product state and coor
 needed when one engineer manages many conversations, accounts, dependencies, gates, and
 follow-up actions.
 
-The current milestone is intentionally small: one real local Quick Task can select an
+The current milestone is intentionally small: one real local Conversation can select an
 account, start or continue a Codex thread, persist its execution facts, survive a daemon
 restart, and continue without duplicate dispatch.
 
@@ -50,15 +50,24 @@ the source read only and leaves all rollback sources intact.
 ## Supported product slice
 
 ```text
-user message
--> account route
--> RuntimeSession and Codex thread
--> fenced ProcessGeneration
--> fenced ProviderAttempt
--> assistant history and positive terminal evidence
--> daemon restart
--> later user message on the same Codex thread
+GPUI Conversation action                    apps/decodex-gpui/src/conversations.rs
+-> exact-current Conversation protocol      crates/decodex-protocol/src/{conversation,wire}.rs
+-> daemon Conversation service              crates/decodex-runtime/src/{application,conversation}.rs
+-> SQLite revision/idempotency authority    database/src/{conversations,command}.rs
+-> RuntimeSession + ProcessGeneration       database/src/{runtime_sessions,process_generations}.rs
+-> ProviderAttempt safety                   database/src/provider_attempts.rs
+-> Codex app-server thread/start + turn/start
+                                            crates/decodex-codex/src/conversation.rs
+-> exact thread/history/event readback      runtime + protocol + GPUI
 ```
+
+The Program path has no second execution engine. `database/src/program_cycles.rs` owns the
+persisted Program aggregate and its Conversation binding. The daemon derives the Program graph
+and timeline, and `apps/decodex-gpui/src/{programs,program_graph,factory_surface}.rs` presents
+them. A Codex link is absent until SQLite readback supplies the exact provider thread ID; a
+Decodex Conversation UUID is never substituted. Provider thread identities are opaque, limited
+to the SQLite-compatible 512-byte boundary, and percent-encoded as exactly one deep-link path
+segment.
 
 The database persists account lifecycle and routing state, credentials, quota facts,
 Conversation and Turn history, runtime-session binding, process-generation fences,
@@ -83,24 +92,39 @@ default changes. A different conversation can select a different account. If the
 account is depleted, this milestone stops for explicit recovery; it does not silently
 replace the account and discard provider cache affinity.
 
-## Deferred surfaces
+## Removed and deferred surfaces
 
-This milestone does not partially port every proposed factory feature. ManagedRepository,
-WorkItem board persistence, Reset Card consumption, execution-decision projections,
-automation, ManagedRun, ontology and graph projections, remote workers, and multi-machine
-coordination are deferred. Implemented protocol calls return typed unavailable results;
-they do not start a legacy storage fallback.
+The unsupported WorkItem board protocol and UI, and the static Coordinator/Agent/Review/Replay
+Factory preview, are deleted. Their old command names are not part of protocol 2.12 and fail
+decoding. ManagedRepository, Reset Card execution, execution-decision projections, automation,
+ManagedRun, remote workers, and multi-machine coordination remain deferred without a public fake
+workflow or legacy storage fallback.
 
 Ontology and graph engineering remain central to the direction of Decodex. They will be
 projections over proven Goals, tasks, threads, artifacts, claims, dependencies, gates,
 and evidence. They are not a second speculative execution engine.
+
+## Persistence compatibility
+
+This cutover requires no data migration and does not rewrite existing conversations or immutable
+Program Pack bindings. Protocol 2.12 and artifact cohort 8 make the public breaking rename exact.
+The compatibility allowlist is limited to persisted/internal bytes that existing databases or
+Pack digests already own:
+
+- the `quick_task_requests` table, `quick_task_admission_key` column, and migration identity/file
+  `quick_task_execution_controls` / `0003_quick_task_execution_controls.sql`;
+- persisted command-operation discriminators containing `quick_task` in existing receipts and
+  process-generation evidence;
+- the immutable built-in Pack capability literal `codex.quick_task`.
+
+These names are not product, UI, protocol, or Rust API concepts.
 
 ## Workspace
 
 - `database/`: SQLite authority and one-shot account transfer.
 - `crates/decodex-core/`: mechanism-neutral domain types and fixed local paths.
 - `crates/decodex-codex/`: Codex app-server contracts.
-- `crates/decodex-runtime/`: daemon service composition and Quick Task orchestration.
+- `crates/decodex-runtime/`: daemon service composition and Conversation orchestration.
 - `crates/decodex-protocol/`: bounded same-UID protocol.
 - `apps/decodexd/`: daemon composition root.
 - `apps/decodex-cli/`: diagnostic and product command client.

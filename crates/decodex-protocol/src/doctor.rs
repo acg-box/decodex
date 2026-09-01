@@ -111,8 +111,8 @@ pub enum DoctorComponent {
 	Configuration,
 	/// Bundled local product-state authority.
 	ProductStore,
-	/// Ordinary Quick Task execution composition.
-	QuickTask,
+	/// Ordinary Conversation execution composition.
+	Conversation,
 	/// Versioned WebSocket application protocol.
 	Protocol,
 	/// Negotiated protocol compatibility window and current report schema.
@@ -137,7 +137,7 @@ impl DoctorComponent {
 	pub const ALL: [Self; 19] = [
 		Self::Configuration,
 		Self::ProductStore,
-		Self::QuickTask,
+		Self::Conversation,
 		Self::Protocol,
 		Self::ProtocolVersion,
 		Self::ServerIdentity,

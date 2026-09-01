@@ -12,7 +12,7 @@ use serde::{
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
 
-use crate::quick_task::{QuickTaskMethod, QuickTaskNotification};
+use crate::conversation::{ConversationMethod, ConversationNotification};
 
 /// Marker receipt retained for the checked-in structural fixture.
 pub const ACCEPTED_SCHEMA_RECEIPT: &str = "decodex/vnext-codex-schema-receipt/1";
@@ -103,23 +103,23 @@ pub struct SchemaContract {
 	native_collaboration: bool,
 }
 
-/// One missing closed schema requirement for ordinary Quick Task.
+/// One missing closed schema requirement for ordinary Conversation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum QuickTaskSchemaRequirement {
+pub enum ConversationSchemaRequirement {
 	/// Required client request.
-	Request(QuickTaskMethod),
+	Request(ConversationMethod),
 	/// Required server notification.
-	Notification(QuickTaskNotification),
+	Notification(ConversationNotification),
 }
 
 /// Bounded schema gap that contains no generated schema or raw protocol text.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct QuickTaskSchemaError {
-	missing: Vec<QuickTaskSchemaRequirement>,
+pub struct ConversationSchemaError {
+	missing: Vec<ConversationSchemaRequirement>,
 }
-impl QuickTaskSchemaError {
+impl ConversationSchemaError {
 	/// Return missing requirements in fixed contract order.
-	pub fn missing(&self) -> &[QuickTaskSchemaRequirement] {
+	pub fn missing(&self) -> &[ConversationSchemaRequirement] {
 		&self.missing
 	}
 }
@@ -201,22 +201,22 @@ impl SchemaContract {
 		self.notification_methods.contains(method)
 	}
 
-	/// Check the complete ordinary Quick Task schema without granting dispatch authority.
-	pub fn check_quick_task_contract(&self) -> Result<(), QuickTaskSchemaError> {
+	/// Check the complete ordinary Conversation schema without granting dispatch authority.
+	pub fn check_conversation_contract(&self) -> Result<(), ConversationSchemaError> {
 		let mut missing = Vec::new();
 
-		for method in QuickTaskMethod::ALL {
+		for method in ConversationMethod::ALL {
 			if !self.advertises_request(method.as_str()) {
-				missing.push(QuickTaskSchemaRequirement::Request(method));
+				missing.push(ConversationSchemaRequirement::Request(method));
 			}
 		}
-		for notification in QuickTaskNotification::ALL {
+		for notification in ConversationNotification::ALL {
 			if !self.advertises_notification(notification.as_str()) {
-				missing.push(QuickTaskSchemaRequirement::Notification(notification));
+				missing.push(ConversationSchemaRequirement::Notification(notification));
 			}
 		}
 
-		if missing.is_empty() { Ok(()) } else { Err(QuickTaskSchemaError { missing }) }
+		if missing.is_empty() { Ok(()) } else { Err(ConversationSchemaError { missing }) }
 	}
 
 	/// Return whether an accepted collaboration marker is present.
@@ -789,7 +789,7 @@ mod tests {
 	};
 
 	use crate::{
-		quick_task::{QuickTaskMethod, QuickTaskNotification},
+		conversation::{ConversationMethod, ConversationNotification},
 		schema::{ACCEPTED_SCHEMA_RECEIPT, REQUIRED_REQUEST_METHODS, SchemaContract, SchemaMarker},
 	};
 
@@ -845,14 +845,14 @@ mod tests {
 		for method in REQUIRED_REQUEST_METHODS {
 			assert!(contract.advertises_request(method));
 		}
-		for method in QuickTaskMethod::ALL {
+		for method in ConversationMethod::ALL {
 			assert!(contract.advertises_request(method.as_str()));
 		}
-		for notification in QuickTaskNotification::ALL {
+		for notification in ConversationNotification::ALL {
 			assert!(contract.advertises_notification(notification.as_str()));
 		}
 
-		assert_eq!(contract.check_quick_task_contract(), Ok(()));
+		assert_eq!(contract.check_conversation_contract(), Ok(()));
 		assert!(contract.advertises_collaboration());
 		assert!(contract.advertises_paginated_history());
 	}
