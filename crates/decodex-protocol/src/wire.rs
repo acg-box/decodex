@@ -1,4 +1,4 @@
-//! Structured JSON envelopes for the exact-current V2.12 WebSocket connection.
+//! Structured JSON envelopes for the exact-current V2.13 WebSocket connection.
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
@@ -24,7 +24,7 @@ use crate::{
 	},
 };
 
-/// Maximum UTF-8 size of any human-readable text carried by V2.12.
+/// Maximum UTF-8 size of any human-readable text carried by V2.13.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
 /// Maximum UTF-8 size of one logical-command idempotency key.
 pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
@@ -141,7 +141,7 @@ impl<'de> Deserialize<'de> for HistoryCursorToken {
 	}
 }
 
-/// A string-backed wire scalar exceeded its V2.12 byte limit.
+/// A string-backed wire scalar exceeded its V2.13 byte limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WireScalarTooLong {
 	actual_bytes: usize,
@@ -459,7 +459,7 @@ pub struct ResumeCursor {
 	pub server_id: ServerId,
 	/// Ephemeral publication epoch that issued the cursor.
 	///
-	/// A V2.12 resume requires this field. Older hello envelopes can omit it
+	/// A V2.13 resume requires this field. Older hello envelopes can omit it
 	/// only so negotiation can return a typed version refusal.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
@@ -515,7 +515,7 @@ pub struct ServerWelcome {
 	pub server_id: ServerId,
 	/// Ephemeral identity of the in-memory publication epoch.
 	///
-	/// This is present in the exact-current V2.12 welcome.
+	/// This is present in the exact-current V2.13 welcome.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
@@ -1645,7 +1645,7 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. The V2.12 account contract accepts 300 and 10080 minutes only.
+	/// Exact window duration. The V2.13 account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -2311,7 +2311,7 @@ impl AccountObservationSignal {
 	}
 }
 
-/// Live queries available through the exact-current V2.12 protocol.
+/// Live queries available through the exact-current V2.13 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
@@ -2339,12 +2339,6 @@ pub enum QueryPayload {
 	},
 	/// Revalidate and return the bounded authoritative doctor/status report.
 	GetDoctorStatus,
-	/// Read one immutable Routing Decision execution-route decision without acquiring execution
-	/// authority.
-	GetExecutionDecision {
-		/// Stable Routing Decision identity.
-		decision_id: EntityId,
-	},
 	/// Read one bounded deterministic logical-conversation history page.
 	GetConversationHistory {
 		/// Stable logical Conversation identity.
@@ -2400,7 +2394,7 @@ impl QueryPayload {
 	}
 }
 
-/// Commands available through the exact-current V2.12 protocol.
+/// Commands available through the exact-current V2.13 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
@@ -2901,7 +2895,7 @@ impl ResultPayload {
 	}
 }
 
-/// Typed live-query results available through the exact-current V2.12 protocol.
+/// Typed live-query results available through the exact-current V2.13 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
@@ -2917,8 +2911,6 @@ pub enum QueryResultPayload {
 	Conversation(ConversationResult),
 	/// Bounded authoritative doctor/status readback.
 	DoctorStatus(DoctorReport),
-	/// Immutable execution-consumer and exact route-cause projection.
-	ExecutionDecision(ExecutionDecisionResult),
 	/// Bounded daemon-owned logical-conversation history result.
 	ConversationHistory(ConversationHistoryResult),
 	/// Bounded current reset-card observation or a closed unavailable reason.
@@ -2937,243 +2929,6 @@ pub enum QueryResultPayload {
 	CodexAuthProjection(CodexAuthProjectionResult),
 	/// One daemon account-observation change or bounded heartbeat.
 	AccountObservation(AccountObservationSignal),
-}
-
-/// Result of an immutable Routing Decision route-decision observation.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
-pub enum ExecutionDecisionResult {
-	/// Complete verified decision projection.
-	Decision(ExecutionDecisionDto),
-	/// Closed unavailable result without infrastructure detail.
-	Unavailable {
-		/// Stable reason class.
-		error: ExecutionDecisionQueryError,
-	},
-}
-
-/// Closed execution-decision query failure classes.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExecutionDecisionQueryError {
-	/// Decision identity was invalid or no exact decision exists.
-	InvalidRequest,
-	/// Authoritative product state was unavailable.
-	ProductStateUnavailable,
-	/// Persisted decision evidence failed integrity verification.
-	IntegrityUnavailable,
-}
-
-/// Immutable Routing Decision plus its exact ordinary or managed consumer.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct ExecutionDecisionDto {
-	/// Stable immutable decision identity.
-	pub decision_id: EntityId,
-	/// Exact consumer whose account decision was persisted.
-	pub consumer: ExecutionConsumerDto,
-	/// Cause-preserving route projection.
-	pub route: ExecutionRouteDto,
-}
-
-/// Closed execution-consumer union. Ordinary Conversation work never implies a ManagedRun.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "kind", content = "identity", rename_all = "snake_case")]
-pub enum ExecutionConsumerDto {
-	/// One ordinary Conversation Turn with optional initial source RuntimeSession lineage.
-	ConversationTurn {
-		/// Conversation identity.
-		conversation_id: EntityId,
-		/// Positive Conversation revision.
-		conversation_revision: i64,
-		/// Source RuntimeSession identity, absent only for an initial Turn intent.
-		source_runtime_session_id: Option<EntityId>,
-		/// Positive source revision, jointly absent only for an initial Turn intent.
-		source_runtime_session_revision: Option<i64>,
-		/// Conversation-owned Turn identity.
-		turn_id: EntityId,
-	},
-	/// One exact ManagedRun execution intent.
-	ManagedRunExecution {
-		/// ManagedRun identity.
-		managed_run_id: EntityId,
-		/// Positive ManagedRun revision.
-		managed_run_revision: i64,
-		/// Exact execution intent identity.
-		managed_execution_id: EntityId,
-	},
-}
-
-/// Cause-preserving Routing Decision route projection.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "kind", content = "data", rename_all = "snake_case")]
-pub enum ExecutionRouteDto {
-	/// One independently eligible account was selected.
-	Selected {
-		/// Persisted selected account identity.
-		account_id: EntityId,
-		/// Exact positive quota exclusions that were skipped before selection.
-		quota_exclusions: Vec<ExecutionQuotaExclusionDto>,
-	},
-	/// Every otherwise eligible account is blocked only by positive quota depletion.
-	WaitingUsage {
-		/// Earliest exact quota reset instant in Unix microseconds.
-		ready_at_micros: i64,
-		/// Complete exact account-scoped causes.
-		causes: Vec<ExecutionRouteCauseDto>,
-		/// Independent 300-minute and 10,080-minute depletion facts.
-		quota_exclusions: Vec<ExecutionQuotaExclusionDto>,
-	},
-	/// Every otherwise eligible path is blocked only by unresolved execution authority.
-	WaitingReconciliation {
-		/// Complete exact account-scoped process or attempt causes.
-		causes: Vec<ExecutionRouteCauseDto>,
-	},
-	/// No route exists and no wake or task failure is implied.
-	NoRoute {
-		/// Complete causes from the persisted policy-member universe.
-		#[serde(deserialize_with = "deserialize_nonempty_route_causes")]
-		causes: Vec<ExecutionRouteCauseDto>,
-	},
-}
-
-fn deserialize_nonempty_route_causes<'de, D>(
-	deserializer: D,
-) -> Result<Vec<ExecutionRouteCauseDto>, D::Error>
-where
-	D: Deserializer<'de>,
-{
-	let causes = Vec::<ExecutionRouteCauseDto>::deserialize(deserializer)?;
-	if causes.is_empty() {
-		Err(D::Error::custom("NoRoute requires at least one exact cause"))
-	} else {
-		Ok(causes)
-	}
-}
-
-/// One exact account-scoped blocker retained without category collapse.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct ExecutionRouteCauseDto {
-	/// Account path affected by this cause.
-	pub account_id: EntityId,
-	/// Exact typed blocker.
-	pub blocker: ExecutionRouteBlockerDto,
-}
-
-/// Exact typed blockers that Routing Decision can persist.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExecutionRouteBlockerDto {
-	/// Persisted policy excludes the account.
-	ExcludedByPolicy,
-	/// Account observation is later than the decision clock.
-	AccountFromFuture,
-	/// Account observation or revision is stale.
-	AccountStale,
-	/// Account is known to be unavailable.
-	AccountUnavailable,
-	/// Account state is unknown.
-	AccountUnknown,
-	/// Account state reports depletion independently of quota facts.
-	AccountDepleted,
-	/// Account authentication failed.
-	AccountAuthFailed,
-	/// Account-owned plugin readiness is absent.
-	AccountPluginUnready,
-	/// Account is administratively disabled.
-	AccountDisabled,
-	/// Compatibility evidence is absent.
-	EvidenceMissing,
-	/// Compatibility evidence is later than the decision clock.
-	EvidenceFromFuture,
-	/// Compatibility evidence is stale.
-	EvidenceStale,
-	/// Evidence names a different account identity or revision.
-	EvidenceAccountMismatch,
-	/// Evidence names a different role or role-profile revision.
-	EvidenceProfileMismatch,
-	/// Evidence names a different exact provider build.
-	EvidenceBuildMismatch,
-	/// The exact 300-minute quota fact is absent.
-	QuotaFiveHourMissing,
-	/// The 300-minute quota observation is from the future.
-	QuotaFiveHourFromFuture,
-	/// The 300-minute quota observation is stale.
-	QuotaFiveHourStale,
-	/// The 300-minute quota value or confidence is unknown.
-	QuotaFiveHourUnknown,
-	/// The 300-minute quota reset is not in the future.
-	QuotaFiveHourResetElapsed,
-	/// Positive 300-minute quota evidence reports depletion.
-	QuotaFiveHourDepleted,
-	/// The exact 10,080-minute quota fact is absent.
-	QuotaSevenDayMissing,
-	/// The 10,080-minute quota observation is from the future.
-	QuotaSevenDayFromFuture,
-	/// The 10,080-minute quota observation is stale.
-	QuotaSevenDayStale,
-	/// The 10,080-minute quota value or confidence is unknown.
-	QuotaSevenDayUnknown,
-	/// The 10,080-minute quota reset is not in the future.
-	QuotaSevenDayResetElapsed,
-	/// Positive 10,080-minute quota evidence reports depletion.
-	QuotaSevenDayDepleted,
-	/// A required capability lacks positive applicable evidence.
-	RequiredCapabilityUnsatisfied,
-	/// Authentication is required or unresolved.
-	AuthenticationRequired,
-	/// Required plugin readiness is unresolved.
-	PluginUnready,
-	/// An exact dependency blocks this path.
-	DependencyBlocked,
-	/// Required approval is absent.
-	ApprovalRequired,
-	/// Explicit user input is required.
-	UserRequired,
-	/// External authority blocks this path.
-	ExternalBlocked,
-	/// Usage state lacks pure positive depletion evidence.
-	UsageUnproven,
-	/// ManagedRun reconciliation lacks exact unresolved process or attempt authority.
-	ReconciliationUnproven,
-	/// No execution-scoped independent Reviewer is available.
-	ReviewerUnavailable,
-	/// Independent review rejected the result.
-	ReviewerFailed,
-	/// Reviewer output is missing or ambiguous.
-	ReviewerAmbiguous,
-	/// ProcessGeneration authority is unresolved.
-	ProcessGenerationUnresolved,
-	/// No live fenced ProcessGeneration exists.
-	ProcessGenerationUnavailable,
-	/// The exact ProviderAttempt is unresolved.
-	ProviderAttemptUnresolved,
-	/// The exact consumer intent already has a terminal ProviderAttempt.
-	ProviderAttemptCompleted,
-}
-
-/// One independently typed positive quota-depletion exclusion.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct ExecutionQuotaExclusionDto {
-	/// Account identity excluded by this exact fact.
-	pub account_id: EntityId,
-	/// Exact quota-window class.
-	pub window: ExecutionQuotaWindowDto,
-	/// Exact duration: 300 or 10,080 minutes.
-	pub duration_minutes: u16,
-	/// Positive source observation revision.
-	pub observation_revision: i64,
-	/// Exact future reset instant in Unix microseconds.
-	pub resets_at_micros: i64,
-}
-
-/// Independent quota-window identity.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExecutionQuotaWindowDto {
-	/// Exact 300-minute pool.
-	FiveHour,
-	/// Exact 10,080-minute pool.
-	SevenDay,
 }
 
 /// Result of a bounded Conversation-history observation.
@@ -3396,12 +3151,12 @@ pub enum Refusal {
 	},
 }
 
-/// Serialize a message using the only V2.12 wire encoding.
+/// Serialize a message using the only V2.13 wire encoding.
 pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 	serde_json::to_string(message)
 }
 
-/// Parse a client message using the only V2.12 wire encoding.
+/// Parse a client message using the only V2.13 wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
 	validate_client_message(&decoded).map_err(|reason| {
@@ -4384,6 +4139,32 @@ mod tests {
 	}
 
 	#[test]
+	fn exact_current_queries_round_trip_and_removed_execution_decision_fails_closed() {
+		let remaining = ClientMessage::Query(QueryEnvelope {
+			version: CURRENT_VERSION,
+			query_id: QueryId::new("doctor-query").expect("bounded query ID"),
+			payload: QueryPayload::GetDoctorStatus,
+		});
+		let encoded = serde_json::to_string(&remaining).expect("query serializes");
+		assert_eq!(decode_client_message(&encoded).unwrap(), remaining);
+
+		let removed = serde_json::json!({
+			"type": "query",
+			"body": {
+				"version": CURRENT_VERSION,
+				"query_id": "execution-decision-query",
+				"payload": {
+					"name": "get_execution_decision",
+					"arguments": {
+						"decision_id": "01234567-89ab-4def-8123-456789abcdef"
+					}
+				}
+			}
+		});
+		assert!(decode_client_message(&removed.to_string()).is_err());
+	}
+
+	#[test]
 	fn conversation_routing_recovery_has_clean_break_wire_shapes() {
 		let source =
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical source ID");
@@ -4883,8 +4664,8 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":12},"#,
-				r#""artifact_cohort":8,"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":13},"#,
+				r#""artifact_cohort":9,"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4893,7 +4674,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":12},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":13},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4935,7 +4716,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":12},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":13},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -5178,7 +4959,7 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
 		let legacy = crate::ProtocolVersion { major: 1, minor: 5 };
-		let future = crate::ProtocolVersion { major: 2, minor: 13 };
+		let future = crate::ProtocolVersion { major: 2, minor: 14 };
 		let query = QueryPayload::GetAccountProfile {
 			account_id: account_id.clone(),
 			include_email: false,

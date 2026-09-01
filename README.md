@@ -95,10 +95,11 @@ replace the account and discard provider cache affinity.
 ## Removed and deferred surfaces
 
 The unsupported WorkItem board protocol and UI, and the static Coordinator/Agent/Review/Replay
-Factory preview, are deleted. Their old command names are not part of protocol 2.12 and fail
-decoding. ManagedRepository, Reset Card execution, execution-decision projections, automation,
-ManagedRun, remote workers, and multi-machine coordination remain deferred without a public fake
-workflow or legacy storage fallback.
+Factory preview, are deleted. Their old command names are not part of protocol 2.13 and fail
+decoding. The fake Execution Decision query and projection are also removed from the protocol and
+runtime. ManagedRepository, Reset Card execution, automation, ManagedRun, remote workers, and
+multi-machine coordination remain deferred without a public fake workflow or legacy storage
+fallback.
 
 Ontology and graph engineering remain central to the direction of Decodex. They will be
 projections over proven Goals, tasks, threads, artifacts, claims, dependencies, gates,
@@ -107,7 +108,7 @@ and evidence. They are not a second speculative execution engine.
 ## Persistence compatibility
 
 This cutover requires no data migration and does not rewrite existing conversations or immutable
-Program Pack bindings. Protocol 2.12 and artifact cohort 8 make the public breaking rename exact.
+Program Pack bindings. Protocol 2.13 and artifact cohort 9 make the public surface removal exact.
 The compatibility allowlist is limited to persisted/internal bytes that existing databases or
 Pack digests already own:
 

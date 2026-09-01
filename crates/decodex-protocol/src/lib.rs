@@ -74,14 +74,11 @@ pub use self::{
 		CommandEnvelope, CommandError, CommandOutcome, CommandPayload, CommandReceipt,
 		CommandResultEnvelope, ConversationHistoryPage, ConversationHistoryResult, CorrelationId,
 		Cursor, DESKTOP_SETTINGS_ENTITY_ID, DesktopSettingsDto, DesktopSettingsResult, EntityId,
-		EntityRevision, EventEnvelope, EventPayload, ExecutionConsumerDto, ExecutionDecisionDto,
-		ExecutionDecisionQueryError, ExecutionDecisionResult, ExecutionQuotaExclusionDto,
-		ExecutionQuotaWindowDto, ExecutionRouteBlockerDto, ExecutionRouteCauseDto,
-		ExecutionRouteDto, HistoryArtifactId, HistoryArtifactReference, HistoryArtifactRevision,
-		HistoryBlobLength, HistoryBlobReference, HistoryCursorToken, HistoryItemDto,
-		HistoryItemKindDto, HistoryItemStatusDto, HistoryMediaType, HistoryMetadata,
-		HistoryMetadataValue, HistoryPayloadDto, HistoryQueryError, HistorySideEffectState,
-		HistoryText, HistoryTurnRole, IdempotencyKey, IdempotencyKeyError,
+		EntityRevision, EventEnvelope, EventPayload, HistoryArtifactId, HistoryArtifactReference,
+		HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference, HistoryCursorToken,
+		HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryMediaType,
+		HistoryMetadata, HistoryMetadataValue, HistoryPayloadDto, HistoryQueryError,
+		HistorySideEffectState, HistoryText, HistoryTurnRole, IdempotencyKey, IdempotencyKeyError,
 		MAX_ACCOUNT_PROFILE_DAILY_USAGE, MAX_ACCOUNT_ROUTE_PROCESS_BLOCKERS,
 		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
 		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
@@ -100,9 +97,9 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 12 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 13 };
 /// Build/protocol cohort that must agree across the daemon and every local consumer.
-pub const CURRENT_ARTIFACT_COHORT: u32 = 8;
+pub const CURRENT_ARTIFACT_COHORT: u32 = 9;
 /// The lower bound of the exact-current protocol window.
 ///
 /// This equals [`CURRENT_VERSION`]. The name remains to avoid an unrelated
