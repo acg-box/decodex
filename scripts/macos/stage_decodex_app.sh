@@ -60,6 +60,11 @@ chmod 755 \
 	"$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY" \
 	"$FRAMEWORKS/$MENU_BAR_LIBRARY"
 
+python3 "$ROOT/scripts/macos/verify_decodex_bundle_contracts.py" \
+	--daemon "$HELPERS/decodexd" \
+	--native-client "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY" \
+	--menu-bar "$FRAMEWORKS/$MENU_BAR_LIBRARY"
+
 codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \
 	--identifier box.acg.decodex.daemon "$HELPERS/decodexd"
 codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \

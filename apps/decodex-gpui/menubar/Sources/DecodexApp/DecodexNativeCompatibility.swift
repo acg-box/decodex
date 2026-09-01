@@ -2,7 +2,6 @@ import Darwin
 import Foundation
 
 let decodexNativeClientABIVersion: UInt32 = 1
-let decodexNativeArtifactCohort: UInt32 = 7
 
 enum DecodexNativeCompatibility {
 	private typealias Version = @convention(c) () -> UInt32
@@ -22,13 +21,6 @@ enum DecodexNativeCompatibility {
 				named: "decodex_app_native_client_abi_version"
 			)
 			guard abiVersion() == decodexNativeClientABIVersion else {
-				throw LoadError.unavailable
-			}
-			let artifactCohort: Version = try symbol(
-				image,
-				named: "decodex_app_native_client_artifact_cohort"
-			)
-			guard artifactCohort() == decodexNativeArtifactCohort else {
 				throw LoadError.unavailable
 			}
 			return image

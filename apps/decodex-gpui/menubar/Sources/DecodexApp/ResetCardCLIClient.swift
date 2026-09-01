@@ -341,7 +341,7 @@ enum ResetCardClientError: Error, Equatable, LocalizedError, Sendable, CustomDeb
 	var errorDescription: String? {
 		switch self {
 		case .nativeClientUnavailable:
-			return "The native Decodex client is unavailable."
+			return "Restart Decodex."
 		case .timedOut:
 			return "The Decodex request timed out."
 		case .transportDisconnected:

@@ -302,7 +302,7 @@ pub(crate) fn decode_chatgpt_identity(
 	Ok(DecodedChatgptIdentity { provider, provider_email, plan_type })
 }
 
-fn decode_expiry_micros(token: &str) -> Result<i64, CredentialImportError> {
+pub(crate) fn decode_expiry_micros(token: &str) -> Result<i64, CredentialImportError> {
 	let claims: ExpiryClaims = decode_claims(token)?;
 	claims
 		.exp

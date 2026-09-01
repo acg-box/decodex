@@ -645,12 +645,15 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(store.contains("&& pendingRoute == nil"))
 		XCTAssertTrue(store.contains("pendingRoute?.accountID != accountID"))
 		XCTAssertTrue(store.contains("replacesPendingRoute = pendingRoute != nil"))
-		XCTAssertTrue(actions.contains("title: isPendingTarget"))
-		XCTAssertTrue(actions.contains(#"? "Pending""#))
+		XCTAssertTrue(actions.contains("title: presentation.title("))
+		XCTAssertTrue(actions.contains("return pending.actionTitle"))
+		XCTAssertTrue(actions.contains(#"return "Waiting""#))
+		XCTAssertTrue(actions.contains(#"return "Switching""#))
+		XCTAssertTrue(actions.contains(#"return isCurrent ? "Ready" : "Switch""#))
 		XCTAssertTrue(actions.contains("keepsCurrentRoute"))
-		XCTAssertTrue(actions.contains("keep ChatGPT or Codex closed until Pending changes to Routed"))
+		XCTAssertTrue(actions.contains("Waiting for Codex to close or restart."))
 		XCTAssertTrue(actions.contains("AccountRoutePendingStatusView"))
-		XCTAssertTrue(actions.contains("PID \\(blocker.pid)"))
+		XCTAssertFalse(actions.contains("PID \\(blocker.pid)"))
 		XCTAssertTrue(section.contains("AccountRoutePendingStatusView(pending: pending)"))
 		XCTAssertTrue(
 			actions.contains("store.pendingRoute?.accountID != state.account.accountID")
@@ -811,12 +814,12 @@ final class ResetCardArchitectureTests: XCTestCase {
 			script.contains(#"DEFAULT_SIGN_TEAM_IDENTIFIER="4N949UKQ55""#)
 		)
 		XCTAssertTrue(script.contains(#"verify_signing_team "$APP""#))
+		XCTAssertTrue(script.contains("verify_decodex_bundle_contracts.py"))
 		XCTAssertTrue(
 			compatibility.contains("decodexNativeClientABIVersion: UInt32 = 1")
 		)
-		XCTAssertTrue(
-			compatibility.contains("decodexNativeArtifactCohort: UInt32 = 7")
-		)
+		XCTAssertFalse(compatibility.contains("decodexNativeArtifactCohort"))
+		XCTAssertFalse(compatibility.contains("artifact_cohort"))
 		XCTAssertTrue(
 			compatibility.contains("static func openLibrary(at libraryURL: URL)")
 		)
@@ -826,6 +829,8 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(
 			stageTest.contains("libdecodex_app_client_ffi.dylib")
 		)
+		XCTAssertTrue(stageTest.contains("mismatched_native_client.c"))
+		XCTAssertTrue(stageTest.contains("verify_decodex_bundle_contracts.py"))
 		for retiredPackageTerm in ["-p decodex-cli", "DecodexMenuBar.app", ":8192"] {
 			XCTAssertFalse(
 				script.contains(retiredPackageTerm),

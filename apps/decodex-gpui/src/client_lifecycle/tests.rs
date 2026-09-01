@@ -27,9 +27,9 @@ use decodex_protocol::{
 
 use crate::{
 	client_lifecycle::{
-		AppliedEntity, CLIENT_CACHE_SCHEMA_GENERATION, CacheAuthority, CacheError, CacheLimits,
-		ClientCache, ClientLifecycle, CompatibilityReason, ConnectionView, Delivery,
-		LifecycleBuildError, LifecycleCancellation, LifecycleIo, QuarantineReason,
+		AppOwnedDaemonRecovery, AppliedEntity, CLIENT_CACHE_SCHEMA_GENERATION, CacheAuthority,
+		CacheError, CacheLimits, ClientCache, ClientLifecycle, CompatibilityReason, ConnectionView,
+		Delivery, LifecycleBuildError, LifecycleCancellation, LifecycleIo, QuarantineReason,
 		QuarantineRecovery, RunResult, production_cache_parent,
 	},
 	history_pager::{
@@ -37,6 +37,16 @@ use crate::{
 		HistoryNavigationResult, HistoryPageSource, HistoryRetryReason, HistoryStaleReason,
 	},
 };
+
+struct BoundedRecoveryProbe {
+	attempts: AtomicUsize,
+}
+
+impl AppOwnedDaemonRecovery for BoundedRecoveryProbe {
+	fn recover_transport(&self) -> bool {
+		self.attempts.fetch_add(1, Ordering::SeqCst) < 2
+	}
+}
 
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 const OTHER_SERVER: &str = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
@@ -338,13 +348,7 @@ fn production_owner_keeps_the_session_after_window_close_and_stops_only_on_app_q
 		lifecycle.run_with_io(&mut io).await
 	});
 	let owner = visual.update(|_, cx| {
-		retain_lifecycle_task(
-			shell.downgrade(),
-			cancellation,
-			views,
-			background,
-			cx,
-		)
+		retain_lifecycle_task(shell.downgrade(), cancellation, views, background, cx)
 	});
 
 	visual.run_until_parked();
@@ -1554,6 +1558,37 @@ async fn observer_receives_the_complete_bounded_retry_progression() {
 			ConnectionView::Stopped,
 		]
 	);
+}
+
+#[tokio::test]
+async fn app_owned_transport_recovery_is_bounded_and_protocol_failure_never_restarts() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_parent(&temporary);
+	let recovery = Arc::new(BoundedRecoveryProbe { attempts: AtomicUsize::new(0) });
+	let mut disconnected_lifecycle = lifecycle(&root);
+	disconnected_lifecycle.supervise_app_owned_daemon(Arc::clone(&recovery));
+	let failures =
+		(0..5).map(|_| ConnectAction::Fail(RetainedSessionFailure::Disconnected)).collect();
+	let mut io = FakeIo::new(root, failures);
+
+	assert_eq!(
+		disconnected_lifecycle.run_with_io(&mut io).await,
+		RunResult::RetryExhausted
+	);
+	assert_eq!(recovery.attempts.load(Ordering::SeqCst), 3);
+
+	let protocol_temporary = TempDir::new().expect("temporary directory is available");
+	let protocol_root = cache_parent(&protocol_temporary);
+	let protocol_recovery = Arc::new(BoundedRecoveryProbe { attempts: AtomicUsize::new(0) });
+	let mut protocol_lifecycle = lifecycle(&protocol_root);
+	protocol_lifecycle.supervise_app_owned_daemon(Arc::clone(&protocol_recovery));
+	let mut protocol_io = FakeIo::new(
+		protocol_root,
+		vec![ConnectAction::Fail(RetainedSessionFailure::ArtifactCohortMismatch)],
+	);
+
+	assert_eq!(protocol_lifecycle.run_with_io(&mut protocol_io).await, RunResult::Incompatible);
+	assert_eq!(protocol_recovery.attempts.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

@@ -1,4 +1,5 @@
 //! Single daemon-owned coordinator for stable shared Codex auth observation and cutover.
+#![cfg_attr(all(feature = "process-acceptance-fixture", debug_assertions), allow(dead_code))]
 
 use std::sync::{Arc, Mutex};
 
@@ -288,7 +289,18 @@ struct ProductionCodexLiveness;
 #[cfg(target_os = "macos")]
 impl CodexLivenessPort for ProductionCodexLiveness {
 	fn observe(&self) -> CodexLivenessObservation {
-		observe_macos_codex_liveness()
+		#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
+		{
+			if crate::account_service::process_acceptance_fixture_endpoint().is_some() {
+				CodexLivenessObservation::Quiescent
+			} else {
+				observe_macos_codex_liveness()
+			}
+		}
+		#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
+		{
+			observe_macos_codex_liveness()
+		}
 	}
 }
 

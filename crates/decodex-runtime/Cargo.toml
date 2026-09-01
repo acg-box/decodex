@@ -8,6 +8,9 @@ name                 = "decodex-runtime"
 repository.workspace = true
 version.workspace    = true
 
+[features]
+process-acceptance-fixture = []
+
 [dependencies]
 base64                = { workspace = true }
 decodex-account-login = { workspace = true }

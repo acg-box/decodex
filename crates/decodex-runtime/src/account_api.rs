@@ -1,4 +1,5 @@
 //! One authenticated OpenAI/Codex backend API client for account observation.
+#![cfg_attr(all(feature = "process-acceptance-fixture", debug_assertions), allow(dead_code))]
 
 use std::{sync::Arc, time::Duration};
 

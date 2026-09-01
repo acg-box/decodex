@@ -544,6 +544,13 @@ async fn bootstrap_macos_account_runtime(
 	if let Some(profile) = &quick_task_launch_profile {
 		let _ = service.attest_callback_capability(profile.account_callback_attestation()).await;
 	}
+	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
+	let api = if crate::account_service::process_acceptance_fixture_endpoint().is_some() {
+		None
+	} else {
+		AccountApiRuntime::new(Arc::clone(&service)).ok().map(Arc::new)
+	};
+	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
 	let api = AccountApiRuntime::new(Arc::clone(&service)).ok().map(Arc::new);
 	let status = match &api {
 		Some(_) => DoctorStatus::Ready,

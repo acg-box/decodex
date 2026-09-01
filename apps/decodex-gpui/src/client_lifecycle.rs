@@ -38,6 +38,11 @@ use crate::{
 	work_items::{WorkItemDispatch, WorkItemRouteOutcome, WorkItems},
 };
 
+pub(crate) trait AppOwnedDaemonRecovery: Send + Sync {
+	/// Attempt recovery and report whether this exact owner retains later restart authority.
+	fn recover_transport(&self) -> bool;
+}
+
 const RETRY_DELAYS: [Duration; 4] = [
 	Duration::from_millis(100),
 	Duration::from_millis(250),
@@ -272,10 +277,12 @@ impl LifecycleIo for TokioIo {
 
 	async fn next(&mut self) -> Result<Delivery<Self::Confirmation>, RetainedSessionFailure> {
 		match self.session.as_mut().ok_or(RetainedSessionFailure::Closed)?.next().await? {
-			SessionDelivery::Snapshot { snapshot, confirmation } =>
-				Ok(Delivery::Snapshot { snapshot, confirmation }),
-			SessionDelivery::Event { event, confirmation } =>
-				Ok(Delivery::Event { event, confirmation }),
+			SessionDelivery::Snapshot { snapshot, confirmation } => {
+				Ok(Delivery::Snapshot { snapshot, confirmation })
+			},
+			SessionDelivery::Event { event, confirmation } => {
+				Ok(Delivery::Event { event, confirmation })
+			},
 			SessionDelivery::QueryResult(result) => Ok(Delivery::QueryResult(result)),
 			SessionDelivery::CommandReceipt(receipt) => Ok(Delivery::CommandReceipt(receipt)),
 			SessionDelivery::CommandResult(result) => Ok(Delivery::CommandResult(result)),
@@ -348,6 +355,7 @@ pub(crate) struct ClientLifecycle {
 	view: ConnectionView,
 	view_observer: Option<Sender<ConnectionView>>,
 	cancellation: LifecycleCancellation,
+	app_owned_daemon: Option<Arc<dyn AppOwnedDaemonRecovery>>,
 }
 
 impl ClientLifecycle {
@@ -414,7 +422,16 @@ impl ClientLifecycle {
 			view,
 			view_observer: None,
 			cancellation: LifecycleCancellation::new(),
+			app_owned_daemon: None,
 		})
+	}
+
+	/// Permit transport recovery only through the exact bundled child owned by this app process.
+	pub(crate) fn supervise_app_owned_daemon<T>(&mut self, supervisor: Arc<T>)
+	where
+		T: AppOwnedDaemonRecovery + 'static,
+	{
+		self.app_owned_daemon = Some(supervisor);
 	}
 
 	/// Current narrow shell-facing state.
@@ -519,6 +536,7 @@ impl ClientLifecycle {
 					if let Some(result) = self.closed_failure(failure) {
 						return result;
 					}
+					self.recover_app_owned_transport(failure);
 
 					if !self.retry(io, attempt, generation).await {
 						return self.retry_terminal(attempt);
@@ -563,6 +581,7 @@ impl ClientLifecycle {
 			if let Some(result) = self.closed_failure(failure) {
 				return result;
 			}
+			self.recover_app_owned_transport(failure);
 			if !self.retry(io, attempt, generation).await {
 				return self.retry_terminal(attempt);
 			}
@@ -621,7 +640,7 @@ impl ClientLifecycle {
 			}
 
 			match step {
-				SessionStep::Account(dispatch) =>
+				SessionStep::Account(dispatch) => {
 					if let Some(command) = dispatch.command() {
 						let send_result = io.send_command(command.clone()).await;
 						if let Err(failure) = send_result {
@@ -633,7 +652,8 @@ impl ClientLifecycle {
 						&& let Err(failure) = io.send_query(query.clone()).await
 					{
 						return failure;
-					},
+					}
+				},
 				SessionStep::DesktopSettings(dispatch) => {
 					if let Some(command) = dispatch.command() {
 						let send_result = io.send_command(command.clone()).await;
@@ -672,7 +692,7 @@ impl ClientLifecycle {
 						self.history_pager.lookup_sent_request(&send_token);
 					}
 				},
-				SessionStep::Program(dispatch) =>
+				SessionStep::Program(dispatch) => {
 					if let Some(command) = dispatch.command() {
 						let send_result = io.send_command(command.clone()).await;
 						if let Err(failure) = send_result {
@@ -684,8 +704,9 @@ impl ClientLifecycle {
 						&& let Err(failure) = io.send_query(query.clone()).await
 					{
 						return failure;
-					},
-				SessionStep::QuickTask(dispatch) =>
+					}
+				},
+				SessionStep::QuickTask(dispatch) => {
 					if let Some(command) = dispatch.command() {
 						let send_result = io.send_command(command.clone()).await;
 						if let Err(failure) = send_result {
@@ -697,8 +718,9 @@ impl ClientLifecycle {
 						&& let Err(failure) = io.send_query(query.clone()).await
 					{
 						return failure;
-					},
-				SessionStep::WorkItem(dispatch) =>
+					}
+				},
+				SessionStep::WorkItem(dispatch) => {
 					if let Some(command) = dispatch.command() {
 						let send_result = io.send_command(command.clone()).await;
 						if let Err(failure) = send_result {
@@ -710,7 +732,8 @@ impl ClientLifecycle {
 						&& let Err(failure) = io.send_query(query.clone()).await
 					{
 						return failure;
-					},
+					}
+				},
 				SessionStep::Delivery(delivery) => match *delivery {
 					Ok(Delivery::Snapshot { snapshot, confirmation }) => {
 						let cursor = snapshot.cursor;
@@ -844,7 +867,9 @@ impl ClientLifecycle {
 			Ok(Some(inspection))
 				if inspection.generation == binding.generation
 					&& inspection.authority == self.cache_authority =>
-				Some(binding.checkpoint),
+			{
+				Some(binding.checkpoint)
+			},
 			_ => {
 				self.enter_quarantine(
 					QuarantineReason::ContentAttestation,
@@ -914,8 +939,9 @@ impl ClientLifecycle {
 		}
 		match self.health_query.route_result(generation, &self.server_id, &result) {
 			HealthRouteOutcome::Unmatched => self.route_history_result(generation, result),
-			HealthRouteOutcome::Fresh | HealthRouteOutcome::Refused | HealthRouteOutcome::Stale =>
-				Ok(()),
+			HealthRouteOutcome::Fresh | HealthRouteOutcome::Refused | HealthRouteOutcome::Stale => {
+				Ok(())
+			},
 		}
 	}
 
@@ -1183,6 +1209,23 @@ impl ClientLifecycle {
 		}
 	}
 
+	fn recover_app_owned_transport(&mut self, failure: RetainedSessionFailure) {
+		if matches!(
+			failure,
+			RetainedSessionFailure::OperationTimeout
+				| RetainedSessionFailure::Closed
+				| RetainedSessionFailure::Disconnected
+		) {
+			if self
+				.app_owned_daemon
+				.as_ref()
+				.is_some_and(|supervisor| !supervisor.recover_transport())
+			{
+				self.app_owned_daemon = None;
+			}
+		}
+	}
+
 	async fn retry<I>(&mut self, io: &mut I, attempt: u8, generation: u64) -> bool
 	where
 		I: LifecycleIo,
@@ -1303,7 +1346,7 @@ fn initialize_cache(
 				Err(_) => unsafe_cache_quarantine(),
 			}
 		},
-		Err(error) if is_disposable_corruption(error) =>
+		Err(error) if is_disposable_corruption(error) => {
 			if ClientCache::dispose_all(root).is_ok() {
 				match ClientCache::open(root, limits, authority) {
 					Ok(cache) => (
@@ -1317,7 +1360,8 @@ fn initialize_cache(
 				}
 			} else {
 				unsafe_cache_quarantine()
-			},
+			}
+		},
 		Err(_) => unsafe_cache_quarantine(),
 	}
 }
