@@ -98,6 +98,19 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
                 self.assertNotIn("rusqlite", dependencies)
                 self.assertNotIn("redb", dependencies)
 
+    def test_exact_current_protocol_and_artifact_cohort_cross_every_bundle_boundary(self) -> None:
+        protocol = read("crates/decodex-protocol/src/lib.rs")
+        gpui = read("apps/decodex-gpui/src/client_lifecycle/tests.rs")
+        native_client = read("crates/decodex-app-client-ffi/src/lib.rs")
+        staging = read("scripts/macos/stage_decodex_app.sh")
+        bundle_verifier = read("scripts/macos/verify_decodex_bundle_contracts.py")
+        self.assertIn("ProtocolVersion { major: 2, minor: 13 }", protocol)
+        self.assertIn("CURRENT_ARTIFACT_COHORT: u32 = 9", protocol)
+        self.assertIn("assert_eq!(CURRENT_VERSION.minor, 13)", gpui)
+        self.assertIn("decodex_protocol::CURRENT_ARTIFACT_COHORT", native_client)
+        self.assertIn("verify_decodex_bundle_contracts.py", staging)
+        self.assertIn("decodex_app_native_client_artifact_cohort", bundle_verifier)
+
     def test_gpui_is_the_only_macos_gui_and_loads_the_original_swift_menu_bar(self) -> None:
         for retired in (
             "apps/decodex",
@@ -296,12 +309,12 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
             self.assertIn(".codex_url()", consumer)
             self.assertNotIn('format!("codex://threads/', consumer)
 
-    def test_retired_board_does_not_keep_protocol_or_runtime_surface_alive(self) -> None:
+    def test_retired_board_and_execution_decision_surfaces_stay_absent(self) -> None:
         application = read("crates/decodex-runtime/src/application.rs")
         protocol = read("crates/decodex-protocol/src/wire.rs")
+        protocol_exports = read("crates/decodex-protocol/src/lib.rs")
         managed_repository = read("crates/decodex-runtime/src/managed_repository_disabled.rs")
         reset_card = read("crates/decodex-runtime/src/account_launch/api_reset_card_disabled.rs")
-        self.assertIn("ExecutionDecisionQueryError::ProductStateUnavailable", application)
         for retired in (
             "WorkItemBoard",
             "ListProjects",
@@ -313,6 +326,25 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         ):
             self.assertNotIn(retired, application)
             self.assertNotIn(retired, protocol)
+        for retired in (
+            "GetExecutionDecision",
+            "ExecutionDecisionResult",
+            "ExecutionDecisionDto",
+            "ExecutionConsumerDto",
+            "ExecutionRouteDto",
+            "ExecutionRouteCauseDto",
+            "ExecutionRouteBlockerDto",
+            "ExecutionQuotaExclusionDto",
+            "ExecutionQuotaWindowDto",
+            "execution_decision_dto",
+            "quota_exclusion_dto",
+            "blocker_dto",
+        ):
+            with self.subTest(retired=retired):
+                self.assertNotIn(retired, application)
+                self.assertNotIn(retired, protocol)
+                self.assertNotIn(retired, protocol_exports)
+        self.assertNotIn("#[cfg(any())]", application)
         self.assertFalse((ROOT / "apps/decodex-gpui/src/work_items.rs").exists())
         self.assertIn("ManagedRepositoryUnavailableReason", managed_repository)
         self.assertIn("ProductStateUnavailable", reset_card)

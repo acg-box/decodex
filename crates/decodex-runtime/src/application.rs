@@ -48,8 +48,7 @@ use decodex_protocol::{
 	ConversationRecoveryAction, ConversationResult, ConversationState, ConversationSummary,
 	ConversationTitle, ConversationTurnOutcome, CorrelationId, DESKTOP_SETTINGS_ENTITY_ID,
 	DesktopSettingsDto, DesktopSettingsResult, DoctorCheck, DoctorComponent, DoctorIssue,
-	DoctorReport, DoctorStatus, EntityId, EntityRevision, EventPayload,
-	ExecutionDecisionQueryError, ExecutionDecisionResult, HistoryArtifactId,
+	DoctorReport, DoctorStatus, EntityId, EntityRevision, EventPayload, HistoryArtifactId,
 	HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference,
 	HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
 	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
@@ -993,13 +992,6 @@ impl ServiceApplication {
 
 		decode_account_command_receipt(value)
 			.map_err(|_| application_unavailable("account command receipt is incompatible"))?
-	}
-
-	async fn execution_decision(&self, decision_id: &EntityId) -> ExecutionDecisionResult {
-		let _ = decision_id;
-		ExecutionDecisionResult::Unavailable {
-			error: ExecutionDecisionQueryError::ProductStateUnavailable,
-		}
 	}
 
 	async fn reset_card_inventory(&self, account_id: &EntityId) -> ResetCardInventoryResult {
@@ -2088,8 +2080,6 @@ impl Application for ServiceApplication {
 				QueryResultPayload::Conversation(self.conversation_get(conversation_id).await),
 			QueryPayload::GetDoctorStatus =>
 				QueryResultPayload::DoctorStatus(self.refreshed_doctor().await),
-			QueryPayload::GetExecutionDecision { decision_id } =>
-				QueryResultPayload::ExecutionDecision(self.execution_decision(decision_id).await),
 			QueryPayload::GetConversationHistory { conversation_id, after, page_size } =>
 				QueryResultPayload::ConversationHistory(
 					self.conversation_history(conversation_id, after.as_ref(), *page_size).await,
@@ -3146,140 +3136,6 @@ fn conversation_summary_publication(
 		entity_revision: EntityRevision(1),
 		event: EventPayload::ConversationChanged { conversation },
 	})
-}
-
-#[cfg(any())]
-fn execution_decision_dto(readback: ExecutionDecisionReadback) -> Result<ExecutionDecisionDto, ()> {
-	let consumer = match readback.consumer {
-		ExecutionConsumer::ConversationTurn {
-			conversation_id,
-			conversation_revision,
-			source_runtime_session_id,
-			source_runtime_session_revision,
-			turn_id,
-		} => ExecutionConsumerDto::ConversationTurn {
-			conversation_id: entity(conversation_id.as_str())?,
-			conversation_revision,
-			source_runtime_session_id: source_runtime_session_id
-				.as_ref()
-				.map(|id| entity(id.as_str()))
-				.transpose()?,
-			source_runtime_session_revision,
-			turn_id: entity(turn_id.as_str())?,
-		},
-		ExecutionConsumer::ManagedRunExecution {
-			managed_run_id,
-			managed_run_revision,
-			execution_id,
-		} => ExecutionConsumerDto::ManagedRunExecution {
-			managed_run_id: entity(managed_run_id.as_str())?,
-			managed_run_revision,
-			managed_execution_id: entity(execution_id.as_str())?,
-		},
-	};
-	let causes = readback
-		.causes
-		.into_iter()
-		.map(|cause| {
-			Ok(ExecutionRouteCauseDto {
-				account_id: entity(cause.account_id.as_str())?,
-				blocker: blocker_dto(cause.blocker),
-			})
-		})
-		.collect::<Result<Vec<_>, ()>>()?;
-	let quota_exclusions = readback
-		.quota_exclusions
-		.into_iter()
-		.map(quota_exclusion_dto)
-		.collect::<Result<Vec<_>, ()>>()?;
-	let route = match readback.kind {
-		RoutingDecisionKind::Selected => ExecutionRouteDto::Selected {
-			account_id: entity(readback.selected_account_id.as_ref().ok_or(())?.as_str())?,
-			quota_exclusions,
-		},
-		RoutingDecisionKind::WaitingUsage => ExecutionRouteDto::WaitingUsage {
-			ready_at_micros: readback.waiting_ready_at_micros.ok_or(())?,
-			causes,
-			quota_exclusions,
-		},
-		RoutingDecisionKind::WaitingReconciliation =>
-			ExecutionRouteDto::WaitingReconciliation { causes },
-		RoutingDecisionKind::NoRoute if !causes.is_empty() => ExecutionRouteDto::NoRoute { causes },
-		RoutingDecisionKind::NoRoute => return Err(()),
-	};
-	Ok(ExecutionDecisionDto { decision_id: entity(&readback.decision_id)?, consumer, route })
-}
-
-#[cfg(any())]
-fn quota_exclusion_dto(
-	exclusion: ExecutionQuotaExclusion,
-) -> Result<ExecutionQuotaExclusionDto, ()> {
-	Ok(ExecutionQuotaExclusionDto {
-		account_id: entity(exclusion.account_id.as_str())?,
-		window: match exclusion.window {
-			QuotaWindowClass::FiveHour => ExecutionQuotaWindowDto::FiveHour,
-			QuotaWindowClass::SevenDay => ExecutionQuotaWindowDto::SevenDay,
-		},
-		duration_minutes: exclusion.duration_minutes,
-		observation_revision: exclusion.observation_revision,
-		resets_at_micros: exclusion.resets_at_micros,
-	})
-}
-
-#[cfg(any())]
-const fn blocker_dto(blocker: RoutingBlocker) -> ExecutionRouteBlockerDto {
-	use ExecutionRouteBlockerDto as Dto;
-	use RoutingBlocker as Core;
-	match blocker {
-		Core::ExcludedByPolicy => Dto::ExcludedByPolicy,
-		Core::AccountFromFuture => Dto::AccountFromFuture,
-		Core::AccountStale => Dto::AccountStale,
-		Core::AccountUnavailable => Dto::AccountUnavailable,
-		Core::AccountUnknown => Dto::AccountUnknown,
-		Core::AccountDepleted => Dto::AccountDepleted,
-		Core::AccountAuthFailed => Dto::AccountAuthFailed,
-		Core::AccountPluginUnready => Dto::AccountPluginUnready,
-		Core::AccountDisabled => Dto::AccountDisabled,
-		Core::EvidenceMissing => Dto::EvidenceMissing,
-		Core::EvidenceFromFuture => Dto::EvidenceFromFuture,
-		Core::EvidenceStale => Dto::EvidenceStale,
-		Core::EvidenceAccountMismatch => Dto::EvidenceAccountMismatch,
-		Core::EvidenceProfileMismatch => Dto::EvidenceProfileMismatch,
-		Core::EvidenceBuildMismatch => Dto::EvidenceBuildMismatch,
-		Core::QuotaFiveHourMissing => Dto::QuotaFiveHourMissing,
-		Core::QuotaFiveHourFromFuture => Dto::QuotaFiveHourFromFuture,
-		Core::QuotaFiveHourStale => Dto::QuotaFiveHourStale,
-		Core::QuotaFiveHourUnknown => Dto::QuotaFiveHourUnknown,
-		Core::QuotaFiveHourResetElapsed => Dto::QuotaFiveHourResetElapsed,
-		Core::QuotaFiveHourDepleted => Dto::QuotaFiveHourDepleted,
-		Core::QuotaSevenDayMissing => Dto::QuotaSevenDayMissing,
-		Core::QuotaSevenDayFromFuture => Dto::QuotaSevenDayFromFuture,
-		Core::QuotaSevenDayStale => Dto::QuotaSevenDayStale,
-		Core::QuotaSevenDayUnknown => Dto::QuotaSevenDayUnknown,
-		Core::QuotaSevenDayResetElapsed => Dto::QuotaSevenDayResetElapsed,
-		Core::QuotaSevenDayDepleted => Dto::QuotaSevenDayDepleted,
-		Core::RequiredCapabilityUnsatisfied => Dto::RequiredCapabilityUnsatisfied,
-		Core::AuthenticationRequired => Dto::AuthenticationRequired,
-		Core::PluginUnready => Dto::PluginUnready,
-		Core::DependencyBlocked => Dto::DependencyBlocked,
-		Core::ApprovalRequired => Dto::ApprovalRequired,
-		Core::UserRequired => Dto::UserRequired,
-		Core::ExternalBlocked => Dto::ExternalBlocked,
-		Core::UsageUnproven => Dto::UsageUnproven,
-		Core::ReconciliationUnproven => Dto::ReconciliationUnproven,
-		Core::ReviewerUnavailable => Dto::ReviewerUnavailable,
-		Core::ReviewerFailed => Dto::ReviewerFailed,
-		Core::ReviewerAmbiguous => Dto::ReviewerAmbiguous,
-		Core::ProcessGenerationUnresolved => Dto::ProcessGenerationUnresolved,
-		Core::ProcessGenerationUnavailable => Dto::ProcessGenerationUnavailable,
-		Core::ProviderAttemptUnresolved => Dto::ProviderAttemptUnresolved,
-		Core::ProviderAttemptCompleted => Dto::ProviderAttemptCompleted,
-	}
-}
-
-#[cfg(any())]
-fn entity(value: &str) -> Result<EntityId, ()> {
-	EntityId::new(value.to_owned()).map_err(|_| ())
 }
 
 fn core_reset_descriptor(descriptor: ResetCardDescriptorDto) -> Result<ResetCardDescriptor, ()> {
