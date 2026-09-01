@@ -10,7 +10,7 @@ enum FastModeClientError: Error, LocalizedError {
 	var errorDescription: String? {
 		switch self {
 		case .unavailable:
-			return "The native Decodex client is unavailable."
+			return "Restart Decodex."
 		case .timedOut:
 			return "Fast mode did not respond."
 		case .invalidResponse:

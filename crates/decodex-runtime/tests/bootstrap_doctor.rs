@@ -228,6 +228,12 @@ async fn fresh_sqlite_bootstrap_is_ready_and_deferred_surfaces_are_explicit() {
 	assert_eq!(status(&bootstrap, DoctorComponent::Protocol), DoctorStatus::Ready);
 	assert_eq!(status(&bootstrap, DoctorComponent::ProtocolVersion), DoctorStatus::Ready);
 	assert_eq!(status(&bootstrap, DoctorComponent::ServerIdentity), DoctorStatus::Ready);
+	#[cfg(target_os = "macos")]
+	assert_eq!(
+		status(&bootstrap, DoctorComponent::CredentialVault),
+		DoctorStatus::Ready,
+		"all-features without the strict process-fixture endpoint must retain AccountApi readiness"
+	);
 	assert_eq!(
 		status(&bootstrap, DoctorComponent::ManagedRepository),
 		DoctorStatus::Unavailable(DoctorIssue::Disabled)

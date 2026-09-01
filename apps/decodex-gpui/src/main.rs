@@ -68,12 +68,14 @@ fn main() {
 	application.run(move |cx: &mut App| {
 		shell::bind_keys(cx);
 		let profile = ClientProfile::load_default(None);
-		if let Ok(profile) = profile.as_ref()
-			&& let Ok(Some(daemon)) = bundled_daemon::BundledDaemonGuard::launch_for_profile(profile)
-		{
-			bundled_daemon::retain(daemon, cx);
+		let bundled_daemon = profile.as_ref().ok().and_then(|profile| {
+			bundled_daemon::BundledDaemonSupervisor::launch_for_profile(profile).ok().flatten()
+		});
+		if let Some(supervisor) = bundled_daemon.as_ref() {
+			bundled_daemon::retain(Arc::clone(supervisor), cx);
 		}
-		let (initial_connection, lifecycle, account_login) = compose_lifecycle(profile);
+		let (initial_connection, lifecycle, account_login) =
+			compose_lifecycle(profile, bundled_daemon);
 		let bounds = Bounds::centered(None, size(px(1248.0), px(840.0)), cx);
 		let window = cx
 			.open_window(
@@ -159,8 +161,8 @@ fn order_out_native_windows() {
 
 fn compose_lifecycle(
 	profile: Result<ClientProfile, ClientFailure>,
-)
--> (ConnectionView, Option<ClientLifecycle>, Option<Arc<AccountLoginController>>) {
+	bundled_daemon: Option<Arc<bundled_daemon::BundledDaemonSupervisor>>,
+) -> (ConnectionView, Option<ClientLifecycle>, Option<Arc<AccountLoginController>>) {
 	let profile = match profile {
 		Ok(profile) => profile,
 		Err(failure) => {
@@ -183,7 +185,12 @@ fn compose_lifecycle(
 		},
 	};
 	match ClientLifecycle::production(config) {
-		Ok(lifecycle) => (lifecycle.view(), Some(lifecycle), Some(account_login)),
+		Ok(mut lifecycle) => {
+			if let Some(supervisor) = bundled_daemon {
+				lifecycle.supervise_app_owned_daemon(supervisor);
+			}
+			(lifecycle.view(), Some(lifecycle), Some(account_login))
+		},
 		Err(_) => (
 			ConnectionView::Quarantined {
 				reason: QuarantineReason::CacheRootUnsafe,

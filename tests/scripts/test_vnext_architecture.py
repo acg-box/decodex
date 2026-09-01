@@ -205,7 +205,10 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertIn("project_shared_codex_auth_cas", coordinator)
         self.assertIn("AccountRouteWaitReasonDto", wire)
         self.assertIn("AccountRoutePendingStatusView", menu)
-        self.assertIn("PID \\(blocker.pid)", menu)
+        self.assertIn("Waiting for Codex to close or restart.", menu)
+        self.assertNotIn("PID \\(blocker.pid)", menu)
+        self.assertNotIn("auth.json", menu)
+        self.assertNotIn("atomic shared-auth", menu)
         for forbidden in (
             "std::process::Command",
             "libc::kill",
@@ -244,6 +247,31 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertIn("cargo +stable build --locked", staging)
         for retired in ("pg_ctl", "initdb", "createuser", "createdb"):
             self.assertNotIn(retired, installer)
+
+    def test_process_acceptance_ports_are_explicit_and_release_closed(self) -> None:
+        account_service = read("crates/decodex-runtime/src/account_service.rs")
+        bootstrap = read("crates/decodex-runtime/src/bootstrap.rs")
+        shared_auth = read("crates/decodex-runtime/src/shared_auth_coordinator.rs")
+        process_test = read("apps/decodexd/tests/account_route_process.rs")
+        supervisor_test = read("apps/decodex-gpui/src/bundled_daemon.rs")
+        self.assertIn(
+            '#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]',
+            account_service,
+        )
+        self.assertIn('Ok(REFRESH_ENDPOINT.to_owned())', account_service)
+        self.assertIn('endpoint.host_str() == Some("127.0.0.1")', account_service)
+        self.assertIn(
+            ".filter(|endpoint| process_test_refresh_endpoint_is_safe(endpoint))",
+            account_service,
+        )
+        self.assertIn("process_acceptance_fixture_endpoint().is_some()", bootstrap)
+        self.assertIn("AccountApiRuntime::new", bootstrap)
+        self.assertIn("process_acceptance_fixture_endpoint().is_some()", shared_auth)
+        self.assertIn('CARGO_BIN_EXE_decodexd', process_test)
+        self.assertIn('actual_daemon_routes_a_b_a', process_test)
+        self.assertIn('assert_no_credentials', process_test)
+        self.assertIn('process_listener_loss_restarts_exact_owned_daemon', supervisor_test)
+        self.assertIn('process_recovery_never_terminates_independently_managed_daemon', supervisor_test)
 
     def test_quick_task_restart_contract_is_executable(self) -> None:
         test = read("database/tests/quick_task_restart.rs")

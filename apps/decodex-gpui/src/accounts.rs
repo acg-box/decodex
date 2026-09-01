@@ -399,14 +399,25 @@ impl AccountsController {
 				if matches!(&routing.mode, AccountSelectionModeDto::Fixed(selected) if selected == &account.account_id)
 					&& routing.revision == event.entity_revision =>
 			{
+				let completes_pending = state
+					.pending_route
+					.as_ref()
+					.is_none_or(|pending| pending.account_id == account.account_id);
 				state.upsert_account((**account).clone());
 				state.routing = Some(routing.clone());
 				state.pending_route = None;
-				state.route_reopen_notice = true;
+				state.route_reopen_notice = completes_pending;
+				state.command = if completes_pending {
+					AccountCommandState::Accepted
+				} else {
+					AccountCommandState::Refused
+				};
 				state.sort_accounts();
 			},
 			EventPayload::AccountRoutePending { pending } => {
 				state.pending_route = Some(pending.clone());
+				state.route_reopen_notice = false;
+				state.command = AccountCommandState::AwaitingResult;
 			},
 			_ => {},
 		}
@@ -442,9 +453,25 @@ impl AccountsController {
 				routing,
 				pending_route,
 			}) => {
+				let pending_target =
+					state.pending_route.as_ref().map(|pending| pending.account_id.clone());
 				state.accounts = accounts.clone();
 				state.routing = routing.clone();
 				state.pending_route = pending_route.clone();
+				if pending_route.is_some() {
+					state.route_reopen_notice = false;
+					state.command = AccountCommandState::AwaitingResult;
+				} else if let Some(pending_target) = pending_target {
+					let exact_target_ready = routing.as_ref().is_some_and(|routing| {
+						matches!(&routing.mode, AccountSelectionModeDto::Fixed(account_id) if account_id == &pending_target)
+					});
+					state.command = if exact_target_ready {
+						AccountCommandState::Accepted
+					} else {
+						AccountCommandState::Refused
+					};
+					state.route_reopen_notice = exact_target_ready;
+				}
 				state.sort_accounts();
 				state.load = AccountsLoadState::Ready;
 				AccountRouteOutcome::Fresh
@@ -525,7 +552,11 @@ impl AccountsController {
 				let logout_succeeded =
 					matches!(&in_flight.envelope.payload, CommandPayload::LogoutAccount { .. });
 				if state.apply_success(&in_flight.envelope, result) {
-					state.command = AccountCommandState::Accepted;
+					state.command = if state.pending_route.is_some() {
+						AccountCommandState::AwaitingResult
+					} else {
+						AccountCommandState::Accepted
+					};
 					let query_queued = if logout_succeeded {
 						state.reset_query();
 						state.queue_list()
@@ -615,6 +646,7 @@ impl State {
 	fn snapshot(&self) -> AccountsSnapshot {
 		let idle = self.session.is_some()
 			&& self.load == AccountsLoadState::Ready
+			&& self.pending_route.is_none()
 			&& self.pending_command.is_none()
 			&& self.in_flight_command.is_none()
 			&& !matches!(
@@ -773,6 +805,8 @@ impl State {
 				&& result.entity_revision == Some(pending.routing_revision) =>
 			{
 				self.pending_route = Some(pending.clone());
+				self.route_reopen_notice = false;
+				self.command = AccountCommandState::AwaitingResult;
 				true
 			},
 			(
@@ -992,7 +1026,7 @@ mod tests {
 	}
 
 	#[test]
-	fn legacy_pending_snapshot_does_not_trigger_a_second_route_for_the_current_target() {
+	fn pending_snapshot_does_not_trigger_a_second_route_for_the_current_target() {
 		let controller = AccountsController::production();
 		let server = server();
 		let first = account("10000000-0000-4000-8000-000000000001", "Primary", true, 3);
@@ -1033,10 +1067,48 @@ mod tests {
 			AccountRouteOutcome::Fresh
 		);
 		let snapshot = controller.snapshot();
-		assert!(snapshot.can_manage);
-		assert!(snapshot.can_route);
+		assert!(!snapshot.can_manage);
+		assert!(!snapshot.can_route);
+		assert_eq!(snapshot.command, AccountCommandState::AwaitingResult);
 		controller.select_fixed(&second.account_id).expect("current target is an exact no-op");
 		assert!(controller.try_take_dispatch(2, &server).is_none());
+		assert_eq!(
+			controller.select_fixed(&first.account_id),
+			Err(AccountInputError::Busy),
+			"one pending RouteAccount remains the only routing operation"
+		);
+		assert!(controller.refresh());
+		let AccountDispatch::Query(readback) =
+			controller.try_take_dispatch(2, &server).expect("terminal readback is queued")
+		else {
+			panic!("account refresh must remain a query")
+		};
+		let ready_routing = AccountRoutingControlDto {
+			revision: EntityRevision(6),
+			mode: AccountSelectionModeDto::Fixed(first.account_id.clone()),
+			order: vec![first.account_id.clone(), second.account_id.clone()],
+		};
+		assert_eq!(
+			controller.route_query_result(
+				2,
+				&server,
+				&QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: server.clone(),
+					query_id: readback.query_id,
+					payload: QueryResultPayload::Accounts(AccountsResult::Available {
+						accounts: vec![first, second],
+						routing: Some(ready_routing),
+						pending_route: None,
+					}),
+				},
+			),
+			AccountRouteOutcome::Fresh
+		);
+		let ready = controller.snapshot();
+		assert_eq!(ready.command, AccountCommandState::Accepted);
+		assert!(ready.route_reopen_notice);
+		assert!(ready.can_route);
 	}
 
 	#[test]

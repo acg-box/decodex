@@ -1627,7 +1627,10 @@ dependencies = [
 name = "decodexd"
 version = "0.2.0"
 dependencies = [
+ "base64",
  "clap",
+ "decodex-core",
+ "decodex-database",
  "decodex-protocol",
  "decodex-runtime",
  "libc",

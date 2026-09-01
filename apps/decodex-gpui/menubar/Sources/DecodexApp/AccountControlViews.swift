@@ -27,6 +27,23 @@ struct AccountRouteActionPresentation: Equatable {
 	var usesDisabledEnvironment: Bool {
 		isCurrent || isVisuallyDisabled
 	}
+
+	func title(
+		isSwitching: Bool,
+		pending: AccountRoutePending?,
+		keepsCurrentRoute: Bool
+	) -> String {
+		if let pending {
+			return pending.actionTitle
+		}
+		if isSwitching {
+			return "Switching"
+		}
+		if keepsCurrentRoute {
+			return "Keep"
+		}
+		return isCurrent ? "Ready" : "Switch"
+	}
 }
 
 struct AccountPrimaryActionsView: View {
@@ -36,9 +53,11 @@ struct AccountPrimaryActionsView: View {
 	var body: some View {
 		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
 			CompactAccountActionButton(
-				title: isPendingTarget
-					? "Pending"
-					: (keepsCurrentRoute ? "Keep" : (presentation.isCurrent ? "Routed" : "Route")),
+				title: presentation.title(
+					isSwitching: isSwitching,
+					pending: isPendingTarget ? store.pendingRoute : nil,
+					keepsCurrentRoute: keepsCurrentRoute
+				),
 				symbol: isPendingTarget
 					? "clock"
 					: (presentation.isCurrent
@@ -54,7 +73,7 @@ struct AccountPrimaryActionsView: View {
 				),
 				help: isPendingTarget
 					? store.pendingRoute?.helpText
-						?? "Keep ChatGPT or Codex closed until Pending changes to Routed, then reopen it."
+						?? "Decodex will finish the account switch automatically."
 					: (keepsCurrentRoute
 						? "Keep this account and replace the other pending route."
 						: (presentation.isCurrent
@@ -100,6 +119,10 @@ struct AccountPrimaryActionsView: View {
 		store.pendingRoute?.accountID == state.account.accountID
 	}
 
+	private var isSwitching: Bool {
+		store.isControllingAccount(state.account.accountID, activity: .route)
+	}
+
 	private var isFixed: Bool {
 		guard case .fixed(let accountID) = store.routing?.mode else {
 			return false
@@ -133,71 +156,35 @@ struct AccountRoutePendingStatusView: View {
 }
 
 extension AccountRoutePending {
+	var actionTitle: String {
+		switch waitReason {
+		case .externalCodex, .codexObservationUnavailable:
+			return "Waiting"
+		case .accountReadiness, .sharedAuthStabilizing, .sharedAuthUnavailable,
+			.projectionReadback:
+			return "Switching"
+		}
+	}
+
 	var statusText: String {
 		switch waitReason {
-		case .externalCodex(let blockers, let omitted):
-			let total = blockers.count + Int(omitted)
-			let first = blockers.first.map(Self.blockerLabel) ?? "Codex"
-			if total == 1 {
-				return "Waiting for \(first) to quit."
-			}
-			let remaining = total - 1
-			let noun = remaining == 1 ? "process" : "Codex processes"
-			return "Waiting for \(first) and \(remaining) more \(noun) to quit."
-		case .codexObservationUnavailable:
-			return "Waiting for safe Codex process inspection."
-		case .accountReadiness(let readiness):
-			return Self.accountReadinessStatus(readiness)
-		case .sharedAuthStabilizing:
-			return "Waiting for shared Codex auth to stabilize."
-		case .sharedAuthUnavailable:
-			return "Shared Codex auth is unavailable or unsafe."
-		case .projectionReadback:
-			return "Verifying the atomic auth.json update."
+		case .externalCodex, .codexObservationUnavailable:
+			return "Waiting for Codex to close or restart."
+		case .accountReadiness, .sharedAuthStabilizing, .sharedAuthUnavailable,
+			.projectionReadback:
+			return "Switching"
 		}
 	}
 
 	var helpText: String {
 		switch waitReason {
-		case .externalCodex(let blockers, let omitted):
-			var labels = blockers.map(Self.blockerLabel)
-			if omitted > 0 {
-				labels.append("\(omitted) more")
-			}
-			return "Quit \(labels.joined(separator: ", ")), then keep ChatGPT or Codex closed until Pending changes to Routed. Reopen it after routing completes."
+		case .externalCodex:
+			return "Close Codex and ChatGPT. Reopen them after the account is ready."
 		case .codexObservationUnavailable:
-			return "Decodex could not prove which Codex process owns the shared auth home, so the account switch remains safely blocked."
-		case .accountReadiness(let readiness):
-			return "\(Self.accountReadinessStatus(readiness)) Decodex retries automatically."
-		case .sharedAuthStabilizing:
-			return "Decodex is waiting for two matching auth.json observations before the atomic update."
-		case .sharedAuthUnavailable:
-			return "Check ~/.codex ownership, permissions, and path safety. Decodex retries automatically."
-		case .projectionReadback:
-			return "The auth.json update may have completed. Decodex is reading it back before routing is committed."
-		}
-	}
-
-	private static func blockerLabel(_ blocker: AccountRouteProcessBlocker) -> String {
-		let process = blocker.process == .chatgpt ? "ChatGPT" : "Codex"
-		let uncertainty = blocker.authHome == .unknown ? "; auth home unknown" : ""
-		return "\(process) PID \(blocker.pid)\(uncertainty)"
-	}
-
-	private static func accountReadinessStatus(
-		_ readiness: ResetCardLifecycleReadiness
-	) -> String {
-		switch readiness {
-		case .storeUnavailable:
-			return "Waiting for the credential store."
-		case .storeMismatch:
-			return "Waiting for credential binding reconciliation."
-		case .operationUnsettled:
-			return "Waiting for the current account operation to settle."
-		case .callbackCapabilityUnready:
-			return "Waiting for Codex refresh callback readiness."
-		case .ready, .credentialAbsent, .providerMismatch, .tombstoned:
-			return "Waiting for target account readiness."
+			return "Close Codex and ChatGPT so Decodex can finish safely."
+		case .accountReadiness, .sharedAuthStabilizing, .sharedAuthUnavailable,
+			.projectionReadback:
+			return "Decodex will finish the account switch automatically."
 		}
 	}
 }

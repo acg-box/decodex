@@ -78,16 +78,10 @@ enum AppAssets {
 }
 
 private let menuBarABIVersion: UInt32 = 1
-private let menuBarArtifactCohort: UInt32 = 7
 
 @_cdecl("decodex_menu_bar_abi_version")
 public func decodexMenuBarABIVersion() -> UInt32 {
 	menuBarABIVersion
-}
-
-@_cdecl("decodex_menu_bar_artifact_cohort")
-public func decodexMenuBarArtifactCohort() -> UInt32 {
-	menuBarArtifactCohort
 }
 
 @_cdecl("decodex_menu_bar_create")

@@ -61,6 +61,7 @@ type WebSocket = WebSocketStream<LocalTransportStream>;
 type OwnedFuture = Pin<Box<dyn Future<Output = OwnedTaskResult> + Send + 'static>>;
 
 const PRODUCT_MAXIMUM_SESSION_TASKS: usize = 64;
+const LISTENER_PUBLICATION_HEALTH_INTERVAL: Duration = Duration::from_millis(100);
 
 // Tungstenite fixes this callback's error type to the full HTTP response.
 #[allow(clippy::result_large_err)]
@@ -1352,6 +1353,7 @@ where
 {
 	server: ProtocolServer<A>,
 	listener: LocalTransportListener,
+	listener_health: time::Interval,
 	shutdown_receiver: oneshot::Receiver<()>,
 	phase: OwnerPhase,
 	deadline: Option<OwnerDeadline>,
@@ -1444,6 +1446,7 @@ enum CommandShutdownState {
 
 enum AcceptingWake {
 	RequestedShutdown,
+	ListenerHealth,
 	OwnedTask(Option<Result<(TokioTaskId, OwnedTaskCompletion), JoinError>>),
 	Operation(ActiveActorOperationCompletion),
 	Ordinary(Box<AcceptingOrdinaryWake>),
@@ -1545,9 +1548,12 @@ where
 		let (service_stop_sender, service_stop_receiver) = watch::channel(false);
 		let event_eof = !server.inner.application.has_publication_source();
 		let services = server.inner.application.daemon_service_tasks(service_stop_receiver);
+		let mut listener_health = time::interval(LISTENER_PUBLICATION_HEALTH_INTERVAL);
+		listener_health.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 		let mut owner = Self {
 			server,
 			listener,
+			listener_health,
 			shutdown_receiver,
 			phase: OwnerPhase::Accepting,
 			deadline: None,
@@ -1791,6 +1797,7 @@ where
 		let has_tasks = !self.tasks.is_empty();
 		let wake = {
 			let listener = &mut self.listener;
+			let listener_health = &mut self.listener_health;
 			let actor_receiver = &mut self.actor_receiver;
 			let application = &self.server.inner.application;
 			let ordinary = async {
@@ -1812,6 +1819,7 @@ where
 				biased;
 
 				_ = &mut self.shutdown_receiver => AcceptingWake::RequestedShutdown,
+				_ = listener_health.tick() => AcceptingWake::ListenerHealth,
 				joined = self.tasks.set.join_next_with_id(), if has_tasks => {
 					AcceptingWake::OwnedTask(joined)
 				},
@@ -1825,6 +1833,12 @@ where
 		match wake {
 			AcceptingWake::RequestedShutdown => {
 				OwnerDirective::BeginStopping(StopCause::RequestedShutdown)
+			},
+			AcceptingWake::ListenerHealth => match self.listener.revalidate() {
+				Ok(()) => OwnerDirective::Continue,
+				Err(refusal) => {
+					OwnerDirective::BeginStopping(StopCause::EndpointRefusal(refusal))
+				},
 			},
 			AcceptingWake::OwnedTask(Some(joined)) => self.harvest_task(joined),
 			AcceptingWake::OwnedTask(None) => {
@@ -2589,6 +2603,7 @@ where
 		let Self {
 			server,
 			listener,
+			listener_health,
 			shutdown_receiver,
 			phase: _,
 			deadline,
@@ -2619,6 +2634,7 @@ where
 		drop(shutdown_receiver);
 		drop(tasks);
 		drop(server);
+		drop(listener_health);
 
 		if let Err(refusal) = listener.cleanup() {
 			receipt.record_cleanup_refusal(refusal);

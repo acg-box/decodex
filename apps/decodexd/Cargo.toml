@@ -8,6 +8,9 @@ name                 = "decodexd"
 repository.workspace = true
 version.workspace    = true
 
+[features]
+process-acceptance-fixture = ["decodex-runtime/process-acceptance-fixture"]
+
 [dependencies]
 clap             = { workspace = true }
 decodex-protocol = { workspace = true }
@@ -19,4 +22,7 @@ tokio            = { workspace = true }
 libc = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
+base64          = { workspace = true }
+decodex-core    = { workspace = true }
+decodex-database = { workspace = true }
+tempfile        = { workspace = true }

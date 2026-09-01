@@ -2,7 +2,9 @@
 #![allow(unused_crate_dependencies)]
 
 use std::{
+	fs,
 	future::{self, Future},
+	os::unix::{fs::PermissionsExt as _, net::UnixListener as StandardUnixListener},
 	pin::Pin,
 	sync::{Arc, Mutex},
 	time::Duration,
@@ -33,7 +35,7 @@ use decodex_protocol::{
 };
 use decodex_runtime::{
 	ActorCommandDeadlineClass, Application, ApplicationPublication, ProtocolServer, ServerConfig,
-	TerminationPrimary, TerminationReceipt,
+	ServerError, TerminationPrimary, TerminationReceipt,
 };
 
 type Client = WebSocketStream<LocalTransportStream>;
@@ -1455,6 +1457,102 @@ async fn daemon_service_settlement_holds_namespace_authority_until_zero_survivor
 	.expect("namespace authority must release after service settlement");
 
 	restarted.shutdown().await.expect("shutdown restarted service-settlement server");
+}
+
+#[tokio::test]
+async fn missing_canonical_publication_stops_established_service_and_allows_rebind() {
+	let (temp, transport) = local_transport();
+	let socket_path = temp.path().join(".decodex/server/decodex.sock");
+	let mut bound = server(
+		"missing-listener-publication",
+		FixtureApplication::default(),
+		ServerConfig::default(),
+	)
+	.bind(transport.clone())
+	.await
+	.expect("bind listener-loss fixture server");
+	let mut established = connect(&transport, CURRENT_VERSION).await;
+
+	receive_initial(&mut established).await;
+	fs::remove_file(&socket_path).expect("remove canonical publication");
+
+	let error = time::timeout(Duration::from_secs(2), bound.wait())
+		.await
+		.expect("listener loss must stop the service")
+		.expect_err("listener loss must be abnormal");
+	let ServerError::Terminated(receipt) = error else {
+		panic!("expected deterministic terminated receipt, got {error:?}");
+	};
+	assert_eq!(receipt.endpoint_refusal, Some(LocalTransportRefusal::EndpointReplaced));
+	assert_eq!(receipt.cleanup_refusal, Some(LocalTransportRefusal::EndpointReplaced));
+	let old_stream = time::timeout(Duration::from_secs(1), established.next())
+		.await
+		.expect("established stream must stop with the lost publication");
+	assert!(matches!(old_stream, None | Some(Ok(Message::Close(_))) | Some(Err(_))));
+
+	let mut restarted = server(
+		"missing-listener-publication-restarted",
+		FixtureApplication::default(),
+		ServerConfig::default(),
+	)
+	.bind(transport.clone())
+	.await
+	.expect("app-owned recovery must republish after listener loss");
+	let mut reconnected = connect(&transport, CURRENT_VERSION).await;
+
+	receive_initial(&mut reconnected).await;
+	drop(reconnected);
+	drop(established);
+	restarted.shutdown().await.expect("shutdown republished fixture server");
+}
+
+#[tokio::test]
+async fn replacement_publication_stops_service_without_unlinking_replacement() {
+	let (temp, transport) = local_transport();
+	let socket_path = temp.path().join(".decodex/server/decodex.sock");
+	let retained_path = socket_path.with_file_name("retained.sock");
+	let mut bound = server(
+		"replaced-listener-publication",
+		FixtureApplication::default(),
+		ServerConfig::default(),
+	)
+	.bind(transport.clone())
+	.await
+	.expect("bind listener-replacement fixture server");
+	let mut established = connect(&transport, CURRENT_VERSION).await;
+
+	receive_initial(&mut established).await;
+	fs::rename(&socket_path, &retained_path).expect("move owned publication aside");
+	let replacement =
+		StandardUnixListener::bind(&socket_path).expect("publish unowned replacement socket");
+	fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600))
+		.expect("scope replacement socket");
+
+	let error = time::timeout(Duration::from_secs(2), bound.wait())
+		.await
+		.expect("listener replacement must stop the service")
+		.expect_err("listener replacement must be abnormal");
+	let ServerError::Terminated(receipt) = error else {
+		panic!("expected deterministic terminated receipt, got {error:?}");
+	};
+	assert_eq!(receipt.endpoint_refusal, Some(LocalTransportRefusal::EndpointReplaced));
+	assert_eq!(receipt.cleanup_refusal, Some(LocalTransportRefusal::EndpointReplaced));
+	assert!(socket_path.exists(), "cleanup must preserve an unowned replacement");
+	assert!(matches!(
+		server(
+			"replacement-contender",
+			FixtureApplication::default(),
+			ServerConfig::default(),
+		)
+		.bind(transport)
+		.await,
+		Err(ServerError::LocalTransport(LocalTransportRefusal::EndpointInUse))
+	));
+
+	drop(established);
+	drop(replacement);
+	fs::remove_file(&socket_path).expect("remove replacement fixture socket");
+	fs::remove_file(&retained_path).expect("remove retained fixture socket");
 }
 
 #[tokio::test]

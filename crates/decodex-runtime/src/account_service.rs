@@ -33,7 +33,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{
 	account_import::{
-		CredentialImportError, ImportedCredential, decode_chatgpt_identity,
+		CredentialImportError, ImportedCredential, decode_chatgpt_identity, decode_expiry_micros,
 		read_explicit_credential_file, read_explicit_shared_codex_credential_file,
 		read_shared_codex_credential,
 	},
@@ -41,13 +41,17 @@ use crate::{
 	host_credentials::{
 		CredentialSecretBundle, CredentialStoreError, HostCredentialStore, StoredCredential,
 	},
-		shared_auth_coordinator::{
-			CodexAuthOwnerBlocker, CodexLiveness, CodexLivenessObservation, SharedAuthCoordinator,
-			StableSharedAuthPoll, StableSharedAuthRead,
-		},
+	shared_auth_coordinator::{
+		CodexAuthOwnerBlocker, CodexLiveness, CodexLivenessObservation, SharedAuthCoordinator,
+		StableSharedAuthPoll, StableSharedAuthRead,
+	},
 };
 
+#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
 const REFRESH_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
+#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
+pub(crate) const PROCESS_TEST_REFRESH_ENDPOINT_ENV: &str =
+	"DECODEX_PROCESS_TEST_REFRESH_ENDPOINT";
 const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const MAX_ACCOUNT_READ: u16 = 512;
 const MAX_UNSETTLED_ACCOUNT_OPERATION_READ: u16 = 1_024;
@@ -332,9 +336,10 @@ impl CredentialRefreshPort for OpenAiCredentialRefresher {
 			grant_type: "refresh_token",
 			refresh_token: current.refresh_token(),
 		};
+		let endpoint = refresh_endpoint()?;
 		let response = self
 			.client
-			.post(REFRESH_ENDPOINT)
+			.post(endpoint)
 			.json(&request)
 			.send()
 			.map_err(|_| CredentialRefreshError::Ambiguous)?;
@@ -356,6 +361,41 @@ impl CredentialRefreshPort for OpenAiCredentialRefresher {
 
 		credential_refresh_result(current, refreshed, observed_at_micros)
 	}
+}
+
+fn refresh_endpoint() -> Result<String, CredentialRefreshError> {
+	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
+	{
+		return process_acceptance_fixture_endpoint()
+			.ok_or(CredentialRefreshError::Unavailable);
+	}
+
+	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
+	{
+		Ok(REFRESH_ENDPOINT.to_owned())
+	}
+}
+
+#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
+pub(crate) fn process_acceptance_fixture_endpoint() -> Option<String> {
+	std::env::var_os(PROCESS_TEST_REFRESH_ENDPOINT_ENV)
+		.and_then(|value| value.into_string().ok())
+		.filter(|endpoint| process_test_refresh_endpoint_is_safe(endpoint))
+}
+
+#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
+fn process_test_refresh_endpoint_is_safe(value: &str) -> bool {
+	let Ok(endpoint) = reqwest::Url::parse(value) else {
+		return false;
+	};
+	endpoint.scheme() == "http"
+		&& endpoint.host_str() == Some("127.0.0.1")
+		&& endpoint.port().is_some()
+		&& endpoint.path() == "/oauth/token"
+		&& endpoint.query().is_none()
+		&& endpoint.fragment().is_none()
+		&& endpoint.username().is_empty()
+		&& endpoint.password().is_none()
 }
 
 #[derive(Serialize)]
@@ -395,13 +435,14 @@ fn credential_refresh_result(
 	let identity =
 		decode_chatgpt_identity(&id_token).map_err(|_| CredentialRefreshError::Ambiguous)?;
 	let token_type = refreshed.token_type.take().ok_or(CredentialRefreshError::Ambiguous)?;
-	let expires_in = refreshed.expires_in.ok_or(CredentialRefreshError::Ambiguous)?;
-	let lifetime_micros = i64::try_from(expires_in)
-		.ok()
-		.and_then(|seconds| seconds.checked_mul(1_000_000))
-		.ok_or(CredentialRefreshError::Ambiguous)?;
+	if refreshed.expires_in.is_none_or(|expires_in| expires_in == 0) {
+		return Err(CredentialRefreshError::Ambiguous);
+	}
 	let expires_at_micros =
-		observed_at_micros.checked_add(lifetime_micros).ok_or(CredentialRefreshError::Ambiguous)?;
+		decode_expiry_micros(&access_token).map_err(|_| CredentialRefreshError::Ambiguous)?;
+	if expires_at_micros <= observed_at_micros {
+		return Err(CredentialRefreshError::Ambiguous);
+	}
 	let bundle = CredentialSecretBundle::chatgpt(
 		access_token,
 		refresh_token,
@@ -5106,6 +5147,10 @@ mod tests {
 		resolve_reauthentication_store_effect, route_resume_revision_is_valid,
 		stable_account_alias,
 	};
+	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
+	use super::{REFRESH_ENDPOINT, refresh_endpoint};
+	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
+	use super::process_test_refresh_endpoint_is_safe;
 	use std::{
 		collections::{HashMap, HashSet, VecDeque},
 		fs,
@@ -5362,6 +5407,10 @@ mod tests {
 			let state = self.state.lock().expect("shared auth state");
 			(state.bundle.access_token().to_owned(), state.bundle.refresh_token().to_owned())
 		}
+
+		fn current_provider(&self) -> ProviderIdentity {
+			self.state.lock().expect("shared auth state").provider.clone()
+		}
 	}
 
 	impl SharedAuthFilePort for RefreshRaceSharedAuthFile {
@@ -5516,6 +5565,84 @@ mod tests {
 		)
 		.expect("accept enrollment commit");
 		account_id
+	}
+
+	async fn route_test_account_once(
+		service: &AccountService,
+		store: &SqliteStore,
+		account_id: &AccountId,
+		expected_account_revision: i64,
+		operation_id: &str,
+		idempotency_key: &str,
+	) -> serde_json::Value {
+		let _ = service.shared_auth.poll_stable_change();
+		let _ = service.shared_auth.poll_stable_change();
+		let routing = store.read_account_routing_control().await.expect("read routing control");
+		let request = format!(
+			r#"{{"name":"route_account","arguments":{{"operation_id":"{operation_id}","account_id":"{}","expected_account_revision":{expected_account_revision}}}}}"#,
+			account_id.as_str(),
+		);
+		let command = CommandIdentity::new(idempotency_key, request.as_bytes())
+			.expect("Route command identity");
+		let lease = match store
+			.reserve_account_route_command(&command, routing.revision, &request)
+			.await
+			.expect("reserve Route command")
+		{
+			AccountCommandReceiptClaim::Owned(lease) => lease,
+			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
+				panic!("new Route command did not acquire its receipt")
+			},
+		};
+		service
+			.route_account_command(
+				lease,
+				AccountOperationId::new(operation_id).expect("Route operation identity"),
+				account_id,
+				expected_account_revision,
+				routing.revision,
+				false,
+				|result| {
+					Ok(match result {
+						Ok(AccountRouteResult::Committed(commit)) => json!({
+							"outcome": "routed",
+							"account_id": commit.account.account_id.as_str(),
+							"account_revision": commit.account.revision,
+							"routing_revision": commit.routing.revision,
+							"projection_digest": commit.projection_digest,
+						}),
+						Ok(AccountRouteResult::Pending(pending)) => json!({
+							"outcome": "pending",
+							"wait_reason": format!("{:?}", pending.wait_reason),
+						}),
+						Err(_) => json!({"outcome": "rejected"}),
+					})
+				},
+			)
+			.await
+			.expect("complete Route command")
+	}
+
+	async fn assert_exact_route_readback(
+		store: &SqliteStore,
+		credentials: &Arc<dyn HostCredentialStore>,
+		shared_auth: &RefreshRaceSharedAuthFile,
+		account_id: &AccountId,
+		provider_account_id: &str,
+	) {
+		let routing = store.read_account_routing_control().await.expect("read routed control");
+		assert_eq!(routing.mode, AccountSelectionMode::Fixed(account_id.clone()));
+		let account = store
+			.read_account_registry(Some(account_id), 1)
+			.await
+			.expect("read routed account")
+			.pop()
+			.expect("routed account exists");
+		let binding = account.credential.expect("routed credential binding");
+		let stored = credentials.read_exact(account_id, &binding).expect("read exact credential");
+		assert_eq!(shared_auth.current_provider().account_id(), provider_account_id);
+		assert_eq!(shared_auth.current_tokens().0, stored.bundle().access_token());
+		assert_eq!(shared_auth.current_tokens().1, stored.bundle().refresh_token());
 	}
 
 	#[test]
@@ -6072,6 +6199,185 @@ mod tests {
 				.expect("read pending Routes")
 				.is_empty()
 		);
+	}
+
+	#[tokio::test]
+	async fn account_route_a_b_a_and_post_restart_switch_keep_sqlite_and_shared_auth_exact() {
+		let directory = tempdir().expect("temporary product root");
+		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
+			.expect("typed product root");
+		let store = SqliteStore::open(&root.paths()).expect("open product store");
+		let credentials: Arc<dyn HostCredentialStore> =
+			Arc::new(SqliteCredentialStore::new(store.clone()));
+		let expiry = i64::MAX / 2;
+		let account_a = enroll_route_test_account_with_expiry(
+			&store,
+			&credentials,
+			"21000000-0000-4000-8000-0000000000e1",
+			"22000000-0000-4000-8000-0000000000e1",
+			"round-trip-provider-a",
+			"round-trip-access-a",
+			expiry,
+		)
+		.await;
+		let account_b = enroll_route_test_account_with_expiry(
+			&store,
+			&credentials,
+			"21000000-0000-4000-8000-0000000000e2",
+			"22000000-0000-4000-8000-0000000000e2",
+			"round-trip-provider-b",
+			"round-trip-access-b",
+			expiry,
+		)
+		.await;
+		let shared_auth = Arc::new(RefreshRaceSharedAuthFile::new(
+			"round-trip-provider-a",
+			shared_bundle("round-trip-provider-a", "round-trip-access-a", expiry),
+		));
+		let provider_calls = Arc::new(AtomicUsize::new(0));
+		let refresher = Arc::new(ScriptedCredentialRefresher {
+			calls: Arc::clone(&provider_calls),
+			results: Mutex::new(VecDeque::from([
+				CredentialRefreshResult {
+					returned_provider: ProviderIdentity::new(
+						AccountProvider::Chatgpt,
+						"round-trip-provider-b",
+					)
+					.expect("provider B identity"),
+					bundle: shared_bundle_with_refresh(
+						"round-trip-provider-b",
+						"round-trip-access-b-routed",
+						"round-trip-refresh-b-routed",
+						expiry,
+					),
+				},
+				CredentialRefreshResult {
+					returned_provider: ProviderIdentity::new(
+						AccountProvider::Chatgpt,
+						"round-trip-provider-a",
+					)
+					.expect("provider A identity"),
+					bundle: shared_bundle_with_refresh(
+						"round-trip-provider-a",
+						"round-trip-access-a-routed",
+						"round-trip-refresh-a-routed",
+						expiry,
+					),
+				},
+				CredentialRefreshResult {
+					returned_provider: ProviderIdentity::new(
+						AccountProvider::Chatgpt,
+						"round-trip-provider-b",
+					)
+					.expect("provider B identity"),
+					bundle: shared_bundle_with_refresh(
+						"round-trip-provider-b",
+						"round-trip-access-b-restarted",
+						"round-trip-refresh-b-restarted",
+						expiry,
+					),
+				},
+			])),
+		});
+		let build_service = || {
+			AccountService::new(
+				store.clone(),
+				Arc::clone(&credentials),
+				Arc::clone(&refresher) as Arc<dyn CredentialRefreshPort>,
+			)
+			.with_shared_auth_coordinator(test_coordinator(
+				Arc::clone(&shared_auth) as Arc<dyn SharedAuthFilePort>,
+				CodexLiveness::Quiescent,
+			))
+		};
+		let service = build_service();
+		assert!(
+			service
+				.attest_callback_capability(CodexAccountCapabilityAttestation {
+					build_identity: "round-trip-route-build".to_owned(),
+					executable_sha256: "1".repeat(64),
+					schema_sha256: "2".repeat(64),
+					callback_profile_sha256: "3".repeat(64),
+					login_chatgpt_auth_tokens: true,
+					refresh_callback: true,
+				})
+				.await
+				.expect("attest callback capability")
+		);
+
+		for (account_id, expected_revision, provider, operation, key) in [
+			(
+				&account_b,
+				1,
+				"round-trip-provider-b",
+				"22000000-0000-4000-8000-0000000000e3",
+				"round-trip-route-b",
+			),
+			(
+				&account_a,
+				1,
+				"round-trip-provider-a",
+				"22000000-0000-4000-8000-0000000000e4",
+				"round-trip-route-a",
+			),
+		] {
+			let response = route_test_account_once(
+				&service,
+				&store,
+				account_id,
+				expected_revision,
+				operation,
+				key,
+			)
+			.await;
+			assert_eq!(response["outcome"], "routed");
+			assert_eq!(response["account_id"], account_id.as_str());
+			assert_eq!(response["projection_digest"].as_str().map(str::len), Some(64));
+			assert_exact_route_readback(
+				&store,
+				&credentials,
+				&shared_auth,
+				account_id,
+				provider,
+			)
+			.await;
+		}
+
+		drop(service);
+		let restarted = build_service();
+		assert!(
+			restarted
+				.attest_callback_capability(CodexAccountCapabilityAttestation {
+					build_identity: "round-trip-route-restarted-build".to_owned(),
+					executable_sha256: "4".repeat(64),
+					schema_sha256: "5".repeat(64),
+					callback_profile_sha256: "6".repeat(64),
+					login_chatgpt_auth_tokens: true,
+					refresh_callback: true,
+				})
+				.await
+				.expect("attest restarted callback capability")
+		);
+		let response = route_test_account_once(
+			&restarted,
+			&store,
+			&account_b,
+			2,
+			"22000000-0000-4000-8000-0000000000e5",
+			"round-trip-route-b-after-restart",
+		)
+		.await;
+		assert_eq!(response["outcome"], "routed");
+		assert_exact_route_readback(
+			&store,
+			&credentials,
+			&shared_auth,
+			&account_b,
+			"round-trip-provider-b",
+		)
+		.await;
+		assert_eq!(shared_auth.project_attempts.load(Ordering::Relaxed), 3);
+		assert_eq!(provider_calls.load(Ordering::Relaxed), 3);
 	}
 
 	#[tokio::test]
@@ -7907,13 +8213,41 @@ mod tests {
 	}
 
 	fn response(id_token: Option<String>) -> RefreshResponse {
+		let access_payload =
+			URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!({"exp": 61_i64})).unwrap());
 		RefreshResponse {
 			id_token,
-			access_token: Some("fresh-access".to_owned()),
+			access_token: Some(format!("header.{access_payload}.signature")),
 			refresh_token: None,
 			token_type: Some("bearer".to_owned()),
 			expires_in: Some(60),
 		}
+	}
+
+	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
+	#[test]
+	fn process_acceptance_refresh_endpoint_accepts_only_exact_loopback_http() {
+		assert!(process_test_refresh_endpoint_is_safe("http://127.0.0.1:49152/oauth/token"));
+		for unsafe_endpoint in [
+			"https://127.0.0.1:49152/oauth/token",
+			"http://localhost:49152/oauth/token",
+			"http://127.0.0.1/oauth/token",
+			"http://127.0.0.1:49152/other",
+			"http://127.0.0.1:49152/oauth/token?redirect=true",
+			"http://user@127.0.0.1:49152/oauth/token",
+			"https://auth.openai.com/oauth/token",
+		] {
+			assert!(!process_test_refresh_endpoint_is_safe(unsafe_endpoint));
+		}
+	}
+
+	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
+	#[test]
+	fn ordinary_build_refresh_endpoint_is_the_fixed_https_authority() {
+		assert!(
+			matches!(refresh_endpoint(), Ok(endpoint) if endpoint == REFRESH_ENDPOINT),
+			"ordinary builds must retain the fixed refresh authority"
+		);
 	}
 
 	fn binding(provider_account_id: &str, version: u64) -> CredentialBinding {
@@ -8167,6 +8501,11 @@ mod tests {
 		assert_eq!(refreshed.bundle.provider_email(), "fresh@example.test");
 		assert_eq!(refreshed.bundle.plan_type(), Some("pro"));
 		assert_eq!(refreshed.bundle.refresh_token(), "old-refresh");
+		assert_eq!(
+			refreshed.bundle.access_token_expires_at_unix_micros(),
+			61_000_000,
+			"stored expiry must use the access-token authority used by shared-auth readback",
+		);
 
 		let account_id = AccountId::new("20000000-0000-4000-8000-000000000001").unwrap();
 		let operation_id = AccountOperationId::new("30000000-0000-4000-8000-000000000001").unwrap();

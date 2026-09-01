@@ -21,8 +21,8 @@ use gpui::{
 use decodex_protocol::{
 	AccountDto, AccountLifecycleReadinessDto, AccountLoginInstallMode, AccountLoginMethod,
 	AccountLoginStart, AccountLoginState, AccountLoginStatus, AccountObservedStateDto,
-	AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto, AccountRouteAuthHomeDto,
-	AccountRouteBlockingProcessDto, AccountRoutePendingDto, AccountRouteWaitReasonDto,
+	AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto, AccountRoutePendingDto,
+	AccountRouteWaitReasonDto,
 	AccountSelectionModeDto, AppServerCapability, ClientFailure, DoctorComponent, DoctorIssue,
 	DoctorStatus, EntityId, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
 	HistoryPayloadDto, HistoryTurnRole, IdempotencyKey, QuickTaskRecoveryAction, QuickTaskState,
@@ -37,8 +37,7 @@ use crate::{
 		AccountsSnapshot, canonical_uuid_v4,
 	},
 	client_lifecycle::{
-		ClientLifecycle, CompatibilityReason, ConnectionView, LifecycleCancellation,
-		QuarantineReason, QuarantineRecovery,
+		ClientLifecycle, ConnectionView, LifecycleCancellation,
 	},
 	composer_input::{self, ComposerEvent, ComposerInput, MAX_COMPOSER_BYTES, SubmitComposer},
 	desktop_settings::{DesktopSettingsController, DesktopSettingsSnapshot},
@@ -375,46 +374,29 @@ struct ConnectionPresentation {
 
 fn connection_presentation(view: ConnectionView) -> ConnectionPresentation {
 	match view {
-		ConnectionView::Connecting { attempt } => ConnectionPresentation {
+		ConnectionView::Connecting { .. } => ConnectionPresentation {
 			label: "Connecting",
-			detail: format!("Establishing verified session · attempt {attempt}").into(),
+			detail: "Starting Decodex.".into(),
 			color: 0xf59e0b,
 		},
-		ConnectionView::Online { generation, applied } => ConnectionPresentation {
+		ConnectionView::Online { .. } => ConnectionPresentation {
 			label: "Online",
-			detail: match applied {
-				Some(cursor) => format!("Authority generation {generation} · applied {}", cursor.0),
-				None => format!("Authority generation {generation} · awaiting snapshot"),
-			}
-			.into(),
+			detail: "Connected and ready.".into(),
 			color: 0x22c55e,
 		},
-		ConnectionView::OfflineRetrying { next_attempt, delay } => ConnectionPresentation {
-			label: "Offline · retrying",
-			detail: format!(
-				"Connection unavailable · attempt {next_attempt} in {} ms",
-				delay.as_millis()
-			)
-			.into(),
+		ConnectionView::OfflineRetrying { .. } => ConnectionPresentation {
+			label: "Reconnecting",
+			detail: "Trying to restore Decodex.".into(),
 			color: 0xf97316,
 		},
-		ConnectionView::Incompatible(reason) => ConnectionPresentation {
-			label: "Incompatible",
-			detail: match reason {
-				CompatibilityReason::Startup(failure) => startup_failure(failure),
-				CompatibilityReason::InvalidEndpoint => "Selected endpoint is not supported",
-				CompatibilityReason::ProtocolMajor => "Protocol generation does not match",
-				CompatibilityReason::ProtocolMinor => "Protocol revision is not supported",
-				CompatibilityReason::PublicationIdentityUnavailable => {
-					"Publication identity is unavailable"
-				},
-			}
-			.into(),
+		ConnectionView::Incompatible(_) => ConnectionPresentation {
+			label: "Restart Decodex",
+			detail: "Restart Decodex to restore the connection.".into(),
 			color: 0xef4444,
 		},
-		ConnectionView::Quarantined { reason, recovery } => ConnectionPresentation {
-			label: quarantine_label(reason),
-			detail: format!("{} · {}", quarantine_reason(reason), recovery_label(recovery)).into(),
+		ConnectionView::Quarantined { .. } => ConnectionPresentation {
+			label: "Restart Decodex",
+			detail: "Restart Decodex to restore the connection.".into(),
 			color: 0xdc2626,
 		},
 		ConnectionView::ShuttingDown => ConnectionPresentation {
@@ -423,8 +405,8 @@ fn connection_presentation(view: ConnectionView) -> ConnectionPresentation {
 			color: 0x94a3b8,
 		},
 		ConnectionView::Stopped => ConnectionPresentation {
-			label: "Stopped",
-			detail: "No connection or retry work remains".into(),
+			label: "Restart Decodex",
+			detail: "Restart Decodex to restore the connection.".into(),
 			color: 0x64748b,
 		},
 	}
@@ -447,54 +429,16 @@ const fn startup_failure(failure: ClientFailure) -> &'static str {
 		ClientFailure::UnsafeLocalEndpoint => "Local daemon endpoint is unsafe",
 		ClientFailure::LocalPeerIdentityUnavailable => "Local daemon identity is unavailable",
 		ClientFailure::LocalPeerUidMismatch => "Local daemon peer UID does not match",
-		ClientFailure::ProtocolDisconnected => "Daemon protocol is disconnected",
-		ClientFailure::ProtocolTimeout => "Daemon protocol timed out",
-		ClientFailure::ProtocolMajorMismatch => "Protocol generation does not match",
-		ClientFailure::ProtocolMinorMismatch => "Protocol revision is not supported",
-		ClientFailure::ArtifactCohortMismatch => "Installed Decodex artifacts do not match",
+		ClientFailure::ProtocolDisconnected
+		| ClientFailure::ProtocolTimeout
+		| ClientFailure::ProtocolMajorMismatch
+		| ClientFailure::ProtocolMinorMismatch
+		| ClientFailure::ArtifactCohortMismatch => "Restart Decodex.",
 		ClientFailure::ServerIdentityMismatch => "Stable server identity does not match",
 		ClientFailure::ProtocolMalformed => "Daemon response is malformed",
 		ClientFailure::ProtocolViolation => "Daemon protocol ordering was refused",
 		ClientFailure::ProtocolBackpressure => "Daemon message allowance was exhausted",
 		ClientFailure::ApplicationAcceptanceUnknown => "Application command acceptance is unknown",
-	}
-}
-
-const fn quarantine_label(reason: QuarantineReason) -> &'static str {
-	match reason {
-		QuarantineReason::StableServerIdentity
-		| QuarantineReason::AuthorityChanged
-		| QuarantineReason::PublicationInstanceChanged
-		| QuarantineReason::CheckpointMismatch => "Quarantined · identity mismatch",
-		QuarantineReason::CacheCorrupt
-		| QuarantineReason::CacheRootUnsafe
-		| QuarantineReason::ContentAttestation => "Quarantined · cache integrity",
-		QuarantineReason::ApplicationOrder => "Quarantined · application order",
-		QuarantineReason::ApplicationConfirmation => "Quarantined · confirmation failure",
-		QuarantineReason::StaleConnectionGeneration => "Quarantined · generation fence",
-	}
-}
-
-const fn quarantine_reason(reason: QuarantineReason) -> &'static str {
-	match reason {
-		QuarantineReason::StableServerIdentity => "Stable server identity changed",
-		QuarantineReason::AuthorityChanged => "Selected authority changed",
-		QuarantineReason::PublicationInstanceChanged => "Publication instance changed",
-		QuarantineReason::CheckpointMismatch => "Checkpoint identity did not match",
-		QuarantineReason::CacheCorrupt => "Disposable cache could not be attested",
-		QuarantineReason::CacheRootUnsafe => "Disposable cache root is unsafe",
-		QuarantineReason::ContentAttestation => "Published content failed attestation",
-		QuarantineReason::ApplicationOrder => "Application order was invalid",
-		QuarantineReason::ApplicationConfirmation => "Application confirmation failed",
-		QuarantineReason::StaleConnectionGeneration => "Connection generation became stale",
-	}
-}
-
-const fn recovery_label(recovery: QuarantineRecovery) -> &'static str {
-	match recovery {
-		QuarantineRecovery::VerifiedSnapshotReplacement => "waiting for verified replacement",
-		QuarantineRecovery::DisposedBeforeRebuild => "disposed before bounded rebuild",
-		QuarantineRecovery::OperatorRequired => "operator action required",
 	}
 }
 
@@ -3087,45 +3031,14 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 
 fn account_route_pending_label(pending: &AccountRoutePendingDto) -> String {
 	match &pending.wait_reason {
-		AccountRouteWaitReasonDto::ExternalCodex { blockers, omitted } => {
-			let mut labels = blockers
-				.iter()
-				.map(|blocker| {
-					let process = match blocker.process {
-						AccountRouteBlockingProcessDto::Chatgpt => "ChatGPT",
-						AccountRouteBlockingProcessDto::Codex => "Codex",
-					};
-					let uncertainty = match blocker.auth_home {
-						AccountRouteAuthHomeDto::Shared => "",
-						AccountRouteAuthHomeDto::Unknown => "; auth home unknown",
-					};
-					format!("{process} PID {}{uncertainty}", blocker.pid)
-				})
-				.collect::<Vec<_>>();
-		if *omitted > 0 {
-			labels.push(format!("{omitted} more"));
-		}
-		format!(
-			"Route pending. Quit {}. Keep ChatGPT or Codex closed until routing completes.",
-			labels.join(", ")
-		)
+		AccountRouteWaitReasonDto::ExternalCodex { .. }
+		| AccountRouteWaitReasonDto::CodexObservationUnavailable => {
+			"Waiting for Codex to close or restart.".to_owned()
 		},
-		AccountRouteWaitReasonDto::CodexObservationUnavailable => {
-			"Route pending. Codex process ownership could not be inspected safely.".to_owned()
-		},
-		AccountRouteWaitReasonDto::AccountReadiness { readiness } => format!(
-			"Route pending. Target account readiness is {}.",
-			account_readiness_label(*readiness)
-		),
-		AccountRouteWaitReasonDto::SharedAuthStabilizing => {
-			"Route pending. Waiting for stable shared Codex auth.".to_owned()
-		},
-		AccountRouteWaitReasonDto::SharedAuthUnavailable => {
-			"Route pending. Shared Codex auth is unavailable or unsafe.".to_owned()
-		},
-		AccountRouteWaitReasonDto::ProjectionReadback => {
-			"Route pending. Verifying the atomic shared-auth update.".to_owned()
-		},
+		AccountRouteWaitReasonDto::AccountReadiness { .. }
+		| AccountRouteWaitReasonDto::SharedAuthStabilizing
+		| AccountRouteWaitReasonDto::SharedAuthUnavailable
+		| AccountRouteWaitReasonDto::ProjectionReadback => "Switching".to_owned(),
 	}
 }
 
@@ -3628,9 +3541,9 @@ fn account_pool_row(
 								}))
 						})
 						.child(if fixed {
-							"Routed"
+							"Ready"
 						} else {
-							"Route"
+							"Switch"
 						}),
 				)
 				.child(
@@ -3882,12 +3795,9 @@ fn accounts_load_label(load: AccountsLoadState) -> &'static str {
 fn account_command_label(command: AccountCommandState) -> Option<&'static str> {
 	match command {
 		AccountCommandState::Idle => None,
-		AccountCommandState::Sending => Some("Sending account command…"),
-		AccountCommandState::AwaitingResult => Some("Waiting for durable account result…"),
-		AccountCommandState::Accepted => Some("Account pool updated."),
-		AccountCommandState::OutcomeUnknown => {
-			Some("Outcome is unknown. Refresh readback before another account change.")
-		},
+		AccountCommandState::Sending | AccountCommandState::AwaitingResult => Some("Switching"),
+		AccountCommandState::Accepted => Some("Ready"),
+		AccountCommandState::OutcomeUnknown => Some("Restart Decodex."),
 		AccountCommandState::Refused => Some("The account change was refused. Refresh and retry."),
 	}
 }
@@ -5931,17 +5841,17 @@ mod tests {
 			[
 				"Connecting",
 				"Online",
-				"Offline · retrying",
-				"Incompatible",
-				"Quarantined · identity mismatch",
+				"Reconnecting",
+				"Restart Decodex",
+				"Restart Decodex",
 				"Shutting down",
-				"Stopped",
+				"Restart Decodex",
 			]
 		);
 	}
 
 	#[test]
-	fn startup_failures_preserve_their_typed_presentation() {
+	fn startup_failure_details_remain_available_outside_connection_recovery() {
 		let cases = [
 			(ClientFailure::ConfigurationMissing, "Client configuration is missing"),
 			(ClientFailure::ConfigurationMalformed, "Client configuration is malformed"),
@@ -5951,9 +5861,9 @@ mod tests {
 		];
 
 		for (failure, detail) in cases {
-			let view = ConnectionView::Incompatible(CompatibilityReason::Startup(failure));
-			assert_eq!(connection_presentation(view).detail, detail);
+			assert_eq!(startup_failure(failure), detail);
 		}
+		assert_eq!(startup_failure(ClientFailure::ArtifactCohortMismatch), "Restart Decodex.");
 	}
 
 	#[test]
@@ -5995,7 +5905,7 @@ mod tests {
 	}
 
 	#[test]
-	fn pending_route_status_names_the_blocking_process() {
+	fn pending_route_status_hides_process_and_transport_internals() {
 		let pending = AccountRoutePendingDto {
 			operation_id: EntityId::new("30000000-0000-4000-8000-000000000001").unwrap(),
 			account_id: EntityId::new("10000000-0000-4000-8000-000000000001").unwrap(),
@@ -6003,34 +5913,52 @@ mod tests {
 			wait_reason: AccountRouteWaitReasonDto::ExternalCodex {
 				blockers: vec![decodex_protocol::AccountRouteProcessBlockerDto {
 					pid: 44_662,
-					process: AccountRouteBlockingProcessDto::Chatgpt,
-					auth_home: AccountRouteAuthHomeDto::Shared,
+					process: decodex_protocol::AccountRouteBlockingProcessDto::Chatgpt,
+					auth_home: decodex_protocol::AccountRouteAuthHomeDto::Shared,
 				}],
 				omitted: 0,
 			},
 		};
 		assert_eq!(
 			account_route_pending_label(&pending),
-			"Route pending. Quit ChatGPT PID 44662. Keep ChatGPT or Codex closed until routing completes."
+			"Waiting for Codex to close or restart."
 		);
+		let mut observation = pending.clone();
+		observation.wait_reason = AccountRouteWaitReasonDto::CodexObservationUnavailable;
+		assert_eq!(
+			account_route_pending_label(&observation),
+			"Waiting for Codex to close or restart."
+		);
+		for wait_reason in [
+			AccountRouteWaitReasonDto::AccountReadiness {
+				readiness: AccountLifecycleReadinessDto::StoreUnavailable,
+			},
+			AccountRouteWaitReasonDto::SharedAuthStabilizing,
+			AccountRouteWaitReasonDto::SharedAuthUnavailable,
+			AccountRouteWaitReasonDto::ProjectionReadback,
+		] {
+			let mut switching = pending.clone();
+			switching.wait_reason = wait_reason;
+			assert_eq!(account_route_pending_label(&switching), "Switching");
+		}
 	}
 
 	#[test]
-	fn quarantine_labels_describe_the_actual_typed_reason() {
+	fn quarantine_reasons_present_one_recovery_action() {
 		let cases = [
-			(QuarantineReason::StableServerIdentity, "Quarantined · identity mismatch"),
-			(QuarantineReason::CacheCorrupt, "Quarantined · cache integrity"),
-			(QuarantineReason::ApplicationOrder, "Quarantined · application order"),
-			(QuarantineReason::ApplicationConfirmation, "Quarantined · confirmation failure"),
-			(QuarantineReason::StaleConnectionGeneration, "Quarantined · generation fence"),
+			QuarantineReason::StableServerIdentity,
+			QuarantineReason::CacheCorrupt,
+			QuarantineReason::ApplicationOrder,
+			QuarantineReason::ApplicationConfirmation,
+			QuarantineReason::StaleConnectionGeneration,
 		];
 
-		for (reason, label) in cases {
+		for reason in cases {
 			let view = ConnectionView::Quarantined {
 				reason,
 				recovery: QuarantineRecovery::OperatorRequired,
 			};
-			assert_eq!(connection_presentation(view).label, label);
+			assert_eq!(connection_presentation(view).label, "Restart Decodex");
 		}
 	}
 

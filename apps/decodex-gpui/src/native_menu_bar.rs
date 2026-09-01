@@ -10,9 +10,6 @@ use std::{
 };
 
 #[cfg(all(target_os = "macos", not(test)))]
-use decodex_protocol::CURRENT_ARTIFACT_COHORT;
-
-#[cfg(all(target_os = "macos", not(test)))]
 const MENU_BAR_ABI_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -34,9 +31,9 @@ impl NativeMenuBarFailure {
 	pub(crate) const fn detail(self) -> &'static str {
 		match self {
 			Self::NotBundled => "The native menu bar is available from staged Decodex.app builds.",
-			Self::LibraryUnavailable => "Decodex could not load its signed native menu-bar module.",
-			Self::Incompatible => "The native menu-bar module does not match this Decodex build.",
-			Self::HostUnavailable => "Decodex could not create the native Swift menu-bar host.",
+			Self::LibraryUnavailable | Self::Incompatible | Self::HostUnavailable => {
+				"Restart Decodex."
+			},
 			Self::ApplyFailed => "The native Swift menu bar refused the requested visibility.",
 			Self::LoginItemFailed => "macOS refused the requested login-item operation.",
 			Self::UnsupportedPlatform => "The menu-bar surface is available only on macOS.",
@@ -246,13 +243,8 @@ impl SwiftMenuBarBridge {
 
 		// SAFETY: every symbol is verified non-null before it is copied to its exact C ABI type.
 		let abi: VersionFn = unsafe { symbol(image, c"decodex_menu_bar_abi_version")? };
-		// SAFETY: same checked C ABI boundary as `abi`.
-		let cohort: VersionFn = unsafe { symbol(image, c"decodex_menu_bar_artifact_cohort")? };
-		// SAFETY: version functions have no arguments and no side effects outside the loaded image.
-		if unsafe { abi() } != MENU_BAR_ABI_VERSION
-			// SAFETY: the cohort function has the same exact checked signature.
-			|| unsafe { cohort() } != CURRENT_ARTIFACT_COHORT
-		{
+		// SAFETY: the version function has no arguments and no side effects outside the loaded image.
+		if unsafe { abi() } != MENU_BAR_ABI_VERSION {
 			return Err(NativeMenuBarFailure::Incompatible);
 		}
 		// SAFETY: each exported symbol has a fixed ABI that is covered by Swift and Rust tests.
