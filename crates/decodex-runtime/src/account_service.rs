@@ -6330,7 +6330,7 @@ mod tests {
 				key,
 			)
 			.await;
-			assert_eq!(response["outcome"], "routed", "unexpected response: {response}");
+			assert_eq!(response["outcome"], "routed");
 			assert_eq!(response["account_id"], account_id.as_str());
 			assert_eq!(response["projection_digest"].as_str().map(str::len), Some(64));
 			assert_exact_route_readback(
