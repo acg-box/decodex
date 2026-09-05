@@ -1626,7 +1626,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertGreaterThanOrEqual(reads.inventory, 4)
 	}
 
-	func testAmbiguousRefreshUsesLoginTakeoverWithTheExactRecoveryOperation() async throws {
+	func testRejectedRefreshUsesLoginTakeoverWithTheExactRecoveryOperation() async throws {
 		let recoveryOperationID = "77777777-7777-4777-8777-777777777777"
 		let account = accountRecord(
 			observedState: .available,
@@ -1635,7 +1635,7 @@ final class AccountControlStoreTests: XCTestCase {
 				operationID: recoveryOperationID,
 				kind: .refresh,
 				phase: .recoveryRequired,
-				recoveryCode: "provider_refresh_ambiguous"
+				recoveryCode: "provider_refresh_rejected"
 			)
 		)
 		let client = AccountControlStoreClient(

@@ -48,6 +48,10 @@ pub(crate) enum AccountProfileRuntimeError {
 	AccountUnavailable,
 	ProductStateUnavailable,
 	CredentialUnavailable,
+	CredentialBusy,
+	RefreshRejected,
+	RefreshAmbiguous,
+	AccessRejectedAfterRefresh,
 	Unauthorized,
 	ProviderUnavailable,
 	ProtocolUnavailable,
@@ -200,7 +204,11 @@ impl AccountProfileRuntime {
 		let refresh_error = match status {
 			Some(status) if status.account_revision == account.revision => status.refresh_error,
 			Some(_) => Some(AccountProfileRuntimeError::AccountChanged),
-			None => Some(AccountProfileRuntimeError::ProviderUnavailable),
+			None => account
+				.unsettled_operation
+				.as_ref()
+				.and_then(|operation| recovery_profile_error(operation.recovery_code.as_deref()))
+				.or(Some(AccountProfileRuntimeError::ProviderUnavailable)),
 		};
 		let snapshot = match self.store.read_account_profile(account_id).await {
 			Ok(Some(snapshot)) => snapshot,
@@ -301,6 +309,17 @@ impl AccountProfileRuntime {
 	}
 }
 
+fn recovery_profile_error(code: Option<&str>) -> Option<AccountProfileRuntimeError> {
+	match code {
+		Some("provider_refresh_rejected") => Some(AccountProfileRuntimeError::RefreshRejected),
+		Some("provider_refresh_ambiguous" | "provider_refresh_outcome_unknown") =>
+			Some(AccountProfileRuntimeError::RefreshAmbiguous),
+		Some("provider_access_rejected_after_refresh") =>
+			Some(AccountProfileRuntimeError::AccessRejectedAfterRefresh),
+		_ => None,
+	}
+}
+
 fn claims_source_matches(
 	expected_revision: Option<i64>,
 	expected_provider: Option<&ProviderIdentity>,
@@ -356,7 +375,7 @@ fn unix_micros() -> Option<i64> {
 mod tests {
 	use decodex_core::{AccountProvider, ProviderIdentity};
 
-	use super::claims_source_matches;
+	use super::{AccountProfileRuntimeError, claims_source_matches, recovery_profile_error};
 
 	#[test]
 	fn final_claims_require_the_exact_snapshot_revision_and_provider() {
@@ -367,5 +386,22 @@ mod tests {
 		assert!(!claims_source_matches(Some(7), Some(&first), 8, &first));
 		assert!(!claims_source_matches(Some(7), Some(&first), 7, &second));
 		assert!(claims_source_matches(None, None, 8, &second));
+	}
+
+	#[test]
+	fn durable_refresh_recovery_restores_explicit_cached_profile_failure() {
+		assert_eq!(
+			recovery_profile_error(Some("provider_refresh_rejected")),
+			Some(AccountProfileRuntimeError::RefreshRejected)
+		);
+		assert_eq!(
+			recovery_profile_error(Some("provider_refresh_ambiguous")),
+			Some(AccountProfileRuntimeError::RefreshAmbiguous)
+		);
+		assert_eq!(
+			recovery_profile_error(Some("provider_access_rejected_after_refresh")),
+			Some(AccountProfileRuntimeError::AccessRejectedAfterRefresh)
+		);
+		assert_eq!(recovery_profile_error(Some("credential_rotate_failed")), None);
 	}
 }

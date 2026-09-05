@@ -95,7 +95,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 14 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 15 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
@@ -131,7 +131,7 @@ mod tests {
 	#[test]
 	fn only_the_exact_current_version_is_accepted() {
 		assert_eq!(CURRENT_VERSION.negotiate(), Ok(CURRENT_VERSION));
-		assert_eq!(ProtocolVersion { major: 2, minor: 13 }.negotiate(), Err(CURRENT_VERSION));
+		assert_eq!(ProtocolVersion { major: 2, minor: 14 }.negotiate(), Err(CURRENT_VERSION));
 	}
 
 	#[test]

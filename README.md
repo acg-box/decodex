@@ -102,7 +102,7 @@ replace the account and discard provider cache affinity.
 ## Removed and deferred surfaces
 
 The unsupported WorkItem board protocol and UI, and the static Coordinator/Agent/Review/Replay
-Factory preview, are deleted. Their old command names are not part of protocol 2.14 and fail
+Factory preview, are deleted. Their old command names are not part of protocol 2.15 and fail
 decoding. The fake Execution Decision query and projection are also removed from the protocol and
 runtime. ManagedRepository, Reset Card execution, automation, ManagedRun, remote workers, and
 multi-machine coordination remain deferred without a public fake workflow or legacy storage

@@ -3000,6 +3000,11 @@ const fn account_profile_error_dto(error: AccountProfileRuntimeError) -> Account
 			AccountProfileErrorDto::ProductStateUnavailable,
 		AccountProfileRuntimeError::CredentialUnavailable =>
 			AccountProfileErrorDto::CredentialUnavailable,
+		AccountProfileRuntimeError::CredentialBusy => AccountProfileErrorDto::CredentialBusy,
+		AccountProfileRuntimeError::RefreshRejected => AccountProfileErrorDto::RefreshRejected,
+		AccountProfileRuntimeError::RefreshAmbiguous => AccountProfileErrorDto::RefreshAmbiguous,
+		AccountProfileRuntimeError::AccessRejectedAfterRefresh =>
+			AccountProfileErrorDto::AccessRejectedAfterRefresh,
 		AccountProfileRuntimeError::Unauthorized => AccountProfileErrorDto::Unauthorized,
 		AccountProfileRuntimeError::ProviderUnavailable =>
 			AccountProfileErrorDto::ProviderUnavailable,

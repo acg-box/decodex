@@ -135,32 +135,36 @@ final class AccountProfileStoreTests: XCTestCase {
 		XCTAssertNil(store.accounts.first?.error)
 	}
 
-	func testCachedProfileUnauthorizedRequiresLoginRefresh() {
-		let profile = profileObservation(
-			observedAt: 300,
-			lifetimeTokens: 3_000,
-			freshness: .cached(refreshError: .unauthorized)
-		)
-		let availableState = ResetCardAccountState(
-			account: profileTestAccount(),
-			inventory: nil,
-			error: nil,
-			isRefreshing: false,
-			profile: profile
-		)
+	func testCachedProfileAuthenticationFailuresRequireLoginRefresh() {
+		for error in [
+			AccountProfileObservationError.unauthorized,
+			.refreshRejected,
+			.refreshAmbiguous,
+			.accessRejectedAfterRefresh,
+		] {
+			let profile = profileObservation(
+				observedAt: 300,
+				lifetimeTokens: 3_000,
+				freshness: .cached(refreshError: error)
+			)
+			let availableState = ResetCardAccountState(
+				account: profileTestAccount(),
+				inventory: nil,
+				error: nil,
+				isRefreshing: false,
+				profile: profile
+			)
 
-		XCTAssertTrue(availableState.requiresLoginRefresh)
-		XCTAssertEqual(
-			availableState.profileDegradationText,
-			AccountProfileObservationError.unauthorized.presentation
-		)
+			XCTAssertTrue(availableState.requiresLoginRefresh)
+			XCTAssertEqual(availableState.profileDegradationText, error.presentation)
+		}
 
 		let authFailedState = ResetCardAccountState(
 			account: profileTestAccount(observedState: .authFailed),
 			inventory: nil,
 			error: nil,
 			isRefreshing: false,
-			profile: profile
+			profile: nil
 		)
 		XCTAssertTrue(authFailedState.requiresLoginRefresh)
 	}
