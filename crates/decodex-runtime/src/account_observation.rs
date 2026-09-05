@@ -223,6 +223,10 @@ fn map_api_error_to_quota(error: AccountApiRuntimeError) -> AccountQuotaObservat
 		AccountApiRuntimeError::ProtocolUnavailable =>
 			AccountQuotaObservationError::ProtocolUnavailable,
 		AccountApiRuntimeError::CredentialUnavailable
+		| AccountApiRuntimeError::CredentialBusy
+		| AccountApiRuntimeError::RefreshRejected
+		| AccountApiRuntimeError::RefreshAmbiguous
+		| AccountApiRuntimeError::AccessRejectedAfterRefresh
 		| AccountApiRuntimeError::Unauthorized
 		| AccountApiRuntimeError::ProviderUnavailable =>
 			AccountQuotaObservationError::ProviderUnavailable,
@@ -233,6 +237,11 @@ fn map_api_error_to_reset(error: AccountApiRuntimeError) -> ResetCardServiceErro
 	match error {
 		AccountApiRuntimeError::AccountUnavailable => ResetCardServiceError::AccountNotFound,
 		AccountApiRuntimeError::CredentialUnavailable => ResetCardServiceError::VaultUnavailable,
+		AccountApiRuntimeError::CredentialBusy => ResetCardServiceError::ProductStateUnavailable,
+		AccountApiRuntimeError::RefreshRejected => ResetCardServiceError::AccountStateRejected,
+		AccountApiRuntimeError::RefreshAmbiguous => ResetCardServiceError::VaultUnavailable,
+		AccountApiRuntimeError::AccessRejectedAfterRefresh =>
+			ResetCardServiceError::AccountStateRejected,
 		AccountApiRuntimeError::AccountChanged => ResetCardServiceError::AccountChanged,
 		AccountApiRuntimeError::ProtocolUnavailable => ResetCardServiceError::InventoryIncomplete,
 		AccountApiRuntimeError::Unauthorized | AccountApiRuntimeError::ProviderUnavailable =>
@@ -246,6 +255,11 @@ fn map_profile_api_error(error: AccountApiRuntimeError) -> AccountProfileRuntime
 			AccountProfileRuntimeError::AccountUnavailable,
 		AccountApiRuntimeError::CredentialUnavailable =>
 			AccountProfileRuntimeError::CredentialUnavailable,
+		AccountApiRuntimeError::CredentialBusy => AccountProfileRuntimeError::CredentialBusy,
+		AccountApiRuntimeError::RefreshRejected => AccountProfileRuntimeError::RefreshRejected,
+		AccountApiRuntimeError::RefreshAmbiguous => AccountProfileRuntimeError::RefreshAmbiguous,
+		AccountApiRuntimeError::AccessRejectedAfterRefresh =>
+			AccountProfileRuntimeError::AccessRejectedAfterRefresh,
 		AccountApiRuntimeError::Unauthorized => AccountProfileRuntimeError::Unauthorized,
 		AccountApiRuntimeError::AccountChanged => AccountProfileRuntimeError::AccountChanged,
 		AccountApiRuntimeError::ProtocolUnavailable =>
@@ -655,11 +669,7 @@ impl AccountObservationService {
 		};
 		let current = accounts
 			.into_iter()
-			.filter(|inspection| {
-				!inspection.account.tombstoned
-					&& inspection.account.credential.is_some()
-					&& inspection.account.unsettled_operation.is_none()
-			})
+			.filter(|inspection| account_observation_is_schedulable(&inspection.account))
 			.map(|inspection| (inspection.account.account_id, inspection.account.revision))
 			.collect::<HashMap<_, _>>();
 		let cache_pruned = {
@@ -834,6 +844,10 @@ impl AccountObservationService {
 	}
 }
 
+fn account_observation_is_schedulable(account: &decodex_core::AccountRecord) -> bool {
+	!account.tombstoned && account.credential.is_some() && account.unsettled_operation.is_none()
+}
+
 async fn wait_for_generation(
 	mut changes: watch::Receiver<u64>,
 	after_generation: u64,
@@ -903,8 +917,11 @@ mod tests {
 	};
 
 	use decodex_core::{
-		AccountId, AccountProvider, AccountQuotaDisposition, AccountQuotaWindowObservation,
-		ProviderIdentity, ResetCardDescriptor, ResetCardTimestamp,
+		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
+		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaDisposition,
+		AccountQuotaWindowObservation, AccountRecord, AccountState, CredentialBinding,
+		CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
+		ResetCardDescriptor, ResetCardTimestamp,
 	};
 	use decodex_database::AccountProfileSnapshot;
 	use tokio::{sync::watch, time};
@@ -913,7 +930,8 @@ mod tests {
 
 	use super::{
 		AccountObservationOutcome, AccountObservationState, AccountProfileRefreshStatus,
-		ResetCardInventoryObservation, ResetCardServiceError, plan_observation_round,
+		ResetCardInventoryObservation, ResetCardServiceError, account_observation_is_schedulable,
+		plan_observation_round,
 		resolve_direct_quota, wait_for_generation,
 	};
 
@@ -959,6 +977,44 @@ mod tests {
 
 		assert!(scheduled.is_empty());
 		assert!(pending.is_empty());
+	}
+
+	#[test]
+	fn recovery_required_account_is_suppressed_on_every_scheduler_wake() {
+		let account_id = account(9);
+		let operation_id =
+			AccountOperationId::new("22000000-0000-4000-8000-000000000099").unwrap();
+		let provider = ProviderIdentity::new(AccountProvider::Chatgpt, "provider-9").unwrap();
+		let mut record = AccountRecord {
+			account_id,
+			label: "Morgan".to_owned(),
+			enabled: true,
+			revision: 1,
+			observed_state: AccountState::AuthFailed,
+			lifecycle_readiness: AccountLifecycleReadiness::OperationUnsettled,
+			credential: Some(CredentialBinding {
+				schema_version: CredentialStoreSchemaVersion::V1,
+				version: CredentialVersion::new(1).unwrap(),
+				fingerprint: CredentialFingerprint::new("0".repeat(64)).unwrap(),
+				provider,
+				writer_operation_id: operation_id.clone(),
+			}),
+			unsettled_operation: Some(AccountOperationStatus {
+				operation_id,
+				kind: AccountOperationKind::Refresh,
+				phase: AccountOperationPhase::RecoveryRequired,
+				recovery_code: Some("provider_refresh_rejected".to_owned()),
+			}),
+			five_hour_quota: AccountQuotaWindowObservation::unknown(300).unwrap(),
+			seven_day_quota: AccountQuotaWindowObservation::unknown(10_080).unwrap(),
+			tombstoned: false,
+		};
+
+		assert!(!account_observation_is_schedulable(&record));
+		assert!(!account_observation_is_schedulable(&record));
+		record.unsettled_operation = None;
+		record.lifecycle_readiness = AccountLifecycleReadiness::Ready;
+		assert!(account_observation_is_schedulable(&record));
 	}
 
 	#[test]

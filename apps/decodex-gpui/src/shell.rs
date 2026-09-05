@@ -1287,11 +1287,12 @@ impl Shell {
 		&mut self,
 		account_id: EntityId,
 		expected_revision: decodex_protocol::EntityRevision,
+		recovery_operation_id: Option<EntityId>,
 		cx: &mut Context<Self>,
 	) {
 		let start = account_login_start(
 			AccountLoginMethod::DeviceCode,
-			Some((account_id, expected_revision)),
+			Some((account_id, expected_revision, recovery_operation_id)),
 		);
 		self.start_account_login(start, cx);
 	}
@@ -3267,7 +3268,7 @@ fn account_login_status_label(status: &AccountLoginStatus) -> String {
 
 fn account_login_start(
 	method: AccountLoginMethod,
-	existing: Option<(EntityId, decodex_protocol::EntityRevision)>,
+	existing: Option<(EntityId, decodex_protocol::EntityRevision, Option<EntityId>)>,
 ) -> Result<AccountLoginStart, SharedString> {
 	let next_entity = || {
 		canonical_uuid_v4()
@@ -3281,22 +3282,23 @@ fn account_login_start(
 		canonical_uuid_v4().map_err(account_input_error_label).map_err(SharedString::from)?;
 	let idempotency_key = IdempotencyKey::new(format!("account-login/{command_identity}"))
 		.map_err(|_| SharedString::from("Login command identity is invalid."))?;
-	let install_mode = if let Some((account_id, expected_revision)) = existing {
-		AccountLoginInstallMode::Reauthenticate {
-			operation_id,
-			account_id,
-			expected_revision,
-			recovery_operation_id: None,
-			idempotency_key,
-		}
-	} else {
-		AccountLoginInstallMode::Enroll {
-			operation_id,
-			account_id: next_entity()?,
-			enabled: true,
-			idempotency_key,
-		}
-	};
+	let install_mode =
+		if let Some((account_id, expected_revision, recovery_operation_id)) = existing {
+			AccountLoginInstallMode::Reauthenticate {
+				operation_id,
+				account_id,
+				expected_revision,
+				recovery_operation_id,
+				idempotency_key,
+			}
+		} else {
+			AccountLoginInstallMode::Enroll {
+				operation_id,
+				account_id: next_entity()?,
+				enabled: true,
+				idempotency_key,
+			}
+		};
 	let start = AccountLoginStart { session_id, method, install_mode };
 	start.validate().map_err(|_| SharedString::from("Login request is invalid."))?;
 	Ok(start)
@@ -3311,6 +3313,38 @@ struct AccountRowPresentation {
 	can_route: bool,
 	login_available: bool,
 	logout_pending: bool,
+}
+
+fn account_login_recovery_operation_id(account: &AccountDto) -> Option<EntityId> {
+	account.unsettled_operation.as_ref().and_then(|operation| {
+		(operation.kind == decodex_protocol::AccountOperationKindDto::Refresh
+			&& operation.phase == decodex_protocol::AccountOperationPhaseDto::RecoveryRequired
+			&& operation.recovery_code.as_ref().is_some_and(|code| {
+				matches!(
+					code.as_str(),
+					"provider_refresh_rejected"
+						| "provider_refresh_ambiguous"
+						| "provider_refresh_outcome_unknown"
+						| "provider_access_rejected_after_refresh"
+				)
+			}))
+		.then(|| operation.operation_id.clone())
+	})
+}
+
+fn account_readiness_status(account: &AccountDto) -> &'static str {
+	match account
+		.unsettled_operation
+		.as_ref()
+		.and_then(|operation| operation.recovery_code.as_ref())
+		.map(decodex_protocol::WireText::as_str)
+	{
+		Some("provider_refresh_rejected") => "Refresh rejected · re-login",
+		Some("provider_refresh_ambiguous" | "provider_refresh_outcome_unknown") =>
+			"Refresh uncertain · re-login",
+		Some("provider_access_rejected_after_refresh") => "New login required · re-login",
+		_ => account_readiness_label(account.lifecycle_readiness),
+	}
 }
 
 fn account_pool_row(
@@ -3369,7 +3403,7 @@ fn account_pool_row(
 								.font_family("SF Mono")
 								.text_size(px(7.5))
 								.text_color(rgb(WB_TEXT_FAINT))
-								.child(account_readiness_label(account.lifecycle_readiness))
+								.child(account_readiness_status(account))
 								.child(format!("· {short_id}")),
 						),
 				),
@@ -3473,6 +3507,9 @@ fn account_management_actions(
 	let profile_account_id = account.account_id.clone();
 	let logout_account_id = account.account_id.clone();
 	let login_account_revision = account.account_revision;
+	let login_recovery_operation_id = account_login_recovery_operation_id(account);
+	let login_label =
+		if login_recovery_operation_id.is_some() { "Re-login" } else { "Login" };
 
 	div()
 		.flex()
@@ -3529,7 +3566,7 @@ fn account_management_actions(
 						"account-login",
 						index,
 						"Refresh account login",
-						"Login",
+						login_label,
 						presentation.login_available,
 					)
 					.when(presentation.login_available, |button| {
@@ -3537,6 +3574,7 @@ fn account_management_actions(
 							shell.start_account_reauthentication(
 								login_account_id.clone(),
 								login_account_revision,
+								login_recovery_operation_id.clone(),
 								cx,
 							);
 						}))
@@ -5312,9 +5350,15 @@ mod tests {
 
 		let account_id =
 			EntityId::new("10000000-0000-4000-8000-000000000001").expect("account identity");
+		let recovery_operation_id =
+			EntityId::new("10000000-0000-4000-8000-000000000002").expect("recovery identity");
 		let reauthentication = account_login_start(
 			AccountLoginMethod::DeviceCode,
-			Some((account_id.clone(), decodex_protocol::EntityRevision(4))),
+			Some((
+				account_id.clone(),
+				decodex_protocol::EntityRevision(4),
+				Some(recovery_operation_id.clone()),
+			)),
 		)
 		.expect("device reauthentication request");
 		assert!(matches!(
@@ -5322,10 +5366,58 @@ mod tests {
 			AccountLoginInstallMode::Reauthenticate {
 				account_id: selected,
 				expected_revision: decodex_protocol::EntityRevision(4),
-				recovery_operation_id: None,
+				recovery_operation_id: Some(actual_recovery),
 				..
-			} if selected == account_id
+			} if selected == account_id && actual_recovery == recovery_operation_id
 		));
+	}
+
+	#[test]
+	fn rejected_refresh_exposes_only_its_exact_relogin_takeover() {
+		let quota = |duration_minutes| AccountQuotaWindowDto {
+			duration_minutes,
+			observed_at_unix_micros: None,
+			result: AccountQuotaStateDto::Unknown,
+		};
+		let mut rejected = AccountDto {
+			account_id: EntityId::new("10000000-0000-4000-8000-000000000001")
+				.expect("account identity"),
+			alias: decodex_protocol::WireText::new("Morgan").expect("account alias"),
+			enabled: true,
+			account_revision: decodex_protocol::EntityRevision(4),
+			observed_state: AccountObservedStateDto::AuthFailed,
+			lifecycle_readiness: AccountLifecycleReadinessDto::OperationUnsettled,
+			credential_binding: None,
+			unsettled_operation: None,
+			five_hour_quota: quota(300),
+			seven_day_quota: quota(10_080),
+		};
+		let recovery_operation_id =
+			EntityId::new("10000000-0000-4000-8000-000000000002").expect("recovery identity");
+		rejected.unsettled_operation = Some(decodex_protocol::AccountUnsettledOperationDto {
+			operation_id: recovery_operation_id.clone(),
+			kind: decodex_protocol::AccountOperationKindDto::Refresh,
+			phase: decodex_protocol::AccountOperationPhaseDto::RecoveryRequired,
+			recovery_code: Some(
+				decodex_protocol::WireText::new("provider_refresh_rejected")
+					.expect("recovery code"),
+			),
+		});
+
+		assert_eq!(account_login_recovery_operation_id(&rejected), Some(recovery_operation_id));
+		assert_eq!(account_readiness_status(&rejected), "Refresh rejected · re-login");
+		rejected.unsettled_operation.as_mut().expect("recovery operation").recovery_code = Some(
+			decodex_protocol::WireText::new("provider_access_rejected_after_refresh")
+				.expect("access rejection code"),
+		);
+		assert!(account_login_recovery_operation_id(&rejected).is_some());
+		assert_eq!(account_readiness_status(&rejected), "New login required · re-login");
+		rejected.unsettled_operation.as_mut().expect("recovery operation").recovery_code =
+			Some(
+				decodex_protocol::WireText::new("credential_rotate_failed")
+					.expect("other recovery code"),
+			);
+		assert_eq!(account_login_recovery_operation_id(&rejected), None);
 	}
 
 	#[test]

@@ -11,7 +11,9 @@ use decodex_codex::{
 use decodex_core::{AccountId, AccountOperationId, AccountProvider, ProviderIdentity};
 use reqwest::{Method, StatusCode};
 
-use crate::account_service::{AccountApiCredential, AccountLifecycleError, AccountService};
+use crate::account_service::{
+	AccountApiCredential, AccountLifecycleError, AccountService, CredentialRefreshError,
+};
 
 const BACKEND_API_BASE: &str = "https://chatgpt.com/backend-api";
 const USAGE_PATH: &str = "/wham/usage";
@@ -27,6 +29,10 @@ const RESET_CREDIT_DETAIL_RETRY_DELAY: Duration = Duration::from_millis(250);
 pub(crate) enum AccountApiRuntimeError {
 	AccountUnavailable,
 	CredentialUnavailable,
+	CredentialBusy,
+	RefreshRejected,
+	RefreshAmbiguous,
+	AccessRejectedAfterRefresh,
 	Unauthorized,
 	ProviderUnavailable,
 	ProtocolUnavailable,
@@ -79,10 +85,29 @@ impl AccountApiRuntime {
 		}
 
 		let first_revision = first.account_revision();
-		if self.refresh_after_unauthorized(account_id, first_revision).await.is_err() {
-			return first.into_observation();
+		if let Err(error) = self.refresh_after_unauthorized(account_id, first_revision).await {
+			return first.with_auth_retry_error(error).into_observation();
 		}
-		self.observe_with_current_credential(account_id).await.into_observation()
+		let second = self.observe_with_current_credential(account_id).await;
+		if !second.requires_auth_retry() {
+			return second.into_observation();
+		}
+
+		let second_revision = second.account_revision();
+		let operation_id = match AccountOperationId::generate() {
+			Ok(operation_id) => operation_id,
+			Err(_) => return second.with_auth_retry_error(AccountApiRuntimeError::AccountChanged)
+				.into_observation(),
+		};
+		let error = match self
+			.accounts
+			.require_observation_reauthentication(operation_id, account_id, second_revision)
+			.await
+		{
+			Ok(()) => AccountApiRuntimeError::AccessRejectedAfterRefresh,
+			Err(error) => map_account_service_error(error),
+		};
+		second.with_auth_retry_error(error).into_observation()
 	}
 
 	async fn observe_with_current_credential(
@@ -203,7 +228,7 @@ impl AccountApiRuntime {
 		let operation_id =
 			AccountOperationId::generate().map_err(|_| AccountApiRuntimeError::AccountChanged)?;
 		self.accounts
-			.refresh(operation_id, account_id, Some(account_revision), None, None)
+			.refresh_for_observation(operation_id, account_id, account_revision)
 			.await
 			.map(|_| ())
 			.map_err(map_account_service_error)
@@ -295,6 +320,18 @@ impl PendingAccountApiObservation {
 			},
 		}
 	}
+
+	fn with_auth_retry_error(mut self, error: AccountApiRuntimeError) -> Self {
+		if let Self::Pending(observation) = &mut self {
+			if matches!(observation.inventory, Err(AccountApiRuntimeError::Unauthorized)) {
+				observation.inventory = Err(error);
+			}
+			if matches!(observation.profile, Err(AccountApiRuntimeError::Unauthorized)) {
+				observation.profile = Err(error);
+			}
+		}
+		self
+	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -338,7 +375,14 @@ fn map_account_service_error(error: AccountLifecycleError) -> AccountApiRuntimeE
 			decodex_core::AccountLifecycleReadiness::ProviderMismatch,
 		)
 		| AccountLifecycleError::StaleAccount => AccountApiRuntimeError::AccountChanged,
-		AccountLifecycleError::Refresh(_) => AccountApiRuntimeError::CredentialUnavailable,
+		AccountLifecycleError::Refresh(CredentialRefreshError::OwnerBusy) =>
+			AccountApiRuntimeError::CredentialBusy,
+		AccountLifecycleError::Refresh(CredentialRefreshError::Unavailable) =>
+			AccountApiRuntimeError::ProviderUnavailable,
+		AccountLifecycleError::Refresh(CredentialRefreshError::Rejected) =>
+			AccountApiRuntimeError::RefreshRejected,
+		AccountLifecycleError::Refresh(CredentialRefreshError::Ambiguous) =>
+			AccountApiRuntimeError::RefreshAmbiguous,
 		AccountLifecycleError::AccountDisabled
 		| AccountLifecycleError::NotReady(_)
 		| AccountLifecycleError::OperationRejected(_)
@@ -379,9 +423,10 @@ mod tests {
 	use decodex_codex::{AccountApiResetCredits, decode_account_api_reset_credits};
 
 	use super::{
-		AccountApiRuntimeError, reset_credit_details_are_complete,
-		should_retry_reset_credit_details,
+		AccountApiRuntimeError, PendingAccountApiObservation, map_account_service_error,
+		reset_credit_details_are_complete, should_retry_reset_credit_details,
 	};
+	use crate::account_service::{AccountLifecycleError, CredentialRefreshError};
 
 	#[test]
 	fn incomplete_or_mismatched_reset_credit_details_get_one_bounded_retry() {
@@ -404,5 +449,38 @@ mod tests {
 			&Err(AccountApiRuntimeError::ProviderUnavailable),
 		));
 		assert!(!should_retry_reset_credit_details(1, &Err(AccountApiRuntimeError::Unauthorized),));
+	}
+
+	#[test]
+	fn auth_retry_failure_replaces_only_unauthorized_provider_results() {
+		for error in [
+			AccountApiRuntimeError::CredentialBusy,
+			AccountApiRuntimeError::RefreshRejected,
+			AccountApiRuntimeError::RefreshAmbiguous,
+			AccountApiRuntimeError::AccessRejectedAfterRefresh,
+		] {
+			let observation = PendingAccountApiObservation::failed(
+				7,
+				AccountApiRuntimeError::Unauthorized,
+			)
+			.with_auth_retry_error(error)
+			.into_observation();
+
+			assert_eq!(observation.account_revision, 7);
+			assert_eq!(observation.inventory, Err(error));
+			assert_eq!(observation.profile, Err(error));
+		}
+	}
+
+	#[test]
+	fn refresh_failures_retain_their_observation_classification() {
+		for (refresh, expected) in [
+			(CredentialRefreshError::OwnerBusy, AccountApiRuntimeError::CredentialBusy),
+			(CredentialRefreshError::Unavailable, AccountApiRuntimeError::ProviderUnavailable),
+			(CredentialRefreshError::Rejected, AccountApiRuntimeError::RefreshRejected),
+			(CredentialRefreshError::Ambiguous, AccountApiRuntimeError::RefreshAmbiguous),
+		] {
+			assert_eq!(map_account_service_error(AccountLifecycleError::Refresh(refresh)), expected);
+		}
 	}
 }

@@ -140,8 +140,8 @@ struct ResetCardAccountState: Identifiable, Equatable {
 		if account.observedState == .authFailed {
 			return true
 		}
-		return profileUnavailable?.error == .unauthorized
-			|| profile?.refreshError == .unauthorized
+		return profileUnavailable?.error.requiresLogin == true
+			|| profile?.refreshError?.requiresLogin == true
 			|| loginRefreshRecoveryOperationID != nil
 	}
 
@@ -150,8 +150,10 @@ struct ResetCardAccountState: Identifiable, Equatable {
 			let operation = account.unsettledOperation,
 			operation.kind == .refresh,
 			operation.phase == .recoveryRequired,
-			operation.recoveryCode == "provider_refresh_ambiguous"
+			operation.recoveryCode == "provider_refresh_rejected"
+				|| operation.recoveryCode == "provider_refresh_ambiguous"
 				|| operation.recoveryCode == "provider_refresh_outcome_unknown"
+				|| operation.recoveryCode == "provider_access_rejected_after_refresh"
 		else {
 			return nil
 		}
@@ -3730,12 +3732,22 @@ private extension ResetCardServiceError {
 }
 
 private extension AccountProfileObservationError {
+	var requiresLogin: Bool {
+		switch self {
+		case .unauthorized, .refreshRejected, .refreshAmbiguous, .accessRejectedAfterRefresh:
+			return true
+		default:
+			return false
+		}
+	}
+
 	var isRetryableReadFailure: Bool {
 		switch self {
-		case .productStateUnavailable, .credentialUnavailable,
+		case .productStateUnavailable, .credentialUnavailable, .credentialBusy,
 			.providerUnavailable, .accountChanged:
 			return true
-		case .invalidRequest, .accountUnavailable, .unauthorized,
+		case .invalidRequest, .accountUnavailable, .refreshRejected, .refreshAmbiguous,
+			.accessRejectedAfterRefresh, .unauthorized,
 			.protocolUnavailable:
 			return false
 		}

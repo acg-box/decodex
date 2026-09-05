@@ -369,7 +369,7 @@ async fn assert_exact_current_doctor_queries(
 	)
 	.await;
 	let ServerMessage::Refusal(refusal) = receive(&mut future).await else {
-		panic!("expected V2.14 minor-version refusal");
+		panic!("expected V2.15 minor-version refusal");
 	};
 	assert!(matches!(refusal.refusal, Refusal::ServiceVersionMismatch { .. }));
 

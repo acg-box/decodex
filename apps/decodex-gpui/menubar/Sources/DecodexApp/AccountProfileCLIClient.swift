@@ -5,6 +5,10 @@ enum AccountProfileObservationError: String, Decodable, Equatable, Sendable {
 	case accountUnavailable = "account_unavailable"
 	case productStateUnavailable = "product_state_unavailable"
 	case credentialUnavailable = "credential_unavailable"
+	case credentialBusy = "credential_busy"
+	case refreshRejected = "refresh_rejected"
+	case refreshAmbiguous = "refresh_ambiguous"
+	case accessRejectedAfterRefresh = "access_rejected_after_refresh"
 	case unauthorized
 	case providerUnavailable = "provider_unavailable"
 	case protocolUnavailable = "protocol_unavailable"
@@ -20,6 +24,14 @@ enum AccountProfileObservationError: String, Decodable, Equatable, Sendable {
 			return "Account profile state is unavailable."
 		case .credentialUnavailable:
 			return "The account login is unavailable."
+		case .credentialBusy:
+			return "Account credentials are busy with another active owner."
+		case .refreshRejected:
+			return "Credential refresh was rejected. Re-login is required."
+		case .refreshAmbiguous:
+			return "Credential refresh was uncertain. Re-login is required."
+		case .accessRejectedAfterRefresh:
+			return "Refreshed credentials are still unauthorized. Re-login is required."
 		case .unauthorized:
 			return "The account login needs to be refreshed."
 		case .providerUnavailable:

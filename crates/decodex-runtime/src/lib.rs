@@ -1,4 +1,4 @@
-//! `decodex serve` lifecycle assembly and the same-UID V2.14 local connection owner.
+//! `decodex serve` lifecycle assembly and the same-UID V2.15 local connection owner.
 //!
 //! Account-process and routing composition remain crate-private. The ordinary Conversation owner
 //! composes them without exporting raw process, routing, or provider-dispatch facades.

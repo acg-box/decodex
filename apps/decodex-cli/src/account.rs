@@ -658,7 +658,7 @@ mod tests {
 			outcome: "success",
 			result: AccountProfileResult::Cached {
 				profile: Box::new(profile),
-				refresh_error: AccountProfileErrorDto::ProviderUnavailable,
+				refresh_error: AccountProfileErrorDto::CredentialBusy,
 			},
 		};
 		assert_eq!(
@@ -685,7 +685,7 @@ mod tests {
 							"longest_streak_days": 8,
 							"daily_usage": [{"start_date": "2026-07-28", "tokens": 900}],
 						},
-						"refresh_error": "provider_unavailable",
+						"refresh_error": "credential_busy",
 					},
 				},
 			}),

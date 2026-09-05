@@ -974,7 +974,7 @@ pub enum AccountCommandResponse {
 	},
 }
 
-/// Same-UID V2.14 client for daemon-owned account queries and lifecycle commands.
+/// Same-UID V2.15 client for daemon-owned account queries and lifecycle commands.
 pub struct AccountClient {
 	transport: ResetCardClient,
 }
@@ -1804,8 +1804,8 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_14_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 14 });
+	fn protocol_constants_expose_only_the_exact_v2_15_version() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 15 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

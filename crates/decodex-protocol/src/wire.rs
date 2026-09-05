@@ -1,4 +1,4 @@
-//! Structured JSON envelopes for the exact-current V2.14 WebSocket connection.
+//! Structured JSON envelopes for the exact-current V2.15 WebSocket connection.
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
@@ -24,7 +24,7 @@ use crate::{
 	},
 };
 
-/// Maximum UTF-8 size of any human-readable text carried by V2.14.
+/// Maximum UTF-8 size of any human-readable text carried by V2.15.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
 /// Maximum UTF-8 size of one logical-command idempotency key.
 pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
@@ -139,7 +139,7 @@ impl<'de> Deserialize<'de> for HistoryCursorToken {
 	}
 }
 
-/// A string-backed wire scalar exceeded its V2.14 byte limit.
+/// A string-backed wire scalar exceeded its V2.15 byte limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WireScalarTooLong {
 	actual_bytes: usize,
@@ -454,7 +454,7 @@ pub struct ResumeCursor {
 	pub server_id: ServerId,
 	/// Ephemeral publication epoch that issued the cursor.
 	///
-	/// A V2.14 resume requires this field. Older hello envelopes can omit it
+	/// A V2.15 resume requires this field. Older hello envelopes can omit it
 	/// only so negotiation can return a typed version refusal.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
@@ -505,7 +505,7 @@ pub struct ServerWelcome {
 	pub server_id: ServerId,
 	/// Ephemeral identity of the in-memory publication epoch.
 	///
-	/// This is present in the exact-current V2.14 welcome.
+	/// This is present in the exact-current V2.15 welcome.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
@@ -1525,6 +1525,14 @@ pub enum AccountProfileErrorDto {
 	ProductStateUnavailable,
 	/// The exact host credential item was absent, stale, or unavailable.
 	CredentialUnavailable,
+	/// Another exact account owner currently holds refresh authority.
+	CredentialBusy,
+	/// The provider rejected refresh and verified re-login is required.
+	RefreshRejected,
+	/// Refresh may have rotated the credential and verified re-login is required.
+	RefreshAmbiguous,
+	/// Refreshed access was still unauthorized and verified re-login is required.
+	AccessRejectedAfterRefresh,
 	/// The provider rejected the exact credential with HTTP 401.
 	Unauthorized,
 	/// The fixed provider endpoint could not complete successfully.
@@ -1635,7 +1643,7 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. The V2.14 account contract accepts 300 and 10080 minutes only.
+	/// Exact window duration. The V2.15 account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -2167,7 +2175,7 @@ impl AccountObservationSignal {
 	}
 }
 
-/// Live queries available through the exact-current V2.14 protocol.
+/// Live queries available through the exact-current V2.15 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
@@ -2250,7 +2258,7 @@ impl QueryPayload {
 	}
 }
 
-/// Commands available through the exact-current V2.14 protocol.
+/// Commands available through the exact-current V2.15 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
@@ -2737,7 +2745,7 @@ impl ResultPayload {
 	}
 }
 
-/// Typed live-query results available through the exact-current V2.14 protocol.
+/// Typed live-query results available through the exact-current V2.15 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
@@ -3007,12 +3015,12 @@ pub enum Refusal {
 	},
 }
 
-/// Serialize a message using the only V2.14 wire encoding.
+/// Serialize a message using the only V2.15 wire encoding.
 pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 	serde_json::to_string(message)
 }
 
-/// Parse a client message using the only V2.14 wire encoding.
+/// Parse a client message using the only V2.15 wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
 	validate_client_message(&decoded).map_err(|reason| {
@@ -4405,7 +4413,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":14},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":15},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4414,7 +4422,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":14},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":15},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4456,7 +4464,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":14},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":15},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -4699,7 +4707,7 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
 		let legacy = crate::ProtocolVersion { major: 1, minor: 5 };
-		let future = crate::ProtocolVersion { major: 2, minor: 15 };
+		let future = crate::ProtocolVersion { major: 2, minor: 16 };
 		let query = QueryPayload::GetAccountProfile {
 			account_id: account_id.clone(),
 			include_email: false,
@@ -4759,6 +4767,17 @@ mod tests {
 		assert_eq!(unavailable["data"]["error"], "provider_unavailable");
 		assert_eq!(unavailable["data"]["email"]["visibility"], "redacted");
 		assert_eq!(unavailable["data"]["plan_type"], "pro");
+		for (error, encoded) in [
+			(AccountProfileErrorDto::CredentialBusy, "credential_busy"),
+			(AccountProfileErrorDto::RefreshRejected, "refresh_rejected"),
+			(AccountProfileErrorDto::RefreshAmbiguous, "refresh_ambiguous"),
+			(
+				AccountProfileErrorDto::AccessRejectedAfterRefresh,
+				"access_rejected_after_refresh",
+			),
+		] {
+			assert_eq!(serde_json::to_value(error).unwrap(), encoded);
+		}
 		let mut missing_email = unavailable.clone();
 		missing_email["data"].as_object_mut().unwrap().remove("email");
 		assert!(serde_json::from_value::<AccountProfileResult>(missing_email).is_err());
