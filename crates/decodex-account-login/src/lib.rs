@@ -4,10 +4,8 @@
 // 9392c3fa5bcda342b5b96a1a04d67b2f781617c2 (tag rust-v0.148.0-alpha.9).
 // Reviewed source functions:
 // - login/src/pkce.rs: generate_pkce
-// - login/src/server.rs: build_authorize_url, exchange_code_for_tokens,
-//   persist_tokens_async
-// - login/src/device_code_auth.rs: request_device_code,
-//   complete_device_code_login
+// - login/src/server.rs: build_authorize_url, exchange_code_for_tokens, persist_tokens_async
+// - login/src/device_code_auth.rs: request_device_code, complete_device_code_login
 // - login/src/auth/storage.rs: FileAuthStorage::save
 //
 // Decodex modifications: one closed error surface; strict request/response
@@ -58,7 +56,7 @@ const MAX_RESPONSE_BYTES: usize = 256 * 1_024;
 const MAX_TOKEN_BYTES: usize = 128 * 1_024;
 const MAX_DEVICE_VALUE_BYTES: usize = 1_024;
 const MAX_DEVICE_POLL_INTERVAL_SECONDS: u64 = 60;
-const LOGIN_ROOT_PREFIX: &str = "decodexd-account-login-";
+const LOGIN_ROOT_PREFIX: &str = "decodex-account-login-";
 const LOGIN_HOME_PREFIX: &str = "session-";
 const MAX_STALE_LOGIN_HOMES: usize = 32;
 
@@ -325,12 +323,11 @@ fn login_root_path() -> Result<PathBuf, Error> {
 	let base = fs::canonicalize(std::env::temp_dir()).map_err(|_| Error::Persistence)?;
 	let root = base.join(format!("{LOGIN_ROOT_PREFIX}{}", effective_uid()));
 	match fs::create_dir(&root) {
-		Ok(()) => {
+		Ok(()) =>
 			if fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).is_err() {
 				let _ = fs::remove_dir(&root);
 				return Err(Error::Persistence);
-			}
-		},
+			},
 		Err(error) if error.kind() == ErrorKind::AlreadyExists => {},
 		Err(_) => return Err(Error::Persistence),
 	}
@@ -387,9 +384,8 @@ pub fn run(
 		.map_err(|_| Error::Unavailable)?;
 	let deadline = Instant::now() + config.login_timeout;
 	match method {
-		LoginMethod::BrowserRedirect => {
-			run_browser(config, &client, login_home, runtime, cancellation, deadline, publish)
-		},
+		LoginMethod::BrowserRedirect =>
+			run_browser(config, &client, login_home, runtime, cancellation, deadline, publish),
 		LoginMethod::DeviceCode => runtime.block_on(run_device(
 			config,
 			&client,
@@ -1782,7 +1778,8 @@ mod tests {
 	fn login_home_cleanup_rejects_identity_drift() {
 		let root = tempfile::tempdir().expect("temporary owner root");
 		let session_id = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405163";
-		let mut home = LoginHome::create_under(root.path(), session_id).expect("private login home");
+		let mut home =
+			LoginHome::create_under(root.path(), session_id).expect("private login home");
 		let path = home.path().to_owned();
 		let moved = path.with_extension("moved");
 		fs::rename(&path, &moved).expect("move original home");
@@ -1815,10 +1812,7 @@ mod tests {
 		let unknown = root.path().join("unowned-entry");
 		fs::create_dir(&unknown).expect("unknown entry");
 
-		assert!(matches!(
-			cleanup_stale_login_homes_in(root.path()),
-			Err(Error::Persistence)
-		));
+		assert!(matches!(cleanup_stale_login_homes_in(root.path()), Err(Error::Persistence)));
 		assert!(unknown.exists());
 	}
 }

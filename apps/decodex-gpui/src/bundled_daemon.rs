@@ -1,6 +1,5 @@
-//! Local-only launcher for the `decodexd` payload carried by `Decodex.app`.
+//! Local-only launcher for the `decodex serve` payload carried by `Decodex.app`.
 
-use std::sync::{Arc, Mutex};
 #[cfg(target_os = "macos")]
 use std::{
 	fs::Metadata,
@@ -12,7 +11,11 @@ use std::{
 	path::{Path, PathBuf},
 	process::{Command, Stdio},
 };
-use std::{future::Future, pin::Pin};
+use std::{
+	future::Future,
+	pin::Pin,
+	sync::{Arc, Mutex},
+};
 
 use decodex_protocol::{ClientProfile, ProfileKind};
 use gpui::{App, AppContext as _, Context, Entity, Global, Subscription};
@@ -52,7 +55,7 @@ impl BundledDaemonGuard {
 		daemon: &Path,
 		environment: Option<&DaemonEnvironment>,
 	) -> Result<Self, BundledDaemonFailure> {
-		let metadata = std::fs::symlink_metadata(&daemon)
+		let metadata = std::fs::symlink_metadata(daemon)
 			.map_err(|_| BundledDaemonFailure::PayloadUnavailable)?;
 		if !is_executable_regular_file(&metadata) || metadata.file_type().is_symlink() {
 			return Err(BundledDaemonFailure::PayloadUnavailable);
@@ -108,9 +111,11 @@ impl Drop for BundledDaemonGuard {
 	fn drop(&mut self) {
 		self.request_shutdown();
 		if let Some(mut child) = self.child.take() {
-			let _ = std::thread::Builder::new().name("decodexd-reaper".into()).spawn(move || {
-				let _ = child.wait();
-			});
+			let _ = std::thread::Builder::new().name("decodex-service-reaper".into()).spawn(
+				move || {
+					let _ = child.wait();
+				},
+			);
 		}
 	}
 }
@@ -273,7 +278,7 @@ fn bundled_daemon_path(executable: &Path) -> Result<PathBuf, BundledDaemonFailur
 	if contents.file_name().and_then(|name| name.to_str()) != Some("Contents") {
 		return Err(BundledDaemonFailure::NotBundled);
 	}
-	Ok(contents.join("Helpers/decodexd"))
+	Ok(contents.join("Helpers/decodex"))
 }
 
 #[cfg(target_os = "macos")]
@@ -335,7 +340,7 @@ mod tests {
 		let executable = Path::new("/Applications/Decodex.app/Contents/MacOS/decodex-gpui");
 		assert_eq!(
 			bundled_daemon_path(executable).expect("resolve bundled daemon"),
-			Path::new("/Applications/Decodex.app/Contents/Helpers/decodexd"),
+			Path::new("/Applications/Decodex.app/Contents/Helpers/decodex"),
 		);
 		assert_eq!(
 			bundled_daemon_path(Path::new("/tmp/decodex-gpui")),
@@ -357,7 +362,7 @@ mod tests {
 
 	#[cfg(target_os = "macos")]
 	#[test]
-	#[ignore = "run through scripts/test_gpui_bundled_daemon_supervision.sh with a freshly built decodexd"]
+	#[ignore = "run through scripts/test_gpui_bundled_daemon_supervision.sh with a freshly built decodex"]
 	fn process_listener_loss_restarts_exact_owned_daemon_and_rebinds_client() {
 		let fixture = ProcessFixture::new();
 		let supervisor = BundledDaemonSupervisor::launch_test(
@@ -390,7 +395,7 @@ mod tests {
 
 	#[cfg(target_os = "macos")]
 	#[test]
-	#[ignore = "run through scripts/test_gpui_bundled_daemon_supervision.sh with a freshly built decodexd"]
+	#[ignore = "run through scripts/test_gpui_bundled_daemon_supervision.sh with a freshly built decodex"]
 	fn process_recovery_never_terminates_independently_managed_daemon() {
 		let fixture = ProcessFixture::new();
 		let mut independent = fixture.launch_independent();
@@ -483,14 +488,14 @@ max_entry_bytes = 65536
 			fs::set_permissions(&config, fs::Permissions::from_mode(0o600))
 				.expect("scope isolated client/server config");
 			let daemon = PathBuf::from(
-				std::env::var_os("DECODEX_TEST_DAEMON")
-					.expect("repository process test runner sets DECODEX_TEST_DAEMON"),
+				std::env::var_os("DECODEX_TEST_SERVICE")
+					.expect("repository process test runner sets DECODEX_TEST_SERVICE"),
 			);
 			assert!(
 				is_executable_regular_file(
-					&fs::symlink_metadata(&daemon).expect("read real decodexd test binary")
+					&fs::symlink_metadata(&daemon).expect("read real decodex test binary")
 				),
-				"process fixture requires an executable real decodexd binary"
+				"process fixture requires an executable real decodex binary"
 			);
 			let socket = server.join("decodex.sock");
 			Self { _temporary: temporary, daemon, home, path, root, socket }

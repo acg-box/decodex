@@ -31,9 +31,8 @@ impl NativeMenuBarFailure {
 	pub(crate) const fn detail(self) -> &'static str {
 		match self {
 			Self::NotBundled => "The native menu bar is available from staged Decodex.app builds.",
-			Self::LibraryUnavailable | Self::Incompatible | Self::HostUnavailable => {
-				"Restart Decodex."
-			},
+			Self::LibraryUnavailable | Self::Incompatible | Self::HostUnavailable =>
+				"Restart Decodex.",
 			Self::ApplyFailed => "The native Swift menu bar refused the requested visibility.",
 			Self::LoginItemFailed => "macOS refused the requested login-item operation.",
 			Self::UnsupportedPlatform => "The menu-bar surface is available only on macOS.",
@@ -132,11 +131,8 @@ impl NativeMenuBarHost {
 	) -> Result<LaunchAtLoginState, NativeMenuBarFailure> {
 		#[cfg(all(target_os = "macos", not(test)))]
 		{
-			let state = self
-				.bridge
-				.as_mut()
-				.map_err(|failure| *failure)?
-				.set_launch_at_login(enabled);
+			let state =
+				self.bridge.as_mut().map_err(|failure| *failure)?.set_launch_at_login(enabled);
 			if state == LaunchAtLoginState::OperationFailed {
 				Err(NativeMenuBarFailure::LoginItemFailed)
 			} else {
@@ -145,8 +141,11 @@ impl NativeMenuBarHost {
 		}
 		#[cfg(test)]
 		{
-			self.launch_at_login =
-				if enabled { LaunchAtLoginState::Enabled } else { LaunchAtLoginState::NotRegistered };
+			self.launch_at_login = if enabled {
+				LaunchAtLoginState::Enabled
+			} else {
+				LaunchAtLoginState::NotRegistered
+			};
 			Ok(self.launch_at_login)
 		}
 		#[cfg(all(not(test), not(target_os = "macos")))]
@@ -159,12 +158,7 @@ impl NativeMenuBarHost {
 	pub(crate) fn open_login_items_settings(&mut self) -> Result<(), NativeMenuBarFailure> {
 		#[cfg(all(target_os = "macos", not(test)))]
 		{
-			if self
-				.bridge
-				.as_mut()
-				.map_err(|failure| *failure)?
-				.open_login_items_settings()
-			{
+			if self.bridge.as_mut().map_err(|failure| *failure)?.open_login_items_settings() {
 				Ok(())
 			} else {
 				Err(NativeMenuBarFailure::LoginItemFailed)
@@ -211,7 +205,8 @@ type WasLaunchedAsLoginItemFn = unsafe extern "C" fn() -> bool;
 
 #[cfg(all(target_os = "macos", not(test)))]
 struct SwiftMenuBarBridge {
-	// The image intentionally stays loaded until process exit because Swift termination uses a Task.
+	// The image intentionally stays loaded until process exit because Swift termination uses a
+	// Task.
 	_image: *mut c_void,
 	host: *mut c_void,
 	set_visible: SetVisibleFn,
@@ -243,7 +238,8 @@ impl SwiftMenuBarBridge {
 
 		// SAFETY: every symbol is verified non-null before it is copied to its exact C ABI type.
 		let abi: VersionFn = unsafe { symbol(image, c"decodex_menu_bar_abi_version")? };
-		// SAFETY: the version function has no arguments and no side effects outside the loaded image.
+		// SAFETY: the version function has no arguments and no side effects outside the loaded
+		// image.
 		if unsafe { abi() } != MENU_BAR_ABI_VERSION {
 			return Err(NativeMenuBarFailure::Incompatible);
 		}
@@ -289,11 +285,7 @@ impl SwiftMenuBarBridge {
 	fn apply(&mut self, enabled: bool) -> Result<bool, NativeMenuBarFailure> {
 		// SAFETY: `host` is retained by Swift and all calls occur on the GPUI main thread.
 		let visible = unsafe { (self.set_visible)(self.host, enabled) };
-		if visible == enabled {
-			Ok(visible)
-		} else {
-			Err(NativeMenuBarFailure::ApplyFailed)
-		}
+		if visible == enabled { Ok(visible) } else { Err(NativeMenuBarFailure::ApplyFailed) }
 	}
 
 	fn launch_at_login_state(&mut self) -> LaunchAtLoginState {
@@ -316,7 +308,8 @@ impl SwiftMenuBarBridge {
 impl Drop for SwiftMenuBarBridge {
 	fn drop(&mut self) {
 		if !self.host.is_null() {
-			// SAFETY: this object is main-thread confined and destroys its one retained Swift host once.
+			// SAFETY: this object is main-thread confined and destroys its one retained Swift host
+			// once.
 			unsafe { (self.destroy)(self.host) };
 			self.host = std::ptr::null_mut();
 		}

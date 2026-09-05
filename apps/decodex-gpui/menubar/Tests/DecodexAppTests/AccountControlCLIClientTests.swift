@@ -28,12 +28,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 				    \(controlAccountJSON(accountID: accountID, alias: "Iris", revision: 7)),
 				    \(controlUnsettledAccountJSON(accountID: secondAccountID, operationID: operationID))
 				  ],
-				  "routing":{"revision":9,"mode":{"mode":"fixed","account_id":"\(secondAccountID)"},"order":["\(secondAccountID)","\(accountID)"]},
-				  "pending_route":{"operation_id":"\(operationID)","account_id":"\(accountID)","routing_revision":9,
-				    "wait_reason":{"reason":"external_codex","data":{"blockers":[
-				      {"pid":44662,"process":"chatgpt","auth_home":"shared"},
-				      {"pid":44768,"process":"codex","auth_home":"shared"}
-				    ],"omitted":0}}}
+				  "routing":{"revision":9,"mode":{"mode":"fixed","account_id":"\(secondAccountID)"},"order":["\(secondAccountID)","\(accountID)"]}
 				}}
 				"""
 			)
@@ -51,29 +46,6 @@ final class AccountControlNativeClientTests: XCTestCase {
 			)
 		)
 		XCTAssertEqual(snapshot.accounts.map(\.accountID), [secondAccountID, accountID])
-		XCTAssertEqual(
-			snapshot.pendingRoute,
-			AccountRoutePending(
-				operationID: operationID,
-				accountID: accountID,
-				routingRevision: 9,
-				waitReason: .externalCodex(
-					blockers: [
-						AccountRouteProcessBlocker(
-							pid: 44662,
-							process: .chatgpt,
-							authHome: .shared
-						),
-						AccountRouteProcessBlocker(
-							pid: 44768,
-							process: .codex,
-							authHome: .shared
-						),
-					],
-					omitted: 0
-				)
-			)
-		)
 		XCTAssertEqual(snapshot.accounts[1].credentialBinding?.version, 3)
 		XCTAssertEqual(
 			snapshot.accounts[0].unsettledOperation,
@@ -82,88 +54,6 @@ final class AccountControlNativeClientTests: XCTestCase {
 				kind: .refresh,
 				phase: .recoveryRequired,
 				recoveryCode: "provider_identity_changed"
-			)
-		)
-	}
-
-	func testRouteDecodesDurablePendingResult() async throws {
-		let authority = authority
-		let operationID = operationID
-		let accountID = accountID
-		let client = DecodexNativeClient { _, _ in
-			nativeSuccess(
-				operation: "route_account",
-				authority: authority,
-				data: """
-				{"outcome":"applied","data":{"entity_revision":9,
-				  "result":{"name":"account_route_pending","data":{"pending":{
-				    "operation_id":"\(operationID)","account_id":"\(accountID)","routing_revision":9,
-				    "wait_reason":{"reason":"external_codex","data":{"blockers":[
-				      {"pid":44662,"process":"chatgpt","auth_home":"shared"},
-				      {"pid":44768,"process":"codex","auth_home":"shared"}
-				    ],"omitted":0}}
-				  }}}}}
-				"""
-			)
-		}
-
-		let result = try await client.routeAccount(
-			authority: authority,
-			operationID: operationID,
-			accountID: accountID,
-			expectedAccountRevision: 7,
-			expectedRoutingRevision: 9,
-			idempotencyKey: idempotencyKey
-		)
-
-		XCTAssertEqual(
-			result,
-			.routePending(
-				AccountRoutePending(
-					operationID: operationID,
-					accountID: accountID,
-					routingRevision: 9,
-					waitReason: .externalCodex(
-						blockers: [
-							AccountRouteProcessBlocker(
-								pid: 44662,
-								process: .chatgpt,
-								authHome: .shared
-							),
-							AccountRouteProcessBlocker(
-								pid: 44768,
-								process: .codex,
-								authHome: .shared
-							),
-						],
-						omitted: 0
-					)
-				)
-			)
-		)
-	}
-
-	func testPendingRouteRejectsInvalidBlockerAndReadinessReasons() throws {
-		let prefix = """
-		{"operation_id":"\(operationID)","account_id":"\(accountID)","routing_revision":9,
-		"wait_reason":
-		"""
-		XCTAssertThrowsError(
-			try JSONDecoder().decode(
-				AccountRoutePending.self,
-				from: Data(
-					"\(prefix){\"reason\":\"external_codex\",\"data\":{\"blockers\":[],\"omitted\":0}}}"
-						.utf8
-				)
-			)
-		)
-		XCTAssertThrowsError(
-			try JSONDecoder().decode(
-				AccountRoutePending.self,
-				from: Data(
-					"\(prefix){\"reason\":\"account_readiness\",\"data\":{\"readiness\":\"ready\"}}}"
-						.utf8
-				)
 			)
 		)
 	}
@@ -244,10 +134,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 		)
 		_ = try await client.routeAccount(
 			authority: authority,
-			operationID: operationID,
 			accountID: accountID,
-			expectedAccountRevision: 7,
-			expectedRoutingRevision: 9,
 			idempotencyKey: idempotencyKey
 		)
 		_ = try await client.setAccountEnabled(
@@ -292,9 +179,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 			]
 		)
 		XCTAssertEqual(Set(requests[1].keys), ["schema", "operation"])
-		XCTAssertEqual(requests[2]["operation_id"] as? String, operationID)
-		XCTAssertEqual(requests[2]["expected_account_revision"] as? NSNumber, 7)
-		XCTAssertEqual(requests[2]["expected_routing_revision"] as? NSNumber, 9)
+		XCTAssertEqual(Set(requests[2].keys), ["schema", "operation", "account_id", "idempotency_key"])
 		XCTAssertEqual(requests[3]["enabled"] as? Bool, nil)
 		XCTAssertEqual(requests[3]["expected_revision"] as? NSNumber, 7)
 		XCTAssertEqual(requests[4]["operation_id"] as? String, operationID)
@@ -340,7 +225,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 		}
 	}
 
-	func testRouteRejectsInvalidIdentityRevisionsAndAuthorityBeforeDispatch() async {
+	func testRouteRejectsInvalidTargetAndAuthorityBeforeDispatch() async {
 		let recorder = NativeRequestRecorder()
 		let authority = authority
 		let client = DecodexNativeClient { request, requestedAuthority in
@@ -352,20 +237,15 @@ final class AccountControlNativeClientTests: XCTestCase {
 			serverID: serverID
 		)
 		let uppercaseAccountID = "abcdefab-cdef-4abc-8def-abcdefabcdef".uppercased()
-		let inputs: [(ResetCardAuthority?, String, UInt64, UInt64)] = [
-			(authority, uppercaseAccountID, 1, 1),
-			(authority, accountID, 0, 1),
-			(authority, accountID, 1, 0),
-			(invalidAuthority, accountID, 1, 1),
+		let inputs: [(ResetCardAuthority?, String)] = [
+			(authority, uppercaseAccountID),
+			(invalidAuthority, accountID),
 		]
-		for (authority, accountID, accountRevision, routingRevision) in inputs {
+		for (authority, accountID) in inputs {
 			do {
 				_ = try await client.routeAccount(
 					authority: authority,
-					operationID: operationID,
 					accountID: accountID,
-					expectedAccountRevision: accountRevision,
-					expectedRoutingRevision: routingRevision,
 					idempotencyKey: idempotencyKey
 				)
 				XCTFail("Invalid account command must fail")
@@ -408,7 +288,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 		}
 	}
 
-	func testSupersededRouteDecodesAsATerminalTypedRejection() async throws {
+	func testRunningCodexDecodesAsATerminalTypedRejection() async throws {
 		let authority = authority
 		let client = DecodexNativeClient { _, _ in
 			nativeSuccess(
@@ -417,7 +297,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 				data: """
 				{"outcome":"rejected","data":{"error":{
 				  "reason":"account_command_rejected",
-				  "rejection":"route_superseded"
+				  "rejection":"codex_is_running"
 				}}}
 				"""
 			)
@@ -425,15 +305,12 @@ final class AccountControlNativeClientTests: XCTestCase {
 		do {
 			_ = try await client.routeAccount(
 				authority: authority,
-				operationID: operationID,
 				accountID: accountID,
-				expectedAccountRevision: 7,
-				expectedRoutingRevision: 9,
 				idempotencyKey: idempotencyKey
 			)
-			XCTFail("Superseded Route must not appear applied")
+			XCTFail("A running Codex process must not appear applied")
 		} catch let error as AccountControlError {
-			XCTAssertEqual(error, .rejected(.routeSuperseded, actualRevision: nil))
+			XCTAssertEqual(error, .rejected(.codexIsRunning, actualRevision: nil))
 		}
 	}
 

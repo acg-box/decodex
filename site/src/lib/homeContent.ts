@@ -7,7 +7,7 @@ const productLoops = [
   },
   {
     title: "Account routing",
-    body: "Use daemon-owned accounts, quota observations, and fixed or balanced routing.",
+    body: "Use service-owned accounts, quota observations, and fixed or balanced routing.",
   },
   {
     title: "Adaptive Programs",
@@ -15,7 +15,7 @@ const productLoops = [
   },
   {
     title: "One local product",
-    body: "Decodex.app presents the product while decodexd owns behavior and persistent SQLite state.",
+    body: "Decodex.app presents the product while decodex serve owns behavior and persistent SQLite state.",
   },
 ];
 

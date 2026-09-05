@@ -13,8 +13,7 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-#[cfg(target_os = "macos")]
-use zeroize::Zeroizing;
+#[cfg(target_os = "macos")] use zeroize::Zeroizing;
 
 use crate::{
 	auth_projection::{
@@ -27,6 +26,9 @@ use crate::{
 
 const REQUIRED_STABLE_POLLS: u8 = 2;
 pub(crate) const MAX_CODEX_AUTH_OWNER_BLOCKERS: usize = 8;
+
+#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
+pub const PROCESS_TEST_CODEX_RUNNING_MARKER_ENV: &str = "DECODEX_PROCESS_TEST_CODEX_RUNNING_MARKER";
 
 #[cfg(target_os = "macos")]
 const MAX_PROCESS_ENVIRONMENT_BYTES: usize = 2 * 1024 * 1024;
@@ -71,10 +73,7 @@ pub(crate) struct CodexAuthOwnerBlocker {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum CodexLivenessObservation {
 	Quiescent,
-	Blocked {
-		blockers: Vec<CodexAuthOwnerBlocker>,
-		omitted: u16,
-	},
+	Blocked { blockers: Vec<CodexAuthOwnerBlocker>, omitted: u16 },
 	Unavailable,
 }
 
@@ -142,14 +141,6 @@ impl SharedAuthFilePort for ProductionSharedAuthFile {
 struct StableReadState {
 	candidate: Option<SharedCodexAuthFileStamp>,
 	consecutive: u8,
-	handled: Option<SharedCodexAuthFileStamp>,
-}
-
-pub(crate) enum StableSharedAuthPoll {
-	Changed(Box<SharedCodexAuthSnapshot>),
-	Unchanged,
-	Waiting,
-	Unavailable,
 }
 
 pub(crate) enum StableSharedAuthRead {
@@ -158,7 +149,8 @@ pub(crate) enum StableSharedAuthRead {
 	Unavailable,
 }
 
-/// One coordinator instance owns all shared-auth polling and projection decisions in `decodexd`.
+/// One coordinator instance owns all shared-auth polling and projection decisions in `decodex
+/// serve`.
 pub(crate) struct SharedAuthCoordinator {
 	liveness: Arc<dyn CodexLivenessPort>,
 	file: Arc<dyn SharedAuthFilePort>,
@@ -190,42 +182,6 @@ impl SharedAuthCoordinator {
 		self.liveness.observe()
 	}
 
-	pub(crate) fn poll_stable_change(&self) -> StableSharedAuthPoll {
-		let stamp = match self.file.stamp() {
-			Ok(stamp) => stamp,
-			Err(_) => return StableSharedAuthPoll::Unavailable,
-		};
-		let mut state = match self.state.lock() {
-			Ok(state) => state,
-			Err(_) => return StableSharedAuthPoll::Unavailable,
-		};
-		if state.candidate.as_ref() != Some(&stamp) {
-			state.candidate = Some(stamp);
-			state.consecutive = 1;
-			state.handled = None;
-			return StableSharedAuthPoll::Waiting;
-		}
-		state.consecutive = state.consecutive.saturating_add(1);
-		if state.consecutive < REQUIRED_STABLE_POLLS {
-			return StableSharedAuthPoll::Waiting;
-		}
-		if state.handled.as_ref() == Some(&stamp) {
-			return StableSharedAuthPoll::Unchanged;
-		}
-		drop(state);
-		match self.file.read(&stamp) {
-			Ok(snapshot) => {
-				if let Ok(mut state) = self.state.lock()
-					&& state.candidate.as_ref() == Some(&stamp)
-				{
-					state.handled = Some(stamp);
-				}
-				StableSharedAuthPoll::Changed(Box::new(snapshot))
-			},
-			Err(_) => StableSharedAuthPoll::Unavailable,
-		}
-	}
-
 	pub(crate) fn read_current_stable(&self) -> StableSharedAuthRead {
 		let stamp = match self.file.stamp() {
 			Ok(stamp) => stamp,
@@ -238,7 +194,6 @@ impl SharedAuthCoordinator {
 		if state.candidate.as_ref() != Some(&stamp) {
 			state.candidate = Some(stamp);
 			state.consecutive = 1;
-			state.handled = None;
 			return StableSharedAuthRead::Waiting;
 		}
 		state.consecutive = state.consecutive.saturating_add(1);
@@ -291,6 +246,20 @@ impl CodexLivenessPort for ProductionCodexLiveness {
 	fn observe(&self) -> CodexLivenessObservation {
 		#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
 		{
+			if let Some(marker) = std::env::var_os(PROCESS_TEST_CODEX_RUNNING_MARKER_ENV) {
+				return if std::path::Path::new(&marker).is_file() {
+					CodexLivenessObservation::Blocked {
+						blockers: vec![CodexAuthOwnerBlocker {
+							pid: std::process::id(),
+							kind: CodexAuthOwnerKind::Codex,
+							auth_home: CodexAuthHomeEvidence::Shared,
+						}],
+						omitted: 0,
+					}
+				} else {
+					CodexLivenessObservation::Quiescent
+				};
+			}
 			if crate::account_service::process_acceptance_fixture_endpoint().is_some() {
 				CodexLivenessObservation::Quiescent
 			} else {
@@ -349,11 +318,8 @@ fn observe_macos_codex_liveness() -> CodexLivenessObservation {
 	let Ok(own_pid) = libc::pid_t::try_from(std::process::id()) else {
 		return CodexLivenessObservation::Unavailable;
 	};
-	let mut observations = pids
-		.into_iter()
-		.filter(|pid| *pid > 0)
-		.map(observe_macos_process)
-		.collect::<Vec<_>>();
+	let mut observations =
+		pids.into_iter().filter(|pid| *pid > 0).map(observe_macos_process).collect::<Vec<_>>();
 	enrich_macos_codex_home_evidence(own_pid, &shared_codex_home, &mut observations);
 	classify_macos_codex_liveness(own_pid, &observations)
 }
@@ -380,13 +346,11 @@ struct MacosProcessObservation {
 fn observe_macos_process(pid: libc::pid_t) -> MacosProcessObservation {
 	let name = observe_macos_process_name(pid);
 	let path = match &name {
-		MacosProcessField::Value(name) if !process_name_looks_like_codex(name) => {
-			MacosProcessField::Unavailable
-		},
+		MacosProcessField::Value(name) if !process_name_looks_like_codex(name) =>
+			MacosProcessField::Unavailable,
 		MacosProcessField::Vanished => MacosProcessField::Vanished,
-		MacosProcessField::Value(_) | MacosProcessField::Unavailable => {
-			observe_macos_process_path(pid)
-		},
+		MacosProcessField::Value(_) | MacosProcessField::Unavailable =>
+			observe_macos_process_path(pid),
 	};
 	let mut observation = MacosProcessObservation {
 		pid,
@@ -516,14 +480,13 @@ fn observe_macos_codex_home(
 		MacosProcessField::Unavailable => return MacosProcessField::Unavailable,
 		MacosProcessField::Vanished => return MacosProcessField::Vanished,
 	};
-	let process_codex_home = environment
-		.codex_home
-		.filter(|value| !value.is_empty())
-		.map(PathBuf::from)
-		.or_else(|| {
-			environment.home.filter(|value| !value.is_empty()).map(PathBuf::from).map(|home| {
-				home.join(".codex")
-			})
+	let process_codex_home =
+		environment.codex_home.filter(|value| !value.is_empty()).map(PathBuf::from).or_else(|| {
+			environment
+				.home
+				.filter(|value| !value.is_empty())
+				.map(PathBuf::from)
+				.map(|home| home.join(".codex"))
 		});
 	let Some(process_codex_home) = process_codex_home else {
 		return MacosProcessField::Unavailable;
@@ -698,8 +661,7 @@ fn enrich_macos_codex_home_evidence(
 				observation.auth_home,
 				MacosProcessField::Value(MacosCodexHomeRelation::Shared)
 					| MacosProcessField::Vanished
-			)
-		{
+			) {
 			continue;
 		}
 		if inspected >= MAX_CODEX_HOME_INSPECTIONS {
@@ -736,19 +698,15 @@ fn classify_macos_codex_liveness(
 		let auth_home = match observation.auth_home {
 			MacosProcessField::Value(MacosCodexHomeRelation::Isolated)
 			| MacosProcessField::Vanished => continue,
-			MacosProcessField::Value(MacosCodexHomeRelation::Shared) => {
-				CodexAuthHomeEvidence::Shared
-			},
+			MacosProcessField::Value(MacosCodexHomeRelation::Shared) =>
+				CodexAuthHomeEvidence::Shared,
 			MacosProcessField::Unavailable => CodexAuthHomeEvidence::Unknown,
 		};
 		let Ok(pid) = u32::try_from(observation.pid) else {
 			continue;
 		};
-		let blocker = CodexAuthOwnerBlocker {
-			pid,
-			kind: macos_process_kind(observation),
-			auth_home,
-		};
+		let blocker =
+			CodexAuthOwnerBlocker { pid, kind: macos_process_kind(observation), auth_home };
 		blockers.push(blocker);
 	}
 	blockers.sort_by_key(|blocker| blocker.pid);
@@ -839,105 +797,7 @@ fn path_is_official_shared_codex(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		collections::VecDeque,
-		sync::atomic::{AtomicUsize, Ordering},
-	};
-
 	use super::*;
-
-	struct FixedLiveness(CodexLiveness);
-	impl CodexLivenessPort for FixedLiveness {
-		fn observe(&self) -> CodexLivenessObservation {
-			CodexLivenessObservation::from_state(self.0)
-		}
-	}
-
-	struct ScriptedFile {
-		stamps: Mutex<VecDeque<Result<SharedCodexAuthFileStamp, CodexAuthProjectionError>>>,
-		reads: AtomicUsize,
-		failed_reads: AtomicUsize,
-	}
-
-	impl SharedAuthFilePort for ScriptedFile {
-		fn stamp(&self) -> Result<SharedCodexAuthFileStamp, CodexAuthProjectionError> {
-			self.stamps
-				.lock()
-				.expect("script lock")
-				.pop_front()
-				.unwrap_or(Ok(SharedCodexAuthFileStamp::Absent))
-		}
-
-		fn read(
-			&self,
-			expected: &SharedCodexAuthFileStamp,
-		) -> Result<SharedCodexAuthSnapshot, CodexAuthProjectionError> {
-			self.reads.fetch_add(1, Ordering::Relaxed);
-			if self
-				.failed_reads
-				.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |remaining| {
-					remaining.checked_sub(1)
-				})
-				.is_ok()
-			{
-				return Err(CodexAuthProjectionError::Unavailable);
-			}
-			Ok(SharedCodexAuthSnapshot::Unmanaged {
-				version: SharedCodexAuthVersion { stamp: expected.clone(), sha256: None },
-			})
-		}
-
-		fn project(
-			&self,
-			_bundle: &CredentialSecretBundle,
-			_provider_account_id: &str,
-			_expected: &SharedCodexAuthVersion,
-		) -> Result<(), CodexAuthProjectionError> {
-			Ok(())
-		}
-	}
-
-	#[test]
-	fn stable_poll_requires_two_equal_metadata_observations_and_coalesces_reads() {
-		let file = Arc::new(ScriptedFile {
-			stamps: Mutex::new(VecDeque::from([
-				Ok(SharedCodexAuthFileStamp::Absent),
-				Ok(SharedCodexAuthFileStamp::Absent),
-				Ok(SharedCodexAuthFileStamp::Absent),
-			])),
-			reads: AtomicUsize::new(0),
-			failed_reads: AtomicUsize::new(0),
-		});
-		let coordinator = SharedAuthCoordinator::with_ports(
-			Arc::new(FixedLiveness(CodexLiveness::Quiescent)),
-			file.clone(),
-		);
-		assert!(matches!(coordinator.poll_stable_change(), StableSharedAuthPoll::Waiting));
-		assert!(matches!(coordinator.poll_stable_change(), StableSharedAuthPoll::Changed(_)));
-		assert!(matches!(coordinator.poll_stable_change(), StableSharedAuthPoll::Unchanged));
-		assert_eq!(file.reads.load(Ordering::Relaxed), 1);
-	}
-
-	#[test]
-	fn unavailable_stable_read_is_retried_without_a_metadata_change() {
-		let file = Arc::new(ScriptedFile {
-			stamps: Mutex::new(VecDeque::from([
-				Ok(SharedCodexAuthFileStamp::Absent),
-				Ok(SharedCodexAuthFileStamp::Absent),
-				Ok(SharedCodexAuthFileStamp::Absent),
-			])),
-			reads: AtomicUsize::new(0),
-			failed_reads: AtomicUsize::new(1),
-		});
-		let coordinator = SharedAuthCoordinator::with_ports(
-			Arc::new(FixedLiveness(CodexLiveness::Quiescent)),
-			file.clone(),
-		);
-		assert!(matches!(coordinator.poll_stable_change(), StableSharedAuthPoll::Waiting));
-		assert!(matches!(coordinator.poll_stable_change(), StableSharedAuthPoll::Unavailable));
-		assert!(matches!(coordinator.poll_stable_change(), StableSharedAuthPoll::Changed(_)));
-		assert_eq!(file.reads.load(Ordering::Relaxed), 2);
-	}
 
 	#[cfg(target_os = "macos")]
 	#[test]
@@ -1034,10 +894,7 @@ mod tests {
 			MacosProcessField::Vanished,
 			MacosProcessField::Vanished,
 		)];
-		assert_eq!(
-			classify_macos_codex_liveness(10, &[]),
-			CodexLivenessObservation::Quiescent
-		);
+		assert_eq!(classify_macos_codex_liveness(10, &[]), CodexLivenessObservation::Quiescent);
 		assert_eq!(
 			classify_macos_codex_liveness(10, &observations),
 			CodexLivenessObservation::Quiescent

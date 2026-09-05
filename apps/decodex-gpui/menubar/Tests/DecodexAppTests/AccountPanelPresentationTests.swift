@@ -34,116 +34,6 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertTrue(presentation.usesDisabledEnvironment)
 	}
 
-	func testPendingRouteHidesConcreteSharedAuthBlockers() {
-		let pending = AccountRoutePending(
-			operationID: "33333333-3333-4333-8333-333333333333",
-			accountID: "11111111-1111-4111-8111-111111111111",
-			routingRevision: 9,
-			waitReason: .externalCodex(
-				blockers: [
-					AccountRouteProcessBlocker(
-						pid: 44662,
-						process: .chatgpt,
-						authHome: .shared
-					),
-					AccountRouteProcessBlocker(
-						pid: 44768,
-						process: .codex,
-						authHome: .unknown
-					),
-				],
-				omitted: 0
-			)
-		)
-
-		XCTAssertEqual(
-			pending.statusText,
-			"Waiting for Codex to close or restart."
-		)
-		XCTAssertEqual(
-			pending.helpText,
-			"Close Codex and ChatGPT. Reopen them after the account is ready."
-		)
-
-		let hostingView = NSHostingView(
-			rootView: AccountRoutePendingStatusView(pending: pending)
-				.frame(width: 276)
-		)
-		hostingView.layoutSubtreeIfNeeded()
-		XCTAssertGreaterThan(hostingView.fittingSize.height, 0)
-		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 52)
-	}
-
-	func testPendingRouteActionAndStatusDeriveFromEveryExactWaitReason() {
-		let blocker = AccountRouteProcessBlocker(
-			pid: 44662,
-			process: .codex,
-			authHome: .shared
-		)
-		let cases: [(AccountRouteWaitReason, String, String)] = [
-			(.externalCodex(blockers: [blocker], omitted: 0), "Waiting", "Waiting for Codex to close or restart."),
-			(.codexObservationUnavailable, "Waiting", "Waiting for Codex to close or restart."),
-			(.accountReadiness(.storeUnavailable), "Switching", "Switching"),
-			(.accountReadiness(.storeMismatch), "Switching", "Switching"),
-			(.accountReadiness(.operationUnsettled), "Switching", "Switching"),
-			(.accountReadiness(.callbackCapabilityUnready), "Switching", "Switching"),
-			(.sharedAuthStabilizing, "Switching", "Switching"),
-			(.sharedAuthUnavailable, "Switching", "Switching"),
-			(.projectionReadback, "Switching", "Switching"),
-		]
-
-		for (waitReason, actionTitle, statusText) in cases {
-			let pending = AccountRoutePending(
-				operationID: "33333333-3333-4333-8333-333333333333",
-				accountID: "11111111-1111-4111-8111-111111111111",
-				routingRevision: 9,
-				waitReason: waitReason
-			)
-			XCTAssertEqual(pending.actionTitle, actionTitle)
-			XCTAssertEqual(pending.statusText, statusText)
-		}
-	}
-
-	func testRouteActionDoesNotTreatEveryPendingTargetAsWaiting() {
-		let presentation = AccountRouteActionPresentation(
-			isCurrent: false,
-			canSelect: false,
-			canPerformDirectAccountControl: true,
-			isAccountControlInProgress: false,
-			isSubmittingResetCard: false
-		)
-		let switching = AccountRoutePending(
-			operationID: "33333333-3333-4333-8333-333333333333",
-			accountID: "11111111-1111-4111-8111-111111111111",
-			routingRevision: 9,
-			waitReason: .projectionReadback
-		)
-
-		XCTAssertEqual(
-			presentation.title(
-				isSwitching: false,
-				pending: switching,
-				keepsCurrentRoute: false
-			),
-			"Switching"
-		)
-
-		let waiting = AccountRoutePending(
-			operationID: "44444444-4444-4444-8444-444444444444",
-			accountID: "11111111-1111-4111-8111-111111111111",
-			routingRevision: 9,
-			waitReason: .codexObservationUnavailable
-		)
-		XCTAssertEqual(
-			presentation.title(
-				isSwitching: true,
-				pending: waiting,
-				keepsCurrentRoute: false
-			),
-			"Waiting"
-		)
-	}
-
 	func testTerminalReadbackAndNativeRecoveryUseReadyAndRestartStates() {
 		let current = AccountRouteActionPresentation(
 			isCurrent: true,
@@ -154,7 +44,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 
 		XCTAssertEqual(
-			current.title(isSwitching: false, pending: nil, keepsCurrentRoute: false),
+			current.title(isSwitching: false),
 			"Ready"
 		)
 		XCTAssertEqual(

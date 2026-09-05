@@ -17,7 +17,8 @@ info="$contents/Info.plist"
 
 test -d "$app_path"
 test -x "$contents/MacOS/decodex-gpui"
-test -x "$contents/Helpers/decodexd"
+test -x "$contents/Helpers/decodex"
+test ! -e "$contents/Helpers/decodexd"
 test -x "$contents/Frameworks/libDecodexMenuBar.dylib"
 test -x "$contents/Frameworks/libdecodex_app_client_ffi.dylib"
 test -f "$contents/Resources/AppIcon.icns"
@@ -29,7 +30,7 @@ test "$(find "$contents/Helpers" -type f | wc -l | tr -d ' ')" = 1
 test "$(find "$contents/Frameworks" -type f | wc -l | tr -d ' ')" = 2
 
 codesign --verify --deep --strict "$app_path"
-codesign --verify --strict "$contents/Helpers/decodexd"
+codesign --verify --strict "$contents/Helpers/decodex"
 codesign --verify --strict "$contents/Frameworks/libDecodexMenuBar.dylib"
 codesign --verify --strict "$contents/Frameworks/libdecodex_app_client_ffi.dylib"
 app_signing="$(codesign -dvvv "$app_path" 2>&1)"
@@ -37,7 +38,7 @@ app_team="$(printf '%s\n' "$app_signing" | sed -n 's/^TeamIdentifier=//p')"
 test -n "$app_team"
 printf '%s\n' "$app_signing" | grep '^Authority=' >/dev/null
 for nested_code in \
-  "$contents/Helpers/decodexd" \
+  "$contents/Helpers/decodex" \
   "$contents/Frameworks/libDecodexMenuBar.dylib" \
   "$contents/Frameworks/libdecodex_app_client_ffi.dylib"
 do
@@ -53,8 +54,15 @@ plutil -extract CFBundleIconFile raw "$info" | grep -qx 'AppIcon'
 plutil -extract LSMinimumSystemVersion raw "$info" | grep -qx '27.0'
 plutil -extract NSSupportsAutomaticTermination raw "$info" | grep -qx 'false'
 plutil -extract NSSupportsSuddenTermination raw "$info" | grep -qx 'false'
+test "$(plutil -extract CFBundleShortVersionString raw "$info")" = \
+  "$("$contents/Helpers/decodex" --output json build-info | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
+test "$(plutil -extract DecodexBuildCommit raw "$info")" = \
+  "$("$contents/Helpers/decodex" --output json build-info | python3 -c 'import json,sys; print(json.load(sys.stdin)["commit"])')"
+test "$(plutil -extract DecodexBuildDirty raw "$info")" = \
+  "$("$contents/Helpers/decodex" --output json build-info | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["dirty"]).lower())')"
 python3 scripts/macos/verify_decodex_bundle_contracts.py \
-  --daemon "$contents/Helpers/decodexd" \
+  --service "$contents/Helpers/decodex" \
+  --app-info "$info" \
   --native-client "$contents/Frameworks/libdecodex_app_client_ffi.dylib" \
   --menu-bar "$contents/Frameworks/libDecodexMenuBar.dylib"
 nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_menu_bar_create' >/dev/null
@@ -69,7 +77,8 @@ nm -gj "$contents/Frameworks/libdecodex_app_client_ffi.dylib" | grep -Fx '_decod
 mismatch_library="$stage_root/libmismatched_native_client.dylib"
 xcrun clang -dynamiclib scripts/macos/fixtures/mismatched_native_client.c -o "$mismatch_library"
 if python3 scripts/macos/verify_decodex_bundle_contracts.py \
-  --daemon "$contents/Helpers/decodexd" \
+  --service "$contents/Helpers/decodex" \
+  --app-info "$info" \
   --native-client "$mismatch_library" \
   --menu-bar "$contents/Frameworks/libDecodexMenuBar.dylib"
 then

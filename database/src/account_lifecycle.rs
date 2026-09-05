@@ -132,15 +132,6 @@ impl AccountCommandKind {
 
 pub struct AccountCommandReceiptLease(CommandReservation);
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PendingAccountRouteCommand {
-	pub idempotency_key: String,
-	pub request_sha256: String,
-	pub request_json: String,
-	pub expected_routing_revision: i64,
-	pub progress: Option<Value>,
-}
-
 pub enum AccountCommandReceiptClaim {
 	Owned(AccountCommandReceiptLease),
 	Pending(Value),
@@ -152,12 +143,6 @@ struct CommandReservation {
 	key: String,
 	request_hash: String,
 	claim_token: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct RouteRequestFence {
-	account_id: AccountId,
-	expected_account_revision: i64,
 }
 
 #[derive(Clone)]
@@ -218,210 +203,7 @@ impl SqliteStore {
 		let command = command.clone();
 		let entity_id = entity_id.to_owned();
 		self.run(move |connection| {
-			reserve_command_sync(
-				connection,
-				command,
-				kind,
-				entity_id,
-				expected_revision,
-				None,
-				false,
-				None,
-				None,
-			)
-		})
-		.await
-	}
-
-	pub async fn reserve_account_route_command(
-		&self,
-		command: &CommandIdentity,
-		expected_routing_revision: i64,
-		request_json: &str,
-	) -> Result<AccountCommandReceiptClaim, StoreError> {
-		self.reserve_account_route_command_inner(
-			command,
-			expected_routing_revision,
-			request_json,
-			None,
-		)
-		.await
-	}
-
-	/// Reserve a new fenced Route, rejecting an exact semantic duplicate without replacing the
-	/// original pending authority and superseding only a changed target or revision fence.
-	pub async fn reserve_replacing_account_route_command(
-		&self,
-		command: &CommandIdentity,
-		expected_routing_revision: i64,
-		request_json: &str,
-		superseded_response: &Value,
-	) -> Result<AccountCommandReceiptClaim, StoreError> {
-		validate_account_command_response(superseded_response)?;
-		self.reserve_account_route_command_inner(
-			command,
-			expected_routing_revision,
-			request_json,
-			Some(superseded_response.clone()),
-		)
-		.await
-	}
-
-	async fn reserve_account_route_command_inner(
-		&self,
-		command: &CommandIdentity,
-		expected_routing_revision: i64,
-		request_json: &str,
-		superseded_response: Option<Value>,
-	) -> Result<AccountCommandReceiptClaim, StoreError> {
-		validate_routing_revision(expected_routing_revision)?;
-		let request_value: Value = serde_json::from_str(request_json)
-			.map_err(|_| StoreError::InvalidInput("account Route request is invalid"))?;
-		if request_json.len() > 64 * 1024 {
-			return Err(StoreError::InvalidInput("account Route request is invalid"));
-		}
-		ensure_credential_negative_json(&request_value)?;
-		let route_fence = route_request_fence(&request_value)?;
-		let command = command.clone();
-		let request_json = request_json.to_owned();
-		let superseded_response = superseded_response
-			.map(|response| serde_json::to_string(&response))
-			.transpose()
-			.map_err(|_| StoreError::InvalidInput("account Route result is invalid"))?;
-		self.run(move |connection| {
-			reserve_command_sync(
-				connection,
-				command,
-				AccountCommandKind::Route,
-				"account-routing".to_owned(),
-				Some(expected_routing_revision),
-				Some(request_json),
-				false,
-				superseded_response,
-				Some(route_fence),
-			)
-		})
-		.await
-	}
-
-	pub async fn read_pending_account_route_commands(
-		&self,
-		limit: u16,
-	) -> Result<Vec<PendingAccountRouteCommand>, StoreError> {
-		validate_limit(limit, "pending account Route limit must be between 1 and 512")?;
-		self.run(move |connection| {
-			let mut statement = connection
-				.prepare(
-					"SELECT idempotency_key, request_sha256, request_json, expected_revision,
-					        progress_json
-					 FROM command_receipts
-					 WHERE protocol = ?1 AND operation = 'route_account' AND state = 'reserved'
-					 ORDER BY reserved_at_micros, idempotency_key LIMIT ?2",
-				)
-				.map_err(sql_error)?;
-			let rows = statement
-				.query_map(params![ACCOUNT_COMMAND_PROTOCOL, limit], |row| {
-					Ok(PendingAccountRouteCommand {
-						idempotency_key: row.get(0)?,
-						request_sha256: row.get(1)?,
-						request_json: row.get(2)?,
-						expected_routing_revision: row.get(3)?,
-						progress: row
-							.get::<_, Option<String>>(4)?
-							.map(|value| serde_json::from_str(&value))
-							.transpose()
-							.map_err(|error| {
-								rusqlite::Error::FromSqlConversionFailure(
-									4,
-									rusqlite::types::Type::Text,
-									Box::new(error),
-								)
-							})?,
-					})
-				})
-				.map_err(sql_error)?;
-			rows.collect::<Result<Vec<_>, _>>().map_err(sql_error)
-		})
-		.await
-	}
-
-	/// Expire Route leases left by the previous daemon before the listener accepts commands.
-	pub async fn release_interrupted_account_route_claims(&self) -> Result<u64, StoreError> {
-		self.run(move |connection| {
-			let changed = connection
-				.execute(
-					"UPDATE command_receipts
-					 SET claim_expires_at_micros = reserved_at_micros + 1
-					 WHERE protocol = ?1 AND operation = 'route_account' AND state = 'reserved'",
-					params![ACCOUNT_COMMAND_PROTOCOL],
-				)
-				.map_err(sql_error)?;
-			u64::try_from(changed)
-				.map_err(|_| StoreError::InvalidInput("account Route claim count is invalid"))
-		})
-		.await
-	}
-
-	pub async fn reclaim_account_route_command(
-		&self,
-		pending: &PendingAccountRouteCommand,
-	) -> Result<AccountCommandReceiptClaim, StoreError> {
-		let command = CommandIdentity {
-			key: pending.idempotency_key.clone(),
-			request_hash: pending.request_sha256.clone(),
-		};
-		let expected = pending.expected_routing_revision;
-		let request_json = pending.request_json.clone();
-		self.run(move |connection| {
-			reserve_command_sync(
-				connection,
-				command,
-				AccountCommandKind::Route,
-				"account-routing".to_owned(),
-				Some(expected),
-				Some(request_json),
-				true,
-				None,
-				None,
-			)
-		})
-		.await
-	}
-
-	/// Retain one replayable pending result while releasing the Route lease to the daemon worker.
-	pub async fn defer_account_route_command(
-		&self,
-		lease: AccountCommandReceiptLease,
-		progress: &Value,
-	) -> Result<(), StoreError> {
-		validate_account_command_response(progress)?;
-		let progress = serde_json::to_string(progress)
-			.map_err(|_| StoreError::InvalidInput("account Route progress is invalid"))?;
-		self.run(move |connection| {
-			let now = unix_micros().map_err(StoreError::from)?;
-			let changed = connection
-				.execute(
-					"UPDATE command_receipts
-					 SET progress_json = ?1,
-					     claim_expires_at_micros = MAX(?2, reserved_at_micros + 1)
-					 WHERE protocol = ?3 AND idempotency_key = ?4 AND request_sha256 = ?5
-					   AND operation = 'route_account' AND state = 'reserved'
-					   AND claim_token = ?6 AND claim_expires_at_micros > ?2",
-					params![
-						progress,
-						now,
-						lease.0.protocol,
-						lease.0.key,
-						lease.0.request_hash,
-						lease.0.claim_token,
-					],
-				)
-				.map_err(sql_error)?;
-			if changed == 1 {
-				Ok(())
-			} else {
-				Err(StoreError::OwnershipLost("account Route command lease"))
-			}
+			reserve_command_sync(connection, command, kind, entity_id, expected_revision)
 		})
 		.await
 	}
@@ -1052,18 +834,27 @@ fn reserve_command_sync(
 	kind: AccountCommandKind,
 	entity_id: String,
 	expected_revision: Option<i64>,
-	request_json: Option<String>,
-	reclaim_pending_route: bool,
-	superseded_response: Option<String>,
-	route_fence: Option<RouteRequestFence>,
 ) -> Result<AccountCommandReceiptClaim, StoreError> {
 	let transaction =
 		connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
 	let now = unix_micros().map_err(StoreError::from)?;
+	if kind == AccountCommandKind::Route
+		&& transaction
+			.query_row(
+				"SELECT 1 FROM legacy_account_route_interruptions WHERE idempotency_key = ?1",
+				params![command.key],
+				|row| row.get::<_, i64>(0),
+			)
+			.optional()
+			.map_err(sql_error)?
+			.is_some()
+	{
+		return Err(StoreError::IdempotencyConflict);
+	}
 	let existing = transaction
 		.query_row(
 			"SELECT request_sha256, operation, entity_id, expected_revision, state,
-			        response_json, claim_expires_at_micros, request_json, progress_json
+			        response_json, claim_expires_at_micros
 			 FROM command_receipts WHERE protocol = ?1 AND idempotency_key = ?2",
 			params![ACCOUNT_COMMAND_PROTOCOL, command.key],
 			|row| {
@@ -1075,32 +866,18 @@ fn reserve_command_sync(
 					row.get::<_, String>(4)?,
 					row.get::<_, Option<String>>(5)?,
 					row.get::<_, Option<i64>>(6)?,
-					row.get::<_, Option<String>>(7)?,
-					row.get::<_, Option<String>>(8)?,
 				))
 			},
 		)
 		.optional()
 		.map_err(sql_error)?;
 	let receipt_exists = existing.is_some();
-	if let Some((
-		request,
-		operation,
-		stored_entity,
-		revision,
-		state,
-		response,
-		expires,
-		stored_json,
-		progress,
-	)) = existing
+	if let Some((request, operation, stored_entity, revision, state, response, expires)) = existing
 	{
 		if request != command.request_hash
 			|| operation != kind.as_str()
 			|| stored_entity != entity_id
 			|| revision != expected_revision
-			|| (kind == AccountCommandKind::Route
-				&& stored_json.as_deref() != request_json.as_deref())
 		{
 			return Err(StoreError::IdempotencyConflict);
 		}
@@ -1111,90 +888,10 @@ fn reserve_command_sync(
 			transaction.commit().map_err(sql_error)?;
 			return Ok(AccountCommandReceiptClaim::Replayed(response));
 		}
-		if !reclaim_pending_route && let Some(progress) = progress {
-			let progress = serde_json::from_str(&progress)
-				.map_err(|_| incompatible("account Route progress"))?;
-			transaction.commit().map_err(sql_error)?;
-			return Ok(AccountCommandReceiptClaim::Pending(progress));
-		}
 		if expires.is_some_and(|expires| expires > now) {
 			return Err(StoreError::OwnershipLost("command receipt claim is active"));
 		}
 	}
-	if !receipt_exists
-		&& kind == AccountCommandKind::Route
-		&& !reclaim_pending_route
-		&& let Some(superseded_response) = superseded_response.as_ref()
-		&& let Some((pending_key, pending_expected_revision, claim_expires_at, pending_request)) =
-			transaction
-			.query_row(
-				"SELECT idempotency_key, expected_revision, claim_expires_at_micros, request_json
-				 FROM command_receipts
-				 WHERE protocol = ?1 AND operation = 'route_account' AND state = 'reserved'",
-				params![ACCOUNT_COMMAND_PROTOCOL],
-				|row| {
-					Ok((
-						row.get::<_, String>(0)?,
-						row.get::<_, Option<i64>>(1)?,
-						row.get::<_, Option<i64>>(2)?,
-						row.get::<_, String>(3)?,
-					))
-				},
-			)
-			.optional()
-			.map_err(sql_error)?
-	{
-		let pending_request: Value = serde_json::from_str(&pending_request)
-			.map_err(|_| incompatible("account Route request"))?;
-		let pending_fence = route_request_fence(&pending_request)?;
-		let route_fence = route_fence
-			.as_ref()
-			.ok_or_else(|| incompatible("account Route request fence"))?;
-		if pending_expected_revision == expected_revision && &pending_fence == route_fence {
-			let response: Value = serde_json::from_str(superseded_response)
-				.map_err(|_| incompatible("account Route result"))?;
-			transaction
-				.execute(
-					"INSERT INTO command_receipts (
-					   protocol, idempotency_key, request_sha256, operation, entity_id,
-					   expected_revision, state, response_json, claim_token,
-					   claim_expires_at_micros, reserved_at_micros, completed_at_micros,
-					   request_json, progress_json
-					 ) VALUES (?1, ?2, ?3, 'route_account', 'account-routing', ?4,
-					           'completed_success', ?5, NULL, NULL, ?6, ?6, ?7, NULL)",
-					params![
-						ACCOUNT_COMMAND_PROTOCOL,
-						command.key,
-						command.request_hash,
-						expected_revision,
-						superseded_response,
-						now,
-						request_json,
-					],
-				)
-				.map_err(sql_error)?;
-			transaction.commit().map_err(sql_error)?;
-			return Ok(AccountCommandReceiptClaim::Replayed(response));
-		}
-		if claim_expires_at.is_some_and(|expires| expires > now) {
-			return Err(StoreError::OwnershipLost("pending account Route is active"));
-		}
-		let changed = transaction
-			.execute(
-				"UPDATE command_receipts
-				 SET state = 'completed_success', response_json = ?1, claim_token = NULL,
-				     claim_expires_at_micros = NULL, completed_at_micros = ?2,
-				     progress_json = NULL
-				 WHERE protocol = ?3 AND idempotency_key = ?4
-				   AND operation = 'route_account' AND state = 'reserved'",
-				params![superseded_response, now, ACCOUNT_COMMAND_PROTOCOL, pending_key],
-			)
-			.map_err(sql_error)?;
-		if changed != 1 {
-			return Err(StoreError::OwnershipLost("pending account Route supersession"));
-		}
-	}
-
 	let claim_token = random_uuid_v4()?;
 	let expires = now
 		.checked_add(CLAIM_LIFETIME_MICROS)
@@ -1203,7 +900,7 @@ fn reserve_command_sync(
 		transaction
 			.execute(
 				"UPDATE command_receipts SET claim_token = ?1, claim_expires_at_micros = ?2
-				 WHERE protocol = ?3 AND idempotency_key = ?4 AND state = 'reserved'",
+			 WHERE protocol = ?3 AND idempotency_key = ?4 AND state = 'reserved'",
 				params![claim_token, expires, ACCOUNT_COMMAND_PROTOCOL, command.key],
 			)
 			.map_err(sql_error)?;
@@ -1211,11 +908,11 @@ fn reserve_command_sync(
 		transaction
 			.execute(
 				"INSERT INTO command_receipts (
-				   protocol, idempotency_key, request_sha256, operation, entity_id,
-				   expected_revision, state, response_json, claim_token,
-					   claim_expires_at_micros, reserved_at_micros, completed_at_micros,
-				   request_json, progress_json
-				 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'reserved', NULL, ?7, ?8, ?9, NULL, ?10, NULL)",
+			   protocol, idempotency_key, request_sha256, operation, entity_id,
+			   expected_revision, state, response_json, claim_token,
+			   claim_expires_at_micros, reserved_at_micros, completed_at_micros,
+			   request_json, progress_json
+			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'reserved', NULL, ?7, ?8, ?9, NULL, NULL, NULL)",
 				params![
 					ACCOUNT_COMMAND_PROTOCOL,
 					command.key,
@@ -1226,7 +923,6 @@ fn reserve_command_sync(
 					claim_token,
 					expires,
 					now,
-					request_json,
 				],
 			)
 			.map_err(sql_error)?;
@@ -1320,25 +1016,19 @@ fn prepare_operation_sync(
 
 	let account = account_base_sync(connection, &preparation.account_id)?;
 	let rejection = match preparation.kind {
-		AccountOperationKind::Enroll | AccountOperationKind::Import => {
-			enrollment_rejection_sync(connection, preparation, account.as_ref())?
-		},
+		AccountOperationKind::Enroll | AccountOperationKind::Import =>
+			enrollment_rejection_sync(connection, preparation, account.as_ref())?,
 		AccountOperationKind::Refresh | AccountOperationKind::Logout => match account {
 			None => Some(AccountLifecycleRejection::AccountMissing),
-			Some(ref account) if account.tombstoned => {
-				Some(AccountLifecycleRejection::AccountMissing)
-			},
+			Some(ref account) if account.tombstoned =>
+				Some(AccountLifecycleRejection::AccountMissing),
 			Some(ref account)
 				if preparation.expected_account_revision != Some(account.revision) =>
-			{
-				Some(AccountLifecycleRejection::StaleAccount)
-			},
+				Some(AccountLifecycleRejection::StaleAccount),
 			Some(_)
 				if credential_binding_sync(connection, &preparation.account_id)?
 					!= preparation.expected =>
-			{
-				Some(AccountLifecycleRejection::StaleAccount)
-			},
+				Some(AccountLifecycleRejection::StaleAccount),
 			Some(_) => None,
 		},
 	};
@@ -2437,9 +2127,6 @@ fn set_balanced_routing_sync(
 	if routing.revision != expected_routing_revision {
 		return Ok(RoutingControlOutcome::StaleRoutingControl { revision: routing.revision });
 	}
-	if pending_account_route_exists_sync(connection)? {
-		return Ok(RoutingControlOutcome::InvalidRequest);
-	}
 	let revision =
 		routing.revision.checked_add(1).ok_or(StoreError::CapacityExhausted("routing revision"))?;
 	connection
@@ -2460,9 +2147,6 @@ fn set_account_order_sync(
 	let routing = read_routing_control_sync(connection)?;
 	if routing.revision != expected_routing_revision {
 		return Ok(RoutingControlOutcome::StaleRoutingControl { revision: routing.revision });
-	}
-	if pending_account_route_exists_sync(connection)? {
-		return Ok(RoutingControlOutcome::InvalidRequest);
 	}
 	let visible = routing.order.iter().cloned().collect::<BTreeSet<_>>();
 	let proposed = order.iter().cloned().collect::<BTreeSet<_>>();
@@ -2487,19 +2171,6 @@ fn set_account_order_sync(
 	}
 	bump_routing_revision(connection, now)?;
 	Ok(RoutingControlOutcome::Updated { routing: read_routing_control_sync(connection)? })
-}
-
-fn pending_account_route_exists_sync(connection: &Connection) -> Result<bool, StoreError> {
-	connection
-		.query_row(
-			"SELECT EXISTS (
-			   SELECT 1 FROM command_receipts
-			   WHERE protocol = ?1 AND operation = 'route_account' AND state = 'reserved'
-			 )",
-			params![ACCOUNT_COMMAND_PROTOCOL],
-			|row| row.get(0),
-		)
-		.map_err(sql_error)
 }
 
 fn compact_routing_order(connection: &Connection, now: i64) -> Result<(), StoreError> {
@@ -2835,31 +2506,6 @@ pub(crate) fn random_uuid_v4() -> Result<String, StoreError> {
 	))
 }
 
-fn route_request_fence(value: &Value) -> Result<RouteRequestFence, StoreError> {
-	let request =
-		value.as_object().ok_or(StoreError::InvalidInput("account Route request is invalid"))?;
-	if request.get("name").and_then(Value::as_str) != Some("route_account") {
-		return Err(StoreError::InvalidInput("account Route request is invalid"));
-	}
-	let arguments = request
-		.get("arguments")
-		.and_then(Value::as_object)
-		.ok_or(StoreError::InvalidInput("account Route request is invalid"))?;
-	let account_id = arguments
-		.get("account_id")
-		.and_then(Value::as_str)
-		.ok_or(StoreError::InvalidInput("account Route request is invalid"))?;
-	let account_id = AccountId::new(account_id.to_owned())
-		.map_err(|_| StoreError::InvalidInput("account Route request is invalid"))?;
-	let expected_account_revision = arguments
-		.get("expected_account_revision")
-		.and_then(Value::as_u64)
-		.and_then(|revision| i64::try_from(revision).ok())
-		.ok_or(StoreError::InvalidInput("account Route request is invalid"))?;
-	validate_account_revision(expected_account_revision)?;
-	Ok(RouteRequestFence { account_id, expected_account_revision })
-}
-
 fn validate_account_command_response(value: &Value) -> Result<(), StoreError> {
 	let bytes = serde_json::to_vec(value)
 		.map_err(|_| StoreError::InvalidInput("account command result is invalid"))?;
@@ -2871,19 +2517,17 @@ fn validate_account_command_response(value: &Value) -> Result<(), StoreError> {
 
 fn ensure_credential_negative_json(value: &Value) -> Result<(), StoreError> {
 	match value {
-		Value::Object(entries) => {
+		Value::Object(entries) =>
 			for (key, value) in entries {
 				if decodex_core::is_credential_metadata_key(key) {
 					return Err(StoreError::CredentialRejected);
 				}
 				ensure_credential_negative_json(value)?;
-			}
-		},
-		Value::Array(entries) => {
+			},
+		Value::Array(entries) =>
 			for value in entries {
 				ensure_credential_negative_json(value)?;
-			}
-		},
+			},
 		Value::String(value) if decodex_core::contains_credential_material(value) => {
 			return Err(StoreError::CredentialRejected);
 		},

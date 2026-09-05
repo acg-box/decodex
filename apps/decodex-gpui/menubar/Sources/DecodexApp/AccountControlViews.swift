@@ -28,19 +28,9 @@ struct AccountRouteActionPresentation: Equatable {
 		isCurrent || isVisuallyDisabled
 	}
 
-	func title(
-		isSwitching: Bool,
-		pending: AccountRoutePending?,
-		keepsCurrentRoute: Bool
-	) -> String {
-		if let pending {
-			return pending.actionTitle
-		}
+	func title(isSwitching: Bool) -> String {
 		if isSwitching {
 			return "Switching"
-		}
-		if keepsCurrentRoute {
-			return "Keep"
 		}
 		return isCurrent ? "Ready" : "Switch"
 	}
@@ -53,16 +43,10 @@ struct AccountPrimaryActionsView: View {
 	var body: some View {
 		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
 			CompactAccountActionButton(
-				title: presentation.title(
-					isSwitching: isSwitching,
-					pending: isPendingTarget ? store.pendingRoute : nil,
-					keepsCurrentRoute: keepsCurrentRoute
-				),
-				symbol: isPendingTarget
-					? "clock"
-					: (presentation.isCurrent
+				title: presentation.title(isSwitching: isSwitching),
+				symbol: presentation.isCurrent
 						? "point.3.connected.trianglepath.dotted"
-						: "arrow.triangle.branch"),
+						: "arrow.triangle.branch",
 				isActive: presentation.isCurrent,
 				isDisabled: presentation.isDisabled,
 				isVisuallyDisabled: presentation.isVisuallyDisabled,
@@ -71,14 +55,9 @@ struct AccountPrimaryActionsView: View {
 					state.account.accountID,
 					activity: .route
 				),
-				help: isPendingTarget
-					? store.pendingRoute?.helpText
-						?? "Decodex will finish the account switch automatically."
-					: (keepsCurrentRoute
-						? "Keep this account and replace the other pending route."
-						: (presentation.isCurrent
-							? "This account is synchronized for Decodex and Codex."
-							: "Synchronize this account for Decodex and Codex."))
+				help: presentation.isCurrent
+					? "This account is synchronized for Decodex and Codex."
+					: "Synchronize this account for Decodex and Codex."
 			) {
 				Task {
 					await store.routeAccount(state.account.accountID)
@@ -94,11 +73,7 @@ struct AccountPrimaryActionsView: View {
 	}
 
 	private var isRouteCurrent: Bool {
-		isCodexProjection && isFixed && store.pendingRoute == nil
-	}
-
-	private var keepsCurrentRoute: Bool {
-		isCodexProjection && isFixed && store.pendingRoute != nil && isPendingTarget == false
+		isCodexProjection && isFixed
 	}
 
 	private var presentation: AccountRouteActionPresentation {
@@ -112,11 +87,7 @@ struct AccountPrimaryActionsView: View {
 	}
 
 	private var canSelect: Bool {
-		state.routeCapability == .ready && store.pendingRoute?.accountID != state.account.accountID
-	}
-
-	private var isPendingTarget: Bool {
-		store.pendingRoute?.accountID == state.account.accountID
+		state.routeCapability == .ready
 	}
 
 	private var isSwitching: Bool {
@@ -128,64 +99,6 @@ struct AccountPrimaryActionsView: View {
 			return false
 		}
 		return accountID == state.account.accountID
-	}
-}
-
-struct AccountRoutePendingStatusView: View {
-	let pending: AccountRoutePending
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.related) {
-			Image(systemName: "clock.arrow.circlepath")
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.warning(colorScheme))
-				.accessibilityHidden(true)
-
-			Text(pending.statusText)
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.fixedSize(horizontal: false, vertical: true)
-				.frame(maxWidth: .infinity, alignment: .leading)
-		}
-		.help(pending.helpText)
-		.accessibilityElement(children: .ignore)
-		.accessibilityLabel(pending.statusText)
-		.accessibilityHint(pending.helpText)
-	}
-}
-
-extension AccountRoutePending {
-	var actionTitle: String {
-		switch waitReason {
-		case .externalCodex, .codexObservationUnavailable:
-			return "Waiting"
-		case .accountReadiness, .sharedAuthStabilizing, .sharedAuthUnavailable,
-			.projectionReadback:
-			return "Switching"
-		}
-	}
-
-	var statusText: String {
-		switch waitReason {
-		case .externalCodex, .codexObservationUnavailable:
-			return "Waiting for Codex to close or restart."
-		case .accountReadiness, .sharedAuthStabilizing, .sharedAuthUnavailable,
-			.projectionReadback:
-			return "Switching"
-		}
-	}
-
-	var helpText: String {
-		switch waitReason {
-		case .externalCodex:
-			return "Close Codex and ChatGPT. Reopen them after the account is ready."
-		case .codexObservationUnavailable:
-			return "Close Codex and ChatGPT so Decodex can finish safely."
-		case .accountReadiness, .sharedAuthStabilizing, .sharedAuthUnavailable,
-			.projectionReadback:
-			return "Decodex will finish the account switch automatically."
-		}
 	}
 }
 
@@ -287,7 +200,6 @@ struct AccountUtilityActionsView: View {
 
 	private var lifecycleActionIsDisabled: Bool {
 		store.canPerformDirectAccountControl == false
-			|| store.pendingRoute != nil
 			|| store.isAccountControlInProgress
 			|| store.submittingKey != nil
 	}

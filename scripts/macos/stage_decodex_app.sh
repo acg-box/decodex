@@ -35,7 +35,7 @@ verify_signing_team() {
 }
 
 cargo +stable build --locked --release --bin decodex-gpui
-cargo +stable build --locked --release --bin decodexd
+cargo +stable build --locked --release --bin decodex
 cargo +stable build --locked --release -p decodex-app-client-ffi --lib
 SWIFT_BIN=$(swift build --package-path "$MENU_BAR_PACKAGE" -c release --product DecodexMenuBar --show-bin-path)
 swift build --package-path "$MENU_BAR_PACKAGE" -c release --product DecodexMenuBar
@@ -49,31 +49,33 @@ rm -rf -- "$APP"
 mkdir -p "$MACOS" "$RESOURCES" "$FRAMEWORKS" "$HELPERS"
 cp "$ROOT/apps/decodex-gpui/packaging/Info.plist" "$CONTENTS/Info.plist"
 cp "$ROOT/target/release/decodex-gpui" "$MACOS/decodex-gpui"
-cp "$ROOT/target/release/decodexd" "$HELPERS/decodexd"
+cp "$ROOT/target/release/decodex" "$HELPERS/decodex"
 cp "$ROOT/target/release/$NATIVE_CLIENT_LIBRARY" "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY"
 cp "$SWIFT_BIN/$MENU_BAR_LIBRARY" "$FRAMEWORKS/$MENU_BAR_LIBRARY"
 cp "$ROOT/assets/app-icon/generated/app-icon.icns" "$RESOURCES/AppIcon.icns"
 cp "$ROOT/assets/tray-icon/generated/tray-icon-template.png" "$RESOURCES/StatusBarIcon.png"
 chmod 755 \
 	"$MACOS/decodex-gpui" \
-	"$HELPERS/decodexd" \
+	"$HELPERS/decodex" \
 	"$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY" \
 	"$FRAMEWORKS/$MENU_BAR_LIBRARY"
 
 python3 "$ROOT/scripts/macos/verify_decodex_bundle_contracts.py" \
-	--daemon "$HELPERS/decodexd" \
+	--service "$HELPERS/decodex" \
+	--app-info "$CONTENTS/Info.plist" \
 	--native-client "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY" \
-	--menu-bar "$FRAMEWORKS/$MENU_BAR_LIBRARY"
+	--menu-bar "$FRAMEWORKS/$MENU_BAR_LIBRARY" \
+	--stamp-app-info
 
 codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \
-	--identifier box.acg.decodex.daemon "$HELPERS/decodexd"
+	--identifier box.acg.decodex.cli "$HELPERS/decodex"
 codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \
 	--identifier box.acg.decodex.native-client "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY"
 codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \
 	--identifier box.acg.decodex.menu-bar "$FRAMEWORKS/$MENU_BAR_LIBRARY"
 codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" "$APP"
 for signed_path in \
-	"$HELPERS/decodexd" \
+	"$HELPERS/decodex" \
 	"$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY" \
 	"$FRAMEWORKS/$MENU_BAR_LIBRARY"
 do
@@ -90,7 +92,7 @@ test "$(plutil -extract CFBundleDisplayName raw "$CONTENTS/Info.plist")" = Decod
 test -f "$RESOURCES/AppIcon.icns"
 test -f "$RESOURCES/StatusBarIcon.png"
 test ! -e "$CONTENTS/Library/LoginItems"
-test -x "$HELPERS/decodexd"
+test -x "$HELPERS/decodex"
 test -x "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY"
 test -x "$FRAMEWORKS/$MENU_BAR_LIBRARY"
 

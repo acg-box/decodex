@@ -5174,6 +5174,11 @@ fn account_recovery(error: AccountLifecycleError) -> ConversationManualRecovery 
 		| AccountLifecycleError::CoordinatorUnavailable
 		| AccountLifecycleError::InvalidOperation
 		| AccountLifecycleError::CredentialImport
+		| AccountLifecycleError::CodexIsRunning
+		| AccountLifecycleError::AuthFileUnreadable
+		| AccountLifecycleError::AuthFileChanged
+		| AccountLifecycleError::AuthWriteFailed
+		| AccountLifecycleError::AuthReadbackMismatch
 		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::Ready) =>
 			ConversationManualRecovery::ProcessUnavailable,
 	}

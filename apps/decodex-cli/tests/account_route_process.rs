@@ -1,4 +1,4 @@
-//! Process-level account Route acceptance over the production daemon composition root.
+//! Process-level account Route acceptance over the production service composition root.
 
 #![cfg(all(target_os = "macos", feature = "process-acceptance-fixture", debug_assertions))]
 #![allow(unused_crate_dependencies)]
@@ -22,40 +22,39 @@ use std::{
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use decodex_core::{AccountId, AccountSelectionMode, DecodexRoot};
-use decodex_database::SqliteStore;
+use decodex_database::{RoutingControlOutcome, SqliteStore};
 use decodex_protocol::{
-	AccountClient, AccountCommandResponse, AccountRouteWaitReasonDto, AccountsResult,
-	ClientProfile, CodexAuthProjectionResult, CommandPayload, EntityId, EntityRevision,
+	AccountClient, AccountCommandRejectionDto, AccountCommandResponse, ClientProfile,
+	CodexAuthProjectionResult, CommandError, CommandPayload, EntityId, EntityRevision,
 	IdempotencyKey, ResultPayload, WireText,
 };
 use decodex_runtime::{HostCredentialStore as _, SqliteCredentialStore};
+use rusqlite::Connection;
 use serde_json::{Value, json};
 use tempfile::{TempDir, tempdir_in};
 use tokio::time;
 
-const READY_LINE: &str = "decodexd serving WebSocket /v1/ws over same-UID local transport";
+const READY_LINE: &str = "decodex serving WebSocket /v1/ws over same-UID local transport";
 const ACCOUNT_A: &str = "21000000-0000-4000-8000-0000000000a1";
 const ACCOUNT_B: &str = "21000000-0000-4000-8000-0000000000b1";
 const PROVIDER_A: &str = "process-fixture-provider-a";
 const PROVIDER_B: &str = "process-fixture-provider-b";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn actual_daemon_routes_a_b_a_restarts_and_routes_again_with_exact_readback() {
+async fn actual_service_routes_a_b_a_restarts_and_routes_again_with_exact_readback() {
 	let fixture = Fixture::new();
 	let initial_a = fixture.tokens(PROVIDER_A, "a-initial");
-	let initial_b = fixture.tokens(PROVIDER_B, "b-initial");
+	let mut initial_b = fixture.tokens(PROVIDER_B, "b-initial");
+	initial_b.expires_at_micros = 1;
+	initial_b.access_token = jwt(json!({"exp": 1, "fixture": "b-initial"}));
 	let routed_b = fixture.tokens(PROVIDER_B, "b-routed");
-	let routed_a = fixture.tokens(PROVIDER_A, "a-routed");
-	let restarted_b = fixture.tokens(PROVIDER_B, "b-restarted");
 	fixture.write_shared_auth(&initial_a);
 	let import_a = fixture.write_import("account-a.json", &initial_a);
 	let import_b = fixture.write_import("account-b.json", &initial_b);
-	let refresh = RefreshServer::start(vec![
-		(initial_b.refresh_token.clone(), routed_b.clone()),
-		(initial_a.refresh_token.clone(), routed_a.clone()),
-		(routed_b.refresh_token.clone(), restarted_b.clone()),
-	]);
-	let mut first = RunningDaemon::start(fixture.home(), refresh.endpoint());
+	let refresh = RefreshServer::start(vec![(initial_b.refresh_token.clone(), routed_b.clone())]);
+	fixture.set_codex_running(true);
+	let mut first =
+		RunningDaemon::start(fixture.home(), refresh.endpoint(), fixture.codex_running_marker());
 	let client = fixture.client();
 
 	import_account(
@@ -75,53 +74,80 @@ async fn actual_daemon_routes_a_b_a_restarts_and_routes_again_with_exact_readbac
 	)
 	.await;
 	wait_for_projection(&client, ACCOUNT_A).await;
-	let routed = route_account(
-		&client,
-		ACCOUNT_A,
-		"22000000-0000-4000-8000-0000000000a0",
-		"process-route-initial-a",
-	)
-	.await;
+	let routed = route_account(&client, ACCOUNT_A, "process-route-initial-a")
+		.await
+		.expect("already projected account routes idempotently");
 	fixture.assert_exact_readback(ACCOUNT_A, PROVIDER_A, &initial_a, routed).await;
 
-	let routed = route_account(
-		&client,
-		ACCOUNT_B,
-		"22000000-0000-4000-8000-0000000000b2",
-		"process-route-b",
-	)
-	.await;
+	let before_blocked_route = fixture.auth_and_routing_snapshot().await;
+	let started = Instant::now();
+	let blocked = route_account(&client, ACCOUNT_B, "process-route-b-blocked").await;
+	assert_eq!(blocked, Err(AccountCommandRejectionDto::CodexIsRunning));
+	assert!(started.elapsed() < Duration::from_secs(2), "codex_is_running must fail fast");
+	assert_eq!(
+		fixture.auth_and_routing_snapshot().await,
+		before_blocked_route,
+		"codex_is_running must not modify auth or routing"
+	);
+
+	fixture.set_codex_running(false);
+	let routed = route_account(&client, ACCOUNT_B, "process-route-b")
+		.await
+		.expect("one retry succeeds after Codex exits");
 	fixture.assert_exact_readback(ACCOUNT_B, PROVIDER_B, &routed_b, routed).await;
 
-	let routed = route_account(
-		&client,
-		ACCOUNT_A,
-		"22000000-0000-4000-8000-0000000000a2",
-		"process-route-a",
-	)
-	.await;
-	fixture.assert_exact_readback(ACCOUNT_A, PROVIDER_A, &routed_a, routed).await;
+	let routed = route_account(&client, ACCOUNT_A, "process-route-a")
+		.await
+		.expect("RouteAccount A succeeds without a running Codex process");
+	fixture.assert_exact_readback(ACCOUNT_A, PROVIDER_A, &initial_a, routed).await;
 	let first_output = first.stop();
 
-	let mut restarted = RunningDaemon::start(fixture.home(), refresh.endpoint());
+	fixture.write_shared_auth(&routed_b);
+	let interrupted_auth = fixture.auth_bytes();
+	let interrupted_credential = fixture.credential_bytes(ACCOUNT_B);
+	let mut restarted =
+		RunningDaemon::start(fixture.home(), refresh.endpoint(), fixture.codex_running_marker());
+	assert!(
+		matches!(fixture.routing_mode().await, AccountSelectionMode::Fixed(ref account_id) if account_id.as_str() == ACCOUNT_B),
+		"startup must repair the post-auth/pre-routing crash window"
+	);
+	assert_eq!(fixture.auth_bytes(), interrupted_auth, "startup must not rewrite exact auth bytes");
+	assert!(
+		fixture.credential_bytes(ACCOUNT_B) == interrupted_credential,
+		"startup must not rotate or rewrite exact credential bytes"
+	);
 	let restarted_client = fixture.client();
-	let routed = route_account(
-		&restarted_client,
-		ACCOUNT_B,
-		"22000000-0000-4000-8000-0000000000b3",
-		"process-route-b-after-restart",
-	)
-	.await;
-	fixture.assert_exact_readback(ACCOUNT_B, PROVIDER_B, &restarted_b, routed).await;
+	let routed = route_account(&restarted_client, ACCOUNT_B, "process-route-b-after-restart")
+		.await
+		.expect("RouteAccount B is idempotent after startup reconciliation");
+	fixture.assert_exact_readback(ACCOUNT_B, PROVIDER_B, &routed_b, routed).await;
 	let restarted_output = restarted.stop();
 
+	fixture.set_balanced_routing().await;
+	let balanced_auth = fixture.auth_bytes();
+	let balanced_credential = fixture.credential_bytes(ACCOUNT_B);
+	let mut balanced =
+		RunningDaemon::start(fixture.home(), refresh.endpoint(), fixture.codex_running_marker());
+	assert_eq!(
+		fixture.routing_mode().await,
+		AccountSelectionMode::Balanced,
+		"startup must not infer a fixed target while routing is balanced"
+	);
+	assert_eq!(fixture.auth_bytes(), balanced_auth, "balanced startup must not rewrite auth");
+	assert!(
+		fixture.credential_bytes(ACCOUNT_B) == balanced_credential,
+		"balanced startup must not rewrite credentials"
+	);
+	let balanced_output = balanced.stop();
+
 	refresh.finish();
-	let secrets = [initial_a, initial_b, routed_b, routed_a, restarted_b]
+	let secrets = [initial_a, initial_b, routed_b]
 		.into_iter()
 		.flat_map(TokenFixture::secret_values)
 		.collect::<Vec<_>>();
 	assert_no_credentials(&first_output, &secrets);
 	assert_no_credentials(&restarted_output, &secrets);
+	assert_no_credentials(&balanced_output, &secrets);
 }
 
 struct Fixture {
@@ -189,6 +215,19 @@ max_entry_bytes = 65536
 		AccountClient::new(profile)
 	}
 
+	fn codex_running_marker(&self) -> PathBuf {
+		self.home.join("codex-running.marker")
+	}
+
+	fn set_codex_running(&self, running: bool) {
+		let marker = self.codex_running_marker();
+		if running {
+			fs::write(marker, b"running").expect("create Codex-running fixture marker");
+		} else {
+			fs::remove_file(marker).expect("remove Codex-running fixture marker");
+		}
+	}
+
 	fn tokens(&self, provider: &str, suffix: &str) -> TokenFixture {
 		TokenFixture {
 			provider: provider.to_owned(),
@@ -212,6 +251,10 @@ max_entry_bytes = 65536
 	fn write_shared_auth(&self, tokens: &TokenFixture) {
 		let path = self.home.join(".codex/auth.json");
 		write_private_json(&path, &tokens.shared_auth());
+	}
+
+	fn auth_bytes(&self) -> Vec<u8> {
+		fs::read(self.home.join(".codex/auth.json")).expect("read isolated shared auth bytes")
 	}
 
 	fn write_import(&self, name: &str, tokens: &TokenFixture) -> PathBuf {
@@ -288,6 +331,41 @@ max_entry_bytes = 65536
 				== Some(tokens.id_token.as_str()),
 			"shared-auth identity credential must match SQLite"
 		);
+	}
+
+	async fn auth_and_routing_snapshot(&self) -> (Vec<u8>, AccountSelectionMode) {
+		let auth = self.auth_bytes();
+		let routing = self.routing_mode().await;
+		(auth, routing)
+	}
+
+	async fn routing_mode(&self) -> AccountSelectionMode {
+		let store = SqliteStore::open(&self.root.paths()).expect("open routing snapshot store");
+		store.read_account_routing_control().await.expect("read routing snapshot").mode
+	}
+
+	async fn set_balanced_routing(&self) {
+		let store = SqliteStore::open(&self.root.paths()).expect("open routing mutation store");
+		let routing = store.read_account_routing_control().await.expect("read routing revision");
+		assert!(matches!(
+			store
+				.set_balanced_account_selection(routing.revision)
+				.await
+				.expect("set isolated balanced routing"),
+			RoutingControlOutcome::Updated { .. }
+		));
+	}
+
+	fn credential_bytes(&self, account: &str) -> Vec<u8> {
+		let connection = Connection::open(self.root.paths().product_database_file())
+			.expect("open isolated credential database");
+		connection
+			.query_row(
+				"SELECT payload FROM account_credentials WHERE account_id = ?1",
+				[account],
+				|row| row.get(0),
+			)
+			.expect("read exact credential payload bytes")
 	}
 }
 
@@ -376,82 +454,37 @@ async fn import_account(
 async fn route_account(
 	client: &AccountClient,
 	account: &str,
-	operation: &str,
 	key: &str,
-) -> EntityRevision {
-	let (account_revision, routing_revision) = account_revisions(client, account).await;
-	let deadline = time::Instant::now() + Duration::from_secs(15);
-	let mut wait_reason = "none";
-	loop {
-		let response = client
-			.route_account(
-				entity(operation),
-				entity(account),
-				account_revision,
-				routing_revision,
-				idempotency(key),
-			)
-			.await
-			.expect("dispatch RouteAccount");
-		match response {
-			AccountCommandResponse::Applied { result, .. } => match *result {
-				ResultPayload::AccountRouted { account: routed, routing, .. } => {
-					assert!(
-						routed.account_id.as_str() == account,
-						"Route result account must be exact"
-					);
-					assert!(
-						matches!(routing.mode, decodex_protocol::AccountSelectionModeDto::Fixed(ref selected) if selected.as_str() == account),
-						"Route result routing mode must be exact"
-					);
-					return routed.account_revision;
-				},
-				ResultPayload::AccountRoutePending { pending } => {
-					wait_reason = match pending.wait_reason {
-						AccountRouteWaitReasonDto::ExternalCodex { .. } => "external_codex",
-						AccountRouteWaitReasonDto::CodexObservationUnavailable => {
-							"codex_observation_unavailable"
-						},
-						AccountRouteWaitReasonDto::AccountReadiness { .. } => "account_readiness",
-						AccountRouteWaitReasonDto::SharedAuthStabilizing => {
-							"shared_auth_stabilizing"
-						},
-						AccountRouteWaitReasonDto::SharedAuthUnavailable => {
-							"shared_auth_unavailable"
-						},
-						AccountRouteWaitReasonDto::ProjectionReadback => "projection_readback",
-					};
-				},
-				_ => panic!("RouteAccount returned an unrelated credential-negative result"),
+) -> Result<EntityRevision, AccountCommandRejectionDto> {
+	let response = client
+		.route_account(entity(account), idempotency(key))
+		.await
+		.expect("dispatch synchronous RouteAccount");
+	match response {
+		AccountCommandResponse::Applied { result, .. } => match *result {
+			ResultPayload::AccountRouted { account: routed, routing, .. } => {
+				assert_eq!(
+					routed.account_id.as_str(),
+					account,
+					"Route result account must be exact"
+				);
+				assert!(
+					matches!(routing.mode, decodex_protocol::AccountSelectionModeDto::Fixed(ref selected) if selected.as_str() == account),
+					"Route result routing mode must be exact"
+				);
+				Ok(routed.account_revision)
 			},
-			AccountCommandResponse::Rejected { .. } => {
-				panic!("RouteAccount was rejected without credential output")
-			},
-			AccountCommandResponse::PotentiallyDispatched { .. } => {},
-		}
-		assert!(
-			time::Instant::now() < deadline,
-			"RouteAccount {key} did not settle before deadline: {wait_reason}"
-		);
-		time::sleep(Duration::from_millis(100)).await;
+			_ => panic!("RouteAccount returned an unrelated credential-negative result"),
+		},
+		AccountCommandResponse::Rejected {
+			error: CommandError::AccountCommandRejected { rejection, .. },
+		} => Err(rejection),
+		AccountCommandResponse::Rejected { error } =>
+			panic!("RouteAccount was rejected: {error:?}"),
+		AccountCommandResponse::PotentiallyDispatched { failure } => {
+			panic!("RouteAccount acceptance was uncertain: {failure:?}")
+		},
 	}
-}
-
-async fn account_revisions(
-	client: &AccountClient,
-	account: &str,
-) -> (EntityRevision, EntityRevision) {
-	let AccountsResult::Available { accounts, routing: Some(routing), .. } =
-		client.list().await.expect("list exact account state")
-	else {
-		panic!("account state must be available");
-	};
-	let account_revision = accounts
-		.iter()
-		.find(|candidate| candidate.account_id.as_str() == account)
-		.map(|candidate| candidate.account_revision)
-		.expect("target account must exist");
-	(account_revision, routing.revision)
 }
 
 async fn wait_for_projection(client: &AccountClient, account: &str) {
@@ -557,10 +590,12 @@ struct RunningDaemon {
 }
 
 impl RunningDaemon {
-	fn start(home: &Path, refresh_endpoint: &str) -> Self {
-		let mut child = Command::new(env!("CARGO_BIN_EXE_decodexd"))
+	fn start(home: &Path, refresh_endpoint: &str, codex_running_marker: PathBuf) -> Self {
+		let mut child = Command::new(env!("CARGO_BIN_EXE_decodex"))
+			.arg("serve")
 			.env("HOME", home)
 			.env("DECODEX_PROCESS_TEST_REFRESH_ENDPOINT", refresh_endpoint)
+			.env("DECODEX_PROCESS_TEST_CODEX_RUNNING_MARKER", codex_running_marker)
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
 			.spawn()

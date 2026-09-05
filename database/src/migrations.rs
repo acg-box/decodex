@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 11;
+const CURRENT_SCHEMA_VERSION: i64 = 12;
 
 struct Migration {
 	version: i64,
@@ -69,6 +69,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 11,
 		name: "desktop_settings",
 		sql: include_str!("../migrations/0011_desktop_settings.sql"),
+	},
+	Migration {
+		version: 12,
+		name: "terminal_account_route_upgrade",
+		sql: include_str!("../migrations/0012_terminal_account_route_upgrade.sql"),
 	},
 ];
 

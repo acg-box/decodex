@@ -79,7 +79,6 @@ pub(crate) enum ConnectionView {
 pub(crate) enum CompatibilityReason {
 	Startup(ClientFailure),
 	InvalidEndpoint,
-	ProtocolMajor,
 	ProtocolMinor,
 	PublicationIdentityUnavailable,
 }
@@ -1111,13 +1110,7 @@ impl ClientLifecycle {
 
 				Some(RunResult::Incompatible)
 			},
-			RetainedSessionFailure::ProtocolMajorMismatch => {
-				self.set_view(ConnectionView::Incompatible(CompatibilityReason::ProtocolMajor));
-
-				Some(RunResult::Incompatible)
-			},
-			RetainedSessionFailure::ProtocolMinorMismatch
-			| RetainedSessionFailure::ArtifactCohortMismatch => {
+			RetainedSessionFailure::ServiceVersionMismatch => {
 				self.set_view(ConnectionView::Incompatible(CompatibilityReason::ProtocolMinor));
 
 				Some(RunResult::Incompatible)

@@ -168,7 +168,7 @@ impl SettingsSurface {
 		match self.controller.set_show_in_menu_bar(!settings.show_in_menu_bar) {
 			Ok(()) => {
 				self.runtime = MenuBarRuntimeState::Waiting;
-				self.detail = "Saving the menu-bar preference through decodexd.".into();
+				self.detail = "Saving the menu-bar preference through the Decodex service.".into();
 			},
 			Err(error) => {
 				self.detail = input_error_detail(error).into();
@@ -452,12 +452,10 @@ const fn launch_at_login_detail(state: LaunchAtLoginState) -> &'static str {
 	match state {
 		LaunchAtLoginState::NotRegistered => "Decodex does not start automatically at login.",
 		LaunchAtLoginState::Enabled => "macOS will start Decodex quietly when you sign in.",
-		LaunchAtLoginState::RequiresApproval => {
-			"macOS requires approval in System Settings > General > Login Items."
-		},
-		LaunchAtLoginState::NotFound => {
-			"Install Decodex.app in Applications before enabling launch at login."
-		},
+		LaunchAtLoginState::RequiresApproval =>
+			"macOS requires approval in System Settings > General > Login Items.",
+		LaunchAtLoginState::NotFound =>
+			"Install Decodex.app in Applications before enabling launch at login.",
 		LaunchAtLoginState::OperationFailed => "The macOS login-item state is unavailable.",
 	}
 }
@@ -482,7 +480,7 @@ fn settings_header() -> impl IntoElement {
 				.line_height(px(17.0))
 				.text_color(rgb(TEXT_MUTED))
 				.child(
-					"Decodex.app owns the main window and the optional menu-bar item. decodexd owns product behavior and persistent settings.",
+					"Decodex.app owns the main window and the optional menu-bar item. The Decodex service owns product behavior and persistent settings.",
 				),
 		)
 }
@@ -563,7 +561,7 @@ fn authority_boundary() -> impl IntoElement {
 				.text_size(px(11.5))
 				.child(boundary_node("DECODEX.APP", "window · menu bar", BLUE))
 				.child(boundary_edge("typed protocol"))
-				.child(boundary_node("DECODEXD", "state · behavior · effects", GREEN)),
+				.child(boundary_node("DECODEX SERVICE", "state · behavior · effects", GREEN)),
 		)
 }
 
@@ -602,20 +600,17 @@ const fn settings_detail(snapshot: DesktopSettingsSnapshot) -> &'static str {
 		DesktopSettingsLoadState::NeverRequested => "Waiting for the Decodex settings query.",
 		DesktopSettingsLoadState::Loading => "Loading the daemon-owned menu-bar preference.",
 		DesktopSettingsLoadState::Ready => match snapshot.command {
-			DesktopSettingsCommandState::Sending | DesktopSettingsCommandState::AwaitingResult => {
-				"Saving the menu-bar preference through decodexd."
-			},
-			DesktopSettingsCommandState::OutcomeUnknown => {
-				"Reading back the menu-bar preference after an uncertain response."
-			},
-			DesktopSettingsCommandState::Refused => {
-				"decodexd refused the menu-bar preference change."
-			},
-			DesktopSettingsCommandState::Idle | DesktopSettingsCommandState::Accepted => {
-				"The daemon-owned menu-bar preference is current."
-			},
+			DesktopSettingsCommandState::Sending | DesktopSettingsCommandState::AwaitingResult =>
+				"Saving the menu-bar preference through the Decodex service.",
+			DesktopSettingsCommandState::OutcomeUnknown =>
+				"Reading back the menu-bar preference after an uncertain response.",
+			DesktopSettingsCommandState::Refused =>
+				"The Decodex service refused the menu-bar preference change.",
+			DesktopSettingsCommandState::Idle | DesktopSettingsCommandState::Accepted =>
+				"The daemon-owned menu-bar preference is current.",
 		},
-		DesktopSettingsLoadState::Offline => "Connect to decodexd to read desktop settings.",
+		DesktopSettingsLoadState::Offline =>
+			"Connect to the Decodex service to read desktop settings.",
 		DesktopSettingsLoadState::Unavailable => "Daemon-owned desktop settings are unavailable.",
 		DesktopSettingsLoadState::Refused => "The desktop settings response was invalid.",
 	}
@@ -623,12 +618,12 @@ const fn settings_detail(snapshot: DesktopSettingsSnapshot) -> &'static str {
 
 const fn input_error_detail(error: DesktopSettingsInputError) -> &'static str {
 	match error {
-		DesktopSettingsInputError::Offline => "Connect to decodexd before changing this setting.",
+		DesktopSettingsInputError::Offline =>
+			"Connect to the Decodex service before changing this setting.",
 		DesktopSettingsInputError::Busy => "Wait for the current settings request to finish.",
 		DesktopSettingsInputError::NotLoaded => "Wait for daemon-owned settings to load.",
-		DesktopSettingsInputError::IdentityUnavailable => {
-			"Decodex could not create a bounded settings command identity."
-		},
+		DesktopSettingsInputError::IdentityUnavailable =>
+			"Decodex could not create a bounded settings command identity.",
 	}
 }
 

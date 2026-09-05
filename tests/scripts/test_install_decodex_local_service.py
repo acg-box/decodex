@@ -60,15 +60,14 @@ class LocalServiceInstallerTests(unittest.TestCase):
             log_directory=root / "logs",
             service_log=root / "logs/local-service.log",
             launch_agent=root / "space.decodex.local-service.plist",
-            decodexd=root / "bin/decodexd",
-            decodex_cli=root / "bin/decodex",
+            decodex=root / "bin/decodex",
             database_transfer=root / "bin/decodex-database-transfer",
             codex=root / "codex-bin/codex",
         )
 
-    def daemon_executable(self):
+    def service_executable(self):
         return {
-            "identifier": "box.acg.decodex.daemon",
+            "identifier": "box.acg.decodex.cli",
             "team_identifier": "T54QFA7W2S",
             "sha256": "1" * 64,
         }
@@ -83,7 +82,6 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 "outcome": "available",
                 "data": {
                     "accounts": accounts,
-                    "pending_route": None,
                     "routing": {
                         "revision": 1,
                         "mode": {"mode": "balanced"},
@@ -127,7 +125,9 @@ class LocalServiceInstallerTests(unittest.TestCase):
         ):
             with self.subTest(term=retired_term):
                 self.assertNotIn(retired_term, source)
-        self.assertIn('[str(paths.decodexd), "serve"]', source)
+        self.assertIn('[str(paths.decodex), "serve"]', source)
+        self.assertNotIn("decodexd", source)
+        self.assertNotIn("artifact_cohort", source)
         self.assertIn('"initialize-local-database"', source)
         self.assertIn('"validate-local-database"', source)
 
@@ -144,8 +144,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 repository=REPO_ROOT,
                 root=root,
                 launch_agent=root / "agent.plist",
-                decodexd=root / "decodexd",
-                decodex_cli=root / "decodex",
+                decodex=root / "decodex",
                 database_transfer=root / "decodex-database-transfer",
                 codex=root / "codex",
             )
@@ -167,7 +166,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
         self.assertNotIn("database", config_document)
         self.assertEqual(
             launch_agent["ProgramArguments"],
-            [str(paths.decodexd), "serve"],
+            [str(paths.decodex), "serve"],
         )
         self.assertEqual(set(launch_agent["EnvironmentVariables"]), {"HOME", "PATH"})
         self.assertEqual(launch_agent["KeepAlive"], {"SuccessfulExit": False})
@@ -198,34 +197,34 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 ["config.toml"],
             )
 
-    def test_daemon_digest_refuses_symlink_alias_and_unsafe_mode(self) -> None:
+    def test_service_digest_refuses_symlink_alias_and_unsafe_mode(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            executable = root / "decodexd"
-            executable.write_bytes(b"signed-daemon-fixture")
+            executable = root / "decodex"
+            executable.write_bytes(b"signed-service-fixture")
             executable.chmod(0o755)
-            expected = self.module.hashlib.sha256(b"signed-daemon-fixture").hexdigest()
+            expected = self.module.hashlib.sha256(b"signed-service-fixture").hexdigest()
             self.assertEqual(
-                self.module.executable_sha256(executable, "Decodex daemon"),
+                self.module.executable_sha256(executable, "Decodex service"),
                 expected,
             )
 
-            symlink = root / "decodexd-symlink"
+            symlink = root / "decodex-symlink"
             symlink.symlink_to(executable)
             with self.assertRaisesRegex(self.module.InstallError, "authority is unsafe"):
-                self.module.executable_sha256(symlink, "Decodex daemon")
+                self.module.executable_sha256(symlink, "Decodex service")
 
-            alias = root / "decodexd-alias"
+            alias = root / "decodex-alias"
             os.link(executable, alias)
             with self.assertRaisesRegex(self.module.InstallError, "authority is unsafe"):
-                self.module.executable_sha256(executable, "Decodex daemon")
+                self.module.executable_sha256(executable, "Decodex service")
             alias.unlink()
 
             executable.chmod(0o775)
             with self.assertRaisesRegex(self.module.InstallError, "authority is unsafe"):
-                self.module.executable_sha256(executable, "Decodex daemon")
+                self.module.executable_sha256(executable, "Decodex service")
 
-    def test_signed_peer_must_match_daemon_team_and_optional_identifier(self) -> None:
+    def test_signed_peer_must_match_service_team_and_optional_identifier(self) -> None:
         descriptor = {
             "identifier": "box.acg.decodex.database-transfer",
             "team_identifier": "T54QFA7W2S",
@@ -253,19 +252,19 @@ class LocalServiceInstallerTests(unittest.TestCase):
                     "box.acg.decodex.database-transfer",
                 )
 
-    def test_launch_agent_daemon_binding_is_exact(self) -> None:
+    def test_launch_agent_service_binding_is_exact(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths = self.paths(Path(temp))
             paths.launch_agent.write_bytes(self.module.render_launch_agent(paths))
             paths.launch_agent.chmod(0o600)
-            expected = self.daemon_executable()
+            expected = self.service_executable()
             with mock.patch.object(
                 self.module,
-                "inspect_daemon_executable",
+                "inspect_service_executable",
                 return_value=expected,
             ):
                 self.assertEqual(
-                    self.module.verify_daemon_executable(
+                    self.module.verify_service_executable(
                         paths,
                         expected,
                         require_launch_agent=True,
@@ -281,20 +280,105 @@ class LocalServiceInstallerTests(unittest.TestCase):
         document["result"]["data"]["routing"]["order"] = [second, first]
         self.assertIsNone(self.module.account_ids_from_result(document))
 
-    def test_account_list_parser_accepts_only_exact_pending_route_projection(self) -> None:
+    def test_account_list_parser_accepts_current_cli_shape_and_rejects_retired_pending(self) -> None:
         first = "10000000-0000-4000-8000-000000000001"
         second = "10000000-0000-4000-8000-000000000002"
-        operation = "20000000-0000-4000-8000-000000000001"
         document = self.account_document([first, second])
+        self.assertEqual(self.module.account_ids_from_result(document), [first, second])
+
         document["result"]["data"]["pending_route"] = {
-            "operation_id": operation,
+            "operation_id": "20000000-0000-4000-8000-000000000001",
             "account_id": second,
             "routing_revision": 1,
         }
-        self.assertEqual(self.module.account_ids_from_result(document), [first, second])
-
-        document["result"]["data"]["pending_route"]["routing_revision"] = 2
         self.assertIsNone(self.module.account_ids_from_result(document))
+
+    @unittest.skipUnless(
+        (REPO_ROOT / "target/debug/decodex").is_file(),
+        "build the unified debug CLI before the real-output installer check",
+    )
+    def test_current_real_cli_account_list_output_is_accepted(self) -> None:
+        executable = REPO_ROOT / "target/debug/decodex"
+        with tempfile.TemporaryDirectory(dir=Path.home()) as temporary:
+            home = Path(temporary).resolve()
+            home.chmod(0o700)
+            root = home / ".decodex"
+            subprocess.run(
+                [
+                    str(executable),
+                    "initialize-local-database",
+                    "--root",
+                    str(root),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            config = root / "config.toml"
+            config.write_text(
+                "\n".join(
+                    [
+                        "version = 1",
+                        'active_profile = "local"',
+                        "",
+                        "[profiles.local]",
+                        'kind = "local"',
+                        'policy = "same_uid"',
+                        f"service_owner_uid = {os.geteuid()}",
+                        "",
+                        "[cache]",
+                        "max_entries = 16",
+                        "max_bytes = 1048576",
+                        "max_entry_bytes = 65536",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            config.chmod(0o600)
+            environment = os.environ.copy()
+            environment["HOME"] = str(home)
+            service = subprocess.Popen(
+                [str(executable), "serve"],
+                cwd=root,
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            try:
+                self.assertEqual(
+                    service.stdout.readline().strip(),
+                    "decodex serving WebSocket /v1/ws over same-UID local transport",
+                )
+                completed = subprocess.run(
+                    [
+                        str(executable),
+                        "--root",
+                        str(root),
+                        "--output",
+                        "json",
+                        "account",
+                        "list",
+                    ],
+                    cwd=root,
+                    env=environment,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                if completed.returncode != 0:
+                    self.fail(completed.stderr or completed.stdout)
+                document = json.loads(completed.stdout)
+                self.assertEqual(self.module.account_ids_from_result(document), [])
+                self.assertEqual(
+                    set(document["result"]["data"]),
+                    {"accounts", "routing"},
+                )
+            finally:
+                if service.poll() is None:
+                    service.terminate()
+                service.communicate(timeout=10)
 
     def test_retired_snapshot_is_captured_only_before_sqlite_exists(self) -> None:
         account_id = "10000000-0000-4000-8000-000000000001"
@@ -359,7 +443,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
         )
         self.assertNotIn("credentials.redb", " ".join(run.call_args.args[0]))
 
-    def test_database_commands_use_only_the_installed_daemon_and_root(self) -> None:
+    def test_database_commands_use_only_the_installed_service_and_root(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths = self.paths(Path(temp))
             completed = subprocess.CompletedProcess([], 0, "", "")
@@ -370,68 +454,19 @@ class LocalServiceInstallerTests(unittest.TestCase):
             [call.args[0] for call in run.call_args_list],
             [
                 [
-                    str(paths.decodexd),
+                    str(paths.decodex),
                     "initialize-local-database",
                     "--root",
                     str(paths.root),
                 ],
                 [
-                    str(paths.decodexd),
+                    str(paths.decodex),
                     "validate-local-database",
                     "--root",
                     str(paths.root),
                 ],
             ],
         )
-
-    def test_artifact_cohort_requires_exact_daemon_cli_agreement(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            paths = self.paths(Path(temp))
-            cohort = {
-                "schema": "decodex/artifact-cohort/1",
-                "artifact_cohort": 1,
-                "protocol": {"major": 2, "minor": 5},
-            }
-            responses = [
-                subprocess.CompletedProcess([], 0, json.dumps(cohort), ""),
-                subprocess.CompletedProcess([], 0, json.dumps(cohort), ""),
-            ]
-            with mock.patch.object(self.module, "run", side_effect=responses) as run:
-                self.assertEqual(
-                    self.module.verify_artifact_cohort(paths),
-                    self.module.ArtifactCohort(1, 2, 5),
-                )
-            self.assertEqual(
-                [call.args[0] for call in run.call_args_list],
-                [
-                    [str(paths.decodexd), "artifact-cohort"],
-                    [str(paths.decodex_cli), "--output", "json", "artifact-cohort"],
-                ],
-            )
-            self.assertTrue(
-                all(call.kwargs["cwd"] == paths.root for call in run.call_args_list)
-            )
-
-            stale_cli = dict(cohort)
-            stale_cli["artifact_cohort"] = 2
-            responses = [
-                subprocess.CompletedProcess([], 0, json.dumps(cohort), ""),
-                subprocess.CompletedProcess([], 0, json.dumps(stale_cli), ""),
-            ]
-            with mock.patch.object(self.module, "run", side_effect=responses):
-                with self.assertRaisesRegex(
-                    self.module.InstallError,
-                    "artifact cohort differs",
-                ):
-                    self.module.verify_artifact_cohort(paths)
-
-            old_target = subprocess.CompletedProcess([], 2, "", "old command")
-            with mock.patch.object(self.module, "run", return_value=old_target):
-                with self.assertRaisesRegex(
-                    self.module.InstallError,
-                    "daemon artifact cohort is unavailable",
-                ):
-                    self.module.verify_artifact_cohort(paths)
 
     def test_fresh_and_transfer_install_paths_are_separate(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -442,13 +477,12 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 paths,
                 os.geteuid(),
             )
-            daemon = self.daemon_executable()
+            service = self.service_executable()
             try:
                 with (
                     mock.patch.object(self.module, "ensure_directories"),
-                    mock.patch.object(self.module, "verify_daemon_executable"),
+                    mock.patch.object(self.module, "verify_service_executable"),
                     mock.patch.object(self.module, "verify_signed_peer"),
-                    mock.patch.object(self.module, "verify_artifact_cohort"),
                     mock.patch.object(self.module, "initialize_local_database") as initialize,
                     mock.patch.object(self.module, "transfer_retired_accounts", return_value=6) as transfer,
                     mock.patch.object(self.module, "validate_local_database"),
@@ -469,7 +503,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
                             paths,
                             os.geteuid(),
                             namespace_lock,
-                            daemon,
+                            service,
                             None,
                         ),
                         0,
@@ -482,7 +516,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
                             paths,
                             os.geteuid(),
                             namespace_lock,
-                            daemon,
+                            service,
                             b"snapshot",
                         ),
                         6,
@@ -490,10 +524,27 @@ class LocalServiceInstallerTests(unittest.TestCase):
                     transfer.assert_called_once_with(
                         paths,
                         b"snapshot",
-                        daemon["team_identifier"],
+                        service["team_identifier"],
                     )
             finally:
                 namespace_lock.close()
+
+    def test_build_info_is_diagnostic_identity_from_the_one_executable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            document = {
+                "schema": "decodex/build-info/1",
+                "version": "0.2.0",
+                "commit": "1" * 40,
+                "dirty": False,
+            }
+            completed = subprocess.CompletedProcess([], 0, json.dumps(document), "")
+            with mock.patch.object(self.module, "run", return_value=completed) as run:
+                self.assertEqual(self.module.read_build_info(paths), document)
+        self.assertEqual(
+            run.call_args.args[0],
+            [str(paths.decodex), "--output", "json", "build-info"],
+        )
 
     def test_doctor_requires_the_service_foundation_to_be_ready(self) -> None:
         document = self.doctor_document()
@@ -522,7 +573,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             paths = self.paths(Path(temp))
             args = argparse.Namespace(no_launch=False)
-            daemon = self.daemon_executable()
+            service = self.service_executable()
             namespace_lock = FakeNamespaceLock()
             output = io.StringIO()
             account_id = "10000000-0000-4000-8000-000000000001"
@@ -532,15 +583,20 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 mock.patch.object(self.module, "validate_host", return_value=501),
                 mock.patch.object(
                     self.module,
-                    "inspect_daemon_executable",
-                    return_value=daemon,
+                    "inspect_service_executable",
+                    return_value=service,
                 ),
                 mock.patch.object(self.module, "verify_signed_peer"),
                 mock.patch.object(self.module, "ensure_installer_namespace_layout"),
                 mock.patch.object(
                     self.module,
-                    "verify_artifact_cohort",
-                    return_value=self.module.ArtifactCohort(1, 2, 5),
+                    "read_build_info",
+                    return_value={
+                        "schema": "decodex/build-info/1",
+                        "version": "0.2.0",
+                        "commit": "1" * 40,
+                        "dirty": False,
+                    },
                 ),
                 mock.patch.object(
                     self.module,
@@ -573,8 +629,12 @@ class LocalServiceInstallerTests(unittest.TestCase):
         self.assertEqual(result["account_count"], 1)
         self.assertEqual(result["account_transfer"], "completed")
         self.assertTrue(result["retired_sources_retained"])
-        self.assertEqual(result["artifact_cohort"], 1)
-        self.assertEqual(result["protocol"], {"major": 2, "minor": 5})
+        self.assertNotIn("artifact_cohort", result)
+        self.assertNotIn("protocol", result)
+        self.assertEqual(
+            result["build"],
+            {"version": "0.2.0", "commit": "1" * 40, "dirty": False},
+        )
         self.assertTrue(result["launched"])
         self.assertTrue(namespace_lock.closed)
 

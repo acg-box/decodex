@@ -1,4 +1,4 @@
-//! Bounded Decodex daemon and local product command clients.
+//! Unified Decodex service and bounded local product command clients.
 
 use std::{
 	fmt::{Debug, Formatter},
@@ -9,20 +9,26 @@ use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use tokio as _;
 
+#[cfg(test)] use base64 as _;
+#[cfg(test)] use decodex_core as _;
+#[cfg(test)] use decodex_database as _;
+#[cfg(test)] use rusqlite as _;
+
 use decodex_protocol::{
-	AppServerCapability, CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, ClientFailure, ClientProfile,
-	DoctorClient, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, ProfileKind, ServerId,
+	AppServerCapability, ClientFailure, ClientProfile, DoctorClient, DoctorComponent, DoctorIssue,
+	DoctorReport, DoctorStatus, ProfileKind, ServerId,
 };
 
 mod account;
 mod fast_mode;
 mod reset_card;
+mod service;
 
 const OUTPUT_SCHEMA: &str = "decodex/cli-diagnostics/1";
 
-/// Decodex daemon and local product command client.
+/// Decodex service and local product command client.
 #[derive(Parser)]
-#[command(name = "decodex", version, about)]
+#[command(name = "decodex", version, about, arg_required_else_help = true)]
 pub struct Cli {
 	/// Select a declared profile instead of the configured active profile.
 	#[arg(long, global = true, value_name = "NAME")]
@@ -30,7 +36,7 @@ pub struct Cli {
 	/// Read the typed configuration from this Decodex-owned root.
 	#[arg(long, global = true, value_name = "PATH")]
 	root: Option<PathBuf>,
-	/// Require this stable server identity for the selected daemon profile.
+	/// Require this stable server identity for the selected service profile.
 	#[arg(long, global = true, value_name = "UUID")]
 	expected_server_id: Option<String>,
 	/// Select human-readable or stable structured output.
@@ -103,26 +109,39 @@ struct FailureDocument {
 }
 
 #[derive(Serialize)]
-struct ArtifactCohortDocument {
+struct BuildInfoDocument {
 	schema: &'static str,
-	artifact_cohort: u32,
-	protocol: decodex_protocol::ProtocolVersion,
+	version: &'static str,
+	commit: &'static str,
+	dirty: bool,
 }
 
 /// Supported Decodex operations.
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum Command {
-	/// Print the exact local artifact/protocol cohort without contacting the daemon.
+	/// Print diagnostic version and source-build identity without contacting the service.
 	#[command(hide = true)]
-	ArtifactCohort,
-	/// Summarize daemon readiness while retaining every typed check.
+	BuildInfo,
+	/// Serve the same-UID Decodex protocol and own local product state.
+	Serve {
+		/// Inherited Unix socket whose EOF binds this service to one desktop-app lifetime.
+		#[arg(long, hide = true)]
+		parent_fd: Option<i32>,
+	},
+	/// Initialize or upgrade the bundled SQLite product database.
+	#[command(hide = true)]
+	InitializeLocalDatabase,
+	/// Verify the bundled SQLite database and migration ledger.
+	#[command(hide = true)]
+	ValidateLocalDatabase,
+	/// Summarize service readiness while retaining every typed check.
 	Status,
 	/// Render the complete authoritative diagnostic report.
 	Doctor,
-	/// Observe and consume reset cards through the common daemon authority.
+	/// Observe and consume reset cards through the common service authority.
 	#[command(subcommand)]
 	ResetCard(reset_card::ResetCardCommand),
-	/// Manage daemon-owned accounts through the same-UID V2.13 protocol.
+	/// Manage service-owned accounts through the same-UID protocol.
 	#[command(subcommand)]
 	Account(account::AccountCommand),
 	/// Read or update the current user's local Codex Fast mode setting.
@@ -159,7 +178,12 @@ pub async fn execute(cli: Cli) -> CommandOutput {
 	let Cli { profile, root, expected_server_id, output, command } = cli;
 
 	let command = match command {
-		Command::ArtifactCohort => return render_artifact_cohort(output),
+		Command::BuildInfo => return render_build_info(output),
+		Command::Serve { parent_fd } => return service::serve(parent_fd).await,
+		Command::InitializeLocalDatabase =>
+			return service::initialize_local_database(root.as_deref()).await,
+		Command::ValidateLocalDatabase =>
+			return service::validate_local_database(root.as_deref()).await,
 		Command::Account(command) => {
 			return account::execute(
 				command,
@@ -201,17 +225,18 @@ pub async fn execute(cli: Cli) -> CommandOutput {
 	render_report(command, output, client.profile().kind(), &report)
 }
 
-fn render_artifact_cohort(format: OutputFormat) -> CommandOutput {
-	let document = ArtifactCohortDocument {
-		schema: "decodex/artifact-cohort/1",
-		artifact_cohort: CURRENT_ARTIFACT_COHORT,
-		protocol: CURRENT_VERSION,
+fn render_build_info(format: OutputFormat) -> CommandOutput {
+	let document = BuildInfoDocument {
+		schema: "decodex/build-info/1",
+		version: env!("CARGO_PKG_VERSION"),
+		commit: env!("DECODEX_BUILD_COMMIT"),
+		dirty: env!("DECODEX_BUILD_DIRTY") == "true",
 	};
 	let text = match format {
 		OutputFormat::Json => serde_json::to_string(&document),
 		OutputFormat::Human => serde_json::to_string_pretty(&document),
 	}
-	.expect("artifact cohort output serialization cannot fail");
+	.expect("build identity serialization cannot fail");
 	CommandOutput { text, exit_code: 0, error_stream: false }
 }
 
@@ -487,22 +512,33 @@ mod tests {
 			command.get_subcommands().map(|command| command.get_name()).collect::<Vec<_>>();
 		assert_eq!(
 			commands,
-			["artifact-cohort", "status", "doctor", "reset-card", "account", "fast-mode"]
+			[
+				"build-info",
+				"serve",
+				"initialize-local-database",
+				"validate-local-database",
+				"status",
+				"doctor",
+				"reset-card",
+				"account",
+				"fast-mode",
+			]
 		);
 
 		let doctor = Cli::try_parse_from(["decodex", "--profile", "remote", "doctor"])
 			.expect("test operation must succeed");
 		let status = Cli::try_parse_from(["decodex", "status", "--output", "json"])
 			.expect("test operation must succeed");
-		let artifact_cohort =
-			Cli::try_parse_from(["decodex", "--output", "json", "artifact-cohort"])
-				.expect("artifact cohort command must parse");
 
 		assert_eq!(doctor.command, Command::Doctor);
 		assert_eq!(doctor.profile.as_deref(), Some("remote"));
 		assert_eq!(status.command, Command::Status);
 		assert_eq!(status.output, OutputFormat::Json);
-		assert_eq!(artifact_cohort.command, Command::ArtifactCohort);
+		assert!(matches!(
+			Cli::try_parse_from(["decodex", "serve"]).expect("explicit serve must parse").command,
+			Command::Serve { parent_fd: None }
+		));
+		assert!(Cli::try_parse_from(["decodex"]).is_err());
 		assert!(Cli::try_parse_from(["decodex", "commit"]).is_err());
 		assert!(Cli::try_parse_from(["decodex", "land"]).is_err());
 		assert!(Cli::try_parse_from(["decodex", "git-hook"]).is_err());
@@ -510,20 +546,16 @@ mod tests {
 	}
 
 	#[test]
-	fn artifact_cohort_output_is_exact_and_daemon_independent() {
-		let output = crate::render_artifact_cohort(OutputFormat::Json);
+	fn build_info_is_diagnostic_and_service_independent() {
+		let output = crate::render_build_info(OutputFormat::Json);
 		let value: serde_json::Value =
-			serde_json::from_str(output.text()).expect("artifact cohort JSON");
+			serde_json::from_str(output.text()).expect("build-info JSON");
 
 		assert_eq!(output.exit_code(), 0);
-		assert_eq!(
-			value,
-			serde_json::json!({
-				"schema": "decodex/artifact-cohort/1",
-				"artifact_cohort": decodex_protocol::CURRENT_ARTIFACT_COHORT,
-				"protocol": decodex_protocol::CURRENT_VERSION,
-			}),
-		);
+		assert_eq!(value["schema"], "decodex/build-info/1");
+		assert_eq!(value["version"], env!("CARGO_PKG_VERSION"));
+		assert_eq!(value["commit"], env!("DECODEX_BUILD_COMMIT"));
+		assert!(value["dirty"].is_boolean());
 	}
 
 	#[test]
@@ -636,9 +668,7 @@ mod tests {
 			ClientFailure::LocalPeerUidMismatch,
 			ClientFailure::ProtocolDisconnected,
 			ClientFailure::ProtocolTimeout,
-			ClientFailure::ProtocolMajorMismatch,
-			ClientFailure::ProtocolMinorMismatch,
-			ClientFailure::ArtifactCohortMismatch,
+			ClientFailure::ServiceVersionMismatch,
 			ClientFailure::ServerIdentityMismatch,
 			ClientFailure::ProtocolMalformed,
 			ClientFailure::ProtocolViolation,

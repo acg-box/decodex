@@ -1,4 +1,4 @@
-//! Operator account client over the same-UID V2.13 daemon protocol.
+//! Operator account client over the same-UID Decodex protocol.
 
 use std::path::{Path, PathBuf};
 
@@ -17,9 +17,9 @@ const ACCOUNT_OUTPUT_SCHEMA: &str = "decodex/cli-account/1";
 pub enum AccountCommand {
 	/// Read the canonical fast account skeleton and routing controls.
 	List,
-	/// Inspect one daemon-owned account row.
+	/// Inspect one service-owned account row.
 	Inspect(AccountIdentityArgs),
-	/// Read one bounded daemon-observed account profile.
+	/// Read one bounded service-observed account profile.
 	Profile(AccountProfileArgs),
 	/// Read the current normal shared Codex authentication projection.
 	CodexProjection,
@@ -33,13 +33,13 @@ pub enum AccountCommand {
 	Disable(AdministrationArgs),
 	/// Log out and tombstone one account.
 	Logout(OperationAccountArgs),
-	/// Refresh, project, and select one account through one daemon-owned Route command.
+	/// Refresh, project, and select one account through one synchronous service command.
 	Route(RouteArgs),
 	/// Select balanced initial account routing.
 	SetBalancedSelection(RoutingRevisionArgs),
 	/// Replace the complete deterministic account order.
 	SetAccountOrder(AccountOrderArgs),
-	/// Refresh one account through the serialized daemon path.
+	/// Refresh one account through the serialized service path.
 	Refresh(OperationAccountArgs),
 	/// Apply one typed manual credential-operation recovery action.
 	Recover(RecoverArgs),
@@ -111,13 +111,7 @@ pub struct OperationAccountArgs {
 #[derive(Clone, Debug, Eq, PartialEq, Args)]
 pub struct RouteArgs {
 	#[arg(long)]
-	operation_id: String,
-	#[arg(long)]
 	account_id: String,
-	#[arg(long)]
-	expected_account_revision: u64,
-	#[arg(long)]
-	expected_revision: u64,
 	#[arg(long)]
 	idempotency_key: String,
 }
@@ -198,35 +192,11 @@ pub async fn execute(
 			return render("codex_projection", format, client.codex_auth_projection().await);
 		},
 		AccountCommand::Route(args) => {
-			let input = (
-				entity(&args.operation_id),
-				entity(&args.account_id),
-				revision(args.expected_account_revision),
-				revision(args.expected_revision),
-				idempotency_key(args.idempotency_key),
-			);
-			let (
-				Ok(operation_id),
-				Ok(account_id),
-				Ok(account_revision),
-				Ok(routing_revision),
-				Ok(key),
-			) = input
-			else {
+			let input = (entity(&args.account_id), idempotency_key(args.idempotency_key));
+			let (Ok(account_id), Ok(key)) = input else {
 				return invalid_input();
 			};
-			return render_command(
-				format,
-				client
-					.route_account(
-						operation_id,
-						account_id,
-						account_revision,
-						routing_revision,
-						key,
-					)
-					.await,
-			);
+			return render_command(format, client.route_account(account_id, key).await);
 		},
 		AccountCommand::SetBalancedSelection(args) => {
 			let input = (revision(args.expected_revision), idempotency_key(args.idempotency_key));
@@ -480,6 +450,23 @@ mod tests {
 	}
 
 	#[test]
+	fn running_codex_rejection_keeps_its_stable_public_code() {
+		let output = render_command(
+			OutputFormat::Json,
+			Ok(AccountCommandResponse::Rejected {
+				error: CommandError::AccountCommandRejected {
+					rejection: AccountCommandRejectionDto::CodexIsRunning,
+					actual_revision: None,
+				},
+			}),
+		);
+		let value: serde_json::Value = serde_json::from_str(output.text()).unwrap();
+
+		assert_eq!(output.exit_code(), 1);
+		assert_eq!(value["result"]["data"]["error"]["rejection"], "codex_is_running");
+	}
+
+	#[test]
 	fn enroll_and_import_accept_explicit_false_without_changing_the_true_default() {
 		let enroll = Cli::try_parse_from([
 			"decodex",
@@ -528,24 +515,18 @@ mod tests {
 			"decodex",
 			"account",
 			"route",
-			"--operation-id",
-			OPERATION_ID,
 			"--account-id",
 			ACCOUNT_ID,
-			"--expected-account-revision",
-			"7",
-			"--expected-revision",
-			"2",
 			"--idempotency-key",
 			"route-account",
 		])
-		.expect("daemon-owned Route must parse");
+		.expect("service-owned Route must parse");
 
 		assert!(matches!(status.command, Command::Account(AccountCommand::CodexProjection)));
 		assert!(matches!(
 			route.command,
 			Command::Account(AccountCommand::Route(args))
-				if args.expected_account_revision == 7 && args.expected_revision == 2
+				if args.account_id == ACCOUNT_ID && args.idempotency_key == "route-account"
 		));
 		assert!(
 			Cli::try_parse_from(["decodex", "account", "rename", "--account-id", ACCOUNT_ID,])

@@ -13,12 +13,12 @@ version        = 1
 #   decodex account profile --account-id 10000000-0000-4000-8000-000000000001
 #   decodex reset-card list --account 10000000-0000-4000-8000-000000000001
 # It verifies the negotiated V1.5 contract and stable server identity before it accepts
-# daemon results. `--root PATH` selects another typed Decodex root for isolated
+# service results. `--root PATH` selects another typed Decodex root for isolated
 # operation or tests. Use `--profile NAME --expected-server-id UUID` to retain an
 # explicitly pinned authority. Reset-card operations currently reject remote profiles
 # until authenticated remote transport exists.
 
-# Local means the client and decodexd share one owner effective UID on one host.
+# Local means the client and `decodex serve` share one owner effective UID on one host.
 # The fixed endpoint is ~/.decodex/server/decodex.sock. Replace 501 with the
 # exact output of `id -u` for the account that owns this Decodex root.
 [profiles.local]

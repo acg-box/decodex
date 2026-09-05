@@ -987,8 +987,7 @@ private actor PerAccountGenerationClient: AccountControlClient, AccountProfileCl
 				revision: 1,
 				mode: .balanced,
 				order: [firstAccount.accountID, secondAccount.accountID]
-			),
-			pendingRoute: nil
+			)
 		)
 	}
 

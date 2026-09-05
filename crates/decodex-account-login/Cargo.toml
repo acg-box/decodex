@@ -1,6 +1,6 @@
 [package]
 authors.workspace    = true
-description          = "Bounded source-derived OpenAI Codex account-login engine for decodexd."
+description          = "Bounded source-derived OpenAI Codex account-login engine for decodex serve."
 edition.workspace    = true
 homepage.workspace   = true
 license.workspace    = true

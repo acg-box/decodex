@@ -351,7 +351,6 @@ final class ResetCardStore {
 
 	private(set) var accounts = [ResetCardAccountState]()
 	private(set) var routing: AccountRoutingControl?
-	private(set) var pendingRoute: AccountRoutePending?
 	private(set) var codexAuthProjection: CodexAuthProjection?
 	private(set) var isRefreshing = false
 	private(set) var refreshSkeletonIsPublished = false
@@ -472,7 +471,6 @@ final class ResetCardStore {
 
 	var canBeginEnrollment: Bool {
 		accountControlClient != nil
-			&& pendingRoute == nil
 			&& canPerformDirectAccountControl
 			&& isAccountControlInProgress == false
 	}
@@ -483,7 +481,6 @@ final class ResetCardStore {
 		}
 		let accountIDs = accounts.map { $0.account.accountID }
 		return accountControlClient != nil
-			&& pendingRoute == nil
 			&& accountIDs.count > 1
 			&& accountIDs.count == routing.order.count
 			&& Set(accountIDs) == Set(routing.order)
@@ -922,7 +919,6 @@ final class ResetCardStore {
 				{
 					routing = snapshotRouting
 				}
-				pendingRoute = snapshot.pendingRoute
 				discovered = snapshot.accounts
 			} else {
 				discovered = try await client.accounts(authority: retainedAuthority)
@@ -1295,17 +1291,11 @@ final class ResetCardStore {
 	}
 
 	func canRouteAccount(_ accountID: String) -> Bool {
-		guard pendingRoute?.accountID != accountID else {
-			return false
-		}
 		guard let state = accounts.first(where: { $0.account.accountID == accountID }) else {
 			return false
 		}
 		guard state.routeCapability == .ready else {
 			return false
-		}
-		if pendingRoute != nil {
-			return true
 		}
 		let isFixedRoute: Bool
 		if let routing,
@@ -1354,8 +1344,7 @@ final class ResetCardStore {
 		_ accountID: String,
 		enabled: Bool
 	) async {
-		guard pendingRoute == nil,
-			let account = accountRecord(accountID),
+		guard let account = accountRecord(accountID),
 			let accountControlClient
 		else {
 			presentAccountControlUnavailable()
@@ -1379,8 +1368,7 @@ final class ResetCardStore {
 	}
 
 	func logoutAccount(_ accountID: String) async {
-		guard pendingRoute == nil,
-			let account = accountRecord(accountID),
+		guard let account = accountRecord(accountID),
 			let accountControlClient
 		else {
 			presentAccountControlUnavailable()
@@ -1422,8 +1410,7 @@ final class ResetCardStore {
 		} else {
 			needsFixedRouting = true
 		}
-		let replacesPendingRoute = pendingRoute != nil
-		guard needsCodexProjection || needsFixedRouting || replacesPendingRoute else {
+		guard needsCodexProjection || needsFixedRouting else {
 			return
 		}
 
@@ -1436,10 +1423,7 @@ final class ResetCardStore {
 			operation: {
 				try await accountControlClient.routeAccount(
 					authority: account.authority ?? establishedAuthority,
-					operationID: Self.newCanonicalUUID(),
 					accountID: accountID,
-					expectedAccountRevision: account.accountRevision,
-					expectedRoutingRevision: routing.revision,
 					idempotencyKey: Self.newCanonicalUUID()
 				)
 			}
@@ -1447,8 +1431,7 @@ final class ResetCardStore {
 	}
 
 	func selectBalancedAccounts() async {
-		guard pendingRoute == nil,
-			let routing,
+		guard let routing,
 			let accountControlClient
 		else {
 			presentAccountControlUnavailable()
@@ -2298,7 +2281,6 @@ final class ResetCardStore {
 			if let snapshotRouting = snapshot.routing {
 				routing = snapshotRouting
 			}
-			pendingRoute = snapshot.pendingRoute
 			var accountsNeedingDetails = [(
 				accountID: String,
 				refreshInventory: Bool
@@ -3474,7 +3456,6 @@ final class ResetCardStore {
 		case .routed(let account, let routing, let projectionDigest):
 			let followUp = applyAccountChange(account)
 			self.routing = routing
-			pendingRoute = nil
 			_ = reorderAccountStates(to: routing.order)
 			codexProjectionRequestGeneration &+= 1
 			codexAuthProjection = .current(
@@ -3483,9 +3464,6 @@ final class ResetCardStore {
 				projectionDigest: projectionDigest
 			)
 			return followUp
-		case .routePending(let pending):
-			pendingRoute = pending
-			return .none
 		case .accountLoggedOut(let accountID, _):
 			if case .current(let projectedID, _, _) = codexAuthProjection,
 				projectedID == accountID

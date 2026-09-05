@@ -1483,8 +1483,14 @@ dependencies = [
 name = "decodex-cli"
 version = "0.2.0"
 dependencies = [
+ "base64",
  "clap",
+ "decodex-core",
+ "decodex-database",
  "decodex-protocol",
+ "decodex-runtime",
+ "libc",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
@@ -1624,22 +1630,6 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "zeroize",
-]
-
-[[package]]
-name = "decodexd"
-version = "0.2.0"
-dependencies = [
- "base64",
- "clap",
- "decodex-core",
- "decodex-database",
- "decodex-protocol",
- "decodex-runtime",
- "libc",
- "serde_json",
- "tempfile",
- "tokio",
 ]
 
 [[package]]

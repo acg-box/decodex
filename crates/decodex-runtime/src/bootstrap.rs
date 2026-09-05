@@ -18,10 +18,7 @@ use crate::{
 	account_observation::AccountObservationService,
 	account_profile::AccountProfileRuntime,
 	account_service::{AccountService, OpenAiCredentialRefresher},
-	application::{
-		ProductStore, ProductStoreUnavailableReason, ServiceApplication,
-		recover_pending_account_routes_once,
-	},
+	application::{ProductStore, ProductStoreUnavailableReason, ServiceApplication},
 	conversation::{ConversationCapability, ConversationReadiness, ConversationRuntime},
 	managed_repository_runtime::{
 		ManagedRepositoryCapability, ManagedRepositoryReadiness, ManagedRepositoryUnavailableReason,
@@ -171,15 +168,6 @@ impl ServiceBootstrap {
 				)),
 			_ => None,
 		};
-		if let (ProductStore::Available(store), Some(accounts)) = (&store, &accounts) {
-			let _ = store.release_interrupted_account_route_claims().await;
-			let _ = recover_pending_account_routes_once(
-				Arc::clone(accounts),
-				store,
-				account_observations.as_ref(),
-			)
-			.await;
-		}
 		let account_login = match (&store, &accounts) {
 			(ProductStore::Available(store), Some(accounts)) =>
 				Some(Arc::new(crate::account_login::AccountLoginManager::new(
