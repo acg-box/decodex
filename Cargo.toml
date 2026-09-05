@@ -3,7 +3,6 @@ members = [
 	"apps/decodex-cli",
 	"apps/decodex-gpui",
 	"apps/decodex-publisher",
-	"apps/decodexd",
 	"apps/radar",
 	"crates/decodex-account-login",
 	"crates/decodex-app-client-ffi",

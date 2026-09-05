@@ -62,54 +62,71 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
             "database/migrations/0003_quick_task_execution_controls.sql"
         )
         desktop_settings = read("database/migrations/0011_desktop_settings.sql")
+        route_upgrade = read(
+            "database/migrations/0012_terminal_account_route_upgrade.sql"
+        )
         self.assertIn("schema_migrations", migrations)
         self.assertIn("0002_nonempty_task_instructions.sql", migrations)
         self.assertIn("0003_quick_task_execution_controls.sql", migrations)
         self.assertIn("0011_desktop_settings.sql", migrations)
+        self.assertIn("0012_terminal_account_route_upgrade.sql", migrations)
         self.assertIn("BETWEEN 1 AND 65536", repair)
         self.assertIn("Follow the user request for this task.", repair)
         for column in ("model", "reasoning_effort", "fast"):
             self.assertIn(f"ADD COLUMN {column}", execution_controls)
         self.assertIn("CREATE TABLE desktop_settings", desktop_settings)
         self.assertIn("show_in_menu_bar", desktop_settings)
+        self.assertIn("interrupted_by_upgrade", route_upgrade)
+        self.assertIn("DELETE FROM command_receipts", route_upgrade)
+        self.assertIn("legacy_account_route_interruptions", route_upgrade)
         self.assertIn("TransactionBehavior::Immediate", migrations)
         self.assertIn("PRAGMA foreign_keys = ON", migrations)
         self.assertIn("PRAGMA synchronous = FULL", migrations)
         self.assertIn("PRAGMA journal_mode = WAL", migrations)
 
-    def test_daemon_composes_sqlite_directly(self) -> None:
+    def test_service_composes_sqlite_directly(self) -> None:
         bootstrap = read("crates/decodex-runtime/src/bootstrap.rs")
         application = read("crates/decodex-runtime/src/application.rs")
-        daemon = read("apps/decodexd/src/main.rs")
+        service = read("apps/decodex-cli/src/lib.rs")
         self.assertIn("SqliteStore::open", bootstrap)
         self.assertIn("Available(SqliteStore)", application)
         self.assertIn("ProductStore::Available(store)", application)
-        self.assertIn("InitializeLocalDatabase", daemon)
-        self.assertIn("ValidateLocalDatabase", daemon)
-        self.assertNotIn("SuperviseLocal", daemon)
-        self.assertNotIn("BootstrapLatestSchema", daemon)
+        self.assertIn("InitializeLocalDatabase", service)
+        self.assertIn("ValidateLocalDatabase", service)
+        self.assertIn("Serve", service)
+        self.assertNotIn("SuperviseLocal", service)
+        self.assertNotIn("BootstrapLatestSchema", service)
+        self.assertFalse((ROOT / "apps/decodexd").exists())
+        self.assertNotIn("apps/decodexd", toml("Cargo.toml")["workspace"]["members"])
 
     def test_clients_remain_protocol_only(self) -> None:
-        for manifest_path in ("apps/decodex-cli/Cargo.toml", "apps/decodex-gpui/Cargo.toml"):
+        for manifest_path in ("apps/decodex-gpui/Cargo.toml",):
             dependencies = toml(manifest_path)["dependencies"]
             with self.subTest(manifest=manifest_path):
                 self.assertIn("decodex-protocol", dependencies)
                 self.assertNotIn("decodex-database", dependencies)
                 self.assertNotIn("rusqlite", dependencies)
                 self.assertNotIn("redb", dependencies)
+        cli_dependencies = toml("apps/decodex-cli/Cargo.toml")["dependencies"]
+        self.assertIn("decodex-protocol", cli_dependencies)
+        self.assertIn("decodex-runtime", cli_dependencies)
+        self.assertNotIn("decodex-database", cli_dependencies)
+        self.assertNotIn("rusqlite", cli_dependencies)
+        self.assertNotIn("redb", cli_dependencies)
 
-    def test_exact_current_protocol_and_artifact_cohort_cross_every_bundle_boundary(self) -> None:
+    def test_exact_current_protocol_and_build_identity_cross_every_bundle_boundary(self) -> None:
         protocol = read("crates/decodex-protocol/src/lib.rs")
         gpui = read("apps/decodex-gpui/src/client_lifecycle/tests.rs")
         native_client = read("crates/decodex-app-client-ffi/src/lib.rs")
         staging = read("scripts/macos/stage_decodex_app.sh")
         bundle_verifier = read("scripts/macos/verify_decodex_bundle_contracts.py")
-        self.assertIn("ProtocolVersion { major: 2, minor: 13 }", protocol)
-        self.assertIn("CURRENT_ARTIFACT_COHORT: u32 = 9", protocol)
-        self.assertIn("assert_eq!(CURRENT_VERSION.minor, 13)", gpui)
-        self.assertIn("decodex_protocol::CURRENT_ARTIFACT_COHORT", native_client)
+        self.assertIn("ProtocolVersion { major: 2, minor: 14 }", protocol)
+        self.assertIn("assert_eq!(CURRENT_VERSION.minor, 14)", gpui)
+        self.assertIn("decodex_app_native_client_abi_version", native_client)
         self.assertIn("verify_decodex_bundle_contracts.py", staging)
-        self.assertIn("decodex_app_native_client_artifact_cohort", bundle_verifier)
+        self.assertIn('"decodex/build-info/1"', bundle_verifier)
+        self.assertIn("DecodexBuildCommit", bundle_verifier)
+        self.assertNotIn("artifact_cohort", bundle_verifier)
 
     def test_gpui_is_the_only_macos_gui_and_loads_the_original_swift_menu_bar(self) -> None:
         for retired in (
@@ -172,7 +189,7 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
                 self.assertNotIn(retired, settings + staging + native_menu_bar)
         self.assertIn('APP="$STAGE_ROOT/Decodex.app"', staging)
         self.assertIn('HELPERS="$CONTENTS/Helpers"', staging)
-        self.assertIn('cp "$ROOT/target/release/decodexd" "$HELPERS/decodexd"', staging)
+        self.assertIn('cp "$ROOT/target/release/decodex" "$HELPERS/decodex"', staging)
         self.assertIn("--product DecodexMenuBar", staging)
         self.assertIn(
             'DEFAULT_SIGN_IDENTITY="4EBCADF6B4D513E45CE33EC6934C08DBB0F03D7F"',
@@ -193,17 +210,18 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertNotIn("LSBackgroundOnly", plist)
         service_stage = read("scripts/macos/stage_decodex_local_service.sh")
         self.assertIn(
-            'install -m 755 "$ROOT/target/$PROFILE/decodexd" "$STAGE_ROOT/decodexd"',
+            'install -m 755 "$ROOT/target/$PROFILE/decodex" "$STAGE_ROOT/decodex"',
             service_stage,
         )
+        self.assertNotIn("decodexd", service_stage)
         self.assertNotIn(".app", service_stage)
 
-    def test_shared_auth_coordinator_is_read_only_until_quiescent_cutover(self) -> None:
+    def test_account_route_is_synchronous_fail_fast_and_terminal_only(self) -> None:
         coordinator = read(
             "crates/decodex-runtime/src/shared_auth_coordinator.rs"
         )
-        application = read("crates/decodex-runtime/src/application.rs")
         account_service = read("crates/decodex-runtime/src/account_service.rs")
+        application = read("crates/decodex-runtime/src/application.rs")
         wire = read("crates/decodex-protocol/src/wire.rs")
         menu = read(
             "apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift"
@@ -216,10 +234,53 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertIn("MacosCodexHomeRelation::Isolated", coordinator)
         self.assertIn("CodexLivenessObservation::Blocked", coordinator)
         self.assertIn("project_shared_codex_auth_cas", coordinator)
-        self.assertIn("AccountRouteWaitReasonDto", wire)
-        self.assertIn("AccountRoutePendingStatusView", menu)
-        self.assertIn("Waiting for Codex to close or restart.", menu)
-        self.assertNotIn("PID \\(blocker.pid)", menu)
+        self.assertNotIn("AccountRoutePending", wire + menu + account_service)
+        self.assertNotIn("AccountRouteWaitReason", wire + menu + account_service)
+        self.assertNotIn("recover_pending_account_routes", account_service)
+        self.assertNotIn("route_command_lock", account_service)
+        for rejection in (
+            "CodexIsRunning",
+            "AccountDisabled",
+            "CredentialMissing",
+            "CredentialNeedsLogin",
+            "CredentialRefreshRejected",
+            "CredentialRefreshUnavailable",
+            "AuthFileUnreadable",
+            "AuthFileChanged",
+            "AuthWriteFailed",
+            "AuthReadbackMismatch",
+        ):
+            with self.subTest(rejection=rejection):
+                self.assertIn(rejection, wire)
+        route_start = account_service.index("route_account_command_sync")
+        route_end = account_service.index("async fn confirm_shared_auth_target_locked")
+        route = account_service[route_start:route_end]
+        self.assertIn("liveness_observation", route)
+        self.assertIn("read_current_exact", route)
+        self.assertIn("project_shared_auth_locked", route)
+        self.assertLess(
+            route.index("liveness_observation"),
+            route.index("refresh_while_locked"),
+        )
+        route_error_start = application.index("fn account_route_command_error")
+        route_error_end = application.index("fn routing_command_result")
+        self.assertNotIn(
+            "LifecycleUnready",
+            application[route_error_start:route_error_end],
+        )
+        startup_start = account_service.index(
+            "async fn reconcile_projected_fixed_route_on_startup"
+        )
+        startup_end = account_service.index(
+            "pub async fn recover_operation",
+            startup_start,
+        )
+        startup = account_service[startup_start:startup_end]
+        self.assertIn("AccountSelectionMode::Fixed", startup)
+        self.assertIn("read_current_exact", startup)
+        self.assertIn("same_refresh_bundle", startup)
+        self.assertNotIn("refresh_while_locked", startup)
+        self.assertNotIn("project_if_quiescent", startup)
         self.assertNotIn("auth.json", menu)
         self.assertNotIn("atomic shared-auth", menu)
         for forbidden in (
@@ -229,10 +290,6 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
             "SIGKILL",
         ):
             self.assertNotIn(forbidden, coordinator)
-        self.assertLess(
-            application.index("shared_auth_may_be_running"),
-            application.index("reclaim_account_route_command"),
-        )
         self.assertNotIn("reproject_shared", account_service)
 
     def test_credentials_are_narrow_and_daemon_private(self) -> None:
@@ -265,7 +322,7 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         account_service = read("crates/decodex-runtime/src/account_service.rs")
         bootstrap = read("crates/decodex-runtime/src/bootstrap.rs")
         shared_auth = read("crates/decodex-runtime/src/shared_auth_coordinator.rs")
-        process_test = read("apps/decodexd/tests/account_route_process.rs")
+        process_test = read("apps/decodex-cli/tests/account_route_process.rs")
         supervisor_test = read("apps/decodex-gpui/src/bundled_daemon.rs")
         self.assertIn(
             '#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]',
@@ -280,8 +337,12 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertIn("process_acceptance_fixture_endpoint().is_some()", bootstrap)
         self.assertIn("AccountApiRuntime::new", bootstrap)
         self.assertIn("process_acceptance_fixture_endpoint().is_some()", shared_auth)
-        self.assertIn('CARGO_BIN_EXE_decodexd', process_test)
-        self.assertIn('actual_daemon_routes_a_b_a', process_test)
+        self.assertIn('CARGO_BIN_EXE_decodex', process_test)
+        self.assertIn('actual_service_routes_a_b_a', process_test)
+        self.assertIn("reconcile_projected_fixed_route_on_startup", account_service)
+        self.assertIn("startup must repair the post-auth/pre-routing crash window", process_test)
+        self.assertIn("startup must not infer a fixed target while routing is balanced", process_test)
+        self.assertIn("startup must not rotate or rewrite exact credential bytes", process_test)
         self.assertIn('assert_no_credentials', process_test)
         self.assertIn('process_listener_loss_restarts_exact_owned_daemon', supervisor_test)
         self.assertIn('process_recovery_never_terminates_independently_managed_daemon', supervisor_test)

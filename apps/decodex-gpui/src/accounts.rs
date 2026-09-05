@@ -12,12 +12,12 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Notify;
 
 use decodex_protocol::{
-	AccountDto, AccountRoutePendingDto, AccountRoutingControlDto, AccountSelectionModeDto,
-	AccountsResult, CURRENT_VERSION, CausationId, ClientCommandId,
-	CommandEnvelope, CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope,
-	CorrelationId, EntityId, EntityRevision, EventEnvelope, EventPayload, IdempotencyKey,
-	QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload,
-	ReceiptDisposition, ResultPayload, ServerId,
+	AccountCommandRejectionDto, AccountDto, AccountRoutingControlDto, AccountSelectionModeDto,
+	AccountsResult, CURRENT_VERSION, CausationId, ClientCommandId, CommandEnvelope, CommandError,
+	CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope, CorrelationId, EntityId,
+	EntityRevision, EventEnvelope, EventPayload, IdempotencyKey, QueryEnvelope, QueryId,
+	QueryPayload, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ResultPayload,
+	ServerId,
 };
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
@@ -29,7 +29,7 @@ pub(crate) struct AccountsSnapshot {
 	pub(crate) command: AccountCommandState,
 	pub(crate) accounts: Vec<AccountDto>,
 	pub(crate) routing: Option<AccountRoutingControlDto>,
-	pub(crate) pending_route: Option<AccountRoutePendingDto>,
+	pub(crate) rejection: Option<AccountCommandRejectionDto>,
 	pub(crate) can_manage: bool,
 	pub(crate) can_route: bool,
 	pub(crate) route_reopen_notice: bool,
@@ -179,32 +179,19 @@ impl AccountsController {
 
 	pub(crate) fn select_fixed(&self, account_id: &EntityId) -> Result<(), AccountInputError> {
 		let mut state = self.lock();
-		let account_revision = state
-			.accounts
-			.iter()
-			.find(|account| &account.account_id == account_id)
-			.map(|account| account.account_revision)
-			.ok_or(AccountInputError::AccountMissing)?;
-		let routing_revision = state
-			.routing
-			.as_ref()
-			.map(|routing| routing.revision)
-			.ok_or(AccountInputError::RoutingUnavailable)?;
+		if !state.accounts.iter().any(|account| &account.account_id == account_id) {
+			return Err(AccountInputError::AccountMissing);
+		}
+		if state.routing.is_none() {
+			return Err(AccountInputError::RoutingUnavailable);
+		}
 		if state.routing.as_ref().is_some_and(|routing| {
 			matches!(&routing.mode, AccountSelectionModeDto::Fixed(current) if current == account_id)
 		}) {
 			return Ok(());
 		}
-		let operation_id = EntityId::new(canonical_uuid_v4()?)
-			.map_err(|_| AccountInputError::IdentityUnavailable)?;
-		state.queue_command(
-			CommandPayload::RouteAccount {
-				operation_id,
-				account_id: account_id.clone(),
-				expected_account_revision: account_revision,
-			},
-			Some(routing_revision),
-		)?;
+		state
+			.queue_command(CommandPayload::RouteAccount { account_id: account_id.clone() }, None)?;
 		drop(state);
 		self.inner.notify.notify_one();
 		Ok(())
@@ -399,25 +386,11 @@ impl AccountsController {
 				if matches!(&routing.mode, AccountSelectionModeDto::Fixed(selected) if selected == &account.account_id)
 					&& routing.revision == event.entity_revision =>
 			{
-				let completes_pending = state
-					.pending_route
-					.as_ref()
-					.is_none_or(|pending| pending.account_id == account.account_id);
 				state.upsert_account((**account).clone());
 				state.routing = Some(routing.clone());
-				state.pending_route = None;
-				state.route_reopen_notice = completes_pending;
-				state.command = if completes_pending {
-					AccountCommandState::Accepted
-				} else {
-					AccountCommandState::Refused
-				};
+				state.route_reopen_notice = true;
+				state.command = AccountCommandState::Accepted;
 				state.sort_accounts();
-			},
-			EventPayload::AccountRoutePending { pending } => {
-				state.pending_route = Some(pending.clone());
-				state.route_reopen_notice = false;
-				state.command = AccountCommandState::AwaitingResult;
 			},
 			_ => {},
 		}
@@ -448,30 +421,9 @@ impl AccountsController {
 		}
 		state.in_flight_query = None;
 		match &result.payload {
-			QueryResultPayload::Accounts(AccountsResult::Available {
-				accounts,
-				routing,
-				pending_route,
-			}) => {
-				let pending_target =
-					state.pending_route.as_ref().map(|pending| pending.account_id.clone());
+			QueryResultPayload::Accounts(AccountsResult::Available { accounts, routing }) => {
 				state.accounts = accounts.clone();
 				state.routing = routing.clone();
-				state.pending_route = pending_route.clone();
-				if pending_route.is_some() {
-					state.route_reopen_notice = false;
-					state.command = AccountCommandState::AwaitingResult;
-				} else if let Some(pending_target) = pending_target {
-					let exact_target_ready = routing.as_ref().is_some_and(|routing| {
-						matches!(&routing.mode, AccountSelectionModeDto::Fixed(account_id) if account_id == &pending_target)
-					});
-					state.command = if exact_target_ready {
-						AccountCommandState::Accepted
-					} else {
-						AccountCommandState::Refused
-					};
-					state.route_reopen_notice = exact_target_ready;
-				}
 				state.sort_accounts();
 				state.load = AccountsLoadState::Ready;
 				AccountRouteOutcome::Fresh
@@ -549,14 +501,11 @@ impl AccountsController {
 			state.in_flight_command.take().expect("matching account command remains in flight");
 		let (outcome, query_queued) = match result.outcome {
 			CommandOutcome::Succeeded => {
+				state.rejection = None;
 				let logout_succeeded =
 					matches!(&in_flight.envelope.payload, CommandPayload::LogoutAccount { .. });
 				if state.apply_success(&in_flight.envelope, result) {
-					state.command = if state.pending_route.is_some() {
-						AccountCommandState::AwaitingResult
-					} else {
-						AccountCommandState::Accepted
-					};
+					state.command = AccountCommandState::Accepted;
 					let query_queued = if logout_succeeded {
 						state.reset_query();
 						state.queue_list()
@@ -574,6 +523,11 @@ impl AccountsController {
 				(AccountRouteOutcome::Fresh, false)
 			},
 			CommandOutcome::Rejected => {
+				state.rejection = match result.error.as_ref() {
+					Some(CommandError::AccountCommandRejected { rejection, .. }) =>
+						Some(*rejection),
+					_ => None,
+				};
 				state.command = AccountCommandState::Refused;
 				(AccountRouteOutcome::Fresh, false)
 			},
@@ -619,7 +573,7 @@ struct State {
 	command: AccountCommandState,
 	accounts: Vec<AccountDto>,
 	routing: Option<AccountRoutingControlDto>,
-	pending_route: Option<AccountRoutePendingDto>,
+	rejection: Option<AccountCommandRejectionDto>,
 	route_reopen_notice: bool,
 }
 
@@ -638,7 +592,7 @@ impl State {
 			command: AccountCommandState::Idle,
 			accounts: Vec::new(),
 			routing: None,
-			pending_route: None,
+			rejection: None,
 			route_reopen_notice: false,
 		}
 	}
@@ -646,7 +600,6 @@ impl State {
 	fn snapshot(&self) -> AccountsSnapshot {
 		let idle = self.session.is_some()
 			&& self.load == AccountsLoadState::Ready
-			&& self.pending_route.is_none()
 			&& self.pending_command.is_none()
 			&& self.in_flight_command.is_none()
 			&& !matches!(
@@ -660,7 +613,7 @@ impl State {
 			command: self.command,
 			accounts: self.accounts.clone(),
 			routing: self.routing.clone(),
-			pending_route: self.pending_route.clone(),
+			rejection: self.rejection,
 			can_manage: idle,
 			can_route: idle,
 			route_reopen_notice: self.route_reopen_notice,
@@ -718,6 +671,7 @@ impl State {
 			payload,
 		});
 		self.route_reopen_notice = false;
+		self.rejection = None;
 		self.command = AccountCommandState::Sending;
 		Ok(())
 	}
@@ -793,20 +747,8 @@ impl State {
 			{
 				self.upsert_account((**account).clone());
 				self.routing = Some(routing.clone());
-				self.pending_route = None;
 				self.route_reopen_notice = true;
 				self.sort_accounts();
-				true
-			},
-			(
-				CommandPayload::RouteAccount { account_id, .. },
-				Some(ResultPayload::AccountRoutePending { pending }),
-			) if pending.account_id == *account_id
-				&& result.entity_revision == Some(pending.routing_revision) =>
-			{
-				self.pending_route = Some(pending.clone());
-				self.route_reopen_notice = false;
-				self.command = AccountCommandState::AwaitingResult;
 				true
 			},
 			(
@@ -967,7 +909,6 @@ mod tests {
 					payload: QueryResultPayload::Accounts(AccountsResult::Available {
 						accounts: vec![second.clone(), first.clone()],
 						routing: Some(routing.clone()),
-						pending_route: None,
 					}),
 				},
 			),
@@ -983,14 +924,10 @@ mod tests {
 		let dispatch =
 			controller.try_take_dispatch(2, &server).expect("fixed selection queues one command");
 		let command = dispatch.command().expect("fixed selection dispatches a command").clone();
-		assert_eq!(command.expected_revision, Some(EntityRevision(5)));
+		assert_eq!(command.expected_revision, None);
 		assert!(matches!(
 			&command.payload,
-			CommandPayload::RouteAccount {
-				operation_id,
-				account_id,
-				expected_account_revision: EntityRevision(7),
-			} if account_id == &second.account_id && operation_id.as_str().len() == 36
+			CommandPayload::RouteAccount { account_id } if account_id == &second.account_id
 		));
 		controller.command_sent(&dispatch);
 		let routed = AccountRoutingControlDto {
@@ -1022,93 +959,6 @@ mod tests {
 		let routed_snapshot = controller.snapshot();
 		assert_eq!(routed_snapshot.routing, Some(routed));
 		assert!(routed_snapshot.route_reopen_notice);
-		assert!(routed_snapshot.pending_route.is_none());
-	}
-
-	#[test]
-	fn pending_snapshot_does_not_trigger_a_second_route_for_the_current_target() {
-		let controller = AccountsController::production();
-		let server = server();
-		let first = account("10000000-0000-4000-8000-000000000001", "Primary", true, 3);
-		let second = account("10000000-0000-4000-8000-000000000002", "Reserve", true, 7);
-		controller.bind_session(2, server.clone());
-		controller.activate();
-		let AccountDispatch::Query(query) = controller.try_take_dispatch(2, &server).unwrap() else {
-			panic!("account activation must query")
-		};
-		let routing = AccountRoutingControlDto {
-			revision: EntityRevision(5),
-			mode: AccountSelectionModeDto::Fixed(second.account_id.clone()),
-			order: vec![first.account_id.clone(), second.account_id.clone()],
-		};
-		assert_eq!(
-			controller.route_query_result(
-				2,
-				&server,
-				&QueryResultEnvelope {
-					version: CURRENT_VERSION,
-					server_id: server.clone(),
-					query_id: query.query_id,
-					payload: QueryResultPayload::Accounts(AccountsResult::Available {
-						accounts: vec![first.clone(), second.clone()],
-						routing: Some(routing),
-						pending_route: Some(AccountRoutePendingDto {
-							operation_id: EntityId::new(
-								"30000000-0000-4000-8000-000000000001",
-							)
-							.unwrap(),
-							account_id: first.account_id.clone(),
-							routing_revision: EntityRevision(5),
-							wait_reason: decodex_protocol::AccountRouteWaitReasonDto::SharedAuthStabilizing,
-						}),
-					}),
-				},
-			),
-			AccountRouteOutcome::Fresh
-		);
-		let snapshot = controller.snapshot();
-		assert!(!snapshot.can_manage);
-		assert!(!snapshot.can_route);
-		assert_eq!(snapshot.command, AccountCommandState::AwaitingResult);
-		controller.select_fixed(&second.account_id).expect("current target is an exact no-op");
-		assert!(controller.try_take_dispatch(2, &server).is_none());
-		assert_eq!(
-			controller.select_fixed(&first.account_id),
-			Err(AccountInputError::Busy),
-			"one pending RouteAccount remains the only routing operation"
-		);
-		assert!(controller.refresh());
-		let AccountDispatch::Query(readback) =
-			controller.try_take_dispatch(2, &server).expect("terminal readback is queued")
-		else {
-			panic!("account refresh must remain a query")
-		};
-		let ready_routing = AccountRoutingControlDto {
-			revision: EntityRevision(6),
-			mode: AccountSelectionModeDto::Fixed(first.account_id.clone()),
-			order: vec![first.account_id.clone(), second.account_id.clone()],
-		};
-		assert_eq!(
-			controller.route_query_result(
-				2,
-				&server,
-				&QueryResultEnvelope {
-					version: CURRENT_VERSION,
-					server_id: server.clone(),
-					query_id: readback.query_id,
-					payload: QueryResultPayload::Accounts(AccountsResult::Available {
-						accounts: vec![first, second],
-						routing: Some(ready_routing),
-						pending_route: None,
-					}),
-				},
-			),
-			AccountRouteOutcome::Fresh
-		);
-		let ready = controller.snapshot();
-		assert_eq!(ready.command, AccountCommandState::Accepted);
-		assert!(ready.route_reopen_notice);
-		assert!(ready.can_route);
 	}
 
 	#[test]
@@ -1120,8 +970,7 @@ mod tests {
 			let second = account("10000000-0000-4000-8000-000000000002", "Reserve", true, 7);
 			controller.bind_session(2, server.clone());
 			controller.activate();
-			let AccountDispatch::Query(query) =
-				controller.try_take_dispatch(2, &server).unwrap()
+			let AccountDispatch::Query(query) = controller.try_take_dispatch(2, &server).unwrap()
 			else {
 				panic!("account activation must query")
 			};
@@ -1139,7 +988,6 @@ mod tests {
 							mode: AccountSelectionModeDto::Balanced,
 							order: vec![first.account_id.clone(), second.account_id.clone()],
 						}),
-						pending_route: None,
 					}),
 				},
 			);
@@ -1148,7 +996,8 @@ mod tests {
 
 		let (controller, server, first, second) = setup();
 		controller.move_account(&second.account_id, -1).expect("queue order replacement");
-		let AccountDispatch::Command(order) = controller.try_take_dispatch(2, &server).unwrap() else {
+		let AccountDispatch::Command(order) = controller.try_take_dispatch(2, &server).unwrap()
+		else {
 			panic!("reorder must dispatch a command")
 		};
 		assert_eq!(order.expected_revision, Some(EntityRevision(5)));
@@ -1160,7 +1009,8 @@ mod tests {
 
 		let (controller, server, first, _) = setup();
 		controller.logout(&first.account_id).expect("queue account logout");
-		let AccountDispatch::Command(logout) = controller.try_take_dispatch(2, &server).unwrap() else {
+		let AccountDispatch::Command(logout) = controller.try_take_dispatch(2, &server).unwrap()
+		else {
 			panic!("logout must dispatch a command")
 		};
 		assert_eq!(logout.expected_revision, Some(EntityRevision(3)));
@@ -1178,7 +1028,8 @@ mod tests {
 		let second = account("10000000-0000-4000-8000-000000000002", "Reserve", true, 7);
 		controller.bind_session(2, server.clone());
 		controller.activate();
-		let AccountDispatch::Query(initial_query) = controller.try_take_dispatch(2, &server).unwrap()
+		let AccountDispatch::Query(initial_query) =
+			controller.try_take_dispatch(2, &server).unwrap()
 		else {
 			panic!("account activation must query")
 		};
@@ -1198,7 +1049,6 @@ mod tests {
 					payload: QueryResultPayload::Accounts(AccountsResult::Available {
 						accounts: vec![first.clone(), second.clone()],
 						routing: Some(stale_routing.clone()),
-						pending_route: None,
 					}),
 				},
 			),
@@ -1256,7 +1106,6 @@ mod tests {
 					payload: QueryResultPayload::Accounts(AccountsResult::Available {
 						accounts: vec![second.clone()],
 						routing: Some(refreshed_routing.clone()),
-						pending_route: None,
 					}),
 				},
 			),

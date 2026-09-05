@@ -68,6 +68,11 @@ MIGRATIONS = (
         "desktop_settings",
         ROOT / "database/migrations/0011_desktop_settings.sql",
     ),
+    (
+        12,
+        "terminal_account_route_upgrade",
+        ROOT / "database/migrations/0012_terminal_account_route_upgrade.sql",
+    ),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
@@ -89,6 +94,7 @@ REQUIRED_TABLES = frozenset(
         "account_profile_daily_usage",
         "codex_account_capability",
         "command_receipts",
+        "legacy_account_route_interruptions",
         "role_profiles",
         "conversations",
         "quick_task_requests",
@@ -160,12 +166,12 @@ def validate_repository_contract() -> None:
     if "redb" not in transfer or "decodex-database" not in transfer:
         raise GateFailure("one-shot transfer dependencies are incomplete")
 
-    daemon = (ROOT / "apps/decodexd/src/main.rs").read_text(encoding="utf-8")
-    if "InitializeLocalDatabase" not in daemon or "ValidateLocalDatabase" not in daemon:
-        raise GateFailure("daemon local database commands are missing")
+    service = (ROOT / "apps/decodex-cli/src/lib.rs").read_text(encoding="utf-8")
+    if "InitializeLocalDatabase" not in service or "ValidateLocalDatabase" not in service:
+        raise GateFailure("service local database commands are missing")
     for retired in ("SuperviseLocal", "BootstrapLatestSchema", "ValidateCurrentAuthority"):
-        if retired in daemon:
-            raise GateFailure(f"retired daemon command remains active: {retired}")
+        if retired in service:
+            raise GateFailure(f"retired service command remains active: {retired}")
 
 
 def run_checked(command: list[str]) -> None:
@@ -282,7 +288,9 @@ def run_gate() -> dict[str, object]:
             "run",
             "--quiet",
             "-p",
-            "decodexd",
+            "decodex-cli",
+            "--bin",
+            "decodex",
             "--",
             "initialize-local-database",
             "--root",
@@ -296,7 +304,9 @@ def run_gate() -> dict[str, object]:
                 "run",
                 "--quiet",
                 "-p",
-                "decodexd",
+                "decodex-cli",
+                "--bin",
+                "decodex",
                 "--",
                 "validate-local-database",
                 "--root",

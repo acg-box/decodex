@@ -637,27 +637,16 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(store.contains("useAccountInCodex("))
 		XCTAssertFalse(store.contains("setFixedSelection("))
 		XCTAssertTrue(client.contains(#"operation: "route_account""#))
-		XCTAssertTrue(client.contains("AccountRouteWaitReason"))
-		XCTAssertTrue(client.contains(#"case waitReason = "wait_reason""#))
+		XCTAssertFalse(client.contains("AccountRoutePending"))
+		XCTAssertFalse(client.contains("AccountRouteWaitReason"))
 		XCTAssertFalse(client.contains(#"operation: "use_account_in_codex""#))
 		XCTAssertFalse(client.contains(#"operation: "set_fixed_selection""#))
-		XCTAssertTrue(store.contains("guard pendingRoute == nil"))
-		XCTAssertTrue(store.contains("&& pendingRoute == nil"))
-		XCTAssertTrue(store.contains("pendingRoute?.accountID != accountID"))
-		XCTAssertTrue(store.contains("replacesPendingRoute = pendingRoute != nil"))
+		XCTAssertFalse(store.contains("pendingRoute"))
 		XCTAssertTrue(actions.contains("title: presentation.title("))
-		XCTAssertTrue(actions.contains("return pending.actionTitle"))
-		XCTAssertTrue(actions.contains(#"return "Waiting""#))
 		XCTAssertTrue(actions.contains(#"return "Switching""#))
 		XCTAssertTrue(actions.contains(#"return isCurrent ? "Ready" : "Switch""#))
-		XCTAssertTrue(actions.contains("keepsCurrentRoute"))
-		XCTAssertTrue(actions.contains("Waiting for Codex to close or restart."))
-		XCTAssertTrue(actions.contains("AccountRoutePendingStatusView"))
-		XCTAssertFalse(actions.contains("PID \\(blocker.pid)"))
-		XCTAssertTrue(section.contains("AccountRoutePendingStatusView(pending: pending)"))
-		XCTAssertTrue(
-			actions.contains("store.pendingRoute?.accountID != state.account.accountID")
-		)
+		XCTAssertFalse(actions.contains("AccountRoutePending"))
+		XCTAssertFalse(section.contains("AccountRoutePending"))
 	}
 
 	func testMenuBarOwnerDisablesAutomaticAndSuddenTermination() throws {
@@ -802,9 +791,9 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(script.contains(#"HELPERS="$CONTENTS/Helpers""#))
 		XCTAssertTrue(script.contains(#"FRAMEWORKS="$CONTENTS/Frameworks""#))
 		XCTAssertTrue(script.contains("-p decodex-app-client-ffi"))
-		XCTAssertTrue(script.contains("--bin decodexd"))
+		XCTAssertTrue(script.contains("--bin decodex"))
 		XCTAssertTrue(script.contains("--product DecodexMenuBar"))
-		XCTAssertTrue(script.contains(#"cp "$ROOT/target/release/decodexd" "$HELPERS/decodexd""#))
+		XCTAssertTrue(script.contains(#"cp "$ROOT/target/release/decodex" "$HELPERS/decodex""#))
 		XCTAssertTrue(
 			script.contains(
 				#"DEFAULT_SIGN_IDENTITY="4EBCADF6B4D513E45CE33EC6934C08DBB0F03D7F""#

@@ -46,7 +46,7 @@ use decodex_protocol::{
 	LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal, LocalTransportStream,
 	ProtocolVersion, QueryEnvelope, QueryResultEnvelope, ReceiptDisposition, ReconnectMode,
 	Refusal, RefusalEnvelope, ResultPayload, ResumeCursor, ServerId, ServerInstanceId,
-	ServerMessage, ServerWelcome, SnapshotEnvelope, SnapshotItem, SupportedVersions, WireText,
+	ServerMessage, ServerWelcome, SnapshotEnvelope, SnapshotItem, WireText,
 };
 
 const WS_PATH: &str = "/v1/ws";
@@ -386,13 +386,16 @@ where
 		};
 		let negotiated = match hello.version.negotiate() {
 			Ok(version) => version,
-			Err(refusal) => {
+			Err(_supported) => {
 				let _ = self
 					.send_direct(
 						&mut socket,
 						ServerMessage::Refusal(RefusalEnvelope {
 							server_id: self.inner.server_id.clone(),
-							refusal: Refusal::UnsupportedVersion(refusal),
+							refusal: Refusal::ServiceVersionMismatch {
+								requested: hello.version,
+								supported: decodex_protocol::CURRENT_VERSION,
+							},
 						}),
 					)
 					.await;
@@ -400,23 +403,6 @@ where
 				return SessionTaskCompletion::unregistered(connection_id);
 			},
 		};
-		if hello.artifact_cohort != Some(decodex_protocol::CURRENT_ARTIFACT_COHORT) {
-			let _ = self
-				.send_direct(
-					&mut socket,
-					ServerMessage::Refusal(RefusalEnvelope {
-						server_id: self.inner.server_id.clone(),
-						refusal: Refusal::ArtifactCohortMismatch {
-							expected: decodex_protocol::CURRENT_ARTIFACT_COHORT,
-							actual: hello.artifact_cohort,
-						},
-					}),
-				)
-				.await;
-
-			return SessionTaskCompletion::unregistered(connection_id);
-		}
-
 		if let Some(expected) = hello.expected_server_id.as_ref()
 			&& expected != &self.inner.server_id
 		{
@@ -1131,22 +1117,19 @@ where
 			frozen_reader.map(SessionReaderCompletion::requested_seal),
 		);
 		let close_sent = match (seal_reason, frozen_reader) {
-			(SessionSealReason::OutboundFull, _) => {
+			(SessionSealReason::OutboundFull, _) =>
 				Self::send_close(
 					socket_writer,
 					write_timeout,
 					1_013,
 					"bounded outbound queue exceeded",
 				)
-				.await
-			},
+				.await,
 			(_, Some(SessionReaderCompletion::PeerClose)) if peer_close_reply_flushed => true,
-			(_, Some(SessionReaderCompletion::PeerClose)) => {
-				Self::flush_peer_close_reply(socket_writer, write_timeout).await
-			},
-			(_, Some(SessionReaderCompletion::Reason(_)) | None) => {
-				Self::send_close(socket_writer, write_timeout, 1_000, "server session sealed").await
-			},
+			(_, Some(SessionReaderCompletion::PeerClose)) =>
+				Self::flush_peer_close_reply(socket_writer, write_timeout).await,
+			(_, Some(SessionReaderCompletion::Reason(_)) | None) =>
+				Self::send_close(socket_writer, write_timeout, 1_000, "server session sealed").await,
 		};
 		let transport = if close_sent {
 			SessionTransportDisposition::drained(locally_written)
@@ -1313,9 +1296,8 @@ where
 				.filter(|reason| reason.canonicalizes_outbound_closed())
 				.unwrap_or(SessionSealReason::OutboundClosed),
 			Ok(reason) => reason,
-			Err(oneshot::error::TryRecvError::Empty) => {
-				requested.unwrap_or(SessionSealReason::ActorUnavailable)
-			},
+			Err(oneshot::error::TryRecvError::Empty) =>
+				requested.unwrap_or(SessionSealReason::ActorUnavailable),
 			Err(oneshot::error::TryRecvError::Closed) => SessionSealReason::ActorUnavailable,
 		}
 	}
@@ -1482,17 +1464,15 @@ where
 
 	fn directive_for_acceptance(acceptance: SessionAcceptance) -> OwnerDirective {
 		match acceptance {
-			SessionAcceptance::Sealed(SessionSealReason::OrdinalExhausted) => {
-				OwnerDirective::BeginStopping(StopCause::OwnerIntegrity)
-			},
+			SessionAcceptance::Sealed(SessionSealReason::OrdinalExhausted) =>
+				OwnerDirective::BeginStopping(StopCause::OwnerIntegrity),
 			SessionAcceptance::Accepted(_)
 			| SessionAcceptance::Unavailable
 			| SessionAcceptance::Sealed(
 				SessionSealReason::OutboundClosed | SessionSealReason::OutboundFull,
 			) => OwnerDirective::Continue,
-			SessionAcceptance::Sealed(_) => {
-				OwnerDirective::BeginStopping(StopCause::OwnerIntegrity)
-			},
+			SessionAcceptance::Sealed(_) =>
+				OwnerDirective::BeginStopping(StopCause::OwnerIntegrity),
 		}
 	}
 
@@ -1706,9 +1686,8 @@ where
 		self.tasks.abort_classified_sessions();
 		self.command_shutdown = match self.command_shutdown {
 			CommandShutdownState::Retained => CommandShutdownState::DeadlineElapsed,
-			CommandShutdownState::IntegrityRecorded => {
-				CommandShutdownState::IntegrityRecordedAfterDeadline
-			},
+			CommandShutdownState::IntegrityRecorded =>
+				CommandShutdownState::IntegrityRecordedAfterDeadline,
 			state => state,
 		};
 	}
@@ -1723,9 +1702,8 @@ where
 
 		self.command_shutdown = match self.command_shutdown {
 			CommandShutdownState::Retained => CommandShutdownState::IntegrityRecorded,
-			CommandShutdownState::DeadlineElapsed => {
-				CommandShutdownState::IntegrityRecordedAfterDeadline
-			},
+			CommandShutdownState::DeadlineElapsed =>
+				CommandShutdownState::IntegrityRecordedAfterDeadline,
 			CommandShutdownState::IntegrityRecorded
 			| CommandShutdownState::IntegrityRecordedAfterDeadline => {
 				return OwnerDirective::Continue;
@@ -1831,19 +1809,15 @@ where
 		};
 
 		match wake {
-			AcceptingWake::RequestedShutdown => {
-				OwnerDirective::BeginStopping(StopCause::RequestedShutdown)
-			},
+			AcceptingWake::RequestedShutdown =>
+				OwnerDirective::BeginStopping(StopCause::RequestedShutdown),
 			AcceptingWake::ListenerHealth => match self.listener.revalidate() {
 				Ok(()) => OwnerDirective::Continue,
-				Err(refusal) => {
-					OwnerDirective::BeginStopping(StopCause::EndpointRefusal(refusal))
-				},
+				Err(refusal) => OwnerDirective::BeginStopping(StopCause::EndpointRefusal(refusal)),
 			},
 			AcceptingWake::OwnedTask(Some(joined)) => self.harvest_task(joined),
-			AcceptingWake::OwnedTask(None) => {
-				OwnerDirective::BeginStopping(StopCause::OwnerIntegrity)
-			},
+			AcceptingWake::OwnedTask(None) =>
+				OwnerDirective::BeginStopping(StopCause::OwnerIntegrity),
 			AcceptingWake::Operation(completion) => self.finish_operation(completion),
 			AcceptingWake::Ordinary(ordinary) => self.handle_ordinary(*ordinary),
 		}
@@ -1894,9 +1868,8 @@ where
 				OwnerDirective::Continue
 			},
 			StoppingWake::OwnedTask(Some(joined)) => self.harvest_task(joined),
-			StoppingWake::OwnedTask(None) => {
-				OwnerDirective::BeginStopping(StopCause::OwnerIntegrity)
-			},
+			StoppingWake::OwnedTask(None) =>
+				OwnerDirective::BeginStopping(StopCause::OwnerIntegrity),
 			StoppingWake::Operation(completion) => self.finish_operation(completion),
 			StoppingWake::ApplicationSettled => {
 				self.application_settled = true;
@@ -1912,9 +1885,8 @@ where
 				OwnerDirective::Continue
 			},
 			StoppingWake::FlushDeferred => self.flush_deferred_events(),
-			StoppingWake::ApplicationEvent(publication) => {
-				self.handle_application_event(publication)
-			},
+			StoppingWake::ApplicationEvent(publication) =>
+				self.handle_application_event(publication),
 		}
 	}
 
@@ -1922,12 +1894,10 @@ where
 		match ordinary {
 			AcceptingOrdinaryWake::Accepted(accepted) => self.handle_accepted(accepted),
 			AcceptingOrdinaryWake::Request(Some(request)) => self.handle_request(request),
-			AcceptingOrdinaryWake::Request(None) => {
-				OwnerDirective::BeginStopping(StopCause::ActorIngressClosed)
-			},
-			AcceptingOrdinaryWake::ApplicationEvent(publication) => {
-				self.handle_application_event(publication)
-			},
+			AcceptingOrdinaryWake::Request(None) =>
+				OwnerDirective::BeginStopping(StopCause::ActorIngressClosed),
+			AcceptingOrdinaryWake::ApplicationEvent(publication) =>
+				self.handle_application_event(publication),
 		}
 	}
 
@@ -1962,9 +1932,8 @@ where
 					OwnerDirective::Continue
 				}
 			},
-			Err(refusal) if refusal.invalidates_listener() => {
-				OwnerDirective::BeginStopping(StopCause::EndpointRefusal(refusal))
-			},
+			Err(refusal) if refusal.invalidates_listener() =>
+				OwnerDirective::BeginStopping(StopCause::EndpointRefusal(refusal)),
 			Err(_) => OwnerDirective::Continue,
 		}
 	}
@@ -2121,9 +2090,8 @@ where
 
 				directive
 			},
-			PublicationRequest::Command { connection_id, command, version, reply } => {
-				self.handle_command_request(connection_id, command, version, reply)
-			},
+			PublicationRequest::Command { connection_id, command, version, reply } =>
+				self.handle_command_request(connection_id, command, version, reply),
 		}
 	}
 
@@ -2251,9 +2219,8 @@ where
 		};
 		match operation {
 			ActiveActorOperation::Command(command) => match completion {
-				ActiveActorOperationCompletion::Command(execution) => {
-					self.finish_active_command(command, *execution)
-				},
+				ActiveActorOperationCompletion::Command(execution) =>
+					self.finish_active_command(command, *execution),
 				ActiveActorOperationCompletion::RegistrationSnapshot(_) => {
 					self.operation = Some(ActiveActorOperation::Command(command));
 
@@ -2261,9 +2228,8 @@ where
 				},
 			},
 			ActiveActorOperation::RegistrationSnapshot(snapshot) => match completion {
-				ActiveActorOperationCompletion::RegistrationSnapshot(result) => {
-					self.finish_registration_snapshot(snapshot, result)
-				},
+				ActiveActorOperationCompletion::RegistrationSnapshot(result) =>
+					self.finish_registration_snapshot(snapshot, result),
 				ActiveActorOperationCompletion::Command(_) => {
 					self.operation = Some(ActiveActorOperation::RegistrationSnapshot(snapshot));
 
@@ -2323,8 +2289,6 @@ where
 			0,
 			ServerMessage::Welcome(ServerWelcome {
 				version: snapshot.version,
-				artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
-				supported: SupportedVersions::current(),
 				server_id: self.server.inner.server_id.clone(),
 				instance_id: supports_publication_instance(snapshot.version)
 					.then(|| self.server.inner.instance_id.clone())
@@ -2844,12 +2808,10 @@ async fn poll_active_operation(
 	operation: &mut Option<ActiveActorOperation>,
 ) -> ActiveActorOperationCompletion {
 	match operation.as_mut().expect("guarded active operation exists") {
-		ActiveActorOperation::Command(command) => {
-			ActiveActorOperationCompletion::Command(Box::new(command.future.as_mut().await))
-		},
-		ActiveActorOperation::RegistrationSnapshot(snapshot) => {
-			ActiveActorOperationCompletion::RegistrationSnapshot(snapshot.future.as_mut().await)
-		},
+		ActiveActorOperation::Command(command) =>
+			ActiveActorOperationCompletion::Command(Box::new(command.future.as_mut().await)),
+		ActiveActorOperation::RegistrationSnapshot(snapshot) =>
+			ActiveActorOperationCompletion::RegistrationSnapshot(snapshot.future.as_mut().await),
 	}
 }
 
@@ -2908,16 +2870,14 @@ struct SealedSession {
 impl SealedSession {
 	fn reconcile(&self, transport: SessionTransportDisposition) -> SessionCompletionClassification {
 		let progress_matches = match transport {
-			SessionTransportDisposition::DrainedThrough(locally_written) => {
-				locally_written == self.accepted_through
-			},
+			SessionTransportDisposition::DrainedThrough(locally_written) =>
+				locally_written == self.accepted_through,
 			SessionTransportDisposition::TransportFailed {
 				locally_written,
 				cause: SessionTransportFailure::CloseWrite,
 			} => locally_written == self.accepted_through,
-			SessionTransportDisposition::TransportFailed { locally_written, .. } => {
-				locally_written <= self.accepted_through
-			},
+			SessionTransportDisposition::TransportFailed { locally_written, .. } =>
+				locally_written <= self.accepted_through,
 		};
 		if !progress_matches {
 			return SessionCompletionClassification::Invalid;
@@ -2952,9 +2912,8 @@ impl SealedSession {
 		}
 		match transport {
 			SessionTransportDisposition::DrainedThrough(_) => match self.reason {
-				SessionSealReason::ActorUnavailable => {
-					SessionCompletionClassification::TransportFailed
-				},
+				SessionSealReason::ActorUnavailable =>
+					SessionCompletionClassification::TransportFailed,
 				SessionSealReason::Deadline
 				| SessionSealReason::InitialPrefixFailed
 				| SessionSealReason::OutboundClosed
@@ -2974,9 +2933,8 @@ impl SealedSession {
 				| SessionSealReason::ServerDrained
 				| SessionSealReason::ServerShutdown
 				| SessionSealReason::WriterFailed => SessionCompletionClassification::SessionLocal,
-				SessionSealReason::ActorUnavailable | SessionSealReason::OrdinalExhausted => {
-					SessionCompletionClassification::TransportFailed
-				},
+				SessionSealReason::ActorUnavailable | SessionSealReason::OrdinalExhausted =>
+					SessionCompletionClassification::TransportFailed,
 				SessionSealReason::Deadline
 				| SessionSealReason::OutboundClosed
 				| SessionSealReason::RegistrationAbandoned

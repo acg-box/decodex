@@ -19,13 +19,13 @@ use gpui::{
 };
 
 use decodex_protocol::{
-	AccountDto, AccountLifecycleReadinessDto, AccountLoginInstallMode, AccountLoginMethod,
-	AccountLoginStart, AccountLoginState, AccountLoginStatus, AccountObservedStateDto,
-	AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto, AccountRoutePendingDto,
-	AccountRouteWaitReasonDto, AccountSelectionModeDto, AppServerCapability, ClientFailure,
-	ConversationRecoveryAction, ConversationState, ConversationSummary, DoctorComponent,
-	DoctorIssue, DoctorStatus, EntityId, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
-	HistoryPayloadDto, HistoryTurnRole, IdempotencyKey,
+	AccountCommandRejectionDto, AccountDto, AccountLifecycleReadinessDto, AccountLoginInstallMode,
+	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus,
+	AccountObservedStateDto, AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto,
+	AccountSelectionModeDto, AppServerCapability, ClientFailure, ConversationRecoveryAction,
+	ConversationState, ConversationSummary, DoctorComponent, DoctorIssue, DoctorStatus, EntityId,
+	HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryTurnRole,
+	IdempotencyKey,
 };
 
 use crate::{
@@ -429,9 +429,7 @@ const fn startup_failure(failure: ClientFailure) -> &'static str {
 		ClientFailure::LocalPeerUidMismatch => "Local daemon peer UID does not match",
 		ClientFailure::ProtocolDisconnected
 		| ClientFailure::ProtocolTimeout
-		| ClientFailure::ProtocolMajorMismatch
-		| ClientFailure::ProtocolMinorMismatch
-		| ClientFailure::ArtifactCohortMismatch => "Restart Decodex.",
+		| ClientFailure::ServiceVersionMismatch => "Restart Decodex.",
 		ClientFailure::ServerIdentityMismatch => "Stable server identity does not match",
 		ClientFailure::ProtocolMalformed => "Daemon response is malformed",
 		ClientFailure::ProtocolViolation => "Daemon protocol ordering was refused",
@@ -750,7 +748,7 @@ impl Shell {
 				mode: AccountSelectionModeDto::Fixed(primary.account_id.clone()),
 				order: vec![primary.account_id, reserve.account_id, research.account_id],
 			}),
-			pending_route: None,
+			rejection: None,
 			can_manage: true,
 			can_route: true,
 			route_reopen_notice: false,
@@ -2753,15 +2751,10 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.is_some_and(|routing| routing.mode == AccountSelectionModeDto::Balanced);
 	let can_manage = snapshot.can_manage;
 	let status = snapshot
-		.pending_route
-		.as_ref()
-		.map(account_route_pending_label)
-		.or_else(|| {
-			snapshot
-				.route_reopen_notice
-				.then(|| "Route succeeded. You can reopen ChatGPT or Codex now.".to_owned())
-		})
+		.route_reopen_notice
+		.then(|| "Route succeeded. You can reopen ChatGPT or Codex now.".to_owned())
 		.or_else(|| shell.account_status.as_ref().map(SharedString::to_string))
+		.or_else(|| snapshot.rejection.map(account_rejection_label).map(str::to_owned))
 		.or_else(|| account_command_label(snapshot.command).map(str::to_owned))
 		.unwrap_or_else(|| accounts_load_label(snapshot.load).to_owned());
 	let count = snapshot.accounts.len();
@@ -2902,7 +2895,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 											.font_family("SF Mono")
 											.text_size(px(8.0))
 											.text_color(rgb(WB_TEXT_FAINT))
-											.child("Use Account access above to enroll credentials through decodexd."),
+											.child("Use Account access above to enroll credentials through the Decodex service."),
 									),
 							)
 						})
@@ -2927,18 +2920,6 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				),
 		)
 		.into_any_element()
-}
-
-fn account_route_pending_label(pending: &AccountRoutePendingDto) -> String {
-	match &pending.wait_reason {
-		AccountRouteWaitReasonDto::ExternalCodex { .. }
-		| AccountRouteWaitReasonDto::CodexObservationUnavailable =>
-			"Waiting for Codex to close or restart.".to_owned(),
-		AccountRouteWaitReasonDto::AccountReadiness { .. }
-		| AccountRouteWaitReasonDto::SharedAuthStabilizing
-		| AccountRouteWaitReasonDto::SharedAuthUnavailable
-		| AccountRouteWaitReasonDto::ProjectionReadback => "Switching".to_owned(),
-	}
 }
 
 fn account_mode_button(
@@ -3270,7 +3251,8 @@ fn account_login_status_label(status: &AccountLoginStatus) -> String {
 		AccountLoginState::RequestingCode => "Requesting a device code…".into(),
 		AccountLoginState::WaitingForBrowser =>
 			"Complete sign-in in the browser, then return to Decodex.".into(),
-		AccountLoginState::Installing => "Installing the verified account through decodexd…".into(),
+		AccountLoginState::Installing =>
+			"Installing the verified account through the Decodex service…".into(),
 		AccountLoginState::Completed => status.resolved_account_id.as_ref().map_or_else(
 			|| "Account login completed.".into(),
 			|account_id| format!("Account {} is ready.", account_id.as_str()),
@@ -3692,6 +3674,32 @@ fn account_command_label(command: AccountCommandState) -> Option<&'static str> {
 		AccountCommandState::Accepted => Some("Ready"),
 		AccountCommandState::OutcomeUnknown => Some("Restart Decodex."),
 		AccountCommandState::Refused => Some("The account change was refused. Refresh and retry."),
+	}
+}
+
+fn account_rejection_label(rejection: AccountCommandRejectionDto) -> &'static str {
+	match rejection {
+		AccountCommandRejectionDto::CodexIsRunning =>
+			"Quit ChatGPT or Codex, then try switching again.",
+		AccountCommandRejectionDto::AccountDisabled =>
+			"Enable this account before switching to it.",
+		AccountCommandRejectionDto::CredentialMissing =>
+			"This account has no saved credential. Sign in again.",
+		AccountCommandRejectionDto::CredentialNeedsLogin =>
+			"This account needs you to sign in again.",
+		AccountCommandRejectionDto::CredentialRefreshRejected =>
+			"ChatGPT rejected the credential refresh. Sign in again.",
+		AccountCommandRejectionDto::CredentialRefreshUnavailable =>
+			"Credential refresh is unavailable. Try again later.",
+		AccountCommandRejectionDto::AuthFileUnreadable =>
+			"The Codex authentication file could not be read.",
+		AccountCommandRejectionDto::AuthFileChanged =>
+			"The Codex authentication file changed. Try switching again.",
+		AccountCommandRejectionDto::AuthWriteFailed =>
+			"The selected account could not be written to the Codex authentication file.",
+		AccountCommandRejectionDto::AuthReadbackMismatch =>
+			"The Codex authentication file did not match after switching.",
+		_ => "The account change was refused. Refresh and retry.",
 	}
 }
 
@@ -5579,7 +5587,7 @@ mod tests {
 			ConnectionView::Connecting { attempt: 2 },
 			ConnectionView::Online { generation: 4, applied: Some(decodex_protocol::Cursor(9)) },
 			ConnectionView::OfflineRetrying { next_attempt: 3, delay: Duration::from_millis(250) },
-			ConnectionView::Incompatible(CompatibilityReason::ProtocolMajor),
+			ConnectionView::Incompatible(CompatibilityReason::ProtocolMinor),
 			ConnectionView::Quarantined {
 				reason: QuarantineReason::StableServerIdentity,
 				recovery: QuarantineRecovery::OperatorRequired,
@@ -5616,7 +5624,7 @@ mod tests {
 		for (failure, detail) in cases {
 			assert_eq!(startup_failure(failure), detail);
 		}
-		assert_eq!(startup_failure(ClientFailure::ArtifactCohortMismatch), "Restart Decodex.");
+		assert_eq!(startup_failure(ClientFailure::ServiceVersionMismatch), "Restart Decodex.");
 	}
 
 	#[test]
@@ -5658,42 +5666,6 @@ mod tests {
 	}
 
 	#[test]
-	fn pending_route_status_hides_process_and_transport_internals() {
-		let pending = AccountRoutePendingDto {
-			operation_id: EntityId::new("30000000-0000-4000-8000-000000000001").unwrap(),
-			account_id: EntityId::new("10000000-0000-4000-8000-000000000001").unwrap(),
-			routing_revision: decodex_protocol::EntityRevision(9),
-			wait_reason: AccountRouteWaitReasonDto::ExternalCodex {
-				blockers: vec![decodex_protocol::AccountRouteProcessBlockerDto {
-					pid: 44_662,
-					process: decodex_protocol::AccountRouteBlockingProcessDto::Chatgpt,
-					auth_home: decodex_protocol::AccountRouteAuthHomeDto::Shared,
-				}],
-				omitted: 0,
-			},
-		};
-		assert_eq!(account_route_pending_label(&pending), "Waiting for Codex to close or restart.");
-		let mut observation = pending.clone();
-		observation.wait_reason = AccountRouteWaitReasonDto::CodexObservationUnavailable;
-		assert_eq!(
-			account_route_pending_label(&observation),
-			"Waiting for Codex to close or restart."
-		);
-		for wait_reason in [
-			AccountRouteWaitReasonDto::AccountReadiness {
-				readiness: AccountLifecycleReadinessDto::StoreUnavailable,
-			},
-			AccountRouteWaitReasonDto::SharedAuthStabilizing,
-			AccountRouteWaitReasonDto::SharedAuthUnavailable,
-			AccountRouteWaitReasonDto::ProjectionReadback,
-		] {
-			let mut switching = pending.clone();
-			switching.wait_reason = wait_reason;
-			assert_eq!(account_route_pending_label(&switching), "Switching");
-		}
-	}
-
-	#[test]
 	fn quarantine_reasons_present_one_recovery_action() {
 		let cases = [
 			QuarantineReason::StableServerIdentity,
@@ -5710,6 +5682,18 @@ mod tests {
 			};
 			assert_eq!(connection_presentation(view).label, "Restart Decodex");
 		}
+	}
+
+	#[test]
+	fn route_rejections_preserve_the_quit_and_login_actions() {
+		assert_eq!(
+			account_rejection_label(AccountCommandRejectionDto::CodexIsRunning),
+			"Quit ChatGPT or Codex, then try switching again."
+		);
+		assert_eq!(
+			account_rejection_label(AccountCommandRejectionDto::CredentialNeedsLogin),
+			"This account needs you to sign in again."
+		);
 	}
 
 	#[test]

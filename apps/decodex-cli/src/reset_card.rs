@@ -23,7 +23,7 @@ const RESET_CARD_OUTPUT_SCHEMA: &str = "decodex/reset-card-cli/1";
 const OPERATION_POLL_DEADLINE: Duration = Duration::from_secs(30);
 const OPERATION_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
-/// Reset-card operations served by the common daemon authority.
+/// Reset-card operations served by the common service authority.
 #[derive(Clone, Eq, PartialEq, Subcommand)]
 pub enum ResetCardCommand {
 	/// Read one account's bounded current public reset-card observation.
@@ -789,9 +789,7 @@ const fn client_failure_code(failure: ClientFailure) -> &'static str {
 		ClientFailure::LocalPeerUidMismatch => "local_peer_uid_mismatch",
 		ClientFailure::ProtocolDisconnected => "protocol_disconnected",
 		ClientFailure::ProtocolTimeout => "protocol_timeout",
-		ClientFailure::ProtocolMajorMismatch => "protocol_major_mismatch",
-		ClientFailure::ProtocolMinorMismatch => "protocol_minor_mismatch",
-		ClientFailure::ArtifactCohortMismatch => "artifact_cohort_mismatch",
+		ClientFailure::ServiceVersionMismatch => "service_version_mismatch",
 		ClientFailure::ServerIdentityMismatch => "server_identity_mismatch",
 		ClientFailure::ProtocolMalformed => "protocol_malformed",
 		ClientFailure::ProtocolViolation => "protocol_violation",

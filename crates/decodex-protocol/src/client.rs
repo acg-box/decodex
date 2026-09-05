@@ -20,13 +20,13 @@ use crate::{
 	AccountInitialSelectionResult, AccountInspectResult, AccountLoginRequest,
 	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, AccountLoginStart,
 	AccountLoginStatus, AccountObservationSignal, AccountProfileEmailDto, AccountProfileResult,
-	AccountSelectionModeDto, AccountsResult, CURRENT_ARTIFACT_COHORT, CURRENT_VERSION,
-	ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult, CommandEnvelope,
-	CommandError, CommandOutcome, CommandPayload, CorrelationId, DoctorReport, EntityId,
-	EntityRevision, IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload,
-	QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope, ResetCardDescriptorDto,
-	ResetCardInventoryResult, ResetCardOperationResult, ResultPayload, RetainedSessionConfig,
-	RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal,
+	AccountSelectionModeDto, AccountsResult, CURRENT_VERSION, ClientCommandId, ClientHello,
+	ClientMessage, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandOutcome,
+	CommandPayload, CorrelationId, DoctorReport, EntityId, EntityRevision, IdempotencyKey,
+	ProtocolVersion, QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition,
+	Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult,
+	ResetCardOperationResult, ResultPayload, RetainedSessionConfig, RetainedSessionFailure,
+	ServerId, ServerMessage,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 };
 use decodex_core::{
@@ -252,7 +252,6 @@ impl DoctorClient {
 		.map_err(map_connect_error)?;
 		let hello = ClientMessage::Hello(ClientHello {
 			version: CURRENT_VERSION,
-			artifact_cohort: Some(CURRENT_ARTIFACT_COHORT),
 			expected_server_id: Some(self.profile.expected_server_id.clone()),
 			resume: None,
 		});
@@ -265,13 +264,8 @@ impl DoctorClient {
 			_ => return Err(ClientFailure::ProtocolMalformed),
 		};
 
-		if welcome.version != CURRENT_VERSION
-			|| welcome.supported != crate::SupportedVersions::current()
-		{
+		if welcome.version != CURRENT_VERSION {
 			return Err(version_failure(welcome.version));
-		}
-		if welcome.artifact_cohort != Some(CURRENT_ARTIFACT_COHORT) {
-			return Err(ClientFailure::ArtifactCohortMismatch);
 		}
 
 		self.verify_server(&welcome.server_id)?;
@@ -747,7 +741,6 @@ impl ResetCardClient {
 			&mut socket,
 			ClientMessage::Hello(ClientHello {
 				version: CURRENT_VERSION,
-				artifact_cohort: Some(CURRENT_ARTIFACT_COHORT),
 				expected_server_id: Some(self.profile.expected_server_id.clone()),
 				resume: None,
 			}),
@@ -765,12 +758,6 @@ impl ResetCardClient {
 		}
 		if welcome.version != CURRENT_VERSION {
 			return Err(version_failure(welcome.version));
-		}
-		if welcome.supported != crate::SupportedVersions::current() {
-			return Err(ClientFailure::ProtocolMinorMismatch);
-		}
-		if welcome.artifact_cohort != Some(CURRENT_ARTIFACT_COHORT) {
-			return Err(ClientFailure::ArtifactCohortMismatch);
 		}
 
 		self.verify_version_and_server(welcome.version, &welcome.server_id)?;
@@ -987,7 +974,7 @@ pub enum AccountCommandResponse {
 	},
 }
 
-/// Same-UID V2.13 client for daemon-owned account queries and lifecycle commands.
+/// Same-UID V2.14 client for daemon-owned account queries and lifecycle commands.
 pub struct AccountClient {
 	transport: ResetCardClient,
 }
@@ -1164,18 +1151,10 @@ impl AccountClient {
 	/// Refresh, project, and select one account through one daemon-owned Route command.
 	pub async fn route_account(
 		&self,
-		operation_id: EntityId,
 		account_id: EntityId,
-		expected_account_revision: EntityRevision,
-		expected_routing_revision: EntityRevision,
 		idempotency_key: IdempotencyKey,
 	) -> Result<AccountCommandResponse, ClientFailure> {
-		self.execute(
-			CommandPayload::RouteAccount { operation_id, account_id, expected_account_revision },
-			Some(expected_routing_revision),
-			idempotency_key,
-		)
-		.await
+		self.execute(CommandPayload::RouteAccount { account_id }, None, idempotency_key).await
 	}
 
 	/// Select balanced initial routing under one routing-control revision.
@@ -1388,13 +1367,6 @@ fn account_result_matches(
 				&& routing.revision == entity_revision
 				&& routing.mode == AccountSelectionModeDto::Fixed(account_id.clone()),
 		(
-			CommandPayload::RouteAccount { operation_id, account_id, .. },
-			ResultPayload::AccountRoutePending { pending },
-		) =>
-			pending.operation_id == *operation_id
-				&& pending.account_id == *account_id
-				&& pending.routing_revision == entity_revision,
-		(
 			CommandPayload::SetBalancedAccountSelection,
 			ResultPayload::AccountRoutingChanged { routing },
 		) =>
@@ -1447,11 +1419,7 @@ pub enum ClientFailure {
 	/// A bounded connection or response deadline elapsed.
 	ProtocolTimeout,
 	/// The server used a different protocol generation.
-	ProtocolMajorMismatch,
-	/// The server did not support the requested current minor.
-	ProtocolMinorMismatch,
-	/// The daemon and client artifacts are not from the same build/protocol cohort.
-	ArtifactCohortMismatch,
+	ServiceVersionMismatch,
 	/// The server did not match the selected stable identity pin.
 	ServerIdentityMismatch,
 	/// A server response was not a valid expected typed envelope.
@@ -1483,9 +1451,7 @@ impl Display for ClientFailure {
 			Self::LocalPeerUidMismatch => "local daemon peer UID does not match",
 			Self::ProtocolDisconnected => "daemon protocol is disconnected",
 			Self::ProtocolTimeout => "daemon protocol timed out",
-			Self::ProtocolMajorMismatch => "daemon protocol major version does not match",
-			Self::ProtocolMinorMismatch => "daemon protocol minor version is unsupported",
-			Self::ArtifactCohortMismatch => "daemon and client artifact cohorts do not match",
+			Self::ServiceVersionMismatch => "service_version_mismatch",
 			Self::ServerIdentityMismatch => "stable server identity does not match",
 			Self::ProtocolMalformed => "daemon protocol response is malformed",
 			Self::ProtocolViolation => "daemon refused the protocol operation",
@@ -1567,23 +1533,15 @@ fn map_receive_error(error: tokio_tungstenite::tungstenite::Error) -> ClientFail
 
 fn map_refusal(refusal: Refusal) -> ClientFailure {
 	match refusal {
-		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. }) =>
-			ClientFailure::ProtocolMajorMismatch,
-		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. }) =>
-			ClientFailure::ProtocolMinorMismatch,
-		Refusal::ArtifactCohortMismatch { .. } => ClientFailure::ArtifactCohortMismatch,
+		Refusal::ServiceVersionMismatch { .. } => ClientFailure::ServiceVersionMismatch,
 		Refusal::ServerIdentityMismatch { .. } => ClientFailure::ServerIdentityMismatch,
 		Refusal::ProtocolViolation { .. } => ClientFailure::ProtocolViolation,
 		Refusal::Backpressure { .. } => ClientFailure::ProtocolBackpressure,
 	}
 }
 
-fn version_failure(version: ProtocolVersion) -> ClientFailure {
-	if version.major != CURRENT_VERSION.major {
-		ClientFailure::ProtocolMajorMismatch
-	} else {
-		ClientFailure::ProtocolMinorMismatch
-	}
+fn version_failure(_version: ProtocolVersion) -> ClientFailure {
+	ClientFailure::ServiceVersionMismatch
 }
 
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
@@ -1597,18 +1555,16 @@ mod tests {
 	use tokio_tungstenite::{self, tungstenite::Message};
 
 	use crate::{
-		AccountClient, AccountCommandResponse, AccountProfileDto, AccountProfileEmailDto,
-		AccountProfileErrorDto, AccountProfileResult, AccountRoutePendingDto,
-		AccountRouteWaitReasonDto, CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, Channel,
-		ClientCommandId, ClientFailure, ClientMessage, ClientProfile, CommandError, CommandOutcome,
-		CommandPayload, CommandReceipt, CommandResultEnvelope, CorrelationId, Cursor, DoctorCheck,
-		DoctorClient, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId,
-		EntityRevision, EventEnvelope, EventPayload, IdempotencyKey, LocalTransportAuthority,
-		PREVIOUS_MINOR_VERSION, ProfileKind, ProtocolVersion, QueryId, QueryResultEnvelope,
-		QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal, RefusalEnvelope,
-		ResetCardClient, ResetCardConsumeResponse, ResetCardDescriptorDto,
-		ResetCardOperationResult, ResultPayload, RetainedSessionFailure, ServerId, ServerMessage,
-		ServerWelcome, SnapshotEnvelope, SupportedVersions, VersionRefusal, WireText,
+		AccountClient, AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto,
+		AccountProfileResult, CURRENT_VERSION, Channel, ClientCommandId, ClientFailure,
+		ClientMessage, ClientProfile, CommandError, CommandOutcome, CommandReceipt,
+		CommandResultEnvelope, CorrelationId, Cursor, DoctorCheck, DoctorClient, DoctorComponent,
+		DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision, EventEnvelope,
+		EventPayload, IdempotencyKey, LocalTransportAuthority, ProfileKind, ProtocolVersion,
+		QueryId, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ReconnectMode,
+		Refusal, RefusalEnvelope, ResetCardClient, ResetCardConsumeResponse,
+		ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, RetainedSessionFailure,
+		ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope, WireText,
 	};
 	use decodex_core::{DecodexRoot, LocalTrustPolicy, ServerIdentity};
 
@@ -1624,8 +1580,6 @@ mod tests {
 		vec![
 			typed(ServerMessage::Welcome(ServerWelcome {
 				version: CURRENT_VERSION,
-				artifact_cohort: Some(CURRENT_ARTIFACT_COHORT),
-				supported: SupportedVersions::current(),
 				server_id: server_id.clone(),
 				instance_id: None,
 				cursor: Cursor(0),
@@ -1652,125 +1606,6 @@ mod tests {
 				.collect(),
 		)
 		.expect("test operation must succeed")
-	}
-
-	#[test]
-	fn account_route_pending_is_a_typed_success_for_the_exact_route() {
-		let operation_id =
-			EntityId::new("30000000-0000-4000-8000-000000000001").expect("operation ID");
-		let account_id = EntityId::new("40000000-0000-4000-8000-000000000001").expect("account ID");
-		let command = CommandPayload::RouteAccount {
-			operation_id: operation_id.clone(),
-			account_id: account_id.clone(),
-			expected_account_revision: EntityRevision(7),
-		};
-		let result = ResultPayload::AccountRoutePending {
-			pending: AccountRoutePendingDto {
-				operation_id,
-				account_id,
-				routing_revision: EntityRevision(9),
-				wait_reason: AccountRouteWaitReasonDto::SharedAuthStabilizing,
-			},
-		};
-		assert!(super::account_result_matches(&command, EntityRevision(9), &result));
-		assert!(!super::account_result_matches(&command, EntityRevision(10), &result));
-	}
-
-	#[tokio::test]
-	async fn account_client_returns_pending_route_as_confirmed_applied_state() {
-		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.expect("test listener must bind");
-		let operation_id =
-			EntityId::new("30000000-0000-4000-8000-000000000001").expect("operation ID");
-		let account_id = EntityId::new("40000000-0000-4000-8000-000000000001").expect("account ID");
-		let expected_operation_id = operation_id.clone();
-		let expected_account_id = account_id.clone();
-		let task = tokio::spawn(async move {
-			let _temp = temp;
-			let stream = listener.accept().await.expect("test connection must arrive");
-			let mut socket =
-				tokio_tungstenite::accept_async(stream).await.expect("test socket must upgrade");
-			let _ = socket.next().await;
-			for response in initial(SERVER_ID) {
-				socket.send(response).await.expect("initial response must send");
-			}
-			let Message::Text(request) =
-				socket.next().await.expect("command must arrive").expect("command must decode")
-			else {
-				panic!("expected text command")
-			};
-			let ClientMessage::Command(command) =
-				serde_json::from_str::<ClientMessage>(&request).expect("typed command")
-			else {
-				panic!("expected command")
-			};
-			assert!(matches!(
-				command.payload,
-				CommandPayload::RouteAccount {
-					ref operation_id,
-					ref account_id,
-					expected_account_revision: EntityRevision(7),
-				} if operation_id == &expected_operation_id && account_id == &expected_account_id
-			));
-			socket
-				.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
-					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).unwrap(),
-					client_command_id: command.client_command_id.clone(),
-					idempotency_key: command.idempotency_key.clone(),
-					disposition: ReceiptDisposition::Executed,
-					original_client_command_id: command.client_command_id.clone(),
-				})))
-				.await
-				.unwrap();
-			socket
-				.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
-					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).unwrap(),
-					client_command_id: command.client_command_id,
-					idempotency_key: command.idempotency_key,
-					outcome: CommandOutcome::Succeeded,
-					entity_revision: Some(EntityRevision(9)),
-					payload: Some(ResultPayload::AccountRoutePending {
-						pending: AccountRoutePendingDto {
-							operation_id: expected_operation_id,
-							account_id: expected_account_id,
-							routing_revision: EntityRevision(9),
-							wait_reason: AccountRouteWaitReasonDto::SharedAuthStabilizing,
-						},
-					}),
-					error: None,
-				})))
-				.await
-				.unwrap();
-			drop(socket);
-			listener.cleanup().unwrap();
-		});
-		let response = AccountClient::new(ClientProfile::fixture(
-			authority,
-			ServerId::new(SERVER_ID).unwrap(),
-		))
-		.route_account(
-			operation_id.clone(),
-			account_id.clone(),
-			EntityRevision(7),
-			EntityRevision(9),
-			IdempotencyKey::new("pending-route-key").unwrap(),
-		)
-		.await
-		.unwrap();
-		assert!(matches!(
-			response,
-			AccountCommandResponse::Applied {
-				entity_revision: EntityRevision(9),
-				result,
-			} if matches!(
-				&*result,
-				ResultPayload::AccountRoutePending { pending }
-					if pending.operation_id == operation_id && pending.account_id == account_id
-			)
-		));
-		task.await.unwrap();
 	}
 
 	fn profile_result(account_id: &str, email: AccountProfileEmailDto) -> AccountProfileResult {
@@ -1969,13 +1804,8 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_13_window() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 13 });
-		assert_eq!(PREVIOUS_MINOR_VERSION, CURRENT_VERSION);
-		assert_eq!(
-			SupportedVersions::current(),
-			SupportedVersions { major: 2, minimum_minor: 13, maximum_minor: 13 },
-		);
+	fn protocol_constants_expose_only_the_exact_v2_14_version() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 14 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
@@ -2329,56 +2159,13 @@ max_entry_bytes = 0
 	}
 
 	#[tokio::test]
-	async fn major_minor_and_server_refusals_remain_distinct() {
-		let cases = [
-			(
-				Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch {
-					requested: ProtocolVersion { major: 1, minor: 5 },
-					supported: SupportedVersions::current(),
-				}),
-				ClientFailure::ProtocolMajorMismatch,
-			),
-			(
-				Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor {
-					requested: ProtocolVersion { major: 2, minor: 0 },
-					supported: SupportedVersions::current(),
-				}),
-				ClientFailure::ProtocolMinorMismatch,
-			),
-			(
-				Refusal::ArtifactCohortMismatch { expected: CURRENT_ARTIFACT_COHORT, actual: None },
-				ClientFailure::ArtifactCohortMismatch,
-			),
-			(
-				Refusal::ServerIdentityMismatch {
-					expected: ServerId::new(SERVER_ID).expect("test operation must succeed"),
-					actual: ServerId::new("wrong-server").expect("test operation must succeed"),
-				},
-				ClientFailure::ServerIdentityMismatch,
-			),
-		];
-
-		for (refusal, expected) in cases {
-			let response = typed(ServerMessage::Refusal(RefusalEnvelope {
-				server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
-				refusal,
-			}));
-			let (profile, task, _temp) = fixture(vec![response], Vec::new()).await;
-
-			assert_eq!(DoctorClient::new(profile).query().await.unwrap_err(), expected);
-
-			task.await.expect("test operation must succeed");
-		}
-	}
-
-	#[tokio::test]
 	async fn every_refusal_phase_verifies_envelope_identity_before_classification() {
 		let wrong_version = refusal(
 			"wrong-server",
-			Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor {
+			Refusal::ServiceVersionMismatch {
 				requested: ProtocolVersion { major: 2, minor: 0 },
-				supported: SupportedVersions::current(),
-			}),
+				supported: CURRENT_VERSION,
+			},
 		);
 		let (profile, task, _temp) = fixture(vec![wrong_version], Vec::new()).await;
 
@@ -2420,142 +2207,6 @@ max_entry_bytes = 0
 	}
 
 	#[tokio::test]
-	async fn every_envelope_identity_and_version_is_verified_before_status() {
-		let mut wrong_welcome = initial("wrong-server");
-
-		wrong_welcome.truncate(1);
-
-		let (profile, task, _temp) = fixture(wrong_welcome, Vec::new()).await;
-
-		assert_eq!(
-			DoctorClient::new(profile).query().await.unwrap_err(),
-			ClientFailure::ServerIdentityMismatch,
-		);
-
-		task.await.expect("test operation must succeed");
-
-		let wrong_welcome_version = typed(ServerMessage::Welcome(ServerWelcome {
-			version: ProtocolVersion { major: 2, minor: 0 },
-			artifact_cohort: Some(CURRENT_ARTIFACT_COHORT),
-			supported: SupportedVersions::current(),
-			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
-			instance_id: None,
-			cursor: Cursor(0),
-			reconnect: ReconnectMode::Snapshot,
-		}));
-		let (profile, task, _temp) = fixture(vec![wrong_welcome_version], Vec::new()).await;
-
-		assert_eq!(
-			DoctorClient::new(profile).query().await.unwrap_err(),
-			ClientFailure::ProtocolMinorMismatch,
-		);
-
-		task.await.expect("test operation must succeed");
-
-		let missing_cohort = typed(ServerMessage::Welcome(ServerWelcome {
-			version: CURRENT_VERSION,
-			artifact_cohort: None,
-			supported: SupportedVersions::current(),
-			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
-			instance_id: None,
-			cursor: Cursor(0),
-			reconnect: ReconnectMode::Snapshot,
-		}));
-		let (profile, task, _temp) = fixture(vec![missing_cohort], Vec::new()).await;
-
-		assert_eq!(
-			DoctorClient::new(profile).query().await.unwrap_err(),
-			ClientFailure::ArtifactCohortMismatch,
-		);
-
-		task.await.expect("test operation must succeed");
-
-		let widened_welcome = typed(ServerMessage::Welcome(ServerWelcome {
-			version: CURRENT_VERSION,
-			artifact_cohort: Some(CURRENT_ARTIFACT_COHORT),
-			supported: SupportedVersions { major: 2, minimum_minor: 0, maximum_minor: 2 },
-			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
-			instance_id: None,
-			cursor: Cursor(0),
-			reconnect: ReconnectMode::Snapshot,
-		}));
-		let (profile, task, _temp) = fixture(vec![widened_welcome], Vec::new()).await;
-
-		assert_eq!(
-			DoctorClient::new(profile).query().await.unwrap_err(),
-			ClientFailure::ProtocolMinorMismatch,
-		);
-
-		task.await.expect("test operation must succeed");
-
-		let mut wrong_snapshot = initial(SERVER_ID);
-
-		wrong_snapshot[1] = typed(ServerMessage::Snapshot(SnapshotEnvelope {
-			version: CURRENT_VERSION,
-			server_id: ServerId::new("wrong-server").expect("test operation must succeed"),
-			cursor: Cursor(0),
-			items: Vec::new(),
-		}));
-
-		let (profile, task, _temp) = fixture(wrong_snapshot, Vec::new()).await;
-
-		assert_eq!(
-			DoctorClient::new(profile).query().await.unwrap_err(),
-			ClientFailure::ServerIdentityMismatch,
-		);
-
-		task.await.expect("test operation must succeed");
-
-		let wrong_result_identity = typed(ServerMessage::QueryResult(QueryResultEnvelope {
-			version: CURRENT_VERSION,
-			server_id: ServerId::new("wrong-server").expect("test operation must succeed"),
-			query_id: QueryId::new("decodex-cli-doctor").expect("test operation must succeed"),
-			payload: QueryResultPayload::DoctorStatus(report()),
-		}));
-		let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![wrong_result_identity]).await;
-
-		assert_eq!(
-			DoctorClient::new(profile).query().await.unwrap_err(),
-			ClientFailure::ServerIdentityMismatch,
-		);
-
-		task.await.expect("test operation must succeed");
-
-		let wrong_report_identity = DoctorReport::new(
-			ServerId::new("wrong-server").expect("test operation must succeed"),
-			CURRENT_VERSION,
-			report().checks().to_vec(),
-		)
-		.expect("test operation must succeed");
-		let (profile, task, _temp) =
-			fixture(initial(SERVER_ID), vec![result(wrong_report_identity)]).await;
-
-		assert_eq!(
-			DoctorClient::new(profile).query().await.unwrap_err(),
-			ClientFailure::ServerIdentityMismatch,
-		);
-
-		task.await.expect("test operation must succeed");
-
-		let mut wrong_report = report();
-		let encoded = serde_json::to_value(&wrong_report).expect("test operation must succeed");
-		let mut encoded = encoded.as_object().expect("test operation must succeed").clone();
-
-		encoded.insert("version".into(), serde_json::json!({"major": 2, "minor": 0}));
-
-		wrong_report = serde_json::from_value(encoded.into()).expect("test operation must succeed");
-
-		let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![result(wrong_report)]).await;
-
-		assert_eq!(
-			DoctorClient::new(profile).query().await.unwrap_err(),
-			ClientFailure::ProtocolMinorMismatch,
-		);
-
-		task.await.expect("test operation must succeed");
-	}
-
-	#[tokio::test]
 	async fn snapshot_result_and_query_identity_fail_closed_before_report_acceptance() {
 		let mut wrong_snapshot_version = initial(SERVER_ID);
 
@@ -2570,7 +2221,7 @@ max_entry_bytes = 0
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
-			ClientFailure::ProtocolMinorMismatch,
+			ClientFailure::ServiceVersionMismatch,
 		);
 
 		task.await.expect("test operation must succeed");
@@ -2585,7 +2236,7 @@ max_entry_bytes = 0
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
-			ClientFailure::ProtocolMinorMismatch,
+			ClientFailure::ServiceVersionMismatch,
 		);
 
 		task.await.expect("test operation must succeed");
@@ -2624,7 +2275,7 @@ max_entry_bytes = 0
 		for (event, expected) in [
 			(
 				event(ProtocolVersion { major: 2, minor: 0 }, SERVER_ID),
-				ClientFailure::ProtocolMinorMismatch,
+				ClientFailure::ServiceVersionMismatch,
 			),
 			(event(CURRENT_VERSION, "wrong-server"), ClientFailure::ServerIdentityMismatch),
 		] {

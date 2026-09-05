@@ -1,4 +1,4 @@
-//! `decodexd` lifecycle assembly and the same-UID V2.13 local connection owner.
+//! `decodex serve` lifecycle assembly and the same-UID V2.14 local connection owner.
 //!
 //! Account-process and routing composition remain crate-private. The ordinary Conversation owner
 //! composes them without exporting raw process, routing, or provider-dispatch facades.
@@ -66,7 +66,7 @@ pub use websocket::{
 
 #[cfg(test)] use {tempfile as _, tokio_tungstenite as _};
 
-/// The vNext service assembly selected by the `decodexd` composition root.
+/// The vNext service assembly selected by the `decodex serve` composition root.
 #[derive(Clone, Copy, Debug)]
 pub struct ServiceComposition;
 impl ServiceComposition {

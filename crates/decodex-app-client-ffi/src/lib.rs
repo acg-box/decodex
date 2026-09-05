@@ -1,6 +1,6 @@
 //! In-process C ABI for the native Decodex app.
 //!
-//! The bridge is a credential-negative client of the one local `decodexd`
+//! The bridge is a credential-negative client of the one local `decodex serve`
 //! service. It reuses the typed Rust protocol clients directly. Account login
 //! is a short-lived protocol exchange; Swift never receives credential bytes
 //! or a credential-file path.
@@ -136,10 +136,7 @@ enum Request {
 	},
 	RouteAccount {
 		schema: String,
-		operation_id: String,
 		account_id: String,
-		expected_account_revision: u64,
-		expected_routing_revision: u64,
 		idempotency_key: String,
 	},
 	SetBalancedSelection {
@@ -310,9 +307,8 @@ impl From<ResetCardConsumeResponse> for ResetCardConsumeDto {
 				entity_revision,
 			} => Self::Accepted { account_id, descriptor, state, entity_revision },
 			ResetCardConsumeResponse::Rejected { error } => Self::Rejected { error },
-			ResetCardConsumeResponse::PotentiallyDispatched { failure } => {
-				Self::PotentiallyDispatched { failure }
-			},
+			ResetCardConsumeResponse::PotentiallyDispatched { failure } =>
+				Self::PotentiallyDispatched { failure },
 		}
 	}
 }
@@ -333,12 +329,6 @@ impl From<ClientFailure> for RequestFailure {
 #[unsafe(no_mangle)]
 pub extern "C" fn decodex_app_native_client_abi_version() -> u32 {
 	ABI_VERSION
-}
-
-/// Return the exact daemon/client artifact cohort required by this library.
-#[unsafe(no_mangle)]
-pub extern "C" fn decodex_app_native_client_artifact_cohort() -> u32 {
-	decodex_protocol::CURRENT_ARTIFACT_COHORT
 }
 
 /// Create one thread-safe native client handle.
@@ -675,16 +665,13 @@ async fn execute_request(
 	match request {
 		Request::ListAccounts { .. } => list_accounts(profile).await,
 		Request::GetResetCards { account_id, .. } => get_reset_cards(profile, account_id).await,
-		Request::GetAccountProfile { account_id, include_email, .. } => {
-			get_account_profile(profile, account_id, include_email).await
-		},
+		Request::GetAccountProfile { account_id, include_email, .. } =>
+			get_account_profile(profile, account_id, include_email).await,
 		Request::GetCodexAuthProjection { .. } => get_codex_auth_projection(profile).await,
-		Request::WaitForAccountObservation { after_generation, request_refresh, .. } => {
-			wait_for_account_observation(profile, after_generation, request_refresh).await
-		},
-		Request::ResetCardStatus { idempotency_key, .. } => {
-			get_reset_card_status(profile, idempotency_key).await
-		},
+		Request::WaitForAccountObservation { after_generation, request_refresh, .. } =>
+			wait_for_account_observation(profile, after_generation, request_refresh).await,
+		Request::ResetCardStatus { idempotency_key, .. } =>
+			get_reset_card_status(profile, idempotency_key).await,
 		Request::UseResetCard {
 			account_id,
 			granted_at_unix_seconds,
@@ -692,7 +679,7 @@ async fn execute_request(
 			expected_revision,
 			idempotency_key,
 			..
-		} => {
+		} =>
 			consume_reset_card(
 				profile,
 				account_id,
@@ -701,52 +688,29 @@ async fn execute_request(
 				expected_revision,
 				idempotency_key,
 			)
-			.await
-		},
-		Request::EnrollAccount { operation_id, account_id, enabled, idempotency_key, .. } => {
-			enroll_account(profile, operation_id, account_id, enabled, idempotency_key).await
-		},
-		Request::EnableAccount { account_id, expected_revision, idempotency_key, .. } => {
-			set_account_enabled(profile, account_id, true, expected_revision, idempotency_key).await
-		},
-		Request::DisableAccount { account_id, expected_revision, idempotency_key, .. } => {
+			.await,
+		Request::EnrollAccount { operation_id, account_id, enabled, idempotency_key, .. } =>
+			enroll_account(profile, operation_id, account_id, enabled, idempotency_key).await,
+		Request::EnableAccount { account_id, expected_revision, idempotency_key, .. } =>
+			set_account_enabled(profile, account_id, true, expected_revision, idempotency_key).await,
+		Request::DisableAccount { account_id, expected_revision, idempotency_key, .. } =>
 			set_account_enabled(profile, account_id, false, expected_revision, idempotency_key)
-				.await
-		},
+				.await,
 		Request::LogoutAccount {
 			operation_id,
 			account_id,
 			expected_revision,
 			idempotency_key,
 			..
-		} => {
+		} =>
 			logout_account(profile, operation_id, account_id, expected_revision, idempotency_key)
-				.await
-		},
-		Request::RouteAccount {
-			operation_id,
-			account_id,
-			expected_account_revision,
-			expected_routing_revision,
-			idempotency_key,
-			..
-		} => {
-			route_account(
-				profile,
-				operation_id,
-				account_id,
-				expected_account_revision,
-				expected_routing_revision,
-				idempotency_key,
-			)
-			.await
-		},
-		Request::SetBalancedSelection { expected_routing_revision, idempotency_key, .. } => {
-			set_balanced_selection(profile, expected_routing_revision, idempotency_key).await
-		},
-		Request::SetAccountOrder { order, expected_routing_revision, idempotency_key, .. } => {
-			set_account_order(profile, order, expected_routing_revision, idempotency_key).await
-		},
+				.await,
+		Request::RouteAccount { account_id, idempotency_key, .. } =>
+			route_account(profile, account_id, idempotency_key).await,
+		Request::SetBalancedSelection { expected_routing_revision, idempotency_key, .. } =>
+			set_balanced_selection(profile, expected_routing_revision, idempotency_key).await,
+		Request::SetAccountOrder { order, expected_routing_revision, idempotency_key, .. } =>
+			set_account_order(profile, order, expected_routing_revision, idempotency_key).await,
 		Request::StartAccountEnrollment {
 			session_id,
 			operation_id,
@@ -755,7 +719,7 @@ async fn execute_request(
 			idempotency_key,
 			login_method,
 			..
-		} => {
+		} =>
 			start_account_enrollment(
 				&native_client,
 				profile,
@@ -768,8 +732,7 @@ async fn execute_request(
 					login_method,
 				},
 			)
-			.await
-		},
+			.await,
 		Request::StartAccountReauthentication {
 			session_id,
 			operation_id,
@@ -779,7 +742,7 @@ async fn execute_request(
 			idempotency_key,
 			login_method,
 			..
-		} => {
+		} =>
 			start_account_reauthentication(
 				&native_client,
 				profile,
@@ -793,14 +756,11 @@ async fn execute_request(
 					login_method,
 				},
 			)
-			.await
-		},
-		Request::PollAccountReauthentication { session_id, .. } => {
-			poll_account_reauthentication(&native_client, profile, session_id).await
-		},
-		Request::CancelAccountReauthentication { session_id, .. } => {
-			cancel_account_reauthentication(&native_client, profile, session_id).await
-		},
+			.await,
+		Request::PollAccountReauthentication { session_id, .. } =>
+			poll_account_reauthentication(&native_client, profile, session_id).await,
+		Request::CancelAccountReauthentication { session_id, .. } =>
+			cancel_account_reauthentication(&native_client, profile, session_id).await,
 		Request::FastModeStatus { .. } => fast_mode_status(),
 		Request::SetFastMode { enabled, .. } => set_fast_mode(enabled),
 	}
@@ -1035,20 +995,11 @@ async fn consume_reset_card(
 
 async fn route_account(
 	profile: ClientProfile,
-	operation_id: String,
 	account_id: String,
-	expected_account_revision: u64,
-	expected_routing_revision: u64,
 	idempotency_key: String,
 ) -> Result<Value, RequestFailure> {
 	let response = AccountClient::new(profile)
-		.route_account(
-			entity_id(&operation_id)?,
-			entity_id(&account_id)?,
-			revision(expected_account_revision)?,
-			revision(expected_routing_revision)?,
-			parse_idempotency_key(idempotency_key)?,
-		)
+		.route_account(entity_id(&account_id)?, parse_idempotency_key(idempotency_key)?)
 		.await
 		.map_err(RequestFailure::Client)?;
 	to_value(response)
@@ -1225,12 +1176,8 @@ mod tests {
 	const SECOND_ACCOUNT_ID: &str = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405163";
 
 	#[test]
-	fn exported_abi_and_artifact_cohort_are_exact() {
+	fn exported_abi_is_exact() {
 		assert_eq!(decodex_app_native_client_abi_version(), ABI_VERSION);
-		assert_eq!(
-			decodex_app_native_client_artifact_cohort(),
-			decodex_protocol::CURRENT_ARTIFACT_COHORT,
-		);
 	}
 
 	#[test]
@@ -1272,15 +1219,15 @@ mod tests {
 	}
 
 	#[test]
-	fn route_request_is_operation_account_and_routing_revision_fenced() {
+	fn route_request_has_only_target_and_envelope_idempotency() {
 		let request = serde_json::from_str::<Request>(&format!(
-			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"route_account","operation_id":"028f0f9e-7b6e-4a31-8f4c-1d2e3f405163","account_id":"{ACCOUNT_ID}","expected_account_revision":7,"expected_routing_revision":9,"idempotency_key":"route-account-test"}}"#
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"route_account","account_id":"{ACCOUNT_ID}","idempotency_key":"route-account-test"}}"#
 		))
 		.expect("Route request must decode");
 
 		assert_eq!(request.operation(), "route_account");
 		assert!(serde_json::from_str::<Request>(&format!(
-			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"route_account","operation_id":"028f0f9e-7b6e-4a31-8f4c-1d2e3f405163","account_id":"{ACCOUNT_ID}","expected_account_revision":7,"idempotency_key":"route-account-test"}}"#
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"route_account","operation_id":"028f0f9e-7b6e-4a31-8f4c-1d2e3f405163","account_id":"{ACCOUNT_ID}","idempotency_key":"route-account-test"}}"#
 		))
 		.is_err());
 	}

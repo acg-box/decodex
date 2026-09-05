@@ -672,17 +672,12 @@ private enum AccountListWireResult: Decodable {
 struct AccountListWireData: Decodable {
 	let accounts: [ResetCardAccountWire]
 	let routing: AccountRoutingWire?
-	let pendingRoute: AccountRoutePending?
 
 	init(from decoder: Decoder) throws {
-		try rejectUnknownFields(in: decoder, allowed: ["accounts", "routing", "pending_route"])
+		try rejectUnknownFields(in: decoder, allowed: ["accounts", "routing"])
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		accounts = try container.decode([ResetCardAccountWire].self, forKey: .accounts)
 		routing = try container.decodeIfPresent(AccountRoutingWire.self, forKey: .routing)
-		pendingRoute = try container.decodeIfPresent(
-			AccountRoutePending.self,
-			forKey: .pendingRoute
-		)
 	}
 
 	func snapshot(
@@ -731,18 +726,10 @@ struct AccountListWireData: Decodable {
 			// retried. Preserve the daemon's registry order until a routing snapshot arrives.
 			ordered = records
 		}
-		if let pendingRoute {
-			guard byID[pendingRoute.accountID] != nil,
-				routing.map({ $0.revision == pendingRoute.routingRevision }) ?? true
-			else {
-				throw ResetCardClientError.invalidResponse
-			}
-		}
 		return AccountControlSnapshot(
 			authority: authority,
 			accounts: ordered,
-			routing: routing?.routing,
-			pendingRoute: pendingRoute
+			routing: routing?.routing
 		)
 	}
 
@@ -753,7 +740,6 @@ struct AccountListWireData: Decodable {
 	private enum CodingKeys: String, CodingKey {
 		case accounts
 		case routing
-		case pendingRoute = "pending_route"
 	}
 }
 
@@ -1769,8 +1755,16 @@ private enum ResetCardAccountCommandRejectionWire: String, Decodable {
 	case credentialStoreUnavailable = "credential_store_unavailable"
 	case providerMismatch = "provider_mismatch"
 	case lifecycleUnready = "lifecycle_unready"
-	case sharedAuthOwnerBusy = "shared_auth_owner_busy"
-	case routeSuperseded = "route_superseded"
+	case codexIsRunning = "codex_is_running"
+	case accountDisabled = "account_disabled"
+	case credentialMissing = "credential_missing"
+	case credentialNeedsLogin = "credential_needs_login"
+	case credentialRefreshRejected = "credential_refresh_rejected"
+	case credentialRefreshUnavailable = "credential_refresh_unavailable"
+	case authFileUnreadable = "auth_file_unreadable"
+	case authFileChanged = "auth_file_changed"
+	case authWriteFailed = "auth_write_failed"
+	case authReadbackMismatch = "auth_readback_mismatch"
 	case routingOrderInvalid = "routing_order_invalid"
 	case manualRecoveryRequired = "manual_recovery_required"
 }

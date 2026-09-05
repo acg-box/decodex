@@ -31,7 +31,7 @@ use decodex_protocol::{
 	LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream, ProtocolVersion,
 	QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition, ReconnectMode,
 	Refusal, ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, ResumeCursor,
-	ServerId, ServerInstanceId, ServerMessage, SnapshotItem, VersionRefusal, WireText,
+	ServerId, ServerInstanceId, ServerMessage, SnapshotItem, WireText,
 };
 use decodex_runtime::{
 	ActorCommandDeadlineClass, Application, ApplicationPublication, ProtocolServer, ServerConfig,
@@ -386,12 +386,7 @@ async fn connect(transport: &LocalTransportAuthority, version: ProtocolVersion) 
 
 	send(
 		&mut client,
-		ClientMessage::Hello(ClientHello {
-			version,
-			artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
-			expected_server_id: None,
-			resume: None,
-		}),
+		ClientMessage::Hello(ClientHello { version, expected_server_id: None, resume: None }),
 	)
 	.await;
 
@@ -413,7 +408,6 @@ async fn reconnect(
 		&mut client,
 		ClientMessage::Hello(ClientHello {
 			version,
-			artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
 			expected_server_id: None,
 			resume: Some(cursor),
 		}),
@@ -527,10 +521,7 @@ async fn exact_current_and_pre_payload_version_refusals_use_real_websockets() {
 		panic!("expected version refusal");
 	};
 
-	assert!(matches!(
-		refusal.refusal,
-		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. })
-	));
+	assert!(matches!(refusal.refusal, Refusal::ServiceVersionMismatch { .. }));
 	assert_eq!((application.queries(), application.executions()), (0, 0));
 
 	drop(client);
@@ -540,10 +531,7 @@ async fn exact_current_and_pre_payload_version_refusals_use_real_websockets() {
 		panic!("expected minor-version refusal");
 	};
 
-	assert!(matches!(
-		refusal.refusal,
-		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. })
-	));
+	assert!(matches!(refusal.refusal, Refusal::ServiceVersionMismatch { .. }));
 	assert_eq!((application.queries(), application.executions()), (0, 0));
 
 	drop(client);
@@ -553,8 +541,6 @@ async fn exact_current_and_pre_payload_version_refusals_use_real_websockets() {
 		panic!("expected welcome");
 	};
 	assert_eq!(welcome.version, CURRENT_VERSION);
-	assert_eq!(welcome.supported.minimum_minor, 13);
-	assert_eq!(welcome.supported.maximum_minor, 13);
 	assert!(welcome.instance_id.is_some());
 	assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
 	execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;

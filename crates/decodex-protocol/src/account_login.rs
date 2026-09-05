@@ -101,9 +101,8 @@ impl AccountLoginStart {
 			return Err(AccountLoginContractError::InvalidIdentity);
 		}
 		let (operation_id, account_id) = match &self.install_mode {
-			AccountLoginInstallMode::Enroll { operation_id, account_id, .. } => {
-				(operation_id, account_id)
-			},
+			AccountLoginInstallMode::Enroll { operation_id, account_id, .. } =>
+				(operation_id, account_id),
 			AccountLoginInstallMode::Reauthenticate {
 				operation_id,
 				account_id,
@@ -165,10 +164,10 @@ impl AccountLoginRequest {
 			AccountLoginRequest::Start { start } => start.validate(),
 			AccountLoginRequest::Status { session_id }
 			| AccountLoginRequest::Cancel { session_id }
-				if is_canonical_uuid(session_id.as_str()) => Ok(()),
-			AccountLoginRequest::Status { .. } | AccountLoginRequest::Cancel { .. } => {
-				Err(AccountLoginContractError::InvalidIdentity)
-			},
+				if is_canonical_uuid(session_id.as_str()) =>
+				Ok(()),
+			AccountLoginRequest::Status { .. } | AccountLoginRequest::Cancel { .. } =>
+				Err(AccountLoginContractError::InvalidIdentity),
 		}
 	}
 }
@@ -280,32 +279,36 @@ impl AccountLoginStatus {
 		{
 			return Err(AccountLoginContractError::InvalidIdentity);
 		}
-		let waiting_payloads = usize::from(self.prompt.is_some())
-			+ usize::from(self.authorization_url.is_some());
+		let waiting_payloads =
+			usize::from(self.prompt.is_some()) + usize::from(self.authorization_url.is_some());
 		let valid = match self.state {
 			AccountLoginState::OpeningBrowser
 			| AccountLoginState::RequestingCode
-			| AccountLoginState::Installing => {
-				waiting_payloads == 0 && self.failure.is_none() && self.resolved_account_id.is_none()
-			},
-			AccountLoginState::WaitingForBrowser => {
-				waiting_payloads == 1 && self.failure.is_none() && self.resolved_account_id.is_none()
-			},
-			AccountLoginState::Completed => {
-				waiting_payloads == 0 && self.failure.is_none() && self.resolved_account_id.is_some()
-			},
-			AccountLoginState::Failed => {
-				waiting_payloads == 0 && self.failure.is_some() && self.resolved_account_id.is_none()
-			},
-			AccountLoginState::Cancelled => {
-				waiting_payloads == 0 && self.failure.is_none() && self.resolved_account_id.is_none()
-			},
+			| AccountLoginState::Installing =>
+				waiting_payloads == 0
+					&& self.failure.is_none()
+					&& self.resolved_account_id.is_none(),
+			AccountLoginState::WaitingForBrowser =>
+				waiting_payloads == 1
+					&& self.failure.is_none()
+					&& self.resolved_account_id.is_none(),
+			AccountLoginState::Completed =>
+				waiting_payloads == 0
+					&& self.failure.is_none()
+					&& self.resolved_account_id.is_some(),
+			AccountLoginState::Failed =>
+				waiting_payloads == 0
+					&& self.failure.is_some()
+					&& self.resolved_account_id.is_none(),
+			AccountLoginState::Cancelled =>
+				waiting_payloads == 0
+					&& self.failure.is_none()
+					&& self.resolved_account_id.is_none(),
 		};
 		if !valid
 			|| self.prompt.as_ref().is_some_and(|prompt| {
 				prompt.verification_url.as_str().is_empty() || prompt.user_code.as_str().is_empty()
-			})
-			|| self.authorization_url.as_ref().is_some_and(|url| url.as_str().is_empty())
+			}) || self.authorization_url.as_ref().is_some_and(|url| url.as_str().is_empty())
 		{
 			return Err(AccountLoginContractError::InvalidStatus);
 		}
@@ -411,8 +414,7 @@ mod tests {
 		assert!(AccountLoginUrl::new("x".repeat(MAX_ACCOUNT_LOGIN_URL_BYTES + 1)).is_err());
 
 		let encoded = serde_json::to_string(
-			&AccountLoginUrl::new("x".repeat(MAX_ACCOUNT_LOGIN_URL_BYTES))
-				.expect("boundary URL"),
+			&AccountLoginUrl::new("x".repeat(MAX_ACCOUNT_LOGIN_URL_BYTES)).expect("boundary URL"),
 		)
 		.expect("encode boundary URL");
 		assert!(serde_json::from_str::<AccountLoginUrl>(&encoded).is_ok());

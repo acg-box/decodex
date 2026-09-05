@@ -5,7 +5,7 @@ use std::{
 	future::{self, Future},
 	pin::Pin,
 	sync::Arc,
-	time::{Duration, SystemTime, UNIX_EPOCH},
+	time::{SystemTime, UNIX_EPOCH},
 };
 
 use decodex_codex::CodexAdapter;
@@ -37,33 +37,29 @@ use decodex_protocol::{
 	AccountManualRecoveryOutcomeDto, AccountObservedStateDto, AccountOperationKindDto,
 	AccountOperationPhaseDto, AccountProfileDailyUsageDto, AccountProfileDto,
 	AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult, AccountProviderDto,
-	AccountQuotaErrorDto, AccountQuotaStateDto, AccountQuotaWindowDto, AccountRouteAuthHomeDto,
-	AccountRouteBlockingProcessDto, AccountRoutePendingDto, AccountRouteProcessBlockerDto,
-	AccountRouteWaitReasonDto, AccountRoutingControlDto, AccountSelectionModeDto,
-	AccountSelectionRecoveryDto, AccountUnsettledOperationDto, AccountsResult, CausationId,
-	Channel, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
-	ConversationExecutionSettings as ConversationExecutionSettingsDto, ConversationHistoryPage,
-	ConversationHistoryResult, ConversationListCursor, ConversationListPage,
-	ConversationListResult, ConversationProgramContext, ConversationReadError,
-	ConversationRecoveryAction, ConversationResult, ConversationState, ConversationSummary,
-	ConversationTitle, ConversationTurnOutcome, CorrelationId, DESKTOP_SETTINGS_ENTITY_ID,
-	DesktopSettingsDto, DesktopSettingsResult, DoctorCheck, DoctorComponent, DoctorIssue,
-	DoctorReport, DoctorStatus, EntityId, EntityRevision, EventPayload, HistoryArtifactId,
-	HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference,
-	HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
-	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
-	MAX_HISTORY_PAGE_SIZE, ProgramContinuationDraftDto, ProgramCycleDraftDto, ProgramCycleDto,
-	ProgramCycleResult, ProgramEdgeDto, ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto,
-	ProgramNodeKind, ProgramRelationKind, ProgramReviewDraftDto, ProgramSummaryDto,
-	ProviderThreadId, QueryEnvelope, QueryPayload, QueryResultPayload, ResetCardDescriptorDto,
-	ResetCardError, ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
-	ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem, WireText,
+	AccountQuotaErrorDto, AccountQuotaStateDto, AccountQuotaWindowDto, AccountRoutingControlDto,
+	AccountSelectionModeDto, AccountSelectionRecoveryDto, AccountUnsettledOperationDto,
+	AccountsResult, CausationId, Channel, CodexAuthProjectionResult, CommandEnvelope, CommandError,
+	CommandPayload, ConversationExecutionSettings as ConversationExecutionSettingsDto,
+	ConversationHistoryPage, ConversationHistoryResult, ConversationListCursor,
+	ConversationListPage, ConversationListResult, ConversationProgramContext,
+	ConversationReadError, ConversationRecoveryAction, ConversationResult, ConversationState,
+	ConversationSummary, ConversationTitle, ConversationTurnOutcome, CorrelationId,
+	DESKTOP_SETTINGS_ENTITY_ID, DesktopSettingsDto, DesktopSettingsResult, DoctorCheck,
+	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision,
+	EventPayload, HistoryArtifactId, HistoryArtifactReference, HistoryArtifactRevision,
+	HistoryBlobLength, HistoryBlobReference, HistoryCursorToken, HistoryItemDto,
+	HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryQueryError,
+	HistorySideEffectState, HistoryText, HistoryTurnRole, MAX_HISTORY_PAGE_SIZE,
+	ProgramContinuationDraftDto, ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult,
+	ProgramEdgeDto, ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto, ProgramNodeKind,
+	ProgramRelationKind, ProgramReviewDraftDto, ProgramSummaryDto, ProviderThreadId, QueryEnvelope,
+	QueryPayload, QueryResultPayload, ResetCardDescriptorDto, ResetCardError,
+	ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult, ResetCardOutcome,
+	ResultPayload, Sha256Digest, SnapshotItem, WireText,
 };
 use serde::{Deserialize, Serialize};
-use tokio::{
-	sync::{Mutex as AsyncMutex, broadcast, watch},
-	time,
-};
+use tokio::sync::watch;
 
 use crate::{
 	CredentialStoreError, ProcessGenerationControl, ProviderAttemptControl,
@@ -78,9 +74,8 @@ use crate::{
 	},
 	account_service::{
 		AccountLifecycleError, AccountManualRecoveryAction, AccountManualRecoveryOutcome,
-		AccountRouteCommit, AccountRouteCompletion, AccountRouteFailure, AccountRoutePending,
-		AccountRouteResult, AccountRouteWaitReason, AccountService, CodexAuthProjectionInspection,
-		stable_account_alias,
+		AccountRouteCommit, AccountRouteFailure, AccountRouteResult, AccountService,
+		CodexAuthProjectionInspection, stable_account_alias,
 	},
 	conversation::{
 		ControlConversation, ConversationCapability, ConversationControlOutcome,
@@ -92,7 +87,6 @@ use crate::{
 	domain_packs::{self, CONVERSATION_CAPABILITY, DomainPackError},
 	managed_repository_runtime::ManagedRepositoryCapability,
 	routing_orchestration::{ExecutionCoordinator, RoutingSuccessorExecutionCommand},
-	shared_auth_coordinator::{CodexAuthHomeEvidence, CodexAuthOwnerKind},
 };
 
 /// The only mutation/observation seam reachable from the WebSocket server.
@@ -295,7 +289,6 @@ pub(crate) struct ServiceApplication {
 	_codex: CodexAdapter,
 	blob_store: Option<BlobStore>,
 	accounts: Option<Arc<AccountService>>,
-	account_route_events: Option<AsyncMutex<broadcast::Receiver<AccountRouteCompletion>>>,
 	publication_stop: watch::Sender<bool>,
 	reset_cards: Option<ApiResetCardRuntime>,
 	account_observations: Option<AccountObservationService>,
@@ -324,7 +317,6 @@ impl ServiceApplication {
 			_codex: codex,
 			blob_store,
 			accounts: None,
-			account_route_events: None,
 			publication_stop,
 			reset_cards: None,
 			account_observations: None,
@@ -335,8 +327,6 @@ impl ServiceApplication {
 	}
 
 	pub(crate) fn with_accounts(mut self, accounts: Option<Arc<AccountService>>) -> Self {
-		self.account_route_events =
-			accounts.as_ref().map(|accounts| AsyncMutex::new(accounts.subscribe_route_events()));
 		self.accounts = accounts;
 
 		self
@@ -407,134 +397,6 @@ impl ServiceApplication {
 	}
 }
 
-const PENDING_ROUTE_RETRY_DELAY: Duration = Duration::from_millis(100);
-const IDLE_ROUTE_RETRY_DELAY: Duration = Duration::from_secs(1);
-
-pub(crate) async fn recover_pending_account_routes_once(
-	accounts: Arc<AccountService>,
-	store: &SqliteStore,
-	observations: Option<&AccountObservationService>,
-) -> bool {
-	if let Ok(Some(account)) = accounts.follow_shared_auth_once().await
-		&& let Some(observations) = observations
-	{
-		observations.invalidate_account(&account.account_id).await;
-		observations.request_refresh();
-	}
-	let mut has_pending_routes = false;
-	if let Ok(pending) = store.read_pending_account_route_commands(64).await {
-		has_pending_routes = !pending.is_empty();
-		let codex_may_be_running = accounts.shared_auth_may_be_running();
-		for pending_command in pending {
-			let _route_guard = accounts.lock_route_command().await;
-			let routing_is_stale =
-				store.read_account_routing_control().await.ok().is_some_and(|routing| {
-					routing.revision != pending_command.expected_routing_revision
-				});
-			let Ok(CommandPayload::RouteAccount {
-				operation_id,
-				account_id,
-				expected_account_revision,
-			}) = serde_json::from_str::<CommandPayload>(&pending_command.request_json)
-			else {
-				continue;
-			};
-			let (Ok(operation_id), Ok(account_id), Ok(expected_account_revision)) = (
-				AccountOperationId::new(operation_id.as_str()),
-				AccountId::new(account_id.as_str()),
-				i64::try_from(expected_account_revision.0),
-			) else {
-				continue;
-			};
-			if !routing_is_stale
-				&& accounts.inspect(&account_id).await.ok().is_some_and(|inspection| {
-					matches!(
-						inspection.readiness,
-						AccountLifecycleReadiness::CallbackCapabilityUnready
-							| AccountLifecycleReadiness::StoreUnavailable
-							| AccountLifecycleReadiness::StoreMismatch
-							| AccountLifecycleReadiness::OperationUnsettled
-					)
-				}) {
-				continue;
-			}
-			if codex_may_be_running
-				&& !routing_is_stale
-				&& !accounts.shared_auth_is_current_for(&account_id).await
-			{
-				continue;
-			}
-			let lease = match store.reclaim_account_route_command(&pending_command).await {
-				Ok(AccountCommandReceiptClaim::Owned(lease)) => lease,
-				Ok(
-					AccountCommandReceiptClaim::Pending(_)
-					| AccountCommandReceiptClaim::Replayed(_),
-				)
-				| Err(_) => continue,
-			};
-			let result = accounts
-				.route_account_command(
-					lease,
-					operation_id,
-					&account_id,
-					expected_account_revision,
-					pending_command.expected_routing_revision,
-					true,
-					|result| encode_account_command_receipt(&account_route_result(result)),
-				)
-				.await;
-			let committed = account_route_receipt_committed(result);
-			if committed && let Some(observations) = observations {
-				observations.invalidate_account(&account_id).await;
-				observations.request_refresh();
-			}
-		}
-	}
-	has_pending_routes
-}
-
-fn account_route_receipt_committed(
-	result: Result<serde_json::Value, AccountLifecycleError>,
-) -> bool {
-	result.ok().is_some_and(|value| {
-		decode_account_command_receipt(value).ok().and_then(Result::ok).is_some_and(|publication| {
-			matches!(publication.result, ResultPayload::AccountRouted { .. })
-		})
-	})
-}
-
-async fn recover_pending_account_routes(
-	accounts: Arc<AccountService>,
-	store: SqliteStore,
-	observations: Option<AccountObservationService>,
-	mut stop: watch::Receiver<bool>,
-) {
-	loop {
-		if *stop.borrow() {
-			return;
-		}
-		let has_pending_routes = recover_pending_account_routes_once(
-			Arc::clone(&accounts),
-			&store,
-			observations.as_ref(),
-		)
-		.await;
-		let retry_delay =
-			if has_pending_routes { PENDING_ROUTE_RETRY_DELAY } else { IDLE_ROUTE_RETRY_DELAY };
-
-		tokio::select! {
-			biased;
-			changed = stop.changed() => {
-				if changed.is_err() || *stop.borrow() {
-					return;
-				}
-			},
-			() = accounts.pending_route_notified() => {},
-			() = time::sleep(retry_delay) => {},
-		}
-	}
-}
-
 impl ServiceApplication {
 	async fn desktop_settings(&self) -> DesktopSettingsResult {
 		let ProductStore::Available(store) = &self.store else {
@@ -597,18 +459,8 @@ impl ServiceApplication {
 			.collect::<Result<Vec<_>, _>>();
 		let routing =
 			service.routing_control().await.ok().and_then(|routing| routing_dto(routing).ok());
-		let pending_route = match &self.store {
-			ProductStore::Available(store) =>
-				match store.read_pending_account_route_commands(2).await {
-					Ok(pending) if pending.is_empty() => None,
-					Ok(pending) if pending.len() == 1 =>
-						pending_account_route_dto(service, &pending[0]).await.ok(),
-					Ok(_) | Err(_) => return AccountsResult::Unavailable,
-				},
-			ProductStore::Unavailable(_) => None,
-		};
 		match accounts {
-			Ok(accounts) => AccountsResult::Available { accounts, routing, pending_route },
+			Ok(accounts) => AccountsResult::Available { accounts, routing },
 			Err(_) => AccountsResult::Unavailable,
 		}
 	}
@@ -735,15 +587,10 @@ impl ServiceApplication {
 		command: &CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
 		validate_account_command_envelope(command)?;
-		let Some(service) = self.accounts.as_ref() else {
+		if self.accounts.is_none() {
 			return Err(application_unavailable("account service is unavailable"));
-		};
+		}
 		let (kind, entity_id, expected_revision) = account_command_descriptor(command)?;
-		let _route_guard = if kind == AccountCommandKind::Route {
-			Some(service.lock_route_command().await)
-		} else {
-			None
-		};
 		let ProductStore::Available(store) = &self.store else {
 			return Err(application_unavailable("account product state is unavailable"));
 		};
@@ -751,27 +598,8 @@ impl ServiceApplication {
 			.map_err(|_| account_rejection(AccountCommandRejectionDto::InvalidRequest, None))?;
 		let identity = CommandIdentity::new(command.idempotency_key.as_str(), &request)
 			.map_err(map_account_store_command_error)?;
-		let claim = if kind == AccountCommandKind::Route {
-			let request_json = std::str::from_utf8(&request)
-				.map_err(|_| account_rejection(AccountCommandRejectionDto::InvalidRequest, None))?;
-			let superseded_response = encode_account_command_receipt(&Err(account_rejection(
-				AccountCommandRejectionDto::RouteSuperseded,
-				None,
-			)))
-			.map_err(map_account_store_command_error)?;
-			store
-				.reserve_replacing_account_route_command(
-					&identity,
-					expected_revision.ok_or_else(|| {
-						account_rejection(AccountCommandRejectionDto::InvalidRequest, None)
-					})?,
-					request_json,
-					&superseded_response,
-				)
-				.await
-		} else {
-			store.reserve_account_command(&identity, kind, &entity_id, expected_revision).await
-		};
+		let claim =
+			store.reserve_account_command(&identity, kind, &entity_id, expected_revision).await;
 		let reserved = match claim.map_err(map_account_store_command_error)? {
 			AccountCommandReceiptClaim::Owned(lease) => ReservedAccountCommand::Owned(lease),
 			AccountCommandReceiptClaim::Pending(value)
@@ -882,28 +710,12 @@ impl ServiceApplication {
 					})
 					.await
 			},
-			CommandPayload::RouteAccount {
-				operation_id,
-				account_id,
-				expected_account_revision,
-			} => {
-				let operation_id = operation_id_from_wire(operation_id)?;
+			CommandPayload::RouteAccount { account_id } => {
 				let account_id = account_id_from_wire(account_id)?;
-				let expected_routing_revision = required_expected_revision(command)?;
-				let expected_account_revision = i64::try_from(expected_account_revision.0)
-					.map_err(|_| {
-						account_rejection(AccountCommandRejectionDto::InvalidRequest, None)
-					})?;
 				service
-					.route_account_command(
-						lease,
-						operation_id,
-						&account_id,
-						expected_account_revision,
-						expected_routing_revision,
-						false,
-						|result| encode_account_command_receipt(&account_route_result(result)),
-					)
+					.route_account_command_sync(lease, &account_id, |result| {
+						encode_account_command_receipt(&account_route_result(result))
+					})
 					.await
 			},
 			CommandPayload::RecoverAccountOperation { operation_id, action } => {
@@ -1893,7 +1705,7 @@ async fn authorize_program_capability(
 
 impl Application for ServiceApplication {
 	fn has_publication_source(&self) -> bool {
-		self.conversations.runtime().is_some() || self.account_route_events.is_some()
+		self.conversations.runtime().is_some()
 	}
 
 	fn begin_shutdown(&self) {
@@ -1932,15 +1744,6 @@ impl Application for ServiceApplication {
 		if let Some(control) = &self.provider_attempts {
 			tasks.push(Box::pin(control.reconciliation_task(stop.clone())));
 		}
-		if let (Some(accounts), ProductStore::Available(store)) = (&self.accounts, &self.store) {
-			tasks.push(Box::pin(recover_pending_account_routes(
-				Arc::clone(accounts),
-				store.clone(),
-				self.account_observations.clone(),
-				stop.clone(),
-			)));
-		}
-
 		if let Some(runtime) = &self.reset_cards {
 			tasks.push(Box::pin(runtime.clone().daemon_service(stop.clone())));
 		}
@@ -1953,7 +1756,7 @@ impl Application for ServiceApplication {
 
 	fn snapshot(&self) -> impl Future<Output = Vec<SnapshotItem>> + Send {
 		future::ready(vec![SnapshotItem::SystemState {
-			entity_id: EntityId::new("decodexd").expect("service entity ID is bounded"),
+			entity_id: EntityId::new("decodex-service").expect("service entity ID is bounded"),
 			revision: EntityRevision(0),
 			status: WireText::new("typed doctor/status is available through the daemon protocol")
 				.expect("service status is bounded"),
@@ -2114,67 +1917,12 @@ impl Application for ServiceApplication {
 	}
 
 	async fn next_publication(&self) -> Option<ApplicationEventPublication> {
-		match (self.conversations.runtime(), self.account_route_events.as_ref()) {
-			(None, None) => None,
-			(Some(runtime), None) => loop {
-				let outcome = runtime.next_event().await?;
-				if let Some(publication) = self.conversation_event_publication(outcome).await {
-					return Some(publication);
-				}
-			},
-			(None, Some(_)) => self.next_account_route_publication().await,
-			(Some(runtime), Some(_)) => loop {
-				tokio::select! {
-					outcome = runtime.next_event() => {
-						let Some(outcome) = outcome else {
-							return self.next_account_route_publication().await;
-						};
-						if let Some(publication) = self.conversation_event_publication(outcome).await {
-							return Some(publication);
-						}
-					},
-					publication = self.next_account_route_publication() => {
-						return publication;
-					},
-				}
-			},
-		}
-	}
-}
-
-impl ServiceApplication {
-	async fn next_account_route_publication(&self) -> Option<ApplicationEventPublication> {
-		let receiver = self.account_route_events.as_ref()?;
-		let mut receiver = receiver.lock().await;
-		let mut stop = self.publication_stop.subscribe();
-		if *stop.borrow() {
-			return None;
-		}
+		let runtime = self.conversations.runtime()?;
 		loop {
-			let completion = tokio::select! {
-				result = receiver.recv() => match result {
-					Ok(completion) => completion,
-					Err(broadcast::error::RecvError::Lagged(_)) => continue,
-					Err(broadcast::error::RecvError::Closed) => return None,
-				},
-				changed = stop.changed() => {
-					if changed.is_err() || *stop.borrow() {
-						return None;
-					}
-					continue;
-				},
-			};
-			let publication = account_routed_publication(completion.commit).ok()?;
-			let correlation_id =
-				CorrelationId::new(completion.operation_id.as_str().to_owned()).ok()?;
-			return Some(ApplicationEventPublication {
-				correlation_id,
-				causation_id: None,
-				channel: publication.channel,
-				entity_id: publication.entity_id,
-				entity_revision: publication.entity_revision,
-				event: publication.event,
-			});
+			let outcome = runtime.next_event().await?;
+			if let Some(publication) = self.conversation_event_publication(outcome).await {
+				return Some(publication);
+			}
 		}
 	}
 }
@@ -3461,11 +3209,9 @@ fn validate_account_command_envelope(command: &CommandEnvelope) -> Result<(), Co
 			let _ = account_id_from_wire(account_id)?;
 			let _ = required_expected_revision(command)?;
 		},
-		CommandPayload::RouteAccount { operation_id, account_id, expected_account_revision } => {
-			let _ = operation_id_from_wire(operation_id)?;
+		CommandPayload::RouteAccount { account_id } => {
 			let _ = account_id_from_wire(account_id)?;
-			let _ = required_expected_revision(command)?;
-			if expected_account_revision.0 == 0 {
+			if command.expected_revision.is_some() {
 				return Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None));
 			}
 		},
@@ -3610,37 +3356,12 @@ fn account_routed_publication(
 	})
 }
 
-fn account_route_pending_publication(
-	pending: AccountRoutePending,
-) -> Result<ApplicationPublication, CommandError> {
-	let pending = AccountRoutePendingDto {
-		operation_id: EntityId::new(pending.operation_id.as_str().to_owned())
-			.map_err(|_| application_unavailable("account Route progress is incompatible"))?,
-		account_id: EntityId::new(pending.account_id.as_str().to_owned())
-			.map_err(|_| application_unavailable("account Route progress is incompatible"))?,
-		routing_revision: EntityRevision(
-			u64::try_from(pending.routing_revision)
-				.map_err(|_| application_unavailable("account Route progress is incompatible"))?,
-		),
-		wait_reason: account_route_wait_reason_dto(pending.wait_reason),
-	};
-	let entity_id = EntityId::new("account-routing").expect("account routing entity is bounded");
-	Ok(ApplicationPublication {
-		channel: Channel::AccountsHealth,
-		entity_id,
-		entity_revision: pending.routing_revision,
-		result: ResultPayload::AccountRoutePending { pending: pending.clone() },
-		event: EventPayload::AccountRoutePending { pending },
-	})
-}
-
 fn account_route_result(
 	result: Result<AccountRouteResult, AccountRouteFailure>,
 ) -> Result<ApplicationPublication, CommandError> {
 	match result {
 		Ok(AccountRouteResult::Committed(commit)) => account_routed_publication(*commit),
-		Ok(AccountRouteResult::Pending(pending)) => account_route_pending_publication(pending),
-		Err(AccountRouteFailure::Lifecycle(error)) => Err(account_lifecycle_command_error(error)),
+		Err(AccountRouteFailure::Lifecycle(error)) => Err(account_route_command_error(error)),
 		Err(AccountRouteFailure::Routing(outcome)) => match routing_command_result(&outcome) {
 			Err(error) => Err(error),
 			Ok(_) => Err(application_unavailable("account Route result is incompatible")),
@@ -3648,58 +3369,21 @@ fn account_route_result(
 	}
 }
 
-async fn pending_account_route_dto(
-	service: &AccountService,
-	pending: &decodex_database::PendingAccountRouteCommand,
-) -> Result<AccountRoutePendingDto, ()> {
-	let CommandPayload::RouteAccount { operation_id, account_id, .. } =
-		serde_json::from_str::<CommandPayload>(&pending.request_json).map_err(|_| ())?
-	else {
-		return Err(());
-	};
-	let internal_account_id = AccountId::new(account_id.as_str()).map_err(|_| ())?;
-	let wait_reason = service.pending_route_wait_reason(&internal_account_id).await;
-	Ok(AccountRoutePendingDto {
-		operation_id,
-		account_id,
-		routing_revision: EntityRevision(
-			u64::try_from(pending.expected_routing_revision).map_err(|_| ())?,
-		),
-		wait_reason: account_route_wait_reason_dto(wait_reason),
-	})
-}
-
-fn account_route_wait_reason_dto(reason: AccountRouteWaitReason) -> AccountRouteWaitReasonDto {
-	match reason {
-		AccountRouteWaitReason::ExternalCodex { blockers, omitted } =>
-			AccountRouteWaitReasonDto::ExternalCodex {
-				blockers: blockers
-					.into_iter()
-					.map(|blocker| AccountRouteProcessBlockerDto {
-						pid: blocker.pid,
-						process: match blocker.kind {
-							CodexAuthOwnerKind::Chatgpt => AccountRouteBlockingProcessDto::Chatgpt,
-							CodexAuthOwnerKind::Codex => AccountRouteBlockingProcessDto::Codex,
-						},
-						auth_home: match blocker.auth_home {
-							CodexAuthHomeEvidence::Shared => AccountRouteAuthHomeDto::Shared,
-							CodexAuthHomeEvidence::Unknown => AccountRouteAuthHomeDto::Unknown,
-						},
-					})
-					.collect(),
-				omitted,
-			},
-		AccountRouteWaitReason::CodexObservationUnavailable =>
-			AccountRouteWaitReasonDto::CodexObservationUnavailable,
-		AccountRouteWaitReason::AccountReadiness(readiness) =>
-			AccountRouteWaitReasonDto::AccountReadiness {
-				readiness: lifecycle_readiness_dto(readiness),
-			},
-		AccountRouteWaitReason::SharedAuthStabilizing =>
-			AccountRouteWaitReasonDto::SharedAuthStabilizing,
-		AccountRouteWaitReason::SharedAuthUnavailable =>
-			AccountRouteWaitReasonDto::SharedAuthUnavailable,
-		AccountRouteWaitReason::ProjectionReadback => AccountRouteWaitReasonDto::ProjectionReadback,
+fn account_route_command_error(error: AccountLifecycleError) -> CommandError {
+	match error {
+		AccountLifecycleError::NotReady(AccountLifecycleReadiness::CredentialAbsent)
+		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::Tombstoned)
+		| AccountLifecycleError::CredentialAbsent =>
+			account_rejection(AccountCommandRejectionDto::CredentialMissing, None),
+		AccountLifecycleError::NotReady(AccountLifecycleReadiness::StoreMismatch)
+		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::ProviderMismatch)
+		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled) =>
+			account_rejection(AccountCommandRejectionDto::CredentialNeedsLogin, None),
+		AccountLifecycleError::NotReady(AccountLifecycleReadiness::StoreUnavailable)
+		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::CallbackCapabilityUnready)
+		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::Ready) =>
+			account_rejection(AccountCommandRejectionDto::CredentialRefreshUnavailable, None),
+		other => account_lifecycle_command_error(other),
 	}
 }
 
@@ -3793,7 +3477,7 @@ pub(crate) fn account_lifecycle_command_error(error: AccountLifecycleError) -> C
 		AccountLifecycleError::AccountMissing =>
 			account_rejection(AccountCommandRejectionDto::AccountNotFound, None),
 		AccountLifecycleError::CredentialAbsent =>
-			account_rejection(AccountCommandRejectionDto::CredentialAbsent, None),
+			account_rejection(AccountCommandRejectionDto::CredentialMissing, None),
 		AccountLifecycleError::ProviderMismatch =>
 			account_rejection(AccountCommandRejectionDto::ProviderMismatch, None),
 		AccountLifecycleError::StaleAccount =>
@@ -3803,23 +3487,37 @@ pub(crate) fn account_lifecycle_command_error(error: AccountLifecycleError) -> C
 		AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled) =>
 			account_rejection(AccountCommandRejectionDto::OperationUnsettled, None),
 		AccountLifecycleError::NotReady(AccountLifecycleReadiness::CredentialAbsent) =>
-			account_rejection(AccountCommandRejectionDto::CredentialAbsent, None),
+			account_rejection(AccountCommandRejectionDto::CredentialMissing, None),
 		AccountLifecycleError::NotReady(AccountLifecycleReadiness::ProviderMismatch) =>
 			account_rejection(AccountCommandRejectionDto::ProviderMismatch, None),
 		AccountLifecycleError::NotReady(_) =>
 			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None),
 		AccountLifecycleError::AccountDisabled =>
-			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None),
+			account_rejection(AccountCommandRejectionDto::AccountDisabled, None),
 		AccountLifecycleError::CredentialStore(CredentialStoreError::DuplicateProvider) =>
 			account_rejection(AccountCommandRejectionDto::ProviderAlreadyEnrolled, None),
 		AccountLifecycleError::CredentialStore(_) =>
 			account_rejection(AccountCommandRejectionDto::CredentialStoreUnavailable, None),
 		AccountLifecycleError::CredentialImport =>
 			account_rejection(AccountCommandRejectionDto::InvalidRequest, None),
+		AccountLifecycleError::CodexIsRunning =>
+			account_rejection(AccountCommandRejectionDto::CodexIsRunning, None),
+		AccountLifecycleError::AuthFileUnreadable =>
+			account_rejection(AccountCommandRejectionDto::AuthFileUnreadable, None),
+		AccountLifecycleError::AuthFileChanged =>
+			account_rejection(AccountCommandRejectionDto::AuthFileChanged, None),
+		AccountLifecycleError::AuthWriteFailed =>
+			account_rejection(AccountCommandRejectionDto::AuthWriteFailed, None),
+		AccountLifecycleError::AuthReadbackMismatch =>
+			account_rejection(AccountCommandRejectionDto::AuthReadbackMismatch, None),
 		AccountLifecycleError::Refresh(crate::CredentialRefreshError::OwnerBusy) =>
-			account_rejection(AccountCommandRejectionDto::SharedAuthOwnerBusy, None),
-		AccountLifecycleError::Refresh(_) =>
-			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None),
+			account_rejection(AccountCommandRejectionDto::CodexIsRunning, None),
+		AccountLifecycleError::Refresh(crate::CredentialRefreshError::Rejected) =>
+			account_rejection(AccountCommandRejectionDto::CredentialRefreshRejected, None),
+		AccountLifecycleError::Refresh(crate::CredentialRefreshError::Unavailable) =>
+			account_rejection(AccountCommandRejectionDto::CredentialRefreshUnavailable, None),
+		AccountLifecycleError::Refresh(crate::CredentialRefreshError::Ambiguous) =>
+			account_rejection(AccountCommandRejectionDto::CredentialNeedsLogin, None),
 		AccountLifecycleError::Persistence(_) | AccountLifecycleError::CoordinatorUnavailable =>
 			application_unavailable("account service is unavailable"),
 	}
@@ -4130,30 +3828,22 @@ mod tests {
 		ProgramSignalRecord, ProgramWorkItemRecord, SqliteStore,
 	};
 	use decodex_protocol::{
-		AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto,
-		AccountRouteAuthHomeDto, AccountRoutePendingDto, AccountRouteWaitReasonDto, Channel,
-		CommandError, ConversationRecoveryAction, ConversationState, EntityId, EntityRevision,
-		EventPayload, ProgramNodeKind, ProgramRelationKind, ResetCardError,
-		ResetCardOperationResult, ResultPayload,
+		AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto, CommandError,
+		ConversationRecoveryAction, ConversationState, ProgramNodeKind, ProgramRelationKind,
+		ResetCardError, ResetCardOperationResult,
 	};
 	use std::collections::HashMap;
 
 	use super::{
 		ACCOUNT_COMMAND_RECEIPT_SCHEMA, AccountLifecycleError, AccountProfileClaimsView,
-		AccountProfileRuntimeError, AccountProfileView, AccountRouteWaitReason,
-		ApplicationPublication, ProductStore, ResetCardServiceError, StoredAccountCommandOutcome,
-		account_dto, account_lifecycle_command_error, account_profile_dto,
-		account_profile_unavailable_dto, account_route_receipt_committed,
-		account_route_wait_reason_dto, authorize_program_capability, conversation_summary_from_row,
-		decode_account_command_receipt, encode_account_command_receipt, lifecycle_rejection,
-		operation_query_result, program_cycle_dto, protocol_reset_error, quota_dto,
+		AccountProfileRuntimeError, AccountProfileView, ProductStore, ResetCardServiceError,
+		StoredAccountCommandOutcome, account_dto, account_lifecycle_command_error,
+		account_profile_dto, account_profile_unavailable_dto, authorize_program_capability,
+		conversation_summary_from_row, decode_account_command_receipt,
+		encode_account_command_receipt, lifecycle_rejection, operation_query_result,
+		program_cycle_dto, protocol_reset_error, quota_dto,
 	};
-	use crate::{
-		domain_packs::{CONVERSATION_CAPABILITY, resolve_identity},
-		shared_auth_coordinator::{
-			CodexAuthHomeEvidence, CodexAuthOwnerBlocker, CodexAuthOwnerKind,
-		},
-	};
+	use crate::domain_packs::{CONVERSATION_CAPABILITY, resolve_identity};
 
 	fn program_preflight_fixture(
 		sequence: u64,
@@ -4716,51 +4406,6 @@ mod tests {
 				error: ResetCardError::InventoryChanged,
 			},
 		);
-	}
-
-	#[test]
-	fn pending_route_recovery_uses_an_interactive_retry_delay() {
-		assert_eq!(super::PENDING_ROUTE_RETRY_DELAY, std::time::Duration::from_millis(100));
-		assert_eq!(super::IDLE_ROUTE_RETRY_DELAY, std::time::Duration::from_secs(1));
-	}
-
-	#[test]
-	fn pending_route_wait_reason_projects_bounded_process_evidence() {
-		let projected = account_route_wait_reason_dto(AccountRouteWaitReason::ExternalCodex {
-			blockers: vec![CodexAuthOwnerBlocker {
-				pid: 44_768,
-				kind: CodexAuthOwnerKind::Codex,
-				auth_home: CodexAuthHomeEvidence::Unknown,
-			}],
-			omitted: 0,
-		});
-		assert!(matches!(
-			projected,
-			AccountRouteWaitReasonDto::ExternalCodex { blockers, omitted: 0 }
-				if blockers.len() == 1
-					&& blockers[0].pid == 44_768
-					&& blockers[0].auth_home == AccountRouteAuthHomeDto::Unknown
-		));
-	}
-
-	#[test]
-	fn pending_route_receipt_does_not_trigger_committed_account_observation_work() {
-		let pending = AccountRoutePendingDto {
-			operation_id: EntityId::new("22000000-0000-4000-8000-0000000000a1").unwrap(),
-			account_id: EntityId::new("21000000-0000-4000-8000-0000000000a1").unwrap(),
-			routing_revision: EntityRevision(7),
-			wait_reason: AccountRouteWaitReasonDto::SharedAuthStabilizing,
-		};
-		let publication = ApplicationPublication {
-			channel: Channel::AccountsHealth,
-			entity_id: EntityId::new("account-routing").unwrap(),
-			entity_revision: EntityRevision(7),
-			result: ResultPayload::AccountRoutePending { pending: pending.clone() },
-			event: EventPayload::AccountRoutePending { pending },
-		};
-		let encoded = encode_account_command_receipt(&Ok(publication)).unwrap();
-
-		assert!(!account_route_receipt_committed(Ok(encoded)));
 	}
 
 	#[test]

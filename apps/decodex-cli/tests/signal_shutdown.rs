@@ -16,7 +16,7 @@ use std::{
 
 use tempfile::TempDir;
 
-const READY_LINE: &str = "decodexd serving WebSocket /v1/ws over same-UID local transport";
+const READY_LINE: &str = "decodex serving WebSocket /v1/ws over same-UID local transport";
 
 #[test]
 fn sigint_performs_exact_local_transport_cleanup() {
@@ -114,7 +114,8 @@ struct RunningDaemon {
 
 impl RunningDaemon {
 	fn start(home: &Path) -> Self {
-		let mut child = Command::new(env!("CARGO_BIN_EXE_decodexd"))
+		let mut child = Command::new(env!("CARGO_BIN_EXE_decodex"))
+			.arg("serve")
 			.env("HOME", home)
 			.env("PATH", home.join("bin"))
 			.stdout(Stdio::piped())

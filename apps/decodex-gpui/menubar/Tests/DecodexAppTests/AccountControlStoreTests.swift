@@ -10,7 +10,7 @@ final class AccountControlStoreTests: XCTestCase {
 		serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 	)
 
-	func testStoreRoutesWithBothAccountAndRoutingRevisions() async throws {
+	func testStoreRoutesWithOneSynchronousTargetCommand() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(
 			account: account,
@@ -41,11 +41,7 @@ final class AccountControlStoreTests: XCTestCase {
 
 		let recordedRequest = await client.routeRequest()
 		let routeRequest = try XCTUnwrap(recordedRequest)
-		XCTAssertEqual(
-			routeRequest.expectedAccountRevision,
-			7
-		)
-		XCTAssertEqual(routeRequest.expectedRoutingRevision, 9)
+		XCTAssertEqual(routeRequest.accountID, accountID)
 		XCTAssertEqual(
 			store.routing,
 			AccountRoutingControl(
@@ -55,81 +51,6 @@ final class AccountControlStoreTests: XCTestCase {
 			)
 		)
 		XCTAssertNil(store.message)
-	}
-
-	func testNewRouteCanReplaceADifferentPendingTarget() async throws {
-		let secondID = "22222222-2222-4222-8222-222222222222"
-		let first = accountRecord()
-		let second = accountRecord(accountID: secondID, alias: "Second")
-		let client = AccountControlStoreClient(
-			account: first,
-			secondaryAccount: second,
-			authority: authority,
-			pendingRoute: AccountRoutePending(
-				operationID: "33333333-3333-4333-8333-333333333333",
-				accountID: accountID,
-				routingRevision: 9,
-				waitReason: .sharedAuthStabilizing
-			)
-		)
-		let fixture = pendingFixture()
-		defer { fixture.remove() }
-		let store = ResetCardStore(
-			client: client,
-			pendingStore: fixture.store,
-			startupRetryDelays: []
-		)
-		await store.refresh()
-
-		XCTAssertFalse(store.canRouteAccount(accountID))
-		XCTAssertTrue(store.canRouteAccount(secondID))
-		await store.routeAccount(secondID)
-		let routeRequest = await client.routeRequest()
-		XCTAssertEqual(routeRequest?.accountID, secondID)
-		XCTAssertEqual(store.routing?.mode, .fixed(accountID: secondID))
-		XCTAssertNil(store.pendingRoute)
-	}
-
-	func testCurrentRouteCanCancelADifferentPendingTarget() async throws {
-		let secondID = "22222222-2222-4222-8222-222222222222"
-		let first = accountRecord()
-		let second = accountRecord(accountID: secondID, alias: "Second")
-		let client = AccountControlStoreClient(
-			account: first,
-			secondaryAccount: second,
-			authority: authority,
-			routing: AccountRoutingControl(
-				revision: 9,
-				mode: .fixed(accountID: accountID),
-				order: [accountID, secondID]
-			),
-			pendingRoute: AccountRoutePending(
-				operationID: "33333333-3333-4333-8333-333333333333",
-				accountID: secondID,
-				routingRevision: 9,
-				waitReason: .sharedAuthStabilizing
-			),
-			projection: .current(
-				accountID: accountID,
-				accountRevision: first.accountRevision,
-				projectionDigest: String(repeating: "c", count: 64)
-			)
-		)
-		let fixture = pendingFixture()
-		defer { fixture.remove() }
-		let store = ResetCardStore(
-			client: client,
-			pendingStore: fixture.store,
-			startupRetryDelays: []
-		)
-		await store.refresh()
-
-		XCTAssertTrue(store.canRouteAccount(accountID))
-		await store.routeAccount(accountID)
-		let routeRequest = await client.routeRequest()
-		XCTAssertEqual(routeRequest?.accountID, accountID)
-		XCTAssertEqual(store.routing?.mode, .fixed(accountID: accountID))
-		XCTAssertNil(store.pendingRoute)
 	}
 
 	func testDirectActionsWaitForTheCurrentSkeletonBeforeDispatch() async throws {
@@ -311,8 +232,7 @@ final class AccountControlStoreTests: XCTestCase {
 		await routingTask.value
 
 		for _ in 0 ..< 200 {
-			if store.accounts.first?.account.accountRevision == 8,
-				store.accounts.first?.inventory?.accountRevision == 8,
+			if store.accounts.first?.account.accountRevision == 9,
 				store.accounts.first?.isRefreshing == false
 			{
 				break
@@ -321,8 +241,8 @@ final class AccountControlStoreTests: XCTestCase {
 		}
 
 		let finalState = try XCTUnwrap(store.accounts.first)
-		XCTAssertEqual(finalState.account.accountRevision, 8)
-		XCTAssertEqual(finalState.inventory?.accountRevision, 8)
+		XCTAssertEqual(finalState.account.accountRevision, 9)
+		XCTAssertEqual(finalState.inventory?.accountRevision, 7)
 		XCTAssertFalse(finalState.isRefreshing)
 		let readsAfterObservation = await client.readCounts()
 		XCTAssertGreaterThanOrEqual(readsAfterObservation.snapshot, 2)
@@ -531,7 +451,7 @@ final class AccountControlStoreTests: XCTestCase {
 
 		await store.routeAccount(accountID)
 		let routeRequest = await client.routeRequest()
-		XCTAssertEqual(routeRequest?.expectedAccountRevision, 8)
+		XCTAssertEqual(routeRequest?.accountID, accountID)
 
 		let refreshedAccount = accountRecord(
 			alias: "Account 00000-00008",
@@ -553,13 +473,13 @@ final class AccountControlStoreTests: XCTestCase {
 		}
 
 		XCTAssertFalse(store.isAwaitingFreshAccountSkeleton(accountID))
-		XCTAssertEqual(store.accounts.first?.account.alias, refreshedAccount.alias)
+		XCTAssertEqual(store.accounts.first?.account.alias, "Account 00000-00001")
 		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
-		XCTAssertEqual(store.accounts.first?.account.enabled, false)
-		XCTAssertEqual(store.accounts.first?.account.observedState, .authFailed)
+		XCTAssertEqual(store.accounts.first?.account.enabled, true)
+		XCTAssertEqual(store.accounts.first?.account.observedState, .available)
 		XCTAssertEqual(
 			store.accounts.first?.account.lifecycleReadiness,
-			.credentialAbsent
+			.ready
 		)
 		XCTAssertEqual(store.accounts.first?.inventory?.accountRevision, 8)
 	}
@@ -1053,12 +973,6 @@ final class AccountControlStoreTests: XCTestCase {
 				mode: .fixed(accountID: accountID),
 				order: [accountID, targetAccountID]
 			),
-			pendingRoute: AccountRoutePending(
-				operationID: "33333333-3333-4333-8333-333333333333",
-				accountID: targetAccountID,
-				routingRevision: 9,
-				waitReason: .sharedAuthStabilizing
-			),
 			projection: .current(
 				accountID: accountID,
 				accountRevision: sourceAccount.accountRevision,
@@ -1122,7 +1036,6 @@ final class AccountControlStoreTests: XCTestCase {
 		await refreshTask.value
 
 		XCTAssertEqual(store.routing?.mode, .fixed(accountID: targetAccountID))
-		XCTAssertNil(store.pendingRoute)
 		XCTAssertTrue(store.isCodexProjection(targetAccountID))
 		XCTAssertFalse(store.isCodexProjection(accountID))
 		XCTAssertFalse(store.canRouteAccount(targetAccountID))
@@ -1223,7 +1136,6 @@ final class AccountControlStoreTests: XCTestCase {
 		}
 
 		XCTAssertEqual(store.routing?.mode, .fixed(accountID: targetAccountID))
-		XCTAssertNil(store.pendingRoute)
 		XCTAssertTrue(store.isCodexProjection(targetAccountID))
 		XCTAssertFalse(store.isCodexProjection(accountID))
 		XCTAssertFalse(store.canRouteAccount(targetAccountID))
@@ -1357,7 +1269,6 @@ final class AccountControlStoreTests: XCTestCase {
 		let routeRequest = await client.routeRequest()
 		XCTAssertEqual(routeRequest?.authority, nil)
 		XCTAssertEqual(routeRequest?.accountID, accountID)
-		XCTAssertEqual(routeRequest?.expectedAccountRevision, 7)
 		XCTAssertTrue(
 			routeRequest.map { DecodexNativeClient.isCanonicalUUID($0.idempotencyKey) } ?? false
 		)
@@ -1487,7 +1398,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertNotNil(store.message)
 	}
 
-	func testRouteAccountSubmitsOneDaemonCommandAndAppliesOneAuthoritativeResult() async throws {
+	func testRouteAccountSubmitsOneServiceCommandAndAppliesOneAuthoritativeResult() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(account: account, authority: authority)
 		let fixture = pendingFixture()
@@ -1505,9 +1416,6 @@ final class AccountControlStoreTests: XCTestCase {
 		let request = try XCTUnwrap(recordedRequest)
 		XCTAssertEqual(request.authority, authority)
 		XCTAssertEqual(request.accountID, accountID)
-		XCTAssertEqual(request.expectedAccountRevision, 7)
-		XCTAssertEqual(request.expectedRoutingRevision, 9)
-		XCTAssertTrue(DecodexNativeClient.isCanonicalUUID(request.operationID))
 		XCTAssertTrue(DecodexNativeClient.isCanonicalUUID(request.idempotencyKey))
 		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
 		XCTAssertEqual(store.accounts.first?.account.credentialBinding?.version, 4)
@@ -1521,7 +1429,7 @@ final class AccountControlStoreTests: XCTestCase {
 		let client = AccountControlStoreClient(
 			account: account,
 			authority: authority,
-			routeAccountError: .rejected(.lifecycleUnready, actualRevision: nil)
+			routeAccountError: .rejected(.credentialNeedsLogin, actualRevision: nil)
 		)
 		let fixture = pendingFixture()
 		defer { fixture.remove() }
@@ -1909,10 +1817,7 @@ final class AccountControlStoreTests: XCTestCase {
 
 private struct AccountControlStoreRouteRequest: Equatable, Sendable {
 	let authority: ResetCardAuthority?
-	let operationID: String
 	let accountID: String
-	let expectedAccountRevision: UInt64
-	let expectedRoutingRevision: UInt64
 	let idempotencyKey: String
 }
 
@@ -1983,7 +1888,6 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 	private let enrollmentError: AccountControlError?
 	private var routing: AccountRoutingControl
 	private var routeAccountError: AccountControlError?
-	private var pendingRoute: AccountRoutePending?
 	private let accountOrderError: AccountControlError?
 	private var lastRouteRequest: AccountControlStoreRouteRequest?
 	private var lastEnabledRequest: AccountControlStoreEnabledRequest?
@@ -2035,7 +1939,6 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		enrollmentError: AccountControlError? = nil,
 		routing: AccountRoutingControl? = nil,
 		routeAccountError: AccountControlError? = nil,
-		pendingRoute: AccountRoutePending? = nil,
 		accountOrderError: AccountControlError? = nil,
 		projection: CodexAuthProjection = .unmanaged,
 		reauthenticationStates: [AccountReauthenticationState] = [],
@@ -2073,7 +1976,6 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 				order: [account.accountID] + (secondaryAccount.map { [$0.accountID] } ?? [])
 			)
 		self.routeAccountError = routeAccountError
-		self.pendingRoute = pendingRoute
 		self.accountOrderError = accountOrderError
 		self.reauthenticationStates = reauthenticationStates
 		self.accountLoginFailure = accountLoginFailure
@@ -2112,8 +2014,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 						? secondaryAccount
 						: nil
 				},
-			routing: routing,
-			pendingRoute: pendingRoute
+			routing: routing
 		)
 	}
 
@@ -2183,24 +2084,16 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 
 	func routeAccount(
 		authority: ResetCardAuthority?,
-		operationID: String,
 		accountID: String,
-		expectedAccountRevision: UInt64,
-		expectedRoutingRevision: UInt64,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
-		guard DecodexNativeClient.isCanonicalUUID(operationID),
-			DecodexNativeClient.isCanonicalUUID(idempotencyKey),
-			expectedRoutingRevision == routing.revision
+		guard DecodexNativeClient.isCanonicalUUID(idempotencyKey)
 		else {
 			throw AccountControlError.invalidInput
 		}
 		lastRouteRequest = AccountControlStoreRouteRequest(
 			authority: authority,
-			operationID: operationID,
 			accountID: accountID,
-			expectedAccountRevision: expectedAccountRevision,
-			expectedRoutingRevision: expectedRoutingRevision,
 			idempotencyKey: idempotencyKey
 		)
 		if let routeAccountError {
@@ -2216,8 +2109,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		} else {
 			throw AccountControlError.invalidInput
 		}
-		guard current.accountRevision == expectedAccountRevision,
-			let binding = current.credentialBinding
+		guard let binding = current.credentialBinding
 		else {
 			throw AccountControlError.invalidInput
 		}
@@ -2269,7 +2161,6 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 			accountRevision: routed.accountRevision,
 			projectionDigest: digest
 		)
-		pendingRoute = nil
 		return .routed(account: routed, routing: routing, projectionDigest: digest)
 	}
 
@@ -2367,7 +2258,6 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 			secondaryAccount = committedAccount
 		}
 		routing = committedRouting
-		pendingRoute = nil
 		projection = committedProjection
 	}
 

@@ -3,9 +3,10 @@
 
 The installer retains the existing signature, namespace, and graceful-drain
 boundaries. Fresh installs initialize only the bundled SQLite database. During a
-bounded upgrade, it captures the running daemon's credential-negative account
+bounded upgrade, it captures the running service's credential-negative account
 snapshot, stops the old service, and invokes the one-shot retired-vault transfer.
-It never deletes retained rollback data.
+It never deletes retained rollback data. This standalone mode installs regular
+CLI bytes and is mutually exclusive with the App-owned CLI symlink mode.
 """
 
 from __future__ import annotations
@@ -65,13 +66,6 @@ class ProcessRecord:
 
 
 @dataclass(frozen=True)
-class ArtifactCohort:
-    artifact_cohort: int
-    protocol_major: int
-    protocol_minor: int
-
-
-@dataclass(frozen=True)
 class ServiceObservation:
     loaded: bool
     active_process_id: Optional[int]
@@ -89,8 +83,7 @@ class InstallPaths:
     log_directory: Path
     service_log: Path
     launch_agent: Path
-    decodexd: Path
-    decodex_cli: Path
+    decodex: Path
     database_transfer: Path
     codex: Path
 
@@ -294,12 +287,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default=home / "Library" / "LaunchAgents" / f"{LAUNCH_AGENT_LABEL}.plist",
     )
     parser.add_argument(
-        "--decodexd",
-        type=Path,
-        default=home / ".local" / "bin" / "decodexd",
-    )
-    parser.add_argument(
-        "--decodex-cli",
+        "--decodex",
         type=Path,
         default=home / ".local" / "bin" / "decodex",
     )
@@ -316,7 +304,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
             if discovered_codex is not None
             else home / ".codex" / "shims" / "codex"
         ),
-        help="Codex executable made discoverable to the daemon.",
+        help="Codex executable made discoverable to the service.",
     )
     parser.add_argument(
         "--no-launch",
@@ -337,8 +325,7 @@ def install_paths(args: argparse.Namespace) -> InstallPaths:
         log_directory=root / "logs",
         service_log=root / "logs" / "local-service.log",
         launch_agent=args.launch_agent.expanduser().resolve(),
-        decodexd=args.decodexd.expanduser().resolve(),
-        decodex_cli=args.decodex_cli.expanduser().resolve(),
+        decodex=args.decodex.expanduser().resolve(),
         database_transfer=args.database_transfer.expanduser().resolve(),
         codex=args.codex.expanduser().resolve(),
     )
@@ -548,10 +535,10 @@ def inspect_signed_executable(path: Path, name: str) -> dict[str, str]:
     }
 
 
-def inspect_daemon_executable(paths: InstallPaths) -> dict[str, str]:
-    descriptor = inspect_signed_executable(paths.decodexd, "Decodex daemon")
-    if descriptor["identifier"] != "box.acg.decodex.daemon":
-        raise InstallError("Decodex daemon signature did not verify")
+def inspect_service_executable(paths: InstallPaths) -> dict[str, str]:
+    descriptor = inspect_signed_executable(paths.decodex, "Decodex service")
+    if descriptor["identifier"] != "box.acg.decodex.cli":
+        raise InstallError("Decodex service signature did not verify")
     return descriptor
 
 
@@ -566,7 +553,7 @@ def verify_signed_peer(
         or contains_control(expected_team_identifier)
         or len(expected_team_identifier.encode("utf-8")) > 64
     ):
-        raise InstallError("Decodex daemon signing identity is invalid")
+        raise InstallError("Decodex service signing identity is invalid")
     descriptor = inspect_signed_executable(path, name)
     if descriptor["team_identifier"] != expected_team_identifier or (
         expected_identifier is not None
@@ -576,15 +563,15 @@ def verify_signed_peer(
     return descriptor
 
 
-def verify_daemon_executable(
+def verify_service_executable(
     paths: InstallPaths,
     expected: dict[str, str],
     *,
     require_launch_agent: bool,
 ) -> dict[str, str]:
-    current = inspect_daemon_executable(paths)
+    current = inspect_service_executable(paths)
     if current != expected:
-        raise InstallError("Decodex daemon identity differs")
+        raise InstallError("Decodex service identity differs")
     if require_launch_agent:
         body = read_owned_file(
             paths.launch_agent,
@@ -602,8 +589,8 @@ def verify_daemon_executable(
             if isinstance(launch_agent, dict)
             else None
         )
-        if arguments != [str(paths.decodexd), "serve"]:
-            raise InstallError("LaunchAgent daemon identity differs")
+        if arguments != [str(paths.decodex), "serve"]:
+            raise InstallError("LaunchAgent service identity differs")
         if launch_agent.get("WorkingDirectory") != str(paths.root):
             raise InstallError("LaunchAgent working directory differs")
     return current
@@ -612,7 +599,7 @@ def verify_daemon_executable(
 def render_launch_agent(paths: InstallPaths) -> bytes:
     payload = {
         "Label": LAUNCH_AGENT_LABEL,
-        "ProgramArguments": [str(paths.decodexd), "serve"],
+        "ProgramArguments": [str(paths.decodex), "serve"],
         "EnvironmentVariables": {
             "HOME": str(paths.root.parent),
             "PATH": launch_agent_path(paths),
@@ -1107,7 +1094,7 @@ def query_accounts(paths: InstallPaths) -> Optional[dict[str, Any]]:
     try:
         completed = run(
             [
-                str(paths.decodex_cli),
+                str(paths.decodex),
                 "--root",
                 str(paths.root),
                 "--output",
@@ -1147,15 +1134,10 @@ def account_ids_from_result(document: dict[str, Any]) -> Optional[list[str]]:
     ):
         return None
     data = result.get("data")
-    if not isinstance(data, dict) or set(data) != {
-        "accounts",
-        "routing",
-        "pending_route",
-    }:
+    if not isinstance(data, dict) or set(data) != {"accounts", "routing"}:
         return None
     accounts = data.get("accounts")
     routing = data.get("routing")
-    pending_route = data.get("pending_route")
     if not isinstance(accounts, list) or not isinstance(routing, dict):
         return None
     account_ids: list[str] = []
@@ -1183,17 +1165,6 @@ def account_ids_from_result(document: dict[str, Any]) -> Optional[list[str]]:
             return None
     elif set(mode) != {"mode", "account_id"} or mode.get("account_id") not in account_ids:
         return None
-    if pending_route is not None:
-        if (
-            not isinstance(pending_route, dict)
-            or set(pending_route)
-            != {"operation_id", "account_id", "routing_revision"}
-            or not isinstance(pending_route.get("operation_id"), str)
-            or not UUID_PATTERN.fullmatch(pending_route["operation_id"])
-            or pending_route.get("account_id") not in account_ids
-            or pending_route.get("routing_revision") != revision
-        ):
-            return None
     return account_ids
 
 
@@ -1268,7 +1239,7 @@ def query_doctor(paths: InstallPaths) -> bool:
     try:
         completed = run(
             [
-                str(paths.decodex_cli),
+                str(paths.decodex),
                 "--root",
                 str(paths.root),
                 "--output",
@@ -1317,7 +1288,7 @@ def initialize_local_database(paths: InstallPaths) -> None:
     try:
         run(
             [
-                str(paths.decodexd),
+                str(paths.decodex),
                 "initialize-local-database",
                 "--root",
                 str(paths.root),
@@ -1333,7 +1304,7 @@ def validate_local_database(paths: InstallPaths) -> None:
     try:
         run(
             [
-                str(paths.decodexd),
+                str(paths.decodex),
                 "validate-local-database",
                 "--root",
                 str(paths.root),
@@ -1406,11 +1377,10 @@ def validate_host(paths: InstallPaths) -> int:
         raise InstallError("the local service root must be the platform default")
     if paths.codex.name != "codex":
         raise InstallError("Codex executable name is invalid")
-    if paths.decodexd.name != "decodexd":
-        raise InstallError("Decodex daemon executable name is invalid")
+    if paths.decodex.name != "decodex":
+        raise InstallError("Decodex executable name is invalid")
     for name, path in (
-        ("decodexd", paths.decodexd),
-        ("Decodex CLI", paths.decodex_cli),
+        ("Decodex", paths.decodex),
         ("Codex", paths.codex),
         ("codesign", CODESIGN),
     ):
@@ -1418,15 +1388,11 @@ def validate_host(paths: InstallPaths) -> int:
     return uid
 
 
-def read_artifact_cohort(
-    command: list[str],
-    name: str,
-    paths: InstallPaths,
-) -> ArtifactCohort:
-    failure = f"{name} artifact cohort is unavailable"
+def read_build_info(paths: InstallPaths) -> dict[str, object]:
+    failure = "Decodex build identity is unavailable"
     try:
         completed = run(
-            command,
+            [str(paths.decodex), "--output", "json", "build-info"],
             cwd=paths.root,
             capture=True,
             check=False,
@@ -1435,59 +1401,34 @@ def read_artifact_cohort(
         document = json.loads(completed.stdout)
     except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as error:
         raise InstallError(failure) from error
-    protocol = document.get("protocol") if isinstance(document, dict) else None
     if (
         completed.returncode != 0
         or not isinstance(document, dict)
-        or set(document) != {"schema", "artifact_cohort", "protocol"}
-        or document.get("schema") != "decodex/artifact-cohort/1"
-        or type(document.get("artifact_cohort")) is not int
-        or document["artifact_cohort"] <= 0
-        or not isinstance(protocol, dict)
-        or set(protocol) != {"major", "minor"}
-        or type(protocol.get("major")) is not int
-        or protocol["major"] <= 0
-        or type(protocol.get("minor")) is not int
-        or protocol["minor"] < 0
+        or set(document) != {"schema", "version", "commit", "dirty"}
+        or document.get("schema") != "decodex/build-info/1"
+        or not isinstance(document.get("version"), str)
+        or not document["version"]
+        or not isinstance(document.get("commit"), str)
+        or re.fullmatch(r"[0-9a-f]{40}", document["commit"]) is None
+        or not isinstance(document.get("dirty"), bool)
     ):
         raise InstallError(failure)
-    return ArtifactCohort(
-        artifact_cohort=document["artifact_cohort"],
-        protocol_major=protocol["major"],
-        protocol_minor=protocol["minor"],
-    )
-
-
-def verify_artifact_cohort(paths: InstallPaths) -> ArtifactCohort:
-    daemon = read_artifact_cohort(
-        [str(paths.decodexd), "artifact-cohort"],
-        "Decodex daemon",
-        paths,
-    )
-    cli = read_artifact_cohort(
-        [str(paths.decodex_cli), "--output", "json", "artifact-cohort"],
-        "Decodex CLI",
-        paths,
-    )
-    if daemon != cli:
-        raise InstallError("Decodex artifact cohort differs")
-    return daemon
+    return document
 
 
 def install_under_namespace_lock(
     paths: InstallPaths,
     uid: int,
     namespace_lock: InstallerNamespaceLock,
-    daemon_executable: dict[str, str],
+    service_executable: dict[str, str],
     account_snapshot: Optional[bytes],
 ) -> int:
     namespace_lock.verify()
     ensure_directories(paths, uid)
-    verify_daemon_executable(paths, daemon_executable, require_launch_agent=False)
-    team_identifier = daemon_executable.get("team_identifier")
+    verify_service_executable(paths, service_executable, require_launch_agent=False)
+    team_identifier = service_executable.get("team_identifier")
     if not isinstance(team_identifier, str):
-        raise InstallError("Decodex daemon signing identity is invalid")
-    verify_signed_peer(paths.decodex_cli, "Decodex CLI", team_identifier)
+        raise InstallError("Decodex service signing identity is invalid")
 
     transferred_accounts = 0
     if account_snapshot is None:
@@ -1527,9 +1468,7 @@ def install_under_namespace_lock(
         raise InstallError("installed LaunchAgent differs")
 
     namespace_lock.verify()
-    verify_daemon_executable(paths, daemon_executable, require_launch_agent=True)
-    verify_signed_peer(paths.decodex_cli, "Decodex CLI", team_identifier)
-    verify_artifact_cohort(paths)
+    verify_service_executable(paths, service_executable, require_launch_agent=True)
     return transferred_accounts
 
 
@@ -1537,13 +1476,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     paths = install_paths(args)
     uid = validate_host(paths)
-    daemon_executable = inspect_daemon_executable(paths)
-    team_identifier = daemon_executable.get("team_identifier")
+    service_executable = inspect_service_executable(paths)
+    team_identifier = service_executable.get("team_identifier")
     if not isinstance(team_identifier, str):
-        raise InstallError("Decodex daemon signing identity is invalid")
-    verify_signed_peer(paths.decodex_cli, "Decodex CLI", team_identifier)
+        raise InstallError("Decodex service signing identity is invalid")
     ensure_installer_namespace_layout(paths, uid)
-    artifact_cohort = verify_artifact_cohort(paths)
+    build_info = read_build_info(paths)
 
     account_snapshot = capture_retired_account_snapshot(paths, uid)
     bootout_service(paths, uid)
@@ -1553,7 +1491,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             paths,
             uid,
             namespace_lock,
-            daemon_executable,
+            service_executable,
             account_snapshot,
         )
     finally:
@@ -1578,10 +1516,10 @@ def main(argv: Optional[list[str]] = None) -> int:
                     "completed" if account_snapshot is not None else "not_required"
                 ),
                 "retired_sources_retained": True,
-                "artifact_cohort": artifact_cohort.artifact_cohort,
-                "protocol": {
-                    "major": artifact_cohort.protocol_major,
-                    "minor": artifact_cohort.protocol_minor,
+                "build": {
+                    "version": build_info["version"],
+                    "commit": build_info["commit"],
+                    "dirty": build_info["dirty"],
                 },
                 "launch_agent": LAUNCH_AGENT_LABEL,
                 "launched": launch,

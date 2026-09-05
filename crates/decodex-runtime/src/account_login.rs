@@ -151,7 +151,7 @@ impl AccountLoginManager {
 		let authority = self.authority.clone();
 		let provider = self.provider.clone();
 		let worker =
-			thread::Builder::new().name("decodexd-account-login".to_owned()).spawn(move || {
+			thread::Builder::new().name("decodex-account-login".to_owned()).spawn(move || {
 				let result = run_login_session(
 					&worker_shared,
 					worker_start,
@@ -271,7 +271,7 @@ impl Drop for AccountLoginManager {
 				session.worker.take()
 			});
 		if let Some(worker) = worker {
-			let _ = thread::Builder::new().name("decodexd-account-login-drop".to_owned()).spawn(
+			let _ = thread::Builder::new().name("decodex-account-login-drop".to_owned()).spawn(
 				move || {
 					let _ = worker.join();
 				},
@@ -662,13 +662,21 @@ fn map_install_error(error: &CommandError) -> AccountLoginFailure {
 			AccountCommandRejectionDto::AccountNotFound
 			| AccountCommandRejectionDto::CredentialAbsent
 			| AccountCommandRejectionDto::LifecycleUnready
-			| AccountCommandRejectionDto::SharedAuthOwnerBusy
 			| AccountCommandRejectionDto::OperationUnsettled
 			| AccountCommandRejectionDto::InvalidRequest
 			| AccountCommandRejectionDto::AccountInUse
 			| AccountCommandRejectionDto::RoutingOrderInvalid => AccountLoginFailure::AccountUnavailable,
-			AccountCommandRejectionDto::StaleRoutingControl
-			| AccountCommandRejectionDto::RouteSuperseded => AccountLoginFailure::AccountChanged,
+			AccountCommandRejectionDto::StaleRoutingControl => AccountLoginFailure::AccountChanged,
+			AccountCommandRejectionDto::CodexIsRunning
+			| AccountCommandRejectionDto::AccountDisabled
+			| AccountCommandRejectionDto::CredentialMissing
+			| AccountCommandRejectionDto::CredentialNeedsLogin
+			| AccountCommandRejectionDto::CredentialRefreshRejected
+			| AccountCommandRejectionDto::CredentialRefreshUnavailable
+			| AccountCommandRejectionDto::AuthFileUnreadable
+			| AccountCommandRejectionDto::AuthFileChanged
+			| AccountCommandRejectionDto::AuthWriteFailed
+			| AccountCommandRejectionDto::AuthReadbackMismatch => AccountLoginFailure::AccountUnavailable,
 		},
 		CommandError::AcceptanceUnknown => AccountLoginFailure::OutcomeUnknown,
 		CommandError::IdempotencyConflict

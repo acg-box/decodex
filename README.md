@@ -15,33 +15,38 @@ needed when one engineer manages many conversations, accounts, dependencies, gat
 follow-up actions.
 
 The current milestone is intentionally small: one real local Conversation can select an
-account, start or continue a Codex thread, persist its execution facts, survive a daemon
+account, start or continue a Codex thread, persist its execution facts, survive a service
 restart, and continue without duplicate dispatch.
 
 ## Current architecture
 
-- `decodexd` is the sole product-state and side-effect owner.
+- `decodex serve` is the sole product-state and side-effect owner. The same `decodex`
+  executable also provides the short-lived CLI commands.
 - A bundled SQLite database at `~/.decodex/server/decodex.sqlite3` is the only normal
   product store.
 - `database/` owns migrations, schema verification, storage APIs, transfer tooling, and
   restart tests.
 - Account credentials are stored in a narrow owner-private SQLite table. They are
-  available only to the daemon credential adapter and never enter protocol output.
+  available only to the service credential adapter and never enter protocol output.
 - Codex app-server remains the provider runtime. One RuntimeSession binds one exact
   account and Codex thread.
-- GPUI and CLI are same-UID Unix WebSocket clients. They do not open SQLite, credential
+- GPUI and ordinary CLI commands are same-UID Unix WebSocket clients. They do not open SQLite, credential
   files, or Codex authentication files.
 - The GPUI product is the sole macOS GUI and is packaged as `Decodex.app`. The bundle
-  contains a signed `decodexd` for local profiles and the original native Swift menu-bar
+  contains a signed `Contents/Helpers/decodex` for local profiles and the native Swift menu-bar
   presentation as an in-process dynamic library. It contains no second app or UI process.
-- A local app session starts and owns the bundled daemon only when it must. It can reuse a
-  compatible independently started daemon without stopping it. A remote profile starts no
-  local daemon. The standalone `decodex` and `decodexd` binaries remain independent build
-  and distribution products.
-- **Show Decodex in the menu bar** is a daemon-owned product preference. **Launch Decodex
+- A local app session starts `Contents/Helpers/decodex serve --parent-fd ...` when no
+  service is available. It reuses an exact-version service and reports
+  `service_version_mismatch` for any other version. The app-user command at
+  `~/.local/bin/decodex` is a symlink to the bundled helper, never a copied second binary.
+  The standalone local-service installer instead places one regular `decodex` executable at
+  that path for pure CLI and LaunchAgent operation. These installation modes are mutually
+  exclusive; neither installer adds coexistence machinery. Running `decodex` without a
+  subcommand displays help, and serving is always explicit.
+- **Show Decodex in the menu bar** is a service-owned product preference. **Launch Decodex
   at login** is an independent macOS `SMAppService.mainApp` preference and is not stored in
   SQLite. Closing the main window hides Decodex and retains the protocol session, native
-  menu bar, and app-owned daemon. **Quit Decodex** stops the app and only its owned daemon.
+  menu bar, and app-owned service. **Quit Decodex** stops the app and only its owned service.
 
 Normal startup does not require a separate database server, redb, or Keychain. A one-shot tool
 can import the existing account pool from the retired redb vault during upgrade. It opens
@@ -52,7 +57,7 @@ the source read only and leaves all rollback sources intact.
 ```text
 GPUI Conversation action                    apps/decodex-gpui/src/conversations.rs
 -> exact-current Conversation protocol      crates/decodex-protocol/src/{conversation,wire}.rs
--> daemon Conversation service              crates/decodex-runtime/src/{application,conversation}.rs
+-> Decodex Conversation service             crates/decodex-runtime/src/{application,conversation}.rs
 -> SQLite revision/idempotency authority    database/src/{conversations,command}.rs
 -> RuntimeSession + ProcessGeneration       database/src/{runtime_sessions,process_generations}.rs
 -> ProviderAttempt safety                   database/src/provider_attempts.rs
@@ -62,7 +67,7 @@ GPUI Conversation action                    apps/decodex-gpui/src/conversations.
 ```
 
 The Program path has no second execution engine. `database/src/program_cycles.rs` owns the
-persisted Program aggregate and its Conversation binding. The daemon derives the Program graph
+persisted Program aggregate and its Conversation binding. The service derives the Program graph
 and timeline, and `apps/decodex-gpui/src/{programs,program_graph,factory_surface}.rs` presents
 them. A Codex link is absent until SQLite readback supplies the exact provider thread ID; a
 Decodex Conversation UUID is never substituted. Provider thread identities are opaque, limited
@@ -78,13 +83,15 @@ depleted observation still blocks that account. Fixed routing keeps the selected
 balanced routing prefers known available capacity and then follows configured order
 through unknown accounts.
 
-Account Route reads the current shared Codex auth file once and uses an exact-source
-compare-and-swap write with readback. It commits fixed routing only after that write succeeds.
-A locally valid target does not contact the provider. A new Route never waits for running
-Codex processes and never creates normal Pending state. Changed source auth, missing or expired
-credentials, and revision drift return terminal typed failures. Legacy Pending receipts remain
-decode and startup-recovery state only. Restart ChatGPT or Codex after Route to load the selected
-account there; Decodex does not stop or restart those applications.
+Account Route is one synchronous, fail-fast operation under one service-local mutex. It
+returns `codex_is_running` immediately, without changing authentication or routing, when
+ChatGPT or Codex is open. Otherwise it validates the target credential, safely persists any
+required refresh successor, rechecks process and source state, atomically replaces
+`~/.codex/auth.json`, verifies exact readback, and only then commits the fixed account in
+SQLite. It never creates Pending state, waits for an app to exit, or hot-switches a running
+Codex process. Refresh ambiguity becomes `credential_needs_login`; it is never blind retry
+authority. Startup can reconcile only the narrow case in which the auth write completed but
+the SQLite active-account commit did not.
 
 Account affinity is conversation-scoped. The first route binds one account to the
 RuntimeSession and Codex thread. Later turns keep that account even if the global routing
@@ -95,7 +102,7 @@ replace the account and discard provider cache affinity.
 ## Removed and deferred surfaces
 
 The unsupported WorkItem board protocol and UI, and the static Coordinator/Agent/Review/Replay
-Factory preview, are deleted. Their old command names are not part of protocol 2.13 and fail
+Factory preview, are deleted. Their old command names are not part of protocol 2.14 and fail
 decoding. The fake Execution Decision query and projection are also removed from the protocol and
 runtime. ManagedRepository, Reset Card execution, automation, ManagedRun, remote workers, and
 multi-machine coordination remain deferred without a public fake workflow or legacy storage
@@ -107,8 +114,11 @@ and evidence. They are not a second speculative execution engine.
 
 ## Persistence compatibility
 
-This cutover requires no data migration and does not rewrite existing conversations or immutable
-Program Pack bindings. Protocol 2.13 and artifact cohort 9 make the public surface removal exact.
+This cutover adds one ordered migration that terminalizes legacy reserved `route_account`
+receipts as `interrupted_by_upgrade` and removes their replayable request/progress state. It
+preserves accounts, credentials, routing data, conversations, and immutable Program Pack bindings.
+The local protocol accepts one exact version; build commit and package version remain diagnostics,
+not a second compatibility scheme.
 The compatibility allowlist is limited to persisted/internal bytes that existing databases or
 Pack digests already own:
 
@@ -125,10 +135,10 @@ These names are not product, UI, protocol, or Rust API concepts.
 - `database/`: SQLite authority and one-shot account transfer.
 - `crates/decodex-core/`: mechanism-neutral domain types and fixed local paths.
 - `crates/decodex-codex/`: Codex app-server contracts.
-- `crates/decodex-runtime/`: daemon service composition and Conversation orchestration.
+- `crates/decodex-runtime/`: service composition and Conversation orchestration.
 - `crates/decodex-protocol/`: bounded same-UID protocol.
-- `apps/decodexd/`: daemon composition root.
-- `apps/decodex-cli/`: diagnostic and product command client.
+- `apps/decodex-cli/`: the `decodex` composition root, explicit service command, diagnostics,
+  and product command client.
 - `apps/decodex-gpui/`: the only desktop GUI and `Decodex.app` packaging source.
 - `openwiki/`: current product, architecture, operations, and evidence authority.
 
@@ -142,7 +152,7 @@ python3 scripts/vnext/local_database_gate.py
 python3 -m unittest tests/scripts/test_vnext_architecture.py
 cargo test -p decodex-database --all-targets
 cargo test -p decodex-database-transfer
-cargo test -p decodexd
+cargo test -p decodex-cli --all-targets
 DECODEX_APP_SIGN_IDENTITY="4EBCADF6B4D513E45CE33EC6934C08DBB0F03D7F" \
 DECODEX_APP_SIGN_TEAM_IDENTIFIER="4N949UKQ55" \
   scripts/macos/test_decodex_app_stage.sh

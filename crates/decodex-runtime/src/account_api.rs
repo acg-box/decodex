@@ -65,7 +65,7 @@ impl AccountApiRuntime {
 			.connect_timeout(CONNECT_TIMEOUT)
 			.timeout(HTTP_TIMEOUT)
 			.redirect(reqwest::redirect::Policy::none())
-			.user_agent("decodexd")
+			.user_agent("decodex")
 			.build()
 			.map_err(|_| AccountApiRuntimeError::ProviderUnavailable)?;
 		Ok(Self { accounts, client })
@@ -345,7 +345,12 @@ fn map_account_service_error(error: AccountLifecycleError) -> AccountApiRuntimeE
 		| AccountLifecycleError::CredentialImport
 		| AccountLifecycleError::InvalidOperation
 		| AccountLifecycleError::Persistence(_)
-		| AccountLifecycleError::CoordinatorUnavailable => AccountApiRuntimeError::AccountUnavailable,
+		| AccountLifecycleError::CoordinatorUnavailable
+		| AccountLifecycleError::CodexIsRunning
+		| AccountLifecycleError::AuthFileUnreadable
+		| AccountLifecycleError::AuthFileChanged
+		| AccountLifecycleError::AuthWriteFailed
+		| AccountLifecycleError::AuthReadbackMismatch => AccountApiRuntimeError::AccountUnavailable,
 	}
 }
 

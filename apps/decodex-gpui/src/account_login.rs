@@ -1,7 +1,8 @@
 //! Presentation-neutral GPUI seam for daemon-owned account login.
 
 use decodex_protocol::{
-	AccountLoginClient, AccountLoginStart, AccountLoginStatus, ClientFailure, ClientProfile, EntityId,
+	AccountLoginClient, AccountLoginStart, AccountLoginStatus, ClientFailure, ClientProfile,
+	EntityId,
 };
 
 /// Short-lived protocol controller shared by any future account-login presentation.

@@ -1,5 +1,5 @@
 //! Typed vNext wire contracts and same-UID local transport shared by clients and
-//! `decodexd`.
+//! `decodex serve`.
 
 mod account_login;
 mod client;
@@ -66,20 +66,18 @@ pub use self::{
 		AccountObservedStateDto, AccountOperationKindDto, AccountOperationPhaseDto,
 		AccountProfileDailyUsageDto, AccountProfileDto, AccountProfileEmailDto,
 		AccountProfileErrorDto, AccountProfileResult, AccountProviderDto, AccountQuotaErrorDto,
-		AccountQuotaStateDto, AccountQuotaWindowDto, AccountRouteAuthHomeDto,
-		AccountRouteBlockingProcessDto, AccountRoutePendingDto, AccountRouteProcessBlockerDto,
-		AccountRouteWaitReasonDto, AccountRoutingControlDto, AccountSelectionModeDto,
-		AccountSelectionRecoveryDto, AccountUnsettledOperationDto, AccountsResult, CausationId,
-		Channel, ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult,
-		CommandEnvelope, CommandError, CommandOutcome, CommandPayload, CommandReceipt,
-		CommandResultEnvelope, ConversationHistoryPage, ConversationHistoryResult, CorrelationId,
-		Cursor, DESKTOP_SETTINGS_ENTITY_ID, DesktopSettingsDto, DesktopSettingsResult, EntityId,
-		EntityRevision, EventEnvelope, EventPayload, HistoryArtifactId, HistoryArtifactReference,
-		HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference, HistoryCursorToken,
-		HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryMediaType,
-		HistoryMetadata, HistoryMetadataValue, HistoryPayloadDto, HistoryQueryError,
-		HistorySideEffectState, HistoryText, HistoryTurnRole, IdempotencyKey, IdempotencyKeyError,
-		MAX_ACCOUNT_PROFILE_DAILY_USAGE, MAX_ACCOUNT_ROUTE_PROCESS_BLOCKERS,
+		AccountQuotaStateDto, AccountQuotaWindowDto, AccountRoutingControlDto,
+		AccountSelectionModeDto, AccountSelectionRecoveryDto, AccountUnsettledOperationDto,
+		AccountsResult, CausationId, Channel, ClientCommandId, ClientHello, ClientMessage,
+		CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandOutcome, CommandPayload,
+		CommandReceipt, CommandResultEnvelope, ConversationHistoryPage, ConversationHistoryResult,
+		CorrelationId, Cursor, DESKTOP_SETTINGS_ENTITY_ID, DesktopSettingsDto,
+		DesktopSettingsResult, EntityId, EntityRevision, EventEnvelope, EventPayload,
+		HistoryArtifactId, HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength,
+		HistoryBlobReference, HistoryCursorToken, HistoryItemDto, HistoryItemKindDto,
+		HistoryItemStatusDto, HistoryMediaType, HistoryMetadata, HistoryMetadataValue,
+		HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
+		IdempotencyKey, IdempotencyKeyError, MAX_ACCOUNT_PROFILE_DAILY_USAGE,
 		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
 		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
 		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, QueryEnvelope, QueryId, QueryPayload,
@@ -97,15 +95,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 13 };
-/// Build/protocol cohort that must agree across the daemon and every local consumer.
-pub const CURRENT_ARTIFACT_COHORT: u32 = 9;
-/// The lower bound of the exact-current protocol window.
-///
-/// This equals [`CURRENT_VERSION`]. The name remains to avoid an unrelated
-/// public-symbol rename during the clean break.
-pub const PREVIOUS_MINOR_VERSION: ProtocolVersion = CURRENT_VERSION;
-
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 14 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
@@ -116,42 +106,12 @@ pub struct ProtocolVersion {
 }
 impl ProtocolVersion {
 	/// Negotiate this client version against the server's exact-current window.
-	pub fn negotiate(self) -> Result<Self, VersionRefusal> {
-		if self.major != CURRENT_VERSION.major {
-			return Err(VersionRefusal::MajorMismatch {
-				requested: self,
-				supported: SupportedVersions::current(),
-			});
-		}
+	pub fn negotiate(self) -> Result<Self, ProtocolVersion> {
 		if self != CURRENT_VERSION {
-			return Err(VersionRefusal::UnsupportedMinor {
-				requested: self,
-				supported: SupportedVersions::current(),
-			});
+			return Err(CURRENT_VERSION);
 		}
 
 		Ok(self)
-	}
-}
-
-/// The server's exact-current compatibility window.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct SupportedVersions {
-	/// Required protocol generation.
-	pub major: u16,
-	/// Oldest accepted minor revision.
-	pub minimum_minor: u16,
-	/// Newest accepted minor revision.
-	pub maximum_minor: u16,
-}
-impl SupportedVersions {
-	/// Return the compatibility window implemented by this build.
-	pub const fn current() -> Self {
-		Self {
-			major: CURRENT_VERSION.major,
-			minimum_minor: PREVIOUS_MINOR_VERSION.minor,
-			maximum_minor: CURRENT_VERSION.minor,
-		}
 	}
 }
 
@@ -164,53 +124,21 @@ pub struct ServiceAnnouncement {
 	pub foundation: FoundationStatus,
 }
 
-/// A precise version-negotiation refusal.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "reason", rename_all = "snake_case")]
-pub enum VersionRefusal {
-	/// The breaking generations differ.
-	MajorMismatch {
-		/// Version requested by the client.
-		requested: ProtocolVersion,
-		/// Versions supported by the server.
-		supported: SupportedVersions,
-	},
-	/// The generation matches but the minor is not the exact current revision.
-	UnsupportedMinor {
-		/// Version requested by the client.
-		requested: ProtocolVersion,
-		/// Versions supported by the server.
-		supported: SupportedVersions,
-	},
-}
-
 #[cfg(test)]
 mod tests {
-	use crate::{
-		CURRENT_VERSION, PREVIOUS_MINOR_VERSION, ProtocolVersion, SupportedVersions, VersionRefusal,
-	};
+	use crate::{CURRENT_VERSION, ProtocolVersion};
 
 	#[test]
 	fn only_the_exact_current_version_is_accepted() {
 		assert_eq!(CURRENT_VERSION.negotiate(), Ok(CURRENT_VERSION));
-		assert_eq!(PREVIOUS_MINOR_VERSION.negotiate(), Ok(PREVIOUS_MINOR_VERSION));
-		assert!(matches!(
-			ProtocolVersion { major: 2, minor: 11 }.negotiate(),
-			Err(VersionRefusal::UnsupportedMinor { .. })
-		));
+		assert_eq!(ProtocolVersion { major: 2, minor: 13 }.negotiate(), Err(CURRENT_VERSION));
 	}
 
 	#[test]
-	fn a_major_mismatch_is_distinct_from_minor_incompatibility() {
+	fn any_version_mismatch_requires_the_one_current_version() {
 		let requested = ProtocolVersion { major: 1, minor: 5 };
 
-		assert_eq!(
-			requested.negotiate(),
-			Err(VersionRefusal::MajorMismatch {
-				requested,
-				supported: SupportedVersions::current(),
-			})
-		);
+		assert_eq!(requested.negotiate(), Err(CURRENT_VERSION));
 	}
 
 	#[cfg(any(target_os = "linux", target_os = "macos"))]

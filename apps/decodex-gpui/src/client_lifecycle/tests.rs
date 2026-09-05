@@ -112,16 +112,16 @@ fn production_cache_parent_normalizes_only_fixed_platform_prefix() {
 }
 
 #[test]
-fn production_client_cache_authority_is_valid_at_protocol_v2_13() {
+fn production_client_cache_authority_is_valid_at_protocol_v2_14() {
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let fixture_temp_dir =
 		temporary.path().canonicalize().expect("fixture temporary directory canonicalizes");
 	let config = retained_config(&fixture_temp_dir.join("config-cache-parent"), SERVER);
 	let lifecycle = ClientLifecycle::production_with_temp_dir(config, &fixture_temp_dir)
-		.expect("production lifecycle constructs at protocol V2.13");
+		.expect("production lifecycle constructs at protocol V2.14");
 
 	assert_eq!(CURRENT_VERSION.major, 2);
-	assert_eq!(CURRENT_VERSION.minor, 13);
+	assert_eq!(CURRENT_VERSION.minor, 14);
 	assert_eq!(CLIENT_CACHE_SCHEMA_GENERATION, 1);
 	assert!(lifecycle.cache.is_some(), "the production client cache opens");
 	let encoded =
@@ -1580,7 +1580,7 @@ async fn app_owned_transport_recovery_is_bounded_and_protocol_failure_never_rest
 	protocol_lifecycle.supervise_app_owned_daemon(Arc::clone(&protocol_recovery));
 	let mut protocol_io = FakeIo::new(
 		protocol_root,
-		vec![ConnectAction::Fail(RetainedSessionFailure::ArtifactCohortMismatch)],
+		vec![ConnectAction::Fail(RetainedSessionFailure::ServiceVersionMismatch)],
 	);
 
 	assert_eq!(protocol_lifecycle.run_with_io(&mut protocol_io).await, RunResult::Incompatible);
@@ -2108,13 +2108,13 @@ async fn transient_incompatible_and_stable_identity_failures_are_distinct() {
 	let mut incompatible = lifecycle(&incompatible_root);
 	let mut incompatible_io = FakeIo::new(
 		incompatible_root,
-		vec![ConnectAction::Fail(RetainedSessionFailure::ProtocolMajorMismatch)],
+		vec![ConnectAction::Fail(RetainedSessionFailure::ServiceVersionMismatch)],
 	);
 
 	assert_eq!(incompatible.run_with_io(&mut incompatible_io).await, RunResult::Incompatible);
 	assert_eq!(
 		incompatible.view(),
-		ConnectionView::Incompatible(CompatibilityReason::ProtocolMajor)
+		ConnectionView::Incompatible(CompatibilityReason::ProtocolMinor)
 	);
 
 	let identity_temporary = TempDir::new().expect("temporary directory is available");

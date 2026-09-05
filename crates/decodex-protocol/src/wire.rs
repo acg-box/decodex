@@ -1,4 +1,4 @@
-//! Structured JSON envelopes for the exact-current V2.13 WebSocket connection.
+//! Structured JSON envelopes for the exact-current V2.14 WebSocket connection.
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
@@ -17,14 +17,14 @@ use crate::{
 	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, ConversationExecutionSettings,
 	ConversationListCursor, ConversationListResult, ConversationListSize,
 	ConversationRecoveryAction, ConversationResult, ConversationSummary, ConversationTurnOutcome,
-	ConversationWorkingDirectory, DoctorReport, ProtocolVersion, SupportedVersions, VersionRefusal,
+	ConversationWorkingDirectory, DoctorReport, ProtocolVersion,
 	program_cycle::{
 		ProgramContinuationDraftDto, ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult,
 		ProgramListResult, ProgramReviewDraftDto,
 	},
 };
 
-/// Maximum UTF-8 size of any human-readable text carried by V2.13.
+/// Maximum UTF-8 size of any human-readable text carried by V2.14.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
 /// Maximum UTF-8 size of one logical-command idempotency key.
 pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
@@ -35,8 +35,6 @@ pub const MAX_HISTORY_INLINE_BYTES: usize = 16 * 1_024;
 pub const MAX_HISTORY_PAGE_SIZE: u16 = 8;
 /// Maximum daily usage facts retained and returned for one account profile.
 pub const MAX_ACCOUNT_PROFILE_DAILY_USAGE: usize = 36;
-/// Maximum concrete process blockers returned for one pending account Route.
-pub const MAX_ACCOUNT_ROUTE_PROCESS_BLOCKERS: usize = 8;
 /// Maximum verified payload length representable in a history blob reference.
 pub const MAX_HISTORY_BLOB_BYTES: u64 = 64 * 1_024 * 1_024;
 
@@ -141,7 +139,7 @@ impl<'de> Deserialize<'de> for HistoryCursorToken {
 	}
 }
 
-/// A string-backed wire scalar exceeded its V2.13 byte limit.
+/// A string-backed wire scalar exceeded its V2.14 byte limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WireScalarTooLong {
 	actual_bytes: usize,
@@ -442,9 +440,6 @@ pub enum DesktopSettingsResult {
 pub struct ClientHello {
 	/// Client protocol revision.
 	pub version: ProtocolVersion,
-	/// Exact local artifact cohort. Absence represents a pre-cohort client.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub artifact_cohort: Option<u32>,
 	/// Optional stable server-host identity pin. It is enforced before status or commands.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub expected_server_id: Option<ServerId>,
@@ -459,7 +454,7 @@ pub struct ResumeCursor {
 	pub server_id: ServerId,
 	/// Ephemeral publication epoch that issued the cursor.
 	///
-	/// A V2.13 resume requires this field. Older hello envelopes can omit it
+	/// A V2.14 resume requires this field. Older hello envelopes can omit it
 	/// only so negotiation can return a typed version refusal.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
@@ -506,16 +501,11 @@ pub struct QueryEnvelope {
 pub struct ServerWelcome {
 	/// Negotiated protocol revision.
 	pub version: ProtocolVersion,
-	/// Exact local artifact cohort. Absence represents a pre-cohort server.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub artifact_cohort: Option<u32>,
-	/// Server compatibility window.
-	pub supported: SupportedVersions,
 	/// Stable identity of this server host.
 	pub server_id: ServerId,
 	/// Ephemeral identity of the in-memory publication epoch.
 	///
-	/// This is present in the exact-current V2.13 welcome.
+	/// This is present in the exact-current V2.14 welcome.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
@@ -1645,7 +1635,7 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. The V2.13 account contract accepts 300 and 10080 minutes only.
+	/// Exact window duration. The V2.14 account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -1815,124 +1805,6 @@ pub struct AccountRoutingControlDto {
 	pub order: Vec<EntityId>,
 }
 
-/// Closed process identity for one shared-auth Route blocker.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AccountRouteBlockingProcessDto {
-	/// The ChatGPT desktop application.
-	Chatgpt,
-	/// A Codex desktop, app-server, or CLI process.
-	Codex,
-}
-
-/// Evidence for the auth home used by one blocking process.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AccountRouteAuthHomeDto {
-	/// The process is proved to use the normal shared Codex home.
-	Shared,
-	/// The process home could not be read or proved isolated, so the gate fails closed.
-	Unknown,
-}
-
-/// One credential-negative process blocker for a pending Route.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct AccountRouteProcessBlockerDto {
-	/// Positive local process identity.
-	pub pid: u32,
-	/// Closed user-facing process identity.
-	pub process: AccountRouteBlockingProcessDto,
-	/// Shared-home evidence used by the safety gate.
-	pub auth_home: AccountRouteAuthHomeDto,
-}
-
-/// Current reason why an accepted Route cannot complete yet.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "reason", content = "data", rename_all = "snake_case", deny_unknown_fields)]
-pub enum AccountRouteWaitReasonDto {
-	/// Concrete external processes can still write the normal shared auth file.
-	ExternalCodex {
-		/// Bounded deterministic blocker list.
-		blockers: Vec<AccountRouteProcessBlockerDto>,
-		/// Additional blockers omitted from the bounded list.
-		omitted: u16,
-	},
-	/// Process enumeration or auth-home inspection was unavailable and therefore failed closed.
-	CodexObservationUnavailable,
-	/// The target account cannot safely resume its retained Route yet.
-	AccountReadiness {
-		/// Exact daemon-owned readiness state.
-		readiness: AccountLifecycleReadinessDto,
-	},
-	/// The shared auth source needs another stable observation.
-	SharedAuthStabilizing,
-	/// The shared auth source or its owner-safe path cannot currently be read.
-	SharedAuthUnavailable,
-	/// The atomic projection may have completed and requires exact readback.
-	ProjectionReadback,
-}
-
-/// Durable Route handoff retained while one exact safe-cutover prerequisite remains open.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AccountRoutePendingDto {
-	/// Stable Route operation identity.
-	pub operation_id: EntityId,
-	/// Desired account identity.
-	pub account_id: EntityId,
-	/// Routing revision fenced when the intent was accepted.
-	pub routing_revision: EntityRevision,
-	/// Current credential-negative wait reason.
-	pub wait_reason: AccountRouteWaitReasonDto,
-}
-
-impl Serialize for AccountRoutePendingDto {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: serde::Serializer,
-	{
-		validate_account_route_pending(self).map_err(S::Error::custom)?;
-		#[derive(Serialize)]
-		struct Raw<'a> {
-			operation_id: &'a EntityId,
-			account_id: &'a EntityId,
-			routing_revision: EntityRevision,
-			wait_reason: &'a AccountRouteWaitReasonDto,
-		}
-		Raw {
-			operation_id: &self.operation_id,
-			account_id: &self.account_id,
-			routing_revision: self.routing_revision,
-			wait_reason: &self.wait_reason,
-		}
-		.serialize(serializer)
-	}
-}
-
-impl<'de> Deserialize<'de> for AccountRoutePendingDto {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		#[derive(Deserialize)]
-		#[serde(deny_unknown_fields)]
-		struct Raw {
-			operation_id: EntityId,
-			account_id: EntityId,
-			routing_revision: EntityRevision,
-			wait_reason: AccountRouteWaitReasonDto,
-		}
-		let raw = Raw::deserialize(deserializer)?;
-		let pending = Self {
-			operation_id: raw.operation_id,
-			account_id: raw.account_id,
-			routing_revision: raw.routing_revision,
-			wait_reason: raw.wait_reason,
-		};
-		validate_account_route_pending(&pending).map_err(D::Error::custom)?;
-		Ok(pending)
-	}
-}
 impl Serialize for AccountRoutingControlDto {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -2088,8 +1960,6 @@ pub enum AccountsResult {
 		/// Routing controls with an exact account permutation, when that capability read
 		/// succeeded.
 		routing: Option<AccountRoutingControlDto>,
-		/// One pending Route waiting for safe shared-auth cutover.
-		pending_route: Option<AccountRoutePendingDto>,
 	},
 	/// The account authority could not return a safe snapshot.
 	Unavailable,
@@ -2191,22 +2061,13 @@ impl Serialize for AccountsResult {
 		#[derive(Serialize)]
 		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
 		enum Raw<'a> {
-			Available {
-				accounts: &'a [AccountDto],
-				routing: Option<&'a AccountRoutingControlDto>,
-				pending_route: Option<&'a AccountRoutePendingDto>,
-			},
+			Available { accounts: &'a [AccountDto], routing: Option<&'a AccountRoutingControlDto> },
 			Unavailable,
 		}
 		let raw = match self {
-			Self::Available { accounts, routing, pending_route } => {
-				validate_accounts_result(accounts, routing.as_ref(), pending_route.as_ref())
-					.map_err(S::Error::custom)?;
-				Raw::Available {
-					accounts,
-					routing: routing.as_ref(),
-					pending_route: pending_route.as_ref(),
-				}
+			Self::Available { accounts, routing } => {
+				validate_accounts_result(accounts, routing.as_ref()).map_err(S::Error::custom)?;
+				Raw::Available { accounts, routing: routing.as_ref() }
 			},
 			Self::Unavailable => Raw::Unavailable,
 		};
@@ -2221,18 +2082,13 @@ impl<'de> Deserialize<'de> for AccountsResult {
 		#[derive(Deserialize)]
 		#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 		enum Raw {
-			Available {
-				accounts: Vec<AccountDto>,
-				routing: Option<AccountRoutingControlDto>,
-				pending_route: Option<AccountRoutePendingDto>,
-			},
+			Available { accounts: Vec<AccountDto>, routing: Option<AccountRoutingControlDto> },
 			Unavailable,
 		}
 		match Raw::deserialize(deserializer)? {
-			Raw::Available { accounts, routing, pending_route } => {
-				validate_accounts_result(&accounts, routing.as_ref(), pending_route.as_ref())
-					.map_err(D::Error::custom)?;
-				Ok(Self::Available { accounts, routing, pending_route })
+			Raw::Available { accounts, routing } => {
+				validate_accounts_result(&accounts, routing.as_ref()).map_err(D::Error::custom)?;
+				Ok(Self::Available { accounts, routing })
 			},
 			Raw::Unavailable => Ok(Self::Unavailable),
 		}
@@ -2311,7 +2167,7 @@ impl AccountObservationSignal {
 	}
 }
 
-/// Live queries available through the exact-current V2.13 protocol.
+/// Live queries available through the exact-current V2.14 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
@@ -2394,7 +2250,7 @@ impl QueryPayload {
 	}
 }
 
-/// Commands available through the exact-current V2.13 protocol.
+/// Commands available through the exact-current V2.14 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
@@ -2532,12 +2388,8 @@ pub enum CommandPayload {
 	},
 	/// Refresh, project, and select one account as one daemon-owned Route command.
 	RouteAccount {
-		/// Stable finite credential-refresh operation identity.
-		operation_id: EntityId,
 		/// Canonical routed account identity.
 		account_id: EntityId,
-		/// Exact optimistic revision of the routed account before preparation.
-		expected_account_revision: EntityRevision,
 	},
 	/// Select balanced initial account routing under the routing-control revision guard.
 	SetBalancedAccountSelection,
@@ -2733,11 +2585,6 @@ pub enum EventPayload {
 		/// Credential-negative digest of the projected account binding.
 		projection_digest: Sha256Digest,
 	},
-	/// One durable Route is waiting for external Codex quiescence and safe projection.
-	AccountRoutePending {
-		/// Complete credential-negative pending intent.
-		pending: AccountRoutePendingDto,
-	},
 	/// One explicit account-operation recovery action completed.
 	AccountOperationRecovered {
 		/// Stable recovered operation identity.
@@ -2874,11 +2721,6 @@ pub enum ResultPayload {
 		/// Credential-negative digest of the projected account binding.
 		projection_digest: Sha256Digest,
 	},
-	/// One durable Route was accepted and is waiting for safe shared-auth cutover.
-	AccountRoutePending {
-		/// Complete credential-negative pending intent.
-		pending: AccountRoutePendingDto,
-	},
 	/// One explicit credential-operation recovery action completed.
 	AccountOperationRecovered {
 		/// Stable recovered operation identity.
@@ -2889,13 +2731,13 @@ pub enum ResultPayload {
 }
 
 impl ResultPayload {
-	/// A pending Route receipt evolves after the daemon proves safe cutover.
+	/// Whether this terminal result can evolve after publication.
 	pub const fn is_evolving_receipt(&self) -> bool {
-		matches!(self, Self::AccountRoutePending { .. })
+		false
 	}
 }
 
-/// Typed live-query results available through the exact-current V2.13 protocol.
+/// Typed live-query results available through the exact-current V2.14 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
@@ -3109,10 +2951,26 @@ pub enum AccountCommandRejectionDto {
 	ProviderMismatch,
 	/// Another lifecycle gate prevents the request.
 	LifecycleUnready,
-	/// A live or uncertain Codex process may still own the shared refresh-token family.
-	SharedAuthOwnerBusy,
-	/// A newer explicit Route replaced this pending Route before shared-auth projection.
-	RouteSuperseded,
+	/// Official Codex or ChatGPT is running; the caller must quit it and retry.
+	CodexIsRunning,
+	/// The target account is administratively disabled.
+	AccountDisabled,
+	/// The target account has no stored credential.
+	CredentialMissing,
+	/// A prior refresh may have rotated the token without safely storing its successor.
+	CredentialNeedsLogin,
+	/// The provider rejected the target credential refresh.
+	CredentialRefreshRejected,
+	/// The provider refresh could not start or complete before any known effect.
+	CredentialRefreshUnavailable,
+	/// The shared auth file could not be read safely.
+	AuthFileUnreadable,
+	/// The shared auth source changed before projection.
+	AuthFileChanged,
+	/// Atomic auth-file replacement failed.
+	AuthWriteFailed,
+	/// Exact auth-file readback did not match the projected credential.
+	AuthReadbackMismatch,
 	/// Routing order is not an exact visible-account permutation.
 	RoutingOrderInvalid,
 	/// An explicit reconciliation command is required.
@@ -3123,14 +2981,12 @@ pub enum AccountCommandRejectionDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "detail", rename_all = "snake_case")]
 pub enum Refusal {
-	/// The requested version falls outside the compatibility window.
-	UnsupportedVersion(VersionRefusal),
-	/// The client and daemon were not built for the same local artifact cohort.
-	ArtifactCohortMismatch {
-		/// Cohort required by the daemon.
-		expected: u32,
-		/// Cohort supplied by the client, or absent for a pre-cohort client.
-		actual: Option<u32>,
+	/// The requested version differs from the one exact service version.
+	ServiceVersionMismatch {
+		/// Version requested by the client.
+		requested: ProtocolVersion,
+		/// Exact version supported by the service.
+		supported: ProtocolVersion,
 	},
 	/// The client pinned a different stable server host.
 	ServerIdentityMismatch {
@@ -3151,12 +3007,12 @@ pub enum Refusal {
 	},
 }
 
-/// Serialize a message using the only V2.13 wire encoding.
+/// Serialize a message using the only V2.14 wire encoding.
 pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 	serde_json::to_string(message)
 }
 
-/// Parse a client message using the only V2.13 wire encoding.
+/// Parse a client message using the only V2.14 wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
 	validate_client_message(&decoded).map_err(|reason| {
@@ -3288,13 +3144,13 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 			validate_canonical_account(account_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
 		},
-		CommandPayload::RouteAccount { operation_id, account_id, expected_account_revision } => {
-			validate_canonical_operation(operation_id)?;
+		CommandPayload::RouteAccount { account_id } => {
 			validate_canonical_account(account_id)?;
-			if !positive_expected || expected_account_revision.0 == 0 {
-				return Err("account Route revisions are invalid");
-			}
-			Ok(())
+			command
+				.expected_revision
+				.is_none()
+				.then_some(())
+				.ok_or("account Route has no revision fence")
 		},
 		CommandPayload::SetBalancedAccountSelection =>
 			positive_expected.then_some(()).ok_or("account routing revision is required"),
@@ -3449,7 +3305,6 @@ fn validate_initial_selection_result(
 fn validate_accounts_result(
 	accounts: &[AccountDto],
 	routing: Option<&AccountRoutingControlDto>,
-	pending_route: Option<&AccountRoutePendingDto>,
 ) -> Result<(), &'static str> {
 	if accounts.len() > 512 {
 		return Err("account result exceeds cardinality bound");
@@ -3479,58 +3334,6 @@ fn validate_accounts_result(
 		{
 			return Err("fixed account target is outside the account universe");
 		}
-	}
-	if let Some(pending) = pending_route {
-		if validate_account_route_pending(pending).is_err()
-			|| !universe.contains(pending.account_id.as_str())
-		{
-			return Err("pending account Route is invalid");
-		}
-		if let Some(routing) = routing
-			&& pending.routing_revision != routing.revision
-		{
-			return Err("pending account Route revision is stale");
-		}
-	}
-	Ok(())
-}
-
-fn validate_account_route_pending(pending: &AccountRoutePendingDto) -> Result<(), &'static str> {
-	if !is_canonical_uuid(pending.operation_id.as_str())
-		|| !is_canonical_uuid(pending.account_id.as_str())
-		|| pending.routing_revision.0 == 0
-	{
-		return Err("pending account Route is invalid");
-	}
-	match &pending.wait_reason {
-		AccountRouteWaitReasonDto::ExternalCodex { blockers, omitted } => {
-			if blockers.is_empty()
-				|| blockers.len() > MAX_ACCOUNT_ROUTE_PROCESS_BLOCKERS
-				|| (*omitted > 0 && blockers.len() != MAX_ACCOUNT_ROUTE_PROCESS_BLOCKERS)
-			{
-				return Err("pending account Route blocker list is invalid");
-			}
-			let mut pids = HashSet::new();
-			if blockers.iter().any(|blocker| blocker.pid == 0 || !pids.insert(blocker.pid)) {
-				return Err("pending account Route blocker identity is invalid");
-			}
-		},
-		AccountRouteWaitReasonDto::AccountReadiness { readiness }
-			if !matches!(
-				readiness,
-				AccountLifecycleReadinessDto::StoreUnavailable
-					| AccountLifecycleReadinessDto::StoreMismatch
-					| AccountLifecycleReadinessDto::OperationUnsettled
-					| AccountLifecycleReadinessDto::CallbackCapabilityUnready
-			) =>
-		{
-			return Err("pending account Route readiness is invalid");
-		},
-		AccountRouteWaitReasonDto::CodexObservationUnavailable
-		| AccountRouteWaitReasonDto::AccountReadiness { .. }
-		| AccountRouteWaitReasonDto::SharedAuthStabilizing
-		| AccountRouteWaitReasonDto::SharedAuthUnavailable
-		| AccountRouteWaitReasonDto::ProjectionReadback => {},
 	}
 	Ok(())
 }
@@ -3786,10 +3589,8 @@ mod tests {
 		AccountLifecycleReadinessDto, AccountObservationSignal, AccountObservedStateDto,
 		AccountProfileDailyUsageDto, AccountProfileDto, AccountProfileEmailDto,
 		AccountProfileErrorDto, AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto,
-		AccountRouteAuthHomeDto, AccountRouteBlockingProcessDto, AccountRoutePendingDto,
-		AccountRouteProcessBlockerDto, AccountRouteWaitReasonDto, AccountsResult, CURRENT_VERSION,
-		CausationId, ClientCommandId, CodexAuthProjectionResult, CommandError,
-		ConversationRecoveryAction, ConversationState, ConversationSummary,
+		AccountsResult, CURRENT_VERSION, CausationId, ClientCommandId, CodexAuthProjectionResult,
+		CommandError, ConversationRecoveryAction, ConversationState, ConversationSummary,
 		ConversationWorkingDirectory, CorrelationId, EntityId, EventPayload, HistoryCursorToken,
 		HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
 		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
@@ -3859,52 +3660,11 @@ mod tests {
 				seven_day_quota: unknown_quota(10_080),
 			}],
 			routing: None,
-			pending_route: None,
 		};
 
 		let encoded = serde_json::to_value(&result).expect("account rows should serialize");
 		assert!(encoded["data"]["routing"].is_null());
 		assert_eq!(serde_json::from_value::<AccountsResult>(encoded).unwrap(), result);
-	}
-
-	#[test]
-	fn pending_account_route_is_exact_typed_and_credential_negative() {
-		let pending = AccountRoutePendingDto {
-			operation_id: EntityId::new("33333333-3333-4333-8333-333333333333").unwrap(),
-			account_id: EntityId::new("11111111-1111-4111-8111-111111111111").unwrap(),
-			routing_revision: EntityRevision(9),
-			wait_reason: AccountRouteWaitReasonDto::ExternalCodex {
-				blockers: vec![AccountRouteProcessBlockerDto {
-					pid: 42,
-					process: AccountRouteBlockingProcessDto::Codex,
-					auth_home: AccountRouteAuthHomeDto::Shared,
-				}],
-				omitted: 0,
-			},
-		};
-		let payload = ResultPayload::AccountRoutePending { pending: pending.clone() };
-		let encoded = serde_json::to_value(&payload).unwrap();
-		assert_eq!(encoded["name"], "account_route_pending");
-		assert_eq!(encoded["data"]["pending"]["routing_revision"], 9);
-		assert_eq!(encoded["data"]["pending"]["wait_reason"]["reason"], "external_codex");
-		assert_eq!(encoded["data"]["pending"]["wait_reason"]["data"]["blockers"][0]["pid"], 42);
-		assert_eq!(serde_json::from_value::<ResultPayload>(encoded.clone()).unwrap(), payload);
-		assert!(payload.is_evolving_receipt());
-
-		let mut invalid = serde_json::to_value(pending).unwrap();
-		invalid["routing_revision"] = serde_json::json!(0);
-		assert!(serde_json::from_value::<AccountRoutePendingDto>(invalid).is_err());
-
-		let mut empty_blockers = encoded["data"]["pending"].clone();
-		empty_blockers["wait_reason"]["data"]["blockers"] = serde_json::json!([]);
-		assert!(serde_json::from_value::<AccountRoutePendingDto>(empty_blockers).is_err());
-
-		let mut invalid_readiness = encoded["data"]["pending"].clone();
-		invalid_readiness["wait_reason"] = serde_json::json!({
-			"reason": "account_readiness",
-			"data": {"readiness": "ready"},
-		});
-		assert!(serde_json::from_value::<AccountRoutePendingDto>(invalid_readiness).is_err());
 	}
 
 	#[test]
@@ -4275,13 +4035,7 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let other_id =
 			EntityId::new("11234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
-		let operation_id =
-			EntityId::new("21234567-89ab-4def-8123-456789abcdef").expect("canonical operation ID");
-		let route = CommandPayload::RouteAccount {
-			operation_id: operation_id.clone(),
-			account_id: account_id.clone(),
-			expected_account_revision: EntityRevision(7),
-		};
+		let route = CommandPayload::RouteAccount { account_id: account_id.clone() };
 		let balanced = CommandPayload::SetBalancedAccountSelection;
 		let order =
 			CommandPayload::SetAccountOrder { order: vec![other_id.clone(), account_id.clone()] };
@@ -4291,9 +4045,7 @@ mod tests {
 			serde_json::json!({
 				"name": "route_account",
 				"arguments": {
-					"operation_id": operation_id.as_str(),
 					"account_id": account_id.as_str(),
-					"expected_account_revision": 7,
 				},
 			}),
 		);
@@ -4336,11 +4088,7 @@ mod tests {
 			decode_client_message(&encoded).is_err()
 		};
 		assert!(is_rejected(
-			CommandPayload::RouteAccount {
-				operation_id,
-				account_id: account_id.clone(),
-				expected_account_revision: EntityRevision(0),
-			},
+			CommandPayload::RouteAccount { account_id: account_id.clone() },
 			Some(EntityRevision(1)),
 		));
 		assert!(is_rejected(CommandPayload::SetBalancedAccountSelection, Some(EntityRevision(0)),));
@@ -4375,12 +4123,6 @@ mod tests {
 			}),
 		);
 		assert_eq!(serde_json::from_value::<CommandError>(encoded).unwrap(), duplicate_provider);
-
-		let superseded = CommandError::AccountCommandRejected {
-			rejection: AccountCommandRejectionDto::RouteSuperseded,
-			actual_revision: None,
-		};
-		assert_eq!(serde_json::to_value(superseded).unwrap()["rejection"], "route_superseded",);
 	}
 
 	#[test]
@@ -4650,7 +4392,6 @@ mod tests {
 	fn hello_wire_shape_is_a_stable_json_golden() {
 		let message = ClientMessage::Hello(ClientHello {
 			version: CURRENT_VERSION,
-			artifact_cohort: Some(crate::CURRENT_ARTIFACT_COHORT),
 			expected_server_id: None,
 			resume: Some(ResumeCursor {
 				server_id: ServerId::new("server-a").expect("bounded fixture ID"),
@@ -4664,8 +4405,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":13},"#,
-				r#""artifact_cohort":9,"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":14},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4674,7 +4414,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":13},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":14},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4716,7 +4456,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":13},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":14},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -4959,7 +4699,7 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
 		let legacy = crate::ProtocolVersion { major: 1, minor: 5 };
-		let future = crate::ProtocolVersion { major: 2, minor: 14 };
+		let future = crate::ProtocolVersion { major: 2, minor: 15 };
 		let query = QueryPayload::GetAccountProfile {
 			account_id: account_id.clone(),
 			include_email: false,

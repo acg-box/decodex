@@ -1,12 +1,18 @@
-//! Decodex vNext command-line client composition root.
+//! Unified Decodex command-line client and service composition root.
 
 use std::{
 	io::{self, Write as _},
 	process::ExitCode,
 };
 
+#[cfg(test)] use base64 as _;
 use clap::Parser as _;
+#[cfg(test)] use decodex_core as _;
+#[cfg(test)] use decodex_database as _;
 use decodex_protocol as _;
+use decodex_runtime as _;
+#[cfg(any(target_os = "linux", target_os = "macos"))] use libc as _;
+#[cfg(test)] use rusqlite as _;
 use serde as _;
 use serde_json as _;
 #[cfg(test)] use tempfile as _;

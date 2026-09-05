@@ -1,4 +1,4 @@
-//! Sole daemon coordinator for durable account state and credential effects.
+//! Sole service coordinator for durable account state and credential effects.
 
 use std::{
 	collections::HashMap,
@@ -6,7 +6,7 @@ use std::{
 	fmt::{Debug, Display, Formatter},
 	sync::{
 		Arc, Mutex,
-		atomic::{AtomicBool, Ordering},
+		atomic::{AtomicBool, AtomicU64, Ordering},
 	},
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -26,9 +26,7 @@ use decodex_database::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
-use tokio::sync::{
-	Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard, Notify, OwnedMutexGuard, broadcast,
-};
+use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{
@@ -41,10 +39,7 @@ use crate::{
 	host_credentials::{
 		CredentialSecretBundle, CredentialStoreError, HostCredentialStore, StoredCredential,
 	},
-	shared_auth_coordinator::{
-		CodexAuthOwnerBlocker, CodexLiveness, CodexLivenessObservation, SharedAuthCoordinator,
-		StableSharedAuthPoll, StableSharedAuthRead,
-	},
+	shared_auth_coordinator::{CodexLiveness, SharedAuthCoordinator, StableSharedAuthRead},
 };
 
 #[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
@@ -54,11 +49,11 @@ pub(crate) const PROCESS_TEST_REFRESH_ENDPOINT_ENV: &str = "DECODEX_PROCESS_TEST
 const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const MAX_ACCOUNT_READ: u16 = 512;
 const MAX_UNSETTLED_ACCOUNT_OPERATION_READ: u16 = 1_024;
+const ROUTE_MINIMUM_ACCESS_TOKEN_VALIDITY: Duration = Duration::from_secs(20);
 const PROVIDER_REFRESH_OUTCOME_UNKNOWN: &str = "provider_refresh_outcome_unknown";
 const TOMBSTONE_ENROLLMENT_COLLISION: &str = "tombstone_enrollment_collision";
 const ACCOUNT_ALIAS_DOMAIN: &[u8] = b"decodex/account-alias/v2\0";
 const CODEX_AUTH_PROJECTION_DOMAIN: &[u8] = b"decodex/codex-auth-projection/v1\0";
-const ROUTE_REFRESH_OPERATION_DOMAIN: &[u8] = b"decodex/route-refresh-operation/v1\0";
 const SHARED_AUTH_IMPORT_OPERATION_DOMAIN: &[u8] = b"decodex/shared-auth-import-operation/v1\0";
 const ACCOUNT_ALIAS_WORDS: [&str; 44] = [
 	"Alex", "Avery", "Bailey", "Blake", "Casey", "Charlie", "Clara", "Dana", "Drew", "Eden",
@@ -106,13 +101,15 @@ fn codex_auth_projection_digest(account: &AccountRecord, binding: &CredentialBin
 	encoded
 }
 
-fn route_refresh_operation_id(
-	route_operation_id: &AccountOperationId,
+fn refresh_journal_operation_id(
 	account_id: &AccountId,
 ) -> Result<AccountOperationId, AccountLifecycleError> {
+	static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+	let now = current_unix_micros()?;
 	let digest = Sha256::new()
-		.chain_update(ROUTE_REFRESH_OPERATION_DOMAIN)
-		.chain_update(route_operation_id.as_str().as_bytes())
+		.chain_update(b"decodex/credential-refresh-journal/v1\0")
+		.chain_update(now.to_be_bytes())
+		.chain_update(SEQUENCE.fetch_add(1, Ordering::Relaxed).to_be_bytes())
 		.chain_update(b"\0")
 		.chain_update(account_id.as_str().as_bytes())
 		.finalize();
@@ -232,7 +229,7 @@ pub(crate) enum CodexAuthProjectionInspection {
 	Unavailable,
 }
 
-/// Complete credential-negative result of one daemon-owned Route command.
+/// Complete credential-negative result of one service-owned Route command.
 #[derive(Clone)]
 pub(crate) struct AccountRouteCommit {
 	pub(crate) account: AccountRecord,
@@ -240,44 +237,7 @@ pub(crate) struct AccountRouteCommit {
 	pub(crate) projection_digest: String,
 }
 
-#[derive(Clone)]
-pub(crate) struct AccountRouteCompletion {
-	pub(crate) operation_id: AccountOperationId,
-	pub(crate) commit: AccountRouteCommit,
-}
-
-/// Credential-negative accepted state while one exact safe-cutover prerequisite remains open.
-pub(crate) struct AccountRoutePending {
-	pub(crate) operation_id: AccountOperationId,
-	pub(crate) account_id: AccountId,
-	pub(crate) routing_revision: i64,
-	pub(crate) wait_reason: AccountRouteWaitReason,
-}
-
-/// Current credential-negative reason why an accepted Route cannot finish yet.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum AccountRouteWaitReason {
-	ExternalCodex { blockers: Vec<CodexAuthOwnerBlocker>, omitted: u16 },
-	CodexObservationUnavailable,
-	AccountReadiness(AccountLifecycleReadiness),
-	SharedAuthStabilizing,
-	SharedAuthUnavailable,
-	ProjectionReadback,
-}
-
-impl AccountRouteWaitReason {
-	fn from_liveness(observation: CodexLivenessObservation) -> Self {
-		match observation {
-			CodexLivenessObservation::Blocked { blockers, omitted } =>
-				Self::ExternalCodex { blockers, omitted },
-			CodexLivenessObservation::Unavailable => Self::CodexObservationUnavailable,
-			CodexLivenessObservation::Quiescent => Self::SharedAuthStabilizing,
-		}
-	}
-}
-
 pub(crate) enum AccountRouteResult {
-	Pending(AccountRoutePending),
 	Committed(Box<AccountRouteCommit>),
 }
 
@@ -315,7 +275,7 @@ impl OpenAiCredentialRefresher {
 	pub(crate) fn new() -> Result<Self, CredentialRefreshError> {
 		let client = reqwest::blocking::Client::builder()
 			.timeout(Duration::from_secs(10))
-			.user_agent("decodexd")
+			.user_agent("decodex")
 			.build()
 			.map_err(|_| CredentialRefreshError::Unavailable)?;
 		Ok(Self { client })
@@ -361,7 +321,7 @@ impl CredentialRefreshPort for OpenAiCredentialRefresher {
 fn refresh_endpoint() -> Result<String, CredentialRefreshError> {
 	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
 	{
-		return process_acceptance_fixture_endpoint().ok_or(CredentialRefreshError::Unavailable);
+		process_acceptance_fixture_endpoint().ok_or(CredentialRefreshError::Unavailable)
 	}
 
 	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
@@ -630,15 +590,12 @@ struct ReauthenticationCommandInput<'a> {
 	account: &'a AccountRecord,
 }
 
-/// Sole account lifecycle coordinator in `decodexd`.
+/// Sole account lifecycle coordinator in `decodex serve`.
 pub struct AccountService {
 	store: SqliteStore,
 	credentials: Arc<dyn HostCredentialStore>,
 	refresher: Arc<dyn CredentialRefreshPort>,
 	shared_auth: Arc<SharedAuthCoordinator>,
-	route_events: broadcast::Sender<AccountRouteCompletion>,
-	pending_route_notify: Notify,
-	route_command_lock: AsyncMutex<()>,
 	routing_lock: AsyncMutex<()>,
 	account_locks: Mutex<HashMap<AccountId, Arc<AsyncMutex<()>>>>,
 	callback_ready: AtomicBool,
@@ -651,15 +608,11 @@ impl AccountService {
 		credentials: Arc<dyn HostCredentialStore>,
 		refresher: Arc<dyn CredentialRefreshPort>,
 	) -> Self {
-		let (route_events, _) = broadcast::channel(16);
 		Self {
 			store,
 			credentials,
 			refresher,
 			shared_auth: Arc::new(SharedAuthCoordinator::production()),
-			route_events,
-			pending_route_notify: Notify::new(),
-			route_command_lock: AsyncMutex::new(()),
 			routing_lock: AsyncMutex::new(()),
 			account_locks: Mutex::new(HashMap::new()),
 			callback_ready: AtomicBool::new(false),
@@ -667,167 +620,10 @@ impl AccountService {
 		}
 	}
 
-	pub(crate) fn subscribe_route_events(&self) -> broadcast::Receiver<AccountRouteCompletion> {
-		self.route_events.subscribe()
-	}
-
-	pub(crate) async fn lock_route_command(&self) -> AsyncMutexGuard<'_, ()> {
-		self.route_command_lock.lock().await
-	}
-
-	pub(crate) async fn pending_route_notified(&self) {
-		self.pending_route_notify.notified().await;
-	}
-
 	#[cfg(test)]
 	fn with_shared_auth_coordinator(mut self, coordinator: Arc<SharedAuthCoordinator>) -> Self {
 		self.shared_auth = coordinator;
 		self
-	}
-
-	/// Import one stable known-account rotation and never interpret absence or failure as logout.
-	pub(crate) async fn follow_shared_auth_once(
-		&self,
-	) -> Result<Option<AccountRecord>, AccountLifecycleError> {
-		let StableSharedAuthPoll::Changed(snapshot) = self.shared_auth.poll_stable_change() else {
-			return Ok(None);
-		};
-		let crate::auth_projection::SharedCodexAuthSnapshot::Managed { version, credential } =
-			*snapshot
-		else {
-			return Ok(None);
-		};
-		self.import_known_shared_auth_rotation(version, credential).await
-	}
-
-	pub(crate) fn shared_auth_may_be_running(&self) -> bool {
-		self.shared_auth.liveness() == CodexLiveness::MayBeRunning
-	}
-
-	pub(crate) async fn pending_route_wait_reason(
-		&self,
-		account_id: &AccountId,
-	) -> AccountRouteWaitReason {
-		match self.inspect(account_id).await {
-			Ok(inspection)
-				if matches!(
-					inspection.readiness,
-					AccountLifecycleReadiness::CallbackCapabilityUnready
-						| AccountLifecycleReadiness::StoreUnavailable
-						| AccountLifecycleReadiness::StoreMismatch
-						| AccountLifecycleReadiness::OperationUnsettled
-				) =>
-			{
-				return AccountRouteWaitReason::AccountReadiness(inspection.readiness);
-			},
-			Ok(_) => {},
-			Err(_) => {
-				return AccountRouteWaitReason::AccountReadiness(
-					AccountLifecycleReadiness::StoreUnavailable,
-				);
-			},
-		}
-
-		let observation = self.shared_auth.liveness_observation();
-		if observation.state() == CodexLiveness::MayBeRunning
-			&& !self.shared_auth_is_current_for(account_id).await
-		{
-			return AccountRouteWaitReason::from_liveness(observation);
-		}
-		AccountRouteWaitReason::SharedAuthStabilizing
-	}
-
-	pub(crate) async fn shared_auth_is_current_for(&self, account_id: &AccountId) -> bool {
-		let Ok(lock) = self.lock_for(account_id) else {
-			return false;
-		};
-		let _guard = lock.lock().await;
-		let Ok(account) = self.load_account(account_id).await else {
-			return false;
-		};
-		let StableSharedAuthRead::Ready(snapshot) = self.shared_auth.read_current_stable() else {
-			return false;
-		};
-		self.confirm_shared_auth_target_locked(account_id, account.revision, &snapshot)
-			.await
-			.ok()
-			.flatten()
-			.is_some()
-	}
-
-	async fn import_known_shared_auth_rotation(
-		&self,
-		version: SharedCodexAuthVersion,
-		mut credential: ImportedCredential,
-	) -> Result<Option<AccountRecord>, AccountLifecycleError> {
-		let mut matches =
-			self.store.read_account_registry(None, MAX_ACCOUNT_READ).await?.into_iter().filter(
-				|account| {
-					!account.tombstoned
-						&& account
-							.credential
-							.as_ref()
-							.is_some_and(|binding| binding.provider == credential.provider)
-				},
-			);
-		let Some(candidate) = matches.next() else { return Ok(None) };
-		if matches.next().is_some() {
-			return Err(AccountLifecycleError::CoordinatorUnavailable);
-		}
-		let account_id = candidate.account_id;
-		let lock = self.lock_for(&account_id)?;
-		let _guard = lock.lock().await;
-		let account = self.load_account(&account_id).await?;
-		let binding = account.credential.as_ref().ok_or(AccountLifecycleError::CredentialAbsent)?;
-		let stored = self.credentials.read_exact(&account_id, binding)?;
-		if self
-			.refresh_predecessor(&account_id, binding)
-			.await
-			.map_err(AccountLifecycleError::Refresh)?
-			.as_ref()
-			.is_some_and(|previous| {
-				bundle_matches_binding(&account_id, previous, &credential.bundle)
-			}) {
-			let _ = self.shared_auth.project_exact_source(
-				stored.bundle(),
-				binding.provider.account_id(),
-				&version,
-			);
-			let latest = self
-				.shared_auth
-				.read_current_exact()
-				.map_err(|_| AccountLifecycleError::CoordinatorUnavailable)?;
-			let SharedCodexAuthSnapshot::Managed { credential: latest, .. } = *latest else {
-				return Err(AccountLifecycleError::CoordinatorUnavailable);
-			};
-			if latest.provider != binding.provider {
-				return Err(AccountLifecycleError::CoordinatorUnavailable);
-			}
-			if same_refresh_bundle(stored.bundle(), &latest.bundle) {
-				return Ok(None);
-			}
-			credential = latest;
-		}
-		let Some(supplied_refresh) = matching_shared_refresh(
-			binding,
-			stored.bundle(),
-			current_unix_micros()?,
-			Ok(credential),
-		) else {
-			return Ok(None);
-		};
-		let operation_id =
-			shared_auth_import_operation_id(&account_id, binding, &supplied_refresh.bundle)?;
-		self.refresh_while_locked(
-			operation_id,
-			&account_id,
-			Some(account.revision),
-			None,
-			None,
-			RefreshPlan::route_source(supplied_refresh),
-		)
-		.await?;
-		self.load_account(&account_id).await.map(Some)
 	}
 
 	fn set_callback_capability(&self, profile_sha256: String, ready: bool) {
@@ -988,22 +784,19 @@ impl AccountService {
 
 	async fn reconcile_shared_auth_route_source(
 		&self,
-		route_operation_id: &AccountOperationId,
 		source: &RouteSharedAuthSource,
 	) -> Result<(), AccountLifecycleError> {
 		let lock = self.lock_for(&source.account_id)?;
 		let _guard = lock.lock().await;
-		self.reconcile_shared_auth_route_source_while_locked(route_operation_id, source).await
+		self.reconcile_shared_auth_route_source_while_locked(source).await
 	}
 
 	async fn reconcile_shared_auth_route_source_while_locked(
 		&self,
-		route_operation_id: &AccountOperationId,
 		source: &RouteSharedAuthSource,
 	) -> Result<(), AccountLifecycleError> {
 		let source_account_id = &source.account_id;
-		let source_operation_id =
-			route_refresh_operation_id(route_operation_id, source_account_id)?;
+		let source_operation_id = refresh_journal_operation_id(source_account_id)?;
 		let account = self.load_account(source_account_id).await?;
 		if account.tombstoned {
 			return Err(AccountLifecycleError::NotReady(AccountLifecycleReadiness::Tombstoned));
@@ -1044,15 +837,11 @@ impl AccountService {
 	}
 
 	/// Refresh, project, and select one account under one daemon-owned command receipt.
-	#[allow(clippy::too_many_arguments)] // Receipt, Route identity, two revision fences, resume state, and result builder are independent authority inputs.
-	pub(crate) async fn route_account_command<F>(
+	#[allow(clippy::too_many_lines)] // The ordered fail-fast, refresh, CAS, readback, and SQLite commit gates form one finite switch transaction.
+	pub(crate) async fn route_account_command_sync<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
-		operation_id: AccountOperationId,
 		account_id: &AccountId,
-		expected_account_revision: i64,
-		expected_routing_revision: i64,
-		resume_pending: bool,
 		build_response: F,
 	) -> Result<Value, AccountLifecycleError>
 	where
@@ -1074,17 +863,7 @@ impl AccountService {
 					.await;
 			},
 		};
-		if routing.revision != expected_routing_revision {
-			return self
-				.complete_route_command_failure(
-					lease,
-					AccountRouteFailure::Routing(RoutingControlOutcome::StaleRoutingControl {
-						revision: routing.revision,
-					}),
-					build_response.take().expect("Route builder is retained"),
-				)
-				.await;
-		}
+		let expected_routing_revision = routing.revision;
 		let lock = self.lock_for(account_id)?;
 		let _guard = lock.lock().await;
 		let target_account = match self.load_account(account_id).await {
@@ -1099,30 +878,49 @@ impl AccountService {
 					.await;
 			},
 		};
-		let target_revision =
-			if !resume_pending || target_account.revision == expected_account_revision {
-				expected_account_revision
-			} else {
-				let derived = route_refresh_operation_id(&operation_id, account_id)?;
-				let operation = self.store.read_account_operation(&derived).await?;
-				let route_successor_is_exact = route_resume_revision_is_valid(
-					&target_account,
-					expected_account_revision,
-					&derived,
-					operation.as_ref(),
-				);
-				if !route_successor_is_exact {
-					return self
-						.complete_route_command_failure(
-							lease,
-							AccountRouteFailure::Lifecycle(AccountLifecycleError::StaleAccount),
-							build_response.take().expect("Route builder is retained"),
-						)
-						.await;
-				}
-				target_account.revision
-			};
-		let target_binding = match projection_binding(&target_account, target_revision) {
+		let expected_account_revision = target_account.revision;
+		if !target_account.enabled {
+			return self
+				.finish_route_error(
+					lease,
+					AccountLifecycleError::AccountDisabled,
+					build_response.take().expect("Route builder is retained"),
+				)
+				.await;
+		}
+		let initial_auth = self.shared_auth.read_current_exact();
+		let projected_current = if let Ok(snapshot) = initial_auth.as_ref() {
+			self.confirm_shared_auth_target_locked(account_id, expected_account_revision, snapshot)
+				.await
+				.ok()
+				.flatten()
+		} else {
+			None
+		};
+		if matches!(&routing.mode, AccountSelectionMode::Fixed(current) if current == account_id)
+			&& let Some((revision, projection_digest)) = projected_current.as_ref()
+		{
+			let response = build_response.take().expect("Route builder is retained")(Ok(
+				AccountRouteResult::Committed(Box::new(AccountRouteCommit {
+					account: target_account,
+					routing,
+					projection_digest: projection_digest.clone(),
+				})),
+			))?;
+			self.store.complete_account_command(lease, &response).await?;
+			debug_assert_eq!(*revision, expected_account_revision);
+			return Ok(response);
+		}
+		if projected_current.is_none() && self.shared_auth.liveness() != CodexLiveness::Quiescent {
+			return self
+				.finish_route_error(
+					lease,
+					AccountLifecycleError::CodexIsRunning,
+					build_response.take().expect("Route builder is retained"),
+				)
+				.await;
+		}
+		let target_binding = match projection_binding(&target_account, expected_account_revision) {
 			Ok(binding) => binding.clone(),
 			Err(error) => {
 				return self
@@ -1134,28 +932,13 @@ impl AccountService {
 					.await;
 			},
 		};
-		let stable = match self.shared_auth.read_current_stable() {
-			StableSharedAuthRead::Ready(snapshot) => *snapshot,
-			StableSharedAuthRead::Waiting => {
+		let stable = match initial_auth {
+			Ok(snapshot) => *snapshot,
+			Err(_) => {
 				return self
-					.defer_route_command(
+					.finish_route_error(
 						lease,
-						operation_id,
-						account_id,
-						expected_routing_revision,
-						AccountRouteWaitReason::SharedAuthStabilizing,
-						build_response.take().expect("Route builder is retained"),
-					)
-					.await;
-			},
-			StableSharedAuthRead::Unavailable => {
-				return self
-					.defer_route_command(
-						lease,
-						operation_id,
-						account_id,
-						expected_routing_revision,
-						AccountRouteWaitReason::SharedAuthUnavailable,
+						AccountLifecycleError::AuthFileUnreadable,
 						build_response.take().expect("Route builder is retained"),
 					)
 					.await;
@@ -1166,12 +949,9 @@ impl AccountService {
 				Ok(source) => source,
 				Err(_) => {
 					return self
-						.defer_route_command(
+						.finish_route_error(
 							lease,
-							operation_id,
-							account_id,
-							expected_routing_revision,
-							AccountRouteWaitReason::SharedAuthUnavailable,
+							AccountLifecycleError::AuthFileUnreadable,
 							build_response.take().expect("Route builder is retained"),
 						)
 						.await;
@@ -1182,39 +962,78 @@ impl AccountService {
 		let liveness = self.shared_auth.liveness_observation();
 		if !source_is_target && liveness.state() != CodexLiveness::Quiescent {
 			return self
-				.defer_route_command(
+				.finish_route_error(
 					lease,
-					operation_id,
-					account_id,
-					expected_routing_revision,
-					AccountRouteWaitReason::from_liveness(liveness),
+					AccountLifecycleError::CodexIsRunning,
 					build_response.take().expect("Route builder is retained"),
 				)
 				.await;
 		}
 		if let Some(source) = shared_auth.source.as_ref() {
 			let result = if source_is_target {
-				self.reconcile_shared_auth_route_source_while_locked(&operation_id, source).await
+				self.reconcile_shared_auth_route_source_while_locked(source).await
 			} else {
-				self.reconcile_shared_auth_route_source(&operation_id, source).await
+				self.reconcile_shared_auth_route_source(source).await
 			};
 			if let Err(error) = result {
 				let _ = error;
 				return self
-					.defer_route_command(
+					.finish_route_error(
 						lease,
-						operation_id,
-						account_id,
-						expected_routing_revision,
-						AccountRouteWaitReason::SharedAuthUnavailable,
+						AccountLifecycleError::AuthFileUnreadable,
 						build_response.take().expect("Route builder is retained"),
 					)
 					.await;
 			}
 		}
 
-		if !source_is_target {
-			let target_operation_id = match route_refresh_operation_id(&operation_id, account_id) {
+		let target_needs_refresh = if source_is_target {
+			false
+		} else {
+			let stored = match self.credentials.read_exact(account_id, &target_binding) {
+				Ok(stored) => stored,
+				Err(error) => {
+					return self
+						.complete_route_command_failure(
+							lease,
+							AccountRouteFailure::Lifecycle(error.into()),
+							build_response.take().expect("Route builder is retained"),
+						)
+						.await;
+				},
+			};
+			let now = match current_unix_micros() {
+				Ok(now) => now,
+				Err(error) => {
+					return self
+						.complete_route_command_failure(
+							lease,
+							AccountRouteFailure::Lifecycle(error),
+							build_response.take().expect("Route builder is retained"),
+						)
+						.await;
+				},
+			};
+			match access_token_needs_refresh(
+				stored.bundle().access_token_expires_at_unix_micros(),
+				now,
+				ROUTE_MINIMUM_ACCESS_TOKEN_VALIDITY,
+			) {
+				Ok(needs_refresh) => needs_refresh,
+				Err(error) => {
+					return self
+						.complete_route_command_failure(
+							lease,
+							AccountRouteFailure::Lifecycle(error),
+							build_response.take().expect("Route builder is retained"),
+						)
+						.await;
+				},
+			}
+		};
+
+		if target_needs_refresh {
+			let target_operation_id = match refresh_journal_operation_id(account_id) {
 				Ok(operation_id) => operation_id,
 				Err(error) => {
 					return self
@@ -1261,39 +1080,29 @@ impl AccountService {
 		let liveness = self.shared_auth.liveness_observation();
 		if !source_is_target && liveness.state() != CodexLiveness::Quiescent {
 			return self
-				.defer_route_command(
+				.finish_route_error(
 					lease,
-					operation_id,
-					account_id,
-					expected_routing_revision,
-					AccountRouteWaitReason::from_liveness(liveness),
+					AccountLifecycleError::CodexIsRunning,
 					build_response.take().expect("Route builder is retained"),
 				)
 				.await;
 		}
-		let final_source = match self.shared_auth.read_current_stable() {
-			StableSharedAuthRead::Ready(snapshot) if snapshot.version() == &shared_auth.version =>
-				*snapshot,
-			StableSharedAuthRead::Ready(_) | StableSharedAuthRead::Waiting => {
+		let final_source = match self.shared_auth.read_current_exact() {
+			Ok(snapshot) if snapshot.version() == &shared_auth.version => *snapshot,
+			Ok(_) => {
 				return self
-					.defer_route_command(
+					.finish_route_error(
 						lease,
-						operation_id,
-						account_id,
-						expected_routing_revision,
-						AccountRouteWaitReason::SharedAuthStabilizing,
+						AccountLifecycleError::AuthFileChanged,
 						build_response.take().expect("Route builder is retained"),
 					)
 					.await;
 			},
-			StableSharedAuthRead::Unavailable => {
+			Err(_) => {
 				return self
-					.defer_route_command(
+					.finish_route_error(
 						lease,
-						operation_id,
-						account_id,
-						expected_routing_revision,
-						AccountRouteWaitReason::SharedAuthUnavailable,
+						AccountLifecycleError::AuthFileUnreadable,
 						build_response.take().expect("Route builder is retained"),
 					)
 					.await;
@@ -1311,24 +1120,18 @@ impl AccountService {
 				Ok(Some(projection)) => projection,
 				Ok(None) => {
 					return self
-						.defer_route_command(
+						.finish_route_error(
 							lease,
-							operation_id,
-							account_id,
-							expected_routing_revision,
-							AccountRouteWaitReason::SharedAuthStabilizing,
+							AccountLifecycleError::AuthFileChanged,
 							build_response.take().expect("Route builder is retained"),
 						)
 						.await;
 				},
 				Err(AccountLifecycleError::CoordinatorUnavailable) => {
 					return self
-						.defer_route_command(
+						.finish_route_error(
 							lease,
-							operation_id,
-							account_id,
-							expected_routing_revision,
-							AccountRouteWaitReason::SharedAuthUnavailable,
+							AccountLifecycleError::AuthFileUnreadable,
 							build_response.take().expect("Route builder is retained"),
 						)
 						.await;
@@ -1355,12 +1158,9 @@ impl AccountService {
 				Ok(projection) => projection,
 				Err(SharedAuthProjectionError::OutcomeUnknown) => {
 					return self
-						.defer_route_command(
+						.finish_route_error(
 							lease,
-							operation_id,
-							account_id,
-							expected_routing_revision,
-							AccountRouteWaitReason::ProjectionReadback,
+							AccountLifecycleError::AuthReadbackMismatch,
 							build_response.take().expect("Route builder is retained"),
 						)
 						.await;
@@ -1369,12 +1169,9 @@ impl AccountService {
 					AccountLifecycleError::CoordinatorUnavailable,
 				)) => {
 					return self
-						.defer_route_command(
+						.finish_route_error(
 							lease,
-							operation_id,
-							account_id,
-							expected_routing_revision,
-							AccountRouteWaitReason::SharedAuthUnavailable,
+							AccountLifecycleError::AuthFileUnreadable,
 							build_response.take().expect("Route builder is retained"),
 						)
 						.await;
@@ -1400,7 +1197,6 @@ impl AccountService {
 				.await;
 		}
 
-		let event_projection_digest = projection_digest.clone();
 		let build_response = build_response.take().expect("Route builder is retained");
 		let response = self
 			.store
@@ -1429,18 +1225,6 @@ impl AccountService {
 				},
 			)
 			.await?;
-		if resume_pending {
-			let account = self.load_account(account_id).await?;
-			let routing = self.store.read_account_routing_control().await?;
-			let _ = self.route_events.send(AccountRouteCompletion {
-				operation_id,
-				commit: AccountRouteCommit {
-					account,
-					routing,
-					projection_digest: event_projection_digest,
-				},
-			});
-		}
 		Ok(response)
 	}
 
@@ -3305,13 +3089,10 @@ impl AccountService {
 		Ok(response)
 	}
 
-	async fn defer_route_command<F>(
+	async fn finish_route_error<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
-		operation_id: AccountOperationId,
-		account_id: &AccountId,
-		routing_revision: i64,
-		wait_reason: AccountRouteWaitReason,
+		error: AccountLifecycleError,
 		build_response: F,
 	) -> Result<Value, AccountLifecycleError>
 	where
@@ -3319,14 +3100,8 @@ impl AccountService {
 			+ Send
 			+ 'static,
 	{
-		let response = build_response(Ok(AccountRouteResult::Pending(AccountRoutePending {
-			operation_id,
-			account_id: account_id.clone(),
-			routing_revision,
-			wait_reason,
-		})))?;
-		self.store.defer_account_route_command(lease, &response).await?;
-		self.pending_route_notify.notify_one();
+		let response = build_response(Err(AccountRouteFailure::Lifecycle(error)))?;
+		self.store.complete_account_command(lease, &response).await?;
 		Ok(response)
 	}
 
@@ -3594,7 +3369,69 @@ impl AccountService {
 				self.observe_exact_store(&account, binding).await?;
 			}
 		}
+		self.reconcile_projected_fixed_route_on_startup().await?;
 		Ok(summary)
+	}
+
+	/// Repair only the post-auth/pre-routing crash window from exact local evidence.
+	async fn reconcile_projected_fixed_route_on_startup(
+		&self,
+	) -> Result<(), AccountLifecycleError> {
+		let _routing_guard = self.routing_lock.lock().await;
+		let routing = self.store.read_account_routing_control().await?;
+		let AccountSelectionMode::Fixed(current_account_id) = &routing.mode else {
+			return Ok(());
+		};
+		let snapshot = match self.shared_auth.read_current_exact() {
+			Ok(snapshot) => *snapshot,
+			Err(_) => return Ok(()),
+		};
+		let SharedCodexAuthSnapshot::Managed { credential, .. } = snapshot else {
+			return Ok(());
+		};
+		let accounts = self.store.read_account_registry(None, MAX_ACCOUNT_READ).await?;
+		let mut matching = accounts.into_iter().filter(|account| {
+			account
+				.credential
+				.as_ref()
+				.is_some_and(|binding| binding.provider == credential.provider)
+		});
+		let Some(candidate) = matching.next() else {
+			return Ok(());
+		};
+		if matching.next().is_some() {
+			return Ok(());
+		}
+		let account_id = candidate.account_id;
+		let lock = self.lock_for(&account_id)?;
+		let _account_guard = lock.lock().await;
+		let account = self.load_account(&account_id).await?;
+		if account.tombstoned
+			|| !account.enabled
+			|| account.lifecycle_readiness != AccountLifecycleReadiness::Ready
+			|| account.unsettled_operation.is_some()
+		{
+			return Ok(());
+		}
+		let Some(binding) = account.credential.as_ref() else {
+			return Ok(());
+		};
+		if binding.provider != credential.provider {
+			return Ok(());
+		}
+		let Ok(stored) = self.credentials.read_exact(&account_id, binding) else {
+			return Ok(());
+		};
+		if !same_refresh_bundle(stored.bundle(), &credential.bundle)
+			|| current_account_id == &account_id
+		{
+			return Ok(());
+		}
+		let _ = self
+			.store
+			.set_fixed_account_selection(routing.revision, &account_id, account.revision)
+			.await?;
+		Ok(())
 	}
 
 	/// Apply one typed manual recovery action after re-reading the exact host-store state.
@@ -4895,27 +4732,6 @@ fn projection_binding(
 	account.credential.as_ref().ok_or(AccountLifecycleError::CredentialAbsent)
 }
 
-fn route_resume_revision_is_valid(
-	account: &AccountRecord,
-	expected_revision: i64,
-	derived_operation_id: &AccountOperationId,
-	operation: Option<&AccountOperation>,
-) -> bool {
-	if account.revision == expected_revision {
-		return true;
-	}
-	account.credential.as_ref().is_some_and(|binding| {
-		binding.writer_operation_id == *derived_operation_id
-			&& operation.is_some_and(|operation| {
-				operation.account_id == account.account_id
-					&& operation.kind == AccountOperationKind::Refresh
-					&& operation.expected_account_revision == Some(expected_revision)
-					&& operation.phase == AccountOperationPhase::Committed
-					&& operation.target.as_ref() == Some(binding)
-			})
-	})
-}
-
 enum SharedAuthProjectionError {
 	Rejected(AccountLifecycleError),
 	OutcomeUnknown,
@@ -4923,12 +4739,12 @@ enum SharedAuthProjectionError {
 
 const fn projection_error(error: CodexAuthProjectionError) -> AccountLifecycleError {
 	match error {
-		CodexAuthProjectionError::UnsafePath | CodexAuthProjectionError::InvalidCredential =>
-			AccountLifecycleError::CredentialImport,
+		CodexAuthProjectionError::UnsafePath | CodexAuthProjectionError::Unavailable =>
+			AccountLifecycleError::AuthFileUnreadable,
+		CodexAuthProjectionError::InvalidCredential => AccountLifecycleError::CredentialImport,
 		CodexAuthProjectionError::MissingIdentityToken => AccountLifecycleError::CredentialAbsent,
-		CodexAuthProjectionError::Unavailable
-		| CodexAuthProjectionError::OutcomeUnknown
-		| CodexAuthProjectionError::SourceChanged => AccountLifecycleError::CoordinatorUnavailable,
+		CodexAuthProjectionError::SourceChanged => AccountLifecycleError::AuthFileChanged,
+		CodexAuthProjectionError::OutcomeUnknown => AccountLifecycleError::AuthWriteFailed,
 	}
 }
 
@@ -4996,6 +4812,16 @@ pub enum AccountLifecycleError {
 	CoordinatorUnavailable,
 	/// Credential import input is unsafe or malformed.
 	CredentialImport,
+	/// Official Codex or ChatGPT is running.
+	CodexIsRunning,
+	/// The shared auth file cannot be read safely.
+	AuthFileUnreadable,
+	/// The shared auth source changed before projection.
+	AuthFileChanged,
+	/// Atomic shared auth replacement failed.
+	AuthWriteFailed,
+	/// Exact shared auth readback did not match.
+	AuthReadbackMismatch,
 }
 impl Error for AccountLifecycleError {}
 impl Display for AccountLifecycleError {
@@ -5014,6 +4840,11 @@ impl Display for AccountLifecycleError {
 			Self::InvalidOperation => "account lifecycle operation invalid",
 			Self::CoordinatorUnavailable => "account lifecycle coordinator unavailable",
 			Self::CredentialImport => "account credential source unavailable",
+			Self::CodexIsRunning => "Codex or ChatGPT is running",
+			Self::AuthFileUnreadable => "shared auth file is unreadable",
+			Self::AuthFileChanged => "shared auth file changed",
+			Self::AuthWriteFailed => "shared auth file write failed",
+			Self::AuthReadbackMismatch => "shared auth file readback mismatch",
 		})
 	}
 }
@@ -5039,43 +4870,41 @@ mod tests {
 	use decodex_core::{
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
 		AccountOperationPhase, AccountProvider, AccountQuotaWindow, AccountQuotaWindowObservation,
-		AccountRecord, AccountSelectionMode, AccountState, CredentialBinding,
-		CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, DecodexRoot,
+		AccountRecord, AccountState, CredentialBinding, CredentialFingerprint,
+		CredentialStoreSchemaVersion, CredentialVersion, DecodexRoot,
 		ProcessGenerationAccountBinding, ProviderIdentity,
 	};
 	use decodex_database::{
 		AccountCommandKind, AccountCommandReceiptClaim, AccountLifecycleMutationOutcome,
-		AccountOperationPreparation, CodexAccountCapabilityAttestation, CommandIdentity,
-		RoutingControlOutcome, SqliteStore,
+		AccountOperationPreparation, CommandIdentity, SqliteStore,
 	};
 	use serde_json::json;
 
 	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
 	use super::process_test_refresh_endpoint_is_safe;
 	use super::{
-		ACCOUNT_ALIAS_WORDS, AccountLifecycleError, AccountRouteFailure, AccountRouteResult,
-		AccountRouteWaitReason, AccountService, CodexAuthProjectionError, CredentialImportError,
-		CredentialRefreshError, CredentialRefreshPort, CredentialRefreshResult,
-		CredentialSecretBundle, CredentialStoreError, HostCredentialStore, ImportedCredential,
-		PROVIDER_REFRESH_OUTCOME_UNKNOWN, PreparedRefreshReconciliation,
+		ACCOUNT_ALIAS_WORDS, AccountLifecycleError, AccountService, CodexAuthProjectionError,
+		CredentialImportError, CredentialRefreshError, CredentialRefreshPort,
+		CredentialRefreshResult, CredentialSecretBundle, CredentialStoreError, HostCredentialStore,
+		ImportedCredential, PROVIDER_REFRESH_OUTCOME_UNKNOWN, PreparedRefreshReconciliation,
 		ReauthenticationReplayDisposition, RefreshResponse, accepted_phase,
 		access_token_needs_refresh, account_lock_for, callback_uses_current_successor,
 		classify_prepared_refresh_reconciliation, classify_reauthentication_replay,
-		codex_auth_projection_digest, credential_refresh_result, decode_chatgpt_identity,
-		matching_shared_refresh, projection_binding, reauthentication_current,
-		reauthentication_target, recover_rejected_refresh_from_shared, refreshed_credential_target,
+		codex_auth_projection_digest, credential_refresh_result, matching_shared_refresh,
+		projection_binding, reauthentication_current, reauthentication_target,
+		recover_rejected_refresh_from_shared, refreshed_credential_target,
 		require_refreshed_access_token_for_observation, resolve_reauthentication_store_effect,
-		route_resume_revision_is_valid, stable_account_alias,
+		stable_account_alias,
 	};
 	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
 	use super::{REFRESH_ENDPOINT, refresh_endpoint};
 	use std::{
-		collections::{HashMap, HashSet, VecDeque},
+		collections::{HashMap, HashSet},
 		fs,
 		os::unix::fs::PermissionsExt as _,
 		sync::{
 			Arc, Mutex,
-			atomic::{AtomicBool, AtomicUsize, Ordering},
+			atomic::{AtomicUsize, Ordering},
 		},
 		time::Duration,
 	};
@@ -5088,9 +4917,8 @@ mod tests {
 		},
 		host_credentials::SqliteCredentialStore,
 		shared_auth_coordinator::{
-			CodexAuthHomeEvidence, CodexAuthOwnerBlocker, CodexAuthOwnerKind, CodexLiveness,
-			CodexLivenessObservation, CodexLivenessPort, SharedAuthCoordinator, SharedAuthFilePort,
-			StableSharedAuthPoll,
+			CodexLiveness, CodexLivenessObservation, CodexLivenessPort, SharedAuthCoordinator,
+			SharedAuthFilePort,
 		},
 	};
 
@@ -5113,80 +4941,6 @@ mod tests {
 		}
 	}
 
-	struct MutableLiveness(Arc<AtomicBool>);
-	impl CodexLivenessPort for MutableLiveness {
-		fn observe(&self) -> CodexLivenessObservation {
-			if self.0.load(Ordering::Relaxed) {
-				CodexLivenessObservation::Blocked {
-					blockers: vec![CodexAuthOwnerBlocker {
-						pid: 44_768,
-						kind: CodexAuthOwnerKind::Codex,
-						auth_home: CodexAuthHomeEvidence::Shared,
-					}],
-					omitted: 0,
-				}
-			} else {
-				CodexLivenessObservation::Quiescent
-			}
-		}
-	}
-
-	struct RouteSharedAuthFile {
-		source_provider: &'static str,
-		source_access: &'static str,
-		source_expiry: i64,
-		target_provider: &'static str,
-		target_access: &'static str,
-		projections: AtomicUsize,
-	}
-
-	impl RouteSharedAuthFile {
-		fn version() -> SharedCodexAuthVersion {
-			SharedCodexAuthVersion {
-				stamp: SharedCodexAuthFileStamp::Present {
-					device: 1,
-					inode: 2,
-					length: 3,
-					modified_seconds: 4,
-					modified_nanoseconds: 5,
-				},
-				sha256: Some([6; 32]),
-			}
-		}
-	}
-
-	impl SharedAuthFilePort for RouteSharedAuthFile {
-		fn stamp(&self) -> Result<SharedCodexAuthFileStamp, CodexAuthProjectionError> {
-			Ok(Self::version().stamp)
-		}
-
-		fn read(
-			&self,
-			_expected: &SharedCodexAuthFileStamp,
-		) -> Result<SharedCodexAuthSnapshot, CodexAuthProjectionError> {
-			Ok(SharedCodexAuthSnapshot::Managed {
-				version: Self::version(),
-				credential: imported(self.source_provider, self.source_access, self.source_expiry),
-			})
-		}
-
-		fn project(
-			&self,
-			bundle: &CredentialSecretBundle,
-			provider_account_id: &str,
-			expected: &SharedCodexAuthVersion,
-		) -> Result<(), CodexAuthProjectionError> {
-			if provider_account_id != self.target_provider
-				|| bundle.access_token() != self.target_access
-				|| expected != &Self::version()
-			{
-				return Err(CodexAuthProjectionError::SourceChanged);
-			}
-			self.projections.fetch_add(1, Ordering::Relaxed);
-			Ok(())
-		}
-	}
-
 	fn test_coordinator(
 		file: Arc<dyn SharedAuthFilePort>,
 		liveness: CodexLiveness,
@@ -5198,78 +4952,7 @@ mod tests {
 		file: Arc<dyn SharedAuthFilePort>,
 		liveness: Arc<dyn CodexLivenessPort>,
 	) -> Arc<SharedAuthCoordinator> {
-		let coordinator = Arc::new(SharedAuthCoordinator::with_ports(liveness, file));
-		assert!(matches!(coordinator.poll_stable_change(), StableSharedAuthPoll::Waiting));
-		assert!(matches!(coordinator.poll_stable_change(), StableSharedAuthPoll::Changed(_)));
-		coordinator
-	}
-
-	fn route_test_coordinator(file: Arc<RouteSharedAuthFile>) -> Arc<SharedAuthCoordinator> {
-		test_coordinator(file, CodexLiveness::Quiescent)
-	}
-
-	struct UnmanagedSharedAuthFile {
-		projections: AtomicUsize,
-	}
-
-	impl SharedAuthFilePort for UnmanagedSharedAuthFile {
-		fn stamp(&self) -> Result<SharedCodexAuthFileStamp, CodexAuthProjectionError> {
-			Ok(SharedCodexAuthFileStamp::Absent)
-		}
-
-		fn read(
-			&self,
-			_expected: &SharedCodexAuthFileStamp,
-		) -> Result<SharedCodexAuthSnapshot, CodexAuthProjectionError> {
-			Ok(SharedCodexAuthSnapshot::Unmanaged {
-				version: SharedCodexAuthVersion {
-					stamp: SharedCodexAuthFileStamp::Absent,
-					sha256: None,
-				},
-			})
-		}
-
-		fn project(
-			&self,
-			_bundle: &CredentialSecretBundle,
-			_provider_account_id: &str,
-			_expected: &SharedCodexAuthVersion,
-		) -> Result<(), CodexAuthProjectionError> {
-			self.projections.fetch_add(1, Ordering::Relaxed);
-			Ok(())
-		}
-	}
-
-	struct CountingCredentialRefresher(Arc<AtomicUsize>);
-	impl CredentialRefreshPort for CountingCredentialRefresher {
-		fn refresh(
-			&self,
-			_current: &CredentialSecretBundle,
-		) -> Result<CredentialRefreshResult, CredentialRefreshError> {
-			self.0.fetch_add(1, Ordering::Relaxed);
-			Err(CredentialRefreshError::Rejected)
-		}
-	}
-
-	struct RouteCredentialRefresher;
-	impl CredentialRefreshPort for RouteCredentialRefresher {
-		fn refresh(
-			&self,
-			current: &CredentialSecretBundle,
-		) -> Result<CredentialRefreshResult, CredentialRefreshError> {
-			let identity = decode_chatgpt_identity(
-				current.id_token().ok_or(CredentialRefreshError::Rejected)?,
-			)
-			.map_err(|_| CredentialRefreshError::Rejected)?;
-			Ok(CredentialRefreshResult {
-				bundle: shared_bundle(
-					identity.provider.account_id(),
-					"target-refreshed-access",
-					i64::MAX / 2,
-				),
-				returned_provider: identity.provider,
-			})
-		}
+		Arc::new(SharedAuthCoordinator::with_ports(liveness, file))
 	}
 
 	struct RefreshRaceState {
@@ -5311,23 +4994,9 @@ mod tests {
 			}
 		}
 
-		fn set_winner_on_project(&self, winner: CredentialSecretBundle) {
-			self.state.lock().expect("shared auth state").winner_on_project = Some(winner);
-		}
-
-		fn replace_from_codex(&self, winner: CredentialSecretBundle) {
-			let mut state = self.state.lock().expect("shared auth state");
-			state.sequence += 1;
-			state.bundle = winner;
-		}
-
 		fn current_tokens(&self) -> (String, String) {
 			let state = self.state.lock().expect("shared auth state");
 			(state.bundle.access_token().to_owned(), state.bundle.refresh_token().to_owned())
-		}
-
-		fn current_provider(&self) -> ProviderIdentity {
-			self.state.lock().expect("shared auth state").provider.clone()
 		}
 	}
 
@@ -5379,190 +5048,6 @@ mod tests {
 		}
 	}
 
-	struct ScriptedCredentialRefresher {
-		calls: Arc<AtomicUsize>,
-		results: Mutex<VecDeque<CredentialRefreshResult>>,
-	}
-
-	impl CredentialRefreshPort for ScriptedCredentialRefresher {
-		fn refresh(
-			&self,
-			_current: &CredentialSecretBundle,
-		) -> Result<CredentialRefreshResult, CredentialRefreshError> {
-			self.calls.fetch_add(1, Ordering::Relaxed);
-			self.results
-				.lock()
-				.map_err(|_| CredentialRefreshError::Unavailable)?
-				.pop_front()
-				.ok_or(CredentialRefreshError::Unavailable)
-		}
-	}
-
-	async fn enroll_route_test_account(
-		store: &SqliteStore,
-		credentials: &Arc<dyn HostCredentialStore>,
-		account_id: &str,
-		operation_id: &str,
-		provider_account_id: &str,
-		access_token: &str,
-	) -> AccountId {
-		enroll_route_test_account_with_expiry(
-			store,
-			credentials,
-			account_id,
-			operation_id,
-			provider_account_id,
-			access_token,
-			2_000_000,
-		)
-		.await
-	}
-
-	async fn enroll_route_test_account_with_expiry(
-		store: &SqliteStore,
-		credentials: &Arc<dyn HostCredentialStore>,
-		account_id: &str,
-		operation_id: &str,
-		provider_account_id: &str,
-		access_token: &str,
-		expiry: i64,
-	) -> AccountId {
-		let account_id = AccountId::new(account_id).expect("account identity");
-		let operation_id = AccountOperationId::new(operation_id).expect("enrollment operation");
-		let provider = ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id)
-			.expect("provider identity");
-		let bundle = shared_bundle(provider.account_id(), access_token, expiry);
-		let binding = bundle
-			.binding_for(
-				&account_id,
-				&operation_id,
-				CredentialVersion::new(1).expect("credential version"),
-				&provider,
-			)
-			.expect("credential binding");
-		accepted_phase(
-			store
-				.prepare_account_operation(&AccountOperationPreparation {
-					operation_id: operation_id.clone(),
-					account_id: account_id.clone(),
-					kind: AccountOperationKind::Enroll,
-					display_label: Some(stable_account_alias(&provider)),
-					enabled: Some(true),
-					expected_account_revision: None,
-					expected: None,
-					target: Some(binding.clone()),
-					provider,
-				})
-				.await
-				.expect("prepare enrollment"),
-		)
-		.expect("accept enrollment");
-		credentials.create(&account_id, &binding, bundle).expect("create credential");
-		accepted_phase(
-			store
-				.advance_account_operation(
-					&operation_id,
-					AccountOperationPhase::Prepared,
-					AccountOperationPhase::StoreApplied,
-					None,
-				)
-				.await
-				.expect("record credential"),
-		)
-		.expect("accept credential");
-		accepted_phase(
-			store
-				.advance_account_operation(
-					&operation_id,
-					AccountOperationPhase::StoreApplied,
-					AccountOperationPhase::Committed,
-					None,
-				)
-				.await
-				.expect("commit enrollment"),
-		)
-		.expect("accept enrollment commit");
-		account_id
-	}
-
-	async fn route_test_account_once(
-		service: &AccountService,
-		store: &SqliteStore,
-		account_id: &AccountId,
-		expected_account_revision: i64,
-		operation_id: &str,
-		idempotency_key: &str,
-	) -> serde_json::Value {
-		let _ = service.shared_auth.poll_stable_change();
-		let _ = service.shared_auth.poll_stable_change();
-		let routing = store.read_account_routing_control().await.expect("read routing control");
-		let request = format!(
-			r#"{{"name":"route_account","arguments":{{"operation_id":"{operation_id}","account_id":"{}","expected_account_revision":{expected_account_revision}}}}}"#,
-			account_id.as_str(),
-		);
-		let command = CommandIdentity::new(idempotency_key, request.as_bytes())
-			.expect("Route command identity");
-		let lease = match store
-			.reserve_account_route_command(&command, routing.revision, &request)
-			.await
-			.expect("reserve Route command")
-		{
-			AccountCommandReceiptClaim::Owned(lease) => lease,
-			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
-				panic!("new Route command did not acquire its receipt")
-			},
-		};
-		service
-			.route_account_command(
-				lease,
-				AccountOperationId::new(operation_id).expect("Route operation identity"),
-				account_id,
-				expected_account_revision,
-				routing.revision,
-				false,
-				|result| {
-					Ok(match result {
-						Ok(AccountRouteResult::Committed(commit)) => json!({
-							"outcome": "routed",
-							"account_id": commit.account.account_id.as_str(),
-							"account_revision": commit.account.revision,
-							"routing_revision": commit.routing.revision,
-							"projection_digest": commit.projection_digest,
-						}),
-						Ok(AccountRouteResult::Pending(pending)) => json!({
-							"outcome": "pending",
-							"wait_reason": format!("{:?}", pending.wait_reason),
-						}),
-						Err(_) => json!({"outcome": "rejected"}),
-					})
-				},
-			)
-			.await
-			.expect("complete Route command")
-	}
-
-	async fn assert_exact_route_readback(
-		store: &SqliteStore,
-		credentials: &Arc<dyn HostCredentialStore>,
-		shared_auth: &RefreshRaceSharedAuthFile,
-		account_id: &AccountId,
-		provider_account_id: &str,
-	) {
-		let routing = store.read_account_routing_control().await.expect("read routed control");
-		assert_eq!(routing.mode, AccountSelectionMode::Fixed(account_id.clone()));
-		let account = store
-			.read_account_registry(Some(account_id), 1)
-			.await
-			.expect("read routed account")
-			.pop()
-			.expect("routed account exists");
-		let binding = account.credential.expect("routed credential binding");
-		let stored = credentials.read_exact(account_id, &binding).expect("read exact credential");
-		assert_eq!(shared_auth.current_provider().account_id(), provider_account_id);
-		assert_eq!(shared_auth.current_tokens().0, stored.bundle().access_token());
-		assert_eq!(shared_auth.current_tokens().1, stored.bundle().refresh_token());
-	}
-
 	#[test]
 	fn observation_refreshes_only_when_the_access_token_cannot_cover_the_process_deadline() {
 		let now = 1_000_000_i64;
@@ -5604,1332 +5089,6 @@ mod tests {
 				&& bytes[0].is_ascii_uppercase()
 				&& bytes[1..].iter().all(u8::is_ascii_lowercase)
 		}));
-	}
-
-	#[tokio::test]
-	async fn live_codex_allows_only_the_exact_projected_family_to_refresh() {
-		let directory = tempdir().expect("temporary product root");
-		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
-			.expect("typed product root");
-		let store = SqliteStore::open(&root.paths()).expect("open product store");
-		let credentials: Arc<dyn HostCredentialStore> =
-			Arc::new(SqliteCredentialStore::new(store.clone()));
-		let account_id = enroll_route_test_account(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-000000000061",
-			"22000000-0000-4000-8000-000000000061",
-			"live-provider",
-			"live-access",
-		)
-		.await;
-		let provider_calls = Arc::new(AtomicUsize::new(0));
-		let managed_file = Arc::new(RouteSharedAuthFile {
-			source_provider: "live-provider",
-			source_access: "live-access",
-			source_expiry: 2_000_000,
-			target_provider: "live-provider",
-			target_access: "unused",
-			projections: AtomicUsize::new(0),
-		});
-		let managed = AccountService::new(
-			store.clone(),
-			Arc::clone(&credentials),
-			Arc::new(CountingCredentialRefresher(Arc::clone(&provider_calls))),
-		)
-		.with_shared_auth_coordinator(test_coordinator(
-			Arc::clone(&managed_file) as Arc<dyn SharedAuthFilePort>,
-			CodexLiveness::MayBeRunning,
-		));
-		assert!(
-			managed
-				.attest_callback_capability(CodexAccountCapabilityAttestation {
-					build_identity: "owner-busy-managed".to_owned(),
-					executable_sha256: "1".repeat(64),
-					schema_sha256: "2".repeat(64),
-					callback_profile_sha256: "3".repeat(64),
-					login_chatgpt_auth_tokens: true,
-					refresh_callback: true,
-				})
-				.await
-				.expect("attest callback")
-		);
-		assert!(matches!(
-			managed
-				.refresh(
-					AccountOperationId::new("22000000-0000-4000-8000-000000000062")
-						.expect("refresh operation"),
-					&account_id,
-					Some(1),
-					None,
-					None,
-				)
-				.await,
-			Err(AccountLifecycleError::Refresh(CredentialRefreshError::Rejected))
-		));
-
-		let unmanaged_file = Arc::new(UnmanagedSharedAuthFile { projections: AtomicUsize::new(0) });
-		let unmanaged = AccountService::new(
-			store,
-			Arc::clone(&credentials),
-			Arc::new(CountingCredentialRefresher(Arc::clone(&provider_calls))),
-		)
-		.with_shared_auth_coordinator(test_coordinator(
-			Arc::clone(&unmanaged_file) as Arc<dyn SharedAuthFilePort>,
-			CodexLiveness::MayBeRunning,
-		));
-		assert!(
-			unmanaged
-				.attest_callback_capability(CodexAccountCapabilityAttestation {
-					build_identity: "owner-busy-unmanaged".to_owned(),
-					executable_sha256: "4".repeat(64),
-					schema_sha256: "5".repeat(64),
-					callback_profile_sha256: "6".repeat(64),
-					login_chatgpt_auth_tokens: true,
-					refresh_callback: true,
-				})
-				.await
-				.expect("attest callback")
-		);
-		assert!(matches!(
-			unmanaged
-				.refresh(
-					AccountOperationId::new("22000000-0000-4000-8000-000000000063")
-						.expect("refresh operation"),
-					&account_id,
-					Some(1),
-					None,
-					None,
-				)
-				.await,
-			Err(AccountLifecycleError::Refresh(CredentialRefreshError::OwnerBusy))
-		));
-		assert_eq!(provider_calls.load(Ordering::Relaxed), 1);
-		assert_eq!(managed_file.projections.load(Ordering::Relaxed), 0);
-		assert_eq!(unmanaged_file.projections.load(Ordering::Relaxed), 0);
-	}
-
-	#[tokio::test]
-	async fn projected_refresh_mirrors_success_and_adopts_a_concurrent_codex_winner() {
-		let directory = tempdir().expect("temporary product root");
-		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
-			.expect("typed product root");
-		let store = SqliteStore::open(&root.paths()).expect("open product store");
-		let credentials: Arc<dyn HostCredentialStore> =
-			Arc::new(SqliteCredentialStore::new(store.clone()));
-		let provider_account_id = "refresh-race-provider";
-		let initial_expiry = i64::MAX / 4;
-		let account_id = enroll_route_test_account_with_expiry(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-000000000071",
-			"22000000-0000-4000-8000-000000000071",
-			provider_account_id,
-			"initial-access",
-			initial_expiry,
-		)
-		.await;
-		let provider = ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id)
-			.expect("provider identity");
-		let shared_auth_file = Arc::new(RefreshRaceSharedAuthFile::new(
-			provider_account_id,
-			shared_bundle(provider_account_id, "initial-access", initial_expiry),
-		));
-		let provider_calls = Arc::new(AtomicUsize::new(0));
-		let refresher = Arc::new(ScriptedCredentialRefresher {
-			calls: Arc::clone(&provider_calls),
-			results: Mutex::new(VecDeque::from([
-				CredentialRefreshResult {
-					returned_provider: provider.clone(),
-					bundle: shared_bundle_with_refresh(
-						provider_account_id,
-						"decodex-first-access",
-						"decodex-first-refresh",
-						initial_expiry + 1_000_000,
-					),
-				},
-				CredentialRefreshResult {
-					returned_provider: provider,
-					bundle: shared_bundle_with_refresh(
-						provider_account_id,
-						"decodex-loser-access",
-						"decodex-loser-refresh",
-						initial_expiry + 2_000_000,
-					),
-				},
-			])),
-		});
-		let service = AccountService::new(store.clone(), Arc::clone(&credentials), refresher)
-			.with_shared_auth_coordinator(test_coordinator(
-				Arc::clone(&shared_auth_file) as Arc<dyn SharedAuthFilePort>,
-				CodexLiveness::MayBeRunning,
-			));
-		assert!(
-			service
-				.attest_callback_capability(CodexAccountCapabilityAttestation {
-					build_identity: "refresh-race-build".to_owned(),
-					executable_sha256: "1".repeat(64),
-					schema_sha256: "2".repeat(64),
-					callback_profile_sha256: "3".repeat(64),
-					login_chatgpt_auth_tokens: true,
-					refresh_callback: true,
-				})
-				.await
-				.expect("attest callback")
-		);
-
-		let first = service
-			.refresh(
-				AccountOperationId::new("22000000-0000-4000-8000-000000000072")
-					.expect("first refresh operation"),
-				&account_id,
-				Some(1),
-				None,
-				None,
-			)
-			.await
-			.expect("refresh the exact projected family");
-		assert_eq!(first.access_token(), "decodex-first-access");
-		assert_eq!(
-			shared_auth_file.current_tokens(),
-			("decodex-first-access".to_owned(), "decodex-first-refresh".to_owned())
-		);
-
-		let after_first = store
-			.read_account_registry(Some(&account_id), 1)
-			.await
-			.expect("read first refresh")
-			.into_iter()
-			.next()
-			.expect("refreshed account");
-		let codex_winner = shared_bundle_with_refresh(
-			provider_account_id,
-			"codex-winner-access",
-			"codex-winner-refresh",
-			initial_expiry + 3_000_000,
-		);
-		shared_auth_file.set_winner_on_project(codex_winner);
-
-		let winner = service
-			.refresh(
-				AccountOperationId::new("22000000-0000-4000-8000-000000000073")
-					.expect("racing refresh operation"),
-				&account_id,
-				Some(after_first.revision),
-				None,
-				None,
-			)
-			.await
-			.expect("adopt the concurrent Codex winner");
-		assert_eq!(winner.access_token(), "codex-winner-access");
-		assert_eq!(
-			shared_auth_file.current_tokens(),
-			("codex-winner-access".to_owned(), "codex-winner-refresh".to_owned())
-		);
-		let final_account = store
-			.read_account_registry(Some(&account_id), 1)
-			.await
-			.expect("read converged account")
-			.into_iter()
-			.next()
-			.expect("converged account");
-		let final_binding = final_account.credential.expect("converged credential binding");
-		let final_stored =
-			credentials.read_exact(&account_id, &final_binding).expect("read converged credential");
-		assert_eq!(final_stored.bundle().access_token(), "codex-winner-access");
-		assert_eq!(final_stored.bundle().refresh_token(), "codex-winner-refresh");
-		assert_eq!(provider_calls.load(Ordering::Relaxed), 2);
-		assert_eq!(shared_auth_file.project_attempts.load(Ordering::Relaxed), 2);
-
-		shared_auth_file.replace_from_codex(shared_bundle_with_refresh(
-			provider_account_id,
-			"decodex-loser-access",
-			"decodex-loser-refresh",
-			initial_expiry + 2_000_000,
-		));
-		assert!(service.follow_shared_auth_once().await.unwrap().is_none());
-		assert!(service.follow_shared_auth_once().await.unwrap().is_none());
-		assert_eq!(
-			shared_auth_file.current_tokens(),
-			("codex-winner-access".to_owned(), "codex-winner-refresh".to_owned())
-		);
-		let after_stale_rewrite = store
-			.read_account_registry(Some(&account_id), 1)
-			.await
-			.expect("read stale-rewrite repair")
-			.into_iter()
-			.next()
-			.expect("repaired account");
-		assert_eq!(after_stale_rewrite.revision, final_account.revision);
-		assert_eq!(provider_calls.load(Ordering::Relaxed), 2);
-	}
-
-	#[tokio::test]
-	async fn stable_known_account_same_expiry_rotation_imports_once_without_provider_work() {
-		let directory = tempdir().expect("temporary product root");
-		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
-			.expect("typed product root");
-		let store = SqliteStore::open(&root.paths()).expect("open product store");
-		let credentials: Arc<dyn HostCredentialStore> =
-			Arc::new(SqliteCredentialStore::new(store.clone()));
-		let expiry = i64::MAX / 2;
-		let account_id = enroll_route_test_account_with_expiry(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-000000000081",
-			"22000000-0000-4000-8000-000000000081",
-			"rotation-provider",
-			"initial-access",
-			expiry,
-		)
-		.await;
-		let file = Arc::new(RouteSharedAuthFile {
-			source_provider: "rotation-provider",
-			source_access: "rotated-access",
-			source_expiry: expiry,
-			target_provider: "rotation-provider",
-			target_access: "rotated-access",
-			projections: AtomicUsize::new(0),
-		});
-		let coordinator = Arc::new(SharedAuthCoordinator::with_ports(
-			Arc::new(FixedLiveness(CodexLiveness::MayBeRunning)),
-			Arc::clone(&file) as Arc<dyn SharedAuthFilePort>,
-		));
-		let service = AccountService::new(
-			store.clone(),
-			Arc::clone(&credentials),
-			Arc::new(UnusedCredentialRefresher),
-		)
-		.with_shared_auth_coordinator(coordinator);
-
-		assert!(
-			service
-				.attest_callback_capability(CodexAccountCapabilityAttestation {
-					build_identity: "rotation-import-build".to_owned(),
-					executable_sha256: "a".repeat(64),
-					schema_sha256: "b".repeat(64),
-					callback_profile_sha256: "c".repeat(64),
-					login_chatgpt_auth_tokens: true,
-					refresh_callback: true,
-				})
-				.await
-				.expect("attest callback")
-		);
-		assert!(service.follow_shared_auth_once().await.unwrap().is_none());
-		let imported =
-			service.follow_shared_auth_once().await.unwrap().expect("known rotation imports");
-		assert_eq!(imported.account_id, account_id);
-		assert_eq!(imported.revision, 2);
-		let binding = imported.credential.expect("imported binding");
-		let stored = credentials.read_exact(&account_id, &binding).expect("read imported bundle");
-		assert_eq!(stored.bundle().access_token(), "rotated-access");
-		assert_eq!(stored.bundle().access_token_expires_at_unix_micros(), expiry);
-		assert!(service.follow_shared_auth_once().await.unwrap().is_none());
-		assert_eq!(file.projections.load(Ordering::Relaxed), 0);
-	}
-
-	#[tokio::test]
-	async fn route_command_confirms_an_already_current_shared_target_without_rewriting_it() {
-		let directory = tempdir().expect("temporary product root");
-		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
-			.expect("typed product root");
-		let store = SqliteStore::open(&root.paths()).expect("open product store");
-		let credentials: Arc<dyn HostCredentialStore> =
-			Arc::new(SqliteCredentialStore::new(store.clone()));
-		let provider = ProviderIdentity::new(AccountProvider::Chatgpt, "route-provider")
-			.expect("provider identity");
-		let account_id =
-			AccountId::new("21000000-0000-4000-8000-000000000041").expect("account identity");
-		let enrollment_operation = AccountOperationId::new("22000000-0000-4000-8000-000000000041")
-			.expect("enrollment operation");
-		let bundle = shared_bundle(provider.account_id(), "route-access", 3_000_000);
-		let binding = bundle
-			.binding_for(
-				&account_id,
-				&enrollment_operation,
-				CredentialVersion::new(1).expect("credential version"),
-				&provider,
-			)
-			.expect("credential binding");
-		accepted_phase(
-			store
-				.prepare_account_operation(&AccountOperationPreparation {
-					operation_id: enrollment_operation.clone(),
-					account_id: account_id.clone(),
-					kind: AccountOperationKind::Enroll,
-					display_label: Some(stable_account_alias(&provider)),
-					enabled: Some(true),
-					expected_account_revision: None,
-					expected: None,
-					target: Some(binding.clone()),
-					provider: provider.clone(),
-				})
-				.await
-				.expect("prepare enrollment"),
-		)
-		.expect("accept enrollment");
-		credentials.create(&account_id, &binding, bundle).expect("create credential");
-		accepted_phase(
-			store
-				.advance_account_operation(
-					&enrollment_operation,
-					AccountOperationPhase::Prepared,
-					AccountOperationPhase::StoreApplied,
-					None,
-				)
-				.await
-				.expect("record credential"),
-		)
-		.expect("accept credential");
-		accepted_phase(
-			store
-				.advance_account_operation(
-					&enrollment_operation,
-					AccountOperationPhase::StoreApplied,
-					AccountOperationPhase::Committed,
-					None,
-				)
-				.await
-				.expect("commit enrollment"),
-		)
-		.expect("accept enrollment commit");
-		let routing = store.read_account_routing_control().await.expect("read routing");
-		let request = format!(
-			r#"{{"name":"route_account","arguments":{{"operation_id":"22000000-0000-4000-8000-000000000042","account_id":"{}","expected_account_revision":1}}}}"#,
-			account_id.as_str(),
-		);
-		let command = CommandIdentity::new("route-command", request.as_bytes())
-			.expect("Route command identity");
-		let lease = match store
-			.reserve_account_route_command(&command, routing.revision, &request)
-			.await
-			.expect("reserve Route")
-		{
-			AccountCommandReceiptClaim::Owned(lease) => lease,
-			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
-				panic!("new Route replayed")
-			},
-		};
-		let shared_auth_file = Arc::new(RouteSharedAuthFile {
-			source_provider: "route-provider",
-			source_access: "route-access",
-			source_expiry: 3_000_000,
-			target_provider: "route-provider",
-			target_access: "route-access",
-			projections: AtomicUsize::new(0),
-		});
-		let service = AccountService::new(
-			store.clone(),
-			Arc::clone(&credentials),
-			Arc::new(UnusedCredentialRefresher),
-		)
-		.with_shared_auth_coordinator(test_coordinator(
-			Arc::clone(&shared_auth_file) as Arc<dyn SharedAuthFilePort>,
-			CodexLiveness::MayBeRunning,
-		));
-		assert!(
-			service
-				.attest_callback_capability(CodexAccountCapabilityAttestation {
-					build_identity: "route-test-build".to_owned(),
-					executable_sha256: "a".repeat(64),
-					schema_sha256: "b".repeat(64),
-					callback_profile_sha256: "c".repeat(64),
-					login_chatgpt_auth_tokens: true,
-					refresh_callback: true,
-				})
-				.await
-				.expect("attest Route callback capability")
-		);
-		let response = service
-			.route_account_command(
-				lease,
-				AccountOperationId::new("22000000-0000-4000-8000-000000000042")
-					.expect("Route operation"),
-				&account_id,
-				1,
-				routing.revision,
-				false,
-				|result| {
-					Ok(match result {
-						Ok(AccountRouteResult::Committed(commit)) => json!({
-							"account_revision": commit.account.revision,
-							"routing_revision": commit.routing.revision,
-							"projection_digest": commit.projection_digest,
-						}),
-						Ok(AccountRouteResult::Pending(_)) | Err(_) => {
-							json!({"outcome": "unexpected"})
-						},
-					})
-				},
-			)
-			.await
-			.expect("complete Route");
-
-		assert_eq!(response["account_revision"], 1);
-		assert_eq!(response["routing_revision"], routing.revision + 1);
-		assert_eq!(response["projection_digest"].as_str().map(str::len), Some(64));
-		assert_eq!(shared_auth_file.projections.load(Ordering::Relaxed), 0);
-		let routed = store.read_account_routing_control().await.expect("read routed policy");
-		assert_eq!(routed.mode, AccountSelectionMode::Fixed(account_id.clone()));
-
-		let stale_request = format!(
-			r#"{{"name":"route_account","arguments":{{"operation_id":"22000000-0000-4000-8000-000000000043","account_id":"{}","expected_account_revision":1}}}}"#,
-			account_id.as_str(),
-		);
-		let stale_command = CommandIdentity::new("stale-route-command", stale_request.as_bytes())
-			.expect("stale Route command identity");
-		let stale_lease = match store
-			.reserve_account_route_command(&stale_command, routing.revision, &stale_request)
-			.await
-			.expect("reserve stale Route")
-		{
-			AccountCommandReceiptClaim::Owned(lease) => lease,
-			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
-				panic!("new stale Route replayed")
-			},
-		};
-		let stale_response = service
-			.route_account_command(
-				stale_lease,
-				AccountOperationId::new("22000000-0000-4000-8000-000000000043")
-					.expect("stale Route operation"),
-				&account_id,
-				1,
-				routing.revision,
-				false,
-				|result| {
-					Ok(match result {
-						Err(AccountRouteFailure::Routing(
-							RoutingControlOutcome::StaleRoutingControl { revision },
-						)) => json!({"outcome": "stale_routing", "revision": revision}),
-						_ => json!({"outcome": "unexpected"}),
-					})
-				},
-			)
-			.await
-			.expect("complete stale Route");
-		assert_eq!(stale_response["outcome"], "stale_routing");
-		assert_eq!(shared_auth_file.projections.load(Ordering::Relaxed), 0);
-		assert!(
-			store
-				.read_pending_account_route_commands(8)
-				.await
-				.expect("read pending Routes")
-				.is_empty()
-		);
-	}
-
-	#[tokio::test]
-	async fn account_route_a_b_a_and_post_restart_switch_keep_sqlite_and_shared_auth_exact() {
-		let directory = tempdir().expect("temporary product root");
-		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
-			.expect("typed product root");
-		let store = SqliteStore::open(&root.paths()).expect("open product store");
-		let credentials: Arc<dyn HostCredentialStore> =
-			Arc::new(SqliteCredentialStore::new(store.clone()));
-		let expiry = i64::MAX / 2;
-		let account_a = enroll_route_test_account_with_expiry(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-0000000000e1",
-			"22000000-0000-4000-8000-0000000000e1",
-			"round-trip-provider-a",
-			"round-trip-access-a",
-			expiry,
-		)
-		.await;
-		let account_b = enroll_route_test_account_with_expiry(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-0000000000e2",
-			"22000000-0000-4000-8000-0000000000e2",
-			"round-trip-provider-b",
-			"round-trip-access-b",
-			expiry,
-		)
-		.await;
-		let shared_auth = Arc::new(RefreshRaceSharedAuthFile::new(
-			"round-trip-provider-a",
-			shared_bundle("round-trip-provider-a", "round-trip-access-a", expiry),
-		));
-		let provider_calls = Arc::new(AtomicUsize::new(0));
-		let refresher = Arc::new(ScriptedCredentialRefresher {
-			calls: Arc::clone(&provider_calls),
-			results: Mutex::new(VecDeque::from([
-				CredentialRefreshResult {
-					returned_provider: ProviderIdentity::new(
-						AccountProvider::Chatgpt,
-						"round-trip-provider-b",
-					)
-					.expect("provider B identity"),
-					bundle: shared_bundle_with_refresh(
-						"round-trip-provider-b",
-						"round-trip-access-b-routed",
-						"round-trip-refresh-b-routed",
-						expiry,
-					),
-				},
-				CredentialRefreshResult {
-					returned_provider: ProviderIdentity::new(
-						AccountProvider::Chatgpt,
-						"round-trip-provider-a",
-					)
-					.expect("provider A identity"),
-					bundle: shared_bundle_with_refresh(
-						"round-trip-provider-a",
-						"round-trip-access-a-routed",
-						"round-trip-refresh-a-routed",
-						expiry,
-					),
-				},
-				CredentialRefreshResult {
-					returned_provider: ProviderIdentity::new(
-						AccountProvider::Chatgpt,
-						"round-trip-provider-b",
-					)
-					.expect("provider B identity"),
-					bundle: shared_bundle_with_refresh(
-						"round-trip-provider-b",
-						"round-trip-access-b-restarted",
-						"round-trip-refresh-b-restarted",
-						expiry,
-					),
-				},
-			])),
-		});
-		let build_service = || {
-			AccountService::new(
-				store.clone(),
-				Arc::clone(&credentials),
-				Arc::clone(&refresher) as Arc<dyn CredentialRefreshPort>,
-			)
-			.with_shared_auth_coordinator(test_coordinator(
-				Arc::clone(&shared_auth) as Arc<dyn SharedAuthFilePort>,
-				CodexLiveness::Quiescent,
-			))
-		};
-		let service = build_service();
-		assert!(
-			service
-				.attest_callback_capability(CodexAccountCapabilityAttestation {
-					build_identity: "round-trip-route-build".to_owned(),
-					executable_sha256: "1".repeat(64),
-					schema_sha256: "2".repeat(64),
-					callback_profile_sha256: "3".repeat(64),
-					login_chatgpt_auth_tokens: true,
-					refresh_callback: true,
-				})
-				.await
-				.expect("attest callback capability")
-		);
-
-		for (account_id, expected_revision, provider, operation, key) in [
-			(
-				&account_b,
-				1,
-				"round-trip-provider-b",
-				"22000000-0000-4000-8000-0000000000e3",
-				"round-trip-route-b",
-			),
-			(
-				&account_a,
-				1,
-				"round-trip-provider-a",
-				"22000000-0000-4000-8000-0000000000e4",
-				"round-trip-route-a",
-			),
-		] {
-			let response = route_test_account_once(
-				&service,
-				&store,
-				account_id,
-				expected_revision,
-				operation,
-				key,
-			)
-			.await;
-			assert_eq!(response["outcome"], "routed");
-			assert_eq!(response["account_id"], account_id.as_str());
-			assert_eq!(response["projection_digest"].as_str().map(str::len), Some(64));
-			assert_exact_route_readback(&store, &credentials, &shared_auth, account_id, provider)
-				.await;
-		}
-
-		drop(service);
-		let restarted = build_service();
-		assert!(
-			restarted
-				.attest_callback_capability(CodexAccountCapabilityAttestation {
-					build_identity: "round-trip-route-restarted-build".to_owned(),
-					executable_sha256: "4".repeat(64),
-					schema_sha256: "5".repeat(64),
-					callback_profile_sha256: "6".repeat(64),
-					login_chatgpt_auth_tokens: true,
-					refresh_callback: true,
-				})
-				.await
-				.expect("attest restarted callback capability")
-		);
-		let response = route_test_account_once(
-			&restarted,
-			&store,
-			&account_b,
-			2,
-			"22000000-0000-4000-8000-0000000000e5",
-			"round-trip-route-b-after-restart",
-		)
-		.await;
-		assert_eq!(response["outcome"], "routed");
-		assert_exact_route_readback(
-			&store,
-			&credentials,
-			&shared_auth,
-			&account_b,
-			"round-trip-provider-b",
-		)
-		.await;
-		assert_eq!(shared_auth.project_attempts.load(Ordering::Relaxed), 3);
-		assert_eq!(provider_calls.load(Ordering::Relaxed), 3);
-	}
-
-	#[tokio::test]
-	async fn cross_account_route_preserves_the_exact_shared_source_before_projection() {
-		let directory = tempdir().expect("temporary product root");
-		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
-			.expect("typed product root");
-		let store = SqliteStore::open(&root.paths()).expect("open product store");
-		let credentials: Arc<dyn HostCredentialStore> =
-			Arc::new(SqliteCredentialStore::new(store.clone()));
-		let source_account_id = enroll_route_test_account(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-000000000051",
-			"22000000-0000-4000-8000-000000000051",
-			"source-provider",
-			"source-access",
-		)
-		.await;
-		let target_account_id = enroll_route_test_account(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-000000000052",
-			"22000000-0000-4000-8000-000000000052",
-			"target-provider",
-			"target-access",
-		)
-		.await;
-		let routing = store.read_account_routing_control().await.expect("read routing");
-		let request = format!(
-			r#"{{"name":"route_account","arguments":{{"operation_id":"22000000-0000-4000-8000-000000000053","account_id":"{}","expected_account_revision":1}}}}"#,
-			target_account_id.as_str(),
-		);
-		let command = CommandIdentity::new("cross-account-route", request.as_bytes())
-			.expect("cross-account Route identity");
-		let lease = match store
-			.reserve_account_route_command(&command, routing.revision, &request)
-			.await
-			.expect("reserve cross-account Route")
-		{
-			AccountCommandReceiptClaim::Owned(lease) => lease,
-			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
-				panic!("new Route replayed")
-			},
-		};
-		let shared_auth_file = Arc::new(RouteSharedAuthFile {
-			source_provider: "source-provider",
-			source_access: "source-rotated-access",
-			source_expiry: i64::MAX / 2,
-			target_provider: "target-provider",
-			target_access: "target-refreshed-access",
-			projections: AtomicUsize::new(0),
-		});
-		let service = AccountService::new(
-			store.clone(),
-			Arc::clone(&credentials),
-			Arc::new(RouteCredentialRefresher),
-		)
-		.with_shared_auth_coordinator(route_test_coordinator(Arc::clone(&shared_auth_file)));
-		assert!(
-			service
-				.attest_callback_capability(CodexAccountCapabilityAttestation {
-					build_identity: "cross-route-test-build".to_owned(),
-					executable_sha256: "d".repeat(64),
-					schema_sha256: "e".repeat(64),
-					callback_profile_sha256: "f".repeat(64),
-					login_chatgpt_auth_tokens: true,
-					refresh_callback: true,
-				})
-				.await
-				.expect("attest cross-Route callback capability")
-		);
-
-		let response = service
-			.route_account_command(
-				lease,
-				AccountOperationId::new("22000000-0000-4000-8000-000000000053")
-					.expect("Route operation"),
-				&target_account_id,
-				1,
-				routing.revision,
-				false,
-				|result| {
-					Ok(match result {
-						Ok(AccountRouteResult::Committed(commit)) => json!({
-							"account_revision": commit.account.revision,
-							"routing_revision": commit.routing.revision,
-						}),
-						Ok(AccountRouteResult::Pending(_)) | Err(_) => {
-							json!({"outcome": "unexpected"})
-						},
-					})
-				},
-			)
-			.await
-			.expect("complete cross-account Route");
-
-		assert_eq!(response["account_revision"], 2);
-		assert_eq!(response["routing_revision"], routing.revision + 1);
-		assert_eq!(shared_auth_file.projections.load(Ordering::Relaxed), 1);
-		let source = store
-			.read_account_registry(Some(&source_account_id), 1)
-			.await
-			.expect("read source account")
-			.pop()
-			.expect("source account");
-		let source_binding = source.credential.expect("source binding");
-		let source_stored = credentials
-			.read_exact(&source_account_id, &source_binding)
-			.expect("read preserved source credential");
-		assert_eq!(source.revision, 2);
-		assert_eq!(source_stored.bundle().access_token(), "source-rotated-access");
-	}
-
-	#[tokio::test]
-	async fn live_cross_account_route_waits_for_quiescence_then_follows_same_account_rotation() {
-		let directory = tempdir().expect("temporary product root");
-		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
-			.expect("typed product root");
-		let store = SqliteStore::open(&root.paths()).expect("open product store");
-		let credentials: Arc<dyn HostCredentialStore> =
-			Arc::new(SqliteCredentialStore::new(store.clone()));
-		let _source_account_id = enroll_route_test_account(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-000000000071",
-			"22000000-0000-4000-8000-000000000071",
-			"pending-source-provider",
-			"pending-source-access",
-		)
-		.await;
-		let account_id = enroll_route_test_account(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-000000000073",
-			"22000000-0000-4000-8000-000000000073",
-			"pending-target-provider",
-			"pending-target-access",
-		)
-		.await;
-		let routing = store.read_account_routing_control().await.expect("read routing");
-		let request = format!(
-			r#"{{"name":"route_account","arguments":{{"operation_id":"22000000-0000-4000-8000-000000000072","account_id":"{}","expected_account_revision":1}}}}"#,
-			account_id.as_str(),
-		);
-		let command = CommandIdentity::new("pending-route", request.as_bytes())
-			.expect("Route command identity");
-		let lease = match store
-			.reserve_account_route_command(&command, routing.revision, &request)
-			.await
-			.expect("reserve Route")
-		{
-			AccountCommandReceiptClaim::Owned(lease) => lease,
-			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
-				panic!("new Route replayed")
-			},
-		};
-		let shared_auth_file = Arc::new(RefreshRaceSharedAuthFile::new(
-			"pending-source-provider",
-			shared_bundle("pending-source-provider", "pending-source-access", 2_000_000),
-		));
-		let running = Arc::new(AtomicBool::new(true));
-		let coordinator = test_coordinator_with_liveness(
-			Arc::clone(&shared_auth_file) as Arc<dyn SharedAuthFilePort>,
-			Arc::new(MutableLiveness(Arc::clone(&running))),
-		);
-		let provider_calls = Arc::new(AtomicUsize::new(0));
-		let service = AccountService::new(
-			store.clone(),
-			Arc::clone(&credentials),
-			Arc::new(ScriptedCredentialRefresher {
-				calls: Arc::clone(&provider_calls),
-				results: Mutex::new(VecDeque::from([CredentialRefreshResult {
-					returned_provider: ProviderIdentity::new(
-						AccountProvider::Chatgpt,
-						"pending-target-provider",
-					)
-					.expect("target provider"),
-					bundle: shared_bundle_with_refresh(
-						"pending-target-provider",
-						"target-refreshed-access",
-						"target-refreshed-refresh",
-						i64::MAX / 2,
-					),
-				}])),
-			}),
-		)
-		.with_shared_auth_coordinator(coordinator);
-		assert!(
-			service
-				.attest_callback_capability(CodexAccountCapabilityAttestation {
-					build_identity: "pending-route-build".to_owned(),
-					executable_sha256: "7".repeat(64),
-					schema_sha256: "8".repeat(64),
-					callback_profile_sha256: "9".repeat(64),
-					login_chatgpt_auth_tokens: true,
-					refresh_callback: true,
-				})
-				.await
-				.expect("attest callback")
-		);
-		let operation_id = AccountOperationId::new("22000000-0000-4000-8000-000000000072")
-			.expect("Route operation");
-		let response_builder = |result| {
-			Ok(match result {
-				Ok(AccountRouteResult::Pending(pending)) => {
-					let wait_reason = match pending.wait_reason {
-						AccountRouteWaitReason::ExternalCodex { blockers, omitted } => json!({
-							"reason": "external_codex",
-							"pids": blockers.into_iter().map(|blocker| blocker.pid).collect::<Vec<_>>(),
-							"omitted": omitted,
-						}),
-						_ => json!({"reason": "unexpected"}),
-					};
-					json!({
-						"outcome": "pending",
-						"operation_id": pending.operation_id.as_str(),
-						"account_id": pending.account_id.as_str(),
-						"routing_revision": pending.routing_revision,
-						"wait_reason": wait_reason,
-					})
-				},
-				Ok(AccountRouteResult::Committed(commit)) => json!({
-					"outcome": "routed",
-					"routing_revision": commit.routing.revision,
-				}),
-				Err(_) => json!({"outcome": "unexpected"}),
-			})
-		};
-		let pending_response = service
-			.route_account_command(
-				lease,
-				operation_id.clone(),
-				&account_id,
-				1,
-				routing.revision,
-				false,
-				response_builder,
-			)
-			.await
-			.expect("defer Route");
-		assert_eq!(pending_response["outcome"], "pending");
-		assert_eq!(pending_response["wait_reason"]["reason"], "external_codex");
-		assert_eq!(pending_response["wait_reason"]["pids"], json!([44_768]));
-		time::timeout(Duration::from_millis(10), service.pending_route_notified())
-			.await
-			.expect("Pending Route wakes the recovery loop immediately");
-		assert_eq!(shared_auth_file.project_attempts.load(Ordering::Relaxed), 0);
-		assert_eq!(provider_calls.load(Ordering::Relaxed), 0);
-		assert_eq!(shared_auth_file.current_tokens().0, "pending-source-access");
-		assert!(matches!(
-			store
-				.reserve_account_route_command(&command, routing.revision, &request)
-				.await
-				.expect("replay pending Route"),
-			AccountCommandReceiptClaim::Pending(value) if value == pending_response
-		));
-
-		running.store(false, Ordering::Relaxed);
-		time::sleep(Duration::from_millis(2)).await;
-		let pending = store
-			.read_pending_account_route_commands(1)
-			.await
-			.expect("read pending Route")
-			.pop()
-			.expect("pending Route");
-		let lease = match store
-			.reclaim_account_route_command(&pending)
-			.await
-			.expect("reclaim pending Route")
-		{
-			AccountCommandReceiptClaim::Owned(lease) => lease,
-			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
-				panic!("pending Route did not reclaim")
-			},
-		};
-		let routed = service
-			.route_account_command(
-				lease,
-				operation_id,
-				&account_id,
-				1,
-				routing.revision,
-				true,
-				response_builder,
-			)
-			.await
-			.expect("complete Route");
-		assert_eq!(routed["outcome"], "routed");
-		assert_eq!(shared_auth_file.project_attempts.load(Ordering::Relaxed), 1);
-		assert_eq!(provider_calls.load(Ordering::Relaxed), 1);
-		assert_eq!(
-			shared_auth_file.current_tokens(),
-			("target-refreshed-access".to_owned(), "target-refreshed-refresh".to_owned())
-		);
-		assert!(store.read_pending_account_route_commands(1).await.unwrap().is_empty());
-		assert_eq!(
-			store.read_account_routing_control().await.unwrap().mode,
-			AccountSelectionMode::Fixed(account_id.clone())
-		);
-
-		shared_auth_file.replace_from_codex(shared_bundle_with_refresh(
-			"pending-target-provider",
-			"codex-rotated-access",
-			"codex-rotated-refresh",
-			i64::MAX / 2,
-		));
-		assert!(service.follow_shared_auth_once().await.unwrap().is_none());
-		let followed = service
-			.follow_shared_auth_once()
-			.await
-			.unwrap()
-			.expect("stable same-account rotation is adopted");
-		assert_eq!(followed.account_id, account_id);
-		assert_eq!(followed.revision, 3);
-		let followed_binding = followed.credential.expect("followed credential binding");
-		let followed_stored = credentials
-			.read_exact(&followed.account_id, &followed_binding)
-			.expect("read followed credential");
-		assert_eq!(followed_stored.bundle().access_token(), "codex-rotated-access");
-		assert_eq!(followed_stored.bundle().refresh_token(), "codex-rotated-refresh");
-		assert_eq!(provider_calls.load(Ordering::Relaxed), 1);
-	}
-
-	#[tokio::test]
-	async fn restarted_pending_route_waits_for_callback_readiness_then_converges_if_auth_is_current()
-	 {
-		let directory = tempdir().expect("temporary product root");
-		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
-			.expect("typed product root");
-		let store = SqliteStore::open(&root.paths()).expect("open product store");
-		let credentials: Arc<dyn HostCredentialStore> =
-			Arc::new(SqliteCredentialStore::new(store.clone()));
-		let target = enroll_route_test_account(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-0000000000c1",
-			"22000000-0000-4000-8000-0000000000c1",
-			"restart-current-provider",
-			"restart-current-access",
-		)
-		.await;
-		let routing = store.read_account_routing_control().await.unwrap();
-		let operation = "22000000-0000-4000-8000-0000000000c2";
-		let request = format!(
-			r#"{{"name":"route_account","arguments":{{"operation_id":"{operation}","account_id":"{}","expected_account_revision":1}}}}"#,
-			target.as_str(),
-		);
-		let command = CommandIdentity::new("restart-pending-route", request.as_bytes()).unwrap();
-		let lease = match store
-			.reserve_account_route_command(&command, routing.revision, &request)
-			.await
-			.unwrap()
-		{
-			AccountCommandReceiptClaim::Owned(lease) => lease,
-			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
-				panic!("new Route replayed")
-			},
-		};
-		store.defer_account_route_command(lease, &json!({"outcome": "pending"})).await.unwrap();
-		let shared_auth_file = Arc::new(RouteSharedAuthFile {
-			source_provider: "restart-current-provider",
-			source_access: "restart-current-access",
-			source_expiry: 2_000_000,
-			target_provider: "restart-current-provider",
-			target_access: "restart-current-access",
-			projections: AtomicUsize::new(0),
-		});
-		let service = Arc::new(
-			AccountService::new(
-				store.clone(),
-				Arc::clone(&credentials),
-				Arc::new(UnusedCredentialRefresher),
-			)
-			.with_shared_auth_coordinator(test_coordinator(
-				Arc::clone(&shared_auth_file) as Arc<dyn SharedAuthFilePort>,
-				CodexLiveness::MayBeRunning,
-			)),
-		);
-		assert_eq!(
-			service.pending_route_wait_reason(&target).await,
-			AccountRouteWaitReason::AccountReadiness(
-				AccountLifecycleReadiness::CallbackCapabilityUnready
-			)
-		);
-		time::sleep(Duration::from_millis(2)).await;
-		let _ = crate::application::recover_pending_account_routes_once(
-			Arc::clone(&service),
-			&store,
-			None,
-		)
-		.await;
-		assert_eq!(store.read_pending_account_route_commands(1).await.unwrap().len(), 1);
-
-		assert!(
-			service
-				.attest_callback_capability(CodexAccountCapabilityAttestation {
-					build_identity: "restart-route-build".to_owned(),
-					executable_sha256: "a".repeat(64),
-					schema_sha256: "b".repeat(64),
-					callback_profile_sha256: "c".repeat(64),
-					login_chatgpt_auth_tokens: true,
-					refresh_callback: true,
-				})
-				.await
-				.unwrap()
-		);
-		let _ =
-			crate::application::recover_pending_account_routes_once(service, &store, None).await;
-		assert!(store.read_pending_account_route_commands(1).await.unwrap().is_empty());
-		assert_eq!(
-			store.read_account_routing_control().await.unwrap().mode,
-			AccountSelectionMode::Fixed(target)
-		);
-		assert_eq!(shared_auth_file.projections.load(Ordering::Relaxed), 0);
-	}
-
-	#[tokio::test]
-	async fn newer_pending_route_replaces_the_target_without_a_shared_auth_write() {
-		let directory = tempdir().expect("temporary product root");
-		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
-			.expect("typed product root");
-		let store = SqliteStore::open(&root.paths()).expect("open product store");
-		let credentials: Arc<dyn HostCredentialStore> =
-			Arc::new(SqliteCredentialStore::new(store.clone()));
-		let _source = enroll_route_test_account(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-0000000000d1",
-			"22000000-0000-4000-8000-0000000000d1",
-			"replace-source-provider",
-			"replace-source-access",
-		)
-		.await;
-		let first_target = enroll_route_test_account(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-0000000000d2",
-			"22000000-0000-4000-8000-0000000000d2",
-			"replace-first-provider",
-			"replace-first-access",
-		)
-		.await;
-		let second_target = enroll_route_test_account(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-0000000000d3",
-			"22000000-0000-4000-8000-0000000000d3",
-			"replace-second-provider",
-			"replace-second-access",
-		)
-		.await;
-		let routing = store.read_account_routing_control().await.unwrap();
-		let shared_auth_file = Arc::new(RouteSharedAuthFile {
-			source_provider: "replace-source-provider",
-			source_access: "replace-source-access",
-			source_expiry: 2_000_000,
-			target_provider: "replace-second-provider",
-			target_access: "target-refreshed-access",
-			projections: AtomicUsize::new(0),
-		});
-		let service = AccountService::new(
-			store.clone(),
-			Arc::clone(&credentials),
-			Arc::new(RouteCredentialRefresher),
-		)
-		.with_shared_auth_coordinator(test_coordinator(
-			Arc::clone(&shared_auth_file) as Arc<dyn SharedAuthFilePort>,
-			CodexLiveness::MayBeRunning,
-		));
-		assert!(
-			service
-				.attest_callback_capability(CodexAccountCapabilityAttestation {
-					build_identity: "replace-route-build".to_owned(),
-					executable_sha256: "d".repeat(64),
-					schema_sha256: "e".repeat(64),
-					callback_profile_sha256: "f".repeat(64),
-					login_chatgpt_auth_tokens: true,
-					refresh_callback: true,
-				})
-				.await
-				.unwrap()
-		);
-		let pending_response = |result| {
-			Ok(match result {
-				Ok(AccountRouteResult::Pending(pending)) => json!({
-					"outcome": "pending",
-					"account_id": pending.account_id.as_str(),
-				}),
-				_ => json!({"outcome": "unexpected"}),
-			})
-		};
-		let first_operation = "22000000-0000-4000-8000-0000000000d4";
-		let first_request = format!(
-			r#"{{"name":"route_account","arguments":{{"operation_id":"{first_operation}","account_id":"{}","expected_account_revision":1}}}}"#,
-			first_target.as_str(),
-		);
-		let first_command =
-			CommandIdentity::new("replace-first-route", first_request.as_bytes()).unwrap();
-		let first_lease = match store
-			.reserve_account_route_command(&first_command, routing.revision, &first_request)
-			.await
-			.unwrap()
-		{
-			AccountCommandReceiptClaim::Owned(lease) => lease,
-			_ => panic!("first Route replayed"),
-		};
-		let first_result = service
-			.route_account_command(
-				first_lease,
-				AccountOperationId::new(first_operation).unwrap(),
-				&first_target,
-				1,
-				routing.revision,
-				false,
-				pending_response,
-			)
-			.await
-			.unwrap();
-		assert_eq!(first_result["account_id"], first_target.as_str());
-
-		let second_operation = "22000000-0000-4000-8000-0000000000d5";
-		let second_request = format!(
-			r#"{{"name":"route_account","arguments":{{"operation_id":"{second_operation}","account_id":"{}","expected_account_revision":1}}}}"#,
-			second_target.as_str(),
-		);
-		let second_command =
-			CommandIdentity::new("replace-second-route", second_request.as_bytes()).unwrap();
-		let superseded = json!({"outcome": "rejected", "reason": "route_superseded"});
-		let second_lease = match store
-			.reserve_replacing_account_route_command(
-				&second_command,
-				routing.revision,
-				&second_request,
-				&superseded,
-			)
-			.await
-			.unwrap()
-		{
-			AccountCommandReceiptClaim::Owned(lease) => lease,
-			_ => panic!("second Route replayed"),
-		};
-		assert_eq!(shared_auth_file.projections.load(Ordering::Relaxed), 0);
-		let second_result = service
-			.route_account_command(
-				second_lease,
-				AccountOperationId::new(second_operation).unwrap(),
-				&second_target,
-				1,
-				routing.revision,
-				false,
-				pending_response,
-			)
-			.await
-			.unwrap();
-		assert_eq!(second_result["account_id"], second_target.as_str());
-		assert_eq!(shared_auth_file.projections.load(Ordering::Relaxed), 0);
-		assert!(matches!(
-			store
-				.reserve_account_route_command(&first_command, routing.revision, &first_request)
-				.await
-				.unwrap(),
-			AccountCommandReceiptClaim::Replayed(value) if value == superseded
-		));
-		let pending = store.read_pending_account_route_commands(8).await.unwrap();
-		assert_eq!(pending.len(), 1);
-		assert_eq!(pending[0].idempotency_key, "replace-second-route");
-	}
-
-	#[tokio::test]
-	async fn live_codex_does_not_delay_terminal_pending_route_routing_drift() {
-		let directory = tempdir().expect("temporary product root");
-		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
-			.expect("typed product root");
-		let store = SqliteStore::open(&root.paths()).expect("open product store");
-		let credentials: Arc<dyn HostCredentialStore> =
-			Arc::new(SqliteCredentialStore::new(store.clone()));
-		let target = enroll_route_test_account(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-0000000000b1",
-			"22000000-0000-4000-8000-0000000000b1",
-			"drift-target-provider",
-			"drift-target-access",
-		)
-		.await;
-		let routing = store.read_account_routing_control().await.unwrap();
-		let operation = "22000000-0000-4000-8000-0000000000b2";
-		let request = format!(
-			r#"{{"name":"route_account","arguments":{{"operation_id":"{operation}","account_id":"{}","expected_account_revision":1}}}}"#,
-			target.as_str(),
-		);
-		let command = CommandIdentity::new("drifted-pending-route", request.as_bytes()).unwrap();
-		let lease = match store
-			.reserve_account_route_command(&command, routing.revision, &request)
-			.await
-			.unwrap()
-		{
-			AccountCommandReceiptClaim::Owned(lease) => lease,
-			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
-				panic!("new Route replayed")
-			},
-		};
-		store.defer_account_route_command(lease, &json!({"outcome": "pending"})).await.unwrap();
-		enroll_route_test_account(
-			&store,
-			&credentials,
-			"21000000-0000-4000-8000-0000000000b3",
-			"22000000-0000-4000-8000-0000000000b3",
-			"drift-other-provider",
-			"drift-other-access",
-		)
-		.await;
-		assert_ne!(store.read_account_routing_control().await.unwrap().revision, routing.revision);
-
-		let shared_auth_file = Arc::new(RouteSharedAuthFile {
-			source_provider: "drift-target-provider",
-			source_access: "drift-target-access",
-			source_expiry: 2_000_000,
-			target_provider: "drift-target-provider",
-			target_access: "drift-target-access",
-			projections: AtomicUsize::new(0),
-		});
-		let service = Arc::new(
-			AccountService::new(
-				store.clone(),
-				Arc::clone(&credentials),
-				Arc::new(UnusedCredentialRefresher),
-			)
-			.with_shared_auth_coordinator(test_coordinator(
-				Arc::clone(&shared_auth_file) as Arc<dyn SharedAuthFilePort>,
-				CodexLiveness::MayBeRunning,
-			)),
-		);
-		time::sleep(Duration::from_millis(2)).await;
-		let _ =
-			crate::application::recover_pending_account_routes_once(service, &store, None).await;
-
-		assert!(store.read_pending_account_route_commands(1).await.unwrap().is_empty());
-		assert_eq!(shared_auth_file.projections.load(Ordering::Relaxed), 0);
 	}
 
 	#[tokio::test]
@@ -8057,19 +6216,6 @@ mod tests {
 		assert_eq!(first_digest.len(), 64);
 		assert_ne!(first_digest, revised_digest);
 		assert_ne!(first_digest, versioned_digest);
-	}
-
-	#[test]
-	fn pending_route_rejects_unrelated_account_revision_drift() {
-		let mut account = projection_account(Some(binding("revision-drift-provider", 3)));
-		let expected_revision = account.revision;
-		account.revision += 2;
-		let route_operation =
-			AccountOperationId::new("22000000-0000-4000-8000-000000000091").unwrap();
-		let derived = super::route_refresh_operation_id(&route_operation, &account.account_id)
-			.expect("derived Route refresh operation");
-
-		assert!(!route_resume_revision_is_valid(&account, expected_revision, &derived, None,));
 	}
 
 	fn identity_token(account_id: &str, email: &str, plan_type: &str) -> String {

@@ -91,7 +91,7 @@ impl<'de> Deserialize<'de> for DoctorReport {
 /// A single bounded doctor observation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct DoctorCheck {
-	/// Typed subsystem or authority boundary observed by decodexd.
+	/// Typed subsystem or authority boundary observed by `decodex serve`.
 	pub component: DoctorComponent,
 	/// Typed readiness and failure class with no free-form external text.
 	pub status: DoctorStatus,

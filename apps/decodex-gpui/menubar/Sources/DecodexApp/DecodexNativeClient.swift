@@ -14,7 +14,6 @@ struct DecodexNativeRequest: Encodable, Sendable {
 	var grantedAtUnixSeconds: Int64? = nil
 	var expiresAtUnixSeconds: Int64? = nil
 	var expectedRevision: UInt64? = nil
-	var expectedAccountRevision: UInt64? = nil
 	var expectedRoutingRevision: UInt64? = nil
 	var afterGeneration: UInt64? = nil
 	var requestRefresh: Bool? = nil
@@ -34,7 +33,6 @@ struct DecodexNativeRequest: Encodable, Sendable {
 		case grantedAtUnixSeconds = "granted_at_unix_seconds"
 		case expiresAtUnixSeconds = "expires_at_unix_seconds"
 		case expectedRevision = "expected_revision"
-		case expectedAccountRevision = "expected_account_revision"
 		case expectedRoutingRevision = "expected_routing_revision"
 		case afterGeneration = "after_generation"
 		case requestRefresh = "request_refresh"
@@ -99,7 +97,7 @@ enum DecodexNativeFailure: String, Decodable, Sendable {
 	case protocolTimeout = "protocol_timeout"
 	case protocolMajorMismatch = "protocol_major_mismatch"
 	case protocolMinorMismatch = "protocol_minor_mismatch"
-	case artifactCohortMismatch = "artifact_cohort_mismatch"
+	case serviceVersionMismatch = "service_version_mismatch"
 	case serverIdentityMismatch = "server_identity_mismatch"
 	case protocolMalformed = "protocol_malformed"
 	case protocolViolation = "protocol_violation"
@@ -129,7 +127,7 @@ enum DecodexNativeFailure: String, Decodable, Sendable {
 		case .protocolBackpressure:
 			return .transportBackpressured
 		case .runtimeUnavailable, .invalidHandle, .internalFailure,
-			.artifactCohortMismatch:
+			.serviceVersionMismatch:
 			return .nativeClientUnavailable
 		case .applicationAcceptanceUnknown:
 			return .usePotentiallyDispatched
