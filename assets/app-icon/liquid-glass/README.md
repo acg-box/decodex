@@ -46,6 +46,9 @@ swift scripts/assets/build_liquid_glass_icons.swift
 python3 scripts/macos/prepare_decodex_icon_trials.py /absolute/path/to/new-trial-folder
 ```
 
+Use `--base-app /path/to/Decodex.app` to package a freshly built application.
+The default baseline is the installed application.
+
 The packager invokes `actool`, checks that `Assets.car` contains vector artwork and
 native icon stacks for Default, Dark, and Mono, then signs each local trial. It sets
 `CFBundleIconName=AppIcon` and a separate trial build number for each icon revision

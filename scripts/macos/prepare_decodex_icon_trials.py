@@ -16,19 +16,20 @@ IDENTITY = "4EBCADF6B4D513E45CE33EC6934C08DBB0F03D7F"
 
 
 def run(*args):
-    subprocess.run([str(arg) for arg in args], check=True)
+    subprocess.run([str(arg) for arg in args], check=True, cwd=ROOT)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--base-app", type=Path, default=Path("/Applications/Decodex.app"))
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     original = output / "bundles" / "original" / "Decodex.app"
     if not original.exists():
         original.parent.mkdir(parents=True)
-        run("ditto", "/Applications/Decodex.app", original)
+        run("ditto", args.base_app.resolve(), original)
     run("codesign", "--verify", "--deep", "--strict", original)
     run("swift", ROOT / "scripts/assets/build_liquid_glass_icons.swift")
     installer = output / "switch_variant.py"
