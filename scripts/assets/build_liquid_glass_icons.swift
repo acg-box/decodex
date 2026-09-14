@@ -103,15 +103,17 @@ for (index,name) in names.enumerated() {
         ],"groups":groups,"supported-platforms":["squares":["macOS"]]
     ]
     try JSONSerialization.data(withJSONObject:config,options:[.prettyPrinted,.sortedKeys]).write(to:directory.appendingPathComponent("AppIcon.icon/icon.json"))
-    // The 22-point menu-bar template needs larger, heavier glyphs than Dock.
-    // Keep the same base paths; apply optical compensation only at this surface.
-    let menuGlyphScale:CGFloat=index==2 ? 1.08 : 1.10
-    let menuWeight:CGFloat=index==2 ? 4 : 7
-    var menuTransform=CGAffineTransform(translationX:markBounds.midX,y:markBounds.midY-30)
-        .scaledBy(x:menuGlyphScale,y:menuGlyphScale).translatedBy(x:-markBounds.midX,y:-markBounds.midY)
+    // Fit the menu mark by whitespace, not by maximum glyph size. The open
+    // frame is lighter; glyph height is compact and its optical center shifts
+    // away from the upper-left shoulder. Raster separation is checked below.
+    let menuGlyphScale:CGFloat=index==2 ? 0.97 : 1.10
+    let menuWeight:CGFloat=index==2 ? 3 : 7
+    var menuTransform=CGAffineTransform(translationX:markBounds.midX+(index==2 ? 30 : 0),y:markBounds.midY-(index==2 ? 8 : 30))
+        .scaledBy(x:menuGlyphScale,y:index==2 ? 0.82 : menuGlyphScale).translatedBy(x:-markBounds.midX,y:-markBounds.midY)
     let menuBolt=expand(bolt,menuWeight).copy(using:&menuTransform)!
     let menuCursor=expand(cursor,menuWeight).copy(using:&menuTransform)!
-    let menuShapes:[CGPath]=index==2 ? [opened,menuBolt,menuCursor] : [(index==0 ? rounded : flat).subtracting(menuBolt).subtracting(menuCursor)]
+    let menuFrame=inset(opened,6)
+    let menuShapes:[CGPath]=index==2 ? [menuFrame,menuBolt,menuCursor] : [(index==0 ? rounded : flat).subtracting(menuBolt).subtracting(menuCursor)]
     let bounds=iconBounds
     let rep=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:1024,pixelsHigh:1024,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
     NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=NSGraphicsContext(bitmapImageRep:rep)
@@ -124,3 +126,9 @@ for (index,name) in names.enumerated() {
     try rep.representation(using:.png,properties:[:])!.write(to:directory.appendingPathComponent("StatusBarIcon.png"))
     print(name)
 }
+
+let legibility=Process()
+legibility.executableURL=URL(fileURLWithPath:"/usr/bin/env")
+legibility.arguments=["swift",root.appendingPathComponent("scripts/assets/check_menu_icon_legibility.swift").path,output.appendingPathComponent("03-open-cloud/StatusBarIcon.png").path]
+try legibility.run();legibility.waitUntilExit()
+if legibility.terminationStatus != 0 { exit(legibility.terminationStatus) }
