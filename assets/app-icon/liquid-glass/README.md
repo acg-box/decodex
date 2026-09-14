@@ -24,16 +24,15 @@ centered vertically from its outer bounds, so this internal correction does not
 move the whole icon upward.
 
 The menu bar uses a separate optical fit for its 22-point display size. The open
-frame is inset by 6 source points to reduce its weight. Its glyphs use 97% width,
-82% height, and a 3-point weight expansion. The group moves 30 points right and
-8 points up to leave room at the upper-left shoulder and bottom edge. The filled
-clouds retain their 110% fit and 7-point weight expansion.
+frame is lightened and fitted back to the original outer bounds. The lightning
+and cursor occupy equal 132-point-wide regions, separated by 56 points, centered
+as a pair at x=512. Both end at y=600. At least 75 source points separate every
+pair of visible parts. The filled-cloud templates retain their own optical fit.
 
 `check_menu_icon_legibility.swift` verifies the exported open-cloud PNG at 22 and
-44 pixels, at both 25% and 50% alpha thresholds. The frame, lightning, and cursor
-must remain three separate connected components, including antialiased edges.
-The generator runs this check automatically. Dock geometry is unaffected by the
-menu-bar correction.
+44 pixels, with both integer and half-pixel placement on each axis, at 25% and 50%
+alpha thresholds. All 16 cases must retain three separate connected components.
+The generator runs this check automatically. Dock geometry is unaffected.
 
 ## Native materials
 

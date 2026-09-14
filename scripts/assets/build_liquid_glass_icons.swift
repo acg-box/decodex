@@ -103,17 +103,33 @@ for (index,name) in names.enumerated() {
         ],"groups":groups,"supported-platforms":["squares":["macOS"]]
     ]
     try JSONSerialization.data(withJSONObject:config,options:[.prettyPrinted,.sortedKeys]).write(to:directory.appendingPathComponent("AppIcon.icon/icon.json"))
-    // Fit the menu mark by whitespace, not by maximum glyph size. The open
-    // frame is lighter; glyph height is compact and its optical center shifts
-    // away from the upper-left shoulder. Raster separation is checked below.
-    let menuGlyphScale:CGFloat=index==2 ? 0.97 : 1.10
-    let menuWeight:CGFloat=index==2 ? 3 : 7
-    var menuTransform=CGAffineTransform(translationX:markBounds.midX+(index==2 ? 30 : 0),y:markBounds.midY-(index==2 ? 8 : 30))
-        .scaledBy(x:menuGlyphScale,y:index==2 ? 0.82 : menuGlyphScale).translatedBy(x:-markBounds.midX,y:-markBounds.midY)
-    let menuBolt=expand(bolt,menuWeight).copy(using:&menuTransform)!
-    let menuCursor=expand(cursor,menuWeight).copy(using:&menuTransform)!
-    let menuFrame=inset(opened,6)
-    let menuShapes:[CGPath]=index==2 ? [menuFrame,menuBolt,menuCursor] : [(index==0 ? rounded : flat).subtracting(menuBolt).subtracting(menuCursor)]
+    // At menu size, explicit optical boxes preserve whitespace around all
+    // three parts. Do not maximize glyph scale inside the cloud frame.
+    let menuShapes:[CGPath]
+    if index==2 {
+        let thinFrame=inset(opened,15),thinBounds=thinFrame.boundingBoxOfPath
+        var frameFit=CGAffineTransform(translationX:iconBounds.minX,y:iconBounds.minY)
+            .scaledBy(x:iconBounds.width/thinBounds.width,y:iconBounds.height/thinBounds.height)
+            .translatedBy(x:-thinBounds.minX,y:-thinBounds.minY)
+        let menuFrame=thinFrame.copy(using:&frameFit)!
+        let source=expand(bolt,3),sourceBounds=source.boundingBoxOfPath
+        var fit=CGAffineTransform(translationX:352,y:440)
+            .scaledBy(x:132/sourceBounds.width,y:160/sourceBounds.height)
+            .translatedBy(x:-sourceBounds.minX,y:-sourceBounds.minY)
+        let menuBolt=source.copy(using:&fit)!
+        let menuCursor=CGPath(roundedRect:CGRect(x:540,y:544,width:132,height:56),cornerWidth:28,cornerHeight:28,transform:nil)
+        // About 1.84 pixels of geometric separation on a 22-pixel template.
+        for (a,b) in [(menuFrame,menuBolt),(menuFrame,menuCursor),(menuBolt,menuCursor)] {
+            precondition(a.intersection(expand(b,75)).isEmpty,"Menu glyph clearance fell below 75 source points")
+        }
+        menuShapes=[menuFrame,menuBolt,menuCursor]
+    } else {
+        var fit=CGAffineTransform(translationX:markBounds.midX,y:markBounds.midY-30)
+            .scaledBy(x:1.10,y:1.10).translatedBy(x:-markBounds.midX,y:-markBounds.midY)
+        let menuBolt=expand(bolt,7).copy(using:&fit)!
+        let menuCursor=expand(cursor,7).copy(using:&fit)!
+        menuShapes=[(index==0 ? rounded : flat).subtracting(menuBolt).subtracting(menuCursor)]
+    }
     let bounds=iconBounds
     let rep=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:1024,pixelsHigh:1024,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
     NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=NSGraphicsContext(bitmapImageRep:rep)

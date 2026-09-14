@@ -5,10 +5,10 @@ import Foundation
 // Regression check for the open-cloud template at real menu-bar raster sizes.
 // Include low-alpha antialias pixels: a 50% threshold alone can hide bridges.
 let source=NSImage(contentsOfFile:CommandLine.arguments[1])!
-for size in [22,44] {
+for size in [22,44] { for phaseX:CGFloat in [0,0.5] { for phaseY:CGFloat in [0,0.5] {
  let rep=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:size,pixelsHigh:size,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
  NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=NSGraphicsContext(bitmapImageRep:rep)
- source.draw(in:NSRect(x:0,y:0,width:size,height:size));NSGraphicsContext.restoreGraphicsState()
+ source.draw(in:NSRect(x:phaseX,y:phaseY,width:CGFloat(size),height:CGFloat(size)));NSGraphicsContext.restoreGraphicsState()
  for threshold:CGFloat in [0.25,0.5] {
   var seen=Set<Int>(),counts=[Int]()
   for y in 0..<size { for x in 0..<size {
@@ -23,10 +23,13 @@ for size in [22,44] {
    }
    counts.append(queue.count)
   }}
-  print(size,threshold,counts.sorted(by:>))
   if counts.count != 3 {
-   FileHandle.standardError.write(Data("Menu icon joins or fragments at \(size)px, alpha \(threshold): \(counts)\n".utf8))
+   FileHandle.standardError.write(Data("Menu icon joins or fragments at \(size)px, offset (\(phaseX), \(phaseY)), alpha \(threshold): \(counts)\n".utf8))
    exit(1)
   }
  }
 }
+
+}}
+
+print("Menu template: 16 raster separation checks passed")
