@@ -26,7 +26,7 @@ for size in [22,44] { for phaseX:CGFloat in [0,0.5] { for phaseY:CGFloat in [0,0
    }
    counts.append(queue.count)
   }}
-  let valid = holes ? counts.count==3 : (pixels ? counts.count>=2 && counts.count<=3 : counts.count==(cutout ? 1 : 3))
+  let valid = holes ? (pixels ? counts.count>=3 && counts.count<=8 : counts.count==3) : (pixels ? counts.count>=1 && counts.count<=4 : counts.count==(cutout ? 1 : 3))
   if !valid {
    FileHandle.standardError.write(Data("Menu icon joins or fragments at \(size)px, offset (\(phaseX), \(phaseY)), alpha \(threshold): \(counts)\n".utf8))
    exit(1)

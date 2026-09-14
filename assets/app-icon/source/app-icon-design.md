@@ -3,8 +3,9 @@
 The default is the pixel-dissolving cloud cutout Liquid Glass design
 (`01-mercury-cloud`). Both Dock and menu bar use this reference-led cloud with lightning
 and cursor cutouts. Dock adds 15 square layers on a shared grid, with dense overlays at the cloud
-edge and sparse pale pixels beyond it. The menu bar includes four attached tiles
-and two detached pixels; its cutouts have a small-size optical fit.
+edge and sparse pale pixels beyond it. The menu bar uses the same 15-cell grid as a solid system template; its cutouts
+have a small-size optical fit. Dedicated 22px and 44px representations avoid
+repeated downsampling of tiny pixels.
 `assets/app-icon/default-variant` selects the production icon. All three approved
 candidates remain in `assets/app-icon/liquid-glass` for comparison and editing.
 

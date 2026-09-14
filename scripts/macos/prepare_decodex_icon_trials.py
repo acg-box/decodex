@@ -45,6 +45,8 @@ def main():
         resources = app / "Contents/Resources"
         run(ROOT / "scripts/macos/compile_decodex_app_icon.sh", resources, source / "AppIcon.icon")
         shutil.copy2(source / "StatusBarIcon.png", resources / "StatusBarIcon.png")
+        for filename in ["StatusBarIcon-22.png", "StatusBarIcon-22@2x.png"]:
+            shutil.copy2(source / filename, resources / filename)
         info = app / "Contents/Info.plist"
         metadata = plistlib.loads(info.read_bytes())
         metadata["CFBundleIconName"] = "AppIcon"

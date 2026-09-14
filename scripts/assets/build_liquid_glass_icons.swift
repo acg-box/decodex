@@ -164,13 +164,12 @@ for (index,name) in names.enumerated() {
         }
         menuShapes=[menuFrame,menuBolt,menuCursor]
     } else if index==0 {
-        // Menu bar completes the cloud shoulder with attached pixels plus two readable detached tiles.
+        // Use the same 15 cells as Dock. Only paint and small-size glyph fit differ.
         let b=bolt.boundingBoxOfPath
         var fit=CGAffineTransform(translationX:330,y:460).scaledBy(x:145/b.width,y:190/b.height).translatedBy(x:-b.minX,y:-b.minY)
         let menuBolt=bolt.copy(using:&fit)!
         let menuCursor=CGPath(roundedRect:CGRect(x:530,y:570,width:140,height:80),cornerWidth:40,cornerHeight:40,transform:nil)
-        let attached=[CGRect(x:508,y:284,width:64,height:64),CGRect(x:572,y:348,width:64,height:64),CGRect(x:636,y:412,width:64,height:64),CGRect(x:700,y:476,width:64,height:64)].reduce(rounded) { $0.union(CGPath(rect:$1,transform:nil)) }
-        menuShapes=[attached.subtracting(menuBolt).subtracting(menuCursor),CGPath(rect:CGRect(x:660,y:284,width:56,height:56),transform:nil),CGPath(rect:CGRect(x:788,y:348,width:56,height:56),transform:nil)]
+        menuShapes=[pixels.reduce(rounded) { $0.union($1) }.subtracting(menuBolt).subtracting(menuCursor)]
 
     } else {
         var fit=CGAffineTransform(translationX:markBounds.midX,y:markBounds.midY)
@@ -189,6 +188,22 @@ for (index,name) in names.enumerated() {
     for shape in menuShapes {context.addPath(shape);context.fillPath()}
     NSGraphicsContext.restoreGraphicsState()
     try rep.representation(using:.png,properties:[:])!.write(to:directory.appendingPathComponent("StatusBarIcon.png"))
+    // Export menu-sized representations directly instead of resampling the
+    // 1024px image at runtime. No detached cell is omitted or repositioned.
+    for edge in [22,44] {
+        let small=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:edge,pixelsHigh:edge,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
+        NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=NSGraphicsContext(bitmapImageRep:small)
+        let c=NSGraphicsContext.current!.cgContext
+        let factor=CGFloat(edge)/1024,fitScale=scale*factor
+        c.saveGState();c.translateBy(x:CGFloat(edge)/2,y:CGFloat(edge)/2)
+        c.scaleBy(x:fitScale,y:-fitScale);c.translateBy(x:-bounds.midX,y:-bounds.midY)
+        c.setFillColor(NSColor.black.cgColor)
+        for shape in menuShapes { c.addPath(shape);c.fillPath() }
+        c.restoreGState()
+        NSGraphicsContext.restoreGraphicsState()
+        small.size=NSSize(width:22,height:22)
+        try small.representation(using:.png,properties:[:])!.write(to:directory.appendingPathComponent(edge==22 ? "StatusBarIcon-22.png" : "StatusBarIcon-22@2x.png"))
+    }
     print(name)
 }
 
