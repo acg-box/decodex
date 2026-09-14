@@ -19,7 +19,14 @@ geometry.
 The open cloud has a 72-point frame. Its right cap is aligned to the normal of the
 frame's circular arc, so the cap and frame meet tangentially. The lightning and
 cursor share a baseline. Within the open frame, both use an 86% scale and a
-12-point upward offset. This leaves about 54 source points below the cursor.
+12-point upward offset. This leaves about 54 source points below the cursor. The complete Dock mark is
+centered vertically from its outer bounds, so this internal correction does not
+move the whole icon upward.
+
+The menu bar uses a separate optical fit for its 22-point display size. Its glyphs
+use 108% scale with a 4-point weight expansion in the open frame, or 110% scale with
+a 7-point expansion in the filled clouds. A 30-point upward offset retains bottom
+space. This keeps the same shapes while improving small-size legibility.
 
 ## Native materials
 
@@ -37,7 +44,7 @@ will produce the same appearance.
 
 The open cloud frame is behind the lightning and cursor. This prevents the frame
 from refracting the glyphs into its lower edge. Menu-bar icons remain monochrome
-system templates and use the same geometry and spacing.
+system templates and share the base geometry with a size-specific optical fit.
 
 ## Build and review
 

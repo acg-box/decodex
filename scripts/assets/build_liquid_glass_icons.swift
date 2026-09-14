@@ -53,14 +53,16 @@ for (index,name) in names.enumerated() {
     let directory=output.appendingPathComponent(name)
     let assets=directory.appendingPathComponent("AppIcon.icon/Assets")
     try FileManager.default.createDirectory(at:assets,withIntermediateDirectories:true)
-    // Equal optical baselines, then fit the open mark into its inner frame.
-    // Both surfaces use this transform; the bottom gap is about 54 source points.
+    // Dock optical fit: equal baselines and about 54 points of bottom space.
     let markBounds=bolt.boundingBoxOfPath.union(cursor.boundingBoxOfPath)
     var markTransform=CGAffineTransform(translationX:markBounds.midX,y:markBounds.midY-12)
         .scaledBy(x:0.86,y:0.86).translatedBy(x:-markBounds.midX,y:-markBounds.midY)
     let insetBolt=bolt.copy(using:&markTransform)!
     let insetCursor=cursor.copy(using:&markTransform)!
     let shapes:[CGPath]=index==2 ? [opened,insetBolt,insetCursor] : [(index==0 ? rounded : flat).subtracting(bolt).subtracting(cursor)]
+    let iconBounds=(index==0 ? rounded : flat).boundingBoxOfPath
+    let dockOffsetX=(512-iconBounds.midX)*0.95
+    let dockOffsetY=(512-iconBounds.midY)*0.95
     var groups=[[String:Any]]()
     for (i,shape) in shapes.enumerated() {
         let layerName=index==2 ? ["Cloud frame","Lightning","Cursor"][i] : "Cloud with inset mark"
@@ -68,7 +70,7 @@ for (index,name) in names.enumerated() {
         try svg(shape).write(to:assets.appendingPathComponent(filename),atomically:true,encoding:.utf8)
         let layer:[String:Any]=[
             "name":layerName,"image-name":filename,
-            "position":["scale":0.95,"translation-in-points":[index==0 ? -6.5 : 0,-12]],
+            "position":["scale":0.95,"translation-in-points":[dockOffsetX,dockOffsetY]],
             "fill-specializations":[
                 specialization(nil,color("extended-srgb:0.76,0.84,0.92,1.0")),
                 specialization("dark",color("extended-srgb:0.48,0.57,0.67,0.88")),
@@ -101,14 +103,23 @@ for (index,name) in names.enumerated() {
         ],"groups":groups,"supported-platforms":["squares":["macOS"]]
     ]
     try JSONSerialization.data(withJSONObject:config,options:[.prettyPrinted,.sortedKeys]).write(to:directory.appendingPathComponent("AppIcon.icon/icon.json"))
-    let bounds=(index==0 ? rounded : flat).boundingBoxOfPath
+    // The 22-point menu-bar template needs larger, heavier glyphs than Dock.
+    // Keep the same base paths; apply optical compensation only at this surface.
+    let menuGlyphScale:CGFloat=index==2 ? 1.08 : 1.10
+    let menuWeight:CGFloat=index==2 ? 4 : 7
+    var menuTransform=CGAffineTransform(translationX:markBounds.midX,y:markBounds.midY-30)
+        .scaledBy(x:menuGlyphScale,y:menuGlyphScale).translatedBy(x:-markBounds.midX,y:-markBounds.midY)
+    let menuBolt=expand(bolt,menuWeight).copy(using:&menuTransform)!
+    let menuCursor=expand(cursor,menuWeight).copy(using:&menuTransform)!
+    let menuShapes:[CGPath]=index==2 ? [opened,menuBolt,menuCursor] : [(index==0 ? rounded : flat).subtracting(menuBolt).subtracting(menuCursor)]
+    let bounds=iconBounds
     let rep=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:1024,pixelsHigh:1024,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
     NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=NSGraphicsContext(bitmapImageRep:rep)
     let context=NSGraphicsContext.current!.cgContext
     let scale=850/max(bounds.width,bounds.height)
     context.translateBy(x:512,y:512);context.scaleBy(x:scale,y:-scale);context.translateBy(x:-bounds.midX,y:-bounds.midY)
     context.setFillColor(NSColor.black.cgColor)
-    for shape in shapes {context.addPath(shape);context.fillPath()}
+    for shape in menuShapes {context.addPath(shape);context.fillPath()}
     NSGraphicsContext.restoreGraphicsState()
     try rep.representation(using:.png,properties:[:])!.write(to:directory.appendingPathComponent("StatusBarIcon.png"))
     print(name)

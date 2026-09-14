@@ -7,8 +7,10 @@ candidates remain in `assets/app-icon/liquid-glass` for comparison and editing.
 The shared geometry and material source is
 `scripts/assets/build_liquid_glass_icons.swift`. It generates clean SVG layers and
 matching menu-bar templates. The cloud frame is behind the lightning and cursor.
-The glyphs share an optical baseline; the open-cloud glyph group is reduced to 86%
-and shifted up 12 source points to preserve bottom spacing.
+The Dock glyphs share an optical baseline; the open-cloud glyph group is reduced
+to 86% and shifted up 12 source points within its frame. The complete mark is
+centered from its outer bounds. The menu bar has a separate, heavier optical fit
+for its 22-point display size.
 
 Run `swift scripts/assets/render_decodex_app_icons.swift` from the repository root
 to refresh the default previews, static compatibility export, and menu-bar template.
