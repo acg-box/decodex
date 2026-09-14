@@ -137,7 +137,7 @@ for (index,name) in names.enumerated() {
     let config:[String:Any]=[
         "features":["refractivity","specular-location"],
         "fill-specializations":[
-            specialization(nil,color("extended-srgb:0.06,0.14,0.24,1.0")),
+            specialization(nil,index==0 ? ["solid":"extended-srgb:1.0,1.0,1.0,1.0"] : color("extended-srgb:0.06,0.14,0.24,1.0")),
             specialization("dark",color("extended-srgb:0.025,0.05,0.09,1.0")),
             specialization("tinted",color("extended-srgb:0.12,0.12,0.12,1.0"))
         ],"groups":groups,"supported-platforms":["squares":["macOS"]]

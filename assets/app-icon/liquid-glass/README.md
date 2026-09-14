@@ -88,3 +88,8 @@ swift scripts/assets/render_liquid_glass_appearance.swift /path/Decodex.app /pat
 Inspect both a 1024-pixel render and Dock-size previews. Check the right cap,
 inside glyph corners, bottom spacing, and contrast. Review images belong outside
 `AppIcon.icon`; do not ship them as artwork layers.
+
+The default full-color appearance uses a solid white background and a cyan-blue
+cloud, with pixels fading toward pale blue. Native glass adds its own subtle
+lighting to the white surface. Dark, Clear, and Tinted annotations are separate;
+this does not change the menu-bar template or the user's global appearance.

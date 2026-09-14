@@ -6,7 +6,7 @@
   "fill-specializations" : [
     {
       "value" : {
-        "automatic-gradient" : "extended-srgb:0.06,0.14,0.24,1.0"
+        "solid" : "extended-srgb:1.0,1.0,1.0,1.0"
       }
     },
     {

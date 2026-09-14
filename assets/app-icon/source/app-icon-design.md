@@ -25,3 +25,8 @@ Default, Dark, and Mono. The ICNS is a fallback, not the source of Liquid Glass.
 
 See `../liquid-glass/README.md` for material settings, trial packaging, and system
 appearance review. `../approved` contains the selected visual references only.
+
+The default full-color appearance uses a solid white background and a cyan-blue
+cloud, with pixels fading toward pale blue. Native glass adds its own subtle
+lighting to the white surface. Dark, Clear, and Tinted annotations are separate;
+this does not change the menu-bar template or the user's global appearance.
