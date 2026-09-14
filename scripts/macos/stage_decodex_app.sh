@@ -52,7 +52,7 @@ cp "$ROOT/target/release/decodex-gpui" "$MACOS/decodex-gpui"
 cp "$ROOT/target/release/decodex" "$HELPERS/decodex"
 cp "$ROOT/target/release/$NATIVE_CLIENT_LIBRARY" "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY"
 cp "$SWIFT_BIN/$MENU_BAR_LIBRARY" "$FRAMEWORKS/$MENU_BAR_LIBRARY"
-cp "$ROOT/assets/app-icon/generated/app-icon.icns" "$RESOURCES/AppIcon.icns"
+"$ROOT/scripts/macos/compile_decodex_app_icon.sh" "$RESOURCES"
 cp "$ROOT/assets/tray-icon/generated/tray-icon-template.png" "$RESOURCES/StatusBarIcon.png"
 chmod 755 \
 	"$MACOS/decodex-gpui" \
@@ -90,6 +90,7 @@ test "$(plutil -extract CFBundleExecutable raw "$CONTENTS/Info.plist")" = decode
 test "$(plutil -extract CFBundleName raw "$CONTENTS/Info.plist")" = Decodex
 test "$(plutil -extract CFBundleDisplayName raw "$CONTENTS/Info.plist")" = Decodex
 test -f "$RESOURCES/AppIcon.icns"
+test -s "$RESOURCES/Assets.car"
 test -f "$RESOURCES/StatusBarIcon.png"
 test ! -e "$CONTENTS/Library/LoginItems"
 test -x "$HELPERS/decodex"
