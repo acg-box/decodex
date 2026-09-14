@@ -478,19 +478,33 @@
       ],
       "name" : "Dispersing pixels",
       "refractivity" : {
-        "depth" : 0.059999999999999998,
+        "depth" : 0.16,
         "enabled" : true,
-        "strength" : 0.040000000000000001
+        "strength" : 0.10000000000000001
       },
       "shadow-specializations" : [
         {
           "value" : {
             "kind" : "neutral",
-            "opacity" : 0
+            "opacity" : 0.22
+          }
+        },
+        {
+          "appearance" : "dark",
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.29999999999999999
+          }
+        },
+        {
+          "appearance" : "tinted",
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.26000000000000001
           }
         }
       ],
-      "specular" : false,
+      "specular" : "inside",
       "translucency-specializations" : [
         {
           "value" : {

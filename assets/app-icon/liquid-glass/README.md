@@ -17,8 +17,10 @@ The default cloud follows `../approved/pixel-cloud-reference.png`: a rounded
 left mass, a clean base, and a 64-point grid. Fifteen squares overlap the shoulder
 and disperse outward. Each has a different fill based on its position in the
 transition. Default fades from cyan to pale blue; Dark and Mono have matching
-material-specific variations. Squares share one material group without individual
-cast shadows, so the transition stays continuous. The menu template uses the same 15 cells without omitting or moving any. Cells
+material-specific variations. Squares share one material group but retain individual layer effects: inside
+specular highlights, 16% refraction depth, 10% refraction strength, and neutral
+shadows at 22% (Default), 30% (Dark), and 26% (Mono). These native effects give the
+pixels thin edges and depth while retaining the per-cell color progression. The menu template uses the same 15 cells without omitting or moving any. Cells
 that touch the cloud merge naturally in monochrome. Dedicated 22px and 44px
 representations are loaded by the app; no light-gray material is baked into them.
 Pixel-grid gaps can form extra background components, which the raster check

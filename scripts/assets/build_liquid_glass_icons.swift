@@ -126,9 +126,13 @@ for (index,name) in names.enumerated() {
     if index==0 {
         var pixelGroup=groups[1]
         pixelGroup["name"]="Dispersing pixels"
-        pixelGroup["specular"]=false
-        pixelGroup["refractivity"]=["enabled":true,"depth":0.06,"strength":0.04]
-        pixelGroup["shadow-specializations"]=[specialization(nil,["kind":"neutral","opacity":0.0])]
+        pixelGroup["specular"]="inside"
+        pixelGroup["refractivity"]=["enabled":true,"depth":0.16,"strength":0.10]
+        pixelGroup["shadow-specializations"]=[
+            specialization(nil,["kind":"neutral","opacity":0.22]),
+            specialization("dark",["kind":"neutral","opacity":0.30]),
+            specialization("tinted",["kind":"neutral","opacity":0.26])
+        ]
 
         pixelGroup["layers"]=groups.dropFirst().flatMap { $0["layers"] as! [[String:Any]] }
         groups=[pixelGroup,groups[0]]
