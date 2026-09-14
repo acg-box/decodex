@@ -71,6 +71,19 @@ enum AppAssets {
 			?? NSImage(named: "StatusBarIcon")
 			?? NSImage(systemSymbolName: "person.2.circle", accessibilityDescription: "Decodex")
 			?? NSImage()
+        // Prefer device-sized templates so small detached pixels stay opaque.
+        let representations = ["StatusBarIcon-22", "StatusBarIcon-22@2x"].compactMap { name in
+            Bundle.main.url(forResource: name, withExtension: "png")
+                .flatMap { try? Data(contentsOf: $0) }
+                .flatMap(NSBitmapImageRep.init(data:))
+        }
+        if representations.count == 2 {
+            for representation in image.representations { image.removeRepresentation(representation) }
+            for representation in representations {
+                representation.size = NSSize(width: 22, height: 22)
+                image.addRepresentation(representation)
+            }
+        }
 		image.isTemplate = true
 		image.size = NSSize(width: 22, height: 22)
 		return image

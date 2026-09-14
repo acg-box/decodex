@@ -53,7 +53,12 @@ cp "$ROOT/target/release/decodex" "$HELPERS/decodex"
 cp "$ROOT/target/release/$NATIVE_CLIENT_LIBRARY" "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY"
 cp "$SWIFT_BIN/$MENU_BAR_LIBRARY" "$FRAMEWORKS/$MENU_BAR_LIBRARY"
 "$ROOT/scripts/macos/compile_decodex_app_icon.sh" "$RESOURCES"
-cp "$ROOT/assets/tray-icon/generated/tray-icon-template.png" "$RESOURCES/StatusBarIcon.png"
+ICON_VARIANT=$(cat "$ROOT/assets/app-icon/default-variant")
+cp "$ROOT/assets/app-icon/liquid-glass/$ICON_VARIANT/StatusBarIcon.png" "$RESOURCES/StatusBarIcon.png"
+cp "$ROOT/assets/app-icon/liquid-glass/$ICON_VARIANT/StatusBarIcon-22.png" "$RESOURCES/StatusBarIcon-22.png"
+cp "$ROOT/assets/app-icon/liquid-glass/$ICON_VARIANT/StatusBarIcon-22@2x.png" "$RESOURCES/StatusBarIcon-22@2x.png"
+plutil -insert DecodexIconVariant -string "$ICON_VARIANT" "$CONTENTS/Info.plist"
+plutil -insert DecodexIconBuildKind -string native-liquid-glass "$CONTENTS/Info.plist"
 chmod 755 \
 	"$MACOS/decodex-gpui" \
 	"$HELPERS/decodex" \
