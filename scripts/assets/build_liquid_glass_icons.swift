@@ -14,8 +14,9 @@ func closeCorners(_ shape:CGPath,_ radius:CGFloat)->CGPath { inset(expand(shape,
 let round=circle(463,404,159)
     .union(circle(300,539,148))
     .union(circle(675,480,180))
-    // One broad elliptical belly replaces three small lower scallops.
-    .union(CGPath(ellipseIn:CGRect(x:188,y:405,width:650,height:342),transform:nil))
+    .union(circle(408,590,150))
+    .union(circle(675,610,145))
+    .union(circle(520,615,120))
 let capsule=CGPath(roundedRect:CGRect(x:140,y:362,width:744,height:374),cornerWidth:172,cornerHeight:172,transform:nil)
 let flat=closeCorners(capsule.union(circle(512,385,174)),16)
 let rounded=closeCorners(round,24)
