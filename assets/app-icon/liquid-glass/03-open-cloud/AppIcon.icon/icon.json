@@ -1,0 +1,287 @@
+{
+  "features" : [
+    "refractivity",
+    "specular-location"
+  ],
+  "fill-specializations" : [
+    {
+      "value" : {
+        "automatic-gradient" : "extended-srgb:0.06,0.14,0.24,1.0"
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "automatic-gradient" : "extended-srgb:0.025,0.05,0.09,1.0"
+      }
+    },
+    {
+      "appearance" : "tinted",
+      "value" : {
+        "automatic-gradient" : "extended-srgb:0.12,0.12,0.12,1.0"
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "automatic-gradient" : "extended-srgb:0.76,0.84,0.92,1.0"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "automatic-gradient" : "extended-srgb:0.48,0.57,0.67,0.88"
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "automatic-gradient" : "extended-srgb:0.66,0.66,0.66,0.68"
+              }
+            }
+          ],
+          "image-name" : "shape-2.svg",
+          "name" : "Cursor",
+          "position" : {
+            "scale" : 0.94999999999999996,
+            "translation-in-points" : [
+              0,
+              -12
+            ]
+          }
+        }
+      ],
+      "name" : "Cursor",
+      "refractivity" : {
+        "depth" : 0.14000000000000001,
+        "enabled" : true,
+        "strength" : 0.10000000000000001
+      },
+      "shadow-specializations" : [
+        {
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.28000000000000003
+          }
+        },
+        {
+          "appearance" : "dark",
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.40000000000000002
+          }
+        },
+        {
+          "appearance" : "tinted",
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.35999999999999999
+          }
+        }
+      ],
+      "specular" : "inside",
+      "translucency-specializations" : [
+        {
+          "value" : {
+            "enabled" : true,
+            "value" : 0.25
+          }
+        },
+        {
+          "appearance" : "dark",
+          "value" : {
+            "enabled" : true,
+            "value" : 0.40000000000000002
+          }
+        },
+        {
+          "appearance" : "tinted",
+          "value" : {
+            "enabled" : true,
+            "value" : 0.59999999999999998
+          }
+        }
+      ]
+    },
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "automatic-gradient" : "extended-srgb:0.76,0.84,0.92,1.0"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "automatic-gradient" : "extended-srgb:0.48,0.57,0.67,0.88"
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "automatic-gradient" : "extended-srgb:0.66,0.66,0.66,0.68"
+              }
+            }
+          ],
+          "image-name" : "shape-1.svg",
+          "name" : "Lightning",
+          "position" : {
+            "scale" : 0.94999999999999996,
+            "translation-in-points" : [
+              0,
+              -12
+            ]
+          }
+        }
+      ],
+      "name" : "Lightning",
+      "refractivity" : {
+        "depth" : 0.14000000000000001,
+        "enabled" : true,
+        "strength" : 0.10000000000000001
+      },
+      "shadow-specializations" : [
+        {
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.28000000000000003
+          }
+        },
+        {
+          "appearance" : "dark",
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.40000000000000002
+          }
+        },
+        {
+          "appearance" : "tinted",
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.35999999999999999
+          }
+        }
+      ],
+      "specular" : "inside",
+      "translucency-specializations" : [
+        {
+          "value" : {
+            "enabled" : true,
+            "value" : 0.25
+          }
+        },
+        {
+          "appearance" : "dark",
+          "value" : {
+            "enabled" : true,
+            "value" : 0.40000000000000002
+          }
+        },
+        {
+          "appearance" : "tinted",
+          "value" : {
+            "enabled" : true,
+            "value" : 0.59999999999999998
+          }
+        }
+      ]
+    },
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "automatic-gradient" : "extended-srgb:0.76,0.84,0.92,1.0"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "automatic-gradient" : "extended-srgb:0.48,0.57,0.67,0.88"
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "automatic-gradient" : "extended-srgb:0.66,0.66,0.66,0.68"
+              }
+            }
+          ],
+          "image-name" : "shape-0.svg",
+          "name" : "Cloud frame",
+          "position" : {
+            "scale" : 0.94999999999999996,
+            "translation-in-points" : [
+              0,
+              -12
+            ]
+          }
+        }
+      ],
+      "name" : "Cloud frame",
+      "refractivity" : {
+        "depth" : 0.14000000000000001,
+        "enabled" : true,
+        "strength" : 0.10000000000000001
+      },
+      "shadow-specializations" : [
+        {
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.28000000000000003
+          }
+        },
+        {
+          "appearance" : "dark",
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.40000000000000002
+          }
+        },
+        {
+          "appearance" : "tinted",
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.35999999999999999
+          }
+        }
+      ],
+      "specular" : "inside",
+      "translucency-specializations" : [
+        {
+          "value" : {
+            "enabled" : true,
+            "value" : 0.25
+          }
+        },
+        {
+          "appearance" : "dark",
+          "value" : {
+            "enabled" : true,
+            "value" : 0.40000000000000002
+          }
+        },
+        {
+          "appearance" : "tinted",
+          "value" : {
+            "enabled" : true,
+            "value" : 0.59999999999999998
+          }
+        }
+      ]
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}
