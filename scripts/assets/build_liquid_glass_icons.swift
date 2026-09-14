@@ -143,8 +143,10 @@ for (index,name) in names.enumerated() {
     print(name)
 }
 
-let legibility=Process()
-legibility.executableURL=URL(fileURLWithPath:"/usr/bin/env")
-legibility.arguments=["swift",root.appendingPathComponent("scripts/assets/check_menu_icon_legibility.swift").path,output.appendingPathComponent("03-open-cloud/StatusBarIcon.png").path]
-try legibility.run();legibility.waitUntilExit()
-if legibility.terminationStatus != 0 { exit(legibility.terminationStatus) }
+for (index,name) in names.enumerated() {
+    let legibility=Process()
+    legibility.executableURL=URL(fileURLWithPath:"/usr/bin/env")
+    legibility.arguments=["swift",root.appendingPathComponent("scripts/assets/check_menu_icon_legibility.swift").path,output.appendingPathComponent("\(name)/StatusBarIcon.png").path] + (index<2 ? ["--cutout"] : [])
+    try legibility.run();legibility.waitUntilExit()
+    if legibility.terminationStatus != 0 { exit(legibility.terminationStatus) }
+}

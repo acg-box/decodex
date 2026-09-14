@@ -55,7 +55,7 @@ def main():
         # IconServices may retain an old layered rendition when a replacement
         # app reuses the same bundle id and build number. Give each icon revision
         # a distinct trial build without changing the core app version.
-        metadata["CFBundleVersion"] = f"3.{VARIANTS.index(slug) + 1}.{1000 + int(revision[:8], 16) % 9000}"
+        metadata["CFBundleVersion"] = f"4.{VARIANTS.index(slug) + 1}.{1000 + int(revision[:8], 16) % 9000}"
         info.write_bytes(plistlib.dumps(metadata))
         run("codesign", "--force", "--options", "runtime", "--timestamp=none", "--sign", IDENTITY, app)
         run("codesign", "--verify", "--deep", "--strict", app)

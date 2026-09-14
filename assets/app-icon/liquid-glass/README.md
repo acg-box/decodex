@@ -1,7 +1,8 @@
 # Native Liquid Glass icon trials
 
-The production default is `03-open-cloud`, selected by `../default-variant`.
-All three variants are retained. These three variants use native Icon Composer materials. The SVG layers contain
+The production default is `02-flat-cloud`, selected by `../default-variant`.
+Dock and menu bar both use the filled flat cloud with lightning and cursor
+cutouts. All three variants are retained for reference. These three variants use native Icon Composer materials. The SVG layers contain
 white geometry only. They do not contain rendered lighting, texture, or a complete
 flattened icon image.
 
@@ -32,7 +33,8 @@ pair of visible parts. The filled-cloud templates retain their own optical fit.
 `check_menu_icon_legibility.swift` verifies the exported open-cloud PNG at 22 and
 44 pixels, with both integer and half-pixel placement on each axis, at 25% and 50%
 alpha thresholds. All 16 cases must retain three separate connected components.
-The generator runs this check automatically. Dock geometry is unaffected.
+Filled-cloud templates are also checked for one foreground shape and two
+independent cutout holes. The generator runs these checks automatically.
 
 ## Native materials
 
