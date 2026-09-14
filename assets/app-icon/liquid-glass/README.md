@@ -1,7 +1,7 @@
 # Native Liquid Glass icon trials
 
-The production default is `02-flat-cloud`, selected by `../default-variant`.
-Dock and menu bar both use the filled flat cloud with lightning and cursor
+The production default is `01-mercury-cloud`, selected by `../default-variant`.
+Dock and menu bar both use the asymmetric rounded cloud with lightning and cursor
 cutouts. All three variants are retained for reference. These three variants use native Icon Composer materials. The SVG layers contain
 white geometry only. They do not contain rendered lighting, texture, or a complete
 flattened icon image.
@@ -13,8 +13,10 @@ circles, rounded rectangles, and vector boolean operations. It generates editabl
 SVG source and the matching menu-bar templates. Do not trace photographic
 highlights into the outline.
 
-The rounded cloud has an offset main peak and unequal shoulder sizes. This avoids
-a rocket-like symmetric silhouette. The flat and open variants keep balanced
+The rounded cloud has a lower, left-offset main peak, a larger raised right
+shoulder, and a curved lower outline. This avoids a rocket-like symmetric
+silhouette. Filled-cloud menu glyphs keep the same center as their Dock glyphs;
+there is no separate upward shift. The flat and open variants keep balanced
 geometry.
 
 The open cloud has a 72-point frame. Its right cap is aligned to the normal of the

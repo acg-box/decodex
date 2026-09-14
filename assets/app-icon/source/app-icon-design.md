@@ -1,7 +1,8 @@
 # Decodex App Icon
 
-The default is the flat-cloud cutout Liquid Glass design (`02-flat-cloud`).
-Both Dock and menu bar use a filled cloud with lightning and cursor cutouts.
+The default is the asymmetric rounded-cloud cutout Liquid Glass design
+(`01-mercury-cloud`). Both Dock and menu bar use this non-flat cloud with lightning
+and cursor cutouts. The glyph group has the same relative center on both surfaces.
 `assets/app-icon/default-variant` selects the production icon. All three approved
 candidates remain in `assets/app-icon/liquid-glass` for comparison and editing.
 

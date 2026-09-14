@@ -11,10 +11,15 @@ func inset(_ shape:CGPath,_ amount:CGFloat)->CGPath { frame.subtracting(expand(f
 func closeCorners(_ shape:CGPath,_ radius:CGFloat)->CGPath { inset(expand(shape,radius),radius).normalized() }
 // Offset peak and unequal shoulders make the rounded variant read as a cloud,
 // not a symmetric rocket. The open and flat variants keep their own geometry.
-let round=circle(485,382,174).union(circle(312,532,155)).union(circle(710,517,170)).union(circle(403,610,133)).union(circle(598,602,141))
+let round=circle(463,404,159)
+    .union(circle(300,539,148))
+    .union(circle(675,480,180))
+    .union(circle(408,590,150))
+    .union(circle(675,610,145))
+    .union(circle(520,615,120))
 let capsule=CGPath(roundedRect:CGRect(x:140,y:362,width:744,height:374),cornerWidth:172,cornerHeight:172,transform:nil)
 let flat=closeCorners(capsule.union(circle(512,385,174)),16)
-let rounded=closeCorners(round,16)
+let rounded=closeCorners(round,24)
 let ring=flat.subtracting(inset(flat,72))
 let endX:CGFloat=712+136*cos(.pi/6),endY:CGFloat=564+136*sin(.pi/6)
 let cut=CGMutablePath()
@@ -124,7 +129,7 @@ for (index,name) in names.enumerated() {
         }
         menuShapes=[menuFrame,menuBolt,menuCursor]
     } else {
-        var fit=CGAffineTransform(translationX:markBounds.midX,y:markBounds.midY-30)
+        var fit=CGAffineTransform(translationX:markBounds.midX,y:markBounds.midY)
             .scaledBy(x:1.10,y:1.10).translatedBy(x:-markBounds.midX,y:-markBounds.midY)
         let menuBolt=expand(bolt,7).copy(using:&fit)!
         let menuCursor=expand(cursor,7).copy(using:&fit)!
