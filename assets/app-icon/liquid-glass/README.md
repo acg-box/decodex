@@ -14,10 +14,13 @@ SVG source and the matching menu-bar templates. Do not trace photographic
 highlights into the outline.
 
 The default cloud follows `../approved/pixel-cloud-reference.png`: a rounded
-left mass, a clean base, and a 64-point stepped shoulder. Six detached square
-layers share one native material group to stay within Icon Composer's group limit.
-Default uses cyan; Dark and Mono use their own material fills. Menu-bar output
-omits detached pixels and retains the stepped silhouette with two cutouts.
+left mass, a clean base, and a 64-point grid. Fifteen squares overlap the shoulder
+and disperse outward. Each has a different fill based on its position in the
+transition. Default fades from cyan to pale blue; Dark and Mono have matching
+material-specific variations. Squares share one material group without individual
+cast shadows, so the transition stays continuous. The menu template includes four
+attached squares and two detached pixels. Its raster check verifies that both
+cutout holes remain independent and at least one detached pixel stays visible.
 
 The open cloud has a 72-point frame. Its right cap is aligned to the normal of the
 frame's circular arc, so the cap and frame meet tangentially. The lightning and

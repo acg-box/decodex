@@ -25,7 +25,17 @@ cloudBody.addLine(to:CGPoint(x:572,y:412));cloudBody.addLine(to:CGPoint(x:572,y:
 cloudBody.addLine(to:CGPoint(x:508,y:348));cloudBody.addLine(to:CGPoint(x:508,y:284))
 cloudBody.closeSubpath()
 let round=cloudBody as CGPath
-let pixels:[CGPath]=[CGRect(x:520,y:284,width:52,height:52),CGRect(x:584,y:348,width:52,height:52),CGRect(x:648,y:412,width:52,height:52),CGRect(x:712,y:476,width:52,height:52),CGRect(x:648,y:284,width:52,height:52),CGRect(x:776,y:348,width:52,height:52)].map {CGPath(rect:$0,transform:nil)}
+// Dense attached tiles turn into sparse, pale detached pixels on one grid.
+// Overlays on the cloud keep the transition continuous rather than cut away.
+let pixelCells:[(Int,Int,Double)]=[
+    (0,0,0.18),(1,0,0.43),(3,0,0.82),(6,0,0.90),
+    (0,1,0.10),(1,1,0.25),(2,1,0.55),(4,1,0.69),
+    (1,2,0.12),(2,2,0.32),(3,2,0.62),(5,2,0.84),
+    (2,3,0.14),(3,3,0.38),(4,3,0.57)]
+let pixels:[CGPath]=pixelCells.map {col,row,_ in
+    CGPath(rect:CGRect(x:444+col*64,y:284+row*64,width:64,height:64),transform:nil)
+}
+
 let capsule=CGPath(roundedRect:CGRect(x:140,y:362,width:744,height:374),cornerWidth:172,cornerHeight:172,transform:nil)
 let flat=closeCorners(capsule.union(circle(512,385,174)),16)
 let rounded=round
@@ -84,13 +94,17 @@ for (index,name) in names.enumerated() {
         let layerName=index==0 ? (i==0 ? "Cloud with cutouts" : "Pixel \(i)") : index==2 ? ["Cloud frame","Lightning","Cursor"][i] : "Cloud with inset mark"
         let filename="shape-\(i).svg"
         try svg(shape).write(to:assets.appendingPathComponent(filename),atomically:true,encoding:.utf8)
+        let fade=index==0 && i>0 ? pixelCells[i-1].2 : 0
+        let lightFill=index==0 ? String(format:"extended-srgb:%.3f,%.3f,%.3f,1.0",fade*0.78,0.64+fade*0.32,0.86+fade*0.13) : "extended-srgb:0.76,0.84,0.92,1.0"
+        let darkFill=index==0 ? String(format:"extended-srgb:%.3f,%.3f,%.3f,0.9",0.08+fade*0.45,0.40+fade*0.43,0.62+fade*0.35) : "extended-srgb:0.48,0.57,0.67,0.88"
+        let monoFill=index==0 ? String(format:"extended-srgb:%.3f,%.3f,%.3f,0.68",0.60+fade*0.32,0.60+fade*0.32,0.60+fade*0.32) : "extended-srgb:0.66,0.66,0.66,0.68"
         let layer:[String:Any]=[
             "name":layerName,"image-name":filename,
             "position":["scale":0.95,"translation-in-points":[dockOffsetX,dockOffsetY]],
             "fill-specializations":[
-                specialization(nil,color(index==0 ? "extended-srgb:0.00,0.65,0.86,1.0" : "extended-srgb:0.76,0.84,0.92,1.0")),
-                specialization("dark",color("extended-srgb:0.48,0.57,0.67,0.88")),
-                specialization("tinted",color("extended-srgb:0.66,0.66,0.66,0.68"))
+                specialization(nil,color(lightFill)),
+                specialization("dark",color(darkFill)),
+                specialization("tinted",color(monoFill))
             ]
         ]
         let depth:Double=index==0 ? 0.22 : (index==2 ? 0.14 : 0.18)
@@ -112,6 +126,10 @@ for (index,name) in names.enumerated() {
     if index==0 {
         var pixelGroup=groups[1]
         pixelGroup["name"]="Dispersing pixels"
+        pixelGroup["specular"]=false
+        pixelGroup["refractivity"]=["enabled":true,"depth":0.06,"strength":0.04]
+        pixelGroup["shadow-specializations"]=[specialization(nil,["kind":"neutral","opacity":0.0])]
+
         pixelGroup["layers"]=groups.dropFirst().flatMap { $0["layers"] as! [[String:Any]] }
         groups=[pixelGroup,groups[0]]
     }
@@ -146,12 +164,13 @@ for (index,name) in names.enumerated() {
         }
         menuShapes=[menuFrame,menuBolt,menuCursor]
     } else if index==0 {
-        // Menu bar omits detached pixels; the stepped shoulder carries the motif.
+        // Menu bar completes the cloud shoulder with attached pixels plus two readable detached tiles.
         let b=bolt.boundingBoxOfPath
         var fit=CGAffineTransform(translationX:330,y:460).scaledBy(x:145/b.width,y:190/b.height).translatedBy(x:-b.minX,y:-b.minY)
         let menuBolt=bolt.copy(using:&fit)!
         let menuCursor=CGPath(roundedRect:CGRect(x:530,y:570,width:140,height:80),cornerWidth:40,cornerHeight:40,transform:nil)
-        menuShapes=[rounded.subtracting(menuBolt).subtracting(menuCursor)]
+        let attached=[CGRect(x:508,y:284,width:64,height:64),CGRect(x:572,y:348,width:64,height:64),CGRect(x:636,y:412,width:64,height:64),CGRect(x:700,y:476,width:64,height:64)].reduce(rounded) { $0.union(CGPath(rect:$1,transform:nil)) }
+        menuShapes=[attached.subtracting(menuBolt).subtracting(menuCursor),CGPath(rect:CGRect(x:660,y:284,width:56,height:56),transform:nil),CGPath(rect:CGRect(x:788,y:348,width:56,height:56),transform:nil)]
 
     } else {
         var fit=CGAffineTransform(translationX:markBounds.midX,y:markBounds.midY)
@@ -176,7 +195,7 @@ for (index,name) in names.enumerated() {
 for (index,name) in names.enumerated() {
     let legibility=Process()
     legibility.executableURL=URL(fileURLWithPath:"/usr/bin/env")
-    legibility.arguments=["swift",root.appendingPathComponent("scripts/assets/check_menu_icon_legibility.swift").path,output.appendingPathComponent("\(name)/StatusBarIcon.png").path] + (index<2 ? ["--cutout"] : [])
+    legibility.arguments=["swift",root.appendingPathComponent("scripts/assets/check_menu_icon_legibility.swift").path,output.appendingPathComponent("\(name)/StatusBarIcon.png").path] + (index==0 ? ["--cutout","--pixels"] : (index==1 ? ["--cutout"] : []))
     try legibility.run();legibility.waitUntilExit()
     if legibility.terminationStatus != 0 { exit(legibility.terminationStatus) }
 }

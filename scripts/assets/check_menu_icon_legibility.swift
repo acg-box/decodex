@@ -5,6 +5,7 @@ import Foundation
 // Regression checks at real menu-bar raster sizes. Cutout mode checks one
 // foreground cloud plus background and two independent transparent holes.
 // Include low-alpha antialias pixels: a 50% threshold alone can hide bridges.
+let pixels=CommandLine.arguments.contains("--pixels")
 let cutout=CommandLine.arguments.contains("--cutout")
 let source=NSImage(contentsOfFile:CommandLine.arguments[1])!
 for size in [22,44] { for phaseX:CGFloat in [0,0.5] { for phaseY:CGFloat in [0,0.5] {
@@ -25,7 +26,8 @@ for size in [22,44] { for phaseX:CGFloat in [0,0.5] { for phaseY:CGFloat in [0,0
    }
    counts.append(queue.count)
   }}
-  if counts.count != (holes ? 3 : (cutout ? 1 : 3)) {
+  let valid = holes ? counts.count==3 : (pixels ? counts.count>=2 && counts.count<=3 : counts.count==(cutout ? 1 : 3))
+  if !valid {
    FileHandle.standardError.write(Data("Menu icon joins or fragments at \(size)px, offset (\(phaseX), \(phaseY)), alpha \(threshold): \(counts)\n".utf8))
    exit(1)
   }
