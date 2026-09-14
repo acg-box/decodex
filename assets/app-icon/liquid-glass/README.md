@@ -13,11 +13,12 @@ circles, rounded rectangles, and vector boolean operations. It generates editabl
 SVG source and the matching menu-bar templates. Do not trace photographic
 highlights into the outline.
 
-The rounded cloud has a lower, left-offset main peak, a larger raised right
-shoulder, and a curved lower outline. This avoids a rocket-like symmetric
-silhouette. Filled-cloud menu glyphs keep the same center as their Dock glyphs;
-there is no separate upward shift. The flat and open variants keep balanced
-geometry.
+The rounded cloud uses a horizontally balanced body with shoulders at the same
+height. Its lower edge is one shallow cubic arc. Only the upper dome is offset to
+the left; the lower body has no small scallops or oversized elliptical belly.
+Mirrored containment samples guard against accidental tilt in the lower body.
+Filled-cloud menu glyphs keep the same center as their Dock glyphs; there is no
+separate upward shift.
 
 The open cloud has a 72-point frame. Its right cap is aligned to the normal of the
 frame's circular arc, so the cap and frame meet tangentially. The lightning and

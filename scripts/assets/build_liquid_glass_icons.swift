@@ -9,14 +9,24 @@ let frame=CGPath(rect:CGRect(x:-2048,y:-2048,width:5120,height:5120),transform:n
 func expand(_ shape:CGPath,_ amount:CGFloat)->CGPath { shape.union(shape.copy(strokingWithWidth:amount*2,lineCap:.round,lineJoin:.round,miterLimit:10)) }
 func inset(_ shape:CGPath,_ amount:CGFloat)->CGPath { frame.subtracting(expand(frame.subtracting(shape),amount)) }
 func closeCorners(_ shape:CGPath,_ radius:CGFloat)->CGPath { inset(expand(shape,radius),radius).normalized() }
-// Offset peak and unequal shoulders make the rounded variant read as a cloud,
-// not a symmetric rocket. The open and flat variants keep their own geometry.
-let round=circle(463,404,159)
-    .union(circle(300,539,148))
-    .union(circle(675,480,180))
-    .union(circle(408,590,150))
-    .union(circle(675,610,145))
-    .union(circle(520,615,120))
+// Level shoulders and a shallow curved base establish a stable cloud body.
+// Only the upper dome is offset; the lower body remains horizontally balanced.
+let cloudBody=CGMutablePath()
+cloudBody.move(to:CGPoint(x:330,y:390))
+cloudBody.addLine(to:CGPoint(x:694,y:390))
+cloudBody.addCurve(to:CGPoint(x:864,y:550),control1:CGPoint(x:793,y:390),control2:CGPoint(x:864,y:462))
+cloudBody.addCurve(to:CGPoint(x:704,y:713),control1:CGPoint(x:864,y:638),control2:CGPoint(x:803,y:707))
+cloudBody.addCurve(to:CGPoint(x:320,y:713),control1:CGPoint(x:576,y:721),control2:CGPoint(x:448,y:721))
+cloudBody.addCurve(to:CGPoint(x:160,y:550),control1:CGPoint(x:221,y:707),control2:CGPoint(x:160,y:638))
+cloudBody.addCurve(to:CGPoint(x:330,y:390),control1:CGPoint(x:160,y:462),control2:CGPoint(x:231,y:390))
+cloudBody.closeSubpath()
+// Sample the lower body in mirrored pairs to guard against accidental tilt.
+for y in stride(from:390,through:730,by:5) {
+    for x in stride(from:164,through:508,by:8) {
+        precondition(cloudBody.contains(CGPoint(x:x,y:y)) == cloudBody.contains(CGPoint(x:1024-x,y:y)),"Lower cloud body lost horizontal balance")
+    }
+}
+let round=cloudBody.union(circle(478,390,160))
 let capsule=CGPath(roundedRect:CGRect(x:140,y:362,width:744,height:374),cornerWidth:172,cornerHeight:172,transform:nil)
 let flat=closeCorners(capsule.union(circle(512,385,174)),16)
 let rounded=closeCorners(round,24)
