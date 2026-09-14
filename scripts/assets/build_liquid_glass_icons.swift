@@ -9,27 +9,26 @@ let frame=CGPath(rect:CGRect(x:-2048,y:-2048,width:5120,height:5120),transform:n
 func expand(_ shape:CGPath,_ amount:CGFloat)->CGPath { shape.union(shape.copy(strokingWithWidth:amount*2,lineCap:.round,lineJoin:.round,miterLimit:10)) }
 func inset(_ shape:CGPath,_ amount:CGFloat)->CGPath { frame.subtracting(expand(frame.subtracting(shape),amount)) }
 func closeCorners(_ shape:CGPath,_ radius:CGFloat)->CGPath { inset(expand(shape,radius),radius).normalized() }
-// Level shoulders and a shallow curved base establish a stable cloud body.
-// Only the upper dome is offset; the lower body remains horizontally balanced.
+// Reference-led cloud: rounded left mass, a flat base, and a regular
+// 64-point stair stepping down toward the right. No photographic tracing.
 let cloudBody=CGMutablePath()
-cloudBody.move(to:CGPoint(x:330,y:390))
-cloudBody.addLine(to:CGPoint(x:694,y:390))
-cloudBody.addCurve(to:CGPoint(x:864,y:550),control1:CGPoint(x:793,y:390),control2:CGPoint(x:864,y:462))
-cloudBody.addCurve(to:CGPoint(x:704,y:713),control1:CGPoint(x:864,y:638),control2:CGPoint(x:803,y:707))
-cloudBody.addCurve(to:CGPoint(x:320,y:713),control1:CGPoint(x:576,y:721),control2:CGPoint(x:448,y:721))
-cloudBody.addCurve(to:CGPoint(x:160,y:550),control1:CGPoint(x:221,y:707),control2:CGPoint(x:160,y:638))
-cloudBody.addCurve(to:CGPoint(x:330,y:390),control1:CGPoint(x:160,y:462),control2:CGPoint(x:231,y:390))
+cloudBody.move(to:CGPoint(x:444,y:284))
+cloudBody.addCurve(to:CGPoint(x:268,y:460),control1:CGPoint(x:347,y:284),control2:CGPoint(x:268,y:363))
+cloudBody.addCurve(to:CGPoint(x:170,y:579),control1:CGPoint(x:212,y:468),control2:CGPoint(x:170,y:518))
+cloudBody.addCurve(to:CGPoint(x:294,y:700),control1:CGPoint(x:170,y:648),control2:CGPoint(x:225,y:700))
+cloudBody.addLine(to:CGPoint(x:746,y:700))
+cloudBody.addCurve(to:CGPoint(x:828,y:618),control1:CGPoint(x:792,y:700),control2:CGPoint(x:828,y:664))
+cloudBody.addCurve(to:CGPoint(x:764,y:538),control1:CGPoint(x:828,y:579),control2:CGPoint(x:801,y:546))
+cloudBody.addLine(to:CGPoint(x:700,y:538));cloudBody.addLine(to:CGPoint(x:700,y:476))
+cloudBody.addLine(to:CGPoint(x:636,y:476));cloudBody.addLine(to:CGPoint(x:636,y:412))
+cloudBody.addLine(to:CGPoint(x:572,y:412));cloudBody.addLine(to:CGPoint(x:572,y:348))
+cloudBody.addLine(to:CGPoint(x:508,y:348));cloudBody.addLine(to:CGPoint(x:508,y:284))
 cloudBody.closeSubpath()
-// Sample the lower body in mirrored pairs to guard against accidental tilt.
-for y in stride(from:390,through:730,by:5) {
-    for x in stride(from:164,through:508,by:8) {
-        precondition(cloudBody.contains(CGPoint(x:x,y:y)) == cloudBody.contains(CGPoint(x:1024-x,y:y)),"Lower cloud body lost horizontal balance")
-    }
-}
-let round=cloudBody.union(circle(478,390,160))
+let round=cloudBody as CGPath
+let pixels:[CGPath]=[CGRect(x:520,y:284,width:52,height:52),CGRect(x:584,y:348,width:52,height:52),CGRect(x:648,y:412,width:52,height:52),CGRect(x:712,y:476,width:52,height:52),CGRect(x:648,y:284,width:52,height:52),CGRect(x:776,y:348,width:52,height:52)].map {CGPath(rect:$0,transform:nil)}
 let capsule=CGPath(roundedRect:CGRect(x:140,y:362,width:744,height:374),cornerWidth:172,cornerHeight:172,transform:nil)
 let flat=closeCorners(capsule.union(circle(512,385,174)),16)
-let rounded=closeCorners(round,24)
+let rounded=round
 let ring=flat.subtracting(inset(flat,72))
 let endX:CGFloat=712+136*cos(.pi/6),endY:CGFloat=564+136*sin(.pi/6)
 let cut=CGMutablePath()
@@ -74,20 +73,22 @@ for (index,name) in names.enumerated() {
         .scaledBy(x:0.86,y:0.86).translatedBy(x:-markBounds.midX,y:-markBounds.midY)
     let insetBolt=bolt.copy(using:&markTransform)!
     let insetCursor=cursor.copy(using:&markTransform)!
-    let shapes:[CGPath]=index==2 ? [opened,insetBolt,insetCursor] : [(index==0 ? rounded : flat).subtracting(bolt).subtracting(cursor)]
+    var pixelFit=CGAffineTransform(translationX:markBounds.midX-12,y:markBounds.midY+33).scaledBy(x:0.88,y:0.72).translatedBy(x:-markBounds.midX,y:-markBounds.midY)
+    let pixelBolt=bolt.copy(using:&pixelFit)!,pixelCursor=cursor.copy(using:&pixelFit)!
+    let shapes:[CGPath]=index==0 ? [rounded.subtracting(pixelBolt).subtracting(pixelCursor)] + pixels : (index==2 ? [opened,insetBolt,insetCursor] : [flat.subtracting(bolt).subtracting(cursor)])
     let iconBounds=(index==0 ? rounded : flat).boundingBoxOfPath
     let dockOffsetX=(512-iconBounds.midX)*0.95
     let dockOffsetY=(512-iconBounds.midY)*0.95
     var groups=[[String:Any]]()
     for (i,shape) in shapes.enumerated() {
-        let layerName=index==2 ? ["Cloud frame","Lightning","Cursor"][i] : "Cloud with inset mark"
+        let layerName=index==0 ? (i==0 ? "Cloud with cutouts" : "Pixel \(i)") : index==2 ? ["Cloud frame","Lightning","Cursor"][i] : "Cloud with inset mark"
         let filename="shape-\(i).svg"
         try svg(shape).write(to:assets.appendingPathComponent(filename),atomically:true,encoding:.utf8)
         let layer:[String:Any]=[
             "name":layerName,"image-name":filename,
             "position":["scale":0.95,"translation-in-points":[dockOffsetX,dockOffsetY]],
             "fill-specializations":[
-                specialization(nil,color("extended-srgb:0.76,0.84,0.92,1.0")),
+                specialization(nil,color(index==0 ? "extended-srgb:0.00,0.65,0.86,1.0" : "extended-srgb:0.76,0.84,0.92,1.0")),
                 specialization("dark",color("extended-srgb:0.48,0.57,0.67,0.88")),
                 specialization("tinted",color("extended-srgb:0.66,0.66,0.66,0.68"))
             ]
@@ -107,6 +108,12 @@ for (index,name) in names.enumerated() {
                 specialization("tinted",["kind":"neutral","opacity":0.36])
             ]
         ])
+    }
+    if index==0 {
+        var pixelGroup=groups[1]
+        pixelGroup["name"]="Dispersing pixels"
+        pixelGroup["layers"]=groups.dropFirst().flatMap { $0["layers"] as! [[String:Any]] }
+        groups=[pixelGroup,groups[0]]
     }
     if index==2 { groups.reverse() }
     let config:[String:Any]=[
@@ -138,6 +145,14 @@ for (index,name) in names.enumerated() {
             precondition(a.intersection(expand(b,75)).isEmpty,"Menu glyph clearance fell below 75 source points")
         }
         menuShapes=[menuFrame,menuBolt,menuCursor]
+    } else if index==0 {
+        // Menu bar omits detached pixels; the stepped shoulder carries the motif.
+        let b=bolt.boundingBoxOfPath
+        var fit=CGAffineTransform(translationX:330,y:460).scaledBy(x:145/b.width,y:190/b.height).translatedBy(x:-b.minX,y:-b.minY)
+        let menuBolt=bolt.copy(using:&fit)!
+        let menuCursor=CGPath(roundedRect:CGRect(x:530,y:570,width:140,height:80),cornerWidth:40,cornerHeight:40,transform:nil)
+        menuShapes=[rounded.subtracting(menuBolt).subtracting(menuCursor)]
+
     } else {
         var fit=CGAffineTransform(translationX:markBounds.midX,y:markBounds.midY)
             .scaledBy(x:1.10,y:1.10).translatedBy(x:-markBounds.midX,y:-markBounds.midY)

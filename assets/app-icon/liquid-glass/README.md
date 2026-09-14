@@ -1,7 +1,7 @@
 # Native Liquid Glass icon trials
 
 The production default is `01-mercury-cloud`, selected by `../default-variant`.
-Dock and menu bar both use the asymmetric rounded cloud with lightning and cursor
+Dock and menu bar both use the pixel-dissolving cloud with lightning and cursor
 cutouts. All three variants are retained for reference. These three variants use native Icon Composer materials. The SVG layers contain
 white geometry only. They do not contain rendered lighting, texture, or a complete
 flattened icon image.
@@ -13,12 +13,11 @@ circles, rounded rectangles, and vector boolean operations. It generates editabl
 SVG source and the matching menu-bar templates. Do not trace photographic
 highlights into the outline.
 
-The rounded cloud uses a horizontally balanced body with shoulders at the same
-height. Its lower edge is one shallow cubic arc. Only the upper dome is offset to
-the left; the lower body has no small scallops or oversized elliptical belly.
-Mirrored containment samples guard against accidental tilt in the lower body.
-Filled-cloud menu glyphs keep the same center as their Dock glyphs; there is no
-separate upward shift.
+The default cloud follows `../approved/pixel-cloud-reference.png`: a rounded
+left mass, a clean base, and a 64-point stepped shoulder. Six detached square
+layers share one native material group to stay within Icon Composer's group limit.
+Default uses cyan; Dark and Mono use their own material fills. Menu-bar output
+omits detached pixels and retains the stepped silhouette with two cutouts.
 
 The open cloud has a 72-point frame. Its right cap is aligned to the normal of the
 frame's circular arc, so the cap and frame meet tangentially. The lightning and

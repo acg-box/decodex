@@ -1,8 +1,9 @@
 # Decodex App Icon
 
-The default is the asymmetric rounded-cloud cutout Liquid Glass design
-(`01-mercury-cloud`). Both Dock and menu bar use this non-flat cloud with lightning
-and cursor cutouts. The glyph group has the same relative center on both surfaces.
+The default is the pixel-dissolving cloud cutout Liquid Glass design
+(`01-mercury-cloud`). Both Dock and menu bar use this reference-led cloud with lightning
+and cursor cutouts. Dock adds six independent square layers. The menu bar omits detached squares
+and keeps the stepped shoulder; its cutouts have a small-size optical fit.
 `assets/app-icon/default-variant` selects the production icon. All three approved
 candidates remain in `assets/app-icon/liquid-glass` for comparison and editing.
 
