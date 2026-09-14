@@ -85,7 +85,20 @@ for (index,name) in names.enumerated() {
     let insetCursor=cursor.copy(using:&markTransform)!
     var pixelFit=CGAffineTransform(translationX:markBounds.midX-12,y:markBounds.midY+33).scaledBy(x:0.88,y:0.72).translatedBy(x:-markBounds.midX,y:-markBounds.midY)
     let pixelBolt=bolt.copy(using:&pixelFit)!,pixelCursor=cursor.copy(using:&pixelFit)!
-    let shapes:[CGPath]=index==0 ? [rounded.subtracting(pixelBolt).subtracting(pixelCursor)] + pixels : (index==2 ? [opened,insetBolt,insetCursor] : [flat.subtracting(bolt).subtracting(cursor)])
+    // Approved Dock contour: soften the left shoulder and use a circular right cap.
+    // Keep the menu bar optical geometry independent at its small display size.
+    let dockCloud=CGMutablePath()
+    dockCloud.move(to:CGPoint(x:508,y:348))
+    for point in [CGPoint(x:572,y:348),CGPoint(x:572,y:412),CGPoint(x:636,y:412),CGPoint(x:636,y:476),CGPoint(x:700,y:476),CGPoint(x:700,y:540),CGPoint(x:756,y:540)] { dockCloud.addLine(to:point) }
+    dockCloud.addCurve(to:CGPoint(x:836,y:620),control1:CGPoint(x:800.183,y:540),control2:CGPoint(x:836,y:575.817))
+    dockCloud.addCurve(to:CGPoint(x:756,y:700),control1:CGPoint(x:836,y:664.183),control2:CGPoint(x:800.183,y:700))
+    dockCloud.addLine(to:CGPoint(x:294,y:700))
+    dockCloud.addCurve(to:CGPoint(x:173,y:579),control1:CGPoint(x:227.174,y:700),control2:CGPoint(x:173,y:645.826))
+    dockCloud.addCurve(to:CGPoint(x:258,y:466),control1:CGPoint(x:173,y:525),control2:CGPoint(x:209,y:480))
+    dockCloud.addCurve(to:CGPoint(x:269,y:452),control1:CGPoint(x:264,y:464),control2:CGPoint(x:268,y:459))
+    dockCloud.addCurve(to:CGPoint(x:444,y:284),control1:CGPoint(x:273,y:358),control2:CGPoint(x:349,y:284))
+    dockCloud.addLine(to:CGPoint(x:508,y:284));dockCloud.closeSubpath()
+    let shapes:[CGPath]=index==0 ? [dockCloud.subtracting(pixelBolt).subtracting(pixelCursor)] + pixels : (index==2 ? [opened,insetBolt,insetCursor] : [flat.subtracting(bolt).subtracting(cursor)])
     let iconBounds=(index==0 ? rounded : flat).boundingBoxOfPath
     let dockOffsetX=(512-iconBounds.midX)*0.95
     let dockOffsetY=(512-iconBounds.midY)*0.95
@@ -93,7 +106,13 @@ for (index,name) in names.enumerated() {
     for (i,shape) in shapes.enumerated() {
         let layerName=index==0 ? (i==0 ? "Cloud with cutouts" : "Pixel \(i)") : index==2 ? ["Cloud frame","Lightning","Cursor"][i] : "Cloud with inset mark"
         let filename="shape-\(i).svg"
-        try svg(shape).write(to:assets.appendingPathComponent(filename),atomically:true,encoding:.utf8)
+        var artwork=svg(shape)
+        if index==0 {
+            // Enlarge the complete mark together without changing its glass material.
+            artwork=artwork.replacingOccurrences(of:"<path ",with:"<g transform=\"matrix(1.18 0 0 1.18 -114.58 -68.56)\"><path ")
+                .replacingOccurrences(of:"</svg>",with:"</g></svg>")
+        }
+        try artwork.write(to:assets.appendingPathComponent(filename),atomically:true,encoding:.utf8)
         let fade=index==0 && i>0 ? pixelCells[i-1].2 : 0
         let lightFill=index==0 ? String(format:"extended-srgb:%.3f,%.3f,%.3f,1.0",fade*0.78,0.64+fade*0.32,0.86+fade*0.13) : "extended-srgb:0.76,0.84,0.92,1.0"
         let darkFill=index==0 ? String(format:"extended-srgb:%.3f,%.3f,%.3f,0.9",0.08+fade*0.45,0.40+fade*0.43,0.62+fade*0.35) : "extended-srgb:0.48,0.57,0.67,0.88"

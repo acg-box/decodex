@@ -30,3 +30,7 @@ The default full-color appearance uses a solid white background and a cyan-blue
 cloud, with pixels fading toward pale blue. Native glass adds its own subtle
 lighting to the white surface. Dark, Clear, and Tinted annotations are separate;
 this does not change the menu-bar template or the user's global appearance.
+
+## Refined Dock contour
+
+The pixel-cloud foreground uses a uniform 1.18 scale with the approved optical offset. The left shoulder has a short curved transition. The right cloud cap follows a circular arc and meets the last pixel row without overlapping its glass face. The cloud retains its flat base, asymmetric silhouette, and lightning and underscore cutouts. Menu bar geometry remains sized for its 22-point surface.
