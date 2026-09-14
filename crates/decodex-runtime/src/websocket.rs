@@ -268,7 +268,11 @@ impl BoundServer {
 		self.task.take();
 		let receipt = joined.map_err(ServerError::LifecycleJoin)?;
 
-		if receipt.is_success() { Ok(receipt) } else { Err(ServerError::Terminated(receipt)) }
+		if receipt.is_success() {
+			Ok(receipt)
+		} else {
+			Err(ServerError::Terminated(Box::new(receipt)))
+		}
 	}
 }
 
@@ -645,108 +649,130 @@ where
 				continue;
 			};
 
-			match client_message {
-				ClientMessage::Hello(_) => {
+			if let Err(completion) = self
+				.handle_client_message(
+					client_message,
+					connection_id,
+					negotiated,
+					actor_sender,
+					&mut stop,
+				)
+				.await
+			{
+				return completion;
+			}
+		}
+	}
+
+	async fn handle_client_message(
+		&self,
+		client_message: ClientMessage,
+		connection_id: u64,
+		negotiated: ProtocolVersion,
+		actor_sender: &mpsc::Sender<PublicationRequest>,
+		stop: &mut watch::Receiver<bool>,
+	) -> Result<(), SessionReaderCompletion> {
+		match client_message {
+			ClientMessage::Hello(_) => {
+				if !self
+					.enqueue(
+						actor_sender,
+						connection_id,
+						protocol_refusal(&self.inner.server_id, "hello may be sent only once"),
+					)
+					.await
+				{
+					return Err(SessionReaderCompletion::Reason(session_ingress_failure_reason(
+						stop,
+					)));
+				}
+			},
+			ClientMessage::Command(command) => {
+				if command.version != negotiated || !command.payload.is_supported_in(negotiated) {
 					if !self
 						.enqueue(
 							actor_sender,
 							connection_id,
-							protocol_refusal(&self.inner.server_id, "hello may be sent only once"),
+							protocol_refusal(
+								&self.inner.server_id,
+								"command is unavailable in the negotiated protocol version",
+							),
 						)
 						.await
 					{
-						return SessionReaderCompletion::Reason(session_ingress_failure_reason(
-							&stop,
+						return Err(SessionReaderCompletion::Reason(
+							session_ingress_failure_reason(stop),
 						));
 					}
-				},
-				ClientMessage::Command(command) => {
-					if command.version != negotiated || !command.payload.is_supported_in(negotiated)
-					{
-						if !self
-							.enqueue(
-								actor_sender,
-								connection_id,
-								protocol_refusal(
-									&self.inner.server_id,
-									"command is unavailable in the negotiated protocol version",
-								),
-							)
-							.await
-						{
-							return SessionReaderCompletion::Reason(
-								session_ingress_failure_reason(&stop),
-							);
-						}
 
-						continue;
-					}
+					return Ok(());
+				}
+				if !self
+					.submit_command(connection_id, command, negotiated, actor_sender, stop)
+					.await
+				{
+					return Err(SessionReaderCompletion::Reason(session_ingress_failure_reason(
+						stop,
+					)));
+				}
+			},
+			ClientMessage::Query(query) => {
+				if query.version != negotiated || !query.payload.is_supported_in(negotiated) {
 					if !self
-						.submit_command(connection_id, command, negotiated, actor_sender, &mut stop)
+						.enqueue(
+							actor_sender,
+							connection_id,
+							protocol_refusal(
+								&self.inner.server_id,
+								"query is unavailable in the negotiated protocol version",
+							),
+						)
 						.await
 					{
-						return SessionReaderCompletion::Reason(session_ingress_failure_reason(
-							&stop,
+						return Err(SessionReaderCompletion::Reason(
+							session_ingress_failure_reason(stop),
 						));
 					}
-				},
-				ClientMessage::Query(query) => {
-					if query.version != negotiated || !query.payload.is_supported_in(negotiated) {
-						if !self
-							.enqueue(
-								actor_sender,
-								connection_id,
-								protocol_refusal(
-									&self.inner.server_id,
-									"query is unavailable in the negotiated protocol version",
-								),
-							)
-							.await
-						{
-							return SessionReaderCompletion::Reason(
-								session_ingress_failure_reason(&stop),
-							);
-						}
 
-						continue;
-					}
-					if !self.execute_query(actor_sender, connection_id, query, negotiated).await {
-						return SessionReaderCompletion::Reason(session_ingress_failure_reason(
-							&stop,
-						));
-					}
-				},
-				ClientMessage::AccountLogin(request) => {
-					if request.version != negotiated || request.request.validate().is_err() {
-						if !self
-							.enqueue(
-								actor_sender,
-								connection_id,
-								protocol_refusal(
-									&self.inner.server_id,
-									"account login is unavailable in the negotiated protocol version",
-								),
-							)
-							.await
-						{
-							return SessionReaderCompletion::Reason(
-								session_ingress_failure_reason(&stop),
-							);
-						}
-
-						continue;
-					}
+					return Ok(());
+				}
+				if !self.execute_query(actor_sender, connection_id, query, negotiated).await {
+					return Err(SessionReaderCompletion::Reason(session_ingress_failure_reason(
+						stop,
+					)));
+				}
+			},
+			ClientMessage::AccountLogin(request) => {
+				if request.version != negotiated || request.request.validate().is_err() {
 					if !self
-						.execute_account_login(actor_sender, connection_id, request, negotiated)
+						.enqueue(
+							actor_sender,
+							connection_id,
+							protocol_refusal(
+								&self.inner.server_id,
+								"account login is unavailable in the negotiated protocol version",
+							),
+						)
 						.await
 					{
-						return SessionReaderCompletion::Reason(session_ingress_failure_reason(
-							&stop,
+						return Err(SessionReaderCompletion::Reason(
+							session_ingress_failure_reason(stop),
 						));
 					}
-				},
-			}
+
+					return Ok(());
+				}
+				if !self
+					.execute_account_login(actor_sender, connection_id, request, negotiated)
+					.await
+				{
+					return Err(SessionReaderCompletion::Reason(session_ingress_failure_reason(
+						stop,
+					)));
+				}
+			},
 		}
+		Ok(())
 	}
 
 	async fn execute_query(
@@ -3310,7 +3336,7 @@ pub enum ServerError {
 	/// The lifecycle handle was already consumed.
 	LifecycleUnavailable,
 	/// The lifecycle completed with a deterministic abnormal receipt.
-	Terminated(TerminationReceipt),
+	Terminated(Box<TerminationReceipt>),
 }
 
 impl std::error::Error for ServerError {}

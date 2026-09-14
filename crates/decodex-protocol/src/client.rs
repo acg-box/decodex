@@ -204,6 +204,239 @@ impl Debug for ClientProfile {
 	}
 }
 
+/// Verified acceptance of one Chief command. Acceptance does not mean work completion.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+pub enum ChiefCommandResponse {
+	/// The service accepted the exact work identity.
+	Accepted {
+		/// Exact durable work identity accepted by the service.
+		work_id: EntityId,
+	},
+	/// The service rejected the command without acceptance.
+	Rejected {
+		/// Typed reason for definite rejection.
+		error: CommandError,
+	},
+	/// A send was attempted; the client cannot prove whether the service accepted it.
+	PotentiallyDispatched {
+		/// Evidence gap; does not authorize replay.
+		failure: ClientFailure,
+	},
+}
+
+/// Chief client over the existing same-UID, server-pinned transport.
+pub struct ChiefClient {
+	transport: ResetCardClient,
+}
+impl ChiefClient {
+	/// Read the selected fields of one exact unresolved request.
+	pub async fn request(&self, event_id: i64) -> Result<crate::ChiefRequestResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner("chief-request", QueryPayload::GetChiefRequest { event_id }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefRequest(result) => {
+				if let crate::ChiefRequestResult::Available {
+					event_id: returned,
+					work_id,
+					method,
+					..
+				} = &result && (*returned != event_id
+					|| event_id <= 0
+					|| EntityId::new(work_id.clone()).is_err()
+					|| !matches!(
+						method.as_str(),
+						"item/commandExecution/requestApproval"
+							| "item/fileChange/requestApproval"
+							| "item/permissions/requestApproval"
+							| "item/tool/requestUserInput"
+					)) {
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read the latest bounded visible history for the selected work.
+	pub async fn history(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefHistoryResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner("chief-history", QueryPayload::GetChiefHistory { work_id }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefHistory(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Construct a client for one declared service profile.
+	pub const fn new(profile: ClientProfile) -> Self {
+		Self { transport: ResetCardClient { profile, timeout: CLIENT_TIMEOUT } }
+	}
+
+	/// Read one complete bounded Chief projection without changing work or runtime state.
+	pub async fn query(&self) -> Result<crate::ChiefSnapshotResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner("decodex-chief-snapshot", QueryPayload::GetChiefSnapshot),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefSnapshot(result) => {
+				if matches!(&result, crate::ChiefSnapshotResult::Available(snapshot) if !snapshot.is_valid())
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Submit once. A timeout after the send boundary never authorizes an automatic retry.
+	pub async fn execute(
+		&self,
+		action: crate::ChiefActionDto,
+		idempotency_key: IdempotencyKey,
+	) -> Result<ChiefCommandResponse, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let attempted = AtomicBool::new(false);
+		let result = time::timeout(
+			RESET_CARD_CLIENT_TIMEOUT,
+			self.execute_inner(action, idempotency_key, &attempted),
+		)
+		.await;
+		let failure = match result {
+			Ok(Ok(completed)) => {
+				close_one_shot_socket(completed.socket).await;
+				return Ok(completed.value);
+			},
+			Ok(Err(failure)) => failure,
+			Err(_) => ClientFailure::ProtocolTimeout,
+		};
+		if attempted.load(Ordering::Acquire) {
+			Ok(ChiefCommandResponse::PotentiallyDispatched { failure })
+		} else {
+			Err(failure)
+		}
+	}
+
+	async fn execute_inner(
+		&self,
+		action: crate::ChiefActionDto,
+		idempotency_key: IdempotencyKey,
+		attempted: &AtomicBool,
+	) -> Result<CompletedOneShot<ChiefCommandResponse>, ClientFailure> {
+		let mut socket = self.transport.connect().await?;
+		let client_command_id = ClientCommandId::new(idempotency_key.as_str())
+			.map_err(|_| ClientFailure::ProtocolMalformed)?;
+		let correlation_id = CorrelationId::new(idempotency_key.as_str())
+			.map_err(|_| ClientFailure::ProtocolMalformed)?;
+		let command = ClientMessage::Command(CommandEnvelope {
+			version: CURRENT_VERSION,
+			client_command_id: client_command_id.clone(),
+			idempotency_key: idempotency_key.clone(),
+			expected_revision: None,
+			correlation_id,
+			causation_id: None,
+			payload: CommandPayload::Chief { action: Box::new(action.clone()) },
+		});
+		attempted.store(true, Ordering::Release);
+		self.transport.send(&mut socket, command).await?;
+		let mut receipt_disposition = None;
+		for _ in 0..MAX_INTERLEAVED_MESSAGES {
+			match self.transport.receive(&mut socket).await? {
+				ServerMessage::CommandReceipt(receipt) => {
+					self.transport
+						.verify_version_and_server(receipt.version, &receipt.server_id)?;
+					if receipt_disposition.is_some()
+						|| receipt.client_command_id != client_command_id
+						|| receipt.idempotency_key != idempotency_key
+						|| (receipt.disposition != ReceiptDisposition::Duplicate
+							&& receipt.original_client_command_id != client_command_id)
+					{
+						return Err(ClientFailure::ProtocolMalformed);
+					}
+					receipt_disposition = Some(receipt.disposition);
+				},
+				ServerMessage::CommandResult(result) => {
+					self.transport.verify_version_and_server(result.version, &result.server_id)?;
+					let Some(disposition) = receipt_disposition else {
+						return Err(ClientFailure::ProtocolMalformed);
+					};
+					if result.client_command_id != client_command_id
+						|| result.idempotency_key != idempotency_key
+						|| (disposition == ReceiptDisposition::Refused
+							&& result.outcome != CommandOutcome::Rejected)
+					{
+						return Err(ClientFailure::ProtocolMalformed);
+					}
+					let response = match (
+						result.outcome,
+						result.entity_revision,
+						result.payload,
+						result.error,
+					) {
+						(
+							CommandOutcome::Succeeded,
+							Some(EntityRevision(0)),
+							Some(ResultPayload::ChiefAccepted { work_id }),
+							None,
+						) if &work_id == chief_action_work_id(&action) => ChiefCommandResponse::Accepted { work_id },
+						(CommandOutcome::Rejected, None, None, Some(error))
+							if !matches!(error, CommandError::AcceptanceUnknown) =>
+							ChiefCommandResponse::Rejected { error },
+						(
+							CommandOutcome::AcceptanceUnknown,
+							None,
+							None,
+							Some(CommandError::AcceptanceUnknown),
+						) => ChiefCommandResponse::PotentiallyDispatched {
+							failure: ClientFailure::ApplicationAcceptanceUnknown,
+						},
+						_ => return Err(ClientFailure::ProtocolMalformed),
+					};
+					return Ok(CompletedOneShot::new(response, socket));
+				},
+				ServerMessage::Event(event) =>
+					self.transport.verify_version_and_server(event.version, &event.server_id)?,
+				ServerMessage::Refusal(refusal) =>
+					return Err(self.transport.refusal_failure(refusal)),
+				_ => return Err(ClientFailure::ProtocolMalformed),
+			}
+		}
+		Err(ClientFailure::ProtocolBackpressure)
+	}
+}
+
+fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
+	match action {
+		crate::ChiefActionDto::Start(start) => &start.root_id,
+		crate::ChiefActionDto::Send { root_id, .. } => root_id,
+		crate::ChiefActionDto::Interrupt { work_id, .. }
+		| crate::ChiefActionDto::Respond { work_id, .. }
+		| crate::ChiefActionDto::AutomationResult { work_id, .. } => work_id,
+	}
+}
+
 /// Reusable bounded WebSocket client for authoritative doctor/status queries.
 pub struct DoctorClient {
 	profile: ClientProfile,
@@ -974,7 +1207,7 @@ pub enum AccountCommandResponse {
 	},
 }
 
-/// Same-UID V2.15 client for daemon-owned account queries and lifecycle commands.
+/// Same-UID V2.16 client for daemon-owned account queries and lifecycle commands.
 pub struct AccountClient {
 	transport: ResetCardClient,
 }
@@ -1570,6 +1803,151 @@ mod tests {
 
 	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
+	async fn chief_command_exchange(mode: &'static str) -> crate::ChiefCommandResponse {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.expect("Chief protocol fixture succeeds");
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("Chief protocol fixture succeeds"),
+		);
+		let task = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.expect("Chief protocol fixture succeeds");
+			let mut socket = tokio_tungstenite::accept_async(stream)
+				.await
+				.expect("Chief protocol fixture succeeds");
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.expect("Chief protocol fixture succeeds");
+			}
+			let Message::Text(request) = socket
+				.next()
+				.await
+				.expect("Chief protocol fixture succeeds")
+				.expect("Chief protocol fixture succeeds")
+			else {
+				panic!("command text");
+			};
+			let ClientMessage::Command(command) =
+				serde_json::from_str(&request).expect("Chief protocol fixture succeeds")
+			else {
+				panic!("command envelope");
+			};
+			assert!(matches!(command.payload, crate::CommandPayload::Chief { .. }));
+			assert_eq!(command.idempotency_key.as_str(), "chief-once");
+			if mode != "dropped" {
+				if mode != "missing-receipt" {
+					socket
+						.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
+							version: CURRENT_VERSION,
+							server_id: ServerId::new(SERVER_ID)
+								.expect("Chief protocol fixture succeeds"),
+							client_command_id: command.client_command_id.clone(),
+							idempotency_key: command.idempotency_key.clone(),
+							disposition: ReceiptDisposition::Executed,
+							original_client_command_id: command.client_command_id.clone(),
+						})))
+						.await
+						.expect("Chief protocol fixture succeeds");
+				}
+				socket
+					.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(if mode == "wrong-server" {
+							"018f0f9e-7b6e-4a31-8f4c-1d2e3f405163"
+						} else {
+							SERVER_ID
+						})
+						.expect("Chief protocol fixture succeeds"),
+						client_command_id: command.client_command_id,
+						idempotency_key: if mode == "wrong-key" {
+							IdempotencyKey::new("other").expect("Chief protocol fixture succeeds")
+						} else {
+							command.idempotency_key
+						},
+						outcome: if mode == "rejected" {
+							CommandOutcome::Rejected
+						} else if mode == "unknown" {
+							CommandOutcome::AcceptanceUnknown
+						} else {
+							CommandOutcome::Succeeded
+						},
+						entity_revision: if matches!(mode, "rejected" | "unknown") {
+							None
+						} else {
+							Some(EntityRevision(0))
+						},
+						payload: if matches!(mode, "rejected" | "unknown") {
+							None
+						} else {
+							Some(ResultPayload::ChiefAccepted {
+								work_id: EntityId::new(if mode == "wrong-work" {
+									"another-root"
+								} else {
+									"personal"
+								})
+								.expect("Chief protocol fixture succeeds"),
+							})
+						},
+						error: if mode == "rejected" {
+							Some(CommandError::IdempotencyConflict)
+						} else if mode == "unknown" {
+							Some(CommandError::AcceptanceUnknown)
+						} else {
+							None
+						},
+					})))
+					.await
+					.expect("Chief protocol fixture succeeds");
+			}
+			drop(socket);
+			assert!(
+				time::timeout(Duration::from_millis(30), listener.accept()).await.is_err(),
+				"client must not reconnect and retry"
+			);
+			listener.cleanup().expect("Chief protocol fixture succeeds");
+		});
+		let result = crate::ChiefClient::new(profile)
+			.execute(
+				crate::ChiefActionDto::Send {
+					root_id: EntityId::new("personal").expect("Chief protocol fixture succeeds"),
+					text: crate::HistoryText::new("Hello")
+						.expect("Chief protocol fixture succeeds"),
+				},
+				IdempotencyKey::new("chief-once").expect("Chief protocol fixture succeeds"),
+			)
+			.await
+			.expect("Chief protocol fixture succeeds");
+		task.await.expect("Chief protocol fixture succeeds");
+		result
+	}
+
+	#[tokio::test]
+	async fn chief_command_requires_exact_receipt_server_and_work_identity_without_retry() {
+		assert!(matches!(
+			chief_command_exchange("rejected").await,
+			crate::ChiefCommandResponse::Rejected { error: CommandError::IdempotencyConflict }
+		));
+		assert!(matches!(
+			chief_command_exchange("unknown").await,
+			crate::ChiefCommandResponse::PotentiallyDispatched {
+				failure: ClientFailure::ApplicationAcceptanceUnknown
+			}
+		));
+		assert!(
+			matches!(chief_command_exchange("accepted").await, crate::ChiefCommandResponse::Accepted { work_id } if work_id.as_str() == "personal")
+		);
+		for mode in ["wrong-work", "wrong-key", "wrong-server", "missing-receipt", "dropped"] {
+			assert!(
+				matches!(
+					chief_command_exchange(mode).await,
+					crate::ChiefCommandResponse::PotentiallyDispatched { .. }
+				),
+				"{mode}"
+			);
+		}
+	}
+
 	fn typed(message: ServerMessage) -> Message {
 		Message::Text(serde_json::to_string(&message).expect("test operation must succeed").into())
 	}
@@ -1804,8 +2182,8 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_15_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 15 });
+	fn protocol_constants_expose_only_the_exact_v2_16_version() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 16 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

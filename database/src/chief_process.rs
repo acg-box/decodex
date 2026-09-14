@@ -1,0 +1,437 @@
+//! Chief account affinity and pre-spawn admission without ordinary conversation records.
+
+use decodex_core::{
+	AccountId, ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
+};
+use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
+use sha2::{Digest as _, Sha256};
+
+use crate::{
+	DatabaseError, PrepareProcessGenerationOutcome, ProcessGenerationMutation,
+	ProcessGenerationRejection, SqliteStore, StoreError,
+	account_lifecycle::sql_error,
+	process_generations::{empty_mutation, prepare_bound_generation, read_generation},
+	unix_micros,
+};
+
+/// Latest durable process admission for one account-affine Chief root.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ChiefProcessBinding {
+	pub root_id: String,
+	pub account_id: AccountId,
+	pub operation_key: String,
+	pub generation_id: ProcessGenerationId,
+}
+
+impl SqliteStore {
+	/// Retain one caller-validated non-secret root configuration before process admission.
+	pub async fn bind_chief_root_settings(
+		&self,
+		root_id: &str,
+		config_json: &str,
+	) -> Result<(), StoreError> {
+		if config_json.len() > 16384
+			|| !serde_json::from_str::<serde_json::Value>(config_json)
+				.is_ok_and(|value| value.is_object())
+		{
+			return Err(StoreError::InvalidInput(
+				"Chief root settings must be a bounded JSON object",
+			));
+		}
+		let (root_id, config_json) = (root_id.to_owned(), config_json.to_owned());
+		self.run(move |connection| {
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
+			let current: Option<String> = transaction.query_row("SELECT config_json FROM chief_root_settings WHERE root_id = ?1", [&root_id], |row| row.get(0)).optional().map_err(sql_error)?;
+			if let Some(current) = current { return if current == config_json { Ok(()) } else { Err(StoreError::IdempotencyConflict) }; }
+			transaction.execute("INSERT INTO chief_root_settings (root_id, config_json, created_at_micros) VALUES (?1, ?2, ?3)", params![root_id, config_json, unix_micros()?]).map_err(sql_error)?;
+			transaction.commit().map_err(sql_error)?;
+			Ok(())
+		}).await
+	}
+
+	pub async fn read_chief_root_settings(
+		&self,
+		root_id: &str,
+	) -> Result<Option<String>, StoreError> {
+		let root_id = root_id.to_owned();
+		self.run(move |connection| {
+			connection
+				.query_row(
+					"SELECT config_json FROM chief_root_settings WHERE root_id = ?1",
+					[&root_id],
+					|row| row.get(0),
+				)
+				.optional()
+				.map_err(sql_error)
+		})
+		.await
+	}
+
+	pub async fn read_chief_process_binding(
+		&self,
+		root_id: &str,
+	) -> Result<Option<ChiefProcessBinding>, StoreError> {
+		let root_id = root_id.to_owned();
+		self.run(move |connection| {
+			let row = connection.query_row("SELECT root_id, account_id, operation_key, generation_id FROM chief_process_bindings WHERE root_id = ?1 ORDER BY created_at_micros DESC, rowid DESC LIMIT 1", [&root_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?))).optional().map_err(sql_error)?;
+			row.map(|(root_id, account_id, operation_key, generation_id)| Ok(ChiefProcessBinding {
+				root_id, account_id: AccountId::new(account_id).map_err(|_| DatabaseError::Corrupt)?, operation_key,
+				generation_id: ProcessGenerationId::new(generation_id).map_err(|_| DatabaseError::Corrupt)?,
+			})).transpose()
+		}).await
+	}
+
+	/// Persist root/account/operation ownership and the process fence in one transaction.
+	/// Exact replays never return a fresh fence and cannot authorize a second spawn.
+	pub async fn prepare_chief_bound_process_generation(
+		&self,
+		intent: &ProcessGenerationIntent,
+		binding: &ProcessGenerationAccountBinding,
+		root_id: &str,
+		operation_key: &str,
+	) -> Result<PrepareProcessGenerationOutcome, StoreError> {
+		if root_id.trim().is_empty()
+			|| root_id.len() > 512
+			|| operation_key.trim().is_empty()
+			|| operation_key.len() > 256
+		{
+			return Err(StoreError::InvalidInput("Chief process admission identity is invalid"));
+		}
+		let digest = admission_digest(intent, binding, root_id, operation_key)?;
+		let (intent, binding, root_id, operation_key) =
+			(intent.clone(), binding.clone(), root_id.to_owned(), operation_key.to_owned());
+		self.run(move |connection| {
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
+			let root_exists: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_work_items WHERE id = ?1 AND kind = 'goal' AND parent_goal_id IS NULL)", [&root_id], |row| row.get(0)).map_err(sql_error)?;
+			if !root_exists { return Err(StoreError::InvalidInput("Chief process requires a root goal")); }
+			let previous: Option<(String, String)> = transaction.query_row("SELECT generation_id, request_sha256 FROM chief_process_bindings WHERE operation_key = ?1", [&operation_key], |row| Ok((row.get(0)?, row.get(1)?))).optional().map_err(sql_error)?;
+			if let Some((generation_id, recorded_digest)) = previous {
+				if recorded_digest != digest { return Ok(rejected(ProcessGenerationRejection::IdentityConflict)); }
+				let generation = read_generation(&transaction, &generation_id)?.ok_or(DatabaseError::Corrupt)?;
+				return Ok(PrepareProcessGenerationOutcome::Replayed(ProcessGenerationMutation { revision: generation.revision, state: generation.state, recorded_at_micros: generation.updated_at_micros }));
+			}
+			let affinity_conflict: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_process_bindings WHERE root_id = ?1 AND account_id <> ?2)", params![root_id, intent.account_id.as_str()], |row| row.get(0)).map_err(sql_error)?;
+			if affinity_conflict || read_generation(&transaction, intent.generation_id.as_str())?.is_some() {
+				return Ok(rejected(ProcessGenerationRejection::IdentityConflict));
+			}
+			let outcome = prepare_bound_generation(&transaction, &intent, &binding, None, None)?;
+			if !matches!(outcome, PrepareProcessGenerationOutcome::Fresh(_)) { return Ok(outcome); }
+			transaction.execute("INSERT INTO chief_process_bindings (operation_key, root_id, account_id, generation_id, request_sha256, created_at_micros) VALUES (?1, ?2, ?3, ?4, ?5, ?6)", params![operation_key, root_id, intent.account_id.as_str(), intent.generation_id.as_str(), digest, unix_micros()?]).map_err(sql_error)?;
+			transaction.commit().map_err(sql_error)?;
+			Ok(outcome)
+		}).await
+	}
+}
+
+fn rejected(rejection: ProcessGenerationRejection) -> PrepareProcessGenerationOutcome {
+	PrepareProcessGenerationOutcome::Rejected { rejection, actual: empty_mutation() }
+}
+
+fn admission_digest(
+	intent: &ProcessGenerationIntent,
+	binding: &ProcessGenerationAccountBinding,
+	root_id: &str,
+	operation_key: &str,
+) -> Result<String, StoreError> {
+	let request = serde_json::json!([
+		root_id,
+		operation_key,
+		intent.generation_id.as_str(),
+		intent.account_id.as_str(),
+		intent.execution_authorization.epoch_id.as_str(),
+		intent.execution_authorization.authorization_digest,
+		intent.runner_identity.as_str(),
+		intent.intended_boot_id.as_str(),
+		intent.control_kind.as_sql(),
+		intent.isolation_kind.as_sql(),
+		binding.account_revision,
+		binding.credential.schema_version.get(),
+		binding.credential.version.get(),
+		binding.credential.fingerprint.as_str(),
+		binding.credential.writer_operation_id.as_str(),
+		format!("{:?}", binding.credential.provider.provider()),
+		binding.credential.provider.account_id(),
+		binding.refresh_callback_profile_sha256,
+	]);
+	let encoded = serde_json::to_vec(&request)
+		.map_err(|_| StoreError::InvalidInput("Chief process admission cannot be encoded"))?;
+	Ok(Sha256::digest(encoded).iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::{
+		ChiefDispatchState, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus,
+		CodexAccountCapabilityAttestation,
+	};
+	use decodex_core::{
+		AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
+		CredentialStoreSchemaVersion, CredentialVersion, ProcessBootIdentity, ProcessControlKind,
+		ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
+		ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessIsolationKind,
+		ProcessRunnerIdentity, ProviderIdentity,
+	};
+
+	const DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+	const OTHER_DIGEST: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+	fn account_id(number: u8) -> AccountId {
+		AccountId::new(format!("10000000-0000-4000-8000-{number:012}")).unwrap()
+	}
+	fn operation_id(number: u8) -> AccountOperationId {
+		AccountOperationId::new(format!("20000000-0000-4000-8000-{number:012}")).unwrap()
+	}
+	fn generation_id(number: u8) -> ProcessGenerationId {
+		ProcessGenerationId::new(format!("30000000-0000-4000-8000-{number:012}")).unwrap()
+	}
+	fn binding(number: u8) -> ProcessGenerationAccountBinding {
+		ProcessGenerationAccountBinding::new(
+			1,
+			CredentialBinding {
+				schema_version: CredentialStoreSchemaVersion::V1,
+				version: CredentialVersion::new(1).unwrap(),
+				fingerprint: CredentialFingerprint::new(DIGEST).unwrap(),
+				provider: ProviderIdentity::new(
+					AccountProvider::Chatgpt,
+					format!("provider-{number}"),
+				)
+				.unwrap(),
+				writer_operation_id: operation_id(number),
+			},
+			DIGEST,
+		)
+		.unwrap()
+	}
+	fn intent(account: u8, generation: u8) -> ProcessGenerationIntent {
+		ProcessGenerationIntent {
+			generation_id: generation_id(generation),
+			account_id: account_id(account),
+			runner_identity: ProcessRunnerIdentity::new(format!("sha256:{DIGEST}")).unwrap(),
+			intended_boot_id: ProcessBootIdentity::new("fixture-boot").unwrap(),
+			control_kind: ProcessControlKind::StdioOnlyBestEffortEof,
+			isolation_kind: ProcessIsolationKind::Session,
+			execution_authorization: ProcessExecutionAuthorization::new(
+				ProcessExecutionEpochId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+				DIGEST,
+			)
+			.unwrap(),
+		}
+	}
+	async fn seed(store: &SqliteStore) {
+		store.with_connection(|connection| {
+			for number in [1, 2] {
+				connection.execute("INSERT INTO account_identities VALUES (?1, 1)", [account_id(number).as_str()]).map_err(crate::error::sqlite_error)?;
+				connection.execute("INSERT INTO account_operations (operation_id, account_id, kind, phase, provider, provider_account_id, requested_display_label, requested_enabled, created_at_micros, updated_at_micros, completed_at_micros) VALUES (?1, ?2, 'enroll', 'committed', 'chatgpt', ?3, 'Fixture', 1, 1, 1, 1)", params![operation_id(number).as_str(), account_id(number).as_str(), format!("provider-{number}")]).map_err(crate::error::sqlite_error)?;
+				connection.execute("INSERT INTO accounts VALUES (?1, 'Fixture', 1, 'available', 1, 'chatgpt', ?2, 'exact', 1, 1, NULL)", params![account_id(number).as_str(), format!("provider-{number}")]).map_err(crate::error::sqlite_error)?;
+				connection.execute("INSERT INTO account_credentials VALUES (?1, 1, 1, ?2, ?3, 'chatgpt', ?4, X'01020304', 1)", params![account_id(number).as_str(), DIGEST, operation_id(number).as_str(), format!("provider-{number}")]).map_err(crate::error::sqlite_error)?;
+			}
+			Ok(())
+		}).unwrap();
+		store
+			.attest_codex_account_capability(&CodexAccountCapabilityAttestation {
+				build_identity: "fixture".into(),
+				executable_sha256: DIGEST.into(),
+				schema_sha256: DIGEST.into(),
+				callback_profile_sha256: DIGEST.into(),
+				login_chatgpt_auth_tokens: true,
+				refresh_callback: true,
+			})
+			.await
+			.unwrap();
+		for id in ["root", "second-root"] {
+			store
+				.create_chief_work_item(ChiefWorkItem {
+					id: id.into(),
+					parent_goal_id: None,
+					kind: ChiefWorkKind::Goal,
+					title: id.into(),
+					instructions: "Fixture root".into(),
+					codex_thread_id: None,
+					dispatch_state: ChiefDispatchState::Idle,
+					active_turn_id: None,
+					status: ChiefWorkStatus::Open,
+					next_check_at_micros: None,
+					created_at_micros: 1,
+					updated_at_micros: 1,
+				})
+				.await
+				.unwrap();
+		}
+	}
+
+	#[tokio::test]
+	async fn chief_process_admission_checks_authority_and_preserves_affinity_without_phantom_conversations()
+	 {
+		let directory = tempfile::tempdir().unwrap();
+		let path = directory.path().join("chief.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		seed(&store).await;
+		let mut stale = binding(1);
+		stale.account_revision = 2;
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(&intent(1, 1), &stale, "root", "stale")
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Rejected {
+				rejection: ProcessGenerationRejection::AccountLifecycleUnready,
+				..
+			}
+		));
+		let mut wrong_callback = binding(1);
+		wrong_callback.refresh_callback_profile_sha256 = OTHER_DIGEST.into();
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(
+					&intent(1, 1),
+					&wrong_callback,
+					"root",
+					"callback"
+				)
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Rejected {
+				rejection: ProcessGenerationRejection::CallbackCapabilityUnready,
+				..
+			}
+		));
+		store
+			.bind_chief_root_settings("root", r#"{"model":"fixture-model","cwd":"/tmp"}"#)
+			.await
+			.unwrap();
+		store
+			.bind_chief_root_settings("root", r#"{"model":"fixture-model","cwd":"/tmp"}"#)
+			.await
+			.unwrap();
+		assert!(store.bind_chief_root_settings("root", r#"{"model":"different"}"#).await.is_err());
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(&intent(1, 1), &binding(1), "root", "first")
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Fresh(_)
+		));
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(&intent(1, 1), &binding(1), "root", "first")
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Replayed(_)
+		));
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(
+					&intent(1, 2),
+					&binding(1),
+					"second-root",
+					"concurrent-root"
+				)
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Rejected {
+				rejection: ProcessGenerationRejection::AccountQuarantined,
+				..
+			}
+		));
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(
+					&intent(2, 2),
+					&binding(2),
+					"root",
+					"switch-account"
+				)
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Rejected {
+				rejection: ProcessGenerationRejection::IdentityConflict,
+				..
+			}
+		));
+		let mut bad_epoch = intent(2, 2);
+		bad_epoch.execution_authorization.authorization_digest = OTHER_DIGEST.into();
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(
+					&bad_epoch,
+					&binding(2),
+					"second-root",
+					"epoch-conflict"
+				)
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Rejected {
+				rejection: ProcessGenerationRejection::RestoreAuthorityUnavailable,
+				..
+			}
+		));
+		drop(store);
+		assert_restart_affinity(&path).await;
+	}
+
+	async fn assert_restart_affinity(path: &std::path::Path) {
+		let store = SqliteStore::open_test(path).unwrap();
+		let recorded = store.read_chief_process_binding("root").await.unwrap().unwrap();
+		assert_eq!(recorded.account_id, account_id(1));
+		assert_eq!(recorded.generation_id, generation_id(1));
+		assert_eq!(
+			store.read_chief_root_settings("root").await.unwrap().as_deref(),
+			Some(r#"{"model":"fixture-model","cwd":"/tmp"}"#)
+		);
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(&intent(1, 1), &binding(1), "root", "first")
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Replayed(_)
+		));
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(
+					&intent(1, 2),
+					&binding(1),
+					"root",
+					"restart"
+				)
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Rejected {
+				rejection: ProcessGenerationRejection::AccountQuarantined,
+				..
+			}
+		));
+		store.with_connection(|connection| {
+			let counts: (i64, i64, i64) = connection.query_row("SELECT (SELECT count(*) FROM conversations), (SELECT count(*) FROM runtime_sessions), (SELECT count(*) FROM process_generations WHERE runtime_session_id IS NULL AND quick_task_admission_key IS NULL)", [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).map_err(crate::error::sqlite_error)?;
+			assert_eq!(counts, (0, 0, 1));
+			Ok(())
+		}).unwrap();
+		let evidence = ProcessDeathEvidence::new(
+			ProcessDeathEvidenceId::new("50000000-0000-4000-8000-000000000001").unwrap(),
+			generation_id(1),
+			ProcessDeathEvidenceKind::SpawnNotCreated,
+			ProcessBootIdentity::new("fixture-boot").unwrap(),
+			None,
+			DIGEST,
+		)
+		.unwrap();
+		store.record_process_generation_death(1, &evidence).await.unwrap();
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(
+					&intent(1, 2),
+					&binding(1),
+					"root",
+					"after-positive-death"
+				)
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Fresh(_)
+		));
+		assert_eq!(
+			store.read_chief_process_binding("root").await.unwrap().unwrap().generation_id,
+			generation_id(2)
+		);
+		store.revalidate().await.unwrap();
+	}
+}

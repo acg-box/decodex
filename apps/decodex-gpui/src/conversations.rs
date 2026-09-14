@@ -27,8 +27,8 @@ const MAX_LIVE_DELTAS: usize = 64;
 const MAX_LIVE_DELTA_BYTES: usize = 64 * 1_024;
 const MAX_LIST_PAGES: usize = 32;
 const CONVERSATION_WORKING_DIRECTORY_ENV: &str = "DECODEX_CONVERSATION_WORKING_DIRECTORY";
-const CONVERSATION_MODELS: &[&str] =
-	&["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4"];
+pub(crate) const CONVERSATION_MODELS: &[&str] =
+	&["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4"];
 const CONVERSATION_EFFORTS: &[ConversationReasoningEffort] = &[
 	ConversationReasoningEffort::Low,
 	ConversationReasoningEffort::Medium,
@@ -171,6 +171,10 @@ struct ConversationsInner {
 }
 
 impl Conversations {
+	pub(crate) fn working_directory(&self) -> Option<ConversationWorkingDirectory> {
+		self.inner.working_directory.clone()
+	}
+
 	pub(crate) fn production() -> Self {
 		let configured_working_directory = std::env::var(CONVERSATION_WORKING_DIRECTORY_ENV).ok();
 		let home = std::env::var("HOME").ok();
@@ -212,23 +216,6 @@ impl Conversations {
 		state.selected = Some(conversation_id);
 		state.selection_suppressed = false;
 		true
-	}
-
-	/// Select an existing Conversation after authoritative list readback finds it.
-	pub(crate) fn select_when_available(&self, conversation_id: EntityId) {
-		let mut state = self.lock();
-		if state.tasks.iter().any(|task| task.conversation_id == conversation_id) {
-			state.selected = Some(conversation_id);
-			state.selection_suppressed = false;
-			return;
-		}
-		state.requested_selection = Some(conversation_id);
-		state.selection_suppressed = false;
-		let queued = state.queue_list();
-		drop(state);
-		if queued {
-			self.inner.notify.notify_one();
-		}
 	}
 
 	pub(crate) fn begin_new(&self) {
@@ -386,29 +373,9 @@ impl Conversations {
 			.working_directory
 			.clone()
 			.ok_or(ConversationInputError::WorkingDirectoryUnavailable)?;
-		self.create_with_cause(message, None, working_directory)
-	}
-
-	/// Create the one ordinary Conversation that executes an exact persisted Program WorkItem.
-	pub(crate) fn create_for_program_work_item(
-		&self,
-		message: &str,
-		work_item_id: EntityId,
-		working_directory: ConversationWorkingDirectory,
-	) -> Result<QueuedConversationSubmission, ConversationInputError> {
-		self.create_with_cause(message, Some(work_item_id), working_directory)
-	}
-
-	fn create_with_cause(
-		&self,
-		message: &str,
-		work_item_id: Option<EntityId>,
-		working_directory: ConversationWorkingDirectory,
-	) -> Result<QueuedConversationSubmission, ConversationInputError> {
 		let conversation_id = entity_id()?;
 		let payload = CommandPayload::CreateConversation {
 			conversation_id: conversation_id.clone(),
-			work_item_id,
 			message: message_text(message)?,
 			working_directory,
 			execution: self.lock().execution.clone(),
@@ -862,6 +829,15 @@ impl Conversations {
 			.in_flight_command
 			.take()
 			.expect("matching Conversation command remains in flight");
+		self.apply_command_outcome(state, in_flight, result)
+	}
+
+	fn apply_command_outcome(
+		&self,
+		mut state: MutexGuard<'_, State>,
+		in_flight: InFlightCommand,
+		result: &CommandResultEnvelope,
+	) -> ConversationRouteOutcome {
 		let submission = is_submission_command(&in_flight.envelope.payload);
 		if submission {
 			state.submission_result_generation =
@@ -1593,7 +1569,7 @@ impl State {
 
 fn supported_efforts(model: &str) -> &'static [ConversationReasoningEffort] {
 	match model {
-		"gpt-5.6-sol" | "gpt-5.6-terra" => CONVERSATION_EFFORTS,
+		"gpt-6-astra" | "gpt-5.6-sol" | "gpt-5.6-terra" => CONVERSATION_EFFORTS,
 		"gpt-5.6-luna" => &CONVERSATION_EFFORTS[..5],
 		_ => &CONVERSATION_EFFORTS[..4],
 	}
@@ -2232,9 +2208,10 @@ mod tests {
 		));
 	}
 
-	#[test]
-	fn sidebar_refresh_reconciles_each_provider_thread_then_reloads_the_local_list() {
-		let (conversations, server_id, current) = connected_conversations();
+	fn seed_refresh_batch(
+		conversations: &Conversations,
+		current: &ConversationSummary,
+	) -> (ConversationSummary, ConversationSummary, ConversationSummary) {
 		let archived = conversation_summary(
 			EntityId::new("00000000-0000-4000-8000-000000000003").expect("test ID is valid"),
 			EntityRevision(4),
@@ -2287,6 +2264,46 @@ mod tests {
 			state.tasks =
 				vec![current.clone(), archived.clone(), busy.clone(), establishing.clone()];
 		}
+
+		(archived, busy, establishing)
+	}
+
+	fn verify_refresh_batch_readback(
+		conversations: &Conversations,
+		server_id: &ServerId,
+		current: ConversationSummary,
+		busy: ConversationSummary,
+	) {
+		let list = conversations
+			.try_take_dispatch(1, server_id)
+			.and_then(|dispatch| dispatch.query().cloned())
+			.expect("the provider batch ends with authoritative local list readback");
+		let list_result = QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id.clone(),
+			query_id: list.query_id,
+			payload: QueryResultPayload::Conversations(ConversationListResult::Available(
+				ConversationListPage::new(vec![current.clone(), busy.clone()], None)
+					.expect("final list page is valid"),
+			)),
+		};
+		assert_eq!(
+			conversations.route_query_result(1, server_id, &list_result),
+			ConversationRouteOutcome::Fresh
+		);
+		let snapshot = conversations.snapshot();
+		assert_eq!(snapshot.tasks, vec![current, busy]);
+		assert_eq!(
+			snapshot.refresh,
+			ConversationRefreshState::Complete { checked: 4, archived: 2, failed: 1 }
+		);
+		assert!(snapshot.can_submit);
+	}
+
+	#[test]
+	fn sidebar_refresh_reconciles_each_provider_thread_then_reloads_the_local_list() {
+		let (conversations, server_id, current) = connected_conversations();
+		let (archived, busy, establishing) = seed_refresh_batch(&conversations, &current);
 
 		assert_eq!(conversations.refresh_all(), Ok(()));
 		assert_eq!(
@@ -2402,30 +2419,7 @@ mod tests {
 			ConversationRouteOutcome::Fresh
 		);
 
-		let list = conversations
-			.try_take_dispatch(1, &server_id)
-			.and_then(|dispatch| dispatch.query().cloned())
-			.expect("the provider batch ends with authoritative local list readback");
-		let list_result = QueryResultEnvelope {
-			version: CURRENT_VERSION,
-			server_id: server_id.clone(),
-			query_id: list.query_id,
-			payload: QueryResultPayload::Conversations(ConversationListResult::Available(
-				ConversationListPage::new(vec![current.clone(), busy.clone()], None)
-					.expect("final list page is valid"),
-			)),
-		};
-		assert_eq!(
-			conversations.route_query_result(1, &server_id, &list_result),
-			ConversationRouteOutcome::Fresh
-		);
-		let snapshot = conversations.snapshot();
-		assert_eq!(snapshot.tasks, vec![current, busy]);
-		assert_eq!(
-			snapshot.refresh,
-			ConversationRefreshState::Complete { checked: 4, archived: 2, failed: 1 }
-		);
-		assert!(snapshot.can_submit);
+		verify_refresh_batch_readback(&conversations, &server_id, current, busy);
 	}
 
 	#[test]

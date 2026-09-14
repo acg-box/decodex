@@ -1,8 +1,11 @@
 //! Production Decodex GPUI macOS composition root.
 
+#[cfg(target_os = "macos")] use objc2_foundation as _;
+
 mod account_login;
 mod account_profile;
 mod accounts;
+mod app_icon;
 mod bundled_daemon;
 #[cfg_attr(
 	not(test),
@@ -16,7 +19,6 @@ mod client_lifecycle;
 mod composer_input;
 mod conversations;
 mod desktop_settings;
-mod factory_surface;
 mod health_query;
 #[cfg_attr(
 	not(test),
@@ -27,8 +29,6 @@ mod health_query;
 )]
 mod history_pager;
 mod native_menu_bar;
-mod program_graph;
-mod programs;
 mod settings_surface;
 mod shell;
 mod ui_theme;
@@ -66,6 +66,7 @@ fn main() {
 	application.run(move |cx: &mut App| {
 		shell::bind_keys(cx);
 		let profile = ClientProfile::load_default(None);
+		let chief_profile = profile.as_ref().ok().cloned();
 		let bundled_daemon = profile.as_ref().ok().and_then(|profile| {
 			bundled_daemon::BundledDaemonSupervisor::launch_for_profile(profile).ok().flatten()
 		});
@@ -94,7 +95,9 @@ fn main() {
 				move |window, cx| {
 					let account_login = account_login.clone();
 					cx.new(|cx| {
-						Shell::new(window, cx, initial_connection).with_account_login(account_login)
+						Shell::new(window, cx, initial_connection)
+							.with_account_login(account_login)
+							.with_chief_profile(chief_profile, cx)
 					})
 				},
 			)

@@ -318,6 +318,12 @@ fn insert_quota(
 	};
 	let (used_percent, resets_at, error_code) = match observation.disposition {
 		AccountQuotaDisposition::Unknown => return Err(LocalAccountTransferError::InvalidInput),
+		AccountQuotaDisposition::NotApplicable => {
+			if observation.duration_minutes != 300 || observed_at <= 0 {
+				return Err(LocalAccountTransferError::InvalidInput);
+			}
+			(None, None, None)
+		},
 		AccountQuotaDisposition::Current(window) | AccountQuotaDisposition::Stale(window) => {
 			if window.duration_minutes != observation.duration_minutes {
 				return Err(LocalAccountTransferError::InvalidInput);
@@ -330,8 +336,8 @@ fn insert_quota(
 		.execute(
 			"INSERT INTO account_quota_facts (
 			   account_id, duration_minutes, used_percent, resets_at_micros, error_code,
-			   observed_at_micros
-			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+			   observed_at_micros, not_applicable
+			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
 			params![
 				account_id,
 				i64::from(observation.duration_minutes),
@@ -339,6 +345,7 @@ fn insert_quota(
 				resets_at,
 				error_code,
 				observed_at,
+				matches!(observation.disposition, AccountQuotaDisposition::NotApplicable),
 			],
 		)
 		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
@@ -433,5 +440,36 @@ const fn quota_error_text(error: AccountQuotaObservationError) -> &'static str {
 		AccountQuotaObservationError::ProtocolUnavailable => "protocol_unavailable",
 		AccountQuotaObservationError::AccountMismatch => "account_mismatch",
 		AccountQuotaObservationError::UnsupportedWindow => "unsupported_window",
+	}
+}
+
+#[cfg(test)]
+mod optional_quota_tests {
+	use super::{AccountQuotaDisposition, AccountQuotaWindowObservation, insert_quota};
+	#[test]
+	fn optional_quota_transfer_preserves_positive_absence_marker() {
+		let directory = tempfile::tempdir().expect("temporary database");
+		let mut connection =
+			rusqlite::Connection::open(directory.path().join("transfer.sqlite3")).expect("open");
+		crate::migrations::configure(&connection).expect("configure");
+		crate::migrations::migrate(&mut connection).expect("migrate");
+		let id = "10000000-0000-4000-8000-000000000001";
+		connection.execute("INSERT INTO account_identities VALUES (?1,1)", [id]).expect("identity");
+		let observation = AccountQuotaWindowObservation {
+			duration_minutes: 300,
+			observed_at_unix_micros: Some(12),
+			disposition: AccountQuotaDisposition::NotApplicable,
+		};
+		insert_quota(&connection, id, observation).expect("transfer absence");
+		let result:(Option<i64>,Option<i64>,Option<String>,i64,i64)=connection.query_row("SELECT used_percent,resets_at_micros,error_code,observed_at_micros,not_applicable FROM account_quota_facts",[],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?))).expect("readback");
+		assert_eq!(result, (None, None, None, 12, 1));
+		assert!(
+			insert_quota(
+				&connection,
+				id,
+				AccountQuotaWindowObservation { duration_minutes: 10080, ..observation }
+			)
+			.is_err()
+		);
 	}
 }

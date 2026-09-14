@@ -1,5 +1,8 @@
 //! Production GPUI window, navigation, focus, and lifecycle rendering boundary.
 
+#[path = "chief_surface.rs"] pub(crate) mod chief_surface;
+use chief_surface::ChiefSurface;
+
 use std::{
 	future::Future,
 	pin::Pin,
@@ -35,6 +38,7 @@ use crate::{
 		AccountCommandState, AccountInputError, AccountsController, AccountsLoadState,
 		AccountsSnapshot, canonical_uuid_v4,
 	},
+	app_icon::app_icon_path,
 	client_lifecycle::{ClientLifecycle, ConnectionView, LifecycleCancellation},
 	composer_input::{self, ComposerEvent, ComposerInput, MAX_COMPOSER_BYTES, SubmitComposer},
 	conversations::{
@@ -42,10 +46,8 @@ use crate::{
 		ConversationsLoadState, ConversationsSnapshot, QueuedConversationSubmission,
 	},
 	desktop_settings::{DesktopSettingsController, DesktopSettingsSnapshot},
-	factory_surface::{FactoryEvent, FactorySurface, app_icon_path},
 	health_query::{HealthLoadState, HealthQuery, HealthSnapshot},
 	history_pager::{HistoryLoadState, HistoryPageSource, HistoryPager, HistorySnapshot},
-	programs::{Programs, ProgramsSnapshot},
 	settings_surface::SettingsSurface,
 	ui_theme,
 };
@@ -289,7 +291,7 @@ actions!(
 		FocusNext,
 		FocusPrevious,
 		ActivateDestination,
-		ActivateFactory,
+		ActivateChief,
 		ActivateConversations,
 		ActivateHealth,
 		RefreshHealth,
@@ -304,7 +306,7 @@ actions!(
 /// Stable shell destinations. Each live destination remains issue-owned.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Destination {
-	Factory,
+	Chief,
 	Advisor,
 	Projects,
 	Conversations,
@@ -317,7 +319,7 @@ pub(crate) enum Destination {
 
 impl Destination {
 	pub(crate) const ALL: [Self; 9] = [
-		Self::Factory,
+		Self::Chief,
 		Self::Advisor,
 		Self::Projects,
 		Self::Conversations,
@@ -327,11 +329,11 @@ impl Destination {
 		Self::Health,
 		Self::Settings,
 	];
-	const CHROME: [Self; 4] = [Self::Conversations, Self::Factory, Self::Accounts, Self::Health];
+	const CHROME: [Self; 4] = [Self::Chief, Self::Conversations, Self::Accounts, Self::Health];
 
 	pub(crate) const fn label(self) -> &'static str {
 		match self {
-			Self::Factory => "Factory",
+			Self::Chief => "Chief",
 			Self::Advisor => "Advisor",
 			Self::Projects => "Projects",
 			Self::Conversations => "Conversations",
@@ -345,7 +347,7 @@ impl Destination {
 
 	const fn description(self) -> &'static str {
 		match self {
-			Self::Factory => "Move managed work through Codex.",
+			Self::Chief => "Coordinate goals, read results, and respond to decisions.",
 			Self::Advisor => "Review guidance and bounded decisions.",
 			Self::Projects => "Own repositories and product context.",
 			Self::Conversations => "Converse with Codex and inspect execution.",
@@ -441,11 +443,10 @@ const fn startup_failure(failure: ClientFailure) -> &'static str {
 /// Bind the shell's complete keyboard path once at application startup.
 pub(crate) fn bind_keys(cx: &mut App) {
 	composer_input::bind_keys(cx);
-	crate::factory_surface::bind_keys(cx);
 	cx.bind_keys([
 		KeyBinding::new("tab", FocusNext, None),
 		KeyBinding::new("shift-tab", FocusPrevious, None),
-		KeyBinding::new("cmd-1", ActivateFactory, None),
+		KeyBinding::new("cmd-1", ActivateChief, None),
 		KeyBinding::new("cmd-2", ActivateConversations, None),
 		KeyBinding::new("cmd-3", ActivateHealth, None),
 		KeyBinding::new("cmd-b", ToggleSidebar, None),
@@ -476,7 +477,7 @@ pub(crate) struct Shell {
 	destination_focus: Vec<FocusHandle>,
 	refresh_focus: FocusHandle,
 	composer: Entity<ComposerInput>,
-	factory: Entity<FactorySurface>,
+	chief: Entity<ChiefSurface>,
 	settings: Entity<SettingsSurface>,
 	account_login: Option<Arc<AccountLoginController>>,
 	account_login_status: Option<AccountLoginStatus>,
@@ -497,8 +498,6 @@ pub(crate) struct Shell {
 	health: HealthSnapshot,
 	conversations: Conversations,
 	quick: ConversationsSnapshot,
-	programs: Programs,
-	program: ProgramsSnapshot,
 	history_pager: Option<HistoryPager>,
 	history: Option<HistorySnapshot>,
 	opened_history: Option<EntityId>,
@@ -510,6 +509,20 @@ pub(crate) struct Shell {
 }
 
 impl Shell {
+	pub(crate) fn with_chief_profile(
+		self,
+		profile: Option<decodex_protocol::ClientProfile>,
+		cx: &mut Context<Self>,
+	) -> Self {
+		let cwd = self.conversations.working_directory();
+		self.chief.update(cx, |surface, cx| {
+			surface.seed_context(cwd, vec![], cx);
+			surface.bind_profile(profile, cx);
+			surface.refresh(cx);
+		});
+		self
+	}
+
 	pub(crate) fn new(
 		window: &mut Window,
 		cx: &mut Context<Self>,
@@ -529,11 +542,7 @@ impl Shell {
 			cx.notify();
 		})
 		.detach();
-		let factory = cx.new(FactorySurface::new);
-		cx.subscribe(&factory, |shell, _, event: &FactoryEvent, cx| {
-			shell.handle_factory_event(event, cx);
-		})
-		.detach();
+		let chief = cx.new(ChiefSurface::new);
 		let desktop_settings = DesktopSettingsController::production();
 		let desktop_settings_snapshot = desktop_settings.snapshot();
 		let account_profile_controller = AccountProfileController::production();
@@ -545,15 +554,11 @@ impl Shell {
 		let health_query = HealthQuery::production();
 		let health = health_query.snapshot();
 		let conversations = Conversations::production();
-		conversations.activate();
 		let quick = conversations.snapshot();
-		let programs = Programs::production();
-		let program = programs.snapshot();
-		factory.update(cx, |factory, cx| factory.bind_programs(programs.clone(), cx));
 		window.focus(&root_focus, cx);
 
 		Self {
-			selected: Destination::Conversations,
+			selected: Destination::Chief,
 			inspector_tab: InspectorTab::Context,
 			left_sidebar_visible: true,
 			left_sidebar_mounted: true,
@@ -566,7 +571,7 @@ impl Shell {
 			destination_focus,
 			refresh_focus,
 			composer,
-			factory,
+			chief,
 			settings,
 			account_login: None,
 			account_login_status: None,
@@ -587,8 +592,6 @@ impl Shell {
 			health,
 			conversations,
 			quick,
-			programs,
-			program,
 			history_pager: None,
 			history: None,
 			opened_history: None,
@@ -616,11 +619,8 @@ impl Shell {
 	#[allow(dead_code)]
 	pub(crate) fn visual_workbench(window: &mut Window, cx: &mut Context<Self>) -> Self {
 		use decodex_protocol::{
-			AccountRoutingControlDto, ConversationHistoryPage, ConversationSummary,
-			ConversationTitle, EntityRevision, ProviderThreadId, WireText,
+			ConversationSummary, ConversationTitle, EntityRevision, ProviderThreadId,
 		};
-
-		use crate::history_pager::{HistoryCursorObservation, HistoryPageSource};
 
 		let mut shell = Self::new(
 			window,
@@ -705,6 +705,14 @@ impl Shell {
 			),
 		};
 
+		shell.visual_accounts_and_health();
+		shell.visual_history(conversation_id, runtime_session_id);
+		shell
+	}
+
+	#[cfg(feature = "visual-capture")]
+	fn visual_accounts_and_health(&mut self) {
+		use decodex_protocol::{AccountRoutingControlDto, EntityRevision, WireText};
 		let visual_account =
 			|id: &str, alias: &str, used_five_hour: u8, used_seven_day: u8, revision: u64| {
 				AccountDto {
@@ -739,7 +747,7 @@ impl Shell {
 			visual_account("70000000-0000-4000-8000-000000000002", "Build reserve", 18, 9, 7);
 		let research =
 			visual_account("70000000-0000-4000-8000-000000000003", "Research reserve", 91, 55, 4);
-		shell.accounts = AccountsSnapshot {
+		self.accounts = AccountsSnapshot {
 			load: AccountsLoadState::Ready,
 			command: AccountCommandState::Idle,
 			accounts: vec![primary.clone(), reserve.clone(), research.clone()],
@@ -767,7 +775,7 @@ impl Shell {
 				decodex_protocol::DoctorCheck::new(component, status)
 			})
 			.collect();
-		shell.health = HealthSnapshot {
+		self.health = HealthSnapshot {
 			load: HealthLoadState::Ready,
 			report: Some(
 				decodex_protocol::DoctorReport::new(
@@ -780,6 +788,12 @@ impl Shell {
 			),
 			can_refresh: true,
 		};
+	}
+
+	#[cfg(feature = "visual-capture")]
+	fn visual_history(&mut self, conversation_id: EntityId, runtime_session_id: EntityId) {
+		use crate::history_pager::{HistoryCursorObservation, HistoryPageSource};
+		use decodex_protocol::ConversationHistoryPage;
 
 		let item = |history_item_id: &str,
 		            turn_id: &str,
@@ -817,7 +831,7 @@ impl Shell {
 					"turn-01",
 					"assistant",
 					"message",
-					"I’ll make the conversation the primary surface, move Factory to a secondary view, and bind the inspector to the current Work Item. The UI will not invent diff data that the app-server does not provide.",
+					"I’ll make the conversation the primary surface, keep work details in a secondary view, and bind the inspector to the current Work Item. The UI will not invent diff data that the app-server does not provide.",
 					2,
 				),
 				item(
@@ -825,7 +839,7 @@ impl Shell {
 					"turn-01",
 					"tool",
 					"tool_call",
-					"Inspected Shell, Conversations, Programs, and HistoryPager ownership boundaries",
+					"Inspected Shell, Conversations, Chief, and HistoryPager ownership boundaries",
 					3,
 				),
 				item(
@@ -833,7 +847,7 @@ impl Shell {
 					"turn-01",
 					"assistant",
 					"message",
-					"The first pass is now a compact Workbench: integrated title bar, horizontal sessions, dense transcript, floating composer, and a real Work Item inspector. Factory remains available for graph-level planning and managed execution.",
+					"The first pass is now a compact Workbench: integrated title bar, horizontal sessions, dense transcript, floating composer, and a real Work Item inspector. Chief coordinates work and its dependencies.",
 					4,
 				),
 				item(
@@ -841,7 +855,7 @@ impl Shell {
 					"turn-02",
 					"user",
 					"message",
-					"Keep the visual language quiet and professional. The information architecture should carry the factory feeling.",
+					"Keep the visual language quiet and professional. The information architecture should make coordinated work clear.",
 					5,
 				),
 				item(
@@ -863,7 +877,7 @@ impl Shell {
 			],
 			next_cursor: None,
 		};
-		shell.history = Some(HistorySnapshot {
+		self.history = Some(HistorySnapshot {
 			conversation_id: Some(conversation_id.clone()),
 			view_generation: 1,
 			load: HistoryLoadState::Visible,
@@ -880,13 +894,8 @@ impl Shell {
 			can_retry: false,
 			last_stale_cancellation: None,
 		});
-		let programs = Programs::visual_development_three_cycle();
-		shell.program = programs.snapshot();
-		shell.programs = programs.clone();
-		shell.factory.update(cx, |factory, cx| factory.bind_programs(programs, cx));
-		shell.opened_history = Some(conversation_id);
-		shell.creating_new = false;
-		shell
+		self.opened_history = Some(conversation_id);
+		self.creating_new = false;
 	}
 
 	#[cfg(feature = "visual-capture")]
@@ -903,54 +912,15 @@ impl Shell {
 	) -> Self {
 		let mut shell = Self::visual_workbench(window, cx);
 		shell.selected = destination;
+		if destination == Destination::Chief {
+			shell.connection = ConnectionView::Stopped;
+			shell.chief.update(cx, ChiefSurface::refresh);
+		}
 		shell.left_sidebar_visible = left_sidebar_visible;
 		shell.left_sidebar_mounted = left_sidebar_visible;
 		shell.inspector_visible = inspector_visible;
 		shell.inspector_mounted = inspector_visible;
 		shell
-	}
-
-	fn handle_factory_event(&mut self, event: &FactoryEvent, cx: &mut Context<Self>) {
-		match event {
-			FactoryEvent::StartProgramWorkItem { work_item_id, message, working_directory } => {
-				self.conversations.begin_new();
-				self.pending_submission = None;
-				self.deferred_provider_refresh = None;
-				self.creating_new = true;
-				self.opened_history = None;
-				let prompt =
-					format!("Decodex Program WorkItem {}\n\n{}", work_item_id.as_str(), message);
-				let result_generation = self.conversations.snapshot().submission_result_generation;
-				match self.conversations.create_for_program_work_item(
-					&prompt,
-					work_item_id.clone(),
-					working_directory.clone(),
-				) {
-					Ok(submission) => {
-						self.programs.expect_execution(submission.conversation_id.clone());
-						self.pending_submission = Some(PendingComposerSubmission {
-							content: prompt,
-							result_generation,
-							conversation_id: submission.conversation_id,
-							turn_id: submission.turn_id,
-							accepted: false,
-						});
-						self.input_status = None;
-					},
-					Err(error) => self.input_status = Some(input_error_label(error).into()),
-				}
-				self.synchronize_conversations();
-				self.select_destination(Destination::Conversations, cx);
-			},
-			FactoryEvent::OpenProgramConversation { conversation_id } => {
-				self.conversations.select_when_available(conversation_id.clone());
-				self.deferred_provider_refresh = Some(conversation_id.clone());
-				self.creating_new = false;
-				self.opened_history = None;
-				self.select_destination(Destination::Conversations, cx);
-				self.synchronize_conversations();
-			},
-		}
 	}
 
 	fn focus_next(&mut self, _: &FocusNext, window: &mut Window, cx: &mut Context<Self>) {
@@ -986,23 +956,29 @@ impl Shell {
 		if self.selected == Destination::Conversations {
 			self.conversations.deactivate();
 		}
-		if self.selected == Destination::Factory {
-			self.programs.deactivate();
-		}
 		if self.selected == Destination::Accounts {
 			self.accounts_controller.deactivate();
 		}
 
 		self.selected = destination;
+		if destination == Destination::Chief {
+			let cwd = self.conversations.working_directory();
+			let accounts = self
+				.accounts
+				.accounts
+				.iter()
+				.map(|account| {
+					(account.account_id.as_str().to_owned(), account.alias.as_str().to_owned())
+				})
+				.collect();
+			self.chief.update(cx, |surface, cx| surface.seed_context(cwd, accounts, cx));
+			self.chief.update(cx, ChiefSurface::refresh);
+		}
 		if destination == Destination::Health {
 			self.health_query.activate();
 		}
 		if destination == Destination::Conversations {
 			self.conversations.activate();
-		}
-		if destination == Destination::Factory {
-			self.programs.activate();
-			self.synchronize_programs(cx);
 		}
 		if destination == Destination::Accounts {
 			self.accounts_controller.activate();
@@ -1015,9 +991,8 @@ impl Shell {
 		cx.notify();
 	}
 
-	fn activate_factory(&mut self, _: &ActivateFactory, _: &mut Window, cx: &mut Context<Self>) {
-		self.select_destination(Destination::Factory, cx);
-		cx.stop_propagation();
+	fn activate_chief(&mut self, _: &ActivateChief, _: &mut Window, cx: &mut Context<Self>) {
+		self.select_destination(Destination::Chief, cx);
 	}
 
 	fn activate_conversations(
@@ -1158,16 +1133,6 @@ impl Shell {
 		self.synchronize_conversations();
 		self.reconcile_pending_submission(cx);
 		cx.notify();
-	}
-
-	fn bind_programs(&mut self, programs: Programs, cx: &mut Context<Self>) {
-		self.programs.deactivate();
-		self.programs = programs;
-		if self.selected == Destination::Factory {
-			self.programs.activate();
-		}
-		self.factory.update(cx, |factory, cx| factory.bind_programs(self.programs.clone(), cx));
-		self.synchronize_programs(cx);
 	}
 
 	fn bind_accounts(&mut self, accounts: AccountsController, cx: &mut Context<Self>) {
@@ -1448,12 +1413,6 @@ impl Shell {
 		if let Some(url) = url {
 			cx.open_url(url);
 		}
-	}
-
-	fn synchronize_programs(&mut self, cx: &mut Context<Self>) {
-		self.program = self.programs.snapshot();
-		self.factory.update(cx, FactorySurface::synchronize_programs);
-		cx.notify();
 	}
 
 	fn synchronize_conversations(&mut self) {
@@ -1819,7 +1778,6 @@ pub(crate) fn retain_lifecycle(
 	let desktop_settings = lifecycle.desktop_settings();
 	let health_query = lifecycle.health_query();
 	let conversations = lifecycle.conversations();
-	let programs = lifecycle.programs();
 	let history_pager = lifecycle.history_pager();
 	shell.update(cx, |shell, cx| {
 		shell.bind_accounts(accounts, cx);
@@ -1827,7 +1785,6 @@ pub(crate) fn retain_lifecycle(
 		shell.bind_desktop_settings(desktop_settings, cx);
 		shell.bind_health_query(health_query, cx);
 		shell.bind_conversations(conversations, history_pager, cx);
-		shell.bind_programs(programs, cx);
 	});
 	let shell = shell.downgrade();
 	let background = cx.background_executor().spawn(async move {
@@ -1865,6 +1822,9 @@ fn publish_views(
 ) {
 	while let Ok(view) = views.try_recv() {
 		let _ = shell.update(cx, |shell, cx| {
+			if shell.connection != view {
+				shell.chief.update(cx, ChiefSurface::mark_stale);
+			}
 			shell.connection = view;
 			cx.notify();
 		});
@@ -1876,7 +1836,6 @@ fn publish_views(
 		let desktop_settings = shell.desktop_settings.snapshot();
 		let health = shell.health_query.snapshot();
 		let quick = shell.conversations.snapshot();
-		let program = shell.programs.snapshot();
 		let history = shell.history_pager.as_ref().map(HistoryPager::snapshot);
 
 		if accounts != shell.accounts {
@@ -1900,9 +1859,6 @@ fn publish_views(
 			shell.synchronize_conversations();
 			shell.reconcile_pending_submission(cx);
 			cx.notify();
-		}
-		if program != shell.program {
-			shell.synchronize_programs(cx);
 		}
 	});
 }
@@ -1992,10 +1948,6 @@ fn workbench_topbar(
 		.and_then(|task| task.program.as_ref())
 		.map(|program| format!("Program {}", compact_identity(program.program_id.as_str())))
 		.unwrap_or_else(|| "local workspace".to_owned());
-	let connection_color = presentation.color;
-	let connection_label = presentation.label;
-	let left_sidebar_visible = shell.left_sidebar_visible;
-	let inspector_visible = shell.inspector_visible;
 	let page_tabs = Destination::CHROME.into_iter().map(|destination| {
 		let index = Destination::ALL
 			.iter()
@@ -2010,10 +1962,6 @@ fn workbench_topbar(
 			cx,
 		)
 	});
-	let settings_index = Destination::ALL
-		.iter()
-		.position(|destination| *destination == Destination::Settings)
-		.expect("Settings is part of the complete destination set");
 
 	div()
 		.id("workbench-topbar")
@@ -2049,57 +1997,7 @@ fn workbench_topbar(
 				window.titlebar_double_click();
 			}
 		})
-		.child(
-			div()
-				.h_full()
-				.w(px(350.0))
-				.min_w(px(250.0))
-				.flex()
-				.items_center()
-				.gap_2()
-				.child(img(app_icon_path()).size(px(20.0)).rounded(px(5.0)))
-				.child(
-					div()
-						.min_w_0()
-						.flex()
-						.items_center()
-						.gap_2()
-						.text_size(px(10.5))
-						.child(
-							div()
-								.font_weight(FontWeight::SEMIBOLD)
-								.text_color(rgb(WB_TEXT))
-								.child("Decodex"),
-						)
-						.child(div().text_color(rgb(WB_TEXT_FAINT)).child("/"))
-						.child(
-							div()
-								.min_w_0()
-								.overflow_hidden()
-								.whitespace_nowrap()
-								.text_ellipsis()
-								.text_color(rgb(WB_TEXT_MUTED))
-								.child(title),
-						),
-				)
-				.child(
-					div()
-						.h(px(18.0))
-						.max_w(px(138.0))
-						.px_2()
-						.flex()
-						.items_center()
-						.rounded(px(5.0))
-						.bg(rgba(0xffffff08))
-						.font_family("SF Mono")
-						.text_size(px(8.0))
-						.text_color(rgb(WB_TEXT_FAINT))
-						.overflow_hidden()
-						.whitespace_nowrap()
-						.text_ellipsis()
-						.child(workspace),
-				),
-		)
+		.child(topbar_identity(title, workspace))
 		.child(
 			div()
 				.id("product-destinations")
@@ -2114,159 +2012,7 @@ fn workbench_topbar(
 				.gap_1()
 				.children(page_tabs),
 		)
-		.child(
-			div()
-				.w(px(400.0))
-				.min_w(px(370.0))
-				.h_full()
-				.flex()
-				.items_center()
-				.justify_end()
-				.gap_2()
-				.text_size(px(9.0))
-				.when(shell.selected == Destination::Conversations, |controls| {
-					controls.child(
-						div()
-							.id("toggle-left-sidebar")
-							.role(Role::Button)
-							.aria_label("Toggle conversation sidebar")
-							.aria_expanded(left_sidebar_visible)
-							.tooltip(|_, cx| {
-								cx.new(|_| ControlTooltip("Toggle sessions · Command-B")).into()
-							})
-							.h(px(27.0))
-							.px_3()
-							.flex()
-							.items_center()
-							.rounded(px(7.0))
-							.border_1()
-							.border_color(if left_sidebar_visible {
-								rgba(0xffffff20)
-							} else {
-								rgba(0xffffff10)
-							})
-							.bg(if left_sidebar_visible {
-								rgba(0xffffff10)
-							} else {
-								rgba(0x00000000)
-							})
-							.text_color(if left_sidebar_visible {
-								rgb(WB_TEXT)
-							} else {
-								rgb(WB_TEXT_MUTED)
-							})
-							.cursor_pointer()
-							.occlude()
-							.on_mouse_down(MouseButton::Left, |_, window, cx| {
-								window.prevent_default();
-								cx.stop_propagation();
-							})
-							.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
-							.active(|element| element.bg(rgba(0xffffff1c)).opacity(0.82))
-							.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
-							.on_click(cx.listener(|shell, _, _, cx| {
-								shell.set_left_sidebar_visible(!shell.left_sidebar_visible, cx);
-							}))
-							.child("Sessions"),
-					)
-				})
-				.when(shell.selected == Destination::Conversations, |controls| {
-					controls.child(
-						div()
-							.id("toggle-inspector")
-							.role(Role::Button)
-							.aria_label("Toggle conversation context")
-							.aria_expanded(inspector_visible)
-							.tooltip(|_, cx| {
-								cx.new(|_| ControlTooltip("Toggle context · Command-Shift-B"))
-									.into()
-							})
-							.h(px(27.0))
-							.px_3()
-							.flex()
-							.items_center()
-							.rounded(px(7.0))
-							.border_1()
-							.border_color(if inspector_visible {
-								rgba(0xffffff20)
-							} else {
-								rgba(0xffffff10)
-							})
-							.bg(if inspector_visible { rgba(0xffffff10) } else { rgba(0x00000000) })
-							.text_color(if inspector_visible {
-								rgb(WB_TEXT)
-							} else {
-								rgb(WB_TEXT_MUTED)
-							})
-							.cursor_pointer()
-							.occlude()
-							.on_mouse_down(MouseButton::Left, |_, window, cx| {
-								window.prevent_default();
-								cx.stop_propagation();
-							})
-							.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
-							.active(|element| element.bg(rgba(0xffffff1c)).opacity(0.82))
-							.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
-							.on_click(cx.listener(|shell, _, _, cx| {
-								shell.set_inspector_visible(!shell.inspector_visible, cx);
-							}))
-							.child("Context"),
-					)
-				})
-				.child(
-					div()
-						.id("workbench-connection-status")
-						.role(Role::Status)
-						.aria_label(format!("Connection: {connection_label}"))
-						.flex()
-						.items_center()
-						.gap_2()
-						.text_color(rgb(WB_TEXT_MUTED))
-						.child(div().size(px(5.0)).rounded_full().bg(rgb(connection_color)))
-						.child(connection_label),
-				)
-				.child(
-					div()
-						.id("open-settings")
-						.role(Role::Button)
-						.aria_label("Open settings")
-						.key_context("Destination")
-						.track_focus(&shell.destination_focus[settings_index])
-						.on_action(cx.listener(Shell::focus_next))
-						.on_action(cx.listener(Shell::focus_previous))
-						.on_action(cx.listener(Shell::activate_destination))
-						.h(px(26.0))
-						.px_2()
-						.flex()
-						.items_center()
-						.rounded(px(7.0))
-						.border_1()
-						.border_color(if shell.selected == Destination::Settings {
-							rgba(0xffffff20)
-						} else {
-							rgba(0x00000000)
-						})
-						.bg(if shell.selected == Destination::Settings {
-							rgba(0xffffff10)
-						} else {
-							rgba(0x00000000)
-						})
-						.text_color(if shell.selected == Destination::Settings {
-							rgb(WB_TEXT)
-						} else {
-							rgb(WB_TEXT_MUTED)
-						})
-						.occlude()
-						.cursor_pointer()
-						.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-						.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
-						.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
-						.on_click(cx.listener(|shell, _, _, cx| {
-							shell.select_destination(Destination::Settings, cx);
-						}))
-						.child("Settings"),
-				),
-		)
+		.child(topbar_controls(shell, presentation, cx))
 		.into_any_element()
 }
 
@@ -2309,6 +2055,143 @@ struct HealthPresentation {
 	label: &'static str,
 	detail: &'static str,
 	color: u32,
+}
+
+fn topbar_controls(
+	shell: &Shell,
+	presentation: &ConnectionPresentation,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	let connection_color = presentation.color;
+	let connection_label = presentation.label;
+	let left_sidebar_visible = shell.left_sidebar_visible;
+	let inspector_visible = shell.inspector_visible;
+	let settings_index = Destination::ALL
+		.iter()
+		.position(|destination| *destination == Destination::Settings)
+		.expect("Settings destination");
+	div()
+		.w(px(400.0))
+		.min_w(px(370.0))
+		.h_full()
+		.flex()
+		.items_center()
+		.justify_end()
+		.gap_2()
+		.text_size(px(9.0))
+		.when(shell.selected == Destination::Conversations, |controls| {
+			controls.child(topbar_sessions_toggle(left_sidebar_visible, cx))
+		})
+		.when(shell.selected == Destination::Conversations, |controls| {
+			controls.child(topbar_inspector_toggle(inspector_visible, cx))
+		})
+		.child(
+			div()
+				.id("workbench-connection-status")
+				.role(Role::Status)
+				.aria_label(format!("Connection: {connection_label}"))
+				.flex()
+				.items_center()
+				.gap_2()
+				.text_color(rgb(WB_TEXT_MUTED))
+				.child(div().size(px(5.0)).rounded_full().bg(rgb(connection_color)))
+				.child(connection_label),
+		)
+		.child(
+			div()
+				.id("open-settings")
+				.role(Role::Button)
+				.aria_label("Open settings")
+				.key_context("Destination")
+				.track_focus(&shell.destination_focus[settings_index])
+				.on_action(cx.listener(Shell::focus_next))
+				.on_action(cx.listener(Shell::focus_previous))
+				.on_action(cx.listener(Shell::activate_destination))
+				.h(px(26.0))
+				.px_2()
+				.flex()
+				.items_center()
+				.rounded(px(7.0))
+				.border_1()
+				.border_color(if shell.selected == Destination::Settings {
+					rgba(0xffffff20)
+				} else {
+					rgba(0x00000000)
+				})
+				.bg(if shell.selected == Destination::Settings {
+					rgba(0xffffff10)
+				} else {
+					rgba(0x00000000)
+				})
+				.text_color(if shell.selected == Destination::Settings {
+					rgb(WB_TEXT)
+				} else {
+					rgb(WB_TEXT_MUTED)
+				})
+				.occlude()
+				.cursor_pointer()
+				.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+				.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+				.on_click(cx.listener(|shell, _, _, cx| {
+					shell.select_destination(Destination::Settings, cx);
+				}))
+				.child("Settings"),
+		)
+		.into_any_element()
+}
+
+fn topbar_identity(title: String, workspace: String) -> AnyElement {
+	div()
+		.h_full()
+		.w(px(350.0))
+		.min_w(px(250.0))
+		.flex()
+		.items_center()
+		.gap_2()
+		.child(img(app_icon_path()).size(px(20.0)).rounded(px(5.0)))
+		.child(
+			div()
+				.min_w_0()
+				.flex()
+				.items_center()
+				.gap_2()
+				.text_size(px(10.5))
+				.child(
+					div()
+						.font_weight(FontWeight::SEMIBOLD)
+						.text_color(rgb(WB_TEXT))
+						.child("Decodex"),
+				)
+				.child(div().text_color(rgb(WB_TEXT_FAINT)).child("/"))
+				.child(
+					div()
+						.min_w_0()
+						.overflow_hidden()
+						.whitespace_nowrap()
+						.text_ellipsis()
+						.text_color(rgb(WB_TEXT_MUTED))
+						.child(title),
+				),
+		)
+		.child(
+			div()
+				.h(px(18.0))
+				.max_w(px(138.0))
+				.px_2()
+				.flex()
+				.items_center()
+				.rounded(px(5.0))
+				.bg(rgba(0xffffff08))
+				.font_family("SF Mono")
+				.text_size(px(8.0))
+				.text_color(rgb(WB_TEXT_FAINT))
+				.overflow_hidden()
+				.whitespace_nowrap()
+				.text_ellipsis()
+				.child(workspace),
+		)
+		.into_any_element()
 }
 
 fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
@@ -2784,91 +2667,14 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.flex()
 				.flex_col()
 				.gap_3()
+				.child(account_pool_header(count, available, balanced, can_manage, cx))
+				.child(account_login_controls(shell, cx))
+				.when(shell.account_profile.selected.is_some(), |content| {
+					content.child(account_profile_panel(shell, cx))
+				})
 				.child(
 					div()
-						.p_5()
-						.flex()
-						.items_center()
-						.justify_between()
-						.gap_6()
-						.rounded(px(13.0))
-						.border_1()
-						.border_color(rgba(0xffffff12))
-						.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL))
-						.child(
-							div()
-								.min_w_0()
-								.flex()
-								.flex_col()
-								.gap_1()
-								.child(
-									div()
-										.flex()
-										.items_center()
-										.gap_2()
-										.child(div().size(px(6.0)).rounded_full().bg(rgb(WB_GREEN)))
-										.child(
-											div()
-												.text_size(px(14.0))
-												.font_weight(FontWeight::SEMIBOLD)
-												.child("Account pool"),
-										)
-										.child(
-											div()
-										.font_family("SF Mono")
-										.text_size(px(8.0))
-										.text_color(rgb(WB_TEXT_FAINT))
-										.child(format!("{count} ACCOUNTS · {available} AVAILABLE")),
-										),
-								)
-								.child(
-									div()
-										.max_w(px(570.0))
-										.text_size(px(10.5))
-										.line_height(px(16.0))
-										.text_color(rgb(WB_TEXT_MUTED))
-										.child("Routing is chosen only for a new Codex conversation. Existing threads keep their bound account and cache affinity."),
-								),
-						)
-						.child(
-							div()
-								.flex()
-								.items_center()
-								.gap_2()
-								.child(account_mode_button("Balanced", balanced, can_manage, cx))
-								.child(
-									div()
-										.id("accounts-refresh")
-										.role(Role::Button)
-										.aria_label("Refresh account pool")
-										.h(px(28.0))
-										.px_3()
-										.flex()
-										.items_center()
-										.rounded(px(7.0))
-										.border_1()
-										.border_color(rgba(0xffffff14))
-										.text_size(px(9.0))
-										.text_color(rgb(WB_TEXT_MUTED))
-										.cursor_pointer()
-										.hover(|element| {
-											element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT))
-										})
-										.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
-										.on_click(cx.listener(|shell, _, _, cx| {
-											shell.refresh_accounts(cx);
-										}))
-										.child("Refresh"),
-								),
-						),
-					)
-					.child(account_login_controls(shell, cx))
-					.when(shell.account_profile.selected.is_some(), |content| {
-						content.child(account_profile_panel(shell, cx))
-					})
-					.child(
-						div()
-							.id("account-list")
+						.id("account-list")
 						.flex_1()
 						.min_h_0()
 						.overflow_y_scroll()
@@ -2896,7 +2702,9 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 											.font_family("SF Mono")
 											.text_size(px(8.0))
 											.text_color(rgb(WB_TEXT_FAINT))
-											.child("Use Account access above to enroll credentials through the Decodex service."),
+											.child(
+												"Use Account access above to enroll credentials through the Decodex service.",
+											),
 									),
 							)
 						})
@@ -3358,8 +3166,6 @@ fn account_pool_row(
 	let enabled = account.enabled;
 	let pin_enabled = can_route && enabled && !fixed;
 	let toggle_enabled = can_manage;
-	let state_color = account_state_color(account);
-	let short_id = account.account_id.as_str().get(..8).unwrap_or(account.account_id.as_str());
 
 	div()
 		.id(("account-row", index))
@@ -3371,43 +3177,7 @@ fn account_pool_row(
 		.border_1()
 		.border_color(if fixed { rgba(0x60a5fa42) } else { rgba(0xffffff0f) })
 		.bg(if fixed { rgba(0x60a5fa0d) } else { rgba(ui_theme::SURFACE_MATERIAL) })
-		.child(
-			div()
-				.w(px(222.0))
-				.min_w(px(190.0))
-				.flex()
-				.items_center()
-				.gap_3()
-				.child(div().size(px(7.0)).rounded_full().bg(rgb(state_color)))
-				.child(
-					div()
-						.min_w_0()
-						.flex()
-						.flex_col()
-						.gap_1()
-						.child(
-							div()
-								.overflow_hidden()
-								.whitespace_nowrap()
-								.text_ellipsis()
-								.text_size(px(11.0))
-								.font_weight(FontWeight::SEMIBOLD)
-								.text_color(if enabled { rgb(WB_TEXT) } else { rgb(WB_TEXT_FAINT) })
-								.child(account.alias.as_str().to_owned()),
-						)
-						.child(
-							div()
-								.flex()
-								.items_center()
-								.gap_2()
-								.font_family("SF Mono")
-								.text_size(px(7.5))
-								.text_color(rgb(WB_TEXT_FAINT))
-								.child(account_readiness_status(account))
-								.child(format!("· {short_id}")),
-						),
-				),
-		)
+		.child(account_row_identity(account))
 		.child(
 			div().flex_1().min_w_0().flex().items_center().gap_5().children(
 				[
@@ -3508,8 +3278,7 @@ fn account_management_actions(
 	let logout_account_id = account.account_id.clone();
 	let login_account_revision = account.account_revision;
 	let login_recovery_operation_id = account_login_recovery_operation_id(account);
-	let login_label =
-		if login_recovery_operation_id.is_some() { "Re-login" } else { "Login" };
+	let login_label = if login_recovery_operation_id.is_some() { "Re-login" } else { "Login" };
 
 	div()
 		.flex()
@@ -3631,6 +3400,26 @@ fn account_row_action(
 }
 
 fn account_quota(label: &'static str, quota: AccountQuotaWindowDto) -> Option<AnyElement> {
+	if quota.result == AccountQuotaStateDto::NotApplicable {
+		return Some(
+			div()
+				.w(px(122.0))
+				.flex()
+				.flex_col()
+				.gap_1()
+				.child(
+					div()
+						.font_family("SF Mono")
+						.text_size(px(7.5))
+						.text_color(rgb(WB_TEXT_FAINT))
+						.child(label),
+				)
+				.child(
+					div().text_size(px(9.0)).text_color(rgb(WB_TEXT_FAINT)).child("Not applicable"),
+				)
+				.into_any_element(),
+		);
+	}
 	let AccountQuotaStateDto::Current { used_percent, .. } = quota.result else {
 		return None;
 	};
@@ -3854,98 +3643,7 @@ fn conversation_refresh_status(refresh: ConversationRefreshState) -> Option<Stri
 }
 
 fn conversation_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
-	let selected = shell.quick.selected.clone();
-	let can_control = shell.quick.can_submit
-		&& shell.quick.selected_task().is_some_and(|task| task.state == ConversationState::Ready);
-	let can_refresh_all =
-		shell.quick.can_submit && shell.quick.load == ConversationsLoadState::Ready;
-	let refresh_status = conversation_refresh_status(shell.quick.refresh);
-	let refresh_label = match shell.quick.refresh {
-		ConversationRefreshState::Refreshing { completed, total, .. } => {
-			format!("{completed}/{total}")
-		},
-		_ => "↻".to_owned(),
-	};
-	let refresh_text_size =
-		if matches!(shell.quick.refresh, ConversationRefreshState::Refreshing { .. }) {
-			8.0
-		} else {
-			12.0
-		};
-	let rows = shell.quick.tasks.iter().enumerate().map(|(index, task)| {
-		let conversation_id = task.conversation_id.clone();
-		let short_id = task.conversation_id.as_str().chars().take(8).collect::<String>();
-		let is_selected = selected.as_ref() == Some(&task.conversation_id);
-		let state = task.state;
-		let label = task.title.as_str().to_owned();
-		div()
-			.id(("conversation-row", index))
-			.role(Role::Tab)
-			.tab_index(index as isize)
-			.key_context("ConversationRow")
-			.aria_label(format!("{}, {}", label, conversation_state_label(state)))
-			.aria_selected(is_selected)
-			.w_full()
-			.min_h(px(52.0))
-			.px_3()
-			.py_2()
-			.flex()
-			.flex_col()
-			.justify_center()
-			.gap_1()
-			.rounded(px(9.0))
-			.border_1()
-			.border_color(if is_selected { rgba(0xffffff18) } else { rgba(0x00000000) })
-			.bg(if is_selected { rgba(0xffffff0f) } else { rgba(0x00000000) })
-			.text_size(px(9.5))
-			.text_color(if is_selected { rgb(WB_TEXT) } else { rgb(WB_TEXT_MUTED) })
-			.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-			.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
-			.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
-			.cursor_pointer()
-			.on_click(cx.listener(move |shell, _, window, cx| {
-				shell.choose_conversation(conversation_id.clone(), window, cx);
-			}))
-			.on_action(cx.listener({
-				let conversation_id = task.conversation_id.clone();
-				move |shell, _: &ActivateConversationRow, window, cx| {
-					shell.choose_conversation(conversation_id.clone(), window, cx);
-				}
-			}))
-			.child(
-				div()
-					.w_full()
-					.min_w_0()
-					.flex()
-					.items_center()
-					.gap_2()
-					.child(
-						div()
-							.size(px(5.0))
-							.min_w(px(5.0))
-							.rounded_full()
-							.bg(rgb(conversation_state_color(state))),
-					)
-					.child(
-						div()
-							.flex_1()
-							.min_w_0()
-							.overflow_hidden()
-							.whitespace_nowrap()
-							.text_ellipsis()
-							.child(label),
-					),
-			)
-			.child(
-				div()
-					.pl(px(13.0))
-					.font_family("SF Mono")
-					.text_size(px(7.5))
-					.text_color(rgb(WB_TEXT_FAINT))
-					.child(format!("{} · {short_id}", conversation_state_label(state))),
-			)
-	});
-
+	let rows = conversation_session_rows(shell, cx);
 	div()
 		.id("conversation-session-sidebar")
 		.role(Role::TabList)
@@ -3958,143 +3656,7 @@ fn conversation_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 		.border_r_1()
 		.border_color(rgba(0xffffff0d))
 		.bg(rgba(ui_theme::SIDEBAR_MATERIAL))
-		.child(
-			div()
-				.h(px(48.0))
-				.min_h(px(48.0))
-				.px_3()
-				.flex()
-				.items_center()
-				.justify_between()
-				.border_b_1()
-				.border_color(rgba(0xffffff0d))
-				.child(
-					div()
-						.min_w_0()
-						.flex()
-						.flex_col()
-						.gap_1()
-						.font_weight(FontWeight::SEMIBOLD)
-						.text_size(px(10.0))
-						.text_color(rgb(WB_TEXT))
-						.child("Sessions")
-						.when_some(refresh_status, |element, status| {
-							element.child(
-								div()
-									.max_w(px(156.0))
-									.overflow_hidden()
-									.whitespace_nowrap()
-									.text_ellipsis()
-									.font_weight(FontWeight::NORMAL)
-									.text_size(px(7.0))
-									.text_color(rgb(WB_TEXT_FAINT))
-									.child(status),
-							)
-						}),
-				)
-				.child(
-					div()
-						.flex()
-						.items_center()
-						.gap_1()
-						.child(
-							div()
-								.id("refresh-conversation")
-								.role(Role::Button)
-								.aria_label("Sync Codex-backed conversations")
-								.tooltip(|_, cx| {
-									cx.new(|_| ControlTooltip("Sync Codex-backed conversations"))
-										.into()
-								})
-								.h(px(27.0))
-								.min_w(px(27.0))
-								.px_2()
-								.flex()
-								.items_center()
-								.justify_center()
-								.rounded(px(7.0))
-								.text_size(px(refresh_text_size))
-								.text_color(if can_refresh_all {
-									rgb(WB_TEXT_MUTED)
-								} else {
-									rgb(WB_TEXT_FAINT)
-								})
-								.when(can_refresh_all, |element| {
-									element
-										.cursor_pointer()
-										.hover(|element| {
-											element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT))
-										})
-										.active(|element| {
-											element.bg(rgba(0xffffff18)).opacity(0.82)
-										})
-										.on_click(cx.listener(|shell, _, window, cx| {
-											shell.refresh_conversation(window, cx);
-										}))
-								})
-								.child(refresh_label),
-						)
-						.child(
-							div()
-								.id("archive-conversation")
-								.role(Role::Button)
-								.aria_label("Archive selected Codex conversation")
-								.tooltip(|_, cx| {
-									cx.new(|_| ControlTooltip("Archive selected thread")).into()
-								})
-								.h(px(27.0))
-								.px_2()
-								.flex()
-								.items_center()
-								.rounded(px(7.0))
-								.text_size(px(8.0))
-								.text_color(if can_control {
-									rgb(WB_TEXT_MUTED)
-								} else {
-									rgb(WB_TEXT_FAINT)
-								})
-								.when(can_control, |element| {
-									element
-										.cursor_pointer()
-										.hover(|element| {
-											element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT))
-										})
-										.active(|element| {
-											element.bg(rgba(0xffffff18)).opacity(0.82)
-										})
-										.on_click(cx.listener(|shell, _, window, cx| {
-											shell.archive_conversation(window, cx);
-										}))
-								})
-								.child("Archive"),
-						)
-						.child(
-							div()
-								.id("new-conversation")
-								.role(Role::Button)
-								.aria_label("New conversation")
-								.h(px(27.0))
-								.px_2()
-								.flex()
-								.items_center()
-								.rounded(px(7.0))
-								.border_1()
-								.border_color(rgba(0xffffff14))
-								.text_size(px(8.5))
-								.text_color(rgb(WB_TEXT_MUTED))
-								.hover(|element| {
-									element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT))
-								})
-								.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
-								.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
-								.cursor_pointer()
-								.on_click(cx.listener(|shell, _, window, cx| {
-									shell.start_new_conversation(window, cx);
-								}))
-								.child("+ New"),
-						),
-				),
-		)
+		.child(conversation_sessions_header(shell, cx))
 		.child(
 			div()
 				.id("conversation-list")
@@ -4479,9 +4041,9 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				)
 				.child(
 					div()
-						.id("open-factory")
+						.id("open-chief")
 						.role(Role::Button)
-						.aria_label("Open Work Item in Factory")
+						.aria_label("Open Chief")
 						.h(px(26.0))
 						.px_2()
 						.flex()
@@ -4496,9 +4058,9 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
 						.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 						.on_click(cx.listener(|shell, _, _, cx| {
-							shell.select_destination(Destination::Factory, cx);
+							shell.select_destination(Destination::Chief, cx);
 						}))
-						.child("Open Factory"),
+						.child("Open Chief"),
 				),
 		)
 		.child(
@@ -4597,23 +4159,7 @@ fn conversation_transcript(
 			.justify_center()
 			.child(div().w_full().max_w(px(760.0)).child(content))
 	});
-	let history_status = history.map_or_else(
-		|| (!has_rows).then_some("Conversation history is not connected."),
-		|history| match history.load {
-			HistoryLoadState::Inactive =>
-				(!has_rows).then_some("Select a conversation or start a new conversation."),
-			HistoryLoadState::InitialLoading | HistoryLoadState::RefreshingVisible =>
-				Some(if has_rows {
-					"Syncing earlier context"
-				} else {
-					"Loading conversation history"
-				}),
-			HistoryLoadState::PrefetchingAdjacent | HistoryLoadState::Visible => None,
-			HistoryLoadState::RetryableUnavailable(_) =>
-				Some("History is temporarily unavailable. Reconnect or retry."),
-			HistoryLoadState::ClosedUnavailable(_) => Some("History readback was refused."),
-		},
-	);
+	let history_status = transcript_history_status(history, has_rows);
 
 	div()
 		.id("conversation-transcript")
@@ -4740,155 +4286,12 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let effort_label = shell.quick.execution.reasoning_effort.as_str().to_uppercase();
 	let fast_enabled = shell.quick.execution.fast;
 
-	let send = div()
-		.id("conversation-send")
-		.role(Role::Button)
-		.aria_label("Send message")
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Send message")).into())
-		.h(px(23.0))
-		.min_h(px(23.0))
-		.px_3()
-		.flex()
-		.items_center()
-		.justify_center()
-		.rounded(px(7.0))
-		.bg(if can_send { rgb(WB_TEXT) } else { rgba(0xffffff08) })
-		.text_size(px(9.5))
-		.font_weight(FontWeight::SEMIBOLD)
-		.text_color(if can_send { rgb(WB_CANVAS) } else { rgb(WB_TEXT_FAINT) })
-		.when(can_send, |element| {
-			element
-				.cursor_pointer()
-				.hover(|element| element.opacity(0.9))
-				.active(|element| element.opacity(0.72))
-				.focus_visible(|element| element.border_1().border_color(rgb(WB_BLUE)))
-				.on_click(cx.listener(|shell, _, window, cx| {
-					shell.submit_conversation(window, cx);
-				}))
-		})
-		.child("Send");
-	let interrupt = div()
-		.id("conversation-interrupt")
-		.role(Role::Button)
-		.aria_label("Interrupt active turn")
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Interrupt active turn")).into())
-		.h(px(23.0))
-		.min_h(px(23.0))
-		.px_3()
-		.flex()
-		.items_center()
-		.justify_center()
-		.rounded(px(7.0))
-		.border_1()
-		.border_color(rgba(0xffffff12))
-		.text_size(px(9.5))
-		.text_color(if can_interrupt { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
-		.when(can_interrupt, |element| {
-			element
-				.cursor_pointer()
-				.hover(|element| element.bg(rgba(0xffffff0a)))
-				.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
-				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
-				.on_click(cx.listener(|shell, _, window, cx| {
-					shell.interrupt_conversation(window, cx);
-				}))
-		})
-		.child("Stop");
-	let recover = div()
-		.id("conversation-recover")
-		.role(Role::Button)
-		.aria_label(recovery_label)
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Run the explicit recovery action")).into())
-		.h(px(23.0))
-		.min_h(px(23.0))
-		.px_3()
-		.flex()
-		.items_center()
-		.justify_center()
-		.rounded(px(7.0))
-		.border_1()
-		.border_color(if can_recover { rgba(0xf59e0b55) } else { rgba(0xffffff10) })
-		.text_size(px(9.5))
-		.text_color(if can_recover { rgb(WB_AMBER) } else { rgb(WB_TEXT_FAINT) })
-		.when(can_recover, |element| {
-			element
-				.cursor_pointer()
-				.hover(|element| element.bg(rgba(0xf59e0b12)))
-				.active(|element| element.opacity(0.72))
-				.on_click(cx.listener(|shell, _, window, cx| {
-					shell.recover_conversation(window, cx);
-				}))
-		})
-		.child(recovery_label);
-	let model_control = div()
-		.id("conversation-model")
-		.role(Role::Button)
-		.aria_label(format!("Model {model_label}; select next model"))
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Model · click to cycle")).into())
-		.h(px(23.0))
-		.px_2()
-		.flex()
-		.items_center()
-		.rounded(px(6.0))
-		.border_1()
-		.border_color(rgba(0xffffff10))
-		.bg(rgba(0x00000018))
-		.font_family("SF Mono")
-		.text_size(px(8.0))
-		.text_color(rgb(WB_TEXT_MUTED))
-		.cursor_pointer()
-		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-		.active(|element| element.opacity(0.72))
-		.on_click(cx.listener(|shell, _, _, cx| shell.cycle_conversation_model(cx)))
-		.child(model_label);
-	let fast_control = div()
-		.id("conversation-fast")
-		.role(Role::Button)
-		.aria_label(if fast_enabled { "Fast mode on" } else { "Fast mode off" })
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Fast · priority service tier")).into())
-		.h(px(23.0))
-		.px_2()
-		.flex()
-		.items_center()
-		.gap_1()
-		.rounded(px(6.0))
-		.border_1()
-		.border_color(if fast_enabled { rgba(0xffa45d40) } else { rgba(0xffffff10) })
-		.bg(if fast_enabled { rgba(0xff8a3d16) } else { rgba(0x00000018) })
-		.font_family("SF Mono")
-		.text_size(px(8.0))
-		.text_color(if fast_enabled { rgb(WB_AMBER) } else { rgb(WB_TEXT_MUTED) })
-		.cursor_pointer()
-		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-		.active(|element| element.opacity(0.72))
-		.on_click(cx.listener(|shell, _, _, cx| shell.toggle_conversation_fast(cx)))
-		.child(div().size(px(4.0)).rounded_full().bg(if fast_enabled {
-			rgb(WB_AMBER)
-		} else {
-			rgb(WB_TEXT_FAINT)
-		}))
-		.child("Fast");
-	let effort_control = div()
-		.id("conversation-effort")
-		.role(Role::Button)
-		.aria_label(format!("Reasoning effort {effort_label}; select next effort"))
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Reasoning effort · click to cycle")).into())
-		.h(px(23.0))
-		.px_2()
-		.flex()
-		.items_center()
-		.rounded(px(6.0))
-		.border_1()
-		.border_color(rgba(0xffffff10))
-		.bg(rgba(0x00000018))
-		.font_family("SF Mono")
-		.text_size(px(8.0))
-		.text_color(rgb(WB_TEXT_MUTED))
-		.cursor_pointer()
-		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-		.active(|element| element.opacity(0.72))
-		.on_click(cx.listener(|shell, _, _, cx| shell.cycle_conversation_effort(cx)))
-		.child(effort_label);
+	let send = composer_send(can_send, cx);
+	let interrupt = composer_interrupt(can_interrupt, cx);
+	let recover = composer_recover(can_recover, recovery_label, cx);
+	let model_control = composer_model_control(model_label, cx);
+	let fast_control = composer_fast_control(fast_enabled, cx);
+	let effort_control = composer_effort_control(effort_label, cx);
 	div()
 		.min_h(px(88.0))
 		.px_5()
@@ -5187,6 +4590,16 @@ fn destination_content(
 ) -> AnyElement {
 	let selected = shell.selected;
 	match selected {
+		Destination::Chief => {
+			return div()
+				.id("destination-content")
+				.flex_1()
+				.min_w_0()
+				.min_h_0()
+				.flex()
+				.child(shell.chief.clone())
+				.into_any_element();
+		},
 		Destination::Conversations => {
 			return div()
 				.id("destination-content")
@@ -5198,19 +4611,6 @@ fn destination_content(
 				.flex()
 				.flex_col()
 				.child(conversations_content(shell, cx))
-				.into_any_element();
-		},
-		Destination::Factory => {
-			return div()
-				.id("destination-content")
-				.role(Role::Main)
-				.aria_label("Codex Factory")
-				.flex_1()
-				.min_w_0()
-				.min_h_0()
-				.flex()
-				.bg(rgba(ui_theme::CONTENT_MATERIAL))
-				.child(shell.factory.clone())
 				.into_any_element();
 		},
 		Destination::Settings => {
@@ -5263,8 +4663,8 @@ impl Render for Shell {
 			.track_focus(&self.root_focus)
 			.on_action(cx.listener(Self::focus_next))
 			.on_action(cx.listener(Self::focus_previous))
-			.on_action(cx.listener(Self::activate_factory))
 			.on_action(cx.listener(Self::activate_conversations))
+			.on_action(cx.listener(Self::activate_chief))
 			.on_action(cx.listener(Self::activate_health))
 			.on_action(cx.listener(Self::toggle_sidebar))
 			.on_action(cx.listener(Self::toggle_inspector))
@@ -5289,6 +4689,631 @@ impl Render for Shell {
 	}
 }
 
+fn composer_send(can_send: bool, cx: &mut Context<Shell>) -> AnyElement {
+	div()
+		.id("conversation-send")
+		.role(Role::Button)
+		.aria_label("Send message")
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Send message")).into())
+		.h(px(23.0))
+		.min_h(px(23.0))
+		.px_3()
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(px(7.0))
+		.bg(if can_send { rgb(WB_TEXT) } else { rgba(0xffffff08) })
+		.text_size(px(9.5))
+		.font_weight(FontWeight::SEMIBOLD)
+		.text_color(if can_send { rgb(WB_CANVAS) } else { rgb(WB_TEXT_FAINT) })
+		.when(can_send, |element| {
+			element
+				.cursor_pointer()
+				.hover(|element| element.opacity(0.9))
+				.active(|element| element.opacity(0.72))
+				.focus_visible(|element| element.border_1().border_color(rgb(WB_BLUE)))
+				.on_click(cx.listener(|shell, _, window, cx| {
+					shell.submit_conversation(window, cx);
+				}))
+		})
+		.child("Send")
+		.into_any_element()
+}
+
+fn composer_interrupt(can_interrupt: bool, cx: &mut Context<Shell>) -> AnyElement {
+	div()
+		.id("conversation-interrupt")
+		.role(Role::Button)
+		.aria_label("Interrupt active turn")
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Interrupt active turn")).into())
+		.h(px(23.0))
+		.min_h(px(23.0))
+		.px_3()
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(px(7.0))
+		.border_1()
+		.border_color(rgba(0xffffff12))
+		.text_size(px(9.5))
+		.text_color(if can_interrupt { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
+		.when(can_interrupt, |element| {
+			element
+				.cursor_pointer()
+				.hover(|element| element.bg(rgba(0xffffff0a)))
+				.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+				.on_click(cx.listener(|shell, _, window, cx| {
+					shell.interrupt_conversation(window, cx);
+				}))
+		})
+		.child("Stop")
+		.into_any_element()
+}
+
+fn composer_recover(
+	can_recover: bool,
+	recovery_label: &'static str,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	div()
+		.id("conversation-recover")
+		.role(Role::Button)
+		.aria_label(recovery_label)
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Run the explicit recovery action")).into())
+		.h(px(23.0))
+		.min_h(px(23.0))
+		.px_3()
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(px(7.0))
+		.border_1()
+		.border_color(if can_recover { rgba(0xf59e0b55) } else { rgba(0xffffff10) })
+		.text_size(px(9.5))
+		.text_color(if can_recover { rgb(WB_AMBER) } else { rgb(WB_TEXT_FAINT) })
+		.when(can_recover, |element| {
+			element
+				.cursor_pointer()
+				.hover(|element| element.bg(rgba(0xf59e0b12)))
+				.active(|element| element.opacity(0.72))
+				.on_click(cx.listener(|shell, _, window, cx| {
+					shell.recover_conversation(window, cx);
+				}))
+		})
+		.child(recovery_label)
+		.into_any_element()
+}
+
+fn composer_model_control(model_label: String, cx: &mut Context<Shell>) -> AnyElement {
+	div()
+		.id("conversation-model")
+		.role(Role::Button)
+		.aria_label(format!("Model {model_label}; select next model"))
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Model · click to cycle")).into())
+		.h(px(23.0))
+		.px_2()
+		.flex()
+		.items_center()
+		.rounded(px(6.0))
+		.border_1()
+		.border_color(rgba(0xffffff10))
+		.bg(rgba(0x00000018))
+		.font_family("SF Mono")
+		.text_size(px(8.0))
+		.text_color(rgb(WB_TEXT_MUTED))
+		.cursor_pointer()
+		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+		.active(|element| element.opacity(0.72))
+		.on_click(cx.listener(|shell, _, _, cx| shell.cycle_conversation_model(cx)))
+		.child(model_label)
+		.into_any_element()
+}
+
+fn composer_fast_control(fast_enabled: bool, cx: &mut Context<Shell>) -> AnyElement {
+	div()
+		.id("conversation-fast")
+		.role(Role::Button)
+		.aria_label(if fast_enabled { "Fast mode on" } else { "Fast mode off" })
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Fast · priority service tier")).into())
+		.h(px(23.0))
+		.px_2()
+		.flex()
+		.items_center()
+		.gap_1()
+		.rounded(px(6.0))
+		.border_1()
+		.border_color(if fast_enabled { rgba(0xffa45d40) } else { rgba(0xffffff10) })
+		.bg(if fast_enabled { rgba(0xff8a3d16) } else { rgba(0x00000018) })
+		.font_family("SF Mono")
+		.text_size(px(8.0))
+		.text_color(if fast_enabled { rgb(WB_AMBER) } else { rgb(WB_TEXT_MUTED) })
+		.cursor_pointer()
+		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+		.active(|element| element.opacity(0.72))
+		.on_click(cx.listener(|shell, _, _, cx| shell.toggle_conversation_fast(cx)))
+		.child(div().size(px(4.0)).rounded_full().bg(if fast_enabled {
+			rgb(WB_AMBER)
+		} else {
+			rgb(WB_TEXT_FAINT)
+		}))
+		.child("Fast")
+		.into_any_element()
+}
+
+fn composer_effort_control(effort_label: String, cx: &mut Context<Shell>) -> AnyElement {
+	div()
+		.id("conversation-effort")
+		.role(Role::Button)
+		.aria_label(format!("Reasoning effort {effort_label}; select next effort"))
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Reasoning effort · click to cycle")).into())
+		.h(px(23.0))
+		.px_2()
+		.flex()
+		.items_center()
+		.rounded(px(6.0))
+		.border_1()
+		.border_color(rgba(0xffffff10))
+		.bg(rgba(0x00000018))
+		.font_family("SF Mono")
+		.text_size(px(8.0))
+		.text_color(rgb(WB_TEXT_MUTED))
+		.cursor_pointer()
+		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+		.active(|element| element.opacity(0.72))
+		.on_click(cx.listener(|shell, _, _, cx| shell.cycle_conversation_effort(cx)))
+		.child(effort_label)
+		.into_any_element()
+}
+
+fn topbar_sessions_toggle(left_sidebar_visible: bool, cx: &mut Context<Shell>) -> AnyElement {
+	div()
+		.id("toggle-left-sidebar")
+		.role(Role::Button)
+		.aria_label("Toggle conversation sidebar")
+		.aria_expanded(left_sidebar_visible)
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Toggle sessions · Command-B")).into())
+		.h(px(27.0))
+		.px_3()
+		.flex()
+		.items_center()
+		.rounded(px(7.0))
+		.border_1()
+		.border_color(if left_sidebar_visible { rgba(0xffffff20) } else { rgba(0xffffff10) })
+		.bg(if left_sidebar_visible { rgba(0xffffff10) } else { rgba(0x00000000) })
+		.text_color(if left_sidebar_visible { rgb(WB_TEXT) } else { rgb(WB_TEXT_MUTED) })
+		.cursor_pointer()
+		.occlude()
+		.on_mouse_down(MouseButton::Left, |_, window, cx| {
+			window.prevent_default();
+			cx.stop_propagation();
+		})
+		.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
+		.active(|element| element.bg(rgba(0xffffff1c)).opacity(0.82))
+		.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+		.on_click(cx.listener(|shell, _, _, cx| {
+			shell.set_left_sidebar_visible(!shell.left_sidebar_visible, cx);
+		}))
+		.child("Sessions")
+		.into_any_element()
+}
+
+fn topbar_inspector_toggle(inspector_visible: bool, cx: &mut Context<Shell>) -> AnyElement {
+	div()
+		.id("toggle-inspector")
+		.role(Role::Button)
+		.aria_label("Toggle conversation context")
+		.aria_expanded(inspector_visible)
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Toggle context · Command-Shift-B")).into())
+		.h(px(27.0))
+		.px_3()
+		.flex()
+		.items_center()
+		.rounded(px(7.0))
+		.border_1()
+		.border_color(if inspector_visible { rgba(0xffffff20) } else { rgba(0xffffff10) })
+		.bg(if inspector_visible { rgba(0xffffff10) } else { rgba(0x00000000) })
+		.text_color(if inspector_visible { rgb(WB_TEXT) } else { rgb(WB_TEXT_MUTED) })
+		.cursor_pointer()
+		.occlude()
+		.on_mouse_down(MouseButton::Left, |_, window, cx| {
+			window.prevent_default();
+			cx.stop_propagation();
+		})
+		.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
+		.active(|element| element.bg(rgba(0xffffff1c)).opacity(0.82))
+		.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+		.on_click(cx.listener(|shell, _, _, cx| {
+			shell.set_inspector_visible(!shell.inspector_visible, cx);
+		}))
+		.child("Context")
+		.into_any_element()
+}
+
+fn account_pool_header(
+	count: usize,
+	available: usize,
+	balanced: bool,
+	can_manage: bool,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	div()
+						.p_5()
+						.flex()
+						.items_center()
+						.justify_between()
+						.gap_6()
+						.rounded(px(13.0))
+						.border_1()
+						.border_color(rgba(0xffffff12))
+						.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL))
+						.child(
+							div()
+								.min_w_0()
+								.flex()
+								.flex_col()
+								.gap_1()
+								.child(
+									div()
+										.flex()
+										.items_center()
+										.gap_2()
+										.child(div().size(px(6.0)).rounded_full().bg(rgb(WB_GREEN)))
+										.child(
+											div()
+												.text_size(px(14.0))
+												.font_weight(FontWeight::SEMIBOLD)
+												.child("Account pool"),
+										)
+										.child(
+											div()
+										.font_family("SF Mono")
+										.text_size(px(8.0))
+										.text_color(rgb(WB_TEXT_FAINT))
+										.child(format!("{count} ACCOUNTS · {available} AVAILABLE")),
+										),
+								)
+								.child(
+									div()
+										.max_w(px(570.0))
+										.text_size(px(10.5))
+										.line_height(px(16.0))
+										.text_color(rgb(WB_TEXT_MUTED))
+										.child("Routing is chosen only for a new Codex conversation. Existing threads keep their bound account and cache affinity."),
+								),
+						)
+						.child(
+							div()
+								.flex()
+								.items_center()
+								.gap_2()
+								.child(account_mode_button("Balanced", balanced, can_manage, cx))
+								.child(
+									div()
+										.id("accounts-refresh")
+										.role(Role::Button)
+										.aria_label("Refresh account pool")
+										.h(px(28.0))
+										.px_3()
+										.flex()
+										.items_center()
+										.rounded(px(7.0))
+										.border_1()
+										.border_color(rgba(0xffffff14))
+										.text_size(px(9.0))
+										.text_color(rgb(WB_TEXT_MUTED))
+										.cursor_pointer()
+										.hover(|element| {
+											element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT))
+										})
+										.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
+										.on_click(cx.listener(|shell, _, _, cx| {
+											shell.refresh_accounts(cx);
+										}))
+										.child("Refresh"),
+								),
+						).into_any_element()
+}
+
+fn account_row_identity(account: &AccountDto) -> AnyElement {
+	let enabled = account.enabled;
+	let state_color = account_state_color(account);
+	let short_id = account.account_id.as_str().get(..8).unwrap_or(account.account_id.as_str());
+	div()
+		.w(px(222.0))
+		.min_w(px(190.0))
+		.flex()
+		.items_center()
+		.gap_3()
+		.child(div().size(px(7.0)).rounded_full().bg(rgb(state_color)))
+		.child(
+			div()
+				.min_w_0()
+				.flex()
+				.flex_col()
+				.gap_1()
+				.child(
+					div()
+						.overflow_hidden()
+						.whitespace_nowrap()
+						.text_ellipsis()
+						.text_size(px(11.0))
+						.font_weight(FontWeight::SEMIBOLD)
+						.text_color(if enabled { rgb(WB_TEXT) } else { rgb(WB_TEXT_FAINT) })
+						.child(account.alias.as_str().to_owned()),
+				)
+				.child(
+					div()
+						.flex()
+						.items_center()
+						.gap_2()
+						.font_family("SF Mono")
+						.text_size(px(7.5))
+						.text_color(rgb(WB_TEXT_FAINT))
+						.child(account_readiness_status(account))
+						.child(format!("· {short_id}")),
+				),
+		)
+		.into_any_element()
+}
+
+fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> {
+	let selected = shell.quick.selected.clone();
+	shell
+		.quick
+		.tasks
+		.iter()
+		.enumerate()
+		.map(|(index, task)| {
+			let conversation_id = task.conversation_id.clone();
+			let short_id = task.conversation_id.as_str().chars().take(8).collect::<String>();
+			let is_selected = selected.as_ref() == Some(&task.conversation_id);
+			let state = task.state;
+			let label = task.title.as_str().to_owned();
+			div()
+				.id(("conversation-row", index))
+				.role(Role::Tab)
+				.tab_index(index as isize)
+				.key_context("ConversationRow")
+				.aria_label(format!("{}, {}", label, conversation_state_label(state)))
+				.aria_selected(is_selected)
+				.w_full()
+				.min_h(px(52.0))
+				.px_3()
+				.py_2()
+				.flex()
+				.flex_col()
+				.justify_center()
+				.gap_1()
+				.rounded(px(9.0))
+				.border_1()
+				.border_color(if is_selected { rgba(0xffffff18) } else { rgba(0x00000000) })
+				.bg(if is_selected { rgba(0xffffff0f) } else { rgba(0x00000000) })
+				.text_size(px(9.5))
+				.text_color(if is_selected { rgb(WB_TEXT) } else { rgb(WB_TEXT_MUTED) })
+				.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+				.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+				.cursor_pointer()
+				.on_click(cx.listener(move |shell, _, window, cx| {
+					shell.choose_conversation(conversation_id.clone(), window, cx);
+				}))
+				.on_action(cx.listener({
+					let conversation_id = task.conversation_id.clone();
+					move |shell, _: &ActivateConversationRow, window, cx| {
+						shell.choose_conversation(conversation_id.clone(), window, cx);
+					}
+				}))
+				.child(
+					div()
+						.w_full()
+						.min_w_0()
+						.flex()
+						.items_center()
+						.gap_2()
+						.child(
+							div()
+								.size(px(5.0))
+								.min_w(px(5.0))
+								.rounded_full()
+								.bg(rgb(conversation_state_color(state))),
+						)
+						.child(
+							div()
+								.flex_1()
+								.min_w_0()
+								.overflow_hidden()
+								.whitespace_nowrap()
+								.text_ellipsis()
+								.child(label),
+						),
+				)
+				.child(
+					div()
+						.pl(px(13.0))
+						.font_family("SF Mono")
+						.text_size(px(7.5))
+						.text_color(rgb(WB_TEXT_FAINT))
+						.child(format!("{} · {short_id}", conversation_state_label(state))),
+				)
+		})
+		.map(IntoElement::into_any_element)
+		.collect()
+}
+
+fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let can_control = shell.quick.can_submit
+		&& shell.quick.selected_task().is_some_and(|task| task.state == ConversationState::Ready);
+	let can_refresh_all =
+		shell.quick.can_submit && shell.quick.load == ConversationsLoadState::Ready;
+	let refresh_status = conversation_refresh_status(shell.quick.refresh);
+	let refresh_label = match shell.quick.refresh {
+		ConversationRefreshState::Refreshing { completed, total, .. } => {
+			format!("{completed}/{total}")
+		},
+		_ => "↻".to_owned(),
+	};
+	let refresh_text_size =
+		if matches!(shell.quick.refresh, ConversationRefreshState::Refreshing { .. }) {
+			8.0
+		} else {
+			12.0
+		};
+
+	div()
+		.h(px(48.0))
+		.min_h(px(48.0))
+		.px_3()
+		.flex()
+		.items_center()
+		.justify_between()
+		.border_b_1()
+		.border_color(rgba(0xffffff0d))
+		.child(
+			div()
+				.min_w_0()
+				.flex()
+				.flex_col()
+				.gap_1()
+				.font_weight(FontWeight::SEMIBOLD)
+				.text_size(px(10.0))
+				.text_color(rgb(WB_TEXT))
+				.child("Sessions")
+				.when_some(refresh_status, |element, status| {
+					element.child(
+						div()
+							.max_w(px(156.0))
+							.overflow_hidden()
+							.whitespace_nowrap()
+							.text_ellipsis()
+							.font_weight(FontWeight::NORMAL)
+							.text_size(px(7.0))
+							.text_color(rgb(WB_TEXT_FAINT))
+							.child(status),
+					)
+				}),
+		)
+		.child(
+			div()
+				.flex()
+				.items_center()
+				.gap_1()
+				.child(conversation_refresh_button(
+					can_refresh_all,
+					refresh_text_size,
+					refresh_label,
+					cx,
+				))
+				.child(conversation_archive_button(can_control, cx))
+				.child(
+					div()
+						.id("new-conversation")
+						.role(Role::Button)
+						.aria_label("New conversation")
+						.h(px(27.0))
+						.px_2()
+						.flex()
+						.items_center()
+						.rounded(px(7.0))
+						.border_1()
+						.border_color(rgba(0xffffff14))
+						.text_size(px(8.5))
+						.text_color(rgb(WB_TEXT_MUTED))
+						.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+						.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+						.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+						.cursor_pointer()
+						.on_click(cx.listener(|shell, _, window, cx| {
+							shell.start_new_conversation(window, cx);
+						}))
+						.child("+ New"),
+				),
+		)
+		.into_any_element()
+}
+
+fn conversation_refresh_button(
+	can_refresh_all: bool,
+	refresh_text_size: f32,
+	refresh_label: String,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	div()
+		.id("refresh-conversation")
+		.role(Role::Button)
+		.aria_label("Sync Codex-backed conversations")
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Sync Codex-backed conversations")).into())
+		.h(px(27.0))
+		.min_w(px(27.0))
+		.px_2()
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(px(7.0))
+		.text_size(px(refresh_text_size))
+		.text_color(if can_refresh_all { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
+		.when(can_refresh_all, |element| {
+			element
+				.cursor_pointer()
+				.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+				.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+				.on_click(cx.listener(|shell, _, window, cx| {
+					shell.refresh_conversation(window, cx);
+				}))
+		})
+		.child(refresh_label)
+		.into_any_element()
+}
+
+fn conversation_archive_button(can_control: bool, cx: &mut Context<Shell>) -> AnyElement {
+	div()
+		.id("archive-conversation")
+		.role(Role::Button)
+		.aria_label("Archive selected Codex conversation")
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Archive selected thread")).into())
+		.h(px(27.0))
+		.px_2()
+		.flex()
+		.items_center()
+		.rounded(px(7.0))
+		.text_size(px(8.0))
+		.text_color(if can_control { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
+		.when(can_control, |element| {
+			element
+				.cursor_pointer()
+				.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+				.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+				.on_click(cx.listener(|shell, _, window, cx| {
+					shell.archive_conversation(window, cx);
+				}))
+		})
+		.child("Archive")
+		.into_any_element()
+}
+
+fn transcript_history_status(
+	history: Option<&HistorySnapshot>,
+	has_rows: bool,
+) -> Option<&'static str> {
+	history.map_or_else(
+		|| (!has_rows).then_some("Conversation history is not connected."),
+		|history| match history.load {
+			HistoryLoadState::Inactive =>
+				(!has_rows).then_some("Select a conversation or start a new conversation."),
+			HistoryLoadState::InitialLoading | HistoryLoadState::RefreshingVisible =>
+				Some(if has_rows {
+					"Syncing earlier context"
+				} else {
+					"Loading conversation history"
+				}),
+			HistoryLoadState::PrefetchingAdjacent | HistoryLoadState::Visible => None,
+			HistoryLoadState::RetryableUnavailable(_) =>
+				Some("History is temporarily unavailable. Reconnect or retry."),
+			HistoryLoadState::ClosedUnavailable(_) => Some("History readback was refused."),
+		},
+	)
+}
+
 #[cfg(test)]
 mod tests {
 	use gpui::{TestAppContext, VisualTestContext, size};
@@ -5308,7 +5333,7 @@ mod tests {
 				destination.label(),
 				matches!(
 					destination,
-					Destination::Factory
+					Destination::Chief
 						| Destination::Conversations
 						| Destination::Accounts
 						| Destination::Health
@@ -5316,7 +5341,7 @@ mod tests {
 				),
 			)),
 			[
-				("Factory", true),
+				("Chief", true),
 				("Advisor", false),
 				("Projects", false),
 				("Conversations", true),
@@ -5412,11 +5437,10 @@ mod tests {
 		);
 		assert!(account_login_recovery_operation_id(&rejected).is_some());
 		assert_eq!(account_readiness_status(&rejected), "New login required · re-login");
-		rejected.unsettled_operation.as_mut().expect("recovery operation").recovery_code =
-			Some(
-				decodex_protocol::WireText::new("credential_rotate_failed")
-					.expect("other recovery code"),
-			);
+		rejected.unsettled_operation.as_mut().expect("recovery operation").recovery_code = Some(
+			decodex_protocol::WireText::new("credential_rotate_failed")
+				.expect("other recovery code"),
+		);
 		assert_eq!(account_login_recovery_operation_id(&rejected), None);
 	}
 
@@ -5720,7 +5744,7 @@ mod tests {
 	}
 
 	#[test]
-	fn account_quota_renders_only_a_current_provider_window() {
+	fn account_quota_distinguishes_observed_absence_from_unknown_or_error() {
 		let quota = |result| AccountQuotaWindowDto {
 			duration_minutes: 300,
 			observed_at_unix_micros: None,
@@ -5728,6 +5752,16 @@ mod tests {
 		};
 
 		assert!(account_quota("5 HOUR", quota(AccountQuotaStateDto::Unknown)).is_none());
+		assert!(
+			account_quota(
+				"5 HOUR",
+				AccountQuotaWindowDto {
+					observed_at_unix_micros: Some(1),
+					..quota(AccountQuotaStateDto::NotApplicable)
+				}
+			)
+			.is_some()
+		);
 		assert!(
 			account_quota(
 				"5 HOUR",
@@ -5855,14 +5889,14 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn global_workspace_shortcuts_keep_factory_conversations_and_health_reachable(
+	fn global_workspace_shortcuts_keep_chief_conversations_and_health_reachable(
 		cx: &mut TestAppContext,
 	) {
 		let (shell, visual) = open_shell(cx);
 		for (keys, expected) in [
 			("cmd-2", Destination::Conversations),
 			("cmd-3", Destination::Health),
-			("cmd-1", Destination::Factory),
+			("cmd-1", Destination::Chief),
 		] {
 			visual.simulate_keystrokes(keys);
 			assert_eq!(shell.read_with(visual, |shell, _| shell.selected), expected);
@@ -5872,6 +5906,7 @@ mod tests {
 	#[gpui::test]
 	fn panel_shortcuts_toggle_both_workbench_sidebars(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
+		visual.simulate_keystrokes("cmd-2");
 		assert!(shell.read_with(visual, |shell, _| shell.left_sidebar_visible));
 		assert!(shell.read_with(visual, |shell, _| shell.inspector_visible));
 

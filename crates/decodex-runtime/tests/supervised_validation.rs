@@ -1,5 +1,9 @@
 //! Architecture-level validation-supervision acceptance coverage.
 
+// These dependencies belong to the runtime library, not this auxiliary target.
+use decodex_account_login as _;
+use rusqlite as _;
+
 use base64 as _;
 use reqwest as _;
 

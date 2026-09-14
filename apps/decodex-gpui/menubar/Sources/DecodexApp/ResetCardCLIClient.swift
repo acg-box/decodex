@@ -135,6 +135,7 @@ enum ResetCardQuotaError: String, Decodable, Equatable, Sendable {
 
 enum ResetCardQuotaState: Equatable, Sendable {
 	case unknown
+	case notApplicable
 	case current(usedPercent: UInt8, resetsAtUnixMicros: Int64)
 	case error(ResetCardQuotaError)
 }
@@ -148,8 +149,17 @@ struct ResetCardQuotaWindow: Equatable, Sendable {
 		switch state {
 		case .current(let usedPercent, _):
 			return usedPercent
-		case .unknown, .error:
+		case .unknown, .notApplicable, .error:
 			return nil
+		}
+	}
+
+	var hasCurrentObservation: Bool {
+		switch state {
+		case .current, .notApplicable:
+			return true
+		case .unknown, .error:
+			return false
 		}
 	}
 
@@ -158,7 +168,7 @@ struct ResetCardQuotaWindow: Equatable, Sendable {
 		switch state {
 		case .current(_, let resetsAtUnixMicros):
 			micros = resetsAtUnixMicros
-		case .unknown, .error:
+		case .unknown, .notApplicable, .error:
 			return nil
 		}
 
@@ -167,6 +177,8 @@ struct ResetCardQuotaWindow: Equatable, Sendable {
 
 	var stateLabel: String {
 		switch state {
+		case .notApplicable:
+			return "Not applicable"
 		case .unknown:
 			return "Unknown"
 		case .current:
@@ -178,6 +190,8 @@ struct ResetCardQuotaWindow: Equatable, Sendable {
 
 	var detailLabel: String {
 		switch state {
+		case .notApplicable:
+			return "No 5-hour limit reported"
 		case .unknown:
 			return "No observation"
 		case .error(let error):
@@ -189,6 +203,8 @@ struct ResetCardQuotaWindow: Equatable, Sendable {
 
 	var accessibilityValue: String {
 		switch state {
+		case .notApplicable:
+			return "Not applicable, no 5-hour limit reported"
 		case .unknown:
 			return "Unknown, no observation"
 		case .current(let usedPercent, _):
@@ -1097,6 +1113,9 @@ private struct ResetCardQuotaWindowWire: Decodable, Sendable {
 			throw ResetCardClientError.invalidResponse
 		}
 		let state = try result.state(observedAtUnixMicros: observedAtUnixMicros)
+		if case .notApplicable = state, durationMinutes != 300 {
+			throw ResetCardClientError.invalidResponse
+		}
 		return ResetCardQuotaWindow(
 			durationMinutes: durationMinutes,
 			observedAtUnixMicros: observedAtUnixMicros,
@@ -1113,12 +1132,16 @@ private struct ResetCardQuotaWindowWire: Decodable, Sendable {
 
 private enum ResetCardQuotaStateWire: Decodable, Sendable {
 	case unknown
+	case notApplicable
 	case current(ResetCardQuotaValueWire)
 	case error(ResetCardQuotaError)
 
 	init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		switch try container.decode(String.self, forKey: .state) {
+		case "not_applicable":
+			try rejectUnknownFields(in: decoder, allowed: ["state"])
+			self = .notApplicable
 		case "unknown":
 			try rejectUnknownFields(in: decoder, allowed: ["state"])
 			self = .unknown
@@ -1138,6 +1161,11 @@ private enum ResetCardQuotaStateWire: Decodable, Sendable {
 
 	func state(observedAtUnixMicros: Int64?) throws -> ResetCardQuotaState {
 		switch self {
+		case .notApplicable:
+			guard let observedAtUnixMicros, observedAtUnixMicros > 0 else {
+				throw ResetCardClientError.invalidResponse
+			}
+			return .notApplicable
 		case .unknown:
 			guard observedAtUnixMicros == nil else {
 				throw ResetCardClientError.invalidResponse

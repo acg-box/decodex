@@ -120,117 +120,15 @@ impl SqliteStore {
 					actual: empty_mutation(),
 				});
 			}
-			if let Some(existing) = read_generation(&transaction, intent.generation_id.as_str())? {
-				let same = existing.account_id == intent.account_id
-					&& existing.execution_epoch_id == intent.execution_authorization.epoch_id
-					&& existing.runner_identity == intent.runner_identity
-					&& existing.intended_boot_id == intent.intended_boot_id
-					&& existing.control_kind == intent.control_kind
-					&& existing.isolation_kind == intent.isolation_kind;
-				let mutation = mutation(&existing);
-				transaction.commit().map_err(sql_error)?;
-				return if same {
-					Ok(PrepareProcessGenerationOutcome::Replayed(mutation))
-				} else {
-					Ok(PrepareProcessGenerationOutcome::Rejected {
-						rejection: ProcessGenerationRejection::IdentityConflict,
-						actual: mutation,
-					})
-				};
-			}
-			let authority = account_authority(&transaction, &intent.account_id, &binding)?;
-			if let Some(rejection) = authority {
-				return Ok(PrepareProcessGenerationOutcome::Rejected {
-					rejection,
-					actual: empty_mutation(),
-				});
-			}
-			let quarantined: bool = transaction
-				.query_row(
-					"SELECT EXISTS (SELECT 1 FROM process_generations
-				 WHERE account_id = ?1 AND state <> 'dead')",
-					params![intent.account_id.as_str()],
-					|row| row.get(0),
-				)
-				.map_err(sql_error)?;
-			if quarantined {
-				return Ok(PrepareProcessGenerationOutcome::Rejected {
-					rejection: ProcessGenerationRejection::AccountQuarantined,
-					actual: empty_mutation(),
-				});
-			}
-			transaction
-				.execute(
-					"INSERT OR IGNORE INTO process_execution_epochs (
-				   execution_epoch_id, authorization_sha256, created_at_micros
-				 ) VALUES (?1, ?2, ?3)",
-					params![
-						intent.execution_authorization.epoch_id.as_str(),
-						intent.execution_authorization.authorization_digest,
-						unix_micros().map_err(StoreError::from)?,
-					],
-				)
-				.map_err(sql_error)?;
-			let epoch_digest: String = transaction
-				.query_row(
-					"SELECT authorization_sha256 FROM process_execution_epochs
-				 WHERE execution_epoch_id = ?1",
-					params![intent.execution_authorization.epoch_id.as_str()],
-					|row| row.get(0),
-				)
-				.map_err(sql_error)?;
-			if epoch_digest != intent.execution_authorization.authorization_digest {
-				return Ok(PrepareProcessGenerationOutcome::Rejected {
-					rejection: ProcessGenerationRejection::RestoreAuthorityUnavailable,
-					actual: empty_mutation(),
-				});
-			}
-			let now = unix_micros().map_err(StoreError::from)?;
-			let credential_version =
-				i64::try_from(binding.credential.version.get()).map_err(|_| {
-					StoreError::InvalidInput("credential version overflows SQLite integer")
-				})?;
-			transaction
-				.execute(
-					"INSERT INTO process_generations (
-				   generation_id, account_id, runtime_session_id, execution_epoch_id,
-				   runner_identity, intended_boot_id, control_kind, isolation_kind,
-				   account_revision, credential_schema_version, credential_version,
-				   credential_fingerprint, credential_writer_operation_id, provider,
-				   provider_account_id, refresh_callback_profile_sha256,
-				   quick_task_admission_key, state, revision, created_at_micros, updated_at_micros
-				 ) VALUES (
-				   ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-				   ?14, ?15, ?16, ?17, 'starting', 1, ?18, ?18
-				 )",
-					params![
-						intent.generation_id.as_str(),
-						intent.account_id.as_str(),
-						admission.readback().request.runtime_session_id.as_str(),
-						intent.execution_authorization.epoch_id.as_str(),
-						intent.runner_identity.as_str(),
-						intent.intended_boot_id.as_str(),
-						intent.control_kind.as_sql(),
-						intent.isolation_kind.as_sql(),
-						binding.account_revision,
-						i64::from(binding.credential.schema_version.get()),
-						credential_version,
-						binding.credential.fingerprint.as_str(),
-						binding.credential.writer_operation_id.as_str(),
-						provider_text(binding.credential.provider.provider()),
-						binding.credential.provider.account_id(),
-						binding.refresh_callback_profile_sha256,
-						admission.idempotency_key(),
-						now,
-					],
-				)
-				.map_err(sql_error)?;
+			let outcome = prepare_bound_generation(
+				&transaction,
+				&intent,
+				&binding,
+				Some(admission.readback().request.runtime_session_id.as_str()),
+				Some(admission.idempotency_key()),
+			)?;
 			transaction.commit().map_err(sql_error)?;
-			Ok(PrepareProcessGenerationOutcome::Fresh(FreshProcessGenerationFence {
-				generation_id: intent.generation_id,
-				revision: 1,
-				fenced_at_micros: now,
-			}))
+			Ok(outcome)
 		})
 		.await
 	}
@@ -580,6 +478,123 @@ impl SqliteStore {
 	}
 }
 
+/// Shared account, epoch, credential, and unique-slot admission inside the caller transaction.
+pub(crate) fn prepare_bound_generation(
+	connection: &rusqlite::Connection,
+	intent: &ProcessGenerationIntent,
+	binding: &ProcessGenerationAccountBinding,
+	runtime_session_id: Option<&str>,
+	admission_key: Option<&str>,
+) -> Result<PrepareProcessGenerationOutcome, StoreError> {
+	if let Some(existing) = read_generation(connection, intent.generation_id.as_str())? {
+		let same = existing.account_id == intent.account_id
+			&& existing.execution_epoch_id == intent.execution_authorization.epoch_id
+			&& existing.runner_identity == intent.runner_identity
+			&& existing.intended_boot_id == intent.intended_boot_id
+			&& existing.control_kind == intent.control_kind
+			&& existing.isolation_kind == intent.isolation_kind;
+		let mutation = mutation(&existing);
+		return if same {
+			Ok(PrepareProcessGenerationOutcome::Replayed(mutation))
+		} else {
+			Ok(PrepareProcessGenerationOutcome::Rejected {
+				rejection: ProcessGenerationRejection::IdentityConflict,
+				actual: mutation,
+			})
+		};
+	}
+	let authority = account_authority(connection, &intent.account_id, binding)?;
+	if let Some(rejection) = authority {
+		return Ok(PrepareProcessGenerationOutcome::Rejected {
+			rejection,
+			actual: empty_mutation(),
+		});
+	}
+	let quarantined: bool = connection
+		.query_row(
+			"SELECT EXISTS (SELECT 1 FROM process_generations
+		 WHERE account_id = ?1 AND state <> 'dead')",
+			params![intent.account_id.as_str()],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)?;
+	if quarantined {
+		return Ok(PrepareProcessGenerationOutcome::Rejected {
+			rejection: ProcessGenerationRejection::AccountQuarantined,
+			actual: empty_mutation(),
+		});
+	}
+	connection
+		.execute(
+			"INSERT OR IGNORE INTO process_execution_epochs (
+		   execution_epoch_id, authorization_sha256, created_at_micros
+		 ) VALUES (?1, ?2, ?3)",
+			params![
+				intent.execution_authorization.epoch_id.as_str(),
+				intent.execution_authorization.authorization_digest,
+				unix_micros().map_err(StoreError::from)?,
+			],
+		)
+		.map_err(sql_error)?;
+	let epoch_digest: String = connection
+		.query_row(
+			"SELECT authorization_sha256 FROM process_execution_epochs
+		 WHERE execution_epoch_id = ?1",
+			params![intent.execution_authorization.epoch_id.as_str()],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)?;
+	if epoch_digest != intent.execution_authorization.authorization_digest {
+		return Ok(PrepareProcessGenerationOutcome::Rejected {
+			rejection: ProcessGenerationRejection::RestoreAuthorityUnavailable,
+			actual: empty_mutation(),
+		});
+	}
+	let now = unix_micros().map_err(StoreError::from)?;
+	let credential_version = i64::try_from(binding.credential.version.get())
+		.map_err(|_| StoreError::InvalidInput("credential version overflows SQLite integer"))?;
+	connection
+		.execute(
+			"INSERT INTO process_generations (
+		   generation_id, account_id, runtime_session_id, execution_epoch_id,
+		   runner_identity, intended_boot_id, control_kind, isolation_kind,
+		   account_revision, credential_schema_version, credential_version,
+		   credential_fingerprint, credential_writer_operation_id, provider,
+		   provider_account_id, refresh_callback_profile_sha256,
+		   quick_task_admission_key, state, revision, created_at_micros, updated_at_micros
+		 ) VALUES (
+		   ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+		   ?14, ?15, ?16, ?17, 'starting', 1, ?18, ?18
+		 )",
+			params![
+				intent.generation_id.as_str(),
+				intent.account_id.as_str(),
+				runtime_session_id,
+				intent.execution_authorization.epoch_id.as_str(),
+				intent.runner_identity.as_str(),
+				intent.intended_boot_id.as_str(),
+				intent.control_kind.as_sql(),
+				intent.isolation_kind.as_sql(),
+				binding.account_revision,
+				i64::from(binding.credential.schema_version.get()),
+				credential_version,
+				binding.credential.fingerprint.as_str(),
+				binding.credential.writer_operation_id.as_str(),
+				provider_text(binding.credential.provider.provider()),
+				binding.credential.provider.account_id(),
+				binding.refresh_callback_profile_sha256,
+				admission_key,
+				now,
+			],
+		)
+		.map_err(sql_error)?;
+	Ok(PrepareProcessGenerationOutcome::Fresh(FreshProcessGenerationFence {
+		generation_id: intent.generation_id.clone(),
+		revision: 1,
+		fenced_at_micros: now,
+	}))
+}
+
 fn account_authority(
 	connection: &rusqlite::Connection,
 	account_id: &AccountId,
@@ -669,7 +684,7 @@ fn read_bound_page(
 		.collect()
 }
 
-fn read_generation(
+pub(crate) fn read_generation(
 	connection: &rusqlite::Connection,
 	id: &str,
 ) -> Result<Option<ProcessGeneration>, StoreError> {
@@ -872,7 +887,7 @@ fn rejected(
 	ProcessGenerationMutationOutcome::Rejected { rejection, actual: mutation(generation) }
 }
 
-fn empty_mutation() -> ProcessGenerationMutation {
+pub(crate) fn empty_mutation() -> ProcessGenerationMutation {
 	ProcessGenerationMutation {
 		revision: 0,
 		state: ProcessGenerationState::Starting,

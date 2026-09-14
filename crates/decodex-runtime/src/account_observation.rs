@@ -88,13 +88,28 @@ async fn persist_direct_quotas(
 			[inspection.account.five_hour_quota, inspection.account.seven_day_quota]
 		});
 	let mut observations = Vec::with_capacity(2);
+	let now = current_unix_micros().ok_or(ResetCardServiceError::ProductStateUnavailable)?;
+	let optional_five_absent = has_optional_five_absence(&inventory.quota_windows, now);
 	for quota in inventory.quota_windows {
-		let observed_at_unix_micros =
-			current_unix_micros().ok_or(ResetCardServiceError::ProductStateUnavailable)?;
+		let observed_at_unix_micros = now;
 		let cached_window = cached.as_ref().and_then(|windows| {
 			windows.iter().find(|window| window.duration_minutes == quota.duration_minutes).copied()
 		});
 		let (observed_at_unix_micros, disposition) = match quota.result {
+			Ok(None)
+				if optional_five_absent
+					&& quota.duration_minutes == AccountQuotaWindow::FIVE_HOURS_MINUTES =>
+			{
+				accounts
+					.observe_quota_absence(
+						account_id,
+						quota.duration_minutes,
+						observed_at_unix_micros,
+					)
+					.await
+					.map_err(|_| ResetCardServiceError::ProductStateUnavailable)?;
+				(Some(observed_at_unix_micros), AccountQuotaDisposition::NotApplicable)
+			},
 			Ok(Some(fact)) => {
 				accounts
 					.observe_quota(account_id, fact, observed_at_unix_micros)
@@ -118,6 +133,15 @@ async fn persist_direct_quotas(
 	observations.try_into().map_err(|_| ResetCardServiceError::InventoryIncomplete)
 }
 
+fn has_optional_five_absence(
+	windows: &[decodex_codex::AccountApiQuotaWindow; 2],
+	now: i64,
+) -> bool {
+	windows.iter().any(|window|window.duration_minutes==AccountQuotaWindow::FIVE_HOURS_MINUTES && matches!(window.result,Ok(None)))
+		&& windows.iter().any(|window|window.duration_minutes==AccountQuotaWindow::SEVEN_DAYS_MINUTES
+			&& matches!(window.result,Ok(Some(fact)) if fact.duration_minutes==AccountQuotaWindow::SEVEN_DAYS_MINUTES && fact.resets_at_unix_micros>now))
+}
+
 fn resolve_direct_quota(
 	duration_minutes: u32,
 	result: Result<Option<AccountQuotaWindow>, AccountQuotaObservationError>,
@@ -139,7 +163,9 @@ fn retained_last_good_quota(
 ) -> Option<(Option<i64>, AccountQuotaDisposition)> {
 	let window = cached.filter(|window| window.duration_minutes == duration_minutes)?;
 	match window.disposition {
-		AccountQuotaDisposition::Current(_) | AccountQuotaDisposition::Stale(_) =>
+		AccountQuotaDisposition::Current(_)
+		| AccountQuotaDisposition::Stale(_)
+		| AccountQuotaDisposition::NotApplicable =>
 			Some((window.observed_at_unix_micros, window.disposition)),
 		AccountQuotaDisposition::Unknown | AccountQuotaDisposition::Error(_) => None,
 	}
@@ -168,7 +194,9 @@ async fn cached_direct_quotas(
 			.and_then(|window| {
 				matches!(
 					window.disposition,
-					AccountQuotaDisposition::Current(_) | AccountQuotaDisposition::Stale(_)
+					AccountQuotaDisposition::Current(_)
+						| AccountQuotaDisposition::Stale(_)
+						| AccountQuotaDisposition::NotApplicable
 				)
 				.then_some(window)
 			})
@@ -188,7 +216,9 @@ async fn cached_direct_quotas(
 			.and_then(|window| {
 				matches!(
 					window.disposition,
-					AccountQuotaDisposition::Current(_) | AccountQuotaDisposition::Stale(_)
+					AccountQuotaDisposition::Current(_)
+						| AccountQuotaDisposition::Stale(_)
+						| AccountQuotaDisposition::NotApplicable
 				)
 				.then_some(window)
 			})
@@ -468,6 +498,8 @@ fn quota_observation_semantically_equal(
 	left.duration_minutes == right.duration_minutes
 		&& match (left.disposition, right.disposition) {
 			(AccountQuotaDisposition::Unknown, AccountQuotaDisposition::Unknown) => true,
+			(AccountQuotaDisposition::NotApplicable, AccountQuotaDisposition::NotApplicable) =>
+				true,
 			(AccountQuotaDisposition::Current(left), AccountQuotaDisposition::Current(right)) =>
 				left == right,
 			(AccountQuotaDisposition::Stale(left), AccountQuotaDisposition::Stale(right)) =>
@@ -931,9 +963,38 @@ mod tests {
 	use super::{
 		AccountObservationOutcome, AccountObservationState, AccountProfileRefreshStatus,
 		ResetCardInventoryObservation, ResetCardServiceError, account_observation_is_schedulable,
-		plan_observation_round,
-		resolve_direct_quota, wait_for_generation,
+		plan_observation_round, resolve_direct_quota, wait_for_generation,
 	};
+
+	#[test]
+	fn optional_absence_requires_successful_five_slot_and_current_weekly_fact() {
+		use decodex_codex::AccountApiQuotaWindow;
+		use decodex_core::{AccountQuotaObservationError, AccountQuotaWindow};
+		let five = AccountApiQuotaWindow { duration_minutes: 300, result: Ok(None) };
+		let weekly = AccountApiQuotaWindow {
+			duration_minutes: 10_080,
+			result: Ok(Some(AccountQuotaWindow::new(10_080, 8, 2_000_000).unwrap())),
+		};
+		assert!(super::has_optional_five_absence(&[five, weekly], 1000));
+		assert!(!super::has_optional_five_absence(
+			&[five, AccountApiQuotaWindow { result: Ok(None), ..weekly }],
+			1000
+		));
+		assert!(!super::has_optional_five_absence(&[five, weekly], 2_000_000));
+		for error in [
+			AccountQuotaObservationError::ProviderUnavailable,
+			AccountQuotaObservationError::ProtocolUnavailable,
+		] {
+			assert!(!super::has_optional_five_absence(
+				&[AccountApiQuotaWindow { result: Err(error), ..five }, weekly],
+				1000
+			));
+			assert!(!super::has_optional_five_absence(
+				&[five, AccountApiQuotaWindow { result: Err(error), ..weekly }],
+				1000
+			));
+		}
+	}
 
 	#[tokio::test]
 	async fn observation_signal_is_immediate_on_change_and_bounded_when_unchanged() {
@@ -982,8 +1043,7 @@ mod tests {
 	#[test]
 	fn recovery_required_account_is_suppressed_on_every_scheduler_wake() {
 		let account_id = account(9);
-		let operation_id =
-			AccountOperationId::new("22000000-0000-4000-8000-000000000099").unwrap();
+		let operation_id = AccountOperationId::new("22000000-0000-4000-8000-000000000099").unwrap();
 		let provider = ProviderIdentity::new(AccountProvider::Chatgpt, "provider-9").unwrap();
 		let mut record = AccountRecord {
 			account_id,
@@ -1265,6 +1325,28 @@ mod tests {
 
 		assert_eq!(observed_at, None);
 		assert_eq!(disposition, AccountQuotaDisposition::Unknown);
+	}
+
+	#[test]
+	fn failed_optional_observation_does_not_create_or_refresh_absence() {
+		let error = decodex_core::AccountQuotaObservationError::ProviderUnavailable;
+		assert_eq!(
+			resolve_direct_quota(300, Err(error), None, 456),
+			(Some(456), AccountQuotaDisposition::Error(error))
+		);
+		let prior = AccountQuotaWindowObservation {
+			duration_minutes: 300,
+			observed_at_unix_micros: Some(100),
+			disposition: AccountQuotaDisposition::NotApplicable,
+		};
+		assert_eq!(
+			resolve_direct_quota(300, Err(error), Some(prior), 456),
+			(Some(100), AccountQuotaDisposition::NotApplicable)
+		);
+		assert_eq!(
+			resolve_direct_quota(300, Ok(None), Some(prior), 456),
+			(Some(100), AccountQuotaDisposition::NotApplicable)
+		);
 	}
 
 	#[test]

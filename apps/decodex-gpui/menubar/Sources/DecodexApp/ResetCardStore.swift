@@ -88,10 +88,10 @@ struct ResetCardAccountState: Identifiable, Equatable {
 		guard let inventory else {
 			return account
 		}
-		guard case .current = account.state else {
+		guard account.hasCurrentObservation else {
 			return inventory
 		}
-		guard case .current = inventory.state else {
+		guard inventory.hasCurrentObservation else {
 			return account
 		}
 		return (account.observedAtUnixMicros ?? 0)

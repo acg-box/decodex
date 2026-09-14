@@ -20,6 +20,7 @@ use decodex_protocol::{
 };
 
 mod account;
+mod chief;
 mod fast_mode;
 mod reset_card;
 mod service;
@@ -119,6 +120,9 @@ struct BuildInfoDocument {
 /// Supported Decodex operations.
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum Command {
+	/// Read Chief work through the daemon-owned protocol.
+	#[command(subcommand)]
+	Chief(chief::ChiefCommand),
 	/// Print diagnostic version and source-build identity without contacting the service.
 	#[command(hide = true)]
 	BuildInfo,
@@ -178,8 +182,17 @@ pub async fn execute(cli: Cli) -> CommandOutput {
 	let Cli { profile, root, expected_server_id, output, command } = cli;
 
 	let command = match command {
+		Command::Chief(command) =>
+			return chief::execute(
+				command,
+				output,
+				root.as_deref(),
+				profile.as_deref(),
+				expected_server_id.as_deref(),
+			)
+			.await,
 		Command::BuildInfo => return render_build_info(output),
-		Command::Serve { parent_fd } => return service::serve(parent_fd).await,
+		Command::Serve { parent_fd } => return service::serve(parent_fd, root.as_deref()).await,
 		Command::InitializeLocalDatabase =>
 			return service::initialize_local_database(root.as_deref()).await,
 		Command::ValidateLocalDatabase =>
@@ -513,6 +526,7 @@ mod tests {
 		assert_eq!(
 			commands,
 			[
+				"chief",
 				"build-info",
 				"serve",
 				"initialize-local-database",

@@ -91,7 +91,6 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			&conversation_command,
 			&CreateConversationRecord {
 				conversation_id: conversation_id.clone(),
-				work_item_id: None,
 				title: "SQLite restart proof".to_owned(),
 				message: "Start the persisted task.".to_owned(),
 				working_directory: temporary.path().display().to_string(),
@@ -490,7 +489,6 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			.expect("alternate conversation command"),
 			&CreateConversationRecord {
 				conversation_id: alternate_conversation_id.clone(),
-				work_item_id: None,
 				title: "Independent account affinity proof".to_owned(),
 				message: "Start an independent task.".to_owned(),
 				working_directory: temporary.path().display().to_string(),

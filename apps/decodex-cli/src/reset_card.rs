@@ -474,6 +474,7 @@ fn quota_summary(quota: &AccountQuotaWindowDto) -> String {
 		quota.observed_at_unix_micros.map_or_else(|| "none".to_owned(), |value| value.to_string());
 	let result = match quota.result {
 		AccountQuotaStateDto::Unknown => "unknown".to_owned(),
+		AccountQuotaStateDto::NotApplicable => "not applicable (no limit reported)".to_owned(),
 		AccountQuotaStateDto::Current { used_percent, resets_at_unix_micros } =>
 			format!("current:{used_percent}:{resets_at_unix_micros}"),
 		AccountQuotaStateDto::Error { error } => format!("error:{error:?}"),
@@ -809,6 +810,17 @@ fn is_canonical_uuid(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn optional_window_text_has_no_invented_usage() {
+		let quota = decodex_protocol::AccountQuotaWindowDto {
+			duration_minutes: 300,
+			observed_at_unix_micros: Some(1_000_000),
+			result: decodex_protocol::AccountQuotaStateDto::NotApplicable,
+		};
+		assert!(super::quota_summary(&quota).contains("not applicable"));
+		assert!(!super::quota_summary(&quota).contains('%'));
+	}
+
 	use std as standard;
 
 	use clap::{CommandFactory as _, Parser as _};

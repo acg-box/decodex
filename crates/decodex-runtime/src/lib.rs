@@ -1,4 +1,4 @@
-//! `decodex serve` lifecycle assembly and the same-UID V2.15 local connection owner.
+//! `decodex serve` lifecycle assembly and the same-UID V2.16 local connection owner.
 //!
 //! Account-process and routing composition remain crate-private. The ordinary Conversation owner
 //! composes them without exporting raw process, routing, or provider-dispatch facades.
@@ -14,6 +14,8 @@ mod account_service;
 mod application;
 mod auth_projection;
 mod bootstrap;
+mod chief;
+mod chief_host;
 mod conversation;
 mod domain_packs;
 #[expect(dead_code, reason = "sealed until the accepted GitHub-effect composition owner")]
@@ -34,6 +36,7 @@ pub use account_service::{
 };
 pub use application::{Application, ApplicationEventPublication, ApplicationPublication};
 pub use bootstrap::{LocalDatabaseError, ServiceBootstrap};
+pub use chief::{ChiefConfig, ChiefCoordinator, ChiefError};
 pub use conversation::ConversationReadiness;
 pub use decodex_core::DecodexRoot;
 pub use decodex_protocol::ServerId;

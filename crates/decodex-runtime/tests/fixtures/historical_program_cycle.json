@@ -1,0 +1,178 @@
+{
+  "program": {
+    "program_id": "30000000-0000-4000-8000-000000000001",
+    "name": "Repeatable Program",
+    "purpose": "Keep one causal identity",
+    "non_goals": [
+      "No scheduler"
+    ],
+    "review_policy": "Review each finite cycle",
+    "state": "active",
+    "revision": 3,
+    "created_at_micros": 1,
+    "updated_at_micros": 3
+  },
+  "domain_pack": null,
+  "signals": [
+    {
+      "signal_id": "31000000-0000-4000-8000-000000000001",
+      "program_id": "30000000-0000-4000-8000-000000000001",
+      "predecessor_review_id": null,
+      "source": "operator",
+      "summary": "first signal",
+      "observed_at_micros": 1,
+      "created_at_micros": 1
+    },
+    {
+      "signal_id": "41000000-0000-4000-8000-000000000001",
+      "program_id": "30000000-0000-4000-8000-000000000001",
+      "predecessor_review_id": "38000000-0000-4000-8000-000000000001",
+      "source": "review",
+      "summary": "second signal",
+      "observed_at_micros": 2,
+      "created_at_micros": 2
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "32000000-0000-4000-8000-000000000001",
+      "program_id": "30000000-0000-4000-8000-000000000001",
+      "signal_id": "31000000-0000-4000-8000-000000000001",
+      "statement": "first claim",
+      "revision": 1,
+      "created_at_micros": 1,
+      "updated_at_micros": 1
+    },
+    {
+      "claim_id": "42000000-0000-4000-8000-000000000001",
+      "program_id": "30000000-0000-4000-8000-000000000001",
+      "signal_id": "41000000-0000-4000-8000-000000000001",
+      "statement": "second claim",
+      "revision": 1,
+      "created_at_micros": 2,
+      "updated_at_micros": 2
+    }
+  ],
+  "proposals": [
+    {
+      "proposal_id": "33000000-0000-4000-8000-000000000001",
+      "program_id": "30000000-0000-4000-8000-000000000001",
+      "claim_id": "32000000-0000-4000-8000-000000000001",
+      "summary": "first proposal",
+      "expected_effect": "first effect",
+      "risk": "first risk",
+      "evidence_need": "first evidence",
+      "revision": 1,
+      "created_at_micros": 1,
+      "updated_at_micros": 1
+    },
+    {
+      "proposal_id": "43000000-0000-4000-8000-000000000001",
+      "program_id": "30000000-0000-4000-8000-000000000001",
+      "claim_id": "42000000-0000-4000-8000-000000000001",
+      "summary": "second proposal",
+      "expected_effect": "second effect",
+      "risk": "second risk",
+      "evidence_need": "second evidence",
+      "revision": 1,
+      "created_at_micros": 2,
+      "updated_at_micros": 2
+    }
+  ],
+  "objectives": [
+    {
+      "objective_id": "34000000-0000-4000-8000-000000000001",
+      "program_id": "30000000-0000-4000-8000-000000000001",
+      "proposal_id": "33000000-0000-4000-8000-000000000001",
+      "outcome": "first outcome",
+      "acceptance_criteria": [
+        "first acceptance"
+      ],
+      "validation_criteria": [
+        "first validation"
+      ],
+      "state": "abandoned",
+      "revision": 2,
+      "created_at_micros": 1,
+      "updated_at_micros": 2
+    },
+    {
+      "objective_id": "44000000-0000-4000-8000-000000000001",
+      "program_id": "30000000-0000-4000-8000-000000000001",
+      "proposal_id": "43000000-0000-4000-8000-000000000001",
+      "outcome": "second outcome",
+      "acceptance_criteria": [
+        "second acceptance"
+      ],
+      "validation_criteria": [
+        "second validation"
+      ],
+      "state": "active",
+      "revision": 1,
+      "created_at_micros": 2,
+      "updated_at_micros": 2
+    }
+  ],
+  "work_items": [
+    {
+      "work_item_id": "35000000-0000-4000-8000-000000000001",
+      "program_id": "30000000-0000-4000-8000-000000000001",
+      "objective_id": "34000000-0000-4000-8000-000000000001",
+      "title": "first work",
+      "instructions": "complete first work",
+      "working_directory": "/tmp/decodex",
+      "state": "done",
+      "revision": 3,
+      "conversation_id": null,
+      "created_at_micros": 1,
+      "updated_at_micros": 2
+    },
+    {
+      "work_item_id": "45000000-0000-4000-8000-000000000001",
+      "program_id": "30000000-0000-4000-8000-000000000001",
+      "objective_id": "44000000-0000-4000-8000-000000000001",
+      "title": "second work",
+      "instructions": "complete second work",
+      "working_directory": "/tmp/decodex",
+      "state": "ready",
+      "revision": 1,
+      "conversation_id": null,
+      "created_at_micros": 2,
+      "updated_at_micros": 2
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "36000000-0000-4000-8000-000000000001",
+      "program_id": "30000000-0000-4000-8000-000000000001",
+      "work_item_id": "35000000-0000-4000-8000-000000000001",
+      "kind": "deterministic_validation",
+      "source": "test",
+      "summary": "checks passed",
+      "observed_at_micros": 2,
+      "created_at_micros": 2
+    },
+    {
+      "evidence_id": "37000000-0000-4000-8000-000000000001",
+      "program_id": "30000000-0000-4000-8000-000000000001",
+      "work_item_id": "35000000-0000-4000-8000-000000000001",
+      "kind": "external",
+      "source": "provider",
+      "summary": "provider settled",
+      "observed_at_micros": 2,
+      "created_at_micros": 2
+    }
+  ],
+  "reviews": [
+    {
+      "review_id": "38000000-0000-4000-8000-000000000001",
+      "program_id": "30000000-0000-4000-8000-000000000001",
+      "work_item_id": "35000000-0000-4000-8000-000000000001",
+      "deterministic_evidence_id": "36000000-0000-4000-8000-000000000001",
+      "external_evidence_id": "37000000-0000-4000-8000-000000000001",
+      "classification": "knowledge_progress",
+      "rationale": "continue with the next bounded gap",
+      "created_at_micros": 2
+    }
+  ]
+}

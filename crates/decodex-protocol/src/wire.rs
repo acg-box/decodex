@@ -1,4 +1,4 @@
-//! Structured JSON envelopes for the exact-current V2.15 WebSocket connection.
+//! Structured JSON envelopes for the exact-current V2.16 WebSocket connection.
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
@@ -14,17 +14,14 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _, ser::Error as 
 use serde_json::Error;
 
 use crate::{
-	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, ConversationExecutionSettings,
-	ConversationListCursor, ConversationListResult, ConversationListSize,
-	ConversationRecoveryAction, ConversationResult, ConversationSummary, ConversationTurnOutcome,
-	ConversationWorkingDirectory, DoctorReport, ProtocolVersion,
-	program_cycle::{
-		ProgramContinuationDraftDto, ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult,
-		ProgramListResult, ProgramReviewDraftDto,
-	},
+	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, ChiefSnapshotResult,
+	ConversationExecutionSettings, ConversationListCursor, ConversationListResult,
+	ConversationListSize, ConversationRecoveryAction, ConversationResult, ConversationSummary,
+	ConversationTurnOutcome, ConversationWorkingDirectory, DoctorReport, ProtocolVersion,
+	program_cycle::{ProgramCycleResult, ProgramListResult},
 };
 
-/// Maximum UTF-8 size of any human-readable text carried by V2.15.
+/// Maximum UTF-8 size of any human-readable text carried by V2.16.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
 /// Maximum UTF-8 size of one logical-command idempotency key.
 pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
@@ -139,7 +136,7 @@ impl<'de> Deserialize<'de> for HistoryCursorToken {
 	}
 }
 
-/// A string-backed wire scalar exceeded its V2.15 byte limit.
+/// A string-backed wire scalar exceeded its V2.16 byte limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WireScalarTooLong {
 	actual_bytes: usize,
@@ -454,7 +451,7 @@ pub struct ResumeCursor {
 	pub server_id: ServerId,
 	/// Ephemeral publication epoch that issued the cursor.
 	///
-	/// A V2.15 resume requires this field. Older hello envelopes can omit it
+	/// A V2.16 resume requires this field. Older hello envelopes can omit it
 	/// only so negotiation can return a typed version refusal.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
@@ -505,7 +502,7 @@ pub struct ServerWelcome {
 	pub server_id: ServerId,
 	/// Ephemeral identity of the in-memory publication epoch.
 	///
-	/// This is present in the exact-current V2.15 welcome.
+	/// This is present in the exact-current V2.16 welcome.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
@@ -1363,6 +1360,8 @@ pub enum AccountQuotaErrorDto {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "state", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AccountQuotaStateDto {
+	/// A fresh provider observation confirms there is no five-hour limit.
+	NotApplicable,
 	/// No current public quota fact is available.
 	Unknown,
 	/// The retained quota fact is current.
@@ -1643,7 +1642,7 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. The V2.15 account contract accepts 300 and 10080 minutes only.
+	/// Exact window duration. The V2.16 account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -2175,10 +2174,22 @@ impl AccountObservationSignal {
 	}
 }
 
-/// Live queries available through the exact-current V2.15 protocol.
+/// Live queries available through the exact-current V2.16 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
+	/// Read one selected, bounded pending request.
+	GetChiefRequest {
+		/// Exact inbox event identity.
+		event_id: i64,
+	},
+	/// Read source-bound visible Chief or worker messages.
+	GetChiefHistory {
+		/// Exact work identity.
+		work_id: EntityId,
+	},
+	/// Read the complete bounded Chief work graph and pending result metadata.
+	GetChiefSnapshot,
 	/// Read the complete daemon-owned desktop settings projection.
 	GetDesktopSettings,
 	/// List bounded current Programs for the Factory selector.
@@ -2258,44 +2269,24 @@ impl QueryPayload {
 	}
 }
 
-/// Commands available through the exact-current V2.15 protocol.
+/// Commands available through the exact-current V2.16 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
+	/// Submit one explicit Chief operation to the service-owned coordinator.
+	Chief {
+		/// Bounded operation and selected execution configuration.
+		action: Box<crate::ChiefActionDto>,
+	},
 	/// Replace the persistent menu-bar preference for the sole Decodex application.
 	SetDesktopSettings {
 		/// Whether Decodex.app shows its same-process status item.
 		show_in_menu_bar: bool,
 	},
-	/// Atomically create one bounded pre-execution Program semantic chain.
-	CreateProgramCycle {
-		/// Complete V1 Program charter and finite causal chain.
-		draft: Box<ProgramCycleDraftDto>,
-	},
-	/// Bind one built-in Domain Pack to an existing legacy Program exactly once.
-	BindProgramDomainPack {
-		/// Existing Program that currently has no Pack binding.
-		program_id: EntityId,
-		/// Daemon-owned built-in Pack selected by stable identifier.
-		domain_pack_id: WireText,
-	},
-	/// Append one manually accepted next cycle to an exact reviewed Program revision.
-	ContinueProgram {
-		/// Complete next-cycle input with an exact predecessor Review.
-		continuation: Box<ProgramContinuationDraftDto>,
-	},
-	/// Atomically attach required Evidence and one classified Program Review.
-	RecordProgramReview {
-		/// Complete terminal review input.
-		review: Box<ProgramReviewDraftDto>,
-	},
 	/// Create one ordinary conversation and submit its first turn.
 	CreateConversation {
 		/// Caller-generated stable logical Conversation identity.
 		conversation_id: EntityId,
-		/// Optional exact causal WorkItem binding for a Factory execution.
-		#[serde(default, skip_serializing_if = "Option::is_none")]
-		work_item_id: Option<EntityId>,
 		/// Bounded user-authored message.
 		message: HistoryText,
 		/// Untrusted server-host working directory selected for this process lineage.
@@ -2504,15 +2495,15 @@ pub enum Channel {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EventPayload {
+	/// A Chief operation was durably accepted or an interrupt was delivered.
+	ChiefChanged {
+		/// Affected work or personal Chief identity.
+		work_id: EntityId,
+	},
 	/// Persistent desktop settings changed.
 	DesktopSettingsChanged {
 		/// Complete current settings after the committed change.
 		settings: DesktopSettingsDto,
-	},
-	/// One complete Program causal projection changed.
-	ProgramCycleChanged {
-		/// Current authoritative projection.
-		cycle: Box<ProgramCycleDto>,
 	},
 	/// The bounded presentation projection of one ordinary Task conversation changed.
 	ConversationChanged {
@@ -2637,15 +2628,15 @@ pub enum CommandOutcome {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ResultPayload {
+	/// A Chief operation reached its explicit acceptance boundary.
+	ChiefAccepted {
+		/// Affected work or personal Chief identity.
+		work_id: EntityId,
+	},
 	/// Persistent desktop settings changed.
 	DesktopSettingsChanged {
 		/// Complete current settings after the committed change.
 		settings: DesktopSettingsDto,
-	},
-	/// One Program semantic command committed.
-	ProgramCycleChanged {
-		/// Current authoritative projection.
-		cycle: Box<ProgramCycleDto>,
 	},
 	/// An ordinary Conversation create or later-Turn command reached a closed accepted state.
 	ConversationAccepted {
@@ -2745,10 +2736,16 @@ impl ResultPayload {
 	}
 }
 
-/// Typed live-query results available through the exact-current V2.15 protocol.
+/// Typed live-query results available through the exact-current V2.16 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
+	/// Source-bound Chief history, without raw provider frames.
+	ChiefHistory(crate::ChiefHistoryResult),
+	/// Selected pending request fields.
+	ChiefRequest(crate::ChiefRequestResult),
+	/// Complete bounded Chief work and pending event projection.
+	ChiefSnapshot(ChiefSnapshotResult),
 	/// Complete daemon-owned desktop settings projection.
 	DesktopSettings(DesktopSettingsResult),
 	/// Bounded current Program selector projection.
@@ -3015,12 +3012,12 @@ pub enum Refusal {
 	},
 }
 
-/// Serialize a message using the only V2.15 wire encoding.
+/// Serialize a message using the only V2.16 wire encoding.
 pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 	serde_json::to_string(message)
 }
 
-/// Parse a client message using the only V2.15 wire encoding.
+/// Parse a client message using the only V2.16 wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
 	validate_client_message(&decoded).map_err(|reason| {
@@ -3070,38 +3067,9 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static str> {
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
 	match &command.payload {
+		CommandPayload::Chief { .. } => Ok(()),
 		CommandPayload::SetDesktopSettings { .. } =>
 			positive_expected.then_some(()).ok_or("desktop settings revision is required"),
-		CommandPayload::CreateProgramCycle { draft } => {
-			if command.expected_revision.is_some() || draft.validate().is_err() {
-				Err("Program cycle create contract is invalid")
-			} else {
-				Ok(())
-			}
-		},
-		CommandPayload::BindProgramDomainPack { program_id, domain_pack_id } =>
-			if !positive_expected
-				|| !is_canonical_uuid(program_id.as_str())
-				|| !crate::domain_pack::is_namespaced_symbol(domain_pack_id.as_str())
-			{
-				Err("Program Domain Pack binding contract is invalid")
-			} else {
-				Ok(())
-			},
-		CommandPayload::ContinueProgram { continuation } => {
-			if !positive_expected || continuation.validate().is_err() {
-				Err("Program continuation contract is invalid")
-			} else {
-				Ok(())
-			}
-		},
-		CommandPayload::RecordProgramReview { review } => {
-			if command.expected_revision.is_some() || review.validate().is_err() {
-				Err("Program Review contract is invalid")
-			} else {
-				Ok(())
-			}
-		},
 		CommandPayload::CreateConversation { .. }
 		| CommandPayload::ResumeConversationRouting { .. }
 		| CommandPayload::CreateConversationRoutingSuccessor { .. }
@@ -3191,18 +3159,16 @@ fn validate_account_order_command(
 fn validate_conversation_command(command: &CommandEnvelope) -> Result<(), &'static str> {
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
 	match &command.payload {
-		CommandPayload::CreateConversation { conversation_id, work_item_id, message, .. } =>
+		CommandPayload::CreateConversation { conversation_id, message, .. } => {
 			if command.expected_revision.is_some()
 				|| !is_canonical_uuid(conversation_id.as_str())
-				|| work_item_id
-					.as_ref()
-					.is_some_and(|work_item_id| !is_canonical_uuid(work_item_id.as_str()))
 				|| message.as_str().trim().is_empty()
 			{
 				Err("Conversation create identity, revision, or message is invalid")
 			} else {
 				Ok(())
-			},
+			}
+		},
 		CommandPayload::ResumeConversationRouting { conversation_id }
 		| CommandPayload::CreateConversationRoutingSuccessor { conversation_id }
 		| CommandPayload::ResumeConversationEstablishment { conversation_id } => {
@@ -3575,6 +3541,9 @@ fn validate_quota_window(
 	}
 	match (quota.observed_at_unix_micros, quota.result) {
 		(None, AccountQuotaStateDto::Unknown) => Ok(()),
+		(Some(observed), AccountQuotaStateDto::NotApplicable)
+			if observed > 0 && quota.duration_minutes == 300 =>
+			Ok(()),
 		(Some(observed), AccountQuotaStateDto::Current { used_percent, resets_at_unix_micros })
 			if observed > 0 && used_percent <= 100 && resets_at_unix_micros > observed =>
 			Ok(()),
@@ -3592,6 +3561,17 @@ fn validate_public_quota_window(quota: AccountQuotaWindowDto) -> Result<(), &'st
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn optional_quota_requires_positive_timestamp_and_five_hour_duration() {
+		let value = serde_json::json!({"duration_minutes":300,"observed_at_unix_micros":12,"result":{"state":"not_applicable"}});
+		let quota: super::AccountQuotaWindowDto =
+			serde_json::from_value(value.clone()).expect("positive absence");
+		assert_eq!(quota.result, super::AccountQuotaStateDto::NotApplicable);
+		assert_eq!(serde_json::to_value(quota).expect("serialize absence"), value);
+		for (duration, time) in [(10080, Some(12)), (300, None), (300, Some(0)), (300, Some(-1))] {
+			assert!(serde_json::from_value::<super::AccountQuotaWindowDto>(serde_json::json!({"duration_minutes":duration,"observed_at_unix_micros":time,"result":{"state":"not_applicable"}})).is_err());
+		}
+	}
 	use crate::{
 		AccountCommandRejectionDto, AccountDto, AccountInitialSelectionResult,
 		AccountLifecycleReadinessDto, AccountObservationSignal, AccountObservedStateDto,
@@ -3602,10 +3582,9 @@ mod tests {
 		ConversationWorkingDirectory, CorrelationId, EntityId, EventPayload, HistoryCursorToken,
 		HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
 		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
-		MAX_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES,
-		ProgramContinuationDraftDto, ProgramCycleDraftDto, QueryId, QueryResultPayload,
-		ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId,
-		Sha256Digest, WireText,
+		MAX_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, QueryId,
+		QueryResultPayload, ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId,
+		ServerInstanceId, Sha256Digest, WireText,
 		wire::{
 			ClientHello, ClientMessage, CommandEnvelope, CommandPayload, Cursor, EntityRevision,
 			QueryEnvelope, QueryPayload, ResetCardInventoryResult, ResetCardOperationResult,
@@ -3712,118 +3691,6 @@ mod tests {
 	}
 
 	#[test]
-	fn program_cycle_command_round_trips_and_rejects_duplicate_semantic_identity() {
-		let ids = [
-			"11000000-0000-4000-8000-000000000001",
-			"21000000-0000-4000-8000-000000000001",
-			"31000000-0000-4000-8000-000000000001",
-			"41000000-0000-4000-8000-000000000001",
-			"51000000-0000-4000-8000-000000000001",
-			"61000000-0000-4000-8000-000000000001",
-		];
-		let entity = |value: &str| EntityId::new(value).expect("canonical Program identity");
-		let text = |value: &str| WireText::new(value).expect("bounded Program text");
-		let draft = ProgramCycleDraftDto {
-			program_id: entity(ids[0]),
-			domain_pack_id: WireText::new("decodex.dev").unwrap(),
-			signal_id: entity(ids[1]),
-			claim_id: entity(ids[2]),
-			proposal_id: entity(ids[3]),
-			objective_id: entity(ids[4]),
-			work_item_id: entity(ids[5]),
-			name: text("Adaptive Factory V1"),
-			purpose: text("Prove one closed coordination cycle"),
-			non_goals: vec![text("Do not add multi-agent fan-out")],
-			review_policy: text("Review after the bound Codex run settles"),
-			signal_source: text("operator observation"),
-			signal_summary: text("Unrelated Codex tasks lose causal context"),
-			signal_observed_at_micros: 1,
-			claim_statement: text("A durable causal spine reduces coordination loss"),
-			proposal_summary: text("Run one bounded Program cycle"),
-			proposal_expected_effect: text("One restart-safe closed loop"),
-			proposal_risk: text("The loop may not close"),
-			proposal_evidence_need: text("Deterministic and external evidence"),
-			objective_outcome: text("One closed cycle is visible in GPUI"),
-			acceptance_criteria: vec![text("The causal cycle reopens after restart")],
-			validation_criteria: vec![text("The Conversation request is not replayed")],
-			work_item_title: text("Implement the bounded slice"),
-			work_item_instructions: text("Return one deterministic result"),
-			working_directory: ConversationWorkingDirectory::new("/tmp/decodex")
-				.expect("canonical working directory"),
-		};
-		let message = ClientMessage::Command(CommandEnvelope {
-			version: CURRENT_VERSION,
-			client_command_id: ClientCommandId::new("program-create").unwrap(),
-			idempotency_key: IdempotencyKey::new("program/create").unwrap(),
-			expected_revision: None,
-			correlation_id: CorrelationId::new(ids[0]).unwrap(),
-			causation_id: None,
-			payload: CommandPayload::CreateProgramCycle { draft: Box::new(draft.clone()) },
-		});
-		let encoded = serde_json::to_string(&message).unwrap();
-		assert_eq!(decode_client_message(&encoded).unwrap(), message);
-
-		let continuation = ProgramContinuationDraftDto {
-			program_id: draft.program_id.clone(),
-			predecessor_review_id: entity("71000000-0000-4000-8000-000000000001"),
-			signal_id: entity("81000000-0000-4000-8000-000000000001"),
-			claim_id: entity("82000000-0000-4000-8000-000000000001"),
-			proposal_id: entity("83000000-0000-4000-8000-000000000001"),
-			objective_id: entity("84000000-0000-4000-8000-000000000001"),
-			work_item_id: entity("85000000-0000-4000-8000-000000000001"),
-			signal_source: text("first cycle Review"),
-			signal_summary: text("The first cycle exposed a bounded next gap"),
-			signal_observed_at_micros: 2,
-			claim_statement: text("One next cycle can close the gap"),
-			proposal_summary: text("Append one exact next cycle"),
-			proposal_expected_effect: text("The Program retains one identity"),
-			proposal_risk: text("A stale append could branch history"),
-			proposal_evidence_need: text("Restart and replay evidence"),
-			objective_outcome: text("Two cycles remain ordered"),
-			acceptance_criteria: vec![text("Prior nodes remain immutable")],
-			validation_criteria: vec![text("Replay creates no duplicate")],
-			work_item_title: text("Continue the Program"),
-			work_item_instructions: text("Execute one finite next step"),
-			working_directory: ConversationWorkingDirectory::new("/tmp/decodex").unwrap(),
-		};
-		let continuation_message = ClientMessage::Command(CommandEnvelope {
-			version: CURRENT_VERSION,
-			client_command_id: ClientCommandId::new("program-continue").unwrap(),
-			idempotency_key: IdempotencyKey::new("program/continue").unwrap(),
-			expected_revision: Some(EntityRevision(2)),
-			correlation_id: CorrelationId::new(ids[0]).unwrap(),
-			causation_id: None,
-			payload: CommandPayload::ContinueProgram {
-				continuation: Box::new(continuation.clone()),
-			},
-		});
-		let encoded = serde_json::to_string(&continuation_message).unwrap();
-		assert_eq!(decode_client_message(&encoded).unwrap(), continuation_message);
-		let missing_revision = ClientMessage::Command(CommandEnvelope {
-			version: CURRENT_VERSION,
-			client_command_id: ClientCommandId::new("program-continue-stale").unwrap(),
-			idempotency_key: IdempotencyKey::new("program/continue-stale").unwrap(),
-			expected_revision: None,
-			correlation_id: CorrelationId::new(ids[0]).unwrap(),
-			causation_id: None,
-			payload: CommandPayload::ContinueProgram { continuation: Box::new(continuation) },
-		});
-		assert!(decode_client_message(&serde_json::to_string(&missing_revision).unwrap()).is_err());
-
-		let mut invalid = draft;
-		invalid.work_item_id = invalid.objective_id.clone();
-		let invalid = ClientMessage::Command(CommandEnvelope {
-			version: CURRENT_VERSION,
-			client_command_id: ClientCommandId::new("program-create-invalid").unwrap(),
-			idempotency_key: IdempotencyKey::new("program/create-invalid").unwrap(),
-			expected_revision: None,
-			correlation_id: CorrelationId::new(ids[0]).unwrap(),
-			causation_id: None,
-			payload: CommandPayload::CreateProgramCycle { draft: Box::new(invalid) },
-		});
-		assert!(decode_client_message(&serde_json::to_string(&invalid).unwrap()).is_err());
-	}
-	#[test]
 	fn retired_work_item_board_messages_fail_exact_decode() {
 		let command_arguments = [
 			(
@@ -3907,6 +3774,51 @@ mod tests {
 	}
 
 	#[test]
+	fn retired_program_mutations_fail_decode_but_historical_queries_remain() {
+		for name in [
+			"create_program_cycle",
+			"bind_program_domain_pack",
+			"continue_program",
+			"record_program_review",
+		] {
+			assert!(
+				serde_json::from_value::<CommandPayload>(
+					serde_json::json!({"name":name,"arguments":{}})
+				)
+				.is_err()
+			);
+		}
+		assert!(
+			serde_json::from_value::<EventPayload>(
+				serde_json::json!({"name":"program_cycle_changed","data":{}})
+			)
+			.is_err()
+		);
+		assert!(
+			serde_json::from_value::<super::ResultPayload>(
+				serde_json::json!({"name":"program_cycle_changed","data":{}})
+			)
+			.is_err()
+		);
+		for payload in [
+			QueryPayload::ListPrograms,
+			QueryPayload::GetProgramCycle {
+				program_id: EntityId::new("01234567-89ab-4def-8123-456789abcdef").unwrap(),
+			},
+		] {
+			let query = ClientMessage::Query(QueryEnvelope {
+				version: CURRENT_VERSION,
+				query_id: QueryId::new("historical-program-query").unwrap(),
+				payload,
+			});
+			assert_eq!(
+				decode_client_message(&serde_json::to_string(&query).unwrap()).unwrap(),
+				query
+			);
+		}
+	}
+
+	#[test]
 	fn exact_current_queries_round_trip_and_removed_execution_decision_fails_closed() {
 		let remaining = ClientMessage::Query(QueryEnvelope {
 			version: CURRENT_VERSION,
@@ -3940,7 +3852,6 @@ mod tests {
 			EntityId::new("11234567-89ab-4def-8123-456789abcdef").expect("canonical successor ID");
 		let create = CommandPayload::CreateConversation {
 			conversation_id: source.clone(),
-			work_item_id: None,
 			message: HistoryText::new("route this request").expect("bounded message"),
 			working_directory: ConversationWorkingDirectory::new("/tmp/work")
 				.expect("bounded working directory"),
@@ -3950,6 +3861,12 @@ mod tests {
 				false,
 			),
 		};
+		let current = serde_json::to_value(&create).unwrap();
+		assert_eq!(serde_json::from_value::<CommandPayload>(current.clone()).unwrap(), create);
+		let mut retired_bridge = current;
+		retired_bridge["arguments"]["work_item_id"] =
+			serde_json::json!("21234567-89ab-4def-8123-456789abcdef");
+		assert!(serde_json::from_value::<CommandPayload>(retired_bridge).is_err());
 		assert_eq!(
 			serde_json::to_value(&create).unwrap(),
 			serde_json::json!({
@@ -4413,7 +4330,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":15},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":16},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4422,7 +4339,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":15},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":16},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4464,7 +4381,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":15},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":16},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -4707,7 +4624,7 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
 		let legacy = crate::ProtocolVersion { major: 1, minor: 5 };
-		let future = crate::ProtocolVersion { major: 2, minor: 16 };
+		let future = crate::ProtocolVersion { major: 2, minor: 17 };
 		let query = QueryPayload::GetAccountProfile {
 			account_id: account_id.clone(),
 			include_email: false,
@@ -4771,10 +4688,7 @@ mod tests {
 			(AccountProfileErrorDto::CredentialBusy, "credential_busy"),
 			(AccountProfileErrorDto::RefreshRejected, "refresh_rejected"),
 			(AccountProfileErrorDto::RefreshAmbiguous, "refresh_ambiguous"),
-			(
-				AccountProfileErrorDto::AccessRejectedAfterRefresh,
-				"access_rejected_after_refresh",
-			),
+			(AccountProfileErrorDto::AccessRejectedAfterRefresh, "access_rejected_after_refresh"),
 		] {
 			assert_eq!(serde_json::to_value(error).unwrap(), encoded);
 		}

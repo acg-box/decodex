@@ -31,11 +31,11 @@ where
 	command_result(result)
 }
 
-pub(crate) async fn serve(parent_fd: Option<i32>) -> CommandOutput {
-	command_result(serve_inner(parent_fd).await)
+pub(crate) async fn serve(parent_fd: Option<i32>, root: Option<&Path>) -> CommandOutput {
+	command_result(serve_inner(parent_fd, root).await)
 }
 
-async fn serve_inner(parent_fd: Option<i32>) -> Result<(), Box<dyn Error>> {
+async fn serve_inner(parent_fd: Option<i32>, root: Option<&Path>) -> Result<(), Box<dyn Error>> {
 	#[cfg(unix)]
 	let mut parent_lifetime =
 		parent_fd.map(parent_lifetime::ParentLifetime::from_inherited_fd).transpose()?;
@@ -43,7 +43,10 @@ async fn serve_inner(parent_fd: Option<i32>) -> Result<(), Box<dyn Error>> {
 	if parent_fd.is_some() {
 		return Err("parent lifetime channel is unsupported on this platform".into());
 	}
-	let bootstrap = ServiceComposition::bootstrap_default().await;
+	let bootstrap = match root {
+		Some(root) => ServiceComposition::bootstrap(DecodexRoot::new(root.to_path_buf())?).await,
+		None => ServiceComposition::bootstrap_default().await,
+	};
 	let mut bound = bootstrap.bind(ServerConfig::default()).await?;
 	let mut signals = ShutdownSignals::new()?;
 

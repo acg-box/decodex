@@ -274,11 +274,17 @@ impl<'de> Deserialize<'de> for ConversationModel {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConversationReasoningEffort {
+	/// Low provider reasoning effort.
 	Low,
+	/// Medium provider reasoning effort.
 	Medium,
+	/// High provider reasoning effort.
 	High,
+	/// Extra-high provider reasoning effort.
 	XHigh,
+	/// Maximum provider reasoning effort.
 	Max,
+	/// Ultra provider reasoning effort.
 	Ultra,
 }
 impl ConversationReasoningEffort {
@@ -299,12 +305,15 @@ impl ConversationReasoningEffort {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationExecutionSettings {
+	/// Exact provider model selected for this send.
 	pub model: ConversationModel,
+	/// Provider reasoning effort selected for this send.
 	pub reasoning_effort: ConversationReasoningEffort,
 	/// `true` maps to Codex's request-scoped `priority` service tier.
 	pub fast: bool,
 }
 impl ConversationExecutionSettings {
+	/// Construct the explicit execution settings.
 	pub fn new(
 		model: ConversationModel,
 		reasoning_effort: ConversationReasoningEffort,
@@ -524,6 +533,7 @@ pub struct ConversationSummary {
 	pub codex_thread_id: Option<ProviderThreadId>,
 	/// Exact Program WorkItem binding when this Conversation executes Program work.
 	#[serde(skip_serializing_if = "Option::is_none")]
+	/// Retained Program charter summary.
 	pub program: Option<ConversationProgramContext>,
 	/// Exact ordinary Conversation revision represented by this projection.
 	pub conversation_revision: EntityRevision,
@@ -548,6 +558,7 @@ pub struct ConversationSummary {
 impl ConversationSummary {
 	/// Validate one ordinary credential-negative projection.
 	#[allow(clippy::too_many_arguments)]
+	/// Construct the explicit execution settings.
 	pub fn new(
 		conversation_id: EntityId,
 		title: ConversationTitle,

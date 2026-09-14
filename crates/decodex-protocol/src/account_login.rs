@@ -161,12 +161,11 @@ impl AccountLoginRequest {
 	/// Validate the complete request without opening provider or product state.
 	pub fn validate(&self) -> Result<(), AccountLoginContractError> {
 		match self {
-			AccountLoginRequest::Start { start } => start.validate(),
-			AccountLoginRequest::Status { session_id }
-			| AccountLoginRequest::Cancel { session_id }
+			Self::Start { start } => start.validate(),
+			Self::Status { session_id } | Self::Cancel { session_id }
 				if is_canonical_uuid(session_id.as_str()) =>
 				Ok(()),
-			AccountLoginRequest::Status { .. } | AccountLoginRequest::Cancel { .. } =>
+			Self::Status { .. } | Self::Cancel { .. } =>
 				Err(AccountLoginContractError::InvalidIdentity),
 		}
 	}

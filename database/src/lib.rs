@@ -4,6 +4,8 @@
 mod account_lifecycle;
 mod account_profiles;
 mod accounts;
+mod chief;
+mod chief_process;
 mod command;
 mod continuations;
 mod conversation_routing;
@@ -31,6 +33,11 @@ pub use self::{
 		AccountProfileSnapshot,
 	},
 	accounts::AccountMetadata,
+	chief::{
+		ChiefDependency, ChiefDispatchState, ChiefDisposition, ChiefInboxEvent, ChiefStoreSnapshot,
+		ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus, EnqueueChiefEvent,
+	},
+	chief_process::ChiefProcessBinding,
 	command::CommandIdentity,
 	continuations::{
 		ContextPackRecord, ContinuationPlanEffect, PlanContinuation, PlanInitialThreadContinuation,
@@ -65,11 +72,10 @@ pub use self::{
 		ProcessGenerationMutationOutcome, ProcessGenerationRejection,
 	},
 	program_cycles::{
-		BindProgramDomainPack, ContinueProgram, CreateProgramCycle, DomainPackIdentity,
-		ProgramCharterRecord, ProgramClaimRecord, ProgramCycleRecord, ProgramDomainPackBinding,
-		ProgramEvidenceInput, ProgramEvidenceRecord, ProgramObjectiveRecord, ProgramProposalRecord,
-		ProgramReviewRecord, ProgramSignalRecord, ProgramSummaryRecord, ProgramWorkItemDomainPack,
-		ProgramWorkItemRecord, RecordProgramReview,
+		DomainPackIdentity, ProgramCharterRecord, ProgramClaimRecord, ProgramCycleRecord,
+		ProgramDomainPackBinding, ProgramEvidenceRecord, ProgramObjectiveRecord,
+		ProgramProposalRecord, ProgramReviewRecord, ProgramSignalRecord, ProgramSummaryRecord,
+		ProgramWorkItemRecord,
 	},
 	provider_attempts::{
 		AuthorizeProviderDispatchOutcome, FreshPreparedProviderAttempt, FreshProviderDispatchFence,
@@ -630,7 +636,7 @@ mod tests {
 				Ok((version, migration_name, migration_digest, account_created_at, profile))
 			})
 			.expect("read V11 upgrade evidence");
-		assert_eq!(version, 12);
+		assert_eq!(version, 14);
 		assert_eq!(migration_name, "desktop_settings");
 		assert_eq!(migration_digest, digests[10]);
 		assert_eq!(account_created_at, 10);

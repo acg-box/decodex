@@ -1,10 +1,10 @@
 //! Typed, fail-closed Codex and account backend adapter foundation.
 //!
 //! This crate owns protocol decoding, capability evidence, and redaction. Private
-//! process supervision belongs to the runtime composition owner. This crate defines a pure
-//! ordinary Conversation contract but deliberately has no child-launch or production
-//! turn-dispatch API. XY-1304 governs only later automatic cross-account fallback and
-//! all-depleted wake.
+//! process supervision belongs to the runtime composition owner. The app-server client
+//! supplies a multiplexed transport and explicit process shutdown; the runtime owner
+//! supplies dispatch authorization and environment. XY-1304 governs only later automatic
+//! cross-account fallback and all-depleted wake.
 //!
 //! Product runner capacity and durable-store authorization are deliberately absent:
 //!
@@ -16,6 +16,8 @@
 
 #[doc(hidden)] pub mod protocol;
 #[doc(hidden)] pub mod schema;
+
+pub mod app_server_client;
 
 mod account_api;
 mod capability;

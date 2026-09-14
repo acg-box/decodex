@@ -1,4 +1,4 @@
-//! Bounded semantic Program-cycle contracts for the Adaptive Factory Spine.
+//! Bounded read-only projections for retained Program history.
 
 use std::collections::HashSet;
 
@@ -8,232 +8,41 @@ pub use decodex_core::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	ConversationWorkingDirectory,
-	domain_pack::{DomainPackProjectionDto, is_namespaced_symbol},
-	wire::{EntityId, EntityRevision, MAX_WIRE_TEXT_BYTES, WireText},
+	domain_pack::DomainPackProjectionDto,
+	wire::{EntityId, EntityRevision, WireText},
 };
 
 /// Maximum Programs returned by one local selector query.
 pub const MAX_PROGRAM_LIST_ITEMS: usize = 64;
 /// Maximum causal edges in one Program projection.
 pub const MAX_PROGRAM_EDGES: usize = 256;
-/// Maximum bounded list items in one creation contract.
+/// Maximum bounded list items in a retained Program projection.
 pub const MAX_PROGRAM_LIST_VALUES: usize = 32;
 
 /// Closed Program-cycle contract refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProgramCycleContractError {
-	InvalidIdentity,
-	InvalidText,
+	/// A bounded collection violates its size or uniqueness contract.
 	InvalidCollection,
-	InvalidTime,
+	/// The projection violates its identity or relation contract.
 	InvalidProjection,
-}
-
-/// One complete pre-execution semantic chain.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProgramCycleDraftDto {
-	pub program_id: EntityId,
-	pub domain_pack_id: WireText,
-	pub signal_id: EntityId,
-	pub claim_id: EntityId,
-	pub proposal_id: EntityId,
-	pub objective_id: EntityId,
-	pub work_item_id: EntityId,
-	pub name: WireText,
-	pub purpose: WireText,
-	pub non_goals: Vec<WireText>,
-	pub review_policy: WireText,
-	pub signal_source: WireText,
-	pub signal_summary: WireText,
-	pub signal_observed_at_micros: i64,
-	pub claim_statement: WireText,
-	pub proposal_summary: WireText,
-	pub proposal_expected_effect: WireText,
-	pub proposal_risk: WireText,
-	pub proposal_evidence_need: WireText,
-	pub objective_outcome: WireText,
-	pub acceptance_criteria: Vec<WireText>,
-	pub validation_criteria: Vec<WireText>,
-	pub work_item_title: WireText,
-	pub work_item_instructions: WireText,
-	pub working_directory: ConversationWorkingDirectory,
-}
-
-impl ProgramCycleDraftDto {
-	pub(crate) fn validate(&self) -> Result<(), ProgramCycleContractError> {
-		let ids = [
-			self.program_id.as_str(),
-			self.signal_id.as_str(),
-			self.claim_id.as_str(),
-			self.proposal_id.as_str(),
-			self.objective_id.as_str(),
-			self.work_item_id.as_str(),
-		];
-		if ids.iter().copied().collect::<HashSet<_>>().len() != ids.len() {
-			return Err(ProgramCycleContractError::InvalidIdentity);
-		}
-		if !is_namespaced_symbol(self.domain_pack_id.as_str()) {
-			return Err(ProgramCycleContractError::InvalidText);
-		}
-		for value in [
-			&self.name,
-			&self.purpose,
-			&self.review_policy,
-			&self.signal_source,
-			&self.signal_summary,
-			&self.claim_statement,
-			&self.proposal_summary,
-			&self.proposal_expected_effect,
-			&self.proposal_risk,
-			&self.proposal_evidence_need,
-			&self.objective_outcome,
-			&self.work_item_title,
-			&self.work_item_instructions,
-		] {
-			if value.as_str().is_empty() || value.as_str().chars().any(char::is_control) {
-				return Err(ProgramCycleContractError::InvalidText);
-			}
-		}
-		validate_list(&self.non_goals)?;
-		validate_list(&self.acceptance_criteria)?;
-		validate_list(&self.validation_criteria)?;
-		validate_joined_field(&self.acceptance_criteria)?;
-		validate_joined_field(&self.validation_criteria)?;
-		if self.signal_observed_at_micros <= 0 {
-			return Err(ProgramCycleContractError::InvalidTime);
-		}
-		Ok(())
-	}
-}
-
-/// One exact next semantic cycle for an existing reviewed Program.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProgramContinuationDraftDto {
-	pub program_id: EntityId,
-	pub predecessor_review_id: EntityId,
-	pub signal_id: EntityId,
-	pub claim_id: EntityId,
-	pub proposal_id: EntityId,
-	pub objective_id: EntityId,
-	pub work_item_id: EntityId,
-	pub signal_source: WireText,
-	pub signal_summary: WireText,
-	pub signal_observed_at_micros: i64,
-	pub claim_statement: WireText,
-	pub proposal_summary: WireText,
-	pub proposal_expected_effect: WireText,
-	pub proposal_risk: WireText,
-	pub proposal_evidence_need: WireText,
-	pub objective_outcome: WireText,
-	pub acceptance_criteria: Vec<WireText>,
-	pub validation_criteria: Vec<WireText>,
-	pub work_item_title: WireText,
-	pub work_item_instructions: WireText,
-	pub working_directory: ConversationWorkingDirectory,
-}
-
-impl ProgramContinuationDraftDto {
-	pub(crate) fn validate(&self) -> Result<(), ProgramCycleContractError> {
-		let ids = [
-			self.program_id.as_str(),
-			self.predecessor_review_id.as_str(),
-			self.signal_id.as_str(),
-			self.claim_id.as_str(),
-			self.proposal_id.as_str(),
-			self.objective_id.as_str(),
-			self.work_item_id.as_str(),
-		];
-		if ids.iter().copied().collect::<HashSet<_>>().len() != ids.len() {
-			return Err(ProgramCycleContractError::InvalidIdentity);
-		}
-		for value in [
-			&self.signal_source,
-			&self.signal_summary,
-			&self.claim_statement,
-			&self.proposal_summary,
-			&self.proposal_expected_effect,
-			&self.proposal_risk,
-			&self.proposal_evidence_need,
-			&self.objective_outcome,
-			&self.work_item_title,
-			&self.work_item_instructions,
-		] {
-			if value.as_str().is_empty() || value.as_str().chars().any(char::is_control) {
-				return Err(ProgramCycleContractError::InvalidText);
-			}
-		}
-		validate_list(&self.acceptance_criteria)?;
-		validate_list(&self.validation_criteria)?;
-		validate_joined_field(&self.acceptance_criteria)?;
-		validate_joined_field(&self.validation_criteria)?;
-		if self.signal_observed_at_micros <= 0 {
-			return Err(ProgramCycleContractError::InvalidTime);
-		}
-		Ok(())
-	}
-}
-
-/// One proposed Evidence record in a terminal Program Review command.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProgramEvidenceDraftDto {
-	pub evidence_id: EntityId,
-	pub source: WireText,
-	pub summary: WireText,
-	pub observed_at_micros: i64,
-}
-
-/// One terminal evidence-backed Program Review command.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProgramReviewDraftDto {
-	pub review_id: EntityId,
-	pub program_id: EntityId,
-	pub work_item_id: EntityId,
-	pub deterministic: ProgramEvidenceDraftDto,
-	pub external: ProgramEvidenceDraftDto,
-	pub classification: ProgramReviewClassification,
-	pub rationale: WireText,
-}
-
-impl ProgramReviewDraftDto {
-	pub(crate) fn validate(&self) -> Result<(), ProgramCycleContractError> {
-		if self.deterministic.evidence_id == self.external.evidence_id {
-			return Err(ProgramCycleContractError::InvalidIdentity);
-		}
-		for evidence in [&self.deterministic, &self.external] {
-			if evidence.source.as_str().is_empty()
-				|| evidence.summary.as_str().is_empty()
-				|| evidence.source.as_str().chars().any(char::is_control)
-				|| evidence.summary.as_str().chars().any(char::is_control)
-			{
-				return Err(ProgramCycleContractError::InvalidText);
-			}
-			if evidence.observed_at_micros <= 0 {
-				return Err(ProgramCycleContractError::InvalidTime);
-			}
-		}
-		if self.rationale.as_str().is_empty()
-			|| self.rationale.as_str().chars().any(char::is_control)
-		{
-			return Err(ProgramCycleContractError::InvalidText);
-		}
-		Ok(())
-	}
 }
 
 /// Bounded Program selector row.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramSummaryDto {
+	/// Identity of the retained Program.
 	pub program_id: EntityId,
+	/// Human-readable display name.
 	pub name: WireText,
+	/// Recorded purpose of the Program.
 	pub purpose: WireText,
+	/// Recorded state of this entity.
 	pub state: ProgramState,
+	/// Persisted revision of this record.
 	pub revision: EntityRevision,
+	/// Last update time in Unix microseconds.
 	pub updated_at_micros: i64,
 }
 
@@ -241,13 +50,21 @@ pub struct ProgramSummaryDto {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProgramNodeKind {
+	/// A sourced observation.
 	Signal,
+	/// An interpretation of an observation.
 	Claim,
+	/// A recorded proposed course of action.
 	Proposal,
+	/// A finite desired outcome.
 	Objective,
+	/// A recorded unit of work.
 	WorkItem,
+	/// An execution bound to recorded work.
 	Run,
+	/// A recorded validation or external observation.
 	Evidence,
+	/// A historical assessment of evidence.
 	Review,
 }
 
@@ -255,7 +72,9 @@ pub enum ProgramNodeKind {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramNodeFieldDto {
+	/// Human-readable field label.
 	pub label: WireText,
+	/// Bounded field value.
 	pub value: WireText,
 }
 
@@ -263,14 +82,23 @@ pub struct ProgramNodeFieldDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramNodeDto {
+	/// Stable identity within this projection.
 	pub id: EntityId,
+	/// Closed category of this record.
 	pub kind: ProgramNodeKind,
+	/// Human-readable title.
 	pub title: WireText,
+	/// Bounded summary of the source record.
 	pub summary: WireText,
+	/// Recorded state of this entity.
 	pub state: WireText,
+	/// Optional source attribution.
 	pub source: Option<WireText>,
+	/// Optional observation time in Unix microseconds.
 	pub observed_at_micros: Option<i64>,
+	/// Optional bound Conversation identity.
 	pub conversation_id: Option<EntityId>,
+	/// Bounded inspectable fields.
 	pub fields: Vec<ProgramNodeFieldDto>,
 }
 
@@ -278,14 +106,23 @@ pub struct ProgramNodeDto {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProgramRelationKind {
+	/// A later cycle follows a prior review.
 	Continues,
+	/// An observation concerns its target.
 	Observes,
+	/// Evidence supports its target.
 	Supports,
+	/// A source justifies its target.
 	Justifies,
+	/// A source proposes its target.
 	Proposes,
+	/// A source divides into its target.
 	DecomposesTo,
+	/// An execution performs its target work.
 	Executes,
+	/// A source produces its target.
 	Produces,
+	/// Evidence validates its target.
 	Validates,
 }
 
@@ -293,8 +130,11 @@ pub enum ProgramRelationKind {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramEdgeDto {
+	/// Source entity identity.
 	pub from: EntityId,
+	/// Target entity identity.
 	pub to: EntityId,
+	/// Closed category of this record.
 	pub kind: ProgramRelationKind,
 }
 
@@ -302,15 +142,22 @@ pub struct ProgramEdgeDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramCycleDto {
+	/// Retained Program charter summary.
 	pub program: ProgramSummaryDto,
+	/// Recorded exclusions from the Program scope.
 	pub non_goals: Vec<WireText>,
+	/// Historical review requirements.
 	pub review_policy: WireText,
+	/// Optional historical Domain Pack projection.
 	pub domain_pack: Option<DomainPackProjectionDto>,
+	/// Retained semantic and execution nodes.
 	pub nodes: Vec<ProgramNodeDto>,
+	/// Causal relations between projected nodes.
 	pub edges: Vec<ProgramEdgeDto>,
 }
 
 impl ProgramCycleDto {
+	/// Construct and validate the historical projection.
 	pub fn new(
 		program: ProgramSummaryDto,
 		non_goals: Vec<WireText>,
@@ -342,6 +189,7 @@ impl ProgramCycleDto {
 		Ok(Self { program, non_goals, review_policy, domain_pack: None, nodes, edges })
 	}
 
+	/// Attach a validated historical Pack projection to this Program.
 	pub fn with_domain_pack(
 		mut self,
 		domain_pack: DomainPackProjectionDto,
@@ -362,7 +210,9 @@ impl ProgramCycleDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ProgramListResult {
+	/// The requested historical data is available.
 	Available(Vec<ProgramSummaryDto>),
+	/// The requested data or capability is unavailable.
 	Unavailable,
 }
 
@@ -370,8 +220,11 @@ pub enum ProgramListResult {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ProgramCycleResult {
+	/// The requested historical data is available.
 	Available(Box<ProgramCycleDto>),
+	/// The requested historical identity does not exist.
 	NotFound,
+	/// The requested data or capability is unavailable.
 	Unavailable,
 }
 
@@ -383,18 +236,6 @@ fn validate_list(values: &[WireText]) -> Result<(), ProgramCycleContractError> {
 			.any(|value| value.as_str().is_empty() || value.as_str().chars().any(char::is_control))
 		|| values.iter().map(WireText::as_str).collect::<HashSet<_>>().len() != values.len()
 	{
-		return Err(ProgramCycleContractError::InvalidCollection);
-	}
-	Ok(())
-}
-
-fn validate_joined_field(values: &[WireText]) -> Result<(), ProgramCycleContractError> {
-	let separators = values.len().saturating_sub(1).saturating_mul(" · ".len());
-	let bytes = values
-		.iter()
-		.try_fold(separators, |total, value| total.checked_add(value.as_str().len()))
-		.ok_or(ProgramCycleContractError::InvalidCollection)?;
-	if bytes > MAX_WIRE_TEXT_BYTES {
 		return Err(ProgramCycleContractError::InvalidCollection);
 	}
 	Ok(())

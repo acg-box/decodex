@@ -2,6 +2,11 @@
 //! `decodex serve`.
 
 mod account_login;
+mod chief;
+pub use chief::{
+	ChiefActionDto, ChiefHistoryEntryDto, ChiefHistoryResult, ChiefRequestResult, ChiefSandboxDto,
+	ChiefStartDto,
+};
 mod client;
 mod conversation;
 mod doctor;
@@ -18,9 +23,16 @@ pub use self::{
 		AccountLoginResponseEnvelope, AccountLoginStart, AccountLoginState, AccountLoginStatus,
 		AccountLoginUrl, MAX_ACCOUNT_LOGIN_URL_BYTES,
 	},
+	chief::{
+		ChiefDependencyDto, ChiefDispatchStateDto, ChiefPendingEventDto, ChiefSnapshotDto,
+		ChiefSnapshotResult, ChiefWorkItemDto, ChiefWorkKindDto, ChiefWorkStatusDto,
+		MAX_CHIEF_DEPENDENCIES, MAX_CHIEF_PENDING_EVENTS, MAX_CHIEF_SNAPSHOT_BYTES,
+		MAX_CHIEF_WORK_ITEMS,
+	},
 	client::{
-		AccountClient, AccountCommandResponse, AccountLoginClient, ClientFailure, ClientProfile,
-		DoctorClient, ProfileKind, ResetCardClient, ResetCardConsumeResponse,
+		AccountClient, AccountCommandResponse, AccountLoginClient, ChiefClient,
+		ChiefCommandResponse, ClientFailure, ClientProfile, DoctorClient, ProfileKind,
+		ResetCardClient, ResetCardConsumeResponse,
 	},
 	conversation::{
 		ConversationContractError, ConversationExecutionSettings, ConversationListCursor,
@@ -49,11 +61,9 @@ pub use self::{
 	},
 	program_cycle::{
 		MAX_PROGRAM_EDGES, MAX_PROGRAM_LIST_ITEMS, MAX_PROGRAM_LIST_VALUES, MAX_PROGRAM_NODES,
-		ProgramContinuationDraftDto, ProgramCycleContractError, ProgramCycleDraftDto,
-		ProgramCycleDto, ProgramCycleResult, ProgramEdgeDto, ProgramEvidenceDraftDto,
+		ProgramCycleContractError, ProgramCycleDto, ProgramCycleResult, ProgramEdgeDto,
 		ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto, ProgramNodeKind,
-		ProgramRelationKind, ProgramReviewClassification, ProgramReviewDraftDto, ProgramState,
-		ProgramSummaryDto,
+		ProgramRelationKind, ProgramReviewClassification, ProgramState, ProgramSummaryDto,
 	},
 	retained_session::{
 		ApplicationConfirmation, RetainedSession, RetainedSessionConfig, RetainedSessionFailure,
@@ -95,7 +105,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 15 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 16 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
@@ -106,7 +116,7 @@ pub struct ProtocolVersion {
 }
 impl ProtocolVersion {
 	/// Negotiate this client version against the server's exact-current window.
-	pub fn negotiate(self) -> Result<Self, ProtocolVersion> {
+	pub fn negotiate(self) -> Result<Self, Self> {
 		if self != CURRENT_VERSION {
 			return Err(CURRENT_VERSION);
 		}

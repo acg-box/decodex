@@ -14,7 +14,6 @@ pub(crate) const SHELL_MATERIAL: u32 = 0x0b0a0f4c;
 pub(crate) const CONTENT_MATERIAL: u32 = 0x0d0c1278;
 pub(crate) const TOPBAR_MATERIAL: u32 = 0x0c0b1058;
 pub(crate) const SIDEBAR_MATERIAL: u32 = 0x100e1584;
-pub(crate) const SURFACE_OVERLAY: u32 = 0x1d1a24;
 pub(crate) const SURFACE_MATERIAL: u32 = 0x100e152a;
 pub(crate) const SURFACE_RAISED_MATERIAL: u32 = 0x17151e46;
 pub(crate) const COMPOSER_MATERIAL: u32 = 0x17151e56;

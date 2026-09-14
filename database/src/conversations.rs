@@ -18,6 +18,47 @@ use crate::{
 	unix_micros,
 };
 
+fn unknown_recovery_authority(
+	transaction: &Transaction<'_>,
+	request: &RecoverUnknownConversationTurn,
+) -> Result<bool, StoreError> {
+	transaction
+		.query_row(
+			"SELECT EXISTS (
+			 SELECT 1 FROM conversations AS c
+			 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
+			 JOIN turns AS t ON t.runtime_session_id = s.runtime_session_id
+			 JOIN provider_attempts AS p ON p.turn_id = t.turn_id
+			 JOIN process_generations AS pg ON pg.generation_id = p.process_generation_id
+			 JOIN process_generation_death_evidence AS d
+			   ON d.generation_id = pg.generation_id AND d.evidence_id = pg.death_evidence_id
+			 WHERE c.conversation_id = ?1 AND c.kind = 'ordinary_task' AND c.state = 'active'
+			   AND c.revision = ?2 AND s.runtime_session_id = ?3 AND s.state = 'active'
+			   AND s.revision = ?4 AND t.turn_id = ?5 AND t.role = 'user'
+			   AND t.status = 'active' AND t.revision = ?6 AND p.attempt_id = ?7
+			   AND p.state = 'unknown' AND p.revision = ?8
+			   AND p.process_generation_id = ?9 AND pg.state = 'dead'
+			   AND NOT EXISTS (
+			     SELECT 1 FROM history_items AS h
+			     WHERE h.turn_id = t.turn_id AND h.status = 'streaming'
+			   )
+			 )",
+			params![
+				request.conversation_id.as_str(),
+				request.expected_conversation_revision,
+				request.runtime_session_id.as_str(),
+				request.expected_runtime_session_revision,
+				request.user_turn_id.as_str(),
+				request.expected_user_turn_revision,
+				request.attempt_id.as_str(),
+				request.expected_attempt_revision,
+				request.process_generation_id.as_str(),
+			],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)
+}
+
 const MAX_PAGE_SIZE: u16 = 100;
 const MAX_RECOVERED_ASSISTANT_BYTES: usize = 256 * 1_024;
 const MAX_CONVERSATION_TITLE_BYTES: usize = 96;
@@ -26,7 +67,6 @@ const MAX_CONVERSATION_TITLE_BYTES: usize = 96;
 #[derive(Clone, Debug)]
 pub struct CreateConversationRecord {
 	pub conversation_id: ConversationId,
-	pub work_item_id: Option<WorkItemId>,
 	pub title: String,
 	pub message: String,
 	pub working_directory: String,
@@ -505,14 +545,6 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
-			if let Some(work_item_id) = create.work_item_id.as_ref() {
-				crate::program_cycles::bind_program_work_item_execution(
-					&transaction,
-					work_item_id,
-					&create.conversation_id,
-					now,
-				)?;
-			}
 			let stored = StoredConversation {
 				conversation_id: create.conversation_id,
 				title: create.title,
@@ -1077,41 +1109,7 @@ impl SqliteStore {
 				transaction.commit().map_err(sql_error)?;
 				return Ok(RecoverUnknownConversationTurnOutcome::Replayed(recovered));
 			}
-			let authority: bool = transaction
-				.query_row(
-					"SELECT EXISTS (
-					 SELECT 1 FROM conversations AS c
-					 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
-					 JOIN turns AS t ON t.runtime_session_id = s.runtime_session_id
-					 JOIN provider_attempts AS p ON p.turn_id = t.turn_id
-					 JOIN process_generations AS pg ON pg.generation_id = p.process_generation_id
-					 JOIN process_generation_death_evidence AS d
-					   ON d.generation_id = pg.generation_id AND d.evidence_id = pg.death_evidence_id
-					 WHERE c.conversation_id = ?1 AND c.kind = 'ordinary_task' AND c.state = 'active'
-					   AND c.revision = ?2 AND s.runtime_session_id = ?3 AND s.state = 'active'
-					   AND s.revision = ?4 AND t.turn_id = ?5 AND t.role = 'user'
-					   AND t.status = 'active' AND t.revision = ?6 AND p.attempt_id = ?7
-					   AND p.state = 'unknown' AND p.revision = ?8
-					   AND p.process_generation_id = ?9 AND pg.state = 'dead'
-					   AND NOT EXISTS (
-					     SELECT 1 FROM history_items AS h
-					     WHERE h.turn_id = t.turn_id AND h.status = 'streaming'
-					   )
-					 )",
-					params![
-						request.conversation_id.as_str(),
-						request.expected_conversation_revision,
-						request.runtime_session_id.as_str(),
-						request.expected_runtime_session_revision,
-						request.user_turn_id.as_str(),
-						request.expected_user_turn_revision,
-						request.attempt_id.as_str(),
-						request.expected_attempt_revision,
-						request.process_generation_id.as_str(),
-					],
-					|row| row.get(0),
-				)
-				.map_err(sql_error)?;
+			let authority = unknown_recovery_authority(&transaction, &request)?;
 			if !authority || history_exists(&transaction, &request.history_item_id)? {
 				return Ok(RecoverUnknownConversationTurnOutcome::Rejected);
 			}
@@ -3008,7 +3006,6 @@ mod archive_tests {
 					.expect("create command"),
 				&CreateConversationRecord {
 					conversation_id,
-					work_item_id: None,
 					title: "Local fixture".to_owned(),
 					message: "Start this task.".to_owned(),
 					working_directory: "/tmp".to_owned(),
@@ -3284,7 +3281,6 @@ mod archive_tests {
 					.expect("create command"),
 				&CreateConversationRecord {
 					conversation_id: conversation_id.clone(),
-					work_item_id: None,
 					title: "Archive fixture".to_owned(),
 					message: "Archive this task.".to_owned(),
 					working_directory: "/tmp".to_owned(),
@@ -3295,53 +3291,7 @@ mod archive_tests {
 			)
 			.await
 			.expect("create conversation");
-		store
-			.with_connection(|connection| {
-				connection
-					.execute(
-						"INSERT INTO account_identities (account_id, created_at_micros)
-						 VALUES (?1, 1)",
-						params![ACCOUNT_ID],
-					)
-					.map_err(sqlite_error)?;
-				connection
-					.execute(
-						"INSERT INTO accounts (
-						 account_id, display_label, enabled, state, revision, provider,
-						 provider_account_id, created_at_micros, updated_at_micros
-						 ) VALUES (?1, 'Archive fixture', 1, 'available', 1, 'chatgpt',
-						 'archive-fixture-provider', 1, 1)",
-						params![ACCOUNT_ID],
-					)
-					.map_err(sqlite_error)?;
-				connection
-					.execute(
-						"INSERT INTO runtime_sessions (
-						 runtime_session_id, conversation_id, account_id, account_revision,
-						 account_snapshot_id, account_display_label, account_observed_state,
-						 credential_binding_json, profile_snapshot_id, profile_revision,
-						 profile_role, model, reasoning_effort, instructions, service_tier,
-						 instructions_sha256, codex_thread_id, state, thread_start_request_id,
-						 thread_start_request_sha256, thread_start_response_id,
-						 thread_start_response_sha256, has_acknowledged_turn, revision,
-						 created_at_micros, updated_at_micros
-						 ) VALUES (
-						 ?1, ?2, ?3, 1, '41000000-0000-4000-8000-000000000001',
-						 'Archive fixture', 'available', '{}',
-						 '42000000-0000-4000-8000-000000000001', 1, 'task', 'gpt-5.6-sol',
-						 'high', 'Follow the request.', 'priority',
-						 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-						 'codex-thread-1', 'active', 1,
-						 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 1,
-						 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
-						 1, 7, 1, 1
-						 )",
-						params![RUNTIME_SESSION_ID, CONVERSATION_ID, ACCOUNT_ID],
-					)
-					.map_err(sqlite_error)?;
-				Ok(())
-			})
-			.expect("seed active RuntimeSession");
+		seed_archive_session(&store);
 
 		let archive = ArchiveConversationRecord {
 			conversation_id: conversation_id.clone(),
@@ -3686,6 +3636,130 @@ mod archive_tests {
 				.expect("recover unknown predecessor"),
 			RecoverUnknownConversationTurnOutcome::Applied(_)
 		));
+		seed_successor_continuation(&store);
+		let fallback_history = store
+			.recent_conversation_history_excluding_turn(
+				&blob_store,
+				&conversation_id,
+				&TurnId::new(SUCCESSOR_TURN_ID).expect("successor Turn ID"),
+				4,
+			)
+			.await
+			.expect("read fallback history before the successor intent");
+		assert!(
+			fallback_history
+				.iter()
+				.any(|entry| entry.history_item_id.as_str() == INTERRUPTION_HISTORY_ID)
+		);
+		assert!(
+			fallback_history
+				.iter()
+				.all(|entry| entry.history_item_id.as_str() != SUCCESSOR_HISTORY_ID)
+		);
+		let context_pack = recovery_context_pack(&conversation_id);
+		let request = PlanContinuation {
+			operation_id: "a5000000-0000-4000-8000-000000000002".to_owned(),
+			routing_decision_id: "a1000000-0000-4000-8000-000000000002".to_owned(),
+			expected_consumer_revision: 1,
+			plan_id: "a6000000-0000-4000-8000-000000000002".to_owned(),
+			fallback_runtime_session_id: "a7000000-0000-4000-8000-000000000002".to_owned(),
+			fallback_account_snapshot_id: "41000000-0000-4000-8000-000000000001".to_owned(),
+			fallback_context_pack_id: "a8000000-0000-4000-8000-000000000002".to_owned(),
+		};
+		let planned = match store
+			.plan_continuation(&blob_store, "fallback-plan", &request, &context_pack)
+			.await
+			.expect("plan recovered continuation")
+		{
+			ContinuationCommandOutcome::Success(effect) => effect,
+			ContinuationCommandOutcome::Rejected(rejection) => {
+				panic!("recovered continuation was rejected: {rejection:?}")
+			},
+		};
+		assert_eq!(planned.plan.kind, ContinuationPlanKind::ContextPackFallback);
+		assert_eq!(
+			planned.uncertain_predecessor_attempt_id.as_ref().map(ProviderAttemptId::as_str),
+			Some(ATTEMPT_ID)
+		);
+		assert_eq!(
+			planned
+				.runtime_session
+				.as_ref()
+				.map(|session| session.account_snapshot.source_account_id.as_str()),
+			Some(ACCOUNT_ID)
+		);
+		assert_eq!(
+			planned.fallback_context_pack.as_ref().map(|record| record.pack.digest()),
+			Some(context_pack.digest())
+		);
+		verify_fallback_ownership(&store, &request);
+		activate_fallback_authority(&store, &request);
+		verify_fallback_attempt_authority(&store, &request, &conversation_id).await;
+
+		drop(store);
+		let reopened = SqliteStore::open(&paths).expect("reopen product database");
+		let replayed = match reopened
+			.plan_continuation(&blob_store, "fallback-plan", &request, &context_pack)
+			.await
+			.expect("replay persisted fallback")
+		{
+			ContinuationCommandOutcome::Success(effect) => effect,
+			ContinuationCommandOutcome::Rejected(rejection) => {
+				panic!("persisted fallback replay was rejected: {rejection:?}")
+			},
+		};
+		assert_eq!(replayed.plan.kind, ContinuationPlanKind::ContextPackFallback);
+		assert_eq!(
+			replayed.fallback_context_pack.expect("replayed Context Pack").pack.digest(),
+			context_pack.digest()
+		);
+	}
+
+	fn recovery_context_pack(conversation_id: &ConversationId) -> decodex_core::ContextPack {
+		compile_context_pack(ContextPackInput {
+			conversation_id: conversation_id.clone(),
+			possible_side_effects: PossibleSideEffects::Unknown,
+			policy: ContextPackPolicy::new(4_096, 4).expect("Context Pack policy"),
+			pinned: PinnedContextSource::new(
+				"silent-recovery",
+				1,
+				"The prior provider effect remains unknown. Continue only from this new user intent.",
+			)
+			.expect("pinned Context Pack source"),
+			optional_sources: vec![],
+		})
+		.expect("compile Context Pack")
+	}
+
+	fn verify_fallback_ownership(store: &SqliteStore, request: &PlanContinuation) {
+		let ownership: (String, i64, String, i64, String) = store
+			.with_connection(|connection| {
+				connection
+					.query_row(
+						"SELECT source.state, source.revision, fallback.state,
+						 fallback.revision, turn.runtime_session_id
+						 FROM runtime_sessions AS source
+						 JOIN runtime_sessions AS fallback ON fallback.runtime_session_id = ?2
+						 JOIN turns AS turn ON turn.turn_id = ?3
+						 WHERE source.runtime_session_id = ?1",
+						params![
+							RUNTIME_SESSION_ID,
+							request.fallback_runtime_session_id,
+							SUCCESSOR_TURN_ID,
+						],
+						|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+					)
+					.map_err(sqlite_error)
+			})
+			.expect("read fallback ownership");
+		assert_eq!(ownership.0, "ended");
+		assert_eq!(ownership.1, 8);
+		assert_eq!(ownership.2, "starting");
+		assert_eq!(ownership.3, 1);
+		assert_eq!(ownership.4, request.fallback_runtime_session_id);
+	}
+
+	fn seed_successor_continuation(store: &SqliteStore) {
 		store
 			.with_connection(|connection| {
 				connection
@@ -3737,98 +3811,9 @@ mod archive_tests {
 				Ok(())
 			})
 			.expect("seed successor continuation authority");
-		let fallback_history = store
-			.recent_conversation_history_excluding_turn(
-				&blob_store,
-				&conversation_id,
-				&TurnId::new(SUCCESSOR_TURN_ID).expect("successor Turn ID"),
-				4,
-			)
-			.await
-			.expect("read fallback history before the successor intent");
-		assert!(
-			fallback_history
-				.iter()
-				.any(|entry| entry.history_item_id.as_str() == INTERRUPTION_HISTORY_ID)
-		);
-		assert!(
-			fallback_history
-				.iter()
-				.all(|entry| entry.history_item_id.as_str() != SUCCESSOR_HISTORY_ID)
-		);
-		let context_pack = compile_context_pack(ContextPackInput {
-			conversation_id: conversation_id.clone(),
-			possible_side_effects: PossibleSideEffects::Unknown,
-			policy: ContextPackPolicy::new(4_096, 4).expect("Context Pack policy"),
-			pinned: PinnedContextSource::new(
-				"silent-recovery",
-				1,
-				"The prior provider effect remains unknown. Continue only from this new user intent.",
-			)
-			.expect("pinned Context Pack source"),
-			optional_sources: vec![],
-		})
-		.expect("compile Context Pack");
-		let request = PlanContinuation {
-			operation_id: "a5000000-0000-4000-8000-000000000002".to_owned(),
-			routing_decision_id: "a1000000-0000-4000-8000-000000000002".to_owned(),
-			expected_consumer_revision: 1,
-			plan_id: "a6000000-0000-4000-8000-000000000002".to_owned(),
-			fallback_runtime_session_id: "a7000000-0000-4000-8000-000000000002".to_owned(),
-			fallback_account_snapshot_id: "41000000-0000-4000-8000-000000000001".to_owned(),
-			fallback_context_pack_id: "a8000000-0000-4000-8000-000000000002".to_owned(),
-		};
-		let planned = match store
-			.plan_continuation(&blob_store, "fallback-plan", &request, &context_pack)
-			.await
-			.expect("plan recovered continuation")
-		{
-			ContinuationCommandOutcome::Success(effect) => effect,
-			ContinuationCommandOutcome::Rejected(rejection) => {
-				panic!("recovered continuation was rejected: {rejection:?}")
-			},
-		};
-		assert_eq!(planned.plan.kind, ContinuationPlanKind::ContextPackFallback);
-		assert_eq!(
-			planned.uncertain_predecessor_attempt_id.as_ref().map(ProviderAttemptId::as_str),
-			Some(ATTEMPT_ID)
-		);
-		assert_eq!(
-			planned
-				.runtime_session
-				.as_ref()
-				.map(|session| session.account_snapshot.source_account_id.as_str()),
-			Some(ACCOUNT_ID)
-		);
-		assert_eq!(
-			planned.fallback_context_pack.as_ref().map(|record| record.pack.digest()),
-			Some(context_pack.digest())
-		);
-		let ownership: (String, i64, String, i64, String) = store
-			.with_connection(|connection| {
-				connection
-					.query_row(
-						"SELECT source.state, source.revision, fallback.state,
-						 fallback.revision, turn.runtime_session_id
-						 FROM runtime_sessions AS source
-						 JOIN runtime_sessions AS fallback ON fallback.runtime_session_id = ?2
-						 JOIN turns AS turn ON turn.turn_id = ?3
-						 WHERE source.runtime_session_id = ?1",
-						params![
-							RUNTIME_SESSION_ID,
-							request.fallback_runtime_session_id,
-							SUCCESSOR_TURN_ID,
-						],
-						|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
-					)
-					.map_err(sqlite_error)
-			})
-			.expect("read fallback ownership");
-		assert_eq!(ownership.0, "ended");
-		assert_eq!(ownership.1, 8);
-		assert_eq!(ownership.2, "starting");
-		assert_eq!(ownership.3, 1);
-		assert_eq!(ownership.4, request.fallback_runtime_session_id);
+	}
+
+	fn activate_fallback_authority(store: &SqliteStore, request: &PlanContinuation) {
 		store
 			.with_connection(|connection| {
 				connection
@@ -3872,6 +3857,13 @@ mod archive_tests {
 				Ok(())
 			})
 			.expect("activate fallback execution authority");
+	}
+
+	async fn verify_fallback_attempt_authority(
+		store: &SqliteStore,
+		request: &PlanContinuation,
+		conversation_id: &ConversationId,
+	) {
 		let successor_attempt_id = ProviderAttemptId::new("62000000-0000-4000-8000-000000000002")
 			.expect("successor attempt ID");
 		let successor_request_id = ProviderRequestId::new("63000000-0000-4000-8000-000000000002")
@@ -3974,24 +3966,56 @@ mod archive_tests {
 				]),
 			}
 		);
+	}
 
-		drop(store);
-		let reopened = SqliteStore::open(&paths).expect("reopen product database");
-		let replayed = match reopened
-			.plan_continuation(&blob_store, "fallback-plan", &request, &context_pack)
-			.await
-			.expect("replay persisted fallback")
-		{
-			ContinuationCommandOutcome::Success(effect) => effect,
-			ContinuationCommandOutcome::Rejected(rejection) => {
-				panic!("persisted fallback replay was rejected: {rejection:?}")
-			},
-		};
-		assert_eq!(replayed.plan.kind, ContinuationPlanKind::ContextPackFallback);
-		assert_eq!(
-			replayed.fallback_context_pack.expect("replayed Context Pack").pack.digest(),
-			context_pack.digest()
-		);
+	fn seed_archive_session(store: &SqliteStore) {
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"INSERT INTO account_identities (account_id, created_at_micros)
+						 VALUES (?1, 1)",
+						params![ACCOUNT_ID],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO accounts (
+						 account_id, display_label, enabled, state, revision, provider,
+						 provider_account_id, created_at_micros, updated_at_micros
+						 ) VALUES (?1, 'Archive fixture', 1, 'available', 1, 'chatgpt',
+						 'archive-fixture-provider', 1, 1)",
+						params![ACCOUNT_ID],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO runtime_sessions (
+						 runtime_session_id, conversation_id, account_id, account_revision,
+						 account_snapshot_id, account_display_label, account_observed_state,
+						 credential_binding_json, profile_snapshot_id, profile_revision,
+						 profile_role, model, reasoning_effort, instructions, service_tier,
+						 instructions_sha256, codex_thread_id, state, thread_start_request_id,
+						 thread_start_request_sha256, thread_start_response_id,
+						 thread_start_response_sha256, has_acknowledged_turn, revision,
+						 created_at_micros, updated_at_micros
+						 ) VALUES (
+						 ?1, ?2, ?3, 1, '41000000-0000-4000-8000-000000000001',
+						 'Archive fixture', 'available', '{}',
+						 '42000000-0000-4000-8000-000000000001', 1, 'task', 'gpt-5.6-sol',
+						 'high', 'Follow the request.', 'priority',
+						 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+						 'codex-thread-1', 'active', 1,
+						 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 1,
+						 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+						 1, 7, 1, 1
+						 )",
+						params![RUNTIME_SESSION_ID, CONVERSATION_ID, ACCOUNT_ID],
+					)
+					.map_err(sqlite_error)?;
+				Ok(())
+			})
+			.expect("seed active RuntimeSession");
 	}
 
 	#[tokio::test]

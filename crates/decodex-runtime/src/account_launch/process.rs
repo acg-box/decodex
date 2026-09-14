@@ -829,6 +829,22 @@ pub(crate) async fn spawn_admitted_conversation_process(
 	control.spawn_fenced_conversation(admission, execution_authorization, launch).await
 }
 
+/// Keep the same attested directory boundary for a retained Chief process admission.
+pub(crate) async fn spawn_admitted_chief_process(
+	control: &ProcessGenerationControl,
+	root_id: String,
+	operation_key: String,
+	generation_id: ProcessGenerationId,
+	execution_authorization: ProcessExecutionAuthorization,
+	mut launch: AttestedAppServerLaunch,
+	pre_spawn_check: Arc<dyn ConversationPreSpawnCheck>,
+) -> Result<FencedProcess, ProcessSupervisorError> {
+	launch.conversation_pre_spawn_check = Some(pre_spawn_check);
+	control
+		.spawn_fenced_chief(root_id, operation_key, generation_id, execution_authorization, launch)
+		.await
+}
+
 /// Exact newly spawned protocol child plus immutable build evidence and capacity authority.
 pub(crate) struct AttestedProcessChild {
 	process: SupervisedProcess,
@@ -856,7 +872,43 @@ impl AttestedProcessChild {
 
 	/// Close private lifetime channels without returning either raw protocol handle.
 	pub(crate) fn close_private_lifetime_channels(&mut self) {
+		if let Some(bridge) = &self.process.chief_bridge {
+			bridge.close();
+		}
 		self.process.stdin = Box::new(io::sink());
+	}
+
+	/// Transfer protocol I/O once after the existing account initialization and admission.
+	/// The supervisor retains this child, its process group, and its account authority.
+	pub(crate) fn retain_chief_connection(
+		&mut self,
+	) -> Result<
+		(
+			decodex_codex::app_server_client::AppServerClient,
+			tokio::sync::mpsc::Receiver<decodex_codex::app_server_client::ServerEvent>,
+		),
+		ConversationProcessError,
+	> {
+		self.require_ordinary_turns_initialized()?;
+		if !self.process.abandoned_request_ids.is_empty() {
+			return Err(ConversationProcessError::Unavailable);
+		}
+		let sequence = i64::try_from(self.process.next_request_id)
+			.map_err(|_| ConversationProcessError::Incompatible)?;
+		self.process.chief_retained = true;
+		let stdin = mem::replace(&mut self.process.stdin, Box::new(io::sink()));
+		let (_, empty) = mpsc::sync_channel(1);
+		let stdout = mem::replace(&mut self.process.stdout, empty);
+		let (bridge, client, events) = super::chief_process::ChiefProcessBridge::start(
+			stdin,
+			stdout,
+			self.process.binding.clone(),
+			Arc::clone(&self.process.protocol_limit_exceeded),
+			sequence,
+		)
+		.map_err(|_| ConversationProcessError::Unavailable)?;
+		self.process.chief_bridge = Some(bridge);
+		Ok((client, events))
 	}
 
 	/// Initialize one exact account-bound child for ordinary Conversation I/O.
@@ -1048,7 +1100,9 @@ impl AttestedProcessChild {
 	}
 
 	fn require_ordinary_turns_initialized(&self) -> Result<(), ConversationProcessError> {
-		self.initialized.then_some(()).ok_or(ConversationProcessError::Unavailable)
+		(self.initialized && !self.process.chief_retained)
+			.then_some(())
+			.ok_or(ConversationProcessError::Unavailable)
 	}
 }
 
@@ -1347,6 +1401,8 @@ pub(super) struct SupervisedProcess {
 	expected_account_identity: Option<AccountIdentity>,
 	next_request_id: u64,
 	abandoned_request_ids: BTreeSet<u64>,
+	chief_retained: bool,
+	chief_bridge: Option<super::chief_process::ChiefProcessBridge>,
 }
 impl SupervisedProcess {
 	#[cfg(test)]
@@ -1412,6 +1468,8 @@ impl SupervisedProcess {
 			expected_account_identity: None,
 			next_request_id: 1,
 			abandoned_request_ids: BTreeSet::new(),
+			chief_retained: false,
+			chief_bridge: None,
 		})
 	}
 
@@ -1441,6 +1499,8 @@ impl SupervisedProcess {
 			expected_account_identity: None,
 			next_request_id: 1,
 			abandoned_request_ids: BTreeSet::new(),
+			chief_retained: false,
+			chief_bridge: None,
 		})
 	}
 
@@ -1559,7 +1619,8 @@ impl SupervisedProcess {
 				.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 
 			if let (Some(id), Some(method)) = (header.id, header.method.as_deref()) {
-				self.service_inbound_request(id, method, &line).map_err(rpc_supervision)?;
+				Self::service_inbound_request(&self.binding, &mut self.stdin, id, method, &line)
+					.map_err(rpc_supervision)?;
 				continue;
 			}
 
@@ -1672,7 +1733,14 @@ impl SupervisedProcess {
 			let header: InboundHeader =
 				serde_json::from_slice(&line).map_err(|_| invalid_response())?;
 			if let (Some(id), Some(inbound_method)) = (header.id, header.method.as_deref()) {
-				self.service_inbound_request(id, inbound_method, &line).map_err(|_| ambiguous())?;
+				Self::service_inbound_request(
+					&self.binding,
+					&mut self.stdin,
+					id,
+					inbound_method,
+					&line,
+				)
+				.map_err(|_| ambiguous())?;
 				continue;
 			}
 			if header.id == Some(request_id_u64) {
@@ -1738,7 +1806,7 @@ impl SupervisedProcess {
 		let header: InboundHeader =
 			serde_json::from_slice(&line).map_err(|_| ConversationProcessError::Incompatible)?;
 		if let (Some(id), Some(method)) = (header.id, header.method.as_deref()) {
-			self.service_inbound_request(id, method, &line)
+			Self::service_inbound_request(&self.binding, &mut self.stdin, id, method, &line)
 				.map_err(|_| ConversationProcessError::Unavailable)?;
 			return Ok(None);
 		}
@@ -1761,20 +1829,24 @@ impl SupervisedProcess {
 		Ok(Some(line))
 	}
 
-	fn service_inbound_request(
-		&mut self,
+	pub(super) fn service_inbound_request(
+		binding: &AccountBinding,
+		stdin: &mut Box<dyn Write + Send>,
 		id: u64,
 		method: &str,
 		line: &[u8],
 	) -> Result<(), ProbeError> {
 		if method != decodex_codex::schema::ACCOUNT_REFRESH_CALLBACK_METHOD {
-			return self.write_json(&OutboundRpcError {
-				id,
-				error: OutboundRpcErrorBody {
-					code: -32_601,
-					message: "account-bound adapter does not service this request",
+			return Self::write_bound_json(
+				stdin,
+				&OutboundRpcError {
+					id,
+					error: OutboundRpcErrorBody {
+						code: -32_601,
+						message: "account-bound adapter does not service this request",
+					},
 				},
-			});
+			);
 		}
 		let request: ChatgptRefreshRequest =
 			serde_json::from_slice(line).map_err(|_| SupervisionError::InvalidProtocol)?;
@@ -1786,10 +1858,9 @@ impl SupervisedProcess {
 			}) {
 			return Err(SupervisionError::InvalidProtocol.into());
 		}
-		let account_id = self.binding.account_id.clone();
-		let process_binding = self.binding.process_binding()?.clone();
-		let callback = self
-			.binding
+		let account_id = binding.account_id.clone();
+		let process_binding = binding.process_binding()?.clone();
+		let callback = binding
 			.refresh_callback
 			.as_ref()
 			.cloned()
@@ -1802,26 +1873,32 @@ impl SupervisedProcess {
 		) {
 			Ok(projection) => projection,
 			Err(_) => {
-				return self.write_json(&OutboundRpcError {
-					id,
-					error: OutboundRpcErrorBody {
-						code: -32_001,
-						message: "account credential refresh unavailable",
+				return Self::write_bound_json(
+					stdin,
+					&OutboundRpcError {
+						id,
+						error: OutboundRpcErrorBody {
+							code: -32_001,
+							message: "account credential refresh unavailable",
+						},
 					},
-				});
+				);
 			},
 		};
 		if projection.provider_account_id != process_binding.credential.provider.account_id() {
 			return Err(SupervisionError::AccountChanged.into());
 		}
-		self.write_json(&OutboundRpcSuccess {
-			id,
-			result: ChatgptRefreshResponse {
-				access_token: projection.access_token.as_str(),
-				chatgpt_account_id: projection.provider_account_id.as_str(),
-				chatgpt_plan_type: projection.plan_type.as_deref(),
+		Self::write_bound_json(
+			stdin,
+			&OutboundRpcSuccess {
+				id,
+				result: ChatgptRefreshResponse {
+					access_token: projection.access_token.as_str(),
+					chatgpt_account_id: projection.provider_account_id.as_str(),
+					chatgpt_plan_type: projection.plan_type.as_deref(),
+				},
 			},
-		})
+		)
 	}
 
 	fn abandon_request(&mut self, request_id: u64) -> Result<(), RpcError> {
@@ -2097,18 +2174,28 @@ impl SupervisedProcess {
 	where
 		T: Serialize + ?Sized,
 	{
+		Self::write_bound_json(&mut self.stdin, value)
+	}
+
+	pub(super) fn write_bound_json<T: Serialize + ?Sized>(
+		stdin: &mut Box<dyn Write + Send>,
+		value: &T,
+	) -> Result<(), ProbeError> {
 		let frame = ZeroizingOutboundFrame::serialize(value)?;
 
-		frame.write_to(&mut self.stdin)?;
+		frame.write_to(stdin)?;
 
-		self.stdin.flush().map_err(|_| SupervisionError::WriteFailed.into())
+		stdin.flush().map_err(|_| SupervisionError::WriteFailed.into())
 	}
 
 	fn shutdown_inner(&mut self, timeout: Duration) -> Result<ShutdownOutcome, SupervisionError> {
+		if let Some(bridge) = &self.chief_bridge {
+			bridge.close();
+		}
 		self.owner.shutdown(timeout)
 	}
 
-	fn validate_zero_scratch_json(bytes: &[u8]) -> Result<(), ()> {
+	pub(super) fn validate_zero_scratch_json(bytes: &[u8]) -> Result<(), ()> {
 		let mut in_string = false;
 
 		for &byte in bytes {
@@ -3140,6 +3227,13 @@ pub(super) struct InboundFrame {
 	len: usize,
 }
 impl InboundFrame {
+	#[cfg(test)]
+	pub(super) fn fixture(bytes: &[u8]) -> Self {
+		let mut frame = Self::new();
+		frame.extend_from_slice(bytes).expect("bounded test frame");
+		frame
+	}
+
 	fn new() -> Self {
 		Self { blocks: Vec::new(), len: 0 }
 	}
@@ -3172,7 +3266,7 @@ impl InboundFrame {
 		Ok(())
 	}
 
-	fn into_contiguous(self) -> Zeroizing<Vec<u8>> {
+	pub(super) fn into_contiguous(self) -> Zeroizing<Vec<u8>> {
 		let mut bytes = Vec::with_capacity(self.len);
 		let mut remaining = self.len;
 
@@ -7120,6 +7214,42 @@ mod tests {
 		process.read_account_identity(timeout).unwrap();
 
 		(temp, process)
+	}
+
+	#[tokio::test]
+	async fn retained_connection_transition_is_one_way_and_keeps_supervisor_revocation() {
+		let (_temp, process) = initialized_bound_process("exact");
+		let profile = AttestedAppServerProfile::attest_for_test(
+			process.command.clone(),
+			&process.binding.expected_codex_home,
+			Duration::from_secs(2),
+		)
+		.unwrap();
+		let mut child = super::AttestedProcessChild {
+			process,
+			build: profile.build,
+			generated: profile.generated,
+			timeout: Duration::from_secs(2),
+			initialized: true,
+		};
+		let process_id = child.process_id();
+		let (client, _events) = child.retain_chief_connection().unwrap();
+		assert_eq!(child.process_id(), process_id);
+		assert!(child.has_private_lifetime_channels());
+		assert!(matches!(
+			child.retain_chief_connection(),
+			Err(super::ConversationProcessError::Unavailable)
+		));
+		assert!(matches!(
+			child.next_ordinary_turn_event(Duration::ZERO),
+			Err(super::ConversationProcessError::Unavailable)
+		));
+		child.close_private_lifetime_channels();
+		assert!(matches!(
+			client.thread_read(serde_json::json!({"threadId":"peer"})).await,
+			Err(decodex_codex::app_server_client::ClientError::Closed)
+		));
+		child.shutdown().unwrap();
 	}
 
 	#[test]
