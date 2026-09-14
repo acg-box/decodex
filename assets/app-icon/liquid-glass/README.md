@@ -14,7 +14,7 @@ SVG source and the matching menu-bar templates. Do not trace photographic
 highlights into the outline.
 
 The rounded cloud has a lower, left-offset main peak, a larger raised right
-shoulder, and a curved lower outline. This avoids a rocket-like symmetric
+shoulder, and one broad elliptical lower outline without small scallops. This avoids a rocket-like symmetric
 silhouette. Filled-cloud menu glyphs keep the same center as their Dock glyphs;
 there is no separate upward shift. The flat and open variants keep balanced
 geometry.
