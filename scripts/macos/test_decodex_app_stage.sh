@@ -22,6 +22,7 @@ test ! -e "$contents/Helpers/decodexd"
 test -x "$contents/Frameworks/libDecodexMenuBar.dylib"
 test -x "$contents/Frameworks/libdecodex_app_client_ffi.dylib"
 test -f "$contents/Resources/AppIcon.icns"
+test -s "$contents/Resources/Assets.car"
 test -f "$contents/Resources/StatusBarIcon.png"
 test ! -e "$contents/Library/LoginItems"
 test "$(find "$stage_root" -type d -name '*.app' | wc -l | tr -d ' ')" = 1
@@ -51,6 +52,7 @@ plutil -extract CFBundleDisplayName raw "$info" | grep -qx 'Decodex'
 plutil -extract CFBundleIdentifier raw "$info" | grep -qx 'box.acg.decodex'
 plutil -extract CFBundleExecutable raw "$info" | grep -qx 'decodex-gpui'
 plutil -extract CFBundleIconFile raw "$info" | grep -qx 'AppIcon'
+plutil -extract CFBundleIconName raw "$info" | grep -qx 'AppIcon'
 plutil -extract LSMinimumSystemVersion raw "$info" | grep -qx '27.0'
 plutil -extract NSSupportsAutomaticTermination raw "$info" | grep -qx 'false'
 plutil -extract NSSupportsSuddenTermination raw "$info" | grep -qx 'false'

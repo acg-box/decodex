@@ -1,38 +1,99 @@
 {
-  "fill" : {
-    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
+  "fill": {
+    "automatic-gradient": "extended-srgb:0.05500,0.14500,0.26000,1.00000"
   },
-  "groups" : [
+  "groups": [
     {
-      "layers" : [
+      "layers": [
         {
-          "blend-mode" : "normal",
-          "fill" : "automatic",
-          "image-name" : "app-icon-composer-layer.png",
-          "name" : "decodex-prompt-cloud-bolt",
-          "position" : {
-            "scale" : 1,
-            "translation-in-points" : [
+          "blend-mode": "normal",
+          "image-name": "chevron.svg",
+          "name": "chevron",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "blend-mode": "normal",
+          "image-name": "cursor.svg",
+          "name": "cursor",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
               0,
               0
             ]
           }
         }
       ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.42
+      "name": "Prompt · ink",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.12
       },
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.45
+      "specular": false,
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
       }
+    },
+    {
+      "layers": [
+        {
+          "blend-mode": "normal",
+          "image-name": "cloud.svg",
+          "name": "cloud",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "name": "Cloud · pearl glass",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.42
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.22
+      }
+    },
+    {
+      "layers": [
+        {
+          "blend-mode": "normal",
+          "image-name": "lightning.svg",
+          "name": "lightning",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "name": "Lightning · amber glass",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.18
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.18
+      },
+      "specular": false
     }
   ],
-  "supported-platforms" : {
-    "circles" : [
-      "watchOS"
-    ],
-    "squares" : "shared"
+  "supported-platforms": {
+    "squares": "shared"
   }
 }

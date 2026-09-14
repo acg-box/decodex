@@ -1,37 +1,17 @@
 #!/usr/bin/env swift
-
 import AppKit
 import CoreGraphics
 import Foundation
 
+// Shared mark geometry owns both icon surfaces. Icon Composer owns Dock materials.
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let appIconGenerated = root.appendingPathComponent("assets/app-icon/generated")
-let appIconComposerAssets = root.appendingPathComponent("assets/app-icon/composer/AppIcon.icon/Assets")
 let trayIconGenerated = root.appendingPathComponent("assets/tray-icon/generated")
-
-for directory in [appIconGenerated, appIconComposerAssets, trayIconGenerated] {
-	try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-}
-
 let canvasSize = 1_024
-let appIconURL = appIconGenerated.appendingPathComponent("app-icon-flat.png")
-let previewURL = appIconGenerated.appendingPathComponent("app-icon-default-preview.png")
-let composerLayerURL = appIconComposerAssets.appendingPathComponent("app-icon-composer-layer.png")
-let trayIconURL = trayIconGenerated.appendingPathComponent("tray-icon-template.png")
-let icnsURL = appIconGenerated.appendingPathComponent("app-icon.icns")
-
-enum Palette {
-	static let fieldTop = NSColor(calibratedRed: 0.110, green: 0.145, blue: 0.230, alpha: 1)
-	static let fieldBottom = NSColor(calibratedRed: 0.030, green: 0.050, blue: 0.090, alpha: 1)
-	static let cloudTop = NSColor(calibratedRed: 0.965, green: 0.985, blue: 1.000, alpha: 1)
-	static let cloudBottom = NSColor(calibratedRed: 0.700, green: 0.760, blue: 0.845, alpha: 1)
-	static let ink = NSColor(calibratedRed: 0.155, green: 0.175, blue: 0.230, alpha: 1)
-	static let bolt = NSColor(calibratedRed: 1.000, green: 0.760, blue: 0.230, alpha: 1)
-	static let boltCore = NSColor(calibratedRed: 1.000, green: 0.925, blue: 0.410, alpha: 1)
-	static let white = NSColor(calibratedWhite: 1.0, alpha: 1)
-	static let black = NSColor(calibratedWhite: 0.0, alpha: 1)
+enum Palette { static let black = NSColor.black }
+for directory in [appIconGenerated, trayIconGenerated] {
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 }
-
 enum TemplateMark {
 	static let canvasScale: CGFloat = 1.06
 	static let cloudScale: CGFloat = 0.97
@@ -40,14 +20,7 @@ enum TemplateMark {
 	static let promptCenter = NSPoint(x: 456, y: 504)
 	static let promptOffset = NSSize(width: 18, height: 0)
 	static let promptScale: CGFloat = 0.88
-}
-
-func requiredGradient(colors: [NSColor]) -> NSGradient {
-	guard let gradient = NSGradient(colors: colors) else {
-		preconditionFailure("icon gradient colors must be valid")
-	}
-
-	return gradient
+	static let promptWidth: CGFloat = 108
 }
 
 func currentCGContext() -> CGContext {
@@ -102,11 +75,6 @@ func roundedRect(_ rect: NSRect, radius: CGFloat) -> NSBezierPath {
 	NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
 }
 
-func fillRoundedRect(_ rect: NSRect, radius: CGFloat, color: NSColor, alpha: CGFloat = 1) {
-	color.withAlphaComponent(alpha).setFill()
-	roundedRect(rect, radius: radius).fill()
-}
-
 func strokePath(_ points: [NSPoint], color: NSColor, width: CGFloat, alpha: CGFloat = 1) {
 	guard let first = points.first else { return }
 	let path = NSBezierPath()
@@ -133,17 +101,6 @@ func fillPolygon(_ points: [NSPoint], color: NSColor, alpha: CGFloat = 1) {
 	path.fill()
 }
 
-func boltPoints(center: NSPoint, scale: CGFloat) -> [NSPoint] {
-	[
-		NSPoint(x: center.x + 22 * scale, y: center.y + 138 * scale),
-		NSPoint(x: center.x - 92 * scale, y: center.y + 18 * scale),
-		NSPoint(x: center.x - 18 * scale, y: center.y + 18 * scale),
-		NSPoint(x: center.x - 58 * scale, y: center.y - 142 * scale),
-		NSPoint(x: center.x + 104 * scale, y: center.y - 12 * scale),
-		NSPoint(x: center.x + 22 * scale, y: center.y - 12 * scale),
-	]
-}
-
 func templateBoltPoints(center: NSPoint, scale: CGFloat) -> [NSPoint] {
 	[
 		NSPoint(x: center.x + 48 * scale, y: center.y + 130 * scale),
@@ -153,38 +110,6 @@ func templateBoltPoints(center: NSPoint, scale: CGFloat) -> [NSPoint] {
 		NSPoint(x: center.x + 96 * scale, y: center.y - 8 * scale),
 		NSPoint(x: center.x + 20 * scale, y: center.y - 8 * scale),
 	]
-}
-
-func appBoltPoints(offsetX: CGFloat = 0, offsetY: CGFloat = 0) -> [NSPoint] {
-	[
-		NSPoint(x: 850 + offsetX, y: 592 + offsetY),
-		NSPoint(x: 718 + offsetX, y: 426 + offsetY),
-		NSPoint(x: 800 + offsetX, y: 426 + offsetY),
-		NSPoint(x: 756 + offsetX, y: 268 + offsetY),
-		NSPoint(x: 904 + offsetX, y: 444 + offsetY),
-		NSPoint(x: 832 + offsetX, y: 444 + offsetY),
-	]
-}
-
-func appBoltCorePoints() -> [NSPoint] {
-	[
-		NSPoint(x: 838, y: 542),
-		NSPoint(x: 764, y: 438),
-		NSPoint(x: 808, y: 438),
-		NSPoint(x: 784, y: 334),
-		NSPoint(x: 850, y: 436),
-		NSPoint(x: 814, y: 436),
-	]
-}
-
-func drawTile() {
-	let tile = roundedRect(NSRect(x: 58, y: 58, width: 908, height: 908), radius: 222)
-	requiredGradient(colors: [Palette.fieldTop, Palette.fieldBottom]).draw(in: tile, angle: -48)
-
-	Palette.white.withAlphaComponent(0.11).setStroke()
-	let rim = roundedRect(NSRect(x: 82, y: 82, width: 860, height: 860), radius: 198)
-	rim.lineWidth = 4
-	rim.stroke()
 }
 
 func cloudPath() -> NSBezierPath {
@@ -198,43 +123,17 @@ func cloudPath() -> NSBezierPath {
 	return path
 }
 
-func drawCloudContainer() {
-	let shadow = NSShadow()
-	shadow.shadowBlurRadius = 42
-	shadow.shadowOffset = NSSize(width: 0, height: -24)
-	shadow.shadowColor = NSColor(calibratedWhite: 0, alpha: 0.30)
-	shadow.set()
-	Palette.black.withAlphaComponent(0.24).setFill()
-	cloudPath().fill()
-	NSShadow().set()
-
-	requiredGradient(colors: [Palette.cloudTop, Palette.cloudBottom]).draw(in: cloudPath(), angle: -58)
+func promptCenterlines() -> [[NSPoint]] {
+    [
+        [NSPoint(x: 292, y: 590), NSPoint(x: 382, y: 506), NSPoint(x: 292, y: 422)],
+        [NSPoint(x: 472, y: 418), NSPoint(x: 620, y: 418)],
+    ]
 }
 
 func drawPromptMark(color: NSColor, width: CGFloat, alpha: CGFloat = 1) {
-	strokePath(
-		[NSPoint(x: 292, y: 590), NSPoint(x: 382, y: 506), NSPoint(x: 292, y: 422)],
-		color: color,
-		width: width,
-		alpha: alpha
-	)
-	strokePath(
-		[NSPoint(x: 472, y: 418), NSPoint(x: 620, y: 418)],
-		color: color,
-		width: width,
-		alpha: alpha
-	)
-}
-
-func drawAppBolt() {
-	fillPolygon(appBoltPoints(), color: Palette.bolt)
-	fillPolygon(appBoltCorePoints(), color: Palette.boltCore, alpha: 0.54)
-}
-
-func drawAppMark() {
-	drawCloudContainer()
-	drawAppBolt()
-	drawPromptMark(color: Palette.ink, width: 52)
+    for points in promptCenterlines() {
+        strokePath(points, color: color, width: width, alpha: alpha)
+    }
 }
 
 func drawTemplateBolt() {
@@ -260,7 +159,7 @@ func clearTemplatePrompt() {
 	context.translateBy(x: TemplateMark.promptCenter.x, y: TemplateMark.promptCenter.y)
 	context.scaleBy(x: TemplateMark.promptScale, y: TemplateMark.promptScale)
 	context.translateBy(x: -TemplateMark.promptCenter.x, y: -TemplateMark.promptCenter.y)
-	drawPromptMark(color: .clear, width: 108)
+	drawPromptMark(color: .clear, width: TemplateMark.promptWidth)
 	context.restoreGState()
 }
 
@@ -276,72 +175,125 @@ func drawTemplateMark() {
 	context.restoreGState()
 }
 
-func drawAppIcon() throws -> NSBitmapImageRep {
-	try bitmap { _ in
-		drawTile()
-		drawAppMark()
-	}
-}
-
-func drawComposerLayer() throws -> NSBitmapImageRep {
-	try bitmap { _ in
-		drawAppMark()
-	}
-}
-
 func drawTrayIcon() throws -> NSBitmapImageRep {
 	try bitmap { _ in
 		drawTemplateMark()
 	}
 }
 
-func scaledPNG(from source: NSBitmapImageRep, size: Int, to url: URL) throws {
-	guard let sourceImage = source.cgImage else {
-		throw NSError(domain: "DecodexIconRender", code: 4)
-	}
-	let rep = try bitmap(size: size) { ctx in
-		ctx.interpolationQuality = .high
-		ctx.draw(sourceImage, in: CGRect(x: 0, y: 0, width: size, height: size))
-	}
-	try writePNG(rep, to: url)
+// Both icon surfaces use the menu-bar mark geometry. Dock changes only its
+// canvas placement and material; SVG files are generated, never hand-edited.
+func transformed(_ path: CGPath, _ transform: CGAffineTransform) -> CGPath {
+    var transform = transform
+    return path.copy(using: &transform)!
 }
 
-func buildICNS(from source: NSBitmapImageRep) throws {
-	let temp = URL(fileURLWithPath: NSTemporaryDirectory())
-		.appendingPathComponent("decodex-app-icon-\(UUID().uuidString)")
-	let iconset = temp.appendingPathComponent("AppIcon.iconset")
-	try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
-
-	let sizes: [(String, Int)] = [
-		("icon_16x16.png", 16),
-		("icon_16x16@2x.png", 32),
-		("icon_32x32.png", 32),
-		("icon_32x32@2x.png", 64),
-		("icon_128x128.png", 128),
-		("icon_128x128@2x.png", 256),
-		("icon_256x256.png", 256),
-		("icon_256x256@2x.png", 512),
-		("icon_512x512.png", 512),
-		("icon_512x512@2x.png", 1_024),
-	]
-	for (name, size) in sizes {
-		try scaledPNG(from: source, size: size, to: iconset.appendingPathComponent(name))
-	}
-
-	let process = Process()
-	process.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
-	process.arguments = ["-c", "icns", iconset.path, "-o", icnsURL.path]
-	try process.run()
-	process.waitUntilExit()
-	if process.terminationStatus != 0 {
-		throw NSError(domain: "DecodexIconRender", code: Int(process.terminationStatus))
-	}
-	try FileManager.default.removeItem(at: temp)
+func sharedMarkPaths() -> [(String, CGPath, String)] {
+    let cloudTransform = CGAffineTransform(translationX: 512, y: 512)
+        .scaledBy(x: TemplateMark.cloudScale, y: TemplateMark.cloudScale)
+        .translatedBy(x: -512, y: -512)
+    let cloud = transformed(cloudPath().cgPath.normalized(), cloudTransform)
+    let bolt = CGMutablePath()
+    bolt.addLines(between: templateBoltPoints(center: TemplateMark.boltCenter, scale: TemplateMark.boltScale))
+    bolt.closeSubpath()
+    let promptTransform = CGAffineTransform(translationX: TemplateMark.promptOffset.width, y: TemplateMark.promptOffset.height)
+        .translatedBy(x: TemplateMark.promptCenter.x, y: TemplateMark.promptCenter.y)
+        .scaledBy(x: TemplateMark.promptScale, y: TemplateMark.promptScale)
+        .translatedBy(x: -TemplateMark.promptCenter.x, y: -TemplateMark.promptCenter.y)
+    let prompt = promptCenterlines().map { points -> CGPath in
+        let line = CGMutablePath()
+        line.addLines(between: points)
+        return transformed(line.copy(strokingWithWidth: TemplateMark.promptWidth, lineCap: .round, lineJoin: .round, miterLimit: 10), promptTransform)
+    }
+    return [("cloud", cloud, "#dbeeff"), ("chevron", prompt[0], "#14314d"),
+            ("cursor", prompt[1], "#14314d"), ("lightning", bolt, "#ffc247")]
 }
 
-let appIcon = try drawAppIcon()
-try writePNG(appIcon, to: appIconURL)
-try scaledPNG(from: appIcon, size: 256, to: previewURL)
-try buildICNS(from: appIcon)
-try writePNG(try drawComposerLayer(), to: composerLayerURL)
-try writePNG(try drawTrayIcon(), to: trayIconURL)
+func svgPath(_ path: CGPath) -> String {
+    var parts: [String] = []
+    func point(_ p: CGPoint) -> String { String(format: "%.3f %.3f", p.x, p.y) }
+    path.applyWithBlock { element in
+        let e = element.pointee
+        switch e.type {
+        case .moveToPoint: parts.append("M " + point(e.points[0]))
+        case .addLineToPoint: parts.append("L " + point(e.points[0]))
+        case .addQuadCurveToPoint: parts.append("Q " + point(e.points[0]) + " " + point(e.points[1]))
+        case .addCurveToPoint: parts.append("C " + point(e.points[0]) + " " + point(e.points[1]) + " " + point(e.points[2]))
+        case .closeSubpath: parts.append("Z")
+        @unknown default: preconditionFailure("Unsupported vector element")
+        }
+    }
+    return parts.joined(separator: " ")
+}
+
+func writeComposerComponents() throws {
+    let components = sharedMarkPaths()
+    let cloudBounds = components[0].1.boundingBoxOfPath
+    // Anchor the cloud, not the combined cloud/lightning bounding box.
+    let placement = CGAffineTransform(translationX: 512, y: 480)
+        .scaledBy(x: 0.90, y: -0.90)
+        .translatedBy(x: -cloudBounds.midX, y: -cloudBounds.midY)
+    let directory = root.appendingPathComponent("assets/app-icon/composer/AppIcon.icon/Assets")
+    for (name, path, color) in components {
+        let shape = svgPath(transformed(path, placement))
+        let svg = """
+        <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+          <!-- Generated from shared menu-bar geometry. -->
+          <path d="\(shape)" fill="\(color)"/>
+        </svg>
+
+        """
+        try svg.write(to: directory.appendingPathComponent("\(name).svg"), atomically: true, encoding: .utf8)
+    }
+}
+
+try writeComposerComponents()
+
+func run(_ executable: String, _ arguments: [String]) throws {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: executable)
+    process.arguments = arguments
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+        throw NSError(domain: "DecodexIconRender", code: Int(process.terminationStatus))
+    }
+}
+let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("decodex-icon-\(UUID().uuidString)")
+try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
+defer { try? FileManager.default.removeItem(at: temporary) }
+try run(root.appendingPathComponent("scripts/macos/compile_decodex_app_icon.sh").path, [temporary.path])
+let compiled = temporary.appendingPathComponent("AppIcon.icns")
+try Data(contentsOf: compiled).write(to: appIconGenerated.appendingPathComponent("app-icon.icns"))
+let iconset = temporary.appendingPathComponent("Preview.iconset")
+try run("/usr/bin/iconutil", ["-c", "iconset", compiled.path, "-o", iconset.path])
+let preview = try Data(contentsOf: iconset.appendingPathComponent("icon_128x128@2x.png"))
+try preview.write(to: appIconGenerated.appendingPathComponent("app-icon-default-preview.png"))
+try preview.write(to: appIconGenerated.appendingPathComponent("app-icon-flat.png"))
+try writePNG(try drawTrayIcon(), to: trayIconGenerated.appendingPathComponent("tray-icon-template.png"))
+
+// Review the compiled fallback at Dock sizes on two backgrounds.
+let review = try bitmap(size: 768) { _ in
+    let icon = NSImage(contentsOf: compiled)!
+    for (row, background) in [NSColor(calibratedWhite: 0.94, alpha: 1),
+                              NSColor(calibratedWhite: 0.10, alpha: 1)].enumerated() {
+        let bottom = CGFloat(1 - row) * 384
+        background.setFill()
+        NSRect(x: 0, y: bottom, width: 768, height: 384).fill()
+        let foreground = row == 0 ? NSColor.darkGray : NSColor.lightGray
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 14), .foregroundColor: foreground,
+        ]
+        (row == 0 ? "LIGHT BACKGROUND" : "DARK BACKGROUND" as NSString).draw(
+            at: NSPoint(x: 32, y: bottom + 345), withAttributes: attributes)
+        for (index, size) in [32, 64, 128, 256].enumerated() {
+            let center: CGFloat = [68, 186, 344, 588][index]
+            let edge = CGFloat(size)
+            icon.draw(in: NSRect(x: center - edge / 2, y: bottom + 180 - edge / 2,
+                                 width: edge, height: edge))
+            ("\(size) px" as NSString).draw(at: NSPoint(x: center - 23, y: bottom + 25),
+                                          withAttributes: attributes)
+        }
+    }
+}
+try writePNG(review, to: appIconGenerated.appendingPathComponent("app-icon-size-review.png"))
