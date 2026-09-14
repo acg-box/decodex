@@ -367,6 +367,8 @@ pub enum AccountQuotaObservationError {
 pub enum AccountQuotaDisposition {
 	/// No observation exists.
 	Unknown,
+	/// A fresh provider observation confirms that this optional window does not apply.
+	NotApplicable,
 	/// The retained fact is current.
 	Current(AccountQuotaWindow),
 	/// The retained fact is expired or older than the freshness limit.

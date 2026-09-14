@@ -320,9 +320,7 @@ impl CredentialRefreshPort for OpenAiCredentialRefresher {
 fn classify_refresh_http_response(response: reqwest::blocking::Response) -> CredentialRefreshError {
 	let status = response.status();
 	let mut body = Zeroizing::new(Vec::new());
-	let _ = response
-		.take(MAX_REFRESH_ERROR_BODY_BYTES + 1)
-		.read_to_end(&mut body);
+	let _ = response.take(MAX_REFRESH_ERROR_BODY_BYTES + 1).read_to_end(&mut body);
 	classify_refresh_http_failure(status, &body)
 }
 
@@ -1773,25 +1771,23 @@ impl AccountService {
 				return Err(CredentialRefreshError::OwnerBusy);
 			}
 		}
-		let independently_owned_observation = if matches!(
-			shared_family,
-			SharedFamilyRefreshPolicy::Observation
-		) {
-			// The caller retains this account's lifecycle lock, which fences a future launch.
-			// An empty durable nonterminal-generation read also rules out a prior live owner.
-			let target_has_no_generation = self
-				.store
-				.read_bound_process_generations(Some(account_id), false, 1)
-				.await
-				.map_err(|_| CredentialRefreshError::OwnerBusy)?
-				.is_empty();
-			target_has_no_generation
-				&& (shared_is_other_managed_account
-					|| shared_is_unmanaged
-						&& self.shared_auth.liveness() == CodexLiveness::Quiescent)
-		} else {
-			false
-		};
+		let independently_owned_observation =
+			if matches!(shared_family, SharedFamilyRefreshPolicy::Observation) {
+				// The caller retains this account's lifecycle lock, which fences a future launch.
+				// An empty durable nonterminal-generation read also rules out a prior live owner.
+				let target_has_no_generation = self
+					.store
+					.read_bound_process_generations(Some(account_id), false, 1)
+					.await
+					.map_err(|_| CredentialRefreshError::OwnerBusy)?
+					.is_empty();
+				target_has_no_generation
+					&& (shared_is_other_managed_account
+						|| shared_is_unmanaged
+							&& self.shared_auth.liveness() == CodexLiveness::Quiescent)
+			} else {
+				false
+			};
 		if refresh_owner_is_busy(
 			shared_family,
 			projected_source.is_some(),
@@ -3414,6 +3410,19 @@ impl AccountService {
 		Ok(self.store.observe_account_quota(account_id, fact, observed_at_unix_micros).await?)
 	}
 
+	/// Persist a positively observed absent optional five-hour quota window.
+	pub(crate) async fn observe_quota_absence(
+		&self,
+		account_id: &AccountId,
+		duration_minutes: u32,
+		observed_at_unix_micros: i64,
+	) -> Result<(), AccountLifecycleError> {
+		Ok(self
+			.store
+			.observe_account_quota_absence(account_id, duration_minutes, observed_at_unix_micros)
+			.await?)
+	}
+
 	/// Persist one bounded row-scoped quota observation error for both list and Reset Card reads.
 	pub async fn observe_quota_error(
 		&self,
@@ -3431,6 +3440,28 @@ impl AccountService {
 				observed_at_unix_micros,
 			)
 			.await?)
+	}
+
+	/// Select an account for process launch without changing routing or shared authentication.
+	pub(crate) async fn select_process_account(
+		&self,
+		account_id: Option<&AccountId>,
+		now_unix_micros: i64,
+	) -> Result<AccountSelectionResult, AccountSelectionFailure> {
+		let Some(account_id) = account_id else {
+			return self.select_initial(now_unix_micros).await;
+		};
+		let callback_profile_sha256 = self.callback_profile().map_err(|recovery| {
+			AccountSelectionFailure { account_id: Some(account_id.clone()), recovery }
+		})?;
+		let inspection = self.inspect(account_id).await.map_err(|_| AccountSelectionFailure {
+			account_id: Some(account_id.clone()),
+			recovery: AccountSelectionRecovery::RepairCredentialStore,
+		})?;
+		self.selection_candidate(&inspection.account, now_unix_micros).map_err(|recovery| {
+			AccountSelectionFailure { account_id: Some(account_id.clone()), recovery }
+		})?;
+		Ok(AccountSelectionResult { account: inspection.account, callback_profile_sha256 })
 	}
 
 	/// Select one initial account. This never creates automatic same-thread fallback or wake work.
@@ -4026,20 +4057,7 @@ impl AccountService {
 			},
 			_ => return Err(AccountSelectionRecovery::RepairCredentialStore),
 		}
-		let five = account
-			.five_hour_quota
-			.current()
-			.filter(|fact| fact.resets_at_unix_micros > now_unix_micros)
-			.ok_or(AccountSelectionRecovery::RefreshQuota)?;
-		let seven = account
-			.seven_day_quota
-			.current()
-			.filter(|fact| fact.resets_at_unix_micros > now_unix_micros)
-			.ok_or(AccountSelectionRecovery::RefreshQuota)?;
-		if five.used_percent >= 100 || seven.used_percent >= 100 {
-			return Err(AccountSelectionRecovery::RefreshQuota);
-		}
-		Ok((five.used_percent.max(seven.used_percent), five.used_percent))
+		quota_selection_score(account, now_unix_micros)
 	}
 
 	async fn read_exact_for_admission(
@@ -4595,6 +4613,37 @@ impl AccountService {
 	}
 }
 
+fn quota_selection_score(
+	account: &AccountRecord,
+	now: i64,
+) -> Result<(u8, u8), AccountSelectionRecovery> {
+	// All callers use the store's fresh AccountRecord projection: expired absence
+	// is returned as Unknown, just as expired numerical facts are returned as Stale.
+	let seven = account
+		.seven_day_quota
+		.current()
+		.filter(|fact| fact.resets_at_unix_micros > now)
+		.ok_or(AccountSelectionRecovery::RefreshQuota)?;
+	let five = match account.five_hour_quota.disposition {
+		decodex_core::AccountQuotaDisposition::Current(fact)
+			if fact.resets_at_unix_micros > now =>
+			Some(fact),
+		decodex_core::AccountQuotaDisposition::NotApplicable
+			if account
+				.five_hour_quota
+				.observed_at_unix_micros
+				.is_some_and(|at| at > 0 && at <= now) =>
+			None,
+		_ => return Err(AccountSelectionRecovery::RefreshQuota),
+	};
+	if seven.used_percent >= 100 || five.is_some_and(|fact| fact.used_percent >= 100) {
+		return Err(AccountSelectionRecovery::RefreshQuota);
+	}
+	// An absent limit has no utilization to rank; weekly utilization still counts.
+	let five_usage = five.map_or(0, |fact| fact.used_percent);
+	Ok((five_usage.max(seven.used_percent), five_usage))
+}
+
 const fn refresh_owner_is_busy(
 	policy: SharedFamilyRefreshPolicy,
 	has_projected_source: bool,
@@ -5067,11 +5116,10 @@ mod tests {
 		access_token_needs_refresh, account_lock_for, callback_uses_current_successor,
 		classify_prepared_refresh_reconciliation, classify_reauthentication_replay,
 		classify_refresh_http_failure, classify_refresh_http_response,
-		classify_refresh_transport_failure,
-		codex_auth_projection_digest, credential_refresh_result, matching_shared_refresh,
-		projection_binding, reauthentication_current, reauthentication_target,
-		recover_rejected_refresh_from_shared, refreshed_credential_target,
-		refresh_owner_is_busy,
+		classify_refresh_transport_failure, codex_auth_projection_digest,
+		credential_refresh_result, matching_shared_refresh, projection_binding,
+		reauthentication_current, reauthentication_target, recover_rejected_refresh_from_shared,
+		refresh_owner_is_busy, refreshed_credential_target,
 		require_refreshed_access_token_for_observation, resolve_reauthentication_store_effect,
 		stable_account_alias,
 	};
@@ -5148,13 +5196,8 @@ mod tests {
 
 	async fn independently_owned_observation_service(
 		refresh: Result<CredentialRefreshResult, CredentialRefreshError>,
-	) -> (
-		tempfile::TempDir,
-		SqliteStore,
-		AccountService,
-		AccountId,
-		Arc<RefreshRaceSharedAuthFile>,
-	) {
+	) -> (tempfile::TempDir, SqliteStore, AccountService, AccountId, Arc<RefreshRaceSharedAuthFile>)
+	{
 		let directory = tempdir().expect("temporary product root");
 		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
 			.expect("typed product root");
@@ -5165,9 +5208,8 @@ mod tests {
 			AccountId::new("21000000-0000-4000-8000-000000000041").expect("account identity");
 		let provider = ProviderIdentity::new(AccountProvider::Chatgpt, "observed-account")
 			.expect("provider identity");
-		let enrollment_id =
-			AccountOperationId::new("22000000-0000-4000-8000-000000000041")
-				.expect("enrollment identity");
+		let enrollment_id = AccountOperationId::new("22000000-0000-4000-8000-000000000041")
+			.expect("enrollment identity");
 		let bundle = shared_bundle(provider.account_id(), "expired-access", 1);
 		let binding = bundle
 			.binding_for(
@@ -5233,6 +5275,17 @@ mod tests {
 			CodexLiveness::MayBeRunning,
 		));
 		(directory, store, service, account_id, shared)
+	}
+
+	#[tokio::test]
+	async fn explicit_process_selection_checks_readiness_without_changing_shared_auth_or_routing() {
+		let (_directory, store, service, account_id, shared) =
+			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
+		let routing = store.read_account_routing_control().await.unwrap();
+		let selected = service.select_process_account(Some(&account_id), OBSERVED_AT_MICROS).await;
+		assert!(selected.is_err(), "missing callback authority must reject process selection");
+		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
+		assert_eq!(store.read_account_routing_control().await.unwrap(), routing);
 	}
 
 	struct RefreshRaceState {
@@ -5412,7 +5465,10 @@ mod tests {
 			)
 			.await
 			.expect("quiescent unmanaged observation refresh");
-		assert_eq!(service.inspect(&account_id).await.expect("refreshed account").account.revision, 2);
+		assert_eq!(
+			service.inspect(&account_id).await.expect("refreshed account").account.revision,
+			2
+		);
 	}
 
 	#[tokio::test]
@@ -5534,20 +5590,21 @@ mod tests {
 			.require_observation_reauthentication(recovery_id.clone(), &account_id, 2)
 			.await
 			.expect("persist access rejection");
-		let duplicate_recovery_id =
-			AccountOperationId::new("22000000-0000-4000-8000-000000000048")
-				.expect("duplicate access rejection identity");
+		let duplicate_recovery_id = AccountOperationId::new("22000000-0000-4000-8000-000000000048")
+			.expect("duplicate access rejection identity");
 		assert!(matches!(
 			service
 				.require_observation_reauthentication(duplicate_recovery_id.clone(), &account_id, 2)
 				.await,
 			Err(AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled))
 		));
-		assert!(store
-			.read_account_operation(&duplicate_recovery_id)
-			.await
-			.expect("read duplicate access rejection")
-			.is_none());
+		assert!(
+			store
+				.read_account_operation(&duplicate_recovery_id)
+				.await
+				.expect("read duplicate access rejection")
+				.is_none()
+		);
 
 		let recovery = store
 			.read_account_operation(&recovery_id)
@@ -5561,7 +5618,10 @@ mod tests {
 		);
 		assert_eq!(shared.current_tokens().0, "shared-access");
 		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
-		assert_eq!(service.routing_control().await.expect("routing after rejection"), routing_before);
+		assert_eq!(
+			service.routing_control().await.expect("routing after rejection"),
+			routing_before
+		);
 		drop(service);
 		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
 			.expect("typed product root");
@@ -6624,7 +6684,12 @@ mod tests {
 		assert_eq!(startup.manual_recovery, vec![(account_id.clone(), ambiguity_id.clone())]);
 		let restarted = service.inspect(&account_id).await.expect("inspect restarted recovery");
 		assert_eq!(
-			restarted.account.unsettled_operation.expect("rejected recovery").recovery_code.as_deref(),
+			restarted
+				.account
+				.unsettled_operation
+				.expect("rejected recovery")
+				.recovery_code
+				.as_deref(),
 			Some("provider_refresh_rejected")
 		);
 
@@ -6705,7 +6770,9 @@ mod tests {
 				1,
 				Some(&ambiguity_id),
 				wrong_auth_path.to_string_lossy().as_ref(),
-				|result| Ok(json!({"outcome": if result.is_ok() { "applied" } else { "rejected" }})),
+				|result| {
+					Ok(json!({"outcome": if result.is_ok() { "applied" } else { "rejected" }}))
+				},
 			)
 			.await
 			.expect("complete wrong-provider denial");
@@ -7136,6 +7203,51 @@ mod tests {
 			.unwrap(),
 			tombstoned: false,
 		}
+	}
+
+	#[test]
+	fn optional_five_hour_absence_keeps_weekly_and_known_exhaustion_gates() {
+		use decodex_core::{AccountQuotaDisposition as D, AccountSelectionRecovery};
+		let mut account = projection_account(None);
+		account.five_hour_quota.observed_at_unix_micros = Some(900);
+		account.five_hour_quota.disposition = D::NotApplicable;
+		let weekly = AccountQuotaWindow::new(10_080, 8, 2_000_000).unwrap();
+		account.seven_day_quota.disposition = D::Current(weekly);
+		assert_eq!(super::quota_selection_score(&account, 1000), Ok((8, 0)));
+		account.seven_day_quota.disposition =
+			D::Current(AccountQuotaWindow::new(10_080, 100, 2_000_000).unwrap());
+		assert_eq!(
+			super::quota_selection_score(&account, 1000),
+			Err(AccountSelectionRecovery::RefreshQuota)
+		);
+		account.seven_day_quota.disposition = D::Current(weekly);
+		account.five_hour_quota.disposition =
+			D::Current(AccountQuotaWindow::new(300, 100, 2_000_000).unwrap());
+		assert_eq!(
+			super::quota_selection_score(&account, 1000),
+			Err(AccountSelectionRecovery::RefreshQuota)
+		);
+		for disposition in
+			[D::Unknown, D::Error(decodex_core::AccountQuotaObservationError::ProviderUnavailable)]
+		{
+			account.five_hour_quota.disposition = disposition;
+			assert_eq!(
+				super::quota_selection_score(&account, 1000),
+				Err(AccountSelectionRecovery::RefreshQuota)
+			);
+		}
+		account.five_hour_quota.disposition = D::NotApplicable;
+		account.five_hour_quota.observed_at_unix_micros = None;
+		assert_eq!(
+			super::quota_selection_score(&account, 1000),
+			Err(AccountSelectionRecovery::RefreshQuota)
+		);
+		account.five_hour_quota.observed_at_unix_micros = Some(900);
+		account.seven_day_quota.disposition = D::Unknown;
+		assert_eq!(
+			super::quota_selection_score(&account, 1000),
+			Err(AccountSelectionRecovery::RefreshQuota)
+		);
 	}
 
 	#[test]

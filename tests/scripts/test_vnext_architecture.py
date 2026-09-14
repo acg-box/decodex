@@ -120,8 +120,8 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         native_client = read("crates/decodex-app-client-ffi/src/lib.rs")
         staging = read("scripts/macos/stage_decodex_app.sh")
         bundle_verifier = read("scripts/macos/verify_decodex_bundle_contracts.py")
-        self.assertIn("ProtocolVersion { major: 2, minor: 15 }", protocol)
-        self.assertIn("assert_eq!(CURRENT_VERSION.minor, 15)", gpui)
+        self.assertIn("ProtocolVersion { major: 2, minor: 16 }", protocol)
+        self.assertIn("assert_eq!(CURRENT_VERSION.minor, 16)", gpui)
         self.assertIn("decodex_app_native_client_abi_version", native_client)
         self.assertIn("verify_decodex_bundle_contracts.py", staging)
         self.assertIn('"decodex/build-info/1"', bundle_verifier)
@@ -424,6 +424,21 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertIn("database/", quickstart)
         self.assertIn("same Codex thread", quickstart)
         self.assertNotIn("accepted no-migration reset", quickstart)
+
+    def test_chief_replaces_active_factory_but_preserves_historical_storage(self) -> None:
+        wire = read("crates/decodex-protocol/src/wire.rs")
+        commands = wire[wire.index("pub enum CommandPayload"):wire.index("pub enum ResultPayload")]
+        for retired in ("CreateProgramCycle", "BindProgramDomainPack", "ContinueProgram", "RecordProgramReview"):
+            self.assertNotIn(retired, commands)
+        shell = read("apps/decodex-gpui/src/shell.rs")
+        self.assertNotIn("Destination::Factory", shell)
+        for retired in ("programs.rs", "program_graph.rs", "factory_surface.rs"):
+            self.assertFalse((ROOT / "apps/decodex-gpui/src" / retired).exists())
+        self.assertIn("GetChiefSnapshot", wire)
+        self.assertIn("GetProgramCycle", wire)
+        self.assertIn("ListPrograms", wire)
+        self.assertIn("program_cycles", read("database/src/lib.rs"))
+        self.assertIn("chief_work_items", read("database/migrations/0013_chief_work.sql"))
 
 
 if __name__ == "__main__":

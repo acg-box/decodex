@@ -6,7 +6,7 @@ use std::{
 };
 
 use decodex_core::ConversationId;
-use decodex_database::{DomainPackIdentity, ProgramCycleRecord, ProgramDomainPackBinding};
+use decodex_database::{ProgramCycleRecord, ProgramDomainPackBinding};
 use decodex_protocol::{
 	DEVELOPMENT_DOMAIN_PACK_ID, DomainEntityDto, DomainEntityFieldDto, DomainPackCapabilityDto,
 	DomainPackCapabilityStatus, DomainPackDescriptorDto, DomainPackProjectionDto,
@@ -15,8 +15,6 @@ use decodex_protocol::{
 };
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
-
-pub(crate) const CONVERSATION_CAPABILITY: &str = "codex.quick_task";
 
 const MANIFEST_SCHEMA: &str = "decodex/domain-pack/1";
 const MANIFEST_DIGEST_DOMAIN: &[u8] = b"decodex-domain-pack-manifest-v1\0";
@@ -37,7 +35,6 @@ pub(crate) enum DomainPackError {
 	UnknownPack,
 	BindingMissing,
 	BindingMismatch,
-	CapabilityDenied,
 	ProjectionInvalid,
 }
 
@@ -138,30 +135,6 @@ impl DomainPackRegistry {
 			.iter()
 			.find(|pack| pack.descriptor.id.as_str() == pack_id)
 			.ok_or(DomainPackError::UnknownPack)
-	}
-}
-
-pub(crate) fn resolve_identity(pack_id: &str) -> Result<DomainPackIdentity, DomainPackError> {
-	let pack = registry()?.pack(pack_id)?;
-	Ok(DomainPackIdentity {
-		pack_id: pack.descriptor.id.as_str().to_owned(),
-		pack_version: pack.descriptor.version.as_str().to_owned(),
-		pack_digest: pack.descriptor.digest.as_str().to_owned(),
-	})
-}
-
-pub(crate) fn authorize(
-	binding: Option<&ProgramDomainPackBinding>,
-	capability: &str,
-) -> Result<(), DomainPackError> {
-	let pack = validated_pack(binding)?;
-	if pack.descriptor.capabilities.iter().any(|declaration| {
-		declaration.id.as_str() == capability
-			&& declaration.status == DomainPackCapabilityStatus::Granted
-	}) {
-		Ok(())
-	} else {
-		Err(DomainPackError::CapabilityDenied)
 	}
 }
 
@@ -592,6 +565,17 @@ fn field(
 
 #[cfg(test)]
 mod tests {
+	fn resolve_identity(
+		pack_id: &str,
+	) -> Result<decodex_database::DomainPackIdentity, DomainPackError> {
+		let pack = registry()?.pack(pack_id)?;
+		Ok(decodex_database::DomainPackIdentity {
+			pack_id: pack.descriptor.id.as_str().to_owned(),
+			pack_version: pack.descriptor.version.as_str().to_owned(),
+			pack_digest: pack.descriptor.digest.as_str().to_owned(),
+		})
+	}
+
 	use decodex_core::{
 		ObjectiveId, ObjectiveState, ProgramId, ProgramState, WorkItemId, WorkItemState,
 	};
@@ -739,16 +723,9 @@ mod tests {
 	}
 
 	#[test]
-	fn binding_and_capabilities_are_closed_before_execution() {
+	fn historical_binding_and_declared_capabilities_are_verified() {
 		let mut record = program(DEVELOPMENT_DOMAIN_PACK_ID);
-		let binding = record.domain_pack.as_ref().expect("binding");
-		assert_eq!(authorize(Some(binding), CONVERSATION_CAPABILITY), Ok(()));
 		assert_eq!(resolve_identity("decodex.unknown"), Err(DomainPackError::UnknownPack));
-		assert_eq!(
-			authorize(Some(binding), "finance.place_order"),
-			Err(DomainPackError::CapabilityDenied)
-		);
-		assert_eq!(authorize(None, CONVERSATION_CAPABILITY), Err(DomainPackError::BindingMissing));
 		record.domain_pack.as_mut().expect("binding").pack_digest.replace_range(0..1, "0");
 		assert_eq!(projection(&record, &HashMap::new()), Err(DomainPackError::BindingMismatch));
 		let paper = resolve_identity(PAPER_INVESTMENT_DOMAIN_PACK_ID).expect("paper Pack");

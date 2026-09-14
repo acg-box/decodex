@@ -36,7 +36,7 @@ use decodex_core::{
 	ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState, ProviderDuplicateRisk,
 	ProviderEvidenceId, ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId,
 	ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome, RuntimeSessionId,
-	RuntimeSessionState, TurnId, TurnRole, WorkItemId, compile_context_pack,
+	RuntimeSessionState, TurnId, TurnRole, compile_context_pack,
 };
 use decodex_database::{
 	AdmitInitialConversationTurn, ArchiveConversationOutcome, ArchiveConversationRecord,
@@ -83,7 +83,7 @@ use crate::account_launch::process::{
 	ChatgptRefreshProjection, ConversationPreSpawnCheck, ConversationProcessError,
 	ConversationProcessEvent, CredentialProjection, CredentialVault, CredentialVaultError,
 	EstablishedOrdinaryThread, PreparedThreadStart, PreparedTurnStart, ResumedOrdinaryThread,
-	StartedOrdinaryTurn, spawn_admitted_conversation_process,
+	StartedOrdinaryTurn, spawn_admitted_chief_process, spawn_admitted_conversation_process,
 };
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
@@ -308,7 +308,6 @@ pub(crate) struct CreateConversation {
 	pub correlation_id: String,
 	pub causation_id: Option<String>,
 	pub conversation_id: ConversationId,
-	pub work_item_id: Option<WorkItemId>,
 	pub message: String,
 	pub working_directory: String,
 	pub execution: ConversationExecutionSettings,
@@ -541,6 +540,77 @@ struct ConversationRuntimeInner {
 	event_stream_closed: tokio::sync::watch::Sender<bool>,
 	workers: AsyncMutex<JoinSet<()>>,
 	shutting_down: Arc<std::sync::atomic::AtomicBool>,
+	chief_launch: AsyncMutex<()>,
+	chief_process: Mutex<Option<RetainedChiefProcess>>,
+}
+
+pub(crate) struct StartChiefProcess {
+	pub operation_key: String,
+	pub root_id: String,
+	pub working_directory: String,
+	pub account_id: Option<AccountId>,
+}
+
+/// Already authenticated and initialized; the runtime retains process ownership.
+pub(crate) struct ChiefConnection {
+	pub client: decodex_codex::app_server_client::AppServerClient,
+	pub events: tokio_mpsc::Receiver<decodex_codex::app_server_client::ServerEvent>,
+	pub account_id: AccountId,
+	pub process_generation_id: ProcessGenerationId,
+}
+
+#[derive(Debug)]
+pub(crate) enum ChiefLaunchError {
+	Unavailable,
+	Conflict,
+	AccountSelection(decodex_core::AccountSelectionRecovery),
+	Process(ConversationManualRecovery),
+}
+
+impl std::fmt::Display for ChiefLaunchError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Unavailable => formatter.write_str("Chief process is unavailable"),
+			Self::Conflict =>
+				formatter.write_str("Chief process authority conflicts with this request"),
+			Self::AccountSelection(recovery) => {
+				write!(formatter, "Chief account requires recovery: {recovery:?}")
+			},
+			Self::Process(recovery) => {
+				write!(formatter, "Chief process requires recovery: {recovery:?}")
+			},
+		}
+	}
+}
+impl std::error::Error for ChiefLaunchError {}
+
+struct RetainedChiefProcess {
+	root_id: String,
+	generation_id: ProcessGenerationId,
+	client: Option<decodex_codex::app_server_client::AppServerClient>,
+}
+
+enum AccountLaunchAdmission {
+	Conversation(FreshConversationProcessGeneration),
+	Chief { root_id: String, operation_key: String, generation_id: ProcessGenerationId },
+}
+
+fn chief_account_affinity(
+	persisted: Option<&AccountId>,
+	requested: Option<&AccountId>,
+) -> Result<Option<AccountId>, ChiefLaunchError> {
+	if persisted.zip(requested).is_some_and(|(bound, selected)| bound != selected) {
+		return Err(ChiefLaunchError::Conflict);
+	}
+	Ok(persisted.or(requested).cloned())
+}
+impl AccountLaunchAdmission {
+	fn generation_id(&self) -> ProcessGenerationId {
+		match self {
+			Self::Conversation(admission) => admission.generation_id().clone(),
+			Self::Chief { generation_id, .. } => generation_id.clone(),
+		}
+	}
 }
 
 struct LocalTask {
@@ -734,8 +804,162 @@ impl ConversationRuntime {
 				event_stream_closed,
 				workers: AsyncMutex::new(JoinSet::new()),
 				shutting_down: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+				chief_launch: AsyncMutex::new(()),
+				chief_process: Mutex::new(None),
 			}),
 		}
+	}
+
+	/// Open one retained Chief connection using stored account authority and durable admission.
+	/// The caller must first persist the Chief root. No ordinary Turn is created here.
+	pub(crate) async fn open_chief_connection(
+		&self,
+		request: StartChiefProcess,
+	) -> Result<ChiefConnection, ChiefLaunchError> {
+		let _launch = self.inner.chief_launch.lock().await;
+		if self.is_shutting_down() {
+			return Err(ChiefLaunchError::Unavailable);
+		}
+		if self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner).is_some() {
+			return Err(ChiefLaunchError::Conflict);
+		}
+		let prior = self
+			.inner
+			.store
+			.read_chief_process_binding(&request.root_id)
+			.await
+			.map_err(|_| ChiefLaunchError::Unavailable)?;
+		let account_id = chief_account_affinity(
+			prior.as_ref().map(|binding| &binding.account_id),
+			request.account_id.as_ref(),
+		)?;
+		let now = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.map_err(|_| ChiefLaunchError::Unavailable)?
+			.as_micros();
+		let now = i64::try_from(now).map_err(|_| ChiefLaunchError::Unavailable)?;
+		let selected = self
+			.inner
+			.accounts
+			.select_process_account(account_id.as_ref(), now)
+			.await
+			.map_err(|failure| ChiefLaunchError::AccountSelection(failure.recovery))?;
+		let account_id = selected.account.account_id;
+		let credential = self
+			.inner
+			.accounts
+			.process_credential(&account_id, selected.account.revision)
+			.await
+			.map_err(|error| ChiefLaunchError::Process(account_recovery(error)))?;
+		let generation_id = ProcessGenerationId::new(derived_uuid(
+			"chief-process-generation",
+			&[&request.root_id, &request.operation_key],
+		))
+		.map_err(|_| ChiefLaunchError::Conflict)?;
+		*self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner) =
+			Some(RetainedChiefProcess {
+				root_id: request.root_id.clone(),
+				generation_id: generation_id.clone(),
+				client: None,
+			});
+		let process = match self
+			.launch_account_process(
+				&account_id,
+				AccountLaunchAdmission::Chief {
+					root_id: request.root_id.clone(),
+					operation_key: request.operation_key,
+					generation_id: generation_id.clone(),
+				},
+				credential,
+				&request.working_directory,
+			)
+			.await
+		{
+			Ok(process) => process,
+			Err(error) => {
+				self.retire_chief_slot().await;
+				return Err(ChiefLaunchError::Process(error));
+			},
+		};
+		let control = self.inner.process_generations.clone();
+		let attached = task::spawn_blocking(move || {
+			control.with_fenced_child(&process, AttestedProcessChild::retain_chief_connection)
+		})
+		.await;
+		let (client, events) = match attached {
+			Ok(Ok(Ok(connection))) => connection,
+			_ => {
+				self.retire_chief_slot().await;
+				return Err(ChiefLaunchError::Unavailable);
+			},
+		};
+		if self.is_shutting_down() {
+			client.close();
+			self.retire_chief_slot().await;
+			return Err(ChiefLaunchError::Unavailable);
+		}
+		{
+			let mut slot = self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner);
+			let Some(slot) = slot.as_mut() else {
+				client.close();
+				return Err(ChiefLaunchError::Unavailable);
+			};
+			slot.client = Some(client.clone());
+			if self.is_shutting_down() {
+				client.close();
+			}
+		}
+		Ok(ChiefConnection { client, events, account_id, process_generation_id: generation_id })
+	}
+
+	/// Explicit host lifecycle close; completing an individual turn never calls this method.
+	pub(crate) async fn close_chief_connection(
+		&self,
+		root_id: &str,
+	) -> Result<(), ChiefLaunchError> {
+		let _launch = self.inner.chief_launch.lock().await;
+		if self
+			.inner
+			.chief_process
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
+			.as_ref()
+			.is_some_and(|slot| slot.root_id != root_id)
+		{
+			return Err(ChiefLaunchError::Conflict);
+		}
+		if self.retire_chief_slot().await { Ok(()) } else { Err(ChiefLaunchError::Unavailable) }
+	}
+
+	async fn retire_chief_slot(&self) -> bool {
+		let slot = self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner).take();
+		let Some(mut slot) = slot else {
+			return true;
+		};
+		if let Some(client) = slot.client.take() {
+			client.close();
+		}
+		let retired =
+			match self.inner.process_generations.diagnostic_exact(&slot.generation_id).await {
+				Ok(Some(diagnostic)) => matches!(
+					self.inner
+						.process_generations
+						.terminate_exact(
+							&slot.generation_id,
+							diagnostic.generation.revision,
+							Duration::from_secs(5)
+						)
+						.await,
+					Ok(ProcessGenerationTermination::PositiveDeathRecorded
+						| ProcessGenerationTermination::AlreadyDead)
+				),
+				Ok(None) => true,
+				Err(_) => false,
+			};
+		if !retired {
+			*self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner) = Some(slot);
+		}
+		retired
 	}
 
 	pub(crate) async fn create(&self, command: CreateConversation) -> ConversationOutcome {
@@ -790,7 +1014,6 @@ impl ConversationRuntime {
 			correlation_id: command.correlation_id,
 			causation_id: command.causation_id,
 			conversation_id: command.conversation_id,
-			work_item_id: None,
 			message: request.message,
 			working_directory: request.working_directory,
 			execution: ConversationExecutionSettings {
@@ -827,7 +1050,6 @@ impl ConversationRuntime {
 				correlation_id: command.correlation_id,
 				causation_id: command.causation_id,
 				conversation_id: command.conversation_id,
-				work_item_id: None,
 				message: request.message,
 				working_directory: request.working_directory,
 				execution: ConversationExecutionSettings {
@@ -878,7 +1100,7 @@ impl ConversationRuntime {
 				&command.execution.model,
 				&command.execution.reasoning_effort,
 				if command.execution.fast { "priority" } else { "default" },
-				command.work_item_id.as_ref().map_or("ordinary", WorkItemId::as_str),
+				"ordinary",
 			],
 		) {
 			Ok(command) => command,
@@ -891,7 +1113,6 @@ impl ConversationRuntime {
 				&conversation_command,
 				&CreateConversationRecord {
 					conversation_id: command.conversation_id.clone(),
-					work_item_id: command.work_item_id.clone(),
 					title,
 					message: command.message.clone(),
 					working_directory: command.working_directory.clone(),
@@ -2905,85 +3126,10 @@ impl ConversationRuntime {
 		&self,
 		command: ControlConversation,
 	) -> ConversationControlOutcome {
-		if self.is_shutting_down()
-			|| command.expected_conversation_revision <= 0
-			|| command.expected_runtime_session_revision <= 0
-		{
-			return ConversationControlOutcome::Unavailable;
-		}
-		{
-			let local = self.local();
-			if let Some(task) = local.get(command.conversation_id.as_str()) {
-				match &task.state {
-					LocalTaskState::Active { .. }
-					| LocalTaskState::Preparing(_)
-					| LocalTaskState::Establishing => return ConversationControlOutcome::Busy,
-					LocalTaskState::Recovery { .. } => {},
-					LocalTaskState::Ready(_) => {},
-				}
-			}
-		}
-		let mut session = match self
-			.inner
-			.store
-			.read_ordinary_runtime_session_for_resume(&command.conversation_id)
-			.await
-		{
-			Ok(Some(session)) => session,
-			Ok(None) => return self.archive_local_control_thread(&command).await,
-			Err(_) => return ConversationControlOutcome::Unavailable,
+		let (mut session, request) = match self.prepare_control_session(&command).await {
+			Ok(context) => context,
+			Err(outcome) => return outcome,
 		};
-		if session.conversation_revision != command.expected_conversation_revision
-			|| session.runtime_session_id != command.runtime_session_id
-			|| session.runtime_session_revision != command.expected_runtime_session_revision
-			|| session.active_turn_id != command.active_turn_id
-			|| session.active_turn_revision != command.active_turn_revision
-		{
-			return ConversationControlOutcome::Conflict;
-		}
-		let request =
-			match self.inner.store.read_conversation_request(&command.conversation_id).await {
-				Ok(Some(request)) => request,
-				Ok(None) => return ConversationControlOutcome::Conflict,
-				Err(_) => return ConversationControlOutcome::Unavailable,
-			};
-		let pending_terminalization = match self
-			.inner
-			.store
-			.read_pending_conversation_terminalization(&command.conversation_id)
-			.await
-		{
-			Ok(pending) => pending,
-			Err(_) => return ConversationControlOutcome::Unavailable,
-		};
-		if let Some(pending) = pending_terminalization.as_ref() {
-			if session.has_unresolved_provider_attempt
-				|| pending.conversation_revision != session.conversation_revision
-				|| pending.runtime_session_id != session.runtime_session_id
-				|| pending.runtime_session_revision != session.runtime_session_revision
-				|| pending.codex_thread_id != session.codex_thread_id
-				|| session.active_turn_id.as_ref() != Some(&pending.user_turn_id)
-				|| session.active_turn_revision != Some(pending.user_turn_revision)
-			{
-				return ConversationControlOutcome::Conflict;
-			}
-			if let Err(outcome) = self.finish_pending_terminalization(pending).await {
-				return outcome;
-			}
-			self.remove_recovery_projection(&command.conversation_id);
-			if !command.archive {
-				return ConversationControlOutcome::Current;
-			}
-			session = match self
-				.inner
-				.store
-				.read_ordinary_runtime_session_for_resume(&command.conversation_id)
-				.await
-			{
-				Ok(Some(session)) => session,
-				_ => return ConversationControlOutcome::Unavailable,
-			};
-		}
 		if session.has_unresolved_process_generation {
 			return ConversationControlOutcome::Conflict;
 		}
@@ -3070,6 +3216,109 @@ impl ConversationRuntime {
 		{
 			return outcome;
 		}
+		self.finish_control_archive(
+			&command,
+			session,
+			&request.working_directory,
+			observed_archived,
+		)
+		.await
+	}
+
+	async fn prepare_control_session(
+		&self,
+		command: &ControlConversation,
+	) -> Result<
+		(OrdinaryRuntimeSessionResumeReadback, decodex_database::ConversationRequest),
+		ConversationControlOutcome,
+	> {
+		if self.is_shutting_down()
+			|| command.expected_conversation_revision <= 0
+			|| command.expected_runtime_session_revision <= 0
+		{
+			return Err(ConversationControlOutcome::Unavailable);
+		}
+		{
+			let local = self.local();
+			if let Some(task) = local.get(command.conversation_id.as_str()) {
+				match &task.state {
+					LocalTaskState::Active { .. }
+					| LocalTaskState::Preparing(_)
+					| LocalTaskState::Establishing => return Err(ConversationControlOutcome::Busy),
+					LocalTaskState::Recovery { .. } => {},
+					LocalTaskState::Ready(_) => {},
+				}
+			}
+		}
+		let mut session = match self
+			.inner
+			.store
+			.read_ordinary_runtime_session_for_resume(&command.conversation_id)
+			.await
+		{
+			Ok(Some(session)) => session,
+			Ok(None) => return Err(self.archive_local_control_thread(command).await),
+			Err(_) => return Err(ConversationControlOutcome::Unavailable),
+		};
+		if session.conversation_revision != command.expected_conversation_revision
+			|| session.runtime_session_id != command.runtime_session_id
+			|| session.runtime_session_revision != command.expected_runtime_session_revision
+			|| session.active_turn_id != command.active_turn_id
+			|| session.active_turn_revision != command.active_turn_revision
+		{
+			return Err(ConversationControlOutcome::Conflict);
+		}
+		let request =
+			match self.inner.store.read_conversation_request(&command.conversation_id).await {
+				Ok(Some(request)) => request,
+				Ok(None) => return Err(ConversationControlOutcome::Conflict),
+				Err(_) => return Err(ConversationControlOutcome::Unavailable),
+			};
+		let pending_terminalization = match self
+			.inner
+			.store
+			.read_pending_conversation_terminalization(&command.conversation_id)
+			.await
+		{
+			Ok(pending) => pending,
+			Err(_) => return Err(ConversationControlOutcome::Unavailable),
+		};
+		if let Some(pending) = pending_terminalization.as_ref() {
+			if session.has_unresolved_provider_attempt
+				|| pending.conversation_revision != session.conversation_revision
+				|| pending.runtime_session_id != session.runtime_session_id
+				|| pending.runtime_session_revision != session.runtime_session_revision
+				|| pending.codex_thread_id != session.codex_thread_id
+				|| session.active_turn_id.as_ref() != Some(&pending.user_turn_id)
+				|| session.active_turn_revision != Some(pending.user_turn_revision)
+			{
+				return Err(ConversationControlOutcome::Conflict);
+			}
+			self.finish_pending_terminalization(pending).await?;
+			self.remove_recovery_projection(&command.conversation_id);
+			if !command.archive {
+				return Err(ConversationControlOutcome::Current);
+			}
+			session = match self
+				.inner
+				.store
+				.read_ordinary_runtime_session_for_resume(&command.conversation_id)
+				.await
+			{
+				Ok(Some(session)) => session,
+				_ => return Err(ConversationControlOutcome::Unavailable),
+			};
+		}
+		Ok((session, request))
+	}
+
+	async fn finish_control_archive(
+		&self,
+		command: &ControlConversation,
+		session: OrdinaryRuntimeSessionResumeReadback,
+		working_directory: &str,
+		observed_archived: Option<bool>,
+	) -> ConversationControlOutcome {
 		let archived = if observed_archived == Some(true) {
 			true
 		} else {
@@ -3078,7 +3327,7 @@ impl ConversationRuntime {
 					&command.operation_key,
 					&session.source_account_id,
 					session.source_account_revision,
-					&request.working_directory,
+					working_directory,
 					&session.codex_thread_id,
 					if command.archive {
 						ControlThreadOperation::Archive
@@ -3666,6 +3915,16 @@ impl ConversationRuntime {
 
 	pub(crate) fn begin_shutdown(&self) {
 		self.inner.shutting_down.store(true, std::sync::atomic::Ordering::Release);
+		if let Some(client) = self
+			.inner
+			.chief_process
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
+			.as_ref()
+			.and_then(|slot| slot.client.as_ref())
+		{
+			client.close();
+		}
 		let local = self.local();
 		for task in local.values() {
 			if let LocalTaskState::Active { commands, .. } = &task.state {
@@ -3675,6 +3934,10 @@ impl ConversationRuntime {
 	}
 
 	pub(crate) async fn wait_for_shutdown(&self) {
+		{
+			let _launch = self.inner.chief_launch.lock().await;
+			self.retire_chief_slot().await;
+		}
 		let mut workers = {
 			let mut shared = self.inner.workers.lock().await;
 			std::mem::take(&mut *shared)
@@ -3878,7 +4141,23 @@ impl ConversationRuntime {
 		credential: AccountProcessCredential,
 		working_directory: &str,
 	) -> Result<FencedProcess, ConversationManualRecovery> {
-		let generation_id = admission.readback().request.process_generation_id.clone();
+		self.launch_account_process(
+			account_id,
+			AccountLaunchAdmission::Conversation(admission),
+			credential,
+			working_directory,
+		)
+		.await
+	}
+
+	async fn launch_account_process(
+		&self,
+		account_id: &AccountId,
+		admission: AccountLaunchAdmission,
+		credential: AccountProcessCredential,
+		working_directory: &str,
+	) -> Result<FencedProcess, ConversationManualRecovery> {
+		let generation_id = admission.generation_id();
 		let callback: Arc<dyn ProcessAccountRefreshCallback> =
 			Arc::new(ConversationRefreshCallback {
 				accounts: Arc::clone(&self.inner.accounts),
@@ -3930,14 +4209,28 @@ impl ConversationRuntime {
 			})
 			.await
 			.map_err(|_| ConversationManualRecovery::ProcessUnavailable)??;
-		let mut process = spawn_admitted_conversation_process(
-			&self.inner.process_generations,
-			admission,
-			self.inner.execution_authorization.clone(),
-			launch,
-			selected_working_directory.clone(),
-		)
-		.await
+		let mut process = match admission {
+			AccountLaunchAdmission::Conversation(admission) =>
+				spawn_admitted_conversation_process(
+					&self.inner.process_generations,
+					admission,
+					self.inner.execution_authorization.clone(),
+					launch,
+					selected_working_directory.clone(),
+				)
+				.await,
+			AccountLaunchAdmission::Chief { root_id, operation_key, generation_id } =>
+				spawn_admitted_chief_process(
+					&self.inner.process_generations,
+					root_id,
+					operation_key,
+					generation_id,
+					self.inner.execution_authorization.clone(),
+					launch,
+					selected_working_directory.clone(),
+				)
+				.await,
+		}
 		.map_err(|_| ConversationManualRecovery::ProcessUnavailable)?;
 		let selected_working_directory_is_current =
 			task::spawn_blocking(move || selected_working_directory.revalidate()).await;
@@ -5333,6 +5626,19 @@ mod tests {
 			status,
 			revision,
 		}
+	}
+
+	#[test]
+	fn chief_restart_preserves_account_affinity_and_rejects_explicit_switch() {
+		let bound = decodex_core::AccountId::new(derived_uuid("account", &["bound"])).unwrap();
+		let other = decodex_core::AccountId::new(derived_uuid("account", &["other"])).unwrap();
+		assert_eq!(super::chief_account_affinity(Some(&bound), None).unwrap(), Some(bound.clone()));
+		assert_eq!(super::chief_account_affinity(None, Some(&other)).unwrap(), Some(other.clone()));
+		assert_eq!(super::chief_account_affinity(None, None).unwrap(), None);
+		assert!(matches!(
+			super::chief_account_affinity(Some(&bound), Some(&other)),
+			Err(super::ChiefLaunchError::Conflict)
+		));
 	}
 
 	#[test]

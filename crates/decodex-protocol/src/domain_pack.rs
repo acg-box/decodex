@@ -21,7 +21,9 @@ pub const MAX_DOMAIN_PACK_CAPABILITIES: usize = 16;
 /// Closed built-in Domain Pack projection failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomainPackContractError {
+	/// The Pack identity or type declarations are invalid.
 	InvalidDescriptor,
+	/// The projection violates its identity or relation contract.
 	InvalidProjection,
 }
 
@@ -29,6 +31,7 @@ pub enum DomainPackContractError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DomainPackViewKind {
+	/// A graph with inspectable entity fields.
 	GraphInspector,
 }
 
@@ -36,7 +39,9 @@ pub enum DomainPackViewKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DomainPackCapabilityStatus {
+	/// The host recognizes this recorded capability.
 	Granted,
+	/// The requested data or capability is unavailable.
 	Unavailable,
 }
 
@@ -44,7 +49,9 @@ pub enum DomainPackCapabilityStatus {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DomainPackCapabilityDto {
+	/// Stable identity within this projection.
 	pub id: WireText,
+	/// Host availability of the declared capability.
 	pub status: DomainPackCapabilityStatus,
 }
 
@@ -52,14 +59,23 @@ pub struct DomainPackCapabilityDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DomainPackDescriptorDto {
+	/// Stable identity within this projection.
 	pub id: WireText,
+	/// Exact semantic version of this Pack.
 	pub version: WireText,
+	/// Digest of the immutable Pack descriptor.
 	pub digest: Sha256Digest,
+	/// Human-readable display name.
 	pub name: WireText,
+	/// Namespace that owns entity and relation types.
 	pub namespace: WireText,
+	/// Host presentation primitive declared by the Pack.
 	pub view: DomainPackViewKind,
+	/// Recorded capability declarations and availability.
 	pub capabilities: Vec<DomainPackCapabilityDto>,
+	/// Allowed namespaced entity types.
 	pub entity_types: Vec<WireText>,
+	/// Allowed namespaced relation types.
 	pub relation_types: Vec<WireText>,
 }
 
@@ -67,7 +83,9 @@ pub struct DomainPackDescriptorDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DomainEntityFieldDto {
+	/// Human-readable field label.
 	pub label: WireText,
+	/// Bounded field value.
 	pub value: WireText,
 }
 
@@ -75,12 +93,19 @@ pub struct DomainEntityFieldDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DomainEntityDto {
+	/// Stable identity within this projection.
 	pub id: EntityId,
+	/// Closed category of this record.
 	pub kind: WireText,
+	/// Human-readable title.
 	pub title: WireText,
+	/// Bounded summary of the source record.
 	pub summary: WireText,
+	/// Recorded state of this entity.
 	pub state: WireText,
+	/// Optional source attribution.
 	pub source: Option<WireText>,
+	/// Bounded inspectable fields.
 	pub fields: Vec<DomainEntityFieldDto>,
 }
 
@@ -88,8 +113,11 @@ pub struct DomainEntityDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DomainRelationDto {
+	/// Source entity identity.
 	pub from: EntityId,
+	/// Target entity identity.
 	pub to: EntityId,
+	/// Closed category of this record.
 	pub kind: WireText,
 }
 
@@ -97,12 +125,16 @@ pub struct DomainRelationDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DomainPackProjectionDto {
+	/// Immutable Pack identity and type declarations.
 	pub descriptor: DomainPackDescriptorDto,
+	/// Bounded projected domain entities.
 	pub entities: Vec<DomainEntityDto>,
+	/// Bounded relations between domain entities.
 	pub relations: Vec<DomainRelationDto>,
 }
 
 impl DomainPackProjectionDto {
+	/// Construct and validate the historical projection.
 	pub fn new(
 		descriptor: DomainPackDescriptorDto,
 		entities: Vec<DomainEntityDto>,

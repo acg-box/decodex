@@ -499,6 +499,11 @@ fn quota_fact(
 	let duration_minutes = u16::try_from(observation.duration_minutes)
 		.map_err(|_| StoreError::Incompatible("quota duration".to_owned()))?;
 	let observation = match observation.disposition {
+		AccountQuotaDisposition::NotApplicable => AccountRegistryQuotaObservation::NotApplicable {
+			observed_at_micros: observation
+				.observed_at_unix_micros
+				.ok_or_else(|| StoreError::Incompatible("quota absence time".to_owned()))?,
+		},
 		AccountQuotaDisposition::Unknown => AccountRegistryQuotaObservation::Missing,
 		AccountQuotaDisposition::Current(fact) | AccountQuotaDisposition::Stale(fact) =>
 			AccountRegistryQuotaObservation::Current {
@@ -698,6 +703,7 @@ fn serialize_snapshot(snapshot: &AccountRegistryRoutingSnapshot) -> Result<Value
 		"quota_facts": snapshot.quota_facts.iter().map(|fact| {
 			let observation = match fact.observation {
 				AccountRegistryQuotaObservation::Missing => json!({ "kind": "missing" }),
+				AccountRegistryQuotaObservation::NotApplicable { observed_at_micros } => json!({ "kind": "not_applicable", "observed_at_micros": observed_at_micros }),
 				AccountRegistryQuotaObservation::Current { used_percent, observed_at_micros, resets_at_micros } => json!({
 					"kind": "current", "used_percent": used_percent,
 					"observed_at_micros": observed_at_micros, "resets_at_micros": resets_at_micros,
@@ -799,6 +805,9 @@ fn parse_quota_fact(value: &Value) -> Result<AccountRegistryQuotaFact, StoreErro
 		.ok_or_else(|| incompatible("quota observation"))?;
 	let observation = match text(observation_object.get("kind"))? {
 		"missing" => AccountRegistryQuotaObservation::Missing,
+		"not_applicable" => AccountRegistryQuotaObservation::NotApplicable {
+			observed_at_micros: integer(observation_object.get("observed_at_micros"))?,
+		},
 		"current" => AccountRegistryQuotaObservation::Current {
 			used_percent: u8::try_from(integer(observation_object.get("used_percent"))?)
 				.map_err(|_| incompatible("quota percent"))?,
@@ -905,6 +914,7 @@ fn quota_classification(
 	};
 	let complete = snapshot.quota_facts.iter().filter(|fact| &fact.account_id == account).all(|fact| {
 		matches!(fact.observation, AccountRegistryQuotaObservation::Current { used_percent, .. } if used_percent < 100)
+			|| matches!(fact.observation, AccountRegistryQuotaObservation::NotApplicable { .. })
 	});
 	if complete { "known_available" } else { "unknown" }
 }

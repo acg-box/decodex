@@ -295,153 +295,29 @@ impl SqliteStore {
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let request_sha = continuation_request_sha(&request);
-			if let Some((stored_sha, plan_id)) = transaction
-				.query_row(
-					"SELECT request_sha256, continuation_plan_id FROM continuation_plans
-				 WHERE idempotency_key = ?1",
-					params![key],
-					|row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-				)
-				.optional()
-				.map_err(sql_error)?
+			if let Some(effect) =
+				read_plan_replay(&transaction, &key, &request_sha, &blob_store, &fallback_pack)?
 			{
-				if stored_sha != request_sha {
-					return Err(StoreError::IdempotencyConflict);
-				}
-				let effect = read_plan_effect(&transaction, &plan_id, Some(&blob_store))?;
-				if effect.plan.kind == ContinuationPlanKind::ContextPackFallback
-					&& effect
-						.fallback_context_pack
-						.as_ref()
-						.is_none_or(|record| record.pack.digest() != fallback_pack.digest())
-				{
-					return Err(StoreError::IdempotencyConflict);
-				}
 				transaction.commit().map_err(sql_error)?;
 				return Ok(ContinuationCommandOutcome::Success(effect));
 			}
-			let authority = transaction
-				.query_row(
-					"SELECT d.conversation_id, d.turn_id, d.source_runtime_session_id,
-				        d.source_runtime_session_revision, d.account_id, s.codex_thread_id,
-				        s.account_revision, s.account_display_label,
-				        s.account_observed_state, s.credential_binding_json, s.profile_revision,
-				        s.profile_role, s.model, s.reasoning_effort, s.instructions,
-				        s.service_tier, s.instructions_sha256, s.profile_provenance,
-				        s.has_acknowledged_turn, p.attempt_id, p.state,
-				        e.evidence_id, e.provider_thread_id,
-				        CASE WHEN p.state = 'unknown'
-				          AND EXISTS (SELECT 1 FROM turns AS prior_turn
-				                      WHERE prior_turn.turn_id = p.turn_id
-				                        AND prior_turn.status = 'failed')
-					          AND EXISTS (SELECT 1 FROM process_generations AS g
-					                      JOIN process_generation_death_evidence AS death
-					                        ON death.generation_id = g.generation_id
-					                       AND death.evidence_id = g.death_evidence_id
-				                      WHERE g.generation_id = p.process_generation_id
-				                        AND g.state = 'dead')
-				          THEN 1 ELSE 0 END
-				 FROM routing_decisions AS d
-				 JOIN runtime_sessions AS s ON s.runtime_session_id = d.source_runtime_session_id
-				 LEFT JOIN provider_attempts AS p ON p.attempt_id = (
-				   SELECT latest.attempt_id FROM provider_attempts AS latest
-				   WHERE latest.runtime_session_id = s.runtime_session_id
-				   ORDER BY latest.created_at_micros DESC, latest.attempt_id DESC LIMIT 1
-				 )
-				 LEFT JOIN provider_attempt_positive_evidence AS e ON e.attempt_id = p.attempt_id
-				   AND e.evidence_id = p.terminal_evidence_id
-				 WHERE d.routing_decision_id = ?1
-				   AND d.authority_shape = 'conversation_continuation'
-				   AND d.conversation_revision = ?2 AND d.decision_kind = 'selected'
-				   AND s.state = 'active' AND s.revision = d.source_runtime_session_revision
-				   AND d.account_id = s.account_id
-				   AND d.account_snapshot_id = ?3
-				   AND d.account_snapshot_id = s.account_snapshot_id
-				   AND d.profile_snapshot_id = s.profile_snapshot_id
-				   AND EXISTS (SELECT 1 FROM turns AS current_turn
-				               WHERE current_turn.turn_id = d.turn_id
-				                 AND current_turn.conversation_id = d.conversation_id
-				                 AND current_turn.runtime_session_id = s.runtime_session_id
-				                 AND current_turn.status = 'active'
-				                 AND current_turn.revision = 1)",
-					params![
-						request.routing_decision_id,
-						request.expected_consumer_revision,
-						request.fallback_account_snapshot_id,
-					],
-					|row| {
-						Ok(ExistingContinuationAuthority {
-							conversation_id: row.get(0)?,
-							turn_id: row.get(1)?,
-							source_runtime_session_id: row.get(2)?,
-							source_runtime_session_revision: row.get(3)?,
-							account_id: row.get(4)?,
-							codex_thread_id: row.get(5)?,
-							account_revision: row.get(6)?,
-							account_display_label: row.get(7)?,
-							account_observed_state: row.get(8)?,
-							credential_binding_json: row.get(9)?,
-							profile_revision: row.get(10)?,
-							profile_role: row.get(11)?,
-							model: row.get(12)?,
-							reasoning_effort: row.get(13)?,
-							instructions: row.get(14)?,
-							service_tier: row.get(15)?,
-							instructions_sha256: row.get(16)?,
-							profile_provenance: row.get(17)?,
-							has_acknowledged_turn: row.get(18)?,
-							latest_attempt_id: row.get(19)?,
-							latest_attempt_state: row.get(20)?,
-							latest_evidence_id: row.get(21)?,
-							latest_evidence_thread_id: row.get(22)?,
-							latest_unknown_is_recoverable: row.get(23)?,
-						})
-					},
-				)
-				.optional()
-				.map_err(sql_error)?;
+			let authority = read_continuation_authority(&transaction, &request)?;
 			let Some(authority) = authority else {
 				return Ok(ContinuationCommandOutcome::Rejected(
 					ContinuationRejection::SameThreadUnavailable,
 				));
 			};
-			let same_thread = matches!(
-				authority.latest_attempt_state.as_deref(),
-				Some("succeeded" | "failed_definitive")
-			) && authority.latest_evidence_thread_id.as_deref()
-				== Some(authority.codex_thread_id.as_str())
-				&& authority.latest_attempt_id.is_some()
-				&& authority.latest_evidence_id.is_some();
+			let same_thread = has_same_thread_evidence(&authority);
 			let now = unix_micros().map_err(StoreError::from)?;
 			if same_thread {
-				transaction
-					.execute(
-						"INSERT INTO continuation_plans (
-				   continuation_plan_id, operation_id, idempotency_key, request_sha256,
-				   conversation_id, turn_id, routing_decision_id, source_runtime_session_id,
-				   source_runtime_session_revision, selected_account_id, runtime_session_id,
-				   kind, codex_thread_id, same_thread_attempt_id, same_thread_evidence_id,
-				   created_at_micros
-				 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, NULL,
-				           'same_thread', ?11, ?12, ?13, ?14)",
-						params![
-							request.plan_id,
-							request.operation_id,
-							key,
-							request_sha,
-							authority.conversation_id,
-							authority.turn_id,
-							request.routing_decision_id,
-							authority.source_runtime_session_id,
-							authority.source_runtime_session_revision,
-							authority.account_id,
-							authority.codex_thread_id,
-							authority.latest_attempt_id,
-							authority.latest_evidence_id,
-							now,
-						],
-					)
-					.map_err(sql_error)?;
+				insert_same_thread_plan(
+					&transaction,
+					&key,
+					&request_sha,
+					&request,
+					&authority,
+					now,
+				)?;
 			} else {
 				let fallback_allowed = authority.has_acknowledged_turn
 					&& match authority.latest_attempt_state.as_deref() {
@@ -471,57 +347,13 @@ impl SqliteStore {
 					omitted_source_count,
 					now,
 				)?;
-				let source_changed = transaction
-					.execute(
-						"UPDATE runtime_sessions SET state = 'ended', revision = revision + 1,
-						 updated_at_micros = ?3, ended_at_micros = ?3
-						 WHERE runtime_session_id = ?1 AND revision = ?2 AND state = 'active'",
-						params![
-							authority.source_runtime_session_id,
-							authority.source_runtime_session_revision,
-							now,
-						],
-					)
-					.map_err(sql_error)?;
+				let source_changed = end_fallback_source(&transaction, &authority, now)?;
 				if source_changed != 1 {
 					return Ok(ContinuationCommandOutcome::Rejected(
 						ContinuationRejection::StaleConsumerRevision,
 					));
 				}
-				let account_snapshot_id = random_uuid_v4()?;
-				let profile_snapshot_id = random_uuid_v4()?;
-				transaction
-					.execute(
-						"INSERT INTO runtime_sessions (
-						 runtime_session_id, conversation_id, account_id, account_revision,
-						 account_snapshot_id, account_display_label, account_observed_state,
-						 credential_binding_json, profile_snapshot_id, profile_revision,
-						 profile_role, model, reasoning_effort, instructions, service_tier,
-						 instructions_sha256, profile_provenance, state, revision,
-						 created_at_micros, updated_at_micros
-						 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'task',
-						 ?11, ?12, ?13, ?14, ?15, ?16, 'starting', 1, ?17, ?17)",
-						params![
-							request.fallback_runtime_session_id,
-							authority.conversation_id,
-							authority.account_id,
-							authority.account_revision,
-							account_snapshot_id,
-							authority.account_display_label,
-							authority.account_observed_state,
-							authority.credential_binding_json,
-							profile_snapshot_id,
-							authority.profile_revision,
-							authority.model,
-							authority.reasoning_effort,
-							authority.instructions,
-							authority.service_tier,
-							authority.instructions_sha256,
-							authority.profile_provenance,
-							now,
-						],
-					)
-					.map_err(sql_error)?;
+				insert_fallback_session(&transaction, &request, &authority, now)?;
 				let turn_changed = transaction
 					.execute(
 						"UPDATE turns SET runtime_session_id = ?1, updated_at_micros = ?5
@@ -541,33 +373,7 @@ impl SqliteStore {
 						ContinuationRejection::StaleConsumerRevision,
 					));
 				}
-				transaction
-					.execute(
-						"INSERT INTO continuation_plans (
-						 continuation_plan_id, operation_id, idempotency_key, request_sha256,
-						 conversation_id, turn_id, routing_decision_id,
-						 source_runtime_session_id, source_runtime_session_revision,
-						 selected_account_id, runtime_session_id, kind,
-						 fallback_context_pack_id, created_at_micros
-						 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
-						 'context_pack_fallback', ?12, ?13)",
-						params![
-							request.plan_id,
-							request.operation_id,
-							key,
-							request_sha,
-							authority.conversation_id,
-							authority.turn_id,
-							request.routing_decision_id,
-							authority.source_runtime_session_id,
-							authority.source_runtime_session_revision,
-							authority.account_id,
-							request.fallback_runtime_session_id,
-							request.fallback_context_pack_id,
-							now,
-						],
-					)
-					.map_err(sql_error)?;
+				insert_fallback_plan(&transaction, &key, &request_sha, &request, &authority, now)?;
 			}
 			let effect = read_plan_effect(&transaction, &request.plan_id, Some(&blob_store))?;
 			transaction.commit().map_err(sql_error)?;
@@ -575,6 +381,310 @@ impl SqliteStore {
 		})
 		.await
 	}
+}
+
+fn end_fallback_source(
+	transaction: &rusqlite::Transaction<'_>,
+	authority: &ExistingContinuationAuthority,
+	now: i64,
+) -> Result<usize, StoreError> {
+	transaction
+		.execute(
+			"UPDATE runtime_sessions SET state = 'ended', revision = revision + 1,
+			 updated_at_micros = ?3, ended_at_micros = ?3
+			 WHERE runtime_session_id = ?1 AND revision = ?2 AND state = 'active'",
+			params![
+				authority.source_runtime_session_id,
+				authority.source_runtime_session_revision,
+				now,
+			],
+		)
+		.map_err(sql_error)
+}
+
+fn has_same_thread_evidence(authority: &ExistingContinuationAuthority) -> bool {
+	matches!(authority.latest_attempt_state.as_deref(), Some("succeeded" | "failed_definitive"))
+		&& authority.latest_evidence_thread_id.as_deref()
+			== Some(authority.codex_thread_id.as_str())
+		&& authority.latest_attempt_id.is_some()
+		&& authority.latest_evidence_id.is_some()
+}
+
+fn read_plan_replay(
+	transaction: &rusqlite::Transaction<'_>,
+	key: &str,
+	request_sha: &str,
+	blob_store: &BlobStore,
+	fallback_pack: &ContextPack,
+) -> Result<Option<ContinuationPlanEffect>, StoreError> {
+	if let Some((stored_sha, plan_id)) = transaction
+		.query_row(
+			"SELECT request_sha256, continuation_plan_id FROM continuation_plans
+		 WHERE idempotency_key = ?1",
+			params![key],
+			|row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+		)
+		.optional()
+		.map_err(sql_error)?
+	{
+		if stored_sha != request_sha {
+			return Err(StoreError::IdempotencyConflict);
+		}
+		let effect = read_plan_effect(transaction, &plan_id, Some(blob_store))?;
+		if effect.plan.kind == ContinuationPlanKind::ContextPackFallback
+			&& effect
+				.fallback_context_pack
+				.as_ref()
+				.is_none_or(|record| record.pack.digest() != fallback_pack.digest())
+		{
+			return Err(StoreError::IdempotencyConflict);
+		}
+		return Ok(Some(effect));
+	}
+	Ok(None)
+}
+
+fn read_continuation_authority(
+	transaction: &rusqlite::Transaction<'_>,
+	request: &PlanContinuation,
+) -> Result<Option<ExistingContinuationAuthority>, StoreError> {
+	transaction
+		.query_row(
+			"SELECT d.conversation_id, d.turn_id, d.source_runtime_session_id,
+		        d.source_runtime_session_revision, d.account_id, s.codex_thread_id,
+		        s.account_revision, s.account_display_label,
+		        s.account_observed_state, s.credential_binding_json, s.profile_revision,
+		        s.profile_role, s.model, s.reasoning_effort, s.instructions,
+		        s.service_tier, s.instructions_sha256, s.profile_provenance,
+		        s.has_acknowledged_turn, p.attempt_id, p.state,
+		        e.evidence_id, e.provider_thread_id,
+		        CASE WHEN p.state = 'unknown'
+		          AND EXISTS (SELECT 1 FROM turns AS prior_turn
+		                      WHERE prior_turn.turn_id = p.turn_id
+		                        AND prior_turn.status = 'failed')
+			          AND EXISTS (SELECT 1 FROM process_generations AS g
+			                      JOIN process_generation_death_evidence AS death
+			                        ON death.generation_id = g.generation_id
+			                       AND death.evidence_id = g.death_evidence_id
+		                      WHERE g.generation_id = p.process_generation_id
+		                        AND g.state = 'dead')
+		          THEN 1 ELSE 0 END
+		 FROM routing_decisions AS d
+		 JOIN runtime_sessions AS s ON s.runtime_session_id = d.source_runtime_session_id
+		 LEFT JOIN provider_attempts AS p ON p.attempt_id = (
+		   SELECT latest.attempt_id FROM provider_attempts AS latest
+		   WHERE latest.runtime_session_id = s.runtime_session_id
+		   ORDER BY latest.created_at_micros DESC, latest.attempt_id DESC LIMIT 1
+		 )
+		 LEFT JOIN provider_attempt_positive_evidence AS e ON e.attempt_id = p.attempt_id
+		   AND e.evidence_id = p.terminal_evidence_id
+		 WHERE d.routing_decision_id = ?1
+		   AND d.authority_shape = 'conversation_continuation'
+		   AND d.conversation_revision = ?2 AND d.decision_kind = 'selected'
+		   AND s.state = 'active' AND s.revision = d.source_runtime_session_revision
+		   AND d.account_id = s.account_id
+		   AND d.account_snapshot_id = ?3
+		   AND d.account_snapshot_id = s.account_snapshot_id
+		   AND d.profile_snapshot_id = s.profile_snapshot_id
+		   AND EXISTS (SELECT 1 FROM turns AS current_turn
+		               WHERE current_turn.turn_id = d.turn_id
+		                 AND current_turn.conversation_id = d.conversation_id
+		                 AND current_turn.runtime_session_id = s.runtime_session_id
+		                 AND current_turn.status = 'active'
+		                 AND current_turn.revision = 1)",
+			params![
+				request.routing_decision_id,
+				request.expected_consumer_revision,
+				request.fallback_account_snapshot_id,
+			],
+			|row| {
+				Ok(ExistingContinuationAuthority {
+					conversation_id: row.get(0)?,
+					turn_id: row.get(1)?,
+					source_runtime_session_id: row.get(2)?,
+					source_runtime_session_revision: row.get(3)?,
+					account_id: row.get(4)?,
+					codex_thread_id: row.get(5)?,
+					account_revision: row.get(6)?,
+					account_display_label: row.get(7)?,
+					account_observed_state: row.get(8)?,
+					credential_binding_json: row.get(9)?,
+					profile_revision: row.get(10)?,
+					profile_role: row.get(11)?,
+					model: row.get(12)?,
+					reasoning_effort: row.get(13)?,
+					instructions: row.get(14)?,
+					service_tier: row.get(15)?,
+					instructions_sha256: row.get(16)?,
+					profile_provenance: row.get(17)?,
+					has_acknowledged_turn: row.get(18)?,
+					latest_attempt_id: row.get(19)?,
+					latest_attempt_state: row.get(20)?,
+					latest_evidence_id: row.get(21)?,
+					latest_evidence_thread_id: row.get(22)?,
+					latest_unknown_is_recoverable: row.get(23)?,
+				})
+			},
+		)
+		.optional()
+		.map_err(sql_error)
+}
+
+fn insert_same_thread_plan(
+	transaction: &rusqlite::Transaction<'_>,
+	key: &str,
+	request_sha: &str,
+	request: &PlanContinuation,
+	authority: &ExistingContinuationAuthority,
+	now: i64,
+) -> Result<(), StoreError> {
+	transaction
+		.execute(
+			"INSERT INTO continuation_plans (
+	   continuation_plan_id, operation_id, idempotency_key, request_sha256,
+	   conversation_id, turn_id, routing_decision_id, source_runtime_session_id,
+	   source_runtime_session_revision, selected_account_id, runtime_session_id,
+	   kind, codex_thread_id, same_thread_attempt_id, same_thread_evidence_id,
+	   created_at_micros
+	 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, NULL,
+	           'same_thread', ?11, ?12, ?13, ?14)",
+			params![
+				request.plan_id,
+				request.operation_id,
+				key,
+				request_sha,
+				authority.conversation_id,
+				authority.turn_id,
+				request.routing_decision_id,
+				authority.source_runtime_session_id,
+				authority.source_runtime_session_revision,
+				authority.account_id,
+				authority.codex_thread_id,
+				authority.latest_attempt_id,
+				authority.latest_evidence_id,
+				now,
+			],
+		)
+		.map_err(sql_error)?;
+	Ok(())
+}
+
+fn insert_fallback_session(
+	transaction: &rusqlite::Transaction<'_>,
+	request: &PlanContinuation,
+	authority: &ExistingContinuationAuthority,
+	now: i64,
+) -> Result<(), StoreError> {
+	let account_snapshot_id = random_uuid_v4()?;
+	let profile_snapshot_id = random_uuid_v4()?;
+	transaction
+		.execute(
+			"INSERT INTO runtime_sessions (
+			 runtime_session_id, conversation_id, account_id, account_revision,
+			 account_snapshot_id, account_display_label, account_observed_state,
+			 credential_binding_json, profile_snapshot_id, profile_revision,
+			 profile_role, model, reasoning_effort, instructions, service_tier,
+			 instructions_sha256, profile_provenance, state, revision,
+			 created_at_micros, updated_at_micros
+			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'task',
+			 ?11, ?12, ?13, ?14, ?15, ?16, 'starting', 1, ?17, ?17)",
+			params![
+				request.fallback_runtime_session_id,
+				authority.conversation_id,
+				authority.account_id,
+				authority.account_revision,
+				account_snapshot_id,
+				authority.account_display_label,
+				authority.account_observed_state,
+				authority.credential_binding_json,
+				profile_snapshot_id,
+				authority.profile_revision,
+				authority.model,
+				authority.reasoning_effort,
+				authority.instructions,
+				authority.service_tier,
+				authority.instructions_sha256,
+				authority.profile_provenance,
+				now,
+			],
+		)
+		.map_err(sql_error)?;
+	Ok(())
+}
+
+fn insert_fallback_plan(
+	transaction: &rusqlite::Transaction<'_>,
+	key: &str,
+	request_sha: &str,
+	request: &PlanContinuation,
+	authority: &ExistingContinuationAuthority,
+	now: i64,
+) -> Result<(), StoreError> {
+	transaction
+		.execute(
+			"INSERT INTO continuation_plans (
+			 continuation_plan_id, operation_id, idempotency_key, request_sha256,
+			 conversation_id, turn_id, routing_decision_id,
+			 source_runtime_session_id, source_runtime_session_revision,
+			 selected_account_id, runtime_session_id, kind,
+			 fallback_context_pack_id, created_at_micros
+			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
+			 'context_pack_fallback', ?12, ?13)",
+			params![
+				request.plan_id,
+				request.operation_id,
+				key,
+				request_sha,
+				authority.conversation_id,
+				authority.turn_id,
+				request.routing_decision_id,
+				authority.source_runtime_session_id,
+				authority.source_runtime_session_revision,
+				authority.account_id,
+				request.fallback_runtime_session_id,
+				request.fallback_context_pack_id,
+				now,
+			],
+		)
+		.map_err(sql_error)?;
+	Ok(())
+}
+
+fn read_plan_kind(
+	connection: &rusqlite::Connection,
+	kind: &str,
+	attempt: Option<String>,
+	evidence: Option<String>,
+) -> Result<(ContinuationPlanKind, Option<SameThreadContinuationEvidence>), StoreError> {
+	Ok(match kind {
+		"initial_thread" => (ContinuationPlanKind::InitialThread, None),
+		"same_thread" => {
+			let attempt_id =
+				ProviderAttemptId::new(attempt.ok_or_else(|| incompatible("same-thread attempt"))?)
+					.map_err(|_| incompatible("same-thread attempt"))?;
+			let evidence_id = ProviderEvidenceId::new(
+				evidence.ok_or_else(|| incompatible("same-thread evidence"))?,
+			)
+			.map_err(|_| incompatible("same-thread evidence"))?;
+			let attempt_revision: i64 = connection
+				.query_row(
+					"SELECT revision FROM provider_attempts WHERE attempt_id = ?1",
+					params![attempt_id.as_str()],
+					|row| row.get(0),
+				)
+				.map_err(sql_error)?;
+			(
+				ContinuationPlanKind::SameThread,
+				Some(SameThreadContinuationEvidence::ProviderAttempt {
+					attempt_id,
+					attempt_revision,
+					evidence_id,
+				}),
+			)
+		},
+		"context_pack_fallback" => (ContinuationPlanKind::ContextPackFallback, None),
+		_ => return Err(incompatible("Continuation Plan kind")),
+	})
 }
 
 fn read_plan_effect(
@@ -630,35 +740,7 @@ fn read_plan_effect(
 		source_runtime_session_revision: (row.8 != "initial_thread").then_some(row.5),
 		turn_id,
 	};
-	let (kind, same_thread_evidence) = match row.8.as_str() {
-		"initial_thread" => (ContinuationPlanKind::InitialThread, None),
-		"same_thread" => {
-			let attempt_id =
-				ProviderAttemptId::new(row.11.ok_or_else(|| incompatible("same-thread attempt"))?)
-					.map_err(|_| incompatible("same-thread attempt"))?;
-			let evidence_id = ProviderEvidenceId::new(
-				row.12.ok_or_else(|| incompatible("same-thread evidence"))?,
-			)
-			.map_err(|_| incompatible("same-thread evidence"))?;
-			let attempt_revision: i64 = connection
-				.query_row(
-					"SELECT revision FROM provider_attempts WHERE attempt_id = ?1",
-					params![attempt_id.as_str()],
-					|row| row.get(0),
-				)
-				.map_err(sql_error)?;
-			(
-				ContinuationPlanKind::SameThread,
-				Some(SameThreadContinuationEvidence::ProviderAttempt {
-					attempt_id,
-					attempt_revision,
-					evidence_id,
-				}),
-			)
-		},
-		"context_pack_fallback" => (ContinuationPlanKind::ContextPackFallback, None),
-		_ => return Err(incompatible("Continuation Plan kind")),
-	};
+	let (kind, same_thread_evidence) = read_plan_kind(connection, &row.8, row.11, row.12)?;
 	let runtime_session =
 		row.7.as_deref().map(|id| read_stored_runtime_session(connection, id)).transpose()?;
 	let fallback_context_pack = if kind == ContinuationPlanKind::ContextPackFallback {

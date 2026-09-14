@@ -10,6 +10,9 @@ mod account_profile;
 #[path = "../accounts.rs"]
 mod accounts;
 #[allow(dead_code)]
+#[path = "../app_icon.rs"]
+mod app_icon;
+#[allow(dead_code)]
 #[path = "../client_cache.rs"]
 mod client_cache;
 #[allow(dead_code)]
@@ -25,9 +28,6 @@ mod conversations;
 #[path = "../desktop_settings.rs"]
 mod desktop_settings;
 #[allow(dead_code)]
-#[path = "../factory_surface.rs"]
-mod factory_surface;
-#[allow(dead_code)]
 #[path = "../health_query.rs"]
 mod health_query;
 #[allow(dead_code)]
@@ -36,12 +36,6 @@ mod history_pager;
 #[allow(dead_code)]
 #[path = "../native_menu_bar.rs"]
 mod native_menu_bar;
-#[allow(dead_code)]
-#[path = "../program_graph.rs"]
-mod program_graph;
-#[allow(dead_code)]
-#[path = "../programs.rs"]
-mod programs;
 #[allow(dead_code)]
 #[path = "../settings_surface.rs"]
 mod settings_surface;
@@ -58,7 +52,8 @@ use std::path::PathBuf;
 
 use gpui::{AppContext as _, VisualTestAppContext, px, size};
 
-use crate::shell::{Destination, Shell};
+use crate::shell::{Destination, Shell, chief_surface::ChiefSurface};
+#[cfg(target_os = "macos")] use {objc2_app_kit as _, objc2_foundation as _};
 
 fn main() -> gpui::Result<()> {
 	let output = std::env::var_os("DECODEX_VISUAL_OUTPUT")
@@ -70,37 +65,99 @@ fn main() -> gpui::Result<()> {
 
 	let mut cx = VisualTestAppContext::new(gpui_platform::current_platform(false));
 	cx.update(shell::bind_keys);
-	let destination = match std::env::var("DECODEX_VISUAL_DESTINATION").as_deref() {
-		Ok("factory") => Destination::Factory,
-		Ok("accounts") => Destination::Accounts,
-		Ok("health") => Destination::Health,
-		Ok("settings") => Destination::Settings,
-		_ => Destination::Conversations,
-	};
+	let destination = capture_destination();
 	let left_sidebar_visible = std::env::var("DECODEX_VISUAL_SIDEBAR").as_deref() != Ok("hidden");
 	let inspector_visible = std::env::var("DECODEX_VISUAL_CONTEXT").as_deref() != Ok("hidden");
 	let panel_motion = std::env::var("DECODEX_VISUAL_PANEL_MOTION").ok();
-	let window = cx.open_offscreen_window(size(px(1_248.0), px(840.0)), |window, cx| {
-		cx.new(|cx| {
-			Shell::visual_destination(
-				destination,
-				left_sidebar_visible,
-				inspector_visible,
-				window,
-				cx,
-			)
+	let send_message = std::env::var("DECODEX_VISUAL_CHIEF_SEND").ok();
+	if send_message.is_some() && std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").is_none() {
+		return Err(std::io::Error::other(
+			"Chief send capture requires an explicit disposable root",
+		)
+		.into());
+	}
+	// An explicit disposable root opts into read-only protocol evidence. Never use
+	// the installed profile as an implicit screenshot source.
+	let service_projection = std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT")
+		.map(|root| -> gpui::Result<_> {
+			let root = PathBuf::from(root);
+			let profile = decodex_protocol::ClientProfile::load(&root, None)
+				.map_err(|error| std::io::Error::other(format!("capture profile: {error:?}")))?;
+			let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+			let client = decodex_protocol::ChiefClient::new(profile.clone());
+			let snapshot = runtime
+				.block_on(client.query())
+				.map_err(|error| std::io::Error::other(format!("capture snapshot: {error:?}")))?;
+			let selected = match &snapshot {
+				decodex_protocol::ChiefSnapshotResult::Available(snapshot) => {
+					std::env::var("DECODEX_VISUAL_CHIEF_WORK")
+						.ok()
+						.filter(|id| snapshot.work_items.iter().any(|work| &work.id == id))
+						.or_else(|| {
+							snapshot
+								.work_items
+								.iter()
+								.find(|work| work.parent_goal_id.is_none())
+								.map(|work| work.id.clone())
+						})
+				},
+				_ => None,
+			};
+			let history = selected.as_ref().map(|id| {
+				let id = decodex_protocol::EntityId::new(id.clone())
+					.expect("validated snapshot identity");
+				runtime
+					.block_on(client.history(id))
+					.unwrap_or(decodex_protocol::ChiefHistoryResult::Unavailable)
+			});
+			let request = match &snapshot {
+				decodex_protocol::ChiefSnapshotResult::Available(snapshot) => snapshot.pending_events.iter().find(|event| Some(&event.work_item_id) == selected.as_ref() && ["permission_pending", "user_input_pending", "server_request_pending"].contains(&event.event_kind.as_str())).map(|event| runtime.block_on(client.request(event.id)).unwrap_or(decodex_protocol::ChiefRequestResult::Unavailable)),
+				_ => None,
+			};
+			std::fs::write(
+				output.with_extension("evidence.json"),
+				serde_json::to_vec_pretty(
+					&serde_json::json!({"source_root": &root, "observed_at_micros": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_micros(), "snapshot": &snapshot, "selected": &selected, "history": &history, "request": &request}),
+				)?,
+			)?;
+			Ok((snapshot, selected, history, request, profile))
 		})
-	})?;
+		.transpose()?;
+	let window: gpui::AnyWindowHandle =
+		if let Some((snapshot, selected, history, request, profile)) = service_projection {
+			let handle = cx.open_offscreen_window(size(px(1_248.0), px(840.0)), |_, cx| {
+				cx.new(|cx| {
+					ChiefSurface::visual_from_service(snapshot, selected, history, request, cx)
+				})
+			})?;
+			if let Some(message) = send_message {
+				prove_composer_send(&mut cx, handle, profile, &message, &output)?;
+			}
+			handle.into()
+		} else {
+			cx.open_offscreen_window(size(px(1_248.0), px(840.0)), |window, cx| {
+				cx.new(|cx| {
+					Shell::visual_destination(
+						destination,
+						left_sidebar_visible,
+						inspector_visible,
+						window,
+						cx,
+					)
+				})
+			})?
+			.into()
+		};
 	cx.run_until_parked();
-	cx.update_window(window.into(), |_, window, _| window.refresh())?;
+	cx.update_window(window, |_, window, _| window.refresh())?;
 	cx.run_until_parked();
 	// GPUI element animations use the monotonic wall clock, while async timers
 	// use the visual-test dispatcher clock. Render once to start the element
 	// animation, then wait on the same clock that drives it.
-	cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear())?;
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
 	std::thread::sleep(ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40));
 	cx.advance_clock(std::time::Duration::from_millis(16));
-	cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear())?;
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
 	cx.run_until_parked();
 	if let Some(panel_motion) = panel_motion {
 		let keys = match panel_motion.as_str() {
@@ -110,20 +167,83 @@ fn main() -> gpui::Result<()> {
 			_ => "",
 		};
 		if !keys.is_empty() {
-			cx.simulate_keystrokes(window.into(), keys);
+			cx.simulate_keystrokes(window, keys);
 			cx.run_until_parked();
 			// Render once at the new generation to start its animation, then wait
 			// until approximately the midpoint before taking the evidence frame.
-			cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear())?;
+			cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
 			std::thread::sleep(ui_theme::MOTION_PANEL / 2);
 			cx.advance_clock(std::time::Duration::from_millis(16));
-			cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear())?;
+			cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
 			cx.run_until_parked();
 		}
 	}
 
-	let screenshot = cx.capture_screenshot(window.into())?;
+	let screenshot = cx.capture_screenshot(window)?;
 	screenshot.save(&output)?;
 	println!("{}", output.display());
+	Ok(())
+}
+
+fn capture_destination() -> Destination {
+	match std::env::var("DECODEX_VISUAL_DESTINATION").as_deref() {
+		Ok("chief") => Destination::Chief,
+		Ok("accounts") => Destination::Accounts,
+		Ok("health") => Destination::Health,
+		Ok("settings") => Destination::Settings,
+		_ => Destination::Conversations,
+	}
+}
+
+fn prove_composer_send(
+	cx: &mut VisualTestAppContext,
+	handle: gpui::WindowHandle<ChiefSurface>,
+	profile: decodex_protocol::ClientProfile,
+	message: &str,
+	output: &std::path::Path,
+) -> gpui::Result<()> {
+	cx.update_window(handle.into(), |view, window, cx| {
+		view.downcast::<ChiefSurface>()
+			.expect("Chief capture root")
+			.update(cx, |surface, cx| surface.visual_prepare_send(profile, message, window, cx));
+		window.draw(cx).clear();
+	})?;
+	cx.simulate_keystrokes(handle.into(), "enter");
+	for _ in 0..40 {
+		cx.run_until_parked();
+		std::thread::sleep(std::time::Duration::from_millis(500));
+		cx.update_window(handle.into(), |view, _, cx| {
+			view.downcast::<ChiefSurface>()
+				.expect("Chief capture root")
+				.update(cx, ChiefSurface::refresh)
+		})?;
+		cx.run_until_parked();
+		let evidence = cx.update_window(handle.into(), |view, _, cx| {
+			view.downcast::<ChiefSurface>()
+				.expect("Chief capture root")
+				.update(cx, |surface, cx| surface.visual_send_evidence(cx))
+		})?;
+		std::fs::write(
+			output.with_extension("send.json"),
+			serde_json::to_vec_pretty(
+				&serde_json::json!({"submitted_message":message,"interaction":"ComposerInput Enter","result":evidence}),
+			)?,
+		)?;
+		if evidence["uncertain"] == true {
+			break;
+		}
+		let answered = evidence["history"][1]["entries"].as_array().is_some_and(|entries| {
+			entries.iter().any(|entry| {
+				entry["kind"] == "assistant"
+					&& entry["text"].as_str().is_some_and(|text| text.contains("UI_READY"))
+			})
+		});
+		if evidence["feedback"].as_str().is_some_and(|text| text.starts_with("Accepted by service"))
+			&& evidence["draft"] == ""
+			&& answered
+		{
+			break;
+		}
+	}
 	Ok(())
 }

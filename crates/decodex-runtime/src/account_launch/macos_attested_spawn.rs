@@ -30,7 +30,7 @@ use core_foundation::{
 	base::{CFGetTypeID, CFTypeRef, OSStatus, TCFType as _},
 	data::{CFDataGetBytePtr, CFDataGetLength, CFDataGetTypeID, CFDataRef},
 	dictionary::{CFDictionary, CFDictionaryGetValue, CFDictionaryRef},
-	string::CFStringRef,
+	string::{CFString, CFStringRef},
 	url::CFURL,
 };
 use libc::{
@@ -66,6 +66,13 @@ const DYNAMIC_CODE_VALIDATION_FLAGS: Flags =
 #[link(name = "Security", kind = "framework")]
 unsafe extern "C" {
 	static kSecCodeInfoUnique: CFStringRef;
+	static kSecCodeAttributeArchitecture: CFStringRef;
+	fn SecStaticCodeCreateWithPathAndAttributes(
+		path: core_foundation::url::CFURLRef,
+		flags: u32,
+		attributes: CFDictionaryRef,
+		code: *mut *const c_void,
+	) -> OSStatus;
 
 	fn SecCodeCopySigningInformation(
 		code: *const c_void,
@@ -96,6 +103,7 @@ pub(super) struct AttestedCodeIdentity {
 	execution_path: PathBuf,
 	unique: [u8; MAX_CODE_IDENTITY_BYTES],
 	unique_len: u8,
+	architectures: Vec<Vec<u8>>,
 }
 
 impl AttestedCodeIdentity {
@@ -121,7 +129,23 @@ impl AttestedCodeIdentity {
 			));
 		}
 
-		Ok(Self { execution_path, unique, unique_len })
+		let mut architectures = vec![unique[..usize::from(unique_len)].to_vec()];
+		// A universal system binary can have several native subtypes. Security's
+		// default static slice need not be the slice selected by posix_spawn.
+		// Each allowed slice must independently match the captured reference.
+		for architecture in ["arm64", "arm64e", "arm64e.x1", "x86_64"] {
+			let reference = static_architecture_identity(&reference_snapshot, architecture)?;
+			let execution = static_architecture_identity(&execution_path, architecture)?;
+			if reference != execution {
+				return Err(permission_denied("execution architecture differs from reference"));
+			}
+			if let Some(identity) = reference
+				&& !architectures.contains(&identity)
+			{
+				architectures.push(identity);
+			}
+		}
+		Ok(Self { execution_path, unique, unique_len, architectures })
 	}
 
 	/// Canonical path that can execute this captured identity.
@@ -499,11 +523,26 @@ fn check_static_validity(code: &SecStaticCode) -> io::Result<()> {
 }
 
 fn verify_dynamic_identity(pid: libc::pid_t, expected: &AttestedCodeIdentity) -> io::Result<()> {
+	if expected.architectures.first().map(Vec::as_slice) != Some(expected.unique()) {
+		return Err(permission_denied("captured code identity is inconsistent"));
+	}
 	let code = dynamic_code_for_pid(pid)?;
-	let requirement = exact_cdhash_requirement(expected.unique())?;
+	let (actual, actual_len) =
+		copy_unique_identity(code.as_concrete_TypeRef().cast::<c_void>().cast_const())?;
+	let actual = &actual[..usize::from(actual_len)];
+	if !expected.architectures.iter().any(|identity| identity.as_slice() == actual) {
+		return Err(permission_denied(
+			"dynamic code identity differs from reference architectures",
+		));
+	}
+	let requirement = exact_cdhash_requirement(actual)?;
 
-	code.check_validity(DYNAMIC_CODE_VALIDATION_FLAGS, &requirement)
-		.map_err(|_| permission_denied("dynamic code validation failed"))?;
+	code.check_validity(DYNAMIC_CODE_VALIDATION_FLAGS, &requirement).map_err(|error| {
+		io::Error::new(
+			ErrorKind::PermissionDenied,
+			format!("dynamic code validation failed: {error}"),
+		)
+	})?;
 
 	let reported_path = code
 		.path(Flags::NONE)
@@ -518,11 +557,41 @@ fn verify_dynamic_identity(pid: libc::pid_t, expected: &AttestedCodeIdentity) ->
 	let (unique, unique_len) =
 		copy_unique_identity(code.as_concrete_TypeRef().cast::<c_void>().cast_const())?;
 
-	if &unique[..usize::from(unique_len)] != expected.unique() {
+	if &unique[..usize::from(unique_len)] != actual {
 		return Err(permission_denied("dynamic code identity changed during spawn"));
 	}
 
 	Ok(())
+}
+
+fn static_architecture_identity(path: &Path, architecture: &str) -> io::Result<Option<Vec<u8>>> {
+	let url = CFURL::from_path(path, false).ok_or_else(|| invalid_input("invalid code path"))?;
+	// SAFETY: the exported Security constant is a process-lifetime CFString.
+	let key = unsafe { CFString::wrap_under_get_rule(kSecCodeAttributeArchitecture) };
+	let value = CFString::new(architecture);
+	let attributes = CFDictionary::from_CFType_pairs(&[(key, value)]);
+	let mut raw = ptr::null();
+	// SAFETY: input CF values live across the call; output is an owned static code object.
+	let status = unsafe {
+		SecStaticCodeCreateWithPathAndAttributes(
+			url.as_concrete_TypeRef(),
+			Flags::NONE.bits(),
+			attributes.as_concrete_TypeRef(),
+			&mut raw,
+		)
+	};
+	if status != 0 {
+		return Ok(None);
+	}
+	if raw.is_null() {
+		return Err(invalid_data("empty architecture code object"));
+	}
+	// SAFETY: success transfers one retained SecStaticCode reference to this owner.
+	let code = unsafe { SecStaticCode::wrap_under_create_rule(raw as _) };
+	check_static_validity(&code)?;
+	let (identity, length) =
+		copy_unique_identity(code.as_concrete_TypeRef().cast::<c_void>().cast_const())?;
+	Ok(Some(identity[..usize::from(length)].to_vec()))
 }
 
 fn exact_cdhash_requirement(unique: &[u8]) -> io::Result<SecRequirement> {

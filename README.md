@@ -10,13 +10,54 @@ Local agent factory above Codex app-server.
 </div>
 
 Decodex is not another coding model or a replacement for Codex. Codex app-server is the
-execution kernel for one thread. Decodex adds the durable product state and coordination
+execution runtime for independent threads. Decodex adds the durable product state and coordination
 needed when one engineer manages many conversations, accounts, dependencies, gates, and
 follow-up actions.
 
-The current milestone is intentionally small: one real local Conversation can select an
-account, start or continue a Codex thread, persist its execution facts, survive a service
-restart, and continue without duplicate dispatch.
+The personal Chief coordinates goals through independent Codex threads. It receives
+worker and automation results, requests repairs in the original worker thread, and
+reports decisions to the user. SQLite preserves work relationships and obligations
+across service restarts. Ordinary Conversations remain available for direct work.
+See [Chief refactor status](CHIEF_REFACTOR.md) for acceptance evidence and open gaps.
+
+## Working with Chief
+
+The Chief tab uses the same local service as the other app surfaces. Select an
+explicit model, reasoning effort, working directory and execution policy before
+starting. Workers use the same model with medium effort. The account-owned process
+remains alive across turns; a worker result can wake the original Chief later.
+Chief process admission uses account readiness and current quota observations.
+The five-hour limit is optional: confirmed absence is distinct from an unknown
+window or a failed query. Accounts are not classified by plan name. Known current
+exhaustion still blocks admission. A newly enrolled account can require a quota
+refresh before its first Chief process starts.
+
+The CLI exposes the same operations:
+
+```sh
+decodex chief status
+decodex chief start --root-id personal-chief --model MODEL --effort high --cwd /absolute/project --read-only "Coordinate this goal"
+decodex chief send --root-id personal-chief "Report the remaining decisions"
+decodex chief ingest --work-id WORK_ID --source-event-id SOURCE_EVENT_ID "Automation result"
+decodex chief request --event-id EVENT_ID
+```
+
+Use a stable source event ID for automation results. Repeated delivery of the same
+event does not create another inbox item. Requests need an explicit answer; the
+Chief does not automatically grant execution approvals. An uncertain dispatch
+stays visible and must not be blindly retried. Follow-up checks run while the local
+service is running; this does not promise wakeups after the app and service exit.
+Answer work decisions in the Chief conversation. The Chief records a new decision
+receipt linked to that reply; it does not rewrite the original evidence. Execution
+approval requests remain separate and require an explicit response to the exact
+pending request. Work details and dependencies are available below the conversation.
+Goal completion is also an explicit Chief judgment with related evidence; resolved
+workers do not automatically mark the parent goal complete.
+
+The Chief retains its selected account process while the service runs. Existing
+account-capacity rules still apply to ordinary Conversations that require a separate
+process. The work snapshot is bounded to 100 items, 500 dependencies and 100 pending
+events; exceeding the bound produces an explicit capacity result, not partial data.
 
 ## Current architecture
 
@@ -28,8 +69,10 @@ restart, and continue without duplicate dispatch.
   restart tests.
 - Account credentials are stored in a narrow owner-private SQLite table. They are
   available only to the service credential adapter and never enter protocol output.
-- Codex app-server remains the provider runtime. One RuntimeSession binds one exact
-  account and Codex thread.
+- Codex app-server remains the provider runtime. Chief threads share a retained,
+  account-bound process. The service owns its lifecycle and correlated event stream;
+  one worker finishing does not terminate peer threads. Ordinary Conversations retain
+  their existing RuntimeSession account and thread bindings.
 - GPUI and ordinary CLI commands are same-UID Unix WebSocket clients. They do not open SQLite, credential
   files, or Codex authentication files.
 - The GPUI product is the sole macOS GUI and is packaged as `Decodex.app`. The bundle
@@ -55,21 +98,19 @@ the source read only and leaves all rollback sources intact.
 ## Supported product slice
 
 ```text
-GPUI Conversation action                    apps/decodex-gpui/src/conversations.rs
--> exact-current Conversation protocol      crates/decodex-protocol/src/{conversation,wire}.rs
--> Decodex Conversation service             crates/decodex-runtime/src/{application,conversation}.rs
--> SQLite revision/idempotency authority    database/src/{conversations,command}.rs
--> RuntimeSession + ProcessGeneration       database/src/{runtime_sessions,process_generations}.rs
--> ProviderAttempt safety                   database/src/provider_attempts.rs
--> Codex app-server thread/start + turn/start
-                                            crates/decodex-codex/src/conversation.rs
--> exact thread/history/event readback      runtime + protocol + GPUI
+User -> Chief conversation -> same-UID service -> durable inbox
+                                      |
+                                      v
+                         Chief thread <-> independent worker threads
+                                      |
+                         result / decision / next check
+                                      |
+                              user-facing briefing
 ```
 
-The Program path has no second execution engine. `database/src/program_cycles.rs` owns the
-persisted Program aggregate and its Conversation binding. The service derives the Program graph
-and timeline, and `apps/decodex-gpui/src/{programs,program_graph,factory_surface}.rs` presents
-them. A Codex link is absent until SQLite readback supplies the exact provider thread ID; a
+The Chief model chooses its decomposition and checks. Code owns durable state,
+message correlation, scheduling and actual permissions, not a mandatory sequence
+of planning and review roles. A Codex link is absent until readback supplies the exact provider thread ID; a
 Decodex Conversation UUID is never substituted. Provider thread identities are opaque, limited
 to the SQLite-compatible 512-byte boundary, and percent-encoded as exactly one deep-link path
 segment.
@@ -101,12 +142,15 @@ replace the account and discard provider cache affinity.
 
 ## Removed and deferred surfaces
 
-The unsupported WorkItem board protocol and UI, and the static Coordinator/Agent/Review/Replay
-Factory preview, are deleted. Their old command names are not part of protocol 2.15 and fail
-decoding. The fake Execution Decision query and projection are also removed from the protocol and
-runtime. ManagedRepository, Reset Card execution, automation, ManagedRun, remote workers, and
-multi-machine coordination remain deferred without a public fake workflow or legacy storage
-fallback.
+The active Factory renderer and fixed Program/Review workflow are retired. Public
+Program mutation commands and new-conversation Program binding are removed; hiding
+navigation is not the retirement boundary. Historical Program queries and lineage
+remain readable, and released migrations and recorded data remain intact.
+
+The unsupported WorkItem board, static Coordinator/Agent/Review/Replay preview and
+fake Execution Decision projection remain removed. Remote workers, multi-machine
+coordination and a general automation-authoring product are not part of this slice.
+Automation result intake and due checks are supported through Chief.
 
 Ontology and graph engineering remain central to the direction of Decodex. They will be
 projections over proven Goals, tasks, threads, artifacts, claims, dependencies, gates,
@@ -114,9 +158,10 @@ and evidence. They are not a second speculative execution engine.
 
 ## Persistence compatibility
 
-This cutover adds one ordered migration that terminalizes legacy reserved `route_account`
-receipts as `interrupted_by_upgrade` and removes their replayable request/progress state. It
-preserves accounts, credentials, routing data, conversations, and immutable Program Pack bindings.
+Migration 0013 adds Chief work, inbox, process bindings and saved settings. Migration
+0014 preserves quota facts while adding explicit optional-window absence. Prior
+account-route upgrade history remains unchanged. Accounts, credentials, routing
+data, conversations and historical Program Pack bindings remain readable.
 The local protocol accepts one exact version; build commit and package version remain diagnostics,
 not a second compatibility scheme.
 The compatibility allowlist is limited to persisted/internal bytes that existing databases or
@@ -173,8 +218,9 @@ Metal compiler:
 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo make check
 ```
 
-Start with the [OpenWiki quickstart](openwiki/quickstart.md) for the normative contract,
-operations, safety rules, and current evidence.
+Start with the [OpenWiki quickstart](openwiki/quickstart.md) for the repository index.
+Generated pages can lag this refactor; current source, tests and
+[Chief delivery evidence](CHIEF_REFACTOR.md) take precedence for the new workflow.
 
 ## License
 

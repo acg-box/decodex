@@ -34,7 +34,6 @@ use crate::{
 	},
 	health_query::{HealthDispatch, HealthQuery, HealthRouteOutcome},
 	history_pager::{HistoryDispatch, HistoryPager, HistoryRouteOutcome},
-	programs::{ProgramDispatch, ProgramRouteOutcome, Programs},
 };
 
 pub(crate) trait AppOwnedDaemonRecovery: Send + Sync {
@@ -217,7 +216,6 @@ enum SessionStep<C> {
 	DesktopSettings(DesktopSettingsDispatch),
 	Health(HealthDispatch),
 	History(HistoryDispatch),
-	Program(ProgramDispatch),
 	Conversation(ConversationDispatch),
 }
 
@@ -339,7 +337,6 @@ pub(crate) struct ClientLifecycle {
 	desktop_settings: DesktopSettingsController,
 	health_query: HealthQuery,
 	history_pager: HistoryPager,
-	programs: Programs,
 	conversations: Conversations,
 	state: HashMap<String, AppliedEntity>,
 	last_cursor: Option<Cursor>,
@@ -405,7 +402,6 @@ impl ClientLifecycle {
 			desktop_settings: DesktopSettingsController::production(),
 			health_query: HealthQuery::production(),
 			history_pager,
-			programs: Programs::production(),
 			conversations: Conversations::production(),
 			state: HashMap::new(),
 			last_cursor: None,
@@ -483,11 +479,6 @@ impl ClientLifecycle {
 		self.conversations.clone()
 	}
 
-	/// Clone the presentation-neutral Adaptive Factory Program controller.
-	pub(crate) fn programs(&self) -> Programs {
-		self.programs.clone()
-	}
-
 	/// Run the bounded lifecycle without spawning or detaching any work.
 	pub(crate) async fn run(&mut self) -> RunResult {
 		self.run_with_io(&mut TokioIo { session: None }).await
@@ -544,7 +535,6 @@ impl ClientLifecycle {
 			self.desktop_settings.bind_session(generation, self.server_id.clone());
 			self.health_query.bind_session(generation, self.server_id.clone());
 			self.history_pager.bind_session(generation, self.server_id.clone());
-			self.programs.bind_session(generation, self.server_id.clone());
 			self.conversations.bind_session(generation, self.server_id.clone());
 			let failure =
 				self.run_connected_session(io, generation, connected_checkpoint.is_none()).await;
@@ -554,7 +544,6 @@ impl ClientLifecycle {
 			self.desktop_settings.session_ended(generation);
 			self.health_query.session_ended(generation);
 			self.history_pager.session_ended(generation);
-			self.programs.session_ended(generation);
 			self.conversations.session_ended(generation);
 			if self.quarantine.is_none() {
 				self.set_view(ConnectionView::ShuttingDown);
@@ -597,7 +586,6 @@ impl ClientLifecycle {
 			let desktop_settings = self.desktop_settings.clone();
 			let health_query = self.health_query.clone();
 			let history_pager = self.history_pager.clone();
-			let programs = self.programs.clone();
 			let conversations = self.conversations.clone();
 			let server_id = self.server_id.clone();
 			let step = tokio::select! {
@@ -612,8 +600,6 @@ impl ClientLifecycle {
 					if !requires_snapshot => SessionStep::Health(dispatch),
 				dispatch = history_pager.next_dispatch(generation, &server_id),
 					if !requires_snapshot => SessionStep::History(dispatch),
-				dispatch = programs.next_dispatch(generation, &server_id),
-					if !requires_snapshot => SessionStep::Program(dispatch),
 				dispatch = conversations.next_dispatch(generation, &server_id),
 					if !requires_snapshot => SessionStep::Conversation(dispatch),
 			};
@@ -674,19 +660,6 @@ impl ClientLifecycle {
 						self.history_pager.lookup_sent_request(&send_token);
 					}
 				},
-				SessionStep::Program(dispatch) =>
-					if let Some(command) = dispatch.command() {
-						let send_result = io.send_command(command.clone()).await;
-						if let Err(failure) = send_result {
-							self.programs.command_send_failed(&dispatch);
-							return failure;
-						}
-						self.programs.command_sent(&dispatch);
-					} else if let Some(query) = dispatch.query()
-						&& let Err(failure) = io.send_query(query.clone()).await
-					{
-						return failure;
-					},
 				SessionStep::Conversation(dispatch) =>
 					if let Some(command) = dispatch.command() {
 						let send_result = io.send_command(command.clone()).await;
@@ -700,87 +673,89 @@ impl ClientLifecycle {
 					{
 						return failure;
 					},
-				SessionStep::Delivery(delivery) => match *delivery {
-					Ok(Delivery::Snapshot { snapshot, confirmation }) => {
-						let cursor = snapshot.cursor;
-						let inspection = match self.apply_snapshot(generation, snapshot) {
-							Ok(inspection) => inspection,
-							Err(failure) => return failure,
-						};
-						let checkpoint = match io.confirm_applied(confirmation) {
-							Ok(checkpoint) => checkpoint,
-							Err(_) => return self.confirmation_failure(),
-						};
-
-						if self.bind_checkpoint(generation, cursor, checkpoint, inspection).is_err()
-						{
-							return RetainedSessionFailure::ApplicationConfirmationMismatch;
-						}
-						requires_snapshot = false;
-					},
-					Ok(Delivery::Event { event, confirmation }) => {
-						if requires_snapshot {
-							self.enter_quarantine(
-								QuarantineReason::ApplicationOrder,
-								QuarantineRecovery::VerifiedSnapshotReplacement,
-							);
-
-							return RetainedSessionFailure::PublicationOrder;
-						}
-						let cursor = event.cursor;
-						let conversation_event = event.clone();
-						let inspection = match self.apply_event(generation, event) {
-							Ok(inspection) => inspection,
-							Err(failure) => return failure,
-						};
-						if let EventPayload::ConversationTurnFinished { conversation, .. } =
-							&conversation_event.payload
-						{
-							let _ =
-								self.history_pager.reload_if_open(&conversation.conversation_id);
-						}
-						self.conversations.apply_event(&conversation_event);
-						self.programs.apply_event(&conversation_event);
-						self.accounts.apply_event(&conversation_event);
-						self.desktop_settings.apply_event(&conversation_event);
-						let checkpoint = match io.confirm_applied(confirmation) {
-							Ok(checkpoint) => checkpoint,
-							Err(_) => return self.confirmation_failure(),
-						};
-
-						if self.bind_checkpoint(generation, cursor, checkpoint, inspection).is_err()
-						{
-							return RetainedSessionFailure::ApplicationConfirmationMismatch;
-						}
-					},
-					Ok(Delivery::QueryResult(result)) => {
-						if let Err(failure) = self.route_query_result(generation, result) {
-							return failure;
-						}
-					},
-					Ok(Delivery::CommandReceipt(receipt)) => {
-						self.route_command_receipt(generation, &receipt);
-					},
-					Ok(Delivery::CommandResult(result)) => {
-						self.route_command_delivery(generation, &result);
-					},
-					Err(failure) => return failure,
+				SessionStep::Delivery(delivery) => {
+					match self.apply_delivery(io, generation, requires_snapshot, *delivery) {
+						Ok(required) => requires_snapshot = required,
+						Err(failure) => return failure,
+					}
 				},
 			}
 		}
 	}
 
+	fn apply_delivery<I: LifecycleIo>(
+		&mut self,
+		io: &mut I,
+		generation: u64,
+		mut requires_snapshot: bool,
+		delivery: Result<Delivery<I::Confirmation>, RetainedSessionFailure>,
+	) -> Result<bool, RetainedSessionFailure> {
+		match delivery {
+			Ok(Delivery::Snapshot { snapshot, confirmation }) => {
+				let cursor = snapshot.cursor;
+				let inspection = self.apply_snapshot(generation, snapshot)?;
+				let checkpoint = match io.confirm_applied(confirmation) {
+					Ok(checkpoint) => checkpoint,
+					Err(_) => return Err(self.confirmation_failure()),
+				};
+
+				if self.bind_checkpoint(generation, cursor, checkpoint, inspection).is_err() {
+					return Err(RetainedSessionFailure::ApplicationConfirmationMismatch);
+				}
+				requires_snapshot = false;
+			},
+			Ok(Delivery::Event { event, confirmation }) => {
+				if requires_snapshot {
+					self.enter_quarantine(
+						QuarantineReason::ApplicationOrder,
+						QuarantineRecovery::VerifiedSnapshotReplacement,
+					);
+
+					return Err(RetainedSessionFailure::PublicationOrder);
+				}
+				let cursor = event.cursor;
+				let conversation_event = event.clone();
+				let inspection = self.apply_event(generation, event)?;
+				if let EventPayload::ConversationTurnFinished { conversation, .. } =
+					&conversation_event.payload
+				{
+					let _ = self.history_pager.reload_if_open(&conversation.conversation_id);
+				}
+				self.conversations.apply_event(&conversation_event);
+				self.accounts.apply_event(&conversation_event);
+				self.desktop_settings.apply_event(&conversation_event);
+				let checkpoint = match io.confirm_applied(confirmation) {
+					Ok(checkpoint) => checkpoint,
+					Err(_) => return Err(self.confirmation_failure()),
+				};
+
+				if self.bind_checkpoint(generation, cursor, checkpoint, inspection).is_err() {
+					return Err(RetainedSessionFailure::ApplicationConfirmationMismatch);
+				}
+			},
+			Ok(Delivery::QueryResult(result)) => {
+				self.route_query_result(generation, result)?;
+			},
+			Ok(Delivery::CommandReceipt(receipt)) => {
+				self.route_command_receipt(generation, &receipt);
+			},
+			Ok(Delivery::CommandResult(result)) => {
+				self.route_command_delivery(generation, &result);
+			},
+			Err(failure) => return Err(failure),
+		}
+		Ok(requires_snapshot)
+	}
+
 	fn route_command_receipt(&self, generation: u64, receipt: &CommandReceipt) {
 		let _ = self.accounts.route_receipt(generation, &self.server_id, receipt);
 		let _ = self.desktop_settings.route_receipt(generation, &self.server_id, receipt);
-		let _ = self.programs.route_receipt(generation, &self.server_id, receipt);
 		let _ = self.conversations.route_receipt(generation, &self.server_id, receipt);
 	}
 
 	fn route_command_delivery(&self, generation: u64, result: &CommandResultEnvelope) {
 		let _ = self.accounts.route_command_result(generation, &self.server_id, result);
 		let _ = self.desktop_settings.route_command_result(generation, &self.server_id, result);
-		let _ = self.programs.route_command_result(generation, &self.server_id, result);
 		let _ = self.conversations.route_command_result(generation, &self.server_id, result);
 		if let Some(conversation_id) = self.conversations.take_history_reload_request() {
 			let _ = self.history_pager.reload_if_open(&conversation_id);
@@ -885,10 +860,6 @@ impl ClientLifecycle {
 				return Ok(());
 			},
 			DesktopSettingsRouteOutcome::Unmatched => {},
-		}
-		match self.programs.route_query_result(generation, &self.server_id, &result) {
-			ProgramRouteOutcome::Fresh | ProgramRouteOutcome::Refused => return Ok(()),
-			ProgramRouteOutcome::Unmatched => {},
 		}
 		match self.conversations.route_query_result(generation, &self.server_id, &result) {
 			ConversationRouteOutcome::Fresh | ConversationRouteOutcome::Refused => return Ok(()),

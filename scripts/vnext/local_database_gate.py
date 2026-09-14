@@ -73,6 +73,8 @@ MIGRATIONS = (
         "terminal_account_route_upgrade",
         ROOT / "database/migrations/0012_terminal_account_route_upgrade.sql",
     ),
+    (13, "chief_work", ROOT / "database/migrations/0013_chief_work.sql"),
+    (14, "optional_quota_window", ROOT / "database/migrations/0014_optional_quota_window.sql"),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
@@ -123,6 +125,11 @@ REQUIRED_TABLES = frozenset(
         "program_reviews",
         "program_domain_pack_bindings",
         "desktop_settings",
+        "chief_work_items",
+        "chief_dependencies",
+        "chief_inbox_events",
+        "chief_process_bindings",
+        "chief_root_settings",
     }
 )
 

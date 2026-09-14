@@ -96,8 +96,10 @@ impl AccountApiRuntime {
 		let second_revision = second.account_revision();
 		let operation_id = match AccountOperationId::generate() {
 			Ok(operation_id) => operation_id,
-			Err(_) => return second.with_auth_retry_error(AccountApiRuntimeError::AccountChanged)
-				.into_observation(),
+			Err(_) =>
+				return second
+					.with_auth_retry_error(AccountApiRuntimeError::AccountChanged)
+					.into_observation(),
 		};
 		let error = match self
 			.accounts
@@ -459,12 +461,10 @@ mod tests {
 			AccountApiRuntimeError::RefreshAmbiguous,
 			AccountApiRuntimeError::AccessRejectedAfterRefresh,
 		] {
-			let observation = PendingAccountApiObservation::failed(
-				7,
-				AccountApiRuntimeError::Unauthorized,
-			)
-			.with_auth_retry_error(error)
-			.into_observation();
+			let observation =
+				PendingAccountApiObservation::failed(7, AccountApiRuntimeError::Unauthorized)
+					.with_auth_retry_error(error)
+					.into_observation();
 
 			assert_eq!(observation.account_revision, 7);
 			assert_eq!(observation.inventory, Err(error));
@@ -480,7 +480,10 @@ mod tests {
 			(CredentialRefreshError::Rejected, AccountApiRuntimeError::RefreshRejected),
 			(CredentialRefreshError::Ambiguous, AccountApiRuntimeError::RefreshAmbiguous),
 		] {
-			assert_eq!(map_account_service_error(AccountLifecycleError::Refresh(refresh)), expected);
+			assert_eq!(
+				map_account_service_error(AccountLifecycleError::Refresh(refresh)),
+				expected
+			);
 		}
 	}
 }

@@ -428,6 +428,11 @@ pub struct RoutingSnapshotMember {
 /// Closed Account Registry quota observation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AccountRegistryQuotaObservation {
+	/// A positive observation confirms that the optional five-hour limit does not apply.
+	NotApplicable {
+		/// Exact positive observation time; routing still checks freshness.
+		observed_at_micros: i64,
+	},
 	/// No quota observation exists for the account and window.
 	Missing,
 	/// Current quota use and its observation and reset instants.
@@ -1511,6 +1516,24 @@ fn validate_account_registry_quota_observation(
 ) -> Result<(), AccountRegistryRoutingKernelError> {
 	match &fact.observation {
 		AccountRegistryQuotaObservation::Missing => {},
+		AccountRegistryQuotaObservation::NotApplicable { observed_at_micros } => {
+			if fact.window != QuotaWindowClass::FiveHour {
+				return Err(AccountRegistryRoutingKernelError::QuotaFactWindowDurationMismatch {
+					account_id: fact.account_id.clone(),
+					window: fact.window,
+					expected_duration_minutes: 300,
+					duration_minutes: fact.duration_minutes,
+				});
+			}
+			if *observed_at_micros <= 0 || !account_registry_timestamp_is_valid(*observed_at_micros)
+			{
+				return Err(AccountRegistryRoutingKernelError::InvalidQuotaFactObservedAtMicros {
+					account_id: fact.account_id.clone(),
+					window: fact.window,
+					observed_at_micros: *observed_at_micros,
+				});
+			}
+		},
 		AccountRegistryQuotaObservation::Current {
 			used_percent,
 			observed_at_micros,
@@ -1632,6 +1655,22 @@ fn classify_account_registry_member(
 
 	for fact in facts {
 		match &fact.observation {
+			AccountRegistryQuotaObservation::NotApplicable { observed_at_micros } =>
+				if *observed_at_micros > decided_at_micros {
+					hard_causes.push(RoutingDecisionCause {
+						account_id: member.account_id.clone(),
+						blocker: account_registry_from_future_blocker(fact.window),
+					});
+				} else if decided_at_micros - *observed_at_micros
+					> ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS
+				{
+					unknown_causes.push(RoutingDecisionCause {
+						account_id: member.account_id.clone(),
+						blocker: account_registry_stale_blocker(fact.window),
+					});
+				} else {
+					known_available_windows += 1;
+				},
 			AccountRegistryQuotaObservation::Missing => unknown_causes.push(RoutingDecisionCause {
 				account_id: member.account_id.clone(),
 				blocker: account_registry_missing_blocker(fact.window),
@@ -1750,4 +1789,70 @@ const fn account_registry_member_blocker_rank(blocker: RoutingBlocker) -> Option
 
 const fn account_registry_timestamp_is_valid(timestamp_micros: i64) -> bool {
 	timestamp_micros >= 0 && timestamp_micros <= MAX_ACCOUNT_REGISTRY_TIMESTAMP_MICROS
+}
+
+#[cfg(test)]
+mod optional_quota_tests {
+	use super::{
+		ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS, AccountId, AccountRegistryMemberCapacity,
+		AccountRegistryQuotaFact, AccountRegistryQuotaObservation, AccountRegistryRoutingMember,
+		QuotaWindowClass, classify_account_registry_member,
+		validate_account_registry_quota_observation,
+	};
+
+	#[test]
+	fn optional_quota_routing_preserves_absence_freshness_without_fabricated_capacity() {
+		let id = AccountId::new("10000000-0000-4000-8000-000000000001").expect("account");
+		let now = ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS + 10;
+		let member = AccountRegistryRoutingMember {
+			account_id: id.clone(),
+			position: 0,
+			account_revision: 1,
+			blockers: vec![],
+		};
+		let mut five = AccountRegistryQuotaFact {
+			account_id: id.clone(),
+			window: QuotaWindowClass::FiveHour,
+			duration_minutes: 300,
+			observation: AccountRegistryQuotaObservation::NotApplicable { observed_at_micros: now },
+		};
+		let mut weekly = AccountRegistryQuotaFact {
+			account_id: id,
+			window: QuotaWindowClass::SevenDay,
+			duration_minutes: 10080,
+			observation: AccountRegistryQuotaObservation::Current {
+				used_percent: 8,
+				observed_at_micros: now,
+				resets_at_micros: now + 60_000_000,
+			},
+		};
+		assert!(validate_account_registry_quota_observation(&five).is_ok());
+		assert!(matches!(
+			classify_account_registry_member(&member, &[&five, &weekly], now),
+			AccountRegistryMemberCapacity::KnownAvailable
+		));
+		five.observation = AccountRegistryQuotaObservation::NotApplicable { observed_at_micros: 1 };
+		assert!(matches!(
+			classify_account_registry_member(&member, &[&five, &weekly], now),
+			AccountRegistryMemberCapacity::Unknown { .. }
+		));
+		five.observation =
+			AccountRegistryQuotaObservation::NotApplicable { observed_at_micros: now + 1 };
+		assert!(
+			matches!(classify_account_registry_member(&member,&[&five,&weekly],now),AccountRegistryMemberCapacity::Blocked { exclusions,.. } if exclusions.is_empty())
+		);
+		five.observation =
+			AccountRegistryQuotaObservation::NotApplicable { observed_at_micros: now };
+		weekly.observation = AccountRegistryQuotaObservation::Current {
+			used_percent: 100,
+			observed_at_micros: now,
+			resets_at_micros: now + 60_000_000,
+		};
+		assert!(
+			matches!(classify_account_registry_member(&member,&[&five,&weekly],now),AccountRegistryMemberCapacity::Blocked { exclusions,.. } if exclusions.len()==1)
+		);
+		weekly.observation =
+			AccountRegistryQuotaObservation::NotApplicable { observed_at_micros: now };
+		assert!(validate_account_registry_quota_observation(&weekly).is_err());
+	}
 }

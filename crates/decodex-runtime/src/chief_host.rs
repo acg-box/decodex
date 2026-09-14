@@ -1,0 +1,582 @@
+//! Single service-owned Chief actor. The existing Conversation runtime owns its account process.
+
+use std::{
+	sync::Arc,
+	time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
+use decodex_codex::app_server_client::{ClientError, ServerEvent};
+use decodex_core::AccountId;
+use decodex_database::{EnqueueChiefEvent, SqliteStore};
+use decodex_protocol::{ChiefActionDto, ChiefSandboxDto, ChiefStartDto};
+use serde_json::json;
+use tokio::sync::{Mutex, mpsc, oneshot, watch};
+
+use crate::{
+	ChiefConfig, ChiefCoordinator,
+	conversation::{ConversationRuntime, StartChiefProcess},
+};
+
+#[derive(Debug)]
+pub(crate) enum ChiefHostError {
+	Rejected(&'static str),
+	Unknown(&'static str),
+}
+impl From<&'static str> for ChiefHostError {
+	fn from(message: &'static str) -> Self {
+		Self::Rejected(message)
+	}
+}
+impl std::fmt::Display for ChiefHostError {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Rejected(message) | Self::Unknown(message) => formatter.write_str(message),
+		}
+	}
+}
+type Reply = oneshot::Sender<Result<String, ChiefHostError>>;
+const COMMAND_DEADLINE: Duration = Duration::from_secs(60);
+struct Request {
+	key: String,
+	action: ChiefActionDto,
+	reply: Reply,
+}
+
+#[derive(Clone)]
+pub(crate) struct ChiefHost {
+	store: SqliteStore,
+	runtime: ConversationRuntime,
+	sender: mpsc::Sender<Request>,
+	receiver: Arc<Mutex<Option<mpsc::Receiver<Request>>>>,
+}
+
+impl ChiefHost {
+	pub(crate) fn new(store: SqliteStore, runtime: ConversationRuntime) -> Self {
+		let (sender, receiver) = mpsc::channel(32);
+		Self { store, runtime, sender, receiver: Arc::new(Mutex::new(Some(receiver))) }
+	}
+
+	pub(crate) async fn submit(
+		&self,
+		key: String,
+		action: ChiefActionDto,
+	) -> Result<String, ChiefHostError> {
+		let (reply, result) = oneshot::channel();
+		tokio::time::timeout(COMMAND_DEADLINE, self.sender.send(Request { key, action, reply }))
+			.await
+			.map_err(|_| ChiefHostError::Rejected("Chief command queue is full"))?
+			.map_err(|_| ChiefHostError::Rejected("Chief service is stopped"))?;
+		await_acceptance(result, COMMAND_DEADLINE).await
+	}
+
+	pub(crate) async fn serve(self, mut stop: watch::Receiver<bool>) {
+		let Some(mut requests) = self.receiver.lock().await.take() else {
+			return;
+		};
+		let mut active = None;
+		// The stop receiver must remain polled while attach, recovery, and RPCs await.
+		let drive = async {
+			active = self.restore().await;
+			let mut tick = tokio::time::interval(Duration::from_secs(15));
+			tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+			loop {
+				tokio::select! {
+					request = requests.recv() => {
+						let Some(request) = request else {break;};
+						let outcome = self.handle(request.key,request.action,&mut active).await;
+						let _ = request.reply.send(outcome);
+						if let Some((root,chief,_)) = active.as_mut()
+							&& chief.wake_pending().await.is_err() {
+							self.record_error(root,"wake_failed").await;
+						}
+					},
+					event = receive(&mut active) => {
+						if let Some((root,chief,_)) = active.as_mut() {
+							let closed = event.is_none() || matches!(&event,Some(ServerEvent::Closed(_)));
+							if let Some(event) = event
+								&& chief.handle_event(event).await.is_err() {
+								self.record_error(root,"event_processing_failed").await;
+							}
+							if closed {
+								let root = root.clone();
+								let _ = self.runtime.close_chief_connection(&root).await;
+								active = None;
+							}
+						}
+					},
+					_ = tick.tick() => {
+						if let Some((root,chief,_)) = active.as_mut()
+							&& chief.check_due_followups(now()).await.is_err() {
+							self.record_error(root,"followup_processing_failed").await;
+						}
+					},
+				}
+			}
+		};
+		tokio::select! {
+			biased;
+			_ = stopped(&mut stop) => {},
+			_ = drive => {},
+		}
+		requests.close();
+		while let Ok(request) = requests.try_recv() {
+			let _ = request.reply.send(Err(ChiefHostError::Rejected("Chief service is stopped")));
+		}
+		// Attach can be cancelled before `active` is assigned. Close the persisted
+		// root as well so its admitted process cannot escape the actor lifecycle.
+		let root = match active {
+			Some((root, _, _)) => Some(root),
+			None => self.store.list_chief_work_items().await.ok().and_then(|items| {
+				items.into_iter().find(|item| item.parent_goal_id.is_none()).map(|item| item.id)
+			}),
+		};
+		if let Some(root) = root {
+			let _ = self.runtime.close_chief_connection(&root).await;
+		}
+	}
+
+	async fn handle(
+		&self,
+		key: String,
+		action: ChiefActionDto,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		match action {
+			ChiefActionDto::Respond { work_id, event_id, response_json } => {
+				let event = self
+					.store
+					.get_chief_inbox_event(event_id)
+					.await
+					.map_err(|_| "pending request is unavailable; refresh state")?;
+				if event.work_item_id != work_id.as_str()
+					|| event.disposition.is_some()
+					|| !["permission_pending", "user_input_pending", "server_request_pending"]
+						.contains(&event.event_kind.as_str())
+				{
+					return Err("request identity or state changed; refresh state".into());
+				}
+				let response: serde_json::Value = serde_json::from_str(response_json.as_str())
+					.map_err(|_| "response must be valid JSON")?;
+				if !response.is_object() {
+					return Err("response must be a JSON object".into());
+				}
+				let (_, chief, _) = active
+					.as_mut()
+					.ok_or("Chief is not connected; stale requests cannot be replayed")?;
+				chief.respond_pending_event(event_id, response).await.map_err(|_| {
+					ChiefHostError::Unknown(
+						"request response could not be confirmed; refresh state before retrying",
+					)
+				})?;
+				Ok(work_id.as_str().into())
+			},
+			ChiefActionDto::Start(draft) => {
+				let root = draft.root_id.as_str().to_owned();
+				let account_id = draft
+					.account_id
+					.as_ref()
+					.map(|id| AccountId::new(id.as_str()))
+					.transpose()
+					.map_err(|_| "invalid account identity")?;
+				if active.as_ref().is_some_and(|(current, _, _)| current != &root) {
+					return Err("another Chief is active".into());
+				}
+				let config = config(&draft);
+				ChiefCoordinator::reserve_root(&self.store, &root, draft.prompt.as_str())
+					.await
+					.map_err(|_| "Chief root could not be reserved")?;
+				let mut settings =
+					serde_json::to_value(&config).map_err(|_| "invalid Chief configuration")?;
+				if let Some(account) = &draft.account_id {
+					settings["account_id"] = json!(account.as_str());
+				}
+				let encoded =
+					serde_json::to_string(&settings).map_err(|_| "invalid Chief configuration")?;
+				self.store
+					.bind_chief_root_settings(&root, &encoded)
+					.await
+					.map_err(|_| "Chief configuration differs from its saved execution context")?;
+				// Persist the user input before any external process or thread effect.
+				persist_input(&self.store, &root, &key, draft.prompt.as_str()).await?;
+				if active.is_none() {
+					match self.connect(&root, key.clone(), config, account_id).await {
+						Ok(connection) => *active = Some(connection),
+						Err(_) => {
+							self.record_error(&root, "reconnection_needs_attention").await;
+						},
+					}
+				}
+				Ok(root)
+			},
+			ChiefActionDto::Send { root_id, text } => {
+				let root = self
+					.store
+					.get_chief_work_item(root_id.as_str().into())
+					.await
+					.map_err(|_| "Chief root is unavailable")?;
+				if root.parent_goal_id.is_some()
+					|| root.kind != decodex_database::ChiefWorkKind::Goal
+					|| active.as_ref().is_some_and(|(current, _, _)| current != &root.id)
+				{
+					return Err("Chief identity differs".into());
+				}
+				persist_input(&self.store, &root.id, &key, text.as_str()).await?;
+				if active.is_none() {
+					*active = self.restore().await;
+				}
+				Ok(root.id)
+			},
+			ChiefActionDto::Interrupt { work_id, turn_id } => {
+				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
+				chief.interrupt_work(work_id.as_str(), turn_id.as_str()).await.map_err(|_| {
+					ChiefHostError::Unknown(
+						"exact work turn interrupt could not be confirmed; refresh state",
+					)
+				})?;
+				Ok(work_id.as_str().into())
+			},
+			ChiefActionDto::AutomationResult { work_id, source_event_id, payload } => {
+				self.store
+					.enqueue_chief_event(EnqueueChiefEvent {
+						source_event_id: json!(["automation", source_event_id.as_str()])
+							.to_string(),
+						work_item_id: work_id.as_str().into(),
+						event_kind: "automation_result".into(),
+						payload: payload.as_str().into(),
+					})
+					.await
+					.map_err(|_| "automation result could not be accepted")?;
+				if active.is_none() {
+					*active = self.restore().await;
+				}
+				Ok(work_id.as_str().into())
+			},
+		}
+	}
+
+	async fn record_error(&self, root: &str, kind: &str) {
+		let _ = self
+			.store
+			.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id: json!(["chief_host", root, kind]).to_string(),
+				work_item_id: root.into(),
+				event_kind: kind.into(),
+				payload: json!({"recovery":"inspect persisted work before retrying"}).to_string(),
+			})
+			.await;
+	}
+
+	async fn connect(
+		&self,
+		root: &str,
+		operation_key: String,
+		config: ChiefConfig,
+		account_id: Option<AccountId>,
+	) -> Result<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>), &'static str> {
+		let connection = match self
+			.runtime
+			.open_chief_connection(StartChiefProcess {
+				operation_key,
+				root_id: root.into(),
+				working_directory: config.cwd.clone(),
+				account_id,
+			})
+			.await
+		{
+			Ok(connection) => connection,
+			Err(error) => {
+				// ChiefLaunchError contains only typed, credential-negative readiness facts.
+				let _ = self
+					.store
+					.enqueue_chief_event(EnqueueChiefEvent {
+						source_event_id: json!([
+							"chief_host",
+							root,
+							"reconnection_needs_attention"
+						])
+						.to_string(),
+						work_item_id: root.into(),
+						event_kind: "reconnection_needs_attention".into(),
+						payload: json!({"recovery":error.to_string()}).to_string(),
+					})
+					.await;
+				return Err(
+					"Chief account process is unavailable; inspect account and process readiness",
+				);
+			},
+		};
+		let binding = match self.store.read_chief_process_binding(root).await {
+			Ok(binding) => binding,
+			Err(_) => {
+				let _ = self.runtime.close_chief_connection(root).await;
+				return Err("Chief process binding is unavailable");
+			},
+		};
+		if !binding.is_some_and(|binding| {
+			binding.account_id == connection.account_id
+				&& binding.generation_id == connection.process_generation_id
+		}) {
+			let _ = self.runtime.close_chief_connection(root).await;
+			return Err("Chief process binding did not match the admitted account");
+		}
+		let coordinator = match ChiefCoordinator::new(self.store.clone(), connection.client, config)
+		{
+			Ok(coordinator) => coordinator,
+			Err(_) => {
+				let _ = self.runtime.close_chief_connection(root).await;
+				return Err("invalid Chief configuration");
+			},
+		};
+		Ok((root.into(), coordinator, connection.events))
+	}
+
+	async fn restore(&self) -> Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)> {
+		let root = self
+			.store
+			.list_chief_work_items()
+			.await
+			.ok()?
+			.into_iter()
+			.find(|work| work.parent_goal_id.is_none())?;
+		let settings = match self.store.read_chief_root_settings(&root.id).await {
+			Ok(Some(encoded)) => decode_settings(&encoded),
+			_ => None,
+		};
+		let Some((config, account)) = settings else {
+			self.record_error(&root.id, "configuration_needs_attention").await;
+			return None;
+		};
+		match self.connect(&root.id, format!("restore-{}", now()), config, account).await {
+			Ok(mut active) => {
+				if active.1.recover_persisted().await.is_err() {
+					self.record_error(&root.id, "recovery_needs_attention").await;
+				}
+				if active.1.wake_pending().await.is_err() {
+					self.record_error(&root.id, "wake_failed").await;
+				}
+				Some(active)
+			},
+			Err(_) => {
+				self.record_error(&root.id, "reconnection_needs_attention").await;
+				None
+			},
+		}
+	}
+}
+
+fn decode_settings(encoded: &str) -> Option<(ChiefConfig, Option<AccountId>)> {
+	let settings: serde_json::Value = serde_json::from_str(encoded).ok()?;
+	let config = serde_json::from_value::<ChiefConfig>(settings.clone()).ok()?;
+	let account = match settings.get("account_id") {
+		None => None,
+		Some(value) => Some(AccountId::new(value.as_str()?).ok()?),
+	};
+	Some((config, account))
+}
+
+async fn await_acceptance(
+	result: oneshot::Receiver<Result<String, ChiefHostError>>,
+	deadline: Duration,
+) -> Result<String, ChiefHostError> {
+	tokio::time::timeout(deadline, result)
+		.await
+		.map_err(|_| {
+			ChiefHostError::Unknown(
+				"Chief command acceptance is unknown; inspect persisted work before retrying",
+			)
+		})?
+		.map_err(|_| ChiefHostError::Unknown("Chief command acceptance is unknown"))?
+}
+
+async fn stopped(stop: &mut watch::Receiver<bool>) {
+	loop {
+		if *stop.borrow_and_update() {
+			return;
+		}
+		if stop.changed().await.is_err() {
+			return;
+		}
+	}
+}
+
+async fn persist_input(
+	store: &SqliteStore,
+	root: &str,
+	key: &str,
+	text: &str,
+) -> Result<(), &'static str> {
+	store
+		.enqueue_chief_event(EnqueueChiefEvent {
+			source_event_id: json!(["user_message", root, key]).to_string(),
+			work_item_id: root.into(),
+			event_kind: "user_message".into(),
+			payload: json!({"text":text,"source":"user"}).to_string(),
+		})
+		.await
+		.map_err(|_| "Chief input could not be accepted")?;
+	Ok(())
+}
+
+async fn receive(
+	active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+) -> Option<ServerEvent> {
+	match active {
+		Some((_, _, events)) =>
+			Some(events.recv().await.unwrap_or(ServerEvent::Closed(ClientError::Closed))),
+		None => std::future::pending().await,
+	}
+}
+
+fn config(draft: &ChiefStartDto) -> ChiefConfig {
+	let mut config = ChiefConfig::new(
+		draft.model.as_str().into(),
+		draft.effort.as_str().into(),
+		draft.cwd.as_str().into(),
+	);
+	config.sandbox = match draft.sandbox {
+		ChiefSandboxDto::ReadOnly => "read-only",
+		ChiefSandboxDto::WorkspaceWrite => "workspace-write",
+		ChiefSandboxDto::FullAccess => "danger-full-access",
+	}
+	.into();
+	if draft.sandbox == ChiefSandboxDto::FullAccess {
+		config.approval_policy = json!("never");
+	}
+	config
+}
+
+fn now() -> i64 {
+	SystemTime::now()
+		.duration_since(UNIX_EPOCH)
+		.map(|t| t.as_micros().min(i64::MAX as u128) as i64)
+		.unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use decodex_core::DecodexRoot;
+
+	#[tokio::test]
+	async fn requested_account_survives_restart_before_any_process_binding() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		ChiefCoordinator::reserve_root(&store, "chief", "Coordinate").await.unwrap();
+		let config = ChiefConfig::new("gpt-6-astra".into(), "medium".into(), "/tmp".into());
+		let mut settings = serde_json::to_value(&config).unwrap();
+		settings["account_id"] = json!("00000000-0000-4000-8000-000000000001");
+		store.bind_chief_root_settings("chief", &settings.to_string()).await.unwrap();
+		drop(store);
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let (_, account) =
+			decode_settings(&store.read_chief_root_settings("chief").await.unwrap().unwrap())
+				.unwrap();
+		assert_eq!(account.unwrap().as_str(), "00000000-0000-4000-8000-000000000001");
+		assert!(store.read_chief_process_binding("chief").await.unwrap().is_none());
+		assert!(decode_settings(&serde_json::to_string(&config).unwrap()).unwrap().1.is_none());
+		settings["account_id"] = json!("invalid");
+		assert!(decode_settings(&settings.to_string()).is_none());
+	}
+
+	#[tokio::test]
+	async fn lost_or_delayed_acceptance_is_never_a_definite_rejection() {
+		let (sender, receiver) = oneshot::channel();
+		drop(sender);
+		assert!(matches!(
+			await_acceptance(receiver, Duration::from_secs(1)).await,
+			Err(ChiefHostError::Unknown(_))
+		));
+		let (_sender, receiver) = oneshot::channel();
+		assert!(matches!(
+			await_acceptance(receiver, Duration::from_millis(10)).await,
+			Err(ChiefHostError::Unknown(_))
+		));
+		let (sender, receiver) = oneshot::channel();
+		sender.send(Err(ChiefHostError::Rejected("invalid identity"))).unwrap();
+		assert!(matches!(
+			await_acceptance(receiver, Duration::from_secs(1)).await,
+			Err(ChiefHostError::Rejected("invalid identity"))
+		));
+	}
+
+	#[tokio::test]
+	async fn event_stream_eof_preserves_uncertain_dispatch() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		ChiefCoordinator::reserve_root(&store, "chief", "Coordinate").await.unwrap();
+		store.bind_chief_thread("chief".into(), "opaque-thread".into()).await.unwrap();
+		store.begin_chief_dispatch("chief".into()).await.unwrap();
+		let (io, _server) = tokio::io::duplex(4096);
+		let (reader, writer) = tokio::io::split(io);
+		let (client, _) =
+			decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
+		let coordinator = ChiefCoordinator::new(
+			store.clone(),
+			client,
+			ChiefConfig::new("gpt-6-astra".into(), "medium".into(), "/tmp".into()),
+		)
+		.unwrap();
+		let (sender, events) = mpsc::channel(1);
+		drop(sender);
+		let mut active = Some(("chief".into(), coordinator, events));
+		let event = receive(&mut active).await.unwrap();
+		assert!(matches!(event, ServerEvent::Closed(ClientError::Closed)));
+		assert!(active.as_mut().unwrap().1.handle_event(event).await.is_err());
+		assert_eq!(
+			store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state,
+			decodex_database::ChiefDispatchState::Unknown
+		);
+	}
+
+	#[tokio::test]
+	async fn accepted_input_survives_restart_before_process_attach() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		ChiefCoordinator::reserve_root(&store, "personal-chief", "Original input").await.unwrap();
+		let config = ChiefConfig::new("gpt-6-astra".into(), "medium".into(), "/tmp".into());
+		store
+			.bind_chief_root_settings("personal-chief", &serde_json::to_string(&config).unwrap())
+			.await
+			.unwrap();
+		persist_input(&store, "personal-chief", "start-command", "Original input").await.unwrap();
+		drop(store);
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		// A retried command cannot duplicate the crash-surviving input.
+		persist_input(&store, "personal-chief", "start-command", "Original input").await.unwrap();
+		let events = store.list_undelivered_chief_events(20).await.unwrap();
+		assert_eq!(events.len(), 1);
+		assert_eq!(events[0].event_kind, "user_message");
+		assert_eq!(
+			serde_json::from_str::<serde_json::Value>(&events[0].payload).unwrap()["text"],
+			"Original input"
+		);
+		assert!(store.read_chief_process_binding("personal-chief").await.unwrap().is_none());
+	}
+
+	#[tokio::test]
+	async fn stop_cancels_pending_actor_operation() {
+		let (sender, mut receiver) = watch::channel(false);
+		let actor = tokio::spawn(async move {
+			tokio::select! {
+				_ = stopped(&mut receiver) => {},
+				_ = std::future::pending::<()>() => panic!("pending operation completed"),
+			}
+		});
+		sender.send(true).unwrap();
+		tokio::time::timeout(Duration::from_secs(1), actor).await.unwrap().unwrap();
+	}
+
+	#[tokio::test]
+	async fn stop_ignores_false_updates_and_accepts_owner_drop() {
+		let (sender, mut receiver) = watch::channel(false);
+		sender.send(false).unwrap();
+		assert!(
+			tokio::time::timeout(Duration::from_millis(10), stopped(&mut receiver)).await.is_err()
+		);
+		drop(sender);
+		tokio::time::timeout(Duration::from_secs(1), stopped(&mut receiver)).await.unwrap();
+	}
+}

@@ -14,21 +14,17 @@ use decodex_core::{
 	AccountOperationPhase, AccountQuotaDisposition, AccountQuotaObservationError,
 	AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl, AccountSelectionMode,
 	AccountSelectionRecovery, AccountState, Availability, BlobStore, ConversationId,
-	HistoryItemKind, ItemStatus, ObjectiveId, PossibleSideEffects, ProductState, ProgramClaimId,
-	ProgramEvidenceId, ProgramId, ProgramObservationId, ProgramProposalId, ProgramReviewId,
+	HistoryItemKind, ItemStatus, PossibleSideEffects, ProductState, ProgramId,
 	ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp, RuntimeSessionState, TurnId,
-	TurnRole, WorkItemId,
+	TurnRole,
 };
 use decodex_database::{
 	AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
-	AccountCommandReceiptLease, AccountLifecycleRejection,
-	BindProgramDomainPack as StoreBindProgramDomainPack, CommandIdentity,
-	ContinueProgram as StoreContinueProgram, CreateProgramCycle as StoreCreateProgramCycle,
-	DatabaseError, DesktopSettings as StoreDesktopSettings, DomainPackIdentity, HistoryCursor,
-	HistoryEntry, OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,
+	AccountCommandReceiptLease, AccountLifecycleRejection, CommandIdentity, DatabaseError,
+	DesktopSettings as StoreDesktopSettings, HistoryCursor, HistoryEntry,
+	OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,
 	OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ProgramCycleRecord,
-	ProgramEvidenceInput, ProgramSummaryRecord, RecordProgramReview, RoutingControlOutcome,
-	SqliteStore, StoreError,
+	ProgramSummaryRecord, RoutingControlOutcome, SqliteStore, StoreError,
 };
 use decodex_protocol::{
 	AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,
@@ -50,10 +46,9 @@ use decodex_protocol::{
 	EventPayload, HistoryArtifactId, HistoryArtifactReference, HistoryArtifactRevision,
 	HistoryBlobLength, HistoryBlobReference, HistoryCursorToken, HistoryItemDto,
 	HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryQueryError,
-	HistorySideEffectState, HistoryText, HistoryTurnRole, MAX_HISTORY_PAGE_SIZE,
-	ProgramContinuationDraftDto, ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult,
-	ProgramEdgeDto, ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto, ProgramNodeKind,
-	ProgramRelationKind, ProgramReviewDraftDto, ProgramSummaryDto, ProviderThreadId, QueryEnvelope,
+	HistorySideEffectState, HistoryText, HistoryTurnRole, MAX_HISTORY_PAGE_SIZE, ProgramCycleDto,
+	ProgramCycleResult, ProgramEdgeDto, ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto,
+	ProgramNodeKind, ProgramRelationKind, ProgramSummaryDto, ProviderThreadId, QueryEnvelope,
 	QueryPayload, QueryResultPayload, ResetCardDescriptorDto, ResetCardError,
 	ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult, ResetCardOutcome,
 	ResultPayload, Sha256Digest, SnapshotItem, WireText,
@@ -84,7 +79,7 @@ use crate::{
 		ConversationProjection, ConversationReadback, ConversationRuntime,
 		ConversationTerminalState, CreateConversation, RecoverConversation, SubmitConversationTurn,
 	},
-	domain_packs::{self, CONVERSATION_CAPABILITY, DomainPackError},
+	domain_packs,
 	managed_repository_runtime::ManagedRepositoryCapability,
 	routing_orchestration::{ExecutionCoordinator, RoutingSuccessorExecutionCommand},
 };
@@ -282,6 +277,7 @@ impl ProductState for ProductStore {
 
 /// Runtime-owned application service retaining the selected adapter and doctor report.
 pub(crate) struct ServiceApplication {
+	chief: Option<crate::chief_host::ChiefHost>,
 	store: ProductStore,
 	_managed_repositories: ManagedRepositoryCapability,
 	process_generations: Option<ProcessGenerationControl>,
@@ -309,7 +305,13 @@ impl ServiceApplication {
 		doctor: DoctorReport,
 	) -> Self {
 		let (publication_stop, _) = watch::channel(false);
+		let chief = match (&store, conversations.runtime()) {
+			(ProductStore::Available(store), Some(runtime)) =>
+				Some(crate::chief_host::ChiefHost::new(store.clone(), runtime.clone())),
+			_ => None,
+		};
 		Self {
+			chief,
 			store,
 			_managed_repositories: managed_repositories,
 			process_generations,
@@ -1029,73 +1031,6 @@ impl ServiceApplication {
 		}
 	}
 
-	async fn execute_program_command(
-		&self,
-		command: &CommandEnvelope,
-	) -> Result<ApplicationPublication, CommandError> {
-		let ProductStore::Available(store) = &self.store else {
-			return Err(application_unavailable("Program storage is unavailable"));
-		};
-		let request = serde_json::to_vec(&command.payload)
-			.map_err(|_| application_unavailable("Program command is invalid"))?;
-		let identity = CommandIdentity::new(command.idempotency_key.as_str(), &request)
-			.map_err(program_command_error)?;
-		let record = match &command.payload {
-			CommandPayload::CreateProgramCycle { draft } => {
-				let domain_pack = domain_packs::resolve_identity(draft.domain_pack_id.as_str())
-					.map_err(domain_pack_command_error)?;
-				store
-					.create_program_cycle(&identity, &store_program_create(draft, domain_pack)?)
-					.await
-					.map_err(program_command_error)?
-			},
-			CommandPayload::BindProgramDomainPack { program_id, domain_pack_id } => {
-				let expected_revision = command
-					.expected_revision
-					.ok_or_else(|| application_unavailable("Program revision is required"))?;
-				let binding = StoreBindProgramDomainPack {
-					program_id: ProgramId::new(program_id.as_str())
-						.map_err(|_| application_unavailable("Program identity is invalid"))?,
-					expected_revision: expected_revision.0,
-					domain_pack: domain_packs::resolve_identity(domain_pack_id.as_str())
-						.map_err(domain_pack_command_error)?,
-				};
-				store
-					.bind_program_domain_pack(&identity, &binding)
-					.await
-					.map_err(program_command_error)?
-			},
-			CommandPayload::ContinueProgram { continuation } => {
-				let expected_revision = command
-					.expected_revision
-					.ok_or_else(|| application_unavailable("Program revision is required"))?;
-				let continuation = store_program_continuation(continuation, expected_revision)?;
-				store
-					.continue_program(&identity, &continuation)
-					.await
-					.map_err(program_command_error)?
-			},
-			CommandPayload::RecordProgramReview { review } => store
-				.record_program_review(&identity, &store_program_review(review)?)
-				.await
-				.map_err(program_command_error)?,
-			_ => return Err(application_unavailable("Program command is invalid")),
-		};
-		let cycle = self
-			.program_cycle_dto(record)
-			.await
-			.map_err(|_| application_unavailable("Program projection is unavailable"))?;
-		let entity_id = cycle.program.program_id.clone();
-		let entity_revision = cycle.program.revision;
-		Ok(ApplicationPublication {
-			channel: Channel::ProjectWork,
-			entity_id,
-			entity_revision,
-			result: ResultPayload::ProgramCycleChanged { cycle: Box::new(cycle.clone()) },
-			event: EventPayload::ProgramCycleChanged { cycle: Box::new(cycle) },
-		})
-	}
-
 	async fn conversation_row(
 		&self,
 		conversation_id: &ConversationId,
@@ -1314,7 +1249,6 @@ impl ServiceApplication {
 	) -> Result<ConversationOutcome, CommandError> {
 		let CommandPayload::CreateConversation {
 			conversation_id,
-			work_item_id,
 			message,
 			working_directory,
 			execution,
@@ -1327,18 +1261,12 @@ impl ServiceApplication {
 		}
 		let conversation_id =
 			ConversationId::new(conversation_id.as_str()).map_err(|_| conversation_conflict())?;
-		let work_item_id = work_item_id
-			.as_ref()
-			.map(|work_item_id| WorkItemId::new(work_item_id.as_str()))
-			.transpose()
-			.map_err(|_| conversation_conflict())?;
 		Ok(runtime
 			.create(CreateConversation {
 				operation_key: command.idempotency_key.as_str().to_owned(),
 				correlation_id: command.correlation_id.as_str().to_owned(),
 				causation_id: command.causation_id.as_ref().map(|id| id.as_str().to_owned()),
 				conversation_id,
-				work_item_id,
 				message: message.as_str().to_owned(),
 				working_directory: working_directory.as_str().to_owned(),
 				execution: runtime_execution_settings(execution),
@@ -1642,14 +1570,6 @@ impl ServiceApplication {
 		if matches!(&command.payload, CommandPayload::CreateConversationRoutingSuccessor { .. }) {
 			return self.execute_conversation_routing_successor(command).await;
 		}
-		if let CommandPayload::CreateConversation { work_item_id: Some(work_item_id), .. } =
-			&command.payload
-		{
-			let work_item_id =
-				WorkItemId::new(work_item_id.as_str()).map_err(|_| conversation_conflict())?;
-			authorize_program_capability(&self.store, &work_item_id, CONVERSATION_CAPABILITY)
-				.await?;
-		}
 		let runtime = match &self.conversations {
 			ConversationCapability::Ready(runtime) => runtime,
 			ConversationCapability::Unavailable(reason) => {
@@ -1684,23 +1604,6 @@ impl ServiceApplication {
 		};
 		conversation_command_publication(conversation, interrupt)
 	}
-}
-
-async fn authorize_program_capability(
-	store: &ProductStore,
-	work_item_id: &WorkItemId,
-	capability: &str,
-) -> Result<(), CommandError> {
-	let ProductStore::Available(store) = store else {
-		return Err(application_unavailable("Program storage is unavailable"));
-	};
-	let owner = store
-		.program_domain_pack_for_work_item(work_item_id)
-		.await
-		.map_err(|_| application_unavailable("Program Domain Pack is unavailable"))?
-		.ok_or_else(|| application_unavailable("Program WorkItem is unavailable"))?;
-	domain_packs::authorize(owner.domain_pack.as_ref(), capability)
-		.map_err(domain_pack_command_error)
 }
 
 impl Application for ServiceApplication {
@@ -1738,6 +1641,9 @@ impl Application for ServiceApplication {
 		stop: watch::Receiver<bool>,
 	) -> Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
 		let mut tasks: Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> = Vec::new();
+		if let Some(chief) = &self.chief {
+			tasks.push(Box::pin(chief.clone().serve(stop.clone())));
+		}
 		if let Some(control) = &self.process_generations {
 			tasks.push(Box::pin(control.reconciliation_task(stop.clone())));
 		}
@@ -1778,12 +1684,32 @@ impl Application for ServiceApplication {
 		command: &'a CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
 		match &command.payload {
+			CommandPayload::Chief { action } => {
+				let chief = self
+					.chief
+					.as_ref()
+					.ok_or_else(|| application_unavailable("Chief service is unavailable"))?;
+				let id = chief
+					.submit(command.idempotency_key.as_str().into(), *action.clone())
+					.await
+					.map_err(|error| match error {
+						crate::chief_host::ChiefHostError::Rejected(reason) =>
+							application_unavailable(reason),
+						crate::chief_host::ChiefHostError::Unknown(_) =>
+							CommandError::AcceptanceUnknown,
+					})?;
+				let work_id = EntityId::new(id)
+					.map_err(|_| application_unavailable("invalid Chief identity"))?;
+				Ok(ApplicationPublication {
+					channel: Channel::ProjectWork,
+					entity_id: work_id.clone(),
+					entity_revision: EntityRevision(0),
+					result: ResultPayload::ChiefAccepted { work_id: work_id.clone() },
+					event: EventPayload::ChiefChanged { work_id },
+				})
+			},
 			CommandPayload::SetDesktopSettings { .. } =>
 				self.execute_desktop_settings(command).await,
-			CommandPayload::CreateProgramCycle { .. }
-			| CommandPayload::BindProgramDomainPack { .. }
-			| CommandPayload::ContinueProgram { .. }
-			| CommandPayload::RecordProgramReview { .. } => self.execute_program_command(command).await,
 			CommandPayload::CreateConversation { .. }
 			| CommandPayload::ResumeConversationRouting { .. }
 			| CommandPayload::CreateConversationRoutingSuccessor { .. }
@@ -1870,6 +1796,13 @@ impl Application for ServiceApplication {
 
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
+			QueryPayload::GetChiefRequest { event_id } =>
+				QueryResultPayload::ChiefRequest(query_chief_request(&self.store, *event_id).await),
+			QueryPayload::GetChiefHistory { work_id } => QueryResultPayload::ChiefHistory(
+				query_chief_history(&self.store, work_id.as_str()).await,
+			),
+			QueryPayload::GetChiefSnapshot =>
+				QueryResultPayload::ChiefSnapshot(query_chief_snapshot(&self.store).await),
 			QueryPayload::GetDesktopSettings =>
 				QueryResultPayload::DesktopSettings(self.desktop_settings().await),
 			QueryPayload::ListPrograms => QueryResultPayload::Programs(self.program_list().await),
@@ -2240,124 +2173,6 @@ fn runtime_execution_settings(
 	}
 }
 
-fn store_program_create(
-	draft: &ProgramCycleDraftDto,
-	domain_pack: DomainPackIdentity,
-) -> Result<StoreCreateProgramCycle, CommandError> {
-	Ok(StoreCreateProgramCycle {
-		program_id: ProgramId::new(draft.program_id.as_str())
-			.map_err(|_| application_unavailable("Program identity is invalid"))?,
-		domain_pack: Some(domain_pack),
-		signal_id: ProgramObservationId::new(draft.signal_id.as_str())
-			.map_err(|_| application_unavailable("Signal identity is invalid"))?,
-		claim_id: ProgramClaimId::new(draft.claim_id.as_str())
-			.map_err(|_| application_unavailable("Claim identity is invalid"))?,
-		proposal_id: ProgramProposalId::new(draft.proposal_id.as_str())
-			.map_err(|_| application_unavailable("Proposal identity is invalid"))?,
-		objective_id: ObjectiveId::new(draft.objective_id.as_str())
-			.map_err(|_| application_unavailable("Objective identity is invalid"))?,
-		work_item_id: WorkItemId::new(draft.work_item_id.as_str())
-			.map_err(|_| application_unavailable("WorkItem identity is invalid"))?,
-		name: draft.name.as_str().to_owned(),
-		purpose: draft.purpose.as_str().to_owned(),
-		non_goals: draft.non_goals.iter().map(|value| value.as_str().to_owned()).collect(),
-		review_policy: draft.review_policy.as_str().to_owned(),
-		signal_source: draft.signal_source.as_str().to_owned(),
-		signal_summary: draft.signal_summary.as_str().to_owned(),
-		signal_observed_at_micros: draft.signal_observed_at_micros,
-		claim_statement: draft.claim_statement.as_str().to_owned(),
-		proposal_summary: draft.proposal_summary.as_str().to_owned(),
-		proposal_expected_effect: draft.proposal_expected_effect.as_str().to_owned(),
-		proposal_risk: draft.proposal_risk.as_str().to_owned(),
-		proposal_evidence_need: draft.proposal_evidence_need.as_str().to_owned(),
-		objective_outcome: draft.objective_outcome.as_str().to_owned(),
-		acceptance_criteria: draft
-			.acceptance_criteria
-			.iter()
-			.map(|value| value.as_str().to_owned())
-			.collect(),
-		validation_criteria: draft
-			.validation_criteria
-			.iter()
-			.map(|value| value.as_str().to_owned())
-			.collect(),
-		work_item_title: draft.work_item_title.as_str().to_owned(),
-		work_item_instructions: draft.work_item_instructions.as_str().to_owned(),
-		working_directory: draft.working_directory.as_str().to_owned(),
-	})
-}
-
-fn store_program_continuation(
-	continuation: &ProgramContinuationDraftDto,
-	expected_revision: EntityRevision,
-) -> Result<StoreContinueProgram, CommandError> {
-	Ok(StoreContinueProgram {
-		program_id: ProgramId::new(continuation.program_id.as_str())
-			.map_err(|_| application_unavailable("Program identity is invalid"))?,
-		predecessor_review_id: ProgramReviewId::new(continuation.predecessor_review_id.as_str())
-			.map_err(|_| application_unavailable("Review identity is invalid"))?,
-		expected_revision: expected_revision.0,
-		signal_id: ProgramObservationId::new(continuation.signal_id.as_str())
-			.map_err(|_| application_unavailable("Signal identity is invalid"))?,
-		claim_id: ProgramClaimId::new(continuation.claim_id.as_str())
-			.map_err(|_| application_unavailable("Claim identity is invalid"))?,
-		proposal_id: ProgramProposalId::new(continuation.proposal_id.as_str())
-			.map_err(|_| application_unavailable("Proposal identity is invalid"))?,
-		objective_id: ObjectiveId::new(continuation.objective_id.as_str())
-			.map_err(|_| application_unavailable("Objective identity is invalid"))?,
-		work_item_id: WorkItemId::new(continuation.work_item_id.as_str())
-			.map_err(|_| application_unavailable("WorkItem identity is invalid"))?,
-		signal_source: continuation.signal_source.as_str().to_owned(),
-		signal_summary: continuation.signal_summary.as_str().to_owned(),
-		signal_observed_at_micros: continuation.signal_observed_at_micros,
-		claim_statement: continuation.claim_statement.as_str().to_owned(),
-		proposal_summary: continuation.proposal_summary.as_str().to_owned(),
-		proposal_expected_effect: continuation.proposal_expected_effect.as_str().to_owned(),
-		proposal_risk: continuation.proposal_risk.as_str().to_owned(),
-		proposal_evidence_need: continuation.proposal_evidence_need.as_str().to_owned(),
-		objective_outcome: continuation.objective_outcome.as_str().to_owned(),
-		acceptance_criteria: continuation
-			.acceptance_criteria
-			.iter()
-			.map(|value| value.as_str().to_owned())
-			.collect(),
-		validation_criteria: continuation
-			.validation_criteria
-			.iter()
-			.map(|value| value.as_str().to_owned())
-			.collect(),
-		work_item_title: continuation.work_item_title.as_str().to_owned(),
-		work_item_instructions: continuation.work_item_instructions.as_str().to_owned(),
-		working_directory: continuation.working_directory.as_str().to_owned(),
-	})
-}
-
-fn store_program_review(
-	review: &ProgramReviewDraftDto,
-) -> Result<RecordProgramReview, CommandError> {
-	let evidence = |draft: &decodex_protocol::ProgramEvidenceDraftDto| {
-		Ok(ProgramEvidenceInput {
-			evidence_id: ProgramEvidenceId::new(draft.evidence_id.as_str())
-				.map_err(|_| application_unavailable("Evidence identity is invalid"))?,
-			source: draft.source.as_str().to_owned(),
-			summary: draft.summary.as_str().to_owned(),
-			observed_at_micros: draft.observed_at_micros,
-		})
-	};
-	Ok(RecordProgramReview {
-		review_id: ProgramReviewId::new(review.review_id.as_str())
-			.map_err(|_| application_unavailable("Review identity is invalid"))?,
-		program_id: ProgramId::new(review.program_id.as_str())
-			.map_err(|_| application_unavailable("Program identity is invalid"))?,
-		work_item_id: WorkItemId::new(review.work_item_id.as_str())
-			.map_err(|_| application_unavailable("WorkItem identity is invalid"))?,
-		deterministic: evidence(&review.deterministic)?,
-		external: evidence(&review.external)?,
-		classification: review.classification,
-		rationale: review.rationale.as_str().to_owned(),
-	})
-}
-
 fn program_summary_dto(record: ProgramSummaryRecord) -> Result<ProgramSummaryDto, ()> {
 	Ok(ProgramSummaryDto {
 		program_id: entity(record.program_id.as_str())?,
@@ -2389,11 +2204,58 @@ fn program_cycle_dto(
 	let mut nodes = Vec::new();
 	let mut edges = Vec::new();
 
-	for signal in record.signals {
+	append_historical_semantics(
+		record.signals,
+		record.claims,
+		record.proposals,
+		record.objectives,
+		&program.program_id,
+		&mut nodes,
+		&mut edges,
+	)?;
+	append_historical_executions(
+		record.work_items,
+		run_states,
+		provider_threads,
+		&mut nodes,
+		&mut edges,
+	)?;
+	append_historical_evidence(
+		record.evidence,
+		record.reviews,
+		&program.program_id,
+		&mut nodes,
+		&mut edges,
+	)?;
+
+	let positions = node_order
+		.iter()
+		.enumerate()
+		.map(|(index, id)| (id.as_str(), index))
+		.collect::<HashMap<_, _>>();
+	if positions.len() != nodes.len()
+		|| nodes.iter().any(|node| !positions.contains_key(node.id.as_str()))
+	{
+		return Err(());
+	}
+	nodes.sort_by_key(|node| positions[node.id.as_str()]);
+	ProgramCycleDto::new(program, non_goals, review_policy, nodes, edges).map_err(|_| ())
+}
+
+fn append_historical_semantics(
+	signals: Vec<decodex_database::ProgramSignalRecord>,
+	claims: Vec<decodex_database::ProgramClaimRecord>,
+	proposals: Vec<decodex_database::ProgramProposalRecord>,
+	objectives: Vec<decodex_database::ProgramObjectiveRecord>,
+	program_id: &EntityId,
+	nodes: &mut Vec<ProgramNodeDto>,
+	edges: &mut Vec<ProgramEdgeDto>,
+) -> Result<(), ()> {
+	for signal in signals {
 		let signal_id = entity(signal.signal_id.as_str())?;
 		let (from, kind) = match signal.predecessor_review_id {
 			Some(review_id) => (entity(review_id.as_str())?, ProgramRelationKind::Continues),
-			None => (program.program_id.clone(), ProgramRelationKind::Observes),
+			None => (program_id.clone(), ProgramRelationKind::Observes),
 		};
 		edges.push(ProgramEdgeDto { from, to: signal_id.clone(), kind });
 		nodes.push(ProgramNodeDto {
@@ -2408,7 +2270,7 @@ fn program_cycle_dto(
 			fields: Vec::new(),
 		});
 	}
-	for claim in record.claims {
+	for claim in claims {
 		let claim_id = entity(claim.claim_id.as_str())?;
 		edges.push(ProgramEdgeDto {
 			from: entity(claim.signal_id.as_str())?,
@@ -2427,7 +2289,7 @@ fn program_cycle_dto(
 			fields: Vec::new(),
 		});
 	}
-	for proposal in record.proposals {
+	for proposal in proposals {
 		let proposal_id = entity(proposal.proposal_id.as_str())?;
 		edges.push(ProgramEdgeDto {
 			from: entity(proposal.claim_id.as_str())?,
@@ -2450,7 +2312,7 @@ fn program_cycle_dto(
 			],
 		});
 	}
-	for objective in record.objectives {
+	for objective in objectives {
 		let objective_id = entity(objective.objective_id.as_str())?;
 		edges.push(ProgramEdgeDto {
 			from: entity(objective.proposal_id.as_str())?,
@@ -2472,7 +2334,18 @@ fn program_cycle_dto(
 			],
 		});
 	}
-	for work_item in record.work_items {
+
+	Ok(())
+}
+
+fn append_historical_executions(
+	work_items: Vec<decodex_database::ProgramWorkItemRecord>,
+	run_states: &[(ConversationId, &'static str)],
+	provider_threads: &HashMap<ConversationId, ProviderThreadId>,
+	nodes: &mut Vec<ProgramNodeDto>,
+	edges: &mut Vec<ProgramEdgeDto>,
+) -> Result<(), ()> {
+	for work_item in work_items {
 		let work_item_id = entity(work_item.work_item_id.as_str())?;
 		edges.push(ProgramEdgeDto {
 			from: entity(work_item.objective_id.as_str())?,
@@ -2523,7 +2396,18 @@ fn program_cycle_dto(
 			});
 		}
 	}
-	for evidence in record.evidence {
+
+	Ok(())
+}
+
+fn append_historical_evidence(
+	evidence: Vec<decodex_database::ProgramEvidenceRecord>,
+	reviews: Vec<decodex_database::ProgramReviewRecord>,
+	program_id: &EntityId,
+	nodes: &mut Vec<ProgramNodeDto>,
+	edges: &mut Vec<ProgramEdgeDto>,
+) -> Result<(), ()> {
+	for evidence in evidence {
 		let evidence_id = entity(evidence.evidence_id.as_str())?;
 		edges.push(ProgramEdgeDto {
 			from: entity(evidence.work_item_id.as_str())?,
@@ -2546,7 +2430,7 @@ fn program_cycle_dto(
 			fields: Vec::new(),
 		});
 	}
-	for review in record.reviews {
+	for review in reviews {
 		let review_id = entity(review.review_id.as_str())?;
 		for evidence_id in [&review.deterministic_evidence_id, &review.external_evidence_id] {
 			edges.push(ProgramEdgeDto {
@@ -2557,7 +2441,7 @@ fn program_cycle_dto(
 		}
 		edges.push(ProgramEdgeDto {
 			from: review_id.clone(),
-			to: program.program_id.clone(),
+			to: program_id.clone(),
 			kind: ProgramRelationKind::Validates,
 		});
 		nodes.push(ProgramNodeDto {
@@ -2573,18 +2457,7 @@ fn program_cycle_dto(
 		});
 	}
 
-	let positions = node_order
-		.iter()
-		.enumerate()
-		.map(|(index, id)| (id.as_str(), index))
-		.collect::<HashMap<_, _>>();
-	if positions.len() != nodes.len()
-		|| nodes.iter().any(|node| !positions.contains_key(node.id.as_str()))
-	{
-		return Err(());
-	}
-	nodes.sort_by_key(|node| positions[node.id.as_str()]);
-	ProgramCycleDto::new(program, non_goals, review_policy, nodes, edges).map_err(|_| ())
+	Ok(())
 }
 
 fn program_node_order(record: &ProgramCycleRecord) -> Result<Vec<String>, ()> {
@@ -2723,34 +2596,6 @@ const fn conversation_state_text(state: ConversationState) -> &'static str {
 		ConversationState::ManualRecovery => "manual_recovery",
 		ConversationState::OutcomeUnknown => "outcome_unknown",
 	}
-}
-
-fn program_command_error(error: StoreError) -> CommandError {
-	match error {
-		StoreError::IdempotencyConflict => CommandError::IdempotencyConflict,
-		StoreError::RevisionConflict { expected: Some(expected), actual: Some(actual), .. } =>
-			match (u64::try_from(expected), u64::try_from(actual)) {
-				(Ok(expected), Ok(actual)) => CommandError::ExpectedRevisionMismatch {
-					expected: EntityRevision(expected),
-					actual: EntityRevision(actual),
-				},
-				_ => application_unavailable("Program command conflicts with current state"),
-			},
-		StoreError::Database(_) | StoreError::Incompatible(_) =>
-			application_unavailable("Program storage is unavailable"),
-		_ => application_unavailable("Program command conflicts with current state"),
-	}
-}
-
-fn domain_pack_command_error(error: DomainPackError) -> CommandError {
-	application_unavailable(match error {
-		DomainPackError::UnknownPack => "Domain Pack is not built in",
-		DomainPackError::BindingMissing => "Program Domain Pack is not bound",
-		DomainPackError::BindingMismatch => "Program Domain Pack binding is incompatible",
-		DomainPackError::CapabilityDenied => "Domain Pack does not grant this capability",
-		DomainPackError::RegistryInvalid | DomainPackError::ProjectionInvalid =>
-			"Domain Pack registry is unavailable",
-	})
 }
 
 fn conversation_routing_successor_publication(
@@ -3599,6 +3444,8 @@ pub(crate) fn decode_account_command_receipt(
 fn quota_dto(observation: AccountQuotaWindowObservation) -> Result<AccountQuotaWindowDto, ()> {
 	let (observed_at_unix_micros, result) = match observation.disposition {
 		AccountQuotaDisposition::Unknown => (None, AccountQuotaStateDto::Unknown),
+		AccountQuotaDisposition::NotApplicable =>
+			(observation.observed_at_unix_micros, AccountQuotaStateDto::NotApplicable),
 		AccountQuotaDisposition::Current(fact) => (
 			observation.observed_at_unix_micros,
 			AccountQuotaStateDto::Current {
@@ -3644,6 +3491,270 @@ fn command_reset_error(error: ResetCardServiceError, expected: EntityRevision) -
 		ResetCardServiceError::IdempotencyConflict => CommandError::IdempotencyConflict,
 		ResetCardServiceError::AcceptanceUnknown => CommandError::AcceptanceUnknown,
 		_ => application_unavailable(reset_error_message(error)),
+	}
+}
+
+async fn query_chief_request(
+	store: &ProductStore,
+	event_id: i64,
+) -> decodex_protocol::ChiefRequestResult {
+	use decodex_protocol::ChiefRequestResult;
+	let ProductStore::Available(store) = store else {
+		return ChiefRequestResult::Unavailable;
+	};
+	let Ok(event) = store.get_chief_inbox_event(event_id).await else {
+		return ChiefRequestResult::Unavailable;
+	};
+	if event.disposition.is_some()
+		|| !matches!(
+			event.event_kind.as_str(),
+			"permission_pending" | "user_input_pending" | "server_request_pending"
+		) {
+		return ChiefRequestResult::Unavailable;
+	}
+	let Ok(payload) = serde_json::from_str::<serde_json::Value>(&event.payload) else {
+		return ChiefRequestResult::Unavailable;
+	};
+	let Some(params) = payload["params"].as_object() else {
+		return ChiefRequestResult::Unavailable;
+	};
+	let Ok(work) = store.get_chief_work_item(event.work_item_id.clone()).await else {
+		return ChiefRequestResult::Unavailable;
+	};
+	if work.dispatch_state != decodex_database::ChiefDispatchState::Running
+		|| work.codex_thread_id.is_none()
+		|| work.active_turn_id.is_none()
+		|| params.get("threadId").and_then(serde_json::Value::as_str)
+			!= work.codex_thread_id.as_deref()
+		|| params.get("turnId").and_then(serde_json::Value::as_str)
+			!= work.active_turn_id.as_deref()
+	{
+		return ChiefRequestResult::Unavailable;
+	}
+	let Some(method) = payload["method"].as_str() else {
+		return ChiefRequestResult::Unavailable;
+	};
+	let keys: &[&str] = match method {
+		"item/commandExecution/requestApproval" =>
+			&["command", "cwd", "reason", "availableDecisions"],
+		"item/fileChange/requestApproval" => &["reason", "grantRoot"],
+		"item/permissions/requestApproval" => &["reason", "permissions"],
+		"item/tool/requestUserInput" => &["questions"],
+		_ => return ChiefRequestResult::Unavailable,
+	};
+	let mut selected = serde_json::Map::new();
+	for key in keys {
+		if let Some(value) = params.get(*key) {
+			let valid = match *key {
+				"command" | "cwd" | "reason" | "grantRoot" => value.is_null() || value.is_string(),
+				"questions" | "availableDecisions" => value.is_array(),
+				"permissions" => value.is_object(),
+				_ => false,
+			};
+			if !valid {
+				return ChiefRequestResult::Unavailable;
+			}
+			selected.insert((*key).into(), value.clone());
+		}
+	}
+	let Ok(request_json) =
+		decodex_protocol::HistoryText::new(serde_json::Value::Object(selected).to_string())
+	else {
+		return ChiefRequestResult::Unavailable;
+	};
+	ChiefRequestResult::Available {
+		event_id,
+		work_id: event.work_item_id,
+		method: method.into(),
+		request_json,
+	}
+}
+
+async fn query_chief_history(
+	store: &ProductStore,
+	id: &str,
+) -> decodex_protocol::ChiefHistoryResult {
+	use decodex_protocol::{ChiefHistoryEntryDto, ChiefHistoryResult};
+	let ProductStore::Available(store) = store else {
+		return ChiefHistoryResult::Unavailable;
+	};
+	let Ok(events) = store.read_chief_work_events(id.into(), 33).await else {
+		return ChiefHistoryResult::Unavailable;
+	};
+	let mut has_more = events.len() > 32;
+	let mut entries = Vec::new();
+	let mut remaining = 64 * 1024;
+	for event in events.into_iter().rev().take(32) {
+		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap_or_default();
+		let (kind, mut text) = match event.event_kind.as_str() {
+			"user_message" => ("user", value["text"].as_str().unwrap_or("").to_owned()),
+			"chief_turn_completed" | "worker_turn_completed" => {
+				let messages = value.pointer("/threadReadback/assistantMessages");
+				let parsed = messages
+					.and_then(serde_json::Value::as_str)
+					.and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
+				let messages = parsed.as_ref().or(messages);
+				let text = messages
+					.and_then(serde_json::Value::as_array)
+					.map(|items| {
+						items
+							.iter()
+							.filter_map(|item| item["text"].as_str())
+							.collect::<Vec<_>>()
+							.join("\n\n")
+					})
+					.unwrap_or_default();
+				let text = if text.is_empty() {
+					"Execution ended; no readable assistant output was recovered.".into()
+				} else {
+					text
+				};
+				if value.pointer("/threadReadback/truncated").and_then(serde_json::Value::as_bool)
+					== Some(true)
+				{
+					has_more = true;
+				}
+				("assistant", text)
+			},
+			"automation_result" =>
+				("automation", value.as_str().unwrap_or(&event.payload).to_owned()),
+			"configuration_needs_attention"
+			| "reconnection_needs_attention"
+			| "recovery_needs_attention"
+			| "wake_failed"
+			| "event_processing_failed"
+			| "followup_processing_failed"
+			| "connection_needs_attention" => {
+				let detail =
+					value["recovery"].as_str().unwrap_or("Inspect persisted work before retrying.");
+				("system", format!("{}: {detail}", event.event_kind))
+			},
+			_ => ("system", event.event_kind.clone()),
+		};
+		if let Some(note) = event.disposition_note.filter(|_| {
+			event.event_kind != "chief_turn_completed" && event.event_kind != "user_message"
+		}) {
+			text.push_str("\n\nDisposition: ");
+			text.push_str(&note);
+		}
+		let mut bound = remaining.min(8192).min(text.len());
+		while !text.is_char_boundary(bound) {
+			bound -= 1;
+		}
+		if bound < text.len() {
+			has_more = true;
+			text.truncate(bound);
+		}
+		remaining -= bound;
+		entries.push(ChiefHistoryEntryDto {
+			id: event.id,
+			kind: kind.into(),
+			text,
+			created_at_micros: event.created_at_micros,
+		});
+		if remaining == 0 {
+			has_more = true;
+			break;
+		}
+	}
+	entries.reverse();
+	ChiefHistoryResult::Available { entries, has_more }
+}
+
+async fn query_chief_snapshot(store: &ProductStore) -> decodex_protocol::ChiefSnapshotResult {
+	use decodex_database::{
+		ChiefDispatchState, ChiefStoreSnapshot, ChiefWorkKind, ChiefWorkStatus,
+	};
+	use decodex_protocol::{
+		ChiefDependencyDto, ChiefDispatchStateDto, ChiefPendingEventDto, ChiefSnapshotDto,
+		ChiefSnapshotResult, ChiefWorkItemDto, ChiefWorkKindDto, ChiefWorkStatusDto,
+		MAX_CHIEF_DEPENDENCIES, MAX_CHIEF_PENDING_EVENTS, MAX_CHIEF_WORK_ITEMS,
+	};
+	let ProductStore::Available(store) = store else {
+		return ChiefSnapshotResult::Unavailable;
+	};
+	let records = match store
+		.read_chief_snapshot(MAX_CHIEF_WORK_ITEMS, MAX_CHIEF_DEPENDENCIES, MAX_CHIEF_PENDING_EVENTS)
+		.await
+	{
+		Ok(records) => records,
+		Err(_) => return ChiefSnapshotResult::Unavailable,
+	};
+	let (work_items, dependencies, pending_events) = match records {
+		ChiefStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
+			return ChiefSnapshotResult::CapacityExceeded {
+				work_items,
+				dependencies,
+				pending_events,
+			};
+		},
+		ChiefStoreSnapshot::Complete { work_items, dependencies, pending_events } =>
+			(work_items, dependencies, pending_events),
+	};
+	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
+	let snapshot = ChiefSnapshotDto {
+		work_items: work_items
+			.into_iter()
+			.map(|item| ChiefWorkItemDto {
+				id: item.id,
+				parent_goal_id: item.parent_goal_id,
+				kind: match item.kind {
+					ChiefWorkKind::Goal => ChiefWorkKindDto::Goal,
+					ChiefWorkKind::Task => ChiefWorkKindDto::Task,
+				},
+				title: item.title,
+				codex_thread_id: item.codex_thread_id,
+				active_turn_id: item.active_turn_id,
+				dispatch_state: match item.dispatch_state {
+					ChiefDispatchState::Idle => ChiefDispatchStateDto::Idle,
+					ChiefDispatchState::Dispatching => ChiefDispatchStateDto::Dispatching,
+					ChiefDispatchState::Running => ChiefDispatchStateDto::Running,
+					ChiefDispatchState::Unknown => ChiefDispatchStateDto::Unknown,
+				},
+				status: match item.status {
+					ChiefWorkStatus::Open => ChiefWorkStatusDto::Open,
+					ChiefWorkStatus::Resolved => ChiefWorkStatusDto::Resolved,
+					ChiefWorkStatus::FollowUp => ChiefWorkStatusDto::FollowUp,
+					ChiefWorkStatus::Wait => ChiefWorkStatusDto::Wait,
+					ChiefWorkStatus::UserDecision => ChiefWorkStatusDto::UserDecision,
+				},
+				next_check_at_micros: item.next_check_at_micros,
+				created_at_micros: item.created_at_micros,
+				updated_at_micros: item.updated_at_micros,
+			})
+			.collect(),
+		dependencies: dependencies
+			.into_iter()
+			.map(|edge| ChiefDependencyDto {
+				work_item_id: edge.work_item_id,
+				depends_on_id: edge.depends_on_id,
+			})
+			.collect(),
+		pending_events: pending_events
+			.into_iter()
+			.map(|event| ChiefPendingEventDto {
+				id: event.id,
+				source_event_id: event.source_event_id,
+				work_item_id: event.work_item_id,
+				event_kind: event.event_kind,
+				created_at_micros: event.created_at_micros,
+				delivery_claimed: event.delivered_turn_id.is_some(),
+			})
+			.collect(),
+	};
+	if serde_json::to_vec(&snapshot)
+		.is_ok_and(|bytes| bytes.len() > decodex_protocol::MAX_CHIEF_SNAPSHOT_BYTES)
+	{
+		return ChiefSnapshotResult::CapacityExceeded {
+			work_items: counts.0,
+			dependencies: counts.1,
+			pending_events: counts.2,
+		};
+	}
+	if snapshot.is_valid() {
+		ChiefSnapshotResult::Available(snapshot)
+	} else {
+		ChiefSnapshotResult::Unavailable
 	}
 }
 
@@ -3820,17 +3931,13 @@ mod tests {
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
 		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaDisposition,
 		AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountState,
-		ConversationId, DecodexRoot, ObjectiveId, ObjectiveState, ProgramClaimId,
-		ProgramEvidenceId, ProgramEvidenceKind, ProgramId, ProgramObservationId, ProgramProposalId,
-		ProgramReviewClassification, ProgramReviewId, ProgramState, ProviderIdentity,
-		RuntimeSessionState, WorkItemId, WorkItemState,
+		ConversationId, DecodexRoot, ProgramObservationId, ProgramReviewId, ProviderIdentity,
+		RuntimeSessionState,
 	};
 	use decodex_database::{
 		AccountLifecycleRejection, AccountProfileDailyUsage, AccountProfileSnapshot,
-		CommandIdentity, CreateProgramCycle, DomainPackIdentity, OrdinaryTaskConversationReadback,
-		OrdinaryTaskPreSessionState, ProgramCharterRecord, ProgramClaimRecord, ProgramCycleRecord,
-		ProgramEvidenceRecord, ProgramObjectiveRecord, ProgramProposalRecord, ProgramReviewRecord,
-		ProgramSignalRecord, ProgramWorkItemRecord, SqliteStore,
+		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ProgramCycleRecord,
+		SqliteStore,
 	};
 	use decodex_protocol::{
 		AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto, CommandError,
@@ -3843,328 +3950,245 @@ mod tests {
 		ACCOUNT_COMMAND_RECEIPT_SCHEMA, AccountLifecycleError, AccountProfileClaimsView,
 		AccountProfileRuntimeError, AccountProfileView, ProductStore, ResetCardServiceError,
 		StoredAccountCommandOutcome, account_dto, account_lifecycle_command_error,
-		account_profile_dto, account_profile_unavailable_dto, authorize_program_capability,
-		conversation_summary_from_row, decode_account_command_receipt,
-		encode_account_command_receipt, lifecycle_rejection, operation_query_result,
-		program_cycle_dto, protocol_reset_error, quota_dto,
+		account_profile_dto, account_profile_unavailable_dto, conversation_summary_from_row,
+		decode_account_command_receipt, encode_account_command_receipt, lifecycle_rejection,
+		operation_query_result, program_cycle_dto, protocol_reset_error, quota_dto,
 	};
-	use crate::domain_packs::{CONVERSATION_CAPABILITY, resolve_identity};
 
-	fn program_preflight_fixture(
-		sequence: u64,
-		domain_pack: Option<DomainPackIdentity>,
-		working_directory: &str,
-	) -> CreateProgramCycle {
-		let id = |prefix: u8| format!("{prefix:02x}000000-0000-4000-8000-{sequence:012x}");
-		CreateProgramCycle {
-			program_id: ProgramId::new(id(0x91)).expect("Program identity"),
-			domain_pack,
-			signal_id: ProgramObservationId::new(id(0x92)).expect("Signal identity"),
-			claim_id: ProgramClaimId::new(id(0x93)).expect("Claim identity"),
-			proposal_id: ProgramProposalId::new(id(0x94)).expect("Proposal identity"),
-			objective_id: ObjectiveId::new(id(0x95)).expect("Objective identity"),
-			work_item_id: WorkItemId::new(id(0x96)).expect("WorkItem identity"),
-			name: format!("Pack preflight fixture {sequence}"),
-			purpose: "Prove capability rejection before provider execution.".to_owned(),
-			non_goals: vec!["Do not contact a provider.".to_owned()],
-			review_policy: "Require deterministic and external evidence.".to_owned(),
-			signal_source: "runtime test".to_owned(),
-			signal_summary: "A Program requests one bounded Conversation.".to_owned(),
-			signal_observed_at_micros: 1,
-			claim_statement: "Pack admission must precede worker admission.".to_owned(),
-			proposal_summary: "Run the deny-by-default preflight.".to_owned(),
-			proposal_expected_effect: "Rejected Packs create no provider attempt.".to_owned(),
-			proposal_risk: "Late validation could dispatch unauthorized work.".to_owned(),
-			proposal_evidence_need: "Inspect the provider-attempt store.".to_owned(),
-			objective_outcome: "One exact admission result is returned.".to_owned(),
-			acceptance_criteria: vec!["No ProviderAttempt row exists.".to_owned()],
-			validation_criteria: vec!["SQLite readback remains empty.".to_owned()],
-			work_item_title: "Exercise Pack preflight".to_owned(),
-			work_item_instructions: "Reject invalid Pack authority without provider work."
-				.to_owned(),
-			working_directory: working_directory.to_owned(),
-		}
+	#[tokio::test]
+	async fn chief_read_projection_uses_store_and_excludes_private_content() {
+		use decodex_database::{
+			ChiefDispatchState, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus, EnqueueChiefEvent,
+		};
+		use decodex_protocol::ChiefSnapshotResult;
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(store.clone());
+		let ChiefSnapshotResult::Available(empty) = super::query_chief_snapshot(&owner).await
+		else {
+			panic!("empty store must be available");
+		};
+		assert!(empty.work_items.is_empty());
+		store
+			.create_chief_work_item(ChiefWorkItem {
+				id: "goal".into(),
+				parent_goal_id: None,
+				kind: ChiefWorkKind::Goal,
+				title: "Inspect real work".into(),
+				instructions: "private instructions marker".into(),
+				codex_thread_id: None,
+				dispatch_state: ChiefDispatchState::Idle,
+				active_turn_id: None,
+				status: ChiefWorkStatus::Open,
+				next_check_at_micros: None,
+				created_at_micros: 1,
+				updated_at_micros: 1,
+			})
+			.await
+			.unwrap();
+		store
+			.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id: "source:1".into(),
+				work_item_id: "goal".into(),
+				event_kind: "automation_result".into(),
+				payload: "private provider payload marker".into(),
+			})
+			.await
+			.unwrap();
+		let ChiefSnapshotResult::Available(snapshot) = super::query_chief_snapshot(&owner).await
+		else {
+			panic!("real work must be available");
+		};
+		assert_eq!(snapshot.work_items.len(), 1);
+		assert_eq!(snapshot.pending_events.len(), 1);
+		assert_eq!(snapshot.pending_events[0].source_event_id, "source:1");
+		assert!(snapshot.is_valid());
+		let encoded = serde_json::to_string(&snapshot).unwrap();
+		assert!(!encoded.contains("private instructions"));
+		assert!(!encoded.contains("private provider"));
+		assert!(!encoded.contains("payload"));
+		store.close();
+		assert_eq!(super::query_chief_snapshot(&owner).await, ChiefSnapshotResult::Unavailable);
+	}
+
+	async fn chief_query_work(store: &SqliteStore, id: &str) {
+		use decodex_database::{ChiefDispatchState, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus};
+		store
+			.create_chief_work_item(ChiefWorkItem {
+				id: id.into(),
+				parent_goal_id: None,
+				kind: ChiefWorkKind::Goal,
+				title: id.into(),
+				instructions: "private instructions".into(),
+				codex_thread_id: None,
+				dispatch_state: ChiefDispatchState::Idle,
+				active_turn_id: None,
+				status: ChiefWorkStatus::Open,
+				next_check_at_micros: None,
+				created_at_micros: 1,
+				updated_at_micros: 1,
+			})
+			.await
+			.unwrap();
 	}
 
 	#[tokio::test]
-	async fn pack_preflight_rejections_happen_before_provider_attempt_creation() {
-		let directory = tempfile::tempdir().expect("temporary Decodex root");
-		let root =
-			DecodexRoot::new(directory.path().canonicalize().expect("canonical temporary root"))
-				.expect("typed Decodex root");
-		let store = SqliteStore::open(&root.paths()).expect("SQLite product store");
-		let product_store = ProductStore::Available(store.clone());
-		let valid = resolve_identity(decodex_protocol::DEVELOPMENT_DOMAIN_PACK_ID)
-			.expect("built-in Development Pack");
-		let cases = [
-			(None, "Program Domain Pack is not bound"),
-			(
-				Some(DomainPackIdentity {
-					pack_id: "decodex.unknown".to_owned(),
-					pack_version: "1.0.0".to_owned(),
-					pack_digest: "1".repeat(64),
-				}),
-				"Domain Pack is not built in",
-			),
-			(
-				Some(DomainPackIdentity { pack_digest: "0".repeat(64), ..valid.clone() }),
-				"Program Domain Pack binding is incompatible",
-			),
-		];
-
-		for (index, (binding, expected)) in cases.into_iter().enumerate() {
-			let fixture = program_preflight_fixture(
-				u64::try_from(index + 1).expect("bounded sequence"),
-				binding,
-				directory.path().to_str().expect("UTF-8 temporary path"),
-			);
+	async fn chief_history_query_selects_latest_work_and_bounds_utf8_content() {
+		use decodex_database::EnqueueChiefEvent;
+		use decodex_protocol::ChiefHistoryResult;
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(store.clone());
+		chief_query_work(&store, "chosen").await;
+		chief_query_work(&store, "other").await;
+		assert_eq!(
+			super::query_chief_history(&owner, "missing").await,
+			ChiefHistoryResult::Unavailable
+		);
+		for index in 0..35 {
 			store
-				.create_program_cycle(
-					&CommandIdentity::new(
-						format!("pack-preflight-{index}"),
-						&[u8::try_from(index).expect("bounded request")],
-					)
-					.expect("command identity"),
-					&fixture,
-				)
+				.enqueue_chief_event(EnqueueChiefEvent {
+					source_event_id: format!("chosen-{index}"),
+					work_item_id: "chosen".into(),
+					event_kind: "user_message".into(),
+					payload: serde_json::json!({"text":format!("message-{index}")}).to_string(),
+				})
 				.await
-				.expect("persist Program fixture");
-			let error = authorize_program_capability(
-				&product_store,
-				&fixture.work_item_id,
-				CONVERSATION_CAPABILITY,
-			)
+				.unwrap();
+		}
+		store
+			.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id: "other-1".into(),
+				work_item_id: "other".into(),
+				event_kind: "user_message".into(),
+				payload: serde_json::json!({"text":"other work private marker"}).to_string(),
+			})
 			.await
-			.expect_err("Pack preflight must reject");
-			assert!(matches!(
-				error,
-				CommandError::ApplicationUnavailable { message } if message.as_str() == expected
-			));
-			assert!(
-				store
-					.read_provider_attempt_page(None, None, None, 1)
-					.await
-					.expect("ProviderAttempt readback")
-					.is_empty()
+			.unwrap();
+		let ChiefHistoryResult::Available { entries, has_more } =
+			super::query_chief_history(&owner, "chosen").await
+		else {
+			panic!("selected history");
+		};
+		assert!(has_more);
+		assert_eq!(entries.len(), 32);
+		assert_eq!(entries.first().unwrap().text, "message-3");
+		assert_eq!(entries.last().unwrap().text, "message-34");
+		assert!(entries.windows(2).all(|pair| pair[0].id < pair[1].id));
+		for index in 0..9 {
+			store
+				.enqueue_chief_event(EnqueueChiefEvent {
+					source_event_id: format!("large-{index}"),
+					work_item_id: "chosen".into(),
+					event_kind: "user_message".into(),
+					payload: serde_json::json!({"text":"界".repeat(4000)}).to_string(),
+				})
+				.await
+				.unwrap();
+		}
+		let ChiefHistoryResult::Available { entries, has_more } =
+			super::query_chief_history(&owner, "chosen").await
+		else {
+			panic!("bounded history");
+		};
+		assert!(has_more);
+		assert!(entries.iter().all(|entry| entry.text.len() <= 8192));
+		assert!(entries.iter().map(|entry| entry.text.len()).sum::<usize>() <= 65536);
+		assert!(entries.last().unwrap().text.starts_with('界'));
+	}
+
+	#[tokio::test]
+	async fn chief_request_query_filters_private_fields_and_rejects_stale_malformed_or_resolved() {
+		use decodex_database::EnqueueChiefEvent;
+		use decodex_protocol::ChiefRequestResult;
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(store.clone());
+		chief_query_work(&store, "worker").await;
+		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
+		store.begin_chief_dispatch("worker".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("worker".into(), "turn".into()).await.unwrap();
+		let payload = serde_json::json!({"method":"item/commandExecution/requestApproval", "id":"private-request-id", "token":"private-top-level", "params": {
+			"threadId":"thread", "turnId":"turn", "command":"pwd", "cwd":"/tmp", "reason":"inspect directory",
+			"availableDecisions":["accept","decline"], "authorization":"private-credential", "env":{"SECRET":"private-env"}
+		}});
+		let event = store
+			.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id: "request-1".into(),
+				work_item_id: "worker".into(),
+				event_kind: "permission_pending".into(),
+				payload: payload.to_string(),
+			})
+			.await
+			.unwrap();
+		let ChiefRequestResult::Available { event_id, work_id, request_json, .. } =
+			super::query_chief_request(&owner, event.id).await
+		else {
+			panic!("live request");
+		};
+		assert_eq!(event_id, event.id);
+		assert_eq!(work_id, "worker");
+		let selected: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
+		assert_eq!(selected["command"], "pwd");
+		assert!(!request_json.as_str().contains("private"));
+		assert!(selected.get("threadId").is_none());
+		store.acknowledge_chief_request_event(event.id).await.unwrap();
+		assert_eq!(
+			super::query_chief_request(&owner, event.id).await,
+			ChiefRequestResult::Unavailable
+		);
+		let mut invalids = Vec::new();
+		let mut stale = payload.clone();
+		stale["params"]["turnId"] = serde_json::json!("old-turn");
+		invalids.push(stale);
+		let mut malformed = payload.clone();
+		malformed["params"] = serde_json::json!("invalid");
+		invalids.push(malformed);
+		let mut malformed = payload.clone();
+		malformed["params"]["command"] = serde_json::json!({"token":"private"});
+		invalids.push(malformed);
+		let mut unsupported = payload.clone();
+		unsupported["method"] = serde_json::json!("account/login");
+		invalids.push(unsupported);
+		let mut oversized = payload;
+		oversized["params"]["command"] =
+			serde_json::json!("x".repeat(decodex_protocol::MAX_HISTORY_INLINE_BYTES + 1));
+		invalids.push(oversized);
+		invalids.push(serde_json::Value::Null);
+		for (index, payload) in invalids.into_iter().enumerate() {
+			let event = store
+				.enqueue_chief_event(EnqueueChiefEvent {
+					source_event_id: format!("invalid-{index}"),
+					work_item_id: "worker".into(),
+					event_kind: "permission_pending".into(),
+					payload: payload.to_string(),
+				})
+				.await
+				.unwrap();
+			assert_eq!(
+				super::query_chief_request(&owner, event.id).await,
+				ChiefRequestResult::Unavailable,
+				"case {index}"
 			);
 		}
-
-		let fixture = program_preflight_fixture(
-			4,
-			Some(valid),
-			directory.path().to_str().expect("UTF-8 temporary path"),
-		);
-		store
-			.create_program_cycle(
-				&CommandIdentity::new("pack-preflight-undeclared", b"undeclared capability")
-					.expect("command identity"),
-				&fixture,
-			)
-			.await
-			.expect("persist declared Pack fixture");
-		let error = authorize_program_capability(
-			&product_store,
-			&fixture.work_item_id,
-			"finance.place_order",
-		)
-		.await
-		.expect_err("undeclared capability must be denied");
-		assert!(matches!(
-			error,
-			CommandError::ApplicationUnavailable { message }
-				if message.as_str() == "Domain Pack does not grant this capability"
-		));
-		assert!(
-			store
-				.read_provider_attempt_page(None, None, None, 1)
-				.await
-				.expect("ProviderAttempt readback")
-				.is_empty()
+		assert_eq!(
+			super::query_chief_request(&owner, 99999).await,
+			ChiefRequestResult::Unavailable
 		);
 	}
 
 	#[test]
 	fn repeatable_program_projection_follows_review_lineage() {
-		let program_id = ProgramId::new("30000000-0000-4000-8000-000000000001").unwrap();
-		let signal_1 = ProgramObservationId::new("31000000-0000-4000-8000-000000000001").unwrap();
-		let claim_1 = ProgramClaimId::new("32000000-0000-4000-8000-000000000001").unwrap();
-		let proposal_1 = ProgramProposalId::new("33000000-0000-4000-8000-000000000001").unwrap();
-		let objective_1 = ObjectiveId::new("34000000-0000-4000-8000-000000000001").unwrap();
-		let work_1 = WorkItemId::new("35000000-0000-4000-8000-000000000001").unwrap();
-		let deterministic = ProgramEvidenceId::new("36000000-0000-4000-8000-000000000001").unwrap();
-		let external = ProgramEvidenceId::new("37000000-0000-4000-8000-000000000001").unwrap();
-		let review_1 = ProgramReviewId::new("38000000-0000-4000-8000-000000000001").unwrap();
-		let signal_2 = ProgramObservationId::new("41000000-0000-4000-8000-000000000001").unwrap();
-		let claim_2 = ProgramClaimId::new("42000000-0000-4000-8000-000000000001").unwrap();
-		let proposal_2 = ProgramProposalId::new("43000000-0000-4000-8000-000000000001").unwrap();
-		let objective_2 = ObjectiveId::new("44000000-0000-4000-8000-000000000001").unwrap();
-		let work_2 = WorkItemId::new("45000000-0000-4000-8000-000000000001").unwrap();
-		let record = ProgramCycleRecord {
-			program: ProgramCharterRecord {
-				program_id: program_id.clone(),
-				name: "Repeatable Program".into(),
-				purpose: "Keep one causal identity".into(),
-				non_goals: vec!["No scheduler".into()],
-				review_policy: "Review each finite cycle".into(),
-				state: ProgramState::Active,
-				revision: 3,
-				created_at_micros: 1,
-				updated_at_micros: 3,
-			},
-			domain_pack: None,
-			signals: vec![
-				ProgramSignalRecord {
-					signal_id: signal_1.clone(),
-					program_id: program_id.clone(),
-					predecessor_review_id: None,
-					source: "operator".into(),
-					summary: "first signal".into(),
-					observed_at_micros: 1,
-					created_at_micros: 1,
-				},
-				ProgramSignalRecord {
-					signal_id: signal_2.clone(),
-					program_id: program_id.clone(),
-					predecessor_review_id: Some(review_1.clone()),
-					source: "review".into(),
-					summary: "second signal".into(),
-					observed_at_micros: 2,
-					created_at_micros: 2,
-				},
-			],
-			claims: vec![
-				ProgramClaimRecord {
-					claim_id: claim_1.clone(),
-					program_id: program_id.clone(),
-					signal_id: signal_1,
-					statement: "first claim".into(),
-					revision: 1,
-					created_at_micros: 1,
-					updated_at_micros: 1,
-				},
-				ProgramClaimRecord {
-					claim_id: claim_2.clone(),
-					program_id: program_id.clone(),
-					signal_id: signal_2.clone(),
-					statement: "second claim".into(),
-					revision: 1,
-					created_at_micros: 2,
-					updated_at_micros: 2,
-				},
-			],
-			proposals: vec![
-				ProgramProposalRecord {
-					proposal_id: proposal_1.clone(),
-					program_id: program_id.clone(),
-					claim_id: claim_1,
-					summary: "first proposal".into(),
-					expected_effect: "first effect".into(),
-					risk: "first risk".into(),
-					evidence_need: "first evidence".into(),
-					revision: 1,
-					created_at_micros: 1,
-					updated_at_micros: 1,
-				},
-				ProgramProposalRecord {
-					proposal_id: proposal_2.clone(),
-					program_id: program_id.clone(),
-					claim_id: claim_2,
-					summary: "second proposal".into(),
-					expected_effect: "second effect".into(),
-					risk: "second risk".into(),
-					evidence_need: "second evidence".into(),
-					revision: 1,
-					created_at_micros: 2,
-					updated_at_micros: 2,
-				},
-			],
-			objectives: vec![
-				ProgramObjectiveRecord {
-					objective_id: objective_1.clone(),
-					program_id: program_id.clone(),
-					proposal_id: proposal_1,
-					outcome: "first outcome".into(),
-					acceptance_criteria: vec!["first acceptance".into()],
-					validation_criteria: vec!["first validation".into()],
-					state: ObjectiveState::Abandoned,
-					revision: 2,
-					created_at_micros: 1,
-					updated_at_micros: 2,
-				},
-				ProgramObjectiveRecord {
-					objective_id: objective_2.clone(),
-					program_id: program_id.clone(),
-					proposal_id: proposal_2,
-					outcome: "second outcome".into(),
-					acceptance_criteria: vec!["second acceptance".into()],
-					validation_criteria: vec!["second validation".into()],
-					state: ObjectiveState::Active,
-					revision: 1,
-					created_at_micros: 2,
-					updated_at_micros: 2,
-				},
-			],
-			work_items: vec![
-				ProgramWorkItemRecord {
-					work_item_id: work_1.clone(),
-					program_id: program_id.clone(),
-					objective_id: objective_1,
-					title: "first work".into(),
-					instructions: "complete first work".into(),
-					working_directory: "/tmp/decodex".into(),
-					state: WorkItemState::Done,
-					revision: 3,
-					conversation_id: None,
-					created_at_micros: 1,
-					updated_at_micros: 2,
-				},
-				ProgramWorkItemRecord {
-					work_item_id: work_2,
-					program_id: program_id.clone(),
-					objective_id: objective_2,
-					title: "second work".into(),
-					instructions: "complete second work".into(),
-					working_directory: "/tmp/decodex".into(),
-					state: WorkItemState::Ready,
-					revision: 1,
-					conversation_id: None,
-					created_at_micros: 2,
-					updated_at_micros: 2,
-				},
-			],
-			evidence: vec![
-				ProgramEvidenceRecord {
-					evidence_id: deterministic.clone(),
-					program_id: program_id.clone(),
-					work_item_id: work_1.clone(),
-					kind: ProgramEvidenceKind::DeterministicValidation,
-					source: "test".into(),
-					summary: "checks passed".into(),
-					observed_at_micros: 2,
-					created_at_micros: 2,
-				},
-				ProgramEvidenceRecord {
-					evidence_id: external.clone(),
-					program_id: program_id.clone(),
-					work_item_id: work_1.clone(),
-					kind: ProgramEvidenceKind::External,
-					source: "provider".into(),
-					summary: "provider settled".into(),
-					observed_at_micros: 2,
-					created_at_micros: 2,
-				},
-			],
-			reviews: vec![ProgramReviewRecord {
-				review_id: review_1.clone(),
-				program_id,
-				work_item_id: work_1,
-				deterministic_evidence_id: deterministic,
-				external_evidence_id: external,
-				classification: ProgramReviewClassification::KnowledgeProgress,
-				rationale: "continue with the next bounded gap".into(),
-				created_at_micros: 2,
-			}],
-		};
+		let review_1 = ProgramReviewId::new("38000000-0000-4000-8000-000000000001")
+			.expect("fixture review identity");
+		let signal_2 = ProgramObservationId::new("41000000-0000-4000-8000-000000000001")
+			.expect("fixture signal identity");
+		let record: ProgramCycleRecord =
+			serde_json::from_str(include_str!("../tests/fixtures/historical_program_cycle.json"))
+				.expect("historical two-cycle fixture");
 
 		let projection =
 			program_cycle_dto(record, &[], &HashMap::new()).expect("two-cycle projection");
@@ -4273,6 +4297,21 @@ mod tests {
 			projection.recovery_action,
 			Some(ConversationRecoveryAction::StartNewConversation),
 		);
+	}
+
+	#[test]
+	fn optional_quota_absence_is_publicly_distinct_from_unknown_or_zero_usage() {
+		let dto = quota_dto(AccountQuotaWindowObservation {
+			duration_minutes: AccountQuotaWindow::FIVE_HOURS_MINUTES,
+			observed_at_unix_micros: Some(1_000_000),
+			disposition: AccountQuotaDisposition::NotApplicable,
+		})
+		.expect("confirmed optional absence has a bounded projection");
+		assert_eq!(dto.result, AccountQuotaStateDto::NotApplicable);
+		assert_eq!(dto.observed_at_unix_micros, Some(1_000_000));
+		let encoded = serde_json::to_string(&dto).expect("quota DTO serializes");
+		assert!(!encoded.contains("used_percent"));
+		assert!(!encoded.contains("resets_at_unix_micros"));
 	}
 
 	#[test]

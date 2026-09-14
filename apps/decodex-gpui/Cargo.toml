@@ -31,11 +31,6 @@ gpui     = { workspace = true, features = ["test-support"] }
 tempfile = { workspace = true }
 
 [[bin]]
-name              = "decodex-gpui-visual-capture"
-path              = "src/bin/factory_visual_capture.rs"
-required-features = ["visual-capture"]
-
-[[bin]]
 name              = "decodex-gpui-workbench-visual-capture"
 path              = "src/bin/workbench_visual_capture.rs"
 required-features = ["visual-capture"]

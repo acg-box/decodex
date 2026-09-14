@@ -674,6 +674,7 @@ impl SqliteStore {
 					   used_percent = excluded.used_percent,
 					   resets_at_micros = excluded.resets_at_micros,
 					   error_code = NULL,
+					   not_applicable = 0,
 					   observed_at_micros = excluded.observed_at_micros
 					 WHERE excluded.observed_at_micros >= account_quota_facts.observed_at_micros",
 					params![
@@ -729,6 +730,7 @@ impl SqliteStore {
 					   used_percent = NULL,
 					   resets_at_micros = NULL,
 					   error_code = excluded.error_code,
+					   not_applicable = 0,
 					   observed_at_micros = excluded.observed_at_micros
 					 WHERE excluded.observed_at_micros >= account_quota_facts.observed_at_micros",
 					params![
@@ -742,6 +744,40 @@ impl SqliteStore {
 			if changed > 0 { Ok(()) } else { Err(StoreError::InvalidInput("quota error rejected")) }
 		})
 		.await
+	}
+
+	/// Record a positive observation that the optional five-hour window does not apply.
+	pub async fn observe_account_quota_absence(
+		&self,
+		account_id: &AccountId,
+		duration_minutes: u32,
+		observed_at_unix_micros: i64,
+	) -> Result<(), StoreError> {
+		if duration_minutes != AccountQuotaWindow::FIVE_HOURS_MINUTES
+			|| observed_at_unix_micros <= 0
+		{
+			return Err(StoreError::InvalidInput("quota absence rejected"));
+		}
+		let account_id = account_id.clone();
+		self.run(move |connection| {
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
+			let changed = transaction.execute(
+				"INSERT INTO account_quota_facts (account_id, duration_minutes, used_percent, resets_at_micros, error_code, observed_at_micros, not_applicable)
+				 VALUES (?1, 300, NULL, NULL, NULL, ?2, 1)
+				 ON CONFLICT(account_id, duration_minutes) DO UPDATE SET used_percent = NULL,
+				 resets_at_micros = NULL, error_code = NULL, observed_at_micros = excluded.observed_at_micros, not_applicable = 1
+				 WHERE excluded.observed_at_micros >= account_quota_facts.observed_at_micros",
+				params![account_id.as_str(), observed_at_unix_micros]).map_err(sql_error)?;
+			if changed != 1 { return Err(StoreError::InvalidInput("quota absence rejected")); }
+			let account_changed = transaction.execute(
+				"UPDATE accounts SET state = CASE WHEN EXISTS (
+				 SELECT 1 FROM account_quota_facts WHERE account_id = ?1 AND error_code IS NULL AND used_percent >= 100
+				 ) THEN 'depleted' ELSE 'available' END, updated_at_micros = ?2
+				 WHERE account_id = ?1 AND tombstoned_at_micros IS NULL",
+				params![account_id.as_str(), unix_micros().map_err(StoreError::from)?]).map_err(sql_error)?;
+			if account_changed != 1 { return Err(StoreError::InvalidInput("quota absence rejected")); }
+			transaction.commit().map_err(sql_error)
+		}).await
 	}
 
 	pub async fn observe_account_store(
@@ -1929,7 +1965,7 @@ fn quota_observation_sync(
 ) -> Result<AccountQuotaWindowObservation, StoreError> {
 	let row = connection
 		.query_row(
-			"SELECT used_percent, resets_at_micros, error_code, observed_at_micros
+			"SELECT used_percent, resets_at_micros, error_code, observed_at_micros, not_applicable
 			 FROM account_quota_facts WHERE account_id = ?1 AND duration_minutes = ?2",
 			params![account_id.as_str(), i64::from(duration)],
 			|row| {
@@ -1938,15 +1974,36 @@ fn quota_observation_sync(
 					row.get::<_, Option<i64>>(1)?,
 					row.get::<_, Option<String>>(2)?,
 					row.get::<_, i64>(3)?,
+					row.get::<_, bool>(4)?,
 				))
 			},
 		)
 		.optional()
 		.map_err(sql_error)?;
-	let Some((used, resets, error, observed)) = row else {
+	let Some((used, resets, error, observed, not_applicable)) = row else {
 		return AccountQuotaWindowObservation::unknown(duration)
 			.map_err(|_| incompatible("quota duration"));
 	};
+	if not_applicable {
+		if duration != AccountQuotaWindow::FIVE_HOURS_MINUTES
+			|| used.is_some()
+			|| resets.is_some()
+			|| error.is_some()
+			|| observed <= 0
+		{
+			return Err(incompatible("quota absence shape"));
+		}
+		let now = unix_micros().map_err(StoreError::from)?;
+		if observed > now || observed.saturating_add(QUOTA_FRESHNESS_MICROS) < now {
+			return AccountQuotaWindowObservation::unknown(duration)
+				.map_err(|_| incompatible("quota duration"));
+		}
+		return Ok(AccountQuotaWindowObservation {
+			duration_minutes: duration,
+			observed_at_unix_micros: Some(observed),
+			disposition: AccountQuotaDisposition::NotApplicable,
+		});
+	}
 	if error.as_deref() == Some("unsupported_window") {
 		return AccountQuotaWindowObservation::unknown(duration)
 			.map_err(|_| incompatible("quota duration"));
@@ -2636,4 +2693,116 @@ pub(crate) fn sql_error(_error: rusqlite::Error) -> StoreError {
 
 fn incompatible(value: &'static str) -> StoreError {
 	StoreError::Incompatible(format!("stored {value} is malformed"))
+}
+
+#[cfg(test)]
+mod optional_quota_tests {
+	use super::{
+		AccountId, AccountQuotaDisposition, AccountQuotaObservationError, AccountQuotaWindow,
+		QUOTA_FRESHNESS_MICROS, SqliteStore, quota_observation_sync, unix_micros,
+	};
+	use decodex_core::DecodexRoot;
+
+	#[tokio::test]
+	async fn optional_quota_absence_replaces_depletion_and_preserves_observation_order() {
+		let directory = tempfile::tempdir().expect("temporary database");
+		let root = DecodexRoot::new(directory.path().canonicalize().expect("absolute path"))
+			.expect("root");
+		let store = SqliteStore::open(&root.paths()).expect("store");
+		let account = AccountId::new("10000000-0000-4000-8000-000000000001").expect("account");
+		let id = account.clone();
+		store.run(move |connection| {
+			connection.execute("INSERT INTO account_identities VALUES (?1,1)",[id.as_str()]).expect("identity");
+			connection.execute("INSERT INTO accounts (account_id,display_label,enabled,state,revision,provider,provider_account_id,created_at_micros,updated_at_micros) VALUES (?1,'test',1,'available',1,'chatgpt','test-provider',1,1)",[id.as_str()]).expect("account row");
+			Ok(())
+		}).await.expect("fixture");
+		let now = unix_micros().expect("clock");
+		store
+			.observe_account_quota(
+				&account,
+				AccountQuotaWindow::new(300, 100, now + 60_000_000).expect("depleted fact"),
+				now - 10,
+			)
+			.await
+			.expect("depleted observation");
+		store.observe_account_quota_absence(&account, 300, now).await.expect("absence observation");
+		assert!(store.observe_account_quota_absence(&account, 10080, now).await.is_err());
+		assert!(store.observe_account_quota_absence(&account, 300, now - 1).await.is_err());
+		assert!(
+			store
+				.observe_account_quota(
+					&account,
+					AccountQuotaWindow::new(300, 100, now + 60_000_000).expect("fact"),
+					now - 1
+				)
+				.await
+				.is_err()
+		);
+		assert!(
+			store
+				.observe_account_quota_error(
+					&account,
+					300,
+					AccountQuotaObservationError::ProviderUnavailable,
+					now - 1
+				)
+				.await
+				.is_err()
+		);
+		let reopened = SqliteStore::open(&root.paths()).expect("reopen");
+		let id = account.clone();
+		reopened.run(move |connection| {
+			let observation = quota_observation_sync(connection,&id,300)?;
+			assert_eq!(observation.disposition,AccountQuotaDisposition::NotApplicable);
+			assert_eq!(observation.observed_at_unix_micros,Some(now));
+			assert_eq!(observation.current(),None);
+			assert_eq!(quota_observation_sync(connection,&id,10080)?.disposition,AccountQuotaDisposition::Unknown);
+			let stored: (Option<i64>,Option<i64>,Option<String>,i64) = connection.query_row("SELECT used_percent,resets_at_micros,error_code,not_applicable FROM account_quota_facts WHERE duration_minutes=300",[],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).expect("stored marker");
+			assert_eq!(stored,(None,None,None,1));
+			let state:String=connection.query_row("SELECT state FROM accounts",[],|row|row.get(0)).expect("account state");
+			assert_eq!(state,"available");
+			connection.execute("UPDATE account_quota_facts SET observed_at_micros=?1",[now+QUOTA_FRESHNESS_MICROS]).expect("future observation");
+			assert_eq!(quota_observation_sync(connection,&id,300)?.disposition,AccountQuotaDisposition::Unknown);
+			connection.execute("UPDATE account_quota_facts SET observed_at_micros=?1",[now-QUOTA_FRESHNESS_MICROS-1]).expect("expire observation");
+			let stale=quota_observation_sync(connection,&id,300)?;
+			assert_eq!(stale.disposition,AccountQuotaDisposition::Unknown);
+			assert_eq!(stale.observed_at_unix_micros,None);
+			Ok(())
+		}).await.expect("absence readback");
+		store
+			.observe_account_quota_error(
+				&account,
+				300,
+				AccountQuotaObservationError::ProviderUnavailable,
+				now + 1,
+			)
+			.await
+			.expect("newer error replaces absence");
+		let id = account.clone();
+		store
+			.run(move |connection| {
+				assert_eq!(
+					quota_observation_sync(connection, &id, 300)?.disposition,
+					AccountQuotaDisposition::Error(
+						AccountQuotaObservationError::ProviderUnavailable
+					)
+				);
+				Ok(())
+			})
+			.await
+			.expect("error readback");
+		store.observe_account_quota_absence(&account, 300, now + 2).await.expect("restore absence");
+		store
+			.observe_account_quota(
+				&account,
+				AccountQuotaWindow::new(300, 7, now + 60_000_000).expect("current fact"),
+				now + 3,
+			)
+			.await
+			.expect("newer current replaces absence");
+		store.run(move |connection| {
+			assert!(matches!(quota_observation_sync(connection,&account,300)?.disposition,AccountQuotaDisposition::Current(fact) if fact.used_percent==7));
+			Ok(())
+		}).await.expect("current readback");
+	}
 }

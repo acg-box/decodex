@@ -896,6 +896,14 @@ struct ResetCardQuotaPresentation: Equatable {
 
 	init(window: ResetCardQuotaWindow) {
 		switch window.state {
+		case .notApplicable:
+			isVisible = true
+			valueText = "Not applicable"
+			detailText = "No 5-hour limit reported"
+			tone = .muted
+			usedPercent = nil
+			remainingPercent = nil
+			resetDate = nil
 		case .current(let usedPercent, _):
 			isVisible = true
 			let remainingPercent = 100 - min(100, usedPercent)

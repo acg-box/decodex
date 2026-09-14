@@ -17,9 +17,7 @@ use crate::GitHubApi;
 fn retries_truncated_success_body_for_idempotent_get() {
 	let valid_body = r#"{"ok":true}"#;
 	let server = spawn_server(vec![
-		format!(
-			"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 32\r\nConnection: close\r\n\r\n{{}}"
-		),
+		"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 32\r\nConnection: close\r\n\r\n{}".to_owned(),
 		response("200 OK", &[], valid_body),
 	]);
 	let api = server.api(None);

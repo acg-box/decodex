@@ -312,6 +312,11 @@ pub(crate) struct FencedProcess {
 	identity: ProcessIdentity,
 	revision: i64,
 }
+
+enum GenerationAdmission {
+	Conversation(Box<FreshConversationProcessGeneration>),
+	Chief { root_id: String, operation_key: String },
+}
 impl FencedProcess {
 	#[cfg(test)]
 	pub(crate) fn for_test(generation_id: ProcessGenerationId, revision: i64) -> Self {
@@ -630,7 +635,31 @@ impl ProcessGenerationControl {
 		launch: AttestedAppServerLaunch,
 	) -> Result<FencedProcess, ProcessSupervisorError> {
 		let generation_id = admission.generation_id().clone();
-		self.spawn_fenced_inner(generation_id, execution_authorization, launch, admission).await
+		self.spawn_fenced_inner(
+			generation_id,
+			execution_authorization,
+			launch,
+			GenerationAdmission::Conversation(Box::new(admission)),
+		)
+		.await
+	}
+
+	/// Admit a retained Chief generation through the same account and process fences.
+	pub(crate) async fn spawn_fenced_chief(
+		&self,
+		root_id: String,
+		operation_key: String,
+		generation_id: ProcessGenerationId,
+		execution_authorization: ProcessExecutionAuthorization,
+		launch: AttestedAppServerLaunch,
+	) -> Result<FencedProcess, ProcessSupervisorError> {
+		self.spawn_fenced_inner(
+			generation_id,
+			execution_authorization,
+			launch,
+			GenerationAdmission::Chief { root_id, operation_key },
+		)
+		.await
 	}
 
 	async fn spawn_fenced_inner(
@@ -638,7 +667,7 @@ impl ProcessGenerationControl {
 		generation_id: ProcessGenerationId,
 		execution_authorization: ProcessExecutionAuthorization,
 		launch: AttestedAppServerLaunch,
-		admission: FreshConversationProcessGeneration,
+		admission: GenerationAdmission,
 	) -> Result<FencedProcess, ProcessSupervisorError> {
 		let intent = launch.derive_intent(
 			generation_id,
@@ -647,12 +676,28 @@ impl ProcessGenerationControl {
 		);
 		let account_binding = launch.account_binding().clone();
 		let mut supervision = self.reserve_supervision(&intent.generation_id)?;
-		let preparation = self
-			.inner
-			.store
-			.prepare_conversation_bound_process_generation(&intent, &account_binding, admission)
-			.await
-			.map_err(|_| ProcessSupervisorError::ProductState)?;
+		let preparation = match admission {
+			GenerationAdmission::Conversation(admission) =>
+				self.inner
+					.store
+					.prepare_conversation_bound_process_generation(
+						&intent,
+						&account_binding,
+						*admission,
+					)
+					.await,
+			GenerationAdmission::Chief { root_id, operation_key } =>
+				self.inner
+					.store
+					.prepare_chief_bound_process_generation(
+						&intent,
+						&account_binding,
+						&root_id,
+						&operation_key,
+					)
+					.await,
+		}
+		.map_err(|_| ProcessSupervisorError::ProductState)?;
 		let fence = match preparation {
 			PrepareProcessGenerationOutcome::Fresh(fence) => fence,
 			PrepareProcessGenerationOutcome::Replayed(_)
