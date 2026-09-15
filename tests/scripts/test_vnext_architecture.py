@@ -175,7 +175,10 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
                 daemon_owned = read(daemon_owned_path)
                 self.assertNotIn("launch_at_login", daemon_owned)
                 self.assertNotIn("LaunchAtLogin", daemon_owned)
-        self.assertIn("NSApplication::sharedApplication(main_thread).activate();", main)
+        self.assertIn("application.activate();", main)
+        self.assertIn("NSApplicationActivationPolicy::Regular", main)
+        self.assertIn("NSApplicationActivationPolicy::Accessory", main)
+        self.assertIn("install_application_menu(cx)", main)
         self.assertLess(
             main.index("window.activate_window()"),
             main.index("activate_native_application();"),

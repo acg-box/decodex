@@ -121,6 +121,12 @@ pub trait Application: Send + Sync + 'static {
 	/// returned snapshot to a session.
 	fn snapshot(&self) -> impl Future<Output = Vec<SnapshotItem>> + Send;
 
+	/// Return a static snapshot that does not depend on mutable command state.
+	/// Only applications with command-independent snapshot contents may opt in.
+	fn command_independent_snapshot(&self) -> Option<Vec<SnapshotItem>> {
+		None
+	}
+
 	/// Execute one typed command under the application's revision policy.
 	fn execute<'a>(
 		&'a self,
@@ -1661,7 +1667,11 @@ impl Application for ServiceApplication {
 	}
 
 	fn snapshot(&self) -> impl Future<Output = Vec<SnapshotItem>> + Send {
-		future::ready(vec![SnapshotItem::SystemState {
+		future::ready(self.command_independent_snapshot().unwrap_or_default())
+	}
+
+	fn command_independent_snapshot(&self) -> Option<Vec<SnapshotItem>> {
+		Some(vec![SnapshotItem::SystemState {
 			entity_id: EntityId::new("decodex-service").expect("service entity ID is bounded"),
 			revision: EntityRevision(0),
 			status: WireText::new("typed doctor/status is available through the daemon protocol")

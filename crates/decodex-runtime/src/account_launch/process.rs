@@ -1612,13 +1612,20 @@ impl SupervisedProcess {
 				},
 			};
 
-			Self::validate_zero_scratch_json(&line)
-				.map_err(|()| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
+			// Thread history and titles legitimately contain JSON escapes. As with
+			// conversation_request, decode these bounded ordinary data frames.
+			// Credential-bearing methods retain their scratch-free boundary.
+			if !matches!(method, "thread/read" | "thread/list") {
+				Self::validate_zero_scratch_json(&line)
+					.map_err(|()| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
+			}
 
 			let header: InboundHeader = serde_json::from_slice(&line)
 				.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 
 			if let (Some(id), Some(method)) = (header.id, header.method.as_deref()) {
+				Self::validate_zero_scratch_json(&line)
+					.map_err(|()| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 				Self::service_inbound_request(&self.binding, &mut self.stdin, id, method, &line)
 					.map_err(rpc_supervision)?;
 				continue;
@@ -2072,8 +2079,10 @@ impl SupervisedProcess {
 		archived: bool,
 		timeout: Duration,
 	) -> Result<bool, ExactReconciliationError> {
-		let search_term =
-			thread.name.as_deref().or(thread.preview.as_deref()).filter(|title| !title.is_empty());
+		// A title can change in Codex independently of our last thread read.
+		// Scan exact IDs across all sources instead of filtering by a stale title.
+		let _ = thread;
+		let search_term = None;
 		let mut cursor = None;
 
 		for _ in 0..MAX_EXACT_THREAD_STATE_SCAN_PAGES {
@@ -2081,6 +2090,18 @@ impl SupervisedProcess {
 				.request_rpc::<_, ThreadListResponse>(
 					"thread/list",
 					&ExactThreadStateListParams {
+						source_kinds: &[
+							"cli",
+							"vscode",
+							"exec",
+							"appServer",
+							"subAgent",
+							"subAgentReview",
+							"subAgentCompact",
+							"subAgentThreadSpawn",
+							"subAgentOther",
+							"unknown",
+						],
 						search_term,
 						archived,
 						limit: MAX_EXACT_THREAD_LIST_RESULTS as u32,
@@ -7304,6 +7325,19 @@ mod tests {
 		let timeout = Duration::from_secs(2);
 		let exact = exact_thread_id();
 
+		assert!(!process.read_exact_thread(&exact, timeout).unwrap().facts.archived);
+		assert_eq!(
+			process.reconcile_archive(&exact, timeout),
+			ArchiveReconciliationOutcome::Archived
+		);
+		assert!(process.read_exact_thread(&exact, timeout).unwrap().facts.archived);
+	}
+
+	#[test]
+	fn escaped_titles_do_not_block_exact_archive_reconciliation() {
+		let (_temp, mut process) = initialized_bound_process("exact-escaped-title");
+		let timeout = Duration::from_secs(2);
+		let exact = exact_thread_id();
 		assert!(!process.read_exact_thread(&exact, timeout).unwrap().facts.archived);
 		assert_eq!(
 			process.reconcile_archive(&exact, timeout),

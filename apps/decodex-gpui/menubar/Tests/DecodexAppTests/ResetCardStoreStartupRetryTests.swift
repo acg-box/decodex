@@ -4,6 +4,21 @@ import XCTest
 
 @MainActor
 final class ResetCardStoreStartupRetryTests: XCTestCase {
+	func testBackgroundRecoveryClearsAccountReadTimeout() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let client = ObservationDrivenResetCardClient(account: Self.account, inventory: try Self.inventory)
+		let store = ResetCardStore(client: client, pendingStore: fixture.store, startupRetryDelays: [])
+		store.start()
+		try await waitUntil { store.hasLoaded && !store.isRefreshing }
+		await client.failNextAccountRead()
+		await store.refresh()
+		XCTAssertEqual(store.message?.text, ResetCardClientError.timedOut.localizedDescription)
+		await client.publish(generation: 1)
+		try await waitUntil { store.message == nil }
+		XCTAssertNotNil(store.accounts.first?.inventory)
+	}
+
 	func testStartupRetriesDisconnectedAndUnavailableReadsUntilInventoryLoads() async throws {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }
@@ -1086,6 +1101,7 @@ private actor ObservationDrivenResetCardClient: ResetCardClient, AccountObservat
 	private let inventoryValue: ResetCardInventory
 	private var inventorySteps: [ClientStep<ResetCardInventory>]
 	private var accountCalls = 0
+	private var failAccountRead = false
 	private var inventoryCalls = 0
 	private var inventoryReadsBlocked = false
 	private var inventoryReadContinuation: CheckedContinuation<Void, Never>?
@@ -1105,6 +1121,10 @@ private actor ObservationDrivenResetCardClient: ResetCardClient, AccountObservat
 
 	func accounts(authority _: ResetCardAuthority?) async throws -> [ResetCardAccountRecord] {
 		accountCalls += 1
+		if failAccountRead {
+			failAccountRead = false
+			throw ResetCardClientError.timedOut
+		}
 		return [account]
 	}
 
@@ -1120,6 +1140,8 @@ private actor ObservationDrivenResetCardClient: ResetCardClient, AccountObservat
 			: inventorySteps.removeFirst()
 		return try Self.resolve(step)
 	}
+
+	func failNextAccountRead() { failAccountRead = true }
 
 	func blockInventoryReads() {
 		inventoryReadsBlocked = true

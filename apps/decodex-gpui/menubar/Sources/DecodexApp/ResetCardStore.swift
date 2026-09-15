@@ -317,6 +317,8 @@ private enum ResetCardInventoryRefreshResult: Equatable {
 @MainActor
 @Observable
 final class ResetCardStore {
+	private var accountReadFailureMessage: ResetCardStoreMessage?
+
 	// These reads return daemon-owned observations and never start provider work.
 	// Fetch every independent account projection concurrently so one row cannot
 	// delay another row's first presentation.
@@ -996,6 +998,10 @@ final class ResetCardStore {
 			// are independent daemon-cache reads and must not keep the panel in its
 			// initial-loading state while one account is slow.
 			hasLoaded = true
+			if let accountReadFailureMessage, message == accountReadFailureMessage {
+				message = nil
+			}
+			accountReadFailureMessage = nil
 			prunePostUseReconciliationsForCurrentAccounts()
 			pruneProfileEmailCache()
 			reconcileAccountSkeletonRevisionTargets()
@@ -1162,6 +1168,7 @@ final class ResetCardStore {
 					tone: .error,
 					text: clientError.localizedDescription
 				)
+				accountReadFailureMessage = message
 			}
 		}
 

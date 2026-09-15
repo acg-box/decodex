@@ -3830,6 +3830,20 @@ impl ConversationRuntime {
 		thread_id: &str,
 		operation: ControlThreadOperation,
 	) -> Result<ControlThreadObservation, ConversationControlOutcome> {
+		// Thread ownership stays pinned to the same account. Credential rotation may
+		// advance that account since the RuntimeSession snapshot was created.
+		let inspection = self
+			.inner
+			.accounts
+			.inspect(account_id)
+			.await
+			.map_err(|_| ConversationControlOutcome::Unavailable)?;
+		if &inspection.account.account_id != account_id
+			|| inspection.account.revision < account_revision
+		{
+			return Err(ConversationControlOutcome::Conflict);
+		}
+		let account_revision = inspection.account.revision;
 		let credential = self
 			.inner
 			.accounts

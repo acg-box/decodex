@@ -56,6 +56,7 @@ pub(crate) struct ChiefSurface {
 	details_visible: bool,
 	accounts: Vec<(String, String)>,
 	earlier_history_visible: bool,
+	setup_expanded: bool,
 }
 
 impl ChiefSurface {
@@ -122,8 +123,14 @@ impl ChiefSurface {
 			details_visible: false,
 			accounts: vec![],
 			earlier_history_visible: false,
+			setup_expanded: false,
 			composer: cx.new(|cx| {
-				ComposerInput::with_placeholder(35, "Message your Chief…", "Chief message", cx)
+				ComposerInput::message(
+					35,
+					"Describe the outcome you want Chief to deliver…",
+					"Chief message",
+					cx,
+				)
 			}),
 			model,
 			cwd,
@@ -568,7 +575,12 @@ impl ChiefSurface {
 			.gap_3()
 			.p_5()
 			.min_w_0()
-			.child(div().text_xl().font_weight(FontWeight::SEMIBOLD).child(work.title.clone()))
+			.child(
+				div()
+					.text_size(px(ui_theme::HEADING_SIZE))
+					.font_weight(FontWeight::SEMIBOLD)
+					.child(work.title.clone()),
+			)
 			.child(muted(format!("{} · {}", judgment(work.status), execution(work.dispatch_state))))
 			.when(
 				snapshot.pending_events.iter().any(|event| {
@@ -623,7 +635,12 @@ impl ChiefSurface {
 			.gap_3()
 			.p_5()
 			.min_w_0()
-			.child(div().text_xl().font_weight(FontWeight::SEMIBOLD).child(work.title.clone()))
+			.child(
+				div()
+					.text_size(px(ui_theme::HEADING_SIZE))
+					.font_weight(FontWeight::SEMIBOLD)
+					.child(work.title.clone()),
+			)
 			.child(detail("Work ID", &work.id))
 			.child(detail("Judgment", judgment(work.status)))
 			.child(detail("Execution", execution(work.dispatch_state)));
@@ -638,7 +655,7 @@ impl ChiefSurface {
 					.id("chief-copy-thread")
 					.role(Role::Button)
 					.aria_label("Copy exact Codex thread ID")
-					.text_sm()
+					.text_size(px(ui_theme::BODY_SIZE))
 					.text_color(rgb(ui_theme::BLUE))
 					.cursor_pointer()
 					.track_focus(&self.copy_focus)
@@ -694,11 +711,12 @@ impl ChiefSurface {
 		work: &ChiefWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
-		let mut panel = div()
-			.flex()
-			.flex_col()
-			.gap_3()
-			.child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child("Work graph"));
+		let mut panel = div().flex().flex_col().gap_3().child(
+			div()
+				.text_size(px(ui_theme::BODY_SIZE))
+				.font_weight(FontWeight::SEMIBOLD)
+				.child("Work graph"),
+		);
 		let dependencies: Vec<_> =
 			snapshot.dependencies.iter().filter(|edge| edge.work_item_id == work.id).collect();
 		if dependencies.is_empty() {
@@ -775,7 +793,9 @@ impl ChiefSurface {
 							.rounded_md()
 							.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL))
 							.child(muted(entry.kind.clone()))
-							.child(div().text_sm().child(entry.text.clone())),
+							.child(
+								div().text_size(px(ui_theme::BODY_SIZE)).child(entry.text.clone()),
+							),
 					);
 				}
 			},
@@ -794,7 +814,11 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let mut panel = div().flex().flex_col().gap_3().child(
-			div().mt_3().text_sm().font_weight(FontWeight::SEMIBOLD).child("Pending events"),
+			div()
+				.mt_3()
+				.text_size(px(ui_theme::BODY_SIZE))
+				.font_weight(FontWeight::SEMIBOLD)
+				.child("Pending events"),
 		);
 		let pending: Vec<_> =
 			snapshot.pending_events.iter().filter(|event| event.work_item_id == work.id).collect();
@@ -866,7 +890,11 @@ impl ChiefSurface {
 			{
 				panel = panel
 					.child(detail("Decision request", method))
-					.child(div().text_sm().child(request_json.as_str().to_owned()))
+					.child(
+						div()
+							.text_size(px(ui_theme::BODY_SIZE))
+							.child(request_json.as_str().to_owned()),
+					)
 					.child(muted(
 						"Advanced response · enter the exact JSON object required by this provider request",
 					))
@@ -1052,7 +1080,10 @@ fn execution(state: ChiefDispatchStateDto) -> &'static str {
 	}
 }
 fn muted(text: impl Into<SharedString>) -> impl IntoElement {
-	div().text_sm().text_color(rgb(ui_theme::TEXT_MUTED)).child(text.into())
+	div()
+		.text_size(px(ui_theme::CAPTION_SIZE))
+		.text_color(rgb(ui_theme::TEXT_MUTED))
+		.child(text.into())
 }
 fn detail(label: &str, value: &str) -> impl IntoElement {
 	div()
@@ -1060,7 +1091,7 @@ fn detail(label: &str, value: &str) -> impl IntoElement {
 		.flex_col()
 		.gap_1()
 		.child(muted(label.to_owned()))
-		.child(div().text_sm().child(value.to_owned()))
+		.child(div().text_size(px(ui_theme::BODY_SIZE)).child(value.to_owned()))
 }
 
 impl ChiefSurface {
@@ -1127,18 +1158,20 @@ impl ChiefSurface {
 	}
 
 	fn render_body(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		let mut body = div().flex_1().min_h_0().flex().overflow_hidden();
+		let mut body = div().flex_1().min_h_0().flex().justify_center().overflow_hidden();
 		if let Some(snapshot) = &self.snapshot {
 			if snapshot.work_items.is_empty() {
 				body = body.child(
 					div()
-						.p_8()
+						.m_6().p_6().w_full().max_w(px(780.0))
+                        .rounded(px(12.0)).border_1().border_color(rgb(ui_theme::LINE))
+                        .bg(rgba(ui_theme::SURFACE_MATERIAL))
 						.flex()
 						.flex_col()
 						.gap_3()
-						.child(div().text_xl().child("No Chief work yet"))
+						.child(div().text_size(px(ui_theme::HEADING_SIZE)).child("Give Chief an outcome to deliver"))
 						.child(muted(
-							"The service has no saved goals, workers, or events to show.",
+							"Chief coordinates the work, tracks its progress, and brings decisions back to you. Use Chat with Codex for a direct conversation.",
 						)),
 				);
 			} else {
@@ -1188,7 +1221,11 @@ impl ChiefSurface {
 					.flex()
 					.flex_col()
 					.gap_3()
-					.child(div().text_xl().child("No verified work to show"))
+					.child(
+						div()
+							.text_size(px(ui_theme::HEADING_SIZE))
+							.child("No verified work to show"),
+					)
 					.child(muted("This overview requires a complete service snapshot.")),
 			);
 		}
@@ -1201,6 +1238,8 @@ impl Render for ChiefSurface {
 		let refreshing = self.state == LoadState::Loading;
 		div()
 			.id("chief-overview")
+			.font_family(ui_theme::FONT_FAMILY)
+			.text_size(px(ui_theme::BODY_SIZE))
 			.on_action(cx.listener(|_, _: &SubmitComposer, _, cx| cx.stop_propagation()))
 			.role(Role::Main)
 			.aria_label("Chief conversation")
@@ -1213,7 +1252,9 @@ impl Render for ChiefSurface {
 			.text_color(rgb(ui_theme::TEXT))
 			.child(
 				div()
-					.p_5()
+					.px_6()
+					.h(px(64.0))
+					.min_h(px(64.0))
 					.border_b_1()
 					.border_color(rgb(ui_theme::LINE))
 					.flex()
@@ -1227,9 +1268,9 @@ impl Render for ChiefSurface {
 							.gap_1()
 							.child(
 								div()
-									.text_2xl()
+									.text_size(px(ui_theme::HEADING_SIZE))
 									.font_weight(FontWeight::SEMIBOLD)
-									.child("Your Chief"),
+									.child("Delegated work"),
 							)
 							.child(muted(self.status_text())),
 					)
@@ -1267,77 +1308,51 @@ impl ChiefSurface {
 		let has_root = self.snapshot.as_ref().is_some_and(|snapshot| {
 			snapshot.work_items.iter().any(|work| work.parent_goal_id.is_none())
 		});
-		div()
-			.p_4()
-			.border_t_1()
+		let composer = div()
+			.w_full()
+			.max_w(px(780.0))
+			.p_3()
+			.rounded(px(11.0))
+			.bg(rgba(ui_theme::COMPOSER_MATERIAL))
+			.border_1()
 			.border_color(rgb(ui_theme::LINE))
 			.flex()
 			.flex_col()
 			.gap_2()
 			.when(!has_root, |panel| {
-				panel
-					.child(self.context_choices(cx))
-					.child(muted(
-						"Start your personal Chief · workers use the selected model with medium effort",
-					))
-					.child(
-						div()
-							.flex()
-							.gap_3()
-							.h(px(38.0))
-							.child(div().flex_1().min_w_0().child(self.model.clone()))
-							.child(div().flex_1().min_w_0().child(self.cwd.clone()))
-							.child(div().flex_1().min_w_0().child(self.account.clone())),
-					)
-					.child(
-						div()
-							.flex()
-							.gap_4()
-							.child(
-								div()
-									.id("chief-effort")
-									.role(Role::Button)
-									.tab_index(34)
-									.cursor_pointer()
-									.on_key_down(cx.listener(
-										|surface, event: &gpui::KeyDownEvent, _, cx| {
-											if ["enter", "space"]
-												.contains(&event.keystroke.key.as_str())
-											{
-												surface.cycle_effort(cx);
-											}
-										},
-									))
-									.on_click(cx.listener(|surface, _, _, cx| {
-										surface.cycle_effort(cx);
-									}))
-									.child(format!("Chief effort: {} ▸", self.effort.as_str())),
-							)
-							.child(
-								div()
-									.id("chief-sandbox")
-									.role(Role::Button)
-									.tab_index(35)
-									.cursor_pointer()
-									.on_key_down(cx.listener(
-										|surface, event: &gpui::KeyDownEvent, _, cx| {
-											if ["enter", "space"]
-												.contains(&event.keystroke.key.as_str())
-											{
-												surface.cycle_sandbox(cx);
-											}
-										},
-									))
-									.on_click(cx.listener(|surface, _, _, cx| {
-										surface.cycle_sandbox(cx);
-									}))
-									.child(format!("Sandbox: {:?} ▸", self.sandbox)),
-							),
-					)
+				panel.child(
+					div()
+						.id("chief-setup-toggle")
+						.role(Role::Button)
+						.aria_label("Execution settings")
+						.tab_index(29)
+						.on_key_down(cx.listener(|surface, event: &gpui::KeyDownEvent, _, cx| {
+							if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+								surface.setup_expanded = !surface.setup_expanded;
+								cx.notify();
+							}
+						}))
+						.cursor_pointer()
+						.text_size(px(ui_theme::CAPTION_SIZE))
+						.text_color(rgb(ui_theme::TEXT_MUTED))
+						.on_click(cx.listener(|surface, _, _, cx| {
+							surface.setup_expanded = !surface.setup_expanded;
+							cx.notify();
+						}))
+						.child(format!(
+							"{} Execution settings · {} · {}",
+							if self.setup_expanded { "▾" } else { "▸" },
+							self.model.read(cx).content(),
+							self.effort.as_str()
+						)),
+				)
+			})
+			.when(!has_root && self.setup_expanded, |panel| {
+				panel.child(self.render_setup_controls(cx))
 			})
 			.child(
 				div()
-					.h(px(64.0))
+					.h(px(48.0))
 					.on_action(cx.listener(|surface, _: &SubmitComposer, _, cx| {
 						surface.submit(cx);
 						cx.stop_propagation();
@@ -1347,10 +1362,21 @@ impl ChiefSurface {
 			.child(
 				div()
 					.id("chief-send")
+					.w(px(160.0))
+					.ml_auto()
 					.role(Role::Button)
 					.tab_index(36)
+					.aria_label(if has_root { "Send to Chief" } else { "Delegate to Chief" })
+					.h(px(30.0))
+					.px_3()
+					.rounded(px(7.0))
+					.flex()
+					.items_center()
+					.justify_center()
+					.bg(rgb(ui_theme::TEXT))
+					.text_color(rgb(ui_theme::CANVAS))
+					.font_weight(FontWeight::SEMIBOLD)
 					.cursor_pointer()
-					.text_color(rgb(ui_theme::BLUE))
 					.on_click(cx.listener(|surface, _, _, cx| surface.submit(cx)))
 					.on_key_down(cx.listener(|surface, event: &gpui::KeyDownEvent, _, cx| {
 						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
@@ -1364,10 +1390,72 @@ impl ChiefSurface {
 					} else if has_root {
 						"Send to Chief"
 					} else {
-						"Start Chief"
+						"Delegate to Chief"
 					}),
 			)
-			.child(muted(self.feedback.clone()))
+			.when(!self.feedback.is_empty(), |panel| panel.child(muted(self.feedback.clone())));
+		div().w_full().px_5().py_3().flex().justify_center().child(composer)
+	}
+
+	fn render_setup_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		div()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.child(self.context_choices(cx))
+			.child(muted(
+				"Start your personal Chief · workers use the selected model with medium effort",
+			))
+			.child(
+				div()
+					.flex()
+					.gap_3()
+					.h(px(38.0))
+					.child(div().flex_1().min_w_0().child(self.model.clone()))
+					.child(div().flex_1().min_w_0().child(self.cwd.clone()))
+					.child(div().flex_1().min_w_0().child(self.account.clone())),
+			)
+			.child(
+				div()
+					.flex()
+					.gap_4()
+					.child(
+						div()
+							.id("chief-effort")
+							.role(Role::Button)
+							.tab_index(34)
+							.cursor_pointer()
+							.on_key_down(cx.listener(
+								|surface, event: &gpui::KeyDownEvent, _, cx| {
+									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+										surface.cycle_effort(cx);
+									}
+								},
+							))
+							.on_click(cx.listener(|surface, _, _, cx| {
+								surface.cycle_effort(cx);
+							}))
+							.child(format!("Chief effort: {} ▸", self.effort.as_str())),
+					)
+					.child(
+						div()
+							.id("chief-sandbox")
+							.role(Role::Button)
+							.tab_index(35)
+							.cursor_pointer()
+							.on_key_down(cx.listener(
+								|surface, event: &gpui::KeyDownEvent, _, cx| {
+									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+										surface.cycle_sandbox(cx);
+									}
+								},
+							))
+							.on_click(cx.listener(|surface, _, _, cx| {
+								surface.cycle_sandbox(cx);
+							}))
+							.child(format!("Sandbox: {:?} ▸", self.sandbox)),
+					),
+			)
 	}
 
 	fn context_choices(&self, cx: &mut Context<Self>) -> impl IntoElement {

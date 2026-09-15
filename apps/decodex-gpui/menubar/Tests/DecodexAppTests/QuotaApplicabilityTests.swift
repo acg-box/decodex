@@ -3,12 +3,12 @@ import Foundation
 import XCTest
 
 final class QuotaApplicabilityTests: XCTestCase {
-	func testNotApplicableHasNoPercentageOrResetAndStaysVisible() {
+	func testNotApplicableHasNoPercentageOrResetAndIsHidden() {
 		let window = ResetCardQuotaWindow(
 			durationMinutes: 300, observedAtUnixMicros: 1_000_000, state: .notApplicable
 		)
 		let presentation = ResetCardQuotaPresentation(window: window)
-		XCTAssertTrue(presentation.isVisible)
+		XCTAssertFalse(presentation.isVisible)
 		XCTAssertEqual(presentation.valueText, "Not applicable")
 		XCTAssertEqual(presentation.detailText, "No 5-hour limit reported")
 		XCTAssertNil(presentation.usedPercent)

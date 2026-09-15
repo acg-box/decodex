@@ -27,7 +27,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(store.contains("Checking reset result…"))
 		XCTAssertTrue(store.contains("Check delayed; retrying…"))
 		XCTAssertFalse(rows.contains("Checking Reset Cards…"))
-		XCTAssertTrue(rows.contains("ResetCardInventoryPendingView()"))
+		XCTAssertFalse(rows.contains("ResetCardInventoryPendingView()"))
 		XCTAssertFalse(rows.contains("Button(\"Resume\")"))
 		XCTAssertFalse(store.contains("Resume the pending request"))
 	}
@@ -554,7 +554,8 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(statusPanel.contains("override var isOpaque"))
 		XCTAssertTrue(statusPanel.contains("AccountPanelView("))
 		XCTAssertTrue(statusPanel.contains("button.sendAction(on: [.leftMouseUp])"))
-		XCTAssertTrue(statusPanel.contains("NSApp.activate(ignoringOtherApps: true)"))
+		XCTAssertFalse(statusPanel.contains("NSApp.activate("))
+		XCTAssertTrue(statusPanel.contains(".nonactivatingPanel"))
 		XCTAssertFalse(
 			statusPanel.contains("NSApplication.didResignActiveNotification")
 		)

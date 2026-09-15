@@ -505,30 +505,10 @@ struct ResetCardAccountRow: View {
 	@ViewBuilder
 	private var cardInventory: some View {
 		switch inventoryPresentation {
-		case .loginRequired:
-			Text("Reset Cards need this login")
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.lineLimit(1)
-				.help(
-					"Choose Refresh login in the menu bar app to sign in with the official Codex device login."
-				)
-		case .checking:
-			ResetCardInventoryPendingView()
-		case .connecting(let detail):
-			inventoryProgress("Connecting to Decodex…", help: detail)
-		case .unavailable(let detail):
-			Text("Reset Cards unavailable")
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.lineLimit(1)
-				.help(detail)
-		case .empty:
-			Text("No Reset Cards")
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+		case .loginRequired, .checking, .connecting, .unavailable, .empty:
+			EmptyView()
 		case .available:
-			ScrollView(.horizontal, showsIndicators: false) {
+			HorizontalCardScroller {
 				HStack(spacing: PanelSpacing.compact) {
 					ForEach(state.targets, id: \.self) { target in
 						Button {
@@ -553,9 +533,10 @@ struct ResetCardAccountRow: View {
 						)
 					}
 				}
+				.fixedSize()
 				.animation(rowStateAnimation, value: state.targets)
 			}
-			.frame(height: 26)
+			.frame(height: 22)
 			.fixedSize(horizontal: false, vertical: true)
 		}
 	}
@@ -825,8 +806,8 @@ private struct ResetCardChipButtonStyle: ButtonStyle {
 		let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
 
 		configuration.label
-			.padding(.horizontal, PanelSpacing.compact)
-			.frame(minHeight: 24)
+			.padding(.horizontal, PanelSpacing.micro)
+			.frame(minHeight: 20)
 			.background {
 				shape.fill(fillColor)
 			}
@@ -897,7 +878,7 @@ struct ResetCardQuotaPresentation: Equatable {
 	init(window: ResetCardQuotaWindow) {
 		switch window.state {
 		case .notApplicable:
-			isVisible = true
+			isVisible = false
 			valueText = "Not applicable"
 			detailText = "No 5-hour limit reported"
 			tone = .muted

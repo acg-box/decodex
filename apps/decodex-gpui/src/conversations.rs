@@ -612,7 +612,7 @@ impl Conversations {
 		if matches {
 			state.latch_in_flight_outcome_unknown();
 			state.cancel_refresh_batch();
-			query_queued = state.queue_routing_successor_readback();
+			query_queued = state.queue_command_readback();
 		}
 		drop(state);
 		if query_queued {
@@ -722,6 +722,11 @@ impl Conversations {
 					&result.payload,
 				),
 		};
+		let query_queued = if state.command_readback_pending {
+			state.queue_command_readback() || query_queued
+		} else {
+			query_queued
+		};
 		drop(state);
 		if query_queued {
 			self.inner.notify.notify_one();
@@ -752,7 +757,7 @@ impl Conversations {
 			state.in_flight_command = None;
 			state.command = ConversationCommandState::OutcomeUnknown;
 			state.cancel_refresh_batch();
-			let query_queued = state.queue_routing_successor_readback();
+			let query_queued = state.queue_command_readback();
 			drop(state);
 			if query_queued {
 				self.inner.notify.notify_one();
@@ -817,8 +822,7 @@ impl Conversations {
 				ConversationCommandState::Refused
 			};
 			state.cancel_refresh_batch();
-			let query_queued =
-				successor_commit_is_ambiguous && state.queue_routing_successor_readback();
+			let query_queued = successor_commit_is_ambiguous && state.queue_command_readback();
 			drop(state);
 			if query_queued {
 				self.inner.notify.notify_one();
@@ -877,7 +881,7 @@ impl Conversations {
 						dispatch_queued = state.advance_refresh_batch(false, true);
 					} else if state.routing_successor_reconciliation.is_some() {
 						state.command = ConversationCommandState::OutcomeUnknown;
-						dispatch_queued = state.queue_routing_successor_readback();
+						dispatch_queued = state.queue_command_readback();
 					} else {
 						state.command = ConversationCommandState::Refused;
 					}
@@ -912,16 +916,24 @@ impl Conversations {
 				ConversationRouteOutcome::Fresh
 			},
 			CommandOutcome::AcceptanceUnknown => {
+				if submission {
+					state.requested_selection =
+						Some(command_conversation_id(&in_flight.envelope.payload));
+				}
 				state.command = ConversationCommandState::OutcomeUnknown;
 				state.cancel_refresh_batch();
-				dispatch_queued = state.queue_routing_successor_readback();
+				dispatch_queued = state.queue_command_readback();
 				ConversationRouteOutcome::Fresh
 			},
 			CommandOutcome::Rejected => {
 				if matches!(result.error.as_ref(), Some(CommandError::AcceptanceUnknown)) {
+					if submission {
+						state.requested_selection =
+							Some(command_conversation_id(&in_flight.envelope.payload));
+					}
 					state.command = ConversationCommandState::OutcomeUnknown;
 					state.cancel_refresh_batch();
-					dispatch_queued = state.queue_routing_successor_readback();
+					dispatch_queued = state.queue_command_readback();
 				} else if batch_refresh {
 					state.routing_successor_reconciliation = None;
 					state.outcome_unknown_readback_generation = None;
@@ -988,6 +1000,7 @@ struct State {
 	list_pages_accepted: usize,
 	list_accumulator: Vec<ConversationSummary>,
 	outcome_unknown_readback_generation: Option<u64>,
+	command_readback_pending: bool,
 	routing_successor_reconciliation: Option<RoutingSuccessorReconciliation>,
 	live_deltas: VecDeque<ConversationLiveDelta>,
 	live_delta_bytes: usize,
@@ -1021,6 +1034,7 @@ impl State {
 			list_pages_accepted: 0,
 			list_accumulator: Vec::new(),
 			outcome_unknown_readback_generation: None,
+			command_readback_pending: false,
 			routing_successor_reconciliation: None,
 			live_deltas: VecDeque::new(),
 			live_delta_bytes: 0,
@@ -1113,9 +1127,8 @@ impl State {
 		)
 	}
 
-	fn queue_routing_successor_readback(&mut self) -> bool {
+	fn queue_command_readback(&mut self) -> bool {
 		if self.command != ConversationCommandState::OutcomeUnknown
-			|| self.routing_successor_reconciliation.is_none()
 			|| self.pending_command.is_some()
 			|| self.in_flight_command.is_some()
 		{
@@ -1124,10 +1137,13 @@ impl State {
 		let Some(generation) = self.session.as_ref().map(|session| session.generation) else {
 			return false;
 		};
-		self.outcome_unknown_readback_generation = Some(generation);
 		if self.pending_query.is_some() || self.in_flight_query.is_some() {
+			self.command_readback_pending = true;
+			self.outcome_unknown_readback_generation = None;
 			return false;
 		}
+		self.command_readback_pending = false;
+		self.outcome_unknown_readback_generation = Some(generation);
 		self.next_list_cursor = None;
 		self.queue_list()
 	}
@@ -1942,6 +1958,16 @@ mod tests {
 		assert!(!task_accepts_turn(&task));
 	}
 
+	#[test]
+	fn composer_create_serializes_to_an_admitted_wire_command() {
+		let (conversations, server_id, _) = connected_conversations();
+		conversations.create("Reply with OK.").unwrap();
+		let dispatch = conversations.try_take_dispatch(1, &server_id).unwrap();
+		let message = decodex_protocol::ClientMessage::Command(dispatch.command().unwrap().clone());
+		let encoded = serde_json::to_string(&message).unwrap();
+		assert_eq!(decodex_protocol::decode_client_message(&encoded).unwrap(), message);
+	}
+
 	fn connected_conversations() -> (Conversations, ServerId, ConversationSummary) {
 		let conversations = Conversations {
 			inner: Arc::new(ConversationsInner {
@@ -2659,7 +2685,10 @@ mod tests {
 
 	#[test]
 	fn acceptance_unknown_result_retains_the_readback_fence() {
-		let (conversations, server_id, _task) = connected_conversations();
+		let (conversations, server_id, task) = connected_conversations();
+		conversations.activate();
+		let old_query =
+			conversations.try_take_dispatch(1, &server_id).unwrap().query().unwrap().clone();
 		let dispatch = take_and_mark_command_sent(&conversations, &server_id);
 		let command = dispatch.command().expect("the sent dispatch is a command");
 		let result = CommandResultEnvelope {
@@ -2686,6 +2715,39 @@ mod tests {
 		assert_eq!(conversations.submit("retry explicitly"), Err(ConversationInputError::Busy));
 		conversations.begin_new();
 		assert_eq!(conversations.snapshot().command, ConversationCommandState::OutcomeUnknown);
+		conversations.route_query_result(
+			1,
+			&server_id,
+			&QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: server_id.clone(),
+				query_id: old_query.query_id,
+				payload: QueryResultPayload::Conversations(ConversationListResult::Available(
+					ConversationListPage::new(vec![task.clone()], None).unwrap(),
+				)),
+			},
+		);
+		assert_eq!(conversations.snapshot().command, ConversationCommandState::OutcomeUnknown);
+
+		let dispatch = conversations
+			.try_take_dispatch(1, &server_id)
+			.expect("unknown result queues readback on the current connection");
+		let query = dispatch.query().expect("never replay the submission");
+		conversations.route_query_result(
+			1,
+			&server_id,
+			&QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: server_id.clone(),
+				query_id: query.query_id.clone(),
+				payload: QueryResultPayload::Conversations(ConversationListResult::Available(
+					ConversationListPage::new(vec![task], None).unwrap(),
+				)),
+			},
+		);
+		assert_eq!(conversations.snapshot().command, ConversationCommandState::Idle);
+		assert!(!conversations.snapshot().last_submission_accepted);
+		assert!(conversations.try_take_dispatch(1, &server_id).is_none());
 	}
 
 	#[test]

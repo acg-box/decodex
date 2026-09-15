@@ -329,32 +329,35 @@ impl Destination {
 		Self::Health,
 		Self::Settings,
 	];
-	const CHROME: [Self; 4] = [Self::Chief, Self::Conversations, Self::Accounts, Self::Health];
+	const CHROME: [Self; 2] = [Self::Conversations, Self::Chief];
 
 	pub(crate) const fn label(self) -> &'static str {
 		match self {
-			Self::Chief => "Chief",
+			Self::Chief => "Delegate to Chief",
 			Self::Advisor => "Advisor",
 			Self::Projects => "Projects",
-			Self::Conversations => "Conversations",
+			Self::Conversations => "Chat with Codex",
 			Self::Runs => "Runs",
 			Self::Automations => "Automations",
 			Self::Accounts => "Accounts",
-			Self::Health => "Health",
+			Self::Health => "Diagnostics",
 			Self::Settings => "Settings",
 		}
 	}
 
 	const fn description(self) -> &'static str {
 		match self {
-			Self::Chief => "Coordinate goals, read results, and respond to decisions.",
+			Self::Chief =>
+				"Delegate an outcome: Chief coordinates tasks, tracks results, and asks for your decisions.",
 			Self::Advisor => "Review guidance and bounded decisions.",
 			Self::Projects => "Own repositories and product context.",
-			Self::Conversations => "Converse with Codex and inspect execution.",
+			Self::Conversations =>
+				"Chat directly with Codex: choose a conversation, write a message, and read its reply.",
 			Self::Runs => "Inspect managed run activity and evidence.",
 			Self::Automations => "Operate scheduled and event-driven work.",
-			Self::Accounts => "Open multi-account routing and recovery.",
-			Self::Health => "Inspect daemon and app-server readiness.",
+			Self::Accounts =>
+				"Accounts: manage sign-in, usage limits, and the account used for new work.",
+			Self::Health => "Diagnostics: check connection health and find the cause of errors.",
 			Self::Settings => "Configure the window and in-process menu bar.",
 		}
 	}
@@ -446,8 +449,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
 	cx.bind_keys([
 		KeyBinding::new("tab", FocusNext, None),
 		KeyBinding::new("shift-tab", FocusPrevious, None),
-		KeyBinding::new("cmd-1", ActivateChief, None),
-		KeyBinding::new("cmd-2", ActivateConversations, None),
+		KeyBinding::new("cmd-2", ActivateChief, None),
+		KeyBinding::new("cmd-1", ActivateConversations, None),
 		KeyBinding::new("cmd-3", ActivateHealth, None),
 		KeyBinding::new("cmd-b", ToggleSidebar, None),
 		KeyBinding::new("cmd-shift-b", ToggleInspector, None),
@@ -502,6 +505,7 @@ pub(crate) struct Shell {
 	history: Option<HistorySnapshot>,
 	opened_history: Option<EntityId>,
 	deferred_provider_refresh: Option<EntityId>,
+	last_provider_sync: Option<std::time::Instant>,
 	creating_new: bool,
 	pending_submission: Option<PendingComposerSubmission>,
 	input_status: Option<SharedString>,
@@ -554,11 +558,12 @@ impl Shell {
 		let health_query = HealthQuery::production();
 		let health = health_query.snapshot();
 		let conversations = Conversations::production();
+		conversations.activate();
 		let quick = conversations.snapshot();
 		window.focus(&root_focus, cx);
 
 		Self {
-			selected: Destination::Chief,
+			selected: Destination::Conversations,
 			inspector_tab: InspectorTab::Context,
 			left_sidebar_visible: true,
 			left_sidebar_mounted: true,
@@ -596,6 +601,7 @@ impl Shell {
 			history: None,
 			opened_history: None,
 			deferred_provider_refresh: None,
+			last_provider_sync: None,
 			creating_new: true,
 			pending_submission: None,
 			input_status: None,
@@ -979,6 +985,7 @@ impl Shell {
 		}
 		if destination == Destination::Conversations {
 			self.conversations.activate();
+			self.last_provider_sync = None;
 		}
 		if destination == Destination::Accounts {
 			self.accounts_controller.activate();
@@ -1129,6 +1136,7 @@ impl Shell {
 		self.history_pager = Some(history_pager);
 		if self.selected == Destination::Conversations {
 			self.conversations.activate();
+			self.last_provider_sync = None;
 		}
 		self.synchronize_conversations();
 		self.reconcile_pending_submission(cx);
@@ -1835,6 +1843,13 @@ fn publish_views(
 		let account_profile = shell.account_profile_controller.snapshot();
 		let desktop_settings = shell.desktop_settings.snapshot();
 		let health = shell.health_query.snapshot();
+		if shell.selected == Destination::Conversations
+			&& shell.pending_submission.is_none()
+			&& shell.last_provider_sync.is_none_or(|last| last.elapsed() >= Duration::from_secs(60))
+			&& shell.conversations.refresh_all().is_ok()
+		{
+			shell.last_provider_sync = Some(std::time::Instant::now());
+		}
 		let quick = shell.conversations.snapshot();
 		let history = shell.history_pager.as_ref().map(HistoryPager::snapshot);
 
@@ -1871,12 +1886,11 @@ fn topbar_destination_tab(
 	window: &Window,
 	cx: &Context<Shell>,
 ) -> AnyElement {
-	let display_label =
-		if destination == Destination::Conversations { "Workbench" } else { destination.label() };
+	let display_label = destination.label();
 	div()
 		.id(("destination", index))
 		.role(Role::Tab)
-		.aria_label(format!("{display_label}: {}", destination.description()))
+		.aria_label(destination.description())
 		.aria_selected(is_selected)
 		.key_context("Destination")
 		.track_focus(&focus)
@@ -1889,7 +1903,7 @@ fn topbar_destination_tab(
 		.items_center()
 		.justify_center()
 		.rounded(px(7.0))
-		.text_size(px(9.0))
+		.text_size(px(11.0))
 		.font_weight(if is_selected { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
 		.text_color(if is_selected { rgb(WB_TEXT) } else { rgb(WB_TEXT_MUTED) })
 		.bg(if is_selected { rgba(0xffffff0f) } else { rgba(0x00000000) })
@@ -1933,21 +1947,6 @@ fn workbench_topbar(
 	window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let title = if shell.selected == Destination::Conversations {
-		shell
-			.quick
-			.selected_task()
-			.map(|task| task.title.as_str().to_owned())
-			.unwrap_or_else(|| "Codex Workbench".to_owned())
-	} else {
-		shell.selected.label().to_owned()
-	};
-	let workspace = shell
-		.quick
-		.selected_task()
-		.and_then(|task| task.program.as_ref())
-		.map(|program| format!("Program {}", compact_identity(program.program_id.as_str())))
-		.unwrap_or_else(|| "local workspace".to_owned());
 	let page_tabs = Destination::CHROME.into_iter().map(|destination| {
 		let index = Destination::ALL
 			.iter()
@@ -1997,7 +1996,7 @@ fn workbench_topbar(
 				window.titlebar_double_click();
 			}
 		})
-		.child(topbar_identity(title, workspace))
+		.child(topbar_identity())
 		.child(
 			div()
 				.id("product-destinations")
@@ -2011,6 +2010,34 @@ fn workbench_topbar(
 				.justify_center()
 				.gap_1()
 				.children(page_tabs),
+		)
+		.child(
+			div()
+				.id("utility-navigation")
+				.role(Role::TabList)
+				.aria_label("Account and diagnostic tools")
+				.flex()
+				.items_center()
+				.gap_1()
+				.border_l_1()
+				.border_color(rgb(ui_theme::LINE))
+				.pl_2()
+				.children([Destination::Accounts, Destination::Health].into_iter().map(
+					|destination| {
+						let index = Destination::ALL
+							.iter()
+							.position(|item| *item == destination)
+							.expect("tool destination");
+						topbar_destination_tab(
+							index,
+							destination,
+							shell.selected == destination,
+							shell.destination_focus[index].clone(),
+							window,
+							cx,
+						)
+					},
+				)),
 		)
 		.child(topbar_controls(shell, presentation, cx))
 		.into_any_element()
@@ -2027,7 +2054,7 @@ impl Render for RefreshTooltip {
 			.border_1()
 			.border_color(rgba(0xffffff14))
 			.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
-			.text_size(px(9.0))
+			.text_size(px(11.0))
 			.text_color(rgb(WB_TEXT))
 			.child("Refresh health")
 	}
@@ -2044,7 +2071,7 @@ impl Render for ControlTooltip {
 			.border_1()
 			.border_color(rgba(0xffffff14))
 			.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
-			.text_size(px(9.0))
+			.text_size(px(11.0))
 			.text_color(rgb(WB_TEXT))
 			.child(self.0)
 	}
@@ -2071,14 +2098,14 @@ fn topbar_controls(
 		.position(|destination| *destination == Destination::Settings)
 		.expect("Settings destination");
 	div()
-		.w(px(400.0))
-		.min_w(px(370.0))
+		.w(px(310.0))
+		.min_w(px(310.0))
 		.h_full()
 		.flex()
 		.items_center()
 		.justify_end()
 		.gap_2()
-		.text_size(px(9.0))
+		.text_size(px(11.0))
 		.when(shell.selected == Destination::Conversations, |controls| {
 			controls.child(topbar_sessions_toggle(left_sidebar_visible, cx))
 		})
@@ -2141,55 +2168,20 @@ fn topbar_controls(
 		.into_any_element()
 }
 
-fn topbar_identity(title: String, workspace: String) -> AnyElement {
+fn topbar_identity() -> AnyElement {
 	div()
 		.h_full()
-		.w(px(350.0))
-		.min_w(px(250.0))
+		.w(px(120.0))
+		.flex_shrink_0()
 		.flex()
 		.items_center()
 		.gap_2()
 		.child(img(app_icon_path()).size(px(20.0)).rounded(px(5.0)))
 		.child(
 			div()
-				.min_w_0()
-				.flex()
-				.items_center()
-				.gap_2()
-				.text_size(px(10.5))
-				.child(
-					div()
-						.font_weight(FontWeight::SEMIBOLD)
-						.text_color(rgb(WB_TEXT))
-						.child("Decodex"),
-				)
-				.child(div().text_color(rgb(WB_TEXT_FAINT)).child("/"))
-				.child(
-					div()
-						.min_w_0()
-						.overflow_hidden()
-						.whitespace_nowrap()
-						.text_ellipsis()
-						.text_color(rgb(WB_TEXT_MUTED))
-						.child(title),
-				),
-		)
-		.child(
-			div()
-				.h(px(18.0))
-				.max_w(px(138.0))
-				.px_2()
-				.flex()
-				.items_center()
-				.rounded(px(5.0))
-				.bg(rgba(0xffffff08))
-				.font_family("SF Mono")
-				.text_size(px(8.0))
-				.text_color(rgb(WB_TEXT_FAINT))
-				.overflow_hidden()
-				.whitespace_nowrap()
-				.text_ellipsis()
-				.child(workspace),
+				.text_size(px(ui_theme::BODY_SIZE))
+				.font_weight(FontWeight::SEMIBOLD)
+				.child("Decodex"),
 		)
 		.into_any_element()
 }
@@ -2363,14 +2355,14 @@ fn health_component_row(
 		.gap_4()
 		.border_b_1()
 		.border_color(rgba(0xffffff0a))
-		.text_size(px(10.5))
+		.text_size(px(11.0))
 		.text_color(rgb(WB_TEXT_MUTED))
 		.child(div().min_w_0().flex().flex_col().gap_1().child(label).when(
 			!presentation.detail.is_empty(),
 			|element| {
 				element.child(
 					div()
-						.text_size(px(8.0))
+						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_FAINT))
 						.child(presentation.detail),
 				)
@@ -2422,12 +2414,12 @@ fn health_component_section(
 				.gap_4()
 				.child(
 					div()
-						.text_size(px(10.0))
+						.text_size(px(11.0))
 						.font_weight(FontWeight::SEMIBOLD)
 						.text_color(rgb(WB_TEXT))
 						.child(title),
 				)
-				.child(div().text_size(px(8.0)).text_color(rgb(WB_TEXT_FAINT)).child(detail)),
+				.child(div().text_size(px(11.0)).text_color(rgb(WB_TEXT_FAINT)).child(detail)),
 		)
 		.child(
 			div()
@@ -2483,7 +2475,7 @@ fn refresh_control(
 				.active(|element| element.bg(rgba(0xffffff1c)).opacity(0.82))
 				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 		})
-		.text_size(px(9.5))
+		.text_size(px(11.0))
 		.child("Refresh")
 		.into_any_element()
 }
@@ -2505,21 +2497,14 @@ fn destination_header(
 		.gap_1()
 		.child(
 			div()
-				.font_family("SF Mono")
-				.text_size(px(7.5))
-				.text_color(rgb(WB_TEXT_FAINT))
-				.child("OPERATIONAL SURFACE"),
-		)
-		.child(
-			div()
-				.text_size(px(17.0))
+				.text_size(px(ui_theme::HEADING_SIZE))
 				.font_weight(FontWeight::SEMIBOLD)
 				.text_color(rgb(WB_TEXT))
 				.child(selected.label()),
 		);
 	let header = div()
-		.h(px(72.0))
-		.min_h(px(72.0))
+		.h(px(64.0))
+		.min_h(px(64.0))
 		.px_6()
 		.flex()
 		.items_center()
@@ -2560,8 +2545,8 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 				.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL))
 				.child(
 					div()
-						.font_family("SF Mono")
-						.text_size(px(8.0))
+						.font_family(ui_theme::FONT_FAMILY)
+						.text_size(px(11.0))
 						.text_color(rgb(WB_ACCENT))
 						.child("PLANNED SURFACE"),
 				)
@@ -2584,8 +2569,8 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 						.pt_3()
 						.border_t_1()
 						.border_color(rgba(0xffffff0d))
-						.font_family("SF Mono")
-						.text_size(px(8.5))
+						.font_family(ui_theme::FONT_FAMILY)
+						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_FAINT))
 						.child(
 							"No speculative controls are exposed before this projection has an authority owner.",
@@ -2694,13 +2679,13 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 									.border_1()
 									.border_color(rgba(0xffffff0d))
 									.bg(rgba(0x0000001f))
-									.text_size(px(10.0))
+									.text_size(px(11.0))
 									.text_color(rgb(WB_TEXT_MUTED))
 									.child("No account projection is available yet.")
 									.child(
 										div()
-											.font_family("SF Mono")
-											.text_size(px(8.0))
+											.font_family(ui_theme::FONT_FAMILY)
+											.text_size(px(11.0))
 											.text_color(rgb(WB_TEXT_FAINT))
 											.child(
 												"Use Account access above to enroll credentials through the Decodex service.",
@@ -2721,8 +2706,8 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.border_1()
 						.border_color(rgba(0xffffff0d))
 						.bg(rgba(0x0000001f))
-						.font_family("SF Mono")
-						.text_size(px(8.0))
+						.font_family(ui_theme::FONT_FAMILY)
+						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_FAINT))
 						.child(status)
 						.child("CREDENTIAL-NEGATIVE · DAEMON AUTHORITY"),
@@ -2749,7 +2734,7 @@ fn account_mode_button(
 		.border_1()
 		.border_color(if selected { rgba(0x60a5fa55) } else { rgba(0xffffff14) })
 		.bg(if selected { rgba(0x60a5fa16) } else { rgba(0x00000000) })
-		.text_size(px(9.0))
+		.text_size(px(11.0))
 		.text_color(if selected { rgb(WB_TEXT) } else { rgb(WB_TEXT_MUTED) })
 		.when(can_manage && !selected, |button| {
 			button
@@ -2800,12 +2785,12 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 				.gap_1()
 				.child(
 					div()
-						.font_family("SF Mono")
-						.text_size(px(8.0))
+						.font_family(ui_theme::FONT_FAMILY)
+						.text_size(px(11.0))
 						.text_color(rgb(WB_BLUE))
 						.child("ACCOUNT ACCESS"),
 				)
-				.child(div().text_size(px(9.5)).text_color(rgb(WB_TEXT_MUTED)).child(status))
+				.child(div().text_size(px(11.0)).text_color(rgb(WB_TEXT_MUTED)).child(status))
 				.when_some(prompt, |details, (code, url)| {
 					details.child(account_login_prompt(code, url))
 				}),
@@ -2875,7 +2860,7 @@ fn account_login_prompt(code: String, url: String) -> AnyElement {
 		.items_center()
 		.gap_2()
 		.child(
-			div().font_family("SF Mono").text_size(px(11.0)).text_color(rgb(WB_TEXT)).child(code),
+			div().font_family("SF Mono").text_size(px(13.0)).text_color(rgb(WB_TEXT)).child(code),
 		)
 		.child(
 			div()
@@ -2883,8 +2868,8 @@ fn account_login_prompt(code: String, url: String) -> AnyElement {
 				.overflow_hidden()
 				.whitespace_nowrap()
 				.text_ellipsis()
-				.font_family("SF Mono")
-				.text_size(px(7.5))
+				.font_family(ui_theme::FONT_FAMILY)
+				.text_size(px(11.0))
 				.text_color(rgb(WB_TEXT_FAINT))
 				.child(url),
 		)
@@ -2941,28 +2926,28 @@ fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.gap_2()
 						.child(
 							div()
-								.font_family("SF Mono")
-								.text_size(px(8.0))
+								.font_family(ui_theme::FONT_FAMILY)
+								.text_size(px(11.0))
 								.text_color(rgb(WB_BLUE))
 								.child("ACCOUNT PROFILE"),
 						)
 						.child(
 							div()
-								.font_family("SF Mono")
-								.text_size(px(7.5))
+								.font_family(ui_theme::FONT_FAMILY)
+								.text_size(px(11.0))
 								.text_color(rgb(WB_TEXT_FAINT))
 								.child(selected),
 						),
 				)
-				.child(div().text_size(px(9.5)).text_color(rgb(WB_TEXT_MUTED)).child(status))
+				.child(div().text_size(px(11.0)).text_color(rgb(WB_TEXT_MUTED)).child(status))
 				.child(div().flex().flex_wrap().gap_2().children(facts.into_iter().map(|fact| {
 					div()
 						.px_2()
 						.py_1()
 						.rounded(px(5.0))
 						.bg(rgba(0xffffff08))
-						.font_family("SF Mono")
-						.text_size(px(7.5))
+						.font_family(ui_theme::FONT_FAMILY)
+						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_FAINT))
 						.child(fact)
 				}))),
@@ -3042,7 +3027,7 @@ fn account_login_button(
 		.rounded(px(7.0))
 		.border_1()
 		.border_color(rgba(0xffffff14))
-		.text_size(px(8.5))
+		.text_size(px(11.0))
 		.text_color(rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
 		.opacity(if enabled { 1.0 } else { 0.55 })
 		.when(enabled, |button| {
@@ -3210,7 +3195,7 @@ fn account_pool_row(
 						.border_1()
 						.border_color(if fixed { rgba(0x60a5fa55) } else { rgba(0xffffff12) })
 						.bg(if fixed { rgba(0x60a5fa18) } else { rgba(0x00000000) })
-						.text_size(px(8.5))
+						.text_size(px(11.0))
 						.text_color(if fixed { rgb(WB_BLUE) } else { rgb(WB_TEXT_MUTED) })
 						.when(pin_enabled, |button| {
 							button
@@ -3243,7 +3228,7 @@ fn account_pool_row(
 						.border_1()
 						.border_color(if enabled { rgba(0x22c55e45) } else { rgba(0xffffff12) })
 						.bg(if enabled { rgba(0x22c55e12) } else { rgba(0x00000000) })
-						.text_size(px(8.5))
+						.text_size(px(11.0))
 						.text_color(if enabled { rgb(WB_GREEN) } else { rgb(WB_TEXT_FAINT) })
 						.when(toggle_enabled, |button| {
 							button
@@ -3386,8 +3371,8 @@ fn account_row_action(
 		.rounded(px(6.0))
 		.border_1()
 		.border_color(rgba(0xffffff10))
-		.font_family("SF Mono")
-		.text_size(px(7.5))
+		.font_family(ui_theme::FONT_FAMILY)
+		.text_size(px(11.0))
 		.text_color(rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
 		.opacity(if enabled { 1.0 } else { 0.5 })
 		.when(enabled, |button| {
@@ -3409,13 +3394,16 @@ fn account_quota(label: &'static str, quota: AccountQuotaWindowDto) -> Option<An
 				.gap_1()
 				.child(
 					div()
-						.font_family("SF Mono")
-						.text_size(px(7.5))
+						.font_family(ui_theme::FONT_FAMILY)
+						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_FAINT))
 						.child(label),
 				)
 				.child(
-					div().text_size(px(9.0)).text_color(rgb(WB_TEXT_FAINT)).child("Not applicable"),
+					div()
+						.text_size(px(11.0))
+						.text_color(rgb(WB_TEXT_FAINT))
+						.child("Not applicable"),
 				)
 				.into_any_element(),
 		);
@@ -3443,8 +3431,8 @@ fn account_quota(label: &'static str, quota: AccountQuotaWindowDto) -> Option<An
 					.flex()
 					.items_center()
 					.justify_between()
-					.font_family("SF Mono")
-					.text_size(px(7.5))
+					.font_family(ui_theme::FONT_FAMILY)
+					.text_size(px(11.0))
 					.text_color(rgb(WB_TEXT_FAINT))
 					.child(label)
 					.child(detail),
@@ -3575,7 +3563,7 @@ fn command_status(command: ConversationCommandState) -> Option<&'static str> {
 		ConversationCommandState::Accepted => Some("Command accepted"),
 		ConversationCommandState::ManualRecovery(action) => Some(recovery_action_label(action)),
 		ConversationCommandState::OutcomeUnknown =>
-			Some("Connection interrupted. Decodex will check durable state before continuing."),
+			Some("Submission could not be confirmed. Check its saved state before sending again."),
 		ConversationCommandState::Refused => Some("The command was refused."),
 	}
 }
@@ -3741,7 +3729,7 @@ fn inspector_tab(
 		.justify_center()
 		.rounded(px(6.0))
 		.bg(if is_selected { rgba(0xffffff0e) } else { rgba(0x00000000) })
-		.text_size(px(9.5))
+		.text_size(px(11.0))
 		.font_weight(if is_selected { FontWeight::MEDIUM } else { FontWeight::NORMAL })
 		.text_color(if is_selected { rgb(WB_TEXT) } else { rgb(WB_TEXT_FAINT) })
 		.cursor_pointer()
@@ -3764,13 +3752,13 @@ fn inspector_metadata_row(label: &'static str, value: String) -> AnyElement {
 		.items_start()
 		.justify_between()
 		.gap_3()
-		.text_size(px(9.0))
+		.text_size(px(11.0))
 		.child(div().w(px(78.0)).min_w(px(78.0)).text_color(rgb(WB_TEXT_FAINT)).child(label))
 		.child(
 			div()
 				.min_w_0()
 				.flex_1()
-				.font_family("SF Mono")
+				.font_family(ui_theme::FONT_FAMILY)
 				.text_color(rgb(WB_TEXT_MUTED))
 				.text_right()
 				.overflow_hidden()
@@ -3786,7 +3774,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 		return div()
 			.py_8()
 			.text_center()
-			.text_size(px(9.5))
+			.text_size(px(11.0))
 			.text_color(rgb(WB_TEXT_FAINT))
 			.child("Select a Conversation to inspect its durable context.")
 			.into_any_element();
@@ -3826,7 +3814,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 			.child(inspector_metadata_row("State", program.state.as_str().to_owned()))
 			.child(
 				div()
-					.text_size(px(9.5))
+					.text_size(px(11.0))
 					.line_height(px(14.0))
 					.text_color(rgb(WB_TEXT_MUTED))
 					.whitespace_normal()
@@ -3850,7 +3838,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 				.rounded(px(7.0))
 				.border_1()
 				.border_color(rgba(0xffffff16))
-				.text_size(px(9.0))
+				.text_size(px(11.0))
 				.text_color(rgb(WB_BLUE))
 				.cursor_pointer()
 				.on_click(cx.listener(move |_, _, _, cx| cx.open_url(&url)))
@@ -3859,7 +3847,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 	} else {
 		content = content.child(
 			div()
-				.text_size(px(9.0))
+				.text_size(px(11.0))
 				.text_color(rgb(WB_TEXT_FAINT))
 				.child("Codex link becomes available after exact provider-thread readback."),
 		);
@@ -3934,7 +3922,7 @@ fn activity_inspector_content(shell: &Shell) -> AnyElement {
 							.items_center()
 							.justify_between()
 							.gap_2()
-							.text_size(px(8.5))
+							.text_size(px(11.0))
 							.child(div().text_color(rgb(WB_TEXT_MUTED)).child(kind))
 							.child(div().text_color(rgb(WB_TEXT_FAINT)).child(role)),
 					)
@@ -3942,7 +3930,7 @@ fn activity_inspector_content(shell: &Shell) -> AnyElement {
 						div()
 							.max_h(px(30.0))
 							.overflow_hidden()
-							.text_size(px(9.5))
+							.text_size(px(11.0))
 							.line_height(px(14.0))
 							.text_color(rgb(WB_TEXT_FAINT))
 							.whitespace_normal()
@@ -3964,7 +3952,7 @@ fn activity_inspector_content(shell: &Shell) -> AnyElement {
 				.gap_2()
 				.rounded(px(8.0))
 				.bg(rgba(0xffffff07))
-				.text_size(px(9.0))
+				.text_size(px(11.0))
 				.text_color(rgb(WB_TEXT_MUTED))
 				.child(div().size(px(5.0)).rounded_full().bg(rgb(task_color)))
 				.child(task_state),
@@ -3976,7 +3964,7 @@ fn activity_inspector_content(shell: &Shell) -> AnyElement {
 					div()
 						.py_6()
 						.text_center()
-						.text_size(px(9.5))
+						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_FAINT))
 						.child("Activity appears after verified history readback."),
 				)
@@ -4051,7 +4039,7 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.rounded(px(6.0))
 						.border_1()
 						.border_color(rgba(0xffffff10))
-						.text_size(px(8.5))
+						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_MUTED))
 						.cursor_pointer()
 						.hover(|element| element.bg(rgba(0xffffff09)).text_color(rgb(WB_TEXT)))
@@ -4128,12 +4116,12 @@ fn conversation_transcript(
 				.items_center()
 				.gap_2()
 				.rounded(px(6.0))
-				.text_size(px(9.0))
+				.text_size(px(11.0))
 				.text_color(rgb(WB_TEXT_FAINT))
 				.child(
 					div()
-						.font_family("SF Mono")
-						.text_size(px(8.5))
+						.font_family(ui_theme::FONT_FAMILY)
+						.text_size(px(11.0))
 						.text_color(rgb(if status == HistoryItemStatusDto::Failed {
 							WB_AMBER
 						} else {
@@ -4177,7 +4165,7 @@ fn conversation_transcript(
 						.w_full()
 						.max_w(px(760.0))
 						.py_3()
-						.text_size(px(10.0))
+						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_FAINT))
 						.child(history_status),
 				),
@@ -4205,7 +4193,7 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.items_center()
 		.justify_center()
 		.rounded_sm()
-		.text_size(px(8.5))
+		.text_size(px(11.0))
 		.text_color(if can_previous { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
 		.when(can_previous, |element| {
 			element.cursor_pointer().hover(|element| element.bg(rgb(0x25324a))).on_click(
@@ -4226,7 +4214,7 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.items_center()
 		.justify_center()
 		.rounded_sm()
-		.text_size(px(8.5))
+		.text_size(px(11.0))
 		.text_color(if can_retry { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
 		.when(can_retry, |element| {
 			element.cursor_pointer().hover(|element| element.bg(rgb(0x25324a))).on_click(
@@ -4247,7 +4235,7 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.items_center()
 		.justify_center()
 		.rounded_sm()
-		.text_size(px(8.5))
+		.text_size(px(11.0))
 		.text_color(if can_next { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
 		.when(can_next, |element| {
 			element.cursor_pointer().hover(|element| element.bg(rgb(0x25324a))).on_click(
@@ -4341,8 +4329,8 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 								.when(composer_len > 0, |element| {
 									element.child(
 										div()
-											.font_family("SF Mono")
-											.text_size(px(7.5))
+											.font_family(ui_theme::FONT_FAMILY)
+											.text_size(px(11.0))
 											.text_color(rgb(WB_TEXT_FAINT))
 											.child(format!("{composer_len}/{MAX_COMPOSER_BYTES}")),
 									)
@@ -4374,6 +4362,7 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.input_status
 		.as_ref()
 		.map(SharedString::to_string)
+		.or_else(|| conversation_refresh_status(shell.quick.refresh))
 		.or_else(|| {
 			(shell.quick.command_conversation_id.as_ref() == feedback_conversation)
 				.then(|| command_status(shell.quick.command))
@@ -4434,7 +4423,7 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 								.child(div().size(px(6.0)).rounded_full().bg(rgb(state_color)))
 								.child(
 									div()
-										.text_size(px(10.0))
+										.text_size(px(11.0))
 										.font_weight(FontWeight::MEDIUM)
 										.text_color(rgb(WB_TEXT))
 										.child(state_label),
@@ -4446,7 +4435,7 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 										.overflow_hidden()
 										.whitespace_nowrap()
 										.text_ellipsis()
-										.text_size(px(9.0))
+										.text_size(px(11.0))
 										.text_color(rgb(WB_TEXT_FAINT))
 										.child(detail),
 								)
@@ -4511,7 +4500,7 @@ fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 				.child(
 					div()
 						.min_w_0()
-						.text_size(px(10.0))
+						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_MUTED))
 						.child(presentation.detail),
 				),
@@ -4565,8 +4554,8 @@ fn connection_status(presentation: ConnectionPresentation) -> AnyElement {
 		.border_t_1()
 		.border_color(rgba(0xffffff0d))
 		.bg(rgba(0x00000016))
-		.font_family("SF Mono")
-		.text_size(px(8.0))
+		.font_family(ui_theme::FONT_FAMILY)
+		.text_size(px(11.0))
 		.text_color(rgb(WB_TEXT_FAINT))
 		.child(div().size(px(6.0)).rounded_full().bg(rgb(presentation.color)))
 		.child(div().w(px(110.0)).min_w(px(110.0)).child(presentation.label))
@@ -4659,6 +4648,8 @@ impl Render for Shell {
 			.id("decodex-shell")
 			.role(Role::Application)
 			.aria_label("Decodex operational shell")
+			.font_family(ui_theme::FONT_FAMILY)
+			.text_size(px(13.0))
 			.key_context("Conversations")
 			.track_focus(&self.root_focus)
 			.on_action(cx.listener(Self::focus_next))
@@ -4679,13 +4670,18 @@ impl Render for Shell {
 			.bg(rgba(ui_theme::SHELL_MATERIAL))
 			.text_color(rgb(WB_TEXT));
 
-		root.child(workbench_topbar(self, &presentation, window, cx)).child(destination_content(
-			self,
-			presentation,
-			self.refresh_focus.clone(),
-			window,
-			cx,
-		))
+		root.child(workbench_topbar(self, &presentation, window, cx))
+			.child(
+				div()
+					.id("destination-purpose")
+					.px_4()
+					.py_2()
+					.bg(rgba(ui_theme::CONTENT_MATERIAL))
+					.text_size(px(12.0))
+					.text_color(rgb(WB_TEXT_MUTED))
+					.child(self.selected.description()),
+			)
+			.child(destination_content(self, presentation, self.refresh_focus.clone(), window, cx))
 	}
 }
 
@@ -4694,6 +4690,9 @@ fn composer_send(can_send: bool, cx: &mut Context<Shell>) -> AnyElement {
 		.id("conversation-send")
 		.role(Role::Button)
 		.aria_label("Send message")
+		.when(!can_send, |element| {
+			element.aria_label("Send unavailable; check conversation status")
+		})
 		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Send message")).into())
 		.h(px(23.0))
 		.min_h(px(23.0))
@@ -4703,7 +4702,7 @@ fn composer_send(can_send: bool, cx: &mut Context<Shell>) -> AnyElement {
 		.justify_center()
 		.rounded(px(7.0))
 		.bg(if can_send { rgb(WB_TEXT) } else { rgba(0xffffff08) })
-		.text_size(px(9.5))
+		.text_size(px(11.0))
 		.font_weight(FontWeight::SEMIBOLD)
 		.text_color(if can_send { rgb(WB_CANVAS) } else { rgb(WB_TEXT_FAINT) })
 		.when(can_send, |element| {
@@ -4735,7 +4734,7 @@ fn composer_interrupt(can_interrupt: bool, cx: &mut Context<Shell>) -> AnyElemen
 		.rounded(px(7.0))
 		.border_1()
 		.border_color(rgba(0xffffff12))
-		.text_size(px(9.5))
+		.text_size(px(11.0))
 		.text_color(if can_interrupt { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
 		.when(can_interrupt, |element| {
 			element
@@ -4770,7 +4769,7 @@ fn composer_recover(
 		.rounded(px(7.0))
 		.border_1()
 		.border_color(if can_recover { rgba(0xf59e0b55) } else { rgba(0xffffff10) })
-		.text_size(px(9.5))
+		.text_size(px(11.0))
 		.text_color(if can_recover { rgb(WB_AMBER) } else { rgb(WB_TEXT_FAINT) })
 		.when(can_recover, |element| {
 			element
@@ -4799,8 +4798,8 @@ fn composer_model_control(model_label: String, cx: &mut Context<Shell>) -> AnyEl
 		.border_1()
 		.border_color(rgba(0xffffff10))
 		.bg(rgba(0x00000018))
-		.font_family("SF Mono")
-		.text_size(px(8.0))
+		.font_family(ui_theme::FONT_FAMILY)
+		.text_size(px(11.0))
 		.text_color(rgb(WB_TEXT_MUTED))
 		.cursor_pointer()
 		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
@@ -4825,8 +4824,8 @@ fn composer_fast_control(fast_enabled: bool, cx: &mut Context<Shell>) -> AnyElem
 		.border_1()
 		.border_color(if fast_enabled { rgba(0xffa45d40) } else { rgba(0xffffff10) })
 		.bg(if fast_enabled { rgba(0xff8a3d16) } else { rgba(0x00000018) })
-		.font_family("SF Mono")
-		.text_size(px(8.0))
+		.font_family(ui_theme::FONT_FAMILY)
+		.text_size(px(11.0))
 		.text_color(if fast_enabled { rgb(WB_AMBER) } else { rgb(WB_TEXT_MUTED) })
 		.cursor_pointer()
 		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
@@ -4855,8 +4854,8 @@ fn composer_effort_control(effort_label: String, cx: &mut Context<Shell>) -> Any
 		.border_1()
 		.border_color(rgba(0xffffff10))
 		.bg(rgba(0x00000018))
-		.font_family("SF Mono")
-		.text_size(px(8.0))
+		.font_family(ui_theme::FONT_FAMILY)
+		.text_size(px(11.0))
 		.text_color(rgb(WB_TEXT_MUTED))
 		.cursor_pointer()
 		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
@@ -4967,8 +4966,8 @@ fn account_pool_header(
 										)
 										.child(
 											div()
-										.font_family("SF Mono")
-										.text_size(px(8.0))
+										.font_family(ui_theme::FONT_FAMILY)
+										.text_size(px(11.0))
 										.text_color(rgb(WB_TEXT_FAINT))
 										.child(format!("{count} ACCOUNTS · {available} AVAILABLE")),
 										),
@@ -4976,7 +4975,7 @@ fn account_pool_header(
 								.child(
 									div()
 										.max_w(px(570.0))
-										.text_size(px(10.5))
+										.text_size(px(11.0))
 										.line_height(px(16.0))
 										.text_color(rgb(WB_TEXT_MUTED))
 										.child("Routing is chosen only for a new Codex conversation. Existing threads keep their bound account and cache affinity."),
@@ -5000,7 +4999,7 @@ fn account_pool_header(
 										.rounded(px(7.0))
 										.border_1()
 										.border_color(rgba(0xffffff14))
-										.text_size(px(9.0))
+										.text_size(px(11.0))
 										.text_color(rgb(WB_TEXT_MUTED))
 										.cursor_pointer()
 										.hover(|element| {
@@ -5047,8 +5046,8 @@ fn account_row_identity(account: &AccountDto) -> AnyElement {
 						.flex()
 						.items_center()
 						.gap_2()
-						.font_family("SF Mono")
-						.text_size(px(7.5))
+						.font_family(ui_theme::FONT_FAMILY)
+						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_FAINT))
 						.child(account_readiness_status(account))
 						.child(format!("· {short_id}")),
@@ -5089,7 +5088,7 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 				.border_1()
 				.border_color(if is_selected { rgba(0xffffff18) } else { rgba(0x00000000) })
 				.bg(if is_selected { rgba(0xffffff0f) } else { rgba(0x00000000) })
-				.text_size(px(9.5))
+				.text_size(px(11.0))
 				.text_color(if is_selected { rgb(WB_TEXT) } else { rgb(WB_TEXT_MUTED) })
 				.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
 				.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
@@ -5131,8 +5130,8 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 				.child(
 					div()
 						.pl(px(13.0))
-						.font_family("SF Mono")
-						.text_size(px(7.5))
+						.font_family(ui_theme::FONT_FAMILY)
+						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_FAINT))
 						.child(format!("{} · {short_id}", conversation_state_label(state))),
 				)
@@ -5176,7 +5175,7 @@ fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 				.flex_col()
 				.gap_1()
 				.font_weight(FontWeight::SEMIBOLD)
-				.text_size(px(10.0))
+				.text_size(px(11.0))
 				.text_color(rgb(WB_TEXT))
 				.child("Sessions")
 				.when_some(refresh_status, |element, status| {
@@ -5187,7 +5186,7 @@ fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 							.whitespace_nowrap()
 							.text_ellipsis()
 							.font_weight(FontWeight::NORMAL)
-							.text_size(px(7.0))
+							.text_size(px(11.0))
 							.text_color(rgb(WB_TEXT_FAINT))
 							.child(status),
 					)
@@ -5217,7 +5216,7 @@ fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 						.rounded(px(7.0))
 						.border_1()
 						.border_color(rgba(0xffffff14))
-						.text_size(px(8.5))
+						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_MUTED))
 						.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
 						.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
@@ -5276,7 +5275,7 @@ fn conversation_archive_button(can_control: bool, cx: &mut Context<Shell>) -> An
 		.flex()
 		.items_center()
 		.rounded(px(7.0))
-		.text_size(px(8.0))
+		.text_size(px(11.0))
 		.text_color(if can_control { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
 		.when(can_control, |element| {
 			element
@@ -5341,14 +5340,14 @@ mod tests {
 				),
 			)),
 			[
-				("Chief", true),
+				("Delegate to Chief", true),
 				("Advisor", false),
 				("Projects", false),
-				("Conversations", true),
+				("Chat with Codex", true),
 				("Runs", false),
 				("Automations", false),
 				("Accounts", true),
-				("Health", true),
+				("Diagnostics", true),
 				("Settings", true),
 			]
 		);
@@ -5894,9 +5893,9 @@ mod tests {
 	) {
 		let (shell, visual) = open_shell(cx);
 		for (keys, expected) in [
-			("cmd-2", Destination::Conversations),
+			("cmd-1", Destination::Conversations),
 			("cmd-3", Destination::Health),
-			("cmd-1", Destination::Chief),
+			("cmd-2", Destination::Chief),
 		] {
 			visual.simulate_keystrokes(keys);
 			assert_eq!(shell.read_with(visual, |shell, _| shell.selected), expected);
@@ -5906,7 +5905,7 @@ mod tests {
 	#[gpui::test]
 	fn panel_shortcuts_toggle_both_workbench_sidebars(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
-		visual.simulate_keystrokes("cmd-2");
+		visual.simulate_keystrokes("cmd-1");
 		assert!(shell.read_with(visual, |shell, _| shell.left_sidebar_visible));
 		assert!(shell.read_with(visual, |shell, _| shell.inspector_visible));
 
