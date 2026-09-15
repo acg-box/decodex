@@ -590,6 +590,17 @@ struct RetainedChiefProcess {
 	client: Option<decodex_codex::app_server_client::AppServerClient>,
 }
 
+fn chief_retirement_retry(
+	slot: Option<&RetainedChiefProcess>,
+	root_id: &str,
+) -> Result<bool, ChiefLaunchError> {
+	match slot {
+		None => Ok(false),
+		Some(slot) if slot.root_id == root_id && slot.client.is_none() => Ok(true),
+		Some(_) => Err(ChiefLaunchError::Conflict),
+	}
+}
+
 enum AccountLaunchAdmission {
 	Conversation(FreshConversationProcessGeneration),
 	Chief { root_id: String, operation_key: String, generation_id: ProcessGenerationId },
@@ -820,7 +831,13 @@ impl ConversationRuntime {
 		if self.is_shutting_down() {
 			return Err(ChiefLaunchError::Unavailable);
 		}
-		if self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner).is_some() {
+		let retry_retirement = {
+			let slot = self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner);
+			chief_retirement_retry(slot.as_ref(), &request.root_id)?
+		};
+		// A prior close can outlive its bounded wait. Recheck only the revoked
+		// owner's exact death authority; never replace a live or foreign owner.
+		if retry_retirement && !self.retire_chief_slot().await {
 			return Err(ChiefLaunchError::Conflict);
 		}
 		let prior = self
@@ -5639,6 +5656,32 @@ mod tests {
 			super::chief_account_affinity(Some(&bound), Some(&other)),
 			Err(super::ChiefLaunchError::Conflict)
 		));
+	}
+
+	#[tokio::test]
+	async fn chief_retirement_retries_only_the_revoked_original_owner() {
+		let mut slot = super::RetainedChiefProcess {
+			root_id: "chief".into(),
+			generation_id: decodex_core::ProcessGenerationId::new(derived_uuid(
+				"generation",
+				&["old"],
+			))
+			.unwrap(),
+			client: None,
+		};
+		// A failed retirement retains this slot: later checks must still request
+		// exact retirement, not treat the existing slot as a permanent conflict.
+		for _ in 0..3 {
+			assert!(super::chief_retirement_retry(Some(&slot), "chief").unwrap());
+		}
+		assert!(super::chief_retirement_retry(Some(&slot), "other").is_err());
+		let (io, _server) = tokio::io::duplex(4096);
+		let (reader, writer) = tokio::io::split(io);
+		let (client, _) =
+			decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
+		slot.client = Some(client);
+		assert!(super::chief_retirement_retry(Some(&slot), "chief").is_err());
+		assert!(!super::chief_retirement_retry(None, "chief").unwrap());
 	}
 
 	#[test]

@@ -3,11 +3,13 @@
 
 use decodex_codex::app_server_client::{AppServerClient, ClientError, RequestId, ServerEvent};
 use decodex_database::{
-	ChiefDisposition, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus, EnqueueChiefEvent,
-	SqliteStore, StoreError,
+	ChiefDisposition, ChiefInboxEvent, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus,
+	EnqueueChiefEvent, SqliteStore, StoreError,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+mod result_messages;
 
 /// Execution policy selected by the user, applied to actual app-server requests.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -244,21 +246,14 @@ impl ChiefCoordinator {
 					value.pointer("/thread/turns").and_then(Value::as_array).and_then(|turns| {
 						turns.iter().find(|entry| entry["id"].as_str() == Some(&turn))
 					});
-				let messages: Vec<_> = exact_turn
-					.and_then(|entry| entry["items"].as_array())
-					.into_iter()
-					.flatten()
-					.filter(|entry| entry["type"] == "agentMessage")
-					.cloned()
-					.collect();
-				let text = json!(messages).to_string();
-				let mut end = text.len().min(48000);
-				while !text.is_char_boundary(end) {
-					end -= 1;
-				}
-				json!({"threadId":thread,"turnId":turn,"assistantMessages":&text[..end],"truncated":end<text.len(),"exactTurnReadback":exact_turn.is_some()})
+				let (messages, truncated) = result_messages::collect(exact_turn);
+				json!({"threadId":thread,"turnId":turn,"assistantMessages":messages,"truncated":truncated,"exactTurnReadback":exact_turn.is_some()})
 			},
-			Err(error) => json!({"readbackError":error.to_string()}),
+			Err(error) => {
+				let detail = error.to_string();
+				let bounded: String = detail.chars().take(512).collect();
+				json!({"readbackError":bounded,"truncated":bounded.len()<detail.len()})
+			},
 		};
 		self.store
 			.complete_chief_turn_with_event(
@@ -273,7 +268,7 @@ impl ChiefCoordinator {
 						"worker_turn_completed"
 					}
 					.into(),
-					payload: json!({"terminal":params,"threadReadback":evidence}).to_string(),
+					payload: json!({"terminal":result_messages::terminal(&params),"threadReadback":evidence}).to_string(),
 				},
 			)
 			.await?;
@@ -1036,7 +1031,6 @@ impl ChiefCoordinator {
 	/// Wake for external evidence; Chief completion itself is not a wake source.
 	pub async fn wake_pending(&mut self) -> Result<(), ChiefError> {
 		let work = self.store.list_chief_work_items().await?;
-		let events = self.store.list_undelivered_chief_events(1000).await?;
 		for chief in work.iter().filter(|item| {
 			item.parent_goal_id.is_none()
 				&& item.kind == ChiefWorkKind::Goal
@@ -1045,19 +1039,10 @@ impl ChiefCoordinator {
 			// Release a finite batch of already-authorized dependent work. The host's
 			// ordinary due-check tick can release the next batch without a model wake.
 			self.release_ready_workers(&chief.id).await?;
-			let batch: Vec<_> = events
-				.iter()
-				.filter(|event| {
-					["worker_turn_completed", "automation_result", "followup_due", "user_message"]
-						.contains(&event.event_kind.as_str())
-						&& event.delivered_turn_id.is_none()
-						&& work.iter().any(|item| {
-							item.id == event.work_item_id
-								&& (item.id == chief.id || belongs_to(item, &chief.id, &work))
-						})
-				})
-				.collect();
-			if batch.is_empty() {
+			let batch = bounded_wake_batch(
+				self.store.list_chief_wake_events(chief.id.clone(), 1000).await?,
+			);
+			if !batch.iter().any(|event| event.delivered_turn_id.is_none()) {
 				continue;
 			}
 			// Delivery is fenced before RPC. Failure remains visible and is never
@@ -1074,6 +1059,23 @@ impl ChiefCoordinator {
 		}
 		Ok(())
 	}
+}
+
+// Leave ample space below the transport's frame limit for prompt escaping and RPC fields.
+const MAX_WAKE_BATCH_BYTES: usize = 512 * 1024;
+
+fn bounded_wake_batch(events: Vec<ChiefInboxEvent>) -> Vec<ChiefInboxEvent> {
+	let mut remaining = MAX_WAKE_BATCH_BYTES - 2;
+	let mut count = 0;
+	for event in &events {
+		let size = json!(event).to_string().len() + usize::from(count > 0);
+		if size > remaining {
+			break;
+		}
+		remaining -= size;
+		count += 1;
+	}
+	events.into_iter().take(count).collect()
 }
 
 fn parse_disposition(args: &Value) -> Result<(ChiefDisposition, Option<i64>), ChiefError> {

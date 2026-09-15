@@ -376,7 +376,12 @@ impl SqliteStore {
 			}
 			transaction.execute("UPDATE chief_work_items SET dispatch_state = 'dispatching', updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", params![id, unix_micros()?]).map_err(sqlite_error)?;
 			for event_id in event_ids {
-				let changed = transaction.execute("UPDATE chief_inbox_events SET delivery_work_item_id = ?2, delivered_turn_id = '' WHERE id = ?1 AND disposition IS NULL AND delivered_turn_id IS NULL", params![event_id, id]).map_err(sqlite_error)?;
+				let changed = transaction.execute("WITH RECURSIVE owned(id) AS (
+					SELECT ?2 UNION SELECT child.id FROM chief_work_items child JOIN owned ON child.parent_goal_id = owned.id)
+					UPDATE chief_inbox_events SET delivery_work_item_id = ?2, delivered_turn_id = ''
+					WHERE id = ?1 AND work_item_id IN (SELECT id FROM owned) AND disposition IS NULL
+					AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message')
+					AND (delivered_turn_id IS NULL OR (delivery_work_item_id = ?2 AND delivered_turn_id != ''))", params![event_id, id]).map_err(sqlite_error)?;
 				if changed != 1 { return Err(DatabaseError::Conflict.into()); }
 			}
 			if work.kind == ChiefWorkKind::Task {
@@ -552,6 +557,26 @@ impl SqliteStore {
 		let limit = page_limit(limit)?;
 		self.run(move |connection| {
 			connection.prepare("SELECT * FROM chief_inbox_events WHERE disposition IS NULL AND delivered_turn_id IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message') ORDER BY id LIMIT ?1").map_err(sqlite_error)?.query_map([limit], event_row).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
+		}).await
+	}
+
+	/// Select fresh triggers first, then unresolved evidence previously delivered to this Chief.
+	/// Reading this batch does not authorize a wake without at least one fresh trigger.
+	pub async fn list_chief_wake_events(
+		&self,
+		chief_id: String,
+		limit: usize,
+	) -> Result<Vec<ChiefInboxEvent>, StoreError> {
+		let limit = page_limit(limit)?;
+		self.run(move |connection| {
+			connection.prepare("WITH RECURSIVE owned(id) AS (
+				SELECT ?1 UNION SELECT child.id FROM chief_work_items child JOIN owned ON child.parent_goal_id = owned.id)
+				SELECT * FROM chief_inbox_events WHERE work_item_id IN (SELECT id FROM owned)
+				AND disposition IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message')
+				AND (delivered_turn_id IS NULL OR (delivery_work_item_id = ?1 AND delivered_turn_id != ''))
+				ORDER BY delivered_turn_id IS NOT NULL, id LIMIT ?2")
+				.map_err(sqlite_error)?.query_map(params![chief_id, limit], event_row)
+				.map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
 		}).await
 	}
 
@@ -830,6 +855,7 @@ fn event_row(row: &Row<'_>) -> rusqlite::Result<ChiefInboxEvent> {
 
 #[cfg(test)]
 mod tests {
+	mod inbox_carryover;
 	use super::*;
 	use tempfile::tempdir;
 
@@ -1093,7 +1119,7 @@ mod tests {
 			.enqueue_chief_event(EnqueueChiefEvent {
 				source_event_id: "wake:1".into(),
 				work_item_id: "chief".into(),
-				event_kind: "wake".into(),
+				event_kind: "automation_result".into(),
 				payload: String::new(),
 			})
 			.await
