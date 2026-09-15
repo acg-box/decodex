@@ -48,6 +48,8 @@ const LOCAL_WEBSOCKET_URI: &str = "ws://localhost/v1/ws";
 struct FixtureApplication {
 	state: Arc<Mutex<FixtureState>>,
 	execution_delay: Duration,
+	static_snapshot: bool,
+	execution_started: Arc<Notify>,
 	daemon_service: Option<Arc<FixtureDaemonService>>,
 }
 impl FixtureApplication {
@@ -108,6 +110,10 @@ struct FixtureDaemonService {
 }
 
 impl Application for FixtureApplication {
+	fn command_independent_snapshot(&self) -> Option<Vec<SnapshotItem>> {
+		self.static_snapshot.then(Vec::new)
+	}
+
 	fn daemon_service_tasks(
 		&self,
 		mut stop: watch::Receiver<bool>,
@@ -145,6 +151,7 @@ impl Application for FixtureApplication {
 		&'a self,
 		command: &'a CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
+		self.execution_started.notify_one();
 		if !self.execution_delay.is_zero() {
 			time::sleep(self.execution_delay).await;
 		}
@@ -1625,4 +1632,37 @@ async fn cross_uid_authority_is_refused_before_opening_a_socket() {
 	.expect_err("mismatched service UID must fail before socket creation");
 
 	assert_eq!(error, LocalTransportRefusal::EffectiveUidMismatch);
+}
+
+#[tokio::test]
+async fn static_snapshot_queries_remain_responsive_during_a_slow_command() {
+	let (_temp, transport) = local_transport();
+	let application = FixtureApplication {
+		static_snapshot: true,
+		execution_delay: Duration::from_millis(750),
+		..FixtureApplication::default()
+	};
+	let mut bound = server("responsive-query", application.clone(), ServerConfig::default())
+		.bind(transport.clone())
+		.await
+		.expect("bind server");
+	let mut command_client = connect(&transport, CURRENT_VERSION).await;
+	receive_initial(&mut command_client).await;
+	send(&mut command_client, command(CURRENT_VERSION, 1, "slow-command")).await;
+	application.execution_started.notified().await;
+	time::timeout(Duration::from_millis(300), async {
+		let mut query_client = connect(&transport, CURRENT_VERSION).await;
+		receive_initial(&mut query_client).await;
+		send(&mut query_client, doctor_query(1)).await;
+		assert!(matches!(receive(&mut query_client).await, ServerMessage::QueryResult(_)));
+	})
+	.await
+	.expect("query must finish before the slow command");
+	assert_eq!(application.executions(), 0);
+	assert!(matches!(receive(&mut command_client).await, ServerMessage::CommandReceipt(_)));
+	assert!(matches!(receive(&mut command_client).await, ServerMessage::CommandResult(_)));
+	assert!(matches!(receive(&mut command_client).await, ServerMessage::Event(_)));
+	drop(command_client);
+	bound.shutdown().await.expect("shutdown after command settles");
+	assert_eq!(application.executions(), 1);
 }

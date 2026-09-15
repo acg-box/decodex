@@ -135,6 +135,7 @@ pub struct ExactThreadListParams<'a> {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExactThreadStateListParams<'a> {
+	pub source_kinds: &'a [&'a str],
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub search_term: Option<&'a str>,
 	pub archived: bool,

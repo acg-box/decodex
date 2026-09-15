@@ -7,19 +7,21 @@ final class StatusPanelController: NSObject {
 	private static let menuBarGap: CGFloat = 4
 
 	private let statusItem: NSStatusItem
-	private let panel: TransparentStatusPanel
+	let panel: TransparentStatusPanel
 	private let hostingView: TransparentHostingView<StatusPanelRootView>
 	private let store: ResetCardStore
 	private var isPositioningPanel = false
 	private var isInvalidated = false
 	private var anchorRetryTask: Task<Void, Never>?
+	private var outsideClickMonitor: Any?
+	private var localClickMonitor: Any?
 
 	init(store: ResetCardStore) {
 		self.store = store
 		statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 		panel = TransparentStatusPanel(
 			contentRect: .zero,
-			styleMask: [.borderless],
+			styleMask: [.borderless, .nonactivatingPanel],
 			backing: .buffered,
 			defer: true
 		)
@@ -45,6 +47,7 @@ final class StatusPanelController: NSObject {
 			return
 		}
 		isInvalidated = true
+		stopObservingOutsideClicks()
 		anchorRetryTask?.cancel()
 		anchorRetryTask = nil
 		panel.orderOut(nil)
@@ -54,7 +57,7 @@ final class StatusPanelController: NSObject {
 	}
 
 	@objc
-	private func togglePanel() {
+	func togglePanel() {
 		if panel.isVisible {
 			orderPanelOut()
 		} else {
@@ -69,20 +72,41 @@ final class StatusPanelController: NSObject {
 			updatePanelContentSize(fittingSize)
 		}
 		positionPanel()
-		if NSApp.isActive == false {
-			// Accessory apps do not reliably become active from cooperative
-			// activation before a custom panel is ordered front.
-			NSApp.activate(ignoringOtherApps: true)
-		}
-		panel.makeKeyAndOrderFront(nil)
+
+		panel.orderFrontRegardless()
+		observeOutsideClicks()
 		scheduleAnchorRetry()
 		store.ensureFresh()
 	}
 
 	private func orderPanelOut() {
+		stopObservingOutsideClicks()
 		anchorRetryTask?.cancel()
 		anchorRetryTask = nil
 		panel.orderOut(nil)
+	}
+
+	private func observeOutsideClicks() {
+		stopObservingOutsideClicks()
+		outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+			MainActor.assumeIsolated { self?.orderPanelOut() }
+		}
+		localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+			MainActor.assumeIsolated {
+				guard let self, let window = event.window else { return }
+				if window !== self.panel && window.canBecomeMain && window !== self.statusItem.button?.window {
+					self.orderPanelOut()
+				}
+			}
+			return event
+		}
+	}
+
+	private func stopObservingOutsideClicks() {
+		if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+		if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
+		outsideClickMonitor = nil
+		localClickMonitor = nil
 	}
 
 	private func scheduleAnchorRetry() {
@@ -123,7 +147,7 @@ final class StatusPanelController: NSObject {
 		panel.isOpaque = false
 		panel.backgroundColor = .clear
 		panel.hasShadow = false
-		panel.hidesOnDeactivate = true
+		panel.hidesOnDeactivate = false
 		panel.isMovable = false
 		panel.level = .popUpMenu
 		panel.collectionBehavior = [
@@ -136,6 +160,7 @@ final class StatusPanelController: NSObject {
 	}
 
 	private func observePanelLifecycle() {
+
 		let notificationNames: [Notification.Name] = [
 			NSApplication.didChangeScreenParametersNotification,
 			NSWindow.didChangeScreenNotification,
@@ -150,6 +175,7 @@ final class StatusPanelController: NSObject {
 			)
 		}
 	}
+
 
 	@objc
 	private func panelLifecycleChanged(_: Notification) {

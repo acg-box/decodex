@@ -309,7 +309,7 @@ impl SettingsSurface {
 							.flex()
 							.items_center()
 							.gap_3()
-							.child(div().text_size(px(15.0)).child("Launch at login"))
+							.child(div().text_size(px(ui_theme::HEADING_SIZE)).child("Launch at login"))
 							.child(
 								div()
 									.px_2()
@@ -317,15 +317,15 @@ impl SettingsSurface {
 									.border_1()
 									.border_color(rgb(state_color))
 									.rounded_full()
-									.font_family("SF Mono")
-									.text_size(px(8.0))
+									.font_family(ui_theme::FONT_FAMILY)
+									.text_size(px(ui_theme::CAPTION_SIZE))
 									.text_color(rgb(state_color))
 									.child(launch_at_login_label(self.launch_at_login)),
 							),
 					)
 					.child(
 						div()
-							.text_size(px(11.0))
+							.text_size(px(ui_theme::CAPTION_SIZE))
 							.line_height(px(16.0))
 							.text_color(rgb(TEXT_MUTED))
 							.child(
@@ -337,8 +337,8 @@ impl SettingsSurface {
 							.id("launch-at-login-status")
 							.role(Role::Status)
 							.aria_label(self.launch_at_login_detail.clone())
-							.font_family("SF Mono")
-							.text_size(px(8.5))
+							.font_family(ui_theme::FONT_FAMILY)
+							.text_size(px(ui_theme::CAPTION_SIZE))
 							.text_color(rgb(state_color))
 							.child(self.launch_at_login_detail.clone()),
 					)
@@ -360,7 +360,7 @@ impl SettingsSurface {
 									.rounded(px(7.0))
 									.border_1()
 									.border_color(rgb(LINE))
-									.text_size(px(9.5))
+									.text_size(px(ui_theme::CAPTION_SIZE))
 									.cursor_pointer()
 									.hover(|element| element.border_color(rgb(BLUE)))
 									.on_click(cx.listener(Self::open_login_items_settings))
@@ -423,8 +423,7 @@ impl Render for SettingsSurface {
 									))
 									.child(self.toggle(cx)),
 							)
-							.child(self.launch_at_login_card(cx))
-							.child(authority_boundary()),
+							.child(self.launch_at_login_card(cx)),
 					),
 			)
 	}
@@ -467,20 +466,20 @@ fn settings_header() -> impl IntoElement {
 		.gap_2()
 		.child(
 			div()
-				.font_family("SF Mono")
-				.text_size(px(8.0))
+				.font_family(ui_theme::FONT_FAMILY)
+				.text_size(px(ui_theme::CAPTION_SIZE))
 				.text_color(rgb(BLUE))
-				.child("SETTINGS / DESKTOP SURFACES"),
+				.child("SETTINGS"),
 		)
-		.child(div().text_size(px(22.0)).child("One application, one service."))
+		.child(div().text_size(px(ui_theme::HEADING_SIZE)).child("App preferences"))
 		.child(
 			div()
 				.max_w(px(700.0))
-				.text_size(px(11.5))
+				.text_size(px(ui_theme::BODY_SIZE))
 				.line_height(px(17.0))
 				.text_color(rgb(TEXT_MUTED))
 				.child(
-					"Decodex.app owns the main window and the optional menu-bar item. The Decodex service owns product behavior and persistent settings.",
+					"Choose whether to show the usage widget in your menu bar and start Decodex when you sign in.",
 				),
 		)
 }
@@ -501,7 +500,7 @@ fn menu_bar_description(
 				.flex()
 				.items_center()
 				.gap_3()
-				.child(div().text_size(px(15.0)).child("Menu bar"))
+				.child(div().text_size(px(ui_theme::HEADING_SIZE)).child("Menu bar"))
 				.child(
 					div()
 						.px_2()
@@ -509,15 +508,15 @@ fn menu_bar_description(
 						.border_1()
 						.border_color(rgb(runtime_color))
 						.rounded_full()
-						.font_family("SF Mono")
-						.text_size(px(8.0))
+						.font_family(ui_theme::FONT_FAMILY)
+						.text_size(px(ui_theme::CAPTION_SIZE))
 						.text_color(rgb(runtime_color))
 						.child(runtime.label()),
 				),
 		)
 		.child(
 			div()
-				.text_size(px(11.0))
+				.text_size(px(ui_theme::CAPTION_SIZE))
 				.line_height(px(16.0))
 				.text_color(rgb(TEXT_MUTED))
 				.child(
@@ -529,76 +528,17 @@ fn menu_bar_description(
 				.id("menubar-runtime-status")
 				.role(Role::Status)
 				.aria_label(detail.clone())
-				.font_family("SF Mono")
-				.text_size(px(8.5))
+				.font_family(ui_theme::FONT_FAMILY)
+				.text_size(px(ui_theme::CAPTION_SIZE))
 				.text_color(rgb(runtime_color))
 				.child(detail),
 		)
 }
 
-fn authority_boundary() -> impl IntoElement {
-	div()
-		.p_6()
-		.flex()
-		.flex_col()
-		.gap_5()
-		.border_1()
-		.border_color(rgba(0xffffff0e))
-		.rounded(px(14.0))
-		.bg(rgba(ui_theme::SURFACE_MATERIAL))
-		.child(
-			div()
-				.font_family("SF Mono")
-				.text_size(px(10.0))
-				.text_color(rgb(TEXT_MUTED))
-				.child("PROCESS AND AUTHORITY BOUNDARY"),
-		)
-		.child(
-			div()
-				.flex()
-				.items_center()
-				.justify_between()
-				.text_size(px(11.5))
-				.child(boundary_node("DECODEX.APP", "window · menu bar", BLUE))
-				.child(boundary_edge("typed protocol"))
-				.child(boundary_node("DECODEX SERVICE", "state · behavior · effects", GREEN)),
-		)
-}
-
-fn boundary_node(title: &'static str, detail: &'static str, color: u32) -> impl IntoElement {
-	div()
-		.w(px(250.0))
-		.px_4()
-		.py_3()
-		.flex()
-		.flex_col()
-		.gap_1()
-		.border_1()
-		.border_color(rgba((color << 8) | 0x66))
-		.rounded(px(9.0))
-		.bg(rgba(0xffffff05))
-		.child(div().font_family("SF Mono").text_size(px(9.0)).text_color(rgb(color)).child(title))
-		.child(div().text_size(px(9.5)).text_color(rgb(TEXT_MUTED)).child(detail))
-}
-
-fn boundary_edge(label: &'static str) -> impl IntoElement {
-	div()
-		.flex_1()
-		.min_w(px(100.0))
-		.flex()
-		.flex_col()
-		.items_center()
-		.gap_2()
-		.text_size(px(9.0))
-		.text_color(rgb(TEXT_MUTED))
-		.child(label)
-		.child(div().w_full().h(px(1.0)).bg(rgb(LINE)))
-}
-
 const fn settings_detail(snapshot: DesktopSettingsSnapshot) -> &'static str {
 	match snapshot.load {
 		DesktopSettingsLoadState::NeverRequested => "Waiting for the Decodex settings query.",
-		DesktopSettingsLoadState::Loading => "Loading the daemon-owned menu-bar preference.",
+		DesktopSettingsLoadState::Loading => "Loading your menu-bar preference.",
 		DesktopSettingsLoadState::Ready => match snapshot.command {
 			DesktopSettingsCommandState::Sending | DesktopSettingsCommandState::AwaitingResult =>
 				"Saving the menu-bar preference through the Decodex service.",
@@ -607,7 +547,7 @@ const fn settings_detail(snapshot: DesktopSettingsSnapshot) -> &'static str {
 			DesktopSettingsCommandState::Refused =>
 				"The Decodex service refused the menu-bar preference change.",
 			DesktopSettingsCommandState::Idle | DesktopSettingsCommandState::Accepted =>
-				"The daemon-owned menu-bar preference is current.",
+				"Your menu-bar preference is saved.",
 		},
 		DesktopSettingsLoadState::Offline =>
 			"Connect to the Decodex service to read desktop settings.",

@@ -535,7 +535,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 
 		let source = try resetCardSectionSource()
 		XCTAssertFalse(source.contains("Updating usage…"))
-		XCTAssertTrue(source.contains("Connecting to Decodex…"))
+		XCTAssertFalse(source.contains("Connecting to Decodex…"))
 		XCTAssertFalse(source.contains("Reconnecting…"))
 	}
 

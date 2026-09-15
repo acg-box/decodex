@@ -1368,6 +1368,7 @@ where
 	operation: Option<ActiveActorOperation>,
 	state: PublicationState,
 	deferred_events: VecDeque<ApplicationEventPublication>,
+	deferred_requests: VecDeque<PublicationRequest>,
 	tasks: OwnedTasks,
 	receipt: TerminationReceiptBuilder,
 	actor_sender: Option<mpsc::Sender<PublicationRequest>>,
@@ -1566,6 +1567,7 @@ where
 			operation: None,
 			state: PublicationState::default(),
 			deferred_events: VecDeque::with_capacity(A::EVENT_CAPACITY),
+			deferred_requests: VecDeque::new(),
 			tasks: OwnedTasks::new(),
 			receipt: TerminationReceiptBuilder::default(),
 			actor_sender: Some(actor_sender),
@@ -1674,6 +1676,9 @@ where
 	}
 
 	fn drain_ingress(&mut self) {
+		while let Some(request) = self.deferred_requests.pop_front() {
+			self.reject_during_shutdown(request);
+		}
 		loop {
 			match self.actor_receiver.try_recv() {
 				Ok(request) => self.reject_during_shutdown(request),
@@ -1793,6 +1798,13 @@ where
 	}
 
 	async fn wait_accepting(&mut self) -> OwnerDirective {
+		if self.operation.is_none()
+			&& let Some(request) = self.deferred_requests.pop_front()
+		{
+			return self.handle_request(request);
+		}
+		let may_read_requests =
+			self.deferred_requests.len() < self.server.inner.config.outbound_queue_capacity;
 		let operation_active = self.operation.is_some();
 		let may_poll_events = !self.event_eof
 			&& (!operation_active || self.deferred_events.len() < A::EVENT_CAPACITY);
@@ -1809,7 +1821,7 @@ where
 					accepted = listener.accept(), if may_accept => {
 						AcceptingOrdinaryWake::Accepted(accepted)
 					},
-					request = actor_receiver.recv(), if !operation_active => {
+					request = actor_receiver.recv(), if may_read_requests => {
 						AcceptingOrdinaryWake::Request(request)
 					},
 					publication = application.next_publication(), if may_poll_events => {
@@ -2064,10 +2076,20 @@ where
 	}
 
 	fn handle_request(&mut self, request: PublicationRequest) -> OwnerDirective {
-		if self.phase != OwnerPhase::Accepting || self.operation.is_some() {
+		if self.phase != OwnerPhase::Accepting {
 			self.reject_during_shutdown(request);
 
 			return OwnerDirective::BeginStopping(StopCause::OwnerIntegrity);
+		}
+
+		let independent_snapshot = self.server.inner.application.command_independent_snapshot();
+		if self.operation.is_some()
+			&& (matches!(&request, PublicationRequest::Command { .. })
+				|| (matches!(&request, PublicationRequest::Register { .. })
+					&& independent_snapshot.is_none()))
+		{
+			self.deferred_requests.push_back(request);
+			return OwnerDirective::Continue;
 		}
 
 		match request {
@@ -2094,17 +2116,20 @@ where
 						.await
 						.map_err(|_| ())
 				});
-				self.operation =
-					Some(ActiveActorOperation::RegistrationSnapshot(PendingRegistrationSnapshot {
-						connection_id,
-						sender,
-						seal_sender,
-						hello,
-						version,
-						base_cursor,
-						reply,
-						future,
-					}));
+				let pending = PendingRegistrationSnapshot {
+					connection_id,
+					sender,
+					seal_sender,
+					hello,
+					version,
+					base_cursor,
+					reply,
+					future,
+				};
+				if let Some(items) = independent_snapshot {
+					return self.finish_registration_snapshot(pending, Ok(items));
+				}
+				self.operation = Some(ActiveActorOperation::RegistrationSnapshot(pending));
 
 				OwnerDirective::Continue
 			},
@@ -2332,7 +2357,11 @@ where
 				.seal_session(snapshot.connection_id, SessionSealReason::RegistrationAbandoned);
 		}
 
-		self.flush_deferred_events()
+		if self.operation.is_some() {
+			OwnerDirective::Continue
+		} else {
+			self.flush_deferred_events()
+		}
 	}
 
 	fn finish_active_command(
@@ -2412,7 +2441,7 @@ where
 	}
 
 	fn flush_deferred_events(&mut self) -> OwnerDirective {
-		if self.deferred_events.is_empty() {
+		if self.operation.is_some() || self.deferred_events.is_empty() {
 			return OwnerDirective::Continue;
 		}
 		self.enforce_deadline();
@@ -2600,6 +2629,7 @@ where
 			operation,
 			state,
 			deferred_events,
+			deferred_requests,
 			tasks,
 			mut receipt,
 			actor_sender,
@@ -2614,6 +2644,7 @@ where
 		} = self;
 		drop(operation);
 		drop(deferred_events);
+		drop(deferred_requests);
 		drop(state);
 		drop(actor_sender);
 		drop(actor_receiver);

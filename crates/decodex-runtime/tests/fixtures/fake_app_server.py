@@ -235,6 +235,8 @@ exact_thread = {
     "cwd": "/tmp/xy-1317-repository",
     "threadSource": "decodex.xy1317.fixture",
 }
+if mode == "exact-escaped-title":
+    exact_thread["name"] = 'A "quoted" title'
 exact_thread_reads = 0
 reset_card_consumed = False
 rate_limit_reads = 0
@@ -412,15 +414,21 @@ for line in sys.stdin:
                 ],
                 "nextCursor": None,
             }
-        elif "searchTerm" in message["params"]:
-            assert set(message["params"]) == {"archived", "limit", "searchTerm"}
-            assert message["params"]["searchTerm"] == exact_thread["name"]
+        elif "sourceKinds" in message["params"] or "searchTerm" in message["params"]:
+            if "sourceKinds" in message["params"]:
+                assert "searchTerm" not in message["params"]
+                assert "appServer" in message["params"]["sourceKinds"]
+                assert "exec" in message["params"]["sourceKinds"]
+            else:
+                assert message["params"]["searchTerm"] == exact_thread["name"]
             assert message["params"]["limit"] <= 100
             matches_archive = message["params"]["archived"] == exact_thread["archived"]
             data = [dict(exact_thread)] if matches_archive else []
-            if mode == "exact-current-schema":
+            if mode in {"exact-current-schema", "exact-escaped-title"}:
                 for item in data:
                     item.pop("archived", None)
+            if mode == "exact-escaped-title":
+                data.append({"id": "unrelated", "preview": "A different title\nwith a second line"})
             if mode == "exact-malformed-list":
                 data = [{**exact_thread, "createdAt": "not-a-timestamp"}]
             result = {"data": data, "nextCursor": None}
@@ -442,7 +450,7 @@ for line in sys.stdin:
                 sys.stdout.flush()
                 time.sleep(60)
             readback = dict(exact_thread)
-            if mode == "exact-current-schema":
+            if mode in {"exact-current-schema", "exact-escaped-title"}:
                 readback.pop("archived", None)
             if mode == "exact-mismatched-id" or (mode == "exact-mismatched-post-archive-read" and exact_thread_reads > 1):
                 readback["id"] = "thread:different"

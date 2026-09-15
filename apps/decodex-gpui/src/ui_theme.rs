@@ -5,6 +5,11 @@
 
 use std::time::Duration;
 
+pub(crate) const FONT_FAMILY: &str = ".SystemUIFont";
+pub(crate) const BODY_SIZE: f32 = 13.0;
+pub(crate) const CAPTION_SIZE: f32 = 11.0;
+pub(crate) const HEADING_SIZE: f32 = 16.0;
+
 pub(crate) const CANVAS: u32 = 0x0b0a0f;
 // One bounded glass hierarchy. Large regions always own a material, while
 // nested components target a final composite opacity instead of repeating the
@@ -24,7 +29,7 @@ pub(crate) const LINE: u32 = 0x2a2730;
 pub(crate) const LINE_STRONG: u32 = 0x403b48;
 pub(crate) const TEXT: u32 = 0xeeeaf0;
 pub(crate) const TEXT_MUTED: u32 = 0xaaa4af;
-pub(crate) const TEXT_FAINT: u32 = 0x706b76;
+pub(crate) const TEXT_FAINT: u32 = 0xaaa4af;
 pub(crate) const ACCENT: u32 = 0xe49a70;
 pub(crate) const BLUE: u32 = 0x8baaf7;
 pub(crate) const GREEN: u32 = 0x77c99a;

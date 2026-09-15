@@ -95,6 +95,15 @@ impl ComposerInput {
 		)
 	}
 
+	pub(crate) fn message(
+		tab_index: isize,
+		placeholder: impl Into<SharedString>,
+		aria_label: impl Into<SharedString>,
+		cx: &mut Context<Self>,
+	) -> Self {
+		Self::build(tab_index, placeholder, aria_label, ComposerAppearance::Workbench, cx)
+	}
+
 	pub(crate) fn with_placeholder(
 		tab_index: isize,
 		placeholder: impl Into<SharedString>,
@@ -532,7 +541,7 @@ impl Render for ComposerInput {
 				rgb(0x3c3744)
 			})
 			.bg(if workbench { rgba(0x00000000) } else { rgba(ui_theme::FIELD_MATERIAL) })
-			.text_size(px(if workbench { 10.5 } else { 11.0 }))
+			.text_size(px(ui_theme::BODY_SIZE))
 			.text_color(rgb(0xeeeaf0))
 			.child(ComposerTextElement { input: entity })
 	}

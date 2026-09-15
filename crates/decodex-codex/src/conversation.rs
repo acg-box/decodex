@@ -973,6 +973,12 @@ impl ConversationThreadResumeResponseWire {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ConversationThreadResponseWire {
 	id: String,
+	project_id: Option<String>,
+	model: Option<String>,
+	reasoning_effort: Option<ConversationReasoningEffortWire>,
+	originator: Option<String>,
+	daybreak_enabled: Option<bool>,
+	environments: Option<Vec<ConversationThreadEnvironmentWire>>,
 	#[serde(default)]
 	extra: Option<ConversationThreadExtraWire>,
 	session_id: String,
@@ -1002,6 +1008,15 @@ struct ConversationThreadResponseWire {
 	#[serde(default)]
 	section_entered_at: Option<i64>,
 	turns: Vec<ConversationForbiddenValueWire>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ConversationThreadEnvironmentWire {
+	environment_id: String,
+	cwd: ConversationAbsolutePathWire,
+	runtime_workspace_roots: Vec<ConversationAbsolutePathWire>,
 }
 
 #[allow(dead_code)]
@@ -1557,6 +1572,12 @@ const THREAD_RESUME_RESPONSE_REQUIRED_FIELDS: &[&str] =
 	&["thread", "model", "modelProvider", "cwd", "approvalPolicy", "approvalsReviewer", "sandbox"];
 const THREAD_RESPONSE_FIELDS: &[&str] = &[
 	"id",
+	"projectId",
+	"model",
+	"reasoningEffort",
+	"originator",
+	"daybreakEnabled",
+	"environments",
 	"extra",
 	"sessionId",
 	"forkedFromId",
@@ -1912,6 +1933,36 @@ mod tests {
 		assert_eq!(
 			encoded.get("clientUserMessageId"),
 			Some(&json!("50000000-0000-4000-8000-000000000001")),
+		);
+	}
+
+	#[test]
+	fn current_thread_metadata_does_not_block_start_or_resume() {
+		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+		let thread = response["thread"].as_object_mut().unwrap();
+		for (key, value) in [
+			("projectId", json!(null)),
+			("model", json!("gpt-5")),
+			("reasoningEffort", json!("high")),
+			("originator", json!("codex_cli_rs")),
+			("daybreakEnabled", json!(false)),
+			(
+				"environments",
+				json!([{"environmentId":"local", "cwd":"/workspace", "runtimeWorkspaceRoots":["/workspace"]}]),
+			),
+		] {
+			thread.insert(key.into(), value);
+		}
+		let bytes = serde_json::to_vec(&response).unwrap();
+		assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_ok());
+		assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_ok());
+		response["thread"]["daybreakEnabled"] = json!("invalid");
+		assert!(
+			decode_conversation_thread_start_response(
+				&start_request(),
+				&serde_json::to_vec(&response).unwrap()
+			)
+			.is_err()
 		);
 	}
 

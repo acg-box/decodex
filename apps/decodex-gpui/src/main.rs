@@ -65,6 +65,7 @@ fn main() {
 	});
 	application.run(move |cx: &mut App| {
 		shell::bind_keys(cx);
+		install_application_menu(cx);
 		let profile = ClientProfile::load_default(None);
 		let chief_profile = profile.as_ref().ok().cloned();
 		let bundled_daemon = profile.as_ref().ok().and_then(|profile| {
@@ -109,7 +110,7 @@ fn main() {
 		window
 			.update(cx, |_, window, cx| {
 				window.on_window_should_close(cx, |_, cx| {
-					cx.hide();
+					hide_main_window(cx);
 					false
 				});
 			})
@@ -119,7 +120,7 @@ fn main() {
 		main_window.borrow_mut().replace(window);
 		if launched_as_login_item {
 			#[cfg(target_os = "macos")]
-			order_out_native_windows();
+			hide_main_window(cx);
 			#[cfg(not(target_os = "macos"))]
 			cx.hide();
 		} else {
@@ -140,25 +141,40 @@ fn activate_main_window(window: &WindowHandle<Shell>, cx: &mut App) {
 
 #[cfg(target_os = "macos")]
 fn activate_native_application() {
-	use objc2::MainThreadMarker;
-	use objc2_app_kit::NSApplication;
+	use objc2::{ClassType, MainThreadMarker};
+	use objc2_app_kit::{NSApplication, NSPanel};
+	use objc2_foundation::NSObjectProtocol;
 
 	let main_thread =
 		MainThreadMarker::new().expect("GPUI application callback runs on main thread");
-	NSApplication::sharedApplication(main_thread).activate();
+	let application = NSApplication::sharedApplication(main_thread);
+	application.setActivationPolicy(objc2_app_kit::NSApplicationActivationPolicy::Regular);
+	for window in application.windows().iter() {
+		if !window.isKindOfClass(NSPanel::class()) && window.title().to_string() == "Decodex" {
+			if window.isMiniaturized() {
+				window.deminiaturize(None);
+			}
+			window.makeKeyAndOrderFront(None);
+		}
+	}
+	application.activate();
 }
 
 #[cfg(target_os = "macos")]
 fn order_out_native_windows() {
-	use objc2::MainThreadMarker;
-	use objc2_app_kit::NSApplication;
+	use objc2::{ClassType, MainThreadMarker};
+	use objc2_app_kit::{NSApplication, NSPanel};
+	use objc2_foundation::NSObjectProtocol;
 
 	let main_thread =
 		MainThreadMarker::new().expect("GPUI application callback runs on main thread");
 	let application = NSApplication::sharedApplication(main_thread);
 	for window in application.windows().iter() {
-		window.orderOut(None);
+		if !window.isKindOfClass(NSPanel::class()) && window.title().to_string() == "Decodex" {
+			window.orderOut(None);
+		}
 	}
+	application.setActivationPolicy(objc2_app_kit::NSApplicationActivationPolicy::Accessory);
 }
 
 fn compose_lifecycle(
@@ -202,4 +218,68 @@ fn compose_lifecycle(
 			None,
 		),
 	}
+}
+
+gpui::actions!(
+	decodex_application,
+	[
+		/// Quit the application and release its owned services.
+		Quit,
+		/// Close the main window while keeping the menu bar available.
+		CloseWindow,
+		/// Minimize the active main window.
+		Minimize,
+		/// Hide the application windows.
+		Hide,
+		/// Hide other applications.
+		HideOthers,
+	]
+);
+
+fn hide_main_window(cx: &mut App) {
+	#[cfg(target_os = "macos")]
+	{
+		let _ = cx;
+		order_out_native_windows();
+	}
+	#[cfg(not(target_os = "macos"))]
+	cx.hide();
+}
+
+fn install_application_menu(cx: &mut App) {
+	use gpui::{KeyBinding, Menu, MenuItem, SystemMenuType};
+	cx.bind_keys([
+		KeyBinding::new("cmd-q", Quit, None),
+		KeyBinding::new("cmd-w", CloseWindow, None),
+		KeyBinding::new("cmd-m", Minimize, None),
+		KeyBinding::new("cmd-h", Hide, None),
+		KeyBinding::new("alt-cmd-h", HideOthers, None),
+	]);
+	cx.on_action(|_: &Quit, cx| cx.quit());
+	cx.on_action(|_: &CloseWindow, cx| hide_main_window(cx));
+	cx.on_action(|_: &Hide, cx| cx.hide());
+	cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
+	cx.on_action(|_: &Minimize, cx| {
+		if let Some(window) = cx.active_window() {
+			let _ = window.update(cx, |_, window, _| window.minimize_window());
+		}
+	});
+	cx.set_menus([
+		Menu::new("Decodex").items([
+			MenuItem::os_submenu("Services", SystemMenuType::Services),
+			MenuItem::separator(),
+			MenuItem::action("Hide Decodex", Hide),
+			MenuItem::action("Hide Others", HideOthers),
+			MenuItem::separator(),
+			MenuItem::action("Quit Decodex", Quit),
+		]),
+		Menu::new("File").items([MenuItem::action("Close Window", CloseWindow)]),
+		Menu::new("Edit").items([
+			MenuItem::action("Cut", composer_input::Cut),
+			MenuItem::action("Copy", composer_input::Copy),
+			MenuItem::action("Paste", composer_input::Paste),
+			MenuItem::action("Select All", composer_input::SelectAll),
+		]),
+		Menu::new("Window").items([MenuItem::action("Minimize", Minimize)]),
+	]);
 }
