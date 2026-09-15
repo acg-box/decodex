@@ -1,6 +1,10 @@
 use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[path = "tests/inbox_carryover.rs"] mod inbox_carryover;
+
+#[path = "tests/result_integrity.rs"] mod result_integrity;
+
 async fn fixture()
 -> (ChiefCoordinator, tokio::sync::mpsc::UnboundedReceiver<Value>, tempfile::TempDir) {
 	fixture_with_history(json!({})).await

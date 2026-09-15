@@ -3604,7 +3604,7 @@ async fn query_chief_history(
 							.join("\n\n")
 					})
 					.unwrap_or_default();
-				let text = if text.is_empty() {
+				let mut text = if text.is_empty() {
 					"Execution ended; no readable assistant output was recovered.".into()
 				} else {
 					text
@@ -3613,6 +3613,7 @@ async fn query_chief_history(
 					== Some(true)
 				{
 					has_more = true;
+					text.insert_str(0, "[Assistant output truncated in saved history.]\n\n");
 				}
 				("assistant", text)
 			},
@@ -4097,6 +4098,39 @@ mod tests {
 		assert!(entries.iter().all(|entry| entry.text.len() <= 8192));
 		assert!(entries.iter().map(|entry| entry.text.len()).sum::<usize>() <= 65536);
 		assert!(entries.last().unwrap().text.starts_with('界'));
+	}
+
+	#[tokio::test]
+	async fn chief_history_reads_structured_and_legacy_assistant_results() {
+		use decodex_database::EnqueueChiefEvent;
+		use decodex_protocol::ChiefHistoryResult;
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(store.clone());
+		chief_query_work(&store, "chosen").await;
+		for (index, messages, truncated) in [
+			(0, serde_json::json!([{ "text": "legacy result" }]).to_string().into(), false),
+			(1, serde_json::json!([{ "text": "界🙂\"\\\n".repeat(4000) }]), true),
+		] {
+			store.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id: format!("assistant-{index}"), work_item_id: "chosen".into(),
+				event_kind: "chief_turn_completed".into(),
+				payload: serde_json::json!({"threadReadback": {"assistantMessages":messages,"truncated":truncated}}).to_string(),
+			}).await.unwrap();
+		}
+		let ChiefHistoryResult::Available { entries, has_more } =
+			super::query_chief_history(&owner, "chosen").await
+		else {
+			panic!("history available");
+		};
+		assert!(has_more);
+		assert_eq!(entries.len(), 2);
+		assert_eq!(entries[0].text, "legacy result");
+		assert!(
+			entries[1].text.starts_with("[Assistant output truncated in saved history.]\n\n界🙂")
+		);
+		assert!(entries[1].text.len() <= 8192);
 	}
 
 	#[tokio::test]

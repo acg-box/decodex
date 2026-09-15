@@ -27,6 +27,34 @@ use decodex_protocol::{
 use decodex_runtime::{ServerConfig, ServiceComposition};
 use std::{error::Error, fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, time::Duration};
 
+#[path = "chief_service_smoke/reliability.rs"] mod reliability;
+
+#[derive(Clone, Copy, PartialEq)]
+enum SmokeScope {
+	Full,
+	Reconnect,
+	LongOutput,
+}
+
+impl SmokeScope {
+	fn label(self) -> &'static str {
+		match self {
+			Self::Full => "FULL",
+			Self::Reconnect => "RECONNECT_ONLY",
+			Self::LongOutput => "LONG_OUTPUT_ONLY",
+		}
+	}
+
+	fn selected() -> SmokeResult<Self> {
+		match std::env::var("DECODEX_SMOKE_SCOPE").as_deref() {
+			Err(std::env::VarError::NotPresent) | Ok("full") => Ok(Self::Full),
+			Ok("reconnect") => Ok(Self::Reconnect),
+			Ok("long-output") => Ok(Self::LongOutput),
+			_ => Err("DECODEX_SMOKE_SCOPE must be full, reconnect or long-output".into()),
+		}
+	}
+}
+
 fn id() -> EntityId {
 	EntityId::new(ServerIdentity::generate().expect("valid bounded qualification fixture").as_str())
 		.expect("valid bounded qualification fixture")
@@ -35,6 +63,7 @@ fn id() -> EntityId {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
 	let model = std::env::args().nth(1).ok_or("explicit MODEL required")?;
+	let scope = SmokeScope::selected()?;
 	// Production process admission requires a selected directory beneath the
 	// effective user's home. The disposable socket root is deliberately elsewhere.
 	let working_directory = std::env::current_dir()?.canonicalize()?;
@@ -92,13 +121,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		println!(
 			"Production Chief start, model response, history and snapshot passed through same-UID protocol."
 		);
-		closed_loop_before_restart(&client).await?;
+		closed_loop_before_restart(&client, &root, scope).await?;
 		Ok(())
 	};
-	let result = match tokio::time::timeout(Duration::from_secs(600), run).await {
+	let result = match tokio::time::timeout(Duration::from_secs(900), run).await {
 		Ok(result) => result,
 		Err(_) => Err("service closed-loop pre-restart deadline exceeded".into()),
 	};
+	// Capture created identities even when a later qualification assertion fails.
+	let _ = snapshot(&ChiefClient::new(ClientProfile::load(root.as_path(), None)?)).await;
 	let original_thread =
 		if result.is_ok() { chief_thread(&root).await.map(Some) } else { Ok(None) };
 	let original_workers = if result.is_ok() {
@@ -113,6 +144,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	tokio::time::timeout(Duration::from_secs(10), service.shutdown()).await??;
 	println!("Production service shutdown completed in {:?}.", stopped.elapsed());
 	result?;
+	if scope != SmokeScope::Full {
+		println!("{} passed through the production service.", scope.label());
+		return Ok(());
+	}
 	let original_thread = original_thread?;
 	let original_workers = original_workers?;
 	println!("Rebootstrapping disposable service (120-second deadline).");
@@ -141,6 +176,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		}).await??;
 		if Some(chief_thread(&root).await?) != original_thread {return Err("resumed response used a different thread".into());}
 		println!("Production service restart preserved Chief thread and completed a later user turn.");
+		reliability::long_result(&client, &root).await?;
 		Ok(())
 	}.await;
 	if resumed.is_ok() {
@@ -178,7 +214,10 @@ type SmokeResult<T> = Result<T, Box<dyn Error>>;
 
 async fn snapshot(client: &ChiefClient) -> SmokeResult<decodex_protocol::ChiefSnapshotDto> {
 	match client.query().await? {
-		ChiefSnapshotResult::Available(snapshot) => Ok(snapshot),
+		ChiefSnapshotResult::Available(snapshot) => {
+			reliability::record_threads(&snapshot);
+			Ok(snapshot)
+		},
 		_ => Err("Chief snapshot unavailable".into()),
 	}
 }
@@ -224,7 +263,16 @@ async fn wait_graph(
 	label: &str,
 	predicate: impl Fn(&decodex_protocol::ChiefSnapshotDto) -> bool,
 ) -> SmokeResult<decodex_protocol::ChiefSnapshotDto> {
-	let result = tokio::time::timeout(Duration::from_secs(180), async {
+	wait_graph_for(client, label, Duration::from_secs(180), predicate).await
+}
+
+async fn wait_graph_for(
+	client: &ChiefClient,
+	label: &str,
+	deadline: Duration,
+	predicate: impl Fn(&decodex_protocol::ChiefSnapshotDto) -> bool,
+) -> SmokeResult<decodex_protocol::ChiefSnapshotDto> {
+	let result = tokio::time::timeout(deadline, async {
 		loop {
 			let graph = snapshot(client).await?;
 			if predicate(&graph) {
@@ -250,7 +298,11 @@ fn idle(graph: &decodex_protocol::ChiefSnapshotDto) -> bool {
 		.all(|work| work.dispatch_state == decodex_protocol::ChiefDispatchStateDto::Idle)
 }
 
-async fn closed_loop_before_restart(client: &ChiefClient) -> SmokeResult<()> {
+async fn closed_loop_before_restart(
+	client: &ChiefClient,
+	root: &DecodexRoot,
+	scope: SmokeScope,
+) -> SmokeResult<()> {
 	use decodex_protocol::ChiefWorkStatusDto as Status;
 	let initial = wait_graph(client, "two workers complete and wake Chief", |graph| {
 		graph.work_items.len() == 3
@@ -280,6 +332,14 @@ async fn closed_loop_before_restart(client: &ChiefClient) -> SmokeResult<()> {
 	println!(
 		"Service graph: two independent workers completed; later Chief turns disposed both results."
 	);
+	if scope == SmokeScope::LongOutput {
+		return reliability::long_result(client, root).await;
+	}
+	reliability::timer_reconnect(client, root).await?;
+	if scope == SmokeScope::Reconnect {
+		return reliability::no_stale_host_errors(client).await;
+	}
+	reliability::carryover(client, root).await?;
 	send(client,"repair-original-worker","Use chief_continue_worker exactly once on existing service-a; request exactly REPAIRED_A without tools. Do not create work. Resolve the new worker completion event when it arrives and summarize REPAIR_ACCEPTED. Only Chief coordination tools.").await?;
 	let repaired = wait_graph(client, "repair original worker", |graph| {
 		idle(graph)

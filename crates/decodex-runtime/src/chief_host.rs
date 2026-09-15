@@ -13,7 +13,7 @@ use serde_json::json;
 use tokio::sync::{Mutex, mpsc, oneshot, watch};
 
 use crate::{
-	ChiefConfig, ChiefCoordinator,
+	ChiefConfig, ChiefCoordinator, ChiefError,
 	conversation::{ConversationRuntime, StartChiefProcess},
 };
 
@@ -36,6 +36,43 @@ impl std::fmt::Display for ChiefHostError {
 }
 type Reply = oneshot::Sender<Result<String, ChiefHostError>>;
 const COMMAND_DEADLINE: Duration = Duration::from_secs(60);
+const RECOVERY_MIN_DELAY: Duration = Duration::from_secs(15);
+const RECOVERY_MAX_DELAY: Duration = Duration::from_secs(60);
+
+/// Retry connection admission, never a command or an uncertain provider turn.
+struct RecoverySchedule {
+	next: tokio::time::Instant,
+	delay: Duration,
+}
+
+impl RecoverySchedule {
+	fn new() -> Self {
+		Self { next: tokio::time::Instant::now() + RECOVERY_MIN_DELAY, delay: RECOVERY_MIN_DELAY }
+	}
+
+	async fn restore_if_due<T>(
+		&mut self,
+		active: &mut Option<T>,
+		now: tokio::time::Instant,
+		restore: impl std::future::Future<Output = Option<T>>,
+	) {
+		if active.is_some() {
+			*self = Self::new();
+			return;
+		}
+		if now < self.next {
+			return;
+		}
+		*active = restore.await;
+		if active.is_some() {
+			*self = Self::new();
+		} else {
+			self.delay = (self.delay * 2).min(RECOVERY_MAX_DELAY);
+			// Base the next retry on completion, so a slow failure cannot hot-loop.
+			self.next = tokio::time::Instant::now() + self.delay;
+		}
+	}
+}
 struct Request {
 	key: String,
 	action: ChiefActionDto,
@@ -77,6 +114,7 @@ impl ChiefHost {
 		// The stop receiver must remain polled while attach, recovery, and RPCs await.
 		let drive = async {
 			active = self.restore().await;
+			let mut recovery = RecoverySchedule::new();
 			let mut tick = tokio::time::interval(Duration::from_secs(15));
 			tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 			loop {
@@ -94,17 +132,22 @@ impl ChiefHost {
 						if let Some((root,chief,_)) = active.as_mut() {
 							let closed = event.is_none() || matches!(&event,Some(ServerEvent::Closed(_)));
 							if let Some(event) = event
-								&& chief.handle_event(event).await.is_err() {
+								&& let Err(error) = chief.handle_event(event).await
+								&& event_failure_needs_attention(closed, &error) {
 								self.record_error(root,"event_processing_failed").await;
 							}
 							if closed {
 								let root = root.clone();
 								let _ = self.runtime.close_chief_connection(&root).await;
 								active = None;
+								recovery = RecoverySchedule::new();
 							}
 						}
 					},
 					_ = tick.tick() => {
+						recovery.restore_if_due(
+							&mut active, tokio::time::Instant::now(), self.restore()
+						).await;
 						if let Some((root,chief,_)) = active.as_mut()
 							&& chief.check_due_followups(now()).await.is_err() {
 							self.record_error(root,"followup_processing_failed").await;
@@ -364,6 +407,12 @@ impl ChiefHost {
 	}
 }
 
+fn event_failure_needs_attention(closed: bool, error: &ChiefError) -> bool {
+	// Closed deliberately returns its transport error after saving dispatch fences.
+	// A failed fence/store operation is still a real processing failure.
+	!closed || !matches!(error, ChiefError::Transport(_))
+}
+
 fn decode_settings(encoded: &str) -> Option<(ChiefConfig, Option<AccountId>)> {
 	let settings: serde_json::Value = serde_json::from_str(encoded).ok()?;
 	let config = serde_json::from_value::<ChiefConfig>(settings.clone()).ok()?;
@@ -457,6 +506,73 @@ mod tests {
 	use super::*;
 	use decodex_core::DecodexRoot;
 
+	#[test]
+	fn expected_transport_close_does_not_hide_real_processing_failures() {
+		assert!(!event_failure_needs_attention(true, &ChiefError::Transport(ClientError::Closed)));
+		assert!(!event_failure_needs_attention(true, &ChiefError::Transport(ClientError::Io)));
+		assert!(event_failure_needs_attention(false, &ChiefError::Transport(ClientError::Closed)));
+		assert!(event_failure_needs_attention(
+			true,
+			&ChiefError::Store("fence write failed".into())
+		));
+		assert!(event_failure_needs_attention(true, &ChiefError::Invalid("bad evidence".into())));
+	}
+
+	#[tokio::test]
+	async fn timer_restores_disconnected_owner_without_user_input() {
+		let mut schedule = RecoverySchedule::new();
+		let mut active = None;
+		let deadline = schedule.next;
+		schedule.restore_if_due(&mut active, deadline, async { Some("original-owner") }).await;
+		assert_eq!(active, Some("original-owner"));
+		// An attached owner cannot be replaced by another timer tick.
+		schedule
+			.restore_if_due(&mut active, schedule.next, async {
+				panic!("must not reconnect a live owner")
+			})
+			.await;
+		assert_eq!(active, Some("original-owner"));
+	}
+
+	#[tokio::test]
+	async fn failed_recovery_is_rate_limited_and_success_resets_backoff() {
+		let mut schedule = RecoverySchedule::new();
+		let mut active = None::<()>;
+		for expected_delay in [30, 60, 60, 60] {
+			let due = schedule.next;
+			schedule
+				.restore_if_due(&mut active, due - Duration::from_nanos(1), async {
+					panic!("must not retry before the recovery deadline")
+				})
+				.await;
+			let started = tokio::time::Instant::now();
+			schedule.restore_if_due(&mut active, due, async { None }).await;
+			assert!(active.is_none());
+			assert_eq!(schedule.delay, Duration::from_secs(expected_delay));
+			assert!(schedule.next >= started + schedule.delay);
+		}
+		schedule.restore_if_due(&mut active, schedule.next, async { Some(()) }).await;
+		assert!(active.is_some());
+		assert_eq!(schedule.delay, RECOVERY_MIN_DELAY);
+	}
+
+	#[tokio::test]
+	async fn stop_cancels_pending_timer_recovery() {
+		let (sender, mut receiver) = watch::channel(false);
+		let actor = tokio::spawn(async move {
+			let mut schedule = RecoverySchedule::new();
+			let mut active = None::<()>;
+			tokio::select! {
+				_ = stopped(&mut receiver) => {},
+				_ = schedule.restore_if_due(
+					&mut active, schedule.next, std::future::pending()
+				) => panic!("pending recovery completed"),
+			}
+		});
+		sender.send(true).unwrap();
+		tokio::time::timeout(Duration::from_secs(1), actor).await.unwrap().unwrap();
+	}
+
 	#[tokio::test]
 	async fn requested_account_survives_restart_before_any_process_binding() {
 		let directory = tempfile::tempdir().unwrap();
@@ -523,7 +639,8 @@ mod tests {
 		let mut active = Some(("chief".into(), coordinator, events));
 		let event = receive(&mut active).await.unwrap();
 		assert!(matches!(event, ServerEvent::Closed(ClientError::Closed)));
-		assert!(active.as_mut().unwrap().1.handle_event(event).await.is_err());
+		let error = active.as_mut().unwrap().1.handle_event(event).await.unwrap_err();
+		assert!(!event_failure_needs_attention(true, &error));
 		assert_eq!(
 			store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state,
 			decodex_database::ChiefDispatchState::Unknown
