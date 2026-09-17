@@ -120,7 +120,7 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         native_client = read("crates/decodex-app-client-ffi/src/lib.rs")
         staging = read("scripts/macos/stage_decodex_app.sh")
         bundle_verifier = read("scripts/macos/verify_decodex_bundle_contracts.py")
-        self.assertIn("ProtocolVersion { major: 2, minor: 16 }", protocol)
+        self.assertIn("ProtocolVersion { major: 2, minor: 17 }", protocol)
         self.assertIn("assert_eq!(CURRENT_VERSION.minor, 16)", gpui)
         self.assertIn("decodex_app_native_client_abi_version", native_client)
         self.assertIn("verify_decodex_bundle_contracts.py", staging)

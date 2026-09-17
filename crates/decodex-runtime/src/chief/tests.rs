@@ -1,6 +1,8 @@
 use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[path = "tests/capacity.rs"] mod capacity;
+
 #[tokio::test]
 async fn asynchronous_questions_and_usage_are_observed_without_completing_or_waking_work() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;

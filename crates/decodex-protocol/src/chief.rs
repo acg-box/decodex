@@ -86,6 +86,13 @@ pub enum ChiefSandboxDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Cancel one exact pending model-capacity retry.
+	CancelCapacityRetry {
+		/// Work that owns the pending retry.
+		work_id: crate::EntityId,
+		/// Persistent capacity failure event identity.
+		event_id: i64,
+	},
 	/// Respond to one exact pending request after an explicit user decision.
 	Respond {
 		/// Related work identity.

@@ -431,7 +431,8 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 	match action {
 		crate::ChiefActionDto::Start(start) => &start.root_id,
 		crate::ChiefActionDto::Send { root_id, .. } => root_id,
-		crate::ChiefActionDto::Interrupt { work_id, .. }
+		crate::ChiefActionDto::CancelCapacityRetry { work_id, .. }
+		| crate::ChiefActionDto::Interrupt { work_id, .. }
 		| crate::ChiefActionDto::Respond { work_id, .. }
 		| crate::ChiefActionDto::AutomationResult { work_id, .. } => work_id,
 	}
@@ -1207,7 +1208,7 @@ pub enum AccountCommandResponse {
 	},
 }
 
-/// Same-UID V2.16 client for daemon-owned account queries and lifecycle commands.
+/// Same-UID V2.17 client for daemon-owned account queries and lifecycle commands.
 pub struct AccountClient {
 	transport: ResetCardClient,
 }
@@ -2182,8 +2183,8 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_16_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 16 });
+	fn protocol_constants_expose_only_the_exact_v2_17_version() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 17 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

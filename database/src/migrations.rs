@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 15;
+const CURRENT_SCHEMA_VERSION: i64 = 16;
 
 struct Migration {
 	version: i64,
@@ -89,6 +89,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 15,
 		name: "chief_observation_indexes",
 		sql: include_str!("../migrations/0015_chief_observation_indexes.sql"),
+	},
+	Migration {
+		version: 16,
+		name: "chief_capacity_retry",
+		sql: include_str!("../migrations/0016_chief_capacity_retry.sql"),
 	},
 ];
 
@@ -367,36 +372,39 @@ mod tests {
 	}
 
 	#[test]
-	fn observation_indexes_upgrade_version_fourteen_without_changing_events() {
-		let directory = tempfile::tempdir().unwrap();
-		let mut connection = Connection::open(directory.path().join("upgrade.sqlite3")).unwrap();
-		configure(&connection).unwrap();
-		for migration in &MIGRATIONS[..14] {
-			connection.execute_batch(migration.sql).unwrap();
-			connection
-				.execute(
-					"INSERT INTO schema_migrations (version,name,sha256,applied_at_micros) VALUES (?1,?2,?3,1)",
-					params![migration.version, migration.name, migration_digest(migration.sql)],
+	fn capacity_retry_upgrade_preserves_version_fourteen_and_fifteen_events() {
+		for version in [14, 15] {
+			let directory = tempfile::tempdir().unwrap();
+			let mut connection =
+				Connection::open(directory.path().join("upgrade.sqlite3")).unwrap();
+			configure(&connection).unwrap();
+			for migration in &MIGRATIONS[..version] {
+				connection.execute_batch(migration.sql).unwrap();
+				connection
+					.execute(
+						"INSERT INTO schema_migrations (version,name,sha256,applied_at_micros) VALUES (?1,?2,?3,1)",
+						params![migration.version, migration.name, migration_digest(migration.sql)],
+					)
+					.unwrap();
+			}
+			connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+			connection.pragma_update(None, "user_version", version as i64).unwrap();
+			connection.execute("INSERT INTO chief_work_items (id,kind,title,instructions,status,dispatch_state,created_at_micros,updated_at_micros) VALUES ('root','goal','Keep this goal','Keep these instructions','open','idle',1,1)", []).unwrap();
+			connection.execute("INSERT INTO chief_inbox_events (source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES ('input','root','user_message','{\"text\":\"Keep this message\"}',1)", []).unwrap();
+			migrate(&mut connection).unwrap();
+			let event: (String, Option<String>) = connection
+				.query_row(
+					"SELECT payload,disposition FROM chief_inbox_events WHERE source_event_id='input'",
+					[],
+					|row| Ok((row.get(0)?, row.get(1)?)),
 				)
 				.unwrap();
+			assert_eq!(event, ("{\"text\":\"Keep this message\"}".into(), None));
+			let indexes: i64 = connection.query_row("SELECT count(*) FROM sqlite_schema WHERE type='index' AND name IN ('chief_inbox_work_history','chief_inbox_work_kind')", [], |row| row.get(0)).unwrap();
+			assert_eq!(indexes, 2);
+			migrate(&mut connection).unwrap();
+			verify(&connection).unwrap();
 		}
-		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
-		connection.pragma_update(None, "user_version", 14).unwrap();
-		connection.execute("INSERT INTO chief_work_items (id,kind,title,instructions,status,dispatch_state,created_at_micros,updated_at_micros) VALUES ('root','goal','Keep this goal','Keep these instructions','open','idle',1,1)", []).unwrap();
-		connection.execute("INSERT INTO chief_inbox_events (source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES ('input','root','user_message','{\"text\":\"Keep this message\"}',1)", []).unwrap();
-		migrate(&mut connection).unwrap();
-		let event: (String, Option<String>) = connection
-			.query_row(
-				"SELECT payload,disposition FROM chief_inbox_events WHERE source_event_id='input'",
-				[],
-				|row| Ok((row.get(0)?, row.get(1)?)),
-			)
-			.unwrap();
-		assert_eq!(event, ("{\"text\":\"Keep this message\"}".into(), None));
-		let indexes: i64 = connection.query_row("SELECT count(*) FROM sqlite_schema WHERE type='index' AND name IN ('chief_inbox_work_history','chief_inbox_work_kind')", [], |row| row.get(0)).unwrap();
-		assert_eq!(indexes, 2);
-		migrate(&mut connection).unwrap();
-		verify(&connection).unwrap();
 	}
 
 	#[test]

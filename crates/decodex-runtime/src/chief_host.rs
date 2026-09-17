@@ -185,6 +185,13 @@ impl ChiefHost {
 		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) -> Result<String, ChiefHostError> {
 		match action {
+			ChiefActionDto::CancelCapacityRetry { work_id, event_id } => {
+				self.store
+					.cancel_chief_capacity_retry(work_id.as_str().into(), event_id)
+					.await
+					.map_err(|_| "capacity retry is no longer pending; refresh state")?;
+				Ok(work_id.as_str().into())
+			},
 			ChiefActionDto::Respond { work_id, event_id, response_json } => {
 				let event = self
 					.store

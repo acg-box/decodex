@@ -792,11 +792,59 @@ impl ChiefSurface {
 							.p_3()
 							.rounded_md()
 							.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL))
-							.child(muted(entry.kind.clone()))
+							.child(muted(if entry.kind == "capacity_retry_pending" {
+								"Waiting to retry".into()
+							} else {
+								entry.kind.clone()
+							}))
 							.child(
 								div().text_size(px(ui_theme::BODY_SIZE)).child(entry.text.clone()),
 							),
 					);
+					if entry.kind == "capacity_retry_pending" {
+						let event_id = entry.id;
+						let work_id = work.id.clone();
+						let key_work_id = work_id.clone();
+						panel = panel.child(
+							div()
+								.id(("cancel-capacity-retry", entry.id as u64))
+								.debug_selector(|| "capacity-retry-cancel".into())
+								.role(Role::Button)
+								.tab_index(29)
+								.cursor_pointer()
+								.text_color(rgb(ui_theme::BLUE))
+								.on_key_down(cx.listener(
+									move |surface, event: &gpui::KeyDownEvent, _, cx| {
+										if ["enter", "space"]
+											.contains(&event.keystroke.key.as_str())
+											&& let Ok(work_id) = EntityId::new(key_work_id.clone())
+										{
+											surface.execute(
+												ChiefActionDto::CancelCapacityRetry {
+													work_id,
+													event_id,
+												},
+												None,
+												cx,
+											);
+										}
+									},
+								))
+								.on_click(cx.listener(move |surface, _, _, cx| {
+									if let Ok(work_id) = EntityId::new(work_id.clone()) {
+										surface.execute(
+											ChiefActionDto::CancelCapacityRetry {
+												work_id,
+												event_id,
+											},
+											None,
+											cx,
+										);
+									}
+								}))
+								.child("Cancel automatic retry"),
+						);
+					}
 				}
 			},
 			Some(ChiefHistoryResult::Unavailable) =>
@@ -1576,6 +1624,53 @@ mod tests {
 			)
 			.is_empty()
 		);
+	}
+
+	#[gpui::test]
+	fn pending_capacity_retry_has_an_actionable_cancel_button(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |surface, _| {
+			surface.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				work_items: vec![ChiefWorkItemDto {
+					id: "root".into(),
+					parent_goal_id: None,
+					kind: ChiefWorkKindDto::Goal,
+					title: "Chief".into(),
+					codex_thread_id: Some("thread".into()),
+					active_turn_id: None,
+					dispatch_state: ChiefDispatchStateDto::Idle,
+					status: ChiefWorkStatusDto::Open,
+					next_check_at_micros: None,
+					created_at_micros: 1,
+					updated_at_micros: 1,
+				}],
+				dependencies: vec![],
+				pending_events: vec![],
+			})));
+			surface.history = Some((
+				"root".into(),
+				ChiefHistoryResult::Available {
+					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						id: 7,
+						kind: "capacity_retry_pending".into(),
+						text: "Model capacity retry 1/3 is pending.".into(),
+						created_at_micros: 1,
+					}],
+					has_more: false,
+				},
+			));
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(px(1180.0), px(1200.0)));
+			window.draw(cx).clear();
+		});
+		let bounds =
+			visual.debug_bounds("capacity-retry-cancel").expect("visible cancellation control");
+		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+		surface.update(visual, |surface, _| {
+			assert_eq!(surface.feedback, "No service profile is configured.");
+			assert!(!surface.sending);
+		});
 	}
 
 	#[gpui::test]

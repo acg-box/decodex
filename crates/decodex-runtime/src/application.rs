@@ -3609,6 +3609,7 @@ async fn query_chief_history(
 	let Ok(events) = store.read_chief_work_events(id.into(), 33).await else {
 		return ChiefHistoryResult::Unavailable;
 	};
+	let pending_retry = store.pending_chief_capacity_retry(id.into()).await.ok().flatten();
 	let mut has_more = events.len() > 32;
 	let mut rendered_messages = std::collections::HashSet::<(String, String)>::new();
 	let mut entries = Vec::new();
@@ -3629,7 +3630,7 @@ async fn query_chief_history(
 				("assistant", value["item"]["text"].as_str().unwrap_or("").to_owned())
 			},
 			"context_compacted" => ("system", "Codex compacted the thread context.".into()),
-			"chief_turn_completed" | "worker_turn_completed" => {
+			"chief_turn_completed" | "worker_turn_completed" | "capacity_retry" => {
 				let messages = value.pointer("/threadReadback/assistantMessages");
 				let parsed = messages
 					.and_then(serde_json::Value::as_str)
@@ -3685,7 +3686,26 @@ async fn query_chief_history(
 						text.push_str(detail);
 					}
 				}
-				("assistant", text)
+				if value.pointer("/capacityRetry/cancelled") == Some(&serde_json::json!(true)) {
+					text.insert_str(0, "Automatic capacity retry cancelled.\n\n");
+				}
+				if value.pointer("/capacityRetry/exhausted") == Some(&serde_json::json!(true)) {
+					text.insert_str(0, "Automatic capacity retries exhausted (3/3).\n\n");
+				}
+				if let Some(retry) =
+					pending_retry.as_ref().filter(|retry| retry.event_id == event.id)
+				{
+					text.insert_str(
+						0,
+						&format!(
+							"Model capacity retry {}/3 is pending on the same model.\n\n",
+							retry.attempt
+						),
+					);
+					("capacity_retry_pending", text)
+				} else {
+					("assistant", text)
+				}
 			},
 			"automation_result" =>
 				("automation", value.as_str().unwrap_or(&event.payload).to_owned()),
@@ -4126,6 +4146,38 @@ mod tests {
 			})
 			.await
 			.unwrap();
+	}
+
+	#[tokio::test]
+	async fn capacity_retry_history_exposes_only_the_current_cancellable_event() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(store.clone());
+		chief_query_work(&store, "chosen").await;
+		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
+		store.begin_chief_dispatch("chosen".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("chosen".into(), "turn".into()).await.unwrap();
+		let event=store.complete_chief_turn_with_event("chosen".into(),"turn".into(),decodex_database::EnqueueChiefEvent {
+			source_event_id:"capacity".into(),work_item_id:"chosen".into(),event_kind:"chief_turn_completed".into(),
+			payload:serde_json::json!({"terminal":{"turn":{"status":"failed","error":{"message":"Selected model is at capacity.","codexErrorInfo":"serverOverloaded"}}},"threadReadback":{"capacityRetryEligible":true}}).to_string()
+		}).await.unwrap();
+		let decodex_protocol::ChiefHistoryResult::Available { entries, .. } =
+			super::query_chief_history(&owner, "chosen").await
+		else {
+			panic!("history");
+		};
+		assert_eq!(entries[0].kind, "capacity_retry_pending");
+		assert_eq!(entries[0].id, event.id);
+		assert!(entries[0].text.contains("1/3"));
+		store.cancel_chief_capacity_retry("chosen".into(), event.id).await.unwrap();
+		let decodex_protocol::ChiefHistoryResult::Available { entries, .. } =
+			super::query_chief_history(&owner, "chosen").await
+		else {
+			panic!("history");
+		};
+		assert!(entries.iter().all(|entry| entry.kind != "capacity_retry_pending"));
+		assert!(entries[0].text.contains("cancelled"));
 	}
 
 	#[tokio::test]
