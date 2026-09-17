@@ -260,3 +260,31 @@ than a dictation protocol response. The standalone request reaches an edge brows
 challenge before service admission. No audio was uploaded. This is not evidence of
 missing subscription eligibility. No challenge was bypassed and no desktop cookies
 were extracted. Evidence: `target/voice-qualification/dictation-admission-report.json`.
+
+
+## Native media component (implementation in progress)
+
+`VoiceMediaHost.swift` adds a same-process macOS WebKit media host to the existing
+Swift bridge library. Rust will own the subscription connection and task authority;
+the media document receives SDP only. It uses no account cookies or credentials.
+The native SDK owns microphone permission, echo cancellation, WebRTC and playback.
+Camera capture and document navigation are denied. Stop, failure, timeout and host
+close release capture; the media event queue has a fixed bound. Captions are data,
+not execution instructions. This component is not yet connected to the composer.
+
+A native XCTest uses a synthetic audio track, obtains a real WebRTC SDP offer,
+requests mute and stop, observes the ended event, and checks that a closed host
+rejects start. No microphone is opened. This does not establish audible speaker
+output, production microphone permission, remote connectivity, or Chief handoffs.
+
+Upstream `voice-host/README.md` at
+`b0659c53865dd48b0cd69c454368cea3980017cc` describes a same-build private helper and
+packaged GStreamer runtime. No such helper was found in the installed desktop
+bundle. Decodex therefore uses its existing native bridge and macOS WebKit instead
+of installing or building another audio runtime. No upstream setup script was run.
+
+The final-only `/backend-api/transcribe` route was also checked with the supported
+native ChatGPT token and fixed synthetic audio. It received the same edge HTML
+challenge. Read-only desktop source inspection shows additional desktop network,
+integrity-state and device-cookie handling. Subscription eligibility is not in
+doubt; the standalone reproduction does not yet reproduce that full request path.
