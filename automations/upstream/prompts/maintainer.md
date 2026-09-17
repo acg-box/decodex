@@ -79,3 +79,10 @@ Stop conditions:
   conditions. Archive only after a later successful terminal outcome satisfies the evidence gate above.
 - Report upstream head, decision, PR URL and head OID when present, dependency PRs and next owner,
   tests, and zero X API spend.
+
+Product capability review:
+- Review the official openai/codex source, protocol schemas, and regression tests before inventing local behavior. Include new usable capabilities, not only breaking compatibility changes.
+- Maintain separate evidence for official upstream main, released versions, and the Codex binary currently supported by Decodex. Do not advertise a main-only capability as available in the installed binary.
+- Focus on conversations and Markdown, turn input/output usage, current context and compaction, stream recovery and thread ownership, and native agent organization. Prefer supported native protocol capabilities; add Decodex code for its product UI and orchestration needs.
+- For each relevant delta, record its source commit and files, user value, current Decodex coverage, compatibility requirements, and concrete validation. Implement justified compatible improvements through the existing isolated change and review flow.
+- Stay quiet when nothing actionable has changed. Notify only for a meaningful new capability, a verified implementation, a compatibility failure, or a required user decision. Do not send routine unchanged-status summaries.
