@@ -189,3 +189,27 @@ use soft tonal surfaces and shadows instead of full outlines. The primary button
 uses a restrained gradient and a solid, readable Live waveform. Workspace panel
 headers use a subtle fill rather than redundant horizontal rules. Native window
 transparency remains unchanged. Strict Clippy passed for these presentation edits.
+
+
+## Popover interaction correction
+
+Reasoning drag events now belong to the popup's window event handlers. The slider
+sets keyboard focus on pointer down. The former workspace-only listener did not
+cover the detached popup. The replacement regression begins at the rendered track
+bounds, moves beyond both ends, releases, uses a direction key, switches to the
+model menu, and clicks the conversation to dismiss it. It uses a multi-level model
+catalog rather than preloading drag state with a single fallback level.
+
+Model and effort popovers share a stable width. A short opacity transition replaces
+height disclosure, so switching cannot stretch or crop one menu into the other.
+Outside clicks dismiss the popup while clicks on its triggers retain toggle behavior.
+The popup uses a flat contrasting surface, softer corners, a filled reasoning track,
+and a plain checkmark for the selected model. Decorative gradients were removed.
+
+Validation: 170 GPUI tests passed, five opt-in tests ignored, and strict Clippy passed.
+
+Native acceptance: dragged the thumb from High to Ultra, used Left three times
+to restore the user's Medium setting, switched to the model menu, and clicked
+the conversation to close it. Accessibility readback confirmed each result.
+Screenshots confirmed both popup layouts. One preview and its owned service
+remain open; no message or audio session was started.

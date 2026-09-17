@@ -103,7 +103,7 @@ impl ChiefSurface {
 						.aria_label(format!("Select {full}"))
 						.flex_1()
 						.min_w_0()
-						.h(px(26.))
+						.h(px(32.))
 						.px(px(7.))
 						.rounded(px(6.))
 						.bg(if selected { rgba(0xffffff0c) } else { rgba(0x00000000) })
@@ -130,11 +130,13 @@ impl ChiefSurface {
 									.child(full.clone()),
 							),
 						)
-						.child(div().size(px(4.)).rounded_full().bg(if selected {
-							rgb(0xc3b8ed)
-						} else {
-							rgba(0x00000000)
-						}))
+						.child(
+							div()
+								.w(px(16.))
+								.text_size(px(13.))
+								.text_color(rgb(ui_theme::TEXT_MUTED))
+								.child(if selected { "✓" } else { "" }),
+						)
 						.smooth(),
 				);
 			}

@@ -158,15 +158,6 @@ impl ChiefSurface {
 		div()
 			.id("chief-workspace")
 			.on_mouse_move(cx.listener(|s, event: &MouseMoveEvent, window, cx| {
-				if let Some((left, width)) = s.effort_drag {
-					if event.pressed_button == Some(MouseButton::Left) {
-						s.set_effort_position((f32::from(event.position.x) - left) / width, cx);
-					} else {
-						s.effort_drag = None;
-					}
-					cx.stop_propagation();
-					return;
-				}
 				let Some((start, width)) = s.sidebar_drag else {
 					return;
 				};
@@ -185,14 +176,12 @@ impl ChiefSurface {
 				MouseButton::Left,
 				cx.listener(|s, _, _, _| {
 					s.sidebar_drag = None;
-					s.effort_drag = None;
 				}),
 			)
 			.on_mouse_up_out(
 				MouseButton::Left,
 				cx.listener(|s, _, _, _| {
 					s.sidebar_drag = None;
-					s.effort_drag = None;
 				}),
 			)
 	}
@@ -221,30 +210,6 @@ mod tests {
 		surface.update(visual, |s, _| {
 			assert_eq!(s.sidebar_width, 272.0);
 			assert!(s.sidebar_drag.is_none());
-		});
-	}
-
-	#[gpui::test]
-	fn effort_drag_clamps_and_stops_after_release(cx: &mut gpui::TestAppContext) {
-		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
-		visual.simulate_resize(gpui::size(px(1400.0), px(900.0)));
-		surface.update(visual, |s, cx| {
-			s.visual_workspace_fixture(cx);
-			s.effort_drag = Some((600., 200.));
-		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear();
-		});
-		let point = |x| gpui::point(px(x), px(300.0));
-		visual.simulate_mouse_move(point(900.), MouseButton::Left, Default::default());
-		surface.update(visual, |s, cx| {
-			assert_eq!(Some(&s.effort), s.model_efforts(cx).last());
-		});
-		visual.simulate_mouse_up(point(900.), MouseButton::Left, Default::default());
-		visual.simulate_mouse_move(point(500.), None, Default::default());
-		surface.update(visual, |s, cx| {
-			assert!(s.effort_drag.is_none());
-			assert_eq!(Some(&s.effort), s.model_efforts(cx).last());
 		});
 	}
 

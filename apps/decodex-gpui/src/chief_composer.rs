@@ -141,11 +141,7 @@ impl ChiefSurface {
 				.px(px(10.))
 				.py(px(7.))
 				.rounded(px(24.))
-				.bg(gpui::linear_gradient(
-					180.,
-					gpui::linear_color_stop(rgba(0x36383eef), 0.),
-					gpui::linear_color_stop(rgba(0x26282deb), 1.),
-				))
+				.bg(rgba(0x292c34f5))
 				.shadow(vec![gpui::BoxShadow {
 					inset: false,
 					color: rgba(0x00000038).into(),
@@ -192,15 +188,9 @@ impl ChiefSurface {
 							.mb(px(8.))
 							.when(left, |d| d.left(px(0.)))
 							.when(!left, |d| d.right(px(64.)))
-							.w(px(if left {
-								280.
-							} else if self.composer_menu == Some("effort") {
-								220.
-							} else {
-								176.
-							}))
-							.child(crate::ui_motion::disclosure(
-								"composer-menu-motion",
+							.w(px(if left { 280. } else { 232. }))
+							.child(crate::ui_motion::popover(
+								menu.unwrap_or("model"),
 								self.composer_menu.is_some(),
 								self.composer_options(cx)
 									.unwrap_or_else(|| div().into_any_element()),
@@ -348,6 +338,7 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let send = id == "send";
+		let target = cx.entity().downgrade();
 		let tooltip = if id == "model" { "Choose model".to_owned() } else { tip.to_owned() };
 		div()
 			.id(SharedString::from(format!("composer-{id}")))
@@ -394,22 +385,15 @@ impl ChiefSurface {
 			})
 			.when(self.composer_menu == Some(id), |d| d.bg(rgba(0xb8acf21a)))
 			.when(send, |d| {
-				d.w(px(28.))
-					.h(px(28.))
-					.rounded_full()
-					.ml(px(5.))
-					.bg(gpui::linear_gradient(
-						180.,
-						gpui::linear_color_stop(rgb(0x777983), 0.),
-						gpui::linear_color_stop(rgb(0x454751), 1.),
-					))
-					.shadow(vec![gpui::BoxShadow {
+				d.w(px(28.)).h(px(28.)).rounded_full().ml(px(5.)).bg(rgb(0x555b6b)).shadow(vec![
+					gpui::BoxShadow {
 						inset: false,
 						color: rgba(0x00000050).into(),
 						offset: gpui::point(px(0.), px(2.)),
 						blur_radius: px(5.),
 						spread_radius: px(0.),
-					}])
+					},
+				])
 			})
 			.cursor_pointer()
 			.hover(move |d| d.bg(if send { rgba(0xffffff24) } else { rgba(0xffffff0c) }))
@@ -422,6 +406,20 @@ impl ChiefSurface {
 				}
 			}))
 			.child(self.composer_control_content(id, label, cx))
+			.when(["model", "effort", "attach"].contains(&id), |d| {
+				d.child(
+					gpui::canvas(
+						move |bounds, _, cx| {
+							let _ = target.update(cx, |s, _| {
+								s.menu_trigger_bounds.insert(id, bounds);
+							});
+						},
+						|_, _, _, _| {},
+					)
+					.absolute()
+					.inset_0(),
+				)
+			})
 			.smooth()
 	}
 
@@ -519,13 +517,18 @@ impl ChiefSurface {
 			div()
 				.id("composer-menu-popover")
 				.occlude()
-				.p(px(7.))
-				.rounded(px(10.))
-				.bg(gpui::linear_gradient(
-					180.,
-					gpui::linear_color_stop(rgba(0x36373cf7), 0.),
-					gpui::linear_color_stop(rgba(0x292a30f7), 1.),
-				))
+				.on_mouse_down_out(cx.listener(|s, event: &gpui::MouseDownEvent, _, cx| {
+					if s.menu_trigger_bounds.values().any(|bounds| bounds.contains(&event.position))
+					{
+						return;
+					}
+					s.composer_menu = None;
+					s.effort_drag = None;
+					cx.notify();
+				}))
+				.p(px(10.))
+				.rounded(px(18.))
+				.bg(rgb(0x292d38))
 				.shadow(vec![gpui::BoxShadow {
 					inset: false,
 					color: rgba(0x00000055).into(),

@@ -376,3 +376,38 @@ impl RenderOnce for Arrival {
 			.child(self.child)
 	}
 }
+
+/// A content-sized popover that fades without stretching or clipping its contents.
+#[derive(IntoElement)]
+pub(crate) struct Popover {
+	kind: &'static str,
+	visible: bool,
+	child: gpui::AnyElement,
+}
+pub(crate) fn popover(kind: &'static str, visible: bool, child: impl IntoElement) -> Popover {
+	Popover { kind, visible, child: child.into_any_element() }
+}
+impl RenderOnce for Popover {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let state =
+			window.use_keyed_state("composer-popover-fade", cx, |_, _| (self.kind, Tween::new(0.)));
+		let now = Instant::now();
+		let (opacity, moving) = state.update(cx, |s, _| {
+			if s.0 != self.kind {
+				*s = (self.kind, Tween::new(0.));
+			}
+			s.1.duration = Duration::from_millis(120);
+			s.1.target(if self.visible { 1. } else { 0. }, now);
+			(s.1.sample(now), s.1.moving(now))
+		});
+		if moving {
+			window.request_animation_frame();
+		}
+		div()
+			.w_full()
+			.opacity(opacity)
+			.relative()
+			.top(px((1. - opacity) * 3.))
+			.when(self.visible || opacity > 0.01, |d| d.child(self.child))
+	}
+}
