@@ -226,7 +226,7 @@ impl ChiefSurface {
 		};
 		Some(
 			div()
-				.w_full()
+				.flex_none()
 				.flex()
 				.items_center()
 				.gap(px(8.))
@@ -248,7 +248,6 @@ impl ChiefSurface {
 						.aria_label(label.clone())
 						.child(label),
 				)
-				.child(div().flex_1())
 				.child(self.composer_control(
 					"dictation-cancel",
 					"Cancel".into(),

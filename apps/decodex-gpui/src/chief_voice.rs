@@ -286,7 +286,7 @@ impl ChiefSurface {
 		Some(
 			div()
 				.w_full()
-				.h(px(54.))
+				.h(px(30.))
 				.flex()
 				.items_center()
 				.justify_center()
@@ -320,7 +320,7 @@ impl ChiefSurface {
 		};
 		Some(
 			div()
-				.w_full()
+				.flex_none()
 				.flex()
 				.items_center()
 				.gap(px(8.))
@@ -333,7 +333,6 @@ impl ChiefSurface {
 						.aria_label(label.to_owned())
 						.child(label.to_owned()),
 				)
-				.child(div().flex_1())
 				.child(self.composer_control(
 					"voice-mute",
 					if voice.muted { "Unmute" } else { "Mute" }.into(),

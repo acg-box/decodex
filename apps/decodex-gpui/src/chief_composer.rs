@@ -111,11 +111,49 @@ impl ChiefSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
+		let menu = self.composer_menu.or(self.composer_menu_content);
+		let left = matches!(menu, Some("attachments" | "microphone"));
 		let quote = prompts::attribution(self.composer.read(cx).placeholder());
-		div().w_full().px_4().pt(px(14.0)).pb(px(22.0)).flex().justify_center().child(
+		let editor = div()
+			.id("composer-editor-area")
+			.flex_1()
+			.min_w_0()
+			.when(self.composer.read(cx).content().is_empty(), |d| {
+				if let Some(quote) = quote {
+					d.tooltip(move |_, cx| cx.new(|_| QuoteTip(quote.clone())).into())
+				} else {
+					d
+				}
+			})
+			.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
+				s.submit(cx);
+				cx.stop_propagation();
+			}))
+			.when(self.voice.is_none(), |d| d.child(self.composer.clone()))
+			.children(self.voice_controls(window, cx));
+		div().w_full().px_4().pt(px(12.)).pb(px(20.)).flex().justify_center().child(
 			div()
 				.id("chief-composer")
 				.relative()
+				.w_full()
+				.max_w(px(820.))
+				.min_w_0()
+				.px(px(10.))
+				.py(px(7.))
+				.rounded(px(24.))
+				.bg(rgba(0x222428e8))
+				.border_1()
+				.border_color(rgba(0xffffff12))
+				.shadow(vec![gpui::BoxShadow {
+					inset: false,
+					color: rgba(0x00000038).into(),
+					offset: gpui::point(px(0.), px(8.)),
+					blur_radius: px(24.),
+					spread_radius: px(-5.),
+				}])
+				.flex()
+				.flex_col()
+				.gap(px(4.))
 				.on_key_down(cx.listener(|s, e: &gpui::KeyDownEvent, _, cx| {
 					if e.keystroke.key == "escape" {
 						s.cancel_dictation(cx);
@@ -124,57 +162,35 @@ impl ChiefSurface {
 						cx.stop_propagation();
 					}
 				}))
-				.w_full()
-				.max_w(px(760.0))
-				.min_w_0()
-				.px(px(10.0))
-				.pt(px(10.0))
-				.pb(px(8.0))
-				.rounded(px(18.0))
-				.bg(rgba(ui_theme::COMPOSER_MATERIAL))
-				.border_1()
-				.border_color(rgba(0xffffff1c))
-				.shadow(vec![gpui::BoxShadow {
-					inset: false,
-					color: rgba(0x00000040).into(),
-					offset: gpui::point(px(0.), px(8.)),
-					blur_radius: px(24.),
-					spread_radius: px(-4.),
-				}])
-				.flex()
-				.flex_col()
-				.gap(px(4.0))
 				.on_drop(cx.listener(|s, paths: &gpui::ExternalPaths, _, cx| {
-					s.attach_paths(paths.0.to_vec(), cx);
+					s.attach_paths(paths.0.to_vec(), cx)
 				}))
 				.children(if self.voice.is_none() { self.attachment_row(cx) } else { None })
 				.child(
 					div()
 						.w_full()
-						.min_w_0()
-						.min_h(px(29.0))
-						.id("composer-editor-area")
-						.when(self.composer.read(cx).content().is_empty(), |d| {
-							if let Some(quote) = quote {
-								d.tooltip(move |_, cx| cx.new(|_| QuoteTip(quote.clone())).into())
-							} else {
-								d
-							}
-						})
-						.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
-							s.submit(cx);
-							cx.stop_propagation();
-						}))
-						.when(self.voice.is_none(), |d| d.child(self.composer.clone()))
-						.children(self.voice_controls(window, cx)),
+						.flex()
+						.items_center()
+						.gap(px(6.))
+						.child(self.composer_control(
+							"attach",
+							"+".into(),
+							"Attachments and microphone",
+							|s, cx| s.toggle_composer_menu("attachments", cx),
+							cx,
+						))
+						.child(editor)
+						.child(self.composer_toolbar(cx)),
 				)
 				.child(
 					gpui::deferred(
 						div()
 							.absolute()
-							.right(px(0.0))
-							.bottom(gpui::relative(1.0))
-							.w(px(350.0))
+							.bottom(gpui::relative(1.))
+							.mb(px(8.))
+							.when(left, |d| d.left(px(0.)))
+							.when(!left, |d| d.right(px(0.)))
+							.w(px(if left { 280. } else { 320. }))
 							.child(crate::ui_motion::disclosure(
 								"composer-menu-motion",
 								self.composer_menu.is_some(),
@@ -183,9 +199,35 @@ impl ChiefSurface {
 							)),
 					)
 					.priority(2),
-				)
-				.child(self.composer_toolbar(cx)),
+				),
 		)
+	}
+
+	fn attachment_options(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+		let device =
+			if self.audio_input.is_empty() { "System default" } else { self.audio_input.as_str() };
+		div()
+			.flex()
+			.flex_col()
+			.gap(px(3.))
+			.child(self.composer_control(
+				"attachment-item",
+				"Add attachments…".into(),
+				"Add attachments",
+				|s, cx| {
+					s.composer_menu = None;
+					s.pick_attachments(cx);
+				},
+				cx,
+			))
+			.child(self.composer_control_with_window(
+				"audio-item",
+				device.to_owned(),
+				"Choose microphone",
+				|s, window, cx| s.open_audio_menu(window, cx),
+				cx,
+			))
+			.into_any_element()
 	}
 
 	fn composer_toolbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -201,41 +243,27 @@ impl ChiefSurface {
 	fn text_composer_toolbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
 		let model = self.model.read(cx).content().to_owned();
 		div()
-			.w_full()
+			.flex_none()
 			.flex()
 			.items_center()
 			.gap(px(4.0))
-			.child(self.composer_control(
-				"attach",
-				"+".into(),
-				"Add images or files",
-				|s, cx| s.pick_attachments(cx),
-				cx,
-			))
+			.children(self.usage_line())
 			.child(self.composer_control(
 				"delivery",
 				if self.steer { "Steer" } else { "Queue" }.into(),
-				"Steer adds input to the running turn; Queue waits for the next turn. Click to switch.",
+				"Switch message delivery",
 				|s, cx| {
 					s.steer = !s.steer;
 					cx.notify();
 				},
 				cx,
 			))
-			.child(div().flex_1().min_w_0())
-			.children(self.usage_line())
 			.child(self.composer_control(
 				"fast",
-				"".into(),
-				if self.fast {
-					"Fast mode on · Click to disable"
-				} else {
-					"Fast mode off · Click to enable"
-				},
+				"Fast".into(),
+				"Toggle Fast",
 				|s, cx| {
-					if s.selected_model(cx).is_some_and(|model| !model.supports_fast) {
-						s.feedback = "Fast mode is not available for this model.".into();
-					} else {
+					if s.selected_model(cx).is_some_and(|m| m.supports_fast) {
 						s.fast = !s.fast;
 					}
 					cx.notify();
@@ -249,28 +277,13 @@ impl ChiefSurface {
 				|s, cx| s.toggle_composer_menu("model", cx),
 				cx,
 			))
-			.child(
-				div()
-					.flex()
-					.items_center()
-					.gap_0()
-					.rounded_full()
-					.bg(rgba(0xffffff05))
-					.child(self.composer_control_with_window(
-						"dictation",
-						"Dictate".into(),
-						"Dictate into the draft",
-						|s, window, cx| s.start_dictation(window, cx),
-						cx,
-					))
-					.child(self.composer_control_with_window(
-						"microphone-device",
-						"⌄".into(),
-						"Choose microphone input",
-						|s, window, cx| s.open_audio_menu(window, cx),
-						cx,
-					)),
-			)
+			.child(self.composer_control_with_window(
+				"dictation",
+				"".into(),
+				"Dictate into the draft",
+				|s, w, cx| s.start_dictation(w, cx),
+				cx,
+			))
 			.child(self.composer_control_with_window(
 				"send",
 				"".into(),
@@ -332,6 +345,7 @@ impl ChiefSurface {
 			.when(
 				![
 					"model",
+					"fast",
 					"delivery",
 					"effort",
 					"send",
@@ -339,6 +353,9 @@ impl ChiefSurface {
 					"dictation-finish",
 					"voice-mute",
 					"voice-end",
+					"attachment-item",
+					"audio-item",
+					"audio-back",
 				]
 				.contains(&id),
 				|d| d.w(px(ui_theme::CONTROL_SIZE)).px_0(),
@@ -357,6 +374,9 @@ impl ChiefSurface {
 				ui_theme::TEXT_MUTED
 			}))
 			.when(id == "model", |d| d.px(px(6.)))
+			.when(["attachment-item", "audio-item", "audio-back"].contains(&id), |d| {
+				d.w_full().justify_start().text_size(px(12.))
+			})
 			.when(self.composer_menu == Some(id), |d| d.bg(rgba(0xb8acf21a)))
 			.when(send, |d| {
 				d.w(px(28.))
@@ -399,17 +419,49 @@ impl ChiefSurface {
 			"send" if !self.sending => controls::launch_mark().into_any_element(),
 			"send" => div().child("…").into_any_element(),
 			"attach" => icon(Symbol::Plus),
+			"attachment-item" => div()
+				.flex()
+				.items_center()
+				.gap(px(10.))
+				.child(icon(Symbol::Plus))
+				.child("Add attachments…")
+				.into_any_element(),
+			"audio-item" => div()
+				.w_full()
+				.flex()
+				.items_center()
+				.gap(px(10.))
+				.child(icon(Symbol::Microphone))
+				.child("Microphone")
+				.child(div().flex_1())
+				.child(
+					div()
+						.max_w(px(110.))
+						.text_ellipsis()
+						.text_color(rgb(ui_theme::TEXT_MUTED))
+						.child(label),
+				)
+				.child(icon(Symbol::Forward))
+				.into_any_element(),
+			"audio-back" => div()
+				.flex()
+				.items_center()
+				.gap(px(10.))
+				.child(icon(Symbol::Back))
+				.child("Microphone")
+				.into_any_element(),
+
 			"voice" => icon(Symbol::Voice),
 			"dictation" => icon(Symbol::Microphone),
 			"microphone-device" =>
 				div().size(px(12.)).child(icon(Symbol::ChevronDown)).into_any_element(),
 			"fast" => div()
-				.size(px(16.0))
 				.flex()
 				.items_center()
-				.justify_center()
-				.opacity(if self.fast { 1.0 } else { 0.4 })
+				.gap(px(3.))
+				.opacity(if self.fast { 1.0 } else { 0.45 })
 				.child(icon(Symbol::Fast))
+				.child("Fast")
 				.into_any_element(),
 			"effort" => controls::effort_indicator(self.effort.as_str()),
 			"model" => div()
@@ -452,8 +504,26 @@ impl ChiefSurface {
 				.flex()
 				.flex_col()
 				.gap(px(10.))
-				.child(if menu == "microphone" {
-					self.audio_palette(cx)
+				.child(if menu == "attachments" {
+					self.attachment_options(cx)
+				} else if menu == "microphone" {
+					div()
+						.flex()
+						.flex_col()
+						.gap(px(6.))
+						.child(self.composer_control(
+							"audio-back",
+							"Microphone".into(),
+							"Back to attachments",
+							|s, cx| {
+								s.composer_menu = Some("attachments");
+								s.composer_menu_content = s.composer_menu;
+								cx.notify();
+							},
+							cx,
+						))
+						.child(self.audio_palette(cx))
+						.into_any_element()
 				} else if menu == "effort" {
 					self.effort_scale(cx)
 				} else {

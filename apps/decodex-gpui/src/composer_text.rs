@@ -91,7 +91,7 @@ fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLi
 			text,
 			style.font_size.to_pixels(window.rem_size()),
 			&runs,
-			Some(width.max(px(1.0))),
+			if empty { None } else { Some(width.max(px(1.0))) },
 			None,
 		)
 		.unwrap_or_default()

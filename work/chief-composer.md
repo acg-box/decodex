@@ -138,3 +138,25 @@ separate shadow. Existing hover/press and disclosure motion remain.
 Validation: GPUI tests passed (167 passed, five opt-in tests ignored), strict
 Clippy passed, and empty/draft palette captures were inspected. Programmer-mode
 implementation and its obsolete tests were removed rather than hidden.
+
+
+## Single-row composer — September 17
+
+The default composer is one row. Draft text grows vertically when needed; long
+quote placeholders stay on one line and retain their attribution tooltip. The
+window keeps its existing glass material. The composer uses a subdued smoke tint,
+a thin edge, and a soft shadow.
+
+Only the primary action has a circular surface. Fast and Steer/Queue are visible
+in the toolbar. The model popup uses a plain list and one shared reasoning strip;
+only the selected supported level has a filled surface. Existing keyboard actions
+and hover/press motion remain.
+
+The plus menu contains attachments and the shared microphone selector. Forward
+and back arrows navigate between pages in the same popup. The back row is left
+aligned. Device selection applies to the next recording for dictation or Live.
+
+Validation: 168 GPUI tests passed; five opt-in tests were ignored. Strict Clippy
+and signed bundle staging passed. Native screenshots confirmed full model names,
+visible delivery and Fast controls, and the left-aligned microphone back row.
+No message was sent and no recording was started during this layout check.

@@ -169,7 +169,7 @@ hidden draft. Live captions use normal user/assistant chat formatting and yield
 to matching saved messages from the current call. The history follows Live with
 interpolated scrolling; manual scrolling away from the bottom pauses following.
 
-The arrow beside the microphone opens real input-device choices. Selection applies
+The plus menu opens shared input-device choices through its Microphone row. Selection applies
 to the next recording in either mode and does not change the system default.
 Device discovery does not start capture. WebKit resolves the selected device by
 its exposed name after permission is available, and reports an unavailable input

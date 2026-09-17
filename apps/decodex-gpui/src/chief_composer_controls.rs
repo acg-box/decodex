@@ -39,7 +39,7 @@ impl ChiefSurface {
 			.flex_col()
 			.gap(px(10.))
 			.child(
-				div().flex().gap(px(3.)).children(
+				div().flex().gap(px(2.)).p(px(3.)).rounded(px(8.)).bg(rgba(0xffffff06)).children(
 					LEVELS
 						.into_iter()
 						.filter(|(value, _)| {
@@ -55,13 +55,7 @@ impl ChiefSurface {
 								.flex_1()
 								.h(px(28.))
 								.rounded(px(7.))
-								.border_1()
-								.border_color(if active {
-									rgba(0xc3b8ed66)
-								} else {
-									rgba(0xffffff08)
-								})
-								.bg(if active { rgba(0xc3b8ed1a) } else { rgba(0xffffff03) })
+								.bg(if active { rgba(0xffffff14) } else { rgba(0x00000000) })
 								.flex()
 								.flex_col()
 								.items_center()
@@ -124,7 +118,7 @@ impl ChiefSurface {
 			.overflow_y_scroll()
 			.flex()
 			.flex_col()
-			.gap(px(5.));
+			.gap(px(2.));
 		let models = match &self.capabilities {
 			Some(decodex_protocol::ChiefCapabilitiesResult::Available { models, .. }) => models,
 			_ =>
@@ -139,7 +133,7 @@ impl ChiefSurface {
 					.into_any_element(),
 		};
 		for pair in models.chunks(1) {
-			let mut row = div().flex().gap(px(5.));
+			let mut row = div().flex().gap(px(2.));
 			for entry in pair {
 				let model = entry.model.as_str().to_owned();
 				let click_model = model.clone();
@@ -157,9 +151,7 @@ impl ChiefSurface {
 						.h(px(30.))
 						.px(px(10.))
 						.rounded(px(8.))
-						.border_1()
-						.border_color(if selected { rgba(0xc3b8ed55) } else { rgba(0xffffff0c) })
-						.bg(if selected { rgba(0xc3b8ed15) } else { rgba(0xffffff03) })
+						.bg(if selected { rgba(0xffffff0c) } else { rgba(0x00000000) })
 						.flex()
 						.items_center()
 						.justify_between()
@@ -175,7 +167,7 @@ impl ChiefSurface {
 							}
 						}))
 						.child(
-							div().flex().flex_col().gap(px(2.)).child(
+							div().flex_1().min_w_0().flex().flex_col().gap(px(2.)).child(
 								div()
 									.text_size(px(12.))
 									.whitespace_nowrap()
