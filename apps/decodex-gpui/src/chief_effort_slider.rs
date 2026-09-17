@@ -34,9 +34,10 @@ impl ChiefSurface {
 			.gap(px(12.))
 			.child(
 				div()
-					.w(px(44.))
+					.w(px(62.))
 					.flex_none()
 					.text_size(px(12.))
+					.whitespace_nowrap()
 					.text_color(rgb(ui_theme::TEXT))
 					.child(level_label(self.effort.as_str())),
 			)
@@ -127,7 +128,7 @@ impl ChiefSurface {
 						.absolute()
 						.inset_0(),
 					)
-					.child(SliderTrack { fraction, dragging: self.effort_drag.is_some() }),
+					.child(SliderTrack { fraction, dragging: self.effort_drag.is_some(), count }),
 			)
 			.into_any_element()
 	}
@@ -137,6 +138,7 @@ impl ChiefSurface {
 struct SliderTrack {
 	fraction: f32,
 	dragging: bool,
+	count: usize,
 }
 impl gpui::RenderOnce for SliderTrack {
 	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
@@ -170,6 +172,17 @@ impl gpui::RenderOnce for SliderTrack {
 					.rounded_full()
 					.bg(rgb(0xa8b3d5)),
 			)
+			.children((0..self.count).map(|i| {
+				div()
+					.absolute()
+					.left(relative(i as f32 / self.count.saturating_sub(1).max(1) as f32))
+					.top(px(23.))
+					.ml(px(-1.))
+					.w(px(2.))
+					.h(px(3.))
+					.rounded_full()
+					.bg(rgba(0xd5dced75))
+			}))
 			.child(
 				div()
 					.absolute()

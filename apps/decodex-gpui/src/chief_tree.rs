@@ -39,6 +39,7 @@ impl ChiefSurface {
 			.flex()
 			.flex_col()
 			.pl(px(6.))
+			.bg(rgba(0xffffff20))
 			.child(
 				div()
 					.h(px(ui_theme::PANEL_HEADER_HEIGHT))

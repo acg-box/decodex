@@ -401,53 +401,27 @@ pub(crate) struct Popover {
 pub(crate) fn popover(kind: &'static str, visible: bool, child: impl IntoElement) -> Popover {
 	Popover { kind, visible, child: child.into_any_element() }
 }
-struct PopoverState {
-	kind: &'static str,
-	height: Tween,
-	opacity: Tween,
-	content: Tween,
-	heights: std::collections::BTreeMap<&'static str, f32>,
-}
 impl RenderOnce for Popover {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state("composer-popover-fade", cx, |_, _| PopoverState {
-			kind: self.kind,
-			height: Tween::new(0.),
-			opacity: Tween::new(0.),
-			content: Tween::new(1.),
-			heights: Default::default(),
-		});
+		let state =
+			window.use_keyed_state("composer-popover-fade", cx, |_, _| (self.kind, Tween::new(0.)));
 		let now = Instant::now();
-		let (height, opacity, content, moving) = state.update(cx, |s, _| {
-			if s.kind != self.kind {
-				s.kind = self.kind;
-				s.content = Tween::new(0.);
+		let (opacity, moving) = state.update(cx, |s, _| {
+			if s.0 != self.kind {
+				s.0 = self.kind;
+				s.1 = Tween::new(0.);
 			}
-			s.height.duration = Duration::from_millis(160);
-			s.opacity.duration = Duration::from_millis(140);
-			s.content.duration = Duration::from_millis(180);
-			if let Some(height) = s.heights.get(self.kind) {
-				s.height.target(*height, now);
-			}
-			s.opacity.target(if self.visible { 1. } else { 0. }, now);
-			s.content.target(1., now);
-			(
-				s.height.sample(now),
-				s.opacity.sample(now),
-				s.content.sample(now),
-				s.height.moving(now) || s.opacity.moving(now) || s.content.moving(now),
-			)
+			s.1.duration = Duration::from_millis(140);
+			s.1.target(if self.visible { 1. } else { 0. }, now);
+			(s.1.sample(now), s.1.moving(now))
 		});
 		if moving {
 			window.request_animation_frame();
 		}
-		let kind = self.kind;
 		div()
 			.w_full()
-			.relative()
 			.opacity(opacity)
-			.top(px((1. - opacity) * 3.))
-			.rounded(px(14.))
+			.rounded(px(if self.kind == "effort" { 26. } else { 16. }))
 			.bg(gpui::rgb(0x292d38))
 			.shadow(vec![gpui::BoxShadow {
 				inset: false,
@@ -456,30 +430,6 @@ impl RenderOnce for Popover {
 				blur_radius: px(12.),
 				spread_radius: px(-3.),
 			}])
-			.when(self.visible || opacity > 0.01, |d| {
-				d.child(
-					div().w_full().h(px(height)).rounded(px(14.)).overflow_hidden().child(
-						div()
-							.w_full()
-							.flex_none()
-							.opacity(content)
-							.on_children_prepainted(move |bounds, _, cx| {
-								if let Some(bounds) = bounds.first() {
-									let measured = f32::from(bounds.size.height);
-									state.update(cx, |s, cx| {
-										if s.heights
-											.get(kind)
-											.is_none_or(|h| (h - measured).abs() > 0.5)
-										{
-											s.heights.insert(kind, measured);
-											cx.notify();
-										}
-									});
-								}
-							})
-							.child(self.child),
-					),
-				)
-			})
+			.when(self.visible || opacity > 0.01, |d| d.child(self.child))
 	}
 }

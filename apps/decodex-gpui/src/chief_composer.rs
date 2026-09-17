@@ -188,7 +188,13 @@ impl ChiefSurface {
 							.mb(px(8.))
 							.when(left, |d| d.left(px(0.)))
 							.when(!left, |d| d.right(px(64.)))
-							.w(px(if left { 280. } else { 232. }))
+							.w(px(if left {
+								280.
+							} else if menu == Some("effort") {
+								264.
+							} else {
+								232.
+							}))
 							.child(crate::ui_motion::popover(
 								menu.unwrap_or("model"),
 								self.composer_menu.is_some(),
@@ -518,8 +524,6 @@ impl ChiefSurface {
 					cx.notify();
 				}))
 				.p(px(10.))
-				.rounded(px(18.))
-				.bg(rgb(0x292d38))
 				.w_full()
 				.flex()
 				.flex_col()

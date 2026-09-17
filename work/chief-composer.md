@@ -245,3 +245,21 @@ turns, and returned to the latest turn. The reasoning slider was dragged to Ultr
 and keyboard-adjusted back to Medium. Popup switching and outside dismissal were
 exercised. Removed the trial panel tint after screenshots showed it darkened the
 glass regions. One signed preview remains open with no draft or active recording.
+
+## Consistent disclosures and glass panel contrast
+
+The reasoning value has a fixed, non-shrinking single-line label. The slider has
+one tick for each supported level and a rounded capsule surface. Pointer movement
+remains continuous; release settles onto a supported level.
+
+Composer menus now use one 140 ms opacity transition for opening, closing, and
+replacement. Removed measured-height and translation effects, which made initial
+and subsequent openings behave differently. The shell owns the surface and shadow.
+
+The tree and graph use a light translucent overlay to distinguish their regions
+from the conversation without hairline dividers. A weaker overlay was not visible
+enough in the signed native window; the final overlay was checked there.
+
+Validation: actual slider drag selected Medium; model replacement and outside
+dismissal worked. Inspected the signed preview at its normal window size.
+The GPUI suite passed 173 tests (five opt-in tests ignored); strict Clippy passed.

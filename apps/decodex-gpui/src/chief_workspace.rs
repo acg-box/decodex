@@ -700,7 +700,8 @@ impl ChiefSurface {
 	}
 
 	fn graph_frame(&self, title: String, cx: &mut Context<Self>) -> gpui::Div {
-		let mut panel = div().w_full().min_w_0().h_full().flex().flex_col().pt(px(6.));
+		let mut panel =
+			div().w_full().min_w_0().h_full().flex().flex_col().pt(px(6.)).bg(rgba(0xffffff20));
 		panel = panel.child(
 			div()
 				.h(px(ui_theme::PANEL_HEADER_HEIGHT))
