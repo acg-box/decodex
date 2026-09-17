@@ -202,6 +202,8 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "thread/start"
 					| "thread/resume"
 					| "thread/read" | "thread/list"
+					| "thread/turns/list"
+					| "thread/items/list"
 					| "thread/archive"
 					| "turn/start" | "turn/steer"
 					| "turn/interrupt"
@@ -302,6 +304,12 @@ mod tests {
 			.is_err()
 		);
 		assert!(validate_outbound(&json!({"id":17,"result":{}}), &mut requests).is_err());
+		for method in ["thread/turns/list", "thread/items/list"] {
+			assert!(
+				validate_outbound(&json!({"id":43,"method":method,"params":{}}), &mut requests)
+					.is_ok()
+			);
+		}
 		requests.insert(RequestId::String("approval".into()));
 		assert!(
 			validate_outbound(

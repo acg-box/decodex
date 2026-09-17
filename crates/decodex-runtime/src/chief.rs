@@ -162,6 +162,7 @@ impl ChiefCoordinator {
 			let mut params = self.thread_params(item.parent_goal_id.is_none());
 			params.as_object_mut().expect("thread params").remove("dynamicTools");
 			params["threadId"] = json!(thread);
+			params["excludeTurns"] = json!(true);
 			let Ok(resumed) = self.client.thread_resume(params).await else {
 				continue;
 			};
@@ -177,9 +178,7 @@ impl ChiefCoordinator {
 				continue;
 			}
 			self.loaded_threads.insert(thread.clone());
-			let Ok(history) =
-				self.client.thread_read(json!({"threadId":thread,"includeTurns":true})).await
-			else {
+			let Ok(history) = self.client.thread_read_turn(thread, turn).await else {
 				continue;
 			};
 			if history.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
@@ -491,15 +490,15 @@ impl ChiefCoordinator {
 			return Ok(item.clone());
 		}
 		self.store.begin_chief_thread_creation(item.id.clone()).await?;
-		let response =
-			match self.client.thread_start(self.thread_params(item.parent_goal_id.is_none())).await
-			{
-				Ok(response) => response,
-				Err(error) => {
-					self.store.mark_chief_dispatch_unknown(item.id.clone()).await?;
-					return Err(error.into());
-				},
-			};
+		let mut params = self.thread_params(item.parent_goal_id.is_none());
+		params["historyMode"] = json!("paginated");
+		let response = match self.client.thread_start(params).await {
+			Ok(response) => response,
+			Err(error) => {
+				self.store.mark_chief_dispatch_unknown(item.id.clone()).await?;
+				return Err(error.into());
+			},
+		};
 		let thread = match exact(&response, "/thread/id") {
 			Ok(thread) => thread,
 			Err(error) => {
@@ -576,6 +575,7 @@ impl ChiefCoordinator {
 		let mut resume = self.thread_params(item.parent_goal_id.is_none());
 		resume.as_object_mut().expect("thread params").remove("dynamicTools");
 		resume["threadId"] = json!(thread);
+		resume["excludeTurns"] = json!(true);
 		if !self.loaded_threads.contains(thread) {
 			let response = self.client.thread_resume(resume).await?;
 			let effort = if item.parent_goal_id.is_none() {
@@ -784,7 +784,7 @@ impl ChiefCoordinator {
 			return Ok(());
 		}
 		// Store the exact provider terminal payload before clearing active ownership.
-		let history = self.client.thread_read(json!({"threadId":thread,"includeTurns":true})).await;
+		let history = self.client.thread_read_turn(&thread, &turn).await;
 		self.record_terminal(params, history).await?;
 		self.wake_pending().await
 	}
