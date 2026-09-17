@@ -387,13 +387,15 @@ impl ChiefSurface {
 	fn toggle_composer_menu(&mut self, name: &'static str, cx: &mut Context<Self>) {
 		self.composer_menu = if self.composer_menu == Some(name) { None } else { Some(name) };
 		if self.composer_menu.is_some() {
+			self.composer_menu_content = self.composer_menu;
 			self.load_capabilities(cx);
 		}
 		cx.notify();
 	}
 
 	fn composer_options(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
-		let menu = self.composer_menu?;
+		// Keep content mounted while the disclosure animates closed.
+		let menu = self.composer_menu.or(self.composer_menu_content)?;
 		Some(
 			div()
 				.id("composer-menu-popover")

@@ -501,3 +501,11 @@ The user rejected simulated execution. This supersedes the interactive demo abov
 - The prior Chief connection-recovery event remains. No new provider turn was sent;
   live usage ingestion is covered by the source-bound integration test, not claimed
   as a successful live model run. Historical metrics remain visibly unrecorded.
+
+## Composer disclosure correction (2026-09-17)
+
+Retain the last composer menu content while its disclosure height animates to zero.
+Previously, closing the menu replaced its contents with an empty element before the
+transition completed. This made the menu disappear abruptly despite the animated
+container. The selected menu remains separate from the retained presentation.
+GPUI suite: 165 passed, 5 ignored. Native end-to-end motion acceptance remains open.

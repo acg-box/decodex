@@ -88,6 +88,7 @@ pub(crate) struct ChiefSurface {
 	fast: bool,
 	steer: bool,
 	composer_menu: Option<&'static str>,
+	composer_menu_content: Option<&'static str>,
 	attachments: Vec<decodex_protocol::ChiefAttachmentDto>,
 	attachment_drafts:
 		std::collections::BTreeMap<String, Vec<decodex_protocol::ChiefAttachmentDto>>,
@@ -201,6 +202,7 @@ impl ChiefSurface {
 			fast: false,
 			steer: true,
 			composer_menu: None,
+			composer_menu_content: None,
 			attachments: vec![],
 			attachment_drafts: Default::default(),
 			manager_drafts: Default::default(),
