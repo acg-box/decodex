@@ -1937,6 +1937,36 @@ mod tests {
 	}
 
 	#[test]
+	fn thread_project_id_accepts_omitted_null_and_string_metadata() {
+		for value in [None, Some(Value::Null), Some(json!("project-1"))] {
+			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+			if let Some(value) = value {
+				response["thread"]["projectId"] = value;
+			}
+			let bytes = serde_json::to_vec(&response).unwrap();
+			assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_ok());
+			assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_ok());
+		}
+	}
+
+	#[test]
+	fn thread_project_id_rejects_malformed_metadata() {
+		for value in [json!(true), json!(42), json!([]), json!({"unexpected": true})] {
+			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+			response["thread"]["projectId"] = value;
+			let bytes = serde_json::to_vec(&response).unwrap();
+			assert_eq!(
+				decode_conversation_thread_start_response(&start_request(), &bytes).map(|_| ()),
+				Err(ConversationContractError::MalformedResponse),
+			);
+			assert_eq!(
+				decode_conversation_thread_resume_response(&resume_request(), &bytes).map(|_| ()),
+				Err(ConversationContractError::MalformedResponse),
+			);
+		}
+	}
+
+	#[test]
 	fn current_thread_metadata_does_not_block_start_or_resume() {
 		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
 		let thread = response["thread"].as_object_mut().unwrap();
