@@ -15,6 +15,7 @@ pub(super) struct DictationUi {
 	request: Option<DictationRequest>,
 	audio: VecDeque<DictationBuffer>,
 	capture_started: bool,
+	network_ready: bool,
 	capture_ended: bool,
 	finishing: bool,
 	finish_sent: bool,
@@ -28,11 +29,16 @@ impl ChiefSurface {
 			return;
 		}
 		let Some(profile) = self.profile.clone() else { return };
-		let Ok(media) = Media::new(window) else {
+		let Ok(mut media) = Media::new(window) else {
 			self.feedback = "Dictation requires the current signed macOS application.".into();
 			cx.notify();
 			return;
 		};
+		if !media.command(serde_json::json!({"operation":"dictate","input":self.audio_input})) {
+			self.feedback = "The microphone could not start.".into();
+			cx.notify();
+			return;
+		}
 		let id = EntityId::new(unique_command()).expect("dictation identity");
 		let original = self.composer.read(cx).content().to_owned();
 		self.dictation = Some(DictationUi {
@@ -42,7 +48,8 @@ impl ChiefSurface {
 			expected: original,
 			request: Some(DictationRequest::Start { session_id: id.clone() }),
 			audio: VecDeque::new(),
-			capture_started: false,
+			capture_started: true,
+			network_ready: false,
 			capture_ended: false,
 			finishing: false,
 			finish_sent: false,
@@ -74,7 +81,7 @@ impl ChiefSurface {
 						cx.notify();
 					}
 				});
-				cx.background_executor().timer(Duration::from_millis(80)).await;
+				cx.background_executor().timer(Duration::from_millis(20)).await;
 			}
 			cx.background_executor()
 				.spawn(async move {
@@ -139,7 +146,7 @@ impl ChiefSurface {
 					}
 					dictation.level =
 						event["level"].as_f64().unwrap_or_default().clamp(0., 1.) as f32;
-					if dictation.audio.len() > 16 {
+					if dictation.audio.len() > 128 {
 						self.dictation = None;
 						self.feedback="Dictation stopped because audio delivery fell behind. Your received text remains in the draft.".into();
 						cx.notify();
@@ -168,10 +175,12 @@ impl ChiefSurface {
 		if let Some(request) = dictation.request.take() {
 			return Some(request);
 		}
-		if let Some(audio) = dictation.audio.pop_front() {
+		if dictation.network_ready
+			&& let Some(audio) = dictation.audio.pop_front()
+		{
 			return Some(DictationRequest::Audio { session_id: dictation.session.clone(), audio });
 		}
-		if dictation.capture_ended && !dictation.finish_sent {
+		if dictation.network_ready && dictation.capture_ended && !dictation.finish_sent {
 			dictation.finish_sent = true;
 			return Some(DictationRequest::Finish { session_id: dictation.session.clone() });
 		}
@@ -194,13 +203,7 @@ impl ChiefSurface {
 			self.composer.update(cx, |input, cx| input.set_content(&text, cx));
 		}
 		match status.phase {
-			DictationPhase::Listening if !dictation.capture_started && !dictation.finishing => {
-				dictation.capture_started = true;
-				if !dictation.media.command(serde_json::json!({"operation":"dictate"})) {
-					self.feedback = "The microphone could not start.".into();
-					self.dictation = None;
-				}
-			},
+			DictationPhase::Listening => dictation.network_ready = true,
 			DictationPhase::Finalizing => dictation.status = "Final correction…".into(),
 			DictationPhase::Complete => self.dictation = None,
 			DictationPhase::Failed => {
@@ -227,9 +230,6 @@ impl ChiefSurface {
 				.flex()
 				.items_center()
 				.gap(px(8.))
-				.pb(px(8.))
-				.border_b_1()
-				.border_color(rgba(0xffffff14))
 				.text_size(px(11.))
 				.text_color(rgb(ui_theme::TEXT_MUTED))
 				.child(div().h(px(12.)).w(px(26.)).flex().items_center().gap(px(2.)).children(
@@ -296,6 +296,7 @@ mod tests {
 			request: None,
 			audio: VecDeque::new(),
 			capture_started: true,
+			network_ready: true,
 			capture_ended: false,
 			finishing: false,
 			finish_sent: false,
@@ -337,6 +338,33 @@ mod tests {
 			s.composer.update(cx, |input, cx| input.set_content("My manual edit", cx));
 			s.cancel_dictation(cx);
 			assert_eq!(s.composer.read(cx).content(), "My manual edit");
+		});
+	}
+	#[gpui::test]
+	fn early_audio_waits_for_subscription_ready_and_drains_before_finish(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.composer.update(cx, |input, cx| input.set_content("", cx));
+			let mut capture = recording("");
+			capture.network_ready = false;
+			capture.capture_ended = true;
+			capture.audio.push_back(DictationBuffer::new("AAA=").expect("frame"));
+			s.dictation = Some(capture);
+			assert!(matches!(s.poll_dictation(cx), Some(DictationRequest::Poll { .. })));
+			s.apply_dictation(
+				DictationStatus {
+					session_id: EntityId::new("dictation-test").expect("id"),
+					phase: DictationPhase::Listening,
+					text: DictationBuffer::new("").expect("text"),
+					message: None,
+				},
+				cx,
+			);
+			assert!(matches!(s.poll_dictation(cx), Some(DictationRequest::Audio { .. })));
+			assert!(matches!(s.poll_dictation(cx), Some(DictationRequest::Finish { .. })));
+			assert!(matches!(s.poll_dictation(cx), Some(DictationRequest::Poll { .. })));
 		});
 	}
 }

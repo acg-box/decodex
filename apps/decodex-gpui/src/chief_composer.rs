@@ -106,7 +106,11 @@ impl ChiefSurface {
 		let _ = cx;
 	}
 
-	pub(super) fn render_composer(&self, cx: &mut Context<Self>) -> impl IntoElement {
+	pub(super) fn render_composer(
+		&self,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement {
 		let quote = prompts::attribution(self.composer.read(cx).placeholder());
 		div().w_full().px_4().pt(px(10.0)).pb(px(16.0)).flex().justify_center().child(
 			div()
@@ -136,9 +140,7 @@ impl ChiefSurface {
 				.on_drop(cx.listener(|s, paths: &gpui::ExternalPaths, _, cx| {
 					s.attach_paths(paths.0.to_vec(), cx);
 				}))
-				.children(self.voice_controls(cx))
-				.children(self.dictation_controls(cx))
-				.children(self.attachment_row(cx))
+				.children(if self.voice.is_none() { self.attachment_row(cx) } else { None })
 				.child(
 					div()
 						.w_full()
@@ -156,7 +158,8 @@ impl ChiefSurface {
 							s.submit(cx);
 							cx.stop_propagation();
 						}))
-						.child(self.composer.clone()),
+						.when(self.voice.is_none(), |d| d.child(self.composer.clone()))
+						.children(self.voice_controls(window, cx)),
 				)
 				.child(
 					gpui::deferred(
@@ -178,7 +181,17 @@ impl ChiefSurface {
 		)
 	}
 
-	fn composer_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+	fn composer_toolbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+		if let Some(controls) = self.dictation_controls(cx) {
+			return controls;
+		}
+		if let Some(controls) = self.voice_toolbar(cx) {
+			return controls;
+		}
+		self.text_composer_toolbar(cx)
+	}
+
+	fn text_composer_toolbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
 		let model = self.model.read(cx).content().to_owned();
 		div()
 			.w_full()
@@ -261,6 +274,13 @@ impl ChiefSurface {
 				cx,
 			))
 			.child(self.composer_control_with_window(
+				"microphone-device",
+				"⌄".into(),
+				"Choose microphone input",
+				|s, window, cx| s.open_audio_menu(window, cx),
+				cx,
+			))
+			.child(self.composer_control_with_window(
 				"voice",
 				"Live".into(),
 				"Start a live voice conversation",
@@ -290,6 +310,7 @@ impl ChiefSurface {
 				},
 				cx,
 			))
+			.into_any_element()
 	}
 
 	pub(super) fn composer_control(
@@ -327,10 +348,20 @@ impl ChiefSurface {
 			.flex_none()
 			.rounded(px(if send { 8.0 } else { 7.0 }))
 			.when(
-				!["model", "delivery", "effort", "send", "dictation-cancel", "dictation-finish"]
-					.contains(&id),
+				![
+					"model",
+					"delivery",
+					"effort",
+					"send",
+					"dictation-cancel",
+					"dictation-finish",
+					"voice-mute",
+					"voice-end",
+				]
+				.contains(&id),
 				|d| d.w(px(ui_theme::CONTROL_SIZE)).px_0(),
 			)
+			.when(id == "microphone-device", |d| d.w(px(16.)).px_0())
 			.flex()
 			.items_center()
 			.justify_center()
@@ -456,10 +487,18 @@ impl ChiefSurface {
 						.items_center()
 						.justify_between()
 						.text_size(px(11.))
-						.child(if menu == "model" { "Model" } else { "Reasoning depth" })
-						.child(div().text_color(rgb(ui_theme::TEXT_MUTED)).child("Next turn")),
+						.child(match menu {
+							"model" => "Model",
+							"microphone" => "Microphone",
+							_ => "Reasoning depth",
+						})
+						.child(div().text_color(rgb(ui_theme::TEXT_MUTED)).child(
+							if menu == "microphone" { "Next recording" } else { "Next turn" },
+						)),
 				)
-				.child(if menu == "effort" {
+				.child(if menu == "microphone" {
+					self.audio_palette(cx)
+				} else if menu == "effort" {
 					self.effort_scale(cx)
 				} else {
 					self.model_palette(cx)

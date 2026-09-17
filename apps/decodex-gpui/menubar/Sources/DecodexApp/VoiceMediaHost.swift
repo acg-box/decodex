@@ -17,13 +17,14 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     private var desiredMute = false
     private var captureCancelled = false
     private var syntheticAudio = false
+    private static let mediaDataStore = WKWebsiteDataStore.nonPersistent()
     private let origin = URL(string: "https://decodex.invalid")!
 
     init(syntheticAudioForTesting: Bool = false, sampleForTesting: Data? = nil, hostWindow: NSWindow? = nil) {
         super.init()
         syntheticAudio = syntheticAudioForTesting
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
+        configuration.websiteDataStore = Self.mediaDataStore
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.userContentController.add(self, name: "voice")
         let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 1, height: 1), configuration: configuration)
@@ -60,7 +61,12 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
               let bytes = json.data(using: .utf8),
               let value = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
               let operation = value["operation"] as? String,
-              ["start", "dictate", "finish", "answer", "mute", "stop"].contains(operation) else { return false }
+              ["start", "dictate", "finish", "answer", "mute", "stop", "devices"].contains(operation) else { return false }
+        if operation == "devices" {
+            let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified)
+            emit(["type":"devices", "inputs":discovery.devices.map { $0.localizedName }])
+            return true
+        }
         if operation == "start" || operation == "dictate" { captureCancelled = false }
         if operation == "stop" || operation == "finish" {
             captureCancelled = true
@@ -89,6 +95,10 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
         }
         emit(["type":"status", "message":"Waiting for microphone permission…"])
         if syntheticAudio { finishAuthorization(true, command: json); return }
+        if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized {
+            finishAuthorization(true, command: json)
+            return
+        }
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] permitted in
             DispatchQueue.main.async { self?.finishAuthorization(permitted, command: json) }
         }
@@ -142,6 +152,9 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
 
     private func emit(_ value: [String: Any]) {
         guard !isClosed else { return }
+        if value["type"] as? String == "level" {
+            events.removeAll { $0.contains("\"type\":\"level\"") }
+        }
         if events.count >= 128 {
             events = [#"{"type":"error","message":"Audio updates could not be delivered. The call stopped."}"#]
             close()
@@ -158,7 +171,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
               message.webView === webView,
               let value = message.body as? [String: Any],
               let type = value["type"] as? String,
-              ["ready", "offer", "connected", "caption", "pcm", "dictation_ready", "ended", "error"].contains(type)
+              ["ready", "offer", "connected", "caption", "pcm", "level", "dictation_ready", "ended", "error"].contains(type)
         else { return }
         if type == "ready" {
             guard value["canCapture"] as? Bool == true else {
@@ -213,25 +226,40 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     <script>
     (() => {
       let peer = null, microphone = null, channel = null, generation = 0, connectionTimeout = null, muted = false;
-      let audioContext = null, processor = null, source = null, finishRequested = false;
+      let audioContext = null, processor = null, source = null, finishRequested = false, levelTimer = null;
       const emit = value => window.webkit.messageHandlers.voice.postMessage(value);
       const reply = document.getElementById('reply');
       function stop() {
         generation++; clearTimeout(connectionTimeout); connectionTimeout = null;
         processor?.disconnect(); source?.disconnect();
         if (processor) processor.onaudioprocess = null;
-        audioContext?.close(); audioContext = null; processor = null; source = null; finishRequested = false;
+        clearInterval(levelTimer); levelTimer = null; audioContext?.close(); audioContext = null; processor = null; source = null; finishRequested = false;
         microphone?.getTracks().forEach(track => track.stop());
         channel?.close(); peer?.close();
         reply.pause(); reply.srcObject = null;
         microphone = null; channel = null; peer = null;
       }
-      async function start(dictation = false) {
+      async function start(dictation = false, input = "") {
         stop(); const active = generation;
         let capture;
         try {
           connectionTimeout = setTimeout(() => { if (active === generation) { stop(); emit({type:'error',message:'The microphone did not open. Check its connection and try again.'}); } }, 15000);
-          capture = await navigator.mediaDevices.getUserMedia({video:false,audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+          const knownInputs = input ? await navigator.mediaDevices.enumerateDevices() : [];
+          const preferred = knownInputs.find(d => d.kind === 'audioinput' && (d.label === input || d.label.startsWith(input + ' (')));
+          if (preferred) {
+            capture = await navigator.mediaDevices.getUserMedia({video:false,audio:{deviceId:{exact:preferred.deviceId},echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+          } else {
+            capture = await navigator.mediaDevices.getUserMedia({video:false,audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+          }
+          if (input && !preferred) {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const selected = devices.find(d => d.kind === 'audioinput' && (d.label === input || d.label.startsWith(input + ' (')));
+            if (!selected) { capture.getTracks().forEach(track=>track.stop()); emit({type:'error',message:'The selected microphone is unavailable. Choose another input.'}); return; }
+            if (capture.getAudioTracks()[0]?.getSettings().deviceId !== selected.deviceId) {
+              capture.getTracks().forEach(track=>track.stop());
+              capture = await navigator.mediaDevices.getUserMedia({video:false,audio:{deviceId:{exact:selected.deviceId},echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+            }
+          }
           if (active !== generation) { capture.getTracks().forEach(track => track.stop()); return; }
           microphone = capture;
           capture.getAudioTracks().forEach(track => track.enabled = !muted);
@@ -239,7 +267,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
           if (dictation) {
             audioContext = new AudioContext({sampleRate:24000});
             source = audioContext.createMediaStreamSource(capture);
-            processor = audioContext.createScriptProcessor(4096,1,1);
+            processor = audioContext.createScriptProcessor(2048,1,1);
             processor.onaudioprocess = event => {
               if (active !== generation) return;
               const samples = event.inputBuffer.getChannelData(0), pcm = new Int16Array(samples.length);
@@ -252,6 +280,16 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
             source.connect(processor); processor.connect(audioContext.destination);
             await audioContext.resume(); emit({type:'dictation_ready'}); return;
           }
+          audioContext = new AudioContext();
+          source = audioContext.createMediaStreamSource(capture);
+          const analyser = audioContext.createAnalyser(); analyser.fftSize = 256;
+          const silent = audioContext.createGain(); silent.gain.value = 0;
+          source.connect(analyser); analyser.connect(silent); silent.connect(audioContext.destination);
+          await audioContext.resume();
+          levelTimer = setInterval(() => {
+            const values = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(values);
+            emit({type:'level',level:Math.min(1,Math.sqrt(values.reduce((sum,v)=>sum+v*v,0)/values.length)*5)});
+          }, 50);
           connectionTimeout = setTimeout(() => { if (active === generation) { stop(); emit({type:'error',message:'The audio connection timed out.'}); } }, 30000);
           const connection = new RTCPeerConnection(); peer = connection;
           capture.getAudioTracks().forEach(track => connection.addTrack(track,capture));
@@ -282,8 +320,8 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
         } catch { if (active === generation) { stop(); emit({type:'error',message:'Microphone access is unavailable. Check Decodex microphone permission in System Settings.'}); } }
       }
       window.decodexVoice = {async diagnostics() { const stats=peer ? [...(await peer.getStats()).values()].filter(s=>['outbound-rtp','inbound-rtp'].includes(s.type)).map(s=>({type:s.type,bytesSent:s.bytesSent,bytesReceived:s.bytesReceived,packetsSent:s.packetsSent})) : []; return {muted:microphone?.getAudioTracks().every(track=>!track.enabled),audio:window.testAudioContext?.state,stats,connection:peer?.connectionState,ice:peer?.iceConnectionState,gathering:peer?.iceGatheringState,signaling:peer?.signalingState,channel:channel?.readyState,localCandidates:(peer?.localDescription?.sdp.match(/a=candidate:/g)||[]).length,remoteCandidates:(peer?.remoteDescription?.sdp.match(/a=candidate:/g)||[]).length}; },async command(value) {
-        if (value.operation === 'start') return start();
-        if (value.operation === 'dictate') return start(true);
+        if (value.operation === 'start') return start(false,value.input || '');
+        if (value.operation === 'dictate') return start(true,value.input || '');
         if (value.operation === 'finish') { if (processor) { finishRequested = true; const active=generation; setTimeout(()=>{if(active===generation){stop();emit({type:'ended'});}},1000); } else { stop();emit({type:'ended'}); } return; }
         if (value.operation === 'stop') { stop(); emit({type:'ended'}); return; }
         if (value.operation === 'mute') { muted = !!value.muted; microphone?.getAudioTracks().forEach(track => track.enabled = !muted); return; }

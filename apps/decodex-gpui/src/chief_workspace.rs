@@ -445,6 +445,7 @@ impl ChiefSurface {
 		self.restore_history_anchor(window, cx);
 		self.prepare_history_marks();
 		self.animate_history_scroll(window, cx);
+		self.follow_voice_scroll(window, cx);
 		let is_chief = self.selected_is_manager();
 		let selected = self
 			.snapshot
@@ -496,7 +497,7 @@ impl ChiefSurface {
 				transcript = transcript.child(content);
 			}
 		} else {
-			transcript = transcript.child(self.workspace_welcome(cx));
+			transcript = transcript.child(self.workspace_welcome(window, cx));
 		}
 
 		chat = chat
@@ -510,7 +511,7 @@ impl ChiefSurface {
 			)
 			.child(self.conversation_activity(cx));
 		if is_chief && selected.is_some() {
-			chat = chat.child(self.render_composer(cx));
+			chat = chat.child(self.render_composer(window, cx));
 		} else if let Some(work) = selected {
 			chat = chat.child(self.workspace_followup(&work, cx));
 		}
@@ -570,7 +571,7 @@ impl ChiefSurface {
 		}
 	}
 
-	fn workspace_welcome(&self, cx: &mut Context<Self>) -> AnyElement {
+	fn workspace_welcome(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
 		div()
 			.size_full()
 			.flex()
@@ -578,7 +579,7 @@ impl ChiefSurface {
 			.justify_center()
 			.items_center()
 			.pb(px(90.0))
-			.child(div().w_full().max_w(px(672.0)).child(self.render_composer(cx)))
+			.child(div().w_full().max_w(px(672.0)).child(self.render_composer(window, cx)))
 			.into_any_element()
 	}
 

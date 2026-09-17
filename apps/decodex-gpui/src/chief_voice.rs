@@ -18,6 +18,9 @@ pub(super) struct VoiceUi {
 	caption: String,
 	caption_role: &'static str,
 	caption_turn: String,
+	started_at_micros: i64,
+	levels: std::collections::VecDeque<f32>,
+	follow: bool,
 }
 impl ChiefSurface {
 	pub(crate) fn stop_voice(&mut self, cx: &mut Context<Self>) {
@@ -49,7 +52,7 @@ impl ChiefSurface {
 				return;
 			},
 		};
-		if !media.command(json!({"operation":"start"})) {
+		if !media.command(json!({"operation":"start","input":self.audio_input})) {
 			self.feedback = "The audio host could not start.".into();
 			cx.notify();
 			return;
@@ -68,6 +71,12 @@ impl ChiefSurface {
 			caption: String::new(),
 			caption_role: "You",
 			caption_turn: String::new(),
+			started_at_micros: std::time::SystemTime::now()
+				.duration_since(std::time::UNIX_EPOCH)
+				.unwrap_or_default()
+				.as_micros() as i64,
+			levels: std::collections::VecDeque::from(vec![0.; 40]),
+			follow: true,
 		});
 		self.voice_task = Some(cx.spawn(async move |surface, cx| {
 			loop {
@@ -138,6 +147,12 @@ impl ChiefSurface {
 				Some("status") =>
 					voice.connection_status =
 						event["message"].as_str().unwrap_or("Connecting…").into(),
+				Some("level") => {
+					voice.levels.pop_front();
+					voice
+						.levels
+						.push_back(event["level"].as_f64().unwrap_or_default().clamp(0., 1.) as f32);
+				},
 				Some("caption") => {
 					update_caption(
 						&event["event"],
@@ -194,82 +209,200 @@ impl ChiefSurface {
 		cx.notify();
 	}
 
-	pub(super) fn voice_controls(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+	pub(super) fn open_audio_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if let Ok(mut media) = Media::new(window) {
+			media.command(json!({"operation":"devices"}));
+			while let Some(event) = media.poll() {
+				if event["type"] == "devices" {
+					self.audio_inputs = event["inputs"]
+						.as_array()
+						.map(|values| {
+							values.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()
+						})
+						.unwrap_or_default();
+				}
+			}
+		}
+		self.composer_menu =
+			if self.composer_menu == Some("microphone") { None } else { Some("microphone") };
+		if self.composer_menu.is_some() {
+			self.composer_menu_content = self.composer_menu;
+		}
+		cx.notify();
+	}
+
+	pub(super) fn audio_palette(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+		let mut inputs = vec![String::new()];
+		inputs.extend(self.audio_inputs.clone());
+		div()
+			.flex()
+			.flex_col()
+			.gap(px(2.))
+			.children(inputs.into_iter().enumerate().map(|(i, input)| {
+				let selected = input == self.audio_input;
+				let keyboard_input = input.clone();
+				let label =
+					if input.is_empty() { "System default".to_owned() } else { input.clone() };
+				div()
+					.id(("microphone-input", i))
+					.role(Role::Button)
+					.tab_index(0)
+					.aria_label(format!("Use {label}"))
+					.h(px(28.))
+					.px_2()
+					.rounded(px(6.))
+					.flex()
+					.items_center()
+					.gap(px(8.))
+					.cursor_pointer()
+					.text_size(px(12.))
+					.child(div().w(px(12.)).child(if selected { "✓" } else { "" }))
+					.child(label)
+					.hover(|d| d.bg(rgba(0xffffff10)))
+					.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
+						if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+							s.audio_input = keyboard_input.clone();
+							s.composer_menu = None;
+							cx.stop_propagation();
+							cx.notify();
+						}
+					}))
+					.on_click(cx.listener(move |s, _, _, cx| {
+						s.audio_input = input.clone();
+						s.composer_menu = None;
+						cx.notify();
+					}))
+					.smooth()
+			}))
+			.into_any_element()
+	}
+
+	pub(super) fn voice_controls(
+		&self,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Option<gpui::AnyElement> {
+		let voice = self.voice.as_ref()?;
+		Some(
+			div()
+				.w_full()
+				.h(px(54.))
+				.flex()
+				.items_center()
+				.justify_center()
+				.gap(px(3.))
+				.children(voice.levels.iter().enumerate().map(|(i, level)| {
+					let height = crate::ui_motion::value(
+						("live-wave-height", i),
+						if voice.muted { 2. } else { 2. + level * 40. },
+						window,
+						cx,
+					);
+					div()
+						.id(("live-wave", i))
+						.w(px(3.))
+						.h(px(height))
+						.rounded_full()
+						.bg(rgb(if voice.muted { ui_theme::TEXT_MUTED } else { ui_theme::BLUE }))
+				}))
+				.into_any_element(),
+		)
+	}
+
+	pub(super) fn voice_toolbar(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
 		let voice = self.voice.as_ref()?;
 		let label = if !voice.connected {
-			voice.connection_status.clone()
+			voice.connection_status.as_str()
 		} else if voice.muted {
-			"Microphone muted".into()
+			"Microphone muted"
 		} else {
-			"Live".into()
+			"Live"
 		};
 		Some(
 			div()
 				.w_full()
 				.flex()
-				.flex_col()
+				.items_center()
 				.gap(px(8.))
-				.pb(px(8.))
-				.border_b_1()
-				.border_color(rgba(0xffffff14))
+				.text_size(px(11.))
+				.text_color(rgb(ui_theme::TEXT_MUTED))
 				.child(
 					div()
-						.flex()
-						.items_center()
-						.gap(px(8.))
-						.text_size(px(11.))
-						.text_color(rgb(ui_theme::TEXT_MUTED))
-						.child(div().size(px(5.)).rounded_full().bg(rgb(if voice.connected {
-							0x8eb6a1
-						} else {
-							0x8b8893
-						})))
-						.child(
-							div()
-								.id("voice-status")
-								.role(Role::Status)
-								.aria_label(label.clone())
-								.child(label),
-						)
-						.child(div().flex_1())
-						.child(self.composer_control(
-							"voice-mute",
-							if voice.muted { "Unmute" } else { "Mute" }.into(),
-							"Toggle microphone",
-							|s, cx| {
-								if let Some(voice) = &mut s.voice {
-									voice.muted = !voice.muted;
-									voice
-										.media
-										.command(json!({"operation":"mute","muted":voice.muted}));
-									cx.notify();
-								}
-							},
-							cx,
-						))
-						.child(self.composer_control(
-							"voice-end",
-							"End".into(),
-							"End voice call · Existing work continues",
-							|s, cx| {
-								s.voice = None;
-								cx.notify();
-							},
-							cx,
-						)),
+						.id("voice-status")
+						.role(Role::Status)
+						.aria_label(label.to_owned())
+						.child(label.to_owned()),
 				)
-				.when(!voice.caption.is_empty(), |d| {
-					d.child(
-						div()
-							.max_h(px(72.))
-							.overflow_hidden()
-							.text_size(px(12.))
-							.text_color(rgb(ui_theme::TEXT))
-							.child(format!("{} · {}", voice.caption_role, voice.caption)),
-					)
-				})
+				.child(div().flex_1())
+				.child(self.composer_control(
+					"voice-mute",
+					if voice.muted { "Unmute" } else { "Mute" }.into(),
+					"Toggle microphone",
+					|s, cx| {
+						if let Some(voice) = &mut s.voice {
+							voice.muted = !voice.muted;
+							voice.media.command(json!({"operation":"mute","muted":voice.muted}));
+						}
+						cx.notify();
+					},
+					cx,
+				))
+				.child(self.composer_control(
+					"voice-end",
+					"End".into(),
+					"End voice call · Existing work continues",
+					|s, cx| {
+						s.voice = None;
+						s.load_history(cx);
+						cx.notify();
+					},
+					cx,
+				))
 				.into_any_element(),
 		)
+	}
+
+	pub(super) fn live_chat_caption(&self) -> Option<gpui::AnyElement> {
+		let v = self.voice.as_ref()?;
+		if v.caption.is_empty() {
+			return None;
+		}
+		let kind = if v.caption_role == "You" { "user" } else { "assistant" };
+		if self.history.as_ref().is_some_and(|(_, history)| {
+            matches!(history, ChiefHistoryResult::Available { entries, .. } if entries.iter().any(|entry|
+                entry.created_at_micros >= v.started_at_micros && entry.kind == kind && entry.text.trim() == v.caption.trim()))
+        }) { return None; }
+
+		Some(
+			history_entry(&decodex_protocol::ChiefHistoryEntryDto {
+				activity: None,
+				usage: None,
+				duration_ms: None,
+				id: -1,
+				kind: kind.into(),
+				text: v.caption.clone(),
+				created_at_micros: 0,
+			})
+			.into_any_element(),
+		)
+	}
+
+	pub(super) fn follow_voice_scroll(&self, window: &mut Window, cx: &mut Context<Self>) {
+		let Some(v) = self.voice.as_ref().filter(|v| v.follow) else { return };
+		let Some(scroll) = self.transcript_scroll.get(v.work.as_str()) else { return };
+		let current = f32::from(scroll.offset().y);
+		let target = -f32::from(scroll.max_offset().y);
+		if (target - current).abs() > 0.5 {
+			scroll.set_offset(gpui::point(px(0.), px(current + (target - current) * 0.24)));
+			window.request_animation_frame();
+			cx.notify();
+		}
+	}
+
+	pub(super) fn set_voice_follow(&mut self, following: bool) {
+		if let Some(voice) = &mut self.voice {
+			voice.follow = following;
+		}
 	}
 }
 
@@ -395,8 +528,8 @@ fn update_caption(event: &Value, turn: &mut String, role: &mut &'static str, tex
 		},
 		_ => return,
 	}
-	if text.chars().count() > 220 {
-		*text = text.chars().rev().take(220).collect::<String>().chars().rev().collect();
+	if text.chars().count() > 32768 {
+		*text = text.chars().take(32768).collect();
 	}
 }
 
@@ -433,5 +566,51 @@ mod tests {
 			&mut text,
 		);
 		assert_eq!(text, "Hi!");
+	}
+	#[gpui::test]
+	fn saved_voice_message_replaces_caption_without_hiding_an_older_repeat(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, _| {
+			s.voice = Some(VoiceUi {
+				media: Media,
+				session: EntityId::new("call").expect("id"),
+				work: EntityId::new("chief").expect("id"),
+				request: None,
+				answered: true,
+				signaling: true,
+				connected: true,
+				connection_status: "Live".into(),
+				muted: false,
+				caption: "Hello".into(),
+				caption_role: "You",
+				caption_turn: "turn".into(),
+				started_at_micros: 100,
+				levels: Default::default(),
+				follow: true,
+			});
+			let history = |time| ChiefHistoryResult::Available {
+				usage: None,
+				has_more: false,
+				next_before: None,
+				live: vec![],
+				entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+					activity: None,
+					usage: None,
+					duration_ms: None,
+					id: 1,
+					kind: "user".into(),
+					text: "Hello".into(),
+					created_at_micros: time,
+				}],
+			};
+			s.history = Some(("chief".into(), history(99)));
+			assert!(s.live_chat_caption().is_some());
+			s.history = Some(("chief".into(), history(101)));
+			assert!(s.live_chat_caption().is_none());
+			s.voice.as_mut().expect("voice").caption_role = "Chief";
+			assert!(s.live_chat_caption().is_some());
+		});
 	}
 }

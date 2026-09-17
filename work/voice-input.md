@@ -158,3 +158,38 @@ System audio inspection reported LG ULTRAGEAR+ over DisplayPort as default outpu
 and Shure MV7 over USB as default input. This acoustic test does not establish that
 the microphone received the sample. No volume or device settings were changed.
 Actual spoken-input transcription remains unverified; all test capture was ended.
+
+## Unified composer and capture latency
+
+The composer now has one editable draft for text and dictation. Dictation status,
+Cancel, and Done use its existing toolbar. Live replaces the editor area with a
+microphone waveform and uses that toolbar for Mute and End. Draft text and
+attachments remain intact while Live is open; keyboard submission cannot send a
+hidden draft. Live captions use normal user/assistant chat formatting and yield
+to matching saved messages from the current call. The history follows Live with
+interpolated scrolling; manual scrolling away from the bottom pauses following.
+
+The arrow beside the microphone opens real input-device choices. Selection applies
+to the next recording in either mode and does not change the system default.
+Device discovery does not start capture. WebKit resolves the selected device by
+its exposed name after permission is available, and reports an unavailable input
+instead of silently sending audio from another device. Selection is currently
+retained for this application session.
+
+Dictation previously waited for subscription readiness before opening capture,
+used 4,096-sample frames at 24 kHz (about 171 ms), and waited 80 ms between client
+exchanges. Capture and connection now start together, bounded early audio waits
+for readiness, frames contain 2,048 samples (about 85 ms), and exchange polling
+uses 20 ms. Done drains audio before final correction. These are reductions in
+local waiting, not a measured guarantee about server transcription latency.
+Already-granted microphone permission takes the direct path; media views share
+an ephemeral WebKit data store. Live waveform samples are real RMS measurements,
+coalesced under network delay and interpolated for display.
+
+Validation includes draft cancellation, audio readiness/drain ordering, input
+catalog discovery without capture, native PCM/WebRTC tests, and caption/history
+replacement across repeated phrases and roles. Signed-app UI checks listed Shure,
+iPhone, and MacBook inputs; selecting Shure allowed capture. Dictation kept the
+existing editor, Live hid it and followed the conversation, and End restored the
+same draft. No test recording was left active. Subjective recognition speed and
+waveform response remain part of user acceptance with actual speech.

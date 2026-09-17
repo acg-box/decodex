@@ -50,6 +50,8 @@ fn should_poll_snapshot(has_profile: bool, state: &LoadState, _active: bool) -> 
 pub(crate) struct ChiefSurface {
 	voice: Option<voice::VoiceUi>,
 	voice_task: Option<Task<()>>,
+	audio_inputs: Vec<String>,
+	audio_input: String,
 	dictation: Option<dictation::DictationUi>,
 	dictation_task: Option<Task<()>>,
 	activity_detail: Option<(String, Option<decodex_protocol::ChiefActivityDetailResult>)>,
@@ -202,6 +204,8 @@ impl ChiefSurface {
 		Self {
 			voice: None,
 			voice_task: None,
+			audio_inputs: Vec::new(),
+			audio_input: String::new(),
 			dictation: None,
 			dictation_task: None,
 			activity_detail: None,
@@ -317,6 +321,7 @@ impl ChiefSurface {
 							current == &id && matches!(saved, ChiefHistoryResult::Available { .. })
 						}) {
 						if let Some(scroll) = surface.transcript_scroll.get(&id)
+							&& surface.voice.is_none()
 							&& (scroll.offset().y + scroll.max_offset().y).abs() < px(24.0)
 						{
 							scroll.scroll_to_bottom();
@@ -403,6 +408,7 @@ impl ChiefSurface {
 				if surface.selected == selected {
 					if let Some(scroll) =
 						selected.as_ref().and_then(|id| surface.transcript_scroll.get(id))
+						&& surface.voice.is_none()
 						&& (scroll.offset().y + scroll.max_offset().y).abs() < px(24.0)
 					{
 						scroll.scroll_to_bottom();
@@ -444,6 +450,9 @@ impl ChiefSurface {
 	}
 
 	fn submit(&mut self, cx: &mut Context<Self>) {
+		if self.voice.is_some() {
+			return;
+		}
 		if self.dictation.is_some() {
 			self.finish_dictation(cx);
 			return;
@@ -1172,7 +1181,7 @@ impl ChiefSurface {
 				panel = panel.child(muted("Messages could not be loaded. Retrying…")),
 			None => panel = panel.child(muted("Loading messages…")),
 		}
-		panel
+		panel.children(self.live_chat_caption())
 	}
 
 	fn pending_panel(

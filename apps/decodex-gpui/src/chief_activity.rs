@@ -146,6 +146,8 @@ impl ChiefSurface {
 			let delta = event.delta.pixel_delta(px(ui_theme::BODY_LINE_HEIGHT));
 			let offset = (scroll.offset().y + delta.y).clamp(-scroll.max_offset().y, px(0.0));
 			scroll.set_offset(point(px(0.0), offset));
+			let following = (offset + scroll.max_offset().y).abs() < px(24.);
+			self.set_voice_follow(following);
 			cx.stop_propagation();
 			cx.notify();
 		}

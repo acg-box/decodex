@@ -46,7 +46,7 @@ final class VoiceMediaHostTests: XCTestCase {
         let frame = try await event(from: host, type: "pcm")
         let encoded = try XCTUnwrap(frame["audio"] as? String)
         let pcm = try XCTUnwrap(Data(base64Encoded: encoded))
-        XCTAssertEqual(pcm.count, 8192)
+        XCTAssertEqual(pcm.count, 4096)
         XCTAssertNotNil(frame["level"] as? Double)
         XCTAssertTrue(host.command(#"{"operation":"finish"}"#))
         _ = try await event(from: host, type: "ended")
@@ -63,6 +63,18 @@ final class VoiceMediaHostTests: XCTestCase {
         defer { decodexVoiceMediaDestroy(pointer) }
         let host = Unmanaged<VoiceMediaHost>.fromOpaque(pointer).takeUnretainedValue()
         XCTAssertTrue(host.hasHostWindow)
+    }
+
+    func testInputDiscoveryDoesNotStartCapture() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+        let host = VoiceMediaHost(hostWindow: window)
+        defer { host.close() }
+        XCTAssertTrue(host.command(#"{"operation":"devices"}"#))
+        let pointer = try XCTUnwrap(host.poll())
+        let value = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(String(cString:pointer).utf8)) as? [String:Any])
+        XCTAssertEqual(value["type"] as? String, "devices")
+        XCTAssertNotNil(value["inputs"] as? [String])
     }
 
     func testVisibleWindowFallbackBindsMediaWithoutKeyWindow() {
