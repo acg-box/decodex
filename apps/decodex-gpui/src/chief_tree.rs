@@ -38,8 +38,7 @@ impl ChiefSurface {
 			.min_w_0()
 			.flex()
 			.flex_col()
-			.border_l_1()
-			.border_color(rgba(ui_theme::PANEL_BOUNDARY))
+			.pl(px(6.))
 			.child(
 				div()
 					.h(px(ui_theme::PANEL_HEADER_HEIGHT))

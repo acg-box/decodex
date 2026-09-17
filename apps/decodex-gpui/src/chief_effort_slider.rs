@@ -8,6 +8,9 @@ fn index_at(position: f32, count: usize) -> usize {
 
 impl ChiefSurface {
 	pub(crate) fn set_effort_position(&mut self, position: f32, cx: &mut Context<Self>) {
+		if self.effort_drag.is_some() {
+			self.effort_pointer = Some(position.clamp(0., 1.));
+		}
 		let levels = self.model_efforts(cx);
 		if let Some(level) = levels.get(index_at(position, levels.len())) {
 			self.effort = *level;
@@ -19,20 +22,21 @@ impl ChiefSurface {
 		let levels = self.model_efforts(cx);
 		let count = levels.len();
 		let index = levels.iter().position(|v| *v == self.effort).unwrap_or(0);
-		let fraction = index as f32 / count.saturating_sub(1).max(1) as f32;
+		let fraction =
+			self.effort_pointer.unwrap_or(index as f32 / count.saturating_sub(1).max(1) as f32);
 		let measured = cx.entity().downgrade();
 		let events = measured.clone();
 		div()
 			.px(px(14.))
 			.py(px(6.))
 			.flex()
-			.flex_col()
+			.items_center()
 			.gap(px(12.))
 			.child(
 				div()
-					.w_full()
-					.text_center()
-					.text_size(px(14.))
+					.w(px(44.))
+					.flex_none()
+					.text_size(px(12.))
 					.text_color(rgb(ui_theme::TEXT))
 					.child(level_label(self.effort.as_str())),
 			)
@@ -46,8 +50,8 @@ impl ChiefSurface {
 						"Reasoning: {}. Use Left and Right to adjust.",
 						level_label(self.effort.as_str())
 					))
-					.w_full()
-					.h(px(30.))
+					.flex_1()
+					.h(px(28.))
 					.relative()
 					.cursor_pointer()
 					.on_mouse_down(
@@ -102,6 +106,8 @@ impl ChiefSurface {
 													);
 												} else {
 													s.effort_drag = None;
+													s.effort_pointer = None;
+													cx.notify();
 												}
 											}
 										});
@@ -109,7 +115,12 @@ impl ChiefSurface {
 								);
 								let release = events.clone();
 								window.on_mouse_event(move |_: &gpui::MouseUpEvent, _, _, cx| {
-									let _ = release.update(cx, |s, _| s.effort_drag = None);
+									let _ = release.update(cx, |s, cx| {
+										if s.effort_drag.take().is_some() {
+											s.effort_pointer = None;
+											cx.notify();
+										}
+									});
 								});
 							},
 						)
@@ -129,11 +140,13 @@ struct SliderTrack {
 }
 impl gpui::RenderOnce for SliderTrack {
 	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
-		let fraction = if self.dragging {
-			self.fraction
-		} else {
-			crate::ui_motion::value("reasoning-thumb", self.fraction, window, cx)
-		};
+		let fraction = crate::ui_motion::direct_value(
+			"reasoning-thumb",
+			self.fraction,
+			self.dragging,
+			window,
+			cx,
+		);
 		div()
 			.absolute()
 			.inset_0()
@@ -142,8 +155,8 @@ impl gpui::RenderOnce for SliderTrack {
 					.absolute()
 					.left_0()
 					.right_0()
-					.top(px(3.))
-					.h(px(24.))
+					.top(px(10.))
+					.h(px(8.))
 					.rounded_full()
 					.bg(rgba(0xffffff18)),
 			)
@@ -151,21 +164,22 @@ impl gpui::RenderOnce for SliderTrack {
 				div()
 					.absolute()
 					.left_0()
-					.top(px(3.))
+					.top(px(10.))
 					.w(relative(fraction))
-					.h(px(24.))
+					.h(px(8.))
 					.rounded_full()
-					.bg(rgb(if self.fraction > 0.9 { 0xf06a72 } else { 0x8f9fe8 })),
+					.bg(rgb(0xa8b3d5)),
 			)
 			.child(
 				div()
 					.absolute()
 					.left(relative(fraction))
-					.top(px(1.))
-					.ml(px(-14.))
-					.size(px(28.))
-					.rounded_full()
-					.bg(rgb(0xf4f4f8)),
+					.top(px(4.))
+					.ml(px(-7.))
+					.w(px(14.))
+					.h(px(20.))
+					.rounded(px(6.))
+					.bg(rgb(0xe4e7ef)),
 			)
 	}
 }
@@ -198,10 +212,26 @@ mod tests {
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
 		});
+		for _ in 0..2 {
+			std::thread::sleep(std::time::Duration::from_millis(200));
+			visual.update(|w, cx| {
+				w.draw(cx).clear();
+			});
+		}
 		let bounds = surface.update(visual, |s, _| s.effort_track_bounds.unwrap());
 		let start = bounds.center();
 		visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
 		surface.update(visual, |s, _| assert!(s.effort_drag.is_some()));
+		visual.simulate_mouse_move(
+			gpui::point(bounds.left() + bounds.size.width * 0.4, start.y),
+			MouseButton::Left,
+			Default::default(),
+		);
+		surface.update(visual, |s, _| {
+			assert!((s.effort_pointer.unwrap() - 0.4).abs() < 0.01);
+			assert_eq!(s.effort, Effort::High);
+		});
+
 		visual.simulate_mouse_move(
 			gpui::point(bounds.right() + px(30.), start.y),
 			MouseButton::Left,
@@ -215,7 +245,10 @@ mod tests {
 		);
 		surface.update(visual, |s, _| assert_eq!(s.effort, Effort::Low));
 		visual.simulate_mouse_up(start, MouseButton::Left, Default::default());
-		surface.update(visual, |s, _| assert!(s.effort_drag.is_none()));
+		surface.update(visual, |s, _| {
+			assert!(s.effort_drag.is_none());
+			assert!(s.effort_pointer.is_none());
+		});
 		visual.simulate_keystrokes("right");
 		surface.update(visual, |s, _| assert_eq!(s.effort, Effort::High));
 		visual.update(|w, cx| {

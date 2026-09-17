@@ -268,8 +268,7 @@ impl ChiefSurface {
 			.pt(px(super::super::WINDOW_CONTROLS_CLEARANCE))
 			.gap_1()
 			.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
-			.border_r_1()
-			.border_color(rgba(0xffffff0b));
+			.pr(px(4.));
 		panel = panel.child(self.workspace_action(
 			"chief-home".into(),
 			"Overview".into(),
@@ -380,8 +379,7 @@ impl ChiefSurface {
 			.items_center()
 			.gap_1()
 			.px_2()
-			.border_b_1()
-			.border_color(rgba(0xffffff0d))
+			.pb(px(4.))
 			.bg(rgba(ui_theme::TOPBAR_MATERIAL));
 		let root = self.root_id();
 		let mut pages = vec![(root.clone().unwrap_or_default(), "Overview".to_owned(), false)];
@@ -585,22 +583,21 @@ impl ChiefSurface {
 
 	fn workspace_followup(&self, work: &ChiefWorkItemDto, cx: &mut Context<Self>) -> AnyElement {
 		let title = work.title.clone();
-		let footer =
-			div().p_3().border_t_1().border_color(rgba(0xffffff0d)).child(self.workspace_action(
-				"discuss-with-chief".into(),
-				"Discuss this work with Chief →".into(),
-				move |s, cx| {
-					if let Some(root) = s.root_id() {
-						s.open_page(&root, cx);
-						if s.composer.read(cx).content().trim().is_empty() {
-							s.composer.update(cx, |input, cx| {
-								input.set_content(&format!("About {title}: "), cx)
-							});
-						}
+		let footer = div().p_3().child(self.workspace_action(
+			"discuss-with-chief".into(),
+			"Discuss this work with Chief →".into(),
+			move |s, cx| {
+				if let Some(root) = s.root_id() {
+					s.open_page(&root, cx);
+					if s.composer.read(cx).content().trim().is_empty() {
+						s.composer.update(cx, |input, cx| {
+							input.set_content(&format!("About {title}: "), cx)
+						});
 					}
-				},
-				cx,
-			));
+				}
+			},
+			cx,
+		));
 		footer.into_any_element()
 	}
 
@@ -703,14 +700,7 @@ impl ChiefSurface {
 	}
 
 	fn graph_frame(&self, title: String, cx: &mut Context<Self>) -> gpui::Div {
-		let mut panel = div()
-			.w_full()
-			.min_w_0()
-			.h_full()
-			.flex()
-			.flex_col()
-			.border_t_1()
-			.border_color(rgba(ui_theme::PANEL_BOUNDARY));
+		let mut panel = div().w_full().min_w_0().h_full().flex().flex_col().pt(px(6.));
 		panel = panel.child(
 			div()
 				.h(px(ui_theme::PANEL_HEADER_HEIGHT))
@@ -926,13 +916,11 @@ impl ChiefSurface {
 			.px_2()
 			.py_1()
 			.rounded(px(5.0))
-			.border_1()
-			.border_color(rgb(if self.graph_selected.as_ref() == Some(&id) {
-				ui_theme::BLUE
+			.bg(if self.graph_selected.as_ref() == Some(&id) {
+				rgba(0x626b9755)
 			} else {
-				ui_theme::LINE_STRONG
-			}))
-			.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
+				rgba(ui_theme::SURFACE_OVERLAY_MATERIAL)
+			})
 			.cursor_pointer()
 			.overflow_hidden()
 			.text_size(px((12.0 * zoom).max(10.0)))

@@ -213,3 +213,35 @@ to restore the user's Medium setting, switched to the model menu, and clicked
 the conversation to close it. Accessibility readback confirmed each result.
 Screenshots confirmed both popup layouts. One preview and its owned service
 remain open; no message or audio session was started.
+
+
+## Continuous motion and history alignment
+
+The reasoning thumb follows the pointer continuously while its semantic value
+snaps to supported levels. Release clears pointer state, requests a frame, and
+eases the thumb to the selected stop. The compact control uses a quiet track and
+rounded rectangular thumb rather than the previous wide colored capsule.
+
+The menu shell owns its shadow. Opening, closing, and replacement use interruptible
+opacity and size transitions; content fades independently. The primary action no
+longer stacks a second shadow. Workspace panel separators use spacing and material
+changes; graph dependency edges and selection indicators remain meaningful.
+
+History navigation and active-mark detection now share the same top inset. A
+clicked turn remains selected even when bottom clamping prevents its anchor from
+reaching that inset. Manual wheel scrolling releases that selection. The rail's
+active emphasis interpolates in position, width, and opacity. Marks are painted
+around their actual hit-target centers. Jump destinations are remeasured during
+navigation so layout changes do not leave a stale target.
+
+Validation: 172 GPUI tests passed and five opt-in tests were ignored. Regression
+coverage includes actual rail hit targets, consistent anchor detection, continuous
+pointer positions, release state, keyboard adjustment, menu replacement, and outside
+click dismissal. Strict Clippy passed.
+
+Native acceptance: inspected the final glass workspace, loaded earlier real
+history, jumped to the long project-check request, scrolled through adjacent
+turns, and returned to the latest turn. The reasoning slider was dragged to Ultra
+and keyboard-adjusted back to Medium. Popup switching and outside dismissal were
+exercised. Removed the trial panel tint after screenshots showed it darkened the
+glass regions. One signed preview remains open with no draft or active recording.

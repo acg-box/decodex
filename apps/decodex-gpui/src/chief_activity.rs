@@ -6,6 +6,7 @@ use std::{cell::Cell, collections::BTreeMap, rc::Rc};
 #[derive(Clone)]
 pub(super) struct HistoryMark {
 	position: Rc<Cell<f32>>,
+	hit_bounds: Rc<Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
 	question: String,
 	time: String,
 	answer: String,
@@ -13,13 +14,16 @@ pub(super) struct HistoryMark {
 
 pub(super) struct HistoryNavigation {
 	work: String,
+	id: i64,
 	from: f32,
 	to: f32,
 	started: std::time::Instant,
 }
 
+const HISTORY_ANCHOR_INSET: f32 = 56.0;
+
 fn navigation_offset(position: f32, maximum: f32) -> f32 {
-	(-(position - 56.0)).clamp(-maximum.max(0.0), 0.0)
+	(-(position - HISTORY_ANCHOR_INSET)).clamp(-maximum.max(0.0), 0.0)
 }
 
 fn dock_influence(index: usize, hover: Option<usize>) -> f32 {
@@ -37,13 +41,17 @@ fn preview(text: &str) -> String {
 }
 
 fn current_mark(positions: &[f32], offset: f32) -> usize {
-	positions.iter().rposition(|position| *position <= offset + 32.0).unwrap_or(0)
+	positions
+		.iter()
+		.rposition(|position| *position <= offset + HISTORY_ANCHOR_INSET + 0.5)
+		.unwrap_or(0)
 }
 
 impl ChiefSurface {
 	pub(super) fn prepare_history_marks(&mut self) {
 		if self.history_marks_work != self.selected {
 			self.history_marks.clear();
+			self.history_selected = None;
 			self.history_hover = None;
 			self.history_navigation = None;
 			self.history_marks_work = self.selected.clone();
@@ -70,6 +78,7 @@ impl ChiefSurface {
 			if entry.kind == "user" || entry.kind == "instruction" {
 				let mark = self.history_marks.entry(entry.id).or_insert_with(|| HistoryMark {
 					position: Rc::new(Cell::new(0.0)),
+					hit_bounds: Rc::new(Cell::new(None)),
 					question: preview(&entry.text),
 					time: format!(
 						"{} · {} UTC",
@@ -109,11 +118,14 @@ impl ChiefSurface {
 		div()
 			.w_full()
 			.flex_none()
-			.on_children_prepainted(move |bounds, _, _| {
+			.on_children_prepainted(move |bounds, window, _| {
 				if let Some(bounds) = bounds.first() {
-					position.set(f32::from(
-						bounds.origin.y - scroll.bounds().origin.y - scroll.offset().y,
-					));
+					let measured =
+						f32::from(bounds.origin.y - scroll.bounds().origin.y - scroll.offset().y);
+					if (position.get() - measured).abs() > 0.5 {
+						position.set(measured);
+						window.request_animation_frame();
+					}
 				}
 			})
 			.id(SharedString::from(format!("history-anchor-{}", entry.id)))
@@ -122,12 +134,15 @@ impl ChiefSurface {
 	}
 
 	fn jump_to_history(&mut self, id: i64, cx: &mut Context<Self>) {
+		self.set_voice_follow(false);
 		if let Some(mark) = self.history_marks.get(&id)
 			&& let Some(work) = self.selected.as_ref()
 			&& let Some(scroll) = self.transcript_scroll.get(work)
 		{
+			self.history_selected = Some(id);
 			self.history_navigation = Some(HistoryNavigation {
 				work: work.clone(),
+				id,
 				from: scroll.offset().y.into(),
 				to: navigation_offset(mark.position.get(), scroll.max_offset().y.into()),
 				started: std::time::Instant::now(),
@@ -142,6 +157,7 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) {
 		self.history_navigation = None;
+		self.history_selected = None;
 		if let Some(scroll) = self.selected.as_ref().and_then(|id| self.transcript_scroll.get(id)) {
 			let delta = event.delta.pixel_delta(px(ui_theme::BODY_LINE_HEIGHT));
 			let offset = (scroll.offset().y + delta.y).clamp(-scroll.max_offset().y, px(0.0));
@@ -163,8 +179,10 @@ impl ChiefSurface {
 		}
 		let t = (navigation.started.elapsed().as_secs_f32() / 0.28).min(1.0);
 		if let Some(scroll) = self.transcript_scroll.get(&navigation.work) {
-			let offset =
-				navigation.from + (navigation.to - navigation.from) * (1.0 - (1.0 - t).powi(3));
+			let target = self.history_marks.get(&navigation.id).map_or(navigation.to, |m| {
+				navigation_offset(m.position.get(), scroll.max_offset().y.into())
+			});
+			let offset = navigation.from + (target - navigation.from) * (1.0 - (1.0 - t).powi(3));
 			scroll.set_offset(point(
 				px(0.0),
 				px(offset.clamp(-f32::from(scroll.max_offset().y).max(0.0), 0.0)),
@@ -192,6 +210,24 @@ impl ChiefSurface {
 		.into_any_element()
 	}
 
+	fn active_history_index(&self, scroll: &gpui::ScrollHandle) -> usize {
+		let last = self.history_marks.len().saturating_sub(1);
+		let at_end = scroll.max_offset().y > px(0.)
+			&& (scroll.offset().y + scroll.max_offset().y).abs() < px(1.);
+		self.history_selected
+			.and_then(|id| self.history_marks.keys().position(|key| *key == id))
+			.unwrap_or_else(|| {
+				if at_end {
+					last
+				} else {
+					current_mark(
+						&self.history_marks.values().map(|m| m.position.get()).collect::<Vec<_>>(),
+						-f32::from(scroll.offset().y),
+					)
+				}
+			})
+	}
+
 	pub(super) fn history_rail(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
 		if self.history_marks.is_empty() {
 			return div().into_any_element();
@@ -210,6 +246,17 @@ impl ChiefSurface {
 			})
 		});
 		let last = positions.len() - 1;
+		let current = self.active_history_index(&scroll);
+		let active_position = crate::ui_motion::value(
+			SharedString::from(format!(
+				"rail-active-{}",
+				self.selected.as_deref().unwrap_or_default()
+			)),
+			current as f32,
+			window,
+			cx,
+		);
+
 		let spacing = ((f32::from(scroll.bounds().size.height) - 32.0) / positions.len() as f32)
 			.clamp(2.0, 11.0);
 		let mut rail = div()
@@ -234,8 +281,7 @@ impl ChiefSurface {
 			);
 			let tip = mark.clone();
 			let id = *id;
-			let positions = positions.clone();
-			let scroll = scroll.clone();
+			let hit_bounds = mark.hit_bounds.clone();
 			rail = rail.child(
 				div()
 					.id(SharedString::from(format!("history-tick-{id}")))
@@ -267,32 +313,26 @@ impl ChiefSurface {
 					}))
 					.child(
 						canvas(
-							|_, _, _| (),
+							move |bounds, _, _| hit_bounds.set(Some(bounds)),
 							move |bounds, _, window, _| {
-								let current = current_mark(
-									&positions.iter().map(|p| p.get()).collect::<Vec<_>>(),
-									-f32::from(scroll.offset().y),
-								);
-								let at_end = scroll.max_offset().y > px(0.0)
-									&& (scroll.offset().y + scroll.max_offset().y).abs() < px(1.0);
-								let active = if at_end { index == last } else { current == index };
+								let activity =
+									(1. - (index as f32 - active_position).abs()).clamp(0., 1.);
 								let color = if working && index == last {
-									ui_theme::BLUE
-								} else if active {
-									ui_theme::TEXT
+									rgb(ui_theme::BLUE)
 								} else {
-									ui_theme::TEXT_MUTED
+									rgba((ui_theme::TEXT << 8) | (100. + 155. * activity) as u32)
 								};
-								let width = if active { 18.0 } else { 7.0 } + influence * 16.0;
+								let width = 7.0 + activity * 11.0 + influence * 16.0;
+								let height = 2.0 + influence;
 								window.paint_quad(gpui::fill(
 									gpui::Bounds::new(
 										point(
 											bounds.center().x - px(width / 2.0),
-											bounds.center().y,
+											bounds.center().y - px(height / 2.),
 										),
-										size(px(width), px(2.0 + influence)),
+										size(px(width), px(height)),
 									),
-									rgb(color),
+									color,
 								));
 							},
 						)
@@ -336,6 +376,53 @@ impl Render for HistoryPreview {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn clicked_anchor_and_active_marker_use_the_same_inset() {
+		let positions = [0., 340., 1117., 2400.];
+		for (index, position) in positions.iter().enumerate() {
+			assert_eq!(current_mark(&positions, -navigation_offset(*position, 3000.)), index);
+		}
+	}
+
+	#[gpui::test]
+	fn rail_hit_targets_select_their_own_message(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(400.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+		});
+		visual.update(|w, cx| {
+			w.draw(cx).clear();
+		});
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|w, cx| {
+			w.draw(cx).clear();
+		});
+		let ids =
+			surface.read_with(visual, |s, _| s.history_marks.keys().copied().collect::<Vec<_>>());
+		for id in ids {
+			let bounds =
+				surface.read_with(visual, |s, _| s.history_marks[&id].hit_bounds.get().unwrap());
+			visual.simulate_mouse_down(
+				bounds.center(),
+				gpui::MouseButton::Left,
+				Default::default(),
+			);
+			visual.simulate_mouse_up(bounds.center(), gpui::MouseButton::Left, Default::default());
+			surface.update(visual, |s, cx| {
+				assert_eq!(s.history_selected, Some(id));
+				assert_eq!(s.history_navigation.as_ref().unwrap().id, id);
+				s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
+				cx.notify();
+			});
+			visual.update(|w, cx| {
+				w.draw(cx).clear();
+			});
+			surface.update(visual, |s, _| assert_eq!(s.history_selected, Some(id)));
+		}
+	}
+
 	#[gpui::test]
 	fn history_marks_jump_to_real_message_anchors(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));

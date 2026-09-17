@@ -4792,8 +4792,7 @@ fn settings_workspace_content(
 		.flex_col()
 		.gap(px(3.0))
 		.text_size(px(ui_theme::BODY_SIZE))
-		.border_r_1()
-		.border_color(rgba(ui_theme::PANEL_BOUNDARY))
+		.pr(px(16.))
 		.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
 		.child(
 			div()

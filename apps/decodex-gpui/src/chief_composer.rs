@@ -144,9 +144,9 @@ impl ChiefSurface {
 				.bg(rgba(0x292c34f5))
 				.shadow(vec![gpui::BoxShadow {
 					inset: false,
-					color: rgba(0x00000038).into(),
-					offset: gpui::point(px(0.), px(8.)),
-					blur_radius: px(24.),
+					color: rgba(0x0000001a).into(),
+					offset: gpui::point(px(0.), px(4.)),
+					blur_radius: px(16.),
 					spread_radius: px(-5.),
 				}])
 				.flex()
@@ -384,17 +384,7 @@ impl ChiefSurface {
 				d.w_full().justify_start().text_size(px(12.))
 			})
 			.when(self.composer_menu == Some(id), |d| d.bg(rgba(0xb8acf21a)))
-			.when(send, |d| {
-				d.w(px(28.)).h(px(28.)).rounded_full().ml(px(5.)).bg(rgb(0x555b6b)).shadow(vec![
-					gpui::BoxShadow {
-						inset: false,
-						color: rgba(0x00000050).into(),
-						offset: gpui::point(px(0.), px(2.)),
-						blur_radius: px(5.),
-						spread_radius: px(0.),
-					},
-				])
-			})
+			.when(send, |d| d.w(px(28.)).h(px(28.)).rounded_full().ml(px(5.)).bg(rgb(0x555b6b)))
 			.cursor_pointer()
 			.hover(move |d| d.bg(if send { rgba(0xffffff24) } else { rgba(0xffffff0c) }))
 			.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
@@ -524,18 +514,12 @@ impl ChiefSurface {
 					}
 					s.composer_menu = None;
 					s.effort_drag = None;
+					s.effort_pointer = None;
 					cx.notify();
 				}))
 				.p(px(10.))
 				.rounded(px(18.))
 				.bg(rgb(0x292d38))
-				.shadow(vec![gpui::BoxShadow {
-					inset: false,
-					color: rgba(0x00000055).into(),
-					offset: gpui::point(px(0.), px(5.)),
-					blur_radius: px(16.),
-					spread_radius: px(-2.),
-				}])
 				.w_full()
 				.flex()
 				.flex_col()

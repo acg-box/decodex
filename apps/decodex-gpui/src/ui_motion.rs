@@ -50,9 +50,23 @@ pub(crate) fn value(
 	window: &mut Window,
 	cx: &mut App,
 ) -> f32 {
+	direct_value(id, target, false, window, cx)
+}
+
+/// Track direct input without lag, then ease to the released target.
+pub(crate) fn direct_value(
+	id: impl Into<ElementId>,
+	target: f32,
+	direct: bool,
+	window: &mut Window,
+	cx: &mut App,
+) -> f32 {
 	let state = window.use_keyed_state(id.into(), cx, |_, _| Tween::new(target));
 	let now = Instant::now();
 	let (value, moving) = state.update(cx, |s, _| {
+		if direct {
+			*s = Tween::new(target);
+		}
 		s.target(target, now);
 		(s.sample(now), s.moving(now))
 	});
@@ -387,27 +401,85 @@ pub(crate) struct Popover {
 pub(crate) fn popover(kind: &'static str, visible: bool, child: impl IntoElement) -> Popover {
 	Popover { kind, visible, child: child.into_any_element() }
 }
+struct PopoverState {
+	kind: &'static str,
+	height: Tween,
+	opacity: Tween,
+	content: Tween,
+	heights: std::collections::BTreeMap<&'static str, f32>,
+}
 impl RenderOnce for Popover {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state =
-			window.use_keyed_state("composer-popover-fade", cx, |_, _| (self.kind, Tween::new(0.)));
+		let state = window.use_keyed_state("composer-popover-fade", cx, |_, _| PopoverState {
+			kind: self.kind,
+			height: Tween::new(0.),
+			opacity: Tween::new(0.),
+			content: Tween::new(1.),
+			heights: Default::default(),
+		});
 		let now = Instant::now();
-		let (opacity, moving) = state.update(cx, |s, _| {
-			if s.0 != self.kind {
-				*s = (self.kind, Tween::new(0.));
+		let (height, opacity, content, moving) = state.update(cx, |s, _| {
+			if s.kind != self.kind {
+				s.kind = self.kind;
+				s.content = Tween::new(0.);
 			}
-			s.1.duration = Duration::from_millis(120);
-			s.1.target(if self.visible { 1. } else { 0. }, now);
-			(s.1.sample(now), s.1.moving(now))
+			s.height.duration = Duration::from_millis(160);
+			s.opacity.duration = Duration::from_millis(140);
+			s.content.duration = Duration::from_millis(180);
+			if let Some(height) = s.heights.get(self.kind) {
+				s.height.target(*height, now);
+			}
+			s.opacity.target(if self.visible { 1. } else { 0. }, now);
+			s.content.target(1., now);
+			(
+				s.height.sample(now),
+				s.opacity.sample(now),
+				s.content.sample(now),
+				s.height.moving(now) || s.opacity.moving(now) || s.content.moving(now),
+			)
 		});
 		if moving {
 			window.request_animation_frame();
 		}
+		let kind = self.kind;
 		div()
 			.w_full()
-			.opacity(opacity)
 			.relative()
+			.opacity(opacity)
 			.top(px((1. - opacity) * 3.))
-			.when(self.visible || opacity > 0.01, |d| d.child(self.child))
+			.rounded(px(14.))
+			.bg(gpui::rgb(0x292d38))
+			.shadow(vec![gpui::BoxShadow {
+				inset: false,
+				color: gpui::rgba(0x00000024).into(),
+				offset: gpui::point(px(0.), px(4.)),
+				blur_radius: px(12.),
+				spread_radius: px(-3.),
+			}])
+			.when(self.visible || opacity > 0.01, |d| {
+				d.child(
+					div().w_full().h(px(height)).rounded(px(14.)).overflow_hidden().child(
+						div()
+							.w_full()
+							.flex_none()
+							.opacity(content)
+							.on_children_prepainted(move |bounds, _, cx| {
+								if let Some(bounds) = bounds.first() {
+									let measured = f32::from(bounds.size.height);
+									state.update(cx, |s, cx| {
+										if s.heights
+											.get(kind)
+											.is_none_or(|h| (h - measured).abs() > 0.5)
+										{
+											s.heights.insert(kind, measured);
+											cx.notify();
+										}
+									});
+								}
+							})
+							.child(self.child),
+					),
+				)
+			})
 	}
 }
