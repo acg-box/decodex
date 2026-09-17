@@ -28,7 +28,7 @@ impl ChiefSurface {
 		let events = measured.clone();
 		div()
 			.px(px(14.))
-			.py(px(6.))
+			.py(px(3.))
 			.flex()
 			.items_center()
 			.gap(px(12.))
@@ -52,7 +52,7 @@ impl ChiefSurface {
 						level_label(self.effort.as_str())
 					))
 					.flex_1()
-					.h(px(28.))
+					.h(px(24.))
 					.relative()
 					.cursor_pointer()
 					.on_mouse_down(
@@ -158,7 +158,7 @@ impl gpui::RenderOnce for SliderTrack {
 					.left_0()
 					.right_0()
 					.top(px(10.))
-					.h(px(8.))
+					.h(px(4.))
 					.rounded_full()
 					.bg(rgba(0xffffff18)),
 			)
@@ -168,31 +168,31 @@ impl gpui::RenderOnce for SliderTrack {
 					.left_0()
 					.top(px(10.))
 					.w(relative(fraction))
-					.h(px(8.))
+					.h(px(4.))
 					.rounded_full()
-					.bg(rgb(0xa8b3d5)),
+					.bg(rgb(0xc0c0c5)),
 			)
 			.children((0..self.count).map(|i| {
 				div()
 					.absolute()
 					.left(relative(i as f32 / self.count.saturating_sub(1).max(1) as f32))
-					.top(px(23.))
+					.top(px(20.))
 					.ml(px(-1.))
 					.w(px(2.))
 					.h(px(3.))
 					.rounded_full()
-					.bg(rgba(0xd5dced75))
+					.bg(rgba(0xd5d5da85))
 			}))
 			.child(
 				div()
 					.absolute()
 					.left(relative(fraction))
-					.top(px(4.))
-					.ml(px(-7.))
-					.w(px(14.))
-					.h(px(20.))
+					.top(px(6.))
+					.ml(px(-6.))
+					.w(px(12.))
+					.h(px(12.))
 					.rounded(px(6.))
-					.bg(rgb(0xe4e7ef)),
+					.bg(rgb(0xe7e7ea)),
 			)
 	}
 }

@@ -451,7 +451,15 @@ impl ChiefSurface {
 			.and_then(|s| s.work_items.iter().find(|w| Some(&w.id) == self.selected.as_ref()))
 			.cloned();
 		let wide = f32::from(window.viewport_size().width) > 1000.0;
-		let mut chat = div().flex_1().min_w_0().min_h_0().overflow_hidden().flex().flex_col();
+		let mut chat = div()
+			.flex_1()
+			.min_w_0()
+			.min_h_0()
+			.overflow_hidden()
+			.flex()
+			.flex_col()
+			.rounded(px(14.))
+			.bg(rgba(ui_theme::CHIEF_CHAT_OVERLAY));
 		if !is_chief {
 			chat = chat.child(worker_status(selected.as_ref()));
 		}
@@ -528,14 +536,16 @@ impl ChiefSurface {
 			true,
 			self.agent_tree(cx),
 		));
+		// Share one glass plane with the left sidebar; only the conversation adds a light tint.
 		let main = div()
 			.flex_1()
 			.min_w_0()
 			.h_full()
 			.pt(px(super::super::WINDOW_CONTROLS_CLEARANCE))
-			.bg(rgba(ui_theme::CONTENT_MATERIAL))
+			.relative()
 			.flex()
 			.flex_col()
+			.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
 			.when(!self.pages.is_empty(), |main| main.child(self.workspace_tabs(cx)))
 			.child(body);
 
@@ -700,8 +710,7 @@ impl ChiefSurface {
 	}
 
 	fn graph_frame(&self, title: String, cx: &mut Context<Self>) -> gpui::Div {
-		let mut panel =
-			div().w_full().min_w_0().h_full().flex().flex_col().pt(px(6.)).bg(rgba(0xffffff20));
+		let mut panel = div().w_full().min_w_0().h_full().flex().flex_col().pt(px(6.));
 		panel = panel.child(
 			div()
 				.h(px(ui_theme::PANEL_HEADER_HEIGHT))

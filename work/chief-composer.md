@@ -263,3 +263,23 @@ enough in the signed native window; the final overlay was checked there.
 Validation: actual slider drag selected Medium; model replacement and outside
 dismissal worked. Inspected the signed preview at its normal window size.
 The GPUI suite passed 173 tests (five opt-in tests ignored); strict Clippy passed.
+
+## Share the sidebar glass composition
+
+Removed the white tint experiment from the tree and graph. They now share one sidebar material on their parent over the shell glass,
+with no additional per-panel tint. The conversation alone adds a small overlay.
+This also prevents untinted gaps at the conversation corners and control strip.
+
+Native review and the user's screenshot showed that the original conversation
+tint then formed a large dark rectangle. The Chief conversation now uses the same
+hue with a small opacity difference and 14 px corners. The left sidebar material
+is unchanged.
+
+Reduced the reasoning disclosure from 60 px to 38 px high. The track is 4 px,
+the thumb is a 12 px circle, and supported-level ticks remain. Composer, menus,
+and the voice/send control now use neutral gray instead of separate blue tints.
+
+Validation: reviewed the final signed native workspace and compact popup; dragged
+the slider to Medium. The shared glass no longer exposes bright corner seams.
+The GPUI suite passed 173 tests (five opt-in cases ignored); strict Clippy and the
+final material checks passed. One preview remains open with an empty draft.

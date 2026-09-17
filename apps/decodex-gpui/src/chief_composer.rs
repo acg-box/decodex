@@ -141,7 +141,7 @@ impl ChiefSurface {
 				.px(px(10.))
 				.py(px(7.))
 				.rounded(px(24.))
-				.bg(rgba(0x292c34f5))
+				.bg(rgba(0x242427eb))
 				.shadow(vec![gpui::BoxShadow {
 					inset: false,
 					color: rgba(0x0000001a).into(),
@@ -389,8 +389,8 @@ impl ChiefSurface {
 			.when(["attachment-item", "audio-item", "audio-back", "delivery"].contains(&id), |d| {
 				d.w_full().justify_start().text_size(px(12.))
 			})
-			.when(self.composer_menu == Some(id), |d| d.bg(rgba(0xb8acf21a)))
-			.when(send, |d| d.w(px(28.)).h(px(28.)).rounded_full().ml(px(5.)).bg(rgb(0x555b6b)))
+			.when(self.composer_menu == Some(id), |d| d.bg(rgba(0xffffff12)))
+			.when(send, |d| d.w(px(28.)).h(px(28.)).rounded_full().ml(px(5.)).bg(rgb(0x515155)))
 			.cursor_pointer()
 			.hover(move |d| d.bg(if send { rgba(0xffffff24) } else { rgba(0xffffff0c) }))
 			.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
@@ -523,7 +523,7 @@ impl ChiefSurface {
 					s.effort_pointer = None;
 					cx.notify();
 				}))
-				.p(px(10.))
+				.p(px(if menu == "effort" { 4. } else { 10. }))
 				.w_full()
 				.flex()
 				.flex_col()
