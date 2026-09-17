@@ -127,3 +127,38 @@ historical commit queue; do not replace this list with a single "reviewed head".
   context, failure explanations and native v2 event classification.
 - vNext architecture checks pass. Website checks are excluded by the user's
   retirement decision, not reported as passing.
+
+## Decodex model-capacity recovery
+
+The user requested automatic recovery from peak-time model capacity errors, not
+Luna Reserve or account-quota fallback. Official main `b0659c53865dd48b0cd69c454368cea3980017cc`
+maps `server_is_overloaded` to `serverOverloaded` and treats it as non-retryable
+for ordinary sampling. This is a deliberate Decodex behavior, not a claim that
+ordinary upstream turns already retry it.
+
+Chief and its worker threads now schedule up to three continuation attempts,
+with waits of 15, 30 and 60 seconds. The existing 15-second service tick can add
+up to one tick of delay. Work must still be open. Both the terminal event and exact saved turn must report
+a failed `serverOverloaded` result. Missing history, quota exhaustion, other
+errors, interruption and uncertain turn submission do not authorize this retry.
+
+Retries use the same account process, thread, model, effort and permissions. They
+send a continuation instruction against native saved context, not a second copy
+of the original user input. Completed work stays in that context. Original inbox
+delivery receipts move to the acknowledged continuation and are handled only
+after it completes. Worker capacity waits do not wake Chief with a premature
+worker result; final failure or explicit cancellation can report that result.
+
+Migration 16 adds the durable retry state, count, deadline and exact failure event.
+Claiming a retry and fencing dispatch is atomic. A lost acknowledgment stays
+unknown and does not trigger another attempt after restart. Fresh Chief input
+takes precedence over a due retry. Explicit work judgments or a new dispatch
+cancel pending retries. The history view shows a cancel button and reports when
+the three attempts are exhausted. CLI cancellation uses:
+
+```sh
+decodex chief cancel-retry --work-id WORK_ID --event-id EVENT_ID
+```
+
+The new cancellation command uses local protocol 2.17; the desktop client and
+service must run the same protocol version. The website and OpenWiki are unchanged.

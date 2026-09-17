@@ -34,8 +34,8 @@ pub use self::{
 	},
 	accounts::AccountMetadata,
 	chief::{
-		ChiefDependency, ChiefDispatchState, ChiefDisposition, ChiefInboxEvent, ChiefStoreSnapshot,
-		ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus, EnqueueChiefEvent,
+		ChiefCapacityRetry, ChiefDependency, ChiefDispatchState, ChiefDisposition, ChiefInboxEvent,
+		ChiefStoreSnapshot, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus, EnqueueChiefEvent,
 	},
 	chief_process::ChiefProcessBinding,
 	command::CommandIdentity,

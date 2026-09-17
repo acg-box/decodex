@@ -116,7 +116,7 @@ fn production_client_cache_authority_is_valid_at_protocol_v2_16() {
 		temporary.path().canonicalize().expect("fixture temporary directory canonicalizes");
 	let config = retained_config(&fixture_temp_dir.join("config-cache-parent"), SERVER);
 	let lifecycle = ClientLifecycle::production_with_temp_dir(config, &fixture_temp_dir)
-		.expect("production lifecycle constructs at protocol V2.16");
+		.expect("production lifecycle constructs at protocol V2.17");
 
 	assert_eq!(CURRENT_VERSION.major, 2);
 	assert_eq!(CURRENT_VERSION.minor, 16);

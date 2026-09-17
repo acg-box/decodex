@@ -3,6 +3,9 @@
 use rusqlite::{Connection, OptionalExtension as _, Row, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 
+mod capacity;
+pub use capacity::ChiefCapacityRetry;
+
 use crate::{DatabaseError, SqliteStore, StoreError, error::sqlite_error, unix_micros};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -374,6 +377,7 @@ impl SqliteStore {
 			if work.dispatch_state != ChiefDispatchState::Idle || work.codex_thread_id.is_none() {
 				return Err(DatabaseError::Conflict.into());
 			}
+			capacity::cancel_pending(&transaction, &id)?;
 			transaction.execute("UPDATE chief_work_items SET dispatch_state = 'dispatching', updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", params![id, unix_micros()?]).map_err(sqlite_error)?;
 			for event_id in event_ids {
 				let changed = transaction.execute("WITH RECURSIVE owned(id) AS (
@@ -405,6 +409,7 @@ impl SqliteStore {
 			if work.dispatch_state != ChiefDispatchState::Dispatching { return Err(DatabaseError::Conflict.into()); }
 			transaction.execute("UPDATE chief_work_items SET dispatch_state = 'running', active_turn_id = ?2, updated_at_micros = max(updated_at_micros, ?3) WHERE id = ?1", params![id, turn_id, unix_micros()?]).map_err(sqlite_error)?;
 			transaction.execute("UPDATE chief_inbox_events SET delivered_turn_id = ?2 WHERE delivery_work_item_id = ?1 AND delivered_turn_id = '' AND disposition IS NULL", params![id, turn_id]).map_err(sqlite_error)?;
+			transaction.execute("UPDATE chief_capacity_retries SET state='submitted',retry_turn_id=?2 WHERE work_item_id=?1 AND state='claimed'",params![id,turn_id]).map_err(sqlite_error)?;
 			let work = read_work(&transaction, &id)?;
 			transaction.commit().map_err(sqlite_error)?;
 			Ok(work)
@@ -452,6 +457,27 @@ impl SqliteStore {
 			if work.dispatch_state != ChiefDispatchState::Running || work.active_turn_id.as_deref() != Some(turn_id.as_str()) {
 				return Err(DatabaseError::Conflict.into());
 			}
+			let mut input = input;
+            let mut payload: serde_json::Value = serde_json::from_str(&input.payload).unwrap_or_default();
+            let eligible = work.status == ChiefWorkStatus::Open
+                && matches!(input.event_kind.as_str(), "chief_turn_completed" | "worker_turn_completed")
+                && payload.pointer("/terminal/turn/status").and_then(serde_json::Value::as_str)==Some("failed")
+                && payload.pointer("/terminal/turn/error/codexErrorInfo").and_then(serde_json::Value::as_str)==Some("serverOverloaded")
+                && payload.pointer("/threadReadback/capacityRetryEligible")==Some(&serde_json::json!(true));
+            let mut retry = if eligible { capacity::next_retry(&transaction,&id,&turn_id,unix_micros()?)? } else { None };
+            if eligible && retry.is_none() {
+                payload["capacityRetry"]=serde_json::json!({"exhausted":true,"attempt":3});
+                let encoded=payload.to_string();
+                if encoded.len()<=65536 {input.payload=encoded;}
+            }
+            if let Some((attempt,due))=retry {
+                payload["capacityRetry"]=serde_json::json!({"attempt":attempt,"dueAtMicros":due});
+                let encoded=payload.to_string();
+                if encoded.len()<=65536 {
+                    input.event_kind="capacity_retry".into();
+                    input.payload=encoded;
+                } else { retry=None; }
+            }
 			let previous = transaction.query_row("SELECT * FROM chief_inbox_events WHERE source_event_id = ?1", [&input.source_event_id], event_row).optional().map_err(sqlite_error)?;
 			let event = if let Some(event) = previous {
 				if event.work_item_id != input.work_item_id || event.event_kind != input.event_kind || event.payload != input.payload {
@@ -471,6 +497,9 @@ impl SqliteStore {
 			if user_input_handled {
 				transaction.execute("UPDATE chief_inbox_events SET disposition = 'resolved', disposition_note = 'User input handled by completed Chief turn; work judgment is unchanged.', disposed_at_micros = max(created_at_micros, ?3) WHERE disposition IS NULL AND event_kind = 'user_message' AND delivery_work_item_id = ?1 AND delivered_turn_id = ?2", params![id, turn_id, unix_micros()?]).map_err(sqlite_error)?;
 			}
+            if let Some((attempt,due))=retry {
+                transaction.execute("INSERT INTO chief_capacity_retries (event_id,work_item_id,failed_turn_id,attempt,due_at_micros,state) VALUES (?1,?2,?3,?4,?5,'pending')",params![event.id,id,turn_id,attempt,due]).map_err(sqlite_error)?;
+            }
 			transaction.commit().map_err(sqlite_error)?;
 			Ok(event)
 		}).await
@@ -493,6 +522,7 @@ impl SqliteStore {
 			}
 			transaction.execute("UPDATE chief_work_items SET dispatch_state = 'running', active_turn_id = ?2, updated_at_micros = max(updated_at_micros, ?3) WHERE id = ?1", params![id, turn_id, unix_micros()?]).map_err(sqlite_error)?;
 			transaction.execute("UPDATE chief_inbox_events SET delivered_turn_id = ?2 WHERE delivery_work_item_id = ?1 AND delivered_turn_id = '' AND disposition IS NULL", params![id, turn_id]).map_err(sqlite_error)?;
+			transaction.execute("UPDATE chief_capacity_retries SET state='submitted',retry_turn_id=?2 WHERE work_item_id=?1 AND state='claimed'",params![id,turn_id]).map_err(sqlite_error)?;
 			let work = read_work(&transaction, &id)?;
 			transaction.commit().map_err(sqlite_error)?;
 			Ok(work)
@@ -896,6 +926,129 @@ mod tests {
 	mod inbox_carryover;
 	use super::*;
 	use tempfile::tempdir;
+
+	fn capacity_failure(work: &str, turn: &str) -> EnqueueChiefEvent {
+		EnqueueChiefEvent { source_event_id:format!("failure:{work}:{turn}"),work_item_id:work.into(),event_kind:"chief_turn_completed".into(),
+            payload:serde_json::json!({"terminal":{"turn":{"status":"failed","error":{"codexErrorInfo":"serverOverloaded"}}},"threadReadback":{"capacityRetryEligible":true}}).to_string() }
+	}
+
+	#[tokio::test]
+	async fn capacity_retries_are_bounded_durable_and_claimed_once() {
+		let directory = tempdir().unwrap();
+		let path = directory.path().join("retry.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		store.create_chief_work_item(item("chief", None)).await.unwrap();
+		store.bind_chief_thread("chief".into(), "thread".into()).await.unwrap();
+		store.begin_chief_dispatch("chief".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("chief".into(), "turn-0".into()).await.unwrap();
+		for attempt in 1..=3 {
+			let turn = format!("turn-{}", attempt - 1);
+			let event = store
+				.complete_chief_turn_with_event(
+					"chief".into(),
+					turn.clone(),
+					capacity_failure("chief", &turn),
+				)
+				.await
+				.unwrap();
+			assert_eq!(event.event_kind, "capacity_retry");
+			assert!(store.list_chief_wake_events("chief".into(), 10).await.unwrap().is_empty());
+			let retry = store.pending_chief_capacity_retry("chief".into()).await.unwrap().unwrap();
+			assert_eq!(retry.attempt, attempt);
+			let reopened = SqliteStore::open_test(&path).unwrap();
+			assert_eq!(
+				reopened.pending_chief_capacity_retry("chief".into()).await.unwrap(),
+				Some(retry.clone())
+			);
+			assert!(
+				reopened
+					.begin_chief_capacity_retry("chief".into(), event.id, retry.due_at_micros - 1)
+					.await
+					.is_err()
+			);
+			reopened
+				.begin_chief_capacity_retry("chief".into(), event.id, retry.due_at_micros)
+				.await
+				.unwrap();
+			assert!(
+				reopened
+					.begin_chief_capacity_retry("chief".into(), event.id, i64::MAX)
+					.await
+					.is_err()
+			);
+			assert!(reopened.due_chief_capacity_retries(i64::MAX).await.unwrap().is_empty());
+			reopened
+				.acknowledge_chief_dispatch("chief".into(), format!("turn-{attempt}"))
+				.await
+				.unwrap();
+		}
+		let event = store
+			.complete_chief_turn_with_event(
+				"chief".into(),
+				"turn-3".into(),
+				capacity_failure("chief", "turn-3"),
+			)
+			.await
+			.unwrap();
+		assert_eq!(event.event_kind, "chief_turn_completed");
+		assert!(store.pending_chief_capacity_retry("chief".into()).await.unwrap().is_none());
+		assert!(store.due_chief_capacity_retries(i64::MAX).await.unwrap().is_empty());
+	}
+
+	#[tokio::test]
+	async fn cancellation_new_dispatch_and_unknown_claim_do_not_replay_capacity_retries() {
+		let directory = tempdir().unwrap();
+		let path = directory.path().join("retry.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		for name in ["cancel", "supersede", "unknown", "resolved"] {
+			store.create_chief_work_item(item(name, None)).await.unwrap();
+			store.bind_chief_thread(name.into(), format!("thread-{name}")).await.unwrap();
+			store.begin_chief_dispatch(name.into()).await.unwrap();
+			store.acknowledge_chief_dispatch(name.into(), "failed".into()).await.unwrap();
+			let event = store
+				.complete_chief_turn_with_event(
+					name.into(),
+					"failed".into(),
+					capacity_failure(name, "failed"),
+				)
+				.await
+				.unwrap();
+			match name {
+				"cancel" => {
+					assert!(
+						store
+							.cancel_chief_capacity_retry("unknown".into(), event.id)
+							.await
+							.is_err()
+					);
+					store.cancel_chief_capacity_retry(name.into(), event.id).await.unwrap();
+				},
+				"resolved" => {
+					store
+						.set_chief_work_status(name.into(), ChiefWorkStatus::Resolved, None)
+						.await
+						.unwrap();
+				},
+				"supersede" => {
+					store.begin_chief_dispatch(name.into()).await.unwrap();
+				},
+				_ => {
+					store
+						.begin_chief_capacity_retry(name.into(), event.id, i64::MAX)
+						.await
+						.unwrap();
+					store.mark_chief_dispatch_unknown(name.into()).await.unwrap();
+				},
+			}
+		}
+		drop(store);
+		let store = SqliteStore::open_test(&path).unwrap();
+		assert!(store.due_chief_capacity_retries(i64::MAX).await.unwrap().is_empty());
+		assert_eq!(
+			store.get_chief_work_item("unknown".into()).await.unwrap().dispatch_state,
+			ChiefDispatchState::Unknown
+		);
+	}
 
 	#[tokio::test]
 	async fn observations_are_durable_deduplicated_and_never_pending_work() {

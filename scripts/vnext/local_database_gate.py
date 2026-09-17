@@ -76,6 +76,7 @@ MIGRATIONS = (
     (13, "chief_work", ROOT / "database/migrations/0013_chief_work.sql"),
     (14, "optional_quota_window", ROOT / "database/migrations/0014_optional_quota_window.sql"),
     (15, "chief_observation_indexes", ROOT / "database/migrations/0015_chief_observation_indexes.sql"),
+    (16, "chief_capacity_retry", ROOT / "database/migrations/0016_chief_capacity_retry.sql"),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
@@ -131,6 +132,7 @@ REQUIRED_TABLES = frozenset(
         "chief_inbox_events",
         "chief_process_bindings",
         "chief_root_settings",
+        "chief_capacity_retries",
     }
 )
 

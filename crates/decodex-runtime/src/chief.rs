@@ -247,7 +247,14 @@ impl ChiefCoordinator {
 						turns.iter().find(|entry| entry["id"].as_str() == Some(&turn))
 					});
 				let (messages, truncated) = result_messages::collect(exact_turn);
-				json!({"threadId":thread,"turnId":turn,"assistantMessages":messages,"truncated":truncated,"exactTurnReadback":exact_turn.is_some()})
+				let retry_eligible = value.pointer("/thread/id").and_then(Value::as_str)
+					== Some(thread.as_str())
+					&& exact_turn.is_some_and(|entry| {
+						entry["status"] == "failed"
+							&& entry.pointer("/error/codexErrorInfo").and_then(Value::as_str)
+								== Some("serverOverloaded")
+					});
+				json!({"threadId":thread,"turnId":turn,"assistantMessages":messages,"truncated":truncated,"exactTurnReadback":exact_turn.is_some(),"capacityRetryEligible":retry_eligible})
 			},
 			Err(error) => {
 				let detail = error.to_string();
@@ -537,6 +544,16 @@ impl ChiefCoordinator {
 		prompt: &str,
 		events: Vec<i64>,
 	) -> Result<String, ChiefError> {
+		self.dispatch_with_claim(item, prompt, events, None).await
+	}
+
+	async fn dispatch_with_claim(
+		&mut self,
+		item: &ChiefWorkItem,
+		prompt: &str,
+		events: Vec<i64>,
+		retry: Option<(i64, i64)>,
+	) -> Result<String, ChiefError> {
 		if item.kind == ChiefWorkKind::Goal && item.parent_goal_id.is_some() {
 			return Err(ChiefError::Invalid(
 				"a goal does not own a manager thread; create a worker for this goal".into(),
@@ -600,7 +617,11 @@ impl ChiefCoordinator {
 			}
 			self.loaded_threads.insert(thread.clone());
 		}
-		self.store.begin_chief_dispatch_with_events(item.id.clone(), events).await?;
+		if let Some((event, now)) = retry {
+			self.store.begin_chief_capacity_retry(item.id.clone(), event, now).await?;
+		} else {
+			self.store.begin_chief_dispatch_with_events(item.id.clone(), events).await?;
+		}
 		let result = self.client.turn_start(json!({"threadId":thread,
             "model":self.config.model,
             "effort":if item.parent_goal_id.is_none() { &self.config.chief_effort } else { &self.config.worker_effort },
@@ -1027,6 +1048,14 @@ impl ChiefCoordinator {
 	pub async fn check_due_followups(&mut self, now: i64) -> Result<(), ChiefError> {
 		if now < 0 {
 			return Err(ChiefError::Invalid("invalid due-check time".into()));
+		}
+		// Fresh input takes precedence over a saved retry, including after restart.
+		self.wake_pending().await?;
+		for retry in self.store.due_chief_capacity_retries(now).await? {
+			let work = self.store.get_chief_work_item(retry.work_item_id).await?;
+			self.dispatch_with_claim(&work,
+                "The previous turn stopped because the selected model was temporarily at capacity. Continue the existing request from the saved thread context. Preserve completed work and do not repeat completed actions. This is a capacity retry, not a new goal or a change of model.",
+                Vec::new(),Some((retry.event_id,now))).await?;
 		}
 		for work in self.store.list_unnotified_due_chief_work_items(now, 1000).await? {
 			let due = work

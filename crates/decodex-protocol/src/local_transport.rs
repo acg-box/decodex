@@ -77,7 +77,7 @@ impl tokio::io::AsyncWrite for LocalTransportStream {
 	}
 }
 
-/// The complete V2.16 local endpoint authority.
+/// The complete V2.17 local endpoint authority.
 #[derive(Clone, Eq, PartialEq)]
 pub struct LocalTransportAuthority {
 	paths: DecodexPaths,
