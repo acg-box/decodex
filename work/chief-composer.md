@@ -120,3 +120,21 @@ The composer uses a compact violet send key with a custom diagonal launch mark. 
 Model selection uses a two-column palette. Model names and versions have separate visual levels. The toolbar shows the short family name; the tooltip and palette show the full model. Reasoning uses discrete labeled levels with a six-bar indicator. The current model's existing capability table controls the available levels. Switching to a model with fewer reasoning levels clamps an unsupported level to its highest supported value. Fast remains independent.
 
 Controls retain keyboard activation, hover and press motion, and the existing animated popover. The glass composer material remains unchanged. Visual fixtures: `composer-menu` and `composer-effort`. Validation: GPUI suite (165 passed, 5 ignored), strict Clippy, model-switch capability regression, and inspected offscreen captures. These fixtures do not send messages.
+
+## Compact floating composer
+
+Removed programmer mode, line-number painting, secondary selections, occurrence
+selection, vertical cursor creation, and their key bindings. Normal multiline
+editing, IME composition, clipboard operations, and undo/redo remain. Enter sends;
+Shift-Enter inserts a newline, and Command-Enter remains a send shortcut.
+
+The model label includes reasoning depth and opens one compact palette. The
+microphone and input-device disclosure share a tight group. A single circular
+primary action shows Live for an empty draft, an upward arrow for text or
+attachments, and Stop during an active response. No empty-draft Send is implied.
+The composer retains glass material with a softer edge, rounded outline, and
+separate shadow. Existing hover/press and disclosure motion remain.
+
+Validation: GPUI tests passed (167 passed, five opt-in tests ignored), strict
+Clippy passed, and empty/draft palette captures were inspected. Programmer-mode
+implementation and its obsolete tests were removed rather than hidden.

@@ -112,7 +112,7 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let quote = prompts::attribution(self.composer.read(cx).placeholder());
-		div().w_full().px_4().pt(px(10.0)).pb(px(16.0)).flex().justify_center().child(
+		div().w_full().px_4().pt(px(14.0)).pb(px(22.0)).flex().justify_center().child(
 			div()
 				.id("chief-composer")
 				.relative()
@@ -130,10 +130,17 @@ impl ChiefSurface {
 				.px(px(10.0))
 				.pt(px(10.0))
 				.pb(px(8.0))
-				.rounded(px(13.0))
+				.rounded(px(18.0))
 				.bg(rgba(ui_theme::COMPOSER_MATERIAL))
 				.border_1()
-				.border_color(rgba(0xffffff20))
+				.border_color(rgba(0xffffff1c))
+				.shadow(vec![gpui::BoxShadow {
+					inset: false,
+					color: rgba(0x00000040).into(),
+					offset: gpui::point(px(0.), px(8.)),
+					blur_radius: px(24.),
+					spread_radius: px(-4.),
+				}])
 				.flex()
 				.flex_col()
 				.gap(px(4.0))
@@ -206,17 +213,6 @@ impl ChiefSurface {
 				cx,
 			))
 			.child(self.composer_control(
-				"editor",
-				"</>".into(),
-				"Programmer mode · Enter for newline · Command-Enter to send",
-				|s, cx| {
-					s.composer
-						.update(cx, |input, cx| input.set_programmer(!input.programmer(), cx));
-					cx.notify();
-				},
-				cx,
-			))
-			.child(self.composer_control(
 				"delivery",
 				if self.steer { "Steer" } else { "Queue" }.into(),
 				"Steer adds input to the running turn; Queue waits for the next turn. Click to switch.",
@@ -227,12 +223,6 @@ impl ChiefSurface {
 				cx,
 			))
 			.child(div().flex_1().min_w_0())
-			.children((self.composer.read(cx).cursor_count() > 1).then(|| {
-				div()
-					.text_size(px(10.5))
-					.text_color(rgb(ui_theme::BLUE))
-					.child(format!("{} cursors", self.composer.read(cx).cursor_count()))
-			}))
 			.children(self.usage_line())
 			.child(self.composer_control(
 				"fast",
@@ -259,53 +249,49 @@ impl ChiefSurface {
 				|s, cx| s.toggle_composer_menu("model", cx),
 				cx,
 			))
-			.child(self.composer_control(
-				"effort",
-				self.effort.as_str().into(),
-				"Reasoning depth · Choose an exact level",
-				|s, cx| s.toggle_composer_menu("effort", cx),
-				cx,
-			))
+			.child(
+				div()
+					.flex()
+					.items_center()
+					.gap_0()
+					.rounded_full()
+					.bg(rgba(0xffffff05))
+					.child(self.composer_control_with_window(
+						"dictation",
+						"Dictate".into(),
+						"Dictate into the draft",
+						|s, window, cx| s.start_dictation(window, cx),
+						cx,
+					))
+					.child(self.composer_control_with_window(
+						"microphone-device",
+						"⌄".into(),
+						"Choose microphone input",
+						|s, window, cx| s.open_audio_menu(window, cx),
+						cx,
+					)),
+			)
 			.child(self.composer_control_with_window(
-				"dictation",
-				"Dictate".into(),
-				"Dictate into the draft",
-				|s, window, cx| s.start_dictation(window, cx),
-				cx,
-			))
-			.child(self.composer_control_with_window(
-				"microphone-device",
-				"⌄".into(),
-				"Choose microphone input",
-				|s, window, cx| s.open_audio_menu(window, cx),
-				cx,
-			))
-			.child(self.composer_control_with_window(
-				"voice",
-				"Live".into(),
-				"Start a live voice conversation",
-				|s, window, cx| s.start_voice(window, cx),
-				cx,
-			))
-			.child(self.composer_control(
 				"send",
 				"".into(),
-				if self.dictation.is_some() {
-					"Finish dictation · Keep text in the draft"
-				} else if self.stop_button(cx) {
+				if self.stop_button(cx) {
 					"Stop response · Control-C"
-				} else if self.composer.read(cx).programmer() {
-					"Send · Command-Enter"
+				} else if self.composer.read(cx).content().trim().is_empty()
+					&& self.attachments.is_empty()
+				{
+					"Start Live"
 				} else {
-					"Send · Enter (Shift-Enter for newline)"
+					"Send · Enter"
 				},
-				|s, cx| {
-					if s.dictation.is_some() {
-						s.finish_dictation(cx)
-					} else if s.stop_button(cx) {
-						s.interrupt_current(cx)
+				|s, window, cx| {
+					if s.stop_button(cx) {
+						s.interrupt_current(cx);
+					} else if s.composer.read(cx).content().trim().is_empty()
+						&& s.attachments.is_empty()
+					{
+						s.start_voice(window, cx);
 					} else {
-						s.submit(cx)
+						s.submit(cx);
 					}
 				},
 				cx,
@@ -333,11 +319,7 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let send = id == "send";
-		let tooltip = if id == "model" {
-			format!("{} · Choose model", model_label(&label))
-		} else {
-			tip.to_owned()
-		};
+		let tooltip = if id == "model" { "Model and reasoning".to_owned() } else { tip.to_owned() };
 		div()
 			.id(SharedString::from(format!("composer-{id}")))
 			.role(Role::Button)
@@ -368,34 +350,25 @@ impl ChiefSurface {
 			.text_size(px(12.0))
 			.line_height(px(16.0))
 			.text_color(rgb(if send {
-				ui_theme::CANVAS
+				ui_theme::TEXT
 			} else if id == "fast" && self.fast {
 				ui_theme::BLUE
 			} else {
 				ui_theme::TEXT_MUTED
 			}))
-			.when(["model", "effort"].contains(&id), |d| d.px(px(8.)).bg(rgba(0xffffff06)))
+			.when(id == "model", |d| d.px(px(6.)))
 			.when(self.composer_menu == Some(id), |d| d.bg(rgba(0xb8acf21a)))
 			.when(send, |d| {
-				d.w(px(36.))
+				d.w(px(28.))
+					.h(px(28.))
+					.rounded_full()
 					.ml(px(5.))
 					.border_1()
 					.border_color(rgba(0xffffff38))
-					.bg(rgb(if self.stop_button(cx) { 0xd8c9bc } else { 0xc3b8ed }))
+					.bg(rgba(0xffffff14))
 			})
-			.opacity(
-				if send
-					&& !self.stop_button(cx)
-					&& self.composer.read(cx).content().trim().is_empty()
-					&& self.attachments.is_empty()
-				{
-					0.4
-				} else {
-					1.0
-				},
-			)
 			.cursor_pointer()
-			.hover(move |d| d.bg(if send { rgba(0xd8cefaff) } else { rgba(0xffffff0c) }))
+			.hover(move |d| d.bg(if send { rgba(0xffffff24) } else { rgba(0xffffff0c) }))
 			.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
 			.on_click(cx.listener(move |s, _, window, cx| action(s, window, cx)))
 			.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, window, cx| {
@@ -419,11 +392,17 @@ impl ChiefSurface {
 			"send" if self.dictation.is_some() => div().child("✓").into_any_element(),
 			"send" if self.stop_button(cx) =>
 				div().size(px(9.0)).rounded(px(2.0)).bg(rgb(ui_theme::CANVAS)).into_any_element(),
+			"send"
+				if self.composer.read(cx).content().trim().is_empty()
+					&& self.attachments.is_empty() =>
+				icon(Symbol::Voice),
 			"send" if !self.sending => controls::launch_mark().into_any_element(),
 			"send" => div().child("…").into_any_element(),
 			"attach" => icon(Symbol::Plus),
 			"voice" => icon(Symbol::Voice),
 			"dictation" => icon(Symbol::Microphone),
+			"microphone-device" =>
+				div().size(px(12.)).child(icon(Symbol::ChevronDown)).into_any_element(),
 			"fast" => div()
 				.size(px(16.0))
 				.flex()
@@ -432,24 +411,16 @@ impl ChiefSurface {
 				.opacity(if self.fast { 1.0 } else { 0.4 })
 				.child(icon(Symbol::Fast))
 				.into_any_element(),
-			"editor" => div()
-				.text_color(rgb(if self.composer.read(cx).programmer() {
-					ui_theme::TEXT
-				} else {
-					ui_theme::TEXT_MUTED
-				}))
-				.child(label)
-				.into_any_element(),
 			"effort" => controls::effort_indicator(self.effort.as_str()),
 			"model" => div()
 				.flex()
 				.items_center()
 				.gap(px(4.0))
-				.child(
-					div()
-						.text_color(rgb(ui_theme::TEXT))
-						.child(controls::compact_model_label(&label)),
-				)
+				.child(div().text_color(rgb(ui_theme::TEXT)).child(format!(
+					"{} · {}",
+					controls::compact_model_label(&label),
+					self.effort.as_str()
+				)))
 				.child(icon(Symbol::ChevronDown))
 				.into_any_element(),
 			_ => div().child(label).into_any_element(),
@@ -481,27 +452,18 @@ impl ChiefSurface {
 				.flex()
 				.flex_col()
 				.gap(px(10.))
-				.child(
-					div()
-						.flex()
-						.items_center()
-						.justify_between()
-						.text_size(px(11.))
-						.child(match menu {
-							"model" => "Model",
-							"microphone" => "Microphone",
-							_ => "Reasoning depth",
-						})
-						.child(div().text_color(rgb(ui_theme::TEXT_MUTED)).child(
-							if menu == "microphone" { "Next recording" } else { "Next turn" },
-						)),
-				)
 				.child(if menu == "microphone" {
 					self.audio_palette(cx)
 				} else if menu == "effort" {
 					self.effort_scale(cx)
 				} else {
-					self.model_palette(cx)
+					div()
+						.flex()
+						.flex_col()
+						.gap(px(10.))
+						.child(self.model_palette(cx))
+						.child(self.effort_scale(cx))
+						.into_any_element()
 				})
 				.into_any_element(),
 		)

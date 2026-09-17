@@ -50,10 +50,6 @@ pub(super) fn index_at(lines: &[WrappedLine], position: Point<Pixels>) -> usize 
 	start.saturating_sub(1)
 }
 
-fn gutter(input: &ComposerInput) -> Pixels {
-	if input.programmer { px(30.0) } else { px(0.0) }
-}
-
 fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLine> {
 	let empty = input.content.is_empty();
 	let text: SharedString = if empty {
@@ -139,14 +135,9 @@ impl Element for ComposerTextElement {
 					_ => px(500.0),
 				});
 				let input = input.read(cx);
-				let lines = shape(input, width - gutter(input), window);
-				let limit = if input.programmer {
-					12.0
-				} else if input.appearance == ComposerAppearance::Workbench {
-					7.0
-				} else {
-					1.0
-				};
+				let lines = shape(input, width, window);
+				let limit =
+					if input.appearance == ComposerAppearance::Workbench { 7.0 } else { 1.0 };
 				size(
 					width,
 					height(&lines).clamp(
@@ -169,7 +160,7 @@ impl Element for ComposerTextElement {
 		cx: &mut App,
 	) -> TextPaint {
 		let input = self.input.read(cx);
-		let lines = shape(input, bounds.size.width - gutter(input), window);
+		let lines = shape(input, bounds.size.width, window);
 		let caret = position_at(&lines, input.cursor_offset()).y;
 		let max = (height(&lines) - bounds.size.height).max(px(0.0));
 		let offset = if input.scroll_manually {
@@ -196,27 +187,14 @@ impl Element for ComposerTextElement {
 	) {
 		let input = self.input.read(cx);
 		let focus = input.focus_handle.clone();
-		let selections = input.selections();
-		let gutter = gutter(input);
-		let programmer = input.programmer;
-		let active_line =
-			input.content[..input.cursor_offset()].bytes().filter(|b| *b == b'\n').count();
+		let selections = [input.selected_range.clone()];
+		let gutter = px(0.);
 		let origin = bounds.origin + point(gutter, -state.offset);
 		window.handle_input(&focus, ElementInputHandler::new(bounds, self.input.clone()), cx);
 		let mut y = px(0.0);
 		let mut start = 0;
-		for (line_number, line) in state.lines.iter().enumerate() {
+		for line in &state.lines {
 			let line_height = px(ui_theme::BODY_LINE_HEIGHT);
-			if programmer {
-				paint_line_number(
-					line_number + 1,
-					origin + point(-gutter, y),
-					gutter,
-					line_number == active_line,
-					window,
-					cx,
-				);
-			}
 			let rows = line.wrap_boundaries().len() + 1;
 			for row in 0..rows {
 				let top = line_height * row;
@@ -279,33 +257,4 @@ impl Element for ComposerTextElement {
 			input.text_offset = state.offset;
 		});
 	}
-}
-
-fn paint_line_number(
-	number: usize,
-	origin: Point<Pixels>,
-	width: Pixels,
-	active: bool,
-	window: &mut Window,
-	cx: &mut App,
-) {
-	let text: SharedString = number.to_string().into();
-	let style = window.text_style();
-	let run = TextRun {
-		len: text.len(),
-		font: style.font(),
-		color: rgba(if active { 0xc0bbcbbb } else { 0x8b879666 }).into(),
-		background_color: None,
-		underline: None,
-		strikethrough: None,
-	};
-	let line = window.text_system().shape_line(text, px(10.0), &[run], None);
-	let _ = line.paint(
-		origin + point((width - px(12.0) - line.width).max(px(0.0)), px(0.0)),
-		px(ui_theme::BODY_LINE_HEIGHT),
-		gpui::TextAlign::Left,
-		None,
-		window,
-		cx,
-	);
 }

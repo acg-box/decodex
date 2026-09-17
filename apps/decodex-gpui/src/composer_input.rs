@@ -36,13 +36,8 @@ actions!(
 		Paste,
 		Cut,
 		Copy,
-		SelectNext,
-		AddAbove,
-		AddBelow,
 		Undo,
 		Redo,
-		CancelCursors,
-		Indent,
 		SubmitComposer,
 	]
 );
@@ -79,14 +74,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("cmd-v", Paste, Some("ComposerInput")),
 		KeyBinding::new("cmd-x", Cut, Some("ComposerInput")),
 		KeyBinding::new("cmd-c", Copy, Some("ComposerInput")),
-		KeyBinding::new("enter", SubmitComposer, Some("ComposerInput && !programmer")),
-		KeyBinding::new("enter", InsertNewline, Some("ComposerInput && programmer")),
+		KeyBinding::new("enter", SubmitComposer, Some("ComposerInput")),
 		KeyBinding::new("cmd-enter", SubmitComposer, Some("ComposerInput")),
-		KeyBinding::new("cmd-d", SelectNext, Some("ComposerInput && programmer")),
-		KeyBinding::new("alt-up", AddAbove, Some("ComposerInput && programmer")),
-		KeyBinding::new("alt-down", AddBelow, Some("ComposerInput && programmer")),
-		KeyBinding::new("tab", Indent, Some("ComposerInput && programmer")),
-		KeyBinding::new("escape", CancelCursors, Some("ComposerInput && programmer")),
 		KeyBinding::new("cmd-z", Undo, Some("ComposerInput")),
 		KeyBinding::new("cmd-shift-z", Redo, Some("ComposerInput")),
 	]);
@@ -108,11 +97,8 @@ pub(crate) struct ComposerInput {
 	is_selecting: bool,
 	appearance: ComposerAppearance,
 	secret: bool,
-	programmer: bool,
-	extra: Vec<Range<usize>>,
 	undo: Vec<edit::Snapshot>,
 	redo: Vec<edit::Snapshot>,
-	vertical_column: Option<usize>,
 }
 
 impl ComposerInput {
@@ -166,11 +152,8 @@ impl ComposerInput {
 			is_selecting: false,
 			appearance,
 			secret: false,
-			programmer: false,
-			extra: vec![],
 			undo: vec![],
 			redo: vec![],
-			vertical_column: None,
 		}
 	}
 
@@ -204,7 +187,6 @@ impl ComposerInput {
 			return;
 		}
 		self.content.clear();
-		self.extra.clear();
 		self.undo.clear();
 		self.redo.clear();
 		self.selected_range = 0..0;
@@ -218,7 +200,6 @@ impl ComposerInput {
 		if self.content == value {
 			return;
 		}
-		self.extra.clear();
 		self.replace_bytes(0..self.content.len(), value, false, None, cx);
 		self.undo.clear();
 		self.redo.clear();
@@ -231,10 +212,6 @@ impl ComposerInput {
 	}
 
 	fn left(&mut self, _: &Left, _: &mut Window, cx: &mut Context<Self>) {
-		if !self.extra.is_empty() {
-			self.move_multiple(false, cx);
-			return;
-		}
 		if self.selected_range.is_empty() {
 			self.move_to(previous_boundary(&self.content, self.cursor_offset()), cx);
 		} else {
@@ -243,10 +220,6 @@ impl ComposerInput {
 	}
 
 	fn right(&mut self, _: &Right, _: &mut Window, cx: &mut Context<Self>) {
-		if !self.extra.is_empty() {
-			self.move_multiple(true, cx);
-			return;
-		}
 		if self.selected_range.is_empty() {
 			self.move_to(next_boundary(&self.content, self.cursor_offset()), cx);
 		} else {
@@ -282,7 +255,6 @@ impl ComposerInput {
 	}
 
 	fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
-		self.extra.clear();
 		self.selected_range = 0..self.content.len();
 		self.selection_reversed = false;
 		self.marked_range = None;
@@ -298,10 +270,6 @@ impl ComposerInput {
 	}
 
 	fn backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
-		if !self.extra.is_empty() {
-			self.delete_multiple(true, cx);
-			return;
-		}
 		if self.selected_range.is_empty() {
 			let previous = previous_boundary(&self.content, self.cursor_offset());
 			if previous == self.cursor_offset() {
@@ -314,10 +282,6 @@ impl ComposerInput {
 	}
 
 	fn delete(&mut self, _: &Delete, window: &mut Window, cx: &mut Context<Self>) {
-		if !self.extra.is_empty() {
-			self.delete_multiple(false, cx);
-			return;
-		}
 		if self.selected_range.is_empty() {
 			let next = next_boundary(&self.content, self.cursor_offset());
 			if next == self.cursor_offset() {
@@ -366,12 +330,7 @@ impl ComposerInput {
 		}
 		if !self.selected_range.is_empty() {
 			cx.write_to_clipboard(ClipboardItem::new_string(
-				self.selections()
-					.iter()
-					.filter(|r| !r.is_empty())
-					.map(|r| self.content[r.clone()].to_owned())
-					.collect::<Vec<_>>()
-					.join("\n"),
+				self.content[self.selected_range.clone()].to_owned(),
 			));
 		}
 	}
@@ -384,12 +343,7 @@ impl ComposerInput {
 			return;
 		}
 		cx.write_to_clipboard(ClipboardItem::new_string(
-			self.selections()
-				.iter()
-				.filter(|r| !r.is_empty())
-				.map(|r| self.content[r.clone()].to_owned())
-				.collect::<Vec<_>>()
-				.join("\n"),
+			self.content[self.selected_range.clone()].to_owned(),
 		));
 		self.replace_text_in_range(None, "", window, cx);
 	}
@@ -421,9 +375,7 @@ impl ComposerInput {
 	}
 
 	fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-		self.extra.clear();
 		self.scroll_manually = false;
-		self.vertical_column = None;
 		let offset = offset.min(self.content.len());
 		self.selected_range = offset..offset;
 		self.selection_reversed = false;
@@ -432,9 +384,7 @@ impl ComposerInput {
 	}
 
 	fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-		self.extra.clear();
 		self.scroll_manually = false;
-		self.vertical_column = None;
 		let offset = offset.min(self.content.len());
 		let anchor = if self.selection_reversed {
 			self.selected_range.end
@@ -513,7 +463,6 @@ impl ComposerInput {
 		let Some(gpui::accesskit::ActionData::Value(value)) = data else {
 			return;
 		};
-		self.extra.clear();
 		self.replace_bytes(0..self.content.len(), value, false, None, cx);
 		self.undo.clear();
 		self.redo.clear();
@@ -568,11 +517,7 @@ impl EntityInputHandler for ComposerInput {
 		cx: &mut Context<Self>,
 	) {
 		let range = self.replacement_range(range_utf16.as_ref());
-		if self.extra.is_empty() {
-			self.replace_bytes(range, new_text, false, None, cx);
-		} else {
-			self.edit_multiple(range, new_text, false, None, cx);
-		}
+		self.replace_bytes(range, new_text, false, None, cx);
 	}
 
 	fn replace_and_mark_text_in_range(
@@ -584,11 +529,7 @@ impl EntityInputHandler for ComposerInput {
 		cx: &mut Context<Self>,
 	) {
 		let range = self.replacement_range(range_utf16.as_ref());
-		if self.extra.is_empty() {
-			self.replace_bytes(range, new_text, true, new_selected_range_utf16.as_ref(), cx);
-		} else {
-			self.edit_multiple(range, new_text, true, new_selected_range_utf16.as_ref(), cx);
-		}
+		self.replace_bytes(range, new_text, true, new_selected_range_utf16.as_ref(), cx);
 	}
 
 	fn bounds_for_range(
@@ -624,7 +565,6 @@ impl EntityInputHandler for ComposerInput {
 		_: &mut Window,
 		cx: &mut Context<Self>,
 	) {
-		self.extra.clear();
 		self.selected_range = range_from_utf16(&self.content, &range_utf16);
 		self.selection_reversed = false;
 		self.marked_range = None;
@@ -643,7 +583,7 @@ impl Render for ComposerInput {
 		let workbench = self.appearance == ComposerAppearance::Workbench;
 		div()
 			.id("conversation-composer-input")
-			.key_context(if self.programmer { "ComposerInput programmer" } else { "ComposerInput" })
+			.key_context("ComposerInput")
 			.role(Role::TextInput)
 			.aria_label(self.aria_label.clone())
 			.aria_placeholder(self.placeholder.clone())
@@ -659,13 +599,8 @@ impl Render for ComposerInput {
 					entity.update(cx, |input, cx| input.set_accessible_value(data, cx));
 				}
 			})
-			.on_action(cx.listener(Self::select_next))
-			.on_action(cx.listener(Self::add_above))
-			.on_action(cx.listener(Self::add_below))
 			.on_action(cx.listener(Self::undo))
 			.on_action(cx.listener(Self::redo))
-			.on_action(cx.listener(Self::cancel_cursors))
-			.on_action(cx.listener(Self::indent))
 			.on_action(cx.listener(Self::backspace))
 			.on_action(cx.listener(Self::delete))
 			.on_action(cx.listener(Self::left))
@@ -687,7 +622,7 @@ impl Render for ComposerInput {
 			.on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
 			.on_mouse_move(cx.listener(Self::on_mouse_move))
 			.on_scroll_wheel(cx.listener(|s, e: &gpui::ScrollWheelEvent, _, cx| {
-				if s.programmer {
+				if s.appearance == ComposerAppearance::Workbench {
 					s.text_offset = (s.text_offset
 						- e.delta.pixel_delta(px(ui_theme::BODY_LINE_HEIGHT)).y)
 						.max(px(0.0));
@@ -714,7 +649,6 @@ impl Render for ComposerInput {
 				rgb(0x3c3744)
 			})
 			.bg(if workbench { rgba(0x00000000) } else { rgba(ui_theme::FIELD_MATERIAL) })
-			.when(self.programmer, |d| d.font_family("Menlo"))
 			.text_size(px(ui_theme::BODY_SIZE))
 			.text_color(rgb(0xeeeaf0))
 			.child(text::ComposerTextElement { input: entity })

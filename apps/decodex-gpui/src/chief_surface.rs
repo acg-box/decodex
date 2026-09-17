@@ -193,7 +193,6 @@ impl ChiefSurface {
 		});
 		let composer =
 			cx.new(|cx| ComposerInput::message(35, prompts::next(), "Chief message", cx));
-		composer.update(cx, |input, cx| input.set_programmer(true, cx));
 		cx.subscribe(&composer, |s, _, event, cx| {
 			if let crate::composer_input::ComposerEvent::Attach(item) = event {
 				s.attach_clipboard(item, cx);

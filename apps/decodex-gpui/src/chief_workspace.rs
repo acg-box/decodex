@@ -997,12 +997,9 @@ impl ChiefSurface {
 			self.visual_progress_fixture(page == "activity", cx);
 			return;
 		}
-		if ["composer", "composer-menu", "composer-effort", "editor"].contains(&page) {
+		if ["composer", "composer-menu", "composer-effort"].contains(&page) {
 			self.visual_workspace_page("markdown", cx);
 			self.composer.update(cx, |input,cx|input.set_content("Review the interface and simplify the controls.\nKeep the glass material and check keyboard navigation.",cx));
-			if page == "editor" {
-				self.composer.update(cx,|input,cx|input.set_content("Review this implementation:\n\nconst result = await run(task);\nconst summary = await summarize(result);\n\nKeep the API small and the errors readable.",cx));
-			}
 			self.fast = true;
 			if page == "composer-menu" {
 				self.composer_menu = Some("model");

@@ -2,10 +2,7 @@
 use super::{ChiefSurface, SmoothControl, ui_theme};
 use gpui::{
 	Context, Role, SharedString, div,
-	prelude::{
-		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
-		Styled,
-	},
+	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
 	px, rgb, rgba,
 };
 
@@ -25,30 +22,12 @@ pub(super) fn effort_indicator(level: &str) -> gpui::AnyElement {
 		.flex()
 		.items_center()
 		.gap(px(7.))
-		.child(meter(level))
 		.child(div().text_size(px(10.5)).child(level_label(level)))
 		.into_any_element()
 }
 
 fn level_label(level: &str) -> &'static str {
 	LEVELS.iter().find(|(value, _)| *value == level).map_or("High", |(_, label)| *label)
-}
-
-fn meter(level: &str) -> gpui::AnyElement {
-	let selected = LEVELS.iter().position(|(value, _)| *value == level).unwrap_or(4);
-	div()
-		.h(px(14.))
-		.flex()
-		.items_end()
-		.gap(px(2.))
-		.children((0..6).map(|index| {
-			div()
-				.w(px(2.))
-				.h(px(4. + index as f32 * 1.7))
-				.rounded(px(1.))
-				.bg(if index + 2 <= selected { rgb(0xc3b8ed) } else { rgba(0xffffff24) })
-		}))
-		.into_any_element()
 }
 
 impl ChiefSurface {
@@ -74,7 +53,7 @@ impl ChiefSurface {
 								.tab_index(0)
 								.aria_label(format!("Reasoning depth: {label}"))
 								.flex_1()
-								.h(px(58.))
+								.h(px(28.))
 								.rounded(px(7.))
 								.border_1()
 								.border_color(if active {
@@ -109,20 +88,10 @@ impl ChiefSurface {
 										}
 									},
 								))
-								.child(meter(value))
 								.child(label)
 								.smooth()
 						}),
 				),
-			)
-			.child(
-				div()
-					.flex()
-					.justify_between()
-					.text_size(px(10.))
-					.text_color(rgb(ui_theme::TEXT_MUTED))
-					.child("Less reasoning")
-					.child("More reasoning"),
 			)
 			.into_any_element()
 	}
@@ -134,13 +103,13 @@ pub(super) fn launch_mark() -> impl IntoElement {
 		|bounds, _, window, _| {
 			let mut path = gpui::PathBuilder::stroke(px(1.5));
 			let origin = bounds.origin;
-			path.move_to(origin + gpui::point(px(4.), px(12.)));
-			path.line_to(origin + gpui::point(px(12.), px(4.)));
-			path.move_to(origin + gpui::point(px(5.), px(4.)));
-			path.line_to(origin + gpui::point(px(12.), px(4.)));
-			path.line_to(origin + gpui::point(px(12.), px(11.)));
+			path.move_to(origin + gpui::point(px(8.), px(13.)));
+			path.line_to(origin + gpui::point(px(8.), px(3.)));
+			path.move_to(origin + gpui::point(px(3.), px(8.)));
+			path.line_to(origin + gpui::point(px(8.), px(3.)));
+			path.line_to(origin + gpui::point(px(13.), px(8.)));
 			if let Ok(path) = path.build() {
-				window.paint_path(path, rgb(0x282331));
+				window.paint_path(path, rgb(ui_theme::TEXT));
 			}
 		},
 	)
@@ -176,7 +145,7 @@ impl ChiefSurface {
 				let click_model = model.clone();
 				let selected = self.model.read(cx).content() == model.as_str();
 				let full = entry.name.clone();
-				let (version, name) = full.split_once(' ').unwrap_or((&full, ""));
+
 				row = row.child(
 					div()
 						.id(SharedString::from(format!("model-{model}")))
@@ -185,7 +154,7 @@ impl ChiefSurface {
 						.aria_label(format!("Select {full}"))
 						.flex_1()
 						.min_w_0()
-						.h(px(50.))
+						.h(px(30.))
 						.px(px(10.))
 						.rounded(px(8.))
 						.border_1()
@@ -206,29 +175,13 @@ impl ChiefSurface {
 							}
 						}))
 						.child(
-							div()
-								.flex()
-								.flex_col()
-								.gap(px(2.))
-								.child(
-									div()
-										.text_size(px(12.))
-										.whitespace_nowrap()
-										.text_ellipsis()
-										.child(if name.is_empty() {
-											version.to_owned()
-										} else {
-											name.to_owned()
-										}),
-								)
-								.when(!name.is_empty(), |d| {
-									d.child(
-										div()
-											.text_size(px(10.))
-											.text_color(rgb(ui_theme::TEXT_MUTED))
-											.child(version.to_owned()),
-									)
-								}),
+							div().flex().flex_col().gap(px(2.)).child(
+								div()
+									.text_size(px(12.))
+									.whitespace_nowrap()
+									.text_ellipsis()
+									.child(full.clone()),
+							),
 						)
 						.child(div().size(px(4.)).rounded_full().bg(if selected {
 							rgb(0xc3b8ed)
