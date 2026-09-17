@@ -5,6 +5,7 @@
 #[path = "chief_capabilities.rs"] mod capabilities;
 #[path = "chief_composer.rs"] mod composer;
 #[path = "chief_detail.rs"] mod detail;
+#[path = "chief_dictation.rs"] mod dictation;
 #[path = "chief_graph.rs"] mod graph;
 #[path = "chief_markdown.rs"] mod markdown;
 #[path = "chief_progress.rs"] mod progress;
@@ -49,6 +50,8 @@ fn should_poll_snapshot(has_profile: bool, state: &LoadState, _active: bool) -> 
 pub(crate) struct ChiefSurface {
 	voice: Option<voice::VoiceUi>,
 	voice_task: Option<Task<()>>,
+	dictation: Option<dictation::DictationUi>,
+	dictation_task: Option<Task<()>>,
 	activity_detail: Option<(String, Option<decodex_protocol::ChiefActivityDetailResult>)>,
 	activity_detail_task: Option<Task<()>>,
 	capabilities: Option<decodex_protocol::ChiefCapabilitiesResult>,
@@ -199,6 +202,8 @@ impl ChiefSurface {
 		Self {
 			voice: None,
 			voice_task: None,
+			dictation: None,
+			dictation_task: None,
 			activity_detail: None,
 			activity_detail_task: None,
 			capabilities: None,
@@ -439,6 +444,10 @@ impl ChiefSurface {
 	}
 
 	fn submit(&mut self, cx: &mut Context<Self>) {
+		if self.dictation.is_some() {
+			self.finish_dictation(cx);
+			return;
+		}
 		if let Some(error) = self.composer_capability_error(cx) {
 			self.feedback = error.into();
 			cx.notify();

@@ -114,6 +114,7 @@ impl ChiefSurface {
 				.relative()
 				.on_key_down(cx.listener(|s, e: &gpui::KeyDownEvent, _, cx| {
 					if e.keystroke.key == "escape" {
+						s.cancel_dictation(cx);
 						s.composer_menu = None;
 						cx.notify();
 						cx.stop_propagation();
@@ -136,6 +137,7 @@ impl ChiefSurface {
 					s.attach_paths(paths.0.to_vec(), cx);
 				}))
 				.children(self.voice_controls(cx))
+				.children(self.dictation_controls(cx))
 				.children(self.attachment_row(cx))
 				.child(
 					div()
@@ -251,17 +253,26 @@ impl ChiefSurface {
 				|s, cx| s.toggle_composer_menu("effort", cx),
 				cx,
 			))
-			.child(self.composer_control(
+			.child(self.composer_control_with_window(
+				"dictation",
+				"Dictate".into(),
+				"Dictate into the draft",
+				|s, window, cx| s.start_dictation(window, cx),
+				cx,
+			))
+			.child(self.composer_control_with_window(
 				"voice",
 				"Live".into(),
 				"Start a live voice conversation",
-				|s, cx| s.start_voice(cx),
+				|s, window, cx| s.start_voice(window, cx),
 				cx,
 			))
 			.child(self.composer_control(
 				"send",
 				"".into(),
-				if self.stop_button(cx) {
+				if self.dictation.is_some() {
+					"Finish dictation · Keep text in the draft"
+				} else if self.stop_button(cx) {
 					"Stop response · Control-C"
 				} else if self.composer.read(cx).programmer() {
 					"Send · Command-Enter"
@@ -269,7 +280,13 @@ impl ChiefSurface {
 					"Send · Enter (Shift-Enter for newline)"
 				},
 				|s, cx| {
-					if s.stop_button(cx) { s.interrupt_current(cx) } else { s.submit(cx) }
+					if s.dictation.is_some() {
+						s.finish_dictation(cx)
+					} else if s.stop_button(cx) {
+						s.interrupt_current(cx)
+					} else {
+						s.submit(cx)
+					}
 				},
 				cx,
 			))
@@ -281,6 +298,17 @@ impl ChiefSurface {
 		label: String,
 		tip: &'static str,
 		action: fn(&mut Self, &mut Context<Self>),
+		cx: &mut Context<Self>,
+	) -> impl IntoElement {
+		self.composer_control_with_window(id, label, tip, move |s, _, cx| action(s, cx), cx)
+	}
+
+	pub(super) fn composer_control_with_window(
+		&self,
+		id: &'static str,
+		label: String,
+		tip: &'static str,
+		action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + Copy + 'static,
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let send = id == "send";
@@ -298,9 +326,11 @@ impl ChiefSurface {
 			.px(px(6.0))
 			.flex_none()
 			.rounded(px(if send { 8.0 } else { 7.0 }))
-			.when(!["model", "delivery", "effort", "send"].contains(&id), |d| {
-				d.w(px(ui_theme::CONTROL_SIZE)).px_0()
-			})
+			.when(
+				!["model", "delivery", "effort", "send", "dictation-cancel", "dictation-finish"]
+					.contains(&id),
+				|d| d.w(px(ui_theme::CONTROL_SIZE)).px_0(),
+			)
 			.flex()
 			.items_center()
 			.justify_center()
@@ -336,10 +366,10 @@ impl ChiefSurface {
 			.cursor_pointer()
 			.hover(move |d| d.bg(if send { rgba(0xd8cefaff) } else { rgba(0xffffff0c) }))
 			.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
-			.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
-			.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
+			.on_click(cx.listener(move |s, _, window, cx| action(s, window, cx)))
+			.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, window, cx| {
 				if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-					action(s, cx);
+					action(s, window, cx);
 					cx.stop_propagation();
 				}
 			}))
@@ -355,12 +385,14 @@ impl ChiefSurface {
 	) -> gpui::AnyElement {
 		use super::super::workspace_symbols::{Symbol, icon};
 		match id {
+			"send" if self.dictation.is_some() => div().child("✓").into_any_element(),
 			"send" if self.stop_button(cx) =>
 				div().size(px(9.0)).rounded(px(2.0)).bg(rgb(ui_theme::CANVAS)).into_any_element(),
 			"send" if !self.sending => controls::launch_mark().into_any_element(),
 			"send" => div().child("…").into_any_element(),
 			"attach" => icon(Symbol::Plus),
 			"voice" => icon(Symbol::Voice),
+			"dictation" => icon(Symbol::Microphone),
 			"fast" => div()
 				.size(px(16.0))
 				.flex()

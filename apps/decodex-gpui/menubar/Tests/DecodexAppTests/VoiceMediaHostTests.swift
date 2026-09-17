@@ -33,6 +33,48 @@ final class VoiceMediaHostTests: XCTestCase {
     }
 
 
+    func testDictationCapturesPCMAndFlushesBeforeEnding() async throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+        defer { window.orderOut(nil) }
+        let host = VoiceMediaHost(syntheticAudioForTesting: true, hostWindow: window)
+        defer { host.close() }
+        XCTAssertTrue(host.command(#"{"operation":"dictate"}"#))
+        _ = try await event(from: host, type: "dictation_ready")
+        let frame = try await event(from: host, type: "pcm")
+        let encoded = try XCTUnwrap(frame["audio"] as? String)
+        let pcm = try XCTUnwrap(Data(base64Encoded: encoded))
+        XCTAssertEqual(pcm.count, 8192)
+        XCTAssertNotNil(frame["level"] as? Double)
+        XCTAssertTrue(host.command(#"{"operation":"finish"}"#))
+        _ = try await event(from: host, type: "ended")
+    }
+
+    func testMediaABIBindsTheSuppliedWindowAndRejectsDetachedViews() throws {
+        _ = NSApplication.shared
+        XCTAssertEqual(decodexVoiceMediaABIVersion(), 2)
+        let detached = NSView()
+        XCTAssertNil(decodexVoiceMediaCreate(Unmanaged.passUnretained(detached).toOpaque()))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.borderless], backing: .buffered, defer: false)
+        let view = try XCTUnwrap(window.contentView)
+        let pointer = try XCTUnwrap(decodexVoiceMediaCreate(Unmanaged.passUnretained(view).toOpaque()))
+        defer { decodexVoiceMediaDestroy(pointer) }
+        let host = Unmanaged<VoiceMediaHost>.fromOpaque(pointer).takeUnretainedValue()
+        XCTAssertTrue(host.hasHostWindow)
+    }
+
+    func testVisibleWindowFallbackBindsMediaWithoutKeyWindow() {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.orderFront(nil)
+        defer { window.orderOut(nil) }
+        let host = VoiceMediaHost(syntheticAudioForTesting: true)
+        defer { host.close() }
+        XCTAssertTrue(host.hasHostWindow, "A visible native window must own the media view")
+    }
+
     func testOptInNativeSubscriptionCall() async throws {
         let previousSignal = signal(SIGPIPE, SIG_IGN)
         defer { signal(SIGPIPE, previousSignal) }

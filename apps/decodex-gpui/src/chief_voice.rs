@@ -1,6 +1,7 @@
 //! Live media controls; subscription signaling and task execution stay in the service.
 use super::*;
 use decodex_protocol::{ChiefVoicePhase, ChiefVoiceRequest, VoiceSdp};
+use raw_window_handle as _;
 use serde_json::{Value, json};
 use std::time::Duration;
 
@@ -20,12 +21,13 @@ pub(super) struct VoiceUi {
 }
 impl ChiefSurface {
 	pub(crate) fn stop_voice(&mut self, cx: &mut Context<Self>) {
+		self.cancel_dictation(cx);
 		self.voice = None;
 		cx.notify();
 	}
 
-	pub(super) fn start_voice(&mut self, cx: &mut Context<Self>) {
-		if self.voice_task.is_some() {
+	pub(super) fn start_voice(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if self.voice_task.is_some() || self.dictation_task.is_some() {
 			return;
 		}
 		let Some(profile) = self.profile.clone() else { return };
@@ -39,7 +41,7 @@ impl ChiefSurface {
 			cx.notify();
 			return;
 		};
-		let mut media = match Media::new() {
+		let mut media = match Media::new(window) {
 			Ok(media) => media,
 			Err(()) => {
 				self.feedback = "Live voice requires the current signed Decodex.app build.".into();
@@ -272,7 +274,7 @@ impl ChiefSurface {
 }
 
 #[cfg(all(target_os = "macos", not(test)))]
-struct Media {
+pub(super) struct Media {
 	host: *mut std::ffi::c_void,
 	command_fn: unsafe extern "C" fn(*mut std::ffi::c_void, *const std::ffi::c_char) -> bool,
 	poll_fn: unsafe extern "C" fn(*mut std::ffi::c_void) -> *const std::ffi::c_char,
@@ -281,7 +283,7 @@ struct Media {
 }
 #[cfg(all(target_os = "macos", not(test)))]
 impl Media {
-	fn new() -> Result<Self, ()> {
+	pub(super) fn new(window: &Window) -> Result<Self, ()> {
 		use crate::native_menu_bar::{bundled_library_path, symbol};
 		use std::{ffi::CString, os::unix::ffi::OsStrExt as _};
 		let path =
@@ -299,15 +301,20 @@ impl Media {
 			}
 			let version: unsafe extern "C" fn() -> u32 =
 				symbol(image, c"decodex_voice_media_abi_version").map_err(|_| ())?;
-			if version() != 1 {
+			if version() != 2 {
 				return Err(());
 			}
-			let create: unsafe extern "C" fn() -> *mut std::ffi::c_void =
+			let create: unsafe extern "C" fn(*mut std::ffi::c_void) -> *mut std::ffi::c_void =
 				symbol(image, c"decodex_voice_media_create").map_err(|_| ())?;
 			let command_fn = symbol(image, c"decodex_voice_media_command").map_err(|_| ())?;
 			let poll_fn = symbol(image, c"decodex_voice_media_poll").map_err(|_| ())?;
 			let destroy = symbol(image, c"decodex_voice_media_destroy").map_err(|_| ())?;
-			let host = create();
+			let native =
+				raw_window_handle::HasWindowHandle::window_handle(window).map_err(|_| ())?;
+			let raw_window_handle::RawWindowHandle::AppKit(handle) = native.as_raw() else {
+				return Err(());
+			};
+			let host = create(handle.ns_view.as_ptr());
 			if host.is_null() {
 				return Err(());
 			}
@@ -316,13 +323,13 @@ impl Media {
 		}
 	}
 
-	fn command(&mut self, value: Value) -> bool {
+	pub(super) fn command(&mut self, value: Value) -> bool {
 		let Ok(text) = std::ffi::CString::new(value.to_string()) else { return false };
 		// SAFETY: retained native host; copied UTF-8 argument lives through the synchronous call.
 		unsafe { (self.command_fn)(self.host, text.as_ptr()) }
 	}
 
-	fn poll(&mut self) -> Option<Value> {
+	pub(super) fn poll(&mut self) -> Option<Value> {
 		// SAFETY: native data remains valid until the next poll or destroy. Copy it immediately.
 		unsafe {
 			let event = (self.poll_fn)(self.host);
@@ -343,18 +350,18 @@ impl Drop for Media {
 	}
 }
 #[cfg(any(not(target_os = "macos"), test))]
-struct Media;
+pub(super) struct Media;
 #[cfg(any(not(target_os = "macos"), test))]
 impl Media {
-	fn new() -> Result<Self, ()> {
+	pub(super) fn new(_: &Window) -> Result<Self, ()> {
 		Err(())
 	}
 
-	fn command(&mut self, _: Value) -> bool {
+	pub(super) fn command(&mut self, _: Value) -> bool {
 		false
 	}
 
-	fn poll(&mut self) -> Option<Value> {
+	pub(super) fn poll(&mut self) -> Option<Value> {
 		None
 	}
 }
