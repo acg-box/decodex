@@ -161,9 +161,10 @@ fn main() -> gpui::Result<()> {
 	cx.run_until_parked();
 	if let Some(panel_motion) = panel_motion {
 		let keys = match panel_motion.as_str() {
-			"left" => "cmd-b",
-			"right" => "cmd-shift-b",
-			"both" => "cmd-b cmd-shift-b",
+			"left" => "cmd-e",
+			"right" => "cmd-b",
+			"both" => "cmd-e cmd-b",
+			"graph" => "cmd-j",
 			_ => "",
 		};
 		if !keys.is_empty() {
