@@ -230,6 +230,26 @@ pub struct ChiefClient {
 	transport: ResetCardClient,
 }
 impl ChiefClient {
+	/// Exchange one explicit voice operation. The caller must poll after a lost start response.
+	pub async fn voice(
+		&self,
+		request: crate::ChiefVoiceRequest,
+	) -> Result<crate::ChiefVoiceStatus, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let session = request.session_id().clone();
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner("chief-voice", QueryPayload::ExchangeChiefVoice { request }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefVoice(result) if result.session_id == session => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read the selected fields of one exact unresolved request.
 	pub async fn request(&self, event_id: i64) -> Result<crate::ChiefRequestResult, ClientFailure> {
 		self.transport.require_local_profile()?;
@@ -2236,7 +2256,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_v2_23_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 23 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 24 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

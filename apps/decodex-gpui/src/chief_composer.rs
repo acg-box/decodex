@@ -135,6 +135,7 @@ impl ChiefSurface {
 				.on_drop(cx.listener(|s, paths: &gpui::ExternalPaths, _, cx| {
 					s.attach_paths(paths.0.to_vec(), cx);
 				}))
+				.children(self.voice_controls(cx))
 				.children(self.attachment_row(cx))
 				.child(
 					div()
@@ -251,6 +252,13 @@ impl ChiefSurface {
 				cx,
 			))
 			.child(self.composer_control(
+				"voice",
+				"Live".into(),
+				"Start a live voice conversation",
+				|s, cx| s.start_voice(cx),
+				cx,
+			))
+			.child(self.composer_control(
 				"send",
 				"".into(),
 				if self.stop_button(cx) {
@@ -267,7 +275,7 @@ impl ChiefSurface {
 			))
 	}
 
-	fn composer_control(
+	pub(super) fn composer_control(
 		&self,
 		id: &'static str,
 		label: String,
@@ -352,6 +360,7 @@ impl ChiefSurface {
 			"send" if !self.sending => controls::launch_mark().into_any_element(),
 			"send" => div().child("…").into_any_element(),
 			"attach" => icon(Symbol::Plus),
+			"voice" => icon(Symbol::Voice),
 			"fast" => div()
 				.size(px(16.0))
 				.flex()

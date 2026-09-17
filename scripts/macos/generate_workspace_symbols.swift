@@ -18,6 +18,7 @@ let symbols = [
     "forward": "arrow.right",
     "send": "arrow.up",
     "fast": "bolt.fill",
+    "voice": "waveform",
     "chevron-down": "chevron.down",
 ]
 for (name, symbolName) in symbols {

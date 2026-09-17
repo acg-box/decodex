@@ -1806,6 +1806,14 @@ impl Application for ServiceApplication {
 
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
+			QueryPayload::ExchangeChiefVoice { request } =>
+				QueryResultPayload::ChiefVoice(match &self.chief {
+					Some(chief) => chief.voice(request),
+					None => crate::chief_voice::failed(
+						request.session_id().clone(),
+						"Chief is not connected.",
+					),
+				}),
 			QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id } =>
 				QueryResultPayload::ChiefActivityDetail(match &self.chief {
 					Some(chief) =>
@@ -3692,7 +3700,8 @@ async fn query_chief_history_page(
 		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap_or_default();
 		let (kind, mut text) = match event.event_kind.as_str() {
 			"activity_started" | "activity_completed" => ("activity", String::new()),
-			"user_message" => ("user", chief_user_message_text(&value)),
+			"user_message" | "voice_user" => ("user", chief_user_message_text(&value)),
+			"voice_assistant" => ("assistant", chief_user_message_text(&value)),
 
 			"work_instruction" => ("instruction", value["text"].as_str().unwrap_or("").to_owned()),
 			"chief_turn_completed" | "worker_turn_completed" =>
@@ -3715,6 +3724,7 @@ async fn query_chief_history_page(
 				"chief_turn_completed"
 					| "worker_turn_completed"
 					| "user_message"
+					| "voice_user" | "voice_assistant"
 					| "activity_started"
 					| "activity_completed"
 			)

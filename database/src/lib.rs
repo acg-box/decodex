@@ -7,7 +7,9 @@ mod accounts;
 mod chief;
 mod chief_output;
 mod chief_process;
+mod chief_voice;
 pub use chief_output::ChiefLiveOutput;
+pub use chief_voice::ChiefVoiceCall;
 mod command;
 mod continuations;
 mod conversation_routing;
@@ -638,7 +640,7 @@ mod tests {
 				Ok((version, migration_name, migration_digest, account_created_at, profile))
 			})
 			.expect("read V11 upgrade evidence");
-		assert_eq!(version, 21);
+		assert_eq!(version, 22);
 		assert_eq!(migration_name, "desktop_settings");
 		assert_eq!(migration_digest, digests[10]);
 		assert_eq!(account_created_at, 10);

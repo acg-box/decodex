@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 
 mod activity;
 mod result_messages;
+mod voice;
 
 /// Execution policy selected by the user, applied to actual app-server requests.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -80,6 +81,7 @@ impl From<StoreError> for ChiefError {
 
 /// No native subagent interface or model engine is used here.
 pub struct ChiefCoordinator {
+	voice: Option<voice::VoiceConnection>,
 	store: SqliteStore,
 	client: AppServerClient,
 	config: ChiefConfig,
@@ -120,6 +122,7 @@ impl ChiefCoordinator {
 			CONNECTION_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 		);
 		Ok(Self {
+			voice: None,
 			store,
 			client,
 			config,
@@ -146,6 +149,7 @@ impl ChiefCoordinator {
 	/// Reconcile exact persisted turns after the host reconnects the selected account.
 	/// This hydrates threads and records evidence; it never starts or replays a turn.
 	pub async fn recover_persisted(&mut self) -> Result<(), ChiefError> {
+		self.recover_voice_calls().await?;
 		let work = self.store.list_chief_work_items().await?;
 		for item in &work {
 			if matches!(
@@ -387,6 +391,7 @@ impl ChiefCoordinator {
             "approvalPolicy":self.config.approval_policy,"sandbox":self.config.sandbox,
             "config":{"model_reasoning_effort":if chief { &self.config.chief_effort } else { &self.config.worker_effort }}});
 		if chief {
+			params["config"]["features.realtime_conversation"] = json!(true);
 			params["developerInstructions"] = json!(INSTRUCTIONS);
 			params["dynamicTools"] = tools();
 		}
@@ -882,6 +887,7 @@ impl ChiefCoordinator {
 	/// Consume notifications and requests serially. Transport reads and RPC reply
 	/// correlation continue independently while this method awaits a response.
 	pub async fn handle_event(&mut self, event: ServerEvent) -> Result<(), ChiefError> {
+		self.voice_event(&event).await?;
 		match event {
 			ServerEvent::Notification { method, params }
 				if ["thread/closed", "thread/archived", "thread/deleted"]
@@ -1411,6 +1417,7 @@ impl ChiefCoordinator {
 		if self.dispatch_paused {
 			return Ok(());
 		}
+		let voice_calls = self.store.open_chief_voice_calls().await?;
 		let work = self.store.list_chief_work_items().await?;
 		let managers = self.store.chief_manager_ids().await?;
 		for chief in work.iter().filter(|item| {
@@ -1418,6 +1425,9 @@ impl ChiefCoordinator {
 				&& item.kind == ChiefWorkKind::Goal
 				&& item.dispatch_state == decodex_database::ChiefDispatchState::Idle
 		}) {
+			if voice_calls.iter().any(|call| call.work_id == chief.id) {
+				continue;
+			}
 			// Release a finite batch of already-authorized dependent work. The host's
 			// ordinary due-check tick can release the next batch without a model wake.
 			self.release_ready_workers(&chief.id).await?;

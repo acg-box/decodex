@@ -32,6 +32,8 @@
 	<false/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Decodex uses your microphone when you start voice input or a live conversation.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

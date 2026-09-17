@@ -119,6 +119,7 @@ impl ChiefSurface {
 			self.pages.push(id.to_owned());
 		}
 		if self.selected.as_deref() != Some(id) {
+			self.stop_voice(cx);
 			if let Some(old) = &self.selected {
 				self.page_views.insert(
 					old.clone(),

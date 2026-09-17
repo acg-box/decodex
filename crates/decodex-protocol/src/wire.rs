@@ -1,4 +1,4 @@
-//! Structured JSON envelopes for the exact-current V2.23 WebSocket connection.
+//! Structured JSON envelopes for the exact-current V2.24 WebSocket connection.
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
@@ -21,7 +21,7 @@ use crate::{
 	program_cycle::{ProgramCycleResult, ProgramListResult},
 };
 
-/// Maximum UTF-8 size of any human-readable text carried by V2.23.
+/// Maximum UTF-8 size of any human-readable text carried by V2.24.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
 /// Maximum UTF-8 size of one logical-command idempotency key.
 pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
@@ -136,7 +136,7 @@ impl<'de> Deserialize<'de> for HistoryCursorToken {
 	}
 }
 
-/// A string-backed wire scalar exceeded its V2.23 byte limit.
+/// A string-backed wire scalar exceeded its V2.24 byte limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WireScalarTooLong {
 	actual_bytes: usize,
@@ -451,7 +451,7 @@ pub struct ResumeCursor {
 	pub server_id: ServerId,
 	/// Ephemeral publication epoch that issued the cursor.
 	///
-	/// A V2.23 resume requires this field. Older hello envelopes can omit it
+	/// A V2.24 resume requires this field. Older hello envelopes can omit it
 	/// only so negotiation can return a typed version refusal.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
@@ -502,7 +502,7 @@ pub struct ServerWelcome {
 	pub server_id: ServerId,
 	/// Ephemeral identity of the in-memory publication epoch.
 	///
-	/// This is present in the exact-current V2.23 welcome.
+	/// This is present in the exact-current V2.24 welcome.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
@@ -1642,7 +1642,7 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. The V2.23 account contract accepts 300 and 10080 minutes only.
+	/// Exact window duration. The V2.24 account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -2174,10 +2174,16 @@ impl AccountObservationSignal {
 	}
 }
 
-/// Live queries available through the exact-current V2.23 protocol.
+/// Live queries available through the exact-current V2.24 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
+	/// Exchange transient voice signaling under explicit Chief call authorization.
+	/// This payload can start or stop media; it is not replayed or journaled.
+	ExchangeChiefVoice {
+		/// Exact call operation, with memory-only session descriptions.
+		request: crate::ChiefVoiceRequest,
+	},
 	/// Inspect one exact native activity item without changing the conversation.
 	GetChiefActivityDetail {
 		/// Work owning the native thread.
@@ -2282,7 +2288,7 @@ impl QueryPayload {
 	}
 }
 
-/// Commands available through the exact-current V2.23 protocol.
+/// Commands available through the exact-current V2.24 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
@@ -2749,10 +2755,12 @@ impl ResultPayload {
 	}
 }
 
-/// Typed live-query results available through the exact-current V2.23 protocol.
+/// Typed live-query results available through the exact-current V2.24 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
+	/// Ephemeral voice signaling readback.
+	ChiefVoice(crate::ChiefVoiceStatus),
 	/// Selected public tool evidence.
 	ChiefActivityDetail(crate::ChiefActivityDetailResult),
 	/// Native model and Memory configuration evidence.
@@ -3029,12 +3037,12 @@ pub enum Refusal {
 	},
 }
 
-/// Serialize a message using the only V2.23 wire encoding.
+/// Serialize a message using the only V2.24 wire encoding.
 pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 	serde_json::to_string(message)
 }
 
-/// Parse a client message using the only V2.23 wire encoding.
+/// Parse a client message using the only V2.24 wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
 	validate_client_message(&decoded).map_err(|reason| {
@@ -4347,7 +4355,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":23},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":24},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4356,7 +4364,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":23},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":24},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4398,7 +4406,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":23},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":24},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

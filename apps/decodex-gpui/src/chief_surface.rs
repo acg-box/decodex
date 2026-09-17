@@ -10,6 +10,7 @@
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_requests.rs"] mod requests;
+#[path = "chief_voice.rs"] mod voice;
 #[path = "chief_workspace.rs"] mod workspace;
 #[path = "chief_workspace_size.rs"] mod workspace_size;
 
@@ -46,6 +47,8 @@ fn should_poll_snapshot(has_profile: bool, state: &LoadState, _active: bool) -> 
 }
 
 pub(crate) struct ChiefSurface {
+	voice: Option<voice::VoiceUi>,
+	voice_task: Option<Task<()>>,
 	activity_detail: Option<(String, Option<decodex_protocol::ChiefActivityDetailResult>)>,
 	activity_detail_task: Option<Task<()>>,
 	capabilities: Option<decodex_protocol::ChiefCapabilitiesResult>,
@@ -194,6 +197,8 @@ impl ChiefSurface {
 		})
 		.detach();
 		Self {
+			voice: None,
+			voice_task: None,
 			activity_detail: None,
 			activity_detail_task: None,
 			capabilities: None,

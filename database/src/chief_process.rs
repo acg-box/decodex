@@ -552,4 +552,106 @@ mod tests {
 			PrepareProcessGenerationOutcome::Fresh(_)
 		));
 	}
+	#[tokio::test]
+	async fn native_voice_turns_are_owned_deduplicated_and_never_requeued() {
+		let directory = tempfile::tempdir().unwrap();
+		let path = directory.path().join("voice.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		seed(&store).await;
+		store.bind_chief_thread("root".into(), "voice-thread".into()).await.unwrap();
+		store
+			.prepare_chief_bound_process_generation(
+				&intent(1, 1),
+				&binding(1),
+				"root",
+				"voice-process",
+			)
+			.await
+			.unwrap();
+		let identity = decodex_core::ProcessIdentity::new(
+			ProcessBootIdentity::new("fixture-boot").unwrap(),
+			1234,
+			decodex_core::ProcessStartIdentity::new("fixture-start").unwrap(),
+			1234,
+			1234,
+		)
+		.unwrap();
+		store.bind_process_generation_identity(&generation_id(1), 1, &identity).await.unwrap();
+		store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+		let call = crate::ChiefVoiceCall {
+			session_id: "voice-1".into(),
+			work_id: "root".into(),
+			thread_id: "voice-thread".into(),
+			generation_id: generation_id(1).as_str().into(),
+			baseline_turn_id: Some("baseline".into()),
+		};
+		store.begin_chief_voice_call(call.clone()).await.unwrap();
+		let mut other = call.clone();
+		other.session_id = "voice-2".into();
+		assert!(store.begin_chief_voice_call(other.clone()).await.is_err());
+		assert!(
+			!store
+				.observe_chief_voice_turn(
+					generation_id(2).as_str().into(),
+					"voice-thread".into(),
+					"new-turn".into()
+				)
+				.await
+				.unwrap()
+		);
+		assert!(
+			!store
+				.observe_chief_voice_turn(
+					generation_id(1).as_str().into(),
+					"voice-thread".into(),
+					"baseline".into()
+				)
+				.await
+				.unwrap()
+		);
+		assert!(
+			store
+				.observe_chief_voice_turn(
+					generation_id(1).as_str().into(),
+					"voice-thread".into(),
+					"new-turn".into()
+				)
+				.await
+				.unwrap()
+		);
+		store.close_chief_voice_call("voice-1".into()).await.unwrap();
+		assert_eq!(
+			store.get_chief_work_item("root".into()).await.unwrap().dispatch_state,
+			ChiefDispatchState::Running
+		);
+		store.complete_chief_turn("root".into(), "new-turn".into()).await.unwrap();
+		assert!(
+			!store
+				.observe_chief_voice_turn(
+					generation_id(1).as_str().into(),
+					"voice-thread".into(),
+					"new-turn".into()
+				)
+				.await
+				.unwrap()
+		);
+		assert_eq!(
+			store.get_chief_work_item("root".into()).await.unwrap().dispatch_state,
+			ChiefDispatchState::Idle
+		);
+		store
+			.record_chief_voice_transcript(
+				"voice-1".into(),
+				1,
+				"user".into(),
+				"A spoken request".into(),
+			)
+			.await
+			.unwrap();
+		assert!(store.list_chief_wake_events("root".into(), 100).await.unwrap().is_empty());
+		store.begin_chief_voice_call(other.clone()).await.unwrap();
+		drop(store);
+		let reopened = SqliteStore::open_test(&path).unwrap();
+		assert_eq!(reopened.open_chief_voice_calls().await.unwrap(), vec![other]);
+	}
 }

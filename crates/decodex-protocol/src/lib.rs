@@ -16,7 +16,9 @@ mod domain_pack;
 mod local_transport;
 mod program_cycle;
 mod retained_session;
+mod voice;
 mod wire;
+pub use voice::{ChiefVoicePhase, ChiefVoiceRequest, ChiefVoiceStatus, VoiceSdp};
 
 pub use self::{
 	account_login::{
@@ -107,7 +109,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 23 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 24 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

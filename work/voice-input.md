@@ -1,290 +1,102 @@
-# Streaming voice input investigation
+# Subscription voice
 
-## Intended interaction
+## Product behavior
 
-Voice input creates an editable composer draft. It does not start a Chief turn,
-steer an existing turn, or open an agent voice conversation. Show partial text as
-speech arrives. Replace provisional text with the final transcript on completion.
-Do not automatically send. Cancel restores the draft from before dictation.
-Keep capture/session ownership tied to the composer manager so late results cannot
-modify another conversation. Stop capture when navigating away or closing the app.
+Live voice uses the current Chief and the existing Codex subscription. The composer
+has one Live control, live captions, microphone mute, and End. End stops audio; it
+does not cancel work that the user already requested. Navigation closes capture.
+The existing interrupt control remains the way to stop agent work.
 
-The microphone control belongs beside Send. During capture, show a small live
-level indicator, elapsed time, Done, and Cancel inside the composer. Keep the
-existing glass, typography, and control sizing. Avoid a separate recording modal.
-Do not save audio by default. Recording starts only after an explicit user action.
+Dictation is a separate requirement: progressive text in an editable draft, final
+correction, explicit Send, and Cancel that restores the previous draft. The user
+requires subscription authentication for both modes. Do not substitute system ASR,
+require an API key, or present a conversational session as draft-only dictation.
 
-## Source evidence (2026-09-16)
+## Native ownership
 
-- Existing official reference checkout: fd346b8dbaa24573a0244bc917811849d27c4cf4.
-- Latest fetched official main: fc2ea82e7eff22c618a56db29c68a6b1967cba7d.
-  The reference checkout was not changed. No upstream setup scripts were run.
-- Installed binary: codex-cli 0.154.0-alpha.6.2.
-- Generated installed schema with `codex app-server generate-json-schema
-  --experimental --out target/codex-voice-schema`.
-- app-server-protocol/src/protocol/v2/realtime.rs defines start, appendAudio,
-  appendText, appendSpeech, stop, and transcript delta/done notifications.
-  These methods support the realtime conversation lifecycle. The deeper config
-  layer also supports experimental realtime.type=transcription, mapped to
-  RealtimeSessionMode::Transcription. Text output modality alone is not enough
-  to select that mode. The WebSocket startup path calls realtime_api_key and
-  fails without an API credential. This is a reusable base, not a complete
-  draft-only composer dictation implementation.
-- app-server/tests/suite/v2/realtime_conversation.rs tests transcript events and
-  realtime session configuration with background_agent and remain_silent tools.
-- Latest main has an in_app_dictation feature flag but the searched open-source
-  implementation does not expose a separate standalone dictation request.
-  core/src/config/config_tests.rs tests type=transcription;
-  core/src/realtime_conversation.rs implements the session-mode mapping and
-  API-key requirement for WebSocket transport.
-- Installed schemas contain the experimental conversation methods. Schema presence
-  does not establish server entitlement or a successful audio session.
+Codex app-server owns subscription authentication, the existing thread, voice
+session setup, voice-to-agent work, and recovery of native turns. Decodex observes
+those turns in its existing Chief coordinator. It does not replay speech.
 
-## Official API option
+The existing Swift bridge contains a small WebKit media host. It owns microphone
+permission, WebRTC, echo cancellation, playback, and device teardown. The document
+receives SDP only; account credentials remain in the service. The media view is
+attached to the native window. The service queues signaling in memory. SQLite
+records only call ownership, observed native turns, and received transcripts.
 
-https://developers.openai.com/api/docs/guides/realtime-transcription
+Final transcript events replace pending text. Native close can arrive before the
+last final-text event; retain the received tail in history without sending it back
+as a new instruction. Closed calls do not reserve account routing. A live call
+must end before switching its account.
 
-The documented dedicated session has type=transcription. The current guide uses
-`gpt-live-transcribe`, PCM16 at 24 kHz, input_audio_buffer.append, explicit
-input_audio_buffer.commit, and transcription delta/completed events. Match events
-by item_id; a completed transcript replaces provisional text. A final result does
-not imply that the client must upload the full recording a second time.
+## Source baseline
 
-Use turn_detection=null for user-controlled completion. This transcription-only
-session does not generate assistant responses or execute agent tools. Authenticate
-through a separately supported API credential path; do not repurpose a ChatGPT
-session token or assume Codex account entitlement covers this API.
+- Installed binary: `codex-cli 0.154.0-alpha.6.2`.
+- Official source inspected: `openai/codex` commit
+  `b0659c53865dd48b0cd69c454368cea3980017cc`.
+- Installed experimental schema: generated with `codex app-server
+  generate-json-schema --experimental`, under ignored
+  `target/codex-subscription-voice-schema/`.
+- Read-only desktop reference: version `26.908.70816`, packaged application source.
+  No desktop cookies or credential stores were extracted.
 
-The exact ChatGPT iOS and desktop dictation implementation is not established by
-these public sources. UI behavior alone does not identify its model or transport.
+Relevant upstream source:
 
-## Earlier investigation
+- `core/src/realtime_conversation.rs`: transport selection, native authentication,
+  transcript events, voice delegation, and session teardown.
+- `core/src/client.rs::create_realtime_call_with_headers`: provider authentication.
+- `app-server/src/request_processors/turn_processor.rs`: thread attachment and
+  `thread/realtime/start` submission.
+- `app-server/src/bespoke_event_handling.rs`: transcript and session notifications.
+- `app-server-protocol/src/protocol/v2/realtime.rs`: installed request contract.
+- `app-server/tests/suite/v2/realtime_conversation.rs`: upstream integration cases.
+- `voice-host/README.md`: proposed private media helper. The installed app does not
+  include that helper, so Decodex uses the existing native bridge and WebKit.
 
-Personal Infisical value-free discovery did not find a declared OpenAI API key.
-The user has been asked to choose an independently configured OpenAI streaming
-transcription backend or an initial macOS system recognition backend. No secret
-values were retrieved. No microphone recording or audio upload has occurred.
-No voice capability was implemented during that investigation. The native-first
-decision below supersedes the earlier backend-choice question.
+## Verified live path
 
-## macOS alternative
+`thread/realtime/start` uses V3, audio output and WebRTC SDP with the existing Chief
+thread. The native core uses the current subscription. Transcription mode over
+WebRTC is rejected by native core; transcription over WebSocket requires an API
+key. These transport restrictions do not establish subscription ineligibility.
 
-Apple SpeechAnalyzer and SpeechTranscriber expose progressive transcription with
-volatile results and finalized results. This can provide on-device live drafts
-without an OpenAI API credential, subject to supported locales and installed
-speech assets. It is a different recognizer, not a claim of ChatGPT-equivalent
-accuracy. Relevant Apple sources:
+Native XCTest on 2026-09-17 passed with generated speech, the actual Decodex service,
+and its existing Chief: SDP exchange, media connection, incremental user text,
+assistant reply, final user transcript, stop, and helper exit. No microphone was
+recorded for these tests. Tests explicitly attach the media host to a window and
+start a real audio graph; an earlier detached/suspended graph sent zero packets.
+Caption regression tests cover deltas, final correction and delayed other-speaker
+results. No audio is saved by the product.
 
-- https://developer.apple.com/documentation/speech/speechtranscriber/preset
-- https://developer.apple.com/videos/play/wwdc2025/277/
+Opt-in test inputs are `DECODEX_VOICE_SIGNAL_HELPER`,
+`DECODEX_VOICE_SERVICE_ROOT`, `DECODEX_VOICE_WORK_ID`, and
+`DECODEX_VOICE_SAMPLE`. Run `swift test --package-path
+apps/decodex-gpui/menubar --filter VoiceMediaHostTests`. The sample must be generated
+or explicitly authorized audio. SDP travels through inherited pipes and is not
+printed in test reports.
 
-Implementation must measure real microphone latency and mixed Chinese/English
-recognition before claiming a quality or speed improvement over ChatGPT.
+Remaining acceptance: physical microphone permission, audible reply and natural
+interruption in the signed app. A successful synthetic test is not this acceptance.
 
+## Subscription dictation blocker
 
-## Native-first decision and recheck
+The installed app-server schema has no standalone dictation method. The official
+desktop implements a separate `/codex/dictation-stream-connect-info` bridge and
+connects to `wss://chatgpt.com/backend-api/dictation/stream`. Its subprotocols use the
+native auth token. `session.start` selects PCM16 and `streaming_sse`, with segment
+or final-only transcript delivery. `audio.append` sends chunks; `session.close`
+flushes. Utterance IDs and revisions associate partial and final text.
 
-The user prefers the Codex-native subscription path. Do not require a separate API
-key or select macOS recognition as the default before checking that path.
+Standalone reproduction of this observed path received HTTP 403 with
+`cf-mitigated: challenge` and an HTML browser-verification page before the dictation
+protocol began. Final-only `/transcribe` received the same response. This is a
+request-environment/access blocker, not evidence about the user's subscription.
+The desktop also has its own network, device and integrity context. Do not extract
+its private cookies, bypass challenges, or claim that a header guess resolves it.
 
-Fetched official main again: `8452164c761c9225b2ee12c2bd1d48f818573704`.
-Installed Codex remains `0.154.0-alpha.6.2`; the reference checkout was not changed.
+A conversational V3 session produced progressive recognition but a silent prompt
+did not reliably produce final correction. It can also invoke the backing agent.
+Therefore this is not an acceptable replacement for send-later dictation.
 
-Official desktop documentation confirms both dictation into an editable composer
-and live voice for eligible subscriptions. It does not document a third-party
-subscription dictation endpoint or its quota accounting:
-
-- https://learn.chatgpt.com/docs/prompting#use-voice-dictation
-- https://learn.chatgpt.com/docs/features/voice
-
-Do not generalize the WebSocket API-key restriction to all native voice:
-`core/src/client.rs::create_realtime_call_with_headers` uses the configured provider
-and its current authentication for WebRTC call creation. However,
-`validate_avas_webrtc_start` rejects transcription mode: this transport currently
-requires conversational realtime. The transcription-capable WebSocket branch still
-calls `realtime_api_key`, with an explicit API-key requirement. Latest main still
-exposes the in-app dictation feature flag without a standalone app-server dictation
-request in the searched public source. The installed generated request schema also
-has no standalone dictation request.
-
-Conclusion: a native voice conversation path exists, but a directly reusable,
-subscription-authenticated, draft-only streaming dictation path is not established.
-Do not turn speech into automatic agent instructions to imitate dictation. No audio
-session, microphone capture, credential extraction, or quota probe was performed.
-
-## Delivery boundary (2026-09-17)
-
-The installed binary and source baseline above remain current for this delivery.
-The installed ClientRequest schema has realtime session methods but no standalone
-subscription dictation method. The public WebRTC route rejects transcription mode;
-the transcription WebSocket path requires a separate API credential. Keep dictation
-unavailable rather than turning speech into agent instructions. No microphone button,
-recording, audio upload, or independently billed backend was added. Revisit when the
-installed native protocol exposes the required draft-only transcription path.
-
-## Subscription voice capability review (2026-09-17)
-
-The user selected subscription authentication. Treat live voice as a separate
-deliverable from composer dictation; the dictation limitation does not block an
-investigation of native live conversation.
-
-Fetched official main: `b0659c53865dd48b0cd69c454368cea3980017cc`.
-The relevant core client, realtime conversation, app-server protocol, and realtime
-integration-test files have no changes from the previous reference above.
-Installed binary: `codex-cli 0.154.0-alpha.6.2`. Regenerated its experimental schema
-under `target/codex-subscription-voice-schema`; it includes V3, WebRTC, transcript
-delta/done, audio/text/speech append, stop, and voice-list requests.
-
-### Established source capabilities
-
-- WebRTC call creation uses `current_client_setup(ConfiguredProvider)` and its
-  authentication. Codex retains matching authentication for the control channel.
-  Do not extract subscription tokens or call an unrelated API directly.
-- V3 selects `gpt-live-1-codex`. The upstream WebRTC test checks a live-session
-  request and attachment to its sideband without a second session update.
-- Realtime events include user and assistant transcript deltas and final text.
-  Media travels through the client's WebRTC connection; protocol schemas alone
-  do not supply microphone capture, playback, echo cancellation, or device control.
-- A session can use context from an existing task and route spoken requests to
-  its backing Codex agent. Results can return while the voice session continues.
-  Decodex must integrate these turns with Chief's work and dispatch bookkeeping.
-- `appendSpeech` supplies text to speak. Supported voices can be queried.
-- Native history records transcript segments and promoted agent items. A voice
-  session is not a disposable composer draft by default.
-- Official desktop documentation describes natural interruption, continued
-  conversation during work, task steering, and task coordination. These are
-  product capabilities, not evidence that Decodex has implemented them.
-
-### Boundaries
-
-- `clientManagedHandoffs` suppresses automatic Codex-result forwarding to voice.
-  It does not disable incoming voice delegations: the core fanout still routes
-  `HandoffRequested` into the backing agent.
-- WebRTC accepts conversational V1/V3, rejects V2 and transcription mode. Core
-  text-only output requires V2. Muting playback is not a transcription-only mode.
-- Stopping speech playback, ending a voice session, and interrupting an active
-  agent turn are separate operations. Do not label them all as Cancel.
-- Plan, rollout, workspace policy, server admission, quota accounting, and actual
-  Decodex audio quality remain unverified for this account. No live call, microphone
-  capture, audio upload, or account credential read was made for this review.
-- The desktop's screen-context and cross-task navigation features require host
-  integration; selecting the voice model does not provide those integrations.
-
-Recommended first implementation: an explicit live conversation with the current
-Chief, live captions, microphone mute, playback control, and end-call. Reuse the
-native subscription call path and preserve native task identity. Keep editable,
-send-later dictation as a separate capability until its transport is verified.
-
-Official product source: https://learn.chatgpt.com/docs/features/voice
-Source locations: `core/src/client.rs::create_realtime_call_with_headers`,
-`core/src/realtime_conversation.rs::prepare_realtime_start`,
-`app-server-protocol/src/protocol/v2/realtime.rs`, and
-`app-server/tests/suite/v2/realtime_conversation.rs` in `openai/codex`.
-
-## Live qualification and desktop dictation discovery (2026-09-17)
-
-This section supersedes the earlier source-only availability conclusion. The user
-confirmed that both dictation and voice conversation work in the official desktop
-app. The remaining question is progressive dictation text, not account eligibility.
-
-### Actual subscription tests
-
-Used the installed Codex login through its native app-server, disposable ephemeral
-threads, and generated English/Chinese speech. No microphone was captured. No
-existing Chief thread received input. Test output is in `target/voice-qualification/`.
-
-| Case | Observed result |
-| --- | --- |
-| Conversational WebRTC V3 | Connected; data channel open; user transcript deltas and assistant reply arrived. |
-| Conversational WebRTC V1 | Rejected: server requires the quicksilver v2 header. |
-| Transcription over WebRTC | Rejected by native core: conversational realtime required. |
-| Transcription over WebSocket | Rejected by native core: API key authentication required. |
-| V3 with a silent dictation prompt | Incremental user text arrived; no backing Codex turn started in these cases. This is not a hard no-execution guarantee. |
-
-English audio lasted about 6.15 seconds. In the silent-prompt case, the first text
-arrived about 1.34 seconds after playback began, with 12 updates before playback
-ended. A Chinese Tingting sample produced its first text after about 1.54 seconds,
-with 28 updates before playback ended. These are single synthetic-speech samples,
-not a latency benchmark. Earlier Chinese Eddy samples had omissions and errors;
-accuracy was not consistently established. Live reply media packets were received;
-speaker playback and natural interruption were not qualified.
-
-Conversational mode returned a final user transcript. Silent-prompt runs did not
-return a final transcript even after native stop; they emitted a closed event.
-Do not promise automatic final correction from this conversational workaround.
-All recorded test thread IDs were absent from the native persistent thread table
-after shutdown. No qualification script remained running.
-
-### A separate native desktop streaming dictation implementation exists
-
-Read-only inspection of the installed official desktop application bundle found
-the following implementation in `app-initial-4d7ea7f81c2d.js` and
-`main-DaMR-wdT.js` inside `Contents/Resources/app.asar`:
-
-- The desktop obtains connection information through
-  `/codex/dictation-stream-connect-info`, then connects to `/dictation/stream`.
-- `session.start` uses PCM16 audio, `provider_mode: streaming_sse`, and selects
-  `transcript_delivery_mode: segment` when an update callback exists, otherwise
-  `final_only`. The event schema also recognizes `delta` mode.
-- `transcript.segment` and `transcript.final` carry an utterance ID, revision, and
-  text. A final revision replaces the provisional text for that utterance.
-- `audio.append` streams chunks; `session.close` flushes and completes the session.
-- A `codex-app-dictation-streaming` flag and language selection affect whether the
-  streaming implementation is used. Code presence does not prove the user's
-  active flag values or the exact implementation used by iOS.
-
-This is evidence that progressive dictation is a separate desktop capability;
-it does not require Apple ASR merely because iOS displays text progressively.
-No conclusion about iOS's private implementation was established.
-
-### Dedicated dictation live-access boundary
-
-Reproduced the desktop's native `getAuthStatus` credential handoff in memory and
-used only its observed dictation destination and WebSocket subprotocols. No token
-was printed or persisted. Independent handshakes for segment, delta, and final-only
-delivery all returned HTTP 403 before session startup; no test audio was sent to
-this endpoint. The response does not establish whether the missing prerequisite
-is a desktop session, request context, or another server admission condition.
-Do not label the user's subscription ineligible or attempt to bypass admission.
-
-Thus subscription streaming recognition is empirically established through V3.
-The dedicated dictation protocol has the desired partial/final design, but its
-standalone access remains unqualified. It is not yet integrated into Decodex.
-
-
-### Admission diagnosis refinement (2026-09-17)
-
-A further handshake captured only non-secret response metadata. The response was
-HTTP 403, `server: cloudflare`, `cf-mitigated: challenge`, and HTML content rather
-than a dictation protocol response. The standalone request reaches an edge browser
-challenge before service admission. No audio was uploaded. This is not evidence of
-missing subscription eligibility. No challenge was bypassed and no desktop cookies
-were extracted. Evidence: `target/voice-qualification/dictation-admission-report.json`.
-
-
-## Native media component (implementation in progress)
-
-`VoiceMediaHost.swift` adds a same-process macOS WebKit media host to the existing
-Swift bridge library. Rust will own the subscription connection and task authority;
-the media document receives SDP only. It uses no account cookies or credentials.
-The native SDK owns microphone permission, echo cancellation, WebRTC and playback.
-Camera capture and document navigation are denied. Stop, failure, timeout and host
-close release capture; the media event queue has a fixed bound. Captions are data,
-not execution instructions. This component is not yet connected to the composer.
-
-A native XCTest uses a synthetic audio track, obtains a real WebRTC SDP offer,
-requests mute and stop, observes the ended event, and checks that a closed host
-rejects start. No microphone is opened. This does not establish audible speaker
-output, production microphone permission, remote connectivity, or Chief handoffs.
-
-Upstream `voice-host/README.md` at
-`b0659c53865dd48b0cd69c454368cea3980017cc` describes a same-build private helper and
-packaged GStreamer runtime. No such helper was found in the installed desktop
-bundle. Decodex therefore uses its existing native bridge and macOS WebKit instead
-of installing or building another audio runtime. No upstream setup script was run.
-
-The final-only `/backend-api/transcribe` route was also checked with the supported
-native ChatGPT token and fixed synthetic audio. It received the same edge HTML
-challenge. Read-only desktop source inspection shows additional desktop network,
-integrity-state and device-cookie handling. Subscription eligibility is not in
-doubt; the standalone reproduction does not yet reproduce that full request path.
+The user declined macOS recognition on 2026-09-17. Dedicated subscription dictation
+remains incomplete until its authenticated standalone connection is verified.

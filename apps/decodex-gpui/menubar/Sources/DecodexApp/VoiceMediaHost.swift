@@ -13,23 +13,32 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     private var pendingCommand: String?
     private let origin = URL(string: "https://decodex.invalid")!
 
-    init(syntheticAudioForTesting: Bool = false) {
+    init(syntheticAudioForTesting: Bool = false, sampleForTesting: Data? = nil, hostWindow: NSWindow? = nil) {
         super.init()
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.userContentController.add(self, name: "voice")
-        let view = WKWebView(frame: .zero, configuration: configuration)
+        let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 1, height: 1), configuration: configuration)
         view.uiDelegate = self
         view.navigationDelegate = self
         webView = view
+        // WebKit capture and media scheduling require a host window.
+        // Keep the media view behind the native interface, not in a detached page.
+        if let content = hostWindow?.contentView ?? NSApp.keyWindow?.contentView ?? NSApp.mainWindow?.contentView {
+            content.addSubview(view, positioned: .below, relativeTo: nil)
+        }
         var document = Self.document
         #if DEBUG
         if syntheticAudioForTesting {
             document = document.replacingOccurrences(
                 of: "await navigator.mediaDevices.getUserMedia({video:false,audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}})",
-                with: "new AudioContext().createMediaStreamDestination().stream"
+                with: "(window.testAudioContext = new AudioContext(), window.testAudioDestination = testAudioContext.createMediaStreamDestination(), testAudioDestination.stream)"
             )
+        }
+        if syntheticAudioForTesting, let sampleForTesting {
+            document = document.replacingOccurrences(of: "/* TEST_AUDIO */", with:
+                "const sample = Uint8Array.from(atob('" + sampleForTesting.base64EncodedString() + "'),c=>c.charCodeAt(0)); (async()=>{const source=testAudioContext.createBufferSource();source.buffer=await testAudioContext.decodeAudioData(sample.buffer);source.connect(testAudioDestination);source.connect(testAudioContext.destination);source.start();await testAudioContext.resume();})();")
         }
         #endif
         view.loadHTMLString(document, baseURL: origin)
@@ -61,6 +70,17 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
         }
     }
 
+    #if DEBUG
+    func connectionDiagnostics() async -> String {
+        guard let webView else { return "closed" }
+        return await withCheckedContinuation { continuation in
+            webView.callAsyncJavaScript("return JSON.stringify(await window.decodexVoice.diagnostics())", arguments: [:], in: nil, in: .page) { result in
+                continuation.resume(returning: (try? result.get()) as? String ?? "unavailable")
+            }
+        }
+    }
+    #endif
+
     func poll() -> UnsafePointer<CChar>? {
         if let retainedEvent { free(retainedEvent); self.retainedEvent = nil }
         guard !events.isEmpty else { return nil }
@@ -89,6 +109,10 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
               ["ready", "offer", "connected", "caption", "ended", "error"].contains(type)
         else { return }
         if type == "ready" {
+            guard value["canCapture"] as? Bool == true else {
+                emit(["type":"error", "message":"The native audio environment could not initialize."])
+                return
+            }
             isReady = true
             if let command = pendingCommand { pendingCommand = nil; evaluate(command) }
         } else {
@@ -167,22 +191,29 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
             if (active !== generation || event.data.length > 65536) return;
             try {
               const value = JSON.parse(event.data);
+              if (value.type === 'session.started') { /* TEST_AUDIO */ }
               // Captions are presentation data, never agent instructions.
-              if (['input_transcript.added','output_transcript.added','turn.done','turn.delta'].includes(value.type)) emit({type:'caption',event:value});
+              if (['input_transcript.added','output_transcript.added','turn.created','turn.done','turn.delta'].includes(value.type)) emit({type:'caption',event:value});
             } catch {}
           };
           await connection.setLocalDescription(await connection.createOffer());
+          if (connection.iceGatheringState !== 'complete') await new Promise(resolve => {
+            const finish = () => { clearTimeout(timer); connection.removeEventListener('icegatheringstatechange', changed); resolve(); };
+            const changed = () => { if (connection.iceGatheringState === 'complete') finish(); };
+            const timer = setTimeout(finish, 3000);
+            connection.addEventListener('icegatheringstatechange', changed);
+          });
           if (active === generation) emit({type:'offer',sdp:connection.localDescription.sdp});
         } catch { if (active === generation) { stop(); emit({type:'error',message:'Microphone access is unavailable. Check Decodex microphone permission in System Settings.'}); } }
       }
-      window.decodexVoice = {async command(value) {
+      window.decodexVoice = {async diagnostics() { const stats=peer ? [...(await peer.getStats()).values()].filter(s=>['outbound-rtp','inbound-rtp'].includes(s.type)).map(s=>({type:s.type,bytesSent:s.bytesSent,bytesReceived:s.bytesReceived,packetsSent:s.packetsSent})) : []; return {audio:window.testAudioContext?.state,stats,connection:peer?.connectionState,ice:peer?.iceConnectionState,gathering:peer?.iceGatheringState,signaling:peer?.signalingState,channel:channel?.readyState,localCandidates:(peer?.localDescription?.sdp.match(/a=candidate:/g)||[]).length,remoteCandidates:(peer?.remoteDescription?.sdp.match(/a=candidate:/g)||[]).length}; },async command(value) {
         if (value.operation === 'start') return start();
         if (value.operation === 'stop') { stop(); emit({type:'ended'}); return; }
         if (value.operation === 'mute') { microphone?.getAudioTracks().forEach(track => track.enabled = !value.muted); return; }
         if (value.operation === 'answer' && peer && typeof value.sdp === 'string') await peer.setRemoteDescription({type:'answer',sdp:value.sdp});
       }};
       window.addEventListener('pagehide',stop);
-      emit({type:'ready'});
+      emit({type:'ready',canCapture:window.isSecureContext && !!navigator.mediaDevices?.getUserMedia});
     })();
     </script>
     """#

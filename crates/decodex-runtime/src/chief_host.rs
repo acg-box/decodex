@@ -81,6 +81,7 @@ struct Request {
 
 #[derive(Clone)]
 pub(crate) struct ChiefHost {
+	voice: crate::chief_voice::VoiceGateway,
 	store: SqliteStore,
 	runtime: ConversationRuntime,
 	sender: mpsc::Sender<Request>,
@@ -90,7 +91,20 @@ pub(crate) struct ChiefHost {
 impl ChiefHost {
 	pub(crate) fn new(store: SqliteStore, runtime: ConversationRuntime) -> Self {
 		let (sender, receiver) = mpsc::channel(32);
-		Self { store, runtime, sender, receiver: Arc::new(Mutex::new(Some(receiver))) }
+		Self {
+			voice: crate::chief_voice::VoiceGateway::new(),
+			store,
+			runtime,
+			sender,
+			receiver: Arc::new(Mutex::new(Some(receiver))),
+		}
+	}
+
+	pub(crate) fn voice(
+		&self,
+		request: &decodex_protocol::ChiefVoiceRequest,
+	) -> decodex_protocol::ChiefVoiceStatus {
+		self.voice.exchange(request)
 	}
 
 	pub(crate) async fn activity_detail(
@@ -136,6 +150,9 @@ impl ChiefHost {
 		let Some(mut requests) = self.receiver.lock().await.take() else {
 			return;
 		};
+		let Some(mut voice_requests) = self.voice.take_receiver().await else {
+			return;
+		};
 		let mut active = None;
 		// The stop receiver must remain polled while attach, recovery, and RPCs await.
 		let drive = async {
@@ -145,6 +162,9 @@ impl ChiefHost {
 			tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 			loop {
 				tokio::select! {
+					voice_request=voice_requests.recv()=> {
+						if let Some(request)=voice_request {self.handle_voice(request,&mut active).await;}
+					},
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
 						self.rotate_exhausted(&mut active).await;
@@ -172,6 +192,7 @@ impl ChiefHost {
 						}
 					},
 					_ = tick.tick() => {
+						if let Some(request)=self.voice.expire() {self.handle_voice(request,&mut active).await;}
 						self.rotate_exhausted(&mut active).await;
 						recovery.restore_if_due(
 							&mut active, tokio::time::Instant::now(), self.restore()
@@ -205,6 +226,35 @@ impl ChiefHost {
 		}
 	}
 
+	async fn handle_voice(
+		&self,
+		request: decodex_protocol::ChiefVoiceRequest,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) {
+		let id = request.session_id().as_str().to_owned();
+		let result = match active.as_mut() {
+			Some((_, chief, _)) =>
+				tokio::time::timeout(Duration::from_secs(30), chief.voice_request(request))
+					.await
+					.unwrap_or_else(|_| {
+						Err(ChiefError::Invalid(
+							"voice signaling timed out; do not replay input".into(),
+						))
+					}),
+			None => Err(ChiefError::Invalid("Chief is reconnecting".into())),
+		};
+		if let Err(error) = result {
+			let detail = match error {
+				ChiefError::Transport(ClientError::Remote(error)) =>
+					crate::chief_voice::provider_error_message(&error.message).into(),
+				ChiefError::Invalid(message) => message,
+				ChiefError::Store(_) => "Voice session state could not be saved.".into(),
+				_ => "Voice could not connect to this Chief. Check connection status.".into(),
+			};
+			self.voice.update(&id, decodex_protocol::ChiefVoicePhase::Failed, None, Some(&detail));
+		}
+	}
+
 	async fn rotate_exhausted(
 		&self,
 		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
@@ -212,6 +262,9 @@ impl ChiefHost {
 		let Some((root, chief, _)) = active.as_mut() else {
 			return;
 		};
+		if self.store.open_chief_voice_calls().await.map_or(true, |calls| !calls.is_empty()) {
+			return;
+		}
 		let exhausted = self.runtime.chief_account_exhausted(root).await;
 		chief.pause_dispatch(exhausted);
 		let Ok(work) = self.store.list_chief_work_items().await else {
@@ -466,14 +519,18 @@ impl ChiefHost {
 			let _ = self.runtime.close_chief_connection(root).await;
 			return Err("Chief process binding did not match the admitted account");
 		}
-		let coordinator = match ChiefCoordinator::new(self.store.clone(), connection.client, config)
-		{
-			Ok(coordinator) => coordinator,
-			Err(_) => {
-				let _ = self.runtime.close_chief_connection(root).await;
-				return Err("invalid Chief configuration");
-			},
-		};
+		let mut coordinator =
+			match ChiefCoordinator::new(self.store.clone(), connection.client, config) {
+				Ok(coordinator) => coordinator,
+				Err(_) => {
+					let _ = self.runtime.close_chief_connection(root).await;
+					return Err("invalid Chief configuration");
+				},
+			};
+		coordinator.attach_voice_host(
+			connection.process_generation_id.as_str().into(),
+			self.voice.clone(),
+		);
 		if self.store.resolve_chief_connection_failure(root.into()).await.is_err() {
 			let _ = self.runtime.close_chief_connection(root).await;
 			return Err("Chief connection recovery receipt could not be saved");

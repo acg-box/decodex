@@ -1004,6 +1004,9 @@ impl Shell {
 			self.accounts_controller.deactivate();
 		}
 
+		if self.selected == Destination::Chief {
+			self.chief.update(cx, ChiefSurface::stop_voice);
+		}
 		self.selected = destination;
 		if destination == Destination::Chief {
 			let cwd = self.conversations.working_directory();

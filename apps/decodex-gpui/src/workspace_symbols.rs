@@ -18,10 +18,11 @@ pub(super) enum Symbol {
 	Agents,
 	Fast,
 	ChevronDown,
+	Voice,
 }
 
-static IMAGES: LazyLock<[Arc<Image>; 13]> = LazyLock::new(|| {
-	let sources: [&[u8]; 13] = [
+static IMAGES: LazyLock<[Arc<Image>; 14]> = LazyLock::new(|| {
+	let sources: [&[u8]; 14] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
 		include_bytes!("../../../assets/workspace-symbols/graph.png"),
 		include_bytes!("../../../assets/workspace-symbols/timeline.png"),
@@ -35,6 +36,7 @@ static IMAGES: LazyLock<[Arc<Image>; 13]> = LazyLock::new(|| {
 		include_bytes!("../../../assets/workspace-symbols/agents.png"),
 		include_bytes!("../../../assets/workspace-symbols/fast.png"),
 		include_bytes!("../../../assets/workspace-symbols/chevron-down.png"),
+		include_bytes!("../../../assets/workspace-symbols/voice.png"),
 	];
 	sources.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
 });
