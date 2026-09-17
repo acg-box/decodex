@@ -114,8 +114,10 @@ pub enum TurnStatus {
 /// Run-local Codex actor. Optional nickname/role fields are never identity.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RunLocalActor {
-	/// Child thread identity used as the runtime actor identity.
+	/// Target agent thread identity used as the runtime actor identity.
 	pub id: ThreadId,
+	/// Thread whose turn contains this activity; it can be a peer of the actor.
+	pub source_thread_id: ThreadId,
 	/// Parent thread identity when supplied by Codex.
 	pub parent_id: Option<ThreadId>,
 	/// Closed activity classification.
@@ -411,8 +413,10 @@ fn normalize_item(params: &Value, completed: bool) -> Result<NormalizedEvent, Ev
 
 	if item_type == "subAgentActivity" {
 		return Ok(NormalizedEvent::CollaborationActivity(RunLocalActor {
-			id: thread_id(params, "threadId")?,
-			parent_id: Some(thread_id(item, "agentThreadId")?),
+			id: thread_id(item, "agentThreadId")?,
+			source_thread_id: thread_id(params, "threadId")?,
+			// Activity can be emitted for peer messaging. It does not prove ancestry.
+			parent_id: None,
 			activity: collaboration_activity(string_field(item, "kind")?),
 			optional_metadata_present: item.get("agentNickname").is_some()
 				|| item.get("agentRole").is_some(),
@@ -577,9 +581,10 @@ mod tests {
 		assert!(matches!(
 			event,
 			NormalizedEvent::CollaborationActivity(RunLocalActor {
+				id, source_thread_id, parent_id: None,
 				activity: CollaborationActivityKind::Completed,
 				..
-			})
+			}) if id == ThreadId::from_protocol("child") && source_thread_id == ThreadId::from_protocol("parent")
 		));
 	}
 
@@ -644,8 +649,9 @@ mod tests {
 		assert_eq!(
 			event,
 			NormalizedEvent::CollaborationActivity(RunLocalActor {
-				id: ThreadId::from_protocol("child"),
-				parent_id: Some(ThreadId::from_protocol("parent")),
+				id: ThreadId::from_protocol("parent"),
+				source_thread_id: ThreadId::from_protocol("child"),
+				parent_id: None,
 				activity: CollaborationActivityKind::Interacted,
 				optional_metadata_present: true,
 				turn_id: OpaqueId::from_protocol("turn"),
