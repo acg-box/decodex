@@ -160,3 +160,22 @@ Validation: 168 GPUI tests passed; five opt-in tests were ignored. Strict Clippy
 and signed bundle staging passed. Native screenshots confirmed full model names,
 visible delivery and Fast controls, and the left-aligned microphone back row.
 No message was sent and no recording was started during this layout check.
+
+
+## Separate model and reasoning controls
+
+The adjacent model and effort labels have separate hit targets, with no chevron.
+The model popup contains only models. The effort popup is 220 points wide and
+shows Reasoning, the current level, a thin track, and supported-level stops.
+The thumb and fill use the shared interruptible motion primitive. Pointer input
+snaps to available levels; Left/Right and Home/End support keyboard adjustment.
+Releasing the pointer inside or outside the workspace ends the drag. The next
+turn uses the selected effort; the current response is not restarted.
+
+Validation: 169 GPUI tests passed, five opt-in tests ignored, and strict Clippy
+passed. The new stop-mapping test covers rounding, limits, and zero/one-level
+catalogs.
+
+Native screenshot review confirmed separate controls and the effort popup. The
+additional pointer-release regression passed. Concurrent desktop interaction
+prevented completion of the manual keyboard and drag sequence.

@@ -30,66 +30,7 @@ fn level_label(level: &str) -> &'static str {
 	LEVELS.iter().find(|(value, _)| *value == level).map_or("High", |(_, label)| *label)
 }
 
-impl ChiefSurface {
-	pub(super) fn effort_scale(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-		let selected = self.effort.as_str();
-		let supported = self.model_efforts(cx);
-		div()
-			.flex()
-			.flex_col()
-			.gap(px(10.))
-			.child(
-				div().flex().gap(px(2.)).p(px(3.)).rounded(px(6.)).bg(rgba(0xffffff06)).children(
-					LEVELS
-						.into_iter()
-						.filter(|(value, _)| {
-							supported.iter().any(|effort| effort.as_str() == *value)
-						})
-						.map(|(value, label)| {
-							let active = selected == value;
-							div()
-								.id(SharedString::from(format!("depth-{value}")))
-								.role(Role::Button)
-								.tab_index(0)
-								.aria_label(format!("Reasoning depth: {label}"))
-								.flex_1()
-								.h(px(24.))
-								.rounded(px(7.))
-								.bg(if active { rgba(0xffffff14) } else { rgba(0x00000000) })
-								.flex()
-								.flex_col()
-								.items_center()
-								.justify_center()
-								.gap(px(7.))
-								.text_size(px(10.))
-								.text_color(rgb(if active {
-									ui_theme::TEXT
-								} else {
-									ui_theme::TEXT_MUTED
-								}))
-								.cursor_pointer()
-								.hover(|d| d.bg(rgba(0xc3b8ed22)))
-								.on_click(cx.listener(move |s, _, _, cx| {
-									s.select_composer_option("effort", value, cx)
-								}))
-								.on_key_down(cx.listener(
-									move |s, event: &gpui::KeyDownEvent, _, cx| {
-										if ["enter", "space"]
-											.contains(&event.keystroke.key.as_str())
-										{
-											s.select_composer_option("effort", value, cx);
-											cx.stop_propagation();
-										}
-									},
-								))
-								.child(label)
-								.smooth()
-						}),
-				),
-			)
-			.into_any_element()
-	}
-}
+#[path = "chief_effort_slider.rs"] mod effort_slider;
 
 pub(super) fn launch_mark() -> impl IntoElement {
 	gpui::canvas(

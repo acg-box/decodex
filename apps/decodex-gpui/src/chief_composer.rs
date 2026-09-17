@@ -189,8 +189,8 @@ impl ChiefSurface {
 							.bottom(gpui::relative(1.))
 							.mb(px(8.))
 							.when(left, |d| d.left(px(0.)))
-							.when(!left, |d| d.right(px(0.)))
-							.w(px(if left { 280. } else { 240. }))
+							.when(!left, |d| d.right(px(64.)))
+							.w(px(if left { 280. } else { 220. }))
 							.child(crate::ui_motion::disclosure(
 								"composer-menu-motion",
 								self.composer_menu.is_some(),
@@ -277,6 +277,14 @@ impl ChiefSurface {
 				|s, cx| s.toggle_composer_menu("model", cx),
 				cx,
 			))
+			.child(div().text_color(rgb(ui_theme::TEXT_MUTED)).child("·"))
+			.child(self.composer_control(
+				"effort",
+				self.effort.as_str().into(),
+				"Adjust reasoning",
+				|s, cx| s.toggle_composer_menu("effort", cx),
+				cx,
+			))
 			.child(self.composer_control_with_window(
 				"dictation",
 				"".into(),
@@ -332,7 +340,7 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let send = id == "send";
-		let tooltip = if id == "model" { "Model and reasoning".to_owned() } else { tip.to_owned() };
+		let tooltip = if id == "model" { "Choose model".to_owned() } else { tip.to_owned() };
 		div()
 			.id(SharedString::from(format!("composer-{id}")))
 			.role(Role::Button)
@@ -471,15 +479,8 @@ impl ChiefSurface {
 				.into_any_element(),
 			"effort" => controls::effort_indicator(self.effort.as_str()),
 			"model" => div()
-				.flex()
-				.items_center()
-				.gap(px(4.0))
-				.child(div().text_color(rgb(ui_theme::TEXT)).child(format!(
-					"{} · {}",
-					controls::compact_model_label(&label),
-					self.effort.as_str()
-				)))
-				.child(icon(Symbol::ChevronDown))
+				.text_color(rgb(ui_theme::TEXT))
+				.child(controls::compact_model_label(&label))
 				.into_any_element(),
 			_ => div().child(label).into_any_element(),
 		}
@@ -538,7 +539,6 @@ impl ChiefSurface {
 						.flex_col()
 						.gap(px(5.))
 						.child(self.model_palette(cx))
-						.child(self.effort_scale(cx))
 						.into_any_element()
 				})
 				.into_any_element(),
