@@ -83,7 +83,7 @@ pub(crate) const SURFACE_OVERLAY_MATERIAL: u32 = 0x1d1a2470;
 
 pub(crate) const LINE_STRONG: u32 = 0x403b48;
 pub(crate) const PANEL_BOUNDARY: u32 = 0xffffff2b;
-pub(crate) const PANEL_HEADER_RULE: u32 = 0xffffff12;
+pub(crate) const PANEL_HEADER_TINT: u32 = 0xffffff05;
 pub(crate) const TEXT: u32 = 0xeeeaf0;
 pub(crate) const TEXT_MUTED: u32 = 0xaaa4af;
 pub(crate) const TEXT_FAINT: u32 = 0xaaa4af;

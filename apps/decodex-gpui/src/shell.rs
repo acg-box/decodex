@@ -4793,7 +4793,7 @@ fn settings_workspace_content(
 		.gap(px(3.0))
 		.text_size(px(ui_theme::BODY_SIZE))
 		.border_r_1()
-		.border_color(rgba(ui_theme::PANEL_HEADER_RULE))
+		.border_color(rgba(ui_theme::PANEL_BOUNDARY))
 		.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
 		.child(
 			div()

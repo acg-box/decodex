@@ -141,9 +141,11 @@ impl ChiefSurface {
 				.px(px(10.))
 				.py(px(7.))
 				.rounded(px(24.))
-				.bg(rgba(0x222428e8))
-				.border_1()
-				.border_color(rgba(0xffffff12))
+				.bg(gpui::linear_gradient(
+					180.,
+					gpui::linear_color_stop(rgba(0x36383eef), 0.),
+					gpui::linear_color_stop(rgba(0x26282deb), 1.),
+				))
 				.shadow(vec![gpui::BoxShadow {
 					inset: false,
 					color: rgba(0x00000038).into(),
@@ -190,7 +192,13 @@ impl ChiefSurface {
 							.mb(px(8.))
 							.when(left, |d| d.left(px(0.)))
 							.when(!left, |d| d.right(px(64.)))
-							.w(px(if left { 280. } else { 220. }))
+							.w(px(if left {
+								280.
+							} else if self.composer_menu == Some("effort") {
+								220.
+							} else {
+								176.
+							}))
 							.child(crate::ui_motion::disclosure(
 								"composer-menu-motion",
 								self.composer_menu.is_some(),
@@ -390,9 +398,18 @@ impl ChiefSurface {
 					.h(px(28.))
 					.rounded_full()
 					.ml(px(5.))
-					.border_1()
-					.border_color(rgba(0xffffff38))
-					.bg(rgba(0xffffff14))
+					.bg(gpui::linear_gradient(
+						180.,
+						gpui::linear_color_stop(rgb(0x777983), 0.),
+						gpui::linear_color_stop(rgb(0x454751), 1.),
+					))
+					.shadow(vec![gpui::BoxShadow {
+						inset: false,
+						color: rgba(0x00000050).into(),
+						offset: gpui::point(px(0.), px(2.)),
+						blur_radius: px(5.),
+						spread_radius: px(0.),
+					}])
 			})
 			.cursor_pointer()
 			.hover(move |d| d.bg(if send { rgba(0xffffff24) } else { rgba(0xffffff0c) }))
@@ -422,7 +439,7 @@ impl ChiefSurface {
 			"send"
 				if self.composer.read(cx).content().trim().is_empty()
 					&& self.attachments.is_empty() =>
-				icon(Symbol::Voice),
+				controls::live_mark(),
 			"send" if !self.sending => controls::launch_mark().into_any_element(),
 			"send" => div().child("…").into_any_element(),
 			"attach" => icon(Symbol::Plus),
@@ -504,9 +521,18 @@ impl ChiefSurface {
 				.occlude()
 				.p(px(7.))
 				.rounded(px(10.))
-				.bg(rgba(0x222228f5))
-				.border_1()
-				.border_color(rgba(0xffffff24))
+				.bg(gpui::linear_gradient(
+					180.,
+					gpui::linear_color_stop(rgba(0x36373cf7), 0.),
+					gpui::linear_color_stop(rgba(0x292a30f7), 1.),
+				))
+				.shadow(vec![gpui::BoxShadow {
+					inset: false,
+					color: rgba(0x00000055).into(),
+					offset: gpui::point(px(0.), px(5.)),
+					blur_radius: px(16.),
+					spread_radius: px(-2.),
+				}])
 				.w_full()
 				.flex()
 				.flex_col()

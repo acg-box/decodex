@@ -32,6 +32,20 @@ fn level_label(level: &str) -> &'static str {
 
 #[path = "chief_effort_slider.rs"] mod effort_slider;
 
+pub(super) fn live_mark() -> gpui::AnyElement {
+	div()
+		.size(px(16.))
+		.flex()
+		.items_center()
+		.justify_center()
+		.gap(px(1.5))
+		.children(
+			[5., 10., 15., 10., 5.]
+				.map(|height| div().w(px(2.)).h(px(height)).rounded_full().bg(rgb(0xf4f2f7))),
+		)
+		.into_any_element()
+}
+
 pub(super) fn launch_mark() -> impl IntoElement {
 	gpui::canvas(
 		|_, _, _| (),

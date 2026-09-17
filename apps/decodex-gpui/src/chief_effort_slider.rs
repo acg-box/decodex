@@ -26,21 +26,8 @@ impl ChiefSurface {
 		div()
 			.p(px(7.))
 			.flex()
-			.flex_col()
-			.gap(px(8.))
-			.child(
-				div()
-					.flex()
-					.justify_between()
-					.text_size(px(11.))
-					.text_color(rgb(ui_theme::TEXT_MUTED))
-					.child("Reasoning")
-					.child(
-						div()
-							.text_color(rgb(ui_theme::TEXT))
-							.child(level_label(self.effort.as_str())),
-					),
-			)
+			.items_center()
+			.gap(px(14.))
 			.child(
 				div()
 					.id("reasoning-slider")
@@ -50,8 +37,8 @@ impl ChiefSurface {
 						"Reasoning: {}. Use Left and Right to adjust.",
 						level_label(self.effort.as_str())
 					))
-					.w_full()
-					.h(px(26.))
+					.flex_1()
+					.h(px(24.))
 					.relative()
 					.cursor_pointer()
 					.on_mouse_down(
@@ -93,6 +80,13 @@ impl ChiefSurface {
 						.inset_0(),
 					)
 					.child(SliderTrack { fraction, count }),
+			)
+			.child(
+				div()
+					.w(px(42.))
+					.text_size(px(11.))
+					.text_color(rgb(ui_theme::TEXT))
+					.child(level_label(self.effort.as_str())),
 			)
 			.into_any_element()
 	}

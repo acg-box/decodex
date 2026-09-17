@@ -179,3 +179,13 @@ catalogs.
 Native screenshot review confirmed separate controls and the effort popup. The
 additional pointer-release regression passed. Concurrent desktop interaction
 prevented completion of the manual keyboard and drag sequence.
+
+
+## Surface refinement
+
+The reasoning popup now puts the track and current value on one row without a
+header. Model selection has its own 176-point width. The composer and popovers
+use soft tonal surfaces and shadows instead of full outlines. The primary button
+uses a restrained gradient and a solid, readable Live waveform. Workspace panel
+headers use a subtle fill rather than redundant horizontal rules. Native window
+transparency remains unchanged. Strict Clippy passed for these presentation edits.
