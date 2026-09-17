@@ -213,3 +213,26 @@ are local synthetic timings, not physical microphone or subscription latency.
 Six native media tests passed; the opt-in subscription qualification was skipped.
 The GPUI pending-request regression proves capture-state processing runs before a
 network response. The full GPUI suite passed: 173 tests, five opt-in tests ignored.
+
+## Direct microphone capture for subscription dictation
+
+Dictation now captures audio through AVAudioEngine instead of waiting for WebKit
+getUserMedia. It still sends mono 24 kHz PCM to the existing subscription ASR
+connection. Live remains on its existing WebRTC route. Native input selection
+uses the selected device name; an unavailable device produces an error.
+
+The audio tap is explicitly Sendable, so Swift does not require the main executor
+on the audio callback. UI events return to the main queue. Conversion drains the
+resampler on finish, including its partial final frame. Capture stops on finish,
+cancel, and host close. Startup diagnostics record only elapsed milliseconds.
+
+Validation on the signed preview: physical microphone first-buffer readiness was
+502 ms on the first attempt and 314 ms on the next attempt. These measurements
+exclude subscription recognition and final-correction latency. Finish returned
+from final correction to the empty composer; cancel restored the empty draft.
+One preview process remained, with no active recording.
+
+Seven native tests passed; the separate opt-in subscription qualification test was
+skipped. The new PCM test verifies stereo 48 kHz to mono 24 kHz conversion, bounded
+chunks, and the complete final audio duration with a small resampling filter tail.
+The GPUI suite passed 173 tests (five opt-in cases ignored); strict Clippy passed.

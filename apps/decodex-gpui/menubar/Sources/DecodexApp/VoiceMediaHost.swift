@@ -15,6 +15,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     private var initializationFailed = false
     private var pendingCommand: String?
     private var captureRequestedAt: Date?
+    private var nativeDictation: DictationCapture?
     private var desiredMute = false
     private var captureCancelled = false
     private var syntheticAudio = false
@@ -68,6 +69,29 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
             emit(["type":"devices", "inputs":discovery.devices.map { $0.localizedName }])
             return true
         }
+        if operation == "dictate", !syntheticAudio {
+            captureCancelled = false
+            captureRequestedAt = Date()
+            let input = value["input"] as? String ?? ""
+            if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized {
+                beginNativeDictation(input)
+            } else {
+                AVCaptureDevice.requestAccess(for: .audio) { [weak self] allowed in
+                    DispatchQueue.main.async {
+                        guard let self, !self.isClosed, !self.captureCancelled else { return }
+                        if allowed { self.beginNativeDictation(input) }
+                        else { self.emit(["type":"error", "message":"Allow microphone access in System Settings."]) }
+                    }
+                }
+            }
+            return true
+        }
+        if let nativeDictation, operation == "finish" || operation == "stop" {
+            captureCancelled = true
+            if operation == "finish" { nativeDictation.finish() }
+            else { nativeDictation.stop(); self.nativeDictation = nil; emit(["type":"ended"]) }
+            return true
+        }
         if operation == "start" || operation == "dictate" { captureCancelled = false }
         if operation == "stop" || operation == "finish" {
             captureCancelled = true
@@ -82,6 +106,15 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
         }
         if operation == "start" || operation == "dictate" { startCapture(json) } else { evaluate(json) }
         return true
+    }
+
+    private func beginNativeDictation(_ input: String) {
+        guard !isClosed, !captureCancelled else { return }
+        nativeDictation?.stop()
+        let capture = DictationCapture { [weak self] value in self?.emit(value) }
+        nativeDictation = capture
+        do { try capture.start(input: input) }
+        catch { capture.stop(); nativeDictation = nil; emit(["type":"error", "message":"The selected microphone could not start. Check the input device and try again."]) }
     }
 
     private func startCapture(_ json: String) {
@@ -143,7 +176,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     #endif
 
     func poll() -> UnsafePointer<CChar>? {
-        if !isReady && !initializationFailed && initializedAt.timeIntervalSinceNow < -10 {
+        if !isReady && nativeDictation == nil && !initializationFailed && initializedAt.timeIntervalSinceNow < -10 {
             initializationFailed = true
             emit(["type":"error", "message":"The audio host did not initialize. Start a new call."])
         }
@@ -215,6 +248,8 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     func close() {
         guard !isClosed else { return }
         isClosed = true
+        nativeDictation?.stop()
+        nativeDictation = nil
         pendingCommand = nil
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: "voice")
         webView?.setMicrophoneCaptureState(.none, completionHandler: nil)

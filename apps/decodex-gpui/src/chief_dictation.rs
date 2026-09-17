@@ -134,6 +134,10 @@ impl ChiefSurface {
 		for _ in 0..64 {
 			let Some(event) = dictation.media.poll() else { break };
 			match event["type"].as_str() {
+				Some("level") => {
+					dictation.level =
+						event["value"].as_f64().unwrap_or_default().clamp(0., 1.) as f32;
+				},
 				Some("pcm") => {
 					if let Some(audio) =
 						event["audio"].as_str().and_then(|s| DictationBuffer::new(s).ok())
