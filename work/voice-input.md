@@ -7,8 +7,10 @@ has one Live control, live captions, microphone mute, and End. End stops audio; 
 does not cancel work that the user already requested. Navigation closes capture.
 The existing interrupt control remains the way to stop agent work.
 
-Dictation is a separate requirement: progressive text in an editable draft, final
-correction, explicit Send, and Cancel that restores the previous draft. The user
+Dictation is a separate composer mode: progressive text in an editable draft, final
+correction, explicit Send, and Cancel that restores the previous draft. Done stops
+capture and waits for final correction. A manual edit stops dictation and remains
+intact. Navigation closes capture. Neither mode saves audio to disk. The user
 requires subscription authentication for both modes. Do not substitute system ASR,
 require an API key, or present a conversational session as draft-only dictation.
 
@@ -78,7 +80,7 @@ printed in test reports.
 Remaining acceptance: physical microphone permission, audible reply and natural
 interruption in the signed app. A successful synthetic test is not this acceptance.
 
-## Subscription dictation blocker
+## Verified subscription dictation
 
 The installed app-server schema has no standalone dictation method. The official
 desktop implements a separate `/codex/dictation-stream-connect-info` bridge and
@@ -87,16 +89,48 @@ native auth token. `session.start` selects PCM16 and `streaming_sse`, with segme
 or final-only transcript delivery. `audio.append` sends chunks; `session.close`
 flushes. Utterance IDs and revisions associate partial and final text.
 
-Standalone reproduction of this observed path received HTTP 403 with
-`cf-mitigated: challenge` and an HTML browser-verification page before the dictation
-protocol began. Final-only `/transcribe` received the same response. This is a
-request-environment/access blocker, not evidence about the user's subscription.
-The desktop also has its own network, device and integrity context. Do not extract
-its private cookies, bypass challenges, or claim that a header guess resolves it.
+The initial Node and headless browser reproductions received HTTP 403 with
+`cf-mitigated: challenge` before the dictation protocol began. A native Foundation
+URLSession connection to the same endpoint passed HTTP 101 and `session.started`
+with the same subscription authentication. No cookies, challenge bypass, separate
+API key, or system speech recognition were needed. This identifies a working
+network implementation; it does not establish the server's internal rejection rule.
 
-A conversational V3 session produced progressive recognition but a silent prompt
-did not reliably produce final correction. It can also invoke the backing agent.
-Therefore this is not an acceptable replacement for send-later dictation.
+On 2026-09-17, generated speech produced 24 incremental transcript revisions and
+one final correction in the direct native qualification. A second qualification
+passed through the signed bundled service, protocol 2.25, retained Codex account,
+and the production native adapter. It returned provisional text before Finish and
+the correct complete final text after Finish. Before/after database counts were
+unchanged: 48 inbox events, four work items, and 13 historical Live calls. Dictation
+created no agent input or Live call. The qualification report is
+`target/voice-qualification/bundled-dictation-report.json`. The opt-in protocol example is
+`crates/decodex-protocol/examples/dictation_probe.rs`; it accepts base64 PCM frames
+on stdin and never receives authentication material.
 
-The user declined macOS recognition on 2026-09-17. Dedicated subscription dictation
-remains incomplete until its authenticated standalone connection is verified.
+`DecodexTransport` is a service-only Swift module in the existing signed native
+library. URLSession owns the subscription connection. The service obtains its token
+from native `getAuthStatus` and passes it only to that same-process adapter. The
+GPUI client receives text and status. One bounded session exists in memory; no new
+helper process, database migration, or task dispatcher is added. Account rotation
+waits until capture ends. A disconnected client releases its session on expiry.
+Audio is never automatically replayed after an uncertain response.
+
+## Capture and draft verification
+
+The media ABI now requires the calling GPUI NSView. This removes dependence on
+`NSApp.keyWindow`, which could be absent or refer to another window. An unattached
+view is rejected. Capture has a timeout and delayed permission replies cannot
+restart a cancelled recording. Live and dictation cannot capture concurrently.
+
+Native tests cover exact-window binding, detached-view rejection, retained mute,
+PCM frame capture, flush before End, and the real subscription Live exchange.
+GPUI tests cover partial replacement, final correction without Send, Cancel that
+restores the prior draft, and preservation of manual edits. Protocol tests check
+payload size limits and diagnostic redaction. The signed service dictation test
+and the Live subscription test both passed. The composer capture was inspected at
+`target/visual-tests/chief-dictation-composer.png` (test fixture, not a live task).
+
+Physical microphone and audible-playback acceptance remains separate. The desktop
+control tool currently returns `cgWindowNotFound` for the running preview, so the
+latest physical capture path has not been accepted through the actual UI. Do not
+report synthetic media tests as physical microphone acceptance.
