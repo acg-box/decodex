@@ -69,9 +69,7 @@ impl ChiefProcessBridge {
 						.map_err(|_| ClientError::Io)
 					},
 				);
-				// Deliver queued evidence before EOF. Supervisor revocation separately closes
-				// the client immediately, including when an AccountService callback is pending.
-				let _ = terminal.blocking_send(Err(result.err().unwrap_or(ClientError::Closed)));
+				finish_bridge(writer, terminal, result);
 			})
 			.map_err(|_| {
 				client.close();
@@ -84,6 +82,19 @@ impl ChiefProcessBridge {
 		self.cancelled.store(true, Ordering::Release);
 		self.client.close();
 	}
+}
+
+fn finish_bridge(
+	writer: Box<dyn Write + Send>,
+	terminal: mpsc::Sender<Result<Value, ClientError>>,
+	result: Result<(), ClientError>,
+) {
+	// Release stdin before a potentially blocked terminal event delivery. EOF lets
+	// Codex shut down its threads and helpers even if the consumer stopped polling.
+	drop(writer);
+	// Preserve queued evidence before transport EOF. Revocation closes the client
+	// separately, including when an AccountService callback is still pending.
+	let _ = terminal.blocking_send(Err(result.err().unwrap_or(ClientError::Closed)));
 }
 
 impl Drop for ChiefProcessBridge {
@@ -225,6 +236,21 @@ mod tests {
 	use super::*;
 	use serde_json::json;
 	use std::sync::mpsc as sync_mpsc;
+
+	#[cfg(unix)]
+	#[test]
+	fn blocked_terminal_delivery_does_not_keep_child_stdin_open() {
+		use std::io::Read as _;
+		let (writer, mut child_stdin) = std::os::unix::net::UnixStream::pair().unwrap();
+		child_stdin.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+		let (terminal, mut events) = mpsc::channel(1);
+		terminal.try_send(Ok(json!({"method":"turn/completed"}))).unwrap();
+		let worker = thread::spawn(move || finish_bridge(Box::new(writer), terminal, Ok(())));
+		assert_eq!(child_stdin.read(&mut [0_u8; 1]).unwrap(), 0);
+		assert_eq!(events.blocking_recv().unwrap().unwrap()["method"], "turn/completed");
+		assert!(matches!(events.blocking_recv(), Some(Err(ClientError::Closed))));
+		worker.join().unwrap();
+	}
 
 	#[test]
 	fn refresh_callback_is_consumed_privately_before_event_conversion() {

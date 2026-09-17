@@ -527,6 +527,22 @@ impl ProcessGenerationControl {
 			},
 		};
 		owned_process.revision = stopping.revision;
+		// Give the original child a bounded EOF shutdown before signaling its group.
+		// This lets Codex dispose thread-owned tools instead of orphaning their helpers.
+		let started = Instant::now();
+		let deadline = started + wait;
+		let hard_signal_at = started + wait * 3 / 4;
+		owned_process.child.close_private_lifetime_channels();
+		let graceful_deadline = started + (wait / 2).min(Duration::from_secs(2));
+		while !owned_process.leader_exited && Instant::now() < graceful_deadline {
+			if let Err(error) = refresh_owned_exit(&mut owned_process) {
+				self.restore_owned(key, owned_process, &mut supervision)?;
+				return Err(error);
+			}
+			if !owned_process.leader_exited {
+				tokio::time::sleep(Duration::from_millis(10)).await;
+			}
+		}
 
 		if !owned_process.leader_exited {
 			if !owned_process.child.may_signal_process_group() {
@@ -545,8 +561,6 @@ impl ProcessGenerationControl {
 			}
 		}
 
-		let deadline = Instant::now() + wait;
-		let hard_signal_at = Instant::now() + wait / 2;
 		let mut hard_signal_sent = false;
 		while Instant::now() < deadline {
 			if refresh_owned_exit(&mut owned_process).is_err() {

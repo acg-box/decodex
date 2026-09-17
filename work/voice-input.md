@@ -250,3 +250,13 @@ Do not label the user's subscription ineligible or attempt to bypass admission.
 Thus subscription streaming recognition is empirically established through V3.
 The dedicated dictation protocol has the desired partial/final design, but its
 standalone access remains unqualified. It is not yet integrated into Decodex.
+
+
+### Admission diagnosis refinement (2026-09-17)
+
+A further handshake captured only non-secret response metadata. The response was
+HTTP 403, `server: cloudflare`, `cf-mitigated: challenge`, and HTML content rather
+than a dictation protocol response. The standalone request reaches an edge browser
+challenge before service admission. No audio was uploaded. This is not evidence of
+missing subscription eligibility. No challenge was bypassed and no desktop cookies
+were extracted. Evidence: `target/voice-qualification/dictation-admission-report.json`.

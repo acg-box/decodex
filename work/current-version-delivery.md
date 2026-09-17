@@ -113,3 +113,19 @@ blocks process admission. Earlier account-affinity limitations above describe th
 previous delivery. Composer menus now retain their content while animating closed.
 Full native animation acceptance and the surviving-helper recovery boundary remain
 open. Neither dictation nor Live has been integrated into the GPUI app yet.
+
+
+## Bounded cooperative process shutdown (2026-09-17)
+
+The retained bridge now closes child stdin before it waits to deliver the terminal
+event. A full event queue can no longer keep that private lifetime channel open.
+Exact owned termination closes private channels first and gives Codex up to half
+the existing termination budget (at most two seconds) to dispose its threads and
+helpers. TERM and KILL escalation remain within the original total budget.
+
+Evidence: the blocked-terminal regression uses a real Unix socket and verifies EOF
+before the consumer drains its full queue. Runtime tests: 319 passed, 1 ignored.
+Strict all-target/all-feature runtime Clippy passed. The original orphan helper PID
+62489 was absent on reinspection. No unrelated helper was signaled. This prevents
+one premature-termination path; it does not authorize killing restored or shared
+helpers. A surviving group still requires positive quiescence before reuse.
