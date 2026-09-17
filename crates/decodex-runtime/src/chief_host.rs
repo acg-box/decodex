@@ -82,6 +82,7 @@ struct Request {
 #[derive(Clone)]
 pub(crate) struct ChiefHost {
 	voice: crate::chief_voice::VoiceGateway,
+	dictation: crate::dictation::DictationGateway,
 	store: SqliteStore,
 	runtime: ConversationRuntime,
 	sender: mpsc::Sender<Request>,
@@ -93,6 +94,7 @@ impl ChiefHost {
 		let (sender, receiver) = mpsc::channel(32);
 		Self {
 			voice: crate::chief_voice::VoiceGateway::new(),
+			dictation: Default::default(),
 			store,
 			runtime,
 			sender,
@@ -105,6 +107,13 @@ impl ChiefHost {
 		request: &decodex_protocol::ChiefVoiceRequest,
 	) -> decodex_protocol::ChiefVoiceStatus {
 		self.voice.exchange(request)
+	}
+
+	pub(crate) async fn dictation(
+		&self,
+		request: &decodex_protocol::DictationRequest,
+	) -> decodex_protocol::DictationStatus {
+		self.dictation.exchange(request, self.runtime.chief_client()).await
 	}
 
 	pub(crate) async fn activity_detail(
@@ -192,6 +201,7 @@ impl ChiefHost {
 						}
 					},
 					_ = tick.tick() => {
+						self.dictation.expire().await;
 						if let Some(request)=self.voice.expire() {self.handle_voice(request,&mut active).await;}
 						self.rotate_exhausted(&mut active).await;
 						recovery.restore_if_due(
@@ -262,6 +272,9 @@ impl ChiefHost {
 		let Some((root, chief, _)) = active.as_mut() else {
 			return;
 		};
+		if self.dictation.active().await {
+			return;
+		}
 		if self.store.open_chief_voice_calls().await.map_or(true, |calls| !calls.is_empty()) {
 			return;
 		}

@@ -6,10 +6,11 @@ let package = Package(
 	name: "DecodexMenuBar",
 	platforms: [.macOS(.v27)],
 	products: [
-		.library(name: "DecodexMenuBar", type: .dynamic, targets: ["DecodexApp"]),
+		.library(name: "DecodexMenuBar", type: .dynamic, targets: ["DecodexApp", "DecodexTransport"]),
 	],
 	targets: [
 		.target(name: "DecodexApp"),
-		.testTarget(name: "DecodexAppTests", dependencies: ["DecodexApp"]),
+        .target(name: "DecodexTransport"),
+		.testTarget(name: "DecodexAppTests", dependencies: ["DecodexApp", "DecodexTransport"]),
 	],
 )

@@ -250,6 +250,26 @@ impl ChiefClient {
 		}
 	}
 
+	/// Stream dictation without submitting agent work.
+	pub async fn dictation(
+		&self,
+		request: crate::DictationRequest,
+	) -> Result<crate::DictationStatus, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let session = request.session_id().clone();
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner("dictation", QueryPayload::ExchangeDictation { request }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::Dictation(result) if result.session_id == session => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read the selected fields of one exact unresolved request.
 	pub async fn request(&self, event_id: i64) -> Result<crate::ChiefRequestResult, ClientFailure> {
 		self.transport.require_local_profile()?;
@@ -2255,8 +2275,8 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_23_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 24 });
+	fn protocol_constants_expose_only_the_exact_v2_25_version() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 25 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

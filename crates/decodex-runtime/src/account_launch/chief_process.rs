@@ -209,7 +209,8 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 		if !matches!(
 			method.as_str(),
 			Some(
-				"thread/realtime/start"
+				"getAuthStatus"
+					| "thread/realtime/start"
 					| "thread/realtime/stop"
 					| "model/list" | "experimentalFeature/list"
 					| "thread/start"

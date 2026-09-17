@@ -2174,12 +2174,16 @@ impl AccountObservationSignal {
 	}
 }
 
-/// Live queries available through the exact-current V2.24 protocol.
+/// Live queries available through the exact-current V2.25 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
-	/// Exchange transient voice signaling under explicit Chief call authorization.
-	/// This payload can start or stop media; it is not replayed or journaled.
+	/// Transient dictation transport owned by the service. No durable receipt or agent input.
+	ExchangeDictation {
+		/// Exact ephemeral operation.
+		request: crate::DictationRequest,
+	},
+	/// Exchange transient native voice signaling without a durable command receipt.
 	ExchangeChiefVoice {
 		/// Exact call operation, with memory-only session descriptions.
 		request: crate::ChiefVoiceRequest,
@@ -2288,7 +2292,7 @@ impl QueryPayload {
 	}
 }
 
-/// Commands available through the exact-current V2.24 protocol.
+/// Commands available through the exact-current V2.25 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
@@ -2755,12 +2759,14 @@ impl ResultPayload {
 	}
 }
 
-/// Typed live-query results available through the exact-current V2.24 protocol.
+/// Typed live-query results available through the exact-current V2.25 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
 	/// Ephemeral voice signaling readback.
 	ChiefVoice(crate::ChiefVoiceStatus),
+	/// Latest ephemeral dictation draft.
+	Dictation(crate::DictationStatus),
 	/// Selected public tool evidence.
 	ChiefActivityDetail(crate::ChiefActivityDetailResult),
 	/// Native model and Memory configuration evidence.
@@ -4355,7 +4361,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":24},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":25},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4364,7 +4370,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":24},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":25},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4406,7 +4412,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":24},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":25},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

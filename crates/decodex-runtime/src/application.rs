@@ -1806,6 +1806,14 @@ impl Application for ServiceApplication {
 
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
+			QueryPayload::ExchangeDictation { request } =>
+				QueryResultPayload::Dictation(match &self.chief {
+					Some(chief) => chief.dictation(request).await,
+					None => crate::dictation::failed(
+						request.session_id().clone(),
+						"Chief is not connected.",
+					),
+				}),
 			QueryPayload::ExchangeChiefVoice { request } =>
 				QueryResultPayload::ChiefVoice(match &self.chief {
 					Some(chief) => chief.voice(request),

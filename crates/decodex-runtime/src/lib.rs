@@ -20,6 +20,7 @@ mod chief_detail;
 mod chief_host;
 mod chief_voice;
 mod conversation;
+mod dictation;
 mod domain_packs;
 #[expect(dead_code, reason = "sealed until the accepted GitHub-effect composition owner")]
 pub(crate) mod github_effects;
