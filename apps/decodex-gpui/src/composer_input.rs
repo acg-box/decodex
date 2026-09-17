@@ -729,6 +729,25 @@ mod multiline_tests {
 	use super::*;
 
 	#[gpui::test]
+	fn ordinary_draft_preserves_composition_undo_and_redo(cx: &mut gpui::TestAppContext) {
+		cx.update(bind_keys);
+		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+		visual.update(|window, cx| {
+			window.focus(&input.focus_handle(cx), cx);
+			input.update(cx, |input, cx| {
+				input.replace_and_mark_text_in_range(None, "ni", Some(2..2), window, cx);
+				input.replace_and_mark_text_in_range(None, "你", Some(1..1), window, cx);
+				input.replace_text_in_range(None, "你", window, cx);
+				assert_eq!(input.content(), "你");
+				input.undo(&Undo, window, cx);
+				assert_eq!(input.content(), "");
+				input.redo(&Redo, window, cx);
+				assert_eq!(input.content(), "你");
+			});
+		});
+	}
+
+	#[gpui::test]
 	fn newline_wrap_and_native_caret_share_geometry(cx: &mut gpui::TestAppContext) {
 		cx.update(bind_keys);
 		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));

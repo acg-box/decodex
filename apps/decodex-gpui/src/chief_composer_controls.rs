@@ -138,7 +138,7 @@ impl ChiefSurface {
 					))
 					.into_any_element(),
 		};
-		for pair in models.chunks(2) {
+		for pair in models.chunks(1) {
 			let mut row = div().flex().gap(px(5.));
 			for entry in pair {
 				let model = entry.model.as_str().to_owned();
@@ -191,9 +191,7 @@ impl ChiefSurface {
 						.smooth(),
 				);
 			}
-			if pair.len() == 1 {
-				row = row.child(div().flex_1());
-			}
+
 			palette = palette.child(row);
 		}
 		palette.into_any_element()
