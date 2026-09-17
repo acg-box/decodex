@@ -35,6 +35,8 @@ pub enum CollaborationActivityKind {
 	Interacted,
 	/// The child activity was interrupted.
 	Interrupted,
+	/// The child activity completed.
+	Completed,
 	/// A forward-compatible activity kind was discarded.
 	Unknown,
 }
@@ -52,6 +54,14 @@ pub enum CollaborationTool {
 	Wait,
 	/// Close a run-local agent.
 	CloseAgent,
+	/// Send a message without starting another turn.
+	SendMessage,
+	/// Send a task and start an idle agent.
+	FollowupTask,
+	/// Interrupt an agent's active turn.
+	InterruptAgent,
+	/// Read the native agent inventory.
+	ListAgents,
 	/// A forward-compatible tool name was discarded.
 	Unknown,
 }
@@ -65,6 +75,8 @@ pub enum CollaborationToolStatus {
 	Completed,
 	/// The tool call failed.
 	Failed,
+	/// The tool call was interrupted.
+	Interrupted,
 	/// A forward-compatible status was discarded.
 	Unknown,
 }
@@ -102,8 +114,10 @@ pub enum TurnStatus {
 /// Run-local Codex actor. Optional nickname/role fields are never identity.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RunLocalActor {
-	/// Child thread identity used as the runtime actor identity.
+	/// Target agent thread identity used as the runtime actor identity.
 	pub id: ThreadId,
+	/// Thread whose turn contains this activity; it can be a peer of the actor.
+	pub source_thread_id: ThreadId,
 	/// Parent thread identity when supplied by Codex.
 	pub parent_id: Option<ThreadId>,
 	/// Closed activity classification.
@@ -399,8 +413,10 @@ fn normalize_item(params: &Value, completed: bool) -> Result<NormalizedEvent, Ev
 
 	if item_type == "subAgentActivity" {
 		return Ok(NormalizedEvent::CollaborationActivity(RunLocalActor {
-			id: thread_id(params, "threadId")?,
-			parent_id: Some(thread_id(item, "agentThreadId")?),
+			id: thread_id(item, "agentThreadId")?,
+			source_thread_id: thread_id(params, "threadId")?,
+			// Activity can be emitted for peer messaging. It does not prove ancestry.
+			parent_id: None,
 			activity: collaboration_activity(string_field(item, "kind")?),
 			optional_metadata_present: item.get("agentNickname").is_some()
 				|| item.get("agentRole").is_some(),
@@ -506,6 +522,7 @@ fn collaboration_activity(value: &str) -> CollaborationActivityKind {
 		"started" => CollaborationActivityKind::Started,
 		"interacted" => CollaborationActivityKind::Interacted,
 		"interrupted" => CollaborationActivityKind::Interrupted,
+		"completed" => CollaborationActivityKind::Completed,
 		_ => CollaborationActivityKind::Unknown,
 	}
 }
@@ -517,6 +534,10 @@ fn collaboration_tool(value: &str) -> CollaborationTool {
 		"resumeAgent" => CollaborationTool::ResumeAgent,
 		"wait" => CollaborationTool::Wait,
 		"closeAgent" => CollaborationTool::CloseAgent,
+		"sendMessage" => CollaborationTool::SendMessage,
+		"followupTask" => CollaborationTool::FollowupTask,
+		"interruptAgent" => CollaborationTool::InterruptAgent,
+		"listAgents" => CollaborationTool::ListAgents,
 		_ => CollaborationTool::Unknown,
 	}
 }
@@ -526,6 +547,7 @@ fn collaboration_tool_status(value: &str) -> CollaborationToolStatus {
 		"inProgress" => CollaborationToolStatus::InProgress,
 		"completed" => CollaborationToolStatus::Completed,
 		"failed" => CollaborationToolStatus::Failed,
+		"interrupted" => CollaborationToolStatus::Interrupted,
 		_ => CollaborationToolStatus::Unknown,
 	}
 }
@@ -536,6 +558,35 @@ mod tests {
 		CollaborationActivityKind, CollaborationTool, CollaborationToolStatus, NormalizedEvent,
 		OpaqueId, RunLocalActor, ThreadId, ThreadStatus, TurnStatus, event,
 	};
+
+	#[test]
+	fn native_v2_tools_and_completion_remain_classified_without_exposing_payloads() {
+		for (wire, expected) in [
+			("sendMessage", CollaborationTool::SendMessage),
+			("followupTask", CollaborationTool::FollowupTask),
+			("interruptAgent", CollaborationTool::InterruptAgent),
+			("listAgents", CollaborationTool::ListAgents),
+		] {
+			let frame = serde_json::json!({"method":"item/completed","params":{
+				"threadId":"parent","turnId":"turn","item":{"id":"call","type":"collabAgentToolCall",
+				"senderThreadId":"parent","receiverThreadIds":["child"],"tool":wire,"status":"interrupted","prompt":"private-text"}}});
+			let event = event::normalize_event(frame.to_string().as_bytes()).unwrap();
+			assert!(
+				matches!(&event, NormalizedEvent::CollaborationToolCall(call) if call.tool == expected && call.status == CollaborationToolStatus::Interrupted)
+			);
+			assert!(!format!("{event:?}").contains("private-text"));
+		}
+		let frame = br#"{"method":"item/completed","params":{"threadId":"parent","turnId":"turn","item":{"id":"activity","type":"subAgentActivity","kind":"completed","agentThreadId":"child"}}}"#;
+		let event = event::normalize_event(frame).unwrap();
+		assert!(matches!(
+			event,
+			NormalizedEvent::CollaborationActivity(RunLocalActor {
+				id, source_thread_id, parent_id: None,
+				activity: CollaborationActivityKind::Completed,
+				..
+			}) if id == ThreadId::from_protocol("child") && source_thread_id == ThreadId::from_protocol("parent")
+		));
+	}
 
 	#[test]
 	fn message_delta_discards_all_free_form_content() {
@@ -598,8 +649,9 @@ mod tests {
 		assert_eq!(
 			event,
 			NormalizedEvent::CollaborationActivity(RunLocalActor {
-				id: ThreadId::from_protocol("child"),
-				parent_id: Some(ThreadId::from_protocol("parent")),
+				id: ThreadId::from_protocol("parent"),
+				source_thread_id: ThreadId::from_protocol("child"),
+				parent_id: None,
 				activity: CollaborationActivityKind::Interacted,
 				optional_metadata_present: true,
 				turn_id: OpaqueId::from_protocol("turn"),

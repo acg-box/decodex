@@ -701,13 +701,20 @@ mod tests {
             let input = json!([{"type":"text","text":"Reply with exactly OK. Do not use any tools."}]);
             tokio::try_join!(client.turn_start(json!({"threadId":one,"input":input,"effort":"medium"})), client.turn_start(json!({"threadId":two,"input":input,"effort":"medium"})))?;
             let mut completed = std::collections::HashSet::new();
+            let mut usage_seen = std::collections::HashSet::new();
             while completed.len() < 2 {
                 match events.recv().await {
+                    Some(ServerEvent::Notification { method, params }) if method == "thread/tokenUsage/updated" => {
+                        let usage: crate::ThreadTokenUsage = serde_json::from_value(params["tokenUsage"].clone()).map_err(|_| ClientError::InvalidFrame)?;
+                        if !usage.is_valid() { return Err(ClientError::InvalidFrame); }
+                        usage_seen.insert((params["threadId"].as_str().ok_or(ClientError::InvalidFrame)?.to_owned(), params["turnId"].as_str().ok_or(ClientError::InvalidFrame)?.to_owned()));
+                    },
                     Some(ServerEvent::Notification { method, params }) if method == "turn/completed" => {
                         let thread = params["threadId"].as_str().ok_or(ClientError::InvalidFrame)?;
                         if thread != one && thread != two { return Err(ClientError::InvalidFrame); }
                         if params["turn"]["status"] != "completed" { return Err(ClientError::InvalidFrame); }
                         let turn = params["turn"]["id"].as_str().ok_or(ClientError::InvalidFrame)?;
+                        if !usage_seen.contains(&(thread.to_owned(), turn.to_owned())) { return Err(ClientError::InvalidFrame); }
                         let history = client.thread_read_turn(thread, turn).await?;
                         if history["thread"]["turns"][0]["id"] != turn
                             || !history["thread"]["turns"][0]["items"].as_array().is_some_and(|items| items.iter().any(|item| item["type"] == "agentMessage" && item["text"].as_str().is_some_and(|text| text.contains("OK")))) {

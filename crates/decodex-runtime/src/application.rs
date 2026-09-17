@@ -3545,10 +3545,19 @@ async fn query_chief_request(
 		return ChiefRequestResult::Unavailable;
 	};
 	let keys: &[&str] = match method {
-		"item/commandExecution/requestApproval" =>
-			&["command", "cwd", "reason", "availableDecisions"],
+		"item/commandExecution/requestApproval" => &[
+			"kind",
+			"command",
+			"cwd",
+			"reason",
+			"availableDecisions",
+			"additionalPermissions",
+			"networkApprovalContext",
+			"proposedExecpolicyAmendment",
+			"proposedNetworkPolicyAmendments",
+		],
 		"item/fileChange/requestApproval" => &["reason", "grantRoot"],
-		"item/permissions/requestApproval" => &["reason", "permissions"],
+		"item/permissions/requestApproval" => &["cwd", "reason", "permissions"],
 		"item/tool/requestUserInput" => &["questions"],
 		_ => return ChiefRequestResult::Unavailable,
 	};
@@ -3556,8 +3565,14 @@ async fn query_chief_request(
 	for key in keys {
 		if let Some(value) = params.get(*key) {
 			let valid = match *key {
+				"kind" => matches!(value.as_str(), Some("command" | "writeStdin")),
 				"command" | "cwd" | "reason" | "grantRoot" => value.is_null() || value.is_string(),
-				"questions" | "availableDecisions" => value.is_array(),
+				"questions" => value.is_array(),
+				"availableDecisions"
+				| "proposedExecpolicyAmendment"
+				| "proposedNetworkPolicyAmendments" => value.is_null() || value.is_array(),
+				"additionalPermissions" | "networkApprovalContext" =>
+					value.is_null() || value.is_object(),
 				"permissions" => value.is_object(),
 				_ => false,
 			};
@@ -3566,6 +3581,9 @@ async fn query_chief_request(
 			}
 			selected.insert((*key).into(), value.clone());
 		}
+	}
+	if method == "item/commandExecution/requestApproval" && !selected.contains_key("kind") {
+		selected.insert("kind".into(), serde_json::json!("command"));
 	}
 	let Ok(request_json) =
 		decodex_protocol::HistoryText::new(serde_json::Value::Object(selected).to_string())
@@ -3592,18 +3610,40 @@ async fn query_chief_history(
 		return ChiefHistoryResult::Unavailable;
 	};
 	let mut has_more = events.len() > 32;
+	let mut rendered_messages = std::collections::HashSet::<(String, String)>::new();
 	let mut entries = Vec::new();
 	let mut remaining = 64 * 1024;
 	for event in events.into_iter().rev().take(32) {
 		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap_or_default();
+		let mut completed_message_ids = Vec::new();
 		let (kind, mut text) = match event.event_kind.as_str() {
 			"user_message" => ("user", value["text"].as_str().unwrap_or("").to_owned()),
+			"assistant_message" => {
+				if let (Some(turn), Some(item)) =
+					(value["turnId"].as_str(), value["item"]["id"].as_str())
+					&& rendered_messages.contains(&(turn.to_owned(), item.to_owned()))
+				{
+					continue;
+				}
+				has_more |= value["truncated"] == true;
+				("assistant", value["item"]["text"].as_str().unwrap_or("").to_owned())
+			},
+			"context_compacted" => ("system", "Codex compacted the thread context.".into()),
 			"chief_turn_completed" | "worker_turn_completed" => {
 				let messages = value.pointer("/threadReadback/assistantMessages");
 				let parsed = messages
 					.and_then(serde_json::Value::as_str)
 					.and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
 				let messages = parsed.as_ref().or(messages);
+				let turn = value
+					.pointer("/threadReadback/turnId")
+					.and_then(serde_json::Value::as_str)
+					.unwrap_or("");
+				if let Some(items) = messages.and_then(serde_json::Value::as_array) {
+					completed_message_ids.extend(items.iter().filter_map(|item| {
+						Some((turn.to_owned(), item["id"].as_str()?.to_owned()))
+					}));
+				}
 				let text = messages
 					.and_then(serde_json::Value::as_array)
 					.map(|items| {
@@ -3625,6 +3665,26 @@ async fn query_chief_history(
 					has_more = true;
 					text.insert_str(0, "[Assistant output truncated in saved history.]\n\n");
 				}
+				if let Some(usage) = value
+					.pointer("/threadReadback/tokenUsage")
+					.and_then(crate::chief::observations::usage_text)
+				{
+					text.push_str("\n\n");
+					text.push_str(&usage);
+				}
+				for path in [
+					"/terminal/turn/error/message",
+					"/terminal/turn/error/misalignment/detailedExplanation",
+				] {
+					if let Some(detail) = value
+						.pointer(path)
+						.and_then(serde_json::Value::as_str)
+						.filter(|text| !text.trim().is_empty())
+					{
+						text.push_str("\n\n");
+						text.push_str(detail);
+					}
+				}
 				("assistant", text)
 			},
 			"automation_result" =>
@@ -3643,7 +3703,10 @@ async fn query_chief_history(
 			_ => ("system", event.event_kind.clone()),
 		};
 		if let Some(note) = event.disposition_note.filter(|_| {
-			event.event_kind != "chief_turn_completed" && event.event_kind != "user_message"
+			!matches!(
+				event.event_kind.as_str(),
+				"chief_turn_completed" | "user_message" | "assistant_message" | "context_compacted"
+			)
 		}) {
 			text.push_str("\n\nDisposition: ");
 			text.push_str(&note);
@@ -3652,9 +3715,15 @@ async fn query_chief_history(
 		while !text.is_char_boundary(bound) {
 			bound -= 1;
 		}
-		if bound < text.len() {
+		let fully_rendered = bound == text.len();
+		if !fully_rendered {
 			has_more = true;
 			text.truncate(bound);
+		}
+		if fully_rendered
+			&& value.pointer("/threadReadback/truncated") != Some(&serde_json::json!(true))
+		{
+			rendered_messages.extend(completed_message_ids);
 		}
 		remaining -= bound;
 		entries.push(ChiefHistoryEntryDto {
@@ -3669,6 +3738,21 @@ async fn query_chief_history(
 		}
 	}
 	entries.reverse();
+	if remaining >= 1024
+		&& let Ok(work) = store.get_chief_work_item(id.to_owned()).await
+		&& let Some(turn) = work.active_turn_id
+		&& let Ok(Some(event)) = store.read_chief_turn_usage(id.to_owned(), turn).await
+		&& let Ok(value) = serde_json::from_str::<serde_json::Value>(&event.payload)
+		&& let Some(text) = crate::chief::observations::usage_text(&value["tokenUsage"])
+	{
+		entries.push(ChiefHistoryEntryDto {
+			id: event.id,
+			kind: "usage".into(),
+			text,
+			created_at_micros: event.created_at_micros,
+		});
+		entries.sort_by_key(|entry| entry.id);
+	}
 	ChiefHistoryResult::Available { entries, has_more }
 }
 
@@ -4045,6 +4129,70 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn chief_history_shows_async_questions_once_and_reports_live_usage() {
+		use decodex_database::EnqueueChiefEvent;
+		use decodex_protocol::ChiefHistoryResult;
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(store.clone());
+		chief_query_work(&store, "chosen").await;
+		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
+		store.begin_chief_dispatch("chosen".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("chosen".into(), "turn".into()).await.unwrap();
+		let question = serde_json::json!({"id":"question","type":"agentMessage","delivery":"async","text":"Which format?\n- PDF\n- Markdown"});
+		store
+			.record_chief_observation(EnqueueChiefEvent {
+				source_event_id: "question".into(),
+				work_item_id: "chosen".into(),
+				event_kind: "assistant_message".into(),
+				payload: serde_json::json!({"threadId":"thread","turnId":"turn","item":question})
+					.to_string(),
+			})
+			.await
+			.unwrap();
+		let counts = serde_json::json!({"totalTokens":1200,"inputTokens":1000,"cachedInputTokens":500,"outputTokens":200,"reasoningOutputTokens":100});
+		let usage = serde_json::json!({"total":counts,"last":counts,"modelContextWindow":128000});
+		store
+			.record_chief_observation(EnqueueChiefEvent {
+				source_event_id: "usage".into(),
+				work_item_id: "chosen".into(),
+				event_kind: "token_usage".into(),
+				payload:
+					serde_json::json!({"threadId":"thread","turnId":"turn","tokenUsage":usage})
+						.to_string(),
+			})
+			.await
+			.unwrap();
+		let ChiefHistoryResult::Available { entries, .. } =
+			super::query_chief_history(&owner, "chosen").await
+		else {
+			panic!("history");
+		};
+		assert!(entries.iter().any(|entry| entry.text.contains("Which format?")));
+		assert!(
+			entries
+				.iter()
+				.any(|entry| entry.text.contains("input 1000") && entry.text.contains("128000"))
+		);
+		store.complete_chief_turn_with_event("chosen".into(), "turn".into(), EnqueueChiefEvent {
+			source_event_id:"completed".into(),work_item_id:"chosen".into(),event_kind:"chief_turn_completed".into(),
+			payload:serde_json::json!({"threadReadback":{"turnId":"turn","assistantMessages":[question],"tokenUsage":usage}}).to_string()
+		}).await.unwrap();
+		let ChiefHistoryResult::Available { entries, .. } =
+			super::query_chief_history(&owner, "chosen").await
+		else {
+			panic!("history");
+		};
+		assert_eq!(entries.iter().filter(|entry| entry.text.contains("Which format?")).count(), 1);
+		assert_eq!(
+			entries.iter().filter(|entry| entry.text.contains("Thread total tokens: 1200")).count(),
+			1
+		);
+		assert!(entries.iter().all(|entry| !entry.text.contains("Provider observation recorded")));
+	}
+
+	#[tokio::test]
 	async fn chief_history_query_selects_latest_work_and_bounds_utf8_content() {
 		use decodex_database::EnqueueChiefEvent;
 		use decodex_protocol::ChiefHistoryResult;
@@ -4144,6 +4292,27 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn chief_history_explains_provider_failure_without_submitting_continuation() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		chief_query_work(&store, "chosen").await;
+		store.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
+			source_event_id:"failure".into(),work_item_id:"chosen".into(),event_kind:"chief_turn_completed".into(),
+			payload:serde_json::json!({"terminal":{"turn":{"status":"failed","error":{"message":"Provider stopped the turn.","misalignment":{"detailedExplanation":"Please clarify the intended scope.","steer":{"message":"unconfirmed continuation"}}}}}}).to_string(),
+		}).await.unwrap();
+		let decodex_protocol::ChiefHistoryResult::Available { entries, .. } =
+			super::query_chief_history(&ProductStore::Available(store.clone()), "chosen").await
+		else {
+			panic!("history");
+		};
+		assert!(entries[0].text.contains("Provider stopped the turn."));
+		assert!(entries[0].text.contains("Please clarify the intended scope."));
+		assert!(!entries[0].text.contains("unconfirmed continuation"));
+		assert!(store.list_chief_wake_events("chosen".into(), 10).await.unwrap().is_empty());
+	}
+
+	#[tokio::test]
 	async fn chief_request_query_filters_private_fields_and_rejects_stale_malformed_or_resolved() {
 		use decodex_database::EnqueueChiefEvent;
 		use decodex_protocol::ChiefRequestResult;
@@ -4177,14 +4346,41 @@ mod tests {
 		assert_eq!(work_id, "worker");
 		let selected: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
 		assert_eq!(selected["command"], "pwd");
+		assert_eq!(selected["kind"], "command");
 		assert!(!request_json.as_str().contains("private"));
 		assert!(selected.get("threadId").is_none());
+		let mut stdin = payload.clone();
+		stdin["params"]["kind"] = serde_json::json!("writeStdin");
+		stdin["params"]["command"] = serde_json::json!("yes\\n");
+		stdin["params"]["availableDecisions"] = serde_json::Value::Null;
+		stdin["params"]["additionalPermissions"] = serde_json::json!({"network":{"enabled":true}});
+		let stdin = store
+			.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id: "stdin-request".into(),
+				work_item_id: "worker".into(),
+				event_kind: "permission_pending".into(),
+				payload: stdin.to_string(),
+			})
+			.await
+			.unwrap();
+		let ChiefRequestResult::Available { request_json, .. } =
+			super::query_chief_request(&owner, stdin.id).await
+		else {
+			panic!("stdin request");
+		};
+		let selected: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
+		assert_eq!(selected["kind"], "writeStdin");
+		assert_eq!(selected["additionalPermissions"]["network"]["enabled"], true);
+		assert!(!request_json.as_str().contains("private"));
 		store.acknowledge_chief_request_event(event.id).await.unwrap();
 		assert_eq!(
 			super::query_chief_request(&owner, event.id).await,
 			ChiefRequestResult::Unavailable
 		);
 		let mut invalids = Vec::new();
+		let mut unknown_kind = payload.clone();
+		unknown_kind["params"]["kind"] = serde_json::json!("unknown-action");
+		invalids.push(unknown_kind);
 		let mut stale = payload.clone();
 		stale["params"]["turnId"] = serde_json::json!("old-turn");
 		invalids.push(stale);

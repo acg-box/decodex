@@ -9,6 +9,7 @@ use decodex_database::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+pub(crate) mod observations;
 mod result_messages;
 
 /// Execution policy selected by the user, applied to actual app-server requests.
@@ -239,7 +240,7 @@ impl ChiefCoordinator {
 		if item.dispatch_state != decodex_database::ChiefDispatchState::Running {
 			self.store.reconcile_chief_dispatch(item.id.clone(), turn.clone()).await?;
 		}
-		let evidence = match history {
+		let mut evidence = match history {
 			Ok(value) => {
 				let exact_turn =
 					value.pointer("/thread/turns").and_then(Value::as_array).and_then(|turns| {
@@ -254,6 +255,12 @@ impl ChiefCoordinator {
 				json!({"readbackError":bounded,"truncated":bounded.len()<detail.len()})
 			},
 		};
+		if let Ok(Some(usage)) =
+			self.store.read_chief_turn_usage(item.id.clone(), turn.clone()).await
+			&& let Ok(value) = serde_json::from_str::<Value>(&usage.payload)
+		{
+			evidence["tokenUsage"] = value["tokenUsage"].clone();
+		}
 		self.store
 			.complete_chief_turn_with_event(
 				item.id.clone(),
@@ -662,6 +669,15 @@ impl ChiefCoordinator {
 	/// correlation continue independently while this method awaits a response.
 	pub async fn handle_event(&mut self, event: ServerEvent) -> Result<(), ChiefError> {
 		match event {
+			ServerEvent::Notification { method, params }
+				if method == "thread/tokenUsage/updated"
+					|| (method == "item/completed"
+						&& (params["item"]["type"] == "contextCompaction"
+							|| (params["item"]["type"] == "agentMessage"
+								&& params["item"]["delivery"] == "async"))) =>
+			{
+				self.observe_notification(&method, &params).await?;
+			},
 			ServerEvent::Notification { method, params }
 				if ["thread/closed", "thread/archived", "thread/deleted"]
 					.contains(&method.as_str()) =>

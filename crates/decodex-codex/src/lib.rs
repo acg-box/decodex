@@ -24,6 +24,9 @@ mod capability;
 mod conversation;
 mod dispatch;
 mod event;
+mod usage;
+
+pub use usage::{ThreadTokenUsage, TokenUsageBreakdown};
 
 pub use self::{
 	account_api::{
