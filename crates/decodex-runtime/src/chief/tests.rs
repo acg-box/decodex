@@ -1,6 +1,51 @@
 use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[tokio::test]
+async fn asynchronous_questions_and_usage_are_observed_without_completing_or_waking_work() {
+	let (mut coordinator, mut sent, _directory) = fixture().await;
+	coordinator.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let message = json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{
+		"id":"question","type":"agentMessage","delivery":"async","text":"Which format?\n- PDF\n- Markdown",
+		"questions":[{"title":"Which format?","options":["PDF","Markdown"]}]}});
+	for _ in 0..2 {
+		coordinator
+			.handle_event(ServerEvent::Notification {
+				method: "item/completed".into(),
+				params: message.clone(),
+			})
+			.await
+			.unwrap();
+	}
+	let counts = json!({"totalTokens":1200,"inputTokens":1000,"cachedInputTokens":500,"outputTokens":200,"reasoningOutputTokens":100});
+	coordinator.handle_event(ServerEvent::Notification { method:"thread/tokenUsage/updated".into(), params:json!({
+		"threadId":"opaque thread/1","turnId":"opaque turn/1","tokenUsage":{"total":counts,"last":counts,"modelContextWindow":128000}
+	}) }).await.unwrap();
+	coordinator.handle_event(ServerEvent::Notification { method:"item/completed".into(), params:json!({
+		"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{"type":"contextCompaction","id":"compact"}
+	}) }).await.unwrap();
+	let work = coordinator.store.get_chief_work_item("chief".into()).await.unwrap();
+	assert_eq!(work.dispatch_state, decodex_database::ChiefDispatchState::Running);
+	let history = coordinator.store.read_chief_work_events("chief".into(), 10).await.unwrap();
+	assert_eq!(history.len(), 2);
+	assert_eq!(history[0].event_kind, "assistant_message");
+	assert!(coordinator.store.list_pending_chief_events(10).await.unwrap().is_empty());
+	coordinator.wake_pending().await.unwrap();
+	assert!(sent.try_recv().is_err());
+	coordinator.recover_persisted().await.unwrap();
+	let usage = coordinator
+		.store
+		.read_chief_turn_usage("chief".into(), "opaque turn/1".into())
+		.await
+		.unwrap()
+		.unwrap();
+	assert_eq!(
+		serde_json::from_str::<Value>(&usage.payload).unwrap()["tokenUsage"]["last"]["inputTokens"],
+		1000
+	);
+}
+
 #[path = "tests/inbox_carryover.rs"] mod inbox_carryover;
 
 #[path = "tests/result_integrity.rs"] mod result_integrity;

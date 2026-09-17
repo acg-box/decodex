@@ -145,7 +145,7 @@ impl SqliteStore {
 		let limit = page_limit(limit)?;
 		self.run(move |connection| {
 			read_work(connection, &work_id)?;
-			connection.prepare("SELECT * FROM (SELECT * FROM chief_inbox_events WHERE work_item_id = ?1 ORDER BY id DESC LIMIT ?2) ORDER BY id")
+			connection.prepare("SELECT * FROM (SELECT * FROM chief_inbox_events WHERE work_item_id = ?1 AND event_kind != 'token_usage' ORDER BY id DESC LIMIT ?2) ORDER BY id")
 				.map_err(sqlite_error)?.query_map(params![work_id, limit], event_row)
 				.map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
 		}).await
@@ -527,6 +527,42 @@ impl SqliteStore {
 		&self,
 		input: EnqueueChiefEvent,
 	) -> Result<ChiefInboxEvent, StoreError> {
+		self.insert_chief_event(input, false).await
+	}
+
+	/// Save a provider observation without creating a model wake or an unresolved obligation.
+	pub async fn record_chief_observation(
+		&self,
+		input: EnqueueChiefEvent,
+	) -> Result<ChiefInboxEvent, StoreError> {
+		if !matches!(
+			input.event_kind.as_str(),
+			"assistant_message" | "token_usage" | "context_compacted"
+		) || !serde_json::from_str::<serde_json::Value>(&input.payload)
+			.is_ok_and(|value| value.is_object())
+		{
+			return Err(StoreError::InvalidInput("invalid Chief observation"));
+		}
+		self.insert_chief_event(input, true).await
+	}
+
+	/// Read the last observed usage for one exact work turn, including after restart.
+	pub async fn read_chief_turn_usage(
+		&self,
+		work_id: String,
+		turn_id: String,
+	) -> Result<Option<ChiefInboxEvent>, StoreError> {
+		self.run(move |connection| {
+			connection.query_row("SELECT * FROM chief_inbox_events WHERE work_item_id = ?1 AND event_kind = 'token_usage' AND json_extract(payload, '$.turnId') = ?2 ORDER BY id DESC LIMIT 1", params![work_id, turn_id], event_row)
+				.optional().map_err(|error| sqlite_error(error).into())
+		}).await
+	}
+
+	async fn insert_chief_event(
+		&self,
+		input: EnqueueChiefEvent,
+		observation: bool,
+	) -> Result<ChiefInboxEvent, StoreError> {
 		bounded(&input.source_event_id, 2048)?;
 		bounded(&input.event_kind, 128)?;
 		if input.payload.len() > 65536 {
@@ -541,8 +577,10 @@ impl SqliteStore {
 				} else { Err(StoreError::IdempotencyConflict) };
 			}
 			if !work_exists(&transaction, &input.work_item_id)? { return Err(DatabaseError::NotFound.into()); }
-			transaction.execute("INSERT INTO chief_inbox_events (source_event_id, work_item_id, event_kind, payload, created_at_micros) VALUES (?1, ?2, ?3, ?4, ?5)",
-				params![input.source_event_id, input.work_item_id, input.event_kind, input.payload, unix_micros()?]).map_err(sqlite_error)?;
+			let now = unix_micros()?;
+			transaction.execute("INSERT INTO chief_inbox_events (source_event_id, work_item_id, event_kind, payload, created_at_micros, disposition, disposition_note, disposed_at_micros) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+				params![input.source_event_id, input.work_item_id, input.event_kind, input.payload, now,
+					observation.then_some("resolved"), observation.then_some("Provider observation recorded; work judgment unchanged."), observation.then_some(now)]).map_err(sqlite_error)?;
 			let event = read_event(&transaction, transaction.last_insert_rowid())?;
 			transaction.commit().map_err(sqlite_error)?;
 			Ok(event)
@@ -858,6 +896,43 @@ mod tests {
 	mod inbox_carryover;
 	use super::*;
 	use tempfile::tempdir;
+
+	#[tokio::test]
+	async fn observations_are_durable_deduplicated_and_never_pending_work() {
+		let directory = tempdir().unwrap();
+		let path = directory.path().join("chief.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		store.create_chief_work_item(item("chief", None)).await.unwrap();
+		for sequence in 0..3 {
+			let input = EnqueueChiefEvent {
+				source_event_id: format!("usage-{sequence}"),
+				work_item_id: "chief".into(),
+				event_kind: "token_usage".into(),
+				payload: serde_json::json!({"turnId":"turn","sequence":sequence}).to_string(),
+			};
+			let first = store.record_chief_observation(input.clone()).await.unwrap();
+			assert_eq!(store.record_chief_observation(input).await.unwrap().id, first.id);
+			assert_eq!(first.disposition, Some(ChiefDisposition::Resolved));
+		}
+		assert!(store.list_pending_chief_events(10).await.unwrap().is_empty());
+		assert!(store.list_chief_wake_events("chief".into(), 10).await.unwrap().is_empty());
+		assert!(store.read_chief_work_events("chief".into(), 10).await.unwrap().is_empty());
+		assert_eq!(
+			store.get_chief_work_item("chief".into()).await.unwrap().status,
+			ChiefWorkStatus::Open
+		);
+		drop(store);
+		let store = SqliteStore::open_test(&path).unwrap();
+		let event =
+			store.read_chief_turn_usage("chief".into(), "turn".into()).await.unwrap().unwrap();
+		assert_eq!(
+			serde_json::from_str::<serde_json::Value>(&event.payload).unwrap()["sequence"],
+			2
+		);
+		assert!(
+			store.read_chief_turn_usage("chief".into(), "other".into()).await.unwrap().is_none()
+		);
+	}
 
 	fn item(id: &str, parent: Option<&str>) -> ChiefWorkItem {
 		ChiefWorkItem {

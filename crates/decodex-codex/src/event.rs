@@ -35,6 +35,8 @@ pub enum CollaborationActivityKind {
 	Interacted,
 	/// The child activity was interrupted.
 	Interrupted,
+	/// The child activity completed.
+	Completed,
 	/// A forward-compatible activity kind was discarded.
 	Unknown,
 }
@@ -52,6 +54,14 @@ pub enum CollaborationTool {
 	Wait,
 	/// Close a run-local agent.
 	CloseAgent,
+	/// Send a message without starting another turn.
+	SendMessage,
+	/// Send a task and start an idle agent.
+	FollowupTask,
+	/// Interrupt an agent's active turn.
+	InterruptAgent,
+	/// Read the native agent inventory.
+	ListAgents,
 	/// A forward-compatible tool name was discarded.
 	Unknown,
 }
@@ -65,6 +75,8 @@ pub enum CollaborationToolStatus {
 	Completed,
 	/// The tool call failed.
 	Failed,
+	/// The tool call was interrupted.
+	Interrupted,
 	/// A forward-compatible status was discarded.
 	Unknown,
 }
@@ -506,6 +518,7 @@ fn collaboration_activity(value: &str) -> CollaborationActivityKind {
 		"started" => CollaborationActivityKind::Started,
 		"interacted" => CollaborationActivityKind::Interacted,
 		"interrupted" => CollaborationActivityKind::Interrupted,
+		"completed" => CollaborationActivityKind::Completed,
 		_ => CollaborationActivityKind::Unknown,
 	}
 }
@@ -517,6 +530,10 @@ fn collaboration_tool(value: &str) -> CollaborationTool {
 		"resumeAgent" => CollaborationTool::ResumeAgent,
 		"wait" => CollaborationTool::Wait,
 		"closeAgent" => CollaborationTool::CloseAgent,
+		"sendMessage" => CollaborationTool::SendMessage,
+		"followupTask" => CollaborationTool::FollowupTask,
+		"interruptAgent" => CollaborationTool::InterruptAgent,
+		"listAgents" => CollaborationTool::ListAgents,
 		_ => CollaborationTool::Unknown,
 	}
 }
@@ -526,6 +543,7 @@ fn collaboration_tool_status(value: &str) -> CollaborationToolStatus {
 		"inProgress" => CollaborationToolStatus::InProgress,
 		"completed" => CollaborationToolStatus::Completed,
 		"failed" => CollaborationToolStatus::Failed,
+		"interrupted" => CollaborationToolStatus::Interrupted,
 		_ => CollaborationToolStatus::Unknown,
 	}
 }
@@ -536,6 +554,34 @@ mod tests {
 		CollaborationActivityKind, CollaborationTool, CollaborationToolStatus, NormalizedEvent,
 		OpaqueId, RunLocalActor, ThreadId, ThreadStatus, TurnStatus, event,
 	};
+
+	#[test]
+	fn native_v2_tools_and_completion_remain_classified_without_exposing_payloads() {
+		for (wire, expected) in [
+			("sendMessage", CollaborationTool::SendMessage),
+			("followupTask", CollaborationTool::FollowupTask),
+			("interruptAgent", CollaborationTool::InterruptAgent),
+			("listAgents", CollaborationTool::ListAgents),
+		] {
+			let frame = serde_json::json!({"method":"item/completed","params":{
+				"threadId":"parent","turnId":"turn","item":{"id":"call","type":"collabAgentToolCall",
+				"senderThreadId":"parent","receiverThreadIds":["child"],"tool":wire,"status":"interrupted","prompt":"private-text"}}});
+			let event = event::normalize_event(frame.to_string().as_bytes()).unwrap();
+			assert!(
+				matches!(&event, NormalizedEvent::CollaborationToolCall(call) if call.tool == expected && call.status == CollaborationToolStatus::Interrupted)
+			);
+			assert!(!format!("{event:?}").contains("private-text"));
+		}
+		let frame = br#"{"method":"item/completed","params":{"threadId":"parent","turnId":"turn","item":{"id":"activity","type":"subAgentActivity","kind":"completed","agentThreadId":"child"}}}"#;
+		let event = event::normalize_event(frame).unwrap();
+		assert!(matches!(
+			event,
+			NormalizedEvent::CollaborationActivity(RunLocalActor {
+				activity: CollaborationActivityKind::Completed,
+				..
+			})
+		));
+	}
 
 	#[test]
 	fn message_delta_discards_all_free_form_content() {
