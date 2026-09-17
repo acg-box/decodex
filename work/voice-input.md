@@ -130,7 +130,26 @@ payload size limits and diagnostic redaction. The signed service dictation test
 and the Live subscription test both passed. The composer capture was inspected at
 `target/visual-tests/chief-dictation-composer.png` (test fixture, not a live task).
 
-Physical microphone and audible-playback acceptance remains separate. The desktop
-control tool currently returns `cgWindowNotFound` for the running preview, so the
-latest physical capture path has not been accepted through the actual UI. Do not
-report synthetic media tests as physical microphone acceptance.
+A subsequent UI check reached the same running preview without a restart or code
+change. The accessibility tree exposed the composer, microphone controls, and
+current state. A direct click started physical capture and reached Listening;
+Done reached Final correction and then returned to the draft. Live reached Live,
+Mute changed the state to Microphone muted, and End released the call. The service
+reported zero open voice calls afterward. Graph close and reopen also updated the
+accessibility tree. No extra keyboard activation was needed for these clicks.
+
+The pinned GPUI revision includes the AccessKit macOS adapter, enabled by default;
+Decodex does not disable it. The former `cgWindowNotFound` is therefore not evidence
+that GPUI lacks macOS accessibility. Its exact transient cause remains unconfirmed.
+Window screenshots still return a white image even while the accessibility tree
+updates. Raising the window and changing the graph layout did not repair capture.
+Do not infer an actual white app window from this tool output without checking the
+user-visible window. Audible playback quality and spoken physical-microphone
+transcription still require a speech sample; Listening alone does not prove them.
+
+A short generated sample was also played through the current system output during
+UI dictation. Capture completed without an error but produced no transcript.
+System audio inspection reported LG ULTRAGEAR+ over DisplayPort as default output
+and Shure MV7 over USB as default input. This acoustic test does not establish that
+the microphone received the sample. No volume or device settings were changed.
+Actual spoken-input transcription remains unverified; all test capture was ended.
