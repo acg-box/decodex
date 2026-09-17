@@ -147,6 +147,7 @@ impl ChiefHost {
 				tokio::select! {
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
+						self.rotate_exhausted(&mut active).await;
 						let outcome = self.handle(request.key,request.action,&mut active).await;
 						let _ = request.reply.send(outcome);
 						if let Some((root,chief,_)) = active.as_mut() {
@@ -155,6 +156,7 @@ impl ChiefHost {
 					},
 					event = receive(&mut active) => {
 						if let Some((root,chief,_)) = active.as_mut() {
+							chief.pause_dispatch(self.runtime.chief_account_exhausted(root).await);
 							let closed = event.is_none() || matches!(&event,Some(ServerEvent::Closed(_)));
 							if let Some(event) = event
 								&& let Err(error) = chief.handle_event(event).await
@@ -170,6 +172,7 @@ impl ChiefHost {
 						}
 					},
 					_ = tick.tick() => {
+						self.rotate_exhausted(&mut active).await;
 						recovery.restore_if_due(
 							&mut active, tokio::time::Instant::now(), self.restore()
 						).await;
@@ -199,6 +202,32 @@ impl ChiefHost {
 		};
 		if let Some(root) = root {
 			let _ = self.runtime.close_chief_connection(&root).await;
+		}
+	}
+
+	async fn rotate_exhausted(
+		&self,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) {
+		let Some((root, chief, _)) = active.as_mut() else {
+			return;
+		};
+		let exhausted = self.runtime.chief_account_exhausted(root).await;
+		chief.pause_dispatch(exhausted);
+		let Ok(work) = self.store.list_chief_work_items().await else {
+			return;
+		};
+		if work.iter().any(|item| item.dispatch_state != decodex_database::ChiefDispatchState::Idle)
+			|| !exhausted
+		{
+			return;
+		}
+		let root = root.clone();
+		*active = None;
+		// Existing process death must be positively established before the store permits
+		// another account. No uncertain or active turn is replayed during this handover.
+		if self.runtime.close_chief_connection(&root).await.is_ok() {
+			*active = self.restore().await;
 		}
 	}
 
@@ -476,10 +505,7 @@ impl ChiefHost {
 				self.record_delivery(&root.id, active.1.wake_pending().await).await;
 				Some(active)
 			},
-			Err(_) => {
-				self.record_error(&root.id, "reconnection_needs_attention").await;
-				None
-			},
+			Err(_) => None,
 		}
 	}
 }

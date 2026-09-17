@@ -104,3 +104,12 @@ reported unavailable while the original bound account was depleted. Native scree
 capture intermittently returned white frames; final native animation acceptance is
 not established. The editor layout was also inspected through the GPUI capture at
 target/visual-tests/final-editor.png (a visual fixture, not a real task report).
+
+## Incremental completion (2026-09-17)
+
+Chief account rotation is implemented and verified against the original live root;
+see chief-account-rotation.md. Superseded credential recovery no longer falsely
+blocks process admission. Earlier account-affinity limitations above describe the
+previous delivery. Composer menus now retain their content while animating closed.
+Full native animation acceptance and the surviving-helper recovery boundary remain
+open. Neither dictation nor Live has been integrated into the GPUI app yet.

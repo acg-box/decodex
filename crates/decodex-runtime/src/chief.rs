@@ -87,6 +87,7 @@ pub struct ChiefCoordinator {
 	usage_replays: std::collections::HashMap<String, std::collections::HashSet<String>>,
 	pending_requests: std::collections::HashMap<RequestId, i64>,
 	connection_id: String,
+	dispatch_paused: bool,
 }
 
 const INSTRUCTIONS: &str = include_str!("chief/instructions.md");
@@ -126,6 +127,7 @@ impl ChiefCoordinator {
 			usage_replays: Default::default(),
 			pending_requests: std::collections::HashMap::new(),
 			connection_id,
+			dispatch_paused: false,
 		})
 	}
 
@@ -1399,8 +1401,16 @@ impl ChiefCoordinator {
 		self.wake_pending().await
 	}
 
+	/// Suspend new inbox dispatches while the host retires an exhausted account.
+	pub(crate) fn pause_dispatch(&mut self, paused: bool) {
+		self.dispatch_paused = paused;
+	}
+
 	/// Wake for external evidence; Chief completion itself is not a wake source.
 	pub async fn wake_pending(&mut self) -> Result<(), ChiefError> {
+		if self.dispatch_paused {
+			return Ok(());
+		}
 		let work = self.store.list_chief_work_items().await?;
 		let managers = self.store.chief_manager_ids().await?;
 		for chief in work.iter().filter(|item| {

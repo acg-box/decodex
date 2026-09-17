@@ -3442,26 +3442,66 @@ impl AccountService {
 			.await?)
 	}
 
-	/// Select an account for process launch without changing routing or shared authentication.
-	pub(crate) async fn select_process_account(
+	/// Keep a usable Chief account; otherwise choose the least utilized eligible account.
+	/// This selects process admission only. It does not project shared desktop credentials.
+	pub(crate) async fn select_chief_route(
 		&self,
-		account_id: Option<&AccountId>,
-		now_unix_micros: i64,
+		preferred: Option<&AccountId>,
+		now: i64,
 	) -> Result<AccountSelectionResult, AccountSelectionFailure> {
-		let Some(account_id) = account_id else {
-			return self.select_initial(now_unix_micros).await;
-		};
 		let callback_profile_sha256 = self.callback_profile().map_err(|recovery| {
-			AccountSelectionFailure { account_id: Some(account_id.clone()), recovery }
+			AccountSelectionFailure { account_id: preferred.cloned(), recovery }
 		})?;
-		let inspection = self.inspect(account_id).await.map_err(|_| AccountSelectionFailure {
-			account_id: Some(account_id.clone()),
-			recovery: AccountSelectionRecovery::RepairCredentialStore,
-		})?;
-		self.selection_candidate(&inspection.account, now_unix_micros).map_err(|recovery| {
-			AccountSelectionFailure { account_id: Some(account_id.clone()), recovery }
-		})?;
-		Ok(AccountSelectionResult { account: inspection.account, callback_profile_sha256 })
+		let (accounts, order) =
+			self.store.read_account_registry_snapshot(MAX_ACCOUNT_READ).await.map_err(|_| {
+				AccountSelectionFailure {
+					account_id: preferred.cloned(),
+					recovery: AccountSelectionRecovery::ResolveCredentialOperation,
+				}
+			})?;
+
+		let mut available = accounts;
+		while let Some(account) =
+			self.chief_route_candidate(&available, &order.order, preferred, now)
+		{
+			let account = account.clone();
+			let occupied = self
+				.store
+				.read_bound_process_generations(Some(&account.account_id), false, 1)
+				.await
+				.map_err(|_| AccountSelectionFailure {
+					account_id: Some(account.account_id.clone()),
+					recovery: AccountSelectionRecovery::ResolveCredentialOperation,
+				})?;
+			if occupied.is_empty() {
+				return Ok(AccountSelectionResult { account, callback_profile_sha256 });
+			}
+			available.retain(|entry| entry.account_id != account.account_id);
+		}
+
+		Err(AccountSelectionFailure {
+			account_id: preferred.cloned(),
+			recovery: AccountSelectionRecovery::RefreshQuota,
+		})
+	}
+
+	fn chief_route_candidate<'a>(
+		&self,
+		accounts: &'a [AccountRecord],
+		order: &[AccountId],
+		preferred: Option<&AccountId>,
+		now: i64,
+	) -> Option<&'a AccountRecord> {
+		accounts
+			.iter()
+			.filter_map(|account| {
+				let score = self.selection_candidate(account, now).ok()?;
+				let position =
+					order.iter().position(|id| id == &account.account_id).unwrap_or(usize::MAX);
+				Some((Some(&account.account_id) != preferred, score, position, account))
+			})
+			.min_by_key(|(switch, score, position, _)| (*switch, *score, *position))
+			.map(|(_, _, _, account)| account)
 	}
 
 	/// Select one initial account. This never creates automatic same-thread fallback or wake work.
@@ -5282,7 +5322,7 @@ mod tests {
 		let (_directory, store, service, account_id, shared) =
 			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
 		let routing = store.read_account_routing_control().await.unwrap();
-		let selected = service.select_process_account(Some(&account_id), OBSERVED_AT_MICROS).await;
+		let selected = service.select_chief_route(Some(&account_id), OBSERVED_AT_MICROS).await;
 		assert!(selected.is_err(), "missing callback authority must reject process selection");
 		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
 		assert_eq!(store.read_account_routing_control().await.unwrap(), routing);
@@ -7203,6 +7243,45 @@ mod tests {
 			.unwrap(),
 			tombstoned: false,
 		}
+	}
+
+	#[tokio::test]
+	async fn chief_routes_stick_until_exhausted_then_choose_available_capacity() {
+		use decodex_core::AccountQuotaDisposition as D;
+		let (_, _, service, _, _) =
+			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
+		let mut accounts = Vec::new();
+		for (number, usage) in [(1, 80), (2, 20), (3, 0)] {
+			let mut account = projection_account(Some(binding("fixture", 1)));
+			account.account_id =
+				AccountId::new(format!("20000000-0000-4000-8000-{number:012}")).unwrap();
+			account.five_hour_quota.disposition = D::NotApplicable;
+			account.five_hour_quota.observed_at_unix_micros = Some(900);
+			account.seven_day_quota.disposition =
+				D::Current(AccountQuotaWindow::new(10080, usage, 2000000).unwrap());
+			accounts.push(account);
+		}
+		let ids = accounts.iter().map(|a| a.account_id.clone()).collect::<Vec<_>>();
+		assert_eq!(
+			service.chief_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).unwrap().account_id,
+			ids[0]
+		);
+		accounts[0].seven_day_quota.disposition =
+			D::Current(AccountQuotaWindow::new(10080, 100, 2000000).unwrap());
+		assert_eq!(
+			service.chief_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).unwrap().account_id,
+			ids[2]
+		);
+		accounts[2].enabled = false;
+		assert_eq!(
+			service.chief_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).unwrap().account_id,
+			ids[1]
+		);
+		accounts[1].lifecycle_readiness = AccountLifecycleReadiness::CredentialAbsent;
+		assert!(service.chief_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).is_none());
+		accounts[1].lifecycle_readiness = AccountLifecycleReadiness::Ready;
+		accounts[1].seven_day_quota.disposition = D::Unknown;
+		assert!(service.chief_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).is_none());
 	}
 
 	#[test]

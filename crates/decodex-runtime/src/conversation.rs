@@ -608,15 +608,6 @@ enum AccountLaunchAdmission {
 	Chief { root_id: String, operation_key: String, generation_id: ProcessGenerationId },
 }
 
-fn chief_account_affinity(
-	persisted: Option<&AccountId>,
-	requested: Option<&AccountId>,
-) -> Result<Option<AccountId>, ChiefLaunchError> {
-	if persisted.zip(requested).is_some_and(|(bound, selected)| bound != selected) {
-		return Err(ChiefLaunchError::Conflict);
-	}
-	Ok(persisted.or(requested).cloned())
-}
 impl AccountLaunchAdmission {
 	fn generation_id(&self) -> ProcessGenerationId {
 		match self {
@@ -832,12 +823,32 @@ impl ConversationRuntime {
 			.and_then(|process| process.client.clone())
 	}
 
+	pub(crate) async fn chief_account_exhausted(&self, root: &str) -> bool {
+		let Ok(Some(binding)) = self.inner.store.read_chief_process_binding(root).await else {
+			return false;
+		};
+		let Ok(inspection) = self.inner.accounts.inspect(&binding.account_id).await else {
+			return false;
+		};
+		let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else {
+			return false;
+		};
+		[&inspection.account.five_hour_quota, &inspection.account.seven_day_quota].iter().any(
+			|window| {
+				window.current().is_some_and(|fact| {
+					fact.used_percent >= 100
+						&& i128::from(fact.resets_at_unix_micros) > now.as_micros() as i128
+				})
+			},
+		)
+	}
+
 	async fn select_chief_account(
 		&self,
 		account: Option<&AccountId>,
 		now: i64,
 	) -> Result<crate::account_service::AccountSelectionResult, ChiefLaunchError> {
-		match self.inner.accounts.select_process_account(account, now).await {
+		match self.inner.accounts.select_chief_route(account, now).await {
 			Ok(selected) => Ok(selected),
 			Err(failure) => {
 				if failure.recovery == decodex_core::AccountSelectionRecovery::RefreshQuota
@@ -882,10 +893,11 @@ impl ConversationRuntime {
 			.read_chief_process_binding(&request.root_id)
 			.await
 			.map_err(|_| ChiefLaunchError::Unavailable)?;
-		let account_id = chief_account_affinity(
-			prior.as_ref().map(|binding| &binding.account_id),
-			request.account_id.as_ref(),
-		)?;
+		let account_id = prior
+			.as_ref()
+			.map(|binding| &binding.account_id)
+			.or(request.account_id.as_ref())
+			.cloned();
 		let now = std::time::SystemTime::now()
 			.duration_since(std::time::UNIX_EPOCH)
 			.map_err(|_| ChiefLaunchError::Unavailable)?
@@ -5688,19 +5700,6 @@ mod tests {
 			status,
 			revision,
 		}
-	}
-
-	#[test]
-	fn chief_restart_preserves_account_affinity_and_rejects_explicit_switch() {
-		let bound = decodex_core::AccountId::new(derived_uuid("account", &["bound"])).unwrap();
-		let other = decodex_core::AccountId::new(derived_uuid("account", &["other"])).unwrap();
-		assert_eq!(super::chief_account_affinity(Some(&bound), None).unwrap(), Some(bound.clone()));
-		assert_eq!(super::chief_account_affinity(None, Some(&other)).unwrap(), Some(other.clone()));
-		assert_eq!(super::chief_account_affinity(None, None).unwrap(), None);
-		assert!(matches!(
-			super::chief_account_affinity(Some(&bound), Some(&other)),
-			Err(super::ChiefLaunchError::Conflict)
-		));
 	}
 
 	#[tokio::test]

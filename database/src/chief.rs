@@ -727,8 +727,13 @@ impl SqliteStore {
 		bounded(&detail, 65536)?;
 		self.run(move |connection| {
 			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
-			let pending: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM chief_inbox_events WHERE work_item_id=?1 AND event_kind='reconnection_needs_attention' AND disposition IS NULL)", [&root], |row| row.get(0)).map_err(sqlite_error)?;
-			if !pending {
+			let payload = serde_json::json!({"recovery":detail}).to_string();
+            let pending: Option<(i64, String)> = tx.query_row("SELECT id,payload FROM chief_inbox_events WHERE work_item_id=?1 AND event_kind='reconnection_needs_attention' AND disposition IS NULL ORDER BY id DESC LIMIT 1", [&root], |row| Ok((row.get(0)?,row.get(1)?))).optional().map_err(sqlite_error)?;
+            if pending.as_ref().is_some_and(|(_, previous)| previous == &payload) { return Ok(()); }
+            if let Some((id, _)) = pending {
+                tx.execute("UPDATE chief_inbox_events SET disposition='resolved', disposition_note='Superseded by a newer connection diagnostic; connectivity is not yet restored.', disposed_at_micros=max(created_at_micros,?2) WHERE id=?1", params![id,unix_micros()?]).map_err(sqlite_error)?;
+            }
+            {
 				let now = unix_micros()?;
 				let previous: i64 = tx.query_row("SELECT coalesce(max(id),0) FROM chief_inbox_events WHERE work_item_id=?1", [&root], |row| row.get(0)).map_err(sqlite_error)?;
 				let source = serde_json::json!(["chief_connection", root, previous]).to_string();
@@ -743,7 +748,7 @@ impl SqliteStore {
 	/// Close connection errors after an attested connection, without changing work judgment.
 	pub async fn resolve_chief_connection_failure(&self, root: String) -> Result<(), StoreError> {
 		self.run(move |connection| {
-			connection.execute("UPDATE chief_inbox_events SET disposition='resolved',disposition_note='The same-account Chief connection was restored.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind='reconnection_needs_attention' AND disposition IS NULL",params![root,unix_micros()?]).map_err(sqlite_error)?;
+			connection.execute("UPDATE chief_inbox_events SET disposition='resolved',disposition_note='The Chief connection was restored.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind='reconnection_needs_attention' AND disposition IS NULL",params![root,unix_micros()?]).map_err(sqlite_error)?;
 			Ok(())
 		}).await
 	}
@@ -1224,7 +1229,7 @@ mod tests {
 			.record_chief_connection_failure("chief".into(), "Retry pending".into())
 			.await
 			.unwrap();
-		assert_eq!(store.read_chief_work_events("chief".into(), 10).await.unwrap().len(), 1);
+		assert_eq!(store.read_chief_work_events("chief".into(), 10).await.unwrap().len(), 2);
 		store.resolve_chief_connection_failure("chief".into()).await.unwrap();
 		let saved = store.read_chief_work_events("chief".into(), 10).await.unwrap();
 		assert_eq!(saved[0].disposition, Some(ChiefDisposition::Resolved));
@@ -1237,7 +1242,7 @@ mod tests {
 			.await
 			.unwrap();
 		let saved = store.read_chief_work_events("chief".into(), 10).await.unwrap();
-		assert_eq!(saved.len(), 2);
+		assert_eq!(saved.len(), 3);
 		assert_eq!(saved.iter().filter(|event| event.disposition.is_none()).count(), 1);
 	}
 

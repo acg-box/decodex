@@ -159,3 +159,44 @@ async fn user_turn_preserves_plain_text_and_can_inspect_earlier_unhandled_result
 		Some(ChiefDisposition::Resolved)
 	);
 }
+
+#[tokio::test]
+async fn exhausted_account_pause_preserves_input_without_dispatch() {
+	let (mut coordinator, mut sent, _directory) = fixture().await;
+	coordinator.start_chief("chief", "Coordinate").await.unwrap();
+	complete(&mut coordinator, "chief").await;
+	let event = coordinator
+		.store
+		.enqueue_chief_event(EnqueueChiefEvent {
+			source_event_id: "paused-input".into(),
+			work_item_id: "chief".into(),
+			event_kind: "user_message".into(),
+			payload: json!({"text":"Continue"}).to_string(),
+		})
+		.await
+		.unwrap();
+	while sent.try_recv().is_ok() {}
+	coordinator.pause_dispatch(true);
+	coordinator.wake_pending().await.unwrap();
+	assert!(sent.try_recv().is_err());
+	assert!(
+		coordinator
+			.store
+			.get_chief_inbox_event(event.id)
+			.await
+			.unwrap()
+			.delivered_turn_id
+			.is_none()
+	);
+	coordinator.pause_dispatch(false);
+	coordinator.wake_pending().await.unwrap();
+	assert!(
+		coordinator
+			.store
+			.get_chief_inbox_event(event.id)
+			.await
+			.unwrap()
+			.delivered_turn_id
+			.is_some()
+	);
+}
