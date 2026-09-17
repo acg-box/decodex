@@ -190,7 +190,7 @@ impl ChiefSurface {
 							.mb(px(8.))
 							.when(left, |d| d.left(px(0.)))
 							.when(!left, |d| d.right(px(0.)))
-							.w(px(if left { 280. } else { 320. }))
+							.w(px(if left { 280. } else { 240. }))
 							.child(crate::ui_motion::disclosure(
 								"composer-menu-motion",
 								self.composer_menu.is_some(),
@@ -227,6 +227,16 @@ impl ChiefSurface {
 				|s, window, cx| s.open_audio_menu(window, cx),
 				cx,
 			))
+			.child(self.composer_control(
+				"delivery",
+				if self.steer { "Steer" } else { "Queue" }.into(),
+				"Switch message delivery",
+				|s, cx| {
+					s.steer = !s.steer;
+					cx.notify();
+				},
+				cx,
+			))
 			.into_any_element()
 	}
 
@@ -248,16 +258,6 @@ impl ChiefSurface {
 			.items_center()
 			.gap(px(4.0))
 			.children(self.usage_line())
-			.child(self.composer_control(
-				"delivery",
-				if self.steer { "Steer" } else { "Queue" }.into(),
-				"Switch message delivery",
-				|s, cx| {
-					s.steer = !s.steer;
-					cx.notify();
-				},
-				cx,
-			))
 			.child(self.composer_control(
 				"fast",
 				"Fast".into(),
@@ -345,7 +345,6 @@ impl ChiefSurface {
 			.when(
 				![
 					"model",
-					"fast",
 					"delivery",
 					"effort",
 					"send",
@@ -374,7 +373,7 @@ impl ChiefSurface {
 				ui_theme::TEXT_MUTED
 			}))
 			.when(id == "model", |d| d.px(px(6.)))
-			.when(["attachment-item", "audio-item", "audio-back"].contains(&id), |d| {
+			.when(["attachment-item", "audio-item", "audio-back", "delivery"].contains(&id), |d| {
 				d.w_full().justify_start().text_size(px(12.))
 			})
 			.when(self.composer_menu == Some(id), |d| d.bg(rgba(0xb8acf21a)))
@@ -461,7 +460,14 @@ impl ChiefSurface {
 				.gap(px(3.))
 				.opacity(if self.fast { 1.0 } else { 0.45 })
 				.child(icon(Symbol::Fast))
-				.child("Fast")
+				.into_any_element(),
+			"delivery" => div()
+				.w_full()
+				.flex()
+				.items_center()
+				.justify_between()
+				.child("Message delivery")
+				.child(div().text_color(rgb(ui_theme::TEXT)).child(label))
 				.into_any_element(),
 			"effort" => controls::effort_indicator(self.effort.as_str()),
 			"model" => div()
@@ -495,8 +501,8 @@ impl ChiefSurface {
 			div()
 				.id("composer-menu-popover")
 				.occlude()
-				.p(px(12.))
-				.rounded(px(12.))
+				.p(px(7.))
+				.rounded(px(10.))
 				.bg(rgba(0x222228f5))
 				.border_1()
 				.border_color(rgba(0xffffff24))
@@ -530,7 +536,7 @@ impl ChiefSurface {
 					div()
 						.flex()
 						.flex_col()
-						.gap(px(10.))
+						.gap(px(5.))
 						.child(self.model_palette(cx))
 						.child(self.effort_scale(cx))
 						.into_any_element()

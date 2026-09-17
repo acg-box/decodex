@@ -39,7 +39,7 @@ impl ChiefSurface {
 			.flex_col()
 			.gap(px(10.))
 			.child(
-				div().flex().gap(px(2.)).p(px(3.)).rounded(px(8.)).bg(rgba(0xffffff06)).children(
+				div().flex().gap(px(2.)).p(px(3.)).rounded(px(6.)).bg(rgba(0xffffff06)).children(
 					LEVELS
 						.into_iter()
 						.filter(|(value, _)| {
@@ -53,7 +53,7 @@ impl ChiefSurface {
 								.tab_index(0)
 								.aria_label(format!("Reasoning depth: {label}"))
 								.flex_1()
-								.h(px(28.))
+								.h(px(24.))
 								.rounded(px(7.))
 								.bg(if active { rgba(0xffffff14) } else { rgba(0x00000000) })
 								.flex()
@@ -148,9 +148,9 @@ impl ChiefSurface {
 						.aria_label(format!("Select {full}"))
 						.flex_1()
 						.min_w_0()
-						.h(px(30.))
-						.px(px(10.))
-						.rounded(px(8.))
+						.h(px(26.))
+						.px(px(7.))
+						.rounded(px(6.))
 						.bg(if selected { rgba(0xffffff0c) } else { rgba(0x00000000) })
 						.flex()
 						.items_center()
@@ -178,7 +178,7 @@ impl ChiefSurface {
 						.child(div().size(px(4.)).rounded_full().bg(if selected {
 							rgb(0xc3b8ed)
 						} else {
-							rgba(0xffffff18)
+							rgba(0x00000000)
 						}))
 						.smooth(),
 				);

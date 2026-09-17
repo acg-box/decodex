@@ -147,8 +147,8 @@ quote placeholders stay on one line and retain their attribution tooltip. The
 window keeps its existing glass material. The composer uses a subdued smoke tint,
 a thin edge, and a soft shadow.
 
-Only the primary action has a circular surface. Fast and Steer/Queue are visible
-in the toolbar. The model popup uses a plain list and one shared reasoning strip;
+Only the primary action has a circular surface. Fast is an icon in the toolbar;
+Steer/Queue is a Message delivery row in the plus menu. The model popup uses a compact 240-point plain list and one shared reasoning strip;
 only the selected supported level has a filled surface. Existing keyboard actions
 and hover/press motion remain.
 
