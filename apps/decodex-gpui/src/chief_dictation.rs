@@ -29,7 +29,7 @@ impl ChiefSurface {
 			return;
 		}
 		let Some(profile) = self.profile.clone() else { return };
-		let Ok(mut media) = Media::new(window) else {
+		let Ok(mut media) = self.take_voice_media(window) else {
 			self.feedback = "Dictation requires the current signed macOS application.".into();
 			cx.notify();
 			return;
@@ -62,16 +62,12 @@ impl ChiefSurface {
 				let request = surface.update(cx, |s, cx| s.poll_dictation(cx)).ok().flatten();
 				let Some(request) = request else { break };
 				let profile = profile.clone();
-				let response = cx
-					.background_executor()
-					.spawn(async move {
-						let runtime = tokio::runtime::Builder::new_current_thread()
-							.enable_all()
-							.build()
-							.ok()?;
-						runtime.block_on(ChiefClient::new(profile).dictation(request)).ok()
-					})
-					.await;
+				let response = cx.background_executor().spawn(async move {
+					let runtime =
+						tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+					runtime.block_on(ChiefClient::new(profile).dictation(request)).ok()
+				});
+				let response = await_response(response, &surface, cx).await;
 				let _ = surface.update(cx, |s, cx| {
 					if let Some(response) = response {
 						s.apply_dictation(response, cx)
@@ -127,7 +123,7 @@ impl ChiefSurface {
 		cx.notify();
 	}
 
-	fn poll_dictation(&mut self, cx: &mut Context<Self>) -> Option<DictationRequest> {
+	fn drain_dictation_media(&mut self, cx: &mut Context<Self>) -> Option<()> {
 		let dictation = self.dictation.as_mut()?;
 		if self.composer.read(cx).content() != dictation.expected {
 			self.dictation = None;
@@ -172,6 +168,12 @@ impl ChiefSurface {
 			}
 		}
 		cx.notify();
+		Some(())
+	}
+
+	fn poll_dictation(&mut self, cx: &mut Context<Self>) -> Option<DictationRequest> {
+		self.drain_dictation_media(cx)?;
+		let dictation = self.dictation.as_mut()?;
 		if let Some(request) = dictation.request.take() {
 			return Some(request);
 		}
@@ -276,6 +278,38 @@ fn merge_draft(original: &str, transcript: &str) -> String {
 		format!("{original} {transcript}")
 	}
 }
+// A subscription handshake must not block capture events or the listening indicator.
+async fn await_response(
+	response: gpui::Task<Option<DictationStatus>>,
+	surface: &gpui::WeakEntity<ChiefSurface>,
+	cx: &mut gpui::AsyncApp,
+) -> Option<DictationStatus> {
+	use std::{
+		future::{Future, poll_fn},
+		task::Poll,
+	};
+	let mut response = Box::pin(response);
+	loop {
+		let mut tick = Box::pin(cx.background_executor().timer(Duration::from_millis(20)));
+		let result = poll_fn(|task| {
+			if let Poll::Ready(value) = response.as_mut().poll(task) {
+				return Poll::Ready(Some(value));
+			}
+			if tick.as_mut().poll(task).is_ready() {
+				return Poll::Ready(None);
+			}
+			Poll::Pending
+		})
+		.await;
+		if let Some(value) = result {
+			return value;
+		}
+		let _ = surface.update(cx, |s, cx| {
+			s.drain_dictation_media(cx);
+		});
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -303,6 +337,30 @@ mod tests {
 			level: 0.,
 			started: Instant::now(),
 		}
+	}
+
+	#[gpui::test]
+	fn pending_subscription_request_keeps_processing_capture_state(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		let waiting = surface.update(visual, |s, cx| {
+			s.dictation = Some(recording(""));
+			s.composer.update(cx, |input, cx| input.set_content("Manual edit", cx));
+			cx.spawn(async move |surface, cx| {
+				let request = cx.background_executor().spawn(std::future::pending());
+				await_response(request, &surface, cx).await
+			})
+		});
+		visual.run_until_parked();
+		visual.executor().advance_clock(Duration::from_millis(40));
+		visual.run_until_parked();
+		surface.read_with(visual, |s, cx| {
+			assert!(
+				s.dictation.is_none(),
+				"Capture events must be handled before the network returns"
+			);
+			assert_eq!(s.composer.read(cx).content(), "Manual edit");
+		});
+		drop(waiting);
 	}
 
 	#[gpui::test]

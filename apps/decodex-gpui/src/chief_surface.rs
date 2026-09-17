@@ -96,6 +96,8 @@ pub(crate) struct ChiefSurface {
 	composer: Entity<ComposerInput>,
 	fast: bool,
 	steer: bool,
+	media_spare: Option<voice::Media>,
+	media_warm_attempted: bool,
 	effort_focus: gpui::FocusHandle,
 	effort_drag: Option<(f32, f32)>,
 	effort_pointer: Option<f32>,
@@ -220,6 +222,8 @@ impl ChiefSurface {
 			capability_task: None,
 			fast: false,
 			steer: true,
+			media_spare: None,
+			media_warm_attempted: false,
 			effort_focus: cx.focus_handle(),
 			effort_drag: None,
 			effort_pointer: None,
@@ -1470,6 +1474,7 @@ impl ChiefSurface {}
 
 impl Render for ChiefSurface {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.prepare_voice_media(window);
 		self.render_workspace(window, cx)
 	}
 }

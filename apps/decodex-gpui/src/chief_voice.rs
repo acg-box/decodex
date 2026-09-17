@@ -23,6 +23,18 @@ pub(super) struct VoiceUi {
 	follow: bool,
 }
 impl ChiefSurface {
+	pub(super) fn prepare_voice_media(&mut self, window: &mut Window) {
+		if !self.media_warm_attempted && self.voice.is_none() && self.dictation.is_none() {
+			self.media_warm_attempted = true;
+			self.media_spare = Media::new(window).ok();
+		}
+	}
+
+	pub(super) fn take_voice_media(&mut self, window: &mut Window) -> Result<Media, ()> {
+		self.media_warm_attempted = false;
+		self.media_spare.take().map_or_else(|| Media::new(window), Ok)
+	}
+
 	pub(crate) fn stop_voice(&mut self, cx: &mut Context<Self>) {
 		self.cancel_dictation(cx);
 		self.voice = None;
@@ -44,7 +56,7 @@ impl ChiefSurface {
 			cx.notify();
 			return;
 		};
-		let mut media = match Media::new(window) {
+		let mut media = match self.take_voice_media(window) {
 			Ok(media) => media,
 			Err(()) => {
 				self.feedback = "Live voice requires the current signed Decodex.app build.".into();
@@ -210,7 +222,7 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn open_audio_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-		if let Ok(mut media) = Media::new(window) {
+		if let Ok(mut media) = self.take_voice_media(window) {
 			media.command(json!({"operation":"devices"}));
 			while let Some(event) = media.poll() {
 				if event["type"] == "devices" {
@@ -222,6 +234,8 @@ impl ChiefSurface {
 						.unwrap_or_default();
 				}
 			}
+			self.media_spare = Some(media);
+			self.media_warm_attempted = true;
 		}
 		self.composer_menu =
 			if self.composer_menu == Some("microphone") { None } else { Some("microphone") };

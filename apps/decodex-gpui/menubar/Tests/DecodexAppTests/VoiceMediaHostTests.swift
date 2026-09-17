@@ -33,6 +33,24 @@ final class VoiceMediaHostTests: XCTestCase {
     }
 
 
+    func testPreparedHostDoesNotCaptureUntilRequested() async throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+        window.makeKeyAndOrderFront(nil)
+        defer { window.orderOut(nil) }
+        let host = VoiceMediaHost(syntheticAudioForTesting: true, hostWindow: window)
+        defer { host.close() }
+        let initialized = try await event(from: host, type: "media_ready")
+        XCTAssertFalse(host.hasRequestedCapture)
+        XCTAssertTrue(host.command(#"{"operation":"dictate"}"#))
+        let capture = try await event(from: host, type: "dictation_ready")
+        XCTAssertTrue(host.hasRequestedCapture)
+        XCTAssertNotNil(capture["capture_ms"])
+        print("Audio preparation ms: \(initialized["startup_ms"] ?? "missing"); warm synthetic capture ms: \(capture["capture_ms"] ?? "missing")")
+        XCTAssertTrue(host.command(#"{"operation":"finish"}"#))
+        _ = try await event(from: host, type: "ended")
+    }
+
     func testDictationCapturesPCMAndFlushesBeforeEnding() async throws {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled], backing: .buffered, defer: false)

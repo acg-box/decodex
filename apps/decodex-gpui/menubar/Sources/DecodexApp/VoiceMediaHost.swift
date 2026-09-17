@@ -14,6 +14,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     private let initializedAt = Date()
     private var initializationFailed = false
     private var pendingCommand: String?
+    private var captureRequestedAt: Date?
     private var desiredMute = false
     private var captureCancelled = false
     private var syntheticAudio = false
@@ -84,6 +85,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     }
 
     private func startCapture(_ json: String) {
+        captureRequestedAt = Date()
         guard let window = webView?.window else {
             emit(["type":"error", "message":"The voice window closed. Start a new call from an open window."])
             return
@@ -128,6 +130,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
 
     #if DEBUG
     var hasHostWindow: Bool { webView?.window != nil }
+    var hasRequestedCapture: Bool { captureRequestedAt != nil }
 
     func connectionDiagnostics() async -> String {
         guard let webView else { return "closed" }
@@ -179,9 +182,14 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
                 return
             }
             isReady = true
+            emit(["type":"media_ready", "startup_ms":Date().timeIntervalSince(initializedAt) * 1000])
             if let command = pendingCommand { pendingCommand = nil; startCapture(command) }
         } else {
-            emit(value)
+            var timed = value
+            if type == "dictation_ready" || type == "offer", let captureRequestedAt {
+                timed["capture_ms"] = Date().timeIntervalSince(captureRequestedAt) * 1000
+            }
+            emit(timed)
         }
     }
 

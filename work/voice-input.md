@@ -193,3 +193,23 @@ iPhone, and MacBook inputs; selecting Shure allowed capture. Dictation kept the
 existing editor, Live hid it and followed the conversation, and End restored the
 same draft. No test recording was left active. Subjective recognition speed and
 waveform response remain part of user acceptance with actual speech.
+
+
+## Prepared audio host and responsive capture polling
+
+GPUI prepares one idle WebKit audio host for the current native window, without
+requesting microphone permission or capturing audio. Dictation and Live take this
+prepared host. Closing a session still destroys its active capture; a subsequent
+idle render prepares a fresh host. Input discovery returns its host to the idle slot.
+
+Dictation continues draining native capture events every 20 ms while a subscription
+request is pending. Previously the request await also blocked level and readiness
+updates, making local capture appear stalled behind the handshake. Early PCM remains
+buffered until the subscription is ready. Stop and draft-preservation rules remain.
+
+Native tests verify that preparation does not request capture. This run measured
+54.6 ms for host preparation and 20.0 ms for warm synthetic capture readiness; these
+are local synthetic timings, not physical microphone or subscription latency.
+Six native media tests passed; the opt-in subscription qualification was skipped.
+The GPUI pending-request regression proves capture-state processing runs before a
+network response. The full GPUI suite passed: 173 tests, five opt-in tests ignored.
