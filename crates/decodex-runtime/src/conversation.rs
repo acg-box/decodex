@@ -561,6 +561,7 @@ pub(crate) struct ChiefConnection {
 
 #[derive(Debug)]
 pub(crate) enum ChiefLaunchError {
+	QuotaDepleted,
 	Unavailable,
 	Conflict,
 	AccountSelection(decodex_core::AccountSelectionRecovery),
@@ -570,7 +571,8 @@ pub(crate) enum ChiefLaunchError {
 impl std::fmt::Display for ChiefLaunchError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Self::Unavailable => formatter.write_str("Chief process is unavailable"),
+			Self::QuotaDepleted => formatter.write_str("This Chief's account has reached its usage limit. Conversation history is preserved. Check Accounts for the reset time."),
+            Self::Unavailable => formatter.write_str("Chief process is unavailable"),
 			Self::Conflict =>
 				formatter.write_str("Chief process authority conflicts with this request"),
 			Self::AccountSelection(recovery) => {
@@ -821,6 +823,40 @@ impl ConversationRuntime {
 		}
 	}
 
+	pub(crate) fn chief_client(&self) -> Option<decodex_codex::app_server_client::AppServerClient> {
+		self.inner
+			.chief_process
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
+			.as_ref()
+			.and_then(|process| process.client.clone())
+	}
+
+	async fn select_chief_account(
+		&self,
+		account: Option<&AccountId>,
+		now: i64,
+	) -> Result<crate::account_service::AccountSelectionResult, ChiefLaunchError> {
+		match self.inner.accounts.select_process_account(account, now).await {
+			Ok(selected) => Ok(selected),
+			Err(failure) => {
+				if failure.recovery == decodex_core::AccountSelectionRecovery::RefreshQuota
+					&& let Some(account) = failure.account_id.as_ref()
+					&& let Ok(inspection) = self.inner.accounts.inspect(account).await
+					&& [&inspection.account.five_hour_quota, &inspection.account.seven_day_quota]
+						.iter()
+						.any(|window| {
+							window.current().is_some_and(|fact| {
+								fact.used_percent >= 100 && fact.resets_at_unix_micros > now
+							})
+						}) {
+					return Err(ChiefLaunchError::QuotaDepleted);
+				}
+				Err(ChiefLaunchError::AccountSelection(failure.recovery))
+			},
+		}
+	}
+
 	/// Open one retained Chief connection using stored account authority and durable admission.
 	/// The caller must first persist the Chief root. No ordinary Turn is created here.
 	pub(crate) async fn open_chief_connection(
@@ -855,12 +891,7 @@ impl ConversationRuntime {
 			.map_err(|_| ChiefLaunchError::Unavailable)?
 			.as_micros();
 		let now = i64::try_from(now).map_err(|_| ChiefLaunchError::Unavailable)?;
-		let selected = self
-			.inner
-			.accounts
-			.select_process_account(account_id.as_ref(), now)
-			.await
-			.map_err(|failure| ChiefLaunchError::AccountSelection(failure.recovery))?;
+		let selected = self.select_chief_account(account_id.as_ref(), now).await?;
 		let account_id = selected.account.account_id;
 		let credential = self
 			.inner

@@ -1,7 +1,7 @@
 //! Narrow supported-OS process identity, session setup, signaling, and exit observation.
 //!
-//! Absence and identity mismatch are diagnostic observations only. Only an attached kernel
-//! witness can return positive exit evidence.
+//! Missing process listings and identity mismatches are diagnostic only. Exit witnesses
+//! or the separate strict macOS kernel ESRCH check provide durable exit evidence.
 
 use std::{
 	fmt::{Display, Formatter},
@@ -514,6 +514,46 @@ pub(crate) fn signal_owned_process_group_id(
 	if result == 0 { Ok(()) } else { Err(ProcessPlatformError::Signal(io::Error::last_os_error())) }
 }
 
+/// Recover a bound macOS generation after its original exit witness was lost.
+/// Both kernel lookups must return ESRCH on the same boot. A missing process listing,
+/// permission error, reused PID, or a surviving process group never proves retirement.
+#[cfg(target_os = "macos")]
+pub(crate) fn macos_kernel_confirms_gone(
+	identity: &ProcessIdentity,
+) -> Result<bool, ProcessPlatformError> {
+	if current_boot_identity()? != identity.boot_id
+		|| identity.process_id != identity.process_group_id
+		|| identity.process_id != identity.session_id
+	{
+		return Ok(false);
+	}
+	let pid = i32::try_from(identity.process_id)
+		.map_err(|_| ProcessPlatformError::Observation(invalid_identity()))?;
+	if pid <= 1 {
+		return Ok(false);
+	}
+	let leader_absent = kernel_reports_missing(pid)?;
+	let group_absent = kernel_reports_missing(-pid)?;
+	Ok(leader_absent
+		&& group_absent
+		&& kernel_reports_missing(pid)?
+		&& current_boot_identity()? == identity.boot_id)
+}
+
+#[cfg(target_os = "macos")]
+fn kernel_reports_missing(pid: i32) -> Result<bool, ProcessPlatformError> {
+	// SAFETY: signal zero is a kernel existence/permission query; no signal is sent.
+	if unsafe { libc::kill(pid, 0) } == 0 {
+		return Ok(false);
+	}
+	let error = io::Error::last_os_error();
+	match error.raw_os_error() {
+		Some(libc::ESRCH) => Ok(true),
+		Some(libc::EPERM) => Ok(false),
+		_ => Err(ProcessPlatformError::Observation(error)),
+	}
+}
+
 /// Check group quiescence only as corroboration after positive exact-leader death.
 pub(crate) fn process_group_is_quiescent(
 	identity: &ProcessIdentity,
@@ -579,6 +619,42 @@ mod tests {
 	};
 	use super::{boot_identity_mismatch_proves_prior_boot, mark_descriptor_close_on_exec};
 	use decodex_core::ProcessBootIdentity;
+
+	#[cfg(target_os = "macos")]
+	#[test]
+	fn kernel_recovery_requires_both_leader_and_group_to_be_gone() {
+		use std::{
+			io::{BufRead as _, BufReader},
+			process::{Command, Stdio},
+		};
+		let mut command = Command::new("/bin/sh");
+		command
+			.args(["-c", "sleep 2 & echo ready; read line"])
+			.stdin(Stdio::piped())
+			.stdout(Stdio::piped());
+		super::configure_session_command(&mut command, None);
+		let mut child = command.spawn().unwrap();
+		let mut line = String::new();
+		BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
+		let boot = current_boot_identity().unwrap();
+		let identity = super::inspect_process_identity(child.id(), &boot).unwrap().unwrap();
+		assert!(!super::macos_kernel_confirms_gone(&identity).unwrap());
+		drop(child.stdin.take());
+		child.wait().unwrap();
+		// The leader is gone, but its sleeping child still holds the group.
+		assert!(!super::macos_kernel_confirms_gone(&identity).unwrap());
+		let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+		while !super::macos_kernel_confirms_gone(&identity).unwrap() {
+			assert!(std::time::Instant::now() < deadline);
+			std::thread::sleep(std::time::Duration::from_millis(20));
+		}
+		let mut other_boot = identity.clone();
+		other_boot.boot_id = ProcessBootIdentity::new(
+			"macos:bootsessionuuid:v1:01234567-89ab-cdef-0123-456789abcdef",
+		)
+		.unwrap();
+		assert!(!super::macos_kernel_confirms_gone(&other_boot).unwrap());
+	}
 
 	#[test]
 	fn owned_descriptor_without_close_on_exec_gains_close_on_exec() {

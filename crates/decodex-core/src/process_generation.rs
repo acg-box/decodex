@@ -353,7 +353,7 @@ impl ProcessAuthorityLossReason {
 	}
 }
 
-/// Closed positive evidence kind. It intentionally has no absence, timeout, or lease variant.
+/// Closed OS evidence kind. Timeouts and expired leases never establish process exit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessDeathEvidenceKind {
 	/// Spawn failed before the operating system returned any child identity.
@@ -364,6 +364,8 @@ pub enum ProcessDeathEvidenceKind {
 	LinuxPidfdExit,
 	/// Exact macOS `NOTE_EXIT` was followed by process-group quiescence.
 	MacosKqueueExitAndGroupQuiescence,
+	/// Same-boot macOS kernel confirms both the persisted leader and group no longer exist.
+	MacosKernelConfirmedGone,
 	/// Exact-identity termination was followed by positive owned-child exit and group cleanup.
 	ExactTerminationExit,
 	/// The current boot differs from the generation's intended boot.
@@ -377,6 +379,7 @@ impl ProcessDeathEvidenceKind {
 			Self::OwnedChildExit => "owned_child_exit",
 			Self::LinuxPidfdExit => "linux_pidfd_exit",
 			Self::MacosKqueueExitAndGroupQuiescence => "macos_kqueue_exit_and_group_quiescence",
+			Self::MacosKernelConfirmedGone => "macos_kernel_confirmed_gone",
 			Self::ExactTerminationExit => "exact_termination_exit",
 			Self::PriorBootEnded => "prior_boot_ended",
 		}
@@ -536,6 +539,7 @@ impl ProcessDeathEvidence {
 			ProcessDeathEvidenceKind::OwnedChildExit => true,
 			ProcessDeathEvidenceKind::LinuxPidfdExit
 			| ProcessDeathEvidenceKind::MacosKqueueExitAndGroupQuiescence
+			| ProcessDeathEvidenceKind::MacosKernelConfirmedGone
 			| ProcessDeathEvidenceKind::ExactTerminationExit => process_identity.is_some(),
 		};
 

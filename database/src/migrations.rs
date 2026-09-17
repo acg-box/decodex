@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 14;
+const CURRENT_SCHEMA_VERSION: i64 = 20;
 
 struct Migration {
 	version: i64,
@@ -84,6 +84,36 @@ const MIGRATIONS: &[Migration] = &[
 		version: 14,
 		name: "optional_quota_window",
 		sql: include_str!("../migrations/0014_optional_quota_window.sql"),
+	},
+	Migration {
+		version: 15,
+		name: "chief_live_output",
+		sql: include_str!("../migrations/0015_chief_live_output.sql"),
+	},
+	Migration {
+		version: 16,
+		name: "chief_managers",
+		sql: include_str!("../migrations/0016_chief_managers.sql"),
+	},
+	Migration {
+		version: 17,
+		name: "chief_tool_versions",
+		sql: include_str!("../migrations/0017_chief_tool_versions.sql"),
+	},
+	Migration {
+		version: 18,
+		name: "chief_usage",
+		sql: include_str!("../migrations/0018_chief_usage.sql"),
+	},
+	Migration {
+		version: 19,
+		name: "process_kernel_recovery",
+		sql: include_str!("../migrations/0019_process_kernel_recovery.sql"),
+	},
+	Migration {
+		version: 20,
+		name: "chief_turn_usage",
+		sql: include_str!("../migrations/0020_chief_turn_usage.sql"),
 	},
 ];
 
@@ -309,6 +339,32 @@ mod tests {
 	use super::*;
 
 	#[test]
+	fn kernel_recovery_migration_keeps_existing_evidence_bytes() {
+		// Isolate row-copy behavior; fresh/upgrade tests verify the complete FK graph.
+		let connection = Connection::open_in_memory().unwrap();
+		connection.pragma_update(None, "foreign_keys", false).unwrap();
+		connection.execute_batch(MIGRATIONS[0].sql).unwrap();
+		connection.execute("INSERT INTO process_generation_death_evidence VALUES (?1,?2,'spawn_not_created','boot',NULL,NULL,NULL,NULL,NULL,?3,42)", params!["10000000-0000-4000-8000-000000000001", "10000000-0000-4000-8000-000000000002", "a".repeat(64)]).unwrap();
+		let read = |c: &Connection| {
+			c.query_row("SELECT evidence_id,generation_id,kind,observed_boot_id,witness_sha256,observed_at_micros FROM process_generation_death_evidence", [], |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,String>(2)?, row.get::<_,String>(3)?, row.get::<_,String>(4)?, row.get::<_,i64>(5)?))).unwrap()
+		};
+		let before = read(&connection);
+		connection.execute_batch(MIGRATIONS[18].sql).unwrap();
+		assert_eq!(read(&connection), before);
+		connection
+			.execute(
+				"UPDATE process_generation_death_evidence SET kind='macos_kernel_confirmed_gone'",
+				[],
+			)
+			.unwrap();
+		assert!(
+			connection
+				.execute("UPDATE process_generation_death_evidence SET kind='timeout'", [])
+				.is_err()
+		);
+	}
+
+	#[test]
 	fn chief_upgrade_preserves_exact_previous_schema_and_settings() {
 		let directory = tempfile::tempdir().unwrap();
 		let mut connection = Connection::open(directory.path().join("upgrade.sqlite3")).unwrap();
@@ -332,7 +388,8 @@ mod tests {
 		assert!(
 			original
 				.iter()
-				.filter(|entry| entry.2 != "account_quota_facts")
+				.filter(|entry| !["account_quota_facts", "process_generation_death_evidence"]
+					.contains(&entry.2.as_str()))
 				.all(|entry| upgraded.contains(entry))
 		);
 		assert_eq!(

@@ -124,6 +124,8 @@ pub struct ChiefInboxEvent {
 /// One atomic bounded read for a public projection.
 pub enum ChiefStoreSnapshot {
 	Complete {
+		managers: Vec<String>,
+		workspaces: Vec<(String, String, String)>,
 		work_items: Vec<ChiefWorkItem>,
 		dependencies: Vec<ChiefDependency>,
 		pending_events: Vec<ChiefInboxEvent>,
@@ -142,13 +144,61 @@ impl SqliteStore {
 		work_id: String,
 		limit: usize,
 	) -> Result<Vec<ChiefInboxEvent>, StoreError> {
+		self.read_chief_work_events_before(work_id, None, limit).await
+	}
+
+	/// Read an immutable page strictly before an event identity.
+	pub async fn read_chief_work_events_before(
+		&self,
+		work_id: String,
+		before: Option<i64>,
+		limit: usize,
+	) -> Result<Vec<ChiefInboxEvent>, StoreError> {
 		let limit = page_limit(limit)?;
 		self.run(move |connection| {
 			read_work(connection, &work_id)?;
-			connection.prepare("SELECT * FROM (SELECT * FROM chief_inbox_events WHERE work_item_id = ?1 ORDER BY id DESC LIMIT ?2) ORDER BY id")
-				.map_err(sqlite_error)?.query_map(params![work_id, limit], event_row)
+			connection.prepare("SELECT * FROM (SELECT * FROM chief_inbox_events WHERE work_item_id = ?1 AND (?3 IS NULL OR id < ?3) ORDER BY id DESC LIMIT ?2) ORDER BY id")
+				.map_err(sqlite_error)?.query_map(params![work_id, limit, before], event_row)
 				.map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
 		}).await
+	}
+
+	/// Read final history and partial output from one database snapshot.
+	pub async fn read_chief_transcript(
+		&self,
+		id: String,
+		before: Option<i64>,
+		limit: usize,
+	) -> Result<(Vec<ChiefInboxEvent>, Vec<crate::ChiefLiveOutput>), StoreError> {
+		let limit = page_limit(limit)?;
+		self.run(move |connection| {
+            let tx=connection.transaction().map_err(sqlite_error)?;
+            read_work(&tx,&id)?;
+            let events=tx.prepare("SELECT * FROM (SELECT e.* FROM chief_inbox_events e WHERE work_item_id=?1 AND (event_kind<>'activity_started' OR NOT EXISTS(SELECT 1 FROM chief_inbox_events c WHERE c.source_event_id=json_array('activity',e.work_item_id,json_extract(e.payload,'$.turn_id'),json_extract(e.payload,'$.item_id'),'completed'))) AND (event_kind<>'steer_pending' OR disposition IS NULL) AND (?3 IS NULL OR id<?3) ORDER BY id DESC LIMIT ?2) ORDER BY id").map_err(sqlite_error)?.query_map(params![id,limit,before],event_row).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(sqlite_error)?;
+            let live=if before.is_none() {crate::chief_output::read_live(&tx,&id)?} else {vec![]};
+            tx.commit().map_err(sqlite_error)?;
+            Ok((events,live))
+        }).await
+	}
+
+	/// Return executable manager identities, including the original root.
+	pub async fn chief_manager_ids(&self) -> Result<Vec<String>, StoreError> {
+		self.run(|connection| connection.prepare("SELECT id FROM chief_work_items WHERE parent_goal_id IS NULL UNION SELECT work_id FROM chief_managers").map_err(sqlite_error)?
+            .query_map([],|row|row.get(0)).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|sqlite_error(error).into())).await
+	}
+
+	/// Read persisted project scopes owned by managers.
+	pub async fn chief_workspaces(&self) -> Result<Vec<(String, String, String)>, StoreError> {
+		self.run(|connection| {
+			connection
+				.prepare("SELECT chief_id,name,directory FROM chief_workspaces ORDER BY chief_id")
+				.map_err(sqlite_error)?
+				.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+				.map_err(sqlite_error)?
+				.collect::<Result<Vec<_>, _>>()
+				.map_err(|error| sqlite_error(error).into())
+		})
+		.await
 	}
 
 	/// Read one exact inbox record for a source-bound detail request.
@@ -180,8 +230,10 @@ impl SqliteStore {
 			let work_items = transaction.prepare("SELECT * FROM chief_work_items ORDER BY created_at_micros, id").map_err(sqlite_error)?.query_map([], work_row).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
 			let dependencies = transaction.prepare("SELECT work_item_id, depends_on_id FROM chief_dependencies ORDER BY work_item_id, depends_on_id").map_err(sqlite_error)?.query_map([], |row| Ok(ChiefDependency { work_item_id: row.get(0)?, depends_on_id: row.get(1)? })).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
 			let pending_events = transaction.prepare("SELECT * FROM chief_inbox_events WHERE disposition IS NULL ORDER BY id").map_err(sqlite_error)?.query_map([], event_row).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
-			transaction.commit().map_err(sqlite_error)?;
-			Ok(ChiefStoreSnapshot::Complete { work_items, dependencies, pending_events })
+            let managers=transaction.prepare("SELECT work_id FROM chief_managers").map_err(sqlite_error)?.query_map([],|row|row.get(0)).map_err(sqlite_error)?.collect::<Result<Vec<String>,_>>().map_err(sqlite_error)?;
+            let workspaces=transaction.prepare("SELECT chief_id,name,directory FROM chief_workspaces ORDER BY chief_id").map_err(sqlite_error)?.query_map([],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(sqlite_error)?.collect::<Result<Vec<(String,String,String)>,_>>().map_err(sqlite_error)?;
+            transaction.commit().map_err(sqlite_error)?;
+            Ok(ChiefStoreSnapshot::Complete { managers,workspaces,work_items, dependencies, pending_events })
 		}).await
 	}
 
@@ -189,9 +241,34 @@ impl SqliteStore {
 		&self,
 		item: ChiefWorkItem,
 	) -> Result<ChiefWorkItem, StoreError> {
+		self.create_chief_work_record(item, false, None).await
+	}
+
+	/// Atomically create an executable manager and its optional workspace scope.
+	pub async fn create_chief_manager(
+		&self,
+		item: ChiefWorkItem,
+		workspace: Option<(String, String)>,
+	) -> Result<ChiefWorkItem, StoreError> {
+		if item.kind != ChiefWorkKind::Goal {
+			return Err(StoreError::InvalidInput("manager must be a goal"));
+		}
+		self.create_chief_work_record(item, true, workspace).await
+	}
+
+	async fn create_chief_work_record(
+		&self,
+		item: ChiefWorkItem,
+		manager: bool,
+		workspace: Option<(String, String)>,
+	) -> Result<ChiefWorkItem, StoreError> {
 		bounded(&item.id, 512)?;
 		bounded(&item.title, 1024)?;
 		bounded(&item.instructions, 65536)?;
+		if let Some((name, directory)) = &workspace {
+			bounded(name, 256)?;
+			bounded(directory, 4096)?;
+		}
 		if item.status != ChiefWorkStatus::Open
 			|| item.codex_thread_id.is_some()
 			|| item.dispatch_state != ChiefDispatchState::Idle
@@ -234,6 +311,29 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sqlite_error)?;
+			if manager || item.parent_goal_id.is_none() {
+				transaction
+					.execute(
+						"INSERT INTO chief_tool_versions(work_id,version) VALUES(?1,2)",
+						[&item.id],
+					)
+					.map_err(sqlite_error)?;
+			}
+
+			if manager {
+				transaction
+					.execute("INSERT INTO chief_managers(work_id) VALUES(?1)", [&item.id])
+					.map_err(sqlite_error)?;
+				if let Some((name, directory)) = workspace {
+					transaction
+						.execute(
+							"INSERT INTO chief_workspaces(chief_id,name,directory) VALUES(?1,?2,?3)",
+							params![item.id, name, directory],
+						)
+						.map_err(sqlite_error)?;
+				}
+			}
+
 			transaction.commit().map_err(sqlite_error)?;
 			Ok(item)
 		})
@@ -365,6 +465,19 @@ impl SqliteStore {
 		id: String,
 		event_ids: Vec<i64>,
 	) -> Result<ChiefWorkItem, StoreError> {
+		self.begin_chief_dispatch_with_input(id, event_ids, None).await
+	}
+
+	/// Atomically save a manager instruction with its dispatch claim, without a wake event.
+	pub async fn begin_chief_dispatch_with_input(
+		&self,
+		id: String,
+		event_ids: Vec<i64>,
+		instruction: Option<String>,
+	) -> Result<ChiefWorkItem, StoreError> {
+		if let Some(text) = &instruction {
+			bounded(text, 65536)?;
+		}
 		if event_ids.len() > 1000 {
 			return Err(StoreError::InvalidInput("too many Chief dispatch events"));
 		}
@@ -377,19 +490,70 @@ impl SqliteStore {
 			transaction.execute("UPDATE chief_work_items SET dispatch_state = 'dispatching', updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", params![id, unix_micros()?]).map_err(sqlite_error)?;
 			for event_id in event_ids {
 				let changed = transaction.execute("WITH RECURSIVE owned(id) AS (
-					SELECT ?2 UNION SELECT child.id FROM chief_work_items child JOIN owned ON child.parent_goal_id = owned.id)
+					SELECT ?2 UNION SELECT child.id FROM chief_work_items child JOIN owned ON child.parent_goal_id = owned.id WHERE owned.id=?2 OR NOT EXISTS(SELECT 1 FROM chief_managers WHERE work_id=owned.id))
 					UPDATE chief_inbox_events SET delivery_work_item_id = ?2, delivered_turn_id = ''
 					WHERE id = ?1 AND work_item_id IN (SELECT id FROM owned) AND disposition IS NULL
-					AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message')
+					AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message') AND (work_item_id=?2 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM chief_managers WHERE work_id=work_item_id)) AND (work_item_id<>?2 OR event_kind<>'worker_turn_completed')
 					AND (delivered_turn_id IS NULL OR (delivery_work_item_id = ?2 AND delivered_turn_id != ''))", params![event_id, id]).map_err(sqlite_error)?;
 				if changed != 1 { return Err(DatabaseError::Conflict.into()); }
 			}
-			if work.kind == ChiefWorkKind::Task {
+			if work.kind == ChiefWorkKind::Task || transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_managers WHERE work_id=?1)",[&id],|row|row.get::<_,bool>(0)).map_err(sqlite_error)? {
 				transaction.execute("UPDATE chief_work_items SET status = 'open', next_check_at_micros = NULL WHERE id = ?1", [&id]).map_err(sqlite_error)?;
 			}
+			if let Some(text)=instruction {
+				let now=unix_micros()?;
+				let previous:i64=transaction.query_row("SELECT coalesce(max(id),0) FROM chief_inbox_events WHERE work_item_id=?1",[&id],|row|row.get(0)).map_err(sqlite_error)?;
+				let source=serde_json::json!(["work_instruction",id,previous]).to_string();
+				let payload=serde_json::json!({"text":text,"source":"manager"}).to_string();
+				if payload.len()>65536 {return Err(StoreError::InvalidInput("instruction exceeds saved event bound"));}
+				transaction.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'work_instruction',?3,?4,?2,'')",params![source,id,payload,now]).map_err(sqlite_error)?;
+			}
+
 			let work = read_work(&transaction, &id)?;
 			transaction.commit().map_err(sqlite_error)?;
 			Ok(work)
+		}).await
+	}
+
+	/// Fence a steering attempt before the provider effect. Pending attempts never queue.
+	pub async fn begin_chief_steer(
+		&self,
+		id: String,
+		turn: String,
+		key: String,
+		payload: String,
+	) -> Result<i64, StoreError> {
+		bounded(&payload, 65536)?;
+		bounded(&key, 512)?;
+		self.run(move |connection| {
+			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let work = read_work(&tx, &id)?;
+			if work.dispatch_state != ChiefDispatchState::Running || work.active_turn_id.as_deref() != Some(&turn) {
+				return Err(DatabaseError::Conflict.into());
+			}
+			let source = serde_json::json!(["user_steer", id, key]).to_string();
+			tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'steer_pending',?3,?4,?2,?5)",params![source,id,payload,unix_micros()?,turn]).map_err(sqlite_error)?;
+			let event = tx.last_insert_rowid();
+			tx.commit().map_err(sqlite_error)?;
+			Ok(event)
+		}).await
+	}
+
+	/// Publish only confirmed steering input as a delivered user message.
+	pub async fn finish_chief_steer(&self, event: i64, accepted: bool) -> Result<(), StoreError> {
+		self.run(move |connection| {
+			let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let attempt=read_event(&tx,event)?;
+			if attempt.event_kind != "steer_pending" || attempt.disposition.is_some() { return Err(DatabaseError::Conflict.into()); }
+			let note=if accepted { "Steer accepted by the provider." } else { "Steer rejected by the provider; no input was queued." };
+			let now=unix_micros()?.max(attempt.created_at_micros);
+			tx.execute("UPDATE chief_inbox_events SET disposition='resolved',disposition_note=?2,disposed_at_micros=?3 WHERE id=?1",params![event,note,now]).map_err(sqlite_error)?;
+			if accepted {
+				let source=serde_json::json!(["steer_receipt",event]).to_string();
+				tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'user_message',?3,?4,?2,?5)",params![source,attempt.work_item_id,attempt.payload,now,attempt.delivered_turn_id]).map_err(sqlite_error)?;
+			}
+			tx.commit().map_err(sqlite_error)?;
+			Ok(())
 		}).await
 	}
 
@@ -404,7 +568,10 @@ impl SqliteStore {
 			let work = read_work(&transaction, &id)?;
 			if work.dispatch_state != ChiefDispatchState::Dispatching { return Err(DatabaseError::Conflict.into()); }
 			transaction.execute("UPDATE chief_work_items SET dispatch_state = 'running', active_turn_id = ?2, updated_at_micros = max(updated_at_micros, ?3) WHERE id = ?1", params![id, turn_id, unix_micros()?]).map_err(sqlite_error)?;
+			transaction.execute("UPDATE chief_usage SET turn_id=?2,baseline_input_tokens=json_extract(usage_json,'$.input_tokens'),baseline_output_tokens=json_extract(usage_json,'$.output_tokens'),turn_input_tokens=NULL,turn_output_tokens=NULL WHERE work_id=?1 AND thread_id=?3",params![id,turn_id,work.codex_thread_id]).map_err(sqlite_error)?;
 			transaction.execute("UPDATE chief_inbox_events SET delivered_turn_id = ?2 WHERE delivery_work_item_id = ?1 AND delivered_turn_id = '' AND disposition IS NULL", params![id, turn_id]).map_err(sqlite_error)?;
+			transaction.execute("UPDATE chief_inbox_events SET disposition='resolved',disposition_note='Instruction accepted by the provider; completion is tracked separately.',disposed_at_micros=max(created_at_micros,?3) WHERE delivery_work_item_id=?1 AND delivered_turn_id=?2 AND event_kind='work_instruction' AND disposition IS NULL",params![id,turn_id,unix_micros()?]).map_err(sqlite_error)?;
+
 			let work = read_work(&transaction, &id)?;
 			transaction.commit().map_err(sqlite_error)?;
 			Ok(work)
@@ -441,7 +608,8 @@ impl SqliteStore {
 		if input.payload.len() > 65536 || input.work_item_id != id {
 			return Err(StoreError::InvalidInput("invalid Chief terminal event"));
 		}
-		let user_input_handled = input.event_kind == "chief_turn_completed"
+		let user_input_handled = ["chief_turn_completed", "worker_turn_completed"]
+			.contains(&input.event_kind.as_str())
 			&& serde_json::from_str::<serde_json::Value>(&input.payload).is_ok_and(|payload| {
 				payload.pointer("/terminal/turn/status").and_then(serde_json::Value::as_str)
 					== Some("completed")
@@ -549,6 +717,86 @@ impl SqliteStore {
 		}).await
 	}
 
+	/// Record one active connection failure. Repeated probes do not duplicate it.
+	pub async fn record_chief_connection_failure(
+		&self,
+		root: String,
+		detail: String,
+	) -> Result<(), StoreError> {
+		bounded(&root, 512)?;
+		bounded(&detail, 65536)?;
+		self.run(move |connection| {
+			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let pending: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM chief_inbox_events WHERE work_item_id=?1 AND event_kind='reconnection_needs_attention' AND disposition IS NULL)", [&root], |row| row.get(0)).map_err(sqlite_error)?;
+			if !pending {
+				let now = unix_micros()?;
+				let previous: i64 = tx.query_row("SELECT coalesce(max(id),0) FROM chief_inbox_events WHERE work_item_id=?1", [&root], |row| row.get(0)).map_err(sqlite_error)?;
+				let source = serde_json::json!(["chief_connection", root, previous]).to_string();
+				let payload = serde_json::json!({"recovery":detail}).to_string();
+				tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES(?1,?2,'reconnection_needs_attention',?3,?4)", params![source,root,payload,now]).map_err(sqlite_error)?;
+			}
+			tx.commit().map_err(sqlite_error)?;
+			Ok(())
+		}).await
+	}
+
+	/// Close connection errors after an attested connection, without changing work judgment.
+	pub async fn resolve_chief_connection_failure(&self, root: String) -> Result<(), StoreError> {
+		self.run(move |connection| {
+			connection.execute("UPDATE chief_inbox_events SET disposition='resolved',disposition_note='The same-account Chief connection was restored.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind='reconnection_needs_attention' AND disposition IS NULL",params![root,unix_micros()?]).map_err(sqlite_error)?;
+			Ok(())
+		}).await
+	}
+
+	/// Keep one current delivery error, with separate records for later recurrences.
+	pub async fn record_chief_delivery_failure(
+		&self,
+		root: String,
+		detail: String,
+	) -> Result<(), StoreError> {
+		self.record_chief_delivery_notice(root, detail, "wake_failed").await
+	}
+
+	/// Record an attested external writer without treating it as an execution failure.
+	pub async fn record_chief_thread_in_use(
+		&self,
+		root: String,
+		detail: String,
+	) -> Result<(), StoreError> {
+		self.record_chief_delivery_notice(root, detail, "thread_in_use_needs_attention").await
+	}
+
+	async fn record_chief_delivery_notice(
+		&self,
+		root: String,
+		detail: String,
+		kind: &'static str,
+	) -> Result<(), StoreError> {
+		bounded(&root, 512)?;
+		bounded(&detail, 2048)?;
+		self.run(move |connection| {
+			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let payload = serde_json::json!({"recovery":detail}).to_string();
+			let same: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM chief_inbox_events WHERE work_item_id=?1 AND event_kind=?3 AND payload=?2 AND disposition IS NULL)",params![root,payload,kind],|row|row.get(0)).map_err(sqlite_error)?;
+			if !same {
+				tx.execute("UPDATE chief_inbox_events SET disposition='resolved',disposition_note='Superseded by the current delivery diagnostic.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind IN ('wake_failed','followup_processing_failed','thread_in_use_needs_attention') AND disposition IS NULL",params![root,unix_micros()?]).map_err(sqlite_error)?;
+				let previous:i64 = tx.query_row("SELECT coalesce(max(id),0) FROM chief_inbox_events WHERE work_item_id=?1",[&root],|row|row.get(0)).map_err(sqlite_error)?;
+				let source = serde_json::json!(["chief_delivery",root,previous]).to_string();
+				tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES(?1,?2,?5,?3,?4)",params![source,root,payload,unix_micros()?,kind]).map_err(sqlite_error)?;
+			}
+			tx.commit().map_err(sqlite_error)?;
+			Ok(())
+		}).await
+	}
+
+	/// Successful delivery processing clears only delivery diagnostics, never work events.
+	pub async fn resolve_chief_delivery_failure(&self, root: String) -> Result<(), StoreError> {
+		self.run(move |connection| {
+			connection.execute("UPDATE chief_inbox_events SET disposition='resolved',disposition_note='Chief delivery processing recovered.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind IN ('wake_failed','followup_processing_failed','thread_in_use_needs_attention') AND disposition IS NULL",params![root,unix_micros()?]).map_err(sqlite_error)?;
+			Ok(())
+		}).await
+	}
+
 	/// Read without claiming or acknowledging. Failed processing leaves every event pending.
 	pub async fn list_undelivered_chief_events(
 		&self,
@@ -570,9 +818,10 @@ impl SqliteStore {
 		let limit = page_limit(limit)?;
 		self.run(move |connection| {
 			connection.prepare("WITH RECURSIVE owned(id) AS (
-				SELECT ?1 UNION SELECT child.id FROM chief_work_items child JOIN owned ON child.parent_goal_id = owned.id)
+				SELECT ?1 UNION SELECT child.id FROM chief_work_items child JOIN owned ON child.parent_goal_id = owned.id WHERE owned.id = ?1 OR NOT EXISTS(SELECT 1 FROM chief_managers WHERE work_id=owned.id))
 				SELECT * FROM chief_inbox_events WHERE work_item_id IN (SELECT id FROM owned)
 				AND disposition IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message')
+                AND (work_item_id <> ?1 OR event_kind <> 'worker_turn_completed') AND (work_item_id=?1 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM chief_managers WHERE work_id=work_item_id))
 				AND (delivered_turn_id IS NULL OR (delivery_work_item_id = ?1 AND delivered_turn_id != ''))
 				ORDER BY delivered_turn_id IS NOT NULL, id LIMIT ?2")
 				.map_err(sqlite_error)?.query_map(params![chief_id, limit], event_row)
@@ -649,7 +898,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			let source = read_event(&transaction, user_event_id)?;
-			let active: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_work_items WHERE id = ?1 AND parent_goal_id IS NULL AND active_turn_id = ?2 AND dispatch_state = 'running')",params![chief_id,turn_id],|row|row.get(0)).map_err(sqlite_error)?;
+			let active: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_work_items WHERE id = ?1 AND (parent_goal_id IS NULL OR EXISTS(SELECT 1 FROM chief_managers WHERE work_id=?1)) AND active_turn_id = ?2 AND dispatch_state = 'running')",params![chief_id,turn_id],|row|row.get(0)).map_err(sqlite_error)?;
 			let descendant: bool = transaction.query_row("WITH RECURSIVE lineage(id,parent_goal_id) AS (SELECT id,parent_goal_id FROM chief_work_items WHERE id = ?1 UNION SELECT work.id,work.parent_goal_id FROM chief_work_items work JOIN lineage ON work.id = lineage.parent_goal_id) SELECT EXISTS(SELECT 1 FROM lineage WHERE id = ?2)",params![work_id,chief_id],|row|row.get(0)).map_err(sqlite_error)?;
 			if !active || !descendant || source.work_item_id != chief_id || source.event_kind != "user_message" || source.delivered_turn_id.as_deref() != Some(&turn_id) || source.disposition.is_some() {
 				return Err(StoreError::InvalidInput("decision requires a current delivered user reply"));
@@ -678,7 +927,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			let event = read_event(&transaction,evidence_event_id)?;
-			let current:bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_work_items WHERE id = ?1 AND parent_goal_id IS NULL AND active_turn_id = ?2 AND dispatch_state = 'running')",params![chief_id,turn_id],|row|row.get(0)).map_err(sqlite_error)?;
+			let current:bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_work_items WHERE id = ?1 AND (parent_goal_id IS NULL OR EXISTS(SELECT 1 FROM chief_managers WHERE work_id=?1)) AND active_turn_id = ?2 AND dispatch_state = 'running')",params![chief_id,turn_id],|row|row.get(0)).map_err(sqlite_error)?;
 			let related:bool = transaction.query_row("WITH RECURSIVE family(id) AS (SELECT id FROM chief_work_items WHERE id = ?1 UNION SELECT work.id FROM chief_work_items work JOIN family ON work.parent_goal_id = family.id) SELECT EXISTS(SELECT 1 FROM family WHERE id = ?2)",params![goal_id,event.work_item_id],|row|row.get(0)).map_err(sqlite_error)?;
 			let user_input = event.event_kind == "user_message" && event.work_item_id == chief_id;
 			let result = related && matches!(event.event_kind.as_str(),"worker_turn_completed"|"automation_result"|"followup_due");
@@ -855,6 +1104,7 @@ fn event_row(row: &Row<'_>) -> rusqlite::Result<ChiefInboxEvent> {
 
 #[cfg(test)]
 mod tests {
+	mod activity;
 	mod inbox_carryover;
 	use super::*;
 	use tempfile::tempdir;
@@ -874,6 +1124,121 @@ mod tests {
 			created_at_micros: 1,
 			updated_at_micros: 1,
 		}
+	}
+
+	#[tokio::test]
+	async fn delivery_attention_recovers_without_consuming_saved_user_input() {
+		let directory = tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("chief.sqlite3")).unwrap();
+		store.create_chief_work_item(item("chief", None)).await.unwrap();
+		store
+			.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id: "user-1".into(),
+				work_item_id: "chief".into(),
+				event_kind: "user_message".into(),
+				payload: r#"{"text":"continue"}"#.into(),
+			})
+			.await
+			.unwrap();
+		store.record_chief_delivery_failure("chief".into(), "Unavailable".into()).await.unwrap();
+		store.record_chief_thread_in_use("chief".into(), "Open elsewhere".into()).await.unwrap();
+		store.record_chief_thread_in_use("chief".into(), "Open elsewhere".into()).await.unwrap();
+		assert!(
+			store
+				.list_pending_chief_events(10)
+				.await
+				.unwrap()
+				.iter()
+				.any(|e| e.event_kind == "thread_in_use_needs_attention")
+		);
+		assert_eq!(store.list_pending_chief_events(10).await.unwrap().len(), 2);
+		store.resolve_chief_delivery_failure("chief".into()).await.unwrap();
+		let pending = store.list_pending_chief_events(10).await.unwrap();
+		assert_eq!(pending.len(), 1);
+		assert_eq!(pending[0].event_kind, "user_message");
+		assert!(pending[0].delivered_turn_id.is_none());
+		store.record_chief_delivery_failure("chief".into(), "Later failure".into()).await.unwrap();
+		assert_eq!(store.read_chief_work_events("chief".into(), 10).await.unwrap().len(), 4);
+	}
+
+	#[tokio::test]
+	async fn redispatch_invalidates_manager_acceptance_and_records_instruction_atomically() {
+		let directory = tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("chief.sqlite3")).unwrap();
+		store.create_chief_work_item(item("chief", None)).await.unwrap();
+		store.create_chief_manager(item("manager", Some("chief")), None).await.unwrap();
+		store.bind_chief_thread("manager".into(), "manager-thread".into()).await.unwrap();
+		store
+			.set_chief_work_status("manager".into(), ChiefWorkStatus::Resolved, None)
+			.await
+			.unwrap();
+		store
+			.begin_chief_dispatch_with_input(
+				"manager".into(),
+				vec![],
+				Some("Check the revised result".into()),
+			)
+			.await
+			.unwrap();
+		assert_eq!(
+			store.get_chief_work_item("manager".into()).await.unwrap().status,
+			ChiefWorkStatus::Open
+		);
+		assert!(
+			store
+				.begin_chief_dispatch_with_input(
+					"manager".into(),
+					vec![],
+					Some("Do not duplicate".into())
+				)
+				.await
+				.is_err()
+		);
+		store.acknowledge_chief_dispatch("manager".into(), "new-turn".into()).await.unwrap();
+		let history = store.read_chief_work_events("manager".into(), 10).await.unwrap();
+		assert_eq!(history.len(), 1);
+		assert_eq!(history[0].event_kind, "work_instruction");
+		assert_eq!(history[0].delivered_turn_id.as_deref(), Some("new-turn"));
+		assert_eq!(
+			serde_json::from_str::<serde_json::Value>(&history[0].payload).unwrap()["text"],
+			"Check the revised result"
+		);
+		assert!(store.list_undelivered_chief_events(10).await.unwrap().is_empty());
+		store.complete_chief_turn("manager".into(), "new-turn".into()).await.unwrap();
+		assert_eq!(
+			store.get_chief_work_item("manager".into()).await.unwrap().status,
+			ChiefWorkStatus::Open
+		);
+	}
+
+	#[tokio::test]
+	async fn connection_attention_closes_and_rearms_without_resolving_work() {
+		let directory = tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("chief.sqlite3")).unwrap();
+		store.create_chief_work_item(item("chief", None)).await.unwrap();
+		store
+			.record_chief_connection_failure("chief".into(), "Refresh quota".into())
+			.await
+			.unwrap();
+		store
+			.record_chief_connection_failure("chief".into(), "Retry pending".into())
+			.await
+			.unwrap();
+		assert_eq!(store.read_chief_work_events("chief".into(), 10).await.unwrap().len(), 1);
+		store.resolve_chief_connection_failure("chief".into()).await.unwrap();
+		let saved = store.read_chief_work_events("chief".into(), 10).await.unwrap();
+		assert_eq!(saved[0].disposition, Some(ChiefDisposition::Resolved));
+		assert_eq!(
+			store.get_chief_work_item("chief".into()).await.unwrap().status,
+			ChiefWorkStatus::Open
+		);
+		store
+			.record_chief_connection_failure("chief".into(), "Later failure".into())
+			.await
+			.unwrap();
+		let saved = store.read_chief_work_events("chief".into(), 10).await.unwrap();
+		assert_eq!(saved.len(), 2);
+		assert_eq!(saved.iter().filter(|event| event.disposition.is_none()).count(), 1);
 	}
 
 	#[tokio::test]

@@ -118,3 +118,44 @@ async fn later_wake_carries_unhandled_evidence_without_replaying_worker() {
 	assert_eq!(starts.len(), 1);
 	assert_eq!(starts[0]["params"]["threadId"], json!(chief.codex_thread_id));
 }
+
+#[tokio::test]
+async fn user_turn_preserves_plain_text_and_can_inspect_earlier_unhandled_results() {
+	let (mut coordinator, mut sent, _directory) = fixture().await;
+	coordinator.start_chief("chief", "Coordinate").await.unwrap();
+	coordinator.create_worker("chief", "worker", "Inspect").await.unwrap();
+	complete(&mut coordinator, "chief").await;
+	complete(&mut coordinator, "worker").await;
+	let previous = coordinator.store.get_chief_work_item("chief".into()).await.unwrap();
+	let event = coordinator
+		.store
+		.list_chief_events_for_turn(previous.active_turn_id.unwrap(), 10)
+		.await
+		.unwrap()
+		.remove(0);
+	complete(&mut coordinator, "chief").await;
+	while sent.try_recv().is_ok() {}
+	coordinator
+		.enqueue_user_message("chief", "follow-up", "Discuss the earlier result.")
+		.await
+		.unwrap();
+	coordinator.wake_pending().await.unwrap();
+	let chief = coordinator.store.get_chief_work_item("chief".into()).await.unwrap();
+	let inbox =
+		coordinator.tool(&chief, &json!({"tool":"chief_list_work","arguments":{}})).await.unwrap();
+	assert!(inbox["inbox"].as_array().unwrap().iter().any(|entry| entry["id"] == event.id));
+	coordinator.tool(&chief, &json!({"tool":"chief_disposition","arguments":{"id":"worker","status":"resolved","eventIds":[event.id],"summary":"Accepted existing evidence"}})).await.unwrap();
+	let mut starts = Vec::new();
+	while let Ok(request) = sent.try_recv() {
+		assert_ne!(request["method"], "thread/start");
+		if request["method"] == "turn/start" {
+			starts.push(request);
+		}
+	}
+	assert_eq!(starts.len(), 1);
+	assert_eq!(starts[0]["params"]["input"][0]["text"], "Discuss the earlier result.");
+	assert_eq!(
+		coordinator.store.get_chief_inbox_event(event.id).await.unwrap().disposition,
+		Some(ChiefDisposition::Resolved)
+	);
+}

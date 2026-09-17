@@ -362,14 +362,17 @@ async fn assert_exact_current_doctor_queries(
 	send(
 		&mut future,
 		ClientMessage::Hello(ClientHello {
-			version: ProtocolVersion { major: 2, minor: 17 },
+			version: ProtocolVersion {
+				major: CURRENT_VERSION.major,
+				minor: CURRENT_VERSION.minor + 1,
+			},
 			expected_server_id: Some(server_id.clone()),
 			resume: None,
 		}),
 	)
 	.await;
 	let ServerMessage::Refusal(refusal) = receive(&mut future).await else {
-		panic!("expected V2.17 minor-version refusal");
+		panic!("expected future minor-version refusal");
 	};
 	assert!(matches!(refusal.refusal, Refusal::ServiceVersionMismatch { .. }));
 
@@ -389,7 +392,7 @@ async fn assert_exact_current_doctor_queries(
 	send(
 		&mut current,
 		ClientMessage::Query(doctor_query(
-			ProtocolVersion { major: 2, minor: 17 },
+			ProtocolVersion { major: CURRENT_VERSION.major, minor: CURRENT_VERSION.minor + 1 },
 			"future-query-on-current-session",
 		)),
 	)

@@ -1,4 +1,4 @@
-//! `decodex serve` lifecycle assembly and the same-UID V2.16 local connection owner.
+//! `decodex serve` lifecycle assembly and the same-UID V2.17 local connection owner.
 //!
 //! Account-process and routing composition remain crate-private. The ordinary Conversation owner
 //! composes them without exporting raw process, routing, or provider-dispatch facades.
@@ -15,6 +15,8 @@ mod application;
 mod auth_projection;
 mod bootstrap;
 mod chief;
+mod chief_capabilities;
+mod chief_detail;
 mod chief_host;
 mod conversation;
 mod domain_packs;

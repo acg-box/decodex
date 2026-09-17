@@ -1806,10 +1806,23 @@ impl Application for ServiceApplication {
 
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
+			QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id } =>
+				QueryResultPayload::ChiefActivityDetail(match &self.chief {
+					Some(chief) =>
+						chief
+							.activity_detail(work_id.as_str(), turn_id.as_str(), item_id.as_str())
+							.await,
+					None => decodex_protocol::ChiefActivityDetailResult::Unavailable,
+				}),
+			QueryPayload::GetChiefCapabilities =>
+				QueryResultPayload::ChiefCapabilities(match &self.chief {
+					Some(chief) => chief.capabilities().await,
+					None => decodex_protocol::ChiefCapabilitiesResult::Unavailable,
+				}),
 			QueryPayload::GetChiefRequest { event_id } =>
 				QueryResultPayload::ChiefRequest(query_chief_request(&self.store, *event_id).await),
-			QueryPayload::GetChiefHistory { work_id } => QueryResultPayload::ChiefHistory(
-				query_chief_history(&self.store, work_id.as_str()).await,
+			QueryPayload::GetChiefHistory { work_id, before } => QueryResultPayload::ChiefHistory(
+				query_chief_history_page(&self.store, work_id.as_str(), *before).await,
 			),
 			QueryPayload::GetChiefSnapshot =>
 				QueryResultPayload::ChiefSnapshot(query_chief_snapshot(&self.store).await),
@@ -3580,84 +3593,164 @@ async fn query_chief_request(
 	}
 }
 
+fn chief_user_message_text(value: &serde_json::Value) -> String {
+	let mut text = value["text"].as_str().unwrap_or("").to_owned();
+	if let Some(files) = value.pointer("/options/attachments").and_then(serde_json::Value::as_array)
+	{
+		for file in files.iter().take(16) {
+			if let Some(path) = file["path"].as_str() {
+				text.push_str("\n\nAttached: ");
+				text.push_str(path);
+			}
+		}
+	}
+	text
+}
+
+#[cfg(test)]
 async fn query_chief_history(
 	store: &ProductStore,
 	id: &str,
+) -> decodex_protocol::ChiefHistoryResult {
+	query_chief_history_page(store, id, None).await
+}
+
+fn chief_history_notice(kind: &str, value: &serde_json::Value) -> String {
+	if kind == "steer_pending" {
+		return "Steer delivery is unconfirmed. Inspect the current response before sending again."
+			.into();
+	}
+	let detail = value["recovery"].as_str().unwrap_or("Inspect persisted work before retrying.");
+	if kind == "reconnection_needs_attention" {
+		detail.to_owned()
+	} else {
+		format!("{kind}: {detail}")
+	}
+}
+
+fn chief_assistant_history(
+	value: &serde_json::Value,
+	has_more: &mut bool,
+) -> (&'static str, String) {
+	let messages = value.pointer("/threadReadback/assistantMessages");
+	let parsed = messages
+		.and_then(serde_json::Value::as_str)
+		.and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
+	let messages = parsed.as_ref().or(messages);
+	let text = messages
+		.and_then(serde_json::Value::as_array)
+		.map(|items| {
+			items.iter().filter_map(|item| item["text"].as_str()).collect::<Vec<_>>().join("\n\n")
+		})
+		.unwrap_or_default();
+	let status = value.pointer("/terminal/turn/status").and_then(serde_json::Value::as_str);
+	if text.is_empty() {
+		return (
+			"execution_notice",
+			match status {
+				Some("interrupted") => "Interrupted before a response was produced.",
+				Some("failed") => "Execution failed before a response was produced.",
+				_ => "Execution ended without a recoverable response.",
+			}
+			.into(),
+		);
+	}
+	let mut text = text;
+	if matches!(status, Some("interrupted" | "failed")) {
+		text.push_str(if status == Some("interrupted") {
+			"\n\n*Execution interrupted.*"
+		} else {
+			"\n\n*Execution failed.*"
+		});
+	}
+	if value.pointer("/threadReadback/truncated").and_then(serde_json::Value::as_bool) == Some(true)
+	{
+		*has_more = true;
+		text.insert_str(0, "[Assistant output truncated in saved history.]\n\n");
+	}
+	("assistant", text)
+}
+
+async fn query_chief_history_page(
+	store: &ProductStore,
+	id: &str,
+	before: Option<i64>,
 ) -> decodex_protocol::ChiefHistoryResult {
 	use decodex_protocol::{ChiefHistoryEntryDto, ChiefHistoryResult};
 	let ProductStore::Available(store) = store else {
 		return ChiefHistoryResult::Unavailable;
 	};
-	let Ok(events) = store.read_chief_work_events(id.into(), 33).await else {
+	let Ok((events, partial)) = store.read_chief_transcript(id.into(), before, 33).await else {
 		return ChiefHistoryResult::Unavailable;
 	};
-	let mut has_more = events.len() > 32;
+	let older_available = events.len() > 32;
+	let mut has_more = older_available;
 	let mut entries = Vec::new();
 	let mut remaining = 64 * 1024;
+	let mut page_full = false;
 	for event in events.into_iter().rev().take(32) {
 		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap_or_default();
 		let (kind, mut text) = match event.event_kind.as_str() {
-			"user_message" => ("user", value["text"].as_str().unwrap_or("").to_owned()),
-			"chief_turn_completed" | "worker_turn_completed" => {
-				let messages = value.pointer("/threadReadback/assistantMessages");
-				let parsed = messages
-					.and_then(serde_json::Value::as_str)
-					.and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
-				let messages = parsed.as_ref().or(messages);
-				let text = messages
-					.and_then(serde_json::Value::as_array)
-					.map(|items| {
-						items
-							.iter()
-							.filter_map(|item| item["text"].as_str())
-							.collect::<Vec<_>>()
-							.join("\n\n")
-					})
-					.unwrap_or_default();
-				let mut text = if text.is_empty() {
-					"Execution ended; no readable assistant output was recovered.".into()
-				} else {
-					text
-				};
-				if value.pointer("/threadReadback/truncated").and_then(serde_json::Value::as_bool)
-					== Some(true)
-				{
-					has_more = true;
-					text.insert_str(0, "[Assistant output truncated in saved history.]\n\n");
-				}
-				("assistant", text)
-			},
+			"activity_started" | "activity_completed" => ("activity", String::new()),
+			"user_message" => ("user", chief_user_message_text(&value)),
+
+			"work_instruction" => ("instruction", value["text"].as_str().unwrap_or("").to_owned()),
+			"chief_turn_completed" | "worker_turn_completed" =>
+				chief_assistant_history(&value, &mut has_more),
 			"automation_result" =>
 				("automation", value.as_str().unwrap_or(&event.payload).to_owned()),
-			"configuration_needs_attention"
+			"steer_pending"
+			| "configuration_needs_attention"
 			| "reconnection_needs_attention"
 			| "recovery_needs_attention"
 			| "wake_failed"
 			| "event_processing_failed"
 			| "followup_processing_failed"
-			| "connection_needs_attention" => {
-				let detail =
-					value["recovery"].as_str().unwrap_or("Inspect persisted work before retrying.");
-				("system", format!("{}: {detail}", event.event_kind))
-			},
+			| "connection_needs_attention" => ("system", chief_history_notice(&event.event_kind, &value)),
 			_ => ("system", event.event_kind.clone()),
 		};
 		if let Some(note) = event.disposition_note.filter(|_| {
-			event.event_kind != "chief_turn_completed" && event.event_kind != "user_message"
+			!matches!(
+				event.event_kind.as_str(),
+				"chief_turn_completed"
+					| "worker_turn_completed"
+					| "user_message"
+					| "activity_started"
+					| "activity_completed"
+			)
 		}) {
 			text.push_str("\n\nDisposition: ");
 			text.push_str(&note);
 		}
-		let mut bound = remaining.min(8192).min(text.len());
-		while !text.is_char_boundary(bound) {
-			bound -= 1;
-		}
-		if bound < text.len() {
+		let activity_cost = if kind == "activity" { event.payload.len() } else { 0 };
+		if serde_json::to_vec(&text).map_or(usize::MAX, |encoded| encoded.len())
+			+ 160 + activity_cost
+			> remaining
+			&& !entries.is_empty()
+		{
+			page_full = true;
 			has_more = true;
-			text.truncate(bound);
+			break;
 		}
-		remaining -= bound;
+		let (bounded, shortened) =
+			bound_chief_text(text, remaining.saturating_sub(160 + activity_cost));
+		has_more |= shortened;
+		text = bounded;
+		remaining = remaining.saturating_sub(
+			serde_json::to_vec(&text).map_or(remaining, |encoded| encoded.len())
+				+ 160 + activity_cost,
+		);
+
 		entries.push(ChiefHistoryEntryDto {
+			activity: if event.event_kind.starts_with("activity_") {
+				serde_json::from_value(value.clone()).ok()
+			} else {
+				None
+			},
+			usage: serde_json::from_value(value["usage"].clone()).ok(),
+			duration_ms: value
+				.pointer("/terminal/turn/durationMs")
+				.and_then(serde_json::Value::as_u64),
 			id: event.id,
 			kind: kind.into(),
 			text,
@@ -3669,7 +3762,80 @@ async fn query_chief_history(
 		}
 	}
 	entries.reverse();
-	ChiefHistoryResult::Available { entries, has_more }
+	let next_before = if older_available || remaining == 0 || page_full {
+		entries.first().map(|entry| entry.id)
+	} else {
+		None
+	};
+	let live = query_chief_live(partial);
+	ChiefHistoryResult::Available {
+		entries,
+		has_more,
+		next_before,
+		live,
+		usage: store
+			.read_chief_usage(id.into())
+			.await
+			.ok()
+			.flatten()
+			.and_then(|json| serde_json::from_str(&json).ok()),
+	}
+}
+
+fn bound_chief_text(mut text: String, encoded_budget: usize) -> (String, bool) {
+	if serde_json::to_vec(&text).is_ok_and(|encoded| encoded.len() <= encoded_budget) {
+		return (text, false);
+	}
+	let mut low = 0;
+	let mut high = text.len();
+	while low < high {
+		let middle = low + (high - low).div_ceil(2);
+		let mut end = middle;
+		while !text.is_char_boundary(end) {
+			end -= 1;
+		}
+		if serde_json::to_vec(&text[..end]).is_ok_and(|encoded| encoded.len() <= encoded_budget) {
+			low = middle;
+		} else {
+			high = middle - 1;
+		}
+	}
+	while !text.is_char_boundary(low) {
+		low -= 1;
+	}
+	text.truncate(low);
+	(text, true)
+}
+
+fn query_chief_live(
+	partial: Vec<decodex_database::ChiefLiveOutput>,
+) -> Vec<decodex_protocol::ChiefLiveMessageDto> {
+	let mut live = Vec::new();
+	let mut budget = 65536usize;
+	for output in partial {
+		if budget == 0 {
+			break;
+		}
+		let metadata = serde_json::to_vec(&(&output.turn_id, &output.item_id))
+			.map_or(budget, |encoded| encoded.len())
+			+ 160;
+		if metadata >= budget {
+			break;
+		}
+		let (text, shortened) = bound_chief_text(output.text, budget - metadata);
+		let truncated = output.truncated || shortened;
+		budget = budget.saturating_sub(
+			serde_json::to_vec(&text).map_or(budget, |encoded| encoded.len()) + metadata,
+		);
+
+		live.push(decodex_protocol::ChiefLiveMessageDto {
+			turn_id: output.turn_id,
+			item_id: output.item_id,
+			text,
+			truncated,
+		});
+	}
+	live
 }
 
 async fn query_chief_snapshot(store: &ProductStore) -> decodex_protocol::ChiefSnapshotResult {
@@ -3691,7 +3857,7 @@ async fn query_chief_snapshot(store: &ProductStore) -> decodex_protocol::ChiefSn
 		Ok(records) => records,
 		Err(_) => return ChiefSnapshotResult::Unavailable,
 	};
-	let (work_items, dependencies, pending_events) = match records {
+	let (work_items, dependencies, pending_events, managers, workspaces) = match records {
 		ChiefStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
 			return ChiefSnapshotResult::CapacityExceeded {
 				work_items,
@@ -3699,18 +3865,36 @@ async fn query_chief_snapshot(store: &ProductStore) -> decodex_protocol::ChiefSn
 				pending_events,
 			};
 		},
-		ChiefStoreSnapshot::Complete { work_items, dependencies, pending_events } =>
-			(work_items, dependencies, pending_events),
+		ChiefStoreSnapshot::Complete {
+			work_items,
+			dependencies,
+			pending_events,
+			managers,
+			workspaces,
+		} => (work_items, dependencies, pending_events, managers, workspaces),
 	};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
 	let snapshot = ChiefSnapshotDto {
+		workspaces: workspaces
+			.into_iter()
+			.map(|(chief_id, name, directory)| decodex_protocol::ChiefWorkspaceDto {
+				chief_id,
+				name,
+				directory,
+			})
+			.collect(),
 		work_items: work_items
 			.into_iter()
 			.map(|item| ChiefWorkItemDto {
-				id: item.id,
-				parent_goal_id: item.parent_goal_id,
+				id: item.id.clone(),
+				parent_goal_id: item.parent_goal_id.clone(),
 				kind: match item.kind {
-					ChiefWorkKind::Goal => ChiefWorkKindDto::Goal,
+					ChiefWorkKind::Goal =>
+						if item.parent_goal_id.is_some() && managers.contains(&item.id) {
+							ChiefWorkKindDto::Manager
+						} else {
+							ChiefWorkKindDto::Goal
+						},
 					ChiefWorkKind::Task => ChiefWorkKindDto::Task,
 				},
 				title: item.title,
@@ -4045,6 +4229,44 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn chief_activity_history_projects_receipts_without_disposition_prose() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		chief_query_work(&store, "chosen").await;
+		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
+		store.begin_chief_dispatch("chosen".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("chosen".into(), "turn".into()).await.unwrap();
+		let activity = decodex_protocol::ChiefActivityDto {
+			turn_id: "turn".into(),
+			item_id: "item".into(),
+			kind: "contextCompaction".into(),
+			status: "completed".into(),
+			label: "Compacting context".into(),
+			detail: String::new(),
+			duration_ms: None,
+		};
+		store
+			.record_chief_activity(
+				"thread".into(),
+				"turn".into(),
+				"item".into(),
+				true,
+				serde_json::to_string(&activity).unwrap(),
+			)
+			.await
+			.unwrap();
+		let decodex_protocol::ChiefHistoryResult::Available { entries, .. } =
+			super::query_chief_history(&ProductStore::Available(store), "chosen").await
+		else {
+			panic!("history");
+		};
+		assert_eq!(entries.len(), 1);
+		assert_eq!(entries[0].activity.as_ref(), Some(&activity));
+		assert!(entries[0].text.is_empty());
+	}
+
+	#[tokio::test]
 	async fn chief_history_query_selects_latest_work_and_bounds_utf8_content() {
 		use decodex_database::EnqueueChiefEvent;
 		use decodex_protocol::ChiefHistoryResult;
@@ -4078,7 +4300,7 @@ mod tests {
 			})
 			.await
 			.unwrap();
-		let ChiefHistoryResult::Available { entries, has_more } =
+		let ChiefHistoryResult::Available { entries, has_more, .. } =
 			super::query_chief_history(&owner, "chosen").await
 		else {
 			panic!("selected history");
@@ -4088,6 +4310,20 @@ mod tests {
 		assert_eq!(entries.first().unwrap().text, "message-3");
 		assert_eq!(entries.last().unwrap().text, "message-34");
 		assert!(entries.windows(2).all(|pair| pair[0].id < pair[1].id));
+		let before = entries.first().unwrap().id;
+		let ChiefHistoryResult::Available { entries: older, next_before, live, .. } =
+			super::query_chief_history_page(&owner, "chosen", Some(before)).await
+		else {
+			panic!("older page");
+		};
+		assert_eq!(
+			older.iter().map(|entry| entry.text.as_str()).collect::<Vec<_>>(),
+			vec!["message-0", "message-1", "message-2"]
+		);
+		assert!(older.iter().all(|entry| entry.id < before));
+		assert!(next_before.is_none());
+		assert!(live.is_empty());
+
 		for index in 0..9 {
 			store
 				.enqueue_chief_event(EnqueueChiefEvent {
@@ -4099,15 +4335,23 @@ mod tests {
 				.await
 				.unwrap();
 		}
-		let ChiefHistoryResult::Available { entries, has_more } =
+		let ChiefHistoryResult::Available { entries, has_more, .. } =
 			super::query_chief_history(&owner, "chosen").await
 		else {
 			panic!("bounded history");
 		};
 		assert!(has_more);
-		assert!(entries.iter().all(|entry| entry.text.len() <= 8192));
+		assert!(entries.iter().all(|entry| entry.text.len() <= 65536));
 		assert!(entries.iter().map(|entry| entry.text.len()).sum::<usize>() <= 65536);
 		assert!(entries.last().unwrap().text.starts_with('界'));
+	}
+
+	#[test]
+	fn empty_interrupted_turn_is_an_execution_notice_not_an_assistant_answer() {
+		let value = serde_json::json!({"terminal":{"turn":{"status":"interrupted"}},"threadReadback":{"assistantMessages":[]}});
+		let (kind, text) = super::chief_assistant_history(&value, &mut false);
+		assert_eq!(kind, "execution_notice");
+		assert_eq!(text, "Interrupted before a response was produced.");
 	}
 
 	#[tokio::test]
@@ -4129,7 +4373,7 @@ mod tests {
 				payload: serde_json::json!({"threadReadback": {"assistantMessages":messages,"truncated":truncated}}).to_string(),
 			}).await.unwrap();
 		}
-		let ChiefHistoryResult::Available { entries, has_more } =
+		let ChiefHistoryResult::Available { entries, has_more, .. } =
 			super::query_chief_history(&owner, "chosen").await
 		else {
 			panic!("history available");
@@ -4140,7 +4384,7 @@ mod tests {
 		assert!(
 			entries[1].text.starts_with("[Assistant output truncated in saved history.]\n\n界🙂")
 		);
-		assert!(entries[1].text.len() <= 8192);
+		assert!(entries[1].text.len() <= 65536);
 	}
 
 	#[tokio::test]

@@ -199,6 +199,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 			method.as_str(),
 			Some(
 				"model/list"
+					| "experimentalFeature/list"
 					| "thread/start"
 					| "thread/resume"
 					| "thread/read" | "thread/list"
@@ -313,6 +314,28 @@ mod tests {
 		assert!(validate_outbound(&json!({"id":"approval","result":{}}), &mut requests).is_err());
 		assert!(
 			validate_outbound(&json!({"id":42,"method":"turn/steer","params":{}}), &mut requests)
+				.is_ok()
+		);
+	}
+
+	#[test]
+	fn metadata_reads_are_allowed_but_feature_changes_remain_private() {
+		let mut requests = HashSet::new();
+		assert!(
+			validate_outbound(
+				&json!({"id":42,"method":"experimentalFeature/list","params":{"limit":100}}),
+				&mut requests
+			)
+			.is_ok()
+		);
+		for method in ["experimentalFeature/enablement/set", "config/value/write", "memory/reset"] {
+			assert!(
+				validate_outbound(&json!({"id":43,"method":method,"params":{}}), &mut requests)
+					.is_err()
+			);
+		}
+		assert!(
+			validate_outbound(&json!({"id":44,"method":"turn/start","params":{}}), &mut requests)
 				.is_ok()
 		);
 	}

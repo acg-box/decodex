@@ -17,28 +17,49 @@ pub(super) fn terminal(params: &Value) -> Value {
 		|| turn.as_object().is_some_and(|fields| {
 			fields.keys().any(|key| key != "id" && key != "status" && key != "error")
 		}) || error != turn["error"];
-	json!({"threadId":params["threadId"],"turn":{"id":turn["id"],"status":turn["status"],"error":error},"detailsOmitted":omitted})
+	json!({"threadId":params["threadId"],"turn":{"id":turn["id"],"status":turn["status"],"error":error,"durationMs":turn["durationMs"]},"detailsOmitted":omitted})
 }
 
 pub(super) fn collect(turn: Option<&Value>) -> (Vec<Value>, bool) {
-	let items = turn.and_then(|turn| turn["items"].as_array()).into_iter().flatten();
+	let mut items: Vec<_> = turn
+		.and_then(|turn| turn["items"].as_array())
+		.into_iter()
+		.flatten()
+		.enumerate()
+		.filter(|(_, item)| item["type"] == "agentMessage")
+		.collect();
+	let last = items.last().map(|(index, _)| *index);
+	items.sort_by_key(|(index, item)| {
+		(
+			if item["phase"] == "final_answer" {
+				0
+			} else if Some(*index) == last {
+				1
+			} else {
+				2
+			},
+			std::cmp::Reverse(*index),
+		)
+	});
 	let mut messages = Vec::new();
-	let mut remaining = MAX_BYTES - 2; // Array brackets.
-	for item in items.filter(|item| item["type"] == "agentMessage") {
+	let mut remaining = MAX_BYTES - 2;
+	let mut truncated = false;
+	for (index, item) in items {
 		let separator = usize::from(!messages.is_empty());
 		let budget = remaining.saturating_sub(separator);
-		let size = item.to_string().len();
-		if size <= budget {
-			messages.push(item.clone());
-			remaining -= size + separator;
-			continue;
+		let message = if item.to_string().len() <= budget {
+			Some(item.clone())
+		} else {
+			truncated = true;
+			truncate_message(item, budget)
+		};
+		if let Some(message) = message {
+			remaining = remaining.saturating_sub(message.to_string().len() + separator);
+			messages.push((index, message));
 		}
-		if let Some(message) = truncate_message(item, budget) {
-			messages.push(message);
-		}
-		return (messages, true);
 	}
-	(messages, false)
+	messages.sort_by_key(|(index, _)| *index);
+	(messages.into_iter().map(|(_, message)| message).collect(), truncated)
 }
 
 fn truncate_message(item: &Value, budget: usize) -> Option<Value> {
@@ -74,9 +95,42 @@ fn truncate_message(item: &Value, budget: usize) -> Option<Value> {
 	Some(message)
 }
 
+/// Select numeric provider facts without retaining unrelated notification content.
+pub(super) fn usage(params: &Value) -> Option<Value> {
+	let usage = &params["tokenUsage"];
+	let count = |path: &str| usage.pointer(path)?.as_i64().filter(|value| *value >= 0);
+	Some(json!({
+		"input_tokens": count("/total/inputTokens")?,
+		"output_tokens": count("/total/outputTokens")?,
+		"context_tokens": count("/last/totalTokens")?,
+		"context_window": usage["modelContextWindow"].as_i64().filter(|size| *size > 0)
+	}))
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn terminal_preserves_provider_duration_without_inventing_old_metrics() {
+		let value = terminal(
+			&json!({"threadId":"thread","turn":{"id":"turn","status":"completed","durationMs":12345}}),
+		);
+		assert_eq!(value["turn"]["durationMs"], 12345);
+		assert!(terminal(&json!({"turn":{"id":"old"}}))["turn"]["durationMs"].is_null());
+	}
+
+	#[test]
+	fn final_report_survives_large_commentary_and_keeps_chronological_order() {
+		let turn = json!({"items":[
+			{"type":"agentMessage","phase":"commentary","text":"x".repeat(60000)},
+			{"type":"agentMessage","phase":"final_answer","text":"Verified final result"}
+		]});
+		let (messages, truncated) = collect(Some(&turn));
+		assert!(truncated);
+		assert_eq!(messages.last().unwrap()["text"], "Verified final result");
+		assert!(serde_json::to_vec(&messages).unwrap().len() <= MAX_BYTES);
+	}
 
 	#[test]
 	fn long_escaped_multibyte_output_remains_structured_readable_and_bounded() {

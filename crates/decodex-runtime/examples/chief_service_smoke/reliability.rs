@@ -189,7 +189,9 @@ pub(super) async fn carryover(client: &ChiefClient, root: &DecodexRoot) -> Smoke
 	wait_graph(client, "carryover held", |graph| {
 		idle(graph)
 			&& graph.pending_events.iter().any(|event| event.event_kind == "automation_result")
-			&& carryover_event(root).is_ok_and(|event| event.1.is_some() && event.2.is_none())
+			&& carryover_event(root).is_ok_and(|event| {
+				event.1.as_deref().is_some_and(|turn| !turn.is_empty()) && event.2.is_none()
+			})
 	})
 	.await?;
 	let held = carryover_event(root)?;

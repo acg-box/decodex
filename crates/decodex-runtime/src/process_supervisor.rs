@@ -938,6 +938,18 @@ impl ProcessGenerationControl {
 				observation: ProcessGenerationObservation::SameBootUnbound,
 			});
 		};
+		#[cfg(target_os = "macos")]
+		if process_platform::macos_kernel_confirms_gone(identity)
+			.map_err(|_| ProcessSupervisorError::Platform)?
+		{
+			self.record_positive_death(
+				&generation,
+				ProcessDeathEvidenceKind::MacosKernelConfirmedGone,
+				Some(identity.clone()),
+			)
+			.await?;
+			return Ok(ProcessGenerationReconciliation::PositiveDeathRecorded);
+		}
 		let key = generation.generation_id.as_str().to_owned();
 		if !self
 			.inner
