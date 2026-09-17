@@ -37,9 +37,40 @@ async fn fixture_with_history(
 			let result = match request["method"].as_str() {
 				Some("thread/read") => {
 					let id = request["params"]["threadId"].as_str().unwrap();
-					history.get(id).cloned().unwrap_or_else(
+					let mut result = history.get(id).cloned().unwrap_or_else(
 						|| json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
-					)
+					);
+					if result["thread"]["historyMode"] == "paginated" {
+						assert_ne!(request["params"]["includeTurns"], true);
+						result["thread"]["turns"] = json!([]);
+					}
+					result
+				},
+				Some("thread/turns/list") => {
+					let id = request["params"]["threadId"].as_str().unwrap();
+					let mut turns = history[id]["thread"]["turns"].clone();
+					for turn in turns.as_array_mut().unwrap() {
+						turn["items"] = json!([]);
+						turn["itemsView"] = json!("notLoaded");
+					}
+					json!({"data":turns,"nextCursor":null})
+				},
+				Some("thread/items/list") => {
+					let id = request["params"]["threadId"].as_str().unwrap();
+					let turn_id = &request["params"]["turnId"];
+					let turn = history[id]["thread"]["turns"]
+						.as_array()
+						.unwrap()
+						.iter()
+						.find(|turn| turn["id"] == *turn_id)
+						.unwrap();
+					let entries: Vec<_> = turn["items"]
+						.as_array()
+						.unwrap()
+						.iter()
+						.map(|item| json!({"turnId":turn_id,"item":item}))
+						.collect();
+					json!({"data":entries,"nextCursor":null})
 				},
 				Some("thread/resume") => {
 					json!({"thread":{"id":request["params"]["threadId"]},"model":"selected-model","reasoningEffort":request["params"]["config"]["model_reasoning_effort"]})

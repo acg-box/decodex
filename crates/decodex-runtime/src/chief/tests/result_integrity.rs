@@ -1,6 +1,34 @@
 use super::*;
 
 #[tokio::test]
+async fn paginated_recovery_retains_exact_worker_output_without_full_thread_hydration() {
+	let history = json!({"opaque thread/1":{"thread":{
+		"id":"opaque thread/1","historyMode":"paginated","status":{"type":"idle"},
+		"turns":[{"id":"opaque turn/1","status":"completed","items":[
+			{"id":"answer","type":"agentMessage","text":"Recovered result","phase":"final_answer"}
+		]}]
+	}}});
+	let (mut coordinator, mut sent, _directory) = fixture_with_history(history).await;
+	coordinator.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	coordinator.recover_persisted().await.unwrap();
+	let work = coordinator.store.get_chief_work_item("chief".into()).await.unwrap();
+	assert_eq!(work.dispatch_state, decodex_database::ChiefDispatchState::Idle);
+	let events = coordinator.store.read_chief_work_events("chief".into(), 10).await.unwrap();
+	let event = events.iter().find(|event| event.event_kind == "chief_turn_completed").unwrap();
+	let payload: Value = serde_json::from_str(&event.payload).unwrap();
+	assert_eq!(payload["threadReadback"]["assistantMessages"][0]["text"], "Recovered result");
+	assert_eq!(payload["threadReadback"]["exactTurnReadback"], true);
+	while let Ok(request) = sent.try_recv() {
+		assert_ne!(request["method"], "turn/start");
+		assert_ne!(request["params"]["includeTurns"], true);
+		if request["method"] == "thread/resume" {
+			assert_eq!(request["params"]["excludeTurns"], true);
+		}
+	}
+}
+
+#[tokio::test]
 async fn recovery_saves_large_result_without_duplicating_terminal_items() {
 	let text = "界🙂\"\\\n\u{0001}".repeat(12_000);
 	let turn = json!({"id":"opaque turn/1","status":"failed",
