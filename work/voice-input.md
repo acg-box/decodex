@@ -141,11 +141,16 @@ accessibility tree. No extra keyboard activation was needed for these clicks.
 The pinned GPUI revision includes the AccessKit macOS adapter, enabled by default;
 Decodex does not disable it. The former `cgWindowNotFound` is therefore not evidence
 that GPUI lacks macOS accessibility. Its exact transient cause remains unconfirmed.
-Window screenshots still return a white image even while the accessibility tree
-updates. Raising the window and changing the graph layout did not repair capture.
-Do not infer an actual white app window from this tool output without checking the
-user-visible window. Audible playback quality and spoken physical-microphone
-transcription still require a speech sample; Listening alone does not prove them.
+The apparent white screenshots were later isolated to repeated-image presentation,
+not a confirmed application capture failure. A complete native screenshot showed
+both the interface and its glass material. Re-emitting the exact saved 65,943-byte
+JPEG then displayed only a small changed region. The stored bytes had not changed.
+Interpret these repeated-image outputs against the full baseline instead of
+reporting their empty regions as an application white screen. This check required
+no GPUI, accessibility, transparency, or graphics changes. It does not explain the
+separate earlier `cgWindowNotFound` result. Audible playback quality and spoken
+physical-microphone transcription still require a speech sample; Listening alone
+does not prove them.
 
 A short generated sample was also played through the current system output during
 UI dictation. Capture completed without an error but produced no transcript.
