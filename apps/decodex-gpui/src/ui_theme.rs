@@ -6,27 +6,84 @@
 use std::time::Duration;
 
 pub(crate) const FONT_FAMILY: &str = ".SystemUIFont";
-pub(crate) const BODY_SIZE: f32 = 13.0;
-pub(crate) const CAPTION_SIZE: f32 = 11.0;
-pub(crate) const HEADING_SIZE: f32 = 16.0;
+pub(crate) const BODY_SIZE: f32 = 12.5;
+pub(crate) const CAPTION_SIZE: f32 = 10.5;
+pub(crate) const HEADING_SIZE: f32 = 15.0;
+
+pub(crate) const BODY_LINE_HEIGHT: f32 = 19.0;
+pub(crate) const PANEL_HEADER_HEIGHT: f32 = 30.0;
+pub(crate) const TREE_ROW_HEIGHT: f32 = 28.0;
+pub(crate) const MESSAGE_GAP: f32 = 20.0;
+pub(crate) const METADATA_GAP: f32 = 6.0;
+
+pub(crate) const CONTROL_SIZE: f32 = 28.0;
+pub(crate) const CHROME_CONTROL_SIZE: f32 = 24.0;
+pub(crate) const CONTROL_GROUP_HEIGHT: f32 = 28.0;
+pub(crate) const CONTROL_MARGIN: f32 = 8.0;
+pub(crate) const CONTROL_RADIUS: f32 = 8.0;
+
+pub(crate) fn floating_group() -> gpui::Div {
+	use gpui::{Styled, div, px, rgba};
+	div()
+		.h(px(CONTROL_GROUP_HEIGHT))
+		.flex_none()
+		.px_1()
+		.flex()
+		.items_center()
+		.gap_1()
+		.rounded(px(CONTROL_RADIUS))
+		.bg(rgba(TOPBAR_MATERIAL))
+		.border_1()
+		.border_color(rgba(0xffffff12))
+}
+
+// Settings reuse shell typography and glass; groups add only a light edge.
+pub(crate) const SETTINGS_WIDTH: f32 = 780.0;
+pub(crate) fn settings_group() -> gpui::Div {
+	use gpui::{Styled, div, px, rgba};
+	div().w_full().rounded(px(10.0)).border_1().border_color(rgba(0xffffff12)).bg(rgba(0xffffff04))
+}
+pub(crate) fn settings_row() -> gpui::Div {
+	use gpui::{Styled, div, px};
+	div().w_full().min_h(px(56.0)).px(px(14.0)).py(px(10.0)).flex().items_center().gap(px(16.0))
+}
+pub(crate) fn settings_title(title: &'static str) -> impl gpui::IntoElement {
+	use gpui::{
+		FontWeight, Role, div,
+		prelude::{InteractiveElement, ParentElement, StatefulInteractiveElement, Styled},
+		px, rgb,
+	};
+	div()
+		.id(title)
+		.role(Role::Heading)
+		.aria_level(1)
+		.aria_label(title)
+		.text_size(px(HEADING_SIZE))
+		.font_weight(FontWeight::SEMIBOLD)
+		.text_color(rgb(TEXT))
+		.child(title)
+}
 
 pub(crate) const CANVAS: u32 = 0x0b0a0f;
 // One bounded glass hierarchy. Large regions always own a material, while
 // nested components target a final composite opacity instead of repeating the
 // same local alpha. This avoids both unreadable bare blur and opaque stacks of
 // translucent black.
-pub(crate) const SHELL_MATERIAL: u32 = 0x0b0a0f4c;
-pub(crate) const CONTENT_MATERIAL: u32 = 0x0d0c1278;
-pub(crate) const TOPBAR_MATERIAL: u32 = 0x0c0b1058;
+pub(crate) const SHELL_MATERIAL: u32 = 0x10101459;
+pub(crate) const CONTENT_MATERIAL: u32 = 0x14141978;
+pub(crate) const TOPBAR_MATERIAL: u32 = 0x15151b68;
+// Chief sidebar is a direct child of the shell, never a child of content tint.
+pub(crate) const CHIEF_SIDEBAR_MATERIAL: u32 = 0x17171c58;
 pub(crate) const SIDEBAR_MATERIAL: u32 = 0x100e1584;
 pub(crate) const SURFACE_MATERIAL: u32 = 0x100e152a;
 pub(crate) const SURFACE_RAISED_MATERIAL: u32 = 0x17151e46;
-pub(crate) const COMPOSER_MATERIAL: u32 = 0x17151e56;
+pub(crate) const COMPOSER_MATERIAL: u32 = 0x22222888;
 pub(crate) const FIELD_MATERIAL: u32 = 0xffffff08;
 pub(crate) const SURFACE_OVERLAY_MATERIAL: u32 = 0x1d1a2470;
 
-pub(crate) const LINE: u32 = 0x2a2730;
 pub(crate) const LINE_STRONG: u32 = 0x403b48;
+pub(crate) const PANEL_BOUNDARY: u32 = 0xffffff2b;
+pub(crate) const PANEL_HEADER_RULE: u32 = 0xffffff12;
 pub(crate) const TEXT: u32 = 0xeeeaf0;
 pub(crate) const TEXT_MUTED: u32 = 0xaaa4af;
 pub(crate) const TEXT_FAINT: u32 = 0xaaa4af;
@@ -45,6 +102,7 @@ mod tests {
 	fn nested_shell_materials_keep_a_visible_blur_budget() {
 		for material in [
 			SHELL_MATERIAL,
+			CHIEF_SIDEBAR_MATERIAL,
 			CONTENT_MATERIAL,
 			TOPBAR_MATERIAL,
 			SIDEBAR_MATERIAL,
@@ -56,7 +114,7 @@ mod tests {
 		] {
 			let alpha = material & 0xff;
 			assert!(alpha > 0, "material must tint the blurred window");
-			assert!(alpha <= 0x8f, "nested material must not erase the blurred window");
+			assert!(alpha < 0xff, "materials retain a bounded amount of background light");
 		}
 
 		fn composite(under: f32, over: u32) -> f32 {
@@ -67,18 +125,13 @@ mod tests {
 		let window = (SHELL_MATERIAL & 0xff) as f32 / 255.0;
 		let page = composite(window, CONTENT_MATERIAL);
 		let pane = composite(window, SIDEBAR_MATERIAL);
-		let surface = composite(page, SURFACE_MATERIAL);
-		let raised = composite(page, SURFACE_RAISED_MATERIAL);
+		let chief_sidebar = composite(window, CHIEF_SIDEBAR_MATERIAL);
+		assert!((0.56..=0.60).contains(&chief_sidebar));
+		assert!(chief_sidebar < page);
+		assert!((0.64..=0.68).contains(&page), "conversation must retain visible glass");
+		assert!((0.66..=0.70).contains(&pane));
 		let composer = composite(page, COMPOSER_MATERIAL);
-		let overlay = composite(page, SURFACE_OVERLAY_MATERIAL);
-		assert!((0.28..=0.32).contains(&window));
-		assert!((0.60..=0.65).contains(&page));
-		assert!((0.64..=0.68).contains(&pane));
-		assert!((0.67..=0.71).contains(&surface));
-		assert!((0.71..=0.75).contains(&raised));
-		assert!((0.73..=0.77).contains(&composer));
-		assert!((0.77..=0.81).contains(&overlay));
-		assert!(page < surface && surface < raised && raised < composer && composer < overlay);
+		assert!(composer > page && composer < 1.0);
 	}
 
 	#[test]

@@ -1,7 +1,11 @@
 //! Production GPUI window, navigation, focus, and lifecycle rendering boundary.
+#[path = "shell_status.rs"] mod status;
+use crate::ui_motion::SmoothControl;
 
 #[path = "chief_surface.rs"] pub(crate) mod chief_surface;
 use chief_surface::ChiefSurface;
+#[path = "shell_navigation.rs"] mod navigation;
+#[path = "workspace_symbols.rs"] mod workspace_symbols;
 
 use std::{
 	future::Future,
@@ -18,7 +22,7 @@ use gpui::{
 	Animation, AnimationExt, AnyElement, App, BoxShadow, ClipboardItem, Context, Entity,
 	FocusHandle, Focusable, FontWeight, Global, Hsla, KeyBinding, MouseButton, Render, Role,
 	SharedString, Subscription, Task, WeakEntity, Window, WindowControlArea, WindowHandle, actions,
-	div, ease_in_out, img, prelude::*, px, rgb, rgba,
+	div, ease_in_out, prelude::*, px, rgb, rgba,
 };
 
 use decodex_protocol::{
@@ -38,7 +42,6 @@ use crate::{
 		AccountCommandState, AccountInputError, AccountsController, AccountsLoadState,
 		AccountsSnapshot, canonical_uuid_v4,
 	},
-	app_icon::app_icon_path,
 	client_lifecycle::{ClientLifecycle, ConnectionView, LifecycleCancellation},
 	composer_input::{self, ComposerEvent, ComposerInput, MAX_COMPOSER_BYTES, SubmitComposer},
 	conversations::{
@@ -52,7 +55,7 @@ use crate::{
 	ui_theme,
 };
 
-const WORKBENCH_TOPBAR_HEIGHT: f32 = 42.0;
+const WINDOW_CONTROLS_CLEARANCE: f32 = 48.0;
 const WORKBENCH_SESSION_SIDEBAR_WIDTH: f32 = 248.0;
 const WORKBENCH_INSPECTOR_WIDTH: f32 = 344.0;
 const LIFECYCLE_POLL: Duration = Duration::from_millis(40);
@@ -294,9 +297,14 @@ actions!(
 		ActivateChief,
 		ActivateConversations,
 		ActivateHealth,
+		ActivateSettings,
 		RefreshHealth,
 		ToggleSidebar,
 		ToggleInspector,
+		ToggleGraph,
+		InterruptReply,
+		NavigateBack,
+		NavigateForward,
 		SelectPreviousConversation,
 		SelectNextConversation,
 		ActivateConversationRow,
@@ -329,14 +337,14 @@ impl Destination {
 		Self::Health,
 		Self::Settings,
 	];
-	const CHROME: [Self; 2] = [Self::Conversations, Self::Chief];
+	const CHROME: [Self; 1] = [Self::Chief];
 
 	pub(crate) const fn label(self) -> &'static str {
 		match self {
-			Self::Chief => "Delegate to Chief",
+			Self::Chief => "Chief",
 			Self::Advisor => "Advisor",
 			Self::Projects => "Projects",
-			Self::Conversations => "Chat with Codex",
+			Self::Conversations => "History",
 			Self::Runs => "Runs",
 			Self::Automations => "Automations",
 			Self::Accounts => "Accounts",
@@ -347,8 +355,7 @@ impl Destination {
 
 	const fn description(self) -> &'static str {
 		match self {
-			Self::Chief =>
-				"Delegate an outcome: Chief coordinates tasks, tracks results, and asks for your decisions.",
+			Self::Chief => "Open Chief",
 			Self::Advisor => "Review guidance and bounded decisions.",
 			Self::Projects => "Own repositories and product context.",
 			Self::Conversations =>
@@ -450,10 +457,15 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("tab", FocusNext, None),
 		KeyBinding::new("shift-tab", FocusPrevious, None),
 		KeyBinding::new("cmd-2", ActivateChief, None),
-		KeyBinding::new("cmd-1", ActivateConversations, None),
+		KeyBinding::new("cmd-1", ActivateChief, None),
 		KeyBinding::new("cmd-3", ActivateHealth, None),
-		KeyBinding::new("cmd-b", ToggleSidebar, None),
-		KeyBinding::new("cmd-shift-b", ToggleInspector, None),
+		KeyBinding::new("cmd-,", ActivateSettings, None),
+		KeyBinding::new("cmd-e", ToggleSidebar, None),
+		KeyBinding::new("cmd-b", ToggleInspector, None),
+		KeyBinding::new("cmd-j", ToggleGraph, None),
+		KeyBinding::new("ctrl-c", InterruptReply, None),
+		KeyBinding::new("cmd-[", NavigateBack, None),
+		KeyBinding::new("cmd-]", NavigateForward, None),
 		KeyBinding::new("enter", ActivateDestination, Some("Destination")),
 		KeyBinding::new("space", ActivateDestination, Some("Destination")),
 		KeyBinding::new("enter", RefreshHealth, Some("HealthRefresh")),
@@ -490,6 +502,7 @@ pub(crate) struct Shell {
 	account_login_cancellation: Option<Arc<AtomicBool>>,
 	opened_account_login_url: Option<String>,
 	pending_account_logout: Option<EntityId>,
+	account_actions: Option<EntityId>,
 	account_profile_controller: AccountProfileController,
 	account_profile: AccountProfileSnapshot,
 	desktop_settings: DesktopSettingsController,
@@ -510,6 +523,8 @@ pub(crate) struct Shell {
 	pending_submission: Option<PendingComposerSubmission>,
 	input_status: Option<SharedString>,
 	titlebar_drag_pending: bool,
+	navigation: navigation::NavigationHistory,
+	status_open: bool,
 }
 
 impl Shell {
@@ -547,12 +562,21 @@ impl Shell {
 		})
 		.detach();
 		let chief = cx.new(ChiefSurface::new);
+		cx.observe(&chief, |shell, _, cx| {
+			shell.record_navigation(cx);
+			cx.notify();
+		})
+		.detach();
 		let desktop_settings = DesktopSettingsController::production();
 		let desktop_settings_snapshot = desktop_settings.snapshot();
 		let account_profile_controller = AccountProfileController::production();
 		let account_profile = account_profile_controller.snapshot();
 		let settings_controller = desktop_settings.clone();
-		let settings = cx.new(|cx| SettingsSurface::new(settings_controller, cx));
+		let preferences = cx.new(|cx| chief_surface::ChiefPreferences::new(chief.clone(), cx));
+		let settings = cx.new(|cx| {
+			SettingsSurface::new(settings_controller, cx)
+				.with_advanced_preferences(preferences.into())
+		});
 		let accounts_controller = AccountsController::production();
 		let accounts = accounts_controller.snapshot();
 		let health_query = HealthQuery::production();
@@ -563,7 +587,7 @@ impl Shell {
 		window.focus(&root_focus, cx);
 
 		Self {
-			selected: Destination::Conversations,
+			selected: Destination::Chief,
 			inspector_tab: InspectorTab::Context,
 			left_sidebar_visible: true,
 			left_sidebar_mounted: true,
@@ -586,6 +610,7 @@ impl Shell {
 			account_login_cancellation: None,
 			opened_account_login_url: None,
 			pending_account_logout: None,
+			account_actions: None,
 			account_profile_controller,
 			account_profile,
 			desktop_settings,
@@ -606,6 +631,8 @@ impl Shell {
 			pending_submission: None,
 			input_status: None,
 			titlebar_drag_pending: false,
+			navigation: navigation::NavigationHistory::new(),
+			status_open: false,
 		}
 	}
 
@@ -920,8 +947,19 @@ impl Shell {
 		shell.selected = destination;
 		if destination == Destination::Chief {
 			shell.connection = ConnectionView::Stopped;
-			shell.chief.update(cx, ChiefSurface::refresh);
+			shell.chief.update(cx, |surface, cx| {
+				surface.visual_workspace_fixture(cx);
+				if let Ok(page) = std::env::var("DECODEX_VISUAL_WORKSPACE_PAGE") {
+					surface
+						.visual_workspace_page(if page == "status" { "empty" } else { &page }, cx);
+					if page == "status" {
+						surface.mark_stale(cx);
+					}
+				}
+			});
 		}
+		shell.status_open =
+			std::env::var("DECODEX_VISUAL_WORKSPACE_PAGE").is_ok_and(|page| page == "status");
 		shell.left_sidebar_visible = left_sidebar_visible;
 		shell.left_sidebar_mounted = left_sidebar_visible;
 		shell.inspector_visible = inspector_visible;
@@ -995,6 +1033,7 @@ impl Shell {
 			self.settings.update(cx, SettingsSurface::refresh);
 		}
 		self.health = self.health_query.snapshot();
+		self.record_navigation(cx);
 		cx.notify();
 	}
 
@@ -1070,6 +1109,9 @@ impl Shell {
 	}
 
 	fn toggle_sidebar(&mut self, _: &ToggleSidebar, _: &mut Window, cx: &mut Context<Self>) {
+		if self.selected == Destination::Chief {
+			self.chief.update(cx, ChiefSurface::toggle_workspace_sidebar);
+		}
 		if self.selected == Destination::Conversations {
 			self.set_left_sidebar_visible(!self.left_sidebar_visible, cx);
 		}
@@ -1077,10 +1119,31 @@ impl Shell {
 	}
 
 	fn toggle_inspector(&mut self, _: &ToggleInspector, _: &mut Window, cx: &mut Context<Self>) {
+		if self.selected == Destination::Chief {
+			self.chief.update(cx, ChiefSurface::toggle_agent_tree);
+		}
 		if self.selected == Destination::Conversations {
 			self.set_inspector_visible(!self.inspector_visible, cx);
 		}
 		cx.stop_propagation();
+	}
+
+	fn interrupt_reply(&mut self, _: &InterruptReply, _: &mut Window, cx: &mut Context<Self>) {
+		if self.selected == Destination::Chief {
+			self.chief.update(cx, ChiefSurface::interrupt_current);
+			cx.stop_propagation();
+		}
+	}
+
+	fn toggle_graph(&mut self, _: &ToggleGraph, _: &mut Window, cx: &mut Context<Self>) {
+		if self.selected == Destination::Chief {
+			self.chief.update(cx, ChiefSurface::toggle_workspace_graph);
+		}
+		cx.stop_propagation();
+	}
+
+	fn activate_settings(&mut self, _: &ActivateSettings, _: &mut Window, cx: &mut Context<Self>) {
+		self.select_destination(Destination::Settings, cx);
 	}
 
 	fn refresh_health(&mut self, _: &RefreshHealth, _: &mut Window, cx: &mut Context<Self>) {
@@ -1219,6 +1282,13 @@ impl Shell {
 			.map(account_input_error_label)
 			.map(Into::into);
 		self.synchronize_accounts();
+		cx.notify();
+	}
+
+	fn toggle_account_actions(&mut self, id: EntityId, cx: &mut Context<Self>) {
+		self.account_actions =
+			if self.account_actions.as_ref() == Some(&id) { None } else { Some(id) };
+		self.pending_account_logout = None;
 		cx.notify();
 	}
 
@@ -1941,41 +2011,42 @@ fn adjacent_conversation_index(current: Option<usize>, len: usize, delta: isize)
 	Some(current.unwrap_or(0).saturating_add_signed(delta).min(last))
 }
 
-fn workbench_topbar(
+fn floating_window_controls(
 	shell: &Shell,
 	presentation: &ConnectionPresentation,
 	window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let page_tabs = Destination::CHROME.into_iter().map(|destination| {
-		let index = Destination::ALL
-			.iter()
-			.position(|candidate| *candidate == destination)
-			.expect("topbar destination is part of the complete destination set");
-		topbar_destination_tab(
-			index,
-			destination,
-			shell.selected == destination,
-			shell.destination_focus[index].clone(),
-			window,
-			cx,
-		)
-	});
+	let page_tabs = Destination::CHROME
+		.into_iter()
+		.filter(|_| shell.selected != Destination::Chief)
+		.map(|destination| {
+			let index = Destination::ALL
+				.iter()
+				.position(|candidate| *candidate == destination)
+				.expect("topbar destination is part of the complete destination set");
+			topbar_destination_tab(
+				index,
+				destination,
+				shell.selected == destination,
+				shell.destination_focus[index].clone(),
+				window,
+				cx,
+			)
+		});
 
 	div()
-		.id("workbench-topbar")
+		.id("floating-window-controls")
 		.role(Role::Navigation)
-		.aria_label("Workbench navigation")
-		.h(px(WORKBENCH_TOPBAR_HEIGHT))
-		.min_h(px(WORKBENCH_TOPBAR_HEIGHT))
-		.w_full()
-		.pl(px(78.0))
-		.pr_3()
+		.aria_label("Window controls")
+		.absolute()
+		.top(px(ui_theme::CONTROL_MARGIN))
+		.left(px(ui_theme::CONTROL_MARGIN))
+		.right(px(ui_theme::CONTROL_MARGIN))
+		.h(px(ui_theme::CONTROL_GROUP_HEIGHT))
 		.flex()
 		.items_center()
-		.border_b_1()
-		.border_color(rgba(0xffffff0d))
-		.bg(rgba(ui_theme::TOPBAR_MATERIAL))
+		.justify_between()
 		.window_control_area(WindowControlArea::Drag)
 		.on_mouse_down(
 			MouseButton::Left,
@@ -1996,48 +2067,15 @@ fn workbench_topbar(
 				window.titlebar_double_click();
 			}
 		})
-		.child(topbar_identity())
 		.child(
-			div()
-				.id("product-destinations")
-				.role(Role::TabList)
-				.aria_label("Product destinations")
-				.flex_1()
-				.min_w_0()
-				.h_full()
-				.flex()
-				.items_center()
-				.justify_center()
-				.gap_1()
+			ui_theme::floating_group()
+				.pl(px(74.0))
+				.when(shell.selected == Destination::Chief, |group| {
+					group.child(chief_panel_control(shell, 0, cx))
+				})
+				.child(shell.navigation_control(false, cx))
+				.child(shell.navigation_control(true, cx))
 				.children(page_tabs),
-		)
-		.child(
-			div()
-				.id("utility-navigation")
-				.role(Role::TabList)
-				.aria_label("Account and diagnostic tools")
-				.flex()
-				.items_center()
-				.gap_1()
-				.border_l_1()
-				.border_color(rgb(ui_theme::LINE))
-				.pl_2()
-				.children([Destination::Accounts, Destination::Health].into_iter().map(
-					|destination| {
-						let index = Destination::ALL
-							.iter()
-							.position(|item| *item == destination)
-							.expect("tool destination");
-						topbar_destination_tab(
-							index,
-							destination,
-							shell.selected == destination,
-							shell.destination_focus[index].clone(),
-							window,
-							cx,
-						)
-					},
-				)),
 		)
 		.child(topbar_controls(shell, presentation, cx))
 		.into_any_element()
@@ -2086,11 +2124,9 @@ struct HealthPresentation {
 
 fn topbar_controls(
 	shell: &Shell,
-	presentation: &ConnectionPresentation,
+	_presentation: &ConnectionPresentation,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let connection_color = presentation.color;
-	let connection_label = presentation.label;
 	let left_sidebar_visible = shell.left_sidebar_visible;
 	let inspector_visible = shell.inspector_visible;
 	let settings_index = Destination::ALL
@@ -2098,14 +2134,24 @@ fn topbar_controls(
 		.position(|destination| *destination == Destination::Settings)
 		.expect("Settings destination");
 	div()
-		.w(px(310.0))
-		.min_w(px(310.0))
-		.h_full()
+		.h(px(ui_theme::CONTROL_GROUP_HEIGHT))
+		.flex_none()
 		.flex()
 		.items_center()
-		.justify_end()
-		.gap_2()
+		.gap_1()
 		.text_size(px(11.0))
+		.when(shell.selected == Destination::Chief, |controls| {
+			controls
+				.when(shell.chief.read(cx).workspace_panels()[1].1, |group| {
+					group.child(chief_panel_control(shell, 1, cx))
+				})
+				.when(shell.chief.read(cx).workspace_panels()[2].1, |group| {
+					group.child(chief_panel_control(shell, 2, cx))
+				})
+				.when(shell.chief.read(cx).workspace_panels()[3].1, |group| {
+					group.child(chief_panel_control(shell, 3, cx))
+				})
+		})
 		.when(shell.selected == Destination::Conversations, |controls| {
 			controls.child(topbar_sessions_toggle(left_sidebar_visible, cx))
 		})
@@ -2114,75 +2160,115 @@ fn topbar_controls(
 		})
 		.child(
 			div()
-				.id("workbench-connection-status")
-				.role(Role::Status)
-				.aria_label(format!("Connection: {connection_label}"))
-				.flex()
-				.items_center()
-				.gap_2()
-				.text_color(rgb(WB_TEXT_MUTED))
-				.child(div().size(px(5.0)).rounded_full().bg(rgb(connection_color)))
-				.child(connection_label),
-		)
-		.child(
-			div()
 				.id("open-settings")
 				.role(Role::Button)
 				.aria_label("Open settings")
+				.tooltip(|_, cx| cx.new(|_| ControlTooltip("Settings · Command-,")).into())
 				.key_context("Destination")
 				.track_focus(&shell.destination_focus[settings_index])
 				.on_action(cx.listener(Shell::focus_next))
 				.on_action(cx.listener(Shell::focus_previous))
 				.on_action(cx.listener(Shell::activate_destination))
-				.h(px(26.0))
-				.px_2()
+				.size(px(ui_theme::CONTROL_GROUP_HEIGHT))
 				.flex()
 				.items_center()
-				.rounded(px(7.0))
+				.justify_center()
+				.rounded(px(6.0))
 				.border_1()
-				.border_color(if shell.selected == Destination::Settings {
-					rgba(0xffffff20)
-				} else {
-					rgba(0x00000000)
-				})
-				.bg(if shell.selected == Destination::Settings {
-					rgba(0xffffff10)
-				} else {
-					rgba(0x00000000)
-				})
-				.text_color(if shell.selected == Destination::Settings {
-					rgb(WB_TEXT)
-				} else {
-					rgb(WB_TEXT_MUTED)
-				})
+				.border_color(rgba(0x00000000))
+				.bg(
+					if matches!(
+						shell.selected,
+						Destination::Settings | Destination::Accounts | Destination::Health
+					) {
+						rgba(0xffffff0a)
+					} else {
+						rgba(0x00000000)
+					},
+				)
+				.text_color(
+					if matches!(
+						shell.selected,
+						Destination::Settings | Destination::Accounts | Destination::Health
+					) {
+						rgb(WB_TEXT)
+					} else {
+						rgb(WB_TEXT_MUTED)
+					},
+				)
 				.occlude()
 				.cursor_pointer()
 				.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-				.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
-				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+				.active(|element| element.bg(rgba(0xffffff14)))
+				.focus_visible(|element| element.border_color(rgba(0x8baaf780)))
+				.on_mouse_down(MouseButton::Left, |_, window, cx| {
+					window.prevent_default();
+					cx.stop_propagation();
+				})
 				.on_click(cx.listener(|shell, _, _, cx| {
 					shell.select_destination(Destination::Settings, cx);
 				}))
-				.child("Settings"),
+				.child(workspace_symbols::icon(workspace_symbols::Symbol::Settings))
+				.smooth(),
 		)
 		.into_any_element()
 }
 
-fn topbar_identity() -> AnyElement {
+fn chief_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyElement {
+	let (active, enabled) = shell.chief.read(cx).workspace_panels()[index];
+	let label = match (index, enabled) {
+		(0, _) => "Toggle sidebar · Command-E",
+		(1, true) => "Toggle work graph · Command-J",
+		(2, true) => "Toggle history rail",
+		(3, _) => "Toggle agent structure · Command-B",
+		(1, false) => "Work graph · no work yet",
+		_ => "History · no messages yet",
+	};
 	div()
-		.h_full()
-		.w(px(120.0))
-		.flex_shrink_0()
+		.id(("chief-panel-control", index))
+		.role(Role::Button)
+		.tab_index(0)
+		.aria_label(label)
+		.aria_expanded(active)
+		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
+		.size(px(ui_theme::CHROME_CONTROL_SIZE))
+		.rounded(px(5.0))
 		.flex()
 		.items_center()
-		.gap_2()
-		.child(img(app_icon_path()).size(px(20.0)).rounded(px(5.0)))
-		.child(
-			div()
-				.text_size(px(ui_theme::BODY_SIZE))
-				.font_weight(FontWeight::SEMIBOLD)
-				.child("Decodex"),
-		)
+		.justify_center()
+		.when(active, |el| el.bg(rgba(0xffffff0c)))
+		.when(!enabled, |el| el.opacity(0.35))
+		.hover(|el| el.bg(rgba(0xffffff12)))
+		.cursor_pointer()
+		.occlude()
+		.on_mouse_down(MouseButton::Left, |_, window, cx| {
+			window.prevent_default();
+			cx.stop_propagation();
+		})
+		.on_click(cx.listener(move |s, _, _, cx| {
+			if enabled {
+				s.chief.update(cx, |chief, cx| match index {
+					0 => chief.toggle_workspace_sidebar(cx),
+					1 => chief.toggle_workspace_graph(cx),
+					2 => chief.toggle_workspace_timeline(cx),
+					_ => chief.toggle_agent_tree(cx),
+				});
+			}
+		}))
+		.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+			if enabled && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				s.chief.update(cx, |chief, cx| match index {
+					0 => chief.toggle_workspace_sidebar(cx),
+					1 => chief.toggle_workspace_graph(cx),
+					2 => chief.toggle_workspace_timeline(cx),
+					_ => chief.toggle_agent_tree(cx),
+				});
+				cx.stop_propagation();
+			}
+		}))
+		.child(ChiefSurface::panel_glyph(index))
+		.smooth()
+		.enabled(enabled)
 		.into_any_element()
 }
 
@@ -2347,7 +2433,8 @@ fn health_component_row(
 		.id(("health-component", index))
 		.role(Role::ListItem)
 		.aria_label(format!("{label}: {}", presentation.label))
-		.min_h(px(52.0))
+		.w_full()
+		.min_h(px(38.0))
 		.py_2()
 		.flex()
 		.items_center()
@@ -2357,8 +2444,9 @@ fn health_component_row(
 		.border_color(rgba(0xffffff0a))
 		.text_size(px(11.0))
 		.text_color(rgb(WB_TEXT_MUTED))
-		.child(div().min_w_0().flex().flex_col().gap_1().child(label).when(
-			!presentation.detail.is_empty(),
+		.child(div().flex_1().min_w_0().flex().flex_col().gap_1().child(label).when(
+			!presentation.detail.is_empty()
+				&& !matches!(presentation.label, "Not checked" | "Disabled"),
 			|element| {
 				element.child(
 					div()
@@ -2370,13 +2458,15 @@ fn health_component_row(
 		))
 		.child(
 			div()
-				.w(px(128.0))
-				.min_w(px(128.0))
+				.flex_none()
+				.justify_end()
+				.w(px(120.0))
+				.min_w(px(120.0))
 				.flex()
 				.items_center()
 				.gap_2()
 				.child(
-					div().size(px(9.0)).min_w(px(9.0)).rounded_full().bg(rgb(presentation.color)),
+					div().size(px(5.0)).min_w(px(5.0)).rounded_full().bg(rgb(presentation.color)),
 				)
 				.child(presentation.label),
 		)
@@ -2409,7 +2499,7 @@ fn health_component_section(
 				.px_1()
 				.pb_2()
 				.flex()
-				.items_end()
+				.items_center()
 				.justify_between()
 				.gap_4()
 				.child(
@@ -2429,8 +2519,8 @@ fn health_component_section(
 				.px_4()
 				.border_1()
 				.border_color(rgba(0xffffff10))
-				.rounded(px(12.0))
-				.bg(rgba(0x00000024))
+				.rounded(px(10.0))
+				.bg(rgba(0xffffff04))
 				.children(rows),
 		)
 		.into_any_element()
@@ -2477,6 +2567,7 @@ fn refresh_control(
 		})
 		.text_size(px(11.0))
 		.child("Refresh")
+		.smooth()
 		.into_any_element()
 }
 
@@ -2596,6 +2687,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				account,
 				AccountRowPresentation {
 					index,
+					show_actions: shell.account_actions.as_ref() == Some(&account.account_id),
 					account_count,
 					fixed: fixed == Some(&account.account_id),
 					can_manage: snapshot.can_manage,
@@ -2640,14 +2732,14 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	div()
 		.flex_1()
 		.min_h_0()
-		.px_6()
+		.px(px(28.0))
 		.py_5()
 		.flex()
 		.justify_center()
 		.child(
 			div()
 				.w_full()
-				.max_w(px(900.0))
+				.max_w(px(ui_theme::SETTINGS_WIDTH))
 				.min_h_0()
 				.flex()
 				.flex_col()
@@ -2669,7 +2761,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.when(count == 0, |list| {
 							list.child(
 								div()
-									.h(px(150.0))
+									.h(px(100.0))
 									.flex()
 									.flex_col()
 									.items_center()
@@ -2678,39 +2770,44 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 									.rounded(px(12.0))
 									.border_1()
 									.border_color(rgba(0xffffff0d))
-									.bg(rgba(0x0000001f))
+									.bg(rgba(0xffffff04))
 									.text_size(px(11.0))
 									.text_color(rgb(WB_TEXT_MUTED))
-									.child("No account projection is available yet.")
+									.child("No accounts added")
 									.child(
 										div()
 											.font_family(ui_theme::FONT_FAMILY)
 											.text_size(px(11.0))
 											.text_color(rgb(WB_TEXT_FAINT))
-											.child(
-												"Use Account access above to enroll credentials through the Decodex service.",
-											),
+											.child("Sign in above to add your first account."),
 									),
 							)
 						})
 						.children(rows),
 				)
-				.child(
-					div()
-						.h(px(28.0))
-						.px_3()
-						.flex()
-						.items_center()
-						.justify_between()
-						.rounded(px(8.0))
-						.border_1()
-						.border_color(rgba(0xffffff0d))
-						.bg(rgba(0x0000001f))
-						.font_family(ui_theme::FONT_FAMILY)
-						.text_size(px(11.0))
-						.text_color(rgb(WB_TEXT_FAINT))
-						.child(status)
-						.child("CREDENTIAL-NEGATIVE · DAEMON AUTHORITY"),
+				.when(
+					snapshot.load != AccountsLoadState::Ready
+						|| snapshot.rejection.is_some()
+						|| shell.account_status.is_some()
+						|| account_command_label(snapshot.command).is_some(),
+					|d| {
+						d.child(
+							div()
+								.min_h(px(28.0))
+								.px_3()
+								.flex()
+								.items_center()
+								.justify_between()
+								.rounded(px(8.0))
+								.border_1()
+								.border_color(rgba(0xffffff0d))
+								.bg(rgba(0xffffff04))
+								.font_family(ui_theme::FONT_FAMILY)
+								.text_size(px(11.0))
+								.text_color(rgb(WB_TEXT_FAINT))
+								.child(status),
+						)
+					},
 				),
 		)
 		.into_any_element()
@@ -2744,6 +2841,7 @@ fn account_mode_button(
 				.on_click(cx.listener(|shell, _, _, cx| shell.select_balanced_accounts(cx)))
 		})
 		.child(label)
+		.smooth()
 		.into_any_element()
 }
 
@@ -2760,9 +2858,7 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 		.as_ref()
 		.map(SharedString::to_string)
 		.or_else(|| shell.account_login_status.as_ref().map(account_login_status_label))
-		.unwrap_or_else(|| {
-			"Add or refresh credentials through the daemon-owned login service.".into()
-		});
+		.unwrap_or_else(|| "Connect an account to use Codex.".into());
 
 	div()
 		.id("account-login-controls")
@@ -2775,7 +2871,7 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 		.rounded(px(10.0))
 		.border_1()
 		.border_color(rgba(0xffffff0f))
-		.bg(rgba(ui_theme::SURFACE_MATERIAL))
+		.bg(rgba(0xffffff04))
 		.child(
 			div()
 				.flex_1()
@@ -2787,8 +2883,8 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 					div()
 						.font_family(ui_theme::FONT_FAMILY)
 						.text_size(px(11.0))
-						.text_color(rgb(WB_BLUE))
-						.child("ACCOUNT ACCESS"),
+						.text_color(rgb(WB_TEXT))
+						.child("Add account"),
 				)
 				.child(div().text_size(px(11.0)).text_color(rgb(WB_TEXT_MUTED)).child(status))
 				.when_some(prompt, |details, (code, url)| {
@@ -2885,7 +2981,7 @@ fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.unwrap_or_default();
 	let (status, facts) = match shell.account_profile.result.as_ref() {
 		Some(AccountProfileResult::Current(profile)) =>
-			("Current provider profile".to_owned(), account_profile_facts(profile)),
+			("Account profile".to_owned(), account_profile_facts(profile)),
 		Some(AccountProfileResult::Cached { profile, refresh_error }) => (
 			format!("Cached profile; refresh failed: {refresh_error:?}"),
 			account_profile_facts(profile),
@@ -2894,7 +2990,7 @@ fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			format!("Profile unavailable: {error:?}"),
 			plan_type
 				.as_ref()
-				.map(|plan| vec![format!("PLAN {}", plan.as_str())])
+				.map(|plan| vec![format!("Plan · {}", plan.as_str())])
 				.unwrap_or_default(),
 		),
 		None => (account_profile_load_label(shell.account_profile.load).to_owned(), Vec::new()),
@@ -2907,11 +3003,11 @@ fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.flex()
 		.items_center()
 		.justify_between()
-		.gap_4()
+		.gap_3()
 		.rounded(px(10.0))
 		.border_1()
-		.border_color(rgba(0x60a5fa28))
-		.bg(rgba(0x60a5fa08))
+		.border_color(rgba(0xffffff12))
+		.bg(rgba(0xffffff04))
 		.child(
 			div()
 				.flex_1()
@@ -2929,7 +3025,7 @@ fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 								.font_family(ui_theme::FONT_FAMILY)
 								.text_size(px(11.0))
 								.text_color(rgb(WB_BLUE))
-								.child("ACCOUNT PROFILE"),
+								.child("Account details"),
 						)
 						.child(
 							div()
@@ -2980,22 +3076,22 @@ fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 fn account_profile_facts(profile: &decodex_protocol::AccountProfileDto) -> Vec<String> {
 	let mut facts = Vec::new();
 	if let Some(plan) = &profile.plan_type {
-		facts.push(format!("PLAN {}", plan.as_str()));
+		facts.push(format!("Plan · {}", plan.as_str()));
 	}
 	if let Some(tokens) = profile.lifetime_tokens {
-		facts.push(format!("LIFETIME {tokens} TOKENS"));
+		facts.push(format!("Lifetime · {tokens} tokens"));
 	}
 	if let Some(tokens) = profile.peak_daily_tokens {
-		facts.push(format!("PEAK DAY {tokens}"));
+		facts.push(format!("Peak day · {tokens} tokens"));
 	}
 	if let Some(days) = profile.current_streak_days {
-		facts.push(format!("STREAK {days} DAYS"));
+		facts.push(format!("Streak · {days} days"));
 	}
 	if let Some(seconds) = profile.longest_task_seconds {
-		facts.push(format!("LONGEST TASK {seconds}S"));
+		facts.push(format!("Longest task · {seconds}s"));
 	}
 	if !profile.daily_usage.is_empty() {
-		facts.push(format!("{} DAILY POINTS", profile.daily_usage.len()));
+		facts.push(format!("{} days recorded", profile.daily_usage.len()));
 	}
 	facts
 }
@@ -3106,6 +3202,7 @@ struct AccountRowPresentation {
 	can_route: bool,
 	login_available: bool,
 	logout_pending: bool,
+	show_actions: bool,
 }
 
 fn account_login_recovery_operation_id(account: &AccountDto) -> Option<EntityId> {
@@ -3152,22 +3249,18 @@ fn account_pool_row(
 	let pin_enabled = can_route && enabled && !fixed;
 	let toggle_enabled = can_manage;
 
-	div()
-		.id(("account-row", index))
-		.p_4()
+	let summary = div()
+		.id(("account-summary", index))
 		.flex()
+		.flex_wrap()
 		.items_center()
-		.gap_4()
-		.rounded(px(11.0))
-		.border_1()
-		.border_color(if fixed { rgba(0x60a5fa42) } else { rgba(0xffffff0f) })
-		.bg(if fixed { rgba(0x60a5fa0d) } else { rgba(ui_theme::SURFACE_MATERIAL) })
+		.gap(px(12.0))
 		.child(account_row_identity(account))
 		.child(
-			div().flex_1().min_w_0().flex().items_center().gap_5().children(
+			div().flex_1().min_w_0().flex().items_center().gap(px(12.0)).children(
 				[
-					account_quota("5 HOUR", account.five_hour_quota),
-					account_quota("7 DAY", account.seven_day_quota),
+					account_quota("5 hours", account.five_hour_quota),
+					account_quota("7 days", account.seven_day_quota),
 				]
 				.into_iter()
 				.flatten(),
@@ -3208,7 +3301,8 @@ fn account_pool_row(
 									shell.select_fixed_account(&account_id, cx);
 								}))
 						})
-						.child(if fixed { "Ready" } else { "Switch" }),
+						.child(if fixed { "Ready" } else { "Switch" })
+						.smooth(),
 				)
 				.child(
 					div()
@@ -3241,10 +3335,51 @@ fn account_pool_row(
 									shell.set_account_enabled(&toggle_account_id, !enabled, cx);
 								}))
 						})
-						.child(if enabled { "Enabled" } else { "Disabled" }),
+						.child(if enabled { "Enabled" } else { "Disabled" })
+						.smooth(),
 				),
 		)
-		.child(account_management_actions(account, &presentation, cx))
+		.child(account_manage_control(
+			account.account_id.clone(),
+			index,
+			presentation.show_actions,
+			cx,
+		));
+	ui_theme::settings_group()
+		.id(("account-row", index))
+		.px(px(14.0))
+		.py(px(10.0))
+		.flex()
+		.flex_col()
+		.gap(px(6.0))
+		.when(fixed, |d| d.border_color(rgba(0x8baaf738)))
+		.child(summary)
+		.child(crate::ui_motion::disclosure(
+			"account-management-motion",
+			presentation.show_actions,
+			account_management_actions(account, &presentation, cx),
+		))
+		.into_any_element()
+}
+
+fn account_manage_control(
+	id: EntityId,
+	index: usize,
+	expanded: bool,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	let keyboard_id = id.clone();
+	account_row_action("account-manage", index, "Manage account", "···", true)
+		.tab_index(0)
+		.aria_expanded(expanded)
+		.on_click(cx.listener(move |shell, _, _, cx| shell.toggle_account_actions(id.clone(), cx)))
+		.on_key_down(cx.listener(move |shell, event: &gpui::KeyDownEvent, _, cx| {
+			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				shell.toggle_account_actions(keyboard_id.clone(), cx);
+				cx.stop_propagation();
+			}
+		}))
+		.smooth()
 		.into_any_element()
 }
 
@@ -3267,8 +3402,12 @@ fn account_management_actions(
 
 	div()
 		.flex()
-		.flex_col()
-		.items_end()
+		.w_full()
+		.pt_2()
+		.border_t_1()
+		.border_color(rgba(0xffffff0c))
+		.justify_between()
+		.items_center()
 		.gap_1()
 		.child(
 			div()
@@ -3842,7 +3981,8 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 				.text_color(rgb(WB_BLUE))
 				.cursor_pointer()
 				.on_click(cx.listener(move |_, _, _, cx| cx.open_url(&url)))
-				.child("OPEN IN CODEX"),
+				.child("OPEN IN CODEX")
+				.smooth(),
 		);
 	} else {
 		content = content.child(
@@ -4048,7 +4188,8 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.on_click(cx.listener(|shell, _, _, cx| {
 							shell.select_destination(Destination::Chief, cx);
 						}))
-						.child("Open Chief"),
+						.child("Open Chief")
+						.smooth(),
 				),
 		)
 		.child(
@@ -4464,30 +4605,26 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 	let presentation = health_presentation(snapshot);
 
-	div()
-		.id("health-scroll-viewport")
-		.flex_1()
-		.min_h_0()
-		.overflow_y_scroll()
-		.px_7()
-		.py_5()
+	let content = div()
+		.w_full()
+		.max_w(px(ui_theme::SETTINGS_WIDTH))
 		.child(
 			div()
 				.id("health-query-status")
 				.role(Role::Status)
 				.aria_label(format!("Health report: {}", presentation.label))
-				.h(px(56.0))
-				.min_h(px(56.0))
+				.h(px(44.0))
+				.min_h(px(44.0))
 				.px_4()
 				.flex()
 				.items_center()
 				.gap_3()
-				.rounded(px(12.0))
+				.rounded(px(10.0))
 				.border_1()
 				.border_color(rgba(0xffffff10))
-				.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL))
+				.bg(rgba(0xffffff04))
 				.child(
-					div().size(px(10.0)).min_w(px(10.0)).rounded_full().bg(rgb(presentation.color)),
+					div().size(px(6.0)).min_w(px(6.0)).rounded_full().bg(rgb(presentation.color)),
 				)
 				.child(
 					div()
@@ -4511,7 +4648,7 @@ fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 				.pt_5()
 				.flex()
 				.flex_col()
-				.gap_5()
+				.gap_4()
 				.child(health_component_section(
 					"health-core-components",
 					"Core services",
@@ -4536,7 +4673,17 @@ fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 					&HEALTH_OPTIONAL_COMPONENTS,
 					snapshot,
 				)),
-		)
+		);
+	div()
+		.id("health-scroll-viewport")
+		.flex_1()
+		.min_h_0()
+		.overflow_y_scroll()
+		.px(px(28.0))
+		.py(px(20.0))
+		.flex()
+		.justify_center()
+		.child(content)
 		.into_any_element()
 }
 
@@ -4602,29 +4749,13 @@ fn destination_content(
 				.child(conversations_content(shell, cx))
 				.into_any_element();
 		},
-		Destination::Settings => {
-			return div()
-				.id("destination-content")
-				.role(Role::Main)
-				.aria_label("Decodex settings")
-				.flex_1()
-				.min_w_0()
-				.min_h_0()
-				.flex()
-				.bg(rgba(ui_theme::CONTENT_MATERIAL))
-				.child(shell.settings.clone())
-				.into_any_element();
+		Destination::Settings | Destination::Accounts | Destination::Health => {
+			return settings_workspace_content(shell, presentation, refresh_focus, window, cx);
 		},
 		_ => {},
 	}
 
-	let content = if selected == Destination::Health {
-		health_content(&shell.health)
-	} else if selected == Destination::Accounts {
-		accounts_content(shell, cx)
-	} else {
-		placeholder_content(selected)
-	};
+	let content = placeholder_content(selected);
 	div()
 		.id("destination-content")
 		.role(Role::Main)
@@ -4638,6 +4769,129 @@ fn destination_content(
 		.child(destination_header(selected, &shell.health, refresh_focus, window, cx))
 		.child(content)
 		.child(connection_status(presentation))
+		.into_any_element()
+}
+
+fn settings_workspace_content(
+	shell: &Shell,
+	_presentation: ConnectionPresentation,
+	refresh_focus: FocusHandle,
+	window: &Window,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	let mut navigation = div()
+		.w(px(192.0))
+		.min_w(px(192.0))
+		.h_full()
+		.p_3()
+		.pt(px(WINDOW_CONTROLS_CLEARANCE))
+		.flex()
+		.flex_col()
+		.gap(px(3.0))
+		.text_size(px(ui_theme::BODY_SIZE))
+		.border_r_1()
+		.border_color(rgba(ui_theme::PANEL_HEADER_RULE))
+		.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
+		.child(
+			div()
+				.px_2()
+				.pt_3()
+				.pb_4()
+				.text_size(px(13.0))
+				.font_weight(FontWeight::SEMIBOLD)
+				.child("Settings"),
+		);
+	for (destination, label) in [
+		(Destination::Settings, "General"),
+		(Destination::Accounts, "Accounts"),
+		(Destination::Health, "Diagnostics"),
+	] {
+		let index =
+			Destination::ALL.iter().position(|d| *d == destination).expect("settings destination");
+		navigation = navigation.child(
+			div()
+				.id(("settings-section", index))
+				.role(Role::Tab)
+				.aria_label(label)
+				.aria_selected(shell.selected == destination)
+				.track_focus(&shell.destination_focus[index])
+				.key_context("Destination")
+				.on_action(cx.listener(Shell::activate_destination))
+				.on_action(cx.listener(Shell::focus_next))
+				.on_action(cx.listener(Shell::focus_previous))
+				.h(px(28.0))
+				.px_2()
+				.rounded(px(6.0))
+				.flex()
+				.items_center()
+				.cursor_pointer()
+				.when(shell.selected == destination, |row| {
+					row.bg(rgba(0xffffff0c)).text_color(rgb(ui_theme::TEXT))
+				})
+				.hover(|row| row.bg(rgba(ui_theme::SURFACE_MATERIAL)))
+				.on_click(cx.listener(move |s, _, _, cx| s.select_destination(destination, cx)))
+				.child(label)
+				.smooth(),
+		);
+	}
+	let content = if shell.selected == Destination::Settings {
+		div()
+			.flex_1()
+			.min_w_0()
+			.bg(rgba(ui_theme::CONTENT_MATERIAL))
+			.pt(px(WINDOW_CONTROLS_CLEARANCE))
+			.child(shell.settings.clone())
+			.into_any_element()
+	} else {
+		div()
+			.flex_1()
+			.min_w_0()
+			.flex()
+			.flex_col()
+			.bg(rgba(ui_theme::CONTENT_MATERIAL))
+			.pt(px(WINDOW_CONTROLS_CLEARANCE))
+			.child(
+				div().px(px(28.0)).pt(px(24.0)).flex().justify_center().child(
+					div()
+						.w_full()
+						.max_w(px(ui_theme::SETTINGS_WIDTH))
+						.flex()
+						.items_center()
+						.justify_between()
+						.child(ui_theme::settings_title(
+							if shell.selected == Destination::Accounts {
+								"Accounts"
+							} else {
+								"Diagnostics"
+							},
+						))
+						.when(shell.selected == Destination::Health, |d| {
+							d.child(refresh_control(
+								refresh_focus,
+								shell.health.can_refresh,
+								window,
+								cx,
+							))
+						}),
+				),
+			)
+			.child(if shell.selected == Destination::Accounts {
+				accounts_content(shell, cx)
+			} else {
+				health_content(&shell.health)
+			})
+			.into_any_element()
+	};
+	div()
+		.id("settings-workspace")
+		.role(Role::Main)
+		.aria_label("Settings")
+		.flex_1()
+		.min_w_0()
+		.min_h_0()
+		.flex()
+		.child(navigation)
+		.child(content)
 		.into_any_element()
 }
 
@@ -4657,8 +4911,13 @@ impl Render for Shell {
 			.on_action(cx.listener(Self::activate_conversations))
 			.on_action(cx.listener(Self::activate_chief))
 			.on_action(cx.listener(Self::activate_health))
+			.on_action(cx.listener(Self::activate_settings))
 			.on_action(cx.listener(Self::toggle_sidebar))
 			.on_action(cx.listener(Self::toggle_inspector))
+			.on_action(cx.listener(Self::toggle_graph))
+			.on_action(cx.listener(Self::interrupt_reply))
+			.on_action(cx.listener(|s, _: &NavigateBack, _, cx| s.navigate_history(false, cx)))
+			.on_action(cx.listener(|s, _: &NavigateForward, _, cx| s.navigate_history(true, cx)))
 			.on_action(cx.listener(Self::select_previous_conversation))
 			.on_action(cx.listener(Self::select_next_conversation))
 			.on_action(cx.listener(Self::submit_composer))
@@ -4670,18 +4929,15 @@ impl Render for Shell {
 			.bg(rgba(ui_theme::SHELL_MATERIAL))
 			.text_color(rgb(WB_TEXT));
 
-		root.child(workbench_topbar(self, &presentation, window, cx))
-			.child(
-				div()
-					.id("destination-purpose")
-					.px_4()
-					.py_2()
-					.bg(rgba(ui_theme::CONTENT_MATERIAL))
-					.text_size(px(12.0))
-					.text_color(rgb(WB_TEXT_MUTED))
-					.child(self.selected.description()),
-			)
-			.child(destination_content(self, presentation, self.refresh_focus.clone(), window, cx))
+		let controls = floating_window_controls(self, &presentation, window, cx);
+		let status = self.render_status_center(&presentation, cx);
+		let route = format!("{:?}:{:?}", self.selected, self.chief.read(cx).navigation_work());
+		let content =
+			destination_content(self, presentation, self.refresh_focus.clone(), window, cx);
+		root.relative()
+			.child(crate::ui_motion::arrival(route, content))
+			.child(controls)
+			.child(status)
 	}
 }
 
@@ -4871,7 +5127,7 @@ fn topbar_sessions_toggle(left_sidebar_visible: bool, cx: &mut Context<Shell>) -
 		.role(Role::Button)
 		.aria_label("Toggle conversation sidebar")
 		.aria_expanded(left_sidebar_visible)
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Toggle sessions · Command-B")).into())
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Toggle sessions · Command-E")).into())
 		.h(px(27.0))
 		.px_3()
 		.flex()
@@ -4903,7 +5159,7 @@ fn topbar_inspector_toggle(inspector_visible: bool, cx: &mut Context<Shell>) -> 
 		.role(Role::Button)
 		.aria_label("Toggle conversation context")
 		.aria_expanded(inspector_visible)
-		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Toggle context · Command-Shift-B")).into())
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Toggle context · Command-B")).into())
 		.h(px(27.0))
 		.px_3()
 		.flex()
@@ -4937,81 +5193,84 @@ fn account_pool_header(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	div()
-						.p_5()
+		.px(px(14.0))
+		.py(px(12.0))
+		.flex()
+		.items_center()
+		.justify_between()
+		.gap_3()
+		.rounded(px(10.0))
+		.border_1()
+		.border_color(rgba(0xffffff12))
+		.bg(rgba(0xffffff04))
+		.child(
+			div()
+				.min_w_0()
+				.flex()
+				.flex_col()
+				.gap_1()
+				.child(
+					div()
 						.flex()
 						.items_center()
-						.justify_between()
-						.gap_6()
-						.rounded(px(13.0))
-						.border_1()
-						.border_color(rgba(0xffffff12))
-						.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL))
+						.gap_2()
+						.child(div().size(px(6.0)).rounded_full().bg(rgb(WB_GREEN)))
 						.child(
 							div()
-								.min_w_0()
-								.flex()
-								.flex_col()
-								.gap_1()
-								.child(
-									div()
-										.flex()
-										.items_center()
-										.gap_2()
-										.child(div().size(px(6.0)).rounded_full().bg(rgb(WB_GREEN)))
-										.child(
-											div()
-												.text_size(px(14.0))
-												.font_weight(FontWeight::SEMIBOLD)
-												.child("Account pool"),
-										)
-										.child(
-											div()
-										.font_family(ui_theme::FONT_FAMILY)
-										.text_size(px(11.0))
-										.text_color(rgb(WB_TEXT_FAINT))
-										.child(format!("{count} ACCOUNTS · {available} AVAILABLE")),
-										),
-								)
-								.child(
-									div()
-										.max_w(px(570.0))
-										.text_size(px(11.0))
-										.line_height(px(16.0))
-										.text_color(rgb(WB_TEXT_MUTED))
-										.child("Routing is chosen only for a new Codex conversation. Existing threads keep their bound account and cache affinity."),
-								),
+								.text_size(px(12.5))
+								.font_weight(FontWeight::SEMIBOLD)
+								.child("Routing"),
 						)
 						.child(
 							div()
-								.flex()
-								.items_center()
-								.gap_2()
-								.child(account_mode_button("Balanced", balanced, can_manage, cx))
-								.child(
-									div()
-										.id("accounts-refresh")
-										.role(Role::Button)
-										.aria_label("Refresh account pool")
-										.h(px(28.0))
-										.px_3()
-										.flex()
-										.items_center()
-										.rounded(px(7.0))
-										.border_1()
-										.border_color(rgba(0xffffff14))
-										.text_size(px(11.0))
-										.text_color(rgb(WB_TEXT_MUTED))
-										.cursor_pointer()
-										.hover(|element| {
-											element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT))
-										})
-										.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
-										.on_click(cx.listener(|shell, _, _, cx| {
-											shell.refresh_accounts(cx);
-										}))
-										.child("Refresh"),
-								),
-						).into_any_element()
+								.font_family(ui_theme::FONT_FAMILY)
+								.text_size(px(11.0))
+								.text_color(rgb(WB_TEXT_FAINT))
+								.child(format!("{available} of {count} available")),
+						),
+				)
+				.child(
+					div()
+						.max_w(px(570.0))
+						.text_size(px(11.0))
+						.line_height(px(16.0))
+						.text_color(rgb(WB_TEXT_MUTED))
+						.child(
+							"Applies to new conversations. Existing conversations keep their account.",
+						),
+				),
+		)
+		.child(
+			div()
+				.flex()
+				.items_center()
+				.gap_2()
+				.child(account_mode_button("Balanced", balanced, can_manage, cx))
+				.child(
+					div()
+						.id("accounts-refresh")
+						.role(Role::Button)
+						.aria_label("Refresh account pool")
+						.h(px(28.0))
+						.px_3()
+						.flex()
+						.items_center()
+						.rounded(px(7.0))
+						.border_1()
+						.border_color(rgba(0xffffff14))
+						.text_size(px(11.0))
+						.text_color(rgb(WB_TEXT_MUTED))
+						.cursor_pointer()
+						.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
+						.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
+						.on_click(cx.listener(|shell, _, _, cx| {
+							shell.refresh_accounts(cx);
+						}))
+						.child("Refresh")
+						.smooth(),
+				),
+		)
+		.into_any_element()
 }
 
 fn account_row_identity(account: &AccountDto) -> AnyElement {
@@ -5225,7 +5484,8 @@ fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 						.on_click(cx.listener(|shell, _, window, cx| {
 							shell.start_new_conversation(window, cx);
 						}))
-						.child("+ New"),
+						.child("+ New")
+						.smooth(),
 				),
 		)
 		.into_any_element()
@@ -5340,10 +5600,10 @@ mod tests {
 				),
 			)),
 			[
-				("Delegate to Chief", true),
+				("Chief", true),
 				("Advisor", false),
 				("Projects", false),
-				("Chat with Codex", true),
+				("History", true),
 				("Runs", false),
 				("Automations", false),
 				("Accounts", true),
@@ -5888,13 +6148,12 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn global_workspace_shortcuts_keep_chief_conversations_and_health_reachable(
-		cx: &mut TestAppContext,
-	) {
+	fn global_workspace_shortcuts_open_chief_and_settings(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 		for (keys, expected) in [
-			("cmd-1", Destination::Conversations),
+			("cmd-1", Destination::Chief),
 			("cmd-3", Destination::Health),
+			("cmd-,", Destination::Settings),
 			("cmd-2", Destination::Chief),
 		] {
 			visual.simulate_keystrokes(keys);
@@ -5903,14 +6162,61 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn back_forward_restore_worker_and_settings_without_duplicate_history(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		shell.update(visual, |s, cx| {
+			s.chief.update(cx, |chief, cx| chief.visual_workspace_fixture(cx))
+		});
+		shell.update(visual, |s, cx| {
+			s.chief.update(cx, |chief, cx| chief.restore_work(Some("verify"), cx));
+			s.record_navigation(cx);
+		});
+		shell.update(visual, |s, cx| s.select_destination(Destination::Settings, cx));
+		visual.simulate_keystrokes("cmd-[");
+		shell.read_with(visual, |s, cx| {
+			assert_eq!(s.selected, Destination::Chief);
+			assert_eq!(s.chief.read(cx).navigation_work().as_deref(), Some("verify"));
+		});
+		visual.simulate_keystrokes("cmd-[");
+		assert_eq!(shell.read_with(visual, |s, cx| s.chief.read(cx).navigation_work()), None);
+		visual.simulate_keystrokes("cmd-]");
+		assert_eq!(
+			shell.read_with(visual, |s, cx| s.chief.read(cx).navigation_work()),
+			Some("verify".into())
+		);
+		visual.simulate_keystrokes("cmd-]");
+		assert_eq!(shell.read_with(visual, |s, _| s.selected), Destination::Settings);
+	}
+
+	#[gpui::test]
+	fn chief_panel_shortcuts_control_the_current_work_page(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		shell.update(visual, |s, cx| {
+			s.chief.update(cx, |chief, cx| chief.visual_workspace_fixture(cx))
+		});
+		let panels = |visual: &mut VisualTestContext| {
+			shell.read_with(visual, |s, cx| s.chief.read(cx).workspace_panels())
+		};
+		assert_eq!(panels(visual), [(true, true), (true, true), (true, true), (true, true)]);
+		visual.simulate_keystrokes("cmd-j");
+		assert_eq!(panels(visual), [(true, true), (false, true), (true, true), (true, true)]);
+		visual.simulate_keystrokes("cmd-e");
+		assert_eq!(panels(visual), [(false, true), (false, true), (true, true), (true, true)]);
+		visual.simulate_keystrokes("cmd-b");
+		assert_eq!(panels(visual), [(false, true), (false, true), (true, true), (false, true)]);
+		visual.simulate_keystrokes("cmd-e cmd-j cmd-b");
+		assert_eq!(panels(visual), [(true, true), (true, true), (true, true), (true, true)]);
+	}
+
+	#[gpui::test]
 	fn panel_shortcuts_toggle_both_workbench_sidebars(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
-		visual.simulate_keystrokes("cmd-1");
+		shell.update(visual, |shell, cx| shell.select_destination(Destination::Conversations, cx));
 		assert!(shell.read_with(visual, |shell, _| shell.left_sidebar_visible));
 		assert!(shell.read_with(visual, |shell, _| shell.inspector_visible));
 
+		visual.simulate_keystrokes("cmd-e");
 		visual.simulate_keystrokes("cmd-b");
-		visual.simulate_keystrokes("cmd-shift-b");
 
 		assert!(!shell.read_with(visual, |shell, _| shell.left_sidebar_visible));
 		assert!(!shell.read_with(visual, |shell, _| shell.inspector_visible));
@@ -5922,8 +6228,8 @@ mod tests {
 		assert!(!shell.read_with(visual, |shell, _| shell.left_sidebar_mounted));
 		assert!(!shell.read_with(visual, |shell, _| shell.inspector_mounted));
 
+		visual.simulate_keystrokes("cmd-e");
 		visual.simulate_keystrokes("cmd-b");
-		visual.simulate_keystrokes("cmd-shift-b");
 		assert!(shell.read_with(visual, |shell, _| shell.left_sidebar_visible));
 		assert!(shell.read_with(visual, |shell, _| shell.left_sidebar_mounted));
 		assert!(shell.read_with(visual, |shell, _| shell.inspector_visible));
@@ -5937,7 +6243,7 @@ mod tests {
 			visual.update(|window, cx| {
 				window.resize(size(px(width), px(height)));
 				window.draw(cx).clear();
-				assert_eq!(WORKBENCH_TOPBAR_HEIGHT, 42.0);
+				assert_eq!(WINDOW_CONTROLS_CLEARANCE, 48.0);
 				assert_eq!(WORKBENCH_SESSION_SIDEBAR_WIDTH, 248.0);
 				assert_eq!(WORKBENCH_INSPECTOR_WIDTH, 344.0);
 			});

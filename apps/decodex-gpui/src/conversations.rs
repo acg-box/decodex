@@ -1583,7 +1583,7 @@ impl State {
 	}
 }
 
-fn supported_efforts(model: &str) -> &'static [ConversationReasoningEffort] {
+pub(crate) fn supported_efforts(model: &str) -> &'static [ConversationReasoningEffort] {
 	match model {
 		"gpt-6-astra" | "gpt-5.6-sol" | "gpt-5.6-terra" => CONVERSATION_EFFORTS,
 		"gpt-5.6-luna" => &CONVERSATION_EFFORTS[..5],

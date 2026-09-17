@@ -1,0 +1,106 @@
+<div id="decodex-chief-architecture">
+  <h2>Decodex · Chief 与工作 Graph</h2>
+  <div class="text-small text-muted">设计提案 · 独立 Codex threads · 点击节点查看职责</div>
+  <div class="nav nav-pills" role="tablist" aria-label="架构视角">
+    <button type="button" class="nav-link active" id="dc-tab-system" role="tab" aria-selected="true" aria-controls="dc-system">整体架构</button>
+    <button type="button" class="nav-link" id="dc-tab-flow" role="tab" aria-selected="false" aria-controls="dc-flow">一次派工与回报</button>
+    <button type="button" class="nav-link" id="dc-tab-work" role="tab" aria-selected="false" aria-controls="dc-work">Graph 管什么</button>
+  </div>
+  <div role="tabpanel" id="dc-system" aria-labelledby="dc-tab-system">
+    <div class="dc-diagram" data-view="system"><svg aria-hidden="true"></svg><div class="dc-nodes"></div></div>
+  </div>
+  <div role="tabpanel" id="dc-flow" aria-labelledby="dc-tab-flow" hidden>
+    <div class="dc-diagram" data-view="flow"><svg aria-hidden="true"></svg><div class="dc-nodes"></div></div>
+  </div>
+  <div role="tabpanel" id="dc-work" aria-labelledby="dc-tab-work" hidden>
+    <div class="dc-diagram" data-view="work"><svg aria-hidden="true"></svg><div class="dc-nodes"></div></div>
+  </div>
+  <div class="dc-detail" aria-live="polite">选择节点，查看其职责、边界或待验证项。</div>
+  <details><summary>需要先验证的三个基座问题</summary>
+    <ul>
+      <li>Chief 的 turn 结束后，独立 worker threads 仍可执行；同账号并行与进程持有方式须实测。</li>
+      <li>结果到达后，服务能唤醒原 Chief；重启不能丢失结果或盲目重复外部操作。</li>
+      <li>每个 thread 的模型、effort、权限与工作目录实际生效，审批和中断能正确回到对应工作。</li>
+    </ul>
+  </details>
+  <details><summary>这版明确不作为前提的机制</summary>
+    <ul><li>原生 subagent 不承担主架构；Chief 和工作负责人都是独立 Codex threads。</li><li>不要求一 thread 一进程、一 Worktree 或一顶层页面。</li><li>不要求图数据库、固定规划／审查角色流水线，或每个步骤由用户审批。</li></ul>
+  </details>
+</div>
+<style>
+#decodex-chief-architecture{color:var(--foreground)}
+#decodex-chief-architecture .nav{margin:18px 0}
+#decodex-chief-architecture .dc-diagram{position:relative;min-width:0;margin:20px 0}
+#decodex-chief-architecture .dc-diagram>svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+#decodex-chief-architecture .dc-nodes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:54px 22px;position:relative}
+#decodex-chief-architecture .dc-node{display:flex;justify-content:center;align-items:center;min-width:0;text-align:center}
+#decodex-chief-architecture .dc-detail{margin:18px 0;min-height:3em}
+#decodex-chief-architecture details{margin:14px 0}
+#decodex-chief-architecture summary{cursor:pointer}
+#decodex-chief-architecture .dc-nodes .dc-section{grid-column:1/-1;text-align:center}
+@media(max-width:480px){#decodex-chief-architecture .dc-nodes{grid-template-columns:1fr;gap:44px}#decodex-chief-architecture .dc-node{grid-column:1!important;grid-row:auto!important}}
+</style>
+<script>
+(() => {
+const root=document.getElementById('decodex-chief-architecture');
+const views={
+system:{nodes:[
+ ['user','你','目标 · 方向 · 重大决策',1,2,'你保留方向与重大取舍；一般问题在既有委托范围内由 Chief 处理。'],
+ ['ui','Decodex 工作台','简报 · 对话 · 决策 · Graph',2,2,'同一个工作入口：平时看 Chief 的汇报，深入时展开目标、thread、产物与证据。'],
+ ['events','结果与触发','自动化 · 外部事件 · 到期',3,1,'通过明确的来源接口接收结果和到期信号；外部内容是证据，不是用户授权。'],
+ ['service','Decodex 服务','关系 · 通信 · 跟进 · 操作',3,2,'确定性中枢：维护工作关系、投递消息、收取结果、触发 Chief、匹配权限；实质判断交给模型。'],
+ ['db','SQLite','目标 · 消息 · 处理记录',3,3,'复用现有存储，持久保存未完成事项、关系、来源身份和跟进安排；图是这些事实的视图。'],
+ ['server','Codex app-server','thread / turn / item',4,2,'执行基座：运行模型和工具。进程与 thread 的映射需验证，不默认每个 thread 启动一个进程。'],
+ ['chief','Chief thread','所选模型 · 高推理配置',5,1,'长期负责人：理解目标、组织多个工作、检查结果、决定返工与汇报。身份持续，不要求一个 turn 永远运行。'],
+ ['worker','Worker threads','同模型默认 · medium',5,2,'独立上下文与生命周期：负责一项有边界的工作；补充和返工继续原 thread。'],
+ ['auto','自动化运行 threads','按任务配置模型与 effort',5,3,'每次运行关联一个具体结果；同一自动化是否复用 thread 按上下文需求决定，结果统一交给 Chief。']
+],edges:[['user','ui'],['ui','service'],['events','service'],['service','db'],['service','server'],['server','chief'],['server','worker'],['server','auto']],caption:'箭头表示主要接口关系；消息与结果通过服务及 app-server 双向流动。'},
+flow:{nodes:[
+ ['chief','1 · Chief 决定派工','目标＋边界＋验收',1,2,'Chief 通过 Decodex 提供的工具提出派工；这是产品工具，不是假定 app-server 已有同名 RPC。'],
+ ['dispatch','2 · 服务记录与投递','关联工作 → thread/start',2,2,'先确定工作身份与执行配置，创建独立 Codex thread，再通过 turn/start 发起执行。'],
+ ['a','3 · Worker A','独立 Codex thread',3,1,'A 独立运行。共享写入或 Git 操作需要明确所有者或隔离，不能仅凭不同 thread 就认为安全。'],
+ ['b','3 · Worker B','独立 Codex thread',3,3,'B 可与 A 并行；并发以实际 app-server 与账号/进程约束验证结果为准。'],
+ ['inbox','4 · 服务收件','持久结果 · 来源与版本',4,2,'收取执行事件及产物引用，去重并关联工作；结果未知时保留未知，不盲目重新派发。'],
+ ['wake','5 · 唤醒原 Chief','空闲续 turn · 忙时排队',5,2,'Chief 空闲时 resume/start；忙碌时合并待处理事件。用户即时修订可使用已支持的 steer 路径。'],
+ ['judge','6 · Chief 检查','依据 · 影响 · 下一步',6,2,'读取必要证据后判断已交付、返工、等待或用户决策；普通修复继续原 worker。'],
+ ['follow','继续跟进','返工／到期再查',7,1,'记录下一动作及检查条件，投递给原工作；没有新信息时避免无界重复尝试。'],
+ ['report','简报或重大决策','你看结论，可展开依据',7,3,'普通进展合并汇报；需要用户选择时给出推荐、影响和证据。']
+],edges:[['chief','dispatch'],['dispatch','a'],['dispatch','b'],['a','inbox'],['b','inbox'],['inbox','wake'],['wake','judge'],['judge','follow'],['judge','report']],caption:'Chief 可结束当前 turn；工作持续性由服务和独立 threads 的生命周期共同保证。'},
+work:{nodes:[
+ ['goal','目标：新版上线','Chief 负责',1,2,'目标属于产品层，不等同于一个 Codex thread。工作范围和验收可以跨多次执行。'],
+ ['api','接口工作','执行载体：thread A',2,1,'工作节点关联真实 thread；它也关联产物、负责人和后续修订。'],
+ ['front','前端工作','执行载体：thread B',2,3,'前端可以先做独立部分；需要接口产物的部分再等待，不制造不必要的整项串行。'],
+ ['contract','接口产物','明确版本／来源',3,1,'产物是依赖的具体对象。上下文交接指向必要内容，而非默认复制整个会话。'],
+ ['output','前端产物','明确版本／来源',3,3,'保留与工作和执行的关联，后续验证检查正确版本。'],
+ ['integration','联调工作','thread C · 消费两项产物',4,2,'依赖满足后可启动；连线表示消费产物，不能自动代表发布权限。'],
+ ['check','上线后检查','自动化运行 → 发现',5,2,'这里表示已获授权上线后的检查；联调结束不等于自动获得发布授权。'],
+ ['decision','Chief 判断','已解决／返工／需要决定',6,2,'检查结果回到同一目标；必要时关联新的工作与证据，历史保持可追踪。']
+],edges:[['goal','api'],['goal','front'],['api','contract'],['front','output'],['contract','integration'],['output','integration'],['integration','check'],['check','decision']],caption:'示例工作图：工作分解、产出与后续关系；具体授权和运行条件须由明确命令决定。'}
+};
+let selected=null;
+Object.entries(views).forEach(([key,view])=>{
+ const area=root.querySelector('[data-view="'+key+'"]');const nodes=area.querySelector('.dc-nodes');
+ for(const [id,title,subtitle,row,col,detail] of view.nodes){
+   const box=document.createElement('div');box.className='dc-node';box.dataset.node=id;box.style.gridRow=String(row);box.style.gridColumn=String(col);
+   const button=document.createElement('button');button.type='button';button.className='btn';button.setAttribute('aria-pressed','false');
+   const label=document.createElement('span');label.textContent=title;const sub=document.createElement('span');sub.className='text-small';sub.textContent=subtitle;
+   button.append(label,document.createElement('br'),sub);button.addEventListener('click',()=>{if(selected)selected.setAttribute('aria-pressed','false');selected=button;button.setAttribute('aria-pressed','true');root.querySelector('.dc-detail').textContent=detail});box.append(button);nodes.append(box);
+ }
+ const note=document.createElement('div');note.className='dc-section text-small text-muted';note.textContent=view.caption;nodes.append(note);
+});
+const ns='http://www.w3.org/2000/svg';
+function draw(){
+ for(const [key,view] of Object.entries(views)){
+  const area=root.querySelector('[data-view="'+key+'"]');if(!area.offsetWidth)continue;
+  const svg=area.querySelector('svg');svg.replaceChildren();const rect=area.getBoundingClientRect();svg.setAttribute('viewBox','0 0 '+rect.width+' '+rect.height);
+  const defs=document.createElementNS(ns,'defs'),marker=document.createElementNS(ns,'marker');marker.id='dc-arrow-'+key;marker.setAttribute('viewBox','0 0 8 8');marker.setAttribute('refX','7');marker.setAttribute('refY','4');marker.setAttribute('markerWidth','7');marker.setAttribute('markerHeight','7');marker.setAttribute('orient','auto');const triangle=document.createElementNS(ns,'path');triangle.setAttribute('d','M0 0L8 4L0 8');triangle.setAttribute('fill','var(--muted-foreground)');marker.append(triangle);defs.append(marker);svg.append(defs);
+  for(const [from,to] of view.edges){const a=area.querySelector('[data-node="'+from+'"] button').getBoundingClientRect(),b=area.querySelector('[data-node="'+to+'"] button').getBoundingClientRect();let d;
+   if(Math.abs(a.top-b.top)<5){const right=b.left>a.left;const x1=(right?a.right:a.left)-rect.left,x2=(right?b.left:b.right)-rect.left,y=a.top+a.height/2-rect.top;d='M'+x1+' '+y+'H'+x2;}
+   else{const x1=a.left+a.width/2-rect.left,y1=a.bottom-rect.top,x2=b.left+b.width/2-rect.left,y2=b.top-rect.top,mid=(y1+y2)/2;d='M'+x1+' '+y1+'V'+mid+'H'+x2+'V'+y2;}
+   const path=document.createElementNS(ns,'path');path.setAttribute('d',d);path.setAttribute('fill','none');path.setAttribute('stroke','var(--muted-foreground)');path.setAttribute('stroke-width','1.3');path.setAttribute('marker-end','url(#dc-arrow-'+key+')');svg.append(path);
+  }
+ }
+}
+new ResizeObserver(draw).observe(root);root.addEventListener('click',()=>requestAnimationFrame(draw));requestAnimationFrame(draw);
+})();
+</script>

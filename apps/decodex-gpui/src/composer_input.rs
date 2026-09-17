@@ -1,4 +1,6 @@
-//! Native bounded text input for the Conversation composer.
+#[path = "composer_edit.rs"] mod edit;
+#[path = "composer_text.rs"] mod text;
+// Native bounded text input for the Conversation composer.
 
 use std::ops::Range;
 
@@ -6,9 +8,9 @@ use gpui::{
 	AccessibleAction, App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId,
 	ElementInputHandler, Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable,
 	GlobalElementId, InspectorElementId, IntoElement, KeyBinding, LayoutId, MouseButton,
-	MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, Render, Role,
-	ShapedLine, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div,
-	fill, point, prelude::*, px, relative, rgb, rgba, size,
+	MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Role, SharedString, Style,
+	TextRun, UTF16Selection, UnderlineStyle, Window, WrappedLine, actions, div, fill, point,
+	prelude::*, px, relative, rgb, rgba, size,
 };
 
 use crate::ui_theme;
@@ -22,6 +24,8 @@ actions!(
 		Delete,
 		Left,
 		Right,
+		Up,
+		Down,
 		SelectLeft,
 		SelectRight,
 		SelectAll,
@@ -32,13 +36,21 @@ actions!(
 		Paste,
 		Cut,
 		Copy,
+		SelectNext,
+		AddAbove,
+		AddBelow,
+		Undo,
+		Redo,
+		CancelCursors,
+		Indent,
 		SubmitComposer,
 	]
 );
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ComposerEvent {
 	Changed,
+	Attach(ClipboardItem),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -55,6 +67,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("delete", Delete, Some("ComposerInput")),
 		KeyBinding::new("left", Left, Some("ComposerInput")),
 		KeyBinding::new("right", Right, Some("ComposerInput")),
+		KeyBinding::new("up", Up, Some("ComposerInput")),
+		KeyBinding::new("down", Down, Some("ComposerInput")),
 		KeyBinding::new("shift-left", SelectLeft, Some("ComposerInput")),
 		KeyBinding::new("shift-right", SelectRight, Some("ComposerInput")),
 		KeyBinding::new("cmd-a", SelectAll, Some("ComposerInput")),
@@ -65,7 +79,16 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("cmd-v", Paste, Some("ComposerInput")),
 		KeyBinding::new("cmd-x", Cut, Some("ComposerInput")),
 		KeyBinding::new("cmd-c", Copy, Some("ComposerInput")),
-		KeyBinding::new("enter", SubmitComposer, Some("ComposerInput")),
+		KeyBinding::new("enter", SubmitComposer, Some("ComposerInput && !programmer")),
+		KeyBinding::new("enter", InsertNewline, Some("ComposerInput && programmer")),
+		KeyBinding::new("cmd-enter", SubmitComposer, Some("ComposerInput")),
+		KeyBinding::new("cmd-d", SelectNext, Some("ComposerInput && programmer")),
+		KeyBinding::new("alt-up", AddAbove, Some("ComposerInput && programmer")),
+		KeyBinding::new("alt-down", AddBelow, Some("ComposerInput && programmer")),
+		KeyBinding::new("tab", Indent, Some("ComposerInput && programmer")),
+		KeyBinding::new("escape", CancelCursors, Some("ComposerInput && programmer")),
+		KeyBinding::new("cmd-z", Undo, Some("ComposerInput")),
+		KeyBinding::new("cmd-shift-z", Redo, Some("ComposerInput")),
 	]);
 }
 
@@ -78,10 +101,18 @@ pub(crate) struct ComposerInput {
 	selected_range: Range<usize>,
 	selection_reversed: bool,
 	marked_range: Option<Range<usize>>,
-	last_layout: Option<ShapedLine>,
+	last_layout: Option<Vec<WrappedLine>>,
 	last_bounds: Option<Bounds<Pixels>>,
+	text_offset: Pixels,
+	scroll_manually: bool,
 	is_selecting: bool,
 	appearance: ComposerAppearance,
+	secret: bool,
+	programmer: bool,
+	extra: Vec<Range<usize>>,
+	undo: Vec<edit::Snapshot>,
+	redo: Vec<edit::Snapshot>,
+	vertical_column: Option<usize>,
 }
 
 impl ComposerInput {
@@ -130,9 +161,34 @@ impl ComposerInput {
 			marked_range: None,
 			last_layout: None,
 			last_bounds: None,
+			text_offset: px(0.0),
+			scroll_manually: false,
 			is_selecting: false,
 			appearance,
+			secret: false,
+			programmer: false,
+			extra: vec![],
+			undo: vec![],
+			redo: vec![],
+			vertical_column: None,
 		}
+	}
+
+	pub(crate) fn obscure(&mut self) {
+		self.secret = true;
+	}
+
+	pub(crate) fn set_placeholder(
+		&mut self,
+		text: impl Into<SharedString>,
+		cx: &mut Context<Self>,
+	) {
+		self.placeholder = text.into();
+		cx.notify();
+	}
+
+	pub(crate) fn placeholder(&self) -> &str {
+		&self.placeholder
 	}
 
 	pub(crate) fn content(&self) -> &str {
@@ -148,6 +204,9 @@ impl ComposerInput {
 			return;
 		}
 		self.content.clear();
+		self.extra.clear();
+		self.undo.clear();
+		self.redo.clear();
 		self.selected_range = 0..0;
 		self.selection_reversed = false;
 		self.marked_range = None;
@@ -159,15 +218,23 @@ impl ComposerInput {
 		if self.content == value {
 			return;
 		}
+		self.extra.clear();
 		self.replace_bytes(0..self.content.len(), value, false, None, cx);
+		self.undo.clear();
+		self.redo.clear();
 	}
 
 	fn changed(&mut self, cx: &mut Context<Self>) {
+		self.scroll_manually = false;
 		cx.notify();
 		cx.emit(ComposerEvent::Changed);
 	}
 
 	fn left(&mut self, _: &Left, _: &mut Window, cx: &mut Context<Self>) {
+		if !self.extra.is_empty() {
+			self.move_multiple(false, cx);
+			return;
+		}
 		if self.selected_range.is_empty() {
 			self.move_to(previous_boundary(&self.content, self.cursor_offset()), cx);
 		} else {
@@ -176,11 +243,34 @@ impl ComposerInput {
 	}
 
 	fn right(&mut self, _: &Right, _: &mut Window, cx: &mut Context<Self>) {
+		if !self.extra.is_empty() {
+			self.move_multiple(true, cx);
+			return;
+		}
 		if self.selected_range.is_empty() {
 			self.move_to(next_boundary(&self.content, self.cursor_offset()), cx);
 		} else {
 			self.move_to(self.selected_range.end, cx);
 		}
+	}
+
+	fn vertical(&mut self, direction: f32, cx: &mut Context<Self>) {
+		if let Some(lines) = &self.last_layout {
+			let position = text::position_at(lines, self.cursor_offset());
+			let index = text::index_at(
+				lines,
+				position + point(px(0.0), px(ui_theme::BODY_LINE_HEIGHT * direction)),
+			);
+			self.move_to(index, cx);
+		}
+	}
+
+	fn up(&mut self, _: &Up, _: &mut Window, cx: &mut Context<Self>) {
+		self.vertical(-1.0, cx);
+	}
+
+	fn down(&mut self, _: &Down, _: &mut Window, cx: &mut Context<Self>) {
+		self.vertical(1.0, cx);
 	}
 
 	fn select_left(&mut self, _: &SelectLeft, _: &mut Window, cx: &mut Context<Self>) {
@@ -192,6 +282,7 @@ impl ComposerInput {
 	}
 
 	fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
+		self.extra.clear();
 		self.selected_range = 0..self.content.len();
 		self.selection_reversed = false;
 		self.marked_range = None;
@@ -207,6 +298,10 @@ impl ComposerInput {
 	}
 
 	fn backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
+		if !self.extra.is_empty() {
+			self.delete_multiple(true, cx);
+			return;
+		}
 		if self.selected_range.is_empty() {
 			let previous = previous_boundary(&self.content, self.cursor_offset());
 			if previous == self.cursor_offset() {
@@ -219,6 +314,10 @@ impl ComposerInput {
 	}
 
 	fn delete(&mut self, _: &Delete, window: &mut Window, cx: &mut Context<Self>) {
+		if !self.extra.is_empty() {
+			self.delete_multiple(false, cx);
+			return;
+		}
 		if self.selected_range.is_empty() {
 			let next = next_boundary(&self.content, self.cursor_offset());
 			if next == self.cursor_offset() {
@@ -244,25 +343,53 @@ impl ComposerInput {
 	}
 
 	fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
-		if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+		if let Some(item) = cx.read_from_clipboard() {
+			if self.appearance == ComposerAppearance::Workbench
+				&& item
+					.entries
+					.iter()
+					.any(|entry| !matches!(entry, gpui::ClipboardEntry::String(_)))
+			{
+				cx.emit(ComposerEvent::Attach(item));
+				return;
+			}
+			let Some(text) = item.text() else {
+				return;
+			};
 			self.replace_text_in_range(None, &text, window, cx);
 		}
 	}
 
 	fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
+		if self.secret {
+			return;
+		}
 		if !self.selected_range.is_empty() {
 			cx.write_to_clipboard(ClipboardItem::new_string(
-				self.content[self.selected_range.clone()].to_owned(),
+				self.selections()
+					.iter()
+					.filter(|r| !r.is_empty())
+					.map(|r| self.content[r.clone()].to_owned())
+					.collect::<Vec<_>>()
+					.join("\n"),
 			));
 		}
 	}
 
 	fn cut(&mut self, _: &Cut, window: &mut Window, cx: &mut Context<Self>) {
+		if self.secret {
+			return;
+		}
 		if self.selected_range.is_empty() {
 			return;
 		}
 		cx.write_to_clipboard(ClipboardItem::new_string(
-			self.content[self.selected_range.clone()].to_owned(),
+			self.selections()
+				.iter()
+				.filter(|r| !r.is_empty())
+				.map(|r| self.content[r.clone()].to_owned())
+				.collect::<Vec<_>>()
+				.join("\n"),
 		));
 		self.replace_text_in_range(None, "", window, cx);
 	}
@@ -294,6 +421,9 @@ impl ComposerInput {
 	}
 
 	fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
+		self.extra.clear();
+		self.scroll_manually = false;
+		self.vertical_column = None;
 		let offset = offset.min(self.content.len());
 		self.selected_range = offset..offset;
 		self.selection_reversed = false;
@@ -302,6 +432,9 @@ impl ComposerInput {
 	}
 
 	fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
+		self.extra.clear();
+		self.scroll_manually = false;
+		self.vertical_column = None;
 		let offset = offset.min(self.content.len());
 		let anchor = if self.selection_reversed {
 			self.selected_range.end
@@ -337,7 +470,7 @@ impl ComposerInput {
 		if position.y > bounds.bottom() {
 			return self.content.len();
 		}
-		line.closest_index_for_x(position.x - bounds.left())
+		text::index_at(line, position - bounds.origin + point(px(0.0), self.text_offset))
 	}
 
 	fn replacement_range(&self, range_utf16: Option<&Range<usize>>) -> Range<usize> {
@@ -355,6 +488,7 @@ impl ComposerInput {
 		selected_range_utf16: Option<&Range<usize>>,
 		cx: &mut Context<Self>,
 	) {
+		self.checkpoint();
 		let retained = self.content.len().saturating_sub(range.end.saturating_sub(range.start));
 		let replacement = bounded_input(new_text, MAX_COMPOSER_BYTES.saturating_sub(retained));
 		let inserted = range.start..range.start + replacement.len();
@@ -379,7 +513,10 @@ impl ComposerInput {
 		let Some(gpui::accesskit::ActionData::Value(value)) = data else {
 			return;
 		};
+		self.extra.clear();
 		self.replace_bytes(0..self.content.len(), value, false, None, cx);
+		self.undo.clear();
+		self.redo.clear();
 	}
 }
 
@@ -431,7 +568,11 @@ impl EntityInputHandler for ComposerInput {
 		cx: &mut Context<Self>,
 	) {
 		let range = self.replacement_range(range_utf16.as_ref());
-		self.replace_bytes(range, new_text, false, None, cx);
+		if self.extra.is_empty() {
+			self.replace_bytes(range, new_text, false, None, cx);
+		} else {
+			self.edit_multiple(range, new_text, false, None, cx);
+		}
 	}
 
 	fn replace_and_mark_text_in_range(
@@ -443,7 +584,11 @@ impl EntityInputHandler for ComposerInput {
 		cx: &mut Context<Self>,
 	) {
 		let range = self.replacement_range(range_utf16.as_ref());
-		self.replace_bytes(range, new_text, true, new_selected_range_utf16.as_ref(), cx);
+		if self.extra.is_empty() {
+			self.replace_bytes(range, new_text, true, new_selected_range_utf16.as_ref(), cx);
+		} else {
+			self.edit_multiple(range, new_text, true, new_selected_range_utf16.as_ref(), cx);
+		}
 	}
 
 	fn bounds_for_range(
@@ -455,9 +600,12 @@ impl EntityInputHandler for ComposerInput {
 	) -> Option<Bounds<Pixels>> {
 		let line = self.last_layout.as_ref()?;
 		let range = range_from_utf16(&self.content, &range_utf16);
-		Some(Bounds::from_corners(
-			point(bounds.left() + line.x_for_index(range.start), bounds.top()),
-			point(bounds.left() + line.x_for_index(range.end), bounds.bottom()),
+		let start = text::position_at(line, range.start);
+		let end = text::position_at(line, range.end);
+		let origin = self.last_bounds.unwrap_or(bounds).origin - point(px(0.0), self.text_offset);
+		Some(Bounds::new(
+			origin + start,
+			size((end.x - start.x).max(px(1.0)), px(ui_theme::BODY_LINE_HEIGHT)),
 		))
 	}
 
@@ -476,6 +624,7 @@ impl EntityInputHandler for ComposerInput {
 		_: &mut Window,
 		cx: &mut Context<Self>,
 	) {
+		self.extra.clear();
 		self.selected_range = range_from_utf16(&self.content, &range_utf16);
 		self.selection_reversed = false;
 		self.marked_range = None;
@@ -494,11 +643,15 @@ impl Render for ComposerInput {
 		let workbench = self.appearance == ComposerAppearance::Workbench;
 		div()
 			.id("conversation-composer-input")
-			.key_context("ComposerInput")
+			.key_context(if self.programmer { "ComposerInput programmer" } else { "ComposerInput" })
 			.role(Role::TextInput)
 			.aria_label(self.aria_label.clone())
 			.aria_placeholder(self.placeholder.clone())
-			.aria_value(self.content.clone())
+			.aria_value(if self.secret {
+				"*".repeat(self.content.len())
+			} else {
+				self.content.clone()
+			})
 			.track_focus(&focus_handle)
 			.on_a11y_action(AccessibleAction::SetValue, {
 				let entity = entity.clone();
@@ -506,10 +659,19 @@ impl Render for ComposerInput {
 					entity.update(cx, |input, cx| input.set_accessible_value(data, cx));
 				}
 			})
+			.on_action(cx.listener(Self::select_next))
+			.on_action(cx.listener(Self::add_above))
+			.on_action(cx.listener(Self::add_below))
+			.on_action(cx.listener(Self::undo))
+			.on_action(cx.listener(Self::redo))
+			.on_action(cx.listener(Self::cancel_cursors))
+			.on_action(cx.listener(Self::indent))
 			.on_action(cx.listener(Self::backspace))
 			.on_action(cx.listener(Self::delete))
 			.on_action(cx.listener(Self::left))
 			.on_action(cx.listener(Self::right))
+			.on_action(cx.listener(Self::up))
+			.on_action(cx.listener(Self::down))
 			.on_action(cx.listener(Self::select_left))
 			.on_action(cx.listener(Self::select_right))
 			.on_action(cx.listener(Self::select_all))
@@ -524,12 +686,23 @@ impl Render for ComposerInput {
 			.on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
 			.on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
 			.on_mouse_move(cx.listener(Self::on_mouse_move))
+			.on_scroll_wheel(cx.listener(|s, e: &gpui::ScrollWheelEvent, _, cx| {
+				if s.programmer {
+					s.text_offset = (s.text_offset
+						- e.delta.pixel_delta(px(ui_theme::BODY_LINE_HEIGHT)).y)
+						.max(px(0.0));
+					s.scroll_manually = true;
+					cx.stop_propagation();
+					cx.notify();
+				}
+			}))
 			.cursor(CursorStyle::IBeam)
-			.size_full()
+			.w_full()
+			.when(!workbench, |d| d.h_full())
 			.px_2()
-			.py_2()
+			.py(px(if workbench { 4.0 } else { 8.0 }))
 			.flex()
-			.items_center()
+			.items_start()
 			.overflow_hidden()
 			.rounded(px(if workbench { 8.0 } else { 6.0 }))
 			.border_1()
@@ -541,175 +714,10 @@ impl Render for ComposerInput {
 				rgb(0x3c3744)
 			})
 			.bg(if workbench { rgba(0x00000000) } else { rgba(ui_theme::FIELD_MATERIAL) })
+			.when(self.programmer, |d| d.font_family("Menlo"))
 			.text_size(px(ui_theme::BODY_SIZE))
 			.text_color(rgb(0xeeeaf0))
-			.child(ComposerTextElement { input: entity })
-	}
-}
-
-struct ComposerTextElement {
-	input: Entity<ComposerInput>,
-}
-
-struct ComposerTextPrepaint {
-	line: Option<ShapedLine>,
-	cursor: Option<PaintQuad>,
-	selection: Option<PaintQuad>,
-}
-
-impl IntoElement for ComposerTextElement {
-	type Element = Self;
-
-	fn into_element(self) -> Self::Element {
-		self
-	}
-}
-
-impl Element for ComposerTextElement {
-	type PrepaintState = ComposerTextPrepaint;
-	type RequestLayoutState = ();
-
-	fn id(&self) -> Option<ElementId> {
-		None
-	}
-
-	fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-		None
-	}
-
-	fn request_layout(
-		&mut self,
-		_: Option<&GlobalElementId>,
-		_: Option<&InspectorElementId>,
-		window: &mut Window,
-		cx: &mut App,
-	) -> (LayoutId, Self::RequestLayoutState) {
-		let mut style = Style::default();
-		style.size.width = relative(1.0).into();
-		style.size.height = window.line_height().into();
-		(window.request_layout(style, [], cx), ())
-	}
-
-	fn prepaint(
-		&mut self,
-		_: Option<&GlobalElementId>,
-		_: Option<&InspectorElementId>,
-		bounds: Bounds<Pixels>,
-		_: &mut Self::RequestLayoutState,
-		window: &mut Window,
-		cx: &mut App,
-	) -> Self::PrepaintState {
-		let input = self.input.read(cx);
-		let content_is_empty = input.content.is_empty();
-		let display_text: SharedString = if content_is_empty {
-			input.placeholder.clone()
-		} else {
-			input.content.replace('\n', " ").into()
-		};
-		let style = window.text_style();
-		let run = TextRun {
-			len: display_text.len(),
-			font: style.font(),
-			color: if content_is_empty { rgb(0x64748b).into() } else { style.color },
-			background_color: None,
-			underline: None,
-			strikethrough: None,
-		};
-		let runs = if let Some(marked) = input.marked_range.as_ref() {
-			vec![
-				TextRun { len: marked.start, ..run.clone() },
-				TextRun {
-					len: marked.end - marked.start,
-					underline: Some(UnderlineStyle {
-						color: Some(run.color),
-						thickness: px(1.0),
-						wavy: false,
-					}),
-					..run.clone()
-				},
-				TextRun { len: display_text.len() - marked.end, ..run },
-			]
-			.into_iter()
-			.filter(|run| run.len > 0)
-			.collect::<Vec<_>>()
-		} else {
-			vec![run]
-		};
-		let line = window.text_system().shape_line(
-			display_text,
-			style.font_size.to_pixels(window.rem_size()),
-			&runs,
-			None,
-		);
-		let cursor_offset = input.cursor_offset();
-		let selected_range = input.selected_range.clone();
-		let focused = input.focus_handle.is_focused(window);
-		let (selection, cursor) = if selected_range.is_empty() {
-			(
-				None,
-				focused.then(|| {
-					fill(
-						Bounds::new(
-							point(bounds.left() + line.x_for_index(cursor_offset), bounds.top()),
-							size(px(1.5), bounds.bottom() - bounds.top()),
-						),
-						rgb(0xe5e7eb),
-					)
-				}),
-			)
-		} else {
-			(
-				Some(fill(
-					Bounds::from_corners(
-						point(bounds.left() + line.x_for_index(selected_range.start), bounds.top()),
-						point(
-							bounds.left() + line.x_for_index(selected_range.end),
-							bounds.bottom(),
-						),
-					),
-					rgba(0x60a5fa30),
-				)),
-				None,
-			)
-		};
-		ComposerTextPrepaint { line: Some(line), cursor, selection }
-	}
-
-	fn paint(
-		&mut self,
-		_: Option<&GlobalElementId>,
-		_: Option<&InspectorElementId>,
-		bounds: Bounds<Pixels>,
-		_: &mut Self::RequestLayoutState,
-		prepaint: &mut Self::PrepaintState,
-		window: &mut Window,
-		cx: &mut App,
-	) {
-		let focus_handle = self.input.read(cx).focus_handle.clone();
-		window.handle_input(
-			&focus_handle,
-			ElementInputHandler::new(bounds, self.input.clone()),
-			cx,
-		);
-		if let Some(selection) = prepaint.selection.take() {
-			window.paint_quad(selection);
-		}
-		let line = prepaint.line.take().expect("composer line was shaped");
-		let _ = line.paint(
-			bounds.origin,
-			window.line_height(),
-			gpui::TextAlign::Left,
-			None,
-			window,
-			cx,
-		);
-		if let Some(cursor) = prepaint.cursor.take() {
-			window.paint_quad(cursor);
-		}
-		self.input.update(cx, |input, _| {
-			input.last_layout = Some(line);
-			input.last_bounds = Some(bounds);
-		});
+			.child(text::ComposerTextElement { input: entity })
 	}
 }
 
@@ -780,4 +788,46 @@ fn bounded_input(value: &str, maximum_bytes: usize) -> String {
 		output.push(character);
 	}
 	output
+}
+
+#[cfg(test)]
+mod multiline_tests {
+	use super::*;
+
+	#[gpui::test]
+	fn newline_wrap_and_native_caret_share_geometry(cx: &mut gpui::TestAppContext) {
+		cx.update(bind_keys);
+		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+		visual.simulate_resize(size(px(240.0), px(300.0)));
+		input.update(visual, |input, cx| input.set_content("第一行", cx));
+		visual.update(|window, cx| {
+			window.focus(&input.focus_handle(cx), cx);
+			window.draw(cx).clear();
+		});
+		visual.simulate_keystrokes("shift-enter");
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		input.update(visual, |input, cx| {
+			assert_eq!(input.content(), "第一行\n");
+			let lines = input.last_layout.as_ref().unwrap();
+			assert_eq!(lines.len(), 2);
+			assert_eq!(
+				text::position_at(lines, input.content.len()).y,
+				px(ui_theme::BODY_LINE_HEIGHT)
+			);
+			input.set_content(&"宽度有限，长段落必须自动换行。".repeat(40), cx);
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		input.update(visual, |input, _| {
+			let lines = input.last_layout.as_ref().unwrap();
+			assert!(!lines[0].wrap_boundaries().is_empty());
+			assert!(input.text_offset > px(0.0));
+			let caret = text::position_at(lines, input.content.len());
+			assert_eq!(text::index_at(lines, caret), input.content.len());
+			assert!(input.last_bounds.unwrap().size.height <= px(ui_theme::BODY_LINE_HEIGHT * 7.0));
+		});
+	}
 }

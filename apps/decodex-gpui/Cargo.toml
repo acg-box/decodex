@@ -12,6 +12,9 @@ version.workspace    = true
 visual-capture = ["gpui/test-support", "gpui_platform/test-support"]
 
 [dependencies]
+reqwest = { workspace = true }
+pulldown-cmark = { workspace = true }
+time = { workspace = true }
 decodex-protocol = { workspace = true }
 gpui             = { workspace = true }
 gpui_platform    = { workspace = true }
@@ -23,7 +26,7 @@ tokio            = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2            = { version = "~0.6" }
-objc2-app-kit    = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSButton", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSPanel", "NSResponder", "NSRunningApplication", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow", "block2", "objc2-core-foundation"] }
+objc2-app-kit    = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSButton", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSPanel", "NSResponder", "NSRunningApplication", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView", "NSVisualEffectView", "NSWindow", "block2", "objc2-core-foundation"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSString"] }
 
 [dev-dependencies]

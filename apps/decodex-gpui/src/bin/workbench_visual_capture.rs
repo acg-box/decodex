@@ -10,9 +10,6 @@ mod account_profile;
 #[path = "../accounts.rs"]
 mod accounts;
 #[allow(dead_code)]
-#[path = "../app_icon.rs"]
-mod app_icon;
-#[allow(dead_code)]
 #[path = "../client_cache.rs"]
 mod client_cache;
 #[allow(dead_code)]
@@ -42,6 +39,9 @@ mod settings_surface;
 #[allow(dead_code)]
 #[path = "../shell.rs"]
 mod shell;
+#[allow(dead_code)]
+#[path = "../ui_motion.rs"]
+mod ui_motion;
 #[allow(dead_code)]
 #[path = "../ui_theme.rs"]
 mod ui_theme;
@@ -179,9 +179,35 @@ fn main() -> gpui::Result<()> {
 		}
 	}
 
+	capture_pointer_hover(&mut cx, window)?;
 	let screenshot = cx.capture_screenshot(window)?;
 	screenshot.save(&output)?;
 	println!("{}", output.display());
+	Ok(())
+}
+
+fn capture_pointer_hover(
+	cx: &mut VisualTestAppContext,
+	window: gpui::AnyWindowHandle,
+) -> gpui::Result<()> {
+	let Ok(value) = std::env::var("DECODEX_VISUAL_HOVER") else {
+		return Ok(());
+	};
+	let Some((x, y)) = value.split_once(',') else {
+		return Ok(());
+	};
+	let (Ok(x), Ok(y)) = (x.parse::<f32>(), y.parse::<f32>()) else {
+		return Ok(());
+	};
+	cx.simulate_mouse_move(window, gpui::point(px(x), px(y)), None, Default::default());
+	cx.advance_clock(std::time::Duration::from_secs(1));
+	cx.run_until_parked();
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+	std::thread::sleep(ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40));
+	cx.update_window(window, |_, window, cx| {
+		window.refresh();
+		window.draw(cx).clear();
+	})?;
 	Ok(())
 }
 
