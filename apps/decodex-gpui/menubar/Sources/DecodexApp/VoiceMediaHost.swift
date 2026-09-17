@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import WebKit
 
 /// Native media only. Rust owns authentication, session authorization and task state.
@@ -10,11 +11,16 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     private var retainedEvent: UnsafeMutablePointer<CChar>?
     private var isClosed = false
     private var isReady = false
+    private let initializedAt = Date()
+    private var initializationFailed = false
     private var pendingCommand: String?
+    private var desiredMute = false
+    private var syntheticAudio = false
     private let origin = URL(string: "https://decodex.invalid")!
 
     init(syntheticAudioForTesting: Bool = false, sampleForTesting: Data? = nil, hostWindow: NSWindow? = nil) {
         super.init()
+        syntheticAudio = syntheticAudioForTesting
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         configuration.mediaTypesRequiringUserActionForPlayback = []
@@ -50,13 +56,34 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
               let value = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
               let operation = value["operation"] as? String,
               ["start", "answer", "mute", "stop"].contains(operation) else { return false }
+        if operation == "mute" { desiredMute = value["muted"] as? Bool ?? false }
         if !isReady {
+            if operation == "mute" { return true }
             guard operation == "start", pendingCommand == nil else { return false }
             pendingCommand = json
             return true
         }
-        evaluate(json)
+        if operation == "start" { startCapture(json) } else { evaluate(json) }
         return true
+    }
+
+    private func startCapture(_ json: String) {
+        emit(["type":"status", "message":"Waiting for microphone permission…"])
+        if syntheticAudio { finishAuthorization(true, command: json); return }
+        AVCaptureDevice.requestAccess(for: .audio) { [weak self] permitted in
+            DispatchQueue.main.async { self?.finishAuthorization(permitted, command: json) }
+        }
+    }
+
+    private func finishAuthorization(_ permitted: Bool, command: String) {
+        guard !isClosed else { return }
+        guard permitted else {
+            emit(["type":"error", "message":"Microphone access is unavailable. Allow Decodex in System Settings > Privacy & Security > Microphone."])
+            return
+        }
+        emit(["type":"status", "message":"Opening microphone…"])
+        evaluate("{\"operation\":\"mute\",\"muted\":\(desiredMute)}")
+        evaluate(command)
     }
 
     private func evaluate(_ json: String) {
@@ -82,6 +109,10 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     #endif
 
     func poll() -> UnsafePointer<CChar>? {
+        if !isReady && !initializationFailed && initializedAt.timeIntervalSinceNow < -10 {
+            initializationFailed = true
+            emit(["type":"error", "message":"The audio host did not initialize. Start a new call."])
+        }
         if let retainedEvent { free(retainedEvent); self.retainedEvent = nil }
         guard !events.isEmpty else { return nil }
         retainedEvent = strdup(events.removeFirst())
@@ -114,7 +145,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
                 return
             }
             isReady = true
-            if let command = pendingCommand { pendingCommand = nil; evaluate(command) }
+            if let command = pendingCommand { pendingCommand = nil; startCapture(command) }
         } else {
             emit(value)
         }
@@ -125,7 +156,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
                  decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void) {
         // macOS retains the microphone permission decision. Never request camera access.
         decisionHandler(!isClosed && frame.isMainFrame && origin.host == self.origin.host
-                        && type == .microphone ? .prompt : .deny)
+                        && type == .microphone && AVCaptureDevice.authorizationStatus(for: .audio) == .authorized ? .grant : .deny)
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
@@ -160,7 +191,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     <audio id="reply" autoplay></audio>
     <script>
     (() => {
-      let peer = null, microphone = null, channel = null, generation = 0, connectionTimeout = null;
+      let peer = null, microphone = null, channel = null, generation = 0, connectionTimeout = null, muted = false;
       const emit = value => window.webkit.messageHandlers.voice.postMessage(value);
       const reply = document.getElementById('reply');
       function stop() {
@@ -177,6 +208,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
           capture = await navigator.mediaDevices.getUserMedia({video:false,audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
           if (active !== generation) { capture.getTracks().forEach(track => track.stop()); return; }
           microphone = capture;
+          capture.getAudioTracks().forEach(track => track.enabled = !muted);
           connectionTimeout = setTimeout(() => { if (active === generation) { stop(); emit({type:'error',message:'The audio connection timed out.'}); } }, 30000);
           const connection = new RTCPeerConnection(); peer = connection;
           capture.getAudioTracks().forEach(track => connection.addTrack(track,capture));
@@ -206,10 +238,10 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
           if (active === generation) emit({type:'offer',sdp:connection.localDescription.sdp});
         } catch { if (active === generation) { stop(); emit({type:'error',message:'Microphone access is unavailable. Check Decodex microphone permission in System Settings.'}); } }
       }
-      window.decodexVoice = {async diagnostics() { const stats=peer ? [...(await peer.getStats()).values()].filter(s=>['outbound-rtp','inbound-rtp'].includes(s.type)).map(s=>({type:s.type,bytesSent:s.bytesSent,bytesReceived:s.bytesReceived,packetsSent:s.packetsSent})) : []; return {audio:window.testAudioContext?.state,stats,connection:peer?.connectionState,ice:peer?.iceConnectionState,gathering:peer?.iceGatheringState,signaling:peer?.signalingState,channel:channel?.readyState,localCandidates:(peer?.localDescription?.sdp.match(/a=candidate:/g)||[]).length,remoteCandidates:(peer?.remoteDescription?.sdp.match(/a=candidate:/g)||[]).length}; },async command(value) {
+      window.decodexVoice = {async diagnostics() { const stats=peer ? [...(await peer.getStats()).values()].filter(s=>['outbound-rtp','inbound-rtp'].includes(s.type)).map(s=>({type:s.type,bytesSent:s.bytesSent,bytesReceived:s.bytesReceived,packetsSent:s.packetsSent})) : []; return {muted:microphone?.getAudioTracks().every(track=>!track.enabled),audio:window.testAudioContext?.state,stats,connection:peer?.connectionState,ice:peer?.iceConnectionState,gathering:peer?.iceGatheringState,signaling:peer?.signalingState,channel:channel?.readyState,localCandidates:(peer?.localDescription?.sdp.match(/a=candidate:/g)||[]).length,remoteCandidates:(peer?.remoteDescription?.sdp.match(/a=candidate:/g)||[]).length}; },async command(value) {
         if (value.operation === 'start') return start();
         if (value.operation === 'stop') { stop(); emit({type:'ended'}); return; }
-        if (value.operation === 'mute') { microphone?.getAudioTracks().forEach(track => track.enabled = !value.muted); return; }
+        if (value.operation === 'mute') { muted = !!value.muted; microphone?.getAudioTracks().forEach(track => track.enabled = !muted); return; }
         if (value.operation === 'answer' && peer && typeof value.sdp === 'string') await peer.setRemoteDescription({type:'answer',sdp:value.sdp});
       }};
       window.addEventListener('pagehide',stop);

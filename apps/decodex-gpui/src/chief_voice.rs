@@ -12,6 +12,7 @@ pub(super) struct VoiceUi {
 	answered: bool,
 	signaling: bool,
 	connected: bool,
+	connection_status: String,
 	muted: bool,
 	caption: String,
 	caption_role: &'static str,
@@ -60,6 +61,7 @@ impl ChiefSurface {
 			answered: false,
 			signaling: false,
 			connected: false,
+			connection_status: "Preparing audio…".into(),
 			muted: false,
 			caption: String::new(),
 			caption_role: "You",
@@ -123,6 +125,7 @@ impl ChiefSurface {
 				Some("offer") => {
 					let offer = event["sdp"].as_str().and_then(|s| VoiceSdp::new(s.into()).ok())?;
 					voice.signaling = true;
+					voice.connection_status = "Connecting…".into();
 					voice.request = Some(ChiefVoiceRequest::Start {
 						session_id: voice.session.clone(),
 						work_id: voice.work.clone(),
@@ -130,6 +133,9 @@ impl ChiefSurface {
 					});
 				},
 				Some("connected") => voice.connected = true,
+				Some("status") =>
+					voice.connection_status =
+						event["message"].as_str().unwrap_or("Connecting…").into(),
 				Some("caption") => {
 					update_caption(
 						&event["event"],
@@ -188,12 +194,12 @@ impl ChiefSurface {
 
 	pub(super) fn voice_controls(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
 		let voice = self.voice.as_ref()?;
-		let label = if voice.muted {
-			"Microphone muted"
-		} else if voice.connected {
-			"Live"
+		let label = if !voice.connected {
+			voice.connection_status.clone()
+		} else if voice.muted {
+			"Microphone muted".into()
 		} else {
-			"Connecting…"
+			"Live".into()
 		};
 		Some(
 			div()
@@ -216,7 +222,13 @@ impl ChiefSurface {
 						} else {
 							0x8b8893
 						})))
-						.child(label)
+						.child(
+							div()
+								.id("voice-status")
+								.role(Role::Status)
+								.aria_label(label.clone())
+								.child(label),
+						)
 						.child(div().flex_1())
 						.child(self.composer_control(
 							"voice-mute",

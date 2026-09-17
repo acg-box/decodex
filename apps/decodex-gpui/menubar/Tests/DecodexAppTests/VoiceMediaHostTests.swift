@@ -16,11 +16,15 @@ final class VoiceMediaHostTests: XCTestCase {
         defer { window.orderOut(nil) }
         let host = VoiceMediaHost(syntheticAudioForTesting: true, hostWindow: window)
         defer { host.close() }
+        XCTAssertTrue(host.command(#"{"operation":"mute","muted":true}"#))
         XCTAssertTrue(host.command(#"{"operation":"start"}"#))
         let offer = try await event(from: host, type: "offer")
         let sdp = try XCTUnwrap(offer["sdp"] as? String)
         XCTAssertTrue(sdp.contains("m=audio"))
         XCTAssertTrue(sdp.contains("m=application"))
+        let diagnostics = await host.connectionDiagnostics()
+        let state = try JSONSerialization.jsonObject(with: Data(diagnostics.utf8)) as? [String: Any]
+        XCTAssertEqual(state?["muted"] as? Bool, true, "Mute requested before capture must apply to the first track")
         XCTAssertTrue(host.command(#"{"operation":"mute","muted":true}"#))
         XCTAssertTrue(host.command(#"{"operation":"stop"}"#))
         _ = try await event(from: host, type: "ended")
