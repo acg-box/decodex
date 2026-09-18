@@ -188,7 +188,7 @@ impl ChiefSurface {
 							.mb(px(8.))
 							.when(left, |d| d.left(px(0.)))
 							.when(!left, |d| d.right(px(64.)))
-							.w(px(if left { 280. } else { 264. }))
+							.w(px(if left { 280. } else { 232. }))
 							.child(crate::ui_motion::popover(
 								menu.unwrap_or("model"),
 								self.composer_menu.is_some(),
@@ -477,10 +477,11 @@ impl ChiefSurface {
 			"model" => div()
 				.flex()
 				.items_center()
-				.gap(px(6.))
+				.gap(px(2.))
 				.whitespace_nowrap()
 				.text_color(rgb(ui_theme::TEXT))
 				.child(controls::compact_model_label(&label))
+				.child(div().text_color(rgb(ui_theme::TEXT_MUTED)).child("·"))
 				.child(controls::effort_indicator(self.effort.as_str()))
 				.into_any_element(),
 			_ => div().child(label).into_any_element(),

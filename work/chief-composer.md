@@ -300,3 +300,18 @@ adjustment, trigger close/reopen, and outside dismissal. All 173 GPUI tests pass
 Signed-app acceptance: selected Sol with the menu still open, returned to Astra,
 dragged reasoning to Medium without closing the menu, and closed it with Escape.
 Inspected the combined menu screenshot. The preview has no draft or recording.
+
+## Compact selector and disclosure motion
+
+Reduced the combined selector width from 264 px to 232 px. The toolbar uses a
+compact model / middle-dot / reasoning label with 2 px gaps. Disclosure motion
+uses one interruptible 180 ms progress value for opacity and a 4 px vertical
+offset. It does not animate measured content height or use independent clocks.
+
+Validation: all 173 GPUI tests passed (five opt-in cases ignored), including
+transition reversal and native slider / dismissal events. Strict Clippy passed.
+
+Signed-app readback confirmed closing, reopening, and model selection that keeps
+the popup mounted. The native screenshot showed the compact toolbar label;
+subsequent popup captures returned white images, so those captures do not establish
+a complete visual animation review. The previous project conversation was restored.

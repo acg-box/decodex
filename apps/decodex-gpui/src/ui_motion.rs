@@ -411,7 +411,7 @@ impl RenderOnce for Popover {
 				s.0 = self.kind;
 				s.1 = Tween::new(0.);
 			}
-			s.1.duration = Duration::from_millis(140);
+			s.1.duration = Duration::from_millis(180);
 			s.1.target(if self.visible { 1. } else { 0. }, now);
 			(s.1.sample(now), s.1.moving(now))
 		});
@@ -420,6 +420,8 @@ impl RenderOnce for Popover {
 		}
 		div()
 			.w_full()
+			.relative()
+			.top(px((1. - opacity) * 4.))
 			.opacity(opacity)
 			.rounded(px(14.))
 			.bg(gpui::rgba(0x29292deb))
