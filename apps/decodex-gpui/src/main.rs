@@ -108,6 +108,7 @@ fn main() {
 		window
 			.update(cx, |_, window, cx| {
 				configure_window_material(window);
+				configure_pointer_tracking(window);
 				schedule_window_control_alignment(window);
 				cx.observe_window_activation(window, |_, window, _| {
 					schedule_window_control_alignment(window);
@@ -178,6 +179,38 @@ fn activate_native_application() {
 		}
 	}
 	application.activate();
+}
+
+#[cfg(target_os = "macos")]
+fn configure_pointer_tracking(window: &gpui::Window) {
+	use objc2::AnyThread;
+	use objc2_app_kit::{NSTrackingArea, NSTrackingAreaOptions as Options, NSView};
+	use objc2_foundation::NSRect;
+	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+	let Ok(native) = HasWindowHandle::window_handle(window) else { return };
+	let RawWindowHandle::AppKit(handle) = native.as_raw() else { return };
+	// The live GPUI window owns this AppKit view; setup runs on the main thread.
+	let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
+	let options = Options::MouseMoved
+		| Options::MouseEnteredAndExited
+		| Options::ActiveAlways
+		| Options::InVisibleRect;
+	if view.trackingAreas().iter().any(|area| area.options() == options) {
+		return;
+	}
+	// Route plain movement directly to GPUIView, independent of the first responder.
+	// GPUI still resolves the hovered control and its cursor inside the view.
+	let tracking = unsafe {
+		NSTrackingArea::initWithRect_options_owner_userInfo(
+			NSTrackingArea::alloc(),
+			NSRect::ZERO,
+			options,
+			Some(view),
+			None,
+		)
+	};
+	view.addTrackingArea(&tracking);
 }
 
 #[cfg(target_os = "macos")]

@@ -997,6 +997,24 @@ impl ChiefSurface {
 		if ["composer", "composer-menu", "composer-effort"].contains(&page) {
 			self.visual_workspace_page("markdown", cx);
 			self.composer.update(cx, |input,cx|input.set_content("Review the interface and simplify the controls.\nKeep the glass material and check keyboard navigation.",cx));
+			self.capabilities = Some(decodex_protocol::ChiefCapabilitiesResult::Available {
+				models: ["gpt-6-astra", "gpt-5.6-sol"]
+					.into_iter()
+					.map(|name| decodex_protocol::ChiefModelDto {
+						model: decodex_protocol::ConversationModel::new(name).unwrap(),
+						name: name.into(),
+						efforts: vec![
+							ConversationReasoningEffort::Low,
+							ConversationReasoningEffort::Medium,
+							ConversationReasoningEffort::High,
+						],
+						default_effort: Some(ConversationReasoningEffort::Medium),
+						supports_fast: true,
+						supports_images: true,
+					})
+					.collect(),
+				memory_enabled: None,
+			});
 			self.fast = true;
 			if page == "composer-menu" {
 				self.composer_menu = Some("model");

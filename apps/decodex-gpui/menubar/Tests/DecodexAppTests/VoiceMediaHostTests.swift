@@ -32,6 +32,24 @@ final class VoiceMediaHostTests: XCTestCase {
         XCTAssertFalse(host.command(#"{"operation":"start"}"#))
     }
 
+    func testPreparedHostPreservesPointerEventDelivery() async throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+        let sink = HoverProbeView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        window.contentView?.addSubview(sink)
+        window.acceptsMouseMovedEvents = true
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(sink)
+        defer { window.orderOut(nil) }
+        let host = VoiceMediaHost(syntheticAudioForTesting: true, hostWindow: window)
+        defer { host.close() }
+        _ = try await event(from: host, type: "media_ready")
+        XCTAssertTrue(window.acceptsMouseMovedEvents, "Preparing audio must not disable hover events")
+        XCTAssertTrue(window.firstResponder === sink, "Preparing audio must not steal the GPUI responder")
+        let moved = try XCTUnwrap(NSEvent.mouseEvent(with: .mouseMoved, location: NSPoint(x: 50, y: 50), modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
+        window.sendEvent(moved)
+        XCTAssertEqual(sink.moves, 1)
+    }
 
     func testPreparedHostDoesNotCaptureUntilRequested() async throws {
         _ = NSApplication.shared
@@ -199,4 +217,11 @@ final class VoiceMediaHostTests: XCTestCase {
         XCTFail("No native media event: \(type); \(await host.connectionDiagnostics())")
         throw NSError(domain: "VoiceMediaHostTests", code: 2)
     }
+}
+
+@MainActor
+private final class HoverProbeView: NSView {
+    var moves = 0
+    override var acceptsFirstResponder: Bool { true }
+    override func mouseMoved(with event: NSEvent) { moves += 1 }
 }

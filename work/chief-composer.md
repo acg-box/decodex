@@ -357,3 +357,21 @@ GPT-5.5; toggled Fast on/off without closing; dragged to Medium; selected Sol
 and restored Astra with visible row feedback. Inspected the final native popup
 and slider screenshots after intermittent white captures. Notification and
 selector dismissal were exercised. Open project/worker tabs were restored.
+
+## Native pointer tracking
+
+Register a visible-bounds AppKit tracking area on the GPUI drawing view. Route
+plain movement and exit events to that view even when its first responder changes.
+Keep cursor selection in GPUI hit testing; do not assign a hand cursor to the
+window or popover surface. Registration skips an existing matching area.
+
+The model-menu capture fixture now includes an unselected model. A button-free
+GPUI mouse move visibly highlights that row. This capture explicitly redraws the
+window, so it proves styling and hit testing, not native event delivery. A native
+Swift test also verifies that preparing the voice host preserves the window's
+mouse-move setting, first responder, and mouse event delivery.
+
+Validation: 174 GPUI tests passed (five opt-in cases ignored); strict Clippy passed.
+The native pointer-preservation test passed. Physical pointer hover and cursor
+reset in the signed preview still need confirmation; the native UI driver exposes
+click and drag but no button-free pointer move.
