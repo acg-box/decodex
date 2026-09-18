@@ -315,3 +315,17 @@ Signed-app readback confirmed closing, reopening, and model selection that keeps
 the popup mounted. The native screenshot showed the compact toolbar label;
 subsequent popup captures returned white images, so those captures do not establish
 a complete visual animation review. The previous project conversation was restored.
+
+## Shared opaque popover surfaces
+
+Composer menus and the bottom-right status panel now share the same popover
+component. The surface is opaque neutral gray when open. Window and workspace
+glass materials are unchanged. Both use the same 14 px radius, shadow, and
+interruptible 180 ms fade with a 4 px lift. The status panel no longer animates
+its measured content height. Each popover has an independent animation identity.
+
+Validation: 173 GPUI tests passed (five opt-in cases ignored); strict Clippy passed.
+
+Signed-app acceptance: inspected both opaque panels, switched from Status to the
+model selector, and verified outside dismissal and Escape. Restored the open
+project and worker tabs. One preview remains open with no draft or recording.

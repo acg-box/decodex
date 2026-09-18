@@ -394,17 +394,22 @@ impl RenderOnce for Arrival {
 /// A content-sized popover that fades without stretching or clipping its contents.
 #[derive(IntoElement)]
 pub(crate) struct Popover {
+	id: &'static str,
 	kind: &'static str,
 	visible: bool,
 	child: gpui::AnyElement,
 }
-pub(crate) fn popover(kind: &'static str, visible: bool, child: impl IntoElement) -> Popover {
-	Popover { kind, visible, child: child.into_any_element() }
+pub(crate) fn popover(
+	id: &'static str,
+	kind: &'static str,
+	visible: bool,
+	child: impl IntoElement,
+) -> Popover {
+	Popover { id, kind, visible, child: child.into_any_element() }
 }
 impl RenderOnce for Popover {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state =
-			window.use_keyed_state("composer-popover-fade", cx, |_, _| (self.kind, Tween::new(0.)));
+		let state = window.use_keyed_state(self.id, cx, |_, _| (self.kind, Tween::new(0.)));
 		let now = Instant::now();
 		let (opacity, moving) = state.update(cx, |s, _| {
 			if s.0 != self.kind {
@@ -424,7 +429,7 @@ impl RenderOnce for Popover {
 			.top(px((1. - opacity) * 4.))
 			.opacity(opacity)
 			.rounded(px(14.))
-			.bg(gpui::rgba(0x29292deb))
+			.bg(gpui::rgb(0x29292d))
 			.shadow(vec![gpui::BoxShadow {
 				inset: false,
 				color: gpui::rgba(0x00000024).into(),

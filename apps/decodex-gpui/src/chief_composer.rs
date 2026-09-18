@@ -190,6 +190,7 @@ impl ChiefSurface {
 							.when(!left, |d| d.right(px(64.)))
 							.w(px(if left { 280. } else { 232. }))
 							.child(crate::ui_motion::popover(
+								"composer-popover-motion",
 								menu.unwrap_or("model"),
 								self.composer_menu.is_some(),
 								self.composer_options(cx)

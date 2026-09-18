@@ -4,7 +4,7 @@ use super::{
 	IntoElement, ParentElement, Role, Shell, StatefulInteractiveElement, Styled, WB_TEXT,
 	WB_TEXT_MUTED, div, px, rgb, rgba, ui_theme,
 };
-use crate::ui_motion::{SmoothControl, disclosure};
+use crate::ui_motion::{SmoothControl, popover};
 
 impl Shell {
 	pub(super) fn render_status_center(
@@ -25,10 +25,6 @@ impl Shell {
 			.occlude()
 			.w(px(304.0))
 			.p_3()
-			.rounded(px(10.0))
-			.bg(rgba(0x202026f2))
-			.border_1()
-			.border_color(rgba(0xffffff14))
 			.flex()
 			.flex_col()
 			.gap_2()
@@ -81,7 +77,7 @@ impl Shell {
 					cx.notify();
 				}
 			}))
-			.child(disclosure("status-panel-motion", self.status_open, panel))
+			.child(popover("status-panel-motion", "status", self.status_open, panel))
 			.child(
 				div()
 					.id("status-toggle")
