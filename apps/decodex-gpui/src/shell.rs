@@ -337,7 +337,6 @@ impl Destination {
 		Self::Health,
 		Self::Settings,
 	];
-	const CHROME: [Self; 1] = [Self::Chief];
 
 	pub(crate) const fn label(self) -> &'static str {
 		match self {
@@ -1116,7 +1115,7 @@ impl Shell {
 		if self.selected == Destination::Chief {
 			self.chief.update(cx, ChiefSurface::toggle_workspace_sidebar);
 		}
-		if self.selected == Destination::Conversations {
+		if self.selected != Destination::Chief {
 			self.set_left_sidebar_visible(!self.left_sidebar_visible, cx);
 		}
 		cx.stop_propagation();
@@ -1952,59 +1951,6 @@ fn publish_views(
 	});
 }
 
-fn topbar_destination_tab(
-	index: usize,
-	destination: Destination,
-	is_selected: bool,
-	focus: FocusHandle,
-	window: &Window,
-	cx: &Context<Shell>,
-) -> AnyElement {
-	let display_label = destination.label();
-	div()
-		.id(("destination", index))
-		.role(Role::Tab)
-		.aria_label(destination.description())
-		.aria_selected(is_selected)
-		.key_context("Destination")
-		.track_focus(&focus)
-		.on_action(cx.listener(Shell::focus_next))
-		.on_action(cx.listener(Shell::focus_previous))
-		.on_action(cx.listener(Shell::activate_destination))
-		.h(px(27.0))
-		.px_3()
-		.flex()
-		.items_center()
-		.justify_center()
-		.rounded(px(7.0))
-		.text_size(px(11.0))
-		.font_weight(if is_selected { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
-		.text_color(if is_selected { rgb(WB_TEXT) } else { rgb(WB_TEXT_MUTED) })
-		.bg(if is_selected { rgba(0xffffff0f) } else { rgba(0x00000000) })
-		.border_1()
-		.border_color(if focus.is_focused(window) {
-			rgb(WB_BLUE)
-		} else if is_selected {
-			rgba(0xffffff18)
-		} else {
-			rgba(0x00000000)
-		})
-		.on_click(cx.listener(move |shell, _, _, cx| {
-			shell.select_destination(destination, cx);
-		}))
-		.occlude()
-		.cursor_pointer()
-		.on_mouse_down(MouseButton::Left, |_, window, cx| {
-			window.prevent_default();
-			cx.stop_propagation();
-		})
-		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-		.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
-		.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
-		.child(display_label)
-		.into_any_element()
-}
-
 fn compact_identity(value: &str) -> String {
 	let prefix = value.chars().take(8).collect::<String>();
 	if value.chars().count() > 8 { format!("{prefix}…") } else { prefix }
@@ -2018,27 +1964,9 @@ fn adjacent_conversation_index(current: Option<usize>, len: usize, delta: isize)
 fn floating_window_controls(
 	shell: &Shell,
 	presentation: &ConnectionPresentation,
-	window: &Window,
+	_window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let page_tabs = Destination::CHROME
-		.into_iter()
-		.filter(|_| shell.selected != Destination::Chief)
-		.map(|destination| {
-			let index = Destination::ALL
-				.iter()
-				.position(|candidate| *candidate == destination)
-				.expect("topbar destination is part of the complete destination set");
-			topbar_destination_tab(
-				index,
-				destination,
-				shell.selected == destination,
-				shell.destination_focus[index].clone(),
-				window,
-				cx,
-			)
-		});
-
 	div()
 		.id("floating-window-controls")
 		.role(Role::Navigation)
@@ -2074,12 +2002,9 @@ fn floating_window_controls(
 		.child(
 			ui_theme::floating_group()
 				.pl(px(74.0))
-				.when(shell.selected == Destination::Chief, |group| {
-					group.child(chief_panel_control(shell, 0, cx))
-				})
+				.child(chief_panel_control(shell, 0, cx))
 				.child(shell.navigation_control(false, cx))
-				.child(shell.navigation_control(true, cx))
-				.children(page_tabs),
+				.child(shell.navigation_control(true, cx)),
 		)
 		.child(topbar_controls(shell, presentation, cx))
 		.into_any_element()
@@ -2214,7 +2139,11 @@ fn topbar_controls(
 }
 
 fn chief_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyElement {
-	let (active, enabled) = shell.chief.read(cx).workspace_panels()[index];
+	let (active, enabled) = if index == 0 && shell.selected != Destination::Chief {
+		(shell.left_sidebar_visible, true)
+	} else {
+		shell.chief.read(cx).workspace_panels()[index]
+	};
 	let label = match (index, enabled) {
 		(0, _) => "Toggle sidebar · Command-E",
 		(1, true) => "Toggle work graph · Command-J",
@@ -2245,7 +2174,9 @@ fn chief_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 			cx.stop_propagation();
 		})
 		.on_click(cx.listener(move |s, _, _, cx| {
-			if enabled {
+			if enabled && index == 0 && s.selected != Destination::Chief {
+				s.set_left_sidebar_visible(!s.left_sidebar_visible, cx);
+			} else if enabled {
 				s.chief.update(cx, |chief, cx| match index {
 					0 => chief.toggle_workspace_sidebar(cx),
 					1 => chief.toggle_workspace_graph(cx),
@@ -2256,6 +2187,11 @@ fn chief_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		}))
 		.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
 			if enabled && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				if index == 0 && s.selected != Destination::Chief {
+					s.set_left_sidebar_visible(!s.left_sidebar_visible, cx);
+					cx.stop_propagation();
+					return;
+				}
 				s.chief.update(cx, |chief, cx| match index {
 					0 => chief.toggle_workspace_sidebar(cx),
 					1 => chief.toggle_workspace_graph(cx),
@@ -4887,7 +4823,7 @@ fn settings_workspace_content(
 		.min_w_0()
 		.min_h_0()
 		.flex()
-		.child(navigation)
+		.when(shell.left_sidebar_visible, |layout| layout.child(navigation))
 		.child(content)
 		.into_any_element()
 }
@@ -4928,7 +4864,7 @@ impl Render for Shell {
 
 		let controls = floating_window_controls(self, &presentation, window, cx);
 		let status = self.render_status_center(&presentation, cx);
-		let route = format!("{:?}:{:?}", self.selected, self.chief.read(cx).navigation_work());
+		let route = format!("{:?}", self.selected);
 		let content =
 			destination_content(self, presentation, self.refresh_focus.clone(), window, cx);
 		root.relative()
@@ -6126,7 +6062,7 @@ mod tests {
 		cx: &mut TestAppContext,
 	) {
 		let (shell, visual) = open_shell(cx);
-		for expected in Destination::CHROME {
+		for expected in [Destination::Settings, Destination::Accounts, Destination::Health] {
 			let focused = shell.read_with(visual, |shell, _| {
 				let index = Destination::ALL
 					.iter()
@@ -6134,7 +6070,7 @@ mod tests {
 					.expect("test operation must succeed");
 				shell.destination_focus[index].clone()
 			});
-			shell.update(visual, |shell, cx| shell.select_destination(Destination::Advisor, cx));
+			shell.update(visual, |shell, cx| shell.select_destination(Destination::Settings, cx));
 			visual.update(|window, cx| window.focus(&focused, cx));
 			assert!(visual.update(|window, _| focused.is_focused(window)));
 			visual.simulate_keystrokes("enter");
