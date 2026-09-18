@@ -415,3 +415,16 @@ the trailing microphone/send controls. Reduce the reasoning capsule from 38 px t
 Raise Fast-off opacity from .45 to .65 so off is not mistaken for unavailable.
 
 Strict Clippy and the existing slider/model/outside-dismiss interaction test pass.
+
+## Tooltip restraint
+
+Remove redundant composer tooltips from the labeled model trigger, attachment row,
+microphone menu row, and back row. Workspace text actions no longer all receive
+identical label tooltips; retain icon help, potentially truncated page/sidebar
+names, and pending-decision context. Remove duplicate Retry, Send, Stop, and vague
+recovery tooltips from the conversation surface. Keep accessible labels and hover
+feedback. Delivery help now states when Steer or Queue sends the message.
+
+Retain context usage details, history previews, graph names/blockers, quote
+attribution, icon help, and shortcuts. Strict Clippy passes. Plain-pointer tooltip
+appearance was not exercised by the native UI driver, which has no hover command.

@@ -213,6 +213,8 @@ impl ChiefSurface {
 		};
 		let icon = panel_icon(&id);
 		let icon_only = icon.is_some();
+		let show_tip =
+			icon_only || is_tab || id.starts_with("sidebar-") || id.starts_with("attention-");
 		let tip = accessible.clone();
 		let action = std::rc::Rc::new(action);
 		let keyboard = action.clone();
@@ -223,7 +225,9 @@ impl ChiefSurface {
 			.when(active, |row| row.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL)))
 			.tab_index(0)
 			.aria_label(accessible)
-			.tooltip(move |_, cx| cx.new(|_| PanelTip(tip.clone())).into())
+			.when(show_tip, |button| {
+				button.tooltip(move |_, cx| cx.new(|_| PanelTip(tip.clone())).into())
+			})
 			.px_2()
 			.py_1()
 			.flex()

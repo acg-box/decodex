@@ -233,7 +233,7 @@ impl ChiefSurface {
 			.child(self.composer_control(
 				"delivery",
 				if self.steer { "Steer" } else { "Queue" }.into(),
-				"Switch message delivery",
+				if self.steer { "Add to the current turn" } else { "Send after the current turn" },
 				|s, cx| {
 					s.steer = !s.steer;
 					cx.notify();
@@ -372,7 +372,9 @@ impl ChiefSurface {
 			.when(send, |d| d.w(px(28.)).h(px(28.)).rounded_full().ml(px(5.)).bg(rgb(0x515155)))
 			.cursor_pointer()
 			.hover(move |d| d.bg(if send { rgba(0xffffff24) } else { rgba(0xffffff0c) }))
-			.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
+			.when(!["model", "attachment-item", "audio-item", "audio-back"].contains(&id), |d| {
+				d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
+			})
 			.on_click(cx.listener(move |s, _, window, cx| action(s, window, cx)))
 			.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, window, cx| {
 				if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
