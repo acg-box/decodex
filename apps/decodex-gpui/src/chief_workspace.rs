@@ -1002,7 +1002,7 @@ impl ChiefSurface {
 				self.composer_menu = Some("model");
 			}
 			if page == "composer-effort" {
-				self.composer_menu = Some("effort");
+				self.composer_menu = Some("model");
 			}
 			return;
 		}

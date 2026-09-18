@@ -421,7 +421,7 @@ impl RenderOnce for Popover {
 		div()
 			.w_full()
 			.opacity(opacity)
-			.rounded(px(if self.kind == "effort" { 18. } else { 14. }))
+			.rounded(px(14.))
 			.bg(gpui::rgba(0x29292deb))
 			.shadow(vec![gpui::BoxShadow {
 				inset: false,

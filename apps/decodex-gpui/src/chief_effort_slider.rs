@@ -219,8 +219,8 @@ mod tests {
 				}],
 				memory_enabled: None,
 			});
-			s.composer_menu = Some("effort");
-			s.composer_menu_content = Some("effort");
+			s.composer_menu = Some("model");
+			s.composer_menu_content = Some("model");
 		});
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
@@ -268,6 +268,12 @@ mod tests {
 			w.draw(cx).clear();
 		});
 		let model = surface.update(visual, |s, _| s.menu_trigger_bounds["model"].center());
+		visual.simulate_mouse_down(model, MouseButton::Left, Default::default());
+		visual.simulate_mouse_up(model, MouseButton::Left, Default::default());
+		surface.update(visual, |s, _| assert!(s.composer_menu.is_none()));
+		visual.update(|w, cx| {
+			w.draw(cx).clear();
+		});
 		visual.simulate_mouse_down(model, MouseButton::Left, Default::default());
 		visual.simulate_mouse_up(model, MouseButton::Left, Default::default());
 		surface.update(visual, |s, _| assert_eq!(s.composer_menu, Some("model")));

@@ -283,3 +283,20 @@ Validation: reviewed the final signed native workspace and compact popup; dragge
 the slider to Medium. The shared glass no longer exposes bright corner seams.
 The GPUI suite passed 173 tests (five opt-in cases ignored); strict Clippy and the
 final material checks passed. One preview remains open with an empty draft.
+
+## Combined model and reasoning disclosure
+
+One toolbar control now shows the compact model name and reasoning level.
+Its popover contains the model list and the slim reasoning slider. Selecting a
+model or reasoning level keeps the popover open. Model changes reconcile supported
+reasoning levels and Fast capability through the existing capability logic.
+Clicking the trigger again, clicking outside, or pressing Escape closes it.
+
+Validation: the selection regression keeps the combined menu open while reconciling
+model capabilities. The native event regression checks slider drag, keyboard
+adjustment, trigger close/reopen, and outside dismissal. All 173 GPUI tests passed
+(five opt-in cases ignored), and strict Clippy passed.
+
+Signed-app acceptance: selected Sol with the menu still open, returned to Astra,
+dragged reasoning to Medium without closing the menu, and closed it with Escape.
+Inspected the combined menu screenshot. The preview has no draft or recording.

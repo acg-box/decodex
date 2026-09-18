@@ -188,13 +188,7 @@ impl ChiefSurface {
 							.mb(px(8.))
 							.when(left, |d| d.left(px(0.)))
 							.when(!left, |d| d.right(px(64.)))
-							.w(px(if left {
-								280.
-							} else if menu == Some("effort") {
-								264.
-							} else {
-								232.
-							}))
+							.w(px(if left { 280. } else { 264. }))
 							.child(crate::ui_motion::popover(
 								menu.unwrap_or("model"),
 								self.composer_menu.is_some(),
@@ -277,16 +271,8 @@ impl ChiefSurface {
 			.child(self.composer_control(
 				"model",
 				model,
-				"Choose model · Applies to the next turn",
+				"Model and reasoning · Applies to the next turn",
 				|s, cx| s.toggle_composer_menu("model", cx),
-				cx,
-			))
-			.child(div().text_color(rgb(ui_theme::TEXT_MUTED)).child("·"))
-			.child(self.composer_control(
-				"effort",
-				self.effort.as_str().into(),
-				"Adjust reasoning",
-				|s, cx| s.toggle_composer_menu("effort", cx),
 				cx,
 			))
 			.child(self.composer_control_with_window(
@@ -345,7 +331,7 @@ impl ChiefSurface {
 	) -> impl IntoElement {
 		let send = id == "send";
 		let target = cx.entity().downgrade();
-		let tooltip = if id == "model" { "Choose model".to_owned() } else { tip.to_owned() };
+		let tooltip = if id == "model" { "Model and reasoning".to_owned() } else { tip.to_owned() };
 		div()
 			.id(SharedString::from(format!("composer-{id}")))
 			.role(Role::Button)
@@ -488,10 +474,14 @@ impl ChiefSurface {
 				.child("Message delivery")
 				.child(div().text_color(rgb(ui_theme::TEXT)).child(label))
 				.into_any_element(),
-			"effort" => controls::effort_indicator(self.effort.as_str()),
 			"model" => div()
+				.flex()
+				.items_center()
+				.gap(px(6.))
+				.whitespace_nowrap()
 				.text_color(rgb(ui_theme::TEXT))
 				.child(controls::compact_model_label(&label))
+				.child(controls::effort_indicator(self.effort.as_str()))
 				.into_any_element(),
 			_ => div().child(label).into_any_element(),
 		}
@@ -523,7 +513,7 @@ impl ChiefSurface {
 					s.effort_pointer = None;
 					cx.notify();
 				}))
-				.p(px(if menu == "effort" { 4. } else { 10. }))
+				.p(px(8.))
 				.w_full()
 				.flex()
 				.flex_col()
@@ -548,14 +538,19 @@ impl ChiefSurface {
 						))
 						.child(self.audio_palette(cx))
 						.into_any_element()
-				} else if menu == "effort" {
-					self.effort_scale(cx)
 				} else {
 					div()
 						.flex()
 						.flex_col()
 						.gap(px(5.))
 						.child(self.model_palette(cx))
+						.child(
+							div()
+								.mt(px(3.))
+								.rounded(px(10.))
+								.bg(rgba(0xffffff06))
+								.child(self.effort_scale(cx)),
+						)
 						.into_any_element()
 				})
 				.into_any_element(),
@@ -578,7 +573,6 @@ impl ChiefSurface {
 				_ => ConversationReasoningEffort::High,
 			};
 		}
-		self.composer_menu = None;
 		cx.notify();
 	}
 
@@ -816,6 +810,7 @@ mod tests {
 				}],
 				memory_enabled: Some(true),
 			});
+			s.composer_menu = Some("model");
 			s.effort = ConversationReasoningEffort::Ultra;
 			s.fast = true;
 			s.select_composer_option("model", "custom-model", cx);
@@ -825,7 +820,7 @@ mod tests {
 			s.select_composer_option("effort", "low", cx);
 			s.select_composer_option("model", "custom-model", cx);
 			assert_eq!(s.effort, ConversationReasoningEffort::Low);
-			assert!(s.composer_menu.is_none());
+			assert_eq!(s.composer_menu, Some("model"));
 		});
 	}
 
