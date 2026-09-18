@@ -189,13 +189,16 @@ impl ChiefSurface {
 							.when(left, |d| d.left(px(0.)))
 							.when(!left, |d| d.right(px(64.)))
 							.w(px(if left { 280. } else { 232. }))
-							.child(crate::ui_motion::popover(
-								"composer-popover-motion",
-								menu.unwrap_or("model"),
-								self.composer_menu.is_some(),
-								self.composer_options(cx)
-									.unwrap_or_else(|| div().into_any_element()),
-							)),
+							.child(
+								crate::ui_motion::popover(
+									"composer-popover-motion",
+									menu.unwrap_or("model"),
+									self.composer_menu.is_some(),
+									self.composer_options(cx)
+										.unwrap_or_else(|| div().into_any_element()),
+								)
+								.unframed(menu == Some("model")),
+							),
 					)
 					.priority(2),
 				),
@@ -506,7 +509,7 @@ impl ChiefSurface {
 					s.effort_pointer = None;
 					cx.notify();
 				}))
-				.p(px(8.))
+				.p(px(if menu == "model" { 0. } else { 8. }))
 				.w_full()
 				.flex()
 				.flex_col()
@@ -535,11 +538,20 @@ impl ChiefSurface {
 					div()
 						.flex()
 						.flex_col()
-						.gap(px(5.))
-						.child(self.model_palette(cx))
+						.gap(px(8.))
 						.child(
 							div()
-								.mt(px(7.))
+								.p(px(8.))
+								.rounded(px(14.))
+								.bg(rgb(0x29292d))
+								.child(self.model_palette(cx)),
+						)
+						.child(
+							div()
+								.px(px(8.))
+								.py(px(4.))
+								.rounded_full()
+								.bg(rgb(0x29292d))
 								.flex()
 								.items_center()
 								.child(div().flex_1().min_w_0().child(self.effort_scale(cx)))

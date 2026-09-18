@@ -394,6 +394,7 @@ impl RenderOnce for Arrival {
 /// A content-sized popover that fades without stretching or clipping its contents.
 #[derive(IntoElement)]
 pub(crate) struct Popover {
+	unframed: bool,
 	id: &'static str,
 	kind: &'static str,
 	visible: bool,
@@ -405,7 +406,13 @@ pub(crate) fn popover(
 	visible: bool,
 	child: impl IntoElement,
 ) -> Popover {
-	Popover { id, kind, visible, child: child.into_any_element() }
+	Popover { id, kind, visible, child: child.into_any_element(), unframed: false }
+}
+impl Popover {
+	pub(crate) fn unframed(mut self, unframed: bool) -> Self {
+		self.unframed = unframed;
+		self
+	}
 }
 impl RenderOnce for Popover {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -431,15 +438,15 @@ impl RenderOnce for Popover {
 			.relative()
 			.top(px((1. - opacity) * 4.))
 			.opacity(opacity)
-			.rounded(px(14.))
-			.bg(gpui::rgb(0x29292d))
-			.shadow(vec![gpui::BoxShadow {
-				inset: false,
-				color: gpui::rgba(0x00000024).opacity(opacity).into(),
-				offset: gpui::point(px(0.), px(4.)),
-				blur_radius: px(12.),
-				spread_radius: px(-3.),
-			}])
+			.when(!self.unframed, |surface| {
+				surface.rounded(px(14.)).bg(gpui::rgb(0x29292d)).shadow(vec![gpui::BoxShadow {
+					inset: false,
+					color: gpui::rgba(0x00000024).opacity(opacity).into(),
+					offset: gpui::point(px(0.), px(4.)),
+					blur_radius: px(12.),
+					spread_radius: px(-3.),
+				}])
+			})
 			.child(self.child)
 			.into_any_element()
 	}

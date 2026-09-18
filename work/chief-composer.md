@@ -390,3 +390,17 @@ and Live button. These captures show the panel fading across its bounds without 
 separate cutout; they are sampled frames, not exhaustive native animation evidence.
 
 Validation: 174 GPUI tests passed (five opt-in tests ignored); strict Clippy passed.
+
+## Separate model card and reasoning capsule
+
+The model selector uses two opaque surfaces: the model list and a separate rounded
+reasoning/Fast capsule. An 8 px gap exposes the workspace between them. One
+unframed popover owns their opacity, offset, lifetime, and outside-click boundary,
+so both surfaces open and close together. Attachments and Status retain their
+existing single-surface treatment.
+
+The history rail now uses selection only for color. Width and height changes come
+from pointer proximity; the selected mark returns to normal size after hover ends.
+
+Validation: strict Clippy and the slider drag/model-selection/outside-dismiss test
+passed. Inspected the rendered model-card/capsule layout in the visual harness.
