@@ -193,7 +193,7 @@ impl ChiefSurface {
 							.child(
 								crate::ui_motion::popover(
 									"composer-popover-motion",
-									menu.unwrap_or("model"),
+									if left { "attachments" } else { menu.unwrap_or("model") },
 									self.composer_menu.is_some(),
 									self.composer_options(cx)
 										.unwrap_or_else(|| div().into_any_element()),
@@ -223,13 +223,23 @@ impl ChiefSurface {
 				},
 				cx,
 			))
-			.child(self.composer_control_with_window(
-				"audio-item",
-				device.to_owned(),
-				"Choose microphone",
-				|s, window, cx| s.open_audio_menu(window, cx),
-				cx,
-			))
+			.child(
+				div()
+					.flex()
+					.flex_col()
+					.child(self.composer_control_with_window(
+						"audio-item",
+						device.to_owned(),
+						"Choose microphone",
+						|s, window, cx| s.open_audio_menu(window, cx),
+						cx,
+					))
+					.child(crate::ui_motion::disclosure(
+						"microphone-devices-disclosure",
+						self.composer_menu == Some("microphone"),
+						div().pl(px(26.)).child(self.audio_palette(cx)),
+					)),
+			)
 			.child(self.composer_control(
 				"delivery",
 				if self.steer { "Steer" } else { "Queue" }.into(),
@@ -346,12 +356,10 @@ impl ChiefSurface {
 					"voice-end",
 					"attachment-item",
 					"audio-item",
-					"audio-back",
 				]
 				.contains(&id),
 				|d| d.w(px(ui_theme::CONTROL_SIZE)).px_0(),
 			)
-			.when(id == "microphone-device", |d| d.w(px(16.)).px_0())
 			.flex()
 			.items_center()
 			.justify_center()
@@ -365,14 +373,15 @@ impl ChiefSurface {
 				ui_theme::TEXT_MUTED
 			}))
 			.when(id == "model", |d| d.px(px(6.)))
-			.when(["attachment-item", "audio-item", "audio-back", "delivery"].contains(&id), |d| {
-				d.w_full().justify_start().text_size(px(12.))
+			.when(["attachment-item", "audio-item", "delivery"].contains(&id), |d| {
+				d.w_full().h(px(32.)).justify_start().text_size(px(12.))
 			})
 			.when(self.composer_menu == Some(id), |d| d.bg(rgba(0xffffff12)))
 			.when(send, |d| d.w(px(28.)).h(px(28.)).rounded_full().ml(px(5.)).bg(rgb(0x515155)))
+			.when(id == "audio-item", |d| d.aria_expanded(self.composer_menu == Some("microphone")))
 			.cursor_pointer()
 			.hover(move |d| d.bg(if send { rgba(0xffffff24) } else { rgba(0xffffff0c) }))
-			.when(!["model", "attachment-item", "audio-item", "audio-back"].contains(&id), |d| {
+			.when(!["model", "attachment-item", "audio-item"].contains(&id), |d| {
 				d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
 			})
 			.on_click(cx.listener(move |s, _, window, cx| action(s, window, cx)))
@@ -440,20 +449,13 @@ impl ChiefSurface {
 						.text_color(rgb(ui_theme::TEXT_MUTED))
 						.child(label),
 				)
-				.child(icon(Symbol::Forward))
+				.child(super::super::workspace_symbols::disclosure_chevron(
+					"microphone-chevron",
+					self.composer_menu == Some("microphone"),
+				))
 				.into_any_element(),
-			"audio-back" => div()
-				.flex()
-				.items_center()
-				.gap(px(10.))
-				.child(icon(Symbol::Back))
-				.child("Microphone")
-				.into_any_element(),
-
 			"voice" => icon(Symbol::Voice),
 			"dictation" => icon(Symbol::Microphone),
-			"microphone-device" =>
-				div().size(px(12.)).child(icon(Symbol::ChevronDown)).into_any_element(),
 			"fast" => div()
 				.flex()
 				.items_center()
@@ -465,9 +467,12 @@ impl ChiefSurface {
 				.w_full()
 				.flex()
 				.items_center()
-				.justify_between()
-				.child("Message delivery")
+				.gap(px(10.))
+				.child(div().w(px(16.)).flex_none())
+				.child("Send mode")
+				.child(div().flex_1())
 				.child(div().text_color(rgb(ui_theme::TEXT)).child(label))
+				.child(div().w(px(12.)).flex_none())
 				.into_any_element(),
 			"model" => div()
 				.flex()
@@ -487,7 +492,9 @@ impl ChiefSurface {
 	}
 
 	fn toggle_composer_menu(&mut self, name: &'static str, cx: &mut Context<Self>) {
-		self.composer_menu = if self.composer_menu == Some(name) { None } else { Some(name) };
+		let same_menu = self.composer_menu == Some(name)
+			|| (name == "attachments" && self.composer_menu == Some("microphone"));
+		self.composer_menu = if same_menu { None } else { Some(name) };
 		if self.composer_menu.is_some() {
 			self.composer_menu_content = self.composer_menu;
 			self.load_capabilities(cx);
@@ -517,26 +524,8 @@ impl ChiefSurface {
 				.flex()
 				.flex_col()
 				.gap(px(10.))
-				.child(if menu == "attachments" {
+				.child(if matches!(menu, "attachments" | "microphone") {
 					self.attachment_options(cx)
-				} else if menu == "microphone" {
-					div()
-						.flex()
-						.flex_col()
-						.gap(px(6.))
-						.child(self.composer_control(
-							"audio-back",
-							"Microphone".into(),
-							"Back to attachments",
-							|s, cx| {
-								s.composer_menu = Some("attachments");
-								s.composer_menu_content = s.composer_menu;
-								cx.notify();
-							},
-							cx,
-						))
-						.child(self.audio_palette(cx))
-						.into_any_element()
 				} else {
 					div()
 						.flex()

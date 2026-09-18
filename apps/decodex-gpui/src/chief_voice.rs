@@ -222,6 +222,12 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn open_audio_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if self.composer_menu == Some("microphone") {
+			self.composer_menu = Some("attachments");
+			self.composer_menu_content = self.composer_menu;
+			cx.notify();
+			return;
+		}
 		if let Ok(mut media) = self.take_voice_media(window) {
 			media.command(json!({"operation":"devices"}));
 			while let Some(event) = media.poll() {
@@ -237,11 +243,8 @@ impl ChiefSurface {
 			self.media_spare = Some(media);
 			self.media_warm_attempted = true;
 		}
-		self.composer_menu =
-			if self.composer_menu == Some("microphone") { None } else { Some("microphone") };
-		if self.composer_menu.is_some() {
-			self.composer_menu_content = self.composer_menu;
-		}
+		self.composer_menu = Some("microphone");
+		self.composer_menu_content = self.composer_menu;
 		cx.notify();
 	}
 
@@ -249,6 +252,9 @@ impl ChiefSurface {
 		let mut inputs = vec![String::new()];
 		inputs.extend(self.audio_inputs.clone());
 		div()
+			.id("microphone-device-list")
+			.max_h(px(168.))
+			.overflow_y_scroll()
 			.flex()
 			.flex_col()
 			.gap(px(2.))
@@ -263,27 +269,25 @@ impl ChiefSurface {
 					.tab_index(0)
 					.aria_label(format!("Use {label}"))
 					.h(px(28.))
-					.px_2()
+					.px(px(6.))
 					.rounded(px(6.))
 					.flex()
 					.items_center()
 					.gap(px(8.))
 					.cursor_pointer()
 					.text_size(px(12.))
+					.child(div().flex_1().min_w_0().text_ellipsis().child(label))
 					.child(div().w(px(12.)).child(if selected { "✓" } else { "" }))
-					.child(label)
 					.hover(|d| d.bg(rgba(0xffffff10)))
 					.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
 						if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 							s.audio_input = keyboard_input.clone();
-							s.composer_menu = None;
 							cx.stop_propagation();
 							cx.notify();
 						}
 					}))
 					.on_click(cx.listener(move |s, _, _, cx| {
 						s.audio_input = input.clone();
-						s.composer_menu = None;
 						cx.notify();
 					}))
 					.smooth()

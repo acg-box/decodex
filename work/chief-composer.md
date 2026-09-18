@@ -461,3 +461,20 @@ history and delete a selected range before applying boundary expansion.
 Validation: four input tests pass, covering keyboard dispatch, multiline deletion,
 selection, undo, IME composition, wrapping/caret geometry, and composed graphemes.
 Strict Clippy passes. No new input mode or visible controls were added.
+
+## Inline microphone disclosure
+
+Keep microphone selection inside the attachment menu. Expand a bounded device list
+under the existing microphone row; collapse to that row without a back page. Use a
+single animated up/down chevron and one popover identity, so disclosure does not
+restart the whole menu's entrance animation. The plus trigger closes either state.
+Device selection keeps the menu open for confirmation.
+
+Align the three main rows at 32 px with a shared icon gutter, label column, value
+column, and trailing chevron slot. Use the shorter `Send mode` label. Align device
+names and checkmarks with the microphone header, and bound long lists with scrolling.
+
+Validation: inspected the expanded visual fixture; 176 GPUI tests passed (five
+opt-in cases ignored), and strict Clippy passed before the final 2 px alignment
+adjustment. The visual fixture uses explicit example device names only in capture
+and test builds; the running app still discovers native devices.

@@ -994,6 +994,14 @@ pub(super) fn clock_label(micros: i64) -> String {
 #[cfg(any(test, feature = "visual-capture"))]
 impl ChiefSurface {
 	pub(crate) fn visual_workspace_page(&mut self, page: &str, cx: &mut Context<Self>) {
+		if matches!(page, "attachments" | "microphone") {
+			self.visual_workspace_page("markdown", cx);
+			self.composer_menu =
+				Some(if page == "microphone" { "microphone" } else { "attachments" });
+			self.audio_inputs =
+				vec!["MacBook Pro Microphone".into(), "Studio Display Microphone".into()];
+			return;
+		}
 		if page == "activity" || page == "activity-collapsed" {
 			self.visual_progress_fixture(page == "activity", cx);
 			return;

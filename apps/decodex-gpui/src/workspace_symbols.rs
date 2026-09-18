@@ -51,3 +51,35 @@ pub(super) fn icon(symbol: Symbol) -> AnyElement {
 	};
 	img(IMAGES[symbol as usize].clone()).size(px(size)).flex_none().into_any_element()
 }
+
+#[derive(gpui::IntoElement)]
+pub(super) struct DisclosureChevron {
+	id: &'static str,
+	expanded: bool,
+}
+
+pub(super) fn disclosure_chevron(id: &'static str, expanded: bool) -> DisclosureChevron {
+	DisclosureChevron { id, expanded }
+}
+
+impl gpui::RenderOnce for DisclosureChevron {
+	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
+		let progress =
+			crate::ui_motion::value(self.id, if self.expanded { 1. } else { 0. }, window, cx);
+		gpui::canvas(
+			|_, _, _| (),
+			move |bounds, _, window, _| {
+				let direction = 1. - 2. * progress;
+				let mut path = gpui::PathBuilder::stroke(px(1.2));
+				path.move_to(bounds.origin + gpui::point(px(2.), px(6. - 2. * direction)));
+				path.line_to(bounds.origin + gpui::point(px(6.), px(6. + 2. * direction)));
+				path.line_to(bounds.origin + gpui::point(px(10.), px(6. - 2. * direction)));
+				if let Ok(path) = path.build() {
+					window.paint_path(path, gpui::rgb(crate::ui_theme::TEXT_MUTED));
+				}
+			},
+		)
+		.size(px(12.))
+		.flex_none()
+	}
+}
