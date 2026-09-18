@@ -404,3 +404,14 @@ from pointer proximity; the selected mark returns to normal size after hover end
 
 Validation: strict Clippy and the slider drag/model-selection/outside-dismiss test
 passed. Inspected the rendered model-card/capsule layout in the visual harness.
+
+## Composer proportion audit
+
+Reviewed the closed composer and all five model options in the native window.
+Keep the 232 px model card, 32 px model rows, current typography, and 28 px action
+targets. Align the model popover's right edge with its trigger by accounting for
+the trailing microphone/send controls. Reduce the reasoning capsule from 38 px to
+36 px. Use a 6 px gap within the pair and 10 px below it to clarify grouping.
+Raise Fast-off opacity from .45 to .65 so off is not mistaken for unavailable.
+
+Strict Clippy and the existing slider/model/outside-dismiss interaction test pass.

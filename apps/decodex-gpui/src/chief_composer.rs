@@ -185,9 +185,10 @@ impl ChiefSurface {
 						div()
 							.absolute()
 							.bottom(gpui::relative(1.))
-							.mb(px(8.))
+							.mb(px(if left { 8. } else { 10. }))
 							.when(left, |d| d.left(px(0.)))
-							.when(!left, |d| d.right(px(64.)))
+							// Align with the model trigger: inset + mic/send widths + toolbar gaps.
+							.when(!left, |d| d.right(px(79.)))
 							.w(px(if left { 280. } else { 232. }))
 							.child(
 								crate::ui_motion::popover(
@@ -455,7 +456,7 @@ impl ChiefSurface {
 				.flex()
 				.items_center()
 				.gap(px(3.))
-				.opacity(if self.fast { 1.0 } else { 0.45 })
+				.opacity(if self.fast { 1.0 } else { 0.65 })
 				.child(icon(Symbol::Fast))
 				.into_any_element(),
 			"delivery" => div()
@@ -538,7 +539,7 @@ impl ChiefSurface {
 					div()
 						.flex()
 						.flex_col()
-						.gap(px(8.))
+						.gap(px(6.))
 						.child(
 							div()
 								.p(px(8.))
@@ -549,7 +550,7 @@ impl ChiefSurface {
 						.child(
 							div()
 								.px(px(8.))
-								.py(px(4.))
+								.py(px(3.))
 								.rounded_full()
 								.bg(rgb(0x29292d))
 								.flex()
