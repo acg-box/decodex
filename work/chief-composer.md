@@ -491,3 +491,16 @@ Strict Clippy passes.
 Remove the quote hover window entirely, including its unused lookup and placeholder
 getter. The placeholder already presents the quote and author. Keep the source link
 in General settings. Strict Clippy passes.
+
+## Conversation spacing refinement
+
+Keep the existing glass materials, composer, and panel layout. Reduce assistant
+message vertical padding from 8 px to 2 px; the history list already separates
+messages by 20 px. Apply the same padding to streaming replies. Reduce user bubble
+vertical padding from 12 px to 9 px. Set reply metadata to a 15 px line height with
+a 6 px gap from the reply, so it reads as part of that message.
+
+Validation: inspected native-rendered Markdown and continuous-conversation
+fixtures, including a before/after Markdown comparison. User bubbles stay right
+aligned and separate messages remain distinct. Strict all-target, all-feature
+GPUI Clippy passed. These offscreen fixtures do not validate desktop vibrancy.

@@ -1176,7 +1176,7 @@ impl ChiefSurface {
 					panel = panel.child(
 						div()
 							.w_full()
-							.py_2()
+							.py(px(2.))
 							.child(markdown::render(
 								&message.text,
 								&format!("live-{}", message.item_id),
@@ -1399,11 +1399,11 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 						.flex_none()
 						.max_w(gpui::relative(0.78))
 						.px_4()
-						.py_3()
+						.py(px(9.))
 						.rounded(px(18.0))
 						.bg(rgba(0xffffff0e))
 				})
-				.when(!user, |body| body.w_full().py_2())
+				.when(!user, |body| body.w_full().py(px(2.)))
 				.when(entry.kind == "instruction", |body| {
 					body.pl_3()
 						.border_l_2()
@@ -1437,12 +1437,13 @@ fn reply_metrics(entry: &decodex_protocol::ChiefHistoryEntryDto) -> impl IntoEle
 		parts.push(format!("Out {} tokens", compact_tokens(usage.output_tokens)));
 	}
 	let mut row = div()
-		.when(!parts.is_empty(), |row| row.mt_2())
+		.when(!parts.is_empty(), |row| row.mt(px(ui_theme::METADATA_GAP)))
 		.flex()
 		.items_center()
 		.flex_wrap()
 		.gap(px(ui_theme::METADATA_GAP))
 		.text_size(px(ui_theme::CAPTION_SIZE))
+		.line_height(px(15.))
 		.text_color(rgb(ui_theme::TEXT_MUTED));
 	for (index, text) in parts.into_iter().enumerate() {
 		if index > 0 {
