@@ -23,6 +23,7 @@ raw-window-handle = "0.6.2"
 serde            = { workspace = true }
 serde_json       = { workspace = true }
 sha2             = { workspace = true }
+unicode-segmentation = "1.13.3"
 tokio            = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]

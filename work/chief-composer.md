@@ -445,3 +445,19 @@ The signed preview includes the fix. The user confirmed physical keyboard input
 works for both English and Chinese. Earlier synthetic key/paste checks did not
 cover this failure and were not sufficient acceptance evidence. The observed
 InputMethodKit log message alone did not establish an input-method fault.
+
+## Standard macOS draft editing keys
+
+Add Command-Backspace/Delete for deletion to the displayed line boundary,
+Option-Backspace/Delete for word deletion, Command-Left/Right for line navigation,
+Option-Left/Right for word navigation, and Shift variants for selection. Add
+Command-Up/Down and their Shift variants for draft boundaries and Shift-Up/Down
+for vertical selection. Keep Enter submission and Shift-Enter newline behavior.
+
+Use the existing locked unicode-segmentation release for Unicode word boundaries
+and grapheme-safe character movement/deletion. Deletions keep the existing undo
+history and delete a selected range before applying boundary expansion.
+
+Validation: four input tests pass, covering keyboard dispatch, multiline deletion,
+selection, undo, IME composition, wrapping/caret geometry, and composed graphemes.
+Strict Clippy passes. No new input mode or visible controls were added.

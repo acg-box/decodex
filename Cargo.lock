@@ -1577,6 +1577,7 @@ dependencies = [
  "tempfile",
  "time",
  "tokio",
+ "unicode-segmentation",
 ]
 
 [[package]]

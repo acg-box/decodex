@@ -1,4 +1,6 @@
 #[path = "composer_edit.rs"] mod edit;
+#[path = "composer_shortcuts.rs"] mod shortcuts;
+use unicode_segmentation::UnicodeSegmentation as _;
 #[path = "composer_text.rs"] mod text;
 // Native bounded text input for the Conversation composer.
 
@@ -57,6 +59,7 @@ enum ComposerAppearance {
 impl EventEmitter<ComposerEvent> for ComposerInput {}
 
 pub(crate) fn bind_keys(cx: &mut App) {
+	shortcuts::bind_keys(cx);
 	cx.bind_keys([
 		KeyBinding::new("backspace", Backspace, Some("ComposerInput")),
 		KeyBinding::new("delete", Delete, Some("ComposerInput")),
@@ -602,6 +605,7 @@ impl Render for ComposerInput {
 				}
 			})
 			.on_action(cx.listener(Self::undo))
+			.map(|input| shortcuts::bind_actions(input, cx))
 			.on_action(cx.listener(Self::redo))
 			.on_action(cx.listener(Self::backspace))
 			.on_action(cx.listener(Self::delete))
@@ -677,15 +681,18 @@ fn claim_native_text_focus(window: &Window) {
 }
 
 fn previous_boundary(content: &str, offset: usize) -> usize {
-	content[..offset.min(content.len())].char_indices().next_back().map_or(0, |(index, _)| index)
+	content[..offset.min(content.len())]
+		.grapheme_indices(true)
+		.next_back()
+		.map_or(0, |(index, _)| index)
 }
 
 fn next_boundary(content: &str, offset: usize) -> usize {
 	let offset = offset.min(content.len());
 	content[offset..]
-		.chars()
+		.graphemes(true)
 		.next()
-		.map_or(content.len(), |character| offset + character.len_utf8())
+		.map_or(content.len(), |grapheme| offset + grapheme.len())
 }
 
 fn offset_from_utf16(content: &str, offset: usize) -> usize {
