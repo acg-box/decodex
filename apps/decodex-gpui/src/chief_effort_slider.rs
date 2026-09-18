@@ -27,14 +27,14 @@ impl ChiefSurface {
 		let measured = cx.entity().downgrade();
 		let events = measured.clone();
 		div()
-			.px(px(14.))
+			.px(px(7.))
 			.py(px(3.))
 			.flex()
 			.items_center()
-			.gap(px(12.))
+			.gap(px(8.))
 			.child(
 				div()
-					.w(px(62.))
+					.w(px(54.))
 					.flex_none()
 					.text_size(px(12.))
 					.whitespace_nowrap()
@@ -149,16 +149,32 @@ impl gpui::RenderOnce for SliderTrack {
 			window,
 			cx,
 		);
+		let hover = window.use_keyed_state("reasoning-hover-state", cx, |_, _| false);
+		let active = *hover.read(cx) || self.dragging;
+		let feedback = crate::ui_motion::value(
+			"reasoning-hover-motion",
+			if active { 1. } else { 0. },
+			window,
+			cx,
+		);
+		let thumb = 12. + 2. * feedback;
 		div()
+			.id("reasoning-feedback")
 			.absolute()
 			.inset_0()
+			.on_hover(move |over, _, cx| {
+				hover.update(cx, |state, cx| {
+					*state = *over;
+					cx.notify();
+				})
+			})
 			.child(
 				div()
 					.absolute()
 					.left_0()
 					.right_0()
-					.top(px(10.))
-					.h(px(4.))
+					.top(px(10. - feedback * 0.5))
+					.h(px(4. + feedback))
 					.rounded_full()
 					.bg(rgba(0xffffff18)),
 			)
@@ -166,11 +182,11 @@ impl gpui::RenderOnce for SliderTrack {
 				div()
 					.absolute()
 					.left_0()
-					.top(px(10.))
+					.top(px(10. - feedback * 0.5))
 					.w(relative(fraction))
-					.h(px(4.))
+					.h(px(4. + feedback))
 					.rounded_full()
-					.bg(rgb(0xc0c0c5)),
+					.bg(rgb(if active { 0xe7e7ea } else { 0xc0c0c5 })),
 			)
 			.children((0..self.count).map(|i| {
 				div()
@@ -187,11 +203,11 @@ impl gpui::RenderOnce for SliderTrack {
 				div()
 					.absolute()
 					.left(relative(fraction))
-					.top(px(6.))
-					.ml(px(-6.))
-					.w(px(12.))
-					.h(px(12.))
-					.rounded(px(6.))
+					.top(px(12. - thumb / 2.))
+					.ml(px(-thumb / 2.))
+					.w(px(thumb))
+					.h(px(thumb))
+					.rounded_full()
 					.bg(rgb(0xe7e7ea)),
 			)
 	}

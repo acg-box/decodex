@@ -87,6 +87,8 @@ impl ChiefSurface {
 					))
 					.into_any_element(),
 		};
+		let mut models: Vec<_> = models.iter().collect();
+		models.sort_by_key(|entry| std::cmp::Reverse(model_version(entry.model.as_str())));
 		for pair in models.chunks(1) {
 			let mut row = div().flex().gap(px(2.));
 			for entry in pair {
@@ -111,7 +113,7 @@ impl ChiefSurface {
 						.items_center()
 						.justify_between()
 						.cursor_pointer()
-						.hover(|d| d.bg(rgba(0xc3b8ed20)))
+						.hover(|d| d.bg(rgba(0xffffff22)).text_color(rgb(ui_theme::TEXT)))
 						.on_click(cx.listener(move |s, _, _, cx| {
 							s.select_composer_option("model", &click_model, cx)
 						}))
@@ -150,4 +152,31 @@ impl ChiefSurface {
 pub(super) fn compact_model_label(model: &str) -> String {
 	let full = super::model_label(model);
 	full.split_once(' ').map_or_else(|| full.clone(), |(_, name)| name.to_owned())
+}
+
+/// Group GPT releases newest first while retaining catalog order within a release.
+fn model_version(model: &str) -> Vec<u32> {
+	model
+		.strip_prefix("gpt-")
+		.unwrap_or("")
+		.split('-')
+		.next()
+		.unwrap_or("")
+		.split('.')
+		.map_while(|part| part.parse().ok())
+		.collect()
+}
+
+#[cfg(test)]
+mod ordering_tests {
+	#[test]
+	fn versions_descend_without_reordering_same_release_variants() {
+		let mut models =
+			["gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra", "gpt-5.5", "gpt-5.10", "custom"];
+		models.sort_by_key(|model| std::cmp::Reverse(super::model_version(model)));
+		assert_eq!(
+			models,
+			["gpt-6-astra", "gpt-5.10", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5", "custom"]
+		);
+	}
 }

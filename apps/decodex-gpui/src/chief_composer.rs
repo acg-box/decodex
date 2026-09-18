@@ -258,18 +258,6 @@ impl ChiefSurface {
 			.gap(px(4.0))
 			.children(self.usage_line())
 			.child(self.composer_control(
-				"fast",
-				"Fast".into(),
-				"Toggle Fast",
-				|s, cx| {
-					if s.selected_model(cx).is_some_and(|m| m.supports_fast) {
-						s.fast = !s.fast;
-					}
-					cx.notify();
-				},
-				cx,
-			))
-			.child(self.composer_control(
 				"model",
 				model,
 				"Model and reasoning · Applies to the next turn",
@@ -481,6 +469,9 @@ impl ChiefSurface {
 				.gap(px(2.))
 				.whitespace_nowrap()
 				.text_color(rgb(ui_theme::TEXT))
+				.when(self.fast, |d| {
+					d.child(div().text_color(rgb(ui_theme::BLUE)).child(icon(Symbol::Fast)))
+				})
 				.child(controls::compact_model_label(&label))
 				.child(div().text_color(rgb(ui_theme::TEXT_MUTED)).child("·"))
 				.child(controls::effort_indicator(self.effort.as_str()))
@@ -548,10 +539,26 @@ impl ChiefSurface {
 						.child(self.model_palette(cx))
 						.child(
 							div()
-								.mt(px(3.))
-								.rounded(px(10.))
-								.bg(rgba(0xffffff06))
-								.child(self.effort_scale(cx)),
+								.mt(px(7.))
+								.flex()
+								.items_center()
+								.child(div().flex_1().min_w_0().child(self.effort_scale(cx)))
+								.child(self.composer_control(
+									"fast",
+									"".into(),
+									if self.selected_model(cx).is_some_and(|m| m.supports_fast) {
+										if self.fast { "Fast on" } else { "Fast off" }
+									} else {
+										"Fast unavailable for this model"
+									},
+									|s, cx| {
+										if s.selected_model(cx).is_some_and(|m| m.supports_fast) {
+											s.fast = !s.fast;
+										}
+										cx.notify();
+									},
+									cx,
+								)),
 						)
 						.into_any_element()
 				})

@@ -329,3 +329,31 @@ Validation: 173 GPUI tests passed (five opt-in cases ignored); strict Clippy pas
 Signed-app acceptance: inspected both opaque panels, switched from Status to the
 model selector, and verified outside dismissal and Escape. Restored the open
 project and worker tabs. One preview remains open with no draft or recording.
+
+## Ordering, feedback, and popover shadow lifetime
+
+The model menu groups GPT releases in descending numeric version order, preserving
+catalog order among variants of the same release. Unknown model families retain
+their relative catalog order after recognized GPT releases.
+
+The reasoning footer no longer has a separate rounded surface. It contains the
+slim slider and Fast toggle; the combined toolbar label shows a lightning mark
+when Fast is on. Model rows have a clearer neutral hover fill. Slider hover/drag
+animates track thickness and thumb size without changing its hit bounds.
+
+Popover content and its shadow-bearing surface now remain mounted together until
+the shared fade ends. The complete surface is absent at zero progress. Shadow
+strength additionally follows progress so low-opacity opening/closing frames do
+not leave a detached-looking shadow. The GPUI revision already multiplies painted
+shadows by element opacity; no upstream opacity patch is needed. The other two
+application shadow sites belong to persistent composers, not disappearing popovers.
+
+Validation: 174 GPUI tests passed (five opt-in cases ignored), including numeric
+version sorting, same-version stability, and slider interactions. Strict Clippy
+passed.
+
+Signed-app acceptance: confirmed GPT-6 first, GPT-5.6 variants together, then
+GPT-5.5; toggled Fast on/off without closing; dragged to Medium; selected Sol
+and restored Astra with visible row feedback. Inspected the final native popup
+and slider screenshots after intermittent white captures. Notification and
+selector dismissal were exercised. Open project/worker tabs were restored.

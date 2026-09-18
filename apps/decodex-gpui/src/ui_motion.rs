@@ -423,6 +423,9 @@ impl RenderOnce for Popover {
 		if moving {
 			window.request_animation_frame();
 		}
+		if opacity <= 0.001 {
+			return div().w_full().into_any_element();
+		}
 		div()
 			.w_full()
 			.relative()
@@ -432,11 +435,12 @@ impl RenderOnce for Popover {
 			.bg(gpui::rgb(0x29292d))
 			.shadow(vec![gpui::BoxShadow {
 				inset: false,
-				color: gpui::rgba(0x00000024).into(),
+				color: gpui::rgba(0x00000024).opacity(opacity).into(),
 				offset: gpui::point(px(0.), px(4.)),
 				blur_radius: px(12.),
 				spread_radius: px(-3.),
 			}])
-			.when(self.visible || opacity > 0.01, |d| d.child(self.child))
+			.child(self.child)
+			.into_any_element()
 	}
 }
