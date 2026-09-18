@@ -222,7 +222,7 @@ impl ChiefSurface {
 			.id(SharedString::from(id))
 			.role(if is_tab { Role::Tab } else { Role::Button })
 			.aria_selected(active)
-			.when(active, |row| row.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL)))
+			.when(active && !is_tab, |row| row.bg(rgba(0xffffff0d)))
 			.tab_index(0)
 			.aria_label(accessible)
 			.when(show_tip, |button| {
@@ -383,8 +383,7 @@ impl ChiefSurface {
 			.items_center()
 			.gap_1()
 			.px_2()
-			.pb(px(4.))
-			.bg(rgba(ui_theme::TOPBAR_MATERIAL));
+			.pb(px(4.));
 		let root = self.root_id();
 		let mut pages = vec![(root.clone().unwrap_or_default(), "Overview".to_owned(), false)];
 		if let Some(snapshot) = &self.snapshot {
@@ -403,9 +402,9 @@ impl ChiefSurface {
 			let mut tab = div()
 				.flex()
 				.items_center()
-				.h_full()
-				.border_b_1()
-				.border_color(if active { rgb(ui_theme::BLUE) } else { rgba(0x00000000) })
+				.h(px(28.))
+				.rounded(px(8.))
+				.when(active, |tab| tab.bg(rgba(0xffffff0d)))
 				.child(self.workspace_action(
 					format!("page-{id}"),
 					label,
@@ -929,12 +928,13 @@ impl ChiefSurface {
 			.h(px(52.0 * zoom))
 			.px_2()
 			.py_1()
-			.rounded(px(5.0))
+			.rounded(px(9.0))
 			.bg(if self.graph_selected.as_ref() == Some(&id) {
-				rgba(0x626b9755)
+				rgba(0x35353ce8)
 			} else {
-				rgba(ui_theme::SURFACE_OVERLAY_MATERIAL)
+				rgba(0x242427db)
 			})
+			.hover(|style| style.bg(rgba(0x3a3a40eb)))
 			.cursor_pointer()
 			.overflow_hidden()
 			.text_size(px((12.0 * zoom).max(10.0)))

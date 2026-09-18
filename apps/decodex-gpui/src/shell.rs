@@ -2137,20 +2137,15 @@ fn topbar_controls(
 		.iter()
 		.position(|destination| *destination == Destination::Settings)
 		.expect("Settings destination");
-	div()
-		.h(px(ui_theme::CONTROL_GROUP_HEIGHT))
-		.flex_none()
-		.flex()
-		.items_center()
-		.gap_1()
+	ui_theme::floating_group()
 		.text_size(px(11.0))
 		.when(shell.selected == Destination::Chief, |controls| {
 			controls
-				.when(shell.chief.read(cx).workspace_panels()[1].1, |group| {
-					group.child(chief_panel_control(shell, 1, cx))
-				})
 				.when(shell.chief.read(cx).workspace_panels()[2].1, |group| {
 					group.child(chief_panel_control(shell, 2, cx))
+				})
+				.when(shell.chief.read(cx).workspace_panels()[1].1, |group| {
+					group.child(chief_panel_control(shell, 1, cx))
 				})
 				.when(shell.chief.read(cx).workspace_panels()[3].1, |group| {
 					group.child(chief_panel_control(shell, 3, cx))
@@ -2173,7 +2168,7 @@ fn topbar_controls(
 				.on_action(cx.listener(Shell::focus_next))
 				.on_action(cx.listener(Shell::focus_previous))
 				.on_action(cx.listener(Shell::activate_destination))
-				.size(px(ui_theme::CONTROL_GROUP_HEIGHT))
+				.size(px(ui_theme::CHROME_CONTROL_SIZE))
 				.flex()
 				.items_center()
 				.justify_center()

@@ -504,3 +504,15 @@ Validation: inspected native-rendered Markdown and continuous-conversation
 fixtures, including a before/after Markdown comparison. User bubbles stay right
 aligned and separate messages remain distinct. Strict all-target, all-feature
 GPUI Clippy passed. These offscreen fixtures do not validate desktop vibrancy.
+
+## Floating controls and shared material
+
+Remove the full-width conversation-tab tint and underline. Use a small neutral
+selection surface instead, and use the same light selection tint in the project
+sidebar. Group the top-right controls with the existing floating toolbar material.
+Order them as history rail, bottom graph, right agent tree, and settings; keep all
+four hit targets at 24 px inside the 28 px group. Existing shortcuts are unchanged.
+
+Use neutral smoky graph nodes with softer corners and a visible hover tint. Keep
+the existing glass plane and composer material. Inspect the native-rendered
+workspace fixture and run strict GPUI Clippy before packaging.
