@@ -322,7 +322,7 @@ impl ChiefSurface {
 								} else {
 									rgba((ui_theme::TEXT << 8) | (100. + 155. * activity) as u32)
 								};
-								let width = 7.0 + activity * 11.0 + influence * 16.0;
+								let width = 7.0 + influence * 16.0;
 								let height = 2.0 + influence;
 								window.paint_quad(gpui::fill(
 									gpui::Bounds::new(
