@@ -180,17 +180,36 @@ fn main() -> gpui::Result<()> {
 		}
 	}
 
-	capture_pointer_hover(&mut cx, window)?;
+	capture_interactions(&mut cx, window)?;
 	let screenshot = cx.capture_screenshot(window)?;
 	screenshot.save(&output)?;
 	println!("{}", output.display());
 	Ok(())
 }
 
-fn capture_pointer_hover(
+// Sample dismissal over the real composer, including its Live button.
+fn capture_status_dismissal(
 	cx: &mut VisualTestAppContext,
 	window: gpui::AnyWindowHandle,
 ) -> gpui::Result<()> {
+	let Some(delay) = std::env::var("DECODEX_VISUAL_STATUS_CLOSE_MS")
+		.ok()
+		.and_then(|value| value.parse::<u64>().ok())
+	else {
+		return Ok(());
+	};
+	cx.simulate_click(window, gpui::point(px(1200.), px(815.)), Default::default());
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+	std::thread::sleep(std::time::Duration::from_millis(delay));
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+	Ok(())
+}
+
+fn capture_interactions(
+	cx: &mut VisualTestAppContext,
+	window: gpui::AnyWindowHandle,
+) -> gpui::Result<()> {
+	capture_status_dismissal(cx, window)?;
 	let Ok(value) = std::env::var("DECODEX_VISUAL_HOVER") else {
 		return Ok(());
 	};

@@ -958,8 +958,9 @@ impl Shell {
 				}
 			});
 		}
-		shell.status_open =
-			std::env::var("DECODEX_VISUAL_WORKSPACE_PAGE").is_ok_and(|page| page == "status");
+		shell.status_open = std::env::var("DECODEX_VISUAL_WORKSPACE_PAGE")
+			.is_ok_and(|page| page == "status")
+			|| std::env::var_os("DECODEX_VISUAL_STATUS").is_some();
 		shell.left_sidebar_visible = left_sidebar_visible;
 		shell.left_sidebar_mounted = left_sidebar_visible;
 		shell.inspector_visible = inspector_visible;
@@ -4939,7 +4940,8 @@ impl Render for Shell {
 		root.relative()
 			.child(crate::ui_motion::arrival(route, content))
 			.child(controls)
-			.child(status)
+			// Keep global notifications above deferred composer menus throughout dismissal.
+			.child(gpui::deferred(status).priority(3))
 	}
 }
 

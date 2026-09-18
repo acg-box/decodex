@@ -375,3 +375,18 @@ Validation: 174 GPUI tests passed (five opt-in cases ignored); strict Clippy pas
 The native pointer-preservation test passed. Physical pointer hover and cursor
 reset in the signed preview still need confirmation; the native UI driver exposes
 click and drag but no button-free pointer move.
+
+## Status dismissal stacking
+
+Render the global status center through GPUI's deferred overlay pass at priority 3,
+above the composer menus at priority 2. Keep this wrapper mounted while the shared
+popover finishes its closing animation. Previously the status center was an
+ordinary child of the shell, outside the popup drawing order.
+
+The visual capture tool can now show status over any workspace fixture with
+`DECODEX_VISUAL_STATUS=1` and sample a click-driven dismissal with
+`DECODEX_VISUAL_STATUS_CLOSE_MS`. Inspected closing frames over the normal composer
+and Live button. These captures show the panel fading across its bounds without a
+separate cutout; they are sampled frames, not exhaustive native animation evidence.
+
+Validation: 174 GPUI tests passed (five opt-in tests ignored); strict Clippy passed.
