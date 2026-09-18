@@ -162,7 +162,14 @@ impl ChiefSurface {
 			let delta = event.delta.pixel_delta(px(ui_theme::BODY_LINE_HEIGHT));
 			let offset = (scroll.offset().y + delta.y).clamp(-scroll.max_offset().y, px(0.0));
 			scroll.set_offset(point(px(0.0), offset));
-			let following = (offset + scroll.max_offset().y).abs() < px(24.);
+			let following = delta.y < px(0.) && (offset + scroll.max_offset().y).abs() < px(1.);
+			if let Some(id) = &self.selected {
+				if following {
+					self.history_follow_paused.remove(id);
+				} else {
+					self.history_follow_paused.insert(id.clone());
+				}
+			}
 			self.set_voice_follow(following);
 			cx.stop_propagation();
 			cx.notify();
@@ -494,6 +501,16 @@ mod tests {
 			window.draw(cx).clear();
 		});
 		assert!(scroll.offset().y > previous);
+		scroll.set_offset(point(px(0.), -scroll.max_offset().y));
+		visual.simulate_event(gpui::ScrollWheelEvent {
+			position,
+			delta: gpui::ScrollDelta::Pixels(point(px(0.), px(5.))),
+			..Default::default()
+		});
+		assert!(
+			surface.read_with(visual, |s, _| s.history_follow_paused.contains("chief")),
+			"even a small upward wheel step must pause automatic bottom-follow"
+		);
 	}
 
 	#[test]

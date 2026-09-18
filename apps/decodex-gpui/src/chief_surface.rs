@@ -84,6 +84,7 @@ pub(crate) struct ChiefSurface {
 	sidebar_drag: Option<(f32, f32)>,
 	history_cache: std::collections::BTreeMap<String, ChiefHistoryResult>,
 	transcript_scroll: std::collections::BTreeMap<String, gpui::ScrollHandle>,
+	history_follow_paused: std::collections::BTreeSet<String>,
 	profile: Option<ClientProfile>,
 	snapshot: Option<ChiefSnapshotDto>,
 	state: LoadState,
@@ -261,6 +262,7 @@ impl ChiefSurface {
 			history_cache: Default::default(),
 			expanded_progress: Default::default(),
 			transcript_scroll: Default::default(),
+			history_follow_paused: Default::default(),
 			details_visible: false,
 			accounts: vec![],
 			setup_expanded: false,
@@ -339,6 +341,7 @@ impl ChiefSurface {
 						}) {
 						if let Some(scroll) = surface.transcript_scroll.get(&id)
 							&& surface.voice.is_none()
+							&& !surface.history_follow_paused.contains(&id)
 							&& (scroll.offset().y + scroll.max_offset().y).abs() < px(24.0)
 						{
 							scroll.scroll_to_bottom();
@@ -426,6 +429,9 @@ impl ChiefSurface {
 					if let Some(scroll) =
 						selected.as_ref().and_then(|id| surface.transcript_scroll.get(id))
 						&& surface.voice.is_none()
+						&& !selected
+							.as_ref()
+							.is_some_and(|id| surface.history_follow_paused.contains(id))
 						&& (scroll.offset().y + scroll.max_offset().y).abs() < px(24.0)
 					{
 						scroll.scroll_to_bottom();
@@ -670,6 +676,7 @@ impl ChiefSurface {
 		self.older_task = None;
 		self.loading_older = false;
 		self.transcript_scroll.clear();
+		self.history_follow_paused.clear();
 		self.graph_scope = None;
 		self.graph_selected = None;
 		self.history = None;
