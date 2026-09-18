@@ -460,7 +460,7 @@ mod tests {
 	#[gpui::test]
 	fn wheel_scroll_keeps_adjacent_messages_accessible(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
-		visual.simulate_resize(size(px(1400.0), px(400.0)));
+		visual.simulate_resize(size(px(1400.0), px(300.0)));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.graph_visible = false;
@@ -469,6 +469,11 @@ mod tests {
 			window.draw(cx).clear();
 		});
 		let scroll = surface.read_with(visual, |s, _| s.transcript_scroll["chief"].clone());
+		assert!(scroll.max_offset().y >= px(100.), "fixture must allow the full wheel delta");
+		assert!(
+			scroll.bounds().bottom() > px(280.),
+			"history must extend behind the floating composer instead of clipping above it"
+		);
 		let position = scroll.bounds().center();
 		visual.simulate_event(gpui::ScrollWheelEvent {
 			position,

@@ -516,3 +516,16 @@ four hit targets at 24 px inside the 28 px group. Existing shortcuts are unchang
 Use neutral smoky graph nodes with softer corners and a visible hover tint. Keep
 the existing glass plane and composer material. Inspect the native-rendered
 workspace fixture and run strict GPUI Clippy before packaging.
+
+## Remove the invisible composer footer boundary
+
+Overlay the composer on the full-height transcript instead of reserving a
+full-width footer that clips messages above the capsule. Only the capsule blocks
+pointer hit tests. Measure the footer, including draft growth and activity, and
+reserve that height at the end of the transcript so the final reply can scroll
+clear of it. Preserve the capsule's outer spacing and shadow.
+
+Validation: inspect the multiline composer capture; assert the transcript extends
+behind the composer in the real GPUI wheel-scroll test. Use a shorter fixture
+window so its content still supports the full 100 px scroll delta after the
+viewport expands. GPUI tests: 176 passed, five opt-in tests ignored.

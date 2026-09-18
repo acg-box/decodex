@@ -99,6 +99,7 @@ impl ChiefSurface {
 		div().w_full().px_4().pt(px(12.)).pb(px(20.)).flex().justify_center().child(
 			div()
 				.id("chief-composer")
+				.occlude()
 				.relative()
 				.w_full()
 				.max_w(px(820.))

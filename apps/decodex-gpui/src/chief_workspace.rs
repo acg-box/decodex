@@ -425,6 +425,34 @@ impl ChiefSurface {
 		row.into_any_element()
 	}
 
+	fn floating_composer(&self, window: &mut Window, cx: &mut Context<Self>) -> gpui::Div {
+		let owner = cx.entity().downgrade();
+		// Only the capsule occludes history; the measured footer reserves scroll space.
+		div()
+			.absolute()
+			.bottom_0()
+			.w_full()
+			.on_children_prepainted(move |bounds, _, cx| {
+				if let Some(bounds) = bounds.first() {
+					let height = f32::from(bounds.size.height);
+					let _ = owner.update(cx, |s, cx| {
+						if (s.composer_footer_height - height).abs() > 0.5 {
+							s.composer_footer_height = height;
+							cx.notify();
+						}
+					});
+				}
+			})
+			.child(
+				div()
+					.w_full()
+					.flex()
+					.flex_col()
+					.child(self.conversation_activity(cx))
+					.child(self.render_composer(window, cx)),
+			)
+	}
+
 	fn selected_is_manager(&self) -> bool {
 		self.selected.is_none()
 			|| self.selected == self.root_id()
@@ -455,6 +483,7 @@ impl ChiefSurface {
 			.cloned();
 		let wide = f32::from(window.viewport_size().width) > 1000.0;
 		let mut chat = div()
+			.relative()
 			.flex_1()
 			.min_w_0()
 			.min_h_0()
@@ -488,6 +517,7 @@ impl ChiefSurface {
 				let content = if is_chief {
 					div()
 						.p_4()
+						.pb(px(self.composer_footer_height + 16.))
 						.w_full()
 						.mx_auto()
 						.line_height(px(ui_theme::BODY_LINE_HEIGHT))
@@ -517,12 +547,13 @@ impl ChiefSurface {
 					.flex()
 					.child(self.history_rail_slot(window, cx))
 					.child(transcript),
-			)
-			.child(self.conversation_activity(cx));
+			);
 		if is_chief && selected.is_some() {
-			chat = chat.child(self.render_composer(window, cx));
+			chat = chat.child(self.floating_composer(window, cx));
 		} else if let Some(work) = selected {
-			chat = chat.child(self.workspace_followup(&work, cx));
+			chat = chat
+				.child(self.conversation_activity(cx))
+				.child(self.workspace_followup(&work, cx));
 		}
 
 		let (graph_width, graph_height) = self.workspace_graph_size(window, wide);

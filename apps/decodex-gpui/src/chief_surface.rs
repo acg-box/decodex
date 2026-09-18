@@ -94,6 +94,7 @@ pub(crate) struct ChiefSurface {
 	copy_focus: FocusHandle,
 	generation: u64,
 	composer: Entity<ComposerInput>,
+	composer_footer_height: f32,
 	fast: bool,
 	steer: bool,
 	media_spare: Option<voice::Media>,
@@ -264,6 +265,7 @@ impl ChiefSurface {
 			accounts: vec![],
 			setup_expanded: false,
 			composer,
+			composer_footer_height: 74.,
 			model,
 			cwd,
 			account: cx.new(|cx| {
