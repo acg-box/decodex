@@ -43,16 +43,6 @@ pub(super) fn next() -> String {
 	text
 }
 
-pub(super) fn attribution(text: &str) -> Option<Quote> {
-	QUOTES
-		.lock()
-		.unwrap_or_else(|error| error.into_inner())
-		.iter()
-		.chain(CURATED.iter())
-		.find(|quote| quote.display() == text)
-		.cloned()
-}
-
 fn cache_path() -> Option<std::path::PathBuf> {
 	Some(
 		std::path::PathBuf::from(std::env::var_os("HOME")?)
@@ -156,7 +146,7 @@ mod tests {
 		assert!(refresh_cache());
 		assert!(read_cache().is_some());
 		let text = next();
-		assert!(attribution(&text).is_some());
+		assert!(text.contains(" — "));
 		assert_ne!(next(), text);
 	}
 
@@ -167,7 +157,6 @@ mod tests {
 			assert!(quote.q.is_ascii() && quote.q.len() <= 80);
 			assert!(!quote.a.is_empty());
 			assert!(quote.display().ends_with(&quote.a));
-			assert!(attribution(&quote.display()).is_some());
 		}
 		let first = next();
 		assert_ne!(next(), first);

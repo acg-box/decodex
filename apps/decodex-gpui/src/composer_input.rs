@@ -173,10 +173,6 @@ impl ComposerInput {
 		cx.notify();
 	}
 
-	pub(crate) fn placeholder(&self) -> &str {
-		&self.placeholder
-	}
-
 	pub(crate) fn content(&self) -> &str {
 		&self.content
 	}

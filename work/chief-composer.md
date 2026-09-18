@@ -485,3 +485,9 @@ The quote tooltip now contains only the full quote and author. Move the ZenQuote
 attribution link to the General settings footer, where pointer and keyboard
 activation are supported. This replaces the earlier hover-only attribution link.
 Strict Clippy passes.
+
+## Remove the redundant quote tooltip
+
+Remove the quote hover window entirely, including its unused lookup and placeholder
+getter. The placeholder already presents the quote and author. Keep the source link
+in General settings. Strict Clippy passes.

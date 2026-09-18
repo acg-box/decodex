@@ -17,24 +17,6 @@ impl Render for ComposerTip {
 	}
 }
 
-struct QuoteTip(prompts::Quote);
-impl Render for QuoteTip {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		div()
-			.p_3()
-			.max_w(px(320.0))
-			.rounded(px(8.0))
-			.bg(rgb(0x242429))
-			.text_size(px(11.0))
-			.text_color(rgb(ui_theme::TEXT))
-			.flex()
-			.flex_col()
-			.gap_1()
-			.child(self.0.q.clone())
-			.child(muted(format!("— {}", self.0.a)))
-	}
-}
-
 impl ChiefSurface {
 	pub(super) fn running_turn(&self) -> Option<(EntityId, WireText)> {
 		let snapshot = self.snapshot.as_ref()?;
@@ -104,18 +86,10 @@ impl ChiefSurface {
 	) -> impl IntoElement {
 		let menu = self.composer_menu.or(self.composer_menu_content);
 		let left = matches!(menu, Some("attachments" | "microphone"));
-		let quote = prompts::attribution(self.composer.read(cx).placeholder());
 		let editor = div()
 			.id("composer-editor-area")
 			.flex_1()
 			.min_w_0()
-			.when(self.composer.read(cx).content().is_empty(), |d| {
-				if let Some(quote) = quote {
-					d.tooltip(move |_, cx| cx.new(|_| QuoteTip(quote.clone())).into())
-				} else {
-					d
-				}
-			})
 			.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
 				s.submit(cx);
 				cx.stop_propagation();
