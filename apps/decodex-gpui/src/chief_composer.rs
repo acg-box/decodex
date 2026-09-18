@@ -32,15 +32,6 @@ impl Render for QuoteTip {
 			.gap_1()
 			.child(self.0.q.clone())
 			.child(muted(format!("— {}", self.0.a)))
-			.child(
-				div()
-					.id("quote-source")
-					.role(Role::Link)
-					.cursor_pointer()
-					.text_color(rgb(ui_theme::BLUE))
-					.child("Inspirational quotes provided by ZenQuotes API ↗")
-					.on_click(|_, _, cx| cx.open_url("https://zenquotes.io/")),
-			)
 	}
 }
 

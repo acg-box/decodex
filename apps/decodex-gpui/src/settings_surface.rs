@@ -425,7 +425,8 @@ impl Render for SettingsSurface {
 											.child(self.launch_at_login_card(cx)),
 									),
 							)
-							.children(self.advanced_preferences.clone()),
+							.children(self.advanced_preferences.clone())
+							.child(quote_attribution()),
 					),
 			)
 	}
@@ -490,6 +491,26 @@ const fn input_error_detail(error: DesktopSettingsInputError) -> &'static str {
 		DesktopSettingsInputError::IdentityUnavailable =>
 			"Decodex could not create a bounded settings command identity.",
 	}
+}
+
+fn quote_attribution() -> impl IntoElement {
+	div()
+		.id("quote-source")
+		.role(Role::Link)
+		.tab_index(0)
+		.aria_label("Quotes provided by ZenQuotes. Open source website.")
+		.text_size(px(11.))
+		.text_color(rgb(TEXT_MUTED))
+		.cursor_pointer()
+		.hover(|d| d.text_color(rgb(TEXT)))
+		.on_click(|_, _, cx| cx.open_url("https://zenquotes.io/"))
+		.on_key_down(|event, _, cx| {
+			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				cx.open_url("https://zenquotes.io/");
+				cx.stop_propagation();
+			}
+		})
+		.child("Inspirational quotes provided by ZenQuotes API")
 }
 
 #[cfg(test)]

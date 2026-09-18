@@ -478,3 +478,10 @@ Validation: inspected the expanded visual fixture; 176 GPUI tests passed (five
 opt-in cases ignored), and strict Clippy passed before the final 2 px alignment
 adjustment. The visual fixture uses explicit example device names only in capture
 and test builds; the running app still discovers native devices.
+
+## Read-only quote tooltip
+
+The quote tooltip now contains only the full quote and author. Move the ZenQuotes
+attribution link to the General settings footer, where pointer and keyboard
+activation are supported. This replaces the earlier hover-only attribution link.
+Strict Clippy passes.
