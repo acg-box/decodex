@@ -107,7 +107,7 @@ impl ChiefSurface {
 				.px(px(10.))
 				.py(px(7.))
 				.rounded(px(24.))
-				.bg(rgba(0x242427eb))
+				.bg(rgb(0x27272b))
 				.shadow(vec![gpui::BoxShadow {
 					inset: false,
 					color: rgba(0x0000001a).into(),
