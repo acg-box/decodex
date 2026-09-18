@@ -428,3 +428,20 @@ feedback. Delivery help now states when Steer or Queue sends the message.
 Retain context usage details, history previews, graph names/blockers, quote
 attribution, icon help, and shortcuts. Strict Clippy passes. Plain-pointer tooltip
 appearance was not exercised by the native UI driver, which has no hover command.
+
+## Restore the native text responder on editor clicks
+
+A GPUI focus handle does not reassign AppKit's first responder. An editor click now
+claims the owning GPUI NSView as the native text responder before updating GPUI
+focus. This lets keyboard text reach the input client after native focus moved away.
+Do not bypass IME composition or insert raw key characters as a fallback.
+
+The native visual harness can clear AppKit focus and click the real composer with
+`DECODEX_VISUAL_NATIVE_INPUT_FOCUS=1` and the `composer` fixture. Its responder
+assertion fails when the new call is removed and passes with the fix. The existing
+composition/undo and newline/caret tests also pass. Strict Clippy passes.
+
+The signed preview includes the fix. The user confirmed physical keyboard input
+works for both English and Chinese. Earlier synthetic key/paste checks did not
+cover this failure and were not sufficient acceptance evidence. The observed
+InputMethodKit log message alone did not establish an input-method fault.

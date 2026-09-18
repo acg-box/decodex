@@ -205,10 +205,43 @@ fn capture_status_dismissal(
 	Ok(())
 }
 
+// Exercise the AppKit responder boundary, which headless GPUI tests cannot cover.
+#[cfg(target_os = "macos")]
+fn verify_native_composer_focus(
+	cx: &mut VisualTestAppContext,
+	window: gpui::AnyWindowHandle,
+) -> gpui::Result<()> {
+	if std::env::var_os("DECODEX_VISUAL_NATIVE_INPUT_FOCUS").is_none() {
+		return Ok(());
+	}
+	use objc2_app_kit::{NSResponder, NSView};
+	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+	cx.update_window(window, |_, window, _| {
+		let handle = HasWindowHandle::window_handle(window).unwrap();
+		let RawWindowHandle::AppKit(handle) = handle.as_raw() else { panic!("AppKit required") };
+		let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
+		assert!(view.window().unwrap().makeFirstResponder(None));
+	})?;
+	cx.simulate_click(window, gpui::point(px(500.), px(790.)), Default::default());
+	cx.update_window(window, |_, window, _| {
+		let handle = HasWindowHandle::window_handle(window).unwrap();
+		let RawWindowHandle::AppKit(handle) = handle.as_raw() else { panic!("AppKit required") };
+		let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
+		let responder = view.window().unwrap().firstResponder().unwrap();
+		assert!(
+			std::ptr::eq::<NSResponder>(&*responder, view.as_ref()),
+			"Editor click must restore the native GPUI text client"
+		);
+	})?;
+	Ok(())
+}
+
 fn capture_interactions(
 	cx: &mut VisualTestAppContext,
 	window: gpui::AnyWindowHandle,
 ) -> gpui::Result<()> {
+	#[cfg(target_os = "macos")]
+	verify_native_composer_focus(cx, window)?;
 	capture_status_dismissal(cx, window)?;
 	let Ok(value) = std::env::var("DECODEX_VISUAL_HOVER") else {
 		return Ok(());

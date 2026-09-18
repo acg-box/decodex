@@ -354,6 +354,8 @@ impl ComposerInput {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
+		#[cfg(target_os = "macos")]
+		claim_native_text_focus(window);
 		window.focus(&self.focus_handle, cx);
 		self.is_selecting = true;
 		let offset = self.index_for_mouse_position(event.position);
@@ -652,6 +654,25 @@ impl Render for ComposerInput {
 			.text_size(px(ui_theme::BODY_SIZE))
 			.text_color(rgb(0xeeeaf0))
 			.child(text::ComposerTextElement { input: entity })
+	}
+}
+
+// GPUI focus and AppKit's first responder are separate. A pointer click into
+// the editor must reclaim the native text client after another native view used it.
+#[cfg(target_os = "macos")]
+fn claim_native_text_focus(window: &Window) {
+	use objc2_app_kit::NSView;
+	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+	let Ok(handle) = HasWindowHandle::window_handle(window) else {
+		return;
+	};
+	let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+		return;
+	};
+	// The live GPUI window owns this view; mouse dispatch runs on the main thread.
+	let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
+	if let Some(native) = view.window() {
+		native.makeFirstResponder(Some(view));
 	}
 }
 
