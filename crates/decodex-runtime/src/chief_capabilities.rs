@@ -101,6 +101,21 @@ fn project_model(value: &Value) -> Option<ChiefModelDto> {
 	let supports_images = value["inputModalities"]
 		.as_array()
 		.is_none_or(|modes| modes.iter().any(|mode| mode == "image"));
+	let notice = |text: &Value| {
+		text.as_str()
+			.filter(|text| !text.trim().is_empty() && text.len() <= 4096)
+			.map(str::to_owned)
+	};
+	let upgrade_model = value
+		.pointer("/upgradeInfo/model")
+		.and_then(Value::as_str)
+		.or_else(|| value["upgrade"].as_str())
+		.and_then(|model| ConversationModel::new(model).ok());
+	let upgrade = upgrade_model.map(|model| decodex_protocol::ChiefModelUpgradeDto {
+		model,
+		notice: notice(&value["upgradeInfo"]["upgradeCopy"]),
+		retirement_at: value["upgradeInfo"]["retirementAt"].as_i64(),
+	});
 	Some(ChiefModelDto {
 		model,
 		name: name.into(),
@@ -108,6 +123,8 @@ fn project_model(value: &Value) -> Option<ChiefModelDto> {
 		default_effort,
 		supports_fast,
 		supports_images,
+		availability: notice(&value["availabilityNux"]["message"]),
+		upgrade,
 	})
 }
 
@@ -152,6 +169,22 @@ mod tests {
 			matches!(&result,ChiefCapabilitiesResult::Available { models,memory_enabled:Some(true) } if models.len()==2)
 		);
 		assert!(!serde_json::to_string(&result).unwrap().contains("DO_NOT_PROJECT"));
+	}
+
+	#[test]
+	fn catalog_exposes_bounded_upgrade_notices_without_changing_selected_model() {
+		let mut value = json!({"model":"old","displayName":"Old","supportedReasoningEfforts":[{"reasoningEffort":"high"}],"defaultReasoningEffort":"high","upgradeInfo":{"model":"new","upgradeCopy":"New model available","retirementAt":1800000000},"availabilityNux":{"message":"Available for this account"}});
+		let model = project_model(&value).unwrap();
+		assert_eq!(model.model.as_str(), "old");
+		assert_eq!(model.upgrade.as_ref().unwrap().model.as_str(), "new");
+		assert_eq!(model.upgrade.unwrap().retirement_at, Some(1800000000));
+		assert_eq!(model.availability.as_deref(), Some("Available for this account"));
+		value["availabilityNux"]["message"] = json!("x".repeat(4097));
+		value["upgradeInfo"] = Value::Null;
+		value["upgrade"] = json!("fallback");
+		let model = project_model(&value).unwrap();
+		assert!(model.availability.is_none());
+		assert_eq!(model.upgrade.unwrap().model.as_str(), "fallback");
 	}
 
 	#[test]

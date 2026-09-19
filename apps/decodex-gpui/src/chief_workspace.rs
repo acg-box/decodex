@@ -1055,6 +1055,8 @@ impl ChiefSurface {
 						default_effort: Some(ConversationReasoningEffort::Medium),
 						supports_fast: true,
 						supports_images: true,
+						availability: None,
+						upgrade: None,
 					})
 					.collect(),
 				memory_enabled: None,
@@ -1204,7 +1206,9 @@ impl ChiefSurface {
 		];
 		let history = ChiefHistoryResult::Available {
 			questions: vec![],
-			questions_truncated: false, questions_recovering: false, misalignment: None,
+			questions_truncated: false,
+			questions_recovering: false,
+			misalignment: None,
 			usage: None,
 			entries: messages
 				.into_iter()

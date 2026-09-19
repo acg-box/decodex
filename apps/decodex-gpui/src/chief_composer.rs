@@ -502,7 +502,8 @@ impl ChiefSurface {
 								.p(px(8.))
 								.rounded(px(14.))
 								.bg(rgb(0x29292d))
-								.child(self.model_palette(cx)),
+								.child(self.model_palette(cx))
+								.child(self.model_notice_panel(cx)),
 						)
 						.child(
 							div()
@@ -786,6 +787,8 @@ mod tests {
 					default_effort: Some(ConversationReasoningEffort::Medium),
 					supports_fast: false,
 					supports_images: false,
+					availability: None,
+					upgrade: None,
 				}],
 				memory_enabled: Some(true),
 			});

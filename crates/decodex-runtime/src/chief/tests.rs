@@ -1195,12 +1195,14 @@ async fn configured_message_dispatches_native_images_and_exact_turn_settings_onc
 	assert_eq!(params["model"], "different-model");
 	assert_eq!(params["effort"], "high");
 	assert_eq!(params["serviceTier"], "priority");
+	assert_eq!(params["serviceTierForTurn"], "priority");
 	assert_eq!(params["input"][0]["text"], "Inspect these files");
 	assert_eq!(params["input"][1], json!({"type":"localImage","path":"/tmp/example.png"}));
 	assert!(params["input"][2]["text"].as_str().unwrap().contains("/tmp/example.rs"));
 	let mut params = json!({"input":[],"serviceTier":"priority"});
 	apply_message_options(&mut params,&json!({"options":{"execution":{"model":"selected-model","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string()).unwrap();
 	assert!(params["serviceTier"].is_null());
+	assert_eq!(params["serviceTierForTurn"], "default");
 }
 
 #[tokio::test]
