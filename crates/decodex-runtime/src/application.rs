@@ -3972,6 +3972,7 @@ async fn query_chief_history_page(
 		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap_or_default();
 		let mut completed_message_ids = Vec::new();
 		let (kind, mut text) = match event.event_kind.as_str() {
+			"strict_review_notice" => ("execution_notice", "Codex requested additional safety checks for this turn. Tool calls may take longer; no action is required for this notice.".into()),
 			"activity_started" | "activity_completed" => ("activity", String::new()),
 			"user_message" | "async_question_answer" | "voice_user" =>
 				("user", chief_user_message_text(&value)),
@@ -4020,6 +4021,7 @@ async fn query_chief_history_page(
 					| "activity_completed"
 					| "assistant_message"
 					| "context_compacted"
+					| "strict_review_notice"
 			)
 		}) {
 			text.push_str("\n\nDisposition: ");
@@ -4650,6 +4652,33 @@ mod tests {
 			1
 		);
 		assert!(entries.iter().all(|entry| !entry.text.contains("Provider observation recorded")));
+	}
+
+	#[tokio::test]
+	async fn strict_review_history_survives_restart_without_claiming_a_review_result() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		chief_query_work(&store, "chosen").await;
+		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
+		store.begin_chief_dispatch("chosen".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("chosen".into(), "turn".into()).await.unwrap();
+		store.record_chief_strict_review("thread".into(), "turn".into(), 10).await.unwrap();
+		store.mark_chief_dispatch_unknown("chosen".into()).await.unwrap();
+		store.record_chief_strict_review("thread".into(), "turn".into(), 20).await.unwrap();
+		drop(store);
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let decodex_protocol::ChiefHistoryResult::Available { entries, .. } =
+			super::query_chief_history(&ProductStore::Available(store.clone()), "chosen").await
+		else {
+			panic!("history")
+		};
+		assert_eq!(entries.len(), 1);
+		assert_eq!(entries[0].kind, "execution_notice");
+		assert!(entries[0].text.starts_with("Codex requested additional safety checks"));
+		assert!(!entries[0].text.contains("Disposition:"));
+		assert!(!entries[0].text.contains("approved"));
+		assert!(store.list_chief_wake_events("chosen".into(), 32).await.unwrap().is_empty());
 	}
 
 	#[tokio::test]
