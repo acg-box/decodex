@@ -5,6 +5,8 @@ mod account_lifecycle;
 mod account_profiles;
 mod accounts;
 mod chief;
+mod chief_misalignment;
+pub use chief_misalignment::ChiefMisalignment;
 mod chief_output;
 mod chief_questions;
 pub use chief_questions::ChiefAsyncQuestion;

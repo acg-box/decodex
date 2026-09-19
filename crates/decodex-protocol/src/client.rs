@@ -528,7 +528,8 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		| crate::ChiefActionDto::Respond { work_id, .. }
 		| crate::ChiefActionDto::AutomationResult { work_id, .. }
 		| crate::ChiefActionDto::Steer { work_id, .. }
-		| crate::ChiefActionDto::AnswerQuestion { work_id, .. } => work_id,
+		| crate::ChiefActionDto::AnswerQuestion { work_id, .. }
+		| crate::ChiefActionDto::ContinueMisalignment { work_id, .. } => work_id,
 	}
 }
 
@@ -2278,7 +2279,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_v2_27_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 27 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 28 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

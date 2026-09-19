@@ -292,3 +292,38 @@ restart fencing, and rendered option/button/keyboard interaction. These are loca
 protocol and native GPUI fixtures; no live model-generated question session is
 claimed. This capability delivery does not close the remaining model metadata,
 misalignment, attachment, plugin/MCP or broader upstream review work.
+
+## Misalignment precaution and explicit continuation
+
+Reviewed the final TUI `chatwidget/misalignment_policy.rs`,
+`app/misalignment_policy.rs`, and app-server `protocol/v2/turn.rs` at
+`595cc91e8cbb1c2ca822d0311dcf12709410c582`. A nonretrying
+`misalignmentPolicyViolation` must stop ordinary input. The supplied findings
+may permit an explicit acknowledgment and continuation; they never authorize
+an automatic retry.
+
+Migration 26 preserves the exact thread, failed turn and findings. Ordinary
+messages, steering, provider approval responses, automatic dispatch and new voice
+sessions cannot bypass the precaution. Undelivered user input is retired and
+pending capacity retries are cancelled. Active voice is retired locally before
+the native stop request; late SDP cannot reactivate it after a lost stop response.
+Reconnect recovery inspects the latest native turn, including idle threads that
+failed before this upgrade. Older historical failures do not pause newer work.
+Long terminal error summaries retain their provider error classification.
+
+Protocol 2.28 exposes a source-bound review separately from transcript pagination.
+The interface first shows the exact continuation request as a quoted string and
+the full bounded findings. A separate acknowledgment submits their digest. The
+host rechecks current native findings, claims the continuation durably, and sends
+`turn/start` with the supplied text and experimental `responsesapiClientMetadata`
+containing `misalignment_override`. Only acknowledgment of a different new turn
+clears the precaution. Rejection retains it; uncertain acceptance cannot be
+replayed after restart. Explanation and steer limits follow upstream, and a steer
+is never truncated into a different instruction.
+
+Local fixtures cover persisted pause and continuation claims, stale/retrying
+errors, missing acknowledgments and reopen, changed native findings, latest-turn
+recovery, blocked approvals, and voice retirement with a lost stop response.
+Rendered GPUI tests cover separate review and acknowledgment clicks and stale
+review rejection. This evidence does not claim a live provider-generated
+misalignment session or completion of the remaining upstream capability audit.

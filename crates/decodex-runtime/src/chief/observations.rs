@@ -5,14 +5,36 @@ use decodex_codex::ThreadTokenUsage;
 use sha2::{Digest as _, Sha256};
 
 impl ChiefCoordinator {
+	pub(super) async fn observe_misalignment(
+		&mut self,
+		thread: &str,
+		turn: &str,
+		error: &Value,
+	) -> Result<(), ChiefError> {
+		if error["codexErrorInfo"] != "misalignmentPolicyViolation" {
+			return Ok(());
+		}
+		let details = super::misalignment::details(error);
+		self.store.record_chief_misalignment(thread.into(), turn.into(), details).await?;
+		if self.store.list_chief_work_items().await?.into_iter().any(|work| {
+			work.codex_thread_id.as_deref() == Some(thread)
+				&& work.active_turn_id.as_deref() == Some(turn)
+		}) {
+			self.stop_voice_for_precaution(thread).await?;
+		}
+
+		Ok(())
+	}
+
 	/// Upgrade old projections from exact native history, including other-client replies.
 	/// An incomplete read leaves the durable recovery marker for the next connection.
-	pub(super) async fn recover_async_questions(&self) -> Result<(), ChiefError> {
+	pub(super) async fn recover_async_questions(&mut self) -> Result<(), ChiefError> {
 		for (work, thread, required_item) in self.store.pending_chief_async_recovery().await? {
 			let mut saw_required = required_item.is_none();
 			let Ok(turns) = self.client.thread_turns_since(&thread, None).await else {
 				continue;
 			};
+			let latest = turns.last().and_then(|turn| turn["id"].as_str()).map(str::to_owned);
 			let mut seen = std::collections::BTreeSet::new();
 			let mut complete = true;
 			for header in turns {
@@ -33,6 +55,22 @@ impl ChiefCoordinator {
 					complete = false;
 					break;
 				};
+				if latest.as_deref() == Some(turn)
+					&& let Some(native_turn) =
+						history.pointer("/thread/turns").and_then(Value::as_array).and_then(
+							|turns| turns.iter().find(|value| value["id"].as_str() == Some(turn)),
+						) && native_turn["status"] == "failed"
+					&& native_turn["error"]["codexErrorInfo"] == "misalignmentPolicyViolation"
+				{
+					self.store
+						.restore_chief_misalignment(
+							thread.clone(),
+							turn.into(),
+							super::misalignment::details(&native_turn["error"]),
+						)
+						.await?;
+					self.stop_voice_for_precaution(&thread).await?;
+				}
 				for item in items {
 					saw_required |=
 						item["id"].as_str().is_some_and(|id| required_item.as_deref() == Some(id));
@@ -60,10 +98,17 @@ impl ChiefCoordinator {
 	}
 
 	pub(super) async fn observe_notification(
-		&self,
+		&mut self,
 		method: &str,
 		params: &Value,
 	) -> Result<(), ChiefError> {
+		if method == "error"
+			&& params["willRetry"] == false
+			&& let (Some(thread), Some(turn)) =
+				(params["threadId"].as_str(), params["turnId"].as_str())
+		{
+			self.observe_misalignment(thread, turn, &params["error"]).await?;
+		}
 		if method == "item/completed"
 			&& let (Some(thread), Some(turn)) =
 				(params["threadId"].as_str(), params["turnId"].as_str())

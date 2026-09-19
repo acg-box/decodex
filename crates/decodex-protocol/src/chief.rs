@@ -113,6 +113,8 @@ pub enum ChiefHistoryResult {
 		questions_truncated: bool,
 		/// Native history recovery is incomplete; historical question cards are withheld.
 		questions_recovering: bool,
+		/// Current provider precaution, independent of transcript pagination.
+		misalignment: Option<Box<ChiefMisalignmentDto>>,
 		/// Latest observed usage for the current provider thread.
 		usage: Option<ChiefUsageDto>,
 		/// Source-bound records.
@@ -126,6 +128,18 @@ pub enum ChiefHistoryResult {
 	},
 	/// The work or source store cannot be read.
 	Unavailable,
+}
+
+/// Findings for one provider precaution. The digest binds an explicit acknowledgment.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefMisalignmentDto {
+	/// Exact thread, turn and findings digest.
+	pub review_id: String,
+	/// Full provider explanation, at most 64 KiB; absent when not available.
+	pub explanation: Option<String>,
+	/// Exact continuation text, at most 1024 bytes; never automatically submitted.
+	pub continuation: Option<String>,
 }
 
 /// Explicit host-selected Chief execution policy.
@@ -205,6 +219,14 @@ pub enum ChiefActionDto {
 		/// Files captured at send time.
 		attachments: Vec<ChiefAttachmentDto>,
 	},
+	/// Acknowledge the exact findings displayed by the client and request continuation.
+	ContinueMisalignment {
+		/// Work owning the paused thread.
+		work_id: crate::EntityId,
+		/// Digest of the displayed thread, turn and findings.
+		review_id: crate::WireText,
+	},
+
 	/// Answer one source-bound asynchronous question with an explicit user message.
 	AnswerQuestion {
 		/// Work that owns the original question.

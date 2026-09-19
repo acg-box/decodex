@@ -367,6 +367,14 @@ impl ChiefHost {
 				})?;
 				Ok(work_id.as_str().into())
 			},
+            ChiefActionDto::ContinueMisalignment {work_id,review_id} => {
+                let review=self.store.chief_misalignment(work_id.as_str().into()).await.map_err(|_|"Provider findings unavailable")?.ok_or("Provider precaution is no longer current")?;
+                if review.review_id()!=review_id.as_str() { return Err("Provider findings changed; review them again".into()); }
+                let (_,chief,_)=active.as_mut().ok_or("Chief is not connected")?;
+                chief.continue_misalignment(work_id.as_str(),review,&key).await.map_err(|error| match error { ChiefError::Rejected(_) => ChiefHostError::Rejected("Continuation was rejected or the findings changed. Review the latest findings before trying again."), _ => ChiefHostError::Unknown("Continuation was not confirmed. Inspect the latest conversation state before trying again.") })?;
+                Ok(work_id.as_str().into())
+            },
+
 			ChiefActionDto::AnswerQuestion { work_id, question_id, answer } => {
 				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
 				chief.answer_async_question(work_id.as_str(),question_id.as_str(),answer.as_str(),&key).await.map_err(|_|ChiefHostError::Unknown("Question reply acceptance could not be confirmed. Inspect the current conversation before sending again."))?;
