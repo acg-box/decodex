@@ -198,3 +198,17 @@ decodex chief cancel-retry --work-id WORK_ID --event-id EVENT_ID
 
 The new cancellation command uses local protocol 2.17; the desktop client and
 service must run the same protocol version. The website and OpenWiki are unchanged.
+
+## Voice history follow-up
+
+The merged voice consumer still requested `thread/read` with `includeTurns=true`
+at call start and recovery, although Chief threads use paginated history. Voice
+now reads the newest native turn header as its baseline, pages newer headers back
+to that exact baseline on recovery, and loads each terminal turn through the
+existing exact-turn item reader. Missing baselines, duplicate turns and incomplete
+pages fail explicitly. Legacy history remains supported. No audio or instruction
+is replayed, and native WebRTC sideband reconnection remains owned by Codex.
+
+Validation: nine native history fixture tests and 42 Chief behavior tests pass;
+Clippy for Codex/runtime all targets and features passes with warnings denied.
+These checks do not simulate a live audio disconnect.

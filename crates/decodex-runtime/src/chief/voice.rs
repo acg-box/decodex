@@ -63,17 +63,7 @@ impl ChiefCoordinator {
 					}
 					self.loaded_threads.insert(thread.clone());
 				}
-				let history =
-					self.client.thread_read(json!({"threadId":thread,"includeTurns":true})).await?;
-				if exact(&history, "/thread/id")? != thread {
-					return Err(ChiefError::Invalid("voice history differs".into()));
-				}
-				let baseline = history
-					.pointer("/thread/turns")
-					.and_then(Value::as_array)
-					.and_then(|v| v.last())
-					.and_then(|v| v["id"].as_str())
-					.map(str::to_owned);
+				let baseline = self.client.thread_latest_turn_id(&thread).await?;
 				self.store
 					.begin_chief_voice_call(decodex_database::ChiefVoiceCall {
 						session_id: session_id.as_str().into(),
@@ -226,26 +216,11 @@ impl ChiefCoordinator {
 			if exact(&resumed, "/thread/id")? != call.thread_id {
 				return Err(ChiefError::Invalid("voice recovery thread differs".into()));
 			}
-			let history = self
+			let turns = self
 				.client
-				.thread_read(json!({"threadId":call.thread_id,"includeTurns":true}))
+				.thread_turns_since(&call.thread_id, call.baseline_turn_id.as_deref())
 				.await?;
-			if exact(&history, "/thread/id")? != call.thread_id {
-				return Err(ChiefError::Invalid("voice recovery history differs".into()));
-			}
-			let turns = history
-				.pointer("/thread/turns")
-				.and_then(Value::as_array)
-				.ok_or_else(|| ChiefError::Invalid("voice recovery history missing".into()))?;
-			let first = match &call.baseline_turn_id {
-				Some(id) => turns
-					.iter()
-					.position(|turn| turn["id"].as_str() == Some(id))
-					.map(|p| p + 1)
-					.ok_or_else(|| ChiefError::Invalid("voice recovery baseline missing".into()))?,
-				None => 0,
-			};
-			for turn in &turns[first..] {
+			for turn in &turns {
 				let turn_id = exact(turn, "/id")?;
 				let observed = self
 					.store
@@ -262,7 +237,9 @@ impl ChiefCoordinator {
 					) {
 					self.record_terminal(
 						json!({"threadId":call.thread_id,"turn":turn}),
-						Ok(history.clone()),
+						self.client
+							.thread_read_turn(&call.thread_id, exact(turn, "/id")?.as_str())
+							.await,
 						false,
 					)
 					.await?;
