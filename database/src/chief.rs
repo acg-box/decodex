@@ -497,9 +497,11 @@ impl SqliteStore {
 					SELECT ?2 UNION SELECT child.id FROM chief_work_items child JOIN owned ON child.parent_goal_id = owned.id WHERE owned.id=?2 OR NOT EXISTS(SELECT 1 FROM chief_managers WHERE work_id=owned.id))
 					UPDATE chief_inbox_events SET delivery_work_item_id = ?2, delivered_turn_id = ''
 					WHERE id = ?1 AND work_item_id IN (SELECT id FROM owned) AND disposition IS NULL
-					AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message') AND (work_item_id=?2 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM chief_managers WHERE work_id=work_item_id)) AND (work_item_id<>?2 OR event_kind<>'worker_turn_completed')
+					AND (event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message') OR (event_kind='async_question_answer' AND work_item_id=?2 AND delivered_turn_id IS NULL)) AND (work_item_id=?2 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM chief_managers WHERE work_id=work_item_id)) AND (work_item_id<>?2 OR event_kind<>'worker_turn_completed')
 					AND (delivered_turn_id IS NULL OR (delivery_work_item_id = ?2 AND delivered_turn_id != ''))", params![event_id, id]).map_err(sqlite_error)?;
 				if changed != 1 { return Err(DatabaseError::Conflict.into()); }
+                let event = read_event(&transaction, event_id)?;
+                if event.event_kind == "user_message" { crate::chief_questions::retire_for_prompt(&transaction, &id, &event.payload)?; }
 			}
 			if work.kind == ChiefWorkKind::Task || transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_managers WHERE work_id=?1)",[&id],|row|row.get::<_,bool>(0)).map_err(sqlite_error)? {
 				transaction.execute("UPDATE chief_work_items SET status = 'open', next_check_at_micros = NULL WHERE id = ?1", [&id]).map_err(sqlite_error)?;
@@ -554,6 +556,7 @@ impl SqliteStore {
 			tx.execute("UPDATE chief_inbox_events SET disposition='resolved',disposition_note=?2,disposed_at_micros=?3 WHERE id=?1",params![event,note,now]).map_err(sqlite_error)?;
 			if accepted {
 				let source=serde_json::json!(["steer_receipt",event]).to_string();
+                crate::chief_questions::retire_for_prompt(&tx, &attempt.work_item_id, &attempt.payload)?;
 				tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'user_message',?3,?4,?2,?5)",params![source,attempt.work_item_id,attempt.payload,now,attempt.delivered_turn_id]).map_err(sqlite_error)?;
 			}
 			tx.commit().map_err(sqlite_error)?;
@@ -663,7 +666,7 @@ impl SqliteStore {
 				read_event(&transaction, event.id)?
 			} else { event };
 			if user_input_handled {
-				transaction.execute("UPDATE chief_inbox_events SET disposition = 'resolved', disposition_note = 'User input handled by completed Chief turn; work judgment is unchanged.', disposed_at_micros = max(created_at_micros, ?3) WHERE disposition IS NULL AND event_kind = 'user_message' AND delivery_work_item_id = ?1 AND delivered_turn_id = ?2", params![id, turn_id, unix_micros()?]).map_err(sqlite_error)?;
+				transaction.execute("UPDATE chief_inbox_events SET disposition = 'resolved', disposition_note = 'User input handled by completed Chief turn; work judgment is unchanged.', disposed_at_micros = max(created_at_micros, ?3) WHERE disposition IS NULL AND event_kind IN ('user_message', 'async_question_answer') AND delivery_work_item_id = ?1 AND delivered_turn_id = ?2", params![id, turn_id, unix_micros()?]).map_err(sqlite_error)?;
 			}
             if let Some((attempt,due))=retry {
                 transaction.execute("INSERT INTO chief_capacity_retries (event_id,work_item_id,failed_turn_id,attempt,due_at_micros,state) VALUES (?1,?2,?3,?4,?5,'pending')",params![event.id,id,turn_id,attempt,due]).map_err(sqlite_error)?;
@@ -780,6 +783,7 @@ impl SqliteStore {
 				params![input.source_event_id, input.work_item_id, input.event_kind, input.payload, now,
 					observation.then_some("resolved"), observation.then_some("Provider observation recorded; work judgment unchanged."), observation.then_some(now)]).map_err(sqlite_error)?;
 			let event = read_event(&transaction, transaction.last_insert_rowid())?;
+            if input.event_kind == "user_message" { crate::chief_questions::retire_for_prompt(&transaction, &input.work_item_id, &input.payload)?; }
 			transaction.commit().map_err(sqlite_error)?;
 			Ok(event)
 		}).await
@@ -993,7 +997,7 @@ impl SqliteStore {
 			let source = read_event(&transaction, user_event_id)?;
 			let active: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_work_items WHERE id = ?1 AND (parent_goal_id IS NULL OR EXISTS(SELECT 1 FROM chief_managers WHERE work_id=?1)) AND active_turn_id = ?2 AND dispatch_state = 'running')",params![chief_id,turn_id],|row|row.get(0)).map_err(sqlite_error)?;
 			let descendant: bool = transaction.query_row("WITH RECURSIVE lineage(id,parent_goal_id) AS (SELECT id,parent_goal_id FROM chief_work_items WHERE id = ?1 UNION SELECT work.id,work.parent_goal_id FROM chief_work_items work JOIN lineage ON work.id = lineage.parent_goal_id) SELECT EXISTS(SELECT 1 FROM lineage WHERE id = ?2)",params![work_id,chief_id],|row|row.get(0)).map_err(sqlite_error)?;
-			if !active || !descendant || source.work_item_id != chief_id || source.event_kind != "user_message" || source.delivered_turn_id.as_deref() != Some(&turn_id) || source.disposition.is_some() {
+			if !active || !descendant || source.work_item_id != chief_id || !matches!(source.event_kind.as_str(), "user_message" | "async_question_answer") || source.delivered_turn_id.as_deref() != Some(&turn_id) || source.disposition.is_some() {
 				return Err(StoreError::InvalidInput("decision requires a current delivered user reply"));
 			}
 			let now = unix_micros()?;
@@ -1022,7 +1026,7 @@ impl SqliteStore {
 			let event = read_event(&transaction,evidence_event_id)?;
 			let current:bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_work_items WHERE id = ?1 AND (parent_goal_id IS NULL OR EXISTS(SELECT 1 FROM chief_managers WHERE work_id=?1)) AND active_turn_id = ?2 AND dispatch_state = 'running')",params![chief_id,turn_id],|row|row.get(0)).map_err(sqlite_error)?;
 			let related:bool = transaction.query_row("WITH RECURSIVE family(id) AS (SELECT id FROM chief_work_items WHERE id = ?1 UNION SELECT work.id FROM chief_work_items work JOIN family ON work.parent_goal_id = family.id) SELECT EXISTS(SELECT 1 FROM family WHERE id = ?2)",params![goal_id,event.work_item_id],|row|row.get(0)).map_err(sqlite_error)?;
-			let user_input = event.event_kind == "user_message" && event.work_item_id == chief_id;
+			let user_input = matches!(event.event_kind.as_str(), "user_message" | "async_question_answer") && event.work_item_id == chief_id;
 			let result = related && matches!(event.event_kind.as_str(),"worker_turn_completed"|"automation_result"|"followup_due");
 			if !current || event.delivered_turn_id.as_deref() != Some(&turn_id) || (!user_input && !result) {return Err(StoreError::InvalidInput("goal resolution requires current related evidence"));}
 			let now = unix_micros()?;
@@ -1384,6 +1388,159 @@ mod tests {
 			created_at_micros: 1,
 			updated_at_micros: 1,
 		}
+	}
+
+	#[tokio::test]
+	async fn new_prompt_retires_questions_without_replay_or_answer_side_effects() {
+		let directory = tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("chief.sqlite3")).unwrap();
+		store.create_chief_work_item(item("chief", None)).await.unwrap();
+		store.bind_chief_thread("chief".into(), "thread".into()).await.unwrap();
+		let record = |id: &str| {
+			vec![(
+				id.to_owned(),
+				serde_json::json!({"id":id,"title":"Question","options":[]}).to_string(),
+			)]
+		};
+		store
+			.record_chief_async_questions(
+				"thread".into(),
+				"turn".into(),
+				"item".into(),
+				record("q1"),
+			)
+			.await
+			.unwrap();
+		let answer = EnqueueChiefEvent {
+			source_event_id: "reply".into(),
+			work_item_id: "chief".into(),
+			event_kind: "user_message".into(),
+			payload: r#"{"text":"Answer","asyncQuestionReply":true}"#.into(),
+		};
+		store.enqueue_chief_event(answer).await.unwrap();
+		assert_eq!(store.read_chief_async_questions("chief".into()).await.unwrap().len(), 1);
+		let prompt = EnqueueChiefEvent {
+			source_event_id: "prompt".into(),
+			work_item_id: "chief".into(),
+			event_kind: "user_message".into(),
+			payload: r#"{"text":"New work"}"#.into(),
+		};
+		store.enqueue_chief_event(prompt.clone()).await.unwrap();
+		store
+			.record_chief_async_questions(
+				"thread".into(),
+				"turn".into(),
+				"item".into(),
+				record("q1"),
+			)
+			.await
+			.unwrap();
+		assert!(store.read_chief_async_questions("chief".into()).await.unwrap().is_empty());
+		store
+			.record_chief_async_questions(
+				"thread".into(),
+				"turn".into(),
+				"item2".into(),
+				record("q2"),
+			)
+			.await
+			.unwrap();
+		store.enqueue_chief_event(prompt).await.unwrap();
+		assert_eq!(store.read_chief_async_questions("chief".into()).await.unwrap().len(), 1);
+		// Queued prompt delivery retires questions that arrived while waiting.
+		let event = store
+			.read_chief_work_events("chief".into(), 10)
+			.await
+			.unwrap()
+			.into_iter()
+			.find(|event| event.source_event_id == "prompt")
+			.unwrap();
+		store.begin_chief_dispatch_with_events("chief".into(), vec![event.id]).await.unwrap();
+		assert!(store.read_chief_async_questions("chief".into()).await.unwrap().is_empty());
+		store.acknowledge_chief_dispatch("chief".into(), "active".into()).await.unwrap();
+		store
+			.record_chief_async_questions(
+				"thread".into(),
+				"active".into(),
+				"item3".into(),
+				record("q3"),
+			)
+			.await
+			.unwrap();
+		let rejected = store
+			.begin_chief_steer(
+				"chief".into(),
+				"active".into(),
+				"rejected".into(),
+				r#"{"text":"New work"}"#.into(),
+			)
+			.await
+			.unwrap();
+		store.finish_chief_steer(rejected, false).await.unwrap();
+		assert_eq!(store.read_chief_async_questions("chief".into()).await.unwrap().len(), 1);
+		let reply = store
+			.begin_chief_steer(
+				"chief".into(),
+				"active".into(),
+				"reply".into(),
+				r#"{"text":"Answer","asyncQuestionReply":true}"#.into(),
+			)
+			.await
+			.unwrap();
+		store.finish_chief_steer(reply, true).await.unwrap();
+		assert_eq!(store.read_chief_async_questions("chief".into()).await.unwrap().len(), 1);
+		let accepted = store
+			.begin_chief_steer(
+				"chief".into(),
+				"active".into(),
+				"accepted".into(),
+				r#"{"text":"New work"}"#.into(),
+			)
+			.await
+			.unwrap();
+		store.finish_chief_steer(accepted, true).await.unwrap();
+		assert!(store.read_chief_async_questions("chief".into()).await.unwrap().is_empty());
+	}
+	#[tokio::test]
+	async fn async_answers_only_dispatch_once_to_the_exact_owner_and_never_wake() {
+		let directory = tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("chief.sqlite3")).unwrap();
+		store.create_chief_work_item(item("chief", None)).await.unwrap();
+		store.create_chief_work_item(item("worker", Some("chief"))).await.unwrap();
+		store.bind_chief_thread("chief".into(), "chief-thread".into()).await.unwrap();
+		store.bind_chief_thread("worker".into(), "worker-thread".into()).await.unwrap();
+		let event = store
+			.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id: "answer-1".into(),
+				work_item_id: "worker".into(),
+				event_kind: "async_question_answer".into(),
+				payload: r#"{"text":"Europe","source":"user"}"#.into(),
+			})
+			.await
+			.unwrap();
+		assert!(store.list_undelivered_chief_events(10).await.unwrap().is_empty());
+		assert!(store.list_chief_wake_events("chief".into(), 10).await.unwrap().is_empty());
+		assert!(
+			store.begin_chief_dispatch_with_events("chief".into(), vec![event.id]).await.is_err()
+		);
+		assert_eq!(
+			store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state,
+			ChiefDispatchState::Idle
+		);
+		store.begin_chief_dispatch_with_events("worker".into(), vec![event.id]).await.unwrap();
+		store.acknowledge_chief_dispatch("worker".into(), "turn-1".into()).await.unwrap();
+		let receipt = store.get_chief_inbox_event(event.id).await.unwrap();
+		assert_eq!(receipt.delivered_turn_id.as_deref(), Some("turn-1"));
+		assert_eq!(receipt.work_item_id, "worker");
+		store.complete_chief_turn("worker".into(), "turn-1".into()).await.unwrap();
+		assert!(
+			store.begin_chief_dispatch_with_events("worker".into(), vec![event.id]).await.is_err()
+		);
+		assert_eq!(
+			store.get_chief_work_item("worker".into()).await.unwrap().dispatch_state,
+			ChiefDispatchState::Idle
+		);
+		assert!(store.list_chief_wake_events("chief".into(), 10).await.unwrap().is_empty());
 	}
 
 	#[tokio::test]

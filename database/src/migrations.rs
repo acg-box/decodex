@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 24;
+const CURRENT_SCHEMA_VERSION: i64 = 25;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -135,6 +135,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 24,
 		name: "chief_capacity_retry",
 		sql: include_str!("../migrations/0016_chief_capacity_retry.sql"),
+	},
+	Migration {
+		version: 25,
+		name: "chief_async_questions",
+		sql: include_str!("../migrations/0025_chief_async_questions.sql"),
 	},
 ];
 
@@ -395,7 +400,7 @@ mod tests {
 			} else {
 				MIGRATIONS.to_vec()
 			};
-			for version in 14..=24 {
+			for version in 14..=25 {
 				let directory = tempfile::tempdir().unwrap();
 				let mut connection =
 					Connection::open(directory.path().join("upgrade.sqlite3")).unwrap();
@@ -517,6 +522,41 @@ mod tests {
 		verify(&connection).unwrap();
 	}
 
+	#[test]
+	fn async_question_upgrade_marks_existing_bound_threads_only() {
+		let directory = tempfile::tempdir().unwrap();
+		let mut connection = Connection::open(directory.path().join("upgrade.sqlite3")).unwrap();
+		configure(&connection).unwrap();
+		for migration in &MIGRATIONS[..24] {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 24).unwrap();
+		connection.execute("INSERT INTO chief_work_items(id,kind,title,instructions,status,dispatch_state,codex_thread_id,created_at_micros,updated_at_micros) VALUES('bound','goal','Bound','Keep','open','idle','native',1,1),('unbound','goal','Unbound','Keep','open','idle',NULL,1,1)",[]).unwrap();
+		migrate(&mut connection).unwrap();
+		let rows = connection
+			.prepare("SELECT work_id,thread_id FROM chief_async_recovery")
+			.unwrap()
+			.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+			.unwrap()
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap();
+		assert_eq!(rows, vec![("bound".into(), "native".into())]);
+		migrate(&mut connection).unwrap();
+		assert_eq!(
+			connection
+				.query_row("SELECT count(*) FROM chief_async_recovery", [], |row| row
+					.get::<_, i64>(0))
+				.unwrap(),
+			1
+		);
+	}
 	#[test]
 	fn capacity_retry_upgrade_preserves_version_fourteen_and_fifteen_events() {
 		for version in [14, 15] {

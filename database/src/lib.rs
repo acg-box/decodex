@@ -6,6 +6,8 @@ mod account_profiles;
 mod accounts;
 mod chief;
 mod chief_output;
+mod chief_questions;
+pub use chief_questions::ChiefAsyncQuestion;
 mod chief_process;
 mod chief_voice;
 pub use chief_output::ChiefLiveOutput;

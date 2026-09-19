@@ -608,6 +608,8 @@ mod tests {
 				follow: true,
 			});
 			let history = |time| ChiefHistoryResult::Available {
+				questions: vec![],
+				questions_truncated: false, questions_recovering: false,
 				usage: None,
 				has_more: false,
 				next_before: None,
