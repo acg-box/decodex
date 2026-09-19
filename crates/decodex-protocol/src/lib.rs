@@ -6,7 +6,7 @@ mod chief;
 mod chief_questions;
 pub use chief::{
 	ChiefActionDto, ChiefActivityDetailResult, ChiefActivityDto, ChiefAttachmentDto,
-	ChiefCapabilitiesResult, ChiefHistoryEntryDto, ChiefHistoryResult, ChiefLiveMessageDto,
+	ChiefCapabilitiesResult, ChiefHistoryEntryDto, ChiefHistoryResult, ChiefMisalignmentDto, ChiefLiveMessageDto,
 	ChiefModelDto, ChiefRequestResult, ChiefSandboxDto, ChiefStartDto, ChiefTurnUsageDto,
 	ChiefUsageDto, ChiefWorkspaceDto,
 };
@@ -116,7 +116,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 27 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 28 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

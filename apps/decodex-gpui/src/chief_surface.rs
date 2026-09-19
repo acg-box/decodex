@@ -12,6 +12,7 @@
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_requests.rs"] mod requests;
 #[path = "chief_async_questions.rs"] mod async_questions;
+#[path = "chief_misalignment.rs"] mod misalignment;
 #[path = "chief_voice.rs"] mod voice;
 #[path = "chief_workspace.rs"] mod workspace;
 #[path = "chief_workspace_size.rs"] mod workspace_size;
@@ -135,6 +136,7 @@ pub(crate) struct ChiefSurface {
 	poll_task: Option<Task<()>>,
 	request: Option<ChiefRequestResult>,
 	request_task: Option<Task<()>>,
+	misalignment_reviewed: Option<(String, String)>,
 	question_timers: std::collections::BTreeMap<i64, requests::QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
 	async_question_inputs: std::collections::BTreeMap<(String, String), Entity<ComposerInput>>,
@@ -297,6 +299,7 @@ impl ChiefSurface {
 			poll_task: None,
 			request: None,
 			request_task: None,
+			misalignment_reviewed: None,
 			question_timers: Default::default(),
 			question_inputs: Default::default(),
 			async_question_inputs: Default::default(),
@@ -690,6 +693,7 @@ impl ChiefSurface {
 		self.request = None;
 		self.request_task = None;
 		self.question_timers.clear();
+		self.misalignment_reviewed = None;
 		self.async_question_inputs.clear();
 		self.selected = None;
 		self.state = LoadState::Idle;
@@ -941,6 +945,7 @@ impl ChiefSurface {
 				}),
 				|panel| panel.child(self.pending_panel(snapshot, work, cx)),
 			)
+			.child(self.misalignment_panel(work, cx))
 			.child(self.request_panel(snapshot, work, cx))
 			.child(self.async_question_panel(work, cx))
 			.child(self.history_panel(work, cx))
@@ -1893,7 +1898,7 @@ mod tests {
 				"root".into(),
 				ChiefHistoryResult::Available {
 					questions: vec![],
-					questions_truncated: false, questions_recovering: false,
+					questions_truncated: false, questions_recovering: false, misalignment: None,
 					live: vec![],
 					next_before: None,
 					usage: None,
@@ -1956,7 +1961,7 @@ mod tests {
 				"root".into(),
 				ChiefHistoryResult::Available {
 					questions: vec![],
-					questions_truncated: false, questions_recovering: false,
+					questions_truncated: false, questions_recovering: false, misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
 						activity: None,
@@ -2077,7 +2082,7 @@ mod tests {
 				"chief".into(),
 				ChiefHistoryResult::Available {
 					questions: vec![],
-					questions_truncated: false, questions_recovering: false,
+					questions_truncated: false, questions_recovering: false, misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
 						activity: None,

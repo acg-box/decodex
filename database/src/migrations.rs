@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 25;
+const CURRENT_SCHEMA_VERSION: i64 = 26;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -140,6 +140,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 25,
 		name: "chief_async_questions",
 		sql: include_str!("../migrations/0025_chief_async_questions.sql"),
+	},
+	Migration {
+		version: 26,
+		name: "chief_misalignment",
+		sql: include_str!("../migrations/0026_chief_misalignment.sql"),
 	},
 ];
 

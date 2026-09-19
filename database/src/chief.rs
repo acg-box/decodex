@@ -778,6 +778,8 @@ impl SqliteStore {
 				} else { Err(StoreError::IdempotencyConflict) };
 			}
 			if !work_exists(&transaction, &input.work_item_id)? { return Err(DatabaseError::NotFound.into()); }
+            if input.event_kind == "user_message" && transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_misalignment m JOIN chief_work_items w ON w.id=m.work_id AND w.codex_thread_id=m.thread_id WHERE m.work_id=?1)",[&input.work_item_id],|row|row.get::<_,bool>(0)).map_err(sqlite_error)? { return Err(StoreError::InvalidInput("conversation paused for provider findings")); }
+
 			let now = unix_micros()?;
 			transaction.execute("INSERT INTO chief_inbox_events (source_event_id, work_item_id, event_kind, payload, created_at_micros, disposition, disposition_note, disposed_at_micros) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
 				params![input.source_event_id, input.work_item_id, input.event_kind, input.payload, now,
@@ -1388,6 +1390,96 @@ mod tests {
 			created_at_micros: 1,
 			updated_at_micros: 1,
 		}
+	}
+
+	#[tokio::test]
+	async fn misalignment_continuation_requires_exact_review_and_positive_acknowledgment() {
+		let directory = tempdir().unwrap();
+		let path = directory.path().join("chief.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		store.create_chief_work_item(item("chief", None)).await.unwrap();
+		store.bind_chief_thread("chief".into(), "thread".into()).await.unwrap();
+		store.begin_chief_dispatch("chief".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("chief".into(), "failed".into()).await.unwrap();
+		let details=serde_json::json!({"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}).to_string();
+		store
+			.record_chief_misalignment("thread".into(), "failed".into(), Some(details))
+			.await
+			.unwrap();
+		store.complete_chief_turn("chief".into(), "failed".into()).await.unwrap();
+		let review = store.chief_misalignment("chief".into()).await.unwrap().unwrap();
+		let mut stale = review.clone();
+		stale.turn_id = "older".into();
+		assert!(
+			store
+				.begin_chief_misalignment_continuation("chief".into(), stale, "stale".into())
+				.await
+				.is_err()
+		);
+		let event = store
+			.begin_chief_misalignment_continuation("chief".into(), review.clone(), "first".into())
+			.await
+			.unwrap();
+		assert!(store.chief_misalignment("chief".into()).await.unwrap().is_some());
+		assert!(
+			store
+				.begin_chief_misalignment_continuation(
+					"chief".into(),
+					review.clone(),
+					"duplicate".into()
+				)
+				.await
+				.is_err()
+		);
+		drop(store);
+		let store = SqliteStore::open_test(&path).unwrap();
+		assert!(
+			store
+				.begin_chief_misalignment_continuation(
+					"chief".into(),
+					review.clone(),
+					"after-restart".into()
+				)
+				.await
+				.is_err()
+		);
+		store
+			.finish_chief_misalignment_continuation("chief".into(), event, review.clone(), None)
+			.await
+			.unwrap();
+		assert!(store.chief_misalignment("chief".into()).await.unwrap().is_some());
+		let event = store
+			.begin_chief_misalignment_continuation(
+				"chief".into(),
+				review.clone(),
+				"confirmed".into(),
+			)
+			.await
+			.unwrap();
+		assert!(
+			store
+				.finish_chief_misalignment_continuation(
+					"chief".into(),
+					event,
+					review.clone(),
+					Some("failed".into())
+				)
+				.await
+				.is_err()
+		);
+		store
+			.finish_chief_misalignment_continuation(
+				"chief".into(),
+				event,
+				review,
+				Some("continued".into()),
+			)
+			.await
+			.unwrap();
+		assert!(store.chief_misalignment("chief".into()).await.unwrap().is_none());
+		let work = store.get_chief_work_item("chief".into()).await.unwrap();
+		assert_eq!(work.dispatch_state, ChiefDispatchState::Running);
+		assert_eq!(work.active_turn_id.as_deref(), Some("continued"));
 	}
 
 	#[tokio::test]

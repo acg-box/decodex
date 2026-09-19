@@ -9,7 +9,12 @@ pub(super) fn terminal(params: &Value) -> Value {
 	let mut error = turn["error"].clone();
 	if error.to_string().len() > 4096 {
 		let message = error["message"].as_str().unwrap_or("Terminal error details omitted.");
+		let classification =
+			error.get("codexErrorInfo").filter(|value| value.to_string().len() <= 1024).cloned();
 		error = json!({"message":message.chars().take(512).collect::<String>(),"truncated":true});
+		if let Some(classification) = classification {
+			error["codexErrorInfo"] = classification;
+		}
 	}
 	let omitted = params
 		.as_object()
@@ -110,6 +115,17 @@ pub(super) fn usage(params: &Value) -> Option<Value> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn long_error_keeps_provider_classification_without_partial_steer() {
+		let output = terminal(
+			&json!({"threadId":"thread","turn":{"id":"turn","status":"failed","error":{"message":"Stopped","codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"x".repeat(8000),"steer":{"message":"User must acknowledge this"}}}}}),
+		);
+		assert_eq!(output["turn"]["error"]["codexErrorInfo"], "misalignmentPolicyViolation");
+		assert_eq!(output["turn"]["error"]["truncated"], true);
+		assert!(output["turn"]["error"]["misalignment"].is_null());
+		assert!(output.to_string().len() < 4096);
+	}
 
 	#[test]
 	fn terminal_preserves_provider_duration_without_inventing_old_metrics() {

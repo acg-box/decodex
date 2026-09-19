@@ -3845,6 +3845,30 @@ async fn query_chief_history_page(
 	let Ok((events, partial)) = store.read_chief_transcript(id.into(), before, 33).await else {
 		return ChiefHistoryResult::Unavailable;
 	};
+	let Ok(precaution) = store.chief_misalignment(id.into()).await else {
+		return ChiefHistoryResult::Unavailable;
+	};
+	let misalignment = precaution
+		.map(|saved| {
+			let details: serde_json::Value = saved
+				.details_json
+				.as_deref()
+				.and_then(|value| serde_json::from_str(value).ok())
+				.unwrap_or_default();
+			decodex_protocol::ChiefMisalignmentDto {
+				review_id: saved.review_id(),
+				explanation: details["detailedExplanation"]
+					.as_str()
+					.filter(|text| !text.trim().is_empty() && text.len() <= 65536)
+					.map(str::to_owned),
+				continuation: details
+					.pointer("/steer/message")
+					.and_then(serde_json::Value::as_str)
+					.filter(|text| !text.trim().is_empty() && text.len() <= 1024)
+					.map(str::to_owned),
+			}
+		})
+		.map(Box::new);
 	let Ok(questions_recovering) = store.chief_async_questions_recovering(id.into()).await else {
 		return ChiefHistoryResult::Unavailable;
 	};
@@ -3975,6 +3999,7 @@ async fn query_chief_history_page(
 		questions,
 		questions_truncated,
 		questions_recovering,
+		misalignment,
 		entries,
 		has_more,
 		next_before,

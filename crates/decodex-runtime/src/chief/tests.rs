@@ -59,7 +59,7 @@ async fn fixture()
 	fixture_with_history(json!({})).await
 }
 
-async fn fixture_with_history(
+pub(super) async fn fixture_with_history(
 	history: Value,
 ) -> (ChiefCoordinator, tokio::sync::mpsc::UnboundedReceiver<Value>, tempfile::TempDir) {
 	let directory = tempfile::tempdir().unwrap();
@@ -91,6 +91,11 @@ async fn fixture_with_history(
 				writer.write_all(frame.as_bytes()).await.unwrap();
 				continue;
 			}
+			if request["method"] == "thread/realtime/stop"
+				&& history["_voice_stop_disconnect"] == true
+			{
+				break;
+			}
 			if request["method"] == "turn/steer" && history["_steer_disconnect"] == true {
 				break;
 			}
@@ -101,6 +106,22 @@ async fn fixture_with_history(
 				);
 				writer.write_all(frame.as_bytes()).await.unwrap();
 				continue;
+			}
+			if request["method"] == "turn/start"
+				&& request["params"]["responsesapiClientMetadata"]["misalignment_override"]
+					.is_string()
+			{
+				if history["_continuation_disconnect"] == true {
+					break;
+				}
+				if history["_continuation_reject"] == true {
+					let frame = format!(
+						"{}\n",
+						json!({"id":request["id"],"error":{"code":-32600,"message":"continuation rejected"}})
+					);
+					writer.write_all(frame.as_bytes()).await.unwrap();
+					continue;
+				}
 			}
 			let result = match request["method"].as_str() {
 				Some("turn/steer") => json!({"turnId":request["params"]["expectedTurnId"]}),
@@ -1617,4 +1638,180 @@ async fn async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade() {
 	}
 	assert!(started);
 	assert_eq!(chief.store.chief_tool_version("chief".into()).await.unwrap(), 1);
+}
+
+#[tokio::test]
+async fn misalignment_precaution_survives_reopen_and_blocks_ordinary_dispatch() {
+	let (mut chief, mut sent, directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	chief.enqueue_user_message("chief", "queued-before-stop", "Queued work").await.unwrap();
+	let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review the scope.","steer":{"message":"Continue with the clarified scope"}}});
+	chief
+		.observe_notification(
+			"error",
+			&json!({"threadId":"opaque thread/1","turnId":"stale","willRetry":false,"error":error}),
+		)
+		.await
+		.unwrap();
+	assert!(chief.store.chief_misalignment("chief".into()).await.unwrap().is_none());
+	chief
+		.observe_notification(
+			"error",
+			&json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","willRetry":true,"error":error}),
+		)
+		.await
+		.unwrap();
+	assert!(chief.store.chief_misalignment("chief".into()).await.unwrap().is_none());
+	chief
+		.observe_notification(
+			"error",
+			&json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","willRetry":false,"error":error}),
+		)
+		.await
+		.unwrap();
+	chief
+		.observe_misalignment(
+			"opaque thread/1",
+			"opaque turn/1",
+			&json!({"codexErrorInfo":"misalignmentPolicyViolation"}),
+		)
+		.await
+		.unwrap();
+	let saved = chief.store.chief_misalignment("chief".into()).await.unwrap().unwrap();
+	assert!(chief.enqueue_user_message("chief", "after-stop", "New work").await.is_err());
+	assert!(chief.store.list_undelivered_chief_events(100).await.unwrap().is_empty());
+
+	assert!(saved.details_json.as_deref().unwrap().contains("Review the scope."));
+	assert!(chief.steer_work("chief", "opaque turn/1", "ordinary", "Continue", &[]).await.is_err());
+	chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
+	assert!(chief.continue_worker("chief", "Continue").await.is_err());
+	assert!(sent.try_recv().is_err());
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	let reopened = SqliteStore::open(&root.paths()).unwrap();
+	assert_eq!(reopened.chief_misalignment("chief".into()).await.unwrap(), Some(saved));
+}
+
+#[tokio::test]
+async fn explicit_misalignment_continuation_uses_native_override_and_clears_after_ack() {
+	let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
+	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":error,"items":[]}]}}});
+	let (mut chief, mut sent, _directory) = fixture_with_history(history).await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	chief.observe_misalignment("opaque thread/1", "opaque turn/1", &error).await.unwrap();
+	chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
+	let review = chief.store.chief_misalignment("chief".into()).await.unwrap().unwrap();
+	while sent.try_recv().is_ok() {}
+	chief.continue_misalignment("chief", review, "acknowledged").await.unwrap();
+	let mut turns = Vec::new();
+	while let Ok(request) = sent.try_recv() {
+		if request["method"] == "turn/start" {
+			turns.push(request);
+		}
+	}
+	assert_eq!(turns.len(), 1);
+	assert_eq!(turns[0]["params"]["threadId"], "opaque thread/1");
+	assert_eq!(turns[0]["params"]["input"][0]["text"], "Clarified scope");
+	let metadata: Value = serde_json::from_str(
+		turns[0]["params"]["responsesapiClientMetadata"]["misalignment_override"].as_str().unwrap(),
+	)
+	.unwrap();
+	assert!(metadata["timestamp"].as_u64().unwrap() > 0);
+	assert!(chief.store.chief_misalignment("chief".into()).await.unwrap().is_none());
+	assert_eq!(
+		chief.store.get_chief_work_item("chief".into()).await.unwrap().active_turn_id.as_deref(),
+		Some("opaque turn/2")
+	);
+}
+
+#[tokio::test]
+async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution() {
+	for outcome in ["changed", "rejected", "uncertain"] {
+		let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
+		let mut native_error = error.clone();
+		if outcome == "changed" {
+			native_error["misalignment"]["detailedExplanation"] = json!("New findings");
+		}
+		let history = json!({"_continuation_disconnect":outcome=="uncertain","_continuation_reject":outcome=="rejected","opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":native_error,"items":[]}]}}});
+		let (mut chief, mut sent, directory) = fixture_with_history(history).await;
+		chief.start_chief("chief", "Coordinate").await.unwrap();
+		chief.observe_misalignment("opaque thread/1", "opaque turn/1", &error).await.unwrap();
+		chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
+		let review = chief.store.chief_misalignment("chief".into()).await.unwrap().unwrap();
+		while sent.try_recv().is_ok() {}
+		let failure =
+			chief.continue_misalignment("chief", review.clone(), "acknowledged").await.unwrap_err();
+		assert_eq!(matches!(failure, ChiefError::Rejected(_)), outcome != "uncertain");
+		assert!(chief.store.chief_misalignment("chief".into()).await.unwrap().is_some());
+		let state = chief.store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state;
+		assert_eq!(
+			state,
+			if outcome == "uncertain" {
+				decodex_database::ChiefDispatchState::Dispatching
+			} else {
+				decodex_database::ChiefDispatchState::Idle
+			}
+		);
+		let mut starts = 0;
+		while let Ok(request) = sent.try_recv() {
+			starts += usize::from(request["method"] == "turn/start");
+		}
+		assert_eq!(starts, usize::from(outcome != "changed"));
+		if outcome == "uncertain" {
+			let root = decodex_core::DecodexRoot::new(
+				directory.path().canonicalize().unwrap().join("root"),
+			)
+			.unwrap();
+			let (mut reopened, mut requests, _other) = fixture().await;
+			reopened.store = SqliteStore::open(&root.paths()).unwrap();
+			assert!(reopened.continue_misalignment("chief", review, "new-key").await.is_err());
+			assert!(requests.try_recv().is_err());
+		}
+	}
+}
+
+#[tokio::test]
+async fn idle_thread_recovery_restores_only_latest_misalignment_failure() {
+	for stopped in [false, true] {
+		let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Recovered findings","steer":{"message":"Clarified scope"}}});
+		let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"older","status":"failed","error":error,"items":[]},{"id":"latest","status":if stopped {"failed"} else {"completed"},"error":if stopped {error.clone()} else {Value::Null},"items":[]}]}}});
+		let (mut chief, mut sent, _directory) = fixture_with_history(history).await;
+		chief.start_chief("chief", "Coordinate").await.unwrap();
+		chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
+		while sent.try_recv().is_ok() {}
+		chief.recover_persisted().await.unwrap();
+		let precaution = chief.store.chief_misalignment("chief".into()).await.unwrap();
+		assert_eq!(precaution.is_some(), stopped);
+		if let Some(precaution) = precaution {
+			assert_eq!(precaution.turn_id, "latest");
+			assert!(precaution.details_json.unwrap().contains("Recovered findings"));
+		}
+		while let Ok(request) = sent.try_recv() {
+			assert_eq!(request["method"], "thread/read");
+		}
+	}
+}
+
+#[tokio::test]
+async fn misalignment_does_not_send_or_consume_pending_provider_approval() {
+	let (mut chief, mut sent, _directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	let id = RequestId::Number(7);
+	chief.handle_event(ServerEvent::Request {id:id.clone(),method:"item/commandExecution/requestApproval".into(),params:json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"item","command":"pwd"})}).await.unwrap();
+	let event = chief.pending_requests[&id];
+	chief
+		.observe_misalignment(
+			"opaque thread/1",
+			"opaque turn/1",
+			&json!({"codexErrorInfo":"misalignmentPolicyViolation"}),
+		)
+		.await
+		.unwrap();
+	while sent.try_recv().is_ok() {}
+	assert!(chief.respond_pending_event(event, json!({"decision":"accept"})).await.is_err());
+	assert_eq!(chief.pending_requests[&id], event);
+	assert!(chief.store.get_chief_inbox_event(event).await.unwrap().disposition.is_none());
+	assert!(sent.try_recv().is_err());
 }

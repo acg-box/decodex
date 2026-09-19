@@ -183,7 +183,7 @@ mod tests {
 			let mut history = ChiefHistoryResult::Available {
 				questions: vec![first.clone(), second.clone()],
 				questions_truncated: false,
-				questions_recovering: false,
+				questions_recovering: false, misalignment: None,
 				usage: None,
 				entries: vec![],
 				has_more: false,
@@ -245,7 +245,7 @@ mod tests {
 					options: vec!["PDF".into(), "Markdown".into()],
 				}],
 				questions_truncated: false,
-				questions_recovering: false,
+				questions_recovering: false, misalignment: None,
 				usage: None,
 				entries: vec![],
 				has_more: false,

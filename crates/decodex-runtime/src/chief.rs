@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 mod activity;
+mod misalignment;
 pub(crate) mod observations;
 mod result_messages;
 mod voice;
@@ -56,6 +57,8 @@ pub enum ChiefError {
 	Store(String),
 	/// Input or observed state violates the coordination contract.
 	Invalid(String),
+	/// An explicit continuation was rejected before execution or by the provider.
+	Rejected(String),
 	/// The requested work already has an active dispatch.
 	Busy,
 	/// A prior dispatch has no conclusive acknowledgment.
@@ -261,6 +264,7 @@ impl ChiefCoordinator {
 		if item.active_turn_id.as_ref() != Some(&turn) {
 			return Ok(());
 		}
+		self.observe_misalignment(&thread, &turn, &params["turn"]["error"]).await?;
 		if item.dispatch_state != decodex_database::ChiefDispatchState::Running {
 			self.store.reconcile_chief_dispatch(item.id.clone(), turn.clone()).await?;
 		}
@@ -453,6 +457,12 @@ impl ChiefCoordinator {
 			.ok_or_else(|| {
 				ChiefError::Invalid("request event is not pending on this live connection".into())
 			})?;
+		let event = self.store.get_chief_inbox_event(event_id).await?;
+		if self.store.chief_misalignment(event.work_item_id).await?.is_some() {
+			return Err(ChiefError::Invalid(
+				"This conversation is paused for provider findings.".into(),
+			));
+		}
 		self.pending_requests.remove(&request_id);
 		self.client.respond(request_id, response).await?;
 		self.store.acknowledge_chief_request_event(event_id).await?;
@@ -743,6 +753,12 @@ impl ChiefCoordinator {
 		events: Vec<i64>,
 		retry: Option<(i64, i64)>,
 	) -> Result<String, ChiefError> {
+		if self.store.chief_misalignment(item.id.clone()).await?.is_some() {
+			return Err(ChiefError::Invalid(
+				"This conversation is paused. Review the provider findings before continuing."
+					.into(),
+			));
+		}
 		if item.kind == ChiefWorkKind::Goal && !self.is_manager(&item.id).await? {
 			return Err(ChiefError::Invalid(
 				"a goal does not own a manager thread; create a worker for this goal".into(),
@@ -905,6 +921,12 @@ impl ChiefCoordinator {
 		attachments: &[decodex_protocol::ChiefAttachmentDto],
 		async_question_id: Option<&str>,
 	) -> Result<(), ChiefError> {
+		if self.store.chief_misalignment(id.into()).await?.is_some() {
+			return Err(ChiefError::Invalid(
+				"This conversation is paused. Review the provider findings before continuing."
+					.into(),
+			));
+		}
 		let work = self.store.get_chief_work_item(id.into()).await?;
 		if work.dispatch_state != decodex_database::ChiefDispatchState::Running
 			|| work.active_turn_id.as_deref() != Some(expected_turn)
