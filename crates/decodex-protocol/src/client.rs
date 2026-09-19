@@ -296,6 +296,7 @@ impl ChiefClient {
 							| "item/fileChange/requestApproval"
 							| "item/permissions/requestApproval"
 							| "item/tool/requestUserInput"
+							| "mcpServer/elicitation/request"
 					)) {
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -2170,6 +2171,70 @@ mod tests {
 			.await;
 		task.await.expect("test server must settle");
 		response
+	}
+
+	#[tokio::test]
+	async fn chief_request_transport_admits_mcp_forms_but_rejects_wrong_event_and_unknown_method() {
+		for (method, returned, accepted) in [
+			("mcpServer/elicitation/request", 7, true),
+			("mcpServer/elicitation/request", 8, false),
+			("unknown/request", 7, false),
+		] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let stream = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let _ = socket.next().await;
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+					panic!("text request");
+				};
+				let ClientMessage::Query(query) =
+					serde_json::from_str::<ClientMessage>(&request).unwrap()
+				else {
+					panic!("query");
+				};
+				assert!(matches!(
+					query.payload,
+					crate::QueryPayload::GetChiefRequest { event_id: 7 }
+				));
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::ChiefRequest(
+							crate::ChiefRequestResult::Available {
+								event_id: returned,
+								work_id: "chief".into(),
+								method: method.into(),
+								request_json: crate::HistoryText::new(
+									r#"{"mode":"form","requestedSchema":null,"message":"Allow this request?"}"#,
+								)
+								.unwrap(),
+							},
+						),
+					})))
+					.await
+					.unwrap();
+				drop(socket);
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = crate::ChiefClient::new(profile).request(7).await;
+			task.await.unwrap();
+			if accepted {
+				assert!(
+					matches!(result,Ok(crate::ChiefRequestResult::Available {method,..}) if method=="mcpServer/elicitation/request")
+				);
+			} else {
+				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed);
+			}
+		}
 	}
 
 	fn result(report: DoctorReport) -> Message {

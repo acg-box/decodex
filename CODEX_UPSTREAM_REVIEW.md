@@ -453,3 +453,13 @@ metadata and final empty readback all passed. No model turn was submitted. A new
 started but unpersisted empty thread correctly returns not-found; the successful
 run resumed a persisted fixture and used the returned native identity. This is
 native API acceptance, not a claim of full desktop/model end-to-end coverage.
+
+## MCP client admission follow-up
+
+The earlier MCP elicitation change updated service projection and GPUI controls but
+missed ChiefClient's request-method admission check. As a result, a valid MCP form
+returned by the service was rejected before it reached the UI. The client now
+admits mcpServer/elicitation/request while retaining exact event identity and
+unknown-method rejection. A real local WebSocket exchange regression failed on the
+old admission check and passes after the fix. Directly injecting a form into GPUI
+was insufficient evidence for this transport boundary.
