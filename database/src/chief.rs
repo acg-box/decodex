@@ -943,6 +943,26 @@ impl SqliteStore {
 		&self,
 		event_id: i64,
 	) -> Result<ChiefInboxEvent, StoreError> {
+		self.finish_chief_request_event(
+			event_id,
+			"Response delivered to the current provider request; work judgment is unchanged.",
+		)
+		.await
+	}
+
+	/// Record the provider resolution without claiming that this client sent a response.
+	pub async fn resolve_chief_request_event(
+		&self,
+		event_id: i64,
+	) -> Result<ChiefInboxEvent, StoreError> {
+		self.finish_chief_request_event(event_id, "Provider resolved the current request; no local response was sent and work judgment is unchanged.").await
+	}
+
+	async fn finish_chief_request_event(
+		&self,
+		event_id: i64,
+		note: &'static str,
+	) -> Result<ChiefInboxEvent, StoreError> {
 		self.run(move |connection| {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			let event = read_event(&transaction, event_id)?;
@@ -950,7 +970,7 @@ impl SqliteStore {
 				return Err(StoreError::InvalidInput("event is not a Chief provider request"));
 			}
 			if event.disposition.is_some() { return Err(DatabaseError::Conflict.into()); }
-			transaction.execute("UPDATE chief_inbox_events SET disposition = 'resolved', disposition_note = 'Response delivered to the current provider request; work judgment is unchanged.', disposed_at_micros = max(created_at_micros, ?2) WHERE id = ?1 AND disposition IS NULL", params![event_id, unix_micros()?]).map_err(sqlite_error)?;
+			transaction.execute("UPDATE chief_inbox_events SET disposition = 'resolved', disposition_note = ?3, disposed_at_micros = max(created_at_micros, ?2) WHERE id = ?1 AND disposition IS NULL", params![event_id, unix_micros()?, note]).map_err(sqlite_error)?;
 			let updated = read_event(&transaction, event_id)?;
 			transaction.commit().map_err(sqlite_error)?;
 			Ok(updated)

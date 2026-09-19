@@ -245,3 +245,17 @@ down cannot move an option before the click completes. Three GPUI timing and
 interaction tests and the runtime pending-request projection test pass. This
 implements native request-user-input callbacks; structured asynchronous agent
 message questions remain separate work.
+
+## Native request resolution follow-up
+
+Chief now consumes `serverRequest/resolved`. A notification must match both
+the current connection's typed JSON-RPC request ID and the original thread.
+The matching pending event is resolved, its response authority is removed, and
+the UI can no longer offer it. Duplicate, unknown and wrong-thread notifications
+do not resolve another request. The receipt identifies provider resolution;
+it does not claim that Decodex sent an answer or that the work is complete.
+
+Validation: 43 Chief tests pass, including colliding item IDs, typed request
+identity, wrong-thread and duplicate notifications, and rejection of a response
+after native resolution. The existing database receipt test also checks that
+request resolution does not change work judgment.
