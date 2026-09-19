@@ -116,7 +116,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 29 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 30 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
@@ -196,3 +196,8 @@ mod tests {
 		);
 	}
 }
+
+mod mcp_elicitation;
+pub use mcp_elicitation::{
+	McpFormChoice, McpFormField, mcp_form_content, mcp_form_fields, validate_mcp_response,
+};

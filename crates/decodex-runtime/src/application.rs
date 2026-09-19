@@ -3614,16 +3614,20 @@ async fn query_chief_request(
 	let Ok(work) = store.get_chief_work_item(event.work_item_id.clone()).await else {
 		return ChiefRequestResult::Unavailable;
 	};
-	if work.dispatch_state != decodex_database::ChiefDispatchState::Running
-		|| work.codex_thread_id.is_none()
-		|| work.active_turn_id.is_none()
+	let standalone_elicitation = payload["method"] == "mcpServer/elicitation/request"
+		&& params.get("turnId").is_none_or(serde_json::Value::is_null);
+	if work.codex_thread_id.is_none()
 		|| params.get("threadId").and_then(serde_json::Value::as_str)
 			!= work.codex_thread_id.as_deref()
-		|| params.get("turnId").and_then(serde_json::Value::as_str)
-			!= work.active_turn_id.as_deref()
+		|| (!standalone_elicitation
+			&& (work.dispatch_state != decodex_database::ChiefDispatchState::Running
+				|| work.active_turn_id.is_none()
+				|| params.get("turnId").and_then(serde_json::Value::as_str)
+					!= work.active_turn_id.as_deref()))
 	{
 		return ChiefRequestResult::Unavailable;
 	}
+
 	let Some(method) = payload["method"].as_str() else {
 		return ChiefRequestResult::Unavailable;
 	};
@@ -3642,14 +3646,51 @@ async fn query_chief_request(
 		"item/fileChange/requestApproval" => &["reason", "grantRoot"],
 		"item/permissions/requestApproval" => &["cwd", "reason", "permissions"],
 		"item/tool/requestUserInput" => &["questions", "isBlocking"],
+		"mcpServer/elicitation/request" => &[
+			"serverName",
+			"mode",
+			"message",
+			"requestedSchema",
+			"url",
+			"elicitationId",
+			"title",
+			"description",
+			"_meta",
+		],
 		_ => return ChiefRequestResult::Unavailable,
 	};
 	let mut selected = serde_json::Map::new();
 	for key in keys {
 		if let Some(value) = params.get(*key) {
+			if *key == "_meta" {
+				if let Some(meta) = value.as_object() {
+					let selected_meta: serde_json::Map<String, serde_json::Value> = meta
+						.iter()
+						.filter(|(key, _)| {
+							[
+								"codex_approval_kind",
+								"persist",
+								"connector_name",
+								"tool_name",
+								"tool_title",
+								"tool_description",
+								"tool_params",
+								"tool_params_display",
+							]
+							.contains(&key.as_str())
+						})
+						.map(|(key, value)| (key.clone(), value.clone()))
+						.collect();
+					selected.insert("_meta".into(), serde_json::Value::Object(selected_meta));
+				}
+				continue;
+			}
 			let valid = match *key {
 				"kind" => matches!(value.as_str(), Some("command" | "writeStdin")),
 				"command" | "cwd" | "reason" | "grantRoot" => value.is_null() || value.is_string(),
+				"serverName" | "mode" | "message" | "url" | "elicitationId" | "title"
+				| "description" => value.is_string(),
+				"requestedSchema" => value.is_null() || value.is_object(),
 				"questions" => value.is_array(),
 				"isBlocking" => value.is_boolean(),
 				"availableDecisions"
@@ -4803,6 +4844,43 @@ mod tests {
 			assert_eq!(fields["reason"], "Review");
 			assert_eq!(fields["changeDetailsTruncated"], true);
 			assert!(fields["changeDetails"].as_str().unwrap().contains("/tmp/file"));
+		}
+	}
+
+	#[tokio::test]
+	async fn standalone_mcp_elicitation_projects_only_owned_request_fields() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(store.clone());
+		chief_query_work(&store, "worker").await;
+		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
+		for (index, thread, turn, available) in [
+			(0, "thread", serde_json::Value::Null, true),
+			(1, "other", serde_json::Value::Null, false),
+			(2, "thread", serde_json::json!("stale"), false),
+		] {
+			let payload = serde_json::json!({"method":"mcpServer/elicitation/request","params":{"threadId":thread,"turnId":turn,"serverName":"calendar","mode":"form","message":"Choose a date","requestedSchema":{"type":"object","properties":{"date":{"type":"string","format":"date"}}},"challenge":"PRIVATE_CHALLENGE","_meta":{"tool_name":"calendar.create","private_token":"PRIVATE_TOKEN"}}});
+			let event = store
+				.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
+					source_event_id: format!("elicitation-{index}"),
+					work_item_id: "worker".into(),
+					event_kind: "server_request_pending".into(),
+					payload: payload.to_string(),
+				})
+				.await
+				.unwrap();
+			let result = super::query_chief_request(&owner, event.id).await;
+			assert_eq!(
+				matches!(result, decodex_protocol::ChiefRequestResult::Available { .. }),
+				available
+			);
+			if let decodex_protocol::ChiefRequestResult::Available { request_json, .. } = result {
+				let value: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
+				assert_eq!(value["mode"], "form");
+				assert_eq!(value["_meta"]["tool_name"], "calendar.create");
+				assert!(!request_json.as_str().contains("PRIVATE_"));
+			}
 		}
 	}
 

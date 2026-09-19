@@ -463,6 +463,12 @@ impl ChiefCoordinator {
 				"This conversation is paused for provider findings.".into(),
 			));
 		}
+		let payload: Value = serde_json::from_str(&event.payload)
+			.map_err(|_| ChiefError::Rejected("Stored request is unavailable.".into()))?;
+		if payload["method"] == "mcpServer/elicitation/request" {
+			decodex_protocol::validate_mcp_response(&payload["params"], &response)
+				.map_err(ChiefError::Rejected)?;
+		}
 		self.pending_requests.remove(&request_id);
 		self.client.respond(request_id, response).await?;
 		self.store.acknowledge_chief_request_event(event_id).await?;

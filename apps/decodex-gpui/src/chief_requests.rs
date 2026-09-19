@@ -37,6 +37,7 @@ impl ChiefSurface {
 		request: &ChiefRequestResult,
 		cx: &mut Context<Self>,
 	) {
+		self.prepare_mcp_inputs(request, cx);
 		self.question_inputs.clear();
 		if let ChiefRequestResult::Available { event_id, method, request_json, .. } = request
 			&& method == "item/tool/requestUserInput"
@@ -84,6 +85,9 @@ impl ChiefSurface {
 		}
 		let value: serde_json::Value =
 			serde_json::from_str(request_json.as_str()).unwrap_or_default();
+		if method == "mcpServer/elicitation/request" {
+			return self.mcp_form_panel(*event_id, &value, cx);
+		}
 		let mut panel = div()
 			.capture_key_down(cx.listener(|s, _, _, cx| {
 				s.snooze_question_timeout();

@@ -408,7 +408,8 @@ impl ChiefHost {
 				let (_, chief, _) = active
 					.as_mut()
 					.ok_or("Chief is not connected; stale requests cannot be replayed")?;
-				chief.respond_pending_event(event_id, response).await.map_err(|_| {
+				chief.respond_pending_event(event_id, response).await.map_err(|error| {
+                    if matches!(error,ChiefError::Rejected(_)) { return ChiefHostError::Rejected("The response does not match the current provider request. Review the form before submitting."); }
 					ChiefHostError::Unknown(
 						"request response could not be confirmed; refresh state before retrying",
 					)
