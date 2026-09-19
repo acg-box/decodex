@@ -3683,7 +3683,23 @@ async fn query_chief_request(
 }
 
 fn chief_user_message_text(value: &serde_json::Value) -> String {
-	let mut text = value["text"].as_str().unwrap_or("").to_owned();
+	let raw = value["text"].as_str().unwrap_or("");
+	let mut text = match decodex_protocol::parse_chief_async_question_replies(raw) {
+		Some(replies) => replies
+			.into_iter()
+			.map(|reply| {
+				let question = reply
+					.question
+					.lines()
+					.map(|line| format!("> {line}"))
+					.collect::<Vec<_>>()
+					.join("\n");
+				format!("{question}\n\n{}", reply.answer)
+			})
+			.collect::<Vec<_>>()
+			.join("\n\n"),
+		None => raw.to_owned(),
+	};
 	if let Some(files) = value.pointer("/options/attachments").and_then(serde_json::Value::as_array)
 	{
 		for file in files.iter().take(16) {
@@ -3829,19 +3845,45 @@ async fn query_chief_history_page(
 	let Ok((events, partial)) = store.read_chief_transcript(id.into(), before, 33).await else {
 		return ChiefHistoryResult::Unavailable;
 	};
+	let Ok(questions_recovering) = store.chief_async_questions_recovering(id.into()).await else {
+		return ChiefHistoryResult::Unavailable;
+	};
+	let Ok(pending_questions) = store.read_chief_async_questions(id.into()).await else {
+		return ChiefHistoryResult::Unavailable;
+	};
+	let mut questions = Vec::new();
+	let mut questions_truncated = false;
+	let mut question_bytes = 2;
+	for pending in pending_questions {
+		let Ok(question) =
+			serde_json::from_str::<decodex_protocol::ChiefAsyncQuestionDto>(&pending.question_json)
+		else {
+			return ChiefHistoryResult::Unavailable;
+		};
+		let cost = pending.question_json.len() + 1;
+		if questions.len() >= 32
+			|| question_bytes + cost > decodex_protocol::MAX_HISTORY_INLINE_BYTES
+		{
+			questions_truncated = true;
+			break;
+		}
+		question_bytes += cost;
+		questions.push(question);
+	}
 	let older_available = events.len() > 32;
 	let mut has_more = older_available;
 	let pending_retry = store.pending_chief_capacity_retry(id.into()).await.ok().flatten();
 	let mut rendered_messages = std::collections::HashSet::<(String, String)>::new();
 	let mut entries = Vec::new();
-	let mut remaining = 64 * 1024;
+	let mut remaining = 64 * 1024 - question_bytes;
 	let mut page_full = false;
 	for event in events.into_iter().rev().take(32) {
 		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap_or_default();
 		let mut completed_message_ids = Vec::new();
 		let (kind, mut text) = match event.event_kind.as_str() {
 			"activity_started" | "activity_completed" => ("activity", String::new()),
-			"user_message" | "voice_user" => ("user", chief_user_message_text(&value)),
+			"user_message" | "async_question_answer" | "voice_user" =>
+				("user", chief_user_message_text(&value)),
 			"voice_assistant" => ("assistant", chief_user_message_text(&value)),
 
 			"work_instruction" => ("instruction", value["text"].as_str().unwrap_or("").to_owned()),
@@ -3930,6 +3972,9 @@ async fn query_chief_history_page(
 	};
 	let live = query_chief_live(partial);
 	ChiefHistoryResult::Available {
+		questions,
+		questions_truncated,
+		questions_recovering,
 		entries,
 		has_more,
 		next_before,
@@ -4303,6 +4348,21 @@ fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn async_reply_history_is_readable_without_interpreting_partial_envelopes() {
+		let question = decodex_protocol::ChiefAsyncQuestionDto {
+			id: "question-1".into(),
+			title: "Which region?".into(),
+			options: vec![],
+		};
+		let reply = decodex_protocol::chief_async_question_reply(&question, "Europe").unwrap();
+		assert_eq!(
+			super::chief_user_message_text(&serde_json::json!({"text": reply.as_str()})),
+			"> Which region?\n\nEurope"
+		);
+		let quoted = format!("An example: {}", reply.as_str());
+		assert_eq!(super::chief_user_message_text(&serde_json::json!({"text": quoted})), quoted);
+	}
 	use crate::account_launch::{ResetCardFailureCode, ResetCardOperationStatus};
 	use decodex_core::{
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,

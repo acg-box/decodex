@@ -259,3 +259,36 @@ Validation: 43 Chief tests pass, including colliding item IDs, typed request
 identity, wrong-thread and duplicate notifications, and rejection of a response
 after native resolution. The existing database receipt test also checks that
 request resolution does not change work judgment.
+
+## Structured asynchronous question follow-up
+
+Reviewed upstream `dbf478850fb84b7d32b4b9d4c4df43aa8539be83` and
+`2808a9c348ee90a6fc94aee1570dd3fdf2c0b021`, including the final question state
+and reply implementation at `595cc91e8cbb1c2ca822d0311dcf12709410c582`.
+
+Chief projects structured async agent questions separately from request callbacks.
+Each card has the upstream item/index identity, suggested options, free text and
+explicit submission. Selecting an option does not submit it. Drafts are isolated
+by work and question identity. Replies use the native desktop-compatible envelope;
+history renders readable questions and answers. Running work receives exact-turn
+steering. Idle work starts a turn on its original thread, including old managers
+whose next ordinary dispatch will upgrade tools. No answer wakes a parent manager.
+
+SQLite migration 25 preserves questions, answer tombstones and pending recovery.
+Native replies, including other-client replies, dismiss only matching questions.
+A new ordinary prompt retires earlier questions without allowing replay to reopen
+them. Upgrade and reconnect recovery read exact native history with turn/item
+pagination. Incomplete recovery withholds cards and retains drafts. A live remote
+prompt must appear in history before its recovery marker is removed. Persisted
+uncertain submission evidence prevents another answer attempt after restart.
+
+The TUI's 30-second async expiry applies only to collapsed questions. Expansion
+stops it. Decodex displays expanded cards and does not submit or expire them on a
+callback timer. The separate nonblocking callback policy remains unchanged.
+
+Validation covers durable reopen, legacy and paginated history, incomplete reads,
+remote prompt replay, exact running/idle worker delivery, rejection/disconnection,
+restart fencing, and rendered option/button/keyboard interaction. These are local
+protocol and native GPUI fixtures; no live model-generated question session is
+claimed. This capability delivery does not close the remaining model metadata,
+misalignment, attachment, plugin/MCP or broader upstream review work.

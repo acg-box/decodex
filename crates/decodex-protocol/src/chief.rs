@@ -106,6 +106,13 @@ pub struct ChiefUsageDto {
 pub enum ChiefHistoryResult {
 	/// Verified visible entries; older history or shortened content is explicitly indicated.
 	Available {
+		/// Unanswered asynchronous questions for the current native thread, independent of history
+		/// paging.
+		questions: Vec<crate::ChiefAsyncQuestionDto>,
+		/// Additional questions exist beyond this bounded page.
+		questions_truncated: bool,
+		/// Native history recovery is incomplete; historical question cards are withheld.
+		questions_recovering: bool,
 		/// Latest observed usage for the current provider thread.
 		usage: Option<ChiefUsageDto>,
 		/// Source-bound records.
@@ -197,6 +204,15 @@ pub enum ChiefActionDto {
 		text: crate::HistoryText,
 		/// Files captured at send time.
 		attachments: Vec<ChiefAttachmentDto>,
+	},
+	/// Answer one source-bound asynchronous question with an explicit user message.
+	AnswerQuestion {
+		/// Work that owns the original question.
+		work_id: crate::EntityId,
+		/// Stable native question identity.
+		question_id: crate::WireText,
+		/// Explicit free text or user-selected option.
+		answer: crate::HistoryText,
 	},
 	/// Cancel one exact pending model-capacity retry.
 	CancelCapacityRetry {

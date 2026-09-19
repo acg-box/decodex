@@ -91,6 +91,7 @@ pub struct ChiefCoordinator {
 	pending_requests: std::collections::HashMap<RequestId, i64>,
 	connection_id: String,
 	dispatch_paused: bool,
+	async_recovery_queued: bool,
 }
 
 const INSTRUCTIONS: &str = include_str!("chief/instructions.md");
@@ -132,6 +133,7 @@ impl ChiefCoordinator {
 			pending_requests: std::collections::HashMap::new(),
 			connection_id,
 			dispatch_paused: false,
+			async_recovery_queued: false,
 		})
 	}
 
@@ -151,6 +153,11 @@ impl ChiefCoordinator {
 	/// This hydrates threads and records evidence; it never starts or replays a turn.
 	pub async fn recover_persisted(&mut self) -> Result<(), ChiefError> {
 		self.recover_voice_calls().await?;
+		if !self.async_recovery_queued {
+			self.store.queue_chief_async_reconnection().await?;
+			self.async_recovery_queued = true;
+		}
+		self.recover_async_questions().await?;
 		let work = self.store.list_chief_work_items().await?;
 		for item in &work {
 			if matches!(
@@ -263,6 +270,13 @@ impl ChiefCoordinator {
 					value.pointer("/thread/turns").and_then(Value::as_array).and_then(|turns| {
 						turns.iter().find(|entry| entry["id"].as_str() == Some(&turn))
 					});
+				if value.pointer("/thread/id").and_then(Value::as_str) == Some(thread.as_str()) {
+					for entry in
+						exact_turn.and_then(|turn| turn["items"].as_array()).into_iter().flatten()
+					{
+						self.observe_async_question_item(&thread, &turn, entry).await?;
+					}
+				}
 				let (messages, truncated) = result_messages::collect(exact_turn);
 				let retry_eligible = value.pointer("/thread/id").and_then(Value::as_str)
 					== Some(thread.as_str())
@@ -313,6 +327,7 @@ impl ChiefCoordinator {
 				},
 			)
 			.await?;
+		self.recover_async_questions().await?;
 		Ok(())
 	}
 
@@ -623,8 +638,13 @@ impl ChiefCoordinator {
 		let mut retained = Vec::new();
 		let mut bytes = 0;
 		for event in context.into_iter().rev() {
-			if !["user_message", "chief_turn_completed", "worker_turn_completed"]
-				.contains(&event.event_kind.as_str())
+			if ![
+				"user_message",
+				"async_question_answer",
+				"chief_turn_completed",
+				"worker_turn_completed",
+			]
+			.contains(&event.event_kind.as_str())
 			{
 				continue;
 			}
@@ -753,7 +773,15 @@ impl ChiefCoordinator {
 		if !unresolved.is_empty() {
 			return Err(ChiefError::DependenciesPending(unresolved));
 		}
-		let item = self.ensure_thread(item).await?;
+		let mut exact_question_target = false;
+		for event_id in &events {
+			exact_question_target |= self.store.get_chief_inbox_event(*event_id).await?.event_kind
+				== "async_question_answer";
+		}
+		// An answer belongs to the question's original thread. Tool upgrades can
+		// fork managers, so leave upgrades to ordinary future dispatches.
+		let item =
+			if exact_question_target { item.clone() } else { self.ensure_thread(item).await? };
 		let thread = item
 			.codex_thread_id
 			.as_ref()
@@ -850,7 +878,7 @@ impl ChiefCoordinator {
 				source_event_id: json!(["user_message", root_id, command_id]).to_string(),
 				work_item_id: root_id.into(),
 				event_kind: "user_message".into(),
-				payload: json!({"text":text,"source":"user"}).to_string(),
+				payload: json!({"text":text,"source":"user","asyncQuestionReply":decodex_protocol::parse_chief_async_question_replies(text).is_some()}).to_string(),
 			})
 			.await?;
 		Ok(())
@@ -865,6 +893,18 @@ impl ChiefCoordinator {
 		text: &str,
 		attachments: &[decodex_protocol::ChiefAttachmentDto],
 	) -> Result<(), ChiefError> {
+		self.steer_work_with_question_reply(id, expected_turn, key, text, attachments, None).await
+	}
+
+	async fn steer_work_with_question_reply(
+		&mut self,
+		id: &str,
+		expected_turn: &str,
+		key: &str,
+		text: &str,
+		attachments: &[decodex_protocol::ChiefAttachmentDto],
+		async_question_id: Option<&str>,
+	) -> Result<(), ChiefError> {
 		let work = self.store.get_chief_work_item(id.into()).await?;
 		if work.dispatch_state != decodex_database::ChiefDispatchState::Running
 			|| work.active_turn_id.as_deref() != Some(expected_turn)
@@ -877,8 +917,10 @@ impl ChiefCoordinator {
 			work.codex_thread_id.ok_or_else(|| ChiefError::Invalid("unbound work".into()))?;
 		let mut input = vec![json!({"type":"text","text":text,"text_elements":[]})];
 		append_attachments(&mut input, attachments);
+		let async_question_reply = async_question_id.is_some()
+			|| decodex_protocol::parse_chief_async_question_replies(text).is_some();
 		let payload =
-			json!({"text":text,"source":"user","options":{"attachments":attachments}}).to_string();
+			json!({"text":text,"source":"user","asyncQuestionId":async_question_id,"asyncQuestionReply":async_question_reply,"options":{"attachments":attachments}}).to_string();
 		let event = self
 			.store
 			.begin_chief_steer(id.into(), expected_turn.into(), key.into(), payload)
@@ -898,6 +940,69 @@ impl ChiefCoordinator {
 				"Steer acceptance did not identify the expected turn".into(),
 			)),
 		}
+	}
+
+	/// Route an explicit async answer to its original work and retain native reply identity.
+	pub async fn answer_async_question(
+		&mut self,
+		id: &str,
+		question_id: &str,
+		answer: &str,
+		key: &str,
+	) -> Result<(), ChiefError> {
+		if self.store.chief_async_answer_pending(id.into(), question_id.into()).await? {
+			return Err(ChiefError::UnknownDispatch);
+		}
+		let work = self.store.get_chief_work_item(id.into()).await?;
+		let source = self
+			.store
+			.read_chief_async_questions(id.into())
+			.await?
+			.into_iter()
+			.find(|question| question.question_id == question_id)
+			.ok_or_else(|| ChiefError::Invalid("Async question is no longer available".into()))?;
+		if self.dispatch_paused
+			|| work.codex_thread_id.as_deref() != Some(&source.thread_id)
+			|| work.status == ChiefWorkStatus::Resolved
+		{
+			return Err(ChiefError::Invalid("Async question target cannot accept input".into()));
+		}
+		let question: decodex_protocol::ChiefAsyncQuestionDto =
+			serde_json::from_str(&source.question_json)
+				.map_err(|_| ChiefError::Invalid("Invalid stored question".into()))?;
+		let reply = decodex_protocol::chief_async_question_reply(&question, answer)
+			.map_err(ChiefError::Invalid)?;
+		match work.dispatch_state {
+			decodex_database::ChiefDispatchState::Running => {
+				let turn = work.active_turn_id.as_deref().ok_or(ChiefError::UnknownDispatch)?;
+				self.steer_work_with_question_reply(
+					id,
+					turn,
+					key,
+					reply.as_str(),
+					&[],
+					Some(question_id),
+				)
+				.await?;
+			},
+			decodex_database::ChiefDispatchState::Idle => {
+				let event = self
+					.store
+					.enqueue_chief_event(EnqueueChiefEvent {
+						source_event_id: json!(["async_answer", id, key]).to_string(),
+						work_item_id: id.into(),
+						event_kind: "async_question_answer".into(),
+						payload: json!({"text":reply.as_str(),"source":"user","asyncQuestionId":question_id}).to_string(),
+					})
+					.await?;
+				self.dispatch_with_events(&work, reply.as_str(), vec![event.id]).await?;
+			},
+			_ => return Err(ChiefError::UnknownDispatch),
+		}
+		self.store
+			.resolve_chief_async_questions(source.thread_id, vec![question_id.into()])
+			.await?;
+		Ok(())
 	}
 
 	/// Deliver an interrupt only to the caller's exact observed running turn.

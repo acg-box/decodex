@@ -11,6 +11,7 @@
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_requests.rs"] mod requests;
+#[path = "chief_async_questions.rs"] mod async_questions;
 #[path = "chief_voice.rs"] mod voice;
 #[path = "chief_workspace.rs"] mod workspace;
 #[path = "chief_workspace_size.rs"] mod workspace_size;
@@ -136,6 +137,7 @@ pub(crate) struct ChiefSurface {
 	request_task: Option<Task<()>>,
 	question_timers: std::collections::BTreeMap<i64, requests::QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
+	async_question_inputs: std::collections::BTreeMap<(String, String), Entity<ComposerInput>>,
 	details_visible: bool,
 	accounts: Vec<(String, String)>,
 	setup_expanded: bool,
@@ -297,6 +299,7 @@ impl ChiefSurface {
 			request_task: None,
 			question_timers: Default::default(),
 			question_inputs: Default::default(),
+			async_question_inputs: Default::default(),
 			profile: None,
 			snapshot: None,
 			state: LoadState::Idle,
@@ -348,6 +351,7 @@ impl ChiefSurface {
 						{
 							scroll.scroll_to_bottom();
 						}
+						surface.prepare_async_question_inputs(&id, &history, cx);
 						surface.history_cache.insert(id.clone(), history.clone());
 						surface.history = Some((id, history));
 					}
@@ -686,6 +690,7 @@ impl ChiefSurface {
 		self.request = None;
 		self.request_task = None;
 		self.question_timers.clear();
+		self.async_question_inputs.clear();
 		self.selected = None;
 		self.state = LoadState::Idle;
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
@@ -937,6 +942,7 @@ impl ChiefSurface {
 				|panel| panel.child(self.pending_panel(snapshot, work, cx)),
 			)
 			.child(self.request_panel(snapshot, work, cx))
+			.child(self.async_question_panel(work, cx))
 			.child(self.history_panel(work, cx))
 			.child(
 				div()
@@ -1886,6 +1892,8 @@ mod tests {
 			surface.history = Some((
 				"root".into(),
 				ChiefHistoryResult::Available {
+					questions: vec![],
+					questions_truncated: false, questions_recovering: false,
 					live: vec![],
 					next_before: None,
 					usage: None,
@@ -1947,6 +1955,8 @@ mod tests {
 			surface.history = Some((
 				"root".into(),
 				ChiefHistoryResult::Available {
+					questions: vec![],
+					questions_truncated: false, questions_recovering: false,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
 						activity: None,
@@ -2066,6 +2076,8 @@ mod tests {
 			s.history = Some((
 				"chief".into(),
 				ChiefHistoryResult::Available {
+					questions: vec![],
+					questions_truncated: false, questions_recovering: false,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
 						activity: None,

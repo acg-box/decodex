@@ -367,6 +367,11 @@ impl ChiefHost {
 				})?;
 				Ok(work_id.as_str().into())
 			},
+			ChiefActionDto::AnswerQuestion { work_id, question_id, answer } => {
+				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
+				chief.answer_async_question(work_id.as_str(),question_id.as_str(),answer.as_str(),&key).await.map_err(|_|ChiefHostError::Unknown("Question reply acceptance could not be confirmed. Inspect the current conversation before sending again."))?;
+				Ok(work_id.as_str().into())
+			},
 			ChiefActionDto::CancelCapacityRetry { work_id, event_id } =>
 				self.cancel_capacity_retry(work_id, event_id).await,
 			ChiefActionDto::Respond { work_id, event_id, response_json } => {
@@ -706,7 +711,7 @@ async fn persist_input(
 			source_event_id: json!(["user_message", root, key]).to_string(),
 			work_item_id: root.into(),
 			event_kind: "user_message".into(),
-			payload: json!({"text":text,"source":"user","options":options}).to_string(),
+			payload: json!({"text":text,"source":"user","asyncQuestionReply":decodex_protocol::parse_chief_async_question_replies(text).is_some(),"options":options}).to_string(),
 		})
 		.await
 		.map_err(|_| "Chief input could not be accepted")?;
