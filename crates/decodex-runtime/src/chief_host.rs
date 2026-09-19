@@ -135,6 +135,18 @@ impl ChiefHost {
 		crate::chief_detail::read(&client, &thread, turn, item).await
 	}
 
+	pub(crate) async fn file_approval_detail(
+		&self,
+		thread: &str,
+		turn: &str,
+		item: &str,
+	) -> decodex_protocol::ChiefActivityDetailResult {
+		let Some(client) = self.runtime.chief_client() else {
+			return decodex_protocol::ChiefActivityDetailResult::Unavailable;
+		};
+		crate::chief_detail::read_file_changes(&client, thread, turn, item).await
+	}
+
 	pub(crate) async fn capabilities(&self) -> decodex_protocol::ChiefCapabilitiesResult {
 		let Some(client) = self.runtime.chief_client() else {
 			return decodex_protocol::ChiefCapabilitiesResult::Unavailable;

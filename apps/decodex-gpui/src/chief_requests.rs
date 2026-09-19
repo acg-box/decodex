@@ -92,6 +92,24 @@ impl ChiefSurface {
 					panel = panel.child(div().text_size(px(12.0)).child(text.to_owned()));
 				}
 			}
+			if method == "item/fileChange/requestApproval" {
+				let details = value["changeDetails"]
+					.as_str()
+					.unwrap_or("File paths and patch details are unavailable.");
+				panel = panel.child(
+					div()
+						.id("file-approval-details")
+						.max_h(px(280.0))
+						.overflow_y_scroll()
+						.text_size(px(12.0))
+						.font_family("Menlo")
+						.child(details.to_owned()),
+				);
+				if value["changeDetailsTruncated"] == true {
+					panel = panel.child(muted("File change details shortened"));
+				}
+			}
+
 			if method == "item/permissions/requestApproval" {
 				panel = panel.child(
 					div().text_size(px(12.0)).child(permission_summary(&value["permissions"])),

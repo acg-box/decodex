@@ -1,7 +1,8 @@
 //! On-demand native evidence, without a second tool-output store.
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_protocol::ChiefActivityDetailResult;
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(test)] use serde_json::json;
 
 pub(crate) async fn read(
 	client: &AppServerClient,
@@ -11,12 +12,40 @@ pub(crate) async fn read(
 ) -> ChiefActivityDetailResult {
 	let result = tokio::time::timeout(
 		std::time::Duration::from_secs(8),
-		client.thread_read(json!({"threadId":thread,"includeTurns":true})),
+		client.thread_read_turn(thread, turn),
 	)
 	.await;
 	let Ok(Ok(history)) = result else {
 		return ChiefActivityDetailResult::Unavailable;
 	};
+	project(&history, thread, turn, item).unwrap_or(ChiefActivityDetailResult::Unavailable)
+}
+
+pub(crate) async fn read_file_changes(
+	client: &AppServerClient,
+	thread: &str,
+	turn: &str,
+	item: &str,
+) -> ChiefActivityDetailResult {
+	let Ok(Ok(history)) = tokio::time::timeout(
+		std::time::Duration::from_secs(8),
+		client.thread_read_turn(thread, turn),
+	)
+	.await
+	else {
+		return ChiefActivityDetailResult::Unavailable;
+	};
+	let matches_file = history
+		.pointer("/thread/turns")
+		.and_then(Value::as_array)
+		.into_iter()
+		.flatten()
+		.filter(|entry| entry["id"].as_str() == Some(turn))
+		.flat_map(|entry| entry["items"].as_array().into_iter().flatten())
+		.any(|entry| entry["id"].as_str() == Some(item) && entry["type"] == "fileChange");
+	if !matches_file {
+		return ChiefActivityDetailResult::Unavailable;
+	}
 	project(&history, thread, turn, item).unwrap_or(ChiefActivityDetailResult::Unavailable)
 }
 
@@ -47,7 +76,13 @@ fn project(
 		"fileChange" =>
 			for change in item["changes"].as_array()? {
 				if let Some(path) = change["path"].as_str() {
-					parts.push(path.into());
+					parts.push(format!("Path: {path}"));
+				}
+				if let Some(kind) = change.pointer("/kind/type").and_then(Value::as_str) {
+					parts.push(format!("Change: {kind}"));
+				}
+				if let Some(path) = change.pointer("/kind/move_path").and_then(Value::as_str) {
+					parts.push(format!("Move destination: {path}"));
 				}
 				if let Some(diff) = change["diff"].as_str() {
 					parts.push(diff.into());
@@ -113,6 +148,54 @@ mod tests {
 		assert!(project(&history, "thread", "other", "item").is_none());
 		assert!(project(&history, "thread", "turn", "private").is_none());
 	}
+	#[tokio::test]
+	async fn file_approval_loads_exact_paginated_item_without_full_history() {
+		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+		for kind in ["fileChange", "commandExecution"] {
+			let (local, remote) = tokio::io::duplex(65536);
+			let (reader, writer) = tokio::io::split(local);
+			let (client, _events) = AppServerClient::from_io(reader, writer);
+			let server = tokio::spawn(async move {
+				let (reader, mut writer) = tokio::io::split(remote);
+				let mut lines = BufReader::new(reader).lines();
+				for (method, result) in [
+					("thread/read", json!({"thread":{"id":"thread","historyMode":"paginated"}})),
+					("thread/turns/list", json!({"data":[{"id":"turn"}],"nextCursor":null})),
+					(
+						"thread/items/list",
+						json!({"data":[{"turnId":"turn","item":{"id":"patch","type":kind,"command":"must not show command", "changes":[{"path":"C:\\remote\\old.txt","kind":{"type":"update","move_path":"C:\\remote\\new.txt"},"diff":"-old\n+new"}]}}],"nextCursor":null}),
+					),
+				] {
+					let request: Value =
+						serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+					assert_eq!(request["method"], method);
+					assert_ne!(request["params"]["includeTurns"], true);
+					writer
+						.write_all(
+							format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+						)
+						.await
+						.unwrap();
+				}
+			});
+			let detail = read_file_changes(&client, "thread", "turn", "patch").await;
+			server.await.unwrap();
+			if kind == "fileChange" {
+				let ChiefActivityDetailResult::Available { text, truncated } = detail else {
+					panic!("file detail");
+				};
+				assert!(text.contains("old.txt"));
+				assert!(text.contains("Move destination: C:"));
+				assert!(text.contains("new.txt"));
+				assert!(text.contains("-old\n+new"));
+				assert!(!text.contains("must not show"));
+				assert!(!truncated);
+			} else {
+				assert_eq!(detail, ChiefActivityDetailResult::Unavailable);
+			}
+		}
+	}
+
 	#[test]
 	fn output_is_bounded_at_utf8_boundary() {
 		let history = json!({"thread":{"id":"t","turns":[{"id":"u","items":[{"id":"i","type":"commandExecution","aggregatedOutput":"界".repeat(10000)}]}]}});

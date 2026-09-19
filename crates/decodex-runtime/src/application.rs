@@ -1835,8 +1835,9 @@ impl Application for ServiceApplication {
 					Some(chief) => chief.capabilities().await,
 					None => decodex_protocol::ChiefCapabilitiesResult::Unavailable,
 				}),
-			QueryPayload::GetChiefRequest { event_id } =>
-				QueryResultPayload::ChiefRequest(query_chief_request(&self.store, *event_id).await),
+			QueryPayload::GetChiefRequest { event_id } => QueryResultPayload::ChiefRequest(
+				query_chief_request_with_details(&self.store, *event_id, self.chief.as_ref()).await,
+			),
 			QueryPayload::GetChiefHistory { work_id, before } => QueryResultPayload::ChiefHistory(
 				query_chief_history_page(&self.store, work_id.as_str(), *before).await,
 			),
@@ -3533,6 +3534,59 @@ fn command_reset_error(error: ResetCardServiceError, expected: EntityRevision) -
 	}
 }
 
+async fn query_chief_request_with_details(
+	store: &ProductStore,
+	event_id: i64,
+	chief: Option<&crate::chief_host::ChiefHost>,
+) -> decodex_protocol::ChiefRequestResult {
+	use decodex_protocol::ChiefRequestResult;
+	let request = query_chief_request(store, event_id).await;
+	if !matches!(&request, ChiefRequestResult::Available { method, .. } if method == "item/fileChange/requestApproval")
+	{
+		return request;
+	}
+	let (Some(chief), ProductStore::Available(database)) = (chief, store) else {
+		return request;
+	};
+	let Ok(event) = database.get_chief_inbox_event(event_id).await else {
+		return ChiefRequestResult::Unavailable;
+	};
+	let Ok(payload) = serde_json::from_str::<serde_json::Value>(&event.payload) else {
+		return ChiefRequestResult::Unavailable;
+	};
+	let params = &payload["params"];
+	let (Some(thread), Some(turn), Some(item)) =
+		(params["threadId"].as_str(), params["turnId"].as_str(), params["itemId"].as_str())
+	else {
+		return request;
+	};
+	let detail = chief.file_approval_detail(thread, turn, item).await;
+	// The native read can overlap a completed turn or a resolved request.
+	if query_chief_request(store, event_id).await != request {
+		return ChiefRequestResult::Unavailable;
+	}
+	attach_file_approval_detail(request, detail)
+}
+
+fn attach_file_approval_detail(
+	mut request: decodex_protocol::ChiefRequestResult,
+	detail: decodex_protocol::ChiefActivityDetailResult,
+) -> decodex_protocol::ChiefRequestResult {
+	if let decodex_protocol::ChiefRequestResult::Available { method, request_json, .. } =
+		&mut request
+		&& method == "item/fileChange/requestApproval"
+		&& let decodex_protocol::ChiefActivityDetailResult::Available { text, truncated } = detail
+		&& let Ok(mut fields) = serde_json::from_str::<serde_json::Value>(request_json.as_str())
+	{
+		fields["changeDetails"] = serde_json::json!(text);
+		fields["changeDetailsTruncated"] = serde_json::json!(truncated);
+		if let Ok(updated) = decodex_protocol::HistoryText::new(fields.to_string()) {
+			*request_json = updated;
+		}
+	}
+	request
+}
+
 async fn query_chief_request(
 	store: &ProductStore,
 	event_id: i64,
@@ -4623,6 +4677,47 @@ mod tests {
 		assert!(entries[0].text.contains("Please clarify the intended scope."));
 		assert!(!entries[0].text.contains("unconfirmed continuation"));
 		assert!(store.list_chief_wake_events("chosen".into(), 10).await.unwrap().is_empty());
+	}
+
+	#[test]
+	fn file_approval_details_preserve_request_identity_and_do_not_enrich_other_methods() {
+		use decodex_protocol::{ChiefActivityDetailResult, ChiefRequestResult, HistoryText};
+		for method in ["item/fileChange/requestApproval", "item/tool/requestUserInput"] {
+			let request = ChiefRequestResult::Available {
+				event_id: 7,
+				work_id: "work".into(),
+				method: method.into(),
+				request_json: HistoryText::new("{\"reason\":\"Review\"}").unwrap(),
+			};
+			assert_eq!(
+				super::attach_file_approval_detail(
+					request.clone(),
+					ChiefActivityDetailResult::Unavailable
+				),
+				request
+			);
+			let enriched = super::attach_file_approval_detail(
+				request.clone(),
+				ChiefActivityDetailResult::Available {
+					text: "Path: /tmp/file\n+new".into(),
+					truncated: true,
+				},
+			);
+			if method.ends_with("requestUserInput") {
+				assert_eq!(enriched, request);
+				continue;
+			}
+			let ChiefRequestResult::Available { event_id, work_id, request_json, .. } = enriched
+			else {
+				panic!("request");
+			};
+			assert_eq!(event_id, 7);
+			assert_eq!(work_id, "work");
+			let fields: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
+			assert_eq!(fields["reason"], "Review");
+			assert_eq!(fields["changeDetailsTruncated"], true);
+			assert!(fields["changeDetails"].as_str().unwrap().contains("/tmp/file"));
+		}
 	}
 
 	#[tokio::test]

@@ -19,10 +19,10 @@ for current work.
 | Plugins/MCP | Native execution remains owned by Codex. | Settings/reconcile effective state, forms/resources and auth recovery still need assessment. |
 
 The automation directory holds the resumable commit queue. At its September 19
-checkpoint, 11 of 1,569 commits were consecutively reviewed in
+checkpoint, 46 of 1,569 commits were consecutively reviewed in
 `a397079287e6638b39dda329835350d93222681f..595cc91e8cbb1c2ca822d0311dcf12709410c582`.
-Last reviewed: `e683c3118b25bc2fce65e9cbccded7a8343307f1`.
-Next: `19d185fec8e1216ddd7b5522b331d69a6ecf3b1c`. The remaining 1,558
+Last reviewed: `280d56b1d823a7e9dfd85f796da38bd825d0052d`.
+Next: `7d9990fa30ab495d473fc555f0d5e7c68e9d205a`. The remaining 1,523
 commits are unread. The lower boundary is historical, not a certified earlier audit.
 Grouped capability checks must not advance this consecutive cursor.
 
@@ -212,3 +212,18 @@ is replayed, and native WebRTC sideband reconnection remains owned by Codex.
 Validation: nine native history fixture tests and 42 Chief behavior tests pass;
 Clippy for Codex/runtime all targets and features passes with warnings denied.
 These checks do not simulate a live audio disconnect.
+
+## File approval detail follow-up
+
+Pending file approvals now load their exact native thread, turn and item through
+the paginated history reader. The request panel shows source paths, move
+destinations and patch text. Native path spelling is preserved. Missing details
+have an explicit fallback; bounded output has a truncation label. The application
+rechecks request ownership after the read so a resolved or ended request cannot
+be enriched as an active approval. Decisions still use the original event ID.
+
+The existing tool detail reader also uses exact-turn pagination. Validation:
+three detail fixtures, request projection and stale-request tests, runtime
+Clippy across all targets/features, and GPUI compilation passed. No live approval
+or visual acceptance is claimed. Terminal misalignment admission and nonblocking
+question timing remain open adaptations.
