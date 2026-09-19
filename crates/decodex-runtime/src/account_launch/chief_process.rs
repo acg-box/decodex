@@ -37,6 +37,7 @@ impl ChiefProcessBridge {
 		binding: AccountBinding,
 		protocol_limit_exceeded: Arc<AtomicBool>,
 		next_request_id: i64,
+		config_warnings: Vec<Value>,
 	) -> Result<(Self, AppServerClient, mpsc::Receiver<ServerEvent>), ClientError> {
 		let (incoming, frames) = mpsc::channel(BRIDGE_CAPACITY);
 		let (outgoing, commands) = mpsc::channel(BRIDGE_CAPACITY);
@@ -51,6 +52,11 @@ impl ChiefProcessBridge {
 					cancelled: Arc::clone(&worker_cancelled),
 				});
 				let terminal = incoming.clone();
+				for warning in config_warnings {
+					if incoming.blocking_send(Ok(warning)).is_err() {
+						return;
+					}
+				}
 				let result = pump(
 					&mut writer,
 					stdout,
@@ -400,6 +406,7 @@ mod tests {
 			binding,
 			Arc::new(AtomicBool::new(false)),
 			41,
+			Vec::new(),
 		)
 		.unwrap();
 		let pending_client = client.clone();

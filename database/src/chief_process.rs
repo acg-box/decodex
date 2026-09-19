@@ -553,6 +553,103 @@ mod tests {
 		));
 	}
 	#[tokio::test]
+	async fn config_warning_receipts_are_process_owned_bounded_and_durable() {
+		let directory = tempfile::tempdir().unwrap();
+		let path = directory.path().join("warnings.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		seed(&store).await;
+		store
+			.prepare_chief_bound_process_generation(
+				&intent(1, 1),
+				&binding(1),
+				"root",
+				"warning-process",
+			)
+			.await
+			.unwrap();
+		let generation = generation_id(1).as_str().to_owned();
+		store
+			.record_chief_config_warning(
+				"root".into(),
+				generation.clone(),
+				DIGEST.into(),
+				"not-ready".into(),
+			)
+			.await
+			.unwrap();
+		let identity = decodex_core::ProcessIdentity::new(
+			ProcessBootIdentity::new("fixture-boot").unwrap(),
+			1234,
+			decodex_core::ProcessStartIdentity::new("fixture-start").unwrap(),
+			1234,
+			1234,
+		)
+		.unwrap();
+		store.bind_process_generation_identity(&generation_id(1), 1, &identity).await.unwrap();
+		store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+		store
+			.record_chief_config_warning(
+				"second-root".into(),
+				generation.clone(),
+				DIGEST.into(),
+				"wrong-root".into(),
+			)
+			.await
+			.unwrap();
+		store
+			.record_chief_config_warning(
+				"root".into(),
+				generation_id(2).as_str().into(),
+				DIGEST.into(),
+				"wrong-process".into(),
+			)
+			.await
+			.unwrap();
+		for _ in 0..2 {
+			store
+				.record_chief_config_warning(
+					"root".into(),
+					generation.clone(),
+					DIGEST.into(),
+					"Original warning".into(),
+				)
+				.await
+				.unwrap();
+		}
+		let (events, _) = store.read_chief_transcript("root".into(), None, 100).await.unwrap();
+		assert_eq!(events.len(), 1);
+		assert!(events[0].payload.contains("Original warning"));
+		assert!(
+			store
+				.read_chief_transcript("second-root".into(), None, 100)
+				.await
+				.unwrap()
+				.0
+				.is_empty()
+		);
+		for i in 0..70 {
+			store
+				.record_chief_config_warning(
+					"root".into(),
+					generation.clone(),
+					format!("{i:064x}"),
+					format!("Warning {i}"),
+				)
+				.await
+				.unwrap();
+		}
+		assert!(store.list_chief_wake_events("root".into(), 100).await.unwrap().is_empty());
+		drop(store);
+		let store = SqliteStore::open_test(&path).unwrap();
+		let (events, _) = store.read_chief_transcript("root".into(), None, 100).await.unwrap();
+		assert_eq!(events.len(), 65);
+		assert_eq!(
+			events.iter().filter(|e| e.payload.contains("exceeded the display limit")).count(),
+			1
+		);
+	}
+
+	#[tokio::test]
 	async fn native_voice_turns_are_owned_deduplicated_and_never_requeued() {
 		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("voice.sqlite3");

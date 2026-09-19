@@ -11,6 +11,39 @@ pub struct ChiefLiveOutput {
 }
 
 impl SqliteStore {
+	/// Save a configuration warning only for the current ready process of this root.
+	pub async fn record_chief_config_warning(
+		&self,
+		root: String,
+		generation: String,
+		digest: String,
+		text: String,
+	) -> Result<(), StoreError> {
+		if root.is_empty()
+			|| root.len() > 512
+			|| generation.len() > 128
+			|| digest.len() != 64
+			|| text.len() > 32768
+		{
+			return Err(StoreError::InvalidInput("invalid configuration warning"));
+		}
+		self.run(move |connection| {
+			let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let owned: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM chief_process_bindings b JOIN process_generations g ON g.generation_id=b.generation_id WHERE b.root_id=?1 AND b.generation_id=?2 AND g.state='ready' AND b.rowid=(SELECT rowid FROM chief_process_bindings WHERE root_id=?1 ORDER BY created_at_micros DESC,rowid DESC LIMIT 1))",params![root,generation],|r|r.get(0)).map_err(sqlite_error)?;
+			if !owned { return Ok(()); }
+			let original_source=serde_json::json!(["config_warning",root,generation,digest]).to_string();
+			if tx.query_row("SELECT EXISTS(SELECT 1 FROM chief_inbox_events WHERE source_event_id=?1)",[original_source],|r|r.get::<_,bool>(0)).map_err(sqlite_error)? { return Ok(()); }
+			let count: i64 = tx.query_row("SELECT count(*) FROM chief_inbox_events WHERE work_item_id=?1 AND event_kind='config_warning' AND json_extract(payload,'$.generation')=?2",params![root,generation],|r|r.get(0)).map_err(sqlite_error)?;
+			let (digest,text) = if count >= 64 { ("overflow".to_owned(),"Additional configuration warnings exceeded the display limit.".to_owned()) } else { (digest,text) };
+			let source=serde_json::json!(["config_warning",root,generation,digest]).to_string();
+			let payload=serde_json::json!({"generation":generation,"text":text}).to_string();
+			let now=crate::unix_micros()?;
+			tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'config_warning',?3,?4,'resolved','Observed native configuration warning',?4) ON CONFLICT(source_event_id) DO NOTHING",params![source,root,payload,now]).map_err(sqlite_error)?;
+			tx.commit().map_err(sqlite_error)?;
+			Ok(())
+		}).await
+	}
+
 	pub async fn update_chief_output(
 		&self,
 		thread: String,

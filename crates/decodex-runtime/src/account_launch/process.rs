@@ -905,6 +905,7 @@ impl AttestedProcessChild {
 			self.process.binding.clone(),
 			Arc::clone(&self.process.protocol_limit_exceeded),
 			sequence,
+			mem::take(&mut self.process.config_warnings),
 		)
 		.map_err(|_| ConversationProcessError::Unavailable)?;
 		self.process.chief_bridge = Some(bridge);
@@ -1403,6 +1404,7 @@ pub(super) struct SupervisedProcess {
 	abandoned_request_ids: BTreeSet<u64>,
 	chief_retained: bool,
 	chief_bridge: Option<super::chief_process::ChiefProcessBridge>,
+	config_warnings: Vec<serde_json::Value>,
 }
 impl SupervisedProcess {
 	#[cfg(test)]
@@ -1470,6 +1472,7 @@ impl SupervisedProcess {
 			abandoned_request_ids: BTreeSet::new(),
 			chief_retained: false,
 			chief_bridge: None,
+			config_warnings: Vec::new(),
 		})
 	}
 
@@ -1501,6 +1504,7 @@ impl SupervisedProcess {
 			abandoned_request_ids: BTreeSet::new(),
 			chief_retained: false,
 			chief_bridge: None,
+			config_warnings: Vec::new(),
 		})
 	}
 
@@ -1612,6 +1616,21 @@ impl SupervisedProcess {
 				},
 			};
 
+			let header: InboundHeader = serde_json::from_slice(&line)
+				.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
+			if header.id.is_none() && header.method.as_deref() == Some("configWarning") {
+				if let Some(warning) = crate::native_config_warning::from_frame(&line)
+					&& !self.config_warnings.contains(&warning)
+				{
+					if self.config_warnings.len() < 32 {
+						self.config_warnings.push(warning);
+					} else if self.config_warnings.len() == 32 {
+						self.config_warnings.push(serde_json::json!({"method":"configWarning","params":{"summary":"Additional configuration warnings exceeded the display limit.","details":null}}));
+					}
+				}
+				continue;
+			}
+
 			// Thread history and titles legitimately contain JSON escapes. As with
 			// conversation_request, decode these bounded ordinary data frames.
 			// Credential-bearing methods retain their scratch-free boundary.
@@ -1619,9 +1638,6 @@ impl SupervisedProcess {
 				Self::validate_zero_scratch_json(&line)
 					.map_err(|()| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 			}
-
-			let header: InboundHeader = serde_json::from_slice(&line)
-				.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 
 			if let (Some(id), Some(method)) = (header.id, header.method.as_deref()) {
 				Self::validate_zero_scratch_json(&line)
@@ -7235,6 +7251,52 @@ mod tests {
 		process.read_account_identity(timeout).unwrap();
 
 		(temp, process)
+	}
+
+	#[tokio::test]
+	async fn config_warnings_survive_initialization_and_retained_handoff() {
+		let (_temp, process) = initialized_bound_process("exact-config-warning");
+		assert_eq!(process.config_warnings.len(), 2);
+		let profile = AttestedAppServerProfile::attest_for_test(
+			process.command.clone(),
+			&process.binding.expected_codex_home,
+			Duration::from_secs(2),
+		)
+		.unwrap();
+		let mut child = super::AttestedProcessChild {
+			process,
+			build: profile.build,
+			generated: profile.generated,
+			timeout: Duration::from_secs(2),
+			initialized: true,
+		};
+		let (_client, mut events) = child.retain_chief_connection().unwrap();
+		for expected in ["Ignored \"fixture\" setting", "Second fixture warning"] {
+			let event =
+				tokio::time::timeout(Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
+			let decodex_codex::app_server_client::ServerEvent::Notification { method, params } =
+				event
+			else {
+				panic!("warning notification")
+			};
+			assert_eq!(method, "configWarning");
+			assert_eq!(params["summary"], expected);
+			assert!(params.get("path").is_none());
+		}
+		assert!(child.process.config_warnings.is_empty());
+		child.close_private_lifetime_channels();
+	}
+
+	#[test]
+	fn config_warning_backlog_is_bounded_without_blocking_account_initialization() {
+		let (_temp, process) = initialized_bound_process("exact-config-warning-flood");
+		assert_eq!(process.config_warnings.len(), 33);
+		assert!(
+			process.config_warnings.last().unwrap()["params"]["summary"]
+				.as_str()
+				.unwrap()
+				.contains("exceeded the display limit")
+		);
 	}
 
 	#[tokio::test]
