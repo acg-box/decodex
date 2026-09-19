@@ -219,9 +219,9 @@ impl SettingsSurface {
 			.role(Role::Switch)
 			.aria_label("Show Decodex in the menu bar")
 			.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
-			.w(px(42.0))
-			.h(px(24.0))
-			.p(px(3.0))
+			.w(px(36.0))
+			.h(px(20.0))
+			.p(px(2.0))
 			.flex()
 			.items_center()
 			.rounded_full()
@@ -240,7 +240,7 @@ impl SettingsSurface {
 			.child(switch_knob(
 				"settings-knob",
 				enabled,
-				div().size(px(16.0)).rounded_full().bg(rgb(if enabled {
+				div().size(px(14.0)).rounded_full().bg(rgb(if enabled {
 					BLUE
 				} else {
 					TEXT_MUTED
@@ -261,9 +261,9 @@ impl SettingsSurface {
 			.role(Role::Switch)
 			.aria_label("Launch Decodex at login")
 			.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
-			.w(px(42.0))
-			.h(px(24.0))
-			.p(px(3.0))
+			.w(px(36.0))
+			.h(px(20.0))
+			.p(px(2.0))
 			.flex()
 			.items_center()
 			.rounded_full()
@@ -282,7 +282,7 @@ impl SettingsSurface {
 			.child(switch_knob(
 				"login-knob",
 				enabled,
-				div().size(px(16.0)).rounded_full().bg(rgb(if enabled {
+				div().size(px(14.0)).rounded_full().bg(rgb(if enabled {
 					BLUE
 				} else {
 					TEXT_MUTED
@@ -366,7 +366,7 @@ impl Render for SettingsSurface {
 					.size_full()
 					.overflow_y_scroll()
 					.px(px(28.0))
-					.py(px(24.0))
+					.py(px(18.0))
 					.flex()
 					.justify_center()
 					.child(
@@ -375,7 +375,7 @@ impl Render for SettingsSurface {
 							.max_w(px(ui_theme::SETTINGS_WIDTH))
 							.flex()
 							.flex_col()
-							.gap(px(20.0))
+							.gap(px(14.0))
 							.child(ui_theme::settings_title("General"))
 							.child(
 								div()

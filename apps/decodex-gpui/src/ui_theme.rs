@@ -38,14 +38,14 @@ pub(crate) fn floating_group() -> gpui::Div {
 }
 
 // Settings reuse shell typography and glass; groups add only a light edge.
-pub(crate) const SETTINGS_WIDTH: f32 = 780.0;
+pub(crate) const SETTINGS_WIDTH: f32 = 680.0;
 pub(crate) fn settings_group() -> gpui::Div {
 	use gpui::{Styled, div, px, rgba};
 	div().w_full().rounded(px(10.0)).border_1().border_color(rgba(0xffffff12)).bg(rgba(0xffffff04))
 }
 pub(crate) fn settings_row() -> gpui::Div {
 	use gpui::{Styled, div, px};
-	div().w_full().min_h(px(56.0)).px(px(14.0)).py(px(10.0)).flex().items_center().gap(px(16.0))
+	div().w_full().min_h(px(44.0)).px(px(12.0)).py(px(7.0)).flex().items_center().gap(px(16.0))
 }
 pub(crate) fn settings_title(title: &'static str) -> impl gpui::IntoElement {
 	use gpui::{

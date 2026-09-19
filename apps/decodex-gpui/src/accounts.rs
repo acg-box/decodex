@@ -250,7 +250,8 @@ impl AccountsController {
 		if target >= order.len() {
 			return Ok(());
 		}
-		order.swap(index, target);
+		let moved = order.remove(index);
+		order.insert(target, moved);
 		state.queue_command(CommandPayload::SetAccountOrder { order }, Some(routing_revision))?;
 		drop(state);
 		self.inner.notify.notify_one();
@@ -968,6 +969,7 @@ mod tests {
 			let server = server();
 			let first = account("10000000-0000-4000-8000-000000000001", "Primary", true, 3);
 			let second = account("10000000-0000-4000-8000-000000000002", "Reserve", true, 7);
+			let third = account("10000000-0000-4000-8000-000000000003", "Extra", true, 9);
 			controller.bind_session(2, server.clone());
 			controller.activate();
 			let AccountDispatch::Query(query) = controller.try_take_dispatch(2, &server).unwrap()
@@ -982,11 +984,15 @@ mod tests {
 					server_id: server.clone(),
 					query_id: query.query_id,
 					payload: QueryResultPayload::Accounts(AccountsResult::Available {
-						accounts: vec![first.clone(), second.clone()],
+						accounts: vec![first.clone(), second.clone(), third.clone()],
 						routing: Some(AccountRoutingControlDto {
 							revision: EntityRevision(5),
 							mode: AccountSelectionModeDto::Balanced,
-							order: vec![first.account_id.clone(), second.account_id.clone()],
+							order: vec![
+								first.account_id.clone(),
+								second.account_id.clone(),
+								third.account_id.clone(),
+							],
 						}),
 					}),
 				},
@@ -1004,8 +1010,18 @@ mod tests {
 		assert!(matches!(
 			order.payload,
 			CommandPayload::SetAccountOrder { order }
-				if order == vec![second.account_id.clone(), first.account_id.clone()]
+				if order == vec![second.account_id.clone(), first.account_id.clone(), EntityId::new("10000000-0000-4000-8000-000000000003").unwrap()]
 		));
+
+		let (controller, server, first, second) = setup();
+		controller.move_account(&first.account_id, 2).unwrap();
+		let AccountDispatch::Command(command) = controller.try_take_dispatch(2, &server).unwrap()
+		else {
+			panic!("reorder");
+		};
+		assert_eq!(command.expected_revision, Some(EntityRevision(5)));
+		assert!(matches!(command.payload, CommandPayload::SetAccountOrder {order}
+            if order == vec![second.account_id, EntityId::new("10000000-0000-4000-8000-000000000003").unwrap(), first.account_id]));
 
 		let (controller, server, first, _) = setup();
 		controller.logout(&first.account_id).expect("queue account logout");
