@@ -90,6 +90,29 @@ pub(crate) const AMBER: u32 = 0xe0b56f;
 
 pub(crate) const MOTION_PANEL: Duration = Duration::from_millis(240);
 
+/// Apply the same native, behind-window blur to each GPUI window independently.
+#[cfg(target_os = "macos")]
+pub(crate) fn configure_window_material(window: &gpui::Window) {
+	use objc2_app_kit::{
+		NSView, NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState,
+		NSVisualEffectView,
+	};
+	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+	let Ok(handle) = HasWindowHandle::window_handle(window) else { return };
+	let RawWindowHandle::AppKit(handle) = handle.as_raw() else { return };
+	// The live GPUI window owns this AppKit view; this callback runs on the main thread.
+	let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
+	let Some(native) = view.window() else { return };
+	let Some(content) = native.contentView() else { return };
+	for child in content.subviews().iter() {
+		if let Some(effect) = child.downcast_ref::<NSVisualEffectView>() {
+			effect.setMaterial(NSVisualEffectMaterial::Sidebar);
+			effect.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
+			effect.setState(NSVisualEffectState::Active);
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

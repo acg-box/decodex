@@ -107,7 +107,7 @@ fn main() {
 		#[cfg(target_os = "macos")]
 		window
 			.update(cx, |_, window, cx| {
-				configure_window_material(window);
+				ui_theme::configure_window_material(window);
 				configure_pointer_tracking(window);
 				schedule_window_control_alignment(window);
 				cx.observe_window_activation(window, |_, window, _| {
@@ -211,31 +211,6 @@ fn configure_pointer_tracking(window: &gpui::Window) {
 		)
 	};
 	view.addTrackingArea(&tracking);
-}
-
-#[cfg(target_os = "macos")]
-fn configure_window_material(_gpui_window: &gpui::Window) {
-	use objc2::MainThreadMarker;
-	use objc2_app_kit::{
-		NSApplication, NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState,
-		NSVisualEffectView,
-	};
-	let main_thread =
-		MainThreadMarker::new().expect("window material is configured on the main thread");
-	for window in NSApplication::sharedApplication(main_thread).windows().iter() {
-		if window.title().to_string() != "Decodex" {
-			continue;
-		}
-		if let Some(content) = window.contentView() {
-			for view in content.subviews().iter() {
-				if let Some(effect) = view.downcast_ref::<NSVisualEffectView>() {
-					effect.setMaterial(NSVisualEffectMaterial::Sidebar);
-					effect.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
-					effect.setState(NSVisualEffectState::Active);
-				}
-			}
-		}
-	}
 }
 
 #[cfg(target_os = "macos")]
