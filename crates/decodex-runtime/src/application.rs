@@ -1867,6 +1867,19 @@ impl Application for ServiceApplication {
 			QueryPayload::GetChiefHistory { work_id, before } => QueryResultPayload::ChiefHistory(
 				query_chief_history_page(&self.store, work_id.as_str(), *before).await,
 			),
+			QueryPayload::GetChiefGuardianReviews { work_id, before } =>
+				QueryResultPayload::ChiefGuardianReviews(match &self.store {
+					ProductStore::Available(store) =>
+						crate::chief_guardian::read(
+							store,
+							work_id.as_str(),
+							*before,
+							self.chief.as_ref().and_then(|host| host.guardian_generation()),
+						)
+						.await,
+					ProductStore::Unavailable(_) =>
+						decodex_protocol::ChiefGuardianReviewsResult::Unavailable,
+				}),
 			QueryPayload::GetChiefSnapshot =>
 				QueryResultPayload::ChiefSnapshot(query_chief_snapshot(&self.store).await),
 			QueryPayload::GetDesktopSettings =>

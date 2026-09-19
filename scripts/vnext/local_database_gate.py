@@ -85,6 +85,9 @@ MIGRATIONS = (
     (22, "chief_voice_calls", ROOT / "database/migrations/0022_chief_voice_calls.sql"),
     (23, "chief_observation_indexes", ROOT / "database/migrations/0015_chief_observation_indexes.sql"),
     (24, "chief_capacity_retry", ROOT / "database/migrations/0016_chief_capacity_retry.sql"),
+    (25, "chief_async_questions", ROOT / "database/migrations/0025_chief_async_questions.sql"),
+    (26, "chief_misalignment", ROOT / "database/migrations/0026_chief_misalignment.sql"),
+    (27, "chief_guardian_reviews", ROOT / "database/migrations/0027_chief_guardian_reviews.sql"),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
@@ -149,6 +152,12 @@ REQUIRED_TABLES = frozenset(
         "chief_usage",
         "chief_voice_calls",
         "chief_voice_observed_turns",
+        "chief_async_questions",
+        "chief_async_answers",
+        "chief_async_recovery",
+        "chief_misalignment",
+        "chief_guardian_reviews",
+        "chief_guardian_approvals",
 
     }
 )

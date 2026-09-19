@@ -102,6 +102,19 @@ impl ChiefCoordinator {
 		method: &str,
 		params: &Value,
 	) -> Result<(), ChiefError> {
+		if let Some(review) = decodex_codex::guardian::decode_review(method, params) {
+			self.store
+				.record_chief_guardian_review(decodex_database::ChiefGuardianObservation {
+					thread_id: review.thread_id,
+					turn_id: review.turn_id,
+					review_id: review.review_id,
+					connection_id: self.connection_id.clone(),
+					generation_id: self.native_generation.as_ref().map(|id| id.as_str().to_owned()),
+					event_json: review.event.to_string(),
+				})
+				.await?;
+			return Ok(());
+		}
 		if method == "autoApprovalReview/strictReviewRequired" {
 			if let (Some(thread), Some(turn), Some(started)) = (
 				params["threadId"].as_str(),

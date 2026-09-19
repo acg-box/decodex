@@ -225,6 +225,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "thread/turns/list"
 					| "thread/items/list"
 					| "thread/archive"
+					| "thread/approveGuardianDeniedAction"
 					| "turn/start" | "turn/steer"
 					| "turn/interrupt"
 			)

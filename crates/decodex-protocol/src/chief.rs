@@ -249,6 +249,16 @@ pub enum ChiefActionDto {
 		/// Digest of the displayed thread, turn and findings.
 		review_id: crate::WireText,
 	},
+	/// Submit explicit user approval context for an exact observed Guardian denial.
+	/// This does not execute the action or start another turn.
+	ApproveGuardianDenial {
+		/// Work that owns the reviewed thread.
+		work_id: crate::EntityId,
+		/// Durable review row shown to the user.
+		review_row: i64,
+		/// Digest of the displayed observation, including the exact action.
+		review_digest: crate::WireText,
+	},
 
 	/// Answer one source-bound asynchronous question with an explicit user message.
 	AnswerQuestion {
@@ -496,6 +506,16 @@ pub enum ChiefSnapshotResult {
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn guardian_approval_command_carries_only_saved_review_identity() {
+		let mut value = serde_json::json!({"action":"approve_guardian_denial","data":{
+			"work_id":"chief","review_row":7,"review_digest":"a".repeat(64)}});
+		let command: super::ChiefActionDto = serde_json::from_value(value.clone()).unwrap();
+		assert_eq!(serde_json::to_value(command).unwrap(), value);
+		value["data"]["event"] =
+			serde_json::json!({"action":{"type":"command","command":"injected"}});
+		assert!(serde_json::from_value::<super::ChiefActionDto>(value).is_err());
+	}
 	use super::*;
 
 	#[test]

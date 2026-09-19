@@ -2,6 +2,7 @@ use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 #[path = "tests/capacity.rs"] mod capacity;
+#[path = "tests/guardian.rs"] mod guardian;
 
 #[tokio::test]
 async fn subagent_activity_survives_parent_completion_and_restart_without_waking_work() {
@@ -208,6 +209,19 @@ pub(super) async fn fixture_with_history(
 				&& history["_voice_stop_disconnect"] == true
 			{
 				break;
+			}
+			if request["method"] == "thread/approveGuardianDeniedAction" {
+				if history["_guardian_disconnect"] == true {
+					break;
+				}
+				if history["_guardian_reject"] == true {
+					let frame = format!(
+						"{}\n",
+						json!({"id":request["id"],"error":{"code":-32600,"message":"approval rejected"}})
+					);
+					writer.write_all(frame.as_bytes()).await.unwrap();
+					continue;
+				}
 			}
 			if request["method"] == "turn/steer" && history["_steer_disconnect"] == true {
 				break;

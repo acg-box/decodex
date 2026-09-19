@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 mod activity;
+mod guardian;
 mod misalignment;
 pub(crate) mod observations;
 mod result_messages;

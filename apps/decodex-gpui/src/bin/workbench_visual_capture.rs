@@ -114,20 +114,28 @@ fn main() -> gpui::Result<()> {
 				decodex_protocol::ChiefSnapshotResult::Available(snapshot) => snapshot.pending_events.iter().find(|event| Some(&event.work_item_id) == selected.as_ref() && ["permission_pending", "user_input_pending", "server_request_pending"].contains(&event.event_kind.as_str())).map(|event| runtime.block_on(client.request(event.id)).unwrap_or(decodex_protocol::ChiefRequestResult::Unavailable)),
 				_ => None,
 			};
+			let guardian = selected.as_ref().map(|id| {
+				runtime.block_on(client.guardian_reviews(decodex_protocol::EntityId::new(id.clone()).expect("validated work"),None))
+					.unwrap_or(decodex_protocol::ChiefGuardianReviewsResult::Unavailable)
+			});
 			std::fs::write(
 				output.with_extension("evidence.json"),
 				serde_json::to_vec_pretty(
-					&serde_json::json!({"source_root": &root, "observed_at_micros": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_micros(), "snapshot": &snapshot, "selected": &selected, "history": &history, "request": &request}),
+					&serde_json::json!({"source_root": &root, "observed_at_micros": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_micros(), "snapshot": &snapshot, "selected": &selected, "history": &history, "request": &request,"guardian":&guardian}),
 				)?,
 			)?;
-			Ok((snapshot, selected, history, request, profile))
+			Ok((snapshot, selected, history, request, guardian, profile))
 		})
 		.transpose()?;
 	let window: gpui::AnyWindowHandle =
-		if let Some((snapshot, selected, history, request, profile)) = service_projection {
+		if let Some((snapshot, selected, history, request, guardian, profile)) = service_projection
+		{
 			let handle = cx.open_offscreen_window(size(px(1_248.0), px(840.0)), |_, cx| {
 				cx.new(|cx| {
-					ChiefSurface::visual_from_service(snapshot, selected, history, request, cx)
+					let mut surface =
+						ChiefSurface::visual_from_service(snapshot, selected, history, request, cx);
+					surface.visual_guardian_reviews(guardian);
+					surface
 				})
 			})?;
 			if let Some(message) = send_message {
