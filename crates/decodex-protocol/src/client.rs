@@ -408,6 +408,39 @@ impl ChiefClient {
 		}
 	}
 
+	/// Read task estimates with enough time for the native bounded billing request.
+	pub async fn usage_estimate(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefUsageEstimateResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let expected = work_id.clone();
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(75),
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport.query_inner(
+				"chief-usage-estimate",
+				QueryPayload::GetChiefUsageEstimate { work_id },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefUsageEstimate(result) => {
+				if matches!(&result,crate::ChiefUsageEstimateResult::Available {work_id,..} if work_id!=&expected)
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read source-bound native integration observations without running the thread.
 	pub async fn integrations(
 		&self,
@@ -2358,6 +2391,71 @@ mod tests {
 		}
 	}
 
+	#[tokio::test]
+	async fn usage_estimate_transport_rejects_another_work_and_keeps_unknown_values() {
+		for returned_work in ["work", "another-work"] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let stream = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let _ = socket.next().await;
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+					panic!("text query");
+				};
+				let ClientMessage::Query(query) =
+					serde_json::from_str::<ClientMessage>(&request).unwrap()
+				else {
+					panic!("query");
+				};
+				assert!(
+					matches!(query.payload,crate::QueryPayload::GetChiefUsageEstimate {work_id} if work_id.as_str()=="work")
+				);
+				let value = crate::ChiefUsageEstimateResult::Available {
+					work_id: EntityId::new(returned_work).unwrap(),
+					account_id: EntityId::new("account").unwrap(),
+					observed_at_micros: 1,
+					estimate: crate::ThreadUsageEstimate {
+						thread_id: "thread".into(),
+						estimated_usage_credits_micros: 9007199254740993,
+						estimated_usage_usd_micros: None,
+						groups: vec![],
+					},
+				};
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::ChiefUsageEstimate(value),
+					})))
+					.await
+					.unwrap();
+				drop(socket);
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let response = crate::ChiefClient::new(profile)
+				.usage_estimate(EntityId::new("work").unwrap())
+				.await;
+			task.await.unwrap();
+			if returned_work == "work" {
+				let crate::ChiefUsageEstimateResult::Available { estimate, .. } = response.unwrap()
+				else {
+					panic!("estimate");
+				};
+				assert_eq!(estimate.estimated_usage_credits_micros, 9007199254740993);
+				assert_eq!(estimate.estimated_usage_usd_micros, None);
+			} else {
+				assert_eq!(response.unwrap_err(), ClientFailure::ProtocolMalformed);
+			}
+		}
+	}
+
 	fn result(report: DoctorReport) -> Message {
 		typed(ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
@@ -2486,8 +2584,8 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_27_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 32 });
+	fn protocol_constants_expose_only_the_exact_current_version() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 33 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

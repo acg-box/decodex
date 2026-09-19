@@ -16,6 +16,7 @@
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_requests.rs"] mod requests;
 #[path = "chief_resources.rs"] mod resources;
+#[path = "chief_usage_estimates.rs"] mod usage_estimates;
 #[path = "chief_voice.rs"] mod voice;
 #[path = "chief_workspace.rs"] mod workspace;
 #[path = "chief_workspace_size.rs"] mod workspace_size;
@@ -63,6 +64,8 @@ pub(crate) struct ChiefSurface {
 	activity_detail_task: Option<Task<()>>,
 	resources: Option<(String, Option<decodex_protocol::ChiefResourcesResult>)>,
 	resources_task: Option<Task<()>>,
+	usage_estimate: Option<(String, Option<decodex_protocol::ChiefUsageEstimateResult>)>,
+	usage_estimate_task: Option<Task<()>>,
 	integrations: Option<(String, Option<decodex_protocol::ChiefIntegrationsResult>)>,
 	integrations_task: Option<Task<()>>,
 	integration_refresh_task: Option<Task<()>>,
@@ -245,6 +248,8 @@ impl ChiefSurface {
 			activity_detail_task: None,
 			resources: None,
 			resources_task: None,
+			usage_estimate: None,
+			usage_estimate_task: None,
 			integrations: None,
 			integrations_task: None,
 			integration_refresh_task: None,
@@ -708,6 +713,8 @@ impl ChiefSurface {
 		self.activity_detail_task = None;
 		self.resources = None;
 		self.resources_task = None;
+		self.usage_estimate = None;
+		self.usage_estimate_task = None;
 		self.integrations = None;
 		self.integrations_task = None;
 		self.integration_refresh_task = None;
@@ -1214,7 +1221,8 @@ impl ChiefSurface {
 			.flex_col()
 			.gap(px(ui_theme::MESSAGE_GAP))
 			.child(self.resources_panel(&work.id, cx))
-			.child(self.integrations_panel(&work.id, cx));
+			.child(self.integrations_panel(&work.id, cx))
+			.child(self.usage_estimate_panel(&work.id, cx));
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
 			Some(ChiefHistoryResult::Available {
 				entries, has_more, next_before, live, ..

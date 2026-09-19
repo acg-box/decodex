@@ -20,6 +20,7 @@ mod chief_detail;
 mod chief_host;
 mod chief_integrations;
 mod chief_resources;
+mod chief_usage_estimate;
 mod chief_voice;
 mod conversation;
 mod dictation;
