@@ -11,7 +11,7 @@ for current work.
 | Capability | Included implementation | Remaining work |
 | --- | --- | --- |
 | Models | Retained Chief process pages `model/list`; GPUI consumes efforts, Fast and image support. Owners: `chief_capabilities.rs` in runtime and GPUI, `chief_host.rs`. | Account-transition acceptance, access/retirement metadata and optional-field semantics. |
-| Replies and questions | Durable exact-turn steering, rejected/uncertain outcomes and pending question forms. Owners: runtime `chief.rs`, GPUI `chief_requests.rs`. | Structured async-message UX; nonblocking question countdown and empty-answer skip; native acceptance. |
+| Replies and questions | Durable exact-turn steering, rejected/uncertain outcomes and pending question forms. Owners: runtime `chief.rs`, GPUI `chief_requests.rs`. | Structured async-message UX and native acceptance. Nonblocking question timing is implemented in the follow-up below. |
 | Inputs | Composer attachments, `localImage`, non-image path references. | Native file inputs and stored artifact associations are separate contracts; check release availability and actual use. |
 | Execution | Per-message model, effort and Fast overrides. | Live `turn/settings/update` remains separate and has no consumer. |
 | Observations and recovery | Usage, compaction, approvals, native agent activity and bounded model-capacity recovery remain included. | Native end-to-end acceptance with the merged UI and account transitions. |
@@ -227,3 +227,21 @@ three detail fixtures, request projection and stale-request tests, runtime
 Clippy across all targets/features, and GPUI compilation passed. No live approval
 or visual acceptance is claimed. Terminal misalignment admission and nonblocking
 question timing remain open adaptations.
+
+## Nonblocking question follow-up
+
+The pending-question projection now retains validated `isBlocking`. The GPUI
+request panel follows the upstream fixed policy: 60 seconds of grace, then a
+60-second countdown. Only explicit `isBlocking: false` enables the timer;
+missing metadata remains blocking, and deprecated `autoResolutionMs` is ignored.
+Keyboard or mouse interaction stops automatic resolution for that request.
+Expiry sends `answers: {}` through the original pending event response route;
+it does not select an option. Automatic submission requires a fresh pending
+snapshot and is attempted once, with no retry after uncertain acceptance.
+
+Timers retain their stopped state across selection changes and reset with the
+service profile. Countdown text follows the controls so removing it on mouse
+down cannot move an option before the click completes. Three GPUI timing and
+interaction tests and the runtime pending-request projection test pass. This
+implements native request-user-input callbacks; structured asynchronous agent
+message questions remain separate work.
