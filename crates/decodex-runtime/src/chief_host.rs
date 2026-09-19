@@ -323,6 +323,18 @@ impl ChiefHost {
 		Ok(root.id)
 	}
 
+	async fn cancel_capacity_retry(
+		&self,
+		work_id: decodex_protocol::EntityId,
+		event_id: i64,
+	) -> Result<String, ChiefHostError> {
+		self.store
+			.cancel_chief_capacity_retry(work_id.as_str().into(), event_id)
+			.await
+			.map_err(|_| "capacity retry is no longer pending; refresh state")?;
+		Ok(work_id.as_str().into())
+	}
+
 	async fn handle(
 		&self,
 		key: String,
@@ -343,6 +355,8 @@ impl ChiefHost {
 				})?;
 				Ok(work_id.as_str().into())
 			},
+			ChiefActionDto::CancelCapacityRetry { work_id, event_id } =>
+				self.cancel_capacity_retry(work_id, event_id).await,
 			ChiefActionDto::Respond { work_id, event_id, response_json } => {
 				let event = self
 					.store

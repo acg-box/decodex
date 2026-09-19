@@ -523,7 +523,8 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		| crate::ChiefActionDto::StartConfigured { start, .. } => &start.root_id,
 		crate::ChiefActionDto::Send { root_id, .. }
 		| crate::ChiefActionDto::SendConfigured { root_id, .. } => root_id,
-		crate::ChiefActionDto::Interrupt { work_id, .. }
+		crate::ChiefActionDto::CancelCapacityRetry { work_id, .. }
+		| crate::ChiefActionDto::Interrupt { work_id, .. }
 		| crate::ChiefActionDto::Respond { work_id, .. }
 		| crate::ChiefActionDto::AutomationResult { work_id, .. }
 		| crate::ChiefActionDto::Steer { work_id, .. } => work_id,
@@ -2275,8 +2276,8 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_25_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 25 });
+	fn protocol_constants_expose_only_the_exact_v2_26_version() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 26 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

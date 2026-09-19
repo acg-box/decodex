@@ -10,6 +10,8 @@ use tokio::{
 	sync::{mpsc, oneshot, watch},
 };
 
+mod history;
+
 const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 const MAX_PENDING_REQUESTS: usize = 256;
 const MAX_BUFFERED_EVENTS: usize = 256;
@@ -678,13 +680,14 @@ mod tests {
 		let mut command = Command::new(executable);
 		command.arg("app-server").current_dir(&cwd);
 		let (client, mut events, mut process) = AppServerClient::spawn(&mut command).unwrap();
+		let mut created_threads = Vec::new();
 		let result = timeout(Duration::from_secs(120), async {
             client.initialize(json!({"clientInfo":{"name":"decodex-transport-smoke","version":"0.1.0"},"capabilities":{"experimentalApi":true}})).await?;
             let models = client.request("model/list", json!({})).await?;
             if !models["data"].as_array().is_some_and(|models| models.iter().any(|entry| entry["model"] == model)) {
                 return Err(ClientError::InvalidFrame);
             }
-            let params = json!({"model":model,"cwd":cwd,"sandbox":"read-only","approvalPolicy":"never","ephemeral":true,"config":{"model_reasoning_effort":"medium"}});
+            let params = json!({"model":model,"cwd":cwd,"sandbox":"read-only","approvalPolicy":"never","historyMode":"paginated","config":{"model_reasoning_effort":"medium"}});
             let (one, two) = tokio::try_join!(client.thread_start(params.clone()), client.thread_start(params))?;
             for thread in [&one, &two] {
                 if thread["model"] != model || thread["reasoningEffort"] != "medium" {
@@ -693,16 +696,30 @@ mod tests {
             }
             let one = one["thread"]["id"].as_str().ok_or(ClientError::InvalidFrame)?;
             let two = two["thread"]["id"].as_str().ok_or(ClientError::InvalidFrame)?;
+            created_threads.extend([one.to_owned(), two.to_owned()]);
             if one == two { return Err(ClientError::InvalidFrame); }
             let input = json!([{"type":"text","text":"Reply with exactly OK. Do not use any tools."}]);
             tokio::try_join!(client.turn_start(json!({"threadId":one,"input":input,"effort":"medium"})), client.turn_start(json!({"threadId":two,"input":input,"effort":"medium"})))?;
             let mut completed = std::collections::HashSet::new();
+            let mut usage_seen = std::collections::HashSet::new();
             while completed.len() < 2 {
                 match events.recv().await {
+                    Some(ServerEvent::Notification { method, params }) if method == "thread/tokenUsage/updated" => {
+                        let usage: crate::ThreadTokenUsage = serde_json::from_value(params["tokenUsage"].clone()).map_err(|_| ClientError::InvalidFrame)?;
+                        if !usage.is_valid() { return Err(ClientError::InvalidFrame); }
+                        usage_seen.insert((params["threadId"].as_str().ok_or(ClientError::InvalidFrame)?.to_owned(), params["turnId"].as_str().ok_or(ClientError::InvalidFrame)?.to_owned()));
+                    },
                     Some(ServerEvent::Notification { method, params }) if method == "turn/completed" => {
                         let thread = params["threadId"].as_str().ok_or(ClientError::InvalidFrame)?;
                         if thread != one && thread != two { return Err(ClientError::InvalidFrame); }
                         if params["turn"]["status"] != "completed" { return Err(ClientError::InvalidFrame); }
+                        let turn = params["turn"]["id"].as_str().ok_or(ClientError::InvalidFrame)?;
+                        if !usage_seen.contains(&(thread.to_owned(), turn.to_owned())) { return Err(ClientError::InvalidFrame); }
+                        let history = client.thread_read_turn(thread, turn).await?;
+                        if history["thread"]["turns"][0]["id"] != turn
+                            || !history["thread"]["turns"][0]["items"].as_array().is_some_and(|items| items.iter().any(|item| item["type"] == "agentMessage" && item["text"].as_str().is_some_and(|text| text.contains("OK")))) {
+                            return Err(ClientError::InvalidFrame);
+                        }
                         completed.insert(thread.to_owned());
                     },
                     Some(ServerEvent::Request { id, .. }) => {
@@ -716,6 +733,9 @@ mod tests {
             client.thread_read(json!({"threadId":two})).await?;
             Ok::<_, ClientError>(())
         }).await;
+		for thread in created_threads {
+			client.request("thread/archive", json!({"threadId":thread})).await.unwrap();
+		}
 		process.shutdown().await.unwrap();
 		assert!(matches!(result, Ok(Ok(()))), "live smoke failed: {result:?}");
 	}

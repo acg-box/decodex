@@ -38,8 +38,8 @@ pub use self::{
 	},
 	accounts::AccountMetadata,
 	chief::{
-		ChiefDependency, ChiefDispatchState, ChiefDisposition, ChiefInboxEvent, ChiefStoreSnapshot,
-		ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus, EnqueueChiefEvent,
+		ChiefCapacityRetry, ChiefDependency, ChiefDispatchState, ChiefDisposition, ChiefInboxEvent,
+		ChiefStoreSnapshot, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus, EnqueueChiefEvent,
 	},
 	chief_process::ChiefProcessBinding,
 	command::CommandIdentity,
@@ -640,7 +640,7 @@ mod tests {
 				Ok((version, migration_name, migration_digest, account_created_at, profile))
 			})
 			.expect("read V11 upgrade evidence");
-		assert_eq!(version, 22);
+		assert_eq!(version, i64::try_from(digests.len()).unwrap());
 		assert_eq!(migration_name, "desktop_settings");
 		assert_eq!(migration_digest, digests[10]);
 		assert_eq!(account_created_at, 10);

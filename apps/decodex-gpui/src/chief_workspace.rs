@@ -539,15 +539,14 @@ impl ChiefSurface {
 			transcript = transcript.child(self.workspace_welcome(window, cx));
 		}
 
-		chat = chat
-			.child(
-				div()
-					.flex_1()
-					.min_h_0()
-					.flex()
-					.child(self.history_rail_slot(window, cx))
-					.child(transcript),
-			);
+		chat = chat.child(
+			div()
+				.flex_1()
+				.min_h_0()
+				.flex()
+				.child(self.history_rail_slot(window, cx))
+				.child(transcript),
+		);
 		if is_chief && selected.is_some() {
 			chat = chat.child(self.floating_composer(window, cx));
 		} else if let Some(work) = selected {

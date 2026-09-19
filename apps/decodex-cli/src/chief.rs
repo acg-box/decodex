@@ -19,6 +19,15 @@ use crate::{CommandOutput, OutputFormat, load_client_profile};
 /// Explicit Chief operations. Execution stays inside the service.
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum ChiefCommand {
+	/// Cancel one pending model-capacity retry shown in history or status.
+	CancelRetry {
+		#[arg(long)]
+		work_id: String,
+		#[arg(long)]
+		event_id: i64,
+		#[arg(long)]
+		idempotency_key: Option<String>,
+	},
 	/// Show the complete bounded work graph and undisposed event metadata.
 	Status,
 	/// Inspect one unresolved request before answering it.
@@ -273,6 +282,15 @@ fn prepare(command: ChiefCommand) -> Result<(ChiefActionDto, IdempotencyKey), &'
 		WireText::new(value).map_err(|_| "invalid turn or source event identity")
 	};
 	let (action, key) = match command {
+		ChiefCommand::CancelRetry { work_id, event_id, idempotency_key } => {
+			if event_id <= 0 {
+				return Err("retry cancellation requires a positive event identity");
+			}
+			(
+				ChiefActionDto::CancelCapacityRetry { work_id: identity(work_id)?, event_id },
+				idempotency_key,
+			)
+		},
 		ChiefCommand::Answer { work_id, event_id, idempotency_key, response_json } => {
 			if event_id <= 0
 				|| !serde_json::from_str::<serde_json::Value>(&response_json)
@@ -446,6 +464,34 @@ async fn execute_mutation(
 mod tests {
 	use crate::{Cli, Command, OutputFormat};
 	use clap::Parser as _;
+
+	#[test]
+	fn cancel_retry_command_binds_exact_work_and_event() {
+		let cli = Cli::try_parse_from([
+			"decodex",
+			"chief",
+			"cancel-retry",
+			"--work-id",
+			"worker",
+			"--event-id",
+			"7",
+		])
+		.unwrap();
+		let Command::Chief(command) = cli.command else {
+			panic!("Chief command");
+		};
+		assert!(
+			matches!(super::prepare(command).unwrap().0,decodex_protocol::ChiefActionDto::CancelCapacityRetry {work_id,event_id:7} if work_id.as_str()=="worker")
+		);
+		assert!(
+			super::prepare(super::ChiefCommand::CancelRetry {
+				work_id: "worker".into(),
+				event_id: 0,
+				idempotency_key: None
+			})
+			.is_err()
+		);
+	}
 
 	#[test]
 	fn chief_answer_binds_event_and_rejects_non_object_responses() {

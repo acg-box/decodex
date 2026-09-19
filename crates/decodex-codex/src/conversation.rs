@@ -901,6 +901,8 @@ struct ConversationThreadStartResponseWire {
 	model: String,
 	model_provider: String,
 	service_tier: Option<String>,
+	#[serde(default)]
+	disabled_plugin_ids: Vec<String>,
 	cwd: ConversationAbsolutePathWire,
 	#[serde(default)]
 	runtime_workspace_roots: Vec<ConversationAbsolutePathWire>,
@@ -934,6 +936,8 @@ struct ConversationThreadResumeResponseWire {
 	model: String,
 	model_provider: String,
 	service_tier: Option<String>,
+	#[serde(default)]
+	disabled_plugin_ids: Vec<String>,
 	cwd: ConversationAbsolutePathWire,
 	#[serde(default)]
 	runtime_workspace_roots: Vec<ConversationAbsolutePathWire>,
@@ -945,6 +949,8 @@ struct ConversationThreadResumeResponseWire {
 	#[serde(default)]
 	active_permission_profile: Option<ConversationActivePermissionProfileWire>,
 	reasoning_effort: Option<ConversationReasoningEffortWire>,
+	#[serde(default)]
+	collaboration_mode: Option<ConversationCollaborationModeWire>,
 	#[serde(default)]
 	multi_agent_mode: ConversationMultiAgentModeWire,
 	#[serde(default)]
@@ -966,6 +972,30 @@ impl ConversationThreadResumeResponseWire {
 
 		Ok(())
 	}
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConversationCollaborationModeWire {
+	mode: ConversationModeKindWire,
+	settings: ConversationCollaborationSettingsWire,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ConversationModeKindWire {
+	Plan,
+	Default,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConversationCollaborationSettingsWire {
+	model: String,
+	reasoning_effort: Option<ConversationReasoningEffortWire>,
+	developer_instructions: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -1538,6 +1568,7 @@ const THREAD_START_RESPONSE_FIELDS: &[&str] = &[
 	"model",
 	"modelProvider",
 	"serviceTier",
+	"disabledPluginIds",
 	"cwd",
 	"runtimeWorkspaceRoots",
 	"instructionSources",
@@ -1555,6 +1586,8 @@ const THREAD_RESUME_RESPONSE_FIELDS: &[&str] = &[
 	"model",
 	"modelProvider",
 	"serviceTier",
+	"disabledPluginIds",
+	"collaborationMode",
 	"cwd",
 	"runtimeWorkspaceRoots",
 	"instructionSources",
@@ -1934,6 +1967,57 @@ mod tests {
 			encoded.get("clientUserMessageId"),
 			Some(&json!("50000000-0000-4000-8000-000000000001")),
 		);
+	}
+
+	#[test]
+	fn current_plugin_metadata_accepts_lists_and_rejects_malformed_values() {
+		for plugins in [json!([]), json!(["plugin@example"])] {
+			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+			response["disabledPluginIds"] = plugins;
+			let bytes = serde_json::to_vec(&response).unwrap();
+			assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_ok());
+			assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_ok());
+		}
+		for plugins in [Value::Null, json!(true), json!({}), json!([42])] {
+			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+			response["disabledPluginIds"] = plugins;
+			let bytes = serde_json::to_vec(&response).unwrap();
+			assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_err());
+			assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_err());
+		}
+	}
+
+	#[test]
+	fn resume_accepts_current_collaboration_settings_without_relaxing_the_wire_contract() {
+		for mode in [json!("default"), json!("plan")] {
+			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+			response["collaborationMode"] = json!({"mode":mode,"settings":{
+				"model":"gpt-5","reasoning_effort":"high","developer_instructions":null
+			}});
+			assert!(
+				decode_conversation_thread_resume_response(
+					&resume_request(),
+					&serde_json::to_vec(&response).unwrap()
+				)
+				.is_ok()
+			);
+		}
+		for mode in [
+			json!(true),
+			json!({"mode":"default"}),
+			json!({"mode":"other","settings":{"model":"gpt-5"}}),
+			json!({"mode":"default","settings":{"model":"gpt-5","reasoning_effort":42}}),
+		] {
+			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+			response["collaborationMode"] = mode;
+			assert!(
+				decode_conversation_thread_resume_response(
+					&resume_request(),
+					&serde_json::to_vec(&response).unwrap()
+				)
+				.is_err()
+			);
+		}
 	}
 
 	#[test]

@@ -6,8 +6,9 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 22;
+const CURRENT_SCHEMA_VERSION: i64 = 24;
 
+#[derive(Clone, Copy)]
 struct Migration {
 	version: i64,
 	name: &'static str,
@@ -125,6 +126,16 @@ const MIGRATIONS: &[Migration] = &[
 		name: "chief_voice_calls",
 		sql: include_str!("../migrations/0022_chief_voice_calls.sql"),
 	},
+	Migration {
+		version: 23,
+		name: "chief_observation_indexes",
+		sql: include_str!("../migrations/0015_chief_observation_indexes.sql"),
+	},
+	Migration {
+		version: 24,
+		name: "chief_capacity_retry",
+		sql: include_str!("../migrations/0016_chief_capacity_retry.sql"),
+	},
 ];
 
 pub(crate) fn configure(connection: &Connection) -> Result<(), DatabaseError> {
@@ -162,7 +173,7 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> 
 	}
 
 	verify_applied_migrations(connection)?;
-	for migration in MIGRATIONS {
+	for migration in migration_plan(connection)? {
 		if migration.version <= applied_version(connection)? {
 			continue;
 		}
@@ -226,6 +237,27 @@ pub(crate) fn verify(connection: &Connection) -> Result<(), DatabaseError> {
 	Ok(())
 }
 
+// Both deployed lineages retain their exact applied names and SQL digests.
+// Only unapplied migrations receive the next available version in that lineage.
+fn migration_plan(connection: &Connection) -> Result<Vec<Migration>, DatabaseError> {
+	if !migration_table_exists(connection)? {
+		return Ok(MIGRATIONS.to_vec());
+	}
+	let name: Option<String> = connection
+		.query_row("SELECT name FROM schema_migrations WHERE version=15", [], |row| row.get(0))
+		.optional()
+		.map_err(sqlite_error)?;
+	if name.as_deref() != Some("chief_observation_indexes") {
+		return Ok(MIGRATIONS.to_vec());
+	}
+	let ordered =
+		MIGRATIONS[..14].iter().chain(MIGRATIONS[22..].iter()).chain(MIGRATIONS[14..22].iter());
+	Ok(ordered
+		.enumerate()
+		.map(|(index, migration)| Migration { version: index as i64 + 1, ..*migration })
+		.collect())
+}
+
 fn verify_applied_migrations(connection: &Connection) -> Result<(), DatabaseError> {
 	if !migration_table_exists(connection)? {
 		return if user_table_count(connection)? == 0 {
@@ -247,7 +279,8 @@ fn verify_applied_migrations(connection: &Connection) -> Result<(), DatabaseErro
 		return Err(DatabaseError::Incompatible);
 	}
 	for (index, (version, name, digest)) in applied.iter().enumerate() {
-		let expected = MIGRATIONS.get(index).ok_or(DatabaseError::Incompatible)?;
+		let plan = migration_plan(connection)?;
+		let expected = plan.get(index).ok_or(DatabaseError::Incompatible)?;
 		if *version != expected.version
 			|| name != expected.name
 			|| digest != &migration_digest(expected.sql)
@@ -349,6 +382,62 @@ mod tests {
 	use super::*;
 
 	#[test]
+	fn both_chief_migration_lineages_preserve_history_and_converge() {
+		for upstream in [false, true] {
+			let plan: Vec<Migration> = if upstream {
+				MIGRATIONS[..14]
+					.iter()
+					.chain(MIGRATIONS[22..].iter())
+					.chain(MIGRATIONS[14..22].iter())
+					.enumerate()
+					.map(|(index, m)| Migration { version: index as i64 + 1, ..*m })
+					.collect()
+			} else {
+				MIGRATIONS.to_vec()
+			};
+			for version in 14..=24 {
+				let directory = tempfile::tempdir().unwrap();
+				let mut connection =
+					Connection::open(directory.path().join("upgrade.sqlite3")).unwrap();
+				configure(&connection).unwrap();
+				for migration in &plan[..version] {
+					connection.execute_batch(migration.sql).unwrap();
+					connection
+						.execute(
+							"INSERT INTO schema_migrations VALUES (?1,?2,?3,1)",
+							params![
+								migration.version,
+								migration.name,
+								migration_digest(migration.sql)
+							],
+						)
+						.unwrap();
+				}
+				connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+				connection.pragma_update(None, "user_version", version as i64).unwrap();
+				let before: Vec<(i64, String, String)> = connection
+					.prepare("SELECT version,name,sha256 FROM schema_migrations ORDER BY version")
+					.unwrap()
+					.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+					.unwrap()
+					.collect::<Result<_, _>>()
+					.unwrap();
+				migrate(&mut connection).unwrap();
+				let after: Vec<(i64, String, String)> = connection
+					.prepare("SELECT version,name,sha256 FROM schema_migrations ORDER BY version")
+					.unwrap()
+					.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+					.unwrap()
+					.collect::<Result<_, _>>()
+					.unwrap();
+				assert_eq!(before, after[..version]);
+				verify(&connection).unwrap();
+				migrate(&mut connection).unwrap();
+			}
+		}
+	}
+
+	#[test]
 	fn kernel_recovery_migration_keeps_existing_evidence_bytes() {
 		// Isolate row-copy behavior; fresh/upgrade tests verify the complete FK graph.
 		let connection = Connection::open_in_memory().unwrap();
@@ -426,6 +515,42 @@ mod tests {
 		);
 		migrate(&mut connection).unwrap();
 		verify(&connection).unwrap();
+	}
+
+	#[test]
+	fn capacity_retry_upgrade_preserves_version_fourteen_and_fifteen_events() {
+		for version in [14, 15] {
+			let directory = tempfile::tempdir().unwrap();
+			let mut connection =
+				Connection::open(directory.path().join("upgrade.sqlite3")).unwrap();
+			configure(&connection).unwrap();
+			for migration in &MIGRATIONS[..version] {
+				connection.execute_batch(migration.sql).unwrap();
+				connection
+					.execute(
+						"INSERT INTO schema_migrations (version,name,sha256,applied_at_micros) VALUES (?1,?2,?3,1)",
+						params![migration.version, migration.name, migration_digest(migration.sql)],
+					)
+					.unwrap();
+			}
+			connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+			connection.pragma_update(None, "user_version", version as i64).unwrap();
+			connection.execute("INSERT INTO chief_work_items (id,kind,title,instructions,status,dispatch_state,created_at_micros,updated_at_micros) VALUES ('root','goal','Keep this goal','Keep these instructions','open','idle',1,1)", []).unwrap();
+			connection.execute("INSERT INTO chief_inbox_events (source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES ('input','root','user_message','{\"text\":\"Keep this message\"}',1)", []).unwrap();
+			migrate(&mut connection).unwrap();
+			let event: (String, Option<String>) = connection
+				.query_row(
+					"SELECT payload,disposition FROM chief_inbox_events WHERE source_event_id='input'",
+					[],
+					|row| Ok((row.get(0)?, row.get(1)?)),
+				)
+				.unwrap();
+			assert_eq!(event, ("{\"text\":\"Keep this message\"}".into(), None));
+			let indexes: i64 = connection.query_row("SELECT count(*) FROM sqlite_schema WHERE type='index' AND name IN ('chief_inbox_work_history','chief_inbox_work_kind')", [], |row| row.get(0)).unwrap();
+			assert_eq!(indexes, 2);
+			migrate(&mut connection).unwrap();
+			verify(&connection).unwrap();
+		}
 	}
 
 	#[test]

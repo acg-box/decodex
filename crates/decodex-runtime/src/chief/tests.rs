@@ -1,6 +1,55 @@
 use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[path = "tests/capacity.rs"] mod capacity;
+
+#[tokio::test]
+async fn asynchronous_questions_and_usage_are_observed_without_completing_or_waking_work() {
+	let (mut coordinator, mut sent, _directory) = fixture().await;
+	coordinator.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let message = json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{
+		"id":"question","type":"agentMessage","delivery":"async","text":"Which format?\n- PDF\n- Markdown",
+		"questions":[{"title":"Which format?","options":["PDF","Markdown"]}]}});
+	for _ in 0..2 {
+		coordinator
+			.handle_event(ServerEvent::Notification {
+				method: "item/completed".into(),
+				params: message.clone(),
+			})
+			.await
+			.unwrap();
+	}
+	let counts = json!({"totalTokens":1200,"inputTokens":1000,"cachedInputTokens":500,"outputTokens":200,"reasoningOutputTokens":100});
+	coordinator.handle_event(ServerEvent::Notification { method:"thread/tokenUsage/updated".into(), params:json!({
+		"threadId":"opaque thread/1","turnId":"opaque turn/1","tokenUsage":{"total":counts,"last":counts,"modelContextWindow":128000}
+	}) }).await.unwrap();
+	coordinator.handle_event(ServerEvent::Notification { method:"item/completed".into(), params:json!({
+		"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{"type":"contextCompaction","id":"compact"}
+	}) }).await.unwrap();
+	let work = coordinator.store.get_chief_work_item("chief".into()).await.unwrap();
+	assert_eq!(work.dispatch_state, decodex_database::ChiefDispatchState::Running);
+	let history = coordinator.store.read_chief_work_events("chief".into(), 10).await.unwrap();
+	assert_eq!(history.iter().filter(|event| event.event_kind == "assistant_message").count(), 1);
+	assert_eq!(history.iter().filter(|event| event.event_kind == "context_compacted").count(), 1);
+	assert_eq!(history.iter().filter(|event| event.event_kind == "activity_completed").count(), 1);
+	assert!(coordinator.store.read_chief_usage("chief".into()).await.unwrap().is_some());
+	assert!(coordinator.store.list_pending_chief_events(10).await.unwrap().is_empty());
+	coordinator.wake_pending().await.unwrap();
+	assert!(sent.try_recv().is_err());
+	coordinator.recover_persisted().await.unwrap();
+	let usage = coordinator
+		.store
+		.read_chief_usage_observation("chief".into(), "opaque turn/1".into())
+		.await
+		.unwrap()
+		.unwrap();
+	assert_eq!(
+		serde_json::from_str::<Value>(&usage.payload).unwrap()["tokenUsage"]["last"]["inputTokens"],
+		1000
+	);
+}
+
 #[path = "tests/inbox_carryover.rs"] mod inbox_carryover;
 
 #[path = "tests/result_integrity.rs"] mod result_integrity;
@@ -57,9 +106,40 @@ async fn fixture_with_history(
 				Some("turn/steer") => json!({"turnId":request["params"]["expectedTurnId"]}),
 				Some("thread/read") => {
 					let id = request["params"]["threadId"].as_str().unwrap();
-					history.get(id).cloned().unwrap_or_else(
+					let mut result = history.get(id).cloned().unwrap_or_else(
 						|| json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
-					)
+					);
+					if result["thread"]["historyMode"] == "paginated" {
+						assert_ne!(request["params"]["includeTurns"], true);
+						result["thread"]["turns"] = json!([]);
+					}
+					result
+				},
+				Some("thread/turns/list") => {
+					let id = request["params"]["threadId"].as_str().unwrap();
+					let mut turns = history[id]["thread"]["turns"].clone();
+					for turn in turns.as_array_mut().unwrap() {
+						turn["items"] = json!([]);
+						turn["itemsView"] = json!("notLoaded");
+					}
+					json!({"data":turns,"nextCursor":null})
+				},
+				Some("thread/items/list") => {
+					let id = request["params"]["threadId"].as_str().unwrap();
+					let turn_id = &request["params"]["turnId"];
+					let turn = history[id]["thread"]["turns"]
+						.as_array()
+						.unwrap()
+						.iter()
+						.find(|turn| turn["id"] == *turn_id)
+						.unwrap();
+					let entries: Vec<_> = turn["items"]
+						.as_array()
+						.unwrap()
+						.iter()
+						.map(|item| json!({"turnId":turn_id,"item":item}))
+						.collect();
+					json!({"data":entries,"nextCursor":null})
 				},
 				Some("thread/resume") => {
 					json!({"thread":{"id":request["params"]["threadId"],"turns":history[request["params"]["threadId"].as_str().unwrap()]["thread"]["turns"]},"model":"selected-model","reasoningEffort":request["params"]["config"]["model_reasoning_effort"]})

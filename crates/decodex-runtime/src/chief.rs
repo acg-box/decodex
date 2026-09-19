@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 mod activity;
+pub(crate) mod observations;
 mod result_messages;
 mod voice;
 
@@ -173,6 +174,7 @@ impl ChiefCoordinator {
 			let mut params = self.work_thread_params(&item).await?;
 			params.as_object_mut().expect("thread params").remove("dynamicTools");
 			params["threadId"] = json!(thread);
+			params["excludeTurns"] = json!(true);
 			let Ok(resumed) = self.client.thread_resume(params).await else {
 				continue;
 			};
@@ -189,9 +191,7 @@ impl ChiefCoordinator {
 			}
 			self.expect_usage_replay(thread, &resumed);
 			self.loaded_threads.insert(thread.clone());
-			let Ok(history) =
-				self.client.thread_read(json!({"threadId":thread,"includeTurns":true})).await
-			else {
+			let Ok(history) = self.client.thread_read_turn(thread, turn).await else {
 				continue;
 			};
 			if history.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
@@ -257,14 +257,21 @@ impl ChiefCoordinator {
 		if item.dispatch_state != decodex_database::ChiefDispatchState::Running {
 			self.store.reconcile_chief_dispatch(item.id.clone(), turn.clone()).await?;
 		}
-		let evidence = match history {
+		let mut evidence = match history {
 			Ok(value) => {
 				let exact_turn =
 					value.pointer("/thread/turns").and_then(Value::as_array).and_then(|turns| {
 						turns.iter().find(|entry| entry["id"].as_str() == Some(&turn))
 					});
 				let (messages, truncated) = result_messages::collect(exact_turn);
-				json!({"threadId":thread,"turnId":turn,"assistantMessages":messages,"truncated":truncated,"exactTurnReadback":exact_turn.is_some()})
+				let retry_eligible = value.pointer("/thread/id").and_then(Value::as_str)
+					== Some(thread.as_str())
+					&& exact_turn.is_some_and(|entry| {
+						entry["status"] == "failed"
+							&& entry.pointer("/error/codexErrorInfo").and_then(Value::as_str)
+								== Some("serverOverloaded")
+					});
+				json!({"threadId":thread,"turnId":turn,"assistantMessages":messages,"truncated":truncated,"exactTurnReadback":exact_turn.is_some(),"capacityRetryEligible":retry_eligible})
 			},
 			Err(error) => {
 				let detail = error.to_string();
@@ -283,6 +290,12 @@ impl ChiefCoordinator {
 			self.store.validate_chief_usage_resume(thread.clone(), None).await?;
 			None
 		};
+		if let Ok(Some(usage)) =
+			self.store.read_chief_usage_observation(item.id.clone(), turn.clone()).await
+			&& let Ok(value) = serde_json::from_str::<Value>(&usage.payload)
+		{
+			evidence["tokenUsage"] = value["tokenUsage"].clone();
+		}
 		self.store
 			.complete_chief_turn_with_event(
 				item.id.clone(),
@@ -659,7 +672,9 @@ impl ChiefCoordinator {
 			return Ok(item.clone());
 		}
 		self.store.begin_chief_thread_creation(item.id.clone()).await?;
-		let response = match self.client.thread_start(self.work_thread_params(item).await?).await {
+		let mut params = self.work_thread_params(item).await?;
+		params["historyMode"] = json!("paginated");
+		let response = match self.client.thread_start(params).await {
 			Ok(response) => response,
 			Err(error) => {
 				self.store.mark_chief_dispatch_unknown(item.id.clone()).await?;
@@ -697,6 +712,16 @@ impl ChiefCoordinator {
 		item: &ChiefWorkItem,
 		prompt: &str,
 		events: Vec<i64>,
+	) -> Result<String, ChiefError> {
+		self.dispatch_with_claim(item, prompt, events, None).await
+	}
+
+	async fn dispatch_with_claim(
+		&mut self,
+		item: &ChiefWorkItem,
+		prompt: &str,
+		events: Vec<i64>,
+		retry: Option<(i64, i64)>,
 	) -> Result<String, ChiefError> {
 		if item.kind == ChiefWorkKind::Goal && !self.is_manager(&item.id).await? {
 			return Err(ChiefError::Invalid(
@@ -743,6 +768,7 @@ impl ChiefCoordinator {
 		let mut resume = self.work_thread_params(&item).await?;
 		resume.as_object_mut().expect("thread params").remove("dynamicTools");
 		resume["threadId"] = json!(thread);
+		resume["excludeTurns"] = json!(true);
 		if !self.loaded_threads.contains(thread) {
 			let response = self.client.thread_resume(resume).await.map_err(resume_error)?;
 			let effort = if self.is_manager(&item.id).await? {
@@ -778,7 +804,13 @@ impl ChiefCoordinator {
 			}
 		}
 		let instruction = events.is_empty().then(|| prompt.to_owned());
-		self.store.begin_chief_dispatch_with_input(item.id.clone(), events, instruction).await?;
+		if let Some((event, now)) = retry {
+			self.store.begin_chief_capacity_retry(item.id.clone(), event, now).await?;
+		} else {
+			self.store
+				.begin_chief_dispatch_with_input(item.id.clone(), events, instruction)
+				.await?;
+		}
 		let result = self.client.turn_start(params).await;
 		let turn = match result {
 			Ok(value) => exact(&value, "/turn/id"),
@@ -888,6 +920,9 @@ impl ChiefCoordinator {
 	/// correlation continue independently while this method awaits a response.
 	pub async fn handle_event(&mut self, event: ServerEvent) -> Result<(), ChiefError> {
 		self.voice_event(&event).await?;
+		if let ServerEvent::Notification { method, params } = &event {
+			self.observe_notification(method, params).await?;
+		}
 		match event {
 			ServerEvent::Notification { method, params }
 				if ["thread/closed", "thread/archived", "thread/deleted"]
@@ -1075,7 +1110,7 @@ impl ChiefCoordinator {
 			return Ok(());
 		}
 		// Store the exact provider terminal payload before clearing active ownership.
-		let history = self.client.thread_read(json!({"threadId":thread,"includeTurns":true})).await;
+		let history = self.client.thread_read_turn(&thread, &turn).await;
 		self.record_terminal(params, history, true).await?;
 		self.wake_pending().await
 	}
@@ -1390,6 +1425,14 @@ impl ChiefCoordinator {
 	pub async fn check_due_followups(&mut self, now: i64) -> Result<(), ChiefError> {
 		if now < 0 {
 			return Err(ChiefError::Invalid("invalid due-check time".into()));
+		}
+		// Fresh input takes precedence over a saved retry, including after restart.
+		self.wake_pending().await?;
+		for retry in self.store.due_chief_capacity_retries(now).await? {
+			let work = self.store.get_chief_work_item(retry.work_item_id).await?;
+			self.dispatch_with_claim(&work,
+                "The previous turn stopped because the selected model was temporarily at capacity. Continue the existing request from the saved thread context. Preserve completed work and do not repeat completed actions. This is a capacity retry, not a new goal or a change of model.",
+                Vec::new(),Some((retry.event_id,now))).await?;
 		}
 		for work in self.store.list_unnotified_due_chief_work_items(now, 1000).await? {
 			let due = work
