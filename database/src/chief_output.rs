@@ -276,9 +276,18 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid activity receipt"));
 		}
+		// Native subagent observations can arrive after their initiating parent turn ends.
+		// Only an exact saved terminal receipt can authorize that historical association.
+		let historical_subagent =
+			serde_json::from_str::<serde_json::Value>(&payload).is_ok_and(|value| {
+				value["kind"] == "subAgentActivity"
+					&& value["turn_id"] == turn
+					&& value["item_id"] == item
+			});
+		let terminal_source = serde_json::json!(["turn/completed", thread, turn]).to_string();
 		self.run(move |connection| {
 			let tx=connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
-			let work:Option<String>=tx.query_row("SELECT id FROM chief_work_items WHERE codex_thread_id=?1 AND active_turn_id=?2 AND dispatch_state='running'",params![thread,turn],|row|row.get(0)).optional().map_err(sqlite_error)?;
+			let work:Option<String>=tx.query_row("SELECT w.id FROM chief_work_items w WHERE w.codex_thread_id=?1 AND ((w.active_turn_id=?2 AND w.dispatch_state='running') OR (?3 AND EXISTS(SELECT 1 FROM chief_inbox_events e WHERE e.work_item_id=w.id AND e.source_event_id=?4 AND e.event_kind IN ('chief_turn_completed','worker_turn_completed','capacity_retry'))))",params![thread,turn,historical_subagent,terminal_source],|row|row.get(0)).optional().map_err(sqlite_error)?;
 			let Some(work)=work else { return Ok(()); };
 			let count:i64=tx.query_row("SELECT count(*) FROM chief_inbox_events WHERE work_item_id=?1 AND delivered_turn_id=?2 AND event_kind IN ('activity_started','activity_completed')",params![work,turn],|row|row.get(0)).map_err(sqlite_error)?;
 			if count>=256 { return Ok(()); }

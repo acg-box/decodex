@@ -289,6 +289,21 @@ impl ChiefCoordinator {
 						exact_turn.and_then(|turn| turn["items"].as_array()).into_iter().flatten()
 					{
 						self.observe_async_question_item(&thread, &turn, entry).await?;
+						if entry["type"] == "subAgentActivity"
+							&& let Some(activity) =
+								activity::project(&json!({"turnId":turn,"item":entry}), true)
+						{
+							self.store
+								.record_chief_activity(
+									thread.clone(),
+									turn.clone(),
+									activity.item_id.clone(),
+									true,
+									serde_json::to_string(&activity)
+										.expect("serializable activity"),
+								)
+								.await?;
+						}
 					}
 				}
 				let (messages, truncated) = result_messages::collect(exact_turn);

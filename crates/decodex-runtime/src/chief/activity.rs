@@ -21,12 +21,37 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<ChiefActivityDt
 		"mcpToolCall" | "dynamicToolCall" => "Using tool",
 		"webSearch" => "Searching the web",
 		"collabAgentToolCall" => "Coordinating agents",
+		"subAgentActivity" => match item["kind"].as_str()? {
+			"started" => "Subagent started",
+			"interacted" => "Message sent to subagent",
+			"interrupted" => "Subagent interrupted",
+			"completed" => "Subagent completed a turn",
+			_ => return None,
+		},
 		"contextCompaction" => "Compacting context",
 		"imageView" => "Viewing image",
 		"imageGeneration" => "Generating image",
 		_ => return None,
 	};
 	let detail = match kind {
+		"subAgentActivity" => {
+			let agent = item["agentThreadId"].as_str()?;
+			let path = item["agentPath"].as_str()?;
+			if agent.is_empty()
+				|| agent.len() > 512
+				|| agent.chars().any(char::is_control)
+				|| path.is_empty()
+				|| path.len() > 512
+				|| path.chars().any(char::is_control)
+			{
+				return None;
+			}
+			if decodex_core::contains_credential_material(path) {
+				"Subagent".into()
+			} else {
+				path.to_owned()
+			}
+		},
 		"mcpToolCall" | "dynamicToolCall" => {
 			let tool = item["tool"].as_str().unwrap_or("Tool");
 			let server = item["server"].as_str().or(item["namespace"].as_str());
@@ -66,6 +91,23 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<ChiefActivityDt
 mod tests {
 	use super::project;
 	use serde_json::json;
+	#[test]
+	fn subagent_projection_rejects_unknown_or_malformed_identity() {
+		let good = json!({"turnId":"turn","item":{"id":"item","type":"subAgentActivity","kind":"started","agentThreadId":"child","agentPath":"/root/worker"}});
+		for (field, bad) in [
+			("kind", json!("future")),
+			("agentThreadId", json!("")),
+			("agentPath", json!("x".repeat(513))),
+			("agentPath", json!("/root/\nworker")),
+		] {
+			let mut value = good.clone();
+			value["item"][field] = bad;
+			assert!(project(&value, true).is_none());
+		}
+		let mut value = good;
+		value["item"]["agentPath"] = json!("Bearer fixture-private-access-token-123456789");
+		assert_eq!(project(&value, true).unwrap().detail, "Subagent");
+	}
 	#[test]
 	fn tool_projection_excludes_arguments_and_output() {
 		let value = json!({"turnId":"turn", "item":{"id":"item", "type":"mcpToolCall", "server":"docs", "tool":"search", "arguments":{"secret":"DO_NOT_SHOW"}, "result":"DO_NOT_SHOW"}});
