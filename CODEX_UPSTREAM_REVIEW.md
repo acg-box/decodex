@@ -2,9 +2,9 @@
 
 ## Current checkpoint: 2026-09-19
 
-Decodex base: `28b8e4b305eb67a70f00c18d401919d894e721ac` (PR #1351).
-This includes PRs #1346–#1350. The integration status, reconciliation and OAuth
-work below builds on that base. Historical sections retain dated source and test
+Decodex base: `009b49ca4f17ebaef5f096fa237a9c04936b746e` (PR #1352).
+This includes PRs #1346–#1351 and the native integration/OAuth delivery.
+The task-usage estimate work below builds on that base. Historical sections retain dated source and test
 evidence; they do not override this checkpoint.
 
 | Capability | Included implementation | Remaining work |
@@ -14,9 +14,9 @@ evidence; they do not override this checkpoint.
 | Misalignment | Explicit review and native continuation override with exact turn checks. PR #1347. | Include in the overall cross-feature acceptance pass. |
 | Inputs and resources | Composer images/path references and native task attachment associations with cross-client readback. PR #1350. | Remaining upstream input/resource capability dispositions. |
 | Execution | Per-message model, effort and Fast; bounded same-model serverOverloaded recovery. | Live turn/settings/update has no current UI consumer; record final applicability assessment. |
-| Observations and recovery | Usage, compaction, approval details and native agent activity. | Account/usage behavior audit and native acceptance with account transitions. |
+| Observations and recovery | Token usage, compaction, approval details and native agent activity. This change adds account-scoped task estimates. | Remaining account/usage and analytics capability dispositions. |
 | Voice | Chief subscription voice and native media host. | Assess remaining realtime changes against actual consumers. |
-| Plugins/MCP | Native typed elicitation and scoped replies (#1349/#1351); this change adds repository plugin status, independent MCP runtime/auth/discovery states, explicit reconcile/reload and native OAuth. | Remaining resource/error contracts and commit dispositions. |
+| Plugins/MCP | Native typed elicitation and scoped replies (#1349/#1351); PR #1352 adds repository plugin status, independent MCP runtime/auth/discovery states, explicit reconcile/reload and native OAuth. | Remaining resource/error contracts and commit dispositions. |
 
 The resumable consecutive full-diff review covers 76 of 1,569 commits in
 `a397079287e6638b39dda329835350d93222681f..595cc91e8cbb1c2ca822d0311dcf12709410c582`.
@@ -535,3 +535,49 @@ with matching server/thread identity, reload and authenticated MCP status. The
 fixture uses a temporary native home and file credential store, no real account,
 and no model turn. Local ChiefClient WebSocket tests also verify exact login intent
 transport and rejection of another session's response.
+
+
+## Account and task usage boundary review
+
+At fixed upstream 595cc91e8, rawResponse/completed is explicitly internal-only.
+thread_lifecycle.rs drops raw response items and completion events unless the
+thread was started with experimentalRawEvents. The resume API has no equivalent
+field. Thus a fixture that injects this event cannot prove delivery for existing
+or restarted Decodex tasks. Decodex does not enable this internal event stream or
+maintain a second ledger from its amount string. Commits 2c4a95736bea and
+e017e93aceaf preserve response precision for native internal consumers; they do
+not make raw metadata a default durable client history contract.
+
+The supported account/usage/read endpoint accepts threadId and returns native
+backend estimates. Decodex now reads these estimates on explicit request from the
+task panel. Integer millionths preserve credits and optional USD exactly; missing
+USD or token counts stay unknown. Cached input is a subtotal and is not added to
+input. Each result shows the authenticated local account and observation time.
+The service checks process generation, account credential revision and exact
+work/thread binding before and after the read. Changed sources discard the result.
+No estimates are added to account quota or copied into a durable accounting ledger;
+reopening and refreshing read the native authority again.
+
+Native account_processor.rs bounds the backend thread-usage request at 60 seconds.
+The service uses 65 seconds and its local client uses 75 seconds. Native 403/404
+become absent estimates; transport errors, unavailable source and unsupported
+methods remain separate outcomes. Backend results with the wrong thread are
+rejected. Native usage supports externally managed ChatGPT authentication, matching
+Decodex's retained process owner.
+
+An isolated local backend and codex-cli 0.155.0-alpha.9.2 verified exact-thread
+estimates, nullable USD/counts versus zero, 403 absence, wrong-thread rejection and
+a second client's reads after an account switch. No real account or model turn
+was used. Local transport tests preserve integer values above 2^53. Runtime tests
+change account, credential revision, process and thread between request and reply;
+each changed source is rejected. A rendered GPUI test checks explicit opening and
+clearing on task navigation.
+
+Workspace routing from a4354e2d27fd belongs to model request discovery. Final native
+account rate-limit and usage reads still construct BackendClient from the configured
+chatgpt_base_url; BackendClient::from_auth does not apply WorkspaceRouting. That
+commit alone does not justify sending Decodex account-observation requests to the
+model backend origin. Broader custom-backend/FedRAMP applicability remains under
+review. TUI Analytics independently binds both account and user and selects reports
+from the server's accounts/check plan, not token plan claims; its remaining report
+capabilities still need disposition.

@@ -1838,6 +1838,11 @@ impl Application for ServiceApplication {
 						"Chief is not connected.",
 					),
 				}),
+			QueryPayload::GetChiefUsageEstimate { work_id } =>
+				QueryResultPayload::ChiefUsageEstimate(match &self.chief {
+					Some(chief) => chief.usage_estimate(work_id.as_str()).await,
+					None => decodex_protocol::ChiefUsageEstimateResult::Unavailable,
+				}),
 			QueryPayload::GetChiefIntegrations { work_id } =>
 				QueryResultPayload::ChiefIntegrations(match &self.chief {
 					Some(chief) => chief.integrations(work_id.as_str()).await,

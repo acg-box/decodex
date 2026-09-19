@@ -831,6 +831,31 @@ impl ConversationRuntime {
 		)
 	}
 
+	/// Bind account-scoped observations to retained process admission and credential revision.
+	pub(crate) async fn chief_usage_source(
+		&self,
+	) -> Option<(
+		ProcessGenerationId,
+		AccountId,
+		i64,
+		decodex_codex::app_server_client::AppServerClient,
+	)> {
+		let (root, generation, client) = {
+			let slot = self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner);
+			let process = slot.as_ref()?;
+			(process.root_id.clone(), process.generation_id.clone(), process.client.clone()?)
+		};
+		let binding = self.inner.store.read_chief_process_binding(&root).await.ok()??;
+		if binding.generation_id != generation {
+			return None;
+		}
+		let inspection = self.inner.accounts.inspect(&binding.account_id).await.ok()?;
+		if self.chief_catalog_client().is_none_or(|(current, _)| current != generation) {
+			return None;
+		}
+		Some((generation, binding.account_id, inspection.account.revision, client))
+	}
+
 	pub(crate) async fn chief_account_exhausted(&self, root: &str) -> bool {
 		let Ok(Some(binding)) = self.inner.store.read_chief_process_binding(root).await else {
 			return false;

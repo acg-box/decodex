@@ -13,7 +13,9 @@ use tokio::{
 mod attachments;
 mod history;
 mod integrations;
+mod usage;
 pub use attachments::{ThreadAttachment, ThreadAttachmentAddOutcome, ThreadAttachmentAddResult};
+pub use usage::{ThreadUsageEstimate, ThreadUsageEstimateGroup};
 
 const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 const MAX_PENDING_REQUESTS: usize = 256;

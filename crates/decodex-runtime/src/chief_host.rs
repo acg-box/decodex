@@ -193,6 +193,27 @@ impl ChiefHost {
 		}
 	}
 
+	pub(crate) async fn usage_estimate(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefUsageEstimateResult {
+		crate::chief_usage_estimate::read(|| async {
+			let (generation, account, revision, client) = self.runtime.chief_usage_source().await?;
+			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+			Some(crate::chief_usage_estimate::Source {
+				key: crate::chief_usage_estimate::SourceKey {
+					generation,
+					account,
+					revision,
+					thread: owner.codex_thread_id?,
+					work: work.into(),
+				},
+				client,
+			})
+		})
+		.await
+	}
+
 	pub(crate) async fn integrations(
 		&self,
 		work: &str,
