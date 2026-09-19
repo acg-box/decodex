@@ -4,6 +4,46 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/capacity.rs"] mod capacity;
 
 #[tokio::test]
+async fn strict_review_notice_is_turn_bound_and_does_not_wake_or_stop_execution() {
+	let (mut coordinator, mut sent, _directory) = fixture().await;
+	coordinator.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let (read, mut write) = tokio::io::duplex(8192);
+	let (reader, writer) = tokio::io::split(read);
+	let (_client, mut events) = AppServerClient::from_io(reader, writer);
+	for (thread, turn, started) in [
+		("wrong", "opaque turn/1", json!(1)),
+		("opaque thread/1", "old", json!(1)),
+		("opaque thread/1", "opaque turn/1", json!(-1)),
+		("opaque thread/1", "opaque turn/1", json!("1")),
+		("opaque thread/1", "opaque turn/1", json!(1)),
+		("opaque thread/1", "opaque turn/1", json!(2)),
+	] {
+		let wire = json!({"method":"autoApprovalReview/strictReviewRequired","params":{"threadId":thread,"turnId":turn,"startedAtMs":started}});
+		write.write_all(format!("{wire}\n").as_bytes()).await.unwrap();
+		let event = tokio::time::timeout(std::time::Duration::from_secs(2), events.recv())
+			.await
+			.unwrap()
+			.unwrap();
+		coordinator.handle_event(event).await.unwrap();
+	}
+	let (history, _) =
+		coordinator.store.read_chief_transcript("chief".into(), None, 32).await.unwrap();
+	assert_eq!(
+		history.iter().filter(|event| event.event_kind == "strict_review_notice").count(),
+		1
+	);
+	assert!(coordinator.store.list_pending_chief_events(32).await.unwrap().is_empty());
+	assert!(coordinator.store.list_chief_wake_events("chief".into(), 32).await.unwrap().is_empty());
+	assert_eq!(
+		coordinator.store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state,
+		decodex_database::ChiefDispatchState::Running
+	);
+	coordinator.wake_pending().await.unwrap();
+	assert!(sent.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn asynchronous_questions_and_usage_are_observed_without_completing_or_waking_work() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;
 	coordinator.start_chief("chief", "Coordinate").await.unwrap();

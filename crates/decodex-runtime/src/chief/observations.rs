@@ -102,6 +102,21 @@ impl ChiefCoordinator {
 		method: &str,
 		params: &Value,
 	) -> Result<(), ChiefError> {
+		if method == "autoApprovalReview/strictReviewRequired" {
+			if let (Some(thread), Some(turn), Some(started)) = (
+				params["threadId"].as_str(),
+				params["turnId"].as_str(),
+				params["startedAtMs"].as_i64(),
+			) && started >= 0
+				&& !thread.is_empty()
+				&& !turn.is_empty()
+				&& thread.len() <= 512
+				&& turn.len() <= 512
+			{
+				self.store.record_chief_strict_review(thread.into(), turn.into(), started).await?;
+			}
+			return Ok(());
+		}
 		if method == "error"
 			&& params["willRetry"] == false
 			&& let (Some(thread), Some(turn)) =

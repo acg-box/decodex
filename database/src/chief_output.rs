@@ -196,6 +196,36 @@ WHERE (chief_usage.turn_input_tokens IS NULL AND chief_usage.turn_output_tokens 
 }
 
 impl SqliteStore {
+	/// Record a historical review notice for the exact running turn, without waking work.
+	/// Later reviews in the same turn do not repeat the notice or imply a decision.
+	pub async fn record_chief_strict_review(
+		&self,
+		thread: String,
+		turn: String,
+		started_at_ms: i64,
+	) -> Result<(), StoreError> {
+		if thread.is_empty()
+			|| turn.is_empty()
+			|| thread.len() > 512
+			|| turn.len() > 512
+			|| started_at_ms < 0
+		{
+			return Err(StoreError::InvalidInput("invalid strict review notice"));
+		}
+		self.run(move |connection| {
+			let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let work: Option<String> = tx.query_row("SELECT id FROM chief_work_items WHERE codex_thread_id=?1 AND active_turn_id=?2 AND dispatch_state='running'",params![thread,turn],|row|row.get(0)).optional().map_err(sqlite_error)?;
+			if let Some(work) = work {
+				let source = serde_json::json!(["strict_review",work,thread,turn]).to_string();
+				let payload = serde_json::json!({"threadId":thread,"turnId":turn,"startedAtMs":started_at_ms}).to_string();
+				let now = crate::unix_micros()?;
+				tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'strict_review_notice',?3,?4,'resolved','Observed native review; no user decision requested',?4,?2,?5) ON CONFLICT(source_event_id) DO NOTHING",params![source,work,payload,now,turn]).map_err(sqlite_error)?;
+			}
+			tx.commit().map_err(sqlite_error)?;
+			Ok(())
+		}).await
+	}
+
 	/// Append an immutable activity receipt without changing work status or waking an agent.
 	pub async fn record_chief_activity(
 		&self,
