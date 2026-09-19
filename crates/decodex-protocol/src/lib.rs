@@ -3,6 +3,13 @@
 
 mod account_login;
 mod chief;
+mod chief_integrations;
+mod mcp_login;
+pub use chief_integrations::{
+	ChiefIntegrationsResult, ChiefMcpInventory, ChiefMcpStatusDto, ChiefPluginInventory,
+	ChiefPluginStatusDto,
+};
+pub use mcp_login::{McpAuthorizationUrl, McpLoginPhase, McpLoginRequest, McpLoginStatus};
 mod chief_questions;
 pub use chief::{
 	ChiefActionDto, ChiefActivityDetailResult, ChiefActivityDto, ChiefAttachmentDto,
@@ -117,7 +124,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 31 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 32 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

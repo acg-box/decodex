@@ -384,6 +384,54 @@ impl ChiefClient {
 		}
 	}
 
+	/// Start or poll one ephemeral native sign-in without retained command receipts.
+	pub async fn mcp_login(
+		&self,
+		request: crate::McpLoginRequest,
+	) -> Result<crate::McpLoginStatus, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let session = request.session_id().clone();
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(40),
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport.query_inner("mcp-login", QueryPayload::ExchangeMcpLogin { request }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::McpLogin(status) if status.session_id == session => Ok(status),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read source-bound native integration observations without running the thread.
+	pub async fn integrations(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefIntegrationsResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(40),
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport
+				.query_inner("chief-integrations", QueryPayload::GetChiefIntegrations { work_id }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefIntegrations(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read native capabilities without starting a model turn.
 	pub async fn capabilities(&self) -> Result<crate::ChiefCapabilitiesResult, ClientFailure> {
 		self.transport.require_local_profile()?;
@@ -430,11 +478,17 @@ impl ChiefClient {
 	) -> Result<ChiefCommandResponse, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let attempted = AtomicBool::new(false);
-		let result = time::timeout(
-			RESET_CARD_CLIENT_TIMEOUT,
-			self.execute_inner(action, idempotency_key, &attempted),
-		)
-		.await;
+		let refresh = matches!(&action, crate::ChiefActionDto::RefreshIntegrations { .. });
+		let timeout = if refresh { Duration::from_secs(65) } else { RESET_CARD_CLIENT_TIMEOUT };
+		let executor = Self {
+			transport: ResetCardClient {
+				profile: self.transport.profile.clone(),
+				timeout: if refresh { timeout } else { self.transport.timeout },
+			},
+		};
+		let result =
+			time::timeout(timeout, executor.execute_inner(action, idempotency_key, &attempted))
+				.await;
 		let failure = match result {
 			Ok(Ok(completed)) => {
 				close_one_shot_socket(completed.socket).await;
@@ -552,7 +606,8 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		| crate::ChiefActionDto::AnswerQuestion { work_id, .. }
 		| crate::ChiefActionDto::ContinueMisalignment { work_id, .. }
 		| crate::ChiefActionDto::AddResourceLink { work_id, .. }
-		| crate::ChiefActionDto::RemoveResource { work_id, .. } => work_id,
+		| crate::ChiefActionDto::RemoveResource { work_id, .. }
+		| crate::ChiefActionDto::RefreshIntegrations { work_id } => work_id,
 	}
 }
 
@@ -2237,6 +2292,72 @@ mod tests {
 		}
 	}
 
+	#[tokio::test]
+	async fn mcp_login_transport_preserves_intent_and_rejects_another_session() {
+		for returned_session in ["intent", "another-intent"] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let stream = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let _ = socket.next().await;
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+					panic!("text query");
+				};
+				let ClientMessage::Query(query) =
+					serde_json::from_str::<ClientMessage>(&request).unwrap()
+				else {
+					panic!("query");
+				};
+				assert!(
+					matches!(query.payload, crate::QueryPayload::ExchangeMcpLogin { request: crate::McpLoginRequest::Start { session_id, work_id, server_name } } if session_id.as_str() == "intent" && work_id.as_str() == "work" && server_name.as_str() == "server")
+				);
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::McpLogin(crate::McpLoginStatus {
+							session_id: EntityId::new(returned_session).unwrap(),
+							phase: crate::McpLoginPhase::AwaitingUser,
+							authorization_url: Some(
+								crate::McpAuthorizationUrl::new(
+									"https://example.test/authorize?state=private-fixture".into(),
+								)
+								.unwrap(),
+							),
+							message: crate::WireText::new("Continue in your browser").unwrap(),
+						}),
+					})))
+					.await
+					.unwrap();
+				drop(socket);
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = crate::ChiefClient::new(profile)
+				.mcp_login(crate::McpLoginRequest::Start {
+					session_id: EntityId::new("intent").unwrap(),
+					work_id: EntityId::new("work").unwrap(),
+					server_name: crate::WireText::new("server").unwrap(),
+				})
+				.await;
+			task.await.unwrap();
+			if returned_session == "intent" {
+				let status = result.unwrap();
+				assert_eq!(status.phase, crate::McpLoginPhase::AwaitingUser);
+				assert!(status.authorization_url.is_some());
+				assert!(!format!("{status:?}").contains("private-fixture"));
+			} else {
+				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed);
+			}
+		}
+	}
+
 	fn result(report: DoctorReport) -> Message {
 		typed(ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
@@ -2366,7 +2487,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_v2_27_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 31 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 32 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

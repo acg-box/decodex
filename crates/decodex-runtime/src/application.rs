@@ -1828,6 +1828,21 @@ impl Application for ServiceApplication {
 					Some(chief) => chief.resources(work_id.as_str()).await,
 					None => decodex_protocol::ChiefResourcesResult::Unavailable,
 				}),
+
+			QueryPayload::ExchangeMcpLogin { request } =>
+				QueryResultPayload::McpLogin(match &self.chief {
+					Some(chief) => chief.mcp_login(request).await,
+					None => crate::mcp_login::status(
+						request,
+						decodex_protocol::McpLoginPhase::Disconnected,
+						"Chief is not connected.",
+					),
+				}),
+			QueryPayload::GetChiefIntegrations { work_id } =>
+				QueryResultPayload::ChiefIntegrations(match &self.chief {
+					Some(chief) => chief.integrations(work_id.as_str()).await,
+					None => decodex_protocol::ChiefIntegrationsResult::Unavailable,
+				}),
 			QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id } =>
 				QueryResultPayload::ChiefActivityDetail(match &self.chief {
 					Some(chief) =>

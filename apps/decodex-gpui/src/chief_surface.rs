@@ -8,6 +8,7 @@
 #[path = "chief_detail.rs"] mod detail;
 #[path = "chief_dictation.rs"] mod dictation;
 #[path = "chief_graph.rs"] mod graph;
+#[path = "chief_integrations.rs"] mod integrations;
 #[path = "chief_markdown.rs"] mod markdown;
 #[path = "chief_mcp_forms.rs"] mod mcp_forms;
 #[path = "chief_misalignment.rs"] mod misalignment;
@@ -62,6 +63,12 @@ pub(crate) struct ChiefSurface {
 	activity_detail_task: Option<Task<()>>,
 	resources: Option<(String, Option<decodex_protocol::ChiefResourcesResult>)>,
 	resources_task: Option<Task<()>>,
+	integrations: Option<(String, Option<decodex_protocol::ChiefIntegrationsResult>)>,
+	integrations_task: Option<Task<()>>,
+	integration_refresh_task: Option<Task<()>>,
+	integration_feedback: String,
+	mcp_login: Option<(String, String, decodex_protocol::McpLoginStatus)>,
+	mcp_login_task: Option<Task<()>>,
 	resource_mutation_task: Option<Task<()>>,
 	resource_feedback: String,
 	resource_title: Entity<ComposerInput>,
@@ -238,6 +245,12 @@ impl ChiefSurface {
 			activity_detail_task: None,
 			resources: None,
 			resources_task: None,
+			integrations: None,
+			integrations_task: None,
+			integration_refresh_task: None,
+			integration_feedback: String::new(),
+			mcp_login: None,
+			mcp_login_task: None,
 			resource_mutation_task: None,
 			resource_feedback: String::new(),
 			resource_title: cx
@@ -695,6 +708,12 @@ impl ChiefSurface {
 		self.activity_detail_task = None;
 		self.resources = None;
 		self.resources_task = None;
+		self.integrations = None;
+		self.integrations_task = None;
+		self.integration_refresh_task = None;
+		self.integration_feedback.clear();
+		self.mcp_login = None;
+		self.mcp_login_task = None;
 		self.resource_mutation_task = None;
 		self.resource_feedback.clear();
 		self.resource_title.update(cx, |input, cx| input.clear(cx));
@@ -1194,7 +1213,8 @@ impl ChiefSurface {
 			.flex()
 			.flex_col()
 			.gap(px(ui_theme::MESSAGE_GAP))
-			.child(self.resources_panel(&work.id, cx));
+			.child(self.resources_panel(&work.id, cx))
+			.child(self.integrations_panel(&work.id, cx));
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
 			Some(ChiefHistoryResult::Available {
 				entries, has_more, next_before, live, ..

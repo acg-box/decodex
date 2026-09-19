@@ -93,6 +93,7 @@ pub struct ChiefCoordinator {
 	usage_replays: std::collections::HashMap<String, std::collections::HashSet<String>>,
 	pending_requests: std::collections::HashMap<RequestId, i64>,
 	connection_id: String,
+	native_generation: Option<decodex_core::ProcessGenerationId>,
 	dispatch_paused: bool,
 	async_recovery_queued: bool,
 }
@@ -135,9 +136,18 @@ impl ChiefCoordinator {
 			usage_replays: Default::default(),
 			pending_requests: std::collections::HashMap::new(),
 			connection_id,
+			native_generation: None,
 			dispatch_paused: false,
 			async_recovery_queued: false,
 		})
+	}
+
+	pub(crate) fn bind_native_generation(&mut self, generation: decodex_core::ProcessGenerationId) {
+		self.native_generation = Some(generation);
+	}
+
+	pub(crate) fn native_generation(&self) -> Option<&decodex_core::ProcessGenerationId> {
+		self.native_generation.as_ref()
 	}
 
 	/// Call once on a fresh transport before thread operations. Authentication and
@@ -473,6 +483,15 @@ impl ChiefCoordinator {
 		self.client.respond(request_id, response).await?;
 		self.store.acknowledge_chief_request_event(event_id).await?;
 		Ok(())
+	}
+
+	pub(crate) async fn refresh_integrations(&self, work: &str) -> Result<bool, ChiefError> {
+		self.store
+			.get_chief_work_item(work.into())
+			.await?
+			.codex_thread_id
+			.ok_or_else(|| ChiefError::Rejected("Task has no native thread".into()))?;
+		Ok(self.client.refresh_integrations().await?)
 	}
 
 	pub(crate) async fn add_resource_link(
