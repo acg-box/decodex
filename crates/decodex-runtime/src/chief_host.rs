@@ -334,6 +334,11 @@ impl ChiefHost {
 							let closed = event.is_none() || matches!(&event,Some(ServerEvent::Closed(_)));
 							if let Some(event)=event.as_ref() && let Some(generation)=chief.native_generation() {
 								self.mcp_login.observe(generation,event).await;
+								if let ServerEvent::Notification { method, params } = event
+									&& method == "configWarning"
+									&& crate::native_config_warning::record(&self.store, root, generation, params).await.is_err() {
+									self.record_error(root,"event_processing_failed").await;
+								}
 							}
 							if closed && let Some(generation)=chief.native_generation() {self.mcp_login.disconnect(Some(generation)).await;}
 

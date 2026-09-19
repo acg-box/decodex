@@ -247,6 +247,11 @@ for line in sys.stdin:
         time.sleep(60)
     method = message.get("method")
     if method == "initialize":
+        if mode == "exact-config-warning-flood":
+            for index in range(40):
+                print(json.dumps({"method": "configWarning", "params": {"summary": f"Fixture warning {index}", "details": None}}), flush=True)
+        if mode == "exact-config-warning":
+            print(json.dumps({"method": "configWarning", "params": {"summary": 'Ignored "fixture" setting', "details": "first\nsecond", "path": "/private/not-retained"}}), flush=True)
         if mode in ("server-request", "server-request-id-collision"):
             server_request_id = (
                 message["id"] if mode == "server-request-id-collision" else 90_001
@@ -480,6 +485,8 @@ for line in sys.stdin:
         assert message["params"]["searchTerm"].startswith("decodex-capability-probe-")
         result = {"data": [], "nextCursor": None}
     elif method == "initialized":
+        if mode == "exact-config-warning":
+            print(json.dumps({"method": "configWarning", "params": {"summary": "Second fixture warning", "details": None}}), flush=True)
         continue
     else:
         print(json.dumps({"id": message["id"], "error": {"code": -32601, "message": "unsupported"}}), flush=True)

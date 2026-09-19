@@ -30,6 +30,7 @@ pub(crate) mod github_effects;
 mod host_credentials;
 #[path = "managed_repository_disabled.rs"] mod managed_repository_runtime;
 mod mcp_login;
+mod native_config_warning;
 mod process_platform;
 mod process_supervisor;
 mod provider_attempt_service;
