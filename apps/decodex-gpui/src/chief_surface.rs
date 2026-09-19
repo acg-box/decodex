@@ -2,18 +2,19 @@
 
 #[path = "chief_activity.rs"] mod activity;
 #[path = "chief_tree.rs"] mod agent_tree;
+#[path = "chief_async_questions.rs"] mod async_questions;
 #[path = "chief_capabilities.rs"] mod capabilities;
 #[path = "chief_composer.rs"] mod composer;
 #[path = "chief_detail.rs"] mod detail;
 #[path = "chief_dictation.rs"] mod dictation;
 #[path = "chief_graph.rs"] mod graph;
 #[path = "chief_markdown.rs"] mod markdown;
+#[path = "chief_mcp_forms.rs"] mod mcp_forms;
+#[path = "chief_misalignment.rs"] mod misalignment;
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_requests.rs"] mod requests;
-#[path = "chief_mcp_forms.rs"] mod mcp_forms;
-#[path = "chief_async_questions.rs"] mod async_questions;
-#[path = "chief_misalignment.rs"] mod misalignment;
+#[path = "chief_resources.rs"] mod resources;
 #[path = "chief_voice.rs"] mod voice;
 #[path = "chief_workspace.rs"] mod workspace;
 #[path = "chief_workspace_size.rs"] mod workspace_size;
@@ -59,6 +60,12 @@ pub(crate) struct ChiefSurface {
 	dictation_task: Option<Task<()>>,
 	activity_detail: Option<(String, Option<decodex_protocol::ChiefActivityDetailResult>)>,
 	activity_detail_task: Option<Task<()>>,
+	resources: Option<(String, Option<decodex_protocol::ChiefResourcesResult>)>,
+	resources_task: Option<Task<()>>,
+	resource_mutation_task: Option<Task<()>>,
+	resource_feedback: String,
+	resource_title: Entity<ComposerInput>,
+	resource_url: Entity<ComposerInput>,
 	capabilities: Option<decodex_protocol::ChiefCapabilitiesResult>,
 	capabilities_checked: Option<std::time::Instant>,
 	capability_task: Option<Task<()>>,
@@ -139,9 +146,9 @@ pub(crate) struct ChiefSurface {
 	request_task: Option<Task<()>>,
 	misalignment_reviewed: Option<(String, String)>,
 	mcp_form_event: Option<i64>,
-	mcp_url_opened: Option<(i64,String)>,
-	mcp_inputs: std::collections::BTreeMap<String,Entity<ComposerInput>>,
-	mcp_answers: std::collections::BTreeMap<String,serde_json::Value>,
+	mcp_url_opened: Option<(i64, String)>,
+	mcp_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
+	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
 	question_timers: std::collections::BTreeMap<i64, requests::QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
 	async_question_inputs: std::collections::BTreeMap<(String, String), Entity<ComposerInput>>,
@@ -229,6 +236,14 @@ impl ChiefSurface {
 			dictation_task: None,
 			activity_detail: None,
 			activity_detail_task: None,
+			resources: None,
+			resources_task: None,
+			resource_mutation_task: None,
+			resource_feedback: String::new(),
+			resource_title: cx
+				.new(|cx| ComposerInput::with_placeholder(40, "Link title", "Resource title", cx)),
+			resource_url: cx
+				.new(|cx| ComposerInput::with_placeholder(40, "https://…", "Resource URL", cx)),
 			capabilities: None,
 			capabilities_checked: None,
 			capability_task: None,
@@ -305,10 +320,10 @@ impl ChiefSurface {
 			request: None,
 			request_task: None,
 			misalignment_reviewed: None,
-			mcp_form_event:None,
-			mcp_url_opened:None,
-			mcp_inputs:Default::default(),
-			mcp_answers:Default::default(),
+			mcp_form_event: None,
+			mcp_url_opened: None,
+			mcp_inputs: Default::default(),
+			mcp_answers: Default::default(),
 			question_timers: Default::default(),
 			question_inputs: Default::default(),
 			async_question_inputs: Default::default(),
@@ -678,6 +693,12 @@ impl ChiefSurface {
 		self.profile = profile;
 		self.activity_detail = None;
 		self.activity_detail_task = None;
+		self.resources = None;
+		self.resources_task = None;
+		self.resource_mutation_task = None;
+		self.resource_feedback.clear();
+		self.resource_title.update(cx, |input, cx| input.clear(cx));
+		self.resource_url.update(cx, |input, cx| input.clear(cx));
 		self.capability_task = None;
 		self.capabilities = None;
 		self.capabilities_checked = None;
@@ -702,7 +723,10 @@ impl ChiefSurface {
 		self.request = None;
 		self.request_task = None;
 		self.question_timers.clear();
-		self.mcp_form_event=None;self.mcp_url_opened=None;self.mcp_inputs.clear();self.mcp_answers.clear();
+		self.mcp_form_event = None;
+		self.mcp_url_opened = None;
+		self.mcp_inputs.clear();
+		self.mcp_answers.clear();
 		self.misalignment_reviewed = None;
 		self.async_question_inputs.clear();
 		self.selected = None;
@@ -1163,8 +1187,14 @@ impl ChiefSurface {
 	}
 
 	fn history_panel(&self, work: &ChiefWorkItemDto, cx: &mut Context<Self>) -> impl IntoElement {
-		let mut panel =
-			div().w_full().min_w_0().flex_none().flex().flex_col().gap(px(ui_theme::MESSAGE_GAP));
+		let mut panel = div()
+			.w_full()
+			.min_w_0()
+			.flex_none()
+			.flex()
+			.flex_col()
+			.gap(px(ui_theme::MESSAGE_GAP))
+			.child(self.resources_panel(&work.id, cx));
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
 			Some(ChiefHistoryResult::Available {
 				entries, has_more, next_before, live, ..
@@ -1908,7 +1938,9 @@ mod tests {
 				"root".into(),
 				ChiefHistoryResult::Available {
 					questions: vec![],
-					questions_truncated: false, questions_recovering: false, misalignment: None,
+					questions_truncated: false,
+					questions_recovering: false,
+					misalignment: None,
 					live: vec![],
 					next_before: None,
 					usage: None,
@@ -1971,7 +2003,9 @@ mod tests {
 				"root".into(),
 				ChiefHistoryResult::Available {
 					questions: vec![],
-					questions_truncated: false, questions_recovering: false, misalignment: None,
+					questions_truncated: false,
+					questions_recovering: false,
+					misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
 						activity: None,
@@ -2092,7 +2126,9 @@ mod tests {
 				"chief".into(),
 				ChiefHistoryResult::Available {
 					questions: vec![],
-					questions_truncated: false, questions_recovering: false, misalignment: None,
+					questions_truncated: false,
+					questions_recovering: false,
+					misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
 						activity: None,

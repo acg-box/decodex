@@ -300,6 +300,31 @@ mod tests {
 		(result, server.await.unwrap())
 	}
 
+	#[tokio::test]
+	async fn paginated_history_preserves_mixed_image_references_and_detail() {
+		let content = json!([
+			{"type":"text","text":"Compare these images"},
+			{"type":"image","url":"data:image/png;base64,aW5saW5l","detail":"low"},
+			{"type":"image","fileId":"file-opaque/second","detail":"original"},
+			{"type":"image","url":"https://example.test/third.png","detail":"high"}
+		]);
+		let output = json!({"id":"later-input","type":"userMessage","content":[
+			{"type":"image","fileId":"file-later-input","detail":"original"}
+		]});
+		let (result, requests) = read(vec![
+            ("thread/read", metadata()),
+            ("thread/turns/list", turn_page()),
+            ("thread/items/list", json!({"data":[{"turnId":"target","item":{"id":"input-images","type":"userMessage","content":content}}],"nextCursor":"next-images"})),
+            ("thread/items/list", json!({"data":[{"turnId":"target","item":output}],"nextCursor":null})),
+        ]).await;
+		let history = result.unwrap();
+		let items = history["thread"]["turns"][0]["items"].as_array().unwrap();
+		assert_eq!(items.len(), 2);
+		assert_eq!(items[0]["content"], content);
+		assert_eq!(items[1], output);
+		assert_eq!(requests[3]["params"]["cursor"], "next-images");
+	}
+
 	fn metadata() -> Value {
 		json!({"thread":{"id":"thread/opaque","historyMode":"paginated","status":{"type":"idle"},"turns":[]}})
 	}

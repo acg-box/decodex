@@ -116,6 +116,33 @@ impl ChiefHost {
 		self.dictation.exchange(request, self.runtime.chief_client()).await
 	}
 
+	pub(crate) async fn resources(&self, work: &str) -> decodex_protocol::ChiefResourcesResult {
+		use decodex_protocol::ChiefResourcesResult;
+		let Some((generation, client)) = self.runtime.chief_catalog_client() else {
+			return ChiefResourcesResult::Unavailable;
+		};
+		let Ok(owner) = self.store.get_chief_work_item(work.into()).await else {
+			return ChiefResourcesResult::Unavailable;
+		};
+		let Some(thread) = owner.codex_thread_id else {
+			return ChiefResourcesResult::Unavailable;
+		};
+		let result = crate::chief_resources::read(&client, &thread).await;
+		let still_owned = self
+			.store
+			.get_chief_work_item(work.into())
+			.await
+			.ok()
+			.is_some_and(|owner| owner.codex_thread_id.as_deref() == Some(thread.as_str()));
+		if still_owned
+			&& self.runtime.chief_catalog_client().is_some_and(|(current, _)| current == generation)
+		{
+			result
+		} else {
+			ChiefResourcesResult::Unavailable
+		}
+	}
+
 	pub(crate) async fn activity_detail(
 		&self,
 		work: &str,
@@ -361,6 +388,27 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			ChiefActionDto::AddResourceLink { work_id, title, url } => {
+				let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
+				chief
+					.add_resource_link(work_id.as_str(), title.as_str(), url.as_str())
+					.await
+					.map_err(resource_error)?;
+				Ok(work_id.as_str().into())
+			},
+			ChiefActionDto::RemoveResource { work_id, attachment_type, identity_key } => {
+				let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
+				chief
+					.remove_resource(
+						work_id.as_str(),
+						attachment_type.as_str(),
+						identity_key.as_str(),
+					)
+					.await
+					.map_err(resource_error)?;
+				Ok(work_id.as_str().into())
+			},
+
 			ChiefActionDto::StartConfigured { .. } | ChiefActionDto::SendConfigured { .. } =>
 				unreachable!("normalized input"),
 			ChiefActionDto::Steer { work_id, turn_id, text, attachments } => {
@@ -372,13 +420,20 @@ impl ChiefHost {
 				})?;
 				Ok(work_id.as_str().into())
 			},
-            ChiefActionDto::ContinueMisalignment {work_id,review_id} => {
-                let review=self.store.chief_misalignment(work_id.as_str().into()).await.map_err(|_|"Provider findings unavailable")?.ok_or("Provider precaution is no longer current")?;
-                if review.review_id()!=review_id.as_str() { return Err("Provider findings changed; review them again".into()); }
-                let (_,chief,_)=active.as_mut().ok_or("Chief is not connected")?;
-                chief.continue_misalignment(work_id.as_str(),review,&key).await.map_err(|error| match error { ChiefError::Rejected(_) => ChiefHostError::Rejected("Continuation was rejected or the findings changed. Review the latest findings before trying again."), _ => ChiefHostError::Unknown("Continuation was not confirmed. Inspect the latest conversation state before trying again.") })?;
-                Ok(work_id.as_str().into())
-            },
+			ChiefActionDto::ContinueMisalignment { work_id, review_id } => {
+				let review = self
+					.store
+					.chief_misalignment(work_id.as_str().into())
+					.await
+					.map_err(|_| "Provider findings unavailable")?
+					.ok_or("Provider precaution is no longer current")?;
+				if review.review_id() != review_id.as_str() {
+					return Err("Provider findings changed; review them again".into());
+				}
+				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
+				chief.continue_misalignment(work_id.as_str(),review,&key).await.map_err(|error| match error { ChiefError::Rejected(_) => ChiefHostError::Rejected("Continuation was rejected or the findings changed. Review the latest findings before trying again."), _ => ChiefHostError::Unknown("Continuation was not confirmed. Inspect the latest conversation state before trying again.") })?;
+				Ok(work_id.as_str().into())
+			},
 
 			ChiefActionDto::AnswerQuestion { work_id, question_id, answer } => {
 				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
@@ -765,6 +820,18 @@ fn now() -> i64 {
 		.duration_since(UNIX_EPOCH)
 		.map(|t| t.as_micros().min(i64::MAX as u128) as i64)
 		.unwrap_or(0)
+}
+
+fn resource_error(error: ChiefError) -> ChiefHostError {
+	match error {
+		ChiefError::Rejected(_) | ChiefError::Transport(ClientError::Remote(_)) =>
+			ChiefHostError::Rejected(
+				"The resource change was not accepted. Check the link and current task resources.",
+			),
+		_ => ChiefHostError::Unknown(
+			"The resource change could not be confirmed. Refresh task resources before trying again.",
+		),
+	}
 }
 
 #[cfg(test)]

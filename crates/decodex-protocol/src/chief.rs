@@ -188,6 +188,24 @@ pub struct ChiefAttachmentDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Associate a user-selected HTTP(S) link with the current native task thread.
+	AddResourceLink {
+		/// Exact local task identity.
+		work_id: crate::EntityId,
+		/// User-visible link title.
+		title: crate::WireText,
+		/// HTTP(S) resource address; this does not fetch its contents.
+		url: crate::WireText,
+	},
+	/// Remove the current native association; never delete the referenced resource.
+	RemoveResource {
+		/// Exact local task identity.
+		work_id: crate::EntityId,
+		/// Application-defined native attachment category.
+		attachment_type: crate::WireText,
+		/// Native identity within the category.
+		identity_key: crate::WireText,
+	},
 	/// Start with explicit per-message execution settings and attachments.
 	StartConfigured {
 		/// Initial Chief context.
@@ -567,5 +585,40 @@ pub enum ChiefActivityDetailResult {
 		truncated: bool,
 	},
 	/// The source cannot be confirmed or this item has no supported public detail.
+	Unavailable,
+}
+
+/// One native resource association; its payload is display data, not executable input.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefResourceDto {
+	/// Stable native association identity.
+	pub id: String,
+	/// Application-defined resource category.
+	pub attachment_type: String,
+	/// Exact identity within that category.
+	pub identity_key: String,
+	/// Bounded JSON metadata for inspection.
+	pub payload_json: String,
+	/// Payload text exceeded the display bound or contained private credential material.
+	pub payload_omitted: bool,
+	/// Native creation timestamp in seconds.
+	pub created_at: i64,
+}
+
+/// Native association reads distinguish a confirmed empty list from unavailable storage.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ChiefResourcesResult {
+	/// Complete native list under the public response bound.
+	Available {
+		/// Resource associations for the exact requested work.
+		resources: Vec<ChiefResourceDto>,
+	},
+	/// This native provider does not implement resource associations.
+	Unsupported,
+	/// The complete list exceeds the display bound.
+	CapacityExceeded,
+	/// No authoritative result is available for the current thread and connection.
 	Unavailable,
 }

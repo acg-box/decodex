@@ -1822,6 +1822,12 @@ impl Application for ServiceApplication {
 						"Chief is not connected.",
 					),
 				}),
+
+			QueryPayload::GetChiefResources { work_id } =>
+				QueryResultPayload::ChiefResources(match &self.chief {
+					Some(chief) => chief.resources(work_id.as_str()).await,
+					None => decodex_protocol::ChiefResourcesResult::Unavailable,
+				}),
 			QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id } =>
 				QueryResultPayload::ChiefActivityDetail(match &self.chief {
 					Some(chief) =>

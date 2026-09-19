@@ -18,6 +18,7 @@ mod chief;
 mod chief_capabilities;
 mod chief_detail;
 mod chief_host;
+mod chief_resources;
 mod chief_voice;
 mod conversation;
 mod dictation;

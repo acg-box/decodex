@@ -10,7 +10,9 @@ use tokio::{
 	sync::{mpsc, oneshot, watch},
 };
 
+mod attachments;
 mod history;
+pub use attachments::{ThreadAttachment, ThreadAttachmentAddOutcome, ThreadAttachmentAddResult};
 
 const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 const MAX_PENDING_REQUESTS: usize = 256;

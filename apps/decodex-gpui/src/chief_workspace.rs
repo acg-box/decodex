@@ -86,6 +86,12 @@ impl ChiefSurface {
 		if !self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id)) {
 			return;
 		}
+		if self.selected.as_deref() != Some(id) {
+			self.resources = None;
+			self.resources_task = None;
+			self.resource_mutation_task = None;
+			self.resource_feedback.clear();
+		}
 		let is_manager = self.snapshot.as_ref().is_some_and(|snapshot| {
 			snapshot.work_items.iter().any(|work| {
 				work.id == id
