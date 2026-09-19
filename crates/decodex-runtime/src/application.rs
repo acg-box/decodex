@@ -3641,7 +3641,7 @@ async fn query_chief_request(
 		],
 		"item/fileChange/requestApproval" => &["reason", "grantRoot"],
 		"item/permissions/requestApproval" => &["cwd", "reason", "permissions"],
-		"item/tool/requestUserInput" => &["questions"],
+		"item/tool/requestUserInput" => &["questions", "isBlocking"],
 		_ => return ChiefRequestResult::Unavailable,
 	};
 	let mut selected = serde_json::Map::new();
@@ -3651,6 +3651,7 @@ async fn query_chief_request(
 				"kind" => matches!(value.as_str(), Some("command" | "writeStdin")),
 				"command" | "cwd" | "reason" | "grantRoot" => value.is_null() || value.is_string(),
 				"questions" => value.is_array(),
+				"isBlocking" => value.is_boolean(),
 				"availableDecisions"
 				| "proposedExecpolicyAmendment"
 				| "proposedNetworkPolicyAmendments" => value.is_null() || value.is_array(),
@@ -4757,6 +4758,34 @@ mod tests {
 		assert_eq!(selected["kind"], "command");
 		assert!(!request_json.as_str().contains("private"));
 		assert!(selected.get("threadId").is_none());
+		for (index, blocking) in
+			[serde_json::json!(false), serde_json::json!(true), serde_json::json!("false")]
+				.into_iter()
+				.enumerate()
+		{
+			let request = serde_json::json!({"method":"item/tool/requestUserInput","params":{"threadId":"thread","turnId":"turn","questions":[],"isBlocking":blocking,"autoResolutionMs":1}});
+			let event = store
+				.enqueue_chief_event(EnqueueChiefEvent {
+					source_event_id: format!("question-{index}"),
+					work_item_id: "worker".into(),
+					event_kind: "user_input_pending".into(),
+					payload: request.to_string(),
+				})
+				.await
+				.unwrap();
+			let result = super::query_chief_request(&owner, event.id).await;
+			if blocking.is_boolean() {
+				let ChiefRequestResult::Available { request_json, .. } = result else {
+					panic!("question metadata");
+				};
+				let fields: serde_json::Value =
+					serde_json::from_str(request_json.as_str()).unwrap();
+				assert_eq!(fields["isBlocking"], blocking);
+				assert!(fields.get("autoResolutionMs").is_none());
+			} else {
+				assert_eq!(result, ChiefRequestResult::Unavailable);
+			}
+		}
 		let mut stdin = payload.clone();
 		stdin["params"]["kind"] = serde_json::json!("writeStdin");
 		stdin["params"]["command"] = serde_json::json!("yes\\n");

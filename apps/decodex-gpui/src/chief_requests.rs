@@ -1,6 +1,36 @@
 //! Provider request forms bound to the exact persisted request event.
 use super::*;
 
+/// A timer belongs to one provider request, including after selection changes.
+pub(super) struct QuestionTimer {
+	started: std::time::Instant,
+	disabled: bool,
+}
+
+impl QuestionTimer {
+	fn new(value: &serde_json::Value, now: std::time::Instant) -> Self {
+		Self { started: now, disabled: value["isBlocking"].as_bool() != Some(false) }
+	}
+
+	fn remaining(&self, now: std::time::Instant) -> Option<u64> {
+		if self.disabled {
+			return None;
+		}
+		let elapsed = now.saturating_duration_since(self.started).as_secs();
+		// Upstream ignores deprecated autoResolutionMs: 60s grace, then 60s visible.
+		(elapsed >= 60).then(|| 120_u64.saturating_sub(elapsed))
+	}
+
+	fn claim_expired(&mut self, now: std::time::Instant) -> bool {
+		if self.remaining(now) != Some(0) {
+			return false;
+		}
+		// Never retry an automatic response, including after an uncertain acknowledgment.
+		self.disabled = true;
+		true
+	}
+}
+
 impl ChiefSurface {
 	pub(super) fn prepare_question_inputs(
 		&mut self,
@@ -8,10 +38,13 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) {
 		self.question_inputs.clear();
-		if let ChiefRequestResult::Available { method, request_json, .. } = request
+		if let ChiefRequestResult::Available { event_id, method, request_json, .. } = request
 			&& method == "item/tool/requestUserInput"
 			&& let Ok(value) = serde_json::from_str::<serde_json::Value>(request_json.as_str())
 		{
+			self.question_timers
+				.entry(*event_id)
+				.or_insert_with(|| QuestionTimer::new(&value, std::time::Instant::now()));
 			for question in value["questions"].as_array().into_iter().flatten() {
 				if let Some(id) = question["id"].as_str() {
 					self.question_inputs.insert(
@@ -52,6 +85,14 @@ impl ChiefSurface {
 		let value: serde_json::Value =
 			serde_json::from_str(request_json.as_str()).unwrap_or_default();
 		let mut panel = div()
+			.capture_key_down(cx.listener(|s, _, _, cx| {
+				s.snooze_question_timeout();
+				cx.notify();
+			}))
+			.capture_any_mouse_down(cx.listener(|s, _, _, cx| {
+				s.snooze_question_timeout();
+				cx.notify();
+			}))
 			.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
 				s.submit_answers(cx);
 				cx.stop_propagation();
@@ -79,6 +120,15 @@ impl ChiefSurface {
 					.child("Send answers")
 					.smooth(),
 			);
+			if let Some(remaining) = self
+				.question_timers
+				.get(event_id)
+				.and_then(|timer| timer.remaining(std::time::Instant::now()))
+			{
+				panel = panel.child(muted(format!(
+					"Skips unanswered in {remaining}s. Interact to keep this question open."
+				)));
+			}
 		} else {
 			panel = panel.child(if method == "item/fileChange/requestApproval" {
 				"Allow file changes?"
@@ -178,7 +228,56 @@ impl ChiefSurface {
 		panel.into_any_element()
 	}
 
+	fn snooze_question_timeout(&mut self) {
+		if let Some(ChiefRequestResult::Available { event_id, .. }) = &self.request
+			&& let Some(timer) = self.question_timers.get_mut(event_id)
+		{
+			timer.disabled = true;
+		}
+	}
+
+	pub(super) fn tick_question_timeout(&mut self, cx: &mut Context<Self>) {
+		if self.sending
+			|| self.uncertain
+			|| self.state != LoadState::Ready
+			|| self.profile.is_none()
+		{
+			return;
+		}
+		let Some(ChiefRequestResult::Available { event_id, work_id, method, .. }) = &self.request
+		else {
+			return;
+		};
+		if method != "item/tool/requestUserInput"
+			|| self.selected.as_ref() != Some(work_id)
+			|| !self.snapshot.as_ref().is_some_and(|snapshot| {
+				snapshot
+					.pending_events
+					.iter()
+					.any(|event| event.id == *event_id && &event.work_item_id == work_id)
+					&& snapshot.work_items.iter().any(|work| {
+						&work.id == work_id
+							&& work.dispatch_state == ChiefDispatchStateDto::Running
+							&& work.active_turn_id.is_some()
+					})
+			}) {
+			return;
+		}
+		if self.question_inputs.values().any(|input| !input.read(cx).content().is_empty()) {
+			self.snooze_question_timeout();
+			return;
+		}
+		if self
+			.question_timers
+			.get_mut(event_id)
+			.is_some_and(|timer| timer.claim_expired(std::time::Instant::now()))
+		{
+			self.respond(serde_json::json!({"answers":{}}).to_string(), cx);
+		}
+	}
+
 	fn submit_answers(&mut self, cx: &mut Context<Self>) {
+		self.snooze_question_timeout();
 		let mut answers = serde_json::Map::new();
 		for (id, input) in &self.question_inputs {
 			let text = input.read(cx).content().trim();
@@ -248,9 +347,11 @@ impl ChiefSurface {
 			let label = label.to_owned();
 			let selected = input.read(cx).content() == label;
 			let answer = label.clone();
+			let selector = format!("question-{id}-{index}");
 			row = row.child(
 				div()
 					.id(SharedString::from(format!("question-{id}-{index}")))
+					.debug_selector(move || selector)
 					.role(Role::Button)
 					.tab_index(0)
 					.aria_label(label.clone())
@@ -301,4 +402,79 @@ impl ChiefSurface {
 fn permission_summary(value: &serde_json::Value) -> String {
 	// Preserve the exact requested paths and access modes, including newer provider fields.
 	serde_json::to_string_pretty(value).unwrap_or_else(|_| "Access details unavailable".into())
+}
+
+#[cfg(test)]
+mod timing_tests {
+	use super::QuestionTimer;
+	use serde_json::json;
+	use std::time::{Duration, Instant};
+
+	#[test]
+	fn nonblocking_timeout_has_grace_countdown_and_single_empty_response_claim() {
+		let start = Instant::now();
+		let mut timer =
+			QuestionTimer::new(&json!({"isBlocking":false,"autoResolutionMs":1}), start);
+		assert_eq!(timer.remaining(start + Duration::from_secs(59)), None);
+		assert_eq!(timer.remaining(start + Duration::from_secs(60)), Some(60));
+		assert_eq!(timer.remaining(start + Duration::from_secs(119)), Some(1));
+		assert!(!timer.claim_expired(start + Duration::from_secs(119)));
+		assert!(timer.claim_expired(start + Duration::from_secs(120)));
+		assert!(!timer.claim_expired(start + Duration::from_secs(121)));
+	}
+
+	#[test]
+	fn blocking_missing_malformed_and_snoozed_requests_do_not_auto_resolve() {
+		let start = Instant::now();
+		for value in [
+			json!({}),
+			json!({"isBlocking":true}),
+			json!({"isBlocking":"false"}),
+			json!({"autoResolutionMs":1}),
+		] {
+			assert!(
+				!QuestionTimer::new(&value, start).claim_expired(start + Duration::from_secs(500))
+			);
+		}
+		let mut timer = QuestionTimer::new(&json!({"isBlocking":false}), start);
+		timer.disabled = true;
+		assert!(!timer.claim_expired(start + Duration::from_secs(500)));
+	}
+	#[gpui::test]
+	fn question_option_interaction_snoozes_only_its_request(cx: &mut gpui::TestAppContext) {
+		use super::*;
+		use decodex_protocol::{ChiefPendingEventDto, ChiefWorkKindDto};
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+            s.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+                workspaces: vec![], dependencies: vec![],
+                work_items: vec![ChiefWorkItemDto {
+                    id:"root".into(), parent_goal_id:None, kind:ChiefWorkKindDto::Goal,
+                    title:"Chief".into(),codex_thread_id:Some("thread".into()),active_turn_id:Some("turn".into()),
+                    dispatch_state:ChiefDispatchStateDto::Running,status:ChiefWorkStatusDto::Open,
+                    next_check_at_micros:None,created_at_micros:1,updated_at_micros:1
+                }],
+                pending_events:vec![ChiefPendingEventDto { id:7, source_event_id:"question".into(), work_item_id:"root".into(),event_kind:"user_input_pending".into(),created_at_micros:1,delivery_claimed:false }]
+            })));
+            let request=ChiefRequestResult::Available {event_id:7,work_id:"root".into(),method:"item/tool/requestUserInput".into(),request_json:HistoryText::new(json!({"isBlocking":false,"questions":[{"id":"format","question":"Which format?","options":[{"label":"PDF","description":"Document"}]}]}).to_string()).unwrap()};
+            s.prepare_question_inputs(&request,cx);
+            s.question_timers.get_mut(&7).unwrap().started = Instant::now() - Duration::from_secs(61);
+            s.question_timers.insert(8, QuestionTimer::new(&json!({"isBlocking":false}),Instant::now()));
+            s.request=Some(request);
+        });
+		visual.update(|window, cx| {
+			window.resize(gpui::size(px(1180.0), px(1200.0)));
+			window.draw(cx).clear();
+		});
+		let bounds = visual.debug_bounds("question-format-0").expect("visible option");
+		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+		surface.update(visual, |s, cx| {
+			assert!(s.question_timers[&7].disabled);
+			assert!(!s.question_timers[&8].disabled);
+			assert_eq!(s.question_inputs["format"].read(cx).content(), "PDF");
+			let request = s.request.clone().unwrap();
+			s.prepare_question_inputs(&request, cx);
+			assert!(s.question_timers[&7].disabled, "reloading must not rearm the same event");
+		});
+	}
 }

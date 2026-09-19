@@ -134,6 +134,7 @@ pub(crate) struct ChiefSurface {
 	poll_task: Option<Task<()>>,
 	request: Option<ChiefRequestResult>,
 	request_task: Option<Task<()>>,
+	question_timers: std::collections::BTreeMap<i64, requests::QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
 	details_visible: bool,
 	accounts: Vec<(String, String)>,
@@ -294,6 +295,7 @@ impl ChiefSurface {
 			poll_task: None,
 			request: None,
 			request_task: None,
+			question_timers: Default::default(),
 			question_inputs: Default::default(),
 			profile: None,
 			snapshot: None,
@@ -683,6 +685,7 @@ impl ChiefSurface {
 		self.history_task = None;
 		self.request = None;
 		self.request_task = None;
+		self.question_timers.clear();
 		self.selected = None;
 		self.state = LoadState::Idle;
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
@@ -754,6 +757,7 @@ impl ChiefSurface {
 				surface.load_history(cx);
 
 				surface.sync_request(cx);
+				surface.tick_question_timeout(cx);
 				cx.notify();
 			});
 		}));
