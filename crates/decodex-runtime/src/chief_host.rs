@@ -83,6 +83,7 @@ struct Request {
 pub(crate) struct ChiefHost {
 	voice: crate::chief_voice::VoiceGateway,
 	dictation: crate::dictation::DictationGateway,
+	mcp_login: crate::mcp_login::McpLoginGateway,
 	store: SqliteStore,
 	runtime: ConversationRuntime,
 	sender: mpsc::Sender<Request>,
@@ -95,6 +96,7 @@ impl ChiefHost {
 		Self {
 			voice: crate::chief_voice::VoiceGateway::new(),
 			dictation: Default::default(),
+			mcp_login: Default::default(),
 			store,
 			runtime,
 			sender,
@@ -114,6 +116,54 @@ impl ChiefHost {
 		request: &decodex_protocol::DictationRequest,
 	) -> decodex_protocol::DictationStatus {
 		self.dictation.exchange(request, self.runtime.chief_client()).await
+	}
+
+	pub(crate) async fn mcp_login(
+		&self,
+		request: &decodex_protocol::McpLoginRequest,
+	) -> decodex_protocol::McpLoginStatus {
+		use decodex_protocol::McpLoginPhase;
+		let unavailable = || {
+			crate::mcp_login::status(
+				request,
+				McpLoginPhase::Disconnected,
+				"The selected task connection is unavailable.",
+			)
+		};
+		let Some((generation, client)) = self.runtime.chief_catalog_client() else {
+			return unavailable();
+		};
+		let Ok(work) = self.store.get_chief_work_item(request.work_id().as_str().into()).await
+		else {
+			return unavailable();
+		};
+		let Some(thread) = work.codex_thread_id else {
+			return unavailable();
+		};
+		let result = self
+			.mcp_login
+			.exchange(
+				request,
+				Some(crate::mcp_login::Source {
+					generation: generation.clone(),
+					thread: thread.clone(),
+					client,
+				}),
+			)
+			.await;
+		let still_owned = self
+			.store
+			.get_chief_work_item(request.work_id().as_str().into())
+			.await
+			.ok()
+			.is_some_and(|work| work.codex_thread_id.as_deref() == Some(thread.as_str()));
+		if still_owned
+			&& self.runtime.chief_catalog_client().is_some_and(|(current, _)| current == generation)
+		{
+			result
+		} else {
+			unavailable()
+		}
 	}
 
 	pub(crate) async fn resources(&self, work: &str) -> decodex_protocol::ChiefResourcesResult {
@@ -140,6 +190,36 @@ impl ChiefHost {
 			result
 		} else {
 			ChiefResourcesResult::Unavailable
+		}
+	}
+
+	pub(crate) async fn integrations(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefIntegrationsResult {
+		use decodex_protocol::ChiefIntegrationsResult;
+		let Some((generation, client)) = self.runtime.chief_catalog_client() else {
+			return ChiefIntegrationsResult::Unavailable;
+		};
+		let Ok(owner) = self.store.get_chief_work_item(work.into()).await else {
+			return ChiefIntegrationsResult::Unavailable;
+		};
+		let Some(thread) = owner.codex_thread_id else {
+			return ChiefIntegrationsResult::Unavailable;
+		};
+		let result = crate::chief_integrations::read(&client, &thread).await;
+		let still_owned = self
+			.store
+			.get_chief_work_item(work.into())
+			.await
+			.ok()
+			.is_some_and(|owner| owner.codex_thread_id.as_deref() == Some(thread.as_str()));
+		if still_owned
+			&& self.runtime.chief_catalog_client().is_some_and(|(current, _)| current == generation)
+		{
+			result
+		} else {
+			ChiefIntegrationsResult::Unavailable
 		}
 	}
 
@@ -231,6 +311,11 @@ impl ChiefHost {
 						if let Some((root,chief,_)) = active.as_mut() {
 							chief.pause_dispatch(self.runtime.chief_account_exhausted(root).await);
 							let closed = event.is_none() || matches!(&event,Some(ServerEvent::Closed(_)));
+							if let Some(event)=event.as_ref() && let Some(generation)=chief.native_generation() {
+								self.mcp_login.observe(generation,event).await;
+							}
+							if closed && let Some(generation)=chief.native_generation() {self.mcp_login.disconnect(Some(generation)).await;}
+
 							if let Some(event) = event
 								&& let Err(error) = chief.handle_event(event).await
 								&& event_failure_needs_attention(closed, &error) {
@@ -246,6 +331,7 @@ impl ChiefHost {
 					},
 					_ = tick.tick() => {
 						self.dictation.expire().await;
+						self.mcp_login.expire().await;
 						if let Some(request)=self.voice.expire() {self.handle_voice(request,&mut active).await;}
 						self.rotate_exhausted(&mut active).await;
 						recovery.restore_if_due(
@@ -388,6 +474,25 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			ChiefActionDto::RefreshIntegrations { work_id } => {
+				let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
+				match chief.refresh_integrations(work_id.as_str()).await {
+					Ok(true) => Ok(work_id.as_str().into()),
+					Ok(false) => Err(ChiefHostError::Rejected(
+						"Some plugin updates failed and cached versions may remain. MCP reload was acknowledged; read the refreshed status before retrying.",
+					)),
+					Err(ChiefError::Rejected(_)) =>
+						Err(ChiefHostError::Rejected("The task no longer has a native thread.")),
+					Err(ChiefError::Transport(ClientError::Remote(_))) =>
+						Err(ChiefHostError::Unknown(
+							"Native refresh returned an error and may have partly applied. Inspect the current integration status before retrying.",
+						)),
+					Err(_) => Err(ChiefHostError::Unknown(
+						"Integration refresh could not be confirmed. Read current status; do not automatically retry.",
+					)),
+				}
+			},
+
 			ChiefActionDto::AddResourceLink { work_id, title, url } => {
 				let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
 				chief
@@ -640,6 +745,7 @@ impl ChiefHost {
 					return Err("invalid Chief configuration");
 				},
 			};
+		coordinator.bind_native_generation(connection.process_generation_id.clone());
 		coordinator.attach_voice_host(
 			connection.process_generation_id.as_str().into(),
 			self.voice.clone(),

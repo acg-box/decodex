@@ -2,33 +2,37 @@
 
 ## Current checkpoint: 2026-09-19
 
-Decodex base: `f20bad2c61e344132fe894a4825f531ddacc80a0`. This includes
-Chief delivery and integration merge `60240232a`. The sections below retain
-historical upstream evidence; their release and test versions are dated evidence,
-not claims about the newest binary. Use this checkpoint and the remaining queue
-for current work.
+Decodex base: `28b8e4b305eb67a70f00c18d401919d894e721ac` (PR #1351).
+This includes PRs #1346–#1350. The integration status, reconciliation and OAuth
+work below builds on that base. Historical sections retain dated source and test
+evidence; they do not override this checkpoint.
 
 | Capability | Included implementation | Remaining work |
 | --- | --- | --- |
-| Models | Retained Chief process pages `model/list`; GPUI consumes efforts, Fast and image support. Owners: `chief_capabilities.rs` in runtime and GPUI, `chief_host.rs`. | Account-transition acceptance, access/retirement metadata and optional-field semantics. |
-| Replies and questions | Durable exact-turn steering, rejected/uncertain outcomes and pending question forms. Owners: runtime `chief.rs`, GPUI `chief_requests.rs`. | Structured async-message UX and native acceptance. Nonblocking question timing is implemented in the follow-up below. |
-| Inputs | Composer attachments, `localImage`, non-image path references. | Native file inputs and stored artifact associations are separate contracts; check release availability and actual use. |
-| Execution | Per-message model, effort and Fast overrides. | Live `turn/settings/update` remains separate and has no consumer. |
-| Observations and recovery | Usage, compaction, approvals, native agent activity and bounded model-capacity recovery remain included. | Native end-to-end acceptance with the merged UI and account transitions. |
-| Voice | Chief subscription voice and native media host are included in the delivery merge. | Assess upstream realtime changes against these consumers; do not classify realtime as absent. |
-| Plugins/MCP | Native execution remains owned by Codex. | Settings/reconcile effective state, forms/resources and auth recovery still need assessment. |
+| Models | Paginated native model catalog, efforts, Fast, image support, access/upgrade/retirement notices and exact turn speed. PR #1348. | Account-transition acceptance and remaining model-related commit dispositions. |
+| Replies and questions | Structured async questions, drafts, exact native replies, recovery and resolution. Nonblocking timing and provider resolution are included. PRs #1344–#1346. | Broader native acceptance across account/process transitions. |
+| Misalignment | Explicit review and native continuation override with exact turn checks. PR #1347. | Include in the overall cross-feature acceptance pass. |
+| Inputs and resources | Composer images/path references and native task attachment associations with cross-client readback. PR #1350. | Remaining upstream input/resource capability dispositions. |
+| Execution | Per-message model, effort and Fast; bounded same-model serverOverloaded recovery. | Live turn/settings/update has no current UI consumer; record final applicability assessment. |
+| Observations and recovery | Usage, compaction, approval details and native agent activity. | Account/usage behavior audit and native acceptance with account transitions. |
+| Voice | Chief subscription voice and native media host. | Assess remaining realtime changes against actual consumers. |
+| Plugins/MCP | Native typed elicitation and scoped replies (#1349/#1351); this change adds repository plugin status, independent MCP runtime/auth/discovery states, explicit reconcile/reload and native OAuth. | Remaining resource/error contracts and commit dispositions. |
 
-The automation directory holds the resumable commit queue. At its September 19
-checkpoint, 46 of 1,569 commits were consecutively reviewed in
+The resumable consecutive full-diff review covers 76 of 1,569 commits in
 `a397079287e6638b39dda329835350d93222681f..595cc91e8cbb1c2ca822d0311dcf12709410c582`.
-Last reviewed: `280d56b1d823a7e9dfd85f796da38bd825d0052d`.
-Next: `7d9990fa30ab495d473fc555f0d5e7c68e9d205a`. The remaining 1,523
-commits are unread. The lower boundary is historical, not a certified earlier audit.
-Grouped capability checks must not advance this consecutive cursor.
+Last reviewed: `18937b226524164546e7328a2ed47c0d52536e0a`.
+Next: `ffad92234000c3c0cf4b48cbf1e92c96b0ab5742`.
+The other 1,493 commits have not all received consecutive full-diff review;
+grouped capability findings below cover portions of that remaining range.
+The lower boundary is historical, not a certified earlier audit. A grouped
+capability result does not advance the consecutive cursor.
 
-The recorded September 19 fixture checks passed: two model capability tests,
-42 Chief behavior tests and one fresh installed 0.155.0-alpha.9.2 schema test.
-This documentation reconciliation does not claim new live acceptance.
+For this integration change, all tests in the four affected packages pass,
+including the rendered explicit-authorization interaction and real local
+ChiefClient transport. All-target/all-feature Clippy passes for those packages.
+The installed 0.155.0-alpha.9.2 binary passed isolated two-client integration
+reload and local OAuth/MCP acceptance. These checks prove this adaptation's
+boundaries, not completion of the overall upstream audit. Automation stays paused.
 
 ## Historical review: 2026-09-17
 
@@ -463,3 +467,71 @@ admits mcpServer/elicitation/request while retaining exact event identity and
 unknown-method rejection. A real local WebSocket exchange regression failed on the
 old admission check and passes after the fix. Directly injecting a form into GPUI
 was insufficient evidence for this transport boundary.
+
+## Plugin and MCP state audit in progress
+
+At the fixed upstream snapshot, thread disabledPluginIds remains a saved selection
+that does not filter plugin capabilities. The final thread.rs contract still says
+this explicitly. Commits b5544d5732f4 and c62d191c4c8c define replacement semantics:
+omitted/null preserves the selection; an empty array clears it. Existing Decodex
+turn requests omit the field and preserve native state. A future control must not
+claim that saving this selection disables tool execution.
+
+Commits 343074d4207d, 8f31b64c7f9e, d996b4f02a20 and 7a6f469dcff1 separate runtime
+connection state, tool discovery failure, authentication and advertised server
+capabilities. Empty tools with a discovery error is not a confirmed empty catalog;
+a cached catalog is not proof of a live authenticated connection. Native status-only
+OAuth discovery now changes OAuth to notLoggedIn after an authentication failure.
+The client must preserve those facts rather than infer readiness from tool count.
+
+Commit c4c51c56e4f3 makes plugin discovery sensitive to repository configuration.
+Use plugin/installed with the exact task thread cwd, not a home-only catalog.
+Marketplace load errors must remain visible even when some plugins are listed.
+The native thread/read metadata carries cwd; confirm the returned thread identity
+before using it. Decodex's existing process launch retains the shared native home
+and does not replace its plugin state with an account-specific copy.
+
+The new native client adapters preserve complete paginated MCP state for an exact
+thread and repository-scoped installed plugin responses including load errors.
+The task panel displays separate runtime, authentication and plugin policy states.
+Reconciliation receipt flags describe changed bundle categories, not runtime readiness; native
+MCP reload and refreshed status need separate treatment. OAuth credential refresh,
+issuer binding and provider-policy enforcement stay with native Codex.
+
+The in-progress integration surface now has separate read-only status refresh and
+explicit shared synchronization. The latter calls plugin/reconcile once, validates
+its receipt, and calls config/mcpServer/reload even when reconciliation reports a
+partial bundle failure. Partial failure remains an explicit outcome. A native reload
+acknowledgement is not a connection-readiness claim. The UI reads current status
+after the operation and does not automatically replay an uncertain write.
+
+Source review of plugins/reconcile.rs confirms that native Codex owns hook trust
+and lifecycle refresh. mcp_refresh.rs plans per-thread configuration using each
+loaded thread's original config layers and cwd, then applies MCP inputs; unrelated
+model settings are not copied from the global config. The UI describes this shared
+scope. An isolated codex-cli 0.155.0-alpha.9.2 run verified repository plugin catalog,
+thread-scoped MCP status, reconciliation receipt, null-parameter native reload and
+second-client status readback without a model turn or sign-in.
+
+
+Native MCP sign-in uses mcpServer/oauth/login with the exact task thread and server.
+Codex owns registration, PKCE, callback validation and credential storage. Decodex
+keeps the authorization URL in a bounded, diagnostic-redacted in-memory response;
+it never writes the URL to command receipts or SQLite. Opening the link requires
+an explicit click and does not complete sign-in. A reopened window can recover the
+same pending native flow without another login request. Polling, timeout and
+connection loss never replay authentication automatically.
+
+The native completion notification has threadId and name but no attempt ID.
+Decodex therefore reports a native server/thread observation, not proof of a unique
+caller attempt or a ready tool connection. It checks the event receiver's original
+process generation and removes the link on completion, disconnection or expiry.
+A local wait timeout does not cancel native work. Status refresh verifies runtime
+state separately.
+
+An isolated local OAuth/MCP fixture with codex-cli 0.155.0-alpha.9.2 verified native
+PKCE callback, exactly one token exchange, completion on two connected clients
+with matching server/thread identity, reload and authenticated MCP status. The
+fixture uses a temporary native home and file credential store, no real account,
+and no model turn. Local ChiefClient WebSocket tests also verify exact login intent
+transport and rejection of another session's response.

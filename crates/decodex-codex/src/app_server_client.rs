@@ -12,6 +12,7 @@ use tokio::{
 
 mod attachments;
 mod history;
+mod integrations;
 pub use attachments::{ThreadAttachment, ThreadAttachmentAddOutcome, ThreadAttachmentAddResult};
 
 const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;

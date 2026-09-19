@@ -188,6 +188,11 @@ pub struct ChiefAttachmentDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Explicitly synchronize shared installed plugins and reload loaded native MCP runtimes.
+	RefreshIntegrations {
+		/// Task from which the user requested the shared refresh.
+		work_id: crate::EntityId,
+	},
 	/// Associate a user-selected HTTP(S) link with the current native task thread.
 	AddResourceLink {
 		/// Exact local task identity.
