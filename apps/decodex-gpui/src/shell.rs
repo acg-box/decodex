@@ -298,6 +298,7 @@ actions!(
 		ActivateConversations,
 		ActivateHealth,
 		ActivateSettings,
+		CloseSettings,
 		RefreshHealth,
 		ToggleSidebar,
 		ToggleInspector,
@@ -453,6 +454,10 @@ const fn startup_failure(failure: ClientFailure) -> &'static str {
 pub(crate) fn bind_keys(cx: &mut App) {
 	composer_input::bind_keys(cx);
 	cx.bind_keys([
+		KeyBinding::new("cmd-w", CloseSettings, Some("SettingsWindow")),
+		KeyBinding::new("escape", CloseSettings, Some("SettingsWindow")),
+	]);
+	cx.bind_keys([
 		KeyBinding::new("tab", FocusNext, None),
 		KeyBinding::new("shift-tab", FocusPrevious, None),
 		KeyBinding::new("cmd-2", ActivateChief, None),
@@ -478,6 +483,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
 
 /// One window-owned production shell. Connection ownership lives at application scope.
 pub(crate) struct Shell {
+	settings_window: Option<WindowHandle<SettingsWindow>>,
+	settings_selected: Destination,
 	selected: Destination,
 	inspector_tab: InspectorTab,
 	left_sidebar_visible: bool,
@@ -586,6 +593,8 @@ impl Shell {
 		window.focus(&root_focus, cx);
 
 		Self {
+			settings_window: None,
+			settings_selected: Destination::Settings,
 			selected: Destination::Chief,
 			inspector_tab: InspectorTab::Context,
 			left_sidebar_visible: true,
@@ -986,7 +995,11 @@ impl Shell {
 		if let Some(index) =
 			self.destination_focus.iter().position(|handle| handle.is_focused(window))
 		{
-			self.select_destination(Destination::ALL[index], cx);
+			if Destination::ALL[index] == Destination::Settings {
+				self.open_settings_window(Destination::Settings, cx);
+			} else {
+				self.select_destination(Destination::ALL[index], cx);
+			}
 		}
 	}
 
@@ -1055,7 +1068,7 @@ impl Shell {
 	}
 
 	fn activate_health(&mut self, _: &ActivateHealth, _: &mut Window, cx: &mut Context<Self>) {
-		self.select_destination(Destination::Health, cx);
+		self.open_settings_window(Destination::Health, cx);
 		cx.stop_propagation();
 	}
 
@@ -1146,7 +1159,7 @@ impl Shell {
 	}
 
 	fn activate_settings(&mut self, _: &ActivateSettings, _: &mut Window, cx: &mut Context<Self>) {
-		self.select_destination(Destination::Settings, cx);
+		self.open_settings_window(Destination::Settings, cx);
 	}
 
 	fn refresh_health(&mut self, _: &RefreshHealth, _: &mut Window, cx: &mut Context<Self>) {
@@ -1162,7 +1175,9 @@ impl Shell {
 
 	fn bind_health_query(&mut self, health_query: HealthQuery, cx: &mut Context<Self>) {
 		self.health_query = health_query;
-		if self.selected == Destination::Health {
+		if self.selected == Destination::Health
+			|| (self.settings_window.is_some() && self.settings_selected == Destination::Health)
+		{
 			self.health_query.activate();
 		}
 		self.health = self.health_query.snapshot();
@@ -1212,7 +1227,9 @@ impl Shell {
 	fn bind_accounts(&mut self, accounts: AccountsController, cx: &mut Context<Self>) {
 		self.accounts_controller.deactivate();
 		self.accounts_controller = accounts;
-		if self.selected == Destination::Accounts {
+		if self.selected == Destination::Accounts
+			|| (self.settings_window.is_some() && self.settings_selected == Destination::Accounts)
+		{
 			self.accounts_controller.activate();
 		}
 		self.synchronize_accounts();
@@ -2130,7 +2147,7 @@ fn topbar_controls(
 					cx.stop_propagation();
 				})
 				.on_click(cx.listener(|shell, _, _, cx| {
-					shell.select_destination(Destination::Settings, cx);
+					shell.open_settings_window(Destination::Settings, cx);
 				}))
 				.child(workspace_symbols::icon(workspace_symbols::Symbol::Settings))
 				.smooth(),
@@ -4718,7 +4735,7 @@ fn destination_content(
 				.into_any_element();
 		},
 		Destination::Settings | Destination::Accounts | Destination::Health => {
-			return settings_workspace_content(shell, presentation, refresh_focus, window, cx);
+			return settings_workspace_content(shell, false, refresh_focus, window, cx);
 		},
 		_ => {},
 	}
@@ -4742,11 +4759,12 @@ fn destination_content(
 
 fn settings_workspace_content(
 	shell: &Shell,
-	_presentation: ConnectionPresentation,
+	standalone: bool,
 	refresh_focus: FocusHandle,
 	window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
+	let selected = if standalone { shell.settings_selected } else { shell.selected };
 	let mut navigation = div()
 		.w(px(192.0))
 		.min_w(px(192.0))
@@ -4780,10 +4798,12 @@ fn settings_workspace_content(
 				.id(("settings-section", index))
 				.role(Role::Tab)
 				.aria_label(label)
-				.aria_selected(shell.selected == destination)
+				.aria_selected(selected == destination)
 				.track_focus(&shell.destination_focus[index])
 				.key_context("Destination")
-				.on_action(cx.listener(Shell::activate_destination))
+				.on_action(cx.listener(move |s, _: &ActivateDestination, _, cx| {
+					s.select_settings_destination(destination, standalone, cx);
+				}))
 				.on_action(cx.listener(Shell::focus_next))
 				.on_action(cx.listener(Shell::focus_previous))
 				.h(px(28.0))
@@ -4792,16 +4812,18 @@ fn settings_workspace_content(
 				.flex()
 				.items_center()
 				.cursor_pointer()
-				.when(shell.selected == destination, |row| {
+				.when(selected == destination, |row| {
 					row.bg(rgba(0xffffff0c)).text_color(rgb(ui_theme::TEXT))
 				})
 				.hover(|row| row.bg(rgba(ui_theme::SURFACE_MATERIAL)))
-				.on_click(cx.listener(move |s, _, _, cx| s.select_destination(destination, cx)))
+				.on_click(cx.listener(move |s, _, _, cx| {
+					s.select_settings_destination(destination, standalone, cx);
+				}))
 				.child(label)
 				.smooth(),
 		);
 	}
-	let content = if shell.selected == Destination::Settings {
+	let content = if selected == Destination::Settings {
 		div()
 			.flex_1()
 			.min_w_0()
@@ -4825,14 +4847,12 @@ fn settings_workspace_content(
 						.flex()
 						.items_center()
 						.justify_between()
-						.child(ui_theme::settings_title(
-							if shell.selected == Destination::Accounts {
-								"Accounts"
-							} else {
-								"Diagnostics"
-							},
-						))
-						.when(shell.selected == Destination::Health, |d| {
+						.child(ui_theme::settings_title(if selected == Destination::Accounts {
+							"Accounts"
+						} else {
+							"Diagnostics"
+						}))
+						.when(selected == Destination::Health, |d| {
 							d.child(refresh_control(
 								refresh_focus,
 								shell.health.can_refresh,
@@ -4842,7 +4862,7 @@ fn settings_workspace_content(
 						}),
 				),
 			)
-			.child(if shell.selected == Destination::Accounts {
+			.child(if selected == Destination::Accounts {
 				accounts_content(shell, cx)
 			} else {
 				health_content(&shell.health)
@@ -4857,9 +4877,116 @@ fn settings_workspace_content(
 		.min_w_0()
 		.min_h_0()
 		.flex()
-		.when(shell.left_sidebar_visible, |layout| layout.child(navigation))
+		.when(standalone || shell.left_sidebar_visible, |layout| layout.child(navigation))
 		.child(content)
 		.into_any_element()
+}
+
+/// Settings render the existing controller-backed surfaces in their own window.
+pub(crate) struct SettingsWindow {
+	owner: Entity<Shell>,
+	focus: FocusHandle,
+	_observation: Subscription,
+}
+impl Render for SettingsWindow {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let content = self.owner.update(cx, |s, cx| {
+			settings_workspace_content(s, true, s.refresh_focus.clone(), window, cx)
+		});
+		div()
+			.id("settings-window")
+			.size_full()
+			.flex()
+			.font_family(ui_theme::FONT_FAMILY)
+			.text_color(rgb(WB_TEXT))
+			.bg(rgba(ui_theme::SHELL_MATERIAL))
+			.key_context("SettingsWindow")
+			.track_focus(&self.focus)
+			.on_action(cx.listener(|_, _: &CloseSettings, window, cx| {
+				window.remove_window();
+				cx.stop_propagation();
+			}))
+			.on_action(cx.listener(|_, _: &ActivateSettings, _, cx| cx.stop_propagation()))
+			.on_action(cx.listener(|_, _: &FocusNext, window, cx| window.focus_next(cx)))
+			.on_action(cx.listener(|_, _: &FocusPrevious, window, cx| window.focus_prev(cx)))
+			.child(content)
+	}
+}
+impl Shell {
+	fn select_settings_destination(
+		&mut self,
+		destination: Destination,
+		standalone: bool,
+		cx: &mut Context<Self>,
+	) {
+		if standalone {
+			self.select_settings_section(destination, cx);
+		} else {
+			self.select_destination(destination, cx);
+		}
+	}
+
+	fn select_settings_section(&mut self, destination: Destination, cx: &mut Context<Self>) {
+		self.settings_selected = destination;
+		match destination {
+			Destination::Accounts => {
+				self.accounts_controller.activate();
+				self.synchronize_accounts();
+			},
+			Destination::Health => self.health_query.activate(),
+			_ => self.settings.update(cx, SettingsSurface::refresh),
+		}
+		cx.notify();
+	}
+
+	fn open_settings_window(&mut self, section: Destination, cx: &mut Context<Self>) {
+		if section != Destination::Settings || self.settings_window.is_none() {
+			self.select_settings_section(section, cx);
+		}
+		let owner = cx.entity();
+		cx.defer(move |cx| open_settings_window(owner, cx));
+	}
+}
+
+fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
+	if let Some(handle) = owner.read(cx).settings_window
+		&& handle.update(cx, |_, window, _| window.activate_window()).is_ok()
+	{
+		return;
+	}
+	let bounds = gpui::Bounds::centered(None, gpui::size(px(920.), px(620.)), cx);
+	match cx.open_window(
+		gpui::WindowOptions {
+			titlebar: Some(gpui::TitlebarOptions {
+				title: Some("Decodex Settings".into()),
+				appears_transparent: true,
+				..Default::default()
+			}),
+			window_background: gpui::WindowBackgroundAppearance::Blurred,
+			window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
+			window_min_size: Some(gpui::size(px(860.), px(480.))),
+			..Default::default()
+		},
+		{
+			let owner = owner.clone();
+			move |window, cx| {
+				cx.new(|cx| {
+					let focus = cx.focus_handle();
+					window.focus(&focus, cx);
+					let observation = cx.observe(&owner, |_, _, cx| cx.notify());
+					SettingsWindow { owner, focus, _observation: observation }
+				})
+			}
+		},
+	) {
+		Ok(handle) => owner.update(cx, |s, _| s.settings_window = Some(handle)),
+		Err(error) => {
+			owner.update(cx, |s, cx| {
+				s.account_status = Some(format!("Could not open Settings: {error}").into());
+				cx.notify();
+			});
+		},
+	}
 }
 
 impl Render for Shell {
@@ -6096,17 +6223,27 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn global_workspace_shortcuts_open_chief_and_settings(cx: &mut TestAppContext) {
+	fn settings_window_preserves_workspace_and_reuses_one_window(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
-		for (keys, expected) in [
-			("cmd-1", Destination::Chief),
-			("cmd-3", Destination::Health),
-			("cmd-,", Destination::Settings),
-			("cmd-2", Destination::Chief),
-		] {
-			visual.simulate_keystrokes(keys);
-			assert_eq!(shell.read_with(visual, |shell, _| shell.selected), expected);
-		}
+		let before = shell.read_with(visual, |s, cx| s.chief.read(cx).workspace_panels());
+		visual.simulate_keystrokes("cmd-,");
+		let handle = shell.read_with(visual, |s, _| {
+			assert_eq!(s.selected, Destination::Chief);
+			s.settings_window.expect("settings window")
+		});
+		shell.update(visual, |s, cx| s.open_settings_window(Destination::Accounts, cx));
+		shell.read_with(visual, |s, cx| {
+			assert_eq!(s.selected, Destination::Chief);
+			assert_eq!(s.settings_selected, Destination::Accounts);
+			assert_eq!(s.settings_window.unwrap(), handle);
+			assert_eq!(s.chief.read(cx).workspace_panels(), before);
+		});
+		handle.update(visual, |_, window, _| window.remove_window()).unwrap();
+		shell.update(visual, |s, cx| s.open_settings_window(Destination::Settings, cx));
+		shell.read_with(visual, |s, _| {
+			assert_ne!(s.settings_window.unwrap(), handle);
+			assert_eq!(s.selected, Destination::Chief);
+		});
 	}
 
 	#[gpui::test]

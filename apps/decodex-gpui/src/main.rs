@@ -338,6 +338,10 @@ gpui::actions!(
 );
 
 fn hide_main_window(cx: &mut App) {
+	if let Some(window) = cx.active_window().and_then(|w| w.downcast::<shell::SettingsWindow>()) {
+		let _ = window.update(cx, |_, window, _| window.remove_window());
+		return;
+	}
 	#[cfg(target_os = "macos")]
 	{
 		let _ = cx;
