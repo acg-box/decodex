@@ -232,6 +232,8 @@ mod tests {
 					default_effort: Some(Effort::High),
 					supports_fast: true,
 					supports_images: true,
+					availability: None,
+					upgrade: None,
 				}],
 				memory_enabled: None,
 			});

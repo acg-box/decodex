@@ -1,8 +1,39 @@
 //! Runtime model catalog. Loading metadata never sends a conversation message.
 use super::{ChiefClient, ChiefSurface, Context};
 use decodex_protocol::{ChiefCapabilitiesResult, ChiefModelDto, ConversationReasoningEffort};
+use gpui::prelude::*;
 
 impl ChiefSurface {
+	pub(super) fn model_notice_panel(&self, cx: &Context<Self>) -> gpui::AnyElement {
+		let mut panel = gpui::div()
+			.id("model-catalog-notices")
+			.debug_selector(|| "model-catalog-notices".into())
+			.flex()
+			.flex_col()
+			.gap_2();
+		if let Some(model) = self.selected_model(cx) {
+			if let Some(notice) = &model.availability {
+				panel = panel.child(super::muted(notice.clone()));
+			}
+			if let Some(upgrade) = &model.upgrade {
+				panel = panel
+					.child(super::muted(format!("Suggested upgrade: {}", upgrade.model.as_str())));
+				if let Some(timestamp) = upgrade.retirement_at
+					&& let Ok(date) = time::OffsetDateTime::from_unix_timestamp(timestamp)
+				{
+					panel = panel.child(super::muted(format!(
+						"Scheduled retirement: {} (UTC)",
+						date.date()
+					)));
+				}
+				if let Some(notice) = &upgrade.notice {
+					panel = panel.child(super::muted(notice.clone()));
+				}
+			}
+		}
+		panel.into_any_element()
+	}
+
 	pub(super) fn load_capabilities(&mut self, cx: &mut Context<Self>) {
 		if self.capability_task.is_some() {
 			return;
@@ -66,5 +97,46 @@ impl ChiefSurface {
 			);
 		}
 		None
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[gpui::test]
+	fn upgrade_notice_is_visible_without_replacing_selected_model(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.capabilities = Some(ChiefCapabilitiesResult::Available {
+				memory_enabled: None,
+				models: vec![ChiefModelDto {
+					model: decodex_protocol::ConversationModel::new("current-model").unwrap(),
+					name: "Current model".into(),
+					efforts: vec![ConversationReasoningEffort::High],
+					default_effort: Some(ConversationReasoningEffort::High),
+					supports_fast: false,
+					supports_images: true,
+					availability: Some("Available for this account".into()),
+					upgrade: Some(decodex_protocol::ChiefModelUpgradeDto {
+						model: decodex_protocol::ConversationModel::new("replacement").unwrap(),
+						notice: Some("A replacement is available".into()),
+						retirement_at: Some(1800000000),
+					}),
+				}],
+			});
+			s.model.update(cx, |input, cx| input.set_content("current-model", cx));
+			s.reconcile_model_options(cx);
+			s.composer_menu = Some("model");
+			s.composer_menu_content = Some("model");
+			assert_eq!(s.model.read(cx).content(), "current-model");
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(gpui::px(1280.0), gpui::px(1200.0)));
+			window.draw(cx).clear();
+		});
+		let bounds = visual.debug_bounds("model-catalog-notices").expect("visible model notices");
+		assert!(bounds.size.height > gpui::px(20.0));
+		surface.update(visual, |s, cx| assert_eq!(s.model.read(cx).content(), "current-model"));
 	}
 }

@@ -522,6 +522,22 @@ pub struct ChiefModelDto {
 	pub supports_fast: bool,
 	/// The provider accepts image input for this model.
 	pub supports_images: bool,
+	/// Provider availability information for the current account, when supplied.
+	pub availability: Option<String>,
+	/// Informational upgrade or retirement notice; selection stays explicit.
+	pub upgrade: Option<ChiefModelUpgradeDto>,
+}
+
+/// Provider-advertised model replacement information.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefModelUpgradeDto {
+	/// Suggested replacement, never selected automatically.
+	pub model: crate::ConversationModel,
+	/// Provider-authored explanation.
+	pub notice: Option<String>,
+	/// Informational retirement time as Unix seconds, when supplied.
+	pub retirement_at: Option<i64>,
 }
 
 /// Read-only capability evidence. Absence never means a disabled feature.

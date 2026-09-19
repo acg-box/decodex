@@ -823,6 +823,14 @@ impl ConversationRuntime {
 			.and_then(|process| process.client.clone())
 	}
 
+	pub(crate) fn chief_catalog_client(
+		&self,
+	) -> Option<(ProcessGenerationId, decodex_codex::app_server_client::AppServerClient)> {
+		self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner).as_ref().and_then(
+			|process| process.client.clone().map(|client| (process.generation_id.clone(), client)),
+		)
+	}
+
 	pub(crate) async fn chief_account_exhausted(&self, root: &str) -> bool {
 		let Ok(Some(binding)) = self.inner.store.read_chief_process_binding(root).await else {
 			return false;

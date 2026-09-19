@@ -148,10 +148,15 @@ impl ChiefHost {
 	}
 
 	pub(crate) async fn capabilities(&self) -> decodex_protocol::ChiefCapabilitiesResult {
-		let Some(client) = self.runtime.chief_client() else {
+		let Some((generation, client)) = self.runtime.chief_catalog_client() else {
 			return decodex_protocol::ChiefCapabilitiesResult::Unavailable;
 		};
-		crate::chief_capabilities::read(&client).await
+		let result = crate::chief_capabilities::read(&client).await;
+		if self.runtime.chief_catalog_client().is_some_and(|(current, _)| current == generation) {
+			result
+		} else {
+			decodex_protocol::ChiefCapabilitiesResult::Unavailable
+		}
 	}
 
 	pub(crate) async fn submit(

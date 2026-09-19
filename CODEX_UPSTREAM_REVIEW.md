@@ -327,3 +327,37 @@ recovery, blocked approvals, and voice retirement with a lost stop response.
 Rendered GPUI tests cover separate review and acknowledgment clicks and stale
 review rejection. This evidence does not claim a live provider-generated
 misalignment session or completion of the remaining upstream capability audit.
+
+## Model catalog metadata and explicit turn speed
+
+Reviewed `protocol/v2/model.rs` and `protocol/v2/turn.rs` at
+`595cc91e8cbb1c2ca822d0311dcf12709410c582`, plus
+`78d4d983d3380fa92aa17fbe9e4f9b737b6a5223` (reasoning-effort update support)
+and `ed42068c45` (turn-scoped service tier).
+
+Existing model discovery already reads all native catalog pages on the retained
+Chief process. The adapter now retains bounded availability text and suggested
+upgrade/retirement metadata. The model menu displays these notices without
+changing the selected model. Optional legacy upgrade metadata remains supported.
+A catalog read captures its process generation and discards its result if that
+process is replaced before the read finishes. Protocol 2.29 carries these notices.
+
+Configured messages send explicit `serviceTierForTurn` values: `priority` for
+Fast and `default` for standard speed. The existing `serviceTier` field remains
+for older app-server compatibility. New servers therefore cannot interpret an
+explicit Fast-off choice as an instruction to inherit a priority default.
+
+The explicit `supports_reasoning_effort_updates` capability in commit 78d4d983d3
+belongs to the native core's configuration-update/history pipeline. Decodex sends
+request-level effort and does not inject those history items, so the native core
+owns that adaptation. `availableAccessPrograms` advertises explicit cyber program
+selection, not generic model availability. Decodex's current general-purpose
+Chief does not select a cyber program; discovering one must not silently opt in.
+The existing thread-level service-tier contract remains valid alongside the new
+per-turn override. These dispositions do not claim a completed review of unrelated
+model or account changes.
+
+Validation includes paginated catalog reads, bounded and missing notice metadata,
+legacy upgrade fallback, unchanged model selection, rendered notices, and native
+request fixtures for explicit priority and standard speed. No model inference is
+needed to read the catalog.
