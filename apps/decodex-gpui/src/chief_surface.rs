@@ -11,6 +11,7 @@
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_requests.rs"] mod requests;
+#[path = "chief_mcp_forms.rs"] mod mcp_forms;
 #[path = "chief_async_questions.rs"] mod async_questions;
 #[path = "chief_misalignment.rs"] mod misalignment;
 #[path = "chief_voice.rs"] mod voice;
@@ -137,6 +138,10 @@ pub(crate) struct ChiefSurface {
 	request: Option<ChiefRequestResult>,
 	request_task: Option<Task<()>>,
 	misalignment_reviewed: Option<(String, String)>,
+	mcp_form_event: Option<i64>,
+	mcp_url_opened: Option<(i64,String)>,
+	mcp_inputs: std::collections::BTreeMap<String,Entity<ComposerInput>>,
+	mcp_answers: std::collections::BTreeMap<String,serde_json::Value>,
 	question_timers: std::collections::BTreeMap<i64, requests::QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
 	async_question_inputs: std::collections::BTreeMap<(String, String), Entity<ComposerInput>>,
@@ -300,6 +305,10 @@ impl ChiefSurface {
 			request: None,
 			request_task: None,
 			misalignment_reviewed: None,
+			mcp_form_event:None,
+			mcp_url_opened:None,
+			mcp_inputs:Default::default(),
+			mcp_answers:Default::default(),
 			question_timers: Default::default(),
 			question_inputs: Default::default(),
 			async_question_inputs: Default::default(),
@@ -693,6 +702,7 @@ impl ChiefSurface {
 		self.request = None;
 		self.request_task = None;
 		self.question_timers.clear();
+		self.mcp_form_event=None;self.mcp_url_opened=None;self.mcp_inputs.clear();self.mcp_answers.clear();
 		self.misalignment_reviewed = None;
 		self.async_question_inputs.clear();
 		self.selected = None;

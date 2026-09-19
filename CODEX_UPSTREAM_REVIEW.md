@@ -361,3 +361,44 @@ Validation includes paginated catalog reads, bounded and missing notice metadata
 legacy upgrade fallback, unchanged model selection, rendered notices, and native
 request fixtures for explicit priority and standard speed. No model inference is
 needed to read the catalog.
+
+## MCP elicitation forms and explicit approval replies
+
+At fixed upstream snapshot 595cc91e8cbb1c2ca822d0311dcf12709410c582, the
+app-server MCP contract permits standalone requests with a null turn ID. A request
+still belongs to one exact thread and one live native connection. Decodex now
+projects these requests while that thread is idle; requests with a turn ID must
+match the running turn. Private device challenges are excluded from projections.
+
+The GPUI request panel supports primitive forms, explicit booleans, numeric input,
+single choices and string-array choices. Wire values remain separate from labels.
+Defaults do not become submitted answers. Required fields, primitive types,
+advertised choices, lengths, counts and numeric bounds are checked in the client
+and again against the original persisted schema before native response authority
+is consumed. Unsupported schema assertions show an unavailable-form explanation.
+String format is an annotation, as in the upstream TUI primitive text controls;
+this is not a general JSON Schema validator.
+
+Message-only approvals support only the session/always scopes offered by the
+request. Tool suggestions retain the native empty-object response and do not gain
+persistent approval. URL verification has separate open and completion actions;
+opening a link does not report successful verification. Buttons support keyboard
+activation. Device-authenticated openai/userVerification acceptance remains
+unavailable because Decodex does not own the device proof producer; it offers
+decline/cancel rather than fabricate a proof.
+
+Native serverRequest/resolved retires the exact live request. Reconnection does
+not restore response authority from persisted requests or reuse an old event when
+the provider reuses an RPC ID. Validation rejection preserves the live request;
+an uncertain transport response is not replayed. Protocol 2.30 prevents older
+clients from treating the new MCP request projection as a command approval.
+
+The source authority is app-server-protocol/src/protocol/v2/mcp.rs,
+protocol/src/mcp_approval_meta.rs and
+tui/src/bottom_pane/mcp_server_elicitation.rs under upstream codex-rs/.
+Runtime fixtures cover idle-thread projection, original-schema response checks,
+explicit false, one-shot replies, resolution identity and reconnection fencing.
+Rendered tests cover offered persistence, separate URL confirmation and invalid
+local-file links. These tests use a controlled native transport and GPUI test
+platform; they do not claim successful authentication with a live external MCP
+service. Plugin effective settings, resources and attachment work remain open.
