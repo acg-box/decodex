@@ -1,0 +1,289 @@
+//! Bind native live voice to the existing Chief and observe its real task turns.
+use super::{
+	ChiefCoordinator, ChiefError, ClientError, ServerEvent, Value, exact, json, resume_error,
+};
+use crate::chief_voice::VoiceGateway;
+use decodex_protocol::{ChiefVoicePhase, ChiefVoiceRequest, VoiceSdp};
+
+pub(super) struct VoiceConnection {
+	generation: String,
+	transcript_sequence: u64,
+	answer_seen: bool,
+	transcript_tail: [String; 2],
+	gateway: VoiceGateway,
+	session: Option<(String, String)>,
+}
+impl ChiefCoordinator {
+	pub(crate) fn attach_voice_host(&mut self, generation: String, gateway: VoiceGateway) {
+		self.voice = Some(VoiceConnection {
+			generation,
+			transcript_sequence: 0,
+			answer_seen: false,
+			transcript_tail: Default::default(),
+			gateway,
+			session: None,
+		});
+	}
+
+	pub(crate) async fn voice_request(
+		&mut self,
+		request: ChiefVoiceRequest,
+	) -> Result<(), ChiefError> {
+		match request {
+			ChiefVoiceRequest::Start { session_id, work_id, offer } => {
+				if !self.is_manager(work_id.as_str()).await? {
+					return Err(ChiefError::Invalid("voice requires a Chief".into()));
+				}
+				let item = self.store.get_chief_work_item(work_id.as_str().into()).await?;
+				if !matches!(
+					item.dispatch_state,
+					decodex_database::ChiefDispatchState::Idle
+						| decodex_database::ChiefDispatchState::Running
+				) {
+					return Err(ChiefError::Busy);
+				}
+				let thread = item
+					.codex_thread_id
+					.clone()
+					.ok_or_else(|| ChiefError::Invalid("Chief thread is not ready".into()))?;
+				let generation = self
+					.voice
+					.as_ref()
+					.ok_or_else(|| ChiefError::Invalid("voice host unavailable".into()))?
+					.generation
+					.clone();
+				if !self.loaded_threads.contains(&thread) {
+					let mut params = self.work_thread_params(&item).await?;
+					params.as_object_mut().expect("thread params").remove("dynamicTools");
+					params["threadId"] = json!(thread);
+					params["config"]["features.realtime_conversation"] = json!(true);
+					let resumed = self.client.thread_resume(params).await.map_err(resume_error)?;
+					if exact(&resumed, "/thread/id")? != thread {
+						return Err(ChiefError::Invalid("voice thread differs".into()));
+					}
+					self.loaded_threads.insert(thread.clone());
+				}
+				let history =
+					self.client.thread_read(json!({"threadId":thread,"includeTurns":true})).await?;
+				if exact(&history, "/thread/id")? != thread {
+					return Err(ChiefError::Invalid("voice history differs".into()));
+				}
+				let baseline = history
+					.pointer("/thread/turns")
+					.and_then(Value::as_array)
+					.and_then(|v| v.last())
+					.and_then(|v| v["id"].as_str())
+					.map(str::to_owned);
+				self.store
+					.begin_chief_voice_call(decodex_database::ChiefVoiceCall {
+						session_id: session_id.as_str().into(),
+						work_id: work_id.as_str().into(),
+						thread_id: thread.clone(),
+						generation_id: generation,
+						baseline_turn_id: baseline,
+					})
+					.await?;
+				self.voice.as_mut().expect("voice host").answer_seen = false;
+				self.voice.as_mut().expect("voice host").transcript_tail = Default::default();
+				self.voice.as_mut().expect("voice host").session =
+					Some((session_id.as_str().into(), thread.clone()));
+				let result=self.client.request("thread/realtime/start",json!({
+                    "threadId":thread,"version":"v3","outputModality":"audio",
+                    "includeStartupContext":true,"flushTranscriptTailOnSessionEnd":true,
+                    "prompt":"Continue this Chief conversation by voice. Wait for the user's new spoken request before starting new work. Use the existing conversation and its tools when the user asks for work.",
+                    "transport":{"type":"webrtc","sdp":offer.as_str()}
+                })).await;
+				if matches!(&result, Err(ClientError::Remote(_))) {
+					self.store.close_chief_voice_call(session_id.as_str().into()).await?;
+					self.voice.as_mut().expect("voice host").session = None;
+				}
+				result?;
+			},
+			ChiefVoiceRequest::Stop { session_id } => {
+				let session = self
+					.voice
+					.as_ref()
+					.and_then(|v| v.session.as_ref())
+					.filter(|(id, _)| id == session_id.as_str());
+				if let Some((_, thread)) = session {
+					self.client.request("thread/realtime/stop", json!({"threadId":thread})).await?;
+				}
+			},
+			ChiefVoiceRequest::Poll { .. } => {},
+		}
+		Ok(())
+	}
+
+	pub(super) async fn voice_event(&mut self, event: &ServerEvent) -> Result<(), ChiefError> {
+		let Some(voice) = self.voice.as_mut() else { return Ok(()) };
+		let ServerEvent::Notification { method, params } = event else {
+			if matches!(event, ServerEvent::Closed(_))
+				&& let Some((id, _)) = &voice.session
+			{
+				voice.gateway.update(
+					id,
+					ChiefVoicePhase::Failed,
+					None,
+					Some("Voice disconnected. Spoken input will not be replayed."),
+				);
+			}
+			return Ok(());
+		};
+		let Some(thread) = params["threadId"].as_str() else { return Ok(()) };
+		if method == "turn/started"
+			&& let Some(turn) = params.pointer("/turn/id").and_then(Value::as_str)
+		{
+			self.store
+				.observe_chief_voice_turn(voice.generation.clone(), thread.into(), turn.into())
+				.await?;
+		}
+		let Some((id, _current)) = voice.session.clone().filter(|(_, t)| t == thread) else {
+			return Ok(());
+		};
+		match method.as_str() {
+			"thread/realtime/transcript/delta" => {
+				if let Some(index) =
+					transcript_role_index(params["role"].as_str().unwrap_or_default())
+				{
+					let delta = params["delta"].as_str().unwrap_or_default();
+					if voice.transcript_tail[index].len() + delta.len() <= 32_768 {
+						voice.transcript_tail[index].push_str(delta);
+					}
+				}
+			},
+			"thread/realtime/transcript/done" => {
+				let role = params["role"].as_str().unwrap_or_default();
+				let text = params["text"].as_str().unwrap_or_default();
+				if let Some(index) = transcript_role_index(role) {
+					voice.transcript_tail[index].clear();
+				}
+				if ["user", "assistant"].contains(&role) && !text.is_empty() {
+					voice.transcript_sequence += 1;
+					self.store
+						.record_chief_voice_transcript(
+							id.clone(),
+							voice.transcript_sequence,
+							role.into(),
+							text.into(),
+						)
+						.await?;
+				}
+			},
+			"thread/realtime/sdp" => {
+				let answer = params["sdp"]
+					.as_str()
+					.and_then(|s| VoiceSdp::new(s.into()).ok())
+					.ok_or_else(|| ChiefError::Invalid("invalid voice answer".into()))?;
+				voice.answer_seen = true;
+				voice.gateway.update(&id, ChiefVoicePhase::Ready, Some(answer), None);
+			},
+			"thread/realtime/error" => {
+				let detail = crate::chief_voice::provider_error_message(
+					params["message"].as_str().unwrap_or_default(),
+				);
+				voice.gateway.update(&id, ChiefVoicePhase::Failed, None, Some(detail));
+				// Without a remote answer no client audio can reach this call.
+				if !voice.answer_seen {
+					self.store.close_chief_voice_call(id).await?;
+					voice.session = None;
+				}
+			},
+
+			"thread/realtime/closed" => {
+				// Native stop can close a reply before a final transcript event. Preserve the
+				// text already received without replaying it as a new user instruction.
+				for (index, role) in ["user", "assistant"].into_iter().enumerate() {
+					let text = std::mem::take(&mut voice.transcript_tail[index]);
+					if !text.is_empty() {
+						voice.transcript_sequence += 1;
+						self.store
+							.record_chief_voice_transcript(
+								id.clone(),
+								voice.transcript_sequence,
+								role.into(),
+								text,
+							)
+							.await?;
+					}
+				}
+				self.store.close_chief_voice_call(id.clone()).await?;
+				voice.gateway.update(&id, ChiefVoicePhase::Ended, None, None);
+				voice.session = None;
+			},
+			_ => {},
+		}
+		Ok(())
+	}
+
+	/// Recover observed native work after a lost call without replaying audio or instructions.
+	pub(super) async fn recover_voice_calls(&mut self) -> Result<(), ChiefError> {
+		for call in self.store.open_chief_voice_calls().await? {
+			let item = self.store.get_chief_work_item(call.work_id.clone()).await?;
+			let mut params = self.work_thread_params(&item).await?;
+			params.as_object_mut().expect("thread params").remove("dynamicTools");
+			params["threadId"] = json!(call.thread_id);
+			let resumed = self.client.thread_resume(params).await.map_err(resume_error)?;
+			if exact(&resumed, "/thread/id")? != call.thread_id {
+				return Err(ChiefError::Invalid("voice recovery thread differs".into()));
+			}
+			let history = self
+				.client
+				.thread_read(json!({"threadId":call.thread_id,"includeTurns":true}))
+				.await?;
+			if exact(&history, "/thread/id")? != call.thread_id {
+				return Err(ChiefError::Invalid("voice recovery history differs".into()));
+			}
+			let turns = history
+				.pointer("/thread/turns")
+				.and_then(Value::as_array)
+				.ok_or_else(|| ChiefError::Invalid("voice recovery history missing".into()))?;
+			let first = match &call.baseline_turn_id {
+				Some(id) => turns
+					.iter()
+					.position(|turn| turn["id"].as_str() == Some(id))
+					.map(|p| p + 1)
+					.ok_or_else(|| ChiefError::Invalid("voice recovery baseline missing".into()))?,
+				None => 0,
+			};
+			for turn in &turns[first..] {
+				let turn_id = exact(turn, "/id")?;
+				let observed = self
+					.store
+					.observe_chief_voice_turn(
+						call.generation_id.clone(),
+						call.thread_id.clone(),
+						turn_id,
+					)
+					.await?;
+				if observed
+					&& matches!(
+						turn["status"].as_str(),
+						Some("completed" | "failed" | "interrupted")
+					) {
+					self.record_terminal(
+						json!({"threadId":call.thread_id,"turn":turn}),
+						Ok(history.clone()),
+						false,
+					)
+					.await?;
+				}
+			}
+			// A new admitted process can exist only after the old generation is positively dead.
+			let changed_generation =
+				self.voice.as_ref().is_some_and(|v| v.generation != call.generation_id);
+			if !changed_generation {
+				return Err(ChiefError::Invalid("old voice process is still owned".into()));
+			}
+			self.store.close_chief_voice_call(call.session_id).await?;
+		}
+		Ok(())
+	}
+}
+
+fn transcript_role_index(role: &str) -> Option<usize> {
+	match role {
+		"user" => Some(0),
+		"assistant" => Some(1),
+		_ => None,
+	}
+}

@@ -230,6 +230,46 @@ pub struct ChiefClient {
 	transport: ResetCardClient,
 }
 impl ChiefClient {
+	/// Exchange one explicit voice operation. The caller must poll after a lost start response.
+	pub async fn voice(
+		&self,
+		request: crate::ChiefVoiceRequest,
+	) -> Result<crate::ChiefVoiceStatus, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let session = request.session_id().clone();
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner("chief-voice", QueryPayload::ExchangeChiefVoice { request }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefVoice(result) if result.session_id == session => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Stream dictation without submitting agent work.
+	pub async fn dictation(
+		&self,
+		request: crate::DictationRequest,
+	) -> Result<crate::DictationStatus, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let session = request.session_id().clone();
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner("dictation", QueryPayload::ExchangeDictation { request }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::Dictation(result) if result.session_id == session => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read the selected fields of one exact unresolved request.
 	pub async fn request(&self, event_id: i64) -> Result<crate::ChiefRequestResult, ClientFailure> {
 		self.transport.require_local_profile()?;
@@ -270,10 +310,20 @@ impl ChiefClient {
 		&self,
 		work_id: EntityId,
 	) -> Result<crate::ChiefHistoryResult, ClientFailure> {
+		self.history_page(work_id, None).await
+	}
+
+	/// Read an older immutable event page or the current live head.
+	pub async fn history_page(
+		&self,
+		work_id: EntityId,
+		before: Option<i64>,
+	) -> Result<crate::ChiefHistoryResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
-			self.transport.query_inner("chief-history", QueryPayload::GetChiefHistory { work_id }),
+			self.transport
+				.query_inner("chief-history", QueryPayload::GetChiefHistory { work_id, before }),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
@@ -287,6 +337,46 @@ impl ChiefClient {
 	/// Construct a client for one declared service profile.
 	pub const fn new(profile: ClientProfile) -> Self {
 		Self { transport: ResetCardClient { profile, timeout: CLIENT_TIMEOUT } }
+	}
+
+	/// Read one exact tool item through the service-owned source connection.
+	pub async fn activity_detail(
+		&self,
+		work_id: EntityId,
+		turn_id: crate::WireText,
+		item_id: crate::WireText,
+	) -> Result<crate::ChiefActivityDetailResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"chief-detail",
+				QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefActivityDetail(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read native capabilities without starting a model turn.
+	pub async fn capabilities(&self) -> Result<crate::ChiefCapabilitiesResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner("chief-capabilities", QueryPayload::GetChiefCapabilities),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefCapabilities(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
 	}
 
 	/// Read one complete bounded Chief projection without changing work or runtime state.
@@ -429,12 +519,15 @@ impl ChiefClient {
 
 fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 	match action {
-		crate::ChiefActionDto::Start(start) => &start.root_id,
-		crate::ChiefActionDto::Send { root_id, .. } => root_id,
+		crate::ChiefActionDto::Start(start)
+		| crate::ChiefActionDto::StartConfigured { start, .. } => &start.root_id,
+		crate::ChiefActionDto::Send { root_id, .. }
+		| crate::ChiefActionDto::SendConfigured { root_id, .. } => root_id,
 		crate::ChiefActionDto::CancelCapacityRetry { work_id, .. }
 		| crate::ChiefActionDto::Interrupt { work_id, .. }
 		| crate::ChiefActionDto::Respond { work_id, .. }
-		| crate::ChiefActionDto::AutomationResult { work_id, .. } => work_id,
+		| crate::ChiefActionDto::AutomationResult { work_id, .. }
+		| crate::ChiefActionDto::Steer { work_id, .. } => work_id,
 	}
 }
 
@@ -2183,8 +2276,8 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_17_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 17 });
+	fn protocol_constants_expose_only_the_exact_v2_26_version() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 26 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

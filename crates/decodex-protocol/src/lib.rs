@@ -4,17 +4,23 @@
 mod account_login;
 mod chief;
 pub use chief::{
-	ChiefActionDto, ChiefHistoryEntryDto, ChiefHistoryResult, ChiefRequestResult, ChiefSandboxDto,
-	ChiefStartDto,
+	ChiefActionDto, ChiefActivityDetailResult, ChiefActivityDto, ChiefAttachmentDto,
+	ChiefCapabilitiesResult, ChiefHistoryEntryDto, ChiefHistoryResult, ChiefLiveMessageDto,
+	ChiefModelDto, ChiefRequestResult, ChiefSandboxDto, ChiefStartDto, ChiefTurnUsageDto,
+	ChiefUsageDto, ChiefWorkspaceDto,
 };
 mod client;
 mod conversation;
+mod dictation;
 mod doctor;
 mod domain_pack;
 mod local_transport;
 mod program_cycle;
 mod retained_session;
+mod voice;
+pub use dictation::{DictationBuffer, DictationPhase, DictationRequest, DictationStatus};
 mod wire;
+pub use voice::{ChiefVoicePhase, ChiefVoiceRequest, ChiefVoiceStatus, VoiceSdp};
 
 pub use self::{
 	account_login::{
@@ -105,7 +111,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 17 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 26 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

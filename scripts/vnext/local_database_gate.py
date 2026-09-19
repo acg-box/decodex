@@ -75,8 +75,16 @@ MIGRATIONS = (
     ),
     (13, "chief_work", ROOT / "database/migrations/0013_chief_work.sql"),
     (14, "optional_quota_window", ROOT / "database/migrations/0014_optional_quota_window.sql"),
-    (15, "chief_observation_indexes", ROOT / "database/migrations/0015_chief_observation_indexes.sql"),
-    (16, "chief_capacity_retry", ROOT / "database/migrations/0016_chief_capacity_retry.sql"),
+    (15, "chief_live_output", ROOT / "database/migrations/0015_chief_live_output.sql"),
+    (16, "chief_managers", ROOT / "database/migrations/0016_chief_managers.sql"),
+    (17, "chief_tool_versions", ROOT / "database/migrations/0017_chief_tool_versions.sql"),
+    (18, "chief_usage", ROOT / "database/migrations/0018_chief_usage.sql"),
+    (19, "process_kernel_recovery", ROOT / "database/migrations/0019_process_kernel_recovery.sql"),
+    (20, "chief_turn_usage", ROOT / "database/migrations/0020_chief_turn_usage.sql"),
+    (21, "chief_account_rotation", ROOT / "database/migrations/0021_chief_account_rotation.sql"),
+    (22, "chief_voice_calls", ROOT / "database/migrations/0022_chief_voice_calls.sql"),
+    (23, "chief_observation_indexes", ROOT / "database/migrations/0015_chief_observation_indexes.sql"),
+    (24, "chief_capacity_retry", ROOT / "database/migrations/0016_chief_capacity_retry.sql"),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
@@ -133,6 +141,15 @@ REQUIRED_TABLES = frozenset(
         "chief_process_bindings",
         "chief_root_settings",
         "chief_capacity_retries",
+        "chief_live_output",
+        "chief_managers",
+        "chief_workspaces",
+        "chief_tool_versions",
+        "chief_thread_revisions",
+        "chief_usage",
+        "chief_voice_calls",
+        "chief_voice_observed_turns",
+
     }
 )
 

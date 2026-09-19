@@ -78,7 +78,8 @@ codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \
 	--identifier box.acg.decodex.native-client "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY"
 codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \
 	--identifier box.acg.decodex.menu-bar "$FRAMEWORKS/$MENU_BAR_LIBRARY"
-codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" "$APP"
+codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" \
+    --entitlements "$ROOT/apps/decodex-gpui/packaging/Decodex.entitlements" "$APP"
 for signed_path in \
 	"$HELPERS/decodex" \
 	"$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY" \

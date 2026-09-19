@@ -274,6 +274,10 @@ impl<'de> Deserialize<'de> for ConversationModel {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConversationReasoningEffort {
+	/// Disable additional reasoning when the provider advertises this level.
+	None,
+	/// Minimal provider reasoning effort.
+	Minimal,
 	/// Low provider reasoning effort.
 	Low,
 	/// Medium provider reasoning effort.
@@ -291,6 +295,8 @@ impl ConversationReasoningEffort {
 	/// Return the exact app-server wire value.
 	pub const fn as_str(self) -> &'static str {
 		match self {
+			Self::None => "none",
+			Self::Minimal => "minimal",
 			Self::Low => "low",
 			Self::Medium => "medium",
 			Self::High => "high",

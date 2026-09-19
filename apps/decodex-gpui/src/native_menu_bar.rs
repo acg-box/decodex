@@ -317,7 +317,7 @@ impl Drop for SwiftMenuBarBridge {
 }
 
 #[cfg(all(target_os = "macos", not(test)))]
-fn bundled_library_path(executable: &Path) -> Result<PathBuf, NativeMenuBarFailure> {
+pub(crate) fn bundled_library_path(executable: &Path) -> Result<PathBuf, NativeMenuBarFailure> {
 	let macos = executable.parent().ok_or(NativeMenuBarFailure::NotBundled)?;
 	if macos.file_name().and_then(|name| name.to_str()) != Some("MacOS") {
 		return Err(NativeMenuBarFailure::NotBundled);
@@ -330,7 +330,7 @@ fn bundled_library_path(executable: &Path) -> Result<PathBuf, NativeMenuBarFailu
 }
 
 #[cfg(all(target_os = "macos", not(test)))]
-unsafe fn symbol<T: Copy>(
+pub(crate) unsafe fn symbol<T: Copy>(
 	image: *mut c_void,
 	name: &std::ffi::CStr,
 ) -> Result<T, NativeMenuBarFailure> {

@@ -27,21 +27,26 @@ use decodex_protocol::{
 use decodex_runtime::{ServerConfig, ServiceComposition};
 use std::{error::Error, fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, time::Duration};
 
+#[path = "chief_service_smoke/evidence.rs"] mod evidence;
 #[path = "chief_service_smoke/reliability.rs"] mod reliability;
 
 #[derive(Clone, Copy, PartialEq)]
 enum SmokeScope {
+	Evidence,
 	Full,
 	Reconnect,
 	LongOutput,
+	Hierarchy,
 }
 
 impl SmokeScope {
 	fn label(self) -> &'static str {
 		match self {
+			Self::Evidence => "EVIDENCE",
 			Self::Full => "FULL",
 			Self::Reconnect => "RECONNECT_ONLY",
 			Self::LongOutput => "LONG_OUTPUT_ONLY",
+			Self::Hierarchy => "HIERARCHY",
 		}
 	}
 
@@ -50,7 +55,12 @@ impl SmokeScope {
 			Err(std::env::VarError::NotPresent) | Ok("full") => Ok(Self::Full),
 			Ok("reconnect") => Ok(Self::Reconnect),
 			Ok("long-output") => Ok(Self::LongOutput),
-			_ => Err("DECODEX_SMOKE_SCOPE must be full, reconnect or long-output".into()),
+			Ok("hierarchy") => Ok(Self::Hierarchy),
+			Ok("evidence") => Ok(Self::Evidence),
+			_ => Err(
+				"DECODEX_SMOKE_SCOPE must be full, reconnect, long-output, hierarchy or evidence"
+					.into(),
+			),
 		}
 	}
 }
@@ -80,7 +90,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		let (client, account) = enroll_service_account(&root).await?;
 		let outcome=client.execute(ChiefActionDto::Start(ChiefStartDto {
 			root_id:EntityId::new("chief-service-smoke").expect("valid bounded qualification fixture"),
-			prompt:HistoryText::new("Read-only coordination qualification. Use only Chief coordination tools; never shell, file, network or native subagent tools. Create exactly two independent workers directly under this Chief: service-a asks its worker to reply exactly DRAFT_A without tools; service-b asks its worker to reply exactly RESULT_B without tools. Finish this initial turn with SERVICE_READY after creating both. When completion inbox events arrive later, assess each, record resolved disposition on its exact worker event, and summarize. Do not create more work. Later explicit user inputs will request a repair and a decision.").expect("valid bounded qualification fixture"),
+			prompt:HistoryText::new(if scope == SmokeScope::Evidence { evidence::prompt() } else if scope == SmokeScope::Hierarchy { hierarchy_prompt(&working_directory) } else { "Read-only coordination qualification. Use only Chief coordination tools; never shell, file, network or native subagent tools. Create exactly two independent workers directly under this Chief: service-a asks its worker to reply exactly DRAFT_A without tools; service-b asks its worker to reply exactly RESULT_B without tools. Finish this initial turn with SERVICE_READY after creating both. When completion inbox events arrive later, assess each, record resolved disposition only if the requested output was delivered; otherwise record follow_up with the actual problem. Summarize. Do not create more work. Later explicit user inputs will request a repair and a decision.".into() }).expect("valid bounded qualification fixture"),
 			model:ConversationModel::new(model).map_err(|_|"invalid model")?,effort:ConversationReasoningEffort::Medium,
 			cwd:ConversationWorkingDirectory::new(working_directory.to_string_lossy()).map_err(|_|"invalid smoke directory")?,account_id:Some(account),sandbox:ChiefSandboxDto::ReadOnly,
 		}),IdempotencyKey::new("smoke-start").expect("valid bounded qualification fixture")).await?;
@@ -121,6 +131,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		println!(
 			"Production Chief start, model response, history and snapshot passed through same-UID protocol."
 		);
+		verify_capabilities(&client).await?;
 		closed_loop_before_restart(&client, &root, scope).await?;
 		Ok(())
 	};
@@ -303,6 +314,12 @@ async fn closed_loop_before_restart(
 	root: &DecodexRoot,
 	scope: SmokeScope,
 ) -> SmokeResult<()> {
+	if scope == SmokeScope::Evidence {
+		return evidence::qualify(client).await;
+	}
+	if scope == SmokeScope::Hierarchy {
+		return qualify_hierarchy(client, root).await;
+	}
 	use decodex_protocol::ChiefWorkStatusDto as Status;
 	let initial = wait_graph(client, "two workers complete and wake Chief", |graph| {
 		graph.work_items.len() == 3
@@ -326,6 +343,7 @@ async fn closed_loop_before_restart(
 			.iter()
 			.any(|entry| entry.kind == "assistant" && entry.text.contains(marker))
 		{
+			eprintln!("Missing marker {marker} in work {work}");
 			return Err("worker result missing".into());
 		}
 	}
@@ -428,6 +446,9 @@ mod tests {
 	#[test]
 	fn automation_receipt_uses_public_kind_and_source_payload() {
 		let entry = |id, kind: &str, text: &str| decodex_protocol::ChiefHistoryEntryDto {
+			activity: None,
+			usage: None,
+			duration_ms: None,
 			id,
 			kind: kind.into(),
 			text: text.into(),
@@ -616,4 +637,87 @@ async fn capture_after_restart(root: &DecodexRoot) {
 		);
 		tokio::time::sleep(Duration::from_secs(seconds)).await;
 	}
+}
+
+fn hierarchy_prompt(directory: &std::path::Path) -> String {
+	format!(
+		"Read-only integration qualification. Use only Chief coordination tools; never shell, file, network or native subagent tools. Create exactly one workspace with chief_create_workspace: id project, name Demo project, directory {}. Its instructions: use only Chief coordination tools, create exactly one subordinate Chief with id team; tell team to create exactly one worker id leaf whose sole task is to reply LEAF_RESULT with no tools. Each manager must assess its direct child's completion events, resolve each exact delivered event, and emit its own final result only after its child result is verified. Team final marker TEAM_RESULT, project final marker PROJECT_RESULT. Managers may finish initial turns while waiting, then act on later completion inbox events. You must consume project completion events; resolve initial waiting events without treating them as final success, and only emit HIERARCHY_DONE when PROJECT_RESULT arrives. Do not create other work. Finish your initial turn with SERVICE_READY.",
+		directory.display()
+	)
+}
+
+async fn qualify_hierarchy(client: &ChiefClient, root: &DecodexRoot) -> SmokeResult<()> {
+	let graph = wait_graph_for(
+		client,
+		"nested manager result propagation",
+		Duration::from_secs(480),
+		|graph| {
+			graph.work_items.len() == 4
+				&& idle(graph)
+				&& graph
+					.work_items
+					.iter()
+					.filter(|work| work.parent_goal_id.is_some())
+					.all(|work| work.status == decodex_protocol::ChiefWorkStatusDto::Resolved)
+		},
+	)
+	.await?;
+	for (id, parent) in [("project", "chief-service-smoke"), ("team", "project"), ("leaf", "team")]
+	{
+		if !graph
+			.work_items
+			.iter()
+			.any(|work| work.id == id && work.parent_goal_id.as_deref() == Some(parent))
+		{
+			return Err("manager lineage differs".into());
+		}
+	}
+	if graph.workspaces.len() != 1 || graph.workspaces[0].chief_id != "project" {
+		return Err("workspace projection missing".into());
+	}
+	println!("Nested workspace -> manager -> worker results returned through their owners.");
+	send(client,"stream-probe","Without tools, write 40 numbered lines. Each line must contain the sentence 'Live conversation output is visible while this reply is still being written.' End with STREAM_DONE.").await?;
+	let mut saw_partial = false;
+	tokio::time::timeout(Duration::from_secs(180), async {
+		loop {
+			if let ChiefHistoryResult::Available { entries, live, .. } = client
+				.history(EntityId::new("chief-service-smoke").expect("bounded fixture identity"))
+				.await?
+			{
+				saw_partial |= live.iter().any(|message| !message.text.is_empty());
+				if entries
+					.iter()
+					.any(|entry| entry.kind == "assistant" && entry.text.contains("STREAM_DONE"))
+				{
+					break;
+				}
+			}
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
+		Ok::<(), Box<dyn Error>>(())
+	})
+	.await??;
+	if !saw_partial {
+		return Err("no pre-completion streamed output observed".into());
+	}
+	println!("Partial assistant output observed before saved terminal reply.");
+	wait_graph(client, "stream turn idle", idle).await?;
+	reliability::timer_reconnect(client, root).await?;
+	reliability::no_stale_host_errors(client).await
+}
+
+async fn verify_capabilities(client: &ChiefClient) -> SmokeResult<()> {
+	match client.capabilities().await? {
+		decodex_protocol::ChiefCapabilitiesResult::Available { models, memory_enabled } => {
+			println!(
+				"NATIVE_CAPABILITIES models={} memory_configured={memory_enabled:?}",
+				models.len()
+			);
+			if models.is_empty() {
+				return Err("native model catalog is empty".into());
+			}
+		},
+		_ => return Err("native capabilities are unavailable".into()),
+	}
+	Ok(())
 }

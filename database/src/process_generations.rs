@@ -606,7 +606,8 @@ fn account_authority(
 		        a.credential_store_observation, c.schema_version, c.credential_version,
 		        c.fingerprint, c.writer_operation_id, c.provider, c.provider_account_id,
 		        EXISTS (SELECT 1 FROM account_operations AS o WHERE o.account_id = a.account_id
-		                AND o.phase NOT IN ('committed', 'cancelled')),
+		                AND o.phase NOT IN ('committed', 'cancelled')
+		                AND o.superseded_by_operation_id IS NULL),
 		        EXISTS (SELECT 1 FROM codex_account_capability WHERE singleton = 1
 		                AND login_chatgpt_auth_tokens = 1 AND refresh_callback = 1
 		                AND callback_profile_sha256 = ?2)

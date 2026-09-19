@@ -1,4 +1,4 @@
-//! Chief account affinity and pre-spawn admission without ordinary conversation records.
+//! Chief process admission and safe account rotation without replacing conversations.
 
 use decodex_core::{
 	AccountId, ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
@@ -14,7 +14,7 @@ use crate::{
 	unix_micros,
 };
 
-/// Latest durable process admission for one account-affine Chief root.
+/// Latest durable process admission for one Chief root.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ChiefProcessBinding {
 	pub root_id: String,
@@ -110,7 +110,12 @@ impl SqliteStore {
 				let generation = read_generation(&transaction, &generation_id)?.ok_or(DatabaseError::Corrupt)?;
 				return Ok(PrepareProcessGenerationOutcome::Replayed(ProcessGenerationMutation { revision: generation.revision, state: generation.state, recorded_at_micros: generation.updated_at_micros }));
 			}
-			let affinity_conflict: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_process_bindings WHERE root_id = ?1 AND account_id <> ?2)", params![root_id, intent.account_id.as_str()], |row| row.get(0)).map_err(sql_error)?;
+			let affinity_conflict: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_process_bindings b JOIN process_generations g ON g.generation_id=b.generation_id WHERE b.root_id = ?1 AND b.account_id <> ?2 AND g.state <> 'dead')", params![root_id, intent.account_id.as_str()], |row| row.get(0)).map_err(sql_error)?;
+            let changing_account: bool = transaction.query_row("SELECT coalesce((SELECT account_id <> ?2 FROM chief_process_bindings WHERE root_id=?1 ORDER BY created_at_micros DESC,rowid DESC LIMIT 1),0)",params![root_id,intent.account_id.as_str()],|row|row.get(0)).map_err(sql_error)?;
+            if changing_account {
+                let busy: bool = transaction.query_row("WITH RECURSIVE family(id) AS (SELECT ?1 UNION SELECT w.id FROM chief_work_items w JOIN family f ON w.parent_goal_id=f.id) SELECT EXISTS(SELECT 1 FROM chief_work_items WHERE id IN (SELECT id FROM family) AND dispatch_state <> 'idle')",[&root_id],|row|row.get(0)).map_err(sql_error)?;
+                if busy { return Ok(rejected(ProcessGenerationRejection::IdentityConflict)); }
+            }
 			if affinity_conflict || read_generation(&transaction, intent.generation_id.as_str())?.is_some() {
 				return Ok(rejected(ProcessGenerationRejection::IdentityConflict));
 			}
@@ -433,5 +438,220 @@ mod tests {
 			generation_id(2)
 		);
 		store.revalidate().await.unwrap();
+	}
+	#[tokio::test]
+	async fn account_rotation_requires_dead_process_and_idle_work_and_preserves_thread() {
+		let directory = tempfile::tempdir().unwrap();
+		let path = directory.path().join("rotation.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		seed(&store).await;
+		store.bind_chief_thread("root".into(), "original-thread".into()).await.unwrap();
+		store
+			.prepare_chief_bound_process_generation(&intent(1, 1), &binding(1), "root", "first")
+			.await
+			.unwrap();
+		let evidence = ProcessDeathEvidence::new(
+			ProcessDeathEvidenceId::new("50000000-0000-4000-8000-000000000001").unwrap(),
+			generation_id(1),
+			ProcessDeathEvidenceKind::SpawnNotCreated,
+			ProcessBootIdentity::new("fixture-boot").unwrap(),
+			None,
+			DIGEST,
+		)
+		.unwrap();
+		store.record_process_generation_death(1, &evidence).await.unwrap();
+		store.begin_chief_dispatch("root".into()).await.unwrap();
+		store.mark_chief_dispatch_unknown("root".into()).await.unwrap();
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(&intent(2, 2), &binding(2), "root", "busy")
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Rejected {
+				rejection: ProcessGenerationRejection::IdentityConflict,
+				..
+			}
+		));
+		store.reconcile_chief_dispatch("root".into(), "finished".into()).await.unwrap();
+		store.complete_chief_turn("root".into(), "finished".into()).await.unwrap();
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(
+					&intent(2, 2),
+					&binding(2),
+					"root",
+					"rotate"
+				)
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Fresh(_)
+		));
+		drop(store);
+		let reopened = SqliteStore::open_test(&path).unwrap();
+		assert_eq!(
+			reopened.read_chief_process_binding("root").await.unwrap().unwrap().account_id,
+			account_id(2)
+		);
+		assert_eq!(
+			reopened.get_chief_work_item("root".into()).await.unwrap().codex_thread_id.as_deref(),
+			Some("original-thread")
+		);
+		reopened.revalidate().await.unwrap();
+	}
+	#[tokio::test]
+	async fn admission_ignores_only_superseded_credential_recovery() {
+		let directory = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("superseded.sqlite3")).unwrap();
+		seed(&store).await;
+		store.with_connection(|connection| {
+            connection.execute("INSERT INTO account_operations(operation_id,account_id,kind,phase,provider,provider_account_id,recovery_code,created_at_micros,updated_at_micros) VALUES(?1,?2,'refresh','recovery_required','chatgpt','provider-2','fixture',1,1)",params![operation_id(9).as_str(),account_id(2).as_str()]).map_err(crate::error::sqlite_error)?;
+            Ok(())
+        }).unwrap();
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(
+					&intent(2, 1),
+					&binding(2),
+					"root",
+					"pending"
+				)
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Rejected {
+				rejection: ProcessGenerationRejection::AccountLifecycleUnready,
+				..
+			}
+		));
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"UPDATE account_operations SET superseded_by_operation_id=?1 WHERE operation_id=?2",
+						params![operation_id(2).as_str(), operation_id(9).as_str()],
+					)
+					.map_err(crate::error::sqlite_error)?;
+				connection
+					.execute(
+						"UPDATE account_operations SET recovery_operation_id=?1 WHERE operation_id=?2",
+						params![operation_id(9).as_str(), operation_id(2).as_str()],
+					)
+					.map_err(crate::error::sqlite_error)?;
+				Ok(())
+			})
+			.unwrap();
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(
+					&intent(2, 1),
+					&binding(2),
+					"root",
+					"recovered"
+				)
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Fresh(_)
+		));
+	}
+	#[tokio::test]
+	async fn native_voice_turns_are_owned_deduplicated_and_never_requeued() {
+		let directory = tempfile::tempdir().unwrap();
+		let path = directory.path().join("voice.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		seed(&store).await;
+		store.bind_chief_thread("root".into(), "voice-thread".into()).await.unwrap();
+		store
+			.prepare_chief_bound_process_generation(
+				&intent(1, 1),
+				&binding(1),
+				"root",
+				"voice-process",
+			)
+			.await
+			.unwrap();
+		let identity = decodex_core::ProcessIdentity::new(
+			ProcessBootIdentity::new("fixture-boot").unwrap(),
+			1234,
+			decodex_core::ProcessStartIdentity::new("fixture-start").unwrap(),
+			1234,
+			1234,
+		)
+		.unwrap();
+		store.bind_process_generation_identity(&generation_id(1), 1, &identity).await.unwrap();
+		store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+		let call = crate::ChiefVoiceCall {
+			session_id: "voice-1".into(),
+			work_id: "root".into(),
+			thread_id: "voice-thread".into(),
+			generation_id: generation_id(1).as_str().into(),
+			baseline_turn_id: Some("baseline".into()),
+		};
+		store.begin_chief_voice_call(call.clone()).await.unwrap();
+		let mut other = call.clone();
+		other.session_id = "voice-2".into();
+		assert!(store.begin_chief_voice_call(other.clone()).await.is_err());
+		assert!(
+			!store
+				.observe_chief_voice_turn(
+					generation_id(2).as_str().into(),
+					"voice-thread".into(),
+					"new-turn".into()
+				)
+				.await
+				.unwrap()
+		);
+		assert!(
+			!store
+				.observe_chief_voice_turn(
+					generation_id(1).as_str().into(),
+					"voice-thread".into(),
+					"baseline".into()
+				)
+				.await
+				.unwrap()
+		);
+		assert!(
+			store
+				.observe_chief_voice_turn(
+					generation_id(1).as_str().into(),
+					"voice-thread".into(),
+					"new-turn".into()
+				)
+				.await
+				.unwrap()
+		);
+		store.close_chief_voice_call("voice-1".into()).await.unwrap();
+		assert_eq!(
+			store.get_chief_work_item("root".into()).await.unwrap().dispatch_state,
+			ChiefDispatchState::Running
+		);
+		store.complete_chief_turn("root".into(), "new-turn".into()).await.unwrap();
+		assert!(
+			!store
+				.observe_chief_voice_turn(
+					generation_id(1).as_str().into(),
+					"voice-thread".into(),
+					"new-turn".into()
+				)
+				.await
+				.unwrap()
+		);
+		assert_eq!(
+			store.get_chief_work_item("root".into()).await.unwrap().dispatch_state,
+			ChiefDispatchState::Idle
+		);
+		store
+			.record_chief_voice_transcript(
+				"voice-1".into(),
+				1,
+				"user".into(),
+				"A spoken request".into(),
+			)
+			.await
+			.unwrap();
+		assert!(store.list_chief_wake_events("root".into(), 100).await.unwrap().is_empty());
+		store.begin_chief_voice_call(other.clone()).await.unwrap();
+		drop(store);
+		let reopened = SqliteStore::open_test(&path).unwrap();
+		assert_eq!(reopened.open_chief_voice_calls().await.unwrap(), vec![other]);
 	}
 }

@@ -10,6 +10,14 @@ impl ChiefCoordinator {
 		method: &str,
 		params: &Value,
 	) -> Result<(), ChiefError> {
+		if method != "thread/tokenUsage/updated"
+			&& !(method == "item/completed"
+				&& (params["item"]["type"] == "contextCompaction"
+					|| (params["item"]["type"] == "agentMessage"
+						&& params["item"]["delivery"] == "async")))
+		{
+			return Ok(());
+		}
 		let thread = exact(params, "/threadId")?;
 		let turn = exact(params, "/turnId")?;
 		let Some(work) = self.store.list_chief_work_items().await?.into_iter().find(|work| {

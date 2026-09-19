@@ -10,9 +10,6 @@ mod account_profile;
 #[path = "../accounts.rs"]
 mod accounts;
 #[allow(dead_code)]
-#[path = "../app_icon.rs"]
-mod app_icon;
-#[allow(dead_code)]
 #[path = "../client_cache.rs"]
 mod client_cache;
 #[allow(dead_code)]
@@ -42,6 +39,9 @@ mod settings_surface;
 #[allow(dead_code)]
 #[path = "../shell.rs"]
 mod shell;
+#[allow(dead_code)]
+#[path = "../ui_motion.rs"]
+mod ui_motion;
 #[allow(dead_code)]
 #[path = "../ui_theme.rs"]
 mod ui_theme;
@@ -161,9 +161,10 @@ fn main() -> gpui::Result<()> {
 	cx.run_until_parked();
 	if let Some(panel_motion) = panel_motion {
 		let keys = match panel_motion.as_str() {
-			"left" => "cmd-b",
-			"right" => "cmd-shift-b",
-			"both" => "cmd-b cmd-shift-b",
+			"left" => "cmd-e",
+			"right" => "cmd-b",
+			"both" => "cmd-e cmd-b",
+			"graph" => "cmd-j",
 			_ => "",
 		};
 		if !keys.is_empty() {
@@ -179,9 +180,87 @@ fn main() -> gpui::Result<()> {
 		}
 	}
 
+	capture_interactions(&mut cx, window)?;
 	let screenshot = cx.capture_screenshot(window)?;
 	screenshot.save(&output)?;
 	println!("{}", output.display());
+	Ok(())
+}
+
+// Sample dismissal over the real composer, including its Live button.
+fn capture_status_dismissal(
+	cx: &mut VisualTestAppContext,
+	window: gpui::AnyWindowHandle,
+) -> gpui::Result<()> {
+	let Some(delay) = std::env::var("DECODEX_VISUAL_STATUS_CLOSE_MS")
+		.ok()
+		.and_then(|value| value.parse::<u64>().ok())
+	else {
+		return Ok(());
+	};
+	cx.simulate_click(window, gpui::point(px(1200.), px(815.)), Default::default());
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+	std::thread::sleep(std::time::Duration::from_millis(delay));
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+	Ok(())
+}
+
+// Exercise the AppKit responder boundary, which headless GPUI tests cannot cover.
+#[cfg(target_os = "macos")]
+fn verify_native_composer_focus(
+	cx: &mut VisualTestAppContext,
+	window: gpui::AnyWindowHandle,
+) -> gpui::Result<()> {
+	if std::env::var_os("DECODEX_VISUAL_NATIVE_INPUT_FOCUS").is_none() {
+		return Ok(());
+	}
+	use objc2_app_kit::{NSResponder, NSView};
+	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+	cx.update_window(window, |_, window, _| {
+		let handle = HasWindowHandle::window_handle(window).unwrap();
+		let RawWindowHandle::AppKit(handle) = handle.as_raw() else { panic!("AppKit required") };
+		let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
+		assert!(view.window().unwrap().makeFirstResponder(None));
+	})?;
+	cx.simulate_click(window, gpui::point(px(500.), px(790.)), Default::default());
+	cx.update_window(window, |_, window, _| {
+		let handle = HasWindowHandle::window_handle(window).unwrap();
+		let RawWindowHandle::AppKit(handle) = handle.as_raw() else { panic!("AppKit required") };
+		let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
+		let responder = view.window().unwrap().firstResponder().unwrap();
+		assert!(
+			std::ptr::eq::<NSResponder>(&*responder, view.as_ref()),
+			"Editor click must restore the native GPUI text client"
+		);
+	})?;
+	Ok(())
+}
+
+fn capture_interactions(
+	cx: &mut VisualTestAppContext,
+	window: gpui::AnyWindowHandle,
+) -> gpui::Result<()> {
+	#[cfg(target_os = "macos")]
+	verify_native_composer_focus(cx, window)?;
+	capture_status_dismissal(cx, window)?;
+	let Ok(value) = std::env::var("DECODEX_VISUAL_HOVER") else {
+		return Ok(());
+	};
+	let Some((x, y)) = value.split_once(',') else {
+		return Ok(());
+	};
+	let (Ok(x), Ok(y)) = (x.parse::<f32>(), y.parse::<f32>()) else {
+		return Ok(());
+	};
+	cx.simulate_mouse_move(window, gpui::point(px(x), px(y)), None, Default::default());
+	cx.advance_clock(std::time::Duration::from_secs(1));
+	cx.run_until_parked();
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+	std::thread::sleep(ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40));
+	cx.update_window(window, |_, window, cx| {
+		window.refresh();
+		window.draw(cx).clear();
+	})?;
 	Ok(())
 }
 

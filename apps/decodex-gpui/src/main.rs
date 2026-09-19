@@ -5,7 +5,6 @@
 mod account_login;
 mod account_profile;
 mod accounts;
-mod app_icon;
 mod bundled_daemon;
 #[cfg_attr(
 	not(test),
@@ -31,6 +30,7 @@ mod history_pager;
 mod native_menu_bar;
 mod settings_surface;
 mod shell;
+mod ui_motion;
 mod ui_theme;
 
 #[cfg(target_os = "macos")] use objc2 as _;
@@ -104,6 +104,27 @@ fn main() {
 			)
 			.expect("open the Decodex production window");
 
+		#[cfg(target_os = "macos")]
+		window
+			.update(cx, |_, window, cx| {
+				configure_window_material(window);
+				configure_pointer_tracking(window);
+				schedule_window_control_alignment(window);
+				cx.observe_window_activation(window, |_, window, _| {
+					schedule_window_control_alignment(window);
+				})
+				.detach();
+				cx.observe_window_bounds(window, |_, window, _| {
+					schedule_window_control_alignment(window);
+				})
+				.detach();
+				cx.observe_window_appearance(window, |_, window, _| {
+					schedule_window_control_alignment(window);
+				})
+				.detach();
+			})
+			.expect("configure native window material");
+
 		if let Some(lifecycle) = lifecycle {
 			shell::retain_lifecycle(window, lifecycle, cx);
 		}
@@ -158,6 +179,86 @@ fn activate_native_application() {
 		}
 	}
 	application.activate();
+}
+
+#[cfg(target_os = "macos")]
+fn configure_pointer_tracking(window: &gpui::Window) {
+	use objc2::AnyThread;
+	use objc2_app_kit::{NSTrackingArea, NSTrackingAreaOptions as Options, NSView};
+	use objc2_foundation::NSRect;
+	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+	let Ok(native) = HasWindowHandle::window_handle(window) else { return };
+	let RawWindowHandle::AppKit(handle) = native.as_raw() else { return };
+	// The live GPUI window owns this AppKit view; setup runs on the main thread.
+	let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
+	let options = Options::MouseMoved
+		| Options::MouseEnteredAndExited
+		| Options::ActiveAlways
+		| Options::InVisibleRect;
+	if view.trackingAreas().iter().any(|area| area.options() == options) {
+		return;
+	}
+	// Route plain movement directly to GPUIView, independent of the first responder.
+	// GPUI still resolves the hovered control and its cursor inside the view.
+	let tracking = unsafe {
+		NSTrackingArea::initWithRect_options_owner_userInfo(
+			NSTrackingArea::alloc(),
+			NSRect::ZERO,
+			options,
+			Some(view),
+			None,
+		)
+	};
+	view.addTrackingArea(&tracking);
+}
+
+#[cfg(target_os = "macos")]
+fn configure_window_material(_gpui_window: &gpui::Window) {
+	use objc2::MainThreadMarker;
+	use objc2_app_kit::{
+		NSApplication, NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState,
+		NSVisualEffectView,
+	};
+	let main_thread =
+		MainThreadMarker::new().expect("window material is configured on the main thread");
+	for window in NSApplication::sharedApplication(main_thread).windows().iter() {
+		if window.title().to_string() != "Decodex" {
+			continue;
+		}
+		if let Some(content) = window.contentView() {
+			for view in content.subviews().iter() {
+				if let Some(effect) = view.downcast_ref::<NSVisualEffectView>() {
+					effect.setMaterial(NSVisualEffectMaterial::Sidebar);
+					effect.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
+					effect.setState(NSVisualEffectState::Active);
+				}
+			}
+		}
+	}
+}
+
+#[cfg(target_os = "macos")]
+fn schedule_window_control_alignment(window: &gpui::Window) {
+	// AppKit can replace or resize standard buttons during activation. Measure
+	// after that layout pass, not once while the initial window is still hidden.
+	window.on_next_frame(|window, _| {
+		use objc2::MainThreadMarker;
+		use objc2_app_kit::{NSApplication, NSWindowButton};
+		let main_thread = MainThreadMarker::new().expect("window layout runs on the main thread");
+		for native in NSApplication::sharedApplication(main_thread).windows().iter() {
+			if native.title().to_string() != "Decodex" {
+				continue;
+			}
+			if let Some(button) = native.standardWindowButton(NSWindowButton::CloseButton) {
+				let center_y = ui_theme::CONTROL_MARGIN + ui_theme::CONTROL_GROUP_HEIGHT / 2.0;
+				window.set_traffic_light_position(point(
+					px(16.0),
+					px(center_y - button.frame().size.height as f32 / 2.0),
+				));
+			}
+		}
+	});
 }
 
 #[cfg(target_os = "macos")]
