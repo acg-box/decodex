@@ -331,15 +331,26 @@ fn classify_refresh_http_failure(
 	if status == reqwest::StatusCode::UNAUTHORIZED {
 		return CredentialRefreshError::Rejected;
 	}
-	if status == reqwest::StatusCode::BAD_REQUEST
-		&& body.len() <= usize::try_from(MAX_REFRESH_ERROR_BODY_BYTES).unwrap_or(usize::MAX)
-		&& serde_json::from_slice::<Value>(body)
-			.ok()
-			.and_then(|value| value.get("error").and_then(Value::as_str).map(str::to_owned))
-			.as_deref()
-			== Some("invalid_grant")
+	if body.len() <= usize::try_from(MAX_REFRESH_ERROR_BODY_BYTES).unwrap_or(usize::MAX)
+		&& let Ok(value) = serde_json::from_slice::<Value>(body)
 	{
-		return CredentialRefreshError::Rejected;
+		// Match native OAuth code precedence, never diagnostic prose. Keep the error
+		// body private and preserve the existing uncertain-response boundary.
+		let text = |value: &Value| {
+			value.as_str().filter(|text| !text.trim().is_empty()).map(str::to_owned)
+		};
+		let code = text(&value["error"])
+			.or_else(|| text(&value["error"]["code"]))
+			.or_else(|| text(&value["code"]));
+		if code.as_deref().is_some_and(|code| {
+			(status == reqwest::StatusCode::BAD_REQUEST
+				&& code.eq_ignore_ascii_case("invalid_grant"))
+				|| ["refresh_token_expired", "refresh_token_reused", "refresh_token_invalidated"]
+					.iter()
+					.any(|terminal| code.eq_ignore_ascii_case(terminal))
+		}) {
+			return CredentialRefreshError::Rejected;
+		}
 	}
 	if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_client_error() {
 		CredentialRefreshError::Unavailable
@@ -5513,8 +5524,12 @@ mod tests {
 
 	#[tokio::test]
 	async fn rejected_observation_refresh_requires_exact_relogin_without_retrying() {
+		let rejection = classify_refresh_http_failure(
+			reqwest::StatusCode::BAD_REQUEST,
+			br#"{"error":{"code":"INVALID_GRANT"}}"#,
+		);
 		let (_directory, store, service, account_id, _shared) =
-			independently_owned_observation_service(Err(CredentialRefreshError::Rejected)).await;
+			independently_owned_observation_service(Err(rejection)).await;
 		let operation_id = AccountOperationId::new("22000000-0000-4000-8000-000000000043")
 			.expect("refresh identity");
 
@@ -5726,6 +5741,59 @@ mod tests {
 	}
 
 	#[test]
+	fn oauth_refresh_rejection_codes_match_native_envelopes_without_using_prose() {
+		for code in [
+			"invalid_grant",
+			"INVALID_GRANT",
+			"refresh_token_expired",
+			"refresh_token_reused",
+			"refresh_token_invalidated",
+		] {
+			for value in [
+				serde_json::json!({"error":code}),
+				serde_json::json!({"error":{"code":code}}),
+				serde_json::json!({"code":code}),
+			] {
+				assert_eq!(
+					classify_refresh_http_failure(
+						reqwest::StatusCode::BAD_REQUEST,
+						value.to_string().as_bytes()
+					),
+					CredentialRefreshError::Rejected,
+					"{value}"
+				);
+			}
+		}
+		for body in [
+			br#"{"error":"invalid_request","code":"invalid_grant"}"#.as_slice(),
+			br#"{"error_description":"invalid_grant"}"#.as_slice(),
+			br#"{"error":{"message":"refresh_token_reused"}}"#.as_slice(),
+			b"invalid_grant".as_slice(),
+			br#"{"error":"invalid_grant""#.as_slice(),
+		] {
+			assert_eq!(
+				classify_refresh_http_failure(reqwest::StatusCode::BAD_REQUEST, body),
+				CredentialRefreshError::Unavailable
+			);
+		}
+		assert_eq!(
+			classify_refresh_http_failure(
+				reqwest::StatusCode::BAD_GATEWAY,
+				br#"{"error":"invalid_grant"}"#
+			),
+			CredentialRefreshError::Ambiguous
+		);
+		let oversized = format!(
+			r#"{{"error":"invalid_grant","padding":"{}"}}"#,
+			"x".repeat(super::MAX_REFRESH_ERROR_BODY_BYTES as usize)
+		);
+		assert_eq!(
+			classify_refresh_http_failure(reqwest::StatusCode::BAD_REQUEST, oversized.as_bytes()),
+			CredentialRefreshError::Unavailable
+		);
+	}
+
+	#[test]
 	fn oauth_http_failures_distinguish_invalid_login_from_temporary_responses() {
 		assert_eq!(
 			classify_refresh_http_failure(
@@ -5786,7 +5854,7 @@ mod tests {
 		assert_eq!(
 			classify_refresh_http_response(response(
 				"400 Bad Request",
-				r#"{"error":"invalid_grant"}"#,
+				r#"{"error":{"code":"INVALID_GRANT"}}"#,
 			)),
 			CredentialRefreshError::Rejected
 		);
