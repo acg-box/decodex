@@ -299,6 +299,8 @@ impl SettingsSurface {
 		) || self.launch_at_login_detail.as_ref()
 			!= launch_at_login_detail(self.launch_at_login);
 		ui_theme::settings_row()
+			.min_h(px(40.0))
+			.px(px(16.0))
 			.child(
 				div()
 					.flex_1()
@@ -307,7 +309,6 @@ impl SettingsSurface {
 					.flex_col()
 					.gap(px(3.0))
 					.child("Launch at login")
-					.child(setting_caption("Start Decodex when you sign in."))
 					.when(needs_attention, |d| {
 						d.child(
 							div()
@@ -372,72 +373,55 @@ impl Render for SettingsSurface {
 					.child(
 						div()
 							.w_full()
-							.max_w(px(ui_theme::SETTINGS_WIDTH))
+							.max_w(px(560.0))
 							.flex()
 							.flex_col()
-							.gap(px(14.0))
+							.gap(px(18.0))
 							.child(ui_theme::settings_title("General"))
 							.child(
-								div()
-									.flex()
-									.flex_col()
-									.gap(px(8.0))
-									.child(setting_caption("Application"))
-									.child(
-										ui_theme::settings_group()
-											.flex()
-											.flex_col()
-											.child(
-												ui_theme::settings_row()
-													.child(
-														div()
-															.flex_1()
-															.min_w_0()
-															.flex()
-															.flex_col()
-															.gap(px(3.0))
-															.child("Menu bar")
-															.child(setting_caption(
-																"Check account usage without opening a window.",
-															))
-															.when(needs_attention, |d| {
-																d.child(
-																	div()
-																		.id(
-																			"menubar-runtime-status",
-																		)
-																		.role(Role::Status)
-																		.text_size(px(
-																			ui_theme::CAPTION_SIZE,
-																		))
-																		.text_color(rgb(self
-																			.runtime
-																			.color()))
-																		.child(self.detail.clone()),
-																)
-															}),
-													)
-													.child(self.toggle(cx)),
-											)
-											.child(
-												div().mx(px(14.0)).h(px(1.0)).bg(rgba(0xffffff0c)),
-											)
-											.child(self.launch_at_login_card(cx)),
-									),
+								div().flex().flex_col().gap(px(8.0)).child(
+									ui_theme::preference_group()
+										.py(px(4.0))
+										.flex()
+										.flex_col()
+										.child(
+											ui_theme::settings_row()
+												.min_h(px(40.0))
+												.px(px(16.0))
+												.child(
+													div()
+														.flex_1()
+														.min_w_0()
+														.flex()
+														.flex_col()
+														.gap(px(3.0))
+														.child("Show in menu bar")
+														.when(needs_attention, |d| {
+															d.child(
+																div()
+																	.id("menubar-runtime-status")
+																	.role(Role::Status)
+																	.text_size(px(
+																		ui_theme::CAPTION_SIZE,
+																	))
+																	.text_color(rgb(self
+																		.runtime
+																		.color()))
+																	.child(self.detail.clone()),
+															)
+														}),
+												)
+												.child(self.toggle(cx)),
+										)
+										.child(div().h(px(2.0)))
+										.child(self.launch_at_login_card(cx)),
+								),
 							)
 							.children(self.advanced_preferences.clone())
 							.child(quote_attribution()),
 					),
 			)
 	}
-}
-
-fn setting_caption(text: &'static str) -> gpui::Div {
-	div()
-		.text_size(px(ui_theme::CAPTION_SIZE))
-		.line_height(px(16.0))
-		.text_color(rgb(TEXT_MUTED))
-		.child(text)
 }
 
 const fn launch_at_login_color(state: LaunchAtLoginState) -> u32 {

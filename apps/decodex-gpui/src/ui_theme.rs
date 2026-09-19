@@ -37,11 +37,12 @@ pub(crate) fn floating_group() -> gpui::Div {
 		.border_color(rgba(0xffffff12))
 }
 
-// Settings reuse shell typography and glass; groups add only a light edge.
+// Settings share shell typography and a bounded reading width.
 pub(crate) const SETTINGS_WIDTH: f32 = 680.0;
-pub(crate) fn settings_group() -> gpui::Div {
+// General preferences use the same tinted, borderless surfaces as floating controls.
+pub(crate) fn preference_group() -> gpui::Div {
 	use gpui::{Styled, div, px, rgba};
-	div().w_full().rounded(px(10.0)).border_1().border_color(rgba(0xffffff12)).bg(rgba(0xffffff04))
+	div().w_full().rounded(px(14.0)).bg(rgba(0x17171c70))
 }
 pub(crate) fn settings_row() -> gpui::Div {
 	use gpui::{Styled, div, px};
