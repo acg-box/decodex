@@ -363,6 +363,26 @@ impl ChiefClient {
 		}
 	}
 
+	/// Read native resource associations without loading or running the thread.
+	pub async fn resources(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefResourcesResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport
+				.query_inner("chief-resources", QueryPayload::GetChiefResources { work_id }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefResources(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read native capabilities without starting a model turn.
 	pub async fn capabilities(&self) -> Result<crate::ChiefCapabilitiesResult, ClientFailure> {
 		self.transport.require_local_profile()?;
@@ -529,7 +549,9 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		| crate::ChiefActionDto::AutomationResult { work_id, .. }
 		| crate::ChiefActionDto::Steer { work_id, .. }
 		| crate::ChiefActionDto::AnswerQuestion { work_id, .. }
-		| crate::ChiefActionDto::ContinueMisalignment { work_id, .. } => work_id,
+		| crate::ChiefActionDto::ContinueMisalignment { work_id, .. }
+		| crate::ChiefActionDto::AddResourceLink { work_id, .. }
+		| crate::ChiefActionDto::RemoveResource { work_id, .. } => work_id,
 	}
 }
 
@@ -2279,7 +2301,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_v2_27_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 30 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 31 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

@@ -475,6 +475,40 @@ impl ChiefCoordinator {
 		Ok(())
 	}
 
+	pub(crate) async fn add_resource_link(
+		&self,
+		work: &str,
+		title: &str,
+		url: &str,
+	) -> Result<(), ChiefError> {
+		let thread = self
+			.store
+			.get_chief_work_item(work.into())
+			.await?
+			.codex_thread_id
+			.ok_or_else(|| ChiefError::Rejected("Task has no native thread".into()))?;
+		crate::chief_resources::add_link(&self.client, &thread, title, url).await
+	}
+
+	pub(crate) async fn remove_resource(
+		&self,
+		work: &str,
+		kind: &str,
+		key: &str,
+	) -> Result<(), ChiefError> {
+		let thread = self
+			.store
+			.get_chief_work_item(work.into())
+			.await?
+			.codex_thread_id
+			.ok_or_else(|| ChiefError::Rejected("Task has no native thread".into()))?;
+		if kind.trim().is_empty() || key.trim().is_empty() || kind.len() > 256 || key.len() > 256 {
+			return Err(ChiefError::Rejected("Invalid resource identity".into()));
+		}
+		self.client.remove_thread_attachment(&thread, kind, key).await?;
+		Ok(())
+	}
+
 	/// Create or reconnect the personal Chief and start its initial request.
 	pub async fn start_chief(
 		&mut self,

@@ -402,3 +402,54 @@ Rendered tests cover offered persistence, separate URL confirmation and invalid
 local-file links. These tests use a controlled native transport and GPUI test
 platform; they do not claim successful authentication with a live external MCP
 service. Plugin effective settings, resources and attachment work remain open.
+
+## Attachment contract audit in progress
+
+Commit 3319d9b296bba4cad340ffa997d216d95f601992 adds durable native thread resource
+associations. The add/list/remove endpoints do not load a thread or change its
+conversation history. Identity is the tuple of thread ID, attachment type and
+identity key; repeated add returns the existing payload rather than updating it.
+Creation/deletion notifications follow the successful response, while repeated
+add/remove do not emit another update. Unsupported stores return an error; that
+must not be presented as an empty attachment list. These facts are confirmed in
+request_processors/thread_attachments.rs at the fixed upstream snapshot.
+
+Before this adaptation, Decodex had local composer attachments but no native
+resource-association consumer. Its localImage input and file-path text are separate from these new
+endpoints. The native generic API does not reserve an attachment type or payload convention.
+
+Commit 7b8b17b97a5f08f088852e8bc9ae388cff38c714 adds image fileId references alongside
+URL inputs. Decodex localImage submission remains valid. The native history reader
+keeps complete item JSON instead of rebuilding image content. A transport fixture
+now verifies mixed URL/fileId input order, original/low/high detail, and image-only
+messages across item pages. This proves preservation through history reads, not
+image preview or the ability to upload files to obtain native file IDs. Native
+image generation/editing owns resolution and unsupported recent-image-window
+errors; Decodex must not substitute a local or older image for a file reference.
+
+The current adaptation adds a native association client and a task resource panel.
+The native thread store is the only persistence owner. Reads preserve pagination,
+reject incomplete pages and distinguish unsupported storage from an empty list.
+The service checks connection generation and work-thread ownership again after
+reading. The panel refreshes while open and drops old reads on navigation or mutation.
+
+Users can associate an HTTP(S) link or remove an association without changing the
+underlying resource. The application-owned type decodex.link uses a SHA-256 identity
+of the normalized URL and a title/URL payload; this is a Decodex convention, not an
+upstream type. Duplicate adds keep the original stored title. Invalid schemes and
+embedded credentials are rejected before dispatch. Mutations use the existing
+command receipt path and never automatically retry. A separate complete native
+read verifies the requested state after a mutation, including an uncertain reply.
+The UI does not infer success from a failed read or partial list.
+
+Protocol 2.31 carries the new query and commands. Native payloads remain opaque;
+large or credential-bearing display payloads are explicitly omitted. The display
+has a complete-list capacity limit rather than silently presenting partial data.
+Controlled transport, projection, navigation and readback tests cover the local
+consumers. An isolated acceptance run with installed codex-cli 0.155.0-alpha.9.2
+also used two WebSocket clients against one native process: observer pagination,
+exactly two create/two delete notifications, repeated add/remove, preserved original
+metadata and final empty readback all passed. No model turn was submitted. A newly
+started but unpersisted empty thread correctly returns not-found; the successful
+run resumed a persisted fixture and used the returned native identity. This is
+native API acceptance, not a claim of full desktop/model end-to-end coverage.
