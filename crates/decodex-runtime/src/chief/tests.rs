@@ -4,6 +4,79 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/capacity.rs"] mod capacity;
 
 #[tokio::test]
+async fn subagent_activity_survives_parent_completion_and_restart_without_waking_work() {
+	let (mut chief, mut sent, directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	let (io, mut write) = tokio::io::duplex(8192);
+	let (read, writer) = tokio::io::split(io);
+	let (_client, mut events) = AppServerClient::from_io(read, writer);
+	for (index, kind) in ["started", "interacted", "interrupted", "completed"].iter().enumerate() {
+		if *kind == "completed" {
+			chief.handle_event(ServerEvent::Notification { method:"turn/completed".into(), params:json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
+		}
+		for (thread, turn) in [
+			("foreign", "opaque turn/1"),
+			("opaque thread/1", "unknown"),
+			("opaque thread/1", "opaque turn/1"),
+		] {
+			for method in ["item/started", "item/completed", "item/completed"] {
+				let wire = json!({"method":method,"params":{"threadId":thread,"turnId":turn,"item":{"id":format!("activity-{index}"),"type":"subAgentActivity","kind":kind,"agentThreadId":"child-thread","agentPath":"/root/worker","prompt":"PRIVATE_PROMPT"}}});
+				write.write_all(format!("{wire}\n").as_bytes()).await.unwrap();
+				let event = tokio::time::timeout(std::time::Duration::from_secs(2), events.recv())
+					.await
+					.unwrap()
+					.unwrap();
+				chief.handle_event(event).await.unwrap();
+			}
+		}
+	}
+	while sent.try_recv().is_ok() {}
+	chief.wake_pending().await.unwrap();
+	assert!(sent.try_recv().is_err());
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	drop(chief);
+	let store = SqliteStore::open(&root.paths()).unwrap();
+	let (history, _) = store.read_chief_transcript("chief".into(), None, 32).await.unwrap();
+	let activities: Vec<decodex_protocol::ChiefActivityDto> = history
+		.iter()
+		.filter(|e| e.event_kind == "activity_completed")
+		.map(|e| serde_json::from_str(&e.payload).unwrap())
+		.collect();
+	assert_eq!(activities.len(), 4);
+	assert_eq!(
+		activities.iter().map(|a| a.label.as_str()).collect::<Vec<_>>(),
+		[
+			"Subagent started",
+			"Message sent to subagent",
+			"Subagent interrupted",
+			"Subagent completed a turn"
+		]
+	);
+	assert!(activities.iter().all(|a| a.status == "completed"
+		&& a.detail == "/root/worker"
+		&& a.turn_id == "opaque turn/1"));
+	assert!(history.iter().all(|e| !e.payload.contains("PRIVATE_PROMPT")));
+	assert!(store.list_chief_wake_events("chief".into(), 32).await.unwrap().is_empty());
+	let work = store.get_chief_work_item("chief".into()).await.unwrap();
+	assert_eq!(work.dispatch_state, decodex_database::ChiefDispatchState::Idle);
+	assert_eq!(work.status, decodex_database::ChiefWorkStatus::Open);
+}
+
+#[tokio::test]
+async fn terminal_readback_recovers_missed_subagent_activity() {
+	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"idle"},"turns":[{"id":"opaque turn/1","status":"completed","items":[{"id":"recovered","type":"subAgentActivity","kind":"started","agentThreadId":"child","agentPath":"/root/worker"}]}]}}});
+	let (mut chief, _sent, _directory) = fixture_with_history(history).await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	chief.recover_persisted().await.unwrap();
+	let (history, _) = chief.store.read_chief_transcript("chief".into(), None, 32).await.unwrap();
+	let events: Vec<_> = history.iter().filter(|e| e.event_kind == "activity_completed").collect();
+	assert_eq!(events.len(), 1);
+	assert!(events[0].payload.contains("Subagent started"));
+}
+
+#[tokio::test]
 async fn strict_review_notice_is_turn_bound_and_does_not_wake_or_stop_execution() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;
 	coordinator.start_chief("chief", "Coordinate").await.unwrap();
