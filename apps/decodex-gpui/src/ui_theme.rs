@@ -39,11 +39,6 @@ pub(crate) fn floating_group() -> gpui::Div {
 
 // Settings share shell typography and a bounded reading width.
 pub(crate) const SETTINGS_WIDTH: f32 = 680.0;
-// General preferences use the same tinted, borderless surfaces as floating controls.
-pub(crate) fn preference_group() -> gpui::Div {
-	use gpui::{Styled, div, px, rgba};
-	div().w_full().rounded(px(14.0)).bg(rgba(0x17171c70))
-}
 pub(crate) fn settings_row() -> gpui::Div {
 	use gpui::{Styled, div, px};
 	div().w_full().min_h(px(44.0)).px(px(12.0)).py(px(7.0)).flex().items_center().gap(px(16.0))

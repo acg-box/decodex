@@ -300,7 +300,7 @@ impl SettingsSurface {
 			!= launch_at_login_detail(self.launch_at_login);
 		ui_theme::settings_row()
 			.min_h(px(40.0))
-			.px(px(16.0))
+			.px(px(0.0))
 			.child(
 				div()
 					.flex_1()
@@ -373,21 +373,22 @@ impl Render for SettingsSurface {
 					.child(
 						div()
 							.w_full()
-							.max_w(px(560.0))
+							.max_w(px(600.0))
 							.flex()
 							.flex_col()
-							.gap(px(18.0))
+							.gap(px(24.0))
 							.child(ui_theme::settings_title("General"))
 							.child(
 								div().flex().flex_col().gap(px(8.0)).child(
-									ui_theme::preference_group()
+									div()
+										.w_full()
 										.py(px(4.0))
 										.flex()
 										.flex_col()
 										.child(
 											ui_theme::settings_row()
 												.min_h(px(40.0))
-												.px(px(16.0))
+												.px(px(0.0))
 												.child(
 													div()
 														.flex_1()

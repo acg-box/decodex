@@ -1516,12 +1516,13 @@ impl Render for ChiefSurface {
 
 impl ChiefSurface {
 	fn render_preferences(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		ui_theme::preference_group()
+		div()
+			.w_full()
 			.flex()
 			.flex_col()
 			.gap(px(6.0))
-			.px(px(16.0))
-			.py(px(8.0))
+			.px(px(0.0))
+			.py(px(0.0))
 			.child(
 				div()
 					.id("chief-advanced-preferences")
@@ -1529,7 +1530,7 @@ impl ChiefSurface {
 					.aria_label("Advanced Chief defaults")
 					.aria_expanded(self.setup_expanded)
 					.tab_index(0)
-					.h(px(26.0))
+					.h(px(32.0))
 					.flex()
 					.items_center()
 					.cursor_pointer()
