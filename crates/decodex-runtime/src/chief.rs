@@ -924,6 +924,29 @@ impl ChiefCoordinator {
 			self.observe_notification(method, params).await?;
 		}
 		match event {
+			ServerEvent::Notification { method, params } if method == "serverRequest/resolved" => {
+				let (Some(thread), Some(raw_id)) =
+					(params["threadId"].as_str(), params.get("requestId"))
+				else {
+					return Ok(());
+				};
+				let Ok(request_id) = serde_json::from_value::<RequestId>(raw_id.clone()) else {
+					return Ok(());
+				};
+				let Some(event_id) = self.pending_requests.get(&request_id).copied() else {
+					return Ok(());
+				};
+				let event = self.store.get_chief_inbox_event(event_id).await?;
+				let payload: Value = serde_json::from_str(&event.payload).map_err(|_| {
+					ChiefError::Invalid("invalid persisted provider request".into())
+				})?;
+				if payload["params"]["threadId"].as_str() == Some(thread) {
+					self.pending_requests.remove(&request_id);
+					if event.disposition.is_none() {
+						self.store.resolve_chief_request_event(event_id).await?;
+					}
+				}
+			},
 			ServerEvent::Notification { method, params }
 				if ["thread/closed", "thread/archived", "thread/deleted"]
 					.contains(&method.as_str()) =>

@@ -1266,3 +1266,51 @@ async fn native_activity_notifications_reach_history_without_agent_delivery() {
 	assert_eq!(activity.status, "completed");
 	assert_eq!(receipts[0].disposition, Some(ChiefDisposition::Resolved));
 }
+
+#[tokio::test]
+async fn native_request_resolution_requires_exact_thread_and_request_identity() {
+	let (mut coordinator, mut sent, _directory) = fixture().await;
+	coordinator.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	for id in [RequestId::String("shared-item-A".into()), RequestId::Number(7)] {
+		coordinator.handle_event(ServerEvent::Request { id: id.clone(), method:"item/commandExecution/requestApproval".into(),params:json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"shared-item","command":"pwd"}) }).await.unwrap();
+	}
+	let id = RequestId::String("shared-item-A".into());
+	let event_id = coordinator.pending_requests[&id];
+	for params in [
+		json!({"threadId":"other-thread","requestId":id}),
+		json!({"threadId":"opaque thread/1","requestId":"7"}),
+		json!({"threadId":"opaque thread/1","requestId":null}),
+	] {
+		coordinator
+			.handle_event(ServerEvent::Notification {
+				method: "serverRequest/resolved".into(),
+				params,
+			})
+			.await
+			.unwrap();
+	}
+	assert_eq!(coordinator.pending_requests.len(), 2);
+	for _ in 0..2 {
+		coordinator
+			.handle_event(ServerEvent::Notification {
+				method: "serverRequest/resolved".into(),
+				params: json!({"threadId":"opaque thread/1","requestId":id}),
+			})
+			.await
+			.unwrap();
+	}
+	assert!(!coordinator.pending_requests.contains_key(&id));
+	assert!(coordinator.pending_requests.contains_key(&RequestId::Number(7)));
+	let event = coordinator.store.get_chief_inbox_event(event_id).await.unwrap();
+	assert_eq!(event.disposition, Some(ChiefDisposition::Resolved));
+	assert!(event.disposition_note.unwrap().contains("no local response was sent"));
+	assert!(
+		coordinator.respond_pending_event(event_id, json!({"decision":"accept"})).await.is_err()
+	);
+	assert!(sent.try_recv().is_err());
+	assert_eq!(
+		coordinator.store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state,
+		decodex_database::ChiefDispatchState::Running
+	);
+}
