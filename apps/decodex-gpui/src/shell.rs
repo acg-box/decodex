@@ -4428,11 +4428,7 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 		div()
 			.id("conversation-refresh-models")
 			.cursor_pointer()
-			.child(if shell.quick.selected.is_some() {
-				"Refresh model options"
-			} else {
-				"Model options become available after account routing"
-			})
+			.child("Refresh model options")
 			.on_click(cx.listener(|shell, _, _, cx| {
 				shell.conversations.refresh_catalog();
 				shell.synchronize_conversations();

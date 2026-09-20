@@ -539,6 +539,28 @@ impl ChiefClient {
 	}
 
 	/// Read native capabilities without starting a model turn.
+	pub async fn initial_model_catalog(
+		&self,
+		request: crate::InitialModelCatalogRequest,
+	) -> Result<crate::InitialModelCatalogResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			Duration::from_secs(40),
+			self.transport.query_inner(
+				"initial-model-catalog",
+				QueryPayload::GetInitialModelCatalog { request },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::InitialModelCatalog(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read native capabilities on the retained Chief process.
 	pub async fn capabilities(&self) -> Result<crate::ChiefCapabilitiesResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
@@ -2775,7 +2797,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 37 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 38 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

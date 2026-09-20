@@ -86,6 +86,8 @@ use crate::account_launch::process::{
 	StartedOrdinaryTurn, spawn_admitted_chief_process, spawn_admitted_conversation_process,
 };
 
+mod model_catalog;
+
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
 const TURN_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 const EVENT_POLL: Duration = Duration::from_millis(100);
@@ -543,6 +545,7 @@ struct ConversationRuntimeInner {
 	shutting_down: Arc<std::sync::atomic::AtomicBool>,
 	chief_launch: AsyncMutex<()>,
 	chief_process: Mutex<Option<RetainedChiefProcess>>,
+	initial_catalog: Arc<AsyncMutex<()>>,
 }
 
 pub(crate) struct StartChiefProcess {
@@ -814,6 +817,7 @@ impl ConversationRuntime {
 				shutting_down: Arc::new(std::sync::atomic::AtomicBool::new(false)),
 				chief_launch: AsyncMutex::new(()),
 				chief_process: Mutex::new(None),
+				initial_catalog: Arc::new(AsyncMutex::new(())),
 			}),
 		}
 	}
@@ -1046,6 +1050,7 @@ impl ConversationRuntime {
 		request: StartChiefProcess,
 	) -> Result<ChiefConnection, ChiefLaunchError> {
 		let _launch = self.inner.chief_launch.lock().await;
+		let _catalog = self.inner.initial_catalog.lock().await;
 		if self.is_shutting_down() {
 			return Err(ChiefLaunchError::Unavailable);
 		}
@@ -4381,6 +4386,9 @@ impl ConversationRuntime {
 		admission: FreshConversationProcessGeneration,
 		working_directory: &str,
 	) -> Result<FencedProcess, ConversationManualRecovery> {
+		// A short metadata process must release its account slot before execution admission.
+		// Acquire this before credentials to preserve the metadata lock order.
+		let _catalog = self.inner.initial_catalog.lock().await;
 		let credential = self
 			.inner
 			.accounts
