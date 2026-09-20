@@ -365,6 +365,33 @@ impl ChiefClient {
 	}
 
 	/// Inspect the exact native thread without loading it or running a turn.
+	pub async fn install_state(
+		&self,
+		work_id: EntityId,
+		event_id: i64,
+	) -> Result<crate::ChiefInstallState, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(45),
+		};
+		let completed = time::timeout(
+			Duration::from_secs(45),
+			transport.query_inner(
+				"chief-install",
+				QueryPayload::GetChiefInstallState { work_id, event_id },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefInstallState(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Inspect the exact native thread without loading it or running a turn.
 	pub async fn archive_state(
 		&self,
 		work_id: EntityId,
@@ -558,12 +585,18 @@ impl ChiefClient {
 		self.transport.require_local_profile()?;
 		let attempted = AtomicBool::new(false);
 		let refresh = matches!(&action, crate::ChiefActionDto::RefreshIntegrations { .. });
+		let install = matches!(&action, crate::ChiefActionDto::InstallSuggestedPlugin { .. });
 		let restore = matches!(&action, crate::ChiefActionDto::RestoreArchivedThread { .. });
-		let timeout = if refresh { Duration::from_secs(65) } else { RESET_CARD_CLIENT_TIMEOUT };
+		let timeout =
+			if refresh || install { Duration::from_secs(65) } else { RESET_CARD_CLIENT_TIMEOUT };
 		let executor = Self {
 			transport: ResetCardClient {
 				profile: self.transport.profile.clone(),
-				timeout: if refresh || restore { timeout } else { self.transport.timeout },
+				timeout: if refresh || restore || install {
+					timeout
+				} else {
+					self.transport.timeout
+				},
 			},
 		};
 		let result =
@@ -687,6 +720,7 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		| crate::ChiefActionDto::ContinueMisalignment { work_id, .. }
 		| crate::ChiefActionDto::ApproveGuardianDenial { work_id, .. }
 		| crate::ChiefActionDto::RestoreArchivedThread { work_id, .. }
+		| crate::ChiefActionDto::InstallSuggestedPlugin { work_id, .. }
 		| crate::ChiefActionDto::AddResourceLink { work_id, .. }
 		| crate::ChiefActionDto::RemoveResource { work_id, .. }
 		| crate::ChiefActionDto::RefreshIntegrations { work_id } => work_id,
@@ -2741,7 +2775,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 35 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 36 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

@@ -188,6 +188,15 @@ pub struct ChiefAttachmentDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Install the exact plugin whose current catalog details the user reviewed.
+	InstallSuggestedPlugin {
+		/// Owning task identity.
+		work_id: crate::EntityId,
+		/// Exact live native suggestion event.
+		event_id: i64,
+		/// Review identity returned by installation inspection.
+		review_token: crate::WireText,
+	},
 	/// Explicitly restore the exact archived native thread selected by the user.
 	RestoreArchivedThread {
 		/// Current local work identity.

@@ -234,6 +234,48 @@ impl ChiefHost {
 		}
 	}
 
+	pub(crate) async fn install_state(
+		&self,
+		work: &str,
+		event: i64,
+	) -> decodex_protocol::ChiefInstallState {
+		use decodex_protocol::ChiefInstallState;
+		let Some((generation, client)) = self.runtime.chief_catalog_client() else {
+			return ChiefInstallState::Unavailable;
+		};
+		let Some(thread) =
+			self.store.get_chief_work_item(work.into()).await.ok().and_then(|w| w.codex_thread_id)
+		else {
+			return ChiefInstallState::Unavailable;
+		};
+		let owned = || {
+			self.store.chief_thread_is_owned(
+				work.into(),
+				thread.clone(),
+				Some(generation.as_str().into()),
+			)
+		};
+		if !owned().await.unwrap_or(false) {
+			return ChiefInstallState::Unavailable;
+		}
+		let result = tokio::time::timeout(
+			Duration::from_secs(40),
+			crate::chief_install::inspect(&self.store, &client, work, event),
+		)
+		.await
+		.ok()
+		.flatten();
+		if !owned().await.unwrap_or(false)
+			|| !self
+				.runtime
+				.chief_catalog_client()
+				.is_some_and(|(current, _)| current == generation)
+		{
+			return ChiefInstallState::Unavailable;
+		}
+		result.map(|v| v.state).unwrap_or(ChiefInstallState::Unavailable)
+	}
+
 	pub(crate) fn guardian_generation(&self) -> Option<String> {
 		self.runtime.chief_catalog_client().map(|(generation, _)| generation.as_str().to_owned())
 	}
@@ -545,6 +587,26 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			ChiefActionDto::InstallSuggestedPlugin { work_id, event_id, review_token } => {
+				let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
+				chief
+					.install_suggested_plugin(
+						work_id.as_str(),
+						event_id,
+						review_token.as_str(),
+						&key,
+					)
+					.await
+					.map_err(|error| match error {
+						ChiefError::Rejected(_) => ChiefHostError::Rejected(
+							"Installation was not started. Refresh the suggestion and review its current details.",
+						),
+						_ => ChiefHostError::Unknown(
+							"Installation is not confirmed. Read its current status; do not repeat the installation.",
+						),
+					})?;
+				Ok(work_id.as_str().into())
+			},
 			ChiefActionDto::RestoreArchivedThread { work_id, thread_id } => {
 				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
 				chief.restore_archived_thread(work_id.as_str(),thread_id.as_str()).await.map_err(|error|match error {

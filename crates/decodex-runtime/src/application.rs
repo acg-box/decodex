@@ -1872,6 +1872,11 @@ impl Application for ServiceApplication {
 					Some(chief) => chief.archive_state(work_id.as_str()).await,
 					None => decodex_protocol::ChiefArchiveResult::Unavailable,
 				}),
+			QueryPayload::GetChiefInstallState { work_id, event_id } =>
+				QueryResultPayload::ChiefInstallState(match &self.chief {
+					Some(chief) => chief.install_state(work_id.as_str(), *event_id).await,
+					None => decodex_protocol::ChiefInstallState::Unavailable,
+				}),
 			QueryPayload::GetChiefGuardianReviews { work_id, before } =>
 				QueryResultPayload::ChiefGuardianReviews(match &self.store {
 					ProductStore::Available(store) =>
@@ -3720,6 +3725,13 @@ async fn query_chief_request(
 								"tool_description",
 								"tool_params",
 								"tool_params_display",
+								"tool_type",
+								"suggest_type",
+								"tool_id",
+								"suggestion_id",
+								"install_url",
+								"remote_plugin_id",
+								"app_connector_ids",
 							]
 							.contains(&key.as_str())
 						})
@@ -4920,6 +4932,41 @@ mod tests {
 			assert_eq!(fields["changeDetailsTruncated"], true);
 			assert!(fields["changeDetails"].as_str().unwrap().contains("/tmp/file"));
 		}
+	}
+
+	#[tokio::test]
+	async fn installation_suggestion_projection_preserves_target_but_not_private_metadata() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(store.clone());
+		chief_query_work(&store, "worker").await;
+		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
+		let meta = serde_json::json!({"codex_approval_kind":"tool_suggestion","tool_type":"plugin","suggest_type":"install","tool_id":"sample@market","tool_name":"Sample","suggestion_id":"suggestion-1","remote_plugin_id":"plugins~sample","app_connector_ids":["connector-1"],"install_url":"https://chatgpt.com/apps/sample","private_token":"PRIVATE_TOKEN"});
+		let event = store.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
+			source_event_id: "install-suggestion".into(), work_item_id: "worker".into(),
+			event_kind: "server_request_pending".into(),
+			payload: serde_json::json!({"method":"mcpServer/elicitation/request","id":"private-rpc-id","params":{"threadId":"thread","serverName":"codex_apps","mode":"form","message":"Install Sample","requestedSchema":{"type":"object","properties":{}},"_meta":meta}}).to_string(),
+		}).await.unwrap();
+		let decodex_protocol::ChiefRequestResult::Available { request_json, .. } =
+			super::query_chief_request(&owner, event.id).await
+		else {
+			panic!("pending suggestion");
+		};
+		let value: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
+		let suggestion =
+			decodex_protocol::McpInstallSuggestion::from_request(&value).unwrap().unwrap();
+		assert_eq!(suggestion.tool_id, "sample@market");
+		assert_eq!(value["_meta"]["suggestion_id"], "suggestion-1");
+		assert_eq!(value["_meta"]["remote_plugin_id"], "plugins~sample");
+		assert_eq!(suggestion.install_url(), Some("https://chatgpt.com/apps/sample"));
+		assert!(!request_json.as_str().contains("PRIVATE_TOKEN"));
+		assert!(!request_json.as_str().contains("private-rpc-id"));
+		store.acknowledge_chief_request_event(event.id).await.unwrap();
+		assert_eq!(
+			super::query_chief_request(&owner, event.id).await,
+			decodex_protocol::ChiefRequestResult::Unavailable
+		);
 	}
 
 	#[tokio::test]

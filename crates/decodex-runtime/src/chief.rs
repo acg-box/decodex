@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 mod activity;
 mod archive;
 mod guardian;
+mod install;
 mod misalignment;
 pub(crate) mod observations;
 mod result_messages;
@@ -494,12 +495,26 @@ impl ChiefCoordinator {
 		}
 		let payload: Value = serde_json::from_str(&event.payload)
 			.map_err(|_| ChiefError::Rejected("Stored request is unavailable.".into()))?;
+		let mut install_guard = None;
 		if payload["method"] == "mcpServer/elicitation/request" {
 			decodex_protocol::validate_mcp_response(&payload["params"], &response)
 				.map_err(ChiefError::Rejected)?;
+			if response["action"] == "accept"
+				&& payload["params"]["_meta"]["codex_approval_kind"] == "tool_suggestion"
+			{
+				self.verify_install_suggestion_complete(event_id).await?;
+				install_guard = Some(self.install_request_guard(event_id).await?);
+			}
 		}
-		self.pending_requests.remove(&request_id);
-		self.client.respond(request_id, response).await?;
+		if let Some(guard) = install_guard {
+			// A queued peer resolution may revoke the guard before the write. Keep
+			// the inbox mapping until success so that notification can still settle it.
+			self.client.respond_guarded(request_id.clone(), response, guard).await?;
+			self.pending_requests.remove(&request_id);
+		} else {
+			self.pending_requests.remove(&request_id);
+			self.client.respond(request_id, response).await?;
+		}
 		self.store.acknowledge_chief_request_event(event_id).await?;
 		Ok(())
 	}
