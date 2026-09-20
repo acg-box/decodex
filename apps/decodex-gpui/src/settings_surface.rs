@@ -343,6 +343,56 @@ impl SettingsSurface {
 	}
 }
 
+impl SettingsSurface {
+	fn glass_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		use ui_theme::window_material::GlassStyle;
+		let style = GlassStyle::configured();
+		ui_theme::settings_row().px_0().child(div().flex_1().child("Glass appearance")).child(
+			div().flex().gap_1().p_1().rounded(px(9.)).bg(rgba(0xffffff08)).children(
+				[(GlassStyle::Regular, "Regular"), (GlassStyle::Clear, "Clear")].into_iter().map(
+					|(value, label)| {
+						div()
+							.id(label)
+							.debug_selector(move || label.to_string())
+							.role(Role::Button)
+							.aria_label(format!("Glass appearance: {label}"))
+							.aria_toggled(if value == style {
+								Toggled::True
+							} else {
+								Toggled::False
+							})
+							.tab_index(0)
+							.px_3()
+							.h(px(26.))
+							.flex()
+							.items_center()
+							.rounded(px(6.))
+							.text_size(px(11.))
+							.cursor_pointer()
+							.when(value == style, |d| d.bg(rgba(0xffffff16)))
+							.hover(|d| d.bg(rgba(0xffffff12)))
+							.on_click(cx.listener(move |_, _, _, cx| {
+								value.select(cx);
+								cx.notify();
+							}))
+							.on_key_down(cx.listener(
+								move |_, event: &gpui::KeyDownEvent, _, cx| {
+									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+										value.select(cx);
+										cx.notify();
+										cx.stop_propagation();
+									}
+								},
+							))
+							.child(label)
+							.smooth()
+					},
+				),
+			),
+		)
+	}
+}
+
 impl Render for SettingsSurface {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let needs_attention =
@@ -378,6 +428,7 @@ impl Render for SettingsSurface {
 							.flex_col()
 							.gap(px(24.0))
 							.child(ui_theme::settings_title("General"))
+							.child(self.glass_controls(cx))
 							.child(
 								div().flex().flex_col().gap(px(8.0)).child(
 									div()
@@ -503,6 +554,23 @@ mod tests {
 	use gpui::{TestAppContext, size};
 
 	use super::*;
+
+	#[gpui::test]
+	fn glass_style_buttons_update_the_active_material(cx: &mut TestAppContext) {
+		use ui_theme::window_material::GlassStyle;
+		let controller = DesktopSettingsController::production();
+		let (_, visual) = cx.add_window_view(|_, cx| SettingsSurface::new(controller, cx));
+		visual.update(|window, cx| {
+			window.resize(size(px(800.), px(600.)));
+			window.draw(cx).clear();
+		});
+		let clear = visual.debug_bounds("Clear").expect("Clear control");
+		visual.simulate_click(clear.center(), Default::default());
+		assert_eq!(GlassStyle::configured(), GlassStyle::Clear);
+		let regular = visual.debug_bounds("Regular").expect("Regular control");
+		visual.simulate_click(regular.center(), Default::default());
+		assert_eq!(GlassStyle::configured(), GlassStyle::Regular);
+	}
 
 	#[gpui::test]
 	fn settings_draw_at_the_selected_desktop_size(cx: &mut TestAppContext) {

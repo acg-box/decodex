@@ -1,5 +1,7 @@
 //! Window material policy. Platform details stay behind one application interface.
 use gpui::{Window, WindowBackgroundAppearance};
+use std::sync::atomic::{AtomicU8, Ordering};
+static STYLE: AtomicU8 = AtomicU8::new(2);
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) enum GlassStyle {
@@ -9,10 +11,30 @@ pub(crate) enum GlassStyle {
 }
 impl GlassStyle {
 	pub(crate) fn configured() -> Self {
-		match std::env::var("DECODEX_GLASS_STYLE").as_deref() {
-			Ok("clear") => Self::Clear,
-			_ => Self::Regular,
+		let cached = STYLE.load(Ordering::Relaxed);
+		if cached < 2 {
+			return if cached == 1 { Self::Clear } else { Self::Regular };
 		}
+		#[allow(unused_mut)]
+		let mut clear = std::env::var("DECODEX_GLASS_STYLE").as_deref() == Ok("clear");
+		#[cfg(all(target_os = "macos", not(test)))]
+		if std::env::var_os("DECODEX_GLASS_STYLE").is_none() {
+			clear = macos::saved_clear();
+		}
+		STYLE.store(u8::from(clear), Ordering::Relaxed);
+		if clear { Self::Clear } else { Self::Regular }
+	}
+
+	pub(crate) fn select(self, cx: &mut gpui::App) {
+		STYLE.store(u8::from(self == Self::Clear), Ordering::Relaxed);
+		#[cfg(all(target_os = "macos", not(test)))]
+		macos::save_clear(self == Self::Clear);
+		cx.defer(move |cx| {
+			for handle in cx.windows() {
+				let _ = handle.update(cx, |_, window, _| apply(window, self));
+			}
+			cx.refresh_windows();
+		});
 	}
 }
 
@@ -43,6 +65,23 @@ mod macos {
 	};
 	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
+	// Host-local appearance preferences belong to AppKit, not account or conversation state.
+	fn defaults() -> Retained<objc2::runtime::AnyObject> {
+		unsafe {
+			msg_send![AnyClass::get(c"NSUserDefaults").expect("Foundation"), standardUserDefaults]
+		}
+	}
+	pub(super) fn saved_clear() -> bool {
+		unsafe {
+			msg_send![&*defaults(), boolForKey: &*objc2_foundation::NSString::from_str("DecodexGlassClear")]
+		}
+	}
+	pub(super) fn save_clear(clear: bool) {
+		unsafe {
+			let _: () = msg_send![&*defaults(), setBool: clear, forKey: &*objc2_foundation::NSString::from_str("DecodexGlassClear")];
+		}
+	}
+
 	fn content(window: &Window) -> Option<Retained<NSView>> {
 		let handle = HasWindowHandle::window_handle(window).ok()?;
 		let RawWindowHandle::AppKit(handle) = handle.as_raw() else { return None };
@@ -59,7 +98,12 @@ mod macos {
 			.subviews()
 			.iter()
 			.find(|child| unsafe { msg_send![&**child, isKindOfClass: class] });
-		if std::env::var_os("DECODEX_DISABLE_LIQUID_GLASS").is_some() {
+		let reduce_transparency: bool = unsafe {
+			let workspace: Retained<objc2::runtime::AnyObject> =
+				msg_send![AnyClass::get(c"NSWorkspace").expect("AppKit"), sharedWorkspace];
+			msg_send![&*workspace, accessibilityDisplayShouldReduceTransparency]
+		};
+		if reduce_transparency || std::env::var_os("DECODEX_DISABLE_LIQUID_GLASS").is_some() {
 			if let Some(glass) = existing {
 				glass.removeFromSuperview();
 			}
