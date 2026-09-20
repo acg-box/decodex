@@ -198,6 +198,7 @@ pub struct ProtocolAccount {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProtocolThread {
+	pub history_mode: Option<SensitiveString>,
 	pub id: SensitiveString,
 	/// Legacy app-server versions repeated the list filter on every Thread. Current versions do
 	/// not.
@@ -219,6 +220,7 @@ pub struct ProtocolThread {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProtocolTurn {
+	pub items_view: Option<SensitiveString>,
 	pub id: SensitiveString,
 	pub status: ProtocolTurnStatus,
 	#[serde(default)]
@@ -247,6 +249,7 @@ impl ProtocolTurnStatus {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProtocolThreadItem {
+	pub id: Option<SensitiveString>,
 	#[serde(rename = "type")]
 	pub kind: SensitiveString,
 	#[serde(default)]

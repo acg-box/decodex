@@ -333,6 +333,8 @@ impl ExactThreadListResult {
 pub enum LossyThreadHistory {
 	/// Only thread metadata was requested; no turn or submission evidence was read.
 	MetadataOnly,
+	/// Bounded native turn and item pages were read; absence does not authorize replay.
+	PaginatedReadback,
 	/// Visible turns were requested, but the response is not complete-history or replay authority.
 	IncludeTurnsReadback,
 }
