@@ -458,6 +458,31 @@ for line in sys.stdin:
                 "data": [{"id": f"00000000-0000-4000-8000-{index:012d}", "archived": False, "parentThreadId": None} for index in range(1, count + 1)],
                 "nextCursor": None,
             }
+    elif method in {"thread/turns/list", "thread/items/list"} and mode.startswith("exact-paged-"):
+        params = message["params"]
+        assert params["threadId"] == exact_thread["id"]
+        assert params["limit"] == 100 and params["sortDirection"] == "asc"
+        cursor = params.get("cursor")
+        if method == "thread/turns/list":
+            assert params["itemsView"] == "notLoaded"
+            result = {"data": [{"id": "provider-turn-1", "status": "completed", "items": [], "itemsView": "notLoaded"}], "nextCursor": None}
+            if mode == "exact-paged-summary":
+                result["data"][0]["itemsView"] = "summary"
+        else:
+            assert "itemsView" not in params
+            item = {"id": "u1", "type": "userMessage", "clientId": "50000000-0000-4000-8000-000000000001"} if cursor is None else {"id": "a1", "type": "agentMessage", "text": "Paged response"}
+            if mode == "exact-paged-duplicate-client" and cursor:
+                item = {"id": "u2", "type": "userMessage", "clientId": "50000000-0000-4000-8000-000000000001"}
+            if mode == "exact-paged-duplicate-item" and cursor:
+                item["id"] = "u1"
+            turn = "unknown-turn" if mode == "exact-paged-wrong-turn" else "provider-turn-1"
+            result = {"data": [{"turnId": turn, "item": item}], "nextCursor": "page2" if cursor is None or mode == "exact-paged-cycle" else None}
+            if mode == "exact-paged-too-many":
+                result["data"] *= 101
+            if mode == "exact-paged-byte-budget":
+                result["data"] = [{"turnId": turn, "item": {"id": f"{cursor}-{index}", "type": "agentMessage", "text": "x" * (1024 * 1024)}} for index in range(5)]
+            if mode == "exact-paged-missing-cursor":
+                result.pop("nextCursor")
     elif method == "thread/read" and mode != "optional-unsupported":
         if message["params"]["threadId"] == exact_thread["id"]:
             if mode == "exact-metadata-only":
@@ -471,8 +496,7 @@ for line in sys.stdin:
                 sys.stdout.flush()
                 time.sleep(60)
             readback = dict(exact_thread)
-            if mode == "exact-submitted-read":
-                assert message["params"]["includeTurns"] is True
+            if mode == "exact-submitted-read" and message["params"]["includeTurns"]:
                 readback["turns"] = [{
                     "id": "provider-turn-1", "status": "completed",
                     "items": [
@@ -480,6 +504,9 @@ for line in sys.stdin:
                         {"type": "agentMessage", "text": "Confirmed response"},
                     ],
                 }]
+            if mode.startswith("exact-paged-"):
+                assert message["params"]["includeTurns"] is False
+                readback["historyMode"] = "paginated"
             if mode in {"exact-current-schema", "exact-escaped-title"}:
                 readback.pop("archived", None)
             if mode == "exact-mismatched-id" or (mode == "exact-mismatched-post-archive-read" and exact_thread_reads > 1):

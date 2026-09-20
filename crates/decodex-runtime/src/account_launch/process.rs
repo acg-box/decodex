@@ -1,3 +1,5 @@
+#[path = "exact_history.rs"] mod exact_history;
+
 #[cfg(target_os = "linux")] use std::os::fd::{AsRawFd as _, FromRawFd as _};
 #[cfg(test)] use std::sync::atomic::AtomicU32;
 use std::{
@@ -2153,13 +2155,11 @@ impl SupervisedProcess {
 	) -> Result<ExactThreadReadResult, ExactReconciliationError> {
 		self.re_attest_exact_account(timeout)?;
 
-		let response = self
+		let started = Instant::now();
+		let mut response = self
 			.request_rpc::<_, ThreadReadResponse>(
 				"thread/read",
-				&ExactThreadReadParams {
-					thread_id,
-					include_turns: client_user_message_id.is_some(),
-				},
+				&ExactThreadReadParams { thread_id, include_turns: false },
 				timeout,
 			)
 			.map_err(ExactReconciliationError::from_rpc)?;
@@ -2174,6 +2174,11 @@ impl SupervisedProcess {
 		if &facts.id != thread_id {
 			return Err(ExactReconciliationError::InvalidResult);
 		}
+		let history = if client_user_message_id.is_some() {
+			self.read_submission_history(&mut response.thread, thread_id, started, timeout)?
+		} else {
+			LossyThreadHistory::MetadataOnly
+		};
 		let submitted_turn = client_user_message_id
 			.map(|client_id| project_exact_submitted_turn(&response.thread, client_id))
 			.transpose()?
@@ -2181,15 +2186,7 @@ impl SupervisedProcess {
 
 		self.re_attest_exact_account(timeout)?;
 
-		Ok(ExactThreadReadResult {
-			facts,
-			history: if client_user_message_id.is_some() {
-				LossyThreadHistory::IncludeTurnsReadback
-			} else {
-				LossyThreadHistory::MetadataOnly
-			},
-			submitted_turn,
-		})
+		Ok(ExactThreadReadResult { facts, history, submitted_turn })
 	}
 
 	fn resolve_exact_thread_archived_state(
@@ -7660,6 +7657,62 @@ pub(crate) mod tests {
 			read.submitted_turn.expect("positive correlation").assistant_text(),
 			"Confirmed response"
 		);
+	}
+
+	#[test]
+	fn paginated_submission_reconciliation_rejects_incomplete_or_ambiguous_evidence() {
+		let client = "50000000-0000-4000-8000-000000000001";
+		for mode in [
+			"exact-paged-ok",
+			"exact-paged-cycle",
+			"exact-paged-summary",
+			"exact-paged-duplicate-client",
+			"exact-paged-duplicate-item",
+			"exact-paged-wrong-turn",
+			"exact-paged-missing-cursor",
+		] {
+			let (_temp, mut process) = initialized_bound_process(mode);
+			let read = process.read_exact_thread_for_client(
+				&exact_thread_id(),
+				client,
+				Duration::from_secs(2),
+			);
+			if mode == "exact-paged-ok" {
+				let read = read.expect("complete native pages");
+				assert_eq!(read.history, decodex_codex::LossyThreadHistory::PaginatedReadback);
+				assert_eq!(
+					read.submitted_turn.expect("positive correlation").assistant_text(),
+					"Paged response"
+				);
+				let absent = process
+					.read_exact_thread_for_client(
+						&exact_thread_id(),
+						"50000000-0000-4000-8000-000000000003",
+						Duration::from_secs(2),
+					)
+					.expect("bounded read without a matching client ID");
+				assert!(absent.submitted_turn.is_none());
+				assert_eq!(absent.history, decodex_codex::LossyThreadHistory::PaginatedReadback);
+			} else {
+				assert!(read.is_err(), "{mode} accepted invalid history");
+			}
+		}
+	}
+
+	#[test]
+	fn paginated_submission_enforces_page_and_aggregate_byte_bounds() {
+		for mode in ["exact-paged-too-many", "exact-paged-byte-budget"] {
+			let (_temp, mut process) = initialized_bound_process(mode);
+			let result = process.read_exact_thread_for_client(
+				&exact_thread_id(),
+				"50000000-0000-4000-8000-000000000001",
+				Duration::from_secs(10),
+			);
+			assert!(
+				matches!(result, Err(super::ExactReconciliationError::InvalidResult)),
+				"{mode}: {result:?}"
+			);
+		}
 	}
 
 	#[test]
