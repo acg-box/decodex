@@ -430,6 +430,12 @@ pub enum ConversationTurnOutcome {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConversationRecoveryAction {
+	/// Unarchive the existing native thread before refreshing its state.
+	RestoreArchivedThread,
+	/// Correct native sandbox configuration, then refresh before another submission.
+	ReviewSandboxConfiguration,
+	/// Review a rejected native resume configuration without replacing the thread.
+	ReviewCodexConfiguration,
 	/// Resume the sole uncommitted initial route on this Conversation.
 	ResumeRouting,
 	/// Create one fresh routing Conversation successor for immutable waiting/no-route authority.

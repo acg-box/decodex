@@ -262,6 +262,12 @@ pub struct JsonRpcError {
 	_message: SensitiveString,
 }
 
+impl JsonRpcError {
+	pub(super) fn message(&self) -> &str {
+		self._message.as_str()
+	}
+}
+
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcResponse<T> {
 	/// Legacy JSON-RPC version marker. Codex app-server JSONL responses omit this field, while

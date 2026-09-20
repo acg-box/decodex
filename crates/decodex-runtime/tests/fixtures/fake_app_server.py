@@ -484,6 +484,23 @@ for line in sys.stdin:
                     "parentThreadId": None,
                 }
             }
+    elif method == "thread/resume" and mode.startswith("resume-reject-"):
+        thread = message["params"]["threadId"]
+        code = -32600
+        error_message = "fixture-secret: provider rejected configuration"
+        if mode == "resume-reject-missing":
+            error_message = f"no rollout found for thread id {thread}"
+        elif mode == "resume-reject-archived":
+            error_message = f"session {thread} is archived. Run `codex unarchive {thread}` to unarchive it first."
+        elif mode == "resume-reject-sandbox":
+            error_message = "failed to prepare fs sandbox: symlinked writable roots are not supported: fixture-secret"
+        elif mode == "resume-reject-other-thread":
+            error_message = "no rollout found for thread id unrelated"
+        elif mode == "resume-reject-wrong-code":
+            code = -32603
+            error_message = f"no rollout found for thread id {thread}"
+        print(json.dumps({"id": message["id"], "error": {"code": code, "message": error_message}}), flush=True)
+        continue
     elif method == "thread/archive":
         assert message["params"] == {"threadId": exact_thread_id}
         if mode == "exact-unsupported-archive":

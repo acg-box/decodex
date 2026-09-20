@@ -2150,6 +2150,12 @@ const fn conversation_recovery_action(
 	action: ConversationManualRecovery,
 ) -> ConversationRecoveryAction {
 	match action {
+		ConversationManualRecovery::RestoreArchivedThread =>
+			ConversationRecoveryAction::RestoreArchivedThread,
+		ConversationManualRecovery::ReviewSandboxConfiguration =>
+			ConversationRecoveryAction::ReviewSandboxConfiguration,
+		ConversationManualRecovery::ReviewCodexConfiguration =>
+			ConversationRecoveryAction::ReviewCodexConfiguration,
 		ConversationManualRecovery::EnableAccount => ConversationRecoveryAction::EnableAccount,
 		ConversationManualRecovery::EnrollCredentials =>
 			ConversationRecoveryAction::EnrollCredentials,

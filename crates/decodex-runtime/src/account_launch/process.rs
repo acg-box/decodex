@@ -1029,7 +1029,8 @@ impl AttestedProcessChild {
 		request: &ConversationThreadResumeRequest,
 	) -> Result<ResumedOrdinaryThread, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
-		let wire = self.process.prepare_conversation_request("thread/resume", request)?;
+		let mut wire = self.process.prepare_conversation_request("thread/resume", request)?;
+		wire.resume_thread_id = Some(request.thread_id().as_str().to_owned());
 		let success = self.process.conversation_request(wire, self.timeout, false, |bytes| {
 			decode_conversation_thread_resume_response(request, bytes)
 		})?;
@@ -1232,7 +1233,7 @@ pub(crate) enum ConversationProcessError {
 	/// No method bytes were admitted because initialization or local authority was unavailable.
 	Unavailable,
 	/// The exact app-server method rejected the request with a bounded response witness.
-	Rejected { witness_digest: String },
+	Rejected { witness_digest: String, reason: ConversationRejectionReason },
 	/// App-server bytes contradicted the accepted typed contract.
 	Incompatible,
 	/// Local supervision was lost while a blocking operation may already have crossed send.
@@ -1241,7 +1242,33 @@ pub(crate) enum ConversationProcessError {
 	Ambiguous { request_id: i64, request_sha256: String },
 }
 
+pub(crate) use decodex_database::ConversationResumeRejection as ConversationRejectionReason;
+
+fn conversation_rejection_reason(
+	error: &super::protocol::JsonRpcError,
+	resume_thread_id: Option<&str>,
+) -> ConversationRejectionReason {
+	let message = error.message();
+	if let Some(thread) = resume_thread_id {
+		if error.code == -32600 && message == format!("no rollout found for thread id {thread}") {
+			return ConversationRejectionReason::MissingThread;
+		}
+		if error.code == -32600
+			&& message
+				== format!(
+					"session {thread} is archived. Run `codex unarchive {thread}` to unarchive it first."
+				) {
+			return ConversationRejectionReason::ArchivedThread;
+		}
+		if message.contains("failed to prepare fs sandbox") {
+			return ConversationRejectionReason::SandboxConfiguration;
+		}
+	}
+	ConversationRejectionReason::Other
+}
+
 struct PreparedConversationRequest {
+	resume_thread_id: Option<String>,
 	request_id: i64,
 	request_sha256: String,
 	frame: ZeroizingOutboundFrame,
@@ -1760,7 +1787,12 @@ impl SupervisedProcess {
 		let request_id =
 			i64::try_from(request_id).map_err(|_| ConversationProcessError::Incompatible)?;
 		let request_sha256 = frame.sha256();
-		Ok(PreparedConversationRequest { request_id, request_sha256, frame })
+		Ok(PreparedConversationRequest {
+			request_id,
+			request_sha256,
+			frame,
+			resume_thread_id: None,
+		})
 	}
 
 	fn conversation_request<R>(
@@ -1790,7 +1822,8 @@ impl SupervisedProcess {
 		events: &mut Vec<ConversationProcessEvent>,
 		decode: impl FnOnce(&[u8]) -> Result<R, decodex_codex::ConversationContractError>,
 	) -> Result<ConversationProcessSuccess<R>, ConversationProcessError> {
-		let PreparedConversationRequest { request_id, request_sha256, frame } = prepared;
+		let PreparedConversationRequest { request_id, request_sha256, frame, resume_thread_id } =
+			prepared;
 		let request_id_u64 =
 			u64::try_from(request_id).map_err(|_| ConversationProcessError::Incompatible)?;
 		let invalid_response = || {
@@ -1860,7 +1893,10 @@ impl SupervisedProcess {
 							events: Vec::new(),
 						})
 					},
-					(None, Some(_)) => Err(ConversationProcessError::Rejected { witness_digest }),
+					(None, Some(error)) => Err(ConversationProcessError::Rejected {
+						witness_digest,
+						reason: conversation_rejection_reason(&error, resume_thread_id.as_deref()),
+					}),
 					_ => Err(invalid_response()),
 				};
 			}
@@ -7453,6 +7489,39 @@ pub(crate) mod tests {
 				initialized: true,
 			},
 		)
+	}
+
+	#[test]
+	fn resume_rejection_classification_requires_exact_thread_evidence() {
+		use super::ConversationRejectionReason as Reason;
+		for (mode, expected) in [
+			("resume-reject-missing", Reason::MissingThread),
+			("resume-reject-archived", Reason::ArchivedThread),
+			("resume-reject-sandbox", Reason::SandboxConfiguration),
+			("resume-reject-other-thread", Reason::Other),
+			("resume-reject-wrong-code", Reason::Other),
+			("resume-reject-generic", Reason::Other),
+		] {
+			let (_temp, mut child) = ordinary_catalog_child(mode);
+			let request = decodex_codex::ConversationThreadResumeRequest::new(
+				exact_thread_id(),
+				"fixture-model",
+				"/tmp",
+				"Fixture instructions",
+			)
+			.expect("resume request");
+			let error = child.resume_ordinary_thread(&request).err().expect("native rejection");
+			assert!(
+				matches!(&error, super::ConversationProcessError::Rejected { reason, witness_digest }
+				if *reason == expected && witness_digest.len() == 64),
+				"{mode}: {error:?}"
+			);
+			assert!(
+				!format!("{error:?}").contains("fixture-secret"),
+				"provider text must stay private"
+			);
+			child.shutdown().expect("closed fixture process");
+		}
 	}
 
 	#[test]

@@ -3692,6 +3692,12 @@ fn recovery_action_label(action: ConversationRecoveryAction) -> &'static str {
 			"Resolve the prior active turn before continuing.",
 		ConversationRecoveryAction::ResolvePriorAttempt =>
 			"Resolve the prior provider attempt before continuing.",
+		ConversationRecoveryAction::RestoreArchivedThread =>
+			"Unarchive the existing Codex thread, then refresh this conversation.",
+		ConversationRecoveryAction::ReviewSandboxConfiguration =>
+			"Check Codex sandbox permissions and writable roots, then refresh this conversation.",
+		ConversationRecoveryAction::ReviewCodexConfiguration =>
+			"Codex rejected resume. Check its model, provider and project configuration, then refresh.",
 		ConversationRecoveryAction::RestoreProcessReadiness =>
 			"Restore process readiness before continuing.",
 		ConversationRecoveryAction::WaitForCurrentCommand =>
@@ -5846,6 +5852,30 @@ mod tests {
 				pending: true,
 			}]
 		);
+	}
+
+	#[test]
+	fn persisted_resume_failure_is_an_activity_not_a_user_prompt() {
+		let conversation_id =
+			EntityId::new("10000000-0000-4000-8000-000000000082").expect("conversation");
+		let snapshot = transcript_snapshot(&conversation_id, Vec::new());
+		let text = "Codex could not prepare its filesystem sandbox. This input was not sent.";
+		let mut item = history_item(
+			"40000000-0000-4000-8000-000000000082",
+			"20000000-0000-4000-8000-000000000082",
+			"user",
+			text,
+		);
+		item.kind = HistoryItemKindDto::Status;
+		item.status = HistoryItemStatusDto::Failed;
+		let history = history_snapshot(
+			&conversation_id,
+			vec![item],
+			HistoryLoadState::Visible,
+			Some(HistoryPageSource::FreshServer),
+		);
+		assert!(matches!(conversation_transcript_rows(&snapshot, Some(&history), None).as_slice(),
+			[TranscriptRow::Activity { text: actual, status: HistoryItemStatusDto::Failed, .. }] if actual == text));
 	}
 
 	#[test]
