@@ -1806,6 +1806,10 @@ impl Application for ServiceApplication {
 
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
+			QueryPayload::GetInitialModelCatalog { .. }
+			| QueryPayload::GetChiefCapabilities
+			| QueryPayload::GetConversationCapabilities { .. } => self.query_model_catalog(query).await,
+
 			QueryPayload::ExchangeDictation { request } =>
 				QueryResultPayload::Dictation(match &self.chief {
 					Some(chief) => chief.dictation(request).await,
@@ -1849,11 +1853,6 @@ impl Application for ServiceApplication {
 							.await,
 					None => decodex_protocol::ChiefActivityDetailResult::Unavailable,
 				}),
-			QueryPayload::GetChiefCapabilities =>
-				QueryResultPayload::ChiefCapabilities(match &self.chief {
-					Some(chief) => chief.capabilities().await,
-					None => decodex_protocol::ChiefCapabilitiesResult::Unavailable,
-				}),
 			QueryPayload::GetChiefRequest { event_id } => QueryResultPayload::ChiefRequest(
 				query_chief_request_with_details(&self.store, *event_id, self.chief.as_ref()).await,
 			),
@@ -1893,11 +1892,6 @@ impl Application for ServiceApplication {
 				),
 			QueryPayload::GetConversation { conversation_id } =>
 				QueryResultPayload::Conversation(self.conversation_get(conversation_id).await),
-			QueryPayload::GetConversationCapabilities { conversation_id } =>
-				QueryResultPayload::ConversationCapabilities(match self.conversations.runtime() {
-					Some(runtime) => runtime.model_capabilities(conversation_id.as_str()).await,
-					None => decodex_protocol::ChiefCapabilitiesResult::Unavailable,
-				}),
 			QueryPayload::GetDoctorStatus =>
 				QueryResultPayload::DoctorStatus(self.refreshed_doctor().await),
 			QueryPayload::GetConversationHistory { conversation_id, after, page_size } =>
@@ -3627,6 +3621,30 @@ fn attach_file_approval_detail(
 }
 
 impl ServiceApplication {
+	async fn query_model_catalog(&self, query: &QueryEnvelope) -> QueryResultPayload {
+		match &query.payload {
+			QueryPayload::GetInitialModelCatalog { request } =>
+				QueryResultPayload::InitialModelCatalog(match self.conversations.runtime() {
+					Some(runtime) =>
+						runtime
+							.initial_model_catalog(query.query_id.as_str(), request.clone())
+							.await,
+					None => decodex_protocol::InitialModelCatalogResult::Unavailable,
+				}),
+			QueryPayload::GetChiefCapabilities =>
+				QueryResultPayload::ChiefCapabilities(match &self.chief {
+					Some(chief) => chief.capabilities().await,
+					None => decodex_protocol::ChiefCapabilitiesResult::Unavailable,
+				}),
+			QueryPayload::GetConversationCapabilities { conversation_id } =>
+				QueryResultPayload::ConversationCapabilities(match self.conversations.runtime() {
+					Some(runtime) => runtime.model_capabilities(conversation_id.as_str()).await,
+					None => decodex_protocol::ChiefCapabilitiesResult::Unavailable,
+				}),
+			_ => unreachable!("model catalog query dispatched above"),
+		}
+	}
+
 	async fn query_account_observation(
 		&self,
 		after_generation: u64,

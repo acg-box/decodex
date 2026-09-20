@@ -3,6 +3,13 @@ use super::{ChiefClient, ChiefSurface, Context};
 use decodex_protocol::{ChiefCapabilitiesResult, ChiefModelDto, ConversationReasoningEffort};
 use gpui::prelude::*;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct CatalogContext {
+	directory: String,
+	account: String,
+	has_root: bool,
+}
+
 impl ChiefSurface {
 	pub(super) fn service_tier_picker(&self, cx: &Context<Self>) -> gpui::AnyElement {
 		let mut panel = gpui::div().id("service-tier-picker").flex().flex_col().gap_2();
@@ -80,6 +87,33 @@ impl ChiefSurface {
 		panel.into_any_element()
 	}
 
+	fn catalog_context(&self, cx: &Context<Self>) -> Option<CatalogContext> {
+		Some(CatalogContext {
+			directory: self.cwd.read(cx).content().to_owned(),
+			account: self.account.read(cx).content().to_owned(),
+			has_root: self
+				.snapshot
+				.as_ref()?
+				.work_items
+				.iter()
+				.any(|work| work.parent_goal_id.is_none()),
+		})
+	}
+
+	pub(super) fn current_model_catalog(
+		&self,
+		cx: &Context<Self>,
+	) -> Option<&ChiefCapabilitiesResult> {
+		if self
+			.capabilities_context
+			.as_ref()
+			.is_some_and(|source| Some(source) != self.catalog_context(cx).as_ref())
+		{
+			return None;
+		}
+		self.capabilities.as_ref()
+	}
+
 	pub(super) fn load_capabilities(&mut self, cx: &mut Context<Self>) {
 		if self.capability_task.is_some() {
 			return;
@@ -87,12 +121,52 @@ impl ChiefSurface {
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
+		let Some(context) = self.catalog_context(cx) else {
+			return;
+		};
+		let cold_request = if context.has_root {
+			None
+		} else {
+			let Ok(working_directory) =
+				decodex_protocol::ConversationWorkingDirectory::new(context.directory.clone())
+			else {
+				return;
+			};
+			let account_id = if context.account.is_empty() {
+				None
+			} else {
+				let Ok(account) = decodex_protocol::EntityId::new(context.account.clone()) else {
+					return;
+				};
+				Some(account)
+			};
+			Some(decodex_protocol::InitialModelCatalogRequest {
+				working_directory,
+				account_id,
+				purpose: decodex_protocol::ModelCatalogPurpose::Chief,
+			})
+		};
 		self.capabilities_checked = Some(std::time::Instant::now());
 		let generation = self.generation;
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
-			runtime.block_on(ChiefClient::new(profile).capabilities()).ok()
+			let client = ChiefClient::new(profile);
+			if let Some(request) = cold_request {
+				let directory = request.working_directory.clone();
+				match runtime.block_on(client.initial_model_catalog(request)).ok()? {
+					decodex_protocol::InitialModelCatalogResult::Available {
+						models,
+						account_revision,
+						working_directory,
+						..
+					} if account_revision > 0 && working_directory == directory =>
+						Some(ChiefCapabilitiesResult::Available { models, memory_enabled: None }),
+					_ => Some(ChiefCapabilitiesResult::Unavailable),
+				}
+			} else {
+				runtime.block_on(client.capabilities()).ok()
+			}
 		});
 		self.capability_task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
@@ -101,6 +175,12 @@ impl ChiefSurface {
 					return;
 				}
 				surface.capability_task = None;
+				if surface.catalog_context(cx).as_ref() != Some(&context) {
+					surface.capabilities_checked = None;
+					surface.load_capabilities(cx);
+					return;
+				}
+				surface.capabilities_context = Some(context);
 				surface.capabilities = result;
 				surface.reconcile_model_options(cx);
 				cx.notify();
@@ -109,7 +189,9 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn selected_model(&self, cx: &Context<Self>) -> Option<&ChiefModelDto> {
-		let Some(ChiefCapabilitiesResult::Available { models, .. }) = &self.capabilities else {
+		let Some(ChiefCapabilitiesResult::Available { models, .. }) =
+			self.current_model_catalog(cx)
+		else {
 			return None;
 		};
 		models.iter().find(|model| model.model.as_str() == self.model.read(cx).content())
@@ -226,6 +308,26 @@ mod tests {
 			}
 			s.reconcile_model_options(cx);
 			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "default");
+		});
+	}
+
+	#[gpui::test]
+	fn catalog_context_changes_disable_previous_account_options(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.capabilities =
+				Some(ChiefCapabilitiesResult::Available { models: vec![], memory_enabled: None });
+			s.capabilities_context = s.catalog_context(cx);
+			assert!(s.current_model_catalog(cx).is_some());
+			s.account.update(cx, |input, cx| {
+				input.set_content("00000000-0000-4000-8000-000000000099", cx)
+			});
+			assert!(s.current_model_catalog(cx).is_none());
+			s.capabilities_context = s.catalog_context(cx);
+			assert!(s.current_model_catalog(cx).is_some());
+			s.cwd.update(cx, |input, cx| input.set_content("/different-project", cx));
+			assert!(s.current_model_catalog(cx).is_none());
 		});
 	}
 

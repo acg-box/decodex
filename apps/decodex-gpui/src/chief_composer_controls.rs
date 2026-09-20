@@ -74,7 +74,7 @@ impl ChiefSurface {
 			.flex()
 			.flex_col()
 			.gap(px(2.));
-		let models = match &self.capabilities {
+		let models = match self.current_model_catalog(cx) {
 			Some(decodex_protocol::ChiefCapabilitiesResult::Available { models, .. }) => models,
 			_ =>
 				return palette
@@ -82,7 +82,7 @@ impl ChiefSurface {
 						if self.capability_task.is_some() {
 							"Loading models…"
 						} else {
-							"Model catalog is available when Chief is connected."
+							"Model options are unavailable. Refresh after selecting an account and working directory."
 						},
 					))
 					.into_any_element(),

@@ -292,17 +292,37 @@ impl Conversations {
 
 	pub(crate) fn refresh_catalog(&self) -> bool {
 		let mut state = self.lock();
-		let Some(conversation_id) = state.selected.clone() else {
-			return false;
-		};
 		let epoch = state.catalog_epoch;
-		let Some(source) = state.selected_task().cloned() else {
-			return false;
+		let (query, purpose) = if let Some(conversation_id) = state.selected.clone() {
+			let Some(source) = state.selected_task().cloned() else {
+				return false;
+			};
+			(
+				QueryPayload::GetConversationCapabilities {
+					conversation_id: conversation_id.clone(),
+				},
+				ConversationQueryPurpose::Catalog {
+					conversation_id,
+					epoch,
+					source: Box::new(source),
+				},
+			)
+		} else {
+			let Some(working_directory) = self.inner.working_directory.clone() else {
+				return false;
+			};
+			(
+				QueryPayload::GetInitialModelCatalog {
+					request: decodex_protocol::InitialModelCatalogRequest {
+						working_directory: working_directory.clone(),
+						purpose: decodex_protocol::ModelCatalogPurpose::Conversation,
+						account_id: None,
+					},
+				},
+				ConversationQueryPurpose::InitialCatalog { epoch, working_directory },
+			)
 		};
-		let queued = state.queue_query(
-			QueryPayload::GetConversationCapabilities { conversation_id: conversation_id.clone() },
-			ConversationQueryPurpose::Catalog { conversation_id, epoch, source: Box::new(source) },
-		);
+		let queued = state.queue_query(query, purpose);
 		if queued {
 			state.catalog = None;
 		}
@@ -806,12 +826,37 @@ impl Conversations {
 		}
 		state.in_flight_query = None;
 		let (outcome, query_queued) = match purpose {
+			ConversationQueryPurpose::InitialCatalog { epoch, working_directory } => {
+				if state.selected.is_none() && state.catalog_epoch == epoch {
+					state.catalog = None;
+					state.catalog_source = None;
+					if let QueryResultPayload::InitialModelCatalog(
+						decodex_protocol::InitialModelCatalogResult::Available {
+							account_id,
+							account_revision,
+							working_directory: actual,
+							models,
+						},
+					) = &result.payload && actual == &working_directory
+						&& *account_revision > 0
+					{
+						state.catalog_source = Some(CatalogSource::Initial {
+							account_id: account_id.clone(),
+							account_revision: *account_revision,
+						});
+						state.catalog = Some(models.clone());
+					}
+					state.reconcile_catalog_tier();
+				}
+				(ConversationRouteOutcome::Fresh, false)
+			},
+
 			ConversationQueryPurpose::Catalog { conversation_id, epoch, source } => {
 				if state.selected.as_ref() == Some(&conversation_id)
 					&& state.catalog_epoch == epoch
 					&& state.selected_task() == Some(source.as_ref())
 				{
-					state.catalog_source = Some(*source);
+					state.catalog_source = Some(CatalogSource::Conversation(source));
 					state.catalog = match &result.payload {
 						QueryResultPayload::ConversationCapabilities(
 							decodex_protocol::ChiefCapabilitiesResult::Available { models, .. },
@@ -1087,10 +1132,16 @@ struct SessionBinding {
 	server_id: ServerId,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum CatalogSource {
+	Conversation(Box<ConversationSummary>),
+	Initial { account_id: EntityId, account_revision: i64 },
+}
+
 struct State {
 	catalog: Option<Vec<decodex_protocol::ChiefModelDto>>,
 	catalog_epoch: u64,
-	catalog_source: Option<ConversationSummary>,
+	catalog_source: Option<CatalogSource>,
 	session: Option<SessionBinding>,
 	active: bool,
 	load: ConversationsLoadState,
@@ -1124,9 +1175,14 @@ struct State {
 
 impl State {
 	fn current_catalog(&self) -> Option<&Vec<decodex_protocol::ChiefModelDto>> {
-		(self.selected_task() == self.catalog_source.as_ref() && self.catalog_source.is_some())
-			.then_some(self.catalog.as_ref())
-			.flatten()
+		let current = match &self.catalog_source {
+			Some(CatalogSource::Conversation(source)) =>
+				self.selected_task() == Some(source.as_ref()),
+			Some(CatalogSource::Initial { account_id, account_revision }) =>
+				self.selected.is_none() && *account_revision > 0 && !account_id.as_str().is_empty(),
+			None => false,
+		};
+		current.then_some(self.catalog.as_ref()).flatten()
 	}
 
 	fn clear_catalog(&mut self) {
@@ -1771,6 +1827,11 @@ struct InFlightQuery {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ConversationQueryPurpose {
+	InitialCatalog {
+		epoch: u64,
+		working_directory: ConversationWorkingDirectory,
+	},
+
 	Catalog {
 		conversation_id: EntityId,
 		epoch: u64,
@@ -2257,6 +2318,63 @@ pub(crate) mod tests {
 			ConversationRouteOutcome::Fresh
 		);
 		(conversations, server_id, task)
+	}
+
+	#[test]
+	fn initial_catalog_is_read_only_and_discarded_after_selection_changes() {
+		let (conversations, server_id, task) = catalog_conversations();
+		let models = conversations.snapshot().catalog.expect("retained catalog");
+		conversations.begin_new();
+		assert!(conversations.refresh_catalog());
+		let query = conversations
+			.try_take_dispatch(1, &server_id)
+			.expect("metadata dispatch")
+			.query()
+			.expect("query, not command")
+			.clone();
+		assert!(matches!(&query.payload, QueryPayload::GetInitialModelCatalog { request }
+			if request.purpose == decodex_protocol::ModelCatalogPurpose::Conversation
+			&& request.account_id.is_none()));
+		let response = QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id.clone(),
+			query_id: query.query_id,
+			payload: QueryResultPayload::InitialModelCatalog(
+				decodex_protocol::InitialModelCatalogResult::Available {
+					account_id: EntityId::new("00000000-0000-4000-8000-000000000099")
+						.expect("account"),
+					account_revision: 1,
+					working_directory: ConversationWorkingDirectory::new("/tmp")
+						.expect("directory"),
+					models,
+				},
+			),
+		};
+		assert_eq!(
+			conversations.route_query_result(1, &server_id, &response),
+			ConversationRouteOutcome::Fresh
+		);
+		assert!(conversations.snapshot().catalog.is_some());
+		assert!(
+			conversations.select_service_tier(
+				decodex_protocol::ServiceTier::new("ultrafast").expect("tier")
+			)
+		);
+		assert!(conversations.refresh_catalog());
+		let query = conversations
+			.try_take_dispatch(1, &server_id)
+			.expect("refresh")
+			.query()
+			.expect("metadata query")
+			.clone();
+		assert!(conversations.select(task.conversation_id));
+		let response = QueryResultEnvelope { query_id: query.query_id, ..response };
+		assert_eq!(
+			conversations.route_query_result(1, &server_id, &response),
+			ConversationRouteOutcome::Fresh
+		);
+		assert!(conversations.snapshot().catalog.is_none());
+		assert!(conversations.lock().pending_command.is_none());
 	}
 
 	#[test]

@@ -227,6 +227,11 @@ impl<'de> Deserialize<'de> for ClientCommandId {
 #[serde(transparent)]
 pub struct QueryId(String);
 impl QueryId {
+	/// Borrow the caller's bounded query identity.
+	pub fn as_str(&self) -> &str {
+		&self.0
+	}
+
 	/// Validate and construct a bounded query identity.
 	pub fn new(value: impl Into<String>) -> Result<Self, WireScalarTooLong> {
 		WireText::new(value).map(|value| Self(value.0))
@@ -2199,6 +2204,11 @@ pub enum QueryPayload {
 	},
 	/// Read current native model and Memory configuration evidence.
 	GetChiefCapabilities,
+	/// Discover account-scoped model metadata before creating a thread.
+	GetInitialModelCatalog {
+		/// Intended directory and account routing policy.
+		request: crate::InitialModelCatalogRequest,
+	},
 	/// Exchange an explicit ephemeral MCP sign-in operation.
 	ExchangeMcpLogin {
 		/// Caller-owned sign-in intent or observation.
@@ -2816,6 +2826,8 @@ pub enum QueryResultPayload {
 	ChiefActivityDetail(crate::ChiefActivityDetailResult),
 	/// Native model and Memory configuration evidence.
 	ChiefCapabilities(crate::ChiefCapabilitiesResult),
+	/// Native pre-conversation model metadata and its observation source.
+	InitialModelCatalog(crate::InitialModelCatalogResult),
 	/// Source-bound Chief history, without raw provider frames.
 	ChiefHistory(crate::ChiefHistoryResult),
 	/// Native resource associations for an exact work thread.
@@ -3126,6 +3138,14 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 			Err("current protocol resume requires a publication instance"),
 		ClientMessage::Hello(_) => Ok(()),
 		ClientMessage::Query(query) => match &query.payload {
+			QueryPayload::GetInitialModelCatalog { request }
+				if request
+					.account_id
+					.as_ref()
+					.is_some_and(|id| !is_canonical_uuid(id.as_str()))
+					|| (request.purpose == crate::ModelCatalogPurpose::Conversation
+						&& request.account_id.is_some()) =>
+				Err("initial model catalog account does not match its routing policy"),
 			QueryPayload::GetDesktopSettings => Ok(()),
 			QueryPayload::GetProgramCycle { program_id }
 				if !is_canonical_uuid(program_id.as_str()) =>
@@ -4423,7 +4443,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":37},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":38},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4432,7 +4452,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":37},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":38},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4474,7 +4494,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":37},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":38},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

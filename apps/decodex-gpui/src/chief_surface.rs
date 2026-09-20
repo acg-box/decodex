@@ -80,6 +80,7 @@ pub(crate) struct ChiefSurface {
 	resource_title: Entity<ComposerInput>,
 	resource_url: Entity<ComposerInput>,
 	capabilities: Option<decodex_protocol::ChiefCapabilitiesResult>,
+	capabilities_context: Option<capabilities::CatalogContext>,
 	capabilities_checked: Option<std::time::Instant>,
 	capability_task: Option<Task<()>>,
 	expanded_progress: std::collections::BTreeSet<String>,
@@ -256,6 +257,7 @@ impl ChiefSurface {
 			resource_url: cx
 				.new(|cx| ComposerInput::with_placeholder(40, "https://…", "Resource URL", cx)),
 			capabilities: None,
+			capabilities_context: None,
 			capabilities_checked: None,
 			capability_task: None,
 			fast: false,
@@ -451,7 +453,7 @@ impl ChiefSurface {
 
 	fn cycle_model(&mut self, cx: &mut Context<Self>) {
 		if let Some(decodex_protocol::ChiefCapabilitiesResult::Available { models, .. }) =
-			&self.capabilities
+			self.current_model_catalog(cx)
 		{
 			if models.is_empty() {
 				return;
@@ -756,6 +758,7 @@ impl ChiefSurface {
 		self.resource_url.update(cx, |input, cx| input.clear(cx));
 		self.capability_task = None;
 		self.capabilities = None;
+		self.capabilities_context = None;
 		self.fast = false;
 		self.service_tier = None;
 		self.capabilities_checked = None;
@@ -860,7 +863,9 @@ impl ChiefSurface {
 					return;
 				}
 				surface.apply_result(result);
-				if surface.capabilities_checked.is_none_or(|at| at.elapsed().as_secs() >= 60) {
+				if surface.current_model_catalog(cx).is_none()
+					|| surface.capabilities_checked.is_none_or(|at| at.elapsed().as_secs() >= 60)
+				{
 					surface.load_capabilities(cx);
 				}
 				surface.load_history(cx);
@@ -1683,7 +1688,7 @@ impl ChiefSurface {
 					))
 					.smooth(),
 			)
-			.children(match &self.capabilities {
+			.children(match self.current_model_catalog(cx) {
 				Some(decodex_protocol::ChiefCapabilitiesResult::Available {
 					memory_enabled: Some(enabled),
 					..
