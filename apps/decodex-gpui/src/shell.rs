@@ -4971,15 +4971,12 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 			let owner = owner.clone();
 			move |window, cx| {
 				cx.new(|cx| {
-					// GPUI test windows have no AppKit handle; native material is verified in the
-					// signed app.
-					#[cfg(all(target_os = "macos", not(test)))]
 					{
 						window.on_next_frame(|window, _| {
-							ui_theme::configure_settings_material(window)
+							ui_theme::window_material::configure(window)
 						});
 						cx.observe_window_appearance(window, |_, window, _| {
-							ui_theme::configure_settings_material(window)
+							ui_theme::window_material::configure(window)
 						})
 						.detach();
 					}

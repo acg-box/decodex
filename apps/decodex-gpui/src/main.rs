@@ -104,10 +104,15 @@ fn main() {
 			)
 			.expect("open the Decodex production window");
 
+		window
+			.update(cx, |_, window, _| {
+				ui_theme::window_material::configure(window);
+			})
+			.expect("configure window material");
+
 		#[cfg(target_os = "macos")]
 		window
 			.update(cx, |_, window, cx| {
-				ui_theme::configure_window_material(window);
 				configure_pointer_tracking(window);
 				schedule_window_control_alignment(window);
 				cx.observe_window_activation(window, |_, window, _| {
