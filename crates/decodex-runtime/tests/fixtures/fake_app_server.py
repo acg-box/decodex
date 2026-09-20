@@ -182,6 +182,20 @@ if sys.argv[1] == "generate-json-schema":
         (output / "v2/ThreadStartParams.json").write_text(
             "{" if malformed_optional else json.dumps(history)
         )
+        tool_input = {
+            "properties": {"toolOutput": {"anyOf": [{"$ref": "#/definitions/TurnToolOutput"}, {"type": "null"}]}},
+            "definitions": {
+                "TurnToolOutput": {
+                    "type": "object", "required": ["name", "output"],
+                    "properties": {
+                        "name": {"type": "string"}, "namespace": {"type": ["string", "null"]},
+                        "output": {"$ref": "#/definitions/FunctionCallOutputBody"},
+                    },
+                },
+                "FunctionCallOutputBody": {"type": "string"},
+            },
+        }
+        (output / "v2/TurnStartParams.json").write_text(json.dumps(tool_input))
     if "--too-many-files" in sys.argv:
         for index in range(513):
             (output / f"extra-{index}.json").write_text("{}")

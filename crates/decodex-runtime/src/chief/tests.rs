@@ -265,6 +265,12 @@ pub(super) async fn fixture_with_history(
 			if request["method"] == "turn/steer" && history["_steer_disconnect"] == true {
 				break;
 			}
+			if request["method"] == "turn/start"
+				&& request["params"]["toolOutput"].is_object()
+				&& history["_tool_output_disconnect"] == true
+			{
+				break;
+			}
 			if request["method"] == "turn/steer" && history["_steer_error"] == true {
 				let frame = format!(
 					"{}\n",
@@ -780,6 +786,12 @@ async fn resolving_prerequisite_releases_authorized_unbound_worker_once() {
 	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
 	assert_eq!(requests.iter().filter(|request| request["method"] == "thread/start").count(), 1);
 	assert_eq!(requests.iter().filter(|request| request["method"] == "turn/start").count(), 1);
+	let turn = requests.iter().find(|request| request["method"] == "turn/start").unwrap();
+	assert_eq!(turn["params"]["input"], json!([]));
+	assert_eq!(
+		turn["params"]["toolOutput"],
+		json!({"name":"work_instruction","namespace":"decodex","output":"Use the result"})
+	);
 }
 
 async fn complete(coordinator: &mut ChiefCoordinator, id: &str) {

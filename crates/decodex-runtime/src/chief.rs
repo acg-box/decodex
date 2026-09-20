@@ -935,18 +935,8 @@ impl ChiefCoordinator {
 			self.expect_usage_replay(thread, &response);
 			self.loaded_threads.insert(thread.clone());
 		}
-		let mut params = json!({"threadId":thread,"model":self.config.model,
-            "effort":if self.is_manager(&item.id).await? { &self.config.chief_effort } else { &self.config.worker_effort },
-            "input":[{"type":"text","text":prompt,"text_elements":[]}]});
-		let mut external = Vec::new();
-		for event_id in &events {
-			let event = self.store.get_chief_inbox_event(*event_id).await?;
-			if event.event_kind == "user_message" {
-				apply_message_options(&mut params, &event.payload)?;
-			} else {
-				external.push(wake_evidence(&event));
-			}
-		}
+		let (params, external) =
+			self.dispatch_input(&item, prompt, &events, retry.is_some()).await?;
 		let instruction = events.is_empty().then(|| prompt.to_owned());
 		if let Some((event, now)) = retry {
 			self.store.begin_chief_capacity_retry(item.id.clone(), event, now).await?;
@@ -975,6 +965,51 @@ impl ChiefCoordinator {
 				Err(error)
 			},
 		}
+	}
+
+	async fn dispatch_input(
+		&self,
+		item: &ChiefWorkItem,
+		prompt: &str,
+		events: &[i64],
+		retry: bool,
+	) -> Result<(Value, Vec<Value>), ChiefError> {
+		let thread = item
+			.codex_thread_id
+			.as_deref()
+			.ok_or_else(|| ChiefError::Invalid("unbound work".into()))?;
+		let mut params = json!({"threadId":thread,"model":self.config.model,
+            "effort":if self.is_manager(&item.id).await? { &self.config.chief_effort } else { &self.config.worker_effort },
+            "input":[{"type":"text","text":prompt,"text_elements":[]}]});
+		let mut external = Vec::new();
+		let mut has_user_input = false;
+		for event_id in events {
+			let event = self.store.get_chief_inbox_event(*event_id).await?;
+			if event.event_kind == "user_message" {
+				has_user_input = true;
+				apply_message_options(&mut params, &event.payload)?;
+			} else if event.event_kind == "async_question_answer" {
+				has_user_input = true;
+			} else {
+				external.push(wake_evidence(&event));
+			}
+		}
+		// Direct root input comes from the user. Delegation, scheduled wakes and
+		// capacity continuations retain application tool authority, including after
+		// deferred dispatch or recovery. Never fall back to user input on rejection.
+		let direct_root_input = events.is_empty() && item.parent_goal_id.is_none() && !retry;
+		if !has_user_input && !direct_root_input {
+			let name = if retry {
+				"capacity_retry"
+			} else if events.is_empty() {
+				"work_instruction"
+			} else {
+				"work_wake"
+			};
+			params["input"] = json!([]);
+			params["toolOutput"] = json!({"name":name,"namespace":"decodex","output":prompt});
+		}
+		Ok((params, external))
 	}
 
 	async fn inject_external_context(
