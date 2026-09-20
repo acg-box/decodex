@@ -113,6 +113,44 @@ pub(crate) fn configure_window_material(window: &gpui::Window) {
 	}
 }
 
+/// Settings-only trial using public AppKit APIs. Unsupported systems retain vibrancy.
+/// Reference: longbridge/gpui-component#2440 (3430e71048e275e0a8fa08f3d9c1386211887aab).
+#[cfg(all(target_os = "macos", not(test)))]
+pub(crate) fn configure_settings_material(window: &mut gpui::Window) {
+	use objc2::{msg_send, rc::Retained, runtime::AnyClass};
+	use objc2_app_kit::NSView;
+	use objc2_foundation::NSRect;
+	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+	if std::env::var_os("DECODEX_DISABLE_LIQUID_GLASS").is_some() {
+		configure_window_material(window);
+		return;
+	}
+	let Some(class) = AnyClass::get(c"NSGlassEffectView") else {
+		configure_window_material(window);
+		return;
+	};
+	let Ok(handle) = HasWindowHandle::window_handle(window) else { return };
+	let RawWindowHandle::AppKit(handle) = handle.as_raw() else { return };
+	// GPUI owns the native view. AppKit retains the inserted glass for the window lifetime.
+	let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
+	let Some(native) = view.window() else { return };
+	let Some(content) = native.contentView() else { return };
+	let exists =
+		content.subviews().iter().any(|child| unsafe { msg_send![&*child, isKindOfClass: class] });
+	if exists {
+		return;
+	}
+	unsafe {
+		let glass: Retained<NSView> = msg_send![class, new];
+		let bounds: NSRect = content.bounds();
+		let _: () = msg_send![&*glass, setFrame: bounds];
+		let _: () = msg_send![&*glass, setAutoresizingMask: 18usize];
+		// Keep GPUI controls above glass so AppKit cannot intercept their input.
+		window.set_background_appearance(gpui::WindowBackgroundAppearance::Transparent);
+		let _: () = msg_send![&*content, addSubview: &*glass, positioned: -1isize, relativeTo: std::ptr::null::<NSView>()];
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
