@@ -9,6 +9,7 @@ repository.workspace = true
 version.workspace    = true
 
 [features]
+native-glass-probe = []
 visual-capture = ["gpui/test-support", "gpui_platform/test-support"]
 
 [dependencies]
@@ -39,3 +40,8 @@ tempfile = { workspace = true }
 name              = "decodex-gpui-workbench-visual-capture"
 path              = "src/bin/workbench_visual_capture.rs"
 required-features = ["visual-capture"]
+
+[[bin]]
+name = "decodex-native-glass-probe"
+path = "src/bin/native_glass_probe.rs"
+required-features = ["native-glass-probe"]
