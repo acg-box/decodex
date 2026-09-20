@@ -1555,6 +1555,13 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 						.child(muted("Manager instruction"))
 				})
 				.child(markdown::render(&entry.text, &format!("message-{}", entry.id)))
+				.when(entry.kind == "assistant", |body| {
+					body.child(markdown::copy_button(
+						&format!("copy-response-{}", entry.id),
+						"Copy response",
+						entry.text.clone(),
+					))
+				})
 				.when(!user, |body| body.child(reply_metrics(entry))),
 		)
 }
