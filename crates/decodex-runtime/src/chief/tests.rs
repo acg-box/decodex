@@ -1790,6 +1790,54 @@ async fn reverted_async_history_reopens_retained_questions_and_removes_deleted_q
 }
 
 #[tokio::test]
+async fn other_client_input_blocks_question_writes_before_owner_observation() {
+	for ordinary in [false, true] {
+		let (mut chief, mut sent, _directory) = fixture().await;
+		chief.start_chief("chief", "Coordinate").await.unwrap();
+		let item = json!({"id":"questions","type":"agentMessage","delivery":"async","questions":[{"title":"First?"},{"title":"Second?"}]});
+		chief.observe_async_question_item("opaque thread/1", "opaque turn/1", &item).await.unwrap();
+		let questions = decodex_protocol::project_chief_async_questions(&item).unwrap();
+		let text = if ordinary {
+			"New task".to_owned()
+		} else {
+			decodex_protocol::chief_async_question_reply(&questions[0], "A")
+				.unwrap()
+				.as_str()
+				.to_owned()
+		};
+		while sent.try_recv().is_ok() {}
+		let (incoming, frames) = tokio::sync::mpsc::channel(8);
+		let (outgoing, mut writes) = tokio::sync::mpsc::channel(8);
+		let (client, mut events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+		chief.client = client.clone();
+		incoming.send(Ok(json!({"method":"item/completed","params":{"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{"id":"input","type":"userMessage","content":[{"type":"text","text":text}]}}}))).await.unwrap();
+		tokio::time::timeout(std::time::Duration::from_secs(2), async {
+			while client.question_revision() == 0 {
+				tokio::task::yield_now().await;
+			}
+		})
+		.await
+		.unwrap();
+		assert!(
+			chief
+				.answer_async_question("chief", &questions[0].id, "B", "old-answer")
+				.await
+				.is_err()
+		);
+		assert!(writes.try_recv().is_err());
+		assert!(sent.try_recv().is_err());
+		assert_eq!(client.history_revision(), 0);
+		if !ordinary {
+			chief.handle_event(events.recv().await.unwrap()).await.unwrap();
+			let pending = chief.store.read_chief_async_questions("chief".into()).await.unwrap();
+			assert_eq!(pending.len(), 1);
+			assert_eq!(pending[0].question_id, questions[1].id);
+			assert!(client.question_guard(chief.handled_question_revision).is_some());
+		}
+	}
+}
+
+#[tokio::test]
 async fn transport_revert_blocks_old_question_before_coordinator_reads_notification() {
 	let (mut chief, mut sent, _directory) = fixture().await;
 	chief.start_chief("chief", "Coordinate").await.unwrap();

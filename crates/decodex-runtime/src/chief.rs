@@ -107,7 +107,7 @@ pub struct ChiefCoordinator {
 	native_generation: Option<decodex_core::ProcessGenerationId>,
 	dispatch_paused: bool,
 	async_recovery_queued: bool,
-	handled_history_revision: u64,
+	handled_question_revision: u64,
 }
 
 pub(crate) struct ChiefInputExtras<'a> {
@@ -147,7 +147,7 @@ impl ChiefCoordinator {
 		Ok(Self {
 			voice: None,
 			store,
-			handled_history_revision: client.history_revision(),
+			handled_question_revision: client.question_revision(),
 			client,
 			config,
 			loaded_threads: std::collections::HashSet::new(),
@@ -1176,7 +1176,7 @@ impl ChiefCoordinator {
 		key: &str,
 	) -> Result<(), ChiefError> {
 		let history_guard =
-			self.client.history_guard(self.handled_history_revision).ok_or_else(|| {
+			self.client.question_guard(self.handled_question_revision).ok_or_else(|| {
 				ChiefError::Invalid(
 					"Native history changed; refresh the question before answering".into(),
 				)
@@ -1264,7 +1264,7 @@ impl ChiefCoordinator {
 	pub async fn handle_event(&mut self, event: ServerEvent) -> Result<(), ChiefError> {
 		self.voice_event(&event).await?;
 		if let ServerEvent::Notification { method, params } = &event {
-			self.observe_notification(method, params).await?;
+			self.observe_question_state_notification(method, params).await?;
 		}
 		match event {
 			ServerEvent::Notification { method, params } if method == "serverRequest/resolved" => {

@@ -30,7 +30,7 @@ impl ChiefCoordinator {
 	/// An incomplete read leaves the durable recovery marker for the next connection.
 	pub(super) async fn recover_async_questions(&mut self) -> Result<(), ChiefError> {
 		for (work, thread, required_item) in self.store.pending_chief_async_recovery().await? {
-			let revision = self.client.history_revision();
+			let revision = self.client.question_revision();
 			let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
 			let mut projection = super::async_projection::Projection::default();
 			let mut saw_required = required_item.is_none();
@@ -91,7 +91,7 @@ impl ChiefCoordinator {
 					break;
 				}
 			}
-			if complete && saw_required && self.client.history_revision() == revision {
+			if complete && saw_required && self.client.question_revision() == revision {
 				self.store
 					.replace_chief_async_projection(
 						work,
@@ -101,7 +101,7 @@ impl ChiefCoordinator {
 						projection.answers.into_iter().collect(),
 					)
 					.await?;
-				if self.client.history_revision() != revision {
+				if self.client.question_revision() != revision {
 					self.store.refresh_chief_async_projection(thread).await?;
 				}
 			}
@@ -124,8 +124,21 @@ impl ChiefCoordinator {
 				self.pending_requests.remove(&id);
 			}
 		}
-		self.handled_history_revision =
-			self.handled_history_revision.saturating_add(1).min(self.client.history_revision());
+		Ok(())
+	}
+
+	pub(super) async fn observe_question_state_notification(
+		&mut self,
+		method: &str,
+		params: &Value,
+	) -> Result<(), ChiefError> {
+		self.observe_notification(method, params).await?;
+		if decodex_codex::app_server_client::invalidates_question_state(method, params) {
+			self.handled_question_revision = self
+				.handled_question_revision
+				.saturating_add(1)
+				.min(self.client.question_revision());
+		}
 		Ok(())
 	}
 

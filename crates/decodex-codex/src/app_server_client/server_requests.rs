@@ -11,27 +11,36 @@ use std::{
 };
 
 #[derive(Clone, Default)]
-pub(super) struct ServerRequests(Arc<Mutex<HashMap<RequestId, Entry>>>, Arc<AtomicU64>);
+pub(super) struct ServerRequests(
+	Arc<Mutex<HashMap<RequestId, Entry>>>,
+	Arc<AtomicU64>,
+	Arc<AtomicU64>,
+);
 struct Entry {
 	thread: String,
 	turn: Option<String>,
 	digest: [u8; 32],
 }
 
-/// Exact history version on one connection, invalidated by an observed native revert.
+/// Exact history or question-state version on one native connection.
 #[derive(Clone)]
 pub struct HistoryGuard {
 	requests: ServerRequests,
 	revision: u64,
+	questions: bool,
 }
 impl HistoryGuard {
 	pub(super) fn belongs_to(&self, requests: &ServerRequests) -> bool {
 		Arc::ptr_eq(&self.requests.0, &requests.0)
 	}
 
-	/// Whether no native history revert has been observed since this version.
+	/// Whether the selected native state is unchanged since this version.
 	pub fn is_live(&self) -> bool {
-		self.requests.history_revision() == self.revision
+		(if self.questions {
+			self.requests.question_revision()
+		} else {
+			self.requests.history_revision()
+		}) == self.revision
 	}
 }
 
@@ -65,8 +74,23 @@ fn digest(method: &str, params: &Value) -> [u8; 32] {
 }
 impl ServerRequests {
 	pub(super) fn history_guard(&self, revision: u64) -> Option<HistoryGuard> {
-		(self.history_revision() == revision)
-			.then(|| HistoryGuard { requests: self.clone(), revision })
+		(self.history_revision() == revision).then(|| HistoryGuard {
+			requests: self.clone(),
+			revision,
+			questions: false,
+		})
+	}
+
+	pub(super) fn question_guard(&self, revision: u64) -> Option<HistoryGuard> {
+		(self.question_revision() == revision).then(|| HistoryGuard {
+			requests: self.clone(),
+			revision,
+			questions: true,
+		})
+	}
+
+	pub(super) fn question_revision(&self) -> u64 {
+		self.2.load(Ordering::Acquire)
 	}
 
 	pub(super) fn history_revision(&self) -> u64 {
@@ -101,6 +125,11 @@ impl ServerRequests {
 
 	pub(super) fn observe(&self, event: &ServerEvent) -> Result<(), ClientError> {
 		let mut rows = self.0.lock().map_err(|_| ClientError::Closed)?;
+		if let ServerEvent::Notification { method, params } = event
+			&& invalidates_question_state(method, params)
+		{
+			self.2.fetch_add(1, Ordering::AcqRel);
+		}
 		if let ServerEvent::Notification { method, params } = event
 			&& method == "thread/reverted"
 			&& params["threadId"].as_str().is_some_and(|id| !id.is_empty())
@@ -151,4 +180,14 @@ impl ServerRequests {
 		}
 		Ok(())
 	}
+}
+
+/// Whether a committed native input or revert can invalidate a pending question.
+pub fn invalidates_question_state(method: &str, params: &Value) -> bool {
+	params["threadId"].as_str().is_some_and(|id| !id.is_empty())
+		&& (method == "thread/reverted"
+			|| (method == "item/completed"
+				&& params["item"]["type"] == "userMessage"
+				&& params["turnId"].as_str().is_some_and(|id| !id.is_empty())
+				&& params["item"]["id"].as_str().is_some_and(|id| !id.is_empty())))
 }

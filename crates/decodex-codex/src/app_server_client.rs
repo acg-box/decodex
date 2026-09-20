@@ -20,7 +20,7 @@ mod server_requests;
 mod timeline;
 pub use plugin_install::{PluginInstallReceipt, PluginInstallTarget};
 use server_requests::ServerRequests;
-pub use server_requests::{HistoryGuard, ServerRequestGuard};
+pub use server_requests::{HistoryGuard, ServerRequestGuard, invalidates_question_state};
 mod usage;
 pub use attachments::{ThreadAttachment, ThreadAttachmentAddOutcome, ThreadAttachmentAddResult};
 pub use usage::{ThreadUsageEstimate, ThreadUsageEstimateGroup};
@@ -247,6 +247,19 @@ impl AppServerClient {
 	/// Any native thread revert invalidates cached history on this connection.
 	pub fn history_revision(&self) -> u64 {
 		self.server_requests.history_revision()
+	}
+
+	/// Connection-local revision of committed inputs and history reverts affecting questions.
+	pub fn question_revision(&self) -> u64 {
+		self.server_requests.question_revision()
+	}
+
+	/// Protect a question answer against committed inputs and reverts observed before write.
+	pub fn question_guard(&self, revision: u64) -> Option<HistoryGuard> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.question_guard(revision)
 	}
 
 	/// Capture a caller-observed history version on this exact connection.
@@ -663,6 +676,26 @@ mod tests {
 		let mut line = String::new();
 		timeout(Duration::from_secs(2), reader.read_line(&mut line)).await.unwrap().unwrap();
 		serde_json::from_str(&line).unwrap()
+	}
+
+	#[tokio::test]
+	async fn committed_input_invalidates_questions_without_invalidating_history_pages() {
+		let (incoming, frames) = mpsc::channel(8);
+		let (outgoing, mut writes) = mpsc::channel(8);
+		let (client, _events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+		let history = client.history_guard(0).unwrap();
+		let question = client.question_guard(0).unwrap();
+		incoming.send(Ok(json!({"method":"item/completed","params":{"threadId":"thread","turnId":"turn","item":{"id":"input","type":"userMessage","content":[{"type":"text","text":"new input"}]}}}))).await.unwrap();
+		assert!(matches!(
+			client.request_with_history("turn/steer", json!({}), question).await,
+			Err(ClientError::StaleHistory)
+		));
+		assert!(writes.try_recv().is_err());
+		assert_eq!(client.question_revision(), 1);
+		assert_eq!(client.history_revision(), 0);
+		assert!(history.is_live());
+		assert!(client.question_guard(0).is_none());
+		assert!(client.question_guard(1).is_some());
 	}
 
 	#[tokio::test]
