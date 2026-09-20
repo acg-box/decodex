@@ -156,6 +156,18 @@ Ontology and graph engineering remain central to the direction of Decodex. They 
 projections over proven Goals, tasks, threads, artifacts, claims, dependencies, gates,
 and evidence. They are not a second speculative execution engine.
 
+Managed Repository orchestration is retired. Decodex does not own repository
+allocation, Git registration, worktree preparation, or commit state machines.
+Chief and ordinary Conversations continue to use explicit working directories.
+Repository revision evidence remains available to context and supervised validation.
+The diagnostic report no longer includes a managed-repository component. This change
+uses exact local protocol version 2.41; update the app and service together.
+
+The unused built-in GitHub PR/check-run write-and-verification layer is also
+retired. Chief uses task-authorized tools when GitHub work is requested; Decodex
+does not impose a native PR delivery workflow. This removal does not change Radar,
+Publisher, or repository maintenance automation.
+
 ## Persistence compatibility
 
 Migration 0013 adds Chief work, inbox, process bindings and saved settings. Migration

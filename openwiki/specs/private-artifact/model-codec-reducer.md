@@ -4,6 +4,11 @@ title: "Private-artifact model, codec, and reducer (retired design)"
 openwiki_generated: true
 ---
 
+> Historical evidence only. Recorded capability names and wire tags describe the
+> captured revision, not current functionality. The repository-management and
+> built-in PR/check-run layers have since been removed.
+
+
 # Private-artifact model, codec, and reducer (retired design)
 
 Status: frozen historical, non-executable design evidence.

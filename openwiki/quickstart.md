@@ -181,9 +181,17 @@ Program WorkItem must have one exact Pack that grants `codex.quick_task` before 
 enter the existing Quick Task runtime. Missing, unknown, drifted, and undeclared Pack
 authority stops before a ProviderAttempt can exist.
 
+## Retired repository automation
+
+Managed Repository and the built-in GitHub effect layer are removed, including
+runtime composition, public management types, and repository readiness diagnostics.
+They are not deferred capabilities. Chief and Conversations use explicit working
+directories and task-authorized tools. Historical design pages and frozen evidence
+inventories do not grant execution authority or define delivery requirements.
+
 ## Deferred product surfaces
 
-ManagedRepository, the general WorkItem board, Reset Card consumption, execution-decision
+The general WorkItem board, Reset Card consumption, execution-decision
 queries, automation, ManagedRun, remote workers, and multi-machine deployment are not
 partially ported. Their current protocol surfaces remain typed unavailable where a
 surface exists. They do not activate a legacy storage fallback.

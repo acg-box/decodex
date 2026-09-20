@@ -282,11 +282,8 @@ const HEALTH_APP_SERVER_COMPONENTS: [DoctorComponent; 8] = [
 	DoctorComponent::AppServerCapability(AppServerCapability::NativeCollaboration),
 	DoctorComponent::AppServerCapability(AppServerCapability::ThreadSearch),
 ];
-const HEALTH_OPTIONAL_COMPONENTS: [DoctorComponent; 3] = [
-	DoctorComponent::ManagedRepository,
-	DoctorComponent::BlobIntegrity,
-	DoctorComponent::PluginReadiness,
-];
+const HEALTH_OPTIONAL_COMPONENTS: [DoctorComponent; 2] =
+	[DoctorComponent::BlobIntegrity, DoctorComponent::PluginReadiness];
 
 actions!(
 	decodex_shell,
@@ -809,8 +806,6 @@ impl Shell {
 				let status = match component {
 					DoctorComponent::AppServerCapability(_) | DoctorComponent::BlobIntegrity =>
 						DoctorStatus::Unknown(DoctorIssue::NotProbed),
-					DoctorComponent::ManagedRepository =>
-						DoctorStatus::Unavailable(DoctorIssue::Disabled),
 					DoctorComponent::PluginReadiness => DoctorStatus::Unknown(DoctorIssue::Plugin),
 					_ => DoctorStatus::Ready,
 				};
@@ -2309,7 +2304,6 @@ fn component_label(component: DoctorComponent) -> &'static str {
 			AppServerCapability::NativeCollaboration => "App server: native collaboration",
 			AppServerCapability::ThreadSearch => "App server: thread search",
 		},
-		DoctorComponent::ManagedRepository => "Managed repository",
 		DoctorComponent::BlobIntegrity => "Blob integrity",
 		DoctorComponent::CredentialVault => "Credential vault",
 		DoctorComponent::PluginReadiness => "Plugin readiness",
@@ -6283,8 +6277,6 @@ mod tests {
 				let status = match component {
 					DoctorComponent::AppServerCapability(_) | DoctorComponent::BlobIntegrity =>
 						DoctorStatus::Unknown(DoctorIssue::NotProbed),
-					DoctorComponent::ManagedRepository =>
-						DoctorStatus::Unavailable(DoctorIssue::Disabled),
 					DoctorComponent::PluginReadiness => DoctorStatus::Unknown(DoctorIssue::Plugin),
 					_ => DoctorStatus::Ready,
 				};

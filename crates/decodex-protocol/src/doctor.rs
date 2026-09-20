@@ -123,8 +123,6 @@ pub enum DoctorComponent {
 	SharedCodexHome,
 	/// One exact typed app-server capability.
 	AppServerCapability(AppServerCapability),
-	/// Optional managed-repository effect composition.
-	ManagedRepository,
 	/// Content-addressed blob-store integrity.
 	BlobIntegrity,
 	/// Daemon-private credential storage boundary.
@@ -134,7 +132,7 @@ pub enum DoctorComponent {
 }
 impl DoctorComponent {
 	/// Complete closed component set in stable diagnostic order.
-	pub const ALL: [Self; 19] = [
+	pub const ALL: [Self; 18] = [
 		Self::Configuration,
 		Self::ProductStore,
 		Self::Conversation,
@@ -150,7 +148,6 @@ impl DoctorComponent {
 		Self::AppServerCapability(AppServerCapability::PaginatedHistory),
 		Self::AppServerCapability(AppServerCapability::NativeCollaboration),
 		Self::AppServerCapability(AppServerCapability::ThreadSearch),
-		Self::ManagedRepository,
 		Self::BlobIntegrity,
 		Self::CredentialVault,
 		Self::PluginReadiness,
@@ -303,7 +300,7 @@ mod tests {
 			vec![
 				DoctorCheck::new(DoctorComponent::ProductStore, DoctorStatus::Ready),
 				DoctorCheck::new(
-					DoctorComponent::ManagedRepository,
+					DoctorComponent::SharedCodexHome,
 					DoctorStatus::Unavailable(DoctorIssue::UnsafeHostPath),
 				),
 			],

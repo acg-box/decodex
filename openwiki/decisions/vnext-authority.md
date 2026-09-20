@@ -4,6 +4,11 @@ title: "Decodex vNext Authority Decision"
 openwiki_generated: true
 ---
 
+> Historical design record. This page does not define current product requirements.
+> See the repository README for current scope. The repository-management and built-in
+> PR/check-run orchestration layers are retired; their old delivery gates do not apply.
+
+
 # Decodex vNext Authority Decision
 
 Status: historical former server store design record. Its storage, migration, and delivery
@@ -131,25 +136,9 @@ owners, hid Quick Task startup failure, or left shared integration drift. The th
 candidate is a source donor only. It is not an accepted runtime candidate and it must not
 receive another runtime-lane-only patch.
 
-This reset keeps one `decodexd`, one owner-only same-UID endpoint, and one application
-surface. The daemon can start when Quick Task execution or ManagedRepository is not
-available. former server store-backed reads, diagnostics, account recovery, and the control plane
-remain available when their own owners are ready.
 
 Runtime composition has three independent startup results:
 
-1. `ProductStore` means verified former server store only. Its result is
-   `Available(PostgresStore)` or `Unavailable(ProductStateReason)`. Quick Task,
-   repository, Git, path, or reconciliation failure cannot replace or erase this result.
-2. `QuickTaskRuntime` construction is infallible and performs no I/O after all fallible
-   dependency owners return validated ready dependencies. Composition records one
-   immutable startup projection: `Ready(QuickTaskRuntime)` or
-   `Unavailable(QuickTaskUnavailableReason)`. The unavailable reason is closed and
-   redacted.
-3. ManagedRepository is an independent optional capability. Its startup projection is
-   `Ready`, `Disabled`, or `Unavailable` with a closed redacted reason. Repository path,
-   Git, reconciliation, or isolated configuration failure affects repository operations
-   only.
 
 These results are startup projections, not mutable authority. They create no capability
 manager, lifecycle, receipt, cached substitute, or recovery framework. Every command
@@ -169,19 +158,6 @@ no-follow traversal, and the applicable accepted path policy. Ambient current di
 and repository discovery grant no authority. One unrelated broken repository cannot
 disable all Quick Tasks.
 
-Protocol and doctor project `ProductStore`, Quick Task, and ManagedRepository readiness
-separately. Quick Task execute, start, and resume return typed
-`QuickTaskUnavailable(reason)` when the immutable startup projection is unavailable.
-Persisted Quick Task reads keep `ProductStateUnavailable` when former server store is unavailable.
-No `.ok()` conversion, optional setter, or absent field may hide a startup failure.
-`AcceptanceUnknown` and recovery-required results keep their existing meanings.
-
-The next source candidate has one integration owner after the Quick Task source freezes.
-That owner reconciles core configuration; runtime bootstrap, application, library,
-Quick Task, and managed-repository owners; protocol doctor, Quick Task, wire, and library
-surfaces; root Cargo/task-runner/lock files; deleted storage-spike references; and stale
-migration/configuration fixtures. This is integration acceptance-source work. It is not a
-fourth runtime-bootstrap patch.
 
 Daemon-fatal Quick Task startup, separate serve profiles, a mutable capability manager,
 duplicate repository-path authority, and another isolated runtime-lane candidate are
@@ -323,33 +299,6 @@ work for an explicit decision.
 
 ## Accepted shape
 
-- former server store owns Decodex product state. It uses transactions, exact commands, leases,
-  append-only activity, and a transactional outbox. It is not event sourced.
-- A shared normal `~/.codex` owns persistent Codex rollout and thread visibility.
-  Decodex maps only threads that it created.
-- `decodexd` alone owns scheduling, app-server children, product mutations, repository
-  side effects, and adapters. GPUI, CLI, and MCP are clients. The optional menu-bar item is
-  part of the GPUI process.
-- `ProductStore` represents verified former server store only. Quick Task and ManagedRepository
-  startup projections are independent and cannot overwrite product-store readiness.
-- former server store Account Registry owns credential-negative account state. One
-  HostCredentialStore owns secret bundles. On macOS, its only normal adapter is the
-  daemon-owned redb file at `~/.decodex/server/credentials.redb`. Account Service
-  coordinates account operations.
-- One app-server process remains bound to one Account UUID and provider identity for its
-  lifetime. Credentials do not switch accounts in a live process.
-- former server store remains the complete routing-fact and decision authority. Runtime and clients cannot
-  supply the account universe, eligibility, Account Registry order, Project-policy order,
-  selection, continuation binding, or exclusions.
-- ProcessSupervisor and ProviderAttemptService retain separate replacement-safety and
-  external-effect-safety authority.
-- ExecutionCoordinator remains stateless and cannot authorize dispatch by itself.
-- Git/filesystem own repository bytes and worktrees. GitHub owns PR/check/merge
-  readback. former server store owns the admitted repository-effect state and evidence.
-- Quick Task construction is I/O-free and infallible after validated dependencies exist.
-  Its startup projection is immutable, typed, and visible through protocol diagnostics.
-- Local content-addressed storage owns large bytes; former server store owns their metadata and
-  references.
 
 Delivery uses three vertical slices:
 
