@@ -2156,7 +2156,10 @@ impl SupervisedProcess {
 		let response = self
 			.request_rpc::<_, ThreadReadResponse>(
 				"thread/read",
-				&ExactThreadReadParams { thread_id, include_turns: true },
+				&ExactThreadReadParams {
+					thread_id,
+					include_turns: client_user_message_id.is_some(),
+				},
 				timeout,
 			)
 			.map_err(ExactReconciliationError::from_rpc)?;
@@ -2180,7 +2183,11 @@ impl SupervisedProcess {
 
 		Ok(ExactThreadReadResult {
 			facts,
-			history: LossyThreadHistory::IncludeTurnsReadback,
+			history: if client_user_message_id.is_some() {
+				LossyThreadHistory::IncludeTurnsReadback
+			} else {
+				LossyThreadHistory::MetadataOnly
+			},
 			submitted_turn,
 		})
 	}
@@ -7618,7 +7625,7 @@ pub(crate) mod tests {
 		let read = process.read_exact_thread(&exact, timeout).unwrap();
 
 		assert_eq!(read.facts.id, exact);
-		assert_eq!(read.history, decodex_codex::LossyThreadHistory::IncludeTurnsReadback);
+		assert_eq!(read.history, decodex_codex::LossyThreadHistory::MetadataOnly);
 		assert_eq!(
 			process.reconcile_archive(&exact, timeout),
 			ArchiveReconciliationOutcome::Archived
@@ -7635,6 +7642,40 @@ pub(crate) mod tests {
 		assert_eq!(
 			process.reconcile_archive(&exact, timeout),
 			ArchiveReconciliationOutcome::AlreadyArchived
+		);
+	}
+
+	#[test]
+	fn submitted_turn_reconciliation_still_requests_positive_history_evidence() {
+		let (_temp, mut process) = initialized_bound_process("exact-submitted-read");
+		let read = process
+			.read_exact_thread_for_client(
+				&exact_thread_id(),
+				"50000000-0000-4000-8000-000000000001",
+				Duration::from_secs(2),
+			)
+			.expect("submitted turn read");
+		assert_eq!(read.history, decodex_codex::LossyThreadHistory::IncludeTurnsReadback);
+		assert_eq!(
+			read.submitted_turn.expect("positive correlation").assistant_text(),
+			"Confirmed response"
+		);
+	}
+
+	#[test]
+	fn metadata_reconciliation_does_not_hydrate_history() {
+		let (_temp, mut process) = initialized_bound_process("exact-metadata-only");
+		let timeout = Duration::from_secs(2);
+		let exact = exact_thread_id();
+		let read = process.read_exact_thread(&exact, timeout).expect("metadata read");
+		assert_eq!(read.history, decodex_codex::LossyThreadHistory::MetadataOnly);
+		assert!(read.submitted_turn.is_none());
+		assert_eq!(
+			process.reconcile_archive(&exact, timeout),
+			ArchiveReconciliationOutcome::Archived
+		);
+		assert!(
+			process.read_exact_thread(&exact, timeout).expect("archived metadata").facts.archived
 		);
 	}
 

@@ -459,7 +459,9 @@ for line in sys.stdin:
                 "nextCursor": None,
             }
     elif method == "thread/read" and mode != "optional-unsupported":
-        if message["params"]["includeTurns"]:
+        if message["params"]["threadId"] == exact_thread["id"]:
+            if mode == "exact-metadata-only":
+                assert message["params"]["includeTurns"] is False
             exact_thread_reads += 1
             if mode == "exact-missing-post-archive-read" and exact_thread_reads > 1:
                 print(json.dumps({"id": message["id"]}), flush=True)
@@ -469,6 +471,15 @@ for line in sys.stdin:
                 sys.stdout.flush()
                 time.sleep(60)
             readback = dict(exact_thread)
+            if mode == "exact-submitted-read":
+                assert message["params"]["includeTurns"] is True
+                readback["turns"] = [{
+                    "id": "provider-turn-1", "status": "completed",
+                    "items": [
+                        {"type": "userMessage", "clientId": "50000000-0000-4000-8000-000000000001"},
+                        {"type": "agentMessage", "text": "Confirmed response"},
+                    ],
+                }]
             if mode in {"exact-current-schema", "exact-escaped-title"}:
                 readback.pop("archived", None)
             if mode == "exact-mismatched-id" or (mode == "exact-mismatched-post-archive-read" and exact_thread_reads > 1):
