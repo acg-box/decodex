@@ -514,7 +514,7 @@ async fn bootstrap_macos_account_runtime(
 		Some(_) => DoctorStatus::Ready,
 		None => DoctorStatus::Unavailable(DoctorIssue::Authentication),
 	};
-	let reset_cards = None;
+	let reset_cards = api.as_ref().map(|api| ApiResetCardRuntime::new(store, Arc::clone(api)));
 	(Some(service), account_profiles, api, reset_cards, conversation_launch_profile, status)
 }
 

@@ -189,9 +189,16 @@ They are not deferred capabilities. Chief and Conversations use explicit working
 directories and task-authorized tools. Historical design pages and frozen evidence
 inventories do not grant execution authority or define delivery requirements.
 
+## Reset Cards
+
+Reset Cards remain supported product functionality. Accounts and the explicit CLI
+share the daemon's durable SQLite operation ledger and restart recovery. See
+[Reset Card operation](operations/reset-cards.md) for confirmation and uncertain
+result behavior.
+
 ## Deferred product surfaces
 
-The general WorkItem board, Reset Card consumption, execution-decision
+The general WorkItem board, execution-decision
 queries, automation, ManagedRun, remote workers, and multi-machine deployment are not
 partially ported. Their current protocol surfaces remain typed unavailable where a
 surface exists. They do not activate a legacy storage fallback.

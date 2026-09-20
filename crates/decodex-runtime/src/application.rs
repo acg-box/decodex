@@ -900,6 +900,41 @@ impl ServiceApplication {
 		operation_query_result(runtime.operation_status(key).await)
 	}
 
+	async fn account_reset_card_operation(
+		&self,
+		account_id: &EntityId,
+	) -> decodex_protocol::AccountResetCardOperationResult {
+		use decodex_protocol::{AccountResetCardOperationResult as Result, ResetCardOperationView};
+		let Some(runtime) = &self.reset_cards else {
+			return Result::Unavailable { error: ResetCardError::ProductStateUnavailable };
+		};
+		let Ok(account) = AccountId::new(account_id.as_str()) else {
+			return Result::Unavailable { error: ResetCardError::InvalidRequest };
+		};
+		let operation = match runtime.latest_operation(&account).await {
+			Ok(Some(operation)) => operation,
+			Ok(None) => return Result::NotFound,
+			Err(error) => return Result::Unavailable { error: protocol_reset_error(error) },
+		};
+		let (Ok(key), Ok(descriptor), Ok(revision)) = (
+			decodex_protocol::IdempotencyKey::new(operation.key.clone()),
+			decodex_protocol::ResetCardDescriptorDto::new(
+				operation.granted_at,
+				operation.expires_at,
+			),
+			u64::try_from(operation.account_revision),
+		) else {
+			return Result::Unavailable { error: ResetCardError::ProductStateUnavailable };
+		};
+		Result::Found(ResetCardOperationView {
+			account_id: account_id.clone(),
+			account_revision: EntityRevision(revision),
+			idempotency_key: key,
+			descriptor,
+			state: operation_query_result(runtime.operation_status(&operation.key).await),
+		})
+	}
+
 	async fn conversation_history(
 		&self,
 		conversation_id: &EntityId,
@@ -1895,6 +1930,10 @@ impl Application for ServiceApplication {
 				),
 			QueryPayload::GetResetCards { account_id } =>
 				QueryResultPayload::ResetCards(self.reset_card_inventory(account_id).await),
+			QueryPayload::GetAccountResetCardOperation { account_id } =>
+				QueryResultPayload::AccountResetCardOperation(
+					self.account_reset_card_operation(account_id).await,
+				),
 			QueryPayload::GetResetCardOperation { idempotency_key } =>
 				QueryResultPayload::ResetCardOperation(
 					self.reset_card_operation(idempotency_key.as_str()).await,

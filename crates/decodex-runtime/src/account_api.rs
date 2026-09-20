@@ -71,10 +71,72 @@ impl AccountApiRuntime {
 			.connect_timeout(CONNECT_TIMEOUT)
 			.timeout(HTTP_TIMEOUT)
 			.redirect(reqwest::redirect::Policy::none())
+			.retry(reqwest::retry::never())
 			.user_agent("decodex")
 			.build()
 			.map_err(|_| AccountApiRuntimeError::ProviderUnavailable)?;
 		Ok(Self { accounts, client })
+	}
+
+	pub(crate) async fn reset_session(
+		&self,
+		account_id: &AccountId,
+		revision: i64,
+	) -> Result<AccountApiCredential, AccountApiRuntimeError> {
+		let credential = self
+			.accounts
+			.api_credential_for_reset(account_id, revision)
+			.await
+			.map_err(map_account_service_error)?;
+		if credential.binding.provider.provider() != AccountProvider::Chatgpt {
+			return Err(AccountApiRuntimeError::ProtocolUnavailable);
+		}
+		Ok(credential)
+	}
+
+	pub(crate) async fn reset_inventory(
+		&self,
+		credential: &AccountApiCredential,
+	) -> Result<AccountApiInventory, AccountApiRuntimeError> {
+		let body = self
+			.request_json(Method::GET, USAGE_PATH, credential, None)
+			.await
+			.map_err(map_request_error)?;
+		let usage = decode_account_api_usage(&body).map_err(map_protocol_error)?;
+		self.enrich_inventory(credential, usage).await
+	}
+
+	/// One attempt only. Any transport/protocol failure leaves the durable operation uncertain.
+	pub(crate) async fn consume_exact_reset_credit(
+		&self,
+		credential: &AccountApiCredential,
+		key: &decodex_codex::ResetCardIdempotencyKey,
+		credit: &decodex_codex::ExactResetCreditId,
+	) -> Result<decodex_core::ResetCardConsumeOutcome, AccountApiRuntimeError> {
+		let body =
+			serde_json::json!({"redeem_request_id": key.as_str(), "credit_id": credit.as_str()});
+		let response = self
+			.request_json(
+				Method::POST,
+				"/wham/rate-limit-reset-credits/consume",
+				credential,
+				Some(&body),
+			)
+			.await
+			.map_err(map_request_error)?;
+		use decodex_codex::AccountApiConsumeOutcome;
+		use decodex_core::ResetCardConsumeOutcome;
+		Ok(
+			match decodex_codex::decode_account_api_consume(&response)
+				.map_err(map_protocol_error)?
+			{
+				AccountApiConsumeOutcome::Reset => ResetCardConsumeOutcome::Reset,
+				AccountApiConsumeOutcome::NothingToReset => ResetCardConsumeOutcome::NothingToReset,
+				AccountApiConsumeOutcome::NoCredit => ResetCardConsumeOutcome::NoCredit,
+				AccountApiConsumeOutcome::AlreadyRedeemed =>
+					ResetCardConsumeOutcome::AlreadyRedeemed,
+			},
+		)
 	}
 
 	/// Observe profile, usage, and reset-credit details through one shared auth/request boundary.
@@ -253,7 +315,7 @@ impl AccountApiRuntime {
 		if let Some(json) = json {
 			request = request.json(json);
 		}
-		let response =
+		let mut response =
 			request.send().await.map_err(|_| AccountApiRequestError::ProviderUnavailable)?;
 		let status = response.status();
 		if status == StatusCode::UNAUTHORIZED {
@@ -268,12 +330,16 @@ impl AccountApiRuntime {
 		{
 			return Err(AccountApiRequestError::ProtocolUnavailable);
 		}
-		let body =
-			response.bytes().await.map_err(|_| AccountApiRequestError::ProviderUnavailable)?;
-		if body.len() > decodex_codex::MAX_ACCOUNT_API_BODY_BYTES {
-			return Err(AccountApiRequestError::ProtocolUnavailable);
+		let mut body = Vec::new();
+		while let Some(chunk) =
+			response.chunk().await.map_err(|_| AccountApiRequestError::ProviderUnavailable)?
+		{
+			if chunk.len() > decodex_codex::MAX_ACCOUNT_API_BODY_BYTES.saturating_sub(body.len()) {
+				return Err(AccountApiRequestError::ProtocolUnavailable);
+			}
+			body.extend_from_slice(&chunk);
 		}
-		Ok(body.to_vec())
+		Ok(body)
 	}
 }
 

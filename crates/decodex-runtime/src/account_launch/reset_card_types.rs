@@ -4,7 +4,7 @@ use decodex_core::{
 	AccountId, AccountQuotaWindowObservation, ResetCardConsumeOutcome, ResetCardDescriptor,
 };
 
-/// Inert compatibility readback for the deferred reset-card capability.
+/// Accepted manual reset-card selection.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ResetCardPreparation {
 	pub account_id: AccountId,
@@ -12,7 +12,7 @@ pub(crate) struct ResetCardPreparation {
 	pub descriptor: ResetCardDescriptor,
 }
 
-/// Closed deferred-capability operation status retained by the public protocol mapper.
+/// Durable manual reset-card operation status.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ResetCardOperationStatus {
 	NotFound,

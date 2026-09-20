@@ -89,6 +89,7 @@ MIGRATIONS = (
     (26, "chief_misalignment", ROOT / "database/migrations/0026_chief_misalignment.sql"),
     (27, "chief_guardian_reviews", ROOT / "database/migrations/0027_chief_guardian_reviews.sql"),
     (28, "conversation_service_tier", ROOT / "database/migrations/0028_conversation_service_tier.sql"),
+    (29, "reset_card_operations", ROOT / "database/migrations/0029_reset_card_operations.sql"),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
@@ -98,6 +99,7 @@ OUTPUT_LIMIT_BYTES = 64 * 1024
 REQUIRED_TABLES = frozenset(
     {
         "schema_migrations",
+        "reset_card_operations",
         "account_identities",
         "account_operations",
         "accounts",

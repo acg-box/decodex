@@ -59,6 +59,16 @@ account-capacity rules still apply to ordinary Conversations that require a sepa
 process. The work snapshot is bounded to 100 items, 500 dependencies and 100 pending
 events; exceeding the bound produces an explicit capacity result, not partial data.
 
+## Reset Cards
+
+In Accounts, open an account's menu and select **Reset Cards**. Choose a card and
+confirm **use 1 card**. The service records the request before redemption and
+restores its status after restart. **Refresh** only reads status. An uncertain
+result blocks another redemption; it does not cause an automatic retry.
+
+The explicit `decodex reset-card list`, `use`, and `status` commands share this
+service. See [Reset Card operation](openwiki/operations/reset-cards.md).
+
 ## Current architecture
 
 - `decodex serve` is the sole product-state and side-effect owner. The same `decodex`

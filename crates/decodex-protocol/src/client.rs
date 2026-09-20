@@ -1012,6 +1012,34 @@ impl ResetCardClient {
 		}
 	}
 
+	/// Recover the latest operation from the daemon; clients need no persistent journal.
+	pub async fn latest_operation(
+		&self,
+		account_id: EntityId,
+	) -> Result<crate::AccountResetCardOperationResult, ClientFailure> {
+		self.require_local_profile()?;
+		let completed = time::timeout(
+			self.timeout,
+			self.query_inner(
+				"decodex-reset-card-recovery",
+				QueryPayload::GetAccountResetCardOperation { account_id: account_id.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::AccountResetCardOperation(result) => {
+				if matches!(&result, crate::AccountResetCardOperationResult::Found(operation) if operation.account_id != account_id)
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read the current durable state of one reset-card operation.
 	pub async fn status(
 		&self,
@@ -2797,7 +2825,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 41 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 42 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
