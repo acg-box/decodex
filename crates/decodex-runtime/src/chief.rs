@@ -1,7 +1,9 @@
 //! Durable coordination of independent Codex threads. The caller owns the process
 //! and continuously feeds its event stream to this service.
 
-use decodex_codex::app_server_client::{AppServerClient, ClientError, RequestId, ServerEvent};
+use decodex_codex::app_server_client::{
+	AppServerClient, ClientError, HistoryGuard, RequestId, ServerEvent,
+};
 use decodex_database::{
 	ChiefDisposition, ChiefInboxEvent, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus,
 	EnqueueChiefEvent, SqliteStore, StoreError,
@@ -105,6 +107,7 @@ pub struct ChiefCoordinator {
 	native_generation: Option<decodex_core::ProcessGenerationId>,
 	dispatch_paused: bool,
 	async_recovery_queued: bool,
+	handled_history_revision: u64,
 }
 
 pub(crate) struct ChiefInputExtras<'a> {
@@ -144,6 +147,7 @@ impl ChiefCoordinator {
 		Ok(Self {
 			voice: None,
 			store,
+			handled_history_revision: client.history_revision(),
 			client,
 			config,
 			loaded_threads: std::collections::HashSet::new(),
@@ -808,7 +812,7 @@ impl ChiefCoordinator {
 		prompt: &str,
 		events: Vec<i64>,
 	) -> Result<String, ChiefError> {
-		self.dispatch_with_claim(item, prompt, events, None).await
+		self.dispatch_with_claim(item, prompt, events, None, None).await
 	}
 
 	async fn dispatch_with_claim(
@@ -817,6 +821,7 @@ impl ChiefCoordinator {
 		prompt: &str,
 		events: Vec<i64>,
 		retry: Option<(i64, i64)>,
+		history_guard: Option<HistoryGuard>,
 	) -> Result<String, ChiefError> {
 		if self.store.chief_misalignment(item.id.clone()).await?.is_some() {
 			return Err(ChiefError::Invalid(
@@ -909,6 +914,10 @@ impl ChiefCoordinator {
 		}
 		let (params, external) =
 			self.dispatch_input(&item, prompt, &events, retry.is_some()).await?;
+		let history_event = history_guard.as_ref().and_then(|_| events.first().copied());
+		if history_guard.is_some() && (events.len() != 1 || !external.is_empty()) {
+			return Err(ChiefError::Invalid("question answers require one isolated input".into()));
+		}
 		let instruction = events.is_empty().then(|| prompt.to_owned());
 		if let Some((event, now)) = retry {
 			self.store.begin_chief_capacity_retry(item.id.clone(), event, now).await?;
@@ -923,17 +932,38 @@ impl ChiefCoordinator {
 			if !external.is_empty() {
 				self.inject_external_context(thread, "work_updates", &json!(external)).await?;
 			}
-			let value = self.client.turn_start(params).await?;
+			let value = if let Some(guard) = history_guard {
+				self.client.request_with_history("turn/start", params, guard).await?
+			} else {
+				self.client.turn_start(params).await?
+			};
 			exact(&value, "/turn/id")
 		}
 		.await;
+		self.finish_dispatch_attempt(&item, history_event, turn).await
+	}
+
+	async fn finish_dispatch_attempt(
+		&self,
+		item: &ChiefWorkItem,
+		history_event: Option<i64>,
+		turn: Result<String, ChiefError>,
+	) -> Result<String, ChiefError> {
 		match turn {
 			Ok(turn) => {
 				self.store.acknowledge_chief_dispatch(item.id.clone(), turn.clone()).await?;
 				Ok(turn)
 			},
 			Err(error) => {
-				self.store.mark_chief_dispatch_unknown(item.id.clone()).await?;
+				if let Some(event) = history_event
+					&& matches!(error, ChiefError::Transport(ClientError::StaleHistory))
+				{
+					self.store
+						.reject_chief_async_before_write(item.id.clone(), event, Some(item.clone()))
+						.await?;
+				} else {
+					self.store.mark_chief_dispatch_unknown(item.id.clone()).await?;
+				}
 				Err(error)
 			},
 		}
@@ -1068,8 +1098,12 @@ impl ChiefCoordinator {
 		key: &str,
 		text: &str,
 		extras: ChiefInputExtras<'_>,
-		async_question_id: Option<&str>,
+		question: Option<(&str, HistoryGuard)>,
 	) -> Result<(), ChiefError> {
+		let (async_question_id, history_guard) = match question {
+			Some((id, guard)) => (Some(id), Some(guard)),
+			None => (None, None),
+		};
 		if !extras.task_references.is_empty()
 			&& (!self.is_manager(id).await? || self.store.chief_tool_version(id.into()).await? < 3)
 		{
@@ -1107,11 +1141,20 @@ impl ChiefCoordinator {
 				StoreError::InvalidInput(message) => ChiefError::Rejected(message.into()),
 				other => other.into(),
 			})?;
-		let result = self.client.turn_steer(json!({"threadId":thread,"expectedTurnId":expected_turn,"clientUserMessageId":key,"input":input})).await;
+		let params = json!({"threadId":thread,"expectedTurnId":expected_turn,"clientUserMessageId":key,"input":input});
+		let result = if let Some(guard) = history_guard {
+			self.client.request_with_history("turn/steer", params, guard).await
+		} else {
+			self.client.turn_steer(params).await
+		};
 		match result {
 			Ok(result) if result["turnId"].as_str() == Some(expected_turn) => {
 				self.store.finish_chief_steer(event, true).await?;
 				Ok(())
+			},
+			Err(ClientError::StaleHistory) => {
+				self.store.reject_chief_async_before_write(id.into(), event, None).await?;
+				Err(ClientError::StaleHistory.into())
 			},
 			Err(ClientError::Remote(error)) => {
 				self.store.finish_chief_steer(event, false).await?;
@@ -1132,6 +1175,12 @@ impl ChiefCoordinator {
 		answer: &str,
 		key: &str,
 	) -> Result<(), ChiefError> {
+		let history_guard =
+			self.client.history_guard(self.handled_history_revision).ok_or_else(|| {
+				ChiefError::Invalid(
+					"Native history changed; refresh the question before answering".into(),
+				)
+			})?;
 		if self.store.chief_async_answer_pending(id.into(), question_id.into()).await? {
 			return Err(ChiefError::UnknownDispatch);
 		}
@@ -1163,7 +1212,7 @@ impl ChiefCoordinator {
 					key,
 					reply.as_str(),
 					ChiefInputExtras { attachments: &[], task_references: &[] },
-					Some(question_id),
+					Some((question_id, history_guard)),
 				)
 				.await?;
 			},
@@ -1177,7 +1226,14 @@ impl ChiefCoordinator {
 						payload: json!({"text":reply.as_str(),"source":"user","asyncQuestionId":question_id}).to_string(),
 					})
 					.await?;
-				self.dispatch_with_events(&work, reply.as_str(), vec![event.id]).await?;
+				self.dispatch_with_claim(
+					&work,
+					reply.as_str(),
+					vec![event.id],
+					None,
+					Some(history_guard),
+				)
+				.await?;
 			},
 			_ => return Err(ChiefError::UnknownDispatch),
 		}
@@ -1741,7 +1797,7 @@ impl ChiefCoordinator {
 			let work = self.store.get_chief_work_item(retry.work_item_id).await?;
 			self.dispatch_with_claim(&work,
                 "The previous turn stopped because the selected model was temporarily at capacity. Continue the existing request from the saved thread context. Preserve completed work and do not repeat completed actions. This is a capacity retry, not a new goal or a change of model.",
-                Vec::new(),Some((retry.event_id,now))).await?;
+                Vec::new(),Some((retry.event_id,now)),None).await?;
 		}
 		for work in self.store.list_unnotified_due_chief_work_items(now, 1000).await? {
 			let due = work

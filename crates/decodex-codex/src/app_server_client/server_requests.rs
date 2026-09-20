@@ -18,6 +18,23 @@ struct Entry {
 	digest: [u8; 32],
 }
 
+/// Exact history version on one connection, invalidated by an observed native revert.
+#[derive(Clone)]
+pub struct HistoryGuard {
+	requests: ServerRequests,
+	revision: u64,
+}
+impl HistoryGuard {
+	pub(super) fn belongs_to(&self, requests: &ServerRequests) -> bool {
+		Arc::ptr_eq(&self.requests.0, &requests.0)
+	}
+
+	/// Whether no native history revert has been observed since this version.
+	pub fn is_live(&self) -> bool {
+		self.requests.history_revision() == self.revision
+	}
+}
+
 /// Exact live request observed on this transport, not transferable between connections.
 #[derive(Clone)]
 pub struct ServerRequestGuard {
@@ -47,6 +64,11 @@ fn digest(method: &str, params: &Value) -> [u8; 32] {
 	Sha256::digest(json!([method, params]).to_string().as_bytes()).into()
 }
 impl ServerRequests {
+	pub(super) fn history_guard(&self, revision: u64) -> Option<HistoryGuard> {
+		(self.history_revision() == revision)
+			.then(|| HistoryGuard { requests: self.clone(), revision })
+	}
+
 	pub(super) fn history_revision(&self) -> u64 {
 		self.1.load(Ordering::Acquire)
 	}

@@ -19,8 +19,8 @@ mod plugin_install;
 mod server_requests;
 mod timeline;
 pub use plugin_install::{PluginInstallReceipt, PluginInstallTarget};
-pub use server_requests::ServerRequestGuard;
 use server_requests::ServerRequests;
+pub use server_requests::{HistoryGuard, ServerRequestGuard};
 mod usage;
 pub use attachments::{ThreadAttachment, ThreadAttachmentAddOutcome, ThreadAttachmentAddResult};
 pub use usage::{ThreadUsageEstimate, ThreadUsageEstimateGroup};
@@ -60,6 +60,8 @@ impl fmt::Debug for RpcError {
 /// A transport failure after submission is an unknown dispatch outcome, never retry authority.
 #[derive(Clone, Debug)]
 pub enum ClientError {
+	/// The expected native history changed; this request was rejected before transport write.
+	StaleHistory,
 	/// The connection has closed or was revoked.
 	Closed,
 	/// An input/output operation failed; details are intentionally omitted.
@@ -114,9 +116,23 @@ pub enum ServerEvent {
 }
 
 type Reply = oneshot::Sender<Result<Value, ClientError>>;
+enum Guard {
+	Request(ServerRequestGuard),
+	History(HistoryGuard),
+}
+impl Guard {
+	fn validate(&self, requests: &ServerRequests) -> Result<(), ClientError> {
+		match self {
+			Self::Request(guard) if guard.belongs_to(requests) && guard.is_live() => Ok(()),
+			Self::History(guard) if guard.belongs_to(requests) && guard.is_live() => Ok(()),
+			Self::History(_) => Err(ClientError::StaleHistory),
+			Self::Request(_) => Err(ClientError::InvalidFrame),
+		}
+	}
+}
 enum Outbound {
-	Request { method: String, params: Value, reply: Reply, guard: Option<ServerRequestGuard> },
-	Message { value: Value, reply: Reply, guard: Option<ServerRequestGuard> },
+	Request { method: String, params: Value, reply: Reply, guard: Option<Guard> },
+	Message { value: Value, reply: Reply, guard: Option<Guard> },
 	Shutdown { reply: Reply },
 }
 
@@ -233,6 +249,37 @@ impl AppServerClient {
 		self.server_requests.history_revision()
 	}
 
+	/// Capture a caller-observed history version on this exact connection.
+	pub fn history_guard(&self, revision: u64) -> Option<HistoryGuard> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.history_guard(revision)
+	}
+
+	/// Send only if the captured native history is still current immediately before writing.
+	pub async fn request_with_history(
+		&self,
+		method: &str,
+		params: Value,
+		guard: HistoryGuard,
+	) -> Result<Value, ClientError> {
+		if *self.closed.borrow() {
+			return Err(ClientError::Closed);
+		}
+		let (reply, result) = oneshot::channel();
+		self.outbound
+			.send(Outbound::Request {
+				method: method.into(),
+				params,
+				reply,
+				guard: Some(Guard::History(guard)),
+			})
+			.await
+			.map_err(|_| ClientError::Closed)?;
+		result.await.unwrap_or(Err(ClientError::Closed))
+	}
+
 	/// Capture the exact request while the transport, rather than the owner queue, sees it live.
 	pub fn server_request_guard(
 		&self,
@@ -258,7 +305,12 @@ impl AppServerClient {
 		}
 		let (reply, result) = oneshot::channel();
 		self.outbound
-			.send(Outbound::Request { method: method.into(), params, reply, guard: Some(guard) })
+			.send(Outbound::Request {
+				method: method.into(),
+				params,
+				reply,
+				guard: Some(Guard::Request(guard)),
+			})
 			.await
 			.map_err(|_| ClientError::Closed)?;
 		result.await.unwrap_or(Err(ClientError::Closed))
@@ -282,7 +334,7 @@ impl AppServerClient {
 			.send(Outbound::Message {
 				value: json!({"id":id,"result":result}),
 				reply,
-				guard: Some(guard),
+				guard: Some(Guard::Request(guard)),
 			})
 			.await
 			.map_err(|_| ClientError::Closed)?;
@@ -489,9 +541,9 @@ async fn run_frames(
 						let frame=match frames.try_recv() {Ok(Ok(frame))=>frame,Ok(Err(error))=>break 'transport error,Err(_)=>break};
 						if let Err(error)=dispatch(frame,&mut pending,&events,&server_requests) {break 'transport error;}
 					}
-					if !guard.belongs_to(&server_requests) || !guard.is_live() {
+					if let Err(error) = guard.validate(&server_requests) {
 						let reply=match command {Outbound::Request{reply,..}|Outbound::Message{reply,..}|Outbound::Shutdown{reply}=>reply};
-						let _=reply.send(Err(ClientError::InvalidFrame));
+						let _=reply.send(Err(error));
 						continue;
 					}
 				}
@@ -611,6 +663,42 @@ mod tests {
 		let mut line = String::new();
 		timeout(Duration::from_secs(2), reader.read_line(&mut line)).await.unwrap().unwrap();
 		serde_json::from_str(&line).unwrap()
+	}
+
+	#[tokio::test]
+	async fn history_guard_drains_reverts_before_write_and_is_connection_bound() {
+		let (incoming, frames) = mpsc::channel(8);
+		let (outgoing, mut writes) = mpsc::channel(8);
+		let (client, _events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+		let guard = client.history_guard(0).unwrap();
+		incoming
+			.send(Ok(json!({"method":"thread/reverted","params":{"threadId":"thread"}})))
+			.await
+			.unwrap();
+		assert!(matches!(
+			client.request_with_history("turn/start", json!({"threadId":"thread"}), guard).await,
+			Err(ClientError::StaleHistory)
+		));
+		assert!(writes.try_recv().is_err());
+		assert!(client.history_guard(0).is_none());
+		let (other, _events, _reader, _writer) = connection();
+		assert!(matches!(
+			client
+				.request_with_history("turn/steer", json!({}), other.history_guard(0).unwrap())
+				.await,
+			Err(ClientError::StaleHistory)
+		));
+		assert!(writes.try_recv().is_err());
+		let live = client.history_guard(1).unwrap();
+		let request = tokio::spawn(async move {
+			client.request_with_history("turn/start", json!({"threadId":"thread"}), live).await
+		});
+		let wire = writes.recv().await.unwrap();
+		incoming
+			.send(Ok(json!({"id":wire["id"],"result":{"turn":{"id":"accepted"}}})))
+			.await
+			.unwrap();
+		assert_eq!(request.await.unwrap().unwrap()["turn"]["id"], "accepted");
 	}
 
 	#[tokio::test]

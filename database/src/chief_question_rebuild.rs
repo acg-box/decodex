@@ -5,6 +5,34 @@ use crate::{
 use rusqlite::{OptionalExtension as _, params};
 
 impl SqliteStore {
+	/// Retire one exact async input after the transport proves rejection before any write.
+	/// This must never be used for remote errors, timeouts, or uncertain transport failures.
+	pub async fn reject_chief_async_before_write(
+		&self,
+		work: String,
+		event: i64,
+		previous: Option<crate::ChiefWorkItem>,
+	) -> Result<(), StoreError> {
+		self.run(move |connection| {
+			let tx=connection.transaction().map_err(sqlite_error)?;
+			let valid: bool = if previous.is_none() {
+				tx.query_row("SELECT EXISTS(SELECT 1 FROM chief_inbox_events e JOIN chief_work_items w ON w.id=e.work_item_id WHERE e.id=?1 AND w.id=?2 AND e.event_kind='steer_pending' AND e.disposition IS NULL AND e.delivery_work_item_id=w.id AND e.delivered_turn_id=w.active_turn_id AND w.dispatch_state='running' AND json_extract(e.payload,'$.asyncQuestionId') IS NOT NULL)",params![event,work],|row|row.get(0)).map_err(sqlite_error)?
+			} else {
+				tx.query_row("SELECT EXISTS(SELECT 1 FROM chief_inbox_events e JOIN chief_work_items w ON w.id=e.work_item_id WHERE e.id=?1 AND w.id=?2 AND e.event_kind='async_question_answer' AND e.disposition IS NULL AND e.delivery_work_item_id=w.id AND e.delivered_turn_id='' AND w.dispatch_state='dispatching' AND w.active_turn_id IS NULL AND (SELECT count(*) FROM chief_inbox_events c WHERE c.delivery_work_item_id=w.id AND c.delivered_turn_id='' AND c.disposition IS NULL)=1)",params![event,work],|row|row.get(0)).map_err(sqlite_error)?
+			};
+			if !valid { return Err(StoreError::InvalidInput("async input claim changed")); }
+			let now=unix_micros()?;
+			tx.execute("UPDATE chief_inbox_events SET disposition='resolved',disposition_note='Native history changed; this input was rejected before transport write.',disposed_at_micros=max(created_at_micros,?2) WHERE id=?1",params![event,now]).map_err(sqlite_error)?;
+			if let Some(previous) = previous {
+				if previous.id != work || previous.dispatch_state != crate::ChiefDispatchState::Idle {
+					return Err(StoreError::InvalidInput("invalid pre-dispatch state"));
+				}
+				tx.execute("UPDATE chief_work_items SET dispatch_state='idle',status=?3,next_check_at_micros=?4,updated_at_micros=max(updated_at_micros,?2) WHERE id=?1",params![work,now,previous.status.as_str(),previous.next_check_at_micros]).map_err(sqlite_error)?;
+			}
+			tx.commit().map_err(sqlite_error)?;Ok(())
+		}).await
+	}
+
 	/// Hide reverted question state durably and retire only answers not yet claimed for delivery.
 	pub async fn queue_chief_async_revert(&self, thread: String) -> Result<(), StoreError> {
 		self.queue_chief_async_rebuild(thread, true).await
