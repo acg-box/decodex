@@ -300,6 +300,7 @@ pub(crate) struct ConversationExecutionSettings {
 	pub model: String,
 	pub reasoning_effort: String,
 	pub fast: bool,
+	pub service_tier: decodex_core::ServiceTier,
 }
 
 /// First ordinary Turn input. Settings are explicit and survive pre-session recovery.
@@ -625,6 +626,7 @@ struct LocalTask {
 enum LocalTaskState {
 	Establishing,
 	Preparing(LocalSession),
+	CatalogReading(LocalSession),
 	Ready(LocalSession),
 	Active {
 		session: LocalSession,
@@ -654,6 +656,7 @@ struct LocalSession {
 	model: String,
 	reasoning_effort: String,
 	fast: bool,
+	service_tier: decodex_core::ServiceTier,
 	working_directory: String,
 	instructions: String,
 	next_user_sequence: i64,
@@ -662,6 +665,7 @@ struct LocalSession {
 enum WorkerCommand {
 	Interrupt,
 	Shutdown,
+	ModelCatalog(tokio::sync::oneshot::Sender<Option<Vec<decodex_protocol::ChiefModelDto>>>),
 }
 
 enum WorkerOutput {
@@ -821,6 +825,140 @@ impl ConversationRuntime {
 			.unwrap_or_else(PoisonError::into_inner)
 			.as_ref()
 			.and_then(|process| process.client.clone())
+	}
+
+	pub(crate) async fn model_capabilities(
+		&self,
+		conversation: &str,
+	) -> decodex_protocol::ChiefCapabilitiesResult {
+		if self.is_shutting_down() {
+			return decodex_protocol::ChiefCapabilitiesResult::Unavailable;
+		}
+		let idle = {
+			let mut local = self.local();
+			match local.get_mut(conversation) {
+				Some(LocalTask { state, .. }) => match state {
+					LocalTaskState::Ready(session) => {
+						let session = session.clone();
+						*state = LocalTaskState::CatalogReading(session.clone());
+						Some(session)
+					},
+					_ => None,
+				},
+				None => None,
+			}
+		};
+		if let Some(session) = idle {
+			let runtime = self.clone();
+			let conversation = conversation.to_owned();
+			// The task owns restoration even if the client disconnects or the query times out.
+			let query = tokio::spawn(async move {
+				runtime.idle_model_capabilities(conversation, session).await
+			});
+			return tokio::time::timeout(Duration::from_secs(12), query)
+				.await
+				.ok()
+				.and_then(Result::ok)
+				.unwrap_or(decodex_protocol::ChiefCapabilitiesResult::Unavailable);
+		}
+		self.active_model_capabilities(conversation).await
+	}
+
+	async fn idle_model_capabilities(
+		&self,
+		conversation: String,
+		session: LocalSession,
+	) -> decodex_protocol::ChiefCapabilitiesResult {
+		use decodex_protocol::ChiefCapabilitiesResult;
+		let before =
+			self.inner.accounts.inspect(&session.account_id).await.ok().map(|v| v.account.revision);
+		let control = self.inner.process_generations.clone();
+		let process = session.process.clone();
+		let result = if before.is_some() {
+			task::spawn_blocking(move || {
+				control.with_fenced_child(&process, |child| {
+					let mut pages = crate::chief_capabilities::ModelCatalogPages::default();
+					let mut cursor = None;
+					let deadline = Instant::now() + Duration::from_secs(8);
+					for _ in 0..8 {
+						if Instant::now() >= deadline {
+							return Err(ConversationProcessError::Unavailable);
+						}
+						let (page, events) = child.read_ordinary_model_page(cursor.as_deref());
+						child.retain_ordinary_events(events)?;
+						let page = page?;
+						match pages.push(&page) {
+							Ok(Some(next)) => cursor = Some(next),
+							Ok(None) => return Ok(pages.models),
+							Err(()) => return Err(ConversationProcessError::Incompatible),
+						}
+					}
+					Err(ConversationProcessError::Unavailable)
+				})
+			})
+			.await
+			.ok()
+			.and_then(Result::ok)
+			.and_then(Result::ok)
+		} else {
+			None
+		};
+		let after =
+			self.inner.accounts.inspect(&session.account_id).await.ok().map(|v| v.account.revision);
+		let mut local = self.local();
+		let Some(task) = local.get_mut(&conversation) else {
+			return ChiefCapabilitiesResult::Unavailable;
+		};
+		if !matches!(&task.state,LocalTaskState::CatalogReading(current) if same_local_process(current, &session))
+		{
+			return ChiefCapabilitiesResult::Unavailable;
+		}
+		task.state = LocalTaskState::Ready(session);
+		if before.is_none() || before != after {
+			return ChiefCapabilitiesResult::Unavailable;
+		}
+		result.map_or(ChiefCapabilitiesResult::Unavailable, |models| {
+			ChiefCapabilitiesResult::Available { models, memory_enabled: None }
+		})
+	}
+
+	async fn active_model_capabilities(
+		&self,
+		conversation: &str,
+	) -> decodex_protocol::ChiefCapabilitiesResult {
+		use decodex_protocol::ChiefCapabilitiesResult;
+		let (source, commands) = {
+			let local = self.local();
+			let Some(LocalTask { state: LocalTaskState::Active { session, commands, .. }, .. }) =
+				local.get(conversation)
+			else {
+				return ChiefCapabilitiesResult::Unavailable;
+			};
+			(session.clone(), commands.clone())
+		};
+		let Ok(before) = self.inner.accounts.inspect(&source.account_id).await else {
+			return ChiefCapabilitiesResult::Unavailable;
+		};
+		let (reply, result) = tokio::sync::oneshot::channel();
+		if commands.try_send(WorkerCommand::ModelCatalog(reply)).is_err() {
+			return ChiefCapabilitiesResult::Unavailable;
+		}
+		let Ok(Ok(Some(models))) = tokio::time::timeout(Duration::from_secs(12), result).await
+		else {
+			return ChiefCapabilitiesResult::Unavailable;
+		};
+		let Ok(after) = self.inner.accounts.inspect(&source.account_id).await else {
+			return ChiefCapabilitiesResult::Unavailable;
+		};
+		if before.account.revision != after.account.revision {
+			return ChiefCapabilitiesResult::Unavailable;
+		}
+		let local = self.local();
+		let same = matches!(local.get(conversation),Some(LocalTask {state:LocalTaskState::Active{session,..}|LocalTaskState::Ready(session),..}) if same_local_process(session, &source));
+		if !same {
+			return ChiefCapabilitiesResult::Unavailable;
+		}
+		ChiefCapabilitiesResult::Available { models, memory_enabled: None }
 	}
 
 	pub(crate) fn chief_catalog_client(
@@ -1113,6 +1251,9 @@ impl ConversationRuntime {
 				model: request.model,
 				reasoning_effort: request.reasoning_effort,
 				fast: request.fast,
+				service_tier: request
+					.service_tier
+					.unwrap_or_else(|| decodex_core::ServiceTier::from_fast(request.fast)),
 			},
 		};
 		let _ = self
@@ -1149,6 +1290,9 @@ impl ConversationRuntime {
 					model: request.model,
 					reasoning_effort: request.reasoning_effort,
 					fast: request.fast,
+					service_tier: request
+						.service_tier
+						.unwrap_or_else(|| decodex_core::ServiceTier::from_fast(request.fast)),
 				},
 			},
 			command.expected_conversation_revision,
@@ -1192,7 +1336,7 @@ impl ConversationRuntime {
 				&command.working_directory,
 				&command.execution.model,
 				&command.execution.reasoning_effort,
-				if command.execution.fast { "priority" } else { "default" },
+				command.execution.service_tier.as_str(),
 				"ordinary",
 			],
 		) {
@@ -1212,6 +1356,7 @@ impl ConversationRuntime {
 					model: command.execution.model.clone(),
 					reasoning_effort: command.execution.reasoning_effort.clone(),
 					fast: command.execution.fast,
+					service_tier: Some(command.execution.service_tier.clone()),
 				},
 			)
 			.await
@@ -1528,7 +1673,7 @@ impl ConversationRuntime {
 			working_directory.clone(),
 			session.profile_snapshot.instructions.clone(),
 		)
-		.map(|request| request.with_fast(command.execution.fast))
+		.map(|request| request.with_service_tier(command.execution.service_tier.clone()))
 		{
 			Ok(request) => request,
 			Err(_) => {
@@ -1720,6 +1865,7 @@ impl ConversationRuntime {
 			model: command.execution.model.clone(),
 			reasoning_effort: command.execution.reasoning_effort.clone(),
 			fast: command.execution.fast,
+			service_tier: command.execution.service_tier.clone(),
 			working_directory,
 			instructions: session.profile_snapshot.instructions,
 			next_user_sequence: 2,
@@ -1909,7 +2055,7 @@ impl ConversationRuntime {
 			working_directory.clone(),
 			runtime_session.profile_snapshot.instructions.clone(),
 		)
-		.map(|request| request.with_fast(command.execution.fast))
+		.map(|request| request.with_service_tier(command.execution.service_tier.clone()))
 		{
 			Ok(request) => request,
 			Err(_) => {
@@ -2068,6 +2214,7 @@ impl ConversationRuntime {
 			model: command.execution.model.clone(),
 			reasoning_effort: command.execution.reasoning_effort.clone(),
 			fast: command.execution.fast,
+			service_tier: command.execution.service_tier.clone(),
 			working_directory,
 			instructions: runtime_session.profile_snapshot.instructions,
 			next_user_sequence: turn_sequence.saturating_add(1),
@@ -2292,7 +2439,7 @@ impl ConversationRuntime {
 			session.working_directory.clone(),
 			session.instructions.clone(),
 		)
-		.map(|request| request.with_fast(session.fast))
+		.map(|request| request.with_service_tier(session.service_tier.clone()))
 		.map_err(|_| SameThreadResumeRefusal::IncompatibleThread)?;
 		let resumed =
 			self.resume_thread(&session.process, request).await.map_err(|error| match error {
@@ -2342,6 +2489,7 @@ impl ConversationRuntime {
 		session.model.clone_from(&command.execution.model);
 		session.reasoning_effort.clone_from(&command.execution.reasoning_effort);
 		session.fast = command.execution.fast;
+		session.service_tier = command.execution.service_tier.clone();
 		let admitted = match self.admit_later_turn(&command, session).await {
 			Ok(admitted) => admitted,
 			Err(outcome) => return *outcome,
@@ -2567,7 +2715,7 @@ impl ConversationRuntime {
 			session.reasoning_effort.clone(),
 		)
 		.and_then(|request| request.with_client_user_message_id(turn_id.as_str()))
-		.map(|request| request.with_fast(session.fast))
+		.map(|request| request.with_service_tier(session.service_tier.clone()))
 		{
 			Ok(request) => request,
 			Err(_) => {
@@ -3337,6 +3485,7 @@ impl ConversationRuntime {
 				match &task.state {
 					LocalTaskState::Active { .. }
 					| LocalTaskState::Preparing(_)
+					| LocalTaskState::CatalogReading(_)
 					| LocalTaskState::Establishing => return Err(ConversationControlOutcome::Busy),
 					LocalTaskState::Recovery { .. } => {},
 					LocalTaskState::Ready(_) => {},
@@ -4056,6 +4205,7 @@ impl ConversationRuntime {
 				.values()
 				.filter_map(|task| match &task.state {
 					LocalTaskState::Preparing(session)
+					| LocalTaskState::CatalogReading(session)
 					| LocalTaskState::Ready(session)
 					| LocalTaskState::Active { session, .. } => Some(session.process.clone()),
 					LocalTaskState::Establishing | LocalTaskState::Recovery { .. } => None,
@@ -4769,6 +4919,7 @@ impl ConversationRuntime {
 			model: command.execution.model.clone(),
 			reasoning_effort: command.execution.reasoning_effort.clone(),
 			fast: command.execution.fast,
+			service_tier: command.execution.service_tier.clone(),
 			working_directory,
 			instructions: readback.instructions,
 			next_user_sequence: sequence.saturating_add(1),
@@ -4905,9 +5056,12 @@ impl ConversationRuntime {
 			other => {
 				task.state = other;
 				Err(Box::new(match &task.state {
-					LocalTaskState::Preparing(session) => ConversationOutcome::Busy(
-						session_readback(session, ConversationLocalState::Ready, None),
-					),
+					LocalTaskState::Preparing(session)
+					| LocalTaskState::CatalogReading(session) => ConversationOutcome::Busy(session_readback(
+						session,
+						ConversationLocalState::Ready,
+						None,
+					)),
 					LocalTaskState::Active { session, turn_id, .. } =>
 						ConversationOutcome::Busy(session_readback(
 							session,
@@ -4935,6 +5089,7 @@ impl ConversationRuntime {
 			LocalTaskState::Establishing => true,
 			LocalTaskState::Preparing(current) => same_local_process(current, &session),
 			LocalTaskState::Ready(_)
+			| LocalTaskState::CatalogReading(_)
 			| LocalTaskState::Active { .. }
 			| LocalTaskState::Recovery { .. } => false,
 		};
@@ -5343,6 +5498,44 @@ fn run_event_loop(
 			return Err(ConversationProcessError::Unavailable);
 		}
 		match commands.try_recv() {
+			Ok(WorkerCommand::ModelCatalog(reply)) => {
+				let mut pages = crate::chief_capabilities::ModelCatalogPages::default();
+				let mut cursor = None;
+				let mut complete = false;
+				for _ in 0..8 {
+					if reply.is_closed() {
+						break;
+					}
+					let (page, events) = child.read_ordinary_model_page(cursor.as_deref());
+					let mut terminal = false;
+					for event in events {
+						terminal |=
+							matches!(&event, ConversationProcessEvent::TurnCompleted { .. });
+						output
+							.blocking_send(WorkerOutput::Event(event))
+							.map_err(|_| ConversationProcessError::Unavailable)?;
+					}
+					if terminal {
+						let _ = reply.send(None);
+						return Ok(());
+					}
+					let page = match page {
+						Ok(page) => page,
+						// A metadata failure does not change turn execution. The event
+						// reader still detects a disconnected or invalid transport.
+						Err(_) => break,
+					};
+					match pages.push(&page) {
+						Ok(Some(next)) => cursor = Some(next),
+						Ok(None) => {
+							complete = true;
+							break;
+						},
+						Err(()) => break,
+					}
+				}
+				let _ = reply.send(complete.then_some(pages.models));
+			},
 			Ok(WorkerCommand::Interrupt) => {
 				let request = ConversationTurnInterruptRequest::new(
 					thread_id.clone(),
@@ -5537,7 +5730,7 @@ fn local_readback(conversation_id: &ConversationId, task: &LocalTask) -> Convers
 	match &task.state {
 		LocalTaskState::Establishing =>
 			empty_readback(conversation_id, ConversationLocalState::Establishing),
-		LocalTaskState::Preparing(session) =>
+		LocalTaskState::Preparing(session) | LocalTaskState::CatalogReading(session) =>
 			session_readback(session, ConversationLocalState::Ready, None),
 		LocalTaskState::Ready(session) =>
 			session_readback(session, ConversationLocalState::Ready, None),
@@ -5732,6 +5925,37 @@ mod tests {
 			sequence: 1,
 			status,
 			revision,
+		}
+	}
+
+	#[test]
+	fn active_catalog_query_delivers_completion_once_even_when_catalog_is_rejected() {
+		for mode in ["exact", "exact-catalog-rejected"] {
+			let (_temp, mut child) =
+				crate::account_launch::process::tests::ordinary_catalog_child(mode);
+			let (commands, receiver) = std::sync::mpsc::channel();
+			let (reply, mut result) = tokio::sync::oneshot::channel();
+			commands.send(super::WorkerCommand::ModelCatalog(reply)).unwrap();
+			let (output, mut events) = tokio::sync::mpsc::channel(8);
+			let shutdown = std::sync::atomic::AtomicBool::new(false);
+			assert!(
+				super::run_event_loop(
+					&mut child,
+					"catalog-thread".into(),
+					"catalog-turn".into(),
+					receiver,
+					&shutdown,
+					&output,
+				)
+				.is_ok()
+			);
+			assert!(result.try_recv().unwrap().is_none());
+			assert!(matches!(events.try_recv().unwrap(), super::WorkerOutput::Event(
+				super::ConversationProcessEvent::TurnCompleted { turn_id, .. }
+			) if turn_id == "catalog-turn"));
+			assert!(events.try_recv().is_err());
+			assert!(child.next_ordinary_turn_event(std::time::Duration::ZERO).unwrap().is_none());
+			child.shutdown().unwrap();
 		}
 	}
 

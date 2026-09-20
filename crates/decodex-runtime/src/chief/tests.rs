@@ -1360,6 +1360,10 @@ async fn configured_message_dispatches_native_images_and_exact_turn_settings_onc
 	apply_message_options(&mut params,&json!({"options":{"execution":{"model":"selected-model","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string()).unwrap();
 	assert!(params["serviceTier"].is_null());
 	assert_eq!(params["serviceTierForTurn"], "default");
+	let tiered = json!({"options":{"execution":{"model":"chosen","reasoning_effort":"high","fast":false,"service_tier":"ultrafast"},"attachments":[]}});
+	apply_message_options(&mut params, &tiered.to_string()).unwrap();
+	assert_eq!(params["serviceTier"], "ultrafast");
+	assert_eq!(params["serviceTierForTurn"], "ultrafast");
 }
 
 #[tokio::test]

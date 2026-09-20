@@ -694,6 +694,7 @@ impl Shell {
 			.expect("visual Conversation projection is valid")
 		};
 		shell.quick = ConversationsSnapshot {
+			catalog: None,
 			load: ConversationsLoadState::Ready,
 			command: ConversationCommandState::Idle,
 			command_conversation_id: None,
@@ -4379,6 +4380,7 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.spread_radius(px(-10.0)),
 				])
 				.child(div().h(px(35.0)).min_h(px(35.0)).child(shell.composer.clone()))
+				.child(conversation_service_tiers(shell, cx))
 				.child(
 					div()
 						.h(px(27.0))
@@ -4393,7 +4395,7 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 								.items_center()
 								.gap_1()
 								.child(model_control)
-								.child(fast_control)
+								.when(shell.quick.catalog.is_none(), |row| row.child(fast_control))
 								.child(effort_control),
 						)
 						.child(
@@ -4417,6 +4419,67 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				),
 		)
 		.into_any_element()
+}
+
+fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let mut row =
+		div().id("conversation-service-tiers").flex().flex_wrap().gap_2().text_size(px(11.));
+	row = row.child(
+		div()
+			.id("conversation-refresh-models")
+			.cursor_pointer()
+			.child(if shell.quick.selected.is_some() {
+				"Refresh model options"
+			} else {
+				"Model options become available after account routing"
+			})
+			.on_click(cx.listener(|shell, _, _, cx| {
+				shell.conversations.refresh_catalog();
+				shell.synchronize_conversations();
+				cx.notify();
+			})),
+	);
+	if let Some(models) = &shell.quick.catalog {
+		let mut choices = vec![decodex_protocol::ChiefServiceTierDto {
+			id: decodex_protocol::ServiceTier::standard(),
+			name: "Standard".into(),
+			description: String::new(),
+		}];
+		if let Some(model) = models.iter().find(|model| model.model == shell.quick.execution.model)
+		{
+			choices.extend(
+				model.service_tiers.iter().filter(|tier| tier.id.as_str() != "default").cloned(),
+			);
+		}
+		let current = shell.quick.execution.effective_service_tier();
+		for choice in choices {
+			let id = choice.id.clone();
+			row = row.child(
+				div()
+					.id(SharedString::from(format!("conversation-tier-{}", id.as_str())))
+					.debug_selector({
+						let label = format!("conversation-tier-{}", id.as_str());
+						move || label.clone()
+					})
+					.cursor_pointer()
+					.px_2()
+					.py_1()
+					.rounded_md()
+					.text_color(if current == id { rgb(WB_AMBER) } else { rgb(WB_TEXT_MUTED) })
+					.child(if choice.description.is_empty() {
+						choice.name
+					} else {
+						format!("{} · {}", choice.name, choice.description)
+					})
+					.on_click(cx.listener(move |shell, _, _, cx| {
+						shell.conversations.select_service_tier(id.clone());
+						shell.synchronize_conversations();
+						cx.notify();
+					})),
+			);
+		}
+	}
+	row.into_any_element()
 }
 
 fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
@@ -5676,6 +5739,7 @@ mod tests {
 		live_deltas: Vec<crate::conversations::ConversationLiveDelta>,
 	) -> ConversationsSnapshot {
 		ConversationsSnapshot {
+			catalog: None,
 			load: ConversationsLoadState::Ready,
 			command: ConversationCommandState::AwaitingResult,
 			command_conversation_id: Some(conversation_id.clone()),
@@ -6055,6 +6119,38 @@ mod tests {
 			component_presentation(Some(DoctorStatus::Unknown(DoctorIssue::Plugin))).label,
 			"Not configured"
 		);
+	}
+
+	#[gpui::test]
+	fn ordinary_catalog_tier_buttons_update_the_submitted_execution_settings(
+		cx: &mut TestAppContext,
+	) {
+		let (shell, visual) = open_shell(cx);
+		let (conversations, server_id, _) = crate::conversations::tests::catalog_conversations();
+		shell.update(visual, |s, cx| {
+			s.conversations = conversations.clone();
+			s.synchronize_conversations();
+			s.select_destination(Destination::Conversations, cx);
+		});
+		visual.update(|window, cx| {
+			window.resize(size(px(1440.), px(1000.)));
+			window.draw(cx).clear();
+		});
+		for tier in ["ultrafast", "default", "ultrafast"] {
+			let bounds = visual
+				.debug_bounds(if tier == "default" {
+					"conversation-tier-default"
+				} else {
+					"conversation-tier-ultrafast"
+				})
+				.expect("advertised tier is rendered");
+			visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+			assert_eq!(conversations.snapshot().execution.effective_service_tier().as_str(), tier);
+		}
+		conversations.submit("Use the selected tier").unwrap();
+		let command = crate::conversations::tests::dispatched_command(&conversations, &server_id);
+		let encoded = serde_json::to_value(command).unwrap();
+		assert!(encoded.to_string().contains("ultrafast"));
 	}
 
 	#[gpui::test]

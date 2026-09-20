@@ -1068,6 +1068,8 @@ impl ChiefSurface {
 						],
 						default_effort: Some(ConversationReasoningEffort::Medium),
 						supports_fast: true,
+						service_tiers: vec![],
+						default_service_tier: None,
 						supports_images: true,
 						availability: None,
 						upgrade: None,

@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 27;
+const CURRENT_SCHEMA_VERSION: i64 = 28;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -150,6 +150,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 27,
 		name: "chief_guardian_reviews",
 		sql: include_str!("../migrations/0027_chief_guardian_reviews.sql"),
+	},
+	Migration {
+		version: 28,
+		name: "conversation_service_tier",
+		sql: include_str!("../migrations/0028_conversation_service_tier.sql"),
 	},
 ];
 
@@ -417,6 +422,44 @@ mod tests {
 	use super::*;
 
 	#[test]
+	fn service_tier_upgrade_adds_nullable_column_without_rewriting_prior_schema() {
+		let directory = tempfile::tempdir().unwrap();
+		let mut connection = Connection::open(directory.path().join("tiers.sqlite3")).unwrap();
+		configure(&connection).unwrap();
+		for migration in &MIGRATIONS[..27] {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 27).unwrap();
+		for (id, fast) in [("10000000-0000-4000-8000-000000000001",0),("10000000-0000-4000-8000-000000000002",1)] {
+			connection.execute("INSERT INTO conversations(conversation_id,kind,state,title,revision,created_at_micros,updated_at_micros) VALUES(?1,'ordinary_task','active','Legacy',1,1,1)",[id]).unwrap();
+			connection.execute("INSERT INTO quick_task_requests(conversation_id,operation_key,correlation_id,initial_turn_id,message,working_directory,created_at_micros,model,reasoning_effort,fast) VALUES(?1,?1,?1,?1,'Keep original','/tmp',1,'model','high',?2)",params![id,fast]).unwrap();
+		}
+		let before = schema_inventory(&connection).unwrap();
+		migrate(&mut connection).unwrap();
+		verify(&connection).unwrap();
+		let after = schema_inventory(&connection).unwrap();
+		assert!(
+			before
+				.iter()
+				.filter(|entry| entry.2 != "quick_task_requests")
+				.all(|entry| after.contains(entry))
+		);
+		let field:(String,i64,Option<String>) = connection.query_row("SELECT type,\"notnull\",dflt_value FROM pragma_table_info('quick_task_requests') WHERE name='service_tier'",[],|r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+		assert_eq!(field, ("TEXT".into(), 0, None));
+		let saved=connection.prepare("SELECT fast,service_tier,message FROM quick_task_requests ORDER BY fast").unwrap().query_map([],|r| Ok((r.get::<_,bool>(0)?,r.get::<_,Option<String>>(1)?,r.get::<_,String>(2)?))).unwrap().collect::<Result<Vec<_>,_>>().unwrap();
+		assert_eq!(saved,vec![(false,None,"Keep original".into()),(true,None,"Keep original".into())]);
+		migrate(&mut connection).unwrap();
+		verify(&connection).unwrap();
+	}
+
+	#[test]
 	fn both_chief_migration_lineages_preserve_history_and_converge() {
 		for (upstream, historical_end) in [(false, 26), (true, 24), (true, 25), (true, 26)] {
 			let plan: Vec<Migration> = if upstream {
@@ -523,8 +566,12 @@ mod tests {
 		assert!(
 			original
 				.iter()
-				.filter(|entry| !["account_quota_facts", "process_generation_death_evidence"]
-					.contains(&entry.2.as_str()))
+				.filter(|entry| ![
+					"account_quota_facts",
+					"process_generation_death_evidence",
+					"quick_task_requests"
+				]
+				.contains(&entry.2.as_str()))
 				.all(|entry| upgraded.contains(entry))
 		);
 		assert_eq!(

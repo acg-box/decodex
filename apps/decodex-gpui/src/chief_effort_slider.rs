@@ -231,6 +231,8 @@ mod tests {
 					efforts: vec![Effort::Low, Effort::High, Effort::Ultra],
 					default_effort: Some(Effort::High),
 					supports_fast: true,
+					service_tiers: vec![],
+					default_service_tier: None,
 					supports_images: true,
 					availability: None,
 					upgrade: None,

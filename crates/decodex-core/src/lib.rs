@@ -25,9 +25,12 @@ mod provider_attempt;
 mod quota;
 mod reset_card;
 mod routing;
+mod service_tier;
 mod storage;
 mod wake;
 mod work_item;
+
+pub use service_tier::{InvalidServiceTier, ServiceTier};
 
 pub use self::{
 	account::{

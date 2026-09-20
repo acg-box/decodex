@@ -1775,9 +1775,10 @@ fn apply_message_options(params: &mut Value, payload: &str) -> Result<(), ChiefE
 				.map_err(|_| ChiefError::Invalid("invalid saved execution settings".into()))?;
 		params["model"] = json!(execution.model.as_str());
 		params["effort"] = json!(execution.reasoning_effort.as_str());
-		params["serviceTier"] = if execution.fast { json!("priority") } else { Value::Null };
+		let tier = execution.effective_service_tier();
+		params["serviceTier"] = json!(tier.thread_value());
 		// New app-server versions distinguish explicit standard speed from inherited defaults.
-		params["serviceTierForTurn"] = json!(if execution.fast { "priority" } else { "default" });
+		params["serviceTierForTurn"] = json!(tier.as_str());
 	}
 	let files: Vec<decodex_protocol::ChiefAttachmentDto> =
 		serde_json::from_value(options["attachments"].clone())
