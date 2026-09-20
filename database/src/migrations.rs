@@ -437,7 +437,10 @@ mod tests {
 		}
 		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
 		connection.pragma_update(None, "user_version", 27).unwrap();
-		for (id, fast) in [("10000000-0000-4000-8000-000000000001",0),("10000000-0000-4000-8000-000000000002",1)] {
+		for (id, fast) in [
+			("10000000-0000-4000-8000-000000000001", 0),
+			("10000000-0000-4000-8000-000000000002", 1),
+		] {
 			connection.execute("INSERT INTO conversations(conversation_id,kind,state,title,revision,created_at_micros,updated_at_micros) VALUES(?1,'ordinary_task','active','Legacy',1,1,1)",[id]).unwrap();
 			connection.execute("INSERT INTO quick_task_requests(conversation_id,operation_key,correlation_id,initial_turn_id,message,working_directory,created_at_micros,model,reasoning_effort,fast) VALUES(?1,?1,?1,?1,'Keep original','/tmp',1,'model','high',?2)",params![id,fast]).unwrap();
 		}
@@ -453,8 +456,19 @@ mod tests {
 		);
 		let field:(String,i64,Option<String>) = connection.query_row("SELECT type,\"notnull\",dflt_value FROM pragma_table_info('quick_task_requests') WHERE name='service_tier'",[],|r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
 		assert_eq!(field, ("TEXT".into(), 0, None));
-		let saved=connection.prepare("SELECT fast,service_tier,message FROM quick_task_requests ORDER BY fast").unwrap().query_map([],|r| Ok((r.get::<_,bool>(0)?,r.get::<_,Option<String>>(1)?,r.get::<_,String>(2)?))).unwrap().collect::<Result<Vec<_>,_>>().unwrap();
-		assert_eq!(saved,vec![(false,None,"Keep original".into()),(true,None,"Keep original".into())]);
+		let saved = connection
+			.prepare("SELECT fast,service_tier,message FROM quick_task_requests ORDER BY fast")
+			.unwrap()
+			.query_map([], |r| {
+				Ok((r.get::<_, bool>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, String>(2)?))
+			})
+			.unwrap()
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap();
+		assert_eq!(
+			saved,
+			vec![(false, None, "Keep original".into()), (true, None, "Keep original".into())]
+		);
 		migrate(&mut connection).unwrap();
 		verify(&connection).unwrap();
 	}

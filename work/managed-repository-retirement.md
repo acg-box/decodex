@@ -69,7 +69,8 @@ run against this worktree's source and revision.
 
 The listed baseline source files were compared byte-for-byte with the base commit.
 Their failures are not counted as passing validation. No baseline checks or tests
-were disabled. This change is not committed, merged, installed, or released.
+were disabled. Final PR validation and merge readback supersede the initial local-only state.
+This change does not install or release an application bundle.
 
 ## GitHub effect retirement
 
@@ -93,3 +94,16 @@ the `decodex-retire-github-` prefix in the evidence directory.
 GitHub retirement validation: 441 runtime tests passed, seven skipped; strict
 runtime lint and all-workspace/all-target/all-feature compilation passed. No
 stdio-leak marker appeared in the runtime run. `git diff --check` passed.
+
+## PR readiness corrections
+
+Before PR delivery, the branch was rebased onto current remote main. The existing
+Rust formatter differences were applied without behavior changes. The SQLite
+gate now includes the already-shipped schema-28 migration, and stale login source
+assertions follow the existing Self variants and distinguish public prompt fetch
+and timestamp dependencies from login authority. No check was disabled.
+
+Current Wiki guidance explicitly retires the two capabilities. Their obsolete
+runtime and delivery requirements were removed from historical design documents.
+Frozen revision evidence remains labelled archival so exact recorded identities
+are not rewritten as if they described today's source.
