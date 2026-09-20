@@ -166,6 +166,7 @@ async fn asynchronous_questions_and_usage_are_observed_without_completing_or_wak
 	);
 }
 
+#[path = "tests/external_context.rs"] mod external_context;
 #[path = "tests/inbox_carryover.rs"] mod inbox_carryover;
 
 #[path = "tests/result_integrity.rs"] mod result_integrity;
@@ -193,6 +194,7 @@ pub(super) async fn fixture_with_history(
 		let mut lines = BufReader::new(reader).lines();
 		let mut threads = 0;
 		let mut turns = 0;
+		let mut injected = false;
 		let mut archived = history["_archived"] == true;
 		let mut resume_failures = history["_resume_failures"].as_u64().unwrap_or_default();
 		while let Some(line) = lines.next_line().await.unwrap() {
@@ -246,6 +248,19 @@ pub(super) async fn fixture_with_history(
 					writer.write_all(frame.as_bytes()).await.unwrap();
 					continue;
 				}
+			}
+			if request["method"] == "thread/inject_items"
+				&& history["_injection_disconnect"] == true
+			{
+				break;
+			}
+			if request["method"] == "thread/inject_items" {
+				injected = true;
+			}
+			if request["method"] == "turn/start"
+				&& injected && history["_turn_after_injection_disconnect"] == true
+			{
+				break;
 			}
 			if request["method"] == "turn/steer" && history["_steer_disconnect"] == true {
 				break;
@@ -1116,7 +1131,17 @@ async fn legacy_manager_upgrades_tools_once_without_replaying_saved_input() {
 	assert_eq!(messages.iter().filter(|message| message["method"] == "turn/start").count(), 1);
 	let creation = messages.iter().find(|message| message["method"] == "thread/start").unwrap();
 	assert!(
-		creation["params"]["developerInstructions"]
+		!creation["params"]["developerInstructions"]
+			.as_str()
+			.unwrap()
+			.contains("Remember the existing project")
+	);
+	let injected =
+		messages.iter().find(|message| message["method"] == "thread/inject_items").unwrap();
+	assert_eq!(injected["params"]["threadId"], json!(upgraded.codex_thread_id));
+	assert_eq!(injected["params"]["items"][0]["type"], "function_call_output");
+	assert!(
+		injected["params"]["items"][0]["output"]
 			.as_str()
 			.unwrap()
 			.contains("Remember the existing project")
@@ -1171,8 +1196,9 @@ async fn queued_user_messages_keep_native_turn_boundaries() {
 			.delivered_turn_id
 			.is_none()
 	);
-	let message = wake_message(&[evidence]).unwrap();
-	assert!(message.contains("Background evidence"));
+	let message = wake_message(std::slice::from_ref(&evidence)).unwrap();
+	assert!(!message.contains("Background evidence"));
+	assert!(wake_evidence(&evidence).to_string().contains("Background evidence"));
 	assert!(!message.contains("source_event_id"));
 	assert!(!message.contains("delivered_turn_id"));
 }
@@ -1795,7 +1821,10 @@ async fn async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade() {
 		.unwrap();
 	let mut started = false;
 	while let Ok(request) = sent.try_recv() {
-		assert!(["thread/resume", "turn/start"].contains(&request["method"].as_str().unwrap()));
+		assert!(
+			["thread/resume", "thread/inject_items", "turn/start"]
+				.contains(&request["method"].as_str().unwrap())
+		);
 		assert_eq!(request["params"]["threadId"], "opaque thread/1");
 		started |= request["method"] == "turn/start";
 	}
