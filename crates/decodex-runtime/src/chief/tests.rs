@@ -5,6 +5,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/capacity.rs"] mod capacity;
 #[path = "tests/guardian.rs"] mod guardian;
 #[path = "tests/install.rs"] mod install;
+#[path = "tests/task_history.rs"] mod task_history;
 
 #[tokio::test]
 async fn subagent_activity_survives_parent_completion_and_restart_without_waking_work() {
@@ -360,8 +361,12 @@ async fn serve_fixture(
 				let id = request["params"]["threadId"].as_str().unwrap();
 				let mut turns = history[id]["thread"]["turns"].clone();
 				for turn in turns.as_array_mut().unwrap() {
-					turn["items"] = json!([]);
-					turn["itemsView"] = json!("notLoaded");
+					if request["params"]["itemsView"] == "full" {
+						turn["itemsView"] = json!("full");
+					} else {
+						turn["items"] = json!([]);
+						turn["itemsView"] = json!("notLoaded");
+					}
 				}
 				json!({"data":turns,"nextCursor":null})
 			},
@@ -1164,7 +1169,7 @@ async fn legacy_manager_upgrades_tools_once_without_replaying_saved_input() {
 	coordinator.continue_worker("chief", "One new request").await.unwrap();
 	let upgraded = coordinator.store.get_chief_work_item("chief".into()).await.unwrap();
 	assert_ne!(original.codex_thread_id, upgraded.codex_thread_id);
-	assert_eq!(coordinator.store.chief_tool_version("chief".into()).await.unwrap(), 2);
+	assert_eq!(coordinator.store.chief_tool_version("chief".into()).await.unwrap(), 3);
 	let messages: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
 	assert_eq!(messages.iter().filter(|message| message["method"] == "thread/start").count(), 1);
 	assert_eq!(messages.iter().filter(|message| message["method"] == "turn/start").count(), 1);
