@@ -30,19 +30,27 @@ impl ChiefCoordinator {
 	/// An incomplete read leaves the durable recovery marker for the next connection.
 	pub(super) async fn recover_async_questions(&mut self) -> Result<(), ChiefError> {
 		for (work, thread, required_item) in self.store.pending_chief_async_recovery().await? {
+			let revision = self.client.history_revision();
+			let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+			let mut projection = super::async_projection::Projection::default();
 			let mut saw_required = required_item.is_none();
-			let Ok(turns) = self.client.thread_turns_since(&thread, None).await else {
+			let Ok(Ok(turns)) =
+				tokio::time::timeout_at(deadline, self.client.thread_turns_since(&thread, None))
+					.await
+			else {
 				continue;
 			};
 			let latest = turns.last().and_then(|turn| turn["id"].as_str()).map(str::to_owned);
-			let mut seen = std::collections::BTreeSet::new();
 			let mut complete = true;
 			for header in turns {
 				let Some(turn) = header["id"].as_str() else {
 					complete = false;
 					break;
 				};
-				let Ok(history) = self.client.thread_read_turn(&thread, turn).await else {
+				let Ok(Ok(history)) =
+					tokio::time::timeout_at(deadline, self.client.thread_read_turn(&thread, turn))
+						.await
+				else {
 					complete = false;
 					break;
 				};
@@ -74,30 +82,35 @@ impl ChiefCoordinator {
 				for item in items {
 					saw_required |=
 						item["id"].as_str().is_some_and(|id| required_item.as_deref() == Some(id));
-					self.observe_async_question_item(&thread, turn, item).await?;
-					if let Ok(questions) = decodex_protocol::project_chief_async_questions(item) {
-						seen.extend(questions.into_iter().map(|question| question.id));
-					}
-					if is_plain_user_prompt(item) {
-						// Only questions preceding this native prompt are retired. A replay
-						// must never clear questions received later on this connection.
-						let ids = seen.iter().cloned().collect::<Vec<_>>();
-						for batch in ids.chunks(32) {
-							self.store
-								.resolve_chief_async_questions(thread.clone(), batch.to_vec())
-								.await?;
-						}
+					if projection.observe(&thread, turn, item).is_err() {
+						complete = false;
+						break;
 					}
 				}
+				if !complete {
+					break;
+				}
 			}
-			if complete && saw_required {
-				self.store.finish_chief_async_recovery(work, thread).await?;
+			if complete && saw_required && self.client.history_revision() == revision {
+				self.store
+					.replace_chief_async_projection(
+						work,
+						thread.clone(),
+						required_item,
+						projection.questions,
+						projection.answers.into_iter().collect(),
+					)
+					.await?;
+				if self.client.history_revision() != revision {
+					self.store.refresh_chief_async_projection(thread).await?;
+				}
 			}
 		}
 		Ok(())
 	}
 
 	async fn invalidate_reverted_requests(&mut self, thread: &str) -> Result<(), ChiefError> {
+		self.store.queue_chief_async_revert(thread.into()).await?;
 		self.loaded_threads.remove(thread);
 		self.usage_replays.remove(thread);
 		for (id, event_id) in self.pending_requests.clone() {
@@ -295,7 +308,32 @@ impl ChiefCoordinator {
 	}
 }
 
-fn is_plain_user_prompt(item: &Value) -> bool {
+pub(crate) fn usage_text(value: &Value) -> Option<String> {
+	let usage: ThreadTokenUsage = serde_json::from_value(value.clone()).ok()?;
+	if !usage.is_valid() {
+		return None;
+	}
+	let mut text = format!(
+		"Last response tokens: input {}, cached input {}, output {}, reasoning output {}.\nThread total tokens: {}.",
+		usage.last.input_tokens,
+		usage.last.cached_input_tokens,
+		usage.last.output_tokens,
+		usage.last.reasoning_output_tokens,
+		usage.total.total_tokens
+	);
+	if usage.last.cache_write_input_tokens > 0 {
+		text.push_str(&format!(
+			"\nCache write input tokens: {}.",
+			usage.last.cache_write_input_tokens
+		));
+	}
+	if let Some(capacity) = usage.model_context_window {
+		text.push_str(&format!("\nModel context capacity: {capacity} tokens."));
+	}
+	Some(text)
+}
+
+pub(super) fn is_plain_user_prompt(item: &Value) -> bool {
 	if item["type"] != "userMessage" {
 		return false;
 	}

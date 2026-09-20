@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 
 mod activity;
 mod archive;
+mod async_projection;
 mod guardian;
 mod install;
 mod misalignment;
@@ -1730,6 +1731,7 @@ impl ChiefCoordinator {
 
 	/// Dispatch only undelivered external evidence while the personal Chief is idle.
 	pub async fn check_due_followups(&mut self, now: i64) -> Result<(), ChiefError> {
+		self.recover_async_questions().await?;
 		if now < 0 {
 			return Err(ChiefError::Invalid("invalid due-check time".into()));
 		}
