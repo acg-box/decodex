@@ -328,9 +328,11 @@ impl ExactThreadListResult {
 	}
 }
 
-/// Explicit epistemic limit of `thread/read(includeTurns=true)`.
+/// Explicit evidence limit of a native thread read.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LossyThreadHistory {
+	/// Only thread metadata was requested; no turn or submission evidence was read.
+	MetadataOnly,
 	/// Visible turns were requested, but the response is not complete-history or replay authority.
 	IncludeTurnsReadback,
 }
