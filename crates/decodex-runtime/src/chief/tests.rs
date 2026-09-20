@@ -191,7 +191,11 @@ async fn asynchronous_questions_and_usage_are_observed_without_completing_or_wak
 	coordinator.recover_persisted().await.unwrap();
 	let usage = coordinator
 		.store
-		.read_chief_usage_observation("chief".into(), "opaque turn/1".into())
+		.read_chief_usage_observation(
+			"chief".into(),
+			"opaque thread/1".into(),
+			"opaque turn/1".into(),
+		)
 		.await
 		.unwrap()
 		.unwrap();

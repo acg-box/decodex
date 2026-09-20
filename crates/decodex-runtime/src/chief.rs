@@ -18,6 +18,7 @@ pub(crate) mod native_subagents;
 pub(crate) mod observations;
 mod result_messages;
 mod task_history;
+pub(crate) mod timeline;
 mod voice;
 
 /// Execution policy selected by the user, applied to actual app-server requests.
@@ -357,9 +358,10 @@ impl ChiefCoordinator {
 			self.store.validate_chief_usage_resume(thread.clone(), None).await?;
 			None
 		};
-		if let Ok(Some(usage)) =
-			self.store.read_chief_usage_observation(item.id.clone(), turn.clone()).await
-			&& let Ok(value) = serde_json::from_str::<Value>(&usage.payload)
+		if let Ok(Some(usage)) = self
+			.store
+			.read_chief_usage_observation(item.id.clone(), thread.clone(), turn.clone())
+			.await && let Ok(value) = serde_json::from_str::<Value>(&usage.payload)
 		{
 			evidence["tokenUsage"] = value["tokenUsage"].clone();
 		}

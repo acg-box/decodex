@@ -1317,7 +1317,7 @@ impl ChiefSurface {
 					});
 					entries.clear();
 					for (i,(kind,text)) in [("user","请整理检查结果，并说明下一步安排。"),("assistant","## 检查完成\n\n两位下属已提交报告，**现有会话保持可用**。\n\n- 登录流程：保留原会话\n- 启动流程：继续验证性能\n\n| 工作 | 结果 | 下一步 |\n|---|---|---|\n| 登录检查 | 已验收 | 合并检查结果 |\n| 启动检查 | 待验证 | 补充冷启动数据 |\n\n### 验证命令\n```rust\nlet status = review.result();\nassert!(status.is_verified());\n```\n\n查看 [源码](/Users/x/code/acg-box/decodex/apps/decodex-gpui/src/chief_surface.rs:1)，再确认 `review` 的结果。")].into_iter().enumerate() {
-                        entries.push(decodex_protocol::ChiefHistoryEntryDto{ activity: None,usage: (kind == "assistant").then_some(decodex_protocol::ChiefTurnUsageDto {input_tokens:24860,output_tokens:1820}),duration_ms: (kind == "assistant").then_some(18400),id:i as i64+1,kind:kind.into(),text:text.into(),created_at_micros:1789480440000000});
+                        entries.push(decodex_protocol::ChiefHistoryEntryDto{receipt: None, activity: None,usage: (kind == "assistant").then_some(decodex_protocol::ChiefTurnUsageDto {input_tokens:24860,output_tokens:1820}),duration_ms: (kind == "assistant").then_some(18400),id:i as i64+1,kind:kind.into(),text:text.into(),created_at_micros:1789480440000000});
                     }
 				}
 			},
@@ -1405,6 +1405,7 @@ impl ChiefSurface {
 				.into_iter()
 				.enumerate()
 				.map(|(i, (kind, text))| ChiefHistoryEntryDto {
+					receipt: None,
 					activity: None,
 					usage: None,
 					duration_ms: None,
@@ -1425,7 +1426,7 @@ impl ChiefSurface {
 		self.graph_scope = Some("release".into());
 		self.graph_selected = Some("verify".into());
 		self.timeline_visible = true;
-		self.history_cache.insert("verify".into(),ChiefHistoryResult::Available{questions:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![ChiefHistoryEntryDto{ activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
+		self.history_cache.insert("verify".into(),ChiefHistoryResult::Available{questions:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![ChiefHistoryEntryDto{receipt: None, activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
 		cx.notify();
 	}
 }

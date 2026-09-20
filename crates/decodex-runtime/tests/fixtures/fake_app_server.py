@@ -290,7 +290,7 @@ for line in sys.stdin:
             print(json.dumps({"id": message["id"], "error": {"code": -32000, "message": "secret\\quoted"}}), flush=True)
             continue
         if mode == "oversized-frame":
-            sys.stdout.write("{" + ("x" * (1024 * 1024 + 1)))
+            sys.stdout.write("{" + ("x" * (8 * 1024 * 1024 + 1)))
             sys.stdout.flush()
             time.sleep(60)
         if mode == "queue-overflow":
@@ -465,7 +465,7 @@ for line in sys.stdin:
                 print(json.dumps({"id": message["id"]}), flush=True)
                 continue
             if mode == "exact-oversized-read":
-                sys.stdout.write("{" + ("x" * (1024 * 1024 + 1)))
+                sys.stdout.write("{" + ("x" * (8 * 1024 * 1024 + 1)))
                 sys.stdout.flush()
                 time.sleep(60)
             readback = dict(exact_thread)

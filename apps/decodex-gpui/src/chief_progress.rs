@@ -178,6 +178,7 @@ impl ChiefSurface {
 		};
 		entries.clear();
 		entries.push(ChiefHistoryEntryDto {
+			receipt: None,
 			activity: None,
 			usage: None,
 			duration_ms: None,
@@ -196,6 +197,7 @@ impl ChiefSurface {
 		.enumerate()
 		{
 			entries.push(ChiefHistoryEntryDto {
+				receipt: None,
 				activity: Some(ChiefActivityDto {
 					turn_id: "capture-turn".into(),
 					item_id: format!("capture-{index}"),

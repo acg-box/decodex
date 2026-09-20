@@ -301,6 +301,53 @@ impl ChiefHost {
 		.await
 	}
 
+	async fn timeline_source(
+		&self,
+		work: &str,
+		thread: &str,
+	) -> Option<crate::chief_usage_estimate::Source> {
+		let (generation, account, revision, client) = self.runtime.chief_usage_source().await?;
+		let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+		if owner.codex_thread_id.as_deref() != Some(thread) {
+			return None;
+		}
+		Some(crate::chief_usage_estimate::Source {
+			key: crate::chief_usage_estimate::SourceKey {
+				generation,
+				account,
+				revision,
+				thread: thread.into(),
+				work: work.into(),
+			},
+			client,
+		})
+	}
+
+	pub(crate) async fn timeline(
+		&self,
+		work: &str,
+		thread: &str,
+		cursor: Option<&str>,
+	) -> decodex_protocol::ChiefTimelineResult {
+		crate::chief::timeline::read(
+			Some(&self.store),
+			|| self.timeline_source(work, thread),
+			cursor,
+		)
+		.await
+	}
+
+	pub(crate) async fn media(
+		&self,
+		request: &decodex_protocol::ChiefMediaRequest,
+	) -> decodex_protocol::ChiefMediaResult {
+		crate::chief::timeline::media::read(
+			|| self.timeline_source(request.work_id.as_str(), request.thread_id.as_str()),
+			request,
+		)
+		.await
+	}
+
 	pub(crate) async fn integrations(
 		&self,
 		work: &str,

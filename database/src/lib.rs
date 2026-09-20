@@ -52,7 +52,8 @@ pub use self::{
 	accounts::AccountMetadata,
 	chief::{
 		ChiefCapacityRetry, ChiefDependency, ChiefDispatchState, ChiefDisposition, ChiefInboxEvent,
-		ChiefStoreSnapshot, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus, EnqueueChiefEvent,
+		ChiefStoreSnapshot, ChiefTurnMetrics, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus,
+		EnqueueChiefEvent,
 	},
 	chief_process::ChiefProcessBinding,
 	command::CommandIdentity,

@@ -396,6 +396,7 @@ impl ChiefSurface {
 
 		Some(
 			history_entry(&decodex_protocol::ChiefHistoryEntryDto {
+				receipt: None,
 				activity: None,
 				usage: None,
 				duration_ms: None,
@@ -621,6 +622,7 @@ mod tests {
 				next_before: None,
 				live: vec![],
 				entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+					receipt: None,
 					activity: None,
 					usage: None,
 					duration_ms: None,

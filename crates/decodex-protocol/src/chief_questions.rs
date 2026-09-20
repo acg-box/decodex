@@ -139,6 +139,27 @@ pub fn parse_chief_async_question_replies(text: &str) -> Option<Vec<ChiefAsyncQu
 	(!replies.is_empty()).then_some(replies)
 }
 
+/// Render complete committed reply envelopes as readable quoted questions and answers.
+/// Ordinary text, incomplete envelopes and embedded examples remain literal.
+pub fn render_chief_async_question_history(text: &str) -> String {
+	match parse_chief_async_question_replies(text) {
+		Some(replies) => replies
+			.into_iter()
+			.map(|reply| {
+				let question = reply
+					.question
+					.lines()
+					.map(|line| format!("> {line}"))
+					.collect::<Vec<_>>()
+					.join("\n");
+				format!("{question}\n\n{}", reply.answer)
+			})
+			.collect::<Vec<_>>()
+			.join("\n\n"),
+		None => text.to_owned(),
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

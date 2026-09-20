@@ -6104,6 +6104,36 @@ pub(crate) mod tests {
 	}
 
 	#[test]
+	fn stdout_pump_preserves_large_native_media_and_the_following_peer_frame() {
+		let value = serde_json::json!({"id":17,"result":{"data":[{"turnId":"turn","item":{"id":"image","type":"dynamicToolCall","contentItems":[{"type":"inputImage","imageUrl":format!("data:image/png;base64,{}", "A".repeat(2*1024*1024))}]}}],"nextCursor":null}});
+		let mut input = serde_json::to_vec(&value).unwrap();
+		input.extend_from_slice(b"\n{\"id\":18,\"result\":{\"thread\":{\"id\":\"peer\"}}}\n");
+		let (sender, receiver) = mpsc::sync_channel(2);
+		let exceeded = Arc::new(AtomicBool::new(false));
+		let before = process::ZEROIZED_INBOUND_BLOCKS.load(Ordering::Acquire);
+		process::pump_stdout(
+			Cursor::new(input),
+			sender,
+			Arc::clone(&exceeded),
+			&AtomicBool::new(false),
+			None,
+		);
+		assert!(
+			!exceeded.load(Ordering::Acquire),
+			"ordinary native media exceeded admitted transport limit"
+		);
+		let first = receiver.recv().unwrap().into_contiguous();
+		assert_eq!(serde_json::from_slice::<serde_json::Value>(&first).unwrap(), value);
+		let peer = receiver.recv().unwrap().into_contiguous();
+		assert_eq!(
+			serde_json::from_slice::<serde_json::Value>(&peer).unwrap()["result"]["thread"]["id"],
+			"peer"
+		);
+		drop((first, peer));
+		assert!(process::ZEROIZED_INBOUND_BLOCKS.load(Ordering::Acquire) > before);
+	}
+
+	#[test]
 	fn oversized_no_newline_stdout_frame_fails_closed() {
 		let temp = TempDir::new().unwrap();
 		let error = ReadOnlyProbe::new_for_test(

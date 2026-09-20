@@ -17,6 +17,7 @@ mod history;
 mod integrations;
 mod plugin_install;
 mod server_requests;
+mod timeline;
 pub use plugin_install::{PluginInstallReceipt, PluginInstallTarget};
 pub use server_requests::ServerRequestGuard;
 use server_requests::ServerRequests;
@@ -24,7 +25,8 @@ mod usage;
 pub use attachments::{ThreadAttachment, ThreadAttachmentAddOutcome, ThreadAttachmentAddResult};
 pub use usage::{ThreadUsageEstimate, ThreadUsageEstimateGroup};
 
-const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
+/// Shared JSON-RPC frame bound for direct and admitted native process transports.
+pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 const MAX_PENDING_REQUESTS: usize = 256;
 const MAX_BUFFERED_EVENTS: usize = 256;
 
