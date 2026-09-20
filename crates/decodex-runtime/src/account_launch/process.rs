@@ -7710,7 +7710,7 @@ pub(crate) mod tests {
 			);
 			assert!(
 				matches!(result, Err(super::ExactReconciliationError::InvalidResult)),
-				"{mode}: {result:?}"
+				"{mode}: expected invalid history to be rejected"
 			);
 		}
 	}
