@@ -184,6 +184,18 @@ pub struct ChiefAttachmentDto {
 	pub image: bool,
 }
 
+/// A task explicitly selected by the user as readable evidence.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChiefTaskReferenceDto {
+	/// Exact local work identity.
+	pub work_id: crate::EntityId,
+	/// Native thread selected at composition time; never follows replacements.
+	pub thread_id: crate::WireText,
+	/// Display label, treated as untrusted metadata.
+	pub title: crate::WireText,
+}
+
 /// Explicit Chief operations. Graph judgments remain model-owned.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
@@ -235,6 +247,9 @@ pub enum ChiefActionDto {
 		execution: crate::ConversationExecutionSettings,
 		/// User-selected files, bounded by the service.
 		attachments: Vec<ChiefAttachmentDto>,
+		/// Tasks explicitly selected as readable evidence.
+		#[serde(default)]
+		task_references: Vec<ChiefTaskReferenceDto>,
 	},
 	/// Continue the same Chief with settings and attachments captured at send time.
 	SendConfigured {
@@ -246,6 +261,9 @@ pub enum ChiefActionDto {
 		execution: crate::ConversationExecutionSettings,
 		/// User-selected files, bounded by the service.
 		attachments: Vec<ChiefAttachmentDto>,
+		/// Tasks explicitly selected as readable evidence.
+		#[serde(default)]
+		task_references: Vec<ChiefTaskReferenceDto>,
 	},
 	/// Supplement one exact running turn through native Codex steering.
 	Steer {
@@ -257,6 +275,9 @@ pub enum ChiefActionDto {
 		text: crate::HistoryText,
 		/// Files captured at send time.
 		attachments: Vec<ChiefAttachmentDto>,
+		/// Tasks explicitly selected as readable evidence.
+		#[serde(default)]
+		task_references: Vec<ChiefTaskReferenceDto>,
 	},
 	/// Acknowledge the exact findings displayed by the client and request continuation.
 	ContinueMisalignment {

@@ -133,6 +133,10 @@ pub(crate) struct ChiefSurface {
 	composer_menu: Option<&'static str>,
 	composer_menu_content: Option<&'static str>,
 	attachments: Vec<decodex_protocol::ChiefAttachmentDto>,
+	task_references: Vec<decodex_protocol::ChiefTaskReferenceDto>,
+	task_reference_search: Entity<ComposerInput>,
+	task_reference_drafts:
+		std::collections::BTreeMap<String, Vec<decodex_protocol::ChiefTaskReferenceDto>>,
 	attachment_drafts:
 		std::collections::BTreeMap<String, Vec<decodex_protocol::ChiefAttachmentDto>>,
 	manager_drafts: std::collections::BTreeMap<String, String>,
@@ -273,6 +277,9 @@ impl ChiefSurface {
 			composer_menu: None,
 			composer_menu_content: None,
 			attachments: vec![],
+			task_references: vec![],
+			task_reference_search: Self::new_task_reference_search(cx),
+			task_reference_drafts: Default::default(),
 			attachment_drafts: Default::default(),
 			manager_drafts: Default::default(),
 			composer_manager: None,
@@ -570,12 +577,13 @@ impl ChiefSurface {
 			return;
 		}
 		let text = self.composer.read(cx).content().to_owned();
-		if text.trim().is_empty() && self.attachments.is_empty() {
+		if text.trim().is_empty() && self.attachments.is_empty() && self.task_references.is_empty()
+		{
 			return;
 		}
 		let build = || -> Result<ChiefActionDto, String> {
 			let prompt = HistoryText::new(if text.trim().is_empty() {
-				"Please inspect the attached files.".into()
+				"Please inspect the selected tasks and attached files.".into()
 			} else {
 				text.clone()
 			})
@@ -634,8 +642,12 @@ impl ChiefSurface {
 				};
 				let attachments = self.attachments.clone();
 				let action = match action {
-					ChiefActionDto::Start(start) =>
-						ChiefActionDto::StartConfigured { start, execution, attachments },
+					ChiefActionDto::Start(start) => ChiefActionDto::StartConfigured {
+						start,
+						execution,
+						attachments,
+						task_references: self.task_references.clone(),
+					},
 					ChiefActionDto::Send { root_id, text } =>
 						self.configured_send(root_id, text, execution, attachments),
 					action => action,
@@ -660,6 +672,7 @@ impl ChiefSurface {
 			return;
 		};
 		let sent_attachments = draft.as_ref().map(|_| self.attachments.clone());
+		let sent_references = draft.as_ref().map(|_| self.task_references.clone());
 		let draft_owner = self.composer_manager.clone().or_else(|| self.root_id());
 		self.sending = true;
 		self.feedback = "Waiting for durable acceptance…".into();
@@ -692,6 +705,10 @@ impl ChiefSurface {
                         else if let Some(files) = draft_owner.as_ref().and_then(|id|surface.attachment_drafts.get_mut(id)) {
                             files.retain(|file| !sent.contains(file));
                         }
+                }
+                if matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
+                    && let Some(sent) = &sent_references {
+                    surface.clear_sent_task_references(sent, same_owner, draft_owner.as_deref());
                 }
                 surface.apply_command_result(
 					result,
@@ -767,6 +784,8 @@ impl ChiefSurface {
 		self.page_views.clear();
 		self.graph_expanded = false;
 		self.manager_drafts.clear();
+		self.task_references.clear();
+		self.task_reference_drafts.clear();
 		self.composer_manager = None;
 		self.history_cache.clear();
 		self.history_marks.clear();

@@ -2,6 +2,7 @@
 use super::*;
 use decodex_protocol::ChiefAttachmentDto;
 #[path = "chief_composer_controls.rs"] mod controls;
+#[path = "chief_task_references.rs"] mod task_references;
 
 struct ComposerTip(String);
 impl Render for ComposerTip {
@@ -41,9 +42,21 @@ impl ChiefSurface {
 		if let Some((work_id, turn_id)) =
 			self.running_turn().filter(|(id, _)| self.steer && id == &root_id)
 		{
-			ChiefActionDto::Steer { work_id, turn_id, text, attachments }
+			ChiefActionDto::Steer {
+				work_id,
+				turn_id,
+				text,
+				attachments,
+				task_references: self.task_references.clone(),
+			}
 		} else {
-			ChiefActionDto::SendConfigured { root_id, text, execution, attachments }
+			ChiefActionDto::SendConfigured {
+				root_id,
+				text,
+				execution,
+				attachments,
+				task_references: self.task_references.clone(),
+			}
 		}
 	}
 
@@ -51,6 +64,7 @@ impl ChiefSurface {
 		self.running_turn().is_some()
 			&& self.composer.read(cx).content().trim().is_empty()
 			&& self.attachments.is_empty()
+			&& self.task_references.is_empty()
 	}
 
 	pub(crate) fn interrupt_current(&mut self, cx: &mut Context<Self>) {
@@ -85,7 +99,7 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let menu = self.composer_menu.or(self.composer_menu_content);
-		let left = matches!(menu, Some("attachments" | "microphone"));
+		let left = matches!(menu, Some("attachments" | "microphone" | "tasks"));
 		let editor = div()
 			.id("composer-editor-area")
 			.flex_1()
@@ -130,6 +144,7 @@ impl ChiefSurface {
 					s.attach_paths(paths.0.to_vec(), cx)
 				}))
 				.children(if self.voice.is_none() { self.attachment_row(cx) } else { None })
+				.children(if self.voice.is_none() { self.task_reference_row(cx) } else { None })
 				.child(
 					div()
 						.w_full()
@@ -186,6 +201,15 @@ impl ChiefSurface {
 				|s, cx| {
 					s.composer_menu = None;
 					s.pick_attachments(cx);
+				},
+				cx,
+			))
+			.child(self.composer_control(
+				"task-reference-item",
+				"Reference task…".into(),
+				"Select a task to read",
+				|s, cx| {
+					s.toggle_composer_menu("tasks", cx);
 				},
 				cx,
 			))
@@ -258,6 +282,7 @@ impl ChiefSurface {
 					"Stop response · Control-C"
 				} else if self.composer.read(cx).content().trim().is_empty()
 					&& self.attachments.is_empty()
+					&& self.task_references.is_empty()
 				{
 					"Start Live"
 				} else {
@@ -268,6 +293,7 @@ impl ChiefSurface {
 						s.interrupt_current(cx);
 					} else if s.composer.read(cx).content().trim().is_empty()
 						&& s.attachments.is_empty()
+						&& s.task_references.is_empty()
 					{
 						s.start_voice(window, cx);
 					} else {
@@ -388,7 +414,8 @@ impl ChiefSurface {
 				div().size(px(9.0)).rounded(px(2.0)).bg(rgb(ui_theme::CANVAS)).into_any_element(),
 			"send"
 				if self.composer.read(cx).content().trim().is_empty()
-					&& self.attachments.is_empty() =>
+					&& self.attachments.is_empty()
+					&& self.task_references.is_empty() =>
 				controls::live_mark(),
 			"send" if !self.sending => controls::launch_mark().into_any_element(),
 			"send" => div().child("…").into_any_element(),
@@ -490,7 +517,9 @@ impl ChiefSurface {
 				.flex()
 				.flex_col()
 				.gap(px(10.))
-				.child(if matches!(menu, "attachments" | "microphone") {
+				.child(if menu == "tasks" {
+					self.task_reference_options(cx)
+				} else if matches!(menu, "attachments" | "microphone") {
 					self.attachment_options(cx)
 				} else {
 					div()

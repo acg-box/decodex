@@ -19,14 +19,24 @@ impl ChiefCoordinator {
 		let work = all
 			.iter()
 			.find(|item| item.id == id)
-			.filter(|item| item.id == chief.id || belongs_to(item, &chief.id, &all, &managers))
-			.ok_or_else(|| ChiefError::Invalid("work is outside this manager scope".into()))?;
-		let previous = self.store.chief_previous_threads(id.clone()).await?;
-		if work.codex_thread_id.as_deref() != Some(expected.as_str())
+			.ok_or_else(|| ChiefError::Invalid("referenced work is unavailable".into()))?;
+		let owned = work.id == chief.id || belongs_to(work, &chief.id, &all, &managers);
+		let granted = self
+			.store
+			.chief_has_task_reference(chief.id.clone(), id.clone(), expected.clone())
+			.await?;
+		if !owned && !granted {
+			return Err(ChiefError::Invalid("work is outside this manager scope".into()));
+		}
+		let previous =
+			if owned { self.store.chief_previous_threads(id.clone()).await? } else { Vec::new() };
+		if !granted
+			&& work.codex_thread_id.as_deref() != Some(expected.as_str())
 			&& !previous.contains(&expected)
 		{
 			return Err(ChiefError::Invalid("work thread changed; refresh chief_list_work".into()));
 		}
+
 		let limit = args.get("turnLimit").map_or(Ok(3), |v| {
 			v.as_u64()
 				.filter(|v| (1..=5).contains(v))
