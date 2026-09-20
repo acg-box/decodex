@@ -24,6 +24,29 @@ pub struct ChiefProcessBinding {
 }
 
 impl SqliteStore {
+	/// Check the current exact native thread binding and process subtree ownership.
+	pub async fn chief_thread_is_owned(
+		&self,
+		work: String,
+		thread: String,
+		generation: Option<String>,
+	) -> Result<bool, StoreError> {
+		self.run(move |connection| {
+			let transaction = connection.transaction().map_err(sql_error)?;
+			let bound: bool = transaction
+				.query_row(
+					"SELECT EXISTS(SELECT 1 FROM chief_work_items WHERE id=?1 AND codex_thread_id=?2)",
+					params![work, thread],
+					|row| row.get(0),
+				)
+				.map_err(sql_error)?;
+			let owned = bound && owns_work(&transaction, &work, generation.as_deref())?;
+			transaction.commit().map_err(sql_error)?;
+			Ok(owned)
+		})
+		.await
+	}
+
 	/// Retain one caller-validated non-secret root configuration before process admission.
 	pub async fn bind_chief_root_settings(
 		&self,
@@ -161,6 +184,27 @@ fn admission_digest(
 	let encoded = serde_json::to_vec(&request)
 		.map_err(|_| StoreError::InvalidInput("Chief process admission cannot be encoded"))?;
 	Ok(Sha256::digest(encoded).iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+pub(crate) fn owns_work(
+	connection: &rusqlite::Connection,
+	work: &str,
+	generation: Option<&str>,
+) -> Result<bool, StoreError> {
+	if let Some(generation) = generation {
+		connection.query_row("WITH RECURSIVE owned(id,root_id) AS (
+			SELECT b.root_id,b.root_id FROM chief_process_bindings b JOIN process_generations g ON g.generation_id=b.generation_id
+			WHERE b.generation_id=?1 AND g.state='ready' AND b.rowid=(SELECT rowid FROM chief_process_bindings WHERE root_id=b.root_id ORDER BY created_at_micros DESC,rowid DESC LIMIT 1)
+			UNION SELECT w.id,owned.root_id FROM chief_work_items w JOIN owned ON w.parent_goal_id=owned.id
+			WHERE NOT EXISTS(SELECT 1 FROM chief_managers WHERE work_id=w.id))
+			SELECT EXISTS(SELECT 1 FROM owned WHERE id=?2)", params![generation,work], |r|r.get(0)).map_err(sql_error)
+	} else {
+		// Direct coordinator transports have no durable process host. They cannot
+		// bypass ownership once any native process admission exists in this store.
+		connection
+			.query_row("SELECT NOT EXISTS(SELECT 1 FROM chief_process_bindings)", [], |r| r.get(0))
+			.map_err(sql_error)
+	}
 }
 
 #[cfg(test)]
@@ -699,6 +743,25 @@ mod tests {
 		.unwrap();
 		store.bind_process_generation_identity(&generation_id(1), 1, &identity).await.unwrap();
 		store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+		for (work, thread, expected) in [
+			("root", "thread-root", true),
+			("root", "foreign", false),
+			("second-root", "thread-second-root", false),
+			("manager", "thread-manager", false),
+		] {
+			assert_eq!(
+				store
+					.chief_thread_is_owned(
+						work.into(),
+						thread.into(),
+						Some(generation_id(1).as_str().into())
+					)
+					.await
+					.unwrap(),
+				expected
+			);
+			assert!(!store.chief_thread_is_owned(work.into(), thread.into(), None).await.unwrap());
+		}
 		for work in ["root", "second-root", "manager"] {
 			store.record_chief_guardian_review(observation(work, None)).await.unwrap();
 			assert!(

@@ -10,6 +10,8 @@ use tokio::{
 	sync::{mpsc, oneshot, watch},
 };
 
+mod archive;
+pub use archive::ThreadArchiveState;
 mod attachments;
 mod history;
 mod integrations;

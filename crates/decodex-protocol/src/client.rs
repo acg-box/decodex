@@ -364,6 +364,29 @@ impl ChiefClient {
 		}
 	}
 
+	/// Inspect the exact native thread without loading it or running a turn.
+	pub async fn archive_state(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefArchiveResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(12),
+		};
+		let completed = time::timeout(
+			Duration::from_secs(12),
+			transport.query_inner("chief-archive", QueryPayload::GetChiefArchiveState { work_id }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefArchiveState(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read saved Guardian reviews without loading or running the native thread.
 	pub async fn guardian_reviews(
 		&self,
@@ -535,11 +558,12 @@ impl ChiefClient {
 		self.transport.require_local_profile()?;
 		let attempted = AtomicBool::new(false);
 		let refresh = matches!(&action, crate::ChiefActionDto::RefreshIntegrations { .. });
+		let restore = matches!(&action, crate::ChiefActionDto::RestoreArchivedThread { .. });
 		let timeout = if refresh { Duration::from_secs(65) } else { RESET_CARD_CLIENT_TIMEOUT };
 		let executor = Self {
 			transport: ResetCardClient {
 				profile: self.transport.profile.clone(),
-				timeout: if refresh { timeout } else { self.transport.timeout },
+				timeout: if refresh || restore { timeout } else { self.transport.timeout },
 			},
 		};
 		let result =
@@ -662,6 +686,7 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		| crate::ChiefActionDto::AnswerQuestion { work_id, .. }
 		| crate::ChiefActionDto::ContinueMisalignment { work_id, .. }
 		| crate::ChiefActionDto::ApproveGuardianDenial { work_id, .. }
+		| crate::ChiefActionDto::RestoreArchivedThread { work_id, .. }
 		| crate::ChiefActionDto::AddResourceLink { work_id, .. }
 		| crate::ChiefActionDto::RemoveResource { work_id, .. }
 		| crate::ChiefActionDto::RefreshIntegrations { work_id } => work_id,
@@ -2035,6 +2060,51 @@ mod tests {
 	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
 	#[tokio::test]
+	async fn archive_state_is_bound_to_work_and_preserves_native_identity() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let expected = crate::ChiefArchiveResult::Archived { thread_id: "native-exact".into() };
+		let reply = expected.clone();
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query frame")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("query")
+			};
+			assert!(
+				matches!(query.payload,crate::QueryPayload::GetChiefArchiveState {work_id} if work_id.as_str()=="root")
+			);
+			time::sleep(Duration::from_millis(5100)).await;
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::ChiefArchiveState(reply),
+				})))
+				.await
+				.unwrap();
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let result = crate::ChiefClient::new(profile)
+			.archive_state(EntityId::new("root").unwrap())
+			.await
+			.unwrap();
+		server.await.unwrap();
+		assert_eq!(result, expected);
+	}
+
+	#[tokio::test]
 	async fn guardian_review_query_preserves_cursor_and_separate_submission_receipt() {
 		let (temp, authority) = local_transport();
 		let mut listener = authority.bind().await.unwrap();
@@ -2671,7 +2741,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 34 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 35 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

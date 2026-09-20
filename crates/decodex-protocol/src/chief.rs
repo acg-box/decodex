@@ -188,6 +188,13 @@ pub struct ChiefAttachmentDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Explicitly restore the exact archived native thread selected by the user.
+	RestoreArchivedThread {
+		/// Current local work identity.
+		work_id: crate::EntityId,
+		/// Native thread identity shown by archive inspection.
+		thread_id: crate::WireText,
+	},
 	/// Explicitly synchronize shared installed plugins and reload loaded native MCP runtimes.
 	RefreshIntegrations {
 		/// Task from which the user requested the shared refresh.

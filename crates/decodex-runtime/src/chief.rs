@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 mod activity;
+mod archive;
 mod guardian;
 mod misalignment;
 pub(crate) mod observations;
@@ -50,6 +51,8 @@ impl ChiefConfig {
 /// A coordination failure, including uncertain external execution.
 #[derive(Debug)]
 pub enum ChiefError {
+	/// Exact native resume refused because the selected session is archived.
+	ThreadArchived,
 	/// Another Codex client owns the persisted thread writer; no turn was dispatched.
 	ThreadOwnedElsewhere,
 	/// The provider transport failed.
@@ -889,7 +892,11 @@ impl ChiefCoordinator {
 		resume["threadId"] = json!(thread);
 		resume["excludeTurns"] = json!(true);
 		if !self.loaded_threads.contains(thread) {
-			let response = self.client.thread_resume(resume).await.map_err(resume_error)?;
+			let response = self
+				.client
+				.thread_resume(resume)
+				.await
+				.map_err(|error| resume_error(error, thread))?;
 			let effort = if self.is_manager(&item.id).await? {
 				&self.config.chief_effort
 			} else {
@@ -1774,7 +1781,15 @@ fn append_attachments(input: &mut Vec<Value>, files: &[decodex_protocol::ChiefAt
 	}
 }
 
-fn resume_error(error: ClientError) -> ChiefError {
+fn resume_error(error: ClientError, thread: &str) -> ChiefError {
+	if let ClientError::Remote(remote) = &error
+		&& remote.code == -32600
+		&& remote.message
+			== format!(
+				"session {thread} is archived. Run `codex unarchive {thread}` to unarchive it first."
+			) {
+		return ChiefError::ThreadArchived;
+	}
 	if let ClientError::Remote(remote) = &error
 		&& remote.code == -32600
 		&& remote.message.contains("already has an active writer")

@@ -542,6 +542,7 @@ impl ChiefSurface {
 						)
 						.child(self.misalignment_panel(work, cx))
 						.child(self.guardian_panel(work, cx))
+						.child(self.archive_panel(work, cx))
 						.child(self.request_panel(snapshot, work, cx))
 						.child(self.async_question_panel(work, cx))
 						.into_any_element()
