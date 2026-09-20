@@ -64,8 +64,8 @@ fn main() {
 		}
 	});
 	application.run(move |cx: &mut App| {
-		shell::bind_keys(cx);
 		install_application_menu(cx);
+		shell::bind_keys(cx);
 		let profile = ClientProfile::load_default(None);
 		let chief_profile = profile.as_ref().ok().cloned();
 		let bundled_daemon = profile.as_ref().ok().and_then(|profile| {
