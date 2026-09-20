@@ -587,26 +587,9 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			ChiefActionDto::InstallSuggestedPlugin { work_id, event_id, review_token } => {
-				let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
-				chief
-					.install_suggested_plugin(
-						work_id.as_str(),
-						event_id,
-						review_token.as_str(),
-						&key,
-					)
-					.await
-					.map_err(|error| match error {
-						ChiefError::Rejected(_) => ChiefHostError::Rejected(
-							"Installation was not started. Refresh the suggestion and review its current details.",
-						),
-						_ => ChiefHostError::Unknown(
-							"Installation is not confirmed. Read its current status; do not repeat the installation.",
-						),
-					})?;
-				Ok(work_id.as_str().into())
-			},
+			ChiefActionDto::InstallSuggestedPlugin { work_id, event_id, review_token } =>
+				self.install_plugin(work_id.as_str(), event_id, review_token.as_str(), &key, active)
+					.await,
 			ChiefActionDto::RestoreArchivedThread { work_id, thread_id } => {
 				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
 				chief.restore_archived_thread(work_id.as_str(),thread_id.as_str()).await.map_err(|error|match error {
@@ -615,25 +598,8 @@ impl ChiefHost {
                 })?;
 				Ok(work_id.as_str().into())
 			},
-			ChiefActionDto::RefreshIntegrations { work_id } => {
-				let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
-				match chief.refresh_integrations(work_id.as_str()).await {
-					Ok(true) => Ok(work_id.as_str().into()),
-					Ok(false) => Err(ChiefHostError::Rejected(
-						"Some plugin updates failed and cached versions may remain. MCP reload was acknowledged; read the refreshed status before retrying.",
-					)),
-					Err(ChiefError::Rejected(_)) =>
-						Err(ChiefHostError::Rejected("The task no longer has a native thread.")),
-					Err(ChiefError::Transport(ClientError::Remote(_))) =>
-						Err(ChiefHostError::Unknown(
-							"Native refresh returned an error and may have partly applied. Inspect the current integration status before retrying.",
-						)),
-					Err(_) => Err(ChiefHostError::Unknown(
-						"Integration refresh could not be confirmed. Read current status; do not automatically retry.",
-					)),
-				}
-			},
-
+			ChiefActionDto::RefreshIntegrations { work_id } =>
+				self.refresh_integrations(work_id.as_str(), active).await,
 			ChiefActionDto::AddResourceLink { work_id, title, url } => {
 				let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
 				chief
@@ -697,80 +663,10 @@ impl ChiefHost {
 			},
 			ChiefActionDto::CancelCapacityRetry { work_id, event_id } =>
 				self.cancel_capacity_retry(work_id, event_id).await,
-			ChiefActionDto::Respond { work_id, event_id, response_json } => {
-				let event = self
-					.store
-					.get_chief_inbox_event(event_id)
-					.await
-					.map_err(|_| "pending request is unavailable; refresh state")?;
-				if event.work_item_id != work_id.as_str()
-					|| event.disposition.is_some()
-					|| !["permission_pending", "user_input_pending", "server_request_pending"]
-						.contains(&event.event_kind.as_str())
-				{
-					return Err("request identity or state changed; refresh state".into());
-				}
-				let response: serde_json::Value = serde_json::from_str(response_json.as_str())
-					.map_err(|_| "response must be valid JSON")?;
-				if !response.is_object() {
-					return Err("response must be a JSON object".into());
-				}
-				let (_, chief, _) = active
-					.as_mut()
-					.ok_or("Chief is not connected; stale requests cannot be replayed")?;
-				chief.respond_pending_event(event_id, response).await.map_err(|error| {
-                    if matches!(error,ChiefError::Rejected(_)) { return ChiefHostError::Rejected("The response does not match the current provider request. Review the form before submitting."); }
-					ChiefHostError::Unknown(
-						"request response could not be confirmed; refresh state before retrying",
-					)
-				})?;
-				Ok(work_id.as_str().into())
-			},
-			ChiefActionDto::Start(draft) => {
-				let root = draft.root_id.as_str().to_owned();
-				let account_id = draft
-					.account_id
-					.as_ref()
-					.map(|id| AccountId::new(id.as_str()))
-					.transpose()
-					.map_err(|_| "invalid account identity")?;
-				if active.as_ref().is_some_and(|(current, _, _)| current != &root) {
-					return Err("another Chief is active".into());
-				}
-				let config = config(&draft);
-				ChiefCoordinator::reserve_root(&self.store, &root, draft.prompt.as_str())
-					.await
-					.map_err(|_| "Chief root could not be reserved")?;
-				let mut settings =
-					serde_json::to_value(&config).map_err(|_| "invalid Chief configuration")?;
-				if let Some(account) = &draft.account_id {
-					settings["account_id"] = json!(account.as_str());
-				}
-				let encoded =
-					serde_json::to_string(&settings).map_err(|_| "invalid Chief configuration")?;
-				self.store
-					.bind_chief_root_settings(&root, &encoded)
-					.await
-					.map_err(|_| "Chief configuration differs from its saved execution context")?;
-				// Persist the user input before any external process or thread effect.
-				persist_input(
-					&self.store,
-					&root,
-					&key,
-					draft.prompt.as_str(),
-					input_options.as_ref(),
-				)
-				.await?;
-				if active.is_none() {
-					match self.connect(&root, key.clone(), config, account_id).await {
-						Ok(connection) => *active = Some(connection),
-						Err(_) => {
-							self.record_error(&root, "reconnection_needs_attention").await;
-						},
-					}
-				}
-				Ok(root)
-			},
+			ChiefActionDto::Respond { work_id, event_id, response_json } =>
+				self.respond(work_id.as_str(), event_id, response_json.as_str(), active).await,
+			ChiefActionDto::Start(draft) =>
+				self.start(draft, &key, input_options.as_ref(), active).await,
 			ChiefActionDto::Send { root_id, text } =>
 				self.accept_message(&root_id, &text, &key, input_options.as_ref(), active).await,
 			ChiefActionDto::Interrupt { work_id, turn_id } => {
@@ -799,6 +695,134 @@ impl ChiefHost {
 				Ok(work_id.as_str().into())
 			},
 		}
+	}
+
+	async fn install_plugin(
+		&self,
+		work: &str,
+		event_id: i64,
+		review: &str,
+		key: &str,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
+		chief.install_suggested_plugin(work, event_id, review, key).await.map_err(|error| {
+			match error {
+				ChiefError::Rejected(_) => ChiefHostError::Rejected(
+					"Installation was not started. Refresh the suggestion and review its current details.",
+				),
+				_ => ChiefHostError::Unknown(
+					"Installation is not confirmed. Read its current status; do not repeat the installation.",
+				),
+			}
+		})?;
+		Ok(work.into())
+	}
+
+	async fn refresh_integrations(
+		&self,
+		work: &str,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
+		match chief.refresh_integrations(work).await {
+			Ok(true) => Ok(work.into()),
+			Ok(false) => Err(ChiefHostError::Rejected(
+				"Some plugin updates failed and cached versions may remain. MCP reload was acknowledged; read the refreshed status before retrying.",
+			)),
+			Err(ChiefError::Rejected(_)) =>
+				Err(ChiefHostError::Rejected("The task no longer has a native thread.")),
+			Err(ChiefError::Transport(ClientError::Remote(_))) => Err(ChiefHostError::Unknown(
+				"Native refresh returned an error and may have partly applied. Inspect the current integration status before retrying.",
+			)),
+			Err(_) => Err(ChiefHostError::Unknown(
+				"Integration refresh could not be confirmed. Read current status; do not automatically retry.",
+			)),
+		}
+	}
+
+	async fn respond(
+		&self,
+		work: &str,
+		event_id: i64,
+		response_json: &str,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		let event = self
+			.store
+			.get_chief_inbox_event(event_id)
+			.await
+			.map_err(|_| "pending request is unavailable; refresh state")?;
+		if event.work_item_id != work
+			|| event.disposition.is_some()
+			|| !["permission_pending", "user_input_pending", "server_request_pending"]
+				.contains(&event.event_kind.as_str())
+		{
+			return Err("request identity or state changed; refresh state".into());
+		}
+		let response: serde_json::Value =
+			serde_json::from_str(response_json).map_err(|_| "response must be valid JSON")?;
+		if !response.is_object() {
+			return Err("response must be a JSON object".into());
+		}
+		let (_, chief, _) =
+			active.as_mut().ok_or("Chief is not connected; stale requests cannot be replayed")?;
+		chief.respond_pending_event(event_id, response).await.map_err(|error| {
+			if matches!(error, ChiefError::Rejected(_)) {
+				return ChiefHostError::Rejected(
+					"The response does not match the current provider request. Review the form before submitting.",
+				);
+			}
+			ChiefHostError::Unknown(
+				"request response could not be confirmed; refresh state before retrying",
+			)
+		})?;
+		Ok(work.into())
+	}
+
+	async fn start(
+		&self,
+		draft: ChiefStartDto,
+		key: &str,
+		input_options: Option<&serde_json::Value>,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		let root = draft.root_id.as_str().to_owned();
+		let account_id = draft
+			.account_id
+			.as_ref()
+			.map(|id| AccountId::new(id.as_str()))
+			.transpose()
+			.map_err(|_| "invalid account identity")?;
+		if active.as_ref().is_some_and(|(current, _, _)| current != &root) {
+			return Err("another Chief is active".into());
+		}
+		let config = config(&draft);
+		ChiefCoordinator::reserve_root(&self.store, &root, draft.prompt.as_str())
+			.await
+			.map_err(|_| "Chief root could not be reserved")?;
+		let mut settings =
+			serde_json::to_value(&config).map_err(|_| "invalid Chief configuration")?;
+		if let Some(account) = &draft.account_id {
+			settings["account_id"] = json!(account.as_str());
+		}
+		let encoded =
+			serde_json::to_string(&settings).map_err(|_| "invalid Chief configuration")?;
+		self.store
+			.bind_chief_root_settings(&root, &encoded)
+			.await
+			.map_err(|_| "Chief configuration differs from its saved execution context")?;
+		// Persist the user input before any external process or thread effect.
+		persist_input(&self.store, &root, key, draft.prompt.as_str(), input_options).await?;
+		if active.is_none() {
+			match self.connect(&root, key.to_owned(), config, account_id).await {
+				Ok(connection) => *active = Some(connection),
+				Err(_) => {
+					self.record_error(&root, "reconnection_needs_attention").await;
+				},
+			}
+		}
+		Ok(root)
 	}
 
 	async fn record_delivery(&self, root: &str, result: Result<(), ChiefError>) {

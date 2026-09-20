@@ -189,175 +189,7 @@ pub(super) async fn fixture_with_history(
 	let (reader, writer) = tokio::io::split(client_io);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let (sent, received) = tokio::sync::mpsc::unbounded_channel();
-	tokio::spawn(async move {
-		let (reader, mut writer) = tokio::io::split(server_io);
-		let mut lines = BufReader::new(reader).lines();
-		let mut threads = 0;
-		let mut turns = 0;
-		let mut injected = false;
-		let mut archived = history["_archived"] == true;
-		let mut resume_failures = history["_resume_failures"].as_u64().unwrap_or_default();
-		while let Some(line) = lines.next_line().await.unwrap() {
-			let request: Value = serde_json::from_str(&line).unwrap();
-			sent.send(request.clone()).unwrap();
-			if request.get("method").is_none() {
-				continue;
-			}
-			if request["method"] == "thread/resume" && resume_failures > 0 {
-				resume_failures -= 1;
-				let mut frame = json!({"id":request["id"],"error":{"code":-32600,"message":"thread private-id already has an active writer"}}).to_string();
-				frame.push('\n');
-				writer.write_all(frame.as_bytes()).await.unwrap();
-				continue;
-			}
-			if request["method"] == "thread/realtime/stop"
-				&& history["_voice_stop_disconnect"] == true
-			{
-				break;
-			}
-			if request["method"] == "thread/unarchive" {
-				if history["_archive_disconnect"] == true {
-					break;
-				}
-				if history["_archive_reject"] == true {
-					if history["_archive_peer_restored"] == true {
-						archived = false;
-					}
-					writer
-						.write_all(
-							format!(
-								"{}\n",
-								json!({"id":request["id"],"error":{"code":-32600,"message":"restore rejected"}})
-							)
-							.as_bytes(),
-						)
-						.await
-						.unwrap();
-					continue;
-				}
-			}
-			if request["method"] == "thread/approveGuardianDeniedAction" {
-				if history["_guardian_disconnect"] == true {
-					break;
-				}
-				if history["_guardian_reject"] == true {
-					let frame = format!(
-						"{}\n",
-						json!({"id":request["id"],"error":{"code":-32600,"message":"approval rejected"}})
-					);
-					writer.write_all(frame.as_bytes()).await.unwrap();
-					continue;
-				}
-			}
-			if request["method"] == "thread/inject_items"
-				&& history["_injection_disconnect"] == true
-			{
-				break;
-			}
-			if request["method"] == "thread/inject_items" {
-				injected = true;
-			}
-			if request["method"] == "turn/start"
-				&& injected && history["_turn_after_injection_disconnect"] == true
-			{
-				break;
-			}
-			if request["method"] == "turn/steer" && history["_steer_disconnect"] == true {
-				break;
-			}
-			if request["method"] == "turn/start"
-				&& request["params"]["toolOutput"].is_object()
-				&& history["_tool_output_disconnect"] == true
-			{
-				break;
-			}
-			if request["method"] == "turn/steer" && history["_steer_error"] == true {
-				let frame = format!(
-					"{}\n",
-					json!({"id":request["id"],"error":{"code":-32600,"message":"turn ended"}})
-				);
-				writer.write_all(frame.as_bytes()).await.unwrap();
-				continue;
-			}
-			if request["method"] == "turn/start"
-				&& request["params"]["responsesapiClientMetadata"]["misalignment_override"]
-					.is_string()
-			{
-				if history["_continuation_disconnect"] == true {
-					break;
-				}
-				if history["_continuation_reject"] == true {
-					let frame = format!(
-						"{}\n",
-						json!({"id":request["id"],"error":{"code":-32600,"message":"continuation rejected"}})
-					);
-					writer.write_all(frame.as_bytes()).await.unwrap();
-					continue;
-				}
-			}
-			let result = match request["method"].as_str() {
-				Some("thread/list") =>
-					json!({"data":if request["params"]["archived"]==archived {vec![json!({"id":"opaque thread/1"})]} else {vec![]},"nextCursor":null}),
-				Some("thread/unarchive") => {
-					archived = false;
-					json!({"thread":{"id":request["params"]["threadId"]}})
-				},
-				Some("turn/steer") => json!({"turnId":request["params"]["expectedTurnId"]}),
-				Some("thread/read") => {
-					let id = request["params"]["threadId"].as_str().unwrap();
-					let mut result = history.get(id).cloned().unwrap_or_else(
-						|| json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
-					);
-					if result["thread"]["historyMode"] == "paginated" {
-						assert_ne!(request["params"]["includeTurns"], true);
-						result["thread"]["turns"] = json!([]);
-					}
-					result
-				},
-				Some("thread/turns/list") => {
-					let id = request["params"]["threadId"].as_str().unwrap();
-					let mut turns = history[id]["thread"]["turns"].clone();
-					for turn in turns.as_array_mut().unwrap() {
-						turn["items"] = json!([]);
-						turn["itemsView"] = json!("notLoaded");
-					}
-					json!({"data":turns,"nextCursor":null})
-				},
-				Some("thread/items/list") => {
-					let id = request["params"]["threadId"].as_str().unwrap();
-					let turn_id = &request["params"]["turnId"];
-					let turn = history[id]["thread"]["turns"]
-						.as_array()
-						.unwrap()
-						.iter()
-						.find(|turn| turn["id"] == *turn_id)
-						.unwrap();
-					let entries: Vec<_> = turn["items"]
-						.as_array()
-						.unwrap()
-						.iter()
-						.map(|item| json!({"turnId":turn_id,"item":item}))
-						.collect();
-					json!({"data":entries,"nextCursor":null})
-				},
-				Some("thread/resume") => {
-					json!({"thread":{"id":request["params"]["threadId"],"turns":history[request["params"]["threadId"].as_str().unwrap()]["thread"]["turns"]},"model":"selected-model","reasoningEffort":request["params"]["config"]["model_reasoning_effort"]})
-				},
-				Some("thread/start") => {
-					threads += 1;
-					json!({"thread":{"id":format!("opaque thread/{threads}")},"model":"selected-model","reasoningEffort":request["params"]["config"]["model_reasoning_effort"]})
-				},
-				Some("turn/start") => {
-					turns += 1;
-					json!({"turn":{"id":format!("opaque turn/{turns}")}})
-				},
-				_ => json!({}),
-			};
-			let mut frame = json!({"id":request["id"],"result":result}).to_string();
-			frame.push('\n');
-			writer.write_all(frame.as_bytes()).await.unwrap();
-		}
-	});
+	tokio::spawn(serve_fixture(server_io, history, sent));
 	(
 		ChiefCoordinator::new(
 			store,
@@ -372,6 +204,201 @@ pub(super) async fn fixture_with_history(
 		received,
 		directory,
 	)
+}
+
+struct FixtureFaults {
+	resume_failures: u64,
+	archived: bool,
+	injected: bool,
+}
+impl FixtureFaults {
+	async fn respond(
+		&mut self,
+		request: &Value,
+		history: &Value,
+		writer: &mut tokio::io::WriteHalf<tokio::io::DuplexStream>,
+	) -> Option<bool> {
+		if request["method"] == "thread/resume" && self.resume_failures > 0 {
+			self.resume_failures -= 1;
+			let mut frame = json!({"id":request["id"],"error":{"code":-32600,"message":"thread private-id already has an active writer"}}).to_string();
+			frame.push('\n');
+			writer.write_all(frame.as_bytes()).await.unwrap();
+			return Some(true);
+		}
+		if request["method"] == "thread/realtime/stop" && history["_voice_stop_disconnect"] == true
+		{
+			return Some(false);
+		}
+		if request["method"] == "thread/unarchive" {
+			if history["_archive_disconnect"] == true {
+				return Some(false);
+			}
+			if history["_archive_reject"] == true {
+				if history["_archive_peer_restored"] == true {
+					self.archived = false;
+				}
+				writer
+					.write_all(
+						format!(
+							"{}\n",
+							json!({"id":request["id"],"error":{"code":-32600,"message":"restore rejected"}})
+						)
+						.as_bytes(),
+					)
+					.await
+					.unwrap();
+				return Some(true);
+			}
+		}
+		if request["method"] == "thread/approveGuardianDeniedAction" {
+			if history["_guardian_disconnect"] == true {
+				return Some(false);
+			}
+			if history["_guardian_reject"] == true {
+				let frame = format!(
+					"{}\n",
+					json!({"id":request["id"],"error":{"code":-32600,"message":"approval rejected"}})
+				);
+				writer.write_all(frame.as_bytes()).await.unwrap();
+				return Some(true);
+			}
+		}
+		if request["method"] == "thread/inject_items" && history["_injection_disconnect"] == true {
+			return Some(false);
+		}
+		if request["method"] == "thread/inject_items" {
+			self.injected = true;
+		}
+		if request["method"] == "turn/start"
+			&& self.injected
+			&& history["_turn_after_injection_disconnect"] == true
+		{
+			return Some(false);
+		}
+		if request["method"] == "turn/steer" && history["_steer_disconnect"] == true {
+			return Some(false);
+		}
+		if request["method"] == "turn/start"
+			&& request["params"]["toolOutput"].is_object()
+			&& history["_tool_output_disconnect"] == true
+		{
+			return Some(false);
+		}
+		if request["method"] == "turn/steer" && history["_steer_error"] == true {
+			let frame = format!(
+				"{}\n",
+				json!({"id":request["id"],"error":{"code":-32600,"message":"turn ended"}})
+			);
+			writer.write_all(frame.as_bytes()).await.unwrap();
+			return Some(true);
+		}
+		if request["method"] == "turn/start"
+			&& request["params"]["responsesapiClientMetadata"]["misalignment_override"].is_string()
+		{
+			if history["_continuation_disconnect"] == true {
+				return Some(false);
+			}
+			if history["_continuation_reject"] == true {
+				let frame = format!(
+					"{}\n",
+					json!({"id":request["id"],"error":{"code":-32600,"message":"continuation rejected"}})
+				);
+				writer.write_all(frame.as_bytes()).await.unwrap();
+				return Some(true);
+			}
+		}
+		None
+	}
+}
+
+async fn serve_fixture(
+	server_io: tokio::io::DuplexStream,
+	history: Value,
+	sent: tokio::sync::mpsc::UnboundedSender<Value>,
+) {
+	let (reader, mut writer) = tokio::io::split(server_io);
+	let mut lines = BufReader::new(reader).lines();
+	let mut threads = 0;
+	let mut turns = 0;
+
+	let mut faults = FixtureFaults {
+		injected: false,
+		archived: history["_archived"] == true,
+		resume_failures: history["_resume_failures"].as_u64().unwrap_or_default(),
+	};
+	while let Some(line) = lines.next_line().await.unwrap() {
+		let request: Value = serde_json::from_str(&line).unwrap();
+		sent.send(request.clone()).unwrap();
+		if request.get("method").is_none() {
+			continue;
+		}
+		match faults.respond(&request, &history, &mut writer).await {
+			Some(true) => continue,
+			Some(false) => break,
+			None => {},
+		}
+		let result = match request["method"].as_str() {
+			Some("thread/list") =>
+				json!({"data":if request["params"]["archived"]==faults.archived {vec![json!({"id":"opaque thread/1"})]} else {vec![]},"nextCursor":null}),
+			Some("thread/unarchive") => {
+				faults.archived = false;
+				json!({"thread":{"id":request["params"]["threadId"]}})
+			},
+			Some("turn/steer") => json!({"turnId":request["params"]["expectedTurnId"]}),
+			Some("thread/read") => {
+				let id = request["params"]["threadId"].as_str().unwrap();
+				let mut result = history.get(id).cloned().unwrap_or_else(
+					|| json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
+				);
+				if result["thread"]["historyMode"] == "paginated" {
+					assert_ne!(request["params"]["includeTurns"], true);
+					result["thread"]["turns"] = json!([]);
+				}
+				result
+			},
+			Some("thread/turns/list") => {
+				let id = request["params"]["threadId"].as_str().unwrap();
+				let mut turns = history[id]["thread"]["turns"].clone();
+				for turn in turns.as_array_mut().unwrap() {
+					turn["items"] = json!([]);
+					turn["itemsView"] = json!("notLoaded");
+				}
+				json!({"data":turns,"nextCursor":null})
+			},
+			Some("thread/items/list") => {
+				let id = request["params"]["threadId"].as_str().unwrap();
+				let turn_id = &request["params"]["turnId"];
+				let turn = history[id]["thread"]["turns"]
+					.as_array()
+					.unwrap()
+					.iter()
+					.find(|turn| turn["id"] == *turn_id)
+					.unwrap();
+				let entries: Vec<_> = turn["items"]
+					.as_array()
+					.unwrap()
+					.iter()
+					.map(|item| json!({"turnId":turn_id,"item":item}))
+					.collect();
+				json!({"data":entries,"nextCursor":null})
+			},
+			Some("thread/resume") => {
+				json!({"thread":{"id":request["params"]["threadId"],"turns":history[request["params"]["threadId"].as_str().unwrap()]["thread"]["turns"]},"model":"selected-model","reasoningEffort":request["params"]["config"]["model_reasoning_effort"]})
+			},
+			Some("thread/start") => {
+				threads += 1;
+				json!({"thread":{"id":format!("opaque thread/{threads}")},"model":"selected-model","reasoningEffort":request["params"]["config"]["model_reasoning_effort"]})
+			},
+			Some("turn/start") => {
+				turns += 1;
+				json!({"turn":{"id":format!("opaque turn/{turns}")}})
+			},
+			_ => json!({}),
+		};
+		let mut frame = json!({"id":request["id"],"result":result}).to_string();
+		frame.push('\n');
+		writer.write_all(frame.as_bytes()).await.unwrap();
+	}
 }
 
 #[tokio::test]

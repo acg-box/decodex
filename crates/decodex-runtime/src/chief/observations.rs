@@ -1,6 +1,6 @@
 //! Source-bound provider observations. They do not authorize a turn or resolve work.
 
-use super::*;
+use super::{ChiefCoordinator, ChiefError, EnqueueChiefEvent, Value, exact, json};
 use decodex_codex::ThreadTokenUsage;
 use sha2::{Digest as _, Sha256};
 

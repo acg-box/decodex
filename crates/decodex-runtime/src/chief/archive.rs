@@ -1,5 +1,5 @@
 //! Explicit desired-state archive restoration; native Codex owns persistence.
-use super::*;
+use super::{ChiefCoordinator, ChiefError, ClientError, json};
 use decodex_codex::app_server_client::ThreadArchiveState;
 
 impl ChiefCoordinator {
