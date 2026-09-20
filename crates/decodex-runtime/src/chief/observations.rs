@@ -124,6 +124,8 @@ impl ChiefCoordinator {
 				self.pending_requests.remove(&id);
 			}
 		}
+		self.handled_history_revision =
+			self.handled_history_revision.saturating_add(1).min(self.client.history_revision());
 		Ok(())
 	}
 

@@ -1762,6 +1762,112 @@ async fn reverted_async_history_reopens_retained_questions_and_removes_deleted_q
 }
 
 #[tokio::test]
+async fn transport_revert_blocks_old_question_before_coordinator_reads_notification() {
+	let (mut chief, mut sent, _directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	let question = json!({"id":"question","type":"agentMessage","delivery":"async","questions":[{"title":"Which?"}]});
+	chief.observe_async_question_item("opaque thread/1", "opaque turn/1", &question).await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let (incoming, frames) = tokio::sync::mpsc::channel(8);
+	let (outgoing, mut writes) = tokio::sync::mpsc::channel(8);
+	let (client, mut notifications) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+	chief.client = client.clone();
+	incoming
+		.send(Ok(json!({"method":"thread/reverted","params":{"threadId":"opaque thread/1"}})))
+		.await
+		.unwrap();
+	tokio::time::timeout(std::time::Duration::from_secs(2), async {
+		while client.history_revision() == 0 {
+			tokio::task::yield_now().await;
+		}
+	})
+	.await
+	.unwrap();
+	let id = decodex_protocol::chief_async_question_id("question", 0);
+	assert!(matches!(
+		chief.answer_async_question("chief", &id, "A", "stale-ui").await,
+		Err(super::ChiefError::Invalid(_))
+	));
+	assert!(writes.try_recv().is_err());
+	assert!(sent.try_recv().is_err());
+	assert_eq!(
+		chief.store.read_chief_async_questions("chief".into()).await.unwrap().len(),
+		1,
+		"old projection exists until owner handles the notification"
+	);
+	chief.handle_event(notifications.recv().await.unwrap()).await.unwrap();
+	assert!(chief.store.chief_async_questions_recovering("chief".into()).await.unwrap());
+	assert!(chief.answer_async_question("chief", &id, "A", "after-owner").await.is_err());
+	assert!(writes.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn stale_history_guard_prevents_async_turn_and_steer_without_unknown_receipts() {
+	for running in [false, true] {
+		let (mut chief, mut sent, directory) = fixture().await;
+		chief.start_chief("chief", "Coordinate").await.unwrap();
+		if !running {
+			chief.handle_event(ServerEvent::Notification {method:"turn/completed".into(),params:json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
+		}
+		if !running {
+			let root = decodex_core::DecodexRoot::new(
+				directory.path().canonicalize().unwrap().join("root"),
+			)
+			.unwrap();
+			let db = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+			db.execute("UPDATE chief_work_items SET status='wait',next_check_at_micros=9999999999999999 WHERE id='chief'",[]).unwrap();
+		}
+		let work = chief.store.get_chief_work_item("chief".into()).await.unwrap();
+		let (foreign, _events, _process) = {
+			let (io, remote) = tokio::io::duplex(4096);
+			let (read, write) = tokio::io::split(io);
+			let (client, events) = AppServerClient::from_io(read, write);
+			(client, events, remote)
+		};
+		let guard = foreign.history_guard(0).unwrap();
+		while sent.try_recv().is_ok() {}
+		let result = if running {
+			chief
+				.steer_work_with_question_reply(
+					"chief",
+					"opaque turn/1",
+					"stale-answer",
+					"answer",
+					super::ChiefInputExtras { attachments: &[], task_references: &[] },
+					Some(("question", guard)),
+				)
+				.await
+				.map(|_| String::new())
+		} else {
+			let event = chief
+				.store
+				.enqueue_chief_event(EnqueueChiefEvent {
+					source_event_id: "stale-answer".into(),
+					work_item_id: "chief".into(),
+					event_kind: "async_question_answer".into(),
+					payload: json!({"text":"answer","asyncQuestionId":"question"}).to_string(),
+				})
+				.await
+				.unwrap();
+			chief.dispatch_with_claim(&work, "answer", vec![event.id], None, Some(guard)).await
+		};
+		assert!(matches!(result, Err(super::ChiefError::Transport(ClientError::StaleHistory))));
+		let after = chief.store.get_chief_work_item("chief".into()).await.unwrap();
+		assert_eq!(after.dispatch_state, work.dispatch_state);
+		assert_eq!(after.status, work.status);
+		assert_eq!(after.next_check_at_micros, work.next_check_at_micros);
+		assert!(
+			!chief
+				.store
+				.chief_async_answer_pending("chief".into(), "question".into())
+				.await
+				.unwrap()
+		);
+		assert!(sent.try_recv().is_err());
+	}
+}
+
+#[tokio::test]
 async fn async_revert_marker_survives_reopen_and_preserves_uncertain_deliveries() {
 	let (mut chief, mut sent, directory) = fixture().await;
 	chief.start_chief("chief", "Coordinate").await.unwrap();
