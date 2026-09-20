@@ -57,7 +57,7 @@ pub(crate) fn apply(window: &mut Window, style: GlassStyle) {
 
 #[cfg(all(target_os = "macos", not(test)))]
 mod macos {
-	use super::*;
+	use super::{GlassStyle, Window, WindowBackgroundAppearance};
 	use objc2::{msg_send, rc::Retained, runtime::AnyClass};
 	use objc2_app_kit::{
 		NSView, NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState,
