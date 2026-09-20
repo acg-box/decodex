@@ -2926,7 +2926,7 @@ fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			format!("Profile unavailable: {error:?}"),
 			plan_type
 				.as_ref()
-				.map(|plan| vec![format!("Plan · {}", plan.as_str())])
+				.map(|plan| vec![format!("Plan · {}", account_plan_label(plan.as_str()))])
 				.unwrap_or_default(),
 		),
 		None => (account_profile_load_label(shell.account_profile.load).to_owned(), Vec::new()),
@@ -3009,10 +3009,30 @@ fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.into_any_element()
 }
 
+// Match native account labels; preserve unknown provider values and stored SKU identity.
+fn account_plan_label(plan: &str) -> &str {
+	match plan.to_ascii_lowercase().as_str() {
+		"free" => "Free",
+		"go" => "Go",
+		"plus" => "Plus",
+		"pro" => "Pro",
+		"prolite" => "Pro Lite",
+		"self_serve_business_prolite" => "Business Premium",
+		"team" | "self_serve_business_usage_based" => "Business",
+		"enterprise_cbp_automation" => "Enterprise (Automation)",
+		"business" | "ent26" | "enterprise_cbp_usage_based" | "enterprise" | "hc" => "Enterprise",
+		"edu" | "education" => "Edu",
+		"edu_plus" => "Edu Plus",
+		"edu_pro" => "Edu Pro",
+		"unknown" => "Unknown",
+		_ => plan,
+	}
+}
+
 fn account_profile_facts(profile: &decodex_protocol::AccountProfileDto) -> Vec<String> {
 	let mut facts = Vec::new();
 	if let Some(plan) = &profile.plan_type {
-		facts.push(format!("Plan · {}", plan.as_str()));
+		facts.push(format!("Plan · {}", account_plan_label(plan.as_str())));
 	}
 	if let Some(tokens) = profile.lifetime_tokens {
 		facts.push(format!("Lifetime · {tokens} tokens"));
