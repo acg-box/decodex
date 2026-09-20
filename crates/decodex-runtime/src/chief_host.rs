@@ -193,6 +193,10 @@ impl ChiefHost {
 		}
 	}
 
+	pub(crate) fn guardian_generation(&self) -> Option<String> {
+		self.runtime.chief_catalog_client().map(|(generation, _)| generation.as_str().to_owned())
+	}
+
 	pub(crate) async fn usage_estimate(
 		&self,
 		work: &str,
@@ -566,6 +570,15 @@ impl ChiefHost {
 				Ok(work_id.as_str().into())
 			},
 
+			ChiefActionDto::ApproveGuardianDenial { work_id, review_row, review_digest } => {
+				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
+				chief.approve_guardian_denial(work_id.as_str(),review_row,review_digest.as_str(),&key).await
+					.map_err(|error| match error {
+						ChiefError::Rejected(_) => ChiefHostError::Rejected("Approval was rejected or the review is no longer current. Refresh the review before trying again."),
+						_ => ChiefHostError::Unknown("Approval submission was not confirmed. It will not be sent again automatically."),
+					})?;
+				Ok(work_id.as_str().into())
+			},
 			ChiefActionDto::AnswerQuestion { work_id, question_id, answer } => {
 				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
 				chief.answer_async_question(work_id.as_str(),question_id.as_str(),answer.as_str(),&key).await.map_err(|_|ChiefHostError::Unknown("Question reply acceptance could not be confirmed. Inspect the current conversation before sending again."))?;

@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 26;
+const CURRENT_SCHEMA_VERSION: i64 = 27;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -146,6 +146,11 @@ const MIGRATIONS: &[Migration] = &[
 		name: "chief_misalignment",
 		sql: include_str!("../migrations/0026_chief_misalignment.sql"),
 	},
+	Migration {
+		version: 27,
+		name: "chief_guardian_reviews",
+		sql: include_str!("../migrations/0027_chief_guardian_reviews.sql"),
+	},
 ];
 
 pub(crate) fn configure(connection: &Connection) -> Result<(), DatabaseError> {
@@ -260,12 +265,32 @@ fn migration_plan(connection: &Connection) -> Result<Vec<Migration>, DatabaseErr
 	if name.as_deref() != Some("chief_observation_indexes") {
 		return Ok(MIGRATIONS.to_vec());
 	}
-	let ordered =
-		MIGRATIONS[..14].iter().chain(MIGRATIONS[22..].iter()).chain(MIGRATIONS[14..22].iter());
-	Ok(ordered
-		.enumerate()
-		.map(|(index, migration)| Migration { version: index as i64 + 1, ..*migration })
-		.collect())
+	// Versions 24, 25 and 26 shipped with a moving slice before the eight older
+	// entries. Preserve whichever exact historical order this database applied,
+	// then append. Never renumber or rewrite an applied migration to fit a new plan.
+	let applied = connection
+		.prepare("SELECT version,name FROM schema_migrations ORDER BY version")
+		.map_err(sqlite_error)?
+		.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+		.map_err(sqlite_error)?
+		.collect::<Result<Vec<_>, _>>()
+		.map_err(sqlite_error)?;
+	for historical_end in 24..=26 {
+		let plan: Vec<Migration> = MIGRATIONS[..14]
+			.iter()
+			.chain(MIGRATIONS[22..historical_end].iter())
+			.chain(MIGRATIONS[14..22].iter())
+			.chain(MIGRATIONS[historical_end..].iter())
+			.enumerate()
+			.map(|(index, migration)| Migration { version: index as i64 + 1, ..*migration })
+			.collect();
+		if applied.iter().enumerate().all(|(index, (version, name))| {
+			plan.get(index).is_some_and(|m| *version == m.version && name == m.name)
+		}) {
+			return Ok(plan);
+		}
+	}
+	Err(DatabaseError::Incompatible)
 }
 
 fn verify_applied_migrations(connection: &Connection) -> Result<(), DatabaseError> {
@@ -288,8 +313,8 @@ fn verify_applied_migrations(connection: &Connection) -> Result<(), DatabaseErro
 	if applied.len() > MIGRATIONS.len() {
 		return Err(DatabaseError::Incompatible);
 	}
+	let plan = migration_plan(connection)?;
 	for (index, (version, name, digest)) in applied.iter().enumerate() {
-		let plan = migration_plan(connection)?;
 		let expected = plan.get(index).ok_or(DatabaseError::Incompatible)?;
 		if *version != expected.version
 			|| name != expected.name
@@ -393,19 +418,20 @@ mod tests {
 
 	#[test]
 	fn both_chief_migration_lineages_preserve_history_and_converge() {
-		for upstream in [false, true] {
+		for (upstream, historical_end) in [(false, 26), (true, 24), (true, 25), (true, 26)] {
 			let plan: Vec<Migration> = if upstream {
 				MIGRATIONS[..14]
 					.iter()
-					.chain(MIGRATIONS[22..].iter())
+					.chain(MIGRATIONS[22..historical_end].iter())
 					.chain(MIGRATIONS[14..22].iter())
+					.chain(MIGRATIONS[historical_end..].iter())
 					.enumerate()
 					.map(|(index, m)| Migration { version: index as i64 + 1, ..*m })
 					.collect()
 			} else {
 				MIGRATIONS.to_vec()
 			};
-			for version in 14..=25 {
+			for version in 14..=26 {
 				let directory = tempfile::tempdir().unwrap();
 				let mut connection =
 					Connection::open(directory.path().join("upgrade.sqlite3")).unwrap();

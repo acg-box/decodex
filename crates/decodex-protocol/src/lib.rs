@@ -3,6 +3,11 @@
 
 mod account_login;
 mod chief;
+mod chief_guardian;
+pub use chief_guardian::{
+	ChiefGuardianReviewDto, ChiefGuardianReviewsResult, ChiefGuardianStatus,
+	ChiefGuardianSubmission,
+};
 mod chief_integrations;
 mod chief_usage_estimate;
 pub use chief_usage_estimate::{
@@ -128,7 +133,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 33 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 34 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

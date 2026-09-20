@@ -364,6 +364,29 @@ impl ChiefClient {
 		}
 	}
 
+	/// Read saved Guardian reviews without loading or running the native thread.
+	pub async fn guardian_reviews(
+		&self,
+		work_id: EntityId,
+		before: Option<i64>,
+	) -> Result<crate::ChiefGuardianReviewsResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"chief-guardian-reviews",
+				QueryPayload::GetChiefGuardianReviews { work_id, before },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefGuardianReviews(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read native resource associations without loading or running the thread.
 	pub async fn resources(
 		&self,
@@ -638,6 +661,7 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		| crate::ChiefActionDto::Steer { work_id, .. }
 		| crate::ChiefActionDto::AnswerQuestion { work_id, .. }
 		| crate::ChiefActionDto::ContinueMisalignment { work_id, .. }
+		| crate::ChiefActionDto::ApproveGuardianDenial { work_id, .. }
 		| crate::ChiefActionDto::AddResourceLink { work_id, .. }
 		| crate::ChiefActionDto::RemoveResource { work_id, .. }
 		| crate::ChiefActionDto::RefreshIntegrations { work_id } => work_id,
@@ -2010,6 +2034,68 @@ mod tests {
 
 	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
+	#[tokio::test]
+	async fn guardian_review_query_preserves_cursor_and_separate_submission_receipt() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let expected = crate::ChiefGuardianReviewsResult::Available {
+			reviews: vec![crate::ChiefGuardianReviewDto {
+				row_id: 42,
+				digest: "digest".into(),
+				action_label: "Network access".into(),
+				status: crate::ChiefGuardianStatus::Denied,
+				risk_level: Some("high".into()),
+				user_authorization: Some("low".into()),
+				rationale: Some("Not requested".into()),
+				action_json: Some("{}".into()),
+				details_unavailable: None,
+				current_process: false,
+				submission: Some(crate::ChiefGuardianSubmission::Pending),
+				submission_key: Some("exact-command".into()),
+				can_approve: false,
+				approval_unavailable: Some("Unconfirmed".into()),
+			}],
+			next_before: Some(42),
+		};
+		let reply = expected.clone();
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query frame")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("query")
+			};
+			assert!(
+				matches!(query.payload,crate::QueryPayload::GetChiefGuardianReviews {work_id,before:Some(64)} if work_id.as_str()=="root")
+			);
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::ChiefGuardianReviews(reply),
+				})))
+				.await
+				.unwrap();
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let result = crate::ChiefClient::new(profile)
+			.guardian_reviews(EntityId::new("root").unwrap(), Some(64))
+			.await
+			.unwrap();
+		server.await.unwrap();
+		assert_eq!(result, expected);
+	}
+
 	async fn chief_command_exchange(mode: &'static str) -> crate::ChiefCommandResponse {
 		let (temp, authority) = local_transport();
 		let mut listener = authority.bind().await.expect("Chief protocol fixture succeeds");
@@ -2585,7 +2671,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 33 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 34 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

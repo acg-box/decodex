@@ -24,6 +24,7 @@ mod capability;
 mod conversation;
 mod dispatch;
 mod event;
+pub mod guardian;
 mod usage;
 
 pub use usage::{ThreadTokenUsage, TokenUsageBreakdown};

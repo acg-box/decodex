@@ -650,6 +650,201 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn guardian_observation_and_submission_require_current_process_and_root_ownership() {
+		use crate::ChiefGuardianObservation;
+		let directory = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("guardian.sqlite3")).unwrap();
+		seed(&store).await;
+		let mut manager = store.get_chief_work_item("root".into()).await.unwrap();
+		manager.id = "manager".into();
+		manager.parent_goal_id = Some("root".into());
+		store.create_chief_manager(manager, None).await.unwrap();
+		for work in ["root", "second-root", "manager"] {
+			store.bind_chief_thread(work.into(), format!("thread-{work}")).await.unwrap();
+			store.begin_chief_dispatch(work.into()).await.unwrap();
+			store.acknowledge_chief_dispatch(work.into(), "turn".into()).await.unwrap();
+		}
+		store
+			.prepare_chief_bound_process_generation(
+				&intent(1, 1),
+				&binding(1),
+				"root",
+				"guardian-process",
+			)
+			.await
+			.unwrap();
+		let observation = |work: &str, generation: Option<String>| {
+			ChiefGuardianObservation {
+			thread_id:format!("thread-{work}"),turn_id:"turn".into(),review_id:"review".into(),connection_id:"connection".into(),generation_id:generation,
+			event_json:serde_json::json!({"threadId":format!("thread-{work}"),"turnId":"turn","reviewId":"review","startedAtMs":1,"completedAtMs":2,"review":{"status":"denied"},"action":{"type":"command","source":"shell","command":"echo fixture","cwd":"/tmp"}}).to_string()
+		}
+		};
+		store
+			.record_chief_guardian_review(observation(
+				"root",
+				Some(generation_id(1).as_str().into()),
+			))
+			.await
+			.unwrap();
+		assert!(
+			store.read_chief_guardian_reviews("root".into(), None, 1).await.unwrap().is_empty()
+		);
+		let identity = decodex_core::ProcessIdentity::new(
+			ProcessBootIdentity::new("fixture-boot").unwrap(),
+			1234,
+			decodex_core::ProcessStartIdentity::new("fixture-start").unwrap(),
+			1234,
+			1234,
+		)
+		.unwrap();
+		store.bind_process_generation_identity(&generation_id(1), 1, &identity).await.unwrap();
+		store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+		for work in ["root", "second-root", "manager"] {
+			store.record_chief_guardian_review(observation(work, None)).await.unwrap();
+			assert!(
+				store.read_chief_guardian_reviews(work.into(), None, 1).await.unwrap().is_empty()
+			);
+			store
+				.record_chief_guardian_review(observation(
+					work,
+					Some(generation_id(1).as_str().into()),
+				))
+				.await
+				.unwrap();
+			assert_eq!(
+				store.read_chief_guardian_reviews(work.into(), None, 1).await.unwrap().len(),
+				usize::from(work == "root")
+			);
+		}
+		let saved =
+			store.read_chief_guardian_reviews("root".into(), None, 1).await.unwrap().remove(0);
+		for generation in [None, Some(generation_id(2).as_str().into())] {
+			assert!(
+				store
+					.begin_chief_guardian_approval(
+						"root".into(),
+						saved.id,
+						saved.digest(),
+						"connection".into(),
+						generation,
+						"wrong-process".into()
+					)
+					.await
+					.is_err()
+			);
+		}
+		assert!(
+			store
+				.begin_chief_guardian_approval(
+					"second-root".into(),
+					saved.id,
+					saved.digest(),
+					"connection".into(),
+					Some(generation_id(1).as_str().into()),
+					"wrong-root".into()
+				)
+				.await
+				.is_err()
+		);
+		let claim = store
+			.begin_chief_guardian_approval(
+				"root".into(),
+				saved.id,
+				saved.digest(),
+				"connection".into(),
+				Some(generation_id(1).as_str().into()),
+				"explicit".into(),
+			)
+			.await
+			.unwrap();
+		store.finish_chief_guardian_approval(claim, true).await.unwrap();
+		assert_eq!(
+			store
+				.chief_guardian_review("root".into(), saved.id)
+				.await
+				.unwrap()
+				.unwrap()
+				.approval_state
+				.as_deref(),
+			Some("submitted")
+		);
+		let mut retained = observation("root", Some(generation_id(1).as_str().into()));
+		retained.review_id = "after-restart".into();
+		let mut event: serde_json::Value = serde_json::from_str(&retained.event_json).unwrap();
+		event["reviewId"] = serde_json::json!(retained.review_id);
+		retained.event_json = event.to_string();
+		store.record_chief_guardian_review(retained).await.unwrap();
+		let retained =
+			store.read_chief_guardian_reviews("root".into(), None, 1).await.unwrap().remove(0);
+		let death = ProcessDeathEvidence::new(
+			ProcessDeathEvidenceId::new("50000000-0000-4000-8000-000000000001").unwrap(),
+			generation_id(1),
+			ProcessDeathEvidenceKind::OwnedChildExit,
+			ProcessBootIdentity::new("fixture-boot").unwrap(),
+			Some(identity),
+			DIGEST,
+		)
+		.unwrap();
+		assert!(matches!(
+			store.record_process_generation_death(3, &death).await.unwrap(),
+			crate::ProcessGenerationMutationOutcome::Applied(_)
+		));
+		drop(store);
+		let store = SqliteStore::open_test(&directory.path().join("guardian.sqlite3")).unwrap();
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(
+					&intent(1, 2),
+					&binding(1),
+					"root",
+					"guardian-reconnect"
+				)
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Fresh(_)
+		));
+		let identity = decodex_core::ProcessIdentity::new(
+			ProcessBootIdentity::new("fixture-boot").unwrap(),
+			5678,
+			decodex_core::ProcessStartIdentity::new("reconnected-start").unwrap(),
+			5678,
+			5678,
+		)
+		.unwrap();
+		store.bind_process_generation_identity(&generation_id(2), 1, &identity).await.unwrap();
+		store.mark_process_generation_ready(&generation_id(2), 2).await.unwrap();
+		assert!(
+			store
+				.begin_chief_guardian_approval(
+					"root".into(),
+					retained.id,
+					retained.digest(),
+					"old-connection".into(),
+					Some(generation_id(1).as_str().into()),
+					"stale-process".into()
+				)
+				.await
+				.is_err()
+		);
+		let claim = store
+			.begin_chief_guardian_approval(
+				"root".into(),
+				retained.id,
+				retained.digest(),
+				"new-connection".into(),
+				Some(generation_id(2).as_str().into()),
+				"restored-user-decision".into(),
+			)
+			.await
+			.unwrap();
+		store.finish_chief_guardian_approval(claim, true).await.unwrap();
+		let restored =
+			store.chief_guardian_review("root".into(), retained.id).await.unwrap().unwrap();
+		assert_eq!(restored.event_json, retained.event_json);
+		assert_eq!(restored.approval_key.as_deref(), Some("restored-user-decision"));
+	}
+
+	#[tokio::test]
 	async fn native_voice_turns_are_owned_deduplicated_and_never_requeued() {
 		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("voice.sqlite3");

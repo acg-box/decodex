@@ -5,6 +5,8 @@ mod account_lifecycle;
 mod account_profiles;
 mod accounts;
 mod chief;
+mod chief_guardian;
+pub use chief_guardian::{ChiefGuardianObservation, ChiefGuardianReview};
 mod chief_misalignment;
 pub use chief_misalignment::ChiefMisalignment;
 mod chief_output;
