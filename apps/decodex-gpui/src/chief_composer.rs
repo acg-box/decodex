@@ -502,7 +502,8 @@ impl ChiefSurface {
 								.p(px(8.))
 								.rounded(px(14.))
 								.bg(rgb(0x29292d))
-								.child(self.model_palette(cx)),
+								.child(self.model_palette(cx))
+								.child(self.model_notice_panel(cx)),
 						)
 						.child(
 							div()
@@ -512,24 +513,9 @@ impl ChiefSurface {
 								.bg(rgb(0x29292d))
 								.flex()
 								.items_center()
-								.child(div().flex_1().min_w_0().child(self.effort_scale(cx)))
-								.child(self.composer_control(
-									"fast",
-									"".into(),
-									if self.selected_model(cx).is_some_and(|m| m.supports_fast) {
-										if self.fast { "Fast on" } else { "Fast off" }
-									} else {
-										"Fast unavailable for this model"
-									},
-									|s, cx| {
-										if s.selected_model(cx).is_some_and(|m| m.supports_fast) {
-											s.fast = !s.fast;
-										}
-										cx.notify();
-									},
-									cx,
-								)),
+								.child(div().flex_1().min_w_0().child(self.effort_scale(cx))),
 						)
+						.child(self.service_tier_picker(cx))
 						.into_any_element()
 				})
 				.into_any_element(),
@@ -785,7 +771,11 @@ mod tests {
 					],
 					default_effort: Some(ConversationReasoningEffort::Medium),
 					supports_fast: false,
+					service_tiers: vec![],
+					default_service_tier: None,
 					supports_images: false,
+					availability: None,
+					upgrade: None,
 				}],
 				memory_enabled: Some(true),
 			});
@@ -826,6 +816,7 @@ mod tests {
 						model: ConversationModel::new("gpt-6-astra").unwrap(),
 						reasoning_effort: s.effort,
 						fast: false,
+						service_tier: None,
 					},
 					vec![],
 				)

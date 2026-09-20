@@ -5,7 +5,15 @@ mod account_lifecycle;
 mod account_profiles;
 mod accounts;
 mod chief;
+mod chief_install;
+pub use chief_install::{ChiefInstallAttempt, ChiefInstallRequirements};
+mod chief_guardian;
+pub use chief_guardian::{ChiefGuardianObservation, ChiefGuardianReview};
+mod chief_misalignment;
+pub use chief_misalignment::ChiefMisalignment;
 mod chief_output;
+mod chief_questions;
+pub use chief_questions::ChiefAsyncQuestion;
 mod chief_process;
 mod chief_voice;
 pub use chief_output::ChiefLiveOutput;
@@ -54,15 +62,16 @@ pub use self::{
 		AdmitInitialConversationTurn, ArchiveConversationOutcome, ArchiveConversationRecord,
 		ArchiveLocalConversationOutcome, ArchiveLocalConversationRecord,
 		ArchivedConversationRecord, ConversationAssistantPrefixReadback, ConversationRequest,
-		ConversationRoutingSuccessor, ConversationRoutingSuccessorOutcome,
-		ConversationTerminalizationOutcome, ConversationTerminalizationReadback,
-		CreateConversationRecord, CreateConversationRoutingSuccessor, HistoryCursor, HistoryEntry,
-		HistoryPage, InitialConversationTurnAdmissionOutcome,
-		InitialConversationTurnAdmissionReadback, InitialConversationTurnAdmissionRejection,
-		OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,
-		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState,
-		PendingConversationTerminalizationReadback, ProgramWorkItemContextReadback,
-		ReconcileStrandedConversationTurn, ReconcileStrandedConversationTurnOutcome,
+		ConversationResumeRejection, ConversationRoutingSuccessor,
+		ConversationRoutingSuccessorOutcome, ConversationTerminalizationOutcome,
+		ConversationTerminalizationReadback, CreateConversationRecord,
+		CreateConversationRoutingSuccessor, HistoryCursor, HistoryEntry, HistoryPage,
+		InitialConversationTurnAdmissionOutcome, InitialConversationTurnAdmissionReadback,
+		InitialConversationTurnAdmissionRejection, OrdinaryTaskConversationCursor,
+		OrdinaryTaskConversationProjection, OrdinaryTaskConversationReadback,
+		OrdinaryTaskPreSessionState, PendingConversationTerminalizationReadback,
+		ProgramWorkItemContextReadback, ReconcileStrandedConversationTurn,
+		ReconcileStrandedConversationTurnOutcome, RecordConversationResumeRejection,
 		RecordHistoryItem, RecoverUnknownConversationTurn, RecoverUnknownConversationTurnOutcome,
 		RecoveredUnknownConversationTurn, StoredConversation, TerminalizeConversationTurn,
 		TurnReservationOutcome, TurnReservationReadback, UnknownConversationAttemptReadback,

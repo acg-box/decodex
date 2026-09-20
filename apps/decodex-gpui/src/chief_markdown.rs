@@ -51,10 +51,12 @@ fn tag_kind(tag: Tag<'_>) -> Kind {
 fn parse(text: &str) -> Vec<Node> {
 	let mut stack = vec![(Kind::Group, Vec::new())];
 	let mut flattened = 0;
-	for event in Parser::new_ext(
+	for (event, range) in Parser::new_ext(
 		text,
 		Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS,
-	) {
+	)
+	.into_offset_iter()
+	{
 		match event {
 			Event::Start(tag) =>
 				if stack.len() < 64 && flattened == 0 {
@@ -69,8 +71,12 @@ fn parse(text: &str) -> Vec<Node> {
 				},
 			event => {
 				let node = match event {
-					Event::Text(text) | Event::Html(text) | Event::InlineHtml(text) =>
-						Node::Text(text.into_string()),
+					Event::Text(value) | Event::Html(value) | Event::InlineHtml(value) => {
+						let crlf = matches!(stack.last(), Some((Kind::Code, _)))
+							&& value.starts_with('\n')
+							&& range.start > 0 && text.as_bytes()[range.start - 1] == b'\r';
+						Node::Text(if crlf { format!("\r{value}") } else { value.into_string() })
+					},
 					Event::Code(text) =>
 						Node::Block(Kind::InlineCode, vec![Node::Text(text.into_string())]),
 					Event::SoftBreak => Node::Text(" ".into()),
@@ -171,12 +177,16 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 			.child(inline(children, key))
 			.into_any_element(),
 		Kind::Code => div()
+			.flex()
+			.flex_col()
+			.gap_2()
 			.p_3()
 			.rounded_md()
 			.bg(rgba(0x00000045))
 			.font_family("Menlo")
 			.text_size(px(12.0))
 			.line_height(px(19.0))
+			.child(copy_button(&format!("copy-code-{key}"), "Copy code", code_text(children)))
 			.child(inline(children, key))
 			.into_any_element(),
 		Kind::List(start) => div()
@@ -232,6 +242,40 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 			)
 			.into_any_element(),
 	}
+}
+
+fn code_text(children: &[Node]) -> String {
+	children
+		.iter()
+		.filter_map(|node| match node {
+			Node::Text(text) => Some(text.as_str()),
+			_ => None,
+		})
+		.collect()
+}
+
+pub(super) fn copy_button(key: &str, label: &'static str, text: String) -> AnyElement {
+	let keyboard_text = text.clone();
+	let selector = key.to_owned();
+	div()
+		.id(SharedString::from(key.to_owned()))
+		.debug_selector(move || selector.clone())
+		.role(Role::Button)
+		.tab_index(0)
+		.aria_label(label)
+		.cursor_pointer()
+		.py_1()
+		.text_size(px(ui_theme::CAPTION_SIZE))
+		.text_color(rgb(ui_theme::TEXT_MUTED))
+		.on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(text.clone())))
+		.on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
+			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				cx.write_to_clipboard(ClipboardItem::new_string(keyboard_text.clone()));
+				cx.stop_propagation();
+			}
+		})
+		.child(label)
+		.into_any_element()
 }
 fn render_item(nodes: &[Node], key: &str) -> Vec<AnyElement> {
 	let mut result = Vec::new();
@@ -295,6 +339,89 @@ pub(super) fn render(text: &str, key: &str) -> AnyElement {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn copied_code_preserves_source_content() {
+		for (source, expected) in [
+			(
+				"```rust\r\nlet 中文 = 1;  \r\n\tprintln!(\"{}\", 中文);\r\n```",
+				"let 中文 = 1;  \r\n\tprintln!(\"{}\", 中文);\r\n",
+			),
+			("> ```sh\n> printf 'a'  \n> ```", "printf 'a'  \n"),
+			("```\n<tool>not executable</tool>\n", "<tool>not executable</tool>\n"),
+		] {
+			fn blocks(nodes: &[Node]) -> Vec<String> {
+				nodes
+					.iter()
+					.flat_map(|n| match n {
+						Node::Block(Kind::Code, children) => vec![code_text(children)],
+						Node::Block(_, children) => blocks(children),
+						_ => Vec::new(),
+					})
+					.collect()
+			}
+			assert_eq!(blocks(&parse(source)), vec![expected]);
+		}
+	}
+
+	struct CopyPreview {
+		text: String,
+	}
+	impl gpui::Render for CopyPreview {
+		fn render(
+			&mut self,
+			_: &mut gpui::Window,
+			_: &mut gpui::Context<Self>,
+		) -> impl gpui::IntoElement {
+			super::super::history_entry(&decodex_protocol::ChiefHistoryEntryDto {
+				id: 42,
+				kind: "assistant".into(),
+				text: self.text.clone(),
+				created_at_micros: 0,
+				activity: None,
+				usage: None,
+				duration_ms: None,
+			})
+		}
+	}
+	#[gpui::test]
+	fn response_and_code_copy_use_the_displayed_message(cx: &mut gpui::TestAppContext) {
+		let original = "Answer **中文**\n\n```sh\r\nprintf 'hello'  \r\n```";
+		let (preview, visual) = cx.add_window_view(|_, _| CopyPreview { text: original.into() });
+		visual.update(|window, cx| {
+			window.resize(gpui::size(px(700.), px(500.)));
+			window.draw(cx).clear();
+		});
+		let bounds = visual.debug_bounds("copy-code-message-42-1").expect("code copy control");
+		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+		visual.update(|_, cx| {
+			assert_eq!(
+				cx.read_from_clipboard().and_then(|item| item.text()),
+				Some("printf 'hello'  \r\n".into())
+			)
+		});
+		let bounds = visual.debug_bounds("copy-response-42").expect("response copy control");
+		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+		visual.update(|_, cx| {
+			assert_eq!(cx.read_from_clipboard().and_then(|item| item.text()), Some(original.into()))
+		});
+		preview.update(visual, |s, cx| {
+			s.text = "Next response".into();
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+			cx.write_to_clipboard(ClipboardItem::new_string("sentinel".into()));
+		});
+		assert!(visual.debug_bounds("copy-code-message-42-1").is_none());
+		visual.simulate_keystrokes("space");
+		visual.update(|_, cx| {
+			assert_eq!(
+				cx.read_from_clipboard().and_then(|item| item.text()),
+				Some("Next response".into())
+			)
+		});
+	}
 	#[test]
 	fn markdown_retains_unicode_styles_and_link_ranges() {
 		let nodes = parse("**中文** and [source](/tmp/a.rs:12) with `code`");

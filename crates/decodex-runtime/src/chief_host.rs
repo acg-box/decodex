@@ -83,6 +83,7 @@ struct Request {
 pub(crate) struct ChiefHost {
 	voice: crate::chief_voice::VoiceGateway,
 	dictation: crate::dictation::DictationGateway,
+	mcp_login: crate::mcp_login::McpLoginGateway,
 	store: SqliteStore,
 	runtime: ConversationRuntime,
 	sender: mpsc::Sender<Request>,
@@ -95,6 +96,7 @@ impl ChiefHost {
 		Self {
 			voice: crate::chief_voice::VoiceGateway::new(),
 			dictation: Default::default(),
+			mcp_login: Default::default(),
 			store,
 			runtime,
 			sender,
@@ -116,6 +118,219 @@ impl ChiefHost {
 		self.dictation.exchange(request, self.runtime.chief_client()).await
 	}
 
+	pub(crate) async fn mcp_login(
+		&self,
+		request: &decodex_protocol::McpLoginRequest,
+	) -> decodex_protocol::McpLoginStatus {
+		use decodex_protocol::McpLoginPhase;
+		let unavailable = || {
+			crate::mcp_login::status(
+				request,
+				McpLoginPhase::Disconnected,
+				"The selected task connection is unavailable.",
+			)
+		};
+		let Some((generation, client)) = self.runtime.chief_catalog_client() else {
+			return unavailable();
+		};
+		let Ok(work) = self.store.get_chief_work_item(request.work_id().as_str().into()).await
+		else {
+			return unavailable();
+		};
+		let Some(thread) = work.codex_thread_id else {
+			return unavailable();
+		};
+		let result = self
+			.mcp_login
+			.exchange(
+				request,
+				Some(crate::mcp_login::Source {
+					generation: generation.clone(),
+					thread: thread.clone(),
+					client,
+				}),
+			)
+			.await;
+		let still_owned = self
+			.store
+			.get_chief_work_item(request.work_id().as_str().into())
+			.await
+			.ok()
+			.is_some_and(|work| work.codex_thread_id.as_deref() == Some(thread.as_str()));
+		if still_owned
+			&& self.runtime.chief_catalog_client().is_some_and(|(current, _)| current == generation)
+		{
+			result
+		} else {
+			unavailable()
+		}
+	}
+
+	pub(crate) async fn resources(&self, work: &str) -> decodex_protocol::ChiefResourcesResult {
+		use decodex_protocol::ChiefResourcesResult;
+		let Some((generation, client)) = self.runtime.chief_catalog_client() else {
+			return ChiefResourcesResult::Unavailable;
+		};
+		let Ok(owner) = self.store.get_chief_work_item(work.into()).await else {
+			return ChiefResourcesResult::Unavailable;
+		};
+		let Some(thread) = owner.codex_thread_id else {
+			return ChiefResourcesResult::Unavailable;
+		};
+		let result = crate::chief_resources::read(&client, &thread).await;
+		let still_owned = self
+			.store
+			.get_chief_work_item(work.into())
+			.await
+			.ok()
+			.is_some_and(|owner| owner.codex_thread_id.as_deref() == Some(thread.as_str()));
+		if still_owned
+			&& self.runtime.chief_catalog_client().is_some_and(|(current, _)| current == generation)
+		{
+			result
+		} else {
+			ChiefResourcesResult::Unavailable
+		}
+	}
+
+	pub(crate) async fn archive_state(&self, work: &str) -> decodex_protocol::ChiefArchiveResult {
+		use decodex_codex::app_server_client::ThreadArchiveState as State;
+		use decodex_protocol::ChiefArchiveResult as Result;
+		let Some((generation, client)) = self.runtime.chief_catalog_client() else {
+			return Result::Unavailable;
+		};
+		let Ok(owner) = self.store.get_chief_work_item(work.into()).await else {
+			return Result::Unavailable;
+		};
+		let Some(thread) = owner.codex_thread_id else {
+			return Result::Unbound;
+		};
+		let owned = || {
+			self.store.chief_thread_is_owned(
+				work.into(),
+				thread.clone(),
+				Some(generation.as_str().into()),
+			)
+		};
+		if !owned().await.unwrap_or(false) {
+			return Result::Unavailable;
+		}
+		let observed = client.thread_archive_state(&thread).await;
+		if !owned().await.unwrap_or(false)
+			|| !self
+				.runtime
+				.chief_catalog_client()
+				.is_some_and(|(current, _)| current == generation)
+		{
+			return Result::Unavailable;
+		}
+		match observed {
+			Ok(State::Active) => Result::Active { thread_id: thread },
+			Ok(State::Archived) => Result::Archived { thread_id: thread },
+			Ok(State::NotFound | State::Changed) => Result::Unconfirmed,
+			Err(ClientError::Remote(e)) if e.code == -32601 => Result::Unsupported,
+			Err(ClientError::CapacityExceeded) => Result::CapacityExceeded,
+			Err(_) => Result::Unavailable,
+		}
+	}
+
+	pub(crate) async fn install_state(
+		&self,
+		work: &str,
+		event: i64,
+	) -> decodex_protocol::ChiefInstallState {
+		use decodex_protocol::ChiefInstallState;
+		let Some((generation, client)) = self.runtime.chief_catalog_client() else {
+			return ChiefInstallState::Unavailable;
+		};
+		let Some(thread) =
+			self.store.get_chief_work_item(work.into()).await.ok().and_then(|w| w.codex_thread_id)
+		else {
+			return ChiefInstallState::Unavailable;
+		};
+		let owned = || {
+			self.store.chief_thread_is_owned(
+				work.into(),
+				thread.clone(),
+				Some(generation.as_str().into()),
+			)
+		};
+		if !owned().await.unwrap_or(false) {
+			return ChiefInstallState::Unavailable;
+		}
+		let result = tokio::time::timeout(
+			Duration::from_secs(40),
+			crate::chief_install::inspect(&self.store, &client, work, event),
+		)
+		.await
+		.ok()
+		.flatten();
+		if !owned().await.unwrap_or(false)
+			|| !self
+				.runtime
+				.chief_catalog_client()
+				.is_some_and(|(current, _)| current == generation)
+		{
+			return ChiefInstallState::Unavailable;
+		}
+		result.map(|v| v.state).unwrap_or(ChiefInstallState::Unavailable)
+	}
+
+	pub(crate) fn guardian_generation(&self) -> Option<String> {
+		self.runtime.chief_catalog_client().map(|(generation, _)| generation.as_str().to_owned())
+	}
+
+	pub(crate) async fn usage_estimate(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefUsageEstimateResult {
+		crate::chief_usage_estimate::read(|| async {
+			let (generation, account, revision, client) = self.runtime.chief_usage_source().await?;
+			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+			Some(crate::chief_usage_estimate::Source {
+				key: crate::chief_usage_estimate::SourceKey {
+					generation,
+					account,
+					revision,
+					thread: owner.codex_thread_id?,
+					work: work.into(),
+				},
+				client,
+			})
+		})
+		.await
+	}
+
+	pub(crate) async fn integrations(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefIntegrationsResult {
+		use decodex_protocol::ChiefIntegrationsResult;
+		let Some((generation, client)) = self.runtime.chief_catalog_client() else {
+			return ChiefIntegrationsResult::Unavailable;
+		};
+		let Ok(owner) = self.store.get_chief_work_item(work.into()).await else {
+			return ChiefIntegrationsResult::Unavailable;
+		};
+		let Some(thread) = owner.codex_thread_id else {
+			return ChiefIntegrationsResult::Unavailable;
+		};
+		let result = crate::chief_integrations::read(&client, &thread).await;
+		let still_owned = self
+			.store
+			.get_chief_work_item(work.into())
+			.await
+			.ok()
+			.is_some_and(|owner| owner.codex_thread_id.as_deref() == Some(thread.as_str()));
+		if still_owned
+			&& self.runtime.chief_catalog_client().is_some_and(|(current, _)| current == generation)
+		{
+			result
+		} else {
+			ChiefIntegrationsResult::Unavailable
+		}
+	}
+
 	pub(crate) async fn activity_detail(
 		&self,
 		work: &str,
@@ -135,11 +350,28 @@ impl ChiefHost {
 		crate::chief_detail::read(&client, &thread, turn, item).await
 	}
 
-	pub(crate) async fn capabilities(&self) -> decodex_protocol::ChiefCapabilitiesResult {
+	pub(crate) async fn file_approval_detail(
+		&self,
+		thread: &str,
+		turn: &str,
+		item: &str,
+	) -> decodex_protocol::ChiefActivityDetailResult {
 		let Some(client) = self.runtime.chief_client() else {
+			return decodex_protocol::ChiefActivityDetailResult::Unavailable;
+		};
+		crate::chief_detail::read_file_changes(&client, thread, turn, item).await
+	}
+
+	pub(crate) async fn capabilities(&self) -> decodex_protocol::ChiefCapabilitiesResult {
+		let Some((generation, client)) = self.runtime.chief_catalog_client() else {
 			return decodex_protocol::ChiefCapabilitiesResult::Unavailable;
 		};
-		crate::chief_capabilities::read(&client).await
+		let result = crate::chief_capabilities::read(&client).await;
+		if self.runtime.chief_catalog_client().is_some_and(|(current, _)| current == generation) {
+			result
+		} else {
+			decodex_protocol::ChiefCapabilitiesResult::Unavailable
+		}
 	}
 
 	pub(crate) async fn submit(
@@ -187,6 +419,16 @@ impl ChiefHost {
 						if let Some((root,chief,_)) = active.as_mut() {
 							chief.pause_dispatch(self.runtime.chief_account_exhausted(root).await);
 							let closed = event.is_none() || matches!(&event,Some(ServerEvent::Closed(_)));
+							if let Some(event)=event.as_ref() && let Some(generation)=chief.native_generation() {
+								self.mcp_login.observe(generation,event).await;
+								if let ServerEvent::Notification { method, params } = event
+									&& method == "configWarning"
+									&& crate::native_config_warning::record(&self.store, root, generation, params).await.is_err() {
+									self.record_error(root,"event_processing_failed").await;
+								}
+							}
+							if closed && let Some(generation)=chief.native_generation() {self.mcp_login.disconnect(Some(generation)).await;}
+
 							if let Some(event) = event
 								&& let Err(error) = chief.handle_event(event).await
 								&& event_failure_needs_attention(closed, &error) {
@@ -202,6 +444,7 @@ impl ChiefHost {
 					},
 					_ = tick.tick() => {
 						self.dictation.expire().await;
+						self.mcp_login.expire().await;
 						if let Some(request)=self.voice.expire() {self.handle_voice(request,&mut active).await;}
 						self.rotate_exhausted(&mut active).await;
 						recovery.restore_if_due(
@@ -344,6 +587,40 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			ChiefActionDto::InstallSuggestedPlugin { work_id, event_id, review_token } =>
+				self.install_plugin(work_id.as_str(), event_id, review_token.as_str(), &key, active)
+					.await,
+			ChiefActionDto::RestoreArchivedThread { work_id, thread_id } => {
+				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
+				chief.restore_archived_thread(work_id.as_str(),thread_id.as_str()).await.map_err(|error|match error {
+                    ChiefError::Rejected(_)=>ChiefHostError::Rejected("Restoration was not accepted. Refresh the task archive state before trying again."),
+                    _=>ChiefHostError::Unknown("Restoration is not confirmed. Refresh archive state; the restore request will not be repeated automatically."),
+                })?;
+				Ok(work_id.as_str().into())
+			},
+			ChiefActionDto::RefreshIntegrations { work_id } =>
+				self.refresh_integrations(work_id.as_str(), active).await,
+			ChiefActionDto::AddResourceLink { work_id, title, url } => {
+				let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
+				chief
+					.add_resource_link(work_id.as_str(), title.as_str(), url.as_str())
+					.await
+					.map_err(resource_error)?;
+				Ok(work_id.as_str().into())
+			},
+			ChiefActionDto::RemoveResource { work_id, attachment_type, identity_key } => {
+				let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
+				chief
+					.remove_resource(
+						work_id.as_str(),
+						attachment_type.as_str(),
+						identity_key.as_str(),
+					)
+					.await
+					.map_err(resource_error)?;
+				Ok(work_id.as_str().into())
+			},
+
 			ChiefActionDto::StartConfigured { .. } | ChiefActionDto::SendConfigured { .. } =>
 				unreachable!("normalized input"),
 			ChiefActionDto::Steer { work_id, turn_id, text, attachments } => {
@@ -355,81 +632,41 @@ impl ChiefHost {
 				})?;
 				Ok(work_id.as_str().into())
 			},
-			ChiefActionDto::CancelCapacityRetry { work_id, event_id } =>
-				self.cancel_capacity_retry(work_id, event_id).await,
-			ChiefActionDto::Respond { work_id, event_id, response_json } => {
-				let event = self
+			ChiefActionDto::ContinueMisalignment { work_id, review_id } => {
+				let review = self
 					.store
-					.get_chief_inbox_event(event_id)
+					.chief_misalignment(work_id.as_str().into())
 					.await
-					.map_err(|_| "pending request is unavailable; refresh state")?;
-				if event.work_item_id != work_id.as_str()
-					|| event.disposition.is_some()
-					|| !["permission_pending", "user_input_pending", "server_request_pending"]
-						.contains(&event.event_kind.as_str())
-				{
-					return Err("request identity or state changed; refresh state".into());
+					.map_err(|_| "Provider findings unavailable")?
+					.ok_or("Provider precaution is no longer current")?;
+				if review.review_id() != review_id.as_str() {
+					return Err("Provider findings changed; review them again".into());
 				}
-				let response: serde_json::Value = serde_json::from_str(response_json.as_str())
-					.map_err(|_| "response must be valid JSON")?;
-				if !response.is_object() {
-					return Err("response must be a JSON object".into());
-				}
-				let (_, chief, _) = active
-					.as_mut()
-					.ok_or("Chief is not connected; stale requests cannot be replayed")?;
-				chief.respond_pending_event(event_id, response).await.map_err(|_| {
-					ChiefHostError::Unknown(
-						"request response could not be confirmed; refresh state before retrying",
-					)
-				})?;
+				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
+				chief.continue_misalignment(work_id.as_str(),review,&key).await.map_err(|error| match error { ChiefError::Rejected(_) => ChiefHostError::Rejected("Continuation was rejected or the findings changed. Review the latest findings before trying again."), _ => ChiefHostError::Unknown("Continuation was not confirmed. Inspect the latest conversation state before trying again.") })?;
 				Ok(work_id.as_str().into())
 			},
-			ChiefActionDto::Start(draft) => {
-				let root = draft.root_id.as_str().to_owned();
-				let account_id = draft
-					.account_id
-					.as_ref()
-					.map(|id| AccountId::new(id.as_str()))
-					.transpose()
-					.map_err(|_| "invalid account identity")?;
-				if active.as_ref().is_some_and(|(current, _, _)| current != &root) {
-					return Err("another Chief is active".into());
-				}
-				let config = config(&draft);
-				ChiefCoordinator::reserve_root(&self.store, &root, draft.prompt.as_str())
-					.await
-					.map_err(|_| "Chief root could not be reserved")?;
-				let mut settings =
-					serde_json::to_value(&config).map_err(|_| "invalid Chief configuration")?;
-				if let Some(account) = &draft.account_id {
-					settings["account_id"] = json!(account.as_str());
-				}
-				let encoded =
-					serde_json::to_string(&settings).map_err(|_| "invalid Chief configuration")?;
-				self.store
-					.bind_chief_root_settings(&root, &encoded)
-					.await
-					.map_err(|_| "Chief configuration differs from its saved execution context")?;
-				// Persist the user input before any external process or thread effect.
-				persist_input(
-					&self.store,
-					&root,
-					&key,
-					draft.prompt.as_str(),
-					input_options.as_ref(),
-				)
-				.await?;
-				if active.is_none() {
-					match self.connect(&root, key.clone(), config, account_id).await {
-						Ok(connection) => *active = Some(connection),
-						Err(_) => {
-							self.record_error(&root, "reconnection_needs_attention").await;
-						},
-					}
-				}
-				Ok(root)
+
+			ChiefActionDto::ApproveGuardianDenial { work_id, review_row, review_digest } => {
+				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
+				chief.approve_guardian_denial(work_id.as_str(),review_row,review_digest.as_str(),&key).await
+					.map_err(|error| match error {
+						ChiefError::Rejected(_) => ChiefHostError::Rejected("Approval was rejected or the review is no longer current. Refresh the review before trying again."),
+						_ => ChiefHostError::Unknown("Approval submission was not confirmed. It will not be sent again automatically."),
+					})?;
+				Ok(work_id.as_str().into())
 			},
+			ChiefActionDto::AnswerQuestion { work_id, question_id, answer } => {
+				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
+				chief.answer_async_question(work_id.as_str(),question_id.as_str(),answer.as_str(),&key).await.map_err(|_|ChiefHostError::Unknown("Question reply acceptance could not be confirmed. Inspect the current conversation before sending again."))?;
+				Ok(work_id.as_str().into())
+			},
+			ChiefActionDto::CancelCapacityRetry { work_id, event_id } =>
+				self.cancel_capacity_retry(work_id, event_id).await,
+			ChiefActionDto::Respond { work_id, event_id, response_json } =>
+				self.respond(work_id.as_str(), event_id, response_json.as_str(), active).await,
+			ChiefActionDto::Start(draft) =>
+				self.start(draft, &key, input_options.as_ref(), active).await,
 			ChiefActionDto::Send { root_id, text } =>
 				self.accept_message(&root_id, &text, &key, input_options.as_ref(), active).await,
 			ChiefActionDto::Interrupt { work_id, turn_id } => {
@@ -458,6 +695,134 @@ impl ChiefHost {
 				Ok(work_id.as_str().into())
 			},
 		}
+	}
+
+	async fn install_plugin(
+		&self,
+		work: &str,
+		event_id: i64,
+		review: &str,
+		key: &str,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
+		chief.install_suggested_plugin(work, event_id, review, key).await.map_err(|error| {
+			match error {
+				ChiefError::Rejected(_) => ChiefHostError::Rejected(
+					"Installation was not started. Refresh the suggestion and review its current details.",
+				),
+				_ => ChiefHostError::Unknown(
+					"Installation is not confirmed. Read its current status; do not repeat the installation.",
+				),
+			}
+		})?;
+		Ok(work.into())
+	}
+
+	async fn refresh_integrations(
+		&self,
+		work: &str,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
+		match chief.refresh_integrations(work).await {
+			Ok(true) => Ok(work.into()),
+			Ok(false) => Err(ChiefHostError::Rejected(
+				"Some plugin updates failed and cached versions may remain. MCP reload was acknowledged; read the refreshed status before retrying.",
+			)),
+			Err(ChiefError::Rejected(_)) =>
+				Err(ChiefHostError::Rejected("The task no longer has a native thread.")),
+			Err(ChiefError::Transport(ClientError::Remote(_))) => Err(ChiefHostError::Unknown(
+				"Native refresh returned an error and may have partly applied. Inspect the current integration status before retrying.",
+			)),
+			Err(_) => Err(ChiefHostError::Unknown(
+				"Integration refresh could not be confirmed. Read current status; do not automatically retry.",
+			)),
+		}
+	}
+
+	async fn respond(
+		&self,
+		work: &str,
+		event_id: i64,
+		response_json: &str,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		let event = self
+			.store
+			.get_chief_inbox_event(event_id)
+			.await
+			.map_err(|_| "pending request is unavailable; refresh state")?;
+		if event.work_item_id != work
+			|| event.disposition.is_some()
+			|| !["permission_pending", "user_input_pending", "server_request_pending"]
+				.contains(&event.event_kind.as_str())
+		{
+			return Err("request identity or state changed; refresh state".into());
+		}
+		let response: serde_json::Value =
+			serde_json::from_str(response_json).map_err(|_| "response must be valid JSON")?;
+		if !response.is_object() {
+			return Err("response must be a JSON object".into());
+		}
+		let (_, chief, _) =
+			active.as_mut().ok_or("Chief is not connected; stale requests cannot be replayed")?;
+		chief.respond_pending_event(event_id, response).await.map_err(|error| {
+			if matches!(error, ChiefError::Rejected(_)) {
+				return ChiefHostError::Rejected(
+					"The response does not match the current provider request. Review the form before submitting.",
+				);
+			}
+			ChiefHostError::Unknown(
+				"request response could not be confirmed; refresh state before retrying",
+			)
+		})?;
+		Ok(work.into())
+	}
+
+	async fn start(
+		&self,
+		draft: ChiefStartDto,
+		key: &str,
+		input_options: Option<&serde_json::Value>,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		let root = draft.root_id.as_str().to_owned();
+		let account_id = draft
+			.account_id
+			.as_ref()
+			.map(|id| AccountId::new(id.as_str()))
+			.transpose()
+			.map_err(|_| "invalid account identity")?;
+		if active.as_ref().is_some_and(|(current, _, _)| current != &root) {
+			return Err("another Chief is active".into());
+		}
+		let config = config(&draft);
+		ChiefCoordinator::reserve_root(&self.store, &root, draft.prompt.as_str())
+			.await
+			.map_err(|_| "Chief root could not be reserved")?;
+		let mut settings =
+			serde_json::to_value(&config).map_err(|_| "invalid Chief configuration")?;
+		if let Some(account) = &draft.account_id {
+			settings["account_id"] = json!(account.as_str());
+		}
+		let encoded =
+			serde_json::to_string(&settings).map_err(|_| "invalid Chief configuration")?;
+		self.store
+			.bind_chief_root_settings(&root, &encoded)
+			.await
+			.map_err(|_| "Chief configuration differs from its saved execution context")?;
+		// Persist the user input before any external process or thread effect.
+		persist_input(&self.store, &root, key, draft.prompt.as_str(), input_options).await?;
+		if active.is_none() {
+			match self.connect(&root, key.to_owned(), config, account_id).await {
+				Ok(connection) => *active = Some(connection),
+				Err(_) => {
+					self.record_error(&root, "reconnection_needs_attention").await;
+				},
+			}
+		}
+		Ok(root)
 	}
 
 	async fn record_delivery(&self, root: &str, result: Result<(), ChiefError>) {
@@ -554,6 +919,7 @@ impl ChiefHost {
 					return Err("invalid Chief configuration");
 				},
 			};
+		coordinator.bind_native_generation(connection.process_generation_id.clone());
 		coordinator.attach_voice_host(
 			connection.process_generation_id.as_str().into(),
 			self.voice.clone(),
@@ -596,6 +962,7 @@ impl ChiefHost {
 
 fn diagnostic(error: &ChiefError) -> String {
 	match error {
+        ChiefError::ThreadArchived => "This session is archived in Codex. Open Session recovery to restore the original session. Saved messages remain queued.".into(),
 		ChiefError::ThreadOwnedElsewhere => "This Chief conversation is open in Codex or another application. Release it there; saved messages will continue automatically.".into(),
 		ChiefError::Store(_) => "Chief delivery could not access its saved state.".into(),
 		ChiefError::DependenciesPending(_) => "Chief is waiting for prerequisite work.".into(),
@@ -694,7 +1061,7 @@ async fn persist_input(
 			source_event_id: json!(["user_message", root, key]).to_string(),
 			work_item_id: root.into(),
 			event_kind: "user_message".into(),
-			payload: json!({"text":text,"source":"user","options":options}).to_string(),
+			payload: json!({"text":text,"source":"user","asyncQuestionReply":decodex_protocol::parse_chief_async_question_replies(text).is_some(),"options":options}).to_string(),
 		})
 		.await
 		.map_err(|_| "Chief input could not be accepted")?;
@@ -734,6 +1101,18 @@ fn now() -> i64 {
 		.duration_since(UNIX_EPOCH)
 		.map(|t| t.as_micros().min(i64::MAX as u128) as i64)
 		.unwrap_or(0)
+}
+
+fn resource_error(error: ChiefError) -> ChiefHostError {
+	match error {
+		ChiefError::Rejected(_) | ChiefError::Transport(ClientError::Remote(_)) =>
+			ChiefHostError::Rejected(
+				"The resource change was not accepted. Check the link and current task resources.",
+			),
+		_ => ChiefHostError::Unknown(
+			"The resource change could not be confirmed. Refresh task resources before trying again.",
+		),
+	}
 }
 
 #[cfg(test)]

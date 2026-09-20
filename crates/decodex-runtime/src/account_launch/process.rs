@@ -890,6 +890,9 @@ impl AttestedProcessChild {
 		ConversationProcessError,
 	> {
 		self.require_ordinary_turns_initialized()?;
+		if !self.generated.supports_standalone_tool_output() {
+			return Err(ConversationProcessError::Incompatible);
+		}
 		if !self.process.abandoned_request_ids.is_empty() {
 			return Err(ConversationProcessError::Unavailable);
 		}
@@ -905,6 +908,7 @@ impl AttestedProcessChild {
 			self.process.binding.clone(),
 			Arc::clone(&self.process.protocol_limit_exceeded),
 			sequence,
+			mem::take(&mut self.process.config_warnings),
 		)
 		.map_err(|_| ConversationProcessError::Unavailable)?;
 		self.process.chief_bridge = Some(bridge);
@@ -928,6 +932,52 @@ impl AttestedProcessChild {
 		initialize_probe(&mut self.process, Some(vault), self.timeout, &mut negotiation)
 			.map_err(|_| ConversationProcessError::Unavailable)?;
 		self.initialized = true;
+		Ok(())
+	}
+
+	/// Read one model page on the existing account-bound transport and retain interleaved events.
+	pub(crate) fn read_ordinary_model_page(
+		&mut self,
+		cursor: Option<&str>,
+	) -> (Result<serde_json::Value, ConversationProcessError>, Vec<ConversationProcessEvent>) {
+		let mut events = Vec::new();
+		let result = (|| {
+			self.require_ordinary_turns_initialized()?;
+			if cursor.is_some_and(|value| value.len() > 4096) {
+				return Err(ConversationProcessError::Incompatible);
+			}
+			let request = self.process.prepare_conversation_request(
+				"model/list",
+				&serde_json::json!({"limit":100,"includeHidden":false,"cursor":cursor}),
+			)?;
+			self.process
+				.conversation_request_buffered(
+					request,
+					self.timeout.min(Duration::from_secs(8)),
+					false,
+					&mut events,
+					|bytes| {
+						serde_json::from_slice(bytes).map_err(|_| {
+							decodex_codex::ConversationContractError::MalformedResponse
+						})
+					},
+				)
+				.map(|result| result.value)
+		})();
+		(result, events)
+	}
+
+	/// Retain events received by an idle metadata query for the existing event consumer.
+	pub(crate) fn retain_ordinary_events(
+		&mut self,
+		events: Vec<ConversationProcessEvent>,
+	) -> Result<(), ConversationProcessError> {
+		if self.process.deferred_conversation_events.len() + events.len()
+			> MAX_CONVERSATION_BUFFERED_EVENTS
+		{
+			return Err(ConversationProcessError::Incompatible);
+		}
+		self.process.deferred_conversation_events.extend(events);
 		Ok(())
 	}
 
@@ -979,7 +1029,8 @@ impl AttestedProcessChild {
 		request: &ConversationThreadResumeRequest,
 	) -> Result<ResumedOrdinaryThread, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
-		let wire = self.process.prepare_conversation_request("thread/resume", request)?;
+		let mut wire = self.process.prepare_conversation_request("thread/resume", request)?;
+		wire.resume_thread_id = Some(request.thread_id().as_str().to_owned());
 		let success = self.process.conversation_request(wire, self.timeout, false, |bytes| {
 			decode_conversation_thread_resume_response(request, bytes)
 		})?;
@@ -1182,7 +1233,7 @@ pub(crate) enum ConversationProcessError {
 	/// No method bytes were admitted because initialization or local authority was unavailable.
 	Unavailable,
 	/// The exact app-server method rejected the request with a bounded response witness.
-	Rejected { witness_digest: String },
+	Rejected { witness_digest: String, reason: ConversationRejectionReason },
 	/// App-server bytes contradicted the accepted typed contract.
 	Incompatible,
 	/// Local supervision was lost while a blocking operation may already have crossed send.
@@ -1191,7 +1242,33 @@ pub(crate) enum ConversationProcessError {
 	Ambiguous { request_id: i64, request_sha256: String },
 }
 
+pub(crate) use decodex_database::ConversationResumeRejection as ConversationRejectionReason;
+
+fn conversation_rejection_reason(
+	error: &super::protocol::JsonRpcError,
+	resume_thread_id: Option<&str>,
+) -> ConversationRejectionReason {
+	let message = error.message();
+	if let Some(thread) = resume_thread_id {
+		if error.code == -32600 && message == format!("no rollout found for thread id {thread}") {
+			return ConversationRejectionReason::MissingThread;
+		}
+		if error.code == -32600
+			&& message
+				== format!(
+					"session {thread} is archived. Run `codex unarchive {thread}` to unarchive it first."
+				) {
+			return ConversationRejectionReason::ArchivedThread;
+		}
+		if message.contains("failed to prepare fs sandbox") {
+			return ConversationRejectionReason::SandboxConfiguration;
+		}
+	}
+	ConversationRejectionReason::Other
+}
+
 struct PreparedConversationRequest {
+	resume_thread_id: Option<String>,
 	request_id: i64,
 	request_sha256: String,
 	frame: ZeroizingOutboundFrame,
@@ -1403,6 +1480,8 @@ pub(super) struct SupervisedProcess {
 	abandoned_request_ids: BTreeSet<u64>,
 	chief_retained: bool,
 	chief_bridge: Option<super::chief_process::ChiefProcessBridge>,
+	config_warnings: Vec<serde_json::Value>,
+	deferred_conversation_events: std::collections::VecDeque<ConversationProcessEvent>,
 }
 impl SupervisedProcess {
 	#[cfg(test)]
@@ -1470,6 +1549,8 @@ impl SupervisedProcess {
 			abandoned_request_ids: BTreeSet::new(),
 			chief_retained: false,
 			chief_bridge: None,
+			config_warnings: Vec::new(),
+			deferred_conversation_events: Default::default(),
 		})
 	}
 
@@ -1501,6 +1582,8 @@ impl SupervisedProcess {
 			abandoned_request_ids: BTreeSet::new(),
 			chief_retained: false,
 			chief_bridge: None,
+			config_warnings: Vec::new(),
+			deferred_conversation_events: Default::default(),
 		})
 	}
 
@@ -1612,6 +1695,21 @@ impl SupervisedProcess {
 				},
 			};
 
+			let header: InboundHeader = serde_json::from_slice(&line)
+				.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
+			if header.id.is_none() && header.method.as_deref() == Some("configWarning") {
+				if let Some(warning) = crate::native_config_warning::from_frame(&line)
+					&& !self.config_warnings.contains(&warning)
+				{
+					if self.config_warnings.len() < 32 {
+						self.config_warnings.push(warning);
+					} else if self.config_warnings.len() == 32 {
+						self.config_warnings.push(serde_json::json!({"method":"configWarning","params":{"summary":"Additional configuration warnings exceeded the display limit.","details":null}}));
+					}
+				}
+				continue;
+			}
+
 			// Thread history and titles legitimately contain JSON escapes. As with
 			// conversation_request, decode these bounded ordinary data frames.
 			// Credential-bearing methods retain their scratch-free boundary.
@@ -1619,9 +1717,6 @@ impl SupervisedProcess {
 				Self::validate_zero_scratch_json(&line)
 					.map_err(|()| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 			}
-
-			let header: InboundHeader = serde_json::from_slice(&line)
-				.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 
 			if let (Some(id), Some(method)) = (header.id, header.method.as_deref()) {
 				Self::validate_zero_scratch_json(&line)
@@ -1692,7 +1787,12 @@ impl SupervisedProcess {
 		let request_id =
 			i64::try_from(request_id).map_err(|_| ConversationProcessError::Incompatible)?;
 		let request_sha256 = frame.sha256();
-		Ok(PreparedConversationRequest { request_id, request_sha256, frame })
+		Ok(PreparedConversationRequest {
+			request_id,
+			request_sha256,
+			frame,
+			resume_thread_id: None,
+		})
 	}
 
 	fn conversation_request<R>(
@@ -1702,7 +1802,28 @@ impl SupervisedProcess {
 		invalid_response_is_ambiguous: bool,
 		decode: impl FnOnce(&[u8]) -> Result<R, decodex_codex::ConversationContractError>,
 	) -> Result<ConversationProcessSuccess<R>, ConversationProcessError> {
-		let PreparedConversationRequest { request_id, request_sha256, frame } = prepared;
+		let mut events = Vec::new();
+		let mut result = self.conversation_request_buffered(
+			prepared,
+			timeout,
+			invalid_response_is_ambiguous,
+			&mut events,
+			decode,
+		)?;
+		result.events = events;
+		Ok(result)
+	}
+
+	fn conversation_request_buffered<R>(
+		&mut self,
+		prepared: PreparedConversationRequest,
+		timeout: Duration,
+		invalid_response_is_ambiguous: bool,
+		events: &mut Vec<ConversationProcessEvent>,
+		decode: impl FnOnce(&[u8]) -> Result<R, decodex_codex::ConversationContractError>,
+	) -> Result<ConversationProcessSuccess<R>, ConversationProcessError> {
+		let PreparedConversationRequest { request_id, request_sha256, frame, resume_thread_id } =
+			prepared;
 		let request_id_u64 =
 			u64::try_from(request_id).map_err(|_| ConversationProcessError::Incompatible)?;
 		let invalid_response = || {
@@ -1723,7 +1844,6 @@ impl SupervisedProcess {
 		self.stdin.flush().map_err(|_| ambiguous())?;
 
 		let deadline = Instant::now() + timeout;
-		let mut events = Vec::new();
 		loop {
 			let remaining = deadline.saturating_duration_since(Instant::now());
 			if remaining.is_zero() {
@@ -1770,10 +1890,13 @@ impl SupervisedProcess {
 									.map_err(|_| invalid_response())?,
 								response_sha256: witness_digest,
 							},
-							events,
+							events: Vec::new(),
 						})
 					},
-					(None, Some(_)) => Err(ConversationProcessError::Rejected { witness_digest }),
+					(None, Some(error)) => Err(ConversationProcessError::Rejected {
+						witness_digest,
+						reason: conversation_rejection_reason(&error, resume_thread_id.as_deref()),
+					}),
 					_ => Err(invalid_response()),
 				};
 			}
@@ -1802,6 +1925,9 @@ impl SupervisedProcess {
 		&mut self,
 		wait: Duration,
 	) -> Result<Option<ConversationProcessEvent>, ConversationProcessError> {
+		if let Some(event) = self.deferred_conversation_events.pop_front() {
+			return Ok(Some(event));
+		}
 		let line = match self.stdout.recv_timeout(wait) {
 			Ok(line) => line.into_contiguous(),
 			Err(RecvTimeoutError::Timeout) => return Ok(None),
@@ -1817,7 +1943,10 @@ impl SupervisedProcess {
 				.map_err(|_| ConversationProcessError::Unavailable)?;
 			return Ok(None);
 		}
-		if header.id.is_some() {
+		if let Some(id) = header.id {
+			if self.abandoned_request_ids.remove(&id) {
+				return Ok(None);
+			}
 			return Err(ConversationProcessError::Incompatible);
 		}
 		decode_conversation_process_event(&line)
@@ -2323,12 +2452,23 @@ fn decode_conversation_process_event(
 		return Ok(Some(ConversationProcessEvent::MessageDelta(delta)));
 	}
 	match normalize_event(bytes).map_err(|_| ConversationProcessError::Incompatible)? {
-		NormalizedEvent::TurnCompleted { turn_id, status, .. } =>
+		NormalizedEvent::TurnCompleted { status, .. } => {
+			// Display normalization hashes opaque IDs. Runtime correlation must retain
+			// the exact native identity, including when metadata queries collect events.
+			let frame: serde_json::Value = serde_json::from_slice(bytes)
+				.map_err(|_| ConversationProcessError::Incompatible)?;
+			let turn_id = decodex_codex::ExactTurnId::new(
+				frame["params"]["turn"]["id"]
+					.as_str()
+					.ok_or(ConversationProcessError::Incompatible)?,
+			)
+			.map_err(|_| ConversationProcessError::Incompatible)?;
 			Ok(Some(ConversationProcessEvent::TurnCompleted {
 				turn_id: turn_id.as_str().to_owned(),
 				status,
 				witness_digest: hex_digest(&Sha256::digest(bytes)),
-			})),
+			}))
+		},
 		_ => Ok(None),
 	}
 }
@@ -4977,7 +5117,7 @@ fn process_group_exists(_pid: u32) -> Result<bool, SupervisionError> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
 	use std::{
 		env,
 		ffi::{OsStr, OsString},
@@ -7238,6 +7378,52 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn config_warnings_survive_initialization_and_retained_handoff() {
+		let (_temp, process) = initialized_bound_process("exact-config-warning");
+		assert_eq!(process.config_warnings.len(), 2);
+		let profile = AttestedAppServerProfile::attest_for_test(
+			process.command.clone(),
+			&process.binding.expected_codex_home,
+			Duration::from_secs(2),
+		)
+		.unwrap();
+		let mut child = super::AttestedProcessChild {
+			process,
+			build: profile.build,
+			generated: profile.generated,
+			timeout: Duration::from_secs(2),
+			initialized: true,
+		};
+		let (_client, mut events) = child.retain_chief_connection().unwrap();
+		for expected in ["Ignored \"fixture\" setting", "Second fixture warning"] {
+			let event =
+				tokio::time::timeout(Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
+			let decodex_codex::app_server_client::ServerEvent::Notification { method, params } =
+				event
+			else {
+				panic!("warning notification")
+			};
+			assert_eq!(method, "configWarning");
+			assert_eq!(params["summary"], expected);
+			assert!(params.get("path").is_none());
+		}
+		assert!(child.process.config_warnings.is_empty());
+		child.close_private_lifetime_channels();
+	}
+
+	#[test]
+	fn config_warning_backlog_is_bounded_without_blocking_account_initialization() {
+		let (_temp, process) = initialized_bound_process("exact-config-warning-flood");
+		assert_eq!(process.config_warnings.len(), 33);
+		assert!(
+			process.config_warnings.last().unwrap()["params"]["summary"]
+				.as_str()
+				.unwrap()
+				.contains("exceeded the display limit")
+		);
+	}
+
+	#[tokio::test]
 	async fn retained_connection_transition_is_one_way_and_keeps_supervisor_revocation() {
 		let (_temp, process) = initialized_bound_process("exact");
 		let profile = AttestedAppServerProfile::attest_for_test(
@@ -7271,6 +7457,109 @@ mod tests {
 			Err(decodex_codex::app_server_client::ClientError::Closed)
 		));
 		child.shutdown().unwrap();
+	}
+
+	#[test]
+	fn retained_chief_rejects_missing_tool_input_support_without_transferring_io() {
+		let (_temp, mut child) = ordinary_catalog_child("missing-optional");
+		assert!(matches!(
+			child.retain_chief_connection(),
+			Err(super::ConversationProcessError::Incompatible)
+		));
+		assert!(!child.process.chief_retained);
+		assert!(child.process.chief_bridge.is_none());
+		child.shutdown().unwrap();
+	}
+
+	pub(crate) fn ordinary_catalog_child(mode: &str) -> (TempDir, super::AttestedProcessChild) {
+		let (temp, process) = initialized_bound_process(mode);
+		let profile = AttestedAppServerProfile::attest_for_test(
+			process.command.clone(),
+			&process.binding.expected_codex_home,
+			Duration::from_secs(2),
+		)
+		.unwrap();
+		(
+			temp,
+			super::AttestedProcessChild {
+				process,
+				build: profile.build,
+				generated: profile.generated,
+				timeout: Duration::from_secs(2),
+				initialized: true,
+			},
+		)
+	}
+
+	#[test]
+	fn resume_rejection_classification_requires_exact_thread_evidence() {
+		use super::ConversationRejectionReason as Reason;
+		for (mode, expected) in [
+			("resume-reject-missing", Reason::MissingThread),
+			("resume-reject-archived", Reason::ArchivedThread),
+			("resume-reject-sandbox", Reason::SandboxConfiguration),
+			("resume-reject-other-thread", Reason::Other),
+			("resume-reject-wrong-code", Reason::Other),
+			("resume-reject-generic", Reason::Other),
+		] {
+			let (_temp, mut child) = ordinary_catalog_child(mode);
+			let request = decodex_codex::ConversationThreadResumeRequest::new(
+				exact_thread_id(),
+				"fixture-model",
+				"/tmp",
+				"Fixture instructions",
+			)
+			.expect("resume request");
+			let error = child.resume_ordinary_thread(&request).err().expect("native rejection");
+			assert!(
+				matches!(&error, super::ConversationProcessError::Rejected { reason, witness_digest }
+				if *reason == expected && witness_digest.len() == 64),
+				"{mode}: {error:?}"
+			);
+			assert!(
+				!format!("{error:?}").contains("fixture-secret"),
+				"provider text must stay private"
+			);
+			child.shutdown().expect("closed fixture process");
+		}
+	}
+
+	#[test]
+	fn timed_out_catalog_keeps_completion_and_discards_its_late_reply() {
+		let (_temp, mut child) = ordinary_catalog_child("exact-catalog-late");
+		child.timeout = Duration::from_millis(20);
+		let (page, events) = child.read_ordinary_model_page(None);
+		assert!(matches!(page, Err(super::ConversationProcessError::Ambiguous { .. })));
+		child.retain_ordinary_events(events).unwrap();
+		assert!(matches!(child.next_ordinary_turn_event(Duration::ZERO).unwrap(),
+			Some(super::ConversationProcessEvent::TurnCompleted { turn_id, .. }) if turn_id == "catalog-turn"));
+		assert!(child.next_ordinary_turn_event(Duration::from_secs(2)).unwrap().is_none());
+		assert!(child.next_ordinary_turn_event(Duration::ZERO).unwrap().is_none());
+		child.shutdown().unwrap();
+	}
+
+	#[test]
+	fn ordinary_model_read_preserves_notifications_and_escaped_catalog_text() {
+		for mode in ["exact", "exact-catalog-rejected"] {
+			let (_temp, mut child) = ordinary_catalog_child(mode);
+			let (page, events) = child.read_ordinary_model_page(None);
+			if mode == "exact" {
+				let page = page.unwrap();
+				assert_eq!(page["data"][0]["displayName"], "Model \"quoted\"");
+				assert_eq!(page["data"][0]["serviceTiers"][0]["id"], "ultrafast");
+			} else {
+				assert!(matches!(page, Err(super::ConversationProcessError::Rejected { .. })));
+			}
+			assert!(
+				matches!(events.as_slice(),[super::ConversationProcessEvent::TurnCompleted{turn_id,..}] if turn_id == "catalog-turn")
+			);
+			child.retain_ordinary_events(events).unwrap();
+			assert!(
+				matches!(child.next_ordinary_turn_event(Duration::ZERO).unwrap(), Some(super::ConversationProcessEvent::TurnCompleted{turn_id,..}) if turn_id == "catalog-turn")
+			);
+			assert!(child.next_ordinary_turn_event(Duration::ZERO).unwrap().is_none());
+			child.shutdown().unwrap();
+		}
 	}
 
 	#[test]

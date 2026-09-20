@@ -1,5 +1,8 @@
 //! Ordinary Conversation conversations, turns, and normalized history.
 
+mod resume_rejection;
+pub use resume_rejection::{ConversationResumeRejection, RecordConversationResumeRejection};
+
 use decodex_core::{
 	AccountId, ArtifactId, BlobHash, BlobStore, ConversationId, HistoryItemId, HistoryItemKind,
 	HistoryMediaType, HistoryMetadata, ItemStatus, MAX_BLOB_BYTES, MAX_CONTEXT_RECENT_ITEMS,
@@ -73,6 +76,7 @@ pub struct CreateConversationRecord {
 	pub model: String,
 	pub reasoning_effort: String,
 	pub fast: bool,
+	pub service_tier: Option<decodex_core::ServiceTier>,
 }
 
 /// Immutable original request coordinates.
@@ -83,6 +87,7 @@ pub struct ConversationRequest {
 	pub model: String,
 	pub reasoning_effort: String,
 	pub fast: bool,
+	pub service_tier: Option<decodex_core::ServiceTier>,
 }
 
 /// Exact active projection that may be closed after provider archive verification.
@@ -530,8 +535,8 @@ impl SqliteStore {
 				.execute(
 					"INSERT INTO quick_task_requests (
 				   conversation_id, operation_key, correlation_id, initial_turn_id,
-					 message, working_directory, model, reasoning_effort, fast, created_at_micros
-				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+					 message, working_directory, model, reasoning_effort, fast, created_at_micros, service_tier
+				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
 					params![
 						create.conversation_id.as_str(),
 						command.key,
@@ -542,6 +547,7 @@ impl SqliteStore {
 						create.reasoning_effort,
 						create.fast,
 						now,
+						create.service_tier.as_ref().map(|tier| tier.as_str()),
 					],
 				)
 				.map_err(sql_error)?;
@@ -573,7 +579,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			connection
 				.query_row(
-					"SELECT q.message, q.working_directory, q.model, q.reasoning_effort, q.fast
+					"SELECT q.message, q.working_directory, q.model, q.reasoning_effort, q.fast, q.service_tier
 				 FROM quick_task_requests AS q
 				 JOIN conversations AS c USING (conversation_id)
 				 WHERE q.conversation_id = ?1 AND c.state = 'active'",
@@ -585,6 +591,7 @@ impl SqliteStore {
 							model: row.get(2)?,
 							reasoning_effort: row.get(3)?,
 							fast: row.get(4)?,
+							service_tier: row.get::<_, Option<String>>(5)?.map(decodex_core::ServiceTier::new).transpose().map_err(|error| rusqlite::Error::FromSqlConversionFailure(5, rusqlite::types::Type::Text, Box::new(error)))?,
 						})
 					},
 				)
@@ -1306,7 +1313,7 @@ impl SqliteStore {
 			let source = transaction.query_row(
 				"SELECT c.title, q.message, q.working_directory, q.model, q.reasoning_effort,
 				        q.fast, d.routing_decision_id,
-				        d.decision_kind, c.revision
+				        d.decision_kind, c.revision, q.service_tier
 				 FROM conversations AS c
 				 JOIN quick_task_requests AS q USING (conversation_id)
 				 JOIN routing_decisions AS d ON d.conversation_id = c.conversation_id
@@ -1316,10 +1323,10 @@ impl SqliteStore {
 				|row| Ok((
 					row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
 					row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, bool>(5)?,
-					row.get::<_, String>(6)?, row.get::<_, String>(7)?, row.get::<_, i64>(8)?,
+					row.get::<_, String>(6)?, row.get::<_, String>(7)?, row.get::<_, i64>(8)?, row.get::<_, Option<String>>(9)?,
 				)),
 			).optional().map_err(sql_error)?;
-			let Some((title, message, working_directory, model, reasoning_effort, fast, routing_decision_id, decision_kind, revision)) = source else {
+			let Some((title, message, working_directory, model, reasoning_effort, fast, routing_decision_id, decision_kind, revision, service_tier)) = source else {
 				return Ok(ConversationRoutingSuccessorOutcome::Rejected {
 					code: "source_authority_unavailable".to_owned(), replayed: false,
 				});
@@ -1345,9 +1352,9 @@ impl SqliteStore {
 			transaction.execute(
 				"INSERT INTO quick_task_requests (
 				 conversation_id, operation_key, correlation_id, causation_id, initial_turn_id,
-				 message, working_directory, model, reasoning_effort, fast, created_at_micros
-				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-				params![successor_id, key, request.source_conversation_id.as_str(), initial_turn_id, message, working_directory, model, reasoning_effort, fast, now],
+				 message, working_directory, model, reasoning_effort, fast, created_at_micros, service_tier
+				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+				params![successor_id, key, request.source_conversation_id.as_str(), initial_turn_id, message, working_directory, model, reasoning_effort, fast, now, service_tier],
 			).map_err(sql_error)?;
 			transaction.execute(
 				"INSERT INTO conversation_routing_successors (
@@ -3012,6 +3019,7 @@ mod archive_tests {
 					model: "gpt-5.6-sol".to_owned(),
 					reasoning_effort: "high".to_owned(),
 					fast: true,
+					service_tier: None,
 				},
 			)
 			.await
@@ -3058,6 +3066,94 @@ mod archive_tests {
 				Ok(())
 			})
 			.expect("seed provider-less starting RuntimeSession");
+	}
+
+	#[tokio::test]
+	async fn resume_rejection_is_atomic_durable_and_idempotent() {
+		use super::{ConversationResumeRejection, RecordConversationResumeRejection};
+		let directory = tempdir().expect("temporary database directory");
+		let paths = DecodexRoot::new(directory.path().canonicalize().expect("canonical root"))
+			.expect("root")
+			.paths();
+		let blobs = BlobStore::open(paths.clone()).expect("blobs");
+		let store = SqliteStore::open(&paths).expect("database");
+		seed_provider_less_starting_task(&store).await;
+		seed_active_user_turn(&store);
+		store.with_connection(|connection| {
+			connection.execute("UPDATE runtime_sessions SET state='active', codex_thread_id='native-thread', thread_start_request_id=1, thread_start_response_id=1, has_acknowledged_turn=1 WHERE runtime_session_id=?1", params![RUNTIME_SESSION_ID]).map_err(sqlite_error)?;
+			connection.execute_batch("CREATE TRIGGER fail_diagnostic BEFORE INSERT ON history_items BEGIN SELECT RAISE(ABORT, 'injected history failure'); END;").map_err(sqlite_error)
+		}).expect("prepare bound session and failure injection");
+		let request = RecordConversationResumeRejection {
+			conversation_id: ConversationId::new(CONVERSATION_ID).expect("conversation"),
+			runtime_session_id: RuntimeSessionId::new(RUNTIME_SESSION_ID).expect("session"),
+			expected_session_revision: 3,
+			thread_id: "native-thread".into(),
+			turn_id: TurnId::new(TURN_ID).expect("turn"),
+			history_item_id: HistoryItemId::new(INTERRUPTION_HISTORY_ID).expect("history"),
+			reason: ConversationResumeRejection::SandboxConfiguration,
+			witness_digest: "a".repeat(64),
+		};
+		let command = CommandIdentity::new(
+			"resume-rejection-test",
+			&serde_json::to_vec(&request).expect("descriptor"),
+		)
+		.expect("command");
+		assert!(store.record_conversation_resume_rejection(&command, &request).await.is_err());
+		store
+			.with_connection(|connection| {
+				let state: (String, i64) = connection
+					.query_row(
+						"SELECT status,revision FROM turns WHERE turn_id=?1",
+						params![TURN_ID],
+						|row| Ok((row.get(0)?, row.get(1)?)),
+					)
+					.map_err(sqlite_error)?;
+				assert_eq!(
+					state,
+					("active".into(), 1),
+					"history failure rolls back turn finalization"
+				);
+				connection.execute_batch("DROP TRIGGER fail_diagnostic").map_err(sqlite_error)
+			})
+			.expect("rollback inspection");
+		let mut stale = request.clone();
+		stale.expected_session_revision = 2;
+		assert!(store.record_conversation_resume_rejection(&command, &stale).await.is_err());
+		store
+			.record_conversation_resume_rejection(&command, &request)
+			.await
+			.expect("record refusal");
+		drop(store);
+		let reopened = SqliteStore::open(&paths).expect("restart database");
+		reopened.record_conversation_resume_rejection(&command, &request).await.expect("replay");
+		let second_reader = SqliteStore::open(&paths).expect("independent reader");
+		let page = second_reader
+			.conversation_history(&blobs, &request.conversation_id, None, 10)
+			.await
+			.expect("durable history");
+		assert_eq!(page.entries.len(), 1, "one diagnostic after replay and restart");
+		let item = &page.entries[0];
+		assert_eq!(item.kind, decodex_core::HistoryItemKind::Status);
+		assert_eq!(item.status, decodex_core::ItemStatus::Failed);
+		assert_eq!(item.inline_text.as_deref(), Some(request.reason.diagnostic()));
+		assert_eq!(item.runtime_session_id, RUNTIME_SESSION_ID);
+		second_reader
+			.with_connection(|connection| {
+				let state: (String, i64) = connection
+					.query_row(
+						"SELECT status,revision FROM turns WHERE turn_id=?1",
+						params![TURN_ID],
+						|row| Ok((row.get(0)?, row.get(1)?)),
+					)
+					.map_err(sqlite_error)?;
+				assert_eq!(state, ("failed".into(), 2));
+				let count: i64 = connection
+					.query_row("SELECT COUNT(*) FROM runtime_sessions", [], |row| row.get(0))
+					.map_err(sqlite_error)?;
+				assert_eq!(count, 1, "no replacement session");
+				Ok(())
+			})
+			.expect("restart state");
 	}
 
 	#[test]
@@ -3287,6 +3383,7 @@ mod archive_tests {
 					model: "gpt-5.6-sol".to_owned(),
 					reasoning_effort: "high".to_owned(),
 					fast: true,
+					service_tier: None,
 				},
 			)
 			.await

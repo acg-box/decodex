@@ -1,5 +1,8 @@
 //! Discrete reasoning slider. Values come from the selected model's capabilities.
-use super::*;
+use super::{
+	ChiefSurface, Context, InteractiveElement, IntoElement, ParentElement, Role,
+	StatefulInteractiveElement, Styled, div, level_label, px, rgb, rgba, ui_theme,
+};
 use gpui::{MouseButton, canvas, relative};
 
 fn index_at(position: f32, count: usize) -> usize {
@@ -231,7 +234,11 @@ mod tests {
 					efforts: vec![Effort::Low, Effort::High, Effort::Ultra],
 					default_effort: Some(Effort::High),
 					supports_fast: true,
+					service_tiers: vec![],
+					default_service_tier: None,
 					supports_images: true,
+					availability: None,
+					upgrade: None,
 				}],
 				memory_enabled: None,
 			});

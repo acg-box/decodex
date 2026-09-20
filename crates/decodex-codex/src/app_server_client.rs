@@ -10,7 +10,19 @@ use tokio::{
 	sync::{mpsc, oneshot, watch},
 };
 
+mod archive;
+pub use archive::ThreadArchiveState;
+mod attachments;
 mod history;
+mod integrations;
+mod plugin_install;
+mod server_requests;
+pub use plugin_install::{PluginInstallReceipt, PluginInstallTarget};
+pub use server_requests::ServerRequestGuard;
+use server_requests::ServerRequests;
+mod usage;
+pub use attachments::{ThreadAttachment, ThreadAttachmentAddOutcome, ThreadAttachmentAddResult};
+pub use usage::{ThreadUsageEstimate, ThreadUsageEstimateGroup};
 
 const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 const MAX_PENDING_REQUESTS: usize = 256;
@@ -101,8 +113,8 @@ pub enum ServerEvent {
 
 type Reply = oneshot::Sender<Result<Value, ClientError>>;
 enum Outbound {
-	Request { method: String, params: Value, reply: Reply },
-	Message { value: Value, reply: Reply },
+	Request { method: String, params: Value, reply: Reply, guard: Option<ServerRequestGuard> },
+	Message { value: Value, reply: Reply, guard: Option<ServerRequestGuard> },
 	Shutdown { reply: Reply },
 }
 
@@ -111,6 +123,8 @@ enum Outbound {
 pub struct AppServerClient {
 	outbound: mpsc::Sender<Outbound>,
 	closed: watch::Sender<bool>,
+	server_requests: ServerRequests,
+	install_receipts: plugin_install::InstallReceipts,
 }
 
 /// Explicit process owner. Dropping a client or completing a turn never kills this process.
@@ -169,8 +183,9 @@ impl AppServerClient {
 		let (outbound, commands) = mpsc::channel(64);
 		let (events, receiver) = mpsc::channel(MAX_BUFFERED_EVENTS);
 		let (closed, cancellation) = watch::channel(false);
-		tokio::spawn(run(reader, writer, commands, events, cancellation));
-		(Self { outbound, closed }, receiver)
+		let server_requests = ServerRequests::default();
+		tokio::spawn(run(reader, writer, commands, events, cancellation, server_requests.clone()));
+		(Self { outbound, closed, server_requests, install_receipts: Default::default() }, receiver)
 	}
 
 	/// Attach a caller-owned framed transport after its private initialization. The caller
@@ -187,6 +202,7 @@ impl AppServerClient {
 		let (outbound, commands) = mpsc::channel(64);
 		let (events, receiver) = mpsc::channel(MAX_BUFFERED_EVENTS);
 		let (closed, cancellation) = watch::channel(false);
+		let server_requests = ServerRequests::default();
 		tokio::spawn(run_frames(
 			FrameSink::Channel(outgoing),
 			commands,
@@ -194,13 +210,75 @@ impl AppServerClient {
 			incoming,
 			next_request_id - 1,
 			cancellation,
+			server_requests.clone(),
 		));
-		Ok((Self { outbound, closed }, receiver))
+		Ok((
+			Self { outbound, closed, server_requests, install_receipts: Default::default() },
+			receiver,
+		))
 	}
 
 	/// Revoke all clones without waiting. Already submitted requests remain ambiguous.
 	pub fn close(&self) {
+		self.install_receipts.clear();
+		self.server_requests.clear();
 		self.closed.send_replace(true);
+	}
+
+	/// Capture the exact request while the transport, rather than the owner queue, sees it live.
+	pub fn server_request_guard(
+		&self,
+		id: &RequestId,
+		method: &str,
+		params: &Value,
+	) -> Option<ServerRequestGuard> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.guard(id, method, params)
+	}
+
+	/// Submit one effect only while the originating native request remains live.
+	pub async fn request_guarded(
+		&self,
+		method: &str,
+		params: Value,
+		guard: ServerRequestGuard,
+	) -> Result<Value, ClientError> {
+		if *self.closed.borrow() {
+			return Err(ClientError::Closed);
+		}
+		let (reply, result) = oneshot::channel();
+		self.outbound
+			.send(Outbound::Request { method: method.into(), params, reply, guard: Some(guard) })
+			.await
+			.map_err(|_| ClientError::Closed)?;
+		result.await.unwrap_or(Err(ClientError::Closed))
+	}
+
+	/// Reply only if the original exact request remains unresolved on this connection.
+	pub async fn respond_guarded(
+		&self,
+		id: RequestId,
+		result: Value,
+		guard: ServerRequestGuard,
+	) -> Result<(), ClientError> {
+		if !guard.matches_id(&id) {
+			return Err(ClientError::InvalidFrame);
+		}
+		if *self.closed.borrow() {
+			return Err(ClientError::Closed);
+		}
+		let (reply, receipt) = oneshot::channel();
+		self.outbound
+			.send(Outbound::Message {
+				value: json!({"id":id,"result":result}),
+				reply,
+				guard: Some(guard),
+			})
+			.await
+			.map_err(|_| ClientError::Closed)?;
+		receipt.await.unwrap_or(Err(ClientError::Closed)).map(|_| ())
 	}
 
 	/// Send one RPC and await its correlated reply without automatic retry.
@@ -214,7 +292,7 @@ impl AppServerClient {
 		}
 		let (reply, result) = oneshot::channel();
 		self.outbound
-			.send(Outbound::Request { method: method.into(), params, reply })
+			.send(Outbound::Request { method: method.into(), params, reply, guard: None })
 			.await
 			.map_err(|_| ClientError::Closed)?;
 		result.await.unwrap_or(Err(ClientError::Closed))
@@ -226,7 +304,7 @@ impl AppServerClient {
 		}
 		let (reply, result) = oneshot::channel();
 		self.outbound
-			.send(Outbound::Message { value, reply })
+			.send(Outbound::Message { value, reply, guard: None })
 			.await
 			.map_err(|_| ClientError::Closed)?;
 		result.await.unwrap_or(Err(ClientError::Closed)).map(|_| ())
@@ -315,6 +393,7 @@ async fn run<R, W>(
 	commands: mpsc::Receiver<Outbound>,
 	events: mpsc::Sender<ServerEvent>,
 	cancellation: watch::Receiver<bool>,
+	server_requests: ServerRequests,
 ) where
 	R: AsyncRead + Unpin + Send + 'static,
 	W: AsyncWrite + Unpin + Send + 'static,
@@ -343,7 +422,16 @@ async fn run<R, W>(
 			}
 		}
 	});
-	run_frames(FrameSink::Io(Box::new(writer)), commands, events, frames, 0, cancellation).await;
+	run_frames(
+		FrameSink::Io(Box::new(writer)),
+		commands,
+		events,
+		frames,
+		0,
+		cancellation,
+		server_requests,
+	)
+	.await;
 	reader_task.abort();
 }
 
@@ -377,25 +465,40 @@ async fn run_frames(
 	mut frames: mpsc::Receiver<Result<Value, ClientError>>,
 	mut sequence: i64,
 	mut cancellation: watch::Receiver<bool>,
+	server_requests: ServerRequests,
 ) {
 	let mut pending: HashMap<RequestId, Reply> = HashMap::new();
-	let reason = loop {
+	let reason = 'transport: loop {
 		tokio::select! {
 			biased;
 			_ = cancellation.changed() => { break ClientError::Closed; },
 			command = commands.recv() => {
 				let Some(command) = command else { break ClientError::Closed; };
+				let guard=match &command {Outbound::Request{guard,..}|Outbound::Message{guard,..}=>guard.as_ref(),_=>None};
+				if let Some(guard)=guard {
+					// Apply already queued inbound resolutions before a guarded side effect.
+					for _ in 0..frames.len() {
+						let frame=match frames.try_recv() {Ok(Ok(frame))=>frame,Ok(Err(error))=>break 'transport error,Err(_)=>break};
+						if let Err(error)=dispatch(frame,&mut pending,&events,&server_requests) {break 'transport error;}
+					}
+					if !guard.belongs_to(&server_requests) || !guard.is_live() {
+						let reply=match command {Outbound::Request{reply,..}|Outbound::Message{reply,..}|Outbound::Shutdown{reply}=>reply};
+						let _=reply.send(Err(ClientError::InvalidFrame));
+						continue;
+					}
+				}
 				match command {
 					Outbound::Shutdown { reply } => {
 						let _ = reply.send(Ok(Value::Null));
 						break ClientError::Closed;
 					},
-					Outbound::Message { value, reply } => {
+					Outbound::Message { value, reply, .. } => {
+						if value.get("method").is_none() && let Ok(id)=serde_json::from_value::<RequestId>(value["id"].clone()) {server_requests.remove(&id);}
 						let result = writer.write(value).await;
 						let _ = reply.send(result.clone().map(|_| Value::Null));
 						if let Err(error) = result { break error; }
 					},
-					Outbound::Request { method, params, reply } => {
+					Outbound::Request { method, params, reply, .. } => {
 						if pending.len() >= MAX_PENDING_REQUESTS {
 							let _ = reply.send(Err(ClientError::CapacityExceeded));
 							continue;
@@ -410,10 +513,11 @@ async fn run_frames(
 			},
 			frame = frames.recv() => {
 				let frame = match frame { Some(Ok(frame)) => frame, Some(Err(error)) => break error, None => break ClientError::Closed };
-				if let Err(error) = dispatch(frame, &mut pending, &events) { break error; }
+				if let Err(error) = dispatch(frame, &mut pending, &events, &server_requests) { break error; }
 			},
 		}
 	};
+	server_requests.clear();
 	drop(writer);
 	commands.close();
 	for (_, reply) in pending {
@@ -434,6 +538,7 @@ fn dispatch(
 	frame: Value,
 	pending: &mut HashMap<RequestId, Reply>,
 	events: &mpsc::Sender<ServerEvent>,
+	server_requests: &ServerRequests,
 ) -> Result<(), ClientError> {
 	let object = frame.as_object().ok_or(ClientError::InvalidFrame)?;
 	let id = object
@@ -466,6 +571,7 @@ fn dispatch(
 		}
 		ServerEvent::UnmatchedResponse { id, result }
 	};
+	server_requests.observe(&event)?;
 	events.try_send(event).map_err(|error| match error {
 		mpsc::error::TrySendError::Full(_) => ClientError::CapacityExceeded,
 		mpsc::error::TrySendError::Closed(_) => ClientError::Closed,
@@ -497,6 +603,67 @@ mod tests {
 		let mut line = String::new();
 		timeout(Duration::from_secs(2), reader.read_line(&mut line)).await.unwrap().unwrap();
 		serde_json::from_str(&line).unwrap()
+	}
+
+	#[tokio::test]
+	async fn resolved_request_guard_prevents_effect_before_owner_consumes_notification() {
+		let (client, mut events, mut reader, mut writer) = connection();
+		let id = RequestId::String("suggestion".into());
+		let params = json!({"threadId":"thread","turnId":"turn","message":"Install"});
+		write_frame(
+			&mut writer,
+			json!({"id":id,"method":"mcpServer/elicitation/request","params":params}),
+		)
+		.await
+		.unwrap();
+		let _ = events.recv().await.unwrap();
+		let guard =
+			client.server_request_guard(&id, "mcpServer/elicitation/request", &params).unwrap();
+		assert!(
+			client
+				.server_request_guard(
+					&id,
+					"mcpServer/elicitation/request",
+					&json!({"threadId":"other"})
+				)
+				.is_none()
+		);
+		let rpc = {
+			let client = client.clone();
+			tokio::spawn(async move { client.request("plugin/list", json!({})).await })
+		};
+		let request = read(&mut reader).await;
+		write_frame(
+			&mut writer,
+			json!({"method":"serverRequest/resolved","params":{"threadId":"other","requestId":id}}),
+		)
+		.await
+		.unwrap();
+		write_frame(&mut writer, json!({"id":request["id"],"result":{}})).await.unwrap();
+		rpc.await.unwrap().unwrap();
+		assert!(guard.is_live(), "another thread cannot resolve this request");
+		let rpc = {
+			let client = client.clone();
+			tokio::spawn(async move { client.request("plugin/read", json!({})).await })
+		};
+		let request = read(&mut reader).await;
+		write_frame(
+			&mut writer,
+			json!({"method":"serverRequest/resolved","params":{"threadId":"thread","requestId":id}}),
+		)
+		.await
+		.unwrap();
+		write_frame(&mut writer, json!({"id":request["id"],"result":{}})).await.unwrap();
+		rpc.await.unwrap().unwrap();
+		// Both notifications are still unread in the owner's event queue.
+		assert!(!guard.is_live());
+		assert!(client.request_guarded("plugin/install", json!({}), guard.clone()).await.is_err());
+		assert!(client.respond_guarded(id, json!({"action":"accept"}), guard).await.is_err());
+		let mut line = String::new();
+		assert!(
+			timeout(Duration::from_millis(25), reader.read_line(&mut line)).await.is_err(),
+			"no guarded write may reach native"
+		);
 	}
 
 	#[tokio::test]

@@ -182,6 +182,20 @@ if sys.argv[1] == "generate-json-schema":
         (output / "v2/ThreadStartParams.json").write_text(
             "{" if malformed_optional else json.dumps(history)
         )
+        tool_input = {
+            "properties": {"toolOutput": {"anyOf": [{"$ref": "#/definitions/TurnToolOutput"}, {"type": "null"}]}},
+            "definitions": {
+                "TurnToolOutput": {
+                    "type": "object", "required": ["name", "output"],
+                    "properties": {
+                        "name": {"type": "string"}, "namespace": {"type": ["string", "null"]},
+                        "output": {"$ref": "#/definitions/FunctionCallOutputBody"},
+                    },
+                },
+                "FunctionCallOutputBody": {"type": "string"},
+            },
+        }
+        (output / "v2/TurnStartParams.json").write_text(json.dumps(tool_input))
     if "--too-many-files" in sys.argv:
         for index in range(513):
             (output / f"extra-{index}.json").write_text("{}")
@@ -247,6 +261,11 @@ for line in sys.stdin:
         time.sleep(60)
     method = message.get("method")
     if method == "initialize":
+        if mode == "exact-config-warning-flood":
+            for index in range(40):
+                print(json.dumps({"method": "configWarning", "params": {"summary": f"Fixture warning {index}", "details": None}}), flush=True)
+        if mode == "exact-config-warning":
+            print(json.dumps({"method": "configWarning", "params": {"summary": 'Ignored "fixture" setting', "details": "first\nsecond", "path": "/private/not-retained"}}), flush=True)
         if mode in ("server-request", "server-request-id-collision"):
             server_request_id = (
                 message["id"] if mode == "server-request-id-collision" else 90_001
@@ -465,6 +484,23 @@ for line in sys.stdin:
                     "parentThreadId": None,
                 }
             }
+    elif method == "thread/resume" and mode.startswith("resume-reject-"):
+        thread = message["params"]["threadId"]
+        code = -32600
+        error_message = "fixture-secret: provider rejected configuration"
+        if mode == "resume-reject-missing":
+            error_message = f"no rollout found for thread id {thread}"
+        elif mode == "resume-reject-archived":
+            error_message = f"session {thread} is archived. Run `codex unarchive {thread}` to unarchive it first."
+        elif mode == "resume-reject-sandbox":
+            error_message = "failed to prepare fs sandbox: symlinked writable roots are not supported: fixture-secret"
+        elif mode == "resume-reject-other-thread":
+            error_message = "no rollout found for thread id unrelated"
+        elif mode == "resume-reject-wrong-code":
+            code = -32603
+            error_message = f"no rollout found for thread id {thread}"
+        print(json.dumps({"id": message["id"], "error": {"code": code, "message": error_message}}), flush=True)
+        continue
     elif method == "thread/archive":
         assert message["params"] == {"threadId": exact_thread_id}
         if mode == "exact-unsupported-archive":
@@ -479,7 +515,18 @@ for line in sys.stdin:
         assert message["params"]["limit"] <= 10
         assert message["params"]["searchTerm"].startswith("decodex-capability-probe-")
         result = {"data": [], "nextCursor": None}
+    elif method == "model/list":
+        assert message["params"]["includeHidden"] is False
+        print(json.dumps({"method":"turn/completed","params":{"threadId":"catalog-thread","turn":{"id":"catalog-turn","status":"completed","items":[]}}}), flush=True)
+        if mode == "exact-catalog-late":
+            time.sleep(0.15)
+        if mode == "exact-catalog-rejected":
+            print(json.dumps({"id": message["id"], "error": {"code": -32601, "message": "unsupported"}}), flush=True)
+            continue
+        result = {"data":[{"model":"catalog-model","displayName":"Model \"quoted\"","supportedReasoningEfforts":[],"defaultReasoningEffort":"high","serviceTiers":[{"id":"ultrafast","name":"Ultrafast","description":"More usage"}]}],"nextCursor":None}
     elif method == "initialized":
+        if mode == "exact-config-warning":
+            print(json.dumps({"method": "configWarning", "params": {"summary": "Second fixture warning", "details": None}}), flush=True)
         continue
     else:
         print(json.dumps({"id": message["id"], "error": {"code": -32601, "message": "unsupported"}}), flush=True)

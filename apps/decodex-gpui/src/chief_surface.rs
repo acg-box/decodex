@@ -2,15 +2,24 @@
 
 #[path = "chief_activity.rs"] mod activity;
 #[path = "chief_tree.rs"] mod agent_tree;
+#[path = "chief_archive.rs"] mod archive;
+#[path = "chief_async_questions.rs"] mod async_questions;
 #[path = "chief_capabilities.rs"] mod capabilities;
 #[path = "chief_composer.rs"] mod composer;
 #[path = "chief_detail.rs"] mod detail;
 #[path = "chief_dictation.rs"] mod dictation;
 #[path = "chief_graph.rs"] mod graph;
+#[path = "chief_guardian.rs"] mod guardian;
+#[path = "chief_install.rs"] mod install;
+#[path = "chief_integrations.rs"] mod integrations;
 #[path = "chief_markdown.rs"] mod markdown;
+#[path = "chief_mcp_forms.rs"] mod mcp_forms;
+#[path = "chief_misalignment.rs"] mod misalignment;
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_requests.rs"] mod requests;
+#[path = "chief_resources.rs"] mod resources;
+#[path = "chief_usage_estimates.rs"] mod usage_estimates;
 #[path = "chief_voice.rs"] mod voice;
 #[path = "chief_workspace.rs"] mod workspace;
 #[path = "chief_workspace_size.rs"] mod workspace_size;
@@ -56,7 +65,22 @@ pub(crate) struct ChiefSurface {
 	dictation_task: Option<Task<()>>,
 	activity_detail: Option<(String, Option<decodex_protocol::ChiefActivityDetailResult>)>,
 	activity_detail_task: Option<Task<()>>,
+	resources: Option<(String, Option<decodex_protocol::ChiefResourcesResult>)>,
+	resources_task: Option<Task<()>>,
+	usage_estimate: Option<(String, Option<decodex_protocol::ChiefUsageEstimateResult>)>,
+	usage_estimate_task: Option<Task<()>>,
+	integrations: Option<(String, Option<decodex_protocol::ChiefIntegrationsResult>)>,
+	integrations_task: Option<Task<()>>,
+	integration_refresh_task: Option<Task<()>>,
+	integration_feedback: String,
+	mcp_login: Option<(String, String, decodex_protocol::McpLoginStatus)>,
+	mcp_login_task: Option<Task<()>>,
+	resource_mutation_task: Option<Task<()>>,
+	resource_feedback: String,
+	resource_title: Entity<ComposerInput>,
+	resource_url: Entity<ComposerInput>,
 	capabilities: Option<decodex_protocol::ChiefCapabilitiesResult>,
+	capabilities_context: Option<capabilities::CatalogContext>,
 	capabilities_checked: Option<std::time::Instant>,
 	capability_task: Option<Task<()>>,
 	expanded_progress: std::collections::BTreeSet<String>,
@@ -97,6 +121,7 @@ pub(crate) struct ChiefSurface {
 	composer: Entity<ComposerInput>,
 	composer_footer_height: f32,
 	fast: bool,
+	service_tier: Option<decodex_protocol::ServiceTier>,
 	steer: bool,
 	media_spare: Option<voice::Media>,
 	media_warm_attempted: bool,
@@ -134,10 +159,26 @@ pub(crate) struct ChiefSurface {
 	poll_task: Option<Task<()>>,
 	request: Option<ChiefRequestResult>,
 	request_task: Option<Task<()>>,
+	misalignment_reviewed: Option<(String, String)>,
+	guardian: guardian::Panel,
+	archive: archive::Panel,
+	mcp_form_event: Option<i64>,
+	installation: install::Panel,
+	mcp_url_opened: Option<(i64, String)>,
+	mcp_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
+	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
+	question_timers: std::collections::BTreeMap<i64, requests::QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
+	async_question_inputs: std::collections::BTreeMap<(String, String), Entity<ComposerInput>>,
 	details_visible: bool,
 	accounts: Vec<(String, String)>,
 	setup_expanded: bool,
+}
+
+struct ChiefInputs {
+	model: Entity<ComposerInput>,
+	cwd: Entity<ComposerInput>,
+	composer: Entity<ComposerInput>,
 }
 
 impl ChiefSurface {
@@ -189,27 +230,7 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn new(cx: &mut Context<Self>) -> Self {
-		Self::refresh_prompt(cx);
-		let model =
-			cx.new(|cx| ComposerInput::with_placeholder(31, "Exact model ID", "Chief model", cx));
-		model.update(cx, |input, cx| input.set_content("gpt-6-astra", cx));
-		let cwd = cx.new(|cx| {
-			ComposerInput::with_placeholder(
-				32,
-				"Absolute working directory",
-				"Chief working directory",
-				cx,
-			)
-		});
-		let composer =
-			cx.new(|cx| ComposerInput::message(35, prompts::next(), "Chief message", cx));
-		cx.subscribe(&composer, |s, _, event, cx| {
-			if let crate::composer_input::ComposerEvent::Attach(item) = event {
-				s.attach_clipboard(item, cx);
-			}
-			cx.notify();
-		})
-		.detach();
+		let ChiefInputs { model, cwd, composer } = Self::new_inputs(cx);
 		Self {
 			voice: None,
 			voice_task: None,
@@ -219,10 +240,28 @@ impl ChiefSurface {
 			dictation_task: None,
 			activity_detail: None,
 			activity_detail_task: None,
+			resources: None,
+			resources_task: None,
+			usage_estimate: None,
+			usage_estimate_task: None,
+			integrations: None,
+			integrations_task: None,
+			integration_refresh_task: None,
+			integration_feedback: String::new(),
+			mcp_login: None,
+			mcp_login_task: None,
+			resource_mutation_task: None,
+			resource_feedback: String::new(),
+			resource_title: cx
+				.new(|cx| ComposerInput::with_placeholder(40, "Link title", "Resource title", cx)),
+			resource_url: cx
+				.new(|cx| ComposerInput::with_placeholder(40, "https://…", "Resource URL", cx)),
 			capabilities: None,
+			capabilities_context: None,
 			capabilities_checked: None,
 			capability_task: None,
 			fast: false,
+			service_tier: None,
 			steer: true,
 			media_spare: None,
 			media_warm_attempted: false,
@@ -270,14 +309,7 @@ impl ChiefSurface {
 			composer_footer_height: 74.,
 			model,
 			cwd,
-			account: cx.new(|cx| {
-				ComposerInput::with_placeholder(
-					33,
-					"Automatic account routing",
-					"Optional exact account ID",
-					cx,
-				)
-			}),
+			account: Self::account_input(cx),
 			effort: ConversationReasoningEffort::High,
 			sandbox: ChiefSandboxDto::ReadOnly,
 			command_task: None,
@@ -294,7 +326,17 @@ impl ChiefSurface {
 			poll_task: None,
 			request: None,
 			request_task: None,
+			misalignment_reviewed: None,
+			guardian: Default::default(),
+			archive: Default::default(),
+			mcp_form_event: None,
+			installation: Default::default(),
+			mcp_url_opened: None,
+			mcp_inputs: Default::default(),
+			mcp_answers: Default::default(),
+			question_timers: Default::default(),
 			question_inputs: Default::default(),
+			async_question_inputs: Default::default(),
 			profile: None,
 			snapshot: None,
 			state: LoadState::Idle,
@@ -307,7 +349,45 @@ impl ChiefSurface {
 		}
 	}
 
+	fn new_inputs(cx: &mut Context<Self>) -> ChiefInputs {
+		Self::refresh_prompt(cx);
+		let model =
+			cx.new(|cx| ComposerInput::with_placeholder(31, "Exact model ID", "Chief model", cx));
+		model.update(cx, |input, cx| input.set_content("gpt-6-astra", cx));
+		let cwd = cx.new(|cx| {
+			ComposerInput::with_placeholder(
+				32,
+				"Absolute working directory",
+				"Chief working directory",
+				cx,
+			)
+		});
+		let composer =
+			cx.new(|cx| ComposerInput::message(35, prompts::next(), "Chief message", cx));
+		cx.subscribe(&composer, |s, _, event, cx| {
+			if let crate::composer_input::ComposerEvent::Attach(item) = event {
+				s.attach_clipboard(item, cx);
+			}
+			cx.notify();
+		})
+		.detach();
+		ChiefInputs { model, cwd, composer }
+	}
+
+	fn account_input(cx: &mut Context<Self>) -> Entity<ComposerInput> {
+		cx.new(|cx| {
+			ComposerInput::with_placeholder(
+				33,
+				"Automatic account routing",
+				"Optional exact account ID",
+				cx,
+			)
+		})
+	}
+
 	fn load_history(&mut self, cx: &mut Context<Self>) {
+		self.load_guardian_reviews(cx);
+		self.load_archive_state(false, cx);
 		if self.history.as_ref().is_some_and(|(id, _)| self.selected.as_ref() != Some(id)) {
 			self.history = None;
 		}
@@ -346,6 +426,7 @@ impl ChiefSurface {
 						{
 							scroll.scroll_to_bottom();
 						}
+						surface.prepare_async_question_inputs(&id, &history, cx);
 						surface.history_cache.insert(id.clone(), history.clone());
 						surface.history = Some((id, history));
 					}
@@ -372,7 +453,7 @@ impl ChiefSurface {
 
 	fn cycle_model(&mut self, cx: &mut Context<Self>) {
 		if let Some(decodex_protocol::ChiefCapabilitiesResult::Available { models, .. }) =
-			&self.capabilities
+			self.current_model_catalog(cx)
 		{
 			if models.is_empty() {
 				return;
@@ -549,6 +630,7 @@ impl ChiefSurface {
 					model,
 					reasoning_effort: self.effort,
 					fast: self.fast,
+					service_tier: self.service_tier.clone(),
 				};
 				let attachments = self.attachments.clone();
 				let action = match action {
@@ -660,8 +742,25 @@ impl ChiefSurface {
 		self.profile = profile;
 		self.activity_detail = None;
 		self.activity_detail_task = None;
+		self.resources = None;
+		self.resources_task = None;
+		self.usage_estimate = None;
+		self.usage_estimate_task = None;
+		self.integrations = None;
+		self.integrations_task = None;
+		self.integration_refresh_task = None;
+		self.integration_feedback.clear();
+		self.mcp_login = None;
+		self.mcp_login_task = None;
+		self.resource_mutation_task = None;
+		self.resource_feedback.clear();
+		self.resource_title.update(cx, |input, cx| input.clear(cx));
+		self.resource_url.update(cx, |input, cx| input.clear(cx));
 		self.capability_task = None;
 		self.capabilities = None;
+		self.capabilities_context = None;
+		self.fast = false;
+		self.service_tier = None;
 		self.capabilities_checked = None;
 		self.snapshot = None;
 		self.pages.clear();
@@ -683,6 +782,15 @@ impl ChiefSurface {
 		self.history_task = None;
 		self.request = None;
 		self.request_task = None;
+		self.question_timers.clear();
+		self.mcp_form_event = None;
+		self.mcp_url_opened = None;
+		self.mcp_inputs.clear();
+		self.mcp_answers.clear();
+		self.misalignment_reviewed = None;
+		self.guardian = Default::default();
+		self.archive = Default::default();
+		self.async_question_inputs.clear();
 		self.selected = None;
 		self.state = LoadState::Idle;
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
@@ -699,6 +807,10 @@ impl ChiefSurface {
 						if should_poll_snapshot(surface.profile.is_some(), &surface.state, active) {
 							surface.refresh(cx);
 						}
+						surface.load_archive_state(false, cx);
+						if surface.guardian_needs_refresh() {
+							surface.load_guardian_reviews(cx);
+						}
 					})
 					.is_err()
 				{
@@ -711,6 +823,9 @@ impl ChiefSurface {
 
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
 		self.generation += 1;
+		self.guardian_disconnected();
+		self.archive_disconnected();
+		self.installation_disconnected();
 		self.task = None;
 		self.state =
 			if self.snapshot.is_some() { LoadState::Stale } else { LoadState::Unavailable };
@@ -748,12 +863,15 @@ impl ChiefSurface {
 					return;
 				}
 				surface.apply_result(result);
-				if surface.capabilities_checked.is_none_or(|at| at.elapsed().as_secs() >= 60) {
+				if surface.current_model_catalog(cx).is_none()
+					|| surface.capabilities_checked.is_none_or(|at| at.elapsed().as_secs() >= 60)
+				{
 					surface.load_capabilities(cx);
 				}
 				surface.load_history(cx);
 
 				surface.sync_request(cx);
+				surface.tick_question_timeout(cx);
 				cx.notify();
 			});
 		}));
@@ -932,7 +1050,11 @@ impl ChiefSurface {
 				}),
 				|panel| panel.child(self.pending_panel(snapshot, work, cx)),
 			)
+			.child(self.misalignment_panel(work, cx))
+			.child(self.guardian_panel(work, cx))
+			.child(self.archive_panel(work, cx))
 			.child(self.request_panel(snapshot, work, cx))
+			.child(self.async_question_panel(work, cx))
 			.child(self.history_panel(work, cx))
 			.child(
 				div()
@@ -1138,8 +1260,16 @@ impl ChiefSurface {
 	}
 
 	fn history_panel(&self, work: &ChiefWorkItemDto, cx: &mut Context<Self>) -> impl IntoElement {
-		let mut panel =
-			div().w_full().min_w_0().flex_none().flex().flex_col().gap(px(ui_theme::MESSAGE_GAP));
+		let mut panel = div()
+			.w_full()
+			.min_w_0()
+			.flex_none()
+			.flex()
+			.flex_col()
+			.gap(px(ui_theme::MESSAGE_GAP))
+			.child(self.resources_panel(&work.id, cx))
+			.child(self.integrations_panel(&work.id, cx))
+			.child(self.usage_estimate_panel(&work.id, cx));
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
 			Some(ChiefHistoryResult::Available {
 				entries, has_more, next_before, live, ..
@@ -1445,6 +1575,13 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 						.child(muted("Manager instruction"))
 				})
 				.child(markdown::render(&entry.text, &format!("message-{}", entry.id)))
+				.when(entry.kind == "assistant", |body| {
+					body.child(markdown::copy_button(
+						&format!("copy-response-{}", entry.id),
+						"Copy response",
+						entry.text.clone(),
+					))
+				})
 				.when(!user, |body| body.child(reply_metrics(entry))),
 		)
 }
@@ -1554,7 +1691,7 @@ impl ChiefSurface {
 					))
 					.smooth(),
 			)
-			.children(match &self.capabilities {
+			.children(match self.current_model_catalog(cx) {
 				Some(decodex_protocol::ChiefCapabilitiesResult::Available {
 					memory_enabled: Some(enabled),
 					..
@@ -1881,6 +2018,10 @@ mod tests {
 			surface.history = Some((
 				"root".into(),
 				ChiefHistoryResult::Available {
+					questions: vec![],
+					questions_truncated: false,
+					questions_recovering: false,
+					misalignment: None,
 					live: vec![],
 					next_before: None,
 					usage: None,
@@ -1942,6 +2083,10 @@ mod tests {
 			surface.history = Some((
 				"root".into(),
 				ChiefHistoryResult::Available {
+					questions: vec![],
+					questions_truncated: false,
+					questions_recovering: false,
+					misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
 						activity: None,
@@ -2061,6 +2206,10 @@ mod tests {
 			s.history = Some((
 				"chief".into(),
 				ChiefHistoryResult::Available {
+					questions: vec![],
+					questions_truncated: false,
+					questions_recovering: false,
+					misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
 						activity: None,

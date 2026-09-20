@@ -106,6 +106,15 @@ pub struct ChiefUsageDto {
 pub enum ChiefHistoryResult {
 	/// Verified visible entries; older history or shortened content is explicitly indicated.
 	Available {
+		/// Unanswered asynchronous questions for the current native thread, independent of history
+		/// paging.
+		questions: Vec<crate::ChiefAsyncQuestionDto>,
+		/// Additional questions exist beyond this bounded page.
+		questions_truncated: bool,
+		/// Native history recovery is incomplete; historical question cards are withheld.
+		questions_recovering: bool,
+		/// Current provider precaution, independent of transcript pagination.
+		misalignment: Option<Box<ChiefMisalignmentDto>>,
 		/// Latest observed usage for the current provider thread.
 		usage: Option<ChiefUsageDto>,
 		/// Source-bound records.
@@ -119,6 +128,18 @@ pub enum ChiefHistoryResult {
 	},
 	/// The work or source store cannot be read.
 	Unavailable,
+}
+
+/// Findings for one provider precaution. The digest binds an explicit acknowledgment.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefMisalignmentDto {
+	/// Exact thread, turn and findings digest.
+	pub review_id: String,
+	/// Full provider explanation, at most 64 KiB; absent when not available.
+	pub explanation: Option<String>,
+	/// Exact continuation text, at most 1024 bytes; never automatically submitted.
+	pub continuation: Option<String>,
 }
 
 /// Explicit host-selected Chief execution policy.
@@ -167,6 +188,45 @@ pub struct ChiefAttachmentDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Install the exact plugin whose current catalog details the user reviewed.
+	InstallSuggestedPlugin {
+		/// Owning task identity.
+		work_id: crate::EntityId,
+		/// Exact live native suggestion event.
+		event_id: i64,
+		/// Review identity returned by installation inspection.
+		review_token: crate::WireText,
+	},
+	/// Explicitly restore the exact archived native thread selected by the user.
+	RestoreArchivedThread {
+		/// Current local work identity.
+		work_id: crate::EntityId,
+		/// Native thread identity shown by archive inspection.
+		thread_id: crate::WireText,
+	},
+	/// Explicitly synchronize shared installed plugins and reload loaded native MCP runtimes.
+	RefreshIntegrations {
+		/// Task from which the user requested the shared refresh.
+		work_id: crate::EntityId,
+	},
+	/// Associate a user-selected HTTP(S) link with the current native task thread.
+	AddResourceLink {
+		/// Exact local task identity.
+		work_id: crate::EntityId,
+		/// User-visible link title.
+		title: crate::WireText,
+		/// HTTP(S) resource address; this does not fetch its contents.
+		url: crate::WireText,
+	},
+	/// Remove the current native association; never delete the referenced resource.
+	RemoveResource {
+		/// Exact local task identity.
+		work_id: crate::EntityId,
+		/// Application-defined native attachment category.
+		attachment_type: crate::WireText,
+		/// Native identity within the category.
+		identity_key: crate::WireText,
+	},
 	/// Start with explicit per-message execution settings and attachments.
 	StartConfigured {
 		/// Initial Chief context.
@@ -197,6 +257,33 @@ pub enum ChiefActionDto {
 		text: crate::HistoryText,
 		/// Files captured at send time.
 		attachments: Vec<ChiefAttachmentDto>,
+	},
+	/// Acknowledge the exact findings displayed by the client and request continuation.
+	ContinueMisalignment {
+		/// Work owning the paused thread.
+		work_id: crate::EntityId,
+		/// Digest of the displayed thread, turn and findings.
+		review_id: crate::WireText,
+	},
+	/// Submit explicit user approval context for an exact observed Guardian denial.
+	/// This does not execute the action or start another turn.
+	ApproveGuardianDenial {
+		/// Work that owns the reviewed thread.
+		work_id: crate::EntityId,
+		/// Durable review row shown to the user.
+		review_row: i64,
+		/// Digest of the displayed observation, including the exact action.
+		review_digest: crate::WireText,
+	},
+
+	/// Answer one source-bound asynchronous question with an explicit user message.
+	AnswerQuestion {
+		/// Work that owns the original question.
+		work_id: crate::EntityId,
+		/// Stable native question identity.
+		question_id: crate::WireText,
+		/// Explicit free text or user-selected option.
+		answer: crate::HistoryText,
 	},
 	/// Cancel one exact pending model-capacity retry.
 	CancelCapacityRetry {
@@ -435,6 +522,16 @@ pub enum ChiefSnapshotResult {
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn guardian_approval_command_carries_only_saved_review_identity() {
+		let mut value = serde_json::json!({"action":"approve_guardian_denial","data":{
+			"work_id":"chief","review_row":7,"review_digest":"a".repeat(64)}});
+		let command: super::ChiefActionDto = serde_json::from_value(value.clone()).unwrap();
+		assert_eq!(serde_json::to_value(command).unwrap(), value);
+		value["data"]["event"] =
+			serde_json::json!({"action":{"type":"command","command":"injected"}});
+		assert!(serde_json::from_value::<super::ChiefActionDto>(value).is_err());
+	}
 	use super::*;
 
 	#[test]
@@ -482,8 +579,40 @@ pub struct ChiefModelDto {
 	pub default_effort: Option<crate::ConversationReasoningEffort>,
 	/// The provider offers the priority service tier for this model.
 	pub supports_fast: bool,
+	/// Service tiers advertised for this model and current account.
+	pub service_tiers: Vec<ChiefServiceTierDto>,
+	/// Informational catalog default. Never changes an explicit user selection.
+	pub default_service_tier: Option<decodex_core::ServiceTier>,
 	/// The provider accepts image input for this model.
 	pub supports_images: bool,
+	/// Provider availability information for the current account, when supplied.
+	pub availability: Option<String>,
+	/// Informational upgrade or retirement notice; selection stays explicit.
+	pub upgrade: Option<ChiefModelUpgradeDto>,
+}
+
+/// Provider-authored service-tier choice, distinct from model or account quota.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefServiceTierDto {
+	/// Exact native request value.
+	pub id: decodex_core::ServiceTier,
+	/// Provider display name.
+	pub name: String,
+	/// Provider description, including usage implications when supplied.
+	pub description: String,
+}
+
+/// Provider-advertised model replacement information.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefModelUpgradeDto {
+	/// Suggested replacement, never selected automatically.
+	pub model: crate::ConversationModel,
+	/// Provider-authored explanation.
+	pub notice: Option<String>,
+	/// Informational retirement time as Unix seconds, when supplied.
+	pub retirement_at: Option<i64>,
 }
 
 /// Read-only capability evidence. Absence never means a disabled feature.
@@ -513,5 +642,40 @@ pub enum ChiefActivityDetailResult {
 		truncated: bool,
 	},
 	/// The source cannot be confirmed or this item has no supported public detail.
+	Unavailable,
+}
+
+/// One native resource association; its payload is display data, not executable input.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefResourceDto {
+	/// Stable native association identity.
+	pub id: String,
+	/// Application-defined resource category.
+	pub attachment_type: String,
+	/// Exact identity within that category.
+	pub identity_key: String,
+	/// Bounded JSON metadata for inspection.
+	pub payload_json: String,
+	/// Payload text exceeded the display bound or contained private credential material.
+	pub payload_omitted: bool,
+	/// Native creation timestamp in seconds.
+	pub created_at: i64,
+}
+
+/// Native association reads distinguish a confirmed empty list from unavailable storage.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ChiefResourcesResult {
+	/// Complete native list under the public response bound.
+	Available {
+		/// Resource associations for the exact requested work.
+		resources: Vec<ChiefResourceDto>,
+	},
+	/// This native provider does not implement resource associations.
+	Unsupported,
+	/// The complete list exceeds the display bound.
+	CapacityExceeded,
+	/// No authoritative result is available for the current thread and connection.
 	Unavailable,
 }

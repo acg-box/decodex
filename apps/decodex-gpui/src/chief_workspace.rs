@@ -86,6 +86,18 @@ impl ChiefSurface {
 		if !self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id)) {
 			return;
 		}
+		if self.selected.as_deref() != Some(id) {
+			self.resources = None;
+			self.resources_task = None;
+			self.usage_estimate = None;
+			self.usage_estimate_task = None;
+			self.integrations = None;
+			self.integrations_task = None;
+			self.integration_refresh_task = None;
+			self.integration_feedback.clear();
+			self.resource_mutation_task = None;
+			self.resource_feedback.clear();
+		}
 		let is_manager = self.snapshot.as_ref().is_some_and(|snapshot| {
 			snapshot.work_items.iter().any(|work| {
 				work.id == id
@@ -469,12 +481,7 @@ impl ChiefSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		self.graph_display_zoom =
-			crate::ui_motion::value("chief-graph-zoom", self.graph_zoom, window, cx);
-		self.restore_history_anchor(window, cx);
-		self.prepare_history_marks();
-		self.animate_history_scroll(window, cx);
-		self.follow_voice_scroll(window, cx);
+		self.prepare_workspace_history(window, cx);
 		let is_chief = self.selected_is_manager();
 		let selected = self
 			.snapshot
@@ -528,7 +535,11 @@ impl ChiefSurface {
 							}) && self.request.is_none(),
 							|row| row.child(self.pending_panel(snapshot, work, cx)),
 						)
+						.child(self.misalignment_panel(work, cx))
+						.child(self.guardian_panel(work, cx))
+						.child(self.archive_panel(work, cx))
 						.child(self.request_panel(snapshot, work, cx))
+						.child(self.async_question_panel(work, cx))
 						.into_any_element()
 				} else {
 					self.details(snapshot, work, cx).into_any_element()
@@ -592,6 +603,15 @@ impl ChiefSurface {
 			.child(self.sidebar_slot(wide, window, cx))
 			.child(main)
 			.into_any_element()
+	}
+
+	fn prepare_workspace_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		self.graph_display_zoom =
+			crate::ui_motion::value("chief-graph-zoom", self.graph_zoom, window, cx);
+		self.restore_history_anchor(window, cx);
+		self.prepare_history_marks();
+		self.animate_history_scroll(window, cx);
+		self.follow_voice_scroll(window, cx);
 	}
 
 	fn restore_history_anchor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1043,7 +1063,8 @@ impl ChiefSurface {
 				models: ["gpt-6-astra", "gpt-5.6-sol"]
 					.into_iter()
 					.map(|name| decodex_protocol::ChiefModelDto {
-						model: decodex_protocol::ConversationModel::new(name).unwrap(),
+						model: decodex_protocol::ConversationModel::new(name)
+							.expect("valid fixture model"),
 						name: name.into(),
 						efforts: vec![
 							ConversationReasoningEffort::Low,
@@ -1052,7 +1073,11 @@ impl ChiefSurface {
 						],
 						default_effort: Some(ConversationReasoningEffort::Medium),
 						supports_fast: true,
+						service_tiers: vec![],
+						default_service_tier: None,
 						supports_images: true,
+						availability: None,
+						upgrade: None,
 					})
 					.collect(),
 				memory_enabled: None,
@@ -1201,6 +1226,10 @@ impl ChiefSurface {
 			),
 		];
 		let history = ChiefHistoryResult::Available {
+			questions: vec![],
+			questions_truncated: false,
+			questions_recovering: false,
+			misalignment: None,
 			usage: None,
 			entries: messages
 				.into_iter()
@@ -1226,7 +1255,7 @@ impl ChiefSurface {
 		self.graph_scope = Some("release".into());
 		self.graph_selected = Some("verify".into());
 		self.timeline_visible = true;
-		self.history_cache.insert("verify".into(),ChiefHistoryResult::Available{usage: None,entries:vec![ChiefHistoryEntryDto{ activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
+		self.history_cache.insert("verify".into(),ChiefHistoryResult::Available{questions:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![ChiefHistoryEntryDto{ activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
 		cx.notify();
 	}
 }

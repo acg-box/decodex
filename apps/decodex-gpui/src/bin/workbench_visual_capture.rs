@@ -114,20 +114,28 @@ fn main() -> gpui::Result<()> {
 				decodex_protocol::ChiefSnapshotResult::Available(snapshot) => snapshot.pending_events.iter().find(|event| Some(&event.work_item_id) == selected.as_ref() && ["permission_pending", "user_input_pending", "server_request_pending"].contains(&event.event_kind.as_str())).map(|event| runtime.block_on(client.request(event.id)).unwrap_or(decodex_protocol::ChiefRequestResult::Unavailable)),
 				_ => None,
 			};
+			let guardian = selected.as_ref().map(|id| {
+				runtime.block_on(client.guardian_reviews(decodex_protocol::EntityId::new(id.clone()).expect("validated work"),None))
+					.unwrap_or(decodex_protocol::ChiefGuardianReviewsResult::Unavailable)
+			});
 			std::fs::write(
 				output.with_extension("evidence.json"),
 				serde_json::to_vec_pretty(
-					&serde_json::json!({"source_root": &root, "observed_at_micros": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_micros(), "snapshot": &snapshot, "selected": &selected, "history": &history, "request": &request}),
+					&serde_json::json!({"source_root": &root, "observed_at_micros": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_micros(), "snapshot": &snapshot, "selected": &selected, "history": &history, "request": &request,"guardian":&guardian}),
 				)?,
 			)?;
-			Ok((snapshot, selected, history, request, profile))
+			Ok((snapshot, selected, history, request, guardian, profile))
 		})
 		.transpose()?;
 	let window: gpui::AnyWindowHandle =
-		if let Some((snapshot, selected, history, request, profile)) = service_projection {
+		if let Some((snapshot, selected, history, request, guardian, profile)) = service_projection
+		{
 			let handle = cx.open_offscreen_window(size(px(1_248.0), px(840.0)), |_, cx| {
 				cx.new(|cx| {
-					ChiefSurface::visual_from_service(snapshot, selected, history, request, cx)
+					let mut surface =
+						ChiefSurface::visual_from_service(snapshot, selected, history, request, cx);
+					surface.visual_guardian_reviews(guardian);
+					surface
 				})
 			})?;
 			if let Some(message) = send_message {
@@ -160,30 +168,39 @@ fn main() -> gpui::Result<()> {
 	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
 	cx.run_until_parked();
 	if let Some(panel_motion) = panel_motion {
-		let keys = match panel_motion.as_str() {
-			"left" => "cmd-e",
-			"right" => "cmd-b",
-			"both" => "cmd-e cmd-b",
-			"graph" => "cmd-j",
-			_ => "",
-		};
-		if !keys.is_empty() {
-			cx.simulate_keystrokes(window, keys);
-			cx.run_until_parked();
-			// Render once at the new generation to start its animation, then wait
-			// until approximately the midpoint before taking the evidence frame.
-			cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
-			std::thread::sleep(ui_theme::MOTION_PANEL / 2);
-			cx.advance_clock(std::time::Duration::from_millis(16));
-			cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
-			cx.run_until_parked();
-		}
+		animate_panel_motion(&mut cx, window, &panel_motion)?;
 	}
 
 	capture_interactions(&mut cx, window)?;
 	let screenshot = cx.capture_screenshot(window)?;
 	screenshot.save(&output)?;
 	println!("{}", output.display());
+	Ok(())
+}
+
+fn animate_panel_motion(
+	cx: &mut VisualTestAppContext,
+	window: gpui::AnyWindowHandle,
+	panel_motion: &str,
+) -> gpui::Result<()> {
+	let keys = match panel_motion {
+		"left" => "cmd-e",
+		"right" => "cmd-b",
+		"both" => "cmd-e cmd-b",
+		"graph" => "cmd-j",
+		_ => "",
+	};
+	if !keys.is_empty() {
+		cx.simulate_keystrokes(window, keys);
+		cx.run_until_parked();
+		// Render once at the new generation to start its animation, then wait
+		// until approximately the midpoint before taking the evidence frame.
+		cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+		std::thread::sleep(ui_theme::MOTION_PANEL / 2);
+		cx.advance_clock(std::time::Duration::from_millis(16));
+		cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+		cx.run_until_parked();
+	}
 	Ok(())
 }
 
@@ -217,17 +234,27 @@ fn verify_native_composer_focus(
 	use objc2_app_kit::{NSResponder, NSView};
 	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 	cx.update_window(window, |_, window, _| {
-		let handle = HasWindowHandle::window_handle(window).unwrap();
+		let handle =
+			HasWindowHandle::window_handle(window).expect("offscreen window has a native handle");
 		let RawWindowHandle::AppKit(handle) = handle.as_raw() else { panic!("AppKit required") };
 		let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
-		assert!(view.window().unwrap().makeFirstResponder(None));
+		assert!(
+			view.window()
+				.expect("capture view belongs to a native window")
+				.makeFirstResponder(None)
+		);
 	})?;
 	cx.simulate_click(window, gpui::point(px(500.), px(790.)), Default::default());
 	cx.update_window(window, |_, window, _| {
-		let handle = HasWindowHandle::window_handle(window).unwrap();
+		let handle =
+			HasWindowHandle::window_handle(window).expect("offscreen window has a native handle");
 		let RawWindowHandle::AppKit(handle) = handle.as_raw() else { panic!("AppKit required") };
 		let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
-		let responder = view.window().unwrap().firstResponder().unwrap();
+		let responder = view
+			.window()
+			.expect("capture view belongs to a native window")
+			.firstResponder()
+			.expect("composer acquired native focus");
 		assert!(
 			std::ptr::eq::<NSResponder>(&*responder, view.as_ref()),
 			"Editor click must restore the native GPUI text client"

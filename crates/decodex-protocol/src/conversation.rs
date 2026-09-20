@@ -317,6 +317,9 @@ pub struct ConversationExecutionSettings {
 	pub reasoning_effort: ConversationReasoningEffort,
 	/// `true` maps to Codex's request-scoped `priority` service tier.
 	pub fast: bool,
+	/// Explicit tier chosen from native capabilities. Absent in older saved messages.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub service_tier: Option<decodex_core::ServiceTier>,
 }
 impl ConversationExecutionSettings {
 	/// Construct the explicit execution settings.
@@ -325,7 +328,19 @@ impl ConversationExecutionSettings {
 		reasoning_effort: ConversationReasoningEffort,
 		fast: bool,
 	) -> Self {
-		Self { model, reasoning_effort, fast }
+		Self { model, reasoning_effort, fast, service_tier: None }
+	}
+
+	/// Resolve legacy Fast messages without losing a newer explicit tier.
+	pub fn effective_service_tier(&self) -> decodex_core::ServiceTier {
+		self.service_tier.clone().unwrap_or_else(|| decodex_core::ServiceTier::from_fast(self.fast))
+	}
+
+	/// Select an exact tier; keep the legacy Fast flag consistent for old display consumers.
+	pub fn with_service_tier(mut self, tier: decodex_core::ServiceTier) -> Self {
+		self.fast = tier.as_str() == "priority";
+		self.service_tier = Some(tier);
+		self
 	}
 }
 
@@ -415,6 +430,12 @@ pub enum ConversationTurnOutcome {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConversationRecoveryAction {
+	/// Unarchive the existing native thread before refreshing its state.
+	RestoreArchivedThread,
+	/// Correct native sandbox configuration, then refresh before another submission.
+	ReviewSandboxConfiguration,
+	/// Review a rejected native resume configuration without replacing the thread.
+	ReviewCodexConfiguration,
 	/// Resume the sole uncommitted initial route on this Conversation.
 	ResumeRouting,
 	/// Create one fresh routing Conversation successor for immutable waiting/no-route authority.

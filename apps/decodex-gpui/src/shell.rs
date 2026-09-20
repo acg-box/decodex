@@ -703,6 +703,7 @@ impl Shell {
 			.expect("visual Conversation projection is valid")
 		};
 		shell.quick = ConversationsSnapshot {
+			catalog: None,
 			load: ConversationsLoadState::Ready,
 			command: ConversationCommandState::Idle,
 			command_conversation_id: None,
@@ -2943,7 +2944,7 @@ fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			format!("Profile unavailable: {error:?}"),
 			plan_type
 				.as_ref()
-				.map(|plan| vec![format!("Plan · {}", plan.as_str())])
+				.map(|plan| vec![format!("Plan · {}", account_plan_label(plan.as_str()))])
 				.unwrap_or_default(),
 		),
 		None => (account_profile_load_label(shell.account_profile.load).to_owned(), Vec::new()),
@@ -3026,10 +3027,30 @@ fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.into_any_element()
 }
 
+// Match native account labels; preserve unknown provider values and stored SKU identity.
+fn account_plan_label(plan: &str) -> &str {
+	match plan.to_ascii_lowercase().as_str() {
+		"free" => "Free",
+		"go" => "Go",
+		"plus" => "Plus",
+		"pro" => "Pro",
+		"prolite" => "Pro Lite",
+		"self_serve_business_prolite" => "Business Premium",
+		"team" | "self_serve_business_usage_based" => "Business",
+		"enterprise_cbp_automation" => "Enterprise (Automation)",
+		"business" | "ent26" | "enterprise_cbp_usage_based" | "enterprise" | "hc" => "Enterprise",
+		"edu" | "education" => "Edu",
+		"edu_plus" => "Edu Plus",
+		"edu_pro" => "Edu Pro",
+		"unknown" => "Unknown",
+		_ => plan,
+	}
+}
+
 fn account_profile_facts(profile: &decodex_protocol::AccountProfileDto) -> Vec<String> {
 	let mut facts = Vec::new();
 	if let Some(plan) = &profile.plan_type {
-		facts.push(format!("Plan · {}", plan.as_str()));
+		facts.push(format!("Plan · {}", account_plan_label(plan.as_str())));
 	}
 	if let Some(tokens) = profile.lifetime_tokens {
 		facts.push(format!("Lifetime · {tokens} tokens"));
@@ -3722,6 +3743,12 @@ fn recovery_action_label(action: ConversationRecoveryAction) -> &'static str {
 			"Resolve the prior active turn before continuing.",
 		ConversationRecoveryAction::ResolvePriorAttempt =>
 			"Resolve the prior provider attempt before continuing.",
+		ConversationRecoveryAction::RestoreArchivedThread =>
+			"Unarchive the existing Codex thread, then refresh this conversation.",
+		ConversationRecoveryAction::ReviewSandboxConfiguration =>
+			"Check Codex sandbox permissions and writable roots, then refresh this conversation.",
+		ConversationRecoveryAction::ReviewCodexConfiguration =>
+			"Codex rejected resume. Check its model, provider and project configuration, then refresh.",
 		ConversationRecoveryAction::RestoreProcessReadiness =>
 			"Restore process readiness before continuing.",
 		ConversationRecoveryAction::WaitForCurrentCommand =>
@@ -4430,6 +4457,7 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.spread_radius(px(-10.0)),
 				])
 				.child(div().h(px(35.0)).min_h(px(35.0)).child(shell.composer.clone()))
+				.child(conversation_service_tiers(shell, cx))
 				.child(
 					div()
 						.h(px(27.0))
@@ -4444,7 +4472,7 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 								.items_center()
 								.gap_1()
 								.child(model_control)
-								.child(fast_control)
+								.when(shell.quick.catalog.is_none(), |row| row.child(fast_control))
 								.child(effort_control),
 						)
 						.child(
@@ -4468,6 +4496,63 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				),
 		)
 		.into_any_element()
+}
+
+fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let mut row =
+		div().id("conversation-service-tiers").flex().flex_wrap().gap_2().text_size(px(11.));
+	row = row.child(
+		div()
+			.id("conversation-refresh-models")
+			.cursor_pointer()
+			.child("Refresh model options")
+			.on_click(cx.listener(|shell, _, _, cx| {
+				shell.conversations.refresh_catalog();
+				shell.synchronize_conversations();
+				cx.notify();
+			})),
+	);
+	if let Some(models) = &shell.quick.catalog {
+		let mut choices = vec![decodex_protocol::ChiefServiceTierDto {
+			id: decodex_protocol::ServiceTier::standard(),
+			name: "Standard".into(),
+			description: String::new(),
+		}];
+		if let Some(model) = models.iter().find(|model| model.model == shell.quick.execution.model)
+		{
+			choices.extend(
+				model.service_tiers.iter().filter(|tier| tier.id.as_str() != "default").cloned(),
+			);
+		}
+		let current = shell.quick.execution.effective_service_tier();
+		for choice in choices {
+			let id = choice.id.clone();
+			row = row.child(
+				div()
+					.id(SharedString::from(format!("conversation-tier-{}", id.as_str())))
+					.debug_selector({
+						let label = format!("conversation-tier-{}", id.as_str());
+						move || label.clone()
+					})
+					.cursor_pointer()
+					.px_2()
+					.py_1()
+					.rounded_md()
+					.text_color(if current == id { rgb(WB_AMBER) } else { rgb(WB_TEXT_MUTED) })
+					.child(if choice.description.is_empty() {
+						choice.name
+					} else {
+						format!("{} · {}", choice.name, choice.description)
+					})
+					.on_click(cx.listener(move |shell, _, _, cx| {
+						shell.conversations.select_service_tier(id.clone());
+						shell.synchronize_conversations();
+						cx.notify();
+					})),
+			);
+		}
+	}
+	row.into_any_element()
 }
 
 fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
@@ -5829,6 +5914,7 @@ mod tests {
 		live_deltas: Vec<crate::conversations::ConversationLiveDelta>,
 	) -> ConversationsSnapshot {
 		ConversationsSnapshot {
+			catalog: None,
 			load: ConversationsLoadState::Ready,
 			command: ConversationCommandState::AwaitingResult,
 			command_conversation_id: Some(conversation_id.clone()),
@@ -5919,6 +6005,30 @@ mod tests {
 				pending: true,
 			}]
 		);
+	}
+
+	#[test]
+	fn persisted_resume_failure_is_an_activity_not_a_user_prompt() {
+		let conversation_id =
+			EntityId::new("10000000-0000-4000-8000-000000000082").expect("conversation");
+		let snapshot = transcript_snapshot(&conversation_id, Vec::new());
+		let text = "Codex could not prepare its filesystem sandbox. This input was not sent.";
+		let mut item = history_item(
+			"40000000-0000-4000-8000-000000000082",
+			"20000000-0000-4000-8000-000000000082",
+			"user",
+			text,
+		);
+		item.kind = HistoryItemKindDto::Status;
+		item.status = HistoryItemStatusDto::Failed;
+		let history = history_snapshot(
+			&conversation_id,
+			vec![item],
+			HistoryLoadState::Visible,
+			Some(HistoryPageSource::FreshServer),
+		);
+		assert!(matches!(conversation_transcript_rows(&snapshot, Some(&history), None).as_slice(),
+			[TranscriptRow::Activity { text: actual, status: HistoryItemStatusDto::Failed, .. }] if actual == text));
 	}
 
 	#[test]
@@ -6208,6 +6318,38 @@ mod tests {
 			component_presentation(Some(DoctorStatus::Unknown(DoctorIssue::Plugin))).label,
 			"Not configured"
 		);
+	}
+
+	#[gpui::test]
+	fn ordinary_catalog_tier_buttons_update_the_submitted_execution_settings(
+		cx: &mut TestAppContext,
+	) {
+		let (shell, visual) = open_shell(cx);
+		let (conversations, server_id, _) = crate::conversations::tests::catalog_conversations();
+		shell.update(visual, |s, cx| {
+			s.conversations = conversations.clone();
+			s.synchronize_conversations();
+			s.select_destination(Destination::Conversations, cx);
+		});
+		visual.update(|window, cx| {
+			window.resize(size(px(1440.), px(1000.)));
+			window.draw(cx).clear();
+		});
+		for tier in ["ultrafast", "default", "ultrafast"] {
+			let bounds = visual
+				.debug_bounds(if tier == "default" {
+					"conversation-tier-default"
+				} else {
+					"conversation-tier-ultrafast"
+				})
+				.expect("advertised tier is rendered");
+			visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+			assert_eq!(conversations.snapshot().execution.effective_service_tier().as_str(), tier);
+		}
+		conversations.submit("Use the selected tier").unwrap();
+		let command = crate::conversations::tests::dispatched_command(&conversations, &server_id);
+		let encoded = serde_json::to_value(command).unwrap();
+		assert!(encoded.to_string().contains("ultrafast"));
 	}
 
 	#[gpui::test]

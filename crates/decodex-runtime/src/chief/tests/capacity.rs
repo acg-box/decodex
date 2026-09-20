@@ -70,7 +70,7 @@ async fn successful_capacity_continuation_handles_the_original_input_once() {
 		.collect();
 	assert_eq!(starts.len(), 1);
 	assert!(
-		!starts[0]["params"]["input"][0]["text"].as_str().unwrap().contains("original request")
+		!starts[0]["params"]["toolOutput"]["output"].as_str().unwrap().contains("original request")
 	);
 }
 
@@ -147,7 +147,10 @@ async fn capacity_retry_keeps_model_thread_and_context_and_stops_after_three_att
 				assert_eq!(request["params"]["threadId"], "opaque thread/1");
 				assert_eq!(request["params"]["model"], "selected-model");
 				assert_eq!(request["params"]["effort"], "high");
-				let text = request["params"]["input"][0]["text"].as_str().unwrap();
+				assert_eq!(request["params"]["input"], json!([]));
+				assert_eq!(request["params"]["toolOutput"]["name"], "capacity_retry");
+				assert_eq!(request["params"]["toolOutput"]["namespace"], "decodex");
+				let text = request["params"]["toolOutput"]["output"].as_str().unwrap();
 				assert!(text.contains("saved thread context"));
 				assert!(!text.contains("original request"));
 			}

@@ -9,16 +9,47 @@ pub(super) struct VoiceConnection {
 	generation: String,
 	transcript_sequence: u64,
 	answer_seen: bool,
+	precaution_retired: bool,
 	transcript_tail: [String; 2],
 	gateway: VoiceGateway,
 	session: Option<(String, String)>,
 }
 impl ChiefCoordinator {
+	pub(super) async fn stop_voice_for_precaution(
+		&mut self,
+		thread: &str,
+	) -> Result<(), ChiefError> {
+		let Some(voice) = self.voice.as_mut() else {
+			return Ok(());
+		};
+		let Some((id, active_thread)) =
+			voice.session.as_ref().filter(|(_, active)| active == thread).cloned()
+		else {
+			return Ok(());
+		};
+		voice.precaution_retired = true;
+		voice.gateway.update(
+			&id,
+			ChiefVoicePhase::Failed,
+			None,
+			Some("Conversation paused. Review the provider findings before continuing."),
+		);
+		// Retire local microphone authority even if native stop acknowledgment is lost.
+		let result =
+			self.client.request("thread/realtime/stop", json!({"threadId":active_thread})).await;
+		if result.is_ok() {
+			self.store.close_chief_voice_call(id).await?;
+			voice.session = None;
+		}
+		Ok(())
+	}
+
 	pub(crate) fn attach_voice_host(&mut self, generation: String, gateway: VoiceGateway) {
 		self.voice = Some(VoiceConnection {
 			generation,
 			transcript_sequence: 0,
 			answer_seen: false,
+			precaution_retired: false,
 			transcript_tail: Default::default(),
 			gateway,
 			session: None,
@@ -31,6 +62,11 @@ impl ChiefCoordinator {
 	) -> Result<(), ChiefError> {
 		match request {
 			ChiefVoiceRequest::Start { session_id, work_id, offer } => {
+				if self.store.chief_misalignment(work_id.as_str().into()).await?.is_some() {
+					return Err(ChiefError::Invalid(
+						"This conversation is paused for provider findings.".into(),
+					));
+				}
 				if !self.is_manager(work_id.as_str()).await? {
 					return Err(ChiefError::Invalid("voice requires a Chief".into()));
 				}
@@ -57,23 +93,17 @@ impl ChiefCoordinator {
 					params.as_object_mut().expect("thread params").remove("dynamicTools");
 					params["threadId"] = json!(thread);
 					params["config"]["features.realtime_conversation"] = json!(true);
-					let resumed = self.client.thread_resume(params).await.map_err(resume_error)?;
+					let resumed = self
+						.client
+						.thread_resume(params)
+						.await
+						.map_err(|error| resume_error(error, &thread))?;
 					if exact(&resumed, "/thread/id")? != thread {
 						return Err(ChiefError::Invalid("voice thread differs".into()));
 					}
 					self.loaded_threads.insert(thread.clone());
 				}
-				let history =
-					self.client.thread_read(json!({"threadId":thread,"includeTurns":true})).await?;
-				if exact(&history, "/thread/id")? != thread {
-					return Err(ChiefError::Invalid("voice history differs".into()));
-				}
-				let baseline = history
-					.pointer("/thread/turns")
-					.and_then(Value::as_array)
-					.and_then(|v| v.last())
-					.and_then(|v| v["id"].as_str())
-					.map(str::to_owned);
+				let baseline = self.client.thread_latest_turn_id(&thread).await?;
 				self.store
 					.begin_chief_voice_call(decodex_database::ChiefVoiceCall {
 						session_id: session_id.as_str().into(),
@@ -84,6 +114,7 @@ impl ChiefCoordinator {
 					})
 					.await?;
 				self.voice.as_mut().expect("voice host").answer_seen = false;
+				self.voice.as_mut().expect("voice host").precaution_retired = false;
 				self.voice.as_mut().expect("voice host").transcript_tail = Default::default();
 				self.voice.as_mut().expect("voice host").session =
 					Some((session_id.as_str().into(), thread.clone()));
@@ -140,6 +171,9 @@ impl ChiefCoordinator {
 		let Some((id, _current)) = voice.session.clone().filter(|(_, t)| t == thread) else {
 			return Ok(());
 		};
+		if voice.precaution_retired && method != "thread/realtime/closed" {
+			return Ok(());
+		}
 		match method.as_str() {
 			"thread/realtime/transcript/delta" => {
 				if let Some(index) =
@@ -222,30 +256,19 @@ impl ChiefCoordinator {
 			let mut params = self.work_thread_params(&item).await?;
 			params.as_object_mut().expect("thread params").remove("dynamicTools");
 			params["threadId"] = json!(call.thread_id);
-			let resumed = self.client.thread_resume(params).await.map_err(resume_error)?;
+			let resumed = self
+				.client
+				.thread_resume(params)
+				.await
+				.map_err(|error| resume_error(error, &call.thread_id))?;
 			if exact(&resumed, "/thread/id")? != call.thread_id {
 				return Err(ChiefError::Invalid("voice recovery thread differs".into()));
 			}
-			let history = self
+			let turns = self
 				.client
-				.thread_read(json!({"threadId":call.thread_id,"includeTurns":true}))
+				.thread_turns_since(&call.thread_id, call.baseline_turn_id.as_deref())
 				.await?;
-			if exact(&history, "/thread/id")? != call.thread_id {
-				return Err(ChiefError::Invalid("voice recovery history differs".into()));
-			}
-			let turns = history
-				.pointer("/thread/turns")
-				.and_then(Value::as_array)
-				.ok_or_else(|| ChiefError::Invalid("voice recovery history missing".into()))?;
-			let first = match &call.baseline_turn_id {
-				Some(id) => turns
-					.iter()
-					.position(|turn| turn["id"].as_str() == Some(id))
-					.map(|p| p + 1)
-					.ok_or_else(|| ChiefError::Invalid("voice recovery baseline missing".into()))?,
-				None => 0,
-			};
-			for turn in &turns[first..] {
+			for turn in &turns {
 				let turn_id = exact(turn, "/id")?;
 				let observed = self
 					.store
@@ -262,7 +285,9 @@ impl ChiefCoordinator {
 					) {
 					self.record_terminal(
 						json!({"threadId":call.thread_id,"turn":turn}),
-						Ok(history.clone()),
+						self.client
+							.thread_read_turn(&call.thread_id, exact(turn, "/id")?.as_str())
+							.await,
 						false,
 					)
 					.await?;
@@ -285,5 +310,62 @@ fn transcript_role_index(role: &str) -> Option<usize> {
 		"user" => Some(0),
 		"assistant" => Some(1),
 		_ => None,
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[tokio::test]
+	async fn misalignment_retires_voice_even_when_stop_acknowledgment_is_lost() {
+		use decodex_protocol::{ChiefVoicePhase, ChiefVoiceRequest, EntityId, VoiceSdp};
+		{
+			let (mut chief, mut sent, _directory) =
+				super::super::tests::fixture_with_history(json!({"_voice_stop_disconnect":true}))
+					.await;
+			chief.start_chief("chief", "Coordinate").await.unwrap();
+			let gateway = crate::chief_voice::VoiceGateway::new();
+			chief.attach_voice_host("generation".into(), gateway.clone());
+			let start = ChiefVoiceRequest::Start {
+				session_id: EntityId::new("voice").unwrap(),
+				work_id: EntityId::new("chief").unwrap(),
+				offer: VoiceSdp::new("offer".into()).unwrap(),
+			};
+			gateway.exchange(&start);
+			chief.voice.as_mut().unwrap().session =
+				Some(("voice".into(), "opaque thread/1".into()));
+			while sent.try_recv().is_ok() {}
+			chief
+				.observe_misalignment(
+					"opaque thread/1",
+					"opaque turn/1",
+					&json!({"codexErrorInfo":"misalignmentPolicyViolation"}),
+				)
+				.await
+				.unwrap();
+			chief
+				.voice_event(&ServerEvent::Notification {
+					method: "thread/realtime/sdp".into(),
+					params: json!({"threadId":"opaque thread/1","sdp":"late-answer"}),
+				})
+				.await
+				.unwrap();
+			assert_eq!(
+				gateway
+					.exchange(&ChiefVoiceRequest::Poll {
+						session_id: EntityId::new("voice").unwrap()
+					})
+					.phase,
+				ChiefVoicePhase::Failed
+			);
+			assert!(chief.voice_request(start).await.is_err());
+			let mut stops = 0;
+			while let Ok(request) = sent.try_recv() {
+				assert_eq!(request["method"], "thread/realtime/stop");
+				stops += 1;
+			}
+			assert_eq!(stops, 1);
+		}
 	}
 }

@@ -296,6 +296,7 @@ impl ChiefClient {
 							| "item/fileChange/requestApproval"
 							| "item/permissions/requestApproval"
 							| "item/tool/requestUserInput"
+							| "mcpServer/elicitation/request"
 					)) {
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -363,7 +364,203 @@ impl ChiefClient {
 		}
 	}
 
+	/// Inspect the exact native thread without loading it or running a turn.
+	pub async fn install_state(
+		&self,
+		work_id: EntityId,
+		event_id: i64,
+	) -> Result<crate::ChiefInstallState, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(45),
+		};
+		let completed = time::timeout(
+			Duration::from_secs(45),
+			transport.query_inner(
+				"chief-install",
+				QueryPayload::GetChiefInstallState { work_id, event_id },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefInstallState(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Inspect the exact native thread without loading it or running a turn.
+	pub async fn archive_state(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefArchiveResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(12),
+		};
+		let completed = time::timeout(
+			Duration::from_secs(12),
+			transport.query_inner("chief-archive", QueryPayload::GetChiefArchiveState { work_id }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefArchiveState(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read saved Guardian reviews without loading or running the native thread.
+	pub async fn guardian_reviews(
+		&self,
+		work_id: EntityId,
+		before: Option<i64>,
+	) -> Result<crate::ChiefGuardianReviewsResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"chief-guardian-reviews",
+				QueryPayload::GetChiefGuardianReviews { work_id, before },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefGuardianReviews(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read native resource associations without loading or running the thread.
+	pub async fn resources(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefResourcesResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport
+				.query_inner("chief-resources", QueryPayload::GetChiefResources { work_id }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefResources(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Start or poll one ephemeral native sign-in without retained command receipts.
+	pub async fn mcp_login(
+		&self,
+		request: crate::McpLoginRequest,
+	) -> Result<crate::McpLoginStatus, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let session = request.session_id().clone();
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(40),
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport.query_inner("mcp-login", QueryPayload::ExchangeMcpLogin { request }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::McpLogin(status) if status.session_id == session => Ok(status),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read task estimates with enough time for the native bounded billing request.
+	pub async fn usage_estimate(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefUsageEstimateResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let expected = work_id.clone();
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(75),
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport.query_inner(
+				"chief-usage-estimate",
+				QueryPayload::GetChiefUsageEstimate { work_id },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefUsageEstimate(result) => {
+				if matches!(&result,crate::ChiefUsageEstimateResult::Available {work_id,..} if work_id!=&expected)
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read source-bound native integration observations without running the thread.
+	pub async fn integrations(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefIntegrationsResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(40),
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport
+				.query_inner("chief-integrations", QueryPayload::GetChiefIntegrations { work_id }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefIntegrations(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read native capabilities without starting a model turn.
+	pub async fn initial_model_catalog(
+		&self,
+		request: crate::InitialModelCatalogRequest,
+	) -> Result<crate::InitialModelCatalogResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			Duration::from_secs(40),
+			self.transport.query_inner(
+				"initial-model-catalog",
+				QueryPayload::GetInitialModelCatalog { request },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::InitialModelCatalog(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read native capabilities on the retained Chief process.
 	pub async fn capabilities(&self) -> Result<crate::ChiefCapabilitiesResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
@@ -409,11 +606,24 @@ impl ChiefClient {
 	) -> Result<ChiefCommandResponse, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let attempted = AtomicBool::new(false);
-		let result = time::timeout(
-			RESET_CARD_CLIENT_TIMEOUT,
-			self.execute_inner(action, idempotency_key, &attempted),
-		)
-		.await;
+		let refresh = matches!(&action, crate::ChiefActionDto::RefreshIntegrations { .. });
+		let install = matches!(&action, crate::ChiefActionDto::InstallSuggestedPlugin { .. });
+		let restore = matches!(&action, crate::ChiefActionDto::RestoreArchivedThread { .. });
+		let timeout =
+			if refresh || install { Duration::from_secs(65) } else { RESET_CARD_CLIENT_TIMEOUT };
+		let executor = Self {
+			transport: ResetCardClient {
+				profile: self.transport.profile.clone(),
+				timeout: if refresh || restore || install {
+					timeout
+				} else {
+					self.transport.timeout
+				},
+			},
+		};
+		let result =
+			time::timeout(timeout, executor.execute_inner(action, idempotency_key, &attempted))
+				.await;
 		let failure = match result {
 			Ok(Ok(completed)) => {
 				close_one_shot_socket(completed.socket).await;
@@ -527,7 +737,15 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		| crate::ChiefActionDto::Interrupt { work_id, .. }
 		| crate::ChiefActionDto::Respond { work_id, .. }
 		| crate::ChiefActionDto::AutomationResult { work_id, .. }
-		| crate::ChiefActionDto::Steer { work_id, .. } => work_id,
+		| crate::ChiefActionDto::Steer { work_id, .. }
+		| crate::ChiefActionDto::AnswerQuestion { work_id, .. }
+		| crate::ChiefActionDto::ContinueMisalignment { work_id, .. }
+		| crate::ChiefActionDto::ApproveGuardianDenial { work_id, .. }
+		| crate::ChiefActionDto::RestoreArchivedThread { work_id, .. }
+		| crate::ChiefActionDto::InstallSuggestedPlugin { work_id, .. }
+		| crate::ChiefActionDto::AddResourceLink { work_id, .. }
+		| crate::ChiefActionDto::RemoveResource { work_id, .. }
+		| crate::ChiefActionDto::RefreshIntegrations { work_id } => work_id,
 	}
 }
 
@@ -1897,6 +2115,113 @@ mod tests {
 
 	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
+	#[tokio::test]
+	async fn archive_state_is_bound_to_work_and_preserves_native_identity() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let expected = crate::ChiefArchiveResult::Archived { thread_id: "native-exact".into() };
+		let reply = expected.clone();
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query frame")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("query")
+			};
+			assert!(
+				matches!(query.payload,crate::QueryPayload::GetChiefArchiveState {work_id} if work_id.as_str()=="root")
+			);
+			time::sleep(Duration::from_millis(5100)).await;
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::ChiefArchiveState(reply),
+				})))
+				.await
+				.unwrap();
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let result = crate::ChiefClient::new(profile)
+			.archive_state(EntityId::new("root").unwrap())
+			.await
+			.unwrap();
+		server.await.unwrap();
+		assert_eq!(result, expected);
+	}
+
+	#[tokio::test]
+	async fn guardian_review_query_preserves_cursor_and_separate_submission_receipt() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let expected = crate::ChiefGuardianReviewsResult::Available {
+			reviews: vec![crate::ChiefGuardianReviewDto {
+				row_id: 42,
+				digest: "digest".into(),
+				action_label: "Network access".into(),
+				status: crate::ChiefGuardianStatus::Denied,
+				risk_level: Some("high".into()),
+				user_authorization: Some("low".into()),
+				rationale: Some("Not requested".into()),
+				action_json: Some("{}".into()),
+				details_unavailable: None,
+				current_process: false,
+				submission: Some(crate::ChiefGuardianSubmission::Pending),
+				submission_key: Some("exact-command".into()),
+				can_approve: false,
+				approval_unavailable: Some("Unconfirmed".into()),
+			}],
+			next_before: Some(42),
+		};
+		let reply = expected.clone();
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query frame")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("query")
+			};
+			assert!(
+				matches!(query.payload,crate::QueryPayload::GetChiefGuardianReviews {work_id,before:Some(64)} if work_id.as_str()=="root")
+			);
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::ChiefGuardianReviews(reply),
+				})))
+				.await
+				.unwrap();
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let result = crate::ChiefClient::new(profile)
+			.guardian_reviews(EntityId::new("root").unwrap(), Some(64))
+			.await
+			.unwrap();
+		server.await.unwrap();
+		assert_eq!(result, expected);
+	}
+
 	async fn chief_command_exchange(mode: &'static str) -> crate::ChiefCommandResponse {
 		let (temp, authority) = local_transport();
 		let mut listener = authority.bind().await.expect("Chief protocol fixture succeeds");
@@ -2148,6 +2473,201 @@ mod tests {
 		response
 	}
 
+	#[tokio::test]
+	async fn chief_request_transport_admits_mcp_forms_but_rejects_wrong_event_and_unknown_method() {
+		for (method, returned, accepted) in [
+			("mcpServer/elicitation/request", 7, true),
+			("mcpServer/elicitation/request", 8, false),
+			("unknown/request", 7, false),
+		] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let stream = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let _ = socket.next().await;
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+					panic!("text request");
+				};
+				let ClientMessage::Query(query) =
+					serde_json::from_str::<ClientMessage>(&request).unwrap()
+				else {
+					panic!("query");
+				};
+				assert!(matches!(
+					query.payload,
+					crate::QueryPayload::GetChiefRequest { event_id: 7 }
+				));
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::ChiefRequest(
+							crate::ChiefRequestResult::Available {
+								event_id: returned,
+								work_id: "chief".into(),
+								method: method.into(),
+								request_json: crate::HistoryText::new(
+									r#"{"mode":"form","requestedSchema":null,"message":"Allow this request?"}"#,
+								)
+								.unwrap(),
+							},
+						),
+					})))
+					.await
+					.unwrap();
+				drop(socket);
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = crate::ChiefClient::new(profile).request(7).await;
+			task.await.unwrap();
+			if accepted {
+				assert!(
+					matches!(result,Ok(crate::ChiefRequestResult::Available {method,..}) if method=="mcpServer/elicitation/request")
+				);
+			} else {
+				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed);
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn mcp_login_transport_preserves_intent_and_rejects_another_session() {
+		for returned_session in ["intent", "another-intent"] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let stream = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let _ = socket.next().await;
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+					panic!("text query");
+				};
+				let ClientMessage::Query(query) =
+					serde_json::from_str::<ClientMessage>(&request).unwrap()
+				else {
+					panic!("query");
+				};
+				assert!(
+					matches!(query.payload, crate::QueryPayload::ExchangeMcpLogin { request: crate::McpLoginRequest::Start { session_id, work_id, server_name } } if session_id.as_str() == "intent" && work_id.as_str() == "work" && server_name.as_str() == "server")
+				);
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::McpLogin(crate::McpLoginStatus {
+							session_id: EntityId::new(returned_session).unwrap(),
+							phase: crate::McpLoginPhase::AwaitingUser,
+							authorization_url: Some(
+								crate::McpAuthorizationUrl::new(
+									"https://example.test/authorize?state=private-fixture".into(),
+								)
+								.unwrap(),
+							),
+							message: crate::WireText::new("Continue in your browser").unwrap(),
+						}),
+					})))
+					.await
+					.unwrap();
+				drop(socket);
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = crate::ChiefClient::new(profile)
+				.mcp_login(crate::McpLoginRequest::Start {
+					session_id: EntityId::new("intent").unwrap(),
+					work_id: EntityId::new("work").unwrap(),
+					server_name: crate::WireText::new("server").unwrap(),
+				})
+				.await;
+			task.await.unwrap();
+			if returned_session == "intent" {
+				let status = result.unwrap();
+				assert_eq!(status.phase, crate::McpLoginPhase::AwaitingUser);
+				assert!(status.authorization_url.is_some());
+				assert!(!format!("{status:?}").contains("private-fixture"));
+			} else {
+				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed);
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn usage_estimate_transport_rejects_another_work_and_keeps_unknown_values() {
+		for returned_work in ["work", "another-work"] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let stream = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let _ = socket.next().await;
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+					panic!("text query");
+				};
+				let ClientMessage::Query(query) =
+					serde_json::from_str::<ClientMessage>(&request).unwrap()
+				else {
+					panic!("query");
+				};
+				assert!(
+					matches!(query.payload,crate::QueryPayload::GetChiefUsageEstimate {work_id} if work_id.as_str()=="work")
+				);
+				let value = crate::ChiefUsageEstimateResult::Available {
+					work_id: EntityId::new(returned_work).unwrap(),
+					account_id: EntityId::new("account").unwrap(),
+					observed_at_micros: 1,
+					estimate: crate::ThreadUsageEstimate {
+						thread_id: "thread".into(),
+						estimated_usage_credits_micros: 9007199254740993,
+						estimated_usage_usd_micros: None,
+						groups: vec![],
+					},
+				};
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::ChiefUsageEstimate(value),
+					})))
+					.await
+					.unwrap();
+				drop(socket);
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let response = crate::ChiefClient::new(profile)
+				.usage_estimate(EntityId::new("work").unwrap())
+				.await;
+			task.await.unwrap();
+			if returned_work == "work" {
+				let crate::ChiefUsageEstimateResult::Available { estimate, .. } = response.unwrap()
+				else {
+					panic!("estimate");
+				};
+				assert_eq!(estimate.estimated_usage_credits_micros, 9007199254740993);
+				assert_eq!(estimate.estimated_usage_usd_micros, None);
+			} else {
+				assert_eq!(response.unwrap_err(), ClientFailure::ProtocolMalformed);
+			}
+		}
+	}
+
 	fn result(report: DoctorReport) -> Message {
 		typed(ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
@@ -2276,8 +2796,8 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_26_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 26 });
+	fn protocol_constants_expose_only_the_exact_current_version() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 39 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

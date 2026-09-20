@@ -3,11 +3,41 @@
 
 mod account_login;
 mod chief;
+mod chief_archive;
+pub use chief_archive::ChiefArchiveResult;
+mod chief_guardian;
+pub use chief_guardian::{
+	ChiefGuardianReviewDto, ChiefGuardianReviewsResult, ChiefGuardianStatus,
+	ChiefGuardianSubmission,
+};
+mod chief_integrations;
+mod chief_usage_estimate;
+pub use chief_usage_estimate::{
+	ChiefUsageEstimateResult, ThreadUsageEstimate, ThreadUsageEstimateGroup,
+};
+mod mcp_install;
+mod mcp_login;
+mod model_catalog;
+pub use chief_integrations::{
+	ChiefIntegrationsResult, ChiefMcpInventory, ChiefMcpStatusDto, ChiefPluginInventory,
+	ChiefPluginStatusDto,
+};
+pub use mcp_install::{ChiefInstallApp, ChiefInstallState, McpInstallSuggestion, McpInstallTarget};
+pub use mcp_login::{McpAuthorizationUrl, McpLoginPhase, McpLoginRequest, McpLoginStatus};
+pub use model_catalog::{
+	InitialModelCatalogRequest, InitialModelCatalogResult, ModelCatalogPurpose,
+};
+mod chief_questions;
 pub use chief::{
 	ChiefActionDto, ChiefActivityDetailResult, ChiefActivityDto, ChiefAttachmentDto,
 	ChiefCapabilitiesResult, ChiefHistoryEntryDto, ChiefHistoryResult, ChiefLiveMessageDto,
-	ChiefModelDto, ChiefRequestResult, ChiefSandboxDto, ChiefStartDto, ChiefTurnUsageDto,
-	ChiefUsageDto, ChiefWorkspaceDto,
+	ChiefMisalignmentDto, ChiefModelDto, ChiefModelUpgradeDto, ChiefRequestResult,
+	ChiefResourceDto, ChiefResourcesResult, ChiefSandboxDto, ChiefServiceTierDto, ChiefStartDto,
+	ChiefTurnUsageDto, ChiefUsageDto, ChiefWorkspaceDto,
+};
+pub use chief_questions::{
+	ChiefAsyncQuestionDto, ChiefAsyncQuestionReply, chief_async_question_id,
+	chief_async_question_reply, parse_chief_async_question_replies, project_chief_async_questions,
 };
 mod client;
 mod conversation;
@@ -110,8 +140,11 @@ use serde::{Deserialize, Serialize};
 
 use decodex_core::FoundationStatus;
 
+/// Exact service-tier identity shared with the provider and persistence boundaries.
+pub use decodex_core::ServiceTier;
+
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 26 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 39 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
@@ -191,3 +224,8 @@ mod tests {
 		);
 	}
 }
+
+mod mcp_elicitation;
+pub use mcp_elicitation::{
+	McpFormChoice, McpFormField, mcp_form_content, mcp_form_fields, validate_mcp_response,
+};

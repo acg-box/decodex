@@ -97,6 +97,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 				model: "gpt-5.6-sol".to_owned(),
 				reasoning_effort: "high".to_owned(),
 				fast: false,
+				service_tier: Some(decodex_core::ServiceTier::new("ultrafast").unwrap()),
 			},
 		)
 		.await
@@ -453,6 +454,8 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 
 	drop(store);
 	let reopened = SqliteStore::open(&paths).expect("reopen SQLite after daemon restart");
+	let saved = reopened.read_conversation_request(&conversation_id).await.unwrap().unwrap();
+	assert_eq!(saved.service_tier.unwrap().as_str(), "ultrafast");
 	reopened.revalidate().await.expect("revalidate reopened SQLite");
 	let routing = reopened
 		.read_account_routing_control()
@@ -495,6 +498,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 				model: "gpt-5.6-sol".to_owned(),
 				reasoning_effort: "high".to_owned(),
 				fast: false,
+				service_tier: None,
 			},
 		)
 		.await
