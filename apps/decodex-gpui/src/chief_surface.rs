@@ -15,6 +15,7 @@
 #[path = "chief_markdown.rs"] mod markdown;
 #[path = "chief_mcp_forms.rs"] mod mcp_forms;
 #[path = "chief_misalignment.rs"] mod misalignment;
+#[path = "chief_timeline.rs"] mod native_timeline;
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_requests.rs"] mod requests;
@@ -69,6 +70,7 @@ pub(crate) struct ChiefSurface {
 	resources_task: Option<Task<()>>,
 	usage_estimate: Option<(String, Option<decodex_protocol::ChiefUsageEstimateResult>)>,
 	usage_estimate_task: Option<Task<()>>,
+	native_history: native_timeline::Timeline,
 	integrations: Option<(String, Option<decodex_protocol::ChiefIntegrationsResult>)>,
 	integrations_task: Option<Task<()>>,
 	integration_refresh_task: Option<Task<()>>,
@@ -96,9 +98,9 @@ pub(crate) struct ChiefSurface {
 	graph_pan: (f32, f32),
 	graph_inset: (f32, f32),
 	graph_drag: Option<gpui::Point<gpui::Pixels>>,
-	history_marks: std::collections::BTreeMap<i64, activity::HistoryMark>,
-	history_marks_work: Option<String>,
-	history_selected: Option<i64>,
+	history_marks: std::collections::BTreeMap<activity::HistoryKey, activity::HistoryMark>,
+	history_marks_work: Option<(String, bool)>,
+	history_selected: Option<activity::HistoryKey>,
 	history_hover: Option<usize>,
 	history_navigation: Option<activity::HistoryNavigation>,
 	agent_tree_visible: bool,
@@ -248,6 +250,7 @@ impl ChiefSurface {
 			resources_task: None,
 			usage_estimate: None,
 			usage_estimate_task: None,
+			native_history: Default::default(),
 			integrations: None,
 			integrations_task: None,
 			integration_refresh_task: None,
@@ -393,6 +396,8 @@ impl ChiefSurface {
 	}
 
 	fn load_history(&mut self, cx: &mut Context<Self>) {
+		self.refresh_open_native_history(cx);
+		self.refresh_native_input_receipts(cx);
 		self.load_guardian_reviews(cx);
 		self.load_archive_state(false, cx);
 		if self.history.as_ref().is_some_and(|(id, _)| self.selected.as_ref() != Some(id)) {
@@ -754,6 +759,9 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn bind_profile(&mut self, profile: Option<ClientProfile>, cx: &mut Context<Self>) {
+		let epoch = self.native_history.epoch + 1;
+		self.native_history = Default::default();
+		self.native_history.epoch = epoch;
 		self.generation += 1;
 		self.task = None;
 		self.profile = profile;
@@ -1036,7 +1044,7 @@ impl ChiefSurface {
 			LoadState::Unavailable => if self.profile.is_none() {
 				"No local service profile is configured for this view."
 			} else {
-				"Reconnecting to Chief. Connection details are in Settings → Diagnostics."
+				"Reconnecting to Chief. Work may still be running. Connection details are in Settings → Diagnostics."
 			}
 			.into(),
 			LoadState::Stale =>
@@ -1279,7 +1287,7 @@ impl ChiefSurface {
 	}
 
 	fn history_panel(&self, work: &ChiefWorkItemDto, cx: &mut Context<Self>) -> impl IntoElement {
-		let mut panel = div()
+		let panel = div()
 			.w_full()
 			.min_w_0()
 			.flex_none()
@@ -1288,7 +1296,14 @@ impl ChiefSurface {
 			.gap(px(ui_theme::MESSAGE_GAP))
 			.child(self.resources_panel(&work.id, cx))
 			.child(self.integrations_panel(&work.id, cx))
-			.child(self.usage_estimate_panel(&work.id, cx));
+			.child(self.usage_estimate_panel(&work.id, cx))
+			.child(self.native_timeline_panel(work, cx));
+		if self.native_history_active(work) {
+			return panel
+				.child(self.native_receipts_panel(work, cx))
+				.children(self.live_chat_caption());
+		}
+		let mut panel = panel.debug_selector(|| "saved-local-history".into());
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
 			Some(ChiefHistoryResult::Available {
 				entries, has_more, next_before, live, ..
@@ -1869,6 +1884,7 @@ mod tests {
 		) -> impl gpui::IntoElement {
 			let bounds = self.bounds.clone();
 			super::history_entry(&decodex_protocol::ChiefHistoryEntryDto {
+				receipt: None,
 				activity: None,
 				id: 1,
 				kind: "user".into(),
@@ -2045,6 +2061,7 @@ mod tests {
 					next_before: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						receipt: None,
 						activity: None,
 						duration_ms: None,
 						usage: None,
@@ -2108,6 +2125,7 @@ mod tests {
 					misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						receipt: None,
 						activity: None,
 						usage: None,
 						duration_ms: None,
@@ -2231,6 +2249,7 @@ mod tests {
 					misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						receipt: None,
 						activity: None,
 						usage: None,
 						duration_ms: None,

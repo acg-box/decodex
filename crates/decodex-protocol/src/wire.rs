@@ -2227,6 +2227,27 @@ pub enum QueryPayload {
 		/// Exact local task identity.
 		work_id: EntityId,
 	},
+	/// Read unconfirmed local input independently of the native or saved transcript.
+	GetChiefInputReceipts {
+		/// Exact local task identity.
+		work_id: EntityId,
+		/// Read current inputs strictly after this persistent event identity.
+		after: Option<i64>,
+	},
+	/// Read a bounded chunk of an exact native attachment.
+	GetChiefMedia {
+		/// Source identity and continuation.
+		request: crate::ChiefMediaRequest,
+	},
+	/// Read one exact native timeline page without resuming the task.
+	GetChiefTimeline {
+		/// Current local task identity.
+		work_id: EntityId,
+		/// Exact expected native binding, including for the first page.
+		thread_id: EntityId,
+		/// Opaque cursor for older entries in this same thread.
+		cursor: Option<WireText>,
+	},
 	/// Inspect native archive membership for the exact bound task.
 	GetChiefArchiveState {
 		/// Current local work identity.
@@ -2850,6 +2871,12 @@ pub enum QueryResultPayload {
 	ChiefInstallState(crate::ChiefInstallState),
 	/// Source-bound task integration observations.
 	ChiefIntegrations(crate::ChiefIntegrationsResult),
+	/// Bounded native mixed voice and task history.
+	ChiefTimeline(crate::ChiefTimelineResult),
+	/// Exact native attachment content.
+	ChiefMedia(crate::ChiefMediaResult),
+	/// Independent unconfirmed input page.
+	ChiefInputReceipts(crate::ChiefInputReceiptsResult),
 	/// Account-scoped backend task estimates.
 	ChiefUsageEstimate(crate::ChiefUsageEstimateResult),
 	/// Ephemeral native MCP sign-in state.

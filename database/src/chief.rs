@@ -140,7 +140,42 @@ pub enum ChiefStoreSnapshot {
 	},
 }
 
+/// Saved usage fields for one exact native completed turn.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ChiefTurnMetrics {
+	/// Exact native turn identity.
+	pub turn_id: String,
+	/// Acknowledged whole-turn counter delta, absent when not known.
+	pub usage_json: Option<String>,
+	/// Latest provider usage observation retained with this completion.
+	pub observation_json: Option<String>,
+}
+
 impl SqliteStore {
+	/// Read only usage fields from exact completed-turn receipts, without transcript text.
+	pub async fn read_chief_turn_metrics(
+		&self,
+		work: String,
+		thread: String,
+		turns: Vec<String>,
+	) -> Result<Vec<ChiefTurnMetrics>, StoreError> {
+		bounded(&work, 512)?;
+		bounded(&thread, 512)?;
+		if turns.len() > 100 {
+			return Err(StoreError::InvalidInput("too many turn metrics"));
+		}
+		for turn in &turns {
+			bounded(turn, 512)?;
+		}
+		let turns = serde_json::to_string(&turns)
+			.map_err(|_| StoreError::InvalidInput("invalid turn identities"))?;
+		self.run(move |connection| {
+			connection.prepare("SELECT requested.value,json_extract(e.payload,'$.usage'),json_extract(e.payload,'$.threadReadback.tokenUsage') FROM json_each(?3) requested JOIN chief_inbox_events e ON e.source_event_id=json_array('turn/completed',?2,requested.value) WHERE e.work_item_id=?1 AND e.event_kind IN ('chief_turn_completed','worker_turn_completed') AND json_extract(e.payload,'$.terminal.threadId')=?2 AND json_extract(e.payload,'$.terminal.turn.id')=requested.value")
+				.map_err(sqlite_error)?.query_map(params![work,thread,turns],|row|Ok(ChiefTurnMetrics {turn_id:row.get(0)?,usage_json:row.get(1)?,observation_json:row.get(2)?}))
+				.map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|sqlite_error(error).into())
+		}).await
+	}
+
 	/// Read the latest bounded work events in chronological order.
 	pub async fn read_chief_work_events(
 		&self,
@@ -163,6 +198,25 @@ impl SqliteStore {
 			connection.prepare("SELECT * FROM (SELECT * FROM chief_inbox_events WHERE work_item_id = ?1 AND event_kind != 'token_usage' AND (?3 IS NULL OR id < ?3) ORDER BY id DESC LIMIT ?2) ORDER BY id")
 				.map_err(sqlite_error)?.query_map(params![work_id, limit, before], event_row)
 				.map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
+		}).await
+	}
+
+	/// Read exact-work unconfirmed inputs, independently of transcript pages and scheduler claims.
+	pub async fn read_chief_unconfirmed_inputs(
+		&self,
+		work_id: String,
+		after: Option<i64>,
+		limit: usize,
+	) -> Result<Vec<ChiefInboxEvent>, StoreError> {
+		let limit = page_limit(limit)?;
+		if after.is_some_and(|id| id < 1) {
+			return Err(StoreError::InvalidInput("invalid input receipt cursor"));
+		}
+		self.run(move |connection| {
+			read_work(connection, &work_id)?;
+			connection.prepare("SELECT * FROM chief_inbox_events WHERE work_item_id=?1 AND event_kind IN ('user_message','async_question_answer','work_instruction') AND disposition IS NULL AND (delivered_turn_id IS NULL OR delivered_turn_id='') AND (?2 IS NULL OR id>?2) ORDER BY id LIMIT ?3")
+				.map_err(sqlite_error)?.query_map(params![work_id,after,limit],event_row)
+				.map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|sqlite_error(error).into())
 		}).await
 	}
 
@@ -752,10 +806,11 @@ impl SqliteStore {
 	pub async fn read_chief_usage_observation(
 		&self,
 		work_id: String,
+		thread_id: String,
 		turn_id: String,
 	) -> Result<Option<ChiefInboxEvent>, StoreError> {
 		self.run(move |connection| {
-			connection.query_row("SELECT * FROM chief_inbox_events WHERE work_item_id = ?1 AND event_kind = 'token_usage' AND json_extract(payload, '$.turnId') = ?2 ORDER BY id DESC LIMIT 1", params![work_id, turn_id], event_row)
+			connection.query_row("SELECT * FROM chief_inbox_events WHERE work_item_id = ?1 AND event_kind = 'token_usage' AND json_extract(payload, '$.threadId') = ?2 AND json_extract(payload, '$.turnId') = ?3 ORDER BY id DESC LIMIT 1", params![work_id, thread_id, turn_id], event_row)
 				.optional().map_err(|error| sqlite_error(error).into())
 		}).await
 	}
@@ -1335,6 +1390,78 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn saved_turn_metrics_require_exact_work_thread_and_turn_after_reopen() {
+		let directory = tempdir().unwrap();
+		let path = directory.path().join("metrics.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		for work in ["chosen", "peer"] {
+			store.create_chief_work_item(item(work, None)).await.unwrap();
+		}
+		for (work, thread, payload_thread, turn, input) in [
+			("chosen", "thread-a", "thread-a", "same/turn", 11),
+			("chosen", "thread-b", "thread-b", "same/turn", 22),
+			("peer", "thread-a", "thread-a", "peer-turn", 33),
+			("chosen", "thread-a", "wrong", "mismatch", 44),
+		] {
+			store.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id:serde_json::json!(["turn/completed",thread,turn]).to_string(),work_item_id:work.into(),event_kind:"chief_turn_completed".into(),
+				payload:serde_json::json!({"terminal":{"threadId":payload_thread,"turn":{"id":turn}},"usage":{"input_tokens":input,"output_tokens":2},"threadReadback":{"tokenUsage":{"marker":"observed"},"assistantMessages":"PRIVATE_TRANSCRIPT"}}).to_string(),
+			}).await.unwrap();
+		}
+		for n in 0..50 {
+			store
+				.enqueue_chief_event(EnqueueChiefEvent {
+					source_event_id: format!("later-{n}"),
+					work_item_id: "chosen".into(),
+					event_kind: "assistant_message".into(),
+					payload: "{}".into(),
+				})
+				.await
+				.unwrap();
+		}
+		drop(store);
+		let store = SqliteStore::open_test(&path).unwrap();
+		let metrics = store
+			.read_chief_turn_metrics(
+				"chosen".into(),
+				"thread-a".into(),
+				vec!["same/turn".into(), "peer-turn".into(), "mismatch".into(), "missing".into()],
+			)
+			.await
+			.unwrap();
+		assert_eq!(metrics.len(), 1);
+		assert_eq!(metrics[0].turn_id, "same/turn");
+		assert_eq!(
+			serde_json::from_str::<serde_json::Value>(metrics[0].usage_json.as_ref().unwrap())
+				.unwrap()["input_tokens"],
+			11
+		);
+		assert!(!format!("{metrics:?}").contains("PRIVATE_TRANSCRIPT"));
+		assert_eq!(
+			store
+				.read_chief_turn_metrics(
+					"chosen".into(),
+					"thread-b".into(),
+					vec!["same/turn".into()]
+				)
+				.await
+				.unwrap()
+				.len(),
+			1
+		);
+		assert!(
+			store
+				.read_chief_turn_metrics(
+					"chosen".into(),
+					"thread-a".into(),
+					vec!["turn".into(); 101]
+				)
+				.await
+				.is_err()
+		);
+	}
+
+	#[tokio::test]
 	async fn observations_are_durable_deduplicated_and_never_pending_work() {
 		let directory = tempdir().unwrap();
 		let path = directory.path().join("chief.sqlite3");
@@ -1345,7 +1472,9 @@ mod tests {
 				source_event_id: format!("usage-{sequence}"),
 				work_item_id: "chief".into(),
 				event_kind: "token_usage".into(),
-				payload: serde_json::json!({"turnId":"turn","sequence":sequence}).to_string(),
+				payload:
+					serde_json::json!({"threadId":"thread","turnId":"turn","sequence":sequence})
+						.to_string(),
 			};
 			let first = store.record_chief_observation(input.clone()).await.unwrap();
 			assert_eq!(store.record_chief_observation(input).await.unwrap().id, first.id);
@@ -1360,8 +1489,19 @@ mod tests {
 		);
 		drop(store);
 		let store = SqliteStore::open_test(&path).unwrap();
+		store
+			.record_chief_observation(EnqueueChiefEvent {
+				source_event_id: "other-thread-usage".into(),
+				work_item_id: "chief".into(),
+				event_kind: "token_usage".into(),
+				payload:
+					serde_json::json!({"threadId":"other-thread","turnId":"turn","sequence":999})
+						.to_string(),
+			})
+			.await
+			.unwrap();
 		let event = store
-			.read_chief_usage_observation("chief".into(), "turn".into())
+			.read_chief_usage_observation("chief".into(), "thread".into(), "turn".into())
 			.await
 			.unwrap()
 			.unwrap();
@@ -1371,7 +1511,7 @@ mod tests {
 		);
 		assert!(
 			store
-				.read_chief_usage_observation("chief".into(), "other".into())
+				.read_chief_usage_observation("chief".into(), "thread".into(), "other".into())
 				.await
 				.unwrap()
 				.is_none()

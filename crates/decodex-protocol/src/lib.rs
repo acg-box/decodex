@@ -11,7 +11,17 @@ pub use chief_guardian::{
 	ChiefGuardianSubmission,
 };
 mod chief_integrations;
+mod chief_media;
+pub use chief_media::{
+	CHIEF_MEDIA_CHUNK_BYTES, ChiefMediaRequest, ChiefMediaResult, MAX_CHIEF_MEDIA_BYTES,
+};
+mod chief_timeline;
 mod chief_usage_estimate;
+pub use chief_timeline::{
+	ChiefTimelineAttachment, ChiefTimelineAttachmentSource, ChiefTimelineContent,
+	ChiefTimelineEntry, ChiefTimelineError, ChiefTimelinePage, ChiefTimelinePromotedContent,
+	ChiefTimelineResult,
+};
 pub use chief_usage_estimate::{
 	ChiefUsageEstimateResult, ThreadUsageEstimate, ThreadUsageEstimateGroup,
 };
@@ -30,14 +40,16 @@ pub use model_catalog::{
 mod chief_questions;
 pub use chief::{
 	ChiefActionDto, ChiefActivityDetailResult, ChiefActivityDto, ChiefAttachmentDto,
-	ChiefCapabilitiesResult, ChiefHistoryEntryDto, ChiefHistoryResult, ChiefLiveMessageDto,
-	ChiefMisalignmentDto, ChiefModelDto, ChiefModelUpgradeDto, ChiefRequestResult,
-	ChiefResourceDto, ChiefResourcesResult, ChiefSandboxDto, ChiefServiceTierDto, ChiefStartDto,
-	ChiefTaskReferenceDto, ChiefTurnUsageDto, ChiefUsageDto, ChiefWorkspaceDto,
+	ChiefCapabilitiesResult, ChiefHistoryEntryDto, ChiefHistoryReceiptDto, ChiefHistoryResult,
+	ChiefInputReceiptsResult, ChiefLiveMessageDto, ChiefMisalignmentDto, ChiefModelDto,
+	ChiefModelUpgradeDto, ChiefRequestResult, ChiefResourceDto, ChiefResourcesResult,
+	ChiefSandboxDto, ChiefServiceTierDto, ChiefStartDto, ChiefTaskReferenceDto, ChiefTurnUsageDto,
+	ChiefUsageDto, ChiefWorkspaceDto,
 };
 pub use chief_questions::{
 	ChiefAsyncQuestionDto, ChiefAsyncQuestionReply, chief_async_question_id,
 	chief_async_question_reply, parse_chief_async_question_replies, project_chief_async_questions,
+	render_chief_async_question_history,
 };
 mod client;
 mod conversation;
@@ -182,6 +194,7 @@ mod tests {
 	#[test]
 	fn only_the_exact_current_version_is_accepted() {
 		assert_eq!(CURRENT_VERSION.negotiate(), Ok(CURRENT_VERSION));
+		assert_eq!(ProtocolVersion { major: 2, minor: 42 }.negotiate(), Err(CURRENT_VERSION));
 		assert_eq!(ProtocolVersion { major: 2, minor: 40 }.negotiate(), Err(CURRENT_VERSION));
 		assert_eq!(ProtocolVersion { major: 2, minor: 16 }.negotiate(), Err(CURRENT_VERSION));
 	}

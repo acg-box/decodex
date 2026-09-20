@@ -12,7 +12,7 @@ use decodex_codex::{
 };
 
 #[doc(hidden)]
-pub const MAX_APP_SERVER_FRAME_BYTES: usize = 1_024 * 1_024;
+pub use decodex_codex::app_server_client::MAX_FRAME_BYTES as MAX_APP_SERVER_FRAME_BYTES;
 
 impl From<&ProtocolThread> for ThreadSummary {
 	fn from(value: &ProtocolThread) -> Self {

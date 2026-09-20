@@ -1563,6 +1563,7 @@ name = "decodex-gpui"
 version = "0.2.0"
 dependencies = [
  "decodex-protocol",
+ "futures-util",
  "gpui",
  "gpui_platform",
  "libc",
@@ -1578,6 +1579,7 @@ dependencies = [
  "tempfile",
  "time",
  "tokio",
+ "tokio-tungstenite",
  "unicode-segmentation",
 ]
 

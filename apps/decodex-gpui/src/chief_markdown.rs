@@ -374,6 +374,7 @@ mod tests {
 			_: &mut gpui::Context<Self>,
 		) -> impl gpui::IntoElement {
 			super::super::history_entry(&decodex_protocol::ChiefHistoryEntryDto {
+				receipt: None,
 				id: 42,
 				kind: "assistant".into(),
 				text: self.text.clone(),
