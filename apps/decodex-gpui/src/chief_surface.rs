@@ -1672,12 +1672,13 @@ impl Render for ChiefSurface {
 
 impl ChiefSurface {
 	fn render_preferences(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		ui_theme::settings_group()
+		div()
+			.w_full()
 			.flex()
 			.flex_col()
-			.gap_2()
-			.px(px(14.0))
-			.py(px(10.0))
+			.gap(px(6.0))
+			.px(px(0.0))
+			.py(px(0.0))
 			.child(
 				div()
 					.id("chief-advanced-preferences")
@@ -1685,10 +1686,12 @@ impl ChiefSurface {
 					.aria_label("Advanced Chief defaults")
 					.aria_expanded(self.setup_expanded)
 					.tab_index(0)
-					.h(px(26.0))
+					.h(px(32.0))
 					.flex()
 					.items_center()
 					.cursor_pointer()
+					.rounded(px(6.0))
+					.hover(|s| s.bg(rgba(0xffffff09)))
 					.on_click(cx.listener(|s, _, _, cx| {
 						s.setup_expanded = !s.setup_expanded;
 						cx.notify();
@@ -1717,12 +1720,8 @@ impl ChiefSurface {
 						.flex()
 						.items_center()
 						.justify_between()
-						.child(muted("Codex Memory"))
-						.child(muted(if *enabled {
-							"Enabled in runtime"
-						} else {
-							"Disabled in runtime"
-						})),
+						.child(muted("Codex memory"))
+						.child(muted(if *enabled { "On" } else { "Off" })),
 				),
 				_ => None,
 			})
@@ -1737,10 +1736,10 @@ impl ChiefSurface {
 		div()
 			.flex()
 			.flex_col()
-			.gap_2()
+			.gap(px(6.0))
 			.child(self.context_choices(cx))
 			.child(muted(
-				"Model and effort apply to the next turn. Other defaults apply to a new Chief.",
+				"Model and reasoning apply next turn; other defaults apply to new Chiefs.",
 			))
 			.children(
 				[
@@ -1757,7 +1756,7 @@ impl ChiefSurface {
 						.gap(px(12.0))
 						.child(
 							div()
-								.w(px(112.0))
+								.w(px(92.0))
 								.flex_none()
 								.text_size(px(ui_theme::CAPTION_SIZE))
 								.text_color(rgb(ui_theme::TEXT_MUTED))

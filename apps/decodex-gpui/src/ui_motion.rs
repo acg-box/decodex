@@ -264,7 +264,7 @@ pub(crate) fn switch_knob(id: &'static str, enabled: bool, child: impl IntoEleme
 
 impl RenderOnce for SwitchKnob {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let target = if self.enabled { 18.0 } else { 0.0 };
+		let target = if self.enabled { 16.0 } else { 0.0 };
 		let state = window.use_keyed_state(self.id, cx, |_, _| Tween::new(target));
 		let now = Instant::now();
 		let offset = state.update(cx, |s, _| {
@@ -274,7 +274,7 @@ impl RenderOnce for SwitchKnob {
 		if state.read(cx).moving(now) {
 			window.request_animation_frame();
 		}
-		div().ml(px(offset)).size(px(16.0)).child(self.child)
+		div().ml(px(offset)).size(px(14.0)).child(self.child)
 	}
 }
 

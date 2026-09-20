@@ -37,15 +37,11 @@ pub(crate) fn floating_group() -> gpui::Div {
 		.border_color(rgba(0xffffff12))
 }
 
-// Settings reuse shell typography and glass; groups add only a light edge.
-pub(crate) const SETTINGS_WIDTH: f32 = 780.0;
-pub(crate) fn settings_group() -> gpui::Div {
-	use gpui::{Styled, div, px, rgba};
-	div().w_full().rounded(px(10.0)).border_1().border_color(rgba(0xffffff12)).bg(rgba(0xffffff04))
-}
+// Settings share shell typography and a bounded reading width.
+pub(crate) const SETTINGS_WIDTH: f32 = 680.0;
 pub(crate) fn settings_row() -> gpui::Div {
 	use gpui::{Styled, div, px};
-	div().w_full().min_h(px(56.0)).px(px(14.0)).py(px(10.0)).flex().items_center().gap(px(16.0))
+	div().w_full().min_h(px(44.0)).px(px(12.0)).py(px(7.0)).flex().items_center().gap(px(16.0))
 }
 pub(crate) fn settings_title(title: &'static str) -> impl gpui::IntoElement {
 	use gpui::{
@@ -93,6 +89,8 @@ pub(crate) const GREEN: u32 = 0x77c99a;
 pub(crate) const AMBER: u32 = 0xe0b56f;
 
 pub(crate) const MOTION_PANEL: Duration = Duration::from_millis(240);
+
+#[path = "window_material.rs"] pub(crate) mod window_material;
 
 #[cfg(test)]
 mod tests {

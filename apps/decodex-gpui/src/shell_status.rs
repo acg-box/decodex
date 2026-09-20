@@ -134,7 +134,7 @@ impl Shell {
 					s.chief.update(cx, |chief, cx| chief.refresh(cx));
 				} else {
 					s.status_open = false;
-					s.select_destination(Destination::Health, cx);
+					s.open_settings_window(Destination::Health, cx);
 				}
 				cx.notify();
 			}))

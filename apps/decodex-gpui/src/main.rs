@@ -64,8 +64,8 @@ fn main() {
 		}
 	});
 	application.run(move |cx: &mut App| {
-		shell::bind_keys(cx);
 		install_application_menu(cx);
+		shell::bind_keys(cx);
 		let profile = ClientProfile::load_default(None);
 		let chief_profile = profile.as_ref().ok().cloned();
 		let bundled_daemon = profile.as_ref().ok().and_then(|profile| {
@@ -104,10 +104,15 @@ fn main() {
 			)
 			.expect("open the Decodex production window");
 
+		window
+			.update(cx, |_, window, _| {
+				ui_theme::window_material::configure(window);
+			})
+			.expect("configure window material");
+
 		#[cfg(target_os = "macos")]
 		window
 			.update(cx, |_, window, cx| {
-				configure_window_material(window);
 				configure_pointer_tracking(window);
 				schedule_window_control_alignment(window);
 				cx.observe_window_activation(window, |_, window, _| {
@@ -214,31 +219,6 @@ fn configure_pointer_tracking(window: &gpui::Window) {
 }
 
 #[cfg(target_os = "macos")]
-fn configure_window_material(_gpui_window: &gpui::Window) {
-	use objc2::MainThreadMarker;
-	use objc2_app_kit::{
-		NSApplication, NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState,
-		NSVisualEffectView,
-	};
-	let main_thread =
-		MainThreadMarker::new().expect("window material is configured on the main thread");
-	for window in NSApplication::sharedApplication(main_thread).windows().iter() {
-		if window.title().to_string() != "Decodex" {
-			continue;
-		}
-		if let Some(content) = window.contentView() {
-			for view in content.subviews().iter() {
-				if let Some(effect) = view.downcast_ref::<NSVisualEffectView>() {
-					effect.setMaterial(NSVisualEffectMaterial::Sidebar);
-					effect.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
-					effect.setState(NSVisualEffectState::Active);
-				}
-			}
-		}
-	}
-}
-
-#[cfg(target_os = "macos")]
 fn schedule_window_control_alignment(window: &gpui::Window) {
 	// AppKit can replace or resize standard buttons during activation. Measure
 	// after that layout pass, not once while the initial window is still hidden.
@@ -338,6 +318,10 @@ gpui::actions!(
 );
 
 fn hide_main_window(cx: &mut App) {
+	if let Some(window) = cx.active_window().and_then(|w| w.downcast::<shell::SettingsWindow>()) {
+		let _ = window.update(cx, |_, window, _| window.remove_window());
+		return;
+	}
 	#[cfg(target_os = "macos")]
 	{
 		let _ = cx;

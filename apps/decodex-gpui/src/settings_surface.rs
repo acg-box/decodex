@@ -219,9 +219,9 @@ impl SettingsSurface {
 			.role(Role::Switch)
 			.aria_label("Show Decodex in the menu bar")
 			.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
-			.w(px(42.0))
-			.h(px(24.0))
-			.p(px(3.0))
+			.w(px(36.0))
+			.h(px(20.0))
+			.p(px(2.0))
 			.flex()
 			.items_center()
 			.rounded_full()
@@ -240,7 +240,7 @@ impl SettingsSurface {
 			.child(switch_knob(
 				"settings-knob",
 				enabled,
-				div().size(px(16.0)).rounded_full().bg(rgb(if enabled {
+				div().size(px(14.0)).rounded_full().bg(rgb(if enabled {
 					BLUE
 				} else {
 					TEXT_MUTED
@@ -261,9 +261,9 @@ impl SettingsSurface {
 			.role(Role::Switch)
 			.aria_label("Launch Decodex at login")
 			.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
-			.w(px(42.0))
-			.h(px(24.0))
-			.p(px(3.0))
+			.w(px(36.0))
+			.h(px(20.0))
+			.p(px(2.0))
 			.flex()
 			.items_center()
 			.rounded_full()
@@ -282,7 +282,7 @@ impl SettingsSurface {
 			.child(switch_knob(
 				"login-knob",
 				enabled,
-				div().size(px(16.0)).rounded_full().bg(rgb(if enabled {
+				div().size(px(14.0)).rounded_full().bg(rgb(if enabled {
 					BLUE
 				} else {
 					TEXT_MUTED
@@ -299,6 +299,8 @@ impl SettingsSurface {
 		) || self.launch_at_login_detail.as_ref()
 			!= launch_at_login_detail(self.launch_at_login);
 		ui_theme::settings_row()
+			.min_h(px(40.0))
+			.px(px(0.0))
 			.child(
 				div()
 					.flex_1()
@@ -307,7 +309,6 @@ impl SettingsSurface {
 					.flex_col()
 					.gap(px(3.0))
 					.child("Launch at login")
-					.child(setting_caption("Start Decodex when you sign in."))
 					.when(needs_attention, |d| {
 						d.child(
 							div()
@@ -342,6 +343,56 @@ impl SettingsSurface {
 	}
 }
 
+impl SettingsSurface {
+	fn glass_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		use ui_theme::window_material::GlassStyle;
+		let style = GlassStyle::configured();
+		ui_theme::settings_row().px_0().child(div().flex_1().child("Glass appearance")).child(
+			div().flex().gap_1().p_1().rounded(px(9.)).bg(rgba(0xffffff08)).children(
+				[(GlassStyle::Regular, "Regular"), (GlassStyle::Clear, "Clear")].into_iter().map(
+					|(value, label)| {
+						div()
+							.id(label)
+							.debug_selector(move || label.to_string())
+							.role(Role::Button)
+							.aria_label(format!("Glass appearance: {label}"))
+							.aria_toggled(if value == style {
+								Toggled::True
+							} else {
+								Toggled::False
+							})
+							.tab_index(0)
+							.px_3()
+							.h(px(26.))
+							.flex()
+							.items_center()
+							.rounded(px(6.))
+							.text_size(px(11.))
+							.cursor_pointer()
+							.when(value == style, |d| d.bg(rgba(0xffffff16)))
+							.hover(|d| d.bg(rgba(0xffffff12)))
+							.on_click(cx.listener(move |_, _, _, cx| {
+								value.select(cx);
+								cx.notify();
+							}))
+							.on_key_down(cx.listener(
+								move |_, event: &gpui::KeyDownEvent, _, cx| {
+									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+										value.select(cx);
+										cx.notify();
+										cx.stop_propagation();
+									}
+								},
+							))
+							.child(label)
+							.smooth()
+					},
+				),
+			),
+		)
+	}
+}
+
 impl Render for SettingsSurface {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let needs_attention =
@@ -366,78 +417,63 @@ impl Render for SettingsSurface {
 					.size_full()
 					.overflow_y_scroll()
 					.px(px(28.0))
-					.py(px(24.0))
+					.py(px(18.0))
 					.flex()
 					.justify_center()
 					.child(
 						div()
 							.w_full()
-							.max_w(px(ui_theme::SETTINGS_WIDTH))
+							.max_w(px(600.0))
 							.flex()
 							.flex_col()
-							.gap(px(20.0))
+							.gap(px(24.0))
 							.child(ui_theme::settings_title("General"))
+							.child(self.glass_controls(cx))
 							.child(
-								div()
-									.flex()
-									.flex_col()
-									.gap(px(8.0))
-									.child(setting_caption("Application"))
-									.child(
-										ui_theme::settings_group()
-											.flex()
-											.flex_col()
-											.child(
-												ui_theme::settings_row()
-													.child(
-														div()
-															.flex_1()
-															.min_w_0()
-															.flex()
-															.flex_col()
-															.gap(px(3.0))
-															.child("Menu bar")
-															.child(setting_caption(
-																"Check account usage without opening a window.",
-															))
-															.when(needs_attention, |d| {
-																d.child(
-																	div()
-																		.id(
-																			"menubar-runtime-status",
-																		)
-																		.role(Role::Status)
-																		.text_size(px(
-																			ui_theme::CAPTION_SIZE,
-																		))
-																		.text_color(rgb(self
-																			.runtime
-																			.color()))
-																		.child(self.detail.clone()),
-																)
-															}),
-													)
-													.child(self.toggle(cx)),
-											)
-											.child(
-												div().mx(px(14.0)).h(px(1.0)).bg(rgba(0xffffff0c)),
-											)
-											.child(self.launch_at_login_card(cx)),
-									),
+								div().flex().flex_col().gap(px(8.0)).child(
+									div()
+										.w_full()
+										.py(px(4.0))
+										.flex()
+										.flex_col()
+										.child(
+											ui_theme::settings_row()
+												.min_h(px(40.0))
+												.px(px(0.0))
+												.child(
+													div()
+														.flex_1()
+														.min_w_0()
+														.flex()
+														.flex_col()
+														.gap(px(3.0))
+														.child("Show in menu bar")
+														.when(needs_attention, |d| {
+															d.child(
+																div()
+																	.id("menubar-runtime-status")
+																	.role(Role::Status)
+																	.text_size(px(
+																		ui_theme::CAPTION_SIZE,
+																	))
+																	.text_color(rgb(self
+																		.runtime
+																		.color()))
+																	.child(self.detail.clone()),
+															)
+														}),
+												)
+												.child(self.toggle(cx)),
+										)
+										.child(div().h(px(2.0)))
+										.child(self.launch_at_login_card(cx)),
+								),
 							)
 							.children(self.advanced_preferences.clone())
 							.child(quote_attribution()),
 					),
 			)
 	}
-}
-
-fn setting_caption(text: &'static str) -> gpui::Div {
-	div()
-		.text_size(px(ui_theme::CAPTION_SIZE))
-		.line_height(px(16.0))
-		.text_color(rgb(TEXT_MUTED))
-		.child(text)
 }
 
 const fn launch_at_login_color(state: LaunchAtLoginState) -> u32 {
@@ -518,6 +554,23 @@ mod tests {
 	use gpui::{TestAppContext, size};
 
 	use super::*;
+
+	#[gpui::test]
+	fn glass_style_buttons_update_the_active_material(cx: &mut TestAppContext) {
+		use ui_theme::window_material::GlassStyle;
+		let controller = DesktopSettingsController::production();
+		let (_, visual) = cx.add_window_view(|_, cx| SettingsSurface::new(controller, cx));
+		visual.update(|window, cx| {
+			window.resize(size(px(800.), px(600.)));
+			window.draw(cx).clear();
+		});
+		let clear = visual.debug_bounds("Clear").expect("Clear control");
+		visual.simulate_click(clear.center(), Default::default());
+		assert_eq!(GlassStyle::configured(), GlassStyle::Clear);
+		let regular = visual.debug_bounds("Regular").expect("Regular control");
+		visual.simulate_click(regular.center(), Default::default());
+		assert_eq!(GlassStyle::configured(), GlassStyle::Regular);
+	}
 
 	#[gpui::test]
 	fn settings_draw_at_the_selected_desktop_size(cx: &mut TestAppContext) {
