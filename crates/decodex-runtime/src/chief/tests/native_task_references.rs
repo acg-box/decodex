@@ -94,7 +94,7 @@ async fn drain_work(
 	}
 }
 
-async fn read_http_body(socket: &mut tokio::net::TcpStream) -> Value {
+pub(super) async fn read_http_body(socket: &mut tokio::net::TcpStream) -> Value {
 	let mut bytes = Vec::new();
 	let mut buffer = [0; 8192];
 	loop {

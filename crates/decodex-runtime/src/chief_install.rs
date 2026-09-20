@@ -30,11 +30,24 @@ pub(crate) async fn inspect(
 	let thread = owner.codex_thread_id?;
 	let value: Value = serde_json::from_str(&event.payload).ok()?;
 	let params = &value["params"];
-	if value["method"] != "mcpServer/elicitation/request"
-		|| params["threadId"] != thread
-		|| (!params["turnId"].is_null()
-			&& (params["turnId"].as_str() != owner.active_turn_id.as_deref()
-				|| owner.dispatch_state != decodex_database::ChiefDispatchState::Running))
+	if value["method"] != "mcpServer/elicitation/request" {
+		return None;
+	}
+	let requesting_thread = params["threadId"].as_str()?;
+	if requesting_thread != thread {
+		let resolved =
+			crate::chief::native_subagents::request_owner(store, client, requesting_thread)
+				.await
+				.ok()?;
+		if resolved.id != work
+			|| resolved.codex_thread_id.as_deref() != Some(&thread)
+			|| value["ownerThreadId"].as_str() != Some(&thread)
+		{
+			return None;
+		}
+	} else if !params["turnId"].is_null()
+		&& (params["turnId"].as_str() != owner.active_turn_id.as_deref()
+			|| owner.dispatch_state != decodex_database::ChiefDispatchState::Running)
 	{
 		return None;
 	}
@@ -42,8 +55,8 @@ pub(crate) async fn inspect(
 	let request_id = serde_json::from_value(value["id"].clone()).ok()?;
 	let guard =
 		client.server_request_guard(&request_id, "mcpServer/elicitation/request", params)?;
-	let native = client.thread_read(json!({"threadId":thread})).await.ok()?;
-	if native["thread"]["id"] != thread {
+	let native = client.thread_read(json!({"threadId":requesting_thread})).await.ok()?;
+	if native["thread"]["id"] != requesting_thread {
 		return None;
 	}
 	let cwd = native["thread"]["cwd"].as_str()?;
