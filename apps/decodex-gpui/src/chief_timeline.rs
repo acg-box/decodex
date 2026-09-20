@@ -274,7 +274,7 @@ impl Timeline {
 	}
 
 	fn can_retry(&self, now: std::time::Instant) -> bool {
-		!self.unsupported && !self.browsing_window && self.retry_at.is_none_or(|at| now >= at)
+		!self.browsing_window && self.retry_at.is_none_or(|at| now >= at)
 	}
 
 	fn retry_after_turn_change(&mut self, turn: Option<&str>) {
@@ -301,11 +301,14 @@ impl Timeline {
 		self.unsupported =
 			matches!(result, Some(decodex_protocol::ChiefTimelineResult::Unsupported));
 		self.failures = self.failures.saturating_add(1);
-		self.retry_at = Some(
-			now + std::time::Duration::from_secs(
-				(5_u64 << self.failures.saturating_sub(1).min(3)).min(30),
-			),
-		);
+		// Native background migration can make a legacy thread readable without
+		// another turn or process replacement. Recheck infrequently while selected.
+		let delay = if self.unsupported {
+			300
+		} else {
+			(5_u64 << self.failures.saturating_sub(1).min(3)).min(30)
+		};
+		self.retry_at = Some(now + std::time::Duration::from_secs(delay));
 		self.notice = Some(if self.unsupported {
 			"This thread does not support native history. Saved local history remains available."
 		} else {
@@ -494,6 +497,8 @@ mod tests {
 		assert!(state.can_retry(now + std::time::Duration::from_secs(10)));
 		state.failed(Some(decodex_protocol::ChiefTimelineResult::Unsupported), now);
 		assert!(!state.can_retry(now + std::time::Duration::from_secs(60)));
+		assert!(!state.can_retry(now + std::time::Duration::from_secs(299)));
+		assert!(state.can_retry(now + std::time::Duration::from_secs(300)));
 		state.recovered();
 		assert!(state.can_retry(now));
 		assert!(state.notice.is_none());
@@ -508,7 +513,7 @@ mod tests {
 		let mut state = Timeline::default();
 		state.failed(Some(decodex_protocol::ChiefTimelineResult::Unsupported), now);
 		state.retry_after_turn_change(None);
-		assert!(!state.can_retry(now + std::time::Duration::from_secs(300)));
+		assert!(!state.can_retry(now + std::time::Duration::from_secs(299)));
 		state.retry_after_turn_change(Some("first-turn"));
 		assert!(state.can_retry(now));
 		// A legacy thread can still refuse the retry. Do not keep polling it for
@@ -516,7 +521,7 @@ mod tests {
 		state.requested_turn = Some("first-turn".into());
 		state.failed(Some(decodex_protocol::ChiefTimelineResult::Unsupported), now);
 		state.retry_after_turn_change(Some("first-turn"));
-		assert!(!state.can_retry(now + std::time::Duration::from_secs(300)));
+		assert!(!state.can_retry(now + std::time::Duration::from_secs(299)));
 		// New execution while the earlier read was pending must also rearm it.
 		state.retry_after_turn_change(Some("second-turn"));
 		assert!(state.can_retry(now));
