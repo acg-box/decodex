@@ -2054,6 +2054,9 @@ fn task_has_safe_stale_reconciliation(task: &ConversationSummary) -> bool {
 				Some(
 					ConversationRecoveryAction::ResolvePriorActiveTurn
 						| ConversationRecoveryAction::SelectWorkingDirectory
+						| ConversationRecoveryAction::RestoreArchivedThread
+						| ConversationRecoveryAction::ReviewSandboxConfiguration
+						| ConversationRecoveryAction::ReviewCodexConfiguration
 						| ConversationRecoveryAction::StartNewConversation,
 				),
 			)
@@ -2219,6 +2222,27 @@ pub(crate) mod tests {
 			state.selection_suppressed = false;
 		}
 		(conversations, server_id, task)
+	}
+
+	#[test]
+	fn native_resume_refusals_refresh_the_same_conversation_without_replacement() {
+		for action in [
+			ConversationRecoveryAction::RestoreArchivedThread,
+			ConversationRecoveryAction::ReviewSandboxConfiguration,
+			ConversationRecoveryAction::ReviewCodexConfiguration,
+		] {
+			let (conversations, server_id, mut task) = connected_conversations();
+			task.state = ConversationState::ManualRecovery;
+			task.recovery_action = Some(action);
+			assert!(task_needs_reconciliation(&task));
+			assert!(task_recovery_command(&task).is_none(), "no routing successor or replay");
+			conversations.lock().tasks = vec![task.clone()];
+			conversations.refresh_selected().expect("explicit refresh");
+			let dispatch =
+				conversations.try_take_dispatch(1, &server_id).expect("refresh dispatch");
+			assert!(matches!(&dispatch.command().expect("readback command").payload,
+				CommandPayload::RefreshConversation { conversation_id } if conversation_id == &task.conversation_id));
+		}
 	}
 
 	#[test]

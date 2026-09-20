@@ -1,5 +1,8 @@
 //! Ordinary Conversation conversations, turns, and normalized history.
 
+mod resume_rejection;
+pub use resume_rejection::{ConversationResumeRejection, RecordConversationResumeRejection};
+
 use decodex_core::{
 	AccountId, ArtifactId, BlobHash, BlobStore, ConversationId, HistoryItemId, HistoryItemKind,
 	HistoryMediaType, HistoryMetadata, ItemStatus, MAX_BLOB_BYTES, MAX_CONTEXT_RECENT_ITEMS,
@@ -3063,6 +3066,94 @@ mod archive_tests {
 				Ok(())
 			})
 			.expect("seed provider-less starting RuntimeSession");
+	}
+
+	#[tokio::test]
+	async fn resume_rejection_is_atomic_durable_and_idempotent() {
+		use super::{ConversationResumeRejection, RecordConversationResumeRejection};
+		let directory = tempdir().expect("temporary database directory");
+		let paths = DecodexRoot::new(directory.path().canonicalize().expect("canonical root"))
+			.expect("root")
+			.paths();
+		let blobs = BlobStore::open(paths.clone()).expect("blobs");
+		let store = SqliteStore::open(&paths).expect("database");
+		seed_provider_less_starting_task(&store).await;
+		seed_active_user_turn(&store);
+		store.with_connection(|connection| {
+			connection.execute("UPDATE runtime_sessions SET state='active', codex_thread_id='native-thread', thread_start_request_id=1, thread_start_response_id=1, has_acknowledged_turn=1 WHERE runtime_session_id=?1", params![RUNTIME_SESSION_ID]).map_err(sqlite_error)?;
+			connection.execute_batch("CREATE TRIGGER fail_diagnostic BEFORE INSERT ON history_items BEGIN SELECT RAISE(ABORT, 'injected history failure'); END;").map_err(sqlite_error)
+		}).expect("prepare bound session and failure injection");
+		let request = RecordConversationResumeRejection {
+			conversation_id: ConversationId::new(CONVERSATION_ID).expect("conversation"),
+			runtime_session_id: RuntimeSessionId::new(RUNTIME_SESSION_ID).expect("session"),
+			expected_session_revision: 3,
+			thread_id: "native-thread".into(),
+			turn_id: TurnId::new(TURN_ID).expect("turn"),
+			history_item_id: HistoryItemId::new(INTERRUPTION_HISTORY_ID).expect("history"),
+			reason: ConversationResumeRejection::SandboxConfiguration,
+			witness_digest: "a".repeat(64),
+		};
+		let command = CommandIdentity::new(
+			"resume-rejection-test",
+			&serde_json::to_vec(&request).expect("descriptor"),
+		)
+		.expect("command");
+		assert!(store.record_conversation_resume_rejection(&command, &request).await.is_err());
+		store
+			.with_connection(|connection| {
+				let state: (String, i64) = connection
+					.query_row(
+						"SELECT status,revision FROM turns WHERE turn_id=?1",
+						params![TURN_ID],
+						|row| Ok((row.get(0)?, row.get(1)?)),
+					)
+					.map_err(sqlite_error)?;
+				assert_eq!(
+					state,
+					("active".into(), 1),
+					"history failure rolls back turn finalization"
+				);
+				connection.execute_batch("DROP TRIGGER fail_diagnostic").map_err(sqlite_error)
+			})
+			.expect("rollback inspection");
+		let mut stale = request.clone();
+		stale.expected_session_revision = 2;
+		assert!(store.record_conversation_resume_rejection(&command, &stale).await.is_err());
+		store
+			.record_conversation_resume_rejection(&command, &request)
+			.await
+			.expect("record refusal");
+		drop(store);
+		let reopened = SqliteStore::open(&paths).expect("restart database");
+		reopened.record_conversation_resume_rejection(&command, &request).await.expect("replay");
+		let second_reader = SqliteStore::open(&paths).expect("independent reader");
+		let page = second_reader
+			.conversation_history(&blobs, &request.conversation_id, None, 10)
+			.await
+			.expect("durable history");
+		assert_eq!(page.entries.len(), 1, "one diagnostic after replay and restart");
+		let item = &page.entries[0];
+		assert_eq!(item.kind, decodex_core::HistoryItemKind::Status);
+		assert_eq!(item.status, decodex_core::ItemStatus::Failed);
+		assert_eq!(item.inline_text.as_deref(), Some(request.reason.diagnostic()));
+		assert_eq!(item.runtime_session_id, RUNTIME_SESSION_ID);
+		second_reader
+			.with_connection(|connection| {
+				let state: (String, i64) = connection
+					.query_row(
+						"SELECT status,revision FROM turns WHERE turn_id=?1",
+						params![TURN_ID],
+						|row| Ok((row.get(0)?, row.get(1)?)),
+					)
+					.map_err(sqlite_error)?;
+				assert_eq!(state, ("failed".into(), 2));
+				let count: i64 = connection
+					.query_row("SELECT COUNT(*) FROM runtime_sessions", [], |row| row.get(0))
+					.map_err(sqlite_error)?;
+				assert_eq!(count, 1, "no replacement session");
+				Ok(())
+			})
+			.expect("restart state");
 	}
 
 	#[test]

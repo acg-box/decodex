@@ -81,9 +81,10 @@ use crate::account_launch::process::{
 	AccountBinding, AccountIdentity, AccountRefreshCallback as ProcessAccountRefreshCallback,
 	AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild,
 	ChatgptRefreshProjection, ConversationPreSpawnCheck, ConversationProcessError,
-	ConversationProcessEvent, CredentialProjection, CredentialVault, CredentialVaultError,
-	EstablishedOrdinaryThread, PreparedThreadStart, PreparedTurnStart, ResumedOrdinaryThread,
-	StartedOrdinaryTurn, spawn_admitted_chief_process, spawn_admitted_conversation_process,
+	ConversationProcessEvent, ConversationRejectionReason, CredentialProjection, CredentialVault,
+	CredentialVaultError, EstablishedOrdinaryThread, PreparedThreadStart, PreparedTurnStart,
+	ResumedOrdinaryThread, StartedOrdinaryTurn, spawn_admitted_chief_process,
+	spawn_admitted_conversation_process,
 };
 
 mod model_catalog;
@@ -420,6 +421,9 @@ pub(crate) struct ConversationProjection {
 /// Typed manual action after definite missing or incompatible authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ConversationManualRecovery {
+	RestoreArchivedThread,
+	ReviewSandboxConfiguration,
+	ReviewCodexConfiguration,
 	EnableAccount,
 	EnrollCredentials,
 	ResolveAccountOperation,
@@ -722,8 +726,19 @@ struct ExistingSessionPlanningInput<'a> {
 	expected: ExistingSessionExpectation<'a>,
 }
 
+fn resume_rejection_recovery(reason: ConversationRejectionReason) -> ConversationManualRecovery {
+	match reason {
+		ConversationRejectionReason::MissingThread => ConversationManualRecovery::MissingThread,
+		ConversationRejectionReason::ArchivedThread =>
+			ConversationManualRecovery::RestoreArchivedThread,
+		ConversationRejectionReason::SandboxConfiguration =>
+			ConversationManualRecovery::ReviewSandboxConfiguration,
+		ConversationRejectionReason::Other => ConversationManualRecovery::ReviewCodexConfiguration,
+	}
+}
+
 enum SameThreadResumeRefusal {
-	MissingThread,
+	Rejected { reason: ConversationRejectionReason, witness_digest: String },
 	IncompatibleThread,
 	ProcessUnavailable,
 	Ambiguous,
@@ -2448,7 +2463,8 @@ impl ConversationRuntime {
 		.map_err(|_| SameThreadResumeRefusal::IncompatibleThread)?;
 		let resumed =
 			self.resume_thread(&session.process, request).await.map_err(|error| match error {
-				ConversationProcessError::Rejected { .. } => SameThreadResumeRefusal::MissingThread,
+				ConversationProcessError::Rejected { reason, witness_digest } =>
+					SameThreadResumeRefusal::Rejected { reason, witness_digest },
 				ConversationProcessError::Incompatible =>
 					SameThreadResumeRefusal::IncompatibleThread,
 				ConversationProcessError::Unavailable =>
@@ -2623,13 +2639,9 @@ impl ConversationRuntime {
 		}
 		let resume = match self.resume_same_thread(&session).await {
 			Ok(resume) => resume,
-			Err(SameThreadResumeRefusal::MissingThread) => {
+			Err(SameThreadResumeRefusal::Rejected { reason, witness_digest }) => {
 				return self
-					.finalize_bound_recovery(
-						session,
-						&command.turn_id,
-						ConversationManualRecovery::MissingThread,
-					)
+					.finalize_rejected_resume(session, &command.turn_id, reason, witness_digest)
 					.await;
 			},
 			Err(SameThreadResumeRefusal::IncompatibleThread) => {
@@ -4943,13 +4955,9 @@ impl ConversationRuntime {
 		let RehydratedProcessLaunch { decision, plan, session, sequence } = launch;
 		let resume = match self.resume_same_thread(&session).await {
 			Ok(resume) => resume,
-			Err(SameThreadResumeRefusal::MissingThread) => {
+			Err(SameThreadResumeRefusal::Rejected { reason, witness_digest }) => {
 				return self
-					.finalize_bound_recovery(
-						session,
-						&command.turn_id,
-						ConversationManualRecovery::MissingThread,
-					)
+					.finalize_rejected_resume(session, &command.turn_id, reason, witness_digest)
 					.await;
 			},
 			Err(SameThreadResumeRefusal::IncompatibleThread) => {
@@ -5310,6 +5318,52 @@ impl ConversationRuntime {
 				action,
 			},
 		}
+	}
+
+	async fn finalize_rejected_resume(
+		&self,
+		session: LocalSession,
+		turn_id: &TurnId,
+		reason: ConversationRejectionReason,
+		witness_digest: String,
+	) -> ConversationOutcome {
+		let record = decodex_database::RecordConversationResumeRejection {
+			conversation_id: session.conversation_id.clone(),
+			runtime_session_id: session.runtime_session_id.clone(),
+			expected_session_revision: session.runtime_session_revision,
+			thread_id: session.codex_thread_id.clone(),
+			turn_id: turn_id.clone(),
+			history_item_id: HistoryItemId::new(derived_uuid(
+				"resume-rejection",
+				&[turn_id.as_str()],
+			))
+			.expect("derived history UUID"),
+			reason,
+			witness_digest,
+		};
+		let persisted = async {
+			let descriptor = serde_json::to_string(&record).map_err(|_| ())?;
+			let command =
+				exact_command("resume-rejection", &session.operation_key, &[&descriptor])?;
+			self.inner
+				.store
+				.record_conversation_resume_rejection(&command, &record)
+				.await
+				.map_err(|_| ())
+		}
+		.await;
+		if persisted.is_err() {
+			return self
+				.ambiguous_session(
+					session,
+					turn_id.clone(),
+					ConversationAmbiguity::TurnFinalization,
+				)
+				.await;
+		}
+		let outcome = self.recover_session(session, resume_rejection_recovery(reason)).await;
+		self.emit(outcome.clone()).await;
+		outcome
 	}
 
 	async fn finalize_bound_recovery(
