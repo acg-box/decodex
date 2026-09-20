@@ -211,7 +211,7 @@ pub fn mcp_form_content(
 		}
 		if !field.choices.is_empty() {
 			let selected: Vec<&Value> = if field.kind == "array" {
-				value.as_array().unwrap().iter().collect()
+				value.as_array().expect("array value validated above").iter().collect()
 			} else {
 				vec![value]
 			};

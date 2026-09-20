@@ -481,12 +481,7 @@ impl ChiefSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		self.graph_display_zoom =
-			crate::ui_motion::value("chief-graph-zoom", self.graph_zoom, window, cx);
-		self.restore_history_anchor(window, cx);
-		self.prepare_history_marks();
-		self.animate_history_scroll(window, cx);
-		self.follow_voice_scroll(window, cx);
+		self.prepare_workspace_history(window, cx);
 		let is_chief = self.selected_is_manager();
 		let selected = self
 			.snapshot
@@ -608,6 +603,15 @@ impl ChiefSurface {
 			.child(self.sidebar_slot(wide, window, cx))
 			.child(main)
 			.into_any_element()
+	}
+
+	fn prepare_workspace_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		self.graph_display_zoom =
+			crate::ui_motion::value("chief-graph-zoom", self.graph_zoom, window, cx);
+		self.restore_history_anchor(window, cx);
+		self.prepare_history_marks();
+		self.animate_history_scroll(window, cx);
+		self.follow_voice_scroll(window, cx);
 	}
 
 	fn restore_history_anchor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1059,7 +1063,8 @@ impl ChiefSurface {
 				models: ["gpt-6-astra", "gpt-5.6-sol"]
 					.into_iter()
 					.map(|name| decodex_protocol::ChiefModelDto {
-						model: decodex_protocol::ConversationModel::new(name).unwrap(),
+						model: decodex_protocol::ConversationModel::new(name)
+							.expect("valid fixture model"),
 						name: name.into(),
 						efforts: vec![
 							ConversationReasoningEffort::Low,

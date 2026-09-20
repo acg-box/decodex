@@ -274,84 +274,7 @@ impl ChiefSurface {
 		}
 		let mut body = div().flex().flex_col().gap_3().min_w_0();
 		for review in reviews {
-			let state = match review.status {
-				Status::InProgress => "No final review result received",
-				Status::Approved => "Allowed by Codex review",
-				Status::Denied => "Denied by Codex review",
-				Status::TimedOut => "Review timed out",
-				Status::Aborted => "Review stopped",
-			};
-			let mut card = div()
-				.flex()
-				.flex_col()
-				.gap_2()
-				.min_w_0()
-				.py_2()
-				.child(format!("{} · {state}", review.action_label));
-			if review.status == Status::InProgress && !review.current_process {
-				card = card.child(muted(
-					"Saved from an earlier or disconnected process; the result is unknown.",
-				));
-			}
-			if let Some(risk) = &review.risk_level {
-				card = card.child(format!("Risk: {risk}"));
-			}
-			if let Some(level) = &review.user_authorization {
-				card = card.child(format!("User authorization assessed by Codex: {level}"));
-			}
-			if let Some(submission) = review.submission {
-				card = card.child(match submission {
-					Submission::Pending => "Approval submission unconfirmed. No automatic retry.",
-					Submission::Submitted =>
-						"User approval submitted. Action execution is not confirmed by this receipt.",
-					Submission::Rejected => "The approval submission was rejected.",
-				});
-			}
-			let identity = (review.row_id, review.digest.clone());
-			if self.guardian.reviewed.as_ref() != Some(&identity) {
-				card = card.child(button(
-					format!("guardian-review-{}", review.row_id),
-					"Review action and findings".into(),
-					cx,
-					move |s, cx| {
-						s.guardian.reviewed = Some(identity.clone());
-						cx.notify();
-					},
-				));
-			} else {
-				if let Some(reason) = &review.rationale {
-					card = card.child(reason.clone());
-				}
-				if let Some(action) = &review.action_json {
-					card = card.child(div().min_w_0().text_size(px(12.)).child(action.clone()));
-				}
-				if let Some(reason) = &review.details_unavailable {
-					card = card.child(reason.clone());
-				}
-				if let Some(reason) = &review.approval_unavailable {
-					card = card.child(muted(reason));
-				}
-				if review.can_approve
-					&& !self.guardian.stale
-					&& !self.guardian.pending.contains_key(&review.row_id)
-					&& self.guardian.mutation.is_none()
-				{
-					let owner = work.id.clone();
-					let row = review.row_id;
-					let digest = review.digest.clone();
-					card = card
-						.child(muted(
-							"Send your approval to Codex. This does not rerun the action.",
-						))
-						.child(button(
-							format!("guardian-approve-{row}"),
-							"Approve this action".into(),
-							cx,
-							move |s, cx| s.approve_guardian(&owner, row, &digest, cx),
-						));
-				}
-			}
-			body = body.child(card);
+			body = body.child(self.guardian_review_card(work, review, cx));
 		}
 		panel = panel.child(
 			div().id("guardian-review-list").max_h(px(360.)).overflow_y_scroll().child(body),
@@ -373,6 +296,90 @@ impl ChiefSurface {
 			));
 		}
 		panel.into_any_element()
+	}
+
+	fn guardian_review_card(
+		&self,
+		work: &ChiefWorkItemDto,
+		review: &decodex_protocol::ChiefGuardianReviewDto,
+		cx: &mut Context<Self>,
+	) -> gpui::Div {
+		let state = match review.status {
+			Status::InProgress => "No final review result received",
+			Status::Approved => "Allowed by Codex review",
+			Status::Denied => "Denied by Codex review",
+			Status::TimedOut => "Review timed out",
+			Status::Aborted => "Review stopped",
+		};
+		let mut card = div()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.min_w_0()
+			.py_2()
+			.child(format!("{} · {state}", review.action_label));
+		if review.status == Status::InProgress && !review.current_process {
+			card = card.child(muted(
+				"Saved from an earlier or disconnected process; the result is unknown.",
+			));
+		}
+		if let Some(risk) = &review.risk_level {
+			card = card.child(format!("Risk: {risk}"));
+		}
+		if let Some(level) = &review.user_authorization {
+			card = card.child(format!("User authorization assessed by Codex: {level}"));
+		}
+		if let Some(submission) = review.submission {
+			card = card.child(match submission {
+				Submission::Pending => "Approval submission unconfirmed. No automatic retry.",
+				Submission::Submitted =>
+					"User approval submitted. Action execution is not confirmed by this receipt.",
+				Submission::Rejected => "The approval submission was rejected.",
+			});
+		}
+		let identity = (review.row_id, review.digest.clone());
+		if self.guardian.reviewed.as_ref() != Some(&identity) {
+			card = card.child(button(
+				format!("guardian-review-{}", review.row_id),
+				"Review action and findings".into(),
+				cx,
+				move |s, cx| {
+					s.guardian.reviewed = Some(identity.clone());
+					cx.notify();
+				},
+			));
+		} else {
+			if let Some(reason) = &review.rationale {
+				card = card.child(reason.clone());
+			}
+			if let Some(action) = &review.action_json {
+				card = card.child(div().min_w_0().text_size(px(12.)).child(action.clone()));
+			}
+			if let Some(reason) = &review.details_unavailable {
+				card = card.child(reason.clone());
+			}
+			if let Some(reason) = &review.approval_unavailable {
+				card = card.child(muted(reason));
+			}
+			if review.can_approve
+				&& !self.guardian.stale
+				&& !self.guardian.pending.contains_key(&review.row_id)
+				&& self.guardian.mutation.is_none()
+			{
+				let owner = work.id.clone();
+				let row = review.row_id;
+				let digest = review.digest.clone();
+				card = card
+					.child(muted("Send your approval to Codex. This does not rerun the action."))
+					.child(button(
+						format!("guardian-approve-{row}"),
+						"Approve this action".into(),
+						cx,
+						move |s, cx| s.approve_guardian(&owner, row, &digest, cx),
+					));
+			}
+		}
+		card
 	}
 }
 

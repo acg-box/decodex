@@ -35,19 +35,7 @@ impl ChiefSurface {
 				Some(ChiefResourcesResult::CapacityExceeded) =>
 					div().child("The resource list exceeds the display limit."),
 				Some(ChiefResourcesResult::Available { resources }) => {
-					let add_work = work.to_owned();
-					let mut list = div()
-						.flex()
-						.flex_col()
-						.gap_2()
-						.child(div().h(px(40.)).child(self.resource_title.clone()))
-						.child(div().h(px(40.)).child(self.resource_url.clone()))
-						.child(resource_button(
-							"resource-add-link".into(),
-							"Add link".into(),
-							cx,
-							move |s, cx| s.add_resource_link(&add_work, cx),
-						));
+					let mut list = self.resource_editor(work, cx);
 					if !self.resource_feedback.is_empty() {
 						list = list.child(self.resource_feedback.clone());
 					}
@@ -134,6 +122,22 @@ impl ChiefSurface {
 				s.add_resource_link(&work, cx);
 			}))
 			.into_any_element()
+	}
+
+	fn resource_editor(&self, work: &str, cx: &mut Context<Self>) -> gpui::Div {
+		let add_work = work.to_owned();
+		div()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.child(div().h(px(40.)).child(self.resource_title.clone()))
+			.child(div().h(px(40.)).child(self.resource_url.clone()))
+			.child(resource_button(
+				"resource-add-link".into(),
+				"Add link".into(),
+				cx,
+				move |s, cx| s.add_resource_link(&add_work, cx),
+			))
 	}
 
 	fn add_resource_link(&mut self, work: &str, cx: &mut Context<Self>) {

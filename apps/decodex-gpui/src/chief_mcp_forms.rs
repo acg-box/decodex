@@ -142,54 +142,7 @@ impl ChiefSurface {
 			panel = panel.child(serde_json::to_string_pretty(params).unwrap_or_default());
 		}
 
-		if value["mode"] == "url" {
-			if let Some(url) = value["url"]
-				.as_str()
-				.and_then(|text| reqwest::Url::parse(text).ok())
-				.filter(|url| {
-					matches!(url.scheme(), "https" | "http")
-						&& url.username().is_empty()
-						&& url.password().is_none()
-				}) {
-				let url = url.to_string();
-				let open_url = url.clone();
-				panel = panel.child(url.clone()).child(mcp_button(
-					"mcp-open-url".into(),
-					"Open verification page".into(),
-					false,
-					cx,
-					move |s, cx| {
-						if s.mcp_request_is_current(event) {
-							cx.open_url(&open_url);
-							s.mcp_url_opened = Some((event, open_url.clone()));
-							cx.notify();
-						}
-					},
-				));
-				if self.mcp_url_opened.as_ref() == Some(&(event, url.clone())) {
-					panel = panel.child(mcp_button(
-						"mcp-confirm-url".into(),
-						"I completed verification".into(),
-						false,
-						cx,
-						move |s, cx| {
-							if s.mcp_url_opened.as_ref() == Some(&(event, url.clone()))
-								&& s.mcp_request_is_current(event)
-							{
-								s.respond(
-									json!({"action":"accept","content":null,"_meta":null})
-										.to_string(),
-									cx,
-								);
-							}
-						},
-					));
-				}
-			} else {
-				panel =
-					panel.child(muted("A valid HTTP or HTTPS verification link is unavailable."));
-			}
-		}
+		panel = self.mcp_verification_link(panel, event, value, cx);
 		let fields =
 			if matches!(value["mode"].as_str(), Some("form" | "openai/form" | "openaiForm")) {
 				decodex_protocol::mcp_form_fields(&value["requestedSchema"])
@@ -200,59 +153,7 @@ impl ChiefSurface {
 			Ok(fields) => {
 				let empty = fields.is_empty();
 				for field in fields {
-					let mut row = div().flex().flex_col().gap_2().child(format!(
-						"{}{}",
-						field.title,
-						if field.required { " *" } else { "" }
-					));
-					if let Some(description) = field.description {
-						row = row.child(muted(description));
-					}
-					if let Some(input) = self.mcp_inputs.get(&field.id) {
-						row = row.child(div().h(px(40.0)).child(input.clone()));
-					}
-					for (index, choice) in field.choices.into_iter().enumerate() {
-						let id = field.id.clone();
-						let answer = choice.value;
-						let multiple = field.kind == "array";
-						let selected = self.mcp_answers.get(&id).is_some_and(|value| {
-							if multiple {
-								value.as_array().is_some_and(|values| values.contains(&answer))
-							} else {
-								value == &answer
-							}
-						});
-						row = row.child(mcp_button(
-							format!("mcp-{event}-{id}-{index}"),
-							choice.label,
-							selected,
-							cx,
-							move |s, cx| {
-								if !s.mcp_request_is_current(event)
-									|| s.mcp_form_event != Some(event)
-								{
-									return;
-								}
-								if multiple {
-									let entry = s
-										.mcp_answers
-										.entry(id.clone())
-										.or_insert_with(|| json!([]));
-									if let Some(values) = entry.as_array_mut() {
-										if values.contains(&answer) {
-											values.retain(|value| value != &answer);
-										} else {
-											values.push(answer.clone());
-										}
-									}
-								} else {
-									s.mcp_answers.insert(id.clone(), answer.clone());
-								}
-								cx.notify();
-							},
-						));
-					}
-					panel = panel.child(row);
+					panel = panel.child(self.mcp_field_row(event, field, cx));
 				}
 				if empty {
 					for (scope, label) in
@@ -306,6 +207,120 @@ impl ChiefSurface {
 				cx.stop_propagation();
 			}))
 			.into_any_element()
+	}
+
+	fn mcp_verification_link(
+		&self,
+		mut panel: gpui::Stateful<gpui::Div>,
+		event: i64,
+		value: &Value,
+		cx: &mut Context<Self>,
+	) -> gpui::Stateful<gpui::Div> {
+		if value["mode"] == "url" {
+			if let Some(url) = value["url"]
+				.as_str()
+				.and_then(|text| reqwest::Url::parse(text).ok())
+				.filter(|url| {
+					matches!(url.scheme(), "https" | "http")
+						&& url.username().is_empty()
+						&& url.password().is_none()
+				}) {
+				let url = url.to_string();
+				let open_url = url.clone();
+				panel = panel.child(url.clone()).child(mcp_button(
+					"mcp-open-url".into(),
+					"Open verification page".into(),
+					false,
+					cx,
+					move |s, cx| {
+						if s.mcp_request_is_current(event) {
+							cx.open_url(&open_url);
+							s.mcp_url_opened = Some((event, open_url.clone()));
+							cx.notify();
+						}
+					},
+				));
+				if self.mcp_url_opened.as_ref() == Some(&(event, url.clone())) {
+					panel = panel.child(mcp_button(
+						"mcp-confirm-url".into(),
+						"I completed verification".into(),
+						false,
+						cx,
+						move |s, cx| {
+							if s.mcp_url_opened.as_ref() == Some(&(event, url.clone()))
+								&& s.mcp_request_is_current(event)
+							{
+								s.respond(
+									json!({"action":"accept","content":null,"_meta":null})
+										.to_string(),
+									cx,
+								);
+							}
+						},
+					));
+				}
+			} else {
+				panel =
+					panel.child(muted("A valid HTTP or HTTPS verification link is unavailable."));
+			}
+		}
+		panel
+	}
+
+	fn mcp_field_row(
+		&self,
+		event: i64,
+		field: decodex_protocol::McpFormField,
+		cx: &mut Context<Self>,
+	) -> gpui::Div {
+		let mut row = div().flex().flex_col().gap_2().child(format!(
+			"{}{}",
+			field.title,
+			if field.required { " *" } else { "" }
+		));
+		if let Some(description) = field.description {
+			row = row.child(muted(description));
+		}
+		if let Some(input) = self.mcp_inputs.get(&field.id) {
+			row = row.child(div().h(px(40.0)).child(input.clone()));
+		}
+		for (index, choice) in field.choices.into_iter().enumerate() {
+			let id = field.id.clone();
+			let answer = choice.value;
+			let multiple = field.kind == "array";
+			let selected = self.mcp_answers.get(&id).is_some_and(|value| {
+				if multiple {
+					value.as_array().is_some_and(|values| values.contains(&answer))
+				} else {
+					value == &answer
+				}
+			});
+			row = row.child(mcp_button(
+				format!("mcp-{event}-{id}-{index}"),
+				choice.label,
+				selected,
+				cx,
+				move |s, cx| {
+					if !s.mcp_request_is_current(event) || s.mcp_form_event != Some(event) {
+						return;
+					}
+					if multiple {
+						let entry = s.mcp_answers.entry(id.clone()).or_insert_with(|| json!([]));
+						if let Some(values) = entry.as_array_mut() {
+							if values.contains(&answer) {
+								values.retain(|value| value != &answer);
+							} else {
+								values.push(answer.clone());
+							}
+						}
+					} else {
+						s.mcp_answers.insert(id.clone(), answer.clone());
+					}
+					cx.notify();
+				},
+			));
+		}
+		row
 	}
 }
 
