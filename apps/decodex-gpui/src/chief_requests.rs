@@ -466,6 +466,7 @@ mod timing_tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+                runtime_source: None,
                 workspaces: vec![], dependencies: vec![],
                 work_items: vec![ChiefWorkItemDto {
                     id:"root".into(), parent_goal_id:None, kind:ChiefWorkKindDto::Goal,

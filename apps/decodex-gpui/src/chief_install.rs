@@ -245,6 +245,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual,|s,_| {
 			s.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces:vec![],dependencies:vec![],work_items:vec![ChiefWorkItemDto{id:"root".into(),parent_goal_id:None,kind:ChiefWorkKindDto::Goal,title:"Chief".into(),codex_thread_id:Some("thread".into()),active_turn_id:None,dispatch_state:ChiefDispatchStateDto::Idle,status:ChiefWorkStatusDto::Open,next_check_at_micros:None,created_at_micros:1,updated_at_micros:1}],
 				pending_events:vec![ChiefPendingEventDto{id:7,source_event_id:"suggestion".into(),work_item_id:"root".into(),event_kind:"server_request_pending".into(),created_at_micros:1,delivery_claimed:false}],
 			})));
