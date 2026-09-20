@@ -84,6 +84,19 @@ impl SqliteStore {
 }
 
 impl SqliteStore {
+	/// Return prior native thread identities for this exact durable work item.
+	pub async fn chief_previous_threads(&self, id: String) -> Result<Vec<String>, StoreError> {
+		self.run(move |connection| {
+			let mut statement = connection.prepare(
+				"SELECT old_thread_id FROM chief_thread_revisions WHERE work_id=?1 ORDER BY created_at_micros DESC LIMIT 129"
+			).map_err(sqlite_error)?;
+			let rows = statement.query_map([id], |row| row.get(0)).map_err(sqlite_error)?;
+			let threads: Vec<String> = rows.collect::<Result<_,_>>().map_err(sqlite_error)?;
+			if threads.len() > 128 { return Err(crate::DatabaseError::Conflict.into()); }
+			Ok(threads)
+		}).await
+	}
+
 	pub async fn chief_tool_version(&self, id: String) -> Result<i64, StoreError> {
 		self.run(move |connection| {
 			Ok(connection
@@ -122,7 +135,7 @@ impl SqliteStore {
             let changed=tx.execute("UPDATE chief_work_items SET codex_thread_id=?3,dispatch_state='idle' WHERE id=?1 AND codex_thread_id=?2 AND dispatch_state='dispatching' AND active_turn_id IS NULL",params![id,old_thread,new_thread]).map_err(sqlite_error)?;
             if changed!=1 { return Err(crate::DatabaseError::Conflict.into()); }
             tx.execute("INSERT INTO chief_thread_revisions(work_id,old_thread_id,new_thread_id,created_at_micros) VALUES(?1,?2,?3,?4)",params![id,old_thread,new_thread,crate::unix_micros()?]).map_err(sqlite_error)?;
-            tx.execute("INSERT INTO chief_tool_versions(work_id,version) VALUES(?1,2) ON CONFLICT(work_id) DO UPDATE SET version=2",[id]).map_err(sqlite_error)?;
+            tx.execute("INSERT INTO chief_tool_versions(work_id,version) VALUES(?1,3) ON CONFLICT(work_id) DO UPDATE SET version=3",[id]).map_err(sqlite_error)?;
             tx.commit().map_err(sqlite_error)?;
             Ok(())
         }).await

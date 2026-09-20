@@ -317,7 +317,7 @@ impl SqliteStore {
 			if manager || item.parent_goal_id.is_none() {
 				transaction
 					.execute(
-						"INSERT INTO chief_tool_versions(work_id,version) VALUES(?1,2)",
+						"INSERT INTO chief_tool_versions(work_id,version) VALUES(?1,3)",
 						[&item.id],
 					)
 					.map_err(sqlite_error)?;

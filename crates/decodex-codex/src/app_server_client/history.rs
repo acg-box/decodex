@@ -8,6 +8,66 @@ const MAX_PAGES: usize = 128;
 const PAGE_SIZE: usize = 100;
 
 impl AppServerClient {
+	/// Read one native page of recent task history without resuming or executing the thread.
+	/// The caller must retain the exact thread identity when using the opaque next cursor.
+	/// Oversized, incomplete, repeated-cursor, or mismatched responses are errors.
+	pub async fn thread_history_page(
+		&self,
+		thread: &str,
+		cursor: Option<&str>,
+		limit: u32,
+	) -> Result<Value, ClientError> {
+		if !(1..=20).contains(&limit)
+			|| thread.is_empty()
+			|| thread.len() > 512
+			|| cursor.is_some_and(|value| value.is_empty() || value.len() > 4096)
+		{
+			return Err(ClientError::InvalidFrame);
+		}
+		tokio::time::timeout(std::time::Duration::from_secs(20), async {
+			let metadata = self.thread_read(json!({"threadId":thread})).await?;
+			validate_thread(&metadata, thread)?;
+			let page = self
+				.request(
+					"thread/turns/list",
+					json!({
+						"threadId":thread,"cursor":cursor,"limit":limit,
+						"sortDirection":"desc","itemsView":"full"
+					}),
+				)
+				.await?;
+			let mut budget = MAX_FRAME_BYTES;
+			charge(&metadata, &mut budget)?;
+			charge(&page, &mut budget)?;
+			let turns = data(&page)?;
+			if turns.len() > limit as usize {
+				return Err(ClientError::InvalidFrame);
+			}
+			let mut ids = HashSet::new();
+			for turn in turns {
+				let id = turn["id"]
+					.as_str()
+					.filter(|id| !id.is_empty() && id.len() <= 512)
+					.ok_or(ClientError::InvalidFrame)?;
+				if !ids.insert(id)
+					|| !turn["items"].is_array()
+					|| turn.get("itemsView").is_some_and(|view| view.as_str() != Some("full"))
+				{
+					return Err(ClientError::InvalidFrame);
+				}
+			}
+			match page.get("nextCursor") {
+				Some(Value::Null) => {},
+				Some(Value::String(next))
+					if !next.is_empty() && next.len() <= 4096 && Some(next.as_str()) != cursor => {},
+				_ => return Err(ClientError::InvalidFrame),
+			}
+			Ok(json!({"thread":metadata["thread"],"turns":turns,"nextCursor":page["nextCursor"]}))
+		})
+		.await
+		.map_err(|_| ClientError::Io)?
+	}
+
 	/// Read thread metadata and the requested turn only. Paginated threads use native
 	/// turn/item pages; legacy threads retain their supported full-history read.
 	/// Missing turns remain absent. Incomplete or mismatched pages return an error,
@@ -291,6 +351,8 @@ mod tests {
 			requests
 		});
 		let result = match mode {
+			Some(Some("__page_test__")) =>
+				client.thread_history_page("thread/opaque", Some("before"), 2).await,
 			Some(Some("__latest_test__")) =>
 				client.thread_latest_turn_id("thread/opaque").await.map(|id| json!(id)),
 			None => client.thread_read_turn("thread/opaque", "target").await,
@@ -298,6 +360,62 @@ mod tests {
 				client.thread_turns_since("thread/opaque", baseline).await.map(Value::Array),
 		};
 		(result, server.await.unwrap())
+	}
+
+	#[tokio::test]
+	async fn task_page_preserves_native_items_and_uses_only_read_requests() {
+		let turns = json!([{"id":"recent","itemsView":"full","items":[
+			{"id":"message","type":"agentMessage","text":"answer","phase":"final_answer"},
+			{"id":"output","type":"functionCallOutput","output":"evidence"}
+		]}]);
+		let (result, requests) = run(
+			vec![
+				("thread/read", metadata()),
+				("thread/turns/list", json!({"data":turns,"nextCursor":"older"})),
+			],
+			Some(Some("__page_test__")),
+		)
+		.await;
+		let page = result.unwrap();
+		assert_eq!(page["turns"], turns);
+		assert_eq!(page["nextCursor"], "older");
+		assert_eq!(requests.len(), 2);
+		assert_eq!(
+			requests[1]["params"],
+			json!({"threadId":"thread/opaque",
+			"cursor":"before","limit":2,"sortDirection":"desc","itemsView":"full"})
+		);
+	}
+
+	#[tokio::test]
+	async fn task_page_rejects_incomplete_or_ambiguous_native_pages() {
+		let full = json!({"id":"one","items":[],"itemsView":"full"});
+		for page in [
+			json!({"data":[full.clone(),full.clone()],"nextCursor":null}),
+			json!({"data":[{"id":"one","items":[],"itemsView":"notLoaded"}],"nextCursor":null}),
+			json!({"data":[{"id":"one"}],"nextCursor":null}),
+			json!({"data":[full.clone()],"nextCursor":"before"}),
+			json!({"data":[full.clone()]}),
+			json!({"data":[full,{"id":"two","items":[]},{"id":"three","items":[]}],"nextCursor":null}),
+		] {
+			let (result, _) = run(
+				vec![("thread/read", metadata()), ("thread/turns/list", page)],
+				Some(Some("__page_test__")),
+			)
+			.await;
+			assert!(matches!(result, Err(ClientError::InvalidFrame)));
+		}
+	}
+
+	#[tokio::test]
+	async fn task_page_rejects_wrong_thread_before_reading_turns() {
+		let (result, requests) = run(
+			vec![("thread/read", json!({"thread":{"id":"another"}}))],
+			Some(Some("__page_test__")),
+		)
+		.await;
+		assert!(matches!(result, Err(ClientError::InvalidFrame)));
+		assert_eq!(requests.len(), 1);
 	}
 
 	#[tokio::test]
