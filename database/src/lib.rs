@@ -12,6 +12,7 @@ pub use chief_guardian::{ChiefGuardianObservation, ChiefGuardianReview};
 mod chief_misalignment;
 pub use chief_misalignment::ChiefMisalignment;
 mod chief_output;
+mod chief_question_rebuild;
 mod chief_questions;
 mod chief_task_references;
 pub use chief_questions::ChiefAsyncQuestion;

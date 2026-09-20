@@ -1706,6 +1706,138 @@ async fn async_question_upgrade_reads_native_history_and_preserves_later_questio
 }
 
 #[tokio::test]
+async fn reverted_async_history_reopens_retained_questions_and_removes_deleted_questions() {
+	let item = json!({"id":"question","type":"agentMessage","delivery":"async","text":"Question","questions":[{"title":"Which?"}]});
+	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"old","status":"completed","items":[item.clone()]}]}}});
+	let (mut chief, mut sent, _directory) = fixture_with_history(history).await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	chief.observe_async_question_item("opaque thread/1", "old", &item).await.unwrap();
+	let id = decodex_protocol::chief_async_question_id("question", 0);
+	chief
+		.store
+		.resolve_chief_async_questions("opaque thread/1".into(), vec![id.clone()])
+		.await
+		.unwrap();
+	assert!(chief.store.read_chief_async_questions("chief".into()).await.unwrap().is_empty());
+	while sent.try_recv().is_ok() {}
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "thread/reverted".into(),
+			params: json!({"threadId":"opaque thread/1"}),
+		})
+		.await
+		.unwrap();
+	assert!(chief.store.chief_async_questions_recovering("chief".into()).await.unwrap());
+	chief.recover_async_questions().await.unwrap();
+	let questions = chief.store.read_chief_async_questions("chief".into()).await.unwrap();
+	assert_eq!(questions.len(), 1);
+	assert_eq!(questions[0].question_id, id);
+	while let Ok(request) = sent.try_recv() {
+		assert_eq!(request["method"], "thread/read");
+	}
+	let queued = chief
+		.store
+		.enqueue_chief_event(EnqueueChiefEvent {
+			source_event_id: "offline-answer".into(),
+			work_item_id: "chief".into(),
+			event_kind: "async_question_answer".into(),
+			payload: json!({"text":"answer","asyncQuestionId":id}).to_string(),
+		})
+		.await
+		.unwrap();
+	let empty = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[]}}});
+	let (mut reconnected, mut sent, _other) = fixture_with_history(empty).await;
+	reconnected.store = chief.store.clone();
+	reconnected.store.queue_chief_async_reconnection().await.unwrap();
+	reconnected.recover_async_questions().await.unwrap();
+	assert!(reconnected.store.read_chief_async_questions("chief".into()).await.unwrap().is_empty());
+	assert!(!reconnected.store.chief_async_questions_recovering("chief".into()).await.unwrap());
+	assert_eq!(
+		reconnected.store.get_chief_inbox_event(queued.id).await.unwrap().disposition,
+		Some(ChiefDisposition::Resolved)
+	);
+	while let Ok(request) = sent.try_recv() {
+		assert_eq!(request["method"], "thread/read");
+	}
+}
+
+#[tokio::test]
+async fn async_revert_marker_survives_reopen_and_preserves_uncertain_deliveries() {
+	let (mut chief, mut sent, directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let mut ids = Vec::new();
+	for kind in ["unsent", "unknown", "accepted", "ordinary"] {
+		let event = chief
+			.store
+			.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id: format!("revert-{kind}"),
+				work_item_id: "chief".into(),
+				event_kind: if kind == "ordinary" {
+					"user_message"
+				} else {
+					"async_question_answer"
+				}
+				.into(),
+				payload: json!({"text":"answer","asyncQuestionId":"q"}).to_string(),
+			})
+			.await
+			.unwrap();
+		ids.push(event.id);
+	}
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	let db = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+	db.execute(
+		"UPDATE chief_inbox_events SET delivered_turn_id='',delivery_work_item_id='chief' WHERE id=?1",
+		[ids[1]],
+	)
+	.unwrap();
+	db.execute(
+		"UPDATE chief_inbox_events SET delivered_turn_id='accepted-turn',delivery_work_item_id='chief' WHERE id=?1",
+		[ids[2]],
+	)
+	.unwrap();
+	drop(db);
+	chief.store.queue_chief_async_revert("unrelated".into()).await.unwrap();
+	assert!(chief.store.get_chief_inbox_event(ids[0]).await.unwrap().disposition.is_none());
+	chief.store.queue_chief_async_revert("opaque thread/1".into()).await.unwrap();
+	let reopened = SqliteStore::open(&root.paths()).unwrap();
+	assert!(reopened.chief_async_questions_recovering("chief".into()).await.unwrap());
+	assert_eq!(
+		reopened.get_chief_inbox_event(ids[0]).await.unwrap().disposition,
+		Some(ChiefDisposition::Resolved)
+	);
+	for id in &ids[1..] {
+		assert!(reopened.get_chief_inbox_event(*id).await.unwrap().disposition.is_none());
+	}
+	assert_eq!(
+		reopened.get_chief_inbox_event(ids[1]).await.unwrap().delivered_turn_id.as_deref(),
+		Some("")
+	);
+	assert!(reopened.chief_async_answer_pending("chief".into(), "q".into()).await.unwrap());
+	reopened
+		.request_chief_async_recovery("opaque thread/1".into(), "new-prompt".into())
+		.await
+		.unwrap();
+	assert!(
+		!reopened
+			.replace_chief_async_projection(
+				"chief".into(),
+				"opaque thread/1".into(),
+				None,
+				vec![],
+				vec![]
+			)
+			.await
+			.unwrap()
+	);
+	assert!(reopened.chief_async_questions_recovering("chief".into()).await.unwrap());
+	assert!(sent.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn incomplete_async_recovery_hides_cards_until_a_later_complete_read() {
 	let bad =
 		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","historyMode":"unknown"}}});
