@@ -537,6 +537,7 @@ impl SqliteStore {
 			if work.dispatch_state != ChiefDispatchState::Running || work.active_turn_id.as_deref() != Some(&turn) {
 				return Err(DatabaseError::Conflict.into());
 			}
+			crate::chief_task_references::validate_references(&tx, &payload)?;
 			let source = serde_json::json!(["user_steer", id, key]).to_string();
 			tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'steer_pending',?3,?4,?2,?5)",params![source,id,payload,unix_micros()?,turn]).map_err(sqlite_error)?;
 			let event = tx.last_insert_rowid();
@@ -778,6 +779,7 @@ impl SqliteStore {
 				} else { Err(StoreError::IdempotencyConflict) };
 			}
 			if !work_exists(&transaction, &input.work_item_id)? { return Err(DatabaseError::NotFound.into()); }
+			if input.event_kind == "user_message" { crate::chief_task_references::validate_references(&transaction, &input.payload)?; }
             if input.event_kind == "user_message" && transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_misalignment m JOIN chief_work_items w ON w.id=m.work_id AND w.codex_thread_id=m.thread_id WHERE m.work_id=?1)",[&input.work_item_id],|row|row.get::<_,bool>(0)).map_err(sqlite_error)? { return Err(StoreError::InvalidInput("conversation paused for provider findings")); }
 
 			let now = unix_micros()?;
@@ -1205,6 +1207,7 @@ fn event_row(row: &Row<'_>) -> rusqlite::Result<ChiefInboxEvent> {
 mod tests {
 	mod activity;
 	mod inbox_carryover;
+	mod task_references;
 	use super::*;
 	use tempfile::tempdir;
 

@@ -109,11 +109,14 @@ impl ChiefSurface {
 			let previous = self.composer_manager.clone().or_else(|| self.root_id());
 			if previous.as_deref() != Some(id) {
 				if let Some(previous) = previous {
+					self.task_reference_drafts
+						.insert(previous.clone(), std::mem::take(&mut self.task_references));
 					self.attachment_drafts
 						.insert(previous.clone(), std::mem::take(&mut self.attachments));
 					self.manager_drafts.insert(previous, self.composer.read(cx).content().into());
 				}
 				self.attachments = self.attachment_drafts.remove(id).unwrap_or_default();
+				self.task_references = self.task_reference_drafts.remove(id).unwrap_or_default();
 				self.composer_menu = None;
 				let draft = self.manager_drafts.get(id).cloned().unwrap_or_default();
 				self.composer.update(cx, |input, cx| {
@@ -1152,6 +1155,7 @@ impl ChiefSurface {
                     }
 				}
 			},
+			"task-references" => self.visual_task_references(),
 			"conversation" => {
 				self.graph_visible = false;
 				self.timeline_visible = false;

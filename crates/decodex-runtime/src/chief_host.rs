@@ -623,10 +623,11 @@ impl ChiefHost {
 
 			ChiefActionDto::StartConfigured { .. } | ChiefActionDto::SendConfigured { .. } =>
 				unreachable!("normalized input"),
-			ChiefActionDto::Steer { work_id, turn_id, text, attachments } => {
+			ChiefActionDto::Steer { work_id, turn_id, text, attachments, task_references } => {
 				validate_attachments(&attachments)?;
 				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
-				chief.steer_work(work_id.as_str(),turn_id.as_str(),&key,text.as_str(),&attachments).await.map_err(|error| match error {
+				chief.steer_work_with_references(work_id.as_str(),turn_id.as_str(),&key,text.as_str(),crate::chief::ChiefInputExtras { attachments: &attachments, task_references: &task_references }).await.map_err(|error| match error {
+					ChiefError::Rejected(_) => ChiefHostError::Rejected("Task references could not be accepted in this turn. Your draft is preserved; refresh the task and its selected references."),
 					ChiefError::Invalid(ref message) if message.starts_with("The running turn changed") || message.starts_with("Steer was rejected:") => ChiefHostError::Rejected("The running turn changed or rejected this input. Your draft is preserved; refresh before sending again."),
 					_ => ChiefHostError::Unknown("Steer acceptance could not be confirmed. Inspect the conversation before sending again."),
 				})?;
@@ -1015,18 +1016,28 @@ fn normalize_input(
 	action: ChiefActionDto,
 ) -> Result<(ChiefActionDto, Option<serde_json::Value>), ChiefHostError> {
 	let normalized = match action {
-		ChiefActionDto::StartConfigured { start, execution, attachments } => {
+		ChiefActionDto::StartConfigured { start, execution, attachments, task_references } => {
 			validate_attachments(&attachments)?;
 			(
 				ChiefActionDto::Start(start),
-				Some(json!({"execution":execution,"attachments":attachments})),
+				Some(
+					json!({"execution":execution,"attachments":attachments,"taskReferences":task_references}),
+				),
 			)
 		},
-		ChiefActionDto::SendConfigured { root_id, text, execution, attachments } => {
+		ChiefActionDto::SendConfigured {
+			root_id,
+			text,
+			execution,
+			attachments,
+			task_references,
+		} => {
 			validate_attachments(&attachments)?;
 			(
 				ChiefActionDto::Send { root_id, text },
-				Some(json!({"execution":execution,"attachments":attachments})),
+				Some(
+					json!({"execution":execution,"attachments":attachments,"taskReferences":task_references}),
+				),
 			)
 		},
 		other => (other, None),

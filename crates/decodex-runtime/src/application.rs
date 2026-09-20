@@ -4159,6 +4159,9 @@ fn render_chief_history(
 			text.push_str("\n\nDisposition: ");
 			text.push_str(note);
 		}
+		if event.event_kind == "user_message" {
+			append_task_reference_labels(&mut text, &value);
+		}
 		let activity_cost = if kind == "activity" { event.payload.len() } else { 0 };
 		if serde_json::to_vec(&text).map_or(usize::MAX, |encoded| encoded.len())
 			+ 160 + activity_cost
@@ -4196,6 +4199,50 @@ fn render_chief_history(
 		None
 	};
 	RenderedChiefHistory { entries, has_more, next_before }
+}
+
+fn append_task_reference_labels(text: &mut String, value: &serde_json::Value) {
+	let Ok(references) = serde_json::from_value::<Vec<decodex_protocol::ChiefTaskReferenceDto>>(
+		value.pointer("/options/taskReferences").cloned().unwrap_or(serde_json::Value::Null),
+	) else {
+		return;
+	};
+	if references.is_empty() {
+		return;
+	}
+	text.push_str("\n\nReferenced tasks: ");
+	for (index, reference) in references.iter().take(16).enumerate() {
+		if index > 0 {
+			text.push_str(", ");
+		}
+		text.push('@');
+		for character in reference.title.as_str().chars().take(160) {
+			if character.is_ascii_punctuation() {
+				text.push('\\');
+			}
+			text.push(if character.is_control() { ' ' } else { character });
+		}
+	}
+}
+
+#[cfg(test)]
+mod task_reference_display_tests {
+	#[test]
+	fn referenced_titles_are_literal_history_data_and_empty_options_leave_text_alone() {
+		let mut text = "Prompt".to_owned();
+		super::append_task_reference_labels(
+			&mut text,
+			&serde_json::json!({"options":{"taskReferences":[
+				{"workId":"target","threadId":"thread","title":"[Title](https://example.test)\nnext"}
+			]}}),
+		);
+		assert!(text.starts_with("Prompt\n\nReferenced tasks: @"));
+		assert!(text.contains("\\[Title\\]"));
+		assert!(!text.contains(")\nnext"));
+		let before = text.clone();
+		super::append_task_reference_labels(&mut text, &serde_json::json!({}));
+		assert_eq!(text, before);
+	}
 }
 
 fn chief_history_entry(
