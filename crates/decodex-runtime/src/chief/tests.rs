@@ -1557,6 +1557,38 @@ async fn native_activity_notifications_reach_history_without_agent_delivery() {
 }
 
 #[tokio::test]
+async fn native_revert_retires_exact_thread_requests_without_replies_or_replay() {
+	let (mut chief, mut sent, _directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let id = RequestId::Number(73);
+	chief.handle_event(ServerEvent::Request { id: id.clone(), method: "item/commandExecution/requestApproval".into(), params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"item","command":"pwd"}) }).await.unwrap();
+	let event_id = chief.pending_requests[&id];
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "thread/reverted".into(),
+			params: json!({"threadId":"other"}),
+		})
+		.await
+		.unwrap();
+	assert!(chief.pending_requests.contains_key(&id));
+	for _ in 0..2 {
+		chief
+			.handle_event(ServerEvent::Notification {
+				method: "thread/reverted".into(),
+				params: json!({"threadId":"opaque thread/1"}),
+			})
+			.await
+			.unwrap();
+	}
+	assert!(!chief.pending_requests.contains_key(&id));
+	let event = chief.store.get_chief_inbox_event(event_id).await.unwrap();
+	assert_eq!(event.disposition, Some(ChiefDisposition::Resolved));
+	assert!(chief.respond_pending_event(event_id, json!({"decision":"accept"})).await.is_err());
+	assert!(sent.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn native_request_resolution_requires_exact_thread_and_request_identity() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;
 	coordinator.start_chief("chief", "Coordinate").await.unwrap();

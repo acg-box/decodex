@@ -231,6 +231,7 @@ async fn qualify_media(
 				Some(crate::chief_usage_estimate::Source {
 					client,
 					key: crate::chief_usage_estimate::SourceKey {
+						history_revision: 0,
 						generation: decodex_core::ProcessGenerationId::new(
 							"10000000-0000-4000-8000-000000000002",
 						)
