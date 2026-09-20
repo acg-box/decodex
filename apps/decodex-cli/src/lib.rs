@@ -439,7 +439,6 @@ fn component_name(component: DoctorComponent) -> &'static str {
 		DoctorComponent::ServerIdentity => "server_identity",
 		DoctorComponent::SharedCodexHome => "shared_codex_home",
 		DoctorComponent::AppServerCapability(capability) => capability_name(capability),
-		DoctorComponent::ManagedRepository => "managed_repository",
 		DoctorComponent::BlobIntegrity => "blob_integrity",
 		DoctorComponent::CredentialVault => "credential_vault",
 		DoctorComponent::PluginReadiness => "plugin_readiness",
@@ -659,7 +658,7 @@ mod tests {
 			&report,
 		);
 
-		assert!(output.text().contains("17 ready, 1 unavailable, 1 unknown"));
+		assert!(output.text().contains("16 ready, 1 unavailable, 1 unknown"));
 		assert!(output.text().contains("product_store=unavailable(database_unreachable)"));
 		assert!(output.text().contains("conversation=unknown(not_probed)"));
 	}

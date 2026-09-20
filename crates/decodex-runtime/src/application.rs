@@ -80,7 +80,6 @@ use crate::{
 		ConversationTerminalState, CreateConversation, RecoverConversation, SubmitConversationTurn,
 	},
 	domain_packs,
-	managed_repository_runtime::ManagedRepositoryCapability,
 	routing_orchestration::{ExecutionCoordinator, RoutingSuccessorExecutionCommand},
 };
 
@@ -285,7 +284,6 @@ impl ProductState for ProductStore {
 pub(crate) struct ServiceApplication {
 	chief: Option<crate::chief_host::ChiefHost>,
 	store: ProductStore,
-	_managed_repositories: ManagedRepositoryCapability,
 	process_generations: Option<ProcessGenerationControl>,
 	provider_attempts: Option<ProviderAttemptControl>,
 	_codex: CodexAdapter,
@@ -299,10 +297,8 @@ pub(crate) struct ServiceApplication {
 	doctor: DoctorReport,
 }
 impl ServiceApplication {
-	#[allow(clippy::too_many_arguments)] // Composition keeps each independently owned runtime capability explicit.
 	pub(crate) fn new(
 		store: ProductStore,
-		managed_repositories: ManagedRepositoryCapability,
 		process_generations: Option<ProcessGenerationControl>,
 		provider_attempts: Option<ProviderAttemptControl>,
 		codex: CodexAdapter,
@@ -319,7 +315,6 @@ impl ServiceApplication {
 		Self {
 			chief,
 			store,
-			_managed_repositories: managed_repositories,
 			process_generations,
 			provider_attempts,
 			_codex: codex,

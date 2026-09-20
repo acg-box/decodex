@@ -27,10 +27,7 @@ mod chief_voice;
 mod conversation;
 mod dictation;
 mod domain_packs;
-#[expect(dead_code, reason = "sealed until the accepted GitHub-effect composition owner")]
-pub(crate) mod github_effects;
 mod host_credentials;
-#[path = "managed_repository_disabled.rs"] mod managed_repository_runtime;
 mod mcp_login;
 mod native_config_warning;
 mod process_platform;
@@ -54,9 +51,6 @@ pub use decodex_protocol::ServerId;
 pub use host_credentials::{
 	CredentialSecretBundle, CredentialStoreError, HostCredentialStore, SqliteCredentialStore,
 	StoredCredential,
-};
-pub use managed_repository_runtime::{
-	ManagedRepositoryReadiness, ManagedRepositoryUnavailableReason,
 };
 pub use process_supervisor::{
 	ProcessGenerationControl, ProcessGenerationDiagnostic, ProcessGenerationExitWitnessKind,

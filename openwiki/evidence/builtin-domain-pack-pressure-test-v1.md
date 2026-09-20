@@ -12,6 +12,11 @@ openwiki:
   validation_commands: [python3 scripts/vnext/local_database_gate.py, python3 -m unittest tests/scripts/test_vnext_architecture.py, cargo test -p decodex-protocol -p decodex-database -p decodex-runtime, DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo test -p decodex-gpui --features visual-capture, DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo test -p decodex-gpui --bin decodex-gpui --features visual-capture client_lifecycle::tests::live_daemon_completes_the_builtin_domain_pack_pressure_test -- --ignored --exact --nocapture]
 ---
 
+> Historical evidence only. Recorded capability names and wire tags describe the
+> captured revision, not current functionality. The repository-management and
+> built-in PR/check-run layers have since been removed.
+
+
 # Built-in Domain Pack Pressure Test V1 Evidence
 
 Status: implemented, locally verified, and live dogfooded.

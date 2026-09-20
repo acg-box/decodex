@@ -88,6 +88,7 @@ MIGRATIONS = (
     (25, "chief_async_questions", ROOT / "database/migrations/0025_chief_async_questions.sql"),
     (26, "chief_misalignment", ROOT / "database/migrations/0026_chief_misalignment.sql"),
     (27, "chief_guardian_reviews", ROOT / "database/migrations/0027_chief_guardian_reviews.sql"),
+    (28, "conversation_service_tier", ROOT / "database/migrations/0028_conversation_service_tier.sql"),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831

@@ -20,9 +20,6 @@ use crate::{
 	account_service::{AccountService, OpenAiCredentialRefresher},
 	application::{ProductStore, ProductStoreUnavailableReason, ServiceApplication},
 	conversation::{ConversationCapability, ConversationReadiness, ConversationRuntime},
-	managed_repository_runtime::{
-		ManagedRepositoryCapability, ManagedRepositoryReadiness, ManagedRepositoryUnavailableReason,
-	},
 	process_supervisor::{
 		ProcessGenerationControl, ProcessGenerationReadiness, ProcessSupervisorError,
 	},
@@ -75,7 +72,6 @@ impl std::error::Error for LocalDatabaseError {}
 pub struct ServiceBootstrap {
 	server_id: ServerId,
 	store: ProductStore,
-	managed_repositories: ManagedRepositoryCapability,
 	process_generations: Option<ProcessGenerationControl>,
 	process_generation_readiness: ProcessGenerationReadiness,
 	provider_attempts: Option<ProviderAttemptControl>,
@@ -105,11 +101,6 @@ impl ServiceBootstrap {
 	/// Product-state availability retained by the daemon application owner.
 	pub fn product_state_availability(&self) -> Availability {
 		self.store.availability()
-	}
-
-	/// Managed-repository readiness after executor verification and bounded restart reconciliation.
-	pub const fn managed_repository_readiness(&self) -> ManagedRepositoryReadiness {
-		self.managed_repositories.readiness()
 	}
 
 	/// Return the independent immutable Conversation startup projection.
@@ -142,7 +133,6 @@ impl ServiceBootstrap {
 		let Self {
 			server_id,
 			store,
-			managed_repositories,
 			process_generations,
 			process_generation_readiness: _,
 			provider_attempts,
@@ -181,7 +171,6 @@ impl ServiceBootstrap {
 			server_id,
 			ServiceApplication::new(
 				store,
-				managed_repositories,
 				process_generations,
 				provider_attempts,
 				CodexAdapter::unavailable(),
@@ -205,7 +194,6 @@ struct DoctorInputs {
 	conversation: DoctorStatus,
 	server_identity: DoctorStatus,
 	shared_home: DoctorStatus,
-	managed_repository: DoctorStatus,
 	blob_integrity: DoctorStatus,
 	vault: DoctorStatus,
 }
@@ -265,10 +253,6 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 	};
 
 	bootstrap_with_authority(paths, loaded, config_status, listener).await
-}
-
-fn bootstrap_managed_repositories() -> ManagedRepositoryCapability {
-	ManagedRepositoryCapability::Disabled
 }
 
 #[cfg(target_os = "macos")]
@@ -384,8 +368,6 @@ async fn bootstrap_with_authority(
 		},
 		None => (None, ProviderAttemptReadiness::ProductStateUnavailable),
 	};
-	let managed_repositories = bootstrap_managed_repositories();
-	let managed_repository = managed_repository_doctor(&managed_repositories);
 	#[cfg(target_os = "macos")]
 	let (accounts, account_profiles, account_api, reset_cards, conversation_launch_profile) =
 		match sqlite.clone() {
@@ -430,7 +412,6 @@ async fn bootstrap_with_authority(
 			conversation,
 			server_identity: identity_status,
 			shared_home,
-			managed_repository,
 			blob_integrity,
 			vault,
 		},
@@ -439,7 +420,6 @@ async fn bootstrap_with_authority(
 	ServiceBootstrap {
 		server_id,
 		store,
-		managed_repositories,
 		process_generations,
 		process_generation_readiness,
 		provider_attempts,
@@ -544,8 +524,6 @@ fn bootstrap_without_authority(
 	product_store: DoctorStatus,
 ) -> ServiceBootstrap {
 	let server_id = unavailable_server_id();
-	let managed_repositories =
-		ManagedRepositoryCapability::unavailable(ManagedRepositoryUnavailableReason::ProductStore);
 	let conversations =
 		ConversationCapability::Unavailable(ConversationUnavailableReason::ProductState);
 	let doctor = doctor_report(
@@ -556,7 +534,6 @@ fn bootstrap_without_authority(
 			conversation: conversation_doctor(&conversations),
 			server_identity: DoctorStatus::Unknown(DoctorIssue::NotProbed),
 			shared_home: DoctorStatus::Unknown(DoctorIssue::NotProbed),
-			managed_repository: managed_repository_doctor(&managed_repositories),
 			blob_integrity: DoctorStatus::Unknown(DoctorIssue::NotProbed),
 			vault: DoctorStatus::Unknown(DoctorIssue::NotProbed),
 		},
@@ -565,7 +542,6 @@ fn bootstrap_without_authority(
 	ServiceBootstrap {
 		server_id,
 		store: ProductStore::Unavailable(ProductStoreUnavailableReason::Configuration),
-		managed_repositories,
 		process_generations: None,
 		process_generation_readiness: ProcessGenerationReadiness::ProductStateUnavailable,
 		provider_attempts: None,
@@ -583,8 +559,6 @@ fn bootstrap_without_authority(
 
 fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 	let server_id = unavailable_server_id();
-	let managed_repositories =
-		ManagedRepositoryCapability::unavailable(ManagedRepositoryUnavailableReason::ProductStore);
 	let conversations =
 		ConversationCapability::Unavailable(ConversationUnavailableReason::ProductState);
 	let doctor = doctor_report(
@@ -595,7 +569,6 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 			conversation: conversation_doctor(&conversations),
 			server_identity: DoctorStatus::Unavailable(DoctorIssue::ServerIdentityUnavailable),
 			shared_home: DoctorStatus::Unknown(DoctorIssue::NotProbed),
-			managed_repository: managed_repository_doctor(&managed_repositories),
 			blob_integrity: DoctorStatus::Unavailable(DoctorIssue::Integrity),
 			vault: DoctorStatus::Unknown(DoctorIssue::Authentication),
 		},
@@ -604,7 +577,6 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 	ServiceBootstrap {
 		server_id,
 		store: ProductStore::Unavailable(ProductStoreUnavailableReason::Configuration),
-		managed_repositories,
 		process_generations: None,
 		process_generation_readiness: ProcessGenerationReadiness::ProductStateUnavailable,
 		provider_attempts: None,
@@ -617,21 +589,6 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		conversations,
 		doctor,
 		daemon_authority: Err(LocalTransportRefusal::ConfigurationUnavailable),
-	}
-}
-
-fn managed_repository_doctor(capability: &ManagedRepositoryCapability) -> DoctorStatus {
-	match capability.readiness() {
-		ManagedRepositoryReadiness::Ready => DoctorStatus::Ready,
-		ManagedRepositoryReadiness::Disabled => DoctorStatus::Unavailable(DoctorIssue::Disabled),
-		ManagedRepositoryReadiness::Unavailable(
-			ManagedRepositoryUnavailableReason::ProductStore,
-		) => DoctorStatus::Unavailable(DoctorIssue::DatabaseNotConfigured),
-		ManagedRepositoryReadiness::Unavailable(
-			ManagedRepositoryUnavailableReason::Executor
-			| ManagedRepositoryUnavailableReason::Reconciliation
-			| ManagedRepositoryUnavailableReason::RestartWorkResidual,
-		) => DoctorStatus::Unavailable(DoctorIssue::Integrity),
 	}
 }
 
@@ -665,7 +622,6 @@ fn doctor_report(server_id: ServerId, inputs: DoctorInputs) -> DoctorReport {
 		DoctorCheck::new(DoctorComponent::ProtocolVersion, DoctorStatus::Ready),
 		DoctorCheck::new(DoctorComponent::ServerIdentity, inputs.server_identity),
 		DoctorCheck::new(DoctorComponent::SharedCodexHome, inputs.shared_home),
-		DoctorCheck::new(DoctorComponent::ManagedRepository, inputs.managed_repository),
 		DoctorCheck::new(DoctorComponent::BlobIntegrity, inputs.blob_integrity),
 		DoctorCheck::new(DoctorComponent::CredentialVault, inputs.vault),
 		DoctorCheck::new(
