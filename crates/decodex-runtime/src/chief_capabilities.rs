@@ -10,9 +10,8 @@ pub(crate) async fn read(client: &AppServerClient) -> ChiefCapabilitiesResult {
 }
 
 async fn read_inner(client: &AppServerClient) -> ChiefCapabilitiesResult {
-	let mut models = Vec::new();
+	let mut catalog = ModelCatalogPages::default();
 	let mut cursor = Value::Null;
-	let mut seen = std::collections::HashSet::new();
 	for _ in 0..8 {
 		let Ok(page) = client
 			.request("model/list", json!({"limit":100,"includeHidden":false,"cursor":cursor}))
@@ -20,37 +19,61 @@ async fn read_inner(client: &AppServerClient) -> ChiefCapabilitiesResult {
 		else {
 			return ChiefCapabilitiesResult::Unavailable;
 		};
-		let Some(entries) = page["data"].as_array() else {
-			return ChiefCapabilitiesResult::Unavailable;
-		};
+		match catalog.push(&page) {
+			Ok(Some(next)) => cursor = json!(next),
+			Ok(None) =>
+				return ChiefCapabilitiesResult::Available {
+					models: catalog.models,
+					memory_enabled: memory_feature(client).await,
+				},
+			Err(()) => return ChiefCapabilitiesResult::Unavailable,
+		}
+	}
+	ChiefCapabilitiesResult::Unavailable
+}
+
+/// Shared model-page projection for retained Chief and ordinary process transports.
+#[derive(Default)]
+pub(crate) struct ModelCatalogPages {
+	pub models: Vec<ChiefModelDto>,
+	seen: std::collections::HashSet<String>,
+	pages: usize,
+	complete: bool,
+}
+
+impl ModelCatalogPages {
+	/// Keep incomplete catalogs unavailable, including repeated cursors and identities.
+	pub fn push(&mut self, page: &Value) -> Result<Option<String>, ()> {
+		if self.complete || self.pages >= 8 {
+			return Err(());
+		}
+		self.pages += 1;
+		let entries = page["data"].as_array().filter(|entries| entries.len() <= 100).ok_or(())?;
 		for entry in entries {
 			if entry["hidden"] == true {
 				continue;
 			}
-			let Some(model) = project_model(entry) else {
-				return ChiefCapabilitiesResult::Unavailable;
-			};
-			if models.iter().any(|known: &ChiefModelDto| known.model == model.model) {
-				return ChiefCapabilitiesResult::Unavailable;
+			let model = project_model(entry).ok_or(())?;
+			if self.models.len() >= 100
+				|| self.models.iter().any(|known| known.model == model.model)
+			{
+				return Err(());
 			}
-			models.push(model);
-			if models.len() > 100 {
-				return ChiefCapabilitiesResult::Unavailable;
-			}
+			self.models.push(model);
 		}
-		cursor = page["nextCursor"].clone();
-		if cursor.is_null() {
-			let memory_enabled = memory_feature(client).await;
-			return ChiefCapabilitiesResult::Available { models, memory_enabled };
+		if page["nextCursor"].is_null() {
+			self.complete = true;
+			return Ok(None);
 		}
-		let Some(next) = cursor.as_str() else {
-			return ChiefCapabilitiesResult::Unavailable;
-		};
-		if next.len() > 4096 || !seen.insert(next.to_owned()) {
-			return ChiefCapabilitiesResult::Unavailable;
+		let next = page["nextCursor"]
+			.as_str()
+			.filter(|next| !next.is_empty() && next.len() <= 4096)
+			.ok_or(())?;
+		if !self.seen.insert(next.into()) {
+			return Err(());
 		}
+		Ok(Some(next.into()))
 	}
-	ChiefCapabilitiesResult::Unavailable
 }
 
 async fn memory_feature(client: &AppServerClient) -> Option<bool> {
@@ -92,12 +115,51 @@ fn project_model(value: &Value) -> Option<ChiefModelDto> {
 	let default_effort = serde_json::from_value(value["defaultReasoningEffort"].clone())
 		.ok()
 		.filter(|effort| efforts.contains(effort));
-	let supports_fast = value["serviceTiers"]
-		.as_array()
-		.is_some_and(|tiers| tiers.iter().any(|tier| tier["id"] == "priority"))
-		|| value["additionalSpeedTiers"]
+	let mut service_tiers = Vec::new();
+	if !value["serviceTiers"].is_null() {
+		let tiers = value["serviceTiers"].as_array().filter(|tiers| tiers.len() <= 32)?;
+		for tier in tiers {
+			let id = decodex_core::ServiceTier::new(tier["id"].as_str()?).ok()?;
+			if service_tiers
+				.iter()
+				.any(|known: &decodex_protocol::ChiefServiceTierDto| known.id == id)
+			{
+				return None;
+			}
+			let name = tier["name"].as_str().unwrap_or(id.as_str());
+			let description = tier["description"].as_str().unwrap_or("");
+			if name.is_empty()
+				|| name.len() > 256
+				|| name.chars().any(char::is_control)
+				|| description.len() > 2048
+				|| description.chars().any(|c| c.is_control() && c != '\n')
+			{
+				return None;
+			}
+			service_tiers.push(decodex_protocol::ChiefServiceTierDto {
+				name: name.into(),
+				description: description.into(),
+				id,
+			});
+		}
+	}
+	if service_tiers.is_empty()
+		&& value["additionalSpeedTiers"]
 			.as_array()
-			.is_some_and(|tiers| tiers.iter().any(|tier| tier == "fast" || tier == "priority"));
+			.is_some_and(|tiers| tiers.iter().any(|tier| tier == "fast" || tier == "priority"))
+	{
+		service_tiers.push(decodex_protocol::ChiefServiceTierDto {
+			id: decodex_core::ServiceTier::from_fast(true),
+			name: "Fast".into(),
+			description: String::new(),
+		});
+	}
+	let default_service_tier = if value["defaultServiceTier"].is_null() {
+		None
+	} else {
+		Some(decodex_core::ServiceTier::new(value["defaultServiceTier"].as_str()?).ok()?)
+	};
+	let supports_fast = service_tiers.iter().any(|tier| tier.id.as_str() == "priority");
 	let supports_images = value["inputModalities"]
 		.as_array()
 		.is_none_or(|modes| modes.iter().any(|mode| mode == "image"));
@@ -122,6 +184,8 @@ fn project_model(value: &Value) -> Option<ChiefModelDto> {
 		efforts,
 		default_effort,
 		supports_fast,
+		service_tiers,
+		default_service_tier,
 		supports_images,
 		availability: notice(&value["availabilityNux"]["message"]),
 		upgrade,
@@ -131,6 +195,28 @@ fn project_model(value: &Value) -> Option<ChiefModelDto> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn shared_catalog_rejects_partial_repeated_and_oversized_pages() {
+		let model = json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[],"defaultReasoningEffort":"high"});
+		let mut pages = ModelCatalogPages::default();
+		assert_eq!(
+			pages.push(&json!({"data":[model.clone()],"nextCursor":"next"})),
+			Ok(Some("next".into()))
+		);
+		assert!(pages.push(&json!({"data":[model.clone()],"nextCursor":null})).is_err());
+		let mut pages = ModelCatalogPages::default();
+		assert!(pages.push(&json!({"data":[],"nextCursor":"next"})).is_ok());
+		assert!(pages.push(&json!({"data":[],"nextCursor":"next"})).is_err());
+		let mut pages = ModelCatalogPages::default();
+		assert!(pages.push(&json!({"data":vec![model.clone();101],"nextCursor":null})).is_err());
+		let mut pages = ModelCatalogPages::default();
+		let mut hidden = model.clone();
+		hidden["hidden"] = json!(true);
+		assert_eq!(pages.push(&json!({"data":[hidden,model],"nextCursor":null})), Ok(None));
+		assert_eq!(pages.models.len(), 1);
+		assert!(pages.push(&json!({"data":[],"nextCursor":null})).is_err());
+	}
+
 	#[tokio::test]
 	async fn reads_all_pages_without_a_turn_and_projects_only_memory_flag() {
 		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -185,6 +271,25 @@ mod tests {
 		let model = project_model(&value).unwrap();
 		assert!(model.availability.is_none());
 		assert_eq!(model.upgrade.unwrap().model.as_str(), "fallback");
+	}
+
+	#[test]
+	fn catalog_preserves_named_service_tiers_and_default_without_selecting_them() {
+		let mut value = json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[],"defaultReasoningEffort":"high","serviceTiers":[{"id":"priority","name":"Fast","description":"Increased usage"},{"id":"ultrafast","name":"Ultrafast","description":"Latency-sensitive work"}],"defaultServiceTier":"ultrafast"});
+		let projected = project_model(&value).unwrap();
+		assert_eq!(projected.service_tiers.len(), 2);
+		assert_eq!(projected.service_tiers[1].id.as_str(), "ultrafast");
+		assert_eq!(projected.service_tiers[1].description, "Latency-sensitive work");
+		assert_eq!(projected.default_service_tier.unwrap().as_str(), "ultrafast");
+		value["serviceTiers"][1]["id"] = json!("future-tier");
+		assert_eq!(project_model(&value).unwrap().service_tiers[1].id.as_str(), "future-tier");
+		value["serviceTiers"][1]["id"] = json!("priority");
+		assert!(project_model(&value).is_none(), "duplicate tier identities are ambiguous");
+		value["serviceTiers"] = json!([]);
+		value["defaultServiceTier"] = json!("flex");
+		let projected = project_model(&value).unwrap();
+		assert_eq!(projected.default_service_tier.unwrap().as_str(), "flex");
+		assert!(projected.service_tiers.is_empty(), "a default is not an advertised selection");
 	}
 
 	#[test]

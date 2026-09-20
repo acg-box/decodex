@@ -932,6 +932,52 @@ impl AttestedProcessChild {
 		Ok(())
 	}
 
+	/// Read one model page on the existing account-bound transport and retain interleaved events.
+	pub(crate) fn read_ordinary_model_page(
+		&mut self,
+		cursor: Option<&str>,
+	) -> (Result<serde_json::Value, ConversationProcessError>, Vec<ConversationProcessEvent>) {
+		let mut events = Vec::new();
+		let result = (|| {
+			self.require_ordinary_turns_initialized()?;
+			if cursor.is_some_and(|value| value.len() > 4096) {
+				return Err(ConversationProcessError::Incompatible);
+			}
+			let request = self.process.prepare_conversation_request(
+				"model/list",
+				&serde_json::json!({"limit":100,"includeHidden":false,"cursor":cursor}),
+			)?;
+			self.process
+				.conversation_request_buffered(
+					request,
+					self.timeout.min(Duration::from_secs(8)),
+					false,
+					&mut events,
+					|bytes| {
+						serde_json::from_slice(bytes).map_err(|_| {
+							decodex_codex::ConversationContractError::MalformedResponse
+						})
+					},
+				)
+				.map(|result| result.value)
+		})();
+		(result, events)
+	}
+
+	/// Retain events received by an idle metadata query for the existing event consumer.
+	pub(crate) fn retain_ordinary_events(
+		&mut self,
+		events: Vec<ConversationProcessEvent>,
+	) -> Result<(), ConversationProcessError> {
+		if self.process.deferred_conversation_events.len() + events.len()
+			> MAX_CONVERSATION_BUFFERED_EVENTS
+		{
+			return Err(ConversationProcessError::Incompatible);
+		}
+		self.process.deferred_conversation_events.extend(events);
+		Ok(())
+	}
+
 	/// Reserve the exact `thread/start` frame before its durable fence is committed.
 	pub(crate) fn prepare_ordinary_thread_start(
 		&mut self,
@@ -1405,6 +1451,7 @@ pub(super) struct SupervisedProcess {
 	chief_retained: bool,
 	chief_bridge: Option<super::chief_process::ChiefProcessBridge>,
 	config_warnings: Vec<serde_json::Value>,
+	deferred_conversation_events: std::collections::VecDeque<ConversationProcessEvent>,
 }
 impl SupervisedProcess {
 	#[cfg(test)]
@@ -1473,6 +1520,7 @@ impl SupervisedProcess {
 			chief_retained: false,
 			chief_bridge: None,
 			config_warnings: Vec::new(),
+			deferred_conversation_events: Default::default(),
 		})
 	}
 
@@ -1505,6 +1553,7 @@ impl SupervisedProcess {
 			chief_retained: false,
 			chief_bridge: None,
 			config_warnings: Vec::new(),
+			deferred_conversation_events: Default::default(),
 		})
 	}
 
@@ -1718,6 +1767,26 @@ impl SupervisedProcess {
 		invalid_response_is_ambiguous: bool,
 		decode: impl FnOnce(&[u8]) -> Result<R, decodex_codex::ConversationContractError>,
 	) -> Result<ConversationProcessSuccess<R>, ConversationProcessError> {
+		let mut events = Vec::new();
+		let mut result = self.conversation_request_buffered(
+			prepared,
+			timeout,
+			invalid_response_is_ambiguous,
+			&mut events,
+			decode,
+		)?;
+		result.events = events;
+		Ok(result)
+	}
+
+	fn conversation_request_buffered<R>(
+		&mut self,
+		prepared: PreparedConversationRequest,
+		timeout: Duration,
+		invalid_response_is_ambiguous: bool,
+		events: &mut Vec<ConversationProcessEvent>,
+		decode: impl FnOnce(&[u8]) -> Result<R, decodex_codex::ConversationContractError>,
+	) -> Result<ConversationProcessSuccess<R>, ConversationProcessError> {
 		let PreparedConversationRequest { request_id, request_sha256, frame } = prepared;
 		let request_id_u64 =
 			u64::try_from(request_id).map_err(|_| ConversationProcessError::Incompatible)?;
@@ -1739,7 +1808,6 @@ impl SupervisedProcess {
 		self.stdin.flush().map_err(|_| ambiguous())?;
 
 		let deadline = Instant::now() + timeout;
-		let mut events = Vec::new();
 		loop {
 			let remaining = deadline.saturating_duration_since(Instant::now());
 			if remaining.is_zero() {
@@ -1786,7 +1854,7 @@ impl SupervisedProcess {
 									.map_err(|_| invalid_response())?,
 								response_sha256: witness_digest,
 							},
-							events,
+							events: Vec::new(),
 						})
 					},
 					(None, Some(_)) => Err(ConversationProcessError::Rejected { witness_digest }),
@@ -1818,6 +1886,9 @@ impl SupervisedProcess {
 		&mut self,
 		wait: Duration,
 	) -> Result<Option<ConversationProcessEvent>, ConversationProcessError> {
+		if let Some(event) = self.deferred_conversation_events.pop_front() {
+			return Ok(Some(event));
+		}
 		let line = match self.stdout.recv_timeout(wait) {
 			Ok(line) => line.into_contiguous(),
 			Err(RecvTimeoutError::Timeout) => return Ok(None),
@@ -1833,7 +1904,10 @@ impl SupervisedProcess {
 				.map_err(|_| ConversationProcessError::Unavailable)?;
 			return Ok(None);
 		}
-		if header.id.is_some() {
+		if let Some(id) = header.id {
+			if self.abandoned_request_ids.remove(&id) {
+				return Ok(None);
+			}
 			return Err(ConversationProcessError::Incompatible);
 		}
 		decode_conversation_process_event(&line)
@@ -2339,12 +2413,23 @@ fn decode_conversation_process_event(
 		return Ok(Some(ConversationProcessEvent::MessageDelta(delta)));
 	}
 	match normalize_event(bytes).map_err(|_| ConversationProcessError::Incompatible)? {
-		NormalizedEvent::TurnCompleted { turn_id, status, .. } =>
+		NormalizedEvent::TurnCompleted { status, .. } => {
+			// Display normalization hashes opaque IDs. Runtime correlation must retain
+			// the exact native identity, including when metadata queries collect events.
+			let frame: serde_json::Value = serde_json::from_slice(bytes)
+				.map_err(|_| ConversationProcessError::Incompatible)?;
+			let turn_id = decodex_codex::ExactTurnId::new(
+				frame["params"]["turn"]["id"]
+					.as_str()
+					.ok_or(ConversationProcessError::Incompatible)?,
+			)
+			.map_err(|_| ConversationProcessError::Incompatible)?;
 			Ok(Some(ConversationProcessEvent::TurnCompleted {
 				turn_id: turn_id.as_str().to_owned(),
 				status,
 				witness_digest: hex_digest(&Sha256::digest(bytes)),
-			})),
+			}))
+		},
 		_ => Ok(None),
 	}
 }
@@ -4993,7 +5078,7 @@ fn process_group_exists(_pid: u32) -> Result<bool, SupervisionError> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
 	use std::{
 		env,
 		ffi::{OsStr, OsString},
@@ -7333,6 +7418,64 @@ mod tests {
 			Err(decodex_codex::app_server_client::ClientError::Closed)
 		));
 		child.shutdown().unwrap();
+	}
+
+	pub(crate) fn ordinary_catalog_child(mode: &str) -> (TempDir, super::AttestedProcessChild) {
+		let (temp, process) = initialized_bound_process(mode);
+		let profile = AttestedAppServerProfile::attest_for_test(
+			process.command.clone(),
+			&process.binding.expected_codex_home,
+			Duration::from_secs(2),
+		)
+		.unwrap();
+		(
+			temp,
+			super::AttestedProcessChild {
+				process,
+				build: profile.build,
+				generated: profile.generated,
+				timeout: Duration::from_secs(2),
+				initialized: true,
+			},
+		)
+	}
+
+	#[test]
+	fn timed_out_catalog_keeps_completion_and_discards_its_late_reply() {
+		let (_temp, mut child) = ordinary_catalog_child("exact-catalog-late");
+		child.timeout = Duration::from_millis(20);
+		let (page, events) = child.read_ordinary_model_page(None);
+		assert!(matches!(page, Err(super::ConversationProcessError::Ambiguous { .. })));
+		child.retain_ordinary_events(events).unwrap();
+		assert!(matches!(child.next_ordinary_turn_event(Duration::ZERO).unwrap(),
+			Some(super::ConversationProcessEvent::TurnCompleted { turn_id, .. }) if turn_id == "catalog-turn"));
+		assert!(child.next_ordinary_turn_event(Duration::from_secs(2)).unwrap().is_none());
+		assert!(child.next_ordinary_turn_event(Duration::ZERO).unwrap().is_none());
+		child.shutdown().unwrap();
+	}
+
+	#[test]
+	fn ordinary_model_read_preserves_notifications_and_escaped_catalog_text() {
+		for mode in ["exact", "exact-catalog-rejected"] {
+			let (_temp, mut child) = ordinary_catalog_child(mode);
+			let (page, events) = child.read_ordinary_model_page(None);
+			if mode == "exact" {
+				let page = page.unwrap();
+				assert_eq!(page["data"][0]["displayName"], "Model \"quoted\"");
+				assert_eq!(page["data"][0]["serviceTiers"][0]["id"], "ultrafast");
+			} else {
+				assert!(matches!(page, Err(super::ConversationProcessError::Rejected { .. })));
+			}
+			assert!(
+				matches!(events.as_slice(),[super::ConversationProcessEvent::TurnCompleted{turn_id,..}] if turn_id == "catalog-turn")
+			);
+			child.retain_ordinary_events(events).unwrap();
+			assert!(
+				matches!(child.next_ordinary_turn_event(Duration::ZERO).unwrap(), Some(super::ConversationProcessEvent::TurnCompleted{turn_id,..}) if turn_id == "catalog-turn")
+			);
+			assert!(child.next_ordinary_turn_event(Duration::ZERO).unwrap().is_none());
+			child.shutdown().unwrap();
+		}
 	}
 
 	#[test]

@@ -1903,6 +1903,11 @@ impl Application for ServiceApplication {
 				),
 			QueryPayload::GetConversation { conversation_id } =>
 				QueryResultPayload::Conversation(self.conversation_get(conversation_id).await),
+			QueryPayload::GetConversationCapabilities { conversation_id } =>
+				QueryResultPayload::ConversationCapabilities(match self.conversations.runtime() {
+					Some(runtime) => runtime.model_capabilities(conversation_id.as_str()).await,
+					None => decodex_protocol::ChiefCapabilitiesResult::Unavailable,
+				}),
 			QueryPayload::GetDoctorStatus =>
 				QueryResultPayload::DoctorStatus(self.refreshed_doctor().await),
 			QueryPayload::GetConversationHistory { conversation_id, after, page_size } =>
@@ -2259,6 +2264,7 @@ fn runtime_execution_settings(
 		model: settings.model.as_str().to_owned(),
 		reasoning_effort: settings.reasoning_effort.as_str().to_owned(),
 		fast: settings.fast,
+		service_tier: settings.effective_service_tier(),
 	}
 }
 

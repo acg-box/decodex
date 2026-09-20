@@ -361,7 +361,7 @@ pub struct ConversationThreadStartRequest {
 	model: ConversationModel,
 	cwd: ThreadCwd,
 	developer_instructions: ConversationInstructions,
-	fast: bool,
+	service_tier: decodex_core::ServiceTier,
 }
 impl ConversationThreadStartRequest {
 	/// Accept explicit caller configuration for one durable thread.
@@ -375,13 +375,18 @@ impl ConversationThreadStartRequest {
 			cwd: ThreadCwd::from_protocol(cwd)
 				.map_err(|_| ConversationContractError::InvalidCwd)?,
 			developer_instructions: ConversationInstructions::new(developer_instructions)?,
-			fast: false,
+			service_tier: decodex_core::ServiceTier::standard(),
 		})
 	}
 
 	/// Select request-scoped Codex Fast mode without changing global configuration.
-	pub const fn with_fast(mut self, fast: bool) -> Self {
-		self.fast = fast;
+	pub fn with_fast(self, fast: bool) -> Self {
+		self.with_service_tier(decodex_core::ServiceTier::from_fast(fast))
+	}
+
+	/// Send the exact caller-selected tier without reducing it to a Fast flag.
+	pub fn with_service_tier(mut self, tier: decodex_core::ServiceTier) -> Self {
+		self.service_tier = tier;
 		self
 	}
 
@@ -416,7 +421,7 @@ impl Serialize for ConversationThreadStartRequest {
 		request.serialize_field("cwd", self.cwd.as_str())?;
 		request.serialize_field("developerInstructions", self.developer_instructions.as_str())?;
 		request.serialize_field("ephemeral", &false)?;
-		request.serialize_field("serviceTier", &self.fast.then_some("priority"))?;
+		request.serialize_field("serviceTier", &self.service_tier.thread_value())?;
 		request.end()
 	}
 }
@@ -499,7 +504,7 @@ pub struct ConversationThreadResumeRequest {
 	model: ConversationModel,
 	cwd: ThreadCwd,
 	developer_instructions: ConversationInstructions,
-	fast: bool,
+	service_tier: decodex_core::ServiceTier,
 }
 impl ConversationThreadResumeRequest {
 	/// Accept one exact thread and explicit caller configuration.
@@ -515,13 +520,18 @@ impl ConversationThreadResumeRequest {
 			cwd: ThreadCwd::from_protocol(cwd)
 				.map_err(|_| ConversationContractError::InvalidCwd)?,
 			developer_instructions: ConversationInstructions::new(developer_instructions)?,
-			fast: false,
+			service_tier: decodex_core::ServiceTier::standard(),
 		})
 	}
 
 	/// Select request-scoped Codex Fast mode without changing global configuration.
-	pub const fn with_fast(mut self, fast: bool) -> Self {
-		self.fast = fast;
+	pub fn with_fast(self, fast: bool) -> Self {
+		self.with_service_tier(decodex_core::ServiceTier::from_fast(fast))
+	}
+
+	/// Send the exact caller-selected tier without reducing it to a Fast flag.
+	pub fn with_service_tier(mut self, tier: decodex_core::ServiceTier) -> Self {
+		self.service_tier = tier;
 		self
 	}
 
@@ -562,7 +572,7 @@ impl Serialize for ConversationThreadResumeRequest {
 		request.serialize_field("cwd", self.cwd.as_str())?;
 		request.serialize_field("developerInstructions", self.developer_instructions.as_str())?;
 		request.serialize_field("excludeTurns", &true)?;
-		request.serialize_field("serviceTier", &self.fast.then_some("priority"))?;
+		request.serialize_field("serviceTier", &self.service_tier.thread_value())?;
 		request.end()
 	}
 }
@@ -673,7 +683,7 @@ pub struct ConversationTurnStartRequest {
 	input: ConversationTurnInput,
 	model: ConversationModel,
 	reasoning_effort: ConversationReasoningEffort,
-	fast: bool,
+	service_tier: decodex_core::ServiceTier,
 	client_user_message_id: Option<String>,
 }
 impl ConversationTurnStartRequest {
@@ -689,14 +699,19 @@ impl ConversationTurnStartRequest {
 			input,
 			model: ConversationModel::new(model)?,
 			reasoning_effort: ConversationReasoningEffort::new(reasoning_effort)?,
-			fast: false,
+			service_tier: decodex_core::ServiceTier::standard(),
 			client_user_message_id: None,
 		})
 	}
 
 	/// Select request-scoped Codex Fast mode without changing global configuration.
-	pub const fn with_fast(mut self, fast: bool) -> Self {
-		self.fast = fast;
+	pub fn with_fast(self, fast: bool) -> Self {
+		self.with_service_tier(decodex_core::ServiceTier::from_fast(fast))
+	}
+
+	/// Send the exact caller-selected tier without reducing it to a Fast flag.
+	pub fn with_service_tier(mut self, tier: decodex_core::ServiceTier) -> Self {
+		self.service_tier = tier;
 		self
 	}
 
@@ -739,13 +754,14 @@ impl Serialize for ConversationTurnStartRequest {
 	where
 		S: Serializer,
 	{
-		let mut request = serializer.serialize_struct("ConversationTurnStartRequest", 6)?;
+		let mut request = serializer.serialize_struct("ConversationTurnStartRequest", 7)?;
 
 		request.serialize_field("threadId", self.thread_id.as_str())?;
 		request.serialize_field("input", &ConversationTextInputs(self.input.items()))?;
 		request.serialize_field("model", self.model.as_str())?;
 		request.serialize_field("effort", self.reasoning_effort.as_str())?;
-		request.serialize_field("serviceTier", &self.fast.then_some("priority"))?;
+		request.serialize_field("serviceTier", &self.service_tier.thread_value())?;
+		request.serialize_field("serviceTierForTurn", self.service_tier.as_str())?;
 		request.serialize_field("clientUserMessageId", &self.client_user_message_id)?;
 		request.end()
 	}
@@ -1944,6 +1960,40 @@ mod tests {
 
 		assert_eq!(start.get("serviceTier"), Some(&json!("priority")));
 		assert_eq!(resume.get("serviceTier"), Some(&json!("priority")));
+	}
+
+	#[test]
+	fn advertised_tiers_survive_start_resume_and_explicit_standard_turns() {
+		for id in ["ultrafast", "flex", "future-tier"] {
+			let tier = decodex_core::ServiceTier::new(id).unwrap();
+			let start =
+				serde_json::to_value(start_request().with_service_tier(tier.clone())).unwrap();
+			let resume =
+				serde_json::to_value(resume_request().with_service_tier(tier.clone())).unwrap();
+			let turn = ConversationTurnStartRequest::new(
+				exact_thread(),
+				ConversationTurnInput::text("Continue").unwrap(),
+				"model",
+				"high",
+			)
+			.unwrap()
+			.with_service_tier(tier);
+			let encoded = serde_json::to_value(&turn).unwrap();
+			assert_eq!(start["serviceTier"], id);
+			assert_eq!(resume["serviceTier"], id);
+			assert_eq!(encoded["serviceTier"], id);
+			assert_eq!(encoded["serviceTierForTurn"], id);
+			let standard = serde_json::to_value(turn.with_fast(false)).unwrap();
+			assert!(standard["serviceTier"].is_null());
+			assert_eq!(
+				standard["serviceTierForTurn"], "default",
+				"standard must override an inherited paid tier"
+			);
+		}
+		for invalid in ["", "a b", "priority\n", "https://example.com", &"a".repeat(65)] {
+			assert!(decodex_core::ServiceTier::new(invalid).is_err());
+			assert!(serde_json::from_value::<decodex_core::ServiceTier>(json!(invalid)).is_err());
+		}
 	}
 
 	#[test]

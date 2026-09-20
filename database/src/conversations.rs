@@ -73,6 +73,7 @@ pub struct CreateConversationRecord {
 	pub model: String,
 	pub reasoning_effort: String,
 	pub fast: bool,
+	pub service_tier: Option<decodex_core::ServiceTier>,
 }
 
 /// Immutable original request coordinates.
@@ -83,6 +84,7 @@ pub struct ConversationRequest {
 	pub model: String,
 	pub reasoning_effort: String,
 	pub fast: bool,
+	pub service_tier: Option<decodex_core::ServiceTier>,
 }
 
 /// Exact active projection that may be closed after provider archive verification.
@@ -530,8 +532,8 @@ impl SqliteStore {
 				.execute(
 					"INSERT INTO quick_task_requests (
 				   conversation_id, operation_key, correlation_id, initial_turn_id,
-					 message, working_directory, model, reasoning_effort, fast, created_at_micros
-				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+					 message, working_directory, model, reasoning_effort, fast, created_at_micros, service_tier
+				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
 					params![
 						create.conversation_id.as_str(),
 						command.key,
@@ -542,6 +544,7 @@ impl SqliteStore {
 						create.reasoning_effort,
 						create.fast,
 						now,
+						create.service_tier.as_ref().map(|tier| tier.as_str()),
 					],
 				)
 				.map_err(sql_error)?;
@@ -573,7 +576,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			connection
 				.query_row(
-					"SELECT q.message, q.working_directory, q.model, q.reasoning_effort, q.fast
+					"SELECT q.message, q.working_directory, q.model, q.reasoning_effort, q.fast, q.service_tier
 				 FROM quick_task_requests AS q
 				 JOIN conversations AS c USING (conversation_id)
 				 WHERE q.conversation_id = ?1 AND c.state = 'active'",
@@ -585,6 +588,7 @@ impl SqliteStore {
 							model: row.get(2)?,
 							reasoning_effort: row.get(3)?,
 							fast: row.get(4)?,
+							service_tier: row.get::<_, Option<String>>(5)?.map(decodex_core::ServiceTier::new).transpose().map_err(|error| rusqlite::Error::FromSqlConversionFailure(5, rusqlite::types::Type::Text, Box::new(error)))?,
 						})
 					},
 				)
@@ -1306,7 +1310,7 @@ impl SqliteStore {
 			let source = transaction.query_row(
 				"SELECT c.title, q.message, q.working_directory, q.model, q.reasoning_effort,
 				        q.fast, d.routing_decision_id,
-				        d.decision_kind, c.revision
+				        d.decision_kind, c.revision, q.service_tier
 				 FROM conversations AS c
 				 JOIN quick_task_requests AS q USING (conversation_id)
 				 JOIN routing_decisions AS d ON d.conversation_id = c.conversation_id
@@ -1316,10 +1320,10 @@ impl SqliteStore {
 				|row| Ok((
 					row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
 					row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, bool>(5)?,
-					row.get::<_, String>(6)?, row.get::<_, String>(7)?, row.get::<_, i64>(8)?,
+					row.get::<_, String>(6)?, row.get::<_, String>(7)?, row.get::<_, i64>(8)?, row.get::<_, Option<String>>(9)?,
 				)),
 			).optional().map_err(sql_error)?;
-			let Some((title, message, working_directory, model, reasoning_effort, fast, routing_decision_id, decision_kind, revision)) = source else {
+			let Some((title, message, working_directory, model, reasoning_effort, fast, routing_decision_id, decision_kind, revision, service_tier)) = source else {
 				return Ok(ConversationRoutingSuccessorOutcome::Rejected {
 					code: "source_authority_unavailable".to_owned(), replayed: false,
 				});
@@ -1345,9 +1349,9 @@ impl SqliteStore {
 			transaction.execute(
 				"INSERT INTO quick_task_requests (
 				 conversation_id, operation_key, correlation_id, causation_id, initial_turn_id,
-				 message, working_directory, model, reasoning_effort, fast, created_at_micros
-				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-				params![successor_id, key, request.source_conversation_id.as_str(), initial_turn_id, message, working_directory, model, reasoning_effort, fast, now],
+				 message, working_directory, model, reasoning_effort, fast, created_at_micros, service_tier
+				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+				params![successor_id, key, request.source_conversation_id.as_str(), initial_turn_id, message, working_directory, model, reasoning_effort, fast, now, service_tier],
 			).map_err(sql_error)?;
 			transaction.execute(
 				"INSERT INTO conversation_routing_successors (
@@ -3012,6 +3016,7 @@ mod archive_tests {
 					model: "gpt-5.6-sol".to_owned(),
 					reasoning_effort: "high".to_owned(),
 					fast: true,
+					service_tier: None,
 				},
 			)
 			.await
@@ -3287,6 +3292,7 @@ mod archive_tests {
 					model: "gpt-5.6-sol".to_owned(),
 					reasoning_effort: "high".to_owned(),
 					fast: true,
+					service_tier: None,
 				},
 			)
 			.await

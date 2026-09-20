@@ -484,6 +484,15 @@ for line in sys.stdin:
         assert message["params"]["limit"] <= 10
         assert message["params"]["searchTerm"].startswith("decodex-capability-probe-")
         result = {"data": [], "nextCursor": None}
+    elif method == "model/list":
+        assert message["params"]["includeHidden"] is False
+        print(json.dumps({"method":"turn/completed","params":{"threadId":"catalog-thread","turn":{"id":"catalog-turn","status":"completed","items":[]}}}), flush=True)
+        if mode == "exact-catalog-late":
+            time.sleep(0.15)
+        if mode == "exact-catalog-rejected":
+            print(json.dumps({"id": message["id"], "error": {"code": -32601, "message": "unsupported"}}), flush=True)
+            continue
+        result = {"data":[{"model":"catalog-model","displayName":"Model \"quoted\"","supportedReasoningEfforts":[],"defaultReasoningEffort":"high","serviceTiers":[{"id":"ultrafast","name":"Ultrafast","description":"More usage"}]}],"nextCursor":None}
     elif method == "initialized":
         if mode == "exact-config-warning":
             print(json.dumps({"method": "configWarning", "params": {"summary": "Second fixture warning", "details": None}}), flush=True)

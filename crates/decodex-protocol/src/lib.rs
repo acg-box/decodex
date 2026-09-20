@@ -28,8 +28,8 @@ pub use chief::{
 	ChiefActionDto, ChiefActivityDetailResult, ChiefActivityDto, ChiefAttachmentDto,
 	ChiefCapabilitiesResult, ChiefHistoryEntryDto, ChiefHistoryResult, ChiefLiveMessageDto,
 	ChiefMisalignmentDto, ChiefModelDto, ChiefModelUpgradeDto, ChiefRequestResult,
-	ChiefResourceDto, ChiefResourcesResult, ChiefSandboxDto, ChiefStartDto, ChiefTurnUsageDto,
-	ChiefUsageDto, ChiefWorkspaceDto,
+	ChiefResourceDto, ChiefResourcesResult, ChiefSandboxDto, ChiefServiceTierDto, ChiefStartDto,
+	ChiefTurnUsageDto, ChiefUsageDto, ChiefWorkspaceDto,
 };
 pub use chief_questions::{
 	ChiefAsyncQuestionDto, ChiefAsyncQuestionReply, chief_async_question_id,
@@ -136,8 +136,11 @@ use serde::{Deserialize, Serialize};
 
 use decodex_core::FoundationStatus;
 
+/// Exact service-tier identity shared with the provider and persistence boundaries.
+pub use decodex_core::ServiceTier;
+
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 36 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 37 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

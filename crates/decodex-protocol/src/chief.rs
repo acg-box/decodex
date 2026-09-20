@@ -579,12 +579,28 @@ pub struct ChiefModelDto {
 	pub default_effort: Option<crate::ConversationReasoningEffort>,
 	/// The provider offers the priority service tier for this model.
 	pub supports_fast: bool,
+	/// Service tiers advertised for this model and current account.
+	pub service_tiers: Vec<ChiefServiceTierDto>,
+	/// Informational catalog default. Never changes an explicit user selection.
+	pub default_service_tier: Option<decodex_core::ServiceTier>,
 	/// The provider accepts image input for this model.
 	pub supports_images: bool,
 	/// Provider availability information for the current account, when supplied.
 	pub availability: Option<String>,
 	/// Informational upgrade or retirement notice; selection stays explicit.
 	pub upgrade: Option<ChiefModelUpgradeDto>,
+}
+
+/// Provider-authored service-tier choice, distinct from model or account quota.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefServiceTierDto {
+	/// Exact native request value.
+	pub id: decodex_core::ServiceTier,
+	/// Provider display name.
+	pub name: String,
+	/// Provider description, including usage implications when supplied.
+	pub description: String,
 }
 
 /// Provider-advertised model replacement information.

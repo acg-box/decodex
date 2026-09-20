@@ -57,6 +57,7 @@ pub(crate) struct ConversationsSnapshot {
 	pub(crate) live_deltas: Vec<ConversationLiveDelta>,
 	pub(crate) can_submit: bool,
 	pub(crate) execution: ConversationExecutionSettings,
+	pub(crate) catalog: Option<Vec<decodex_protocol::ChiefModelDto>>,
 }
 
 impl ConversationsSnapshot {
@@ -213,6 +214,9 @@ impl Conversations {
 		if !state.tasks.iter().any(|task| task.conversation_id == conversation_id) {
 			return false;
 		}
+		if state.selected.as_ref() != Some(&conversation_id) {
+			state.clear_catalog();
+		}
 		state.selected = Some(conversation_id);
 		state.selection_suppressed = false;
 		true
@@ -220,6 +224,7 @@ impl Conversations {
 
 	pub(crate) fn begin_new(&self) {
 		let mut state = self.lock();
+		state.clear_catalog();
 		state.selected = None;
 		state.selection_suppressed = true;
 		if state.pending_command.is_none()
@@ -232,6 +237,25 @@ impl Conversations {
 
 	pub(crate) fn cycle_model(&self) {
 		let mut state = self.lock();
+		if let Some(models) = state.current_catalog() {
+			if models.is_empty() {
+				return;
+			}
+			let next = models
+				.iter()
+				.position(|model| model.model == state.execution.model)
+				.map_or(0, |i| (i + 1) % models.len());
+			let model = models[next].clone();
+			state.execution.model = model.model;
+			if !model.efforts.contains(&state.execution.reasoning_effort)
+				&& let Some(effort) =
+					model.default_effort.or_else(|| model.efforts.first().copied())
+			{
+				state.execution.reasoning_effort = effort;
+			}
+			state.reconcile_catalog_tier();
+			return;
+		}
 		let current = state.execution.model.as_str();
 		let next = CONVERSATION_MODELS
 			.iter()
@@ -240,11 +264,19 @@ impl Conversations {
 		state.execution.model = ConversationModel::new(CONVERSATION_MODELS[next])
 			.expect("curated model identifier is valid");
 		state.clamp_effort_for_model();
+		state.reconcile_catalog_tier();
 	}
 
 	pub(crate) fn cycle_reasoning_effort(&self) {
 		let mut state = self.lock();
-		let supported = supported_efforts(state.execution.model.as_str());
+		let supported = state
+			.current_catalog()
+			.and_then(|models| models.iter().find(|model| model.model == state.execution.model))
+			.map(|model| model.efforts.clone())
+			.unwrap_or_else(|| supported_efforts(state.execution.model.as_str()).to_vec());
+		if supported.is_empty() {
+			return;
+		}
 		let next = supported
 			.iter()
 			.position(|effort| *effort == state.execution.reasoning_effort)
@@ -255,6 +287,45 @@ impl Conversations {
 	pub(crate) fn toggle_fast(&self) {
 		let mut state = self.lock();
 		state.execution.fast = !state.execution.fast;
+		state.execution.service_tier = None;
+	}
+
+	pub(crate) fn refresh_catalog(&self) -> bool {
+		let mut state = self.lock();
+		let Some(conversation_id) = state.selected.clone() else {
+			return false;
+		};
+		let epoch = state.catalog_epoch;
+		let Some(source) = state.selected_task().cloned() else {
+			return false;
+		};
+		let queued = state.queue_query(
+			QueryPayload::GetConversationCapabilities { conversation_id: conversation_id.clone() },
+			ConversationQueryPurpose::Catalog { conversation_id, epoch, source: Box::new(source) },
+		);
+		if queued {
+			state.catalog = None;
+		}
+		drop(state);
+		if queued {
+			self.inner.notify.notify_one();
+		}
+		queued
+	}
+
+	pub(crate) fn select_service_tier(&self, tier: decodex_protocol::ServiceTier) -> bool {
+		let mut state = self.lock();
+		if tier.as_str() != "default"
+			&& !state.current_catalog().is_some_and(|models| {
+				models.iter().any(|model| {
+					model.model == state.execution.model
+						&& model.service_tiers.iter().any(|choice| choice.id == tier)
+				})
+			}) {
+			return false;
+		}
+		state.execution = state.execution.clone().with_service_tier(tier);
+		true
 	}
 
 	/// Re-observe the selected provider thread by exact ID.
@@ -378,7 +449,19 @@ impl Conversations {
 			conversation_id: conversation_id.clone(),
 			message: message_text(message)?,
 			working_directory,
-			execution: self.lock().execution.clone(),
+			execution: {
+				let state = self.lock();
+				if state
+					.execution
+					.service_tier
+					.as_ref()
+					.is_some_and(|tier| tier.as_str() != "default")
+					&& state.current_catalog().is_none()
+				{
+					return Err(ConversationInputError::NotReady);
+				}
+				state.execution.clone()
+			},
 		};
 		self.queue_command(payload, None, Some(conversation_id.clone()), true)?;
 		Ok(QueuedConversationSubmission { conversation_id, turn_id: None })
@@ -416,7 +499,19 @@ impl Conversations {
 			turn_id,
 			message,
 			working_directory,
-			execution: self.lock().execution.clone(),
+			execution: {
+				let state = self.lock();
+				if state
+					.execution
+					.service_tier
+					.as_ref()
+					.is_some_and(|tier| tier.as_str() != "default")
+					&& state.current_catalog().is_none()
+				{
+					return Err(ConversationInputError::NotReady);
+				}
+				state.execution.clone()
+			},
 		};
 		self.queue_command(payload, Some(task.conversation_revision), None, true)?;
 		Ok(submission)
@@ -546,6 +641,7 @@ impl Conversations {
 		state.reset_pagination();
 		state.outcome_unknown_readback_generation = None;
 		state.session = None;
+		state.clear_catalog();
 		state.load = ConversationsLoadState::Offline;
 		drop(state);
 		self.inner.notify.notify_one();
@@ -710,6 +806,22 @@ impl Conversations {
 		}
 		state.in_flight_query = None;
 		let (outcome, query_queued) = match purpose {
+			ConversationQueryPurpose::Catalog { conversation_id, epoch, source } => {
+				if state.selected.as_ref() == Some(&conversation_id)
+					&& state.catalog_epoch == epoch
+					&& state.selected_task() == Some(source.as_ref())
+				{
+					state.catalog_source = Some(*source);
+					state.catalog = match &result.payload {
+						QueryResultPayload::ConversationCapabilities(
+							decodex_protocol::ChiefCapabilitiesResult::Available { models, .. },
+						) => Some(models.clone()),
+						_ => None,
+					};
+					state.reconcile_catalog_tier();
+				}
+				(ConversationRouteOutcome::Fresh, false)
+			},
 			ConversationQueryPurpose::List { after } =>
 				state.route_list_query_result(generation, after, &result.payload),
 			ConversationQueryPurpose::RoutingSuccessorSource { reconciliation } => state
@@ -976,6 +1088,9 @@ struct SessionBinding {
 }
 
 struct State {
+	catalog: Option<Vec<decodex_protocol::ChiefModelDto>>,
+	catalog_epoch: u64,
+	catalog_source: Option<ConversationSummary>,
 	session: Option<SessionBinding>,
 	active: bool,
 	load: ConversationsLoadState,
@@ -1008,8 +1123,39 @@ struct State {
 }
 
 impl State {
+	fn current_catalog(&self) -> Option<&Vec<decodex_protocol::ChiefModelDto>> {
+		(self.selected_task() == self.catalog_source.as_ref() && self.catalog_source.is_some())
+			.then_some(self.catalog.as_ref())
+			.flatten()
+	}
+
+	fn clear_catalog(&mut self) {
+		self.catalog = None;
+		self.catalog_source = None;
+		self.catalog_epoch = self.catalog_epoch.wrapping_add(1);
+		self.execution.service_tier = None;
+		self.execution.fast = false;
+	}
+
+	fn reconcile_catalog_tier(&mut self) {
+		let tier = self.execution.effective_service_tier();
+		if tier.as_str() != "default"
+			&& !self.current_catalog().is_some_and(|models| {
+				models.iter().any(|model| {
+					model.model == self.execution.model
+						&& model.service_tiers.iter().any(|choice| choice.id == tier)
+				})
+			}) {
+			self.execution =
+				self.execution.clone().with_service_tier(decodex_protocol::ServiceTier::standard());
+		}
+	}
+
 	fn new() -> Self {
 		Self {
+			catalog: None,
+			catalog_epoch: 0,
+			catalog_source: None,
 			session: None,
 			active: false,
 			load: ConversationsLoadState::NeverRequested,
@@ -1564,6 +1710,7 @@ impl State {
 					})
 			};
 		ConversationsSnapshot {
+			catalog: self.current_catalog().cloned(),
 			load: self.load,
 			command: self.command,
 			command_conversation_id,
@@ -1624,6 +1771,11 @@ struct InFlightQuery {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ConversationQueryPurpose {
+	Catalog {
+		conversation_id: EntityId,
+		epoch: u64,
+		source: Box<ConversationSummary>,
+	},
 	List {
 		after: Option<ConversationListCursor>,
 	},
@@ -1878,7 +2030,7 @@ fn task_can_replace(existing: &ConversationSummary, task: &ConversationSummary) 
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
 	use decodex_protocol::{ConversationListPage, EntityRevision};
 
 	use super::*;
@@ -2058,6 +2210,76 @@ mod tests {
 		conversations.command_sent(&dispatch);
 		conversations.session_ended(1);
 		conversations.bind_session(2, server_id.clone());
+	}
+
+	pub(crate) fn dispatched_command(
+		conversations: &Conversations,
+		server_id: &ServerId,
+	) -> CommandEnvelope {
+		conversations.try_take_dispatch(1, server_id).unwrap().command().unwrap().clone()
+	}
+
+	pub(crate) fn catalog_conversations() -> (Conversations, ServerId, ConversationSummary) {
+		let (conversations, server_id, task) = connected_conversations();
+		conversations.lock().pending_query = None;
+		assert!(conversations.refresh_catalog());
+		let query =
+			conversations.try_take_dispatch(1, &server_id).unwrap().query().unwrap().clone();
+		let model = decodex_protocol::ChiefModelDto {
+			model: ConversationModel::new("gpt-5.6-sol").unwrap(),
+			name: "Sol".into(),
+			efforts: vec![ConversationReasoningEffort::High],
+			default_effort: Some(ConversationReasoningEffort::High),
+			supports_fast: false,
+			supports_images: true,
+			availability: None,
+			upgrade: None,
+			service_tiers: vec![decodex_protocol::ChiefServiceTierDto {
+				id: decodex_protocol::ServiceTier::new("ultrafast").unwrap(),
+				name: "Ultrafast".into(),
+				description: "More usage".into(),
+			}],
+			default_service_tier: None,
+		};
+		let response = QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id.clone(),
+			query_id: query.query_id,
+			payload: QueryResultPayload::ConversationCapabilities(
+				decodex_protocol::ChiefCapabilitiesResult::Available {
+					models: vec![model],
+					memory_enabled: None,
+				},
+			),
+		};
+		assert_eq!(
+			conversations.route_query_result(1, &server_id, &response),
+			ConversationRouteOutcome::Fresh
+		);
+		(conversations, server_id, task)
+	}
+
+	#[test]
+	fn catalog_tiers_are_bound_to_selected_projection_and_disconnect() {
+		let (conversations, _server_id, task) = catalog_conversations();
+		assert!(
+			conversations
+				.select_service_tier(decodex_protocol::ServiceTier::new("ultrafast").unwrap())
+		);
+		assert_eq!(
+			conversations.snapshot().execution.effective_service_tier().as_str(),
+			"ultrafast"
+		);
+		conversations.lock().tasks[0].runtime_session_revision = Some(EntityRevision(2));
+		assert!(conversations.snapshot().catalog.is_none());
+		assert!(
+			!conversations
+				.select_service_tier(decodex_protocol::ServiceTier::new("ultrafast").unwrap())
+		);
+		assert_eq!(conversations.submit("Continue"), Err(ConversationInputError::NotReady));
+		conversations.session_ended(1);
+		assert_eq!(conversations.snapshot().execution.effective_service_tier().as_str(), "default");
+		assert_eq!(conversations.snapshot().selected, Some(task.conversation_id));
 	}
 
 	#[test]

@@ -2275,6 +2275,11 @@ pub enum QueryPayload {
 		/// Stable logical Conversation identity.
 		conversation_id: EntityId,
 	},
+	/// Read model choices from this Conversation's own retained account process.
+	GetConversationCapabilities {
+		/// Exact selected Conversation; never substitutes another account's process.
+		conversation_id: EntityId,
+	},
 	/// Revalidate and return the bounded authoritative doctor/status report.
 	GetDoctorStatus,
 	/// Read one bounded deterministic logical-conversation history page.
@@ -2841,6 +2846,8 @@ pub enum QueryResultPayload {
 	Conversations(ConversationListResult),
 	/// One exact ordinary Conversation readback.
 	Conversation(ConversationResult),
+	/// Model choices from the exact queried Conversation process, or unavailable.
+	ConversationCapabilities(crate::ChiefCapabilitiesResult),
 	/// Bounded authoritative doctor/status readback.
 	DoctorStatus(DoctorReport),
 	/// Bounded daemon-owned logical-conversation history result.
@@ -3129,6 +3136,7 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 				}) =>
 				Err("Conversation list cursor identity is not canonical"),
 			QueryPayload::GetConversation { conversation_id }
+			| QueryPayload::GetConversationCapabilities { conversation_id }
 				if !is_canonical_uuid(conversation_id.as_str()) =>
 				Err("Conversation conversation identity is not canonical"),
 			QueryPayload::GetResetCards { account_id }
@@ -4415,7 +4423,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":36},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":37},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4424,7 +4432,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":36},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":37},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4466,7 +4474,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":36},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":37},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

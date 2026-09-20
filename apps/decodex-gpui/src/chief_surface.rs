@@ -120,6 +120,7 @@ pub(crate) struct ChiefSurface {
 	composer: Entity<ComposerInput>,
 	composer_footer_height: f32,
 	fast: bool,
+	service_tier: Option<decodex_protocol::ServiceTier>,
 	steer: bool,
 	media_spare: Option<voice::Media>,
 	media_warm_attempted: bool,
@@ -272,6 +273,7 @@ impl ChiefSurface {
 			capabilities_checked: None,
 			capability_task: None,
 			fast: false,
+			service_tier: None,
 			steer: true,
 			media_spare: None,
 			media_warm_attempted: false,
@@ -611,6 +613,7 @@ impl ChiefSurface {
 					model,
 					reasoning_effort: self.effort,
 					fast: self.fast,
+					service_tier: self.service_tier.clone(),
 				};
 				let attachments = self.attachments.clone();
 				let action = match action {
@@ -738,6 +741,8 @@ impl ChiefSurface {
 		self.resource_url.update(cx, |input, cx| input.clear(cx));
 		self.capability_task = None;
 		self.capabilities = None;
+		self.fast = false;
+		self.service_tier = None;
 		self.capabilities_checked = None;
 		self.snapshot = None;
 		self.pages.clear();
