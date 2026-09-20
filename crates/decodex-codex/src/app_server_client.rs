@@ -227,6 +227,12 @@ impl AppServerClient {
 		self.closed.send_replace(true);
 	}
 
+	/// Connection-local history invalidation counter, observed before queued owner events.
+	/// Any native thread revert invalidates cached history on this connection.
+	pub fn history_revision(&self) -> u64 {
+		self.server_requests.history_revision()
+	}
+
 	/// Capture the exact request while the transport, rather than the owner queue, sees it live.
 	pub fn server_request_guard(
 		&self,
@@ -609,63 +615,69 @@ mod tests {
 
 	#[tokio::test]
 	async fn resolved_request_guard_prevents_effect_before_owner_consumes_notification() {
-		let (client, mut events, mut reader, mut writer) = connection();
-		let id = RequestId::String("suggestion".into());
-		let params = json!({"threadId":"thread","turnId":"turn","message":"Install"});
-		write_frame(
-			&mut writer,
-			json!({"id":id,"method":"mcpServer/elicitation/request","params":params}),
-		)
-		.await
-		.unwrap();
-		let _ = events.recv().await.unwrap();
-		let guard =
-			client.server_request_guard(&id, "mcpServer/elicitation/request", &params).unwrap();
-		assert!(
-			client
-				.server_request_guard(
-					&id,
-					"mcpServer/elicitation/request",
-					&json!({"threadId":"other"})
-				)
-				.is_none()
-		);
-		let rpc = {
-			let client = client.clone();
-			tokio::spawn(async move { client.request("plugin/list", json!({})).await })
-		};
-		let request = read(&mut reader).await;
-		write_frame(
-			&mut writer,
-			json!({"method":"serverRequest/resolved","params":{"threadId":"other","requestId":id}}),
-		)
-		.await
-		.unwrap();
-		write_frame(&mut writer, json!({"id":request["id"],"result":{}})).await.unwrap();
-		rpc.await.unwrap().unwrap();
-		assert!(guard.is_live(), "another thread cannot resolve this request");
-		let rpc = {
-			let client = client.clone();
-			tokio::spawn(async move { client.request("plugin/read", json!({})).await })
-		};
-		let request = read(&mut reader).await;
-		write_frame(
-			&mut writer,
-			json!({"method":"serverRequest/resolved","params":{"threadId":"thread","requestId":id}}),
-		)
-		.await
-		.unwrap();
-		write_frame(&mut writer, json!({"id":request["id"],"result":{}})).await.unwrap();
-		rpc.await.unwrap().unwrap();
-		// Both notifications are still unread in the owner's event queue.
-		assert!(!guard.is_live());
-		assert!(client.request_guarded("plugin/install", json!({}), guard.clone()).await.is_err());
-		assert!(client.respond_guarded(id, json!({"action":"accept"}), guard).await.is_err());
-		let mut line = String::new();
-		assert!(
-			timeout(Duration::from_millis(25), reader.read_line(&mut line)).await.is_err(),
-			"no guarded write may reach native"
-		);
+		for method in ["serverRequest/resolved", "thread/reverted"] {
+			let (client, mut events, mut reader, mut writer) = connection();
+			let id = RequestId::String("suggestion".into());
+			let params = json!({"threadId":"thread","turnId":"turn","message":"Install"});
+			write_frame(
+				&mut writer,
+				json!({"id":id,"method":"mcpServer/elicitation/request","params":params}),
+			)
+			.await
+			.unwrap();
+			let _ = events.recv().await.unwrap();
+			let guard =
+				client.server_request_guard(&id, "mcpServer/elicitation/request", &params).unwrap();
+			assert!(
+				client
+					.server_request_guard(
+						&id,
+						"mcpServer/elicitation/request",
+						&json!({"threadId":"other"})
+					)
+					.is_none()
+			);
+			let rpc = {
+				let client = client.clone();
+				tokio::spawn(async move { client.request("plugin/list", json!({})).await })
+			};
+			let request = read(&mut reader).await;
+			write_frame(
+				&mut writer,
+				json!({"method":method,"params":{"threadId":"other","requestId":id}}),
+			)
+			.await
+			.unwrap();
+			write_frame(&mut writer, json!({"id":request["id"],"result":{}})).await.unwrap();
+			rpc.await.unwrap().unwrap();
+			assert!(guard.is_live(), "another thread cannot resolve this request");
+			assert_eq!(client.history_revision(), u64::from(method == "thread/reverted"));
+			let rpc = {
+				let client = client.clone();
+				tokio::spawn(async move { client.request("plugin/read", json!({})).await })
+			};
+			let request = read(&mut reader).await;
+			write_frame(
+				&mut writer,
+				json!({"method":method,"params":{"threadId":"thread","requestId":id}}),
+			)
+			.await
+			.unwrap();
+			write_frame(&mut writer, json!({"id":request["id"],"result":{}})).await.unwrap();
+			rpc.await.unwrap().unwrap();
+			// Both notifications are still unread in the owner's event queue.
+			assert!(!guard.is_live());
+			assert_eq!(client.history_revision(), 2 * u64::from(method == "thread/reverted"));
+			assert!(
+				client.request_guarded("plugin/install", json!({}), guard.clone()).await.is_err()
+			);
+			assert!(client.respond_guarded(id, json!({"action":"accept"}), guard).await.is_err());
+			let mut line = String::new();
+			assert!(
+				timeout(Duration::from_millis(25), reader.read_line(&mut line)).await.is_err(),
+				"no guarded write may reach native"
+			);
+		}
 	}
 
 	#[tokio::test]

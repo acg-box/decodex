@@ -97,11 +97,31 @@ impl ChiefCoordinator {
 		Ok(())
 	}
 
+	async fn invalidate_reverted_requests(&mut self, thread: &str) -> Result<(), ChiefError> {
+		self.loaded_threads.remove(thread);
+		self.usage_replays.remove(thread);
+		for (id, event_id) in self.pending_requests.clone() {
+			let event = self.store.get_chief_inbox_event(event_id).await?;
+			let payload: Value = serde_json::from_str(&event.payload)
+				.map_err(|_| ChiefError::Invalid("invalid persisted provider request".into()))?;
+			if payload["params"]["threadId"].as_str() == Some(thread) {
+				if event.disposition.is_none() {
+					self.store.resolve_chief_request_event(event_id).await?;
+				}
+				self.pending_requests.remove(&id);
+			}
+		}
+		Ok(())
+	}
+
 	pub(super) async fn observe_notification(
 		&mut self,
 		method: &str,
 		params: &Value,
 	) -> Result<(), ChiefError> {
+		if method == "thread/reverted" {
+			return self.invalidate_reverted_requests(&exact(params, "/threadId")?).await;
+		}
 		if let Some(review) = decodex_codex::guardian::decode_review(method, params) {
 			self.store
 				.record_chief_guardian_review(decodex_database::ChiefGuardianObservation {

@@ -282,8 +282,14 @@ impl ChiefHost {
 
 	pub(crate) async fn runtime_source(&self) -> Option<decodex_protocol::EntityId> {
 		use sha2::{Digest, Sha256};
-		let (generation, account, revision, _) = self.runtime.chief_usage_source().await?;
-		let value = serde_json::to_vec(&(generation.as_str(), account.as_str(), revision)).ok()?;
+		let (generation, account, revision, client) = self.runtime.chief_usage_source().await?;
+		let value = serde_json::to_vec(&(
+			generation.as_str(),
+			account.as_str(),
+			revision,
+			client.history_revision(),
+		))
+		.ok()?;
 		let digest =
 			Sha256::digest(value).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
 		decodex_protocol::EntityId::new(digest).ok()
@@ -298,6 +304,7 @@ impl ChiefHost {
 			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
 			Some(crate::chief_usage_estimate::Source {
 				key: crate::chief_usage_estimate::SourceKey {
+					history_revision: client.history_revision(),
 					generation,
 					account,
 					revision,
@@ -322,6 +329,7 @@ impl ChiefHost {
 		}
 		Some(crate::chief_usage_estimate::Source {
 			key: crate::chief_usage_estimate::SourceKey {
+				history_revision: client.history_revision(),
 				generation,
 				account,
 				revision,

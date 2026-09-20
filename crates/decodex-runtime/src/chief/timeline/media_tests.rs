@@ -6,6 +6,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 fn key() -> SourceKey {
 	SourceKey {
+		history_revision: 0,
 		generation: ProcessGenerationId::new("10000000-0000-4000-8000-000000000001").unwrap(),
 		account: AccountId::new("30000000-0000-4000-8000-000000000003").unwrap(),
 		revision: 1,
@@ -131,7 +132,7 @@ async fn native_reads_use_exact_item_and_discard_bytes_after_source_changes() {
 	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("photo.png");
 	std::fs::write(&path, b"\x89PNG\r\n\x1a\nfixture").unwrap();
-	for change in ["none", "revision", "account", "process", "thread", "closed"] {
+	for change in ["none", "revision", "history", "account", "process", "thread", "closed"] {
 		for local in [false, true] {
 			let (io, remote) = tokio::io::duplex(65536);
 			let (reader, writer) = tokio::io::split(io);
@@ -148,6 +149,7 @@ async fn native_reads_use_exact_item_and_discard_bytes_after_source_changes() {
 						if later {
 							match change {
 								"revision" => key.revision += 1,
+								"history" => key.history_revision += 1,
 								"account" =>
 									key.account =
 										AccountId::new("40000000-0000-4000-8000-000000000004")

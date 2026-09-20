@@ -290,7 +290,7 @@ mod tests {
 	#[tokio::test]
 	async fn dense_pages_shrink_without_advancing_cursor_and_source_changes_discard_results() {
 		use std::sync::atomic::{AtomicUsize, Ordering};
-		for change in ["none", "revision", "account", "generation", "thread", "closed"] {
+		for change in ["none", "revision", "history", "account", "generation", "thread", "closed"] {
 			let changed = change != "none";
 			let (local, remote) = tokio::io::duplex(512 * 1024);
 			let (reader, writer) = tokio::io::split(local);
@@ -337,6 +337,9 @@ mod tests {
 						Some(crate::chief_usage_estimate::Source {
 							client,
 							key: crate::chief_usage_estimate::SourceKey {
+								history_revision: u64::from(
+									change == "history" && observation >= 2,
+								),
 								generation: decodex_core::ProcessGenerationId::new(
 									if change == "generation" && observation >= 2 {
 										"20000000-0000-4000-8000-000000000002"

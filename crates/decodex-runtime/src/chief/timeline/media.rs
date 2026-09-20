@@ -236,6 +236,7 @@ fn chunk(key: &SourceKey, request: &ChiefMediaRequest, mime: String, bytes: Vec<
 			key.generation.as_str(),
 			key.account.as_str(),
 			key.revision,
+			key.history_revision,
 			key.work,
 			key.thread,
 			request.turn_id,
