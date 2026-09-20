@@ -693,12 +693,19 @@ mod tests {
 		);
 	}
 
-	#[tokio::test]
-	async fn guardian_observation_and_submission_require_current_process_and_root_ownership() {
-		use crate::ChiefGuardianObservation;
-		let directory = tempfile::tempdir().unwrap();
-		let store = SqliteStore::open_test(&directory.path().join("guardian.sqlite3")).unwrap();
-		seed(&store).await;
+	fn guardian_observation(
+		work: &str,
+		generation: Option<String>,
+	) -> crate::ChiefGuardianObservation {
+		crate::ChiefGuardianObservation {
+			thread_id:format!("thread-{work}"),turn_id:"turn".into(),review_id:"review".into(),connection_id:"connection".into(),generation_id:generation,
+			event_json:serde_json::json!({"threadId":format!("thread-{work}"),"turnId":"turn","reviewId":"review","startedAtMs":1,"completedAtMs":2,"review":{"status":"denied"},"action":{"type":"command","source":"shell","command":"echo fixture","cwd":"/tmp"}}).to_string()
+    }
+	}
+
+	async fn assert_guardian_observation_ownership(
+		store: &SqliteStore,
+	) -> decodex_core::ProcessIdentity {
 		let mut manager = store.get_chief_work_item("root".into()).await.unwrap();
 		manager.id = "manager".into();
 		manager.parent_goal_id = Some("root".into());
@@ -717,14 +724,9 @@ mod tests {
 			)
 			.await
 			.unwrap();
-		let observation = |work: &str, generation: Option<String>| {
-			ChiefGuardianObservation {
-			thread_id:format!("thread-{work}"),turn_id:"turn".into(),review_id:"review".into(),connection_id:"connection".into(),generation_id:generation,
-			event_json:serde_json::json!({"threadId":format!("thread-{work}"),"turnId":"turn","reviewId":"review","startedAtMs":1,"completedAtMs":2,"review":{"status":"denied"},"action":{"type":"command","source":"shell","command":"echo fixture","cwd":"/tmp"}}).to_string()
-		}
-		};
+
 		store
-			.record_chief_guardian_review(observation(
+			.record_chief_guardian_review(guardian_observation(
 				"root",
 				Some(generation_id(1).as_str().into()),
 			))
@@ -763,12 +765,12 @@ mod tests {
 			assert!(!store.chief_thread_is_owned(work.into(), thread.into(), None).await.unwrap());
 		}
 		for work in ["root", "second-root", "manager"] {
-			store.record_chief_guardian_review(observation(work, None)).await.unwrap();
+			store.record_chief_guardian_review(guardian_observation(work, None)).await.unwrap();
 			assert!(
 				store.read_chief_guardian_reviews(work.into(), None, 1).await.unwrap().is_empty()
 			);
 			store
-				.record_chief_guardian_review(observation(
+				.record_chief_guardian_review(guardian_observation(
 					work,
 					Some(generation_id(1).as_str().into()),
 				))
@@ -779,6 +781,10 @@ mod tests {
 				usize::from(work == "root")
 			);
 		}
+		identity
+	}
+
+	async fn assert_guardian_submission_ownership(store: &SqliteStore) {
 		let saved =
 			store.read_chief_guardian_reviews("root".into(), None, 1).await.unwrap().remove(0);
 		for generation in [None, Some(generation_id(2).as_str().into())] {
@@ -831,7 +837,16 @@ mod tests {
 				.as_deref(),
 			Some("submitted")
 		);
-		let mut retained = observation("root", Some(generation_id(1).as_str().into()));
+	}
+
+	#[tokio::test]
+	async fn guardian_observation_and_submission_require_current_process_and_root_ownership() {
+		let directory = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("guardian.sqlite3")).unwrap();
+		seed(&store).await;
+		let identity = assert_guardian_observation_ownership(&store).await;
+		assert_guardian_submission_ownership(&store).await;
+		let mut retained = guardian_observation("root", Some(generation_id(1).as_str().into()));
 		retained.review_id = "after-restart".into();
 		let mut event: serde_json::Value = serde_json::from_str(&retained.event_json).unwrap();
 		event["reviewId"] = serde_json::json!(retained.review_id);

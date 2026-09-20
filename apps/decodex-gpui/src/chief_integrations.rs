@@ -128,7 +128,8 @@ impl ChiefSurface {
 			session_id: session_id.clone(),
 			phase: McpLoginPhase::Starting,
 			authorization_url: None,
-			message: WireText::new("Starting native MCP sign-in…").unwrap(),
+			message: WireText::new("Starting native MCP sign-in…")
+				.expect("static OAuth status fits wire bounds"),
 		};
 		self.mcp_login = Some((work.into(), server.into(), initial));
 		let work = work.to_owned();
@@ -164,7 +165,7 @@ impl ChiefSurface {
 					message: WireText::new(
 						"Native sign-in is not confirmed. Checking without replaying the request…",
 					)
-					.unwrap(),
+					.expect("static OAuth status fits wire bounds"),
 				});
 				if started.elapsed() > std::time::Duration::from_secs(180)
 					&& !matches!(
@@ -178,7 +179,7 @@ impl ChiefSurface {
 					status.message = WireText::new(
 						"Waiting expired. Refresh server status before starting another sign-in.",
 					)
-					.unwrap();
+					.expect("static OAuth status fits wire bounds");
 				}
 				let completed = status.phase == McpLoginPhase::NativeCompleted;
 				let terminal = matches!(

@@ -134,102 +134,113 @@ impl ChiefSurface {
 				)));
 			}
 		} else {
-			panel = panel.child(if method == "item/fileChange/requestApproval" {
-				"Allow file changes?"
-			} else if method == "item/permissions/requestApproval" {
-				"Allow requested access for this turn?"
-			} else {
-				"Allow this command?"
-			});
-			for key in ["reason", "command", "cwd", "grantRoot"] {
-				if let Some(text) = value[key].as_str() {
-					panel = panel.child(div().text_size(px(12.0)).child(text.to_owned()));
-				}
-			}
-			if method == "item/fileChange/requestApproval" {
-				let details = value["changeDetails"]
-					.as_str()
-					.unwrap_or("File paths and patch details are unavailable.");
-				panel = panel.child(
-					div()
-						.id("file-approval-details")
-						.max_h(px(280.0))
-						.overflow_y_scroll()
-						.text_size(px(12.0))
-						.font_family("Menlo")
-						.child(details.to_owned()),
-				);
-				if value["changeDetailsTruncated"] == true {
-					panel = panel.child(muted("File change details shortened"));
-				}
-			}
-
-			if method == "item/permissions/requestApproval" {
-				panel = panel.child(
-					div().text_size(px(12.0)).child(permission_summary(&value["permissions"])),
-				);
-				panel = panel.child(self.request_choice(
-					"decline",
-					"Decline",
-					serde_json::json!({"permissions":{},"scope":"turn"}),
-					cx,
-				));
-				panel = panel.child(self.request_choice(
-					"allow",
-					"Allow for this turn",
-					serde_json::json!({"permissions":value["permissions"],"scope":"turn"}),
-					cx,
-				));
-			} else {
-				let decisions = if method == "item/fileChange/requestApproval" {
-					vec!["decline".into(), "accept".into()]
-				} else {
-					offered_decisions(method, request_json.as_str())
-				};
-				for decision in decisions {
-					let label = match decision.as_str() {
-						"accept" => "Allow once",
-						"acceptForSession" => "Allow for this session",
-						"decline" => "Decline",
-						"cancel" => "Stop this turn",
-						_ => continue,
-					};
-					panel = panel.child(self.request_choice(
-						&decision,
-						label,
-						serde_json::json!({"decision":decision}),
-						cx,
-					));
-				}
-				for (index, decision) in value["availableDecisions"]
-					.as_array()
-					.into_iter()
-					.flatten()
-					.filter(|decision| decision.is_object())
-					.enumerate()
-				{
-					let label = if decision.get("acceptWithExecpolicyAmendment").is_some() {
-						"Allow with the proposed command rule"
-					} else if decision.get("applyNetworkPolicyAmendment").is_some() {
-						"Apply the proposed network rule"
-					} else {
-						continue;
-					};
-					panel = panel.child(
-						div()
-							.text_size(px(11.0))
-							.child(serde_json::to_string_pretty(decision).unwrap_or_default()),
-					);
-					panel = panel.child(self.request_choice(
-						&format!("policy-{index}"),
-						label,
-						serde_json::json!({"decision":decision}),
-						cx,
-					));
-				}
-			}
+			panel = self.approval_request_panel(panel, method, request_json.as_str(), &value, cx);
 		}
 		panel.into_any_element()
+	}
+
+	fn approval_request_panel(
+		&self,
+		mut panel: gpui::Div,
+		method: &str,
+		request_json: &str,
+		value: &serde_json::Value,
+		cx: &mut Context<Self>,
+	) -> gpui::Div {
+		panel = panel.child(if method == "item/fileChange/requestApproval" {
+			"Allow file changes?"
+		} else if method == "item/permissions/requestApproval" {
+			"Allow requested access for this turn?"
+		} else {
+			"Allow this command?"
+		});
+		for key in ["reason", "command", "cwd", "grantRoot"] {
+			if let Some(text) = value[key].as_str() {
+				panel = panel.child(div().text_size(px(12.0)).child(text.to_owned()));
+			}
+		}
+		if method == "item/fileChange/requestApproval" {
+			let details = value["changeDetails"]
+				.as_str()
+				.unwrap_or("File paths and patch details are unavailable.");
+			panel = panel.child(
+				div()
+					.id("file-approval-details")
+					.max_h(px(280.0))
+					.overflow_y_scroll()
+					.text_size(px(12.0))
+					.font_family("Menlo")
+					.child(details.to_owned()),
+			);
+			if value["changeDetailsTruncated"] == true {
+				panel = panel.child(muted("File change details shortened"));
+			}
+		}
+
+		if method == "item/permissions/requestApproval" {
+			panel = panel
+				.child(div().text_size(px(12.0)).child(permission_summary(&value["permissions"])));
+			panel = panel.child(self.request_choice(
+				"decline",
+				"Decline",
+				serde_json::json!({"permissions":{},"scope":"turn"}),
+				cx,
+			));
+			panel = panel.child(self.request_choice(
+				"allow",
+				"Allow for this turn",
+				serde_json::json!({"permissions":value["permissions"],"scope":"turn"}),
+				cx,
+			));
+		} else {
+			let decisions = if method == "item/fileChange/requestApproval" {
+				vec!["decline".into(), "accept".into()]
+			} else {
+				offered_decisions(method, request_json)
+			};
+			for decision in decisions {
+				let label = match decision.as_str() {
+					"accept" => "Allow once",
+					"acceptForSession" => "Allow for this session",
+					"decline" => "Decline",
+					"cancel" => "Stop this turn",
+					_ => continue,
+				};
+				panel = panel.child(self.request_choice(
+					&decision,
+					label,
+					serde_json::json!({"decision":decision}),
+					cx,
+				));
+			}
+			for (index, decision) in value["availableDecisions"]
+				.as_array()
+				.into_iter()
+				.flatten()
+				.filter(|decision| decision.is_object())
+				.enumerate()
+			{
+				let label = if decision.get("acceptWithExecpolicyAmendment").is_some() {
+					"Allow with the proposed command rule"
+				} else if decision.get("applyNetworkPolicyAmendment").is_some() {
+					"Apply the proposed network rule"
+				} else {
+					continue;
+				};
+				panel = panel.child(
+					div()
+						.text_size(px(11.0))
+						.child(serde_json::to_string_pretty(decision).unwrap_or_default()),
+				);
+				panel = panel.child(self.request_choice(
+					&format!("policy-{index}"),
+					label,
+					serde_json::json!({"decision":decision}),
+					cx,
+				));
+			}
+		}
+		panel
 	}
 
 	fn snooze_question_timeout(&mut self) {

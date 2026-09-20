@@ -174,6 +174,12 @@ pub(crate) struct ChiefSurface {
 	setup_expanded: bool,
 }
 
+struct ChiefInputs {
+	model: Entity<ComposerInput>,
+	cwd: Entity<ComposerInput>,
+	composer: Entity<ComposerInput>,
+}
+
 impl ChiefSurface {
 	#[cfg(feature = "visual-capture")]
 	#[allow(dead_code, reason = "capture-only interaction proof shares the main module")]
@@ -223,27 +229,7 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn new(cx: &mut Context<Self>) -> Self {
-		Self::refresh_prompt(cx);
-		let model =
-			cx.new(|cx| ComposerInput::with_placeholder(31, "Exact model ID", "Chief model", cx));
-		model.update(cx, |input, cx| input.set_content("gpt-6-astra", cx));
-		let cwd = cx.new(|cx| {
-			ComposerInput::with_placeholder(
-				32,
-				"Absolute working directory",
-				"Chief working directory",
-				cx,
-			)
-		});
-		let composer =
-			cx.new(|cx| ComposerInput::message(35, prompts::next(), "Chief message", cx));
-		cx.subscribe(&composer, |s, _, event, cx| {
-			if let crate::composer_input::ComposerEvent::Attach(item) = event {
-				s.attach_clipboard(item, cx);
-			}
-			cx.notify();
-		})
-		.detach();
+		let ChiefInputs { model, cwd, composer } = Self::new_inputs(cx);
 		Self {
 			voice: None,
 			voice_task: None,
@@ -321,14 +307,7 @@ impl ChiefSurface {
 			composer_footer_height: 74.,
 			model,
 			cwd,
-			account: cx.new(|cx| {
-				ComposerInput::with_placeholder(
-					33,
-					"Automatic account routing",
-					"Optional exact account ID",
-					cx,
-				)
-			}),
+			account: Self::account_input(cx),
 			effort: ConversationReasoningEffort::High,
 			sandbox: ChiefSandboxDto::ReadOnly,
 			command_task: None,
@@ -366,6 +345,42 @@ impl ChiefSurface {
 			copy_focus: cx.focus_handle().tab_index(22).tab_stop(true),
 			generation: 0,
 		}
+	}
+
+	fn new_inputs(cx: &mut Context<Self>) -> ChiefInputs {
+		Self::refresh_prompt(cx);
+		let model =
+			cx.new(|cx| ComposerInput::with_placeholder(31, "Exact model ID", "Chief model", cx));
+		model.update(cx, |input, cx| input.set_content("gpt-6-astra", cx));
+		let cwd = cx.new(|cx| {
+			ComposerInput::with_placeholder(
+				32,
+				"Absolute working directory",
+				"Chief working directory",
+				cx,
+			)
+		});
+		let composer =
+			cx.new(|cx| ComposerInput::message(35, prompts::next(), "Chief message", cx));
+		cx.subscribe(&composer, |s, _, event, cx| {
+			if let crate::composer_input::ComposerEvent::Attach(item) = event {
+				s.attach_clipboard(item, cx);
+			}
+			cx.notify();
+		})
+		.detach();
+		ChiefInputs { model, cwd, composer }
+	}
+
+	fn account_input(cx: &mut Context<Self>) -> Entity<ComposerInput> {
+		cx.new(|cx| {
+			ComposerInput::with_placeholder(
+				33,
+				"Automatic account routing",
+				"Optional exact account ID",
+				cx,
+			)
+		})
 	}
 
 	fn load_history(&mut self, cx: &mut Context<Self>) {
