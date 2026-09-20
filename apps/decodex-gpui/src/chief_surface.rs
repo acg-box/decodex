@@ -2,6 +2,7 @@
 
 #[path = "chief_activity.rs"] mod activity;
 #[path = "chief_tree.rs"] mod agent_tree;
+#[path = "chief_archive.rs"] mod archive;
 #[path = "chief_async_questions.rs"] mod async_questions;
 #[path = "chief_capabilities.rs"] mod capabilities;
 #[path = "chief_composer.rs"] mod composer;
@@ -157,6 +158,7 @@ pub(crate) struct ChiefSurface {
 	request_task: Option<Task<()>>,
 	misalignment_reviewed: Option<(String, String)>,
 	guardian: guardian::Panel,
+	archive: archive::Panel,
 	mcp_form_event: Option<i64>,
 	mcp_url_opened: Option<(i64, String)>,
 	mcp_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
@@ -341,6 +343,7 @@ impl ChiefSurface {
 			request_task: None,
 			misalignment_reviewed: None,
 			guardian: Default::default(),
+			archive: Default::default(),
 			mcp_form_event: None,
 			mcp_url_opened: None,
 			mcp_inputs: Default::default(),
@@ -362,6 +365,7 @@ impl ChiefSurface {
 
 	fn load_history(&mut self, cx: &mut Context<Self>) {
 		self.load_guardian_reviews(cx);
+		self.load_archive_state(false, cx);
 		if self.history.as_ref().is_some_and(|(id, _)| self.selected.as_ref() != Some(id)) {
 			self.history = None;
 		}
@@ -759,6 +763,7 @@ impl ChiefSurface {
 		self.mcp_answers.clear();
 		self.misalignment_reviewed = None;
 		self.guardian = Default::default();
+		self.archive = Default::default();
 		self.async_question_inputs.clear();
 		self.selected = None;
 		self.state = LoadState::Idle;
@@ -776,7 +781,10 @@ impl ChiefSurface {
 						if should_poll_snapshot(surface.profile.is_some(), &surface.state, active) {
 							surface.refresh(cx);
 						}
-						if surface.guardian_needs_refresh() {surface.load_guardian_reviews(cx);}
+						surface.load_archive_state(false, cx);
+						if surface.guardian_needs_refresh() {
+							surface.load_guardian_reviews(cx);
+						}
 					})
 					.is_err()
 				{
@@ -790,6 +798,7 @@ impl ChiefSurface {
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
 		self.generation += 1;
 		self.guardian_disconnected();
+		self.archive_disconnected();
 		self.task = None;
 		self.state =
 			if self.snapshot.is_some() { LoadState::Stale } else { LoadState::Unavailable };
@@ -1014,6 +1023,7 @@ impl ChiefSurface {
 			)
 			.child(self.misalignment_panel(work, cx))
 			.child(self.guardian_panel(work, cx))
+			.child(self.archive_panel(work, cx))
 			.child(self.request_panel(snapshot, work, cx))
 			.child(self.async_question_panel(work, cx))
 			.child(self.history_panel(work, cx))

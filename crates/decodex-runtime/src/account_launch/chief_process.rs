@@ -221,6 +221,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "model/list" | "experimentalFeature/list"
 					| "thread/start"
 					| "thread/resume"
+					| "thread/unarchive"
 					| "thread/read" | "thread/list"
 					| "thread/turns/list"
 					| "thread/items/list"

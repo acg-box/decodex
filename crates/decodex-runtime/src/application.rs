@@ -1867,6 +1867,11 @@ impl Application for ServiceApplication {
 			QueryPayload::GetChiefHistory { work_id, before } => QueryResultPayload::ChiefHistory(
 				query_chief_history_page(&self.store, work_id.as_str(), *before).await,
 			),
+			QueryPayload::GetChiefArchiveState { work_id } =>
+				QueryResultPayload::ChiefArchiveState(match &self.chief {
+					Some(chief) => chief.archive_state(work_id.as_str()).await,
+					None => decodex_protocol::ChiefArchiveResult::Unavailable,
+				}),
 			QueryPayload::GetChiefGuardianReviews { work_id, before } =>
 				QueryResultPayload::ChiefGuardianReviews(match &self.store {
 					ProductStore::Available(store) =>

@@ -1,6 +1,7 @@
 use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[path = "tests/archive.rs"] mod archive;
 #[path = "tests/capacity.rs"] mod capacity;
 #[path = "tests/guardian.rs"] mod guardian;
 
@@ -191,6 +192,7 @@ pub(super) async fn fixture_with_history(
 		let mut lines = BufReader::new(reader).lines();
 		let mut threads = 0;
 		let mut turns = 0;
+		let mut archived = history["_archived"] == true;
 		let mut resume_failures = history["_resume_failures"].as_u64().unwrap_or_default();
 		while let Some(line) = lines.next_line().await.unwrap() {
 			let request: Value = serde_json::from_str(&line).unwrap();
@@ -209,6 +211,27 @@ pub(super) async fn fixture_with_history(
 				&& history["_voice_stop_disconnect"] == true
 			{
 				break;
+			}
+			if request["method"] == "thread/unarchive" {
+				if history["_archive_disconnect"] == true {
+					break;
+				}
+				if history["_archive_reject"] == true {
+					if history["_archive_peer_restored"] == true {
+						archived = false;
+					}
+					writer
+						.write_all(
+							format!(
+								"{}\n",
+								json!({"id":request["id"],"error":{"code":-32600,"message":"restore rejected"}})
+							)
+							.as_bytes(),
+						)
+						.await
+						.unwrap();
+					continue;
+				}
 			}
 			if request["method"] == "thread/approveGuardianDeniedAction" {
 				if history["_guardian_disconnect"] == true {
@@ -251,6 +274,12 @@ pub(super) async fn fixture_with_history(
 				}
 			}
 			let result = match request["method"].as_str() {
+				Some("thread/list") =>
+					json!({"data":if request["params"]["archived"]==archived {vec![json!({"id":"opaque thread/1"})]} else {vec![]},"nextCursor":null}),
+				Some("thread/unarchive") => {
+					archived = false;
+					json!({"thread":{"id":request["params"]["threadId"]}})
+				},
 				Some("turn/steer") => json!({"turnId":request["params"]["expectedTurnId"]}),
 				Some("thread/read") => {
 					let id = request["params"]["threadId"].as_str().unwrap();

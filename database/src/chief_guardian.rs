@@ -1,5 +1,5 @@
 //! Durable Guardian evidence. This table never authorizes execution or wakes work.
-use crate::{SqliteStore, StoreError, error::sqlite_error, unix_micros};
+use crate::{SqliteStore, StoreError, chief_process::owns_work, error::sqlite_error, unix_micros};
 use rusqlite::{OptionalExtension as _, params};
 use serde_json::Value;
 
@@ -223,25 +223,4 @@ fn read_review(
 		)
 		.optional()
 		.map_err(|e| sqlite_error(e).into())
-}
-
-fn owns_work(
-	connection: &rusqlite::Connection,
-	work: &str,
-	generation: Option<&str>,
-) -> Result<bool, StoreError> {
-	if let Some(generation) = generation {
-		connection.query_row("WITH RECURSIVE owned(id,root_id) AS (
-			SELECT b.root_id,b.root_id FROM chief_process_bindings b JOIN process_generations g ON g.generation_id=b.generation_id
-			WHERE b.generation_id=?1 AND g.state='ready' AND b.rowid=(SELECT rowid FROM chief_process_bindings WHERE root_id=b.root_id ORDER BY created_at_micros DESC,rowid DESC LIMIT 1)
-			UNION SELECT w.id,owned.root_id FROM chief_work_items w JOIN owned ON w.parent_goal_id=owned.id
-			WHERE NOT EXISTS(SELECT 1 FROM chief_managers WHERE work_id=w.id))
-			SELECT EXISTS(SELECT 1 FROM owned WHERE id=?2)", params![generation,work], |r|r.get(0)).map_err(|e|sqlite_error(e).into())
-	} else {
-		// Direct coordinator transports have no durable process host. They cannot
-		// bypass ownership once any native process admission exists in this store.
-		connection
-			.query_row("SELECT NOT EXISTS(SELECT 1 FROM chief_process_bindings)", [], |r| r.get(0))
-			.map_err(|e| sqlite_error(e).into())
-	}
 }

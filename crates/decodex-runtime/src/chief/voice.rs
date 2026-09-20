@@ -93,7 +93,11 @@ impl ChiefCoordinator {
 					params.as_object_mut().expect("thread params").remove("dynamicTools");
 					params["threadId"] = json!(thread);
 					params["config"]["features.realtime_conversation"] = json!(true);
-					let resumed = self.client.thread_resume(params).await.map_err(resume_error)?;
+					let resumed = self
+						.client
+						.thread_resume(params)
+						.await
+						.map_err(|error| resume_error(error, &thread))?;
 					if exact(&resumed, "/thread/id")? != thread {
 						return Err(ChiefError::Invalid("voice thread differs".into()));
 					}
@@ -252,7 +256,11 @@ impl ChiefCoordinator {
 			let mut params = self.work_thread_params(&item).await?;
 			params.as_object_mut().expect("thread params").remove("dynamicTools");
 			params["threadId"] = json!(call.thread_id);
-			let resumed = self.client.thread_resume(params).await.map_err(resume_error)?;
+			let resumed = self
+				.client
+				.thread_resume(params)
+				.await
+				.map_err(|error| resume_error(error, &call.thread_id))?;
 			if exact(&resumed, "/thread/id")? != call.thread_id {
 				return Err(ChiefError::Invalid("voice recovery thread differs".into()));
 			}

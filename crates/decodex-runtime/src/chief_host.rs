@@ -193,6 +193,47 @@ impl ChiefHost {
 		}
 	}
 
+	pub(crate) async fn archive_state(&self, work: &str) -> decodex_protocol::ChiefArchiveResult {
+		use decodex_codex::app_server_client::ThreadArchiveState as State;
+		use decodex_protocol::ChiefArchiveResult as Result;
+		let Some((generation, client)) = self.runtime.chief_catalog_client() else {
+			return Result::Unavailable;
+		};
+		let Ok(owner) = self.store.get_chief_work_item(work.into()).await else {
+			return Result::Unavailable;
+		};
+		let Some(thread) = owner.codex_thread_id else {
+			return Result::Unbound;
+		};
+		let owned = || {
+			self.store.chief_thread_is_owned(
+				work.into(),
+				thread.clone(),
+				Some(generation.as_str().into()),
+			)
+		};
+		if !owned().await.unwrap_or(false) {
+			return Result::Unavailable;
+		}
+		let observed = client.thread_archive_state(&thread).await;
+		if !owned().await.unwrap_or(false)
+			|| !self
+				.runtime
+				.chief_catalog_client()
+				.is_some_and(|(current, _)| current == generation)
+		{
+			return Result::Unavailable;
+		}
+		match observed {
+			Ok(State::Active) => Result::Active { thread_id: thread },
+			Ok(State::Archived) => Result::Archived { thread_id: thread },
+			Ok(State::NotFound | State::Changed) => Result::Unconfirmed,
+			Err(ClientError::Remote(e)) if e.code == -32601 => Result::Unsupported,
+			Err(ClientError::CapacityExceeded) => Result::CapacityExceeded,
+			Err(_) => Result::Unavailable,
+		}
+	}
+
 	pub(crate) fn guardian_generation(&self) -> Option<String> {
 		self.runtime.chief_catalog_client().map(|(generation, _)| generation.as_str().to_owned())
 	}
@@ -504,6 +545,14 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			ChiefActionDto::RestoreArchivedThread { work_id, thread_id } => {
+				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
+				chief.restore_archived_thread(work_id.as_str(),thread_id.as_str()).await.map_err(|error|match error {
+                    ChiefError::Rejected(_)=>ChiefHostError::Rejected("Restoration was not accepted. Refresh the task archive state before trying again."),
+                    _=>ChiefHostError::Unknown("Restoration is not confirmed. Refresh archive state; the restore request will not be repeated automatically."),
+                })?;
+				Ok(work_id.as_str().into())
+			},
 			ChiefActionDto::RefreshIntegrations { work_id } => {
 				let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
 				match chief.refresh_integrations(work_id.as_str()).await {
@@ -827,6 +876,7 @@ impl ChiefHost {
 
 fn diagnostic(error: &ChiefError) -> String {
 	match error {
+        ChiefError::ThreadArchived => "This session is archived in Codex. Open Session recovery to restore the original session. Saved messages remain queued.".into(),
 		ChiefError::ThreadOwnedElsewhere => "This Chief conversation is open in Codex or another application. Release it there; saved messages will continue automatically.".into(),
 		ChiefError::Store(_) => "Chief delivery could not access its saved state.".into(),
 		ChiefError::DependenciesPending(_) => "Chief is waiting for prerequisite work.".into(),
