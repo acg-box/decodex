@@ -10,6 +10,7 @@
 #[path = "chief_dictation.rs"] mod dictation;
 #[path = "chief_graph.rs"] mod graph;
 #[path = "chief_guardian.rs"] mod guardian;
+#[path = "chief_install.rs"] mod install;
 #[path = "chief_integrations.rs"] mod integrations;
 #[path = "chief_markdown.rs"] mod markdown;
 #[path = "chief_mcp_forms.rs"] mod mcp_forms;
@@ -160,6 +161,7 @@ pub(crate) struct ChiefSurface {
 	guardian: guardian::Panel,
 	archive: archive::Panel,
 	mcp_form_event: Option<i64>,
+	installation: install::Panel,
 	mcp_url_opened: Option<(i64, String)>,
 	mcp_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
 	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
@@ -345,6 +347,7 @@ impl ChiefSurface {
 			guardian: Default::default(),
 			archive: Default::default(),
 			mcp_form_event: None,
+			installation: Default::default(),
 			mcp_url_opened: None,
 			mcp_inputs: Default::default(),
 			mcp_answers: Default::default(),
@@ -799,6 +802,7 @@ impl ChiefSurface {
 		self.generation += 1;
 		self.guardian_disconnected();
 		self.archive_disconnected();
+		self.installation_disconnected();
 		self.task = None;
 		self.state =
 			if self.snapshot.is_some() { LoadState::Stale } else { LoadState::Unavailable };

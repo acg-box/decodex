@@ -119,6 +119,9 @@ impl ChiefSurface {
 		value: &Value,
 		cx: &mut Context<Self>,
 	) -> gpui::AnyElement {
+		if value["_meta"]["codex_approval_kind"] == "tool_suggestion" {
+			return self.installation_panel(event, value, cx);
+		}
 		let mut panel = div()
 			.id("mcp-form-panel")
 			.flex()
@@ -306,7 +309,7 @@ impl ChiefSurface {
 	}
 }
 
-fn mcp_button(
+pub(super) fn mcp_button(
 	id: String,
 	label: String,
 	selected: bool,

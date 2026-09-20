@@ -4,6 +4,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/archive.rs"] mod archive;
 #[path = "tests/capacity.rs"] mod capacity;
 #[path = "tests/guardian.rs"] mod guardian;
+#[path = "tests/install.rs"] mod install;
 
 #[tokio::test]
 async fn subagent_activity_survives_parent_completion_and_restart_without_waking_work() {
