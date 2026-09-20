@@ -120,7 +120,7 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         native_client = read("crates/decodex-app-client-ffi/src/lib.rs")
         staging = read("scripts/macos/stage_decodex_app.sh")
         bundle_verifier = read("scripts/macos/verify_decodex_bundle_contracts.py")
-        self.assertIn("ProtocolVersion { major: 2, minor: 41 }", protocol)
+        self.assertIn("ProtocolVersion { major: 2, minor: 42 }", protocol)
         self.assertIn("Some(u64::from(CURRENT_VERSION.minor))", gpui)
         self.assertIn("decodex_app_native_client_abi_version", native_client)
         self.assertIn("verify_decodex_bundle_contracts.py", staging)
@@ -377,7 +377,6 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         application = read("crates/decodex-runtime/src/application.rs")
         protocol = read("crates/decodex-protocol/src/wire.rs")
         protocol_exports = read("crates/decodex-protocol/src/lib.rs")
-        reset_card = read("crates/decodex-runtime/src/account_launch/api_reset_card_disabled.rs")
         for retired in (
             "WorkItemBoard",
             "ListProjects",
@@ -412,7 +411,6 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertFalse((ROOT / "crates/decodex-core/src/managed_repository.rs").exists())
         self.assertNotIn("ManagedRepository", protocol_exports)
         self.assertNotIn("ManagedRepository", read("crates/decodex-protocol/src/doctor.rs"))
-        self.assertIn("ProductStateUnavailable", reset_card)
         for retired in (
             "managed_repository_disabled.rs",
             "managed_repository_runtime.rs",

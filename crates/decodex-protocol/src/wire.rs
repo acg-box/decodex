@@ -2307,6 +2307,11 @@ pub enum QueryPayload {
 		/// Canonical vNext account UUID.
 		account_id: EntityId,
 	},
+	/// Discover an account's latest reset operation after a client restart.
+	GetAccountResetCardOperation {
+		/// Canonical account UUID.
+		account_id: EntityId,
+	},
 	/// Read one durable reset-card operation by its logical-command key.
 	GetResetCardOperation {
 		/// Stable key supplied to the original consume command.
@@ -2868,6 +2873,8 @@ pub enum QueryResultPayload {
 	ResetCards(ResetCardInventoryResult),
 	/// Durable reset-card operation state.
 	ResetCardOperation(ResetCardOperationResult),
+	/// Account-scoped durable reset-card recovery projection.
+	AccountResetCardOperation(crate::AccountResetCardOperationResult),
 	/// Daemon-owned accounts and user-owned routing controls.
 	Accounts(AccountsResult),
 	/// One account and exact lifecycle readiness.
@@ -4443,7 +4450,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":41},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":42},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4452,7 +4459,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":41},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":42},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4494,7 +4501,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":41},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":42},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

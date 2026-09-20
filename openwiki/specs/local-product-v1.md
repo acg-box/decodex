@@ -536,12 +536,20 @@ Repository management and built-in GitHub PR/check-run orchestration are removed
 They are not deferred V1 capabilities. Ordinary working directories and independent
 Codex execution remain available; no repository-management service is required.
 
+## Manual Reset Cards
+
+Reset Card use is required product functionality. The daemon stores each confirmed
+account revision, exact selected card, and request key in the SQLite reset-card
+ledger. Accounts offers an explicit selection and confirmation. The CLI uses the
+same service. Account-scoped recovery restores the last result after a UI restart.
+An uncertain provider write is never automatically repeated or rebound to another
+card. See [Reset Card operation](../operations/reset-cards.md).
+
 ## Deferred capabilities
 
 The following are outside V1 and must not activate a second store:
 
 - WorkItem board persistence;
-- Reset Card consumption;
 - execution-decision query projections;
 - ManagedRun and automation;
 - a general ontology language, graph editor, or graph database;

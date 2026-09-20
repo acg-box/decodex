@@ -1,4 +1,5 @@
 //! Production GPUI window, navigation, focus, and lifecycle rendering boundary.
+#[path = "shell_reset_cards.rs"] mod reset_cards;
 #[path = "shell_status.rs"] mod status;
 use crate::ui_motion::SmoothControl;
 
@@ -480,6 +481,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 
 /// One window-owned production shell. Connection ownership lives at application scope.
 pub(crate) struct Shell {
+	reset_cards: reset_cards::ResetCardsPanel,
 	settings_window: Option<WindowHandle<SettingsWindow>>,
 	settings_selected: Destination,
 	selected: Destination,
@@ -532,10 +534,11 @@ pub(crate) struct Shell {
 
 impl Shell {
 	pub(crate) fn with_chief_profile(
-		self,
+		mut self,
 		profile: Option<decodex_protocol::ClientProfile>,
 		cx: &mut Context<Self>,
 	) -> Self {
+		self.reset_cards.profile = profile.clone();
 		let cwd = self.conversations.working_directory();
 		self.chief.update(cx, |surface, cx| {
 			surface.seed_context(cwd, vec![], cx);
@@ -616,6 +619,7 @@ impl Shell {
 			opened_account_login_url: None,
 			pending_account_logout: None,
 			account_actions: None,
+			reset_cards: reset_cards::ResetCardsPanel::default(),
 			account_profile_controller,
 			account_profile,
 			desktop_settings,
@@ -1925,6 +1929,7 @@ fn publish_views(
 	}
 	let _ = shell.update(cx, |shell, cx| {
 		shell.poll_account_login(cx);
+		shell.poll_reset_cards(cx);
 		let accounts = shell.accounts_controller.snapshot();
 		let account_profile = shell.account_profile_controller.snapshot();
 		let desktop_settings = shell.desktop_settings.snapshot();
@@ -2692,6 +2697,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.gap_3()
 				.child(account_pool_header(count, available, balanced, can_manage, cx))
 				.child(account_login_controls(shell, cx))
+				.children(reset_cards::panel(shell, cx))
 				.when(shell.account_profile.selected.is_some(), |content| {
 					content.child(account_profile_panel(shell, cx))
 				})
@@ -3446,6 +3452,8 @@ fn account_management_actions(
 	let index = presentation.index;
 	let login_account_id = account.account_id.clone();
 	let profile_account_id = account.account_id.clone();
+	let reset_account_id = account.account_id.clone();
+	let reset_alias = account.alias.as_str().to_owned();
 	let logout_account_id = account.account_id.clone();
 	let login_account_revision = account.account_revision;
 	let login_recovery_operation_id = account_login_recovery_operation_id(account);
@@ -3458,6 +3466,18 @@ fn account_management_actions(
 		.justify_start()
 		.items_center()
 		.gap_1()
+		.child(
+			account_row_action(
+				"account-reset-cards",
+				index,
+				"Show Reset Cards",
+				"Reset Cards",
+				true,
+			)
+			.on_click(cx.listener(move |shell, _, _, cx| {
+				shell.show_reset_cards(reset_account_id.clone(), reset_alias.clone(), cx)
+			})),
+		)
 		.child(
 			div().flex().items_center().gap_1().child(
 				account_row_action(

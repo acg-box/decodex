@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 28;
+const CURRENT_SCHEMA_VERSION: i64 = 29;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -155,6 +155,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 28,
 		name: "conversation_service_tier",
 		sql: include_str!("../migrations/0028_conversation_service_tier.sql"),
+	},
+	Migration {
+		version: 29,
+		name: "reset_card_operations",
+		sql: include_str!("../migrations/0029_reset_card_operations.sql"),
 	},
 ];
 
@@ -420,6 +425,43 @@ pub(crate) fn expected_migration_digests() -> Vec<String> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn reset_card_upgrade_preserves_existing_schema_and_initializes_an_empty_ledger() {
+		let directory = tempfile::tempdir().expect("isolated migration root");
+		let mut connection =
+			Connection::open(directory.path().join("reset.sqlite3")).expect("isolated database");
+		configure(&connection).expect("SQLite settings");
+		for migration in &MIGRATIONS[..28] {
+			connection.execute_batch(migration.sql).expect("prior migration");
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.expect("prior receipt");
+		}
+		connection
+			.pragma_update(None, "application_id", APPLICATION_ID)
+			.expect("application identity");
+		connection.pragma_update(None, "user_version", 28).expect("prior version");
+		connection
+			.execute("UPDATE desktop_settings SET show_in_menu_bar=0, revision=17", [])
+			.expect("user preference");
+		let before = schema_inventory(&connection).expect("prior schema");
+		migrate(&mut connection).expect("upgrade");
+		verify(&connection).expect("upgraded schema");
+		let after = schema_inventory(&connection).expect("current schema");
+		assert!(before.iter().all(|entry| after.contains(entry)));
+		let count: i64 = connection
+			.query_row("SELECT COUNT(*) FROM reset_card_operations", [], |row| row.get(0))
+			.expect("empty ledger");
+		assert_eq!(count, 0);
+		let revision: i64 = connection
+			.query_row("SELECT revision FROM desktop_settings", [], |row| row.get(0))
+			.expect("preserved preference");
+		assert_eq!(revision, 17);
+	}
 
 	#[test]
 	fn service_tier_upgrade_adds_nullable_column_without_rewriting_prior_schema() {

@@ -49,6 +49,8 @@ mod program_cycle;
 mod retained_session;
 mod voice;
 pub use dictation::{DictationBuffer, DictationPhase, DictationRequest, DictationStatus};
+mod reset_card_recovery;
+pub use reset_card_recovery::{AccountResetCardOperationResult, ResetCardOperationView};
 mod wire;
 pub use voice::{ChiefVoicePhase, ChiefVoiceRequest, ChiefVoiceStatus, VoiceSdp};
 
@@ -144,7 +146,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 41 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 42 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

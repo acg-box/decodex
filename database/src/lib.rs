@@ -30,6 +30,8 @@ mod migrations;
 mod process_generations;
 mod program_cycles;
 mod provider_attempts;
+mod reset_cards;
+pub use reset_cards::ResetCardOperation;
 mod role_profiles;
 mod runtime_sessions;
 mod transfers;
