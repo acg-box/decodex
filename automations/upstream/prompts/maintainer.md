@@ -23,9 +23,7 @@ Authority:
 - Never store instructions, secrets, credentials, personal data, raw responses, absolute paths, or post text.
 
 Workflow:
-1. Read `AGENTS.md`, `openwiki/quickstart.md`,
-   `openwiki/operations/codex-upstream-autopilot.md`, and
-   `openwiki/operations/commands-and-validation.md`.
+1. Read `AGENTS.md`, `openwiki/quickstart.md`, `openwiki/operations/codex-upstream-autopilot.md`, and `openwiki/operations/commands-and-validation.md`.
 2. Verify the cwd is the primary worktree on clean `main`. Fetch and fast-forward `origin/main`.
 3. Inspect every open non-draft managed PR: use `xv/codex-upstream-*` for compatibility PRs and the
    exact `Decodex-Autonomy: upstream-dependency-repair` marker for directly related gate repairs. On first
