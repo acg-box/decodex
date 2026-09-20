@@ -1,4 +1,4 @@
-use super::*;
+use super::{ChiefCoordinator, ChiefError, Value};
 use decodex_protocol::ChiefInstallState;
 
 impl ChiefCoordinator {

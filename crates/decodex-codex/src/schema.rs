@@ -850,6 +850,23 @@ mod tests {
 	};
 
 	#[test]
+	#[ignore = "set DECODEX_REVIEW_SCHEMA to an official experimental JSON schema directory"]
+	fn official_schema_supports_current_consumers() {
+		let directory =
+			std::env::var_os("DECODEX_REVIEW_SCHEMA").expect("schema directory required");
+		let evidence = super::GeneratedSchemaEvidence::load(std::path::Path::new(&directory))
+			.expect("official schema must pass bounded loading and account callback validation");
+		let contract = evidence.contract();
+		assert!(evidence.supports_standalone_tool_output());
+		contract.check_conversation_contract().expect("ordinary conversation contract");
+		assert!(contract.advertises_collaboration());
+		assert!(contract.advertises_paginated_history());
+		for method in ["thread/read", "thread/turns/list", "thread/items/list", "turn/steer"] {
+			assert!(contract.advertises_request(method), "missing {method}");
+		}
+	}
+
+	#[test]
 	fn accepted_marker_golden_satisfies_the_xy_1262_contract() {
 		let marker = SchemaMarker::accepted();
 

@@ -79,72 +79,80 @@ async fn remote_install_without_confirmed_receipt_keeps_authorization_unknown() 
 	exercise_installation(false).await;
 }
 
-async fn exercise_installation(receipt_confirmed: bool) {
-	let (mut chief, _sent, _directory) = fixture().await;
-	chief.start_chief("chief", "Coordinate").await.unwrap();
-	let (local, remote) = tokio::io::duplex(65536);
-	let (reader, writer) = tokio::io::split(local);
-	let (client, mut events) = AppServerClient::from_io(reader, writer);
-	chief.client = client;
-	let installed = Arc::new(AtomicBool::new(false));
-	let enabled = Arc::new(AtomicBool::new(true));
-	let plugin_enabled = enabled.clone();
-	let accessible = Arc::new(AtomicBool::new(false));
-	let receipt_only_accessible = Arc::new(AtomicBool::new(false));
-	let extra = receipt_only_accessible.clone();
-	let installs = Arc::new(AtomicUsize::new(0));
-	let replies = Arc::new(AtomicUsize::new(0));
-	let (i, a, n, r) = (installed.clone(), accessible.clone(), installs.clone(), replies.clone());
-	let params = json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","serverName":"codex_apps","mode":"form","message":"Install Sample","requestedSchema":{"type":"object","properties":{}},"_meta":{"codex_approval_kind":"tool_suggestion","suggest_type":"install","tool_type":"plugin","tool_id":"sample@market","tool_name":"Sample","suggestion_id":"request_plugin_install_call-2","remote_plugin_id":"plugins~sample","app_connector_ids":[]}});
-	let server = tokio::spawn(async move {
-		let (reader, mut writer) = tokio::io::split(remote);
-		writer
-			.write_all(
-				format!(
-					"{}\n",
-					json!({"id":"suggestion-1","method":"mcpServer/elicitation/request","params":params})
-				)
-				.as_bytes(),
+struct InstallationFixtureState {
+	installed: Arc<AtomicBool>,
+	enabled: Arc<AtomicBool>,
+	accessible: Arc<AtomicBool>,
+	receipt_only_accessible: Arc<AtomicBool>,
+	installs: Arc<AtomicUsize>,
+	replies: Arc<AtomicUsize>,
+}
+async fn serve_installation_fixture(
+	remote: tokio::io::DuplexStream,
+	params: Value,
+	receipt_confirmed: bool,
+	state: InstallationFixtureState,
+) {
+	let InstallationFixtureState {
+		installed: i,
+		enabled: plugin_enabled,
+		accessible: a,
+		receipt_only_accessible: extra,
+		installs: n,
+		replies: r,
+	} = state;
+	let (reader, mut writer) = tokio::io::split(remote);
+	writer
+		.write_all(
+			format!(
+				"{}\n",
+				json!({"id":"suggestion-1","method":"mcpServer/elicitation/request","params":params})
 			)
-			.await
-			.unwrap();
-		let mut lines = BufReader::new(reader).lines();
-		while let Some(line) = lines.next_line().await.unwrap() {
-			let request: Value = serde_json::from_str(&line).unwrap();
-			if request.get("method").is_none() {
-				assert_eq!(request["id"], "suggestion-1");
-				assert!(i.load(Ordering::SeqCst) && a.load(Ordering::SeqCst));
-				r.fetch_add(1, Ordering::SeqCst);
-				continue;
-			}
-			let summary = json!({"id":"sample@market","name":"sample","remotePluginId":"plugins~sample","installed":i.load(Ordering::SeqCst),"enabled":plugin_enabled.load(Ordering::SeqCst),"availability":"AVAILABLE","installPolicy":"AVAILABLE","authPolicy":"ON_INSTALL","source":{"type":"git","url":"https://example.com/plugin"}});
-			let result = match request["method"].as_str().unwrap() {
-				"thread/read" => json!({"thread":{"id":"opaque thread/1","cwd":"/tmp"}}),
-				"plugin/list" =>
-					json!({"marketplaces":[{"name":"market","path":null,"plugins":[summary]}],"marketplaceLoadErrors":[]}),
-				"plugin/read" =>
-					json!({"plugin":{"summary":summary,"description":"Sample integration","apps":[{"id":"connector","name":"Calendar","installUrl":"https://chatgpt.com/apps/calendar"}],"skills":[],"mcpServers":[],"hooks":[]}}),
-				"app/list" =>
-					json!({"data":[{"id":"connector","name":"Calendar","isAccessible":a.load(Ordering::SeqCst),"isEnabled":true,"installUrl":"https://chatgpt.com/apps/calendar"},{"id":"receipt-only","name":"Extra connector","isAccessible":extra.load(Ordering::SeqCst),"isEnabled":true}],"nextCursor":null}),
-				"plugin/install" => {
-					assert_eq!(request["params"]["pluginName"], "plugins~sample");
-					assert_eq!(n.fetch_add(1, Ordering::SeqCst), 0);
-					i.store(true, Ordering::SeqCst);
-					json!({"authPolicy":"ON_INSTALL","appsNeedingAuth":[{"id":"connector","name":"Calendar"},{"id":"receipt-only","name":"Extra connector","installUrl":"https://chatgpt.com/apps/extra/receipt-only"}]})
-				},
-				other => panic!("unexpected {other}"),
-			};
-			let response = if request["method"] == "plugin/install" && !receipt_confirmed {
-				json!({"id":request["id"],"error":{"code":-32603,"message":"Installation outcome is uncertain"}})
-			} else {
-				json!({"id":request["id"],"result":result})
-			};
-			writer.write_all(format!("{response}\n").as_bytes()).await.unwrap();
+			.as_bytes(),
+		)
+		.await
+		.unwrap();
+	let mut lines = BufReader::new(reader).lines();
+	while let Some(line) = lines.next_line().await.unwrap() {
+		let request: Value = serde_json::from_str(&line).unwrap();
+		if request.get("method").is_none() {
+			assert_eq!(request["id"], "suggestion-1");
+			assert!(i.load(Ordering::SeqCst) && a.load(Ordering::SeqCst));
+			r.fetch_add(1, Ordering::SeqCst);
+			continue;
 		}
-	});
-	chief.handle_event(events.recv().await.unwrap()).await.unwrap();
-	let event = *chief.pending_requests.get(&RequestId::String("suggestion-1".into())).unwrap();
-	let response = json!({"action":"accept","content":{},"_meta":null});
+		let summary = json!({"id":"sample@market","name":"sample","remotePluginId":"plugins~sample","installed":i.load(Ordering::SeqCst),"enabled":plugin_enabled.load(Ordering::SeqCst),"availability":"AVAILABLE","installPolicy":"AVAILABLE","authPolicy":"ON_INSTALL","source":{"type":"git","url":"https://example.com/plugin"}});
+		let result = match request["method"].as_str().unwrap() {
+			"thread/read" => json!({"thread":{"id":"opaque thread/1","cwd":"/tmp"}}),
+			"plugin/list" =>
+				json!({"marketplaces":[{"name":"market","path":null,"plugins":[summary]}],"marketplaceLoadErrors":[]}),
+			"plugin/read" =>
+				json!({"plugin":{"summary":summary,"description":"Sample integration","apps":[{"id":"connector","name":"Calendar","installUrl":"https://chatgpt.com/apps/calendar"}],"skills":[],"mcpServers":[],"hooks":[]}}),
+			"app/list" =>
+				json!({"data":[{"id":"connector","name":"Calendar","isAccessible":a.load(Ordering::SeqCst),"isEnabled":true,"installUrl":"https://chatgpt.com/apps/calendar"},{"id":"receipt-only","name":"Extra connector","isAccessible":extra.load(Ordering::SeqCst),"isEnabled":true}],"nextCursor":null}),
+			"plugin/install" => {
+				assert_eq!(request["params"]["pluginName"], "plugins~sample");
+				assert_eq!(n.fetch_add(1, Ordering::SeqCst), 0);
+				i.store(true, Ordering::SeqCst);
+				json!({"authPolicy":"ON_INSTALL","appsNeedingAuth":[{"id":"connector","name":"Calendar"},{"id":"receipt-only","name":"Extra connector","installUrl":"https://chatgpt.com/apps/extra/receipt-only"}]})
+			},
+			other => panic!("unexpected {other}"),
+		};
+		let response = if request["method"] == "plugin/install" && !receipt_confirmed {
+			json!({"id":request["id"],"error":{"code":-32603,"message":"Installation outcome is uncertain"}})
+		} else {
+			json!({"id":request["id"],"result":result})
+		};
+		writer.write_all(format!("{response}\n").as_bytes()).await.unwrap();
+	}
+}
+
+async fn review_before_installation(
+	chief: &mut ChiefCoordinator,
+	event: i64,
+	response: &Value,
+	installs: &AtomicUsize,
+) -> String {
 	assert!(chief.respond_pending_event(event, response.clone()).await.is_err());
 	assert_eq!(installs.load(Ordering::SeqCst), 0);
 	let inspection =
@@ -169,6 +177,36 @@ async fn exercise_installation(receipt_confirmed: bool) {
 			.is_err()
 	);
 	assert_eq!(installs.load(Ordering::SeqCst), 0);
+	review_token
+}
+
+async fn exercise_installation(receipt_confirmed: bool) {
+	let (mut chief, _sent, _directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	let (local, remote) = tokio::io::duplex(65536);
+	let (reader, writer) = tokio::io::split(local);
+	let (client, mut events) = AppServerClient::from_io(reader, writer);
+	chief.client = client;
+	let installed = Arc::new(AtomicBool::new(false));
+	let enabled = Arc::new(AtomicBool::new(true));
+	let accessible = Arc::new(AtomicBool::new(false));
+	let receipt_only_accessible = Arc::new(AtomicBool::new(false));
+	let installs = Arc::new(AtomicUsize::new(0));
+	let replies = Arc::new(AtomicUsize::new(0));
+	let params = json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","serverName":"codex_apps","mode":"form","message":"Install Sample","requestedSchema":{"type":"object","properties":{}},"_meta":{"codex_approval_kind":"tool_suggestion","suggest_type":"install","tool_type":"plugin","tool_id":"sample@market","tool_name":"Sample","suggestion_id":"request_plugin_install_call-2","remote_plugin_id":"plugins~sample","app_connector_ids":[]}});
+	let state = InstallationFixtureState {
+		installed: installed.clone(),
+		enabled: enabled.clone(),
+		accessible: accessible.clone(),
+		receipt_only_accessible: receipt_only_accessible.clone(),
+		installs: installs.clone(),
+		replies: replies.clone(),
+	};
+	let server = tokio::spawn(serve_installation_fixture(remote, params, receipt_confirmed, state));
+	chief.handle_event(events.recv().await.unwrap()).await.unwrap();
+	let event = *chief.pending_requests.get(&RequestId::String("suggestion-1".into())).unwrap();
+	let response = json!({"action":"accept","content":{},"_meta":null});
+	let review_token = review_before_installation(&mut chief, event, &response, &installs).await;
 	chief.install_suggested_plugin("chief", event, &review_token, "attempt-1").await.unwrap();
 	assert_eq!(installs.load(Ordering::SeqCst), 1);
 	assert!(chief.pending_requests.values().any(|id| *id == event));

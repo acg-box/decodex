@@ -67,7 +67,7 @@ impl McpLoginGateway {
 					session.status.phase = McpLoginPhase::Disconnected;
 					session.status.message =
 						WireText::new("The native connection changed. No request was replayed.")
-							.unwrap();
+							.expect("static OAuth status fits wire bounds");
 				}
 				if session.pending && session.started.elapsed() > Duration::from_secs(180) {
 					session.status.phase = McpLoginPhase::Expired;
@@ -75,7 +75,7 @@ impl McpLoginGateway {
 					session.status.message = WireText::new(
 						"Waiting expired. Native sign-in may still finish; refresh server status.",
 					)
-					.unwrap();
+					.expect("static OAuth status fits wire bounds");
 				}
 				if session.status.session_id == *request.session_id()
 					|| session.aliases.contains(request.session_id())
@@ -147,6 +147,15 @@ impl McpLoginGateway {
 			),
 		)
 		.await;
+		self.finish_login_reply(request, &source, reply).await
+	}
+
+	async fn finish_login_reply(
+		&self,
+		request: &McpLoginRequest,
+		source: &Source,
+		reply: Result<Result<serde_json::Value, ClientError>, tokio::time::error::Elapsed>,
+	) -> McpLoginStatus {
 		let mut slot = self.0.lock().await;
 		let Some(session) = slot.as_mut().filter(|session| {
 			session.status.session_id == *request.session_id()
@@ -177,7 +186,7 @@ impl McpLoginGateway {
 					session.status.message = WireText::new(
 						"Open the authorization page to continue. Opening it does not confirm sign-in.",
 					)
-					.unwrap();
+					.expect("static OAuth status fits wire bounds");
 				} else {
 					session.status = status(
 						request,
@@ -233,7 +242,7 @@ impl McpLoginGateway {
 		} else {
 			"Codex reported sign-in failure. Refresh server status before trying again."
 		})
-		.unwrap();
+		.expect("static OAuth status fits wire bounds");
 	}
 
 	pub(crate) async fn expire(&self) {
@@ -246,7 +255,7 @@ impl McpLoginGateway {
 			session.status.message = WireText::new(
 				"Waiting expired. Native sign-in may still finish; refresh server status.",
 			)
-			.unwrap();
+			.expect("static OAuth status fits wire bounds");
 		}
 	}
 
@@ -260,7 +269,7 @@ impl McpLoginGateway {
 			session.status.phase = McpLoginPhase::Disconnected;
 			session.status.message =
 				WireText::new("The native connection changed. No sign-in request was replayed.")
-					.unwrap();
+					.expect("static OAuth status fits wire bounds");
 		}
 	}
 }

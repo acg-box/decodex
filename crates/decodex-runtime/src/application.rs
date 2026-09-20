@@ -1830,14 +1830,7 @@ impl Application for ServiceApplication {
 				}),
 
 			QueryPayload::ExchangeMcpLogin { request } =>
-				QueryResultPayload::McpLogin(match &self.chief {
-					Some(chief) => chief.mcp_login(request).await,
-					None => crate::mcp_login::status(
-						request,
-						decodex_protocol::McpLoginPhase::Disconnected,
-						"Chief is not connected.",
-					),
-				}),
+				QueryResultPayload::McpLogin(query_mcp_login(self.chief.as_ref(), request).await),
 			QueryPayload::GetChiefUsageEstimate { work_id } =>
 				QueryResultPayload::ChiefUsageEstimate(match &self.chief {
 					Some(chief) => chief.usage_estimate(work_id.as_str()).await,
@@ -1878,18 +1871,15 @@ impl Application for ServiceApplication {
 					None => decodex_protocol::ChiefInstallState::Unavailable,
 				}),
 			QueryPayload::GetChiefGuardianReviews { work_id, before } =>
-				QueryResultPayload::ChiefGuardianReviews(match &self.store {
-					ProductStore::Available(store) =>
-						crate::chief_guardian::read(
-							store,
-							work_id.as_str(),
-							*before,
-							self.chief.as_ref().and_then(|host| host.guardian_generation()),
-						)
-						.await,
-					ProductStore::Unavailable(_) =>
-						decodex_protocol::ChiefGuardianReviewsResult::Unavailable,
-				}),
+				QueryResultPayload::ChiefGuardianReviews(
+					query_guardian_reviews(
+						&self.store,
+						self.chief.as_ref(),
+						work_id.as_str(),
+						*before,
+					)
+					.await,
+				),
 			QueryPayload::GetChiefSnapshot =>
 				QueryResultPayload::ChiefSnapshot(query_chief_snapshot(&self.store).await),
 			QueryPayload::GetDesktopSettings =>
@@ -1931,15 +1921,9 @@ impl Application for ServiceApplication {
 				QueryResultPayload::InitialAccountSelection(self.initial_account_selection().await),
 			QueryPayload::GetCodexAuthProjection =>
 				QueryResultPayload::CodexAuthProjection(self.codex_auth_projection().await),
-			QueryPayload::WaitForAccountObservation { after_generation, request_refresh } => {
-				if request_refresh == &Some(true) {
-					self.request_account_observation_refresh();
-				}
-				QueryResultPayload::AccountObservation(match self.account_observations.as_ref() {
-					Some(observations) => observations.wait_for_change(*after_generation).await,
-					None => AccountObservationService::heartbeat(*after_generation).await,
-				})
-			},
+			QueryPayload::WaitForAccountObservation { after_generation, request_refresh } =>
+				self.query_account_observation(*after_generation, *request_refresh == Some(true))
+					.await,
 		}
 	}
 
@@ -3642,6 +3626,84 @@ fn attach_file_approval_detail(
 	request
 }
 
+impl ServiceApplication {
+	async fn query_account_observation(
+		&self,
+		after_generation: u64,
+		request_refresh: bool,
+	) -> QueryResultPayload {
+		if request_refresh {
+			self.request_account_observation_refresh();
+		}
+		QueryResultPayload::AccountObservation(match self.account_observations.as_ref() {
+			Some(observations) => observations.wait_for_change(after_generation).await,
+			None => AccountObservationService::heartbeat(after_generation).await,
+		})
+	}
+}
+
+async fn query_mcp_login(
+	chief: Option<&crate::chief_host::ChiefHost>,
+	request: &decodex_protocol::McpLoginRequest,
+) -> decodex_protocol::McpLoginStatus {
+	match chief {
+		Some(chief) => chief.mcp_login(request).await,
+		None => crate::mcp_login::status(
+			request,
+			decodex_protocol::McpLoginPhase::Disconnected,
+			"Chief is not connected.",
+		),
+	}
+}
+
+async fn query_guardian_reviews(
+	store: &ProductStore,
+	chief: Option<&crate::chief_host::ChiefHost>,
+	work: &str,
+	before: Option<i64>,
+) -> decodex_protocol::ChiefGuardianReviewsResult {
+	match store {
+		ProductStore::Available(store) =>
+			crate::chief_guardian::read(
+				store,
+				work,
+				before,
+				chief.and_then(|host| host.guardian_generation()),
+			)
+			.await,
+		ProductStore::Unavailable(_) => decodex_protocol::ChiefGuardianReviewsResult::Unavailable,
+	}
+}
+
+fn chief_request_metadata(value: &serde_json::Value) -> Option<serde_json::Value> {
+	let meta = value.as_object()?;
+	let selected_meta: serde_json::Map<String, serde_json::Value> = meta
+		.iter()
+		.filter(|(key, _)| {
+			[
+				"codex_approval_kind",
+				"persist",
+				"connector_name",
+				"tool_name",
+				"tool_title",
+				"tool_description",
+				"tool_params",
+				"tool_params_display",
+				"tool_type",
+				"suggest_type",
+				"tool_id",
+				"suggestion_id",
+				"install_url",
+				"remote_plugin_id",
+				"app_connector_ids",
+			]
+			.contains(&key.as_str())
+		})
+		.map(|(key, value)| (key.clone(), value.clone()))
+		.collect();
+	Some(serde_json::Value::Object(selected_meta))
+}
+
 async fn query_chief_request(
 	store: &ProductStore,
 	event_id: i64,
@@ -3718,32 +3780,8 @@ async fn query_chief_request(
 	for key in keys {
 		if let Some(value) = params.get(*key) {
 			if *key == "_meta" {
-				if let Some(meta) = value.as_object() {
-					let selected_meta: serde_json::Map<String, serde_json::Value> = meta
-						.iter()
-						.filter(|(key, _)| {
-							[
-								"codex_approval_kind",
-								"persist",
-								"connector_name",
-								"tool_name",
-								"tool_title",
-								"tool_description",
-								"tool_params",
-								"tool_params_display",
-								"tool_type",
-								"suggest_type",
-								"tool_id",
-								"suggestion_id",
-								"install_url",
-								"remote_plugin_id",
-								"app_connector_ids",
-							]
-							.contains(&key.as_str())
-						})
-						.map(|(key, value)| (key.clone(), value.clone()))
-						.collect();
-					selected.insert("_meta".into(), serde_json::Value::Object(selected_meta));
+				if let Some(meta) = chief_request_metadata(value) {
+					selected.insert("_meta".into(), meta);
 				}
 				continue;
 			}
@@ -3997,9 +4035,41 @@ async fn query_chief_history_page(
 		question_bytes += cost;
 		questions.push(question);
 	}
+	let pending_retry = store.pending_chief_capacity_retry(id.into()).await.ok().flatten();
+	let RenderedChiefHistory { entries, has_more, next_before } =
+		render_chief_history(events, question_bytes, pending_retry);
+	let live = query_chief_live(partial);
+	ChiefHistoryResult::Available {
+		questions,
+		questions_truncated,
+		questions_recovering,
+		misalignment,
+		entries,
+		has_more,
+		next_before,
+		live,
+		usage: store
+			.read_chief_usage(id.into())
+			.await
+			.ok()
+			.flatten()
+			.and_then(|json| serde_json::from_str(&json).ok()),
+	}
+}
+
+struct RenderedChiefHistory {
+	entries: Vec<decodex_protocol::ChiefHistoryEntryDto>,
+	has_more: bool,
+	next_before: Option<i64>,
+}
+
+fn render_chief_history(
+	events: Vec<decodex_database::ChiefInboxEvent>,
+	question_bytes: usize,
+	pending_retry: Option<decodex_database::ChiefCapacityRetry>,
+) -> RenderedChiefHistory {
 	let older_available = events.len() > 32;
 	let mut has_more = older_available;
-	let pending_retry = store.pending_chief_capacity_retry(id.into()).await.ok().flatten();
 	let mut rendered_messages = std::collections::HashSet::<(String, String)>::new();
 	let mut entries = Vec::new();
 	let mut remaining = 64 * 1024 - question_bytes;
@@ -4101,23 +4171,7 @@ async fn query_chief_history_page(
 	} else {
 		None
 	};
-	let live = query_chief_live(partial);
-	ChiefHistoryResult::Available {
-		questions,
-		questions_truncated,
-		questions_recovering,
-		misalignment,
-		entries,
-		has_more,
-		next_before,
-		live,
-		usage: store
-			.read_chief_usage(id.into())
-			.await
-			.ok()
-			.flatten()
-			.and_then(|json| serde_json::from_str(&json).ok()),
-	}
+	RenderedChiefHistory { entries, has_more, next_before }
 }
 
 fn chief_history_entry(
@@ -5049,34 +5103,7 @@ mod tests {
 		assert_eq!(selected["kind"], "command");
 		assert!(!request_json.as_str().contains("private"));
 		assert!(selected.get("threadId").is_none());
-		for (index, blocking) in
-			[serde_json::json!(false), serde_json::json!(true), serde_json::json!("false")]
-				.into_iter()
-				.enumerate()
-		{
-			let request = serde_json::json!({"method":"item/tool/requestUserInput","params":{"threadId":"thread","turnId":"turn","questions":[],"isBlocking":blocking,"autoResolutionMs":1}});
-			let event = store
-				.enqueue_chief_event(EnqueueChiefEvent {
-					source_event_id: format!("question-{index}"),
-					work_item_id: "worker".into(),
-					event_kind: "user_input_pending".into(),
-					payload: request.to_string(),
-				})
-				.await
-				.unwrap();
-			let result = super::query_chief_request(&owner, event.id).await;
-			if blocking.is_boolean() {
-				let ChiefRequestResult::Available { request_json, .. } = result else {
-					panic!("question metadata");
-				};
-				let fields: serde_json::Value =
-					serde_json::from_str(request_json.as_str()).unwrap();
-				assert_eq!(fields["isBlocking"], blocking);
-				assert!(fields.get("autoResolutionMs").is_none());
-			} else {
-				assert_eq!(result, ChiefRequestResult::Unavailable);
-			}
-		}
+		assert_question_metadata_projection(&store, &owner).await;
 		let mut stdin = payload.clone();
 		stdin["params"]["kind"] = serde_json::json!("writeStdin");
 		stdin["params"]["command"] = serde_json::json!("yes\\n");
@@ -5146,6 +5173,39 @@ mod tests {
 			super::query_chief_request(&owner, 99999).await,
 			ChiefRequestResult::Unavailable
 		);
+	}
+
+	async fn assert_question_metadata_projection(store: &SqliteStore, owner: &ProductStore) {
+		use decodex_database::EnqueueChiefEvent;
+		use decodex_protocol::ChiefRequestResult;
+		for (index, blocking) in
+			[serde_json::json!(false), serde_json::json!(true), serde_json::json!("false")]
+				.into_iter()
+				.enumerate()
+		{
+			let request = serde_json::json!({"method":"item/tool/requestUserInput","params":{"threadId":"thread","turnId":"turn","questions":[],"isBlocking":blocking,"autoResolutionMs":1}});
+			let event = store
+				.enqueue_chief_event(EnqueueChiefEvent {
+					source_event_id: format!("question-{index}"),
+					work_item_id: "worker".into(),
+					event_kind: "user_input_pending".into(),
+					payload: request.to_string(),
+				})
+				.await
+				.unwrap();
+			let result = super::query_chief_request(owner, event.id).await;
+			if blocking.is_boolean() {
+				let ChiefRequestResult::Available { request_json, .. } = result else {
+					panic!("question metadata");
+				};
+				let fields: serde_json::Value =
+					serde_json::from_str(request_json.as_str()).unwrap();
+				assert_eq!(fields["isBlocking"], blocking);
+				assert!(fields.get("autoResolutionMs").is_none());
+			} else {
+				assert_eq!(result, ChiefRequestResult::Unavailable);
+			}
+		}
 	}
 
 	#[test]

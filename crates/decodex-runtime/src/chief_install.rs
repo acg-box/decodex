@@ -89,18 +89,114 @@ pub(crate) async fn inspect(
 	if expected.len() > 128 {
 		return None;
 	}
-	let catalog = if expected.is_empty() {
-		Vec::new()
-	} else {
-		client.apps_for_thread(&thread).await.ok()?
+	let apps = inspect_required_apps(
+		client,
+		&thread,
+		expected,
+		receipt.as_ref(),
+		plugin_details.as_ref(),
+		&suggestion,
+	)
+	.await?;
+	let state = installation_state(
+		(work, event_id, &thread),
+		suggestion,
+		target.as_ref(),
+		plugin_details.as_ref(),
+		apps,
+		attempt_id.is_some(),
+		requirements.is_some(),
+	)?;
+	// Recheck the durable request after remote reads; a peer may have resolved it.
+	let current = store.get_chief_inbox_event(event_id).await.ok()?;
+	let current_owner = store.get_chief_work_item(work.into()).await.ok()?;
+	if !guard.is_live()
+		|| current.disposition.is_some()
+		|| current.payload != event.payload
+		|| current_owner.codex_thread_id.as_deref() != Some(thread.as_str())
+		|| current_owner.active_turn_id != owner.active_turn_id
+	{
+		return None;
+	}
+	Some(Inspection { thread, target, state })
+}
+
+fn installation_state(
+	identity: (&str, i64, &str),
+	suggestion: McpInstallSuggestion,
+	target: Option<&PluginInstallTarget>,
+	plugin_details: Option<&Value>,
+	apps: Vec<ChiefInstallApp>,
+	attempted: bool,
+	has_requirements: bool,
+) -> Option<ChiefInstallState> {
+	let (work, event_id, thread) = identity;
+	let authorization_requirements_known = !attempted
+		|| has_requirements
+		|| !matches!(
+			&suggestion.target,
+			McpInstallTarget::Plugin { remote_plugin_id: Some(_), .. }
+		);
+	let installed = target.map(PluginInstallTarget::installed);
+	let mut details = target
+		.as_ref()
+		.map(|t| t.review_details().to_owned())
+		.unwrap_or_else(|| format!("Connect {} ({})", suggestion.tool_name, suggestion.tool_id));
+	if let Some(detail) = plugin_details {
+		let capabilities = json!({"description":detail["description"],"apps":expected_ids(&apps),"mcpServers":detail["mcpServers"],"skills":detail["skills"],"hooks":detail["hooks"],"scheduledTasks":detail["scheduledTasks"]});
+		details.push_str(&format!("\n{}", serde_json::to_string_pretty(&capabilities).ok()?));
+	}
+	if details.len() > 16384 {
+		return None;
+	}
+	if decodex_core::contains_credential_material(&details) {
+		return None;
+	}
+	let review_token = Sha256::digest(
+		json!([work, event_id, thread, suggestion.tool_id, details]).to_string().as_bytes(),
+	)
+	.iter()
+	.map(|b| format!("{b:02x}"))
+	.collect();
+	let can_install = target.is_some_and(|t| !t.installed() && t.install_allowed()) && !attempted;
+	let can_continue = authorization_requirements_known
+		&& target.is_none_or(|t| t.installed() && t.enabled())
+		&& apps.iter().all(|a| a.accessible && a.enabled);
+	let review_details = match (target, plugin_details) {
+		(Some(target), Some(detail)) => installation_summary(target, detail)?,
+		_ => details,
 	};
+	Some(ChiefInstallState::Available {
+		event_id,
+		tool_id: suggestion.tool_id,
+		tool_name: suggestion.tool_name,
+		installed,
+		attempted,
+		authorization_requirements_known,
+		can_install,
+		can_continue,
+		review_token,
+		review_details,
+		apps,
+	})
+}
+
+async fn inspect_required_apps(
+	client: &AppServerClient,
+	thread: &str,
+	expected: Vec<String>,
+	receipt: Option<&decodex_codex::app_server_client::PluginInstallReceipt>,
+	plugin_details: Option<&Value>,
+	suggestion: &McpInstallSuggestion,
+) -> Option<Vec<ChiefInstallApp>> {
+	let catalog =
+		if expected.is_empty() { Vec::new() } else { client.apps_for_thread(thread).await.ok()? };
 	let mut apps = Vec::new();
 	for id in expected {
 		let row = catalog.iter().find(|row| row["id"] == id);
 		let accessible = row.is_some_and(|row| row["isAccessible"] == true);
 		let enabled = row.is_some_and(|row| row.get("isEnabled").is_none_or(|v| v == true));
 		let receipt_app = receipt
-			.as_ref()
 			.and_then(|receipt| receipt.apps_needing_auth.iter().find(|app| app["id"] == id));
 		let name = row
 			.and_then(|row| row["name"].as_str())
@@ -113,8 +209,7 @@ pub(crate) async fn inspect(
 			.and_then(|row| row["installUrl"].as_str())
 			.or_else(|| receipt_app.and_then(|app| app["installUrl"].as_str()))
 			.or_else(|| {
-				plugin_details
-						.as_ref()?
+				plugin_details?
 						.get("apps")?
 						.as_array()?
 						.iter()
@@ -135,71 +230,7 @@ pub(crate) async fn inspect(
 			install_url: url,
 		});
 	}
-	let attempted = attempt_id.is_some();
-	let authorization_requirements_known = !attempted
-		|| requirements.is_some()
-		|| !matches!(
-			&suggestion.target,
-			McpInstallTarget::Plugin { remote_plugin_id: Some(_), .. }
-		);
-	let installed = target.as_ref().map(PluginInstallTarget::installed);
-	let mut details = target
-		.as_ref()
-		.map(|t| t.review_details().to_owned())
-		.unwrap_or_else(|| format!("Connect {} ({})", suggestion.tool_name, suggestion.tool_id));
-	if let Some(detail) = &plugin_details {
-		let capabilities = json!({"description":detail["description"],"apps":expected_ids(&apps),"mcpServers":detail["mcpServers"],"skills":detail["skills"],"hooks":detail["hooks"],"scheduledTasks":detail["scheduledTasks"]});
-		details.push_str(&format!("\n{}", serde_json::to_string_pretty(&capabilities).ok()?));
-	}
-	if details.len() > 16384 {
-		return None;
-	}
-	if decodex_core::contains_credential_material(&details) {
-		return None;
-	}
-	let review_token = Sha256::digest(
-		json!([work, event_id, thread, suggestion.tool_id, details]).to_string().as_bytes(),
-	)
-	.iter()
-	.map(|b| format!("{b:02x}"))
-	.collect();
-	let can_install =
-		target.as_ref().is_some_and(|t| !t.installed() && t.install_allowed()) && !attempted;
-	let can_continue = authorization_requirements_known
-		&& target.as_ref().is_none_or(|t| t.installed() && t.enabled())
-		&& apps.iter().all(|a| a.accessible && a.enabled);
-	let review_details = match (&target, &plugin_details) {
-		(Some(target), Some(detail)) => installation_summary(target, detail)?,
-		_ => details,
-	};
-	// Recheck the durable request after remote reads; a peer may have resolved it.
-	let current = store.get_chief_inbox_event(event_id).await.ok()?;
-	let current_owner = store.get_chief_work_item(work.into()).await.ok()?;
-	if !guard.is_live()
-		|| current.disposition.is_some()
-		|| current.payload != event.payload
-		|| current_owner.codex_thread_id.as_deref() != Some(thread.as_str())
-		|| current_owner.active_turn_id != owner.active_turn_id
-	{
-		return None;
-	}
-	Some(Inspection {
-		thread,
-		target,
-		state: ChiefInstallState::Available {
-			event_id,
-			tool_id: suggestion.tool_id,
-			tool_name: suggestion.tool_name,
-			installed,
-			attempted,
-			authorization_requirements_known,
-			can_install,
-			can_continue,
-			review_token,
-			review_details,
-			apps,
-		},
-	})
+	Some(apps)
 }
 
 fn installation_summary(target: &PluginInstallTarget, detail: &Value) -> Option<String> {

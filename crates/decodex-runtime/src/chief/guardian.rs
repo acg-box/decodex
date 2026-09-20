@@ -1,5 +1,5 @@
 //! Explicit approval of one exact observed Guardian denial.
-use super::*;
+use super::{ChiefCoordinator, ChiefError, ClientError, Value, json};
 
 impl ChiefCoordinator {
 	/// Submit user approval context. This never starts a turn or retries the action.
