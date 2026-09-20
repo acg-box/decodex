@@ -215,6 +215,53 @@ mod tests {
 	use gpui::{px, size};
 
 	#[gpui::test]
+	fn runtime_source_change_clears_history_and_rejects_same_account_late_preview(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |surface, cx| {
+			surface.visual_workspace_fixture(cx);
+			let mut snapshot = surface.snapshot.clone().unwrap();
+			snapshot.runtime_source = Some(EntityId::new("first-process").unwrap());
+			surface.apply_result(Ok(ChiefSnapshotResult::Available(snapshot.clone())));
+			let binding = Binding {
+				work: surface.selected.clone().unwrap(),
+				thread: "same-thread".into(),
+				account: "same-account".into(),
+			};
+			let page = ChiefTimelinePage {
+				thread_id: binding.thread.clone(),
+				entries: vec![],
+				next_cursor: None,
+				active_realtime_session_at_page_start: None,
+			};
+			assert!(surface.native_history.replace(binding.clone(), page.clone()));
+			let image = Arc::new(gpui::Image::from_bytes(
+				gpui::ImageFormat::Png,
+				include_bytes!("../../../assets/workspace-symbols/plus.png").to_vec(),
+			));
+			surface.native_history.preview.image = Some(image.clone());
+			let epoch = surface.native_history.epoch;
+			let serial = surface.native_history.preview.serial;
+			surface.apply_result(Ok(ChiefSnapshotResult::Available(snapshot.clone())));
+			assert_eq!(surface.native_history.epoch, epoch);
+			assert!(surface.native_history.preview.image.is_some());
+			snapshot.runtime_source = Some(EntityId::new("second-process").unwrap());
+			surface.apply_result(Ok(ChiefSnapshotResult::Available(snapshot.clone())));
+			assert!(surface.native_history.binding.is_none());
+			assert!(surface.native_history.preview.image.is_none());
+			assert_ne!(surface.native_history.epoch, epoch);
+			// Reusing the same task, thread and account must not restore an old callback.
+			assert!(surface.native_history.replace(binding.clone(), page));
+			surface.finish_native_media(epoch, serial, &binding, Ok(image), cx);
+			assert!(surface.native_history.preview.image.is_none());
+			snapshot.runtime_source = None;
+			surface.apply_result(Ok(ChiefSnapshotResult::Available(snapshot)));
+			assert!(surface.native_history.binding.is_none());
+		});
+	}
+
+	#[gpui::test]
 	fn loaded_image_preview_is_removed_when_native_account_changes(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		visual.update(|window, _| window.resize(size(px(1000.), px(700.))));

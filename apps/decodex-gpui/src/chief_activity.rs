@@ -280,16 +280,16 @@ impl ChiefSurface {
 			return;
 		};
 		if self.selected.as_ref() != Some(&navigation.work)
-			|| !self.history_marks.contains_key(&navigation.id)
+			|| navigation.id.as_ref().is_some_and(|id| !self.history_marks.contains_key(id))
 		{
 			self.history_navigation = None;
 			return;
 		}
 		let t = (navigation.started.elapsed().as_secs_f32() / 0.28).min(1.0);
 		if let Some(scroll) = self.transcript_scroll.get(&navigation.work) {
-			let target = match navigation.id {
+			let target = match navigation.id.as_ref() {
 				None => -f32::from(scroll.max_offset().y),
-				Some(id) => self.history_marks.get(&id).map_or(navigation.to, |m| {
+				Some(id) => self.history_marks.get(id).map_or(navigation.to, |m| {
 					navigation_offset(m.position.get(), scroll.max_offset().y.into())
 				}),
 			};
@@ -686,7 +686,7 @@ mod tests {
 			surface.update(cx, |s, cx| s.jump_to_history(HistoryKey::Local(3), cx));
 		});
 		surface.update(visual, |s, cx| {
-			assert_eq!(s.history_navigation.as_ref().unwrap().id, HistoryKey::Local(3));
+			assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(HistoryKey::Local(3)));
 			s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
 			cx.notify();
 		});
@@ -761,7 +761,7 @@ mod tests {
 			surface.read_with(visual, |s, _| s.history_marks[&target].hit_bounds.get().unwrap());
 		visual.simulate_click(bounds.center(), Default::default());
 		surface.update(visual, |s, cx| {
-			assert_eq!(s.history_navigation.as_ref().unwrap().id, target);
+			assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(target));
 			s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
 			assert!(s.prepend_native_history(
 				&binding,
@@ -881,7 +881,7 @@ mod tests {
 		visual.simulate_click(bounds.center(), Default::default());
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.history_selected.as_ref(), Some(&keys[0]));
-			assert_eq!(s.history_navigation.as_ref().unwrap().id, keys[0]);
+			assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(keys[0].clone()));
 			s.native_history.entries.remove(0);
 			cx.notify();
 		});

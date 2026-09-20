@@ -315,6 +315,25 @@ impl ServiceApplication {
 		)
 	}
 
+	async fn query_chief_snapshot(&self) -> QueryResultPayload {
+		let before = match &self.chief {
+			Some(chief) => chief.runtime_source().await,
+			None => None,
+		};
+		let mut result = query_chief_snapshot(&self.store).await;
+		let after = match &self.chief {
+			Some(chief) => chief.runtime_source().await,
+			None => None,
+		};
+		if let decodex_protocol::ChiefSnapshotResult::Available(snapshot) = &mut result {
+			snapshot.runtime_source = if before == after { after } else { None };
+			if !snapshot.is_valid() {
+				result = decodex_protocol::ChiefSnapshotResult::Unavailable;
+			}
+		}
+		QueryResultPayload::ChiefSnapshot(result)
+	}
+
 	async fn query_usage_estimate(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::ChiefUsageEstimate(match &self.chief {
 			Some(chief) => chief.usage_estimate(work).await,
@@ -1961,8 +1980,7 @@ impl Application for ServiceApplication {
 					)
 					.await,
 				),
-			QueryPayload::GetChiefSnapshot =>
-				QueryResultPayload::ChiefSnapshot(query_chief_snapshot(&self.store).await),
+			QueryPayload::GetChiefSnapshot => self.query_chief_snapshot().await,
 			QueryPayload::GetDesktopSettings =>
 				QueryResultPayload::DesktopSettings(self.desktop_settings().await),
 			QueryPayload::ListPrograms => QueryResultPayload::Programs(self.program_list().await),
@@ -4540,6 +4558,7 @@ async fn query_chief_snapshot(store: &ProductStore) -> decodex_protocol::ChiefSn
 	};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
 	let snapshot = ChiefSnapshotDto {
+		runtime_source: None,
 		workspaces: workspaces
 			.into_iter()
 			.map(|(chief_id, name, directory)| decodex_protocol::ChiefWorkspaceDto {

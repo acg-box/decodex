@@ -502,10 +502,13 @@ pub struct ChiefWorkspaceDto {
 	pub directory: String,
 }
 
-/// One complete bounded transaction-consistent projection, including a valid empty state.
+/// One bounded work snapshot plus observed runtime identity, including a valid empty state.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChiefSnapshotDto {
+	/// Opaque current account revision and process identity; absent while unavailable.
+	#[serde(default)]
+	pub runtime_source: Option<crate::EntityId>,
 	/// Persisted project scopes.
 	pub workspaces: Vec<ChiefWorkspaceDto>,
 	/// All work records.
@@ -593,6 +596,7 @@ mod tests {
 	fn chief_snapshot_roundtrip_retains_empty_available_and_explicit_capacity_failure() {
 		for value in [
 			ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],
@@ -610,6 +614,7 @@ mod tests {
 		}
 		assert!(
 			ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],

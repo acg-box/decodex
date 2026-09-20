@@ -960,6 +960,11 @@ impl ChiefSurface {
 					self.feedback.clear();
 				}
 
+				if self.snapshot.as_ref().and_then(|old| old.runtime_source.as_ref())
+					!= snapshot.runtime_source.as_ref()
+				{
+					self.native_history.reset();
+				}
 				if !self
 					.selected
 					.as_ref()
@@ -2042,6 +2047,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		let input = surface.update(visual, |surface, cx| {
 			surface.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],
@@ -2118,6 +2124,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![ChiefWorkItemDto {
 					id: "root".into(),
@@ -2177,6 +2184,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![ChiefWorkItemDto {
 					id: "root".into(),
@@ -2285,6 +2293,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],
@@ -2349,6 +2358,7 @@ mod tests {
 				},
 			));
 			s.snapshot = Some(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],

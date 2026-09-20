@@ -220,6 +220,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |s, cx| {
 			s.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				dependencies: vec![],
 				pending_events: vec![],

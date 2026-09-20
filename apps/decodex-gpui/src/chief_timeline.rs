@@ -269,7 +269,7 @@ pub(super) struct Timeline {
 }
 
 impl Timeline {
-	fn reset(&mut self) {
+	pub(super) fn reset(&mut self) {
 		*self = Self { epoch: self.epoch.wrapping_add(1), ..Default::default() };
 	}
 

@@ -280,6 +280,15 @@ impl ChiefHost {
 		self.runtime.chief_catalog_client().map(|(generation, _)| generation.as_str().to_owned())
 	}
 
+	pub(crate) async fn runtime_source(&self) -> Option<decodex_protocol::EntityId> {
+		use sha2::{Digest, Sha256};
+		let (generation, account, revision, _) = self.runtime.chief_usage_source().await?;
+		let value = serde_json::to_vec(&(generation.as_str(), account.as_str(), revision)).ok()?;
+		let digest =
+			Sha256::digest(value).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+		decodex_protocol::EntityId::new(digest).ok()
+	}
+
 	pub(crate) async fn usage_estimate(
 		&self,
 		work: &str,

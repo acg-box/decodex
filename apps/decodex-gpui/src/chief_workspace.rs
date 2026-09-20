@@ -1274,6 +1274,7 @@ impl ChiefSurface {
 					});
 				}
 				self.snapshot = Some(ChiefSnapshotDto {
+					runtime_source: None,
 					workspaces: vec![],
 					work_items: vec![],
 					dependencies: vec![],
@@ -1356,6 +1357,7 @@ impl ChiefSurface {
 		use ChiefDispatchStateDto::{Idle, Running};
 		use ChiefWorkStatusDto::{Open, Resolved, UserDecision};
 		self.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+			runtime_source: None,
 			workspaces: vec![],
 			work_items: vec![
 				make("chief", None, "Chief", Open, Idle),
