@@ -890,6 +890,9 @@ impl AttestedProcessChild {
 		ConversationProcessError,
 	> {
 		self.require_ordinary_turns_initialized()?;
+		if !self.generated.supports_standalone_tool_output() {
+			return Err(ConversationProcessError::Incompatible);
+		}
 		if !self.process.abandoned_request_ids.is_empty() {
 			return Err(ConversationProcessError::Unavailable);
 		}
@@ -7417,6 +7420,18 @@ pub(crate) mod tests {
 			client.thread_read(serde_json::json!({"threadId":"peer"})).await,
 			Err(decodex_codex::app_server_client::ClientError::Closed)
 		));
+		child.shutdown().unwrap();
+	}
+
+	#[test]
+	fn retained_chief_rejects_missing_tool_input_support_without_transferring_io() {
+		let (_temp, mut child) = ordinary_catalog_child("missing-optional");
+		assert!(matches!(
+			child.retain_chief_connection(),
+			Err(super::ConversationProcessError::Incompatible)
+		));
+		assert!(!child.process.chief_retained);
+		assert!(child.process.chief_bridge.is_none());
 		child.shutdown().unwrap();
 	}
 

@@ -236,6 +236,7 @@ impl SchemaContract {
 pub struct GeneratedSchemaEvidence {
 	pub fingerprint: String,
 	contract: SchemaContract,
+	standalone_tool_output: bool,
 }
 impl GeneratedSchemaEvidence {
 	pub fn load(directory: &Path) -> Result<Self, Vec<String>> {
@@ -248,6 +249,7 @@ impl GeneratedSchemaEvidence {
 		let aggregate = read_json(&aggregate_path)?;
 		let collaboration = read_optional_json(directory.join("v2/ThreadReadResponse.json"))?;
 		let thread_start = read_optional_json(directory.join("v2/ThreadStartParams.json"))?;
+		let turn_start = read_optional_json(directory.join("v2/TurnStartParams.json"))?;
 		let login_params = read_json(directory.join("v2/LoginAccountParams.json"))?;
 		let refresh_params = read_json(directory.join("ChatgptAuthTokensRefreshParams.json"))?;
 		let refresh_response = read_json(directory.join("ChatgptAuthTokensRefreshResponse.json"))?;
@@ -285,6 +287,9 @@ impl GeneratedSchemaEvidence {
 		if let Some(value) = thread_start.as_ref() {
 			actual_digests.insert("v2/ThreadStartParams.json".into(), canonical_digest(value));
 		}
+		if let Some(value) = turn_start.as_ref() {
+			actual_digests.insert("v2/TurnStartParams.json".into(), canonical_digest(value));
+		}
 		let contract = SchemaContract::from_generated(
 			request_methods,
 			notification_methods,
@@ -297,7 +302,13 @@ impl GeneratedSchemaEvidence {
 
 		validate_generated_directory_budget(directory)?;
 
-		Ok(Self { fingerprint, contract })
+		let standalone_tool_output = turn_start.as_ref().is_some_and(validate_tool_output_schema);
+		Ok(Self { fingerprint, contract, standalone_tool_output })
+	}
+
+	/// Whether the exact binary supports named tool output as turn input.
+	pub fn supports_standalone_tool_output(&self) -> bool {
+		self.standalone_tool_output
 	}
 
 	pub fn contract(&self) -> &SchemaContract {
@@ -595,6 +606,23 @@ fn validate_paginated_history_schema(value: &Value) -> bool {
 		&& values.iter().any(|value| value.as_str() == Some("paginated"))
 }
 
+fn validate_tool_output_schema(value: &Value) -> bool {
+	let output = &value["definitions"]["TurnToolOutput"];
+	let body = &value["definitions"]["FunctionCallOutputBody"];
+	references(&value["properties"]["toolOutput"], "TurnToolOutput")
+		&& output["type"] == "object"
+		&& output.as_object().is_some_and(|object| required_fields(object, &["name", "output"]))
+		&& output["properties"]["name"]["type"] == "string"
+		&& allows_string_or_null(&output["properties"]["namespace"])
+		&& references(&output["properties"]["output"], "FunctionCallOutputBody")
+		&& (body["type"] == "string"
+			|| ["oneOf", "anyOf"].iter().any(|key| {
+				body[*key].as_array().is_some_and(|variants| {
+					variants.iter().any(|variant| variant["type"] == "string")
+				})
+			}))
+}
+
 fn validate_collaboration_schema(value: &Value) -> Result<(), Vec<String>> {
 	let definitions = value
 		.get("definitions")
@@ -779,6 +807,34 @@ fn references(value: &Value, name: &str) -> bool {
 				.and_then(Value::as_array)
 				.is_some_and(|values| values.iter().any(|value| references(value, name)))
 		})
+}
+
+#[cfg(test)]
+mod tool_input_tests {
+	use serde_json::json;
+	#[test]
+	fn tool_input_requires_a_structural_named_text_output() {
+		let valid = json!({"properties":{"toolOutput":{"anyOf":[{"$ref":"#/definitions/TurnToolOutput"},{"type":"null"}]}},"definitions":{
+			"TurnToolOutput":{"type":"object","required":["name","output"],"properties":{"name":{"type":"string"},"namespace":{"type":["string","null"]},"output":{"$ref":"#/definitions/FunctionCallOutputBody"}}},
+			"FunctionCallOutputBody":{"oneOf":[{"type":"string"},{"type":"array"}]}
+		}});
+		assert!(super::validate_tool_output_schema(&valid));
+		assert!(!super::validate_tool_output_schema(
+			&json!({"description":"toolOutput TurnToolOutput FunctionCallOutputBody"})
+		));
+		for pointer in [
+			"/properties/toolOutput",
+			"/definitions/TurnToolOutput/required",
+			"/definitions/TurnToolOutput/properties/name",
+			"/definitions/TurnToolOutput/properties/namespace",
+			"/definitions/TurnToolOutput/properties/output",
+			"/definitions/FunctionCallOutputBody",
+		] {
+			let mut invalid = valid.clone();
+			*invalid.pointer_mut(pointer).expect("fixture path") = json!(null);
+			assert!(!super::validate_tool_output_schema(&invalid), "{pointer}");
+		}
+	}
 }
 
 #[cfg(test)]

@@ -9,6 +9,7 @@ fn official_schema_supports_current_consumers() {
 	let evidence = GeneratedSchemaEvidence::load(std::path::Path::new(&directory))
 		.expect("official schema must pass bounded loading and account callback validation");
 	let contract = evidence.contract();
+	assert!(evidence.supports_standalone_tool_output());
 	contract.check_conversation_contract().unwrap();
 	assert!(contract.advertises_collaboration());
 	assert!(contract.advertises_paginated_history());
