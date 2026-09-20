@@ -7,6 +7,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/install.rs"] mod install;
 #[path = "tests/task_history.rs"] mod task_history;
 #[path = "tests/native_task_references.rs"] mod native_task_references;
+#[path = "tests/native_subagents.rs"] mod native_subagents;
+#[path = "tests/native_subagent_live.rs"] mod native_subagent_live;
 
 #[tokio::test]
 async fn subagent_activity_survives_parent_completion_and_restart_without_waking_work() {

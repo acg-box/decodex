@@ -71,12 +71,17 @@ async fn native_plugin_suggestion_runs_through_the_coordinator()
 
 #[tokio::test]
 async fn plugin_installation_requires_real_installation_and_connector_access_before_reply() {
-	exercise_installation(true).await;
+	exercise_installation(true, false).await;
 }
 
 #[tokio::test]
 async fn remote_install_without_confirmed_receipt_keeps_authorization_unknown() {
-	exercise_installation(false).await;
+	exercise_installation(false, false).await;
+}
+
+#[tokio::test]
+async fn native_child_installation_preserves_root_receipt_and_child_request() {
+	exercise_installation(true, true).await;
 }
 
 struct InstallationFixtureState {
@@ -123,7 +128,14 @@ async fn serve_installation_fixture(
 		}
 		let summary = json!({"id":"sample@market","name":"sample","remotePluginId":"plugins~sample","installed":i.load(Ordering::SeqCst),"enabled":plugin_enabled.load(Ordering::SeqCst),"availability":"AVAILABLE","installPolicy":"AVAILABLE","authPolicy":"ON_INSTALL","source":{"type":"git","url":"https://example.com/plugin"}});
 		let result = match request["method"].as_str().unwrap() {
-			"thread/read" => json!({"thread":{"id":"opaque thread/1","cwd":"/tmp"}}),
+			"thread/read" => {
+				let thread = &request["params"]["threadId"];
+				if thread == "native-child" {
+					json!({"thread":{"id":thread,"cwd":"/tmp","parentThreadId":"opaque thread/1","source":{"subAgent":{"thread_spawn":{"parent_thread_id":"opaque thread/1"}}}}})
+				} else {
+					json!({"thread":{"id":thread,"cwd":"/tmp"}})
+				}
+			},
 			"plugin/list" =>
 				json!({"marketplaces":[{"name":"market","path":null,"plugins":[summary]}],"marketplaceLoadErrors":[]}),
 			"plugin/read" =>
@@ -180,7 +192,7 @@ async fn review_before_installation(
 	review_token
 }
 
-async fn exercise_installation(receipt_confirmed: bool) {
+async fn exercise_installation(receipt_confirmed: bool, native_child: bool) {
 	let (mut chief, _sent, _directory) = fixture().await;
 	chief.start_chief("chief", "Coordinate").await.unwrap();
 	let (local, remote) = tokio::io::duplex(65536);
@@ -194,6 +206,11 @@ async fn exercise_installation(receipt_confirmed: bool) {
 	let installs = Arc::new(AtomicUsize::new(0));
 	let replies = Arc::new(AtomicUsize::new(0));
 	let params = json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","serverName":"codex_apps","mode":"form","message":"Install Sample","requestedSchema":{"type":"object","properties":{}},"_meta":{"codex_approval_kind":"tool_suggestion","suggest_type":"install","tool_type":"plugin","tool_id":"sample@market","tool_name":"Sample","suggestion_id":"request_plugin_install_call-2","remote_plugin_id":"plugins~sample","app_connector_ids":[]}});
+	let mut params = params;
+	if native_child {
+		params["threadId"] = json!("native-child");
+		params["turnId"] = json!("native-child-turn");
+	}
 	let state = InstallationFixtureState {
 		installed: installed.clone(),
 		enabled: enabled.clone(),

@@ -14,6 +14,7 @@ mod archive;
 mod guardian;
 mod install;
 mod misalignment;
+pub(crate) mod native_subagents;
 pub(crate) mod observations;
 mod result_messages;
 mod task_history;
@@ -494,13 +495,20 @@ impl ChiefCoordinator {
 				ChiefError::Invalid("request event is not pending on this live connection".into())
 			})?;
 		let event = self.store.get_chief_inbox_event(event_id).await?;
-		if self.store.chief_misalignment(event.work_item_id).await?.is_some() {
+		if self.store.chief_misalignment(event.work_item_id.clone()).await?.is_some() {
 			return Err(ChiefError::Invalid(
 				"This conversation is paused for provider findings.".into(),
 			));
 		}
 		let payload: Value = serde_json::from_str(&event.payload)
 			.map_err(|_| ChiefError::Rejected("Stored request is unavailable.".into()))?;
+		if let Some(root) = payload["ownerThreadId"].as_str() {
+			let thread = exact(&payload, "/params/threadId")?;
+			let owner = self.request_owner(&thread).await?;
+			if owner.id != event.work_item_id || owner.codex_thread_id.as_deref() != Some(root) {
+				return Err(ChiefError::Rejected("Native request ownership has changed.".into()));
+			}
+		}
 		let mut install_guard = None;
 		if payload["method"] == "mcpServer/elicitation/request" {
 			decodex_protocol::validate_mcp_response(&payload["params"], &response)
@@ -1364,16 +1372,13 @@ impl ChiefCoordinator {
 		params: Value,
 	) -> Result<(), ChiefError> {
 		let thread = exact(&params, "/threadId")?;
-		let Some(item) = self
-			.store
-			.list_chief_work_items()
-			.await?
-			.into_iter()
-			.find(|item| item.codex_thread_id.as_ref() == Some(&thread))
-		else {
-			return Err(ChiefError::Invalid("request for unowned thread".into()));
-		};
+		let item = self.request_owner(&thread).await?;
+		if method == "item/tool/call" && item.codex_thread_id.as_ref() != Some(&thread) {
+			self.client.respond(id, json!({"success":false,"contentItems":[{"type":"inputText","text":"Chief management tools are available only to the owning manager thread."}]})).await?;
+			return Ok(());
+		}
 		if method == "item/tool/call"
+			&& item.codex_thread_id.as_ref() == Some(&thread)
 			&& item.kind == ChiefWorkKind::Goal
 			&& self.is_manager(&item.id).await?
 		{
@@ -1421,7 +1426,7 @@ impl ChiefCoordinator {
 						"server_request_pending"
 					}
 					.into(),
-					payload: json!({"id":id,"method":method,"params":params}).to_string(),
+					payload: json!({"id":id,"method":method,"params":params,"ownerThreadId":item.codex_thread_id}).to_string(),
 				})
 				.await?;
 			if event.disposition.is_none() {
