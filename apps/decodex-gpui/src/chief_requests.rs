@@ -182,6 +182,14 @@ impl ChiefSurface {
 		}
 
 		if method == "item/permissions/requestApproval" {
+			if let Some(environment) = value["environmentId"].as_str().filter(|id| !id.is_empty()) {
+				panel = panel.child(
+					div()
+						.debug_selector(|| "approval-executor-environment".into())
+						.text_size(px(12.0))
+						.child(format!("Execution environment: {environment}")),
+				);
+			}
 			panel = panel
 				.child(div().text_size(px(12.0)).child(permission_summary(&value["permissions"])));
 			panel = panel.child(self.request_choice(
@@ -500,6 +508,35 @@ mod timing_tests {
 			s.prepare_question_inputs(&request, cx);
 			assert!(s.question_timers[&7].disabled, "reloading must not rearm the same event");
 		});
+	}
+	#[gpui::test]
+	fn permission_panel_shows_only_the_native_executor(cx: &mut gpui::TestAppContext) {
+		use super::*;
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		for environment in [Some("remote/工作"), None, Some("")] {
+			surface.update(visual, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.graph_visible = false;
+				let work = s.selected.clone().unwrap();
+				s.snapshot.as_mut().unwrap().pending_events = vec![decodex_protocol::ChiefPendingEventDto {
+					id:902, source_event_id:"executor-request".into(), work_item_id:work.clone(), event_kind:"permission_pending".into(), created_at_micros:1, delivery_claimed:false,
+				}];
+				s.request = Some(ChiefRequestResult::Available {
+					event_id:902, work_id:work, method:"item/permissions/requestApproval".into(),
+					request_json:HistoryText::new(json!({"environmentId":environment,"cwd":"/workspace","permissions":{"network":{"enabled":true}}}).to_string()).unwrap(),
+				});
+				cx.notify();
+			});
+			visual.update(|window, cx| {
+				window.resize(gpui::size(px(1180.), px(1200.)));
+				window.draw(cx).clear();
+			});
+			assert!(visual.debug_bounds("approval-kind-permissions").is_some());
+			assert_eq!(
+				visual.debug_bounds("approval-executor-environment").is_some(),
+				environment.is_some_and(|id| !id.is_empty())
+			);
+		}
 	}
 	#[gpui::test]
 	fn terminal_input_approval_is_distinct_from_new_and_legacy_commands(
