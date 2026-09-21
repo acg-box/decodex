@@ -959,7 +959,8 @@ impl ChiefCoordinator {
 		if item.dispatch_state != decodex_database::ChiefDispatchState::Idle {
 			return Err(ChiefError::Busy);
 		}
-		// Resume is idempotent hydration of the exact thread, never a turn retry.
+		// Restore the exact thread without replaying local input. Native queued work
+		// or an active goal can continue during resume.
 		let mut resume = self.work_thread_resume_params(&item).await?;
 		resume["threadId"] = json!(thread);
 		resume["excludeTurns"] = json!(true);

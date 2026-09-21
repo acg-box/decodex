@@ -1,5 +1,6 @@
 //! Multiplexed app-server stdio transport. The caller owns authorization, environment,
-//! event consumption, and process lifetime. No request is retried by this transport.
+//! event consumption, and process lifetime. Raw requests are never retried;
+//! the resume adapter retries only explicit closing-thread refusals.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -24,6 +25,7 @@ mod integrations;
 mod live_reviews;
 mod live_settings;
 pub use live_settings::{LiveReviewer, LiveSettingsOutcome, is_live_reviewer_update};
+mod resume;
 mod thread_model_settings;
 pub use thread_model_settings::NativeThreadModelSettings;
 mod plugin_install;
@@ -434,9 +436,10 @@ impl AppServerClient {
 		self.request("thread/start", params).await
 	}
 
-	/// Load an existing provider thread without starting a turn.
+	/// Resume an existing thread; native queued work or active goals can continue.
+	/// Retry only explicit closing-thread refusals, never uncertain acceptance.
 	pub async fn thread_resume(&self, params: Value) -> Result<Value, ClientError> {
-		self.request("thread/resume", params).await
+		resume::resume(self, params).await
 	}
 
 	/// Read provider thread evidence without executing work.
