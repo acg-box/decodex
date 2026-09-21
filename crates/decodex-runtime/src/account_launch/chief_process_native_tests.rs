@@ -1,6 +1,7 @@
 //! Opt-in installed-native qualification with a local Responses fixture and no credentials.
 use super::*;
 #[path = "chief_process_native_context_tests.rs"] mod context;
+#[path = "chief_process_native_detail_tests.rs"] mod detail;
 #[path = "chief_process_native_misalignment_tests.rs"] mod misalignment;
 #[path = "chief_process_native_realtime_tests.rs"] mod realtime;
 #[path = "chief_process_native_usage_tests.rs"] mod usage;
@@ -404,6 +405,18 @@ async fn serve_with_text(
 	usage: fn(usize) -> Value,
 	text: fn(usize) -> &'static str,
 ) {
+	serve_with_output(listener, requests, bodies, usage, move |serial| {
+		json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":text(serial)}]})
+	}).await;
+}
+
+async fn serve_with_output(
+	listener: tokio::net::TcpListener,
+	requests: Arc<std::sync::atomic::AtomicUsize>,
+	bodies: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
+	usage: fn(usize) -> Value,
+	output: impl Fn(usize) -> Value,
+) {
 	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = tokio::io::BufReader::new(socket);
@@ -432,7 +445,7 @@ async fn serve_with_text(
 		let id = format!("fixture-{serial}");
 		let frames = [
 			json!({"type":"response.created","response":{"id":id}}),
-			json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":text(serial)}]}}),
+			json!({"type":"response.output_item.done","item":output(serial)}),
 			json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":usage(serial)}}),
 		];
 		let data = frames
