@@ -354,6 +354,15 @@ final class ResetCardStore {
 	]
 
 	private(set) var accounts = [ResetCardAccountState]()
+	private(set) var quotaFills = [String: ResetQuotaFill]()
+	@ObservationIgnored private var quotaFillOrigins = [String: [ResetCardQuotaWindow]]()
+
+	func quotaFill(for account: ResetCardAccountRecord) -> ResetQuotaFill? {
+		guard let fill = quotaFills[account.accountID],
+			fill.attempt.target.expectedRevision == account.accountRevision,
+			fill.attempt.target.authority == account.authority else { return nil }
+		return fill
+	}
 	private(set) var routing: AccountRoutingControl?
 	private(set) var codexAuthProjection: CodexAuthProjection?
 	private(set) var isRefreshing = false
@@ -1216,6 +1225,7 @@ final class ResetCardStore {
 			return ResetCardUseCompletion(resolved: true)
 		}
 
+		quotaFillOrigins[attempt.idempotencyKey] = [current.fiveHourQuota, current.sevenDayQuota]
 		return await submit(attempt)
 	}
 
@@ -1228,6 +1238,7 @@ final class ResetCardStore {
 
 		clearStaleControlError()
 		setPendingStatus(.checking(detail: nil), for: attempt)
+
 		submittingKey = attempt.idempotencyKey
 		defer {
 			submittingKey = nil
@@ -1903,6 +1914,13 @@ final class ResetCardStore {
 	) async -> ResetCardUseCompletion {
 		switch state {
 		case .completed, .failedBeforeEffect:
+			if let initial = quotaFillOrigins.removeValue(forKey: attempt.idempotencyKey),
+				state == .completed(.reset) {
+				quotaFills = quotaFills.filter { id, _ in accounts.contains { $0.account.accountID == id } }
+				quotaFills[attempt.target.accountID] = ResetQuotaFill(
+					attempt: attempt, initial: initial, started: Date()
+				)
+			}
 			message = ResetCardStoreMessage(
 				tone: Self.messageTone(for: state),
 				text: state.presentation
@@ -1976,6 +1994,7 @@ final class ResetCardStore {
 	}
 
 	private func forget(_ attempt: ResetCardUseAttempt) {
+		quotaFillOrigins.removeValue(forKey: attempt.idempotencyKey)
 		guard isPendingRecoveryBlocked == false else {
 			return
 		}
