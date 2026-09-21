@@ -221,6 +221,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "model/list" | "experimentalFeature/list"
 					| "thread/start"
 					| "thread/resume"
+					| "thread/inject_items"
 					| "thread/unarchive"
 					| "thread/read" | "thread/list"
 					| "thread/turns/list"
@@ -250,6 +251,25 @@ mod tests {
 	use std::sync::mpsc as sync_mpsc;
 
 	#[cfg(unix)]
+	#[test]
+	fn native_context_injection_is_admitted_without_opening_account_methods() {
+		let mut requests = HashSet::new();
+		assert!(
+			validate_outbound(
+				&json!({"id":1,"method":"thread/inject_items","params":{"threadId":"fixture","items":[]}}),
+				&mut requests
+			)
+			.is_ok()
+		);
+		assert!(matches!(
+			validate_outbound(
+				&json!({"id":2,"method":"account/login/start","params":{}}),
+				&mut requests
+			),
+			Err(ClientError::InvalidFrame)
+		));
+	}
+
 	#[test]
 	fn blocked_terminal_delivery_does_not_keep_child_stdin_open() {
 		use std::io::Read as _;
