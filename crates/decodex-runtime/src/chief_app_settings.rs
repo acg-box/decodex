@@ -1,10 +1,16 @@
 //! Native account configuration readback bound to a pending request and current source.
 use crate::chief_usage_estimate::Source;
-use decodex_codex::app_server_client::AppLinkSettings;
+use decodex_codex::app_server_client::{AppLinkSettingEdit, AppLinkSettings, ServerRequestGuard};
 use decodex_database::SqliteStore;
 use decodex_protocol::ChiefAppSettingsResult;
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
+
+struct Inspection {
+	state: ChiefAppSettingsResult,
+	settings: AppLinkSettings,
+	guard: ServerRequestGuard,
+}
 
 pub(crate) async fn read<F, Fut>(
 	store: &SqliteStore,
@@ -22,14 +28,104 @@ where
 	if source().await.is_none_or(|after| after.key != before.key) {
 		return ChiefAppSettingsResult::Unavailable;
 	}
-	result.ok().flatten().unwrap_or(ChiefAppSettingsResult::Unavailable)
+	result.ok().flatten().map_or(ChiefAppSettingsResult::Unavailable, |value| value.state)
 }
 
-async fn inspect(
+pub(crate) async fn write<F, Fut>(
 	store: &SqliteStore,
-	source: &Source,
-	event_id: i64,
-) -> Option<ChiefAppSettingsResult> {
+	source: F,
+	event: i64,
+	review: &str,
+	edit: &decodex_protocol::ChiefAppSettingEdit,
+	attempt: &str,
+) -> Result<(), crate::chief_host::ChiefHostError>
+where
+	F: Fn() -> Fut,
+	Fut: std::future::Future<Output = Option<Source>>,
+{
+	use crate::chief_host::ChiefHostError::{Rejected, Unknown};
+	let before = source().await.ok_or(Rejected("Account settings source is unavailable."))?;
+	let inspected =
+		tokio::time::timeout(std::time::Duration::from_secs(40), inspect(store, &before, event))
+			.await
+			.ok()
+			.flatten()
+			.ok_or(Rejected(
+				"Refresh account settings; the native request is no longer available.",
+			))?;
+	let ChiefAppSettingsResult::Available { connector_id, link_id, review_token, .. } =
+		&inspected.state
+	else {
+		return Err(Rejected("Account settings are unavailable."));
+	};
+	if review_token != review || source().await.is_none_or(|after| after.key != before.key) {
+		return Err(Rejected("Account settings or their source changed. Review them again."));
+	}
+	let (field, value) = edit.native_value();
+	let reserved = store
+		.reserve_chief_app_settings_attempt(decodex_database::ChiefAppSettingsAttempt {
+			event_id: event,
+			work_id: before.key.work.clone(),
+			thread_id: before.key.thread.clone(),
+			generation_id: Some(before.key.generation.as_str().into()),
+			connector_id: connector_id.clone(),
+			link_id: link_id.clone(),
+			review_token: review.into(),
+			field: field.into(),
+			value: value.map(str::to_owned),
+			attempt_id: attempt.into(),
+		})
+		.await
+		.map_err(|_| {
+			Unknown(
+				"Setting dispatch could not be reserved. Read current settings before any further action.",
+			)
+		})?;
+	if !reserved {
+		return Err(Unknown(
+			"This reviewed edit was already submitted or reserved. Read current settings; it will not be sent again.",
+		));
+	}
+	if source().await.is_none_or(|after| after.key != before.key) || !inspected.guard.is_live() {
+		return Err(Rejected(
+			"The account or native request changed before dispatch. Refresh settings.",
+		));
+	}
+	let native = match edit {
+		decodex_protocol::ChiefAppSettingEdit::ApprovalMode(_) =>
+			AppLinkSettingEdit::ApprovalMode(value.map(str::to_owned)),
+		decodex_protocol::ChiefAppSettingEdit::Reviewer(_) =>
+			AppLinkSettingEdit::Reviewer(value.map(str::to_owned)),
+	};
+	let result = before
+		.client
+		.write_app_link_setting_guarded(&inspected.settings, native, inspected.guard)
+		.await
+		.map_err(|_| {
+			Unknown(
+				"Setting write or readback is unconfirmed. Refresh settings; do not automatically retry.",
+			)
+		})?;
+	if source().await.is_none_or(|after| after.key != before.key) {
+		return Err(Unknown(
+			"The setting may have been saved, but its source changed. Read settings on the original account.",
+		));
+	}
+	let observed = if field == "approvals_reviewer" {
+		result.settings.user_reviewer.as_deref()
+	} else {
+		result.settings.user_mode.as_deref()
+	};
+	if observed != value {
+		return Err(Unknown(
+			"Native readback differs from the requested setting. Refresh and review current configuration.",
+		));
+	}
+	// A saved override does not prove that every loaded thread or tool uses it.
+	Ok(())
+}
+
+async fn inspect(store: &SqliteStore, source: &Source, event_id: i64) -> Option<Inspection> {
 	let event = store.get_chief_inbox_event(event_id).await.ok()?;
 	if event.work_item_id != source.key.work
 		|| event.disposition.is_some()
@@ -86,7 +182,11 @@ async fn inspect(
 	if !guard.is_live() || store.get_chief_inbox_event(event_id).await.ok()?.disposition.is_some() {
 		return None;
 	}
-	Some(project(source, event_id, connector, link, settings))
+	Some(Inspection {
+		state: project(source, event_id, connector, link, &settings),
+		settings,
+		guard,
+	})
 }
 
 fn account_identity(payload: &Value) -> Option<(&str, &str)> {
@@ -109,7 +209,7 @@ fn project(
 	event: i64,
 	connector: &str,
 	link: &str,
-	settings: AppLinkSettings,
+	settings: &AppLinkSettings,
 ) -> ChiefAppSettingsResult {
 	let key = &source.key;
 	let facts = json!([
@@ -129,10 +229,10 @@ fn project(
 			.iter()
 			.map(|byte| format!("{byte:02x}"))
 			.collect(),
-		effective_mode: settings.effective_mode,
-		effective_reviewer: settings.effective_reviewer,
-		user_mode: settings.user_mode,
-		user_reviewer: settings.user_reviewer,
+		effective_mode: settings.effective_mode.clone(),
+		effective_reviewer: settings.effective_reviewer.clone(),
+		user_mode: settings.user_mode.clone(),
+		user_reviewer: settings.user_reviewer.clone(),
 	}
 }
 

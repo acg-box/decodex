@@ -932,7 +932,8 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		| crate::ChiefActionDto::InstallSuggestedPlugin { work_id, .. }
 		| crate::ChiefActionDto::AddResourceLink { work_id, .. }
 		| crate::ChiefActionDto::RemoveResource { work_id, .. }
-		| crate::ChiefActionDto::RefreshIntegrations { work_id } => work_id,
+		| crate::ChiefActionDto::RefreshIntegrations { work_id }
+		| crate::ChiefActionDto::SetAppSetting { work_id, .. } => work_id,
 	}
 }
 
@@ -3061,7 +3062,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 44 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 45 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

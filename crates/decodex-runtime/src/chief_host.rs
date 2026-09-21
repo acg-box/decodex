@@ -682,6 +682,29 @@ impl ChiefHost {
 		Ok(work_id.as_str().into())
 	}
 
+	async fn set_app_setting(
+		&self,
+		work: &str,
+		event: i64,
+		review: &str,
+		edit: &decodex_protocol::ChiefAppSettingEdit,
+		key: &str,
+	) -> Result<String, ChiefHostError> {
+		crate::chief_app_settings::write(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			event,
+			review,
+			edit,
+			key,
+		)
+		.await?;
+		Ok(work.into())
+	}
+
 	async fn handle(
 		&self,
 		key: String,
@@ -691,6 +714,9 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			ChiefActionDto::SetAppSetting { work_id, event_id, review_token, edit } =>
+				self.set_app_setting(work_id.as_str(), event_id, review_token.as_str(), &edit, &key)
+					.await,
 			ChiefActionDto::InstallSuggestedPlugin { work_id, event_id, review_token } =>
 				self.install_plugin(work_id.as_str(), event_id, review_token.as_str(), &key, active)
 					.await,

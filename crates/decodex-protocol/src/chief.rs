@@ -248,6 +248,17 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Save one reviewed native connected-account approval override.
+	SetAppSetting {
+		/// Exact owning task.
+		work_id: crate::EntityId,
+		/// Pending request that supplied the native account identity.
+		event_id: i64,
+		/// Source and configuration identity from the settings query.
+		review_token: crate::WireText,
+		/// One explicitly selected override or inheritance reset.
+		edit: crate::ChiefAppSettingEdit,
+	},
 	/// Install the exact plugin whose current catalog details the user reviewed.
 	InstallSuggestedPlugin {
 		/// Owning task identity.
