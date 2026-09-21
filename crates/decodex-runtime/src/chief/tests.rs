@@ -352,6 +352,9 @@ async fn serve_fixture(
 				let mut result = history.get(id).cloned().unwrap_or_else(
 					|| json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
 				);
+				if result["thread"]["cwd"].is_null() {
+					result["thread"]["cwd"] = json!("/tmp");
+				}
 				if result["thread"]["historyMode"] == "paginated" {
 					assert_ne!(request["params"]["includeTurns"], true);
 					result["thread"]["turns"] = json!([]);
