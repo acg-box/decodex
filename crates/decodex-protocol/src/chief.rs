@@ -248,6 +248,17 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Publish a reviewer for subsequent steps of one reviewed live turn.
+	SetLiveReviewer {
+		/// Exact owning task.
+		work_id: crate::EntityId,
+		/// Exact active turn from the review query.
+		turn_id: crate::EntityId,
+		/// Source and receipt identity from the review query.
+		review_token: crate::WireText,
+		/// Explicit reviewer; does not approve existing requests or change future defaults.
+		reviewer: crate::ChiefAppReviewer,
+	},
 	/// Save one reviewed native connected-account approval override.
 	SetAppSetting {
 		/// Exact owning task.

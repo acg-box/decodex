@@ -22,6 +22,7 @@ mod chief_guardian;
 mod chief_host;
 mod chief_install;
 mod chief_integrations;
+mod chief_live_settings;
 mod chief_resources;
 mod chief_usage_estimate;
 mod chief_voice;

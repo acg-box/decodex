@@ -399,6 +399,30 @@ impl ChiefClient {
 		}
 	}
 
+	/// Inspect one live task and its last local reviewer publication.
+	pub async fn live_reviewer(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefLiveReviewerState, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(45),
+		};
+		let completed = time::timeout(
+			Duration::from_secs(45),
+			transport
+				.query_inner("chief-live-reviewer", QueryPayload::GetChiefLiveReviewer { work_id }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefLiveReviewer(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read native account approval settings for the exact pending request.
 	pub async fn app_settings(
 		&self,
@@ -941,7 +965,8 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		| crate::ChiefActionDto::AddResourceLink { work_id, .. }
 		| crate::ChiefActionDto::RemoveResource { work_id, .. }
 		| crate::ChiefActionDto::RefreshIntegrations { work_id }
-		| crate::ChiefActionDto::SetAppSetting { work_id, .. } => work_id,
+		| crate::ChiefActionDto::SetAppSetting { work_id, .. }
+		| crate::ChiefActionDto::SetLiveReviewer { work_id, .. } => work_id,
 	}
 }
 
@@ -3070,7 +3095,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 46 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 47 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

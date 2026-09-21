@@ -16,6 +16,7 @@ pub(super) struct Panel {
 
 impl ChiefSurface {
 	pub(super) fn app_settings_disconnected(&mut self) {
+		self.reset_live_reviewer();
 		self.app_settings =
 			Panel { epoch: self.app_settings.epoch.wrapping_add(1), ..Default::default() };
 	}

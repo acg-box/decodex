@@ -15,6 +15,7 @@
 #[path = "chief_guardian.rs"] mod guardian;
 #[path = "chief_install.rs"] mod install;
 #[path = "chief_integrations.rs"] mod integrations;
+#[path = "chief_live_settings.rs"] mod live_settings;
 #[path = "chief_markdown.rs"] mod markdown;
 #[path = "chief_mcp_forms.rs"] mod mcp_forms;
 #[path = "chief_misalignment.rs"] mod misalignment;
@@ -172,6 +173,7 @@ pub(crate) struct ChiefSurface {
 	mcp_form_event: Option<i64>,
 	installation: install::Panel,
 	app_settings: app_settings::Panel,
+	live_reviewer: live_settings::Panel,
 	mcp_url_opened: Option<(i64, String)>,
 	mcp_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
 	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
@@ -352,6 +354,7 @@ impl ChiefSurface {
 			mcp_form_event: None,
 			installation: Default::default(),
 			app_settings: Default::default(),
+			live_reviewer: Default::default(),
 			mcp_url_opened: None,
 			mcp_inputs: Default::default(),
 			mcp_answers: Default::default(),
@@ -1228,7 +1231,8 @@ impl ChiefSurface {
 			)
 			.child(detail("Work ID", &work.id))
 			.child(detail("Judgment", judgment(work.status)))
-			.child(detail("Execution", execution(work.dispatch_state)));
+			.child(detail("Execution", execution(work.dispatch_state)))
+			.child(self.live_reviewer_panel(work, cx));
 		if let Some(parent) = &work.parent_goal_id {
 			panel = panel.child(detail("Parent goal", title(snapshot, parent)));
 		}

@@ -292,6 +292,43 @@ impl ChiefHost {
 		result.map(|v| v.state).unwrap_or(ChiefInstallState::Unavailable)
 	}
 
+	pub(crate) async fn live_reviewer(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefLiveReviewerState {
+		crate::chief_live_settings::read(&self.store, || async {
+			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+			self.timeline_source(work, &owner.codex_thread_id?).await
+		})
+		.await
+	}
+
+	async fn set_live_reviewer(
+		&self,
+		ids: (
+			&decodex_protocol::EntityId,
+			&decodex_protocol::EntityId,
+			&decodex_protocol::WireText,
+		),
+		reviewer: decodex_protocol::ChiefAppReviewer,
+		key: &str,
+	) -> Result<String, ChiefHostError> {
+		let (work, turn, review) = (ids.0.as_str(), ids.1.as_str(), ids.2.as_str());
+		crate::chief_live_settings::write(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			turn,
+			review,
+			reviewer,
+			key,
+		)
+		.await?;
+		Ok(work.into())
+	}
+
 	pub(crate) async fn app_settings(
 		&self,
 		work: &str,
@@ -716,6 +753,8 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			ChiefActionDto::SetLiveReviewer { work_id, turn_id, review_token, reviewer } =>
+				self.set_live_reviewer((&work_id, &turn_id, &review_token), reviewer, &key).await,
 			ChiefActionDto::SetAppSetting { work_id, event_id, review_token, edit } =>
 				self.set_app_setting(work_id.as_str(), event_id, review_token.as_str(), &edit, &key)
 					.await,

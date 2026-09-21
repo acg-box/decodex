@@ -349,6 +349,13 @@ impl ServiceApplication {
 		QueryResultPayload::ChiefSnapshot(result)
 	}
 
+	async fn query_live_reviewer(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefLiveReviewer(match &self.chief {
+			Some(chief) => chief.live_reviewer(work).await,
+			None => decodex_protocol::ChiefLiveReviewerState::Unavailable,
+		})
+	}
+
 	async fn query_app_settings(&self, work: &str, event: i64) -> QueryResultPayload {
 		QueryResultPayload::ChiefAppSettings(match &self.chief {
 			Some(chief) => chief.app_settings(work, event).await,
@@ -1996,6 +2003,8 @@ impl Application for ServiceApplication {
 				}),
 			QueryPayload::GetChiefInstallState { work_id, event_id } =>
 				self.query_install_state(work_id.as_str(), *event_id).await,
+			QueryPayload::GetChiefLiveReviewer { work_id } =>
+				self.query_live_reviewer(work_id.as_str()).await,
 			QueryPayload::GetChiefAppSettings { work_id, event_id } =>
 				self.query_app_settings(work_id.as_str(), *event_id).await,
 			QueryPayload::GetChiefGuardianReviews { work_id, before } =>
