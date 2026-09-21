@@ -310,6 +310,70 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn prior_boot_death_releases_bound_chief_account_affinity() {
+		let directory = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("chief.sqlite3")).unwrap();
+		seed(&store).await;
+		store
+			.prepare_chief_bound_process_generation(&intent(1, 1), &binding(1), "root", "first")
+			.await
+			.unwrap();
+		let identity = decodex_core::ProcessIdentity::new(
+			ProcessBootIdentity::new("fixture-boot").unwrap(),
+			123,
+			decodex_core::ProcessStartIdentity::new("fixture-start").unwrap(),
+			123,
+			123,
+		)
+		.unwrap();
+		store.bind_process_generation_identity(&generation_id(1), 1, &identity).await.unwrap();
+		let evidence = |boot: &str, kind| {
+			ProcessDeathEvidence::new(
+				ProcessDeathEvidenceId::new("50000000-0000-4000-8000-000000000001").unwrap(),
+				generation_id(1),
+				kind,
+				ProcessBootIdentity::new(boot).unwrap(),
+				None,
+				DIGEST,
+			)
+			.unwrap()
+		};
+		for invalid in [
+			evidence("fixture-boot", ProcessDeathEvidenceKind::PriorBootEnded),
+			evidence("next-boot", ProcessDeathEvidenceKind::OwnedChildExit),
+		] {
+			assert!(matches!(
+				store.record_process_generation_death(2, &invalid).await.unwrap(),
+				crate::ProcessGenerationMutationOutcome::Rejected {
+					rejection: ProcessGenerationRejection::EvidenceMismatch,
+					..
+				}
+			));
+		}
+		let reboot = evidence("next-boot", ProcessDeathEvidenceKind::PriorBootEnded);
+		assert!(matches!(
+			store.record_process_generation_death(1, &reboot).await.unwrap(),
+			crate::ProcessGenerationMutationOutcome::Rejected { .. }
+		));
+		assert!(matches!(
+			store.record_process_generation_death(2, &reboot).await.unwrap(),
+			crate::ProcessGenerationMutationOutcome::Applied(_)
+		));
+		assert!(matches!(
+			store
+				.prepare_chief_bound_process_generation(
+					&intent(2, 2),
+					&binding(2),
+					"root",
+					"after-reboot"
+				)
+				.await
+				.unwrap(),
+			PrepareProcessGenerationOutcome::Fresh(_)
+		));
+	}
+
+	#[tokio::test]
 	async fn chief_process_admission_checks_authority_and_preserves_affinity_without_phantom_conversations()
 	 {
 		let directory = tempfile::tempdir().unwrap();
