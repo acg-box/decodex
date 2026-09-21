@@ -86,6 +86,18 @@ fn locate(item: &Value, index: usize) -> std::result::Result<Media<'_>, Result> 
 			};
 			Ok(Media::Uri(part[field].as_str().ok_or(Result::Unavailable)?))
 		},
+		Some("functionCallOutput") => {
+			let part = item["output"]
+				.as_array()
+				.and_then(|parts| parts.get(index))
+				.ok_or(Result::Unavailable)?;
+			let field = match part["type"].as_str() {
+				Some("input_image") => "image_url",
+				Some("input_audio") => "audio_url",
+				_ => return Err(Result::Unsupported),
+			};
+			Ok(Media::Uri(part[field].as_str().ok_or(Result::Unavailable)?))
+		},
 		Some("mcpToolCall") => {
 			let part = item["result"]["content"]
 				.as_array()

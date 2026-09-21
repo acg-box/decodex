@@ -5,6 +5,7 @@ mod attachments;
 pub(crate) mod media;
 mod metrics;
 mod promotions;
+mod tool_output;
 
 pub(crate) async fn read<F, Fut>(
 	store: Option<&decodex_database::SqliteStore>,
@@ -148,6 +149,7 @@ fn ordinary(row: &Value) -> Option<Content> {
 	let (attachments, omitted) = attachments::project(item);
 	let source = match kind.as_str() {
 		"agentMessage" => item["text"].as_str()?.to_owned(),
+		"functionCallOutput" => tool_output::text(item)?,
 		"userMessage" => {
 			let parts = item["content"].as_array()?;
 			let mut text = Vec::new();

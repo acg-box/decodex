@@ -67,6 +67,7 @@ impl ChiefSurface {
 				let label = match kind.as_str() {
 					"userMessage" => "You",
 					"agentMessage" => "Assistant",
+					"functionCallOutput" => "Tool result",
 					_ => kind,
 				};
 				let mut row = row.child(muted(label));

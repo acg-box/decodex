@@ -100,6 +100,22 @@ fn exact_item_indices_and_supported_payloads_are_required() {
 	}
 }
 
+#[test]
+fn standalone_tool_media_uses_native_indices_without_exposing_encrypted_parts() {
+	let item = json!({"type":"functionCallOutput","output":[
+		{"type":"input_text","text":"Description"},
+		{"type":"input_image","image_url":"data:image/png;base64,AQID"},
+		{"type":"input_audio","audio_url":"data:audio/wav;base64,AQID"},
+		{"type":"encrypted_content","encrypted_content":"opaque"}
+	]});
+	assert!(matches!(locate(&item, 1), Ok(Media::Uri("data:image/png;base64,AQID"))));
+	assert!(matches!(locate(&item, 2), Ok(Media::Uri("data:audio/wav;base64,AQID"))));
+	for index in [0, 3] {
+		assert!(matches!(locate(&item, index), Err(Result::Unsupported)));
+	}
+	assert!(matches!(locate(&item, 4), Err(Result::Unavailable)));
+}
+
 async fn server(remote: tokio::io::DuplexStream, path: Option<String>) {
 	let (reader, mut writer) = tokio::io::split(remote);
 	let mut lines = BufReader::new(reader).lines();
