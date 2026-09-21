@@ -51,6 +51,8 @@ impl AppServerClient {
 		for _ in 0..100 {
 			let page = self.request("thread/list", json!({
 				"archived":archived,"cursor":cursor,"limit":100,"modelProviders":[],
+                // Archive membership is native state; do not rescan every rollout on each UI poll.
+                "useStateDbOnly":true,
 				// An empty sourceKinds list means interactive sources, not all sources.
 				"sourceKinds":["cli","vscode","exec","appServer","subAgent","subAgentReview","subAgentCompact","subAgentThreadSpawn","subAgentOther","unknown"]
 			})).await?;
@@ -130,6 +132,7 @@ mod tests {
 				assert_eq!(request["params"]["modelProviders"], json!([]));
 				assert_eq!(request["params"]["sourceKinds"].as_array().unwrap().len(), 10);
 				assert_eq!(request["params"]["limit"], 100);
+				assert_eq!(request["params"]["useStateDbOnly"], true);
 				w.write_all(format!("{}\n", json!({"id":request["id"],"result":page})).as_bytes())
 					.await
 					.unwrap();
