@@ -14,6 +14,8 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use super::quota_meter::ResetFill;
+
 static NEXT_CONFIRMATION: AtomicU64 = AtomicU64::new(0);
 #[derive(Default)]
 pub(super) struct ResetCardsPanel {
@@ -26,14 +28,28 @@ pub(super) struct ResetCardsPanel {
 	blocked: bool,
 	message: String,
 	updates: Option<Receiver<Update>>,
+	pending_fill: Option<ResetFill>,
+	fills: std::collections::HashMap<EntityId, ResetFill>,
 }
 struct Update {
+	completed_reset: Option<(EntityId, IdempotencyKey)>,
 	inventory: Option<ResetCardInventoryResult>,
 	blocked: bool,
 	pending_key: Option<IdempotencyKey>,
 	message: String,
 }
 impl Shell {
+	pub(super) fn reset_fill_for(
+		&self,
+		account: &decodex_protocol::AccountDto,
+	) -> Option<ResetFill> {
+		self.reset_cards
+			.fills
+			.get(&account.account_id)
+			.filter(|fill| fill.revision == account.account_revision)
+			.cloned()
+	}
+
 	pub(super) fn show_reset_cards(
 		&mut self,
 		account: EntityId,
@@ -88,11 +104,23 @@ impl Shell {
 		)) else {
 			return;
 		};
+		self.reset_cards.pending_fill = self
+			.accounts
+			.accounts
+			.iter()
+			.find(|row| row.account_id == account && row.account_revision == revision)
+			.map(|row| ResetFill {
+				revision,
+				initial: [row.five_hour_quota, row.seven_day_quota],
+				started: std::time::Instant::now(),
+				confirmed_at_micros: 0,
+			});
 		self.reset_cards.pending_key = Some(key.clone());
 		self.start_reset_card_work(cx, async move {
 			let client = ResetCardClient::new(profile);
 			match client.consume(account.clone(), descriptor, revision, key.clone()).await {
 				Ok(ResetCardConsumeResponse::Rejected { error }) => Update {
+					completed_reset: None,
 					inventory: None,
 					blocked: true,
 					pending_key: None,
@@ -101,6 +129,7 @@ impl Shell {
 					),
 				},
 				Err(_) => Update {
+					completed_reset: None,
 					inventory: None,
 					blocked: true,
 					pending_key: None,
@@ -145,6 +174,7 @@ impl Shell {
 					match tokio::runtime::Builder::new_current_thread().enable_all().build() {
 						Ok(runtime) => runtime.block_on(work),
 						Err(_) => Update {
+							completed_reset: None,
 							inventory: None,
 							blocked: true,
 							pending_key: None,
@@ -164,6 +194,24 @@ impl Shell {
 		else {
 			return;
 		};
+		if let Some((account, key)) = &update.completed_reset
+			&& self.reset_cards.pending_key.as_ref() == Some(key)
+			&& let Some(mut fill) = self.reset_cards.pending_fill.take()
+		{
+			fill.started = std::time::Instant::now();
+			fill.confirmed_at_micros = time::OffsetDateTime::now_utc()
+				.unix_timestamp_nanos()
+				.checked_div(1000)
+				.and_then(|value| i64::try_from(value).ok())
+				.unwrap_or(i64::MAX);
+			self.reset_cards
+				.fills
+				.retain(|id, _| self.accounts.accounts.iter().any(|row| &row.account_id == id));
+			self.reset_cards.fills.insert(account.clone(), fill);
+		}
+		if !update.blocked {
+			self.reset_cards.pending_fill = None;
+		}
 		self.reset_cards.updates = None;
 		self.reset_cards.busy = false;
 		self.reset_cards.inventory = update.inventory;
@@ -182,7 +230,7 @@ async fn load(
 	let (state, key) = if let Some(key) = known_key {
 		(client.status(key.clone()).await.ok(), Some(key))
 	} else {
-		match client.latest_operation(account).await {
+		match client.latest_operation(account.clone()).await {
 			Ok(AccountResetCardOperationResult::NotFound) =>
 				(Some(ResetCardOperationResult::NotFound), None),
 			Ok(AccountResetCardOperationResult::Found(operation)) =>
@@ -191,8 +239,15 @@ async fn load(
 		}
 	};
 	let (blocked, message) = operation_presentation(state, key.is_some());
+	let completed_reset = match (&state, &key) {
+		(
+			Some(ResetCardOperationResult::Completed { outcome: ResetCardOutcome::Reset }),
+			Some(key),
+		) => Some((account, key.clone())),
+		_ => None,
+	};
 	let pending_key = if blocked { key } else { None };
-	Update { inventory, blocked, pending_key, message: message.into() }
+	Update { inventory, blocked, pending_key, message: message.into(), completed_reset }
 }
 fn terminal(state: ResetCardOperationResult) -> bool {
 	matches!(
