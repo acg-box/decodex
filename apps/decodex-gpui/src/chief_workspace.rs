@@ -1319,6 +1319,8 @@ impl ChiefSurface {
 		let current = selected.and_then(|work| self.current_activity_label(work));
 		let label = if self.selected.as_deref().is_some_and(|id| self.thread_in_use(id)) {
 			Some("In use in another app · saved messages are waiting")
+		} else if current.as_deref() == Some("Compacting context") {
+			current.as_deref()
 		} else if self.sending {
 			Some("Sending…")
 		} else {
