@@ -83,14 +83,23 @@ async fn persist_direct_quotas(
 	account_id: &AccountId,
 	inventory: &AccountApiInventory,
 ) -> Result<[AccountQuotaWindowObservation; 2], ResetCardServiceError> {
-	let cached =
-		accounts.inspect(account_id).await.ok().map(|inspection| {
-			[inspection.account.five_hour_quota, inspection.account.seven_day_quota]
-		});
+	let inspection = accounts
+		.inspect(account_id)
+		.await
+		.map_err(|_| ResetCardServiceError::ProductStateUnavailable)?;
+	if inspection.account.revision != inventory.account_revision {
+		return Err(ResetCardServiceError::ProductStateUnavailable);
+	}
+	let cached = inspection
+		.account
+		.usage_observation
+		.filter(|observation| observation.account_revision == inventory.account_revision)
+		.map(|_| [inspection.account.five_hour_quota, inspection.account.seven_day_quota]);
+	let mut accepted = [None, None];
 	let mut observations = Vec::with_capacity(2);
 	let now = current_unix_micros().ok_or(ResetCardServiceError::ProductStateUnavailable)?;
 	let optional_five_absent = has_optional_five_absence(&inventory.quota_windows, now);
-	for quota in inventory.quota_windows {
+	for (index, quota) in inventory.quota_windows.into_iter().enumerate() {
 		let observed_at_unix_micros = now;
 		let cached_window = cached.as_ref().and_then(|windows| {
 			windows.iter().find(|window| window.duration_minutes == quota.duration_minutes).copied()
@@ -99,24 +108,15 @@ async fn persist_direct_quotas(
 			Ok(None)
 				if optional_five_absent
 					&& quota.duration_minutes == AccountQuotaWindow::FIVE_HOURS_MINUTES =>
-			{
-				accounts
-					.observe_quota_absence(
-						account_id,
-						quota.duration_minutes,
-						observed_at_unix_micros,
-					)
-					.await
-					.map_err(|_| ResetCardServiceError::ProductStateUnavailable)?;
-				(Some(observed_at_unix_micros), AccountQuotaDisposition::NotApplicable)
-			},
-			Ok(Some(fact)) => {
-				accounts
-					.observe_quota(account_id, fact, observed_at_unix_micros)
-					.await
-					.map_err(|_| ResetCardServiceError::ProductStateUnavailable)?;
-				(Some(observed_at_unix_micros), AccountQuotaDisposition::Current(fact))
-			},
+				(Some(observed_at_unix_micros), AccountQuotaDisposition::NotApplicable),
+			Ok(Some(fact)) => (
+				Some(observed_at_unix_micros),
+				if fact.resets_at_unix_micros > now {
+					AccountQuotaDisposition::Current(fact)
+				} else {
+					AccountQuotaDisposition::Stale(fact)
+				},
+			),
 			result => resolve_direct_quota(
 				quota.duration_minutes,
 				result,
@@ -124,11 +124,36 @@ async fn persist_direct_quotas(
 				observed_at_unix_micros,
 			),
 		};
+		if matches!(quota.result, Ok(Some(fact)) if fact.resets_at_unix_micros > now)
+			|| (quota.result == Ok(None) && optional_five_absent && index == 0)
+		{
+			accepted[index] = Some(AccountQuotaWindowObservation {
+				duration_minutes: quota.duration_minutes,
+				observed_at_unix_micros,
+				disposition,
+			});
+		}
 		observations.push(AccountQuotaWindowObservation {
 			duration_minutes: quota.duration_minutes,
 			observed_at_unix_micros,
 			disposition,
 		});
+	}
+	if !accounts
+		.observe_usage(
+			account_id,
+			decodex_core::AccountUsageObservation {
+				account_revision: inventory.account_revision,
+				observed_at_unix_micros: now,
+				ordinary_usage_allowed: inventory.ordinary_usage_allowed,
+				conditions: inventory.conditions,
+			},
+			accepted,
+		)
+		.await
+		.map_err(|_| ResetCardServiceError::ProductStateUnavailable)?
+	{
+		return Err(ResetCardServiceError::ProductStateUnavailable);
 	}
 	observations.try_into().map_err(|_| ResetCardServiceError::InventoryIncomplete)
 }
@@ -1065,6 +1090,7 @@ mod tests {
 				phase: AccountOperationPhase::RecoveryRequired,
 				recovery_code: Some("provider_refresh_rejected".to_owned()),
 			}),
+			usage_observation: None,
 			five_hour_quota: AccountQuotaWindowObservation::unknown(300).unwrap(),
 			seven_day_quota: AccountQuotaWindowObservation::unknown(10_080).unwrap(),
 			tombstoned: false,

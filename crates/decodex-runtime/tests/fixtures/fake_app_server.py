@@ -254,6 +254,7 @@ if mode == "exact-escaped-title":
 exact_thread_reads = 0
 reset_card_consumed = False
 rate_limit_reads = 0
+resume_attempts = 0
 for line in sys.stdin:
     message = json.loads(line)
     assert "jsonrpc" not in message
@@ -290,7 +291,7 @@ for line in sys.stdin:
             print(json.dumps({"id": message["id"], "error": {"code": -32000, "message": "secret\\quoted"}}), flush=True)
             continue
         if mode == "oversized-frame":
-            sys.stdout.write("{" + ("x" * (1024 * 1024 + 1)))
+            sys.stdout.write("{" + ("x" * (8 * 1024 * 1024 + 1)))
             sys.stdout.flush()
             time.sleep(60)
         if mode == "queue-overflow":
@@ -458,17 +459,55 @@ for line in sys.stdin:
                 "data": [{"id": f"00000000-0000-4000-8000-{index:012d}", "archived": False, "parentThreadId": None} for index in range(1, count + 1)],
                 "nextCursor": None,
             }
+    elif method in {"thread/turns/list", "thread/items/list"} and mode.startswith("exact-paged-"):
+        params = message["params"]
+        assert params["threadId"] == exact_thread["id"]
+        assert params["limit"] == 100 and params["sortDirection"] == "asc"
+        cursor = params.get("cursor")
+        if method == "thread/turns/list":
+            assert params["itemsView"] == "notLoaded"
+            result = {"data": [{"id": "provider-turn-1", "status": "completed", "items": [], "itemsView": "notLoaded"}], "nextCursor": None}
+            if mode == "exact-paged-summary":
+                result["data"][0]["itemsView"] = "summary"
+        else:
+            assert "itemsView" not in params
+            item = {"id": "u1", "type": "userMessage", "clientId": "50000000-0000-4000-8000-000000000001"} if cursor is None else {"id": "a1", "type": "agentMessage", "text": "Paged response"}
+            if mode == "exact-paged-duplicate-client" and cursor:
+                item = {"id": "u2", "type": "userMessage", "clientId": "50000000-0000-4000-8000-000000000001"}
+            if mode == "exact-paged-duplicate-item" and cursor:
+                item["id"] = "u1"
+            turn = "unknown-turn" if mode == "exact-paged-wrong-turn" else "provider-turn-1"
+            result = {"data": [{"turnId": turn, "item": item}], "nextCursor": "page2" if cursor is None or mode == "exact-paged-cycle" else None}
+            if mode == "exact-paged-too-many":
+                result["data"] *= 101
+            if mode == "exact-paged-byte-budget":
+                result["data"] = [{"turnId": turn, "item": {"id": f"{cursor}-{index}", "type": "agentMessage", "text": "x" * (1024 * 1024)}} for index in range(5)]
+            if mode == "exact-paged-missing-cursor":
+                result.pop("nextCursor")
     elif method == "thread/read" and mode != "optional-unsupported":
-        if message["params"]["includeTurns"]:
+        if message["params"]["threadId"] == exact_thread["id"]:
+            if mode == "exact-metadata-only":
+                assert message["params"]["includeTurns"] is False
             exact_thread_reads += 1
             if mode == "exact-missing-post-archive-read" and exact_thread_reads > 1:
                 print(json.dumps({"id": message["id"]}), flush=True)
                 continue
             if mode == "exact-oversized-read":
-                sys.stdout.write("{" + ("x" * (1024 * 1024 + 1)))
+                sys.stdout.write("{" + ("x" * (8 * 1024 * 1024 + 1)))
                 sys.stdout.flush()
                 time.sleep(60)
             readback = dict(exact_thread)
+            if mode == "exact-submitted-read" and message["params"]["includeTurns"]:
+                readback["turns"] = [{
+                    "id": "provider-turn-1", "status": "completed",
+                    "items": [
+                        {"type": "userMessage", "clientId": "50000000-0000-4000-8000-000000000001"},
+                        {"type": "agentMessage", "text": "Confirmed response"},
+                    ],
+                }]
+            if mode.startswith("exact-paged-"):
+                assert message["params"]["includeTurns"] is False
+                readback["historyMode"] = "paginated"
             if mode in {"exact-current-schema", "exact-escaped-title"}:
                 readback.pop("archived", None)
             if mode == "exact-mismatched-id" or (mode == "exact-mismatched-post-archive-read" and exact_thread_reads > 1):
@@ -484,11 +523,27 @@ for line in sys.stdin:
                     "parentThreadId": None,
                 }
             }
+    elif method == "thread/resume" and mode == "resume-reject-closing-once" and resume_attempts == 1:
+        params = message["params"]
+        result = {
+            "thread": {"id": params["threadId"], "sessionId": "fixture-session", "preview": "", "ephemeral": False,
+                       "modelProvider": "openai", "createdAt": 1, "updatedAt": 1, "status": {"type": "idle"},
+                       "cwd": params["cwd"], "cliVersion": "fixture", "source": "appServer", "turns": []},
+            "model": params["model"], "modelProvider": "openai", "cwd": params["cwd"],
+            "approvalPolicy": "never", "approvalsReviewer": "user", "sandbox": {"type": "dangerFullAccess"},
+            "reasoningEffort": "high", "multiAgentMode": "explicitRequestOnly"
+        }
     elif method == "thread/resume" and mode.startswith("resume-reject-"):
+        resume_attempts += 1
         thread = message["params"]["threadId"]
         code = -32600
         error_message = "fixture-secret: provider rejected configuration"
-        if mode == "resume-reject-missing":
+        if mode.startswith("resume-reject-closing"):
+            target = "unrelated" if mode.endswith("other-thread") else thread
+            code = -32603 if mode.endswith("wrong-code") else -32600
+            error_message = f"thread {target} is closing; fixture-secret"
+            print(json.dumps({"method":"turn/completed","params":{"threadId":thread,"turn":{"id":"closing-turn","status":"completed","items":[]}}}), flush=True)
+        elif mode == "resume-reject-missing":
             error_message = f"no rollout found for thread id {thread}"
         elif mode == "resume-reject-archived":
             error_message = f"session {thread} is archived. Run `codex unarchive {thread}` to unarchive it first."

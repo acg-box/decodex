@@ -2,19 +2,25 @@
 
 #[path = "chief_activity.rs"] mod activity;
 #[path = "chief_tree.rs"] mod agent_tree;
+#[path = "chief_app_settings.rs"] mod app_settings;
 #[path = "chief_archive.rs"] mod archive;
 #[path = "chief_async_questions.rs"] mod async_questions;
 #[path = "chief_capabilities.rs"] mod capabilities;
 #[path = "chief_composer.rs"] mod composer;
 #[path = "chief_detail.rs"] mod detail;
 #[path = "chief_dictation.rs"] mod dictation;
+#[path = "chief_drafts.rs"] mod drafts;
+#[path = "chief_goal.rs"] mod goal;
 #[path = "chief_graph.rs"] mod graph;
 #[path = "chief_guardian.rs"] mod guardian;
 #[path = "chief_install.rs"] mod install;
 #[path = "chief_integrations.rs"] mod integrations;
+#[path = "chief_live_settings.rs"] mod live_settings;
 #[path = "chief_markdown.rs"] mod markdown;
 #[path = "chief_mcp_forms.rs"] mod mcp_forms;
 #[path = "chief_misalignment.rs"] mod misalignment;
+#[path = "chief_model_settings.rs"] mod model_settings;
+#[path = "chief_timeline.rs"] mod native_timeline;
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_requests.rs"] mod requests;
@@ -63,12 +69,12 @@ pub(crate) struct ChiefSurface {
 	audio_input: String,
 	dictation: Option<dictation::DictationUi>,
 	dictation_task: Option<Task<()>>,
-	activity_detail: Option<(String, Option<decodex_protocol::ChiefActivityDetailResult>)>,
-	activity_detail_task: Option<Task<()>>,
+	activity_detail: detail::ActivityDetailState,
 	resources: Option<(String, Option<decodex_protocol::ChiefResourcesResult>)>,
 	resources_task: Option<Task<()>>,
 	usage_estimate: Option<(String, Option<decodex_protocol::ChiefUsageEstimateResult>)>,
 	usage_estimate_task: Option<Task<()>>,
+	native_history: native_timeline::Timeline,
 	integrations: Option<(String, Option<decodex_protocol::ChiefIntegrationsResult>)>,
 	integrations_task: Option<Task<()>>,
 	integration_refresh_task: Option<Task<()>>,
@@ -83,6 +89,7 @@ pub(crate) struct ChiefSurface {
 	capabilities_context: Option<capabilities::CatalogContext>,
 	capabilities_checked: Option<std::time::Instant>,
 	capability_task: Option<Task<()>>,
+	capability_generation: u64,
 	expanded_progress: std::collections::BTreeSet<String>,
 	pages: Vec<String>,
 	graph_visible: bool,
@@ -96,9 +103,9 @@ pub(crate) struct ChiefSurface {
 	graph_pan: (f32, f32),
 	graph_inset: (f32, f32),
 	graph_drag: Option<gpui::Point<gpui::Pixels>>,
-	history_marks: std::collections::BTreeMap<i64, activity::HistoryMark>,
-	history_marks_work: Option<String>,
-	history_selected: Option<i64>,
+	history_marks: std::collections::BTreeMap<activity::HistoryKey, activity::HistoryMark>,
+	history_marks_work: Option<(String, bool)>,
+	history_selected: Option<activity::HistoryKey>,
 	history_hover: Option<usize>,
 	history_navigation: Option<activity::HistoryNavigation>,
 	agent_tree_visible: bool,
@@ -135,11 +142,7 @@ pub(crate) struct ChiefSurface {
 	attachments: Vec<decodex_protocol::ChiefAttachmentDto>,
 	task_references: Vec<decodex_protocol::ChiefTaskReferenceDto>,
 	task_reference_search: Entity<ComposerInput>,
-	task_reference_drafts:
-		std::collections::BTreeMap<String, Vec<decodex_protocol::ChiefTaskReferenceDto>>,
-	attachment_drafts:
-		std::collections::BTreeMap<String, Vec<decodex_protocol::ChiefAttachmentDto>>,
-	manager_drafts: std::collections::BTreeMap<String, String>,
+	draft_profiles: drafts::Profiles,
 	composer_manager: Option<String>,
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
@@ -147,6 +150,7 @@ pub(crate) struct ChiefSurface {
 	effort: ConversationReasoningEffort,
 	sandbox: ChiefSandboxDto,
 	command_task: Option<Task<()>>,
+	command_epoch: u64,
 	sending: bool,
 	uncertain: bool,
 	feedback: String,
@@ -166,8 +170,12 @@ pub(crate) struct ChiefSurface {
 	misalignment_reviewed: Option<(String, String)>,
 	guardian: guardian::Panel,
 	archive: archive::Panel,
+	native_goal: goal::Panel,
 	mcp_form_event: Option<i64>,
 	installation: install::Panel,
+	app_settings: app_settings::Panel,
+	live_reviewer: live_settings::Panel,
+	model_settings: model_settings::Panel,
 	mcp_url_opened: Option<(i64, String)>,
 	mcp_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
 	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
@@ -183,6 +191,16 @@ struct ChiefInputs {
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
 	composer: Entity<ComposerInput>,
+	resource_title: Entity<ComposerInput>,
+	resource_url: Entity<ComposerInput>,
+}
+
+struct PendingCommand {
+	epoch: u64,
+	draft: Option<String>,
+	owner: Option<String>,
+	attachments: Option<Vec<decodex_protocol::ChiefAttachmentDto>>,
+	references: Option<Vec<decodex_protocol::ChiefTaskReferenceDto>>,
 }
 
 impl ChiefSurface {
@@ -234,7 +252,11 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn new(cx: &mut Context<Self>) -> Self {
-		let ChiefInputs { model, cwd, composer } = Self::new_inputs(cx);
+		let inputs = Self::new_inputs(cx);
+		Self::with_inputs(inputs, cx)
+	}
+
+	fn with_inputs(inputs: ChiefInputs, cx: &mut Context<Self>) -> Self {
 		Self {
 			voice: None,
 			voice_task: None,
@@ -242,12 +264,12 @@ impl ChiefSurface {
 			audio_input: String::new(),
 			dictation: None,
 			dictation_task: None,
-			activity_detail: None,
-			activity_detail_task: None,
+			activity_detail: Default::default(),
 			resources: None,
 			resources_task: None,
 			usage_estimate: None,
 			usage_estimate_task: None,
+			native_history: Default::default(),
 			integrations: None,
 			integrations_task: None,
 			integration_refresh_task: None,
@@ -256,14 +278,13 @@ impl ChiefSurface {
 			mcp_login_task: None,
 			resource_mutation_task: None,
 			resource_feedback: String::new(),
-			resource_title: cx
-				.new(|cx| ComposerInput::with_placeholder(40, "Link title", "Resource title", cx)),
-			resource_url: cx
-				.new(|cx| ComposerInput::with_placeholder(40, "https://…", "Resource URL", cx)),
+			resource_title: inputs.resource_title,
+			resource_url: inputs.resource_url,
 			capabilities: None,
 			capabilities_context: None,
 			capabilities_checked: None,
 			capability_task: None,
+			capability_generation: 0,
 			fast: false,
 			service_tier: None,
 			steer: true,
@@ -279,9 +300,7 @@ impl ChiefSurface {
 			attachments: vec![],
 			task_references: vec![],
 			task_reference_search: Self::new_task_reference_search(cx),
-			task_reference_drafts: Default::default(),
-			attachment_drafts: Default::default(),
-			manager_drafts: Default::default(),
+			draft_profiles: Default::default(),
 			composer_manager: None,
 			pages: vec![],
 			graph_visible: true,
@@ -312,14 +331,15 @@ impl ChiefSurface {
 			details_visible: false,
 			accounts: vec![],
 			setup_expanded: false,
-			composer,
+			composer: inputs.composer,
 			composer_footer_height: 74.,
-			model,
-			cwd,
+			model: inputs.model,
+			cwd: inputs.cwd,
 			account: Self::account_input(cx),
 			effort: ConversationReasoningEffort::High,
 			sandbox: ChiefSandboxDto::ReadOnly,
 			command_task: None,
+			command_epoch: 0,
 			sending: false,
 			uncertain: false,
 			feedback: String::new(),
@@ -336,8 +356,12 @@ impl ChiefSurface {
 			misalignment_reviewed: None,
 			guardian: Default::default(),
 			archive: Default::default(),
+			native_goal: Default::default(),
 			mcp_form_event: None,
 			installation: Default::default(),
+			app_settings: Default::default(),
+			live_reviewer: Default::default(),
+			model_settings: Default::default(),
 			mcp_url_opened: None,
 			mcp_inputs: Default::default(),
 			mcp_answers: Default::default(),
@@ -378,7 +402,11 @@ impl ChiefSurface {
 			cx.notify();
 		})
 		.detach();
-		ChiefInputs { model, cwd, composer }
+		let resource_title =
+			cx.new(|cx| ComposerInput::with_placeholder(40, "Link title", "Resource title", cx));
+		let resource_url =
+			cx.new(|cx| ComposerInput::with_placeholder(40, "https://…", "Resource URL", cx));
+		ChiefInputs { model, cwd, composer, resource_title, resource_url }
 	}
 
 	fn account_input(cx: &mut Context<Self>) -> Entity<ComposerInput> {
@@ -393,8 +421,11 @@ impl ChiefSurface {
 	}
 
 	fn load_history(&mut self, cx: &mut Context<Self>) {
+		self.refresh_open_native_history(cx);
+		self.refresh_native_input_receipts(cx);
 		self.load_guardian_reviews(cx);
 		self.load_archive_state(false, cx);
+		self.load_native_goal(cx);
 		if self.history.as_ref().is_some_and(|(id, _)| self.selected.as_ref() != Some(id)) {
 			self.history = None;
 		}
@@ -494,6 +525,7 @@ impl ChiefSurface {
 	}
 
 	fn load_request(&mut self, event_id: i64, cx: &mut Context<Self>) {
+		self.app_settings_disconnected();
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
@@ -588,12 +620,15 @@ impl ChiefSurface {
 				text.clone()
 			})
 			.map_err(|_| "Message is too long")?;
+			if !self.draft_owner_available() {
+				return Err("This draft's conversation is unavailable. Select a conversation before sending.".into());
+			}
 			if let Some(root) = self.snapshot.as_ref().and_then(|snapshot| {
 				snapshot
 					.work_items
 					.iter()
 					.find(|work| {
-						Some(&work.id) == self.selected.as_ref()
+						Some(&work.id) == self.composer_manager.as_ref().or(self.selected.as_ref())
 							&& work.kind == decodex_protocol::ChiefWorkKindDto::Manager
 					})
 					.or_else(|| {
@@ -661,6 +696,13 @@ impl ChiefSurface {
 		}
 	}
 
+	fn command_connection_ready(&self) -> bool {
+		self.state == LoadState::Ready
+			|| (self.state == LoadState::Loading
+				&& self.status_before_refresh.is_none()
+				&& self.snapshot.is_some())
+	}
+
 	fn execute(&mut self, action: ChiefActionDto, draft: Option<String>, cx: &mut Context<Self>) {
 		if self.sending || (self.uncertain && !matches!(&action, ChiefActionDto::Interrupt { .. }))
 		{
@@ -671,9 +713,19 @@ impl ChiefSurface {
 			cx.notify();
 			return;
 		};
-		let sent_attachments = draft.as_ref().map(|_| self.attachments.clone());
-		let sent_references = draft.as_ref().map(|_| self.task_references.clone());
-		let draft_owner = self.composer_manager.clone().or_else(|| self.root_id());
+		if !self.command_connection_ready() {
+			self.feedback =
+				"Connection unavailable. Draft retained; refresh before sending.".into();
+			cx.notify();
+			return;
+		}
+		let pending = PendingCommand {
+			epoch: self.command_epoch,
+			attachments: draft.as_ref().map(|_| self.attachments.clone()),
+			references: draft.as_ref().map(|_| self.task_references.clone()),
+			owner: self.composer_manager.clone().or_else(|| self.root_id()),
+			draft,
+		};
 		self.sending = true;
 		self.feedback = "Waiting for durable acceptance…".into();
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
@@ -689,36 +741,55 @@ impl ChiefSurface {
 		self.command_task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |surface, cx| {
-				surface.sending = false;
-				let current_owner = surface.composer_manager.clone().or_else(|| surface.root_id());
-				let same_owner = current_owner == draft_owner || (draft_owner.is_none() && matches!(&result, Ok(ChiefCommandResponse::Accepted { work_id }) if current_owner.as_deref()==Some(work_id.as_str())));
-				if !same_owner
-					&& matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
-					&& let Some(owner) = &draft_owner
-					&& surface.manager_drafts.get(owner).map(String::as_str) == draft.as_deref()
-				{
-					surface.manager_drafts.remove(owner);
-				}
-                if matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
-                    && let Some(sent) = &sent_attachments {
-                        if same_owner { surface.attachments.retain(|file| !sent.contains(file)); }
-                        else if let Some(files) = draft_owner.as_ref().and_then(|id|surface.attachment_drafts.get_mut(id)) {
-                            files.retain(|file| !sent.contains(file));
-                        }
-                }
-                if matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
-                    && let Some(sent) = &sent_references {
-                    surface.clear_sent_task_references(sent, same_owner, draft_owner.as_deref());
-                }
-                surface.apply_command_result(
-					result,
-					if same_owner { draft.as_deref() } else { None },
-					cx,
-				);
-				surface.refresh(cx);
-				cx.notify();
+				surface.finish_command(pending, result, cx);
 			});
 		}));
+		cx.notify();
+	}
+
+	fn finish_command(
+		&mut self,
+		pending: PendingCommand,
+		result: Result<ChiefCommandResponse, String>,
+		cx: &mut Context<Self>,
+	) {
+		if self.command_epoch != pending.epoch {
+			return;
+		}
+		self.sending = false;
+		let current_owner = self.composer_manager.clone().or_else(|| self.root_id());
+		let same_owner = current_owner == pending.owner
+			|| (pending.owner.is_none()
+				&& matches!(&result, Ok(ChiefCommandResponse::Accepted { work_id }) if current_owner.as_deref()==Some(work_id.as_str())));
+		if !same_owner
+			&& matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
+			&& let Some(owner) = &pending.owner
+			&& self.draft_profiles.texts.get(owner).map(String::as_str) == pending.draft.as_deref()
+		{
+			self.draft_profiles.texts.remove(owner);
+		}
+		if matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
+			&& let Some(sent) = &pending.attachments
+		{
+			if same_owner {
+				self.attachments.retain(|file| !sent.contains(file));
+			} else if let Some(files) =
+				pending.owner.as_ref().and_then(|id| self.draft_profiles.files.get_mut(id))
+			{
+				files.retain(|file| !sent.contains(file));
+			}
+		}
+		if matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
+			&& let Some(sent) = &pending.references
+		{
+			self.clear_sent_task_references(sent, same_owner, pending.owner.as_deref());
+		}
+		self.apply_command_result(
+			result,
+			if same_owner { pending.draft.as_deref() } else { None },
+			cx,
+		);
+		self.refresh(cx);
 		cx.notify();
 	}
 
@@ -754,11 +825,21 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn bind_profile(&mut self, profile: Option<ClientProfile>, cx: &mut Context<Self>) {
+		self.command_epoch += 1;
+		self.command_task = None;
+		if self.sending {
+			self.uncertain = true;
+			self.sending = false;
+			self.feedback = "Service changed before acceptance was confirmed. Draft retained; inspect the previous service before sending again.".into();
+		}
+		self.bind_drafts(profile.as_ref(), cx);
+		let epoch = self.native_history.epoch + 1;
+		self.native_history = Default::default();
+		self.native_history.epoch = epoch;
 		self.generation += 1;
 		self.task = None;
 		self.profile = profile;
-		self.activity_detail = None;
-		self.activity_detail_task = None;
+		self.clear_activity_detail();
 		self.resources = None;
 		self.resources_task = None;
 		self.usage_estimate = None;
@@ -774,6 +855,7 @@ impl ChiefSurface {
 		self.resource_title.update(cx, |input, cx| input.clear(cx));
 		self.resource_url.update(cx, |input, cx| input.clear(cx));
 		self.capability_task = None;
+		self.capability_generation += 1;
 		self.capabilities = None;
 		self.capabilities_context = None;
 		self.fast = false;
@@ -783,10 +865,6 @@ impl ChiefSurface {
 		self.pages.clear();
 		self.page_views.clear();
 		self.graph_expanded = false;
-		self.manager_drafts.clear();
-		self.task_references.clear();
-		self.task_reference_drafts.clear();
-		self.composer_manager = None;
 		self.history_cache.clear();
 		self.history_marks.clear();
 		self.history_marks_work = None;
@@ -802,6 +880,7 @@ impl ChiefSurface {
 		self.request = None;
 		self.request_task = None;
 		self.question_timers.clear();
+		self.app_settings_disconnected();
 		self.mcp_form_event = None;
 		self.mcp_url_opened = None;
 		self.mcp_inputs.clear();
@@ -809,8 +888,9 @@ impl ChiefSurface {
 		self.misalignment_reviewed = None;
 		self.guardian = Default::default();
 		self.archive = Default::default();
+		self.goal_disconnected();
 		self.async_question_inputs.clear();
-		self.selected = None;
+		self.selected = self.composer_manager.clone();
 		self.state = LoadState::Idle;
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
 			loop {
@@ -827,6 +907,7 @@ impl ChiefSurface {
 							surface.refresh(cx);
 						}
 						surface.load_archive_state(false, cx);
+						surface.load_native_goal(cx);
 						if surface.guardian_needs_refresh() {
 							surface.load_guardian_reviews(cx);
 						}
@@ -842,9 +923,12 @@ impl ChiefSurface {
 
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
 		self.generation += 1;
+		self.clear_activity_detail();
 		self.guardian_disconnected();
 		self.archive_disconnected();
+		self.goal_disconnected();
 		self.installation_disconnected();
+		self.app_settings_disconnected();
 		self.task = None;
 		self.state =
 			if self.snapshot.is_some() { LoadState::Stale } else { LoadState::Unavailable };
@@ -898,8 +982,31 @@ impl ChiefSurface {
 	}
 
 	fn apply_result(&mut self, result: Result<ChiefSnapshotResult, ()>) {
+		if !matches!(&result, Ok(ChiefSnapshotResult::Available(_))) {
+			self.clear_activity_detail();
+		}
 		match result {
 			Ok(ChiefSnapshotResult::Available(snapshot)) => {
+				self.invalidate_model_settings(&snapshot);
+				self.invalidate_live_reviewer_for_snapshot(&snapshot);
+				if self.snapshot.as_ref().is_some_and(|old| {
+					old.work_items.iter().any(|work| {
+						snapshot
+							.work_items
+							.iter()
+							.find(|new| new.id == work.id)
+							.is_none_or(|new| new.codex_thread_id != work.codex_thread_id)
+					})
+				}) {
+					self.clear_activity_detail();
+				}
+				if self.snapshot.as_ref().and_then(|old| old.runtime_source.as_ref())
+					!= snapshot.runtime_source.as_ref()
+				{
+					self.native_history.reset();
+					self.clear_activity_detail();
+					self.app_settings_disconnected();
+				}
 				if !self
 					.selected
 					.as_ref()
@@ -1036,7 +1143,7 @@ impl ChiefSurface {
 			LoadState::Unavailable => if self.profile.is_none() {
 				"No local service profile is configured for this view."
 			} else {
-				"Reconnecting to Chief. Connection details are in Settings → Diagnostics."
+				"Reconnecting to Chief. Work may still be running. Connection details are in Settings → Diagnostics."
 			}
 			.into(),
 			LoadState::Stale =>
@@ -1072,6 +1179,7 @@ impl ChiefSurface {
 			.child(self.misalignment_panel(work, cx))
 			.child(self.guardian_panel(work, cx))
 			.child(self.archive_panel(work, cx))
+			.child(self.native_goal_panel())
 			.child(self.request_panel(snapshot, work, cx))
 			.child(self.async_question_panel(work, cx))
 			.child(self.history_panel(work, cx))
@@ -1132,7 +1240,9 @@ impl ChiefSurface {
 			)
 			.child(detail("Work ID", &work.id))
 			.child(detail("Judgment", judgment(work.status)))
-			.child(detail("Execution", execution(work.dispatch_state)));
+			.child(detail("Execution", execution(work.dispatch_state)))
+			.child(self.live_reviewer_panel(work, cx))
+			.child(self.model_settings_panel(work, cx));
 		if let Some(parent) = &work.parent_goal_id {
 			panel = panel.child(detail("Parent goal", title(snapshot, parent)));
 		}
@@ -1279,7 +1389,7 @@ impl ChiefSurface {
 	}
 
 	fn history_panel(&self, work: &ChiefWorkItemDto, cx: &mut Context<Self>) -> impl IntoElement {
-		let mut panel = div()
+		let panel = div()
 			.w_full()
 			.min_w_0()
 			.flex_none()
@@ -1288,7 +1398,14 @@ impl ChiefSurface {
 			.gap(px(ui_theme::MESSAGE_GAP))
 			.child(self.resources_panel(&work.id, cx))
 			.child(self.integrations_panel(&work.id, cx))
-			.child(self.usage_estimate_panel(&work.id, cx));
+			.child(self.usage_estimate_panel(&work.id, cx))
+			.child(self.native_timeline_panel(work, cx));
+		if self.native_history_active(work) {
+			return panel
+				.child(self.native_receipts_panel(work, cx))
+				.children(self.live_chat_caption());
+		}
+		let mut panel = panel.debug_selector(|| "saved-local-history".into());
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
 			Some(ChiefHistoryResult::Available {
 				entries, has_more, next_before, live, ..
@@ -1342,6 +1459,13 @@ impl ChiefSurface {
 						div()
 							.w_full()
 							.py(px(2.))
+							.child(muted(
+								if message.kind == decodex_protocol::ChiefLiveMessageKind::Plan {
+									"Proposed plan · Live"
+								} else {
+									"Assistant · In progress"
+								},
+							))
 							.child(markdown::render(
 								&message.text,
 								&format!("live-{}", message.item_id),
@@ -1558,7 +1682,31 @@ fn detail(label: &str, value: &str) -> impl IntoElement {
 		.child(div().text_size(px(ui_theme::BODY_SIZE)).child(value.to_owned()))
 }
 
+fn auth_recovery_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
+	let id = entry.id;
+	div()
+		.w_full()
+		.flex()
+		.flex_col()
+		.gap_1()
+		.debug_selector(move || format!("auth-recovery-receipt-{id}"))
+		.child(muted("Provider sign-in · Recorded event"))
+		.child(entry.text.clone())
+}
+
 fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
+	if entry.kind == "auth_recovery" {
+		return auth_recovery_entry(entry);
+	}
+	if entry.kind == "checklist" {
+		let id = entry.id;
+		return div()
+			.w_full()
+			.py_2()
+			.debug_selector(move || format!("checklist-receipt-{id}"))
+			.child(muted("Recorded checklist"))
+			.child(markdown::render(&entry.text, &format!("checklist-{id}")));
+	}
 	let user = entry.kind == "user";
 	if entry.kind == "execution_notice" {
 		return div()
@@ -1869,6 +2017,7 @@ mod tests {
 		) -> impl gpui::IntoElement {
 			let bounds = self.bounds.clone();
 			super::history_entry(&decodex_protocol::ChiefHistoryEntryDto {
+				receipt: None,
 				activity: None,
 				id: 1,
 				kind: "user".into(),
@@ -1941,6 +2090,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		let input = surface.update(visual, |surface, cx| {
 			surface.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],
@@ -2017,6 +2167,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![ChiefWorkItemDto {
 					id: "root".into(),
@@ -2045,6 +2196,7 @@ mod tests {
 					next_before: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						receipt: None,
 						activity: None,
 						duration_ms: None,
 						usage: None,
@@ -2075,6 +2227,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![ChiefWorkItemDto {
 					id: "root".into(),
@@ -2108,6 +2261,7 @@ mod tests {
 					misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						receipt: None,
 						activity: None,
 						usage: None,
 						duration_ms: None,
@@ -2136,6 +2290,111 @@ mod tests {
 			window.draw(cx).clear();
 		});
 	}
+	#[gpui::test]
+	fn offline_commands_preserve_editable_draft_and_attachments(cx: &mut gpui::TestAppContext) {
+		use std::os::unix::fs::{MetadataExt, PermissionsExt};
+		let root = tempfile::tempdir_in("/tmp").unwrap();
+		let path = root.path().canonicalize().unwrap();
+		std::fs::create_dir(path.join("server")).unwrap();
+		std::fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700))
+			.unwrap();
+		let uid = std::fs::metadata(&path).unwrap().uid();
+		let config = path.join("config.toml");
+		std::fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
+		std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
+		let profile = ClientProfile::load(&path, None).unwrap();
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.profile = Some(profile);
+			s.composer.update(cx, |input, cx| input.set_content("draft", cx));
+			s.attachments.push(decodex_protocol::ChiefAttachmentDto {
+				path: ConversationWorkingDirectory::new("/tmp/draft.png").unwrap(),
+				image: true,
+			});
+			s.task_references.push(decodex_protocol::ChiefTaskReferenceDto {
+				work_id: EntityId::new("evidence").unwrap(),
+				thread_id: WireText::new("thread").unwrap(),
+				title: WireText::new("Evidence").unwrap(),
+			});
+			for state in [
+				LoadState::Stale,
+				LoadState::Unavailable,
+				LoadState::Idle,
+				LoadState::Capacity { work: 1, edges: 0, events: 0 },
+			] {
+				s.state = state;
+				s.execute(
+					ChiefActionDto::Send {
+						root_id: EntityId::new("root").unwrap(),
+						text: HistoryText::new("draft").unwrap(),
+					},
+					Some("draft".into()),
+					cx,
+				);
+				assert!(s.command_task.is_none());
+				assert!(!s.sending);
+				assert!(s.feedback.contains("Connection unavailable"));
+				assert_eq!(s.attachments.len(), 1);
+				assert_eq!(s.task_references.len(), 1);
+			}
+			s.composer.update(cx, |input, cx| input.set_content("edited offline", cx));
+			assert_eq!(s.composer.read(cx).content(), "edited offline");
+			s.state = LoadState::Loading;
+			s.status_before_refresh = Some(LoadState::Stale);
+			assert!(!s.command_connection_ready());
+			s.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
+				workspaces: vec![],
+				work_items: vec![],
+				dependencies: vec![],
+				pending_events: vec![],
+			})));
+			assert!(s.command_connection_ready());
+			assert!(s.command_task.is_none(), "fresh readback must not replay the draft");
+			s.state = LoadState::Loading;
+			s.status_before_refresh = None;
+			assert!(s.command_connection_ready(), "normal polling must not disable sending");
+		});
+	}
+
+	#[gpui::test]
+	fn old_service_acceptance_cannot_clear_identical_new_draft(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			let file = decodex_protocol::ChiefAttachmentDto {
+				path: ConversationWorkingDirectory::new("/tmp/draft.png").unwrap(),
+				image: true,
+			};
+			let pending = PendingCommand {
+				epoch: s.command_epoch,
+				draft: Some("same draft".into()),
+				owner: Some("root".into()),
+				attachments: Some(vec![file.clone()]),
+				references: None,
+			};
+			s.sending = true;
+			s.composer.update(cx, |input, cx| input.set_content("same draft", cx));
+			s.bind_profile(None, cx);
+			assert!(s.uncertain);
+			assert!(!s.sending);
+			assert_eq!(s.composer.read(cx).content(), "same draft");
+			s.composer_manager = Some("root".into());
+			s.attachments = vec![file];
+			s.sending = true;
+			let feedback = s.feedback.clone();
+			s.finish_command(
+				pending,
+				Ok(ChiefCommandResponse::Accepted { work_id: EntityId::new("root").unwrap() }),
+				cx,
+			);
+			assert!(s.sending, "old completion must not mutate current command state");
+			assert!(s.uncertain);
+			assert_eq!(s.feedback, feedback);
+			assert_eq!(s.composer.read(cx).content(), "same draft");
+			assert_eq!(s.attachments.len(), 1);
+		});
+	}
+
 	#[gpui::test]
 	fn durable_acceptance_clears_only_the_submitted_draft(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
@@ -2182,6 +2441,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],
@@ -2231,6 +2491,7 @@ mod tests {
 					misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						receipt: None,
 						activity: None,
 						usage: None,
 						duration_ms: None,
@@ -2245,6 +2506,7 @@ mod tests {
 				},
 			));
 			s.snapshot = Some(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],

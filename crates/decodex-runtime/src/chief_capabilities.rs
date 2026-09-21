@@ -196,6 +196,14 @@ fn project_model(value: &Value) -> Option<ChiefModelDto> {
 mod tests {
 	use super::*;
 	#[test]
+	fn advertised_persistent_effort_retains_native_value() {
+		let value = json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[{"reasoningEffort":"persistent"}],"defaultReasoningEffort":"persistent"});
+		let model = project_model(&value).expect("advertised model");
+		assert_eq!(model.efforts[0].as_str(), "persistent");
+		assert_eq!(model.default_effort, Some(model.efforts[0]));
+	}
+
+	#[test]
 	fn shared_catalog_rejects_partial_repeated_and_oversized_pages() {
 		let model = json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[],"defaultReasoningEffort":"high"});
 		let mut pages = ModelCatalogPages::default();

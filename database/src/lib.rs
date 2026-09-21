@@ -3,21 +3,32 @@
 
 mod account_lifecycle;
 mod account_profiles;
+mod account_usage;
 mod accounts;
 mod chief;
+mod chief_app_settings;
+pub use chief_app_settings::ChiefAppSettingsAttempt;
+mod chief_live_settings;
+pub use chief_live_settings::{ChiefLiveReviewerAttempt, ChiefLiveReviewerReceipt};
+mod chief_auth_recovery;
+pub use chief_auth_recovery::ChiefAuthRecoveryObservation;
 mod chief_install;
+mod chief_native_turns;
 pub use chief_install::{ChiefInstallAttempt, ChiefInstallRequirements};
 mod chief_guardian;
 pub use chief_guardian::{ChiefGuardianObservation, ChiefGuardianReview};
 mod chief_misalignment;
 pub use chief_misalignment::ChiefMisalignment;
 mod chief_output;
+mod chief_question_rebuild;
 mod chief_questions;
+mod chief_response_usage;
+pub use chief_response_usage::ChiefResponseUsageSummary;
 mod chief_task_references;
 pub use chief_questions::ChiefAsyncQuestion;
 mod chief_process;
 mod chief_voice;
-pub use chief_output::ChiefLiveOutput;
+pub use chief_output::{ChiefLiveOutput, ChiefOutputUpdate};
 pub use chief_voice::ChiefVoiceCall;
 mod command;
 mod continuations;
@@ -51,7 +62,8 @@ pub use self::{
 	accounts::AccountMetadata,
 	chief::{
 		ChiefCapacityRetry, ChiefDependency, ChiefDispatchState, ChiefDisposition, ChiefInboxEvent,
-		ChiefStoreSnapshot, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus, EnqueueChiefEvent,
+		ChiefStoreSnapshot, ChiefTurnMetrics, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus,
+		EnqueueChiefEvent,
 	},
 	chief_process::ChiefProcessBinding,
 	command::CommandIdentity,

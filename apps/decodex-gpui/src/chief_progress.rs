@@ -14,17 +14,23 @@ impl ChiefSurface {
 		let (id, ChiefHistoryResult::Available { entries, .. }) = self.history.as_ref()? else {
 			return None;
 		};
-		if id != &work.id {
+		if id != &work.id || work.dispatch_state != ChiefDispatchStateDto::Running {
 			return None;
 		}
-		entries
-			.iter()
-			.rev()
-			.filter_map(|entry| entry.activity.as_ref())
-			.find(|item| {
+		let mut running =
+			entries.iter().rev().filter_map(|entry| entry.activity.as_ref()).filter(|item| {
 				item.status == "running"
 					&& work.active_turn_id.as_deref() == Some(item.turn_id.as_str())
-			})
+					&& !entries.iter().filter_map(|entry| entry.activity.as_ref()).any(|other| {
+						other.turn_id == item.turn_id
+							&& other.item_id == item.item_id
+							&& other.status != "running"
+					})
+			});
+		running
+			.clone()
+			.find(|item| item.kind == "contextCompaction")
+			.or_else(|| running.next())
 			.map(activity_title)
 	}
 
@@ -37,6 +43,9 @@ impl ChiefSurface {
 		let mut result = Vec::new();
 		let mut pending: Vec<&ChiefActivityDto> = Vec::new();
 		for entry in &entries {
+			if checklist_superseded(entry, entries.iter().copied()) {
+				continue;
+			}
 			if let Some(activity) = &entry.activity {
 				let superseded = activity.status == "running"
 					&& entries.iter().any(|other| {
@@ -178,6 +187,7 @@ impl ChiefSurface {
 		};
 		entries.clear();
 		entries.push(ChiefHistoryEntryDto {
+			receipt: None,
 			activity: None,
 			usage: None,
 			duration_ms: None,
@@ -196,6 +206,7 @@ impl ChiefSurface {
 		.enumerate()
 		{
 			entries.push(ChiefHistoryEntryDto {
+				receipt: None,
 				activity: Some(ChiefActivityDto {
 					turn_id: "capture-turn".into(),
 					item_id: format!("capture-{index}"),
@@ -240,8 +251,79 @@ fn progress_key(work: &str, turn: &str, item: &str) -> String {
 	serde_json::json!([work, turn, item]).to_string()
 }
 
+/// Collapse older cached pages as well as the latest service page.
+pub(super) fn checklist_superseded<'a>(
+	entry: &ChiefHistoryEntryDto,
+	entries: impl IntoIterator<Item = &'a ChiefHistoryEntryDto>,
+) -> bool {
+	if entry.kind != "checklist" {
+		return false;
+	}
+	let Some(turn) = entry.receipt.as_ref().and_then(|receipt| receipt.delivered_turn_id.as_ref())
+	else {
+		return false;
+	};
+	entries.into_iter().any(|other| {
+		other.kind == "checklist"
+			&& other.id > entry.id
+			&& other.receipt.as_ref().and_then(|receipt| receipt.delivered_turn_id.as_ref())
+				== Some(turn)
+	})
+}
+
 #[cfg(test)]
 mod tests {
+	#[gpui::test]
+	fn live_compaction_yields_only_to_its_completion_or_turn_end(cx: &mut gpui::TestAppContext) {
+		use super::*;
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_progress_fixture(false, cx);
+			let mut work = s
+				.snapshot
+				.as_ref()
+				.unwrap()
+				.work_items
+				.iter()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap()
+				.clone();
+			assert_eq!(s.current_activity_label(&work).as_deref(), Some("Compacting context"));
+			let Some((_, ChiefHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture history")
+			};
+			let mut tool = entries.last().unwrap().clone();
+			tool.id += 1;
+			let item = tool.activity.as_mut().unwrap();
+			item.item_id = "background-tool".into();
+			item.kind = "commandExecution".into();
+			item.label = "Running command".into();
+			entries.push(tool);
+			assert_eq!(s.current_activity_label(&work).as_deref(), Some("Compacting context"));
+			let Some((_, ChiefHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture history")
+			};
+			let mut finished = entries[4].clone();
+			finished.id = 9;
+			finished.activity.as_mut().unwrap().status = "completed".into();
+			finished.activity.as_mut().unwrap().turn_id = "previous-turn".into();
+			entries.push(finished.clone());
+			assert_eq!(s.current_activity_label(&work).as_deref(), Some("Compacting context"));
+			let Some((_, ChiefHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture history")
+			};
+			finished.id = 10;
+			finished.activity.as_mut().unwrap().turn_id = "capture-turn".into();
+			entries.push(finished);
+			assert_eq!(s.current_activity_label(&work).as_deref(), Some("Running command"));
+			work.dispatch_state = ChiefDispatchStateDto::Idle;
+			assert_eq!(s.current_activity_label(&work), None);
+			work.dispatch_state = ChiefDispatchStateDto::Running;
+			work.active_turn_id = Some("new-turn".into());
+			assert_eq!(s.current_activity_label(&work), None);
+		});
+	}
 	#[test]
 	fn steer_segments_and_opaque_identities_have_distinct_disclosures() {
 		assert_ne!(

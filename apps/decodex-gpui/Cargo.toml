@@ -32,8 +32,10 @@ objc2-app-kit    = { version = "=0.3.2", default-features = false, features = ["
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSString"] }
 
 [dev-dependencies]
-gpui     = { workspace = true, features = ["test-support"] }
-tempfile = { workspace = true }
+futures-util      = { workspace = true }
+gpui              = { workspace = true, features = ["test-support"] }
+tempfile          = { workspace = true }
+tokio-tungstenite = { workspace = true }
 
 [[bin]]
 name              = "decodex-gpui-workbench-visual-capture"

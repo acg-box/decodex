@@ -297,6 +297,122 @@ pub(crate) struct ServiceApplication {
 	doctor: DoctorReport,
 }
 impl ServiceApplication {
+	async fn query_live_chief_history(
+		&self,
+		id: &str,
+		before: Option<i64>,
+	) -> decodex_protocol::ChiefHistoryResult {
+		query_chief_history_page(&self.store, id, before, self.chief.as_ref()).await
+	}
+
+	async fn query_activity_detail(
+		&self,
+		ids: (&EntityId, &WireText, &WireText),
+		cursor: Option<&decodex_protocol::ChiefActivityDetailCursor>,
+	) -> QueryResultPayload {
+		QueryResultPayload::ChiefActivityDetail(match &self.chief {
+			Some(chief) =>
+				chief.activity_detail(ids.0.as_str(), ids.1.as_str(), ids.2.as_str(), cursor).await,
+			None => decodex_protocol::ChiefActivityDetailResult::Unavailable,
+		})
+	}
+
+	async fn query_input_receipts(&self, work: &str, after: Option<i64>) -> QueryResultPayload {
+		QueryResultPayload::ChiefInputReceipts(
+			query_chief_input_receipts(&self.store, work, after).await,
+		)
+	}
+
+	async fn query_chief_goal(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefGoal(match &self.chief {
+			Some(chief) => chief.goal_state(work).await,
+			None => decodex_protocol::ChiefGoalResult::Unavailable,
+		})
+	}
+
+	async fn query_chief_snapshot(&self) -> QueryResultPayload {
+		let before = match &self.chief {
+			Some(chief) => chief.runtime_source().await,
+			None => None,
+		};
+		let mut result = query_chief_snapshot(&self.store).await;
+		let after = match &self.chief {
+			Some(chief) => chief.runtime_source().await,
+			None => None,
+		};
+		if let decodex_protocol::ChiefSnapshotResult::Available(snapshot) = &mut result {
+			snapshot.runtime_source = if before == after { after } else { None };
+			if !snapshot.is_valid() {
+				result = decodex_protocol::ChiefSnapshotResult::Unavailable;
+			}
+		}
+		QueryResultPayload::ChiefSnapshot(result)
+	}
+
+	async fn query_resources(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefResources(match &self.chief {
+			Some(chief) => chief.resources(work).await,
+			None => decodex_protocol::ChiefResourcesResult::Unavailable,
+		})
+	}
+
+	async fn query_model_settings(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefModelSettings(match &self.chief {
+			Some(chief) => chief.model_settings(work).await,
+			None => decodex_protocol::ChiefModelSettingsResult::Unavailable,
+		})
+	}
+
+	async fn query_live_reviewer(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefLiveReviewer(match &self.chief {
+			Some(chief) => chief.live_reviewer(work).await,
+			None => decodex_protocol::ChiefLiveReviewerState::Unavailable,
+		})
+	}
+
+	async fn query_app_settings(&self, work: &str, event: i64) -> QueryResultPayload {
+		QueryResultPayload::ChiefAppSettings(match &self.chief {
+			Some(chief) => chief.app_settings(work, event).await,
+			None => decodex_protocol::ChiefAppSettingsResult::Unavailable,
+		})
+	}
+
+	async fn query_install_state(&self, work: &str, event: i64) -> QueryResultPayload {
+		QueryResultPayload::ChiefInstallState(match &self.chief {
+			Some(chief) => chief.install_state(work, event).await,
+			None => decodex_protocol::ChiefInstallState::Unavailable,
+		})
+	}
+
+	async fn query_usage_estimate(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefUsageEstimate(match &self.chief {
+			Some(chief) => chief.usage_estimate(work).await,
+			None => decodex_protocol::ChiefUsageEstimateResult::Unavailable,
+		})
+	}
+
+	async fn query_media(
+		&self,
+		request: &decodex_protocol::ChiefMediaRequest,
+	) -> QueryResultPayload {
+		QueryResultPayload::ChiefMedia(match &self.chief {
+			Some(chief) => chief.media(request).await,
+			None => decodex_protocol::ChiefMediaResult::Unavailable,
+		})
+	}
+
+	async fn query_timeline(
+		&self,
+		work: &str,
+		thread: &str,
+		cursor: Option<&str>,
+	) -> QueryResultPayload {
+		QueryResultPayload::ChiefTimeline(match &self.chief {
+			Some(chief) => chief.timeline(work, thread, cursor).await,
+			None => decodex_protocol::ChiefTimelineResult::Unavailable,
+		})
+	}
+
 	pub(crate) fn new(
 		store: ProductStore,
 		process_generations: Option<ProcessGenerationControl>,
@@ -1861,47 +1977,49 @@ impl Application for ServiceApplication {
 				}),
 
 			QueryPayload::GetChiefResources { work_id } =>
-				QueryResultPayload::ChiefResources(match &self.chief {
-					Some(chief) => chief.resources(work_id.as_str()).await,
-					None => decodex_protocol::ChiefResourcesResult::Unavailable,
-				}),
+				self.query_resources(work_id.as_str()).await,
 
 			QueryPayload::ExchangeMcpLogin { request } =>
 				QueryResultPayload::McpLogin(query_mcp_login(self.chief.as_ref(), request).await),
 			QueryPayload::GetChiefUsageEstimate { work_id } =>
-				QueryResultPayload::ChiefUsageEstimate(match &self.chief {
-					Some(chief) => chief.usage_estimate(work_id.as_str()).await,
-					None => decodex_protocol::ChiefUsageEstimateResult::Unavailable,
-				}),
+				self.query_usage_estimate(work_id.as_str()).await,
+			QueryPayload::GetChiefInputReceipts { work_id, after } =>
+				self.query_input_receipts(work_id.as_str(), *after).await,
+			QueryPayload::GetChiefMedia { request } => self.query_media(request).await,
+			QueryPayload::GetChiefTimeline { work_id, thread_id, cursor } =>
+				self.query_timeline(
+					work_id.as_str(),
+					thread_id.as_str(),
+					cursor.as_ref().map(|c| c.as_str()),
+				)
+				.await,
 			QueryPayload::GetChiefIntegrations { work_id } =>
 				QueryResultPayload::ChiefIntegrations(match &self.chief {
 					Some(chief) => chief.integrations(work_id.as_str()).await,
 					None => decodex_protocol::ChiefIntegrationsResult::Unavailable,
 				}),
-			QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id } =>
-				QueryResultPayload::ChiefActivityDetail(match &self.chief {
-					Some(chief) =>
-						chief
-							.activity_detail(work_id.as_str(), turn_id.as_str(), item_id.as_str())
-							.await,
-					None => decodex_protocol::ChiefActivityDetailResult::Unavailable,
-				}),
+			QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id, cursor } =>
+				self.query_activity_detail((work_id, turn_id, item_id), cursor.as_ref()).await,
 			QueryPayload::GetChiefRequest { event_id } => QueryResultPayload::ChiefRequest(
 				query_chief_request_with_details(&self.store, *event_id, self.chief.as_ref()).await,
 			),
 			QueryPayload::GetChiefHistory { work_id, before } => QueryResultPayload::ChiefHistory(
-				query_chief_history_page(&self.store, work_id.as_str(), *before).await,
+				self.query_live_chief_history(work_id.as_str(), *before).await,
 			),
+			QueryPayload::GetChiefGoal { work_id } => self.query_chief_goal(work_id.as_str()).await,
 			QueryPayload::GetChiefArchiveState { work_id } =>
 				QueryResultPayload::ChiefArchiveState(match &self.chief {
 					Some(chief) => chief.archive_state(work_id.as_str()).await,
 					None => decodex_protocol::ChiefArchiveResult::Unavailable,
 				}),
 			QueryPayload::GetChiefInstallState { work_id, event_id } =>
-				QueryResultPayload::ChiefInstallState(match &self.chief {
-					Some(chief) => chief.install_state(work_id.as_str(), *event_id).await,
-					None => decodex_protocol::ChiefInstallState::Unavailable,
-				}),
+				self.query_install_state(work_id.as_str(), *event_id).await,
+			QueryPayload::GetChiefModelSettings { work_id } =>
+				self.query_model_settings(work_id.as_str()).await,
+			QueryPayload::GetChiefLiveReviewer { work_id } =>
+				self.query_live_reviewer(work_id.as_str()).await,
+			QueryPayload::GetChiefAppSettings { work_id, event_id } =>
+				self.query_app_settings(work_id.as_str(), *event_id).await,
 			QueryPayload::GetChiefGuardianReviews { work_id, before } =>
 				QueryResultPayload::ChiefGuardianReviews(
 					query_guardian_reviews(
@@ -1912,8 +2030,7 @@ impl Application for ServiceApplication {
 					)
 					.await,
 				),
-			QueryPayload::GetChiefSnapshot =>
-				QueryResultPayload::ChiefSnapshot(query_chief_snapshot(&self.store).await),
+			QueryPayload::GetChiefSnapshot => self.query_chief_snapshot().await,
 			QueryPayload::GetDesktopSettings =>
 				QueryResultPayload::DesktopSettings(self.desktop_settings().await),
 			QueryPayload::ListPrograms => QueryResultPayload::Programs(self.program_list().await),
@@ -2187,6 +2304,8 @@ const fn conversation_recovery_action(
 	action: ConversationManualRecovery,
 ) -> ConversationRecoveryAction {
 	match action {
+		ConversationManualRecovery::WaitForThreadClose =>
+			ConversationRecoveryAction::WaitForThreadClose,
 		ConversationManualRecovery::RestoreArchivedThread =>
 			ConversationRecoveryAction::RestoreArchivedThread,
 		ConversationManualRecovery::ReviewSandboxConfiguration =>
@@ -3651,7 +3770,8 @@ fn attach_file_approval_detail(
 	if let decodex_protocol::ChiefRequestResult::Available { method, request_json, .. } =
 		&mut request
 		&& method == "item/fileChange/requestApproval"
-		&& let decodex_protocol::ChiefActivityDetailResult::Available { text, truncated } = detail
+		&& let decodex_protocol::ChiefActivityDetailResult::Available { text, truncated, .. } =
+			detail
 		&& let Ok(mut fields) = serde_json::from_str::<serde_json::Value>(request_json.as_str())
 	{
 		fields["changeDetails"] = serde_json::json!(text);
@@ -3745,6 +3865,9 @@ fn chief_request_metadata(value: &serde_json::Value) -> Option<serde_json::Value
 				"codex_approval_kind",
 				"persist",
 				"connector_name",
+				"connector_id",
+				"link_id",
+				"link_is_implicit",
 				"tool_name",
 				"tool_title",
 				"tool_description",
@@ -3822,7 +3945,7 @@ async fn query_chief_request(
 			"proposedNetworkPolicyAmendments",
 		],
 		"item/fileChange/requestApproval" => &["reason", "grantRoot"],
-		"item/permissions/requestApproval" => &["cwd", "reason", "permissions"],
+		"item/permissions/requestApproval" => &["cwd", "reason", "permissions", "environmentId"],
 		"item/tool/requestUserInput" => &["questions", "isBlocking"],
 		"mcpServer/elicitation/request" => &[
 			"serverName",
@@ -3848,10 +3971,13 @@ async fn query_chief_request(
 			}
 			let valid = match *key {
 				"kind" => matches!(value.as_str(), Some("command" | "writeStdin")),
-				"command" | "cwd" | "reason" | "grantRoot" => value.is_null() || value.is_string(),
+				"command" | "cwd" | "reason" | "grantRoot" | "environmentId" =>
+					value.is_null() || value.is_string(),
 				"serverName" | "mode" | "message" | "url" | "elicitationId" | "title"
 				| "description" => value.is_string(),
-				"requestedSchema" => value.is_null() || value.is_object(),
+				// OpenAI form schemas are opaque JSON. Preserve unsupported shapes so
+				// the client can offer decline/cancel instead of hiding the request.
+				"requestedSchema" => true,
 				"questions" => value.is_array(),
 				"isBlocking" => value.is_boolean(),
 				"availableDecisions"
@@ -3886,22 +4012,7 @@ async fn query_chief_request(
 
 fn chief_user_message_text(value: &serde_json::Value) -> String {
 	let raw = value["text"].as_str().unwrap_or("");
-	let mut text = match decodex_protocol::parse_chief_async_question_replies(raw) {
-		Some(replies) => replies
-			.into_iter()
-			.map(|reply| {
-				let question = reply
-					.question
-					.lines()
-					.map(|line| format!("> {line}"))
-					.collect::<Vec<_>>()
-					.join("\n");
-				format!("{question}\n\n{}", reply.answer)
-			})
-			.collect::<Vec<_>>()
-			.join("\n\n"),
-		None => raw.to_owned(),
-	};
+	let mut text = decodex_protocol::render_chief_async_question_history(raw);
 	if let Some(files) = value.pointer("/options/attachments").and_then(serde_json::Value::as_array)
 	{
 		for file in files.iter().take(16) {
@@ -3919,7 +4030,7 @@ async fn query_chief_history(
 	store: &ProductStore,
 	id: &str,
 ) -> decodex_protocol::ChiefHistoryResult {
-	query_chief_history_page(store, id, None).await
+	query_chief_history_page(store, id, None, None).await
 }
 
 fn chief_history_notice(kind: &str, value: &serde_json::Value) -> String {
@@ -4035,10 +4146,60 @@ fn completed_chief_history(
 	}
 }
 
+async fn query_chief_input_receipts(
+	store: &ProductStore,
+	work: &str,
+	after: Option<i64>,
+) -> decodex_protocol::ChiefInputReceiptsResult {
+	use decodex_protocol::ChiefInputReceiptsResult as Result;
+	let ProductStore::Available(store) = store else {
+		return Result::Unavailable;
+	};
+	let Ok(events) = store.read_chief_unconfirmed_inputs(work.into(), after, 33).await else {
+		return Result::Unavailable;
+	};
+	let Ok(work_id) = decodex_protocol::EntityId::new(work) else {
+		return Result::Unavailable;
+	};
+	let total = events.len();
+	let mut entries = Vec::new();
+	let mut remaining = 60 * 1024usize;
+	let mut shortened = false;
+	for event in events.into_iter().take(32) {
+		let Ok(value) = serde_json::from_str::<serde_json::Value>(&event.payload) else {
+			return Result::Unavailable;
+		};
+		let (kind, text) = if event.event_kind == "work_instruction" {
+			("instruction", value["text"].as_str().unwrap_or_default().to_owned())
+		} else {
+			("user", chief_user_message_text(&value))
+		};
+		let mut entry = chief_history_entry(&event, &value, kind, String::new());
+		let Ok(metadata) = serde_json::to_vec(&entry) else {
+			return Result::Unavailable;
+		};
+		if metadata.len() + 4 >= remaining {
+			break;
+		}
+		let (text, trimmed) = bound_chief_text(text, (remaining - metadata.len() - 4).min(8192));
+		shortened |= trimmed;
+		entry.text = text;
+		let Ok(encoded) = serde_json::to_vec(&entry) else {
+			return Result::Unavailable;
+		};
+		remaining = remaining.saturating_sub(encoded.len() + 1);
+		entries.push(entry);
+	}
+	let next_after =
+		(entries.len() < total).then(|| entries.last().map(|entry| entry.id)).flatten();
+	Result::Available { work_id, entries, next_after, shortened }
+}
+
 async fn query_chief_history_page(
 	store: &ProductStore,
 	id: &str,
 	before: Option<i64>,
+	chief: Option<&crate::chief_host::ChiefHost>,
 ) -> decodex_protocol::ChiefHistoryResult {
 	use decodex_protocol::ChiefHistoryResult;
 	let ProductStore::Available(store) = store else {
@@ -4052,13 +4213,14 @@ async fn query_chief_history_page(
 	};
 	let misalignment = precaution
 		.map(|saved| {
+			let live_token = chief.and_then(|chief| chief.misalignment_review_token(&saved));
 			let details: serde_json::Value = saved
 				.details_json
 				.as_deref()
 				.and_then(|value| serde_json::from_str(value).ok())
 				.unwrap_or_default();
 			decodex_protocol::ChiefMisalignmentDto {
-				review_id: saved.review_id(),
+				review_id: live_token.clone().unwrap_or_else(|| saved.review_id()),
 				explanation: details["detailedExplanation"]
 					.as_str()
 					.filter(|text| !text.trim().is_empty() && text.len() <= 65536)
@@ -4066,6 +4228,7 @@ async fn query_chief_history_page(
 				continuation: details
 					.pointer("/steer/message")
 					.and_then(serde_json::Value::as_str)
+					.filter(|_| live_token.is_some())
 					.filter(|text| !text.trim().is_empty() && text.len() <= 1024)
 					.map(str::to_owned),
 			}
@@ -4124,6 +4287,17 @@ struct RenderedChiefHistory {
 	next_before: Option<i64>,
 }
 
+#[cfg(test)]
+pub(crate) fn render_chief_history_for_auth_test(
+	events: Vec<decodex_database::ChiefInboxEvent>,
+) -> Vec<decodex_protocol::ChiefHistoryEntryDto> {
+	render_chief_history(events, 0, None)
+		.entries
+		.into_iter()
+		.filter(|entry| entry.kind == "auth_recovery")
+		.collect()
+}
+
 fn render_chief_history(
 	events: Vec<decodex_database::ChiefInboxEvent>,
 	question_bytes: usize,
@@ -4139,6 +4313,8 @@ fn render_chief_history(
 		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap_or_default();
 		let mut completed_message_ids = Vec::new();
 		let (kind, mut text) = match event.event_kind.as_str() {
+			"auth_recovery_started" | "auth_recovery_completed" => ("auth_recovery", format!("{}\n\n{}: {}\n\nSaved event; current sign-in status is not confirmed by this record.", if event.event_kind == "auth_recovery_started" { "Codex reported that provider sign-in recovery started." } else { "Codex reported that provider sign-in recovery succeeded." }, value["provider"].as_str().unwrap_or("Provider"), value["message"].as_str().unwrap_or(""))),
+			"plan_updated" => ("checklist", value["text"].as_str().unwrap_or("Checklist unavailable.").to_owned()),
 			"config_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a configuration warning.").to_owned()),
 			"strict_review_notice" => ("execution_notice", "Codex requested additional safety checks for this turn. Tool calls may take longer; no action is required for this notice.".into()),
 			"activity_started" | "activity_completed" => ("activity", String::new()),
@@ -4189,8 +4365,11 @@ fn render_chief_history(
 					| "activity_completed"
 					| "assistant_message"
 					| "context_compacted"
+					| "auth_recovery_started"
+					| "auth_recovery_completed"
 					| "strict_review_notice"
 					| "config_warning"
+					| "plan_updated"
 			)
 		}) {
 			text.push_str("\n\nDisposition: ");
@@ -4199,7 +4378,8 @@ fn render_chief_history(
 		if event.event_kind == "user_message" {
 			append_task_reference_labels(&mut text, &value);
 		}
-		let activity_cost = if kind == "activity" { event.payload.len() } else { 0 };
+		let activity_cost = if kind == "activity" { event.payload.len() } else { 0 }
+			+ serde_json::to_vec(&chief_history_receipt(&event)).map_or(remaining, |v| v.len());
 		if serde_json::to_vec(&text).map_or(usize::MAX, |encoded| encoded.len())
 			+ 160 + activity_cost
 			> remaining
@@ -4289,6 +4469,7 @@ fn chief_history_entry(
 	text: String,
 ) -> decodex_protocol::ChiefHistoryEntryDto {
 	decodex_protocol::ChiefHistoryEntryDto {
+		receipt: chief_history_receipt(event),
 		activity: if event.event_kind.starts_with("activity_") {
 			serde_json::from_value(value.clone()).ok()
 		} else {
@@ -4300,6 +4481,86 @@ fn chief_history_entry(
 		kind: kind.into(),
 		text,
 		created_at_micros: event.created_at_micros,
+	}
+}
+
+fn chief_history_receipt(
+	event: &decodex_database::ChiefInboxEvent,
+) -> Option<decodex_protocol::ChiefHistoryReceiptDto> {
+	if event.event_kind.is_empty()
+		|| event.event_kind.len() > 80
+		|| event.delivered_turn_id.as_ref().is_some_and(|id| id.len() > 512)
+	{
+		return None;
+	}
+	Some(decodex_protocol::ChiefHistoryReceiptDto {
+		event_kind: event.event_kind.clone(),
+		delivered_turn_id: event.delivered_turn_id.clone().filter(|id| !id.is_empty()),
+		disposed: event.disposition.is_some(),
+	})
+}
+
+#[cfg(test)]
+mod history_receipt_tests {
+	#[test]
+	fn checklist_history_keeps_the_observation_label_and_no_disposition_prose() {
+		let event = decodex_database::ChiefInboxEvent {
+			id: 1,
+			source_event_id: "source".into(),
+			work_item_id: "work".into(),
+			event_kind: "plan_updated".into(),
+			payload: serde_json::json!({"text":"- **Pending**: Verify"}).to_string(),
+			created_at_micros: 1,
+			disposition: Some(decodex_database::ChiefDisposition::Resolved),
+			disposition_note: Some("Observed native checklist".into()),
+			disposed_at_micros: Some(1),
+			delivered_turn_id: Some("turn".into()),
+		};
+		let result = super::render_chief_history(vec![event], 0, None);
+		assert_eq!(result.entries.len(), 1);
+		assert_eq!(result.entries[0].kind, "checklist");
+		assert_eq!(result.entries[0].text, "- **Pending**: Verify");
+		assert_eq!(
+			result.entries[0].receipt.as_ref().unwrap().delivered_turn_id.as_deref(),
+			Some("turn")
+		);
+	}
+	#[test]
+	fn disposition_does_not_imply_native_delivery_and_opaque_ids_are_not_truncated() {
+		let mut event = decodex_database::ChiefInboxEvent {
+			id: 1,
+			source_event_id: "source".into(),
+			work_item_id: "work".into(),
+			event_kind: "async_question_answer".into(),
+			payload: "{}".into(),
+			created_at_micros: 1,
+			disposition: None,
+			disposition_note: None,
+			disposed_at_micros: None,
+			delivered_turn_id: None,
+		};
+		let entry =
+			super::chief_history_entry(&event, &serde_json::json!({}), "user", "Answer".into());
+		let receipt = entry.receipt.unwrap();
+		assert_eq!(receipt.event_kind, "async_question_answer");
+		assert!(!receipt.disposed);
+		assert!(receipt.delivered_turn_id.is_none());
+		// A claimed or uncertain dispatch uses an empty native turn fence in the store.
+		event.delivered_turn_id = Some(String::new());
+		let claimed =
+			super::chief_history_entry(&event, &serde_json::json!({}), "user", "Answer".into())
+				.receipt
+				.expect("uncertain input stays visible");
+		assert!(claimed.delivered_turn_id.is_none() && !claimed.disposed);
+		event.disposition = Some(decodex_database::ChiefDisposition::Resolved);
+		let receipt = super::chief_history_receipt(&event).unwrap();
+		assert!(receipt.disposed);
+		assert!(receipt.delivered_turn_id.is_none());
+		event.delivered_turn_id = Some("native-turn".into());
+		let receipt = super::chief_history_receipt(&event).unwrap();
+		assert_eq!(receipt.delivered_turn_id.as_deref(), Some("native-turn"));
+		event.delivered_turn_id = Some("x".repeat(513));
+		assert!(super::chief_history_receipt(&event).is_none());
 	}
 }
 
@@ -4350,6 +4611,11 @@ fn query_chief_live(
 		);
 
 		live.push(decodex_protocol::ChiefLiveMessageDto {
+			kind: if output.kind == "plan" {
+				decodex_protocol::ChiefLiveMessageKind::Plan
+			} else {
+				decodex_protocol::ChiefLiveMessageKind::AgentMessage
+			},
 			turn_id: output.turn_id,
 			item_id: output.item_id,
 			text,
@@ -4396,6 +4662,7 @@ async fn query_chief_snapshot(store: &ProductStore) -> decodex_protocol::ChiefSn
 	};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
 	let snapshot = ChiefSnapshotDto {
+		runtime_source: None,
 		workspaces: workspaces
 			.into_iter()
 			.map(|(chief_id, name, directory)| decodex_protocol::ChiefWorkspaceDto {
@@ -4767,6 +5034,110 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn unconfirmed_input_pages_survive_history_eviction_restart_and_delivery_changes() {
+		use decodex_database::{ChiefDisposition, EnqueueChiefEvent};
+		use decodex_protocol::{ChiefHistoryResult, ChiefInputReceiptsResult as Receipts};
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		chief_query_work(&store, "chosen").await;
+		chief_query_work(&store, "peer").await;
+		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
+		let mut ids = Vec::new();
+		for n in 0..40 {
+			let text = if n == 39 { "界".repeat(10000) } else { format!("Input {n}") };
+			ids.push(
+				store
+					.enqueue_chief_event(EnqueueChiefEvent {
+						source_event_id: format!("input-{n}"),
+						work_item_id: "chosen".into(),
+						event_kind: ["user_message", "async_question_answer", "work_instruction"]
+							[n % 3]
+							.into(),
+						payload: serde_json::json!({"text":text}).to_string(),
+					})
+					.await
+					.unwrap()
+					.id,
+			);
+		}
+		store.begin_chief_dispatch_with_events("chosen".into(), vec![ids[0]]).await.unwrap();
+		store
+			.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id: "peer-input".into(),
+				work_item_id: "peer".into(),
+				event_kind: "user_message".into(),
+				payload: serde_json::json!({"text":"Peer input"}).to_string(),
+			})
+			.await
+			.unwrap();
+		for n in 0..50 {
+			store
+				.enqueue_chief_event(EnqueueChiefEvent {
+					source_event_id: format!("output-{n}"),
+					work_item_id: "chosen".into(),
+					event_kind: "assistant_message".into(),
+					payload: serde_json::json!({"item":{"text":"Newer output"}}).to_string(),
+				})
+				.await
+				.unwrap();
+		}
+		drop(store);
+		let reopened = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(reopened.clone());
+		let ChiefHistoryResult::Available { entries, .. } =
+			super::query_chief_history(&owner, "chosen").await
+		else {
+			panic!("history")
+		};
+		assert!(entries.iter().all(|entry| entry.kind != "user"));
+		let Receipts::Available { entries, next_after, shortened, .. } =
+			super::query_chief_input_receipts(&owner, "chosen", None).await
+		else {
+			panic!("pending inputs")
+		};
+		assert_eq!(entries.iter().map(|entry| entry.id).collect::<Vec<_>>(), ids[..32]);
+		assert_eq!(next_after, Some(ids[31]));
+		assert!(!shortened);
+		assert!(
+			entries[0]
+				.receipt
+				.as_ref()
+				.is_some_and(|receipt| receipt.delivered_turn_id.is_none() && !receipt.disposed)
+		);
+		let second = super::query_chief_input_receipts(&owner, "chosen", next_after).await;
+		assert!(serde_json::to_vec(&second).unwrap().len() < 64 * 1024);
+		let Receipts::Available { entries, next_after, shortened, .. } = second else {
+			panic!("second page")
+		};
+		assert_eq!(entries.iter().map(|entry| entry.id).collect::<Vec<_>>(), ids[32..]);
+		assert!(next_after.is_none() && shortened);
+		assert!(entries.last().unwrap().text.ends_with('界'));
+		// A separate client acknowledges/disposes records; a fresh query must remove both.
+		let other = reopened.clone();
+		other.acknowledge_chief_dispatch("chosen".into(), "accepted-turn".into()).await.unwrap();
+		other
+			.dispose_chief_event(ids[1], ChiefDisposition::Resolved, "Handled".into(), None)
+			.await
+			.unwrap();
+		let Receipts::Available { entries, .. } =
+			super::query_chief_input_receipts(&owner, "chosen", None).await
+		else {
+			panic!("fresh inputs")
+		};
+		assert!(entries.iter().all(|entry| entry.id != ids[0] && entry.id != ids[1]));
+		assert_eq!(entries[0].id, ids[2]);
+		assert_eq!(
+			super::query_chief_input_receipts(&owner, "chosen", Some(0)).await,
+			Receipts::Unavailable
+		);
+		assert_eq!(
+			super::query_chief_input_receipts(&owner, "missing", None).await,
+			Receipts::Unavailable
+		);
+	}
+
+	#[tokio::test]
 	async fn capacity_retry_history_exposes_only_the_current_cancellable_event() {
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
@@ -4854,6 +5225,29 @@ mod tests {
 			1
 		);
 		assert!(entries.iter().all(|entry| !entry.text.contains("Provider observation recorded")));
+	}
+
+	#[tokio::test]
+	async fn saved_misalignment_history_omits_continuation_without_live_native_evidence() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		chief_query_work(&store, "chosen").await;
+		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
+		store.begin_chief_dispatch("chosen".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("chosen".into(), "turn".into()).await.unwrap();
+		let details = serde_json::json!({"detailedExplanation":"Review scope","steer":{"message":"Continue within scope"}}).to_string();
+		store
+			.record_chief_misalignment("thread".into(), "turn".into(), Some(details))
+			.await
+			.unwrap();
+		let decodex_protocol::ChiefHistoryResult::Available { misalignment: Some(review), .. } =
+			super::query_chief_history(&ProductStore::Available(store), "chosen").await
+		else {
+			panic!("precaution must remain visible");
+		};
+		assert_eq!(review.explanation.as_deref(), Some("Review scope"));
+		assert!(review.continuation.is_none());
 	}
 
 	#[tokio::test]
@@ -4967,7 +5361,7 @@ mod tests {
 		assert!(entries.windows(2).all(|pair| pair[0].id < pair[1].id));
 		let before = entries.first().unwrap().id;
 		let ChiefHistoryResult::Available { entries: older, next_before, live, .. } =
-			super::query_chief_history_page(&owner, "chosen", Some(before)).await
+			super::query_chief_history_page(&owner, "chosen", Some(before), None).await
 		else {
 			panic!("older page");
 		};
@@ -5085,6 +5479,8 @@ mod tests {
 				ChiefActivityDetailResult::Available {
 					text: "Path: /tmp/file\n+new".into(),
 					truncated: true,
+					offset: 0,
+					next: None,
 				},
 			);
 			if method.ends_with("requestUserInput") {
@@ -5151,8 +5547,17 @@ mod tests {
 			(0, "thread", serde_json::Value::Null, true),
 			(1, "other", serde_json::Value::Null, false),
 			(2, "thread", serde_json::json!("stale"), false),
+			(3, "thread", serde_json::Value::Null, true),
+			(4, "thread", serde_json::Value::Null, true),
 		] {
-			let payload = serde_json::json!({"method":"mcpServer/elicitation/request","params":{"threadId":thread,"turnId":turn,"serverName":"calendar","mode":"form","message":"Choose a date","requestedSchema":{"type":"object","properties":{"date":{"type":"string","format":"date"}}},"challenge":"PRIVATE_CHALLENGE","_meta":{"tool_name":"calendar.create","private_token":"PRIVATE_TOKEN"}}});
+			let mode = if index >= 3 { "openaiForm" } else { "form" };
+			let schema = match index {
+				3 => serde_json::json!(true),
+				4 => serde_json::Value::Null,
+				_ =>
+					serde_json::json!({"type":"object","properties":{"date":{"type":"string","format":"date"}}}),
+			};
+			let payload = serde_json::json!({"method":"mcpServer/elicitation/request","params":{"threadId":thread,"turnId":turn,"serverName":"calendar","mode":mode,"message":"Choose a date","requestedSchema":schema,"challenge":"PRIVATE_CHALLENGE","_meta":{"tool_name":"calendar.create","connector_id":"calendar","link_id":"work/link","link_is_implicit":false,"private_token":"PRIVATE_TOKEN"}}});
 			let event = store
 				.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
 					source_event_id: format!("elicitation-{index}"),
@@ -5169,8 +5574,12 @@ mod tests {
 			);
 			if let decodex_protocol::ChiefRequestResult::Available { request_json, .. } = result {
 				let value: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
-				assert_eq!(value["mode"], "form");
+				assert_eq!(value["mode"], mode);
+				assert_eq!(value["requestedSchema"], schema);
 				assert_eq!(value["_meta"]["tool_name"], "calendar.create");
+				assert_eq!(value["_meta"]["connector_id"], "calendar");
+				assert_eq!(value["_meta"]["link_id"], "work/link");
+				assert_eq!(value["_meta"]["link_is_implicit"], false);
 				assert!(!request_json.as_str().contains("PRIVATE_"));
 			}
 		}
@@ -5283,6 +5692,49 @@ mod tests {
 			super::query_chief_request(&owner, 99999).await,
 			ChiefRequestResult::Unavailable
 		);
+	}
+
+	#[tokio::test]
+	async fn permission_request_projection_preserves_the_native_executor() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(store.clone());
+		chief_query_work(&store, "worker").await;
+		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
+		store.begin_chief_dispatch("worker".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("worker".into(), "turn".into()).await.unwrap();
+		for (index, environment) in
+			[serde_json::json!("remote/工作"), serde_json::Value::Null, serde_json::json!(42)]
+				.into_iter()
+				.enumerate()
+		{
+			let permissions = serde_json::json!({"fileSystem":{"entries":[{"path":{"type":"special","value":{"kind":"project_roots"}},"access":"write"}]}});
+			let payload = serde_json::json!({"method":"item/permissions/requestApproval","params":{"threadId":"thread","turnId":"turn","environmentId":environment,"cwd":"C:\\workspace","permissions":permissions,"privateToken":"hidden"}});
+			let event = store
+				.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
+					source_event_id: format!("executor-{index}"),
+					work_item_id: "worker".into(),
+					event_kind: "permission_pending".into(),
+					payload: payload.to_string(),
+				})
+				.await
+				.unwrap();
+			let result = super::query_chief_request(&owner, event.id).await;
+			if environment.is_number() {
+				assert_eq!(result, decodex_protocol::ChiefRequestResult::Unavailable);
+				continue;
+			}
+			let decodex_protocol::ChiefRequestResult::Available { request_json, .. } = result
+			else {
+				panic!("permission request")
+			};
+			let value: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
+			assert_eq!(value["environmentId"], environment);
+			assert_eq!(value["cwd"], "C:\\workspace");
+			assert_eq!(value["permissions"], permissions);
+			assert!(value.get("privateToken").is_none());
+		}
 	}
 
 	async fn assert_question_metadata_projection(store: &SqliteStore, owner: &ProductStore) {
@@ -5519,6 +5971,7 @@ mod tests {
 				phase: AccountOperationPhase::Prepared,
 				recovery_code: None,
 			}),
+			usage_observation: None,
 			five_hour_quota: AccountQuotaWindowObservation::unknown(
 				AccountQuotaWindow::FIVE_HOURS_MINUTES,
 			)

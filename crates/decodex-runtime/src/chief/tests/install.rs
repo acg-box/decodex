@@ -71,17 +71,22 @@ async fn native_plugin_suggestion_runs_through_the_coordinator()
 
 #[tokio::test]
 async fn plugin_installation_requires_real_installation_and_connector_access_before_reply() {
-	exercise_installation(true, false).await;
+	exercise_installation(true, false, false).await;
 }
 
 #[tokio::test]
 async fn remote_install_without_confirmed_receipt_keeps_authorization_unknown() {
-	exercise_installation(false, false).await;
+	exercise_installation(false, false, false).await;
 }
 
 #[tokio::test]
 async fn native_child_installation_preserves_root_receipt_and_child_request() {
-	exercise_installation(true, true).await;
+	exercise_installation(true, true, false).await;
+}
+
+#[tokio::test]
+async fn yielded_plugin_suggestion_keeps_native_request_and_installation_fences() {
+	exercise_installation(true, false, true).await;
 }
 
 struct InstallationFixtureState {
@@ -192,7 +197,7 @@ async fn review_before_installation(
 	review_token
 }
 
-async fn exercise_installation(receipt_confirmed: bool, native_child: bool) {
+async fn exercise_installation(receipt_confirmed: bool, native_child: bool, yielded: bool) {
 	let (mut chief, _sent, _directory) = fixture().await;
 	chief.start_chief("chief", "Coordinate").await.unwrap();
 	let (local, remote) = tokio::io::duplex(65536);
@@ -210,6 +215,9 @@ async fn exercise_installation(receipt_confirmed: bool, native_child: bool) {
 	if native_child {
 		params["threadId"] = json!("native-child");
 		params["turnId"] = json!("native-child-turn");
+	}
+	if yielded {
+		params["turnId"] = json!("completed-origin");
 	}
 	let state = InstallationFixtureState {
 		installed: installed.clone(),

@@ -3070,7 +3070,16 @@ mod archive_tests {
 
 	#[tokio::test]
 	async fn resume_rejection_is_atomic_durable_and_idempotent() {
-		use super::{ConversationResumeRejection, RecordConversationResumeRejection};
+		exercise_resume_rejection(super::ConversationResumeRejection::SandboxConfiguration).await;
+	}
+
+	#[tokio::test]
+	async fn closing_resume_rejection_survives_restart_without_replacing_session() {
+		exercise_resume_rejection(super::ConversationResumeRejection::ClosingThread).await;
+	}
+
+	async fn exercise_resume_rejection(reason: super::ConversationResumeRejection) {
+		use super::RecordConversationResumeRejection;
 		let directory = tempdir().expect("temporary database directory");
 		let paths = DecodexRoot::new(directory.path().canonicalize().expect("canonical root"))
 			.expect("root")
@@ -3090,7 +3099,7 @@ mod archive_tests {
 			thread_id: "native-thread".into(),
 			turn_id: TurnId::new(TURN_ID).expect("turn"),
 			history_item_id: HistoryItemId::new(INTERRUPTION_HISTORY_ID).expect("history"),
-			reason: ConversationResumeRejection::SandboxConfiguration,
+			reason,
 			witness_digest: "a".repeat(64),
 		};
 		let command = CommandIdentity::new(

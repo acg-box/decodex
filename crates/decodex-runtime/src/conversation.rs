@@ -88,6 +88,7 @@ use crate::account_launch::process::{
 };
 
 mod model_catalog;
+mod resume_retry;
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
 const TURN_TIMEOUT: Duration = Duration::from_secs(30 * 60);
@@ -421,6 +422,7 @@ pub(crate) struct ConversationProjection {
 /// Typed manual action after definite missing or incompatible authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ConversationManualRecovery {
+	WaitForThreadClose,
 	RestoreArchivedThread,
 	ReviewSandboxConfiguration,
 	ReviewCodexConfiguration,
@@ -728,6 +730,8 @@ struct ExistingSessionPlanningInput<'a> {
 
 fn resume_rejection_recovery(reason: ConversationRejectionReason) -> ConversationManualRecovery {
 	match reason {
+		ConversationRejectionReason::ClosingThread =>
+			ConversationManualRecovery::WaitForThreadClose,
 		ConversationRejectionReason::MissingThread => ConversationManualRecovery::MissingThread,
 		ConversationRejectionReason::ArchivedThread =>
 			ConversationManualRecovery::RestoreArchivedThread,
@@ -4334,6 +4338,14 @@ impl ConversationRuntime {
 	}
 
 	async fn resume_thread(
+		&self,
+		process: &FencedProcess,
+		request: ConversationThreadResumeRequest,
+	) -> Result<ResumedOrdinaryThread, ConversationProcessError> {
+		resume_retry::retry(|| self.resume_thread_once(process, request.clone())).await
+	}
+
+	async fn resume_thread_once(
 		&self,
 		process: &FencedProcess,
 		request: ConversationThreadResumeRequest,

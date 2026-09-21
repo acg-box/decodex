@@ -24,6 +24,10 @@ use tokio::sync::mpsc;
 
 const BRIDGE_CAPACITY: usize = 64;
 
+#[cfg(all(test, unix))]
+#[path = "chief_process_native_tests.rs"]
+mod native_tests;
+
 pub(super) struct ChiefProcessBridge {
 	cancelled: Arc<AtomicBool>,
 	client: AppServerClient,
@@ -212,6 +216,32 @@ fn pump(
 
 fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result<(), ClientError> {
 	if let Some(method) = value.get("method") {
+		if method == "turn/settings/update" {
+			return if decodex_codex::app_server_client::is_live_reviewer_update(&value["params"]) {
+				Ok(())
+			} else {
+				Err(ClientError::InvalidFrame)
+			};
+		}
+		if method == "config/batchWrite" {
+			return if decodex_codex::app_server_client::is_app_link_settings_write(&value["params"])
+			{
+				Ok(())
+			} else {
+				Err(ClientError::InvalidFrame)
+			};
+		}
+		if method == "config/read" {
+			let params = &value["params"];
+			return if params.as_object().is_some_and(|p| p.len() == 2)
+				&& params["includeLayers"] == true
+				&& params["cwd"].as_str().is_some_and(|p| std::path::Path::new(p).is_absolute())
+			{
+				Ok(())
+			} else {
+				Err(ClientError::InvalidFrame)
+			};
+		}
 		if !matches!(
 			method.as_str(),
 			Some(
@@ -221,10 +251,24 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "model/list" | "experimentalFeature/list"
 					| "thread/start"
 					| "thread/resume"
+					| "thread/goal/get"
 					| "thread/unarchive"
 					| "thread/read" | "thread/list"
 					| "thread/turns/list"
 					| "thread/items/list"
+					| "thread/timeline/list"
+					| "thread/attachment/list"
+					| "thread/attachment/add"
+					| "thread/attachment/remove"
+					| "thread/inject_items"
+					| "account/usage/read"
+					| "mcpServerStatus/list"
+					| "mcpServer/oauth/login"
+					| "plugin/installed"
+					| "plugin/read" | "plugin/list"
+					| "plugin/install"
+					| "plugin/reconcile"
+					| "app/list" | "config/mcpServer/reload"
 					| "thread/archive"
 					| "thread/approveGuardianDeniedAction"
 					| "turn/start" | "turn/steer"
@@ -363,6 +407,18 @@ mod tests {
 	}
 
 	#[test]
+	fn live_reviewer_bridge_preserves_the_narrow_edit_scope() {
+		let mut requests = HashSet::new();
+		let mut frame = json!({"id":42,"method":"turn/settings/update","params":{
+			"threadId":"thread","turnId":"turn","approvalsReviewer":"user"}});
+		assert!(validate_outbound(&frame, &mut requests).is_ok());
+		frame["params"]["approvalPolicy"] = json!("never");
+		assert!(validate_outbound(&frame, &mut requests).is_err());
+		frame["method"] = json!("thread/settings/update");
+		assert!(validate_outbound(&frame, &mut requests).is_err());
+	}
+
+	#[test]
 	fn metadata_reads_are_allowed_but_feature_changes_remain_private() {
 		let mut requests = HashSet::new();
 		assert!(
@@ -381,6 +437,62 @@ mod tests {
 		assert!(
 			validate_outbound(&json!({"id":44,"method":"turn/start","params":{}}), &mut requests)
 				.is_ok()
+		);
+	}
+
+	#[test]
+	fn account_settings_bridge_accepts_only_versioned_single_leaf_edits() {
+		let mut requests = HashSet::new();
+		let valid = json!({"id":42,"method":"config/batchWrite","params":{
+			"filePath":"/fixture/config.toml","expectedVersion":"v1","reloadUserConfig":true,
+			"edits":[{"keyPath":"apps.\"日历.app\".links.\"work.\\\"link\\\\one\".approvals_reviewer",
+				"mergeStrategy":"replace","value":"auto_review"}]}});
+		assert!(validate_outbound(&valid, &mut requests).is_ok());
+		for path in [
+			"approvals_reviewer",
+			"apps.app.links.work.approvals_reviewer",
+			"apps.\"app\".links.\"work\".enabled",
+			"apps.\"app\".links.\"work\".approvals_reviewer.extra",
+			"apps.\"\".links.\"work\".approvals_reviewer",
+			"apps.\"app\".links.\"work",
+		] {
+			let mut invalid = valid.clone();
+			invalid["params"]["edits"][0]["keyPath"] = json!(path);
+			assert!(validate_outbound(&invalid, &mut requests).is_err(), "{path}");
+		}
+		for (pointer, replacement) in [
+			("/params/expectedVersion", Value::Null),
+			("/params/filePath", json!("relative.toml")),
+			("/params/reloadUserConfig", json!(false)),
+			("/params/edits/0/mergeStrategy", json!("upsert")),
+			("/params/edits/0/value", json!("future_unknown")),
+		] {
+			let mut invalid = valid.clone();
+			*invalid.pointer_mut(pointer).unwrap() = replacement;
+			assert!(validate_outbound(&invalid, &mut requests).is_err(), "{pointer}");
+		}
+		let mut invalid = valid.clone();
+		invalid["params"]["edits"]
+			.as_array_mut()
+			.unwrap()
+			.push(json!({"keyPath":"model","value":"other","mergeStrategy":"replace"}));
+		assert!(validate_outbound(&invalid, &mut requests).is_err());
+		let mut clear = valid;
+		clear["params"]["edits"][0]["value"] = Value::Null;
+		assert!(validate_outbound(&clear, &mut requests).is_ok());
+		assert!(
+			validate_outbound(
+				&json!({"id":44,"method":"config/read","params":{"cwd":"/fixture","includeLayers":true}}),
+				&mut requests
+			)
+			.is_ok()
+		);
+		assert!(
+			validate_outbound(
+				&json!({"id":44,"method":"config/read","params":{"cwd":"relative","includeLayers":true}}),
+				&mut requests
+			)
+			.is_err()
 		);
 	}
 
@@ -422,5 +534,134 @@ mod tests {
 			Err(ClientError::Closed)
 		));
 		assert!(matches!(client.thread_read(json!({})).await, Err(ClientError::Closed)));
+	}
+	#[cfg(unix)]
+	#[tokio::test]
+	async fn native_timeline_read_crosses_retained_bridge_and_keeps_peer_available() {
+		use std::io::{BufRead, BufReader};
+		let (writer, reader) = std::os::unix::net::UnixStream::pair().unwrap();
+		reader.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+		let (sender, stdout) = sync_mpsc::sync_channel(4);
+		let binding = AccountBinding::fixture(
+			decodex_core::AccountId::new("10000000-0000-4000-8000-000000000001").unwrap(),
+			"/tmp/.codex".into(),
+		);
+		let (bridge, client, _events) = ChiefProcessBridge::start(
+			Box::new(writer),
+			stdout,
+			binding,
+			Arc::new(AtomicBool::new(false)),
+			41,
+			vec![],
+		)
+		.unwrap();
+		let server = thread::spawn(move || {
+			let mut lines = BufReader::new(reader).lines();
+			for (method, result) in [
+				("thread/read", json!({"thread":{"id":"thread","historyMode":"paginated"}})),
+				(
+					"thread/timeline/list",
+					json!({"data":[{"type":"item","position":1,"turnId":"turn","item":{"id":"item","type":"userMessage","content":[{"type":"text","text":"visible"},{"type":"image","url":format!("data:image/png;base64,{}", "A".repeat(2*1024*1024))}]}}],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}),
+				),
+				("thread/read", json!({"thread":{"id":"peer","historyMode":"paginated"}})),
+			] {
+				let Some(Ok(line)) = lines.next() else {
+					return;
+				};
+				let request: Value = serde_json::from_str(&line).unwrap();
+				assert_eq!(request["method"], method);
+				let response =
+					serde_json::to_vec(&json!({"id":request["id"],"result":result})).unwrap();
+				sender.send(InboundFrame::fixture(&response)).unwrap();
+			}
+		});
+		let page = tokio::time::timeout(
+			Duration::from_secs(3),
+			client.thread_timeline_page("thread", None, 30),
+		)
+		.await
+		.unwrap();
+		assert!(page.is_ok(), "retained bridge rejected native timeline: {page:?}");
+		let page = page.unwrap();
+		assert_eq!(page["data"][0]["item"]["content"][0]["text"], "visible");
+		assert!(page["data"][0]["item"]["content"][1]["url"].as_str().unwrap().len() > 1024 * 1024);
+		let peer = client.thread_read(json!({"threadId":"peer"})).await.unwrap();
+		assert_eq!(peer["thread"]["id"], "peer");
+		server.join().unwrap();
+		drop(bridge);
+	}
+	#[cfg(unix)]
+	#[tokio::test]
+	async fn existing_usage_resources_and_integrations_use_retained_bridge() {
+		use std::io::{BufRead, BufReader};
+		let (writer, reader) = std::os::unix::net::UnixStream::pair().unwrap();
+		reader.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+		let (sender, stdout) = sync_mpsc::sync_channel(4);
+		let binding = AccountBinding::fixture(
+			decodex_core::AccountId::new("10000000-0000-4000-8000-000000000001").unwrap(),
+			"/tmp/.codex".into(),
+		);
+		let (bridge, client, _events) = ChiefProcessBridge::start(
+			Box::new(writer),
+			stdout,
+			binding,
+			Arc::new(AtomicBool::new(false)),
+			41,
+			vec![],
+		)
+		.unwrap();
+		let server = thread::spawn(move || {
+			let mut lines = BufReader::new(reader).lines();
+			for (method, result) in [
+				("thread/goal/get", json!({"goal":null})),
+				(
+					"account/usage/read",
+					json!({"threadUsage":{"threadId":"thread","estimatedUsageCreditsMicros":17,"groups":[]}}),
+				),
+				("thread/attachment/list", json!({"data":[],"nextCursor":null})),
+				("mcpServerStatus/list", json!({"data":[],"nextCursor":null})),
+				("plugin/installed", json!({"marketplaces":[],"marketplaceLoadErrors":[]})),
+				(
+					"plugin/reconcile",
+					json!({"changedPlugins":[],"failedRemotePluginIds":[],"failedMaterializationRemotePluginIds":[]}),
+				),
+				("config/mcpServer/reload", json!({})),
+				("app/list", json!({"data":[],"nextCursor":null})),
+			] {
+				let Some(Ok(line)) = lines.next() else {
+					return;
+				};
+				let request: Value = serde_json::from_str(&line).unwrap();
+				assert_eq!(request["method"], method);
+				let response =
+					serde_json::to_vec(&json!({"id":request["id"],"result":result})).unwrap();
+				sender.send(InboundFrame::fixture(&response)).unwrap();
+			}
+		});
+		assert!(
+			client
+				.request("thread/goal/get", serde_json::json!({"threadId":"thread"}))
+				.await
+				.unwrap()["goal"]
+				.is_null()
+		);
+		assert_eq!(
+			client
+				.thread_usage_estimate("thread")
+				.await
+				.unwrap()
+				.unwrap()
+				.estimated_usage_credits_micros,
+			17
+		);
+		assert!(client.thread_attachments("thread").await.unwrap().is_empty());
+		assert!(client.mcp_server_statuses("thread").await.unwrap().is_empty());
+		assert_eq!(
+			client.installed_plugins_for_directory("/project").await.unwrap()["marketplaces"],
+			json!([])
+		);
+		assert!(client.refresh_integrations("thread").await.unwrap());
+		server.join().unwrap();
+		drop(bridge);
 	}
 }

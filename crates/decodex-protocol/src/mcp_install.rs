@@ -95,7 +95,7 @@ impl McpInstallSuggestion {
 		if request["serverName"] != "codex_apps"
 			|| !matches!(request["mode"].as_str(), Some("form" | "openai/form" | "openaiForm"))
 			|| meta["suggest_type"] != "install"
-			|| !crate::mcp_form_fields(&request["requestedSchema"])
+			|| !crate::mcp_request_fields(request)
 				.map_err(|_| "Invalid installation suggestion form")?
 				.is_empty()
 		{

@@ -1,5 +1,7 @@
 //! Single service-owned Chief actor. The existing Conversation runtime owns its account process.
 
+#[path = "chief_goal.rs"] mod goal;
+
 use std::{
 	sync::Arc,
 	time::{Duration, SystemTime, UNIX_EPOCH},
@@ -109,6 +111,20 @@ impl ChiefHost {
 		request: &decodex_protocol::ChiefVoiceRequest,
 	) -> decodex_protocol::ChiefVoiceStatus {
 		self.voice.exchange(request)
+	}
+
+	pub(crate) fn misalignment_review_token(
+		&self,
+		review: &decodex_database::ChiefMisalignment,
+	) -> Option<String> {
+		let (_, client) = self.runtime.chief_catalog_client()?;
+		client.live_misalignment_review(&review.thread_id, &review.turn_id).and_then(
+			|(error, guard)| {
+				(crate::chief::misalignment::details(&error) == review.details_json)
+					.then(|| crate::chief::misalignment::review_token(review, &guard))
+					.flatten()
+			},
+		)
 	}
 
 	pub(crate) async fn dictation(
@@ -276,8 +292,87 @@ impl ChiefHost {
 		result.map(|v| v.state).unwrap_or(ChiefInstallState::Unavailable)
 	}
 
+	pub(crate) async fn model_settings(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefModelSettingsResult {
+		crate::chief_model_settings::read(&self.store, || async {
+			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+			self.timeline_source(work, &owner.codex_thread_id?).await
+		})
+		.await
+	}
+
+	pub(crate) async fn live_reviewer(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefLiveReviewerState {
+		crate::chief_live_settings::read(&self.store, || async {
+			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+			self.timeline_source(work, &owner.codex_thread_id?).await
+		})
+		.await
+	}
+
+	async fn set_live_reviewer(
+		&self,
+		ids: (
+			&decodex_protocol::EntityId,
+			&decodex_protocol::EntityId,
+			&decodex_protocol::WireText,
+		),
+		reviewer: decodex_protocol::ChiefAppReviewer,
+		key: &str,
+	) -> Result<String, ChiefHostError> {
+		let (work, turn, review) = (ids.0.as_str(), ids.1.as_str(), ids.2.as_str());
+		crate::chief_live_settings::write(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			turn,
+			review,
+			reviewer,
+			key,
+		)
+		.await?;
+		Ok(work.into())
+	}
+
+	pub(crate) async fn app_settings(
+		&self,
+		work: &str,
+		event: i64,
+	) -> decodex_protocol::ChiefAppSettingsResult {
+		crate::chief_app_settings::read(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			event,
+		)
+		.await
+	}
+
 	pub(crate) fn guardian_generation(&self) -> Option<String> {
 		self.runtime.chief_catalog_client().map(|(generation, _)| generation.as_str().to_owned())
+	}
+
+	pub(crate) async fn runtime_source(&self) -> Option<decodex_protocol::EntityId> {
+		use sha2::{Digest, Sha256};
+		let (generation, account, revision, client) = self.runtime.chief_usage_source().await?;
+		let value = serde_json::to_vec(&(
+			generation.as_str(),
+			account.as_str(),
+			revision,
+			client.history_revision(),
+		))
+		.ok()?;
+		let digest =
+			Sha256::digest(value).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+		decodex_protocol::EntityId::new(digest).ok()
 	}
 
 	pub(crate) async fn usage_estimate(
@@ -289,6 +384,7 @@ impl ChiefHost {
 			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
 			Some(crate::chief_usage_estimate::Source {
 				key: crate::chief_usage_estimate::SourceKey {
+					history_revision: client.history_revision(),
 					generation,
 					account,
 					revision,
@@ -298,6 +394,54 @@ impl ChiefHost {
 				client,
 			})
 		})
+		.await
+	}
+
+	async fn timeline_source(
+		&self,
+		work: &str,
+		thread: &str,
+	) -> Option<crate::chief_usage_estimate::Source> {
+		let (generation, account, revision, client) = self.runtime.chief_usage_source().await?;
+		let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+		if owner.codex_thread_id.as_deref() != Some(thread) {
+			return None;
+		}
+		Some(crate::chief_usage_estimate::Source {
+			key: crate::chief_usage_estimate::SourceKey {
+				history_revision: client.history_revision(),
+				generation,
+				account,
+				revision,
+				thread: thread.into(),
+				work: work.into(),
+			},
+			client,
+		})
+	}
+
+	pub(crate) async fn timeline(
+		&self,
+		work: &str,
+		thread: &str,
+		cursor: Option<&str>,
+	) -> decodex_protocol::ChiefTimelineResult {
+		crate::chief::timeline::read(
+			Some(&self.store),
+			|| self.timeline_source(work, thread),
+			cursor,
+		)
+		.await
+	}
+
+	pub(crate) async fn media(
+		&self,
+		request: &decodex_protocol::ChiefMediaRequest,
+	) -> decodex_protocol::ChiefMediaResult {
+		crate::chief::timeline::media::read(
+			|| self.timeline_source(request.work_id.as_str(), request.thread_id.as_str()),
+			request,
+		)
 		.await
 	}
 
@@ -336,18 +480,28 @@ impl ChiefHost {
 		work: &str,
 		turn: &str,
 		item: &str,
+		cursor: Option<&decodex_protocol::ChiefActivityDetailCursor>,
 	) -> decodex_protocol::ChiefActivityDetailResult {
-		let unavailable = decodex_protocol::ChiefActivityDetailResult::Unavailable;
-		let Some(client) = self.runtime.chief_client() else {
-			return unavailable;
-		};
-		let Ok(work) = self.store.get_chief_work_item(work.into()).await else {
-			return unavailable;
-		};
-		let Some(thread) = work.codex_thread_id else {
-			return unavailable;
-		};
-		crate::chief_detail::read(&client, &thread, turn, item).await
+		crate::chief_detail::read_bound(|| self.activity_detail_source(work), turn, item, cursor)
+			.await
+	}
+
+	async fn activity_detail_source(
+		&self,
+		work: &str,
+	) -> Option<crate::chief_usage_estimate::Source> {
+		let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+		let thread = owner.codex_thread_id?;
+		let source = self.timeline_source(work, &thread).await?;
+		if !self
+			.store
+			.chief_thread_is_owned(work.into(), thread, Some(source.key.generation.as_str().into()))
+			.await
+			.ok()?
+		{
+			return None;
+		}
+		Some(source)
 	}
 
 	pub(crate) async fn file_approval_detail(
@@ -578,6 +732,29 @@ impl ChiefHost {
 		Ok(work_id.as_str().into())
 	}
 
+	async fn set_app_setting(
+		&self,
+		work: &str,
+		event: i64,
+		review: &str,
+		edit: &decodex_protocol::ChiefAppSettingEdit,
+		key: &str,
+	) -> Result<String, ChiefHostError> {
+		crate::chief_app_settings::write(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			event,
+			review,
+			edit,
+			key,
+		)
+		.await?;
+		Ok(work.into())
+	}
+
 	async fn handle(
 		&self,
 		key: String,
@@ -587,6 +764,11 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			ChiefActionDto::SetLiveReviewer { work_id, turn_id, review_token, reviewer } =>
+				self.set_live_reviewer((&work_id, &turn_id, &review_token), reviewer, &key).await,
+			ChiefActionDto::SetAppSetting { work_id, event_id, review_token, edit } =>
+				self.set_app_setting(work_id.as_str(), event_id, review_token.as_str(), &edit, &key)
+					.await,
 			ChiefActionDto::InstallSuggestedPlugin { work_id, event_id, review_token } =>
 				self.install_plugin(work_id.as_str(), event_id, review_token.as_str(), &key, active)
 					.await,
@@ -640,11 +822,11 @@ impl ChiefHost {
 					.await
 					.map_err(|_| "Provider findings unavailable")?
 					.ok_or("Provider precaution is no longer current")?;
-				if review.review_id() != review_id.as_str() {
+				if self.misalignment_review_token(&review).as_deref() != Some(review_id.as_str()) {
 					return Err("Provider findings changed; review them again".into());
 				}
 				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
-				chief.continue_misalignment(work_id.as_str(),review,&key).await.map_err(|error| match error { ChiefError::Rejected(_) => ChiefHostError::Rejected("Continuation was rejected or the findings changed. Review the latest findings before trying again."), _ => ChiefHostError::Unknown("Continuation was not confirmed. Inspect the latest conversation state before trying again.") })?;
+				chief.continue_misalignment(work_id.as_str(),review,&key,review_id.as_str()).await.map_err(|error| match error { ChiefError::Rejected(_) => ChiefHostError::Rejected("Continuation was rejected or the findings changed. Review the latest findings before trying again."), _ => ChiefHostError::Unknown("Continuation was not confirmed. Inspect the latest conversation state before trying again.") })?;
 				Ok(work_id.as_str().into())
 			},
 

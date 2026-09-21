@@ -2203,6 +2203,8 @@ pub enum QueryPayload {
 		turn_id: WireText,
 		/// Exact source item.
 		item_id: WireText,
+		/// None starts a fresh read; a continuation must match the complete source.
+		cursor: Option<crate::ChiefActivityDetailCursor>,
 	},
 	/// Read current native model and Memory configuration evidence.
 	GetChiefCapabilities,
@@ -2227,6 +2229,32 @@ pub enum QueryPayload {
 		/// Exact local task identity.
 		work_id: EntityId,
 	},
+	/// Read unconfirmed local input independently of the native or saved transcript.
+	GetChiefInputReceipts {
+		/// Exact local task identity.
+		work_id: EntityId,
+		/// Read current inputs strictly after this persistent event identity.
+		after: Option<i64>,
+	},
+	/// Read a bounded chunk of an exact native attachment.
+	GetChiefMedia {
+		/// Source identity and continuation.
+		request: crate::ChiefMediaRequest,
+	},
+	/// Read one exact native timeline page without resuming the task.
+	GetChiefTimeline {
+		/// Current local task identity.
+		work_id: EntityId,
+		/// Exact expected native binding, including for the first page.
+		thread_id: EntityId,
+		/// Opaque cursor for older entries in this same thread.
+		cursor: Option<WireText>,
+	},
+	/// Read the current goal from the exact bound native thread.
+	GetChiefGoal {
+		/// Selected local work identity.
+		work_id: EntityId,
+	},
 	/// Inspect native archive membership for the exact bound task.
 	GetChiefArchiveState {
 		/// Current local work identity.
@@ -2234,6 +2262,23 @@ pub enum QueryPayload {
 	},
 	/// Inspect one pending native installation suggestion without installing it.
 	GetChiefInstallState {
+		/// Exact owning task.
+		work_id: EntityId,
+		/// Exact pending native event.
+		event_id: i64,
+	},
+	/// Read configured model settings without activating the task.
+	GetChiefModelSettings {
+		/// Exact owning task.
+		work_id: EntityId,
+	},
+	/// Inspect the exact live task and last local reviewer publication.
+	GetChiefLiveReviewer {
+		/// Exact owning task.
+		work_id: EntityId,
+	},
+	/// Read account approval configuration for one pending native Apps request.
+	GetChiefAppSettings {
 		/// Exact owning task.
 		work_id: EntityId,
 		/// Exact pending native event.
@@ -2846,10 +2891,24 @@ pub enum QueryResultPayload {
 	ChiefGuardianReviews(crate::ChiefGuardianReviewsResult),
 	/// Current native archive membership, not a cached local flag.
 	ChiefArchiveState(crate::ChiefArchiveResult),
+	/// Native goal readback with its source identity.
+	ChiefGoal(crate::ChiefGoalResult),
 	/// Fresh installation and authorization observations.
 	ChiefInstallState(crate::ChiefInstallState),
+	/// Source-bound connected account approval configuration.
+	ChiefAppSettings(crate::ChiefAppSettingsResult),
+	/// Current-turn reviewer inspection and local receipt.
+	ChiefLiveReviewer(crate::ChiefLiveReviewerState),
+	/// Read-only native configured model observation.
+	ChiefModelSettings(crate::ChiefModelSettingsResult),
 	/// Source-bound task integration observations.
 	ChiefIntegrations(crate::ChiefIntegrationsResult),
+	/// Bounded native mixed voice and task history.
+	ChiefTimeline(crate::ChiefTimelineResult),
+	/// Exact native attachment content.
+	ChiefMedia(crate::ChiefMediaResult),
+	/// Independent unconfirmed input page.
+	ChiefInputReceipts(crate::ChiefInputReceiptsResult),
 	/// Account-scoped backend task estimates.
 	ChiefUsageEstimate(crate::ChiefUsageEstimateResult),
 	/// Ephemeral native MCP sign-in state.
@@ -4455,7 +4514,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":43},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":49},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4464,7 +4523,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":43},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":49},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4506,7 +4565,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":43},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":49},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -4762,7 +4821,7 @@ mod tests {
 			outcome: ResetCardOutcome::Reset,
 		};
 
-		for version in [legacy, future] {
+		for version in [legacy, crate::ProtocolVersion { major: 2, minor: 47 }, future] {
 			assert!(!query.is_supported_in(version));
 			assert!(!command.is_supported_in(version));
 			assert!(!event.is_supported_in(version));

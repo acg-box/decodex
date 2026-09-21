@@ -147,13 +147,17 @@ impl ChiefSurface {
 		value: &serde_json::Value,
 		cx: &mut Context<Self>,
 	) -> gpui::Div {
-		panel = panel.child(if method == "item/fileChange/requestApproval" {
-			"Allow file changes?"
+		let (heading, selector) = if method == "item/fileChange/requestApproval" {
+			("Allow file changes?", "approval-kind-file-change")
 		} else if method == "item/permissions/requestApproval" {
-			"Allow requested access for this turn?"
+			("Allow requested access for this turn?", "approval-kind-permissions")
+		} else if method == "item/commandExecution/requestApproval" && value["kind"] == "writeStdin"
+		{
+			("Allow input to the running terminal?", "approval-kind-write-stdin")
 		} else {
-			"Allow this command?"
-		});
+			("Allow this command?", "approval-kind-command")
+		};
+		panel = panel.child(div().debug_selector(move || selector.into()).child(heading));
 		for key in ["reason", "command", "cwd", "grantRoot"] {
 			if let Some(text) = value[key].as_str() {
 				panel = panel.child(div().text_size(px(12.0)).child(text.to_owned()));
@@ -178,6 +182,14 @@ impl ChiefSurface {
 		}
 
 		if method == "item/permissions/requestApproval" {
+			if let Some(environment) = value["environmentId"].as_str().filter(|id| !id.is_empty()) {
+				panel = panel.child(
+					div()
+						.debug_selector(|| "approval-executor-environment".into())
+						.text_size(px(12.0))
+						.child(format!("Execution environment: {environment}")),
+				);
+			}
 			panel = panel
 				.child(div().text_size(px(12.0)).child(permission_summary(&value["permissions"])));
 			panel = panel.child(self.request_choice(
@@ -462,6 +474,7 @@ mod timing_tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+                runtime_source: None,
                 workspaces: vec![], dependencies: vec![],
                 work_items: vec![ChiefWorkItemDto {
                     id:"root".into(), parent_goal_id:None, kind:ChiefWorkKindDto::Goal,
@@ -482,6 +495,10 @@ mod timing_tests {
 			window.draw(cx).clear();
 		});
 		let bounds = visual.debug_bounds("question-format-0").expect("visible option");
+		surface.read_with(visual, |s, cx| {
+			assert!(s.question_inputs["format"].read(cx).content().is_empty());
+			assert!(!s.question_timers[&7].disabled);
+		});
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, cx| {
 			assert!(s.question_timers[&7].disabled);
@@ -491,5 +508,75 @@ mod timing_tests {
 			s.prepare_question_inputs(&request, cx);
 			assert!(s.question_timers[&7].disabled, "reloading must not rearm the same event");
 		});
+	}
+	#[gpui::test]
+	fn permission_panel_shows_only_the_native_executor(cx: &mut gpui::TestAppContext) {
+		use super::*;
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		for (environment, cwd) in [
+			(Some("remote/工作"), r"C:\工作\repo"),
+			(None, "/workspace"),
+			(Some(""), r"\\server\share\repo"),
+		] {
+			surface.update(visual, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.graph_visible = false;
+				let work = s.selected.clone().unwrap();
+				s.snapshot.as_mut().unwrap().pending_events = vec![decodex_protocol::ChiefPendingEventDto {
+					id:902, source_event_id:"executor-request".into(), work_item_id:work.clone(), event_kind:"permission_pending".into(), created_at_micros:1, delivery_claimed:false,
+				}];
+				s.request = Some(ChiefRequestResult::Available {
+					event_id:902, work_id:work, method:"item/permissions/requestApproval".into(),
+					request_json:HistoryText::new(json!({"environmentId":environment,"cwd":cwd,"permissions":{"network":{"enabled":true}}}).to_string()).unwrap(),
+				});
+				cx.notify();
+			});
+			visual.update(|window, cx| {
+				window.resize(gpui::size(px(1180.), px(1200.)));
+				window.draw(cx).clear();
+			});
+			assert!(visual.debug_bounds("approval-kind-permissions").is_some());
+			assert_eq!(
+				visual.debug_bounds("approval-executor-environment").is_some(),
+				environment.is_some_and(|id| !id.is_empty())
+			);
+		}
+	}
+	#[gpui::test]
+	fn terminal_input_approval_is_distinct_from_new_and_legacy_commands(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use super::*;
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		for kind in [Some("writeStdin"), Some("command"), None] {
+			surface.update(visual, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.graph_visible = false;
+				let work = s.selected.clone().unwrap();
+				s.snapshot.as_mut().unwrap().pending_events = vec![decodex_protocol::ChiefPendingEventDto {
+					id: 901, source_event_id: "stdin-request".into(), work_item_id: work.clone(),
+					event_kind: "permission_pending".into(), created_at_micros: 1, delivery_claimed: false,
+				}];
+				let mut value = json!({"command":"confirm\n", "cwd":"/workspace", "availableDecisions":["accept","decline"]});
+				if let Some(kind) = kind { value["kind"] = json!(kind); }
+				s.request = Some(ChiefRequestResult::Available {
+					event_id: 901, work_id: work, method: "item/commandExecution/requestApproval".into(),
+					request_json: HistoryText::new(value.to_string()).unwrap(),
+				});
+				cx.notify();
+			});
+			visual.update(|window, cx| {
+				window.resize(gpui::size(px(1180.), px(1200.)));
+				window.draw(cx).clear();
+			});
+			assert_eq!(
+				visual.debug_bounds("approval-kind-write-stdin").is_some(),
+				kind == Some("writeStdin")
+			);
+			assert_eq!(
+				visual.debug_bounds("approval-kind-command").is_some(),
+				kind != Some("writeStdin")
+			);
+		}
 	}
 }

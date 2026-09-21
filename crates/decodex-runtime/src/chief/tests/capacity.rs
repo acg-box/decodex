@@ -119,7 +119,7 @@ async fn capacity_retry_keeps_model_thread_and_context_and_stops_after_three_att
 	let turns: Vec<_> =
 		(1..=4).map(|n| failed(&format!("opaque turn/{n}"), "serverOverloaded")).collect();
 	let (mut chief, mut sent, _dir) = fixture_with_history(
-		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":turns}}}),
+		json!({"_visible_turns_only":true,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":turns}}}),
 	)
 	.await;
 	chief.start_chief("chief", "original request").await.unwrap();
@@ -192,6 +192,46 @@ async fn quota_other_errors_and_missing_history_do_not_schedule_capacity_retries
 		chief.check_due_followups(i64::MAX).await.unwrap();
 		assert!(sent.try_recv().is_err());
 	}
+}
+
+#[tokio::test]
+async fn terminal_quota_failure_preserves_accepted_input_without_replay_after_recovery() {
+	let turn = failed("opaque turn/1", "usageLimitExceeded");
+	let (mut chief, mut sent, _dir) = fixture_with_history(
+		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[turn]}}}),
+	)
+	.await;
+	ChiefCoordinator::reserve_root(&chief.store, "chief", "original request").await.unwrap();
+	chief.enqueue_user_message("chief", "command", "original request").await.unwrap();
+	chief.wake_pending().await.unwrap();
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "turn/completed".into(),
+			params: json!({"threadId":"opaque thread/1","turn":turn}),
+		})
+		.await
+		.unwrap();
+	while sent.try_recv().is_ok() {}
+	chief.loaded_threads.clear();
+	chief.recover_persisted().await.unwrap();
+	chief.wake_pending().await.unwrap();
+	chief.check_due_followups(i64::MAX).await.unwrap();
+	assert!(
+		!std::iter::from_fn(|| sent.try_recv().ok()).any(|frame| frame["method"] == "turn/start")
+	);
+	let history = chief.store.read_chief_work_events("chief".into(), 100).await.unwrap();
+	let inputs: Vec<_> =
+		history.iter().filter(|event| event.event_kind == "user_message").collect();
+	assert_eq!(inputs.len(), 1);
+	assert_eq!(inputs[0].delivered_turn_id.as_deref(), Some("opaque turn/1"));
+	assert_eq!(inputs[0].disposition, None);
+	chief.enqueue_user_message("chief", "retry", "Try again now").await.unwrap();
+	chief.wake_pending().await.unwrap();
+	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+		.filter(|frame| frame["method"] == "turn/start")
+		.collect();
+	assert_eq!(starts.len(), 1);
+	assert_eq!(starts[0]["params"]["input"][0]["text"], "Try again now");
 }
 
 #[tokio::test]

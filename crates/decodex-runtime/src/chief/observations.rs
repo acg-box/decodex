@@ -30,19 +30,27 @@ impl ChiefCoordinator {
 	/// An incomplete read leaves the durable recovery marker for the next connection.
 	pub(super) async fn recover_async_questions(&mut self) -> Result<(), ChiefError> {
 		for (work, thread, required_item) in self.store.pending_chief_async_recovery().await? {
+			let revision = self.client.question_revision();
+			let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+			let mut projection = super::async_projection::Projection::default();
 			let mut saw_required = required_item.is_none();
-			let Ok(turns) = self.client.thread_turns_since(&thread, None).await else {
+			let Ok(Ok(turns)) =
+				tokio::time::timeout_at(deadline, self.client.thread_turns_since(&thread, None))
+					.await
+			else {
 				continue;
 			};
 			let latest = turns.last().and_then(|turn| turn["id"].as_str()).map(str::to_owned);
-			let mut seen = std::collections::BTreeSet::new();
 			let mut complete = true;
 			for header in turns {
 				let Some(turn) = header["id"].as_str() else {
 					complete = false;
 					break;
 				};
-				let Ok(history) = self.client.thread_read_turn(&thread, turn).await else {
+				let Ok(Ok(history)) =
+					tokio::time::timeout_at(deadline, self.client.thread_read_turn(&thread, turn))
+						.await
+				else {
 					complete = false;
 					break;
 				};
@@ -74,25 +82,101 @@ impl ChiefCoordinator {
 				for item in items {
 					saw_required |=
 						item["id"].as_str().is_some_and(|id| required_item.as_deref() == Some(id));
-					self.observe_async_question_item(&thread, turn, item).await?;
-					if let Ok(questions) = decodex_protocol::project_chief_async_questions(item) {
-						seen.extend(questions.into_iter().map(|question| question.id));
-					}
-					if is_plain_user_prompt(item) {
-						// Only questions preceding this native prompt are retired. A replay
-						// must never clear questions received later on this connection.
-						let ids = seen.iter().cloned().collect::<Vec<_>>();
-						for batch in ids.chunks(32) {
-							self.store
-								.resolve_chief_async_questions(thread.clone(), batch.to_vec())
-								.await?;
-						}
+					if projection.observe(&thread, turn, item).is_err() {
+						complete = false;
+						break;
 					}
 				}
+				if !complete {
+					break;
+				}
 			}
-			if complete && saw_required {
-				self.store.finish_chief_async_recovery(work, thread).await?;
+			if complete && saw_required && self.client.question_revision() == revision {
+				self.store
+					.replace_chief_async_projection(
+						work,
+						thread.clone(),
+						required_item,
+						projection.questions,
+						projection.answers.into_iter().collect(),
+					)
+					.await?;
+				if self.client.question_revision() != revision {
+					self.store.refresh_chief_async_projection(thread).await?;
+				}
 			}
+		}
+		Ok(())
+	}
+
+	async fn invalidate_reverted_requests(&mut self, thread: &str) -> Result<(), ChiefError> {
+		self.store.queue_chief_async_revert(thread.into()).await?;
+		self.loaded_threads.remove(thread);
+		self.usage_replays.remove(thread);
+		for (id, event_id) in self.pending_requests.clone() {
+			let event = self.store.get_chief_inbox_event(event_id).await?;
+			let payload: Value = serde_json::from_str(&event.payload)
+				.map_err(|_| ChiefError::Invalid("invalid persisted provider request".into()))?;
+			if payload["params"]["threadId"].as_str() == Some(thread) {
+				if event.disposition.is_none() {
+					self.store.resolve_chief_request_event(event_id).await?;
+				}
+				self.pending_requests.remove(&id);
+			}
+		}
+		Ok(())
+	}
+
+	pub(super) async fn observe_question_state_notification(
+		&mut self,
+		method: &str,
+		params: &Value,
+	) -> Result<(), ChiefError> {
+		if matches!(
+			method,
+			"modelProvider/authRecoveryStarted" | "modelProvider/authRecoveryCompleted"
+		) {
+			if ["threadId", "turnId", "provider", "message"].iter().all(|key| {
+				params[*key].as_str().is_some_and(|value| {
+					!value.is_empty() && value.len() <= if *key == "message" { 4096 } else { 512 }
+				})
+			}) {
+				self.store
+					.record_chief_auth_recovery(decodex_database::ChiefAuthRecoveryObservation {
+						thread_id: exact(params, "/threadId")?,
+						turn_id: exact(params, "/turnId")?,
+						provider: exact(params, "/provider")?,
+						message: exact(params, "/message")?,
+						completed: method == "modelProvider/authRecoveryCompleted",
+						connection_id: self.connection_id.clone(),
+						generation_id: self
+							.native_generation
+							.as_ref()
+							.map(|id| id.as_str().to_owned()),
+					})
+					.await?;
+			}
+			return Ok(());
+		}
+		if method == "rawResponse/completed" {
+			if let Some(usage) = decodex_codex::decode_response_usage(params) {
+				let payload = serde_json::to_string(&usage)
+					.map_err(|_| ChiefError::Invalid("invalid response usage".into()))?;
+				self.store
+					.record_chief_response_usage(
+						self.native_generation.as_ref().map(|id| id.as_str().to_owned()),
+						payload,
+					)
+					.await?;
+			}
+			return Ok(());
+		}
+		self.observe_notification(method, params).await?;
+		if decodex_codex::app_server_client::invalidates_question_state(method, params) {
+			self.handled_question_revision = self
+				.handled_question_revision
+				.saturating_add(1)
+				.min(self.client.question_revision());
 		}
 		Ok(())
 	}
@@ -102,6 +186,9 @@ impl ChiefCoordinator {
 		method: &str,
 		params: &Value,
 	) -> Result<(), ChiefError> {
+		if method == "thread/reverted" {
+			return self.invalidate_reverted_requests(&exact(params, "/threadId")?).await;
+		}
 		if let Some(review) = decodex_codex::guardian::decode_review(method, params) {
 			self.store
 				.record_chief_guardian_review(decodex_database::ChiefGuardianObservation {
@@ -300,7 +387,7 @@ pub(crate) fn usage_text(value: &Value) -> Option<String> {
 	Some(text)
 }
 
-fn is_plain_user_prompt(item: &Value) -> bool {
+pub(super) fn is_plain_user_prompt(item: &Value) -> bool {
 	if item["type"] != "userMessage" {
 		return false;
 	}

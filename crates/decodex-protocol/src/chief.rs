@@ -45,6 +45,9 @@ pub struct ChiefActivityDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChiefHistoryEntryDto {
+	/// Local receipt facts, independent of native conversation ordering.
+	#[serde(default)]
+	pub receipt: Option<ChiefHistoryReceiptDto>,
 	/// Native execution activity; absent for conversation messages.
 	#[serde(default)]
 	pub activity: Option<ChiefActivityDto>,
@@ -62,10 +65,36 @@ pub struct ChiefHistoryEntryDto {
 	pub created_at_micros: i64,
 }
 
+/// Local delivery evidence retained beside canonical native history.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefHistoryReceiptDto {
+	/// Original local event category, not the displayed user/assistant role.
+	pub event_kind: String,
+	/// Acknowledged native turn. Absence means unconfirmed, not necessarily unsent.
+	pub delivered_turn_id: Option<String>,
+	/// Whether the coordinator recorded a disposition; this does not prove delivery.
+	pub disposed: bool,
+}
+
+/// Native item category for current-turn text.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ChiefLiveMessageKind {
+	/// Ordinary assistant response.
+	#[default]
+	AgentMessage,
+	/// Proposed plan whose final item replaces its stream.
+	Plan,
+}
+
 /// Current-turn text observed before final history is available.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChiefLiveMessageDto {
+	/// Native item category; older senders emitted only assistant messages.
+	#[serde(default)]
+	pub kind: ChiefLiveMessageKind,
 	/// Provider turn identity.
 	pub turn_id: String,
 	/// Provider item identity.
@@ -127,6 +156,25 @@ pub enum ChiefHistoryResult {
 		live: Vec<ChiefLiveMessageDto>,
 	},
 	/// The work or source store cannot be read.
+	Unavailable,
+}
+
+/// Current unconfirmed local input, independent of the conversation history window.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ChiefInputReceiptsResult {
+	/// A bounded page in persistent event order. Reads never authorize another delivery.
+	Available {
+		/// Exact local task identity.
+		work_id: crate::EntityId,
+		/// Current inputs with no acknowledged native turn or disposition.
+		entries: Vec<ChiefHistoryEntryDto>,
+		/// Read entries strictly after this identity, when more unconfirmed inputs exist.
+		next_after: Option<i64>,
+		/// Some visible text was shortened to fit this page.
+		shortened: bool,
+	},
+	/// The task or current receipts could not be read.
 	Unavailable,
 }
 
@@ -200,6 +248,28 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Publish a reviewer for subsequent steps of one reviewed live turn.
+	SetLiveReviewer {
+		/// Exact owning task.
+		work_id: crate::EntityId,
+		/// Exact active turn from the review query.
+		turn_id: crate::EntityId,
+		/// Source and receipt identity from the review query.
+		review_token: crate::WireText,
+		/// Explicit reviewer; does not approve existing requests or change future defaults.
+		reviewer: crate::ChiefAppReviewer,
+	},
+	/// Save one reviewed native connected-account approval override.
+	SetAppSetting {
+		/// Exact owning task.
+		work_id: crate::EntityId,
+		/// Pending request that supplied the native account identity.
+		event_id: i64,
+		/// Source and configuration identity from the settings query.
+		review_token: crate::WireText,
+		/// One explicitly selected override or inheritance reset.
+		edit: crate::ChiefAppSettingEdit,
+	},
 	/// Install the exact plugin whose current catalog details the user reviewed.
 	InstallSuggestedPlugin {
 		/// Owning task identity.
@@ -468,10 +538,13 @@ pub struct ChiefWorkspaceDto {
 	pub directory: String,
 }
 
-/// One complete bounded transaction-consistent projection, including a valid empty state.
+/// One bounded work snapshot plus observed runtime identity, including a valid empty state.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChiefSnapshotDto {
+	/// Opaque current account revision and process identity; absent while unavailable.
+	#[serde(default)]
+	pub runtime_source: Option<crate::EntityId>,
 	/// Persisted project scopes.
 	pub workspaces: Vec<ChiefWorkspaceDto>,
 	/// All work records.
@@ -559,6 +632,7 @@ mod tests {
 	fn chief_snapshot_roundtrip_retains_empty_available_and_explicit_capacity_failure() {
 		for value in [
 			ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],
@@ -576,6 +650,7 @@ mod tests {
 		}
 		assert!(
 			ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],
@@ -651,6 +726,16 @@ pub enum ChiefCapabilitiesResult {
 	Unavailable,
 }
 
+/// Continuation bound to one unchanged source and projected tool detail.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefActivityDetailCursor {
+	/// UTF-8 byte offset in the complete filtered text.
+	pub offset: u32,
+	/// Opaque digest of source identity and complete filtered text.
+	pub fingerprint: crate::WireText,
+}
+
 /// Selected readable tool evidence for one exact native item.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
@@ -661,9 +746,31 @@ pub enum ChiefActivityDetailResult {
 		text: String,
 		/// Some output was omitted by the byte bound.
 		truncated: bool,
+		/// UTF-8 byte offset of this portion.
+		offset: u32,
+		/// Next portion, only valid while the complete source remains unchanged.
+		next: Option<ChiefActivityDetailCursor>,
 	},
 	/// The source cannot be confirmed or this item has no supported public detail.
 	Unavailable,
+}
+
+impl ChiefActivityDetailResult {
+	pub(crate) fn matches_cursor(&self, cursor: Option<&ChiefActivityDetailCursor>) -> bool {
+		let Self::Available { text, truncated, offset, next } = self else {
+			return true;
+		};
+		!text.is_empty()
+			&& text.len() <= 8 * 1024
+			&& *offset == cursor.map_or(0, |value| value.offset)
+			&& *truncated == next.is_some()
+			&& next.as_ref().is_none_or(|next| {
+				next.offset as usize == *offset as usize + text.len()
+					&& next.fingerprint.as_str().len() == 64
+					&& next.fingerprint.as_str().bytes().all(|byte| byte.is_ascii_hexdigit())
+					&& cursor.is_none_or(|prior| prior.fingerprint == next.fingerprint)
+			})
+	}
 }
 
 /// One native resource association; its payload is display data, not executable input.

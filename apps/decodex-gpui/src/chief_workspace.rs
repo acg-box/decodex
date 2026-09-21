@@ -109,16 +109,20 @@ impl ChiefSurface {
 			let previous = self.composer_manager.clone().or_else(|| self.root_id());
 			if previous.as_deref() != Some(id) {
 				if let Some(previous) = previous {
-					self.task_reference_drafts
+					self.draft_profiles
+						.tasks
 						.insert(previous.clone(), std::mem::take(&mut self.task_references));
-					self.attachment_drafts
+					self.draft_profiles
+						.files
 						.insert(previous.clone(), std::mem::take(&mut self.attachments));
-					self.manager_drafts.insert(previous, self.composer.read(cx).content().into());
+					self.draft_profiles
+						.texts
+						.insert(previous, self.composer.read(cx).content().into());
 				}
-				self.attachments = self.attachment_drafts.remove(id).unwrap_or_default();
-				self.task_references = self.task_reference_drafts.remove(id).unwrap_or_default();
+				self.attachments = self.draft_profiles.files.remove(id).unwrap_or_default();
+				self.task_references = self.draft_profiles.tasks.remove(id).unwrap_or_default();
 				self.composer_menu = None;
-				let draft = self.manager_drafts.get(id).cloned().unwrap_or_default();
+				let draft = self.draft_profiles.texts.get(id).cloned().unwrap_or_default();
 				self.composer.update(cx, |input, cx| {
 					input.set_content(&draft, cx);
 					input.set_placeholder(prompts::next(), cx);
@@ -176,6 +180,7 @@ impl ChiefSurface {
 		}
 
 		self.selected = Some(id.to_owned());
+		self.app_settings_disconnected();
 		self.history = self.history_cache.get(id).cloned().map(|h| (id.to_owned(), h));
 		self.details_visible = false;
 		self.request = None;
@@ -531,6 +536,7 @@ impl ChiefSurface {
 						.w_full()
 						.mx_auto()
 						.line_height(px(ui_theme::BODY_LINE_HEIGHT))
+						.child(self.native_goal_panel())
 						.child(self.history_panel(work, cx))
 						.when(
 							snapshot.pending_events.iter().any(|e| {
@@ -1108,6 +1114,7 @@ impl ChiefSurface {
 					});
 				}
 				self.snapshot = Some(ChiefSnapshotDto {
+					runtime_source: None,
 					workspaces: vec![],
 					work_items: vec![],
 					dependencies: vec![],
@@ -1151,7 +1158,7 @@ impl ChiefSurface {
 					});
 					entries.clear();
 					for (i,(kind,text)) in [("user","请整理检查结果，并说明下一步安排。"),("assistant","## 检查完成\n\n两位下属已提交报告，**现有会话保持可用**。\n\n- 登录流程：保留原会话\n- 启动流程：继续验证性能\n\n| 工作 | 结果 | 下一步 |\n|---|---|---|\n| 登录检查 | 已验收 | 合并检查结果 |\n| 启动检查 | 待验证 | 补充冷启动数据 |\n\n### 验证命令\n```rust\nlet status = review.result();\nassert!(status.is_verified());\n```\n\n查看 [源码](/Users/x/code/acg-box/decodex/apps/decodex-gpui/src/chief_surface.rs:1)，再确认 `review` 的结果。")].into_iter().enumerate() {
-                        entries.push(decodex_protocol::ChiefHistoryEntryDto{ activity: None,usage: (kind == "assistant").then_some(decodex_protocol::ChiefTurnUsageDto {input_tokens:24860,output_tokens:1820}),duration_ms: (kind == "assistant").then_some(18400),id:i as i64+1,kind:kind.into(),text:text.into(),created_at_micros:1789480440000000});
+                        entries.push(decodex_protocol::ChiefHistoryEntryDto{receipt: None, activity: None,usage: (kind == "assistant").then_some(decodex_protocol::ChiefTurnUsageDto {input_tokens:24860,output_tokens:1820}),duration_ms: (kind == "assistant").then_some(18400),id:i as i64+1,kind:kind.into(),text:text.into(),created_at_micros:1789480440000000});
                     }
 				}
 			},
@@ -1190,6 +1197,7 @@ impl ChiefSurface {
 		use ChiefDispatchStateDto::{Idle, Running};
 		use ChiefWorkStatusDto::{Open, Resolved, UserDecision};
 		self.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+			runtime_source: None,
 			workspaces: vec![],
 			work_items: vec![
 				make("chief", None, "Chief", Open, Idle),
@@ -1239,6 +1247,7 @@ impl ChiefSurface {
 				.into_iter()
 				.enumerate()
 				.map(|(i, (kind, text))| ChiefHistoryEntryDto {
+					receipt: None,
 					activity: None,
 					usage: None,
 					duration_ms: None,
@@ -1259,7 +1268,7 @@ impl ChiefSurface {
 		self.graph_scope = Some("release".into());
 		self.graph_selected = Some("verify".into());
 		self.timeline_visible = true;
-		self.history_cache.insert("verify".into(),ChiefHistoryResult::Available{questions:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![ChiefHistoryEntryDto{ activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
+		self.history_cache.insert("verify".into(),ChiefHistoryResult::Available{questions:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![ChiefHistoryEntryDto{receipt: None, activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
 		cx.notify();
 	}
 }
@@ -1310,6 +1319,8 @@ impl ChiefSurface {
 		let current = selected.and_then(|work| self.current_activity_label(work));
 		let label = if self.selected.as_deref().is_some_and(|id| self.thread_in_use(id)) {
 			Some("In use in another app · saved messages are waiting")
+		} else if current.as_deref() == Some("Compacting context") {
+			current.as_deref()
 		} else if self.sending {
 			Some("Sending…")
 		} else {
@@ -1396,7 +1407,7 @@ impl ChiefSurface {
 		}
 		if page == "live" {
 			if let Some((_, ChiefHistoryResult::Available { live, .. })) = &mut self.history {
-				live.push(decodex_protocol::ChiefLiveMessageDto {turn_id:"live-turn".into(),item_id:"live-item".into(),text:"The compatibility check is progressing. I’m reviewing the existing session behavior and…".into(),truncated:false});
+				live.push(decodex_protocol::ChiefLiveMessageDto {kind: Default::default(),turn_id:"live-turn".into(),item_id:"live-item".into(),text:"The compatibility check is progressing. I’m reviewing the existing session behavior and…".into(),truncated:false});
 			}
 			return;
 		}

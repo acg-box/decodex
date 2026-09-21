@@ -8,6 +8,7 @@ pub(crate) struct SourceKey {
 	pub generation: ProcessGenerationId,
 	pub account: AccountId,
 	pub revision: i64,
+	pub history_revision: u64,
 	pub thread: String,
 	pub work: String,
 }
@@ -75,7 +76,7 @@ mod tests {
 	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 	#[tokio::test]
 	async fn task_usage_discards_reply_after_account_revision_process_or_thread_changes() {
-		for change in ["none", "account", "revision", "process", "thread", "closed"] {
+		for change in ["none", "account", "revision", "history", "process", "thread", "closed"] {
 			let (local, remote) = tokio::io::duplex(4096);
 			let (reader, writer) = tokio::io::split(local);
 			let (client, _) = AppServerClient::from_io(reader, writer);
@@ -99,6 +100,7 @@ mod tests {
 					Some(Source {
 						client,
 						key: SourceKey {
+							history_revision: u64::from(later && change == "history"),
 							generation: ProcessGenerationId::new(if later && change == "process" {
 								"20000000-0000-4000-8000-000000000002"
 							} else {

@@ -114,6 +114,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |s, _| {
 			s.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				dependencies: vec![],
 				pending_events: vec![],
@@ -170,6 +171,19 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.feedback, "No service profile is configured.");
 			s.feedback.clear();
+			if let Some((_, ChiefHistoryResult::Available { misalignment: Some(review), .. })) =
+				&mut s.history
+			{
+				review.continuation = None;
+			}
+			s.acknowledge_misalignment("root", "review-one", cx);
+			assert!(s.feedback.is_empty());
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("misalignment-continue").is_none());
+		surface.update(visual, |s, cx| {
 			if let Some((_, ChiefHistoryResult::Available { misalignment: Some(review), .. })) =
 				&mut s.history
 			{

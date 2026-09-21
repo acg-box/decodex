@@ -2,12 +2,22 @@
 use crate::{SqliteStore, StoreError, error::sqlite_error};
 use rusqlite::{OptionalExtension as _, params};
 
+pub struct ChiefOutputUpdate {
+	pub thread_id: String,
+	pub turn_id: String,
+	pub item_id: String,
+	pub kind: String,
+	pub text: String,
+	pub completed: bool,
+}
+
 pub struct ChiefLiveOutput {
 	pub id: i64,
 	pub turn_id: String,
 	pub item_id: String,
 	pub text: String,
 	pub truncated: bool,
+	pub kind: String,
 }
 
 impl SqliteStore {
@@ -52,25 +62,58 @@ impl SqliteStore {
 		text: String,
 		replace: bool,
 	) -> Result<(), StoreError> {
+		self.update_chief_output_record(ChiefOutputUpdate {
+			thread_id: thread,
+			turn_id: turn,
+			item_id: item,
+			kind: "agentMessage".into(),
+			text,
+			completed: replace,
+		})
+		.await
+	}
+
+	pub async fn update_chief_output_record(
+		&self,
+		update: ChiefOutputUpdate,
+	) -> Result<(), StoreError> {
+		let ChiefOutputUpdate {
+			thread_id: thread,
+			turn_id: turn,
+			item_id: item,
+			kind,
+			text,
+			completed: replace,
+		} = update;
+		if !matches!(kind.as_str(), "agentMessage" | "plan") {
+			return Err(StoreError::InvalidInput("invalid live output kind"));
+		}
 		if thread.len() > 512 || turn.len() > 512 || item.len() > 512 || item.is_empty() {
 			return Err(StoreError::InvalidInput("invalid live output identity"));
 		}
 
 		self.run(move |connection| {
+            let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
+            let connection = &tx;
             let work: Option<String> = connection.query_row("SELECT id FROM chief_work_items WHERE codex_thread_id=?1 AND active_turn_id=?2 AND dispatch_state='running'", params![thread,turn], |row|row.get(0)).optional().map_err(sqlite_error)?;
             let Some(work) = work else { return Ok(()); };
-            let previous: Option<(String,bool)> = connection.query_row("SELECT text,truncated FROM chief_live_output WHERE work_id=?1 AND turn_id=?2 AND item_id=?3", params![work,turn,item], |row|Ok((row.get(0)?,row.get(1)?))).optional().map_err(sqlite_error)?;
+            let previous: Option<(String,bool,String,bool)> = connection.query_row("SELECT text,truncated,kind,completed FROM chief_live_output WHERE work_id=?1 AND turn_id=?2 AND item_id=?3", params![work,turn,item], |row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).optional().map_err(sqlite_error)?;
+            if let Some((_,_,prior_kind,completed)) = &previous {
+                if prior_kind != &kind { return Err(StoreError::InvalidInput("live output kind changed")); }
+                if *completed && !replace { return Ok(()); }
+            }
             if previous.is_none() {
                 let count: i64 = connection.query_row("SELECT count(*) FROM chief_live_output WHERE work_id=?1 AND turn_id=?2",params![work,turn],|row|row.get(0)).map_err(sqlite_error)?;
                 if count >= 32 { return Ok(()); }
             }
-            let (mut content, was_truncated) = if replace { (text, false) } else { let (mut prior, truncated) = previous.unwrap_or_default(); prior.push_str(&text); (prior, truncated) };
+            let (mut content, was_truncated) = if replace { (text, false) } else { let (mut prior, truncated) = previous.map(|(text,truncated,_,_)|(text,truncated)).unwrap_or_default(); prior.push_str(&text); (prior, truncated) };
             let truncated = was_truncated || content.len() > 65536;
             let mut end = content.len().min(65536);
             while !content.is_char_boundary(end) { end -= 1; }
             content.truncate(end);
             connection.execute("DELETE FROM chief_live_output WHERE work_id=?1 AND turn_id<>?2",params![work,turn]).map_err(sqlite_error)?;
-            connection.execute("INSERT INTO chief_live_output(work_id,turn_id,item_id,text,truncated) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(work_id,turn_id,item_id) DO UPDATE SET text=excluded.text,truncated=excluded.truncated",params![work,turn,item,content,truncated]).map_err(sqlite_error)?;
+            connection.execute("INSERT INTO chief_live_output(work_id,turn_id,item_id,text,truncated,kind,completed) VALUES(?1,?2,?3,?4,?5,?6,?7) ON CONFLICT(work_id,turn_id,item_id) DO UPDATE SET text=excluded.text,truncated=excluded.truncated,completed=excluded.completed",params![work,turn,item,content,truncated,kind,replace]).map_err(sqlite_error)?;
+            tx.commit().map_err(sqlite_error)?;
             Ok(())
         }).await
 	}
@@ -146,8 +189,8 @@ pub(crate) fn read_live(
 	connection: &rusqlite::Connection,
 	work: &str,
 ) -> Result<Vec<ChiefLiveOutput>, StoreError> {
-	connection.prepare("SELECT o.id,o.turn_id,o.item_id,o.text,o.truncated FROM chief_live_output o JOIN chief_work_items w ON w.id=o.work_id AND w.active_turn_id=o.turn_id WHERE w.id=?1 AND w.dispatch_state IN ('running','unknown') ORDER BY o.id LIMIT 32").map_err(sqlite_error)?
-        .query_map([work],|row|Ok(ChiefLiveOutput {id:row.get(0)?,turn_id:row.get(1)?,item_id:row.get(2)?,text:row.get(3)?,truncated:row.get(4)?})).map_err(sqlite_error)?
+	connection.prepare("SELECT o.id,o.turn_id,o.item_id,o.text,o.truncated,o.kind FROM chief_live_output o JOIN chief_work_items w ON w.id=o.work_id AND w.active_turn_id=o.turn_id WHERE w.id=?1 AND w.dispatch_state IN ('running','unknown') ORDER BY o.id LIMIT 32").map_err(sqlite_error)?
+        .query_map([work],|row|Ok(ChiefLiveOutput {id:row.get(0)?,turn_id:row.get(1)?,item_id:row.get(2)?,text:row.get(3)?,truncated:row.get(4)?,kind:row.get(5)?})).map_err(sqlite_error)?
         .collect::<Result<Vec<_>,_>>().map_err(|error|sqlite_error(error).into())
 }
 
@@ -311,5 +354,41 @@ impl SqliteStore {
 			tx.commit().map_err(sqlite_error)?;
 			Ok(())
 		}).await
+	}
+}
+
+impl SqliteStore {
+	/// Save the latest observed checklist as an immutable, non-waking receipt.
+	pub async fn record_chief_checklist(
+		&self,
+		thread: String,
+		turn: String,
+		text: String,
+	) -> Result<(), StoreError> {
+		if thread.is_empty()
+			|| thread.len() > 512
+			|| turn.is_empty()
+			|| turn.len() > 512
+			|| text.len() > 32768
+		{
+			return Err(StoreError::InvalidInput("invalid checklist observation"));
+		}
+		self.run(move |connection| {
+            let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
+            let work: Option<String> = tx.query_row("SELECT id FROM chief_work_items WHERE codex_thread_id=?1 AND active_turn_id=?2 AND dispatch_state='running'",params![thread,turn],|row|row.get(0)).optional().map_err(sqlite_error)?;
+            let Some(work) = work else { return Ok(()); };
+            let previous: Option<(i64,String)> = tx.query_row("SELECT id,payload FROM chief_inbox_events WHERE work_item_id=?1 AND event_kind='plan_updated' AND delivered_turn_id=?2 AND json_extract(payload,'$.threadId')=?3 ORDER BY id DESC LIMIT 1",params![work,turn,thread],|row|Ok((row.get(0)?,row.get(1)?))).optional().map_err(sqlite_error)?;
+            let original_payload = serde_json::json!({"threadId":thread,"turnId":turn,"text":text}).to_string();
+            if previous.as_ref().is_some_and(|(_,prior)|prior == &original_payload) { return Ok(()); }
+            let count: i64 = tx.query_row("SELECT count(*) FROM chief_inbox_events WHERE work_item_id=?1 AND event_kind='plan_updated' AND delivered_turn_id=?2 AND json_extract(payload,'$.threadId')=?3",params![work,turn,thread],|row|row.get(0)).map_err(sqlite_error)?;
+            if count > 128 { return Ok(()); }
+            let text = if count == 128 { "Checklist update limit reached. Later step states are unavailable.".to_owned() } else { text };
+            let payload = serde_json::json!({"threadId":thread,"turnId":turn,"text":text}).to_string();
+            let source = serde_json::json!(["plan_updated",thread,turn,previous.map(|(id,_)|id)]).to_string();
+            let now = crate::unix_micros()?;
+            tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'plan_updated',?3,?4,'resolved','Observed native checklist',?4,?2,?5)",params![source,work,payload,now,turn]).map_err(sqlite_error)?;
+            tx.commit().map_err(sqlite_error)?;
+            Ok(())
+        }).await
 	}
 }

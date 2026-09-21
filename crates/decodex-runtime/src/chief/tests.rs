@@ -1,14 +1,56 @@
 use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[path = "tests/request_liveness.rs"] mod request_liveness;
+
 #[path = "tests/archive.rs"] mod archive;
+#[path = "tests/async_recovery.rs"] mod async_recovery;
+#[path = "tests/auth_recovery.rs"] mod auth_recovery;
 #[path = "tests/capacity.rs"] mod capacity;
+#[path = "tests/closing_resume.rs"] mod closing_resume;
 #[path = "tests/guardian.rs"] mod guardian;
 #[path = "tests/install.rs"] mod install;
+#[path = "tests/native_checklist.rs"] mod native_checklist;
+#[path = "tests/native_goal_recovery.rs"] mod native_goal_recovery;
+#[path = "tests/native_goals.rs"] mod native_goals;
+#[path = "tests/native_mcp_forms.rs"] mod native_mcp_forms;
+#[path = "tests/native_permissions.rs"] mod native_permissions;
+#[path = "tests/native_plan.rs"] mod native_plan;
 #[path = "tests/native_subagent_live.rs"] mod native_subagent_live;
 #[path = "tests/native_subagents.rs"] mod native_subagents;
 #[path = "tests/native_task_references.rs"] mod native_task_references;
 #[path = "tests/task_history.rs"] mod task_history;
+
+#[tokio::test]
+async fn persistent_effort_survives_coordinator_admission_and_dispatch() {
+	let (fixture, mut sent, _directory) = fixture().await;
+	let mut config = fixture.config.clone();
+	config.chief_effort = "persistent".into();
+	config.worker_effort = "persistent".into();
+	let mut chief =
+		ChiefCoordinator::new(fixture.store.clone(), fixture.client.clone(), config.clone())
+			.unwrap();
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	let mut starts = 0;
+	while let Ok(request) = sent.try_recv() {
+		match request["method"].as_str() {
+			Some("thread/start") => {
+				assert_eq!(request["params"]["config"]["model_reasoning_effort"], "persistent");
+				starts += 1;
+			},
+			Some("turn/start") => {
+				assert_eq!(request["params"]["effort"], "persistent");
+				starts += 1;
+			},
+			_ => {},
+		}
+	}
+	assert_eq!(starts, 2);
+	for field in [&mut config.chief_effort, &mut config.worker_effort] {
+		*field = "not-an-effort".into();
+	}
+	assert!(ChiefCoordinator::new(fixture.store, fixture.client, config).is_err());
+}
 
 #[tokio::test]
 async fn subagent_activity_survives_parent_completion_and_restart_without_waking_work() {
@@ -160,7 +202,11 @@ async fn asynchronous_questions_and_usage_are_observed_without_completing_or_wak
 	coordinator.recover_persisted().await.unwrap();
 	let usage = coordinator
 		.store
-		.read_chief_usage_observation("chief".into(), "opaque turn/1".into())
+		.read_chief_usage_observation(
+			"chief".into(),
+			"opaque thread/1".into(),
+			"opaque turn/1".into(),
+		)
 		.await
 		.unwrap()
 		.unwrap();
@@ -191,7 +237,8 @@ pub(super) async fn fixture_with_history(
 	let store = SqliteStore::open(&root.paths()).unwrap();
 	let (client_io, server_io) = tokio::io::duplex(65536);
 	let (reader, writer) = tokio::io::split(client_io);
-	let (client, _events) = AppServerClient::from_io(reader, writer);
+	let (client, mut events) = AppServerClient::from_io(reader, writer);
+	tokio::spawn(async move { while events.recv().await.is_some() {} });
 	let (sent, received) = tokio::sync::mpsc::unbounded_channel();
 	tokio::spawn(serve_fixture(server_io, history, sent));
 	(
@@ -210,6 +257,26 @@ pub(super) async fn fixture_with_history(
 	)
 }
 
+// Deliver through the actual native transport so response guards have real evidence.
+async fn attach_request_transport(
+	chief: &mut ChiefCoordinator,
+	history: Value,
+	request: Value,
+) -> tokio::sync::mpsc::UnboundedReceiver<Value> {
+	let (local, mut remote) = tokio::io::duplex(65536);
+	let (reader, writer) = tokio::io::split(local);
+	let (client, mut events) = AppServerClient::from_io(reader, writer);
+	chief.client = client;
+	let (sent, received) = tokio::sync::mpsc::unbounded_channel();
+	tokio::spawn(async move {
+		remote.write_all(format!("{request}\n").as_bytes()).await.unwrap();
+		serve_fixture(remote, history, sent).await;
+	});
+	chief.handle_event(events.recv().await.unwrap()).await.unwrap();
+	tokio::spawn(async move { while events.recv().await.is_some() {} });
+	received
+}
+
 struct FixtureFaults {
 	resume_failures: u64,
 	archived: bool,
@@ -224,7 +291,16 @@ impl FixtureFaults {
 	) -> Option<bool> {
 		if request["method"] == "thread/resume" && self.resume_failures > 0 {
 			self.resume_failures -= 1;
-			let mut frame = json!({"id":request["id"],"error":{"code":-32600,"message":"thread private-id already has an active writer"}}).to_string();
+			let message = if history["_resume_closing"] == true {
+				format!(
+					"thread {} is closing; retry after close",
+					request["params"]["threadId"].as_str().unwrap()
+				)
+			} else {
+				"thread private-id already has an active writer".into()
+			};
+			let mut frame =
+				json!({"id":request["id"],"error":{"code":-32600,"message":message}}).to_string();
 			frame.push('\n');
 			writer.write_all(frame.as_bytes()).await.unwrap();
 			return Some(true);
@@ -354,6 +430,9 @@ async fn serve_fixture(
 				let mut result = history.get(id).cloned().unwrap_or_else(
 					|| json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
 				);
+				if history["_visible_turns_only"] == true {
+					result["thread"]["turns"].as_array_mut().unwrap().truncate(turns);
+				}
 				if result["thread"]["historyMode"] == "paginated" {
 					assert_ne!(request["params"]["includeTurns"], true);
 					result["thread"]["turns"] = json!([]);
@@ -393,6 +472,7 @@ async fn serve_fixture(
 			Some("thread/resume") => {
 				json!({"thread":{"id":request["params"]["threadId"],"turns":history[request["params"]["threadId"].as_str().unwrap()]["thread"]["turns"]},"model":"selected-model","reasoningEffort":request["params"]["config"]["model_reasoning_effort"]})
 			},
+			Some("thread/goal/get") => json!({"goal":history["_goal"]}),
 			Some("thread/start") => {
 				threads += 1;
 				json!({"thread":{"id":format!("opaque thread/{threads}")},"model":"selected-model","reasoningEffort":request["params"]["config"]["model_reasoning_effort"]})
@@ -403,6 +483,18 @@ async fn serve_fixture(
 			},
 			_ => json!({}),
 		};
+		if request["method"] == "thread/read" && history["_misalignment_revert_on_read"] == true {
+			let notice =
+				json!({"method":"thread/reverted","params":{"threadId":"opaque thread/1"}});
+			writer.write_all(format!("{notice}\n").as_bytes()).await.unwrap();
+		}
+		if request["method"] == "turn/start"
+			&& turns == 1
+			&& history["_live_misalignment"].is_object()
+		{
+			let notification = json!({"method":"error","params":{"threadId":"opaque thread/1","turnId":"opaque turn/1","willRetry":false,"error":history["_live_misalignment"]}});
+			writer.write_all(format!("{notification}\n").as_bytes()).await.unwrap();
+		}
 		let mut frame = json!({"id":request["id"],"result":result}).to_string();
 		frame.push('\n');
 		writer.write_all(frame.as_bytes()).await.unwrap();
@@ -417,6 +509,11 @@ async fn unloaded_thread_resumes_exact_identity_without_new_thread() {
 	let original = coordinator.store.get_chief_work_item("chief".into()).await.unwrap();
 	while let Ok(request) = sent.try_recv() {
 		assert_ne!(request["method"], "thread/resume");
+		if request["method"] == "thread/start" {
+			assert_eq!(request["params"]["approvalPolicy"], coordinator.config.approval_policy);
+			assert_eq!(request["params"]["sandbox"], coordinator.config.sandbox);
+			assert_eq!(request["params"]["cwd"], coordinator.config.cwd);
+		}
 	}
 	coordinator
 		.handle_event(ServerEvent::Notification {
@@ -435,6 +532,37 @@ async fn unloaded_thread_resumes_exact_identity_without_new_thread() {
 	}
 	assert_eq!(resumes.len(), 1);
 	assert_eq!(resumes[0]["params"]["threadId"], json!(original.codex_thread_id));
+	for field in ["approvalPolicy", "sandbox", "cwd", "dynamicTools"] {
+		assert!(resumes[0]["params"].get(field).is_none(), "resume must preserve {field}");
+	}
+}
+
+#[tokio::test]
+async fn missed_native_active_turn_recovery_rejects_reverted_readback() {
+	for reverted in [false, true] {
+		let history = json!({"_misalignment_revert_on_read":reverted,"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"active"},"turns":[{"id":"native-turn","status":"inProgress","items":[]}]}}});
+		let (mut chief, mut sent, _home) = fixture_with_history(history).await;
+		chief.start_chief("chief", "Original user input").await.unwrap();
+		complete(&mut chief, "chief").await;
+		while sent.try_recv().is_ok() {}
+		chief.recover_native_turns().await.unwrap();
+		let work = chief.store.get_chief_work_item("chief".into()).await.unwrap();
+		assert_eq!(
+			work.active_turn_id.as_deref(),
+			if reverted { None } else { Some("native-turn") }
+		);
+		while let Ok(request) = sent.try_recv() {
+			assert!(
+				!["thread/start", "turn/start", "turn/steer", "thread/inject_items"]
+					.contains(&request["method"].as_str().unwrap())
+			);
+			if request["method"] == "thread/resume" {
+				for field in ["cwd", "model", "sandbox", "approvalPolicy", "config"] {
+					assert!(request["params"].get(field).is_none());
+				}
+			}
+		}
+	}
 }
 
 #[tokio::test]
@@ -653,7 +781,13 @@ async fn recovery_records_only_exact_terminal_evidence_without_dispatching() {
 		assert!(["thread/resume", "thread/read"].contains(&request["method"].as_str().unwrap()));
 	}
 	recovered.recover_persisted().await.unwrap();
-	assert!(sent.try_recv().is_err());
+	while let Ok(request) = sent.try_recv() {
+		assert_eq!(
+			request["method"], "thread/read",
+			"repeat recovery only checks existing native history"
+		);
+	}
+	assert_eq!(recovered.store.list_pending_chief_events(100).await.unwrap().len(), 1);
 }
 
 #[tokio::test]
@@ -736,7 +870,7 @@ async fn initial_user_input_starts_once_and_receipt_ack_leaves_newer_input_pendi
 
 #[tokio::test]
 async fn permission_response_uses_live_event_identity_even_when_rpc_id_is_reused() {
-	let (mut coordinator, mut sent, _directory) = fixture().await;
+	let (mut coordinator, _old_sent, _directory) = fixture().await;
 	let root = coordinator.start_chief("chief", "Coordinate").await.unwrap();
 	let params = json!({"threadId":root.codex_thread_id,"turnId":root.active_turn_id});
 	coordinator
@@ -754,14 +888,12 @@ async fn permission_response_uses_live_event_identity_even_when_rpc_id_is_reused
 		coordinator.config.clone(),
 	)
 	.unwrap();
-	reconnected
-		.handle_event(ServerEvent::Request {
-			id: RequestId::Number(7),
-			method: "item/commandExecution/requestApproval".into(),
-			params,
-		})
-		.await
-		.unwrap();
+	let mut sent = attach_request_transport(
+		&mut reconnected,
+		json!({}),
+		json!({"id":7,"method":"item/commandExecution/requestApproval","params":params}),
+	)
+	.await;
 	let new_id = reconnected
 		.store
 		.list_pending_chief_events(100)
@@ -1097,6 +1229,57 @@ async fn live_output_is_turn_bound_bounded_and_replaced_by_final_history() {
 	assert!(live[0].text.len() <= 65536);
 	complete(&mut coordinator, "chief").await;
 	assert!(coordinator.store.read_chief_output("chief".into()).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn live_plan_finality_and_kind_survive_restart() {
+	let (mut coordinator, _sent, directory) = fixture().await;
+	let work = coordinator.start_chief("chief", "Plan").await.unwrap();
+	let turn = work.active_turn_id.as_deref().unwrap();
+	let delta = |turn: &str, text: &str| ServerEvent::Notification {
+		method: "item/plan/delta".into(),
+		params: json!({"threadId":work.codex_thread_id,"turnId":turn,"itemId":"plan","delta":text}),
+	};
+	coordinator.handle_event(delta("wrong-turn", "Wrong")).await.unwrap();
+	assert!(coordinator.store.read_chief_output("chief".into()).await.unwrap().is_empty());
+	coordinator.handle_event(delta(turn, &"界".repeat(30000))).await.unwrap();
+	let partial = coordinator.store.read_chief_output("chief".into()).await.unwrap();
+	assert_eq!(partial[0].kind, "plan");
+	assert!(partial[0].truncated && partial[0].text.len() <= 65536);
+	coordinator.handle_event(ServerEvent::Notification {
+        method: "item/completed".into(),
+        params: json!({"threadId":work.codex_thread_id,"turnId":turn,"item":{"id":"plan","type":"plan","text":"Final plan"}}),
+    }).await.unwrap();
+	let thread = work.codex_thread_id.unwrap();
+	let turn = turn.to_owned();
+	drop(coordinator);
+	let paths =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap()
+			.paths();
+	let store = SqliteStore::open(&paths).unwrap();
+	store
+		.update_chief_output_record(decodex_database::ChiefOutputUpdate {
+			thread_id: thread.clone(),
+			turn_id: turn.clone(),
+			item_id: "plan".into(),
+			kind: "plan".into(),
+			text: "Late draft".into(),
+			completed: false,
+		})
+		.await
+		.unwrap();
+	assert!(
+		store
+			.update_chief_output(thread, turn, "plan".into(), "Wrong kind".into(), true)
+			.await
+			.is_err()
+	);
+	let saved = store.read_chief_output("chief".into()).await.unwrap();
+	assert_eq!(saved.len(), 1);
+	assert_eq!(saved[0].text, "Final plan");
+	assert_eq!(saved[0].kind, "plan");
+	assert!(!saved[0].truncated);
 }
 
 #[tokio::test]
@@ -1525,6 +1708,38 @@ async fn native_activity_notifications_reach_history_without_agent_delivery() {
 }
 
 #[tokio::test]
+async fn native_revert_retires_exact_thread_requests_without_replies_or_replay() {
+	let (mut chief, mut sent, _directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let id = RequestId::Number(73);
+	chief.handle_event(ServerEvent::Request { id: id.clone(), method: "item/commandExecution/requestApproval".into(), params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"item","command":"pwd"}) }).await.unwrap();
+	let event_id = chief.pending_requests[&id];
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "thread/reverted".into(),
+			params: json!({"threadId":"other"}),
+		})
+		.await
+		.unwrap();
+	assert!(chief.pending_requests.contains_key(&id));
+	for _ in 0..2 {
+		chief
+			.handle_event(ServerEvent::Notification {
+				method: "thread/reverted".into(),
+				params: json!({"threadId":"opaque thread/1"}),
+			})
+			.await
+			.unwrap();
+	}
+	assert!(!chief.pending_requests.contains_key(&id));
+	let event = chief.store.get_chief_inbox_event(event_id).await.unwrap();
+	assert_eq!(event.disposition, Some(ChiefDisposition::Resolved));
+	assert!(chief.respond_pending_event(event_id, json!({"decision":"accept"})).await.is_err());
+	assert!(sent.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn native_request_resolution_requires_exact_thread_and_request_identity() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;
 	coordinator.start_chief("chief", "Coordinate").await.unwrap();
@@ -1666,6 +1881,292 @@ async fn async_question_upgrade_reads_native_history_and_preserves_later_questio
 		assert_eq!(request["method"], "thread/read");
 	}
 	chief.recover_async_questions().await.unwrap();
+	assert!(sent.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn reverted_async_history_reopens_retained_questions_and_removes_deleted_questions() {
+	let item = json!({"id":"question","type":"agentMessage","delivery":"async","text":"Question","questions":[{"title":"Which?"}]});
+	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"old","status":"completed","items":[item.clone()]}]}}});
+	let (mut chief, mut sent, _directory) = fixture_with_history(history).await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	chief.observe_async_question_item("opaque thread/1", "old", &item).await.unwrap();
+	let id = decodex_protocol::chief_async_question_id("question", 0);
+	chief
+		.store
+		.resolve_chief_async_questions("opaque thread/1".into(), vec![id.clone()])
+		.await
+		.unwrap();
+	assert!(chief.store.read_chief_async_questions("chief".into()).await.unwrap().is_empty());
+	while sent.try_recv().is_ok() {}
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "thread/reverted".into(),
+			params: json!({"threadId":"opaque thread/1"}),
+		})
+		.await
+		.unwrap();
+	assert!(chief.store.chief_async_questions_recovering("chief".into()).await.unwrap());
+	chief.recover_async_questions().await.unwrap();
+	let questions = chief.store.read_chief_async_questions("chief".into()).await.unwrap();
+	assert_eq!(questions.len(), 1);
+	assert_eq!(questions[0].question_id, id);
+	while let Ok(request) = sent.try_recv() {
+		assert_eq!(request["method"], "thread/read");
+	}
+	let queued = chief
+		.store
+		.enqueue_chief_event(EnqueueChiefEvent {
+			source_event_id: "offline-answer".into(),
+			work_item_id: "chief".into(),
+			event_kind: "async_question_answer".into(),
+			payload: json!({"text":"answer","asyncQuestionId":id}).to_string(),
+		})
+		.await
+		.unwrap();
+	let empty = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[]}}});
+	let (mut reconnected, mut sent, _other) = fixture_with_history(empty).await;
+	reconnected.store = chief.store.clone();
+	reconnected.store.queue_chief_async_reconnection().await.unwrap();
+	reconnected.recover_async_questions().await.unwrap();
+	assert!(reconnected.store.read_chief_async_questions("chief".into()).await.unwrap().is_empty());
+	assert!(!reconnected.store.chief_async_questions_recovering("chief".into()).await.unwrap());
+	assert_eq!(
+		reconnected.store.get_chief_inbox_event(queued.id).await.unwrap().disposition,
+		Some(ChiefDisposition::Resolved)
+	);
+	while let Ok(request) = sent.try_recv() {
+		assert_eq!(request["method"], "thread/read");
+	}
+}
+
+#[tokio::test]
+async fn other_client_input_blocks_question_writes_before_owner_observation() {
+	for ordinary in [false, true] {
+		let (mut chief, mut sent, _directory) = fixture().await;
+		chief.start_chief("chief", "Coordinate").await.unwrap();
+		let item = json!({"id":"questions","type":"agentMessage","delivery":"async","questions":[{"title":"First?"},{"title":"Second?"}]});
+		chief.observe_async_question_item("opaque thread/1", "opaque turn/1", &item).await.unwrap();
+		let questions = decodex_protocol::project_chief_async_questions(&item).unwrap();
+		let text = if ordinary {
+			"New task".to_owned()
+		} else {
+			decodex_protocol::chief_async_question_reply(&questions[0], "A")
+				.unwrap()
+				.as_str()
+				.to_owned()
+		};
+		while sent.try_recv().is_ok() {}
+		let (incoming, frames) = tokio::sync::mpsc::channel(8);
+		let (outgoing, mut writes) = tokio::sync::mpsc::channel(8);
+		let (client, mut events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+		chief.client = client.clone();
+		incoming.send(Ok(json!({"method":"item/completed","params":{"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{"id":"input","type":"userMessage","content":[{"type":"text","text":text}]}}}))).await.unwrap();
+		tokio::time::timeout(std::time::Duration::from_secs(2), async {
+			while client.question_revision() == 0 {
+				tokio::task::yield_now().await;
+			}
+		})
+		.await
+		.unwrap();
+		assert!(
+			chief
+				.answer_async_question("chief", &questions[0].id, "B", "old-answer")
+				.await
+				.is_err()
+		);
+		assert!(writes.try_recv().is_err());
+		assert!(sent.try_recv().is_err());
+		assert_eq!(client.history_revision(), 0);
+		if !ordinary {
+			chief.handle_event(events.recv().await.unwrap()).await.unwrap();
+			let pending = chief.store.read_chief_async_questions("chief".into()).await.unwrap();
+			assert_eq!(pending.len(), 1);
+			assert_eq!(pending[0].question_id, questions[1].id);
+			assert!(client.question_guard(chief.handled_question_revision).is_some());
+		}
+	}
+}
+
+#[tokio::test]
+async fn transport_revert_blocks_old_question_before_coordinator_reads_notification() {
+	let (mut chief, mut sent, _directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	let question = json!({"id":"question","type":"agentMessage","delivery":"async","questions":[{"title":"Which?"}]});
+	chief.observe_async_question_item("opaque thread/1", "opaque turn/1", &question).await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let (incoming, frames) = tokio::sync::mpsc::channel(8);
+	let (outgoing, mut writes) = tokio::sync::mpsc::channel(8);
+	let (client, mut notifications) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+	chief.client = client.clone();
+	incoming
+		.send(Ok(json!({"method":"thread/reverted","params":{"threadId":"opaque thread/1"}})))
+		.await
+		.unwrap();
+	tokio::time::timeout(std::time::Duration::from_secs(2), async {
+		while client.history_revision() == 0 {
+			tokio::task::yield_now().await;
+		}
+	})
+	.await
+	.unwrap();
+	let id = decodex_protocol::chief_async_question_id("question", 0);
+	assert!(matches!(
+		chief.answer_async_question("chief", &id, "A", "stale-ui").await,
+		Err(super::ChiefError::Invalid(_))
+	));
+	assert!(writes.try_recv().is_err());
+	assert!(sent.try_recv().is_err());
+	assert_eq!(
+		chief.store.read_chief_async_questions("chief".into()).await.unwrap().len(),
+		1,
+		"old projection exists until owner handles the notification"
+	);
+	chief.handle_event(notifications.recv().await.unwrap()).await.unwrap();
+	assert!(chief.store.chief_async_questions_recovering("chief".into()).await.unwrap());
+	assert!(chief.answer_async_question("chief", &id, "A", "after-owner").await.is_err());
+	assert!(writes.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn stale_history_guard_prevents_async_turn_and_steer_without_unknown_receipts() {
+	for running in [false, true] {
+		let (mut chief, mut sent, directory) = fixture().await;
+		chief.start_chief("chief", "Coordinate").await.unwrap();
+		if !running {
+			chief.handle_event(ServerEvent::Notification {method:"turn/completed".into(),params:json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
+		}
+		if !running {
+			let root = decodex_core::DecodexRoot::new(
+				directory.path().canonicalize().unwrap().join("root"),
+			)
+			.unwrap();
+			let db = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+			db.execute("UPDATE chief_work_items SET status='wait',next_check_at_micros=9999999999999999 WHERE id='chief'",[]).unwrap();
+		}
+		let work = chief.store.get_chief_work_item("chief".into()).await.unwrap();
+		let (foreign, _events, _process) = {
+			let (io, remote) = tokio::io::duplex(4096);
+			let (read, write) = tokio::io::split(io);
+			let (client, events) = AppServerClient::from_io(read, write);
+			(client, events, remote)
+		};
+		let guard = foreign.history_guard(0).unwrap();
+		while sent.try_recv().is_ok() {}
+		let result = if running {
+			chief
+				.steer_work_with_question_reply(
+					"chief",
+					"opaque turn/1",
+					"stale-answer",
+					"answer",
+					super::ChiefInputExtras { attachments: &[], task_references: &[] },
+					Some(("question", guard)),
+				)
+				.await
+				.map(|_| String::new())
+		} else {
+			let event = chief
+				.store
+				.enqueue_chief_event(EnqueueChiefEvent {
+					source_event_id: "stale-answer".into(),
+					work_item_id: "chief".into(),
+					event_kind: "async_question_answer".into(),
+					payload: json!({"text":"answer","asyncQuestionId":"question"}).to_string(),
+				})
+				.await
+				.unwrap();
+			chief.dispatch_with_claim(&work, "answer", vec![event.id], None, Some(guard)).await
+		};
+		assert!(matches!(result, Err(super::ChiefError::Transport(ClientError::StaleHistory))));
+		let after = chief.store.get_chief_work_item("chief".into()).await.unwrap();
+		assert_eq!(after.dispatch_state, work.dispatch_state);
+		assert_eq!(after.status, work.status);
+		assert_eq!(after.next_check_at_micros, work.next_check_at_micros);
+		assert!(
+			!chief
+				.store
+				.chief_async_answer_pending("chief".into(), "question".into())
+				.await
+				.unwrap()
+		);
+		assert!(sent.try_recv().is_err());
+	}
+}
+
+#[tokio::test]
+async fn async_revert_marker_survives_reopen_and_preserves_uncertain_deliveries() {
+	let (mut chief, mut sent, directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let mut ids = Vec::new();
+	for kind in ["unsent", "unknown", "accepted", "ordinary"] {
+		let event = chief
+			.store
+			.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id: format!("revert-{kind}"),
+				work_item_id: "chief".into(),
+				event_kind: if kind == "ordinary" {
+					"user_message"
+				} else {
+					"async_question_answer"
+				}
+				.into(),
+				payload: json!({"text":"answer","asyncQuestionId":"q"}).to_string(),
+			})
+			.await
+			.unwrap();
+		ids.push(event.id);
+	}
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	let db = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+	db.execute(
+		"UPDATE chief_inbox_events SET delivered_turn_id='',delivery_work_item_id='chief' WHERE id=?1",
+		[ids[1]],
+	)
+	.unwrap();
+	db.execute(
+		"UPDATE chief_inbox_events SET delivered_turn_id='accepted-turn',delivery_work_item_id='chief' WHERE id=?1",
+		[ids[2]],
+	)
+	.unwrap();
+	drop(db);
+	chief.store.queue_chief_async_revert("unrelated".into()).await.unwrap();
+	assert!(chief.store.get_chief_inbox_event(ids[0]).await.unwrap().disposition.is_none());
+	chief.store.queue_chief_async_revert("opaque thread/1".into()).await.unwrap();
+	let reopened = SqliteStore::open(&root.paths()).unwrap();
+	assert!(reopened.chief_async_questions_recovering("chief".into()).await.unwrap());
+	assert_eq!(
+		reopened.get_chief_inbox_event(ids[0]).await.unwrap().disposition,
+		Some(ChiefDisposition::Resolved)
+	);
+	for id in &ids[1..] {
+		assert!(reopened.get_chief_inbox_event(*id).await.unwrap().disposition.is_none());
+	}
+	assert_eq!(
+		reopened.get_chief_inbox_event(ids[1]).await.unwrap().delivered_turn_id.as_deref(),
+		Some("")
+	);
+	assert!(reopened.chief_async_answer_pending("chief".into(), "q".into()).await.unwrap());
+	reopened
+		.request_chief_async_recovery("opaque thread/1".into(), "new-prompt".into())
+		.await
+		.unwrap();
+	assert!(
+		!reopened
+			.replace_chief_async_projection(
+				"chief".into(),
+				"opaque thread/1".into(),
+				None,
+				vec![],
+				vec![]
+			)
+			.await
+			.unwrap()
+	);
+	assert!(reopened.chief_async_questions_recovering("chief".into()).await.unwrap());
 	assert!(sent.try_recv().is_err());
 }
 
@@ -1933,17 +2434,34 @@ async fn misalignment_precaution_survives_reopen_and_blocks_ordinary_dispatch() 
 	assert_eq!(reopened.chief_misalignment("chief".into()).await.unwrap(), Some(saved));
 }
 
+fn live_review_token(
+	chief: &ChiefCoordinator,
+	review: &decodex_database::ChiefMisalignment,
+) -> String {
+	let (_, guard) =
+		chief.client.live_misalignment_review(&review.thread_id, &review.turn_id).unwrap();
+	super::misalignment::review_token(review, &guard).unwrap()
+}
+
 #[tokio::test]
 async fn explicit_misalignment_continuation_uses_native_override_and_clears_after_ack() {
 	let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
-	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":error,"items":[]}]}}});
+	let history = json!({"_live_misalignment":error,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":{"codexErrorInfo":"misalignmentPolicyViolation"},"items":[]}]}}});
 	let (mut chief, mut sent, _directory) = fixture_with_history(history).await;
 	chief.start_chief("chief", "Coordinate").await.unwrap();
 	chief.observe_misalignment("opaque thread/1", "opaque turn/1", &error).await.unwrap();
 	chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
 	let review = chief.store.chief_misalignment("chief".into()).await.unwrap().unwrap();
 	while sent.try_recv().is_ok() {}
-	chief.continue_misalignment("chief", review, "acknowledged").await.unwrap();
+	let token = live_review_token(&chief, &review);
+	assert!(
+		chief
+			.continue_misalignment("chief", review.clone(), "stale-click", "older-live-evidence")
+			.await
+			.is_err()
+	);
+	assert!(sent.try_recv().is_err());
+	chief.continue_misalignment("chief", review, "acknowledged", &token).await.unwrap();
 	let mut turns = Vec::new();
 	while let Ok(request) = sent.try_recv() {
 		if request["method"] == "turn/start" {
@@ -1967,21 +2485,24 @@ async fn explicit_misalignment_continuation_uses_native_override_and_clears_afte
 
 #[tokio::test]
 async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution() {
-	for outcome in ["changed", "rejected", "uncertain"] {
+	for outcome in ["changed", "rejected", "uncertain", "reverted"] {
 		let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
 		let mut native_error = error.clone();
 		if outcome == "changed" {
 			native_error["misalignment"]["detailedExplanation"] = json!("New findings");
 		}
-		let history = json!({"_continuation_disconnect":outcome=="uncertain","_continuation_reject":outcome=="rejected","opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":native_error,"items":[]}]}}});
+		let history = json!({"_live_misalignment":error,"_misalignment_revert_on_read":outcome=="reverted","_continuation_disconnect":outcome=="uncertain","_continuation_reject":outcome=="rejected","opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":native_error,"items":[]}]}}});
 		let (mut chief, mut sent, directory) = fixture_with_history(history).await;
 		chief.start_chief("chief", "Coordinate").await.unwrap();
 		chief.observe_misalignment("opaque thread/1", "opaque turn/1", &error).await.unwrap();
 		chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
 		let review = chief.store.chief_misalignment("chief".into()).await.unwrap().unwrap();
 		while sent.try_recv().is_ok() {}
-		let failure =
-			chief.continue_misalignment("chief", review.clone(), "acknowledged").await.unwrap_err();
+		let token = live_review_token(&chief, &review);
+		let failure = chief
+			.continue_misalignment("chief", review.clone(), "acknowledged", &token)
+			.await
+			.unwrap_err();
 		assert_eq!(matches!(failure, ChiefError::Rejected(_)), outcome != "uncertain");
 		assert!(chief.store.chief_misalignment("chief".into()).await.unwrap().is_some());
 		let state = chief.store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state;
@@ -1997,7 +2518,7 @@ async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution
 		while let Ok(request) = sent.try_recv() {
 			starts += usize::from(request["method"] == "turn/start");
 		}
-		assert_eq!(starts, usize::from(outcome != "changed"));
+		assert_eq!(starts, usize::from(!["changed", "reverted"].contains(&outcome)));
 		if outcome == "uncertain" {
 			let root = decodex_core::DecodexRoot::new(
 				directory.path().canonicalize().unwrap().join("root"),
@@ -2005,10 +2526,40 @@ async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution
 			.unwrap();
 			let (mut reopened, mut requests, _other) = fixture().await;
 			reopened.store = SqliteStore::open(&root.paths()).unwrap();
-			assert!(reopened.continue_misalignment("chief", review, "new-key").await.is_err());
+			assert!(
+				reopened.continue_misalignment("chief", review, "new-key", &token).await.is_err()
+			);
 			assert!(requests.try_recv().is_err());
 		}
 	}
+}
+
+#[tokio::test]
+async fn misalignment_saved_details_cannot_authorize_a_reconnected_transport() {
+	let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
+	let (mut chief, _sent, directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	chief.observe_misalignment("opaque thread/1", "opaque turn/1", &error).await.unwrap();
+	chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
+	let review = chief.store.chief_misalignment("chief".into()).await.unwrap().unwrap();
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	drop(chief);
+	let (mut reopened, mut requests, _other) = fixture().await;
+	reopened.store = SqliteStore::open(&root.paths()).unwrap();
+	assert!(matches!(
+		reopened
+			.continue_misalignment("chief", review.clone(), "confirm", "old-source-review")
+			.await,
+		Err(ChiefError::Rejected(_))
+	));
+	assert!(requests.try_recv().is_err());
+	assert_eq!(reopened.store.chief_misalignment("chief".into()).await.unwrap(), Some(review));
+	assert_eq!(
+		reopened.store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state,
+		decodex_database::ChiefDispatchState::Idle
+	);
 }
 
 #[tokio::test]
@@ -2057,107 +2608,111 @@ async fn misalignment_does_not_send_or_consume_pending_provider_approval() {
 
 #[tokio::test]
 async fn mcp_form_response_validates_original_schema_before_consuming_live_request() {
-	let (mut chief, mut sent, _directory) = fixture().await;
-	chief.start_chief("chief", "Coordinate").await.unwrap();
-	chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
-	let id = RequestId::String("mcp-form".into());
-	chief.handle_event(ServerEvent::Request {id:id.clone(),method:"mcpServer/elicitation/request".into(),params:json!({"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":"form","requestedSchema":{"type":"object","properties":{"allow":{"type":"boolean"}},"required":["allow"]}})}).await.unwrap();
-	let event = chief.pending_requests[&id];
-	while sent.try_recv().is_ok() {}
-	for response in [
-		json!({"action":"accept","content":{"allow":"true"}}),
-		json!({"action":"accept","content":{"allow":true},"_meta":{"persist":"always"}}),
-		json!({"decision":"accept"}),
-	] {
-		assert!(matches!(
-			chief.respond_pending_event(event, response).await,
-			Err(ChiefError::Rejected(_))
-		));
-		assert_eq!(chief.pending_requests[&id], event);
+	for mode in ["form", "openai/form", "openaiForm"] {
+		let (mut chief, _old_sent, _directory) = fixture().await;
+		chief.start_chief("chief", "Coordinate").await.unwrap();
+		chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
+		let id = RequestId::String("mcp-form".into());
+		let mut sent = attach_request_transport(&mut chief, json!({}), json!({"id":id,"method":"mcpServer/elicitation/request","params":{"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":mode,"requestedSchema":{"type":"object","properties":{"allow":{"type":"boolean"}},"required":["allow"]}}})).await;
+		let event = chief.pending_requests[&id];
+		while sent.try_recv().is_ok() {}
+		for response in [
+			json!({"action":"accept","content":{"allow":"true"}}),
+			json!({"action":"accept","content":{"allow":true},"_meta":{"persist":"always"}}),
+			json!({"decision":"accept"}),
+		] {
+			assert!(matches!(
+				chief.respond_pending_event(event, response).await,
+				Err(ChiefError::Rejected(_))
+			));
+			assert_eq!(chief.pending_requests[&id], event);
+			assert!(sent.try_recv().is_err());
+		}
+		chief
+			.respond_pending_event(
+				event,
+				json!({"action":"accept","content":{"allow":false},"_meta":null}),
+			)
+			.await
+			.unwrap();
+		let reply = sent.recv().await.unwrap();
+		assert_eq!(reply["id"], "mcp-form");
+		assert_eq!(reply["result"]["content"]["allow"], false);
+		assert!(!chief.pending_requests.contains_key(&id));
+		assert!(
+			chief
+				.respond_pending_event(event, json!({"action":"cancel","content":null}))
+				.await
+				.is_err()
+		);
 		assert!(sent.try_recv().is_err());
 	}
-	chief
-		.respond_pending_event(
-			event,
-			json!({"action":"accept","content":{"allow":false},"_meta":null}),
-		)
-		.await
-		.unwrap();
-	let reply = sent.recv().await.unwrap();
-	assert_eq!(reply["id"], "mcp-form");
-	assert_eq!(reply["result"]["content"]["allow"], false);
-	assert!(!chief.pending_requests.contains_key(&id));
-	assert!(
-		chief
-			.respond_pending_event(event, json!({"action":"cancel","content":null}))
-			.await
-			.is_err()
-	);
-	assert!(sent.try_recv().is_err());
 }
 
 #[tokio::test]
 async fn standalone_mcp_resolution_and_reconnection_never_replay_a_reply() {
-	let (mut chief, mut sent, _directory) = fixture().await;
-	chief.start_chief("chief", "Coordinate").await.unwrap();
-	chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
-	let id = RequestId::Number(17);
-	let params = json!({"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":"form","requestedSchema":null});
-	chief
-		.handle_event(ServerEvent::Request {
-			id: id.clone(),
-			method: "mcpServer/elicitation/request".into(),
-			params: params.clone(),
-		})
-		.await
-		.unwrap();
-	let old_event = chief.pending_requests[&id];
-	let mut reconnected =
-		ChiefCoordinator::new(chief.store.clone(), chief.client.clone(), chief.config.clone())
+	for mode in ["form", "openai/form", "openaiForm"] {
+		let (mut chief, mut sent, _directory) = fixture().await;
+		chief.start_chief("chief", "Coordinate").await.unwrap();
+		chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
+		let id = RequestId::Number(17);
+		let params = json!({"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":mode,"requestedSchema":null});
+		chief
+			.handle_event(ServerEvent::Request {
+				id: id.clone(),
+				method: "mcpServer/elicitation/request".into(),
+				params: params.clone(),
+			})
+			.await
 			.unwrap();
-	while sent.try_recv().is_ok() {}
-	assert!(
+		let old_event = chief.pending_requests[&id];
+		let mut reconnected =
+			ChiefCoordinator::new(chief.store.clone(), chief.client.clone(), chief.config.clone())
+				.unwrap();
+		while sent.try_recv().is_ok() {}
+		assert!(
+			reconnected
+				.respond_pending_event(old_event, json!({"action":"accept","content":null}))
+				.await
+				.is_err()
+		);
+		assert!(sent.try_recv().is_err());
 		reconnected
-			.respond_pending_event(old_event, json!({"action":"accept","content":null}))
+			.handle_event(ServerEvent::Request {
+				id: id.clone(),
+				method: "mcpServer/elicitation/request".into(),
+				params,
+			})
 			.await
-			.is_err()
-	);
-	assert!(sent.try_recv().is_err());
-	reconnected
-		.handle_event(ServerEvent::Request {
-			id: id.clone(),
-			method: "mcpServer/elicitation/request".into(),
-			params,
-		})
-		.await
-		.unwrap();
-	let event = reconnected.pending_requests[&id];
-	assert_ne!(event, old_event);
-	reconnected
-		.handle_event(ServerEvent::Notification {
-			method: "serverRequest/resolved".into(),
-			params: json!({"threadId":"wrong-thread","requestId":17}),
-		})
-		.await
-		.unwrap();
-	assert_eq!(reconnected.pending_requests[&id], event);
-	reconnected
-		.handle_event(ServerEvent::Notification {
-			method: "serverRequest/resolved".into(),
-			params: json!({"threadId":"opaque thread/1","requestId":17}),
-		})
-		.await
-		.unwrap();
-	assert!(!reconnected.pending_requests.contains_key(&id));
-	assert_eq!(
-		reconnected.store.get_chief_inbox_event(event).await.unwrap().disposition,
-		Some(ChiefDisposition::Resolved)
-	);
-	assert!(
+			.unwrap();
+		let event = reconnected.pending_requests[&id];
+		assert_ne!(event, old_event);
 		reconnected
-			.respond_pending_event(event, json!({"action":"accept","content":null}))
+			.handle_event(ServerEvent::Notification {
+				method: "serverRequest/resolved".into(),
+				params: json!({"threadId":"wrong-thread","requestId":17}),
+			})
 			.await
-			.is_err()
-	);
-	assert!(sent.try_recv().is_err());
+			.unwrap();
+		assert_eq!(reconnected.pending_requests[&id], event);
+		reconnected
+			.handle_event(ServerEvent::Notification {
+				method: "serverRequest/resolved".into(),
+				params: json!({"threadId":"opaque thread/1","requestId":17}),
+			})
+			.await
+			.unwrap();
+		assert!(!reconnected.pending_requests.contains_key(&id));
+		assert_eq!(
+			reconnected.store.get_chief_inbox_event(event).await.unwrap().disposition,
+			Some(ChiefDisposition::Resolved)
+		);
+		assert!(
+			reconnected
+				.respond_pending_event(event, json!({"action":"accept","content":null}))
+				.await
+				.is_err()
+		);
+		assert!(sent.try_recv().is_err());
+	}
 }

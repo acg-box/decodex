@@ -1,7 +1,9 @@
 //! Durable coordination of independent Codex threads. The caller owns the process
 //! and continuously feeds its event stream to this service.
 
-use decodex_codex::app_server_client::{AppServerClient, ClientError, RequestId, ServerEvent};
+use decodex_codex::app_server_client::{
+	AppServerClient, ClientError, HistoryGuard, RequestId, ServerEvent,
+};
 use decodex_database::{
 	ChiefDisposition, ChiefInboxEvent, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus,
 	EnqueueChiefEvent, SqliteStore, StoreError,
@@ -11,13 +13,18 @@ use serde_json::{Value, json};
 
 mod activity;
 mod archive;
+mod async_projection;
+mod checklist;
 mod guardian;
 mod install;
-mod misalignment;
+pub(crate) mod misalignment;
 pub(crate) mod native_subagents;
+mod native_turns;
 pub(crate) mod observations;
 mod result_messages;
+mod resume_recovery;
 mod task_history;
+pub(crate) mod timeline;
 mod voice;
 
 /// Execution policy selected by the user, applied to actual app-server requests.
@@ -29,11 +36,11 @@ pub struct ChiefConfig {
 	pub chief_effort: String,
 	/// Reasoning effort for independent workers.
 	pub worker_effort: String,
-	/// Absolute execution directory.
+	/// Initial absolute execution directory for newly created threads.
 	pub cwd: String,
-	/// Provider approval policy selected by the host.
+	/// Initial provider approval policy for newly created threads.
 	pub approval_policy: Value,
-	/// Provider sandbox mode selected by the host.
+	/// Initial provider sandbox mode for newly created threads.
 	pub sandbox: String,
 }
 
@@ -92,6 +99,7 @@ impl From<StoreError> for ChiefError {
 
 /// No native subagent interface or model engine is used here.
 pub struct ChiefCoordinator {
+	closing_resumes: std::collections::HashMap<String, resume_recovery::ClosingResume>,
 	voice: Option<voice::VoiceConnection>,
 	store: SqliteStore,
 	client: AppServerClient,
@@ -103,6 +111,7 @@ pub struct ChiefCoordinator {
 	native_generation: Option<decodex_core::ProcessGenerationId>,
 	dispatch_paused: bool,
 	async_recovery_queued: bool,
+	handled_question_revision: u64,
 }
 
 pub(crate) struct ChiefInputExtras<'a> {
@@ -121,9 +130,9 @@ impl ChiefCoordinator {
 	) -> Result<Self, ChiefError> {
 		if config.model.trim().is_empty()
 			|| config.cwd.is_empty()
-			|| !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
+			|| !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "persistent"]
 				.contains(&config.chief_effort.as_str())
-			|| !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
+			|| !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "persistent"]
 				.contains(&config.worker_effort.as_str())
 		{
 			return Err(ChiefError::Invalid("explicit model, effort and cwd required".into()));
@@ -140,8 +149,10 @@ impl ChiefCoordinator {
 			CONNECTION_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 		);
 		Ok(Self {
+			closing_resumes: Default::default(),
 			voice: None,
 			store,
+			handled_question_revision: client.question_revision(),
 			client,
 			config,
 			loaded_threads: std::collections::HashSet::new(),
@@ -169,13 +180,14 @@ impl ChiefCoordinator {
 			.client
 			.initialize(json!({
 				"clientInfo":{"name":"decodex_chief","version":env!("CARGO_PKG_VERSION")},
-				"capabilities":{"experimentalApi":true}
+				"capabilities":decodex_codex::app_server_client::InitializeCapabilities::default()
 			}))
 			.await?)
 	}
 
 	/// Reconcile exact persisted turns after the host reconnects the selected account.
-	/// This hydrates threads and records evidence; it never starts or replays a turn.
+	/// Hydrate threads and record evidence without submitting or replaying local input.
+	/// Native active goals can continue when their thread is restored.
 	pub async fn recover_persisted(&mut self) -> Result<(), ChiefError> {
 		self.recover_voice_calls().await?;
 		if !self.async_recovery_queued {
@@ -198,63 +210,9 @@ impl ChiefCoordinator {
 			.filter(|item| item.dispatch_state != decodex_database::ChiefDispatchState::Idle)
 		{
 			let item = self.store.get_chief_work_item(old.id).await?;
-			let (Some(thread), Some(turn)) =
-				(item.codex_thread_id.as_ref(), item.active_turn_id.as_ref())
-			else {
-				continue;
-			};
-			let mut params = self.work_thread_params(&item).await?;
-			params.as_object_mut().expect("thread params").remove("dynamicTools");
-			params["threadId"] = json!(thread);
-			params["excludeTurns"] = json!(true);
-			let Ok(resumed) = self.client.thread_resume(params).await else {
-				continue;
-			};
-			let effort = if self.is_manager(&item.id).await? {
-				&self.config.chief_effort
-			} else {
-				&self.config.worker_effort
-			};
-			if resumed.pointer("/thread/id").and_then(Value::as_str) != Some(thread)
-				|| resumed["model"].as_str() != Some(&self.config.model)
-				|| resumed["reasoningEffort"].as_str() != Some(effort)
-			{
-				continue;
-			}
-			self.expect_usage_replay(thread, &resumed);
-			self.loaded_threads.insert(thread.clone());
-			let Ok(history) = self.client.thread_read_turn(thread, turn).await else {
-				continue;
-			};
-			if history.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
-				continue;
-			}
-			let Some(exact_turn) = history
-				.pointer("/thread/turns")
-				.and_then(Value::as_array)
-				.and_then(|turns| turns.iter().find(|entry| entry["id"].as_str() == Some(turn)))
-				.cloned()
-			else {
-				continue;
-			};
-			match exact_turn["status"].as_str() {
-				Some("completed" | "failed" | "interrupted") => {
-					self.record_terminal(
-						json!({"threadId":thread,"turn":exact_turn}),
-						Ok(history),
-						false,
-					)
-					.await?;
-				},
-				Some("inProgress")
-					if history.pointer("/thread/status/type").and_then(Value::as_str)
-						== Some("active") =>
-				{
-					self.store.reconcile_chief_dispatch(item.id, turn.clone()).await?;
-				},
-				_ => {},
-			}
+			self.recover_persisted_work(item, None).await?;
 		}
+		self.recover_native_turns().await?;
 		Ok(())
 	}
 
@@ -345,9 +303,10 @@ impl ChiefCoordinator {
 			self.store.validate_chief_usage_resume(thread.clone(), None).await?;
 			None
 		};
-		if let Ok(Some(usage)) =
-			self.store.read_chief_usage_observation(item.id.clone(), turn.clone()).await
-			&& let Ok(value) = serde_json::from_str::<Value>(&usage.payload)
+		if let Ok(Some(usage)) = self
+			.store
+			.read_chief_usage_observation(item.id.clone(), thread.clone(), turn.clone())
+			.await && let Ok(value) = serde_json::from_str::<Value>(&usage.payload)
 		{
 			evidence["tokenUsage"] = value["tokenUsage"].clone();
 		}
@@ -378,6 +337,7 @@ impl ChiefCoordinator {
 
 	async fn work_thread_params(&self, item: &ChiefWorkItem) -> Result<Value, ChiefError> {
 		let mut params = self.thread_params(self.is_manager(&item.id).await?);
+		params["experimentalRawEvents"] = json!(true);
 		let work = self.store.list_chief_work_items().await?;
 		let workspaces = self.store.chief_workspaces().await?;
 		let mut current = Some(item.id.as_str());
@@ -393,6 +353,19 @@ impl ChiefCoordinator {
 				.iter()
 				.find(|work| work.id == id)
 				.and_then(|work| work.parent_goal_id.as_deref());
+		}
+		Ok(params)
+	}
+
+	async fn work_thread_resume_params(&self, item: &ChiefWorkItem) -> Result<Value, ChiefError> {
+		let mut params = self.work_thread_params(item).await?;
+		// Hydration must preserve native permission profiles and their directory bindings.
+		// Start-time overrides can silently replace them on cold resume, while an
+		// observed loaded thread ignores the same overrides. Explicit model selection
+		// and caller readback checks remain separate from permission hydration.
+		let object = params.as_object_mut().expect("thread params");
+		for field in ["dynamicTools", "approvalPolicy", "sandbox", "cwd"] {
+			object.remove(field);
 		}
 		Ok(params)
 	}
@@ -444,15 +417,32 @@ impl ChiefCoordinator {
 		Ok(self.store.get_chief_work_item(id.into()).await?)
 	}
 
-	fn expect_usage_replay(&mut self, thread: &str, response: &Value) {
-		let turns = response
+	async fn expect_usage_replay(&mut self, thread: &str, response: &Value) -> Option<String> {
+		if response.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
+			return None;
+		}
+		let revision = self.client.history_revision();
+		let mut turns: Vec<String> = response
 			.pointer("/thread/turns")
 			.and_then(Value::as_array)
 			.into_iter()
 			.flatten()
 			.filter_map(|turn| turn["id"].as_str().map(str::to_owned))
 			.collect();
-		self.usage_replays.insert(thread.into(), turns);
+		// excludeTurns resumes omit the history used to identify the replayed counter.
+		// Read only the latest native turn; do not hydrate unbounded history or replay input.
+		if turns.is_empty()
+			&& let Ok(Some(turn)) = self.client.thread_latest_turn_id(thread).await
+		{
+			turns.push(turn);
+		}
+		if self.client.history_revision() != revision {
+			self.usage_replays.remove(thread);
+			return None;
+		}
+		let latest = turns.last().cloned();
+		self.usage_replays.insert(thread.into(), turns.into_iter().collect());
+		latest
 	}
 
 	fn thread_params(&self, chief: bool) -> Value {
@@ -495,6 +485,9 @@ impl ChiefCoordinator {
 				ChiefError::Invalid("request event is not pending on this live connection".into())
 			})?;
 		let event = self.store.get_chief_inbox_event(event_id).await?;
+		if event.disposition.is_some() {
+			return Err(ChiefError::Rejected("Native request has already been resolved.".into()));
+		}
 		if self.store.chief_misalignment(event.work_item_id.clone()).await?.is_some() {
 			return Err(ChiefError::Invalid(
 				"This conversation is paused for provider findings.".into(),
@@ -509,7 +502,6 @@ impl ChiefCoordinator {
 				return Err(ChiefError::Rejected("Native request ownership has changed.".into()));
 			}
 		}
-		let mut install_guard = None;
 		if payload["method"] == "mcpServer/elicitation/request" {
 			decodex_protocol::validate_mcp_response(&payload["params"], &response)
 				.map_err(ChiefError::Rejected)?;
@@ -517,29 +509,29 @@ impl ChiefCoordinator {
 				&& payload["params"]["_meta"]["codex_approval_kind"] == "tool_suggestion"
 			{
 				self.verify_install_suggestion_complete(event_id).await?;
-				install_guard = Some(self.install_request_guard(event_id).await?);
 			}
 		}
-		if let Some(guard) = install_guard {
-			// A queued peer resolution may revoke the guard before the write. Keep
-			// the inbox mapping until success so that notification can still settle it.
-			self.client.respond_guarded(request_id.clone(), response, guard).await?;
-			self.pending_requests.remove(&request_id);
-		} else {
-			self.pending_requests.remove(&request_id);
-			self.client.respond(request_id, response).await?;
-		}
+		let method = exact(&payload, "/method")?;
+		let guard = self
+			.client
+			.server_request_guard(&request_id, &method, &payload["params"])
+			.ok_or_else(|| ChiefError::Rejected("Native request is no longer live.".into()))?;
+		// Drain queued native resolutions at dispatch, not only in the actor queue.
+		// Transport consumes the guard before writing; uncertain writes cannot replay.
+		self.client.respond_guarded(request_id.clone(), response, guard).await?;
+		self.pending_requests.remove(&request_id);
 		self.store.acknowledge_chief_request_event(event_id).await?;
 		Ok(())
 	}
 
 	pub(crate) async fn refresh_integrations(&self, work: &str) -> Result<bool, ChiefError> {
-		self.store
+		let thread = self
+			.store
 			.get_chief_work_item(work.into())
 			.await?
 			.codex_thread_id
 			.ok_or_else(|| ChiefError::Rejected("Task has no native thread".into()))?;
-		Ok(self.client.refresh_integrations().await?)
+		Ok(self.client.refresh_integrations(&thread).await?)
 	}
 
 	pub(crate) async fn add_resource_link(
@@ -850,7 +842,7 @@ impl ChiefCoordinator {
 		prompt: &str,
 		events: Vec<i64>,
 	) -> Result<String, ChiefError> {
-		self.dispatch_with_claim(item, prompt, events, None).await
+		self.dispatch_with_claim(item, prompt, events, None, None).await
 	}
 
 	async fn dispatch_with_claim(
@@ -859,6 +851,7 @@ impl ChiefCoordinator {
 		prompt: &str,
 		events: Vec<i64>,
 		retry: Option<(i64, i64)>,
+		history_guard: Option<HistoryGuard>,
 	) -> Result<String, ChiefError> {
 		if self.store.chief_misalignment(item.id.clone()).await?.is_some() {
 			return Err(ChiefError::Invalid(
@@ -915,9 +908,9 @@ impl ChiefCoordinator {
 		if item.dispatch_state != decodex_database::ChiefDispatchState::Idle {
 			return Err(ChiefError::Busy);
 		}
-		// Resume is idempotent hydration of the exact thread, never a turn retry.
-		let mut resume = self.work_thread_params(&item).await?;
-		resume.as_object_mut().expect("thread params").remove("dynamicTools");
+		// Restore the exact thread without replaying local input. Native queued work
+		// or an active goal can continue during resume.
+		let mut resume = self.work_thread_resume_params(&item).await?;
 		resume["threadId"] = json!(thread);
 		resume["excludeTurns"] = json!(true);
 		if !self.loaded_threads.contains(thread) {
@@ -939,18 +932,16 @@ impl ChiefCoordinator {
 					"resumed thread/model/effort readback differs from selection".into(),
 				));
 			}
-			let last_turn = response
-				.pointer("/thread/turns")
-				.and_then(Value::as_array)
-				.and_then(|turns| turns.last())
-				.and_then(|turn| turn["id"].as_str())
-				.map(str::to_owned);
+			let last_turn = self.expect_usage_replay(thread, &response).await;
 			self.store.validate_chief_usage_resume(thread.clone(), last_turn).await?;
-			self.expect_usage_replay(thread, &response);
 			self.loaded_threads.insert(thread.clone());
 		}
 		let (params, external) =
 			self.dispatch_input(&item, prompt, &events, retry.is_some()).await?;
+		let history_event = history_guard.as_ref().and_then(|_| events.first().copied());
+		if history_guard.is_some() && (events.len() != 1 || !external.is_empty()) {
+			return Err(ChiefError::Invalid("question answers require one isolated input".into()));
+		}
 		let instruction = events.is_empty().then(|| prompt.to_owned());
 		if let Some((event, now)) = retry {
 			self.store.begin_chief_capacity_retry(item.id.clone(), event, now).await?;
@@ -965,17 +956,38 @@ impl ChiefCoordinator {
 			if !external.is_empty() {
 				self.inject_external_context(thread, "work_updates", &json!(external)).await?;
 			}
-			let value = self.client.turn_start(params).await?;
+			let value = if let Some(guard) = history_guard {
+				self.client.request_with_history("turn/start", params, guard).await?
+			} else {
+				self.client.turn_start(params).await?
+			};
 			exact(&value, "/turn/id")
 		}
 		.await;
+		self.finish_dispatch_attempt(&item, history_event, turn).await
+	}
+
+	async fn finish_dispatch_attempt(
+		&self,
+		item: &ChiefWorkItem,
+		history_event: Option<i64>,
+		turn: Result<String, ChiefError>,
+	) -> Result<String, ChiefError> {
 		match turn {
 			Ok(turn) => {
 				self.store.acknowledge_chief_dispatch(item.id.clone(), turn.clone()).await?;
 				Ok(turn)
 			},
 			Err(error) => {
-				self.store.mark_chief_dispatch_unknown(item.id.clone()).await?;
+				if let Some(event) = history_event
+					&& matches!(error, ChiefError::Transport(ClientError::StaleHistory))
+				{
+					self.store
+						.reject_chief_async_before_write(item.id.clone(), event, Some(item.clone()))
+						.await?;
+				} else {
+					self.store.mark_chief_dispatch_unknown(item.id.clone()).await?;
+				}
 				Err(error)
 			},
 		}
@@ -1110,8 +1122,12 @@ impl ChiefCoordinator {
 		key: &str,
 		text: &str,
 		extras: ChiefInputExtras<'_>,
-		async_question_id: Option<&str>,
+		question: Option<(&str, HistoryGuard)>,
 	) -> Result<(), ChiefError> {
+		let (async_question_id, history_guard) = match question {
+			Some((id, guard)) => (Some(id), Some(guard)),
+			None => (None, None),
+		};
 		if !extras.task_references.is_empty()
 			&& (!self.is_manager(id).await? || self.store.chief_tool_version(id.into()).await? < 3)
 		{
@@ -1149,11 +1165,20 @@ impl ChiefCoordinator {
 				StoreError::InvalidInput(message) => ChiefError::Rejected(message.into()),
 				other => other.into(),
 			})?;
-		let result = self.client.turn_steer(json!({"threadId":thread,"expectedTurnId":expected_turn,"clientUserMessageId":key,"input":input})).await;
+		let params = json!({"threadId":thread,"expectedTurnId":expected_turn,"clientUserMessageId":key,"input":input});
+		let result = if let Some(guard) = history_guard {
+			self.client.request_with_history("turn/steer", params, guard).await
+		} else {
+			self.client.turn_steer(params).await
+		};
 		match result {
 			Ok(result) if result["turnId"].as_str() == Some(expected_turn) => {
 				self.store.finish_chief_steer(event, true).await?;
 				Ok(())
+			},
+			Err(ClientError::StaleHistory) => {
+				self.store.reject_chief_async_before_write(id.into(), event, None).await?;
+				Err(ClientError::StaleHistory.into())
 			},
 			Err(ClientError::Remote(error)) => {
 				self.store.finish_chief_steer(event, false).await?;
@@ -1174,6 +1199,12 @@ impl ChiefCoordinator {
 		answer: &str,
 		key: &str,
 	) -> Result<(), ChiefError> {
+		let history_guard =
+			self.client.question_guard(self.handled_question_revision).ok_or_else(|| {
+				ChiefError::Invalid(
+					"Native history changed; refresh the question before answering".into(),
+				)
+			})?;
 		if self.store.chief_async_answer_pending(id.into(), question_id.into()).await? {
 			return Err(ChiefError::UnknownDispatch);
 		}
@@ -1205,7 +1236,7 @@ impl ChiefCoordinator {
 					key,
 					reply.as_str(),
 					ChiefInputExtras { attachments: &[], task_references: &[] },
-					Some(question_id),
+					Some((question_id, history_guard)),
 				)
 				.await?;
 			},
@@ -1219,7 +1250,14 @@ impl ChiefCoordinator {
 						payload: json!({"text":reply.as_str(),"source":"user","asyncQuestionId":question_id}).to_string(),
 					})
 					.await?;
-				self.dispatch_with_events(&work, reply.as_str(), vec![event.id]).await?;
+				self.dispatch_with_claim(
+					&work,
+					reply.as_str(),
+					vec![event.id],
+					None,
+					Some(history_guard),
+				)
+				.await?;
 			},
 			_ => return Err(ChiefError::UnknownDispatch),
 		}
@@ -1245,14 +1283,54 @@ impl ChiefCoordinator {
 		Ok(())
 	}
 
+	async fn observe_live_text(&self, method: &str, params: &Value) -> Result<bool, ChiefError> {
+		let (kind, completed) = match method {
+			"item/plan/delta" => ("plan", false),
+			"item/agentMessage/delta" => ("agentMessage", false),
+			"item/completed" => match params["item"]["type"].as_str() {
+				Some(kind @ ("plan" | "agentMessage")) => (kind, true),
+				_ => return Ok(false),
+			},
+			_ => return Ok(false),
+		};
+		self.store
+			.update_chief_output_record(decodex_database::ChiefOutputUpdate {
+				thread_id: exact(params, "/threadId")?,
+				turn_id: exact(params, "/turnId")?,
+				item_id: exact(params, if completed { "/item/id" } else { "/itemId" })?,
+				kind: kind.into(),
+				text: exact(params, if completed { "/item/text" } else { "/delta" })?,
+				completed,
+			})
+			.await?;
+		Ok(true)
+	}
+
 	/// Consume notifications and requests serially. Transport reads and RPC reply
 	/// correlation continue independently while this method awaits a response.
 	pub async fn handle_event(&mut self, event: ServerEvent) -> Result<(), ChiefError> {
 		self.voice_event(&event).await?;
 		if let ServerEvent::Notification { method, params } = &event {
-			self.observe_notification(method, params).await?;
+			self.observe_question_state_notification(method, params).await?;
+			if method == "turn/plan/updated"
+				&& let Some(text) = checklist::text(params)
+			{
+				self.store
+					.record_chief_checklist(
+						exact(params, "/threadId")?,
+						exact(params, "/turnId")?,
+						text,
+					)
+					.await?;
+			}
+			if self.observe_live_text(method, params).await? {
+				return Ok(());
+			}
 		}
 		match event {
+			ServerEvent::Notification { method, params } if method == "turn/started" => {
+				self.observe_native_turn(&params).await?;
+			},
 			ServerEvent::Notification { method, params } if method == "serverRequest/resolved" => {
 				let (Some(thread), Some(raw_id)) =
 					(params["threadId"].as_str(), params.get("requestId"))
@@ -1280,7 +1358,11 @@ impl ChiefCoordinator {
 				if ["thread/closed", "thread/archived", "thread/deleted"]
 					.contains(&method.as_str()) =>
 			{
-				self.loaded_threads.remove(&exact(&params, "/threadId")?);
+				let thread = exact(&params, "/threadId")?;
+				self.loaded_threads.remove(&thread);
+				if method != "thread/closed" {
+					self.closing_resumes.retain(|_, pending| pending.thread != thread);
+				}
 			},
 			ServerEvent::Notification { method, params }
 				if method == "thread/tokenUsage/updated" =>
@@ -1300,31 +1382,6 @@ impl ChiefCoordinator {
 			ServerEvent::Notification { method, params } if method == "turn/completed" => {
 				self.handle_completed_turn(params).await?;
 			},
-			ServerEvent::Notification { method, params } if method == "item/agentMessage/delta" => {
-				self.store
-					.update_chief_output(
-						exact(&params, "/threadId")?,
-						exact(&params, "/turnId")?,
-						exact(&params, "/itemId")?,
-						exact(&params, "/delta")?,
-						false,
-					)
-					.await?;
-			},
-			ServerEvent::Notification { method, params }
-				if method == "item/completed" && params["item"]["type"] == "agentMessage" =>
-			{
-				self.store
-					.update_chief_output(
-						exact(&params, "/threadId")?,
-						exact(&params, "/turnId")?,
-						exact(&params, "/item/id")?,
-						params["item"]["text"].as_str().unwrap_or_default().to_owned(),
-						true,
-					)
-					.await?;
-			},
-
 			ServerEvent::Notification { method, params }
 				if method == "item/started" || method == "item/completed" =>
 			{
@@ -1361,6 +1418,20 @@ impl ChiefCoordinator {
 				return Err(error.into());
 			},
 			_ => {},
+		}
+		Ok(())
+	}
+
+	async fn observe_native_turn(&self, params: &Value) -> Result<(), ChiefError> {
+		if !self.dispatch_paused && params["turn"]["status"] == "inProgress" {
+			self.store
+				.observe_chief_native_turn(
+					exact(params, "/threadId")?,
+					exact(params, "/turn/id")?,
+					self.native_generation.as_ref().map(|id| id.as_str().to_owned()),
+					self.connection_id.clone(),
+				)
+				.await?;
 		}
 		Ok(())
 	}
@@ -1773,16 +1844,18 @@ impl ChiefCoordinator {
 
 	/// Dispatch only undelivered external evidence while the personal Chief is idle.
 	pub async fn check_due_followups(&mut self, now: i64) -> Result<(), ChiefError> {
+		self.recover_async_questions().await?;
 		if now < 0 {
 			return Err(ChiefError::Invalid("invalid due-check time".into()));
 		}
+		self.recover_closing_threads().await?;
 		// Fresh input takes precedence over a saved retry, including after restart.
 		self.wake_pending().await?;
 		for retry in self.store.due_chief_capacity_retries(now).await? {
 			let work = self.store.get_chief_work_item(retry.work_item_id).await?;
 			self.dispatch_with_claim(&work,
                 "The previous turn stopped because the selected model was temporarily at capacity. Continue the existing request from the saved thread context. Preserve completed work and do not repeat completed actions. This is a capacity retry, not a new goal or a change of model.",
-                Vec::new(),Some((retry.event_id,now))).await?;
+                Vec::new(),Some((retry.event_id,now)),None).await?;
 		}
 		for work in self.store.list_unnotified_due_chief_work_items(now, 1000).await? {
 			let due = work

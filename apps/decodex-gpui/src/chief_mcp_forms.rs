@@ -26,7 +26,7 @@ impl ChiefSurface {
 		let Ok(value) = serde_json::from_str::<Value>(request_json.as_str()) else {
 			return;
 		};
-		if let Ok(fields) = decodex_protocol::mcp_form_fields(&value["requestedSchema"]) {
+		if let Ok(fields) = decodex_protocol::mcp_request_fields(&value) {
 			for field in fields.into_iter().filter(|field| field.choices.is_empty()) {
 				self.mcp_inputs.insert(
 					field.id,
@@ -66,7 +66,7 @@ impl ChiefSurface {
 			return;
 		}
 		let result = (|| -> Result<Value, String> {
-			let fields = decodex_protocol::mcp_form_fields(&value["requestedSchema"])?;
+			let fields = decodex_protocol::mcp_request_fields(&value)?;
 			if fields.is_empty() {
 				return Ok(
 					if value.pointer("/_meta/codex_approval_kind").and_then(Value::as_str)
@@ -135,6 +135,10 @@ impl ChiefSurface {
 					.unwrap_or("")
 					.to_owned(),
 			);
+		if let Some(account) = mcp_account_label(value) {
+			panel = panel.child(account);
+			panel = panel.child(self.account_settings_panel(event, cx));
+		}
 		if let Some(params) = value
 			.pointer("/_meta/tool_params_display")
 			.or_else(|| value.pointer("/_meta/tool_params"))
@@ -145,7 +149,7 @@ impl ChiefSurface {
 		panel = self.mcp_verification_link(panel, event, value, cx);
 		let fields =
 			if matches!(value["mode"].as_str(), Some("form" | "openai/form" | "openaiForm")) {
-				decodex_protocol::mcp_form_fields(&value["requestedSchema"])
+				decodex_protocol::mcp_request_fields(value)
 			} else {
 				Err("This request requires a different verification flow.".into())
 			};
@@ -354,9 +358,28 @@ pub(super) fn mcp_button(
 		.into_any_element()
 }
 
+fn mcp_account_label(value: &Value) -> Option<String> {
+	if value["serverName"] != "codex_apps" {
+		return None;
+	}
+	let link = value.pointer("/_meta/link_id")?.as_str().filter(|link| !link.is_empty())?;
+	Some(format!("Connected account link: {link}"))
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn account_label_uses_only_native_apps_metadata() {
+		let request = json!({"serverName":"codex_apps","_meta":{"connector_id":"calendar","link_id":" work/link "},"tool_params":{"link_id":"personal"}});
+		assert_eq!(mcp_account_label(&request), Some("Connected account link:  work/link ".into()));
+		let mut other = request.clone();
+		other["serverName"] = json!("custom_mcp");
+		assert_eq!(mcp_account_label(&other), None);
+		other = request;
+		other["_meta"]["link_id"] = Value::Null;
+		assert_eq!(mcp_account_label(&other), None);
+	}
 	#[gpui::test]
 	fn approval_renders_only_offered_persistence_and_rejects_stale_scope(
 		cx: &mut gpui::TestAppContext,
@@ -365,6 +388,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+                runtime_source: None,
                 workspaces: vec![], dependencies: vec![],
                 work_items: vec![ChiefWorkItemDto {
                     id:"root".into(), parent_goal_id:None, kind:ChiefWorkKindDto::Goal,
@@ -396,6 +420,43 @@ mod tests {
 			assert_eq!(s.feedback, "No service profile is configured.");
 			assert!(s.command_task.is_none());
 		});
+		surface.update(visual, |s, cx| {
+			let request = ChiefRequestResult::Available {
+				event_id: 7, work_id: "root".into(), method: "mcpServer/elicitation/request".into(),
+				request_json: HistoryText::new(json!({"mode":"openaiForm","message":"Select a preview","requestedSchema":{
+					"type":"object","properties":{"template":{"type":"string","oneOf":[{"const":"a","title":"A","x-openai-preview":{"src":"data:image/png;base64,fixture"}}]}}
+				}}).to_string()).unwrap(),
+			};
+			s.request = Some(request);
+			s.feedback.clear();
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(
+			visual.debug_bounds("mcp-submit").is_none(),
+			"unsupported form cannot become partial approval"
+		);
+		assert!(visual.debug_bounds("mcp-decline").is_some());
+		assert!(visual.debug_bounds("mcp-cancel").is_some());
+		surface.update(visual, |s, cx| {
+			if let Some(ChiefRequestResult::Available { request_json, .. }) = &mut s.request {
+				*request_json = HistoryText::new(
+					json!({"mode":"openaiForm","requestedSchema":null}).to_string(),
+				)
+				.unwrap();
+			}
+			s.submit_mcp_form(7, cx);
+			assert_eq!(s.feedback, "This form schema is not supported.");
+			assert!(s.command_task.is_none());
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("mcp-submit").is_none());
+		assert!(visual.debug_bounds("mcp-cancel").is_some());
 	}
 
 	#[gpui::test]
@@ -404,6 +465,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+                runtime_source: None,
                 workspaces: vec![], dependencies: vec![],
                 work_items: vec![ChiefWorkItemDto {
                     id:"root".into(), parent_goal_id:None, kind:ChiefWorkKindDto::Goal,
@@ -462,9 +524,10 @@ mod tests {
 
 	#[gpui::test]
 	fn form_defaults_are_not_answers_and_same_request_keeps_drafts(cx: &mut gpui::TestAppContext) {
-		let surface = cx.new(ChiefSurface::new);
-		surface.update(cx,|s,cx| {
-            let request=ChiefRequestResult::Available {event_id:7,work_id:"chief".into(),method:"mcpServer/elicitation/request".into(),request_json:HistoryText::new(json!({"mode":"form","requestedSchema":{"type":"object","properties":{"agree":{"type":"boolean","default":true},"name":{"type":"string"}},"required":["agree","name"]}}).to_string()).unwrap()};
+		for mode in ["form", "openai/form", "openaiForm"] {
+			let surface = cx.new(ChiefSurface::new);
+			surface.update(cx,|s,cx| {
+            let request=ChiefRequestResult::Available {event_id:7,work_id:"chief".into(),method:"mcpServer/elicitation/request".into(),request_json:HistoryText::new(json!({"mode":mode,"requestedSchema":{"type":"object","properties":{"agree":{"type":"boolean","default":true},"name":{"type":"string"}},"required":["agree","name"]}}).to_string()).unwrap()};
             s.prepare_mcp_inputs(&request,cx);s.request=Some(request.clone());s.selected=Some("chief".into());
             s.submit_mcp_form(7,cx);
             assert!(s.feedback.contains("required"));assert!(s.command_task.is_none());
@@ -476,5 +539,6 @@ mod tests {
             s.submit_mcp_form(6,cx);assert!(s.command_task.is_none());
             s.submit_mcp_form(7,cx);assert_eq!(s.feedback,"No service profile is configured.");
         });
+		}
 	}
 }
