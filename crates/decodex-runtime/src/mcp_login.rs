@@ -403,4 +403,64 @@ mod tests {
 		gateway.disconnect(None).await;
 		assert!(!gateway.0.lock().await.as_ref().unwrap().pending);
 	}
+	#[tokio::test]
+	async fn package_names_remain_exact_oauth_identities() {
+		for (name, alias) in [
+			("npm:@scope/package.name", "npm__scope_package_name"),
+			("local:local:foo", "local:foo"),
+		] {
+			let (local, remote) = tokio::io::duplex(4096);
+			let (reader, writer) = tokio::io::split(local);
+			let (client, _events) = AppServerClient::from_io(reader, writer);
+			let server = tokio::spawn(async move {
+				let (reader, mut writer) = tokio::io::split(remote);
+				let mut lines = BufReader::new(reader).lines();
+				let request: serde_json::Value =
+					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+				assert_eq!(request["method"], "mcpServer/oauth/login");
+				assert_eq!(request["params"]["name"], name);
+				writer
+					.write_all(
+						format!(
+							"{}\n",
+							json!({"id":request["id"],"result":{"authorizationUrl":"https://example.test/authorize"}})
+						)
+						.as_bytes(),
+					)
+					.await
+					.unwrap();
+				assert!(
+					tokio::time::timeout(Duration::from_millis(100), lines.next_line())
+						.await
+						.is_err(),
+					"no replay for alias or status reads"
+				);
+			});
+			let request = McpLoginRequest::Start {
+				session_id: EntityId::new("intent").unwrap(),
+				work_id: EntityId::new("work").unwrap(),
+				server_name: WireText::new(name).unwrap(),
+			};
+			let gateway = McpLoginGateway::default();
+			assert_eq!(
+				gateway.exchange(&request, Some(source(&client))).await.phase,
+				McpLoginPhase::AwaitingUser
+			);
+			for (reported, phase) in
+				[(alias, McpLoginPhase::AwaitingUser), (name, McpLoginPhase::NativeCompleted)]
+			{
+				gateway
+					.observe(
+						&generation(),
+						&ServerEvent::Notification {
+							method: "mcpServer/oauthLogin/completed".into(),
+							params: json!({"threadId":"native-thread","name":reported,"success":true}),
+						},
+					)
+					.await;
+				assert_eq!(gateway.exchange(&request, Some(source(&client))).await.phase, phase);
+			}
+			server.await.unwrap();
+		}
+	}
 }
