@@ -997,7 +997,6 @@ impl ChiefSurface {
 
 	pub(crate) fn operation_notices(&self) -> Vec<(&'static str, String)> {
 		[
-			("Conversation status", &self.archive.feedback),
 			("Review", &self.guardian.feedback),
 			("Installation", &self.installation.feedback),
 			("Tools and plugins", &self.integration_feedback),

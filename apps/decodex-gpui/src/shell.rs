@@ -4561,16 +4561,16 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			.map_or("No conversation selected", |task| conversation_state_label(task.state))
 	};
 	let state_color = selected_task.map_or(WB_BLUE, |task| conversation_state_color(task.state));
-	let detail = conversation_refresh_status(shell.quick.refresh)
+	let detail = shell
+		.input_status
+		.as_ref()
+		.map(SharedString::to_string)
+		.or_else(|| conversation_refresh_status(shell.quick.refresh))
 		.or_else(|| {
-			(shell.quick.command_conversation_id.as_ref() == feedback_conversation
-				&& !matches!(
-					shell.quick.command,
-					ConversationCommandState::Refused | ConversationCommandState::OutcomeUnknown
-				))
-			.then(|| command_status(shell.quick.command))
-			.flatten()
-			.map(str::to_owned)
+			(shell.quick.command_conversation_id.as_ref() == feedback_conversation)
+				.then(|| command_status(shell.quick.command))
+				.flatten()
+				.map(str::to_owned)
 		})
 		.or_else(|| {
 			selected_task

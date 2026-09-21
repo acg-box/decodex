@@ -1394,6 +1394,7 @@ impl ChiefSurface {
 		let selected = self.snapshot.as_ref().and_then(|snapshot| {
 			snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())
 		});
+		let notice = self.status_notice();
 		let current = selected.and_then(|work| self.current_activity_label(work));
 		let pending = self
 			.snapshot
@@ -1409,13 +1410,13 @@ impl ChiefSurface {
 		let label = if self.sending {
 			Some("Sending…")
 		} else if self.uncertain {
-			Some("Delivery unconfirmed · Draft kept. Check notifications before sending again.")
+			Some("Delivery unconfirmed · Draft kept. Sending is paused to avoid duplicates.")
 		} else if self.selected.as_deref().is_some_and(|id| self.thread_in_use(id)) {
 			Some("In use in another app · Your message is saved and waiting")
 		} else if pending.iter().any(|event| {
 			event.event_kind.ends_with("_needs_attention") || event.event_kind.ends_with("_failed")
 		}) {
-			Some("Agent connection needs attention · Open notifications for details")
+			Some("This conversation needs attention. Its current operation could not complete.")
 		} else if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
 			Some("Connection unavailable · Reconnecting")
 		} else if !self.feedback.is_empty() && self.feedback != "Message saved · Waiting for agent…"
@@ -1435,7 +1436,9 @@ impl ChiefSurface {
 					Some(self.feedback.as_str()),
 				ChiefDispatchStateDto::Idle => None,
 			})
-		};
+		}
+		.or_else(|| notice.as_ref().map(|(_, detail, _)| detail.as_str()))
+		.or_else(|| (!self.archive.feedback.is_empty()).then_some(self.archive.feedback.as_str()));
 		let Some(label) = label else {
 			return div().into_any_element();
 		};

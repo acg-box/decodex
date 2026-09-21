@@ -7,8 +7,6 @@ enum Recovery {
 	General,
 	Accounts,
 	None,
-	RefreshChief,
-	RefreshArchive,
 	LoginItems,
 }
 struct Notice {
@@ -177,28 +175,14 @@ impl Shell {
 			.collect::<Vec<_>>();
 		self.account_notifications(&mut notices);
 		self.profile_notifications(&mut notices);
-		self.conversation_notifications(&mut notices);
 		let chief = self.chief.read(cx);
-		if let Some((title, detail, retry)) =
-			chief.status_notice().filter(|(title, _, _)| *title != "Sending")
-		{
-			notices.push(Notice::new(
-				title,
-				detail,
-				if retry { Recovery::RefreshChief } else { Recovery::None },
-			));
-		}
-		notices.extend(chief.operation_notices().into_iter().map(|(title, detail)| {
-			Notice::new(
-				title,
-				detail,
-				if title == "Conversation status" {
-					Recovery::RefreshArchive
-				} else {
-					Recovery::None
-				},
-			)
-		}));
+		notices.extend(
+			chief
+				.operation_notices()
+				.into_iter()
+				.map(|(title, detail)| Notice::new(title, detail, Recovery::None)),
+		);
+
 		if connection.label != "Online" {
 			notices.push(Notice::new(
 				connection.label,
@@ -306,31 +290,6 @@ impl Shell {
 		};
 		if let Some(detail) = detail {
 			notices.push(Notice::new("Account profile", detail, Recovery::Accounts));
-		}
-	}
-
-	fn conversation_notifications(&self, notices: &mut Vec<Notice>) {
-		if let Some(detail) = &self.input_status {
-			notices.push(Notice::new("Message delivery", detail.to_string(), Recovery::None));
-		}
-		if matches!(
-			self.quick.command,
-			ConversationCommandState::Refused | ConversationCommandState::OutcomeUnknown
-		) && let Some(detail) = command_status(self.quick.command)
-		{
-			notices.push(Notice::new("Conversation", detail, Recovery::None));
-		}
-		if matches!(
-			self.quick.load,
-			ConversationsLoadState::Offline
-				| ConversationsLoadState::Unavailable
-				| ConversationsLoadState::Refused
-		) {
-			notices.push(Notice::new(
-				"Conversation",
-				conversation_load_status(self.quick.load),
-				Recovery::None,
-			));
 		}
 	}
 
@@ -449,7 +408,6 @@ impl Shell {
 			Recovery::General => "Settings",
 			Recovery::Accounts => "Accounts",
 			Recovery::None => unreachable!(),
-			Recovery::RefreshChief | Recovery::RefreshArchive => "Refresh",
 			Recovery::LoginItems => "Open Login Items",
 		};
 		div()
@@ -469,9 +427,6 @@ impl Shell {
 			.on_click(cx.listener(move |s, event, window, cx| {
 				s.status_open = false;
 				match recovery {
-					Recovery::RefreshChief => s.chief.update(cx, |chief, cx| chief.refresh(cx)),
-					Recovery::RefreshArchive =>
-						s.chief.update(cx, |chief, cx| chief.load_archive_state(true, cx)),
 					Recovery::LoginItems => s.settings.update(cx, |settings, cx| {
 						settings.open_login_items_settings(event, window, cx)
 					}),
@@ -550,10 +505,8 @@ mod tests {
 					.any(|n| n.title == "Accounts" && n.detail == "Account change refused")
 			);
 			assert!(
-				notices
-					.iter()
-					.any(|n| n.title == "Message delivery"
-						&& n.detail == "Message was not delivered")
+				!notices.iter().any(|n| n.detail == "Message was not delivered"),
+				"thread delivery errors belong beside the conversation"
 			);
 			s.account_status = None;
 			s.input_status = None;
