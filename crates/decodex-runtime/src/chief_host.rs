@@ -111,17 +111,16 @@ impl ChiefHost {
 		self.voice.exchange(request)
 	}
 
-	pub(crate) fn can_continue_misalignment(
+	pub(crate) fn misalignment_review_token(
 		&self,
 		review: &decodex_database::ChiefMisalignment,
-	) -> bool {
-		let Some((_, client)) = self.runtime.chief_catalog_client() else {
-			return false;
-		};
-		client.live_misalignment_review(&review.thread_id, &review.turn_id).is_some_and(
+	) -> Option<String> {
+		let (_, client) = self.runtime.chief_catalog_client()?;
+		client.live_misalignment_review(&review.thread_id, &review.turn_id).and_then(
 			|(error, guard)| {
-				guard.is_live()
-					&& crate::chief::misalignment::details(&error) == review.details_json
+				(crate::chief::misalignment::details(&error) == review.details_json)
+					.then(|| crate::chief::misalignment::review_token(review, &guard))
+					.flatten()
 			},
 		)
 	}
@@ -719,11 +718,11 @@ impl ChiefHost {
 					.await
 					.map_err(|_| "Provider findings unavailable")?
 					.ok_or("Provider precaution is no longer current")?;
-				if review.review_id() != review_id.as_str() {
+				if self.misalignment_review_token(&review).as_deref() != Some(review_id.as_str()) {
 					return Err("Provider findings changed; review them again".into());
 				}
 				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
-				chief.continue_misalignment(work_id.as_str(),review,&key).await.map_err(|error| match error { ChiefError::Rejected(_) => ChiefHostError::Rejected("Continuation was rejected or the findings changed. Review the latest findings before trying again."), _ => ChiefHostError::Unknown("Continuation was not confirmed. Inspect the latest conversation state before trying again.") })?;
+				chief.continue_misalignment(work_id.as_str(),review,&key,review_id.as_str()).await.map_err(|error| match error { ChiefError::Rejected(_) => ChiefHostError::Rejected("Continuation was rejected or the findings changed. Review the latest findings before trying again."), _ => ChiefHostError::Unknown("Continuation was not confirmed. Inspect the latest conversation state before trying again.") })?;
 				Ok(work_id.as_str().into())
 			},
 

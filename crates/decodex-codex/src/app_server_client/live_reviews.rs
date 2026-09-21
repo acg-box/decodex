@@ -9,10 +9,25 @@ use std::{
 #[derive(Clone, Default)]
 pub(super) struct LiveReviews(Arc<Mutex<State>>);
 
-#[derive(Default)]
 struct State {
+	identity: String,
 	next: u64,
 	entries: HashMap<String, Entry>,
+}
+impl Default for State {
+	fn default() -> Self {
+		static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+		let sequence = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+		let time = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.unwrap_or_default()
+			.as_nanos();
+		Self {
+			identity: format!("{}:{time}:{sequence}", std::process::id()),
+			next: 0,
+			entries: HashMap::new(),
+		}
+	}
 }
 
 #[cfg(test)]
@@ -57,6 +72,7 @@ mod tests {
 		incoming.send(Ok(error("thread"))).await.unwrap();
 		events.recv().await.unwrap();
 		let (_, first) = client.live_misalignment_review("thread", "failed").unwrap();
+		let first_identity = first.live_review_identity().unwrap();
 		for frame in [
 			json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"failed","status":"failed","error":{"codexErrorInfo":"misalignmentPolicyViolation"}}}}),
 			json!({"method":"turn/started","params":{"threadId":"other","turn":{"id":"new"}}}),
@@ -74,9 +90,15 @@ mod tests {
 		events.recv().await.unwrap();
 		assert!(!first.is_live());
 		let (_, current) = client.live_misalignment_review("thread", "failed").unwrap();
+		assert_ne!(current.live_review_identity().unwrap(), first_identity);
 		let (other_sender, other_frames) = mpsc::channel(8);
 		let (other_writes, mut other_written) = mpsc::channel(8);
-		let (other, _events) = AppServerClient::from_framed(1, other_frames, other_writes).unwrap();
+		let (other, mut other_events) =
+			AppServerClient::from_framed(1, other_frames, other_writes).unwrap();
+		other_sender.send(Ok(error("thread"))).await.unwrap();
+		other_events.recv().await.unwrap();
+		let (_, other_guard) = other.live_misalignment_review("thread", "failed").unwrap();
+		assert_ne!(current.live_review_identity(), other_guard.live_review_identity());
 		assert!(matches!(
 			other.request_with_history("turn/start", json!({}), current.clone()).await,
 			Err(ClientError::StaleHistory)
@@ -113,6 +135,12 @@ pub(super) struct LiveReviewGuard {
 	serial: u64,
 }
 impl LiveReviewGuard {
+	pub(super) fn identity(&self) -> Option<String> {
+		let state = self.reviews.0.lock().ok()?;
+		state.entries.get(&self.thread).filter(|entry| entry.serial == self.serial)?;
+		Some(format!("{}:{}", state.identity, self.serial))
+	}
+
 	pub(super) fn is_live(&self) -> bool {
 		self.reviews.0.lock().is_ok_and(|state| {
 			state.entries.get(&self.thread).is_some_and(|entry| entry.serial == self.serial)

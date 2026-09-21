@@ -4162,14 +4162,14 @@ async fn query_chief_history_page(
 	};
 	let misalignment = precaution
 		.map(|saved| {
-			let can_continue = chief.is_some_and(|chief| chief.can_continue_misalignment(&saved));
+			let live_token = chief.and_then(|chief| chief.misalignment_review_token(&saved));
 			let details: serde_json::Value = saved
 				.details_json
 				.as_deref()
 				.and_then(|value| serde_json::from_str(value).ok())
 				.unwrap_or_default();
 			decodex_protocol::ChiefMisalignmentDto {
-				review_id: saved.review_id(),
+				review_id: live_token.clone().unwrap_or_else(|| saved.review_id()),
 				explanation: details["detailedExplanation"]
 					.as_str()
 					.filter(|text| !text.trim().is_empty() && text.len() <= 65536)
@@ -4177,7 +4177,7 @@ async fn query_chief_history_page(
 				continuation: details
 					.pointer("/steer/message")
 					.and_then(serde_json::Value::as_str)
-					.filter(|_| can_continue)
+					.filter(|_| live_token.is_some())
 					.filter(|text| !text.trim().is_empty() && text.len() <= 1024)
 					.map(str::to_owned),
 			}

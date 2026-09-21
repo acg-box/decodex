@@ -2300,6 +2300,15 @@ async fn misalignment_precaution_survives_reopen_and_blocks_ordinary_dispatch() 
 	assert_eq!(reopened.chief_misalignment("chief".into()).await.unwrap(), Some(saved));
 }
 
+fn live_review_token(
+	chief: &ChiefCoordinator,
+	review: &decodex_database::ChiefMisalignment,
+) -> String {
+	let (_, guard) =
+		chief.client.live_misalignment_review(&review.thread_id, &review.turn_id).unwrap();
+	super::misalignment::review_token(review, &guard).unwrap()
+}
+
 #[tokio::test]
 async fn explicit_misalignment_continuation_uses_native_override_and_clears_after_ack() {
 	let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
@@ -2310,7 +2319,15 @@ async fn explicit_misalignment_continuation_uses_native_override_and_clears_afte
 	chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
 	let review = chief.store.chief_misalignment("chief".into()).await.unwrap().unwrap();
 	while sent.try_recv().is_ok() {}
-	chief.continue_misalignment("chief", review, "acknowledged").await.unwrap();
+	let token = live_review_token(&chief, &review);
+	assert!(
+		chief
+			.continue_misalignment("chief", review.clone(), "stale-click", "older-live-evidence")
+			.await
+			.is_err()
+	);
+	assert!(sent.try_recv().is_err());
+	chief.continue_misalignment("chief", review, "acknowledged", &token).await.unwrap();
 	let mut turns = Vec::new();
 	while let Ok(request) = sent.try_recv() {
 		if request["method"] == "turn/start" {
@@ -2347,8 +2364,11 @@ async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution
 		chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
 		let review = chief.store.chief_misalignment("chief".into()).await.unwrap().unwrap();
 		while sent.try_recv().is_ok() {}
-		let failure =
-			chief.continue_misalignment("chief", review.clone(), "acknowledged").await.unwrap_err();
+		let token = live_review_token(&chief, &review);
+		let failure = chief
+			.continue_misalignment("chief", review.clone(), "acknowledged", &token)
+			.await
+			.unwrap_err();
 		assert_eq!(matches!(failure, ChiefError::Rejected(_)), outcome != "uncertain");
 		assert!(chief.store.chief_misalignment("chief".into()).await.unwrap().is_some());
 		let state = chief.store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state;
@@ -2372,7 +2392,9 @@ async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution
 			.unwrap();
 			let (mut reopened, mut requests, _other) = fixture().await;
 			reopened.store = SqliteStore::open(&root.paths()).unwrap();
-			assert!(reopened.continue_misalignment("chief", review, "new-key").await.is_err());
+			assert!(
+				reopened.continue_misalignment("chief", review, "new-key", &token).await.is_err()
+			);
 			assert!(requests.try_recv().is_err());
 		}
 	}
@@ -2393,7 +2415,9 @@ async fn misalignment_saved_details_cannot_authorize_a_reconnected_transport() {
 	let (mut reopened, mut requests, _other) = fixture().await;
 	reopened.store = SqliteStore::open(&root.paths()).unwrap();
 	assert!(matches!(
-		reopened.continue_misalignment("chief", review.clone(), "confirm").await,
+		reopened
+			.continue_misalignment("chief", review.clone(), "confirm", "old-source-review")
+			.await,
 		Err(ChiefError::Rejected(_))
 	));
 	assert!(requests.try_recv().is_err());

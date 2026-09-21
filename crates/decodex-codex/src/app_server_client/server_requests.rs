@@ -32,6 +32,11 @@ pub struct HistoryGuard {
 	review: Option<super::live_reviews::LiveReviewGuard>,
 }
 impl HistoryGuard {
+	/// Identity of the exact live review, absent for history guards or invalidated evidence.
+	pub fn live_review_identity(&self) -> Option<String> {
+		self.review.as_ref()?.identity()
+	}
+
 	pub(super) fn belongs_to(&self, requests: &ServerRequests) -> bool {
 		Arc::ptr_eq(&self.requests.0, &requests.0)
 	}

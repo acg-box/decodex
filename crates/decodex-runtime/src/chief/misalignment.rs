@@ -1,6 +1,20 @@
 //! Explicit continuation of an exact reviewed provider precaution.
 use super::{ChiefCoordinator, ChiefError, ClientError, Value, exact, json};
 
+pub(crate) fn review_token(
+	review: &decodex_database::ChiefMisalignment,
+	guard: &decodex_codex::app_server_client::HistoryGuard,
+) -> Option<String> {
+	use sha2::{Digest as _, Sha256};
+	let identity = guard.live_review_identity()?;
+	Some(
+		Sha256::digest(json!([review.review_id(), identity]).to_string().as_bytes())
+			.iter()
+			.map(|byte| format!("{byte:02x}"))
+			.collect(),
+	)
+}
+
 pub(crate) fn details(error: &Value) -> Option<String> {
 	error.get("misalignment").filter(|value|value.is_object()).map(|value| {
         let explanation=value["detailedExplanation"].as_str().filter(|text|!text.trim().is_empty() && text.len()<=65536);
@@ -16,12 +30,15 @@ impl ChiefCoordinator {
 		id: &str,
 		review: decodex_database::ChiefMisalignment,
 		key: &str,
+		expected_review: &str,
 	) -> Result<(), ChiefError> {
 		let (live_error, guard) =
 			self.client.live_misalignment_review(&review.thread_id, &review.turn_id).ok_or_else(
 				|| ChiefError::Rejected("Live provider findings are no longer available.".into()),
 			)?;
-		if details(&live_error) != review.details_json {
+		if details(&live_error) != review.details_json
+			|| review_token(&review, &guard).as_deref() != Some(expected_review)
+		{
 			return Err(ChiefError::Rejected("The live provider findings changed.".into()));
 		}
 		let work = self.store.get_chief_work_item(id.into()).await?;
