@@ -105,6 +105,7 @@ pub struct ClientInfo<'a> {
 #[serde(rename_all = "camelCase")]
 pub struct InitializeCapabilities {
 	pub experimental_api: bool,
+	pub opt_out_notification_methods: &'static [&'static str],
 }
 
 #[derive(Debug, Deserialize)]

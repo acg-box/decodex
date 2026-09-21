@@ -60,9 +60,9 @@ async fn installed_native_tool_context_survives_restart_without_replay() {
 			for work in ["chief", "worker"] {
 				let thread =
 					store.get_chief_work_item(work.into()).await.unwrap().codex_thread_id.unwrap();
-				let items = timeline(&session.client, &thread).await;
+				let items = timeline(&session.client, &thread, &store, work).await;
 				assert_tool_authority(work, &items);
-				histories.push((thread, items));
+				histories.push((work.to_owned(), thread, items));
 			}
 			assert_eq!(requests.load(Ordering::Acquire), 6);
 			histories
@@ -80,13 +80,17 @@ async fn installed_native_tool_context_survives_restart_without_replay() {
 	};
 	let reopened = NativeSession::start(&binary, home.path());
 	let reopened_store = SqliteStore::open(&root.paths()).unwrap();
-	let mut chief = ChiefCoordinator::new(reopened_store, reopened.client.clone(), config).unwrap();
+	let mut chief =
+		ChiefCoordinator::new(reopened_store.clone(), reopened.client.clone(), config).unwrap();
 	let result =
 		std::panic::AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(30), async {
 			chief.recover_persisted().await.unwrap();
 			chief.wake_pending().await.unwrap();
-			for (thread, before) in histories {
-				assert_eq!(timeline(&reopened.client, &thread).await, before);
+			for (work, thread, before) in histories {
+				assert_eq!(
+					timeline(&reopened.client, &thread, &reopened_store, &work).await,
+					before
+				);
 			}
 			assert_eq!(
 				requests.load(Ordering::Acquire),
@@ -109,6 +113,9 @@ async fn terminal(
 ) {
 	loop {
 		let event = events.recv().await.expect("native event stream");
+		assert!(
+			!matches!(&event, ServerEvent::Notification { method, .. } if method == "rawResponseItem/completed")
+		);
 		let done = matches!(&event, ServerEvent::Notification { method, .. } if method == "turn/completed");
 		chief.handle_event(event).await.expect("coordinator accepts native event");
 		if done
@@ -124,12 +131,33 @@ async fn terminal(
 	}
 }
 
-async fn timeline(client: &AppServerClient, thread: &str) -> Vec<Value> {
+async fn timeline(
+	client: &AppServerClient,
+	thread: &str,
+	store: &SqliteStore,
+	work: &str,
+) -> Vec<Value> {
 	let page = client.thread_timeline_page(thread, None, 100).await.expect("native timeline");
 	assert!(page["nextCursor"].is_null(), "fixture must fit one complete page");
-	let projected =
+	let mut projected =
 		crate::chief::timeline::project(thread, &page).expect("public timeline projection");
+	crate::chief::timeline::metrics::enrich(store, work, &mut projected)
+		.await
+		.expect("persisted native response usage");
 	for entry in &projected.entries {
+		if let decodex_protocol::ChiefTimelineContent::TurnBoundary {
+			completed: true,
+			usage_summary,
+			..
+		} = &entry.content
+		{
+			assert!(
+				usage_summary
+					.as_deref()
+					.is_some_and(|text| text.contains("0.12345678901234567890")),
+				"native response amount survives projection and reopen"
+			);
+		}
 		if let decodex_protocol::ChiefTimelineContent::Item { kind, text, .. } = &entry.content
 			&& kind == "functionCallOutput"
 		{

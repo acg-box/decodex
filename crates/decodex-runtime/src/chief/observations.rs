@@ -132,6 +132,19 @@ impl ChiefCoordinator {
 		method: &str,
 		params: &Value,
 	) -> Result<(), ChiefError> {
+		if method == "rawResponse/completed" {
+			if let Some(usage) = decodex_codex::decode_response_usage(params) {
+				let payload = serde_json::to_string(&usage)
+					.map_err(|_| ChiefError::Invalid("invalid response usage".into()))?;
+				self.store
+					.record_chief_response_usage(
+						self.native_generation.as_ref().map(|id| id.as_str().to_owned()),
+						payload,
+					)
+					.await?;
+			}
+			return Ok(());
+		}
 		self.observe_notification(method, params).await?;
 		if decodex_codex::app_server_client::invalidates_question_state(method, params) {
 			self.handled_question_revision = self

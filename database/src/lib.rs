@@ -14,6 +14,8 @@ pub use chief_misalignment::ChiefMisalignment;
 mod chief_output;
 mod chief_question_rebuild;
 mod chief_questions;
+mod chief_response_usage;
+pub use chief_response_usage::ChiefResponseUsageSummary;
 mod chief_task_references;
 pub use chief_questions::ChiefAsyncQuestion;
 mod chief_process;

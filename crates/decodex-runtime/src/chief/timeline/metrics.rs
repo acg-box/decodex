@@ -1,7 +1,7 @@
 //! Exact saved usage supplements native timeline boundaries; it is not native timeline data.
 use decodex_protocol::{ChiefTimelineContent as Content, ChiefTimelinePage, ChiefTurnUsageDto};
 
-pub(super) async fn enrich(
+pub(crate) async fn enrich(
 	store: &decodex_database::SqliteStore,
 	work: &str,
 	page: &mut ChiefTimelinePage,
@@ -17,15 +17,52 @@ pub(super) async fn enrich(
 	if turns.is_empty() {
 		return Ok(());
 	}
+	let responses =
+		store.read_chief_response_usage(work.into(), page.thread_id.clone(), turns.clone()).await?;
 	let saved = store.read_chief_turn_metrics(work.into(), page.thread_id.clone(), turns).await?;
 	for entry in &mut page.entries {
 		if let Content::TurnBoundary { turn_id, completed: true, usage_summary, .. } =
 			&mut entry.content
 		{
-			*usage_summary = saved.iter().find(|saved| &saved.turn_id == turn_id).and_then(summary);
+			let tokens = saved.iter().find(|saved| &saved.turn_id == turn_id).and_then(summary);
+			let response = response_summary(&responses, turn_id);
+			let parts = [tokens, response].into_iter().flatten().collect::<Vec<_>>();
+			*usage_summary = (!parts.is_empty()).then(|| parts.join("\n"));
 		}
 	}
 	Ok(())
+}
+
+fn response_summary(
+	rows: &[decodex_database::ChiefResponseUsageSummary],
+	turn: &str,
+) -> Option<String> {
+	let rows = rows.iter().filter(|row| row.turn_id == turn).collect::<Vec<_>>();
+	let first = rows.first()?;
+	let mut lines = vec![format!(
+		"Observed responses: {}. Showing {} recorded amounts; units are provider-defined.",
+		first.observed_count,
+		rows.len()
+	)];
+	for row in rows {
+		let amount = row
+			.amount
+			.as_deref()
+			.filter(|amount| {
+				!amount.is_empty()
+					&& amount.len() <= 256
+					&& amount.bytes().all(|byte| {
+						byte.is_ascii_digit() || matches!(byte, b'.' | b'-' | b'+' | b'e' | b'E')
+					})
+			})
+			.unwrap_or("unknown");
+		let identity = super::visible_text(&row.response_id).0;
+		lines.push(format!(
+			"Response {identity:?}: {amount}.{}",
+			if row.metadata_omitted { " Extended metadata omitted due to size." } else { "" }
+		));
+	}
+	Some(lines.join("\n"))
 }
 
 fn summary(saved: &decodex_database::ChiefTurnMetrics) -> Option<String> {
@@ -57,6 +94,39 @@ fn summary(saved: &decodex_database::ChiefTurnMetrics) -> Option<String> {
 mod tests {
 	use super::*;
 	use serde_json::json;
+	#[test]
+	fn response_amounts_preserve_precision_and_missing_values_without_currency_assumptions() {
+		let rows = vec![
+			decodex_database::ChiefResponseUsageSummary {
+				turn_id: "turn".into(),
+				response_id: "a".into(),
+				amount: Some("0.12345678901234567890".into()),
+				metadata_omitted: false,
+				observed_count: 3,
+			},
+			decodex_database::ChiefResponseUsageSummary {
+				turn_id: "turn".into(),
+				response_id: "b".into(),
+				amount: Some("0".into()),
+				metadata_omitted: false,
+				observed_count: 3,
+			},
+			decodex_database::ChiefResponseUsageSummary {
+				turn_id: "turn".into(),
+				response_id: "c".into(),
+				amount: None,
+				metadata_omitted: true,
+				observed_count: 3,
+			},
+		];
+		let text = response_summary(&rows, "turn").unwrap();
+		assert!(text.contains("0.12345678901234567890"));
+		assert!(text.contains("Response \"b\": 0."));
+		assert!(text.contains("Response \"c\": unknown."));
+		assert!(text.contains("Extended metadata omitted due to size."));
+		assert!(!text.contains('$'));
+		assert!(response_summary(&rows, "other-turn").is_none());
+	}
 	#[test]
 	fn whole_turn_delta_and_last_response_observation_keep_distinct_labels() {
 		let counts = json!({"totalTokens":150,"inputTokens":120,"cachedInputTokens":50,"cacheWriteInputTokens":10,"outputTokens":30,"reasoningOutputTokens":8});

@@ -108,7 +108,7 @@ impl NativeSession {
 				}
 			}
 		});
-		writeln!(stdin, "{}", json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"decodex_native_history_test","version":"0.1"},"capabilities":{"experimentalApi":true}}})).expect("native session setup");
+		writeln!(stdin, "{}", json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"decodex_native_history_test","version":"0.1"},"capabilities":{"experimentalApi":true,"optOutNotificationMethods":["rawResponseItem/completed"]}}})).expect("native session setup");
 		let deadline = std::time::Instant::now() + Duration::from_secs(15);
 		loop {
 			let frame = receive
@@ -303,7 +303,7 @@ async fn serve_with_bodies(
 		let frames = [
 			json!({"type":"response.created","response":{"id":id}}),
 			json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]}}),
-			json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
+			json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":{"extra":{"fixture":"native-usage"},"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
 		];
 		let data = frames
 			.iter()
