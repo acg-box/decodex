@@ -1,6 +1,8 @@
 //! One authenticated OpenAI/Codex backend API client for account observation.
 #![cfg_attr(all(feature = "process-acceptance-fixture", debug_assertions), allow(dead_code))]
 
+mod activation;
+
 use std::{sync::Arc, time::Duration};
 
 use decodex_codex::{
@@ -62,11 +64,15 @@ pub(crate) struct AccountApiObservation {
 #[derive(Clone)]
 pub(crate) struct AccountApiRuntime {
 	accounts: Arc<AccountService>,
+	store: decodex_database::SqliteStore,
 	client: reqwest::Client,
 }
 impl AccountApiRuntime {
 	/// Build one bounded client.  No Codex executable or protocol receipt is consulted.
-	pub(crate) fn new(accounts: Arc<AccountService>) -> Result<Self, AccountApiRuntimeError> {
+	pub(crate) fn new(
+		accounts: Arc<AccountService>,
+		store: decodex_database::SqliteStore,
+	) -> Result<Self, AccountApiRuntimeError> {
 		let client = reqwest::Client::builder()
 			.connect_timeout(CONNECT_TIMEOUT)
 			.timeout(HTTP_TIMEOUT)
@@ -75,7 +81,7 @@ impl AccountApiRuntime {
 			.user_agent("decodex")
 			.build()
 			.map_err(|_| AccountApiRuntimeError::ProviderUnavailable)?;
-		Ok(Self { accounts, client })
+		Ok(Self { accounts, store, client })
 	}
 
 	pub(crate) async fn reset_session(

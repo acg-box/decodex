@@ -417,7 +417,9 @@ impl ServiceApplication {
 		&self,
 		command: &CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
-		let CommandPayload::SetDesktopSettings { show_in_menu_bar } = &command.payload else {
+		let CommandPayload::SetDesktopSettings { show_in_menu_bar, auto_activate_quota } =
+			&command.payload
+		else {
 			return Err(application_unavailable("desktop settings command is invalid"));
 		};
 		let expected = command.expected_revision.ok_or_else(|| {
@@ -429,9 +431,10 @@ impl ServiceApplication {
 			return Err(application_unavailable("desktop settings store is unavailable"));
 		};
 		let settings = store
-			.set_show_in_menu_bar(expected_revision, *show_in_menu_bar)
+			.set_desktop_settings(expected_revision, *show_in_menu_bar, *auto_activate_quota)
 			.await
 			.map_err(desktop_settings_command_error)?;
+		self.request_account_observation_refresh();
 		let settings = desktop_settings_dto(settings)
 			.map_err(|_| application_unavailable("desktop settings projection is invalid"))?;
 		let entity_id = EntityId::new(DESKTOP_SETTINGS_ENTITY_ID)
@@ -4473,7 +4476,9 @@ async fn query_chief_snapshot(store: &ProductStore) -> decodex_protocol::ChiefSn
 
 fn desktop_settings_dto(settings: StoreDesktopSettings) -> Result<DesktopSettingsDto, ()> {
 	let revision = u64::try_from(settings.revision).map(EntityRevision).map_err(|_| ())?;
-	DesktopSettingsDto::new(settings.show_in_menu_bar, revision).map_err(|_| ())
+	let mut dto = DesktopSettingsDto::new(settings.show_in_menu_bar, revision).map_err(|_| ())?;
+	dto.auto_activate_quota = settings.auto_activate_quota;
+	Ok(dto)
 }
 
 fn desktop_settings_command_error(error: StoreError) -> CommandError {

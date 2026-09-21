@@ -743,7 +743,7 @@ impl AccountObservationService {
 		let task_account_id = account_id.clone();
 		let task = observations.spawn(async move {
 			let api_observation = match api {
-				Some(api) => Some(api.observe_account(&task_account_id).await),
+				Some(api) => Some(api.observe_and_activate(&task_account_id).await),
 				None => None,
 			};
 			let (reset_cards, profile) = match api_observation {
