@@ -148,7 +148,7 @@ fn ordinary(row: &Value) -> Option<Content> {
 	let kind = id(&item["type"])?;
 	let (attachments, omitted) = attachments::project(item);
 	let source = match kind.as_str() {
-		"agentMessage" => item["text"].as_str()?.to_owned(),
+		"agentMessage" | "plan" => item["text"].as_str()?.to_owned(),
 		"functionCallOutput" => tool_output::text(item)?,
 		"userMessage" => {
 			let parts = item["content"].as_array()?;
@@ -247,6 +247,19 @@ fn visible_text(text: &str) -> (String, bool) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn proposed_plan_history_preserves_authoritative_text_and_bounds() {
+		let mut row = json!({"type":"item","position":4,"turnId":"turn","item":{"type":"plan","id":"plan-item","text":"## Final plan\n1. Verify the source\n2. Apply the change"}});
+		assert!(
+			matches!(ordinary(&row).unwrap(),Content::Item {kind,text,truncated:false,..} if kind == "plan" && text == row["item"]["text"])
+		);
+		row["item"]["text"] = json!("界".repeat(4000));
+		assert!(
+			matches!(ordinary(&row).unwrap(),Content::Item {text,truncated:true,..} if text.len() <= 8192 && text.chars().all(|c| c == '界'))
+		);
+		row["item"]["text"] = Value::Null;
+		assert!(ordinary(&row).is_none());
+	}
 	#[test]
 	fn failed_turn_keeps_public_reason_and_explicit_bounds() {
 		let mut row = json!({"type":"turnCompleted","position":9,"turnId":"turn",
