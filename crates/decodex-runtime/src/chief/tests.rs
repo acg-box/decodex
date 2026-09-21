@@ -7,6 +7,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/capacity.rs"] mod capacity;
 #[path = "tests/guardian.rs"] mod guardian;
 #[path = "tests/install.rs"] mod install;
+#[path = "tests/native_goal_recovery.rs"] mod native_goal_recovery;
 #[path = "tests/native_goals.rs"] mod native_goals;
 #[path = "tests/native_mcp_forms.rs"] mod native_mcp_forms;
 #[path = "tests/native_permissions.rs"] mod native_permissions;
@@ -437,6 +438,7 @@ async fn serve_fixture(
 			Some("thread/resume") => {
 				json!({"thread":{"id":request["params"]["threadId"],"turns":history[request["params"]["threadId"].as_str().unwrap()]["thread"]["turns"]},"model":"selected-model","reasoningEffort":request["params"]["config"]["model_reasoning_effort"]})
 			},
+			Some("thread/goal/get") => json!({"goal":history["_goal"]}),
 			Some("thread/start") => {
 				threads += 1;
 				json!({"thread":{"id":format!("opaque thread/{threads}")},"model":"selected-model","reasoningEffort":request["params"]["config"]["model_reasoning_effort"]})

@@ -22,6 +22,7 @@ impl ChiefCoordinator {
 			{
 				continue;
 			}
+			self.resume_active_native_goal(&thread).await;
 			let revision = self.client.history_revision();
 			let Ok(Some(turn)) = self.client.thread_latest_turn_id(&thread).await else { continue };
 			let Ok(history) = self.client.thread_read_turn(&thread, &turn).await else { continue };
@@ -88,5 +89,31 @@ impl ChiefCoordinator {
 			}
 		}
 		Ok(())
+	}
+
+	async fn resume_active_native_goal(&mut self, thread: &str) {
+		if self.loaded_threads.contains(thread) {
+			return;
+		}
+		let Ok(response) = self.client.request("thread/goal/get", json!({"threadId":thread})).await
+		else {
+			return;
+		};
+		if response["goal"]["threadId"].as_str() != Some(thread)
+			|| response["goal"]["status"] != "active"
+		{
+			return;
+		}
+		// Hydrate native goal ownership; only the native scheduler admits continuation.
+		// Do not reapply initial settings or submit a synthetic local input.
+		if let Ok(resumed) = self
+			.client
+			.thread_resume(json!({
+				"threadId":thread,"excludeTurns":true,"experimentalRawEvents":true
+			}))
+			.await && resumed["thread"]["id"].as_str() == Some(thread)
+		{
+			self.loaded_threads.insert(thread.into());
+		}
 	}
 }

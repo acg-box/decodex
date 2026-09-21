@@ -182,7 +182,8 @@ impl ChiefCoordinator {
 	}
 
 	/// Reconcile exact persisted turns after the host reconnects the selected account.
-	/// This hydrates threads and records evidence; it never starts or replays a turn.
+	/// Hydrate threads and record evidence without submitting or replaying local input.
+	/// Native active goals can continue when their thread is restored.
 	pub async fn recover_persisted(&mut self) -> Result<(), ChiefError> {
 		self.recover_voice_calls().await?;
 		if !self.async_recovery_queued {
