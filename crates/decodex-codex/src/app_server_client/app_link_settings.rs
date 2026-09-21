@@ -1,5 +1,5 @@
 //! Versioned native account settings. The caller owns task and account selection.
-use super::{AppServerClient, ClientError, Outbound};
+use super::{AppServerClient, ClientError, Outbound, ServerRequestGuard};
 use serde_json::{Value, json};
 use std::{path::Path, time::Duration};
 use tokio::sync::mpsc;
@@ -125,6 +125,26 @@ impl AppServerClient {
 		observed: &AppLinkSettings,
 		edit: AppLinkSettingEdit,
 	) -> Result<AppLinkSettingsWrite, ClientError> {
+		self.write_app_link_setting_inner(observed, edit, None).await
+	}
+
+	/// Write only while the exact originating native approval request remains live.
+	/// Resolution observed by the transport prevents dispatch even before the host processes it.
+	pub async fn write_app_link_setting_guarded(
+		&self,
+		observed: &AppLinkSettings,
+		edit: AppLinkSettingEdit,
+		guard: ServerRequestGuard,
+	) -> Result<AppLinkSettingsWrite, ClientError> {
+		self.write_app_link_setting_inner(observed, edit, Some(guard)).await
+	}
+
+	async fn write_app_link_setting_inner(
+		&self,
+		observed: &AppLinkSettings,
+		edit: AppLinkSettingEdit,
+		guard: Option<ServerRequestGuard>,
+	) -> Result<AppLinkSettingsWrite, ClientError> {
 		if !self.outbound.same_channel(&observed.connection) {
 			return Err(ClientError::InvalidFrame);
 		}
@@ -144,14 +164,14 @@ impl AppServerClient {
 			quoted_key(&observed.app),
 			quoted_key(&observed.link)
 		);
-		let receipt = tokio::time::timeout(
-			Duration::from_secs(30),
-			self.request(
-				"config/batchWrite",
-				json!({"filePath":observed.file,"expectedVersion":observed.version,"reloadUserConfig":true,
-				"edits":[{"keyPath":key,"value":value,"mergeStrategy":"replace"}]}),
-			),
-		)
+		let params = json!({"filePath":observed.file,"expectedVersion":observed.version,"reloadUserConfig":true,
+			"edits":[{"keyPath":key,"value":value,"mergeStrategy":"replace"}]});
+		let receipt = tokio::time::timeout(Duration::from_secs(30), async {
+			match guard {
+				Some(guard) => self.request_guarded("config/batchWrite", params, guard).await,
+				None => self.request("config/batchWrite", params).await,
+			}
+		})
 		.await
 		.map_err(|_| ClientError::Io)??;
 		let overridden = match receipt["status"].as_str() {
@@ -263,6 +283,67 @@ fn setting(value: Option<&Value>, field: &str) -> Result<Option<String>, ClientE
 mod tests {
 	use super::*;
 	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+	#[tokio::test]
+	async fn resolved_native_approval_prevents_late_account_setting_write() {
+		let (local, remote) = tokio::io::duplex(65536);
+		let (reader, writer) = tokio::io::split(local);
+		let (client, mut events) = AppServerClient::from_io(reader, writer);
+		let params = json!({"threadId":"thread","turnId":"turn","serverName":"codex_apps"});
+		let offered = params.clone();
+		let server = tokio::spawn(async move {
+			let (reader, mut writer) = tokio::io::split(remote);
+			let mut lines = BufReader::new(reader).lines();
+			writer
+				.write_all(
+					format!(
+						"{}\n",
+						json!({"id":"approval","method":"mcpServer/elicitation/request","params":offered})
+					)
+					.as_bytes(),
+				)
+				.await
+				.unwrap();
+			let read: Value =
+				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+			assert_eq!(read["method"], "config/read");
+			writer.write_all(format!("{}\n",json!({"method":"serverRequest/resolved","params":{"threadId":"thread","requestId":"approval"}})).as_bytes()).await.unwrap();
+			writer
+				.write_all(
+					format!("{}\n", json!({"id":read["id"],"result":config("prompt","v1")}))
+						.as_bytes(),
+				)
+				.await
+				.unwrap();
+			assert!(
+				tokio::time::timeout(Duration::from_millis(50), lines.next_line()).await.is_err()
+			);
+		});
+		let _ = events.recv().await.unwrap();
+		let guard = client
+			.server_request_guard(
+				&super::super::RequestId::String("approval".into()),
+				"mcpServer/elicitation/request",
+				&params,
+			)
+			.unwrap();
+		let settings = client
+			.app_link_settings("/fixture", "app.with.dot", " work.\"link\\one ")
+			.await
+			.unwrap();
+		assert!(!guard.is_live());
+		assert!(matches!(
+			client
+				.write_app_link_setting_guarded(
+					&settings,
+					AppLinkSettingEdit::ApprovalMode(Some("auto".into())),
+					guard
+				)
+				.await,
+			Err(ClientError::InvalidFrame)
+		));
+		server.await.unwrap();
+	}
 
 	async fn native(home: &Path) -> (AppServerClient, tokio::process::Child) {
 		let binary =
