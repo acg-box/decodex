@@ -56,7 +56,13 @@ fn should_poll_snapshot(has_profile: bool, state: &LoadState, _active: bool) -> 
 	has_profile && *state != LoadState::Loading
 }
 
+#[cfg(all(target_os = "macos", not(test)))]
+#[path = "chief_native_composer.rs"]
+mod native_composer;
+
 pub(crate) struct ChiefSurface {
+	#[cfg(all(target_os = "macos", not(test)))]
+	native_composer: native_composer::NativeComposer,
 	voice: Option<voice::VoiceUi>,
 	voice_task: Option<Task<()>>,
 	audio_inputs: Vec<String>,
@@ -256,10 +262,8 @@ impl ChiefSurface {
 			mcp_login_task: None,
 			resource_mutation_task: None,
 			resource_feedback: String::new(),
-			resource_title: cx
-				.new(|cx| ComposerInput::with_placeholder(40, "Link title", "Resource title", cx)),
-			resource_url: cx
-				.new(|cx| ComposerInput::with_placeholder(40, "https://…", "Resource URL", cx)),
+			resource_title: resource_field("Link title", "Resource title", cx),
+			resource_url: resource_field("https://…", "Resource URL", cx),
 			capabilities: None,
 			capabilities_context: None,
 			capabilities_checked: None,
@@ -274,6 +278,8 @@ impl ChiefSurface {
 			effort_pointer: None,
 			effort_track_bounds: None,
 			menu_trigger_bounds: Default::default(),
+			#[cfg(all(target_os = "macos", not(test)))]
+			native_composer: Default::default(),
 			composer_menu: None,
 			composer_menu_content: None,
 			attachments: vec![],
@@ -1853,6 +1859,14 @@ impl ChiefSurface {
 			)
 			.child(muted(""))
 	}
+}
+
+fn resource_field(
+	placeholder: &'static str,
+	label: &'static str,
+	cx: &mut Context<ChiefSurface>,
+) -> Entity<ComposerInput> {
+	cx.new(|cx| ComposerInput::with_placeholder(40, placeholder, label, cx))
 }
 
 #[cfg(test)]

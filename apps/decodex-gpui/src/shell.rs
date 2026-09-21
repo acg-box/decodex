@@ -5117,6 +5117,14 @@ impl Render for Shell {
 			.bg(rgba(ui_theme::SHELL_MATERIAL))
 			.text_color(rgb(WB_TEXT));
 
+		#[cfg(all(target_os = "macos", not(test)))]
+		self.chief.update(cx, |chief, cx| {
+			chief.prepare_native_composer(
+				self.selected == Destination::Chief && !self.status_open,
+				window,
+				cx,
+			)
+		});
 		let controls = floating_window_controls(self, &presentation, window, cx);
 		let status = self.render_status_center(&presentation, cx);
 		let route = format!("{:?}", self.selected);

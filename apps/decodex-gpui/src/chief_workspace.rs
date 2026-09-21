@@ -468,7 +468,7 @@ impl ChiefSurface {
 			)
 	}
 
-	fn selected_is_manager(&self) -> bool {
+	pub(super) fn selected_is_manager(&self) -> bool {
 		self.selected.is_none()
 			|| self.selected == self.root_id()
 			|| self.snapshot.as_ref().is_some_and(|snapshot| {

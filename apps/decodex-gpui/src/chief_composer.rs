@@ -97,94 +97,127 @@ impl ChiefSurface {
 		&self,
 		window: &mut Window,
 		cx: &mut Context<Self>,
-	) -> impl IntoElement {
-		let menu = self.composer_menu.or(self.composer_menu_content);
-		let left = matches!(menu, Some("attachments" | "microphone" | "tasks"));
+	) -> gpui::AnyElement {
+		#[cfg(all(target_os = "macos", not(test)))]
+		if self.native_composer.enabled {
+			return self.render_native_composer_anchor(cx);
+		}
+		div()
+			.w_full()
+			.px_4()
+			.pt(px(12.))
+			.pb(px(20.))
+			.flex()
+			.justify_center()
+			.child(
+				self.render_composer_capsule(false, window, cx)
+					.child(self.render_composer_popover(cx)),
+			)
+			.into_any_element()
+	}
+
+	pub(super) fn render_composer_capsule(
+		&self,
+		native: bool,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> gpui::Stateful<gpui::Div> {
 		let editor = div()
 			.id("composer-editor-area")
 			.flex_1()
 			.min_w_0()
+			.when(native, |d| {
+				d.on_mouse_down(
+					gpui::MouseButton::Left,
+					cx.listener(|s, _, _, cx| {
+						s.composer_menu = None;
+						cx.notify();
+					}),
+				)
+			})
 			.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
 				s.submit(cx);
 				cx.stop_propagation();
 			}))
 			.when(self.voice.is_none(), |d| d.child(self.composer.clone()))
 			.children(self.voice_controls(window, cx));
-		div().w_full().px_4().pt(px(12.)).pb(px(20.)).flex().justify_center().child(
-			div()
-				.id("chief-composer")
-				.occlude()
-				.relative()
-				.w_full()
-				.max_w(px(820.))
-				.min_w_0()
-				.px(px(10.))
-				.py(px(7.))
-				.rounded(px(24.))
-				.bg(rgb(0x27272b))
-				.shadow(vec![gpui::BoxShadow {
+		div()
+			.id("chief-composer")
+			.occlude()
+			.relative()
+			.w_full()
+			.max_w(px(820.))
+			.min_w_0()
+			.px(px(10.))
+			.py(px(7.))
+			.rounded(px(24.))
+			.when(!native, |d| d.bg(rgb(0x27272b)))
+			.when(!native, |d| {
+				d.shadow(vec![gpui::BoxShadow {
 					inset: false,
 					color: rgba(0x0000001a).into(),
 					offset: gpui::point(px(0.), px(4.)),
 					blur_radius: px(16.),
 					spread_radius: px(-5.),
 				}])
-				.flex()
-				.flex_col()
-				.gap(px(4.))
-				.on_key_down(cx.listener(|s, e: &gpui::KeyDownEvent, _, cx| {
-					if e.keystroke.key == "escape" {
-						s.cancel_dictation(cx);
-						s.composer_menu = None;
-						cx.notify();
-						cx.stop_propagation();
-					}
-				}))
-				.on_drop(cx.listener(|s, paths: &gpui::ExternalPaths, _, cx| {
-					s.attach_paths(paths.0.to_vec(), cx)
-				}))
-				.children(if self.voice.is_none() { self.attachment_row(cx) } else { None })
-				.children(if self.voice.is_none() { self.task_reference_row(cx) } else { None })
+			})
+			.flex()
+			.flex_col()
+			.gap(px(4.))
+			.on_key_down(cx.listener(|s, e: &gpui::KeyDownEvent, _, cx| {
+				if e.keystroke.key == "escape" {
+					s.cancel_dictation(cx);
+					s.composer_menu = None;
+					cx.notify();
+					cx.stop_propagation();
+				}
+			}))
+			.on_drop(cx.listener(|s, paths: &gpui::ExternalPaths, _, cx| {
+				s.attach_paths(paths.0.to_vec(), cx)
+			}))
+			.children(if self.voice.is_none() { self.attachment_row(cx) } else { None })
+			.children(if self.voice.is_none() { self.task_reference_row(cx) } else { None })
+			.child(
+				div()
+					.w_full()
+					.flex()
+					.items_center()
+					.gap(px(6.))
+					.child(self.composer_control(
+						"attach",
+						"+".into(),
+						"Attachments and microphone",
+						|s, cx| s.toggle_composer_menu("attachments", cx),
+						cx,
+					))
+					.child(editor)
+					.child(self.composer_toolbar(cx)),
+			)
+	}
+
+	pub(super) fn render_composer_popover(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		let menu = self.composer_menu.or(self.composer_menu_content);
+		let left = matches!(menu, Some("attachments" | "microphone" | "tasks"));
+		gpui::deferred(
+			div()
+				.absolute()
+				.bottom(gpui::relative(1.))
+				.mb(px(if left { 8. } else { 10. }))
+				.when(left, |d| d.left(px(0.)))
+				// Align with the model trigger: inset + mic/send widths + toolbar gaps.
+				.when(!left, |d| d.right(px(79.)))
+				.w(px(if left { 280. } else { 232. }))
 				.child(
-					div()
-						.w_full()
-						.flex()
-						.items_center()
-						.gap(px(6.))
-						.child(self.composer_control(
-							"attach",
-							"+".into(),
-							"Attachments and microphone",
-							|s, cx| s.toggle_composer_menu("attachments", cx),
-							cx,
-						))
-						.child(editor)
-						.child(self.composer_toolbar(cx)),
-				)
-				.child(
-					gpui::deferred(
-						div()
-							.absolute()
-							.bottom(gpui::relative(1.))
-							.mb(px(if left { 8. } else { 10. }))
-							.when(left, |d| d.left(px(0.)))
-							// Align with the model trigger: inset + mic/send widths + toolbar gaps.
-							.when(!left, |d| d.right(px(79.)))
-							.w(px(if left { 280. } else { 232. }))
-							.child(
-								crate::ui_motion::popover(
-									"composer-popover-motion",
-									if left { "attachments" } else { menu.unwrap_or("model") },
-									self.composer_menu.is_some(),
-									self.composer_options(cx)
-										.unwrap_or_else(|| div().into_any_element()),
-								)
-								.unframed(menu == Some("model")),
-							),
+					crate::ui_motion::popover(
+						"composer-popover-motion",
+						if left { "attachments" } else { menu.unwrap_or("model") },
+						self.composer_menu.is_some(),
+						self.composer_options(cx).unwrap_or_else(|| div().into_any_element()),
 					)
-					.priority(2),
+					.unframed(menu == Some("model")),
 				),
 		)
+		.priority(2)
 	}
 
 	fn attachment_options(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -503,8 +536,17 @@ impl ChiefSurface {
 				.id("composer-menu-popover")
 				.occlude()
 				.on_mouse_down_out(cx.listener(|s, event: &gpui::MouseDownEvent, _, cx| {
-					if s.menu_trigger_bounds.values().any(|bounds| bounds.contains(&event.position))
-					{
+					let trigger_hit = {
+						#[cfg(all(target_os = "macos", not(test)))]
+						let same_window = !s.native_composer.enabled;
+						#[cfg(not(all(target_os = "macos", not(test))))]
+						let same_window = true;
+						same_window
+							&& s.menu_trigger_bounds
+								.values()
+								.any(|bounds| bounds.contains(&event.position))
+					};
+					if trigger_hit {
 						return;
 					}
 					s.composer_menu = None;

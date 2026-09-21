@@ -139,3 +139,7 @@ mod tests {
 		assert!(MOTION_PANEL <= Duration::from_millis(280));
 	}
 }
+
+#[cfg(all(target_os = "macos", not(test)))]
+#[path = "native_glass_panel.rs"]
+pub(crate) mod native_glass_panel;

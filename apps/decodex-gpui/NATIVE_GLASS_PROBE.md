@@ -53,3 +53,32 @@ acceptance. Keep all interactive gates open until directly exercised.
 Track the experiment and upstream alternatives in issue #1364. Do not replace the
 accepted window-level material or ship a multi-window composer before these gates
 pass.
+
+## Accepted probe and production integration
+
+The user manually tested the probe and reported that all tested behavior matched
+expectations. The probe was then closed at the user's request.
+
+The Chief composer now uses `native_glass_panel::GlassPanel` on supported macOS.
+It owns the real GPUI foreground through `NSGlassEffectView.contentView` and reuses
+the existing editor, attachments, model controls, dictation, and Live controls.
+Menus stay in the parent window. Global overlays temporarily use the original
+in-window composer; a short settling interval preserves notification dismissal
+ordering. Worker views and expanded graphs hide the native composer. Other
+platforms, unavailable native glass, and Reduce Transparency use the existing
+in-window composer.
+
+Integration fixes include explicit GPUI bounds refresh after native resizing,
+responder restoration, parent shortcut forwarding, and child cleanup on close.
+Use a borderless normal GPUI window rather than GPUIPanel: the pinned GPUI installs
+AccessKit window focus forwarding only for GPUIWindow. Do not override the
+content view's accessibility children; AccessKit owns that tree.
+
+Native checks completed in the integrated application: notification-to-composer
+focus transfer, full accessibility tree, text entry, Shift-Enter, and automatic
+height growth. The 213 existing GPUI tests and strict Clippy passed. Desktop capture
+still intermittently reports ScreenCaptureKit error -3812 for the short native
+window after resizing. Command-Backspace, menu interaction, real input-method
+composition, voice, and full lifecycle acceptance remain to be completed. The
+production integration is not yet fully accepted or merged. Floating toolbars
+are unchanged.
