@@ -99,6 +99,13 @@ impl AccountApiRuntime {
 }
 
 fn can_activate(inventory: &AccountApiInventory, now: i64) -> bool {
+	if inventory.conditions.ordinary_requests_allowed(inventory.ordinary_usage_allowed)
+		== Some(false)
+	{
+		return false;
+	}
+	// This probe activates an included weekly window. Existing paid credits alone
+	// do not override an explicit refusal of included usage for this synthetic request.
 	// The identity-checked provider decision is independent of displayed utilization.
 	// Older backends omit it; retain their existing window-based activation behavior.
 	inventory.ordinary_usage_allowed.unwrap_or_else(|| {
@@ -209,6 +216,7 @@ mod tests {
 		let mut inventory = super::AccountApiInventory {
 			account_revision: 1,
 			ordinary_usage_allowed: Some(false),
+			conditions: Default::default(),
 			quota_windows: usage.quota_windows,
 			reported_available_count: None,
 			details_complete: false,
@@ -216,10 +224,17 @@ mod tests {
 		};
 		let after_reset = 1_800_000_001_000_000;
 		assert!(!super::can_activate(&inventory, after_reset));
+		inventory.conditions.has_credits = Some(true);
+		assert!(
+			!super::can_activate(&inventory, after_reset),
+			"paid credits do not authorize the synthetic included-window probe"
+		);
 		inventory.ordinary_usage_allowed = None;
 		assert!(super::can_activate(&inventory, after_reset));
 		inventory.ordinary_usage_allowed = Some(true);
 		assert!(super::can_activate(&inventory, after_reset));
+		inventory.conditions.spend_control_reached = Some(true);
+		assert!(!super::can_activate(&inventory, after_reset));
 	}
 
 	#[tokio::test]
