@@ -819,7 +819,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(
 			stageTest.contains("libdecodex_app_client_ffi.dylib")
 		)
-		XCTAssertTrue(stageTest.contains("mismatched_native_client.c"))
+		XCTAssertTrue(stageTest.contains("mismatched_native_client.rs"))
 		XCTAssertTrue(stageTest.contains("verify_decodex_bundle_contracts.py"))
 		for retiredPackageTerm in ["-p decodex-cli", "DecodexMenuBar.app", ":8192"] {
 			XCTAssertFalse(
