@@ -486,6 +486,9 @@ mod tests {
 		}
 		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
 		connection.pragma_update(None, "user_version", 30).unwrap();
+		connection
+			.execute("UPDATE desktop_settings SET auto_activate_quota=0, revision=19", [])
+			.unwrap();
 		connection.execute("INSERT INTO chief_work_items(id,kind,title,instructions,status,created_at_micros,updated_at_micros) VALUES('work','goal','Goal','Keep input','open',1,1)",[]).unwrap();
 		connection.execute("INSERT INTO chief_live_output(work_id,turn_id,item_id,text,truncated) VALUES('work','turn','item','Existing partial text',1)",[]).unwrap();
 		migrate(&mut connection).unwrap();
@@ -496,6 +499,16 @@ mod tests {
 			})
 			.unwrap();
 		assert_eq!(saved, ("Existing partial text".into(), true, "agentMessage".into(), false));
+		let preference: (bool, i64) = connection
+			.query_row("SELECT auto_activate_quota, revision FROM desktop_settings", [], |row| {
+				Ok((row.get(0)?, row.get(1)?))
+			})
+			.unwrap();
+		assert_eq!(
+			preference,
+			(false, 19),
+			"migration 31 preserves main's quota activation preference"
+		);
 		assert!(connection.execute("UPDATE chief_live_output SET kind='unknown'", []).is_err());
 		migrate(&mut connection).unwrap();
 		assert_eq!(applied_version(&connection).unwrap(), 31);
@@ -530,7 +543,9 @@ mod tests {
 		assert!(
 			before
 				.iter()
-				.filter(|entry| !["desktop_settings", "chief_live_output"].contains(&entry.2.as_str()))
+				.filter(
+					|entry| !["desktop_settings", "chief_live_output"].contains(&entry.2.as_str())
+				)
 				.all(|entry| after.contains(entry))
 		);
 		let count: i64 = connection
