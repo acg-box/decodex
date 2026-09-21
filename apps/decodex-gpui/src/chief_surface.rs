@@ -948,16 +948,6 @@ impl ChiefSurface {
 		}
 	}
 
-	pub(crate) fn recent_service_event(&self) -> Option<String> {
-		let (id, ChiefHistoryResult::Available { entries, .. }) = self.history.as_ref()? else {
-			return None;
-		};
-		if self.selected.as_ref() != Some(id) {
-			return None;
-		}
-		entries.iter().rev().find(|entry| entry.kind == "system").map(|entry| entry.text.clone())
-	}
-
 	fn thread_in_use(&self, work: &str) -> bool {
 		self.snapshot.as_ref().is_some_and(|snapshot| {
 			snapshot.pending_events.iter().any(|event| {
@@ -1027,11 +1017,7 @@ impl ChiefSurface {
 				})?;
 				return Some((
 					"Work needs attention",
-					format!(
-						"{} · {}. Open Diagnostics for recovery details.",
-						pending.work_item_id,
-						pending.event_kind.replace('_', " ")
-					),
+					format!("{} · {}.", pending.work_item_id, pending.event_kind.replace('_', " ")),
 					false,
 				));
 			},
@@ -2278,7 +2264,6 @@ mod tests {
 				dependencies: vec![],
 				pending_events: vec![],
 			});
-			assert_eq!(s.recent_service_event().as_deref(), Some("Recovered service event"));
 			assert!(s.status_notice().is_none());
 			s.snapshot.as_mut().unwrap().pending_events.push(
 				decodex_protocol::ChiefPendingEventDto {
@@ -2300,7 +2285,6 @@ mod tests {
 			assert!(!s.thread_in_use("chief"));
 			assert!(s.status_notice().is_none());
 			s.selected = Some("another-chief".into());
-			assert!(s.recent_service_event().is_none());
 		});
 	}
 

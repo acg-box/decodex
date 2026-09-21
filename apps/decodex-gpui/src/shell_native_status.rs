@@ -72,9 +72,8 @@ impl Shell {
 impl Render for StatusPanel {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let owner = self.owner.clone();
-		let panel = owner.update(cx, |s, cx| {
-			s.render_status_panel(&connection_presentation(s.connection), None, cx)
-		});
+		let panel = owner
+			.update(cx, |s, cx| s.render_status_panel(&connection_presentation(s.connection), cx));
 		div()
 			.w_full()
 			.p(px(12.))

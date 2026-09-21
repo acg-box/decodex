@@ -302,7 +302,6 @@ actions!(
 		ActivateHealth,
 		ActivateSettings,
 		CloseSettings,
-		DismissSettingsNotification,
 		RefreshHealth,
 		ToggleSidebar,
 		ToggleInspector,
@@ -460,7 +459,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 	composer_input::bind_keys(cx);
 	cx.bind_keys([
 		KeyBinding::new("cmd-w", CloseSettings, Some("SettingsWindow")),
-		KeyBinding::new("escape", DismissSettingsNotification, Some("SettingsWindow")),
+		KeyBinding::new("escape", CloseSettings, Some("SettingsWindow")),
 	]);
 	cx.bind_keys([
 		KeyBinding::new("tab", FocusNext, None),
@@ -536,6 +535,8 @@ pub(crate) struct Shell {
 	titlebar_drag_pending: bool,
 	navigation: navigation::NavigationHistory,
 	status_open: bool,
+	notification_count: bool,
+	dismissed_notifications: std::cell::RefCell<std::collections::HashSet<(String, String)>>,
 	#[cfg(all(target_os = "macos", not(test)))]
 	native_status: native_status::NativeStatus,
 }
@@ -648,6 +649,8 @@ impl Shell {
 			titlebar_drag_pending: false,
 			navigation: navigation::NavigationHistory::new(),
 			status_open: false,
+			notification_count: status::count_preference(None),
+			dismissed_notifications: Default::default(),
 			#[cfg(all(target_os = "macos", not(test)))]
 			native_status: Default::default(),
 		}
@@ -4965,10 +4968,6 @@ impl Render for SettingsWindow {
 		let content = self.owner.update(cx, |s, cx| {
 			settings_workspace_content(s, true, s.refresh_focus.clone(), window, cx)
 		});
-		let local = window.use_keyed_state("settings-notifications", cx, |_, _| false);
-		let status = self.owner.update(cx, |s, cx| {
-			s.render_status_center(&connection_presentation(s.connection), Some(local.clone()), cx)
-		});
 
 		div()
 			.id("settings-window")
@@ -4983,23 +4982,11 @@ impl Render for SettingsWindow {
 				window.remove_window();
 				cx.stop_propagation();
 			}))
-			.on_action(cx.listener(move |_, _: &DismissSettingsNotification, window, cx| {
-				if *local.read(cx) {
-					local.update(cx, |open, cx| {
-						*open = false;
-						cx.notify();
-					});
-				} else {
-					window.remove_window();
-				}
-				cx.stop_propagation();
-			}))
 			.on_action(cx.listener(|_, _: &ActivateSettings, _, cx| cx.stop_propagation()))
 			.on_action(cx.listener(|_, _: &FocusNext, window, cx| window.focus_next(cx)))
 			.on_action(cx.listener(|_, _: &FocusPrevious, window, cx| window.focus_prev(cx)))
 			.relative()
 			.child(content)
-			.child(gpui::deferred(status).priority(3))
 	}
 }
 impl Shell {
@@ -5135,15 +5122,15 @@ impl Render for Shell {
 		let controls = floating_window_controls(self, &presentation, window, cx);
 		#[cfg(all(target_os = "macos", not(test)))]
 		self.prepare_native_status(window, cx);
-		let status = self.render_status_center(&presentation, None, cx);
+		let status = self.render_status_center(&presentation, cx);
 		let route = format!("{:?}", self.selected);
 		let content =
 			destination_content(self, presentation, self.refresh_focus.clone(), window, cx);
 		root.relative()
 			.child(crate::ui_motion::arrival(route, content))
 			.child(controls)
-			// Keep global notifications above deferred composer menus throughout dismissal.
 			.child(gpui::deferred(status).priority(3))
+		// Keep global notifications above deferred composer menus throughout dismissal.
 	}
 }
 
