@@ -77,7 +77,7 @@ impl ChiefSurface {
 		for entry in saved.values() {
 			if entry.kind == "user" || entry.kind == "instruction" {
 				let mark = self.history_marks.entry(entry.id).or_insert_with(|| HistoryMark {
-					position: Rc::new(Cell::new(0.0)),
+					position: Rc::new(Cell::new(f32::INFINITY)),
 					hit_bounds: Rc::new(Cell::new(None)),
 					question: preview(&entry.text),
 					time: format!(
@@ -210,6 +210,18 @@ impl ChiefSurface {
 				self.set_voice_follow(true);
 			}
 		}
+	}
+
+	pub(super) fn follow_latest_after_send(&mut self, cx: &mut Context<Self>) {
+		self.history_selected = None;
+		self.history_navigation = None;
+		self.older_scroll_anchor = None;
+		if let Some(work) = &self.selected {
+			self.history_follow_paused.remove(work);
+			self.transcript_scroll.entry(work.clone()).or_default().scroll_to_bottom();
+		}
+		self.set_voice_follow(true);
+		cx.notify();
 	}
 
 	pub(super) fn jump_to_latest(&mut self, cx: &mut Context<Self>) {
@@ -680,6 +692,36 @@ mod tests {
 			);
 			assert!(!s.history_follow_paused.contains("chief"));
 		});
+	}
+
+	#[gpui::test]
+	fn sending_leaves_old_anchor_and_scrolls_to_latest(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(320.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		surface.update(visual, |s, cx| {
+			s.jump_to_history(1, cx);
+			s.history_follow_paused.insert("chief".into());
+			s.follow_latest_after_send(cx);
+			assert!(s.history_selected.is_none());
+			assert!(s.history_navigation.is_none());
+			assert!(!s.history_follow_paused.contains("chief"));
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		surface.read_with(visual, |s, _| {
+			let scroll = &s.transcript_scroll["chief"];
+			assert!((scroll.offset().y + scroll.max_offset().y).abs() < px(1.));
+			assert_eq!(s.active_history_index(scroll), s.history_marks.len() - 1);
+		});
+		assert_eq!(
+			current_mark(&[0., 100., f32::INFINITY], 0.),
+			0,
+			"an unmeasured incoming message must not steal the active timeline marker"
+		);
 	}
 
 	#[test]

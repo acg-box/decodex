@@ -439,6 +439,24 @@ impl ChiefSurface {
 						{
 							scroll.scroll_to_bottom();
 						}
+						if surface.feedback == "Message saved · Waiting for agent…" {
+							let last_reply = |history: &ChiefHistoryResult| match history {
+								ChiefHistoryResult::Available { entries, .. } => entries
+									.iter()
+									.filter(|e| e.kind == "assistant")
+									.map(|e| e.id)
+									.max(),
+								_ => None,
+							};
+							let previous = surface
+								.history
+								.as_ref()
+								.filter(|(owner, _)| owner == &id)
+								.and_then(|(_, old)| last_reply(old));
+							if last_reply(&history) > previous {
+								surface.feedback.clear();
+							}
+						}
 						surface.prepare_async_question_inputs(&id, &history, cx);
 						surface.history_cache.insert(id.clone(), history.clone());
 						surface.history = Some((id, history));
@@ -532,7 +550,6 @@ impl ChiefSurface {
 					}
 					surface.prepare_question_inputs(&result, cx);
 					surface.request = Some(result);
-					surface.feedback.clear();
 					cx.notify();
 				}
 			});
@@ -661,6 +678,7 @@ impl ChiefSurface {
 						self.configured_send(root_id, text, execution, attachments),
 					action => action,
 				};
+				self.follow_latest_after_send(cx);
 				self.execute(action, Some(text), cx);
 			},
 			Err(message) => {
@@ -740,8 +758,14 @@ impl ChiefSurface {
 		let surface = self;
 		match result {
 			Ok(ChiefCommandResponse::Accepted { work_id }) => {
-				let _ = work_id;
-				surface.feedback.clear();
+				surface.feedback = if draft.is_some() {
+					"Message saved · Waiting for agent…".into()
+				} else {
+					String::new()
+				};
+				if draft.is_some() && surface.selected.as_deref() == Some(work_id.as_str()) {
+					surface.follow_latest_after_send(cx);
+				}
 				if draft == Some(surface.composer.read(cx).content()) {
 					surface.composer.update(cx, |input, cx| {
 						input.clear(cx);
@@ -909,6 +933,14 @@ impl ChiefSurface {
 	fn apply_result(&mut self, result: Result<ChiefSnapshotResult, ()>) {
 		match result {
 			Ok(ChiefSnapshotResult::Available(snapshot)) => {
+				if self.feedback == "Message saved · Waiting for agent…"
+					&& snapshot.work_items.iter().any(|work| {
+						Some(&work.id) == self.selected.as_ref()
+							&& work.dispatch_state == ChiefDispatchStateDto::Running
+					}) {
+					self.feedback.clear();
+				}
+
 				if !self
 					.selected
 					.as_ref()
@@ -974,7 +1006,7 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn status_notice(&self) -> Option<(&'static str, String, bool)> {
-		if !self.feedback.is_empty() {
+		if !self.feedback.is_empty() && self.feedback != "Message saved · Waiting for agent…" {
 			return Some((
 				if self.sending {
 					"Sending"

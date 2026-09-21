@@ -1311,16 +1311,44 @@ impl ChiefSurface {
 			snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())
 		});
 		let current = selected.and_then(|work| self.current_activity_label(work));
-		let label = if self.selected.as_deref().is_some_and(|id| self.thread_in_use(id)) {
-			Some("In use in another app · saved messages are waiting")
-		} else if self.sending {
+		let pending = self
+			.snapshot
+			.as_ref()
+			.map(|snapshot| {
+				snapshot
+					.pending_events
+					.iter()
+					.filter(|event| Some(&event.work_item_id) == self.selected.as_ref())
+					.collect::<Vec<_>>()
+			})
+			.unwrap_or_default();
+		let label = if self.sending {
 			Some("Sending…")
+		} else if self.uncertain {
+			Some("Delivery unconfirmed · Draft kept. Check notifications before sending again.")
+		} else if self.selected.as_deref().is_some_and(|id| self.thread_in_use(id)) {
+			Some("In use in another app · Your message is saved and waiting")
+		} else if pending.iter().any(|event| {
+			event.event_kind.ends_with("_needs_attention") || event.event_kind.ends_with("_failed")
+		}) {
+			Some("Agent connection needs attention · Open notifications for details")
+		} else if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
+			Some("Connection unavailable · Reconnecting")
+		} else if !self.feedback.is_empty() && self.feedback != "Message saved · Waiting for agent…"
+		{
+			Some(self.feedback.as_str())
 		} else {
 			selected.and_then(|work| match work.dispatch_state {
 				ChiefDispatchStateDto::Dispatching => Some("Starting…"),
 				ChiefDispatchStateDto::Running => Some(current.as_deref().unwrap_or("Working…")),
 				ChiefDispatchStateDto::Unknown =>
-					Some("Connection interrupted · checking execution status"),
+					Some("Connection interrupted · Checking delivery"),
+				ChiefDispatchStateDto::Idle
+					if pending.iter().any(|event| event.event_kind == "user_message") =>
+					Some("Message saved · Waiting for agent…"),
+				ChiefDispatchStateDto::Idle
+					if self.feedback == "Message saved · Waiting for agent…" =>
+					Some(self.feedback.as_str()),
 				ChiefDispatchStateDto::Idle => None,
 			})
 		};
@@ -1336,6 +1364,9 @@ impl ChiefSurface {
 				))
 			});
 		div()
+			.id("conversation-activity-status")
+			.role(Role::Status)
+			.aria_label(label.to_owned())
 			.w_full()
 			.px_4()
 			.py_1()
