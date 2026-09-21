@@ -119,7 +119,7 @@ async fn capacity_retry_keeps_model_thread_and_context_and_stops_after_three_att
 	let turns: Vec<_> =
 		(1..=4).map(|n| failed(&format!("opaque turn/{n}"), "serverOverloaded")).collect();
 	let (mut chief, mut sent, _dir) = fixture_with_history(
-		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":turns}}}),
+		json!({"_visible_turns_only":true,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":turns}}}),
 	)
 	.await;
 	chief.start_chief("chief", "original request").await.unwrap();

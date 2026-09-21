@@ -395,6 +395,9 @@ async fn serve_fixture(
 				let mut result = history.get(id).cloned().unwrap_or_else(
 					|| json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
 				);
+				if history["_visible_turns_only"] == true {
+					result["thread"]["turns"].as_array_mut().unwrap().truncate(turns);
+				}
 				if result["thread"]["historyMode"] == "paginated" {
 					assert_ne!(request["params"]["includeTurns"], true);
 					result["thread"]["turns"] = json!([]);
@@ -495,6 +498,34 @@ async fn unloaded_thread_resumes_exact_identity_without_new_thread() {
 	assert_eq!(resumes[0]["params"]["threadId"], json!(original.codex_thread_id));
 	for field in ["approvalPolicy", "sandbox", "cwd", "dynamicTools"] {
 		assert!(resumes[0]["params"].get(field).is_none(), "resume must preserve {field}");
+	}
+}
+
+#[tokio::test]
+async fn missed_native_active_turn_recovery_rejects_reverted_readback() {
+	for reverted in [false, true] {
+		let history = json!({"_misalignment_revert_on_read":reverted,"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"active"},"turns":[{"id":"native-turn","status":"inProgress","items":[]}]}}});
+		let (mut chief, mut sent, _home) = fixture_with_history(history).await;
+		chief.start_chief("chief", "Original user input").await.unwrap();
+		complete(&mut chief, "chief").await;
+		while sent.try_recv().is_ok() {}
+		chief.recover_native_turns().await.unwrap();
+		let work = chief.store.get_chief_work_item("chief".into()).await.unwrap();
+		assert_eq!(
+			work.active_turn_id.as_deref(),
+			if reverted { None } else { Some("native-turn") }
+		);
+		while let Ok(request) = sent.try_recv() {
+			assert!(
+				!["thread/start", "turn/start", "turn/steer", "thread/inject_items"]
+					.contains(&request["method"].as_str().unwrap())
+			);
+			if request["method"] == "thread/resume" {
+				for field in ["cwd", "model", "sandbox", "approvalPolicy", "config"] {
+					assert!(request["params"].get(field).is_none());
+				}
+			}
+		}
 	}
 }
 
@@ -714,7 +745,13 @@ async fn recovery_records_only_exact_terminal_evidence_without_dispatching() {
 		assert!(["thread/resume", "thread/read"].contains(&request["method"].as_str().unwrap()));
 	}
 	recovered.recover_persisted().await.unwrap();
-	assert!(sent.try_recv().is_err());
+	while let Ok(request) = sent.try_recv() {
+		assert_eq!(
+			request["method"], "thread/read",
+			"repeat recovery only checks existing native history"
+		);
+	}
+	assert_eq!(recovered.store.list_pending_chief_events(100).await.unwrap().len(), 1);
 }
 
 #[tokio::test]

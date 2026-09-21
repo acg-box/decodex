@@ -18,6 +18,7 @@ mod guardian;
 mod install;
 pub(crate) mod misalignment;
 pub(crate) mod native_subagents;
+mod native_turns;
 pub(crate) mod observations;
 mod result_messages;
 mod task_history;
@@ -260,6 +261,7 @@ impl ChiefCoordinator {
 				_ => {},
 			}
 		}
+		self.recover_native_turns().await?;
 		Ok(())
 	}
 

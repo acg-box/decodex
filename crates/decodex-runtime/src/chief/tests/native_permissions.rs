@@ -122,9 +122,22 @@ async fn finish(
 }
 
 pub(super) async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>) {
+	serve_with_gate(listener, calls, None).await;
+}
+
+pub(super) async fn serve_with_gate(
+	listener: tokio::net::TcpListener,
+	calls: Arc<AtomicUsize>,
+	gate: Option<(usize, Arc<tokio::sync::Notify>)>,
+) {
 	while let Ok((mut socket, _)) = listener.accept().await {
 		let _body = native_task_references::read_http_body(&mut socket).await;
 		let serial = calls.fetch_add(1, Ordering::AcqRel);
+		if let Some((blocked, gate)) = &gate
+			&& serial == *blocked
+		{
+			gate.notified().await;
+		}
 		let id = format!("permissions-{serial}");
 		let frames = [
 			json!({"type":"response.created","response":{"id":id}}),

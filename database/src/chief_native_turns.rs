@@ -43,6 +43,7 @@ impl SqliteStore {
 			let payload=serde_json::json!({"threadId":thread,"turnId":turn,"accountId":account,"generationId":generation,"connectionId":connection_id}).to_string();
 			tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'native_turn_started',?3,?4,'resolved','Native turn observed; no local input delivery inferred.',?4)",params![key,work,payload,now]).map_err(sqlite_error)?;
 			if state == "idle" {
+				crate::chief::cancel_pending_capacity(&tx,&work)?;
 				tx.execute("UPDATE chief_work_items SET dispatch_state='running',active_turn_id=?2,updated_at_micros=max(updated_at_micros,?3) WHERE id=?1",params![work,turn,now]).map_err(sqlite_error)?;
 				tx.execute("UPDATE chief_usage SET turn_id=?2,baseline_input_tokens=json_extract(usage_json,'$.input_tokens'),baseline_output_tokens=json_extract(usage_json,'$.output_tokens'),turn_input_tokens=NULL,turn_output_tokens=NULL WHERE work_id=?1 AND thread_id=?3",params![work,turn,thread]).map_err(sqlite_error)?;
 			}

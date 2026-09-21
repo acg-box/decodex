@@ -41,8 +41,8 @@ pub(super) fn next_retry(
 	)))
 }
 
-pub(super) fn cancel_pending(connection: &Connection, work: &str) -> Result<(), StoreError> {
-	connection.execute("UPDATE chief_inbox_events SET disposition='resolved', disposition_note='Automatic retry cancelled or superseded by new input.', disposed_at_micros=max(created_at_micros,?2) WHERE disposition IS NULL AND id IN (SELECT event_id FROM chief_capacity_retries WHERE work_item_id=?1 AND state='pending')",params![work,unix_micros()?]).map_err(sqlite_error)?;
+pub(crate) fn cancel_pending(connection: &Connection, work: &str) -> Result<(), StoreError> {
+	connection.execute("UPDATE chief_inbox_events SET disposition='resolved', disposition_note='Automatic retry cancelled or superseded by newer work.', disposed_at_micros=max(created_at_micros,?2) WHERE disposition IS NULL AND id IN (SELECT event_id FROM chief_capacity_retries WHERE work_item_id=?1 AND state='pending')",params![work,unix_micros()?]).map_err(sqlite_error)?;
 	connection
 		.execute(
 			"UPDATE chief_capacity_retries SET state='cancelled' WHERE work_item_id=?1 AND state='pending'",

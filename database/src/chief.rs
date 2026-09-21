@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 mod capacity;
 pub use capacity::ChiefCapacityRetry;
+pub(crate) use capacity::cancel_pending as cancel_pending_capacity;
 
 use crate::{DatabaseError, SqliteStore, StoreError, error::sqlite_error, unix_micros};
 
