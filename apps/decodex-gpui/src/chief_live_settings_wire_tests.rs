@@ -120,6 +120,48 @@ fn work() -> ChiefWorkItemDto {
 		updated_at_micros: 1,
 	}
 }
+
+#[gpui::test]
+fn reviewed_live_turn_is_invalidated_even_if_the_old_identity_returns(
+	cx: &mut gpui::TestAppContext,
+) {
+	let surface = cx.new(ChiefSurface::new);
+	for change in ["thread", "turn", "idle", "removed", "source"] {
+		let original = ChiefSnapshotDto {
+			runtime_source: Some(EntityId::new("source").unwrap()),
+			workspaces: vec![],
+			work_items: vec![work()],
+			dependencies: vec![],
+			pending_events: vec![],
+		};
+		surface.update(cx, |s, _| {
+			s.apply_result(Ok(ChiefSnapshotResult::Available(original.clone())));
+			s.live_reviewer.work = Some("root".into());
+			s.live_reviewer.state = Some(State::Available {
+				thread_id: EntityId::new("thread").unwrap(),
+				turn_id: EntityId::new("turn").unwrap(),
+				review_token: WireText::new("a".repeat(64)).unwrap(),
+				can_update: true,
+				last_reviewer: None,
+				last_outcome: None,
+			});
+			let before = s.live_reviewer.epoch;
+			let mut changed = original.clone();
+			match change {
+				"thread" => changed.work_items[0].codex_thread_id = Some("other-thread".into()),
+				"turn" => changed.work_items[0].active_turn_id = Some("other-turn".into()),
+				"idle" => changed.work_items[0].dispatch_state = ChiefDispatchStateDto::Idle,
+				"removed" => changed.work_items.clear(),
+				_ => changed.runtime_source = Some(EntityId::new("other-source").unwrap()),
+			}
+			s.apply_result(Ok(ChiefSnapshotResult::Available(changed)));
+			assert_ne!(s.live_reviewer.epoch, before, "{change}");
+			s.apply_result(Ok(ChiefSnapshotResult::Available(original)));
+			assert!(s.live_reviewer.state.is_none(), "old review returned after {change}");
+			assert!(s.live_reviewer.work.is_none());
+		});
+	}
+}
 struct ReviewerView {
 	surface: Entity<ChiefSurface>,
 }

@@ -980,6 +980,7 @@ impl ChiefSurface {
 		}
 		match result {
 			Ok(ChiefSnapshotResult::Available(snapshot)) => {
+				self.invalidate_live_reviewer_for_snapshot(&snapshot);
 				if self.snapshot.as_ref().is_some_and(|old| {
 					old.work_items.iter().any(|work| {
 						snapshot

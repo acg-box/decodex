@@ -12,6 +12,19 @@ pub(super) struct Panel {
 }
 
 impl ChiefSurface {
+	pub(super) fn invalidate_live_reviewer_for_snapshot(&mut self, next: &ChiefSnapshotDto) {
+		let Some(work) = self.live_reviewer.work.as_ref() else {
+			return;
+		};
+		let before =
+			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
+		let after = next.work_items.iter().find(|w| &w.id == work);
+		let unchanged = matches!((before,after),(Some(a),Some(b)) if a.codex_thread_id==b.codex_thread_id && a.active_turn_id==b.active_turn_id && b.dispatch_state==ChiefDispatchStateDto::Running);
+		if !unchanged {
+			self.reset_live_reviewer();
+		}
+	}
+
 	pub(super) fn reset_live_reviewer(&mut self) {
 		self.live_reviewer =
 			Panel { epoch: self.live_reviewer.epoch.wrapping_add(1), ..Default::default() };
