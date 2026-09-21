@@ -146,14 +146,23 @@ fn inline(nodes: &[Node], key: &str) -> AnyElement {
 		{
 			cx.open_url(url);
 		} else if url.starts_with('/') {
-			let path = url
-				.rsplit_once(':')
-				.filter(|(_, line)| line.parse::<u32>().is_ok())
-				.map_or(url.as_str(), |(path, _)| path);
+			let path = without_line_column(url);
 			cx.reveal_path(std::path::Path::new(path));
 		}
 	})
 	.into_any_element()
+}
+
+fn without_line_column(path: &str) -> &str {
+	let mut path = path;
+	for _ in 0..2 {
+		let Some((prefix, number)) = path.rsplit_once(':') else { break };
+		if number.is_empty() || !number.bytes().all(|byte| byte.is_ascii_digit()) {
+			break;
+		}
+		path = prefix;
+	}
+	path
 }
 fn render_node(node: &Node, key: &str) -> AnyElement {
 	let Node::Block(kind, children) = node else {
@@ -339,6 +348,30 @@ pub(super) fn render(text: &str, key: &str) -> AnyElement {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn local_link_locations_do_not_become_part_of_the_revealed_filename() {
+		for (target, expected) in [
+			("/tmp/中文.rs:12:3", "/tmp/中文.rs"),
+			("/tmp/a.rs:12", "/tmp/a.rs"),
+			("/tmp/a:b.rs:12:3", "/tmp/a:b.rs"),
+			("/tmp/a:b.rs", "/tmp/a:b.rs"),
+			("/tmp/a.rs:", "/tmp/a.rs:"),
+			("/tmp/a.rs:12x", "/tmp/a.rs:12x"),
+		] {
+			assert_eq!(without_line_column(target), expected);
+		}
+		let mut out = Inline::default();
+		append_inline(
+			&parse("| Source |\n|---|\n| [**Read** `parser`](/tmp/中文.rs:12:3) |"),
+			HighlightStyle::default(),
+			None,
+			&mut out,
+		);
+		let labels: String = out.links.iter().map(|(range, _)| &out.text[range.clone()]).collect();
+		assert_eq!(labels, "Read parser");
+		assert!(out.links.iter().all(|(_, target)| target == "/tmp/中文.rs:12:3"));
+	}
 
 	#[test]
 	fn copied_code_preserves_source_content() {
