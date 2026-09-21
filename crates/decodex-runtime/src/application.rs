@@ -3828,6 +3828,9 @@ fn chief_request_metadata(value: &serde_json::Value) -> Option<serde_json::Value
 				"codex_approval_kind",
 				"persist",
 				"connector_name",
+				"connector_id",
+				"link_id",
+				"link_is_implicit",
 				"tool_name",
 				"tool_title",
 				"tool_description",
@@ -5514,7 +5517,7 @@ mod tests {
 				_ =>
 					serde_json::json!({"type":"object","properties":{"date":{"type":"string","format":"date"}}}),
 			};
-			let payload = serde_json::json!({"method":"mcpServer/elicitation/request","params":{"threadId":thread,"turnId":turn,"serverName":"calendar","mode":mode,"message":"Choose a date","requestedSchema":schema,"challenge":"PRIVATE_CHALLENGE","_meta":{"tool_name":"calendar.create","private_token":"PRIVATE_TOKEN"}}});
+			let payload = serde_json::json!({"method":"mcpServer/elicitation/request","params":{"threadId":thread,"turnId":turn,"serverName":"calendar","mode":mode,"message":"Choose a date","requestedSchema":schema,"challenge":"PRIVATE_CHALLENGE","_meta":{"tool_name":"calendar.create","connector_id":"calendar","link_id":"work/link","link_is_implicit":false,"private_token":"PRIVATE_TOKEN"}}});
 			let event = store
 				.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
 					source_event_id: format!("elicitation-{index}"),
@@ -5534,6 +5537,9 @@ mod tests {
 				assert_eq!(value["mode"], mode);
 				assert_eq!(value["requestedSchema"], schema);
 				assert_eq!(value["_meta"]["tool_name"], "calendar.create");
+				assert_eq!(value["_meta"]["connector_id"], "calendar");
+				assert_eq!(value["_meta"]["link_id"], "work/link");
+				assert_eq!(value["_meta"]["link_is_implicit"], false);
 				assert!(!request_json.as_str().contains("PRIVATE_"));
 			}
 		}

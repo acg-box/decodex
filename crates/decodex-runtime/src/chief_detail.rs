@@ -108,6 +108,7 @@ fn project(
 				}
 			},
 		"mcpToolCall" | "dynamicToolCall" => {
+			append_app_context(item, &mut parts);
 			for field in ["server", "tool"] {
 				if let Some(text) = item[field].as_str() {
 					parts.push(text.into());
@@ -154,9 +155,57 @@ fn project(
 	Some(ChiefActivityDetailResult::Available { text: text[..end].into(), truncated })
 }
 
+fn append_app_context(item: &Value, parts: &mut Vec<String>) {
+	if item["type"] != "mcpToolCall" {
+		return;
+	}
+	// Native invocation metadata owns account selection. An arbitrary link_id
+	// argument can describe a resource rather than the connected account.
+	for (field, label) in [
+		("appName", "App"),
+		("connectorId", "Connector"),
+		("linkId", "Connected account link"),
+		("actionName", "Action"),
+	] {
+		if let Some(value) = item["appContext"][field].as_str().filter(|value| !value.is_empty()) {
+			parts.push(format!("{label}: {value}"));
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn tool_detail_uses_native_account_identity_without_inferring_from_arguments() {
+		for (kind, context, expected) in [
+			(
+				"mcpToolCall",
+				json!({"appName":"Calendar","connectorId":"calendar","linkId":" work/link ","actionName":"Create event"}),
+				Some(" work/link "),
+			),
+			(
+				"mcpToolCall",
+				json!({"connectorId":"calendar","linkId":"personal/link"}),
+				Some("personal/link"),
+			),
+			("mcpToolCall", Value::Null, None),
+			("dynamicToolCall", json!({"linkId":"unrelated"}), None),
+		] {
+			let history = json!({"thread":{"id":"t","turns":[{"id":"u","items":[{"id":"i","type":kind,"server":"codex_apps","tool":"create","appContext":context,"arguments":{"link_id":"argument-must-not-authorize"}}]}]}});
+			let Some(ChiefActivityDetailResult::Available { text, truncated }) =
+				project(&history, "t", "u", "i")
+			else {
+				panic!("tool detail");
+			};
+			assert!(!text.contains("argument-must-not-authorize"));
+			assert!(!truncated);
+			match expected {
+				Some(link) => assert!(text.contains(&format!("Connected account link: {link}"))),
+				None => assert!(!text.contains("Connected account link:")),
+			}
+		}
+	}
 	#[tokio::test]
 	async fn activity_detail_rejects_changed_or_missing_source() {
 		use crate::chief_usage_estimate::{Source, SourceKey};

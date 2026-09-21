@@ -135,6 +135,9 @@ impl ChiefSurface {
 					.unwrap_or("")
 					.to_owned(),
 			);
+		if let Some(account) = mcp_account_label(value) {
+			panel = panel.child(account);
+		}
 		if let Some(params) = value
 			.pointer("/_meta/tool_params_display")
 			.or_else(|| value.pointer("/_meta/tool_params"))
@@ -354,9 +357,28 @@ pub(super) fn mcp_button(
 		.into_any_element()
 }
 
+fn mcp_account_label(value: &Value) -> Option<String> {
+	if value["serverName"] != "codex_apps" {
+		return None;
+	}
+	let link = value.pointer("/_meta/link_id")?.as_str().filter(|link| !link.is_empty())?;
+	Some(format!("Connected account link: {link}"))
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn account_label_uses_only_native_apps_metadata() {
+		let request = json!({"serverName":"codex_apps","_meta":{"connector_id":"calendar","link_id":" work/link "},"tool_params":{"link_id":"personal"}});
+		assert_eq!(mcp_account_label(&request), Some("Connected account link:  work/link ".into()));
+		let mut other = request.clone();
+		other["serverName"] = json!("custom_mcp");
+		assert_eq!(mcp_account_label(&other), None);
+		other = request;
+		other["_meta"]["link_id"] = Value::Null;
+		assert_eq!(mcp_account_label(&other), None);
+	}
 	#[gpui::test]
 	fn approval_renders_only_offered_persistence_and_rejects_stale_scope(
 		cx: &mut gpui::TestAppContext,
