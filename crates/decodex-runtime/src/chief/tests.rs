@@ -6,6 +6,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/capacity.rs"] mod capacity;
 #[path = "tests/guardian.rs"] mod guardian;
 #[path = "tests/install.rs"] mod install;
+#[path = "tests/native_plan.rs"] mod native_plan;
 #[path = "tests/native_subagent_live.rs"] mod native_subagent_live;
 #[path = "tests/native_subagents.rs"] mod native_subagents;
 #[path = "tests/native_task_references.rs"] mod native_task_references;

@@ -67,6 +67,7 @@ impl ChiefSurface {
 				let label = match kind.as_str() {
 					"userMessage" => "You",
 					"agentMessage" => "Assistant",
+					"plan" => "Proposed plan",
 					"functionCallOutput" => "Tool result",
 					_ => kind,
 				};
@@ -75,19 +76,27 @@ impl ChiefSurface {
 					row = row.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
 				}
 				if !text.is_empty() {
+					let is_plan = kind == "plan";
 					row = row.child(
 						div()
-							.debug_selector(|| "native-promotion-content".into())
+							.debug_selector(move || {
+								if is_plan {
+									"native-plan-content"
+								} else {
+									"native-promotion-content"
+								}
+								.into()
+							})
 							.child(markdown::render(text, identity)),
 					);
 				}
 				if truncated {
 					row = row.child(muted("Some content was omitted from this history preview."));
 				}
-				if kind == "agentMessage" && !text.is_empty() {
+				if matches!(kind.as_str(), "agentMessage" | "plan") && !text.is_empty() {
 					row = row.child(markdown::copy_button(
 						&format!("copy-{identity}"),
-						"Copy response",
+						if kind == "plan" { "Copy plan" } else { "Copy response" },
 						text.to_owned(),
 					));
 				}
@@ -249,6 +258,21 @@ mod tests {
 	use decodex_protocol::ChiefTimelinePage;
 	use gpui::{px, size};
 
+	fn plan_entry() -> ChiefTimelineEntry {
+		ChiefTimelineEntry {
+			position: 6,
+			content: Content::Item {
+				turn_id: "plan-turn".into(),
+				item_id: "plan-item".into(),
+				kind: "plan".into(),
+				text: "## Proposed work\n1. Inspect source\n2. Verify changes".into(),
+				truncated: false,
+				activity: None,
+				attachments: vec![],
+			},
+		}
+	}
+
 	fn rendered_entries() -> Vec<ChiefTimelineEntry> {
 		vec![
 			ChiefTimelineEntry {
@@ -335,6 +359,7 @@ mod tests {
 					}),
 				},
 			},
+			plan_entry(),
 		]
 	}
 
@@ -394,6 +419,7 @@ mod tests {
 		assert!(bounds.iter().all(|bounds| bounds.size.height > px(0.)));
 		assert!(bounds.windows(2).all(|pair| pair[0].bottom() <= pair[1].top()));
 		assert!(visual.debug_bounds("native-turn-usage").is_some());
+		assert!(visual.debug_bounds("native-plan-content").is_some());
 		assert!(visual.debug_bounds("native-promotion-content").is_some());
 		assert!(visual.debug_bounds("saved-local-history").is_none());
 		let toggle = visual.debug_bounds("native-history-source-toggle").unwrap();
@@ -411,7 +437,7 @@ mod tests {
 		assert!(visual.debug_bounds("saved-local-history").is_none());
 		surface.update(visual, |s, cx| {
 			let mut duplicate = s.native_history.entries[1].clone();
-			duplicate.position = 6;
+			duplicate.position = 7;
 			s.native_history.entries.push(duplicate);
 			cx.notify();
 		});
