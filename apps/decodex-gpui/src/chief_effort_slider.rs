@@ -37,7 +37,7 @@ impl ChiefSurface {
 			.gap(px(8.))
 			.child(
 				div()
-					.w(px(54.))
+					.min_w(px(54.))
 					.flex_none()
 					.text_size(px(12.))
 					.whitespace_nowrap()
@@ -231,7 +231,7 @@ mod tests {
 					model: decodex_protocol::ConversationModel::new(s.model.read(cx).content())
 						.unwrap(),
 					name: "Test model".into(),
-					efforts: vec![Effort::Low, Effort::High, Effort::Ultra],
+					efforts: vec![Effort::Low, Effort::High, Effort::Ultra, Effort::Persistent],
 					default_effort: Some(Effort::High),
 					supports_fast: true,
 					service_tiers: vec![],
@@ -273,7 +273,10 @@ mod tests {
 			MouseButton::Left,
 			Default::default(),
 		);
-		surface.update(visual, |s, _| assert_eq!(s.effort, Effort::Ultra));
+		surface.update(visual, |s, _| {
+			assert_eq!(s.effort, Effort::Persistent);
+			assert_eq!(level_label(s.effort.as_str()), "Persistent");
+		});
 		visual.simulate_mouse_move(
 			gpui::point(bounds.left() - px(30.), start.y),
 			MouseButton::Left,

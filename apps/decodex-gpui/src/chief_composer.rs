@@ -615,6 +615,7 @@ impl ChiefSurface {
 				"xhigh" => ConversationReasoningEffort::XHigh,
 				"max" => ConversationReasoningEffort::Max,
 				"ultra" => ConversationReasoningEffort::Ultra,
+				"persistent" => ConversationReasoningEffort::Persistent,
 				_ => ConversationReasoningEffort::High,
 			};
 		}
