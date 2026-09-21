@@ -78,6 +78,8 @@ impl SqliteStore {
 
 	/// Reserve before native mutation. False means a prior attempt already exists,
 	/// including a crash after reservation; it never authorizes replay.
+	/// The caller must guard native dispatch with the exact live request, whose
+	/// originating turn can differ from the current turn.
 	pub async fn reserve_chief_install_attempt(
 		&self,
 		attempt: ChiefInstallAttempt,
@@ -92,7 +94,7 @@ impl SqliteStore {
 		}
 		self.run(move |connection| {
 			let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
-			let payload:Option<String>=tx.query_row("SELECT e.payload FROM chief_inbox_events e JOIN chief_work_items w ON w.id=e.work_item_id WHERE e.id=?1 AND e.work_item_id=?2 AND w.codex_thread_id=?3 AND e.event_kind='server_request_pending' AND e.disposition IS NULL AND ((json_extract(e.payload,'$.ownerThreadId')=?3 AND json_extract(e.payload,'$.params.threadId')!=?3) OR json_extract(e.payload,'$.params.turnId') IS NULL OR (w.dispatch_state='running' AND json_extract(e.payload,'$.params.turnId')=w.active_turn_id))",params![a.event_id,a.work_id,a.thread_id],|r|r.get(0)).optional().map_err(sqlite_error)?;
+			let payload:Option<String>=tx.query_row("SELECT e.payload FROM chief_inbox_events e JOIN chief_work_items w ON w.id=e.work_item_id WHERE e.id=?1 AND e.work_item_id=?2 AND w.codex_thread_id=?3 AND e.event_kind='server_request_pending' AND e.disposition IS NULL",params![a.event_id,a.work_id,a.thread_id],|r|r.get(0)).optional().map_err(sqlite_error)?;
 			let valid=payload.as_deref().and_then(|s|serde_json::from_str::<Value>(s).ok()).is_some_and(|v| {
 				v["method"]=="mcpServer/elicitation/request" && (v["params"]["threadId"]==a.thread_id || (v["ownerThreadId"]==a.thread_id && v["params"]["threadId"].as_str().is_some_and(|thread| !thread.is_empty())))
 					&& v["params"]["serverName"]=="codex_apps"
