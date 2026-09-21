@@ -140,7 +140,7 @@ impl NativeSession {
 				}
 			}
 		});
-		writeln!(stdin, "{}", json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"decodex_native_history_test","version":"0.1"},"capabilities":{"experimentalApi":true,"optOutNotificationMethods":["rawResponseItem/completed"]}}})).expect("native session setup");
+		writeln!(stdin, "{}", json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"decodex_native_history_test","version":"0.1"},"capabilities":decodex_codex::app_server_client::InitializeCapabilities::default()}})).expect("native session setup");
 		let deadline = std::time::Instant::now() + Duration::from_secs(15);
 		loop {
 			let frame = receive

@@ -397,6 +397,26 @@ mod tests {
 			assert_eq!(s.feedback, "No service profile is configured.");
 			assert!(s.command_task.is_none());
 		});
+		surface.update(visual, |s, cx| {
+			let request = ChiefRequestResult::Available {
+				event_id: 7, work_id: "root".into(), method: "mcpServer/elicitation/request".into(),
+				request_json: HistoryText::new(json!({"mode":"openaiForm","message":"Select a preview","requestedSchema":{
+					"type":"object","properties":{"template":{"type":"string","oneOf":[{"const":"a","title":"A","x-openai-preview":{"src":"data:image/png;base64,fixture"}}]}}
+				}}).to_string()).unwrap(),
+			};
+			s.request = Some(request);
+			s.feedback.clear();
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(
+			visual.debug_bounds("mcp-submit").is_none(),
+			"unsupported form cannot become partial approval"
+		);
+		assert!(visual.debug_bounds("mcp-decline").is_some());
+		assert!(visual.debug_bounds("mcp-cancel").is_some());
 	}
 
 	#[gpui::test]
@@ -464,9 +484,10 @@ mod tests {
 
 	#[gpui::test]
 	fn form_defaults_are_not_answers_and_same_request_keeps_drafts(cx: &mut gpui::TestAppContext) {
-		let surface = cx.new(ChiefSurface::new);
-		surface.update(cx,|s,cx| {
-            let request=ChiefRequestResult::Available {event_id:7,work_id:"chief".into(),method:"mcpServer/elicitation/request".into(),request_json:HistoryText::new(json!({"mode":"form","requestedSchema":{"type":"object","properties":{"agree":{"type":"boolean","default":true},"name":{"type":"string"}},"required":["agree","name"]}}).to_string()).unwrap()};
+		for mode in ["form", "openai/form", "openaiForm"] {
+			let surface = cx.new(ChiefSurface::new);
+			surface.update(cx,|s,cx| {
+            let request=ChiefRequestResult::Available {event_id:7,work_id:"chief".into(),method:"mcpServer/elicitation/request".into(),request_json:HistoryText::new(json!({"mode":mode,"requestedSchema":{"type":"object","properties":{"agree":{"type":"boolean","default":true},"name":{"type":"string"}},"required":["agree","name"]}}).to_string()).unwrap()};
             s.prepare_mcp_inputs(&request,cx);s.request=Some(request.clone());s.selected=Some("chief".into());
             s.submit_mcp_form(7,cx);
             assert!(s.feedback.contains("required"));assert!(s.command_task.is_none());
@@ -478,5 +499,6 @@ mod tests {
             s.submit_mcp_form(6,cx);assert!(s.command_task.is_none());
             s.submit_mcp_form(7,cx);assert_eq!(s.feedback,"No service profile is configured.");
         });
+		}
 	}
 }

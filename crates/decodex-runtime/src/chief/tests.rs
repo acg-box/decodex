@@ -2,11 +2,12 @@ use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 #[path = "tests/archive.rs"] mod archive;
-#[path = "tests/auth_recovery.rs"] mod auth_recovery;
 #[path = "tests/async_recovery.rs"] mod async_recovery;
+#[path = "tests/auth_recovery.rs"] mod auth_recovery;
 #[path = "tests/capacity.rs"] mod capacity;
 #[path = "tests/guardian.rs"] mod guardian;
 #[path = "tests/install.rs"] mod install;
+#[path = "tests/native_mcp_forms.rs"] mod native_mcp_forms;
 #[path = "tests/native_subagent_live.rs"] mod native_subagent_live;
 #[path = "tests/native_subagents.rs"] mod native_subagents;
 #[path = "tests/native_task_references.rs"] mod native_task_references;
@@ -2475,107 +2476,111 @@ async fn misalignment_does_not_send_or_consume_pending_provider_approval() {
 
 #[tokio::test]
 async fn mcp_form_response_validates_original_schema_before_consuming_live_request() {
-	let (mut chief, mut sent, _directory) = fixture().await;
-	chief.start_chief("chief", "Coordinate").await.unwrap();
-	chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
-	let id = RequestId::String("mcp-form".into());
-	chief.handle_event(ServerEvent::Request {id:id.clone(),method:"mcpServer/elicitation/request".into(),params:json!({"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":"form","requestedSchema":{"type":"object","properties":{"allow":{"type":"boolean"}},"required":["allow"]}})}).await.unwrap();
-	let event = chief.pending_requests[&id];
-	while sent.try_recv().is_ok() {}
-	for response in [
-		json!({"action":"accept","content":{"allow":"true"}}),
-		json!({"action":"accept","content":{"allow":true},"_meta":{"persist":"always"}}),
-		json!({"decision":"accept"}),
-	] {
-		assert!(matches!(
-			chief.respond_pending_event(event, response).await,
-			Err(ChiefError::Rejected(_))
-		));
-		assert_eq!(chief.pending_requests[&id], event);
+	for mode in ["form", "openai/form", "openaiForm"] {
+		let (mut chief, mut sent, _directory) = fixture().await;
+		chief.start_chief("chief", "Coordinate").await.unwrap();
+		chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
+		let id = RequestId::String("mcp-form".into());
+		chief.handle_event(ServerEvent::Request {id:id.clone(),method:"mcpServer/elicitation/request".into(),params:json!({"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":mode,"requestedSchema":{"type":"object","properties":{"allow":{"type":"boolean"}},"required":["allow"]}})}).await.unwrap();
+		let event = chief.pending_requests[&id];
+		while sent.try_recv().is_ok() {}
+		for response in [
+			json!({"action":"accept","content":{"allow":"true"}}),
+			json!({"action":"accept","content":{"allow":true},"_meta":{"persist":"always"}}),
+			json!({"decision":"accept"}),
+		] {
+			assert!(matches!(
+				chief.respond_pending_event(event, response).await,
+				Err(ChiefError::Rejected(_))
+			));
+			assert_eq!(chief.pending_requests[&id], event);
+			assert!(sent.try_recv().is_err());
+		}
+		chief
+			.respond_pending_event(
+				event,
+				json!({"action":"accept","content":{"allow":false},"_meta":null}),
+			)
+			.await
+			.unwrap();
+		let reply = sent.recv().await.unwrap();
+		assert_eq!(reply["id"], "mcp-form");
+		assert_eq!(reply["result"]["content"]["allow"], false);
+		assert!(!chief.pending_requests.contains_key(&id));
+		assert!(
+			chief
+				.respond_pending_event(event, json!({"action":"cancel","content":null}))
+				.await
+				.is_err()
+		);
 		assert!(sent.try_recv().is_err());
 	}
-	chief
-		.respond_pending_event(
-			event,
-			json!({"action":"accept","content":{"allow":false},"_meta":null}),
-		)
-		.await
-		.unwrap();
-	let reply = sent.recv().await.unwrap();
-	assert_eq!(reply["id"], "mcp-form");
-	assert_eq!(reply["result"]["content"]["allow"], false);
-	assert!(!chief.pending_requests.contains_key(&id));
-	assert!(
-		chief
-			.respond_pending_event(event, json!({"action":"cancel","content":null}))
-			.await
-			.is_err()
-	);
-	assert!(sent.try_recv().is_err());
 }
 
 #[tokio::test]
 async fn standalone_mcp_resolution_and_reconnection_never_replay_a_reply() {
-	let (mut chief, mut sent, _directory) = fixture().await;
-	chief.start_chief("chief", "Coordinate").await.unwrap();
-	chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
-	let id = RequestId::Number(17);
-	let params = json!({"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":"form","requestedSchema":null});
-	chief
-		.handle_event(ServerEvent::Request {
-			id: id.clone(),
-			method: "mcpServer/elicitation/request".into(),
-			params: params.clone(),
-		})
-		.await
-		.unwrap();
-	let old_event = chief.pending_requests[&id];
-	let mut reconnected =
-		ChiefCoordinator::new(chief.store.clone(), chief.client.clone(), chief.config.clone())
+	for mode in ["form", "openai/form", "openaiForm"] {
+		let (mut chief, mut sent, _directory) = fixture().await;
+		chief.start_chief("chief", "Coordinate").await.unwrap();
+		chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
+		let id = RequestId::Number(17);
+		let params = json!({"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":mode,"requestedSchema":null});
+		chief
+			.handle_event(ServerEvent::Request {
+				id: id.clone(),
+				method: "mcpServer/elicitation/request".into(),
+				params: params.clone(),
+			})
+			.await
 			.unwrap();
-	while sent.try_recv().is_ok() {}
-	assert!(
+		let old_event = chief.pending_requests[&id];
+		let mut reconnected =
+			ChiefCoordinator::new(chief.store.clone(), chief.client.clone(), chief.config.clone())
+				.unwrap();
+		while sent.try_recv().is_ok() {}
+		assert!(
+			reconnected
+				.respond_pending_event(old_event, json!({"action":"accept","content":null}))
+				.await
+				.is_err()
+		);
+		assert!(sent.try_recv().is_err());
 		reconnected
-			.respond_pending_event(old_event, json!({"action":"accept","content":null}))
+			.handle_event(ServerEvent::Request {
+				id: id.clone(),
+				method: "mcpServer/elicitation/request".into(),
+				params,
+			})
 			.await
-			.is_err()
-	);
-	assert!(sent.try_recv().is_err());
-	reconnected
-		.handle_event(ServerEvent::Request {
-			id: id.clone(),
-			method: "mcpServer/elicitation/request".into(),
-			params,
-		})
-		.await
-		.unwrap();
-	let event = reconnected.pending_requests[&id];
-	assert_ne!(event, old_event);
-	reconnected
-		.handle_event(ServerEvent::Notification {
-			method: "serverRequest/resolved".into(),
-			params: json!({"threadId":"wrong-thread","requestId":17}),
-		})
-		.await
-		.unwrap();
-	assert_eq!(reconnected.pending_requests[&id], event);
-	reconnected
-		.handle_event(ServerEvent::Notification {
-			method: "serverRequest/resolved".into(),
-			params: json!({"threadId":"opaque thread/1","requestId":17}),
-		})
-		.await
-		.unwrap();
-	assert!(!reconnected.pending_requests.contains_key(&id));
-	assert_eq!(
-		reconnected.store.get_chief_inbox_event(event).await.unwrap().disposition,
-		Some(ChiefDisposition::Resolved)
-	);
-	assert!(
+			.unwrap();
+		let event = reconnected.pending_requests[&id];
+		assert_ne!(event, old_event);
 		reconnected
-			.respond_pending_event(event, json!({"action":"accept","content":null}))
+			.handle_event(ServerEvent::Notification {
+				method: "serverRequest/resolved".into(),
+				params: json!({"threadId":"wrong-thread","requestId":17}),
+			})
 			.await
-			.is_err()
-	);
-	assert!(sent.try_recv().is_err());
+			.unwrap();
+		assert_eq!(reconnected.pending_requests[&id], event);
+		reconnected
+			.handle_event(ServerEvent::Notification {
+				method: "serverRequest/resolved".into(),
+				params: json!({"threadId":"opaque thread/1","requestId":17}),
+			})
+			.await
+			.unwrap();
+		assert!(!reconnected.pending_requests.contains_key(&id));
+		assert_eq!(
+			reconnected.store.get_chief_inbox_event(event).await.unwrap().disposition,
+			Some(ChiefDisposition::Resolved)
+		);
+		assert!(
+			reconnected
+				.respond_pending_event(event, json!({"action":"accept","content":null}))
+				.await
+				.is_err()
+		);
+		assert!(sent.try_recv().is_err());
+	}
 }

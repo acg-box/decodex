@@ -328,6 +328,28 @@ pub fn validate_mcp_response(request: &Value, response: &Value) -> Result<(), St
 mod tests {
 	use super::*;
 	#[test]
+	fn openai_form_unknown_semantics_require_decline_or_cancel() {
+		let request = json!({"mode":"openaiForm","requestedSchema":{
+			"type":"object","properties":{"template":{"type":"string","oneOf":[{
+				"const":"wire-value","title":"Display label","x-openai-preview":{"src":"data:image/png;base64,fixture"}
+			}]}},"required":["template"]
+		}});
+		assert!(mcp_form_fields(&request["requestedSchema"]).is_err());
+		assert!(
+			validate_mcp_response(
+				&request,
+				&json!({"action":"accept","content":{"template":"wire-value"}})
+			)
+			.is_err()
+		);
+		for action in ["decline", "cancel"] {
+			assert!(
+				validate_mcp_response(&request, &json!({"action":action,"content":null})).is_ok()
+			);
+		}
+	}
+
+	#[test]
 	fn response_permissions_are_limited_to_advertised_scope() {
 		let request = json!({"mode":"form","requestedSchema":null,"_meta":{"persist":["session"]}});
 		assert!(

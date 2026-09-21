@@ -101,12 +101,7 @@ pub struct ClientInfo<'a> {
 	pub version: &'a str,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InitializeCapabilities {
-	pub experimental_api: bool,
-	pub opt_out_notification_methods: &'static [&'static str],
-}
+pub use decodex_codex::app_server_client::InitializeCapabilities;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
