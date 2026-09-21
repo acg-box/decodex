@@ -344,6 +344,70 @@ impl SettingsSurface {
 }
 
 impl SettingsSurface {
+	fn cursor_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		use crate::composer_input::cursor::{Preference, Shape};
+		let current = Preference::configured();
+		let choices = [
+			(
+				"Cursor style",
+				vec![
+					("Bar", Preference { shape: Shape::Bar, ..current }),
+					("Block", Preference { shape: Shape::Block, ..current }),
+					("Underline", Preference { shape: Shape::Underline, ..current }),
+				],
+			),
+			(
+				"Cursor blinking",
+				vec![
+					("On", Preference { blinking: true, ..current }),
+					("Off", Preference { blinking: false, ..current }),
+				],
+			),
+		];
+		div().flex().flex_col().children(choices.into_iter().map(|(title, values)| {
+			ui_theme::settings_row().px_0().child(div().flex_1().child(title)).child(
+				div().flex().gap_1().p_1().rounded(px(9.)).bg(rgba(0xffffff08)).children(
+					values.into_iter().map(|(label, value)| {
+						div()
+							.id(gpui::SharedString::from(format!("{title}-{label}")))
+							.role(Role::Button)
+							.aria_label(format!("{title}: {label}"))
+							.aria_toggled(if value == current {
+								Toggled::True
+							} else {
+								Toggled::False
+							})
+							.tab_index(0)
+							.px_3()
+							.h(px(26.))
+							.flex()
+							.items_center()
+							.rounded(px(6.))
+							.text_size(px(11.))
+							.cursor_pointer()
+							.when(value == current, |d| d.bg(rgba(0xffffff16)))
+							.hover(|d| d.bg(rgba(0xffffff12)))
+							.on_click(cx.listener(move |_, _, _, cx| {
+								value.select(cx);
+								cx.notify();
+							}))
+							.on_key_down(cx.listener(
+								move |_, event: &gpui::KeyDownEvent, _, cx| {
+									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+										value.select(cx);
+										cx.notify();
+										cx.stop_propagation();
+									}
+								},
+							))
+							.child(label)
+							.smooth()
+					}),
+				),
+			)
+		}))
+	}
+
 	fn glass_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		use ui_theme::window_material::GlassStyle;
 		let style = GlassStyle::configured();
@@ -429,6 +493,7 @@ impl Render for SettingsSurface {
 							.gap(px(24.0))
 							.child(ui_theme::settings_title("General"))
 							.child(self.glass_controls(cx))
+							.child(self.cursor_controls(cx))
 							.child(
 								div().flex().flex_col().gap(px(8.0)).child(
 									div()

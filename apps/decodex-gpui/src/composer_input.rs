@@ -1,3 +1,4 @@
+#[path = "composer_cursor.rs"] pub(crate) mod cursor;
 #[path = "composer_edit.rs"] mod edit;
 #[path = "composer_shortcuts.rs"] mod shortcuts;
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -86,6 +87,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 
 /// Conversation composer input and its native text-input lifecycle.
 pub(crate) struct ComposerInput {
+	cursor: cursor::Cursor,
 	focus_handle: FocusHandle,
 	placeholder: SharedString,
 	aria_label: SharedString,
@@ -141,6 +143,7 @@ impl ComposerInput {
 		cx: &mut Context<Self>,
 	) -> Self {
 		Self {
+			cursor: Default::default(),
 			focus_handle: cx.focus_handle().tab_index(tab_index).tab_stop(true),
 			placeholder: placeholder.into(),
 			aria_label: aria_label.into(),
@@ -355,6 +358,7 @@ impl ComposerInput {
 	) {
 		#[cfg(target_os = "macos")]
 		claim_native_text_focus(window);
+		self.cursor.reset();
 		window.focus(&self.focus_handle, cx);
 		self.is_selecting = true;
 		let offset = self.index_for_mouse_position(event.position);
@@ -579,6 +583,7 @@ impl EntityInputHandler for ComposerInput {
 
 impl Render for ComposerInput {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.update_cursor(window, cx);
 		let entity = cx.entity();
 		let focus_handle = self.focus_handle.clone();
 		let workbench = self.appearance == ComposerAppearance::Workbench;
@@ -619,6 +624,10 @@ impl Render for ComposerInput {
 			.on_action(cx.listener(Self::paste))
 			.on_action(cx.listener(Self::cut))
 			.on_action(cx.listener(Self::copy))
+			.on_key_down(cx.listener(|s, _, _, cx| {
+				s.cursor.reset();
+				cx.notify();
+			}))
 			.on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
 			.on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
 			.on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
