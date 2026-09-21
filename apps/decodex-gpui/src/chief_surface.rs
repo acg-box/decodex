@@ -966,6 +966,20 @@ impl ChiefSurface {
 		})
 	}
 
+	pub(crate) fn operation_notices(&self) -> Vec<(&'static str, String)> {
+		[
+			("Session recovery", &self.archive.feedback),
+			("Review", &self.guardian.feedback),
+			("Installation", &self.installation.feedback),
+			("Tools and plugins", &self.integration_feedback),
+			("Task resources", &self.resource_feedback),
+		]
+		.into_iter()
+		.filter(|(_, detail)| !detail.is_empty())
+		.map(|(title, detail)| (title, detail.clone()))
+		.collect()
+	}
+
 	pub(crate) fn status_notice(&self) -> Option<(&'static str, String, bool)> {
 		if !self.feedback.is_empty() {
 			return Some((

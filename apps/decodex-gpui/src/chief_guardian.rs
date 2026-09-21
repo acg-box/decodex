@@ -15,7 +15,7 @@ pub(super) struct Panel {
 	reviewed: Option<(i64, String)>,
 	pending: std::collections::BTreeMap<i64, String>,
 	stale: bool,
-	feedback: String,
+	pub(super) feedback: String,
 	request: Option<Task<()>>,
 	mutation: Option<Task<()>>,
 	mutation_key: Option<String>,
@@ -268,9 +268,6 @@ impl ChiefSurface {
 			panel = panel.child(
 				"Showing saved review details. Reconnecting before another approval can be submitted.",
 			);
-		}
-		if !self.guardian.feedback.is_empty() {
-			panel = panel.child(self.guardian.feedback.clone());
 		}
 		let mut body = div().flex().flex_col().gap_3().min_w_0();
 		for review in reviews {

@@ -21,8 +21,6 @@ const LINE: u32 = ui_theme::LINE_STRONG;
 const TEXT: u32 = ui_theme::TEXT;
 const TEXT_MUTED: u32 = ui_theme::TEXT_MUTED;
 const BLUE: u32 = ui_theme::BLUE;
-const GREEN: u32 = ui_theme::GREEN;
-const AMBER: u32 = ui_theme::AMBER;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum MenuBarRuntimeState {
@@ -30,17 +28,6 @@ enum MenuBarRuntimeState {
 	Hidden,
 	Waiting,
 	Unavailable,
-}
-
-impl MenuBarRuntimeState {
-	const fn color(self) -> u32 {
-		match self {
-			Self::Visible => GREEN,
-			Self::Hidden => TEXT_MUTED,
-			Self::Waiting => AMBER,
-			Self::Unavailable => 0xb56a6a,
-		}
-	}
 }
 
 pub(crate) struct SettingsSurface {
@@ -184,6 +171,21 @@ impl SettingsSurface {
 			)
 	}
 
+	pub(crate) fn notifications(&self) -> Vec<(&'static str, String)> {
+		let mut notices = Vec::new();
+		if self.menubar_needs_attention() {
+			notices.push(("Menu bar", self.detail.to_string()));
+		}
+		if !matches!(
+			self.launch_at_login,
+			LaunchAtLoginState::Enabled | LaunchAtLoginState::NotRegistered
+		) || self.launch_at_login_detail.as_ref() != launch_at_login_detail(self.launch_at_login)
+		{
+			notices.push(("Launch at login", self.launch_at_login_detail.to_string()));
+		}
+		notices
+	}
+
 	fn toggle_menubar(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
 		let Some(settings) = self.snapshot.settings else {
 			return;
@@ -222,7 +224,7 @@ impl SettingsSurface {
 		cx.notify();
 	}
 
-	fn open_login_items_settings(
+	pub(crate) fn open_login_items_settings(
 		&mut self,
 		_: &gpui::ClickEvent,
 		_: &mut Window,
@@ -317,52 +319,10 @@ impl SettingsSurface {
 	}
 
 	fn launch_at_login_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		let needs_attention = !matches!(
-			self.launch_at_login,
-			LaunchAtLoginState::Enabled | LaunchAtLoginState::NotRegistered
-		) || self.launch_at_login_detail.as_ref()
-			!= launch_at_login_detail(self.launch_at_login);
 		ui_theme::settings_row()
-			.min_h(px(40.0))
-			.px(px(0.0))
-			.child(
-				div()
-					.flex_1()
-					.min_w_0()
-					.flex()
-					.flex_col()
-					.gap(px(3.0))
-					.child("Launch at login")
-					.when(needs_attention, |d| {
-						d.child(
-							div()
-								.id("launch-at-login-status")
-								.role(Role::Status)
-								.text_size(px(ui_theme::CAPTION_SIZE))
-								.text_color(rgb(launch_at_login_color(self.launch_at_login)))
-								.child(self.launch_at_login_detail.clone()),
-						)
-					}),
-			)
-			.when(needs_attention, |d| {
-				d.child(
-					div()
-						.id("open-login-items-settings")
-						.role(Role::Button)
-						.aria_label("Open Login Items settings")
-						.h(px(28.0))
-						.px_2()
-						.flex()
-						.items_center()
-						.rounded(px(6.0))
-						.text_size(px(11.0))
-						.text_color(rgb(BLUE))
-						.cursor_pointer()
-						.on_click(cx.listener(Self::open_login_items_settings))
-						.child("Open settings")
-						.smooth(),
-				)
-			})
+			.min_h(px(40.))
+			.px_0()
+			.child(div().flex_1().child("Launch at login"))
 			.child(self.launch_at_login_toggle(cx))
 	}
 }
@@ -483,7 +443,6 @@ impl SettingsSurface {
 
 impl Render for SettingsSurface {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		let needs_attention = self.menubar_needs_attention();
 		div()
 			.id("settings-surface")
 			.role(Role::Main)
@@ -531,25 +490,7 @@ impl Render for SettingsSurface {
 														.flex()
 														.flex_col()
 														.gap(px(3.0))
-														.child("Show in menu bar")
-														.when(needs_attention, |d| {
-															d.child(
-																div()
-																	.id("menubar-runtime-status")
-																	.debug_selector(|| {
-																		"menubar-runtime-status"
-																			.into()
-																	})
-																	.role(Role::Status)
-																	.text_size(px(
-																		ui_theme::CAPTION_SIZE,
-																	))
-																	.text_color(rgb(self
-																		.runtime
-																		.color()))
-																	.child(self.detail.clone()),
-															)
-														}),
+														.child("Show in menu bar"),
 												)
 												.child(self.toggle(cx)),
 										)
@@ -561,15 +502,6 @@ impl Render for SettingsSurface {
 							.child(quote_attribution()),
 					),
 			)
-	}
-}
-
-const fn launch_at_login_color(state: LaunchAtLoginState) -> u32 {
-	match state {
-		LaunchAtLoginState::Enabled => GREEN,
-		LaunchAtLoginState::RequiresApproval => AMBER,
-		LaunchAtLoginState::NotRegistered => TEXT_MUTED,
-		LaunchAtLoginState::NotFound | LaunchAtLoginState::OperationFailed => 0xb56a6a,
 	}
 }
 
@@ -679,7 +611,17 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
-		assert!(visual.debug_bounds("menubar-runtime-status").is_some());
+		assert!(visual.debug_bounds("menubar-runtime-status").is_none());
+		visual.update(|_, cx| {
+			assert!(
+				settings
+					.read(cx)
+					.notifications()
+					.iter()
+					.any(|(_, detail)| detail == "The service refused the change.")
+			);
+		});
+		assert_eq!(visual.debug_bounds("launch-at-login-toggle"), Some(original));
 	}
 
 	#[gpui::test]

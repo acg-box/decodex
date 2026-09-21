@@ -302,6 +302,7 @@ actions!(
 		ActivateHealth,
 		ActivateSettings,
 		CloseSettings,
+		DismissSettingsNotification,
 		RefreshHealth,
 		ToggleSidebar,
 		ToggleInspector,
@@ -459,7 +460,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 	composer_input::bind_keys(cx);
 	cx.bind_keys([
 		KeyBinding::new("cmd-w", CloseSettings, Some("SettingsWindow")),
-		KeyBinding::new("escape", CloseSettings, Some("SettingsWindow")),
+		KeyBinding::new("escape", DismissSettingsNotification, Some("SettingsWindow")),
 	]);
 	cx.bind_keys([
 		KeyBinding::new("tab", FocusNext, None),
@@ -2671,13 +2672,6 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.as_ref()
 		.is_some_and(|routing| routing.mode == AccountSelectionModeDto::Balanced);
 	let can_manage = snapshot.can_manage;
-	let status = snapshot
-		.route_reopen_notice
-		.then(|| "Route succeeded. You can reopen ChatGPT or Codex now.".to_owned())
-		.or_else(|| shell.account_status.as_ref().map(SharedString::to_string))
-		.or_else(|| snapshot.rejection.map(account_rejection_label).map(str::to_owned))
-		.or_else(|| account_command_label(snapshot.command).map(str::to_owned))
-		.unwrap_or_else(|| accounts_load_label(snapshot.load).to_owned());
 	let count = snapshot.accounts.len();
 	let available = snapshot
 		.accounts
@@ -2744,30 +2738,6 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 							)
 						})
 						.children(rows),
-				)
-				.when(
-					snapshot.load != AccountsLoadState::Ready
-						|| snapshot.rejection.is_some()
-						|| shell.account_status.is_some()
-						|| account_command_label(snapshot.command).is_some(),
-					|d| {
-						d.child(
-							div()
-								.min_h(px(28.0))
-								.px_3()
-								.flex()
-								.items_center()
-								.justify_between()
-								.rounded(px(8.0))
-								.border_1()
-								.border_color(rgba(0xffffff0d))
-								.bg(rgba(0xffffff04))
-								.font_family(ui_theme::FONT_FAMILY)
-								.text_size(px(11.0))
-								.text_color(rgb(WB_TEXT_FAINT))
-								.child(status),
-						)
-					},
 				),
 		)
 		.into_any_element()
@@ -2812,11 +2782,17 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 		},
 	);
 	let status = shell
-		.account_login_error
+		.account_login_status
 		.as_ref()
-		.map(SharedString::to_string)
-		.or_else(|| shell.account_login_status.as_ref().map(account_login_status_label))
-		.unwrap_or_else(|| "Connect an account to use Codex.".into());
+		.filter(|status| {
+			!matches!(
+				status.state,
+				AccountLoginState::Completed
+					| AccountLoginState::Failed
+					| AccountLoginState::Cancelled
+			)
+		})
+		.map(account_login_status_label);
 
 	div()
 		.id("account-login-controls")
@@ -2841,14 +2817,11 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 						.text_color(rgb(WB_TEXT))
 						.child("Add account"),
 				)
-				.when(
-					shell.account_login_status.is_some() || shell.account_login_error.is_some(),
-					|row| {
-						row.child(
-							div().text_size(px(10.5)).text_color(rgb(WB_TEXT_MUTED)).child(status),
-						)
-					},
-				)
+				.when_some(status, |row, status| {
+					row.child(
+						div().text_size(px(10.5)).text_color(rgb(WB_TEXT_MUTED)).child(status),
+					)
+				})
 				.when_some(prompt, |details, (code, url)| {
 					details.child(account_login_prompt(code, url))
 				}),
@@ -2944,18 +2917,24 @@ fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let (status, facts) = match shell.account_profile.result.as_ref() {
 		Some(AccountProfileResult::Current(profile)) =>
 			("Account profile".to_owned(), account_profile_facts(profile)),
-		Some(AccountProfileResult::Cached { profile, refresh_error }) => (
-			format!("Cached profile; refresh failed: {refresh_error:?}"),
-			account_profile_facts(profile),
-		),
-		Some(AccountProfileResult::Unavailable { error, plan_type, .. }) => (
-			format!("Profile unavailable: {error:?}"),
+		Some(AccountProfileResult::Cached { profile, .. }) =>
+			("Cached profile".to_owned(), account_profile_facts(profile)),
+		Some(AccountProfileResult::Unavailable { plan_type, .. }) => (
+			"No current profile".to_owned(),
 			plan_type
 				.as_ref()
 				.map(|plan| vec![format!("Plan · {}", account_plan_label(plan.as_str()))])
 				.unwrap_or_default(),
 		),
-		None => (account_profile_load_label(shell.account_profile.load).to_owned(), Vec::new()),
+		None => (
+			if shell.account_profile.load == AccountProfileLoadState::Loading {
+				"Loading profile…"
+			} else {
+				"No current profile"
+			}
+			.to_owned(),
+			Vec::new(),
+		),
 	};
 
 	div()
@@ -4577,16 +4556,16 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			.map_or("No conversation selected", |task| conversation_state_label(task.state))
 	};
 	let state_color = selected_task.map_or(WB_BLUE, |task| conversation_state_color(task.state));
-	let detail = shell
-		.input_status
-		.as_ref()
-		.map(SharedString::to_string)
-		.or_else(|| conversation_refresh_status(shell.quick.refresh))
+	let detail = conversation_refresh_status(shell.quick.refresh)
 		.or_else(|| {
-			(shell.quick.command_conversation_id.as_ref() == feedback_conversation)
-				.then(|| command_status(shell.quick.command))
-				.flatten()
-				.map(str::to_owned)
+			(shell.quick.command_conversation_id.as_ref() == feedback_conversation
+				&& !matches!(
+					shell.quick.command,
+					ConversationCommandState::Refused | ConversationCommandState::OutcomeUnknown
+				))
+			.then(|| command_status(shell.quick.command))
+			.flatten()
+			.map(str::to_owned)
 		})
 		.or_else(|| {
 			selected_task
@@ -4986,6 +4965,11 @@ impl Render for SettingsWindow {
 		let content = self.owner.update(cx, |s, cx| {
 			settings_workspace_content(s, true, s.refresh_focus.clone(), window, cx)
 		});
+		let local = window.use_keyed_state("settings-notifications", cx, |_, _| false);
+		let status = self.owner.update(cx, |s, cx| {
+			s.render_status_center(&connection_presentation(s.connection), Some(local.clone()), cx)
+		});
+
 		div()
 			.id("settings-window")
 			.size_full()
@@ -4999,10 +4983,23 @@ impl Render for SettingsWindow {
 				window.remove_window();
 				cx.stop_propagation();
 			}))
+			.on_action(cx.listener(move |_, _: &DismissSettingsNotification, window, cx| {
+				if *local.read(cx) {
+					local.update(cx, |open, cx| {
+						*open = false;
+						cx.notify();
+					});
+				} else {
+					window.remove_window();
+				}
+				cx.stop_propagation();
+			}))
 			.on_action(cx.listener(|_, _: &ActivateSettings, _, cx| cx.stop_propagation()))
 			.on_action(cx.listener(|_, _: &FocusNext, window, cx| window.focus_next(cx)))
 			.on_action(cx.listener(|_, _: &FocusPrevious, window, cx| window.focus_prev(cx)))
+			.relative()
 			.child(content)
+			.child(gpui::deferred(status).priority(3))
 	}
 }
 impl Shell {
@@ -5138,7 +5135,7 @@ impl Render for Shell {
 		let controls = floating_window_controls(self, &presentation, window, cx);
 		#[cfg(all(target_os = "macos", not(test)))]
 		self.prepare_native_status(window, cx);
-		let status = self.render_status_center(&presentation, cx);
+		let status = self.render_status_center(&presentation, None, cx);
 		let route = format!("{:?}", self.selected);
 		let content =
 			destination_content(self, presentation, self.refresh_focus.clone(), window, cx);

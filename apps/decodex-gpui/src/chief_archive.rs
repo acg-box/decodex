@@ -12,7 +12,7 @@ pub(super) struct Panel {
 	request: Option<Task<()>>,
 	mutation: Option<Task<()>>,
 	mutation_key: Option<String>,
-	feedback: String,
+	pub(super) feedback: String,
 }
 
 impl ChiefSurface {
@@ -204,9 +204,6 @@ impl ChiefSurface {
 				"Session state is unavailable. Reconnect and refresh before restoring.",
 		};
 		panel = panel.child(status);
-		if !self.archive.feedback.is_empty() {
-			panel = panel.child(self.archive.feedback.clone());
-		}
 		if self.archive.request.is_none() && self.archive.mutation.is_none() {
 			panel = panel.child(button("archive-refresh", "Refresh session state", cx, |s, cx| {
 				s.load_archive_state(true, cx)

@@ -35,9 +35,6 @@ impl ChiefSurface {
 			let refresh_work = work.to_owned();
 			panel=panel.child(integration_button("integration-reload","Sync plugins and reload MCP",cx,move |s,cx|s.refresh_native_integrations(&refresh_work,cx)))
                 .child(muted("Updates shared plugin bundles and MCP configuration for loaded tasks. Connection status is checked separately."));
-			if !self.integration_feedback.is_empty() {
-				panel = panel.child(self.integration_feedback.clone());
-			}
 			if let Some(ChiefIntegrationsResult::Available {
 				mcp: ChiefMcpInventory::Available { servers },
 				..
