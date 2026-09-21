@@ -112,18 +112,19 @@ impl GlassPanel {
 	}
 
 	pub(crate) fn set_visible(&mut self, visible: bool) {
-		let visible = visible && self.parent.isVisible();
-		if self.visible == visible && self.native.isVisible() == visible {
-			return;
-		}
-		self.visible = visible;
+		let visible = visible && self.parent.isVisible() && !self.parent.isMiniaturized();
 		unsafe {
 			if visible {
-				let _: () = msg_send![&*self.native, orderFront: std::ptr::null::<NSWindow>()];
-			} else {
+				// orderOut and parent activation can change native ordering without
+				// changing GPUI state. Restore the relationship, not global frontmost.
+				let _: () =
+					msg_send![&*self.parent, addChildWindow: &*self.native, ordered: 1isize];
+				let _: () = msg_send![&*self.native, orderWindow: 1isize, relativeTo: self.parent.windowNumber()];
+			} else if self.visible || self.native.isVisible() {
 				let _: () = msg_send![&*self.native, orderOut: std::ptr::null::<NSWindow>()];
 			}
 		}
+		self.visible = visible;
 	}
 }
 impl Drop for GlassPanel {

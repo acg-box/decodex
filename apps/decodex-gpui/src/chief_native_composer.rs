@@ -5,14 +5,15 @@ use crate::ui_theme::{
 	native_glass_panel::{self, GlassPanel},
 };
 use gpui::{
-	AnyElement, AnyWindowHandle, Bounds, Context, Entity, Focusable, Render, Subscription, Window,
-	WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div, point,
-	prelude::*, px, size,
+	AnyElement, AnyWindowHandle, Bounds, Context, Entity, Focusable, Pixels, Render, Subscription,
+	Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div,
+	point, prelude::*, px, size,
 };
 
 pub(super) struct NativeComposer {
 	pub(super) enabled: bool,
 	child: Option<WindowHandle<ComposerPanel>>,
+	bounds: Option<Bounds<Pixels>>,
 
 	height: f32,
 	creating: bool,
@@ -24,6 +25,7 @@ impl Default for NativeComposer {
 		Self {
 			enabled: false,
 			child: None,
+			bounds: None,
 			height: 42.,
 			creating: false,
 			failed: false,
@@ -79,17 +81,16 @@ impl ChiefSurface {
 				});
 			});
 		}
-		self.native_composer.enabled = enabled;
+		if self.native_composer.enabled != enabled {
+			self.native_composer.enabled = enabled;
+			// Shell owns the decision, but Chief owns the cached composer layout.
+			cx.notify();
+		}
+		self.sync_native_composer(cx);
 		if !enabled {
-			if let Some(child) = self.native_composer.child {
-				let _ = child.update(cx, |s, _, _| {
-					if let Some(glass) = &mut s.glass {
-						glass.set_visible(false);
-					}
-				});
-			}
 			return;
 		}
+
 		if self.native_composer.child.is_some() || self.native_composer.creating {
 			return;
 		}
@@ -110,25 +111,62 @@ impl ChiefSurface {
 		});
 	}
 
+	/// Reconcile from the latest state after layout. Cached Chief views may skip
+	/// prepaint when only the shell (for example notifications) changes.
+	fn sync_native_composer(&self, cx: &mut Context<Self>) {
+		let owner = cx.entity().downgrade();
+		cx.defer(move |cx| {
+			let Ok((child, bounds, enabled)) = owner.read_with(cx, |s, _| {
+				(s.native_composer.child, s.native_composer.bounds, s.native_composer.enabled)
+			}) else {
+				return;
+			};
+			if let Some(child) = child {
+				let _ = child.update(cx, |panel, window, cx| {
+					if let Some(glass) = &mut panel.glass {
+						if enabled && let Some(bounds) = bounds {
+							glass.set_style(
+								ui_theme::window_material::GlassStyle::configured()
+									== ui_theme::window_material::GlassStyle::Clear,
+							);
+							if glass.place(bounds) {
+								window.bounds_changed(cx);
+							}
+						}
+						glass.set_visible(enabled && bounds.is_some());
+					}
+				});
+			}
+		});
+	}
+
 	pub(super) fn render_native_composer_anchor(&self, cx: &mut Context<Self>) -> AnyElement {
 		let owner = cx.entity().downgrade();
-		div().w_full().px_4().pt(px(12.)).pb(px(20.)).flex().justify_center()
-			.child(div().relative().w_full().max_w(px(820.)).h(px(self.native_composer.height))
-				.child(gpui::canvas(move |bounds, window, cx| {
-					let _ = owner.update(cx, |s, cx| {
-						if let Some(child) = s.native_composer.child {
-							let _ = child.update(cx, |panel, window, cx| {
-								if let Some(glass) = &mut panel.glass {
-									glass.set_style(ui_theme::window_material::GlassStyle::configured() == ui_theme::window_material::GlassStyle::Clear);
-									if glass.place(bounds) { window.bounds_changed(cx); }
-									glass.set_visible(true);
-								}
-							});
-						}
-					});
-					let _ = window;
-				}, |_,_,_,_| {}).absolute().size_full())
-				.child(self.render_composer_popover(cx)))
+		let anchor = gpui::canvas(
+			move |bounds, _, cx| {
+				let _ = owner.update(cx, |s, cx| {
+					s.native_composer.bounds = Some(bounds);
+					s.sync_native_composer(cx);
+				});
+			},
+			|_, _, _, _| {},
+		);
+		div()
+			.w_full()
+			.px_4()
+			.pt(px(12.))
+			.pb(px(20.))
+			.flex()
+			.justify_center()
+			.child(
+				div()
+					.relative()
+					.w_full()
+					.max_w(px(820.))
+					.h(px(self.native_composer.height))
+					.child(anchor.absolute().size_full())
+					.child(self.render_composer_popover(cx)),
+			)
 			.into_any_element()
 	}
 }
