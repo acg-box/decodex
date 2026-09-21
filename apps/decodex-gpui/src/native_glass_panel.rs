@@ -38,6 +38,7 @@ pub(crate) struct GlassPanel {
 	parent: Retained<NSWindow>,
 	frame: Option<NSRect>,
 	visible: bool,
+	clear_style: Option<bool>,
 }
 impl GlassPanel {
 	pub(crate) fn install(parent: &Window, window: &mut Window, radius: f64) -> Option<Self> {
@@ -69,11 +70,23 @@ impl GlassPanel {
 			let _: () = msg_send![&*native, setMovable: false];
 			let _: () = msg_send![&*native, setExcludedFromWindowsMenu: true];
 			let _: () = msg_send![&*parent, addChildWindow: &*native, ordered: 1isize];
-			Some(Self { glass, foreground: gpu, native, parent, frame: None, visible: false })
+			Some(Self {
+				glass,
+				foreground: gpu,
+				native,
+				parent,
+				frame: None,
+				visible: false,
+				clear_style: None,
+			})
 		}
 	}
 
-	pub(crate) fn set_style(&self, clear: bool) {
+	pub(crate) fn set_style(&mut self, clear: bool) {
+		if self.clear_style == Some(clear) {
+			return;
+		}
+		self.clear_style = Some(clear);
 		unsafe {
 			let _: () = msg_send![&*self.glass, setStyle: isize::from(clear)];
 			// Keep Clear readable against the dark workspace without covering
@@ -122,10 +135,20 @@ impl GlassPanel {
 		let visible = visible && self.parent.isVisible() && !self.parent.isMiniaturized();
 		unsafe {
 			if visible {
+				let attached = self
+					.native
+					.parentWindow()
+					.as_deref()
+					.is_some_and(|parent| std::ptr::eq(parent, &*self.parent));
+				if self.visible && self.native.isVisible() && attached {
+					return;
+				}
 				// orderOut and parent activation can change native ordering without
 				// changing GPUI state. Restore the relationship, not global frontmost.
-				let _: () =
-					msg_send![&*self.parent, addChildWindow: &*self.native, ordered: 1isize];
+				if !attached {
+					let _: () =
+						msg_send![&*self.parent, addChildWindow: &*self.native, ordered: 1isize];
+				}
 				let _: () = msg_send![&*self.native, orderWindow: 1isize, relativeTo: self.parent.windowNumber()];
 			} else if self.visible || self.native.isVisible() {
 				let _: () = msg_send![&*self.native, orderOut: std::ptr::null::<NSWindow>()];
