@@ -292,6 +292,22 @@ impl ChiefHost {
 		result.map(|v| v.state).unwrap_or(ChiefInstallState::Unavailable)
 	}
 
+	pub(crate) async fn app_settings(
+		&self,
+		work: &str,
+		event: i64,
+	) -> decodex_protocol::ChiefAppSettingsResult {
+		crate::chief_app_settings::read(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			event,
+		)
+		.await
+	}
+
 	pub(crate) fn guardian_generation(&self) -> Option<String> {
 		self.runtime.chief_catalog_client().map(|(generation, _)| generation.as_str().to_owned())
 	}

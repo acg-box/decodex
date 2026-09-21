@@ -349,6 +349,20 @@ impl ServiceApplication {
 		QueryResultPayload::ChiefSnapshot(result)
 	}
 
+	async fn query_app_settings(&self, work: &str, event: i64) -> QueryResultPayload {
+		QueryResultPayload::ChiefAppSettings(match &self.chief {
+			Some(chief) => chief.app_settings(work, event).await,
+			None => decodex_protocol::ChiefAppSettingsResult::Unavailable,
+		})
+	}
+
+	async fn query_install_state(&self, work: &str, event: i64) -> QueryResultPayload {
+		QueryResultPayload::ChiefInstallState(match &self.chief {
+			Some(chief) => chief.install_state(work, event).await,
+			None => decodex_protocol::ChiefInstallState::Unavailable,
+		})
+	}
+
 	async fn query_usage_estimate(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::ChiefUsageEstimate(match &self.chief {
 			Some(chief) => chief.usage_estimate(work).await,
@@ -1982,10 +1996,9 @@ impl Application for ServiceApplication {
 					None => decodex_protocol::ChiefArchiveResult::Unavailable,
 				}),
 			QueryPayload::GetChiefInstallState { work_id, event_id } =>
-				QueryResultPayload::ChiefInstallState(match &self.chief {
-					Some(chief) => chief.install_state(work_id.as_str(), *event_id).await,
-					None => decodex_protocol::ChiefInstallState::Unavailable,
-				}),
+				self.query_install_state(work_id.as_str(), *event_id).await,
+			QueryPayload::GetChiefAppSettings { work_id, event_id } =>
+				self.query_app_settings(work_id.as_str(), *event_id).await,
 			QueryPayload::GetChiefGuardianReviews { work_id, before } =>
 				QueryResultPayload::ChiefGuardianReviews(
 					query_guardian_reviews(

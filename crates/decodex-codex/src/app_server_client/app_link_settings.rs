@@ -38,6 +38,29 @@ impl std::fmt::Debug for AppLinkSettings {
 	}
 }
 
+impl AppLinkSettings {
+	/// Opaque identity of the reviewed scope, version and displayed configuration.
+	/// Callers must additionally bind this identity to their current task and process source.
+	pub fn review_fingerprint(&self) -> String {
+		use sha2::{Digest as _, Sha256};
+		let facts = json!([
+			self.cwd,
+			self.app,
+			self.link,
+			self.file,
+			self.version,
+			self.effective_mode,
+			self.effective_reviewer,
+			self.user_mode,
+			self.user_reviewer
+		]);
+		Sha256::digest(facts.to_string().as_bytes())
+			.iter()
+			.map(|byte| format!("{byte:02x}"))
+			.collect()
+	}
+}
+
 /// Persisted write and a fresh configuration read; not proof of live tool behavior.
 #[derive(Debug)]
 pub struct AppLinkSettingsWrite {
