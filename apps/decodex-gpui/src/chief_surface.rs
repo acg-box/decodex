@@ -993,6 +993,7 @@ impl ChiefSurface {
 				{
 					self.native_history.reset();
 					self.clear_activity_detail();
+					self.app_settings_disconnected();
 				}
 				if !self
 					.selected

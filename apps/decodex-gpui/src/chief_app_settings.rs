@@ -186,6 +186,10 @@ fn choices() -> [(&'static str, &'static str, Edit); 8] {
 }
 
 #[cfg(test)]
+#[path = "chief_app_settings_wire_tests.rs"]
+mod wire_tests;
+
+#[cfg(test)]
 mod tests {
 	use super::*;
 	use serde_json::json;
@@ -226,6 +230,12 @@ mod tests {
 			assert!(visual.debug_bounds(id).is_some(), "{id}");
 		}
 		surface.update(visual, |s, cx| {
+			let epoch = s.app_settings.epoch;
+			let mut snapshot = s.snapshot.clone().unwrap();
+			snapshot.runtime_source = Some(EntityId::new("changed-native-source").unwrap());
+			s.apply_result(Ok(ChiefSnapshotResult::Available(snapshot)));
+			assert!(s.app_settings.epoch != epoch);
+			assert!(s.app_settings.state.is_none());
 			let epoch = s.app_settings.epoch;
 			s.mark_stale(cx);
 			assert!(s.app_settings.epoch != epoch);
