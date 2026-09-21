@@ -152,6 +152,13 @@ impl SettingsSurface {
 					"The Decodex menu-bar item is disabled."
 				}
 				.into();
+				if matches!(
+					snapshot.command,
+					DesktopSettingsCommandState::Refused
+						| DesktopSettingsCommandState::OutcomeUnknown
+				) {
+					self.detail = settings_detail(snapshot).into();
+				}
 			},
 			Err(failure) => {
 				self.runtime = MenuBarRuntimeState::Unavailable;
@@ -160,15 +167,31 @@ impl SettingsSurface {
 		}
 	}
 
+	fn menubar_needs_attention(&self) -> bool {
+		if matches!(
+			self.snapshot.load,
+			DesktopSettingsLoadState::NeverRequested | DesktopSettingsLoadState::Loading
+		) || matches!(
+			self.snapshot.command,
+			DesktopSettingsCommandState::Sending | DesktopSettingsCommandState::AwaitingResult
+		) {
+			return false;
+		}
+		!matches!(self.runtime, MenuBarRuntimeState::Visible | MenuBarRuntimeState::Hidden)
+			|| !matches!(
+				self.detail.as_ref(),
+				"Menu bar enabled." | "The Decodex menu-bar item is disabled."
+			)
+	}
+
 	fn toggle_menubar(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
 		let Some(settings) = self.snapshot.settings else {
 			return;
 		};
 		match self.controller.set_show_in_menu_bar(!settings.show_in_menu_bar) {
-			Ok(()) => {
-				self.runtime = MenuBarRuntimeState::Waiting;
-				self.detail = "Saving preference…".into();
-			},
+			// The switch already disables itself while the command is pending.
+			// Keep the current presentation until authoritative readback arrives.
+			Ok(()) => {},
 			Err(error) => {
 				self.detail = input_error_detail(error).into();
 			},
@@ -258,6 +281,7 @@ impl SettingsSurface {
 		);
 		div()
 			.id("launch-at-login-toggle")
+			.debug_selector(|| "launch-at-login-toggle".into())
 			.role(Role::Switch)
 			.aria_label("Launch Decodex at login")
 			.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
@@ -459,12 +483,7 @@ impl SettingsSurface {
 
 impl Render for SettingsSurface {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		let needs_attention =
-			!matches!(self.runtime, MenuBarRuntimeState::Visible | MenuBarRuntimeState::Hidden)
-				|| !matches!(
-					self.detail.as_ref(),
-					"Menu bar enabled." | "The Decodex menu-bar item is disabled."
-				);
+		let needs_attention = self.menubar_needs_attention();
 		div()
 			.id("settings-surface")
 			.role(Role::Main)
@@ -517,6 +536,10 @@ impl Render for SettingsSurface {
 															d.child(
 																div()
 																	.id("menubar-runtime-status")
+																	.debug_selector(|| {
+																		"menubar-runtime-status"
+																			.into()
+																	})
 																	.role(Role::Status)
 																	.text_size(px(
 																		ui_theme::CAPTION_SIZE,
@@ -619,6 +642,45 @@ mod tests {
 	use gpui::{TestAppContext, size};
 
 	use super::*;
+
+	#[gpui::test]
+	fn saving_does_not_insert_a_status_row_or_move_other_controls(cx: &mut TestAppContext) {
+		let (settings, visual) = cx.add_window_view(|_, cx| {
+			SettingsSurface::new(DesktopSettingsController::production(), cx)
+		});
+		settings.update(visual, |s, cx| {
+			s.snapshot.load = DesktopSettingsLoadState::Ready;
+			s.snapshot.command = DesktopSettingsCommandState::Idle;
+			s.runtime = MenuBarRuntimeState::Hidden;
+			s.detail = "The Decodex menu-bar item is disabled.".into();
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.resize(size(px(800.), px(700.)));
+			window.draw(cx).clear();
+		});
+		let original = visual.debug_bounds("launch-at-login-toggle").expect("login toggle");
+		for command in
+			[DesktopSettingsCommandState::Sending, DesktopSettingsCommandState::AwaitingResult]
+		{
+			settings.update(visual, |s, cx| {
+				s.snapshot.command = command;
+				s.runtime = MenuBarRuntimeState::Waiting;
+				s.detail = "Saving preference…".into();
+				cx.notify();
+			});
+			visual.update(|window, cx| window.draw(cx).clear());
+			assert!(visual.debug_bounds("menubar-runtime-status").is_none());
+			assert_eq!(visual.debug_bounds("launch-at-login-toggle"), Some(original));
+		}
+		settings.update(visual, |s, cx| {
+			s.snapshot.command = DesktopSettingsCommandState::Refused;
+			s.detail = "The service refused the change.".into();
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(visual.debug_bounds("menubar-runtime-status").is_some());
+	}
 
 	#[gpui::test]
 	fn glass_style_buttons_update_the_active_material(cx: &mut TestAppContext) {
