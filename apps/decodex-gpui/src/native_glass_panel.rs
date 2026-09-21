@@ -1,7 +1,12 @@
 //! A foreground-owning native material for small GPUI child windows.
 //! UI state and event handlers remain in GPUI; AppKit owns only composition.
 use gpui::{Bounds, Pixels, Window, WindowBackgroundAppearance};
-use objc2::{msg_send, rc::Retained, runtime::AnyClass};
+use objc2::{
+	msg_send,
+	rc::Retained,
+	runtime::{AnyClass, AnyObject, ClassBuilder, Sel},
+	sel,
+};
 use objc2_app_kit::{NSView, NSWindow, NSWindowCollectionBehavior};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -30,6 +35,41 @@ fn native(window: &Window) -> Option<Retained<NSWindow>> {
 	view(window)?.window()
 }
 
+/// Keep the workspace main while an attached control receives keyboard input.
+fn observe_main_window(window: &NSWindow) -> Option<Retained<AnyObject>> {
+	unsafe extern "C-unwind" fn restore_main(_: &AnyObject, _: Sel, notification: &AnyObject) {
+		unsafe {
+			let child: Option<Retained<NSWindow>> = msg_send![notification, object];
+			if let Some(parent) = child.and_then(|child| child.parentWindow())
+				&& parent.isVisible()
+			{
+				parent.makeMainWindow();
+			}
+		}
+	}
+	let class = if let Some(class) = AnyClass::get(c"DecodexMainWindowObserver") {
+		class
+	} else {
+		let mut builder =
+			ClassBuilder::new(c"DecodexMainWindowObserver", AnyClass::get(c"NSObject")?)?;
+		unsafe {
+			builder.add_method(
+				sel!(restoreMain:),
+				restore_main as unsafe extern "C-unwind" fn(_, _, _),
+			);
+		}
+		builder.register()
+	};
+	unsafe {
+		let observer: Retained<AnyObject> = msg_send![class, new];
+		let center: Retained<AnyObject> =
+			msg_send![AnyClass::get(c"NSNotificationCenter")?, defaultCenter];
+		let name = objc2_foundation::NSString::from_str("NSWindowDidBecomeMainNotification");
+		let _: () = msg_send![&*center, addObserver: &*observer, selector: sel!(restoreMain:), name: &*name, object: window];
+		Some(observer)
+	}
+}
+
 /// Retains the installed glass so style updates cannot mistake it for a window backdrop.
 pub(crate) struct GlassPanel {
 	glass: Retained<NSView>,
@@ -39,6 +79,7 @@ pub(crate) struct GlassPanel {
 	frame: Option<NSRect>,
 	visible: bool,
 	clear_style: Option<bool>,
+	main_observer: Retained<AnyObject>,
 }
 impl GlassPanel {
 	pub(crate) fn install(parent: &Window, window: &mut Window, radius: f64) -> Option<Self> {
@@ -88,6 +129,7 @@ impl GlassPanel {
 			let _: () = msg_send![&*native, setMovable: false];
 			let _: () = msg_send![&*native, setExcludedFromWindowsMenu: true];
 			let _: () = msg_send![&*parent, addChildWindow: &*native, ordered: 1isize];
+			let main_observer = observe_main_window(&native)?;
 			Some(Self {
 				glass,
 				foreground: gpu,
@@ -96,6 +138,7 @@ impl GlassPanel {
 				frame: None,
 				visible: false,
 				clear_style: None,
+				main_observer,
 			})
 		}
 	}
@@ -183,6 +226,13 @@ impl GlassPanel {
 }
 impl Drop for GlassPanel {
 	fn drop(&mut self) {
+		unsafe {
+			let center: Retained<AnyObject> = msg_send![
+				AnyClass::get(c"NSNotificationCenter").expect("Foundation"),
+				defaultCenter
+			];
+			let _: () = msg_send![&*center, removeObserver: &*self.main_observer];
+		}
 		self.set_visible(false);
 		unsafe {
 			let _: () = msg_send![&*self.parent, removeChildWindow: &*self.native];
