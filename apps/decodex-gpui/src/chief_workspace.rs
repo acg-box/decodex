@@ -567,13 +567,11 @@ impl ChiefSurface {
 								self.connection_details_expanded,
 							))
 							.on_click(cx.listener(|s, _, _, cx| {
-								s.connection_details_expanded = !s.connection_details_expanded;
-								cx.notify();
+								s.toggle_connection_details(cx);
 							}))
 							.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
 								if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-									s.connection_details_expanded = !s.connection_details_expanded;
-									cx.notify();
+									s.toggle_connection_details(cx);
 									cx.stop_propagation();
 								}
 							}))

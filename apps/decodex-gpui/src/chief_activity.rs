@@ -215,6 +215,19 @@ impl ChiefSurface {
 		}
 	}
 
+	pub(super) fn toggle_connection_details(&mut self, cx: &mut Context<Self>) {
+		// A footer resize is not conversation navigation. Preserve bottom-follow before
+		// the new footer height changes the scroll range, or keep the reader's offset.
+		if let Some(work) = self.selected.as_ref()
+			&& let Some(scroll) = self.transcript_scroll.get(work)
+			&& (scroll.offset().y + scroll.max_offset().y).abs() < px(1.)
+		{
+			self.latest_follow_work = Some(work.clone());
+		}
+		self.connection_details_expanded = !self.connection_details_expanded;
+		cx.notify();
+	}
+
 	pub(super) fn follow_latest_after_send(&mut self, cx: &mut Context<Self>) {
 		self.latest_follow_work = self.selected.clone();
 		self.history_selected = None;
@@ -370,7 +383,7 @@ impl ChiefSurface {
 		self.history_selected
 			.and_then(|id| self.history_marks.keys().position(|key| *key == id))
 			.unwrap_or_else(|| {
-				if at_end {
+				if at_end || (self.selected.is_some() && self.latest_follow_work == self.selected) {
 					last
 				} else {
 					current_mark(
@@ -726,6 +739,40 @@ mod tests {
 			0,
 			"an unmeasured incoming message must not steal the active timeline marker"
 		);
+	}
+
+	#[gpui::test]
+	fn details_resize_preserves_latest_and_history_reading(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(320.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		surface.update(visual, |s, cx| {
+			let scroll = s.transcript_scroll["chief"].clone();
+			scroll.set_offset(point(px(0.), -scroll.max_offset().y));
+			s.latest_follow_work = None;
+			s.toggle_connection_details(cx);
+			assert_eq!(s.latest_follow_work.as_deref(), Some("chief"));
+			// Model the frame between a growing footer's layout and bottom-follow.
+			scroll.set_offset(point(px(0.), scroll.offset().y + px(32.)));
+			assert_eq!(s.active_history_index(&scroll), s.history_marks.len() - 1);
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		surface.update(visual, |s, cx| {
+			let scroll = s.transcript_scroll["chief"].clone();
+			assert!((scroll.offset().y + scroll.max_offset().y).abs() < px(1.));
+			s.latest_follow_work = None;
+			scroll.set_offset(point(px(0.), px(-100.)));
+			let before = scroll.offset();
+			let active = s.active_history_index(&scroll);
+			s.toggle_connection_details(cx);
+			assert!(s.latest_follow_work.is_none());
+			assert_eq!(scroll.offset(), before);
+			assert_eq!(s.active_history_index(&scroll), active);
+		});
 	}
 
 	#[test]
