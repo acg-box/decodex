@@ -76,6 +76,13 @@ impl GlassPanel {
 	pub(crate) fn set_style(&self, clear: bool) {
 		unsafe {
 			let _: () = msg_send![&*self.glass, setStyle: isize::from(clear)];
+			// Keep Clear readable against the dark workspace without covering
+			// the system material's blur and reflections with an opaque fill.
+			let tint: Option<Retained<objc2::runtime::AnyObject>> = clear.then(|| {
+				msg_send![AnyClass::get(c"NSColor").expect("AppKit"),
+					colorWithSRGBRed: 0.10f64, green: 0.11f64, blue: 0.13f64, alpha: 0.18f64]
+			});
+			let _: () = msg_send![&*self.glass, setTintColor: tint.as_deref()];
 		}
 	}
 
