@@ -105,6 +105,8 @@ pub(crate) struct ChiefSurface {
 	history_marks: std::collections::BTreeMap<i64, activity::HistoryMark>,
 	history_marks_work: Option<String>,
 	history_selected: Option<i64>,
+	latest_follow_work: Option<String>,
+	connection_details_expanded: bool,
 	history_hover: Option<usize>,
 	history_navigation: Option<activity::HistoryNavigation>,
 	agent_tree_visible: bool,
@@ -239,6 +241,8 @@ impl ChiefSurface {
 		surface
 	}
 
+	// Keep the initial values for this view's owned state together.
+	#[allow(clippy::too_many_lines)]
 	pub(crate) fn new(cx: &mut Context<Self>) -> Self {
 		let ChiefInputs { model, cwd, composer } = Self::new_inputs(cx);
 		Self {
@@ -304,6 +308,8 @@ impl ChiefSurface {
 			history_marks: Default::default(),
 			history_marks_work: None,
 			history_selected: None,
+			latest_follow_work: None,
+			connection_details_expanded: false,
 			history_hover: None,
 			history_navigation: None,
 			agent_tree_visible: true,

@@ -176,6 +176,7 @@ impl ChiefSurface {
 		}
 
 		self.selected = Some(id.to_owned());
+		self.connection_details_expanded = false;
 		self.history = self.history_cache.get(id).cloned().map(|h| (id.to_owned(), h));
 		self.details_visible = false;
 		self.request = None;
@@ -460,7 +461,7 @@ impl ChiefSurface {
 				"thread_in_use_needs_attention" =>
 					"This conversation is in use in another app. Release it there to continue.",
 				"reconnection_needs_attention" =>
-					"The agent could not reconnect. Saved messages are waiting; new messages are paused.",
+					"The agent could not reconnect. Messages are saved and sending is paused. Decodex will retry automatically.",
 				"configuration_needs_attention" =>
 					"The agent configuration is unavailable. Your history and draft are kept.",
 				"recovery_needs_attention" | "wake_failed" =>
@@ -479,42 +480,110 @@ impl ChiefSurface {
 			)
 	}
 
+	fn connection_failure_detail(&self) -> Option<&str> {
+		let selected = self.selected.as_ref()?;
+		let event = self.snapshot.as_ref()?.pending_events.iter().rev().find(|e| {
+			&e.work_item_id == selected
+				&& matches!(
+					e.event_kind.as_str(),
+					"reconnection_needs_attention" | "recovery_needs_attention" | "wake_failed"
+				)
+		})?;
+		let (owner, ChiefHistoryResult::Available { entries, .. }) = self.history.as_ref()? else {
+			return None;
+		};
+		if owner != selected {
+			return None;
+		}
+		entries
+			.iter()
+			.find(|entry| entry.id == event.id && entry.kind == "system")
+			.map(|entry| entry.text.as_str())
+	}
+
 	fn unavailable_composer(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
+		let detail = self.connection_failure_detail();
+		let (title, description) = match detail {
+			Some(text) if text.contains("ProcessUnavailable") => (
+				"Codex couldn't start",
+				"The local Codex connection could not be started or initialized. Your messages are saved. Decodex will retry automatically; you do not need to resend them.",
+			),
+			Some(text) if text.contains("RefreshQuota") || text.contains("usage limit") => (
+				"Account availability needs checking",
+				"Codex could not confirm an account with available usage. Your messages are saved. Review account availability in Settings → Accounts.",
+			),
+			Some(text) if text.contains("SelectWorkingDirectory") => (
+				"Project folder is unavailable",
+				"Restore access to the project folder so this conversation can resume. Your messages and draft are kept.",
+			),
+			_ => ("Can't continue this conversation", reason),
+		};
 		div()
 			.id("conversation-unavailable")
 			.role(Role::Status)
-			.aria_label(format!("Conversation unavailable. {reason}"))
+			.aria_label(format!("{title}. {description}"))
 			.m_4()
-			.px_3()
-			.py_2()
+			.px(px(16.))
+			.py(px(12.))
 			.rounded(px(12.))
-			.bg(rgba(ui_theme::SURFACE_MATERIAL))
+			.bg(rgb(0x26262b))
+			.text_color(rgb(ui_theme::TEXT))
 			.flex()
-			.items_center()
-			.gap_3()
+			.flex_col()
+			.gap_2()
 			.child(
 				div()
-					.flex_1()
-					.min_w_0()
 					.flex()
-					.flex_col()
-					.gap_1()
-					.child(div().text_size(px(12.)).child("Conversation unavailable"))
+					.items_center()
+					.gap_3()
 					.child(
 						div()
-							.text_size(px(11.))
-							.text_color(rgb(ui_theme::TEXT_MUTED))
-							.child(reason),
-					),
+							.flex_1()
+							.min_w_0()
+							.flex()
+							.flex_col()
+							.gap(px(5.))
+							.child(
+								div()
+									.text_size(px(12.))
+									.font_weight(FontWeight::MEDIUM)
+									.child(title),
+							)
+							.child(
+								div()
+									.text_size(px(11.))
+									.line_height(px(17.))
+									.text_color(rgb(ui_theme::TEXT_MUTED))
+									.child(description),
+							),
+					)
+					.when(detail.is_some(), |d| {
+						d.child(
+							self.workspace_action(
+								"connection-details".into(),
+								if self.connection_details_expanded {
+									"Hide details"
+								} else {
+									"Details"
+								}
+								.into(),
+								|s, cx| {
+									s.connection_details_expanded = !s.connection_details_expanded;
+									cx.notify();
+								},
+								cx,
+							),
+						)
+					}),
 			)
-			.child(self.workspace_action(
-				"check-conversation".into(),
-				"Check status".into(),
-				|s, cx| {
-					s.refresh(cx);
-					s.load_archive_state(true, cx);
-				},
-				cx,
+			.child(crate::ui_motion::disclosure(
+				"connection-diagnostic",
+				self.connection_details_expanded && detail.is_some(),
+				div()
+					.text_size(px(11.))
+					.line_height(px(17.))
+					.text_color(rgb(ui_theme::TEXT_MUTED))
+					.child(detail.unwrap_or_default().to_owned()),
 			))
 			.into_any_element()
 	}
@@ -702,6 +771,12 @@ impl ChiefSurface {
 		self.prepare_history_marks();
 		self.animate_history_scroll(window, cx);
 		self.follow_voice_scroll(window, cx);
+		if self.latest_follow_work == self.selected
+			&& let Some(scroll) =
+				self.selected.as_ref().and_then(|work| self.transcript_scroll.get(work))
+		{
+			scroll.scroll_to_bottom();
+		}
 	}
 
 	fn restore_history_anchor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1557,6 +1632,34 @@ impl ChiefSurface {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn connection_details_match_the_current_failure_not_an_old_log(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.snapshot.as_mut().unwrap().pending_events =
+				vec![decodex_protocol::ChiefPendingEventDto {
+					id: 99,
+					source_event_id: "failure".into(),
+					work_item_id: "chief".into(),
+					event_kind: "reconnection_needs_attention".into(),
+					created_at_micros: 1,
+					delivery_claimed: false,
+				}];
+			let Some((_, ChiefHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture");
+			};
+			let mut entry = entries[0].clone();
+			entry.id = 99;
+			entry.kind = "system".into();
+			entry.text = "Chief process requires recovery: ProcessUnavailable".into();
+			entries.push(entry);
+			assert!(s.connection_failure_detail().unwrap().contains("ProcessUnavailable"));
+			s.snapshot.as_mut().unwrap().pending_events[0].id = 100;
+			assert!(s.connection_failure_detail().is_none(), "never reuse an obsolete error");
+		});
+	}
+
 	#[gpui::test]
 	fn unavailable_thread_blocks_submission_without_losing_draft(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));

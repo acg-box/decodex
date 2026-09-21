@@ -134,6 +134,7 @@ impl ChiefSurface {
 	}
 
 	fn jump_to_history(&mut self, id: i64, cx: &mut Context<Self>) {
+		self.latest_follow_work = None;
 		self.set_voice_follow(false);
 		if let Some(mark) = self.history_marks.get(&id)
 			&& let Some(work) = self.selected.as_ref()
@@ -156,6 +157,7 @@ impl ChiefSurface {
 		event: &gpui::ScrollWheelEvent,
 		cx: &mut Context<Self>,
 	) {
+		self.latest_follow_work = None;
 		self.history_navigation = None;
 		self.history_selected = None;
 		if let Some(scroll) = self.selected.as_ref().and_then(|id| self.transcript_scroll.get(id)) {
@@ -206,6 +208,7 @@ impl ChiefSurface {
 			let work = navigation.work.clone();
 			self.history_navigation = None;
 			if latest {
+				self.latest_follow_work = Some(work.clone());
 				self.history_follow_paused.remove(&work);
 				self.set_voice_follow(true);
 			}
@@ -213,6 +216,7 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn follow_latest_after_send(&mut self, cx: &mut Context<Self>) {
+		self.latest_follow_work = self.selected.clone();
 		self.history_selected = None;
 		self.history_navigation = None;
 		self.older_scroll_anchor = None;
