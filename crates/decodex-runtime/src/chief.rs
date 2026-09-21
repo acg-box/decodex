@@ -229,7 +229,7 @@ impl ChiefCoordinator {
 			{
 				continue;
 			}
-			self.expect_usage_replay(thread, &resumed);
+			self.expect_usage_replay(thread, &resumed).await;
 			self.loaded_threads.insert(thread.clone());
 			let Ok(history) = self.client.thread_read_turn(thread, turn).await else {
 				continue;
@@ -468,15 +468,32 @@ impl ChiefCoordinator {
 		Ok(self.store.get_chief_work_item(id.into()).await?)
 	}
 
-	fn expect_usage_replay(&mut self, thread: &str, response: &Value) {
-		let turns = response
+	async fn expect_usage_replay(&mut self, thread: &str, response: &Value) -> Option<String> {
+		if response.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
+			return None;
+		}
+		let revision = self.client.history_revision();
+		let mut turns: Vec<String> = response
 			.pointer("/thread/turns")
 			.and_then(Value::as_array)
 			.into_iter()
 			.flatten()
 			.filter_map(|turn| turn["id"].as_str().map(str::to_owned))
 			.collect();
-		self.usage_replays.insert(thread.into(), turns);
+		// excludeTurns resumes omit the history used to identify the replayed counter.
+		// Read only the latest native turn; do not hydrate unbounded history or replay input.
+		if turns.is_empty()
+			&& let Ok(Some(turn)) = self.client.thread_latest_turn_id(thread).await
+		{
+			turns.push(turn);
+		}
+		if self.client.history_revision() != revision {
+			self.usage_replays.remove(thread);
+			return None;
+		}
+		let latest = turns.last().cloned();
+		self.usage_replays.insert(thread.into(), turns.into_iter().collect());
+		latest
 	}
 
 	fn thread_params(&self, chief: bool) -> Value {
@@ -963,14 +980,8 @@ impl ChiefCoordinator {
 					"resumed thread/model/effort readback differs from selection".into(),
 				));
 			}
-			let last_turn = response
-				.pointer("/thread/turns")
-				.and_then(Value::as_array)
-				.and_then(|turns| turns.last())
-				.and_then(|turn| turn["id"].as_str())
-				.map(str::to_owned);
+			let last_turn = self.expect_usage_replay(thread, &response).await;
 			self.store.validate_chief_usage_resume(thread.clone(), last_turn).await?;
-			self.expect_usage_replay(thread, &response);
 			self.loaded_threads.insert(thread.clone());
 		}
 		let (params, external) =

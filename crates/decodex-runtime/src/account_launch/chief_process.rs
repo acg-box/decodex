@@ -225,6 +225,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "model/list" | "experimentalFeature/list"
 					| "thread/start"
 					| "thread/resume"
+					| "thread/goal/get"
 					| "thread/unarchive"
 					| "thread/read" | "thread/list"
 					| "thread/turns/list"
@@ -518,6 +519,7 @@ mod tests {
 		let server = thread::spawn(move || {
 			let mut lines = BufReader::new(reader).lines();
 			for (method, result) in [
+				("thread/goal/get", json!({"goal":null})),
 				(
 					"account/usage/read",
 					json!({"threadUsage":{"threadId":"thread","estimatedUsageCreditsMicros":17,"groups":[]}}),
@@ -541,6 +543,13 @@ mod tests {
 				sender.send(InboundFrame::fixture(&response)).unwrap();
 			}
 		});
+		assert!(
+			client
+				.request("thread/goal/get", serde_json::json!({"threadId":"thread"}))
+				.await
+				.unwrap()["goal"]
+				.is_null()
+		);
 		assert_eq!(
 			client
 				.thread_usage_estimate("thread")

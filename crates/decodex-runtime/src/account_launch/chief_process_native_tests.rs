@@ -2,6 +2,7 @@
 use super::*;
 #[path = "chief_process_native_context_tests.rs"] mod context;
 #[path = "chief_process_native_misalignment_tests.rs"] mod misalignment;
+#[path = "chief_process_native_usage_tests.rs"] mod usage;
 use serde_json::json;
 use std::{
 	io::{BufRead, BufReader},
@@ -322,6 +323,15 @@ async fn serve_with_bodies(
 	requests: Arc<std::sync::atomic::AtomicUsize>,
 	bodies: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
 ) {
+	serve_with_usage(listener, requests, bodies, |_| json!({"extra":{"fixture":"native-usage"},"input_tokens":0,"output_tokens":0,"total_tokens":0})).await;
+}
+
+async fn serve_with_usage(
+	listener: tokio::net::TcpListener,
+	requests: Arc<std::sync::atomic::AtomicUsize>,
+	bodies: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
+	usage: fn(usize) -> Value,
+) {
 	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = tokio::io::BufReader::new(socket);
@@ -351,7 +361,7 @@ async fn serve_with_bodies(
 		let frames = [
 			json!({"type":"response.created","response":{"id":id}}),
 			json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]}}),
-			json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":{"extra":{"fixture":"native-usage"},"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
+			json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":usage(serial)}}),
 		];
 		let data = frames
 			.iter()
