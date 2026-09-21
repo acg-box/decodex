@@ -523,7 +523,7 @@ impl ChiefSurface {
 			.role(Role::Status)
 			.aria_label(format!("{title}. {description}"))
 			.m_4()
-			.p(px(14.))
+			.p(px(16.))
 			.rounded(px(12.))
 			.bg(rgb(0x26262b))
 			.text_color(rgb(ui_theme::TEXT))
@@ -531,7 +531,7 @@ impl ChiefSurface {
 			.flex_col()
 			.child(
 				div()
-					.mb(px(6.))
+					.mb(px(8.))
 					.text_size(px(12.))
 					.line_height(px(17.))
 					.font_weight(FontWeight::MEDIUM)
@@ -544,16 +544,6 @@ impl ChiefSurface {
 					.text_color(rgb(ui_theme::TEXT_MUTED))
 					.child(description),
 			)
-			.child(crate::ui_motion::disclosure(
-				"connection-diagnostic",
-				self.connection_details_expanded && detail.is_some(),
-				div()
-					.pt(px(8.))
-					.text_size(px(11.))
-					.line_height(px(17.))
-					.text_color(rgb(ui_theme::TEXT_MUTED))
-					.child(detail.unwrap_or_default().to_owned()),
-			))
 			.when(detail.is_some(), |d| {
 				d.child(
 					div().mt(px(8.)).flex().justify_end().items_center().child(
@@ -571,11 +561,11 @@ impl ChiefSurface {
 							.text_size(px(11.))
 							.text_color(rgb(ui_theme::TEXT_MUTED))
 							.hover(|s| s.text_color(rgb(ui_theme::TEXT)))
+							.child("Details")
 							.child(super::super::workspace_symbols::disclosure_chevron(
 								"connection-details-chevron",
 								self.connection_details_expanded,
 							))
-							.child("Details")
 							.on_click(cx.listener(|s, _, _, cx| {
 								s.connection_details_expanded = !s.connection_details_expanded;
 								cx.notify();
@@ -591,6 +581,16 @@ impl ChiefSurface {
 					),
 				)
 			})
+			.child(crate::ui_motion::disclosure(
+				"connection-diagnostic",
+				self.connection_details_expanded && detail.is_some(),
+				div()
+					.pt(px(8.))
+					.text_size(px(11.))
+					.line_height(px(17.))
+					.text_color(rgb(ui_theme::TEXT_MUTED))
+					.child(detail.unwrap_or_default().to_owned()),
+			))
 			.into_any_element()
 	}
 
