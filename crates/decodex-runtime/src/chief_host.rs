@@ -417,17 +417,25 @@ impl ChiefHost {
 		turn: &str,
 		item: &str,
 	) -> decodex_protocol::ChiefActivityDetailResult {
-		let unavailable = decodex_protocol::ChiefActivityDetailResult::Unavailable;
-		let Some(client) = self.runtime.chief_client() else {
-			return unavailable;
-		};
-		let Ok(work) = self.store.get_chief_work_item(work.into()).await else {
-			return unavailable;
-		};
-		let Some(thread) = work.codex_thread_id else {
-			return unavailable;
-		};
-		crate::chief_detail::read(&client, &thread, turn, item).await
+		crate::chief_detail::read_bound(|| self.activity_detail_source(work), turn, item).await
+	}
+
+	async fn activity_detail_source(
+		&self,
+		work: &str,
+	) -> Option<crate::chief_usage_estimate::Source> {
+		let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+		let thread = owner.codex_thread_id?;
+		let source = self.timeline_source(work, &thread).await?;
+		if !self
+			.store
+			.chief_thread_is_owned(work.into(), thread, Some(source.key.generation.as_str().into()))
+			.await
+			.ok()?
+		{
+			return None;
+		}
+		Some(source)
 	}
 
 	pub(crate) async fn file_approval_detail(

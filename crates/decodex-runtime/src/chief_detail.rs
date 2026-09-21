@@ -4,6 +4,25 @@ use decodex_protocol::ChiefActivityDetailResult;
 use serde_json::Value;
 #[cfg(test)] use serde_json::json;
 
+pub(crate) async fn read_bound<F, Fut>(
+	source: F,
+	turn: &str,
+	item: &str,
+) -> ChiefActivityDetailResult
+where
+	F: Fn() -> Fut,
+	Fut: std::future::Future<Output = Option<crate::chief_usage_estimate::Source>>,
+{
+	let Some(before) = source().await else {
+		return ChiefActivityDetailResult::Unavailable;
+	};
+	let result = read(&before.client, &before.key.thread, turn, item).await;
+	if source().await.is_none_or(|after| after.key != before.key) {
+		return ChiefActivityDetailResult::Unavailable;
+	}
+	result
+}
+
 pub(crate) async fn read(
 	client: &AppServerClient,
 	thread: &str,
@@ -138,6 +157,102 @@ fn project(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[tokio::test]
+	async fn activity_detail_rejects_changed_or_missing_source() {
+		use crate::chief_usage_estimate::{Source, SourceKey};
+		use decodex_core::{AccountId, ProcessGenerationId};
+		use std::sync::atomic::{AtomicUsize, Ordering};
+		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+		for change in [
+			"none", "account", "process", "revision", "history", "thread", "work", "closed",
+			"absent",
+		] {
+			let (local, remote) = tokio::io::duplex(65536);
+			let (reader, writer) = tokio::io::split(local);
+			let (client, _events) = AppServerClient::from_io(reader, writer);
+			let server = tokio::spawn(async move {
+				let (reader, mut writer) = tokio::io::split(remote);
+				let mut lines = BufReader::new(reader).lines();
+				if change == "absent" {
+					assert!(lines.next_line().await.unwrap().is_none());
+					return;
+				}
+				for (method, result) in [
+					("thread/read", json!({"thread":{"id":"thread","historyMode":"paginated"}})),
+					("thread/turns/list", json!({"data":[{"id":"turn"}],"nextCursor":null})),
+					(
+						"thread/items/list",
+						json!({"data":[{"turnId":"turn","item":{"id":"item","type":"commandExecution","aggregatedOutput":"Passed"}}],"nextCursor":null}),
+					),
+				] {
+					let request: Value =
+						serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+					assert_eq!(request["method"], method);
+					assert_eq!(request["params"]["threadId"], "thread");
+					writer
+						.write_all(
+							format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+						)
+						.await
+						.unwrap();
+				}
+			});
+			let calls = AtomicUsize::new(0);
+			let result = read_bound(
+				|| {
+					let later = calls.fetch_add(1, Ordering::SeqCst) > 0;
+					let client = client.clone();
+					async move {
+						if change == "absent" || (later && change == "closed") {
+							return None;
+						}
+						Some(Source {
+							client,
+							key: SourceKey {
+								generation: ProcessGenerationId::new(
+									if later && change == "process" {
+										"20000000-0000-4000-8000-000000000002"
+									} else {
+										"10000000-0000-4000-8000-000000000001"
+									},
+								)
+								.unwrap(),
+								account: AccountId::new(if later && change == "account" {
+									"40000000-0000-4000-8000-000000000004"
+								} else {
+									"30000000-0000-4000-8000-000000000003"
+								})
+								.unwrap(),
+								revision: i64::from(later && change == "revision"),
+								history_revision: u64::from(later && change == "history"),
+								thread: if later && change == "thread" {
+									"other"
+								} else {
+									"thread"
+								}
+								.into(),
+								work: if later && change == "work" { "other" } else { "work" }
+									.into(),
+							},
+						})
+					}
+				},
+				"turn",
+				"item",
+			)
+			.await;
+			if change == "none" {
+				assert!(
+					matches!(result, ChiefActivityDetailResult::Available { text, .. } if text == "Passed")
+				);
+			} else {
+				assert_eq!(result, ChiefActivityDetailResult::Unavailable, "{change}");
+			}
+			assert_eq!(calls.load(Ordering::SeqCst), if change == "absent" { 1 } else { 2 });
+			drop(client);
+			server.await.unwrap();
+		}
+	}
 	#[test]
 	fn exact_source_required_and_reasoning_not_projected() {
 		let history = json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"item","type":"commandExecution","command":"cargo test","aggregatedOutput":"Passed","exitCode":0},{"id":"private","type":"reasoning","text":"private"}]}]}});

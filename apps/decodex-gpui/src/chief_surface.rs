@@ -65,8 +65,7 @@ pub(crate) struct ChiefSurface {
 	audio_input: String,
 	dictation: Option<dictation::DictationUi>,
 	dictation_task: Option<Task<()>>,
-	activity_detail: Option<(String, Option<decodex_protocol::ChiefActivityDetailResult>)>,
-	activity_detail_task: Option<Task<()>>,
+	activity_detail: detail::ActivityDetailState,
 	resources: Option<(String, Option<decodex_protocol::ChiefResourcesResult>)>,
 	resources_task: Option<Task<()>>,
 	usage_estimate: Option<(String, Option<decodex_protocol::ChiefUsageEstimateResult>)>,
@@ -249,8 +248,7 @@ impl ChiefSurface {
 			audio_input: String::new(),
 			dictation: None,
 			dictation_task: None,
-			activity_detail: None,
-			activity_detail_task: None,
+			activity_detail: Default::default(),
 			resources: None,
 			resources_task: None,
 			usage_estimate: None,
@@ -775,8 +773,7 @@ impl ChiefSurface {
 		self.generation += 1;
 		self.task = None;
 		self.profile = profile;
-		self.activity_detail = None;
-		self.activity_detail_task = None;
+		self.clear_activity_detail();
 		self.resources = None;
 		self.resources_task = None;
 		self.usage_estimate = None;
@@ -863,6 +860,7 @@ impl ChiefSurface {
 
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
 		self.generation += 1;
+		self.clear_activity_detail();
 		self.guardian_disconnected();
 		self.archive_disconnected();
 		self.goal_disconnected();
@@ -920,12 +918,27 @@ impl ChiefSurface {
 	}
 
 	fn apply_result(&mut self, result: Result<ChiefSnapshotResult, ()>) {
+		if !matches!(&result, Ok(ChiefSnapshotResult::Available(_))) {
+			self.clear_activity_detail();
+		}
 		match result {
 			Ok(ChiefSnapshotResult::Available(snapshot)) => {
+				if self.snapshot.as_ref().is_some_and(|old| {
+					old.work_items.iter().any(|work| {
+						snapshot
+							.work_items
+							.iter()
+							.find(|new| new.id == work.id)
+							.is_none_or(|new| new.codex_thread_id != work.codex_thread_id)
+					})
+				}) {
+					self.clear_activity_detail();
+				}
 				if self.snapshot.as_ref().and_then(|old| old.runtime_source.as_ref())
 					!= snapshot.runtime_source.as_ref()
 				{
 					self.native_history.reset();
+					self.clear_activity_detail();
 				}
 				if !self
 					.selected
