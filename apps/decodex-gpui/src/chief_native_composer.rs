@@ -62,7 +62,7 @@ impl ChiefSurface {
 		}
 		let settling = self.native_composer.resume_after.is_some_and(|until| until > now);
 		if requested && settling {
-			window.request_animation_frame();
+			crate::ui_motion::request_frame(window, cx);
 		}
 		let enabled = requested && !settling && !self.native_composer.failed;
 		if enabled

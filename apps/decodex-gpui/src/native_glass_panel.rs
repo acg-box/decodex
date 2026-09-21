@@ -11,6 +11,11 @@ use objc2_app_kit::{NSView, NSWindow, NSWindowCollectionBehavior};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
+thread_local! {
+	// Non-owning handles; the corresponding GlassPanel registers and removes each entry.
+	static ATTACHED_WINDOWS: std::cell::RefCell<std::collections::HashMap<usize, gpui::AnyWindowHandle>> = Default::default();
+}
+
 pub(crate) fn available() -> bool {
 	AnyClass::get(c"NSGlassEffectView").is_some()
 		&& std::env::var_os("DECODEX_DISABLE_LIQUID_GLASS").is_none()
@@ -33,6 +38,42 @@ fn view(window: &Window) -> Option<Retained<NSView>> {
 }
 fn native(window: &Window) -> Option<Retained<NSWindow>> {
 	view(window)?.window()
+}
+
+/// Attached controls share the workspace's interaction, but GPUI treats only
+/// the key window as active and throttles other windows' animation callbacks.
+/// Schedule through the key child's display link without moving keyboard focus.
+pub(crate) fn request_workspace_frame(window: &Window, cx: &mut gpui::App) -> bool {
+	if window.is_window_active() {
+		return false;
+	}
+	let Some(parent) = native(window) else { return false };
+	// GPUI's macOS active_window() returns mainWindow, not keyWindow. The
+	// workspace deliberately remains main while its composer owns the keyboard.
+	let active = unsafe {
+		let app: Retained<AnyObject> =
+			msg_send![AnyClass::get(c"NSApplication").expect("AppKit"), sharedApplication];
+		let key: Option<Retained<NSWindow>> = msg_send![&*app, keyWindow];
+		key.filter(|key| key.parentWindow().is_some_and(|owner| std::ptr::eq(&*owner, &*parent)))
+			.and_then(|key| {
+				ATTACHED_WINDOWS.with(|windows| {
+					windows.borrow().get(&(&*key as *const NSWindow as usize)).copied()
+				})
+			})
+	};
+	let Some(active) = active else { return false };
+	let entity = window.current_view();
+	cx.defer(move |cx| {
+		if active
+			.update(cx, |_, window, _| {
+				window.on_next_frame(move |_, cx| cx.notify(entity));
+			})
+			.is_err()
+		{
+			cx.notify(entity);
+		}
+	});
+	true
 }
 
 /// Keep the workspace main while an attached control receives keyboard input.
@@ -130,6 +171,11 @@ impl GlassPanel {
 			let _: () = msg_send![&*native, setExcludedFromWindowsMenu: true];
 			let _: () = msg_send![&*parent, addChildWindow: &*native, ordered: 1isize];
 			let main_observer = observe_main_window(&native)?;
+			ATTACHED_WINDOWS.with(|windows| {
+				windows
+					.borrow_mut()
+					.insert(&*native as *const NSWindow as usize, Window::window_handle(window));
+			});
 			Some(Self {
 				glass,
 				foreground: gpu,
@@ -226,6 +272,9 @@ impl GlassPanel {
 }
 impl Drop for GlassPanel {
 	fn drop(&mut self) {
+		ATTACHED_WINDOWS.with(|windows| {
+			windows.borrow_mut().remove(&(&*self.native as *const NSWindow as usize));
+		});
 		unsafe {
 			let center: Retained<AnyObject> = msg_send![
 				AnyClass::get(c"NSNotificationCenter").expect("Foundation"),

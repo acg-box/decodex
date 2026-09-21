@@ -118,13 +118,13 @@ impl ChiefSurface {
 		div()
 			.w_full()
 			.flex_none()
-			.on_children_prepainted(move |bounds, window, _| {
+			.on_children_prepainted(move |bounds, window, cx| {
 				if let Some(bounds) = bounds.first() {
 					let measured =
 						f32::from(bounds.origin.y - scroll.bounds().origin.y - scroll.offset().y);
 					if (position.get() - measured).abs() > 0.5 {
 						position.set(measured);
-						window.request_animation_frame();
+						crate::ui_motion::request_frame(window, cx);
 					}
 				}
 			})
@@ -196,7 +196,7 @@ impl ChiefSurface {
 			));
 		}
 		if t < 1.0 {
-			window.request_animation_frame();
+			crate::ui_motion::request_frame(window, cx);
 			cx.notify();
 		} else {
 			self.history_navigation = None;

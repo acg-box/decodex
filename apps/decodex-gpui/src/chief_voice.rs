@@ -411,7 +411,7 @@ impl ChiefSurface {
 		let target = -f32::from(scroll.max_offset().y);
 		if (target - current).abs() > 0.5 {
 			scroll.set_offset(gpui::point(px(0.), px(current + (target - current) * 0.24)));
-			window.request_animation_frame();
+			crate::ui_motion::request_frame(window, cx);
 			cx.notify();
 		}
 	}
