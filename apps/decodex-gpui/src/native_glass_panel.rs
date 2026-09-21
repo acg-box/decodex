@@ -42,7 +42,15 @@ pub(crate) struct GlassPanel {
 }
 impl GlassPanel {
 	pub(crate) fn install(parent: &Window, window: &mut Window, radius: f64) -> Option<Self> {
-		if !available() {
+		Self::install_surface(parent, window, Some(radius))
+	}
+
+	pub(crate) fn install_overlay(parent: &Window, window: &mut Window) -> Option<Self> {
+		Self::install_surface(parent, window, None)
+	}
+
+	fn install_surface(parent: &Window, window: &mut Window, radius: Option<f64>) -> Option<Self> {
+		if radius.is_some() && !available() {
 			return None;
 		}
 		let parent = native(parent)?;
@@ -54,16 +62,26 @@ impl GlassPanel {
 				| NSWindowCollectionBehavior::IgnoresCycle
 				| NSWindowCollectionBehavior::FullScreenAuxiliary,
 		);
-		native.setTitle(&objc2_foundation::NSString::from_str("Decodex Composer"));
-		let class = AnyClass::get(c"NSGlassEffectView")?;
+		native.setTitle(&objc2_foundation::NSString::from_str(if radius.is_some() {
+			"Decodex Composer"
+		} else {
+			"Decodex Status"
+		}));
+		let class = AnyClass::get(if radius.is_some() { c"NSGlassEffectView" } else { c"NSView" })?;
 		window.set_background_appearance(WindowBackgroundAppearance::Transparent);
 		unsafe {
 			let glass: Retained<NSView> = msg_send![class, new];
 			glass.setFrame(content.bounds());
 			let _: () = msg_send![&*glass, setAutoresizingMask: 18usize];
-			let _: () = msg_send![&*glass, setCornerRadius: radius];
 			gpu.removeFromSuperview();
-			let _: () = msg_send![&*glass, setContentView: &*gpu];
+			if let Some(radius) = radius {
+				let _: () = msg_send![&*glass, setCornerRadius: radius];
+				let _: () = msg_send![&*glass, setContentView: &*gpu];
+			} else {
+				glass.addSubview(&gpu);
+				let _: () = msg_send![&*native, setHasShadow: false];
+				let _: () = msg_send![&*native, setAlphaValue: 0.0f64];
+			}
 			content.addSubview(&glass);
 			let _: () = msg_send![&*native, setStyleMask: 0usize];
 			let _: () = msg_send![&*native, setLevel: 0isize];
@@ -129,6 +147,12 @@ impl GlassPanel {
 
 	pub(crate) fn focus_text(&self) {
 		self.native.makeFirstResponder(Some(&self.foreground));
+	}
+
+	pub(crate) fn set_opacity(&self, opacity: f32) {
+		unsafe {
+			let _: () = msg_send![&*self.native, setAlphaValue: f64::from(opacity)];
+		}
 	}
 
 	pub(crate) fn set_visible(&mut self, visible: bool) {

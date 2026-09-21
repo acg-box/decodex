@@ -1,4 +1,7 @@
 //! Production GPUI window, navigation, focus, and lifecycle rendering boundary.
+#[cfg(all(target_os = "macos", not(test)))]
+#[path = "shell_native_status.rs"]
+mod native_status;
 #[path = "shell_status.rs"] mod status;
 use crate::ui_motion::SmoothControl;
 
@@ -532,6 +535,8 @@ pub(crate) struct Shell {
 	titlebar_drag_pending: bool,
 	navigation: navigation::NavigationHistory,
 	status_open: bool,
+	#[cfg(all(target_os = "macos", not(test)))]
+	native_status: native_status::NativeStatus,
 }
 
 impl Shell {
@@ -642,6 +647,8 @@ impl Shell {
 			titlebar_drag_pending: false,
 			navigation: navigation::NavigationHistory::new(),
 			status_open: false,
+			#[cfg(all(target_os = "macos", not(test)))]
+			native_status: Default::default(),
 		}
 	}
 
@@ -5129,7 +5136,9 @@ impl Render for Shell {
 			chief.prepare_native_composer(self.selected == Destination::Chief, window, cx)
 		});
 		let controls = floating_window_controls(self, &presentation, window, cx);
-		let status = self.render_status_center(&presentation, window, cx);
+		#[cfg(all(target_os = "macos", not(test)))]
+		self.prepare_native_status(window, cx);
+		let status = self.render_status_center(&presentation, cx);
 		let route = format!("{:?}", self.selected);
 		let content =
 			destination_content(self, presentation, self.refresh_focus.clone(), window, cx);

@@ -41,14 +41,6 @@ struct ComposerPanel {
 }
 
 impl ChiefSurface {
-	pub(crate) fn native_composer_top(&self) -> Option<Pixels> {
-		self.native_composer
-			.enabled
-			.then_some(self.native_composer.bounds)
-			.flatten()
-			.map(|bounds| bounds.origin.y)
-	}
-
 	/// Called by the main shell; settings and other windows must not create composers.
 	pub(crate) fn prepare_native_composer(
 		&mut self,

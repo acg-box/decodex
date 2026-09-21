@@ -44,6 +44,27 @@ impl Tween {
 	}
 }
 
+/// Animate a native overlay as one composited surface, including its shadow.
+#[cfg(all(target_os = "macos", not(test)))]
+pub(crate) fn native_presence(
+	id: &'static str,
+	visible: bool,
+	window: &mut Window,
+	cx: &mut App,
+) -> f32 {
+	let state = window.use_keyed_state(id, cx, |_, _| Tween::new(0.));
+	let now = Instant::now();
+	let (opacity, moving) = state.update(cx, |s, _| {
+		s.duration = Duration::from_millis(180);
+		s.target(if visible { 1. } else { 0. }, now);
+		(s.sample(now), s.moving(now))
+	});
+	if moving {
+		window.request_animation_frame();
+	}
+	opacity
+}
+
 pub(crate) fn value(
 	id: impl Into<ElementId>,
 	target: f32,
@@ -441,7 +462,7 @@ impl RenderOnce for Popover {
 			.when(!self.unframed, |surface| {
 				surface.rounded(px(14.)).bg(gpui::rgb(0x29292d)).shadow(vec![gpui::BoxShadow {
 					inset: false,
-					color: gpui::rgba(0x00000024).opacity(opacity).into(),
+					color: gpui::rgba(0x00000024).into(),
 					offset: gpui::point(px(0.), px(4.)),
 					blur_radius: px(12.),
 					spread_radius: px(-3.),

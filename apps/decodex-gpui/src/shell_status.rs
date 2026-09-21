@@ -10,22 +10,91 @@ impl Shell {
 	pub(super) fn render_status_center(
 		&self,
 		connection: &ConnectionPresentation,
-		window: &gpui::Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		// A native composer is a child window, so keep the notification above
-		// its bounds rather than swapping the editor to a different renderer.
 		let panel_bottom = px(34.0);
-		#[cfg(all(target_os = "macos", not(test)))]
-		let panel_bottom = self.chief.read(cx).native_composer_top().map_or(panel_bottom, |top| {
-			(window.viewport_size().height - top - px(4.0)).max(panel_bottom)
-		});
-		let _ = window;
 		let popup_bounds =
 			std::rc::Rc::new(std::cell::Cell::new(None::<gpui::Bounds<gpui::Pixels>>));
 		let outside_bounds = popup_bounds.clone();
+		let (title, _, _, color) = self.status_details(connection, cx);
+		let panel = self.render_status_panel(connection, cx);
+		#[cfg(not(all(target_os = "macos", not(test))))]
+		let native = false;
+		#[cfg(all(target_os = "macos", not(test)))]
+		let native = self.native_status.child.is_some();
+
+		div()
+			.id("status-center")
+			.w(px(304.0))
+			.absolute()
+			.bottom(px(12.0))
+			.right(px(12.0))
+			.flex()
+			.flex_col()
+			.items_end()
+			.gap_2()
+			.on_mouse_down_out(cx.listener(move |s, event: &gpui::MouseDownEvent, _, cx| {
+				if s.status_open
+					&& !outside_bounds.get().is_some_and(|bounds| bounds.contains(&event.position))
+				{
+					s.status_open = false;
+					cx.notify();
+				}
+			}))
+			.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
+				if event.keystroke.key == "escape" {
+					s.status_open = false;
+					cx.notify();
+				}
+			}))
+			.child(
+				div()
+					.absolute()
+					.bottom(panel_bottom)
+					.right_0()
+					.w_full()
+					.on_children_prepainted(move |bounds, _, _| {
+						popup_bounds.set(bounds.first().copied())
+					})
+					.when(!native, |d| {
+						d.child(popover("status-panel-motion", "status", self.status_open, panel))
+					}),
+			)
+			.child(
+				div()
+					.id("status-toggle")
+					.role(Role::Button)
+					.tab_index(0)
+					.aria_label(format!("Status: {title}"))
+					.aria_expanded(self.status_open)
+					.h(px(26.0))
+					.px_2()
+					.rounded(px(7.0))
+					.bg(rgba(ui_theme::TOPBAR_MATERIAL))
+					.flex()
+					.items_center()
+					.gap_2()
+					.text_size(px(11.0))
+					.text_color(rgb(WB_TEXT_MUTED))
+					.cursor_pointer()
+					.hover(|s| s.bg(rgba(0xffffff0c)))
+					.on_click(cx.listener(|s, _, _, cx| {
+						s.status_open = !s.status_open;
+						cx.notify();
+					}))
+					.child(div().size(px(5.0)).rounded_full().bg(rgb(color)))
+					.child(title)
+					.smooth(),
+			)
+			.into_any_element()
+	}
+
+	fn status_details(
+		&self,
+		connection: &ConnectionPresentation,
+		cx: &Context<Self>,
+	) -> (&'static str, String, bool, u32) {
 		let notice = self.chief.read(cx).status_notice();
-		let recent_event = self.chief.read(cx).recent_service_event();
 		let (title, detail, retry, color) = if let Some((title, detail, retry)) = notice {
 			(title, detail, retry, ui_theme::AMBER)
 		} else if connection.label != "Online" {
@@ -33,6 +102,16 @@ impl Shell {
 		} else {
 			("Status", "Connected to the local service.".into(), false, WB_TEXT_MUTED)
 		};
+		(title, detail, retry, color)
+	}
+
+	pub(super) fn render_status_panel(
+		&self,
+		connection: &ConnectionPresentation,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let (title, detail, retry, _) = self.status_details(connection, cx);
+		let recent_event = self.chief.read(cx).recent_service_event();
 		let panel = div()
 			.occlude()
 			.w(px(304.0))
@@ -67,68 +146,7 @@ impl Shell {
 					})
 					.child(self.status_action("status-diagnostics", "Diagnostics", false, cx)),
 			);
-		div()
-			.id("status-center")
-			.w(px(304.0))
-			.absolute()
-			.bottom(px(12.0))
-			.right(px(12.0))
-			.flex()
-			.flex_col()
-			.items_end()
-			.gap_2()
-			.on_mouse_down_out(cx.listener(move |s, event: &gpui::MouseDownEvent, _, cx| {
-				if s.status_open
-					&& !outside_bounds.get().is_some_and(|bounds| bounds.contains(&event.position))
-				{
-					s.status_open = false;
-					cx.notify();
-				}
-			}))
-			.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
-				if event.keystroke.key == "escape" {
-					s.status_open = false;
-					cx.notify();
-				}
-			}))
-			.child(
-				div()
-					.absolute()
-					.bottom(panel_bottom)
-					.right_0()
-					.w_full()
-					.on_children_prepainted(move |bounds, _, _| {
-						popup_bounds.set(bounds.first().copied())
-					})
-					.child(popover("status-panel-motion", "status", self.status_open, panel)),
-			)
-			.child(
-				div()
-					.id("status-toggle")
-					.role(Role::Button)
-					.tab_index(0)
-					.aria_label(format!("Status: {title}"))
-					.aria_expanded(self.status_open)
-					.h(px(26.0))
-					.px_2()
-					.rounded(px(7.0))
-					.bg(rgba(ui_theme::TOPBAR_MATERIAL))
-					.flex()
-					.items_center()
-					.gap_2()
-					.text_size(px(11.0))
-					.text_color(rgb(WB_TEXT_MUTED))
-					.cursor_pointer()
-					.hover(|s| s.bg(rgba(0xffffff0c)))
-					.on_click(cx.listener(|s, _, _, cx| {
-						s.status_open = !s.status_open;
-						cx.notify();
-					}))
-					.child(div().size(px(5.0)).rounded_full().bg(rgb(color)))
-					.child(title)
-					.smooth(),
-			)
-			.into_any_element()
+		panel.into_any_element()
 	}
 
 	fn status_action(
