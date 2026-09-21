@@ -303,6 +303,7 @@ actions!(
 		ToggleSidebar,
 		ToggleInspector,
 		ToggleGraph,
+		DismissStatus,
 		InterruptReply,
 		NavigateBack,
 		NavigateForward,
@@ -5103,6 +5104,12 @@ impl Render for Shell {
 			.on_action(cx.listener(Self::toggle_sidebar))
 			.on_action(cx.listener(Self::toggle_inspector))
 			.on_action(cx.listener(Self::toggle_graph))
+			.on_action(cx.listener(|s, _: &DismissStatus, _, cx| {
+				if s.status_open {
+					s.status_open = false;
+					cx.notify();
+				}
+			}))
 			.on_action(cx.listener(Self::interrupt_reply))
 			.on_action(cx.listener(|s, _: &NavigateBack, _, cx| s.navigate_history(false, cx)))
 			.on_action(cx.listener(|s, _: &NavigateForward, _, cx| s.navigate_history(true, cx)))
@@ -5119,14 +5126,10 @@ impl Render for Shell {
 
 		#[cfg(all(target_os = "macos", not(test)))]
 		self.chief.update(cx, |chief, cx| {
-			chief.prepare_native_composer(
-				self.selected == Destination::Chief && !self.status_open,
-				window,
-				cx,
-			)
+			chief.prepare_native_composer(self.selected == Destination::Chief, window, cx)
 		});
 		let controls = floating_window_controls(self, &presentation, window, cx);
-		let status = self.render_status_center(&presentation, cx);
+		let status = self.render_status_center(&presentation, window, cx);
 		let route = format!("{:?}", self.selected);
 		let content =
 			destination_content(self, presentation, self.refresh_focus.clone(), window, cx);

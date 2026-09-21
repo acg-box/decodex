@@ -41,6 +41,14 @@ struct ComposerPanel {
 }
 
 impl ChiefSurface {
+	pub(crate) fn native_composer_top(&self) -> Option<Pixels> {
+		self.native_composer
+			.enabled
+			.then_some(self.native_composer.bounds)
+			.flatten()
+			.map(|bounds| bounds.origin.y)
+	}
+
 	/// Called by the main shell; settings and other windows must not create composers.
 	pub(crate) fn prepare_native_composer(
 		&mut self,
@@ -179,6 +187,9 @@ impl Render for ComposerPanel {
 		div()
 			.w_full()
 			.font_family(ui_theme::FONT_FAMILY)
+			.on_mouse_down(gpui::MouseButton::Left, move |_, _, cx| {
+				forward(parent, &super::super::DismissStatus, cx);
+			})
 			.text_size(px(ui_theme::BODY_SIZE))
 			.text_color(gpui::rgb(ui_theme::TEXT))
 			.on_children_prepainted(move |bounds, _, cx| {

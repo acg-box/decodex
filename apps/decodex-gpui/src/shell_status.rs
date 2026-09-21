@@ -10,8 +10,20 @@ impl Shell {
 	pub(super) fn render_status_center(
 		&self,
 		connection: &ConnectionPresentation,
+		window: &gpui::Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		// A native composer is a child window, so keep the notification above
+		// its bounds rather than swapping the editor to a different renderer.
+		let panel_bottom = px(34.0);
+		#[cfg(all(target_os = "macos", not(test)))]
+		let panel_bottom = self.chief.read(cx).native_composer_top().map_or(panel_bottom, |top| {
+			(window.viewport_size().height - top - px(4.0)).max(panel_bottom)
+		});
+		let _ = window;
+		let popup_bounds =
+			std::rc::Rc::new(std::cell::Cell::new(None::<gpui::Bounds<gpui::Pixels>>));
+		let outside_bounds = popup_bounds.clone();
 		let notice = self.chief.read(cx).status_notice();
 		let recent_event = self.chief.read(cx).recent_service_event();
 		let (title, detail, retry, color) = if let Some((title, detail, retry)) = notice {
@@ -65,8 +77,10 @@ impl Shell {
 			.flex_col()
 			.items_end()
 			.gap_2()
-			.on_mouse_down_out(cx.listener(|s, _, _, cx| {
-				if s.status_open {
+			.on_mouse_down_out(cx.listener(move |s, event: &gpui::MouseDownEvent, _, cx| {
+				if s.status_open
+					&& !outside_bounds.get().is_some_and(|bounds| bounds.contains(&event.position))
+				{
 					s.status_open = false;
 					cx.notify();
 				}
@@ -77,7 +91,17 @@ impl Shell {
 					cx.notify();
 				}
 			}))
-			.child(popover("status-panel-motion", "status", self.status_open, panel))
+			.child(
+				div()
+					.absolute()
+					.bottom(panel_bottom)
+					.right_0()
+					.w_full()
+					.on_children_prepainted(move |bounds, _, _| {
+						popup_bounds.set(bounds.first().copied())
+					})
+					.child(popover("status-panel-motion", "status", self.status_open, panel)),
+			)
 			.child(
 				div()
 					.id("status-toggle")
