@@ -1,4 +1,5 @@
 //! Production GPUI window, navigation, focus, and lifecycle rendering boundary.
+#[path = "quota_meter.rs"] mod quota_meter;
 #[path = "shell_reset_cards.rs"] mod reset_cards;
 #[path = "shell_status.rs"] mod status;
 use crate::ui_motion::SmoothControl;
@@ -2637,6 +2638,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 			account_pool_row(
 				account,
 				AccountRowPresentation {
+					reset_fill: shell.reset_fill_for(account),
 					index,
 					show_actions: shell.account_actions.as_ref() == Some(&account.account_id),
 					routing_revision: snapshot.routing.as_ref().map(|routing| routing.revision),
@@ -3197,8 +3199,9 @@ impl Shell {
 	}
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct AccountRowPresentation {
+	reset_fill: Option<quota_meter::ResetFill>,
 	index: usize,
 	routing_revision: Option<decodex_protocol::EntityRevision>,
 	fixed: bool,
@@ -3247,7 +3250,7 @@ fn account_pool_row(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let AccountRowPresentation { index, fixed, can_manage, .. } = presentation;
-	let summary = account_pool_summary(account, presentation, cx);
+	let summary = account_pool_summary(account, presentation.clone(), cx);
 	div()
 		.w_full()
 		.rounded(px(8.))
@@ -3338,8 +3341,16 @@ fn account_pool_summary(
 		.child(
 			div().flex_1().min_w_0().flex().items_center().gap(px(8.0)).children(
 				[
-					account_quota("5 hours", account.five_hour_quota),
-					account_quota("7 days", account.seven_day_quota),
+					quota_meter::meter(
+						"5 hours",
+						account.five_hour_quota,
+						presentation.reset_fill.clone(),
+					),
+					quota_meter::meter(
+						"7 days",
+						account.seven_day_quota,
+						presentation.reset_fill.clone(),
+					),
 				]
 				.into_iter()
 				.flatten(),
@@ -3564,44 +3575,9 @@ fn account_row_action(
 		.child(label)
 }
 
+#[cfg(test)]
 fn account_quota(label: &'static str, quota: AccountQuotaWindowDto) -> Option<AnyElement> {
-	if quota.result == AccountQuotaStateDto::NotApplicable {
-		return None;
-	}
-	let AccountQuotaStateDto::Current { used_percent, .. } = quota.result else {
-		return None;
-	};
-	let detail = format!("{used_percent}% used");
-	let used = f32::from(used_percent);
-	let color = if used_percent >= 90 {
-		0xef4444
-	} else if used_percent >= 70 {
-		WB_AMBER
-	} else {
-		WB_BLUE
-	};
-	Some(
-		div()
-			.w(px(122.0))
-			.flex()
-			.flex_col()
-			.gap_1()
-			.child(
-				div()
-					.flex()
-					.items_center()
-					.justify_between()
-					.font_family(ui_theme::FONT_FAMILY)
-					.text_size(px(11.0))
-					.text_color(rgb(WB_TEXT_FAINT))
-					.child(label)
-					.child(detail),
-			)
-			.child(div().h(px(3.0)).w_full().rounded_full().bg(rgba(0xffffff0c)).child(
-				div().h_full().w(px(used.clamp(0.0, 100.0) * 1.22)).rounded_full().bg(rgb(color)),
-			))
-			.into_any_element(),
-	)
+	quota_meter::meter(label, quota, None)
 }
 
 fn account_state_color(account: &AccountDto) -> u32 {

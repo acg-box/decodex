@@ -32,7 +32,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(store.contains("Resume the pending request"))
 	}
 
-	func testQuotaMotionTracksOnlyTheAuthoritativeRemainingValue() throws {
+	func testQuotaMotionUsesOneValueAndHonorsReduceMotion() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
@@ -45,7 +45,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 
 		XCTAssertTrue(
 			accountRows.contains(
-				".animation(quotaValueAnimation, value: remainingPercent)"
+				".animation(animated == nil ? quotaValueAnimation : nil, value: remainingPercent)"
 			)
 		)
 		XCTAssertTrue(
