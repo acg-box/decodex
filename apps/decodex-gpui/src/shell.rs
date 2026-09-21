@@ -2688,8 +2688,9 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	div()
 		.flex_1()
 		.min_h_0()
-		.px(px(28.0))
-		.py_5()
+		.px(px(ui_theme::SETTINGS_INSET))
+		.pt(px(ui_theme::SETTINGS_GROUP_GAP))
+		.pb(px(ui_theme::SETTINGS_INSET))
 		.flex()
 		.justify_center()
 		.child(
@@ -4738,8 +4739,9 @@ fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 		.flex_1()
 		.min_h_0()
 		.overflow_y_scroll()
-		.px(px(28.0))
-		.py(px(20.0))
+		.px(px(ui_theme::SETTINGS_INSET))
+		.pt(px(ui_theme::SETTINGS_GROUP_GAP))
+		.pb(px(ui_theme::SETTINGS_INSET))
 		.flex()
 		.justify_center()
 		.child(content)
@@ -4854,8 +4856,8 @@ fn settings_workspace_content(
 		.child(
 			div()
 				.px_2()
-				.pt_3()
-				.pb_4()
+				.pt(px(ui_theme::SETTINGS_TOP))
+				.pb(px(ui_theme::SETTINGS_GROUP_GAP))
 				.text_size(px(13.0))
 				.font_weight(FontWeight::SEMIBOLD)
 				.child("Settings"),
@@ -4914,7 +4916,7 @@ fn settings_workspace_content(
 	} else {
 		panel
 			.child(
-				div().px(px(28.0)).pt(px(18.0)).flex().justify_center().child(
+				ui_theme::settings_header_inset().child(
 					div()
 						.w_full()
 						.max_w(px(ui_theme::SETTINGS_WIDTH))

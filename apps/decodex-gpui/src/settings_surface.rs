@@ -320,7 +320,6 @@ impl SettingsSurface {
 
 	fn launch_at_login_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		ui_theme::settings_row()
-			.min_h(px(40.))
 			.px_0()
 			.child(div().flex_1().child("Launch at login"))
 			.child(self.launch_at_login_toggle(cx))
@@ -507,48 +506,40 @@ impl Render for SettingsSurface {
 					.debug_selector(|| "settings-scroll-viewport".into())
 					.size_full()
 					.overflow_y_scroll()
-					.px(px(28.0))
-					.py(px(18.0))
+					.px(px(ui_theme::SETTINGS_INSET))
+					.pt(px(ui_theme::SETTINGS_TOP))
+					.pb(px(ui_theme::SETTINGS_INSET))
 					.flex()
 					.justify_center()
 					.items_start()
 					.child(
 						div()
 							.w_full()
-							.max_w(px(600.0))
+							.max_w(px(ui_theme::SETTINGS_WIDTH))
 							.flex_none()
 							.flex()
 							.flex_col()
-							.gap(px(24.0))
+							.gap(px(ui_theme::SETTINGS_GROUP_GAP))
 							.child(ui_theme::settings_title("General"))
-							.child(self.glass_controls(cx))
-							.child(self.cursor_controls(cx))
-							.child(self.notification_count_control(cx))
 							.child(
-								div().flex().flex_col().gap(px(8.0)).child(
-									div()
-										.w_full()
-										.py(px(4.0))
-										.flex()
-										.flex_col()
-										.child(
-											ui_theme::settings_row()
-												.min_h(px(40.0))
-												.px(px(0.0))
-												.child(
-													div()
-														.flex_1()
-														.min_w_0()
-														.flex()
-														.flex_col()
-														.gap(px(3.0))
-														.child("Show in menu bar"),
-												)
-												.child(self.toggle(cx)),
-										)
-										.child(div().h(px(2.0)))
-										.child(self.launch_at_login_card(cx)),
-								),
+								div()
+									.flex()
+									.flex_col()
+									.child(self.glass_controls(cx))
+									.child(self.cursor_controls(cx)),
+							)
+							.child(
+								div()
+									.flex()
+									.flex_col()
+									.child(self.notification_count_control(cx))
+									.child(
+										ui_theme::settings_row()
+											.px_0()
+											.child(div().flex_1().child("Show in menu bar"))
+											.child(self.toggle(cx)),
+									)
+									.child(self.launch_at_login_card(cx)),
 							)
 							.children(self.advanced_preferences.clone())
 							.child(quote_attribution()),
