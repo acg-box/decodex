@@ -699,6 +699,51 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn yielded_request_uses_exact_liveness_after_its_origin_turn_completes() {
+		let (client, mut events, _reader, mut writer) = connection();
+		write_frame(
+			&mut writer,
+			json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"origin"}}}),
+		)
+		.await
+		.unwrap();
+		let _ = events.recv().await.unwrap();
+		write_frame(
+			&mut writer,
+			json!({"method":"turn/started","params":{"threadId":"thread","turn":{"id":"successor"}}}),
+		)
+		.await
+		.unwrap();
+		let _ = events.recv().await.unwrap();
+		let id = RequestId::String("late-approval".into());
+		let params = json!({"threadId":"thread","turnId":"origin","serverName":"codex_apps"});
+		write_frame(
+			&mut writer,
+			json!({"id":id,"method":"mcpServer/elicitation/request","params":params}),
+		)
+		.await
+		.unwrap();
+		let _ = events.recv().await.unwrap();
+		let guard =
+			client.server_request_guard(&id, "mcpServer/elicitation/request", &params).unwrap();
+		assert!(guard.is_live());
+		let mut changed = params.clone();
+		changed["turnId"] = json!("successor");
+		assert!(
+			client.server_request_guard(&id, "mcpServer/elicitation/request", &changed).is_none()
+		);
+		write_frame(
+			&mut writer,
+			json!({"method":"serverRequest/resolved","params":{"threadId":"thread","requestId":id}}),
+		)
+		.await
+		.unwrap();
+		let _ = events.recv().await.unwrap();
+		assert!(!guard.is_live());
+		assert!(client.respond_guarded(id, json!({"action":"accept"}), guard).await.is_err());
+	}
+
+	#[tokio::test]
 	async fn committed_input_invalidates_questions_without_invalidating_history_pages() {
 		let (incoming, frames) = mpsc::channel(8);
 		let (outgoing, mut writes) = mpsc::channel(8);

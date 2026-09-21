@@ -148,14 +148,8 @@ async fn inspect(store: &SqliteStore, source: &Source, event_id: i64) -> Option<
 	let (connector, link) = account_identity(&payload)?;
 	let params = &payload["params"];
 	let thread = params["threadId"].as_str()?;
-	let owner = store.get_chief_work_item(source.key.work.clone()).await.ok()?;
-	if thread == source.key.thread
-		&& !params["turnId"].is_null()
-		&& (params["turnId"].as_str() != owner.active_turn_id.as_deref()
-			|| owner.dispatch_state != decodex_database::ChiefDispatchState::Running)
-	{
-		return None;
-	}
+	// A yielded native tool can request approval in a later turn while retaining
+	// its originating turn ID. The exact transport request below owns liveness.
 	if thread != source.key.thread {
 		let owner = crate::chief::native_subagents::request_owner(store, &source.client, thread)
 			.await

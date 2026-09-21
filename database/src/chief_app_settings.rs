@@ -20,6 +20,8 @@ pub struct ChiefAppSettingsAttempt {
 impl SqliteStore {
 	/// Reserve the exact reviewed edit before native dispatch. False includes a prior
 	/// crash after reservation and never authorizes replay with another client key.
+	/// The caller must fence dispatch with the exact live native request. Its
+	/// originating turn can differ from the currently running turn.
 	pub async fn reserve_chief_app_settings_attempt(
 		&self,
 		a: ChiefAppSettingsAttempt,
@@ -42,7 +44,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			let payload: Option<String> = tx.query_row(
-				"SELECT e.payload FROM chief_inbox_events e JOIN chief_work_items w ON w.id=e.work_item_id WHERE e.id=?1 AND e.work_item_id=?2 AND w.codex_thread_id=?3 AND e.event_kind='server_request_pending' AND e.disposition IS NULL AND ((json_extract(e.payload,'$.ownerThreadId')=?3 AND json_extract(e.payload,'$.params.threadId')!=?3) OR json_extract(e.payload,'$.params.turnId') IS NULL OR (w.dispatch_state='running' AND json_extract(e.payload,'$.params.turnId')=w.active_turn_id))",
+				"SELECT e.payload FROM chief_inbox_events e JOIN chief_work_items w ON w.id=e.work_item_id WHERE e.id=?1 AND e.work_item_id=?2 AND w.codex_thread_id=?3 AND e.event_kind='server_request_pending' AND e.disposition IS NULL",
 				params![a.event_id,a.work_id,a.thread_id], |r| r.get(0)).optional().map_err(sqlite_error)?;
 			let valid = payload.as_deref().and_then(|p|serde_json::from_str::<Value>(p).ok()).is_some_and(|v| {
 				v["method"]=="mcpServer/elicitation/request" && v["params"]["serverName"]=="codex_apps"
@@ -113,7 +115,7 @@ mod tests {
 			.unwrap();
 		store.bind_chief_thread("work".into(), "thread".into()).await.unwrap();
 		let event=store.enqueue_chief_event(EnqueueChiefEvent { source_event_id:"request".into(),work_item_id:"work".into(),
-			event_kind:"server_request_pending".into(),payload:json!({"id":"approval","method":"mcpServer/elicitation/request","params":{"threadId":"thread","serverName":"codex_apps","_meta":{"connector_id":"calendar","link_id":" work.link "},"tool_params":{"link_id":"unrelated"}}}).to_string() }).await.unwrap();
+			event_kind:"server_request_pending".into(),payload:json!({"id":"approval","method":"mcpServer/elicitation/request","params":{"threadId":"thread","turnId":"completed-origin","serverName":"codex_apps","_meta":{"connector_id":"calendar","link_id":" work.link "},"tool_params":{"link_id":"unrelated"}}}).to_string() }).await.unwrap();
 		let mut wrong = attempt(event.id, "wrong");
 		wrong.link_id = "unrelated".into();
 		assert!(store.reserve_chief_app_settings_attempt(wrong).await.is_err());
@@ -137,9 +139,18 @@ mod tests {
 		let mut invalid = attempt(event.id, "invalid");
 		invalid.field = "model".into();
 		assert!(store.reserve_chief_app_settings_attempt(invalid).await.is_err());
-			let mut changed = attempt(event.id, "changed-owner");
-			changed.thread_id = "replacement".into();
+		let mut changed = attempt(event.id, "changed-owner");
+		changed.thread_id = "replacement".into();
 		changed.review_token = "b".repeat(64);
 		assert!(store.reserve_chief_app_settings_attempt(changed).await.is_err());
+		store.begin_chief_dispatch("work".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("work".into(), "successor".into()).await.unwrap();
+		let mut later = attempt(event.id, "during-successor");
+		later.review_token = "c".repeat(64);
+		assert!(store.reserve_chief_app_settings_attempt(later).await.unwrap());
+		store.acknowledge_chief_request_event(event.id).await.unwrap();
+		let mut resolved = attempt(event.id, "after-resolution");
+		resolved.review_token = "d".repeat(64);
+		assert!(store.reserve_chief_app_settings_attempt(resolved).await.is_err());
 	}
 }
