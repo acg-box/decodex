@@ -8,6 +8,7 @@
 #[path = "chief_composer.rs"] mod composer;
 #[path = "chief_detail.rs"] mod detail;
 #[path = "chief_dictation.rs"] mod dictation;
+#[path = "chief_drafts.rs"] mod drafts;
 #[path = "chief_goal.rs"] mod goal;
 #[path = "chief_graph.rs"] mod graph;
 #[path = "chief_guardian.rs"] mod guardian;
@@ -138,11 +139,7 @@ pub(crate) struct ChiefSurface {
 	attachments: Vec<decodex_protocol::ChiefAttachmentDto>,
 	task_references: Vec<decodex_protocol::ChiefTaskReferenceDto>,
 	task_reference_search: Entity<ComposerInput>,
-	task_reference_drafts:
-		std::collections::BTreeMap<String, Vec<decodex_protocol::ChiefTaskReferenceDto>>,
-	attachment_drafts:
-		std::collections::BTreeMap<String, Vec<decodex_protocol::ChiefAttachmentDto>>,
-	manager_drafts: std::collections::BTreeMap<String, String>,
+	draft_profiles: drafts::Profiles,
 	composer_manager: Option<String>,
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
@@ -293,9 +290,7 @@ impl ChiefSurface {
 			attachments: vec![],
 			task_references: vec![],
 			task_reference_search: Self::new_task_reference_search(cx),
-			task_reference_drafts: Default::default(),
-			attachment_drafts: Default::default(),
-			manager_drafts: Default::default(),
+			draft_profiles: Default::default(),
 			composer_manager: None,
 			pages: vec![],
 			graph_visible: true,
@@ -611,12 +606,15 @@ impl ChiefSurface {
 				text.clone()
 			})
 			.map_err(|_| "Message is too long")?;
+			if !self.draft_owner_available() {
+				return Err("This draft's conversation is unavailable. Select a conversation before sending.".into());
+			}
 			if let Some(root) = self.snapshot.as_ref().and_then(|snapshot| {
 				snapshot
 					.work_items
 					.iter()
 					.find(|work| {
-						Some(&work.id) == self.selected.as_ref()
+						Some(&work.id) == self.composer_manager.as_ref().or(self.selected.as_ref())
 							&& work.kind == decodex_protocol::ChiefWorkKindDto::Manager
 					})
 					.or_else(|| {
@@ -752,9 +750,9 @@ impl ChiefSurface {
 		if !same_owner
 			&& matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
 			&& let Some(owner) = &pending.owner
-			&& self.manager_drafts.get(owner).map(String::as_str) == pending.draft.as_deref()
+			&& self.draft_profiles.texts.get(owner).map(String::as_str) == pending.draft.as_deref()
 		{
-			self.manager_drafts.remove(owner);
+			self.draft_profiles.texts.remove(owner);
 		}
 		if matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
 			&& let Some(sent) = &pending.attachments
@@ -762,7 +760,7 @@ impl ChiefSurface {
 			if same_owner {
 				self.attachments.retain(|file| !sent.contains(file));
 			} else if let Some(files) =
-				pending.owner.as_ref().and_then(|id| self.attachment_drafts.get_mut(id))
+				pending.owner.as_ref().and_then(|id| self.draft_profiles.files.get_mut(id))
 			{
 				files.retain(|file| !sent.contains(file));
 			}
@@ -820,6 +818,7 @@ impl ChiefSurface {
 			self.sending = false;
 			self.feedback = "Service changed before acceptance was confirmed. Draft retained; inspect the previous service before sending again.".into();
 		}
+		self.bind_drafts(profile.as_ref(), cx);
 		let epoch = self.native_history.epoch + 1;
 		self.native_history = Default::default();
 		self.native_history.epoch = epoch;
@@ -852,10 +851,6 @@ impl ChiefSurface {
 		self.pages.clear();
 		self.page_views.clear();
 		self.graph_expanded = false;
-		self.manager_drafts.clear();
-		self.task_references.clear();
-		self.task_reference_drafts.clear();
-		self.composer_manager = None;
 		self.history_cache.clear();
 		self.history_marks.clear();
 		self.history_marks_work = None;
@@ -880,7 +875,7 @@ impl ChiefSurface {
 		self.archive = Default::default();
 		self.goal_disconnected();
 		self.async_question_inputs.clear();
-		self.selected = None;
+		self.selected = self.composer_manager.clone();
 		self.state = LoadState::Idle;
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
 			loop {
