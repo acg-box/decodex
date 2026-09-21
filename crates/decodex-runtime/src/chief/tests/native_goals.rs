@@ -15,10 +15,11 @@ async fn native_goal_turn_preserves_separate_user_input_delivery() {
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
 	let gate = Arc::new(tokio::sync::Notify::new());
+	let continuation_gate = Arc::new(tokio::sync::Notify::new());
 	let backend = tokio::spawn(native_permissions::serve_with_gate(
 		listener,
 		Arc::clone(&calls),
-		Some((3, Arc::clone(&gate))),
+		vec![(3, Arc::clone(&gate)), (5, Arc::clone(&continuation_gate))],
 	));
 	std::fs::write(home_path.join("config.toml"),format!(
 		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\ngoals = true\n[model_providers.fixture]\nname = \"Isolated goal fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n"
@@ -93,6 +94,7 @@ async fn native_goal_turn_preserves_separate_user_input_delivery() {
 			assert_eq!(calls.load(Ordering::Acquire), 3);
 			recover_missed_goal_turn(&mut chief, &mut events, &thread, &gate).await;
 			assert_eq!(calls.load(Ordering::Acquire), 4);
+			continue_with_pending_input(&mut chief, &mut events, &thread, &continuation_gate).await;
 		},
 	))
 	.catch_unwind()
@@ -193,5 +195,94 @@ async fn finish(
 		if let Some(turn) = done {
 			return turn;
 		}
+	}
+}
+
+async fn continue_with_pending_input(
+	chief: &mut ChiefCoordinator,
+	events: &mut tokio::sync::mpsc::Receiver<ServerEvent>,
+	thread: &str,
+	gate: &tokio::sync::Notify,
+) {
+	chief.client.request("thread/goal/clear", json!({"threadId":thread})).await.unwrap();
+	let pending = chief
+		.store
+		.enqueue_chief_event(EnqueueChiefEvent {
+			source_event_id: "ongoing-goal-input".into(),
+			work_item_id: "chief".into(),
+			event_kind: "user_message".into(),
+			payload: json!({"text":"Input during ongoing goal","source":"user"}).to_string(),
+		})
+		.await
+		.unwrap();
+	chief.client.request("thread/goal/set", json!({"threadId":thread,"objective":"Continue while accepting input","status":"active","tokenBudget":6})).await.unwrap();
+	let (completion, started, first, continuing) =
+		hold_completion_until_next_start(chief, events).await;
+	assert!(
+		chief.store.get_chief_inbox_event(pending.id).await.unwrap().delivered_turn_id.is_none()
+	);
+	chief.handle_event(completion).await.unwrap();
+	let delivered = chief.store.get_chief_inbox_event(pending.id).await.unwrap();
+	assert!(delivered.disposition.is_none());
+	let target = delivered.delivered_turn_id.unwrap();
+	assert_ne!(target, first);
+	assert_eq!(target, continuing);
+	chief.handle_event(started).await.unwrap();
+	gate.notify_one();
+	let second = finish(chief, events, None).await;
+	assert_eq!(second, target);
+	let history = chief.client.thread_read_turn(thread, &target).await.unwrap();
+	let items = history["thread"]["turns"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|turn| turn["id"] == target)
+		.unwrap()["items"]
+		.as_array()
+		.unwrap();
+	assert_eq!(
+		items
+			.iter()
+			.filter(|item| item["type"] == "userMessage"
+				&& item["content"].as_array().is_some_and(|parts| parts.iter().any(|part| {
+					part["text"]
+						.as_str()
+						.is_some_and(|text| text.contains("Input during ongoing goal"))
+				})))
+			.count(),
+		1
+	);
+	assert_eq!(
+		chief.client.request("thread/goal/get", json!({"threadId":thread})).await.unwrap()["goal"]
+			["status"],
+		"budgetLimited"
+	);
+	assert_eq!(
+		chief.store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state,
+		decodex_database::ChiefDispatchState::Idle
+	);
+}
+
+async fn hold_completion_until_next_start(
+	chief: &mut ChiefCoordinator,
+	events: &mut tokio::sync::mpsc::Receiver<ServerEvent>,
+) -> (ServerEvent, ServerEvent, String, String) {
+	let mut completion = None;
+	loop {
+		let event = events.recv().await.unwrap();
+		if let ServerEvent::Notification { method, params } = &event {
+			if method == "turn/completed" {
+				let turn = params["turn"]["id"].as_str().unwrap().to_owned();
+				assert!(completion.replace((event, turn)).is_none());
+				continue;
+			}
+			if method == "turn/started"
+				&& let Some((completed, first)) = completion.take()
+			{
+				let continuing = params["turn"]["id"].as_str().unwrap().to_owned();
+				return (completed, event, first, continuing);
+			}
+		}
+		chief.handle_event(event).await.unwrap();
 	}
 }
