@@ -24,6 +24,8 @@ mod integrations;
 mod live_reviews;
 mod live_settings;
 pub use live_settings::{LiveReviewer, LiveSettingsOutcome, is_live_reviewer_update};
+mod thread_model_settings;
+pub use thread_model_settings::NativeThreadModelSettings;
 mod plugin_install;
 mod server_requests;
 mod timeline;
