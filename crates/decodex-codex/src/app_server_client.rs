@@ -10,7 +10,9 @@ use tokio::{
 	sync::{mpsc, oneshot, watch},
 };
 
+mod app_link_settings;
 mod archive;
+pub use app_link_settings::{AppLinkSettingEdit, AppLinkSettings, AppLinkSettingsWrite};
 pub use archive::ThreadArchiveState;
 mod attachments;
 mod history;
