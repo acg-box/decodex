@@ -60,8 +60,8 @@ impl Shell {
 			.id("status-center")
 			.w(px(304.))
 			.absolute()
-			.bottom(px(12.))
-			.right(px(12.))
+			.bottom(px(ui_theme::CONTROL_MARGIN))
+			.right(px(ui_theme::CONTROL_MARGIN))
 			.flex()
 			.flex_col()
 			.items_end()
@@ -84,7 +84,7 @@ impl Shell {
 			.child(
 				div()
 					.absolute()
-					.bottom(px(34.))
+					.bottom(px(ui_theme::CONTROL_GROUP_HEIGHT + ui_theme::CONTROL_MARGIN))
 					.right_0()
 					.w_full()
 					.on_children_prepainted(move |bounds, _, _| {
@@ -95,58 +95,59 @@ impl Shell {
 					}),
 			)
 			.child(
-				div()
-					.id("status-toggle")
-					.role(Role::Button)
-					.tab_index(0)
-					.aria_label(label.clone())
-					.aria_expanded(open)
-					.size(px(28.))
-					.relative()
-					.rounded(px(7.))
-					.bg(rgba(ui_theme::TOPBAR_MATERIAL))
-					.flex()
-					.items_center()
-					.justify_center()
-					.text_size(px(11.))
-					.text_color(rgb(WB_TEXT_MUTED))
-					.cursor_pointer()
-					.hover(|s| s.bg(rgba(0xffffff0c)))
-					.on_click(cx.listener(move |s, _, _, cx| {
-						s.status_open = !open;
-						cx.notify();
-					}))
-					.child(workspace_symbols::icon(if notices.is_empty() {
-						workspace_symbols::Symbol::Bell
-					} else if color == ui_theme::AMBER {
-						workspace_symbols::Symbol::BellAttention
-					} else {
-						workspace_symbols::Symbol::BellInfo
-					}))
-					.when(count_preference(None) && !notices.is_empty(), |d| {
-						d.child(
-							div()
-								.absolute()
-								.top(px(-4.))
-								.right(px(-5.))
-								.min_w(px(14.))
-								.h(px(14.))
-								.px(px(3.))
-								.rounded_full()
-								.bg(rgb(color))
-								.text_color(rgb(0x17171a))
-								.text_size(px(9.))
-								.flex()
-								.items_center()
-								.justify_center()
-								.child(if notices.len() > 99 {
-									"99+".into()
-								} else {
-									notices.len().to_string()
-								}),
-						)
-					})
-					.smooth(),
+				ui_theme::floating_group().child(
+					div()
+						.id("status-toggle")
+						.role(Role::Button)
+						.tab_index(0)
+						.aria_label(label.clone())
+						.aria_expanded(open)
+						.size(px(ui_theme::CHROME_CONTROL_SIZE))
+						.relative()
+						.rounded(px(6.))
+						.flex()
+						.items_center()
+						.justify_center()
+						.text_size(px(11.))
+						.text_color(rgb(WB_TEXT_MUTED))
+						.cursor_pointer()
+						.hover(|s| s.bg(rgba(0xffffff0c)))
+						.on_click(cx.listener(move |s, _, _, cx| {
+							s.status_open = !open;
+							cx.notify();
+						}))
+						.child(workspace_symbols::icon(if notices.is_empty() {
+							workspace_symbols::Symbol::Bell
+						} else if color == ui_theme::AMBER {
+							workspace_symbols::Symbol::BellAttention
+						} else {
+							workspace_symbols::Symbol::BellInfo
+						}))
+						.when(count_preference(None) && !notices.is_empty(), |d| {
+							d.child(
+								div()
+									.absolute()
+									.top(px(-4.))
+									.right(px(-5.))
+									.min_w(px(14.))
+									.h(px(14.))
+									.px(px(3.))
+									.rounded_full()
+									.bg(rgb(color))
+									.text_color(rgb(0x17171a))
+									.text_size(px(9.))
+									.flex()
+									.items_center()
+									.justify_center()
+									.child(if notices.len() > 99 {
+										"99+".into()
+									} else {
+										notices.len().to_string()
+									}),
+							)
+						})
+						.smooth(),
+				),
 			)
 			.into_any_element()
 	}

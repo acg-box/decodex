@@ -33,7 +33,14 @@ impl Shell {
 			let viewport = window.viewport_size();
 			let height = self.native_status.height.max(48.);
 			let bounds = Bounds::new(
-				point(viewport.width - px(328.), viewport.height - px(34. + height)),
+				point(
+					viewport.width - px(328. + ui_theme::CONTROL_MARGIN - 12.),
+					viewport.height
+						- px(ui_theme::CONTROL_MARGIN
+							+ ui_theme::CONTROL_GROUP_HEIGHT
+							+ ui_theme::CONTROL_MARGIN
+							- 12. + height),
+				),
 				size(px(328.), px(height)),
 			);
 			cx.defer(move |cx| {

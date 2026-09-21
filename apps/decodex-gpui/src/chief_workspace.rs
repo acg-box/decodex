@@ -283,7 +283,7 @@ impl ChiefSurface {
 			.h_full()
 			.flex()
 			.flex_col()
-			.p_2()
+			.p(px(ui_theme::CONTROL_MARGIN))
 			.pt(px(super::super::WINDOW_CONTROLS_CLEARANCE))
 			.gap_1()
 			.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
@@ -732,7 +732,7 @@ impl ChiefSurface {
 					.flex()
 					.justify_start()
 					.gap_1()
-					.p_2()
+					.p(px(ui_theme::CONTROL_MARGIN))
 					.child(self.workspace_action(
 						"zoom-out".into(),
 						"−".into(),
