@@ -307,12 +307,12 @@ impl ServiceApplication {
 
 	async fn query_activity_detail(
 		&self,
-		work: &str,
-		turn: &str,
-		item: &str,
+		ids: (&EntityId, &WireText, &WireText),
+		cursor: Option<&decodex_protocol::ChiefActivityDetailCursor>,
 	) -> QueryResultPayload {
 		QueryResultPayload::ChiefActivityDetail(match &self.chief {
-			Some(chief) => chief.activity_detail(work, turn, item).await,
+			Some(chief) =>
+				chief.activity_detail(ids.0.as_str(), ids.1.as_str(), ids.2.as_str(), cursor).await,
 			None => decodex_protocol::ChiefActivityDetailResult::Unavailable,
 		})
 	}
@@ -1980,9 +1980,8 @@ impl Application for ServiceApplication {
 					Some(chief) => chief.integrations(work_id.as_str()).await,
 					None => decodex_protocol::ChiefIntegrationsResult::Unavailable,
 				}),
-			QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id } =>
-				self.query_activity_detail(work_id.as_str(), turn_id.as_str(), item_id.as_str())
-					.await,
+			QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id, cursor } =>
+				self.query_activity_detail((work_id, turn_id, item_id), cursor.as_ref()).await,
 			QueryPayload::GetChiefRequest { event_id } => QueryResultPayload::ChiefRequest(
 				query_chief_request_with_details(&self.store, *event_id, self.chief.as_ref()).await,
 			),
@@ -3747,7 +3746,8 @@ fn attach_file_approval_detail(
 	if let decodex_protocol::ChiefRequestResult::Available { method, request_json, .. } =
 		&mut request
 		&& method == "item/fileChange/requestApproval"
-		&& let decodex_protocol::ChiefActivityDetailResult::Available { text, truncated } = detail
+		&& let decodex_protocol::ChiefActivityDetailResult::Available { text, truncated, .. } =
+			detail
 		&& let Ok(mut fields) = serde_json::from_str::<serde_json::Value>(request_json.as_str())
 	{
 		fields["changeDetails"] = serde_json::json!(text);
@@ -5454,6 +5454,8 @@ mod tests {
 				ChiefActivityDetailResult::Available {
 					text: "Path: /tmp/file\n+new".into(),
 					truncated: true,
+					offset: 0,
+					next: None,
 				},
 			);
 			if method.ends_with("requestUserInput") {

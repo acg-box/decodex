@@ -346,20 +346,28 @@ impl ChiefClient {
 		work_id: EntityId,
 		turn_id: crate::WireText,
 		item_id: crate::WireText,
+		cursor: Option<crate::ChiefActivityDetailCursor>,
 	) -> Result<crate::ChiefActivityDetailResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
 				"chief-detail",
-				QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id },
+				QueryPayload::GetChiefActivityDetail {
+					work_id,
+					turn_id,
+					item_id,
+					cursor: cursor.clone(),
+				},
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefActivityDetail(result) => Ok(result),
+			QueryResultPayload::ChiefActivityDetail(result)
+				if result.matches_cursor(cursor.as_ref()) =>
+				Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -3062,7 +3070,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 45 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 46 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

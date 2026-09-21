@@ -48,6 +48,7 @@ pub(super) async fn qualify(client: &ChiefClient) -> SmokeResult<()> {
 					EntityId::new(id).map_err(|_| "invalid work identity")?,
 					WireText::new(&item.turn_id).map_err(|_| "invalid turn identity")?,
 					WireText::new(&item.item_id).map_err(|_| "invalid item identity")?,
+					None,
 				)
 				.await? && !text.is_empty()
 			{

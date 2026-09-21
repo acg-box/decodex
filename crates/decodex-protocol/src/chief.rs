@@ -715,6 +715,16 @@ pub enum ChiefCapabilitiesResult {
 	Unavailable,
 }
 
+/// Continuation bound to one unchanged source and projected tool detail.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefActivityDetailCursor {
+	/// UTF-8 byte offset in the complete filtered text.
+	pub offset: u32,
+	/// Opaque digest of source identity and complete filtered text.
+	pub fingerprint: crate::WireText,
+}
+
 /// Selected readable tool evidence for one exact native item.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
@@ -725,9 +735,31 @@ pub enum ChiefActivityDetailResult {
 		text: String,
 		/// Some output was omitted by the byte bound.
 		truncated: bool,
+		/// UTF-8 byte offset of this portion.
+		offset: u32,
+		/// Next portion, only valid while the complete source remains unchanged.
+		next: Option<ChiefActivityDetailCursor>,
 	},
 	/// The source cannot be confirmed or this item has no supported public detail.
 	Unavailable,
+}
+
+impl ChiefActivityDetailResult {
+	pub(crate) fn matches_cursor(&self, cursor: Option<&ChiefActivityDetailCursor>) -> bool {
+		let Self::Available { text, truncated, offset, next } = self else {
+			return true;
+		};
+		!text.is_empty()
+			&& text.len() <= 8 * 1024
+			&& *offset == cursor.map_or(0, |value| value.offset)
+			&& *truncated == next.is_some()
+			&& next.as_ref().is_none_or(|next| {
+				next.offset as usize == *offset as usize + text.len()
+					&& next.fingerprint.as_str().len() == 64
+					&& next.fingerprint.as_str().bytes().all(|byte| byte.is_ascii_hexdigit())
+					&& cursor.is_none_or(|prior| prior.fingerprint == next.fingerprint)
+			})
+	}
 }
 
 /// One native resource association; its payload is display data, not executable input.

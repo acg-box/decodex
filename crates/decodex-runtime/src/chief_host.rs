@@ -432,8 +432,10 @@ impl ChiefHost {
 		work: &str,
 		turn: &str,
 		item: &str,
+		cursor: Option<&decodex_protocol::ChiefActivityDetailCursor>,
 	) -> decodex_protocol::ChiefActivityDetailResult {
-		crate::chief_detail::read_bound(|| self.activity_detail_source(work), turn, item).await
+		crate::chief_detail::read_bound(|| self.activity_detail_source(work), turn, item, cursor)
+			.await
 	}
 
 	async fn activity_detail_source(

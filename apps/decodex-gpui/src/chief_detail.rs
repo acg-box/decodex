@@ -1,6 +1,6 @@
 //! Expand exact worker tool evidence in place, without leaving the conversation.
 use super::*;
-use decodex_protocol::{ChiefActivityDetailResult, ChiefActivityDto};
+use decodex_protocol::{ChiefActivityDetailCursor, ChiefActivityDetailResult, ChiefActivityDto};
 
 #[derive(Default)]
 pub(super) struct ActivityDetailState {
@@ -54,9 +54,8 @@ impl ChiefSurface {
 		row: gpui::Div,
 		cx: &mut Context<Self>,
 	) -> gpui::AnyElement {
-		if work.kind == decodex_protocol::ChiefWorkKindDto::Manager
-			|| !["commandExecution", "fileChange", "mcpToolCall", "dynamicToolCall", "webSearch"]
-				.contains(&item.kind.as_str())
+		if !["commandExecution", "fileChange", "mcpToolCall", "dynamicToolCall", "webSearch"]
+			.contains(&item.kind.as_str())
 		{
 			return row.into_any_element();
 		}
@@ -73,8 +72,36 @@ impl ChiefSurface {
 			.filter(|(id, _)| id == &key)
 			.and_then(|(_, result)| result.as_ref());
 		let body = match result {
-			Some(ChiefActivityDetailResult::Available { text, truncated }) =>
-				div().child(text.clone()).when(*truncated, |d| d.child(muted("Output shortened"))),
+			Some(ChiefActivityDetailResult::Available { text, offset, next, .. }) => {
+				let first_ids = ids.clone();
+				let next_ids = ids.clone();
+				div()
+					.child(text.clone())
+					.when(*offset > 0, |d| {
+						d.child(self.workspace_action(
+							"detail-first".into(),
+							"Back to start".into(),
+							move |s, cx| s.load_activity_detail(first_ids.clone(), None, cx),
+							cx,
+						))
+					})
+					.when_some(next.clone(), |d, cursor| {
+						d.child(div().debug_selector(|| "detail-next-action".into()).child(
+							self.workspace_action(
+								"detail-next".into(),
+								"Read next portion".into(),
+								move |s, cx| {
+									s.load_activity_detail(
+										next_ids.clone(),
+										Some(cursor.clone()),
+										cx,
+									)
+								},
+								cx,
+							),
+						))
+					})
+			},
 			Some(ChiefActivityDetailResult::Unavailable) =>
 				div().child("Source details are unavailable. Collapse and reopen to retry."),
 			None => div().child("Loading details…"),
@@ -123,13 +150,27 @@ impl ChiefSurface {
 			return;
 		};
 		self.activity_detail.revision += 1;
-		let revision = self.activity_detail.revision;
 		self.activity_detail.task = None;
 		if self.activity_detail.value.as_ref().is_some_and(|(selected, _)| selected == &key) {
 			self.activity_detail.value = None;
 			cx.notify();
 			return;
 		}
+		self.load_activity_detail(ids, None, cx);
+	}
+
+	fn load_activity_detail(
+		&mut self,
+		ids: (String, String, String),
+		cursor: Option<ChiefActivityDetailCursor>,
+		cx: &mut Context<Self>,
+	) {
+		let Some(key) = self.activity_detail_key(&ids) else {
+			return;
+		};
+		self.activity_detail.revision += 1;
+		let revision = self.activity_detail.revision;
+		self.activity_detail.task = None;
 		self.activity_detail.value = Some((key.clone(), None));
 		let Some(profile) = self.profile.clone() else {
 			self.activity_detail.value = Some((key, Some(ChiefActivityDetailResult::Unavailable)));
@@ -145,6 +186,7 @@ impl ChiefSurface {
 					EntityId::new(ids.0).ok()?,
 					WireText::new(ids.1).ok()?,
 					WireText::new(ids.2).ok()?,
+					cursor,
 				))
 				.ok()
 		});
@@ -190,8 +232,12 @@ mod tests {
 				}],
 			};
 			let ids = ("work".into(), "turn".into(), "item".into());
-			let result =
-				|| ChiefActivityDetailResult::Available { text: "Passed".into(), truncated: false };
+			let result = || ChiefActivityDetailResult::Available {
+				text: "Passed".into(),
+				truncated: false,
+				offset: 0,
+				next: None,
+			};
 			for change in
 				["none", "source", "thread", "reopen", "disconnect", "unavailable", "profile"]
 			{
@@ -249,3 +295,7 @@ mod tests {
 		});
 	}
 }
+
+#[cfg(test)]
+#[path = "chief_detail_wire_tests.rs"]
+mod wire_tests;
