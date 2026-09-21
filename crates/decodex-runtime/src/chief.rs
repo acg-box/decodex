@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 mod activity;
 mod archive;
 mod async_projection;
+mod checklist;
 mod guardian;
 mod install;
 pub(crate) mod misalignment;
@@ -1348,6 +1349,17 @@ impl ChiefCoordinator {
 		self.voice_event(&event).await?;
 		if let ServerEvent::Notification { method, params } = &event {
 			self.observe_question_state_notification(method, params).await?;
+			if method == "turn/plan/updated"
+				&& let Some(text) = checklist::text(params)
+			{
+				self.store
+					.record_chief_checklist(
+						exact(params, "/threadId")?,
+						exact(params, "/turnId")?,
+						text,
+					)
+					.await?;
+			}
 			if self.observe_live_text(method, params).await? {
 				return Ok(());
 			}

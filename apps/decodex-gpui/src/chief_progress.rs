@@ -37,6 +37,9 @@ impl ChiefSurface {
 		let mut result = Vec::new();
 		let mut pending: Vec<&ChiefActivityDto> = Vec::new();
 		for entry in &entries {
+			if checklist_superseded(entry, entries.iter().copied()) {
+				continue;
+			}
 			if let Some(activity) = &entry.activity {
 				let superseded = activity.status == "running"
 					&& entries.iter().any(|other| {
@@ -240,6 +243,26 @@ fn activity_title(item: &ChiefActivityDto) -> String {
 
 fn progress_key(work: &str, turn: &str, item: &str) -> String {
 	serde_json::json!([work, turn, item]).to_string()
+}
+
+/// Collapse older cached pages as well as the latest service page.
+pub(super) fn checklist_superseded<'a>(
+	entry: &ChiefHistoryEntryDto,
+	entries: impl IntoIterator<Item = &'a ChiefHistoryEntryDto>,
+) -> bool {
+	if entry.kind != "checklist" {
+		return false;
+	}
+	let Some(turn) = entry.receipt.as_ref().and_then(|receipt| receipt.delivered_turn_id.as_ref())
+	else {
+		return false;
+	};
+	entries.into_iter().any(|other| {
+		other.kind == "checklist"
+			&& other.id > entry.id
+			&& other.receipt.as_ref().and_then(|receipt| receipt.delivered_turn_id.as_ref())
+				== Some(turn)
+	})
 }
 
 #[cfg(test)]

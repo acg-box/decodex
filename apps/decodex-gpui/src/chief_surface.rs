@@ -1616,6 +1616,15 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 	if entry.kind == "auth_recovery" {
 		return auth_recovery_entry(entry);
 	}
+	if entry.kind == "checklist" {
+		let id = entry.id;
+		return div()
+			.w_full()
+			.py_2()
+			.debug_selector(move || format!("checklist-receipt-{id}"))
+			.child(muted("Recorded checklist"))
+			.child(markdown::render(&entry.text, &format!("checklist-{id}")));
+	}
 	let user = entry.kind == "user";
 	if entry.kind == "execution_notice" {
 		return div()

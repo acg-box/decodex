@@ -31,6 +31,9 @@ impl ChiefSurface {
 			saved.insert(entry.id, entry);
 		}
 		for entry in saved.values() {
+			if super::super::progress::checklist_superseded(entry, saved.values().copied()) {
+				continue;
+			}
 			if entry.kind == "auth_recovery" {
 				panel = panel.child(auth_recovery_entry(entry));
 				continue;
@@ -44,6 +47,11 @@ impl ChiefSurface {
 				continue;
 			};
 			let mut row = div()
+				.debug_selector({
+					let id = entry.id;
+					let kind = if entry.kind == "checklist" { "checklist" } else { "local" };
+					move || format!("{kind}-receipt-{id}")
+				})
 				.flex()
 				.flex_col()
 				.gap_1()
@@ -95,6 +103,9 @@ impl ChiefSurface {
 }
 
 fn receipt_label(entry: &ChiefHistoryEntryDto) -> Option<&'static str> {
+	if entry.kind == "checklist" {
+		return Some("Recorded checklist");
+	}
 	if entry.kind == "capacity_retry_pending" {
 		return Some("Automatic retry");
 	}
@@ -121,6 +132,50 @@ fn receipt_label(entry: &ChiefHistoryEntryDto) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn recorded_checklist_renders_in_saved_and_native_views(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+		surface.update(visual, |s,cx| {
+            s.visual_workspace_fixture(cx);
+            s.graph_visible=false;
+            let Some((_,ChiefHistoryResult::Available {entries,..}))=&mut s.history else {panic!("fixture history")};
+            entries.clear();
+            entries.push(ChiefHistoryEntryDto {id:92,kind:"checklist".into(),text:"- **Completed**: Inspect source\n- **Pending**: Verify changes\n\nLast observed checklist for this turn.".into(),created_at_micros:1,receipt:None,activity:None,usage:None,duration_ms:None});
+            entries[0].receipt = Some(decodex_protocol::ChiefHistoryReceiptDto {event_kind:"plan_updated".into(),delivered_turn_id:Some("turn".into()),disposed:true});
+            let mut old = entries[0].clone(); old.id=91; old.text="Stale checklist".into();
+            s.older_history.insert(s.selected.clone().unwrap(),(vec![old],None));
+            cx.notify();
+        });
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("checklist-receipt-92").is_some());
+		assert!(visual.debug_bounds("checklist-receipt-91").is_none());
+		surface.update(visual, |s, cx| {
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| Some(&w.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("native-thread".into());
+			s.native_history.binding = Some(super::super::Binding {
+				work: work.id.clone(),
+				thread: "native-thread".into(),
+				account: "account".into(),
+			});
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("checklist-receipt-92").is_some());
+		assert!(visual.debug_bounds("checklist-receipt-91").is_none());
+	}
+
 	#[gpui::test]
 	fn auth_recovery_history_is_visible_as_a_recorded_notice(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
