@@ -32,6 +32,7 @@ mod program_cycles;
 mod provider_attempts;
 mod reset_cards;
 pub use reset_cards::ResetCardOperation;
+mod quota_activation;
 mod role_profiles;
 mod runtime_sessions;
 mod transfers;
@@ -614,7 +615,11 @@ mod tests {
 		let store = SqliteStore::open_test(&path).expect("upgrade exact V10 fixture");
 		assert_eq!(
 			store.read_desktop_settings().await.expect("read migrated desktop settings"),
-			super::DesktopSettings { show_in_menu_bar: true, revision: 1 }
+			super::DesktopSettings {
+				show_in_menu_bar: true,
+				auto_activate_quota: true,
+				revision: 1
+			}
 		);
 		let (version, migration_name, migration_digest, account_created_at, profile) = store
 			.with_connection(|connection| {

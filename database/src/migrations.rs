@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 29;
+const CURRENT_SCHEMA_VERSION: i64 = 30;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -160,6 +160,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 29,
 		name: "reset_card_operations",
 		sql: include_str!("../migrations/0029_reset_card_operations.sql"),
+	},
+	Migration {
+		version: 30,
+		name: "quota_activation",
+		sql: include_str!("../migrations/0030_quota_activation.sql"),
 	},
 ];
 
@@ -427,6 +432,39 @@ mod tests {
 	use super::*;
 
 	#[test]
+	fn activation_upgrade_preserves_existing_preference_and_defaults_on() {
+		let directory = tempfile::tempdir().expect("test directory");
+		let mut connection =
+			Connection::open(directory.path().join("upgrade.sqlite3")).expect("database");
+		configure(&connection).expect("configure");
+		for migration in &MIGRATIONS[..29] {
+			connection.execute_batch(migration.sql).expect("previous migration");
+			connection
+				.execute(
+					"INSERT INTO schema_migrations VALUES (?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.expect("ledger");
+		}
+		connection
+			.execute("UPDATE desktop_settings SET show_in_menu_bar=0,revision=7", [])
+			.expect("preference");
+		connection.pragma_update(None, "application_id", APPLICATION_ID).expect("identity");
+		connection.pragma_update(None, "user_version", 29).expect("version");
+		migrate(&mut connection).expect("upgrade");
+		let settings: (bool, bool, i64) = connection
+			.query_row(
+				"SELECT show_in_menu_bar,auto_activate_quota,revision FROM desktop_settings",
+				[],
+				|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+			)
+			.expect("settings");
+		assert_eq!(settings, (false, true, 7));
+		verify(&connection).expect("schema parity");
+		migrate(&mut connection).expect("idempotent upgrade");
+	}
+
+	#[test]
 	fn reset_card_upgrade_preserves_existing_schema_and_initializes_an_empty_ledger() {
 		let directory = tempfile::tempdir().expect("isolated migration root");
 		let mut connection =
@@ -452,7 +490,12 @@ mod tests {
 		migrate(&mut connection).expect("upgrade");
 		verify(&connection).expect("upgraded schema");
 		let after = schema_inventory(&connection).expect("current schema");
-		assert!(before.iter().all(|entry| after.contains(entry)));
+		assert!(
+			before
+				.iter()
+				.filter(|entry| entry.2 != "desktop_settings")
+				.all(|entry| after.contains(entry))
+		);
 		let count: i64 = connection
 			.query_row("SELECT COUNT(*) FROM reset_card_operations", [], |row| row.get(0))
 			.expect("empty ledger");
@@ -493,7 +536,8 @@ mod tests {
 		assert!(
 			before
 				.iter()
-				.filter(|entry| entry.2 != "quick_task_requests")
+				.filter(|entry| !["quick_task_requests", "desktop_settings"]
+					.contains(&entry.2.as_str()))
 				.all(|entry| after.contains(entry))
 		);
 		let field:(String,i64,Option<String>) = connection.query_row("SELECT type,\"notnull\",dflt_value FROM pragma_table_info('quick_task_requests') WHERE name='service_tier'",[],|r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
@@ -624,6 +668,7 @@ mod tests {
 				.iter()
 				.filter(|entry| ![
 					"account_quota_facts",
+					"desktop_settings",
 					"process_generation_death_evidence",
 					"quick_task_requests"
 				]

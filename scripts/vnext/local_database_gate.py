@@ -90,6 +90,7 @@ MIGRATIONS = (
     (27, "chief_guardian_reviews", ROOT / "database/migrations/0027_chief_guardian_reviews.sql"),
     (28, "conversation_service_tier", ROOT / "database/migrations/0028_conversation_service_tier.sql"),
     (29, "reset_card_operations", ROOT / "database/migrations/0029_reset_card_operations.sql"),
+    (30, "quota_activation", ROOT / "database/migrations/0030_quota_activation.sql"),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
@@ -141,6 +142,7 @@ REQUIRED_TABLES = frozenset(
         "program_reviews",
         "program_domain_pack_bindings",
         "desktop_settings",
+        "account_quota_activation",
         "chief_work_items",
         "chief_dependencies",
         "chief_inbox_events",

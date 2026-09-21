@@ -405,6 +405,8 @@ pub const DESKTOP_SETTINGS_ENTITY_ID: &str = "desktop-settings";
 pub struct DesktopSettingsDto {
 	/// Whether the sole Decodex application exposes its in-process menu-bar item.
 	pub show_in_menu_bar: bool,
+	/// Automatically activate fresh weekly quota windows.
+	pub auto_activate_quota: bool,
 	/// Positive optimistic revision of this singleton projection.
 	pub revision: EntityRevision,
 }
@@ -418,7 +420,7 @@ impl DesktopSettingsDto {
 		if revision.0 == 0 {
 			return Err("desktop settings revision must be positive");
 		}
-		Ok(Self { show_in_menu_bar, revision })
+		Ok(Self { show_in_menu_bar, auto_activate_quota: true, revision })
 	}
 
 	/// Validate an untrusted decoded desktop settings projection.
@@ -2365,6 +2367,9 @@ pub enum CommandPayload {
 	SetDesktopSettings {
 		/// Whether Decodex.app shows its same-process status item.
 		show_in_menu_bar: bool,
+		/// Omission preserves the current activation preference.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		auto_activate_quota: Option<bool>,
 	},
 	/// Create one ordinary conversation and submit its first turn.
 	CreateConversation {
@@ -4450,7 +4455,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":42},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":43},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4459,7 +4464,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":42},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":43},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4501,7 +4506,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":42},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":43},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
