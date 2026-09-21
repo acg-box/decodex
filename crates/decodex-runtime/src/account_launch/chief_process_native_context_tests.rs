@@ -127,6 +127,18 @@ async fn terminal(
 async fn timeline(client: &AppServerClient, thread: &str) -> Vec<Value> {
 	let page = client.thread_timeline_page(thread, None, 100).await.expect("native timeline");
 	assert!(page["nextCursor"].is_null(), "fixture must fit one complete page");
+	let projected =
+		crate::chief::timeline::project(thread, &page).expect("public timeline projection");
+	for entry in &projected.entries {
+		if let decodex_protocol::ChiefTimelineContent::Item { kind, text, .. } = &entry.content
+			&& kind == "functionCallOutput"
+		{
+			assert!(
+				text.starts_with("decodex/work_"),
+				"tool history must remain visible with provenance"
+			);
+		}
+	}
 	page["data"].as_array().expect("timeline items").clone()
 }
 

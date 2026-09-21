@@ -7,6 +7,8 @@ use serde_json::Value;
 pub(super) fn project(item: &Value) -> (Vec<Attachment>, bool) {
 	match item["type"].as_str() {
 		Some("userMessage") => parts(&item["content"], "text", describe),
+		Some("functionCallOutput") if item["output"].is_array() =>
+			parts(&item["output"], "input_text", standalone),
 		Some("dynamicToolCall") if !item["contentItems"].is_null() =>
 			parts(&item["contentItems"], "inputText", dynamic),
 		Some("mcpToolCall") if !item["result"].is_null() =>
@@ -66,6 +68,16 @@ fn dynamic(index: u32, part: &Value) -> (Attachment, bool) {
 			make(index, "inputImage", "Image", uri_source(part["imageUrl"].as_str())),
 		Some("inputAudio") =>
 			make(index, "inputAudio", "Audio", uri_source(part["audioUrl"].as_str())),
+		_ => make(index, "unknown", "Unsupported attachment", Source::Unknown),
+	}
+}
+
+fn standalone(index: u32, part: &Value) -> (Attachment, bool) {
+	match part["type"].as_str() {
+		Some("input_image") =>
+			make(index, "inputImage", "Image", uri_source(part["image_url"].as_str())),
+		Some("input_audio") =>
+			make(index, "inputAudio", "Audio", uri_source(part["audio_url"].as_str())),
 		_ => make(index, "unknown", "Unsupported attachment", Source::Unknown),
 	}
 }
