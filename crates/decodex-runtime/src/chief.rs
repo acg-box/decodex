@@ -33,11 +33,11 @@ pub struct ChiefConfig {
 	pub chief_effort: String,
 	/// Reasoning effort for independent workers.
 	pub worker_effort: String,
-	/// Absolute execution directory.
+	/// Initial absolute execution directory for newly created threads.
 	pub cwd: String,
-	/// Provider approval policy selected by the host.
+	/// Initial provider approval policy for newly created threads.
 	pub approval_policy: Value,
-	/// Provider sandbox mode selected by the host.
+	/// Initial provider sandbox mode for newly created threads.
 	pub sandbox: String,
 }
 
@@ -209,8 +209,7 @@ impl ChiefCoordinator {
 			else {
 				continue;
 			};
-			let mut params = self.work_thread_params(&item).await?;
-			params.as_object_mut().expect("thread params").remove("dynamicTools");
+			let mut params = self.work_thread_resume_params(&item).await?;
 			params["threadId"] = json!(thread);
 			params["excludeTurns"] = json!(true);
 			let Ok(resumed) = self.client.thread_resume(params).await else {
@@ -401,6 +400,19 @@ impl ChiefCoordinator {
 				.iter()
 				.find(|work| work.id == id)
 				.and_then(|work| work.parent_goal_id.as_deref());
+		}
+		Ok(params)
+	}
+
+	async fn work_thread_resume_params(&self, item: &ChiefWorkItem) -> Result<Value, ChiefError> {
+		let mut params = self.work_thread_params(item).await?;
+		// Hydration must preserve native permission profiles and their directory bindings.
+		// Start-time overrides can silently replace them on cold resume, while an
+		// observed loaded thread ignores the same overrides. Explicit model selection
+		// and caller readback checks remain separate from permission hydration.
+		let object = params.as_object_mut().expect("thread params");
+		for field in ["dynamicTools", "approvalPolicy", "sandbox", "cwd"] {
+			object.remove(field);
 		}
 		Ok(params)
 	}
@@ -925,8 +937,7 @@ impl ChiefCoordinator {
 			return Err(ChiefError::Busy);
 		}
 		// Resume is idempotent hydration of the exact thread, never a turn retry.
-		let mut resume = self.work_thread_params(&item).await?;
-		resume.as_object_mut().expect("thread params").remove("dynamicTools");
+		let mut resume = self.work_thread_resume_params(&item).await?;
 		resume["threadId"] = json!(thread);
 		resume["excludeTurns"] = json!(true);
 		if !self.loaded_threads.contains(thread) {

@@ -56,8 +56,7 @@ impl ChiefCoordinator {
 		} else {
 			self.config.worker_effort.clone()
 		};
-		let mut resume = self.work_thread_params(&work).await?;
-		resume.as_object_mut().expect("thread params").remove("dynamicTools");
+		let mut resume = self.work_thread_resume_params(&work).await?;
 		resume["threadId"] = json!(review.thread_id);
 		resume["excludeTurns"] = json!(true);
 		let resumed = self.client.thread_resume(resume).await?;

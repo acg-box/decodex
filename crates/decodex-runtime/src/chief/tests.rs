@@ -8,6 +8,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/guardian.rs"] mod guardian;
 #[path = "tests/install.rs"] mod install;
 #[path = "tests/native_mcp_forms.rs"] mod native_mcp_forms;
+#[path = "tests/native_permissions.rs"] mod native_permissions;
 #[path = "tests/native_subagent_live.rs"] mod native_subagent_live;
 #[path = "tests/native_subagents.rs"] mod native_subagents;
 #[path = "tests/native_task_references.rs"] mod native_task_references;
@@ -468,6 +469,11 @@ async fn unloaded_thread_resumes_exact_identity_without_new_thread() {
 	let original = coordinator.store.get_chief_work_item("chief".into()).await.unwrap();
 	while let Ok(request) = sent.try_recv() {
 		assert_ne!(request["method"], "thread/resume");
+		if request["method"] == "thread/start" {
+			assert_eq!(request["params"]["approvalPolicy"], coordinator.config.approval_policy);
+			assert_eq!(request["params"]["sandbox"], coordinator.config.sandbox);
+			assert_eq!(request["params"]["cwd"], coordinator.config.cwd);
+		}
 	}
 	coordinator
 		.handle_event(ServerEvent::Notification {
@@ -486,6 +492,9 @@ async fn unloaded_thread_resumes_exact_identity_without_new_thread() {
 	}
 	assert_eq!(resumes.len(), 1);
 	assert_eq!(resumes[0]["params"]["threadId"], json!(original.codex_thread_id));
+	for field in ["approvalPolicy", "sandbox", "cwd", "dynamicTools"] {
+		assert!(resumes[0]["params"].get(field).is_none(), "resume must preserve {field}");
+	}
 }
 
 #[tokio::test]

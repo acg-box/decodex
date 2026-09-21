@@ -47,8 +47,7 @@ impl ChiefCoordinator {
 			} else {
 				&self.config.worker_effort
 			};
-			let mut params = self.work_thread_params(&work).await.map_err(|_| stale())?;
-			params.as_object_mut().expect("thread params").remove("dynamicTools");
+			let mut params = self.work_thread_resume_params(&work).await.map_err(|_| stale())?;
 			params["threadId"] = json!(review.thread_id);
 			params["excludeTurns"] = json!(true);
 			let response = tokio::time::timeout(
