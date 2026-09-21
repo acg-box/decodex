@@ -1,5 +1,7 @@
 //! Single service-owned Chief actor. The existing Conversation runtime owns its account process.
 
+#[path = "chief_goal.rs"] mod goal;
+
 use std::{
 	sync::Arc,
 	time::{Duration, SystemTime, UNIX_EPOCH},

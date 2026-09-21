@@ -531,6 +531,7 @@ impl ChiefSurface {
 						.w_full()
 						.mx_auto()
 						.line_height(px(ui_theme::BODY_LINE_HEIGHT))
+						.child(self.native_goal_panel())
 						.child(self.history_panel(work, cx))
 						.when(
 							snapshot.pending_events.iter().any(|e| {

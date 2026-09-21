@@ -2248,6 +2248,11 @@ pub enum QueryPayload {
 		/// Opaque cursor for older entries in this same thread.
 		cursor: Option<WireText>,
 	},
+	/// Read the current goal from the exact bound native thread.
+	GetChiefGoal {
+		/// Selected local work identity.
+		work_id: EntityId,
+	},
 	/// Inspect native archive membership for the exact bound task.
 	GetChiefArchiveState {
 		/// Current local work identity.
@@ -2867,6 +2872,8 @@ pub enum QueryResultPayload {
 	ChiefGuardianReviews(crate::ChiefGuardianReviewsResult),
 	/// Current native archive membership, not a cached local flag.
 	ChiefArchiveState(crate::ChiefArchiveResult),
+	/// Native goal readback with its source identity.
+	ChiefGoal(crate::ChiefGoalResult),
 	/// Fresh installation and authorization observations.
 	ChiefInstallState(crate::ChiefInstallState),
 	/// Source-bound task integration observations.

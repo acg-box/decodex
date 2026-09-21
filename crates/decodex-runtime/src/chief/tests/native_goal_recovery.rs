@@ -58,7 +58,13 @@ async fn native_active_goal_on_unloaded_thread_resumes_without_local_turn_submis
     chief.recover_persisted().await.unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(3), finish(&mut chief, &mut events)).await.expect("persisted active goal must resume");
     assert_eq!(calls.load(Ordering::Acquire), 2);
-    assert_eq!(chief.client.request("thread/goal/get",json!({"threadId":thread})).await.unwrap()["goal"]["status"],"budgetLimited");
+    let response = chief.client.request("thread/goal/get",json!({"threadId":thread})).await.unwrap();
+    let goal: decodex_protocol::ChiefNativeGoal = serde_json::from_value(response["goal"].clone()).unwrap();
+    assert!(goal.is_valid());
+    assert_eq!(goal.thread_id,thread);
+    assert_eq!(goal.status,"budgetLimited");
+    assert_eq!(goal.tokens_used,5);
+    assert_eq!(goal.token_budget,Some(1));
     assert_eq!(chief.store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state, decodex_database::ChiefDispatchState::Idle);
    }
   })).catch_unwind().await;

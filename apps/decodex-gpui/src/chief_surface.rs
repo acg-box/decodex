@@ -8,6 +8,7 @@
 #[path = "chief_composer.rs"] mod composer;
 #[path = "chief_detail.rs"] mod detail;
 #[path = "chief_dictation.rs"] mod dictation;
+#[path = "chief_goal.rs"] mod goal;
 #[path = "chief_graph.rs"] mod graph;
 #[path = "chief_guardian.rs"] mod guardian;
 #[path = "chief_install.rs"] mod install;
@@ -169,6 +170,7 @@ pub(crate) struct ChiefSurface {
 	misalignment_reviewed: Option<(String, String)>,
 	guardian: guardian::Panel,
 	archive: archive::Panel,
+	native_goal: goal::Panel,
 	mcp_form_event: Option<i64>,
 	installation: install::Panel,
 	mcp_url_opened: Option<(i64, String)>,
@@ -239,8 +241,7 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn new(cx: &mut Context<Self>) -> Self {
-		let ChiefInputs { model, cwd, composer, resource_title, resource_url } =
-			Self::new_inputs(cx);
+		let inputs = Self::new_inputs(cx);
 		Self {
 			voice: None,
 			voice_task: None,
@@ -263,8 +264,8 @@ impl ChiefSurface {
 			mcp_login_task: None,
 			resource_mutation_task: None,
 			resource_feedback: String::new(),
-			resource_title,
-			resource_url,
+			resource_title: inputs.resource_title,
+			resource_url: inputs.resource_url,
 			capabilities: None,
 			capabilities_context: None,
 			capabilities_checked: None,
@@ -318,10 +319,10 @@ impl ChiefSurface {
 			details_visible: false,
 			accounts: vec![],
 			setup_expanded: false,
-			composer,
+			composer: inputs.composer,
 			composer_footer_height: 74.,
-			model,
-			cwd,
+			model: inputs.model,
+			cwd: inputs.cwd,
 			account: Self::account_input(cx),
 			effort: ConversationReasoningEffort::High,
 			sandbox: ChiefSandboxDto::ReadOnly,
@@ -342,6 +343,7 @@ impl ChiefSurface {
 			misalignment_reviewed: None,
 			guardian: Default::default(),
 			archive: Default::default(),
+			native_goal: Default::default(),
 			mcp_form_event: None,
 			installation: Default::default(),
 			mcp_url_opened: None,
@@ -407,6 +409,7 @@ impl ChiefSurface {
 		self.refresh_native_input_receipts(cx);
 		self.load_guardian_reviews(cx);
 		self.load_archive_state(false, cx);
+		self.load_native_goal(cx);
 		if self.history.as_ref().is_some_and(|(id, _)| self.selected.as_ref() != Some(id)) {
 			self.history = None;
 		}
@@ -825,6 +828,7 @@ impl ChiefSurface {
 		self.misalignment_reviewed = None;
 		self.guardian = Default::default();
 		self.archive = Default::default();
+		self.goal_disconnected();
 		self.async_question_inputs.clear();
 		self.selected = None;
 		self.state = LoadState::Idle;
@@ -843,6 +847,7 @@ impl ChiefSurface {
 							surface.refresh(cx);
 						}
 						surface.load_archive_state(false, cx);
+						surface.load_native_goal(cx);
 						if surface.guardian_needs_refresh() {
 							surface.load_guardian_reviews(cx);
 						}
@@ -860,6 +865,7 @@ impl ChiefSurface {
 		self.generation += 1;
 		self.guardian_disconnected();
 		self.archive_disconnected();
+		self.goal_disconnected();
 		self.installation_disconnected();
 		self.task = None;
 		self.state =
@@ -1093,6 +1099,7 @@ impl ChiefSurface {
 			.child(self.misalignment_panel(work, cx))
 			.child(self.guardian_panel(work, cx))
 			.child(self.archive_panel(work, cx))
+			.child(self.native_goal_panel())
 			.child(self.request_panel(snapshot, work, cx))
 			.child(self.async_question_panel(work, cx))
 			.child(self.history_panel(work, cx))

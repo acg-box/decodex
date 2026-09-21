@@ -414,6 +414,29 @@ impl ChiefClient {
 		}
 	}
 
+	/// Read the native goal without loading or starting its thread.
+	pub async fn goal_state(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefGoalResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(12),
+		};
+		let completed = time::timeout(
+			Duration::from_secs(12),
+			transport.query_inner("chief-goal", QueryPayload::GetChiefGoal { work_id }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefGoal(result) if result.is_valid() => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read saved Guardian reviews without loading or running the native thread.
 	pub async fn guardian_reviews(
 		&self,
@@ -2319,6 +2342,55 @@ mod tests {
 		});
 		let result = crate::ChiefClient::new(profile)
 			.archive_state(EntityId::new("root").unwrap())
+			.await
+			.unwrap();
+		server.await.unwrap();
+		assert_eq!(result, expected);
+	}
+
+	#[tokio::test]
+	async fn goal_state_preserves_source_thread_and_authoritative_empty() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let expected = crate::ChiefGoalResult::Available {
+			source: EntityId::new("source").unwrap(),
+			thread_id: "native-exact".into(),
+			goal: None,
+		};
+		let reply = expected.clone();
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query frame")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("query")
+			};
+			assert!(
+				matches!(query.payload,crate::QueryPayload::GetChiefGoal {work_id} if work_id.as_str()=="root")
+			);
+			time::sleep(Duration::from_millis(10)).await;
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::ChiefGoal(reply),
+				})))
+				.await
+				.unwrap();
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let result = crate::ChiefClient::new(profile)
+			.goal_state(EntityId::new("root").unwrap())
 			.await
 			.unwrap();
 		server.await.unwrap();

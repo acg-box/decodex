@@ -4,7 +4,9 @@
 mod account_login;
 mod chief;
 mod chief_archive;
+mod chief_goal;
 pub use chief_archive::ChiefArchiveResult;
+pub use chief_goal::{ChiefGoalResult, ChiefNativeGoal};
 mod chief_guardian;
 pub use chief_guardian::{
 	ChiefGuardianReviewDto, ChiefGuardianReviewsResult, ChiefGuardianStatus,

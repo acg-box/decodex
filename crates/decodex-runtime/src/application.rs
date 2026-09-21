@@ -323,6 +323,13 @@ impl ServiceApplication {
 		)
 	}
 
+	async fn query_chief_goal(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefGoal(match &self.chief {
+			Some(chief) => chief.goal_state(work).await,
+			None => decodex_protocol::ChiefGoalResult::Unavailable,
+		})
+	}
+
 	async fn query_chief_snapshot(&self) -> QueryResultPayload {
 		let before = match &self.chief {
 			Some(chief) => chief.runtime_source().await,
@@ -1968,6 +1975,7 @@ impl Application for ServiceApplication {
 			QueryPayload::GetChiefHistory { work_id, before } => QueryResultPayload::ChiefHistory(
 				self.query_live_chief_history(work_id.as_str(), *before).await,
 			),
+			QueryPayload::GetChiefGoal { work_id } => self.query_chief_goal(work_id.as_str()).await,
 			QueryPayload::GetChiefArchiveState { work_id } =>
 				QueryResultPayload::ChiefArchiveState(match &self.chief {
 					Some(chief) => chief.archive_state(work_id.as_str()).await,
