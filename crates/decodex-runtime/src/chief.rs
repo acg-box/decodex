@@ -536,6 +536,9 @@ impl ChiefCoordinator {
 				ChiefError::Invalid("request event is not pending on this live connection".into())
 			})?;
 		let event = self.store.get_chief_inbox_event(event_id).await?;
+		if event.disposition.is_some() {
+			return Err(ChiefError::Rejected("Native request has already been resolved.".into()));
+		}
 		if self.store.chief_misalignment(event.work_item_id.clone()).await?.is_some() {
 			return Err(ChiefError::Invalid(
 				"This conversation is paused for provider findings.".into(),
@@ -550,7 +553,6 @@ impl ChiefCoordinator {
 				return Err(ChiefError::Rejected("Native request ownership has changed.".into()));
 			}
 		}
-		let mut install_guard = None;
 		if payload["method"] == "mcpServer/elicitation/request" {
 			decodex_protocol::validate_mcp_response(&payload["params"], &response)
 				.map_err(ChiefError::Rejected)?;
@@ -558,18 +560,17 @@ impl ChiefCoordinator {
 				&& payload["params"]["_meta"]["codex_approval_kind"] == "tool_suggestion"
 			{
 				self.verify_install_suggestion_complete(event_id).await?;
-				install_guard = Some(self.install_request_guard(event_id).await?);
 			}
 		}
-		if let Some(guard) = install_guard {
-			// A queued peer resolution may revoke the guard before the write. Keep
-			// the inbox mapping until success so that notification can still settle it.
-			self.client.respond_guarded(request_id.clone(), response, guard).await?;
-			self.pending_requests.remove(&request_id);
-		} else {
-			self.pending_requests.remove(&request_id);
-			self.client.respond(request_id, response).await?;
-		}
+		let method = exact(&payload, "/method")?;
+		let guard = self
+			.client
+			.server_request_guard(&request_id, &method, &payload["params"])
+			.ok_or_else(|| ChiefError::Rejected("Native request is no longer live.".into()))?;
+		// Drain queued native resolutions at dispatch, not only in the actor queue.
+		// Transport consumes the guard before writing; uncertain writes cannot replay.
+		self.client.respond_guarded(request_id.clone(), response, guard).await?;
+		self.pending_requests.remove(&request_id);
 		self.store.acknowledge_chief_request_event(event_id).await?;
 		Ok(())
 	}

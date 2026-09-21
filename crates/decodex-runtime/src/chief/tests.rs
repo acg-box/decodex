@@ -1,6 +1,8 @@
 use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[path = "tests/request_liveness.rs"] mod request_liveness;
+
 #[path = "tests/archive.rs"] mod archive;
 #[path = "tests/async_recovery.rs"] mod async_recovery;
 #[path = "tests/auth_recovery.rs"] mod auth_recovery;
@@ -252,6 +254,26 @@ pub(super) async fn fixture_with_history(
 		received,
 		directory,
 	)
+}
+
+// Deliver through the actual native transport so response guards have real evidence.
+async fn attach_request_transport(
+	chief: &mut ChiefCoordinator,
+	history: Value,
+	request: Value,
+) -> tokio::sync::mpsc::UnboundedReceiver<Value> {
+	let (local, mut remote) = tokio::io::duplex(65536);
+	let (reader, writer) = tokio::io::split(local);
+	let (client, mut events) = AppServerClient::from_io(reader, writer);
+	chief.client = client;
+	let (sent, received) = tokio::sync::mpsc::unbounded_channel();
+	tokio::spawn(async move {
+		remote.write_all(format!("{request}\n").as_bytes()).await.unwrap();
+		serve_fixture(remote, history, sent).await;
+	});
+	chief.handle_event(events.recv().await.unwrap()).await.unwrap();
+	tokio::spawn(async move { while events.recv().await.is_some() {} });
+	received
 }
 
 struct FixtureFaults {
@@ -838,7 +860,7 @@ async fn initial_user_input_starts_once_and_receipt_ack_leaves_newer_input_pendi
 
 #[tokio::test]
 async fn permission_response_uses_live_event_identity_even_when_rpc_id_is_reused() {
-	let (mut coordinator, mut sent, _directory) = fixture().await;
+	let (mut coordinator, _old_sent, _directory) = fixture().await;
 	let root = coordinator.start_chief("chief", "Coordinate").await.unwrap();
 	let params = json!({"threadId":root.codex_thread_id,"turnId":root.active_turn_id});
 	coordinator
@@ -856,14 +878,12 @@ async fn permission_response_uses_live_event_identity_even_when_rpc_id_is_reused
 		coordinator.config.clone(),
 	)
 	.unwrap();
-	reconnected
-		.handle_event(ServerEvent::Request {
-			id: RequestId::Number(7),
-			method: "item/commandExecution/requestApproval".into(),
-			params,
-		})
-		.await
-		.unwrap();
+	let mut sent = attach_request_transport(
+		&mut reconnected,
+		json!({}),
+		json!({"id":7,"method":"item/commandExecution/requestApproval","params":params}),
+	)
+	.await;
 	let new_id = reconnected
 		.store
 		.list_pending_chief_events(100)
@@ -2579,11 +2599,11 @@ async fn misalignment_does_not_send_or_consume_pending_provider_approval() {
 #[tokio::test]
 async fn mcp_form_response_validates_original_schema_before_consuming_live_request() {
 	for mode in ["form", "openai/form", "openaiForm"] {
-		let (mut chief, mut sent, _directory) = fixture().await;
+		let (mut chief, _old_sent, _directory) = fixture().await;
 		chief.start_chief("chief", "Coordinate").await.unwrap();
 		chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
 		let id = RequestId::String("mcp-form".into());
-		chief.handle_event(ServerEvent::Request {id:id.clone(),method:"mcpServer/elicitation/request".into(),params:json!({"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":mode,"requestedSchema":{"type":"object","properties":{"allow":{"type":"boolean"}},"required":["allow"]}})}).await.unwrap();
+		let mut sent = attach_request_transport(&mut chief, json!({}), json!({"id":id,"method":"mcpServer/elicitation/request","params":{"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":mode,"requestedSchema":{"type":"object","properties":{"allow":{"type":"boolean"}},"required":["allow"]}}})).await;
 		let event = chief.pending_requests[&id];
 		while sent.try_recv().is_ok() {}
 		for response in [
