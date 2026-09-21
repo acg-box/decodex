@@ -22,6 +22,7 @@ pub(crate) mod native_subagents;
 mod native_turns;
 pub(crate) mod observations;
 mod result_messages;
+mod resume_recovery;
 mod task_history;
 pub(crate) mod timeline;
 mod voice;
@@ -98,6 +99,7 @@ impl From<StoreError> for ChiefError {
 
 /// No native subagent interface or model engine is used here.
 pub struct ChiefCoordinator {
+	closing_resumes: std::collections::HashMap<String, resume_recovery::ClosingResume>,
 	voice: Option<voice::VoiceConnection>,
 	store: SqliteStore,
 	client: AppServerClient,
@@ -147,6 +149,7 @@ impl ChiefCoordinator {
 			CONNECTION_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 		);
 		Ok(Self {
+			closing_resumes: Default::default(),
 			voice: None,
 			store,
 			handled_question_revision: client.question_revision(),
@@ -207,61 +210,7 @@ impl ChiefCoordinator {
 			.filter(|item| item.dispatch_state != decodex_database::ChiefDispatchState::Idle)
 		{
 			let item = self.store.get_chief_work_item(old.id).await?;
-			let (Some(thread), Some(turn)) =
-				(item.codex_thread_id.as_ref(), item.active_turn_id.as_ref())
-			else {
-				continue;
-			};
-			let mut params = self.work_thread_resume_params(&item).await?;
-			params["threadId"] = json!(thread);
-			params["excludeTurns"] = json!(true);
-			let Ok(resumed) = self.client.thread_resume(params).await else {
-				continue;
-			};
-			let effort = if self.is_manager(&item.id).await? {
-				&self.config.chief_effort
-			} else {
-				&self.config.worker_effort
-			};
-			if resumed.pointer("/thread/id").and_then(Value::as_str) != Some(thread)
-				|| resumed["model"].as_str() != Some(&self.config.model)
-				|| resumed["reasoningEffort"].as_str() != Some(effort)
-			{
-				continue;
-			}
-			self.expect_usage_replay(thread, &resumed).await;
-			self.loaded_threads.insert(thread.clone());
-			let Ok(history) = self.client.thread_read_turn(thread, turn).await else {
-				continue;
-			};
-			if history.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
-				continue;
-			}
-			let Some(exact_turn) = history
-				.pointer("/thread/turns")
-				.and_then(Value::as_array)
-				.and_then(|turns| turns.iter().find(|entry| entry["id"].as_str() == Some(turn)))
-				.cloned()
-			else {
-				continue;
-			};
-			match exact_turn["status"].as_str() {
-				Some("completed" | "failed" | "interrupted") => {
-					self.record_terminal(
-						json!({"threadId":thread,"turn":exact_turn}),
-						Ok(history),
-						false,
-					)
-					.await?;
-				},
-				Some("inProgress")
-					if history.pointer("/thread/status/type").and_then(Value::as_str)
-						== Some("active") =>
-				{
-					self.store.reconcile_chief_dispatch(item.id, turn.clone()).await?;
-				},
-				_ => {},
-			}
+			self.recover_persisted_work(item, None).await?;
 		}
 		self.recover_native_turns().await?;
 		Ok(())
@@ -1409,7 +1358,11 @@ impl ChiefCoordinator {
 				if ["thread/closed", "thread/archived", "thread/deleted"]
 					.contains(&method.as_str()) =>
 			{
-				self.loaded_threads.remove(&exact(&params, "/threadId")?);
+				let thread = exact(&params, "/threadId")?;
+				self.loaded_threads.remove(&thread);
+				if method != "thread/closed" {
+					self.closing_resumes.retain(|_, pending| pending.thread != thread);
+				}
 			},
 			ServerEvent::Notification { method, params }
 				if method == "thread/tokenUsage/updated" =>
@@ -1895,6 +1848,7 @@ impl ChiefCoordinator {
 		if now < 0 {
 			return Err(ChiefError::Invalid("invalid due-check time".into()));
 		}
+		self.recover_closing_threads().await?;
 		// Fresh input takes precedence over a saved retry, including after restart.
 		self.wake_pending().await?;
 		for retry in self.store.due_chief_capacity_retries(now).await? {
