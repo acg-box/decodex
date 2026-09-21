@@ -9,8 +9,7 @@ use std::{
 	sync::mpsc as sync_mpsc,
 };
 
-const PNG: &str =
-	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aB9sAAAAASUVORK5CYII=";
+const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
 
 struct NativeChild(Child);
 
@@ -24,27 +23,37 @@ impl Drop for NativeChild {
 #[tokio::test]
 #[ignore = "requires explicit DECODEX_TEST_CODEX_BINARY; isolated native history qualification"]
 async fn installed_native_history_reads_cross_retained_bridge_without_new_model_work() {
+	let unfiltered = qualify_notification_media(false).await;
+	let filtered = qualify_notification_media(true).await;
+	assert_eq!(filtered, unfiltered, "notification filtering changed model images");
+}
+
+async fn qualify_notification_media(omit_media: bool) -> Vec<Vec<Value>> {
 	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	assert!(std::path::Path::new(&binary).is_absolute());
-	let home = tempfile::tempdir().unwrap();
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-	let address = listener.local_addr().unwrap();
+	let home = tempfile::tempdir().expect("native notification media fixture");
+	let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+		.await
+		.expect("native notification media fixture");
+	let address = listener.local_addr().expect("native notification media fixture");
 	let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-	let backend = tokio::spawn(serve(listener, Arc::clone(&requests)));
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated history fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let backend =
+		tokio::spawn(serve_with_bodies(listener, Arc::clone(&requests), Some(Arc::clone(&bodies))));
+	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated history fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[features]\nomit_app_server_notification_media = {omit_media}\n")).expect("native notification media fixture");
 	let mut session = NativeSession::start(&binary, home.path());
 	let (id, before) = tokio::time::timeout(Duration::from_secs(30), async {
 		let client = &session.client;
-		let started = client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
-		let id = started["thread"]["id"].as_str().unwrap();
+		let started = client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.expect("native notification media fixture");
+		let id = started["thread"]["id"].as_str().expect("native notification media fixture");
 		assert!(matches!(client.thread_timeline_page(id, None, 30).await,
 			Err(ClientError::Remote(error)) if error.code == -32601));
-		let read = client.thread_read(json!({"threadId":id,"includeTurns":false})).await.unwrap();
+		let read = client.thread_read(json!({"threadId":id,"includeTurns":false})).await.expect("native notification media fixture");
 		assert_eq!(read["thread"]["id"], id);
 		assert_eq!(read["thread"]["historyMode"], "paginated");
-		qualify_history(client, &mut session.events, id, &requests).await;
+		qualify_history(client, &mut session.events, id, &requests, omit_media).await;
 		(id.to_owned(), read_history(client, id, &requests).await)
-	}).await.unwrap();
+	}).await.expect("native notification media fixture");
 	drop(session);
 	let reopened = NativeSession::start(&binary, home.path());
 	let after = tokio::time::timeout(
@@ -52,14 +61,37 @@ async fn installed_native_history_reads_cross_retained_bridge_without_new_model_
 		read_history(&reopened.client, &id, &requests),
 	)
 	.await
-	.unwrap();
+	.expect("native notification media fixture");
 	assert_eq!(
-		serde_json::to_value(before).unwrap(),
-		serde_json::to_value(after).unwrap(),
+		serde_json::to_value(before).expect("native notification media fixture"),
+		serde_json::to_value(after).expect("native notification media fixture"),
 		"restart changed native history"
 	);
+	let model_images = {
+		let bodies = bodies.lock().expect("native notification media fixture");
+		assert_eq!(bodies.len(), 2);
+		bodies
+			.iter()
+			.enumerate()
+			.map(|(turn_index, body)| {
+				let images = body["input"]
+					.as_array()
+					.expect("native notification media fixture")
+					.iter()
+					.filter(|item| item["role"] == "user")
+					.filter_map(|item| item["content"].as_array())
+					.flatten()
+					.filter(|part| part["type"] == "input_image")
+					.cloned()
+					.collect::<Vec<_>>();
+				assert_eq!(images.len(), turn_index + 1, "native model request lost user image");
+				images
+			})
+			.collect()
+	};
 	drop(reopened);
 	backend.abort();
+	model_images
 }
 
 struct NativeSession {
@@ -145,14 +177,29 @@ async fn qualify_history(
 	events: &mut mpsc::Receiver<ServerEvent>,
 	thread_id: &str,
 	requests: &std::sync::atomic::AtomicUsize,
+	omit_media: bool,
 ) {
 	for text in ["First native history input", "Second native history input"] {
 		let turn = client
 			.turn_start(json!({"threadId":thread_id,"input":[{"type":"text","text":text},{"type":"image","url":format!("data:image/png;base64,{PNG}")}]}))
 			.await
 			.expect("native history fixture operation");
+		let mut user_events = HashSet::new();
 		loop {
 			let event = events.recv().await.expect("native event stream");
+			if let ServerEvent::Notification { method, params } = &event
+				&& matches!(method.as_str(), "item/started" | "item/completed")
+				&& params["threadId"] == thread_id
+				&& params["turnId"] == turn["turn"]["id"]
+				&& params["item"]["type"] == "userMessage"
+			{
+				let content = params["item"]["content"]
+					.as_array()
+					.expect("native notification media fixture");
+				assert_eq!(content.iter().any(|part| part["type"] == "image"), !omit_media);
+				assert!(content.iter().any(|part| part["text"] == text));
+				user_events.insert(method.clone());
+			}
 			if let ServerEvent::Notification { method, params } = event
 				&& method == "turn/completed"
 				&& params["threadId"] == thread_id
@@ -162,6 +209,7 @@ async fn qualify_history(
 				break;
 			}
 		}
+		assert_eq!(user_events.len(), 2, "both user item notifications must be observed");
 	}
 	assert_eq!(requests.load(Ordering::Acquire), 2);
 	read_history(client, thread_id, requests).await;
