@@ -4545,6 +4545,11 @@ fn query_chief_live(
 		);
 
 		live.push(decodex_protocol::ChiefLiveMessageDto {
+			kind: if output.kind == "plan" {
+				decodex_protocol::ChiefLiveMessageKind::Plan
+			} else {
+				decodex_protocol::ChiefLiveMessageKind::AgentMessage
+			},
 			turn_id: output.turn_id,
 			item_id: output.item_id,
 			text,

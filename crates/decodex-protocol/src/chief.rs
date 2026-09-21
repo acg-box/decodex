@@ -77,10 +77,24 @@ pub struct ChiefHistoryReceiptDto {
 	pub disposed: bool,
 }
 
+/// Native item category for current-turn text.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ChiefLiveMessageKind {
+	/// Ordinary assistant response.
+	#[default]
+	AgentMessage,
+	/// Proposed plan whose final item replaces its stream.
+	Plan,
+}
+
 /// Current-turn text observed before final history is available.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChiefLiveMessageDto {
+	/// Native item category; older senders emitted only assistant messages.
+	#[serde(default)]
+	pub kind: ChiefLiveMessageKind,
 	/// Provider turn identity.
 	pub turn_id: String,
 	/// Provider item identity.

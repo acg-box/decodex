@@ -91,6 +91,7 @@ MIGRATIONS = (
     (28, "conversation_service_tier", ROOT / "database/migrations/0028_conversation_service_tier.sql"),
     (29, "reset_card_operations", ROOT / "database/migrations/0029_reset_card_operations.sql"),
     (30, "quota_activation", ROOT / "database/migrations/0030_quota_activation.sql"),
+    (31, "chief_live_output_kind", ROOT / "database/migrations/0031_chief_live_output_kind.sql"),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831

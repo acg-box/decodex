@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 30;
+const CURRENT_SCHEMA_VERSION: i64 = 31;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -165,6 +165,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 30,
 		name: "quota_activation",
 		sql: include_str!("../migrations/0030_quota_activation.sql"),
+	},
+	Migration {
+		version: 31,
+		name: "chief_live_output_kind",
+		sql: include_str!("../migrations/0031_chief_live_output_kind.sql"),
 	},
 ];
 
@@ -465,6 +470,38 @@ mod tests {
 	}
 
 	#[test]
+	fn live_output_upgrade_preserves_legacy_text_and_defaults() {
+		let directory = tempfile::tempdir().expect("isolated migration root");
+		let mut connection =
+			Connection::open(directory.path().join("live-output.sqlite3")).unwrap();
+		configure(&connection).unwrap();
+		for migration in &MIGRATIONS[..30] {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 30).unwrap();
+		connection.execute("INSERT INTO chief_work_items(id,kind,title,instructions,status,created_at_micros,updated_at_micros) VALUES('work','goal','Goal','Keep input','open',1,1)",[]).unwrap();
+		connection.execute("INSERT INTO chief_live_output(work_id,turn_id,item_id,text,truncated) VALUES('work','turn','item','Existing partial text',1)",[]).unwrap();
+		migrate(&mut connection).unwrap();
+		verify(&connection).unwrap();
+		let saved: (String, bool, String, bool) = connection
+			.query_row("SELECT text,truncated,kind,completed FROM chief_live_output", [], |row| {
+				Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+			})
+			.unwrap();
+		assert_eq!(saved, ("Existing partial text".into(), true, "agentMessage".into(), false));
+		assert!(connection.execute("UPDATE chief_live_output SET kind='unknown'", []).is_err());
+		migrate(&mut connection).unwrap();
+		assert_eq!(applied_version(&connection).unwrap(), 31);
+	}
+
+	#[test]
 	fn reset_card_upgrade_preserves_existing_schema_and_initializes_an_empty_ledger() {
 		let directory = tempfile::tempdir().expect("isolated migration root");
 		let mut connection =
@@ -493,7 +530,7 @@ mod tests {
 		assert!(
 			before
 				.iter()
-				.filter(|entry| entry.2 != "desktop_settings")
+				.filter(|entry| !["desktop_settings", "chief_live_output"].contains(&entry.2.as_str()))
 				.all(|entry| after.contains(entry))
 		);
 		let count: i64 = connection
@@ -536,7 +573,7 @@ mod tests {
 		assert!(
 			before
 				.iter()
-				.filter(|entry| !["quick_task_requests", "desktop_settings"]
+				.filter(|entry| !["quick_task_requests", "desktop_settings", "chief_live_output"]
 					.contains(&entry.2.as_str()))
 				.all(|entry| after.contains(entry))
 		);

@@ -1377,6 +1377,13 @@ impl ChiefSurface {
 						div()
 							.w_full()
 							.py(px(2.))
+							.child(muted(
+								if message.kind == decodex_protocol::ChiefLiveMessageKind::Plan {
+									"Proposed plan · Live"
+								} else {
+									"Assistant · In progress"
+								},
+							))
 							.child(markdown::render(
 								&message.text,
 								&format!("live-{}", message.item_id),

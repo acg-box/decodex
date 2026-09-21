@@ -43,10 +43,10 @@ mod chief_questions;
 pub use chief::{
 	ChiefActionDto, ChiefActivityDetailResult, ChiefActivityDto, ChiefAttachmentDto,
 	ChiefCapabilitiesResult, ChiefHistoryEntryDto, ChiefHistoryReceiptDto, ChiefHistoryResult,
-	ChiefInputReceiptsResult, ChiefLiveMessageDto, ChiefMisalignmentDto, ChiefModelDto,
-	ChiefModelUpgradeDto, ChiefRequestResult, ChiefResourceDto, ChiefResourcesResult,
-	ChiefSandboxDto, ChiefServiceTierDto, ChiefStartDto, ChiefTaskReferenceDto, ChiefTurnUsageDto,
-	ChiefUsageDto, ChiefWorkspaceDto,
+	ChiefInputReceiptsResult, ChiefLiveMessageDto, ChiefLiveMessageKind, ChiefMisalignmentDto,
+	ChiefModelDto, ChiefModelUpgradeDto, ChiefRequestResult, ChiefResourceDto,
+	ChiefResourcesResult, ChiefSandboxDto, ChiefServiceTierDto, ChiefStartDto,
+	ChiefTaskReferenceDto, ChiefTurnUsageDto, ChiefUsageDto, ChiefWorkspaceDto,
 };
 pub use chief_questions::{
 	ChiefAsyncQuestionDto, ChiefAsyncQuestionReply, chief_async_question_id,

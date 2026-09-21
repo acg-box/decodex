@@ -364,6 +364,66 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn live_plan_is_visible_until_exact_native_item_arrives(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(1400.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("native-thread".into());
+			let mut history = Timeline::default();
+			assert!(history.replace(
+				Binding {
+					work: work.id.clone(),
+					thread: "native-thread".into(),
+					account: "account".into()
+				},
+				ChiefTimelinePage {
+					thread_id: "native-thread".into(),
+					entries: vec![],
+					next_cursor: None,
+					active_realtime_session_at_page_start: None
+				}
+			));
+			s.native_history = history;
+			let Some((_, decodex_protocol::ChiefHistoryResult::Available { live, .. })) =
+				&mut s.history
+			else {
+				panic!("fixture history")
+			};
+			live.push(decodex_protocol::ChiefLiveMessageDto {
+				kind: decodex_protocol::ChiefLiveMessageKind::Plan,
+				turn_id: "plan-turn".into(),
+				item_id: "plan-item".into(),
+				text: "Draft proposal".into(),
+				truncated: false,
+			});
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("native-live-plan").is_some());
+		surface.update(visual, |s, cx| {
+			s.native_history.entries.push(plan_entry());
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("native-live-plan").is_none());
+		assert!(visual.debug_bounds("native-plan-content").is_some());
+	}
+
+	#[gpui::test]
 	fn native_messages_and_promotions_render_with_distinct_provider_identities(
 		cx: &mut gpui::TestAppContext,
 	) {

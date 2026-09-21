@@ -70,7 +70,15 @@ impl ChiefSurface {
 			}
 			panel = panel.child(
 				div()
-					.child(muted("Assistant · In progress"))
+					.debug_selector({
+						let plan = message.kind == decodex_protocol::ChiefLiveMessageKind::Plan;
+						move || if plan { "native-live-plan" } else { "native-live-output" }.into()
+					})
+					.child(muted(if message.kind == decodex_protocol::ChiefLiveMessageKind::Plan {
+						"Proposed plan · Live"
+					} else {
+						"Assistant · In progress"
+					}))
 					.child(markdown::render(
 						&message.text,
 						&format!("live-{}-{}", message.turn_id, message.item_id),

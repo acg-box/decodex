@@ -15,7 +15,8 @@ async fn native_proposed_plan_history_survives_restart_without_model_replay() {
 	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
-	let backend = tokio::spawn(serve(listener, Arc::clone(&calls)));
+	let gate = Arc::new(tokio::sync::Notify::new());
+	let backend = tokio::spawn(serve(listener, Arc::clone(&calls), Arc::clone(&gate)));
 	std::fs::write(path.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\ncollaboration_modes = true\n[model_providers.fixture]\nname = \"Isolated plan fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 	let mut thread = String::new();
 	for cold in [false, true] {
@@ -36,14 +37,33 @@ async fn native_proposed_plan_history_survives_restart_without_model_replay() {
    if !cold {
     let response = chief.client.thread_start(json!({"model":"gpt-5.6-sol","cwd":path,"approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
     thread = response["thread"]["id"].as_str().unwrap().into();
-    chief.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Propose the fixture plan.","text_elements":[]}],"collaborationMode":{"mode":"plan","settings":{"model":"gpt-5.6-sol","reasoning_effort":"medium","developer_instructions":null}}})).await.unwrap();
+    ChiefCoordinator::reserve_root(&chief.store,"chief","Plan fixture").await.unwrap();
+    chief.store.bind_chief_thread("chief".into(),thread.clone()).await.unwrap();
+    chief.store.begin_chief_dispatch("chief".into()).await.unwrap();
+    let started = chief.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Propose the fixture plan.","text_elements":[]}],"collaborationMode":{"mode":"plan","settings":{"model":"gpt-5.6-sol","reasoning_effort":"medium","developer_instructions":null}}})).await.unwrap();
+    chief.store.acknowledge_chief_dispatch("chief".into(),started["turn"]["id"].as_str().unwrap().into()).await.unwrap();
     let mut streamed = String::new();
     let mut completed_plan = None;
     loop {
      if let ServerEvent::Notification {method,params} = events.recv().await.unwrap() {
       match method.as_str() {
-       "item/plan/delta" => streamed.push_str(params["delta"].as_str().unwrap()),
-       "item/completed" if params["item"]["type"] == "plan" => completed_plan = Some(params["item"]["text"].as_str().unwrap().to_owned()),
+       "item/plan/delta" => {
+        streamed.push_str(params["delta"].as_str().unwrap());
+        let live = chief.client.thread_timeline_page(&thread,None,30).await.unwrap();
+        let projected = super::super::timeline::project(&thread,&live).unwrap();
+        assert!(!projected.entries.iter().any(|entry| matches!(&entry.content,decodex_protocol::ChiefTimelineContent::Item {kind,..} if kind == "plan")),"unfinished plan remains a live event");
+        chief.handle_event(ServerEvent::Notification {method:method.clone(),params:params.clone()}).await.unwrap();
+        let live = chief.store.read_chief_output("chief".into()).await.unwrap();
+        assert!(live.iter().any(|item| item.kind == "plan" && item.text == streamed));
+        gate.notify_one();
+       },
+       "item/completed" if params["item"]["type"] == "plan" => {
+        completed_plan = Some(params["item"]["text"].as_str().unwrap().to_owned());
+        chief.handle_event(ServerEvent::Notification {method,params:params.clone()}).await.unwrap();
+        chief.handle_event(ServerEvent::Notification {method:"item/plan/delta".into(),params:json!({"threadId":thread,"turnId":params["turnId"],"itemId":params["item"]["id"],"delta":"late stale draft"})}).await.unwrap();
+        let live = chief.store.read_chief_output("chief".into()).await.unwrap();
+        assert!(live.iter().any(|item| item.kind == "plan" && item.text == FINAL_PLAN));
+       },
        "turn/completed" => { assert_eq!(params["turn"]["status"],"completed"); break; },
        _ => {},
       }
@@ -78,7 +98,11 @@ async fn native_proposed_plan_history_survives_restart_without_model_replay() {
 	backend.abort();
 }
 
-async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>) {
+async fn serve(
+	listener: tokio::net::TcpListener,
+	calls: Arc<AtomicUsize>,
+	gate: Arc<tokio::sync::Notify>,
+) {
 	while let Ok((mut socket, _)) = listener.accept().await {
 		let _ = native_task_references::read_http_body(&mut socket).await;
 		calls.fetch_add(1, Ordering::AcqRel);
@@ -89,10 +113,17 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>) {
 			json!({"type":"response.output_item.done","output_index":0,"item":{"type":"message","role":"assistant","id":"message","phase":"final_answer","content":[{"type":"output_text","text":format!("<proposed_plan>\n{FINAL_PLAN}</proposed_plan>\n")}]}}),
 			json!({"type":"response.completed","response":{"id":"response","usage":{"input_tokens":1,"output_tokens":5,"total_tokens":6}}}),
 		];
-		let data = frames
-			.iter()
-			.map(|v| format!("event: {}\ndata: {v}\n\n", v["type"].as_str().unwrap()))
-			.collect::<String>();
-		socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{data}",data.len()).as_bytes()).await.unwrap();
+		let encode = |frames: &[Value]| {
+			frames
+				.iter()
+				.map(|v| format!("event: {}\ndata: {v}\n\n", v["type"].as_str().unwrap()))
+				.collect::<String>()
+		};
+		let draft = encode(&frames[..3]);
+		let complete = encode(&frames[3..]);
+		socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{draft}",draft.len()+complete.len()).as_bytes()).await.unwrap();
+		socket.flush().await.unwrap();
+		gate.notified().await;
+		socket.write_all(complete.as_bytes()).await.unwrap();
 	}
 }

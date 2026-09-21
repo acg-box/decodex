@@ -1201,6 +1201,57 @@ async fn live_output_is_turn_bound_bounded_and_replaced_by_final_history() {
 }
 
 #[tokio::test]
+async fn live_plan_finality_and_kind_survive_restart() {
+	let (mut coordinator, _sent, directory) = fixture().await;
+	let work = coordinator.start_chief("chief", "Plan").await.unwrap();
+	let turn = work.active_turn_id.as_deref().unwrap();
+	let delta = |turn: &str, text: &str| ServerEvent::Notification {
+		method: "item/plan/delta".into(),
+		params: json!({"threadId":work.codex_thread_id,"turnId":turn,"itemId":"plan","delta":text}),
+	};
+	coordinator.handle_event(delta("wrong-turn", "Wrong")).await.unwrap();
+	assert!(coordinator.store.read_chief_output("chief".into()).await.unwrap().is_empty());
+	coordinator.handle_event(delta(turn, &"界".repeat(30000))).await.unwrap();
+	let partial = coordinator.store.read_chief_output("chief".into()).await.unwrap();
+	assert_eq!(partial[0].kind, "plan");
+	assert!(partial[0].truncated && partial[0].text.len() <= 65536);
+	coordinator.handle_event(ServerEvent::Notification {
+        method: "item/completed".into(),
+        params: json!({"threadId":work.codex_thread_id,"turnId":turn,"item":{"id":"plan","type":"plan","text":"Final plan"}}),
+    }).await.unwrap();
+	let thread = work.codex_thread_id.unwrap();
+	let turn = turn.to_owned();
+	drop(coordinator);
+	let paths =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap()
+			.paths();
+	let store = SqliteStore::open(&paths).unwrap();
+	store
+		.update_chief_output_record(decodex_database::ChiefOutputUpdate {
+			thread_id: thread.clone(),
+			turn_id: turn.clone(),
+			item_id: "plan".into(),
+			kind: "plan".into(),
+			text: "Late draft".into(),
+			completed: false,
+		})
+		.await
+		.unwrap();
+	assert!(
+		store
+			.update_chief_output(thread, turn, "plan".into(), "Wrong kind".into(), true)
+			.await
+			.is_err()
+	);
+	let saved = store.read_chief_output("chief".into()).await.unwrap();
+	assert_eq!(saved.len(), 1);
+	assert_eq!(saved[0].text, "Final plan");
+	assert_eq!(saved[0].kind, "plan");
+	assert!(!saved[0].truncated);
+}
+
+#[tokio::test]
 async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 	let (mut coordinator, mut sent, directory) = fixture().await;
 	coordinator.start_chief("chief", "Coordinate").await.unwrap();

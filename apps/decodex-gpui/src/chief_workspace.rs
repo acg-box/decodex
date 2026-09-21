@@ -1400,7 +1400,7 @@ impl ChiefSurface {
 		}
 		if page == "live" {
 			if let Some((_, ChiefHistoryResult::Available { live, .. })) = &mut self.history {
-				live.push(decodex_protocol::ChiefLiveMessageDto {turn_id:"live-turn".into(),item_id:"live-item".into(),text:"The compatibility check is progressing. I’m reviewing the existing session behavior and…".into(),truncated:false});
+				live.push(decodex_protocol::ChiefLiveMessageDto {kind: Default::default(),turn_id:"live-turn".into(),item_id:"live-item".into(),text:"The compatibility check is progressing. I’m reviewing the existing session behavior and…".into(),truncated:false});
 			}
 			return;
 		}
