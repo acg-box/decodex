@@ -559,7 +559,9 @@ impl ChiefSurface {
 				.min_h_0()
 				.flex()
 				.child(self.history_rail_slot(window, cx))
-				.child(transcript),
+				.relative()
+				.child(transcript)
+				.child(self.latest_button(window, cx)),
 		);
 		if is_chief && selected.is_some() {
 			chat = chat.child(self.floating_composer(window, cx));

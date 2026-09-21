@@ -21,6 +21,7 @@ let symbols = [
     "voice": "waveform",
     "microphone": "mic",
     "bell": "bell",
+    "arrow-down": "arrow.down",
     "bell-attention": "bell",
     "bell-info": "bell",
     "chevron-down": "chevron.down",

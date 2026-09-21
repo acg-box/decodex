@@ -14,7 +14,7 @@ pub(super) struct HistoryMark {
 
 pub(super) struct HistoryNavigation {
 	work: String,
-	id: i64,
+	id: Option<i64>,
 	from: f32,
 	to: f32,
 	started: std::time::Instant,
@@ -142,7 +142,7 @@ impl ChiefSurface {
 			self.history_selected = Some(id);
 			self.history_navigation = Some(HistoryNavigation {
 				work: work.clone(),
-				id,
+				id: Some(id),
 				from: scroll.offset().y.into(),
 				to: navigation_offset(mark.position.get(), scroll.max_offset().y.into()),
 				started: std::time::Instant::now(),
@@ -186,9 +186,12 @@ impl ChiefSurface {
 		}
 		let t = (navigation.started.elapsed().as_secs_f32() / 0.28).min(1.0);
 		if let Some(scroll) = self.transcript_scroll.get(&navigation.work) {
-			let target = self.history_marks.get(&navigation.id).map_or(navigation.to, |m| {
-				navigation_offset(m.position.get(), scroll.max_offset().y.into())
-			});
+			let target = match navigation.id {
+				None => -f32::from(scroll.max_offset().y),
+				Some(id) => self.history_marks.get(&id).map_or(navigation.to, |m| {
+					navigation_offset(m.position.get(), scroll.max_offset().y.into())
+				}),
+			};
 			let offset = navigation.from + (target - navigation.from) * (1.0 - (1.0 - t).powi(3));
 			scroll.set_offset(point(
 				px(0.0),
@@ -199,8 +202,135 @@ impl ChiefSurface {
 			crate::ui_motion::request_frame(window, cx);
 			cx.notify();
 		} else {
+			let latest = navigation.id.is_none();
+			let work = navigation.work.clone();
 			self.history_navigation = None;
+			if latest {
+				self.history_follow_paused.remove(&work);
+				self.set_voice_follow(true);
+			}
 		}
+	}
+
+	pub(super) fn jump_to_latest(&mut self, cx: &mut Context<Self>) {
+		let Some(work) = self.selected.clone() else {
+			return;
+		};
+		let Some(scroll) = self.transcript_scroll.get(&work) else {
+			return;
+		};
+		self.history_selected = None;
+		self.history_follow_paused.insert(work.clone());
+		self.history_navigation = Some(HistoryNavigation {
+			work,
+			id: None,
+			from: scroll.offset().y.into(),
+			to: -f32::from(scroll.max_offset().y),
+			started: std::time::Instant::now(),
+		});
+		self.set_voice_follow(false);
+		cx.notify();
+	}
+
+	pub(super) fn latest_button(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+		let visible = self
+			.selected
+			.as_ref()
+			.and_then(|id| self.transcript_scroll.get(id))
+			.is_some_and(|scroll| scroll.max_offset().y + scroll.offset().y > px(48.));
+		let working = self
+			.snapshot
+			.as_ref()
+			.and_then(|snapshot| {
+				snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())
+			})
+			.is_some_and(|work| {
+				matches!(
+					work.dispatch_state,
+					ChiefDispatchStateDto::Dispatching | ChiefDispatchStateDto::Running
+				) && !self.thread_in_use(&work.id)
+			});
+		let width = crate::ui_motion::value(
+			"jump-latest-width",
+			if working { 56. } else { 28. },
+			window,
+			cx,
+		);
+		let clock =
+			window.use_keyed_state("jump-latest-clock", cx, |_, _| std::time::Instant::now());
+		let phase = clock.read(cx).elapsed().as_secs_f32() * 4.;
+		if visible && working {
+			crate::ui_motion::request_frame(window, cx);
+		}
+
+		let opacity = crate::ui_motion::value(
+			"jump-latest-opacity",
+			if visible { 1. } else { 0. },
+			window,
+			cx,
+		);
+		div()
+			.absolute()
+			.left_0()
+			.right_0()
+			.flex()
+			.justify_center()
+			.bottom(px(if self.selected_is_manager() {
+				self.composer_footer_height + 8.
+			} else {
+				12.
+			}))
+			.when(opacity > 0.001, |d| {
+				d.child(
+					div()
+						.id("jump-to-latest")
+						.debug_selector(|| "jump-to-latest".into())
+						.occlude()
+						.role(gpui::Role::Button)
+						.aria_label(if working {
+							"Working · Jump to latest message"
+						} else {
+							"Jump to latest message"
+						})
+						.tab_index(0)
+						.h(px(28.))
+						.w(px(width))
+						.rounded_full()
+						.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
+						.flex()
+						.items_center()
+						.justify_center()
+						.gap(px(5.))
+						.opacity(opacity)
+						.cursor_pointer()
+						.hover(|d| d.bg(rgba(0x48484eff)))
+						.on_click(cx.listener(|s, _, _, cx| s.jump_to_latest(cx)))
+						.on_key_down(cx.listener(|s, e: &gpui::KeyDownEvent, _, cx| {
+							if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+								s.jump_to_latest(cx);
+								cx.stop_propagation();
+							}
+						}))
+						.when(working, |d| {
+							d.child(div().flex().items_center().gap(px(2.)).children((0..3).map(
+								|i| {
+									div()
+										.size(px(3.))
+										.rounded_full()
+										.bg(rgb(ui_theme::BLUE))
+										.opacity(
+											0.35 + 0.65 * ((phase - i as f32 * 0.7).sin() + 1.)
+												/ 2.,
+										)
+								},
+							)))
+						})
+						.child(super::super::workspace_symbols::icon(
+							super::super::workspace_symbols::Symbol::ArrowDown,
+						)),
+				)
+			})
+			.into_any_element()
 	}
 
 	pub(super) fn history_rail_slot(
@@ -419,7 +549,7 @@ mod tests {
 			visual.simulate_mouse_up(bounds.center(), gpui::MouseButton::Left, Default::default());
 			surface.update(visual, |s, cx| {
 				assert_eq!(s.history_selected, Some(id));
-				assert_eq!(s.history_navigation.as_ref().unwrap().id, id);
+				assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(id));
 				s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
 				cx.notify();
 			});
@@ -511,6 +641,45 @@ mod tests {
 			surface.read_with(visual, |s, _| s.history_follow_paused.contains("chief")),
 			"even a small upward wheel step must pause automatic bottom-follow"
 		);
+	}
+
+	#[gpui::test]
+	fn jump_to_latest_scrolls_to_bottom_and_resumes_follow(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(320.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			s.history_follow_paused.insert("chief".into());
+			s.transcript_scroll
+				.entry("chief".into())
+				.or_default()
+				.set_offset(point(px(0.), px(0.)));
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		visual.run_until_parked();
+		visual.update(|window, cx| window.draw(cx).clear());
+		let button = visual.debug_bounds("jump-to-latest").expect("button while reading history");
+		surface.update(visual, |s, cx| {
+			s.jump_to_latest(cx);
+			if let Some(navigation) = &mut s.history_navigation {
+				assert!(navigation.id.is_none());
+				navigation.started -= std::time::Duration::from_secs(1);
+			}
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		surface.read_with(visual, |s, _| {
+			let scroll = &s.transcript_scroll["chief"];
+			assert!(
+				(scroll.offset().y + scroll.max_offset().y).abs() < px(1.),
+				"offset={:?}, max={:?}, button={button:?}",
+				scroll.offset(),
+				scroll.max_offset()
+			);
+			assert!(!s.history_follow_paused.contains("chief"));
+		});
 	}
 
 	#[test]
