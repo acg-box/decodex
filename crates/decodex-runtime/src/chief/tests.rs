@@ -5,8 +5,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/capacity.rs"] mod capacity;
 #[path = "tests/guardian.rs"] mod guardian;
 #[path = "tests/install.rs"] mod install;
-#[path = "tests/task_history.rs"] mod task_history;
 #[path = "tests/native_task_references.rs"] mod native_task_references;
+#[path = "tests/task_history.rs"] mod task_history;
 
 #[tokio::test]
 async fn subagent_activity_survives_parent_completion_and_restart_without_waking_work() {
@@ -1147,7 +1147,7 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 }
 
 #[tokio::test]
-async fn legacy_manager_upgrades_tools_once_without_replaying_saved_input() {
+async fn legacy_manager_keeps_native_thread_without_replaying_saved_input() {
 	let (mut coordinator, mut sent, directory) = fixture().await;
 	let original = coordinator.start_chief("chief", "Original request").await.unwrap();
 	complete(&mut coordinator, "chief").await;
@@ -1169,34 +1169,18 @@ async fn legacy_manager_upgrades_tools_once_without_replaying_saved_input() {
 	while sent.try_recv().is_ok() {}
 	coordinator.continue_worker("chief", "One new request").await.unwrap();
 	let upgraded = coordinator.store.get_chief_work_item("chief".into()).await.unwrap();
-	assert_ne!(original.codex_thread_id, upgraded.codex_thread_id);
-	assert_eq!(coordinator.store.chief_tool_version("chief".into()).await.unwrap(), 3);
+	assert_eq!(original.codex_thread_id, upgraded.codex_thread_id);
+	assert_eq!(coordinator.store.chief_tool_version("chief".into()).await.unwrap(), 1);
 	let messages: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
-	assert_eq!(messages.iter().filter(|message| message["method"] == "thread/start").count(), 1);
+	assert_eq!(messages.iter().filter(|message| message["method"] == "thread/start").count(), 0);
 	assert_eq!(messages.iter().filter(|message| message["method"] == "turn/start").count(), 1);
-	let creation = messages.iter().find(|message| message["method"] == "thread/start").unwrap();
-	assert!(
-		!creation["params"]["developerInstructions"]
-			.as_str()
-			.unwrap()
-			.contains("Remember the existing project")
-	);
-	let injected =
-		messages.iter().find(|message| message["method"] == "thread/inject_items").unwrap();
-	assert_eq!(injected["params"]["threadId"], json!(upgraded.codex_thread_id));
-	assert_eq!(injected["params"]["items"][0]["type"], "function_call_output");
-	assert!(
-		injected["params"]["items"][0]["output"]
-			.as_str()
-			.unwrap()
-			.contains("Remember the existing project")
-	);
+	assert!(!messages.iter().any(|message| message["method"] == "thread/inject_items"));
 	let start = messages.iter().find(|message| message["method"] == "turn/start").unwrap();
 	assert_eq!(start["params"]["input"][0]["text"], "One new request");
 	assert_eq!(
 		db.query_row("SELECT count(*) FROM chief_thread_revisions", [], |row| row.get::<_, i64>(0))
 			.unwrap(),
-		1
+		0
 	);
 }
 

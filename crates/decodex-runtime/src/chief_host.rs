@@ -963,7 +963,7 @@ impl ChiefHost {
 
 fn diagnostic(error: &ChiefError) -> String {
 	match error {
-        ChiefError::ThreadArchived => "This session is archived in Codex. Open Session recovery to restore the original session. Saved messages remain queued.".into(),
+        ChiefError::ThreadArchived => "This conversation is archived. Unarchive it to continue. Your saved messages remain queued.".into(),
 		ChiefError::ThreadOwnedElsewhere => "This Chief conversation is open in Codex or another application. Release it there; saved messages will continue automatically.".into(),
 		ChiefError::Store(_) => "Chief delivery could not access its saved state.".into(),
 		ChiefError::DependenciesPending(_) => "Chief is waiting for prerequisite work.".into(),
