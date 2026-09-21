@@ -8,6 +8,7 @@ pub(super) struct CatalogContext {
 	directory: String,
 	account: String,
 	has_root: bool,
+	runtime_source: Option<decodex_protocol::EntityId>,
 }
 
 impl ChiefSurface {
@@ -97,6 +98,7 @@ impl ChiefSurface {
 				.work_items
 				.iter()
 				.any(|work| work.parent_goal_id.is_none()),
+			runtime_source: self.snapshot.as_ref()?.runtime_source.clone(),
 		})
 	}
 
@@ -147,7 +149,8 @@ impl ChiefSurface {
 			})
 		};
 		self.capabilities_checked = Some(std::time::Instant::now());
-		let generation = self.generation;
+		self.capability_generation += 1;
+		let generation = self.capability_generation;
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
@@ -171,21 +174,31 @@ impl ChiefSurface {
 		self.capability_task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |surface, cx| {
-				if surface.generation != generation {
-					return;
-				}
-				surface.capability_task = None;
-				if surface.catalog_context(cx).as_ref() != Some(&context) {
-					surface.capabilities_checked = None;
-					surface.load_capabilities(cx);
-					return;
-				}
-				surface.capabilities_context = Some(context);
-				surface.capabilities = result;
-				surface.reconcile_model_options(cx);
-				cx.notify();
+				surface.finish_capabilities(generation, context, result, cx);
 			});
 		}));
+	}
+
+	fn finish_capabilities(
+		&mut self,
+		generation: u64,
+		context: CatalogContext,
+		result: Option<ChiefCapabilitiesResult>,
+		cx: &mut Context<Self>,
+	) {
+		if self.capability_generation != generation {
+			return;
+		}
+		self.capability_task = None;
+		if self.catalog_context(cx).as_ref() != Some(&context) {
+			self.capabilities_checked = None;
+			self.load_capabilities(cx);
+			return;
+		}
+		self.capabilities_context = Some(context);
+		self.capabilities = result;
+		self.reconcile_model_options(cx);
+		cx.notify();
 	}
 
 	pub(super) fn selected_model(&self, cx: &Context<Self>) -> Option<&ChiefModelDto> {
@@ -252,6 +265,55 @@ impl ChiefSurface {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[gpui::test]
+	fn catalog_reply_survives_unrelated_snapshot_refresh(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |surface, cx| {
+			surface.visual_workspace_fixture(cx);
+			let context = surface.catalog_context(cx).unwrap();
+			surface.capability_generation = 7;
+			surface.capability_task = Some(cx.spawn(async |_, _| std::future::pending().await));
+			surface.generation += 1;
+			surface.finish_capabilities(7, context, Some(ChiefCapabilitiesResult::Unavailable), cx);
+			assert!(surface.capability_task.is_none(), "completed request releases its slot");
+			assert!(matches!(
+				surface.current_model_catalog(cx),
+				Some(ChiefCapabilitiesResult::Unavailable)
+			));
+		});
+	}
+
+	#[gpui::test]
+	fn catalog_replies_cannot_cross_runtime_or_profile_boundaries(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |surface, cx| {
+			surface.visual_workspace_fixture(cx);
+			let old = surface.catalog_context(cx).unwrap();
+			surface.capabilities_context = Some(old.clone());
+			surface.capabilities = Some(ChiefCapabilitiesResult::Unavailable);
+			surface.snapshot.as_mut().unwrap().runtime_source =
+				Some(decodex_protocol::EntityId::new("replacement-runtime").unwrap());
+			assert!(surface.current_model_catalog(cx).is_none());
+			surface.capability_generation = 4;
+			surface.capabilities_checked = Some(std::time::Instant::now());
+			surface.finish_capabilities(4, old, None, cx);
+			assert!(
+				surface.capabilities_checked.is_none(),
+				"source mismatch permits a fresh request"
+			);
+			assert!(surface.current_model_catalog(cx).is_none());
+			let current = surface.catalog_context(cx).unwrap();
+			surface.bind_profile(None, cx);
+			let new_generation = surface.capability_generation;
+			surface.capability_task = Some(cx.spawn(async |_, _| std::future::pending().await));
+			surface.finish_capabilities(4, current, Some(ChiefCapabilitiesResult::Unavailable), cx);
+			assert!(surface.capabilities.is_none());
+			assert_eq!(surface.capability_generation, new_generation);
+			assert!(surface.capability_task.is_some(), "old reply cannot retire a newer request");
+		});
+	}
+
 	#[gpui::test]
 	fn advertised_tier_selection_is_explicit_and_invalidated_by_catalog_changes(
 		cx: &mut gpui::TestAppContext,

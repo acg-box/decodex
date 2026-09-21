@@ -85,6 +85,7 @@ pub(crate) struct ChiefSurface {
 	capabilities_context: Option<capabilities::CatalogContext>,
 	capabilities_checked: Option<std::time::Instant>,
 	capability_task: Option<Task<()>>,
+	capability_generation: u64,
 	expanded_progress: std::collections::BTreeSet<String>,
 	pages: Vec<String>,
 	graph_visible: bool,
@@ -185,6 +186,8 @@ struct ChiefInputs {
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
 	composer: Entity<ComposerInput>,
+	resource_title: Entity<ComposerInput>,
+	resource_url: Entity<ComposerInput>,
 }
 
 impl ChiefSurface {
@@ -236,7 +239,8 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn new(cx: &mut Context<Self>) -> Self {
-		let ChiefInputs { model, cwd, composer } = Self::new_inputs(cx);
+		let ChiefInputs { model, cwd, composer, resource_title, resource_url } =
+			Self::new_inputs(cx);
 		Self {
 			voice: None,
 			voice_task: None,
@@ -259,14 +263,13 @@ impl ChiefSurface {
 			mcp_login_task: None,
 			resource_mutation_task: None,
 			resource_feedback: String::new(),
-			resource_title: cx
-				.new(|cx| ComposerInput::with_placeholder(40, "Link title", "Resource title", cx)),
-			resource_url: cx
-				.new(|cx| ComposerInput::with_placeholder(40, "https://…", "Resource URL", cx)),
+			resource_title,
+			resource_url,
 			capabilities: None,
 			capabilities_context: None,
 			capabilities_checked: None,
 			capability_task: None,
+			capability_generation: 0,
 			fast: false,
 			service_tier: None,
 			steer: true,
@@ -381,7 +384,11 @@ impl ChiefSurface {
 			cx.notify();
 		})
 		.detach();
-		ChiefInputs { model, cwd, composer }
+		let resource_title =
+			cx.new(|cx| ComposerInput::with_placeholder(40, "Link title", "Resource title", cx));
+		let resource_url =
+			cx.new(|cx| ComposerInput::with_placeholder(40, "https://…", "Resource URL", cx));
+		ChiefInputs { model, cwd, composer, resource_title, resource_url }
 	}
 
 	fn account_input(cx: &mut Context<Self>) -> Entity<ComposerInput> {
@@ -782,6 +789,7 @@ impl ChiefSurface {
 		self.resource_title.update(cx, |input, cx| input.clear(cx));
 		self.resource_url.update(cx, |input, cx| input.clear(cx));
 		self.capability_task = None;
+		self.capability_generation += 1;
 		self.capabilities = None;
 		self.capabilities_context = None;
 		self.fast = false;
