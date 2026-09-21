@@ -10,8 +10,9 @@ async fn native_child_approval_round_trip() {
 	let home = directory.path().canonicalize().unwrap();
 	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
-	let backend = tokio::spawn(serve(listener));
-	std::fs::write(home.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\napprovals_reviewer = \"user\"\n[features]\nmulti_agent = true\nmulti_agent_v2 = true\n[model_providers.fixture]\nname = \"Isolated child approval fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	let (requests_tx, mut requests_rx) = tokio::sync::mpsc::unbounded_channel();
+	let backend = tokio::spawn(serve(listener, requests_tx));
+	std::fs::write(home.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\nservice_tier = \"priority\"\napprovals_reviewer = \"user\"\n[features]\nmulti_agent = true\nmulti_agent_v2 = true\n[model_providers.fixture]\nname = \"Isolated child approval fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 	let (mut chief, _sent, _store_home) = fixture().await;
 	let mut command = tokio::process::Command::new(binary);
 	command
@@ -48,6 +49,8 @@ async fn native_child_approval_round_trip() {
 				assert_eq!(saved.work_item_id,"chief");
 				let payload: Value = serde_json::from_str(&saved.payload).unwrap();
 				assert_eq!(payload["params"]["threadId"],child);
+				// A root setting update must reach the next step of the already running child.
+				chief.client.request("thread/settings/update",json!({"threadId":root,"serviceTier":null})).await.unwrap();
 				chief.respond_pending_event(pending,json!({"decision":"decline"})).await.unwrap();
 				approved_child = Some(child);
 				event_id = Some(pending);
@@ -56,6 +59,25 @@ async fn native_child_approval_round_trip() {
 		}
 		let saved = chief.store.get_chief_inbox_event(event_id.unwrap()).await.unwrap();
 		assert!(saved.disposition.is_some());
+		let mut request_count = 0;
+		let mut initial_child = false;
+		let mut continued_child = false;
+		while let Ok(body) = requests_rx.try_recv() {
+			if request_count == 0 { assert_eq!(body["service_tier"], "priority"); }
+			if is_child(&body) {
+				let resumed = body["input"].as_array().unwrap().iter().any(|v| v["type"] == "function_call_output" && v["call_id"] == "child-command");
+				if resumed {
+					assert!(body["service_tier"].is_null(), "existing child must follow the cleared root tier");
+					continued_child = true;
+				} else {
+					assert_eq!(body["service_tier"], "priority", "new child must inherit root tier");
+					initial_child = true;
+				}
+			}
+			request_count += 1;
+		}
+		assert!(request_count >= 3, "root spawn and child approval continuation reached the backend");
+		assert!(initial_child && continued_child);
 		assert_eq!(chief.store.get_chief_work_item("chief".into()).await.unwrap().codex_thread_id.as_deref(),Some(root.as_str()));
 	})).catch_unwind().await;
 	process.shutdown().await.unwrap();
@@ -63,11 +85,15 @@ async fn native_child_approval_round_trip() {
 	outcome.expect("native child approval panicked").expect("native child approval timed out");
 }
 
-async fn serve(listener: tokio::net::TcpListener) {
+async fn serve(
+	listener: tokio::net::TcpListener,
+	requests: tokio::sync::mpsc::UnboundedSender<Value>,
+) {
 	let mut serial = 0;
 	while let Ok((mut socket, _)) = listener.accept().await {
 		serial += 1;
 		let body = native_task_references::read_http_body(&mut socket).await;
+		requests.send(body.clone()).unwrap();
 		let item = response(&body, serial);
 		let id = format!("fixture-{serial}");
 		let frames = [
@@ -92,8 +118,7 @@ fn response(body: &Value, serial: usize) -> Value {
 		return json!({"type":"function_call","id":"spawn","call_id":"spawn","namespace":"collaboration","name":"spawn_agent","arguments":json!({"task_name":"child","message":"CHILD_APPROVAL","fork_turns":"none"}).to_string()});
 	}
 	let input = body["input"].as_array().unwrap();
-	let child = body.to_string().contains("CHILD_APPROVAL")
-		&& !input.iter().any(|v| v["type"] == "function_call" && v["call_id"] == "spawn");
+	let child = is_child(body);
 	let answered = input
 		.iter()
 		.any(|v| v["type"] == "function_call_output" && v["call_id"] == "child-command");
@@ -101,4 +126,13 @@ fn response(body: &Value, serial: usize) -> Value {
 		return json!({"type":"function_call","id":"child-command","call_id":"child-command","namespace":"functions","name":"exec_command","arguments":json!({"cmd":"printf child-fixture","sandbox_permissions":"require_escalated","justification":"Isolated approval fixture"}).to_string()});
 	}
 	json!({"type":"message","role":"assistant","id":format!("message-{serial}"),"content":[{"type":"output_text","text":"DONE"}]})
+}
+
+fn is_child(body: &Value) -> bool {
+	body.to_string().contains("CHILD_APPROVAL")
+		&& !body["input"]
+			.as_array()
+			.unwrap()
+			.iter()
+			.any(|v| v["type"] == "function_call" && v["call_id"] == "spawn")
 }
