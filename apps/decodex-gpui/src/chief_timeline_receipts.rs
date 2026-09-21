@@ -1,7 +1,7 @@
 //! Keep local delivery evidence separate from canonical conversation rows.
 use super::{
 	ChiefHistoryResult, ChiefSurface, ChiefWorkItemDto, Content, Context, IntoElement,
-	ParentElement, Styled, div, markdown, muted,
+	ParentElement, Styled, auth_recovery_entry, div, markdown, muted,
 };
 use decodex_protocol::ChiefHistoryEntryDto;
 use gpui::InteractiveElement;
@@ -31,6 +31,10 @@ impl ChiefSurface {
 			saved.insert(entry.id, entry);
 		}
 		for entry in saved.values() {
+			if entry.kind == "auth_recovery" {
+				panel = panel.child(auth_recovery_entry(entry));
+				continue;
+			}
 			if receipt_label(entry) == Some("Local input · Delivery not confirmed")
 				&& self.native_input_receipts_loaded(&work.id)
 			{
@@ -109,6 +113,49 @@ fn receipt_label(entry: &ChiefHistoryEntryDto) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn auth_recovery_history_is_visible_as_a_recorded_notice(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			let work = s.snapshot.as_mut().unwrap().work_items.iter_mut().find(|w| Some(&w.id) == s.selected.as_ref()).unwrap();
+			work.codex_thread_id = Some("native-thread".into());
+			s.history = Some((work.id.clone(), ChiefHistoryResult::Available {
+				questions: vec![], questions_truncated: false, questions_recovering: false, misalignment: None, usage: None, has_more: false, next_before: None, live: vec![],
+				entries: vec![ChiefHistoryEntryDto {
+					id: 91,kind:"auth_recovery".into(),text:"Codex reported that provider sign-in recovery started.\n\nAWS: [Sign in](https://example.invalid)\n\nSaved event; current sign-in status is not confirmed by this record.".into(),created_at_micros:1,receipt:None,activity:None,usage:None,duration_ms:None,
+				}],
+			}));
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let bounds = visual
+			.debug_bounds("auth-recovery-receipt-91")
+			.expect("saved authentication notice is rendered");
+		assert!(bounds.size.height > gpui::px(0.));
+		surface.update(visual, |s, cx| {
+			s.native_history.binding = Some(super::super::Binding {
+				work: s.selected.clone().unwrap(),
+				thread: "native-thread".into(),
+				account: "account".into(),
+			});
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(
+			visual
+				.debug_bounds("auth-recovery-receipt-91")
+				.expect("native conversation keeps authentication receipts visible")
+				.size
+				.height > gpui::px(0.)
+		);
+	}
 	#[test]
 	fn native_view_preserves_uncertain_input_and_controls_without_text_deduplication() {
 		let mut entry = ChiefHistoryEntryDto {

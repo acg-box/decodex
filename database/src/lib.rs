@@ -5,6 +5,8 @@ mod account_lifecycle;
 mod account_profiles;
 mod accounts;
 mod chief;
+mod chief_auth_recovery;
+pub use chief_auth_recovery::ChiefAuthRecoveryObservation;
 mod chief_install;
 pub use chief_install::{ChiefInstallAttempt, ChiefInstallRequirements};
 mod chief_guardian;

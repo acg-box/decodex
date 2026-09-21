@@ -2,6 +2,7 @@ use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 #[path = "tests/archive.rs"] mod archive;
+#[path = "tests/auth_recovery.rs"] mod auth_recovery;
 #[path = "tests/async_recovery.rs"] mod async_recovery;
 #[path = "tests/capacity.rs"] mod capacity;
 #[path = "tests/guardian.rs"] mod guardian;

@@ -4236,6 +4236,17 @@ struct RenderedChiefHistory {
 	next_before: Option<i64>,
 }
 
+#[cfg(test)]
+pub(crate) fn render_chief_history_for_auth_test(
+	events: Vec<decodex_database::ChiefInboxEvent>,
+) -> Vec<decodex_protocol::ChiefHistoryEntryDto> {
+	render_chief_history(events, 0, None)
+		.entries
+		.into_iter()
+		.filter(|entry| entry.kind == "auth_recovery")
+		.collect()
+}
+
 fn render_chief_history(
 	events: Vec<decodex_database::ChiefInboxEvent>,
 	question_bytes: usize,
@@ -4251,6 +4262,7 @@ fn render_chief_history(
 		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap_or_default();
 		let mut completed_message_ids = Vec::new();
 		let (kind, mut text) = match event.event_kind.as_str() {
+			"auth_recovery_started" | "auth_recovery_completed" => ("auth_recovery", format!("{}\n\n{}: {}\n\nSaved event; current sign-in status is not confirmed by this record.", if event.event_kind == "auth_recovery_started" { "Codex reported that provider sign-in recovery started." } else { "Codex reported that provider sign-in recovery succeeded." }, value["provider"].as_str().unwrap_or("Provider"), value["message"].as_str().unwrap_or(""))),
 			"config_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a configuration warning.").to_owned()),
 			"strict_review_notice" => ("execution_notice", "Codex requested additional safety checks for this turn. Tool calls may take longer; no action is required for this notice.".into()),
 			"activity_started" | "activity_completed" => ("activity", String::new()),
@@ -4301,6 +4313,8 @@ fn render_chief_history(
 					| "activity_completed"
 					| "assistant_message"
 					| "context_compacted"
+					| "auth_recovery_started"
+					| "auth_recovery_completed"
 					| "strict_review_notice"
 					| "config_warning"
 			)

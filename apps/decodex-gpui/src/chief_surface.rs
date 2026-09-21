@@ -1578,7 +1578,22 @@ fn detail(label: &str, value: &str) -> impl IntoElement {
 		.child(div().text_size(px(ui_theme::BODY_SIZE)).child(value.to_owned()))
 }
 
+fn auth_recovery_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
+	let id = entry.id;
+	div()
+		.w_full()
+		.flex()
+		.flex_col()
+		.gap_1()
+		.debug_selector(move || format!("auth-recovery-receipt-{id}"))
+		.child(muted("Provider sign-in · Recorded event"))
+		.child(entry.text.clone())
+}
+
 fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
+	if entry.kind == "auth_recovery" {
+		return auth_recovery_entry(entry);
+	}
 	let user = entry.kind == "user";
 	if entry.kind == "execution_notice" {
 		return div()
