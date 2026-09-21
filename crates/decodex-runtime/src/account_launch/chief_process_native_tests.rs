@@ -2,6 +2,7 @@
 use super::*;
 #[path = "chief_process_native_context_tests.rs"] mod context;
 #[path = "chief_process_native_misalignment_tests.rs"] mod misalignment;
+#[path = "chief_process_native_realtime_tests.rs"] mod realtime;
 #[path = "chief_process_native_usage_tests.rs"] mod usage;
 use serde_json::json;
 use std::{
@@ -332,6 +333,16 @@ async fn serve_with_usage(
 	bodies: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
 	usage: fn(usize) -> Value,
 ) {
+	serve_with_text(listener, requests, bodies, usage, |_| "Native bridge answer").await;
+}
+
+async fn serve_with_text(
+	listener: tokio::net::TcpListener,
+	requests: Arc<std::sync::atomic::AtomicUsize>,
+	bodies: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
+	usage: fn(usize) -> Value,
+	text: fn(usize) -> &'static str,
+) {
 	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = tokio::io::BufReader::new(socket);
@@ -360,7 +371,7 @@ async fn serve_with_usage(
 		let id = format!("fixture-{serial}");
 		let frames = [
 			json!({"type":"response.created","response":{"id":id}}),
-			json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]}}),
+			json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":text(serial)}]}}),
 			json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":usage(serial)}}),
 		];
 		let data = frames
