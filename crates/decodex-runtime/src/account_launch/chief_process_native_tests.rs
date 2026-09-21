@@ -29,7 +29,7 @@ async fn installed_native_account_settings_cross_retained_bridge_and_cold_restar
 	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	assert!(std::path::Path::new(&binary).is_absolute());
 	let home = tempfile::tempdir().unwrap();
-	std::fs::write(home.path().join("config.toml"), "model = \"gpt-5.6-sol\"\n").unwrap();
+	assert!(!home.path().join("config.toml").exists());
 	let cwd = home.path().to_str().unwrap();
 	let session = NativeSession::start(&binary, home.path());
 	let saved = tokio::time::timeout(Duration::from_secs(20), async {
@@ -58,6 +58,7 @@ async fn installed_native_account_settings_cross_retained_bridge_and_cold_restar
 	})
 	.await
 	.unwrap();
+	assert!(home.path().join("config.toml").is_file());
 	drop(session);
 	let reopened = NativeSession::start(&binary, home.path());
 	tokio::time::timeout(Duration::from_secs(20), async {
