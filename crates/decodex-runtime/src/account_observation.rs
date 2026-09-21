@@ -146,6 +146,7 @@ async fn persist_direct_quotas(
 				account_revision: inventory.account_revision,
 				observed_at_unix_micros: now,
 				ordinary_usage_allowed: inventory.ordinary_usage_allowed,
+				conditions: inventory.conditions,
 			},
 			accepted,
 		)

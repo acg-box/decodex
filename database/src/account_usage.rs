@@ -12,9 +12,10 @@ pub(crate) fn read_usage_observation(
 	account_id: &AccountId,
 ) -> Result<Option<AccountUsageObservation>, StoreError> {
 	Ok(connection.query_row(
-		"SELECT account_revision, observed_at_micros, ordinary_usage_allowed FROM account_usage_observations WHERE account_id=?1",
+		"SELECT account_revision, observed_at_micros, ordinary_usage_allowed, has_credits, unlimited_credits, spend_control_reached, rate_limit_reached FROM account_usage_observations WHERE account_id=?1",
 		[account_id.as_str()], |row| Ok(AccountUsageObservation {
 			account_revision: row.get(0)?, observed_at_unix_micros: row.get(1)?, ordinary_usage_allowed: row.get(2)?,
+			conditions: decodex_core::AccountUsageConditions { has_credits: row.get(3)?, unlimited_credits: row.get(4)?, spend_control_reached: row.get(5)?, rate_limit_reached: row.get(6)? },
 		})
 	).optional().map_err(sqlite_error)?)
 }
@@ -51,14 +52,14 @@ impl SqliteStore {
 					write_window(&tx, &account_id, observation.observed_at_unix_micros, if index == 0 { 300 } else { 10080 }, window)?;
 				}
 			}
-			tx.execute("INSERT INTO account_usage_observations(account_id,account_revision,observed_at_micros,ordinary_usage_allowed)
-			 VALUES (?1,?2,?3,?4) ON CONFLICT(account_id) DO UPDATE SET account_revision=excluded.account_revision,
-			 observed_at_micros=excluded.observed_at_micros,ordinary_usage_allowed=excluded.ordinary_usage_allowed",
-			 params![account_id.as_str(), observation.account_revision, observation.observed_at_unix_micros, observation.ordinary_usage_allowed]).map_err(sqlite_error)?;
+			tx.execute("INSERT INTO account_usage_observations(account_id,account_revision,observed_at_micros,ordinary_usage_allowed,has_credits,unlimited_credits,spend_control_reached,rate_limit_reached)
+			 VALUES (?1,?2,?3,?4,?5,?6,?7,?8) ON CONFLICT(account_id) DO UPDATE SET account_revision=excluded.account_revision,
+			 observed_at_micros=excluded.observed_at_micros,ordinary_usage_allowed=excluded.ordinary_usage_allowed,has_credits=excluded.has_credits,unlimited_credits=excluded.unlimited_credits,spend_control_reached=excluded.spend_control_reached,rate_limit_reached=excluded.rate_limit_reached",
+			 params![account_id.as_str(), observation.account_revision, observation.observed_at_unix_micros, observation.ordinary_usage_allowed, observation.conditions.has_credits, observation.conditions.unlimited_credits, observation.conditions.spend_control_reached, observation.conditions.rate_limit_reached]).map_err(sqlite_error)?;
 			tx.execute("UPDATE accounts SET state=CASE WHEN ?2=0 THEN 'depleted' WHEN ?2=1 THEN 'available'
 			 WHEN EXISTS(SELECT 1 FROM account_quota_facts WHERE account_id=?1 AND error_code IS NULL AND used_percent>=100)
 			 THEN 'depleted' ELSE 'available' END, updated_at_micros=?3 WHERE account_id=?1",
-			 params![account_id.as_str(), observation.ordinary_usage_allowed, observation.observed_at_unix_micros]).map_err(sqlite_error)?;
+			 params![account_id.as_str(), observation.conditions.ordinary_requests_allowed(observation.ordinary_usage_allowed), observation.observed_at_unix_micros]).map_err(sqlite_error)?;
 			tx.commit().map_err(sqlite_error)?;
 			Ok(true)
 		}).await
@@ -99,6 +100,44 @@ mod tests {
 	use decodex_core::{AccountQuotaWindow, DecodexRoot};
 
 	#[tokio::test]
+	async fn credits_remain_distinct_from_included_permission_after_reopen() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let account = AccountId::new("10000000-0000-4000-8000-000000000001").unwrap();
+		let id = account.clone();
+		store.run(move |connection| {
+			connection.execute("INSERT INTO account_identities VALUES (?1,1)", [id.as_str()]).unwrap();
+			connection.execute("INSERT INTO accounts (account_id,display_label,enabled,state,revision,provider,provider_account_id,created_at_micros,updated_at_micros) VALUES (?1,'test',1,'available',1,'chatgpt','provider',1,1)", [id.as_str()]).unwrap();
+			Ok(())
+		}).await.unwrap();
+		let observation = AccountUsageObservation {
+			account_revision: 1,
+			observed_at_unix_micros: 100,
+			ordinary_usage_allowed: Some(false),
+			conditions: decodex_core::AccountUsageConditions {
+				has_credits: Some(true),
+				unlimited_credits: Some(false),
+				spend_control_reached: Some(false),
+				rate_limit_reached: None,
+			},
+		};
+		assert!(store.observe_account_usage(&account, observation, [None, None]).await.unwrap());
+		let reopened = SqliteStore::open(&root.paths()).unwrap();
+		reopened
+			.run(move |connection| {
+				assert_eq!(read_usage_observation(connection, &account)?, Some(observation));
+				let state: String = connection
+					.query_row("SELECT state FROM accounts", [], |row| row.get(0))
+					.unwrap();
+				assert_eq!(state, "available");
+				Ok(())
+			})
+			.await
+			.unwrap();
+	}
+
+	#[tokio::test]
 	async fn permission_and_windows_survive_restart_and_reject_rotated_or_older_responses() {
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
@@ -114,6 +153,7 @@ mod tests {
 			account_revision: 1,
 			observed_at_unix_micros: 100,
 			ordinary_usage_allowed: Some(false),
+			conditions: Default::default(),
 		};
 		let window = AccountQuotaWindowObservation {
 			duration_minutes: 10080,
@@ -161,6 +201,7 @@ mod tests {
 			account_revision: 2,
 			observed_at_unix_micros: 300,
 			ordinary_usage_allowed: None,
+			conditions: Default::default(),
 		};
 		assert!(reopened.observe_account_usage(&account, successor, [None, None]).await.unwrap());
 		assert!(

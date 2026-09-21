@@ -412,6 +412,33 @@ impl AccountQuotaWindowObservation {
 	}
 }
 
+/// Account-wide credit and spending facts from an identity-checked usage read.
+/// Model-specific banners are not account-wide limits.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct AccountUsageConditions {
+	/// Whether the provider reports usable credits; absent is not zero.
+	pub has_credits: Option<bool>,
+	/// Whether the provider reports unlimited credits.
+	pub unlimited_credits: Option<bool>,
+	/// Whether the account's spending control has been reached.
+	pub spend_control_reached: Option<bool>,
+	/// Whether the provider reports an account-wide usage limit.
+	pub rate_limit_reached: Option<bool>,
+}
+
+impl AccountUsageConditions {
+	/// Combine included usage and existing credits without overriding account-wide limits.
+	/// Credit flags alone cannot authorize recovery when included permission is unavailable.
+	pub fn ordinary_requests_allowed(self, included: Option<bool>) -> Option<bool> {
+		if self.spend_control_reached == Some(true) || self.rate_limit_reached == Some(true) {
+			return Some(false);
+		}
+		included.map(|allowed| {
+			allowed || self.has_credits == Some(true) || self.unlimited_credits == Some(true)
+		})
+	}
+}
+
 /// Provider permission from one exact credential revision and usage observation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountUsageObservation {
@@ -419,8 +446,10 @@ pub struct AccountUsageObservation {
 	pub account_revision: i64,
 	/// Observation time in Unix microseconds.
 	pub observed_at_unix_micros: i64,
-	/// Identity-checked backend permission; absent for older or unmatched responses.
+	/// Identity-checked permission for included usage, independent of purchased credits.
 	pub ordinary_usage_allowed: Option<bool>,
+	/// Independent credit and account-wide spending facts from the same response.
+	pub conditions: AccountUsageConditions,
 }
 
 /// Credential-negative account registry view owned by durable-store.

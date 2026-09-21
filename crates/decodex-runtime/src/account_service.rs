@@ -4704,14 +4704,26 @@ fn quota_selection_score(
 			|| observation.observed_at_unix_micros <= 0
 			|| observation.observed_at_unix_micros > now
 			|| now.saturating_sub(observation.observed_at_unix_micros) > 300_000_000
-			|| observation.ordinary_usage_allowed == Some(false)
 		{
 			return Err(AccountSelectionRecovery::RefreshQuota);
 		}
-		observation.ordinary_usage_allowed
+		observation.conditions.ordinary_requests_allowed(observation.ordinary_usage_allowed)
 	} else {
 		None
 	};
+	if allowed == Some(false) {
+		return Err(AccountSelectionRecovery::RefreshQuota);
+	}
+	if allowed == Some(true) {
+		// Authoritative permission can outlive a displayed window or accompany credits-only
+		// accounts. Missing utilization ranks last; it must not veto known permission.
+		let five = match account.five_hour_quota.disposition {
+			decodex_core::AccountQuotaDisposition::NotApplicable => 0,
+			_ => account.five_hour_quota.current().map_or(100, |fact| fact.used_percent),
+		};
+		let seven = account.seven_day_quota.current().map_or(100, |fact| fact.used_percent);
+		return Ok((five.max(seven), five));
+	}
 	// All callers use the store's fresh AccountRecord projection: expired absence
 	// is returned as Unknown, just as expired numerical facts are returned as Stale.
 	let seven = account
@@ -7413,6 +7425,7 @@ mod tests {
 			account_revision: account.revision,
 			observed_at_unix_micros: 900,
 			ordinary_usage_allowed: Some(false),
+			conditions: Default::default(),
 		};
 		account.usage_observation = Some(observation);
 		assert_eq!(
@@ -7436,6 +7449,7 @@ mod tests {
 				account_revision: revision,
 				observed_at_unix_micros: observed,
 				ordinary_usage_allowed: Some(true),
+				conditions: Default::default(),
 			});
 			assert_eq!(
 				super::quota_selection_score(&account, 1000),
@@ -7446,6 +7460,36 @@ mod tests {
 			Some(AccountUsageObservation { ordinary_usage_allowed: Some(true), ..observation });
 		assert_eq!(
 			super::quota_selection_score(&account, 300_000_901),
+			Err(AccountSelectionRecovery::RefreshQuota)
+		);
+	}
+
+	#[test]
+	fn paid_capacity_routes_without_window_data_but_respects_account_limits() {
+		use decodex_core::AccountSelectionRecovery;
+		let mut account = projection_account(None);
+		let mut observation = decodex_core::AccountUsageObservation {
+			account_revision: account.revision,
+			observed_at_unix_micros: 900,
+			ordinary_usage_allowed: Some(false),
+			conditions: decodex_core::AccountUsageConditions {
+				has_credits: Some(true),
+				..Default::default()
+			},
+		};
+		account.usage_observation = Some(observation);
+		assert_eq!(super::quota_selection_score(&account, 1000), Ok((100, 100)));
+		observation.conditions.spend_control_reached = Some(true);
+		account.usage_observation = Some(observation);
+		assert_eq!(
+			super::quota_selection_score(&account, 1000),
+			Err(AccountSelectionRecovery::RefreshQuota)
+		);
+		observation.conditions.spend_control_reached = Some(false);
+		observation.conditions.rate_limit_reached = Some(true);
+		account.usage_observation = Some(observation);
+		assert_eq!(
+			super::quota_selection_score(&account, 1000),
 			Err(AccountSelectionRecovery::RefreshQuota)
 		);
 	}
