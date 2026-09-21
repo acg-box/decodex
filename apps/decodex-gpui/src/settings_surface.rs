@@ -328,6 +328,54 @@ impl SettingsSurface {
 }
 
 impl SettingsSurface {
+	fn notification_count_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		let enabled = crate::shell::notification_count_preference(None);
+		ui_theme::settings_row()
+			.px_0()
+			.child(div().flex_1().child("Show notification count"))
+			.child(
+				div()
+					.id("notification-count-preference")
+					.role(Role::Switch)
+					.aria_label("Show notification count")
+					.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
+					.tab_index(0)
+					.w(px(36.))
+					.h(px(20.))
+					.p(px(2.))
+					.flex()
+					.items_center()
+					.rounded_full()
+					.border_1()
+					.border_color(rgb(if enabled { BLUE } else { LINE }))
+					.bg(if enabled { rgba(0x8baaf730) } else { rgba(0xffffff0c) })
+					.cursor_pointer()
+					.hover(|d| d.border_color(rgb(TEXT_MUTED)))
+					.focus_visible(|d| d.border_color(rgb(BLUE)))
+					.on_click(cx.listener(move |_, _, _, cx| {
+						crate::shell::notification_count_preference(Some(!enabled));
+						cx.refresh_windows();
+					}))
+					.on_key_down(cx.listener(move |_, event: &gpui::KeyDownEvent, _, cx| {
+						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+							crate::shell::notification_count_preference(Some(!enabled));
+							cx.refresh_windows();
+							cx.stop_propagation();
+						}
+					}))
+					.child(switch_knob(
+						"notification-count-knob",
+						enabled,
+						div().size(px(14.)).rounded_full().bg(rgb(if enabled {
+							BLUE
+						} else {
+							TEXT_MUTED
+						})),
+					))
+					.smooth(),
+			)
+	}
+
 	fn cursor_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		use crate::composer_input::cursor::{Preference, Shape};
 		let current = Preference::configured();
@@ -472,6 +520,7 @@ impl Render for SettingsSurface {
 							.child(ui_theme::settings_title("General"))
 							.child(self.glass_controls(cx))
 							.child(self.cursor_controls(cx))
+							.child(self.notification_count_control(cx))
 							.child(
 								div().flex().flex_col().gap(px(8.0)).child(
 									div()

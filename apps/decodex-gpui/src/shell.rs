@@ -4,6 +4,7 @@
 mod native_status;
 #[path = "shell_status.rs"] mod status;
 use crate::ui_motion::SmoothControl;
+pub(crate) use status::count_preference as notification_count_preference;
 
 #[path = "chief_surface.rs"] pub(crate) mod chief_surface;
 use chief_surface::ChiefSurface;
@@ -535,7 +536,6 @@ pub(crate) struct Shell {
 	titlebar_drag_pending: bool,
 	navigation: navigation::NavigationHistory,
 	status_open: bool,
-	notification_count: bool,
 	dismissed_notifications: std::cell::RefCell<std::collections::HashSet<(String, String)>>,
 	#[cfg(all(target_os = "macos", not(test)))]
 	native_status: native_status::NativeStatus,
@@ -649,7 +649,6 @@ impl Shell {
 			titlebar_drag_pending: false,
 			navigation: navigation::NavigationHistory::new(),
 			status_open: false,
-			notification_count: status::count_preference(None),
 			dismissed_notifications: Default::default(),
 			#[cfg(all(target_os = "macos", not(test)))]
 			native_status: Default::default(),

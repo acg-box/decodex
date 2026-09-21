@@ -123,7 +123,7 @@ impl Shell {
 					} else {
 						workspace_symbols::Symbol::BellInfo
 					}))
-					.when(self.notification_count && !notices.is_empty(), |d| {
+					.when(count_preference(None) && !notices.is_empty(), |d| {
 						d.child(
 							div()
 								.absolute()
@@ -429,35 +429,6 @@ impl Shell {
 							})
 					})),
 			)
-			.child(self.notification_count_control(cx))
-			.into_any_element()
-	}
-
-	fn notification_count_control(&self, cx: &mut Context<Self>) -> AnyElement {
-		div()
-			.id("notification-count-preference")
-			.role(Role::CheckBox)
-			.aria_label("Show notification count")
-			.aria_toggled(if self.notification_count {
-				gpui::Toggled::True
-			} else {
-				gpui::Toggled::False
-			})
-			.flex()
-			.items_center()
-			.justify_between()
-			.h(px(24.))
-			.text_size(px(11.))
-			.text_color(rgb(WB_TEXT_MUTED))
-			.cursor_pointer()
-			.hover(|d| d.text_color(rgb(WB_TEXT)))
-			.on_click(cx.listener(|s, _, _, cx| {
-				s.notification_count = !s.notification_count;
-				count_preference(Some(s.notification_count));
-				cx.notify();
-			}))
-			.child("Show count")
-			.child(if self.notification_count { "On" } else { "Off" })
 			.into_any_element()
 	}
 
@@ -510,9 +481,26 @@ impl Shell {
 	}
 }
 
+pub(crate) fn count_preference(value: Option<bool>) -> bool {
+	use std::sync::atomic::{AtomicU8, Ordering};
+	static COUNT: AtomicU8 = AtomicU8::new(u8::MAX);
+	if let Some(value) = value {
+		stored_count_preference(Some(value));
+		COUNT.store(u8::from(value), Ordering::Relaxed);
+		return value;
+	}
+	let cached = COUNT.load(Ordering::Relaxed);
+	if cached != u8::MAX {
+		return cached != 0;
+	}
+	let value = stored_count_preference(None);
+	COUNT.store(u8::from(value), Ordering::Relaxed);
+	value
+}
+
 // Host-local appearance only; clearing notices never changes service state.
 #[cfg(all(target_os = "macos", not(test)))]
-pub(super) fn count_preference(value: Option<bool>) -> bool {
+fn stored_count_preference(value: Option<bool>) -> bool {
 	use objc2::{
 		msg_send,
 		rc::Retained,
@@ -529,7 +517,7 @@ pub(super) fn count_preference(value: Option<bool>) -> bool {
 	}
 }
 #[cfg(not(all(target_os = "macos", not(test))))]
-pub(super) fn count_preference(value: Option<bool>) -> bool {
+fn stored_count_preference(value: Option<bool>) -> bool {
 	value.unwrap_or(false)
 }
 
