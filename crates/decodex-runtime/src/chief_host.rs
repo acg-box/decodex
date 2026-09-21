@@ -292,6 +292,17 @@ impl ChiefHost {
 		result.map(|v| v.state).unwrap_or(ChiefInstallState::Unavailable)
 	}
 
+	pub(crate) async fn model_settings(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefModelSettingsResult {
+		crate::chief_model_settings::read(&self.store, || async {
+			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+			self.timeline_source(work, &owner.codex_thread_id?).await
+		})
+		.await
+	}
+
 	pub(crate) async fn live_reviewer(
 		&self,
 		work: &str,

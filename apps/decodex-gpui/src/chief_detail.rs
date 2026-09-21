@@ -11,6 +11,7 @@ pub(super) struct ActivityDetailState {
 
 impl ChiefSurface {
 	pub(super) fn clear_activity_detail(&mut self) {
+		self.reset_model_settings();
 		self.activity_detail.revision += 1;
 		self.activity_detail.value = None;
 		self.activity_detail.task = None;

@@ -399,6 +399,38 @@ impl ChiefClient {
 		}
 	}
 
+	/// Read configured model settings without activating the task.
+	pub async fn model_settings(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefModelSettingsResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(45),
+		};
+		let completed = time::timeout(
+			Duration::from_secs(45),
+			transport.query_inner(
+				"chief-model-settings",
+				QueryPayload::GetChiefModelSettings { work_id: work_id.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefModelSettings(result) => {
+				if matches!(&result, crate::ChiefModelSettingsResult::Available {work_id: owner,..} if owner != &work_id)
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Inspect one live task and its last local reviewer publication.
 	pub async fn live_reviewer(
 		&self,
@@ -3095,7 +3127,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 47 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 48 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

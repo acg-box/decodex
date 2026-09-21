@@ -4,6 +4,8 @@
 mod account_login;
 mod chief;
 mod chief_app_settings;
+mod chief_model_settings;
+pub use chief_model_settings::ChiefModelSettingsResult;
 mod chief_live_settings;
 pub use chief_live_settings::{ChiefLiveReviewerOutcome, ChiefLiveReviewerState};
 mod chief_archive;
@@ -166,7 +168,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 47 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 48 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

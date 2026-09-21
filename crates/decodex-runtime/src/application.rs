@@ -349,6 +349,20 @@ impl ServiceApplication {
 		QueryResultPayload::ChiefSnapshot(result)
 	}
 
+	async fn query_resources(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefResources(match &self.chief {
+			Some(chief) => chief.resources(work).await,
+			None => decodex_protocol::ChiefResourcesResult::Unavailable,
+		})
+	}
+
+	async fn query_model_settings(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefModelSettings(match &self.chief {
+			Some(chief) => chief.model_settings(work).await,
+			None => decodex_protocol::ChiefModelSettingsResult::Unavailable,
+		})
+	}
+
 	async fn query_live_reviewer(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::ChiefLiveReviewer(match &self.chief {
 			Some(chief) => chief.live_reviewer(work).await,
@@ -1963,10 +1977,7 @@ impl Application for ServiceApplication {
 				}),
 
 			QueryPayload::GetChiefResources { work_id } =>
-				QueryResultPayload::ChiefResources(match &self.chief {
-					Some(chief) => chief.resources(work_id.as_str()).await,
-					None => decodex_protocol::ChiefResourcesResult::Unavailable,
-				}),
+				self.query_resources(work_id.as_str()).await,
 
 			QueryPayload::ExchangeMcpLogin { request } =>
 				QueryResultPayload::McpLogin(query_mcp_login(self.chief.as_ref(), request).await),
@@ -2003,6 +2014,8 @@ impl Application for ServiceApplication {
 				}),
 			QueryPayload::GetChiefInstallState { work_id, event_id } =>
 				self.query_install_state(work_id.as_str(), *event_id).await,
+			QueryPayload::GetChiefModelSettings { work_id } =>
+				self.query_model_settings(work_id.as_str()).await,
 			QueryPayload::GetChiefLiveReviewer { work_id } =>
 				self.query_live_reviewer(work_id.as_str()).await,
 			QueryPayload::GetChiefAppSettings { work_id, event_id } =>

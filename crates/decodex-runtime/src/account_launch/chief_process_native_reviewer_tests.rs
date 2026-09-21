@@ -38,6 +38,7 @@ async fn qualify(updated: Reviewer) {
 		assert_eq!(method, "item/tool/call");
 		let pending = session.client.server_request_guard(&id, &method, &params).expect("native reviewer fixture");
 		let owned=store::OwnedReviewer::new(home.path(),&session.client,thread,turn).await;
+		owned.observe_model().await;
 		owned.publish(turn,updated).await;
 		assert_eq!(requests.load(Ordering::Acquire), 1, "settings update cannot release pending tool");
 		assert!(session.client.server_request_guard(&id, &method, &params).is_some());
@@ -45,6 +46,7 @@ async fn qualify(updated: Reviewer) {
 		if updated==Reviewer::User { decline_command(&session.client,&mut session.events,turn).await; }
 		finish(&mut session.events).await;
 		owned.completed_target(turn).await;
+		owned.observe_model().await;
 		assert_eq!(requests.load(Ordering::Acquire), if updated==Reviewer::User {3} else {4});
 		let next=session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Run the next isolated turn."}]})).await.expect("native reviewer fixture");
 		if updated==Reviewer::AutoReview {decline_command(&session.client,&mut session.events,next["turn"]["id"].as_str().expect("native reviewer fixture")).await;}

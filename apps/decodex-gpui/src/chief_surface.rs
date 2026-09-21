@@ -19,6 +19,7 @@
 #[path = "chief_markdown.rs"] mod markdown;
 #[path = "chief_mcp_forms.rs"] mod mcp_forms;
 #[path = "chief_misalignment.rs"] mod misalignment;
+#[path = "chief_model_settings.rs"] mod model_settings;
 #[path = "chief_timeline.rs"] mod native_timeline;
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
@@ -174,6 +175,7 @@ pub(crate) struct ChiefSurface {
 	installation: install::Panel,
 	app_settings: app_settings::Panel,
 	live_reviewer: live_settings::Panel,
+	model_settings: model_settings::Panel,
 	mcp_url_opened: Option<(i64, String)>,
 	mcp_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
 	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
@@ -251,6 +253,10 @@ impl ChiefSurface {
 
 	pub(crate) fn new(cx: &mut Context<Self>) -> Self {
 		let inputs = Self::new_inputs(cx);
+		Self::with_inputs(inputs, cx)
+	}
+
+	fn with_inputs(inputs: ChiefInputs, cx: &mut Context<Self>) -> Self {
 		Self {
 			voice: None,
 			voice_task: None,
@@ -355,6 +361,7 @@ impl ChiefSurface {
 			installation: Default::default(),
 			app_settings: Default::default(),
 			live_reviewer: Default::default(),
+			model_settings: Default::default(),
 			mcp_url_opened: None,
 			mcp_inputs: Default::default(),
 			mcp_answers: Default::default(),
@@ -980,6 +987,7 @@ impl ChiefSurface {
 		}
 		match result {
 			Ok(ChiefSnapshotResult::Available(snapshot)) => {
+				self.invalidate_model_settings(&snapshot);
 				self.invalidate_live_reviewer_for_snapshot(&snapshot);
 				if self.snapshot.as_ref().is_some_and(|old| {
 					old.work_items.iter().any(|work| {
@@ -1233,7 +1241,8 @@ impl ChiefSurface {
 			.child(detail("Work ID", &work.id))
 			.child(detail("Judgment", judgment(work.status)))
 			.child(detail("Execution", execution(work.dispatch_state)))
-			.child(self.live_reviewer_panel(work, cx));
+			.child(self.live_reviewer_panel(work, cx))
+			.child(self.model_settings_panel(work, cx));
 		if let Some(parent) = &work.parent_goal_id {
 			panel = panel.child(detail("Parent goal", title(snapshot, parent)));
 		}

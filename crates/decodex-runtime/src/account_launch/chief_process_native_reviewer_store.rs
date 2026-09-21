@@ -138,6 +138,17 @@ impl OwnedReviewer {
 		Source { key: key.clone(), client: self.client.clone() }
 	}
 
+	pub(super) async fn observe_model(&self) {
+		let state = crate::chief_model_settings::read(&self.store, || async {
+			Some(self.source(&self.key))
+		})
+		.await;
+		assert!(matches!(state, decodex_protocol::ChiefModelSettingsResult::Available {
+			work_id, thread_id, account_id, model: Some(model), ..
+		} if work_id.as_str() == "root" && thread_id.as_str() == self.key.thread
+			&& account_id.as_str() == ACCOUNT && model.as_str() == "gpt-5.6-sol"));
+	}
+
 	pub(super) async fn publish(&self, turn: &str, reviewer: ChiefAppReviewer) {
 		let state = crate::chief_live_settings::read(&self.store, || async {
 			Some(self.source(&self.key))
@@ -260,3 +271,5 @@ fn seed_account(root: &DecodexRoot) {
 		)
 		.expect("inert fixture credential row");
 }
+
+#[path = "chief_process_model_settings_tests.rs"] mod model_settings_tests;
