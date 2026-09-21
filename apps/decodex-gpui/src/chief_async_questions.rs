@@ -91,9 +91,7 @@ impl ChiefSurface {
 		}
 		let mut panel = div().flex().flex_col().gap_3();
 		if *questions_recovering {
-			return panel
-				.child(muted("Questions are being restored from conversation history."))
-				.into_any_element();
+			return div().into_any_element();
 		}
 		for question in questions {
 			let key = (work.id.clone(), question.id.clone());
@@ -183,7 +181,8 @@ mod tests {
 			let mut history = ChiefHistoryResult::Available {
 				questions: vec![first.clone(), second.clone()],
 				questions_truncated: false,
-				questions_recovering: false, misalignment: None,
+				questions_recovering: false,
+				misalignment: None,
 				usage: None,
 				entries: vec![],
 				has_more: false,
@@ -245,7 +244,8 @@ mod tests {
 					options: vec!["PDF".into(), "Markdown".into()],
 				}],
 				questions_truncated: false,
-				questions_recovering: false, misalignment: None,
+				questions_recovering: false,
+				misalignment: None,
 				usage: None,
 				entries: vec![],
 				has_more: false,

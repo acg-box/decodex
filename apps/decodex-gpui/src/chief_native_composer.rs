@@ -49,6 +49,7 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) {
 		let requested = allowed
+			&& !self.selected_is_archived()
 			&& self.selected_is_manager()
 			&& native_glass_panel::available()
 			&& self.resources.is_none()

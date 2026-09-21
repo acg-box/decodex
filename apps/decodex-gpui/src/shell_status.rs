@@ -8,6 +8,7 @@ enum Recovery {
 	Accounts,
 	None,
 	RefreshChief,
+	RefreshArchive,
 	LoginItems,
 }
 struct Notice {
@@ -187,12 +188,17 @@ impl Shell {
 				if retry { Recovery::RefreshChief } else { Recovery::None },
 			));
 		}
-		notices.extend(
-			chief
-				.operation_notices()
-				.into_iter()
-				.map(|(title, detail)| Notice::new(title, detail, Recovery::None)),
-		);
+		notices.extend(chief.operation_notices().into_iter().map(|(title, detail)| {
+			Notice::new(
+				title,
+				detail,
+				if title == "Conversation status" {
+					Recovery::RefreshArchive
+				} else {
+					Recovery::None
+				},
+			)
+		}));
 		if connection.label != "Online" {
 			notices.push(Notice::new(
 				connection.label,
@@ -443,7 +449,7 @@ impl Shell {
 			Recovery::General => "Settings",
 			Recovery::Accounts => "Accounts",
 			Recovery::None => unreachable!(),
-			Recovery::RefreshChief => "Refresh",
+			Recovery::RefreshChief | Recovery::RefreshArchive => "Refresh",
 			Recovery::LoginItems => "Open Login Items",
 		};
 		div()
@@ -464,6 +470,8 @@ impl Shell {
 				s.status_open = false;
 				match recovery {
 					Recovery::RefreshChief => s.chief.update(cx, |chief, cx| chief.refresh(cx)),
+					Recovery::RefreshArchive =>
+						s.chief.update(cx, |chief, cx| chief.load_archive_state(true, cx)),
 					Recovery::LoginItems => s.settings.update(cx, |settings, cx| {
 						settings.open_login_items_settings(event, window, cx)
 					}),

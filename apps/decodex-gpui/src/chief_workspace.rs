@@ -502,6 +502,8 @@ impl ChiefSurface {
 			.flex_col()
 			.rounded(px(14.))
 			.bg(rgba(ui_theme::CHIEF_CHAT_OVERLAY));
+		chat = chat
+			.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)));
 		if !is_chief {
 			chat = chat.child(worker_status(selected.as_ref()));
 		}
@@ -540,7 +542,6 @@ impl ChiefSurface {
 						)
 						.child(self.misalignment_panel(work, cx))
 						.child(self.guardian_panel(work, cx))
-						.child(self.archive_panel(work, cx))
 						.child(self.request_panel(snapshot, work, cx))
 						.child(self.async_question_panel(work, cx))
 						.into_any_element()
@@ -563,9 +564,9 @@ impl ChiefSurface {
 				.child(transcript)
 				.child(self.latest_button(window, cx)),
 		);
-		if is_chief && selected.is_some() {
+		if is_chief && selected.is_some() && !self.selected_is_archived() {
 			chat = chat.child(self.floating_composer(window, cx));
-		} else if let Some(work) = selected {
+		} else if !is_chief && let Some(work) = selected {
 			chat = chat
 				.child(self.conversation_activity(cx))
 				.child(self.workspace_followup(&work, cx));

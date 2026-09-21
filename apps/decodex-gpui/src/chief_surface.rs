@@ -567,6 +567,9 @@ impl ChiefSurface {
 	}
 
 	fn submit(&mut self, cx: &mut Context<Self>) {
+		if self.selected_is_archived() {
+			return;
+		}
 		if self.voice.is_some() {
 			return;
 		}
@@ -958,7 +961,7 @@ impl ChiefSurface {
 
 	pub(crate) fn operation_notices(&self) -> Vec<(&'static str, String)> {
 		[
-			("Session recovery", &self.archive.feedback),
+			("Conversation status", &self.archive.feedback),
 			("Review", &self.guardian.feedback),
 			("Installation", &self.installation.feedback),
 			("Tools and plugins", &self.integration_feedback),
@@ -1077,7 +1080,6 @@ impl ChiefSurface {
 			)
 			.child(self.misalignment_panel(work, cx))
 			.child(self.guardian_panel(work, cx))
-			.child(self.archive_panel(work, cx))
 			.child(self.request_panel(snapshot, work, cx))
 			.child(self.async_question_panel(work, cx))
 			.child(self.history_panel(work, cx))
