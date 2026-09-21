@@ -152,6 +152,60 @@ fn quoted_key(value: &str) -> String {
 	format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
+/// Validate the narrow native write envelope accepted by the retained process bridge.
+/// Native configuration still owns writable-file, version and managed-policy validation.
+pub fn is_app_link_settings_write(params: &Value) -> bool {
+	let Some(object) = params.as_object() else { return false };
+	if object.len() != 4
+		|| params["reloadUserConfig"] != true
+		|| !params["filePath"].as_str().is_some_and(|p| Path::new(p).is_absolute())
+		|| required_string(&params["expectedVersion"]).is_err()
+	{
+		return false;
+	}
+	let Some(edits) = params["edits"].as_array().filter(|edits| edits.len() == 1) else {
+		return false;
+	};
+	let edit = &edits[0];
+	if !edit.as_object().is_some_and(|edit| edit.len() == 3)
+		|| edit["mergeStrategy"] != "replace"
+		|| edit.get("value").is_none()
+	{
+		return false;
+	}
+	let Some(path) = edit["keyPath"].as_str().and_then(|p| p.strip_prefix("apps.")) else {
+		return false;
+	};
+	let Some((app, path)) = take_quoted_key(path) else { return false };
+	let Some(path) = path.strip_prefix(".links.") else { return false };
+	let Some((link, field)) = take_quoted_key(path) else { return false };
+	if !valid_identity(&app) || !valid_identity(&link) {
+		return false;
+	}
+	let allowed: &[&str] = match field {
+		".default_tools_approval_mode" => &["auto", "prompt", "writes", "approve"],
+		".approvals_reviewer" => &["user", "auto_review"],
+		_ => return false,
+	};
+	edit["value"].is_null() || edit["value"].as_str().is_some_and(|v| allowed.contains(&v))
+}
+
+fn take_quoted_key(path: &str) -> Option<(String, &str)> {
+	let mut decoded = String::new();
+	let mut chars = path.strip_prefix('"')?.char_indices();
+	while let Some((index, ch)) = chars.next() {
+		match ch {
+			'"' => return Some((decoded, &path[index + 2..])),
+			'\\' => match chars.next()?.1 {
+				escaped @ ('\\' | '"') => decoded.push(escaped),
+				_ => return None,
+			},
+			_ => decoded.push(ch),
+		}
+	}
+	None
+}
+
 fn required_string(value: &Value) -> Result<String, ClientError> {
 	value.as_str().filter(|s| valid_identity(s)).map(str::to_owned).ok_or(ClientError::InvalidFrame)
 }

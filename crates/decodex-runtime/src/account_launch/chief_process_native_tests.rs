@@ -23,6 +23,66 @@ impl Drop for NativeChild {
 }
 
 #[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native settings through retained bridge"]
+async fn installed_native_account_settings_cross_retained_bridge_and_cold_restart() {
+	use decodex_codex::app_server_client::AppLinkSettingEdit;
+	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	assert!(std::path::Path::new(&binary).is_absolute());
+	let home = tempfile::tempdir().unwrap();
+	std::fs::write(home.path().join("config.toml"), "model = \"gpt-5.6-sol\"\n").unwrap();
+	let cwd = home.path().to_str().unwrap();
+	let session = NativeSession::start(&binary, home.path());
+	let saved = tokio::time::timeout(Duration::from_secs(20), async {
+		let before =
+			session.client.app_link_settings(cwd, "calendar.app", "工作.\"link\\1").await.unwrap();
+		let saved = session
+			.client
+			.write_app_link_setting(
+				&before,
+				AppLinkSettingEdit::ApprovalMode(Some("prompt".into())),
+			)
+			.await
+			.unwrap();
+		assert_eq!(saved.settings.effective_mode.as_deref(), Some("prompt"));
+		assert!(matches!(
+			session
+				.client
+				.write_app_link_setting(
+					&before,
+					AppLinkSettingEdit::Reviewer(Some("auto_review".into()))
+				)
+				.await,
+			Err(ClientError::Remote(_))
+		));
+		saved.settings
+	})
+	.await
+	.unwrap();
+	drop(session);
+	let reopened = NativeSession::start(&binary, home.path());
+	tokio::time::timeout(Duration::from_secs(20), async {
+		assert!(matches!(
+			reopened
+				.client
+				.write_app_link_setting(&saved, AppLinkSettingEdit::Reviewer(None))
+				.await,
+			Err(ClientError::InvalidFrame)
+		));
+		let cold =
+			reopened.client.app_link_settings(cwd, "calendar.app", "工作.\"link\\1").await.unwrap();
+		assert_eq!(cold.user_mode.as_deref(), Some("prompt"));
+		let cleared = reopened
+			.client
+			.write_app_link_setting(&cold, AppLinkSettingEdit::ApprovalMode(None))
+			.await
+			.unwrap();
+		assert_eq!(cleared.settings.user_mode, None);
+	})
+	.await
+	.unwrap();
+}
+
+#[tokio::test]
 #[ignore = "requires explicit DECODEX_TEST_CODEX_BINARY; isolated native history qualification"]
 async fn installed_native_history_reads_cross_retained_bridge_without_new_model_work() {
 	let unfiltered = qualify_notification_media(false).await;

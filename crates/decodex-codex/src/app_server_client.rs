@@ -12,7 +12,9 @@ use tokio::{
 
 mod app_link_settings;
 mod archive;
-pub use app_link_settings::{AppLinkSettingEdit, AppLinkSettings, AppLinkSettingsWrite};
+pub use app_link_settings::{
+	AppLinkSettingEdit, AppLinkSettings, AppLinkSettingsWrite, is_app_link_settings_write,
+};
 pub use archive::ThreadArchiveState;
 mod attachments;
 mod history;
