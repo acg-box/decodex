@@ -3,7 +3,7 @@ use decodex_protocol::{ChiefTimelineContent as Content, ChiefTimelineEntry, Chie
 use serde_json::{Value, json};
 mod attachments;
 pub(crate) mod media;
-mod metrics;
+pub(crate) mod metrics;
 mod promotions;
 mod tool_output;
 

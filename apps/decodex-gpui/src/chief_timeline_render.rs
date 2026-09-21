@@ -327,7 +327,7 @@ mod tests {
 					status: Some("failed".into()),
 					duration_ms: Some(100),
 					usage_summary: Some(
-						"Turn tokens: input 120, output 30.\nThread total tokens: 900.".into(),
+						"Turn tokens: input 120, output 30.\nThread total tokens: 900.\nObserved responses: 1. Showing 1 recorded amounts; units are provider-defined.\nResponse fixture: 0.12345678901234567890.".into(),
 					),
 					error: Some(decodex_protocol::ChiefTimelineError {
 						message: "Model is overloaded. Try again.".into(),

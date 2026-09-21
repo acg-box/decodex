@@ -175,7 +175,7 @@ impl ChiefCoordinator {
 			.client
 			.initialize(json!({
 				"clientInfo":{"name":"decodex_chief","version":env!("CARGO_PKG_VERSION")},
-				"capabilities":{"experimentalApi":true}
+				"capabilities":{"experimentalApi":true,"optOutNotificationMethods":["rawResponseItem/completed"]}
 			}))
 			.await?)
 	}
@@ -397,6 +397,7 @@ impl ChiefCoordinator {
 
 	async fn work_thread_params(&self, item: &ChiefWorkItem) -> Result<Value, ChiefError> {
 		let mut params = self.thread_params(self.is_manager(&item.id).await?);
+		params["experimentalRawEvents"] = json!(true);
 		let work = self.store.list_chief_work_items().await?;
 		let workspaces = self.store.chief_workspaces().await?;
 		let mut current = Some(item.id.as_str());

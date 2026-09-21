@@ -25,8 +25,10 @@ mod conversation;
 mod dispatch;
 mod event;
 pub mod guardian;
+mod response_usage;
 mod usage;
 
+pub use response_usage::{ResponseUsage, ResponseUsageMetadata, decode_response_usage};
 pub use usage::{ThreadTokenUsage, TokenUsageBreakdown};
 
 pub use self::{

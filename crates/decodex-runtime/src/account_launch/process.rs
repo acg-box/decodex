@@ -4598,7 +4598,10 @@ fn initialize_probe_connection(
 		ReadOnlyMethod::Initialize,
 		&InitializeParams {
 			client_info: ClientInfo { name: "decodex", version: env!("CARGO_PKG_VERSION") },
-			capabilities: InitializeCapabilities { experimental_api: true },
+			capabilities: InitializeCapabilities {
+				experimental_api: true,
+				opt_out_notification_methods: &["rawResponseItem/completed"],
+			},
 		},
 		timeout,
 	) {
@@ -7363,7 +7366,10 @@ pub(crate) mod tests {
 				ReadOnlyMethod::Initialize,
 				&InitializeParams {
 					client_info: ClientInfo { name: "decodex-test", version: "0" },
-					capabilities: InitializeCapabilities { experimental_api: true },
+					capabilities: InitializeCapabilities {
+						experimental_api: true,
+						opt_out_notification_methods: &["rawResponseItem/completed"],
+					},
 				},
 				timeout,
 			)
