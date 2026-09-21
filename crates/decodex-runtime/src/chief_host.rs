@@ -111,6 +111,21 @@ impl ChiefHost {
 		self.voice.exchange(request)
 	}
 
+	pub(crate) fn can_continue_misalignment(
+		&self,
+		review: &decodex_database::ChiefMisalignment,
+	) -> bool {
+		let Some((_, client)) = self.runtime.chief_catalog_client() else {
+			return false;
+		};
+		client.live_misalignment_review(&review.thread_id, &review.turn_id).is_some_and(
+			|(error, guard)| {
+				guard.is_live()
+					&& crate::chief::misalignment::details(&error) == review.details_json
+			},
+		)
+	}
+
 	pub(crate) async fn dictation(
 		&self,
 		request: &decodex_protocol::DictationRequest,

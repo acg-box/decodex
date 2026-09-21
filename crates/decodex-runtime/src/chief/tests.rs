@@ -227,7 +227,8 @@ pub(super) async fn fixture_with_history(
 	let store = SqliteStore::open(&root.paths()).unwrap();
 	let (client_io, server_io) = tokio::io::duplex(65536);
 	let (reader, writer) = tokio::io::split(client_io);
-	let (client, _events) = AppServerClient::from_io(reader, writer);
+	let (client, mut events) = AppServerClient::from_io(reader, writer);
+	tokio::spawn(async move { while events.recv().await.is_some() {} });
 	let (sent, received) = tokio::sync::mpsc::unbounded_channel();
 	tokio::spawn(serve_fixture(server_io, history, sent));
 	(
@@ -439,6 +440,18 @@ async fn serve_fixture(
 			},
 			_ => json!({}),
 		};
+		if request["method"] == "thread/read" && history["_misalignment_revert_on_read"] == true {
+			let notice =
+				json!({"method":"thread/reverted","params":{"threadId":"opaque thread/1"}});
+			writer.write_all(format!("{notice}\n").as_bytes()).await.unwrap();
+		}
+		if request["method"] == "turn/start"
+			&& turns == 1
+			&& history["_live_misalignment"].is_object()
+		{
+			let notification = json!({"method":"error","params":{"threadId":"opaque thread/1","turnId":"opaque turn/1","willRetry":false,"error":history["_live_misalignment"]}});
+			writer.write_all(format!("{notification}\n").as_bytes()).await.unwrap();
+		}
 		let mut frame = json!({"id":request["id"],"result":result}).to_string();
 		frame.push('\n');
 		writer.write_all(frame.as_bytes()).await.unwrap();
@@ -2290,7 +2303,7 @@ async fn misalignment_precaution_survives_reopen_and_blocks_ordinary_dispatch() 
 #[tokio::test]
 async fn explicit_misalignment_continuation_uses_native_override_and_clears_after_ack() {
 	let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
-	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":error,"items":[]}]}}});
+	let history = json!({"_live_misalignment":error,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":{"codexErrorInfo":"misalignmentPolicyViolation"},"items":[]}]}}});
 	let (mut chief, mut sent, _directory) = fixture_with_history(history).await;
 	chief.start_chief("chief", "Coordinate").await.unwrap();
 	chief.observe_misalignment("opaque thread/1", "opaque turn/1", &error).await.unwrap();
@@ -2321,13 +2334,13 @@ async fn explicit_misalignment_continuation_uses_native_override_and_clears_afte
 
 #[tokio::test]
 async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution() {
-	for outcome in ["changed", "rejected", "uncertain"] {
+	for outcome in ["changed", "rejected", "uncertain", "reverted"] {
 		let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
 		let mut native_error = error.clone();
 		if outcome == "changed" {
 			native_error["misalignment"]["detailedExplanation"] = json!("New findings");
 		}
-		let history = json!({"_continuation_disconnect":outcome=="uncertain","_continuation_reject":outcome=="rejected","opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":native_error,"items":[]}]}}});
+		let history = json!({"_live_misalignment":error,"_misalignment_revert_on_read":outcome=="reverted","_continuation_disconnect":outcome=="uncertain","_continuation_reject":outcome=="rejected","opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":native_error,"items":[]}]}}});
 		let (mut chief, mut sent, directory) = fixture_with_history(history).await;
 		chief.start_chief("chief", "Coordinate").await.unwrap();
 		chief.observe_misalignment("opaque thread/1", "opaque turn/1", &error).await.unwrap();
@@ -2351,7 +2364,7 @@ async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution
 		while let Ok(request) = sent.try_recv() {
 			starts += usize::from(request["method"] == "turn/start");
 		}
-		assert_eq!(starts, usize::from(outcome != "changed"));
+		assert_eq!(starts, usize::from(!["changed", "reverted"].contains(&outcome)));
 		if outcome == "uncertain" {
 			let root = decodex_core::DecodexRoot::new(
 				directory.path().canonicalize().unwrap().join("root"),
@@ -2363,6 +2376,32 @@ async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution
 			assert!(requests.try_recv().is_err());
 		}
 	}
+}
+
+#[tokio::test]
+async fn misalignment_saved_details_cannot_authorize_a_reconnected_transport() {
+	let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
+	let (mut chief, _sent, directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	chief.observe_misalignment("opaque thread/1", "opaque turn/1", &error).await.unwrap();
+	chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
+	let review = chief.store.chief_misalignment("chief".into()).await.unwrap().unwrap();
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	drop(chief);
+	let (mut reopened, mut requests, _other) = fixture().await;
+	reopened.store = SqliteStore::open(&root.paths()).unwrap();
+	assert!(matches!(
+		reopened.continue_misalignment("chief", review.clone(), "confirm").await,
+		Err(ChiefError::Rejected(_))
+	));
+	assert!(requests.try_recv().is_err());
+	assert_eq!(reopened.store.chief_misalignment("chief".into()).await.unwrap(), Some(review));
+	assert_eq!(
+		reopened.store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state,
+		decodex_database::ChiefDispatchState::Idle
+	);
 }
 
 #[tokio::test]

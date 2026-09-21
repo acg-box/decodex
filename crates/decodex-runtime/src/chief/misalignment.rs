@@ -1,7 +1,7 @@
 //! Explicit continuation of an exact reviewed provider precaution.
 use super::{ChiefCoordinator, ChiefError, ClientError, Value, exact, json};
 
-pub(super) fn details(error: &Value) -> Option<String> {
+pub(crate) fn details(error: &Value) -> Option<String> {
 	error.get("misalignment").filter(|value|value.is_object()).map(|value| {
         let explanation=value["detailedExplanation"].as_str().filter(|text|!text.trim().is_empty() && text.len()<=65536);
         let steer=value.pointer("/steer/message").and_then(Value::as_str).filter(|text|!text.trim().is_empty() && text.len()<=1024);
@@ -17,6 +17,13 @@ impl ChiefCoordinator {
 		review: decodex_database::ChiefMisalignment,
 		key: &str,
 	) -> Result<(), ChiefError> {
+		let (live_error, guard) =
+			self.client.live_misalignment_review(&review.thread_id, &review.turn_id).ok_or_else(
+				|| ChiefError::Rejected("Live provider findings are no longer available.".into()),
+			)?;
+		if details(&live_error) != review.details_json {
+			return Err(ChiefError::Rejected("The live provider findings changed.".into()));
+		}
 		let work = self.store.get_chief_work_item(id.into()).await?;
 		if self.dispatch_paused
 			|| work.dispatch_state != decodex_database::ChiefDispatchState::Idle
@@ -58,7 +65,8 @@ impl ChiefCoordinator {
 			.ok_or_else(|| ChiefError::Rejected("Exact failed turn unavailable.".into()))?;
 		if turn["status"] != "failed"
 			|| turn["error"]["codexErrorInfo"] != "misalignmentPolicyViolation"
-			|| details(&turn["error"]) != review.details_json
+			|| (!turn["error"]["misalignment"].is_null()
+				&& details(&turn["error"]) != review.details_json)
 		{
 			self.observe_misalignment(&review.thread_id, &review.turn_id, &turn["error"]).await?;
 			return Err(ChiefError::Rejected(
@@ -79,7 +87,7 @@ impl ChiefCoordinator {
 			.store
 			.begin_chief_misalignment_continuation(id.into(), review.clone(), key.into())
 			.await?;
-		let result=self.client.turn_start(json!({"threadId":review.thread_id,"model":self.config.model,"effort":effort,"input":[{"type":"text","text":text,"text_elements":[]}],"responsesapiClientMetadata":{"misalignment_override":json!({"timestamp":timestamp}).to_string()}})).await;
+		let result=self.client.request_with_history("turn/start",json!({"threadId":review.thread_id,"model":self.config.model,"effort":effort,"input":[{"type":"text","text":text,"text_elements":[]}],"responsesapiClientMetadata":{"misalignment_override":json!({"timestamp":timestamp}).to_string()}}),guard).await;
 		match result {
 			Ok(value) => {
 				let turn = exact(&value, "/turn/id")?;
@@ -93,6 +101,14 @@ impl ChiefCoordinator {
 					.finish_chief_misalignment_continuation(id.into(), event, review, None)
 					.await?;
 				Err(ChiefError::Rejected(format!("Continuation rejected: {}", error.message)))
+			},
+			Err(ClientError::StaleHistory) => {
+				self.store
+					.finish_chief_misalignment_continuation(id.into(), event, review, None)
+					.await?;
+				Err(ChiefError::Rejected(
+					"The live conversation changed before continuation was sent.".into(),
+				))
 			},
 			Err(error) => Err(error.into()),
 		}

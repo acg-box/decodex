@@ -16,7 +16,7 @@ mod archive;
 mod async_projection;
 mod guardian;
 mod install;
-mod misalignment;
+pub(crate) mod misalignment;
 pub(crate) mod native_subagents;
 pub(crate) mod observations;
 mod result_messages;

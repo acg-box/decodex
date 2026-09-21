@@ -174,6 +174,19 @@ mod tests {
 			if let Some((_, ChiefHistoryResult::Available { misalignment: Some(review), .. })) =
 				&mut s.history
 			{
+				review.continuation = None;
+			}
+			s.acknowledge_misalignment("root", "review-one", cx);
+			assert!(s.feedback.is_empty());
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("misalignment-continue").is_none());
+		surface.update(visual, |s, cx| {
+			if let Some((_, ChiefHistoryResult::Available { misalignment: Some(review), .. })) =
+				&mut s.history
+			{
 				review.review_id = "review-two".into();
 			}
 			s.acknowledge_misalignment("root", "review-one", cx);

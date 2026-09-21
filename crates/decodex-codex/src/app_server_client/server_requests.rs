@@ -15,6 +15,7 @@ pub(super) struct ServerRequests(
 	Arc<Mutex<HashMap<RequestId, Entry>>>,
 	Arc<AtomicU64>,
 	Arc<AtomicU64>,
+	super::live_reviews::LiveReviews,
 );
 struct Entry {
 	thread: String,
@@ -22,20 +23,24 @@ struct Entry {
 	digest: [u8; 32],
 }
 
-/// Exact history or question-state version on one native connection.
+/// Exact history, question state, or live continuation evidence on one native connection.
 #[derive(Clone)]
 pub struct HistoryGuard {
 	requests: ServerRequests,
 	revision: u64,
 	questions: bool,
+	review: Option<super::live_reviews::LiveReviewGuard>,
 }
 impl HistoryGuard {
 	pub(super) fn belongs_to(&self, requests: &ServerRequests) -> bool {
 		Arc::ptr_eq(&self.requests.0, &requests.0)
 	}
 
-	/// Whether the selected native state is unchanged since this version.
+	/// Whether the selected native evidence is still current on its source connection.
 	pub fn is_live(&self) -> bool {
+		if let Some(review) = &self.review {
+			return review.is_live();
+		}
 		(if self.questions {
 			self.requests.question_revision()
 		} else {
@@ -73,11 +78,29 @@ fn digest(method: &str, params: &Value) -> [u8; 32] {
 	Sha256::digest(json!([method, params]).to_string().as_bytes()).into()
 }
 impl ServerRequests {
+	pub(super) fn live_misalignment_review(
+		&self,
+		thread: &str,
+		turn: &str,
+	) -> Option<(Value, HistoryGuard)> {
+		let (error, review) = self.3.capture(thread, turn)?;
+		Some((
+			error,
+			HistoryGuard {
+				requests: self.clone(),
+				revision: 0,
+				questions: false,
+				review: Some(review),
+			},
+		))
+	}
+
 	pub(super) fn history_guard(&self, revision: u64) -> Option<HistoryGuard> {
 		(self.history_revision() == revision).then(|| HistoryGuard {
 			requests: self.clone(),
 			revision,
 			questions: false,
+			review: None,
 		})
 	}
 
@@ -86,6 +109,7 @@ impl ServerRequests {
 			requests: self.clone(),
 			revision,
 			questions: true,
+			review: None,
 		})
 	}
 
@@ -118,12 +142,14 @@ impl ServerRequests {
 	}
 
 	pub(super) fn clear(&self) {
+		self.3.clear();
 		if let Ok(mut rows) = self.0.lock() {
 			rows.clear();
 		}
 	}
 
 	pub(super) fn observe(&self, event: &ServerEvent) -> Result<(), ClientError> {
+		self.3.observe(event)?;
 		let mut rows = self.0.lock().map_err(|_| ClientError::Closed)?;
 		if let ServerEvent::Notification { method, params } = event
 			&& invalidates_question_state(method, params)
