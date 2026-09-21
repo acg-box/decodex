@@ -5030,6 +5030,11 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 	{
 		return;
 	}
+	let parent = cx
+		.windows()
+		.into_iter()
+		.filter_map(|w| w.downcast::<Shell>())
+		.find(|w| w.entity(cx).is_ok_and(|entity| entity == owner));
 	let bounds = gpui::Bounds::centered(None, gpui::size(px(920.), px(620.)), cx);
 	match cx.open_window(
 		gpui::WindowOptions {
@@ -5056,6 +5061,28 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 						})
 						.detach();
 					}
+					let closing_window = window.window_handle();
+					cx.on_release(move |settings: &mut SettingsWindow, cx| {
+						let owner = settings.owner.downgrade();
+						// Run after AppKit has removed Settings so it cannot win key focus back.
+						cx.defer(move |cx| {
+							let Some(owner) = owner.upgrade() else {
+								return;
+							};
+							owner.update(cx, |s, cx| {
+								if s.settings_window
+									.is_some_and(|w| w.window_id() == closing_window.window_id())
+								{
+									s.settings_window = None;
+								}
+								cx.notify();
+							});
+							if let Some(parent) = parent {
+								let _ = parent.update(cx, |_, window, _| window.activate_window());
+							}
+						});
+					})
+					.detach();
 					let focus = cx.focus_handle();
 					window.focus(&focus, cx);
 					let observation = cx.observe(&owner, |_, _, cx| cx.notify());
@@ -6393,6 +6420,14 @@ mod tests {
 			assert_eq!(s.chief.read(cx).workspace_panels(), before);
 		});
 		handle.update(visual, |_, window, _| window.remove_window()).unwrap();
+		shell.read_with(visual, |s, _| assert!(s.settings_window.is_none()));
+		visual.update(|window, cx| {
+			assert_eq!(
+				cx.active_window(),
+				Some(window.window_handle()),
+				"closing Settings must reactivate the workspace"
+			);
+		});
 		shell.update(visual, |s, cx| s.open_settings_window(Destination::Settings, cx));
 		shell.read_with(visual, |s, _| {
 			assert_ne!(s.settings_window.unwrap(), handle);
