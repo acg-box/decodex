@@ -584,6 +584,10 @@ impl ChiefSurface {
 	}
 
 	fn submit(&mut self, cx: &mut Context<Self>) {
+		if self.composer_unavailable_reason().is_some() {
+			cx.notify();
+			return;
+		}
 		if self.selected_is_archived() {
 			return;
 		}

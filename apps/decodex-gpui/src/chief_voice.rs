@@ -42,6 +42,10 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn start_voice(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if self.selected_is_archived() || self.composer_unavailable_reason().is_some() {
+			return;
+		}
+
 		if self.voice_task.is_some() || self.dictation_task.is_some() {
 			return;
 		}
@@ -609,7 +613,9 @@ mod tests {
 			});
 			let history = |time| ChiefHistoryResult::Available {
 				questions: vec![],
-				questions_truncated: false, questions_recovering: false, misalignment: None,
+				questions_truncated: false,
+				questions_recovering: false,
+				misalignment: None,
 				usage: None,
 				has_more: false,
 				next_before: None,

@@ -440,6 +440,85 @@ impl ChiefSurface {
 		row.into_any_element()
 	}
 
+	pub(super) fn composer_unavailable_reason(&self) -> Option<&'static str> {
+		if self.uncertain {
+			return Some(
+				"Delivery is unconfirmed. Your draft is kept; sending is paused to avoid duplicates.",
+			);
+		}
+		let selected = self.selected.as_deref()?;
+		if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
+			return Some("The service connection is unavailable. Your history and draft are kept.");
+		}
+		let snapshot = self.snapshot.as_ref()?;
+		let root = self.root_id();
+		for event in &snapshot.pending_events {
+			if event.work_item_id != selected && Some(&event.work_item_id) != root.as_ref() {
+				continue;
+			}
+			let reason = match event.event_kind.as_str() {
+				"thread_in_use_needs_attention" =>
+					"This conversation is in use in another app. Release it there to continue.",
+				"reconnection_needs_attention" =>
+					"The agent could not reconnect. Saved messages are waiting; new messages are paused.",
+				"configuration_needs_attention" =>
+					"The agent configuration is unavailable. Your history and draft are kept.",
+				"recovery_needs_attention" | "wake_failed" =>
+					"The agent could not resume this conversation. Your history and draft are kept.",
+				_ => continue,
+			};
+			return Some(reason);
+		}
+		snapshot
+			.work_items
+			.iter()
+			.find(|w| w.id == selected)
+			.filter(|w| w.dispatch_state == ChiefDispatchStateDto::Unknown)
+			.map(
+				|_| "The agent connection is interrupted. Checking the current conversation state.",
+			)
+	}
+
+	fn unavailable_composer(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
+		div()
+			.id("conversation-unavailable")
+			.role(Role::Status)
+			.aria_label(format!("Conversation unavailable. {reason}"))
+			.m_4()
+			.px_3()
+			.py_2()
+			.rounded(px(12.))
+			.bg(rgba(ui_theme::SURFACE_MATERIAL))
+			.flex()
+			.items_center()
+			.gap_3()
+			.child(
+				div()
+					.flex_1()
+					.min_w_0()
+					.flex()
+					.flex_col()
+					.gap_1()
+					.child(div().text_size(px(12.)).child("Conversation unavailable"))
+					.child(
+						div()
+							.text_size(px(11.))
+							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.child(reason),
+					),
+			)
+			.child(self.workspace_action(
+				"check-conversation".into(),
+				"Check status".into(),
+				|s, cx| {
+					s.refresh(cx);
+					s.load_archive_state(true, cx);
+				},
+				cx,
+			))
+			.into_any_element()
+	}
+
 	fn floating_composer(&self, window: &mut Window, cx: &mut Context<Self>) -> gpui::Div {
 		let owner = cx.entity().downgrade();
 		// Only the capsule occludes history; the measured footer reserves scroll space.
@@ -463,8 +542,13 @@ impl ChiefSurface {
 					.w_full()
 					.flex()
 					.flex_col()
-					.child(self.conversation_activity(cx))
-					.child(self.render_composer(window, cx)),
+					.when_some(self.composer_unavailable_reason(), |d, reason| {
+						d.child(self.unavailable_composer(reason, cx))
+					})
+					.when(self.composer_unavailable_reason().is_none(), |d| {
+						d.child(self.conversation_activity(cx))
+							.child(self.render_composer(window, cx))
+					}),
 			)
 	}
 
@@ -1470,6 +1554,35 @@ impl ChiefSurface {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn unavailable_thread_blocks_submission_without_losing_draft(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.snapshot.as_mut().unwrap().pending_events.clear();
+			assert!(s.composer_unavailable_reason().is_none());
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+			s.snapshot.as_mut().unwrap().pending_events.push(
+				decodex_protocol::ChiefPendingEventDto {
+					id: 99,
+					source_event_id: "offline".into(),
+					work_item_id: "chief".into(),
+					event_kind: "reconnection_needs_attention".into(),
+					created_at_micros: 1,
+					delivery_claimed: false,
+				},
+			);
+			assert!(s.composer_unavailable_reason().unwrap().contains("could not reconnect"));
+			s.submit(cx);
+			assert!(!s.sending);
+			assert!(s.command_task.is_none());
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			s.snapshot.as_mut().unwrap().pending_events.clear();
+			assert!(s.composer_unavailable_reason().is_none());
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+		});
+	}
+
 	#[gpui::test]
 	fn pages_reuse_identity_preserve_draft_and_return_to_chief(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));

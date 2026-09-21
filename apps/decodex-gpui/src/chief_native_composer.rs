@@ -50,6 +50,7 @@ impl ChiefSurface {
 	) {
 		let requested = allowed
 			&& !self.selected_is_archived()
+			&& self.composer_unavailable_reason().is_none()
 			&& self.selected_is_manager()
 			&& native_glass_panel::available()
 			&& self.resources.is_none()
