@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 31;
+const CURRENT_SCHEMA_VERSION: i64 = 32;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -170,6 +170,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 31,
 		name: "chief_live_output_kind",
 		sql: include_str!("../migrations/0031_chief_live_output_kind.sql"),
+	},
+	Migration {
+		version: 32,
+		name: "account_usage_observation",
+		sql: include_str!("../migrations/0032_account_usage_observation.sql"),
 	},
 ];
 
@@ -510,8 +515,12 @@ mod tests {
 			"migration 31 preserves main's quota activation preference"
 		);
 		assert!(connection.execute("UPDATE chief_live_output SET kind='unknown'", []).is_err());
+		let observations: i64 = connection
+			.query_row("SELECT count(*) FROM account_usage_observations", [], |row| row.get(0))
+			.unwrap();
+		assert_eq!(observations, 0, "upgrades do not invent a provider permission");
 		migrate(&mut connection).unwrap();
-		assert_eq!(applied_version(&connection).unwrap(), 31);
+		assert_eq!(applied_version(&connection).unwrap(), CURRENT_SCHEMA_VERSION);
 	}
 
 	#[test]

@@ -5971,6 +5971,7 @@ mod tests {
 				phase: AccountOperationPhase::Prepared,
 				recovery_code: None,
 			}),
+			usage_observation: None,
 			five_hour_quota: AccountQuotaWindowObservation::unknown(
 				AccountQuotaWindow::FIVE_HOURS_MINUTES,
 			)

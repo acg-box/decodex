@@ -412,6 +412,17 @@ impl AccountQuotaWindowObservation {
 	}
 }
 
+/// Provider permission from one exact credential revision and usage observation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AccountUsageObservation {
+	/// Account revision whose credential produced the observation.
+	pub account_revision: i64,
+	/// Observation time in Unix microseconds.
+	pub observed_at_unix_micros: i64,
+	/// Identity-checked backend permission; absent for older or unmatched responses.
+	pub ordinary_usage_allowed: Option<bool>,
+}
+
 /// Credential-negative account registry view owned by durable-store.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AccountRecord {
@@ -431,6 +442,8 @@ pub struct AccountRecord {
 	pub credential: Option<CredentialBinding>,
 	/// Current unsettled lifecycle operation, when one exists.
 	pub unsettled_operation: Option<AccountOperationStatus>,
+	/// Latest direct usage observation, independent of displayed percentages.
+	pub usage_observation: Option<AccountUsageObservation>,
 	/// Required 300-minute quota observation.
 	pub five_hour_quota: AccountQuotaWindowObservation,
 	/// Required 10,080-minute quota observation.
