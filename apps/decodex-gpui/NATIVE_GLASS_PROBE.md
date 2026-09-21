@@ -78,7 +78,10 @@ Native checks completed in the integrated application: notification-to-composer
 focus transfer, full accessibility tree, text entry, Shift-Enter, and automatic
 height growth. The 213 existing GPUI tests and strict Clippy passed. Desktop capture
 still intermittently reports ScreenCaptureKit error -3812 for the short native
-window after resizing. Command-Backspace, menu interaction, real input-method
+window after resizing. Model popover placement, outside dismissal, the attachments menu, microphone
+device enumeration, Worker-view hiding, and Settings Regular/Clear and Cmd-W
+were also exercised. The service did not provide a model catalog, so model
+selection itself was not verified. Command-Backspace, real input-method
 composition, voice, and full lifecycle acceptance remain to be completed. The
 production integration is not yet fully accepted or merged. Floating toolbars
 are unchanged.

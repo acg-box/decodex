@@ -535,6 +535,15 @@ impl ChiefSurface {
 			div()
 				.id("composer-menu-popover")
 				.occlude()
+				.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
+					if event.keystroke.key == "escape" {
+						s.composer_menu = None;
+						s.effort_drag = None;
+						s.effort_pointer = None;
+						cx.notify();
+						cx.stop_propagation();
+					}
+				}))
 				.on_mouse_down_out(cx.listener(|s, event: &gpui::MouseDownEvent, _, cx| {
 					let trigger_hit = {
 						#[cfg(all(target_os = "macos", not(test)))]
