@@ -1033,16 +1033,30 @@ impl AttestedProcessChild {
 		self.require_ordinary_turns_initialized()?;
 		let mut wire = self.process.prepare_conversation_request("thread/resume", request)?;
 		wire.resume_thread_id = Some(request.thread_id().as_str().to_owned());
-		let success = self.process.conversation_request(wire, self.timeout, false, |bytes| {
-			decode_conversation_thread_resume_response(request, bytes)
-		})?;
+		// A refused attempt can still observe turn events. Include them in the
+		// eventual resume result so the caller cannot mistake it for an idle thread.
+		let mut events = self.process.deferred_conversation_events.drain(..).collect();
+		let result = self.process.conversation_request_buffered(
+			wire,
+			self.timeout,
+			false,
+			&mut events,
+			|bytes| decode_conversation_thread_resume_response(request, bytes),
+		);
+		let success = match result {
+			Ok(success) => success,
+			Err(error) => {
+				self.retain_ordinary_events(events)?;
+				return Err(error);
+			},
+		};
 		Ok(ResumedOrdinaryThread {
 			codex_thread_id: success.value.thread_id().as_str().to_owned(),
 			request_id: success.wire.request_id,
 			request_sha256: success.wire.request_sha256,
 			response_id: success.wire.response_id,
 			response_sha256: success.wire.response_sha256,
-			events: success.events,
+			events,
 		})
 	}
 
@@ -1252,6 +1266,9 @@ fn conversation_rejection_reason(
 ) -> ConversationRejectionReason {
 	let message = error.message();
 	if let Some(thread) = resume_thread_id {
+		if error.code == -32600 && message.starts_with(&format!("thread {thread} is closing;")) {
+			return ConversationRejectionReason::ClosingThread;
+		}
 		if error.code == -32600 && message == format!("no rollout found for thread id {thread}") {
 			return ConversationRejectionReason::MissingThread;
 		}
@@ -7529,6 +7546,9 @@ pub(crate) mod tests {
 	fn resume_rejection_classification_requires_exact_thread_evidence() {
 		use super::ConversationRejectionReason as Reason;
 		for (mode, expected) in [
+			("resume-reject-closing", Reason::ClosingThread),
+			("resume-reject-closing-other-thread", Reason::Other),
+			("resume-reject-closing-wrong-code", Reason::Other),
 			("resume-reject-missing", Reason::MissingThread),
 			("resume-reject-archived", Reason::ArchivedThread),
 			("resume-reject-sandbox", Reason::SandboxConfiguration),
@@ -7554,8 +7574,42 @@ pub(crate) mod tests {
 				!format!("{error:?}").contains("fixture-secret"),
 				"provider text must stay private"
 			);
+			if mode.starts_with("resume-reject-closing") {
+				assert!(matches!(child.next_ordinary_turn_event(Duration::ZERO).unwrap(),
+					Some(super::ConversationProcessEvent::TurnCompleted { turn_id, .. }) if turn_id == "closing-turn"));
+			}
 			child.shutdown().expect("closed fixture process");
 		}
+	}
+
+	#[test]
+	fn closing_resume_carries_prior_events_into_the_successful_wire_receipt() {
+		let (_temp, mut child) = ordinary_catalog_child("resume-reject-closing-once");
+		let request = decodex_codex::ConversationThreadResumeRequest::new(
+			exact_thread_id(),
+			"fixture-model",
+			"/tmp",
+			"Fixture instructions",
+		)
+		.unwrap();
+		assert!(matches!(
+			child.resume_ordinary_thread(&request),
+			Err(super::ConversationProcessError::Rejected {
+				reason: super::ConversationRejectionReason::ClosingThread,
+				..
+			})
+		));
+		let success = child.resume_ordinary_thread(&request).unwrap();
+		assert_eq!(success.codex_thread_id, request.thread_id().as_str());
+		assert_eq!(success.request_id, success.response_id);
+		assert_eq!(success.request_sha256.len(), 64);
+		assert_eq!(success.response_sha256.len(), 64);
+		assert_eq!(success.events.len(), 1);
+		assert!(
+			matches!(&success.events[0], super::ConversationProcessEvent::TurnCompleted { turn_id, .. } if turn_id == "closing-turn")
+		);
+		assert!(child.process.deferred_conversation_events.is_empty());
+		child.shutdown().unwrap();
 	}
 
 	#[test]
