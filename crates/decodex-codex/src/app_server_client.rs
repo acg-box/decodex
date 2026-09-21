@@ -22,6 +22,8 @@ mod initialize;
 pub use initialize::InitializeCapabilities;
 mod integrations;
 mod live_reviews;
+mod live_settings;
+pub use live_settings::{LiveReviewer, LiveSettingsOutcome, is_live_reviewer_update};
 mod plugin_install;
 mod server_requests;
 mod timeline;

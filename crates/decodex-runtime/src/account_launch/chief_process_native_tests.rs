@@ -4,6 +4,7 @@ use super::*;
 #[path = "chief_process_native_detail_tests.rs"] mod detail;
 #[path = "chief_process_native_misalignment_tests.rs"] mod misalignment;
 #[path = "chief_process_native_realtime_tests.rs"] mod realtime;
+#[path = "chief_process_native_reviewer_tests.rs"] mod reviewer;
 #[path = "chief_process_native_usage_tests.rs"] mod usage;
 use serde_json::json;
 use std::{
