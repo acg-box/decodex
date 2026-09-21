@@ -513,7 +513,11 @@ mod timing_tests {
 	fn permission_panel_shows_only_the_native_executor(cx: &mut gpui::TestAppContext) {
 		use super::*;
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
-		for environment in [Some("remote/工作"), None, Some("")] {
+		for (environment, cwd) in [
+			(Some("remote/工作"), r"C:\工作\repo"),
+			(None, "/workspace"),
+			(Some(""), r"\\server\share\repo"),
+		] {
 			surface.update(visual, |s, cx| {
 				s.visual_workspace_fixture(cx);
 				s.graph_visible = false;
@@ -523,7 +527,7 @@ mod timing_tests {
 				}];
 				s.request = Some(ChiefRequestResult::Available {
 					event_id:902, work_id:work, method:"item/permissions/requestApproval".into(),
-					request_json:HistoryText::new(json!({"environmentId":environment,"cwd":"/workspace","permissions":{"network":{"enabled":true}}}).to_string()).unwrap(),
+					request_json:HistoryText::new(json!({"environmentId":environment,"cwd":cwd,"permissions":{"network":{"enabled":true}}}).to_string()).unwrap(),
 				});
 				cx.notify();
 			});
