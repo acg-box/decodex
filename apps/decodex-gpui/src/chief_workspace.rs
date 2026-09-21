@@ -180,6 +180,7 @@ impl ChiefSurface {
 		}
 
 		self.selected = Some(id.to_owned());
+		self.app_settings_disconnected();
 		self.history = self.history_cache.get(id).cloned().map(|h| (id.to_owned(), h));
 		self.details_visible = false;
 		self.request = None;

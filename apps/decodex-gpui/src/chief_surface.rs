@@ -2,6 +2,7 @@
 
 #[path = "chief_activity.rs"] mod activity;
 #[path = "chief_tree.rs"] mod agent_tree;
+#[path = "chief_app_settings.rs"] mod app_settings;
 #[path = "chief_archive.rs"] mod archive;
 #[path = "chief_async_questions.rs"] mod async_questions;
 #[path = "chief_capabilities.rs"] mod capabilities;
@@ -170,6 +171,7 @@ pub(crate) struct ChiefSurface {
 	native_goal: goal::Panel,
 	mcp_form_event: Option<i64>,
 	installation: install::Panel,
+	app_settings: app_settings::Panel,
 	mcp_url_opened: Option<(i64, String)>,
 	mcp_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
 	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
@@ -349,6 +351,7 @@ impl ChiefSurface {
 			native_goal: Default::default(),
 			mcp_form_event: None,
 			installation: Default::default(),
+			app_settings: Default::default(),
 			mcp_url_opened: None,
 			mcp_inputs: Default::default(),
 			mcp_answers: Default::default(),
@@ -512,6 +515,7 @@ impl ChiefSurface {
 	}
 
 	fn load_request(&mut self, event_id: i64, cx: &mut Context<Self>) {
+		self.app_settings_disconnected();
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
@@ -866,6 +870,7 @@ impl ChiefSurface {
 		self.request = None;
 		self.request_task = None;
 		self.question_timers.clear();
+		self.app_settings_disconnected();
 		self.mcp_form_event = None;
 		self.mcp_url_opened = None;
 		self.mcp_inputs.clear();
@@ -913,6 +918,7 @@ impl ChiefSurface {
 		self.archive_disconnected();
 		self.goal_disconnected();
 		self.installation_disconnected();
+		self.app_settings_disconnected();
 		self.task = None;
 		self.state =
 			if self.snapshot.is_some() { LoadState::Stale } else { LoadState::Unavailable };

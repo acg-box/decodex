@@ -137,6 +137,7 @@ impl ChiefSurface {
 			);
 		if let Some(account) = mcp_account_label(value) {
 			panel = panel.child(account);
+			panel = panel.child(self.account_settings_panel(event, cx));
 		}
 		if let Some(params) = value
 			.pointer("/_meta/tool_params_display")
