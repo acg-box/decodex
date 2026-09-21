@@ -504,16 +504,19 @@ impl Render for SettingsSurface {
 			.child(
 				div()
 					.id("settings-scroll-viewport")
+					.debug_selector(|| "settings-scroll-viewport".into())
 					.size_full()
 					.overflow_y_scroll()
 					.px(px(28.0))
 					.py(px(18.0))
 					.flex()
 					.justify_center()
+					.items_start()
 					.child(
 						div()
 							.w_full()
 							.max_w(px(600.0))
+							.flex_none()
 							.flex()
 							.flex_col()
 							.gap(px(24.0))
@@ -601,6 +604,7 @@ const fn input_error_detail(error: DesktopSettingsInputError) -> &'static str {
 fn quote_attribution() -> impl IntoElement {
 	div()
 		.id("quote-source")
+		.debug_selector(|| "quote-source".into())
 		.role(Role::Link)
 		.tab_index(0)
 		.aria_label("Quotes provided by ZenQuotes. Open source website.")
@@ -623,6 +627,34 @@ mod tests {
 	use gpui::{TestAppContext, size};
 
 	use super::*;
+
+	#[gpui::test]
+	fn short_settings_window_scrolls_to_last_row(cx: &mut TestAppContext) {
+		struct ShortSettings(gpui::Entity<SettingsSurface>);
+		impl Render for ShortSettings {
+			fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+				div().w(px(800.)).h(px(300.)).overflow_hidden().child(self.0.clone())
+			}
+		}
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			ShortSettings(
+				cx.new(|cx| SettingsSurface::new(DesktopSettingsController::production(), cx)),
+			)
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		let viewport = visual.debug_bounds("settings-scroll-viewport").unwrap();
+		let before = visual.debug_bounds("quote-source").unwrap();
+		assert!(before.bottom() > viewport.bottom(), "before={before:?}, viewport={viewport:?}");
+		visual.simulate_event(gpui::ScrollWheelEvent {
+			position: viewport.center(),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(-1000.))),
+			..Default::default()
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		let after = visual.debug_bounds("quote-source").unwrap();
+		assert!(after.top() < before.top(), "wheel must move the content");
+		assert!(after.bottom() <= viewport.bottom(), "last setting must be reachable");
+	}
 
 	#[gpui::test]
 	fn saving_does_not_insert_a_status_row_or_move_other_controls(cx: &mut TestAppContext) {

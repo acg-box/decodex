@@ -4897,22 +4897,22 @@ fn settings_workspace_content(
 				.smooth(),
 		);
 	}
+	let panel = div()
+		.flex_1()
+		.min_w_0()
+		.min_h_0()
+		.h_full()
+		.overflow_hidden()
+		.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
+		.pt(px(WINDOW_CONTROLS_CLEARANCE))
+		.flex()
+		.flex_col();
 	let content = if selected == Destination::Settings {
-		div()
-			.flex_1()
-			.min_w_0()
-			.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
-			.pt(px(WINDOW_CONTROLS_CLEARANCE))
-			.child(shell.settings.clone())
+		panel
+			.child(div().flex_1().min_h_0().overflow_hidden().child(shell.settings.clone()))
 			.into_any_element()
 	} else {
-		div()
-			.flex_1()
-			.min_w_0()
-			.flex()
-			.flex_col()
-			.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
-			.pt(px(WINDOW_CONTROLS_CLEARANCE))
+		panel
 			.child(
 				div().px(px(28.0)).pt(px(18.0)).flex().justify_center().child(
 					div()
