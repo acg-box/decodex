@@ -523,68 +523,74 @@ impl ChiefSurface {
 			.role(Role::Status)
 			.aria_label(format!("{title}. {description}"))
 			.m_4()
-			.px(px(16.))
-			.py(px(12.))
+			.p(px(14.))
 			.rounded(px(12.))
 			.bg(rgb(0x26262b))
 			.text_color(rgb(ui_theme::TEXT))
 			.flex()
 			.flex_col()
-			.gap_2()
 			.child(
 				div()
-					.flex()
-					.items_center()
-					.gap_3()
-					.child(
-						div()
-							.flex_1()
-							.min_w_0()
-							.flex()
-							.flex_col()
-							.gap(px(5.))
-							.child(
-								div()
-									.text_size(px(12.))
-									.font_weight(FontWeight::MEDIUM)
-									.child(title),
-							)
-							.child(
-								div()
-									.text_size(px(11.))
-									.line_height(px(17.))
-									.text_color(rgb(ui_theme::TEXT_MUTED))
-									.child(description),
-							),
-					)
-					.when(detail.is_some(), |d| {
-						d.child(
-							self.workspace_action(
-								"connection-details".into(),
-								if self.connection_details_expanded {
-									"Hide details"
-								} else {
-									"Details"
-								}
-								.into(),
-								|s, cx| {
-									s.connection_details_expanded = !s.connection_details_expanded;
-									cx.notify();
-								},
-								cx,
-							),
-						)
-					}),
+					.mb(px(6.))
+					.text_size(px(12.))
+					.line_height(px(17.))
+					.font_weight(FontWeight::MEDIUM)
+					.child(title),
+			)
+			.child(
+				div()
+					.text_size(px(11.))
+					.line_height(px(17.))
+					.text_color(rgb(ui_theme::TEXT_MUTED))
+					.child(description),
 			)
 			.child(crate::ui_motion::disclosure(
 				"connection-diagnostic",
 				self.connection_details_expanded && detail.is_some(),
 				div()
+					.pt(px(8.))
 					.text_size(px(11.))
 					.line_height(px(17.))
 					.text_color(rgb(ui_theme::TEXT_MUTED))
 					.child(detail.unwrap_or_default().to_owned()),
 			))
+			.when(detail.is_some(), |d| {
+				d.child(
+					div().mt(px(8.)).flex().justify_end().items_center().child(
+						div()
+							.id("connection-details")
+							.role(Role::Button)
+							.aria_label("Technical details")
+							.aria_expanded(self.connection_details_expanded)
+							.tab_index(0)
+							.cursor_pointer()
+							.flex()
+							.items_center()
+							.gap(px(5.))
+							.h(px(20.))
+							.text_size(px(11.))
+							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.hover(|s| s.text_color(rgb(ui_theme::TEXT)))
+							.child(super::super::workspace_symbols::disclosure_chevron(
+								"connection-details-chevron",
+								self.connection_details_expanded,
+							))
+							.child("Details")
+							.on_click(cx.listener(|s, _, _, cx| {
+								s.connection_details_expanded = !s.connection_details_expanded;
+								cx.notify();
+							}))
+							.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
+								if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+									s.connection_details_expanded = !s.connection_details_expanded;
+									cx.notify();
+									cx.stop_propagation();
+								}
+							}))
+							.smooth(),
+					),
+				)
+			})
 			.into_any_element()
 	}
 
