@@ -25,9 +25,13 @@ impl ChiefSurface {
 		for question in questions {
 			self.async_question_inputs.entry((work.into(), question.id.clone())).or_insert_with(
 				|| {
-					cx.new(|cx| {
+					let input = cx.new(|cx| {
 						ComposerInput::with_placeholder(40, "Your answer", "Answer to Chief", cx)
-					})
+					});
+					if let Some(option) = question.options.first() {
+						input.update(cx, |input, cx| input.set_content(option, cx));
+					}
+					input
 				},
 			);
 		}
@@ -191,7 +195,7 @@ mod tests {
 			};
 			s.prepare_async_question_inputs("a", &history, cx);
 			let key = ("a".to_owned(), second.id.clone());
-			assert_eq!(s.async_question_inputs[&key].read(cx).content(), "");
+			assert_eq!(s.async_question_inputs[&key].read(cx).content(), "Suggested");
 			s.async_question_inputs[&key]
 				.update(cx, |input, cx| input.set_content("My answer", cx));
 			s.prepare_async_question_inputs("b", &history, cx);
@@ -199,7 +203,7 @@ mod tests {
 			assert_eq!(s.async_question_inputs[&key].read(cx).content(), "My answer");
 			assert_eq!(
 				s.async_question_inputs[&("b".into(), second.id.clone())].read(cx).content(),
-				""
+				"Suggested"
 			);
 			if let ChiefHistoryResult::Available { questions, .. } = &mut history {
 				questions.remove(0);
@@ -209,6 +213,20 @@ mod tests {
 			assert_eq!(s.async_question_inputs[&key].read(cx).content(), "My answer");
 			s.prepare_async_question_inputs("a", &ChiefHistoryResult::Unavailable, cx);
 			assert_eq!(s.async_question_inputs[&key].read(cx).content(), "My answer");
+			s.async_question_inputs[&key].update(cx, |input, cx| input.clear(cx));
+			s.prepare_async_question_inputs("a", &history, cx);
+			assert_eq!(s.async_question_inputs[&key].read(cx).content(), "");
+			if let ChiefHistoryResult::Available { questions, .. } = &mut history {
+				questions[0].id = "free-text".into();
+				questions[0].options.clear();
+			}
+			s.prepare_async_question_inputs("a", &history, cx);
+			assert_eq!(
+				s.async_question_inputs[&("a".into(), "free-text".into())].read(cx).content(),
+				""
+			);
+			assert!(!s.sending);
+			assert!(s.command_task.is_none());
 		});
 	}
 	#[gpui::test]
@@ -259,6 +277,14 @@ mod tests {
 		visual.update(|window, cx| {
 			window.resize(gpui::size(px(1180.0), px(1200.0)));
 			window.draw(cx).clear();
+		});
+		surface.read_with(visual, |s, cx| {
+			assert_eq!(
+				s.async_question_inputs[&("root".into(), "q1".into())].read(cx).content(),
+				"PDF"
+			);
+			assert!(!s.sending);
+			assert!(s.command_task.is_none());
 		});
 		let bounds = visual.debug_bounds("async-option-q1-1").expect("visible async option");
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
