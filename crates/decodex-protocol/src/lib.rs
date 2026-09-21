@@ -243,5 +243,6 @@ mod tests {
 
 mod mcp_elicitation;
 pub use mcp_elicitation::{
-	McpFormChoice, McpFormField, mcp_form_content, mcp_form_fields, validate_mcp_response,
+	McpFormChoice, McpFormField, mcp_form_content, mcp_form_fields, mcp_request_fields,
+	validate_mcp_response,
 };

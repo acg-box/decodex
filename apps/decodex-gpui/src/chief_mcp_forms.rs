@@ -26,7 +26,7 @@ impl ChiefSurface {
 		let Ok(value) = serde_json::from_str::<Value>(request_json.as_str()) else {
 			return;
 		};
-		if let Ok(fields) = decodex_protocol::mcp_form_fields(&value["requestedSchema"]) {
+		if let Ok(fields) = decodex_protocol::mcp_request_fields(&value) {
 			for field in fields.into_iter().filter(|field| field.choices.is_empty()) {
 				self.mcp_inputs.insert(
 					field.id,
@@ -66,7 +66,7 @@ impl ChiefSurface {
 			return;
 		}
 		let result = (|| -> Result<Value, String> {
-			let fields = decodex_protocol::mcp_form_fields(&value["requestedSchema"])?;
+			let fields = decodex_protocol::mcp_request_fields(&value)?;
 			if fields.is_empty() {
 				return Ok(
 					if value.pointer("/_meta/codex_approval_kind").and_then(Value::as_str)
@@ -145,7 +145,7 @@ impl ChiefSurface {
 		panel = self.mcp_verification_link(panel, event, value, cx);
 		let fields =
 			if matches!(value["mode"].as_str(), Some("form" | "openai/form" | "openaiForm")) {
-				decodex_protocol::mcp_form_fields(&value["requestedSchema"])
+				decodex_protocol::mcp_request_fields(value)
 			} else {
 				Err("This request requires a different verification flow.".into())
 			};
@@ -416,6 +416,23 @@ mod tests {
 			"unsupported form cannot become partial approval"
 		);
 		assert!(visual.debug_bounds("mcp-decline").is_some());
+		assert!(visual.debug_bounds("mcp-cancel").is_some());
+		surface.update(visual, |s, cx| {
+			if let Some(ChiefRequestResult::Available { request_json, .. }) = &mut s.request {
+				*request_json = HistoryText::new(
+					json!({"mode":"openaiForm","requestedSchema":null}).to_string(),
+				)
+				.unwrap();
+			}
+			s.submit_mcp_form(7, cx);
+			assert_eq!(s.feedback, "This form schema is not supported.");
+			assert!(s.command_task.is_none());
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("mcp-submit").is_none());
 		assert!(visual.debug_bounds("mcp-cancel").is_some());
 	}
 

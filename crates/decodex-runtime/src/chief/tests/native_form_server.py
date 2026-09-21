@@ -34,7 +34,7 @@ for line in sys.stdin:
         send({"id": "form-request", "method": "openai/elicitation/create", "params": {
             "mode": "form", "message": "Select the fixture value",
             "_meta": {"fixture/source": "native-mcp"},
-            "requestedSchema": {"type": "object", "properties": {
+            "requestedSchema": True if sys.argv[2] == "true" else {"type": "object", "properties": {
                 "answer": {"type": "string", "oneOf": [
                     {"const": "wire-value", "title": "Display label"}
                 ]}

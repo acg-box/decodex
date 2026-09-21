@@ -9,7 +9,11 @@ use std::sync::{
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY; isolated native MCP form qualification"]
 async fn native_openai_form_negotiates_and_round_trips_through_chief() {
-	for (approval, sandbox) in [("on-request", "read-only"), ("never", "danger-full-access")] {
+	for (approval, sandbox, opaque) in [
+		("on-request", "read-only", false),
+		("on-request", "read-only", true),
+		("never", "danger-full-access", false),
+	] {
 		let binary = std::env::var("DECODEX_NATIVE_BINARY").unwrap();
 		let home = tempfile::tempdir().unwrap();
 		let home_path = home.path().canonicalize().unwrap();
@@ -21,8 +25,8 @@ async fn native_openai_form_negotiates_and_round_trips_through_chief() {
 		let calls = Arc::new(AtomicUsize::new(0));
 		let backend = tokio::spawn(serve(listener, Arc::clone(&calls)));
 		std::fs::write(home_path.join("config.toml"), format!(
-		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\napprovals_reviewer = \"user\"\n[model_providers.fixture]\nname = \"Isolated form fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[mcp_servers.fixture]\ncommand = \"/usr/bin/python3\"\nargs = [{}, {}]\nrequired = true\n",
-		json!(server_path),json!(record))).unwrap();
+		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\napprovals_reviewer = \"user\"\n[model_providers.fixture]\nname = \"Isolated form fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[mcp_servers.fixture]\ncommand = \"/usr/bin/python3\"\nargs = [{}, {}, {}]\nrequired = true\n",
+		json!(server_path),json!(record),json!(opaque.to_string()))).unwrap();
 		let (mut chief, _, _store_home) = fixture().await;
 		let mut command = tokio::process::Command::new(binary);
 		command
@@ -55,10 +59,9 @@ async fn native_openai_form_negotiates_and_round_trips_through_chief() {
 					{
 						assert_eq!(params["mode"], "openaiForm");
 						assert_eq!(params["_meta"]["fixture/source"], "native-mcp");
-						assert_eq!(
-							params["requestedSchema"]["properties"]["answer"]["oneOf"][0]["const"],
-							"wire-value"
-						);
+						if opaque { assert_eq!(params["requestedSchema"], true); } else {
+                            assert_eq!(params["requestedSchema"]["properties"]["answer"]["oneOf"][0]["const"], "wire-value");
+                        }
 						Some(id.clone())
 					},
 					_ => None,
@@ -71,33 +74,7 @@ async fn native_openai_form_negotiates_and_round_trips_through_chief() {
 				}
 				chief.handle_event(event).await.unwrap();
 				if let Some(id) = request {
-					let event_id = chief.pending_requests[&id];
-					assert!(
-						chief
-							.respond_pending_event(
-								event_id,
-								json!({"action":"accept","content":{"answer":"Display label"}})
-							)
-							.await
-							.is_err()
-					);
-					chief
-						.respond_pending_event(
-							event_id,
-							json!({"action":"accept","content":{"answer":"wire-value"},"_meta":null}),
-						)
-						.await
-						.unwrap();
-					assert!(
-						chief
-							.respond_pending_event(
-								event_id,
-								json!({"action":"cancel","content":null})
-							)
-							.await
-							.is_err()
-					);
-					saved = Some(event_id);
+					saved = Some(answer_form(&mut chief, &id, opaque).await);
 				}
 				if done {
 					break;
@@ -109,7 +86,7 @@ async fn native_openai_form_negotiates_and_round_trips_through_chief() {
             } else {
                 assert!(saved.is_none(), "native never policy must remain authoritative");
             }
-            assert_record(&record, approval == "on-request");
+            assert_record(&record, if approval == "never" {"decline"} else if opaque {"cancel"} else {"accept"});
 			assert_eq!(calls.load(Ordering::Acquire), 2);
 		},
 	))
@@ -150,15 +127,49 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>) {
 	}
 }
 
-fn assert_record(path: &std::path::Path, accepted: bool) {
+fn assert_record(path: &std::path::Path, action: &str) {
 	let recorded: Value =
 		serde_json::from_slice(&std::fs::read(path).expect("fixture record")).expect("record JSON");
 	assert_eq!(recorded["capabilities"]["extensions"], json!({"openai/elicitation":{"form":{}}}));
 	let replies = recorded["replies"].as_array().expect("MCP replies");
 	assert_eq!(replies.len(), 1);
-	assert_eq!(replies[0]["result"]["action"], if accepted { "accept" } else { "decline" });
+	assert_eq!(replies[0]["result"]["action"], action);
 	assert_eq!(
 		replies[0]["result"]["content"],
-		if accepted { json!({"answer":"wire-value"}) } else { Value::Null }
+		if action == "accept" { json!({"answer":"wire-value"}) } else { Value::Null }
 	);
+}
+
+async fn answer_form(chief: &mut ChiefCoordinator, id: &RequestId, opaque: bool) -> i64 {
+	let event_id = chief.pending_requests[id];
+	assert!(
+		chief
+			.respond_pending_event(
+				event_id,
+				json!({"action":"accept","content":{"answer":"Display label"}})
+			)
+			.await
+			.is_err()
+	);
+	if opaque {
+		assert!(
+			chief
+				.respond_pending_event(event_id, json!({"action":"accept","content":null}))
+				.await
+				.is_err()
+		);
+	}
+	let response = if opaque {
+		json!({"action":"cancel","content":null})
+	} else {
+		json!({"action":"accept","content":{"answer":"wire-value"},"_meta":null})
+	};
+	chief.respond_pending_event(event_id, response).await.expect("explicit native form reply");
+	assert!(
+		chief
+			.respond_pending_event(event_id, json!({"action":"cancel","content":null}))
+			.await
+			.is_err()
+	);
+	event_id
 }
