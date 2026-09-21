@@ -1324,6 +1324,9 @@ impl ChiefCoordinator {
 			self.observe_question_state_notification(method, params).await?;
 		}
 		match event {
+			ServerEvent::Notification { method, params } if method == "turn/started" => {
+				self.observe_native_turn(&params).await?;
+			},
 			ServerEvent::Notification { method, params } if method == "serverRequest/resolved" => {
 				let (Some(thread), Some(raw_id)) =
 					(params["threadId"].as_str(), params.get("requestId"))
@@ -1432,6 +1435,20 @@ impl ChiefCoordinator {
 				return Err(error.into());
 			},
 			_ => {},
+		}
+		Ok(())
+	}
+
+	async fn observe_native_turn(&self, params: &Value) -> Result<(), ChiefError> {
+		if !self.dispatch_paused && params["turn"]["status"] == "inProgress" {
+			self.store
+				.observe_chief_native_turn(
+					exact(params, "/threadId")?,
+					exact(params, "/turn/id")?,
+					self.native_generation.as_ref().map(|id| id.as_str().to_owned()),
+					self.connection_id.clone(),
+				)
+				.await?;
 		}
 		Ok(())
 	}

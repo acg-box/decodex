@@ -210,6 +210,7 @@ pub(crate) fn owns_work(
 #[cfg(test)]
 mod tests {
 	mod auth_recovery;
+	mod native_turns;
 	mod response_usage;
 	use super::*;
 	use crate::{

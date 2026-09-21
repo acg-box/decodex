@@ -8,6 +8,7 @@ mod chief;
 mod chief_auth_recovery;
 pub use chief_auth_recovery::ChiefAuthRecoveryObservation;
 mod chief_install;
+mod chief_native_turns;
 pub use chief_install::{ChiefInstallAttempt, ChiefInstallRequirements};
 mod chief_guardian;
 pub use chief_guardian::{ChiefGuardianObservation, ChiefGuardianReview};

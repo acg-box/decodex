@@ -1262,6 +1262,7 @@ fn event_row(row: &Row<'_>) -> rusqlite::Result<ChiefInboxEvent> {
 mod tests {
 	mod activity;
 	mod inbox_carryover;
+	mod native_turns;
 	mod task_references;
 	use super::*;
 	use tempfile::tempdir;
