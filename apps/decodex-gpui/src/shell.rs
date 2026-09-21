@@ -59,7 +59,9 @@ use crate::{
 	ui_theme,
 };
 
-const WINDOW_CONTROLS_CLEARANCE: f32 = 48.0;
+// Match the gap below floating controls to their inset from the window edge.
+const WINDOW_CONTROLS_CLEARANCE: f32 =
+	ui_theme::CONTROL_MARGIN * 2.0 + ui_theme::CONTROL_GROUP_HEIGHT;
 const WORKBENCH_SESSION_SIDEBAR_WIDTH: f32 = 248.0;
 const WORKBENCH_INSPECTOR_WIDTH: f32 = 344.0;
 const LIFECYCLE_POLL: Duration = Duration::from_millis(40);
@@ -6519,7 +6521,7 @@ mod tests {
 			visual.update(|window, cx| {
 				window.resize(size(px(width), px(height)));
 				window.draw(cx).clear();
-				assert_eq!(WINDOW_CONTROLS_CLEARANCE, 48.0);
+				assert_eq!(WINDOW_CONTROLS_CLEARANCE, 44.0);
 				assert_eq!(WORKBENCH_SESSION_SIDEBAR_WIDTH, 248.0);
 				assert_eq!(WORKBENCH_INSPECTOR_WIDTH, 344.0);
 			});
