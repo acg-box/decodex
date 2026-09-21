@@ -1,5 +1,6 @@
 //! Opt-in installed-native qualification with a local Responses fixture and no credentials.
 use super::*;
+#[path = "chief_process_native_context_tests.rs"] mod context;
 #[path = "chief_process_native_misalignment_tests.rs"] mod misalignment;
 use serde_json::json;
 use std::{
@@ -265,6 +266,14 @@ async fn qualify_media(
 }
 
 async fn serve(listener: tokio::net::TcpListener, requests: Arc<std::sync::atomic::AtomicUsize>) {
+	serve_with_bodies(listener, requests, None).await;
+}
+
+async fn serve_with_bodies(
+	listener: tokio::net::TcpListener,
+	requests: Arc<std::sync::atomic::AtomicUsize>,
+	bodies: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
+) {
 	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = tokio::io::BufReader::new(socket);
@@ -285,7 +294,10 @@ async fn serve(listener: tokio::net::TcpListener, requests: Arc<std::sync::atomi
 		assert!((1..=2 * 1024 * 1024).contains(&length));
 		let mut body = vec![0; length];
 		socket.read_exact(&mut body).await.expect("native history fixture operation");
-		let _: Value = serde_json::from_slice(&body).expect("Responses request JSON");
+		let body: Value = serde_json::from_slice(&body).expect("Responses request JSON");
+		if let Some(bodies) = &bodies {
+			bodies.lock().expect("fixture request bodies").push(body);
+		}
 		let serial = requests.fetch_add(1, Ordering::AcqRel);
 		let id = format!("fixture-{serial}");
 		let frames = [
