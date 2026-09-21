@@ -45,6 +45,7 @@ pub(crate) enum AccountApiRuntimeError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AccountApiInventory {
 	pub(crate) account_revision: i64,
+	pub(crate) ordinary_usage_allowed: Option<bool>,
 	pub(crate) quota_windows: [AccountApiQuotaWindow; 2],
 	pub(crate) reported_available_count: Option<u64>,
 	pub(crate) details_complete: bool,
@@ -229,9 +230,15 @@ impl AccountApiRuntime {
 		credential: &AccountApiCredential,
 		usage: AccountApiUsage,
 	) -> Result<AccountApiInventory, AccountApiRuntimeError> {
+		let ordinary_usage_allowed = credential.stored.bundle().id_token().and_then(|token| {
+			let account_id = credential.binding.provider.account_id();
+			let user_id = crate::account_import::usage_user_id(token, account_id)?;
+			usage.ordinary_usage_allowed_for(account_id, &user_id)
+		});
 		let Some(reported_available_count) = usage.reported_available_count else {
 			return Ok(AccountApiInventory {
 				account_revision: credential.account_revision,
+				ordinary_usage_allowed,
 				quota_windows: usage.quota_windows,
 				reported_available_count: None,
 				details_complete: false,
@@ -241,6 +248,7 @@ impl AccountApiRuntime {
 		if reported_available_count == 0 {
 			return Ok(AccountApiInventory {
 				account_revision: credential.account_revision,
+				ordinary_usage_allowed,
 				quota_windows: usage.quota_windows,
 				reported_available_count: Some(0),
 				details_complete: true,
@@ -260,6 +268,7 @@ impl AccountApiRuntime {
 				if reset_credit_details_are_complete(reported_available_count, &details) =>
 				Ok(AccountApiInventory {
 					account_revision: credential.account_revision,
+					ordinary_usage_allowed,
 					quota_windows: usage.quota_windows,
 					reported_available_count: Some(reported_available_count),
 					details_complete: true,
@@ -272,6 +281,7 @@ impl AccountApiRuntime {
 				// inventory, if one exists, and a later daemon round retries this bounded
 				// provider read.
 				account_revision: credential.account_revision,
+				ordinary_usage_allowed,
 				quota_windows: usage.quota_windows,
 				reported_available_count: Some(reported_available_count),
 				details_complete: false,

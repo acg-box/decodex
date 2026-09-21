@@ -72,6 +72,7 @@ fn fixture()
 	let fake = Arc::new(Fake {
 		inventory: StdMutex::new(AccountApiInventory {
 			account_revision: 1,
+			ordinary_usage_allowed: None,
 			quota_windows: usage.quota_windows,
 			reported_available_count: Some(1),
 			details_complete: true,

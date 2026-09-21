@@ -38,8 +38,8 @@ pub use self::{
 		AccountOperationKind, AccountOperationPhase, AccountOperationStatus, AccountProvider,
 		AccountQuotaDisposition, AccountQuotaObservationError, AccountQuotaWindow,
 		AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl, AccountSelectionMode,
-		AccountSelectionRecovery, AccountState, CredentialBinding, CredentialFingerprint,
-		CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
+		AccountSelectionRecovery, AccountState, AccountUsageObservation, CredentialBinding,
+		CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
 	},
 	agent::{
 		Agent, AgentError, AgentId, AgentRepository, AgentRole, AgentStatus,

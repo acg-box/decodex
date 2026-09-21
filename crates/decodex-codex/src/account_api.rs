@@ -125,6 +125,20 @@ pub struct AccountApiUsage {
 	pub quota_windows: [AccountApiQuotaWindow; 2],
 	/// Provider-reported available reset-credit count, if supplied.
 	pub reported_available_count: Option<u64>,
+	ordinary_usage_allowed: Option<bool>,
+	account_id: Option<String>,
+	user_id: Option<String>,
+}
+
+impl AccountApiUsage {
+	/// Return the backend permission only for the exact authenticated account and user.
+	/// Missing identity or permission fields do not imply permission or denial.
+	pub fn ordinary_usage_allowed_for(&self, account_id: &str, user_id: &str) -> Option<bool> {
+		self.ordinary_usage_allowed.filter(|_| {
+			self.account_id.as_deref() == Some(account_id)
+				&& self.user_id.as_deref() == Some(user_id)
+		})
+	}
 }
 
 /// One exact reset credit decoded from the detail endpoint.
@@ -271,7 +285,26 @@ pub fn decode_account_api_usage(bytes: &[u8]) -> Result<AccountApiUsage, Account
 		.map(|value| decode_reset_credit_summary(Some(value)))
 		.transpose()?
 		.flatten();
-	Ok(AccountApiUsage { quota_windows, reported_available_count })
+	let ordinary_usage_allowed =
+		match object.get("rate_limit").and_then(|value| value.get("allowed")) {
+			None | Some(Value::Null) => None,
+			Some(Value::Bool(allowed)) => Some(*allowed),
+			Some(_) => return Err(AccountApiProtocolError::MalformedResponse),
+		};
+	let identity = |key: &str| {
+		object
+			.get(key)
+			.and_then(Value::as_str)
+			.filter(|value| is_bounded_scalar(value, 512))
+			.map(str::to_owned)
+	};
+	Ok(AccountApiUsage {
+		quota_windows,
+		reported_available_count,
+		ordinary_usage_allowed,
+		account_id: identity("account_id"),
+		user_id: identity("user_id"),
+	})
 }
 
 /// Decode one `/wham/rate-limit-reset-credits` response.
@@ -838,6 +871,46 @@ mod tests {
 		assert_eq!(usage.reported_available_count, Some(2));
 		assert_eq!(usage.quota_windows[0].result.unwrap().unwrap().used_percent, 12);
 		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().duration_minutes, 10_080);
+	}
+
+	#[test]
+	fn ordinary_permission_is_identity_bound_and_independent_of_percentages() {
+		for (allowed, used) in [(Some(false), 0), (Some(true), 100), (None, 0)] {
+			let mut body = serde_json::json!({
+				"account_id": "account-a", "user_id": "user-a",
+				"rate_limit": {"allowed": allowed, "primary_window": {
+					"used_percent": used, "limit_window_seconds": 604800, "reset_at": 1800100000
+				}}
+			});
+			let decode = |value: &serde_json::Value| {
+				decode_account_api_usage(value.to_string().as_bytes()).unwrap()
+			};
+			let usage = decode(&body);
+			assert_eq!(usage.ordinary_usage_allowed_for("account-a", "user-a"), allowed);
+			assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().used_percent, used);
+			assert_eq!(usage.ordinary_usage_allowed_for("account-b", "user-a"), None);
+			assert_eq!(usage.ordinary_usage_allowed_for("account-a", "user-b"), None);
+			body["user_id"] = serde_json::Value::Null;
+			assert_eq!(decode(&body).ordinary_usage_allowed_for("account-a", "user-a"), None);
+		}
+	}
+
+	#[test]
+	fn invalid_optional_permission_identity_does_not_discard_quota_windows() {
+		for value in [
+			serde_json::json!(""),
+			serde_json::json!("x".repeat(513)),
+			serde_json::json!("user\n"),
+			serde_json::json!(42),
+		] {
+			let body = serde_json::json!({"account_id": "a", "user_id": value,
+			"rate_limit": {"allowed": false, "primary_window": {
+				"used_percent": 7, "limit_window_seconds": 604800, "reset_at": 1800100000
+			}}});
+			let usage = decode_account_api_usage(body.to_string().as_bytes()).unwrap();
+			assert_eq!(usage.ordinary_usage_allowed_for("a", value.as_str().unwrap_or("")), None);
+			assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().used_percent, 7);
+		}
 	}
 
 	#[test]

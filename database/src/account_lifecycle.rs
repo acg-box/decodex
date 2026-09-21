@@ -1709,6 +1709,7 @@ fn account_from_base(
 		lifecycle_readiness,
 		credential,
 		unsettled_operation,
+		usage_observation: crate::account_usage::read_usage_observation(connection, &account_id)?,
 		five_hour_quota: quota_observation_sync(
 			connection,
 			&account_id,

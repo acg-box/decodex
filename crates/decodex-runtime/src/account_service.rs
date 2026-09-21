@@ -3421,17 +3421,14 @@ impl AccountService {
 		Ok(self.store.observe_account_quota(account_id, fact, observed_at_unix_micros).await?)
 	}
 
-	/// Persist a positively observed absent optional five-hour quota window.
-	pub(crate) async fn observe_quota_absence(
+	/// Persist one direct usage response with an atomic account revision fence.
+	pub(crate) async fn observe_usage(
 		&self,
 		account_id: &AccountId,
-		duration_minutes: u32,
-		observed_at_unix_micros: i64,
-	) -> Result<(), AccountLifecycleError> {
-		Ok(self
-			.store
-			.observe_account_quota_absence(account_id, duration_minutes, observed_at_unix_micros)
-			.await?)
+		observation: decodex_core::AccountUsageObservation,
+		windows: [Option<decodex_core::AccountQuotaWindowObservation>; 2],
+	) -> Result<bool, AccountLifecycleError> {
+		Ok(self.store.observe_account_usage(account_id, observation, windows).await?)
 	}
 
 	/// Persist one bounded row-scoped quota observation error for both list and Reset Card reads.
@@ -4702,6 +4699,19 @@ fn quota_selection_score(
 	account: &AccountRecord,
 	now: i64,
 ) -> Result<(u8, u8), AccountSelectionRecovery> {
+	let allowed = if let Some(observation) = account.usage_observation {
+		if observation.account_revision != account.revision
+			|| observation.observed_at_unix_micros <= 0
+			|| observation.observed_at_unix_micros > now
+			|| now.saturating_sub(observation.observed_at_unix_micros) > 300_000_000
+			|| observation.ordinary_usage_allowed == Some(false)
+		{
+			return Err(AccountSelectionRecovery::RefreshQuota);
+		}
+		observation.ordinary_usage_allowed
+	} else {
+		None
+	};
 	// All callers use the store's fresh AccountRecord projection: expired absence
 	// is returned as Unknown, just as expired numerical facts are returned as Stale.
 	let seven = account
@@ -4721,7 +4731,9 @@ fn quota_selection_score(
 			None,
 		_ => return Err(AccountSelectionRecovery::RefreshQuota),
 	};
-	if seven.used_percent >= 100 || five.is_some_and(|fact| fact.used_percent >= 100) {
+	if allowed != Some(true)
+		&& (seven.used_percent >= 100 || five.is_some_and(|fact| fact.used_percent >= 100))
+	{
 		return Err(AccountSelectionRecovery::RefreshQuota);
 	}
 	// An absent limit has no utilization to rank; weekly utilization still counts.
@@ -7335,6 +7347,7 @@ mod tests {
 			lifecycle_readiness: AccountLifecycleReadiness::Ready,
 			credential,
 			unsettled_operation: None,
+			usage_observation: None,
 			five_hour_quota: AccountQuotaWindowObservation::unknown(
 				AccountQuotaWindow::FIVE_HOURS_MINUTES,
 			)
@@ -7384,6 +7397,57 @@ mod tests {
 		accounts[1].lifecycle_readiness = AccountLifecycleReadiness::Ready;
 		accounts[1].seven_day_quota.disposition = D::Unknown;
 		assert!(service.chief_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).is_none());
+	}
+
+	#[test]
+	fn ordinary_usage_permission_controls_routing_without_rewriting_utilization() {
+		use decodex_core::{
+			AccountQuotaDisposition as D, AccountSelectionRecovery, AccountUsageObservation,
+		};
+		let mut account = projection_account(None);
+		account.five_hour_quota.observed_at_unix_micros = Some(900);
+		account.five_hour_quota.disposition = D::NotApplicable;
+		account.seven_day_quota.disposition =
+			D::Current(AccountQuotaWindow::new(10080, 0, i64::MAX).unwrap());
+		let observation = AccountUsageObservation {
+			account_revision: account.revision,
+			observed_at_unix_micros: 900,
+			ordinary_usage_allowed: Some(false),
+		};
+		account.usage_observation = Some(observation);
+		assert_eq!(
+			super::quota_selection_score(&account, 1000),
+			Err(AccountSelectionRecovery::RefreshQuota)
+		);
+		account.seven_day_quota.disposition =
+			D::Current(AccountQuotaWindow::new(10080, 100, i64::MAX).unwrap());
+		account.usage_observation =
+			Some(AccountUsageObservation { ordinary_usage_allowed: Some(true), ..observation });
+		assert_eq!(super::quota_selection_score(&account, 1000), Ok((100, 0)));
+		account.usage_observation.as_mut().unwrap().ordinary_usage_allowed = None;
+		assert_eq!(
+			super::quota_selection_score(&account, 1000),
+			Err(AccountSelectionRecovery::RefreshQuota)
+		);
+		for (revision, observed) in
+			[(account.revision + 1, 900), (account.revision, 1001), (account.revision, 0)]
+		{
+			account.usage_observation = Some(AccountUsageObservation {
+				account_revision: revision,
+				observed_at_unix_micros: observed,
+				ordinary_usage_allowed: Some(true),
+			});
+			assert_eq!(
+				super::quota_selection_score(&account, 1000),
+				Err(AccountSelectionRecovery::RefreshQuota)
+			);
+		}
+		account.usage_observation =
+			Some(AccountUsageObservation { ordinary_usage_allowed: Some(true), ..observation });
+		assert_eq!(
+			super::quota_selection_score(&account, 300_000_901),
+			Err(AccountSelectionRecovery::RefreshQuota)
+		);
 	}
 
 	#[test]

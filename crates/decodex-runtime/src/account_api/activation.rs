@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use decodex_core::{AccountId, AccountQuotaWindow};
 
-use super::{AccountApiObservation, AccountApiRuntime, BACKEND_API_BASE};
+use super::{AccountApiInventory, AccountApiObservation, AccountApiRuntime, BACKEND_API_BASE};
 
 const ACTIVATION_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_STREAM_BYTES: usize = 256 * 1024;
@@ -58,13 +58,8 @@ impl AccountApiRuntime {
 		else {
 			return observation;
 		};
-		let can_send = observation.inventory.as_ref().is_ok_and(|inventory| {
-			inventory.quota_windows.iter().all(|window| match window.result {
-				Ok(Some(fact)) => fact.resets_at_unix_micros <= now || fact.used_percent < 100,
-				Ok(None) => window.duration_minutes == AccountQuotaWindow::FIVE_HOURS_MINUTES,
-				Err(_) => false,
-			})
-		});
+		let can_send =
+			observation.inventory.as_ref().is_ok_and(|inventory| can_activate(inventory, now));
 		if !self
 			.store
 			.claim_quota_activation(account_id, credential.account_revision, weekly, can_send, now)
@@ -101,6 +96,18 @@ impl AccountApiRuntime {
 		// just because a completed minimal request still rounds to 0 percent used.
 		self.observe_account(account_id).await
 	}
+}
+
+fn can_activate(inventory: &AccountApiInventory, now: i64) -> bool {
+	// The identity-checked provider decision is independent of displayed utilization.
+	// Older backends omit it; retain their existing window-based activation behavior.
+	inventory.ordinary_usage_allowed.unwrap_or_else(|| {
+		inventory.quota_windows.iter().all(|window| match window.result {
+			Ok(Some(fact)) => fact.resets_at_unix_micros <= now || fact.used_percent < 100,
+			Ok(None) => window.duration_minutes == AccountQuotaWindow::FIVE_HOURS_MINUTES,
+			Err(_) => false,
+		})
+	})
 }
 
 fn activation_request() -> serde_json::Value {
@@ -195,6 +202,25 @@ mod tests {
 		ActivationOutcome, CompletionStream, MAX_STREAM_BYTES, activation_request, send_activation,
 	};
 	use std::time::Duration;
+
+	#[test]
+	fn ordinary_denial_blocks_activation_even_after_the_displayed_reset() {
+		let usage = decodex_codex::decode_account_api_usage(br#"{"rate_limit":{"primary_window":{"used_percent":0,"limit_window_seconds":604800,"reset_at":1800000000}}}"#).unwrap();
+		let mut inventory = super::AccountApiInventory {
+			account_revision: 1,
+			ordinary_usage_allowed: Some(false),
+			quota_windows: usage.quota_windows,
+			reported_available_count: None,
+			details_complete: false,
+			credits: Vec::new(),
+		};
+		let after_reset = 1_800_000_001_000_000;
+		assert!(!super::can_activate(&inventory, after_reset));
+		inventory.ordinary_usage_allowed = None;
+		assert!(super::can_activate(&inventory, after_reset));
+		inventory.ordinary_usage_allowed = Some(true);
+		assert!(super::can_activate(&inventory, after_reset));
+	}
 
 	#[tokio::test]
 	async fn failure_to_connect_can_retry_without_replaying_an_accepted_request() {
