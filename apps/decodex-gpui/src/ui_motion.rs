@@ -6,6 +6,16 @@ use gpui::{
 	prelude::*, px,
 };
 
+/// Keep animation cadence shared by a workspace and its attached controls.
+pub(crate) fn request_frame(window: &Window, cx: &mut App) {
+	#[cfg(all(target_os = "macos", not(test)))]
+	if crate::ui_theme::native_glass_panel::request_workspace_frame(window, cx) {
+		return;
+	}
+	let _ = cx;
+	window.request_animation_frame();
+}
+
 #[derive(Clone)]
 struct Tween {
 	from: f32,
@@ -44,6 +54,27 @@ impl Tween {
 	}
 }
 
+/// Animate a native overlay as one composited surface, including its shadow.
+#[cfg(all(target_os = "macos", not(test)))]
+pub(crate) fn native_presence(
+	id: &'static str,
+	visible: bool,
+	window: &mut Window,
+	cx: &mut App,
+) -> f32 {
+	let state = window.use_keyed_state(id, cx, |_, _| Tween::new(0.));
+	let now = Instant::now();
+	let (opacity, moving) = state.update(cx, |s, _| {
+		s.duration = Duration::from_millis(180);
+		s.target(if visible { 1. } else { 0. }, now);
+		(s.sample(now), s.moving(now))
+	});
+	if moving {
+		request_frame(window, cx);
+	}
+	opacity
+}
+
 pub(crate) fn value(
 	id: impl Into<ElementId>,
 	target: f32,
@@ -71,7 +102,7 @@ pub(crate) fn direct_value(
 		(s.sample(now), s.moving(now))
 	});
 	if moving {
-		window.request_animation_frame();
+		request_frame(window, cx);
 	}
 	value
 }
@@ -102,7 +133,7 @@ impl RenderOnce for Reveal {
 			(s.sample(now), s.moving(now))
 		});
 		if moving {
-			window.request_animation_frame();
+			request_frame(window, cx);
 		}
 		div()
 			.flex_none()
@@ -173,11 +204,12 @@ impl RenderOnce for Control {
 		});
 		let now = Instant::now();
 		let feedback = state.read(cx);
-		if feedback.opacity.moving(now) || feedback.offset.moving(now) {
-			window.request_animation_frame();
-		}
+		let moving = feedback.opacity.moving(now) || feedback.offset.moving(now);
 		let opacity = feedback.opacity.sample(now);
 		let offset = feedback.offset.sample(now);
+		if moving {
+			request_frame(window, cx);
+		}
 		let hover = state.clone();
 		let down = state.clone();
 		let up = state.clone();
@@ -272,7 +304,7 @@ impl RenderOnce for SwitchKnob {
 			s.sample(now)
 		});
 		if state.read(cx).moving(now) {
-			window.request_animation_frame();
+			request_frame(window, cx);
 		}
 		div().ml(px(offset)).size(px(14.0)).child(self.child)
 	}
@@ -325,7 +357,7 @@ impl RenderOnce for Disclosure {
 			(s.tween.sample(now), s.tween.moving(now))
 		});
 		if moving {
-			window.request_animation_frame();
+			request_frame(window, cx);
 		}
 		div().w_full().h(px(height)).flex_none().overflow_hidden().when(
 			self.visible || height > 0.1,
@@ -377,7 +409,7 @@ impl RenderOnce for Arrival {
 			(s.1.sample(now), s.1.moving(now))
 		});
 		if moving {
-			window.request_animation_frame();
+			request_frame(window, cx);
 		}
 		div()
 			.size_full()
@@ -428,7 +460,7 @@ impl RenderOnce for Popover {
 			(s.1.sample(now), s.1.moving(now))
 		});
 		if moving {
-			window.request_animation_frame();
+			request_frame(window, cx);
 		}
 		if opacity <= 0.001 {
 			return div().w_full().into_any_element();
@@ -441,7 +473,7 @@ impl RenderOnce for Popover {
 			.when(!self.unframed, |surface| {
 				surface.rounded(px(14.)).bg(gpui::rgb(0x29292d)).shadow(vec![gpui::BoxShadow {
 					inset: false,
-					color: gpui::rgba(0x00000024).opacity(opacity).into(),
+					color: gpui::rgba(0x00000024).into(),
 					offset: gpui::point(px(0.), px(4.)),
 					blur_radius: px(12.),
 					spread_radius: px(-3.),

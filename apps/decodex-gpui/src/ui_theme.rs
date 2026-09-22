@@ -39,6 +39,13 @@ pub(crate) fn floating_group() -> gpui::Div {
 
 // Settings share shell typography and a bounded reading width.
 pub(crate) const SETTINGS_WIDTH: f32 = 680.0;
+pub(crate) const SETTINGS_INSET: f32 = 24.0;
+pub(crate) const SETTINGS_TOP: f32 = 12.0;
+pub(crate) const SETTINGS_GROUP_GAP: f32 = 16.0;
+pub(crate) fn settings_header_inset() -> gpui::Div {
+	use gpui::{Styled, div, px};
+	div().px(px(SETTINGS_INSET)).pt(px(SETTINGS_TOP)).flex().justify_center()
+}
 pub(crate) fn settings_row() -> gpui::Div {
 	use gpui::{Styled, div, px};
 	div().w_full().min_h(px(44.0)).px(px(12.0)).py(px(7.0)).flex().items_center().gap(px(16.0))
@@ -139,3 +146,7 @@ mod tests {
 		assert!(MOTION_PANEL <= Duration::from_millis(280));
 	}
 }
+
+#[cfg(all(target_os = "macos", not(test)))]
+#[path = "native_glass_panel.rs"]
+pub(crate) mod native_glass_panel;

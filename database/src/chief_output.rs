@@ -112,6 +112,38 @@ impl SqliteStore {
 		.await
 	}
 
+	/// Recover the retired tool-upgrade path only when its known transport failure
+	/// occurred before a durable message/instruction dispatch claim. No turn is replayed.
+	pub async fn recover_legacy_chief_setup(
+		&self,
+		id: String,
+		thread: String,
+		generation: Option<String>,
+	) -> Result<bool, StoreError> {
+		self.run(move |connection| {
+			let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			if !crate::chief_process::owns_work(&tx, &id, generation.as_deref())? { return Ok(false); }
+			let eligible: bool = tx.query_row(
+				"SELECT EXISTS(SELECT 1 FROM chief_work_items w
+                  WHERE w.id=?1 AND w.codex_thread_id=?2 AND w.dispatch_state='unknown'
+                    AND w.active_turn_id IS NULL
+                    AND (w.parent_goal_id IS NULL OR EXISTS(SELECT 1 FROM chief_managers WHERE work_id=w.id))
+                    AND coalesce((SELECT version FROM chief_tool_versions WHERE work_id=w.id),1)<3
+                    AND NOT EXISTS(SELECT 1 FROM chief_inbox_events WHERE delivery_work_item_id=w.id AND delivered_turn_id='')
+                    AND EXISTS(SELECT 1 FROM chief_inbox_events WHERE work_item_id=w.id
+                      AND event_kind='wake_failed' AND created_at_micros>=w.updated_at_micros
+                      AND json_extract(payload,'$.recovery')='Chief: Transport(InvalidFrame)'))",
+				params![id,thread], |row| row.get(0)).map_err(sqlite_error)?;
+			if !eligible { return Ok(false); }
+			let now = crate::unix_micros()?;
+			tx.execute("UPDATE chief_work_items SET dispatch_state='idle',updated_at_micros=max(updated_at_micros,?2) WHERE id=?1",params![id,now]).map_err(sqlite_error)?;
+			let source = serde_json::json!(["legacy_setup_recovered",id,thread]).to_string();
+			tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'setup_recovered','{}',?3,'resolved','Kept the original conversation; no turn had been dispatched.',?3)",params![source,id,now]).map_err(sqlite_error)?;
+			tx.commit().map_err(sqlite_error)?;
+			Ok(true)
+		}).await
+	}
+
 	pub async fn begin_chief_tool_upgrade(
 		&self,
 		id: String,

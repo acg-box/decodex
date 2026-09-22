@@ -188,6 +188,14 @@ impl Element for ComposerTextElement {
 		let input = self.input.read(cx);
 		let focus = input.focus_handle.clone();
 		let selections = [input.selected_range.clone()];
+		let draw_cursor = input.cursor.visible
+			&& cursor::eligible(
+				focus.is_focused(window),
+				window.is_window_active(),
+				input.selected_range.is_empty(),
+			);
+		let cursor_shape = cursor::Preference::configured().shape;
+		let next = next_boundary(&input.content, input.cursor_offset());
 		let gutter = px(0.);
 		let origin = bounds.origin + point(gutter, -state.offset);
 		window.handle_input(&focus, ElementInputHandler::new(bounds, self.input.clone()), cx);
@@ -238,14 +246,32 @@ impl Element for ComposerTextElement {
 			y += line.size(line_height).height;
 			start += line.len() + 1;
 		}
-		if focus.is_focused(window) {
-			for selection in &selections {
-				let caret = position_at(&state.lines, selection.end);
-				window.paint_quad(fill(
-					Bounds::new(origin + caret, size(px(1.5), px(ui_theme::BODY_LINE_HEIGHT))),
-					rgb(0xe5e7eb),
-				));
-			}
+		if draw_cursor {
+			let caret = position_at(&state.lines, selections[0].end);
+			let next = position_at(&state.lines, next);
+			let width = if next.y == caret.y && next.x > caret.x {
+				next.x - caret.x
+			} else {
+				px(ui_theme::BODY_SIZE * 0.6)
+			};
+			let (offset, extent, color) = match cursor_shape {
+				cursor::Shape::Bar => (
+					point(px(0.), px(0.)),
+					size(px(1.5), px(ui_theme::BODY_LINE_HEIGHT)),
+					rgba(0xe5e7ebff),
+				),
+				cursor::Shape::Block => (
+					point(px(0.), px(0.)),
+					size(width, px(ui_theme::BODY_LINE_HEIGHT)),
+					rgba(0xe5e7eb55),
+				),
+				cursor::Shape::Underline => (
+					point(px(0.), px(ui_theme::BODY_LINE_HEIGHT - 2.)),
+					size(width, px(2.)),
+					rgba(0xe5e7ebff),
+				),
+			};
+			window.paint_quad(fill(Bounds::new(origin + caret + offset, extent), color));
 		}
 
 		self.input.update(cx, |input, _| {

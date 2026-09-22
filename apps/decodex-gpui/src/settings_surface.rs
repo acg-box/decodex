@@ -21,8 +21,6 @@ const LINE: u32 = ui_theme::LINE_STRONG;
 const TEXT: u32 = ui_theme::TEXT;
 const TEXT_MUTED: u32 = ui_theme::TEXT_MUTED;
 const BLUE: u32 = ui_theme::BLUE;
-const GREEN: u32 = ui_theme::GREEN;
-const AMBER: u32 = ui_theme::AMBER;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum MenuBarRuntimeState {
@@ -30,17 +28,6 @@ enum MenuBarRuntimeState {
 	Hidden,
 	Waiting,
 	Unavailable,
-}
-
-impl MenuBarRuntimeState {
-	const fn color(self) -> u32 {
-		match self {
-			Self::Visible => GREEN,
-			Self::Hidden => TEXT_MUTED,
-			Self::Waiting => AMBER,
-			Self::Unavailable => 0xb56a6a,
-		}
-	}
 }
 
 pub(crate) struct SettingsSurface {
@@ -152,6 +139,13 @@ impl SettingsSurface {
 					"The Decodex menu-bar item is disabled."
 				}
 				.into();
+				if matches!(
+					snapshot.command,
+					DesktopSettingsCommandState::Refused
+						| DesktopSettingsCommandState::OutcomeUnknown
+				) {
+					self.detail = settings_detail(snapshot).into();
+				}
 			},
 			Err(failure) => {
 				self.runtime = MenuBarRuntimeState::Unavailable;
@@ -160,15 +154,46 @@ impl SettingsSurface {
 		}
 	}
 
+	fn menubar_needs_attention(&self) -> bool {
+		if matches!(
+			self.snapshot.load,
+			DesktopSettingsLoadState::NeverRequested | DesktopSettingsLoadState::Loading
+		) || matches!(
+			self.snapshot.command,
+			DesktopSettingsCommandState::Sending | DesktopSettingsCommandState::AwaitingResult
+		) {
+			return false;
+		}
+		!matches!(self.runtime, MenuBarRuntimeState::Visible | MenuBarRuntimeState::Hidden)
+			|| !matches!(
+				self.detail.as_ref(),
+				"Menu bar enabled." | "The Decodex menu-bar item is disabled."
+			)
+	}
+
+	pub(crate) fn notifications(&self) -> Vec<(&'static str, String)> {
+		let mut notices = Vec::new();
+		if self.menubar_needs_attention() {
+			notices.push(("Menu bar", self.detail.to_string()));
+		}
+		if !matches!(
+			self.launch_at_login,
+			LaunchAtLoginState::Enabled | LaunchAtLoginState::NotRegistered
+		) || self.launch_at_login_detail.as_ref() != launch_at_login_detail(self.launch_at_login)
+		{
+			notices.push(("Launch at login", self.launch_at_login_detail.to_string()));
+		}
+		notices
+	}
+
 	fn toggle_menubar(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
 		let Some(settings) = self.snapshot.settings else {
 			return;
 		};
 		match self.controller.set_show_in_menu_bar(!settings.show_in_menu_bar) {
-			Ok(()) => {
-				self.runtime = MenuBarRuntimeState::Waiting;
-				self.detail = "Saving preference…".into();
-			},
+			// The switch already disables itself while the command is pending.
+			// Keep the current presentation until authoritative readback arrives.
+			Ok(()) => {},
 			Err(error) => {
 				self.detail = input_error_detail(error).into();
 			},
@@ -210,7 +235,7 @@ impl SettingsSurface {
 		cx.notify();
 	}
 
-	fn open_login_items_settings(
+	pub(crate) fn open_login_items_settings(
 		&mut self,
 		_: &gpui::ClickEvent,
 		_: &mut Window,
@@ -279,6 +304,7 @@ impl SettingsSurface {
 		);
 		div()
 			.id("launch-at-login-toggle")
+			.debug_selector(|| "launch-at-login-toggle".into())
 			.role(Role::Switch)
 			.aria_label("Launch Decodex at login")
 			.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
@@ -314,57 +340,126 @@ impl SettingsSurface {
 	}
 
 	fn launch_at_login_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		let needs_attention = !matches!(
-			self.launch_at_login,
-			LaunchAtLoginState::Enabled | LaunchAtLoginState::NotRegistered
-		) || self.launch_at_login_detail.as_ref()
-			!= launch_at_login_detail(self.launch_at_login);
 		ui_theme::settings_row()
-			.min_h(px(40.0))
-			.px(px(0.0))
-			.child(
-				div()
-					.flex_1()
-					.min_w_0()
-					.flex()
-					.flex_col()
-					.gap(px(3.0))
-					.child("Launch at login")
-					.when(needs_attention, |d| {
-						d.child(
-							div()
-								.id("launch-at-login-status")
-								.role(Role::Status)
-								.text_size(px(ui_theme::CAPTION_SIZE))
-								.text_color(rgb(launch_at_login_color(self.launch_at_login)))
-								.child(self.launch_at_login_detail.clone()),
-						)
-					}),
-			)
-			.when(needs_attention, |d| {
-				d.child(
-					div()
-						.id("open-login-items-settings")
-						.role(Role::Button)
-						.aria_label("Open Login Items settings")
-						.h(px(28.0))
-						.px_2()
-						.flex()
-						.items_center()
-						.rounded(px(6.0))
-						.text_size(px(11.0))
-						.text_color(rgb(BLUE))
-						.cursor_pointer()
-						.on_click(cx.listener(Self::open_login_items_settings))
-						.child("Open settings")
-						.smooth(),
-				)
-			})
+			.px_0()
+			.child(div().flex_1().child("Launch at login"))
 			.child(self.launch_at_login_toggle(cx))
 	}
 }
 
 impl SettingsSurface {
+	fn notification_count_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		let enabled = crate::shell::notification_count_preference(None);
+		ui_theme::settings_row()
+			.px_0()
+			.child(div().flex_1().child("Show notification count"))
+			.child(
+				div()
+					.id("notification-count-preference")
+					.role(Role::Switch)
+					.aria_label("Show notification count")
+					.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
+					.tab_index(0)
+					.w(px(36.))
+					.h(px(20.))
+					.p(px(2.))
+					.flex()
+					.items_center()
+					.rounded_full()
+					.border_1()
+					.border_color(rgb(if enabled { BLUE } else { LINE }))
+					.bg(if enabled { rgba(0x8baaf730) } else { rgba(0xffffff0c) })
+					.cursor_pointer()
+					.hover(|d| d.border_color(rgb(TEXT_MUTED)))
+					.focus_visible(|d| d.border_color(rgb(BLUE)))
+					.on_click(cx.listener(move |_, _, _, cx| {
+						crate::shell::notification_count_preference(Some(!enabled));
+						cx.refresh_windows();
+					}))
+					.on_key_down(cx.listener(move |_, event: &gpui::KeyDownEvent, _, cx| {
+						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+							crate::shell::notification_count_preference(Some(!enabled));
+							cx.refresh_windows();
+							cx.stop_propagation();
+						}
+					}))
+					.child(switch_knob(
+						"notification-count-knob",
+						enabled,
+						div().size(px(14.)).rounded_full().bg(rgb(if enabled {
+							BLUE
+						} else {
+							TEXT_MUTED
+						})),
+					))
+					.smooth(),
+			)
+	}
+
+	fn cursor_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		use crate::composer_input::cursor::{Preference, Shape};
+		let current = Preference::configured();
+		let choices = [
+			(
+				"Cursor style",
+				vec![
+					("Bar", Preference { shape: Shape::Bar, ..current }),
+					("Block", Preference { shape: Shape::Block, ..current }),
+					("Underline", Preference { shape: Shape::Underline, ..current }),
+				],
+			),
+			(
+				"Cursor blinking",
+				vec![
+					("On", Preference { blinking: true, ..current }),
+					("Off", Preference { blinking: false, ..current }),
+				],
+			),
+		];
+		div().flex().flex_col().children(choices.into_iter().map(|(title, values)| {
+			ui_theme::settings_row().px_0().child(div().flex_1().child(title)).child(
+				div().flex().gap_1().p_1().rounded(px(9.)).bg(rgba(0xffffff08)).children(
+					values.into_iter().map(|(label, value)| {
+						div()
+							.id(gpui::SharedString::from(format!("{title}-{label}")))
+							.role(Role::Button)
+							.aria_label(format!("{title}: {label}"))
+							.aria_toggled(if value == current {
+								Toggled::True
+							} else {
+								Toggled::False
+							})
+							.tab_index(0)
+							.px_3()
+							.h(px(26.))
+							.flex()
+							.items_center()
+							.rounded(px(6.))
+							.text_size(px(11.))
+							.cursor_pointer()
+							.when(value == current, |d| d.bg(rgba(0xffffff16)))
+							.hover(|d| d.bg(rgba(0xffffff12)))
+							.on_click(cx.listener(move |_, _, _, cx| {
+								value.select(cx);
+								cx.notify();
+							}))
+							.on_key_down(cx.listener(
+								move |_, event: &gpui::KeyDownEvent, _, cx| {
+									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+										value.select(cx);
+										cx.notify();
+										cx.stop_propagation();
+									}
+								},
+							))
+							.child(label)
+							.smooth()
+					}),
+				),
+			)
+		}))
+	}
+
 	fn glass_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		use ui_theme::window_material::GlassStyle;
 		let style = GlassStyle::configured();
@@ -416,12 +511,6 @@ impl SettingsSurface {
 
 impl Render for SettingsSurface {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		let needs_attention =
-			!matches!(self.runtime, MenuBarRuntimeState::Visible | MenuBarRuntimeState::Hidden)
-				|| !matches!(
-					self.detail.as_ref(),
-					"Menu bar enabled." | "The Decodex menu-bar item is disabled."
-				);
 		div()
 			.id("settings-surface")
 			.role(Role::Main)
@@ -435,60 +524,43 @@ impl Render for SettingsSurface {
 			.child(
 				div()
 					.id("settings-scroll-viewport")
+					.debug_selector(|| "settings-scroll-viewport".into())
 					.size_full()
 					.overflow_y_scroll()
-					.px(px(28.0))
-					.py(px(18.0))
+					.px(px(ui_theme::SETTINGS_INSET))
+					.pt(px(ui_theme::SETTINGS_TOP))
+					.pb(px(ui_theme::SETTINGS_INSET))
 					.flex()
 					.justify_center()
+					.items_start()
 					.child(
 						div()
 							.w_full()
-							.max_w(px(600.0))
+							.max_w(px(ui_theme::SETTINGS_WIDTH))
+							.flex_none()
 							.flex()
 							.flex_col()
-							.gap(px(24.0))
+							.gap(px(ui_theme::SETTINGS_GROUP_GAP))
 							.child(ui_theme::settings_title("General"))
-							.child(self.glass_controls(cx))
 							.child(
-								div().flex().flex_col().gap(px(8.0)).child(
-									div()
-										.w_full()
-										.py(px(4.0))
-										.flex()
-										.flex_col()
-										.child(
-											ui_theme::settings_row()
-												.min_h(px(40.0))
-												.px(px(0.0))
-												.child(
-													div()
-														.flex_1()
-														.min_w_0()
-														.flex()
-														.flex_col()
-														.gap(px(3.0))
-														.child("Show in menu bar")
-														.when(needs_attention, |d| {
-															d.child(
-																div()
-																	.id("menubar-runtime-status")
-																	.role(Role::Status)
-																	.text_size(px(
-																		ui_theme::CAPTION_SIZE,
-																	))
-																	.text_color(rgb(self
-																		.runtime
-																		.color()))
-																	.child(self.detail.clone()),
-															)
-														}),
-												)
-												.child(self.toggle(false, cx)),
-										)
-										.child(div().h(px(2.0)))
-										.child(self.launch_at_login_card(cx)),
-								),
+								div()
+									.flex()
+									.flex_col()
+									.child(self.glass_controls(cx))
+									.child(self.cursor_controls(cx)),
+							)
+							.child(
+								div()
+									.flex()
+									.flex_col()
+									.child(self.notification_count_control(cx))
+									.child(
+										ui_theme::settings_row()
+											.px_0()
+											.child(div().flex_1().child("Show in menu bar"))
+											.child(self.toggle(false, cx)),
+									)
+									.child(self.launch_at_login_card(cx)),
 							)
 							.child(ui_theme::settings_row().child(div().flex_1().child("Auto-activate weekly quota")).child(self.toggle(true, cx)))
                             .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child("Send a small background request when the weekly reset expires without a new countdown. Uses a small amount of quota; no chat is saved."))
@@ -496,15 +568,6 @@ impl Render for SettingsSurface {
 							.child(quote_attribution()),
 					),
 			)
-	}
-}
-
-const fn launch_at_login_color(state: LaunchAtLoginState) -> u32 {
-	match state {
-		LaunchAtLoginState::Enabled => GREEN,
-		LaunchAtLoginState::RequiresApproval => AMBER,
-		LaunchAtLoginState::NotRegistered => TEXT_MUTED,
-		LaunchAtLoginState::NotFound | LaunchAtLoginState::OperationFailed => 0xb56a6a,
 	}
 }
 
@@ -555,6 +618,7 @@ const fn input_error_detail(error: DesktopSettingsInputError) -> &'static str {
 fn quote_attribution() -> impl IntoElement {
 	div()
 		.id("quote-source")
+		.debug_selector(|| "quote-source".into())
 		.role(Role::Link)
 		.tab_index(0)
 		.aria_label("Quotes provided by ZenQuotes. Open source website.")
@@ -577,6 +641,83 @@ mod tests {
 	use gpui::{TestAppContext, size};
 
 	use super::*;
+
+	#[gpui::test]
+	fn short_settings_window_scrolls_to_last_row(cx: &mut TestAppContext) {
+		struct ShortSettings(gpui::Entity<SettingsSurface>);
+		impl Render for ShortSettings {
+			fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+				div().w(px(800.)).h(px(300.)).overflow_hidden().child(self.0.clone())
+			}
+		}
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			ShortSettings(
+				cx.new(|cx| SettingsSurface::new(DesktopSettingsController::production(), cx)),
+			)
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		let viewport = visual.debug_bounds("settings-scroll-viewport").unwrap();
+		let before = visual.debug_bounds("quote-source").unwrap();
+		assert!(before.bottom() > viewport.bottom(), "before={before:?}, viewport={viewport:?}");
+		visual.simulate_event(gpui::ScrollWheelEvent {
+			position: viewport.center(),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(-1000.))),
+			..Default::default()
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		let after = visual.debug_bounds("quote-source").unwrap();
+		assert!(after.top() < before.top(), "wheel must move the content");
+		assert!(after.bottom() <= viewport.bottom(), "last setting must be reachable");
+	}
+
+	#[gpui::test]
+	fn saving_does_not_insert_a_status_row_or_move_other_controls(cx: &mut TestAppContext) {
+		let (settings, visual) = cx.add_window_view(|_, cx| {
+			SettingsSurface::new(DesktopSettingsController::production(), cx)
+		});
+		settings.update(visual, |s, cx| {
+			s.snapshot.load = DesktopSettingsLoadState::Ready;
+			s.snapshot.command = DesktopSettingsCommandState::Idle;
+			s.runtime = MenuBarRuntimeState::Hidden;
+			s.detail = "The Decodex menu-bar item is disabled.".into();
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.resize(size(px(800.), px(700.)));
+			window.draw(cx).clear();
+		});
+		let original = visual.debug_bounds("launch-at-login-toggle").expect("login toggle");
+		for command in
+			[DesktopSettingsCommandState::Sending, DesktopSettingsCommandState::AwaitingResult]
+		{
+			settings.update(visual, |s, cx| {
+				s.snapshot.command = command;
+				s.runtime = MenuBarRuntimeState::Waiting;
+				s.detail = "Saving preference…".into();
+				cx.notify();
+			});
+			visual.update(|window, cx| window.draw(cx).clear());
+			assert!(visual.debug_bounds("menubar-runtime-status").is_none());
+			assert_eq!(visual.debug_bounds("launch-at-login-toggle"), Some(original));
+		}
+		settings.update(visual, |s, cx| {
+			s.snapshot.command = DesktopSettingsCommandState::Refused;
+			s.detail = "The service refused the change.".into();
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(visual.debug_bounds("menubar-runtime-status").is_none());
+		visual.update(|_, cx| {
+			assert!(
+				settings
+					.read(cx)
+					.notifications()
+					.iter()
+					.any(|(_, detail)| detail == "The service refused the change.")
+			);
+		});
+		assert_eq!(visual.debug_bounds("launch-at-login-toggle"), Some(original));
+	}
 
 	#[gpui::test]
 	fn glass_style_buttons_update_the_active_material(cx: &mut TestAppContext) {

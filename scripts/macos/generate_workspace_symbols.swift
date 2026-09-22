@@ -20,6 +20,10 @@ let symbols = [
     "fast": "bolt.fill",
     "voice": "waveform",
     "microphone": "mic",
+    "bell": "bell",
+    "arrow-down": "arrow.down",
+    "bell-attention": "bell",
+    "bell-info": "bell",
     "chevron-down": "chevron.down",
 ]
 for (name, symbolName) in symbols {
@@ -40,6 +44,8 @@ for (name, symbolName) in symbols {
     symbol.draw(in: NSRect(x: (16-size.width)/2, y: (16-size.height)/2, width: size.width, height: size.height),
         from: .zero, operation: .sourceOver, fraction: 1)
     (name == "send" ? NSColor(srgbRed: 0.04, green: 0.04, blue: 0.06, alpha: 1)
+        : name == "bell-attention" ? NSColor(srgbRed: 0.88, green: 0.70, blue: 0.40, alpha: 1)
+        : name == "bell-info" ? NSColor(srgbRed: 0.54, green: 0.64, blue: 0.91, alpha: 1)
         : NSColor(srgbRed: 0.88, green: 0.86, blue: 0.90, alpha: 1)).setFill()
     NSRect(x: 0, y: 0, width: 16, height: 16).fill(using: .sourceAtop)
     NSGraphicsContext.restoreGraphicsState()

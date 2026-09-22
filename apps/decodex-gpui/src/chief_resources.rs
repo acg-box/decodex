@@ -36,9 +36,6 @@ impl ChiefSurface {
 					div().child("The resource list exceeds the display limit."),
 				Some(ChiefResourcesResult::Available { resources }) => {
 					let mut list = self.resource_editor(work, cx);
-					if !self.resource_feedback.is_empty() {
-						list = list.child(self.resource_feedback.clone());
-					}
 					if resources.is_empty() {
 						list = list.child("No task resources.");
 					}

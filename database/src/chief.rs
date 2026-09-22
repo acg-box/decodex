@@ -870,6 +870,15 @@ impl SqliteStore {
 		}).await
 	}
 
+	/// Keep unsent input visible in history, but require a new user send after an ownership
+	/// conflict.
+	pub async fn hold_chief_unsent_input(&self, work: String) -> Result<(), StoreError> {
+		self.run(move |connection| {
+            connection.execute("UPDATE chief_inbox_events SET disposition='user_decision', disposition_note='Not sent: conversation was in use elsewhere. Send again when ready.', disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind='user_message' AND disposition IS NULL AND delivered_turn_id IS NULL", params![work,unix_micros()?]).map_err(sqlite_error)?;
+            Ok(())
+        }).await
+	}
+
 	/// Successful delivery processing clears only delivery diagnostics, never work events.
 	pub async fn resolve_chief_delivery_failure(&self, root: String) -> Result<(), StoreError> {
 		self.run(move |connection| {
@@ -1207,6 +1216,7 @@ fn event_row(row: &Row<'_>) -> rusqlite::Result<ChiefInboxEvent> {
 mod tests {
 	mod activity;
 	mod inbox_carryover;
+	mod legacy_setup;
 	mod task_references;
 	use super::*;
 	use tempfile::tempdir;

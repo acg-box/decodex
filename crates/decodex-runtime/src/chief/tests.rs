@@ -354,6 +354,9 @@ async fn serve_fixture(
 				let mut result = history.get(id).cloned().unwrap_or_else(
 					|| json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
 				);
+				if result["thread"]["cwd"].is_null() {
+					result["thread"]["cwd"] = json!("/tmp");
+				}
 				if result["thread"]["historyMode"] == "paginated" {
 					assert_ne!(request["params"]["includeTurns"], true);
 					result["thread"]["turns"] = json!([]);
@@ -1149,7 +1152,7 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 }
 
 #[tokio::test]
-async fn legacy_manager_upgrades_tools_once_without_replaying_saved_input() {
+async fn legacy_manager_keeps_native_thread_without_replaying_saved_input() {
 	let (mut coordinator, mut sent, directory) = fixture().await;
 	let original = coordinator.start_chief("chief", "Original request").await.unwrap();
 	complete(&mut coordinator, "chief").await;
@@ -1171,34 +1174,18 @@ async fn legacy_manager_upgrades_tools_once_without_replaying_saved_input() {
 	while sent.try_recv().is_ok() {}
 	coordinator.continue_worker("chief", "One new request").await.unwrap();
 	let upgraded = coordinator.store.get_chief_work_item("chief".into()).await.unwrap();
-	assert_ne!(original.codex_thread_id, upgraded.codex_thread_id);
-	assert_eq!(coordinator.store.chief_tool_version("chief".into()).await.unwrap(), 3);
+	assert_eq!(original.codex_thread_id, upgraded.codex_thread_id);
+	assert_eq!(coordinator.store.chief_tool_version("chief".into()).await.unwrap(), 1);
 	let messages: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
-	assert_eq!(messages.iter().filter(|message| message["method"] == "thread/start").count(), 1);
+	assert_eq!(messages.iter().filter(|message| message["method"] == "thread/start").count(), 0);
 	assert_eq!(messages.iter().filter(|message| message["method"] == "turn/start").count(), 1);
-	let creation = messages.iter().find(|message| message["method"] == "thread/start").unwrap();
-	assert!(
-		!creation["params"]["developerInstructions"]
-			.as_str()
-			.unwrap()
-			.contains("Remember the existing project")
-	);
-	let injected =
-		messages.iter().find(|message| message["method"] == "thread/inject_items").unwrap();
-	assert_eq!(injected["params"]["threadId"], json!(upgraded.codex_thread_id));
-	assert_eq!(injected["params"]["items"][0]["type"], "function_call_output");
-	assert!(
-		injected["params"]["items"][0]["output"]
-			.as_str()
-			.unwrap()
-			.contains("Remember the existing project")
-	);
+	assert!(!messages.iter().any(|message| message["method"] == "thread/inject_items"));
 	let start = messages.iter().find(|message| message["method"] == "turn/start").unwrap();
 	assert_eq!(start["params"]["input"][0]["text"], "One new request");
 	assert_eq!(
 		db.query_row("SELECT count(*) FROM chief_thread_revisions", [], |row| row.get::<_, i64>(0))
 			.unwrap(),
-		1
+		0
 	);
 }
 
@@ -1285,7 +1272,7 @@ async fn usage_is_source_bound_persistent_and_does_not_wake_managers() {
 }
 
 #[tokio::test]
-async fn external_writer_keeps_input_unclaimed_until_exact_thread_can_resume() {
+async fn external_writer_release_requires_a_new_send() {
 	let (mut coordinator, mut sent, _directory) =
 		fixture_with_history(json!({"_resume_failures":1})).await;
 	let original = coordinator.start_chief("chief", "Initial").await.unwrap();
@@ -1299,7 +1286,13 @@ async fn external_writer_keeps_input_unclaimed_until_exact_thread_can_resume() {
 	let pending = coordinator.store.list_chief_wake_events("chief".into(), 10).await.unwrap();
 	assert_eq!(pending.len(), 1);
 	assert!(pending[0].delivered_turn_id.is_none());
+	coordinator
+		.store
+		.record_chief_thread_in_use("chief".into(), "Open elsewhere".into())
+		.await
+		.unwrap();
 	coordinator.wake_pending().await.unwrap();
+	assert!(coordinator.store.list_chief_wake_events("chief".into(), 10).await.unwrap().is_empty());
 	let mut starts = 0;
 	while let Ok(request) = sent.try_recv() {
 		assert_ne!(request["method"], "thread/start");
@@ -1308,7 +1301,11 @@ async fn external_writer_keeps_input_unclaimed_until_exact_thread_can_resume() {
 			assert_eq!(request["params"]["threadId"].as_str(), original.codex_thread_id.as_deref());
 		}
 	}
-	assert_eq!(starts, 1);
+	assert_eq!(starts, 0);
+	coordinator.enqueue_user_message("chief", "explicit-resend", "Continue").await.unwrap();
+	coordinator.wake_pending().await.unwrap();
+	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	assert_eq!(requests.iter().filter(|r| r["method"] == "turn/start").count(), 1);
 }
 
 #[tokio::test]

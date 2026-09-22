@@ -6,13 +6,33 @@ use decodex_protocol::ChiefArchiveResult as State;
 pub(super) struct Panel {
 	owner: Option<String>,
 	result: Option<State>,
-	expanded: bool,
 	epoch: u64,
+	read_failures: u8,
 	last_read: Option<std::time::Instant>,
 	request: Option<Task<()>>,
 	mutation: Option<Task<()>>,
 	mutation_key: Option<String>,
-	feedback: String,
+	pub(super) feedback: String,
+}
+
+impl Panel {
+	fn apply_read(&mut self, result: State, explicit: bool) {
+		let failed =
+			matches!(result, State::Unavailable | State::Unconfirmed | State::CapacityExceeded);
+		if failed {
+			self.read_failures = self.read_failures.saturating_add(1);
+			if explicit || self.read_failures >= 2 {
+				self.feedback =
+					"Archive status is temporarily unavailable. Checking again automatically."
+						.into();
+			}
+			// An incomplete background read must not replace the last confirmed state.
+		} else {
+			self.read_failures = 0;
+			self.feedback.clear();
+			self.result = Some(result);
+		}
+	}
 }
 
 impl ChiefSurface {
@@ -23,9 +43,11 @@ impl ChiefSurface {
 		self.archive.mutation = None;
 		self.archive.mutation_key = None;
 		self.archive.last_read = None;
+		self.archive.read_failures = 0;
+		self.archive.feedback.clear();
 	}
 
-	pub(super) fn load_archive_state(&mut self, force: bool, cx: &mut Context<Self>) {
+	pub(crate) fn load_archive_state(&mut self, force: bool, cx: &mut Context<Self>) {
 		let Some(work) = self.selected.clone() else {
 			return;
 		};
@@ -40,9 +62,11 @@ impl ChiefSurface {
 			return;
 		}
 		if !force
-			&& self.archive.last_read.is_some_and(|at| {
-				!self.archive.expanded || at.elapsed() < std::time::Duration::from_secs(15)
-			}) {
+			&& self
+				.archive
+				.last_read
+				.is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(15))
+		{
 			return;
 		}
 		let Some(profile) = self.profile.clone() else {
@@ -55,8 +79,8 @@ impl ChiefSurface {
 		let generation = self.generation;
 		let epoch = self.archive.epoch;
 		self.archive.last_read = Some(std::time::Instant::now());
-		// Disable restoration while inspecting; never reuse a stale archived result.
-		self.archive.result = None;
+		// Keep the archived reading view stable while checking. The request guard
+		// disables Unarchive until this read completes.
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
@@ -72,11 +96,7 @@ impl ChiefSurface {
 					return;
 				}
 				s.archive.request = None;
-				s.archive.feedback.clear();
-				if matches!(result, State::Archived { .. }) {
-					s.archive.expanded = true;
-				}
-				s.archive.result = Some(result);
+				s.archive.apply_read(result, force);
 				cx.notify();
 			});
 		}));
@@ -165,6 +185,12 @@ impl ChiefSurface {
 		cx.notify();
 	}
 
+	pub(super) fn selected_is_archived(&self) -> bool {
+		self.archive.owner == self.selected
+			&& (matches!(self.archive.result, Some(State::Archived { .. }))
+				|| self.archive.mutation.is_some())
+	}
+
 	pub(super) fn archive_panel(
 		&self,
 		work: &ChiefWorkItemDto,
@@ -173,56 +199,42 @@ impl ChiefSurface {
 		if self.archive.owner.as_deref() != Some(&work.id) {
 			return div().into_any_element();
 		}
-		let mut panel = div().flex().flex_col().gap_2().child(button(
-			"archive-toggle",
-			"Session recovery",
-			cx,
-			|s, cx| {
-				s.archive.expanded = !s.archive.expanded;
-				if s.archive.expanded {
-					s.load_archive_state(true, cx);
-				}
-				cx.notify();
-			},
-		));
-		if !self.archive.expanded {
-			return panel.into_any_element();
-		}
-		let status = match &self.archive.result {
-			None if self.archive.mutation.is_some() => "Waiting for restore confirmation…",
-			None => "Checking the original session…",
-			Some(State::Active { .. }) => "This session is active in Codex.",
-			Some(State::Archived { .. }) =>
-				"This session is archived in Codex. Restore it to continue with its original history. Previously queued work can then continue.",
-			Some(State::Unbound) => "This task does not have a Codex session yet.",
-			Some(State::Unconfirmed) =>
-				"The session state is unconfirmed. It may have changed in another client.",
-			Some(State::Unsupported) => "This Codex provider cannot report archive state.",
-			Some(State::CapacityExceeded) =>
-				"The session list exceeds the inspection limit. Archive state is unconfirmed.",
-			Some(State::Unavailable) =>
-				"Session state is unavailable. Reconnect and refresh before restoring.",
+		let restoring = self.archive.mutation.is_some();
+		let thread = match &self.archive.result {
+			Some(State::Archived { thread_id }) => Some(thread_id.clone()),
+			_ if restoring => None,
+			_ => return div().into_any_element(),
 		};
-		panel = panel.child(status);
-		if !self.archive.feedback.is_empty() {
-			panel = panel.child(self.archive.feedback.clone());
-		}
-		if self.archive.request.is_none() && self.archive.mutation.is_none() {
-			panel = panel.child(button("archive-refresh", "Refresh session state", cx, |s, cx| {
-				s.load_archive_state(true, cx)
-			}));
-			if let Some(State::Archived { thread_id }) = &self.archive.result {
-				let work = work.id.clone();
-				let thread = thread_id.clone();
-				panel = panel.child(button(
-					"archive-restore",
-					"Restore original session",
-					cx,
-					move |s, cx| s.restore_archive(&work, &thread, cx),
-				));
-			}
-		}
-		panel.into_any_element()
+		let work = work.id.clone();
+		div()
+			.w_full()
+			.flex_none()
+			.px(px(20.))
+			.py(px(10.))
+			.flex()
+			.items_center()
+			.justify_between()
+			.gap_3()
+			.bg(rgba(ui_theme::PANEL_HEADER_TINT))
+			.text_size(px(11.))
+			.child(
+				div()
+					.flex()
+					.flex_col()
+					.gap_1()
+					.child(if restoring { "Unarchiving…" } else { "Archived" })
+					.child(
+						div()
+							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.child("History is available. Unarchive to continue."),
+					),
+			)
+			.when_some(thread.filter(|_| self.archive.request.is_none()), |panel, thread| {
+				panel.child(button("archive-restore", "Unarchive", cx, move |s, cx| {
+					s.restore_archive(&work, &thread, cx)
+				}))
+			})
+			.into_any_element()
 	}
 }
 
@@ -276,6 +288,34 @@ mod tests {
 		assert_eq!(bind_readback(state.clone(), "original"), state);
 	}
 	#[gpui::test]
+	fn archive_read_only_applies_only_to_the_selected_confirmed_thread(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.selected = Some("root".into());
+			s.archive.owner = Some("root".into());
+			s.archive.result = Some(State::Archived { thread_id: "thread".into() });
+			assert!(s.selected_is_archived());
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+			s.submit(cx);
+			assert!(!s.sending);
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			s.selected = Some("other".into());
+			assert!(!s.selected_is_archived());
+			s.selected = Some("root".into());
+			for state in [
+				State::Active { thread_id: "thread".into() },
+				State::Unavailable,
+				State::Unconfirmed,
+			] {
+				s.archive.result = Some(state);
+				assert!(!s.selected_is_archived());
+			}
+		});
+	}
+
+	#[gpui::test]
 	fn restore_control_requires_fresh_archive_identity_and_explicit_click_or_keyboard(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -302,7 +342,6 @@ mod tests {
 			s.archive = Panel {
 				owner: Some("root".into()),
 				result: Some(State::Archived { thread_id: "thread".into() }),
-				expanded: true,
 				..Default::default()
 			};
 		});
@@ -332,5 +371,23 @@ mod tests {
 			window.draw(cx).clear();
 		});
 		assert!(visual.debug_bounds("archive-restore").is_none());
+	}
+}
+
+#[cfg(test)]
+mod background_read_tests {
+	use super::*;
+	#[test]
+	fn transient_read_does_not_flash_error_or_replace_known_state() {
+		let mut panel = Panel::default();
+		panel.apply_read(State::Active { thread_id: "thread".into() }, false);
+		panel.apply_read(State::Unavailable, false);
+		assert!(panel.feedback.is_empty());
+		assert!(matches!(panel.result, Some(State::Active { .. })));
+		panel.apply_read(State::Unavailable, false);
+		assert!(!panel.feedback.is_empty());
+		panel.apply_read(State::Active { thread_id: "thread".into() }, false);
+		assert!(panel.feedback.is_empty());
+		assert_eq!(panel.read_failures, 0);
 	}
 }

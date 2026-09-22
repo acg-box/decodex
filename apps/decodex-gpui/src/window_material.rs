@@ -98,6 +98,17 @@ mod macos {
 			.subviews()
 			.iter()
 			.find(|child| unsafe { msg_send![&**child, isKindOfClass: class] });
+		// Foreground panels own their GPUI view through contentView. Never remove
+		// that view when updating the window-backdrop preference.
+		if let Some(glass) = existing.as_ref() {
+			let foreground: Option<Retained<NSView>> = unsafe { msg_send![&**glass, contentView] };
+			if foreground.is_some() {
+				unsafe {
+					let _: () = msg_send![&**glass, setStyle: match style { GlassStyle::Regular => 0isize, GlassStyle::Clear => 1isize }];
+				}
+				return true;
+			}
+		}
 		let reduce_transparency: bool = unsafe {
 			let workspace: Retained<objc2::runtime::AnyObject> =
 				msg_send![AnyClass::get(c"NSWorkspace").expect("AppKit"), sharedWorkspace];

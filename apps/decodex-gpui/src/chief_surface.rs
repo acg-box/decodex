@@ -19,6 +19,7 @@
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_requests.rs"] mod requests;
 #[path = "chief_resources.rs"] mod resources;
+#[path = "chief_selectable_text.rs"] mod selectable_text;
 #[path = "chief_usage_estimates.rs"] mod usage_estimates;
 #[path = "chief_voice.rs"] mod voice;
 #[path = "chief_workspace.rs"] mod workspace;
@@ -56,7 +57,13 @@ fn should_poll_snapshot(has_profile: bool, state: &LoadState, _active: bool) -> 
 	has_profile && *state != LoadState::Loading
 }
 
+#[cfg(all(target_os = "macos", not(test)))]
+#[path = "chief_native_composer.rs"]
+mod native_composer;
+
 pub(crate) struct ChiefSurface {
+	#[cfg(all(target_os = "macos", not(test)))]
+	native_composer: native_composer::NativeComposer,
 	voice: Option<voice::VoiceUi>,
 	voice_task: Option<Task<()>>,
 	audio_inputs: Vec<String>,
@@ -99,6 +106,8 @@ pub(crate) struct ChiefSurface {
 	history_marks: std::collections::BTreeMap<i64, activity::HistoryMark>,
 	history_marks_work: Option<String>,
 	history_selected: Option<i64>,
+	latest_follow_work: Option<String>,
+	connection_details_expanded: bool,
 	history_hover: Option<usize>,
 	history_navigation: Option<activity::HistoryNavigation>,
 	agent_tree_visible: bool,
@@ -233,6 +242,8 @@ impl ChiefSurface {
 		surface
 	}
 
+	// Keep the initial values for this view's owned state together.
+	#[allow(clippy::too_many_lines)]
 	pub(crate) fn new(cx: &mut Context<Self>) -> Self {
 		let ChiefInputs { model, cwd, composer } = Self::new_inputs(cx);
 		Self {
@@ -256,10 +267,8 @@ impl ChiefSurface {
 			mcp_login_task: None,
 			resource_mutation_task: None,
 			resource_feedback: String::new(),
-			resource_title: cx
-				.new(|cx| ComposerInput::with_placeholder(40, "Link title", "Resource title", cx)),
-			resource_url: cx
-				.new(|cx| ComposerInput::with_placeholder(40, "https://…", "Resource URL", cx)),
+			resource_title: resource_field("Link title", "Resource title", cx),
+			resource_url: resource_field("https://…", "Resource URL", cx),
 			capabilities: None,
 			capabilities_context: None,
 			capabilities_checked: None,
@@ -274,6 +283,8 @@ impl ChiefSurface {
 			effort_pointer: None,
 			effort_track_bounds: None,
 			menu_trigger_bounds: Default::default(),
+			#[cfg(all(target_os = "macos", not(test)))]
+			native_composer: Default::default(),
 			composer_menu: None,
 			composer_menu_content: None,
 			attachments: vec![],
@@ -298,6 +309,8 @@ impl ChiefSurface {
 			history_marks: Default::default(),
 			history_marks_work: None,
 			history_selected: None,
+			latest_follow_work: None,
+			connection_details_expanded: false,
 			history_hover: None,
 			history_navigation: None,
 			agent_tree_visible: true,
@@ -433,6 +446,24 @@ impl ChiefSurface {
 						{
 							scroll.scroll_to_bottom();
 						}
+						if surface.feedback == "Message saved · Waiting for agent…" {
+							let last_reply = |history: &ChiefHistoryResult| match history {
+								ChiefHistoryResult::Available { entries, .. } => entries
+									.iter()
+									.filter(|e| e.kind == "assistant")
+									.map(|e| e.id)
+									.max(),
+								_ => None,
+							};
+							let previous = surface
+								.history
+								.as_ref()
+								.filter(|(owner, _)| owner == &id)
+								.and_then(|(_, old)| last_reply(old));
+							if last_reply(&history) > previous {
+								surface.feedback.clear();
+							}
+						}
 						surface.prepare_async_question_inputs(&id, &history, cx);
 						surface.history_cache.insert(id.clone(), history.clone());
 						surface.history = Some((id, history));
@@ -526,7 +557,6 @@ impl ChiefSurface {
 					}
 					surface.prepare_question_inputs(&result, cx);
 					surface.request = Some(result);
-					surface.feedback.clear();
 					cx.notify();
 				}
 			});
@@ -561,6 +591,13 @@ impl ChiefSurface {
 	}
 
 	fn submit(&mut self, cx: &mut Context<Self>) {
+		if self.composer_unavailable_reason().is_some() {
+			cx.notify();
+			return;
+		}
+		if self.selected_is_archived() {
+			return;
+		}
 		if self.voice.is_some() {
 			return;
 		}
@@ -652,6 +689,7 @@ impl ChiefSurface {
 						self.configured_send(root_id, text, execution, attachments),
 					action => action,
 				};
+				self.follow_latest_after_send(cx);
 				self.execute(action, Some(text), cx);
 			},
 			Err(message) => {
@@ -731,8 +769,14 @@ impl ChiefSurface {
 		let surface = self;
 		match result {
 			Ok(ChiefCommandResponse::Accepted { work_id }) => {
-				let _ = work_id;
-				surface.feedback.clear();
+				surface.feedback = if draft.is_some() {
+					"Message saved · Waiting for agent…".into()
+				} else {
+					String::new()
+				};
+				if draft.is_some() && surface.selected.as_deref() == Some(work_id.as_str()) {
+					surface.follow_latest_after_send(cx);
+				}
 				if draft == Some(surface.composer.read(cx).content()) {
 					surface.composer.update(cx, |input, cx| {
 						input.clear(cx);
@@ -900,6 +944,14 @@ impl ChiefSurface {
 	fn apply_result(&mut self, result: Result<ChiefSnapshotResult, ()>) {
 		match result {
 			Ok(ChiefSnapshotResult::Available(snapshot)) => {
+				if self.feedback == "Message saved · Waiting for agent…"
+					&& snapshot.work_items.iter().any(|work| {
+						Some(&work.id) == self.selected.as_ref()
+							&& work.dispatch_state == ChiefDispatchStateDto::Running
+					}) {
+					self.feedback.clear();
+				}
+
 				if !self
 					.selected
 					.as_ref()
@@ -942,16 +994,6 @@ impl ChiefSurface {
 		}
 	}
 
-	pub(crate) fn recent_service_event(&self) -> Option<String> {
-		let (id, ChiefHistoryResult::Available { entries, .. }) = self.history.as_ref()? else {
-			return None;
-		};
-		if self.selected.as_ref() != Some(id) {
-			return None;
-		}
-		entries.iter().rev().find(|entry| entry.kind == "system").map(|entry| entry.text.clone())
-	}
-
 	fn thread_in_use(&self, work: &str) -> bool {
 		self.snapshot.as_ref().is_some_and(|snapshot| {
 			snapshot.pending_events.iter().any(|event| {
@@ -960,8 +1002,21 @@ impl ChiefSurface {
 		})
 	}
 
+	pub(crate) fn operation_notices(&self) -> Vec<(&'static str, String)> {
+		[
+			("Review", &self.guardian.feedback),
+			("Installation", &self.installation.feedback),
+			("Tools and plugins", &self.integration_feedback),
+			("Task resources", &self.resource_feedback),
+		]
+		.into_iter()
+		.filter(|(_, detail)| !detail.is_empty())
+		.map(|(title, detail)| (title, detail.clone()))
+		.collect()
+	}
+
 	pub(crate) fn status_notice(&self) -> Option<(&'static str, String, bool)> {
-		if !self.feedback.is_empty() {
+		if !self.feedback.is_empty() && self.feedback != "Message saved · Waiting for agent…" {
 			return Some((
 				if self.sending {
 					"Sending"
@@ -991,7 +1046,7 @@ impl ChiefSurface {
 			return Some((
 				"In use elsewhere",
 				format!(
-					"{name} is in use in Codex or another application. Release the conversation there to continue here. Saved messages will continue automatically; history remains readable."
+					"{name} is in use in Codex or another application. Release the conversation there to continue here. Sending is unavailable here while the conversation is in use; history remains readable."
 				),
 				false,
 			));
@@ -1007,11 +1062,7 @@ impl ChiefSurface {
 				})?;
 				return Some((
 					"Work needs attention",
-					format!(
-						"{} · {}. Open Diagnostics for recovery details.",
-						pending.work_item_id,
-						pending.event_kind.replace('_', " ")
-					),
+					format!("{} · {}.", pending.work_item_id, pending.event_kind.replace('_', " ")),
 					false,
 				));
 			},
@@ -1071,7 +1122,6 @@ impl ChiefSurface {
 			)
 			.child(self.misalignment_panel(work, cx))
 			.child(self.guardian_panel(work, cx))
-			.child(self.archive_panel(work, cx))
 			.child(self.request_panel(snapshot, work, cx))
 			.child(self.async_question_panel(work, cx))
 			.child(self.history_panel(work, cx))
@@ -1566,7 +1616,7 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 			.py_2()
 			.text_size(px(11.))
 			.text_color(rgb(ui_theme::AMBER))
-			.child(entry.text.clone());
+			.child(markdown::render(&entry.text, &format!("notice-{}", entry.id)));
 	}
 	div()
 		.w_full()
@@ -1594,14 +1644,23 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 						.child(muted("Manager instruction"))
 				})
 				.child(markdown::render(&entry.text, &format!("message-{}", entry.id)))
-				.when(entry.kind == "assistant", |body| {
-					body.child(markdown::copy_button(
-						&format!("copy-response-{}", entry.id),
-						"Copy response",
-						entry.text.clone(),
-					))
-				})
-				.when(!user, |body| body.child(reply_metrics(entry))),
+				.when(!user, |body| {
+					body.child(
+						div()
+							.mt(px(ui_theme::METADATA_GAP))
+							.flex()
+							.items_center()
+							.gap(px(8.))
+							.child(reply_metrics(entry))
+							.when(entry.kind == "assistant", |row| {
+								row.child(markdown::copy_button(
+									&format!("copy-response-{}", entry.id),
+									"Copy response",
+									entry.text.clone(),
+								))
+							}),
+					)
+				}),
 		)
 }
 
@@ -1617,31 +1676,49 @@ fn compact_tokens(value: u64) -> String {
 	format!("{}{suffix}", text.trim_end_matches(".0"))
 }
 
+struct ReplyMetricsTip(String);
+impl Render for ReplyMetricsTip {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		div()
+			.px_3()
+			.py_2()
+			.rounded(px(8.))
+			.bg(rgb(0x242429))
+			.text_size(px(ui_theme::CAPTION_SIZE))
+			.text_color(rgb(ui_theme::TEXT))
+			.child(self.0.clone())
+	}
+}
 fn reply_metrics(entry: &decodex_protocol::ChiefHistoryEntryDto) -> impl IntoElement {
-	let mut parts = Vec::new();
-	if let Some(duration) = entry.duration_ms {
-		parts.push(format!("Worked for {:.1}s", duration as f64 / 1000.0));
-	}
-	if let Some(usage) = &entry.usage {
-		parts.push(format!("In {}", compact_tokens(usage.input_tokens)));
-		parts.push(format!("Out {} tokens", compact_tokens(usage.output_tokens)));
-	}
-	let mut row = div()
-		.when(!parts.is_empty(), |row| row.mt(px(ui_theme::METADATA_GAP)))
+	let label = entry
+		.duration_ms
+		.map(|duration| {
+			if duration >= 60_000 {
+				format!("Worked for {}m {}s", duration / 60_000, duration % 60_000 / 1000)
+			} else {
+				format!("Worked for {:.1}s", duration as f64 / 1000.0)
+			}
+		})
+		.unwrap_or_else(|| "Details".into());
+	div()
+		.id(SharedString::from(format!("reply-details-{}", entry.id)))
+		.h(px(24.))
 		.flex()
 		.items_center()
-		.flex_wrap()
-		.gap(px(ui_theme::METADATA_GAP))
+		.gap(px(4.))
 		.text_size(px(ui_theme::CAPTION_SIZE))
-		.line_height(px(15.))
-		.text_color(rgb(ui_theme::TEXT_MUTED));
-	for (index, text) in parts.into_iter().enumerate() {
-		if index > 0 {
-			row = row.child(div().flex_none().child("·"));
-		}
-		row = row.child(div().flex_none().child(text));
-	}
-	row
+		.text_color(rgb(ui_theme::TEXT_MUTED))
+		.when(entry.duration_ms.is_some() || entry.usage.is_some(), |row| row.child(label))
+		.when_some(entry.usage.as_ref(), |row, usage| {
+			let detail = format!(
+				"In {} · Out {} tokens",
+				compact_tokens(usage.input_tokens),
+				compact_tokens(usage.output_tokens)
+			);
+			row.child("›")
+				.hover(|s| s.text_color(rgb(ui_theme::TEXT)))
+				.tooltip(move |_, cx| cx.new(|_| ReplyMetricsTip(detail.clone())).into())
+		})
 }
 
 pub(crate) struct ChiefPreferences {
@@ -1853,6 +1930,14 @@ impl ChiefSurface {
 			)
 			.child(muted(""))
 	}
+}
+
+fn resource_field(
+	placeholder: &'static str,
+	label: &'static str,
+	cx: &mut Context<ChiefSurface>,
+) -> Entity<ComposerInput> {
+	cx.new(|cx| ComposerInput::with_placeholder(40, placeholder, label, cx))
 }
 
 #[cfg(test)]
@@ -2250,7 +2335,6 @@ mod tests {
 				dependencies: vec![],
 				pending_events: vec![],
 			});
-			assert_eq!(s.recent_service_event().as_deref(), Some("Recovered service event"));
 			assert!(s.status_notice().is_none());
 			s.snapshot.as_mut().unwrap().pending_events.push(
 				decodex_protocol::ChiefPendingEventDto {
@@ -2272,7 +2356,6 @@ mod tests {
 			assert!(!s.thread_in_use("chief"));
 			assert!(s.status_notice().is_none());
 			s.selected = Some("another-chief".into());
-			assert!(s.recent_service_event().is_none());
 		});
 	}
 

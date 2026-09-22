@@ -185,6 +185,18 @@ impl ChiefCoordinator {
 		self.recover_async_questions().await?;
 		let work = self.store.list_chief_work_items().await?;
 		for item in &work {
+			if let Some(thread) = &item.codex_thread_id {
+				self.store
+					.recover_legacy_chief_setup(
+						item.id.clone(),
+						thread.clone(),
+						self.native_generation.as_ref().map(|g| g.as_str().to_owned()),
+					)
+					.await?;
+			}
+		}
+		let work = self.store.list_chief_work_items().await?;
+		for item in &work {
 			if matches!(
 				item.dispatch_state,
 				decodex_database::ChiefDispatchState::Running
@@ -743,69 +755,12 @@ impl ChiefCoordinator {
 		self.dispatch_with_events(item, prompt, Vec::new()).await
 	}
 
-	async fn upgrade_manager_tools(
-		&mut self,
-		item: &ChiefWorkItem,
-	) -> Result<ChiefWorkItem, ChiefError> {
-		let old = item
-			.codex_thread_id
-			.clone()
-			.ok_or_else(|| ChiefError::Invalid("unbound manager".into()))?;
-		let context = self.store.read_chief_work_events(item.id.clone(), 100).await?;
-		let mut retained = Vec::new();
-		let mut bytes = 0;
-		for event in context.into_iter().rev() {
-			if ![
-				"user_message",
-				"async_question_answer",
-				"chief_turn_completed",
-				"worker_turn_completed",
-			]
-			.contains(&event.event_kind.as_str())
-			{
-				continue;
-			}
-			bytes += event.payload.len();
-			if bytes > 256 * 1024 {
-				break;
-			}
-			retained.push(json!({"kind":event.event_kind,"payload":event.payload}));
-		}
-		retained.reverse();
-		let mut params = self.work_thread_params(item).await?;
-		params["developerInstructions"] = json!(format!(
-			"{INSTRUCTIONS} This is a tool-capability upgrade of the same Decodex work identity {}. Previous conversation data is supplied separately as external tool context. Use chief_list_work and chief_read_work to inspect current and previous task history. Do not replay any prior action.",
-			item.id,
-		));
-		self.store.begin_chief_tool_upgrade(item.id.clone(), old.clone()).await?;
-		let outcome = async {
-			let response = self.client.thread_start(params).await?;
-			if response["model"].as_str() != Some(&self.config.model)
-				|| response["reasoningEffort"].as_str() != Some(&self.config.chief_effort)
-			{
-				return Err(ChiefError::Invalid("upgraded manager settings differ".into()));
-			}
-			let new = exact(&response, "/thread/id")?;
-			self.inject_external_context(&new, "previous_work_context", &json!(retained)).await?;
-			self.store.finish_chief_tool_upgrade(item.id.clone(), old.clone(), new.clone()).await?;
-			self.loaded_threads.remove(&old);
-			self.loaded_threads.insert(new);
-			self.store.get_chief_work_item(item.id.clone()).await.map_err(Into::into)
-		}
-		.await;
-		if outcome.is_err() {
-			self.store.mark_chief_dispatch_unknown(item.id.clone()).await?;
-		}
-		outcome
-	}
-
 	async fn ensure_thread(&mut self, item: &ChiefWorkItem) -> Result<ChiefWorkItem, ChiefError> {
 		if item.codex_thread_id.is_some() {
-			if self.is_manager(&item.id).await?
-				&& self.store.chief_tool_version(item.id.clone()).await? < 3
-			{
-				return self.upgrade_manager_tools(item).await;
-			}
+			// Verified against Codex 0.155.0-alpha.9.2 generated schema and upstream
+			// 7d99ee82d74325cabf485ea1e2adbd0c2625ab19: resume has no dynamicTools.
+			// Keep native identity and history. Dynamic tools belong to thread creation;
+			// an application update must not silently replace an existing conversation.
 			return Ok(item.clone());
 		}
 		self.store.begin_chief_thread_creation(item.id.clone()).await?;
@@ -1809,6 +1764,25 @@ impl ChiefCoordinator {
 	pub async fn wake_pending(&mut self) -> Result<(), ChiefError> {
 		if self.dispatch_paused {
 			return Ok(());
+		}
+		let blocked = self.store.list_pending_chief_events(1000).await?;
+		for notice in blocked.iter().filter(|e| e.event_kind == "thread_in_use_needs_attention") {
+			self.store.hold_chief_unsent_input(notice.work_item_id.clone()).await?;
+			let item = self.store.get_chief_work_item(notice.work_item_id.clone()).await?;
+			if let Some(thread) = &item.codex_thread_id {
+				let mut params = self.work_thread_params(&item).await?;
+				params.as_object_mut().expect("thread params").remove("dynamicTools");
+				params["threadId"] = json!(thread);
+				params["excludeTurns"] = json!(true);
+				let resumed =
+					self.client.thread_resume(params).await.map_err(|e| resume_error(e, thread))?;
+				if resumed.pointer("/thread/id").and_then(Value::as_str) != Some(thread.as_str()) {
+					return Err(ChiefError::Invalid(
+						"resumed conversation identity differs".into(),
+					));
+				}
+				self.store.resolve_chief_delivery_failure(item.id).await?;
+			}
 		}
 		let voice_calls = self.store.open_chief_voice_calls().await?;
 		let work = self.store.list_chief_work_items().await?;

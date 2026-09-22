@@ -163,7 +163,21 @@ fn pump(
 				Err(mpsc::error::TryRecvError::Empty) => break,
 				Err(mpsc::error::TryRecvError::Disconnected) => return Err(ClientError::Closed),
 			};
-			validate_outbound(&value, &mut requests)?;
+			if let Err(error) = validate_outbound(&value, &mut requests) {
+				if value.get("method").and_then(Value::as_str).is_some()
+					&& let Some(id) = value
+						.get("id")
+						.cloned()
+						.and_then(|id| serde_json::from_value::<RequestId>(id).ok())
+				{
+					// Refuse this local RPC before writing any bytes. Optional UI reads
+					// must not close the conversation's shared transport.
+					events.try_send(Ok(serde_json::json!({"id":id,"error":{"code":-32601,"message":"Method is not available on the Chief connection."}})))
+                        .map_err(|_| ClientError::CapacityExceeded)?;
+					continue;
+				}
+				return Err(error);
+			}
 			SupervisedProcess::write_bound_json(writer, &value).map_err(|_| ClientError::Io)?;
 		}
 		let frame = match stdout.recv_timeout(Duration::from_millis(5)) {
@@ -221,6 +235,12 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "model/list" | "experimentalFeature/list"
 					| "thread/start"
 					| "thread/resume"
+					| "thread/inject_items"
+					| "thread/attachment/list"
+					| "mcpServerStatus/list"
+					| "plugin/installed"
+					| "plugin/list" | "plugin/read"
+					| "app/list" | "account/usage/read"
 					| "thread/unarchive"
 					| "thread/read" | "thread/list"
 					| "thread/turns/list"
@@ -250,6 +270,73 @@ mod tests {
 	use std::sync::mpsc as sync_mpsc;
 
 	#[cfg(unix)]
+	#[test]
+	fn rejected_optional_request_does_not_close_the_shared_transport() {
+		let (sender, stdout) = sync_mpsc::sync_channel(2);
+		sender.send(InboundFrame::fixture(br#"{"id":2,"result":{"data":[]}}"#)).unwrap();
+		drop(sender);
+		let (outgoing, commands) = mpsc::channel(4);
+		outgoing.try_send(json!({"id":1,"method":"account/login/start","params":{}})).unwrap();
+		outgoing.try_send(json!({"id":2,"method":"thread/list","params":{}})).unwrap();
+		let (events, mut receiver) = mpsc::channel(4);
+		let mut writer: Box<dyn Write + Send> = Box::new(io::sink());
+		let result = pump(
+			&mut writer,
+			stdout,
+			commands,
+			events,
+			&AtomicBool::new(false),
+			&AtomicBool::new(false),
+			|_, _, _| panic!("no refresh expected"),
+		);
+		assert!(matches!(result, Err(ClientError::Closed)));
+		let denied = receiver.try_recv().unwrap().unwrap();
+		assert_eq!(denied["id"], 1);
+		assert_eq!(denied["error"]["code"], -32601);
+		assert_eq!(receiver.try_recv().unwrap().unwrap()["id"], 2);
+	}
+
+	#[test]
+	fn conversation_metadata_reads_use_the_native_bridge() {
+		for method in [
+			"thread/attachment/list",
+			"mcpServerStatus/list",
+			"plugin/installed",
+			"plugin/list",
+			"plugin/read",
+			"app/list",
+			"account/usage/read",
+		] {
+			assert!(
+				validate_outbound(
+					&json!({"id":1,"method":method,"params":{}}),
+					&mut HashSet::new()
+				)
+				.is_ok(),
+				"{method}"
+			);
+		}
+	}
+
+	#[test]
+	fn native_context_injection_is_admitted_without_opening_account_methods() {
+		let mut requests = HashSet::new();
+		assert!(
+			validate_outbound(
+				&json!({"id":1,"method":"thread/inject_items","params":{"threadId":"fixture","items":[]}}),
+				&mut requests
+			)
+			.is_ok()
+		);
+		assert!(matches!(
+			validate_outbound(
+				&json!({"id":2,"method":"account/login/start","params":{}}),
+				&mut requests
+			),
+			Err(ClientError::InvalidFrame)
+		));
+	}
+
 	#[test]
 	fn blocked_terminal_delivery_does_not_keep_child_stdin_open() {
 		use std::io::Read as _;

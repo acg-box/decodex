@@ -832,6 +832,7 @@ impl ChiefHost {
 				let _ = self.store.resolve_chief_delivery_failure(root.into()).await;
 			},
 			Err(ChiefError::ThreadOwnedElsewhere) => {
+				let _ = self.store.hold_chief_unsent_input(root.into()).await;
 				let _ = self
 					.store
 					.record_chief_thread_in_use(
@@ -963,8 +964,8 @@ impl ChiefHost {
 
 fn diagnostic(error: &ChiefError) -> String {
 	match error {
-        ChiefError::ThreadArchived => "This session is archived in Codex. Open Session recovery to restore the original session. Saved messages remain queued.".into(),
-		ChiefError::ThreadOwnedElsewhere => "This Chief conversation is open in Codex or another application. Release it there; saved messages will continue automatically.".into(),
+        ChiefError::ThreadArchived => "This conversation is archived. Unarchive it to continue. Your saved messages remain queued.".into(),
+		ChiefError::ThreadOwnedElsewhere => "This Chief conversation is open in Codex or another application. Sending is unavailable here while it is in use. Your history remains readable.".into(),
 		ChiefError::Store(_) => "Chief delivery could not access its saved state.".into(),
 		ChiefError::DependenciesPending(_) => "Chief is waiting for prerequisite work.".into(),
 		_ => error.to_string(),
@@ -1067,8 +1068,17 @@ async fn persist_input(
 	text: &str,
 	options: Option<&serde_json::Value>,
 ) -> Result<(), &'static str> {
+	let pending = store
+		.list_pending_chief_events(1000)
+		.await
+		.map_err(|_| "Conversation state is unavailable")?;
+	if pending.iter().any(|event| {
+		event.work_item_id == root && event.event_kind == "thread_in_use_needs_attention"
+	}) {
+		return Err("This conversation is in use in another app. No message was queued.");
+	}
 	store
-		.enqueue_chief_event(EnqueueChiefEvent {
+  .enqueue_chief_event(EnqueueChiefEvent {
 			source_event_id: json!(["user_message", root, key]).to_string(),
 			work_item_id: root.into(),
 			event_kind: "user_message".into(),
@@ -1269,6 +1279,36 @@ mod tests {
 		assert_eq!(
 			store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state,
 			decodex_database::ChiefDispatchState::Unknown
+		);
+	}
+
+	#[tokio::test]
+	async fn occupied_conversation_rejects_input_without_queuing() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		ChiefCoordinator::reserve_root(&store, "chief", "Coordinate").await.unwrap();
+		store.record_chief_thread_in_use("chief".into(), "Open elsewhere".into()).await.unwrap();
+		assert!(persist_input(&store, "chief", "blocked", "Do this", None).await.is_err());
+		assert!(
+			!store
+				.list_pending_chief_events(100)
+				.await
+				.unwrap()
+				.iter()
+				.any(|e| e.event_kind == "user_message")
+		);
+		store.resolve_chief_delivery_failure("chief".into()).await.unwrap();
+		persist_input(&store, "chief", "new-send", "Do this", None).await.unwrap();
+		assert_eq!(
+			store
+				.list_pending_chief_events(100)
+				.await
+				.unwrap()
+				.iter()
+				.filter(|e| e.event_kind == "user_message")
+				.count(),
+			1
 		);
 	}
 

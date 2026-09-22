@@ -25,6 +25,10 @@ pub(super) struct DictationUi {
 }
 impl ChiefSurface {
 	pub(super) fn start_dictation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if self.selected_is_archived() || self.composer_unavailable_reason().is_some() {
+			return;
+		}
+
 		if self.dictation_task.is_some() || self.voice_task.is_some() {
 			return;
 		}

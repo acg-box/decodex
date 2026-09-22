@@ -176,6 +176,7 @@ impl ChiefSurface {
 		}
 
 		self.selected = Some(id.to_owned());
+		self.connection_details_expanded = false;
 		self.history = self.history_cache.get(id).cloned().map(|h| (id.to_owned(), h));
 		self.details_visible = false;
 		self.request = None;
@@ -283,7 +284,7 @@ impl ChiefSurface {
 			.h_full()
 			.flex()
 			.flex_col()
-			.p_2()
+			.p(px(ui_theme::CONTROL_MARGIN))
 			.pt(px(super::super::WINDOW_CONTROLS_CLEARANCE))
 			.gap_1()
 			.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
@@ -440,6 +441,157 @@ impl ChiefSurface {
 		row.into_any_element()
 	}
 
+	pub(super) fn composer_unavailable_reason(&self) -> Option<&'static str> {
+		if self.uncertain {
+			return Some(
+				"Delivery is unconfirmed. Your draft is kept; sending is paused to avoid duplicates.",
+			);
+		}
+		let selected = self.selected.as_deref()?;
+		if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
+			return Some("The service connection is unavailable. Your history and draft are kept.");
+		}
+		let snapshot = self.snapshot.as_ref()?;
+		let root = self.root_id();
+		for event in &snapshot.pending_events {
+			if event.work_item_id != selected && Some(&event.work_item_id) != root.as_ref() {
+				continue;
+			}
+			let reason = match event.event_kind.as_str() {
+				"thread_in_use_needs_attention" =>
+					"This conversation is in use in another app. Sending is unavailable here; your history remains readable.",
+				"reconnection_needs_attention" =>
+					"The agent could not reconnect. Messages are saved and sending is paused. Decodex will retry automatically.",
+				"configuration_needs_attention" =>
+					"The agent configuration is unavailable. Your history and draft are kept.",
+				"recovery_needs_attention" | "wake_failed" =>
+					"The agent could not resume this conversation. Your history and draft are kept.",
+				_ => continue,
+			};
+			return Some(reason);
+		}
+		snapshot
+			.work_items
+			.iter()
+			.find(|w| w.id == selected)
+			.filter(|w| w.dispatch_state == ChiefDispatchStateDto::Unknown)
+			.map(
+				|_| "The agent connection is interrupted. Checking the current conversation state.",
+			)
+	}
+
+	fn connection_failure_detail(&self) -> Option<&str> {
+		let selected = self.selected.as_ref()?;
+		let event = self.snapshot.as_ref()?.pending_events.iter().rev().find(|e| {
+			&e.work_item_id == selected
+				&& matches!(
+					e.event_kind.as_str(),
+					"reconnection_needs_attention" | "recovery_needs_attention" | "wake_failed"
+				)
+		})?;
+		let (owner, ChiefHistoryResult::Available { entries, .. }) = self.history.as_ref()? else {
+			return None;
+		};
+		if owner != selected {
+			return None;
+		}
+		entries
+			.iter()
+			.find(|entry| entry.id == event.id && entry.kind == "system")
+			.map(|entry| entry.text.as_str())
+	}
+
+	fn unavailable_composer(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
+		let detail = self.connection_failure_detail();
+		let (title, description) = match detail {
+			Some(text) if text.contains("ProcessUnavailable") => (
+				"Codex couldn't start",
+				"The local Codex connection could not be started or initialized. Your messages are saved. Decodex will retry automatically; you do not need to resend them.",
+			),
+			Some(text) if text.contains("RefreshQuota") || text.contains("usage limit") => (
+				"Account availability needs checking",
+				"Codex could not confirm an account with available usage. Your messages are saved. Review account availability in Settings → Accounts.",
+			),
+			Some(text) if text.contains("SelectWorkingDirectory") => (
+				"Project folder is unavailable",
+				"Restore access to the project folder so this conversation can resume. Your messages and draft are kept.",
+			),
+			_ => ("Can't continue this conversation", reason),
+		};
+		div()
+			.id("conversation-unavailable")
+			.role(Role::Status)
+			.aria_label(format!("{title}. {description}"))
+			.m_4()
+			.p(px(16.))
+			.rounded(px(12.))
+			.bg(rgb(0x26262b))
+			.text_color(rgb(ui_theme::TEXT))
+			.flex()
+			.flex_col()
+			.child(
+				div()
+					.mb(px(8.))
+					.text_size(px(12.))
+					.line_height(px(17.))
+					.font_weight(FontWeight::MEDIUM)
+					.child(title),
+			)
+			.child(
+				div()
+					.text_size(px(11.))
+					.line_height(px(17.))
+					.text_color(rgb(ui_theme::TEXT_MUTED))
+					.child(description),
+			)
+			.when(detail.is_some(), |d| {
+				d.child(
+					div().mt(px(8.)).flex().justify_end().items_center().child(
+						div()
+							.id("connection-details")
+							.role(Role::Button)
+							.aria_label("Technical details")
+							.aria_expanded(self.connection_details_expanded)
+							.tab_index(0)
+							.cursor_pointer()
+							.flex()
+							.items_center()
+							.gap(px(5.))
+							.h(px(20.))
+							.text_size(px(11.))
+							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.hover(|s| s.text_color(rgb(ui_theme::TEXT)))
+							.child("Details")
+							.child(super::super::workspace_symbols::disclosure_chevron(
+								"connection-details-chevron",
+								self.connection_details_expanded,
+							))
+							.on_click(cx.listener(|s, _, _, cx| {
+								s.toggle_connection_details(cx);
+							}))
+							.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
+								if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+									s.toggle_connection_details(cx);
+									cx.stop_propagation();
+								}
+							}))
+							.smooth(),
+					),
+				)
+			})
+			.child(crate::ui_motion::disclosure(
+				"connection-diagnostic",
+				self.connection_details_expanded && detail.is_some(),
+				div()
+					.pt(px(8.))
+					.text_size(px(11.))
+					.line_height(px(17.))
+					.text_color(rgb(ui_theme::TEXT_MUTED))
+					.child(detail.unwrap_or_default().to_owned()),
+			))
+			.into_any_element()
+	}
+
 	fn floating_composer(&self, window: &mut Window, cx: &mut Context<Self>) -> gpui::Div {
 		let owner = cx.entity().downgrade();
 		// Only the capsule occludes history; the measured footer reserves scroll space.
@@ -463,12 +615,17 @@ impl ChiefSurface {
 					.w_full()
 					.flex()
 					.flex_col()
-					.child(self.conversation_activity(cx))
-					.child(self.render_composer(window, cx)),
+					.when_some(self.composer_unavailable_reason(), |d, reason| {
+						d.child(self.unavailable_composer(reason, cx))
+					})
+					.when(self.composer_unavailable_reason().is_none(), |d| {
+						d.child(self.conversation_activity(cx))
+							.child(self.render_composer(window, cx))
+					}),
 			)
 	}
 
-	fn selected_is_manager(&self) -> bool {
+	pub(super) fn selected_is_manager(&self) -> bool {
 		self.selected.is_none()
 			|| self.selected == self.root_id()
 			|| self.snapshot.as_ref().is_some_and(|snapshot| {
@@ -502,6 +659,8 @@ impl ChiefSurface {
 			.flex_col()
 			.rounded(px(14.))
 			.bg(rgba(ui_theme::CHIEF_CHAT_OVERLAY));
+		chat = chat
+			.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)));
 		if !is_chief {
 			chat = chat.child(worker_status(selected.as_ref()));
 		}
@@ -540,7 +699,6 @@ impl ChiefSurface {
 						)
 						.child(self.misalignment_panel(work, cx))
 						.child(self.guardian_panel(work, cx))
-						.child(self.archive_panel(work, cx))
 						.child(self.request_panel(snapshot, work, cx))
 						.child(self.async_question_panel(work, cx))
 						.into_any_element()
@@ -559,11 +717,13 @@ impl ChiefSurface {
 				.min_h_0()
 				.flex()
 				.child(self.history_rail_slot(window, cx))
-				.child(transcript),
+				.relative()
+				.child(transcript)
+				.child(self.latest_button(window, cx)),
 		);
-		if is_chief && selected.is_some() {
+		if is_chief && selected.is_some() && !self.selected_is_archived() {
 			chat = chat.child(self.floating_composer(window, cx));
-		} else if let Some(work) = selected {
+		} else if !is_chief && let Some(work) = selected {
 			chat = chat
 				.child(self.conversation_activity(cx))
 				.child(self.workspace_followup(&work, cx));
@@ -615,6 +775,12 @@ impl ChiefSurface {
 		self.prepare_history_marks();
 		self.animate_history_scroll(window, cx);
 		self.follow_voice_scroll(window, cx);
+		if self.latest_follow_work == self.selected
+			&& let Some(scroll) =
+				self.selected.as_ref().and_then(|work| self.transcript_scroll.get(work))
+		{
+			scroll.scroll_to_bottom();
+		}
 	}
 
 	fn restore_history_anchor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -732,7 +898,7 @@ impl ChiefSurface {
 					.flex()
 					.justify_start()
 					.gap_1()
-					.p_2()
+					.p(px(ui_theme::CONTROL_MARGIN))
 					.child(self.workspace_action(
 						"zoom-out".into(),
 						"−".into(),
@@ -1307,20 +1473,51 @@ impl ChiefSurface {
 		let selected = self.snapshot.as_ref().and_then(|snapshot| {
 			snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())
 		});
+		let notice = self.status_notice();
 		let current = selected.and_then(|work| self.current_activity_label(work));
-		let label = if self.selected.as_deref().is_some_and(|id| self.thread_in_use(id)) {
-			Some("In use in another app · saved messages are waiting")
-		} else if self.sending {
+		let pending = self
+			.snapshot
+			.as_ref()
+			.map(|snapshot| {
+				snapshot
+					.pending_events
+					.iter()
+					.filter(|event| Some(&event.work_item_id) == self.selected.as_ref())
+					.collect::<Vec<_>>()
+			})
+			.unwrap_or_default();
+		let label = if self.sending {
 			Some("Sending…")
+		} else if self.uncertain {
+			Some("Delivery unconfirmed · Draft kept. Sending is paused to avoid duplicates.")
+		} else if self.selected.as_deref().is_some_and(|id| self.thread_in_use(id)) {
+			Some("In use in another app · Your message is saved and waiting")
+		} else if pending.iter().any(|event| {
+			event.event_kind.ends_with("_needs_attention") || event.event_kind.ends_with("_failed")
+		}) {
+			Some("This conversation needs attention. Its current operation could not complete.")
+		} else if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
+			Some("Connection unavailable · Reconnecting")
+		} else if !self.feedback.is_empty() && self.feedback != "Message saved · Waiting for agent…"
+		{
+			Some(self.feedback.as_str())
 		} else {
 			selected.and_then(|work| match work.dispatch_state {
 				ChiefDispatchStateDto::Dispatching => Some("Starting…"),
 				ChiefDispatchStateDto::Running => Some(current.as_deref().unwrap_or("Working…")),
 				ChiefDispatchStateDto::Unknown =>
-					Some("Connection interrupted · checking execution status"),
+					Some("Connection interrupted · Checking delivery"),
+				ChiefDispatchStateDto::Idle
+					if pending.iter().any(|event| event.event_kind == "user_message") =>
+					Some("Message saved · Waiting for agent…"),
+				ChiefDispatchStateDto::Idle
+					if self.feedback == "Message saved · Waiting for agent…" =>
+					Some(self.feedback.as_str()),
 				ChiefDispatchStateDto::Idle => None,
 			})
-		};
+		}
+		.or_else(|| notice.as_ref().map(|(_, detail, _)| detail.as_str()))
+		.or_else(|| (!self.archive.feedback.is_empty()).then_some(self.archive.feedback.as_str()));
 		let Some(label) = label else {
 			return div().into_any_element();
 		};
@@ -1333,6 +1530,9 @@ impl ChiefSurface {
 				))
 			});
 		div()
+			.id("conversation-activity-status")
+			.role(Role::Status)
+			.aria_label(label.to_owned())
 			.w_full()
 			.px_4()
 			.py_1()
@@ -1436,6 +1636,63 @@ impl ChiefSurface {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn connection_details_match_the_current_failure_not_an_old_log(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.snapshot.as_mut().unwrap().pending_events =
+				vec![decodex_protocol::ChiefPendingEventDto {
+					id: 99,
+					source_event_id: "failure".into(),
+					work_item_id: "chief".into(),
+					event_kind: "reconnection_needs_attention".into(),
+					created_at_micros: 1,
+					delivery_claimed: false,
+				}];
+			let Some((_, ChiefHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture");
+			};
+			let mut entry = entries[0].clone();
+			entry.id = 99;
+			entry.kind = "system".into();
+			entry.text = "Chief process requires recovery: ProcessUnavailable".into();
+			entries.push(entry);
+			assert!(s.connection_failure_detail().unwrap().contains("ProcessUnavailable"));
+			s.snapshot.as_mut().unwrap().pending_events[0].id = 100;
+			assert!(s.connection_failure_detail().is_none(), "never reuse an obsolete error");
+		});
+	}
+
+	#[gpui::test]
+	fn unavailable_thread_blocks_submission_without_losing_draft(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.snapshot.as_mut().unwrap().pending_events.clear();
+			assert!(s.composer_unavailable_reason().is_none());
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+			s.snapshot.as_mut().unwrap().pending_events.push(
+				decodex_protocol::ChiefPendingEventDto {
+					id: 99,
+					source_event_id: "offline".into(),
+					work_item_id: "chief".into(),
+					event_kind: "reconnection_needs_attention".into(),
+					created_at_micros: 1,
+					delivery_claimed: false,
+				},
+			);
+			assert!(s.composer_unavailable_reason().unwrap().contains("could not reconnect"));
+			s.submit(cx);
+			assert!(!s.sending);
+			assert!(s.command_task.is_none());
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			s.snapshot.as_mut().unwrap().pending_events.clear();
+			assert!(s.composer_unavailable_reason().is_none());
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+		});
+	}
+
 	#[gpui::test]
 	fn pages_reuse_identity_preserve_draft_and_return_to_chief(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));

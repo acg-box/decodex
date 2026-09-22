@@ -1,8 +1,12 @@
 //! Production GPUI window, navigation, focus, and lifecycle rendering boundary.
+#[cfg(all(target_os = "macos", not(test)))]
+#[path = "shell_native_status.rs"]
+mod native_status;
 #[path = "quota_meter.rs"] mod quota_meter;
 #[path = "shell_reset_cards.rs"] mod reset_cards;
 #[path = "shell_status.rs"] mod status;
 use crate::ui_motion::SmoothControl;
+pub(crate) use status::count_preference as notification_count_preference;
 
 #[path = "chief_surface.rs"] pub(crate) mod chief_surface;
 use chief_surface::ChiefSurface;
@@ -57,7 +61,9 @@ use crate::{
 	ui_theme,
 };
 
-const WINDOW_CONTROLS_CLEARANCE: f32 = 48.0;
+// Match the gap below floating controls to their inset from the window edge.
+const WINDOW_CONTROLS_CLEARANCE: f32 =
+	ui_theme::CONTROL_MARGIN * 2.0 + ui_theme::CONTROL_GROUP_HEIGHT;
 const WORKBENCH_SESSION_SIDEBAR_WIDTH: f32 = 248.0;
 const WORKBENCH_INSPECTOR_WIDTH: f32 = 344.0;
 const LIFECYCLE_POLL: Duration = Duration::from_millis(40);
@@ -302,6 +308,7 @@ actions!(
 		ToggleSidebar,
 		ToggleInspector,
 		ToggleGraph,
+		DismissStatus,
 		InterruptReply,
 		NavigateBack,
 		NavigateForward,
@@ -531,6 +538,9 @@ pub(crate) struct Shell {
 	titlebar_drag_pending: bool,
 	navigation: navigation::NavigationHistory,
 	status_open: bool,
+	dismissed_notifications: std::cell::RefCell<std::collections::HashSet<(String, String)>>,
+	#[cfg(all(target_os = "macos", not(test)))]
+	native_status: native_status::NativeStatus,
 }
 
 impl Shell {
@@ -643,6 +653,9 @@ impl Shell {
 			titlebar_drag_pending: false,
 			navigation: navigation::NavigationHistory::new(),
 			status_open: false,
+			dismissed_notifications: Default::default(),
+			#[cfg(all(target_os = "macos", not(test)))]
+			native_status: Default::default(),
 		}
 	}
 
@@ -2664,13 +2677,6 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.as_ref()
 		.is_some_and(|routing| routing.mode == AccountSelectionModeDto::Balanced);
 	let can_manage = snapshot.can_manage;
-	let status = snapshot
-		.route_reopen_notice
-		.then(|| "Route succeeded. You can reopen ChatGPT or Codex now.".to_owned())
-		.or_else(|| shell.account_status.as_ref().map(SharedString::to_string))
-		.or_else(|| snapshot.rejection.map(account_rejection_label).map(str::to_owned))
-		.or_else(|| account_command_label(snapshot.command).map(str::to_owned))
-		.unwrap_or_else(|| accounts_load_label(snapshot.load).to_owned());
 	let count = snapshot.accounts.len();
 	let available = snapshot
 		.accounts
@@ -2685,8 +2691,9 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	div()
 		.flex_1()
 		.min_h_0()
-		.px(px(28.0))
-		.py_5()
+		.px(px(ui_theme::SETTINGS_INSET))
+		.pt(px(ui_theme::SETTINGS_GROUP_GAP))
+		.pb(px(ui_theme::SETTINGS_INSET))
 		.flex()
 		.justify_center()
 		.child(
@@ -2738,30 +2745,6 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 							)
 						})
 						.children(rows),
-				)
-				.when(
-					snapshot.load != AccountsLoadState::Ready
-						|| snapshot.rejection.is_some()
-						|| shell.account_status.is_some()
-						|| account_command_label(snapshot.command).is_some(),
-					|d| {
-						d.child(
-							div()
-								.min_h(px(28.0))
-								.px_3()
-								.flex()
-								.items_center()
-								.justify_between()
-								.rounded(px(8.0))
-								.border_1()
-								.border_color(rgba(0xffffff0d))
-								.bg(rgba(0xffffff04))
-								.font_family(ui_theme::FONT_FAMILY)
-								.text_size(px(11.0))
-								.text_color(rgb(WB_TEXT_FAINT))
-								.child(status),
-						)
-					},
 				),
 		)
 		.into_any_element()
@@ -2806,11 +2789,17 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 		},
 	);
 	let status = shell
-		.account_login_error
+		.account_login_status
 		.as_ref()
-		.map(SharedString::to_string)
-		.or_else(|| shell.account_login_status.as_ref().map(account_login_status_label))
-		.unwrap_or_else(|| "Connect an account to use Codex.".into());
+		.filter(|status| {
+			!matches!(
+				status.state,
+				AccountLoginState::Completed
+					| AccountLoginState::Failed
+					| AccountLoginState::Cancelled
+			)
+		})
+		.map(account_login_status_label);
 
 	div()
 		.id("account-login-controls")
@@ -2835,14 +2824,11 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 						.text_color(rgb(WB_TEXT))
 						.child("Add account"),
 				)
-				.when(
-					shell.account_login_status.is_some() || shell.account_login_error.is_some(),
-					|row| {
-						row.child(
-							div().text_size(px(10.5)).text_color(rgb(WB_TEXT_MUTED)).child(status),
-						)
-					},
-				)
+				.when_some(status, |row, status| {
+					row.child(
+						div().text_size(px(10.5)).text_color(rgb(WB_TEXT_MUTED)).child(status),
+					)
+				})
 				.when_some(prompt, |details, (code, url)| {
 					details.child(account_login_prompt(code, url))
 				}),
@@ -2938,18 +2924,24 @@ fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let (status, facts) = match shell.account_profile.result.as_ref() {
 		Some(AccountProfileResult::Current(profile)) =>
 			("Account profile".to_owned(), account_profile_facts(profile)),
-		Some(AccountProfileResult::Cached { profile, refresh_error }) => (
-			format!("Cached profile; refresh failed: {refresh_error:?}"),
-			account_profile_facts(profile),
-		),
-		Some(AccountProfileResult::Unavailable { error, plan_type, .. }) => (
-			format!("Profile unavailable: {error:?}"),
+		Some(AccountProfileResult::Cached { profile, .. }) =>
+			("Cached profile".to_owned(), account_profile_facts(profile)),
+		Some(AccountProfileResult::Unavailable { plan_type, .. }) => (
+			"No current profile".to_owned(),
 			plan_type
 				.as_ref()
 				.map(|plan| vec![format!("Plan · {}", account_plan_label(plan.as_str()))])
 				.unwrap_or_default(),
 		),
-		None => (account_profile_load_label(shell.account_profile.load).to_owned(), Vec::new()),
+		None => (
+			if shell.account_profile.load == AccountProfileLoadState::Loading {
+				"Loading profile…"
+			} else {
+				"No current profile"
+			}
+			.to_owned(),
+			Vec::new(),
+		),
 	};
 
 	div()
@@ -4739,8 +4731,9 @@ fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 		.flex_1()
 		.min_h_0()
 		.overflow_y_scroll()
-		.px(px(28.0))
-		.py(px(20.0))
+		.px(px(ui_theme::SETTINGS_INSET))
+		.pt(px(ui_theme::SETTINGS_GROUP_GAP))
+		.pb(px(ui_theme::SETTINGS_INSET))
 		.flex()
 		.justify_center()
 		.child(content)
@@ -4855,8 +4848,8 @@ fn settings_workspace_content(
 		.child(
 			div()
 				.px_2()
-				.pt_3()
-				.pb_4()
+				.pt(px(ui_theme::SETTINGS_TOP))
+				.pb(px(ui_theme::SETTINGS_GROUP_GAP))
 				.text_size(px(13.0))
 				.font_weight(FontWeight::SEMIBOLD)
 				.child("Settings"),
@@ -4898,24 +4891,24 @@ fn settings_workspace_content(
 				.smooth(),
 		);
 	}
+	let panel = div()
+		.flex_1()
+		.min_w_0()
+		.min_h_0()
+		.h_full()
+		.overflow_hidden()
+		.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
+		.pt(px(WINDOW_CONTROLS_CLEARANCE))
+		.flex()
+		.flex_col();
 	let content = if selected == Destination::Settings {
-		div()
-			.flex_1()
-			.min_w_0()
-			.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
-			.pt(px(WINDOW_CONTROLS_CLEARANCE))
-			.child(shell.settings.clone())
+		panel
+			.child(div().flex_1().min_h_0().overflow_hidden().child(shell.settings.clone()))
 			.into_any_element()
 	} else {
-		div()
-			.flex_1()
-			.min_w_0()
-			.flex()
-			.flex_col()
-			.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
-			.pt(px(WINDOW_CONTROLS_CLEARANCE))
+		panel
 			.child(
-				div().px(px(28.0)).pt(px(18.0)).flex().justify_center().child(
+				ui_theme::settings_header_inset().child(
 					div()
 						.w_full()
 						.max_w(px(ui_theme::SETTINGS_WIDTH))
@@ -4968,6 +4961,7 @@ impl Render for SettingsWindow {
 		let content = self.owner.update(cx, |s, cx| {
 			settings_workspace_content(s, true, s.refresh_focus.clone(), window, cx)
 		});
+
 		div()
 			.id("settings-window")
 			.size_full()
@@ -4984,6 +4978,7 @@ impl Render for SettingsWindow {
 			.on_action(cx.listener(|_, _: &ActivateSettings, _, cx| cx.stop_propagation()))
 			.on_action(cx.listener(|_, _: &FocusNext, window, cx| window.focus_next(cx)))
 			.on_action(cx.listener(|_, _: &FocusPrevious, window, cx| window.focus_prev(cx)))
+			.relative()
 			.child(content)
 	}
 }
@@ -5029,6 +5024,11 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 	{
 		return;
 	}
+	let parent = cx
+		.windows()
+		.into_iter()
+		.filter_map(|w| w.downcast::<Shell>())
+		.find(|w| w.entity(cx).is_ok_and(|entity| entity == owner));
 	let bounds = gpui::Bounds::centered(None, gpui::size(px(920.), px(620.)), cx);
 	match cx.open_window(
 		gpui::WindowOptions {
@@ -5055,6 +5055,28 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 						})
 						.detach();
 					}
+					let closing_window = window.window_handle();
+					cx.on_release(move |settings: &mut SettingsWindow, cx| {
+						let owner = settings.owner.downgrade();
+						// Run after AppKit has removed Settings so it cannot win key focus back.
+						cx.defer(move |cx| {
+							let Some(owner) = owner.upgrade() else {
+								return;
+							};
+							owner.update(cx, |s, cx| {
+								if s.settings_window
+									.is_some_and(|w| w.window_id() == closing_window.window_id())
+								{
+									s.settings_window = None;
+								}
+								cx.notify();
+							});
+							if let Some(parent) = parent {
+								let _ = parent.update(cx, |_, window, _| window.activate_window());
+							}
+						});
+					})
+					.detach();
 					let focus = cx.focus_handle();
 					window.focus(&focus, cx);
 					let observation = cx.observe(&owner, |_, _, cx| cx.notify());
@@ -5093,6 +5115,12 @@ impl Render for Shell {
 			.on_action(cx.listener(Self::toggle_sidebar))
 			.on_action(cx.listener(Self::toggle_inspector))
 			.on_action(cx.listener(Self::toggle_graph))
+			.on_action(cx.listener(|s, _: &DismissStatus, _, cx| {
+				if s.status_open {
+					s.status_open = false;
+					cx.notify();
+				}
+			}))
 			.on_action(cx.listener(Self::interrupt_reply))
 			.on_action(cx.listener(|s, _: &NavigateBack, _, cx| s.navigate_history(false, cx)))
 			.on_action(cx.listener(|s, _: &NavigateForward, _, cx| s.navigate_history(true, cx)))
@@ -5107,7 +5135,13 @@ impl Render for Shell {
 			.bg(rgba(ui_theme::SHELL_MATERIAL))
 			.text_color(rgb(WB_TEXT));
 
+		#[cfg(all(target_os = "macos", not(test)))]
+		self.chief.update(cx, |chief, cx| {
+			chief.prepare_native_composer(self.selected == Destination::Chief, window, cx)
+		});
 		let controls = floating_window_controls(self, &presentation, window, cx);
+		#[cfg(all(target_os = "macos", not(test)))]
+		self.prepare_native_status(window, cx);
 		let status = self.render_status_center(&presentation, cx);
 		let route = format!("{:?}", self.selected);
 		let content =
@@ -5115,8 +5149,8 @@ impl Render for Shell {
 		root.relative()
 			.child(crate::ui_motion::arrival(route, content))
 			.child(controls)
-			// Keep global notifications above deferred composer menus throughout dismissal.
 			.child(gpui::deferred(status).priority(3))
+		// Keep global notifications above deferred composer menus throughout dismissal.
 	}
 }
 
@@ -6378,6 +6412,14 @@ mod tests {
 			assert_eq!(s.chief.read(cx).workspace_panels(), before);
 		});
 		handle.update(visual, |_, window, _| window.remove_window()).unwrap();
+		shell.read_with(visual, |s, _| assert!(s.settings_window.is_none()));
+		visual.update(|window, cx| {
+			assert_eq!(
+				cx.active_window(),
+				Some(window.window_handle()),
+				"closing Settings must reactivate the workspace"
+			);
+		});
 		shell.update(visual, |s, cx| s.open_settings_window(Destination::Settings, cx));
 		shell.read_with(visual, |s, _| {
 			assert_ne!(s.settings_window.unwrap(), handle);
@@ -6467,7 +6509,7 @@ mod tests {
 			visual.update(|window, cx| {
 				window.resize(size(px(width), px(height)));
 				window.draw(cx).clear();
-				assert_eq!(WINDOW_CONTROLS_CLEARANCE, 48.0);
+				assert_eq!(WINDOW_CONTROLS_CLEARANCE, 44.0);
 				assert_eq!(WORKBENCH_SESSION_SIDEBAR_WIDTH, 248.0);
 				assert_eq!(WORKBENCH_INSPECTOR_WIDTH, 344.0);
 			});

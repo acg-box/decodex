@@ -318,7 +318,14 @@ gpui::actions!(
 );
 
 fn hide_main_window(cx: &mut App) {
-	if let Some(window) = cx.active_window().and_then(|w| w.downcast::<shell::SettingsWindow>()) {
+	// On macOS GPUI's active_window is the main window, which can differ from
+	// the key Settings window when attached composer windows are present.
+	let settings = cx
+		.windows()
+		.into_iter()
+		.filter_map(|w| w.downcast::<shell::SettingsWindow>())
+		.find(|w| w.is_active(cx) == Some(true));
+	if let Some(window) = settings {
 		let _ = window.update(cx, |_, window, _| window.remove_window());
 		return;
 	}

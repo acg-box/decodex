@@ -1,6 +1,6 @@
 //! Native Markdown presentation; HTML is text and remote images are not fetched.
 use super::*;
-use gpui::{AnyElement, FontStyle, HighlightStyle, InteractiveText, StyledText};
+use gpui::{AnyElement, FontStyle, HighlightStyle};
 use pulldown_cmark::{Event, Options, Parser, Tag};
 use std::ops::Range;
 
@@ -133,26 +133,12 @@ fn append_inline(nodes: &[Node], style: HighlightStyle, link: Option<&str>, out:
 fn inline(nodes: &[Node], key: &str) -> AnyElement {
 	let mut out = Inline::default();
 	append_inline(nodes, HighlightStyle::default(), None, &mut out);
-	let ranges = out.links.iter().map(|(range, _)| range.clone()).collect();
-	InteractiveText::new(
-		SharedString::from(key.to_owned()),
-		StyledText::new(out.text).with_highlights(out.highlights),
-	)
-	.on_click(ranges, move |index, _, cx| {
-		let url = &out.links[index].1;
-		if url.starts_with("https://")
-			|| url.starts_with("http://")
-			|| url.starts_with("codex://threads/")
-		{
-			cx.open_url(url);
-		} else if url.starts_with('/') {
-			let path = url
-				.rsplit_once(':')
-				.filter(|(_, line)| line.parse::<u32>().is_ok())
-				.map_or(url.as_str(), |(path, _)| path);
-			cx.reveal_path(std::path::Path::new(path));
-		}
-	})
+	super::selectable_text::SelectableText {
+		key: key.into(),
+		text: out.text,
+		highlights: out.highlights,
+		links: out.links,
+	}
 	.into_any_element()
 }
 fn render_node(node: &Node, key: &str) -> AnyElement {
@@ -255,28 +241,94 @@ fn code_text(children: &[Node]) -> String {
 }
 
 pub(super) fn copy_button(key: &str, label: &'static str, text: String) -> AnyElement {
-	let keyboard_text = text.clone();
-	let selector = key.to_owned();
-	div()
-		.id(SharedString::from(key.to_owned()))
-		.debug_selector(move || selector.clone())
-		.role(Role::Button)
-		.tab_index(0)
-		.aria_label(label)
-		.cursor_pointer()
-		.py_1()
-		.text_size(px(ui_theme::CAPTION_SIZE))
-		.text_color(rgb(ui_theme::TEXT_MUTED))
-		.on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(text.clone())))
-		.on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
-			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-				cx.write_to_clipboard(ClipboardItem::new_string(keyboard_text.clone()));
-				cx.stop_propagation();
-			}
-		})
-		.child(label)
-		.into_any_element()
+	CopyButton { key: key.into(), label, text }.into_any_element()
 }
+#[derive(gpui::IntoElement)]
+struct CopyButton {
+	key: String,
+	label: &'static str,
+	text: String,
+}
+impl gpui::RenderOnce for CopyButton {
+	fn render(self, window: &mut Window, cx: &mut gpui::App) -> impl IntoElement {
+		use crate::ui_motion::SmoothControl as _;
+		let state = window.use_keyed_state(
+			SharedString::from(format!("copy-state-{}", self.key)),
+			cx,
+			|_, _| None::<std::time::Instant>,
+		);
+		let copied =
+			state.read(cx).is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(1200));
+		if copied {
+			crate::ui_motion::request_frame(window, cx);
+		}
+		let click_state = state.clone();
+		let click_text = self.text.clone();
+		let selector = self.key.clone();
+		div()
+			.id(SharedString::from(self.key))
+			.debug_selector(move || selector.clone())
+			.role(Role::Button)
+			.tab_index(0)
+			.aria_label(if copied { "Copied" } else { self.label })
+			.size(px(24.))
+			.flex()
+			.items_center()
+			.justify_center()
+			.rounded(px(6.))
+			.cursor_pointer()
+			.hover(|s| s.bg(rgba(0xffffff10)))
+			.on_click(move |_, _, cx| {
+				cx.write_to_clipboard(ClipboardItem::new_string(click_text.clone()));
+				click_state.update(cx, |s, cx| {
+					*s = Some(std::time::Instant::now());
+					cx.notify();
+				});
+			})
+			.on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
+				if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+					cx.write_to_clipboard(ClipboardItem::new_string(self.text.clone()));
+					state.update(cx, |s, cx| {
+						*s = Some(std::time::Instant::now());
+						cx.notify();
+					});
+					cx.stop_propagation();
+				}
+			})
+			.child(
+				gpui::canvas(
+					|_, _, _| (),
+					move |bounds, _, window, _| {
+						let mut path = gpui::PathBuilder::stroke(px(1.1));
+						let point = |x: f32, y: f32| bounds.origin + gpui::point(px(x * 0.75), px(y * 0.75));
+						if copied {
+							path.move_to(point(2., 8.));
+							path.line_to(point(6., 12.));
+							path.line_to(point(14., 4.));
+						} else {
+							path.move_to(point(5., 4.));
+							path.line_to(point(13., 4.));
+							path.line_to(point(13., 14.));
+							path.line_to(point(5., 14.));
+							path.close();
+							path.move_to(point(10., 1.));
+							path.line_to(point(2., 1.));
+							path.line_to(point(2., 11.));
+						}
+						if let Ok(path) = path.build() {
+							window.paint_path(
+								path,
+								rgb(if copied { ui_theme::BLUE } else { ui_theme::TEXT_MUTED }),
+							);
+						}
+					},
+				)
+				.size(px(12.)),
+			)
+			.smooth()
+	}
+}
+
 fn render_item(nodes: &[Node], key: &str) -> Vec<AnyElement> {
 	let mut result = Vec::new();
 	let mut start = 0;
@@ -422,6 +474,25 @@ mod tests {
 			)
 		});
 	}
+	#[gpui::test]
+	fn message_text_can_be_selected_and_copied_without_editing(cx: &mut gpui::TestAppContext) {
+		let (_, visual) =
+			cx.add_window_view(|_, _| CopyPreview { text: "Read **中文** text".into() });
+		visual.update(|window, cx| {
+			window.resize(gpui::size(px(700.), px(300.)));
+			window.draw(cx).clear();
+		});
+		let bounds = visual.debug_bounds("message-42-0").expect("selectable paragraph");
+		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+		visual.simulate_keystrokes("cmd-a cmd-c");
+		visual.update(|_, cx| {
+			assert_eq!(
+				cx.read_from_clipboard().and_then(|item| item.text()),
+				Some("Read 中文 text".into())
+			)
+		});
+	}
+
 	#[test]
 	fn markdown_retains_unicode_styles_and_link_ranges() {
 		let nodes = parse("**中文** and [source](/tmp/a.rs:12) with `code`");

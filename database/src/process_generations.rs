@@ -4,7 +4,7 @@ use decodex_core::{
 	AccountId, AccountOperationId, AccountProvider, BoundProcessGeneration, CredentialBinding,
 	CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion,
 	ProcessAuthorityLossReason, ProcessBootIdentity, ProcessControlKind, ProcessDeathEvidence,
-	ProcessDeathEvidenceId, ProcessExecutionEpochId, ProcessGeneration,
+	ProcessDeathEvidenceId, ProcessDeathEvidenceKind, ProcessExecutionEpochId, ProcessGeneration,
 	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
 	ProcessGenerationState, ProcessIdentity, ProcessIsolationKind, ProcessRunnerIdentity,
 	ProcessStartIdentity, ProviderIdentity,
@@ -325,9 +325,15 @@ impl SqliteStore {
 					Ok(rejected(ProcessGenerationRejection::EvidenceConflict, current))
 				};
 			}
-			if current.revision != expected_revision
-				|| evidence.process_identity.as_ref() != current.process_identity.as_ref()
-			{
+			// A prior-boot proof intentionally has no process identity: the boot ending
+			// proves every process from that boot ended, including bound generations.
+			let identity_matches = if evidence.kind == ProcessDeathEvidenceKind::PriorBootEnded {
+				evidence.process_identity.is_none()
+					&& evidence.observed_boot_id != current.intended_boot_id
+			} else {
+				evidence.process_identity.as_ref() == current.process_identity.as_ref()
+			};
+			if current.revision != expected_revision || !identity_matches {
 				return Ok(rejected(ProcessGenerationRejection::EvidenceMismatch, current));
 			}
 			let (bound_boot, process_id, start_id, group_id, session_id) = evidence

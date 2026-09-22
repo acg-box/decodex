@@ -8,7 +8,7 @@ pub(super) struct Panel {
 	event: Option<i64>,
 	state: Option<State>,
 	task: Option<Task<()>>,
-	feedback: String,
+	pub(super) feedback: String,
 	epoch: u64,
 }
 
@@ -130,9 +130,6 @@ impl ChiefSurface {
 		}
 		let current = self.installation.event == Some(event);
 		let busy = current && self.installation.task.is_some();
-		if current {
-			panel = panel.child(self.installation.feedback.clone());
-		}
 		if valid && !busy {
 			panel = panel.child(mcp_button(
 				"install-inspect".into(),

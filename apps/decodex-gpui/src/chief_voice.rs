@@ -42,6 +42,10 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn start_voice(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if self.selected_is_archived() || self.composer_unavailable_reason().is_some() {
+			return;
+		}
+
 		if self.voice_task.is_some() || self.dictation_task.is_some() {
 			return;
 		}
@@ -411,7 +415,7 @@ impl ChiefSurface {
 		let target = -f32::from(scroll.max_offset().y);
 		if (target - current).abs() > 0.5 {
 			scroll.set_offset(gpui::point(px(0.), px(current + (target - current) * 0.24)));
-			window.request_animation_frame();
+			crate::ui_motion::request_frame(window, cx);
 			cx.notify();
 		}
 	}

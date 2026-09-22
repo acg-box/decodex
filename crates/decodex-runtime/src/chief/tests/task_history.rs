@@ -59,26 +59,25 @@ async fn upgraded_manager_can_read_previous_thread_after_store_reopen() {
 	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1",
 		"historyMode":"paginated","turns":[{"id":"old-turn","status":"completed","items":[
 		{"id":"old-answer","type":"agentMessage","text":"before upgrade"}]}]}}});
-	let (mut chief, mut sent, directory) = fixture_with_history(history).await;
+	let (mut chief, _sent, directory) = fixture_with_history(history).await;
 	chief.start_chief("chief", "Original").await.unwrap();
 	complete(&mut chief, "chief").await;
 	let root =
 		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
 			.unwrap();
-	let db = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
-	db.execute("UPDATE chief_tool_versions SET version=2 WHERE work_id='chief'", []).unwrap();
-	chief.continue_worker("chief", "New request").await.unwrap();
+	// Retain history for migrations completed by older Decodex versions.
+	chief.store.begin_chief_tool_upgrade("chief".into(), "opaque thread/1".into()).await.unwrap();
+	chief
+		.store
+		.finish_chief_tool_upgrade(
+			"chief".into(),
+			"opaque thread/1".into(),
+			"historic-new-thread".into(),
+		)
+		.await
+		.unwrap();
 	let current = chief.store.get_chief_work_item("chief".into()).await.unwrap();
-	assert_ne!(current.codex_thread_id.as_deref(), Some("opaque thread/1"));
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
-	let creation = requests.iter().rev().find(|r| r["method"] == "thread/start").unwrap();
-	assert!(
-		creation["params"]["dynamicTools"]
-			.as_array()
-			.unwrap()
-			.iter()
-			.any(|t| t["name"] == "chief_read_work")
-	);
+
 	chief.store = SqliteStore::open(&root.paths()).unwrap();
 	let page = chief
 		.read_work_history(&current, &json!({"id":"chief","threadId":"opaque thread/1"}))

@@ -275,31 +275,6 @@ impl ChiefCoordinator {
 	}
 }
 
-pub(crate) fn usage_text(value: &Value) -> Option<String> {
-	let usage: ThreadTokenUsage = serde_json::from_value(value.clone()).ok()?;
-	if !usage.is_valid() {
-		return None;
-	}
-	let mut text = format!(
-		"Last response tokens: input {}, cached input {}, output {}, reasoning output {}.\nThread total tokens: {}.",
-		usage.last.input_tokens,
-		usage.last.cached_input_tokens,
-		usage.last.output_tokens,
-		usage.last.reasoning_output_tokens,
-		usage.total.total_tokens
-	);
-	if usage.last.cache_write_input_tokens > 0 {
-		text.push_str(&format!(
-			"\nCache write input tokens: {}.",
-			usage.last.cache_write_input_tokens
-		));
-	}
-	if let Some(capacity) = usage.model_context_window {
-		text.push_str(&format!("\nModel context capacity: {capacity} tokens."));
-	}
-	Some(text)
-}
-
 fn is_plain_user_prompt(item: &Value) -> bool {
 	if item["type"] != "userMessage" {
 		return false;

@@ -25,7 +25,10 @@ async fn restore_preserves_identity_and_pending_input_without_creating_a_turn() 
 	chief.restore_archived_thread("chief", "opaque thread/1").await.unwrap();
 	let mut mutations = 0;
 	while let Ok(request) = sent.try_recv() {
-		assert!(["thread/list", "thread/unarchive"].contains(&request["method"].as_str().unwrap()));
+		assert!(
+			["thread/read", "thread/list", "thread/unarchive"]
+				.contains(&request["method"].as_str().unwrap())
+		);
 		mutations += usize::from(request["method"] == "thread/unarchive");
 	}
 	assert_eq!(mutations, 1);
