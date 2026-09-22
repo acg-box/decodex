@@ -6,7 +6,7 @@ OUTPUT=${1:?Usage: compile_decodex_app_icon.sh OUTPUT_DIRECTORY}
 VARIANT=$(cat "$ROOT/assets/app-icon/default-variant")
 SOURCE=${2:-"$ROOT/assets/app-icon/liquid-glass/$VARIANT/AppIcon.icon"}
 test -f "$SOURCE/icon.json"
-DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode-beta.app/Contents/Developer}
+DEVELOPER_DIR=${DEVELOPER_DIR:-$(xcode-select --print-path)}
 export DEVELOPER_DIR
 mkdir -p "$OUTPUT"
 PARTIAL=$(mktemp "${TMPDIR:-/tmp}/decodex-icon-info.XXXXXX")

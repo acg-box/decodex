@@ -232,12 +232,12 @@ does not provide repository commit, landing, or Git-hook commands. Use the revie
 Git/GitHub workflow for those actions, with exact base/head object IDs and authoritative
 merge readback where required.
 
-On the current macOS development host, use the Xcode beta developer directory for the
-complete GPUI gate because the default Command Line Tools selection does not include the
-Metal compiler:
+For the complete GPUI gate on macOS, select a full Xcode installation with
+`xcode-select` and install its Metal Toolchain component. The macOS packaging scripts
+use the selected developer directory unless you set `DEVELOPER_DIR` explicitly.
 
 ```sh
-DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo make check
+cargo make check
 ```
 
 Start with the [OpenWiki quickstart](openwiki/quickstart.md) for the repository index.
