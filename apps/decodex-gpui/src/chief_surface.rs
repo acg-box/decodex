@@ -144,6 +144,7 @@ pub(crate) struct ChiefSurface {
 	effort_track_bounds: Option<gpui::Bounds<gpui::Pixels>>,
 	menu_trigger_bounds: std::collections::BTreeMap<&'static str, gpui::Bounds<gpui::Pixels>>,
 	composer_menu: Option<&'static str>,
+	escape_stop: Option<(String, String, std::time::Instant)>,
 	composer_menu_content: Option<&'static str>,
 	attachments: Vec<decodex_protocol::ChiefAttachmentDto>,
 	task_references: Vec<decodex_protocol::ChiefTaskReferenceDto>,
@@ -290,6 +291,7 @@ impl ChiefSurface {
 			#[cfg(all(target_os = "macos", not(test)))]
 			native_composer: Default::default(),
 			composer_menu: None,
+			escape_stop: None,
 			composer_menu_content: None,
 			attachments: vec![],
 			task_references: vec![],

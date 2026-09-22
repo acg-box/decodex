@@ -227,9 +227,6 @@ impl Render for ComposerPanel {
 			.on_action(move |action: &super::super::GrowPanels, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &super::super::ResetPanels, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &super::super::ToggleGraph, _, cx| forward(parent, action, cx))
-			.on_action(move |action: &super::super::InterruptReply, _, cx| {
-				forward(parent, action, cx)
-			})
 			.on_action(move |action: &super::super::NavigateBack, _, cx| {
 				forward(parent, action, cx)
 			})

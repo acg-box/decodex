@@ -315,7 +315,6 @@ actions!(
 		ToggleInspector,
 		ToggleGraph,
 		DismissStatus,
-		InterruptReply,
 		NavigateBack,
 		NavigateForward,
 		SelectPreviousConversation,
@@ -489,7 +488,6 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("ctrl-alt-)", ResetPanels, None),
 		KeyBinding::new("cmd-b", ToggleInspector, None),
 		KeyBinding::new("cmd-j", ToggleGraph, None),
-		KeyBinding::new("ctrl-c", InterruptReply, None),
 		KeyBinding::new("cmd-[", NavigateBack, None),
 		KeyBinding::new("cmd-]", NavigateForward, None),
 		KeyBinding::new("enter", ActivateDestination, Some("Destination")),
@@ -1170,9 +1168,22 @@ impl Shell {
 		cx.stop_propagation();
 	}
 
-	fn interrupt_reply(&mut self, _: &InterruptReply, _: &mut Window, cx: &mut Context<Self>) {
+	fn interrupt_reply(
+		&mut self,
+		event: &gpui::KeyDownEvent,
+		_: &mut Window,
+		cx: &mut Context<Self>,
+	) {
+		if event.keystroke.key != "escape" || event.is_held {
+			return;
+		}
 		if self.selected == Destination::Chief {
-			self.chief.update(cx, ChiefSurface::interrupt_current);
+			if self.status_open {
+				self.status_open = false;
+				cx.notify();
+				return;
+			}
+			self.chief.update(cx, ChiefSurface::escape_interrupt);
 			cx.stop_propagation();
 		}
 	}
@@ -5169,7 +5180,7 @@ impl Render for Shell {
 					cx.notify();
 				}
 			}))
-			.on_action(cx.listener(Self::interrupt_reply))
+			.on_key_down(cx.listener(Self::interrupt_reply))
 			.on_action(cx.listener(|s, _: &NavigateBack, _, cx| s.navigate_history(false, cx)))
 			.on_action(cx.listener(|s, _: &NavigateForward, _, cx| s.navigate_history(true, cx)))
 			.on_action(cx.listener(Self::select_previous_conversation))

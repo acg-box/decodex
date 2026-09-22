@@ -77,13 +77,60 @@ impl ChiefSurface {
 	}
 
 	fn stop_button(&self, cx: &Context<Self>) -> bool {
-		self.running_turn().is_some()
-			&& self.composer.read(cx).content().trim().is_empty()
-			&& self.attachments.is_empty()
-			&& self.task_references.is_empty()
+		self.escape_stop_armed()
+			|| (self.running_turn().is_some()
+				&& self.composer.read(cx).content().trim().is_empty()
+				&& self.attachments.is_empty()
+				&& self.task_references.is_empty())
+	}
+
+	fn escape_stop_armed(&self) -> bool {
+		self.escape_stop.as_ref().is_some_and(|(work, turn, at)| {
+			at.elapsed() < std::time::Duration::from_secs(2)
+				&& self
+					.running_turn()
+					.is_some_and(|(w, t)| w.as_str() == work && t.as_str() == turn)
+		})
+	}
+
+	pub(crate) fn escape_interrupt(&mut self, cx: &mut Context<Self>) {
+		if self.composer.read(cx).is_composing() {
+			return;
+		}
+		if self.composer_menu.take().is_some() || self.dictation.is_some() {
+			self.cancel_dictation(cx);
+			self.escape_stop = None;
+			self.effort_drag = None;
+			self.effort_pointer = None;
+			cx.notify();
+			return;
+		}
+		if self.escape_stop_armed() {
+			self.escape_stop = None;
+			self.interrupt_current(cx);
+			return;
+		}
+		let Some((work, turn)) = self.running_turn() else {
+			self.escape_stop = None;
+			return;
+		};
+		let armed = (work.as_str().to_owned(), turn.as_str().to_owned(), std::time::Instant::now());
+		self.escape_stop = Some(armed.clone());
+		cx.spawn(async move |owner, cx| {
+			cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
+			let _ = owner.update(cx, |s, cx| {
+				if s.escape_stop.as_ref() == Some(&armed) {
+					s.escape_stop = None;
+					cx.notify();
+				}
+			});
+		})
+		.detach();
+		cx.notify();
 	}
 
 	pub(crate) fn interrupt_current(&mut self, cx: &mut Context<Self>) {
+		self.escape_stop = None;
 		if let Some((work_id, turn_id)) = self.running_turn() {
 			self.execute(ChiefActionDto::Interrupt { work_id, turn_id }, None, cx);
 		}
@@ -182,9 +229,9 @@ impl ChiefSurface {
 			.gap(px(4.))
 			.on_key_down(cx.listener(|s, e: &gpui::KeyDownEvent, _, cx| {
 				if e.keystroke.key == "escape" {
-					s.cancel_dictation(cx);
-					s.composer_menu = None;
-					cx.notify();
+					if !e.is_held {
+						s.escape_interrupt(cx);
+					}
 					cx.stop_propagation();
 				}
 			}))
@@ -346,7 +393,7 @@ impl ChiefSurface {
 				if self.awaiting_start(cx) {
 					"Sending · waiting for the agent"
 				} else if self.stop_button(cx) {
-					"Stop response · Control-C"
+					"Stop response · Esc twice"
 				} else if self.composer.read(cx).content().trim().is_empty()
 					&& self.attachments.is_empty()
 					&& self.task_references.is_empty()
@@ -395,6 +442,7 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let send = id == "send";
+		let armed = send && self.escape_stop_armed();
 		let target = cx.entity().downgrade();
 		let tooltip = if id == "model" { "Model and reasoning".to_owned() } else { tip.to_owned() };
 		div()
@@ -440,9 +488,18 @@ impl ChiefSurface {
 			})
 			.when(self.composer_menu == Some(id), |d| d.bg(rgba(0xffffff12)))
 			.when(send, |d| d.w(px(28.)).h(px(28.)).rounded_full().ml(px(5.)).bg(rgb(0x515155)))
+			.when(armed, |d| d.bg(rgb(ui_theme::AMBER)))
 			.when(id == "audio-item", |d| d.aria_expanded(self.composer_menu == Some("microphone")))
 			.cursor_pointer()
-			.hover(move |d| d.bg(if send { rgba(0xffffff24) } else { rgba(0xffffff0c) }))
+			.hover(move |d| {
+				d.bg(if armed {
+					rgba((ui_theme::AMBER << 8) | 0xff)
+				} else if send {
+					rgba(0xffffff24)
+				} else {
+					rgba(0xffffff0c)
+				})
+			})
 			.when(!["model", "attachment-item", "audio-item"].contains(&id), |d| {
 				d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
 			})
@@ -556,6 +613,7 @@ impl ChiefSurface {
 	}
 
 	fn toggle_composer_menu(&mut self, name: &'static str, cx: &mut Context<Self>) {
+		self.escape_stop = None;
 		let same_menu = self.composer_menu == Some(name)
 			|| (name == "attachments" && self.composer_menu == Some("microphone"));
 		self.composer_menu = if same_menu { None } else { Some(name) };
@@ -910,6 +968,44 @@ mod tests {
 			s.select_composer_option("model", "custom-model", cx);
 			assert_eq!(s.effort, ConversationReasoningEffort::Low);
 			assert_eq!(s.composer_menu, Some("model"));
+		});
+	}
+
+	#[gpui::test]
+	fn escape_requires_two_presses_for_the_same_current_turn(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == "chief")
+				.unwrap();
+			work.dispatch_state = ChiefDispatchStateDto::Running;
+			work.active_turn_id = Some("turn".into());
+			s.feedback.clear();
+			s.composer_menu = Some("model");
+			s.escape_interrupt(cx);
+			assert!(s.composer_menu.is_none());
+			assert!(!s.escape_stop_armed());
+			s.escape_interrupt(cx);
+			assert!(s.escape_stop_armed());
+			assert!(s.feedback.is_empty(), "first Escape must not dispatch an interrupt");
+			s.escape_stop.as_mut().unwrap().2 -= std::time::Duration::from_secs(3);
+			s.escape_interrupt(cx);
+			assert!(s.feedback.is_empty(), "expired confirmation must only rearm");
+			s.escape_stop.as_mut().unwrap().1 = "old-turn".into();
+			s.escape_interrupt(cx);
+			assert!(s.feedback.is_empty(), "confirmation must not cross turn identities");
+			s.escape_interrupt(cx);
+			assert!(!s.escape_stop_armed());
+			assert_eq!(
+				s.feedback, "No service profile is configured.",
+				"second Escape reaches the native interrupt path"
+			);
 		});
 	}
 
