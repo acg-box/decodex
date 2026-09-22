@@ -1046,7 +1046,7 @@ impl ChiefSurface {
 			return Some((
 				"In use elsewhere",
 				format!(
-					"{name} is in use in Codex or another application. Release the conversation there to continue here. Unsent messages remain in history. Send again when you are ready."
+					"{name} is in use in Codex or another application. Release the conversation there to continue here. Sending is unavailable here while the conversation is in use; history remains readable."
 				),
 				false,
 			));
@@ -1651,14 +1651,14 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 							.flex()
 							.items_center()
 							.gap(px(8.))
-							.child(reply_metrics(entry))
 							.when(entry.kind == "assistant", |row| {
 								row.child(markdown::copy_button(
 									&format!("copy-response-{}", entry.id),
 									"Copy response",
 									entry.text.clone(),
 								))
-							}),
+							})
+							.child(reply_metrics(entry)),
 					)
 				}),
 		)
@@ -1676,28 +1676,49 @@ fn compact_tokens(value: u64) -> String {
 	format!("{}{suffix}", text.trim_end_matches(".0"))
 }
 
+struct ReplyMetricsTip(String);
+impl Render for ReplyMetricsTip {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		div()
+			.px_3()
+			.py_2()
+			.rounded(px(8.))
+			.bg(rgb(0x242429))
+			.text_size(px(ui_theme::CAPTION_SIZE))
+			.text_color(rgb(ui_theme::TEXT))
+			.child(self.0.clone())
+	}
+}
 fn reply_metrics(entry: &decodex_protocol::ChiefHistoryEntryDto) -> impl IntoElement {
-	let mut parts = Vec::new();
-	if let Some(duration) = entry.duration_ms {
-		parts.push(format!("Worked for {:.1}s", duration as f64 / 1000.0));
-	}
-	if let Some(usage) = &entry.usage {
-		parts.push(format!("In {}", compact_tokens(usage.input_tokens)));
-		parts.push(format!("Out {}", compact_tokens(usage.output_tokens)));
-	}
 	let mut row = div()
 		.flex()
 		.items_center()
-		.flex_wrap()
-		.gap(px(ui_theme::METADATA_GAP))
+		.gap(px(8.))
 		.text_size(px(ui_theme::CAPTION_SIZE))
-		.line_height(px(15.))
+		.line_height(px(24.))
 		.text_color(rgb(ui_theme::TEXT_MUTED));
-	for (index, text) in parts.into_iter().enumerate() {
-		if index > 0 {
-			row = row.child(div().flex_none().child("·"));
-		}
-		row = row.child(div().flex_none().child(text));
+	if let Some(duration) = entry.duration_ms {
+		row = row.child(format!("Worked for {:.1}s", duration as f64 / 1000.0));
+	}
+	if let Some(usage) = &entry.usage {
+		let detail = format!(
+			"In {} · Out {} tokens",
+			compact_tokens(usage.input_tokens),
+			compact_tokens(usage.output_tokens)
+		);
+		row = row.child(
+			div()
+				.id(SharedString::from(format!("reply-details-{}", entry.id)))
+				.size(px(24.))
+				.flex()
+				.items_center()
+				.justify_center()
+				.rounded(px(6.))
+				.aria_label(detail.clone())
+				.hover(|s| s.bg(rgba(0xffffff10)))
+				.tooltip(move |_, cx| cx.new(|_| ReplyMetricsTip(detail.clone())).into())
+				.child("ⓘ"),
+		);
 	}
 	row
 }
