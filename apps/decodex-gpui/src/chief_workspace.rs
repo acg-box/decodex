@@ -231,8 +231,7 @@ impl ChiefSurface {
 		};
 		let icon = panel_icon(&id);
 		let icon_only = icon.is_some();
-		let show_tip =
-			icon_only || is_tab || id.starts_with("sidebar-") || id.starts_with("attention-");
+		let show_tip = icon_only || is_tab || id.starts_with("attention-");
 		let tip = accessible.clone();
 		let action = std::rc::Rc::new(action);
 		let keyboard = action.clone();
