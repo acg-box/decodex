@@ -72,12 +72,15 @@ impl ChiefSurface {
 						}) || snapshot.pending_events.iter().any(|event| {
 							Some(&event.work_item_id) == self.selected.as_ref()
 								&& event.event_kind == "user_message"
+								&& !event.delivery_claimed
 						})
 					})))
 	}
 
 	fn stop_button(&self, cx: &Context<Self>) -> bool {
-		self.escape_stop_armed()
+		self.awaiting_start(cx)
+			|| self.interrupting.as_ref().is_some_and(|(id, _)| self.selected.as_ref() == Some(id))
+			|| self.escape_stop_armed()
 			|| (self.running_turn().is_some()
 				&& self.composer.read(cx).content().trim().is_empty()
 				&& self.attachments.is_empty()
@@ -134,6 +137,72 @@ impl ChiefSurface {
 		if let Some((work_id, turn_id)) = self.running_turn() {
 			self.execute(ChiefActionDto::Interrupt { work_id, turn_id }, None, cx);
 		}
+	}
+
+	pub(super) fn request_interrupt(
+		&mut self,
+		work_id: EntityId,
+		turn_id: decodex_protocol::WireText,
+		cx: &mut Context<Self>,
+	) {
+		if self.interrupting.is_some() {
+			return;
+		}
+		let Some(profile) = self.profile.clone() else {
+			self.feedback = "No service profile is configured.".into();
+			cx.notify();
+			return;
+		};
+		let target = (work_id.as_str().to_owned(), turn_id.as_str().to_owned());
+		self.interrupting = Some(target.clone());
+		let target_for_readback = target.clone();
+		let request = cx.background_executor().spawn(async move {
+			let runtime = tokio::runtime::Builder::new_current_thread()
+				.enable_all()
+				.build()
+				.map_err(|_| "Cannot start cancellation".to_string())?;
+			runtime.block_on(async {
+				let client = ChiefClient::new(profile);
+				let result = client
+					.execute(
+						ChiefActionDto::Interrupt { work_id, turn_id },
+						IdempotencyKey::new(unique_command()).expect("command identity"),
+					)
+					.await;
+				// The turn can finish before interruption reaches Codex. Read back before
+				// presenting an error, and never reuse the send/uncertain-delivery state.
+				let mut snapshot = client.query().await.ok();
+                if !matches!(&result, Ok(ChiefCommandResponse::Accepted { .. })) {
+                    for _ in 0..2 {
+                        let ended = matches!(&snapshot, Some(ChiefSnapshotResult::Available(s)) if s.work_items.iter().any(|w| w.id == target_for_readback.0 && w.active_turn_id.as_deref() != Some(target_for_readback.1.as_str())));
+                        if ended { break; }
+                        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+                        snapshot = client.query().await.ok();
+                    }
+                }
+				Ok::<_, String>((result, snapshot))
+			})
+		});
+		self.interrupt_task = Some(cx.spawn(async move |surface, cx| {
+            let result = request.await;
+            let _ = surface.update(cx, |s, cx| {
+                if s.interrupting.as_ref() != Some(&target) { return; }
+                let accepted = match result {
+                    Ok((result, snapshot)) => {
+                        if let Some(snapshot) = snapshot { s.apply_result(Ok(snapshot)); }
+                        matches!(result, Ok(ChiefCommandResponse::Accepted { .. }))
+                    }
+                    Err(_) => false,
+                };
+                if !accepted && s.interrupting.as_ref() == Some(&target) {
+                    s.interrupting = None;
+                    s.feedback = "Stopping could not be confirmed. If the response is still running, press Stop again.".into();
+                }
+                s.load_history(cx);
+                cx.notify();
+            });
+        }));
+		cx.notify();
 	}
 
 	pub(super) fn refresh_prompt(cx: &mut Context<Self>) {
@@ -390,8 +459,10 @@ impl ChiefSurface {
 			.child(self.composer_control_with_window(
 				"send",
 				"".into(),
-				if self.awaiting_start(cx) {
-					"Sending · waiting for the agent"
+				if self.interrupting.is_some() {
+					"Stopping response"
+				} else if self.awaiting_start(cx) {
+					"Starting response"
 				} else if self.stop_button(cx) {
 					"Stop response · Esc twice"
 				} else if self.composer.read(cx).content().trim().is_empty()
@@ -403,7 +474,7 @@ impl ChiefSurface {
 					"Send · Enter"
 				},
 				|s, window, cx| {
-					if s.awaiting_start(cx) {
+					if s.awaiting_start(cx) || s.interrupting.is_some() {
 						return;
 					}
 					if s.stop_button(cx) {
@@ -526,17 +597,23 @@ impl ChiefSurface {
 	) -> gpui::AnyElement {
 		use super::super::workspace_symbols::{Symbol, icon};
 		match id {
-			"send" if self.awaiting_start(cx) => div().child("…").into_any_element(),
-			"send" if self.dictation.is_some() => div().child("✓").into_any_element(),
-			"send" if self.stop_button(cx) =>
-				controls::StopMark { armed: self.escape_stop_armed() }.into_any_element(),
-			"send"
-				if self.composer.read(cx).content().trim().is_empty()
+			"send" => controls::PrimaryMark {
+				mode: if self.dictation.is_some() {
+					controls::PrimaryMode::Done
+				} else if self.stop_button(cx) {
+					controls::PrimaryMode::Stop
+				} else if self.composer.read(cx).content().trim().is_empty()
 					&& self.attachments.is_empty()
-					&& self.task_references.is_empty() =>
-				controls::live_mark(),
-			"send" if !self.sending => controls::launch_mark().into_any_element(),
-			"send" => div().child("…").into_any_element(),
+					&& self.task_references.is_empty()
+				{
+					controls::PrimaryMode::Live
+				} else {
+					controls::PrimaryMode::Send
+				},
+				armed: self.escape_stop_armed(),
+				pending: self.awaiting_start(cx) || self.interrupting.is_some(),
+			}
+			.into_any_element(),
 			"attach" => icon(Symbol::Plus),
 			"attachment-item" => div()
 				.flex()
@@ -924,6 +1001,54 @@ fn context_ring(fraction: f32) -> impl IntoElement {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[gpui::test]
+	fn delivered_messages_do_not_keep_the_composer_waiting_after_stop(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.composer.update(cx, |input, cx| input.clear(cx));
+			s.snapshot.as_mut().unwrap().pending_events.push(
+				decodex_protocol::ChiefPendingEventDto {
+					id: 99,
+					source_event_id: "test".into(),
+					work_item_id: "chief".into(),
+					event_kind: "user_message".into(),
+					created_at_micros: 1,
+					delivery_claimed: true,
+				},
+			);
+			s.feedback = "Message saved · Waiting for agent…".into();
+			s.apply_result(Ok(ChiefSnapshotResult::Available(s.snapshot.clone().unwrap())));
+			assert!(!s.awaiting_start(cx));
+			assert!(!s.stop_button(cx));
+			s.snapshot.as_mut().unwrap().pending_events.last_mut().unwrap().delivery_claimed =
+				false;
+			assert!(s.awaiting_start(cx), "undelivered input still waits for its turn");
+		});
+	}
+
+	#[gpui::test]
+	fn cancellation_is_separate_from_send_and_clears_when_the_turn_ends(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+			s.interrupting = Some(("chief".into(), "cancelled-turn".into()));
+			assert!(s.stop_button(cx));
+			assert!(!s.sending);
+			assert!(!s.awaiting_start(cx));
+			s.apply_result(Ok(ChiefSnapshotResult::Available(s.snapshot.clone().unwrap())));
+			assert!(s.interrupting.is_none());
+			assert!(!s.uncertain);
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			assert!(s.status_notice().is_none());
+		});
+	}
 
 	#[gpui::test]
 	fn model_selection_uses_native_default_and_capabilities(cx: &mut gpui::TestAppContext) {

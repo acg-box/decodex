@@ -134,6 +134,7 @@ pub(crate) struct ChiefSurface {
 	task: Option<Task<()>>,
 
 	generation: u64,
+	refresh_failures: u8,
 	composer: Entity<ComposerInput>,
 	composer_footer_height: f32,
 	fast: bool,
@@ -148,6 +149,8 @@ pub(crate) struct ChiefSurface {
 	menu_trigger_bounds: std::collections::BTreeMap<&'static str, gpui::Bounds<gpui::Pixels>>,
 	composer_menu: Option<&'static str>,
 	escape_stop: Option<(String, String, std::time::Instant)>,
+	interrupting: Option<(String, String)>,
+	interrupt_task: Option<Task<()>>,
 	composer_menu_content: Option<&'static str>,
 	attachments: Vec<decodex_protocol::ChiefAttachmentDto>,
 	task_references: Vec<decodex_protocol::ChiefTaskReferenceDto>,
@@ -296,6 +299,8 @@ impl ChiefSurface {
 			native_composer: Default::default(),
 			composer_menu: None,
 			escape_stop: None,
+			interrupting: None,
+			interrupt_task: None,
 			composer_menu_content: None,
 			attachments: vec![],
 			task_references: vec![],
@@ -382,6 +387,7 @@ impl ChiefSurface {
 			task: None,
 
 			generation: 0,
+			refresh_failures: 0,
 		}
 	}
 
@@ -725,6 +731,10 @@ impl ChiefSurface {
 	}
 
 	fn execute(&mut self, action: ChiefActionDto, draft: Option<String>, cx: &mut Context<Self>) {
+		if let ChiefActionDto::Interrupt { work_id, turn_id } = action {
+			self.request_interrupt(work_id, turn_id, cx);
+			return;
+		}
 		if self.sending || (self.uncertain && !matches!(&action, ChiefActionDto::Interrupt { .. }))
 		{
 			return;
@@ -824,9 +834,12 @@ impl ChiefSurface {
 
 	pub(crate) fn bind_profile(&mut self, profile: Option<ClientProfile>, cx: &mut Context<Self>) {
 		self.generation += 1;
+		self.refresh_failures = 0;
 		self.task = None;
 		self.profile = profile;
 		self.output_stream = Default::default();
+		self.interrupting = None;
+		self.interrupt_task = None;
 		self.history_read_at = None;
 		self.activity_detail = None;
 		self.activity_detail_task = None;
@@ -974,6 +987,15 @@ impl ChiefSurface {
 	fn apply_result(&mut self, result: Result<ChiefSnapshotResult, ()>) {
 		match result {
 			Ok(ChiefSnapshotResult::Available(snapshot)) => {
+				self.refresh_failures = 0;
+				if self.interrupting.as_ref().is_some_and(|(id, turn)| {
+					snapshot
+						.work_items
+						.iter()
+						.any(|w| &w.id == id && w.active_turn_id.as_ref() != Some(turn))
+				}) {
+					self.interrupting = None;
+				}
 				if self.feedback == "Message saved · Waiting for agent…"
 					&& snapshot.work_items.iter().any(|work| {
 						Some(&work.id) == self.selected.as_ref()
@@ -981,6 +1003,7 @@ impl ChiefSurface {
 								|| !snapshot.pending_events.iter().any(|event| {
 									event.work_item_id == work.id
 										&& event.event_kind == "user_message"
+										&& !event.delivery_claimed
 								}))
 					}) {
 					self.feedback.clear();
@@ -1013,9 +1036,20 @@ impl ChiefSurface {
 					events: pending_events,
 				};
 			},
-			Ok(ChiefSnapshotResult::Unavailable) | Err(()) => {
+			Ok(ChiefSnapshotResult::Unavailable) => {
 				self.state =
 					if self.snapshot.is_some() { LoadState::Stale } else { LoadState::Unavailable };
+			},
+			Err(()) => {
+				self.refresh_failures = self.refresh_failures.saturating_add(1);
+				let confirmed = *self.displayed_load_state() == LoadState::Ready;
+				self.state = if self.snapshot.is_some() && confirmed && self.refresh_failures < 3 {
+					LoadState::Ready
+				} else if self.snapshot.is_some() {
+					LoadState::Stale
+				} else {
+					LoadState::Unavailable
+				};
 			},
 		}
 	}
@@ -2267,6 +2301,11 @@ mod tests {
 				dependencies: vec![],
 				pending_events: vec![],
 			})));
+			assert_eq!(surface.state, LoadState::Ready);
+			surface.apply_result(Err(()));
+			assert_eq!(surface.state, LoadState::Ready);
+			assert!(surface.status_notice().is_none(), "one read failure is not a disconnect");
+			surface.apply_result(Err(()));
 			assert_eq!(surface.state, LoadState::Ready);
 			surface.apply_result(Err(()));
 			assert_eq!(surface.state, LoadState::Stale);

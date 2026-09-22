@@ -74,3 +74,19 @@ The 100 ms full-history poll is removed. Work state remains reconciled at 500 ms
 saved history is read on work-state changes and every two seconds for activity
 and recovery. These reads do not drive live text delivery. Provider first-token
 latency and network stalls remain outside the renderer's control.
+
+## Send and interrupt presentation
+
+Sending and interrupting have separate pending state. Interruption targets the
+observed work and turn; it does not mark message delivery as uncertain or clear a
+draft. Read back the snapshot before presenting an interrupt failure because a
+turn can finish before the interrupt arrives. The upstream reference above rejects
+`turn/interrupt` when no active turn remains (`turn_processor.rs`). Keep using the
+installed native interrupt method; do not send a replacement turn.
+
+Only unclaimed user-message receipts imply queued input. Claimed receipts from a
+finished turn must not keep the primary control in its starting state. The control
+crossfades fixed-size glyphs and uses a soft warm halo for the first Escape press.
+A failed background snapshot read retains the confirmed view until three
+consecutive failures. An explicit unavailable result or transport disconnect
+continues to invalidate the view immediately.
