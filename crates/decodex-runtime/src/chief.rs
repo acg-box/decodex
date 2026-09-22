@@ -1760,6 +1760,25 @@ impl ChiefCoordinator {
 		if self.dispatch_paused {
 			return Ok(());
 		}
+		let blocked = self.store.list_pending_chief_events(1000).await?;
+		for notice in blocked.iter().filter(|e| e.event_kind == "thread_in_use_needs_attention") {
+			self.store.hold_chief_unsent_input(notice.work_item_id.clone()).await?;
+			let item = self.store.get_chief_work_item(notice.work_item_id.clone()).await?;
+			if let Some(thread) = &item.codex_thread_id {
+				let mut params = self.work_thread_params(&item).await?;
+				params.as_object_mut().expect("thread params").remove("dynamicTools");
+				params["threadId"] = json!(thread);
+				params["excludeTurns"] = json!(true);
+				let resumed =
+					self.client.thread_resume(params).await.map_err(|e| resume_error(e, thread))?;
+				if resumed.pointer("/thread/id").and_then(Value::as_str) != Some(thread.as_str()) {
+					return Err(ChiefError::Invalid(
+						"resumed conversation identity differs".into(),
+					));
+				}
+				self.store.resolve_chief_delivery_failure(item.id).await?;
+			}
+		}
 		let voice_calls = self.store.open_chief_voice_calls().await?;
 		let work = self.store.list_chief_work_items().await?;
 		let managers = self.store.chief_manager_ids().await?;

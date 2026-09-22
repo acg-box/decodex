@@ -1270,7 +1270,7 @@ async fn usage_is_source_bound_persistent_and_does_not_wake_managers() {
 }
 
 #[tokio::test]
-async fn external_writer_keeps_input_unclaimed_until_exact_thread_can_resume() {
+async fn external_writer_release_requires_a_new_send() {
 	let (mut coordinator, mut sent, _directory) =
 		fixture_with_history(json!({"_resume_failures":1})).await;
 	let original = coordinator.start_chief("chief", "Initial").await.unwrap();
@@ -1284,7 +1284,13 @@ async fn external_writer_keeps_input_unclaimed_until_exact_thread_can_resume() {
 	let pending = coordinator.store.list_chief_wake_events("chief".into(), 10).await.unwrap();
 	assert_eq!(pending.len(), 1);
 	assert!(pending[0].delivered_turn_id.is_none());
+	coordinator
+		.store
+		.record_chief_thread_in_use("chief".into(), "Open elsewhere".into())
+		.await
+		.unwrap();
 	coordinator.wake_pending().await.unwrap();
+	assert!(coordinator.store.list_chief_wake_events("chief".into(), 10).await.unwrap().is_empty());
 	let mut starts = 0;
 	while let Ok(request) = sent.try_recv() {
 		assert_ne!(request["method"], "thread/start");
@@ -1293,7 +1299,11 @@ async fn external_writer_keeps_input_unclaimed_until_exact_thread_can_resume() {
 			assert_eq!(request["params"]["threadId"].as_str(), original.codex_thread_id.as_deref());
 		}
 	}
-	assert_eq!(starts, 1);
+	assert_eq!(starts, 0);
+	coordinator.enqueue_user_message("chief", "explicit-resend", "Continue").await.unwrap();
+	coordinator.wake_pending().await.unwrap();
+	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	assert_eq!(requests.iter().filter(|r| r["method"] == "turn/start").count(), 1);
 }
 
 #[tokio::test]

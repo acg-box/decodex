@@ -459,7 +459,7 @@ impl ChiefSurface {
 			}
 			let reason = match event.event_kind.as_str() {
 				"thread_in_use_needs_attention" =>
-					"This conversation is in use in another app. Release it there to continue.",
+					"This conversation is in use in another app. Unsent messages are kept in history and will not be sent automatically. Send again after the other app releases it.",
 				"reconnection_needs_attention" =>
 					"The agent could not reconnect. Messages are saved and sending is paused. Decodex will retry automatically.",
 				"configuration_needs_attention" =>

@@ -832,6 +832,7 @@ impl ChiefHost {
 				let _ = self.store.resolve_chief_delivery_failure(root.into()).await;
 			},
 			Err(ChiefError::ThreadOwnedElsewhere) => {
+                let _ = self.store.hold_chief_unsent_input(root.into()).await;
 				let _ = self
 					.store
 					.record_chief_thread_in_use(
@@ -964,7 +965,7 @@ impl ChiefHost {
 fn diagnostic(error: &ChiefError) -> String {
 	match error {
         ChiefError::ThreadArchived => "This conversation is archived. Unarchive it to continue. Your saved messages remain queued.".into(),
-		ChiefError::ThreadOwnedElsewhere => "This Chief conversation is open in Codex or another application. Release it there; saved messages will continue automatically.".into(),
+		ChiefError::ThreadOwnedElsewhere => "This Chief conversation is open in Codex or another application. Release it there, then send your message again. Unsent messages remain in history.".into(),
 		ChiefError::Store(_) => "Chief delivery could not access its saved state.".into(),
 		ChiefError::DependenciesPending(_) => "Chief is waiting for prerequisite work.".into(),
 		_ => error.to_string(),
