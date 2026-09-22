@@ -1475,7 +1475,7 @@ fn panel_icon(id: &str) -> Option<AnyElement> {
 }
 
 impl ChiefSurface {
-	fn conversation_activity(&self, cx: &mut Context<Self>) -> AnyElement {
+	fn conversation_activity(&self, _cx: &mut Context<Self>) -> AnyElement {
 		let selected = self.snapshot.as_ref().and_then(|snapshot| {
 			snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())
 		});
@@ -1510,7 +1510,7 @@ impl ChiefSurface {
 		} else {
 			selected.and_then(|work| match work.dispatch_state {
 				ChiefDispatchStateDto::Dispatching => Some("Starting…"),
-				ChiefDispatchStateDto::Running => Some(current.as_deref().unwrap_or("Working…")),
+				ChiefDispatchStateDto::Running => current.as_deref(),
 				ChiefDispatchStateDto::Unknown =>
 					Some("Connection interrupted · Checking delivery"),
 				ChiefDispatchStateDto::Idle
@@ -1524,14 +1524,7 @@ impl ChiefSurface {
 		let Some(label) = label else {
 			return div().into_any_element();
 		};
-		let stop = selected
-			.filter(|work| work.dispatch_state == ChiefDispatchStateDto::Running)
-			.and_then(|work| {
-				Some((
-					EntityId::new(work.id.clone()).ok()?,
-					WireText::new(work.active_turn_id.clone()?).ok()?,
-				))
-			});
+
 		div()
 			.id("conversation-activity-status")
 			.role(Role::Status)
@@ -1546,34 +1539,6 @@ impl ChiefSurface {
 			.text_size(px(11.0))
 			.text_color(rgb(ui_theme::TEXT_MUTED))
 			.child(label.to_owned())
-			.when_some(stop, |row, (work_id, turn_id)| {
-				row.child(
-					div()
-						.id("conversation-stop")
-						.role(Role::Button)
-						.tab_index(0)
-						.aria_label("Stop response")
-						.h(px(26.0))
-						.px_2()
-						.flex()
-						.items_center()
-						.rounded(px(5.0))
-						.cursor_pointer()
-						.hover(|style| style.bg(rgba(0xffffff10)))
-						.on_click(cx.listener(move |s, _, _, cx| {
-							s.execute(
-								ChiefActionDto::Interrupt {
-									work_id: work_id.clone(),
-									turn_id: turn_id.clone(),
-								},
-								None,
-								cx,
-							)
-						}))
-						.child("Stop")
-						.smooth(),
-				)
-			})
 			.into_any_element()
 	}
 }
