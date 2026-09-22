@@ -483,6 +483,10 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("ctrl-alt-shift--", ShrinkPanels, None),
 		KeyBinding::new("ctrl-alt-shift-=", GrowPanels, None),
 		KeyBinding::new("ctrl-alt-shift-0", ResetPanels, None),
+		// macOS normalizes shifted punctuation and consumes the Shift modifier.
+		KeyBinding::new("ctrl-alt-+", GrowPanels, None),
+		KeyBinding::new("ctrl-alt-_", ShrinkPanels, None),
+		KeyBinding::new("ctrl-alt-)", ResetPanels, None),
 		KeyBinding::new("cmd-b", ToggleInspector, None),
 		KeyBinding::new("cmd-j", ToggleGraph, None),
 		KeyBinding::new("ctrl-c", InterruptReply, None),
@@ -6537,7 +6541,11 @@ mod tests {
 		assert_eq!(dimensions(visual), initial);
 		visual.simulate_keystrokes("ctrl-alt-shift-=");
 		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2 + 24.));
-		visual.simulate_keystrokes("ctrl-alt-shift-0");
+		visual.simulate_keystrokes("ctrl-alt-_");
+		assert_eq!(dimensions(visual), initial);
+		visual.simulate_keystrokes("ctrl-alt-+");
+		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2 + 24.));
+		visual.simulate_keystrokes("ctrl-alt-)");
 		let defaults = crate::panel_preferences::PanelDefaults::configured();
 		assert_eq!(
 			dimensions(visual),

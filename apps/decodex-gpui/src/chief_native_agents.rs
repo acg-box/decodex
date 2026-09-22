@@ -229,6 +229,14 @@ impl ChiefSurface {
 			.map(|a| a.title.as_str())
 			.unwrap_or("Agent");
 		let back = owner.clone();
+		let parent = self
+			.native_agents
+			.lists
+			.get(owner)
+			.into_iter()
+			.flatten()
+			.find(|a| &a.thread_id == thread)
+			.map(|a| a.parent_thread_id.clone());
 		let mut body = div()
 			.id("native-agent-transcript")
 			.flex_1()
@@ -268,28 +276,43 @@ impl ChiefSurface {
 			None => body = body.child(muted("Loading conversation…")),
 			_ => body = body.child(muted("This agent's conversation is unavailable. Retrying…")),
 		}
-		let mut panel = div()
-			.size_full()
-			.flex()
-			.flex_col()
-			.rounded(px(14.))
-			.bg(rgba(ui_theme::CHIEF_CHAT_OVERLAY))
-			.child(
-				div()
-					.h(px(36.))
-					.px_3()
-					.flex()
-					.items_center()
-					.gap_3()
-					.child(self.workspace_action(
-						"native-agent-back".into(),
-						"←".into(),
-						move |s, cx| s.open_page(&back, cx),
-						cx,
-					))
-					.child(title.to_owned()),
-			)
-			.child(body);
+		let mut panel =
+			div()
+				.size_full()
+				.flex()
+				.flex_col()
+				.rounded(px(14.))
+				.bg(rgba(ui_theme::CHIEF_CHAT_OVERLAY))
+				.child(
+					div()
+						.h(px(36.))
+						.px_3()
+						.flex()
+						.items_center()
+						.gap_3()
+						.child(self.workspace_action(
+							"native-agent-back".into(),
+							"←".into(),
+							move |s, cx| {
+								if let Some(parent) = &parent
+									&& s.native_agents.lists.get(&back).is_some_and(|list| {
+										list.iter().any(|a| &a.thread_id == parent)
+									}) {
+									s.open_native_agent(&back, parent, cx);
+									return;
+								}
+								s.open_page(&back, cx);
+							},
+							cx,
+						))
+						.child(div().flex_1().min_w_0().text_ellipsis().child(title.to_owned()))
+						.child(markdown::copy_button(
+							&format!("native-reference-{thread}"),
+							"Copy agent reference",
+							format!("thread://{thread}"),
+						)),
+				)
+				.child(body);
 		if can_input {
 			if let Some(input) = &self.native_agents.input {
 				panel = panel.child(

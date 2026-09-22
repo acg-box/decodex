@@ -130,7 +130,6 @@ pub(crate) struct ChiefSurface {
 	selected: Option<String>,
 	task: Option<Task<()>>,
 
-	copy_focus: FocusHandle,
 	generation: u64,
 	composer: Entity<ComposerInput>,
 	composer_footer_height: f32,
@@ -373,7 +372,6 @@ impl ChiefSurface {
 			selected: None,
 			task: None,
 
-			copy_focus: cx.focus_handle().tab_index(22).tab_stop(true),
 			generation: 0,
 		}
 	}
@@ -1203,82 +1201,36 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let mut panel = div()
-			.id("chief-work-metadata")
 			.flex()
 			.flex_col()
-			.gap_3()
-			.p_5()
-			.min_w_0()
-			.child(
-				div()
-					.text_size(px(ui_theme::HEADING_SIZE))
-					.font_weight(FontWeight::SEMIBOLD)
-					.child(work.title.clone()),
-			)
-			.child(detail("Work ID", &work.id))
-			.child(detail("Judgment", judgment(work.status)))
-			.child(detail("Execution", execution(work.dispatch_state)));
+			.gap_2()
+			.text_size(px(ui_theme::CAPTION_SIZE))
+			.child(muted(format!("Outcome · {}", judgment(work.status))))
+			.child(muted(format!("Execution · {}", execution(work.dispatch_state))));
 		if let Some(parent) = &work.parent_goal_id {
-			panel = panel.child(detail("Parent goal", title(snapshot, parent)));
-		}
-		if let Some(thread) = &work.codex_thread_id {
-			let copied = thread.clone();
-			let copied_key = thread.clone();
-			panel = panel.child(detail("Codex thread", thread)).child(
-				div()
-					.id("chief-copy-thread")
-					.role(Role::Button)
-					.aria_label("Copy exact Codex thread ID")
-					.text_size(px(ui_theme::BODY_SIZE))
-					.text_color(rgb(ui_theme::BLUE))
-					.cursor_pointer()
-					.track_focus(&self.copy_focus)
-					.on_click(cx.listener(move |_, _, _, cx| {
-						cx.write_to_clipboard(ClipboardItem::new_string(copied.clone()))
-					}))
-					.on_key_down(cx.listener(move |_, event: &gpui::KeyDownEvent, _, cx| {
-						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-							cx.write_to_clipboard(ClipboardItem::new_string(copied_key.clone()));
-						}
-					}))
-					.child("Copy thread ID")
-					.smooth(),
-			);
-		} else {
-			panel = panel.child(detail("Codex thread", "No thread is bound"));
-		}
-		if let Some(turn) = &work.active_turn_id {
-			panel = panel.child(detail("Acknowledged turn", turn));
-			if work.dispatch_state == ChiefDispatchStateDto::Running {
-				let work_id = work.id.clone();
-				let turn_id = turn.clone();
-				panel = panel.child(
-					div()
-						.id("chief-interrupt")
-						.role(Role::Button)
-						.tab_index(29)
-						.cursor_pointer()
-						.text_color(rgb(ui_theme::BLUE))
-						.on_click(cx.listener(move |surface, _, _, cx| {
-							if let (Ok(work_id), Ok(turn_id)) =
-								(EntityId::new(work_id.clone()), WireText::new(turn_id.clone()))
-							{
-								surface.execute(
-									ChiefActionDto::Interrupt { work_id, turn_id },
-									None,
-									cx,
-								);
-							}
-						}))
-						.child("Interrupt this acknowledged turn")
-						.smooth(),
-				);
-			}
+			panel = panel.child(self.relation("Reports to", snapshot, parent, cx));
 		}
 		if let Some(due) = work.next_check_at_micros {
-			panel = panel.child(detail("Next check", &next_check_text(due)));
+			panel = panel.child(muted(format!("Next check · {}", next_check_text(due))));
 		}
-		panel.child(self.pending_panel(snapshot, work, cx))
+		if work.dispatch_state == ChiefDispatchStateDto::Running
+			&& let (Some(turn), Ok(id)) = (&work.active_turn_id, EntityId::new(work.id.clone()))
+			&& let Ok(turn) = WireText::new(turn.clone())
+		{
+			panel = panel.child(self.workspace_action(
+				"stop-selected-agent".into(),
+				"Stop".into(),
+				move |s, cx| {
+					s.execute(
+						ChiefActionDto::Interrupt { work_id: id.clone(), turn_id: turn.clone() },
+						None,
+						cx,
+					)
+				},
+				cx,
+			));
+		}
+		panel
 	}
 
 	fn work_graph(
@@ -1524,7 +1476,15 @@ impl ChiefSurface {
 					cx.notify();
 				}
 			}))
-			.child(format!("{label} → {}", title(snapshot, id)))
+			.child(format!(
+				"{label} → {}",
+				snapshot
+					.work_items
+					.iter()
+					.find(|w| w.id == id)
+					.map(|w| self.work_label(w))
+					.unwrap_or_else(|| id.into())
+			))
 	}
 
 	fn cycle_sandbox(&mut self, cx: &mut Context<Self>) {
@@ -1535,15 +1495,6 @@ impl ChiefSurface {
 		};
 		cx.notify();
 	}
-}
-
-fn title<'a>(snapshot: &'a ChiefSnapshotDto, id: &'a str) -> &'a str {
-	snapshot
-		.work_items
-		.iter()
-		.find(|work| work.id == id)
-		.map(|work| work.title.as_str())
-		.unwrap_or(id)
 }
 
 fn unique_command() -> String {
@@ -1621,15 +1572,6 @@ fn muted(text: impl Into<SharedString>) -> impl IntoElement {
 		.text_color(rgb(ui_theme::TEXT_MUTED))
 		.child(text.into())
 }
-fn detail(label: &str, value: &str) -> impl IntoElement {
-	div()
-		.flex()
-		.flex_col()
-		.gap_1()
-		.child(muted(label.to_owned()))
-		.child(div().text_size(px(ui_theme::BODY_SIZE)).child(value.to_owned()))
-}
-
 fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 	let user = entry.kind == "user";
 	if entry.kind == "execution_notice" {

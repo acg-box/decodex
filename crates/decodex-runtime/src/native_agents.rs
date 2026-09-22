@@ -62,16 +62,48 @@ fn conversation(value: &Value, thread: &str) -> Option<NativeAgentsResult> {
 						.collect::<Vec<_>>()
 						.join("\n"),
 				),
+				"commandExecution" => (
+					"activity",
+					format!(
+						"Command · {}\n\n{}\n\n{}",
+						item["status"].as_str().unwrap_or("observed"),
+						item["command"].as_str().unwrap_or(""),
+						item["aggregatedOutput"].as_str().unwrap_or("")
+					),
+				),
+				"mcpToolCall" | "dynamicToolCall" => (
+					"activity",
+					format!(
+						"Tool · {} · {}",
+						item["tool"].as_str().unwrap_or("Tool"),
+						item["status"].as_str().unwrap_or("observed")
+					),
+				),
+				"fileChange" => (
+					"activity",
+					format!(
+						"Files · {}",
+						item["changes"]
+							.as_array()
+							.into_iter()
+							.flatten()
+							.filter_map(|c| c["path"].as_str())
+							.take(20)
+							.collect::<Vec<_>>()
+							.join(", ")
+					),
+				),
 				_ => continue,
 			};
 			if text.is_empty() {
 				continue;
 			}
-			if remaining == 0 {
+			if remaining == 0 || messages.len() >= 128 {
 				truncated = true;
 				break;
 			}
-			let bounded = clean(&text, remaining.min(12000));
+			let bounded =
+				clean(&text, remaining.min(if role == "activity" { 4000 } else { 12000 }));
 			truncated |= bounded.chars().count() < text.chars().count();
 			remaining = remaining.saturating_sub(bounded.chars().count());
 			messages.push(NativeAgentMessage {
