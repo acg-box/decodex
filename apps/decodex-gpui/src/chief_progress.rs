@@ -58,7 +58,23 @@ impl ChiefSurface {
 					result.push(self.progress_group(&pending, work, cx));
 					pending.clear();
 				}
-				result.push(self.anchored_history_entry(entry).into_any_element());
+				if entry.kind == "capacity_retry_pending" {
+					result.push(
+						div()
+							.flex()
+							.flex_col()
+							.gap_1()
+							.child(self.anchored_history_entry(entry))
+							.child(
+								div().debug_selector(|| "capacity-retry-cancel".into()).child(
+									self.capacity_retry_control(work.id.clone(), entry.id, cx),
+								),
+							)
+							.into_any_element(),
+					);
+				} else {
+					result.push(self.anchored_history_entry(entry).into_any_element());
+				}
 			}
 		}
 		if !pending.is_empty() {

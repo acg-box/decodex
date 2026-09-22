@@ -4012,6 +4012,27 @@ fn completed_chief_history(
 		);
 	}
 	let (message_kind, mut text) = chief_assistant_history(value, has_more);
+	// Capacity handling is process state, not an assistant response. Keep the
+	// original provider error in the persisted event rather than stacking it
+	// with a contradictory instruction to change models during an active retry.
+	if message_kind == "execution_notice" && value.get("capacityRetry").is_some() {
+		if let Some(retry) = pending_retry.filter(|retry| retry.event_id == event_id) {
+			return (
+				"capacity_retry_pending",
+				format!("Model busy · retry {}/3 scheduled automatically.", retry.attempt),
+			);
+		}
+		let notice = if value.pointer("/capacityRetry/cancelled") == Some(&serde_json::json!(true))
+		{
+			"Model busy · automatic retry cancelled."
+		} else if value.pointer("/capacityRetry/exhausted") == Some(&serde_json::json!(true)) {
+			"Model still busy after 3 retries. Try again later or choose another model."
+		} else {
+			"Model was busy · automatic retry requested."
+		};
+		return ("execution_notice", notice.into());
+	}
+
 	for path in
 		["/terminal/turn/error/message", "/terminal/turn/error/misalignment/detailedExplanation"]
 	{
@@ -4801,7 +4822,18 @@ mod tests {
 		};
 		assert_eq!(entries[0].kind, "capacity_retry_pending");
 		assert_eq!(entries[0].id, event.id);
-		assert!(entries[0].text.contains("1/3"));
+		assert_eq!(entries[0].text, "Model busy · retry 1/3 scheduled automatically.");
+		assert!(!entries[0].text.contains("Execution failed"));
+		let (kind, text) = super::completed_chief_history(
+			&serde_json::json!({"terminal":{"turn":{"status":"failed","error":{"message":"Selected model is at capacity."}}},"capacityRetry":{"attempt":1}}),
+			&mut false,
+			None,
+			event.id,
+			&mut Vec::new(),
+		);
+		assert_eq!(kind, "execution_notice");
+		assert_eq!(text, "Model was busy · automatic retry requested.");
+
 		store.cancel_chief_capacity_retry("chosen".into(), event.id).await.unwrap();
 		let decodex_protocol::ChiefHistoryResult::Available { entries, .. } =
 			super::query_chief_history(&owner, "chosen").await

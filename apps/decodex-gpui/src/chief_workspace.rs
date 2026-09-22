@@ -1516,9 +1516,6 @@ impl ChiefSurface {
 				ChiefDispatchStateDto::Idle
 					if pending.iter().any(|event| event.event_kind == "user_message") =>
 					Some("Message saved · Waiting for agent…"),
-				ChiefDispatchStateDto::Idle
-					if self.feedback == "Message saved · Waiting for agent…" =>
-					Some(self.feedback.as_str()),
 				ChiefDispatchStateDto::Idle => None,
 			})
 		}

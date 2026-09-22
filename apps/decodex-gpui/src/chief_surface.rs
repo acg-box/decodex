@@ -955,7 +955,11 @@ impl ChiefSurface {
 				if self.feedback == "Message saved · Waiting for agent…"
 					&& snapshot.work_items.iter().any(|work| {
 						Some(&work.id) == self.selected.as_ref()
-							&& work.dispatch_state == ChiefDispatchStateDto::Running
+							&& (work.dispatch_state != ChiefDispatchStateDto::Idle
+								|| !snapshot.pending_events.iter().any(|event| {
+									event.work_item_id == work.id
+										&& event.event_kind == "user_message"
+								}))
 					}) {
 					self.feedback.clear();
 				}
@@ -1361,13 +1365,6 @@ impl ChiefSurface {
 				for entry in entries {
 					saved.insert(entry.id, entry);
 				}
-				for entry in saved.values().filter(|entry| entry.kind == "capacity_retry_pending") {
-					panel = panel.child(
-						div()
-							.debug_selector(|| "capacity-retry-cancel".into())
-							.child(self.capacity_retry_control(work.id.clone(), entry.id, cx)),
-					);
-				}
 				panel = panel.children(self.progress_history(
 					saved.values().copied().collect(),
 					work,
@@ -1574,13 +1571,15 @@ fn muted(text: impl Into<SharedString>) -> impl IntoElement {
 }
 fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 	let user = entry.kind == "user";
-	if entry.kind == "execution_notice" {
-		return div()
-			.w_full()
-			.py_2()
-			.text_size(px(11.))
-			.text_color(rgb(ui_theme::AMBER))
-			.child(markdown::render(&entry.text, &format!("notice-{}", entry.id)));
+	if matches!(entry.kind.as_str(), "execution_notice" | "capacity_retry_pending") {
+		return div().w_full().py_2().text_size(px(11.)).text_color(rgb(ui_theme::AMBER)).child(
+			selectable_text::SelectableText {
+				key: format!("notice-{}", entry.id),
+				text: entry.text.clone(),
+				highlights: vec![],
+				links: vec![],
+			},
+		);
 	}
 	div()
 		.w_full()
@@ -1953,6 +1952,28 @@ mod tests {
 			)
 			.is_empty()
 		);
+	}
+
+	#[gpui::test]
+	fn completed_dispatch_clears_waiting_feedback_without_observing_running(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let mut snapshot = s.snapshot.clone().unwrap();
+			snapshot.pending_events.clear();
+			for work in &mut snapshot.work_items {
+				work.dispatch_state = ChiefDispatchStateDto::Idle;
+				work.active_turn_id = None;
+			}
+			s.feedback = "Message saved · Waiting for agent…".into();
+			s.apply_result(Ok(ChiefSnapshotResult::Available(snapshot)));
+			assert!(
+				s.feedback.is_empty(),
+				"a completed or failed fast turn must not leave a phantom queue"
+			);
+		});
 	}
 
 	#[gpui::test]
