@@ -1,16 +1,26 @@
 ---
-type: "Evidence"
-title: "Built-in Domain Pack Pressure Test V1 Evidence"
-description: "Implementation, capability, GPUI, live execution, and restart evidence for Development and Paper Investment built-in Domain Packs."
-tags: [adaptive-factory, domain-pack, ontology, graph, sqlite, gpui, paper-investment, evidence]
-openwiki:
-  roles: [testing, architecture, workflow]
-  change_kinds: [lifecycle, public-api, validation]
-  source_paths: [database/migrations/0007_builtin_domain_pack_binding.sql, database/src/program_cycles.rs, crates/decodex-protocol/src/domain_pack.rs, crates/decodex-protocol/src/program_cycle.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/domain_packs/decodex.dev-1.0.0.json, crates/decodex-runtime/domain_packs/decodex.paper-investment-1.0.0.json, crates/decodex-runtime/fixtures/us_treasury_yield_curve_2025_06.csv, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs]
-  test_paths: [database/src/program_cycles.rs, crates/decodex-protocol/src/domain_pack.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/src/application.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/client_lifecycle/tests.rs]
-  invariants: [SQLite stores one immutable Program Pack identity only.; Pack versions and manifest digests are exact.; Domain types and relations are bounded and namespaced.; Domain entity identities are stable derivations.; Capabilities are denied unless the exact Pack grants them.; Program Pack admission precedes QuickTaskRuntime and ProviderAttempt creation.; GPUI owns all Pack rendering.; The paper fixture is frozen and runtime-offline.; The Paper Investment Pack has no order or external-action capability.]
-  validation_commands: [python3 scripts/vnext/local_database_gate.py, python3 -m unittest tests/scripts/test_vnext_architecture.py, cargo test -p decodex-protocol -p decodex-database -p decodex-runtime, DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo test -p decodex-gpui --features visual-capture, DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo test -p decodex-gpui --bin decodex-gpui --features visual-capture client_lifecycle::tests::live_daemon_completes_the_builtin_domain_pack_pressure_test -- --ignored --exact --nocapture]
+type: Reference
+title: "Historical built-in Domain Pack pressure test"
+description: "Historical built-in Domain Pack pressure test"
+tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-cf0b0e7ae1282e29ac1dd184
+    resource: repo://crates/decodex-runtime/src/domain_packs.rs
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+# Current status
+
+The August pressure test and frozen paper fixture remain a historical receipt, not current GUI or trading capability. Development and Paper Investment manifests are still compiled into the runtime registry. Repository and PR/check-run orchestration have since been retired. No public plugin SDK, live financial execution, or old Factory tab is implied by the retained test.
+
+See [current architecture](../architecture/runtime-architecture.md) and [validation commands](../operations/commands-and-validation.md).
+
+---
+
+## Preserved evidence
 
 > Historical evidence only. Recorded capability names and wire tags describe the
 > captured revision, not current functionality. The repository-management and

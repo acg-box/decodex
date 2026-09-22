@@ -1,8 +1,31 @@
 ---
-type: "Reference"
-title: "Stateless Execution Coordination"
+type: Reference
+title: "Execution coordination: current owners and historical design"
+description: "Execution coordination: current owners and historical design"
+tags: ["decodex", "architecture"]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-e63babef303ce03a74424170
+    resource: repo://crates/decodex-runtime/src/chief_host.rs
+  - id: openwiki-source-ec5c9f32d2135154f4297a49
+    resource: repo://crates/decodex-runtime/src/conversation.rs
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+# Current execution boundary
+
+The design record below describes the former server-store/ManagedRun sequencing proposal and its milestone status. It does not define a current executable coordinator or authorize retired repository/GitHub effects.
+
+Current ordinary conversations are coordinated by `crates/decodex-runtime/src/conversation.rs` over the SQLite store, process supervisor, provider-attempt service and native Codex adapter. Chief adds a distinct durable coordination owner in `chief.rs` and `chief_host.rs`. Neither UI graph is a scheduler. A restored record does not mint a new live process fence, and uncertainty is not replay permission.
+
+Use [Runtime architecture](../architecture/runtime-architecture.md), [Chief coordination](../architecture/chief-coordination.md), [ProcessGeneration](process-generation-authority.md), and [ProviderAttempt](provider-attempt-authority.md) for current implementation boundaries. The original design and dated acceptance statements below are retained as provenance.
+
+---
+
+## Preserved sequencing design
 
 # Stateless Execution Coordination
 

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:b2004604aa49fa1fbf27cb36e552011ce8e6ba1c9a6738a4fa71c86c2f498991",
+  "claims": [
+    {
+      "id": "claim_79c842ad33614f3197ab19742e285944",
+      "statement": "Process supervision is a service-owned positive-only authority that does not adopt or signal restored processes.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/process_supervisor.rs",
+          "version": "repo-file-v1:sha256:f1dd64f8b025eb8ead12254cabb5b47be83279a0178b9975f1dd238590cb1209"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

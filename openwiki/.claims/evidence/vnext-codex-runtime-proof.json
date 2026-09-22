@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:bf80a217568babae7fa281d36f0be1710aac220cdfa513a98c92b5ed0e7c5e45",
+  "claims": [
+    {
+      "id": "claim_b69de84d807640bcbd9808643772b613",
+      "statement": "Current Chief integration and capability queries are service-owned native app-server operations, separate from historical proof receipts.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/chief_capabilities.rs",
+          "version": "repo-file-v1:sha256:8dce8bcb7f6726c4408becfb27c8e2b46527d1a48088aab96b2f38423e48e59b"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/chief_integrations.rs",
+          "version": "repo-file-v1:sha256:3ccc793b615d53f6a9592e73423631fefae785e3345545f0a481a2e4826a55d9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

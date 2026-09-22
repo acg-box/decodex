@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:28d2c2f53dfc332b8388fcb6b480c2e9b129bc637ea98c5c8e15baa3da73f67c",
+  "claims": [
+    {
+      "id": "claim_93f1d442ad5e49bcb6f277419c89263a",
+      "statement": "Program cycle persistence and predecessor-review lineage remain owned by SQLite, separate from the current Chief desktop presentation.",
+      "evidence": [
+        {
+          "resource": "repo://database/migrations/0006_repeatable_program_loop.sql",
+          "version": "repo-file-v1:sha256:a7772ef5284c794ccddac7864165bcac4ac77224866bd448271ca4b25d16a237"
+        },
+        {
+          "resource": "repo://database/src/program_cycles.rs",
+          "version": "repo-file-v1:sha256:d52243a04b5390609143655f2f722395cbe5bdbee76ed76ae7c1df7a3bced9b6"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

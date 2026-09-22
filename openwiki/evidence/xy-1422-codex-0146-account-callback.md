@@ -1,8 +1,29 @@
 ---
-type: "Reference"
-title: "Codex 0.146.0-alpha.9.2 account-callback receipt"
+type: Reference
+title: "Historical Codex 0.146 callback receipt"
+description: "Historical Codex 0.146 callback receipt"
+tags: ["decodex", "architecture"]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-b7b366446b07a1e3efde4e90
+    resource: repo://crates/decodex-runtime/src/account_launch/chief_process.rs
+  - id: openwiki-source-893c832a870570c6aae3b312
+    resource: repo://crates/decodex-runtime/src/account_launch/protocol.rs
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+# Current scope
+
+The August build identity and release hashes below apply only to that captured binary. They are not the current installed version. Current callback handling is in the account-launch protocol bridge; verify capabilities against the installed binary before using an upstream source feature.
+
+This documentation refresh does not rerun or broaden the dated evidence. See [Runtime architecture](../architecture/runtime-architecture.md) and [Commands and validation](../operations/commands-and-validation.md) for current work.
+
+---
+
+## Preserved receipt
 
 # Codex 0.146.0-alpha.9.2 account-callback receipt
 

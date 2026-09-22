@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:aaf3c9a7c54c1c0cd5c994515fbf2f287b296c3835817e21053d6435007efd9f",
+  "claims": [
+    {
+      "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
+      "statement": "Dictation uses an ephemeral subscription-authenticated service session and signed native stream adapter without persisting audio, authentication or drafts in SQLite.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/dictation.rs",
+          "version": "repo-file-v1:sha256:a1a00fd93e8721fd89674c2181ba9b04e831f49f914f89cc33be7269d95719fc"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/dictation_native.rs",
+          "version": "repo-file-v1:sha256:1f08cee6e523ce70ff6d1005109d0f93376b463841439ac0ff09c2d122b01124"
+        }
+      ]
+    },
+    {
+      "id": "claim_74856debb3a749dead1a1de66cd316be",
+      "statement": "The dictation transport reconciles segment revisions and final markers before emitting transcript text.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexTransport/DictationStream.swift",
+          "version": "repo-file-v1:sha256:cbb81c1ad455a4b7738a86d60f5368967d5dc4253075a25c8c64922bb07a4ebf"
+        }
+      ]
+    },
+    {
+      "id": "claim_2a943d0b1a444ac0a14d84a2271007b5",
+      "statement": "Live voice uses native thread/realtime RPC on an existing Chief thread and records native transcript observations.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/chief/voice.rs",
+          "version": "repo-file-v1:sha256:1ed43a972ee50060fdca36346158053734b9793b489c50ade5c82f52103a3cf2"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

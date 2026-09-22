@@ -4,7 +4,7 @@ okf_version: "0.2"
 
 # Files
 
-- [OpenWiki Quickstart](quickstart.md) - Entry point for Decodex local-product architecture, SQLite authority, Quick Task execution, Adaptive Factory Programs, operations, and validation.
+- [OpenWiki quickstart](quickstart.md) - OpenWiki quickstart
 
 # Directories
 

@@ -1,8 +1,21 @@
 ---
-type: "Reference"
-title: "XY-1368 retained-title freeze"
+type: Reference
+title: "Historical XY-1368 retained-title freeze"
+description: "Historical XY-1368 retained-title freeze"
+tags: ["decodex", "architecture"]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
+    resource: repo://database/src/migrations.rs
+  - id: openwiki-source-c8b1a2a9f2113ec43d4066da
+    resource: repo://Makefile.toml
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+> This record remains historical. Its old milestone gates, no-migration/disposable-data assumptions, executable paths and external issue status are not current instructions. Current SQLite migrations preserve product state; active checks are in Makefile.toml. Use [Current product contract](local-product-v1.md) and [Commands and validation](../operations/commands-and-validation.md). This refresh preserves original evidence and does not claim a new live acceptance result.
 
 # XY-1368 retained-title freeze
 

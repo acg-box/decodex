@@ -1,8 +1,27 @@
 ---
-type: "Reference"
+type: Reference
 title: "Radar And Publisher Contracts"
+description: "Radar And Publisher Contracts"
+tags: ["decodex", "architecture"]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-8afa0db2c4f33cb5f9924d1c
+    resource: repo://apps/decodex-publisher/src/social_contracts.rs
+  - id: openwiki-source-281fbf8eca61c5e14e9af3fb
+    resource: repo://apps/decodex-publisher/src/social_workflow.rs
+  - id: openwiki-source-e631b7e718f7140e71df9fc2
+    resource: repo://apps/radar/src/paths.rs
+  - id: openwiki-source-986e29707183495223eebed9
+    resource: repo://site/astro.config.mjs
+  - id: openwiki-source-cb47fe9c0d47072a7555387e
+    resource: repo://site/package.json
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+> Current boundary rechecked: Radar and Publisher remain auxiliary CLIs in the Rust workspace. The retirement of built-in repository/PR orchestration does not remove these tools or grant them Chief product-state authority. Checked-in automation definitions are desired state, not proof that a host scheduler is running. See [Wiki maintenance](../operations/wiki-maintenance.md) for documentation freshness.
 
 # Radar And Publisher Contracts
 
@@ -80,8 +99,8 @@ state, or Decodex runtime state.
 ## Validation
 
 ```sh
-cargo test -p radar
-cargo test -p decodex-publisher
+cargo +stable test -p radar
+cargo +stable test -p decodex-publisher
 python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json
 ```
 

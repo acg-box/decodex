@@ -1,8 +1,23 @@
 ---
-type: "Reference"
-title: "Decodex Content Automation"
+type: Reference
+title: "Decodex content automation"
+description: "Decodex content automation"
+tags: ["decodex", "architecture"]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-100fa03c93c368ebc1fbbd5a
+    resource: repo://automations/decodex/prompts/content-manager.md
+  - id: openwiki-source-ae9adef29a9c7df71fb7fd1a
+    resource: repo://automations/decodex/prompts/xurl-publisher.md
+  - id: openwiki-source-14193a66abfb7d3230f476bf
+    resource: repo://automations/portfolio.toml
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+> Current configuration: `automations/portfolio.toml` declares ACTIVE desired state. The PAUSED-first sequence below is historical activation procedure, not a report that today's host is paused. Verify native task definitions separately; repository configuration does not prove execution. This documentation refresh publishes nothing and changes no schedule.
 
 # Decodex Content Automation
 

@@ -1,8 +1,29 @@
 ---
-type: "Reference"
-title: "XY-1345 Exact former server store Command-Authority Proof"
+type: Reference
+title: "Historical exact-command authority proof"
+description: "Historical exact-command authority proof"
+tags: ["decodex", "architecture"]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-a09c082db4ad1473c4d1e557
+    resource: repo://crates/decodex-runtime/src/application.rs
+  - id: openwiki-source-0184655e2e99000280ce7bbe
+    resource: repo://database/src/lib.rs
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+# Current scope
+
+The deleted prototype, database commands, hashes and measured outcomes below are preserved provenance. They are not setup instructions or release checks. Current command receipts belong to SQLite and typed local protocol execution; use the current validation guide.
+
+This documentation refresh does not rerun or broaden the dated evidence. See [Runtime architecture](../architecture/runtime-architecture.md) and [Commands and validation](../operations/commands-and-validation.md) for current work.
+
+---
+
+## Preserved receipt
 
 # XY-1345 Exact former server store Command-Authority Proof
 

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:2acda23107c316b17f27ca3528ffc5af50681aeb292cd2e1a1f391f70f2ba4f8",
+  "claims": [
+    {
+      "id": "claim_0cb251fa04a54e8d8923b6e334a500f9",
+      "statement": "Weekly activation reserves an expired unchanged seven-day reset before sending and suppresses completed or ambiguous attempts until reset progression.",
+      "evidence": [
+        {
+          "resource": "repo://database/src/quota_activation.rs",
+          "version": "repo-file-v1:sha256:1a40f8325d2908b0d6a76ef60e60d468d0db168fb4cfbcddd7b223018b605788"
+        }
+      ]
+    },
+    {
+      "id": "claim_0a30b4e63dbb444a8e232d7f757e3a8a",
+      "statement": "Weekly activation reuses the account credential owner for a minimal non-persistent Responses request and respects the auto_activate_quota preference.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_api/activation.rs",
+          "version": "repo-file-v1:sha256:910d7fdba0c416829411cec3e9d1f37d7ac840177a1222f569163d611c831f07"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

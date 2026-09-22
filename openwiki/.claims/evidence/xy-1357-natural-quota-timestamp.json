@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:8db2544181281299280d2ed483d5cc40072ffc246866f882b375f756f20aeadb",
+  "claims": [
+    {
+      "id": "claim_34c139b838fb4730bd685eee4a9fb345",
+      "statement": "Quota window classification uses duration rather than response-field position, and weekly activation is separately controlled by the desktop preference.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-core/src/quota.rs",
+          "version": "repo-file-v1:sha256:65b2cad041ff70c422bb0f542e924bcdde17b7ad7a9503073eb9b3e0993c5cae"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_api/activation.rs",
+          "version": "repo-file-v1:sha256:910d7fdba0c416829411cec3e9d1f37d7ac840177a1222f569163d611c831f07"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

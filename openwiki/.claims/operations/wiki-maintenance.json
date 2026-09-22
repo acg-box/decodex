@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:d495700d51dad469783754ab05cb69a4d98db8b951a8753232196583b40d367a",
+  "claims": [
+    {
+      "id": "claim_07eac3dd8c6142068d996cdae3e4884c",
+      "statement": "The checked-in managed automation portfolio has five upstream/content tasks and no dedicated OpenWiki task.",
+      "evidence": [
+        {
+          "resource": "repo://automations/portfolio.toml",
+          "version": "repo-file-v1:sha256:db1107d522d96fea9e710ecc950f03734b63fc2dc6eebbb51658661f2e91203b"
+        }
+      ]
+    },
+    {
+      "id": "claim_28701ef0ff6440b79f355d42580c7d01",
+      "statement": "Repository instructions make source code and tests authoritative and delegate generated Wiki/index maintenance to OpenWiki.",
+      "evidence": [
+        {
+          "resource": "repo://AGENTS.md",
+          "version": "repo-file-v1:sha256:83b9b1a55a1eb759f211db3170601dae340d03b619d3d7c6c58c602c72884764"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:55:18.668Z"
+  }
+}

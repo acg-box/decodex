@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:d08aa2d5f2c946030ea0fd26359c43db2a27a5ab94155f8e0b372f4fb685f702",
+  "claims": [
+    {
+      "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
+      "statement": "Reset Card redemption uses a durable service-owned one-attempt operation ledger with account-scoped recovery and no automatic replay of uncertain redemption.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/api_reset_card.rs",
+          "version": "repo-file-v1:sha256:4d0e8711afcf7f7106d2d46560165f4ae76db0ea95b04e7812ed9506834d8b1b"
+        },
+        {
+          "resource": "repo://database/src/reset_cards.rs",
+          "version": "repo-file-v1:sha256:23cd65e411f304717703d2b94a4c86ff4fae609ebf319ef01f3d06cc1df06025"
+        }
+      ]
+    },
+    {
+      "id": "claim_14bd43c1ca984071b3d6a10b07d65c08",
+      "statement": "The desktop Reset Card view restores account-scoped operation state through the protocol rather than a UI-owned persistent journal.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift",
+          "version": "repo-file-v1:sha256:ac1a10f04bb40ef7e02b8d90bc3ecd3598b58d058af25a059d80a7eaceb506ae"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
+          "version": "repo-file-v1:sha256:5c3b59762e91d7a6eebf29c3df86c5882e318758bedbd81958780466a0f99d3f"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

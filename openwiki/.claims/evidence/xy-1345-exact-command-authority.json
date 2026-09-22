@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:5b7b13b03c17f95b7f2f2f4ff486093c8cf83a5b0f6f12f1e5295bf85aaea4be",
+  "claims": [
+    {
+      "id": "claim_a559bcac32344563aecf7eb5afa81e7f",
+      "statement": "Current command receipt persistence belongs to the SQLite store rather than the retired exact-command server-store prototype.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/application.rs",
+          "version": "repo-file-v1:sha256:3f80822d7df86e1db8cfc00f9041c729c1d8438d85e1256f7564973f86ba407a"
+        },
+        {
+          "resource": "repo://database/src/lib.rs",
+          "version": "repo-file-v1:sha256:17e6ce7deced25f1074e899b97d2bcd2bb62ae4554f9b2646f172adf8ba96faa"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

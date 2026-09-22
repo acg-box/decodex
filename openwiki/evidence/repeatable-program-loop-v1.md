@@ -1,16 +1,28 @@
 ---
-type: "Evidence"
-title: "Repeatable Program Loop V1 Evidence"
-description: "Implementation, restart, replay, GPUI, and three-cycle live evidence for manual sequential Program continuation."
-tags: [adaptive-factory, program, ontology, graph, sqlite, gpui, evidence]
-openwiki:
-  roles: [testing, architecture, workflow]
-  change_kinds: [lifecycle, public-api, validation]
-  source_paths: [database/migrations/0006_repeatable_program_loop.sql, database/src/program_cycles.rs, crates/decodex-protocol/src/program_cycle.rs, crates/decodex-protocol/src/wire.rs, crates/decodex-runtime/src/application.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs]
-  test_paths: [database/src/program_cycles.rs, crates/decodex-protocol/src/wire.rs, crates/decodex-runtime/src/application.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs]
-  invariants: [SQLite is the only Program authority.; Continuation binds the exact predecessor Review and Program revision.; One Program has at most one unreviewed cycle.; One Review has at most one successor Signal.; Continued WorkItems use the ordinary Quick Task provider path.; Unknown provider outcomes never authorize automatic replay.; GPUI derives cycle order from accepted causal lineage.]
-  validation_commands: [python3 scripts/vnext/local_database_gate.py, python3 -m unittest tests/scripts/test_vnext_architecture.py, DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo test -p decodex-core -p decodex-protocol -p decodex-database -p decodex-runtime -p decodex-gpui -p decodexd --all-targets --features decodex-gpui/visual-capture --no-fail-fast, DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo clippy -p decodex-core -p decodex-protocol -p decodex-database -p decodex-runtime -p decodex-gpui -p decodexd --all-targets --features decodex-gpui/visual-capture -- -D warnings]
+type: Reference
+title: "Historical Repeatable Program Loop V1 evidence"
+description: "Historical Repeatable Program Loop V1 evidence"
+tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-62a590c4bbdbb97b35d44eb8
+    resource: repo://database/migrations/0006_repeatable_program_loop.sql
+  - id: openwiki-source-dd24c2ff3c2515a21892e312
+    resource: repo://database/src/program_cycles.rs
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+# Current status
+
+The August three-cycle dogfood below is a preserved receipt. SQLite still contains Program cycles and predecessor-review lineage, and the runtime still exposes bounded Program projections. The former Factory screen and its capture commands are no longer the active desktop. The current UI is described in [Desktop workspace](../architecture/desktop-workspace.md).
+
+This update does not rerun the original live experiment, reset user data, or claim its old protocol/schema versions are current. Use [Commands and validation](../operations/commands-and-validation.md) for today's checks.
+
+---
+
+## Preserved repeatable-loop evidence
 
 # Repeatable Program Loop V1 Evidence
 

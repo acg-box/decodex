@@ -1,8 +1,29 @@
 ---
-type: "Reference"
-title: "Credential Vault Cutover Evidence"
+type: Reference
+title: "Historical credential-vault cutover evidence"
+description: "Historical credential-vault cutover evidence"
+tags: ["decodex", "architecture"]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-b65c7b5b5dc0aaa9a79ded46
+    resource: repo://database/src/credentials.rs
+  - id: openwiki-source-9049593cc0d6330da1c28f56
+    resource: repo://database/transfer/Cargo.toml
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+# Current status
+
+The protected transfer receipt below is retained without rerunning or changing its original results. Current credentials are owned by the service SQLite adapter and use zeroizing secret records. The normal service is decodex serve; redb is retained for the separate one-shot transfer path, not normal product storage. Do not run old transfer commands against current user data merely to reproduce this receipt.
+
+See [current architecture](../architecture/runtime-architecture.md) and [validation commands](../operations/commands-and-validation.md).
+
+---
+
+## Preserved evidence
 
 > Historical evidence only. Recorded capability names and wire tags describe the
 > captured revision, not current functionality. The repository-management and

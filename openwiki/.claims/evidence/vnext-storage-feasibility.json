@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:90799a86f2d6930adb25b1daab44a6f7b670efa0e19a01eea7085cf7fbfcb68d",
+  "claims": [
+    {
+      "id": "claim_d4de35fa50cd406cb07a9de8f8d2f369",
+      "statement": "The active product uses bundled SQLite and SHA-256 blob identities rather than the historical server-store prototype.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-core/src/blob.rs",
+          "version": "repo-file-v1:sha256:d882de98b3388bc53fb8c31fc61f43911b70e31653581d19a8f4e6fcac5736be"
+        },
+        {
+          "resource": "repo://database/Cargo.toml",
+          "version": "repo-file-v1:sha256:a92d46e26357a02df9653b30ff5e632d2641ca31740ed1d8686f56b501f7042d"
+        },
+        {
+          "resource": "repo://database/src/lib.rs",
+          "version": "repo-file-v1:sha256:17e6ce7deced25f1074e899b97d2bcd2bb62ae4554f9b2646f172adf8ba96faa"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:55:18.668Z"
+  }
+}

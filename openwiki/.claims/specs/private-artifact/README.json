@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:c86f0f578219091a82f125edb85291685948e6ec62ce49b2bf382b61fc8c7b79",
+  "claims": [
+    {
+      "id": "claim_db5e724281324a808cf888022edc70a4",
+      "statement": "The active core/runtime exports and repository-retirement boundary do not restore the archived private-artifact design as a product execution lane.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-core/src/lib.rs",
+          "version": "repo-file-v1:sha256:65dd718063cadcce0eedf4533bbc6ec3474fd77efa63fb948bbb52e5adbcb499"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/lib.rs",
+          "version": "repo-file-v1:sha256:2724a0da15195c980130cc2a865df14a0c58beead909c0310dd5b425a706e881"
+        },
+        {
+          "resource": "repo://work/managed-repository-retirement.md",
+          "version": "repo-file-v1:sha256:a96c878849b80917ab6067669abcaefb24dcd8b8b5533f99c05affce2eff59f1"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

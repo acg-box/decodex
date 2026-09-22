@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:8c0dfec591141fcc071def631c48af05de708b81d570cd80dfbff90f33b7339c",
+  "claims": [
+    {
+      "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
+      "statement": "The active product service runs as decodex serve from the CLI executable, while the macOS bundle contains a decodex helper rather than a separate decodexd executable.",
+      "evidence": [
+        {
+          "resource": "repo://Cargo.toml#L1-L17",
+          "version": "repo-lines-v1:sha256:b0f7086ea344358e740219ac15ba92349e1845b2744da478dffef5ce67c8ea2e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzNGUxMDJjODYxZjk5NGQyYWFjZTkxMTRkMzkyZGJjMTYyMTkwZTAwYmU4ZmUzNTdkNDcyMTUwY2E0Mzk2MTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3MGJmYTY2MDdmODg2ZGU1ZTY0MzIxZDJkNzJiNjJiYTQyYmI2MTFjNzU3MTAzNWI5OWQ5MTkzMTRkNTdlN2EifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-cli/src/lib.rs",
+          "version": "repo-file-v1:sha256:50f45a7b0e78078ebb1800025505db016cfb14faeafc0ed229292709ce8ba8c3"
+        },
+        {
+          "resource": "repo://scripts/macos/stage_decodex_app.sh",
+          "version": "repo-file-v1:sha256:f6c5dfd4297b9a65d950da5248fe3a1e038a800679112337d4ef4068a8180a47"
+        }
+      ]
+    },
+    {
+      "id": "claim_fbb0a565a3af434989353e3bbd03f7bd",
+      "statement": "GPUI's bundled service launcher uses parent lifetime supervision and refuses incompatible service versions instead of opening product storage directly.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/bundled_daemon.rs",
+          "version": "repo-file-v1:sha256:8916a59db0f138ad5d3acd7bd6bbab1ecc2472d22ae174aa10d5a72fef0e8909"
+        }
+      ]
+    },
+    {
+      "id": "claim_5e47a4b274b046bcb83e46440b3ee721",
+      "statement": "The macOS stage test verifies bundle payloads, signing, metadata and native ABI compatibility, including rejection of an incompatible fixture.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
+          "version": "repo-file-v1:sha256:ce67aa0933e6ca0612dabaddcd98f8babd9fcf53202ccc40ab1e0400d378d466"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

@@ -1,8 +1,29 @@
 ---
-type: "Reference"
-title: "XY-1372 private-artifact capability evidence"
+type: Reference
+title: "Historical private-artifact feasibility evidence"
+description: "Historical private-artifact feasibility evidence"
+tags: ["decodex", "architecture"]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:55:18.668Z
+sources:
+  - id: openwiki-source-76081c1a47ca8cf32593de34
+    resource: repo://scripts/macos/test_decodex_app_stage.sh
+  - id: openwiki-source-960cb6b925f1fa45c737a735
+    resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
+generated: { by: "codex", at: "2026-09-22T05:55:18.668Z" }
 ---
+
+# Current scope
+
+The frozen capability matrix remains non-executable evidence. It does not restore the private-artifact lane or grant access to arbitrary capabilities. Current signed macOS packaging checks native compatibility separately; preserve original hashes and acceptance boundaries below.
+
+This documentation refresh does not rerun or broaden the dated evidence. See [Runtime architecture](../architecture/runtime-architecture.md) and [Commands and validation](../operations/commands-and-validation.md) for current work.
+
+---
+
+## Preserved receipt
 
 # XY-1372 private-artifact capability evidence
 
@@ -15,10 +36,8 @@ XY-1372 proves platform feasibility. It does not implement the API, enable a pro
 composition root, authorize a downstream experiment, create a current platform
 requirement, or restore the retired private-artifact lane. The current disposition
 is in the [vNext authority decision](../decisions/vnext-authority.md),
-<!-- openwiki: broken internal link [../specs/vnext-authority.md#private-artifact-authority] heading anchor "private-artifact-authority" does not exist in "../specs/vnext-authority.md". Fix the href or restore the target, then delete this comment. -->
-[vNext contract](../specs/vnext-authority.md#private-artifact-authority), and
-<!-- openwiki: broken internal link [../specs/vnext-gates.md#xy-1372-private-artifact-capability-and-consumption-gate] heading anchor "xy-1372-private-artifact-capability-and-consumption-gate" does not exist in "../specs/vnext-gates.md". Fix the href or restore the target, then delete this comment. -->
-[gate manifest](../specs/vnext-gates.md#xy-1372-private-artifact-capability-and-consumption-gate).
+[vNext contract](../specs/vnext-authority.md), and
+[gate manifest](../specs/vnext-gates.md).
 
 ## Evidence identity and integrity
 

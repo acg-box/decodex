@@ -1,8 +1,25 @@
 ---
-type: "Reference"
-title: "Codex Upstream Adaptation"
+type: Reference
+title: "Codex upstream adaptation"
+description: "Codex upstream adaptation"
+tags: ["decodex", "architecture"]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-14193a66abfb7d3230f476bf
+    resource: repo://automations/portfolio.toml
+  - id: openwiki-source-6ca5e82393bf86daed6fe07a
+    resource: repo://automations/upstream/prompts/health.md
+  - id: openwiki-source-7dcbb082d2502f1ec4386c39
+    resource: repo://automations/upstream/prompts/maintainer.md
+  - id: openwiki-source-b0bf49010b38e1cb500b2181
+    resource: repo://automations/upstream/prompts/reviewer.md
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+> Scope: this runbook describes the checked-in managed automation policy, not proof that the host scheduler is installed, enabled or recently successful. Inspect native definitions and GitHub readback for live status. The native app-server implementation and the installed binary's generated schema remain separate evidence. Repository PR/check-run orchestration was retired; normal GitHub tooling owns delivery. These role-specific instructions do not change permissions for unrelated manual tasks.
 
 # Codex Upstream Adaptation
 

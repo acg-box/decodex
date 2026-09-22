@@ -1,28 +1,38 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:693ff94ca6e95437f3be9a6b43088d85559bb30aea6c0ab7fc3fae9964bdef1f",
+  "pageVersion": "sha256:b607d244cd8c3bf2a4fc1876fcc127c013120cb75264ee0dc3c35cd90449584a",
   "claims": [
     {
       "id": "claim_a3c49fc4897341d8af55579dc54de44e",
-      "statement": "Every current local account-login client and daemon must negotiate exact protocol 2.11 and artifact cohort 7; a version or cohort mismatch is refused before account-login exchange data is accepted.",
+      "statement": "Current account-login clients and service require exact local protocol 2.43 before exchanging typed login requests.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/client.rs#L250-L280",
-          "version": "repo-lines-v1:sha256:c1b459ec30c0b5a73a630d4db78771155586cef088c3cf1b6948b4931db1598e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhOGUyNjhhMTA2YTNhMzZlMWZhNDQ0ZGIzMGQwMGQ4MTFlYzZmNjVmZDRjNzViYmJkZTRiYzE1Y2FkNjc5M2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNDQzYmE5ZTQwNjBkNTVlYjNiN2M1Zjg1MDYwZWQ0ZThjZjE2OTJmYWVhZDdkZjAxN2IxNWJlNTJiNTY2MTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5YjkxNDVmODhiYzM2ZDk3Zjc3M2U2ZWFhZTExNDYzNTgwMTQwYTBkZmE1NzhlZDRjMDc5MjU4MTY1YzA3ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxMTg5MzIxMTBkMmQ2NjBmYWQ1OGIzYjhhZmE2MWM1MjE1NDQxZTBhYmU4ODczMTk2OTA2ZGViZjY2MGFjY2IifQ"
+          "resource": "repo://crates/decodex-protocol/src/client.rs",
+          "version": "repo-file-v1:sha256:a7ef229e39cb5c8c52c331d3441039f9f91a9cdfedc0d9a57f9ae6ce55c72112"
         },
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L108-L162",
-          "version": "repo-lines-v1:sha256:afcd685392ff94d91a030dd02a9e74e93987c373fce12ad6de735f620b3b4948:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiNjgxMDczOTI3Y2QxOWE2NjdhMTdmMmI2YTM5ZDQwYzhlOGM5MzlkZDFlNzlkZGYxODIxOGIzNjRhMGI2YTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5ZjM4MmZmZWU2ZDFiMGFhNjUxZDc2N2YwMzczYmNjMTMyMTZlNDNiYzNjMmRkMGY4OGI2OTAzYzRmZjU4YmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwYzg1YzIyZWVjY2FmNWRkMTBiNjU2MjFhZDVjNTExMGMxOTU1OTczOTFiMDk5NGQ4ZTgxMzU2YTI0Y2JmNDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4ZmM1NmUzOWRlNjQ0ZWM0NDdhZDM2NWYxMTI1YTM5NTBmMTA1MTM3NzZkMDU5NWM3OGFkMzEzNDc3ZGIyMjkifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L146-L166",
+          "version": "repo-lines-v1:sha256:3841b6b1c206508a08430d3e34e1e2d56c912936b8f7ee87ea9ef70abfd2825d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzMWFhYzNkNWNiN2RmMTI5ZjIzNzEzMDdkMzg0OTRjMzE3ZWU5NWZjMWY0YjBlZDgzMDBkYmU3YWEzY2IyZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRjNzBlMTI4NDI0MWNhNmE3OGY0NTE0NzMyYzQ0OTE3Yzc5MWY4OWRlNDlhMzJlODE3MjAxNDQ0ZWE2MzFkNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZjA5ZTgyOWRlMTFjOGMwY2M2ZTExNDJiYTM2ZTQ4ZDhiZTUyOGJiZjkzMjViNDBmMjFlMmMwMjVhZTc2MmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_65630510689644b4aba13d9c1219398b",
+      "statement": "The service login manager owns transient provider authorization, joins cancellation/shutdown workers, and installs successful results through AccountService.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-account-login/src/lib.rs",
+          "version": "repo-file-v1:sha256:4835e3fc024feee3b29e8bf957601dd4c6b5565f168d1b97c069372ef21ddfef"
         },
         {
-          "resource": "repo://crates/decodex-protocol/src/wire.rs#L580-L670",
-          "version": "repo-lines-v1:sha256:589552b5306bf8ffaa2db68887001c64dea2f343a820856280828e41658ae742:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjM2U0NTFmYzk3ZDNlYjdmMjA4NjJkNTBkNDc1YWFkNDlhNGE1NTYyYTg1NTUzNzMyMDdiNWVjNGZhOWMwOWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzZTFmMzFlZTViNTE4MTNlNTAxZmEzYTkxNTUyYzNjZWU3MTlmYWQwMTQ3ZDQ3ZGNiMjQ1MGJmZDM4NmI5ZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNiMWFlNjdmMjE1NWZjMDVhMzZlMGY3MDUwN2I1ODI0NzMxODk4NGI5ZDUyNzZhZDU4ODkwYTY4ZjVmZThlZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY0M2Y2YjU2ZGE4MWZmYWEzODhlYTcwZGE3ZDI3Mjc1ODFjYTRiZmZlNmJjYjY3Zjg5OTVmYzIzNDkxNDE1YWUifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_login.rs",
+          "version": "repo-file-v1:sha256:ed735ec6696e1082f9a4ee713049cc045baa61ff6b5676ad657a0a3a89bb2d44"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.2",
-    "at": "2026-08-27T10:25:21.174Z"
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
   }
 }

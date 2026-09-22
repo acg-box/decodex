@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:3915e14ab165656d2da692c6d40522e5f6a97f9e5a3821e089154ae3ae025a6f",
+  "claims": [
+    {
+      "id": "claim_b9d9d60a2b70439da2780d92ae95c878",
+      "statement": "The current automation portfolio declares ACTIVE desired state and separates content research from deterministic X publication.",
+      "evidence": [
+        {
+          "resource": "repo://automations/decodex/prompts/content-manager.md",
+          "version": "repo-file-v1:sha256:d67f2186ad3263065f1161f513f8e5395ae312609f60eec5426357fba6ca88be"
+        },
+        {
+          "resource": "repo://automations/decodex/prompts/xurl-publisher.md",
+          "version": "repo-file-v1:sha256:c20f597a74f8cf40d91eeffd5e8b19e904f1a180e34497d77e1fcdfb5d776ee2"
+        },
+        {
+          "resource": "repo://automations/portfolio.toml",
+          "version": "repo-file-v1:sha256:db1107d522d96fea9e710ecc950f03734b63fc2dc6eebbb51658661f2e91203b"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}
