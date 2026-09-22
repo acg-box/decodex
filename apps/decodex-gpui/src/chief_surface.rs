@@ -34,8 +34,8 @@ use decodex_protocol::{
 	IdempotencyKey, WireText,
 };
 use gpui::{
-	ClipboardItem, Context, Entity, FocusHandle, FontWeight, Render, Role, SharedString, Task,
-	Window, div, prelude::*, px, rgb, rgba,
+	AnimationExt, ClipboardItem, Context, Entity, FocusHandle, FontWeight, Render, Role,
+	SharedString, Task, Window, div, prelude::*, px, rgb, rgba,
 };
 
 use crate::{
@@ -444,6 +444,13 @@ impl ChiefSurface {
 			let _ = surface.update(cx, |surface, cx| {
 				surface.history_task = None;
 				if surface.selected.as_ref() == Some(&id) {
+					if surface
+						.history
+						.as_ref()
+						.is_some_and(|(owner, previous)| owner == &id && previous == &history)
+					{
+						return;
+					}
 					if matches!(history, ChiefHistoryResult::Available { .. })
 						|| !surface.history.as_ref().is_some_and(|(current, saved)| {
 							current == &id && matches!(saved, ChiefHistoryResult::Available { .. })
@@ -453,7 +460,7 @@ impl ChiefSurface {
 							&& !surface.history_follow_paused.contains(&id)
 							&& (scroll.offset().y + scroll.max_offset().y).abs() < px(24.0)
 						{
-							scroll.scroll_to_bottom();
+							surface.latest_follow_work = Some(id.clone());
 						}
 						if surface.feedback == "Message saved · Waiting for agent…" {
 							let last_reply = |history: &ChiefHistoryResult| match history {
@@ -867,8 +874,9 @@ impl ChiefSurface {
 		self.selected = None;
 		self.state = LoadState::Idle;
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
+			let mut snapshot_tick = 0u8;
 			loop {
-				cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
+				cx.background_executor().timer(std::time::Duration::from_millis(100)).await;
 				if surface
 					.update(cx, |surface, cx| {
 						let active = surface.snapshot.as_ref().is_some_and(|snapshot| {
@@ -877,9 +885,27 @@ impl ChiefSurface {
 									|| work.next_check_at_micros.is_some()
 							}) || !snapshot.pending_events.is_empty()
 						});
-						if should_poll_snapshot(surface.profile.is_some(), &surface.state, active) {
+						if snapshot_tick == 0
+							&& should_poll_snapshot(
+								surface.profile.is_some(),
+								&surface.state,
+								active,
+							) {
 							surface.refresh(cx);
 						}
+						if surface.snapshot.as_ref().is_some_and(|snapshot| {
+							snapshot.work_items.iter().any(|work| {
+								Some(&work.id) == surface.selected.as_ref()
+									&& matches!(
+										work.dispatch_state,
+										ChiefDispatchStateDto::Running
+											| ChiefDispatchStateDto::Dispatching
+									)
+							})
+						}) {
+							surface.load_history(cx);
+						}
+						snapshot_tick = (snapshot_tick + 1) % 5;
 						surface.load_archive_state(false, cx);
 						if surface.guardian_needs_refresh() {
 							surface.load_guardian_reviews(cx);
@@ -1398,6 +1424,42 @@ impl ChiefSurface {
 			Some(ChiefHistoryResult::Unavailable) =>
 				panel = panel.child(muted("Messages could not be loaded. Retrying…")),
 			None => panel = panel.child(muted("Loading messages…")),
+		}
+		let active = matches!(
+			work.dispatch_state,
+			ChiefDispatchStateDto::Running | ChiefDispatchStateDto::Dispatching
+		) || (self.selected.as_ref() == Some(&work.id)
+			&& (self.sending || self.feedback == "Message saved · Waiting for agent…"));
+		if active && self.composer_unavailable_reason().is_none() {
+			panel = panel.child(
+				div()
+					.id("reply-activity")
+					.role(Role::Status)
+					.aria_label("Agent is working")
+					.h(px(22.))
+					.flex()
+					.items_center()
+					.gap(px(4.))
+					.children((0..3).map(|index| {
+						div()
+							.size(px(4.))
+							.rounded_full()
+							.bg(rgb(ui_theme::TEXT_MUTED))
+							.with_animation(
+								format!("reply-working-{index}"),
+								gpui::Animation::new(std::time::Duration::from_millis(1100))
+									.repeat(),
+								move |dot, phase| {
+									dot.opacity(
+										0.35 + 0.65
+											* ((phase * std::f32::consts::TAU
+												- index as f32 * 0.7)
+												.sin() * 0.5 + 0.5),
+									)
+								},
+							)
+					})),
+			);
 		}
 		panel.children(self.live_chat_caption())
 	}

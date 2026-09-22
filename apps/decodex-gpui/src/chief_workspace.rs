@@ -792,7 +792,15 @@ impl ChiefSurface {
 			&& let Some(scroll) =
 				self.selected.as_ref().and_then(|work| self.transcript_scroll.get(work))
 		{
-			scroll.scroll_to_bottom();
+			let current = f32::from(scroll.offset().y);
+			let target = -f32::from(scroll.max_offset().y);
+			if (target - current).abs() > 0.5 {
+				scroll.set_offset(point(px(0.), px(current + (target - current) * 0.22)));
+				crate::ui_motion::request_frame(window, cx);
+				cx.notify();
+			} else {
+				scroll.set_offset(point(px(0.), px(target)));
+			}
 		}
 	}
 

@@ -1950,6 +1950,27 @@ pub(crate) fn retain_lifecycle_task<R: 'static>(
 	owner
 }
 
+fn connection_requires_recovery(previous: ConnectionView, next: ConnectionView) -> bool {
+	match (previous, next) {
+		(
+			ConnectionView::Online { generation: before, .. },
+			ConnectionView::Online { generation: after, .. },
+		) => before != after,
+		_ => previous != next,
+	}
+}
+
+#[test]
+fn online_cursor_progress_does_not_invalidate_the_conversation() {
+	let online = |generation, cursor| ConnectionView::Online {
+		generation,
+		applied: Some(decodex_protocol::Cursor(cursor)),
+	};
+	assert!(!connection_requires_recovery(online(1, 10), online(1, 11)));
+	assert!(connection_requires_recovery(online(1, 10), online(2, 11)));
+	assert!(connection_requires_recovery(online(1, 10), ConnectionView::Stopped));
+}
+
 fn publish_views(
 	shell: &WeakEntity<Shell>,
 	views: &Receiver<ConnectionView>,
@@ -1957,8 +1978,10 @@ fn publish_views(
 ) {
 	while let Ok(view) = views.try_recv() {
 		let _ = shell.update(cx, |shell, cx| {
-			if shell.connection != view {
+			if connection_requires_recovery(shell.connection, view) {
 				shell.chief.update(cx, ChiefSurface::mark_stale);
+			} else if shell.connection != view && matches!(view, ConnectionView::Online { .. }) {
+				shell.chief.update(cx, |s, cx| s.refresh(cx));
 			}
 			shell.connection = view;
 			cx.notify();

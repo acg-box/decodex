@@ -235,7 +235,7 @@ impl ChiefSurface {
 		self.older_scroll_anchor = None;
 		if let Some(work) = &self.selected {
 			self.history_follow_paused.remove(work);
-			self.transcript_scroll.entry(work.clone()).or_default().scroll_to_bottom();
+			self.transcript_scroll.entry(work.clone()).or_default();
 		}
 		self.set_voice_follow(true);
 		cx.notify();
@@ -698,7 +698,9 @@ mod tests {
 			}
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		for _ in 0..40 {
+			visual.update(|window, cx| window.draw(cx).clear());
+		}
 		surface.read_with(visual, |s, _| {
 			let scroll = &s.transcript_scroll["chief"];
 			assert!(
@@ -728,7 +730,9 @@ mod tests {
 			assert!(s.history_navigation.is_none());
 			assert!(!s.history_follow_paused.contains("chief"));
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		for _ in 0..40 {
+			visual.update(|window, cx| window.draw(cx).clear());
+		}
 		surface.read_with(visual, |s, _| {
 			let scroll = &s.transcript_scroll["chief"];
 			assert!((scroll.offset().y + scroll.max_offset().y).abs() < px(1.));
@@ -760,7 +764,9 @@ mod tests {
 			scroll.set_offset(point(px(0.), scroll.offset().y + px(32.)));
 			assert_eq!(s.active_history_index(&scroll), s.history_marks.len() - 1);
 		});
-		visual.update(|w, cx| w.draw(cx).clear());
+		for _ in 0..40 {
+			visual.update(|w, cx| w.draw(cx).clear());
+		}
 		surface.update(visual, |s, cx| {
 			let scroll = s.transcript_scroll["chief"].clone();
 			assert!((scroll.offset().y + scroll.max_offset().y).abs() < px(1.));
