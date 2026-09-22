@@ -44,6 +44,8 @@ impl RenderOnce for SelectableText {
 		div()
 			.id(SharedString::from(self.key))
 			.debug_selector(move || selector.clone())
+			.role(Role::Label)
+			.aria_label(self.text.clone())
 			.track_focus(&focus)
 			.cursor_text()
 			.on_mouse_down(MouseButton::Left, move |event, window, cx| {
