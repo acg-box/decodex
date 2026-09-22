@@ -34,6 +34,11 @@ fn graph_size(
 }
 
 impl ChiefSurface {
+	#[cfg(test)]
+	pub(crate) fn panel_dimensions(&self) -> (f32, f32, f32) {
+		(self.sidebar_width, self.agent_panel_width, self.graph_panel_height)
+	}
+
 	pub(crate) fn resize_panel(
 		&mut self,
 		delta: f32,

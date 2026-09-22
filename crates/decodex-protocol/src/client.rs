@@ -306,6 +306,30 @@ impl ChiefClient {
 		}
 	}
 
+	/// Inspect native descendants without creating local execution records.
+	pub async fn native_agents(
+		&self,
+		work_id: EntityId,
+		thread_id: Option<crate::WireText>,
+		cursor: Option<crate::WireText>,
+	) -> Result<crate::NativeAgentsResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"native-agents",
+				QueryPayload::GetNativeAgents { work_id, thread_id, cursor },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::NativeAgents(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read the latest bounded visible history for the selected work.
 	pub async fn history(
 		&self,
@@ -734,6 +758,7 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		crate::ChiefActionDto::Send { root_id, .. }
 		| crate::ChiefActionDto::SendConfigured { root_id, .. } => root_id,
 		crate::ChiefActionDto::CancelCapacityRetry { work_id, .. }
+		| crate::ChiefActionDto::NativeAgentInput { work_id, .. }
 		| crate::ChiefActionDto::Interrupt { work_id, .. }
 		| crate::ChiefActionDto::Respond { work_id, .. }
 		| crate::ChiefActionDto::AutomationResult { work_id, .. }
@@ -2825,7 +2850,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 43 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 44 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

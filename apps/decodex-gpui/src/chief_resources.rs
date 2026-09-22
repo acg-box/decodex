@@ -363,6 +363,7 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |s, _| {
+			s.details_visible = true;
 			let work = |id: &str| ChiefWorkItemDto {
 				id: id.into(),
 				parent_goal_id: None,
@@ -387,6 +388,12 @@ mod tests {
 			window.resize(gpui::size(px(1180.), px(1200.)));
 			window.draw(cx).clear();
 		});
+		for _ in 0..2 {
+			std::thread::sleep(std::time::Duration::from_millis(200));
+			visual.update(|window, cx| {
+				window.draw(cx).clear();
+			});
+		}
 		let bounds = visual.debug_bounds("chief-resources-toggle").expect("task resource control");
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, cx| {

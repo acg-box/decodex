@@ -31,7 +31,6 @@ enum MenuBarRuntimeState {
 }
 
 pub(crate) struct SettingsSurface {
-	advanced_preferences: Option<gpui::AnyView>,
 	snapshot: DesktopSettingsSnapshot,
 	runtime: MenuBarRuntimeState,
 	detail: SharedString,
@@ -42,18 +41,12 @@ pub(crate) struct SettingsSurface {
 }
 
 impl SettingsSurface {
-	pub(crate) fn with_advanced_preferences(mut self, view: gpui::AnyView) -> Self {
-		self.advanced_preferences = Some(view);
-		self
-	}
-
 	pub(crate) fn new(controller: DesktopSettingsController, _: &mut Context<Self>) -> Self {
 		let snapshot = controller.snapshot();
 		let mut menu_bar = NativeMenuBarHost::new();
 		let launch_at_login =
 			menu_bar.launch_at_login_state().unwrap_or(LaunchAtLoginState::OperationFailed);
 		let mut surface = Self {
-			advanced_preferences: None,
 			snapshot,
 			runtime: MenuBarRuntimeState::Waiting,
 			detail: "Loading preferences…".into(),
@@ -644,7 +637,7 @@ impl Render for SettingsSurface {
 							)
 							.child(ui_theme::settings_row().child(div().flex_1().child("Auto-activate weekly quota")).child(self.toggle(true, cx)))
                             .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child("Send a small background request when the weekly reset expires without a new countdown. Uses a small amount of quota; no chat is saved."))
-                            .children(self.advanced_preferences.clone())
+
 							.child(quote_attribution()),
 					),
 			)

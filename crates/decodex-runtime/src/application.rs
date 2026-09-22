@@ -1889,6 +1889,18 @@ impl Application for ServiceApplication {
 			QueryPayload::GetChiefRequest { event_id } => QueryResultPayload::ChiefRequest(
 				query_chief_request_with_details(&self.store, *event_id, self.chief.as_ref()).await,
 			),
+			QueryPayload::GetNativeAgents { work_id, thread_id, cursor } =>
+				QueryResultPayload::NativeAgents(match &self.chief {
+					Some(chief) =>
+						chief
+							.native_agents(
+								work_id.as_str(),
+								thread_id.as_ref().map(|x| x.as_str()),
+								cursor.as_ref().map(|x| x.as_str()),
+							)
+							.await,
+					None => decodex_protocol::NativeAgentsResult::Unavailable,
+				}),
 			QueryPayload::GetChiefHistory { work_id, before } => QueryResultPayload::ChiefHistory(
 				query_chief_history_page(&self.store, work_id.as_str(), *before).await,
 			),

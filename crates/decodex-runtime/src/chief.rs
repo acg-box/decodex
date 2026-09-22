@@ -631,7 +631,7 @@ impl ChiefCoordinator {
 				id: id.into(),
 				parent_goal_id: None,
 				kind: ChiefWorkKind::Goal,
-				title: "Chief".into(),
+				title: "Main".into(),
 				instructions: prompt.into(),
 				codex_thread_id: None,
 				dispatch_state: decodex_database::ChiefDispatchState::Idle,

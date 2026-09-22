@@ -56,7 +56,7 @@ impl ChiefSurface {
 			.or_else(|| self.root_id())
 			.and_then(|id| EntityId::new(id).ok())
 		else {
-			self.feedback = "Start a Chief conversation before opening Live voice.".into();
+			self.feedback = "Start a Agent conversation before opening Live voice.".into();
 			cx.notify();
 			return;
 		};

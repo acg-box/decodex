@@ -43,6 +43,10 @@ async fn native_child_approval_round_trip() {
 			chief.handle_event(event).await.unwrap();
 			if let Some((id, child)) = request {
 				assert_ne!(child,root);
+                let listed=crate::native_agents::read(&chief.store,&chief.client,"chief",None,None).await;
+                assert!(matches!(&listed,decodex_protocol::NativeAgentsResult::Available{agents,..} if agents.iter().any(|agent|agent.thread_id==child && agent.parent_thread_id==root)), "native descendant missing: {listed:?}");
+                let inspected=crate::native_agents::read(&chief.store,&chief.client,"chief",Some(&child),None).await;
+                assert!(matches!(inspected,decodex_protocol::NativeAgentsResult::Conversation{can_input:false,..}), "native v2 input capability was not preserved: {inspected:?}");
 				let pending = chief.pending_requests[&id];
 				let saved = chief.store.get_chief_inbox_event(pending).await.unwrap();
 				assert_eq!(saved.work_item_id,"chief");

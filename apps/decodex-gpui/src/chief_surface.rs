@@ -1,4 +1,4 @@
-//! Chief conversation and work overview. The service owns records and execution.
+//! Agent conversation and work overview. The service owns records and execution.
 
 #[path = "chief_activity.rs"] mod activity;
 #[path = "chief_tree.rs"] mod agent_tree;
@@ -15,6 +15,7 @@
 #[path = "chief_markdown.rs"] mod markdown;
 #[path = "chief_mcp_forms.rs"] mod mcp_forms;
 #[path = "chief_misalignment.rs"] mod misalignment;
+#[path = "chief_native_agents.rs"] mod native_agents;
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_requests.rs"] mod requests;
@@ -110,6 +111,7 @@ pub(crate) struct ChiefSurface {
 	connection_details_expanded: bool,
 	history_hover: Option<usize>,
 	history_navigation: Option<activity::HistoryNavigation>,
+	native_agents: native_agents::NativeAgents,
 	agent_tree_visible: bool,
 	agent_tree_collapsed: std::collections::BTreeSet<String>,
 	sidebar_visible: bool,
@@ -316,6 +318,7 @@ impl ChiefSurface {
 			connection_details_expanded: false,
 			history_hover: None,
 			history_navigation: None,
+			native_agents: Default::default(),
 			agent_tree_visible: true,
 			agent_tree_collapsed: Default::default(),
 			sidebar_visible: true,
@@ -495,6 +498,7 @@ impl ChiefSurface {
 		cx.notify();
 	}
 
+	#[cfg(test)]
 	fn cycle_model(&mut self, cx: &mut Context<Self>) {
 		if let Some(decodex_protocol::ChiefCapabilitiesResult::Available { models, .. }) =
 			self.current_model_catalog(cx)
@@ -1105,6 +1109,65 @@ impl ChiefSurface {
 		}
 	}
 
+	pub(super) fn work_context(
+		&self,
+		snapshot: &ChiefSnapshotDto,
+		work: &ChiefWorkItemDto,
+		cx: &mut Context<Self>,
+	) -> gpui::AnyElement {
+		let status = graph::state_in(snapshot, work).0;
+		div()
+			.flex_none()
+			.px_4()
+			.py_1()
+			.flex()
+			.flex_col()
+			.child(
+				div()
+					.flex()
+					.items_center()
+					.justify_between()
+					.child(
+						div()
+							.text_size(px(12.))
+							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.child(format!("{} · {status}", self.work_label(work))),
+					)
+					.child(self.workspace_action(
+						"inspect-work".into(),
+						"Work details".into(),
+						|s, cx| {
+							s.details_visible = !s.details_visible;
+							cx.notify();
+						},
+						cx,
+					)),
+			)
+			.child(disclosure(
+				"agent-work-inspection",
+				self.details_visible,
+				div()
+					.id("work-inspection-scroll")
+					.max_h(px(240.))
+					.overflow_y_scroll()
+					.p_2()
+					.flex()
+					.flex_col()
+					.gap_2()
+					.child(self.resources_panel(&work.id, cx))
+					.child(self.work_graph(snapshot, work, cx))
+					.child(self.work_metadata(snapshot, work, cx))
+					.when_some(work.codex_thread_id.as_ref(), |d, thread| {
+						d.child(markdown::copy_button(
+							&format!("work-reference-{}", work.id),
+							"Copy task reference",
+							format!("Work: {}\nThread: {}", work.id, thread),
+						))
+					}),
+			))
+			.into_any_element()
+	}
+
 	fn details(
 		&self,
 		snapshot: &ChiefSnapshotDto,
@@ -1131,40 +1194,6 @@ impl ChiefSurface {
 			.child(self.request_panel(snapshot, work, cx))
 			.child(self.async_question_panel(work, cx))
 			.child(self.history_panel(work, cx))
-			.child(
-				div()
-					.id("chief-toggle-details")
-					.role(Role::Button)
-					.tab_index(27)
-					.cursor_pointer()
-					.text_color(rgb(ui_theme::BLUE))
-					.on_click(cx.listener(|surface, _, _, cx| {
-						surface.details_visible = !surface.details_visible;
-						cx.notify();
-					}))
-					.on_key_down(cx.listener(|surface, event: &gpui::KeyDownEvent, _, cx| {
-						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-							surface.details_visible = !surface.details_visible;
-							cx.notify();
-						}
-					}))
-					.child(if self.details_visible {
-						"Hide work details ▾"
-					} else {
-						"Work details and dependencies ▸"
-					})
-					.smooth(),
-			)
-			.child(disclosure(
-				"chief-details-motion",
-				self.details_visible,
-				div()
-					.flex()
-					.flex_col()
-					.gap_3()
-					.child(self.work_metadata(snapshot, work, cx))
-					.child(self.work_graph(snapshot, work, cx)),
-			))
 	}
 
 	fn work_metadata(
@@ -1342,7 +1371,6 @@ impl ChiefSurface {
 			.flex()
 			.flex_col()
 			.gap(px(ui_theme::MESSAGE_GAP))
-			.child(self.resources_panel(&work.id, cx))
 			.child(self.integrations_panel(&work.id, cx))
 			.child(self.usage_estimate_panel(&work.id, cx));
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
@@ -1497,18 +1525,6 @@ impl ChiefSurface {
 				}
 			}))
 			.child(format!("{label} → {}", title(snapshot, id)))
-	}
-
-	fn cycle_effort(&mut self, cx: &mut Context<Self>) {
-		let supported = self.model_efforts(cx);
-		if !supported.is_empty() {
-			let next = supported
-				.iter()
-				.position(|level| *level == self.effort)
-				.map_or(0, |index| (index + 1) % supported.len());
-			self.effort = supported[next];
-		}
-		cx.notify();
 	}
 
 	fn cycle_sandbox(&mut self, cx: &mut Context<Self>) {
@@ -1727,23 +1743,6 @@ fn reply_metrics(entry: &decodex_protocol::ChiefHistoryEntryDto) -> impl IntoEle
 		})
 }
 
-pub(crate) struct ChiefPreferences {
-	chief: Entity<ChiefSurface>,
-}
-
-impl ChiefPreferences {
-	pub(crate) fn new(chief: Entity<ChiefSurface>, cx: &mut Context<Self>) -> Self {
-		cx.observe(&chief, |_, _, cx| cx.notify()).detach();
-		Self { chief }
-	}
-}
-
-impl Render for ChiefPreferences {
-	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.chief.update(cx, |chief, cx| chief.render_preferences(cx).into_any_element())
-	}
-}
-
 impl ChiefSurface {}
 
 impl Render for ChiefSurface {
@@ -1766,7 +1765,7 @@ impl ChiefSurface {
 				div()
 					.id("chief-advanced-preferences")
 					.role(Role::Button)
-					.aria_label("Advanced Chief defaults")
+					.aria_label("New agent defaults")
 					.aria_expanded(self.setup_expanded)
 					.tab_index(0)
 					.h(px(32.0))
@@ -1787,7 +1786,7 @@ impl ChiefSurface {
 					}))
 					.w_full()
 					.justify_between()
-					.child("Chief defaults")
+					.child("New agent defaults")
 					.child(super::workspace_symbols::icon(
 						super::workspace_symbols::Symbol::ChevronDown,
 					))
@@ -1816,125 +1815,36 @@ impl ChiefSurface {
 	}
 
 	fn render_setup_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		div()
-			.flex()
-			.flex_col()
-			.gap(px(6.0))
-			.child(self.context_choices(cx))
-			.child(muted(
-				"Model and reasoning apply next turn; other defaults apply to new Chiefs.",
-			))
-			.children(
-				[
-					("Model", self.model.clone()),
-					("Working directory", self.cwd.clone()),
-					("Account ID", self.account.clone()),
-				]
-				.into_iter()
-				.map(|(label, input)| {
-					div()
-						.w_full()
-						.flex()
-						.items_center()
-						.gap(px(12.0))
-						.child(
-							div()
-								.w(px(92.0))
-								.flex_none()
-								.text_size(px(ui_theme::CAPTION_SIZE))
-								.text_color(rgb(ui_theme::TEXT_MUTED))
-								.child(label),
-						)
-						.child(div().flex_1().min_w_0().child(input))
-				}),
-			)
-			.child(
-				div()
-					.flex()
-					.gap_3()
-					.child(
-						div()
-							.id("chief-effort")
-							.role(Role::Button)
-							.tab_index(34)
-							.cursor_pointer()
-							.on_key_down(cx.listener(
-								|surface, event: &gpui::KeyDownEvent, _, cx| {
-									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-										surface.cycle_effort(cx);
-									}
-								},
-							))
-							.on_click(cx.listener(|surface, _, _, cx| {
-								surface.cycle_effort(cx);
-							}))
-							.child(format!("Reasoning: {} ▸", self.effort.as_str()))
-							.smooth(),
-					)
-					.child(
-						div()
-							.id("chief-sandbox")
-							.role(Role::Button)
-							.tab_index(35)
-							.cursor_pointer()
-							.on_key_down(cx.listener(
-								|surface, event: &gpui::KeyDownEvent, _, cx| {
-									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-										surface.cycle_sandbox(cx);
-									}
-								},
-							))
-							.on_click(cx.listener(|surface, _, _, cx| {
-								surface.cycle_sandbox(cx);
-							}))
-							.child(format!("Access: {:?} ▸", self.sandbox))
-							.smooth(),
-					),
-			)
-	}
-
-	fn context_choices(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let account = self
 			.accounts
 			.iter()
 			.find(|(id, _)| id == self.account.read(cx).content())
-			.map_or("Automatic routing", |(_, alias)| alias.as_str());
+			.map_or("Automatic routing", |(_, label)| label.as_str());
 		div()
 			.flex()
-			.gap_4()
+			.flex_col()
+			.gap_2()
+			.child(muted("Applies when starting a new agent."))
 			.child(
 				div()
-					.id("chief-model-choice")
-					.role(Role::Button)
-					.tab_index(30)
-					.cursor_pointer()
-					.text_color(rgb(ui_theme::BLUE))
-					.on_click(cx.listener(|surface, _, _, cx| surface.cycle_model(cx)))
-					.on_key_down(cx.listener(|surface, event: &gpui::KeyDownEvent, _, cx| {
-						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-							surface.cycle_model(cx);
-						}
-					}))
-					.child("Model")
-					.smooth(),
+					.flex()
+					.items_center()
+					.gap_2()
+					.child(div().w(px(72.)).child(muted("Directory")))
+					.child(div().flex_1().min_w_0().child(self.cwd.clone())),
 			)
-			.child(
-				div()
-					.id("chief-account-choice")
-					.role(Role::Button)
-					.tab_index(31)
-					.cursor_pointer()
-					.text_color(rgb(ui_theme::BLUE))
-					.on_click(cx.listener(|surface, _, _, cx| surface.cycle_account(cx)))
-					.on_key_down(cx.listener(|surface, event: &gpui::KeyDownEvent, _, cx| {
-						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-							surface.cycle_account(cx);
-						}
-					}))
-					.child(format!("Account: {account} ▸"))
-					.smooth(),
-			)
-			.child(muted(""))
+			.child(self.workspace_action(
+				"agent-default-account".into(),
+				format!("Account · {account}"),
+				|s, cx| s.cycle_account(cx),
+				cx,
+			))
+			.child(self.workspace_action(
+				"agent-default-access".into(),
+				format!("Access · {:?}", self.sandbox),
+				|s, cx| s.cycle_sandbox(cx),
+				cx,
+			))
 	}
 }
 

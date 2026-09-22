@@ -200,6 +200,17 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Send explicit user input to a verified native descendant that accepts direct input.
+	NativeAgentInput {
+		/// Exact local owner whose native descendants may be addressed.
+		work_id: crate::EntityId,
+		/// Exact observed native descendant identity.
+		thread_id: crate::WireText,
+		/// User-authored message; never generated from a status event.
+		text: crate::HistoryText,
+		/// Expected running turn; None requires an idle native agent.
+		expected_turn: Option<crate::WireText>,
+	},
 	/// Install the exact plugin whose current catalog details the user reviewed.
 	InstallSuggestedPlugin {
 		/// Owning task identity.

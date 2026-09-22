@@ -69,6 +69,12 @@ impl ChiefSurface {
 		depth: usize,
 		cx: &mut Context<Self>,
 	) -> (AnyElement, usize) {
+		let has_native = work.codex_thread_id.as_ref().is_some_and(|thread| {
+			self.native_agents
+				.lists
+				.get(&work.id)
+				.is_some_and(|list| list.iter().any(|a| &a.parent_thread_id == thread))
+		});
 		let descendants = if depth < 24 { children(snapshot, &work.id) } else { Vec::new() };
 		let expanded = !self.agent_tree_collapsed.contains(&work.id);
 		let selected = self.selected.as_ref() == Some(&work.id);
@@ -115,7 +121,7 @@ impl ChiefSurface {
 			.flex()
 			.items_center()
 			.when(selected, |row| row.bg(rgba(0xffffff08)))
-			.child(if descendants.is_empty() {
+			.child(if descendants.is_empty() && !has_native {
 				div().w(px(24.0)).flex_none().into_any_element()
 			} else {
 				toggle.into_any_element()
@@ -131,7 +137,7 @@ impl ChiefSurface {
 					.text_size(px(ui_theme::CAPTION_SIZE))
 					.flex_none()
 					.text_color(rgb(color))
-					.child(status),
+					.child(format!("L{depth} · {status}")),
 			);
 		let mut nested = div().w_full().flex().flex_col();
 		let mut count = 0;
@@ -140,6 +146,12 @@ impl ChiefSurface {
 			count += rows;
 			nested = nested.child(branch);
 		}
+		if let Some(thread) = &work.codex_thread_id {
+			let (native, rows) = self.native_branches(&work.id, thread, depth + 1, cx);
+			nested = nested.child(native);
+			count += rows;
+		}
+
 		(
 			div()
 				.w_full()

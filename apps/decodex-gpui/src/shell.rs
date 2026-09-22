@@ -353,7 +353,7 @@ impl Destination {
 
 	pub(crate) const fn label(self) -> &'static str {
 		match self {
-			Self::Chief => "Chief",
+			Self::Chief => "Main",
 			Self::Advisor => "Advisor",
 			Self::Projects => "Projects",
 			Self::Conversations => "History",
@@ -601,11 +601,7 @@ impl Shell {
 		let account_profile_controller = AccountProfileController::production();
 		let account_profile = account_profile_controller.snapshot();
 		let settings_controller = desktop_settings.clone();
-		let preferences = cx.new(|cx| chief_surface::ChiefPreferences::new(chief.clone(), cx));
-		let settings = cx.new(|cx| {
-			SettingsSurface::new(settings_controller, cx)
-				.with_advanced_preferences(preferences.into())
-		});
+		let settings = cx.new(|cx| SettingsSurface::new(settings_controller, cx));
 		let accounts_controller = AccountsController::production();
 		let accounts = accounts_controller.snapshot();
 		let health_query = HealthQuery::production();
@@ -5841,7 +5837,7 @@ mod tests {
 				),
 			)),
 			[
-				("Chief", true),
+				("Main", true),
 				("Advisor", false),
 				("Projects", false),
 				("History", true),
@@ -6520,6 +6516,33 @@ mod tests {
 		assert_eq!(panels(visual), [(false, true), (false, true), (true, true), (false, true)]);
 		visual.simulate_keystrokes("cmd-e cmd-j cmd-b");
 		assert_eq!(panels(visual), [(true, true), (true, true), (true, true), (true, true)]);
+	}
+
+	#[gpui::test]
+	fn panel_resize_keyboard_bindings_reach_the_focused_panel(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		visual.simulate_resize(gpui::size(px(1400.), px(1000.)));
+		shell.update(visual, |s, cx| s.chief.update(cx, |a, cx| a.visual_workspace_fixture(cx)));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let dimensions = |visual: &mut VisualTestContext| {
+			shell.read_with(visual, |s, cx| s.chief.read(cx).panel_dimensions())
+		};
+		let initial = dimensions(visual);
+		visual.simulate_click(gpui::point(px(50.), px(170.)), Default::default());
+		visual.simulate_keystrokes("ctrl-alt-=");
+		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1, initial.2));
+		visual.simulate_keystrokes("ctrl-alt--");
+		assert_eq!(dimensions(visual), initial);
+		visual.simulate_keystrokes("ctrl-alt-shift-=");
+		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2 + 24.));
+		visual.simulate_keystrokes("ctrl-alt-shift-0");
+		let defaults = crate::panel_preferences::PanelDefaults::configured();
+		assert_eq!(
+			dimensions(visual),
+			(defaults.sidebar.into(), defaults.sidebar.into(), defaults.dock.into())
+		);
 	}
 
 	#[gpui::test]

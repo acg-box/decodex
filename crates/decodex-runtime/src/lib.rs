@@ -29,6 +29,7 @@ mod dictation;
 mod domain_packs;
 mod host_credentials;
 mod mcp_login;
+mod native_agents;
 mod native_config_warning;
 mod process_platform;
 mod process_supervisor;

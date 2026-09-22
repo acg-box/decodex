@@ -2265,6 +2265,15 @@ pub enum QueryPayload {
 	},
 	/// Read the complete bounded Chief work graph and pending result metadata.
 	GetChiefSnapshot,
+	/// Inspect exact native descendants or one descendant conversation.
+	GetNativeAgents {
+		/// Exact managed work owner.
+		work_id: EntityId,
+		/// Native child to inspect, or None to list descendants.
+		thread_id: Option<WireText>,
+		/// Exact provider cursor for the next descendant page.
+		cursor: Option<WireText>,
+	},
 	/// Read the complete daemon-owned desktop settings projection.
 	GetDesktopSettings,
 	/// List bounded current Programs for the Factory selector.
@@ -2840,6 +2849,8 @@ pub enum QueryResultPayload {
 	InitialModelCatalog(crate::InitialModelCatalogResult),
 	/// Source-bound Chief history, without raw provider frames.
 	ChiefHistory(crate::ChiefHistoryResult),
+	/// Native agent inspection result.
+	NativeAgents(crate::NativeAgentsResult),
 	/// Native resource associations for an exact work thread.
 	ChiefResources(crate::ChiefResourcesResult),
 	/// Saved Guardian assessments and explicit user approval receipts.
@@ -4455,7 +4466,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":43},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":44},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4464,7 +4475,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":43},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":44},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4506,7 +4517,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":43},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":44},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

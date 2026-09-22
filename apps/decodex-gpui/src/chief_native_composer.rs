@@ -49,6 +49,7 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) {
 		let requested = allowed
+			&& self.native_agents.selected.is_none()
 			&& !self.selected_is_archived()
 			&& self.composer_unavailable_reason().is_none()
 			&& self.selected_is_manager()
@@ -178,6 +179,7 @@ impl Render for ComposerPanel {
 		let owner = self.owner.downgrade();
 		let capsule = self.owner.update(cx, |s, cx| s.render_composer_capsule(true, window, cx));
 		let parent = self.parent;
+		let focus_owner = self.owner.clone();
 		div()
 			.w_full()
 			.font_family(ui_theme::FONT_FAMILY)
@@ -196,6 +198,10 @@ impl Render for ComposerPanel {
 						}
 					});
 				}
+			})
+			.id("native-composer-focus-panel")
+			.capture_any_mouse_down(move |_, _, cx| {
+				focus_owner.update(cx, |s, _| s.focused_panel = None);
 			})
 			.on_action(move |action: &super::super::ActivateChief, _, cx| {
 				forward(parent, action, cx)

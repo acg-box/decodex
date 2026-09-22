@@ -83,6 +83,7 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn open_page(&mut self, id: &str, cx: &mut Context<Self>) {
+		self.native_agents.selected = None;
 		if !self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id)) {
 			return;
 		}
@@ -219,6 +220,7 @@ impl ChiefSurface {
 			format!("{label} pending decisions · open next")
 		} else {
 			match id.as_str() {
+				"new-project" => "New project",
 				"graph-up" => "Parent work scope",
 				"graph-close" => "Close graph",
 				"zoom-in" => "Zoom in",
@@ -291,7 +293,7 @@ impl ChiefSurface {
 			.pr(px(4.));
 		panel = panel.child(self.workspace_action(
 			"chief-home".into(),
-			"Overview".into(),
+			"Main".into(),
 			|s, cx| {
 				if let Some(id) = s.root_id() {
 					s.open_page(&id, cx);
@@ -305,7 +307,28 @@ impl ChiefSurface {
 				.px_2()
 				.text_size(px(11.0))
 				.text_color(rgb(ui_theme::TEXT_MUTED))
-				.child("Projects"),
+				.flex()
+				.items_center()
+				.justify_between()
+				.child("Projects")
+				.child(self.workspace_action(
+					"new-project".into(),
+					"+".into(),
+					|s, cx| {
+						if let Some(id) = s.root_id() {
+							s.open_page(&id, cx);
+						}
+						if s.composer.read(cx).content().trim().is_empty() {
+							s.composer.update(cx, |input, cx| {
+								input.set_content("Create a project workspace for ", cx)
+							});
+						} else {
+							s.feedback="Your draft is kept. Send or clear it before starting a new project.".into();
+						}
+						cx.notify();
+					},
+					cx,
+				)),
 		);
 		let mut list = div().id("chief-sidebar-work").flex_1().min_h_0().overflow_y_scroll();
 		if let Some(snapshot) = &self.snapshot {
@@ -364,27 +387,6 @@ impl ChiefSurface {
 			}
 		}
 		panel = panel.child(list);
-		{
-			panel =
-				panel.child(self.workspace_action(
-					"new-project".into(),
-					"New project…".into(),
-					|s, cx| {
-						if let Some(id) = s.root_id() {
-							s.open_page(&id, cx);
-						}
-						if s.composer.read(cx).content().trim().is_empty() {
-							s.composer.update(cx, |input, cx| {
-								input.set_content("Create a project workspace for ", cx)
-							});
-						} else {
-							s.feedback="Your draft is kept. Send or clear it before starting a new project.".into();
-						}
-						cx.notify();
-					},
-					cx,
-				));
-		}
 		panel.child(self.sidebar_resize_handle(cx)).into_any_element()
 	}
 
@@ -401,7 +403,7 @@ impl ChiefSurface {
 			.px_2()
 			.pb(px(4.));
 		let root = self.root_id();
-		let mut pages = vec![(root.clone().unwrap_or_default(), "Overview".to_owned(), false)];
+		let mut pages = vec![(root.clone().unwrap_or_default(), "Main".to_owned(), false)];
 		if let Some(snapshot) = &self.snapshot {
 			pages.extend(self.pages.iter().filter_map(|id| {
 				snapshot
@@ -641,6 +643,7 @@ impl ChiefSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		self.poll_native_agents(cx);
 		self.prepare_workspace_history(window, cx);
 		let is_chief = self.selected_is_manager();
 		let selected = self
@@ -663,8 +666,8 @@ impl ChiefSurface {
 			.bg(rgba(ui_theme::CHIEF_CHAT_OVERLAY));
 		chat = chat
 			.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)));
-		if !is_chief {
-			chat = chat.child(worker_status(selected.as_ref()));
+		if let (Some(snapshot), Some(work)) = (&self.snapshot, &selected) {
+			chat = chat.child(self.work_context(snapshot, work, cx));
 		}
 
 		let scroll = self
@@ -723,7 +726,11 @@ impl ChiefSurface {
 				.child(transcript)
 				.child(self.latest_button(window, cx)),
 		);
-		if is_chief && selected.is_some() && !self.selected_is_archived() {
+		if self.native_agents.selected.is_none()
+			&& is_chief
+			&& selected.is_some()
+			&& !self.selected_is_archived()
+		{
 			chat = chat.child(self.floating_composer(window, cx));
 		} else if !is_chief && let Some(work) = selected {
 			chat = chat
@@ -731,6 +738,11 @@ impl ChiefSurface {
 				.child(self.workspace_followup(&work, cx));
 		}
 
+		let chat = if self.native_agents.selected.is_some() {
+			self.native_agent_view(cx)
+		} else {
+			chat.into_any_element()
+		};
 		let (graph_width, graph_height) = self.workspace_graph_size(window, wide);
 		self.update_graph_inset(graph_width, graph_height);
 		let center = div().flex_1().min_w_0().h_full().flex().flex_col().child(chat).child(reveal(
@@ -836,6 +848,11 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn work_label(&self, work: &ChiefWorkItemDto) -> String {
+		if Some(&work.id) == self.root_id().as_ref()
+			&& ["Chief", "Main"].contains(&work.title.as_str())
+		{
+			return "Main".into();
+		}
 		if let Some(snapshot) = &self.snapshot {
 			if let Some(project) = snapshot.workspaces.iter().find(|p| p.chief_id == work.id) {
 				return project.name.clone();
@@ -847,7 +864,7 @@ impl ChiefSurface {
 					.filter(|w| w.parent_goal_id == work.parent_goal_id && w.kind == work.kind)
 					.position(|w| w.id == work.id)
 					.unwrap_or(0) + 1;
-				return format!("Worker {position}");
+				return format!("Agent {position}");
 			}
 		}
 		work.title.clone()
@@ -1176,19 +1193,6 @@ impl ChiefSurface {
 			.child(div().text_size(px(10.0)).text_color(rgb(color)).child(status));
 		element.into_any_element()
 	}
-}
-
-fn worker_status(work: Option<&ChiefWorkItemDto>) -> AnyElement {
-	div()
-		.h(px(24.0))
-		.min_h(px(24.0))
-		.px_4()
-		.flex()
-		.items_center()
-		.text_size(px(ui_theme::CAPTION_SIZE))
-		.text_color(rgb(ui_theme::TEXT_MUTED))
-		.child(work.map(|work| graph::state(work).0).unwrap_or(""))
-		.into_any_element()
 }
 
 pub(super) fn within_project(snapshot: &ChiefSnapshotDto, project: &str, work: &str) -> bool {

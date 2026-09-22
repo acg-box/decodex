@@ -197,7 +197,7 @@ impl ChiefSurface {
 
 	pub(super) fn render_composer_popover(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let menu = self.composer_menu.or(self.composer_menu_content);
-		let left = matches!(menu, Some("attachments" | "microphone" | "tasks"));
+		let left = matches!(menu, Some("attachments" | "microphone" | "tasks" | "agent-settings"));
 		gpui::deferred(
 			div()
 				.absolute()
@@ -206,7 +206,13 @@ impl ChiefSurface {
 				.when(left, |d| d.left(px(0.)))
 				// Align with the model trigger: inset + mic/send widths + toolbar gaps.
 				.when(!left, |d| d.right(px(79.)))
-				.w(px(if left { 280. } else { 232. }))
+				.w(px(if menu == Some("agent-settings") {
+					380.
+				} else if left {
+					280.
+				} else {
+					232.
+				}))
 				.child(
 					crate::ui_motion::popover(
 						"composer-popover-motion",
@@ -263,6 +269,16 @@ impl ChiefSurface {
 						div().pl(px(26.)).child(self.audio_palette(cx)),
 					)),
 			)
+			.child(self.composer_control(
+				"agent-settings",
+				"Agent settings…".into(),
+				"Agent settings",
+				|s, cx| {
+					s.setup_expanded = true;
+					s.toggle_composer_menu("agent-settings", cx);
+				},
+				cx,
+			))
 			.child(self.composer_control(
 				"delivery",
 				if self.steer { "Steer" } else { "Queue" }.into(),
@@ -570,6 +586,8 @@ impl ChiefSurface {
 				.gap(px(10.))
 				.child(if menu == "tasks" {
 					self.task_reference_options(cx)
+				} else if menu == "agent-settings" {
+					self.render_preferences(cx).into_any_element()
 				} else if matches!(menu, "attachments" | "microphone") {
 					self.attachment_options(cx)
 				} else {
