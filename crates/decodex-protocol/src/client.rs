@@ -230,6 +230,54 @@ pub struct ChiefClient {
 	transport: ResetCardClient,
 }
 impl ChiefClient {
+	/// Observe coalesced native output over one retained local connection.
+	/// Dropping the receiver cancels the observation; it never starts or resumes work.
+	pub async fn observe_output(
+		&self,
+		work_id: EntityId,
+		updates: tokio::sync::watch::Sender<Option<crate::ChiefOutputResult>>,
+	) -> Result<(), ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(25),
+		};
+		tokio::select! {
+			_ = updates.closed() => Ok(()),
+			result = async {
+				let mut socket = transport.connect().await?;
+				let query_id = QueryId::new("chief-output-stream").expect("fixed query id");
+				let mut after_revision = None;
+				loop {
+					transport.send(&mut socket, ClientMessage::Query(QueryEnvelope {
+						version: CURRENT_VERSION, query_id: query_id.clone(),
+						payload: QueryPayload::WaitForChiefOutput { work_id: work_id.clone(), after_revision },
+					})).await?;
+					let mut received = false;
+					for _ in 0..MAX_INTERLEAVED_MESSAGES {
+						match transport.receive(&mut socket).await? {
+							ServerMessage::QueryResult(result) => {
+								transport.verify_version_and_server(result.version, &result.server_id)?;
+								if result.query_id != query_id { return Err(ClientFailure::ProtocolMalformed); }
+								let QueryResultPayload::ChiefOutput(value) = result.payload else { return Err(ClientFailure::ProtocolMalformed); };
+								match &value {
+									crate::ChiefOutputResult::Available { revision, work_id: owner, .. } if owner == &work_id => after_revision = Some(*revision),
+									_ => return Err(ClientFailure::ProtocolMalformed),
+								}
+								updates.send_if_modified(|saved| { if saved.as_ref() == Some(&value) { false } else { *saved = Some(value); true } });
+								received = true; break;
+							},
+							ServerMessage::Event(event) => transport.verify_version_and_server(event.version, &event.server_id)?,
+							ServerMessage::Refusal(refusal) => return Err(transport.refusal_failure(refusal)),
+							_ => return Err(ClientFailure::ProtocolMalformed),
+						}
+					}
+					if !received { return Err(ClientFailure::ProtocolBackpressure); }
+				}
+			} => result,
+		}
+	}
+
 	/// Exchange one explicit voice operation. The caller must poll after a lost start response.
 	pub async fn voice(
 		&self,
@@ -2169,6 +2217,87 @@ mod tests {
 	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
 	#[tokio::test]
+	async fn chief_output_stream_reuses_connection_and_cancels_without_replay() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+			for revision in 1..=3 {
+				let Message::Text(frame) = socket.next().await.unwrap().unwrap() else {
+					panic!("query")
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&frame).unwrap() else {
+					panic!("read-only observation")
+				};
+				assert!(
+					matches!(query.payload, crate::QueryPayload::WaitForChiefOutput { work_id, after_revision }
+					if work_id.as_str() == "root" && after_revision == (revision > 1).then_some(revision - 1))
+				);
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::ChiefOutput(
+							crate::ChiefOutputResult::Available {
+								revision,
+								work_id: EntityId::new("root").unwrap(),
+								messages: vec![crate::ChiefLiveMessageDto {
+									turn_id: "turn".into(),
+									item_id: "item".into(),
+									text: "你好世界".chars().take(revision as usize).collect(),
+									truncated: false,
+								}],
+							},
+						),
+					})))
+					.await
+					.unwrap();
+			}
+			// Dropping the observer closes this same connection, even during a wait.
+			time::timeout(Duration::from_secs(2), async {
+				while let Some(Ok(message)) = socket.next().await {
+					if matches!(message, Message::Close(_)) {
+						break;
+					}
+				}
+			})
+			.await
+			.unwrap();
+			listener.cleanup().unwrap();
+		});
+		let (sender, mut receiver) = tokio::sync::watch::channel(None);
+		let observer = tokio::spawn(async move {
+			crate::ChiefClient::new(profile)
+				.observe_output(EntityId::new("root").unwrap(), sender)
+				.await
+		});
+		time::timeout(Duration::from_secs(2), async {
+			loop {
+				receiver.changed().await.unwrap();
+				if let Some(crate::ChiefOutputResult::Available { revision: 3, messages, .. }) =
+					receiver.borrow_and_update().as_ref()
+				{
+					assert_eq!(messages[0].text, "你好世");
+					break;
+				}
+			}
+		})
+		.await
+		.unwrap();
+		drop(receiver);
+		time::timeout(Duration::from_secs(2), observer).await.unwrap().unwrap().unwrap();
+		server.await.unwrap();
+	}
+
+	#[tokio::test]
 	async fn archive_state_is_bound_to_work_and_preserves_native_identity() {
 		let (temp, authority) = local_transport();
 		let mut listener = authority.bind().await.unwrap();
@@ -2850,7 +2979,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 44 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 45 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

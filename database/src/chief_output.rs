@@ -56,13 +56,13 @@ impl SqliteStore {
 			return Err(StoreError::InvalidInput("invalid live output identity"));
 		}
 
-		self.run(move |connection| {
+		let changed = self.run(move |connection| {
             let work: Option<String> = connection.query_row("SELECT id FROM chief_work_items WHERE codex_thread_id=?1 AND active_turn_id=?2 AND dispatch_state='running'", params![thread,turn], |row|row.get(0)).optional().map_err(sqlite_error)?;
-            let Some(work) = work else { return Ok(()); };
+            let Some(work) = work else { return Ok(false); };
             let previous: Option<(String,bool)> = connection.query_row("SELECT text,truncated FROM chief_live_output WHERE work_id=?1 AND turn_id=?2 AND item_id=?3", params![work,turn,item], |row|Ok((row.get(0)?,row.get(1)?))).optional().map_err(sqlite_error)?;
             if previous.is_none() {
                 let count: i64 = connection.query_row("SELECT count(*) FROM chief_live_output WHERE work_id=?1 AND turn_id=?2",params![work,turn],|row|row.get(0)).map_err(sqlite_error)?;
-                if count >= 32 { return Ok(()); }
+                if count >= 32 { return Ok(false); }
             }
             let (mut content, was_truncated) = if replace { (text, false) } else { let (mut prior, truncated) = previous.unwrap_or_default(); prior.push_str(&text); (prior, truncated) };
             let truncated = was_truncated || content.len() > 65536;
@@ -71,8 +71,30 @@ impl SqliteStore {
             content.truncate(end);
             connection.execute("DELETE FROM chief_live_output WHERE work_id=?1 AND turn_id<>?2",params![work,turn]).map_err(sqlite_error)?;
             connection.execute("INSERT INTO chief_live_output(work_id,turn_id,item_id,text,truncated) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(work_id,turn_id,item_id) DO UPDATE SET text=excluded.text,truncated=excluded.truncated",params![work,turn,item,content,truncated]).map_err(sqlite_error)?;
-            Ok(())
-        }).await
+            Ok(true)
+        }).await?;
+		if changed {
+			self.inner
+				.chief_output_revision
+				.send_modify(|revision| *revision = revision.wrapping_add(1));
+		}
+		Ok(())
+	}
+
+	/// Wait without polling; subscribe before inspecting the revision to avoid lost wakeups.
+	pub async fn wait_chief_output(
+		&self,
+		work: String,
+		after: Option<u64>,
+	) -> Result<(u64, Vec<ChiefLiveOutput>), StoreError> {
+		let mut changes = self.inner.chief_output_revision.subscribe();
+		if after == Some(*changes.borrow_and_update()) {
+			let _ =
+				tokio::time::timeout(std::time::Duration::from_secs(20), changes.changed()).await;
+		}
+		let revision = *changes.borrow_and_update();
+		let output = self.read_chief_output(work).await?;
+		Ok((revision, output))
 	}
 
 	pub async fn read_chief_output(

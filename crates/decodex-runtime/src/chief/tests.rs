@@ -1081,7 +1081,25 @@ async fn live_output_is_turn_bound_bounded_and_replaced_by_final_history() {
 	let turn = work.active_turn_id.as_deref().unwrap();
 	coordinator.handle_event(event("old-turn", "wrong")).await.unwrap();
 	assert!(coordinator.store.read_chief_output("chief".into()).await.unwrap().is_empty());
+	let (revision, initial) =
+		coordinator.store.wait_chief_output("chief".into(), None).await.unwrap();
+	assert!(initial.is_empty());
+	let store = coordinator.store.clone();
+	let mut observer =
+		tokio::spawn(async move { store.wait_chief_output("chief".into(), Some(revision)).await });
+	assert!(
+		tokio::time::timeout(std::time::Duration::from_millis(10), &mut observer).await.is_err(),
+		"unchanged output must remain asleep"
+	);
 	coordinator.handle_event(event(turn, "Hello ")).await.unwrap();
+	let (next, observed) = tokio::time::timeout(std::time::Duration::from_secs(1), observer)
+		.await
+		.unwrap()
+		.unwrap()
+		.unwrap();
+	assert!(next > revision);
+	assert_eq!(observed[0].text, "Hello ");
+
 	coordinator.handle_event(event(turn, "世界")).await.unwrap();
 	let live = coordinator.store.read_chief_output("chief".into()).await.unwrap();
 	assert_eq!(live[0].text, "Hello 世界");

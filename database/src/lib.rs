@@ -140,6 +140,7 @@ pub struct SqliteStore {
 }
 
 struct StoreInner {
+	chief_output_revision: tokio::sync::watch::Sender<u64>,
 	connection: Mutex<Connection>,
 	path: PathBuf,
 	closed: AtomicBool,
@@ -177,6 +178,7 @@ impl SqliteStore {
 		migrations::migrate(&mut connection)?;
 		Ok(Self {
 			inner: Arc::new(StoreInner {
+				chief_output_revision: tokio::sync::watch::channel(0).0,
 				connection: Mutex::new(connection),
 				path,
 				closed: AtomicBool::new(false),
@@ -192,6 +194,7 @@ impl SqliteStore {
 		migrations::migrate(&mut connection)?;
 		Ok(Self {
 			inner: Arc::new(StoreInner {
+				chief_output_revision: tokio::sync::watch::channel(0).0,
 				connection: Mutex::new(connection),
 				path,
 				closed: AtomicBool::new(false),

@@ -1889,6 +1889,26 @@ impl Application for ServiceApplication {
 			QueryPayload::GetChiefRequest { event_id } => QueryResultPayload::ChiefRequest(
 				query_chief_request_with_details(&self.store, *event_id, self.chief.as_ref()).await,
 			),
+			QueryPayload::WaitForChiefOutput { work_id, after_revision } => {
+				let result = match &self.store {
+					ProductStore::Available(store) => match store
+						.wait_chief_output(work_id.as_str().into(), *after_revision)
+						.await
+					{
+						Ok((revision, output)) => {
+							let messages = query_chief_live(output);
+							decodex_protocol::ChiefOutputResult::Available {
+								revision,
+								work_id: work_id.clone(),
+								messages,
+							}
+						},
+						Err(_) => decodex_protocol::ChiefOutputResult::Unavailable,
+					},
+					_ => decodex_protocol::ChiefOutputResult::Unavailable,
+				};
+				QueryResultPayload::ChiefOutput(result)
+			},
 			QueryPayload::GetNativeAgents { work_id, thread_id, cursor } =>
 				QueryResultPayload::NativeAgents(match &self.chief {
 					Some(chief) =>
