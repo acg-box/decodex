@@ -212,6 +212,14 @@ impl Render for ComposerPanel {
 			.on_action(move |action: &super::super::ToggleInspector, _, cx| {
 				forward(parent, action, cx)
 			})
+			.on_action(move |action: &super::super::ShrinkPanel, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &super::super::GrowPanel, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &super::super::ResetPanel, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &super::super::ShrinkPanels, _, cx| {
+				forward(parent, action, cx)
+			})
+			.on_action(move |action: &super::super::GrowPanels, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &super::super::ResetPanels, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &super::super::ToggleGraph, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &super::super::InterruptReply, _, cx| {
 				forward(parent, action, cx)

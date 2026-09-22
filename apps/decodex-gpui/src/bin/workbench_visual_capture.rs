@@ -24,6 +24,8 @@ mod conversations;
 #[allow(dead_code)]
 #[path = "../desktop_settings.rs"]
 mod desktop_settings;
+#[path = "../panel_preferences.rs"]
+mod panel_preferences;
 #[allow(dead_code)]
 #[path = "../health_query.rs"]
 mod health_query;

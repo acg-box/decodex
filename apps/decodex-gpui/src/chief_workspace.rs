@@ -650,6 +650,8 @@ impl ChiefSurface {
 			.cloned();
 		let wide = f32::from(window.viewport_size().width) > 1000.0;
 		let mut chat = div()
+			.id("conversation-panel-focus")
+			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.focused_panel = None))
 			.relative()
 			.flex_1()
 			.min_w_0()
@@ -859,7 +861,9 @@ impl ChiefSurface {
 			.and_then(|s| s.work_items.iter().find(|w| Some(&w.id) == scope.as_ref()))
 			.map(|w| self.work_label(w))
 			.unwrap_or_else(|| "Work".into());
-		let mut panel = self.graph_frame(title, cx);
+		let mut panel = self.graph_frame(title, cx).id("graph-panel-focus").capture_any_mouse_down(
+			cx.listener(|s, _, _, _| s.focused_panel = Some(workspace_size::Panel::Bottom)),
+		);
 		let Some(snapshot) = &self.snapshot else {
 			return panel.child(div().p_4().child("Work graph unavailable")).into_any_element();
 		};

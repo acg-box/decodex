@@ -22,7 +22,7 @@ impl ChiefSurface {
 		}
 		let width = f32::from(window.viewport_size().width);
 		let left = if self.sidebar_visible && width > 1000.0 { self.sidebar_width } else { 0.0 };
-		(width - left - 440.0).clamp(0.0, 264.0)
+		self.agent_panel_width.min((width - left - 440.0).max(0.0))
 	}
 
 	pub(super) fn agent_tree(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -33,6 +33,10 @@ impl ChiefSurface {
 			}
 		}
 		div()
+			.id("agent-panel-focus")
+			.capture_any_mouse_down(
+				cx.listener(|s, _, _, _| s.focused_panel = Some(workspace_size::Panel::Right)),
+			)
 			.size_full()
 			.text_size(px(12.0))
 			.min_w_0()

@@ -18,6 +18,7 @@ mod client_lifecycle;
 mod composer_input;
 mod conversations;
 mod desktop_settings;
+mod panel_preferences;
 mod health_query;
 #[cfg_attr(
 	not(test),

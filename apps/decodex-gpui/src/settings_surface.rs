@@ -396,6 +396,85 @@ impl SettingsSurface {
 			)
 	}
 
+	fn panel_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		use crate::panel_preferences::PanelDefaults;
+		let current = PanelDefaults::configured();
+		div().flex().flex_col().children(
+			[
+				(true, "Default sidebar width", current.sidebar),
+				(false, "Default dock height", current.dock),
+			]
+			.into_iter()
+			.map(|(sidebar, title, value)| {
+				ui_theme::settings_row().px_0().child(div().flex_1().child(title)).child(
+					div()
+						.flex()
+						.items_center()
+						.gap_2()
+						.child(div().text_size(px(12.)).child(format!("{value} px")))
+						.children(
+							[(-24i32, "−"), (24, "+")]
+								.into_iter()
+								.map(|(delta, label)| {
+									div()
+										.id(gpui::SharedString::from(format!(
+											"panel-default-{sidebar}-{delta}"
+										)))
+										.role(Role::Button)
+										.aria_label(format!(
+											"{} {title}",
+											if delta < 0 { "Decrease" } else { "Increase" }
+										))
+										.tab_index(0)
+										.size(px(26.))
+										.flex()
+										.items_center()
+										.justify_center()
+										.rounded(px(7.))
+										.cursor_pointer()
+										.hover(|s| s.bg(rgba(0xffffff12)))
+										.on_click(cx.listener(move |_, _, _, cx| {
+											let mut pref = PanelDefaults::configured();
+											if sidebar {
+												pref.sidebar = (i32::from(pref.sidebar) + delta)
+													.clamp(160, 480) as u16;
+											} else {
+												pref.dock = (i32::from(pref.dock) + delta)
+													.clamp(120, 480) as u16;
+											}
+											pref.select(cx);
+										}))
+										.on_key_down(cx.listener(
+											move |_, event: &gpui::KeyDownEvent, _, cx| {
+												if !["enter", "space"]
+													.contains(&event.keystroke.key.as_str())
+												{
+													return;
+												}
+												let mut pref = PanelDefaults::configured();
+												if sidebar {
+													pref.sidebar = (i32::from(pref.sidebar) + delta)
+														.clamp(160, 480)
+														as u16;
+												} else {
+													pref.dock = (i32::from(pref.dock) + delta)
+														.clamp(120, 480)
+														as u16;
+												}
+												pref.select(cx);
+												cx.stop_propagation();
+											},
+										))
+										.child(label)
+										.smooth()
+								})
+								.collect::<Vec<_>>(),
+						),
+				)
+			}),
+		)
+	}
+
 	fn cursor_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		use crate::composer_input::cursor::{Preference, Shape};
 		let current = Preference::configured();
@@ -547,7 +626,8 @@ impl Render for SettingsSurface {
 									.flex()
 									.flex_col()
 									.child(self.glass_controls(cx))
-									.child(self.cursor_controls(cx)),
+									.child(self.cursor_controls(cx))
+                                    .child(self.panel_controls(cx)),
 							)
 							.child(
 								div()

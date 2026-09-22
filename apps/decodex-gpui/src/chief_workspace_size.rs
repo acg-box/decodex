@@ -2,8 +2,15 @@
 use super::*;
 use gpui::{AnyElement, MouseButton, MouseMoveEvent};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Panel {
+	Left,
+	Right,
+	Bottom,
+}
+
 fn sidebar_width(requested: f32, viewport: f32) -> f32 {
-	requested.clamp(160.0, (viewport - 600.0).clamp(160.0, 360.0))
+	requested.clamp(160.0, (viewport - 600.0).clamp(160.0, 480.0))
 }
 
 fn graph_size(
@@ -27,6 +34,35 @@ fn graph_size(
 }
 
 impl ChiefSurface {
+	pub(crate) fn resize_panel(
+		&mut self,
+		delta: f32,
+		reset: bool,
+		all: bool,
+		window: &Window,
+		cx: &mut Context<Self>,
+	) {
+		let defaults = crate::panel_preferences::PanelDefaults::configured();
+		let width = f32::from(window.viewport_size().width);
+		let visible = [
+			self.sidebar_visible && width > 1000.0,
+			self.agent_tree_visible && self.has_work() && !self.graph_expanded,
+			self.graph_visible && self.has_work() && !self.graph_expanded,
+		];
+		for (index, panel) in [Panel::Left, Panel::Right, Panel::Bottom].into_iter().enumerate() {
+			if !visible[index] || (!all && self.focused_panel != Some(panel)) {
+				continue;
+			}
+			let (value, default, min, max) = match panel {
+				Panel::Left => (&mut self.sidebar_width, defaults.sidebar, 160.0, 480.0),
+				Panel::Right => (&mut self.agent_panel_width, defaults.sidebar, 160.0, 480.0),
+				Panel::Bottom => (&mut self.graph_panel_height, defaults.dock, 120.0, 640.0),
+			};
+			*value = if reset { f32::from(default) } else { (*value + delta).clamp(min, max) };
+		}
+		cx.notify();
+	}
+
 	pub(super) fn update_graph_inset(&mut self, width: f32, height: f32) {
 		let layout = self.workspace_graph_layout();
 		let (right, bottom) = layout
@@ -75,6 +111,16 @@ impl ChiefSurface {
 		};
 		let tabs = if self.pages.is_empty() { 0.0 } else { 35.0 };
 
+		let available = (
+			f32::from(viewport.width) - sidebar - self.agent_tree_width(window),
+			(f32::from(viewport.height) - super::super::WINDOW_CONTROLS_CLEARANCE - tabs).max(0.0),
+		);
+		if !self.graph_expanded {
+			return (
+				available.0,
+				self.graph_panel_height.clamp(120.0, 640.0).min((available.1 - 240.0).max(0.0)),
+			);
+		}
 		graph_size(
 			&self.workspace_graph_layout(),
 			self.graph_zoom,
@@ -105,6 +151,8 @@ impl ChiefSurface {
 			.w(px(width * fraction))
 			.h_full()
 			.overflow_hidden()
+			.id("left-panel-slot")
+			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.focused_panel = Some(Panel::Left)))
 			.child(div().w(px(width)).h_full().child(self.workspace_sidebar(cx)))
 			.into_any_element()
 	}
@@ -134,7 +182,8 @@ impl ChiefSurface {
 			)
 			.on_click(cx.listener(|s, event: &gpui::ClickEvent, _, cx| {
 				if event.click_count() == 2 {
-					s.sidebar_width = 192.0;
+					s.sidebar_width =
+						crate::panel_preferences::PanelDefaults::configured().sidebar.into();
 					cx.notify();
 				}
 			}))
@@ -194,7 +243,10 @@ mod tests {
 	fn sidebar_drag_tracks_pointer_and_stops_on_release(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		visual.simulate_resize(gpui::size(px(1400.0), px(900.0)));
-		surface.update(visual, |s, cx| s.visual_workspace_fixture(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.sidebar_width = 192.0;
+		});
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
@@ -213,6 +265,46 @@ mod tests {
 		});
 	}
 
+	#[gpui::test]
+	fn panel_shortcuts_resize_only_the_selected_visible_panels(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(gpui::size(px(1400.0), px(900.0)));
+		visual.update(|window, cx| {
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.sidebar_width = 240.0;
+				s.agent_panel_width = 240.0;
+				s.graph_panel_height = 240.0;
+				s.agent_tree_visible = true;
+				s.graph_visible = true;
+				s.graph_expanded = false;
+				s.focused_panel = Some(Panel::Right);
+				s.resize_panel(24.0, false, false, window, cx);
+				assert_eq!(
+					(s.sidebar_width, s.agent_panel_width, s.graph_panel_height),
+					(240.0, 264.0, 240.0)
+				);
+				s.sidebar_visible = false;
+				s.resize_panel(-24.0, false, true, window, cx);
+				assert_eq!(
+					(s.sidebar_width, s.agent_panel_width, s.graph_panel_height),
+					(240.0, 240.0, 216.0)
+				);
+				s.resize_panel(0.0, true, true, window, cx);
+				assert_eq!(
+					s.graph_panel_height,
+					f32::from(crate::panel_preferences::PanelDefaults::configured().dock)
+				);
+				s.focused_panel = None;
+				s.resize_panel(24.0, false, false, window, cx);
+				assert_eq!(
+					s.agent_panel_width,
+					f32::from(crate::panel_preferences::PanelDefaults::configured().sidebar)
+				);
+			})
+		});
+	}
+
 	#[test]
 	fn graph_content_caps_and_expansion_are_independent() {
 		let mut layout = graph::Layout::default();
@@ -227,7 +319,7 @@ mod tests {
 	#[test]
 	fn sidebar_limits_preserve_main_space() {
 		assert_eq!(sidebar_width(80.0, 1200.0), 160.0);
-		assert_eq!(sidebar_width(500.0, 1200.0), 360.0);
+		assert_eq!(sidebar_width(500.0, 1200.0), 480.0);
 		assert_eq!(sidebar_width(300.0, 800.0), 200.0);
 		assert_eq!(sidebar_width(256.0, 1200.0), 256.0);
 	}

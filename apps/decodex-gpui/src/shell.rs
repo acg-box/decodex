@@ -306,6 +306,12 @@ actions!(
 		CloseSettings,
 		RefreshHealth,
 		ToggleSidebar,
+		ShrinkPanel,
+		GrowPanel,
+		ResetPanel,
+		ShrinkPanels,
+		GrowPanels,
+		ResetPanels,
 		ToggleInspector,
 		ToggleGraph,
 		DismissStatus,
@@ -471,6 +477,12 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("cmd-3", ActivateHealth, None),
 		KeyBinding::new("cmd-,", ActivateSettings, None),
 		KeyBinding::new("cmd-e", ToggleSidebar, None),
+		KeyBinding::new("ctrl-alt--", ShrinkPanel, None),
+		KeyBinding::new("ctrl-alt-=", GrowPanel, None),
+		KeyBinding::new("ctrl-alt-0", ResetPanel, None),
+		KeyBinding::new("ctrl-alt-shift--", ShrinkPanels, None),
+		KeyBinding::new("ctrl-alt-shift-=", GrowPanels, None),
+		KeyBinding::new("ctrl-alt-shift-0", ResetPanels, None),
 		KeyBinding::new("cmd-b", ToggleInspector, None),
 		KeyBinding::new("cmd-j", ToggleGraph, None),
 		KeyBinding::new("ctrl-c", InterruptReply, None),
@@ -5113,6 +5125,42 @@ impl Render for Shell {
 			.on_action(cx.listener(Self::activate_health))
 			.on_action(cx.listener(Self::activate_settings))
 			.on_action(cx.listener(Self::toggle_sidebar))
+			.on_action(cx.listener(|s, _: &ShrinkPanel, window, cx| {
+				if s.selected == Destination::Chief {
+					s.chief.update(cx, |a, cx| a.resize_panel(-24.0, false, false, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &GrowPanel, window, cx| {
+				if s.selected == Destination::Chief {
+					s.chief.update(cx, |a, cx| a.resize_panel(24.0, false, false, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &ResetPanel, window, cx| {
+				if s.selected == Destination::Chief {
+					s.chief.update(cx, |a, cx| a.resize_panel(0.0, true, false, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &ShrinkPanels, window, cx| {
+				if s.selected == Destination::Chief {
+					s.chief.update(cx, |a, cx| a.resize_panel(-24.0, false, true, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &GrowPanels, window, cx| {
+				if s.selected == Destination::Chief {
+					s.chief.update(cx, |a, cx| a.resize_panel(24.0, false, true, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &ResetPanels, window, cx| {
+				if s.selected == Destination::Chief {
+					s.chief.update(cx, |a, cx| a.resize_panel(0.0, true, true, window, cx));
+					cx.stop_propagation();
+				}
+			}))
 			.on_action(cx.listener(Self::toggle_inspector))
 			.on_action(cx.listener(Self::toggle_graph))
 			.on_action(cx.listener(|s, _: &DismissStatus, _, cx| {
