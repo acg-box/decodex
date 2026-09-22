@@ -33,7 +33,7 @@ test "$(find "$contents/Helpers" -type f | wc -l | tr -d ' ')" = 1
 test "$(find "$contents/Frameworks" -type f | wc -l | tr -d ' ')" = 2
 
 test -n "$(plutil -extract NSMicrophoneUsageDescription raw "$info")"
-codesign -d --entitlements :- "$app_path" 2>/dev/null | python3 -c 'import plistlib, sys; assert plistlib.load(sys.stdin.buffer)["com.apple.security.device.audio-input"] is True'
+codesign -d --entitlements :- "$app_path" 2>/dev/null | python3 -c 'import plistlib, sys; assert plistlib.loads(sys.stdin.buffer.read())["com.apple.security.device.audio-input"] is True'
 codesign --verify --deep --strict "$app_path"
 codesign --verify --strict "$contents/Helpers/decodex"
 codesign --verify --strict "$contents/Frameworks/libDecodexMenuBar.dylib"
