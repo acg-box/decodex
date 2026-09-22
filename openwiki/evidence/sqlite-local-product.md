@@ -25,6 +25,10 @@ sources:
 generated: { by: "codex", at: "2026-08-27T10:25:21.174Z" }
 ---
 
+> Historical acceptance record: the Reset Card GUI retirement below is superseded
+> by [Reset Card operation](../operations/reset-cards.md). This record does not
+> describe current Reset Card support or authorize card-consuming acceptance tests.
+
 # SQLite Local-Product Evidence
 
 Status: current implementation and validation evidence.

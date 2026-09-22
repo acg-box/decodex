@@ -4,6 +4,11 @@ title: "Decodex vNext Gate Manifest"
 openwiki_generated: true
 ---
 
+> Historical design record. This page does not define current product requirements.
+> See the repository README for current scope. The repository-management and built-in
+> PR/check-run orchestration layers are retired; their old delivery gates do not apply.
+
+
 # Decodex vNext Gate Manifest
 
 Status: historical former server store gate manifest. The current acceptance boundary is the
@@ -29,16 +34,12 @@ Acceptance proves an empty-target bootstrap and exact current authority. It does
 prove a historical upgrade, populated migration, version prefix, schema-history checksum,
 or source/restore migration receipt.
 
-The third runtime-bootstrap candidate is donor source only. The next candidate must be
-one integrated composition that keeps ProductStore, Quick Task, and ManagedRepository
-readiness independent. It cannot be another runtime-lane-only patch.
 
 ## Delivery slices
 
 | Slice | Usable result | Entry condition |
 | --- | --- | --- |
 | 1. Accounts and Quick Task | Mac account lifecycle subset, quota-aware initial fixed/balanced selection, explicit account order/manual recovery, Candidate-5 ordinary Quick Task, and minimal Accounts/Conversation/Health GPUI. | Latest-schema and runtime gates pass. The Slice-1 subset of MacDogfoodReady passes, including exact-build refresh callback, ProcessGeneration, ProviderAttempt, and Candidate-5 fences. |
-| 2. Managed work | Project, Lead, global Advisor, bounded Context Revision, WorkItem, ManagedRun, repository saga, Task-Reviewer result, human acceptance, and Project/Work/Run GPUI. | Slice 1 and the managed-repository/ManagedRun owner gates pass. |
 | 3. Self-hosting package | Representative two-account repository flow across restart boundaries and one Mac package. | Slice 2, package/restart/reconciliation, local database reset, and representative E2E evidence pass on one exact build. |
 
 The dependency is `Slice 1 -> Slice 2 -> Slice 3`. An inert foundation cannot claim a
@@ -52,19 +53,6 @@ XY-1304. They do not block Candidate-5 initial selection or the first Mac dogfoo
 
 After one source candidate is frozen, run gates in this order:
 
-1. integrated source-boundary and reverse scan for retired machinery, stale references,
-   and duplicate owners;
-2. fresh former server store 18 empty-target latest-schema bootstrap;
-3. refusal of a second bootstrap against the same nonempty target;
-4. runtime-only `decodexd` startup with zero DDL and no schema-owner credential;
-5. independent ProductStore, Quick Task, and ManagedRepository startup projections;
-6. exact current catalog/configured-authority verification and adversarial negative cases;
-7. changed adapter SQL and domain behavior;
-8. Candidate-5 behavioral boundaries, including current-main account observation/cache
-   preservation;
-9. direct local database replacement/rebind and exact credential-negative reset-tuple
-   readback; and
-10. the applicable Rust, transport, UI, packaging, and slice checks.
 
 The exact hidden product commands are `decodexd bootstrap-latest-schema`,
 `decodexd validate-current-authority`, and
@@ -75,10 +63,6 @@ stdin.
 
 ## Integrated source boundary
 
-Freeze Quick Task source before runtime integration. Then use one integration owner for
-core configuration; runtime bootstrap, application, library, Quick Task, and
-managed-repository modules; protocol doctor, Quick Task, wire, and library surfaces; and
-the former server store latest-schema handoff.
 
 The same owner removes shared acceptance drift from the root Cargo workspace,
 `Cargo.lock`, task-runner definitions, deleted storage-spike references, and stale
@@ -179,27 +163,6 @@ Prove:
 Start one daemon and keep the one accepted endpoint. Exercise independent assembly
 outcomes and prove:
 
-- verified former server store produces `ProductStore::Available` even when Quick Task or
-  ManagedRepository assembly fails;
-- unavailable former server store produces `ProductStore::Unavailable` and persisted Quick Task
-  reads return `ProductStateUnavailable`;
-- Quick Task construction performs no I/O and cannot fail after validated ready
-  dependencies are supplied;
-- each missing or failed Quick Task dependency produces one immutable closed redacted
-  `QuickTaskUnavailableReason`, and execute/start/resume return the typed unavailable
-  result without hiding it through `.ok()`, an optional setter, or an omitted field;
-- the initial user-supplied typed RoleProfile configuration bootstraps all four roles atomically,
-  and a missing current `task` profile is a typed Quick Task initialization refusal;
-- Quick Task unavailability does not remove diagnostics, account recovery, control-plane
-  commands, or available former server store-backed reads;
-- ManagedRepository absence is `Disabled`; repository-only configuration, path, Git,
-  executor, or reconciliation failure is typed `Unavailable` and affects repository
-  operations only;
-- ProductStore, Quick Task, and ManagedRepository readiness are separate doctor/protocol
-  fields and no result overwrites another;
-- every Quick Task command repeats current owner fences, so startup readiness is not
-  effect authority; and
-- `AcceptanceUnknown` and recovery-required results are unchanged.
 
 Configuration cases must prove that core transport/former server store parsing does not require a
 static repository map. Missing or malformed isolated repository configuration cannot
@@ -469,28 +432,6 @@ one latest schema and current authority.
 
 Stop the owning gate on:
 
-- any second executable schema source or schema-creation path;
-- any daemon startup DDL or schema-owner credential resolution;
-- any accepted bootstrap on a nonempty target;
-- any current-authority check that depends on schema history or an upgrade prefix;
-- any secret byte in database/reset metadata, protocol data, logs, or process arguments;
-- daemon-fatal Quick Task or ManagedRepository startup when the control plane can start;
-- a mutable capability manager, silent optional Quick Task disappearance, or readiness
-  state that substitutes for current owner fences;
-- repository configuration that blocks core parsing or duplicates former server store path
-  authority;
-- a Quick Task dependency on Project policy, `routing_compatibility_evidence`, or `quota_windows`;
-  a later-Turn snapshot/selection call; or a compatibility bridge that keeps duplicate routing
-  paths;
-- a second account selector, provider-effect ledger, process owner, or coordinator state;
-- possible external-effect replay without positive reconciliation;
-- Candidate-5 partial lineage, partial admission, ambiguous terminalization, or account
-  observation/cache regression;
-- a second mutation path around `decodexd`;
-- a source candidate that retains deleted workspace/task-runner references or active
-  migration/configuration fixtures;
-- unbounded UI history loading; or
-- remote binding before security acceptance.
 
 A decision-level contradiction requires an explicit architecture revision. It never
 authorizes a compatibility facade, silent fallback, generic migrator, or extra phase.

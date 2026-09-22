@@ -4,6 +4,11 @@ title: "Decodex vNext Authority Contract"
 openwiki_generated: true
 ---
 
+> Historical design record. This page does not define current product requirements.
+> See the repository README for current scope. The repository-management and built-in
+> PR/check-run orchestration layers are retired; their old delivery gates do not apply.
+
+
 # Decodex vNext Authority Contract
 
 Status: historical former server store contract. The current normative slice is the
@@ -164,10 +169,6 @@ upgrades, repairs, or finalizes a schema and never reads a schema-history relati
 
 ### Runtime composition and readiness
 
-One `decodexd` and one owner-only same-UID endpoint serve all product and diagnostic
-surfaces. Quick Task execution or ManagedRepository unavailability does not make daemon
-startup fail when the transport and control plane can start. Diagnostics, account
-recovery, and each available former server store-backed read remain reachable.
 
 `ProductStore` has exactly two startup results:
 
@@ -192,11 +193,6 @@ receipt, retry owner, or substitute for current evidence. Every execute, start, 
 command repeats all accepted owner fences before an effect. The projection never becomes
 ready without daemon restart.
 
-ManagedRepository has one independent optional startup projection: `Ready`, `Disabled`,
-or `Unavailable(ManagedRepositoryUnavailableReason)`. Absence is `Disabled`. Invalid
-repository-only configuration and path, Git, executor, or reconciliation failure are
-`Unavailable`. They disable repository operations only and cannot block endpoint binding,
-former server store verification, account recovery, or repository-free Quick Task work.
 
 Core runtime configuration contains transport and former server store runtime inputs. It does not
 require `server_host.repositories`. Repository identity, admission, and persisted path
@@ -211,13 +207,6 @@ directory type, ownership by the daemon effective UID, and the applicable accept
 policy. A request path, ambient current directory, or repository discovery is not
 authority. One unrelated broken repository cannot disable all Quick Tasks.
 
-Protocol and doctor project ProductStore, Quick Task, and ManagedRepository readiness as
-three independent typed fields. Quick Task execute, start, and resume return
-`QuickTaskUnavailable(reason)` when the Quick Task projection is unavailable. Persisted
-Quick Task list and get retain `ProductStateUnavailable` when former server store is unavailable.
-No `.ok()` conversion, optional setter, omitted field, or generic integrity error may
-hide the assembly result. `AcceptanceUnknown` and recovery-required results retain their
-existing effect and recovery semantics.
 
 The verifier rejects any extra, missing, changed, unsafe, or unreachable schema,
 relation, column, enum, constraint, index, function, trigger, rule, policy, RLS setting,
@@ -338,192 +327,6 @@ fallback and wake paths stay disabled until the separate reviewed XY-1304 amendm
 XY-1371 and the XY-1378-XY-1391 private-artifact execution graph are also inactive
 historical planning provenance. Repository authority already retired that program.
 They cannot gate the delivery slices or restore a private-artifact authority.
-
-### Managed repository authority
-
-The accepted XY-1348 stage-two contract makes former server store the current durable authority
-for each managed repository's projection, monotonic generation/tip, globally immutable
-operation assignment, append-only authority transitions and operation evidence, exact
-generation/tip compare-and-swap, atomic command completeness, and every restart load.
-Pure value types, descriptors, transition-specific evidence, and deciders in
-`decodex-core` remain mechanism-neutral and explicitly non-authoritative. They cannot
-infer persistence freshness, COMMIT success, or global operation history. No snapshot,
-caller-supplied projection, generic observation, operation view, or reconstructed state
-can be supplied back as mutation authority.
-
-Within the trusted single-host first-release boundary:
-
-- `decodexd` is the sole owner of repository and worktree effects. No client, provider,
-  validation child, second daemon, or distributed worker acquires a parallel mutation
-  path.
-- The in-process repository executor preserves correctness, deterministic decisions,
-  and continuity from explicitly admitted repository authority through effect readback.
-  It is not a sandbox and does not isolate the service from malicious code with the same
-  host UID.
-- Admission, allocation lifecycle, mutable repository/worktree head, active operation,
-  and operation result are distinct typed authorities.
-- Every operation fails closed on stale revisions, foreign identity, any symlinked path
-  component, object or descriptor replacement, dirty state, ambiguous observation, or
-  incomplete authoritative readback.
-- Repository-controlled Git config and includes, hooks, filters, `fsmonitor`, credential
-  helpers, askpass, SSH, and transports are disabled unless an explicit managed policy
-  allowlists exact reviewed behavior. The accepted XY-1354 mechanism closes its canonical
-  config, environment, executable-identity, and path-output surfaces; every omitted or
-  unmatched surface remains disabled and fails closed. Ambient environment, current
-  working directory, and repository discovery never grant authority.
-- Project validation is supervised for process lifecycle, bounded output, timeout and
-  cancellation, and repository mutation detection. Deliberately hostile same-UID code is
-  outside first-release confinement. Hostile-project or multi-tenant operation requires a separate
-  UID or sandbox owner and an independently accepted feasibility and authority gate.
-
-ManagedRepository service assembly is optional. Its `Ready`, `Disabled`, or typed
-`Unavailable` projection does not change ProductStore or Quick Task readiness. A static
-host repository map cannot duplicate former server store repository identity, admission, or path
-policy. Any accepted host-only policy is parsed separately and affects only repository
-operations.
-
-Every external operation is assigned one complete canonical descriptor. The descriptor
-contains every value capable of changing execution or success evidence, including the
-operation, project, repository, admitted identity and base, admission descriptor digest,
-allocation and worktree identities, persisted absolute repository and worktree paths,
-expected aggregate checkpoint, operation kind, complete kind-specific payload, and
-executor-contract version. Optional values have an explicit null representation; field
-and collection order is canonical. Equality compares the complete canonical
-representation rather than a digest. The namespace is global across repositories and
-operation kinds, not per kind.
-
-An unassigned ID may become a new assignment. Complete canonical equality with an
-existing assignment resolves to `ExistingExact(OperationView, NoDispatch)`, whether the
-view is `PossiblyEffected`, completed, or ambiguous. Any difference is permanent
-`OperationIdConflict`. Exact repeat is immutable result/readback access only; it is never
-retry, replay, adoption, or dispatch.
-
-One top-level former server store transaction canonicalizes the new operation, resolves its global
-ID, locks and loads current authority, verifies projection/checkpoint/fence agreement,
-runs the pure decision, inserts the immutable assignment, appends `PossiblyEffected`,
-fences allocation or head, appends the authority transition, and advances the projection
-with exact generation/tip compare-and-swap. Commit-time completeness prevents any subset
-from committing. Assignment and terminal evidence remain immutable and retained across
-repository retirement or deletion.
-
-The adapter may privately retain a non-executable pre-COMMIT seed. One fresh affine
-receipt may be minted only when COMMIT returns successful acknowledgement on that same
-live adapter control path. The receipt is neither cloneable, serializable, persistable,
-queryable, nor publicly constructible. Persistence, `SELECT`, readback, exact repeat,
-restart, and terminal state can never mint or reconstruct it. If COMMIT may have succeeded
-but acknowledgement is lost, the invocation returns an unknown preparation outcome, no
-receipt exists, and no external execution occurs. A later exact request may resolve an
-existing assignment without dispatch or, if no assignment exists, perform a wholly new
-preparation whose own successful COMMIT acknowledgement is the only possible receipt
-source.
-
-Allocate is former server store-only. Descriptor-assisted admission facts, symlink-free verified
-persisted absolute-path reacquisition, identity/stat facts, read-only Git facts, and target
-availability observations must remain strictly read-only: they create no file, directory,
-lock, reservation, worktree, index, config, or Git mutation. Allocation claims the exact
-repository/allocation/worktree/path identities and initial head only in former server store.
-
-`Register`, `WorktreeReady`, and `Commit` are separate durably fenced
-`PossiblyEffected` operations:
-
-- `Register` is the accepted pinned Git 2.54 worktree-add operation. Completion
-  requires exact reciprocal registration and the unchanged authorized head.
-- `WorktreeReady` is a distinct registered-to-ready operation whose positive readback
-  preserves the exact head.
-- `Commit` consumes exact head `H` and positively reads back exactly one advance to the
-  canonical successor `H-prime`.
-
-Every restart loads former server store authority and may issue only an operation-specific,
-strictly read-only readback for a committed `PossiblyEffected` operation. Positive
-transition-specific evidence may complete it; authoritative negative, foreign, dirty,
-rollback, replacement, or bounded inconclusive evidence may make it ambiguous; temporary
-readback unavailability leaves it `PossiblyEffected`. Restart never prepares the existing
-ID, reconstructs a receipt, invokes or retries the effect, replays, adopts, repairs, or
-imports external state. Generic observations cannot complete any operation.
-
-Authorized whole-cluster restore is inside the trusted former server store-administrator boundary
-and may remove or resurrect assignments, checkpoints, and results together, thereby
-redefining current authority. The first release has no external monotonic anchor and no automatic
-full-cluster rollback detection. The accepted trusted single-daemon/same-UID boundary,
-XY-1354 descriptor-assisted symlink-free persisted absolute-path reacquisition, and
-pinned Git 2.54 mechanism remain unchanged.
-
-Managed Repository Persistence owns the final physical relations, transaction mechanics,
-privileges, retention, and current database evidence. Repository Executor owns read-only
-acquisition plus executor/readback mechanics, not persistence, receipt minting, saga, or
-hidden allocation mutation. Repository Saga owns the shared path that composes preparation,
-fresh receipt consumption, execution, readback, and terminal reconciliation. Rejected candidate trees
-`6e20e9b3cf1415cce9b399da173b0410cc4c80dc`,
-`6979e3831da772fca3fe0f0e0b4699df642d3a65`, and
-`e42212add13af3f702e0ec8966ce3d6a7b682d12` are superseded evidence only.
-
-Pure former server store commands use a different, exact in-transaction authority. Each operation has one
-command-complete schema-owner `SECURITY DEFINER` function. former server store constructs the complete
-request JSONB from the same typed values the function consumes; runtime supplies only a
-protocol-scoped idempotency key and typed operation inputs, never an authoritative
-caller-supplied request hash, claim token, lease, committed pending claim, or split-phase reserve.
-The separate `decodex.exact_command_receipts` primary key is
-`(protocol_version, idempotency_key)`. Operation is inside the request envelope, so
-cross-operation reuse conflicts without extending or changing legacy `command_receipts` semantics.
-
-An exact row may be `executing` only within its operation transaction. A
-`DEFERRABLE INITIALLY DEFERRED` constraint trigger rejects commit unless every newly created exact
-row is completed success or completed stable rejection. Completed rows cannot be changed, deleted,
-or truncated and retain the authoritative response bytes created once by former server store. Expected
-missing-target, stale-revision, illegal-transition, and equivalent domain outcomes complete a
-stable rejected response; cancellation, connection loss, deadlock, serialization failure, and
-unexpected database failure propagate and roll back rather than becoming stable rejection.
-
-The normal contract is one exact command per top-level `READ COMMITTED` transaction. After
-`INSERT ... ON CONFLICT DO NOTHING`, replay/conflict selection occurs in a later read/lock
-statement. `40001` and `40P01` retry the whole transaction with the identical typed request.
-Multiple exact functions in one caller transaction remain atomic but are outside the no-deadlock
-guarantee.
-
-Request envelopes compare with JSONB equality, not containment. Every optional key is present with
-JSON null. Enum and numeric values are typed before construction; integer lexical spelling is not
-identity. Text uses exact former server store text/code-point semantics with no implicit Unicode, case, or
-whitespace normalization. RoleProfile bootstrap takes four role-implied scalar configuration
-groups in advisor/lead/task/reviewer order, never caller roles or parallel arrays. Derived
-revisions, selected profile rows, generated IDs, database timestamps, digests, immutable snapshots,
-activity/outbox IDs, and responses are effects rather than request inputs. Effects and stored
-responses are assembled from actual `INSERT`/`UPDATE ... RETURNING` rows and actual canonical
-activity/outbox identities.
-
-Exact-command catalog closure covers the unreachable owner; role membership and `SET ROLE` paths;
-signatures and overloads; `prosecdef`; language, volatility, parallel safety, settings, source and
-dependencies; ACLs, PUBLIC and owner default privileges; trusted search path; triggers; relation
-privileges; and populated restore. Runtime has no exact-receipt table privilege, private-helper
-execution, or canonical activity/outbox mutation authority. Namespace fences must reject equivalent
-aggregate/event/effect/link/payload forgery, including structured variants, rather than matching
-only obvious strings.
-
-Relation privilege closure is semantic: it enumerates the normalized grantee, grantor, privilege,
-and grant-option set; proves the owner's complete effective table privileges; proves runtime and
-PUBLIC lack every table privilege; and rejects any unexpected grantee before and after restore. It
-must not require byte- or text-identical `relacl` serialization. Function closure covers the exact
-identity and overload set of every command, private helper, envelope builder, trigger function,
-failpoint, and incomplete-row probe present in the candidate, with only command-complete entrypoints
-runtime-executable. Effect evidence decodes the stored response bytes and joins their effect envelope
-to the returned domain row and actual canonical activity/outbox identities.
-
-XY-1345 records the exact-command protocol. RoleProfile Authority owns the separate
-receipt relation and RoleProfile bootstrap/update. RuntimeSession Authority owns
-authoritative RuntimeSession snapshot creation/transition. Candidate 3 is superseded
-code and may supply only independently re-derived invariants and hostile-test ideas.
-
-RoleProfile Authority persists exactly the `advisor`, `lead`, `task`, and `reviewer` identities in
-`role_profiles`, keeps every configuration in immutable `role_profile_revisions`, and advances one
-current-revision pointer per role. One initial bootstrap seam accepts user-supplied typed server
-configuration containing all four role-implied advisor/lead/task/reviewer scalar groups and invokes
-`bootstrap_role_profiles_exact` to create all four revision-one profiles atomically. former server store then
-owns every revision and current pointer. Later changes use only `update_role_profile_exact`, which
-accepts one typed role plus an expected revision, appends exactly one immutable revision, and
-advances only that role's pointer. Both functions return and retain former server store-built response bytes
-whose effects are assembled from the returned profile rows and the actual canonical
-activity/outbox identities. Routing and runtime never derive, select, or override model, reasoning,
-or service tier. Quick Task requires the current `task` RoleProfile; absence is a typed
-`QuickTaskUnavailable` initialization refusal and never authorizes synthesized defaults.
 
 ## Conversation, context, and communication
 
@@ -1408,13 +1211,6 @@ two-account self-hosting restart E2E and Mac package. The exact gates and the
 MacDogfoodReady-versus-final deferred table are in the
 [gate manifest](vnext-gates.md#delivery-slices).
 
-After the Quick Task source freezes, one integration owner must produce the next runtime
-candidate. The third runtime-bootstrap candidate is donor source only. The owner
-reconciles core configuration; runtime bootstrap, application, library, Quick Task, and
-managed-repository modules; protocol doctor, Quick Task, wire, and library surfaces; root
-Cargo/task-runner/lock files; deleted storage-spike references; and stale
-migration/configuration fixtures. This source cleanup is part of integration acceptance.
-Another runtime-lane-only patch is not an accepted candidate.
 
 Freeze/close PR #1092 and do not cherry-pick its implementation wholesale. Every task
 uses a focused worktree branch and PR directly into `main`; there is no long-lived vNext
@@ -1424,13 +1220,6 @@ Goal, and old operator transport after replacement behavior and gates exist; do 
 dual writes, dual reads, or compatibility facades. Radar, Publisher, and the static site
 may remain outside the runtime until explicitly adopted.
 
-PR #1092 is closed, unmerged, and frozen at historical head
-`32a0589b94987f265013ffd3c8b322f9c57f5097`. Its Lane Authority v2 identity, Linear scope,
-SQLite registry, lane/effect ledger, and C1-C7 orchestration are obsolete. The only relevant
-behavior classes are already replaced by vNext owners: explicit Project/repository identity by
-the Project and managed-repository admission contracts, frozen admitted-base and worktree
-continuity by the Managed Repository Persistence/Executor/Saga owners, and paginated positive GitHub readback by the sealed
-GitHub effect boundary. It contributes no unique production behavior to the vNext candidate.
 
 ## First-release non-goals
 

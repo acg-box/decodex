@@ -83,7 +83,8 @@ nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_menu_
 nm -gj "$contents/Frameworks/libdecodex_app_client_ffi.dylib" | grep -Fx '_decodex_app_native_client_create' >/dev/null
 
 mismatch_library="$stage_root/libmismatched_native_client.dylib"
-xcrun clang -dynamiclib scripts/macos/fixtures/mismatched_native_client.c -o "$mismatch_library"
+rustc +stable --edition=2024 --crate-type cdylib \
+  scripts/macos/fixtures/mismatched_native_client.rs -o "$mismatch_library"
 if python3 scripts/macos/verify_decodex_bundle_contracts.py \
   --service "$contents/Helpers/decodex" \
   --app-info "$info" \

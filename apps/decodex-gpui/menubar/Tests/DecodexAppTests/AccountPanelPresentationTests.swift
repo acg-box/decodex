@@ -593,7 +593,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 			source.range(of: ".frame(minWidth: 88, maxWidth: .infinity)")
 		)
 		let valueRange = try XCTUnwrap(
-			source.range(of: "Text(presentation.valueText)")
+			source.range(of: "Text(animated.map")
 		)
 		XCTAssertLessThan(
 			source.distance(from: source.startIndex, to: progressRange.lowerBound),

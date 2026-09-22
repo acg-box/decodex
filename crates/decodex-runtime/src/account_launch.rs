@@ -1,13 +1,13 @@
 //! Runtime-owned SQLite authorization and bounded process-capacity composition.
 
-mod api_reset_card_disabled;
+pub(crate) mod api_reset_card;
 mod chief_process;
 #[cfg(target_os = "macos")] mod macos_attested_spawn;
 pub(crate) mod process;
 mod protocol;
 mod reset_card_types;
 
-pub(crate) use api_reset_card_disabled::ApiResetCardRuntime;
+pub(crate) use api_reset_card::ApiResetCardRuntime;
 pub(crate) use process::{AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild};
 pub(crate) use reset_card_types::{
 	ResetCardFailureCode, ResetCardInventoryObservation, ResetCardInventoryView,

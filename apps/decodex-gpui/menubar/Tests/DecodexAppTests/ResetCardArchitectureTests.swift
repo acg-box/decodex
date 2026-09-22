@@ -32,7 +32,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(store.contains("Resume the pending request"))
 	}
 
-	func testQuotaMotionTracksOnlyTheAuthoritativeRemainingValue() throws {
+	func testQuotaMotionUsesOneValueAndHonorsReduceMotion() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
@@ -45,7 +45,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 
 		XCTAssertTrue(
 			accountRows.contains(
-				".animation(quotaValueAnimation, value: remainingPercent)"
+				".animation(animated == nil ? quotaValueAnimation : nil, value: remainingPercent)"
 			)
 		)
 		XCTAssertTrue(
@@ -819,7 +819,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(
 			stageTest.contains("libdecodex_app_client_ffi.dylib")
 		)
-		XCTAssertTrue(stageTest.contains("mismatched_native_client.c"))
+		XCTAssertTrue(stageTest.contains("mismatched_native_client.rs"))
 		XCTAssertTrue(stageTest.contains("verify_decodex_bundle_contracts.py"))
 		for retiredPackageTerm in ["-p decodex-cli", "DecodexMenuBar.app", ":8192"] {
 			XCTAssertFalse(

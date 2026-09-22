@@ -2,6 +2,8 @@
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "shell_native_status.rs"]
 mod native_status;
+#[path = "quota_meter.rs"] mod quota_meter;
+#[path = "shell_reset_cards.rs"] mod reset_cards;
 #[path = "shell_status.rs"] mod status;
 use crate::ui_motion::SmoothControl;
 pub(crate) use status::count_preference as notification_count_preference;
@@ -288,11 +290,8 @@ const HEALTH_APP_SERVER_COMPONENTS: [DoctorComponent; 8] = [
 	DoctorComponent::AppServerCapability(AppServerCapability::NativeCollaboration),
 	DoctorComponent::AppServerCapability(AppServerCapability::ThreadSearch),
 ];
-const HEALTH_OPTIONAL_COMPONENTS: [DoctorComponent; 3] = [
-	DoctorComponent::ManagedRepository,
-	DoctorComponent::BlobIntegrity,
-	DoctorComponent::PluginReadiness,
-];
+const HEALTH_OPTIONAL_COMPONENTS: [DoctorComponent; 2] =
+	[DoctorComponent::BlobIntegrity, DoctorComponent::PluginReadiness];
 
 actions!(
 	decodex_shell,
@@ -490,6 +489,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 
 /// One window-owned production shell. Connection ownership lives at application scope.
 pub(crate) struct Shell {
+	reset_cards: reset_cards::ResetCardsPanel,
 	settings_window: Option<WindowHandle<SettingsWindow>>,
 	settings_selected: Destination,
 	selected: Destination,
@@ -545,10 +545,11 @@ pub(crate) struct Shell {
 
 impl Shell {
 	pub(crate) fn with_chief_profile(
-		self,
+		mut self,
 		profile: Option<decodex_protocol::ClientProfile>,
 		cx: &mut Context<Self>,
 	) -> Self {
+		self.reset_cards.profile = profile.clone();
 		let cwd = self.conversations.working_directory();
 		self.chief.update(cx, |surface, cx| {
 			surface.seed_context(cwd, vec![], cx);
@@ -629,6 +630,7 @@ impl Shell {
 			opened_account_login_url: None,
 			pending_account_logout: None,
 			account_actions: None,
+			reset_cards: reset_cards::ResetCardsPanel::default(),
 			account_profile_controller,
 			account_profile,
 			desktop_settings,
@@ -822,8 +824,6 @@ impl Shell {
 				let status = match component {
 					DoctorComponent::AppServerCapability(_) | DoctorComponent::BlobIntegrity =>
 						DoctorStatus::Unknown(DoctorIssue::NotProbed),
-					DoctorComponent::ManagedRepository =>
-						DoctorStatus::Unavailable(DoctorIssue::Disabled),
 					DoctorComponent::PluginReadiness => DoctorStatus::Unknown(DoctorIssue::Plugin),
 					_ => DoctorStatus::Ready,
 				};
@@ -1943,6 +1943,7 @@ fn publish_views(
 	}
 	let _ = shell.update(cx, |shell, cx| {
 		shell.poll_account_login(cx);
+		shell.poll_reset_cards(cx);
 		let accounts = shell.accounts_controller.snapshot();
 		let account_profile = shell.account_profile_controller.snapshot();
 		let desktop_settings = shell.desktop_settings.snapshot();
@@ -2322,7 +2323,6 @@ fn component_label(component: DoctorComponent) -> &'static str {
 			AppServerCapability::NativeCollaboration => "App server: native collaboration",
 			AppServerCapability::ThreadSearch => "App server: thread search",
 		},
-		DoctorComponent::ManagedRepository => "Managed repository",
 		DoctorComponent::BlobIntegrity => "Blob integrity",
 		DoctorComponent::CredentialVault => "Credential vault",
 		DoctorComponent::PluginReadiness => "Plugin readiness",
@@ -2651,6 +2651,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 			account_pool_row(
 				account,
 				AccountRowPresentation {
+					reset_fill: shell.reset_fill_for(account),
 					index,
 					show_actions: shell.account_actions.as_ref() == Some(&account.account_id),
 					routing_revision: snapshot.routing.as_ref().map(|routing| routing.revision),
@@ -2705,6 +2706,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.gap_3()
 				.child(account_pool_header(count, available, balanced, can_manage, cx))
 				.child(account_login_controls(shell, cx))
+				.children(reset_cards::panel(shell, cx))
 				.when(shell.account_profile.selected.is_some(), |content| {
 					content.child(account_profile_panel(shell, cx))
 				})
@@ -3189,8 +3191,9 @@ impl Shell {
 	}
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct AccountRowPresentation {
+	reset_fill: Option<quota_meter::ResetFill>,
 	index: usize,
 	routing_revision: Option<decodex_protocol::EntityRevision>,
 	fixed: bool,
@@ -3239,7 +3242,7 @@ fn account_pool_row(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let AccountRowPresentation { index, fixed, can_manage, .. } = presentation;
-	let summary = account_pool_summary(account, presentation, cx);
+	let summary = account_pool_summary(account, presentation.clone(), cx);
 	div()
 		.w_full()
 		.rounded(px(8.))
@@ -3330,8 +3333,16 @@ fn account_pool_summary(
 		.child(
 			div().flex_1().min_w_0().flex().items_center().gap(px(8.0)).children(
 				[
-					account_quota("5 hours", account.five_hour_quota),
-					account_quota("7 days", account.seven_day_quota),
+					quota_meter::meter(
+						"5 hours",
+						account.five_hour_quota,
+						presentation.reset_fill.clone(),
+					),
+					quota_meter::meter(
+						"7 days",
+						account.seven_day_quota,
+						presentation.reset_fill.clone(),
+					),
 				]
 				.into_iter()
 				.flatten(),
@@ -3444,6 +3455,8 @@ fn account_management_actions(
 	let index = presentation.index;
 	let login_account_id = account.account_id.clone();
 	let profile_account_id = account.account_id.clone();
+	let reset_account_id = account.account_id.clone();
+	let reset_alias = account.alias.as_str().to_owned();
 	let logout_account_id = account.account_id.clone();
 	let login_account_revision = account.account_revision;
 	let login_recovery_operation_id = account_login_recovery_operation_id(account);
@@ -3456,6 +3469,18 @@ fn account_management_actions(
 		.justify_start()
 		.items_center()
 		.gap_1()
+		.child(
+			account_row_action(
+				"account-reset-cards",
+				index,
+				"Show Reset Cards",
+				"Reset Cards",
+				true,
+			)
+			.on_click(cx.listener(move |shell, _, _, cx| {
+				shell.show_reset_cards(reset_account_id.clone(), reset_alias.clone(), cx)
+			})),
+		)
 		.child(
 			div().flex().items_center().gap_1().child(
 				account_row_action(
@@ -3542,44 +3567,9 @@ fn account_row_action(
 		.child(label)
 }
 
+#[cfg(test)]
 fn account_quota(label: &'static str, quota: AccountQuotaWindowDto) -> Option<AnyElement> {
-	if quota.result == AccountQuotaStateDto::NotApplicable {
-		return None;
-	}
-	let AccountQuotaStateDto::Current { used_percent, .. } = quota.result else {
-		return None;
-	};
-	let detail = format!("{used_percent}% used");
-	let used = f32::from(used_percent);
-	let color = if used_percent >= 90 {
-		0xef4444
-	} else if used_percent >= 70 {
-		WB_AMBER
-	} else {
-		WB_BLUE
-	};
-	Some(
-		div()
-			.w(px(122.0))
-			.flex()
-			.flex_col()
-			.gap_1()
-			.child(
-				div()
-					.flex()
-					.items_center()
-					.justify_between()
-					.font_family(ui_theme::FONT_FAMILY)
-					.text_size(px(11.0))
-					.text_color(rgb(WB_TEXT_FAINT))
-					.child(label)
-					.child(detail),
-			)
-			.child(div().h(px(3.0)).w_full().rounded_full().bg(rgba(0xffffff0c)).child(
-				div().h_full().w(px(used.clamp(0.0, 100.0) * 1.22)).rounded_full().bg(rgb(color)),
-			))
-			.into_any_element(),
-	)
+	quota_meter::meter(label, quota, None)
 }
 
 fn account_state_color(account: &AccountDto) -> u32 {
@@ -6317,8 +6307,6 @@ mod tests {
 				let status = match component {
 					DoctorComponent::AppServerCapability(_) | DoctorComponent::BlobIntegrity =>
 						DoctorStatus::Unknown(DoctorIssue::NotProbed),
-					DoctorComponent::ManagedRepository =>
-						DoctorStatus::Unavailable(DoctorIssue::Disabled),
 					DoctorComponent::PluginReadiness => DoctorStatus::Unknown(DoctorIssue::Plugin),
 					_ => DoctorStatus::Ready,
 				};

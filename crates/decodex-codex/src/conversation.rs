@@ -126,6 +126,8 @@ pub enum ConversationContractError {
 	MissingResponseField,
 	/// App-server response facts described an ephemeral thread.
 	EphemeralThreadRejected,
+	/// The native thread is owned by a parent agent and forbids direct input.
+	DirectInputRejected,
 	/// An app-server response did not identify the exact requested thread.
 	ThreadIdMismatch,
 	/// A required app-server response cwd agreement failed.
@@ -1547,6 +1549,9 @@ fn validate_thread_response_facts(
 	if thread.ephemeral {
 		return Err(ConversationContractError::EphemeralThreadRejected);
 	}
+	if thread.can_accept_direct_input == Some(false) {
+		return Err(ConversationContractError::DirectInputRejected);
+	}
 	if !thread.turns.is_empty() {
 		return Err(ConversationContractError::UnexpectedResponseCollection);
 	}
@@ -1921,6 +1926,26 @@ mod tests {
 			"reasoningEffort": "high",
 			"multiAgentMode": "explicitRequestOnly",
 		})
+	}
+
+	#[test]
+	fn ordinary_thread_binding_respects_native_direct_input_capability() {
+		for capability in [None, Some(Value::Null), Some(json!(true)), Some(json!(false))] {
+			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+			if let Some(value) = &capability {
+				response["thread"]["canAcceptDirectInput"] = value.clone();
+			}
+			let bytes = serde_json::to_vec(&response).expect("fixture must serialize");
+			let start = decode_conversation_thread_start_response(&start_request(), &bytes);
+			let resume = decode_conversation_thread_resume_response(&resume_request(), &bytes);
+			if capability == Some(json!(false)) {
+				assert_eq!(start.err(), Some(ConversationContractError::DirectInputRejected));
+				assert_eq!(resume.err(), Some(ConversationContractError::DirectInputRejected));
+			} else {
+				assert!(start.is_ok(), "{start:?}");
+				assert!(resume.is_ok(), "{resume:?}");
+			}
+		}
 	}
 
 	#[test]

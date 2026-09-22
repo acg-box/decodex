@@ -4,6 +4,24 @@ import XCTest
 
 @MainActor
 final class ResetCardStoreRecoveryTests: XCTestCase {
+	func testOnlyConfirmedLiveResetStartsQuotaFill() async throws {
+		for outcome in ["reset", "no_credit", "nothing_to_reset"] {
+			let fixture = try makeSubmissionFixture(
+				useDocument: "prepared", exitCode: 0,
+				statusDocument: "{\"state\":\"completed\",\"data\":{\"outcome\":\"\(outcome)\"}}"
+			)
+			defer { fixture.remove() }
+			let store = ResetCardStore(client: fixture.client, pendingStore: fixture.pendingStore)
+			await store.refresh()
+			_ = await store.use(fixture.attempt)
+			await store.checkPendingStatus(fixture.attempt)
+			XCTAssertEqual(store.quotaFills[fixture.attempt.target.accountID] != nil, outcome == "reset")
+			let started = store.quotaFills[fixture.attempt.target.accountID]?.started
+			await store.refresh()
+			XCTAssertEqual(store.quotaFills[fixture.attempt.target.accountID]?.started, started)
+		}
+	}
+
 	func testRefreshResolvesPersistedCompletedOperation() async throws {
 		let fixture = try makeFixture(state: #"{"state":"completed","data":{"outcome":"reset"}}"#)
 		defer { fixture.remove() }
@@ -21,6 +39,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			ResetCardStoreMessage(tone: .success, text: "Usage restored.")
 		)
 		XCTAssertEqual(fixture.pendingStore.load(), .available([]))
+		XCTAssertTrue(store.quotaFills.isEmpty)
 	}
 
 	func testRefreshRetainsPersistedAmbiguousOperation() async throws {
@@ -35,6 +54,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		await store.refresh()
 
 		XCTAssertEqual(store.pendingAttempts, [fixture.attempt])
+		XCTAssertTrue(store.quotaFills.isEmpty)
 		XCTAssertNil(store.message)
 		XCTAssertEqual(
 			store.pendingStatus(for: fixture.attempt),
@@ -654,6 +674,8 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 
 	private func operationState(from document: String) -> ResetCardOperationState {
 		if document.contains(#""state":"completed""#) {
+			if document.contains("nothing_to_reset") { return .completed(.nothingToReset) }
+			if document.contains("no_credit") { return .completed(.noCredit) }
 			return .completed(.reset)
 		}
 		if document.contains(#""state":"effect_ambiguous""#) {

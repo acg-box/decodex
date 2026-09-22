@@ -13,7 +13,6 @@ mod conversation;
 mod execution;
 mod experiment;
 mod identity;
-mod managed_repository;
 mod managed_run;
 #[cfg(unix)] mod path_unix;
 mod paths;
@@ -23,6 +22,7 @@ mod program;
 mod project;
 mod provider_attempt;
 mod quota;
+mod repository_revision;
 mod reset_card;
 mod routing;
 mod service_tier;
@@ -106,37 +106,6 @@ pub use self::{
 		CodexExperimentThreadBinding, CodexExperimentTitleSetPossible,
 	},
 	identity::ServerIdentity,
-	managed_repository::{
-		AdmissionDescriptorDigest, AdmittedRepositoryIdentity, AggregateCheckpoint,
-		AllocateRepositoryCommand, AllocateRepositoryDecision, AllocationAvailabilityFacts,
-		AssignmentResolution, BeginCommitCommand, BeginCommitDecision, BeginRegistrationCommand,
-		BeginRegistrationDecision, BeginWorktreeReadyCommand, BeginWorktreeReadyDecision,
-		CanonicalCommitIntent, CanonicalOperationDescriptor, CanonicalOperationPayload,
-		CommitEvidence, CommitReadbackRequest, CommitReconciliation, ExactCommitEvidence,
-		ExactRegistrationEvidence, ExactRepositoryReadbackScope, ExactWorktreeReadyEvidence,
-		ExecutorContractVersion, MAX_MANAGED_REPOSITORY_PATH_BYTES,
-		MAX_MANAGED_REPOSITORY_VALUE_BYTES, MAX_REPOSITORY_ADMISSION_OBSERVATIONS,
-		MAX_REPOSITORY_COMMIT_MESSAGE_BYTES, MAX_REPOSITORY_OBSERVATION_ROLES,
-		MAX_REPOSITORY_REGISTRATION_ID_BYTES, ManagedRepositoryError, ManagedRepositoryFacts,
-		ManagedRepositoryId, ManagedRepositoryPhase, ManagedWorktreeId, NoDispatch,
-		OperationDescriptorVersion, OperationView, PersistedAbsolutePath,
-		PositiveAllocationEvidence, RegistrationEvidence, RegistrationReadbackRequest,
-		RegistrationReconciliation, RegistrationTarget, RepositoryAdmissionDescriptor,
-		RepositoryAdmissionDescriptorVersion, RepositoryAdmissionFacts,
-		RepositoryAdmittedGitLayout, RepositoryAllocationId, RepositoryAmbiguity,
-		RepositoryAuthorityTip, RepositoryCommitActor, RepositoryCommitActorEmail,
-		RepositoryCommitActorName, RepositoryCommitMessage, RepositoryContentRevision,
-		RepositoryEvidenceId, RepositoryGitRegistrationRole, RepositoryObservationPath,
-		RepositoryObservedObjectType, RepositoryOperationId, RepositoryOperationKind,
-		RepositoryOperationResult, RepositoryOperationState, RepositoryPathObservation,
-		RepositoryPathRegistrationRole, RepositoryProjectionUpdate, RepositoryReferenceName,
-		RepositoryRegistrationId, WorktreeReadyEvidence, WorktreeReadyPolicy,
-		WorktreeReadyReadbackRequest, WorktreeReadyReconciliation, commit_readback_request,
-		decide_allocate, decide_begin_commit, decide_begin_registration,
-		decide_begin_worktree_ready, decide_commit_readback, decide_registration_readback,
-		decide_worktree_ready_readback, registration_readback_request,
-		resolve_operation_assignment, worktree_ready_readback_request,
-	},
 	managed_run::{
 		ExecutionAssignment, ExecutionAssignmentRole, ManagedRunError, ManagedRunId,
 		ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase, ManagedRunState,
@@ -193,6 +162,7 @@ pub use self::{
 		TimeOverflow, UnknownObservation, UnknownWindowDuration, WindowDurationObservation,
 		classify_account_quota, classify_all_accounts,
 	},
+	repository_revision::{RepositoryContentRevision, RepositoryRevisionError},
 	reset_card::{
 		MAX_RESET_CARD_ITEMS, ManualResetCardAdmissionError,
 		RESET_CARD_PROVIDER_BINDING_METADATA_FIELD, ResetCardConsumeOutcome, ResetCardDescriptor,

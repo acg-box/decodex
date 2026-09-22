@@ -487,16 +487,20 @@ struct ResetCardAccountRow: View {
 	@ViewBuilder
 	private var quotaWindows: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.micro) {
-			if ResetCardQuotaPresentation(window: state.fiveHourQuota).isVisible {
+			if ResetCardQuotaPresentation(window: state.fiveHourQuota).isVisible
+				|| store.quotaFill(for: state.account)?.remaining(for: state.fiveHourQuota, at: Date()) != nil {
 				ResetCardQuotaWindowView(
 					title: "5h",
-					window: state.fiveHourQuota
+					window: state.fiveHourQuota,
+					fill: store.quotaFill(for: state.account)
 				)
 			}
-			if ResetCardQuotaPresentation(window: state.sevenDayQuota).isVisible {
+			if ResetCardQuotaPresentation(window: state.sevenDayQuota).isVisible
+				|| store.quotaFill(for: state.account)?.remaining(for: state.sevenDayQuota, at: Date()) != nil {
 				ResetCardQuotaWindowView(
 					title: "7d",
-					window: state.sevenDayQuota
+					window: state.sevenDayQuota,
+					fill: store.quotaFill(for: state.account)
 				)
 			}
 		}
@@ -925,17 +929,38 @@ struct ResetCardQuotaPresentation: Equatable {
 	}
 }
 
-private struct ResetCardQuotaWindowView: View {
+struct ResetCardQuotaWindowView: View {
 	private static let titleColumnWidth: CGFloat = 17
 
 	let title: String
 	let window: ResetCardQuotaWindow
+	var fill: ResetQuotaFill? = nil
+	@State private var isFilling = false
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
+		TimelineView(.animation(paused: reduceMotion || !isFilling)) { context in
+			meter(at: context.date)
+		}
+		.task(id: fill?.started) {
+			guard let fill else { isFilling = false; return }
+			let remaining = ResetQuotaFill.duration - Date().timeIntervalSince(fill.started)
+			guard remaining > 0, !reduceMotion else { isFilling = false; return }
+			isFilling = true
+			do { try await Task.sleep(for: .seconds(remaining)) } catch { return }
+			isFilling = false
+		}
+	}
+
+	@ViewBuilder
+	private func meter(at date: Date) -> some View {
 		let presentation = ResetCardQuotaPresentation(window: window)
-		let remainingPercent = presentation.remainingPercent ?? 0
+		let animated = fill?.remaining(for: window, at: date, reduceMotion: reduceMotion)
+		let remainingPercent = animated ?? Double(presentation.remainingPercent ?? 0)
+		let tone: ResetCardQuotaPresentationTone = animated == nil ? presentation.tone
+			: (remainingPercent > 50 ? .healthy : remainingPercent > 20 ? .warning : .critical)
+		let accessibility = animated.map { "\(Int($0.rounded()))% remaining" } ?? window.accessibilityValue
 
 		HStack(alignment: .center, spacing: PanelSpacing.compact) {
 			Text(title)
@@ -943,21 +968,21 @@ private struct ResetCardQuotaWindowView: View {
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 				.frame(width: Self.titleColumnWidth, alignment: .leading)
 
-			if presentation.remainingPercent != nil {
+			if presentation.remainingPercent != nil || animated != nil {
 				GeometryReader { proxy in
 					ZStack(alignment: .leading) {
 						Capsule(style: .continuous)
 							.fill(PanelPalette.progressTrack(colorScheme))
 
 						Capsule(style: .continuous)
-							.fill(stateColor(for: presentation.tone).opacity(0.84))
+							.fill(stateColor(for: tone).opacity(0.84))
 							.frame(
 								width: proxy.size.width
 									* CGFloat(remainingPercent)
 									/ 100
 							)
 							.animation(
-								quotaValueAnimation,
+								animated == nil ? quotaValueAnimation : nil,
 								value: remainingPercent
 							)
 					}
@@ -968,7 +993,7 @@ private struct ResetCardQuotaWindowView: View {
 			}
 
 			HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
-				Text(presentation.valueText)
+				Text(animated.map { "\(Int($0.rounded()))%" } ?? presentation.valueText)
 					.font(PanelFont.usageValue)
 					.contentTransition(
 						.numericText(value: Double(remainingPercent))
@@ -981,11 +1006,11 @@ private struct ResetCardQuotaWindowView: View {
 						.font(PanelFont.quotaText)
 				}
 			}
-			.foregroundStyle(stateColor(for: presentation.tone))
+			.foregroundStyle(stateColor(for: tone))
 			.monospacedDigit()
 			.lineLimit(1)
 			.fixedSize(horizontal: true, vertical: false)
-			.animation(quotaValueAnimation, value: remainingPercent)
+			.animation(animated == nil ? quotaValueAnimation : nil, value: remainingPercent)
 
 			if let resetDate = presentation.resetDate {
 				Text(Self.compactDateTime(resetDate))
@@ -997,7 +1022,7 @@ private struct ResetCardQuotaWindowView: View {
 			} else if let detailText = presentation.detailText {
 				Text(detailText)
 					.font(PanelFont.quotaText)
-					.foregroundStyle(stateColor(for: presentation.tone))
+					.foregroundStyle(stateColor(for: tone))
 					.lineLimit(1)
 					.truncationMode(.tail)
 					.frame(maxWidth: .infinity, alignment: .trailing)
@@ -1007,8 +1032,8 @@ private struct ResetCardQuotaWindowView: View {
 		.frame(height: 15, alignment: .center)
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel("\(title) quota")
-		.accessibilityValue(window.accessibilityValue)
-		.help(window.accessibilityValue)
+		.accessibilityValue(accessibility)
+		.help(accessibility)
 	}
 
 	private var quotaValueAnimation: Animation? {

@@ -13,19 +13,19 @@ native-glass-probe = []
 visual-capture = ["gpui/test-support", "gpui_platform/test-support"]
 
 [dependencies]
-reqwest = { workspace = true }
-pulldown-cmark = { workspace = true }
-time = { workspace = true }
-decodex-protocol = { workspace = true }
-gpui             = { workspace = true }
-gpui_platform    = { workspace = true }
-libc             = { workspace = true }
-raw-window-handle = "0.6.2"
-serde            = { workspace = true }
-serde_json       = { workspace = true }
-sha2             = { workspace = true }
+decodex-protocol     = { workspace = true }
+gpui                 = { workspace = true }
+gpui_platform        = { workspace = true }
+libc                 = { workspace = true }
+pulldown-cmark       = { workspace = true }
+raw-window-handle    = "0.6.2"
+reqwest              = { workspace = true }
+serde                = { workspace = true }
+serde_json           = { workspace = true }
+sha2                 = { workspace = true }
+time                 = { workspace = true }
+tokio                = { workspace = true }
 unicode-segmentation = "1.13.3"
-tokio            = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2            = { version = "~0.6" }

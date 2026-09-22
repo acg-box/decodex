@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 28;
+const CURRENT_SCHEMA_VERSION: i64 = 30;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -155,6 +155,16 @@ const MIGRATIONS: &[Migration] = &[
 		version: 28,
 		name: "conversation_service_tier",
 		sql: include_str!("../migrations/0028_conversation_service_tier.sql"),
+	},
+	Migration {
+		version: 29,
+		name: "reset_card_operations",
+		sql: include_str!("../migrations/0029_reset_card_operations.sql"),
+	},
+	Migration {
+		version: 30,
+		name: "quota_activation",
+		sql: include_str!("../migrations/0030_quota_activation.sql"),
 	},
 ];
 
@@ -422,6 +432,81 @@ mod tests {
 	use super::*;
 
 	#[test]
+	fn activation_upgrade_preserves_existing_preference_and_defaults_on() {
+		let directory = tempfile::tempdir().expect("test directory");
+		let mut connection =
+			Connection::open(directory.path().join("upgrade.sqlite3")).expect("database");
+		configure(&connection).expect("configure");
+		for migration in &MIGRATIONS[..29] {
+			connection.execute_batch(migration.sql).expect("previous migration");
+			connection
+				.execute(
+					"INSERT INTO schema_migrations VALUES (?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.expect("ledger");
+		}
+		connection
+			.execute("UPDATE desktop_settings SET show_in_menu_bar=0,revision=7", [])
+			.expect("preference");
+		connection.pragma_update(None, "application_id", APPLICATION_ID).expect("identity");
+		connection.pragma_update(None, "user_version", 29).expect("version");
+		migrate(&mut connection).expect("upgrade");
+		let settings: (bool, bool, i64) = connection
+			.query_row(
+				"SELECT show_in_menu_bar,auto_activate_quota,revision FROM desktop_settings",
+				[],
+				|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+			)
+			.expect("settings");
+		assert_eq!(settings, (false, true, 7));
+		verify(&connection).expect("schema parity");
+		migrate(&mut connection).expect("idempotent upgrade");
+	}
+
+	#[test]
+	fn reset_card_upgrade_preserves_existing_schema_and_initializes_an_empty_ledger() {
+		let directory = tempfile::tempdir().expect("isolated migration root");
+		let mut connection =
+			Connection::open(directory.path().join("reset.sqlite3")).expect("isolated database");
+		configure(&connection).expect("SQLite settings");
+		for migration in &MIGRATIONS[..28] {
+			connection.execute_batch(migration.sql).expect("prior migration");
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.expect("prior receipt");
+		}
+		connection
+			.pragma_update(None, "application_id", APPLICATION_ID)
+			.expect("application identity");
+		connection.pragma_update(None, "user_version", 28).expect("prior version");
+		connection
+			.execute("UPDATE desktop_settings SET show_in_menu_bar=0, revision=17", [])
+			.expect("user preference");
+		let before = schema_inventory(&connection).expect("prior schema");
+		migrate(&mut connection).expect("upgrade");
+		verify(&connection).expect("upgraded schema");
+		let after = schema_inventory(&connection).expect("current schema");
+		assert!(
+			before
+				.iter()
+				.filter(|entry| entry.2 != "desktop_settings")
+				.all(|entry| after.contains(entry))
+		);
+		let count: i64 = connection
+			.query_row("SELECT COUNT(*) FROM reset_card_operations", [], |row| row.get(0))
+			.expect("empty ledger");
+		assert_eq!(count, 0);
+		let revision: i64 = connection
+			.query_row("SELECT revision FROM desktop_settings", [], |row| row.get(0))
+			.expect("preserved preference");
+		assert_eq!(revision, 17);
+	}
+
+	#[test]
 	fn service_tier_upgrade_adds_nullable_column_without_rewriting_prior_schema() {
 		let directory = tempfile::tempdir().unwrap();
 		let mut connection = Connection::open(directory.path().join("tiers.sqlite3")).unwrap();
@@ -437,7 +522,10 @@ mod tests {
 		}
 		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
 		connection.pragma_update(None, "user_version", 27).unwrap();
-		for (id, fast) in [("10000000-0000-4000-8000-000000000001",0),("10000000-0000-4000-8000-000000000002",1)] {
+		for (id, fast) in [
+			("10000000-0000-4000-8000-000000000001", 0),
+			("10000000-0000-4000-8000-000000000002", 1),
+		] {
 			connection.execute("INSERT INTO conversations(conversation_id,kind,state,title,revision,created_at_micros,updated_at_micros) VALUES(?1,'ordinary_task','active','Legacy',1,1,1)",[id]).unwrap();
 			connection.execute("INSERT INTO quick_task_requests(conversation_id,operation_key,correlation_id,initial_turn_id,message,working_directory,created_at_micros,model,reasoning_effort,fast) VALUES(?1,?1,?1,?1,'Keep original','/tmp',1,'model','high',?2)",params![id,fast]).unwrap();
 		}
@@ -448,13 +536,25 @@ mod tests {
 		assert!(
 			before
 				.iter()
-				.filter(|entry| entry.2 != "quick_task_requests")
+				.filter(|entry| !["quick_task_requests", "desktop_settings"]
+					.contains(&entry.2.as_str()))
 				.all(|entry| after.contains(entry))
 		);
 		let field:(String,i64,Option<String>) = connection.query_row("SELECT type,\"notnull\",dflt_value FROM pragma_table_info('quick_task_requests') WHERE name='service_tier'",[],|r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
 		assert_eq!(field, ("TEXT".into(), 0, None));
-		let saved=connection.prepare("SELECT fast,service_tier,message FROM quick_task_requests ORDER BY fast").unwrap().query_map([],|r| Ok((r.get::<_,bool>(0)?,r.get::<_,Option<String>>(1)?,r.get::<_,String>(2)?))).unwrap().collect::<Result<Vec<_>,_>>().unwrap();
-		assert_eq!(saved,vec![(false,None,"Keep original".into()),(true,None,"Keep original".into())]);
+		let saved = connection
+			.prepare("SELECT fast,service_tier,message FROM quick_task_requests ORDER BY fast")
+			.unwrap()
+			.query_map([], |r| {
+				Ok((r.get::<_, bool>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, String>(2)?))
+			})
+			.unwrap()
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap();
+		assert_eq!(
+			saved,
+			vec![(false, None, "Keep original".into()), (true, None, "Keep original".into())]
+		);
 		migrate(&mut connection).unwrap();
 		verify(&connection).unwrap();
 	}
@@ -568,6 +668,7 @@ mod tests {
 				.iter()
 				.filter(|entry| ![
 					"account_quota_facts",
+					"desktop_settings",
 					"process_generation_death_evidence",
 					"quick_task_requests"
 				]

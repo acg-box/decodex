@@ -202,6 +202,17 @@ impl SettingsSurface {
 		cx.notify();
 	}
 
+	fn toggle_activation(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+		let Some(settings) = self.snapshot.settings else {
+			return;
+		};
+		if let Err(error) = self.controller.set_auto_activate_quota(!settings.auto_activate_quota) {
+			self.detail = input_error_detail(error).into();
+		}
+		self.snapshot = self.controller.snapshot();
+		cx.notify();
+	}
+
 	fn toggle_launch_at_login(
 		&mut self,
 		_: &gpui::ClickEvent,
@@ -236,13 +247,19 @@ impl SettingsSurface {
 		cx.notify();
 	}
 
-	fn toggle(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		let enabled = self.snapshot.settings.is_some_and(|settings| settings.show_in_menu_bar);
+	fn toggle(&self, activation: bool, cx: &mut Context<Self>) -> impl IntoElement {
+		let enabled = self.snapshot.settings.is_some_and(|settings| {
+			if activation { settings.auto_activate_quota } else { settings.show_in_menu_bar }
+		});
 		let interactive = self.snapshot.can_toggle;
 		div()
-			.id("menubar-surface-toggle")
+			.id(if activation { "quota-activation-toggle" } else { "menubar-surface-toggle" })
 			.role(Role::Switch)
-			.aria_label("Show Decodex in the menu bar")
+			.aria_label(if activation {
+				"Automatically activate weekly quota"
+			} else {
+				"Show Decodex in the menu bar"
+			})
 			.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
 			.w(px(36.0))
 			.h(px(20.0))
@@ -260,10 +277,14 @@ impl SettingsSurface {
 					.hover(|element| element.border_color(rgb(TEXT_MUTED)))
 					.active(|element| element.opacity(0.78))
 					.focus_visible(|element| element.border_color(rgb(BLUE)))
-					.on_click(cx.listener(Self::toggle_menubar))
+					.on_click(cx.listener(if activation {
+						Self::toggle_activation
+					} else {
+						Self::toggle_menubar
+					}))
 			})
 			.child(switch_knob(
-				"settings-knob",
+				if activation { "activation-knob" } else { "settings-knob" },
 				enabled,
 				div().size(px(14.0)).rounded_full().bg(rgb(if enabled {
 					BLUE
@@ -537,11 +558,13 @@ impl Render for SettingsSurface {
 										ui_theme::settings_row()
 											.px_0()
 											.child(div().flex_1().child("Show in menu bar"))
-											.child(self.toggle(cx)),
+											.child(self.toggle(false, cx)),
 									)
 									.child(self.launch_at_login_card(cx)),
 							)
-							.children(self.advanced_preferences.clone())
+							.child(ui_theme::settings_row().child(div().flex_1().child("Auto-activate weekly quota")).child(self.toggle(true, cx)))
+                            .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child("Send a small background request when the weekly reset expires without a new countdown. Uses a small amount of quota; no chat is saved."))
+                            .children(self.advanced_preferences.clone())
 							.child(quote_attribution()),
 					),
 			)
@@ -563,16 +586,16 @@ const fn launch_at_login_detail(state: LaunchAtLoginState) -> &'static str {
 const fn settings_detail(snapshot: DesktopSettingsSnapshot) -> &'static str {
 	match snapshot.load {
 		DesktopSettingsLoadState::NeverRequested => "Waiting for the Decodex settings query.",
-		DesktopSettingsLoadState::Loading => "Loading your menu-bar preference.",
+		DesktopSettingsLoadState::Loading => "Loading your preferences.",
 		DesktopSettingsLoadState::Ready => match snapshot.command {
 			DesktopSettingsCommandState::Sending | DesktopSettingsCommandState::AwaitingResult =>
 				"Saving preference…",
 			DesktopSettingsCommandState::OutcomeUnknown =>
-				"Reading back the menu-bar preference after an uncertain response.",
+				"Reading back preferences after an uncertain response.",
 			DesktopSettingsCommandState::Refused =>
-				"The Decodex service refused the menu-bar preference change.",
+				"The Decodex service refused the preference change.",
 			DesktopSettingsCommandState::Idle | DesktopSettingsCommandState::Accepted =>
-				"Your menu-bar preference is saved.",
+				"Your preferences are saved.",
 		},
 		DesktopSettingsLoadState::Offline =>
 			"Connect to the Decodex service to read desktop settings.",

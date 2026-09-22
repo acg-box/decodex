@@ -233,10 +233,6 @@ async fn fresh_sqlite_bootstrap_is_ready_and_deferred_surfaces_are_explicit() {
 		"all-features without the strict process-fixture endpoint must retain AccountApi readiness"
 	);
 	assert_eq!(
-		status(&bootstrap, DoctorComponent::ManagedRepository),
-		DoctorStatus::Unavailable(DoctorIssue::Disabled)
-	);
-	assert_eq!(
 		status(&bootstrap, DoctorComponent::BlobIntegrity),
 		DoctorStatus::Unknown(DoctorIssue::NotProbed)
 	);

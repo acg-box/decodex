@@ -126,7 +126,19 @@ impl DesktopSettingsController {
 		if settings.show_in_menu_bar == show_in_menu_bar {
 			return Ok(());
 		}
-		state.queue_command(show_in_menu_bar, settings.revision)?;
+		state.queue_command(show_in_menu_bar, None, settings.revision)?;
+		drop(state);
+		self.inner.notify.notify_one();
+		Ok(())
+	}
+
+	pub(crate) fn set_auto_activate_quota(
+		&self,
+		enabled: bool,
+	) -> Result<(), DesktopSettingsInputError> {
+		let mut state = self.lock();
+		let settings = state.settings.ok_or(DesktopSettingsInputError::NotLoaded)?;
+		state.queue_command(settings.show_in_menu_bar, Some(enabled), settings.revision)?;
 		drop(state);
 		self.inner.notify.notify_one();
 		Ok(())
@@ -359,10 +371,11 @@ impl DesktopSettingsController {
 		match result.outcome {
 			CommandOutcome::Succeeded => {
 				if let (
-					CommandPayload::SetDesktopSettings { show_in_menu_bar },
+					CommandPayload::SetDesktopSettings { show_in_menu_bar, auto_activate_quota },
 					Some(ResultPayload::DesktopSettingsChanged { settings }),
 				) = (&in_flight.envelope.payload, result.payload.as_ref())
 					&& settings.show_in_menu_bar == *show_in_menu_bar
+					&& auto_activate_quota.is_none_or(|value| value == settings.auto_activate_quota)
 					&& settings.is_valid()
 					&& result.entity_revision == Some(settings.revision)
 				{
@@ -484,6 +497,7 @@ impl State {
 	fn queue_command(
 		&mut self,
 		show_in_menu_bar: bool,
+		auto_activate_quota: Option<bool>,
 		expected_revision: EntityRevision,
 	) -> Result<(), DesktopSettingsInputError> {
 		if self.session.is_none() {
@@ -509,7 +523,7 @@ impl State {
 			expected_revision: Some(expected_revision),
 			correlation_id: identity.correlation_id,
 			causation_id: None::<CausationId>,
-			payload: CommandPayload::SetDesktopSettings { show_in_menu_bar },
+			payload: CommandPayload::SetDesktopSettings { show_in_menu_bar, auto_activate_quota },
 		});
 		self.command = DesktopSettingsCommandState::Sending;
 		Ok(())
@@ -614,7 +628,11 @@ mod tests {
 					server_id: server.clone(),
 					query_id: query.query_id,
 					payload: QueryResultPayload::DesktopSettings(DesktopSettingsResult::Available(
-						DesktopSettingsDto { show_in_menu_bar: true, revision: EntityRevision(3) }
+						DesktopSettingsDto {
+							show_in_menu_bar: true,
+							auto_activate_quota: false,
+							revision: EntityRevision(3)
+						}
 					),),
 				},
 			),
@@ -628,66 +646,87 @@ mod tests {
 
 	#[tokio::test]
 	async fn toggle_applies_only_the_matching_daemon_result() {
-		let controller = DesktopSettingsController::production();
-		let server = server();
-		controller.bind_session(7, server.clone());
-		let DesktopSettingsDispatch::Query(query) = controller.next_dispatch(7, &server).await
-		else {
-			panic!("first dispatch must query settings")
-		};
-		controller.route_query_result(
-			7,
-			&server,
-			&QueryResultEnvelope {
-				version: CURRENT_VERSION,
-				server_id: server.clone(),
-				query_id: query.query_id,
-				payload: QueryResultPayload::DesktopSettings(DesktopSettingsResult::Available(
-					DesktopSettingsDto { show_in_menu_bar: true, revision: EntityRevision(8) },
-				)),
-			},
-		);
+		for activation in [false, true] {
+			let controller = DesktopSettingsController::production();
+			let server = server();
+			controller.bind_session(7, server.clone());
+			let DesktopSettingsDispatch::Query(query) = controller.next_dispatch(7, &server).await
+			else {
+				panic!("first dispatch must query settings")
+			};
+			controller.route_query_result(
+				7,
+				&server,
+				&QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: server.clone(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::DesktopSettings(DesktopSettingsResult::Available(
+						DesktopSettingsDto {
+							show_in_menu_bar: true,
+							auto_activate_quota: false,
+							revision: EntityRevision(8),
+						},
+					)),
+				},
+			);
 
-		controller.set_show_in_menu_bar(false).expect("queue menu-bar preference");
-		let dispatch = controller.next_dispatch(7, &server).await;
-		let command = dispatch.command().expect("toggle dispatch is a command").clone();
-		controller.command_sent(&dispatch);
-		assert_eq!(controller.snapshot().command, DesktopSettingsCommandState::AwaitingResult);
-		assert_eq!(
-			controller.route_receipt(
-				7,
-				&server,
-				&CommandReceipt {
-					version: CURRENT_VERSION,
-					server_id: server.clone(),
-					client_command_id: command.client_command_id.clone(),
-					idempotency_key: command.idempotency_key.clone(),
-					disposition: ReceiptDisposition::Executed,
-					original_client_command_id: command.client_command_id.clone(),
-				},
-			),
-			DesktopSettingsRouteOutcome::Fresh
-		);
-		let settings = DesktopSettingsDto { show_in_menu_bar: false, revision: EntityRevision(9) };
-		assert_eq!(
-			controller.route_command_result(
-				7,
-				&server,
-				&CommandResultEnvelope {
-					version: CURRENT_VERSION,
-					server_id: server.clone(),
-					client_command_id: command.client_command_id,
-					idempotency_key: command.idempotency_key,
-					outcome: CommandOutcome::Succeeded,
-					entity_revision: Some(settings.revision),
-					payload: Some(ResultPayload::DesktopSettingsChanged { settings }),
-					error: None,
-				},
-			),
-			DesktopSettingsRouteOutcome::Fresh
-		);
-		let snapshot = controller.snapshot();
-		assert_eq!(snapshot.command, DesktopSettingsCommandState::Accepted);
-		assert!(!snapshot.settings.expect("settings remain available").show_in_menu_bar);
+			if activation {
+				controller.set_auto_activate_quota(true).expect("queue activation preference");
+			} else {
+				controller.set_show_in_menu_bar(false).expect("queue menu-bar preference");
+			}
+			let dispatch = controller.next_dispatch(7, &server).await;
+			let command = dispatch.command().expect("toggle dispatch is a command").clone();
+			controller.command_sent(&dispatch);
+			assert_eq!(controller.snapshot().command, DesktopSettingsCommandState::AwaitingResult);
+			assert_eq!(
+				controller.route_receipt(
+					7,
+					&server,
+					&CommandReceipt {
+						version: CURRENT_VERSION,
+						server_id: server.clone(),
+						client_command_id: command.client_command_id.clone(),
+						idempotency_key: command.idempotency_key.clone(),
+						disposition: ReceiptDisposition::Executed,
+						original_client_command_id: command.client_command_id.clone(),
+					},
+				),
+				DesktopSettingsRouteOutcome::Fresh
+			);
+			let settings = DesktopSettingsDto {
+				show_in_menu_bar: activation,
+				auto_activate_quota: activation,
+				revision: EntityRevision(9),
+			};
+			assert_eq!(
+				controller.route_command_result(
+					7,
+					&server,
+					&CommandResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: server.clone(),
+						client_command_id: command.client_command_id,
+						idempotency_key: command.idempotency_key,
+						outcome: CommandOutcome::Succeeded,
+						entity_revision: Some(settings.revision),
+						payload: Some(ResultPayload::DesktopSettingsChanged { settings }),
+						error: None,
+					},
+				),
+				DesktopSettingsRouteOutcome::Fresh
+			);
+			let snapshot = controller.snapshot();
+			assert_eq!(snapshot.command, DesktopSettingsCommandState::Accepted);
+			assert_eq!(
+				snapshot.settings.expect("settings remain available").show_in_menu_bar,
+				activation
+			);
+			assert_eq!(
+				snapshot.settings.expect("settings remain available").auto_activate_quota,
+				activation
+			);
+		}
 	}
 }

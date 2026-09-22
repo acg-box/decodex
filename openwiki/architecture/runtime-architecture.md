@@ -98,10 +98,11 @@ against current product authority:
 | Logout | Migrated to GPUI | A two-step GPUI confirmation sends `LogoutAccount`; the daemon deletes credentials and records the tombstone. |
 | Quota | Retained in GPUI | Account rows render only current daemon-projected 5-hour and 7-day observations. |
 | Profile | Migrated to GPUI | One selected-account controller sends `GetAccountProfile` and renders the bounded result. |
-| Reset Cards | Intentionally retired from the GUI | The daemon and explicit CLI protocol remain supported, but the current protocol can recover an operation only by a caller-retained idempotency key. Recreating the removed UI-side persistent journal would violate the single persistent-state owner. A future GPUI surface requires daemon-owned pending-operation discovery and restart readback first. |
+| Reset Cards | Accounts and explicit CLI | The daemon owns the SQLite operation ledger, exact card selection, one-attempt dispatch, and account-scoped restart recovery. The GUI stores no persistent journal. |
 
-The Reset Card decision removes stale claims that the GUI supports a restart-safe consume
-workflow. It does not remove the daemon service or the explicit CLI commands.
+Reset Cards are required functionality. An explicit confirmation selects one card
+for one account revision. Account-scoped operation discovery restores status after
+a client restart. Uncertain sends remain blocked and are never automatically retried.
 
 ## Protocol boundary
 

@@ -4084,6 +4084,40 @@ impl AccountService {
 		})
 	}
 
+	/// Hold the selected account's mutation lock through a manual reset. Never refresh or
+	/// switch credentials after the user's revision-bound confirmation.
+	pub(crate) async fn api_credential_for_reset(
+		&self,
+		account_id: &AccountId,
+		expected_revision: i64,
+	) -> Result<AccountApiCredential, AccountLifecycleError> {
+		let launch_guard = self.lock_for(account_id)?.lock_owned().await;
+		let account = self.load_account(account_id).await?;
+		if account.revision != expected_revision {
+			return Err(AccountLifecycleError::StaleAccount);
+		}
+		if !account.enabled {
+			return Err(AccountLifecycleError::AccountDisabled);
+		}
+		decodex_core::admit_manual_reset_card_use(account.observed_state)
+			.map_err(|_| AccountLifecycleError::InvalidOperation)?;
+		let stored = self.read_exact_for_api(&account).await?;
+		if access_token_needs_refresh(
+			stored.bundle().access_token_expires_at_unix_micros(),
+			current_unix_micros()?,
+			Duration::from_secs(40),
+		)? {
+			return Err(AccountLifecycleError::CredentialAbsent);
+		}
+		let binding = account.credential.ok_or(AccountLifecycleError::CredentialAbsent)?;
+		Ok(AccountApiCredential {
+			stored,
+			binding,
+			account_revision: account.revision,
+			_launch_guard: launch_guard,
+		})
+	}
+
 	fn selection_candidate(
 		&self,
 		account: &AccountRecord,

@@ -66,7 +66,7 @@ arguments, logs, or a long-lived daemon or child environment.
 
 This boundary adds no event sourcing, generic distributed transaction coordinator,
 new process or provider-effect ledger, per-account daemon, or permanent per-account
-or per-run Codex home. Managed-repository effect authority remains separate.
+or per-run Codex home. Account lifecycle does not grant Git write authority.
 ProcessSupervisor remains the ProcessGeneration owner. ProviderAttemptService remains
 the ProviderAttempt owner.
 

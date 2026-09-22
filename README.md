@@ -59,6 +59,16 @@ account-capacity rules still apply to ordinary Conversations that require a sepa
 process. The work snapshot is bounded to 100 items, 500 dependencies and 100 pending
 events; exceeding the bound produces an explicit capacity result, not partial data.
 
+## Reset Cards
+
+In Accounts, open an account's menu and select **Reset Cards**. Choose a card and
+confirm **use 1 card**. The service records the request before redemption and
+restores its status after restart. **Refresh** only reads status. An uncertain
+result blocks another redemption; it does not cause an automatic retry.
+
+The explicit `decodex reset-card list`, `use`, and `status` commands share this
+service. See [Reset Card operation](openwiki/operations/reset-cards.md).
+
 ## Current architecture
 
 - `decodex serve` is the sole product-state and side-effect owner. The same `decodex`
@@ -155,6 +165,18 @@ Automation result intake and due checks are supported through Chief.
 Ontology and graph engineering remain central to the direction of Decodex. They will be
 projections over proven Goals, tasks, threads, artifacts, claims, dependencies, gates,
 and evidence. They are not a second speculative execution engine.
+
+Managed Repository orchestration is retired. Decodex does not own repository
+allocation, Git registration, worktree preparation, or commit state machines.
+Chief and ordinary Conversations continue to use explicit working directories.
+Repository revision evidence remains available to context and supervised validation.
+The diagnostic report no longer includes a managed-repository component. This change
+uses exact local protocol version 2.41; update the app and service together.
+
+The unused built-in GitHub PR/check-run write-and-verification layer is also
+retired. Chief uses task-authorized tools when GitHub work is requested; Decodex
+does not impose a native PR delivery workflow. This removal does not change Radar,
+Publisher, or repository maintenance automation.
 
 ## Persistence compatibility
 

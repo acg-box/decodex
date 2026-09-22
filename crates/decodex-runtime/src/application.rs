@@ -80,7 +80,6 @@ use crate::{
 		ConversationTerminalState, CreateConversation, RecoverConversation, SubmitConversationTurn,
 	},
 	domain_packs,
-	managed_repository_runtime::ManagedRepositoryCapability,
 	routing_orchestration::{ExecutionCoordinator, RoutingSuccessorExecutionCommand},
 };
 
@@ -285,7 +284,6 @@ impl ProductState for ProductStore {
 pub(crate) struct ServiceApplication {
 	chief: Option<crate::chief_host::ChiefHost>,
 	store: ProductStore,
-	_managed_repositories: ManagedRepositoryCapability,
 	process_generations: Option<ProcessGenerationControl>,
 	provider_attempts: Option<ProviderAttemptControl>,
 	_codex: CodexAdapter,
@@ -299,10 +297,8 @@ pub(crate) struct ServiceApplication {
 	doctor: DoctorReport,
 }
 impl ServiceApplication {
-	#[allow(clippy::too_many_arguments)] // Composition keeps each independently owned runtime capability explicit.
 	pub(crate) fn new(
 		store: ProductStore,
-		managed_repositories: ManagedRepositoryCapability,
 		process_generations: Option<ProcessGenerationControl>,
 		provider_attempts: Option<ProviderAttemptControl>,
 		codex: CodexAdapter,
@@ -319,7 +315,6 @@ impl ServiceApplication {
 		Self {
 			chief,
 			store,
-			_managed_repositories: managed_repositories,
 			process_generations,
 			provider_attempts,
 			_codex: codex,
@@ -422,7 +417,9 @@ impl ServiceApplication {
 		&self,
 		command: &CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
-		let CommandPayload::SetDesktopSettings { show_in_menu_bar } = &command.payload else {
+		let CommandPayload::SetDesktopSettings { show_in_menu_bar, auto_activate_quota } =
+			&command.payload
+		else {
 			return Err(application_unavailable("desktop settings command is invalid"));
 		};
 		let expected = command.expected_revision.ok_or_else(|| {
@@ -434,9 +431,10 @@ impl ServiceApplication {
 			return Err(application_unavailable("desktop settings store is unavailable"));
 		};
 		let settings = store
-			.set_show_in_menu_bar(expected_revision, *show_in_menu_bar)
+			.set_desktop_settings(expected_revision, *show_in_menu_bar, *auto_activate_quota)
 			.await
 			.map_err(desktop_settings_command_error)?;
+		self.request_account_observation_refresh();
 		let settings = desktop_settings_dto(settings)
 			.map_err(|_| application_unavailable("desktop settings projection is invalid"))?;
 		let entity_id = EntityId::new(DESKTOP_SETTINGS_ENTITY_ID)
@@ -903,6 +901,41 @@ impl ServiceApplication {
 		};
 
 		operation_query_result(runtime.operation_status(key).await)
+	}
+
+	async fn account_reset_card_operation(
+		&self,
+		account_id: &EntityId,
+	) -> decodex_protocol::AccountResetCardOperationResult {
+		use decodex_protocol::{AccountResetCardOperationResult as Result, ResetCardOperationView};
+		let Some(runtime) = &self.reset_cards else {
+			return Result::Unavailable { error: ResetCardError::ProductStateUnavailable };
+		};
+		let Ok(account) = AccountId::new(account_id.as_str()) else {
+			return Result::Unavailable { error: ResetCardError::InvalidRequest };
+		};
+		let operation = match runtime.latest_operation(&account).await {
+			Ok(Some(operation)) => operation,
+			Ok(None) => return Result::NotFound,
+			Err(error) => return Result::Unavailable { error: protocol_reset_error(error) },
+		};
+		let (Ok(key), Ok(descriptor), Ok(revision)) = (
+			decodex_protocol::IdempotencyKey::new(operation.key.clone()),
+			decodex_protocol::ResetCardDescriptorDto::new(
+				operation.granted_at,
+				operation.expires_at,
+			),
+			u64::try_from(operation.account_revision),
+		) else {
+			return Result::Unavailable { error: ResetCardError::ProductStateUnavailable };
+		};
+		Result::Found(ResetCardOperationView {
+			account_id: account_id.clone(),
+			account_revision: EntityRevision(revision),
+			idempotency_key: key,
+			descriptor,
+			state: operation_query_result(runtime.operation_status(&operation.key).await),
+		})
 	}
 
 	async fn conversation_history(
@@ -1900,6 +1933,10 @@ impl Application for ServiceApplication {
 				),
 			QueryPayload::GetResetCards { account_id } =>
 				QueryResultPayload::ResetCards(self.reset_card_inventory(account_id).await),
+			QueryPayload::GetAccountResetCardOperation { account_id } =>
+				QueryResultPayload::AccountResetCardOperation(
+					self.account_reset_card_operation(account_id).await,
+				),
 			QueryPayload::GetResetCardOperation { idempotency_key } =>
 				QueryResultPayload::ResetCardOperation(
 					self.reset_card_operation(idempotency_key.as_str()).await,
@@ -4441,7 +4478,9 @@ async fn query_chief_snapshot(store: &ProductStore) -> decodex_protocol::ChiefSn
 
 fn desktop_settings_dto(settings: StoreDesktopSettings) -> Result<DesktopSettingsDto, ()> {
 	let revision = u64::try_from(settings.revision).map(EntityRevision).map_err(|_| ())?;
-	DesktopSettingsDto::new(settings.show_in_menu_bar, revision).map_err(|_| ())
+	let mut dto = DesktopSettingsDto::new(settings.show_in_menu_bar, revision).map_err(|_| ())?;
+	dto.auto_activate_quota = settings.auto_activate_quota;
+	Ok(dto)
 }
 
 fn desktop_settings_command_error(error: StoreError) -> CommandError {

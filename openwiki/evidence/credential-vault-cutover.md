@@ -4,6 +4,11 @@ title: "Credential Vault Cutover Evidence"
 openwiki_generated: true
 ---
 
+> Historical evidence only. Recorded capability names and wire tags describe the
+> captured revision, not current functionality. The repository-management and
+> built-in PR/check-run layers have since been removed.
+
+
 # Credential Vault Cutover Evidence
 
 Status: accepted historical donor evidence. redb is no longer the target credential
