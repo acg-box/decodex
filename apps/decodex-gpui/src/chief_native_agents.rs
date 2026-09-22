@@ -80,12 +80,18 @@ impl ChiefSurface {
 				self.native_agents.task = Some(cx.spawn(async move |surface, cx| {
 					let result = read.await;
 					let _ = surface.update(cx, |s, cx| {
+						let mut changed = false;
 						for (owner, list) in result {
-							s.native_agents.lists.insert(owner, list);
+							if s.native_agents.lists.get(&owner) != Some(&list) {
+								s.native_agents.lists.insert(owner, list);
+								changed = true;
+							}
 						}
 						s.native_agents.task = None;
 						s.native_agents.next = Some(Instant::now() + Duration::from_secs(5));
-						cx.notify();
+						if changed {
+							cx.notify();
+						}
 					});
 				}));
 			}
@@ -149,12 +155,14 @@ impl ChiefSurface {
 		self.native_agents.detail_task = Some(cx.spawn(async move |surface, cx| {
 			let result = read.await.unwrap_or(NativeAgentsResult::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
-				if s.native_agents.selected.as_ref().is_some_and(|(_, id)| id == &target) {
+				if s.native_agents.selected.as_ref().is_some_and(|(_, id)| id == &target)
+					&& s.native_agents.detail.as_ref() != Some(&result)
+				{
 					s.native_agents.detail = Some(result);
+					cx.notify();
 				}
 				s.native_agents.detail_task = None;
 				s.native_agents.next_detail = Some(Instant::now() + Duration::from_secs(3));
-				cx.notify();
 			});
 		}));
 	}
