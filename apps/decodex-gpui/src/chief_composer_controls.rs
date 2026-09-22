@@ -180,3 +180,26 @@ mod ordering_tests {
 		);
 	}
 }
+
+/// The stop glyph eases in place; no warning color or layout change is needed.
+#[derive(gpui::IntoElement)]
+pub(super) struct StopMark {
+	pub armed: bool,
+}
+impl gpui::RenderOnce for StopMark {
+	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
+		let strength = crate::ui_motion::value(
+			"stop-confirmation",
+			if self.armed { 1. } else { 0. },
+			window,
+			cx,
+		);
+		div().size(px(16.)).flex().items_center().justify_center().child(
+			div()
+				.size(px(9. + strength * 3.))
+				.rounded(px(2. + strength))
+				.bg(rgb(ui_theme::CANVAS))
+				.opacity(0.8 + strength * 0.2),
+		)
+	}
+}

@@ -442,7 +442,6 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let send = id == "send";
-		let armed = send && self.escape_stop_armed();
 		let target = cx.entity().downgrade();
 		let tooltip = if id == "model" { "Model and reasoning".to_owned() } else { tip.to_owned() };
 		div()
@@ -488,18 +487,9 @@ impl ChiefSurface {
 			})
 			.when(self.composer_menu == Some(id), |d| d.bg(rgba(0xffffff12)))
 			.when(send, |d| d.w(px(28.)).h(px(28.)).rounded_full().ml(px(5.)).bg(rgb(0x515155)))
-			.when(armed, |d| d.bg(rgb(ui_theme::AMBER)))
 			.when(id == "audio-item", |d| d.aria_expanded(self.composer_menu == Some("microphone")))
 			.cursor_pointer()
-			.hover(move |d| {
-				d.bg(if armed {
-					rgba((ui_theme::AMBER << 8) | 0xff)
-				} else if send {
-					rgba(0xffffff24)
-				} else {
-					rgba(0xffffff0c)
-				})
-			})
+			.hover(move |d| d.bg(if send { rgba(0xffffff24) } else { rgba(0xffffff0c) }))
 			.when(!["model", "attachment-item", "audio-item"].contains(&id), |d| {
 				d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
 			})
@@ -539,7 +529,7 @@ impl ChiefSurface {
 			"send" if self.awaiting_start(cx) => div().child("…").into_any_element(),
 			"send" if self.dictation.is_some() => div().child("✓").into_any_element(),
 			"send" if self.stop_button(cx) =>
-				div().size(px(9.0)).rounded(px(2.0)).bg(rgb(ui_theme::CANVAS)).into_any_element(),
+				controls::StopMark { armed: self.escape_stop_armed() }.into_any_element(),
 			"send"
 				if self.composer.read(cx).content().trim().is_empty()
 					&& self.attachments.is_empty()
