@@ -785,6 +785,9 @@ impl ChiefSurface {
 	fn prepare_workspace_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		self.graph_display_zoom =
 			crate::ui_motion::value("chief-graph-zoom", self.graph_zoom, window, cx);
+		if self.older_scroll_anchor.is_none() {
+			self.prefetch_older_history(cx);
+		}
 		self.restore_history_anchor(window, cx);
 		self.prepare_history_marks();
 		self.animate_history_scroll(window, cx);
@@ -805,20 +808,36 @@ impl ChiefSurface {
 		}
 	}
 
-	fn restore_history_anchor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-		let Some((id, offset, maximum)) = self.older_scroll_anchor.clone() else {
+	fn restore_history_anchor(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+		let Some(activity::HistoryScrollAnchor { work: id, offset, maximum, message: anchor }) =
+			self.older_scroll_anchor.clone()
+		else {
 			return;
 		};
 		if self.selected.as_ref() != Some(&id) {
+			self.older_scroll_anchor = None;
 			return;
 		}
-		self.older_scroll_anchor = None;
 		if let Some(scroll) = self.transcript_scroll.get(&id).cloned() {
 			let entity = cx.entity();
-			window.on_next_frame(move |_, cx| {
-				let delta = f32::from(scroll.max_offset().y) - maximum;
-				scroll.set_offset(point(scroll.offset().x, px(offset - delta)));
-				entity.update(cx, |_, cx| cx.notify());
+			cx.defer(move |cx| {
+				entity.update(cx, |s, cx| {
+					if s.selected.as_ref() != Some(&id) {
+						return;
+					}
+					let delta = anchor
+						.and_then(|(id, position)| {
+							s.history_marks.get(&id).map(|mark| mark.position.get() - position)
+						})
+						.unwrap_or_else(|| f32::from(scroll.max_offset().y) - maximum);
+					let target = (offset - delta).clamp(-f32::from(scroll.max_offset().y), 0.);
+					if (f32::from(scroll.offset().y) - target).abs() < 0.5 {
+						s.older_scroll_anchor = None;
+					} else {
+						scroll.set_offset(point(scroll.offset().x, px(target)));
+					}
+					cx.notify();
+				})
 			});
 		}
 	}

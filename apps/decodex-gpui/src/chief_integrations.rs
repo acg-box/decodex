@@ -455,6 +455,7 @@ mod tests {
 				dependencies: vec![],
 				pending_events: vec![],
 			})));
+			s.details_visible = true;
 			s.integrations = Some(("root".into(), Some(ChiefIntegrationsResult::Unavailable)));
 			s.mcp_login = Some((
 				"root".into(),
@@ -473,6 +474,10 @@ mod tests {
 			window.resize(gpui::size(px(1180.), px(1400.)));
 			window.draw(cx).clear();
 		});
+		std::thread::sleep(std::time::Duration::from_millis(220));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
 		assert!(visual.opened_url().is_none());
 		let bounds =
 			visual.debug_bounds("integration-open-signin").expect("explicit authorization control");
@@ -489,6 +494,7 @@ mod tests {
 		assert!(visual.debug_bounds("integration-open-signin").is_none());
 		surface.update(visual, |s, cx| {
 			s.open_page("root", cx);
+			s.details_visible = true;
 			s.integrations = Some(("root".into(), Some(ChiefIntegrationsResult::Unavailable)));
 			let status = &mut s.mcp_login.as_mut().unwrap().2;
 			status.phase = McpLoginPhase::Expired;

@@ -176,7 +176,8 @@ pub(crate) struct ChiefSurface {
 	>,
 	older_task: Option<Task<()>>,
 	loading_older: bool,
-	older_scroll_anchor: Option<(String, f32, f32)>,
+	older_retry_after: Option<std::time::Instant>,
+	older_scroll_anchor: Option<activity::HistoryScrollAnchor>,
 	poll_task: Option<Task<()>>,
 	request: Option<ChiefRequestResult>,
 	request_task: Option<Task<()>>,
@@ -357,6 +358,7 @@ impl ChiefSurface {
 			older_history: Default::default(),
 			older_task: None,
 			loading_older: false,
+			older_retry_after: None,
 			older_scroll_anchor: None,
 			poll_task: None,
 			request: None,
@@ -862,6 +864,7 @@ impl ChiefSurface {
 		self.older_history.clear();
 		self.older_task = None;
 		self.loading_older = false;
+		self.older_retry_after = None;
 		self.transcript_scroll.clear();
 		self.history_follow_paused.clear();
 		self.graph_scope = None;
@@ -1179,6 +1182,8 @@ impl ChiefSurface {
 					.flex_col()
 					.gap_2()
 					.child(self.resources_panel(&work.id, cx))
+					.child(self.integrations_panel(&work.id, cx))
+					.child(self.usage_estimate_panel(&work.id, cx))
 					.child(self.work_graph(snapshot, work, cx))
 					.child(self.work_metadata(snapshot, work, cx))
 					.when_some(work.codex_thread_id.as_ref(), |d, thread| {
@@ -1292,8 +1297,40 @@ impl ChiefSurface {
 		panel
 	}
 
+	pub(super) fn prefetch_older_history(&mut self, cx: &mut Context<Self>) {
+		if self.history_prefetch_needed() {
+			self.load_older_history(cx);
+		}
+	}
+
+	fn history_prefetch_needed(&self) -> bool {
+		if self.loading_older || self.older_scroll_anchor.is_some() {
+			return false;
+		}
+		let Some(id) = self.selected.as_ref().filter(|id| self.history_follow_paused.contains(*id))
+		else {
+			return false;
+		};
+		let Some((owner, ChiefHistoryResult::Available { next_before, .. })) =
+			self.history.as_ref()
+		else {
+			return false;
+		};
+		if owner != id
+			|| self.older_history.get(id).map_or(*next_before, |(_, cursor)| *cursor).is_none()
+		{
+			return false;
+		}
+		self.transcript_scroll.get(id).is_some_and(|scroll| {
+			let height = f32::from(scroll.bounds().size.height);
+			height > 0. && -f32::from(scroll.offset().y) <= (height * 0.6).clamp(240., 600.)
+		})
+	}
+
 	fn load_older_history(&mut self, cx: &mut Context<Self>) {
-		if self.loading_older {
+		if self.loading_older
+			|| self.older_retry_after.is_some_and(|at| at > std::time::Instant::now())
+		{
 			return;
 		}
 		let (Some(profile), Some((id, ChiefHistoryResult::Available { next_before, .. }))) =
@@ -1301,6 +1338,9 @@ impl ChiefSurface {
 		else {
 			return;
 		};
+		if self.selected.as_ref() != Some(id) {
+			return;
+		}
 		let before = self.older_history.get(id).map_or(*next_before, |(_, cursor)| *cursor);
 		let Some(before) = before else {
 			return;
@@ -1319,13 +1359,23 @@ impl ChiefSurface {
 			let result = request.await;
 			let _ = surface.update(cx, |s, cx| {
 				s.loading_older = false;
-				if let Some(ChiefHistoryResult::Available { entries, next_before, .. }) = result {
-					if let Some(scroll) = s.transcript_scroll.get(&id) {
-						s.older_scroll_anchor = Some((
-							id.clone(),
-							f32::from(scroll.offset().y),
-							f32::from(scroll.max_offset().y),
-						));
+				if let Some(ChiefHistoryResult::Available { entries, next_before, .. }) = result
+					&& next_before.is_none_or(|next| next < before)
+				{
+					s.older_retry_after = None;
+					if s.selected.as_ref() == Some(&id)
+						&& let Some(scroll) = s.transcript_scroll.get(&id)
+					{
+						s.older_scroll_anchor = Some(activity::HistoryScrollAnchor {
+							work: id.clone(),
+							offset: f32::from(scroll.offset().y),
+							maximum: f32::from(scroll.max_offset().y),
+							message: s
+								.history_marks
+								.iter()
+								.next()
+								.map(|(id, mark)| (*id, mark.position.get())),
+						});
 					}
 					let page = s.older_history.entry(id).or_default();
 					page.0.extend(entries);
@@ -1333,7 +1383,8 @@ impl ChiefSurface {
 					page.0.dedup_by_key(|entry| entry.id);
 					page.1 = next_before;
 				} else {
-					s.feedback = "Earlier messages could not be loaded. Try again.".into();
+					s.older_retry_after =
+						Some(std::time::Instant::now() + std::time::Duration::from_secs(3));
 				}
 				cx.notify();
 			});
@@ -1342,39 +1393,13 @@ impl ChiefSurface {
 	}
 
 	fn history_panel(&self, work: &ChiefWorkItemDto, cx: &mut Context<Self>) -> impl IntoElement {
-		let mut panel = div()
-			.w_full()
-			.min_w_0()
-			.flex_none()
-			.flex()
-			.flex_col()
-			.gap(px(ui_theme::MESSAGE_GAP))
-			.child(self.integrations_panel(&work.id, cx))
-			.child(self.usage_estimate_panel(&work.id, cx));
+		let mut panel =
+			div().w_full().min_w_0().flex_none().flex().flex_col().gap(px(ui_theme::MESSAGE_GAP));
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
 			Some(ChiefHistoryResult::Available {
 				entries, has_more, next_before, live, ..
 			}) => {
 				let older = self.older_history.get(&work.id);
-				let cursor = older.map_or(*next_before, |(_, cursor)| *cursor);
-				if cursor.is_some() {
-					panel = panel.child(
-						div()
-							.id("chief-earlier-history")
-							.role(Role::Button)
-							.tab_index(26)
-							.aria_label("Load earlier messages")
-							.cursor_pointer()
-							.text_color(rgb(ui_theme::BLUE))
-							.on_click(cx.listener(|s, _, _, cx| s.load_older_history(cx)))
-							.child(if self.loading_older {
-								"Loading earlier messages…"
-							} else {
-								"Load earlier messages"
-							})
-							.smooth(),
-					);
-				}
 				if *has_more && next_before.is_none() {
 					panel = panel.child(muted("Some saved message text was shortened."));
 				}
@@ -2013,6 +2038,36 @@ mod tests {
 			)
 			.is_empty()
 		);
+	}
+
+	#[gpui::test]
+	fn history_prefetch_requires_reading_near_top_and_a_remaining_cursor(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(gpui::size(px(1400.), px(320.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			if let Some((_, ChiefHistoryResult::Available { next_before, .. })) = &mut s.history {
+				*next_before = Some(1);
+			}
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		surface.update(visual, |s, _| {
+			s.transcript_scroll["chief"].set_offset(gpui::point(px(0.), px(-20.)));
+			assert!(
+				!s.history_prefetch_needed(),
+				"startup and bottom-follow must not fetch all history"
+			);
+			s.history_follow_paused.insert("chief".into());
+			assert!(s.history_prefetch_needed(), "prefetch before reaching the edge");
+			s.loading_older = true;
+			assert!(!s.history_prefetch_needed(), "only one request may be in flight");
+			s.loading_older = false;
+			s.older_history.insert("chief".into(), (vec![], None));
+			assert!(!s.history_prefetch_needed(), "stop when history is exhausted");
+		});
 	}
 
 	#[gpui::test]

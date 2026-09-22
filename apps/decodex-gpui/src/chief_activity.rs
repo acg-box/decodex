@@ -5,11 +5,19 @@ use std::{cell::Cell, collections::BTreeMap, rc::Rc};
 
 #[derive(Clone)]
 pub(super) struct HistoryMark {
-	position: Rc<Cell<f32>>,
+	pub(super) position: Rc<Cell<f32>>,
 	hit_bounds: Rc<Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
 	question: String,
 	time: String,
 	answer: String,
+}
+
+#[derive(Clone)]
+pub(super) struct HistoryScrollAnchor {
+	pub(super) work: String,
+	pub(super) offset: f32,
+	pub(super) maximum: f32,
+	pub(super) message: Option<(i64, f32)>,
 }
 
 pub(super) struct HistoryNavigation {
@@ -135,6 +143,7 @@ impl ChiefSurface {
 
 	fn jump_to_history(&mut self, id: i64, cx: &mut Context<Self>) {
 		self.latest_follow_work = None;
+		self.older_scroll_anchor = None;
 		self.set_voice_follow(false);
 		if let Some(mark) = self.history_marks.get(&id)
 			&& let Some(work) = self.selected.as_ref()
@@ -158,6 +167,7 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) {
 		self.latest_follow_work = None;
+		self.older_scroll_anchor = None;
 		self.history_navigation = None;
 		self.history_selected = None;
 		if let Some(scroll) = self.selected.as_ref().and_then(|id| self.transcript_scroll.get(id)) {
@@ -173,6 +183,9 @@ impl ChiefSurface {
 				}
 			}
 			self.set_voice_follow(following);
+			if delta.y > px(0.) {
+				self.prefetch_older_history(cx);
+			}
 			cx.stop_propagation();
 			cx.notify();
 		}
@@ -670,6 +683,63 @@ mod tests {
 			surface.read_with(visual, |s, _| s.history_follow_paused.contains("chief")),
 			"even a small upward wheel step must pause automatic bottom-follow"
 		);
+	}
+
+	#[gpui::test]
+	fn prepending_history_keeps_the_visible_message_at_the_same_position(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(320.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			if let Some((_, ChiefHistoryResult::Available { entries, .. })) = &mut s.history {
+				entries[1].text = "Existing conversation paragraph. ".repeat(80);
+			}
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		for _ in 0..40 {
+			visual.update(|window, cx| window.draw(cx).clear());
+			visual.run_until_parked();
+		}
+
+		let before = surface.update(visual, |s, cx| {
+			let scroll = s.transcript_scroll["chief"].clone();
+			scroll.set_offset(point(px(0.), px(-50.)));
+			s.history_follow_paused.insert("chief".into());
+			let before = s.history_marks[&1].position.get() + f32::from(scroll.offset().y);
+			s.older_scroll_anchor = Some(HistoryScrollAnchor {
+				work: "chief".into(),
+				offset: f32::from(scroll.offset().y),
+				maximum: f32::from(scroll.max_offset().y),
+				message: Some((1, s.history_marks[&1].position.get())),
+			});
+			let Some((_, ChiefHistoryResult::Available { entries, .. })) = &s.history else {
+				panic!("fixture")
+			};
+			let mut older = entries[0].clone();
+			older.id = -10;
+			older.text = "Earlier conversation paragraph. ".repeat(50);
+			s.older_history.insert("chief".into(), (vec![older], None));
+			cx.notify();
+			before
+		});
+		for _ in 0..4 {
+			visual.update(|window, cx| window.draw(cx).clear());
+			visual.run_until_parked();
+		}
+		surface.read_with(visual, |s, _| {
+			let after = s.history_marks[&1].position.get()
+				+ f32::from(s.transcript_scroll["chief"].offset().y);
+			assert!(
+				(after - before).abs() < 1.,
+				"prepend must preserve the reading anchor: {before} -> {after}; offset {:?} max {:?} mark {}",
+				s.transcript_scroll["chief"].offset(),
+				s.transcript_scroll["chief"].max_offset(),
+				s.history_marks[&1].position.get()
+			);
+		});
 	}
 
 	#[gpui::test]

@@ -154,9 +154,14 @@ mod tests {
 				pending_events: vec![],
 			})));
 			assert!(s.usage_estimate.is_none());
+			s.details_visible = true;
 		});
 		visual.update(|window, cx| {
 			window.resize(gpui::size(px(1180.), px(1400.)));
+			window.draw(cx).clear();
+		});
+		std::thread::sleep(std::time::Duration::from_millis(220));
+		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
 		let bounds = visual.debug_bounds("task-usage-toggle").expect("usage toggle");
