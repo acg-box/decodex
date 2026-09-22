@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:0111cc00cb344d87111800dcba8a1e2852425cbd76e32959f77ce9644a7302e5",
+  "claims": [
+    {
+      "id": "claim_21af3e466a65493293be783be3dbc70e",
+      "statement": "The historical no-migration server-store design is superseded by the current ordered SQLite migration implementation.",
+      "evidence": [
+        {
+          "resource": "repo://database/src/migrations.rs",
+          "version": "repo-file-v1:sha256:e1dd3e69ef413f72ce15b0cc9c78cead5e197705b36c896dde779bd6ba971d4b"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

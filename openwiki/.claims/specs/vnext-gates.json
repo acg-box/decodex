@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:e26ab01c01b8a17a0382e8edbd3252d9d70398503d6b488c287fbbdb5994b19c",
+  "claims": [
+    {
+      "id": "claim_0a3f727a31ee46ffb4817dbb5d71e57d",
+      "statement": "Current product persistence uses ordered SQLite migrations and repository-owned Makefile validation, superseding historical server-store reset and gate instructions.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile.toml",
+          "version": "repo-file-v1:sha256:6d2f47e4fb4b9a66bf2eac40d7fb5ee153822d312b44db7052e008b50a91b4c2"
+        },
+        {
+          "resource": "repo://database/src/migrations.rs",
+          "version": "repo-file-v1:sha256:e1dd3e69ef413f72ce15b0cc9c78cead5e197705b36c896dde779bd6ba971d4b"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

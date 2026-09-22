@@ -1,22 +1,30 @@
 ---
-type: "Evidence"
-title: "Program Graph Surface V1 Evidence"
-description: "Architecture, interaction, accessibility, deterministic layout, visual capture, and validation evidence for the bounded native Program Graph Surface."
-tags: [adaptive-factory, program, domain-pack, graph, gpui, accessibility, evidence]
+type: Reference
+title: "Historical Program Graph Surface V1 evidence"
+description: "Historical Program Graph Surface V1 evidence"
+tags: ["decodex", "architecture"]
 verified:
-  - by: openwiki/0.4.0
-    at: 2026-08-26T21:13:26.303Z
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
 sources:
-  - id: openwiki-source-e3cbf7660b5f77bbecd437c5
-    resource: repo://apps/decodex-gpui/src/bin/factory_visual_capture.rs
-  - id: openwiki-source-4d0807cef0e852e926ce0974
-    resource: repo://apps/decodex-gpui/src/factory_surface.rs
-  - id: openwiki-source-31df4748243df01f1137f62f
-    resource: repo://apps/decodex-gpui/src/program_graph.rs
-  - id: openwiki-source-e9af71a768d2e84c84c2bdc3
-    resource: repo://apps/decodex-gpui/src/programs.rs
-generated: {by: "codex", at: "2026-08-26T21:13:26.303Z"}
+  - id: openwiki-source-477d041b92b25547bc39e55d
+    resource: repo://apps/decodex-gpui/src/chief_graph.rs
+  - id: openwiki-source-a78ea5fe51f1eae9468e41e0
+    resource: repo://apps/decodex-gpui/src/chief_tree.rs
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+# Current graph replacement
+
+The Program/Domain lens implementation recorded below is no longer in the active source tree. Its eight former implementation Claims are retired from the current evidence set because their owners (`program_graph.rs`, `factory_surface.rs`, `programs.rs`, and `factory_visual_capture.rs`) were removed. Their old results remain historical prose, not claims about today's graph.
+
+Current graph behavior lives in `chief_graph.rs` and `chief_workspace.rs`. It projects Chief work dependencies and report links; agent ownership is a separate `chief_tree.rs` projection. Tests and capture paths must follow those owners and `bin/workbench_visual_capture.rs`. Do not infer the old cache, lens, keyboard, or fixture guarantees for the replacement graph.
+
+See [Desktop workspace](../architecture/desktop-workspace.md).
+
+---
+
+## Preserved V1 receipt
 
 # Program Graph Surface V1 Evidence
 

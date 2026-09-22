@@ -1,8 +1,23 @@
 ---
-type: "Reference"
+type: Reference
 title: "SQLite Local-Product Decision"
+description: "SQLite Local-Product Decision"
+tags: ["decodex", "architecture"]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-651d1fb6c9e49916a916ab51
+    resource: repo://Cargo.toml
+  - id: openwiki-source-0184655e2e99000280ce7bbe
+    resource: repo://database/src/lib.rs
+  - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
+    resource: repo://database/src/migrations.rs
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+> Current decision retained: one local SQLite owner. The current schema version is 30; use the embedded migration ledger, not the historical no-migration server-store policy. See [Runtime architecture](../architecture/runtime-architecture.md).
 
 # SQLite Local-Product Decision
 
@@ -30,9 +45,9 @@ can reliably track in a chat list.
 The first product deployment has these facts:
 
 1. One user owns one local Decodex root.
-2. One `decodexd` process owns product mutations.
+2. One `decodex serve` process owns product mutations.
 3. GPUI and CLI clients communicate through one same-UID protocol. The optional menu-bar
-   item is an in-process GPUI surface, not another client or process.
+   item is an in-process Swift presentation using the native protocol client, not another app or state owner.
 4. Multi-machine workers are a possible future product, not a current requirement.
 
 Under these facts, a separate server database adds packaging, bootstrap, roles, sockets,

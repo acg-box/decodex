@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:9c6356a0b74edf826d3435fff4e2dc2df5865762710f1ee7380d6c65a59e27c9",
+  "claims": [
+    {
+      "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
+      "statement": "Chief is a general-purpose primary agent that can handle simple work directly and coordinate workers or subordinate Chiefs while treating worker completion as evidence rather than automatic goal acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/chief/instructions.md",
+          "version": "repo-file-v1:sha256:867e49b821d976239a83bdff76f8003fc9cb65bb46e3be96dc496ac6715709d5"
+        }
+      ]
+    },
+    {
+      "id": "claim_7c969d8fc62e49efbed57f3ead5f39f4",
+      "statement": "Known external ownership causes the Chief host to reject user input before enqueueing it; availability recovery does not automatically resend previously unsent user input.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/chief.rs#L1764-L1795",
+          "version": "repo-lines-v1:sha256:884c2f9002bc371c0b62e6be457b4d6377c7590e0e1f3c53571962aeeb03fc6b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhNTlhMGZjZTNiMjBjZDI1YzQwYjJmMGIyNWNjMWY5NTA0YWYyNmFmYmVlMjgwYjFiMWJmNmEwMGVlMjQ2MDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0NWM3NzI1NGY2NGNjZTM0OWNlNDdiODU2Y2I0M2ZjYzQ5MTkxZjhmMThhZWM5YjYzYWYzMDU3ZjNiNTdhNmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiOGNmOGZjZDk1ZjdmMmNiNDgxODQ4MDNjOWM4YzMwZTlmZjUyODA1MjY2MjEyMWJmYjQ0ZmU1YTZmOWM0ZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZkMWMxY2EzNDU2NTU3N2U1YzVmODYyZmVjODU3YTBlNTYwOGQ1YmRkMjVkZGU5NDIyZDMwYjIzY2RkMzcyZjIifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/chief_host.rs#L1064-L1091",
+          "version": "repo-lines-v1:sha256:c28757ea8e523aab82d69b9fa9358f7787fb41a925240cf9e6c842e3a0c71d46:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2NzIxNDdjZDA0MDllMzVmZmQzYzYwNmFiYmZjN2NmYTA3M2VhMzIzYzQxMGM0ZTJlNjU5ODU3YjM5YzA5NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxYmUzNWQzZWU5ZGFiM2Y3ZGFhOTkxY2RkN2ViYzNjYmJjYjQzYzIxYTFiNTE0ZmM3MDQ5NDNiZTFjOTY3ZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3ZTZkODhiMGUwMDQ5NjlkOTJiODI1MzE5N2IwNDFjYmUwNmMyNzgzYmI0NTJiNjA1NDg4ZWFiOTEwMDk3MjkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a0a75db482e443bc9d9baa4ec028a420",
+      "statement": "Native child requests resolve through bounded verified thread-spawn ancestry, without granting local manager-tool authority to the child.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/chief/native_subagents.rs",
+          "version": "repo-file-v1:sha256:ce09620692ec79936ae22e2094e7581d993a2d64283d1a00c4a91b23b7307af0"
+        }
+      ]
+    },
+    {
+      "id": "claim_19121c405fa2474db35394312f3d38a5",
+      "statement": "Guardian observations persist review evidence without authorizing execution or independently waking work.",
+      "evidence": [
+        {
+          "resource": "repo://database/src/chief_guardian.rs",
+          "version": "repo-file-v1:sha256:a4008182c6ac40d5cc826edaa8df409a5a88e4fec185aa3f872242942de1e824"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

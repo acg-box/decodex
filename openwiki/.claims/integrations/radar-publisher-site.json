@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:5499ea5ac2de6f12ec3cd18a501d8cf8837bbeab96b185ffb6f31222c0ac02cc",
+  "claims": [
+    {
+      "id": "claim_b2a02c31d4c84b959a4c49ad2fc064b0",
+      "statement": "Radar owns private evidence/cache artifacts while Publisher owns the social candidate, reservation, publication and observation flow.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-publisher/src/social_contracts.rs",
+          "version": "repo-file-v1:sha256:a753aad8a5828f5d471b4a9281a1fc142a25655da4b057751de11c1553445d8f"
+        },
+        {
+          "resource": "repo://apps/decodex-publisher/src/social_workflow.rs",
+          "version": "repo-file-v1:sha256:979fbcec14001b9e6a0300095651c22f0192f14178d43ffeca3971415a09b3e6"
+        },
+        {
+          "resource": "repo://apps/radar/src/paths.rs",
+          "version": "repo-file-v1:sha256:854231dfd3a3e2b82b8133eaf63f0638ffbc054c3e59a5b001ed610235e2c40b"
+        }
+      ]
+    },
+    {
+      "id": "claim_c9711f3ae670401b9e05f661fe360fb1",
+      "statement": "The site is an Astro project with independent check and build scripts rather than a live product-state client.",
+      "evidence": [
+        {
+          "resource": "repo://site/astro.config.mjs",
+          "version": "repo-file-v1:sha256:63e02dcdddd17eab6abb388a9a91bda9a9f5af0c887210d8e8ad14f60ebe11c4"
+        },
+        {
+          "resource": "repo://site/package.json",
+          "version": "repo-file-v1:sha256:c14f33937592104ca2eb6d665ff5bc568a6b77a6ff884215ef8e23b7117428e1"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

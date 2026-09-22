@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:df297a801842f22525db10ef7c3a764e63856ba052c94218bf20e0a47b9da3c7",
+  "claims": [
+    {
+      "id": "claim_e715624921f64c57bcb606cf86a567c6",
+      "statement": "Program cycle records remain service-owned SQLite data, while the current desktop graph projects Chief work rather than the historical Factory surface.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/chief_graph.rs",
+          "version": "repo-file-v1:sha256:5a3384e2d16f934d4219029298886f343004a2a6b4d6c446a954cbceec0f1fa9"
+        },
+        {
+          "resource": "repo://database/src/program_cycles.rs",
+          "version": "repo-file-v1:sha256:d52243a04b5390609143655f2f722395cbe5bdbee76ed76ae7c1df7a3bced9b6"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

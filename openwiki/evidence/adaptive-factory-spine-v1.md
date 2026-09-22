@@ -1,16 +1,28 @@
 ---
-type: "Evidence"
-title: "Adaptive Factory Spine V1 Evidence"
-description: "Implementation, restart, protocol, GPUI, and dogfood evidence for the first bounded Program feedback cycle."
-tags: [adaptive-factory, program, ontology, graph, sqlite, gpui, evidence]
-openwiki:
-  roles: [testing, architecture, workflow]
-  change_kinds: [lifecycle, public-api, validation]
-  source_paths: [crates/decodex-core/src/program.rs, database/migrations/0005_adaptive_factory_spine.sql, database/src/program_cycles.rs, crates/decodex-protocol/src/program_cycle.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/quick_task.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
-  test_paths: [database/src/program_cycles.rs, database/tests/quick_task_restart.rs, crates/decodex-runtime/tests/bootstrap_doctor.rs, crates/decodex-runtime/tests/websocket_protocol.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodexd/tests/signal_shutdown.rs]
-  invariants: [SQLite is the only Program authority.; A Program WorkItem uses the ordinary Quick Task execution path.; A Review requires positive terminal provider evidence.; A derived causal graph has no scheduling authority.; Unknown provider outcomes never authorize automatic replay.; One V1 Program cycle owns exactly one WorkItem.]
-  validation_commands: [python3 scripts/vnext/local_database_gate.py, python3 -m unittest tests/scripts/test_vnext_architecture.py, DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo test -p decodex-core -p decodex-protocol -p decodex-database -p decodex-runtime -p decodex-gpui -p decodexd --all-targets --features decodex-gpui/visual-capture --no-fail-fast, DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo clippy -p decodex-core -p decodex-protocol -p decodex-database -p decodex-runtime -p decodex-gpui -p decodexd --all-targets --features decodex-gpui/visual-capture -- -D warnings]
+type: Reference
+title: "Historical Adaptive Factory Spine V1 evidence"
+description: "Historical Adaptive Factory Spine V1 evidence"
+tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-477d041b92b25547bc39e55d
+    resource: repo://apps/decodex-gpui/src/chief_graph.rs
+  - id: openwiki-source-dd24c2ff3c2515a21892e312
+    resource: repo://database/src/program_cycles.rs
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+# Current status
+
+The one-cycle August receipt below remains historical. Program records still have a SQLite owner, but the old Factory UI and Quick Task source paths are not current desktop entrypoints. The active workspace uses Chief conversations, an ownership tree, and a dependency graph. This refresh does not rerun the recorded dogfood or extend its acceptance to current builds.
+
+See [current architecture](../architecture/runtime-architecture.md) and [validation commands](../operations/commands-and-validation.md).
+
+---
+
+## Preserved evidence
 
 # Adaptive Factory Spine V1 Evidence
 

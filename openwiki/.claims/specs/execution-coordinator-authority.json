@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:ba4965b2f7d3e65e8f778a81b570a4a79f69a7dea62541823ca31dc65b377c85",
+  "claims": [
+    {
+      "id": "claim_e3d4a7229d7246c2a324ba1df3c12052",
+      "statement": "Current ordinary conversation coordination composes the SQLite store, process supervision, provider attempts and native Codex adapter in the runtime; Chief has its own durable coordination host.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/chief_host.rs",
+          "version": "repo-file-v1:sha256:2f03a333afd804947c243c5d8ac6d1c942bfafddf41a87d6f608dac9412ef7da"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/conversation.rs",
+          "version": "repo-file-v1:sha256:933b56d49f72c7a5b1333891368872ef3874b61ccb9e109f0a5814641b4c3eef"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

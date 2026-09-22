@@ -1,8 +1,29 @@
 ---
-type: "Reference"
-title: "XY-1262 Codex runtime proof"
+type: Reference
+title: "Historical Codex runtime proof"
+description: "Historical Codex runtime proof"
+tags: ["decodex", "architecture"]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-d13bdbfb42dbfbf578ffb72e
+    resource: repo://crates/decodex-runtime/src/chief_capabilities.rs
+  - id: openwiki-source-565fd95d4ccb5346bf1cfcb1
+    resource: repo://crates/decodex-runtime/src/chief_integrations.rs
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+# Current scope
+
+The July 0.144 proof is version-bound. It must not define current plugin, skill, MCP or voice availability. Current runtime capabilities and integration inventory use the connected native app-server; capability observations are separate from installation authorization.
+
+This documentation refresh does not rerun or broaden the dated evidence. See [Runtime architecture](../architecture/runtime-architecture.md) and [Commands and validation](../operations/commands-and-validation.md) for current work.
+
+---
+
+## Preserved receipt
 
 # XY-1262 Codex runtime proof
 

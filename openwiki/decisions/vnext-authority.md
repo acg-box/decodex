@@ -1,8 +1,27 @@
 ---
-type: "Reference"
-title: "Decodex vNext Authority Decision"
+type: Reference
+title: "Historical vNext authority decision"
+description: "Historical vNext authority decision"
+tags: ["decodex", "architecture"]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
+    resource: repo://database/src/migrations.rs
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+# Current authority supersedes this design
+
+The following record is retained for provenance. Its disposable-data and no-migration directions must not be used on the current product database. Current code embeds ordered SQLite migrations, verifies their digests, and preserves user state. The executable owner is `decodex serve`; historical server-store and repository-orchestration paths are not current entrypoints.
+
+Use [SQLite decision](sqlite-local-product.md), [Runtime architecture](../architecture/runtime-architecture.md), and [Local database operations](../operations/local-database.md). No historical benchmark or acceptance outcome below has been rerun or rewritten by this documentation update.
+
+---
+
+## Preserved decision record
 
 > Historical design record. This page does not define current product requirements.
 > See the repository README for current scope. The repository-management and built-in

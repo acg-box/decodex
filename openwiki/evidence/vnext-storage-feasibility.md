@@ -1,8 +1,31 @@
 ---
-type: "Reference"
-title: "vNext former server store, blob, and cache feasibility"
+type: Reference
+title: "Historical server-store feasibility"
+description: "Historical server-store feasibility"
+tags: ["decodex", "architecture"]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:55:18.668Z
+sources:
+  - id: openwiki-source-9cb0f6612fed4591dd1bd8d3
+    resource: repo://crates/decodex-core/src/blob.rs
+  - id: openwiki-source-fe721c16e120e74e1b8f9702
+    resource: repo://database/Cargo.toml
+  - id: openwiki-source-0184655e2e99000280ce7bbe
+    resource: repo://database/src/lib.rs
+generated: { by: "codex", at: "2026-09-22T05:55:18.668Z" }
 ---
+
+# Current scope
+
+The former server-store prototype below is retired. Normal product storage is bundled SQLite; do not install a separate database server or reproduce the old pool/migration setup for the current application. Blob identity and disposable UI caching remain distinct owners.
+
+This documentation refresh does not rerun or broaden the dated evidence. See [Runtime architecture](../architecture/runtime-architecture.md) and [Commands and validation](../operations/commands-and-validation.md) for current work.
+
+---
+
+## Preserved receipt
 
 # vNext former server store, blob, and cache feasibility
 
@@ -96,8 +119,7 @@ and broader fault-injection thresholds.
 | No exactly-once claim | explicit at-least-once plus receipt/readback reconciliation contract |
 
 The full commands, local layout, recovery steps, cleanup, and operational failure modes
-<!-- openwiki: broken internal link [../../spikes/vnext-storage/README.md] file "../../spikes/vnext-storage/README.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-are in [`spikes/vnext-storage/README.md`](../../spikes/vnext-storage/README.md).
+were recorded in the now-removed `spikes/vnext-storage/README.md`; retrieve that file from the historical revision, not the current checkout.
 
 ## Boundaries and falsifiers
 

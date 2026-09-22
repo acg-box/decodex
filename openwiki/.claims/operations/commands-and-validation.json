@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:3a067c46b14aadc4f2360407a2355ac80c922c413676fab4a0a1dc8f2deb694d",
+  "claims": [
+    {
+      "id": "claim_8fa9284d970947ab9981d4144ecb9648",
+      "statement": "Makefile.toml defines repository-wide checks while stable Rust is the active compiler channel.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile.toml",
+          "version": "repo-file-v1:sha256:6d2f47e4fb4b9a66bf2eac40d7fb5ee153822d312b44db7052e008b50a91b4c2"
+        },
+        {
+          "resource": "repo://rust-toolchain.toml",
+          "version": "repo-file-v1:sha256:d6c06be84864a2e77f0d2c9b1392e206045bd17b9189817d26bb03c801620d33"
+        }
+      ]
+    },
+    {
+      "id": "claim_724a62da7e974202b1f1840865407f2e",
+      "statement": "macOS packaging uses xcode-select unless DEVELOPER_DIR is explicitly supplied and verifies signed payload and native ABI contracts.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/macos/compile_decodex_app_icon.sh",
+          "version": "repo-file-v1:sha256:878514b79a8786eea937914353d444d5c04a62b149b07f6a01206265aaf8eafc"
+        },
+        {
+          "resource": "repo://scripts/macos/stage_decodex_app.sh",
+          "version": "repo-file-v1:sha256:f6c5dfd4297b9a65d950da5248fe3a1e038a800679112337d4ef4068a8180a47"
+        },
+        {
+          "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
+          "version": "repo-file-v1:sha256:ce67aa0933e6ca0612dabaddcd98f8babd9fcf53202ccc40ab1e0400d378d466"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

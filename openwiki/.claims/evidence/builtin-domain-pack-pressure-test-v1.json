@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:c7645c96db1b7d21f6a20ea51c172c26e81ab692e833aa72c6258a94e5a8ea3a",
+  "claims": [
+    {
+      "id": "claim_c7b6b004dae2431a93bd07afded00de5",
+      "statement": "Development and Paper Investment Domain Packs remain compiled-in runtime manifests with deterministic projections rather than an executable public extension runtime.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/domain_packs.rs",
+          "version": "repo-file-v1:sha256:d9570d530062ad88316eb19e2113da38eaea178583961fa527d89eac31a710f2"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

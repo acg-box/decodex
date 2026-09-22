@@ -1,29 +1,38 @@
 ---
-type: "Evidence"
-title: "SQLite Local-Product Evidence"
-description: "Current automated and native evidence for daemon-owned SQLite, protocol-only clients, and the single Decodex.app desktop architecture."
-tags: [local-product, sqlite, protocol, gpui, macos, evidence]
-openwiki:
-  roles: [testing, architecture, workflow]
-  change_kinds: [lifecycle, public-api, validation, desktop, packaging]
-  source_paths: [database/src/lib.rs, database/src/desktop_settings.rs, database/migrations/0011_desktop_settings.sql, crates/decodex-runtime/src/application.rs, crates/decodex-protocol/src/wire.rs, apps/decodex-gpui/src/main.rs, apps/decodex-gpui/src/client_lifecycle.rs, apps/decodex-gpui/src/settings_surface.rs, apps/decodex-gpui/src/bundled_daemon.rs, scripts/macos/stage_decodex_app.sh, scripts/macos/test_decodex_app_stage.sh]
-  test_paths: [database/src/desktop_settings.rs, tests/scripts/test_vnext_architecture.py, tests/scripts/test_account_login_architecture.py, apps/decodex-gpui/src/accounts.rs, apps/decodex-gpui/src/account_profile.rs, apps/decodex-gpui/src/desktop_settings.rs, apps/decodex-gpui/src/shell.rs, scripts/macos/test_decodex_app_stage.sh]
-  invariants: [decodexd is the only normal SQLite owner.; GPUI and CLI are protocol-only clients.; Decodex.app is the only macOS GUI bundle.; The optional menu-bar item runs in the GPUI process.; Persistent desktop settings are revision-guarded in SQLite.; Reset Card consumption has no GUI claim without daemon-owned restart discovery.]
-  validation_commands: [python3 scripts/vnext/local_database_gate.py, python3 -m unittest tests/scripts/test_vnext_architecture.py tests/scripts/test_account_login_architecture.py, cargo +stable test -p decodex-protocol --all-targets, DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer cargo +stable test -p decodex-gpui --all-targets --features visual-capture, scripts/macos/test_decodex_app_stage.sh]
+type: Reference
+title: "SQLite local-product evidence and current verification boundary"
+description: "SQLite local-product evidence and current verification boundary"
+tags: ["decodex", "architecture"]
 verified:
-  - by: openwiki/0.4.2
-    at: 2026-08-27T10:25:21.174Z
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:55:18.668Z
 sources:
-  - id: openwiki-source-98e7b23c4cc276d20fcb4649
-    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
-  - id: openwiki-source-1291f5243fa6c9cb52149bda
-    resource: repo://apps/decodex-gpui/src/shell.rs
+  - id: openwiki-source-acf49c93c3e80379f0023c71
+    resource: repo://apps/decodex-gpui/src/accounts.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
-  - id: openwiki-source-268229e2b9f21dae93c32513
-    resource: repo://crates/decodex-protocol/src/wire.rs
-generated: { by: "codex", at: "2026-08-27T10:25:21.174Z" }
+  - id: openwiki-source-f4724776aade804ebf838e2e
+    resource: repo://crates/decodex-runtime/src/account_service.rs
+  - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
+    resource: repo://database/src/migrations.rs
+  - id: openwiki-source-76081c1a47ca8cf32593de34
+    resource: repo://scripts/macos/test_decodex_app_stage.sh
+generated: { by: "codex", at: "2026-09-22T05:55:18.668Z" }
 ---
+
+# Current verification boundary
+
+The detailed receipt below describes the older desktop consolidation, not the current build. Its protocol 2.11, cohort 7, schema 11, decodexd helper, Factory UI, and statement that Reset Card GUI consumption is absent are superseded.
+
+The current local protocol is 2.43. SQLite schema 30 includes durable Reset Card operations and quota activation. The package contains `Contents/Helpers/decodex`; Accounts and CLI now expose service-owned Reset Card operations with account-scoped recovery. `scripts/macos/test_decodex_app_stage.sh` verifies bundle identity, signatures and native ABI, including a negative mismatch fixture. These source-defined checks are not a fresh live acceptance receipt from this documentation run.
+
+Current Route is synchronous and credential-negative. The service returns authoritative completion or refusal; the historical Pending Route process-list DTO is no longer present. Desktop clients bind the result to their active session and exact command. Existing Claim IDs are updated to those current owners.
+
+See [Runtime architecture](../architecture/runtime-architecture.md), [Reset Cards](../operations/reset-cards.md), and [Commands and validation](../operations/commands-and-validation.md).
+
+---
+
+## Preserved consolidation receipt
 
 > Historical acceptance record: the Reset Card GUI retirement below is superseded
 > by [Reset Card operation](../operations/reset-cards.md). This record does not

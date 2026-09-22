@@ -30,6 +30,14 @@ The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do
 
 <!-- OPENWIKI:END -->
 
+### Current Wiki scheduling status
+
+The generated scheduling sentence above does not prove an active automation.
+This repository currently has no checked-in OpenWiki Actions workflow or Wiki role
+in `automations/portfolio.toml`. Use the OpenWiki page-job update lifecycle and
+verify actual workflow registration before claiming scheduled refresh. See
+[Wiki maintenance](openwiki/operations/wiki-maintenance.md).
+
 ## Codex upstream reference
 
 - For Codex-backed behavior, inspect the relevant official `openai/codex` source,

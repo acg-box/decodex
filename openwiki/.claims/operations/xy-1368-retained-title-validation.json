@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:f83bc00e35c4331de75195c2392dcdb4a5319a7b33347aad0fe3acb9cfacb599",
+  "claims": [
+    {
+      "id": "claim_1f4a4c1330fa4cd98cb1e98b2f8afe62",
+      "statement": "Current repository validation is defined by Makefile.toml, separate from the historical retained-title server-store command receipts.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile.toml",
+          "version": "repo-file-v1:sha256:6d2f47e4fb4b9a66bf2eac40d7fb5ee153822d312b44db7052e008b50a91b4c2"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

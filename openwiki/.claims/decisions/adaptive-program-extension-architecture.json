@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:8ac61e44624f6e84b9402709766e59061d5214d1f2a5145f413a8a922213413e",
+  "claims": [
+    {
+      "id": "claim_57e074771dc449d381c92434a1615ca6",
+      "statement": "The current Chief policy supports general-purpose work and subordinate Chiefs, while built-in Program/Domain Pack storage and projections remain separate retained mechanisms.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/chief/instructions.md",
+          "version": "repo-file-v1:sha256:867e49b821d976239a83bdff76f8003fc9cb65bb46e3be96dc496ac6715709d5"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/domain_packs.rs",
+          "version": "repo-file-v1:sha256:d9570d530062ad88316eb19e2113da38eaea178583961fa527d89eac31a710f2"
+        },
+        {
+          "resource": "repo://database/src/program_cycles.rs",
+          "version": "repo-file-v1:sha256:d52243a04b5390609143655f2f722395cbe5bdbee76ed76ae7c1df7a3bced9b6"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

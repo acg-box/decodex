@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:67ddd0db27ad8077525852c94c53e3a6f7f05aed6a566c4bbb3fa34e926c3d97",
+  "claims": [
+    {
+      "id": "claim_0943befab78d47f4ab01fd80e6a28bbb",
+      "statement": "Normal product storage is a serialized SQLite connection owned by the service, with bundled migrations and schema version 30.",
+      "evidence": [
+        {
+          "resource": "repo://database/src/lib.rs#L138-L211",
+          "version": "repo-lines-v1:sha256:075e69ede11340a2110300d4a403cf768518dc7b68e0fda4fe79db247623647c:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyM2Q0ODA0NzA4NzM4ZjJlNjhhZDFiNmFmZGEyMzE1ZDliMzI3Yjk3YmNlNmY4NTRkNDM2NWUwYzdmMmUxMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliMzRkNDhmZWY2YTBhMTQ3YmFhMzFhMTZmY2FjZDczNzU5MGRiNjM1YWIzNmEwNDA1MTRkNzkxZDZiMWNiZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI5NGU2NzM3MWY2YmY5ZWUzYjRmNzdlYzhjM2I1ZjUzMTNhM2UxZTc1MjE5NDFmOGM3NDNiMzMwMWM3MTI2ZmYifQ"
+        },
+        {
+          "resource": "repo://database/src/migrations.rs#L1-L20",
+          "version": "repo-lines-v1:sha256:40dac9327dc815afb9a8ea4c59ca5bf33431a42c3de60fd2fa6754587e7bfca1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwZmU2Y2ZlZWI1MTRhNTYwMTY2OGU0OTg4ODM4YWIxZWMzZmI4ZmU5Y2U0MDY4ZmMyOTgyYWFlYWMwY2Q5NmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViYWZlYjc5YTFmZTdjMWViMDcwNDc3NzgyZTk1ZmVlMjA1MDMyMWNmYzliODZlNWNmZTgxYzYwNTA2ZjUxZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkMjI2OGE5Y2M3MDJlMzljZmI1OTViZTBlNWQ4NGM2NDVmOTk1NDY2YjQ2NjVlOWVmZjY2MjY1ZGE5NWVhYzUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6d427c745505473784f54233dd60be49",
+      "statement": "The active Rust workspace retains a separate database transfer tool and no separate decodexd application member.",
+      "evidence": [
+        {
+          "resource": "repo://Cargo.toml#L1-L17",
+          "version": "repo-lines-v1:sha256:b0f7086ea344358e740219ac15ba92349e1845b2744da478dffef5ce67c8ea2e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzNGUxMDJjODYxZjk5NGQyYWFjZTkxMTRkMzkyZGJjMTYyMTkwZTAwYmU4ZmUzNTdkNDcyMTUwY2E0Mzk2MTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3MGJmYTY2MDdmODg2ZGU1ZTY0MzIxZDJkNzJiNjJiYTQyYmI2MTFjNzU3MTAzNWI5OWQ5MTkzMTRkNTdlN2EifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

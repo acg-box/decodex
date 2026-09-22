@@ -1,8 +1,27 @@
 ---
-type: "Reference"
-title: "XY-1273 account and runner boundary evidence"
+type: Reference
+title: "Historical account and runner evidence"
+description: "Historical account and runner evidence"
+tags: ["decodex", "architecture"]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-96d8b5b0b0f9c7e15da20cda
+    resource: repo://crates/decodex-runtime/src/process_supervisor.rs
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
+
+# Current scope
+
+The old candidate status and host-vault/server-store references below describe their captured revision. Current account credentials use the SQLite service adapter. ProcessGeneration remains a positive-evidence authority; restored processes are not automatically adopted or signaled.
+
+This documentation refresh does not rerun or broaden the dated evidence. See [Runtime architecture](../architecture/runtime-architecture.md) and [Commands and validation](../operations/commands-and-validation.md) for current work.
+
+---
+
+## Preserved receipt
 
 # XY-1273 account and runner boundary evidence
 

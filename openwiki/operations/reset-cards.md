@@ -1,3 +1,26 @@
+---
+type: Reference
+title: "Reset Card operation"
+description: "Reset Card operation"
+tags: ["decodex", "architecture"]
+openwiki_generated: true
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-08a47b3cdc5d2b1cdae95c23
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift
+  - id: openwiki-source-4b6e253ef76717138b4dd66e
+    resource: repo://apps/decodex-gpui/src/shell_reset_cards.rs
+  - id: openwiki-source-d99870a603f95fac1e865fb2
+    resource: repo://crates/decodex-runtime/src/account_launch/api_reset_card.rs
+  - id: openwiki-source-b931569075c8af059aefa4d2
+    resource: repo://database/src/reset_cards.rs
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+---
+
+> Current scope: Reset Card redemption is available in Accounts and the explicit CLI, with durable account-scoped recovery. Schema 30 retains the schema-29 operation ledger and adds separate weekly activation. The source/release comparison below is a version-bound implementation receipt, not a statement of the currently installed Codex version. Quota refill animation displays confirmed results; it does not redeem a card. See [Weekly activation](quota-activation.md).
+
 # Reset Card operation
 
 Reset Cards are required Decodex functionality. They are not part of the retired

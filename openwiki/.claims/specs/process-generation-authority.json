@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:e95554f31158bd62c647f665e14add90db99b3d8ce51c3b4c0a02b50383c6335",
+  "claims": [
+    {
+      "id": "claim_2be91f3b07f54663a6f4b76c366b7238",
+      "statement": "ProcessSupervisor reconciles durable process authority using positive evidence and does not adopt, reacquire or signal restored processes.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/process_supervisor.rs#L1-L27",
+          "version": "repo-lines-v1:sha256:d6fa166f7019ce3797243a717eb000ed965f67705e25e0b7b7da2c40a2caf653:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjMTQzODc2NDNjZmVkMzNmZGQ4MTZhNTYyYTM5NzZlODk1ODkzMDRiMmE5ZTRkMzgxYzliZDZjOTkzMTk1YjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1OTNjOGQzYWZhNTlmN2EyZTM3ZTIyMmY1NjIyMzFmOWJmMDczYTQ4NjJiMWRmZWE5MTc1YTNjNmQ0YWU3MzkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_11e86017a41b40cd9ae9e0d2685e6633",
+      "statement": "SQLite process transitions and Chief affinity release require valid positive death evidence, including correctly identified prior-boot termination.",
+      "evidence": [
+        {
+          "resource": "repo://database/src/chief_process.rs#L313-L371",
+          "version": "repo-lines-v1:sha256:406d31b4a29bc0370b2ded807c0a9dcc77a07f4deb508ec597f2a70f1cbf6766:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YmJhNzQ0YmRmMDhjZjIzODdmMTU3MjYyNmU0NGNjMDA2NGY0NTUyOTgwNmJjODE3OTNmYzAyZTJiYTJmMzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyMzg1NjVhYTc5ZDkyYjY0M2VhYjAwYmMzYWY5N2RmNDg3NTc3MWI0MWQyYTMwMTdlMDgxMDRjZjg5YmZhNTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyNTZmNGFiNDk1NGQzNDFkOTI0YWI2NmVkZDQwMGRiYjNiYTM1ZGJhMzBhN2EwNTMxOWFhYzM5ODFkMWRlMmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNmY2ZmMmQ5MzJjZTM3ZWY3YjdkZGFlMDhmMWJhMDY3MGFhZDYzNTk0ZjBhNjY5NmIzODU4YTJkYzBmODAyMzcifQ"
+        },
+        {
+          "resource": "repo://database/src/process_generations.rs",
+          "version": "repo-file-v1:sha256:6c4ec2d3f7b0092ff96d1dc587694a5b55e546a9b65eba76b8bdf907a785a83f"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

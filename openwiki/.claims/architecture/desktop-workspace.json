@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:10c93c9ba221367ef0fc2c1ef82044b5ad134d993d49c2b38129ef2871a5bf5e",
+  "claims": [
+    {
+      "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
+      "statement": "The desktop separates agent ownership in the right tree from dependency and report relations in the bottom Chief graph.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/chief_graph.rs",
+          "version": "repo-file-v1:sha256:5a3384e2d16f934d4219029298886f343004a2a6b4d6c446a954cbceec0f1fa9"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/chief_tree.rs",
+          "version": "repo-file-v1:sha256:60dacc89eb6f114e504f1ec515683f8e76930504f65ccfd3a1d6245a0fc0525f"
+        }
+      ]
+    },
+    {
+      "id": "claim_adf48d529f1e46d69088e1b7e1d6a6eb",
+      "statement": "Native glass panels retain GPUI state and input ownership while AppKit supplies composition and attached-window focus handling.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/chief_native_composer.rs",
+          "version": "repo-file-v1:sha256:74176cedfee25f00511166edb67e88aa970e00b3933d74238fd5b1c1e0ab653b"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_glass_panel.rs",
+          "version": "repo-file-v1:sha256:8083d1a96c11ab2045766e6457510337e729523c5dedf0ebed2a3ec4243f8b94"
+        }
+      ]
+    },
+    {
+      "id": "claim_dbd2402450704881af1cd208148925b5",
+      "statement": "A first transient background archive-read failure preserves confirmed state without showing an error; repeated failures or explicit checks show feedback.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/chief_archive.rs#L17-L37",
+          "version": "repo-lines-v1:sha256:c3de729dd4640dbe4b1ec25ec9e77620fd93a55a2f7675f464325cb7a76fbd46:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1MDliMzk2MDhlMzI4MDZlMmIzN2RkZmE1ZTQ3MTljMjUzNjg4YmRhYmRlNmU1ZjAxZGNlMDk1OGQ3ZGIxNzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkN2Q4MWVmODJiN2FhYTQzMTVkMTUzMmVhMGFkZmFkNzMyN2ExZjQ3Y2VlZjRhNmFkODUzMzVjMTQxOGU3NzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_380ad209cf8047b6844522751b58e616",
+      "statement": "Conversation text selection is read-only and scoped to individual rendered text blocks, and copy actions display transient success feedback.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/chief_markdown.rs#L241-L339",
+          "version": "repo-lines-v1:sha256:115946ae3af3a3577d06328db9cbee265de88dc3aba317fd985e53ed4d206626:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmYmMyNDNlMWRiNTEyZDFmNDRmNjFhOTA0YTMxNTBiM2VlZDg4YzdiZjkxYWE2OGFjMWI0Mjc4Yzk1YjBmMTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiYmRmYzM5NzAzODhhNDgyOGQ3MWYzZmI3ZWE1ZmFlOGYxMzE1MTQxN2ZiYmJkN2ZlZjk0ZDJiYTdhMTE0ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZkN2I3NGIzZjUzOTM5Mzg4NmMxNGY3ZDgyMTk4NzgyNzg2ZTE2Y2Q1ZjBkNGJhZTJlMGE0NjYxY2ZlZTJmNzIifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/chief_selectable_text.rs",
+          "version": "repo-file-v1:sha256:8ed80c4da3f1fc8be7882b1fd4749e4f644589481c9d073f768289ff220f25bc"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}

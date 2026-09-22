@@ -1,139 +1,93 @@
 ---
-type: "Runbook"
-title: "Commands And Validation"
-description: "Current source, test, package, and runtime validation entrypoints for Decodex."
-tags: [operations, validation, rust, macos, sqlite]
-openwiki:
-  roles: [operations, testing]
-  change_kinds: [validation, runtime, desktop, packaging]
-  source_paths: [Makefile.toml, apps/decodex-gpui/src/main.rs, scripts/vnext/local_database_gate.py, scripts/macos/stage_decodex_app.sh, scripts/macos/test_decodex_app_stage.sh, tests/scripts/test_vnext_architecture.py]
+type: Reference
+title: "Commands and validation"
+description: "Commands and validation"
+tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-22T05:36:11.119Z
+sources:
+  - id: openwiki-source-c8b1a2a9f2113ec43d4066da
+    resource: repo://Makefile.toml
+  - id: openwiki-source-b7793decf9d7c9ba48e57e0f
+    resource: repo://rust-toolchain.toml
+  - id: openwiki-source-8341ffcf9eaf781ab2d51b69
+    resource: repo://scripts/macos/compile_decodex_app_icon.sh
+  - id: openwiki-source-3b57179b92b257bc3fff51a1
+    resource: repo://scripts/macos/stage_decodex_app.sh
+  - id: openwiki-source-76081c1a47ca8cf32593de34
+    resource: repo://scripts/macos/test_decodex_app_stage.sh
+generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 ---
 
-# Commands And Validation
+# Commands and validation
 
-Use the smallest command that proves the changed contract, then broaden for shared
-runtime, protocol, database, or packaging changes. Use the stable Rust channel for every
-build and test command.
+Use the smallest check that proves the changed contract. Broaden testing for shared runtime, protocol, database or packaging changes. The repository uses stable Rust for builds and tests; the formatter command is independently pinned in Makefile.toml.
 
-## Active owner map
+## Source and runtime owners
 
-- `database/`: SQLite schema, migrations, adapters, and restart evidence.
-- `crates/decodex-core/`: mechanism-neutral domain types, configuration, and paths.
-- `crates/decodex-codex/`: Codex app-server contracts.
-- `crates/decodex-runtime/`: daemon application services and product behavior.
-- `crates/decodex-protocol/`: typed same-UID protocol and clients.
-- `apps/decodexd/`: the only background service composition root.
-- `apps/decodex-cli/`: supported protocol CLI.
-- `apps/decodex-gpui/`: the only macOS GUI and `Decodex.app` packaging source.
-- `apps/radar/` and `apps/decodex-publisher/`: independent auxiliary CLIs.
-- `database/transfer/`: one-shot read-only account transfer.
+| Owner | Responsibility |
+| --- | --- |
+| `database/` | SQLite schema, migration ledger, transactions and restart fixtures |
+| `decodex-core` | Domain types, bounded identities, paths and pure policies |
+| `decodex-codex` | Native app-server transport and adapters |
+| `decodex-runtime` | Service application, account effects, conversations and Chief |
+| `decodex-protocol` | Exact typed local wire contract and clients |
+| `apps/decodex-cli` | Unified `decodex` commands and `serve` |
+| `apps/decodex-gpui` | GPUI app, native Swift libraries and UI tests |
+| `apps/radar`, `apps/decodex-publisher` | Independent research/publication tools |
+| `site/` | Static Astro product site |
 
-## Focused database and architecture checks
+Do not use removed `apps/decodexd`, Factory capture binaries, or old server-store gates.
+
+## Focused checks
 
 ```sh
+cargo +stable test -p decodex-database --lib
+cargo +stable test -p decodex-protocol --lib
+cargo +stable test -p decodex-runtime --lib
+cargo +stable test -p decodex-codex --lib
+cargo +stable test -p decodex-gpui --bin decodex-gpui
+cargo +stable test -p decodex-cli --all-targets
 python3 scripts/vnext/local_database_gate.py
 python3 -m unittest tests/scripts/test_vnext_architecture.py
 python3 -m unittest tests/scripts/test_account_login_architecture.py
-cargo +stable test -p decodex-database
-cargo +stable test -p decodex-protocol
-cargo +stable test -p decodex-runtime
 ```
 
-The local database gate builds a fresh owner-private root, runs daemon initialization and
-validation, checks all migration digests and the exact table inventory, and proves the
-normal runtime dependency boundary. It does not use a second database server or client
-store.
+The database gate uses an isolated owner-private root. It is not permission to reset the user's database. Ignored live-provider tests require their documented account and effect prerequisites; do not enable every ignored test as a routine check.
 
-## CLI and daemon checks
+## Diagnostics and macOS packaging
 
 ```sh
-cargo +stable run -p decodexd -- --version
+cargo +stable run -p decodex-cli -- --version
 cargo +stable run -p decodex-cli -- status
-cargo +stable run -p decodex-cli -- doctor --output json
-cargo +stable test -p decodex-cli --all-targets
-cargo +stable test -p decodexd --all-targets
-```
-
-The active CLI command inventory is `artifact-cohort` (hidden), `status`, `doctor`,
-`reset-card`, `account`, and `fast-mode`. It does not own repository orchestration,
-commit, landing, or service supervision.
-
-## GPUI checks
-
-The complete GPUI build needs an Xcode developer directory with the Metal compiler on
-the current macOS development host. The signed app staging path additionally needs the
-Apple signing identity named by `DECODEX_APP_SIGN_IDENTITY` and SwiftPM support for the
-embedded menu-bar library.
-
-```sh
-DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
-  cargo +stable test -p decodex-gpui --all-targets --features visual-capture
-DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
-  cargo +stable clippy -p decodex-gpui --all-targets --features visual-capture -- -D warnings
-```
-
-GPUI is a protocol-only client. Its persistent desktop-setting controller must not depend
-on `decodex-database`, `rusqlite`, credentials, or provider engines.
-
-## Native macOS application checks
-
-```sh
-DECODEX_APP_SIGN_IDENTITY="Apple Development: ..." \
-  scripts/macos/stage_decodex_app.sh
+cargo +stable run -p decodex-cli -- --output json doctor
+xcode-select --print-path
+xcodebuild -version
+scripts/macos/stage_decodex_app.sh
 scripts/macos/test_decodex_app_stage.sh
-scripts/macos/run_decodex_gpui_accessibility_gate.swift --help
-python3 -m unittest tests.scripts.test_install_decodex_local_service
 ```
 
-`stage_decodex_app.sh` is the canonical release-shaped builder and requires a stable Apple
-codesigning identity; ad-hoc signing is intentionally rejected. It builds `decodex-gpui`,
-`decodexd`, the native client FFI, and the Swift menu-bar library, then signs one
-`Decodex.app`. The stage test verifies the bundle name, display name, executable, identifier,
-icon, signatures, one-app shape, embedded helper/library counts, and required ABI symbols.
-It also proves that no nested login-item app is present. The former
-`stage_decodex_gpui.sh` entrypoint was deleted and must not be used.
+A full Xcode installation and its Metal toolchain are required for GPUI. The scripts use the selected developer directory unless `DEVELOPER_DIR` is set. No Beta-specific path is required. The canonical stage script requires valid configured signing authority and rejects ad-hoc signing. It builds one app with the unified helper, native-client FFI and Swift menu-bar library.
 
-A native runtime acceptance run must also prove:
+The staging test verifies payload counts, Info.plist, signatures, team identity, native ABI and a deliberately mismatched ABI fixture. Python reads piped entitlement bytes explicitly for compatibility. A passing package test is not live UI, speech, release notarization or installation acceptance.
 
-1. the main Decodex window belongs to the staged GPUI executable;
-2. a login-item launch leaves native windows ordered out rather than presenting the main window;
-3. an ordinary reopen activates the main window;
-4. **Show Decodex in the menu bar** changes through `decodexd`;
-5. one status item appears or disappears without a second process; and
-6. the setting survives daemon and application restart.
-
-## Repository gate
-
-The repository task runner defines the broad gate:
+## Repository and auxiliary checks
 
 ```sh
 cargo make check
-```
-
-When stable-only policy prevents a task-runner subcommand from using its configured
-formatter toolchain, run the stable build, lint, test, Node, architecture, database, and
-package checks separately and record the exact formatter gap. Do not override a build or
-test with a numbered or non-stable Rust compiler.
-
-## Radar, Publisher, automations, and site
-
-```sh
+cargo make test-automations
+python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json
 cargo +stable test -p radar
 cargo +stable test -p decodex-publisher
-python3 automations/decodex/scripts/config/render_automation_plan.py --json
-python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json
 npm --prefix site run check
 npm --prefix site run build
 ```
 
-These surfaces have separate artifact authority. Their passing checks do not prove the
-daemon, SQLite, protocol, or macOS application contracts.
+Makefile.toml owns the complete gate and tool-specific formatter/linter settings. Use repository lockfiles and already-managed tools. A missing prerequisite is not a source defect and does not authorize arbitrary toolchain replacement.
 
-## Completion checklist
+## Evidence boundaries
 
-- Run the focused regression that can fail for the changed behavior.
-- Run architecture checks after ownership or packaging changes.
-- Run a real build for every changed executable or bundle.
-- Run `git diff --check` and review the complete diff.
-- Reverse-scan removed names, paths, commands, app identities, tests, and documentation.
-- State any unrun live UI, signing, installer, or repository-gate evidence exactly.
+Report source checks, unit tests, signed build, visual acceptance, provider acceptance, PR merge and installed release separately. For UI changes test focus, typing, selection, scrolling, panel transitions and task switching. Preserve failure output; screenshots that fail or return blank do not establish that the app itself is blank.
+
+[Wiki maintenance](wiki-maintenance.md) describes the separate documentation lifecycle.

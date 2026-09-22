@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:ce87dd08cb7514ec7b73be81fa1b3c85f5da215605b0a7787f6035983035fd7f",
+  "claims": [
+    {
+      "id": "claim_014ef96de4224b9e979fa1c64e77f2d8",
+      "statement": "The current signed application has explicit native bundle compatibility checks, independent of the retired private-artifact feasibility matrix.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
+          "version": "repo-file-v1:sha256:ce67aa0933e6ca0612dabaddcd98f8babd9fcf53202ccc40ab1e0400d378d466"
+        },
+        {
+          "resource": "repo://scripts/macos/verify_decodex_bundle_contracts.py",
+          "version": "repo-file-v1:sha256:95b2eedb2f7cd7c6310618b0e986f78ea396bcbd6107a7124f3226fb46fe2eca"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:55:18.668Z"
+  }
+}

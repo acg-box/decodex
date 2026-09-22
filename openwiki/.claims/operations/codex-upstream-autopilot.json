@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:636fb3dca33ef4dcf8ecb5b81117a5313ec2d189ff03bab58f21554313010ff7",
+  "claims": [
+    {
+      "id": "claim_b6c6b65984924f69970e7f0410d50903",
+      "statement": "The upstream portfolio separates implementation, independent review/landing and health roles using checked-in native automation definitions and role prompts.",
+      "evidence": [
+        {
+          "resource": "repo://automations/portfolio.toml",
+          "version": "repo-file-v1:sha256:db1107d522d96fea9e710ecc950f03734b63fc2dc6eebbb51658661f2e91203b"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/health.md",
+          "version": "repo-file-v1:sha256:5f8ee34b6dd8c7a83dd27cd640442631bb61ab8c46170d4100148d3e1bbe2cb3"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:414d70e8654583138d55caaf1cffce4ef93f03702eaa31275fac08f1614b4c4c"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/reviewer.md",
+          "version": "repo-file-v1:sha256:d4f7acc91d9d71a964509443533a447a9daaca369873cd92ea4f8b3c7e990572"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-22T05:36:11.119Z"
+  }
+}
