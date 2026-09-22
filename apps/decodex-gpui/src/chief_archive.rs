@@ -7,11 +7,32 @@ pub(super) struct Panel {
 	owner: Option<String>,
 	result: Option<State>,
 	epoch: u64,
+	read_failures: u8,
 	last_read: Option<std::time::Instant>,
 	request: Option<Task<()>>,
 	mutation: Option<Task<()>>,
 	mutation_key: Option<String>,
 	pub(super) feedback: String,
+}
+
+impl Panel {
+	fn apply_read(&mut self, result: State, explicit: bool) {
+		let failed =
+			matches!(result, State::Unavailable | State::Unconfirmed | State::CapacityExceeded);
+		if failed {
+			self.read_failures = self.read_failures.saturating_add(1);
+			if explicit || self.read_failures >= 2 {
+				self.feedback =
+					"Archive status is temporarily unavailable. Checking again automatically."
+						.into();
+			}
+			// An incomplete background read must not replace the last confirmed state.
+		} else {
+			self.read_failures = 0;
+			self.feedback.clear();
+			self.result = Some(result);
+		}
+	}
 }
 
 impl ChiefSurface {
@@ -22,6 +43,8 @@ impl ChiefSurface {
 		self.archive.mutation = None;
 		self.archive.mutation_key = None;
 		self.archive.last_read = None;
+		self.archive.read_failures = 0;
+		self.archive.feedback.clear();
 	}
 
 	pub(crate) fn load_archive_state(&mut self, force: bool, cx: &mut Context<Self>) {
@@ -58,9 +81,6 @@ impl ChiefSurface {
 		self.archive.last_read = Some(std::time::Instant::now());
 		// Keep the archived reading view stable while checking. The request guard
 		// disables Unarchive until this read completes.
-		if !matches!(self.archive.result, Some(State::Archived { .. })) {
-			self.archive.result = None;
-		}
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
@@ -76,15 +96,8 @@ impl ChiefSurface {
 					return;
 				}
 				s.archive.request = None;
-				s.archive.feedback.clear();
-                if matches!(result, State::Unavailable | State::Unconfirmed | State::CapacityExceeded) {
-                    s.archive.feedback = "Could not check this conversation's archive status. Your saved history is still available.".into();
-                }
-				if !matches!(result, State::Unavailable | State::Unconfirmed | State::CapacityExceeded)
-                    || !matches!(s.archive.result, Some(State::Archived { .. })) {
-                    s.archive.result = Some(result);
-                }
-                cx.notify();
+				s.archive.apply_read(result, force);
+				cx.notify();
 			});
 		}));
 	}
@@ -358,5 +371,23 @@ mod tests {
 			window.draw(cx).clear();
 		});
 		assert!(visual.debug_bounds("archive-restore").is_none());
+	}
+}
+
+#[cfg(test)]
+mod background_read_tests {
+	use super::*;
+	#[test]
+	fn transient_read_does_not_flash_error_or_replace_known_state() {
+		let mut panel = Panel::default();
+		panel.apply_read(State::Active { thread_id: "thread".into() }, false);
+		panel.apply_read(State::Unavailable, false);
+		assert!(panel.feedback.is_empty());
+		assert!(matches!(panel.result, Some(State::Active { .. })));
+		panel.apply_read(State::Unavailable, false);
+		assert!(!panel.feedback.is_empty());
+		panel.apply_read(State::Active { thread_id: "thread".into() }, false);
+		assert!(panel.feedback.is_empty());
+		assert_eq!(panel.read_failures, 0);
 	}
 }

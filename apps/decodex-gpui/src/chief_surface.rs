@@ -1651,14 +1651,14 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 							.flex()
 							.items_center()
 							.gap(px(8.))
+							.child(reply_metrics(entry))
 							.when(entry.kind == "assistant", |row| {
 								row.child(markdown::copy_button(
 									&format!("copy-response-{}", entry.id),
 									"Copy response",
 									entry.text.clone(),
 								))
-							})
-							.child(reply_metrics(entry)),
+							}),
 					)
 				}),
 		)
@@ -1690,37 +1690,35 @@ impl Render for ReplyMetricsTip {
 	}
 }
 fn reply_metrics(entry: &decodex_protocol::ChiefHistoryEntryDto) -> impl IntoElement {
-	let mut row = div()
+	let label = entry
+		.duration_ms
+		.map(|duration| {
+			if duration >= 60_000 {
+				format!("Worked for {}m {}s", duration / 60_000, duration % 60_000 / 1000)
+			} else {
+				format!("Worked for {:.1}s", duration as f64 / 1000.0)
+			}
+		})
+		.unwrap_or_else(|| "Details".into());
+	div()
+		.id(SharedString::from(format!("reply-details-{}", entry.id)))
+		.h(px(24.))
 		.flex()
 		.items_center()
-		.gap(px(8.))
+		.gap(px(4.))
 		.text_size(px(ui_theme::CAPTION_SIZE))
-		.line_height(px(24.))
-		.text_color(rgb(ui_theme::TEXT_MUTED));
-	if let Some(duration) = entry.duration_ms {
-		row = row.child(format!("Worked for {:.1}s", duration as f64 / 1000.0));
-	}
-	if let Some(usage) = &entry.usage {
-		let detail = format!(
-			"In {} · Out {} tokens",
-			compact_tokens(usage.input_tokens),
-			compact_tokens(usage.output_tokens)
-		);
-		row = row.child(
-			div()
-				.id(SharedString::from(format!("reply-details-{}", entry.id)))
-				.size(px(24.))
-				.flex()
-				.items_center()
-				.justify_center()
-				.rounded(px(6.))
-				.aria_label(detail.clone())
-				.hover(|s| s.bg(rgba(0xffffff10)))
+		.text_color(rgb(ui_theme::TEXT_MUTED))
+		.when(entry.duration_ms.is_some() || entry.usage.is_some(), |row| row.child(label))
+		.when_some(entry.usage.as_ref(), |row, usage| {
+			let detail = format!(
+				"In {} · Out {} tokens",
+				compact_tokens(usage.input_tokens),
+				compact_tokens(usage.output_tokens)
+			);
+			row.child("›")
+				.hover(|s| s.text_color(rgb(ui_theme::TEXT)))
 				.tooltip(move |_, cx| cx.new(|_| ReplyMetricsTip(detail.clone())).into())
-				.child("ⓘ"),
-		);
-	}
-	row
+		})
 }
 
 pub(crate) struct ChiefPreferences {

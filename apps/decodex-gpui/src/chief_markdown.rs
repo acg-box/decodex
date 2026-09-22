@@ -299,8 +299,8 @@ impl gpui::RenderOnce for CopyButton {
 				gpui::canvas(
 					|_, _, _| (),
 					move |bounds, _, window, _| {
-						let mut path = gpui::PathBuilder::stroke(px(1.2));
-						let point = |x, y| bounds.origin + gpui::point(px(x), px(y));
+						let mut path = gpui::PathBuilder::stroke(px(1.1));
+						let point = |x: f32, y: f32| bounds.origin + gpui::point(px(x * 0.75), px(y * 0.75));
 						if copied {
 							path.move_to(point(2., 8.));
 							path.line_to(point(6., 12.));
@@ -323,7 +323,7 @@ impl gpui::RenderOnce for CopyButton {
 						}
 					},
 				)
-				.size(px(16.)),
+				.size(px(12.)),
 			)
 			.smooth()
 	}
