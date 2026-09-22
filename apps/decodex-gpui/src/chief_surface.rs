@@ -132,7 +132,6 @@ pub(crate) struct ChiefSurface {
 
 	generation: u64,
 	composer: Entity<ComposerInput>,
-	composer_footer_height: f32,
 	fast: bool,
 	service_tier: Option<decodex_protocol::ServiceTier>,
 	steer: bool,
@@ -334,7 +333,6 @@ impl ChiefSurface {
 			accounts: vec![],
 			setup_expanded: false,
 			composer,
-			composer_footer_height: 74.,
 			model,
 			cwd,
 			account: Self::account_input(cx),

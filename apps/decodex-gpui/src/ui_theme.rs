@@ -77,7 +77,7 @@ pub(crate) const CONTENT_MATERIAL: u32 = 0x14141978;
 pub(crate) const TOPBAR_MATERIAL: u32 = 0x15151b68;
 // Chief sidebar is a direct child of the shell, never a child of content tint.
 pub(crate) const CHIEF_SIDEBAR_MATERIAL: u32 = 0x17171c58;
-pub(crate) const CHIEF_CHAT_OVERLAY: u32 = 0x17171c18;
+pub(crate) const CHIEF_CHAT_OVERLAY: u32 = 0x17171c0e;
 pub(crate) const SIDEBAR_MATERIAL: u32 = 0x100e1584;
 pub(crate) const SURFACE_MATERIAL: u32 = 0x100e152a;
 pub(crate) const SURFACE_RAISED_MATERIAL: u32 = 0x17151e46;

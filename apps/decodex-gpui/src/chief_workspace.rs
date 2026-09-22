@@ -594,36 +594,20 @@ impl ChiefSurface {
 	}
 
 	fn floating_composer(&self, window: &mut Window, cx: &mut Context<Self>) -> gpui::Div {
-		let owner = cx.entity().downgrade();
-		// Only the capsule occludes history; the measured footer reserves scroll space.
-		div()
-			.absolute()
-			.bottom_0()
-			.w_full()
-			.on_children_prepainted(move |bounds, _, cx| {
-				if let Some(bounds) = bounds.first() {
-					let height = f32::from(bounds.size.height);
-					let _ = owner.update(cx, |s, cx| {
-						if (s.composer_footer_height - height).abs() > 0.5 {
-							s.composer_footer_height = height;
-							cx.notify();
-						}
-					});
-				}
-			})
-			.child(
-				div()
-					.w_full()
-					.flex()
-					.flex_col()
-					.when_some(self.composer_unavailable_reason(), |d, reason| {
-						d.child(self.unavailable_composer(reason, cx))
-					})
-					.when(self.composer_unavailable_reason().is_none(), |d| {
-						d.child(self.conversation_activity(cx))
-							.child(self.render_composer(window, cx))
-					}),
-			)
+		// Reserve a footer outside the scroll viewport so history cannot leak
+		// below the floating glass capsule or receive clicks through its margins.
+		div().w_full().flex_shrink_0().child(
+			div()
+				.w_full()
+				.flex()
+				.flex_col()
+				.when_some(self.composer_unavailable_reason(), |d, reason| {
+					d.child(self.unavailable_composer(reason, cx))
+				})
+				.when(self.composer_unavailable_reason().is_none(), |d| {
+					d.child(self.conversation_activity(cx)).child(self.render_composer(window, cx))
+				}),
+		)
 	}
 
 	pub(super) fn selected_is_manager(&self) -> bool {
@@ -661,7 +645,7 @@ impl ChiefSurface {
 			.overflow_hidden()
 			.flex()
 			.flex_col()
-			.rounded(px(14.))
+			.rounded(px(10.))
 			.bg(rgba(ui_theme::CHIEF_CHAT_OVERLAY));
 		chat = chat
 			.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)));
@@ -690,7 +674,6 @@ impl ChiefSurface {
 				let content = if is_chief {
 					div()
 						.p_4()
-						.pb(px(self.composer_footer_height + 16.))
 						.w_full()
 						.mx_auto()
 						.line_height(px(ui_theme::BODY_LINE_HEIGHT))
@@ -952,12 +935,11 @@ impl ChiefSurface {
 	}
 
 	fn graph_frame(&self, title: String, cx: &mut Context<Self>) -> gpui::Div {
-		let mut panel = div().w_full().min_w_0().h_full().flex().flex_col().pt(px(6.));
+		let mut panel = div().w_full().min_w_0().h_full().flex().flex_col().pt(px(8.));
 		panel = panel.child(
 			div()
 				.h(px(ui_theme::PANEL_HEADER_HEIGHT))
 				.min_h(px(ui_theme::PANEL_HEADER_HEIGHT))
-				.bg(rgba(ui_theme::PANEL_HEADER_TINT))
 				.flex()
 				.items_center()
 				.px_2()

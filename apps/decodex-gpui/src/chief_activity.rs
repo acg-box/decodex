@@ -304,11 +304,7 @@ impl ChiefSurface {
 			.right_0()
 			.flex()
 			.justify_center()
-			.bottom(px(if self.selected_is_manager() {
-				self.composer_footer_height + 8.
-			} else {
-				12.
-			}))
+			.bottom(px(8.))
 			.when(opacity > 0.001, |d| {
 				d.child(
 					div()
@@ -637,8 +633,8 @@ mod tests {
 		let scroll = surface.read_with(visual, |s, _| s.transcript_scroll["chief"].clone());
 		assert!(scroll.max_offset().y >= px(100.), "fixture must allow the full wheel delta");
 		assert!(
-			scroll.bounds().bottom() > px(280.),
-			"history must extend behind the floating composer instead of clipping above it"
+			scroll.bounds().bottom() < px(260.),
+			"history must stop above the composer footer so text cannot leak beneath the capsule"
 		);
 		let position = scroll.bounds().center();
 		visual.simulate_event(gpui::ScrollWheelEvent {
