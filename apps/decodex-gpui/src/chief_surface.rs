@@ -1028,7 +1028,10 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn status_notice(&self) -> Option<(&'static str, String, bool)> {
-		if !self.feedback.is_empty() && self.feedback != "Message saved · Waiting for agent…" {
+		if !self.sending
+			&& !self.feedback.is_empty()
+			&& self.feedback != "Message saved · Waiting for agent…"
+		{
 			return Some((
 				if self.sending {
 					"Sending"

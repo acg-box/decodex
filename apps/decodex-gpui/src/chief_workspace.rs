@@ -1480,7 +1480,7 @@ impl ChiefSurface {
 			snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())
 		});
 		let notice = self.status_notice();
-		let current = selected.and_then(|work| self.current_activity_label(work));
+
 		let pending = self
 			.snapshot
 			.as_ref()
@@ -1492,9 +1492,10 @@ impl ChiefSurface {
 					.collect::<Vec<_>>()
 			})
 			.unwrap_or_default();
-		let label = if self.sending {
-			Some("Sending…")
-		} else if self.uncertain {
+		if self.sending {
+			return div().into_any_element();
+		}
+		let label = if self.uncertain {
 			Some("Delivery unconfirmed · Draft kept. Sending is paused to avoid duplicates.")
 		} else if self.selected.as_deref().is_some_and(|id| self.thread_in_use(id)) {
 			Some("In use in another app · Your message is saved and waiting")
@@ -1509,13 +1510,9 @@ impl ChiefSurface {
 			Some(self.feedback.as_str())
 		} else {
 			selected.and_then(|work| match work.dispatch_state {
-				ChiefDispatchStateDto::Dispatching => Some("Starting…"),
-				ChiefDispatchStateDto::Running => current.as_deref(),
+				ChiefDispatchStateDto::Dispatching | ChiefDispatchStateDto::Running => None,
 				ChiefDispatchStateDto::Unknown =>
 					Some("Connection interrupted · Checking delivery"),
-				ChiefDispatchStateDto::Idle
-					if pending.iter().any(|event| event.event_kind == "user_message") =>
-					Some("Message saved · Waiting for agent…"),
 				ChiefDispatchStateDto::Idle => None,
 			})
 		}

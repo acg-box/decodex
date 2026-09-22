@@ -10,24 +10,6 @@ impl ChiefSurface {
 		cx.notify();
 	}
 
-	pub(super) fn current_activity_label(&self, work: &ChiefWorkItemDto) -> Option<String> {
-		let (id, ChiefHistoryResult::Available { entries, .. }) = self.history.as_ref()? else {
-			return None;
-		};
-		if id != &work.id {
-			return None;
-		}
-		entries
-			.iter()
-			.rev()
-			.filter_map(|entry| entry.activity.as_ref())
-			.find(|item| {
-				item.status == "running"
-					&& work.active_turn_id.as_deref() == Some(item.turn_id.as_str())
-			})
-			.map(activity_title)
-	}
-
 	pub(super) fn progress_history(
 		&self,
 		entries: Vec<&ChiefHistoryEntryDto>,

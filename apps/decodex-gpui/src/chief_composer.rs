@@ -60,6 +60,22 @@ impl ChiefSurface {
 		}
 	}
 
+	fn awaiting_start(&self, cx: &Context<Self>) -> bool {
+		self.sending
+			|| (self.running_turn().is_none()
+				&& self.composer.read(cx).content().trim().is_empty()
+				&& (self.feedback == "Message saved · Waiting for agent…"
+					|| self.snapshot.as_ref().is_some_and(|snapshot| {
+						snapshot.work_items.iter().any(|work| {
+							Some(&work.id) == self.selected.as_ref()
+								&& work.dispatch_state == ChiefDispatchStateDto::Dispatching
+						}) || snapshot.pending_events.iter().any(|event| {
+							Some(&event.work_item_id) == self.selected.as_ref()
+								&& event.event_kind == "user_message"
+						})
+					})))
+	}
+
 	fn stop_button(&self, cx: &Context<Self>) -> bool {
 		self.running_turn().is_some()
 			&& self.composer.read(cx).content().trim().is_empty()
@@ -327,7 +343,9 @@ impl ChiefSurface {
 			.child(self.composer_control_with_window(
 				"send",
 				"".into(),
-				if self.stop_button(cx) {
+				if self.awaiting_start(cx) {
+					"Sending · waiting for the agent"
+				} else if self.stop_button(cx) {
 					"Stop response · Control-C"
 				} else if self.composer.read(cx).content().trim().is_empty()
 					&& self.attachments.is_empty()
@@ -338,6 +356,9 @@ impl ChiefSurface {
 					"Send · Enter"
 				},
 				|s, window, cx| {
+					if s.awaiting_start(cx) {
+						return;
+					}
 					if s.stop_button(cx) {
 						s.interrupt_current(cx);
 					} else if s.composer.read(cx).content().trim().is_empty()
@@ -458,6 +479,7 @@ impl ChiefSurface {
 	) -> gpui::AnyElement {
 		use super::super::workspace_symbols::{Symbol, icon};
 		match id {
+			"send" if self.awaiting_start(cx) => div().child("…").into_any_element(),
 			"send" if self.dictation.is_some() => div().child("✓").into_any_element(),
 			"send" if self.stop_button(cx) =>
 				div().size(px(9.0)).rounded(px(2.0)).bg(rgb(ui_theme::CANVAS)).into_any_element(),
@@ -888,6 +910,43 @@ mod tests {
 			s.select_composer_option("model", "custom-model", cx);
 			assert_eq!(s.effort, ConversationReasoningEffort::Low);
 			assert_eq!(s.composer_menu, Some("model"));
+		});
+	}
+
+	#[gpui::test]
+	fn accepted_message_does_not_flash_the_live_voice_control(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.composer.update(cx, |input, cx| input.clear(cx));
+			s.sending = true;
+			assert!(s.awaiting_start(cx));
+			s.sending = false;
+			s.feedback = "Message saved · Waiting for agent…".into();
+			assert!(s.awaiting_start(cx));
+			s.feedback.clear();
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == "chief")
+				.unwrap();
+			work.dispatch_state = ChiefDispatchStateDto::Dispatching;
+			assert!(s.awaiting_start(cx));
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == "chief")
+				.unwrap();
+			work.dispatch_state = ChiefDispatchStateDto::Running;
+			work.active_turn_id = Some("turn".into());
+			assert!(!s.awaiting_start(cx));
+			assert!(s.stop_button(cx));
 		});
 	}
 
