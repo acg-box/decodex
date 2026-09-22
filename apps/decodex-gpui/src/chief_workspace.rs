@@ -643,6 +643,7 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		self.poll_native_agents(cx);
+		self.observe_visible_output(cx);
 		self.prepare_workspace_history(window, cx);
 		let is_chief = self.selected_is_manager();
 		let selected = self

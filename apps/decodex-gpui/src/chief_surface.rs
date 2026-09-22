@@ -16,6 +16,7 @@
 #[path = "chief_mcp_forms.rs"] mod mcp_forms;
 #[path = "chief_misalignment.rs"] mod misalignment;
 #[path = "chief_native_agents.rs"] mod native_agents;
+#[path = "chief_output_stream.rs"] mod output_stream;
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_requests.rs"] mod requests;
@@ -112,6 +113,8 @@ pub(crate) struct ChiefSurface {
 	history_hover: Option<usize>,
 	history_navigation: Option<activity::HistoryNavigation>,
 	native_agents: native_agents::NativeAgents,
+	output_stream: output_stream::OutputStream,
+	history_read_at: Option<std::time::Instant>,
 	agent_tree_visible: bool,
 	agent_tree_collapsed: std::collections::BTreeSet<String>,
 	sidebar_visible: bool,
@@ -320,6 +323,8 @@ impl ChiefSurface {
 			history_hover: None,
 			history_navigation: None,
 			native_agents: Default::default(),
+			output_stream: Default::default(),
+			history_read_at: None,
 			agent_tree_visible: true,
 			agent_tree_collapsed: Default::default(),
 			sidebar_visible: true,
@@ -427,6 +432,7 @@ impl ChiefSurface {
 			return;
 		}
 		self.history_requested_for = Some(id.clone());
+		self.history_read_at = Some(std::time::Instant::now());
 		let Ok(work_id) = EntityId::new(id.clone()) else {
 			return;
 		};
@@ -818,6 +824,8 @@ impl ChiefSurface {
 		self.generation += 1;
 		self.task = None;
 		self.profile = profile;
+		self.output_stream = Default::default();
+		self.history_read_at = None;
 		self.activity_detail = None;
 		self.activity_detail_task = None;
 		self.resources = None;
@@ -874,38 +882,13 @@ impl ChiefSurface {
 		self.selected = None;
 		self.state = LoadState::Idle;
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
-			let mut snapshot_tick = 0u8;
 			loop {
-				cx.background_executor().timer(std::time::Duration::from_millis(100)).await;
+				cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
 				if surface
 					.update(cx, |surface, cx| {
-						let active = surface.snapshot.as_ref().is_some_and(|snapshot| {
-							snapshot.work_items.iter().any(|work| {
-								work.dispatch_state != ChiefDispatchStateDto::Idle
-									|| work.next_check_at_micros.is_some()
-							}) || !snapshot.pending_events.is_empty()
-						});
-						if snapshot_tick == 0
-							&& should_poll_snapshot(
-								surface.profile.is_some(),
-								&surface.state,
-								active,
-							) {
+						if should_poll_snapshot(surface.profile.is_some(), &surface.state, false) {
 							surface.refresh(cx);
 						}
-						if surface.snapshot.as_ref().is_some_and(|snapshot| {
-							snapshot.work_items.iter().any(|work| {
-								Some(&work.id) == surface.selected.as_ref()
-									&& matches!(
-										work.dispatch_state,
-										ChiefDispatchStateDto::Running
-											| ChiefDispatchStateDto::Dispatching
-									)
-							})
-						}) {
-							surface.load_history(cx);
-						}
-						snapshot_tick = (snapshot_tick + 1) % 5;
 						surface.load_archive_state(false, cx);
 						if surface.guardian_needs_refresh() {
 							surface.load_guardian_reviews(cx);
@@ -921,6 +904,7 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
+		self.output_stream = Default::default();
 		self.generation += 1;
 		self.guardian_disconnected();
 		self.archive_disconnected();
@@ -961,13 +945,20 @@ impl ChiefSurface {
 				if surface.generation != generation {
 					return;
 				}
+				let changed = match &result {
+					Ok(ChiefSnapshotResult::Available(snapshot)) =>
+						surface.snapshot.as_ref() != Some(snapshot),
+					_ => true,
+				};
 				surface.apply_result(result);
 				if surface.current_model_catalog(cx).is_none()
 					|| surface.capabilities_checked.is_none_or(|at| at.elapsed().as_secs() >= 60)
 				{
 					surface.load_capabilities(cx);
 				}
-				surface.load_history(cx);
+				if changed || surface.history_read_at.is_none_or(|at| at.elapsed().as_secs() >= 2) {
+					surface.load_history(cx);
+				}
 
 				surface.sync_request(cx);
 				surface.tick_question_timeout(cx);
@@ -1401,7 +1392,10 @@ impl ChiefSurface {
 					work,
 					cx,
 				));
-				for message in live {
+				let live = self.streamed_output(work).unwrap_or(live.as_slice());
+				for message in live.iter().filter(|message| {
+					work.active_turn_id.as_deref().is_none_or(|turn| turn == message.turn_id)
+				}) {
 					panel = panel.child(
 						div()
 							.w_full()

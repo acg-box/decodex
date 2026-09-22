@@ -56,3 +56,21 @@ Native conversation inspection is a bounded recent view. Output omission must be
 visible. The long-term artifact-version and cleanup ledger is not introduced by
 this prototype. Existing work evidence and native resources remain authoritative;
 behavioral instructions do not establish a durable verification guarantee.
+
+## Live output delivery
+
+Protocol 2.45 adds `WaitForChiefOutput`. The visible managed conversation owns one
+cancellable local observation connection. A query waits for a persistence signal
+or a 20-second heartbeat. It does not start, resume, or steer a turn.
+
+Native output wakes observers after persistence. The existing bounded text
+projection applies to live results. The UI accepts only the selected work and
+current turn. A latest-value channel coalesces bursts for up to 8 ms without an
+unbounded token queue. Output is rendered as received; there is no artificial
+typewriter delay. Closing the view cancels its observer. A failed observation
+reconnects after a bounded delay and starts with a fresh snapshot.
+
+The 100 ms full-history poll is removed. Work state remains reconciled at 500 ms;
+saved history is read on work-state changes and every two seconds for activity
+and recovery. These reads do not drive live text delivery. Provider first-token
+latency and network stalls remain outside the renderer's control.
