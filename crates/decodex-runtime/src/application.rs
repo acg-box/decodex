@@ -3963,12 +3963,6 @@ fn completed_chief_history(
 		);
 	}
 	let (message_kind, mut text) = chief_assistant_history(value, has_more);
-	if let Some(usage) =
-		value.pointer("/threadReadback/tokenUsage").and_then(crate::chief::observations::usage_text)
-	{
-		text.push_str("\n\n");
-		text.push_str(&usage);
-	}
 	for path in
 		["/terminal/turn/error/message", "/terminal/turn/error/misalignment/detailedExplanation"]
 	{
@@ -4257,7 +4251,15 @@ fn chief_history_entry(
 		} else {
 			None
 		},
-		usage: serde_json::from_value(value["usage"].clone()).ok(),
+		usage: serde_json::from_value(value["usage"].clone()).ok().or_else(|| {
+			let usage: decodex_codex::ThreadTokenUsage =
+				serde_json::from_value(value.pointer("/threadReadback/tokenUsage")?.clone())
+					.ok()?;
+			usage.is_valid().then_some(decodex_protocol::ChiefTurnUsageDto {
+				input_tokens: usage.last.input_tokens,
+				output_tokens: usage.last.output_tokens,
+			})
+		}),
 		duration_ms: value.pointer("/terminal/turn/durationMs").and_then(serde_json::Value::as_u64),
 		id: event.id,
 		kind: kind.into(),
@@ -4812,9 +4814,15 @@ mod tests {
 		assert_eq!(entries.iter().filter(|entry| entry.text.contains("Which format?")).count(), 1);
 		assert_eq!(
 			entries.iter().filter(|entry| entry.text.contains("Thread total tokens: 1200")).count(),
-			1
+			0
 		);
 		assert!(entries.iter().all(|entry| !entry.text.contains("Provider observation recorded")));
+		assert!(entries.iter().any(|entry| {
+			entry
+				.usage
+				.as_ref()
+				.is_some_and(|usage| usage.input_tokens == 1000 && usage.output_tokens == 200)
+		}));
 	}
 
 	#[tokio::test]

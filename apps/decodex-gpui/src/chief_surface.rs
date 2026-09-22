@@ -19,6 +19,7 @@
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_requests.rs"] mod requests;
 #[path = "chief_resources.rs"] mod resources;
+#[path = "chief_selectable_text.rs"] mod selectable_text;
 #[path = "chief_usage_estimates.rs"] mod usage_estimates;
 #[path = "chief_voice.rs"] mod voice;
 #[path = "chief_workspace.rs"] mod workspace;
@@ -1045,7 +1046,7 @@ impl ChiefSurface {
 			return Some((
 				"In use elsewhere",
 				format!(
-					"{name} is in use in Codex or another application. Release the conversation there to continue here. Saved messages will continue automatically; history remains readable."
+					"{name} is in use in Codex or another application. Release the conversation there to continue here. Unsent messages remain in history. Send again when you are ready."
 				),
 				false,
 			));
@@ -1615,7 +1616,7 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 			.py_2()
 			.text_size(px(11.))
 			.text_color(rgb(ui_theme::AMBER))
-			.child(entry.text.clone());
+			.child(markdown::render(&entry.text, &format!("notice-{}", entry.id)));
 	}
 	div()
 		.w_full()
@@ -1643,14 +1644,23 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 						.child(muted("Manager instruction"))
 				})
 				.child(markdown::render(&entry.text, &format!("message-{}", entry.id)))
-				.when(entry.kind == "assistant", |body| {
-					body.child(markdown::copy_button(
-						&format!("copy-response-{}", entry.id),
-						"Copy response",
-						entry.text.clone(),
-					))
-				})
-				.when(!user, |body| body.child(reply_metrics(entry))),
+				.when(!user, |body| {
+					body.child(
+						div()
+							.mt(px(ui_theme::METADATA_GAP))
+							.flex()
+							.items_center()
+							.gap(px(8.))
+							.child(reply_metrics(entry))
+							.when(entry.kind == "assistant", |row| {
+								row.child(markdown::copy_button(
+									&format!("copy-response-{}", entry.id),
+									"Copy response",
+									entry.text.clone(),
+								))
+							}),
+					)
+				}),
 		)
 }
 
@@ -1673,10 +1683,9 @@ fn reply_metrics(entry: &decodex_protocol::ChiefHistoryEntryDto) -> impl IntoEle
 	}
 	if let Some(usage) = &entry.usage {
 		parts.push(format!("In {}", compact_tokens(usage.input_tokens)));
-		parts.push(format!("Out {} tokens", compact_tokens(usage.output_tokens)));
+		parts.push(format!("Out {}", compact_tokens(usage.output_tokens)));
 	}
 	let mut row = div()
-		.when(!parts.is_empty(), |row| row.mt(px(ui_theme::METADATA_GAP)))
 		.flex()
 		.items_center()
 		.flex_wrap()
