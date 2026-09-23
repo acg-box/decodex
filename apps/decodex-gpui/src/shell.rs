@@ -2100,9 +2100,9 @@ impl Render for RefreshTooltip {
 	}
 }
 
-struct ControlTooltip(&'static str);
+struct ControlTooltip<T>(T);
 
-impl Render for ControlTooltip {
+impl<T: Clone + Into<SharedString> + 'static> Render for ControlTooltip<T> {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 		div()
 			.px_2()
@@ -2113,7 +2113,7 @@ impl Render for ControlTooltip {
 			.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
 			.text_size(px(11.0))
 			.text_color(rgb(WB_TEXT))
-			.child(self.0)
+			.child(self.0.clone().into())
 	}
 }
 
@@ -5563,6 +5563,10 @@ fn account_pool_header(
 fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement {
 	let enabled = account.enabled;
 	div()
+		.id(SharedString::from(format!("account-identity-{}", account.account_id.as_str())))
+		.when_some(email.map(str::to_owned), |row, email| {
+			row.tooltip(move |_, cx| cx.new(|_| ControlTooltip(email.clone())).into())
+		})
 		.w(px(132.0))
 		.min_w(px(108.0))
 		.flex()
