@@ -37,6 +37,24 @@ fn remaining(quota: AccountQuotaWindowDto) -> Option<f32> {
 		_ => None,
 	}
 }
+// Keep the framework-specific colors here; the shared fixture checks the quota bands.
+fn quota_color(remaining: f32) -> u32 {
+	match quota_tone(remaining) {
+		"critical" => 0xef4444,
+		"warning" => super::WB_AMBER,
+		_ => super::WB_BLUE,
+	}
+}
+fn quota_tone(remaining: f32) -> &'static str {
+	if remaining > 50. {
+		"healthy"
+	} else if remaining > 20. {
+		"warning"
+	} else {
+		"critical"
+	}
+}
+
 #[derive(IntoElement)]
 pub(super) struct QuotaMeter {
 	pub(super) label: &'static str,
@@ -56,13 +74,7 @@ impl RenderOnce for QuotaMeter {
 		{
 			window.request_animation_frame();
 		}
-		let color = if value <= 10.0 {
-			0xef4444
-		} else if value <= 30.0 {
-			super::WB_AMBER
-		} else {
-			super::WB_BLUE
-		};
+		let color = quota_color(value);
 		div()
 			.w(px(122.))
 			.flex()
@@ -77,7 +89,7 @@ impl RenderOnce for QuotaMeter {
 					.text_size(px(11.))
 					.text_color(rgb(super::WB_TEXT_FAINT))
 					.child(self.label)
-					.child(format!("{value:.0}% left")),
+					.child(div().text_color(rgb(color)).child(format!("{value:.0}%"))),
 			)
 			.child(
 				div()
@@ -105,6 +117,20 @@ pub(super) fn meter(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn quota_bands_match_the_menu_bar_contract() {
+		let cases: serde_json::Value = serde_json::from_str(include_str!(
+			"../../../tests/fixtures/account-quota-presentation.json"
+		))
+		.unwrap();
+		for case in cases.as_array().unwrap() {
+			assert_eq!(
+				quota_tone(case["remaining"].as_f64().unwrap() as f32),
+				case["tone"].as_str().unwrap()
+			);
+		}
+	}
+
 	fn quota(used: u8, observed: i64) -> AccountQuotaWindowDto {
 		AccountQuotaWindowDto {
 			duration_minutes: 300,

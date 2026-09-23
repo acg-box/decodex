@@ -1671,8 +1671,10 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 		)
 }
 
-fn compact_tokens(value: u64) -> String {
-	let (divisor, suffix) = if value >= 999_950 {
+pub(crate) fn compact_tokens(value: u64) -> String {
+	let (divisor, suffix) = if value >= 999_950_000 {
+		(1_000_000_000.0, "B")
+	} else if value >= 999_950 {
 		(1_000_000.0, "M")
 	} else if value >= 1000 {
 		(1000.0, "K")
@@ -1899,6 +1901,8 @@ mod tests {
 		assert_eq!(super::compact_tokens(24860), "24.9K");
 		assert_eq!(super::compact_tokens(999950), "1M");
 		assert_eq!(super::compact_tokens(1280000), "1.3M");
+		assert_eq!(super::compact_tokens(999950000), "1B");
+		assert_eq!(super::compact_tokens(2450000000), "2.5B");
 	}
 	#[gpui::test]
 	fn context_is_hidden_without_reported_usage(cx: &mut gpui::TestAppContext) {

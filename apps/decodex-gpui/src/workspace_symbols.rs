@@ -25,15 +25,14 @@ pub(super) enum Symbol {
 	BellInfo,
 	ArrowDown,
 	AccountRoute,
-	ResetCard,
-	AccountInfo,
 	AccountLogin,
 	AccountLogout,
 	Confirm,
+	AccountRouteActive,
 }
 
-static IMAGES: LazyLock<[Arc<Image>; 25]> = LazyLock::new(|| {
-	let sources: [&[u8]; 25] = [
+static IMAGES: LazyLock<[Arc<Image>; 24]> = LazyLock::new(|| {
+	let sources: [&[u8]; 24] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
 		include_bytes!("../../../assets/workspace-symbols/graph.png"),
 		include_bytes!("../../../assets/workspace-symbols/timeline.png"),
@@ -54,11 +53,10 @@ static IMAGES: LazyLock<[Arc<Image>; 25]> = LazyLock::new(|| {
 		include_bytes!("../../../assets/workspace-symbols/bell-info.png"),
 		include_bytes!("../../../assets/workspace-symbols/arrow-down.png"),
 		include_bytes!("../../../assets/workspace-symbols/account-route.png"),
-		include_bytes!("../../../assets/workspace-symbols/reset-card.png"),
-		include_bytes!("../../../assets/workspace-symbols/account-info.png"),
 		include_bytes!("../../../assets/workspace-symbols/account-login.png"),
 		include_bytes!("../../../assets/workspace-symbols/account-logout.png"),
 		include_bytes!("../../../assets/workspace-symbols/confirm.png"),
+		include_bytes!("../../../assets/workspace-symbols/account-route-active.png"),
 	];
 	sources.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
 });

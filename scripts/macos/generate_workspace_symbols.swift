@@ -5,9 +5,8 @@ import AppKit
 let output = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "assets/workspace-symbols", isDirectory: true)
 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
 let symbols = [
+    "account-route-active": "point.3.connected.trianglepath.dotted",
     "account-route": "arrow.triangle.branch",
-    "reset-card": "arrow.counterclockwise.circle",
-    "account-info": "info.circle",
     "account-login": "arrow.clockwise",
     "account-logout": "rectangle.portrait.and.arrow.right",
     "confirm": "checkmark",
@@ -51,7 +50,7 @@ for (name, symbolName) in symbols {
         from: .zero, operation: .sourceOver, fraction: 1)
     (name == "send" ? NSColor(srgbRed: 0.04, green: 0.04, blue: 0.06, alpha: 1)
         : name == "bell-attention" ? NSColor(srgbRed: 0.88, green: 0.70, blue: 0.40, alpha: 1)
-        : name == "bell-info" ? NSColor(srgbRed: 0.54, green: 0.64, blue: 0.91, alpha: 1)
+        : name == "bell-info" || name == "account-route-active" ? NSColor(srgbRed: 0.54, green: 0.64, blue: 0.91, alpha: 1)
         : NSColor(srgbRed: 0.88, green: 0.86, blue: 0.90, alpha: 1)).setFill()
     NSRect(x: 0, y: 0, width: 16, height: 16).fill(using: .sourceAtop)
     NSGraphicsContext.restoreGraphicsState()

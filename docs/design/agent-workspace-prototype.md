@@ -115,7 +115,16 @@ was checked against `openai/codex` commit `94174e44cbc54cece45f6052328ca0c2cd7a8
 The archive view fences requests by its owner and connection epoch, not the snapshot refresh
 counter. An ordinary refresh must not discard a completed read and leave its request locked.
 
-Account rows expose routing, an enabled switch, Reset Cards, profile, re-login, and logout
-without an overflow menu. Account names and quota meters remain the primary information.
-Icons have accessible labels and tooltips. Logout and Reset Card redemption retain explicit
-confirmation; opening a card inventory does not consume a card.
+Account rows expose routing, an enabled switch, Reset Cards, and logout without an overflow
+menu. Clicking the summary expands or closes the profile directly below that account.
+Reset Card inventories also stay under their account. Re-login appears only for authentication
+failure, missing credentials, a logged-out account, or an explicit login recovery operation.
+Account names and quota meters remain the primary information. Icons have accessible labels
+and tooltips. Logout and Reset Card redemption retain explicit confirmation; opening a card
+inventory does not consume a card.
+
+The desktop and menu-bar quota views share boundary fixtures in
+`tests/fixtures/account-quota-presentation.json`: remaining quota above 50% is healthy,
+above 20% is warning, and 20% or less is critical. Each UI toolkit keeps its own rendering
+adapter; SwiftUI reuses one tone function for static and animated quota values. Desktop
+account metrics reuse the conversation K/M/B formatter.

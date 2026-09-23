@@ -2685,7 +2685,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 		.iter()
 		.enumerate()
 		.map(|(index, account)| {
-			account_pool_row(
+			let row = account_pool_row(
 				account,
 				AccountRowPresentation {
 					reset_fill: shell.reset_fill_for(account),
@@ -2700,7 +2700,20 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 						== Some(&account.account_id),
 				},
 				cx,
-			)
+			);
+			div()
+				.w_full()
+				.flex()
+				.flex_col()
+				.gap_1()
+				.child(row)
+				.when(shell.account_profile.selected.as_ref() == Some(&account.account_id), |row| {
+					row.child(account_profile_panel(shell, cx))
+				})
+				.when(shell.reset_cards.is_selected(&account.account_id), |row| {
+					row.children(reset_cards::panel(shell, cx))
+				})
+				.into_any_element()
 		})
 		.collect()
 }
@@ -2743,10 +2756,6 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.child(account_pool_header(count, available, balanced, can_manage, cx))
 				.child(account_login_controls(shell, cx))
 				.child(shell.settings.update(cx, |settings, cx| settings.quota_control(cx)))
-				.children(reset_cards::panel(shell, cx))
-				.when(shell.account_profile.selected.is_some(), |content| {
-					content.child(account_profile_panel(shell, cx))
-				})
 				.child(
 					div()
 						.id("account-list")
@@ -3084,10 +3093,10 @@ fn account_profile_facts(profile: &decodex_protocol::AccountProfileDto) -> Vec<S
 		facts.push(format!("Plan · {}", account_plan_label(plan.as_str())));
 	}
 	if let Some(tokens) = profile.lifetime_tokens {
-		facts.push(format!("Lifetime · {tokens} tokens"));
+		facts.push(format!("Lifetime · {} tokens", chief_surface::compact_tokens(tokens)));
 	}
 	if let Some(tokens) = profile.peak_daily_tokens {
-		facts.push(format!("Peak day · {tokens} tokens"));
+		facts.push(format!("Peak day · {} tokens", chief_surface::compact_tokens(tokens)));
 	}
 	if let Some(days) = profile.current_streak_days {
 		facts.push(format!("Streak · {days} days"));
@@ -3257,6 +3266,13 @@ fn account_login_recovery_operation_id(account: &AccountDto) -> Option<EntityId>
 	})
 }
 
+fn account_needs_login(account: &AccountDto) -> bool {
+	account.observed_state == AccountObservedStateDto::AuthFailed
+		|| account.lifecycle_readiness == AccountLifecycleReadinessDto::CredentialAbsent
+		|| account.lifecycle_readiness == AccountLifecycleReadinessDto::Tombstoned
+		|| account_login_recovery_operation_id(account).is_some()
+}
+
 fn account_readiness_status(account: &AccountDto) -> &'static str {
 	match account
 		.unsettled_operation
@@ -3334,8 +3350,18 @@ fn account_pool_summary(
 	let pin_enabled = can_route && enabled && !fixed;
 	let toggle_enabled = can_manage;
 
+	let profile_id = account.account_id.clone();
 	div()
 		.id(("account-summary", index))
+		.cursor_pointer()
+		.hover(|style| style.bg(rgba(0xffffff05)))
+		.on_click(cx.listener(move |shell, _, _, cx| {
+			if shell.account_profile.selected.as_ref() == Some(&profile_id) {
+				shell.close_account_profile(cx);
+			} else {
+				shell.show_account_profile(profile_id.clone(), cx);
+			}
+		}))
 		.flex()
 		.min_w_0()
 		.items_center()
@@ -3372,13 +3398,14 @@ fn account_pool_summary(
 							"Route new conversations to {}",
 							account.alias.as_str()
 						))
-						.h(px(27.0))
+						.h(px(26.0))
 						.w(px(26.0))
+						.flex_none()
 						.flex()
 						.items_center()
 						.justify_center()
 						.rounded(px(7.0))
-						.bg(if fixed { rgba(0x60a5fa18) } else { rgba(0x00000000) })
+						.bg(if fixed { rgba(0x8baaf738) } else { rgba(0x00000000) })
 						.text_size(px(11.0))
 						.text_color(if fixed { rgb(WB_BLUE) } else { rgb(WB_TEXT_MUTED) })
 						.when(pin_enabled, |button| {
@@ -3389,10 +3416,15 @@ fn account_pool_summary(
 								})
 								.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
 								.on_click(cx.listener(move |shell, _, _, cx| {
+									cx.stop_propagation();
 									shell.select_fixed_account(&account_id, cx);
 								}))
 						})
-						.child(workspace_symbols::icon(workspace_symbols::Symbol::AccountRoute))
+						.child(workspace_symbols::icon(if fixed {
+							workspace_symbols::Symbol::AccountRouteActive
+						} else {
+							workspace_symbols::Symbol::AccountRoute
+						}))
 						.smooth(),
 				)
 				.child(
@@ -3424,6 +3456,7 @@ fn account_pool_summary(
 								})
 								.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
 								.on_click(cx.listener(move |shell, _, _, cx| {
+									cx.stop_propagation();
 									shell.set_account_enabled(&toggle_account_id, !enabled, cx);
 								}))
 						})
@@ -3450,7 +3483,6 @@ fn account_management_actions(
 ) -> AnyElement {
 	let index = presentation.index;
 	let login_account_id = account.account_id.clone();
-	let profile_account_id = account.account_id.clone();
 	let reset_account_id = account.account_id.clone();
 	let reset_alias = account.alias.as_str().to_owned();
 	let logout_account_id = account.account_id.clone();
@@ -3467,51 +3499,41 @@ fn account_management_actions(
 				"account-reset-cards",
 				index,
 				"Show Reset Cards",
-				workspace_symbols::Symbol::ResetCard,
+				workspace_symbols::Symbol::AccountLogin,
 				true,
 			)
 			.on_click(cx.listener(move |shell, _, _, cx| {
+				cx.stop_propagation();
 				shell.show_reset_cards(reset_account_id.clone(), reset_alias.clone(), cx)
 			})),
-		)
-		.child(
-			div().flex().items_center().gap_1().child(
-				account_icon_action(
-					"account-profile",
-					index,
-					"Show account profile",
-					workspace_symbols::Symbol::AccountInfo,
-					true,
-				)
-				.on_click(cx.listener(move |shell, _, _, cx| {
-					shell.show_account_profile(profile_account_id.clone(), cx);
-				})),
-			),
 		)
 		.child(
 			div()
 				.flex()
 				.items_center()
 				.gap_1()
-				.child(
-					account_icon_action(
-						"account-login",
-						index,
-						"Refresh account login",
-						workspace_symbols::Symbol::AccountLogin,
-						presentation.login_available,
+				.when(account_needs_login(account), |row| {
+					row.child(
+						account_icon_action(
+							"account-login",
+							index,
+							"Sign in again",
+							workspace_symbols::Symbol::AccountLogout,
+							presentation.login_available,
+						)
+						.when(presentation.login_available, |button| {
+							button.on_click(cx.listener(move |shell, _, _, cx| {
+								cx.stop_propagation();
+								shell.start_account_reauthentication(
+									login_account_id.clone(),
+									login_account_revision,
+									login_recovery_operation_id.clone(),
+									cx,
+								);
+							}))
+						}),
 					)
-					.when(presentation.login_available, |button| {
-						button.on_click(cx.listener(move |shell, _, _, cx| {
-							shell.start_account_reauthentication(
-								login_account_id.clone(),
-								login_account_revision,
-								login_recovery_operation_id.clone(),
-								cx,
-							);
-						}))
-					}),
-				)
+				})
 				.child(
 					account_icon_action(
 						"account-logout",
@@ -3526,6 +3548,7 @@ fn account_management_actions(
 					)
 					.when(presentation.can_manage, |button| {
 						button.on_click(cx.listener(move |shell, _, _, cx| {
+							cx.stop_propagation();
 							shell.logout_account(&logout_account_id, cx);
 						}))
 					}),
