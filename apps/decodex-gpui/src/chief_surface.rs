@@ -1608,15 +1608,22 @@ fn muted(text: impl Into<SharedString>) -> impl IntoElement {
 }
 fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 	let user = entry.kind == "user";
-	if matches!(entry.kind.as_str(), "execution_notice" | "capacity_retry_pending") {
-		return div().w_full().py_2().text_size(px(11.)).text_color(rgb(ui_theme::AMBER)).child(
-			selectable_text::SelectableText {
+	if matches!(entry.kind.as_str(), "execution_notice" | "capacity_retry_pending" | "stopped") {
+		return div()
+			.w_full()
+			.py_2()
+			.text_size(px(11.))
+			.text_color(rgb(if entry.kind == "stopped" {
+				ui_theme::TEXT_MUTED
+			} else {
+				ui_theme::AMBER
+			}))
+			.child(selectable_text::SelectableText {
 				key: format!("notice-{}", entry.id),
 				text: entry.text.clone(),
 				highlights: vec![],
 				links: vec![],
-			},
-		);
+			});
 	}
 	div()
 		.w_full()

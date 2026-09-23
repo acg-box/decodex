@@ -3984,10 +3984,12 @@ fn chief_assistant_history(
 		.unwrap_or_default();
 	let status = value.pointer("/terminal/turn/status").and_then(serde_json::Value::as_str);
 	if text.is_empty() {
+		if status == Some("interrupted") {
+			return ("stopped", "Stopped".into());
+		}
 		return (
 			"execution_notice",
 			match status {
-				Some("interrupted") => "Interrupted before a response was produced.",
 				Some("failed") => "Execution failed before a response was produced.",
 				_ => "Execution ended without a recoverable response.",
 			}
@@ -3997,7 +3999,7 @@ fn chief_assistant_history(
 	let mut text = text;
 	if matches!(status, Some("interrupted" | "failed")) {
 		text.push_str(if status == Some("interrupted") {
-			"\n\n*Execution interrupted.*"
+			"\n\n*Stopped.*"
 		} else {
 			"\n\n*Execution failed.*"
 		});
@@ -5074,11 +5076,11 @@ mod tests {
 	}
 
 	#[test]
-	fn empty_interrupted_turn_is_an_execution_notice_not_an_assistant_answer() {
+	fn empty_interrupted_turn_is_a_normal_stop_not_a_failure() {
 		let value = serde_json::json!({"terminal":{"turn":{"status":"interrupted"}},"threadReadback":{"assistantMessages":[]}});
 		let (kind, text) = super::chief_assistant_history(&value, &mut false);
-		assert_eq!(kind, "execution_notice");
-		assert_eq!(text, "Interrupted before a response was produced.");
+		assert_eq!(kind, "stopped");
+		assert_eq!(text, "Stopped");
 	}
 
 	#[tokio::test]
