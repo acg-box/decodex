@@ -35,6 +35,19 @@ pub(crate) struct AccountsSnapshot {
 	pub(crate) route_reopen_notice: bool,
 }
 
+impl AccountsSnapshot {
+	/// Short-lived serialization/readback is not a loss of account capability.
+	pub(crate) fn controls_busy(&self) -> bool {
+		matches!(self.command, AccountCommandState::Sending | AccountCommandState::AwaitingResult)
+			|| (self.load == AccountsLoadState::Loading
+				&& !self.accounts.is_empty()
+				&& !matches!(
+					self.command,
+					AccountCommandState::OutcomeUnknown | AccountCommandState::Refused
+				))
+	}
+}
+
 /// Finite account-pool readback state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AccountsLoadState {
@@ -1098,6 +1111,7 @@ mod tests {
 		let awaiting_readback = controller.snapshot();
 		assert_eq!(awaiting_readback.load, AccountsLoadState::Loading);
 		assert!(!awaiting_readback.can_manage);
+		assert!(awaiting_readback.controls_busy(), "readback must not dim unrelated controls");
 		assert_eq!(awaiting_readback.routing, Some(stale_routing));
 		assert_eq!(awaiting_readback.accounts, vec![second.clone()]);
 
@@ -1129,6 +1143,7 @@ mod tests {
 		);
 		let refreshed = controller.snapshot();
 		assert!(refreshed.can_manage);
+		assert!(!refreshed.controls_busy());
 		assert_eq!(refreshed.routing, Some(refreshed_routing));
 		assert_eq!(refreshed.accounts, vec![second]);
 	}

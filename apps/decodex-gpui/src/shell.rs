@@ -2694,6 +2694,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				AccountRowPresentation {
 					reset_fill: shell.reset_fill_for(account),
 					email: shell.account_emails.get(account),
+					controls_busy: snapshot.controls_busy(),
 					index,
 					routing_revision: snapshot.routing.as_ref().map(|routing| routing.revision),
 					fixed: fixed == Some(&account.account_id),
@@ -3251,6 +3252,7 @@ impl Shell {
 
 #[derive(Clone)]
 struct AccountRowPresentation {
+	controls_busy: bool,
 	email: Option<String>,
 	reset_fill: Option<quota_meter::ResetFill>,
 	index: usize,
@@ -3377,7 +3379,13 @@ fn account_pool_summary(
 		.min_w_0()
 		.items_center()
 		.gap(px(8.0))
-		.child(account_power_control(account, index, presentation.can_manage, cx))
+		.child(account_power_control(
+			account,
+			index,
+			presentation.can_manage,
+			presentation.controls_busy,
+			cx,
+		))
 		.child(account_row_identity(account, presentation.email.as_deref()))
 		.child(
 			div().flex_1().min_w_0().flex().items_center().gap(px(8.0)).children(
@@ -3439,6 +3447,7 @@ fn account_power_control(
 	account: &AccountDto,
 	index: usize,
 	interactive: bool,
+	busy: bool,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let id = account.account_id.clone();
@@ -3455,6 +3464,7 @@ fn account_power_control(
 		},
 		interactive,
 	)
+	.when(busy, |button| button.opacity(1.0))
 	.role(Role::Switch)
 	.aria_toggled(if enabled {
 		gpui::accesskit::Toggled::True
@@ -3548,6 +3558,7 @@ fn account_management_actions(
 						},
 						presentation.can_manage,
 					)
+					.when(presentation.controls_busy, |button| button.opacity(1.0))
 					.when(presentation.can_manage, |button| {
 						button.on_click(cx.listener(move |shell, _, _, cx| {
 							cx.stop_propagation();
