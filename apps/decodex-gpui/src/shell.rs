@@ -2752,6 +2752,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.gap_3()
 				.child(account_pool_header(count, available, balanced, can_manage, cx))
 				.child(account_login_controls(shell, cx))
+				.child(shell.settings.update(cx, |settings, cx| settings.quota_control(cx)))
 				.children(reset_cards::panel(shell, cx))
 				.when(shell.account_profile.selected.is_some(), |content| {
 					content.child(account_profile_panel(shell, cx))
@@ -4900,23 +4901,36 @@ fn settings_workspace_content(
 				.font_weight(FontWeight::SEMIBOLD)
 				.child("Settings"),
 		);
-	for (destination, label) in [
-		(Destination::Settings, "General"),
-		(Destination::Accounts, "Accounts"),
-		(Destination::Health, "Diagnostics"),
+	use crate::settings_surface::SettingsCategory;
+	for (destination, category, label) in [
+		(Destination::Settings, Some(SettingsCategory::General), "General"),
+		(Destination::Settings, Some(SettingsCategory::Appearance), "Appearance"),
+		(Destination::Accounts, None, "Accounts"),
+		(Destination::Health, None, "Diagnostics"),
 	] {
 		let index =
 			Destination::ALL.iter().position(|d| *d == destination).expect("settings destination");
+		let active = selected == destination
+			&& category.is_none_or(|category| shell.settings.read(cx).category == category);
 		navigation = navigation.child(
 			div()
-				.id(("settings-section", index))
+				.id(gpui::SharedString::from(format!("settings-section-{label}")))
 				.role(Role::Tab)
 				.aria_label(label)
-				.aria_selected(selected == destination)
-				.track_focus(&shell.destination_focus[index])
+				.aria_selected(active)
+				.tab_index(0)
+				.when(category.is_none() || category == Some(SettingsCategory::General), |row| {
+					row.track_focus(&shell.destination_focus[index])
+				})
 				.key_context("Destination")
 				.on_action(cx.listener(move |s, _: &ActivateDestination, _, cx| {
 					s.select_settings_destination(destination, standalone, cx);
+					if let Some(category) = category {
+						s.settings.update(cx, |settings, cx| {
+							settings.category = category;
+							cx.notify();
+						});
+					}
 				}))
 				.on_action(cx.listener(Shell::focus_next))
 				.on_action(cx.listener(Shell::focus_previous))
@@ -4926,12 +4940,16 @@ fn settings_workspace_content(
 				.flex()
 				.items_center()
 				.cursor_pointer()
-				.when(selected == destination, |row| {
-					row.bg(rgba(0xffffff0c)).text_color(rgb(ui_theme::TEXT))
-				})
+				.when(active, |row| row.bg(rgba(0xffffff0c)).text_color(rgb(ui_theme::TEXT)))
 				.hover(|row| row.bg(rgba(ui_theme::SURFACE_MATERIAL)))
 				.on_click(cx.listener(move |s, _, _, cx| {
 					s.select_settings_destination(destination, standalone, cx);
+					if let Some(category) = category {
+						s.settings.update(cx, |settings, cx| {
+							settings.category = category;
+							cx.notify();
+						});
+					}
 				}))
 				.child(label)
 				.smooth(),
