@@ -103,3 +103,19 @@ An existing noninteractive administrator authorization is used when available.
 Otherwise macOS requests administrator authorization. Cancelling authorization
 reads back the unchanged state without an error notification. Other failures go
 to the existing notification center. The control is absent on other platforms.
+
+### Archive checks and account controls
+
+Archive reads use the shared native thread catalog. A registered subordinate manager can be
+inspected without admission to the main agent's execution process. The read verifies the
+persisted thread binding and catalog connection again before publishing its result. Restore
+commands retain the coordinator's execution ownership checks. The native list/read contract
+was checked against `openai/codex` commit `94174e44cbc54cece45f6052328ca0c2cd7a8a2a`.
+
+The archive view fences requests by its owner and connection epoch, not the snapshot refresh
+counter. An ordinary refresh must not discard a completed read and leave its request locked.
+
+Account rows expose routing, an enabled switch, Reset Cards, profile, re-login, and logout
+without an overflow menu. Account names and quota meters remain the primary information.
+Icons have accessible labels and tooltips. Logout and Reset Card redemption retain explicit
+confirmation; opening a card inventory does not consume a card.

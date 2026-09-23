@@ -529,7 +529,6 @@ pub(crate) struct Shell {
 	account_login_cancellation: Option<Arc<AtomicBool>>,
 	opened_account_login_url: Option<String>,
 	pending_account_logout: Option<EntityId>,
-	account_actions: Option<EntityId>,
 	account_profile_controller: AccountProfileController,
 	account_profile: AccountProfileSnapshot,
 	desktop_settings: DesktopSettingsController,
@@ -639,7 +638,6 @@ impl Shell {
 			account_login_cancellation: None,
 			opened_account_login_url: None,
 			pending_account_logout: None,
-			account_actions: None,
 			reset_cards: reset_cards::ResetCardsPanel::default(),
 			account_profile_controller,
 			account_profile,
@@ -1339,13 +1337,6 @@ impl Shell {
 			.map(account_input_error_label)
 			.map(Into::into);
 		self.synchronize_accounts();
-		cx.notify();
-	}
-
-	fn toggle_account_actions(&mut self, id: EntityId, cx: &mut Context<Self>) {
-		self.account_actions =
-			if self.account_actions.as_ref() == Some(&id) { None } else { Some(id) };
-		self.pending_account_logout = None;
 		cx.notify();
 	}
 
@@ -2699,7 +2690,6 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				AccountRowPresentation {
 					reset_fill: shell.reset_fill_for(account),
 					index,
-					show_actions: shell.account_actions.as_ref() == Some(&account.account_id),
 					routing_revision: snapshot.routing.as_ref().map(|routing| routing.revision),
 					fixed: fixed == Some(&account.account_id),
 					can_manage: snapshot.can_manage,
@@ -3248,7 +3238,6 @@ struct AccountRowPresentation {
 	can_route: bool,
 	login_available: bool,
 	logout_pending: bool,
-	show_actions: bool,
 }
 
 fn account_login_recovery_operation_id(account: &AccountDto) -> Option<EntityId> {
@@ -3330,31 +3319,6 @@ fn account_pool_row(
 					}
 				}))
 		})
-		.child(
-			gpui::deferred(
-				div()
-					.id(("account-menu", index))
-					.absolute()
-					.right_0()
-					.top(px(40.))
-					.w(px(232.))
-					.child(crate::ui_motion::popover(
-						"account-actions-popover",
-						"account-actions",
-						presentation.show_actions,
-						div()
-							.id(("account-menu-content", index))
-							.occlude()
-							.on_mouse_down_out(cx.listener(|s, _, _, cx| {
-								s.account_actions = None;
-								s.pending_account_logout = None;
-								cx.notify();
-							}))
-							.child(account_management_actions(account, &presentation, cx)),
-					)),
-			)
-			.priority(2),
-		)
 		.into_any_element()
 }
 
@@ -3409,7 +3373,7 @@ fn account_pool_summary(
 							account.alias.as_str()
 						))
 						.h(px(27.0))
-						.w(px(48.0))
+						.w(px(26.0))
 						.flex()
 						.items_center()
 						.justify_center()
@@ -3428,27 +3392,30 @@ fn account_pool_summary(
 									shell.select_fixed_account(&account_id, cx);
 								}))
 						})
-						.child(if fixed { "Ready" } else { "Switch" })
+						.child(workspace_symbols::icon(workspace_symbols::Symbol::AccountRoute))
 						.smooth(),
 				)
 				.child(
 					div()
 						.id(("account-enabled", index))
-						.role(Role::Button)
+						.role(Role::Switch)
 						.aria_label(format!(
 							"{} {}",
 							if enabled { "Disable" } else { "Enable" },
 							account.alias.as_str()
 						))
-						.h(px(27.0))
-						.w(px(24.0))
+						.h(px(20.0))
+						.w(px(36.0))
+						.p(px(2.0))
 						.flex()
 						.items_center()
-						.justify_center()
-						.rounded(px(7.0))
-						.bg(if enabled { rgba(0xffffff0c) } else { rgba(0x00000000) })
-						.text_size(px(11.0))
-						.text_color(if enabled { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
+						.rounded_full()
+						.aria_toggled(if enabled {
+							gpui::accesskit::Toggled::True
+						} else {
+							gpui::accesskit::Toggled::False
+						})
+						.bg(if enabled { rgba(0x8baaf740) } else { rgba(0xffffff18) })
 						.when(toggle_enabled, |button| {
 							button
 								.cursor_pointer()
@@ -3460,37 +3427,19 @@ fn account_pool_summary(
 									shell.set_account_enabled(&toggle_account_id, !enabled, cx);
 								}))
 						})
-						.child(if enabled { "✓" } else { "−" })
+						.child(crate::ui_motion::switch_knob(
+							"account-enabled-knob",
+							enabled,
+							div().size(px(14.)).rounded_full().bg(rgb(if enabled {
+								WB_BLUE
+							} else {
+								WB_TEXT_MUTED
+							})),
+						))
 						.smooth(),
 				),
 		)
-		.child(account_manage_control(
-			account.account_id.clone(),
-			index,
-			presentation.show_actions,
-			cx,
-		))
-		.into_any_element()
-}
-
-fn account_manage_control(
-	id: EntityId,
-	index: usize,
-	expanded: bool,
-	cx: &mut Context<Shell>,
-) -> AnyElement {
-	let keyboard_id = id.clone();
-	account_row_action("account-manage", index, "Manage account", "···", true)
-		.tab_index(0)
-		.aria_expanded(expanded)
-		.on_click(cx.listener(move |shell, _, _, cx| shell.toggle_account_actions(id.clone(), cx)))
-		.on_key_down(cx.listener(move |shell, event: &gpui::KeyDownEvent, _, cx| {
-			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-				shell.toggle_account_actions(keyboard_id.clone(), cx);
-				cx.stop_propagation();
-			}
-		}))
-		.smooth()
+		.child(account_management_actions(account, &presentation, cx))
 		.into_any_element()
 }
 
@@ -3507,21 +3456,18 @@ fn account_management_actions(
 	let logout_account_id = account.account_id.clone();
 	let login_account_revision = account.account_revision;
 	let login_recovery_operation_id = account_login_recovery_operation_id(account);
-	let login_label = if login_recovery_operation_id.is_some() { "Re-login" } else { "Login" };
 
 	div()
 		.flex()
-		.w_full()
-		.p_2()
 		.justify_start()
 		.items_center()
 		.gap_1()
 		.child(
-			account_row_action(
+			account_icon_action(
 				"account-reset-cards",
 				index,
 				"Show Reset Cards",
-				"Reset Cards",
+				workspace_symbols::Symbol::ResetCard,
 				true,
 			)
 			.on_click(cx.listener(move |shell, _, _, cx| {
@@ -3530,11 +3476,11 @@ fn account_management_actions(
 		)
 		.child(
 			div().flex().items_center().gap_1().child(
-				account_row_action(
+				account_icon_action(
 					"account-profile",
 					index,
 					"Show account profile",
-					"Profile",
+					workspace_symbols::Symbol::AccountInfo,
 					true,
 				)
 				.on_click(cx.listener(move |shell, _, _, cx| {
@@ -3548,11 +3494,11 @@ fn account_management_actions(
 				.items_center()
 				.gap_1()
 				.child(
-					account_row_action(
+					account_icon_action(
 						"account-login",
 						index,
 						"Refresh account login",
-						login_label,
+						workspace_symbols::Symbol::AccountLogin,
 						presentation.login_available,
 					)
 					.when(presentation.login_available, |button| {
@@ -3567,11 +3513,15 @@ fn account_management_actions(
 					}),
 				)
 				.child(
-					account_row_action(
+					account_icon_action(
 						"account-logout",
 						index,
 						"Log out account",
-						if presentation.logout_pending { "Confirm" } else { "Log out" },
+						if presentation.logout_pending {
+							workspace_symbols::Symbol::Confirm
+						} else {
+							workspace_symbols::Symbol::AccountLogout
+						},
 						presentation.can_manage,
 					)
 					.when(presentation.can_manage, |button| {
@@ -3582,6 +3532,22 @@ fn account_management_actions(
 				),
 		)
 		.into_any_element()
+}
+
+fn account_icon_action(
+	id: &'static str,
+	index: usize,
+	label: &'static str,
+	symbol: workspace_symbols::Symbol,
+	enabled: bool,
+) -> gpui::Stateful<gpui::Div> {
+	account_row_action(id, index, label, "", enabled)
+		.w(px(26.))
+		.h(px(26.))
+		.px_0()
+		.tab_index(0)
+		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
+		.child(workspace_symbols::icon(symbol))
 }
 
 fn account_row_action(
@@ -5566,10 +5532,9 @@ fn account_pool_header(
 fn account_row_identity(account: &AccountDto) -> AnyElement {
 	let enabled = account.enabled;
 	let state_color = account_state_color(account);
-	let short_id = account.account_id.as_str().get(..8).unwrap_or(account.account_id.as_str());
 	div()
-		.w(px(156.0))
-		.min_w(px(140.0))
+		.w(px(132.0))
+		.min_w(px(108.0))
 		.flex()
 		.items_center()
 		.gap_2()
@@ -5601,8 +5566,7 @@ fn account_row_identity(account: &AccountDto) -> AnyElement {
 						.when(
 							account.lifecycle_readiness != AccountLifecycleReadinessDto::Ready,
 							|row| row.child(account_readiness_status(account)),
-						)
-						.child(short_id.to_owned()),
+						),
 				),
 		)
 		.into_any_element()

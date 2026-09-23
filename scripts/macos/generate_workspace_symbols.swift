@@ -5,6 +5,12 @@ import AppKit
 let output = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "assets/workspace-symbols", isDirectory: true)
 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
 let symbols = [
+    "account-route": "arrow.triangle.branch",
+    "reset-card": "arrow.counterclockwise.circle",
+    "account-info": "info.circle",
+    "account-login": "arrow.clockwise",
+    "account-logout": "rectangle.portrait.and.arrow.right",
+    "confirm": "checkmark",
     "sidebar": "sidebar.left",
     "graph": "rectangle.bottomthird.inset.filled",
     "timeline": "clock",
