@@ -115,7 +115,7 @@ was checked against `openai/codex` commit `94174e44cbc54cece45f6052328ca0c2cd7a8
 The archive view fences requests by its owner and connection epoch, not the snapshot refresh
 counter. An ordinary refresh must not discard a completed read and leave its request locked.
 
-Account rows expose routing, an enabled switch, Reset Cards, and logout without an overflow
+Account rows expose a leading power control, routing, Reset Cards, and logout without an overflow
 menu. Clicking the summary expands or closes the profile directly below that account.
 Reset Card inventories also stay under their account. Re-login appears only for authentication
 failure, missing credentials, a logged-out account, or an explicit login recovery operation.
@@ -128,3 +128,11 @@ The desktop and menu-bar quota views share boundary fixtures in
 above 20% is warning, and 20% or less is critical. Each UI toolkit keeps its own rendering
 adapter; SwiftUI reuses one tone function for static and animated quota values. Desktop
 account metrics reuse the conversation K/M/B formatter.
+
+
+The Accounts eye button reveals email addresses through the existing local account-profile
+API with `include_email: true`. The default view uses aliases and does not request email.
+Revealed addresses remain in memory, are tied to the account revision, and are cleared when
+the user hides them. Hiding also cancels the reveal task and invalidates late results.
+The existing menu-bar eye control remains unchanged. The desktop power icon retains switch
+accessibility semantics, supports keyboard activation, and does not expand account details.

@@ -1,4 +1,5 @@
 //! Production GPUI window, navigation, focus, and lifecycle rendering boundary.
+#[path = "account_identity.rs"] mod account_identity;
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "shell_native_status.rs"]
 mod native_status;
@@ -531,6 +532,7 @@ pub(crate) struct Shell {
 	pending_account_logout: Option<EntityId>,
 	account_profile_controller: AccountProfileController,
 	account_profile: AccountProfileSnapshot,
+	account_emails: account_identity::Emails,
 	desktop_settings: DesktopSettingsController,
 	desktop_settings_snapshot: DesktopSettingsSnapshot,
 	accounts_controller: AccountsController,
@@ -562,6 +564,7 @@ impl Shell {
 		profile: Option<decodex_protocol::ClientProfile>,
 		cx: &mut Context<Self>,
 	) -> Self {
+		self.account_emails = Default::default();
 		self.reset_cards.profile = profile.clone();
 		let cwd = self.conversations.working_directory();
 		self.chief.update(cx, |surface, cx| {
@@ -641,6 +644,7 @@ impl Shell {
 			reset_cards: reset_cards::ResetCardsPanel::default(),
 			account_profile_controller,
 			account_profile,
+			account_emails: Default::default(),
 			desktop_settings,
 			desktop_settings_snapshot,
 			accounts_controller,
@@ -2689,6 +2693,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				account,
 				AccountRowPresentation {
 					reset_fill: shell.reset_fill_for(account),
+					email: shell.account_emails.get(account),
 					index,
 					routing_revision: snapshot.routing.as_ref().map(|routing| routing.revision),
 					fixed: fixed == Some(&account.account_id),
@@ -2753,7 +2758,14 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.flex()
 				.flex_col()
 				.gap_3()
-				.child(account_pool_header(count, available, balanced, can_manage, cx))
+				.child(account_pool_header(
+					count,
+					available,
+					balanced,
+					can_manage,
+					shell.account_emails.visible,
+					cx,
+				))
 				.child(account_login_controls(shell, cx))
 				.child(shell.settings.update(cx, |settings, cx| settings.quota_control(cx)))
 				.child(
@@ -3239,6 +3251,7 @@ impl Shell {
 
 #[derive(Clone)]
 struct AccountRowPresentation {
+	email: Option<String>,
 	reset_fill: Option<quota_meter::ResetFill>,
 	index: usize,
 	routing_revision: Option<decodex_protocol::EntityRevision>,
@@ -3343,12 +3356,10 @@ fn account_pool_summary(
 	presentation: AccountRowPresentation,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let AccountRowPresentation { index, fixed, can_manage, can_route, .. } = presentation;
+	let AccountRowPresentation { index, fixed, can_route, .. } = presentation;
 	let account_id = account.account_id.clone();
-	let toggle_account_id = account.account_id.clone();
 	let enabled = account.enabled;
 	let pin_enabled = can_route && enabled && !fixed;
-	let toggle_enabled = can_manage;
 
 	let profile_id = account.account_id.clone();
 	div()
@@ -3366,7 +3377,8 @@ fn account_pool_summary(
 		.min_w_0()
 		.items_center()
 		.gap(px(8.0))
-		.child(account_row_identity(account))
+		.child(account_power_control(account, index, presentation.can_manage, cx))
+		.child(account_row_identity(account, presentation.email.as_deref()))
 		.child(
 			div().flex_1().min_w_0().flex().items_center().gap(px(8.0)).children(
 				[
@@ -3386,94 +3398,84 @@ fn account_pool_summary(
 			),
 		)
 		.child(
-			div()
-				.flex()
-				.items_center()
-				.gap_2()
-				.child(
-					div()
-						.id(("account-pin", index))
-						.role(Role::Button)
-						.aria_label(format!(
-							"Route new conversations to {}",
-							account.alias.as_str()
-						))
-						.h(px(26.0))
-						.w(px(26.0))
-						.flex_none()
-						.flex()
-						.items_center()
-						.justify_center()
-						.rounded(px(7.0))
-						.bg(if fixed { rgba(0x8baaf738) } else { rgba(0x00000000) })
-						.text_size(px(11.0))
-						.text_color(if fixed { rgb(WB_BLUE) } else { rgb(WB_TEXT_MUTED) })
-						.when(pin_enabled, |button| {
-							button
-								.cursor_pointer()
-								.hover(|element| {
-									element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT))
-								})
-								.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
-								.on_click(cx.listener(move |shell, _, _, cx| {
-									cx.stop_propagation();
-									shell.select_fixed_account(&account_id, cx);
-								}))
-						})
-						.child(workspace_symbols::icon(if fixed {
-							workspace_symbols::Symbol::AccountRouteActive
-						} else {
-							workspace_symbols::Symbol::AccountRoute
-						}))
-						.smooth(),
-				)
-				.child(
-					div()
-						.id(("account-enabled", index))
-						.role(Role::Switch)
-						.aria_label(format!(
-							"{} {}",
-							if enabled { "Disable" } else { "Enable" },
-							account.alias.as_str()
-						))
-						.h(px(20.0))
-						.w(px(36.0))
-						.p(px(2.0))
-						.flex()
-						.items_center()
-						.rounded_full()
-						.aria_toggled(if enabled {
-							gpui::accesskit::Toggled::True
-						} else {
-							gpui::accesskit::Toggled::False
-						})
-						.bg(if enabled { rgba(0x8baaf740) } else { rgba(0xffffff18) })
-						.when(toggle_enabled, |button| {
-							button
-								.cursor_pointer()
-								.hover(|element| {
-									element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT))
-								})
-								.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
-								.on_click(cx.listener(move |shell, _, _, cx| {
-									cx.stop_propagation();
-									shell.set_account_enabled(&toggle_account_id, !enabled, cx);
-								}))
-						})
-						.child(crate::ui_motion::switch_knob(
-							"account-enabled-knob",
-							enabled,
-							div().size(px(14.)).rounded_full().bg(rgb(if enabled {
-								WB_BLUE
-							} else {
-								WB_TEXT_MUTED
-							})),
-						))
-						.smooth(),
-				),
+			div().flex().items_center().gap_2().child(
+				div()
+					.id(("account-pin", index))
+					.role(Role::Button)
+					.aria_label(format!("Route new conversations to {}", account.alias.as_str()))
+					.h(px(26.0))
+					.w(px(26.0))
+					.flex_none()
+					.flex()
+					.items_center()
+					.justify_center()
+					.rounded(px(7.0))
+					.bg(if fixed { rgba(0x8baaf738) } else { rgba(0x00000000) })
+					.text_size(px(11.0))
+					.text_color(if fixed { rgb(WB_BLUE) } else { rgb(WB_TEXT_MUTED) })
+					.when(pin_enabled, |button| {
+						button
+							.cursor_pointer()
+							.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
+							.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
+							.on_click(cx.listener(move |shell, _, _, cx| {
+								cx.stop_propagation();
+								shell.select_fixed_account(&account_id, cx);
+							}))
+					})
+					.child(workspace_symbols::icon(if fixed {
+						workspace_symbols::Symbol::AccountRouteActive
+					} else {
+						workspace_symbols::Symbol::AccountRoute
+					}))
+					.smooth(),
+			),
 		)
 		.child(account_management_actions(account, &presentation, cx))
 		.into_any_element()
+}
+
+fn account_power_control(
+	account: &AccountDto,
+	index: usize,
+	interactive: bool,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	let id = account.account_id.clone();
+	let enabled = account.enabled;
+	let key_id = id.clone();
+	account_icon_action(
+		"account-enabled",
+		index,
+		if enabled { "Disable account" } else { "Enable account" },
+		if enabled {
+			workspace_symbols::Symbol::PowerOn
+		} else {
+			workspace_symbols::Symbol::PowerOff
+		},
+		interactive,
+	)
+	.role(Role::Switch)
+	.aria_toggled(if enabled {
+		gpui::accesskit::Toggled::True
+	} else {
+		gpui::accesskit::Toggled::False
+	})
+	.flex_none()
+	.on_click(cx.listener(move |s, _, _, cx| {
+		cx.stop_propagation();
+		if interactive {
+			s.set_account_enabled(&id, !enabled, cx);
+		}
+	}))
+	.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+		if interactive && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+			cx.stop_propagation();
+			s.set_account_enabled(&key_id, !enabled, cx);
+		}
+	}))
+	.smooth()
+	.into_any_element()
 }
 
 fn account_management_actions(
@@ -3606,19 +3608,6 @@ fn account_row_action(
 #[cfg(test)]
 fn account_quota(label: &'static str, quota: AccountQuotaWindowDto) -> Option<AnyElement> {
 	quota_meter::meter(label, quota, None)
-}
-
-fn account_state_color(account: &AccountDto) -> u32 {
-	if !account.enabled {
-		return WB_TEXT_FAINT;
-	}
-	match account.observed_state {
-		AccountObservedStateDto::Available => WB_GREEN,
-		AccountObservedStateDto::Unknown | AccountObservedStateDto::PluginUnready => WB_AMBER,
-		AccountObservedStateDto::Unavailable
-		| AccountObservedStateDto::Depleted
-		| AccountObservedStateDto::AuthFailed => 0xef4444,
-	}
 }
 
 fn account_readiness_label(readiness: AccountLifecycleReadinessDto) -> &'static str {
@@ -5489,6 +5478,7 @@ fn account_pool_header(
 	available: usize,
 	balanced: bool,
 	can_manage: bool,
+	emails_visible: bool,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	div()
@@ -5526,6 +5516,24 @@ fn account_pool_header(
 				.flex()
 				.items_center()
 				.gap_2()
+				.child(
+					account_icon_action(
+						"account-email-visibility",
+						0,
+						if emails_visible {
+							"Hide email addresses"
+						} else {
+							"Show email addresses"
+						},
+						if emails_visible {
+							workspace_symbols::Symbol::Eye
+						} else {
+							workspace_symbols::Symbol::EyeSlash
+						},
+						true,
+					)
+					.on_click(cx.listener(|shell, _, _, cx| shell.toggle_account_emails(cx))),
+				)
 				.child(account_mode_button("Balanced", balanced, can_manage, cx))
 				.child(
 					div()
@@ -5552,16 +5560,14 @@ fn account_pool_header(
 		.into_any_element()
 }
 
-fn account_row_identity(account: &AccountDto) -> AnyElement {
+fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement {
 	let enabled = account.enabled;
-	let state_color = account_state_color(account);
 	div()
 		.w(px(132.0))
 		.min_w(px(108.0))
 		.flex()
 		.items_center()
 		.gap_2()
-		.child(div().size(px(7.0)).rounded_full().bg(rgb(state_color)))
 		.child(
 			div()
 				.min_w_0()
@@ -5576,7 +5582,7 @@ fn account_row_identity(account: &AccountDto) -> AnyElement {
 						.text_size(px(10.5))
 						.font_weight(FontWeight::SEMIBOLD)
 						.text_color(if enabled { rgb(WB_TEXT) } else { rgb(WB_TEXT_FAINT) })
-						.child(account.alias.as_str().to_owned()),
+						.child(email.unwrap_or(account.alias.as_str()).to_owned()),
 				)
 				.child(
 					div()
