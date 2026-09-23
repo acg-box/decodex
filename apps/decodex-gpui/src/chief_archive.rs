@@ -76,7 +76,8 @@ impl ChiefSurface {
 		let Ok(work_id) = EntityId::new(work.clone()) else {
 			return;
 		};
-		let generation = self.generation;
+		// Ordinary snapshot refreshes do not invalidate an archive request.
+		// The archive epoch changes only with its owner or service connection.
 		let epoch = self.archive.epoch;
 		self.archive.last_read = Some(std::time::Instant::now());
 		// Keep the archived reading view stable while checking. The request guard
@@ -89,17 +90,30 @@ impl ChiefSurface {
 		self.archive.request = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await.unwrap_or(State::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
-				if s.generation != generation
-					|| s.selected.as_ref() != Some(&work)
-					|| s.archive.epoch != epoch
-				{
+				if !s.complete_archive_read(&work, epoch, result, force) {
 					return;
 				}
-				s.archive.request = None;
-				s.archive.apply_read(result, force);
 				cx.notify();
 			});
 		}));
+	}
+
+	fn complete_archive_read(
+		&mut self,
+		work: &str,
+		epoch: u64,
+		result: State,
+		explicit: bool,
+	) -> bool {
+		if self.selected.as_deref() != Some(work)
+			|| self.archive.owner.as_deref() != Some(work)
+			|| self.archive.epoch != epoch
+		{
+			return false;
+		}
+		self.archive.request = None;
+		self.archive.apply_read(result, explicit);
+		true
 	}
 
 	fn restore_archive(&mut self, work: &str, thread: &str, cx: &mut Context<Self>) {
@@ -123,7 +137,8 @@ impl ChiefSurface {
 		) else {
 			return;
 		};
-		let generation = self.generation;
+		// Ordinary snapshot refreshes do not invalidate an archive request.
+		// The archive epoch changes only with its owner or service connection.
 		let epoch = self.archive.epoch;
 		let work = work.to_owned();
 		let key = unique_command();
@@ -147,8 +162,7 @@ impl ChiefSurface {
 		self.archive.mutation = Some(cx.spawn(async move |surface, cx| {
 			let completed = request.await;
 			let _ = surface.update(cx, |s, cx| {
-				if s.generation != generation
-					|| s.selected.as_ref() != Some(&work)
+				if s.selected.as_ref() != Some(&work)
 					|| s.archive.epoch != epoch
 					|| s.archive.mutation_key.as_ref() != Some(&key)
 				{
@@ -277,6 +291,34 @@ fn button(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn snapshot_refresh_does_not_strand_archive_read(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.selected = Some("root".into());
+			s.archive.owner = s.selected.clone();
+			let epoch = s.archive.epoch;
+			s.archive.request = Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+			s.generation += 1; // An unrelated snapshot request starts before the archive reply.
+			assert!(s.complete_archive_read(
+				"root",
+				epoch,
+				State::Active { thread_id: "thread".into() },
+				false
+			));
+			assert!(s.archive.request.is_none());
+			assert!(matches!(s.archive.result, Some(State::Active { .. })));
+			s.archive_disconnected();
+			assert!(!s.complete_archive_read(
+				"root",
+				epoch,
+				State::Archived { thread_id: "thread".into() },
+				false
+			));
+			assert!(s.archive.result.is_none());
+		});
+	}
+
 	#[test]
 	fn restored_state_cannot_be_attributed_to_a_rebound_native_thread() {
 		for state in

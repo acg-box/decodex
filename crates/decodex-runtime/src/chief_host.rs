@@ -205,18 +205,16 @@ impl ChiefHost {
 		let Some(thread) = owner.codex_thread_id else {
 			return Result::Unbound;
 		};
-		let owned = || {
-			self.store.chief_thread_is_owned(
-				work.into(),
-				thread.clone(),
-				Some(generation.as_str().into()),
-			)
-		};
-		if !owned().await.unwrap_or(false) {
-			return Result::Unavailable;
-		}
+		// Archive membership is a read-only observation of the shared native catalog.
+		// A subordinate manager need not run in the root's process to be inspected.
+		// Mutations still require exact process ownership in the coordinator.
+
 		let observed = client.thread_archive_state(&thread).await;
-		if !owned().await.unwrap_or(false)
+		if !self
+			.store
+			.get_chief_work_item(work.into())
+			.await
+			.is_ok_and(|current| current.codex_thread_id.as_deref() == Some(thread.as_str()))
 			|| !self
 				.runtime
 				.chief_catalog_client()
