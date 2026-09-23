@@ -61,7 +61,8 @@ impl ChiefSurface {
 	}
 
 	fn awaiting_start(&self, cx: &Context<Self>) -> bool {
-		self.sending
+		// Steer submits into an existing turn; it must not show new-turn startup UI.
+		(self.sending && self.running_turn().is_none())
 			|| (self.running_turn().is_none()
 				&& self.composer.read(cx).content().trim().is_empty()
 				&& (self.feedback == "Message saved · Waiting for agent…"
@@ -1202,6 +1203,10 @@ mod tests {
 			s.uncertain = false;
 			s.composer.update(cx, |i, cx| i.set_content("Supplement", cx));
 			assert!(!s.stop_button(cx));
+			s.sending = true;
+			assert!(!s.awaiting_start(cx), "steering does not restart the current turn");
+			assert!(!s.stop_button(cx), "keep the send glyph while the supplement is submitted");
+			s.sending = false;
 			s.steer = false;
 			assert!(matches!(action(s), ChiefActionDto::SendConfigured { .. }));
 			s.steer = true;
