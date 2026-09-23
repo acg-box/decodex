@@ -3,6 +3,8 @@
 //! Persistent settings remain daemon-owned. This presentation controls the restored native
 //! Swift menu-bar panel only after it applies an authoritative protocol readback.
 
+#[path = "settings_power.rs"] mod power;
+
 use crate::ui_motion::{SmoothControl, switch_knob};
 use gpui::{
 	Context, Render, Role, SharedString, Window, accesskit::Toggled, div, prelude::*, px, rgb, rgba,
@@ -31,6 +33,7 @@ enum MenuBarRuntimeState {
 }
 
 pub(crate) struct SettingsSurface {
+	power: power::PowerSettings,
 	snapshot: DesktopSettingsSnapshot,
 	runtime: MenuBarRuntimeState,
 	detail: SharedString,
@@ -47,6 +50,7 @@ impl SettingsSurface {
 		let launch_at_login =
 			menu_bar.launch_at_login_state().unwrap_or(LaunchAtLoginState::OperationFailed);
 		let mut surface = Self {
+			power: Default::default(),
 			snapshot,
 			runtime: MenuBarRuntimeState::Waiting,
 			detail: "Loading preferences…".into(),
@@ -97,6 +101,7 @@ impl SettingsSurface {
 	}
 
 	pub(crate) fn refresh(&mut self, cx: &mut Context<Self>) {
+		self.refresh_power(cx);
 		self.synchronize(cx);
 	}
 
@@ -166,6 +171,9 @@ impl SettingsSurface {
 
 	pub(crate) fn notifications(&self) -> Vec<(&'static str, String)> {
 		let mut notices = Vec::new();
+		if let Some(error) = &self.power.error {
+			notices.push(("System sleep", error.clone()));
+		}
 		if self.menubar_needs_attention() {
 			notices.push(("Menu bar", self.detail.to_string()));
 		}
@@ -583,6 +591,8 @@ impl SettingsSurface {
 
 impl Render for SettingsSurface {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		#[cfg(not(test))]
+		self.refresh_power(cx);
 		div()
 			.id("settings-surface")
 			.role(Role::Main)
@@ -626,7 +636,8 @@ impl Render for SettingsSurface {
 								div()
 									.flex()
 									.flex_col()
-									.child(self.notification_count_control(cx))
+									.child(self.power_control(cx))
+                                    .child(self.notification_count_control(cx))
 									.child(
 										ui_theme::settings_row()
 											.px_0()

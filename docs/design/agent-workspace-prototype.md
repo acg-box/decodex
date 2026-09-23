@@ -90,3 +90,16 @@ crossfades fixed-size glyphs and uses a soft warm halo for the first Escape pres
 A failed background snapshot read retains the confirmed view until three
 consecutive failures. An explicit unavailable result or transport disconnect
 continues to invalidate the view immediately.
+
+## macOS sleep control
+
+General exposes `Prevent system sleep`. The host's `pmset -g` `SleepDisabled`
+value is authoritative; Decodex does not persist a duplicate preference. The
+control sets only `pmset -a disablesleep` and reads back the applied value.
+It affects both power sources and persists after Decodex exits. It does not
+change display sleep, idle timers, or keyboard backlight settings.
+
+An existing noninteractive administrator authorization is used when available.
+Otherwise macOS requests administrator authorization. Cancelling authorization
+reads back the unchanged state without an error notification. Other failures go
+to the existing notification center. The control is absent on other platforms.
