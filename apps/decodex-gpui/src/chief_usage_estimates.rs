@@ -154,7 +154,8 @@ mod tests {
 				pending_events: vec![],
 			})));
 			assert!(s.usage_estimate.is_none());
-			s.details_visible = true;
+			s.composer_menu = Some("agent-settings");
+			s.composer_menu_content = Some("agent-settings");
 		});
 		visual.update(|window, cx| {
 			window.resize(gpui::size(px(1180.), px(1400.)));

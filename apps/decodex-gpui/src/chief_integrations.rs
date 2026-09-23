@@ -455,7 +455,8 @@ mod tests {
 				dependencies: vec![],
 				pending_events: vec![],
 			})));
-			s.details_visible = true;
+			s.composer_menu = Some("agent-settings");
+			s.composer_menu_content = Some("agent-settings");
 			s.integrations = Some(("root".into(), Some(ChiefIntegrationsResult::Unavailable)));
 			s.mcp_login = Some((
 				"root".into(),
@@ -494,7 +495,8 @@ mod tests {
 		assert!(visual.debug_bounds("integration-open-signin").is_none());
 		surface.update(visual, |s, cx| {
 			s.open_page("root", cx);
-			s.details_visible = true;
+			s.composer_menu = Some("agent-settings");
+			s.composer_menu_content = Some("agent-settings");
 			s.integrations = Some(("root".into(), Some(ChiefIntegrationsResult::Unavailable)));
 			let status = &mut s.mcp_login.as_mut().unwrap().2;
 			status.phase = McpLoginPhase::Expired;

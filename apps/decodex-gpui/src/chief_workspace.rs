@@ -732,10 +732,33 @@ impl ChiefSurface {
 			&& !self.selected_is_archived()
 		{
 			chat = chat.child(self.floating_composer(window, cx));
-		} else if !is_chief && let Some(work) = selected {
-			chat = chat
-				.child(self.conversation_activity(cx))
-				.child(self.workspace_followup(&work, cx));
+		} else if !is_chief && let Some(work) = selected.as_ref() {
+			chat =
+				chat.child(self.conversation_activity(cx)).child(self.workspace_followup(work, cx));
+		}
+
+		let presence = crate::ui_motion::value(
+			"work-details-presence",
+			if self.details_visible { 1. } else { 0. },
+			window,
+			cx,
+		);
+		if presence > 0.001
+			&& let (Some(snapshot), Some(work)) = (&self.snapshot, selected.as_ref())
+		{
+			chat = chat.child(
+				gpui::deferred(
+					div()
+						.absolute()
+						.top(px(38. + (1. - presence) * 5.))
+						.right(px(12.))
+						.w(px(320.))
+						.max_w_full()
+						.opacity(presence)
+						.child(self.inspection_card(snapshot, work, cx)),
+				)
+				.with_priority(2),
+			);
 		}
 
 		let chat = if self.native_agents.selected.is_some() {

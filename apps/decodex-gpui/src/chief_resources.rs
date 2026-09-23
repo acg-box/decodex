@@ -199,7 +199,7 @@ impl ChiefSurface {
 		cx.notify();
 	}
 
-	fn toggle_resources(&mut self, work: &str, cx: &mut Context<Self>) {
+	pub(super) fn toggle_resources(&mut self, work: &str, cx: &mut Context<Self>) {
 		self.resources_task = None;
 		if self.resources.as_ref().is_some_and(|(owner, _)| owner == work) {
 			self.resources = None;
@@ -363,7 +363,8 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |s, _| {
-			s.details_visible = true;
+			s.composer_menu = Some("agent-settings");
+			s.composer_menu_content = Some("agent-settings");
 			let work = |id: &str| ChiefWorkItemDto {
 				id: id.into(),
 				parent_goal_id: None,

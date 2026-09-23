@@ -1102,12 +1102,14 @@ mod tests {
 			work.dispatch_state = ChiefDispatchStateDto::Running;
 			work.active_turn_id = Some("turn".into());
 			s.feedback.clear();
+			s.details_visible = true;
 			s.composer_menu = Some("model");
 			s.escape_interrupt(cx);
 			assert!(s.composer_menu.is_none());
 			assert!(!s.escape_stop_armed());
 			s.escape_interrupt(cx);
 			assert!(s.escape_stop_armed());
+			assert!(s.details_visible, "inspection must not intercept Escape");
 			assert!(s.feedback.is_empty(), "first Escape must not dispatch an interrupt");
 			s.escape_stop.as_mut().unwrap().2 -= std::time::Duration::from_secs(3);
 			s.escape_interrupt(cx);

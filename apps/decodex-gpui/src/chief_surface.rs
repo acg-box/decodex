@@ -10,6 +10,7 @@
 #[path = "chief_dictation.rs"] mod dictation;
 #[path = "chief_graph.rs"] mod graph;
 #[path = "chief_guardian.rs"] mod guardian;
+#[path = "chief_inspection.rs"] mod inspection;
 #[path = "chief_install.rs"] mod install;
 #[path = "chief_integrations.rs"] mod integrations;
 #[path = "chief_markdown.rs"] mod markdown;
@@ -1177,6 +1178,7 @@ impl ChiefSurface {
 		work: &ChiefWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> gpui::AnyElement {
+		let target = cx.entity();
 		let status = graph::state_in(snapshot, work).0;
 		div()
 			.flex_none()
@@ -1195,40 +1197,40 @@ impl ChiefSurface {
 							.text_color(rgb(ui_theme::TEXT_MUTED))
 							.child(format!("{} · {status}", self.work_label(work))),
 					)
-					.child(self.workspace_action(
-						"inspect-work".into(),
-						"Work details".into(),
-						|s, cx| {
-							s.details_visible = !s.details_visible;
-							cx.notify();
-						},
-						cx,
-					)),
+					.child(
+						div()
+							.child(self.workspace_action(
+								"inspect-work".into(),
+								"Details".into(),
+								|s, cx| {
+									s.details_visible = !s.details_visible;
+									if s.details_visible
+										&& let Some(work) = s.selected.clone()
+										&& s.resources
+											.as_ref()
+											.is_none_or(|(owner, _)| owner != &work)
+									{
+										s.toggle_resources(&work, cx);
+									}
+									cx.notify();
+								},
+								cx,
+							))
+							.relative()
+							.child(
+								gpui::canvas(
+									move |bounds, _, cx| {
+										target.update(cx, |s, _| {
+											s.menu_trigger_bounds.insert("inspect-work", bounds);
+										});
+									},
+									|_, _, _, _| {},
+								)
+								.absolute()
+								.inset_0(),
+							),
+					),
 			)
-			.child(disclosure(
-				"agent-work-inspection",
-				self.details_visible,
-				div()
-					.id("work-inspection-scroll")
-					.max_h(px(240.))
-					.overflow_y_scroll()
-					.p_2()
-					.flex()
-					.flex_col()
-					.gap_2()
-					.child(self.resources_panel(&work.id, cx))
-					.child(self.integrations_panel(&work.id, cx))
-					.child(self.usage_estimate_panel(&work.id, cx))
-					.child(self.work_graph(snapshot, work, cx))
-					.child(self.work_metadata(snapshot, work, cx))
-					.when_some(work.codex_thread_id.as_ref(), |d, thread| {
-						d.child(markdown::copy_button(
-							&format!("work-reference-{}", work.id),
-							"Copy task reference",
-							format!("Work: {}\nThread: {}", work.id, thread),
-						))
-					}),
-			))
 			.into_any_element()
 	}
 
@@ -1258,78 +1260,6 @@ impl ChiefSurface {
 			.child(self.request_panel(snapshot, work, cx))
 			.child(self.async_question_panel(work, cx))
 			.child(self.history_panel(work, cx))
-	}
-
-	fn work_metadata(
-		&self,
-		snapshot: &ChiefSnapshotDto,
-		work: &ChiefWorkItemDto,
-		cx: &mut Context<Self>,
-	) -> impl IntoElement {
-		let mut panel = div()
-			.flex()
-			.flex_col()
-			.gap_2()
-			.text_size(px(ui_theme::CAPTION_SIZE))
-			.child(muted(format!("Outcome · {}", judgment(work.status))))
-			.child(muted(format!("Execution · {}", execution(work.dispatch_state))));
-		if let Some(parent) = &work.parent_goal_id {
-			panel = panel.child(self.relation("Reports to", snapshot, parent, cx));
-		}
-		if let Some(due) = work.next_check_at_micros {
-			panel = panel.child(muted(format!("Next check · {}", next_check_text(due))));
-		}
-		if work.dispatch_state == ChiefDispatchStateDto::Running
-			&& let (Some(turn), Ok(id)) = (&work.active_turn_id, EntityId::new(work.id.clone()))
-			&& let Ok(turn) = WireText::new(turn.clone())
-		{
-			panel = panel.child(self.workspace_action(
-				"stop-selected-agent".into(),
-				"Stop".into(),
-				move |s, cx| {
-					s.execute(
-						ChiefActionDto::Interrupt { work_id: id.clone(), turn_id: turn.clone() },
-						None,
-						cx,
-					)
-				},
-				cx,
-			));
-		}
-		panel
-	}
-
-	fn work_graph(
-		&self,
-		snapshot: &ChiefSnapshotDto,
-		work: &ChiefWorkItemDto,
-		cx: &mut Context<Self>,
-	) -> impl IntoElement {
-		let mut panel = div().flex().flex_col().gap_3().child(
-			div()
-				.text_size(px(ui_theme::BODY_SIZE))
-				.font_weight(FontWeight::SEMIBOLD)
-				.child("Work graph"),
-		);
-		let dependencies: Vec<_> =
-			snapshot.dependencies.iter().filter(|edge| edge.work_item_id == work.id).collect();
-		if dependencies.is_empty() {
-			panel = panel.child(muted("No declared dependencies"));
-		}
-		for edge in dependencies {
-			panel = panel.child(self.relation("Requires", snapshot, &edge.depends_on_id, cx));
-		}
-		for edge in snapshot.dependencies.iter().filter(|edge| edge.depends_on_id == work.id) {
-			panel = panel.child(self.relation("Required by", snapshot, &edge.work_item_id, cx));
-		}
-		for child in snapshot
-			.work_items
-			.iter()
-			.filter(|child| child.parent_goal_id.as_deref() == Some(&work.id))
-		{
-			panel = panel.child(self.relation("Coordinates", snapshot, &child.id, cx));
-		}
-		panel
 	}
 
 	pub(super) fn prefetch_older_history(&mut self, cx: &mut Context<Self>) {
@@ -1670,23 +1600,6 @@ fn next_check_text(due: i64) -> String {
 		format!("In {} days", seconds / 86400)
 	}
 }
-fn judgment(status: ChiefWorkStatusDto) -> &'static str {
-	match status {
-		ChiefWorkStatusDto::Open => "Open",
-		ChiefWorkStatusDto::Resolved => "Resolved",
-		ChiefWorkStatusDto::FollowUp => "Follow-up required",
-		ChiefWorkStatusDto::Wait => "Waiting",
-		ChiefWorkStatusDto::UserDecision => "User decision required",
-	}
-}
-fn execution(state: ChiefDispatchStateDto) -> &'static str {
-	match state {
-		ChiefDispatchStateDto::Idle => "Idle · no active dispatch",
-		ChiefDispatchStateDto::Dispatching => "Dispatch claimed · awaiting acknowledgment",
-		ChiefDispatchStateDto::Running => "Turn acknowledged · running",
-		ChiefDispatchStateDto::Unknown => "Unknown outcome · reconciliation required",
-	}
-}
 fn muted(text: impl Into<SharedString>) -> impl IntoElement {
 	div()
 		.text_size(px(ui_theme::CAPTION_SIZE))
@@ -1877,6 +1790,12 @@ impl ChiefSurface {
 				self.setup_expanded,
 				self.render_setup_controls(cx),
 			))
+			.when_some(self.selected.as_ref(), |panel, work| {
+				panel
+					.child(self.resources_panel(work, cx))
+					.child(self.integrations_panel(work, cx))
+					.child(self.usage_estimate_panel(work, cx))
+			})
 	}
 
 	fn render_setup_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
