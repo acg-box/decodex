@@ -54,7 +54,7 @@ impl gpui::RenderOnce for StreamingText {
 		if moving {
 			crate::ui_motion::request_frame(window, cx);
 		}
-		markdown::render(&self.text[..end], &self.key)
+		markdown::render(&markdown::response_text(&self.text[..end]), &self.key)
 	}
 }
 

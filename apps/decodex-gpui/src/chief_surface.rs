@@ -1606,6 +1606,11 @@ fn muted(text: impl Into<SharedString>) -> impl IntoElement {
 }
 fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 	let user = entry.kind == "user";
+	let visible_text = if entry.kind == "assistant" {
+		markdown::response_text(&entry.text)
+	} else {
+		entry.text.clone()
+	};
 	if matches!(entry.kind.as_str(), "execution_notice" | "capacity_retry_pending" | "stopped") {
 		return div()
 			.w_full()
@@ -1648,7 +1653,7 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 						.border_color(rgb(ui_theme::BLUE))
 						.child(muted("Manager instruction"))
 				})
-				.child(markdown::render(&entry.text, &format!("message-{}", entry.id)))
+				.child(markdown::render(&visible_text, &format!("message-{}", entry.id)))
 				.when(!user, |body| {
 					body.child(
 						div()
@@ -1661,7 +1666,7 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 								row.child(markdown::copy_button(
 									&format!("copy-response-{}", entry.id),
 									"Copy response",
-									entry.text.clone(),
+									visible_text.clone(),
 								))
 							}),
 					)
