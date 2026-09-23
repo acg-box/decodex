@@ -22,6 +22,7 @@
 #[path = "chief_requests.rs"] mod requests;
 #[path = "chief_resources.rs"] mod resources;
 #[path = "chief_selectable_text.rs"] mod selectable_text;
+#[path = "chief_text_reveal.rs"] mod text_reveal;
 #[path = "chief_usage_estimates.rs"] mod usage_estimates;
 #[path = "chief_voice.rs"] mod voice;
 #[path = "chief_workspace.rs"] mod workspace;
@@ -1459,10 +1460,13 @@ impl ChiefSurface {
 						div()
 							.w_full()
 							.py(px(2.))
-							.child(markdown::render(
-								&message.text,
-								&format!("live-{}", message.item_id),
-							))
+							.child(text_reveal::StreamingText {
+								text: message.text.clone(),
+								key: format!(
+									"live-{}-{}-{}",
+									work.id, message.turn_id, message.item_id
+								),
+							})
 							.when(message.truncated, |row| {
 								row.child(muted(
 									"Partial output shortened; waiting for saved result.",
