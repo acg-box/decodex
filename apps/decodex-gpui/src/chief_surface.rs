@@ -1117,10 +1117,8 @@ impl ChiefSurface {
 				.map(|work| self.work_label(work))
 				.unwrap_or_else(|| "This conversation".into());
 			return Some((
-				"In use elsewhere",
-				format!(
-					"{name} is in use in Codex or another application. Release the conversation there to continue here. Sending is unavailable here while the conversation is in use; history remains readable."
-				),
+				"In use by another app",
+				format!("{name} is in use by another app."),
 				false,
 			));
 		}
@@ -2317,7 +2315,7 @@ mod tests {
 			assert_eq!(s.status_notice().unwrap().0, "Work needs attention");
 			s.snapshot.as_mut().unwrap().pending_events[0].event_kind =
 				"thread_in_use_needs_attention".into();
-			assert_eq!(s.status_notice().unwrap().0, "In use elsewhere");
+			assert_eq!(s.status_notice().unwrap().0, "In use by another app");
 			assert!(s.thread_in_use("chief"));
 			assert!(!s.thread_in_use("another-chief"));
 			s.snapshot.as_mut().unwrap().pending_events.clear();

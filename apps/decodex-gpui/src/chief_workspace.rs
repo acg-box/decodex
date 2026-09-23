@@ -3,6 +3,8 @@ use super::*;
 use crate::ui_motion::{SmoothControl, reveal};
 use gpui::{AnyElement, MouseButton, PathBuilder, canvas, point};
 
+const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
+
 #[derive(Clone)]
 pub(super) struct PageView {
 	scope: Option<String>,
@@ -459,8 +461,7 @@ impl ChiefSurface {
 				continue;
 			}
 			let reason = match event.event_kind.as_str() {
-				"thread_in_use_needs_attention" =>
-					"This conversation is in use in another app. Sending is unavailable here; your history remains readable.",
+				"thread_in_use_needs_attention" => THREAD_LOCKED_MESSAGE,
 				"reconnection_needs_attention" =>
 					"The agent could not reconnect. Messages are saved and sending is paused. Decodex will retry automatically.",
 				"configuration_needs_attention" =>
@@ -503,6 +504,29 @@ impl ChiefSurface {
 	}
 
 	fn unavailable_composer(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
+		if reason == THREAD_LOCKED_MESSAGE {
+			return div()
+				.id("conversation-unavailable")
+				.role(Role::Status)
+				.aria_label(THREAD_LOCKED_MESSAGE)
+				.mx_4()
+				.my_3()
+				.h(px(40.))
+				.rounded(px(14.))
+				.bg(rgb(0x26262b))
+				.flex()
+				.items_center()
+				.justify_center()
+				.gap(px(8.))
+				.text_size(px(12.))
+				.text_color(rgb(ui_theme::TEXT_MUTED))
+				.child(super::super::workspace_symbols::icon(
+					super::super::workspace_symbols::Symbol::Lock,
+				))
+				.child(THREAD_LOCKED_MESSAGE)
+				.into_any_element();
+		}
+
 		let detail = self.connection_failure_detail();
 		let (title, description) = match detail {
 			Some(text) if text.contains("ProcessUnavailable") => (

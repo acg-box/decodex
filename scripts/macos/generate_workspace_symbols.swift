@@ -8,6 +8,7 @@ let symbols = [
     "account-route-active": "point.3.connected.trianglepath.dotted",
     "power-on": "power",
     "power-off": "power",
+    "lock": "lock.fill",
     "eye": "eye",
     "eye-slash": "eye.slash",
     "account-route": "arrow.triangle.branch",
