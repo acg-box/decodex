@@ -5,17 +5,31 @@ use decodex_codex::app_server_client::{NativeTaskPlugins, ThreadPluginSelection}
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated plugin activation qualification"]
 async fn installed_plugin_exclusions_filter_hooks_and_survive_restart() {
-	tokio::time::timeout(Duration::from_secs(60), qualify()).await.expect("bounded plugin fixture");
+	tokio::time::timeout(Duration::from_secs(60), qualify(false))
+		.await
+		.expect("bounded plugin fixture");
 }
 
-async fn qualify() {
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated active plugin selection"]
+async fn installed_active_plugin_selection_applies_to_later_turns() {
+	tokio::time::timeout(Duration::from_secs(60), qualify(true))
+		.await
+		.expect("bounded active plugin fixture");
+}
+
+async fn qualify(running: bool) {
 	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
 	let home = tempfile::tempdir().expect("home");
 	let root = home.path().canonicalize().expect("canonical home");
 	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("listener");
 	let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 	setup(&root, listener.local_addr().expect("address"));
-	let backend = tokio::spawn(serve(listener, calls.clone()));
+	let mut listener = Some(listener);
+	let mut backend = None;
+	if !running {
+		backend = Some(tokio::spawn(serve(listener.take().expect("listener"), calls.clone())));
+	}
 	let session = NativeSession::start(&binary, &root);
 	let catalog = session
 		.client
@@ -34,8 +48,30 @@ async fn qualify() {
 	let thread = start["thread"]["id"].as_str().expect("thread id").to_owned();
 	let initial = session.client.configured_task_plugins(&thread).expect("initial selection").0;
 	assert!(initial.disabled_plugin_ids.is_empty());
-	assert_eq!(turn(&mut session, &thread).await, 1, "enabled hook");
+	if running {
+		start_turn(&mut session, &thread).await;
+		loop {
+			if let ServerEvent::Notification { method, .. } =
+				session.events.recv().await.expect("enabled hook")
+				&& method == "hook/started"
+			{
+				break;
+			}
+		}
+		assert!(session.client.observed_task_plugins(&thread).is_none());
+	} else {
+		assert_eq!(turn(&mut session, &thread).await, 1, "enabled hook");
+	}
 	select(&mut session, &thread, vec!["sample@test".into()]).await;
+	if running {
+		assert!(session.client.observed_task_plugins(&thread).is_none());
+		backend = Some(tokio::spawn(serve(listener.take().expect("held listener"), calls.clone())));
+		assert_eq!(
+			finish_turn(&mut session, &thread).await,
+			0,
+			"first turn hook already ran before selection"
+		);
+	}
 	assert_eq!(calls.load(Ordering::Acquire), 1, "setting does not start inference");
 	assert_eq!(turn(&mut session, &thread).await, 0, "disabled hook");
 	let other = session
@@ -65,7 +101,7 @@ async fn qualify() {
 	assert_eq!(turn(&mut session, &thread).await, 1, "re-enabled hook");
 	assert_eq!(calls.load(Ordering::Acquire), 5);
 	drop(session);
-	backend.abort();
+	backend.expect("started backend").abort();
 }
 
 fn setup(root: &std::path::Path, address: std::net::SocketAddr) {
@@ -118,7 +154,7 @@ async fn select(session: &mut NativeSession, thread: &str, excluded: Vec<String>
 	}
 }
 
-async fn turn(session: &mut NativeSession, thread: &str) -> usize {
+async fn start_turn(session: &mut NativeSession, thread: &str) {
 	session
 		.client
 		.turn_start(
@@ -126,6 +162,14 @@ async fn turn(session: &mut NativeSession, thread: &str) -> usize {
 		)
 		.await
 		.expect("turn");
+}
+
+async fn turn(session: &mut NativeSession, thread: &str) -> usize {
+	start_turn(session, thread).await;
+	finish_turn(session, thread).await
+}
+
+async fn finish_turn(session: &mut NativeSession, thread: &str) -> usize {
 	let mut hooks = 0;
 	loop {
 		let event = session.events.recv().await.expect("turn event");
