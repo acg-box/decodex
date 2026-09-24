@@ -37,7 +37,11 @@ pub use thread_plugins::{
 	NativeTaskPlugins, ThreadPluginSelection, ThreadPluginSelectionQueued,
 	is_thread_plugin_selection,
 };
+mod hooks;
 mod integrations;
+pub use hooks::{
+	HookSettingsChange, HookSettingsReview, HookSettingsWrite, is_hook_settings_write,
+};
 mod plugin_install;
 mod server_requests;
 mod timeline;
