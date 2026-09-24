@@ -3773,6 +3773,8 @@ fn recovery_action_label(action: ConversationRecoveryAction) -> &'static str {
 			"Resolve the prior provider attempt before continuing.",
 		ConversationRecoveryAction::RestoreArchivedThread =>
 			"Unarchive the existing Codex thread, then refresh this conversation.",
+		ConversationRecoveryAction::WaitForThreadClose =>
+			"Codex is still closing this thread. Wait briefly, then refresh this conversation.",
 		ConversationRecoveryAction::ReviewSandboxConfiguration =>
 			"Check Codex sandbox permissions and writable roots, then refresh this conversation.",
 		ConversationRecoveryAction::ReviewCodexConfiguration =>

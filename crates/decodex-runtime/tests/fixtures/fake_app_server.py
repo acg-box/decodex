@@ -257,6 +257,7 @@ if mode == "exact-escaped-title":
 exact_thread_reads = 0
 reset_card_consumed = False
 rate_limit_reads = 0
+resume_attempts = 0
 for line in sys.stdin:
     message = json.loads(line)
     assert "jsonrpc" not in message
@@ -531,11 +532,27 @@ for line in sys.stdin:
                     "parentThreadId": None,
                 }
             }
+    elif method == "thread/resume" and mode == "resume-reject-closing-once" and resume_attempts == 1:
+        params = message["params"]
+        result = {
+            "thread": {"id": params["threadId"], "sessionId": "fixture-session", "preview": "", "ephemeral": False,
+                       "modelProvider": "openai", "createdAt": 1, "updatedAt": 1, "status": {"type": "idle"},
+                       "cwd": params["cwd"], "cliVersion": "fixture", "source": "appServer", "turns": []},
+            "model": params["model"], "modelProvider": "openai", "cwd": params["cwd"],
+            "approvalPolicy": "never", "approvalsReviewer": "user", "sandbox": {"type": "dangerFullAccess"},
+            "reasoningEffort": "high", "multiAgentMode": "explicitRequestOnly"
+        }
     elif method == "thread/resume" and mode.startswith("resume-reject-"):
+        resume_attempts += 1
         thread = message["params"]["threadId"]
         code = -32600
         error_message = "fixture-secret: provider rejected configuration"
-        if mode == "resume-reject-missing":
+        if mode.startswith("resume-reject-closing"):
+            target = "unrelated" if mode.endswith("other-thread") else thread
+            code = -32603 if mode.endswith("wrong-code") else -32600
+            error_message = f"thread {target} is closing; fixture-secret"
+            print(json.dumps({"method":"turn/completed","params":{"threadId":thread,"turn":{"id":"closing-turn","status":"completed","items":[]}}}), flush=True)
+        elif mode == "resume-reject-missing":
             error_message = f"no rollout found for thread id {thread}"
         elif mode == "resume-reject-archived":
             error_message = f"session {thread} is archived. Run `codex unarchive {thread}` to unarchive it first."

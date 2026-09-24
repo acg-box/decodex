@@ -302,3 +302,20 @@ Resume requests retain native settings instead of applying new-thread defaults.
 A restarted coordinator reconstructs recovery from durable unresolved work and
 fresh native evidence. The schedule itself is connection-local. This batch does
 not qualify ordinary-conversation recovery or a live native shutdown race.
+
+
+## Ordinary conversation closing recovery
+
+Ordinary conversations also recognize the exact thread-specific closing refusal
+at upstream `595cc91e8cbb1c2ca822d0311dcf12709410c582`. Resume retries are limited
+to four delays (1, 2, 4, and 8 seconds). Each attempt reacquires the existing
+process-generation fence; no supervisor lock is held during the delay. Other
+refusals, loss of process ownership, and uncertain replies stop retries.
+
+Events observed before a refused resume remain buffered and accompany the next
+successful resume receipt. A completion cannot disappear and make the caller
+assume that an old turn is idle. Exhaustion records the exact final response
+witness and an unsent-input diagnostic in the existing session. The desktop offers
+refresh of that conversation with a wait-for-close message. Local protocol2.56
+adds this recovery action; the database schema remains35. Fixture and database
+restart tests qualify these paths; they do not prove a live native unload race.

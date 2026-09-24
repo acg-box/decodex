@@ -2344,6 +2344,8 @@ const fn conversation_recovery_action(
 	action: ConversationManualRecovery,
 ) -> ConversationRecoveryAction {
 	match action {
+		ConversationManualRecovery::WaitForThreadClose =>
+			ConversationRecoveryAction::WaitForThreadClose,
 		ConversationManualRecovery::RestoreArchivedThread =>
 			ConversationRecoveryAction::RestoreArchivedThread,
 		ConversationManualRecovery::ReviewSandboxConfiguration =>
