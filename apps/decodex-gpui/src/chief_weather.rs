@@ -49,7 +49,6 @@ impl RenderOnce for WeatherCard {
 		div()
 			.id(SharedString::from(format!("weather-card-{key}")))
 			.debug_selector(move || selector.clone())
-			.on_scroll_wheel(|_, _, cx| cx.stop_propagation())
 			.mt(px(14.))
 			.w(px(360.))
 			.max_w_full()
@@ -210,7 +209,7 @@ mod tests {
 		}
 	}
 	#[gpui::test]
-	fn weather_pages_change_only_on_dot_click_and_block_parent_scroll(
+	fn weather_pages_change_only_on_dot_click_and_allow_parent_scroll(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let bubbled = std::rc::Rc::new(std::cell::Cell::new(0));
@@ -246,7 +245,7 @@ mod tests {
 				window.draw(cx).clear();
 			});
 		}
-		assert_eq!(bubbled.get(), 0);
+		assert_eq!(bubbled.get(), 5);
 		let dot = visual.debug_bounds("weather-page-test-1").unwrap();
 		visual.simulate_click(dot.center(), Modifiers::default());
 		visual.update(|window, cx| {

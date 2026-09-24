@@ -157,5 +157,4 @@ The compact card uses the existing GPUI background with a translucent tint; it i
 not a separate native Liquid Glass window.
 
 Weather cards show six hours per page. Small clickable dots select each page with
-a brief transition. Wheel input over the card does not change the page or scroll
-the conversation. Single-page forecasts have no pagination controls.
+a brief transition. Wheel input over the card scrolls the conversation without changing the forecast page. Single-page forecasts have no pagination controls.
