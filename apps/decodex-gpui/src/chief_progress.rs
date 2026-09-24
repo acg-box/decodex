@@ -3,6 +3,26 @@ use super::*;
 use decodex_protocol::{ChiefActivityDto, ChiefHistoryEntryDto};
 
 impl ChiefSurface {
+	pub(super) fn has_active_compaction(&self, work: &ChiefWorkItemDto) -> bool {
+		let Some((id, ChiefHistoryResult::Available { entries, .. })) = self.history.as_ref()
+		else {
+			return false;
+		};
+		if id != &work.id || work.dispatch_state != ChiefDispatchStateDto::Running {
+			return false;
+		}
+		entries.iter().filter_map(|entry| entry.activity.as_ref()).any(|item| {
+			item.kind == "contextCompaction"
+				&& item.status == "running"
+				&& work.active_turn_id.as_deref() == Some(item.turn_id.as_str())
+				&& !entries.iter().filter_map(|entry| entry.activity.as_ref()).any(|other| {
+					other.turn_id == item.turn_id
+						&& other.item_id == item.item_id
+						&& other.status != "running"
+				})
+		})
+	}
+
 	fn toggle_progress(&mut self, key: &str, cx: &mut Context<Self>) {
 		if !self.expanded_progress.remove(key) {
 			self.expanded_progress.insert(key.into());
@@ -247,6 +267,107 @@ fn progress_key(work: &str, turn: &str, item: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+
+	#[gpui::test]
+	fn compaction_status_remains_visible_while_sending(cx: &mut gpui::TestAppContext) {
+		use super::{ChiefHistoryResult, ChiefSurface};
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_progress_fixture(false, cx);
+			s.sending = true;
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(gpui::px(1180.0), gpui::px(1200.0)));
+			window.draw(cx).clear();
+		});
+		surface.read_with(visual, |s, _| {
+			let work = s
+				.snapshot
+				.as_ref()
+				.unwrap()
+				.work_items
+				.iter()
+				.find(|w| Some(&w.id) == s.selected.as_ref())
+				.unwrap();
+			assert!(s.has_active_compaction(work), "selected compaction survives render");
+			assert!(s.native_agents.selected.is_none());
+		});
+		assert!(visual.debug_bounds("conversation-activity-status").is_some());
+		surface.update(visual, |s, cx| {
+			let Some((_, ChiefHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture history")
+			};
+			entries.last_mut().unwrap().activity.as_mut().unwrap().status = "completed".into();
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("conversation-activity-status").is_none());
+	}
+	#[gpui::test]
+	fn live_compaction_yields_only_to_its_completion_or_turn_end(cx: &mut gpui::TestAppContext) {
+		use super::{ChiefDispatchStateDto, ChiefHistoryResult, ChiefSurface};
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_progress_fixture(false, cx);
+			let mut work = s
+				.snapshot
+				.as_ref()
+				.unwrap()
+				.work_items
+				.iter()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap()
+				.clone();
+			assert!(s.has_active_compaction(&work));
+			work.dispatch_state = ChiefDispatchStateDto::Idle;
+			assert!(!s.has_active_compaction(&work));
+			work.dispatch_state = ChiefDispatchStateDto::Running;
+			work.active_turn_id = Some("new-turn".into());
+			assert!(!s.has_active_compaction(&work));
+			work.active_turn_id = Some("capture-turn".into());
+			let original_work = work.id.clone();
+			work.id = "different-work".into();
+			assert!(!s.has_active_compaction(&work));
+			work.id = original_work;
+			let Some((_, ChiefHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture history")
+			};
+			let mut tool = entries.last().unwrap().clone();
+			tool.id += 1;
+			let item = tool.activity.as_mut().unwrap();
+			item.item_id = "background-tool".into();
+			item.kind = "commandExecution".into();
+			item.label = "Running command".into();
+			entries.push(tool);
+			assert!(s.has_active_compaction(&work));
+			let Some((_, ChiefHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture history")
+			};
+			let mut finished = entries[4].clone();
+			finished.id = 9;
+			finished.activity.as_mut().unwrap().status = "completed".into();
+			finished.activity.as_mut().unwrap().turn_id = "previous-turn".into();
+			entries.push(finished.clone());
+			assert!(s.has_active_compaction(&work));
+			let Some((_, ChiefHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture history")
+			};
+			finished.id = 10;
+			finished.activity.as_mut().unwrap().turn_id = "capture-turn".into();
+			entries.push(finished);
+			assert!(!s.has_active_compaction(&work));
+			work.dispatch_state = ChiefDispatchStateDto::Idle;
+			assert!(!s.has_active_compaction(&work));
+			work.dispatch_state = ChiefDispatchStateDto::Running;
+			work.active_turn_id = Some("new-turn".into());
+			assert!(!s.has_active_compaction(&work));
+		});
+	}
 	#[test]
 	fn steer_segments_and_opaque_identities_have_distinct_disclosures() {
 		assert_ne!(

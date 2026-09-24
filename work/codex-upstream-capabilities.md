@@ -274,3 +274,15 @@ response rejection, unsupported-schema cancellation, and the native `never`
 approval policy. Installed Codex `0.155.0-alpha.16.3` passed these cases with a
 loopback inference fixture. This does not qualify MCP App UI, user verification,
 standard-form-input extensions, or signed desktop interaction.
+
+
+## Active context compaction
+
+Upstream `a526f54b005f0647dec041f26a67356be88b15fe` and the cutoff
+`595cc91e8cbb1c2ca822d0311dcf12709410c582` keep compaction visible until its matching
+item completes or the turn ends. Decodex derives the status from the selected
+work's active turn and exact item identity. Background tool activity and a pending
+send do not hide it. A completion from another turn cannot clear it. History from
+another work or a terminal turn cannot start the status. Existing delivery and
+connection warnings retain priority. The desktop does not synthesize compaction
+elapsed time from history replay.

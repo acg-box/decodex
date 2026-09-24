@@ -1716,7 +1716,8 @@ impl ChiefSurface {
 					.collect::<Vec<_>>()
 			})
 			.unwrap_or_default();
-		if self.sending {
+		let compacting = selected.is_some_and(|work| self.has_active_compaction(work));
+		if self.sending && !compacting {
 			return div().into_any_element();
 		}
 		let label = if self.uncertain {
@@ -1731,6 +1732,8 @@ impl ChiefSurface {
 			Some("This conversation needs attention. Its current operation could not complete.")
 		} else if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
 			Some("Connection unavailable · Reconnecting")
+		} else if compacting {
+			Some("Compacting context")
 		} else if !self.feedback.is_empty() && self.feedback != "Message saved · Waiting for agent…"
 		{
 			Some(self.feedback.as_str())
@@ -1750,6 +1753,7 @@ impl ChiefSurface {
 
 		div()
 			.id("conversation-activity-status")
+			.debug_selector(|| "conversation-activity-status".into())
 			.role(Role::Status)
 			.aria_label(label.to_owned())
 			.w_full()
