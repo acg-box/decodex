@@ -266,6 +266,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "model/list" | "experimentalFeature/list"
 					| "permissionProfile/list"
 					| "hooks/list" | "config/read"
+					| "configRequirements/read"
 					| "thread/start"
 					| "thread/resume"
 					| "thread/inject_items"
