@@ -12,6 +12,7 @@
 #[path = "chief_execution_intent.rs"] mod execution_intent;
 #[path = "chief_graph.rs"] mod graph;
 #[path = "chief_guardian.rs"] mod guardian;
+#[path = "chief_hooks.rs"] mod hooks;
 #[path = "chief_inspection.rs"] mod inspection;
 #[path = "chief_install.rs"] mod install;
 #[path = "chief_integrations.rs"] mod integrations;
@@ -174,6 +175,7 @@ pub(crate) struct ChiefSurface {
 	live_reviewer: live_settings::Panel,
 	permission_profiles: permissions::Panel,
 	task_plugins: plugins::Panel,
+	hook_settings: hooks::Panel,
 	native_goal: native_goal::Panel,
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
@@ -400,6 +402,7 @@ impl ChiefSurface {
 			live_reviewer: Default::default(),
 			permission_profiles: Default::default(),
 			task_plugins: Default::default(),
+			hook_settings: Default::default(),
 			native_goal: Default::default(),
 			cwd,
 			account: Self::account_input(cx),
@@ -1080,6 +1083,7 @@ impl ChiefSurface {
 		self.reset_live_reviewer();
 		self.reset_permission_profiles();
 		self.reset_task_plugins();
+		self.reset_hook_settings();
 		self.reset_native_goal();
 		self.snapshot = None;
 		self.pages.clear();
@@ -1209,6 +1213,7 @@ impl ChiefSurface {
 			self.reset_live_reviewer();
 			self.reset_permission_profiles();
 			self.reset_task_plugins();
+			self.reset_hook_settings();
 			self.reset_native_goal();
 			self.question_notices = Default::default();
 			self.clear_activity_detail();
@@ -1219,6 +1224,7 @@ impl ChiefSurface {
 				self.invalidate_live_reviewer_for_snapshot(&snapshot);
 				self.invalidate_permission_profiles(&snapshot);
 				self.invalidate_task_plugins(&snapshot);
+				self.invalidate_hook_settings(&snapshot);
 				self.invalidate_native_goal(&snapshot);
 				if self.snapshot.as_ref().is_some_and(|old| {
 					old.runtime_source != snapshot.runtime_source
@@ -2115,6 +2121,7 @@ impl ChiefSurface {
 									.child(self.live_reviewer_panel(item, cx))
 									.child(self.permission_profiles_panel(item, cx))
 									.child(self.task_plugins_panel(item, cx))
+									.child(self.hook_settings_panel(item, cx))
 							}),
 					)
 			})

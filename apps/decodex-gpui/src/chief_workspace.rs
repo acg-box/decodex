@@ -186,6 +186,7 @@ impl ChiefSurface {
 		self.reset_live_reviewer();
 		self.reset_permission_profiles();
 		self.reset_task_plugins();
+		self.reset_hook_settings();
 		self.reset_native_goal();
 		self.clear_activity_detail();
 		self.selected = Some(id.to_owned());

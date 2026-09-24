@@ -314,6 +314,13 @@ impl ServiceApplication {
 		})
 	}
 
+	async fn query_hook_settings(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefHookSettings(match &self.chief {
+			Some(chief) => chief.hook_settings(work).await,
+			None => decodex_protocol::ChiefHookSettingsState::Unavailable,
+		})
+	}
+
 	async fn query_plugin_selection(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::ChiefPluginSelection(match &self.chief {
 			Some(chief) => chief.plugin_selection(work).await,
@@ -2058,6 +2065,8 @@ impl Application for ServiceApplication {
 				QueryResultPayload::McpLogin(query_mcp_login(self.chief.as_ref(), request).await),
 			QueryPayload::GetChiefNativeGoal { work_id, thread_id } =>
 				self.query_native_goal(work_id.as_str(), thread_id.as_str()).await,
+			QueryPayload::GetChiefHookSettings { work_id } =>
+				self.query_hook_settings(work_id.as_str()).await,
 			QueryPayload::GetChiefPluginSelection { work_id } =>
 				self.query_plugin_selection(work_id.as_str()).await,
 			QueryPayload::GetChiefPermissionProfiles { work_id } =>
