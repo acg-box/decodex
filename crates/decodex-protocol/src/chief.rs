@@ -240,6 +240,17 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Select a reviewed native permission profile for the exact task.
+	SelectPermissions {
+		/// Owning task.
+		work_id: crate::EntityId,
+		/// Exact native thread.
+		thread_id: crate::EntityId,
+		/// Current source and catalog identity.
+		review_token: crate::WireText,
+		/// Explicit native profile ID.
+		profile_id: crate::WireText,
+	},
 	/// Publish a reviewer for subsequent steps of one reviewed live turn.
 	SetLiveReviewer {
 		/// Exact owning task.

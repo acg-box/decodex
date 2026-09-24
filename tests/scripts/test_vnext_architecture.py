@@ -123,7 +123,7 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertRegex(
             protocol,
             r"pub const CURRENT_VERSION:\s*ProtocolVersion\s*=\s*"
-            r"ProtocolVersion\s*\{\s*major:\s*2,\s*minor:\s*58\s*\};",
+            r"ProtocolVersion\s*\{\s*major:\s*2,\s*minor:\s*59\s*\};",
         )
         self.assertIn("Some(u64::from(CURRENT_VERSION.minor))", gpui)
         self.assertIn("decodex_app_native_client_abi_version", native_client)

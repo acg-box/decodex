@@ -109,3 +109,12 @@ async fn finish(events: &mut mpsc::Receiver<ServerEvent>) {
 		}
 	}
 }
+
+pub(super) async fn select_permission(
+	client: &decodex_codex::app_server_client::AppServerClient,
+	home: &std::path::Path,
+	thread: &str,
+) {
+	let owned = store::OwnedReviewer::new(home, client, thread, "fixture-active").await;
+	owned.select_permission().await;
+}

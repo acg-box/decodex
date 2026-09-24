@@ -261,5 +261,63 @@ fn seed_account(root: &DecodexRoot) {
 		.expect("inert fixture credential row");
 }
 
-#[path = "chief_process_native_reviewer_outcome_tests.rs"]
-mod outcome_tests;
+#[path = "chief_process_native_reviewer_outcome_tests.rs"] mod outcome_tests;
+
+#[path = "chief_process_permission_service_tests.rs"] mod permission_service_tests;
+
+impl OwnedReviewer {
+	pub(super) async fn select_permission(&self) {
+		use decodex_protocol::{ChiefPermissionOutcome as Outcome, ChiefPermissionState as State};
+		let source = || async { Some(self.source(&self.key)) };
+		let State::Available { review_token, .. } =
+			crate::chief_permissions::read(&self.store, source).await
+		else {
+			panic!("native permission review")
+		};
+		crate::chief_permissions::write(
+			&self.store,
+			source,
+			&self.key.thread,
+			review_token.as_str(),
+			"scoped",
+			"native-permission",
+		)
+		.await
+		.expect("native permission selection");
+		tokio::time::timeout(std::time::Duration::from_secs(5), async {
+			loop {
+				if matches!(
+					crate::chief_permissions::read(&self.store, source).await,
+					State::Available { last_outcome: Some(Outcome::TargetObserved), .. }
+				) {
+					break;
+				}
+				tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+			}
+		})
+		.await
+		.expect("native publication settles receipt");
+		assert!(
+			crate::chief_permissions::write(
+				&self.store,
+				source,
+				&self.key.thread,
+				review_token.as_str(),
+				"scoped",
+				"duplicate"
+			)
+			.await
+			.is_err()
+		);
+		let reopened = SqliteStore::open(&self.root.paths()).expect("receipt restart");
+		assert_eq!(
+			reopened
+				.chief_permission_receipt("root".into(), self.key.thread.clone())
+				.await
+				.expect("receipt")
+				.expect("saved")
+				.state,
+			"target_observed"
+		);
+	}
+}

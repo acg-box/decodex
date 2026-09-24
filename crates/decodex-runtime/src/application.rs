@@ -314,6 +314,13 @@ impl ServiceApplication {
 		})
 	}
 
+	async fn query_permission_profiles(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefPermissionProfiles(match &self.chief {
+			Some(chief) => chief.permission_profiles(work).await,
+			None => decodex_protocol::ChiefPermissionState::Unavailable,
+		})
+	}
+
 	async fn query_live_reviewer(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::ChiefLiveReviewer(match &self.chief {
 			Some(chief) => chief.live_reviewer(work).await,
@@ -2044,6 +2051,8 @@ impl Application for ServiceApplication {
 				QueryResultPayload::McpLogin(query_mcp_login(self.chief.as_ref(), request).await),
 			QueryPayload::GetChiefNativeGoal { work_id, thread_id } =>
 				self.query_native_goal(work_id.as_str(), thread_id.as_str()).await,
+			QueryPayload::GetChiefPermissionProfiles { work_id } =>
+				self.query_permission_profiles(work_id.as_str()).await,
 			QueryPayload::GetChiefLiveReviewer { work_id } =>
 				self.query_live_reviewer(work_id.as_str()).await,
 			QueryPayload::GetChiefModelSettings { work_id } =>
