@@ -80,6 +80,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("cmd-c", Copy, Some("ComposerInput")),
 		KeyBinding::new("enter", SubmitComposer, Some("ComposerInput")),
 		KeyBinding::new("cmd-enter", SubmitComposer, Some("ComposerInput")),
+		KeyBinding::new("enter", gpui::NoAction, Some("AsyncQuestion > ComposerInput")),
+		KeyBinding::new("cmd-enter", gpui::NoAction, Some("AsyncQuestion > ComposerInput")),
 		KeyBinding::new("cmd-z", Undo, Some("ComposerInput")),
 		KeyBinding::new("cmd-shift-z", Redo, Some("ComposerInput")),
 	]);

@@ -184,6 +184,10 @@ pub(crate) struct ChiefSurface {
 	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
 	question_timers: std::collections::BTreeMap<i64, requests::QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
+	collapsed_async_questions: std::collections::BTreeSet<String>,
+	async_question_threads: std::collections::BTreeMap<String, String>,
+	async_question_choices:
+		std::collections::BTreeMap<(String, String), async_questions::ChoiceDraft>,
 	async_question_inputs: std::collections::BTreeMap<(String, String), Entity<ComposerInput>>,
 	details_visible: bool,
 	accounts: Vec<(String, String)>,
@@ -359,6 +363,9 @@ impl ChiefSurface {
 			mcp_answers: Default::default(),
 			question_timers: Default::default(),
 			question_inputs: Default::default(),
+			collapsed_async_questions: Default::default(),
+			async_question_threads: Default::default(),
+			async_question_choices: Default::default(),
 			async_question_inputs: Default::default(),
 			profile: None,
 			snapshot: None,
@@ -862,6 +869,9 @@ impl ChiefSurface {
 		self.guardian = Default::default();
 		self.archive = Default::default();
 		self.async_question_inputs.clear();
+		self.async_question_choices.clear();
+		self.async_question_threads.clear();
+		self.collapsed_async_questions.clear();
 		self.selected = None;
 		self.state = LoadState::Idle;
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
