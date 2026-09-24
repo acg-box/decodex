@@ -11,18 +11,28 @@ pub enum ChiefDispatchRefusal {
 	ManagedProviderChanged,
 	/// Native task settings changed before the transport write.
 	SettingsChanged,
+	/// The local request was too large to send.
+	RequestTooLarge,
+	/// The local request queue refused the input before forwarding it.
+	RequestQueueFull,
 }
 impl ChiefDispatchRefusal {
 	fn reason(self) -> &'static str {
 		match self {
+			Self::RequestTooLarge => "requestTooLarge",
+			Self::RequestQueueFull => "requestQueueFull",
 			Self::SettingsChanged => "settingsChanged",
 			Self::ServerDraining => "serverDraining",
 			Self::ManagedProviderChanged => "managedProviderChanged",
 		}
 	}
 
-	fn note(self) -> &'static str {
+	pub(crate) fn note(self) -> &'static str {
 		match self {
+			Self::RequestTooLarge =>
+				"Not sent: this input exceeds the connection size limit. Reduce the input before sending again.",
+			Self::RequestQueueFull =>
+				"Not sent: the local connection queue is full. Wait for pending requests before sending again.",
 			Self::SettingsChanged =>
 				"Not sent: task settings changed. Review the current settings and send again.",
 			Self::ServerDraining =>

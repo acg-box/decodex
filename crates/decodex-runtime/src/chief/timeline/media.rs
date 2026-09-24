@@ -182,7 +182,10 @@ fn local_media_sync(path: &str) -> std::result::Result<(String, Vec<u8>), Result
 fn client_error(error: decodex_codex::app_server_client::ClientError) -> Result {
 	use decodex_codex::app_server_client::ClientError;
 	match error {
-		ClientError::CapacityExceeded | ClientError::FrameTooLarge => Result::CapacityExceeded,
+		ClientError::CapacityExceeded
+		| ClientError::FrameTooLarge
+		| ClientError::RequestTooLarge
+		| ClientError::RequestQueueFull => Result::CapacityExceeded,
 		ClientError::Remote(error) if error.code == -32601 => Result::Unsupported,
 		_ => Result::Unavailable,
 	}

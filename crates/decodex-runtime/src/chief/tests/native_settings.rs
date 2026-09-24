@@ -101,7 +101,10 @@ async fn known_settings_refusal_preserves_unsent_input_for_user_decision() {
 			None,
 		)
 		.await;
-	assert!(matches!(result, Err(ChiefError::Transport(ClientError::StaleHistory))));
+	assert!(matches!(
+		result,
+		Err(ChiefError::InputNotSent(decodex_database::ChiefDispatchRefusal::SettingsChanged))
+	));
 	let event = chief.store.get_chief_inbox_event(event.id).await.unwrap();
 	assert_eq!(event.disposition, Some(ChiefDisposition::UserDecision));
 	assert!(event.payload.contains("Keep this input"));

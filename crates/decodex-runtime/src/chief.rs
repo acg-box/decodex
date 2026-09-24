@@ -76,6 +76,8 @@ pub enum ChiefError {
 	Busy,
 	/// A prior dispatch has no conclusive acknowledgment.
 	UnknownDispatch,
+	/// Input was refused before dispatch and its durable claim has been released.
+	InputNotSent(decodex_database::ChiefDispatchRefusal),
 	/// Required work has not yet resolved.
 	DependenciesPending(Vec<String>),
 }
@@ -115,6 +117,16 @@ pub struct ChiefCoordinator {
 pub(crate) struct ChiefInputExtras<'a> {
 	pub attachments: &'a [decodex_protocol::ChiefAttachmentDto],
 	pub task_references: &'a [decodex_protocol::ChiefTaskReferenceDto],
+}
+
+fn unsent_request_refusal(error: &ChiefError) -> Option<decodex_database::ChiefDispatchRefusal> {
+	use decodex_database::ChiefDispatchRefusal as Refusal;
+	match error {
+		ChiefError::Transport(ClientError::StaleHistory) => Some(Refusal::SettingsChanged),
+		ChiefError::Transport(ClientError::RequestTooLarge) => Some(Refusal::RequestTooLarge),
+		ChiefError::Transport(ClientError::RequestQueueFull) => Some(Refusal::RequestQueueFull),
+		_ => None,
+	}
 }
 
 const INSTRUCTIONS: &str = include_str!("chief/instructions.md");
@@ -944,27 +956,30 @@ impl ChiefCoordinator {
 				Ok(turn)
 			},
 			Err(error) => {
-				if let Some(event) = history_event
-					&& matches!(error, ChiefError::Transport(ClientError::StaleHistory))
-				{
+				let refusal = unsent_request_refusal(&error);
+				if let (Some(event), Some(refusal)) = (history_event, refusal) {
 					self.store
-						.reject_chief_async_before_write(item.id.clone(), event, Some(item.clone()))
+						.reject_chief_async_before_write(
+							item.id.clone(),
+							event,
+							Some(item.clone()),
+							refusal,
+						)
 						.await?;
-				} else if no_prior_effects
-					&& matches!(error, ChiefError::Transport(ClientError::StaleHistory))
-				{
+				} else if let Some(refusal) = refusal.filter(|_| no_prior_effects) {
 					self.store
 						.reject_chief_dispatch(
 							item.clone(),
 							self.native_generation.as_ref().map(|id| id.as_str().into()),
 							retry_event,
-							decodex_database::ChiefDispatchRefusal::SettingsChanged,
+							refusal,
 						)
 						.await?;
 				} else {
 					self.store.mark_chief_dispatch_unknown(item.id.clone()).await?;
+					return Err(error);
 				}
-				Err(error)
+				Err(ChiefError::InputNotSent(refusal.expect("known refusal released the claim")))
 			},
 		}
 	}
@@ -1165,8 +1180,25 @@ impl ChiefCoordinator {
 				Ok(())
 			},
 			Err(ClientError::StaleHistory) => {
-				self.store.reject_chief_async_before_write(id.into(), event, None).await?;
-				Err(ClientError::StaleHistory.into())
+				self.store
+					.reject_chief_async_before_write(
+						id.into(),
+						event,
+						None,
+						decodex_database::ChiefDispatchRefusal::SettingsChanged,
+					)
+					.await?;
+				Err(ChiefError::InputNotSent(
+					decodex_database::ChiefDispatchRefusal::SettingsChanged,
+				))
+			},
+			Err(error @ (ClientError::RequestTooLarge | ClientError::RequestQueueFull)) => {
+				// No native write occurred, including for ordinary (non-question) steering.
+				self.store.finish_chief_steer(event, false).await?;
+				let error = ChiefError::Transport(error);
+				Err(ChiefError::InputNotSent(
+					unsent_request_refusal(&error).expect("local refusal"),
+				))
 			},
 			Err(ClientError::Remote(error)) => {
 				self.store.finish_chief_steer(event, false).await?;

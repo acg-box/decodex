@@ -724,10 +724,14 @@ impl ChiefHost {
 				)
 				.await
 		};
-		result.map_err(|_| {
-			ChiefHostError::Unknown(
+		result.map_err(|error| match error {
+			ClientError::RequestTooLarge | ClientError::RequestQueueFull =>
+				ChiefHostError::Rejected(
+					"Message was not sent: the local connection refused this request. Your draft is preserved.",
+				),
+			_ => ChiefHostError::Unknown(
 				"Native message delivery could not be confirmed. Inspect history before sending again.",
-			)
+			),
 		})?;
 		Ok(work.into())
 	}
@@ -784,16 +788,7 @@ impl ChiefHost {
 
 			ChiefActionDto::StartConfigured { .. } | ChiefActionDto::SendConfigured { .. } =>
 				unreachable!("normalized input"),
-			ChiefActionDto::Steer { work_id, turn_id, text, attachments, task_references } => {
-				validate_attachments(&attachments)?;
-				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
-				chief.steer_work_with_references(work_id.as_str(),turn_id.as_str(),&key,text.as_str(),crate::chief::ChiefInputExtras { attachments: &attachments, task_references: &task_references }).await.map_err(|error| match error {
-					ChiefError::Rejected(_) => ChiefHostError::Rejected("Task references could not be accepted in this turn. Your draft is preserved; refresh the task and its selected references."),
-					ChiefError::Invalid(ref message) if message.starts_with("The running turn changed") || message.starts_with("Steer was rejected:") => ChiefHostError::Rejected("The running turn changed or rejected this input. Your draft is preserved; refresh before sending again."),
-					_ => ChiefHostError::Unknown("Steer acceptance could not be confirmed. Inspect the conversation before sending again."),
-				})?;
-				Ok(work_id.as_str().into())
-			},
+			action @ ChiefActionDto::Steer { .. } => Self::steer_action(action, &key, active).await,
 			ChiefActionDto::ContinueMisalignment { work_id, review_id } => {
 				let review = self
 					.store
@@ -820,7 +815,15 @@ impl ChiefHost {
 			},
 			ChiefActionDto::AnswerQuestion { work_id, question_id, answer } => {
 				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
-				chief.answer_async_question(work_id.as_str(),question_id.as_str(),answer.as_str(),&key).await.map_err(|_|ChiefHostError::Unknown("Question reply acceptance could not be confirmed. Inspect the current conversation before sending again."))?;
+				chief
+					.answer_async_question(
+						work_id.as_str(),
+						question_id.as_str(),
+						answer.as_str(),
+						&key,
+					)
+					.await
+					.map_err(question_input_error)?;
 				Ok(work_id.as_str().into())
 			},
 			ChiefActionDto::SkipQuestion { work_id, thread_id, question_id } =>
@@ -859,6 +862,33 @@ impl ChiefHost {
 				Ok(work_id.as_str().into())
 			},
 		}
+	}
+
+	async fn steer_action(
+		action: ChiefActionDto,
+		key: &str,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		let ChiefActionDto::Steer { work_id, turn_id, text, attachments, task_references } = action
+		else {
+			unreachable!("steer action")
+		};
+		validate_attachments(&attachments)?;
+		let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
+		chief
+			.steer_work_with_references(
+				work_id.as_str(),
+				turn_id.as_str(),
+				key,
+				text.as_str(),
+				crate::chief::ChiefInputExtras {
+					attachments: &attachments,
+					task_references: &task_references,
+				},
+			)
+			.await
+			.map_err(steer_input_error)?;
+		Ok(work_id.as_str().into())
 	}
 
 	async fn install_plugin(
@@ -992,6 +1022,11 @@ impl ChiefHost {
 	async fn record_delivery(&self, root: &str, result: Result<(), ChiefError>) {
 		match result {
 			Ok(()) => {
+				let _ = self.store.resolve_chief_delivery_failure(root.into()).await;
+			},
+			Err(ChiefError::InputNotSent(_)) => {
+				// The retained input already has a user-decision receipt. Do not block
+				// its editor with a false connection failure or requeue it.
 				let _ = self.store.resolve_chief_delivery_failure(root.into()).await;
 			},
 			Err(ChiefError::ThreadOwnedElsewhere) => {
@@ -1287,6 +1322,38 @@ fn now() -> i64 {
 		.unwrap_or(0)
 }
 
+fn steer_input_error(error: ChiefError) -> ChiefHostError {
+	match error {
+		ChiefError::InputNotSent(_) => ChiefHostError::Rejected(
+			"Input was not sent: the local connection refused this request. Your draft is preserved.",
+		),
+		ChiefError::Rejected(_) => ChiefHostError::Rejected(
+			"Task references could not be accepted in this turn. Your draft is preserved; refresh the task and its selected references.",
+		),
+		ChiefError::Invalid(ref message)
+			if message.starts_with("The running turn changed")
+				|| message.starts_with("Steer was rejected:") =>
+			ChiefHostError::Rejected(
+				"The running turn changed or rejected this input. Your draft is preserved; refresh before sending again.",
+			),
+		_ => ChiefHostError::Unknown(
+			"Steer acceptance could not be confirmed. Inspect the conversation before sending again.",
+		),
+	}
+}
+
+fn question_input_error(error: ChiefError) -> ChiefHostError {
+	match error {
+		ChiefError::InputNotSent(_) | ChiefError::Transport(ClientError::StaleHistory) =>
+			ChiefHostError::Rejected(
+				"Question reply was not sent. Your draft is preserved; refresh the question before sending again.",
+			),
+		_ => ChiefHostError::Unknown(
+			"Question reply acceptance could not be confirmed. Inspect the current conversation before sending again.",
+		),
+	}
+}
+
 fn resource_error(error: ChiefError) -> ChiefHostError {
 	match error {
 		ChiefError::Rejected(_) | ChiefError::Transport(ClientError::Remote(_)) =>
@@ -1303,6 +1370,30 @@ fn resource_error(error: ChiefError) -> ChiefHostError {
 mod tests {
 	use super::*;
 	use decodex_core::DecodexRoot;
+
+	#[test]
+	fn input_rejection_requires_released_durable_claims_not_just_a_transport_code() {
+		for classify in [steer_input_error, question_input_error] {
+			assert!(matches!(
+				classify(ChiefError::InputNotSent(
+					decodex_database::ChiefDispatchRefusal::RequestQueueFull
+				)),
+				ChiefHostError::Rejected(_)
+			));
+			for error in [
+				ClientError::RequestTooLarge,
+				ClientError::RequestQueueFull,
+				ClientError::FrameTooLarge,
+				ClientError::CapacityExceeded,
+				ClientError::Closed,
+			] {
+				assert!(
+					matches!(classify(ChiefError::Transport(error)), ChiefHostError::Unknown(_)),
+					"a transport error alone does not rule out earlier context writes"
+				);
+			}
+		}
+	}
 
 	#[test]
 	fn expected_transport_close_does_not_hide_real_processing_failures() {

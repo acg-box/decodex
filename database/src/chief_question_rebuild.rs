@@ -12,6 +12,7 @@ impl SqliteStore {
 		work: String,
 		event: i64,
 		previous: Option<crate::ChiefWorkItem>,
+		refusal: crate::ChiefDispatchRefusal,
 	) -> Result<(), StoreError> {
 		self.run(move |connection| {
 			let tx=connection.transaction().map_err(sqlite_error)?;
@@ -22,7 +23,7 @@ impl SqliteStore {
 			};
 			if !valid { return Err(StoreError::InvalidInput("async input claim changed")); }
 			let now=unix_micros()?;
-			tx.execute("UPDATE chief_inbox_events SET disposition='resolved',disposition_note='Native history changed; this input was rejected before transport write.',disposed_at_micros=max(created_at_micros,?2) WHERE id=?1",params![event,now]).map_err(sqlite_error)?;
+			tx.execute("UPDATE chief_inbox_events SET disposition='resolved',disposition_note=?3,disposed_at_micros=max(created_at_micros,?2) WHERE id=?1",params![event,now,refusal.note()]).map_err(sqlite_error)?;
 			if let Some(previous) = previous {
 				if previous.id != work || previous.dispatch_state != crate::ChiefDispatchState::Idle {
 					return Err(StoreError::InvalidInput("invalid pre-dispatch state"));
