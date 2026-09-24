@@ -333,3 +333,20 @@ Installed Codex `0.155.0-alpha.16.3` includes the nullable string field in its
 experimental generated `PermissionsRequestApprovalParams` schema. Projection and
 rendered tests cover Unicode identifiers and missing or invalid values. This is
 request attribution, not proof of remote executor availability or a remote grant.
+
+
+## Native current-turn reviewer adapter
+
+At cutoff `595cc91e8cbb1c2ca822d0311dcf12709410c582`, `turn/settings/update`
+publishes a sparse patch to one exact live task. Reviewer-only changes work
+without `step_model_switching`. Native managed restrictions still apply. Existing
+step captures, pending approvals, child sessions, and future thread defaults do
+not change. `applied` confirms publication, not a future inference or approval.
+
+Decodex exposes a reviewer-only adapter through the retained Chief bridge. It
+requires an exact thread/turn and connection-bound history guard. It does not
+permit model or approval-policy fields through this route. It never retries an
+uncertain reply. The installed alpha16.3 fixture verifies actual approval routing,
+pending request retention, terminal-target refusal, and unchanged next-turn
+defaults using isolated home directories and loopback inference. Durable edit
+receipts and desktop controls are separate pending integration work.
