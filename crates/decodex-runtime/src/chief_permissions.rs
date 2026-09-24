@@ -85,8 +85,14 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 		&& work.active_turn_id.is_none();
 	let running = work.dispatch_state == decodex_database::ChiefDispatchState::Running
 		&& work.active_turn_id.is_some();
-	let can_update =
-		(idle || running) && work.status != decodex_database::ChiefWorkStatus::Resolved;
+	let other_pending = store
+		.chief_plugin_receipt(k.work.clone(), k.thread.clone())
+		.await
+		.ok()?
+		.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown"));
+	let can_update = (idle || running)
+		&& !other_pending
+		&& work.status != decodex_database::ChiefWorkStatus::Resolved;
 	let profiles: Vec<ChiefPermissionProfile> = profiles
 		.into_iter()
 		.map(|p| {
@@ -245,10 +251,12 @@ pub(crate) async fn persist_current(
 ) -> Result<(), decodex_database::StoreError> {
 	let observed = client.configured_task_permissions(thread);
 	let current = observed.as_ref().is_some_and(|(_, guard)| guard.is_live());
+	let settings_revision = observed.as_ref().and_then(|(_, guard)| guard.settings_revision());
 	let settings = observed.map(|(facts, _)| facts);
 	let encoded =
 		settings.as_ref().map(|facts| serde_json::to_string(facts).expect("permission facts"));
-	let identity = json!([generation, thread, client.history_revision(), settings]);
+	let identity =
+		json!([generation, thread, client.history_revision(), settings_revision, settings]);
 	let digest: String = Sha256::digest(identity.to_string().as_bytes())
 		.iter()
 		.map(|b| format!("{b:02x}"))

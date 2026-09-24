@@ -240,6 +240,20 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Change one task exclusion without changing shared plugin installation.
+	SetTaskPlugin {
+		/// Exact local work.
+		work_id: crate::EntityId,
+		/// Exact native thread.
+		thread_id: crate::EntityId,
+		/// Reviewed source and selection identity.
+		review_token: crate::WireText,
+		/// Canonical plugin identity.
+		plugin_id: crate::WireText,
+		/// Remove the exclusion when true; shared enablement still applies.
+		enabled: bool,
+	},
+
 	/// Select a reviewed native permission profile for the exact task.
 	SelectPermissions {
 		/// Owning task.

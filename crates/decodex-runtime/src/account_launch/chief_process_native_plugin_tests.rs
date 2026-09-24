@@ -62,7 +62,7 @@ async fn qualify(running: bool) {
 	} else {
 		assert_eq!(turn(&mut session, &thread).await, 1, "enabled hook");
 	}
-	select(&mut session, &thread, vec!["sample@test".into()]).await;
+	select(&mut session, &root, &thread, vec!["sample@test".into()]).await;
 	if running {
 		assert!(session.client.observed_task_plugins(&thread).is_none());
 		backend = Some(tokio::spawn(serve(listener.take().expect("held listener"), calls.clone())));
@@ -97,7 +97,7 @@ async fn qualify(running: bool) {
 		["sample@test"]
 	);
 	assert_eq!(turn(&mut session, &thread).await, 0, "cold disabled hook");
-	select(&mut session, &thread, vec![]).await;
+	select(&mut session, &root, &thread, vec![]).await;
 	assert_eq!(turn(&mut session, &thread).await, 1, "re-enabled hook");
 	assert_eq!(calls.load(Ordering::Acquire), 5);
 	drop(session);
@@ -117,16 +117,25 @@ fn setup(root: &std::path::Path, address: std::net::SocketAddr) {
 	std::fs::write(root.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nplugins=true\nhooks=true\n[plugins.\"sample@test\"]\nenabled=true\n[projects.{}]\ntrust_level=\"trusted\"\n[model_providers.fixture]\nname=\"Isolated plugin fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(root))).expect("config");
 }
 
-async fn select(session: &mut NativeSession, thread: &str, excluded: Vec<String>) {
+async fn select(
+	session: &mut NativeSession,
+	root: &std::path::Path,
+	thread: &str,
+	excluded: Vec<String>,
+) {
 	let (_, guard) = session.client.configured_task_plugins(thread).expect("current selection");
-	session
-		.client
-		.queue_thread_plugin_selection(
-			&ThreadPluginSelection::new(thread, excluded.clone()).expect("selection"),
-			guard.clone(),
-		)
-		.await
-		.expect("queue");
+	if excluded.is_empty() {
+		session
+			.client
+			.queue_thread_plugin_selection(
+				&ThreadPluginSelection::new(thread, excluded.clone()).expect("selection"),
+				guard.clone(),
+			)
+			.await
+			.expect("queue");
+	} else {
+		super::reviewer::select_task_plugin(&session.client, root, thread).await;
+	}
 	loop {
 		let event = session.events.recv().await.expect("settings event");
 		if let ServerEvent::Notification { method, params } = event

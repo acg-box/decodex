@@ -333,6 +333,34 @@ impl ChiefHost {
 		.await
 	}
 
+	pub(crate) async fn plugin_selection(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefPluginSelectionState {
+		crate::chief_plugins::read(&self.store, || async {
+			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+			self.timeline_source(work, &owner.codex_thread_id?).await
+		})
+		.await
+	}
+
+	async fn set_task_plugin(
+		&self,
+		work: &str,
+		change: crate::chief_plugins::Change<'_>,
+	) -> Result<String, ChiefHostError> {
+		crate::chief_plugins::write(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			change,
+		)
+		.await?;
+		Ok(work.into())
+	}
+
 	pub(crate) async fn permission_profiles(
 		&self,
 		work: &str,
@@ -844,6 +872,45 @@ impl ChiefHost {
 		Ok(work_id.as_str().into())
 	}
 
+	async fn handle_settings(
+		&self,
+		key: &str,
+		action: ChiefActionDto,
+	) -> Result<String, ChiefHostError> {
+		match action {
+			ChiefActionDto::SetTaskPlugin {
+				work_id,
+				thread_id,
+				review_token,
+				plugin_id,
+				enabled,
+			} =>
+				self.set_task_plugin(
+					work_id.as_str(),
+					crate::chief_plugins::Change {
+						thread: thread_id.as_str(),
+						review: review_token.as_str(),
+						plugin: plugin_id.as_str(),
+						enabled,
+						attempt_id: key,
+					},
+				)
+				.await,
+			ChiefActionDto::SelectPermissions { work_id, thread_id, review_token, profile_id } =>
+				self.select_permissions(
+					work_id.as_str(),
+					thread_id.as_str(),
+					review_token.as_str(),
+					profile_id.as_str(),
+					key,
+				)
+				.await,
+			ChiefActionDto::SetLiveReviewer { work_id, turn_id, review_token, reviewer } =>
+				self.set_live_reviewer((&work_id, &turn_id, &review_token), reviewer, key).await,
+			_ => Err(ChiefHostError::Rejected("Unsupported settings action.")),
+		}
+	}
+
 	async fn handle(
 		&self,
 		key: String,
@@ -853,17 +920,9 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			ChiefActionDto::SelectPermissions { work_id, thread_id, review_token, profile_id } =>
-				self.select_permissions(
-					work_id.as_str(),
-					thread_id.as_str(),
-					review_token.as_str(),
-					profile_id.as_str(),
-					&key,
-				)
-				.await,
-			ChiefActionDto::SetLiveReviewer { work_id, turn_id, review_token, reviewer } =>
-				self.set_live_reviewer((&work_id, &turn_id, &review_token), reviewer, &key).await,
+			action @ (ChiefActionDto::SetTaskPlugin { .. }
+			| ChiefActionDto::SelectPermissions { .. }
+			| ChiefActionDto::SetLiveReviewer { .. }) => self.handle_settings(key.as_str(), action).await,
 			ChiefActionDto::NativeAgentInput { work_id, thread_id, text, expected_turn } =>
 				self.native_agent_input(
 					(work_id.as_str(), thread_id.as_str()),

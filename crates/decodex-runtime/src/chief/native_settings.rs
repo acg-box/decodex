@@ -21,7 +21,7 @@ impl ChiefCoordinator {
 			self.store.validate_chief_usage_resume(thread.to_owned(), last_turn).await?;
 			self.expect_usage_replay(thread, &response);
 			self.loaded_threads.insert(thread.to_owned());
-			self.persist_permission_observation(thread).await?;
+			self.persist_task_settings(thread).await?;
 		}
 		Ok(())
 	}
@@ -36,22 +36,22 @@ impl ChiefCoordinator {
 		}
 		if let Some(thread) = params["threadId"].as_str() {
 			self.cancel_changed_capacity_selection(thread, &params["threadSettings"]).await?;
-			self.persist_permission_observation(thread).await?;
+			self.persist_task_settings(thread).await?;
 		}
 		Ok(true)
 	}
 
-	pub(super) async fn persist_permission_observation(
-		&self,
-		thread: &str,
-	) -> Result<(), ChiefError> {
+	pub(super) async fn persist_task_settings(&self, thread: &str) -> Result<(), ChiefError> {
+		let generation = self.native_generation.as_ref().map(|g| g.as_str().into());
 		crate::chief_permissions::persist_current(
 			&self.store,
 			&self.client,
 			thread,
-			self.native_generation.as_ref().map(|g| g.as_str().into()),
+			generation.clone(),
 		)
 		.await?;
+		crate::chief_plugins::persist_current(&self.store, &self.client, thread, generation)
+			.await?;
 		Ok(())
 	}
 

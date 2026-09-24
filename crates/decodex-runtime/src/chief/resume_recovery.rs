@@ -90,7 +90,7 @@ impl ChiefCoordinator {
 		}
 		self.expect_usage_replay(thread, &resumed);
 		self.loaded_threads.insert(thread.clone());
-		self.persist_permission_observation(thread).await?;
+		self.persist_task_settings(thread).await?;
 		let Ok(history) = self.client.thread_read_turn(thread, turn).await else {
 			return Ok(());
 		};

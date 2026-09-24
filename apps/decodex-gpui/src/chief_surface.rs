@@ -25,6 +25,7 @@
 #[path = "chief_timeline.rs"] mod native_timeline;
 #[path = "chief_output_stream.rs"] mod output_stream;
 #[path = "chief_permissions.rs"] mod permissions;
+#[path = "chief_plugins.rs"] mod plugins;
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_question_notices.rs"] mod question_notices;
@@ -172,6 +173,7 @@ pub(crate) struct ChiefSurface {
 	model_settings: model_settings::Panel,
 	live_reviewer: live_settings::Panel,
 	permission_profiles: permissions::Panel,
+	task_plugins: plugins::Panel,
 	native_goal: native_goal::Panel,
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
@@ -397,6 +399,7 @@ impl ChiefSurface {
 			model_settings: Default::default(),
 			live_reviewer: Default::default(),
 			permission_profiles: Default::default(),
+			task_plugins: Default::default(),
 			native_goal: Default::default(),
 			cwd,
 			account: Self::account_input(cx),
@@ -1076,6 +1079,7 @@ impl ChiefSurface {
 		self.reset_model_settings();
 		self.reset_live_reviewer();
 		self.reset_permission_profiles();
+		self.reset_task_plugins();
 		self.reset_native_goal();
 		self.snapshot = None;
 		self.pages.clear();
@@ -1204,6 +1208,7 @@ impl ChiefSurface {
 		if !matches!(&result, Ok(ChiefSnapshotResult::Available(_))) {
 			self.reset_live_reviewer();
 			self.reset_permission_profiles();
+			self.reset_task_plugins();
 			self.reset_native_goal();
 			self.question_notices = Default::default();
 			self.clear_activity_detail();
@@ -1213,6 +1218,7 @@ impl ChiefSurface {
 				self.invalidate_model_settings(&snapshot);
 				self.invalidate_live_reviewer_for_snapshot(&snapshot);
 				self.invalidate_permission_profiles(&snapshot);
+				self.invalidate_task_plugins(&snapshot);
 				self.invalidate_native_goal(&snapshot);
 				if self.snapshot.as_ref().is_some_and(|old| {
 					old.runtime_source != snapshot.runtime_source
@@ -2108,6 +2114,7 @@ impl ChiefSurface {
 									.child(self.model_settings_panel(item, cx))
 									.child(self.live_reviewer_panel(item, cx))
 									.child(self.permission_profiles_panel(item, cx))
+									.child(self.task_plugins_panel(item, cx))
 							}),
 					)
 			})

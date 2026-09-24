@@ -321,3 +321,68 @@ impl OwnedReviewer {
 		);
 	}
 }
+
+#[path = "chief_process_plugin_service_tests.rs"] mod plugin_service_tests;
+
+impl OwnedReviewer {
+	pub(super) async fn select_task_plugin(&self) {
+		use decodex_protocol::{ChiefPluginOutcome as Outcome, ChiefPluginSelectionState as State};
+		let source = || async { Some(self.source(&self.key)) };
+		let State::Available { review_token, .. } =
+			crate::chief_plugins::read(&self.store, source).await
+		else {
+			panic!("native plugin review")
+		};
+		crate::chief_plugins::write(
+			&self.store,
+			source,
+			crate::chief_plugins::Change {
+				thread: &self.key.thread,
+				review: review_token.as_str(),
+				plugin: "sample@test",
+				enabled: false,
+				attempt_id: "native-plugin",
+			},
+		)
+		.await
+		.expect("native plugin selection");
+		tokio::time::timeout(std::time::Duration::from_secs(5), async {
+			loop {
+				if matches!(
+					crate::chief_plugins::read(&self.store, source).await,
+					State::Available { last_outcome: Some(Outcome::TargetObserved), .. }
+				) {
+					break;
+				}
+				tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+			}
+		})
+		.await
+		.expect("native plugin publication");
+		assert!(
+			crate::chief_plugins::write(
+				&self.store,
+				source,
+				crate::chief_plugins::Change {
+					thread: &self.key.thread,
+					review: review_token.as_str(),
+					plugin: "sample@test",
+					enabled: false,
+					attempt_id: "replay"
+				}
+			)
+			.await
+			.is_err()
+		);
+		let reopened = SqliteStore::open(&self.root.paths()).expect("receipt reopen");
+		assert_eq!(
+			reopened
+				.chief_plugin_receipt("root".into(), self.key.thread.clone())
+				.await
+				.expect("receipt")
+				.expect("saved")
+				.state,
+			"target_observed"
+		);
+	}
+}

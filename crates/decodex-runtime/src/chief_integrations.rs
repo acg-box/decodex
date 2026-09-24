@@ -92,7 +92,7 @@ fn project_mcp(result: Result<Vec<Value>, ClientError>) -> ChiefMcpInventory {
 	ChiefMcpInventory::Available { servers }
 }
 
-fn project_plugins(result: Result<Value, ClientError>) -> ChiefPluginInventory {
+pub(crate) fn project_plugins(result: Result<Value, ClientError>) -> ChiefPluginInventory {
 	let value = match result {
 		Ok(value) => value,
 		Err(ClientError::Remote(error)) if error.code == -32601 =>
