@@ -53,7 +53,7 @@ async fn resolved_native_approval_prevents_late_account_setting_write() {
 				guard
 			)
 			.await,
-		Err(ClientError::InvalidFrame)
+		Err(ClientError::StaleRequest)
 	));
 	server.await.unwrap();
 }
@@ -127,8 +127,18 @@ async fn installed_native_account_settings_survive_restart_and_reject_stale_writ
 	let (client, mut child) = native(home.path()).await;
 	let cold = client.app_link_settings(cwd, "app.with.dot", " work.\"link\\one ").await.unwrap();
 	assert_eq!(cold.effective_mode.as_deref(), Some("prompt"));
-	let _cleared =
-		client.write_app_link_setting(&cold, AppLinkSettingEdit::ApprovalMode(None)).await.unwrap();
+	let catalog = client.saved_app_link_settings(cwd).await.unwrap();
+	assert_eq!(catalog.entries.len(), 2);
+	let saved = catalog.entries.iter().find(|s| s.link_id() == " work.\"link\\one ").unwrap();
+	assert_eq!(saved.config_version(), cold.config_version());
+	let _cleared = client
+		.write_saved_app_link_setting(
+			saved,
+			AppLinkSettingEdit::ApprovalMode(None),
+			client.history_guard(client.history_revision()).unwrap(),
+		)
+		.await
+		.unwrap();
 	assert_eq!(
 		client
 			.app_link_settings(cwd, "app.with.dot", " work.\"link\\one ")
@@ -146,6 +156,12 @@ async fn installed_native_account_settings_survive_restart_and_reject_stale_writ
 			.as_deref(),
 		Some("auto_review")
 	);
+	child.kill().await.unwrap();
+	child.wait().await.unwrap();
+	let (client, mut child) = native(home.path()).await;
+	let catalog = client.saved_app_link_settings(cwd).await.unwrap();
+	assert_eq!(catalog.entries.len(), 1);
+	assert_eq!(catalog.entries[0].link_id(), "personal");
 	child.kill().await.unwrap();
 	child.wait().await.unwrap();
 }
@@ -300,5 +316,106 @@ async fn acknowledged_save_remains_distinct_from_failed_followup_read() {
 		client.app_link_settings("/fixture", "app.with.dot", " work.\"link\\one ").await.is_err()
 	);
 	assert!(!receipt.overridden);
+	backend.await.unwrap();
+}
+
+async fn catalog_from(response: Value) -> Result<AppLinkSettingsCatalog, ClientError> {
+	let (local, remote) = tokio::io::duplex(1024 * 1024);
+	let (r, w) = tokio::io::split(local);
+	let (client, _events) = AppServerClient::from_io(r, w);
+	let backend = tokio::spawn(async move {
+		let (r, mut w) = tokio::io::split(remote);
+		let mut lines = BufReader::new(r).lines();
+		let request: Value =
+			serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+		assert_eq!(request["method"], "config/read");
+		assert_eq!(request["params"], json!({"cwd":"/fixture","includeLayers":true}));
+		w.write_all(format!("{}\n", json!({"id":request["id"],"result":response})).as_bytes())
+			.await
+			.unwrap();
+	});
+	let result = client.saved_app_link_settings("/fixture").await;
+	backend.await.unwrap();
+	result
+}
+#[tokio::test]
+async fn saved_catalog_projects_only_the_active_writable_layer_and_preserves_native_identity() {
+	let mut response = config("approve", "v1");
+	response["layers"][0]["config"]["apps"]["calendar"] = json!({"links":{"empty":{},"null":{"approvals_reviewer":null},"personal":{"approvals_reviewer":"user"}}});
+	response["config"]["apps"]["calendar"] = json!({"links":{"personal":{"approvals_reviewer":"auto_review"},"managed-only":{"default_tools_approval_mode":"prompt"}}});
+	response["layers"].as_array_mut().unwrap().push(json!({"name":{"type":"user","file":"/other/config.toml"},"version":"wrong","config":{"apps":{"other":{"links":{"excluded":{"approvals_reviewer":"user"}}}}}}));
+	let catalog = catalog_from(response).await.unwrap();
+	assert_eq!(catalog.config_file(), "/fixture/config.toml");
+	assert_eq!(catalog.config_version(), "v1");
+	assert_eq!(catalog.entries.len(), 2);
+	let first = &catalog.entries[0];
+	assert_eq!(first.app_id(), "app.with.dot");
+	assert_eq!(first.link_id(), " work.\"link\\one ");
+	assert_eq!(first.user_mode.as_deref(), Some("approve"));
+	assert_eq!(first.user_reviewer.as_deref(), Some("future_reviewer"));
+	let second = &catalog.entries[1];
+	assert_eq!(second.link_id(), "personal");
+	assert_eq!(second.user_reviewer.as_deref(), Some("user"));
+	assert_eq!(second.effective_reviewer.as_deref(), Some("auto_review"));
+	assert!(!format!("{first:?}").contains("must-not-project"));
+}
+#[tokio::test]
+async fn saved_catalog_distinguishes_empty_unreadable_and_oversized_configuration() {
+	let mut response = config("approve", "v1");
+	response["layers"][0]["config"] = json!({});
+	assert!(catalog_from(response.clone()).await.unwrap().entries.is_empty());
+	response["layers"][0]["disabledReason"] = json!("managed");
+	assert!(matches!(catalog_from(response).await, Err(ClientError::InvalidFrame)));
+	for invalid in [
+		json!([]),
+		json!({"calendar":{"links":[]}}),
+		json!({"calendar":{"links":{"work":{"approvals_reviewer":true}}}}),
+	] {
+		let mut response = config("approve", "v1");
+		response["layers"][0]["config"]["apps"] = invalid;
+		assert!(matches!(catalog_from(response).await, Err(ClientError::InvalidFrame)));
+	}
+	let links: serde_json::Map<String, Value> =
+		(0..2100).map(|i| (format!("link-{i}"), json!({"approvals_reviewer":"user"}))).collect();
+	let mut response = config("approve", "v1");
+	response["layers"][0]["config"]["apps"] = json!({"calendar":{"links":links}});
+	assert!(matches!(catalog_from(response).await, Err(ClientError::CapacityExceeded)));
+}
+#[tokio::test]
+async fn saved_setting_write_rejects_a_revoked_history_before_transport() {
+	let (local, remote) = tokio::io::duplex(65536);
+	let (r, w) = tokio::io::split(local);
+	let (client, _events) = AppServerClient::from_io(r, w);
+	let guard = client.history_guard(0).unwrap();
+	let backend = tokio::spawn(async move {
+		let (r, mut w) = tokio::io::split(remote);
+		let mut lines = BufReader::new(r).lines();
+		let request: Value =
+			serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+		w.write_all(
+			format!("{}\n", json!({"method":"thread/reverted","params":{"threadId":"thread"}}))
+				.as_bytes(),
+		)
+		.await
+		.unwrap();
+		w.write_all(
+			format!("{}\n", json!({"id":request["id"],"result":config("approve","v1")})).as_bytes(),
+		)
+		.await
+		.unwrap();
+		assert!(tokio::time::timeout(Duration::from_millis(50), lines.next_line()).await.is_err());
+	});
+	let catalog = client.saved_app_link_settings("/fixture").await.unwrap();
+	assert!(!guard.is_live());
+	assert!(matches!(
+		client
+			.write_saved_app_link_setting(
+				&catalog.entries[0],
+				AppLinkSettingEdit::ApprovalMode(None),
+				guard
+			)
+			.await,
+		Err(ClientError::StaleHistory)
+	));
 	backend.await.unwrap();
 }

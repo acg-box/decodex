@@ -13,7 +13,8 @@ use sha2::{Digest as _, Sha256};
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ChiefAppSettingsAttempt {
 	pub owner: ChiefConfigOwner,
-	pub request_event_id: i64,
+	/// Originating pending request, or None for an explicitly reviewed saved native override.
+	pub request_event_id: Option<i64>,
 	/// Digest of the native writable config file, without account or task partitioning.
 	pub scope: String,
 	pub connector: String,
@@ -82,7 +83,9 @@ impl SqliteStore {
 	}
 
 	/// Reserve one reviewed shared edit. An unresolved write excludes other tasks using that file.
-	/// The service must also guard the exact native request and verify child-thread ownership.
+	/// With a request, the service must guard its exact native identity and verify child ownership.
+	/// Without a request, it must review an existing saved native connection override and guard
+	/// the current source. The journal does not infer native config contents from task events.
 	/// The originating turn may have yielded; it need not be the currently active turn.
 	pub async fn reserve_chief_app_settings_attempt(
 		&self,
@@ -102,7 +105,7 @@ impl SqliteStore {
 		.all(|v| text(v))
 			|| !digest(&a.scope)
 			|| !digest(&a.review_token)
-			|| a.request_event_id <= 0
+			|| a.request_event_id.is_some_and(|id| id <= 0)
 			|| !matches!(a.field.as_str(), "default_tools_approval_mode" | "approvals_reviewer")
 			|| a.value.as_ref().is_some_and(|v| !target(&a.field, v))
 			|| a.previous_value == a.value
@@ -179,9 +182,10 @@ fn pending_request(
 	c: &rusqlite::Connection,
 	a: &ChiefAppSettingsAttempt,
 ) -> Result<bool, StoreError> {
+	let Some(event_id) = a.request_event_id else { return Ok(true) };
 	let payload: Option<String> = c.query_row(
         "SELECT e.payload FROM chief_inbox_events e WHERE e.id=?1 AND e.work_item_id=?2 AND e.event_kind='server_request_pending' AND e.disposition IS NULL AND NOT EXISTS(SELECT 1 FROM chief_misalignment WHERE work_id=?2 AND thread_id=?3)",
-        params![a.request_event_id,a.owner.work,a.owner.thread], |r|r.get(0)).optional().map_err(sqlite_error)?;
+        params![event_id,a.owner.work,a.owner.thread], |r|r.get(0)).optional().map_err(sqlite_error)?;
 	Ok(payload.as_deref().and_then(|p| serde_json::from_str::<Value>(p).ok()).is_some_and(|v| {
 		v["method"] == "mcpServer/elicitation/request"
 			&& v["params"]["serverName"] == "codex_apps"

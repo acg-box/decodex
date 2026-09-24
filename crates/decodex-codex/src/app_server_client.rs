@@ -40,7 +40,8 @@ pub use thread_plugins::{
 mod app_link_settings;
 mod hooks;
 pub use app_link_settings::{
-	AppLinkSettingEdit, AppLinkSettings, AppLinkSettingsWrite, is_app_link_settings_write,
+	AppLinkSettingEdit, AppLinkSettings, AppLinkSettingsCatalog, AppLinkSettingsWrite,
+	is_app_link_settings_write,
 };
 mod integrations;
 pub use hooks::{
@@ -91,6 +92,8 @@ impl fmt::Debug for RpcError {
 /// A transport failure after submission is an unknown dispatch outcome, never retry authority.
 #[derive(Clone, Debug)]
 pub enum ClientError {
+	/// The server request guard is stale or foreign; no request or reply bytes were sent.
+	StaleRequest,
 	/// The expected native history changed; this request was rejected before transport write.
 	StaleHistory,
 	/// The local request exceeded the wire bound before any bytes were sent.
@@ -161,7 +164,7 @@ impl Guard {
 			Self::Request(guard) if guard.belongs_to(requests) && guard.is_live() => Ok(()),
 			Self::History(guard) if guard.belongs_to(requests) && guard.is_live() => Ok(()),
 			Self::History(_) => Err(ClientError::StaleHistory),
-			Self::Request(_) => Err(ClientError::InvalidFrame),
+			Self::Request(_) => Err(ClientError::StaleRequest),
 		}
 	}
 }
