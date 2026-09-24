@@ -13,6 +13,7 @@ use decodex_database::{
 	CodexAccountCapabilityAttestation, SqliteStore,
 };
 use decodex_protocol::{ChiefLiveReviewerOutcome, ChiefLiveReviewerState, ChiefReviewer};
+use sha2::Digest as _;
 const DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const ACCOUNT: &str = "10000000-0000-4000-8000-000000000001";
 const OPERATION: &str = "20000000-0000-4000-8000-000000000001";
@@ -383,6 +384,78 @@ impl OwnedReviewer {
 				.expect("saved")
 				.state,
 			"target_observed"
+		);
+	}
+}
+
+#[path = "chief_process_hook_service_tests.rs"] mod hook_service_tests;
+
+impl OwnedReviewer {
+	pub(super) async fn trust_hook(&self) {
+		use decodex_protocol::{ChiefHookChange, ChiefHookSettingsState as State};
+		let source = || async {
+			let mut key = self.key.clone();
+			key.history_revision = self.client.history_revision();
+			Some(self.source(&key))
+		};
+		let State::Available { review_token, hooks, config_file, .. } =
+			crate::chief_hooks::read(&self.store, source).await
+		else {
+			panic!("hook service review")
+		};
+		let hook = hooks
+			.iter()
+			.find(|h| h.details.contains("echo isolated-plugin-hook"))
+			.expect("known harmless fixture hook");
+		assert_eq!(hook.trust_status, "untrusted");
+		crate::chief_hooks::write(
+			&self.store,
+			source,
+			crate::chief_hooks::Selection {
+				thread: &self.key.thread,
+				review: review_token.as_str(),
+				hook: hook.key.as_str(),
+				change: ChiefHookChange::Trust,
+				attempt_id: "native-hook",
+			},
+		)
+		.await
+		.expect("production hook trust");
+		let State::Available { last_edit: Some(edit), hooks, .. } =
+			crate::chief_hooks::read(&self.store, source).await
+		else {
+			panic!("native hook readback")
+		};
+		assert_eq!(edit.outcome, "saved");
+		assert_eq!(hooks.iter().find(|h| h.key == hook.key).expect("hook").trust_status, "trusted");
+		assert!(
+			crate::chief_hooks::write(
+				&self.store,
+				source,
+				crate::chief_hooks::Selection {
+					thread: &self.key.thread,
+					review: review_token.as_str(),
+					hook: hook.key.as_str(),
+					change: ChiefHookChange::Trust,
+					attempt_id: "replay-hook"
+				}
+			)
+			.await
+			.is_err()
+		);
+		let scope: String = sha2::Sha256::digest(config_file.as_str().as_bytes())
+			.iter()
+			.map(|b| format!("{b:02x}"))
+			.collect();
+		let reopened = SqliteStore::open(&self.root.paths()).expect("hook receipt reopen");
+		assert_eq!(
+			reopened
+				.chief_hook_receipt(scope)
+				.await
+				.expect("receipt")
+				.expect("saved receipt")
+				.state,
+			"saved"
 		);
 	}
 }

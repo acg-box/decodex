@@ -333,6 +333,34 @@ impl ChiefHost {
 		.await
 	}
 
+	pub(crate) async fn hook_settings(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefHookSettingsState {
+		crate::chief_hooks::read(&self.store, || async {
+			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+			self.timeline_source(work, &owner.codex_thread_id?).await
+		})
+		.await
+	}
+
+	async fn set_hook_setting(
+		&self,
+		work: &str,
+		change: crate::chief_hooks::Selection<'_>,
+	) -> Result<String, ChiefHostError> {
+		crate::chief_hooks::write(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			change,
+		)
+		.await?;
+		Ok(work.into())
+	}
+
 	pub(crate) async fn plugin_selection(
 		&self,
 		work: &str,
@@ -878,6 +906,24 @@ impl ChiefHost {
 		action: ChiefActionDto,
 	) -> Result<String, ChiefHostError> {
 		match action {
+			ChiefActionDto::SetHookSetting {
+				work_id,
+				thread_id,
+				review_token,
+				hook_key,
+				change,
+			} =>
+				self.set_hook_setting(
+					work_id.as_str(),
+					crate::chief_hooks::Selection {
+						thread: thread_id.as_str(),
+						review: review_token.as_str(),
+						hook: hook_key.as_str(),
+						change,
+						attempt_id: key,
+					},
+				)
+				.await,
 			ChiefActionDto::SetTaskPlugin {
 				work_id,
 				thread_id,
@@ -920,7 +966,8 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			action @ (ChiefActionDto::SetTaskPlugin { .. }
+			action @ (ChiefActionDto::SetHookSetting { .. }
+			| ChiefActionDto::SetTaskPlugin { .. }
 			| ChiefActionDto::SelectPermissions { .. }
 			| ChiefActionDto::SetLiveReviewer { .. }) => self.handle_settings(key.as_str(), action).await,
 			ChiefActionDto::NativeAgentInput { work_id, thread_id, text, expected_turn } =>

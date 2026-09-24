@@ -240,7 +240,20 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
-	/// Change one task exclusion without changing shared plugin installation.
+	/// Apply one explicitly reviewed shared hook change.
+	SetHookSetting {
+		/// Exact originating work.
+		work_id: crate::EntityId,
+		/// Exact native thread.
+		thread_id: crate::EntityId,
+		/// Reviewed source and hook metadata identity.
+		review_token: crate::WireText,
+		/// Exact reviewed hook.
+		hook_key: crate::WireText,
+		/// Explicit shared configuration change.
+		change: crate::ChiefHookChange,
+	},
+	/// Change one task plugin exclusion.
 	SetTaskPlugin {
 		/// Exact local work.
 		work_id: crate::EntityId,

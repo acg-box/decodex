@@ -25,7 +25,7 @@ async fn qualify_hooks() {
 		.expect("thread");
 	let thread = started["thread"]["id"].as_str().expect("thread id").to_owned();
 	assert_eq!(turn(&mut session, &thread).await, 0, "untrusted hook must not execute");
-	trust_fixture_hook(&session, &root).await;
+	super::super::reviewer::trust_hook(&session.client, &root, &thread).await;
 	assert_eq!(turn(&mut session, &thread).await, 1, "native reload activates reviewed hook");
 	change(&session, &root, &thread, HookSettingsChange::Enabled(false)).await;
 	assert_eq!(turn(&mut session, &thread).await, 0, "disabled trusted hook must not execute");

@@ -19,6 +19,10 @@ pub use chief_media::{
 };
 mod chief_native_goal;
 pub use chief_native_goal::{ChiefNativeGoal, ChiefNativeGoalResult, ChiefNativeGoalStatus};
+mod chief_hooks;
+pub use chief_hooks::{
+	ChiefHookChange, ChiefHookDto, ChiefHookEditReceipt, ChiefHookSettingsState,
+};
 mod chief_plugins;
 pub use chief_plugins::{ChiefPluginOutcome, ChiefPluginSelectionState};
 mod chief_permissions;
@@ -170,7 +174,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 60 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 61 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

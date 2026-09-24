@@ -310,6 +310,30 @@ impl ChiefClient {
 		}
 	}
 
+	/// Inspect shared hook settings and the last durable edit.
+	pub async fn hook_settings(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefHookSettingsState, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(45),
+		};
+		let completed = time::timeout(
+			Duration::from_secs(45),
+			transport
+				.query_inner("chief-hook-settings", QueryPayload::GetChiefHookSettings { work_id }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefHookSettings(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Inspect saved task exclusions and shared plugin discovery.
 	pub async fn plugin_selection(
 		&self,
@@ -1140,6 +1164,7 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		crate::ChiefActionDto::SetLiveReviewer { work_id, .. } => work_id,
 		crate::ChiefActionDto::SelectPermissions { work_id, .. } => work_id,
 		crate::ChiefActionDto::SetTaskPlugin { work_id, .. } => work_id,
+		crate::ChiefActionDto::SetHookSetting { work_id, .. } => work_id,
 		crate::ChiefActionDto::Start(start)
 		| crate::ChiefActionDto::StartConfigured { start, .. } => &start.root_id,
 		crate::ChiefActionDto::Send { root_id, .. }
@@ -3350,7 +3375,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 60 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 61 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
