@@ -230,6 +230,13 @@ fn pump(
 
 fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result<(), ClientError> {
 	if let Some(method) = value.get("method") {
+		if method == "turn/settings/update" {
+			return if decodex_codex::app_server_client::is_live_reviewer_update(&value["params"]) {
+				Ok(())
+			} else {
+				Err(ClientError::InvalidFrame)
+			};
+		}
 		if !matches!(
 			method.as_str(),
 			Some(
@@ -281,6 +288,18 @@ mod tests {
 	use std::sync::mpsc as sync_mpsc;
 
 	#[cfg(unix)]
+	#[test]
+	fn live_reviewer_bridge_preserves_the_narrow_edit_scope() {
+		let mut requests = HashSet::new();
+		let mut frame = json!({"id":42,"method":"turn/settings/update","params":{
+			"threadId":"thread","turnId":"turn","approvalsReviewer":"user"}});
+		assert!(validate_outbound(&frame, &mut requests).is_ok());
+		frame["params"]["approvalPolicy"] = json!("never");
+		assert!(validate_outbound(&frame, &mut requests).is_err());
+		frame["method"] = json!("thread/settings/update");
+		assert!(validate_outbound(&frame, &mut requests).is_err());
+	}
+
 	#[test]
 	fn rejected_optional_request_does_not_close_the_shared_transport() {
 		let (sender, stdout) = sync_mpsc::sync_channel(2);

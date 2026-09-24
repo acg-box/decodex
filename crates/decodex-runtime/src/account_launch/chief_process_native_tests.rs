@@ -1,6 +1,7 @@
 //! Opt-in installed-native qualification with a local Responses fixture and no credentials.
 use super::*;
 #[path = "chief_process_native_effort_tests.rs"] mod effort;
+#[path = "chief_process_native_reviewer_tests.rs"] mod reviewer;
 #[path = "chief_process_native_steer_tests.rs"] mod steer;
 use serde_json::json;
 use std::{
@@ -274,6 +275,16 @@ async fn serve_with_effort(
 	requests: Arc<std::sync::atomic::AtomicUsize>,
 	effort: Option<&str>,
 ) {
+	serve_fixture(listener, requests, effort, None, |serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]})).await;
+}
+
+async fn serve_fixture(
+	listener: tokio::net::TcpListener,
+	requests: Arc<std::sync::atomic::AtomicUsize>,
+	effort: Option<&str>,
+	bodies: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
+	output: fn(usize) -> Value,
+) {
 	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = tokio::io::BufReader::new(socket);
@@ -305,11 +316,14 @@ async fn serve_with_effort(
 			assert!(metadata["thread_id"].as_str().is_some_and(|id| !id.is_empty()));
 			assert!(metadata["turn_id"].as_str().is_some_and(|id| !id.is_empty()));
 		}
+		if let Some(bodies) = &bodies {
+			bodies.lock().expect("fixture bodies").push(body);
+		}
 		let serial = requests.fetch_add(1, Ordering::AcqRel);
 		let id = format!("fixture-{serial}");
 		let frames = [
 			json!({"type":"response.created","response":{"id":id}}),
-			json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]}}),
+			json!({"type":"response.output_item.done","item":output(serial)}),
 			json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":{"extra":{"fixture":"native-usage"},"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
 		];
 		let data = frames
