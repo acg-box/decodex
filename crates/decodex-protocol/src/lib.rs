@@ -160,7 +160,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 47 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 48 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
@@ -250,3 +250,15 @@ pub use mcp_elicitation::{
 
 mod weather;
 pub use weather::WeatherForecast;
+mod chief_execution;
+pub use chief_execution::ChiefExecutionOverrides;
+mod chief_steer;
+pub use chief_steer::{ChiefSteerIdentity, ChiefSteerReceiptResult};
+mod desktop_drafts;
+pub use decodex_core::{
+	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES,
+};
+pub use desktop_drafts::{
+	DesktopComposerDraft, DesktopDraftDocument, DesktopPendingDraft, DesktopProfileDraft,
+	DesktopQuestionDraft, DesktopRecoveredDraft,
+};

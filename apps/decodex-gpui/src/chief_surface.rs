@@ -8,6 +8,8 @@
 #[path = "chief_composer.rs"] mod composer;
 #[path = "chief_detail.rs"] mod detail;
 #[path = "chief_dictation.rs"] mod dictation;
+#[path = "chief_drafts.rs"] mod drafts;
+#[path = "chief_execution_intent.rs"] mod execution_intent;
 #[path = "chief_graph.rs"] mod graph;
 #[path = "chief_guardian.rs"] mod guardian;
 #[path = "chief_inspection.rs"] mod inspection;
@@ -160,11 +162,7 @@ pub(crate) struct ChiefSurface {
 	attachments: Vec<decodex_protocol::ChiefAttachmentDto>,
 	task_references: Vec<decodex_protocol::ChiefTaskReferenceDto>,
 	task_reference_search: Entity<ComposerInput>,
-	task_reference_drafts:
-		std::collections::BTreeMap<String, Vec<decodex_protocol::ChiefTaskReferenceDto>>,
-	attachment_drafts:
-		std::collections::BTreeMap<String, Vec<decodex_protocol::ChiefAttachmentDto>>,
-	manager_drafts: std::collections::BTreeMap<String, String>,
+	draft_profiles: drafts::Profiles,
 	composer_manager: Option<String>,
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
@@ -172,6 +170,7 @@ pub(crate) struct ChiefSurface {
 	effort: ConversationReasoningEffort,
 	sandbox: ChiefSandboxDto,
 	command_task: Option<Task<()>>,
+	command_epoch: u64,
 	sending: bool,
 	uncertain: bool,
 	feedback: String,
@@ -199,6 +198,7 @@ pub(crate) struct ChiefSurface {
 	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
 	question_timers: std::collections::BTreeMap<i64, requests::QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
+	restored_question_drafts: Vec<decodex_protocol::DesktopQuestionDraft>,
 	collapsed_async_questions: std::collections::BTreeSet<String>,
 	async_question_threads: std::collections::BTreeMap<String, String>,
 	async_question_choices:
@@ -213,6 +213,15 @@ struct ChiefInputs {
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
 	composer: Entity<ComposerInput>,
+}
+
+struct PendingCommand {
+	execution_intent: Option<(String, u64)>,
+	epoch: u64,
+	draft: Option<String>,
+	owner: Option<String>,
+	attachments: Option<Vec<decodex_protocol::ChiefAttachmentDto>>,
+	references: Option<Vec<decodex_protocol::ChiefTaskReferenceDto>>,
 }
 
 impl ChiefSurface {
@@ -315,9 +324,7 @@ impl ChiefSurface {
 			attachments: vec![],
 			task_references: vec![],
 			task_reference_search: Self::new_task_reference_search(cx),
-			task_reference_drafts: Default::default(),
-			attachment_drafts: Default::default(),
-			manager_drafts: Default::default(),
+			draft_profiles: Default::default(),
 			composer_manager: None,
 			pages: vec![],
 			graph_visible: true,
@@ -364,6 +371,7 @@ impl ChiefSurface {
 			effort: ConversationReasoningEffort::High,
 			sandbox: ChiefSandboxDto::ReadOnly,
 			command_task: None,
+			command_epoch: 0,
 			sending: false,
 			uncertain: false,
 			feedback: String::new(),
@@ -388,6 +396,7 @@ impl ChiefSurface {
 			mcp_answers: Default::default(),
 			question_timers: Default::default(),
 			question_inputs: Default::default(),
+			restored_question_drafts: Vec::new(),
 			collapsed_async_questions: Default::default(),
 			async_question_threads: Default::default(),
 			async_question_choices: Default::default(),
@@ -547,7 +556,7 @@ impl ChiefSurface {
 				.position(|model| model.model.as_str() == self.model.read(cx).content())
 				.map_or(0, |index| (index + 1) % models.len());
 			let model = models[next].model.as_str().to_owned();
-			self.model.update(cx, |input, cx| input.set_content(&model, cx));
+			self.select_composer_option("model", &model, cx);
 			self.reconcile_model_options(cx);
 		} else {
 			self.load_capabilities(cx);
@@ -671,12 +680,15 @@ impl ChiefSurface {
 				text.clone()
 			})
 			.map_err(|_| "Message is too long")?;
+			if !self.draft_owner_available() {
+				return Err("This draft's conversation is unavailable. Select a conversation before sending.".into());
+			}
 			if let Some(root) = self.snapshot.as_ref().and_then(|snapshot| {
 				snapshot
 					.work_items
 					.iter()
 					.find(|work| {
-						Some(&work.id) == self.selected.as_ref()
+						Some(&work.id) == self.composer_manager.as_ref().or(self.selected.as_ref())
 							&& work.kind == decodex_protocol::ChiefWorkKindDto::Manager
 					})
 					.or_else(|| {
@@ -732,7 +744,7 @@ impl ChiefSurface {
 						task_references: self.task_references.clone(),
 					},
 					ChiefActionDto::Send { root_id, text } =>
-						self.configured_send(root_id, text, execution, attachments),
+						self.configured_send(root_id, text, attachments),
 					action => action,
 				};
 				self.follow_latest_after_send(cx);
@@ -743,6 +755,13 @@ impl ChiefSurface {
 				cx.notify();
 			},
 		}
+	}
+
+	fn command_connection_ready(&self) -> bool {
+		self.state == LoadState::Ready
+			|| (self.state == LoadState::Loading
+				&& self.status_before_refresh.is_none()
+				&& self.snapshot.is_some())
 	}
 
 	fn execute(&mut self, action: ChiefActionDto, draft: Option<String>, cx: &mut Context<Self>) {
@@ -759,9 +778,20 @@ impl ChiefSurface {
 			cx.notify();
 			return;
 		};
-		let sent_attachments = draft.as_ref().map(|_| self.attachments.clone());
-		let sent_references = draft.as_ref().map(|_| self.task_references.clone());
-		let draft_owner = self.composer_manager.clone().or_else(|| self.root_id());
+		if !self.command_connection_ready() {
+			self.feedback =
+				"Connection unavailable. Draft retained; refresh before sending.".into();
+			cx.notify();
+			return;
+		}
+		let pending = PendingCommand {
+			execution_intent: self.draft_profiles.execution.capture(&action),
+			epoch: self.command_epoch,
+			attachments: draft.as_ref().map(|_| self.attachments.clone()),
+			references: draft.as_ref().map(|_| self.task_references.clone()),
+			owner: self.composer_manager.clone().or_else(|| self.root_id()),
+			draft,
+		};
 		self.sending = true;
 		self.feedback = "Waiting for durable acceptance…".into();
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
@@ -777,36 +807,58 @@ impl ChiefSurface {
 		self.command_task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |surface, cx| {
-				surface.sending = false;
-				let current_owner = surface.composer_manager.clone().or_else(|| surface.root_id());
-				let same_owner = current_owner == draft_owner || (draft_owner.is_none() && matches!(&result, Ok(ChiefCommandResponse::Accepted { work_id }) if current_owner.as_deref()==Some(work_id.as_str())));
-				if !same_owner
-					&& matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
-					&& let Some(owner) = &draft_owner
-					&& surface.manager_drafts.get(owner).map(String::as_str) == draft.as_deref()
-				{
-					surface.manager_drafts.remove(owner);
-				}
-                if matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
-                    && let Some(sent) = &sent_attachments {
-                        if same_owner { surface.attachments.retain(|file| !sent.contains(file)); }
-                        else if let Some(files) = draft_owner.as_ref().and_then(|id|surface.attachment_drafts.get_mut(id)) {
-                            files.retain(|file| !sent.contains(file));
-                        }
-                }
-                if matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
-                    && let Some(sent) = &sent_references {
-                    surface.clear_sent_task_references(sent, same_owner, draft_owner.as_deref());
-                }
-                surface.apply_command_result(
-					result,
-					if same_owner { draft.as_deref() } else { None },
-					cx,
-				);
-				surface.refresh(cx);
-				cx.notify();
+				surface.finish_command(pending, result, cx);
 			});
 		}));
+		cx.notify();
+	}
+
+	fn finish_command(
+		&mut self,
+		pending: PendingCommand,
+		result: Result<ChiefCommandResponse, String>,
+		cx: &mut Context<Self>,
+	) {
+		if self.command_epoch != pending.epoch {
+			return;
+		}
+		self.sending = false;
+		let current_owner = self.composer_manager.clone().or_else(|| self.root_id());
+		let same_owner = current_owner == pending.owner
+			|| (pending.owner.is_none()
+				&& matches!(&result, Ok(ChiefCommandResponse::Accepted { work_id }) if current_owner.as_deref()==Some(work_id.as_str())));
+		if !same_owner
+			&& matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
+			&& let Some(owner) = &pending.owner
+			&& self.draft_profiles.texts.get(owner).map(String::as_str) == pending.draft.as_deref()
+		{
+			self.draft_profiles.texts.remove(owner);
+		}
+		if matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
+			&& let Some(sent) = &pending.attachments
+		{
+			if same_owner {
+				self.attachments.retain(|file| !sent.contains(file));
+			} else if let Some(files) =
+				pending.owner.as_ref().and_then(|id| self.draft_profiles.files.get_mut(id))
+			{
+				files.retain(|file| !sent.contains(file));
+			}
+		}
+		if matches!(&result, Ok(ChiefCommandResponse::Accepted { .. }))
+			&& let Some(sent) = &pending.references
+		{
+			self.clear_sent_task_references(sent, same_owner, pending.owner.as_deref());
+		}
+		if matches!(&result, Ok(ChiefCommandResponse::Accepted { .. })) {
+			self.draft_profiles.execution.accepted(pending.execution_intent.as_ref());
+		}
+		self.apply_command_result(
+			result,
+			if same_owner { pending.draft.as_deref() } else { None },
+			cx,
+		);
+		self.refresh(cx);
 		cx.notify();
 	}
 
@@ -848,6 +900,14 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn bind_profile(&mut self, profile: Option<ClientProfile>, cx: &mut Context<Self>) {
+		self.command_epoch += 1;
+		self.command_task = None;
+		if self.sending {
+			self.uncertain = true;
+			self.sending = false;
+			self.feedback = "Service changed before acceptance was confirmed. Draft retained; inspect the previous service before sending again.".into();
+		}
+		self.bind_drafts(profile.as_ref(), cx);
 		let epoch = self.native_history.epoch + 1;
 		self.native_history = Default::default();
 		self.native_history.epoch = epoch;
@@ -885,10 +945,6 @@ impl ChiefSurface {
 		self.pages.clear();
 		self.page_views.clear();
 		self.graph_expanded = false;
-		self.manager_drafts.clear();
-		self.task_references.clear();
-		self.task_reference_drafts.clear();
-		self.composer_manager = None;
 		self.history_cache.clear();
 		self.history_marks.clear();
 		self.history_marks_work = None;
@@ -912,11 +968,7 @@ impl ChiefSurface {
 		self.misalignment_reviewed = None;
 		self.guardian = Default::default();
 		self.archive = Default::default();
-		self.async_question_inputs.clear();
-		self.async_question_choices.clear();
-		self.async_question_threads.clear();
-		self.collapsed_async_questions.clear();
-		self.selected = None;
+		self.selected = self.composer_manager.clone();
 		self.state = LoadState::Idle;
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
 			loop {
@@ -2269,6 +2321,112 @@ mod tests {
 			window.draw(cx).clear();
 		});
 	}
+	#[gpui::test]
+	fn offline_commands_preserve_editable_draft_and_attachments(cx: &mut gpui::TestAppContext) {
+		use std::os::unix::fs::{MetadataExt, PermissionsExt};
+		let root = tempfile::tempdir_in("/tmp").unwrap();
+		let path = root.path().canonicalize().unwrap();
+		std::fs::create_dir(path.join("server")).unwrap();
+		std::fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700))
+			.unwrap();
+		let uid = std::fs::metadata(&path).unwrap().uid();
+		let config = path.join("config.toml");
+		std::fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
+		std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
+		let profile = ClientProfile::load(&path, None).unwrap();
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.profile = Some(profile);
+			s.composer.update(cx, |input, cx| input.set_content("draft", cx));
+			s.attachments.push(decodex_protocol::ChiefAttachmentDto {
+				path: ConversationWorkingDirectory::new("/tmp/draft.png").unwrap(),
+				image: true,
+			});
+			s.task_references.push(decodex_protocol::ChiefTaskReferenceDto {
+				work_id: EntityId::new("evidence").unwrap(),
+				thread_id: WireText::new("thread").unwrap(),
+				title: WireText::new("Evidence").unwrap(),
+			});
+			for state in [
+				LoadState::Stale,
+				LoadState::Unavailable,
+				LoadState::Idle,
+				LoadState::Capacity { work: 1, edges: 0, events: 0 },
+			] {
+				s.state = state;
+				s.execute(
+					ChiefActionDto::Send {
+						root_id: EntityId::new("root").unwrap(),
+						text: HistoryText::new("draft").unwrap(),
+					},
+					Some("draft".into()),
+					cx,
+				);
+				assert!(s.command_task.is_none());
+				assert!(!s.sending);
+				assert!(s.feedback.contains("Connection unavailable"));
+				assert_eq!(s.attachments.len(), 1);
+				assert_eq!(s.task_references.len(), 1);
+			}
+			s.composer.update(cx, |input, cx| input.set_content("edited offline", cx));
+			assert_eq!(s.composer.read(cx).content(), "edited offline");
+			s.state = LoadState::Loading;
+			s.status_before_refresh = Some(LoadState::Stale);
+			assert!(!s.command_connection_ready());
+			s.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
+				workspaces: vec![],
+				work_items: vec![],
+				dependencies: vec![],
+				pending_events: vec![],
+			})));
+			assert!(s.command_connection_ready());
+			assert!(s.command_task.is_none(), "fresh readback must not replay the draft");
+			s.state = LoadState::Loading;
+			s.status_before_refresh = None;
+			assert!(s.command_connection_ready(), "normal polling must not disable sending");
+		});
+	}
+
+	#[gpui::test]
+	fn old_service_acceptance_cannot_clear_identical_new_draft(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			let file = decodex_protocol::ChiefAttachmentDto {
+				path: ConversationWorkingDirectory::new("/tmp/draft.png").unwrap(),
+				image: true,
+			};
+			let pending = PendingCommand {
+				execution_intent: None,
+				epoch: s.command_epoch,
+				draft: Some("same draft".into()),
+				owner: Some("root".into()),
+				attachments: Some(vec![file.clone()]),
+				references: None,
+			};
+			s.sending = true;
+			s.composer.update(cx, |input, cx| input.set_content("same draft", cx));
+			s.bind_profile(None, cx);
+			assert!(s.uncertain);
+			assert!(!s.sending);
+			assert_eq!(s.composer.read(cx).content(), "same draft");
+			s.composer_manager = Some("root".into());
+			s.attachments = vec![file];
+			s.sending = true;
+			let feedback = s.feedback.clone();
+			s.finish_command(
+				pending,
+				Ok(ChiefCommandResponse::Accepted { work_id: EntityId::new("root").unwrap() }),
+				cx,
+			);
+			assert!(s.sending, "old completion must not mutate current command state");
+			assert!(s.uncertain);
+			assert_eq!(s.feedback, feedback);
+			assert_eq!(s.composer.read(cx).content(), "same draft");
+			assert_eq!(s.attachments.len(), 1);
+		});
+	}
+
 	#[gpui::test]
 	fn durable_acceptance_clears_only_the_submitted_draft(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));

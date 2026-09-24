@@ -165,6 +165,10 @@ pub(crate) fn read_private_file(
 	Ok(bytes)
 }
 
+pub(crate) fn open_private_lock_file(paths: &DecodexPaths, path: &Path) -> Result<File, PathError> {
+	open_private_database_file(paths, path)
+}
+
 pub(crate) fn open_private_database_file(
 	paths: &DecodexPaths,
 	path: &Path,

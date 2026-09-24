@@ -116,6 +116,16 @@ impl LocalTransportAuthority {
 		Ok(authority)
 	}
 
+	pub(crate) fn draft_scope_key(&self) -> String {
+		let mut identity = self.endpoint_path.as_os_str().as_encoded_bytes().to_vec();
+		identity.extend_from_slice(&self.service_owner_uid.to_le_bytes());
+		identity.push(match self.policy {
+			LocalTrustPolicy::Disabled => 0,
+			LocalTrustPolicy::SameUid => 1,
+		});
+		decodex_core::BlobHash::digest(&identity).to_hex()
+	}
+
 	/// Bind and atomically publish the fixed owner-only endpoint.
 	pub async fn bind(&self) -> Result<LocalTransportListener, LocalTransportRefusal> {
 		#[cfg(any(target_os = "linux", target_os = "macos"))]
