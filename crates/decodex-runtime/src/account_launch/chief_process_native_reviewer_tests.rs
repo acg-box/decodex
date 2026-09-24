@@ -22,8 +22,14 @@ async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
 	let address = listener.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
-	let backend =
-		tokio::spawn(serve_fixture(listener, requests.clone(), None, Some(bodies.clone()), output));
+	let backend = tokio::spawn(serve_fixture(
+		listener,
+		requests.clone(),
+		None,
+		Some(bodies.clone()),
+		None,
+		output,
+	));
 	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\nguardian_approval = true\nstep_model_switching = false\n[model_providers.fixture]\nname = \"Isolated reviewer fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 	let mut session = NativeSession::start(&binary, home.path());
 	tokio::time::timeout(Duration::from_secs(60), async {
