@@ -19,7 +19,11 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<ChiefActivityDt
 		},
 		"fileChange" => "Editing files",
 		"mcpToolCall" | "dynamicToolCall" => "Using tool",
-		"webSearch" => "Searching the web",
+		"webSearch" => match item.pointer("/action/type").and_then(Value::as_str) {
+			Some("openPage") => "Opening web page",
+			Some("findInPage") => "Finding text on page",
+			_ => "Searching the web",
+		},
 		"collabAgentToolCall" => "Coordinating agents",
 		"subAgentActivity" => match item["kind"].as_str()? {
 			"started" => "Subagent started",
