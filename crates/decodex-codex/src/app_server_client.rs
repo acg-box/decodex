@@ -606,8 +606,14 @@ async fn run_frames(
 						let Some(next) = sequence.checked_add(1) else { break ClientError::Closed; };
 						sequence = next;
 						let id = RequestId::Number(sequence);
-						pending.insert(id.clone(), reply);
-						if let Err(error) = writer.write(json!({"id": id, "method": method, "params": params})).await { break error; }
+						let result = writer.write(json!({"id": id, "method": method, "params": params})).await;
+						if matches!(result, Err(ClientError::FrameTooLarge)) {
+							// Both sinks reject size before writing anything. Keep unrelated requests live.
+							let _ = reply.send(Err(ClientError::FrameTooLarge));
+							continue;
+						}
+						pending.insert(id, reply);
+						if let Err(error) = result { break error; }
 					},
 				}
 			},
@@ -961,6 +967,51 @@ mod tests {
 		client.close();
 		assert!(matches!(pending.await.unwrap(), Err(ClientError::Closed)));
 		assert!(matches!(client.thread_start(json!({})).await, Err(ClientError::Closed)));
+	}
+
+	#[tokio::test]
+	async fn oversized_request_preserves_pending_requests_and_connection() {
+		let (client, mut events, mut reader, mut writer) = connection();
+		let peer = client.clone();
+		let pending = tokio::spawn(async move { peer.thread_read(json!({})).await });
+		let request = read(&mut reader).await;
+		assert!(matches!(
+			client.turn_start(json!({"text":"x".repeat(MAX_FRAME_BYTES)})).await,
+			Err(ClientError::FrameTooLarge)
+		));
+		assert!(!pending.is_finished());
+		write_frame(&mut writer, json!({"id":request["id"],"result":{"retained":true}}))
+			.await
+			.unwrap();
+		assert_eq!(pending.await.unwrap().unwrap()["retained"], true);
+		let peer = client.clone();
+		let next = tokio::spawn(async move { peer.thread_read(json!({})).await });
+		let request = read(&mut reader).await;
+		assert_eq!(request["method"], "thread/read");
+		write_frame(&mut writer, json!({"id":request["id"],"result":{}})).await.unwrap();
+		next.await.unwrap().unwrap();
+		assert!(events.try_recv().is_err());
+		client.shutdown().await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn oversized_framed_request_is_never_forwarded_or_sent_to_pending_peers() {
+		let (incoming, frames) = mpsc::channel(4);
+		let (outgoing, mut requests) = mpsc::channel(4);
+		let (client, mut events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+		let peer = client.clone();
+		let pending = tokio::spawn(async move { peer.thread_read(json!({})).await });
+		let request = requests.recv().await.unwrap();
+		assert!(matches!(
+			client.turn_start(json!({"text":"x".repeat(MAX_FRAME_BYTES)})).await,
+			Err(ClientError::FrameTooLarge)
+		));
+		assert!(requests.try_recv().is_err());
+		assert!(!pending.is_finished());
+		incoming.send(Ok(json!({"id":request["id"],"result":{"retained":true}}))).await.unwrap();
+		assert_eq!(pending.await.unwrap().unwrap()["retained"], true);
+		assert!(events.try_recv().is_err());
+		client.shutdown().await.unwrap();
 	}
 
 	#[tokio::test]
