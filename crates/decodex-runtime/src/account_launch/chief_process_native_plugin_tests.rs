@@ -195,20 +195,31 @@ async fn finish_turn(session: &mut NativeSession, thread: &str) -> usize {
 }
 
 async fn trust_fixture_hook(session: &NativeSession, root: &std::path::Path) {
-	use std::io::Write as _;
-	let listed =
-		session.client.request("hooks/list", json!({"cwds":[root]})).await.expect("hook inventory");
-	let hooks = listed["data"][0]["hooks"].as_array().expect("hooks");
+	use decodex_codex::app_server_client::{HookSettingsChange, HookSettingsWrite};
+	let review =
+		session.client.hook_settings(root.to_str().expect("cwd")).await.expect("hook review");
+	let hooks = review.inventory["hooks"].as_array().expect("hooks");
 	let hook = hooks.iter().find(|h| h["pluginId"] == "sample@test").expect("fixture hook");
 	assert_eq!(hook["command"], "echo isolated-plugin-hook");
-	let key = hook["key"].as_str().expect("hook key");
-	let hash = hook["currentHash"].as_str().expect("hook hash");
-	// Approve only this known harmless fixture command in the disposable home. Native hook trust
-	// remains enabled; later plugin exclusion must still prevent the trusted hook from running.
-	let mut config = std::fs::OpenOptions::new()
-		.append(true)
-		.open(root.join("config.toml"))
-		.expect("fixture config");
-	writeln!(config, "\n[hooks.state.{}]\ntrusted_hash={}\nenabled=true", json!(key), json!(hash))
-		.expect("fixture hook trust");
+	assert_eq!(hook["trustStatus"], "untrusted");
+	let key = hook["key"].as_str().expect("key");
+	let params = review.change(key, HookSettingsChange::Trust).expect("exact reviewed hash");
+	let guard = session.client.thread_settings_guard("fixture-hook-review").expect("guard");
+	assert_eq!(
+		session
+			.client
+			.write_hook_settings(params.clone(), guard.clone())
+			.await
+			.expect("native config write"),
+		HookSettingsWrite::Saved
+	);
+	assert!(
+		session.client.write_hook_settings(params, guard).await.is_err(),
+		"old config version cannot write again"
+	);
+	let current =
+		session.client.hook_settings(root.to_str().expect("cwd")).await.expect("readback");
+	assert_eq!(current.inventory["hooks"][0]["trustStatus"], "trusted");
 }
+
+#[path = "chief_process_native_hook_settings_tests.rs"] mod hook_settings;

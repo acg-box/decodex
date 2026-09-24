@@ -230,6 +230,13 @@ fn pump(
 
 fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result<(), ClientError> {
 	if let Some(method) = value.get("method") {
+		if method == "config/batchWrite" {
+			return if decodex_codex::app_server_client::is_hook_settings_write(&value["params"]) {
+				Ok(())
+			} else {
+				Err(ClientError::InvalidFrame)
+			};
+		}
 		if method == "thread/settings/update" {
 			return if decodex_codex::app_server_client::is_thread_plugin_selection(&value["params"])
 				|| decodex_codex::app_server_client::is_thread_permission_selection(
@@ -255,7 +262,8 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "thread/realtime/stop"
 					| "model/list" | "experimentalFeature/list"
 					| "permissionProfile/list"
-					| "hooks/list" | "thread/start"
+					| "hooks/list" | "config/read"
+					| "thread/start"
 					| "thread/resume"
 					| "thread/inject_items"
 					| "thread/attachment/list"
@@ -530,6 +538,19 @@ mod tests {
 			validate_outbound(&json!({"id":42,"method":"turn/steer","params":{}}), &mut requests)
 				.is_ok()
 		);
+	}
+
+	#[test]
+	fn hook_config_writes_do_not_admit_other_config_or_file_targets() {
+		let mut requests = HashSet::new();
+		let params = json!({"edits":[{"keyPath":"hooks.state.\"plugin.key\".enabled","value":false,"mergeStrategy":"replace"}],"expectedVersion":"reviewed-version","reloadUserConfig":true});
+		let mut request = json!({"id":45,"method":"config/batchWrite","params":params});
+		assert!(validate_outbound(&request, &mut requests).is_ok());
+		request["params"]["filePath"] = json!("/other/config.toml");
+		assert!(validate_outbound(&request, &mut requests).is_err());
+		request["params"].as_object_mut().unwrap().remove("filePath");
+		request["params"]["edits"][0]["keyPath"] = json!("bypass_hook_trust");
+		assert!(validate_outbound(&request, &mut requests).is_err());
 	}
 
 	#[test]
