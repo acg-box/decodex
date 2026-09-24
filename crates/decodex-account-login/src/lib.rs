@@ -14,6 +14,8 @@
 // executable, or child process; and an exact four-field auth document accepted
 // by the daemon-owned import authority.
 
+mod system_proxy;
+
 use std::{
 	collections::HashMap,
 	fs::{self, OpenOptions},
@@ -31,7 +33,8 @@ use std::{
 };
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use reqwest::{Client, Response as HttpResponse, redirect::Policy};
+#[cfg(test)] use reqwest::redirect::Policy;
+use reqwest::{Client, Response as HttpResponse};
 use serde::{Deserialize, Deserializer, Serialize, de};
 use sha2::{Digest as _, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
@@ -141,6 +144,9 @@ pub struct Config {
 	callback_ports: Vec<u16>,
 	login_timeout: Duration,
 	http_timeout: Duration,
+	system_proxy_fallback: bool,
+	#[cfg(test)]
+	fallback_proxy_fixture: Option<String>,
 }
 
 impl Config {
@@ -153,9 +159,18 @@ impl Config {
 			callback_ports: CALLBACK_PORTS.to_vec(),
 			login_timeout: LOGIN_TIMEOUT,
 			http_timeout: HTTP_TIMEOUT,
+			system_proxy_fallback: true,
+			#[cfg(test)]
+			fallback_proxy_fixture: None,
 		};
 		config.validate(false)?;
 		Ok(config)
+	}
+
+	/// Apply the daemon owner's login routing policy before a login starts.
+	pub fn with_system_proxy_fallback(mut self, enabled: bool) -> Self {
+		self.system_proxy_fallback = enabled;
+		self
 	}
 
 	fn validate(&self, allow_insecure_loopback: bool) -> Result<(), Error> {
@@ -188,6 +203,8 @@ impl Config {
 			callback_ports: vec![callback_port],
 			login_timeout,
 			http_timeout: Duration::from_secs(2),
+			system_proxy_fallback: false,
+			fallback_proxy_fixture: None,
 		};
 		config.validate(true)?;
 		Ok(config)
@@ -371,17 +388,7 @@ pub fn run(
 	cancellation: &Cancellation,
 	publish: impl Fn(LoginEvent),
 ) -> Result<(), Error> {
-	let client = Client::builder()
-		.redirect(Policy::none())
-		.connect_timeout(config.http_timeout)
-		.read_timeout(config.http_timeout)
-		.timeout(config.http_timeout)
-		.user_agent(format!(
-			"decodex/{} codex-login-source/rust-v0.148.0-alpha.9",
-			env!("CARGO_PKG_VERSION")
-		))
-		.build()
-		.map_err(|_| Error::Unavailable)?;
+	let client = system_proxy::client(config, None)?;
 	let deadline = Instant::now() + config.login_timeout;
 	match method {
 		LoginMethod::BrowserRedirect =>
@@ -599,7 +606,6 @@ impl ExchangeContext<'_> {
 		if !valid_secret_scalar(authorization_code) || !pkce.valid() {
 			return Err(Error::InvalidResponse);
 		}
-		let token_url = endpoint(self.config, "oauth/token")?;
 		let form = [
 			("grant_type", "authorization_code"),
 			("code", authorization_code),
@@ -612,14 +618,12 @@ impl ExchangeContext<'_> {
 			serializer.append_pair(key, value);
 		}
 		let body = Zeroizing::new(serializer.finish());
-		let response = cancellable(
+		let response = system_proxy::exchange(
+			self.config,
+			self.client,
+			body.as_str(),
 			self.cancellation,
 			self.deadline,
-			self.client
-				.post(token_url)
-				.header("Content-Type", "application/x-www-form-urlencoded")
-				.body(body.as_str().to_owned())
-				.send(),
 		)
 		.await?;
 		if !response.status().is_success() {
@@ -1345,7 +1349,10 @@ mod tests {
 	fn token_only_issuer() -> MockIssuer {
 		MockIssuer::start(|request| {
 			assert_eq!(request.method, "POST");
-			assert_eq!(request.target, "/oauth/token");
+			assert!(matches!(
+				request.target.as_str(),
+				"/oauth/token" | "http://127.0.0.1:0/oauth/token"
+			));
 			let fields = url::form_urlencoded::parse(&request.body).collect::<HashMap<_, _>>();
 			assert_eq!(fields.len(), 5);
 			assert!(fields.contains_key("grant_type"));
@@ -1513,62 +1520,70 @@ mod tests {
 
 	#[test]
 	fn browser_callback_completes_in_process_and_persists_the_private_auth_file() {
-		let issuer = token_only_issuer();
-		let config =
-			Config::test(issuer.issuer.clone(), 0, Duration::from_secs(5)).expect("browser config");
-		let (_home, home_path) = canonical_temp_home();
-		let runtime = runtime();
-		let handle = runtime.handle().clone();
-		let cancellation = Cancellation::default();
-		let worker_cancellation = cancellation.clone();
-		let worker_config = config.clone();
-		let worker_home = home_path.clone();
-		let (event_tx, event_rx) = mpsc::channel();
-		let worker = thread::spawn(move || {
-			run(
-				&worker_config,
-				LoginMethod::BrowserRedirect,
-				&worker_home,
-				&handle,
-				&worker_cancellation,
-				|event| {
-					let _ = event_tx.send(event);
-				},
-			)
-		});
-		let authorization_url = match event_rx
-			.recv_timeout(Duration::from_secs(2))
-			.expect("browser authorization event")
-		{
-			LoginEvent::BrowserAuthorization { authorization_url } => authorization_url,
-			LoginEvent::DeviceAuthorization { .. } => panic!("unexpected device event"),
-		};
-		let authorization_url = Url::parse(&authorization_url).expect("authorization URL");
-		let parameters = authorization_url.query_pairs().into_owned().collect::<HashMap<_, _>>();
-		let redirect_uri = parameters.get("redirect_uri").expect("redirect URI");
-		let state = parameters.get("state").expect("state");
-		let mut callback = Url::parse(redirect_uri).expect("callback URL");
-		callback
-			.query_pairs_mut()
-			.append_pair("code", "fixture-browser-authorization")
-			.append_pair("state", state);
-		let response = reqwest::blocking::Client::builder()
-			.redirect(Policy::none())
-			.build()
-			.expect("callback client")
-			.get(callback)
-			.send()
-			.expect("callback response");
-		assert_eq!(response.status().as_u16(), 200);
-		assert_eq!(
-			response.text().expect("callback response body"),
-			"Browser sign-in completed. Return to Decodex to finish."
-		);
-		let result = worker.join().expect("browser adapter worker");
+		for fallback in [false, true] {
+			let issuer = token_only_issuer();
+			let mut config = Config::test(issuer.issuer.clone(), 0, Duration::from_secs(5))
+				.expect("browser config");
+			if fallback {
+				config.issuer = Url::parse("http://127.0.0.1:0").expect("unreachable issuer");
+				config.system_proxy_fallback = true;
+				config.fallback_proxy_fixture = Some(issuer.issuer.to_string());
+			}
+			let (_home, home_path) = canonical_temp_home();
+			let runtime = runtime();
+			let handle = runtime.handle().clone();
+			let cancellation = Cancellation::default();
+			let worker_cancellation = cancellation.clone();
+			let worker_config = config.clone();
+			let worker_home = home_path.clone();
+			let (event_tx, event_rx) = mpsc::channel();
+			let worker = thread::spawn(move || {
+				run(
+					&worker_config,
+					LoginMethod::BrowserRedirect,
+					&worker_home,
+					&handle,
+					&worker_cancellation,
+					|event| {
+						let _ = event_tx.send(event);
+					},
+				)
+			});
+			let authorization_url = match event_rx
+				.recv_timeout(Duration::from_secs(2))
+				.expect("browser authorization event")
+			{
+				LoginEvent::BrowserAuthorization { authorization_url } => authorization_url,
+				LoginEvent::DeviceAuthorization { .. } => panic!("unexpected device event"),
+			};
+			let authorization_url = Url::parse(&authorization_url).expect("authorization URL");
+			let parameters =
+				authorization_url.query_pairs().into_owned().collect::<HashMap<_, _>>();
+			let redirect_uri = parameters.get("redirect_uri").expect("redirect URI");
+			let state = parameters.get("state").expect("state");
+			let mut callback = Url::parse(redirect_uri).expect("callback URL");
+			callback
+				.query_pairs_mut()
+				.append_pair("code", "fixture-browser-authorization")
+				.append_pair("state", state);
+			let response = reqwest::blocking::Client::builder()
+				.redirect(Policy::none())
+				.build()
+				.expect("callback client")
+				.get(callback)
+				.send()
+				.expect("callback response");
+			assert_eq!(response.status().as_u16(), 200);
+			assert_eq!(
+				response.text().expect("callback response body"),
+				"Browser sign-in completed. Return to Decodex to finish."
+			);
+			let result = worker.join().expect("browser adapter worker");
 
-		assert!(result.is_ok());
-		assert!(home_path.join("auth.json").is_file());
-		assert!(!home_path.join(".decodex-auth.json.tmp").exists());
+			assert!(result.is_ok());
+			assert!(home_path.join("auth.json").is_file());
+			assert!(!home_path.join(".decodex-auth.json.tmp").exists());
+		}
 	}
 
 	#[test]

@@ -23,6 +23,7 @@ pub struct DecodexConfig {
 	active_profile: ProfileName,
 	profiles: BTreeMap<ProfileName, ServerProfile>,
 	cache: CacheConfig,
+	login: LoginConfig,
 }
 impl DecodexConfig {
 	/// Parse bounded UTF-8 TOML. Parser details and input excerpts are deliberately
@@ -50,6 +51,7 @@ impl DecodexConfig {
 			active_profile: raw.active_profile,
 			profiles,
 			cache: raw.cache.validate()?,
+			login: raw.login,
 		})
 	}
 
@@ -79,6 +81,11 @@ impl DecodexConfig {
 	/// All explicit profiles.
 	pub fn profiles(&self) -> &BTreeMap<ProfileName, ServerProfile> {
 		&self.profiles
+	}
+
+	/// Permit a system route fallback for an unsent local login code exchange.
+	pub const fn login_system_proxy_fallback(&self) -> bool {
+		self.login.system_proxy_fallback
 	}
 
 	/// Disposable cache bounds.
@@ -322,6 +329,8 @@ struct RawConfig {
 	active_profile: ProfileName,
 	profiles: BTreeMap<ProfileName, RawProfile>,
 	cache: RawCacheConfig,
+	#[serde(default)]
+	login: LoginConfig,
 }
 
 #[derive(Deserialize)]
@@ -332,6 +341,19 @@ struct RawClientConfig {
 	profiles: BTreeMap<ProfileName, RawProfile>,
 	#[serde(rename = "cache")]
 	_cache: IgnoredAny,
+	#[serde(default, rename = "login")]
+	_login: IgnoredAny,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct LoginConfig {
+	system_proxy_fallback: bool,
+}
+impl Default for LoginConfig {
+	fn default() -> Self {
+		Self { system_proxy_fallback: true }
+	}
 }
 
 #[derive(Deserialize)]

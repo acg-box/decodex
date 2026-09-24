@@ -24,3 +24,6 @@ zeroize    = { workspace = true, features = ["derive", "serde"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = { workspace = true }

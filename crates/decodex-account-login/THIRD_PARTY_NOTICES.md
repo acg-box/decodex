@@ -24,3 +24,12 @@ not copy the general Codex login framework.
 
 The upstream Apache License 2.0 text is retained at
 `third_party/openai-codex-LICENSE-APACHE`.
+
+## OpenAI Codex system proxy source
+
+`src/system_proxy_macos.rs` derives from
+`codex-rs/http-client/src/outbound_proxy/macos.rs` at commit
+`595cc91e8cbb1c2ca822d0311dcf12709410c582`. The source uses the same Apache-2.0
+license retained above. Decodex reads the proxy settings snapshot through CFNetwork,
+removes configuration-reporting and unused origin arguments, and keeps destination
+routing, PAC execution, route ordering, and unsupported-route handling.
