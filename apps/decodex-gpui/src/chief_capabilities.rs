@@ -27,6 +27,9 @@ impl ChiefSurface {
 			.service_tier
 			.clone()
 			.unwrap_or_else(|| decodex_protocol::ServiceTier::from_fast(self.fast));
+		if selected.as_str() == "flex" && !tiers.iter().any(|tier| tier.id == selected) {
+			panel = panel.child("Flex · configured");
+		}
 		for tier in tiers {
 			let id = tier.id.clone();
 			let chosen = selected == id;
@@ -223,7 +226,7 @@ impl ChiefSurface {
 				self.fast = false;
 			}
 			if self.service_tier.as_ref().is_some_and(|selected| {
-				selected.as_str() != "default"
+				!matches!(selected.as_str(), "default" | "flex")
 					&& !model.service_tiers.iter().any(|tier| &tier.id == selected)
 			}) {
 				self.service_tier = Some(decodex_protocol::ServiceTier::standard());
@@ -261,11 +264,11 @@ impl ChiefSurface {
 		let Some(model) = self.selected_model(cx) else {
 			return tier
 				.as_ref()
-				.is_some_and(|tier| tier.as_str() != "default")
+				.is_some_and(|tier| !matches!(tier.as_str(), "default" | "flex"))
 				.then_some("Refresh model capabilities before selecting a service tier.");
 		};
 		if tier.as_ref().is_some_and(|selected| {
-			selected.as_str() != "default"
+			!matches!(selected.as_str(), "default" | "flex")
 				&& !model.service_tiers.iter().any(|tier| &tier.id == selected)
 		}) {
 			return Some("This service tier is unavailable for the selected model.");
@@ -406,5 +409,54 @@ mod tests {
 		let bounds = visual.debug_bounds("model-catalog-notices").expect("visible model notices");
 		assert!(bounds.size.height > gpui::px(20.0));
 		surface.update(visual, |s, cx| assert_eq!(s.model.read(cx).content(), "current-model"));
+	}
+	#[gpui::test]
+	fn configured_flex_survives_missing_catalog_and_fast_support(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(ChiefSurface::new);
+		for catalog in [false, true] {
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.model.update(cx, |input, cx| input.set_content("configured-model", cx));
+				s.mark_model_intent(cx);
+				s.effort = ConversationReasoningEffort::High;
+				s.mark_effort_intent();
+				s.fast = false;
+				s.service_tier = Some(decodex_protocol::ServiceTier::new("flex").unwrap());
+				s.mark_tier_intent();
+				s.capabilities = if catalog {
+					Some(ChiefCapabilitiesResult::Available {
+						memory_enabled: None,
+						models: vec![ChiefModelDto {
+							model: decodex_protocol::ConversationModel::new("configured-model")
+								.unwrap(),
+							name: "Configured".into(),
+							efforts: vec![ConversationReasoningEffort::High],
+							default_effort: Some(ConversationReasoningEffort::High),
+							supports_fast: false,
+							supports_images: true,
+							availability: None,
+							upgrade: None,
+							service_tiers: vec![],
+							default_service_tier: None,
+						}],
+					})
+				} else {
+					None
+				};
+				s.reconcile_model_options(cx);
+				assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "flex");
+				let owner = s.composer_manager.clone().or_else(|| s.root_id()).unwrap();
+				assert_eq!(
+					s.draft_profiles
+						.execution
+						.choice(&owner)
+						.selected_service_tier()
+						.unwrap()
+						.as_str(),
+					"flex"
+				);
+				assert!(s.composer_capability_error(cx).is_none());
+			});
+		}
 	}
 }

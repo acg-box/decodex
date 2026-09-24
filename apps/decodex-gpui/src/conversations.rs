@@ -475,7 +475,7 @@ impl Conversations {
 					.execution
 					.service_tier
 					.as_ref()
-					.is_some_and(|tier| tier.as_str() != "default")
+					.is_some_and(|tier| !matches!(tier.as_str(), "default" | "flex"))
 					&& state.current_catalog().is_none()
 				{
 					return Err(ConversationInputError::NotReady);
@@ -525,7 +525,7 @@ impl Conversations {
 					.execution
 					.service_tier
 					.as_ref()
-					.is_some_and(|tier| tier.as_str() != "default")
+					.is_some_and(|tier| !matches!(tier.as_str(), "default" | "flex"))
 					&& state.current_catalog().is_none()
 				{
 					return Err(ConversationInputError::NotReady);
@@ -1195,7 +1195,7 @@ impl State {
 
 	fn reconcile_catalog_tier(&mut self) {
 		let tier = self.execution.effective_service_tier();
-		if tier.as_str() != "default"
+		if !matches!(tier.as_str(), "default" | "flex")
 			&& !self.current_catalog().is_some_and(|models| {
 				models.iter().any(|model| {
 					model.model == self.execution.model
@@ -2401,6 +2401,43 @@ pub(crate) mod tests {
 		);
 		assert!(conversations.snapshot().catalog.is_none());
 		assert!(conversations.lock().pending_command.is_none());
+	}
+
+	#[test]
+	fn configured_flex_survives_catalog_loss_and_reaches_create_or_continue() {
+		for create in [false, true] {
+			let (conversations, server_id, _) = catalog_conversations();
+			assert!(
+				!conversations
+					.select_service_tier(decodex_protocol::ServiceTier::new("flex").unwrap()),
+				"unadvertised new choices remain unavailable"
+			);
+			if create {
+				conversations.begin_new();
+			}
+			{
+				let mut state = conversations.lock();
+				state.execution = state
+					.execution
+					.clone()
+					.with_service_tier(decodex_protocol::ServiceTier::new("flex").unwrap());
+				state.catalog = None;
+				state.reconcile_catalog_tier();
+				assert_eq!(state.execution.effective_service_tier().as_str(), "flex");
+			}
+			if create {
+				conversations.create("Preserve configured tier").unwrap();
+			} else {
+				conversations.submit("Preserve configured tier").unwrap();
+			}
+			let command = dispatched_command(&conversations, &server_id);
+			let execution = match command.payload {
+				CommandPayload::CreateConversation { execution, .. }
+				| CommandPayload::SubmitConversationTurn { execution, .. } => execution,
+				_ => panic!("conversation dispatch"),
+			};
+			assert_eq!(execution.effective_service_tier().as_str(), "flex");
+		}
 	}
 
 	#[test]
