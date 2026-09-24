@@ -126,10 +126,8 @@ impl ChiefCoordinator {
 	) -> Result<Self, ChiefError> {
 		if config.model.trim().is_empty()
 			|| config.cwd.is_empty()
-			|| !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "persistent"]
-				.contains(&config.chief_effort.as_str())
-			|| !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "persistent"]
-				.contains(&config.worker_effort.as_str())
+			|| decodex_protocol::ConversationReasoningEffort::new(&config.chief_effort).is_err()
+			|| decodex_protocol::ConversationReasoningEffort::new(&config.worker_effort).is_err()
 		{
 			return Err(ChiefError::Invalid("explicit model, effort and cwd required".into()));
 		}

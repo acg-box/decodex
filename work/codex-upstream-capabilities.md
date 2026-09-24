@@ -1,5 +1,36 @@
 # Codex capability reference
 
+## Dynamic reasoning effort — 2026-09-24
+
+Reference: openai/codex 595cc91e8cbb1c2ca822d0311dcf12709410c582,
+`codex-rs/protocol/src/openai_models.rs`. Native ReasoningEffort retains custom
+model-defined strings. Installed codex-cli 0.155.0-alpha.16.3 supports this path.
+
+Protocol 2.50 retains bounded custom effort values across model discovery,
+explicit message settings, desktop controls, and cold draft storage. Unknown
+values display their exact name instead of High. Legacy `x_high` saved values
+still map to native `xhigh`. Both protocol and native request adapters accept
+up to 128 UTF-8 bytes and reject empty values and control characters.
+
+Validation: 128 Codex adapter tests, 109 protocol tests, 485 runtime tests, and
+310 desktop tests passed. Strict Clippy passed for all four affected packages.
+An isolated installed-native test reads the model catalog through Decodex,
+starts Chief with the advertised custom effort, and checks the exact outbound
+Responses value at a loopback backend. It completed with one model request and
+no real credentials. This proves the custom-effort path, not all model capability
+or workspace-routing integration.
+
+This batch is rebased on workspace PR #1393 (37a88d008). It retains the native
+agent hierarchy, live output subscription, weather cards, interruption controls,
+and the previously delivered draft and receipt recovery. Small owner extractions,
+explicit imports, and public field documentation repair strict validation failures
+introduced by that baseline; no lint checks are disabled.
+
+## Earlier usage audit
+
+The following reference and acceptance notes describe the earlier usage change.
+They are not the current manual catch-up completion status.
+
 Reference checkout: `target/upstream-codex` (ignored, read-only reference use).
 Official repository: https://github.com/openai/codex
 Reviewed main commit: fd346b8dbaa24573a0244bc917811849d27c4cf4
@@ -42,11 +73,9 @@ missing usage; no historical values are fabricated.
 
 ## Recurring review
 
-The existing Codex Upstream Maintainer is active on its existing six-hour schedule.
-Its prompt now includes useful product capabilities as well as compatibility,
-source/test evidence, installed-version checks, and quiet unchanged runs. The
-worktree setup script is disabled for this automation. Other paused automations
-were not activated. The checked-in maintainer prompt carries the same review focus.
+The Codex Upstream Maintainer remains paused during the manual catch-up.
+Its configured daily time is 20:05 UTC, or 04:05 Beijing time, without seasonal
+changes. Resume only after the manual catch-up meets its completion requirements.
 
 ## Validation and preview
 

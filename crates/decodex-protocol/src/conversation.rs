@@ -57,6 +57,8 @@ pub enum ConversationContractError {
 	InvalidCursor,
 	/// A model identifier was empty, oversized, or not a safe protocol label.
 	InvalidModel,
+	/// A reasoning effort is empty, oversized, or contains control characters.
+	InvalidReasoningEffort,
 	/// An ordinary Conversation or RuntimeSession projection was internally inconsistent.
 	InvalidProjection,
 }
@@ -231,6 +233,7 @@ impl Display for ConversationContractError {
 			Self::InvalidWorkingDirectory => "invalid Conversation working directory",
 			Self::InvalidListSize => "invalid Conversation list size",
 			Self::InvalidCursor => "invalid Conversation list cursor",
+			Self::InvalidReasoningEffort => "invalid reasoning effort",
 			Self::InvalidModel => "invalid Conversation model",
 			Self::InvalidProjection => "invalid Conversation conversation projection",
 		})
@@ -270,9 +273,8 @@ impl<'de> Deserialize<'de> for ConversationModel {
 	}
 }
 
-/// Closed Codex reasoning effort exposed by the Conversation controls.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+/// Bounded native reasoning effort; model catalogs can introduce new values.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ConversationReasoningEffort {
 	/// Disable additional reasoning when the provider advertises this level.
 	None,
@@ -292,10 +294,37 @@ pub enum ConversationReasoningEffort {
 	Ultra,
 	/// Persistent reasoning, only when advertised by the selected model.
 	Persistent,
+	/// Exact model-defined effort advertised by native capabilities.
+	Custom(CustomReasoningEffort),
 }
+
+/// Validated custom effort payload, constructed through ConversationReasoningEffort::new.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CustomReasoningEffort(String);
+
 impl ConversationReasoningEffort {
+	/// Retain a bounded native value; normalize the legacy Decodex x_high alias.
+	pub fn new(value: impl Into<String>) -> Result<Self, ConversationContractError> {
+		let value = value.into();
+		if value.is_empty() || value.len() > 128 || value.chars().any(char::is_control) {
+			return Err(ConversationContractError::InvalidReasoningEffort);
+		}
+		Ok(match value.as_str() {
+			"none" => Self::None,
+			"minimal" => Self::Minimal,
+			"low" => Self::Low,
+			"medium" => Self::Medium,
+			"high" => Self::High,
+			"xhigh" | "x_high" => Self::XHigh,
+			"max" => Self::Max,
+			"ultra" => Self::Ultra,
+			"persistent" => Self::Persistent,
+			_ => Self::Custom(CustomReasoningEffort(value)),
+		})
+	}
+
 	/// Return the exact app-server wire value.
-	pub const fn as_str(self) -> &'static str {
+	pub fn as_str(&self) -> &str {
 		match self {
 			Self::None => "none",
 			Self::Minimal => "minimal",
@@ -306,7 +335,21 @@ impl ConversationReasoningEffort {
 			Self::Max => "max",
 			Self::Ultra => "ultra",
 			Self::Persistent => "persistent",
+			Self::Custom(value) => &value.0,
 		}
+	}
+}
+
+impl Serialize for ConversationReasoningEffort {
+	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		// Preserve Decodex's historical wire spelling; native dispatch uses as_str().
+		serializer.serialize_str(if *self == Self::XHigh { "x_high" } else { self.as_str() })
+	}
+}
+
+impl<'de> Deserialize<'de> for ConversationReasoningEffort {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		Self::new(String::deserialize(deserializer)?).map_err(D::Error::custom)
 	}
 }
 
@@ -836,6 +879,37 @@ mod provider_thread_tests {
 				ProviderThreadId::from_codex_url(&url).expect("exact URL readback"),
 				identity
 			);
+		}
+	}
+}
+
+#[cfg(test)]
+mod native_effort_tests {
+	use super::ConversationReasoningEffort as Effort;
+
+	#[test]
+	fn native_effort_preserves_custom_values_and_known_wire_compatibility() {
+		for value in ["none", "minimal", "persistent", "provider-defined-effort", "custom effort"] {
+			let effort = Effort::new(value).expect("bounded effort");
+			let encoded = serde_json::to_string(&effort).expect("serialize effort");
+			assert_eq!(serde_json::from_str::<Effort>(&encoded).expect("decode effort"), effort);
+			assert_eq!(effort.as_str(), value);
+		}
+		assert_eq!(serde_json::to_value(Effort::XHigh).expect("legacy wire"), "x_high");
+		for alias in ["xhigh", "x_high"] {
+			assert_eq!(
+				serde_json::from_value::<Effort>(serde_json::json!(alias)).expect("known alias"),
+				Effort::XHigh
+			);
+		}
+		for invalid in [
+			String::new(),
+			"x".repeat(129),
+			"bad\nvalue".to_owned(),
+			"bad\0value".to_owned(),
+			"bad\u{85}value".to_owned(),
+		] {
+			assert!(serde_json::from_value::<Effort>(serde_json::json!(invalid)).is_err());
 		}
 	}
 }

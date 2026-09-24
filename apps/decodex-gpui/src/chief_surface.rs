@@ -740,7 +740,7 @@ impl ChiefSurface {
 							.map_err(|_| "Invalid account ID")?,
 					)
 				},
-				effort: self.effort,
+				effort: self.effort.clone(),
 				sandbox: self.sandbox,
 			}))
 		};
@@ -751,7 +751,7 @@ impl ChiefSurface {
 				};
 				let execution = decodex_protocol::ConversationExecutionSettings {
 					model,
-					reasoning_effort: self.effort,
+					reasoning_effort: self.effort.clone(),
 					fast: self.fast,
 					service_tier: self.service_tier.clone(),
 				};

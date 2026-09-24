@@ -49,6 +49,40 @@ impl ChiefSurface {
 			.find(|message| message.turn_id == turn && message.item_id == item)
 	}
 
+	fn native_message_entry(
+		&self,
+		work: &ChiefWorkItemDto,
+		turn_id: &str,
+		text: &str,
+		kind: &str,
+	) -> decodex_protocol::ChiefHistoryEntryDto {
+		let saved =
+			self.history.as_ref().filter(|(id, _)| id == &work.id).and_then(|(_, history)| {
+				match history {
+					super::ChiefHistoryResult::Available { entries, .. } =>
+						entries.iter().find(|entry| {
+							entry.turn_id.as_deref() == Some(turn_id) && entry.text == text
+						}),
+					_ => None,
+				}
+			});
+		let mut message =
+			saved.cloned().unwrap_or_else(|| decodex_protocol::ChiefHistoryEntryDto {
+				id: 0,
+				kind: if kind == "userMessage" { "user" } else { "assistant" }.into(),
+				text: text.into(),
+				created_at_micros: 0,
+				duration_ms: None,
+				usage: None,
+				activity: None,
+				receipt: None,
+				turn_id: Some(turn_id.into()),
+				weather: Vec::new(),
+			});
+		message.text = text.into();
+		message
+	}
+
 	fn native_timeline_content(
 		&self,
 		work: &ChiefWorkItemDto,
@@ -68,29 +102,7 @@ impl ChiefSurface {
 					(message.text.as_str(), message.truncated)
 				});
 				if matches!(kind.as_str(), "userMessage" | "agentMessage") {
-					let saved = self.history.as_ref().filter(|(id, _)| id == &work.id).and_then(
-						|(_, history)| match history {
-							super::ChiefHistoryResult::Available { entries, .. } =>
-								entries.iter().find(|entry| {
-									entry.turn_id.as_deref() == Some(turn_id) && entry.text == text
-								}),
-							_ => None,
-						},
-					);
-					let mut message =
-						saved.cloned().unwrap_or_else(|| decodex_protocol::ChiefHistoryEntryDto {
-							id: 0,
-							kind: if kind == "userMessage" { "user" } else { "assistant" }.into(),
-							text: text.into(),
-							created_at_micros: 0,
-							duration_ms: None,
-							usage: None,
-							activity: None,
-							receipt: None,
-							turn_id: Some(turn_id.clone()),
-							weather: Vec::new(),
-						});
-					message.text = text.into();
+					let message = self.native_message_entry(work, turn_id, text, kind);
 					let mut body = div().debug_selector(|| "native-promotion-content".into());
 					for attachment in attachments {
 						body = body

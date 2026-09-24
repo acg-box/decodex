@@ -249,7 +249,7 @@ impl Conversations {
 			state.execution.model = model.model;
 			if !model.efforts.contains(&state.execution.reasoning_effort)
 				&& let Some(effort) =
-					model.default_effort.or_else(|| model.efforts.first().copied())
+					model.default_effort.or_else(|| model.efforts.first().cloned())
 			{
 				state.execution.reasoning_effort = effort;
 			}
@@ -281,7 +281,7 @@ impl Conversations {
 			.iter()
 			.position(|effort| *effort == state.execution.reasoning_effort)
 			.map_or(0, |index| (index + 1) % supported.len());
-		state.execution.reasoning_effort = supported[next];
+		state.execution.reasoning_effort = supported[next].clone();
 	}
 
 	pub(crate) fn toggle_fast(&self) {
@@ -1252,7 +1252,7 @@ impl State {
 		let supported = supported_efforts(self.execution.model.as_str());
 		if !supported.contains(&self.execution.reasoning_effort) {
 			self.execution.reasoning_effort =
-				*supported.last().expect("every curated model has a reasoning effort");
+				supported.last().expect("every curated model has a reasoning effort").clone();
 		}
 	}
 

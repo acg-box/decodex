@@ -778,17 +778,8 @@ impl ChiefSurface {
 			self.reconcile_model_options(cx);
 			self.mark_model_intent(cx);
 		} else {
-			self.effort = match value {
-				"none" => ConversationReasoningEffort::None,
-				"minimal" => ConversationReasoningEffort::Minimal,
-				"low" => ConversationReasoningEffort::Low,
-				"medium" => ConversationReasoningEffort::Medium,
-				"xhigh" => ConversationReasoningEffort::XHigh,
-				"max" => ConversationReasoningEffort::Max,
-				"ultra" => ConversationReasoningEffort::Ultra,
-				"persistent" => ConversationReasoningEffort::Persistent,
-				_ => ConversationReasoningEffort::High,
-			};
+			let Ok(effort) = ConversationReasoningEffort::new(value) else { return };
+			self.effort = effort;
 			self.mark_effort_intent();
 		}
 		cx.notify();

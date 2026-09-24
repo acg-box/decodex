@@ -297,6 +297,64 @@ pub(crate) struct ServiceApplication {
 	doctor: DoctorReport,
 }
 impl ServiceApplication {
+	fn query_voice(&self, request: &decodex_protocol::ChiefVoiceRequest) -> QueryResultPayload {
+		QueryResultPayload::ChiefVoice(match &self.chief {
+			Some(chief) => chief.voice(request),
+			None =>
+				crate::chief_voice::failed(request.session_id().clone(), "Chief is not connected."),
+		})
+	}
+
+	async fn query_output(
+		&self,
+		work_id: &EntityId,
+		after_revision: Option<u64>,
+	) -> QueryResultPayload {
+		let result = match &self.store {
+			ProductStore::Available(store) =>
+				match store.wait_chief_output(work_id.as_str().into(), after_revision).await {
+					Ok((revision, output)) => {
+						let messages = query_chief_live(output);
+						decodex_protocol::ChiefOutputResult::Available {
+							revision,
+							work_id: work_id.clone(),
+							messages,
+						}
+					},
+					Err(_) => decodex_protocol::ChiefOutputResult::Unavailable,
+				},
+			_ => decodex_protocol::ChiefOutputResult::Unavailable,
+		};
+		QueryResultPayload::ChiefOutput(result)
+	}
+
+	async fn query_native_agents(
+		&self,
+		work: &EntityId,
+		thread: Option<&WireText>,
+		cursor: Option<&WireText>,
+	) -> QueryResultPayload {
+		QueryResultPayload::NativeAgents(match &self.chief {
+			Some(chief) =>
+				chief
+					.native_agents(
+						work.as_str(),
+						thread.map(WireText::as_str),
+						cursor.map(WireText::as_str),
+					)
+					.await,
+			None => decodex_protocol::NativeAgentsResult::Unavailable,
+		})
+	}
+
+	async fn query_history(&self, work: &str, before: Option<i64>) -> QueryResultPayload {
+		let mut history = query_chief_history_page(&self.store, work, before).await;
+		if let Some(chief) = &self.chief {
+			chief.enrich_weather(work, &mut history).await;
+		}
+		QueryResultPayload::ChiefHistory(history)
+	}
+
 	async fn query_activity_detail(
 		&self,
 		work: &str,
@@ -1941,14 +1999,7 @@ impl Application for ServiceApplication {
 						"Chief is not connected.",
 					),
 				}),
-			QueryPayload::ExchangeChiefVoice { request } =>
-				QueryResultPayload::ChiefVoice(match &self.chief {
-					Some(chief) => chief.voice(request),
-					None => crate::chief_voice::failed(
-						request.session_id().clone(),
-						"Chief is not connected.",
-					),
-				}),
+			QueryPayload::ExchangeChiefVoice { request } => self.query_voice(request),
 
 			QueryPayload::GetChiefResources { work_id } =>
 				QueryResultPayload::ChiefResources(match &self.chief {
@@ -1983,46 +2034,12 @@ impl Application for ServiceApplication {
 			QueryPayload::GetChiefRequest { event_id } => QueryResultPayload::ChiefRequest(
 				query_chief_request_with_details(&self.store, *event_id, self.chief.as_ref()).await,
 			),
-			QueryPayload::WaitForChiefOutput { work_id, after_revision } => {
-				let result = match &self.store {
-					ProductStore::Available(store) => match store
-						.wait_chief_output(work_id.as_str().into(), *after_revision)
-						.await
-					{
-						Ok((revision, output)) => {
-							let messages = query_chief_live(output);
-							decodex_protocol::ChiefOutputResult::Available {
-								revision,
-								work_id: work_id.clone(),
-								messages,
-							}
-						},
-						Err(_) => decodex_protocol::ChiefOutputResult::Unavailable,
-					},
-					_ => decodex_protocol::ChiefOutputResult::Unavailable,
-				};
-				QueryResultPayload::ChiefOutput(result)
-			},
+			QueryPayload::WaitForChiefOutput { work_id, after_revision } =>
+				self.query_output(work_id, *after_revision).await,
 			QueryPayload::GetNativeAgents { work_id, thread_id, cursor } =>
-				QueryResultPayload::NativeAgents(match &self.chief {
-					Some(chief) =>
-						chief
-							.native_agents(
-								work_id.as_str(),
-								thread_id.as_ref().map(|x| x.as_str()),
-								cursor.as_ref().map(|x| x.as_str()),
-							)
-							.await,
-					None => decodex_protocol::NativeAgentsResult::Unavailable,
-				}),
-			QueryPayload::GetChiefHistory { work_id, before } => {
-				let mut history =
-					query_chief_history_page(&self.store, work_id.as_str(), *before).await;
-				if let Some(chief) = &self.chief {
-					chief.enrich_weather(work_id.as_str(), &mut history).await;
-				}
-				QueryResultPayload::ChiefHistory(history)
-			},
+				self.query_native_agents(work_id, thread_id.as_ref(), cursor.as_ref()).await,
+			QueryPayload::GetChiefHistory { work_id, before } =>
+				self.query_history(work_id.as_str(), *before).await,
 			QueryPayload::GetChiefArchiveState { work_id } =>
 				QueryResultPayload::ChiefArchiveState(match &self.chief {
 					Some(chief) => chief.archive_state(work_id.as_str()).await,

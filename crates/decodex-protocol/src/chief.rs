@@ -45,8 +45,10 @@ pub struct ChiefActivityDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChiefHistoryEntryDto {
+	/// Native turn identity that binds the entry to its saved source.
 	#[serde(default)]
 	pub turn_id: Option<String>,
+	/// Saved weather results associated with this entry.
 	#[serde(default)]
 	pub weather: Vec<crate::WeatherForecast>,
 	/// Local receipt facts, independent of native conversation ordering.

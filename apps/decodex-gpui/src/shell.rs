@@ -4869,14 +4869,12 @@ fn destination_content(
 		.into_any_element()
 }
 
-fn settings_workspace_content(
+fn settings_navigation(
 	shell: &Shell,
 	standalone: bool,
-	refresh_focus: FocusHandle,
-	window: &Window,
+	selected: Destination,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let selected = if standalone { shell.settings_selected } else { shell.selected };
 	let mut navigation = div()
 		.w(px(192.0))
 		.min_w(px(192.0))
@@ -4952,6 +4950,18 @@ fn settings_workspace_content(
 				.smooth(),
 		);
 	}
+	navigation.into_any_element()
+}
+
+fn settings_workspace_content(
+	shell: &Shell,
+	standalone: bool,
+	refresh_focus: FocusHandle,
+	window: &Window,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	let selected = if standalone { shell.settings_selected } else { shell.selected };
+	let navigation = settings_navigation(shell, standalone, selected, cx);
 	let panel = div()
 		.flex_1()
 		.min_w_0()

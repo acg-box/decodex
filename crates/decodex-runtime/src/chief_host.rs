@@ -678,6 +678,44 @@ impl ChiefHost {
 		Ok(work.into())
 	}
 
+	async fn native_agent_input(
+		&self,
+		ids: (&str, &str),
+		text: &str,
+		expected_turn: Option<&str>,
+	) -> Result<String, ChiefHostError> {
+		let (work, thread) = ids;
+		let client = self.runtime.chief_client().ok_or("Agent connection unavailable")?;
+		let result =
+			crate::native_agents::read(&self.store, &client, work, Some(thread), None).await;
+		let decodex_protocol::NativeAgentsResult::Conversation {
+			can_input: true, active_turn, ..
+		} = result
+		else {
+			return Err("This native agent does not accept direct input. Ask its parent agent to follow up.".into());
+		};
+		if active_turn.as_deref() != expected_turn {
+			return Err("Agent state changed. Review the conversation before sending.".into());
+		}
+		let input = json!([{"type":"text","text":text}]);
+		let result = if let Some(turn) = active_turn {
+			client
+				.request(
+					"turn/steer",
+					json!({"threadId":thread,"expectedTurnId":turn,"input":input}),
+				)
+				.await
+		} else {
+			client.request("turn/start", json!({"threadId":thread,"input":input})).await
+		};
+		result.map_err(|_| {
+			ChiefHostError::Unknown(
+				"Native message delivery could not be confirmed. Inspect history before sending again.",
+			)
+		})?;
+		Ok(work.into())
+	}
+
 	async fn handle(
 		&self,
 		key: String,
@@ -687,49 +725,13 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			ChiefActionDto::NativeAgentInput { work_id, thread_id, text, expected_turn } => {
-				let client = self.runtime.chief_client().ok_or("Agent connection unavailable")?;
-				let result = crate::native_agents::read(
-					&self.store,
-					&client,
-					work_id.as_str(),
-					Some(thread_id.as_str()),
-					None,
+			ChiefActionDto::NativeAgentInput { work_id, thread_id, text, expected_turn } =>
+				self.native_agent_input(
+					(work_id.as_str(), thread_id.as_str()),
+					text.as_str(),
+					expected_turn.as_ref().map(|turn| turn.as_str()),
 				)
-				.await;
-				let decodex_protocol::NativeAgentsResult::Conversation {
-					can_input: true,
-					active_turn,
-					..
-				} = result
-				else {
-					return Err("This native agent does not accept direct input. Ask its parent agent to follow up.".into());
-				};
-				if active_turn.as_deref() != expected_turn.as_ref().map(|t| t.as_str()) {
-					return Err(
-						"Agent state changed. Review the conversation before sending.".into()
-					);
-				}
-				let input = json!([{"type":"text","text":text.as_str()}]);
-				let result = if let Some(turn) = active_turn {
-					client
-						.request(
-							"turn/steer",
-							json!({"threadId":thread_id.as_str(),"expectedTurnId":turn,"input":input}),
-						)
-						.await
-				} else {
-					client
-						.request("turn/start", json!({"threadId":thread_id.as_str(),"input":input}))
-						.await
-				};
-				result.map_err(|_| {
-					ChiefHostError::Unknown(
-						"Native message delivery could not be confirmed. Inspect history before sending again.",
-					)
-				})?;
-				Ok(work_id.as_str().into())
-			},
+				.await,
 			ChiefActionDto::InstallSuggestedPlugin { work_id, event_id, review_token } =>
 				self.install_plugin(work_id.as_str(), event_id, review_token.as_str(), &key, active)
 					.await,

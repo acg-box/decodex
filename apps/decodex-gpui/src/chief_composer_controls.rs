@@ -27,8 +27,8 @@ pub(super) fn effort_indicator(level: &str) -> gpui::AnyElement {
 		.into_any_element()
 }
 
-fn level_label(level: &str) -> &'static str {
-	LEVELS.iter().find(|(value, _)| *value == level).map_or("High", |(_, label)| *label)
+fn level_label(level: &str) -> String {
+	LEVELS.iter().find(|(value, _)| *value == level).map_or(level, |(_, label)| *label).to_owned()
 }
 
 #[path = "chief_effort_slider.rs"] mod effort_slider;

@@ -1,5 +1,9 @@
 //! Compact conversation inspection, independent of transcript layout.
-use super::*;
+use super::{
+	ChiefSnapshotDto, ChiefSurface, ChiefWorkItemDto, Context, FluentBuilder, FontWeight,
+	InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement,
+	Styled, div, graph, markdown, muted, next_check_text, px, rgb, rgba, ui_theme,
+};
 
 impl ChiefSurface {
 	pub(super) fn inspection_card(

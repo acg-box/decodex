@@ -16,7 +16,7 @@ impl ChiefSurface {
 		}
 		let levels = self.model_efforts(cx);
 		if let Some(level) = levels.get(index_at(position, levels.len())) {
-			self.effort = *level;
+			self.effort = level.clone();
 			self.mark_effort_intent();
 			cx.notify();
 		}
@@ -84,7 +84,7 @@ impl ChiefSurface {
 							_ => return,
 						};
 						if let Some(level) = levels.get(next) {
-							s.effort = *level;
+							s.effort = level.clone();
 							s.mark_effort_intent();
 						}
 						cx.stop_propagation();
@@ -315,6 +315,39 @@ mod tests {
 			Default::default(),
 		);
 		surface.update(visual, |s, _| assert!(s.composer_menu.is_none()));
+	}
+
+	#[gpui::test]
+	fn slider_keeps_custom_catalog_effort_and_its_label(cx: &mut gpui::TestAppContext) {
+		use decodex_protocol::{
+			ChiefCapabilitiesResult, ChiefModelDto, ConversationModel, ConversationReasoningEffort,
+		};
+		use gpui::AppContext;
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let custom = ConversationReasoningEffort::new("provider-defined-effort").unwrap();
+			s.capabilities = Some(ChiefCapabilitiesResult::Available {
+				memory_enabled: None,
+				models: vec![ChiefModelDto {
+					model: ConversationModel::new(s.model.read(cx).content()).unwrap(),
+					name: "Fixture".into(),
+					efforts: vec![ConversationReasoningEffort::High, custom.clone()],
+					default_effort: Some(custom.clone()),
+					supports_fast: false,
+					supports_images: true,
+					availability: None,
+					upgrade: None,
+					service_tiers: vec![],
+					default_service_tier: None,
+				}],
+			});
+			s.set_effort_position(1.0, cx);
+			assert_eq!(s.effort, custom);
+			assert_eq!(level_label(s.effort.as_str()), "provider-defined-effort");
+			assert_eq!(s.draft_profiles.execution.choice("chief").reasoning_effort, Some(custom));
+			assert!(s.composer_capability_error(cx).is_none());
+		});
 	}
 
 	#[test]

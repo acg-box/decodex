@@ -1014,7 +1014,7 @@ mod tests {
 			s.composer_manager = Some("work".into());
 			s.draft_profiles.threads.insert("work".into(), "native-thread".into());
 			s.composer.update(cx, |input, cx| input.set_content("Unsent cold draft", cx));
-			s.effort = ConversationReasoningEffort::High;
+			s.effort = ConversationReasoningEffort::new("provider-defined-effort").unwrap();
 			s.mark_effort_intent();
 			s.attachments.push(decodex_protocol::ChiefAttachmentDto {
 				path: ConversationWorkingDirectory::new("/tmp/selected.png").unwrap(),
@@ -1045,7 +1045,7 @@ mod tests {
 			assert_eq!(s.attachments.len(), 1);
 			assert_eq!(
 				s.draft_profiles.execution.choice("work").reasoning_effort,
-				Some(ConversationReasoningEffort::High)
+				Some(ConversationReasoningEffort::new("provider-defined-effort").unwrap())
 			);
 			assert_eq!(s.restored_question_drafts.len(), 1);
 			assert!(
