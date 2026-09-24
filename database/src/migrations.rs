@@ -481,7 +481,8 @@ mod tests {
 
 	#[test]
 	fn account_usage_upgrade_preserves_current_main_activation_settings() {
-		let mut connection = Connection::open_in_memory().unwrap();
+		let directory = tempfile::tempdir().unwrap();
+		let mut connection = Connection::open(directory.path().join("upgrade.sqlite3")).unwrap();
 		configure(&connection).unwrap();
 		for migration in &MIGRATIONS[..31] {
 			connection.execute_batch(migration.sql).unwrap();
