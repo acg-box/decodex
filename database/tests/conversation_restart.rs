@@ -95,7 +95,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 				message: "Start the persisted task.".to_owned(),
 				working_directory: temporary.path().display().to_string(),
 				model: "gpt-5.6-sol".to_owned(),
-				reasoning_effort: "high".to_owned(),
+				reasoning_effort: Some("high".to_owned()),
 				fast: false,
 				service_tier: Some(decodex_core::ServiceTier::new("ultrafast").unwrap()),
 			},
@@ -496,7 +496,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 				message: "Start an independent task.".to_owned(),
 				working_directory: temporary.path().display().to_string(),
 				model: "gpt-5.6-sol".to_owned(),
-				reasoning_effort: "high".to_owned(),
+				reasoning_effort: Some("high".to_owned()),
 				fast: false,
 				service_tier: None,
 			},
@@ -816,5 +816,48 @@ fn history_item(
 		metadata: HistoryMetadata::empty(),
 		expected_revision: None,
 		artifact: None,
+	}
+}
+
+#[tokio::test]
+async fn original_reasoning_choice_survives_reopen_and_idempotent_creation() {
+	for effort in [None, Some("none"), Some("provider-effort-over-thirty-two-characters")] {
+		let temporary = tempdir().unwrap();
+		let root = DecodexRoot::new(temporary.path().canonicalize().unwrap()).unwrap();
+		let paths = root.paths();
+		let store = SqliteStore::open(&paths).unwrap();
+		let id = ConversationId::new(CONVERSATION_ID).unwrap();
+		let command = CommandIdentity::new("original-effort", b"original-effort").unwrap();
+		let record = CreateConversationRecord {
+			conversation_id: id.clone(),
+			title: "Native reasoning".into(),
+			message: "Preserve the original input".into(),
+			working_directory: "/tmp".into(),
+			model: "native-model".into(),
+			reasoning_effort: effort.map(str::to_owned),
+			fast: false,
+			service_tier: Some(decodex_core::ServiceTier::new("flex").unwrap()),
+		};
+		let created = store.create_conversation(&command, &record).await.unwrap();
+		let original = store.read_conversation_request(&id).await.unwrap().unwrap();
+		assert_eq!(original.reasoning_effort.as_deref(), effort);
+		drop(store);
+		let reopened = SqliteStore::open(&paths).unwrap();
+		assert_eq!(reopened.read_conversation_request(&id).await.unwrap(), Some(original));
+		let replay = reopened.create_conversation(&command, &record).await.unwrap();
+		assert_eq!(replay, created);
+		for invalid in ["", "bad\neffort", &"x".repeat(129)] {
+			let mut rejected = record.clone();
+			rejected.reasoning_effort = Some(invalid.into());
+			assert!(
+				reopened
+					.create_conversation(
+						&CommandIdentity::new("invalid-effort", b"invalid-effort").unwrap(),
+						&rejected
+					)
+					.await
+					.is_err()
+			);
+		}
 	}
 }

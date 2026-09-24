@@ -2524,7 +2524,10 @@ fn runtime_execution_settings(
 ) -> RuntimeConversationExecutionSettings {
 	RuntimeConversationExecutionSettings {
 		model: settings.model.as_str().to_owned(),
-		reasoning_effort: settings.reasoning_effort.as_str().to_owned(),
+		reasoning_effort: settings
+			.reasoning_effort
+			.as_ref()
+			.map(|effort| effort.as_str().to_owned()),
 		fast: settings.fast,
 		service_tier: settings.effective_service_tier(),
 	}

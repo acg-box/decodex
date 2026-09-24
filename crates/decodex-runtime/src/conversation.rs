@@ -298,16 +298,16 @@ fn selected_directory_from_descriptor(descriptor: i32) -> Result<File, ()> {
 	Ok(unsafe { File::from_raw_fd(descriptor) })
 }
 
-/// Explicit request-scoped execution settings carried on every user send.
+/// Request-scoped execution settings; omitted effort inherits the native thread setting.
 #[derive(Clone)]
 pub(crate) struct ConversationExecutionSettings {
 	pub model: String,
-	pub reasoning_effort: String,
+	pub reasoning_effort: Option<String>,
 	pub fast: bool,
 	pub service_tier: decodex_core::ServiceTier,
 }
 
-/// First ordinary Turn input. Settings are explicit and survive pre-session recovery.
+/// First ordinary Turn input. Selected settings survive pre-session recovery.
 pub(crate) struct CreateConversation {
 	pub operation_key: String,
 	pub correlation_id: String,
@@ -663,7 +663,7 @@ struct LocalSession {
 	account_id: AccountId,
 	process: FencedProcess,
 	model: String,
-	reasoning_effort: String,
+	reasoning_effort: Option<String>,
 	fast: bool,
 	service_tier: decodex_core::ServiceTier,
 	working_directory: String,
@@ -1359,7 +1359,9 @@ impl ConversationRuntime {
 				&command.message,
 				&command.working_directory,
 				&command.execution.model,
-				&command.execution.reasoning_effort,
+				// Empty only encodes absence in the fingerprint; explicit effort cannot be empty.
+				// Keep existing explicit request fingerprints unchanged.
+				command.execution.reasoning_effort.as_deref().unwrap_or(""),
 				command.execution.service_tier.as_str(),
 				"ordinary",
 			],
@@ -2729,7 +2731,7 @@ impl ConversationRuntime {
 					.await;
 			},
 		};
-		let request = match ConversationTurnStartRequest::new(
+		let request = match ConversationTurnStartRequest::with_optional_effort(
 			thread_id,
 			input,
 			session.model.clone(),

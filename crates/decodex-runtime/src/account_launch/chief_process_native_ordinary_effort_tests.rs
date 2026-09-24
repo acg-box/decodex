@@ -1,0 +1,99 @@
+//! Ordinary typed turn requests preserve native reasoning inheritance.
+use super::*;
+use decodex_codex::{ConversationTurnInput, ConversationTurnStartRequest, ExactThreadId};
+
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated ordinary effort qualification"]
+async fn installed_ordinary_turn_effort_preserves_inheritance_across_restart() {
+	for (requested, configured) in [
+		(None, Some("provider-effort")),
+		(None, None),
+		(Some("none"), Some("provider-effort")),
+		(Some("provider-effort"), None),
+	] {
+		tokio::time::timeout(Duration::from_secs(30), qualify(requested, configured))
+			.await
+			.expect("bounded native ordinary effort fixture");
+	}
+}
+
+async fn qualify(requested: Option<&'static str>, configured: Option<&'static str>) {
+	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
+	let home = tempfile::tempdir_in("/tmp").expect("native ordinary effort fixture");
+	let listener =
+		tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("native ordinary effort fixture");
+	let address = listener.local_addr().expect("native ordinary effort fixture");
+	let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let backend = tokio::spawn(serve_fixture(
+		listener,
+		requests.clone(),
+		requested.or(configured),
+		Some(bodies.clone()),
+		None,
+		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native ordinary answer"}]}),
+	));
+	let mut model = effort::fixture_model("gpt-5.6-sol", "provider-effort");
+	model["default_reasoning_level"] = Value::Null;
+	let catalog = home.path().join("models.json");
+	std::fs::write(
+		&catalog,
+		serde_json::to_vec(&json!({"models":[model]})).expect("native ordinary effort fixture"),
+	)
+	.expect("native ordinary effort fixture");
+	let reasoning = configured
+		.map(|value| format!("model_reasoning_effort={}\n", json!(value)))
+		.unwrap_or_default();
+	std::fs::write(home.path().join("config.toml"), format!("{reasoning}model=\"gpt-5.6-sol\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(catalog))).expect("native ordinary effort fixture");
+	let mut session = NativeSession::start(&binary, home.path());
+	let started = session
+		.client
+		.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}))
+		.await
+		.expect("native ordinary effort fixture");
+	let id = started["thread"]["id"].as_str().expect("native ordinary effort fixture").to_owned();
+	send(&mut session, &id, requested).await;
+	assert_eq!(requests.load(Ordering::Acquire), 1);
+	drop(session);
+	let mut session = NativeSession::start(&binary, home.path());
+	session
+		.client
+		.thread_resume(json!({"threadId":id}))
+		.await
+		.expect("native ordinary effort fixture");
+	send(&mut session, &id, requested).await;
+	assert_eq!(requests.load(Ordering::Acquire), 2, "one turn per call, no replay");
+	assert!(!backend.is_finished(), "backend effort assertions must pass");
+	for body in bodies.lock().expect("captured inference bodies").iter() {
+		assert_eq!(body["reasoning"]["effort"], json!(requested.or(configured)));
+	}
+	backend.abort();
+}
+
+async fn send(session: &mut NativeSession, id: &str, requested: Option<&str>) {
+	let request = ConversationTurnStartRequest::with_optional_effort(
+		ExactThreadId::new(id).expect("native ordinary effort fixture"),
+		ConversationTurnInput::text("Return fixture output")
+			.expect("native ordinary effort fixture"),
+		"gpt-5.6-sol",
+		requested.map(str::to_owned),
+	)
+	.expect("native ordinary effort fixture")
+	.with_user_trigger();
+	let turn = session
+		.client
+		.turn_start(serde_json::to_value(request).expect("native ordinary effort fixture"))
+		.await
+		.expect("native ordinary effort fixture");
+	loop {
+		let event = session.events.recv().await.expect("native ordinary effort fixture");
+		if let ServerEvent::Notification { method, params } = event
+			&& method == "turn/completed"
+			&& params["threadId"] == id
+			&& params["turn"]["id"] == turn["turn"]["id"]
+		{
+			assert_eq!(params["turn"]["status"], "completed");
+			break;
+		}
+	}
+}

@@ -5,6 +5,7 @@ use super::*;
 #[path = "chief_process_native_effort_tests.rs"] mod effort;
 #[path = "chief_process_native_goal_tests.rs"] mod goals;
 #[path = "chief_process_native_model_tests.rs"] mod models;
+#[path = "chief_process_native_ordinary_effort_tests.rs"] mod ordinary_effort;
 #[path = "chief_process_native_permission_tests.rs"] mod permissions;
 #[path = "chief_process_native_plugin_tests.rs"] mod plugins;
 #[path = "chief_process_native_reviewer_tests.rs"] mod reviewer;

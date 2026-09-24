@@ -74,7 +74,7 @@ pub struct CreateConversationRecord {
 	pub message: String,
 	pub working_directory: String,
 	pub model: String,
-	pub reasoning_effort: String,
+	pub reasoning_effort: Option<String>,
 	pub fast: bool,
 	pub service_tier: Option<decodex_core::ServiceTier>,
 }
@@ -85,7 +85,7 @@ pub struct ConversationRequest {
 	pub message: String,
 	pub working_directory: String,
 	pub model: String,
-	pub reasoning_effort: String,
+	pub reasoning_effort: Option<String>,
 	pub fast: bool,
 	pub service_tier: Option<decodex_core::ServiceTier>,
 }
@@ -1322,7 +1322,7 @@ impl SqliteStore {
 				params![request.source_conversation_id.as_str()],
 				|row| Ok((
 					row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-					row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, bool>(5)?,
+					row.get::<_, String>(3)?, row.get::<_, Option<String>>(4)?, row.get::<_, bool>(5)?,
 					row.get::<_, String>(6)?, row.get::<_, String>(7)?, row.get::<_, i64>(8)?, row.get::<_, Option<String>>(9)?,
 				)),
 			).optional().map_err(sql_error)?;
@@ -1484,10 +1484,9 @@ fn validate_conversation_conversation(create: &CreateConversationRecord) -> Resu
 		|| create.model.is_empty()
 		|| create.model.len() > 128
 		|| create.model.chars().any(char::is_control)
-		|| !matches!(
-			create.reasoning_effort.as_str(),
-			"low" | "medium" | "high" | "xhigh" | "max" | "ultra"
-		) {
+		|| create.reasoning_effort.as_ref().is_some_and(|effort| {
+			effort.is_empty() || effort.len() > 128 || effort.chars().any(char::is_control)
+		}) {
 		return Err(StoreError::InvalidInput(
 			"initial Conversation Conversation request is invalid",
 		));
@@ -3017,7 +3016,7 @@ mod archive_tests {
 					message: "Start this task.".to_owned(),
 					working_directory: "/tmp".to_owned(),
 					model: "gpt-5.6-sol".to_owned(),
-					reasoning_effort: "high".to_owned(),
+					reasoning_effort: Some("high".to_owned()),
 					fast: true,
 					service_tier: None,
 				},
@@ -3390,7 +3389,7 @@ mod archive_tests {
 					message: "Archive this task.".to_owned(),
 					working_directory: "/tmp".to_owned(),
 					model: "gpt-5.6-sol".to_owned(),
-					reasoning_effort: "high".to_owned(),
+					reasoning_effort: Some("high".to_owned()),
 					fast: true,
 					service_tier: None,
 				},

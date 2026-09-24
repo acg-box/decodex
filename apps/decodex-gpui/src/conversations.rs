@@ -247,11 +247,15 @@ impl Conversations {
 				.map_or(0, |i| (i + 1) % models.len());
 			let model = models[next].clone();
 			state.execution.model = model.model;
-			if !model.efforts.contains(&state.execution.reasoning_effort)
+			if state
+				.execution
+				.reasoning_effort
+				.as_ref()
+				.is_some_and(|effort| !model.efforts.contains(effort))
 				&& let Some(effort) =
 					model.default_effort.or_else(|| model.efforts.first().cloned())
 			{
-				state.execution.reasoning_effort = effort;
+				state.execution.reasoning_effort = Some(effort);
 			}
 			state.reconcile_catalog_tier();
 			return;
@@ -279,9 +283,9 @@ impl Conversations {
 		}
 		let next = supported
 			.iter()
-			.position(|effort| *effort == state.execution.reasoning_effort)
+			.position(|effort| Some(effort) == state.execution.reasoning_effort.as_ref())
 			.map_or(0, |index| (index + 1) % supported.len());
-		state.execution.reasoning_effort = supported[next].clone();
+		state.execution.reasoning_effort = Some(supported[next].clone());
 	}
 
 	pub(crate) fn toggle_fast(&self) {
@@ -1251,9 +1255,14 @@ impl State {
 
 	fn clamp_effort_for_model(&mut self) {
 		let supported = supported_efforts(self.execution.model.as_str());
-		if !supported.contains(&self.execution.reasoning_effort) {
+		if self
+			.execution
+			.reasoning_effort
+			.as_ref()
+			.is_some_and(|effort| !supported.contains(effort))
+		{
 			self.execution.reasoning_effort =
-				supported.last().expect("every curated model has a reasoning effort").clone();
+				Some(supported.last().expect("every curated model has a reasoning effort").clone());
 		}
 	}
 
@@ -2861,7 +2870,7 @@ pub(crate) mod tests {
 		conversations.toggle_fast();
 		let selected = conversations.snapshot().execution;
 		assert_eq!(selected.model.as_str(), "gpt-5.6-terra");
-		assert_eq!(selected.reasoning_effort, ConversationReasoningEffort::XHigh);
+		assert_eq!(selected.reasoning_effort, Some(ConversationReasoningEffort::XHigh));
 		assert!(selected.fast);
 
 		assert!(conversations.submit("Use the selected execution settings.").is_ok());
