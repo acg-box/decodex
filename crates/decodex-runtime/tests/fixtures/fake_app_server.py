@@ -579,6 +579,14 @@ for line in sys.stdin:
         assert message["params"]["limit"] <= 10
         assert message["params"]["searchTerm"].startswith("decodex-capability-probe-")
         result = {"data": [], "nextCursor": None}
+    elif method == "config/read":
+        assert message["params"] == {"cwd": "/tmp", "includeLayers": False}
+        result = {"config": {"model": "configured-model", "model_reasoning_effort": "high", "service_tier": "flex", "model_providers": {"fixture": {"secret": "not-public"}}}}
+    elif method == "configRequirements/read":
+        if mode == "exact-defaults-rejected":
+            print(json.dumps({"id": message["id"], "error": {"code": -32601, "message": "unsupported"}}), flush=True)
+            continue
+        result = {"requirements": {"models": {"newThread": {"model": "managed-model", "modelReasoningEffort": "low"}}}}
     elif method == "model/list":
         assert message["params"]["includeHidden"] is False
         print(json.dumps({"method":"turn/completed","params":{"threadId":"catalog-thread","turn":{"id":"catalog-turn","status":"completed","items":[]}}}), flush=True)
@@ -587,7 +595,7 @@ for line in sys.stdin:
         if mode == "exact-catalog-rejected":
             print(json.dumps({"id": message["id"], "error": {"code": -32601, "message": "unsupported"}}), flush=True)
             continue
-        result = {"data":[{"model":"catalog-model","displayName":"Model \"quoted\"","supportedReasoningEfforts":[],"defaultReasoningEffort":"high","serviceTiers":[{"id":"ultrafast","name":"Ultrafast","description":"More usage"}]}],"nextCursor":None}
+        result = {"data":[{"model":"catalog-model","isDefault":True,"displayName":"Model \"quoted\"","supportedReasoningEfforts":[],"defaultReasoningEffort":"high","serviceTiers":[{"id":"ultrafast","name":"Ultrafast","description":"More usage"}]}],"nextCursor":None}
     elif method == "initialized":
         if mode == "exact-config-warning":
             print(json.dumps({"method": "configWarning", "params": {"summary": "Second fixture warning", "details": None}}), flush=True)

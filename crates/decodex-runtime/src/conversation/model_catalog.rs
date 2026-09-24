@@ -6,8 +6,8 @@ use super::{
 	SelectedWorkingDirectory, derived_uuid,
 };
 use decodex_protocol::{
-	ChiefModelDto, EntityId, InitialModelCatalogRequest, InitialModelCatalogResult,
-	ModelCatalogPurpose,
+	ChiefModelDto, EntityId, InitialExecutionDefaults, InitialModelCatalogRequest,
+	InitialModelCatalogResult, InitialModelDefaults, ModelCatalogPurpose,
 };
 use std::{
 	sync::Arc,
@@ -86,7 +86,7 @@ impl ConversationRuntime {
 			});
 		let source = account.clone();
 		let directory = request.working_directory.as_str().to_owned();
-		let models = tokio::task::spawn_blocking(move || {
+		let (models, defaults) = tokio::task::spawn_blocking(move || {
 			runtime
 				.read_initial_catalog_process(&source, revision, &directory, credential, callback)
 		})
@@ -113,6 +113,7 @@ impl ConversationRuntime {
 			account_revision: revision,
 			working_directory: request.working_directory,
 			models,
+			defaults: Some(Box::new(defaults)),
 		};
 		// Leave room for the public envelope and transport framing.
 		(serde_json::to_vec(&result).ok()?.len() <= 128 * 1024).then_some(result)
@@ -125,7 +126,7 @@ impl ConversationRuntime {
 		directory: &str,
 		credential: AccountProcessCredential,
 		callback: Arc<dyn ProcessAccountRefreshCallback>,
-	) -> Option<Vec<ChiefModelDto>> {
+	) -> Option<(Vec<ChiefModelDto>, InitialModelDefaults)> {
 		let selected = Arc::new(SelectedWorkingDirectory::acquire(directory).ok()?);
 		let binding =
 			AccountBinding::shared_home_bound(account.clone(), credential.binding, callback)
@@ -149,7 +150,7 @@ impl ConversationRuntime {
 		let initialized = child.initialize_ordinary_turns(&vault);
 		drop(credential.launch_guard);
 		let result = if initialized.is_ok() {
-			read_catalog(&mut child, || self.is_shutting_down())
+			read_initial_defaults(&mut child, directory, || self.is_shutting_down())
 		} else {
 			None
 		};
@@ -160,12 +161,21 @@ impl ConversationRuntime {
 	}
 }
 
+#[cfg(test)]
 fn read_catalog(
 	child: &mut AttestedProcessChild,
 	cancelled: impl Fn() -> bool,
 ) -> Option<Vec<ChiefModelDto>> {
+	read_catalog_with_default(child, cancelled).map(|(models, _)| models)
+}
+
+fn read_catalog_with_default(
+	child: &mut AttestedProcessChild,
+	cancelled: impl Fn() -> bool,
+) -> Option<(Vec<ChiefModelDto>, Option<decodex_protocol::ConversationModel>)> {
 	let mut pages = crate::chief_capabilities::ModelCatalogPages::default();
 	let mut cursor = None;
+	let mut default_model = None;
 	let deadline = Instant::now() + Duration::from_secs(8);
 	for _ in 0..8 {
 		if cancelled() || Instant::now() >= deadline {
@@ -173,18 +183,85 @@ fn read_catalog(
 		}
 		let (page, events) = child.read_ordinary_model_page(cursor.as_deref());
 		child.retain_ordinary_events(events).ok()?;
-		match pages.push(&page.ok()?).ok()? {
+		let page = page.ok()?;
+		for model in page["data"].as_array()? {
+			if model["isDefault"] == true {
+				if default_model.is_some() {
+					return None;
+				}
+				default_model =
+					Some(decodex_protocol::ConversationModel::new(model["model"].as_str()?).ok()?);
+			}
+		}
+		match pages.push(&page).ok()? {
 			Some(next) => cursor = Some(next),
-			None => return Some(pages.models),
+			None => return Some((pages.models, default_model)),
 		}
 	}
 	None
+}
+
+fn project_native_defaults(
+	value: decodex_codex::app_server_client::NativeExecutionDefaults,
+) -> Option<InitialExecutionDefaults> {
+	Some(InitialExecutionDefaults {
+		model: value.model.map(decodex_protocol::ConversationModel::new).transpose().ok()?,
+		reasoning_effort: value
+			.reasoning_effort
+			.map(decodex_protocol::ConversationReasoningEffort::new)
+			.transpose()
+			.ok()?,
+		service_tier: value
+			.service_tier
+			.map(decodex_protocol::ServiceTier::new)
+			.transpose()
+			.ok()?,
+	})
+}
+
+fn read_initial_defaults(
+	child: &mut AttestedProcessChild,
+	directory: &str,
+	cancelled: impl Fn() -> bool,
+) -> Option<(Vec<ChiefModelDto>, InitialModelDefaults)> {
+	if cancelled() {
+		return None;
+	}
+	let (configured, events) = child.read_ordinary_model_defaults(directory, false);
+	child.retain_ordinary_events(events).ok()?;
+	let configured = project_native_defaults(configured.ok()?)?;
+	if cancelled() {
+		return None;
+	}
+	let (managed, events) = child.read_ordinary_model_defaults(directory, true);
+	child.retain_ordinary_events(events).ok()?;
+	let managed = project_native_defaults(managed.ok()?)?;
+	let (models, catalog_model) = read_catalog_with_default(child, cancelled)?;
+	Some((models, InitialModelDefaults { configured, managed, catalog_model }))
 }
 
 #[cfg(test)]
 mod tests {
 	use super::read_catalog;
 	use crate::account_launch::process::tests::ordinary_catalog_child;
+
+	#[test]
+	fn initial_defaults_preserve_distinct_sources_and_interleaved_events() {
+		let (_temp, mut child) = ordinary_catalog_child("exact");
+		let (models, defaults) =
+			super::read_initial_defaults(&mut child, "/tmp", || false).expect("complete defaults");
+		assert_eq!(models.len(), 1);
+		assert_eq!(defaults.configured.model.as_ref().unwrap().as_str(), "configured-model");
+		assert_eq!(defaults.managed.model.as_ref().unwrap().as_str(), "managed-model");
+		assert_eq!(defaults.catalog_model.as_ref().unwrap().as_str(), "catalog-model");
+		assert_eq!(defaults.configured.service_tier.as_ref().unwrap().as_str(), "flex");
+		assert!(!serde_json::to_string(&defaults).unwrap().contains("not-public"));
+		assert!(child.next_ordinary_turn_event(std::time::Duration::ZERO).unwrap().is_some());
+		child.shutdown().unwrap();
+		let (_temp, mut child) = ordinary_catalog_child("exact-defaults-rejected");
+		assert!(super::read_initial_defaults(&mut child, "/tmp", || false).is_none());
+		child.shutdown().unwrap();
+	}
 
 	#[test]
 	fn metadata_catalog_preserves_tiers_and_interleaved_events() {
