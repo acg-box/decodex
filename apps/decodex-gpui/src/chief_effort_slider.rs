@@ -17,7 +17,8 @@ impl ChiefSurface {
 		let levels = self.model_efforts(cx);
 		if let Some(level) = levels.get(index_at(position, levels.len())) {
 			self.effort = level.clone();
-			self.mark_effort_intent();
+			self.mark_effort_intent(cx);
+			self.save_draft_document(cx);
 			cx.notify();
 		}
 	}
@@ -106,7 +107,8 @@ impl ChiefSurface {
 						};
 						if let Some(level) = levels.get(next) {
 							s.effort = level.clone();
-							s.mark_effort_intent();
+							s.mark_effort_intent(cx);
+							s.save_draft_document(cx);
 						}
 						cx.stop_propagation();
 						cx.notify();

@@ -837,8 +837,9 @@ impl ChiefSurface {
 		} else {
 			let Ok(effort) = ConversationReasoningEffort::new(value) else { return };
 			self.effort = effort;
-			self.mark_effort_intent();
+			self.mark_effort_intent(cx);
 		}
+		self.save_draft_document(cx);
 		cx.notify();
 	}
 

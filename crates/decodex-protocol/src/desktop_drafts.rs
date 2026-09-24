@@ -30,7 +30,7 @@ pub struct DesktopDraftDocument {
 impl Default for DesktopDraftDocument {
 	fn default() -> Self {
 		Self {
-			version: 3,
+			version: 4,
 			profiles: BTreeMap::new(),
 			unbound: Default::default(),
 			recovered: vec![],
@@ -80,10 +80,28 @@ pub struct DesktopComposerDraft {
 	pub references: Vec<ChiefTaskReferenceDto>,
 }
 
+/// User choices that opt out of native new-task defaults.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopCreationIntent {
+	/// The user chose a model.
+	pub model: bool,
+	/// The user chose explicit or inherited reasoning.
+	pub reasoning: bool,
+	/// The user chose a service tier.
+	pub service_tier: bool,
+}
+
 /// Editable setup before a Chief exists; values are drafts, never launch authority.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopCreationSetup {
+	/// Re-read defaults before sending a restored draft that used a native observation.
+	#[serde(default)]
+	pub defaults_applied: bool,
+	/// Absent in older drafts, whose saved values remain explicit.
+	#[serde(default)]
+	pub intent: Option<DesktopCreationIntent>,
 	/// Use native reasoning and retain the explicit value only as an editable alternative.
 	#[serde(default)]
 	pub inherit_effort: bool,
@@ -150,7 +168,7 @@ impl DesktopDraftDocument {
 		let mut value: Self =
 			serde_json::from_slice(bytes).map_err(|_| "Draft snapshot is invalid")?;
 		value.validate()?;
-		value.version = 3;
+		value.version = 4;
 		Ok(value)
 	}
 
@@ -163,7 +181,7 @@ impl DesktopDraftDocument {
 	}
 
 	fn validate(&self) -> Result<(), &'static str> {
-		if !matches!(self.version, 1..=3) {
+		if !matches!(self.version, 1..=4) {
 			return Err("Draft snapshot version is unsupported");
 		}
 		if self.profiles.len() > 64 {
@@ -367,7 +385,7 @@ mod tests {
 			execution: Some((EntityId::new("work").unwrap(), 4)),
 		});
 		DesktopDraftDocument {
-			version: 3,
+			version: 4,
 			profiles: BTreeMap::from([("a".repeat(64), profile)]),
 			recovered: vec![],
 			unbound: Default::default(),
@@ -377,6 +395,8 @@ mod tests {
 	#[test]
 	fn creation_setup_round_trips_and_old_documents_upgrade_without_authority() {
 		let setup = DesktopCreationSetup {
+			defaults_applied: false,
+			intent: None,
 			inherit_effort: false,
 			model: "unfinished model ".into(),
 			working_directory: "relative edit/".into(),
@@ -391,7 +411,7 @@ mod tests {
 		let bytes = document.encode().unwrap();
 		assert_eq!(DesktopDraftDocument::decode(&bytes).unwrap().unbound.creation, Some(setup));
 		let old = DesktopDraftDocument::decode(br#"{"version":1,"profiles":{}}"#).unwrap();
-		assert_eq!(old.version, 3);
+		assert_eq!(old.version, 4);
 		assert!(old.unbound.creation.is_none());
 		let mut remote = document.clone();
 		remote.unbound.creation.as_mut().unwrap().model = "other model".into();
@@ -428,7 +448,7 @@ mod tests {
 	#[test]
 	fn draft_document_rejects_changed_contract_and_ambiguous_ownership() {
 		let mut original = document();
-		original.version = 4;
+		original.version = 5;
 		assert!(original.encode().is_err());
 		let mut json = serde_json::to_value(document()).unwrap();
 		json["unexpected"] = serde_json::json!(true);

@@ -39,7 +39,7 @@ fn catalog_refresh_preserves_explicit_effort_until_user_selects_model(
 		s.model.update(cx, |input, cx| input.set_content("configured-model", cx));
 		s.mark_model_intent(cx);
 		s.effort = ConversationReasoningEffort::High;
-		s.mark_effort_intent();
+		s.mark_effort_intent(cx);
 		let owner = s.root_id().unwrap();
 		s.capabilities = Some(catalog(vec![ConversationReasoningEffort::Low]));
 		s.reconcile_model_options(cx);
@@ -219,4 +219,47 @@ fn native_reasoning_click_preserves_inheritance_in_both_public_start_fields(
 	assert!(start.effort.is_none());
 	assert!(execution.reasoning_effort.is_none());
 	assert_eq!(start.model.as_str(), "configured-model");
+}
+
+#[gpui::test]
+fn configured_defaults_reach_both_creation_fields_without_freezing_inherited_effort(
+	cx: &mut gpui::TestAppContext,
+) {
+	let (_directory, profile, server) = profile();
+	let surface = cx.new(ChiefSurface::new);
+	surface.update(cx, |s, cx| {
+		s.bind_profile(Some(profile), cx);
+		s.state = LoadState::Ready;
+		s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
+		s.composer.update(cx, |input, cx| input.set_content("Use native defaults", cx));
+		s.capabilities = Some(catalog(vec![]));
+		s.creation_defaults = Some(decodex_protocol::InitialModelCatalogResult::Available {
+			account_id: decodex_protocol::EntityId::new("account").unwrap(),
+			account_revision: 1,
+			working_directory: decodex_protocol::ConversationWorkingDirectory::new("/tmp").unwrap(),
+			models: vec![],
+			defaults: Some(Box::new(decodex_protocol::InitialModelDefaults {
+				configured: decodex_protocol::InitialExecutionDefaults {
+					model: Some(ConversationModel::new("configured-model").unwrap()),
+					reasoning_effort: None,
+					service_tier: Some(decodex_protocol::ServiceTier::new("flex").unwrap()),
+				},
+				managed: Default::default(),
+				catalog_model: None,
+			})),
+		});
+		s.apply_creation_defaults(cx);
+		assert_eq!(s.composer_effort_value(), "Inherited");
+		assert!(!s.creation_intent.model && !s.creation_intent.reasoning);
+		s.reconcile_model_options(cx);
+		s.submit(cx);
+	});
+	cx.run_until_parked();
+	let ChiefActionDto::StartConfigured { start, execution, .. } = server.join().unwrap() else {
+		panic!("configured start")
+	};
+	assert_eq!(start.model.as_str(), "configured-model");
+	assert_eq!(execution.model.unwrap().as_str(), "configured-model");
+	assert!(start.effort.is_none() && execution.reasoning_effort.is_none());
+	assert_eq!(execution.service_tier.unwrap().as_str(), "flex");
 }
