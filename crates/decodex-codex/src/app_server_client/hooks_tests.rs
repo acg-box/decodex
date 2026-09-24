@@ -4,6 +4,8 @@ use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 fn review() -> HookSettingsReview {
 	HookSettingsReview {
 		version: "version-one".into(),
+		file: "/home/config.toml".into(),
+		saved_hooks: Value::Null,
 		inventory: json!({"cwd":"/repo","warnings":["partial"],"errors":[],"hooks":[{"key":"plugin.\"quoted\"\\path","currentHash":"hash-one","isManaged":false,"enabled":true,"trustStatus":"untrusted","eventName":"UserPromptSubmit","handlerType":"command","command":"echo fixture","sourcePath":"/repo/hooks.json"}]}),
 	}
 }
@@ -82,4 +84,37 @@ async fn config_write_preserves_override_and_does_not_replay_lost_reply() {
 		}
 		backend.await.unwrap();
 	}
+}
+
+#[tokio::test]
+async fn review_uses_highest_user_layer_and_preserves_raw_saved_override() {
+	let (local, remote) = tokio::io::duplex(16384);
+	let (r, w) = tokio::io::split(local);
+	let (client, _events) = AppServerClient::from_io(r, w);
+	let server = tokio::spawn(async move {
+		let (r, mut w) = tokio::io::split(remote);
+		let mut lines = BufReader::new(r).lines();
+		let read: Value = serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+		assert_eq!(read["method"], "config/read");
+		let layers = json!([{"name":{"type":"user","profile":"work","file":"/home/work.config.toml"},"version":"profile-version","config":{"hooks":{"state":{"selected":{"enabled":false}}}}},{"name":{"type":"user","file":"/home/config.toml"},"version":"base-version","config":{"hooks":{"state":{"selected":{"enabled":true}}}}}]);
+		w.write_all(
+			format!("{}\n", json!({"id":read["id"],"result":{"layers":layers}})).as_bytes(),
+		)
+		.await
+		.unwrap();
+		let list: Value = serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+		assert_eq!(list["method"], "hooks/list");
+		w.write_all(
+			format!("{}\n", json!({"id":list["id"],"result":{"data":[review().inventory]}}))
+				.as_bytes(),
+		)
+		.await
+		.unwrap();
+	});
+	let result = client.hook_settings("/repo").await.unwrap();
+	assert_eq!(result.config_file(), "/home/work.config.toml");
+	assert_eq!(result.config_version(), "profile-version");
+	assert_eq!(result.saved_hook("selected").unwrap()["enabled"], false);
+	assert!(result.saved_hook("absent").is_none());
+	server.await.unwrap();
 }

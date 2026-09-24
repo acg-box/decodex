@@ -3,12 +3,14 @@ use super::{AppServerClient, ClientError, HistoryGuard};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-/// Native directory inventory and the reviewed base user-config revision.
+/// Native directory inventory and the reviewed active user-config revision.
 #[derive(Clone)]
 pub struct HookSettingsReview {
 	/// Complete native entry, including handler details, trust, warnings and errors.
 	pub inventory: Value,
 	version: String,
+	file: String,
+	saved_hooks: Value,
 }
 
 /// Explicit action on one reviewed hook; trust never implies enablement.
@@ -29,7 +31,17 @@ pub enum HookSettingsWrite {
 }
 
 impl HookSettingsReview {
-	/// Native base user-config revision included in every reviewed write.
+	/// Native writable file identity, shared by all tasks that use this config.
+	pub fn config_file(&self) -> &str {
+		&self.file
+	}
+
+	/// Exact saved override for one hook, distinct from effective metadata and inherited values.
+	pub fn saved_hook(&self, key: &str) -> Option<&Value> {
+		self.saved_hooks.get(key)
+	}
+
+	/// Native active user-config revision included in every reviewed write.
 	pub fn config_version(&self) -> &str {
 		&self.version
 	}
@@ -65,14 +77,22 @@ impl AppServerClient {
 			let config =
 				self.request("config/read", json!({"cwd":cwd,"includeLayers":true})).await?;
 			let layers = config["layers"].as_array().ok_or(ClientError::InvalidFrame)?;
-			let mut user = layers
+			// config/read returns highest precedence first; native writes select the active user
+			// layer.
+			let layer = layers
 				.iter()
-				.filter(|row| row["name"]["type"] == "user" && row["name"]["profile"].is_null());
-			let layer = user.next().ok_or(ClientError::InvalidFrame)?;
-			if user.next().is_some() || !layer["disabledReason"].is_null() {
+				.find(|row| row["name"]["type"] == "user")
+				.ok_or(ClientError::InvalidFrame)?;
+			if !layer["disabledReason"].is_null() {
 				return Err(ClientError::InvalidFrame);
 			}
 			let version = bounded_text(&layer["version"], 4096)?.to_owned();
+			let file = bounded_text(&layer["name"]["file"], 4096)?.to_owned();
+			if !std::path::Path::new(&file).is_absolute() {
+				return Err(ClientError::InvalidFrame);
+			}
+			let saved_hooks = layer["config"]["hooks"]["state"].clone();
+
 			let response = self.request("hooks/list", json!({"cwds":[cwd]})).await?;
 			let entries = response["data"].as_array().ok_or(ClientError::InvalidFrame)?;
 			if entries.len() != 1 || entries[0]["cwd"] != cwd {
@@ -80,7 +100,7 @@ impl AppServerClient {
 			}
 			let inventory = entries[0].clone();
 			validate_inventory(&inventory)?;
-			Ok(HookSettingsReview { inventory, version })
+			Ok(HookSettingsReview { inventory, version, file, saved_hooks })
 		})
 		.await
 		.map_err(|_| ClientError::Io)?
@@ -163,7 +183,7 @@ struct Edit {
 	merge_strategy: String,
 }
 
-/// Admit only one hook enabled/trusted-hash edit to the default native user config.
+/// Admit only one hook enabled/trusted-hash edit to the active native user config.
 pub fn is_hook_settings_write(params: &Value) -> bool {
 	let Ok(write) = serde_json::from_value::<WriteParams>(params.clone()) else { return false };
 	if write.edits.len() != 1
