@@ -201,6 +201,12 @@ mod tests {
 		let model = project_model(&value).expect("advertised model");
 		assert_eq!(model.efforts[0].as_str(), "persistent");
 		assert_eq!(model.default_effort, Some(model.efforts[0]));
+		let mut value = value;
+		value["supportedReasoningEfforts"] = json!([{"reasoningEffort":"high"}]);
+		let model = project_model(&value).expect("model without persistent support");
+		assert_eq!(model.efforts.len(), 1);
+		assert_eq!(model.efforts[0].as_str(), "high");
+		assert_eq!(model.default_effort, None, "an unadvertised default is not selected");
 	}
 
 	#[test]
