@@ -1,3 +1,6 @@
+#[cfg(all(test, target_os = "macos"))]
+#[path = "activation_policy_native_tests.rs"]
+mod activation_policy_native_tests;
 #[path = "exact_history.rs"] mod exact_history;
 
 #[cfg(target_os = "linux")] use std::os::fd::{AsRawFd as _, FromRawFd as _};
@@ -223,6 +226,17 @@ impl AccountBinding {
 		let mut binding = Self::shared_home(account_id)?;
 		binding.process_binding = Some(process_binding);
 		binding.refresh_callback = Some(refresh_callback);
+		Ok(binding)
+	}
+
+	/// Bind a short read-only policy lookup to a credential held by the API owner.
+	/// A refresh request fails this lookup; the API owner remains the sole refresh owner.
+	pub(super) fn shared_home_fixed(
+		account_id: AccountId,
+		process_binding: ProcessGenerationAccountBinding,
+	) -> Result<Self, SupervisionError> {
+		let mut binding = Self::shared_home(account_id)?;
+		binding.process_binding = Some(process_binding);
 		Ok(binding)
 	}
 
@@ -935,6 +949,32 @@ impl AttestedProcessChild {
 			.map_err(|_| ConversationProcessError::Unavailable)?;
 		self.initialized = true;
 		Ok(())
+	}
+
+	/// Read native workspace discovery and fresh managed requirements without starting a thread.
+	pub(super) fn read_activation_policy(
+		&mut self,
+	) -> Result<super::activation_policy::ActivationPolicy, ConversationProcessError> {
+		self.require_ordinary_turns_initialized()?;
+		let account: serde_json::Value = self
+			.process
+			.request(ReadOnlyMethod::AccountRead, &serde_json::json!({}), self.timeout)
+			.map_err(|_| ConversationProcessError::Unavailable)?;
+		let requirements: serde_json::Value = self
+			.process
+			.request(ReadOnlyMethod::ConfigRequirementsRead, &serde_json::json!({}), self.timeout)
+			.map_err(|_| ConversationProcessError::Unavailable)?;
+		let binding = self
+			.process
+			.binding
+			.process_binding()
+			.map_err(|_| ConversationProcessError::Unavailable)?;
+		super::activation_policy::ActivationPolicy::decode(
+			&account,
+			&requirements,
+			binding.credential.provider.account_id(),
+		)
+		.map_err(|()| ConversationProcessError::Incompatible)
 	}
 
 	/// Read one model page on the existing account-bound transport and retain interleaved events.
@@ -3023,6 +3063,8 @@ pub enum ReadOnlyMethod {
 	AccountLoginStart,
 	/// Read the immutable process account.
 	AccountRead,
+	/// Read current managed configuration requirements.
+	ConfigRequirementsRead,
 	/// Read a bounded page of threads.
 	ThreadList,
 	/// Read one exact thread without turns.
@@ -3034,6 +3076,7 @@ impl ReadOnlyMethod {
 			Self::Initialize => "initialize",
 			Self::AccountLoginStart => "account/login/start",
 			Self::AccountRead => "account/read",
+			Self::ConfigRequirementsRead => "configRequirements/read",
 			Self::ThreadList => "thread/list",
 			Self::ThreadRead => "thread/read",
 		}

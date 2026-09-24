@@ -1,6 +1,8 @@
 //! Runtime-owned SQLite authorization and bounded process-capacity composition.
 
+mod activation_policy;
 pub(crate) mod api_reset_card;
+pub(crate) use activation_policy::read_activation_policy;
 mod chief_process;
 #[cfg(target_os = "macos")] mod macos_attested_spawn;
 pub(crate) mod process;

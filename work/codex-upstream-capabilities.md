@@ -1,5 +1,39 @@
 # Codex capability reference
 
+## Workspace policy for quota activation — 2026-09-24
+
+Reference: openai/codex `0a5b9991698e8e3c126da6101aa9e4da421f7ddd`,
+checked against cutoff `595cc91e8cbb1c2ca822d0311dcf12709410c582`.
+Native app-server resolves the selected workspace, required backend origin, and
+workspace routing override. Its model provider applies that policy to Responses,
+compaction, and WebSockets. Account usage, profile, reset, and analytics endpoints
+remain account-backend scoped.
+
+Quota activation now obtains its model destination from an attested, short-lived
+native control process. It reads `account/read.workspaceRouting` and fresh
+`configRequirements/read`, checks the exact selected account and required origin,
+and applies both workspace routing and managed residency headers. The existing
+Responses path, empty tool list, `store:false`, and durable no-replay fence remain.
+No thread or model turn is created for policy discovery. Missing, unsupported,
+malformed, changed, or unavailable policy prevents activation; account observation
+and reset operations remain available without the optional native capability.
+
+The API credential owner retains its per-account lock through discovery and HTTP
+dispatch. The native child cannot rotate this credential or fall back to ambient
+authentication. Refresh remains with Account Service before the lookup; a native
+refresh request makes this lookup unavailable. A later observation can retry only
+after the existing rejection backoff. The child is shut down before the model
+request. No routing cache or shared account process is introduced.
+
+Validation: the installed `codex-cli 0.155.0-alpha.16.3` fixture uses production
+executable attestation and ephemeral synthetic credentials. It proves selected
+workspace rather than default workspace, invalid-discovery refusal, fresh discovery
+after restart, and no credential file. It sends no model request. Unit checks cover
+independent residency and routing headers, changed requirements, incomplete policy,
+unsafe origins, redirect refusal, and no retry after ambiguous HTTP failure.
+This is native policy and local transport evidence, not a live quota activation or
+signed desktop acceptance claim.
+
 ## Dynamic reasoning effort — 2026-09-24
 
 Reference: openai/codex 595cc91e8cbb1c2ca822d0311dcf12709410c582,
