@@ -186,7 +186,7 @@ impl ChiefCoordinator {
 		item: &Value,
 	) -> Result<(), ChiefError> {
 		self.observe_steer_receipt(thread, turn, item).await?;
-		self.observe_async_question_item(thread, turn, item).await?;
+		self.record_async_question_item(thread, turn, item, true).await?;
 		if is_plain_user_prompt(item)
 			&& let Some(id) = item["id"].as_str()
 		{
@@ -321,28 +321,49 @@ impl ChiefCoordinator {
 		turn: &str,
 		item: &Value,
 	) -> Result<(), ChiefError> {
+		self.record_async_question_item(thread, turn, item, false).await
+	}
+
+	async fn record_async_question_item(
+		&self,
+		thread: &str,
+		turn: &str,
+		item: &Value,
+		live: bool,
+	) -> Result<(), ChiefError> {
 		if item["type"] == "agentMessage" && item["delivery"] == "async" {
 			if let (Some(item_id), Ok(questions)) =
 				(item["id"].as_str(), decodex_protocol::project_chief_async_questions(item))
 				&& !questions.is_empty()
 			{
-				self.store
-					.record_chief_async_questions(
-						thread.into(),
-						turn.into(),
-						item_id.into(),
-						questions
-							.into_iter()
-							.map(|question| {
-								(
-									question.id.clone(),
-									serde_json::to_string(&question)
-										.expect("serializable question"),
-								)
-							})
-							.collect(),
-					)
-					.await?;
+				let questions = questions
+					.into_iter()
+					.map(|question| {
+						(
+							question.id.clone(),
+							serde_json::to_string(&question).expect("serializable question"),
+						)
+					})
+					.collect();
+				if live {
+					self.store
+						.record_live_chief_async_questions(
+							thread.into(),
+							turn.into(),
+							item_id.into(),
+							questions,
+						)
+						.await?;
+				} else {
+					self.store
+						.record_chief_async_questions(
+							thread.into(),
+							turn.into(),
+							item_id.into(),
+							questions,
+						)
+						.await?;
+				}
 			}
 		} else if item["type"] == "userMessage" {
 			let mut content = item["content"]

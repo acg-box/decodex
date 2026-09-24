@@ -14,14 +14,15 @@ struct Notice {
 	detail: String,
 	recovery: Recovery,
 	color: u32,
+	identity: Option<String>,
 }
 impl Notice {
 	fn key(&self) -> (String, String) {
-		(self.title.to_owned(), self.detail.clone())
+		(self.title.to_owned(), self.identity.as_ref().unwrap_or(&self.detail).clone())
 	}
 
 	fn new(title: &'static str, detail: impl Into<String>, recovery: Recovery) -> Self {
-		Self { title, detail: detail.into(), recovery, color: ui_theme::AMBER }
+		Self { title, detail: detail.into(), recovery, color: ui_theme::AMBER, identity: None }
 	}
 
 	fn info(mut self) -> Self {
@@ -176,6 +177,11 @@ impl Shell {
 		self.account_notifications(&mut notices);
 		self.profile_notifications(&mut notices);
 		let chief = self.chief.read(cx);
+		if let Some((identity, detail)) = chief.question_arrival_notice() {
+			let mut notice = Notice::new("Question", detail, Recovery::None);
+			notice.identity = Some(identity);
+			notices.insert(0, notice);
+		}
 		notices.extend(
 			chief
 				.operation_notices()
@@ -191,7 +197,7 @@ impl Shell {
 			));
 		}
 		let mut seen = std::collections::HashSet::new();
-		notices.retain(|notice| seen.insert((notice.title, notice.detail.clone())));
+		notices.retain(|notice| seen.insert(notice.key()));
 		let current = notices.iter().map(Notice::key).collect::<std::collections::HashSet<_>>();
 		let mut dismissed = self.dismissed_notifications.borrow_mut();
 		dismissed.retain(|key| current.contains(key));
@@ -446,25 +452,39 @@ impl Shell {
 }
 
 pub(crate) fn count_preference(value: Option<bool>) -> bool {
-	use std::sync::atomic::{AtomicU8, Ordering};
-	static COUNT: AtomicU8 = AtomicU8::new(u8::MAX);
+	static VALUE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);
+	notice_preference("DecodexNotificationCount", &VALUE, value, false)
+}
+
+pub(crate) fn question_notice_preference(value: Option<bool>) -> bool {
+	static VALUE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);
+	notice_preference("DecodexQuestionNotices", &VALUE, value, true)
+}
+
+fn notice_preference(
+	key: &str,
+	cache: &std::sync::atomic::AtomicU8,
+	value: Option<bool>,
+	default: bool,
+) -> bool {
+	use std::sync::atomic::Ordering;
 	if let Some(value) = value {
-		stored_count_preference(Some(value));
-		COUNT.store(u8::from(value), Ordering::Relaxed);
+		stored_notice_preference(key, Some(value), default);
+		cache.store(u8::from(value), Ordering::Relaxed);
 		return value;
 	}
-	let cached = COUNT.load(Ordering::Relaxed);
+	let cached = cache.load(Ordering::Relaxed);
 	if cached != u8::MAX {
 		return cached != 0;
 	}
-	let value = stored_count_preference(None);
-	COUNT.store(u8::from(value), Ordering::Relaxed);
+	let value = stored_notice_preference(key, None, default);
+	cache.store(u8::from(value), Ordering::Relaxed);
 	value
 }
 
 // Host-local appearance only; clearing notices never changes service state.
 #[cfg(all(target_os = "macos", not(test)))]
-fn stored_count_preference(value: Option<bool>) -> bool {
+fn stored_notice_preference(key: &str, value: Option<bool>, default: bool) -> bool {
 	use objc2::{
 		msg_send,
 		rc::Retained,
@@ -473,21 +493,36 @@ fn stored_count_preference(value: Option<bool>) -> bool {
 	unsafe {
 		let defaults: Retained<AnyObject> =
 			msg_send![AnyClass::get(c"NSUserDefaults").expect("Foundation"), standardUserDefaults];
-		let key = objc2_foundation::NSString::from_str("DecodexNotificationCount");
+		let key = objc2_foundation::NSString::from_str(key);
 		if let Some(value) = value {
 			let _: () = msg_send![&*defaults, setBool: value, forKey: &*key];
+		}
+		let stored: Option<Retained<AnyObject>> = msg_send![&*defaults, objectForKey: &*key];
+		if stored.is_none() {
+			return default;
 		}
 		msg_send![&*defaults, boolForKey: &*key]
 	}
 }
 #[cfg(not(all(target_os = "macos", not(test))))]
-fn stored_count_preference(value: Option<bool>) -> bool {
-	value.unwrap_or(false)
+fn stored_notice_preference(_: &str, value: Option<bool>, default: bool) -> bool {
+	value.unwrap_or(default)
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn question_dismissal_uses_identity_instead_of_repeated_title() {
+		let mut first = Notice::new("Question", "Choose a format", Recovery::None);
+		first.identity = Some("first-question".into());
+		let mut second = Notice::new("Question", "Choose a format", Recovery::None);
+		second.identity = Some("second-question".into());
+		assert_ne!(first.key(), second.key());
+		let dismissed = std::collections::HashSet::from([first.key()]);
+		assert!(!dismissed.contains(&second.key()));
+	}
+
 	#[gpui::test]
 	fn independent_failures_are_collected_and_clear_with_their_source(
 		cx: &mut gpui::TestAppContext,

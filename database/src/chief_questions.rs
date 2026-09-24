@@ -4,6 +4,8 @@ use rusqlite::{OptionalExtension as _, params};
 
 #[derive(Clone, Debug)]
 pub struct ChiefAsyncQuestion {
+	/// True only when first inserted from a live native item event.
+	pub arrived_live: bool,
 	pub thread_id: String,
 	pub turn_id: String,
 	pub item_id: String,
@@ -87,6 +89,28 @@ impl SqliteStore {
 		item: String,
 		questions: Vec<(String, String)>,
 	) -> Result<(), StoreError> {
+		self.record_chief_questions(thread, turn, item, questions, false).await
+	}
+
+	/// Mark only newly inserted live questions; duplicate events cannot upgrade history.
+	pub async fn record_live_chief_async_questions(
+		&self,
+		thread: String,
+		turn: String,
+		item: String,
+		questions: Vec<(String, String)>,
+	) -> Result<(), StoreError> {
+		self.record_chief_questions(thread, turn, item, questions, true).await
+	}
+
+	async fn record_chief_questions(
+		&self,
+		thread: String,
+		turn: String,
+		item: String,
+		questions: Vec<(String, String)>,
+		arrived_live: bool,
+	) -> Result<(), StoreError> {
 		if thread.is_empty()
 			|| thread.len() > 512
 			|| turn.is_empty()
@@ -117,7 +141,7 @@ impl SqliteStore {
                 if let Some(prior)=prior {
                     if prior!=(turn.clone(),item.clone(),json.clone()) {return Err(StoreError::IdempotencyConflict);}
                 } else {
-                    tx.execute("INSERT INTO chief_async_questions VALUES(?1,?2,?3,?4,?5,?6,?7)",params![work,thread,turn,item,id,json,now]).map_err(sqlite_error)?;
+                    tx.execute("INSERT INTO chief_async_questions VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![work,thread,turn,item,id,json,now,arrived_live]).map_err(sqlite_error)?;
                 }
             }
             tx.commit().map_err(sqlite_error)?; Ok(())
@@ -193,8 +217,8 @@ impl SqliteStore {
 		work: String,
 	) -> Result<Vec<ChiefAsyncQuestion>, StoreError> {
 		self.run(move |connection| {
-            let mut statement=connection.prepare("SELECT q.thread_id,q.turn_id,q.item_id,q.question_id,q.question_json FROM chief_async_questions q JOIN chief_work_items w ON w.id=q.work_id AND w.codex_thread_id=q.thread_id WHERE q.work_id=?1 AND NOT EXISTS(SELECT 1 FROM chief_async_recovery r WHERE r.work_id=q.work_id AND r.thread_id=q.thread_id) AND NOT EXISTS(SELECT 1 FROM chief_async_answers a WHERE a.work_id=q.work_id AND a.thread_id=q.thread_id AND a.question_id IN(q.question_id,q.item_id)) AND NOT EXISTS(SELECT 1 FROM chief_async_skips s WHERE s.work_id=q.work_id AND s.thread_id=q.thread_id AND s.question_id=q.question_id) ORDER BY q.created_at_micros,q.rowid LIMIT 33").map_err(sqlite_error)?;
-            let result=statement.query_map([work],|row|Ok(ChiefAsyncQuestion {thread_id:row.get(0)?,turn_id:row.get(1)?,item_id:row.get(2)?,question_id:row.get(3)?,question_json:row.get(4)?})).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(sqlite_error)?;
+            let mut statement=connection.prepare("SELECT q.thread_id,q.turn_id,q.item_id,q.question_id,q.question_json,q.arrived_live FROM chief_async_questions q JOIN chief_work_items w ON w.id=q.work_id AND w.codex_thread_id=q.thread_id WHERE q.work_id=?1 AND NOT EXISTS(SELECT 1 FROM chief_async_recovery r WHERE r.work_id=q.work_id AND r.thread_id=q.thread_id) AND NOT EXISTS(SELECT 1 FROM chief_async_answers a WHERE a.work_id=q.work_id AND a.thread_id=q.thread_id AND a.question_id IN(q.question_id,q.item_id)) AND NOT EXISTS(SELECT 1 FROM chief_async_skips s WHERE s.work_id=q.work_id AND s.thread_id=q.thread_id AND s.question_id=q.question_id) ORDER BY q.created_at_micros,q.rowid LIMIT 33").map_err(sqlite_error)?;
+            let result=statement.query_map([work],|row|Ok(ChiefAsyncQuestion {arrived_live:row.get(5)?,thread_id:row.get(0)?,turn_id:row.get(1)?,item_id:row.get(2)?,question_id:row.get(3)?,question_json:row.get(4)?})).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(sqlite_error)?;
             Ok(result)
         }).await
 	}

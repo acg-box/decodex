@@ -24,6 +24,7 @@
 #[path = "chief_output_stream.rs"] mod output_stream;
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
+#[path = "chief_question_notices.rs"] mod question_notices;
 #[path = "chief_requests.rs"] mod requests;
 #[path = "chief_resources.rs"] mod resources;
 #[path = "chief_selectable_text.rs"] mod selectable_text;
@@ -200,6 +201,7 @@ pub(crate) struct ChiefSurface {
 	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
 	question_timers: std::collections::BTreeMap<i64, requests::QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
+	question_notices: question_notices::QuestionNotices,
 	restored_question_drafts: Vec<decodex_protocol::DesktopQuestionDraft>,
 	collapsed_async_questions: std::collections::BTreeSet<String>,
 	async_question_threads: std::collections::BTreeMap<String, String>,
@@ -417,6 +419,7 @@ impl ChiefSurface {
 			mcp_answers: Default::default(),
 			question_timers: Default::default(),
 			question_inputs: Default::default(),
+			question_notices: Default::default(),
 			restored_question_drafts: Vec::new(),
 			collapsed_async_questions: Default::default(),
 			async_question_threads: Default::default(),
@@ -484,6 +487,8 @@ impl ChiefSurface {
 		if self.history_task.is_some() && self.history_requested_for.as_ref() == Some(&id) {
 			return;
 		}
+		let question_scope = self.question_notice_scope(&id);
+		self.question_notices.begin(question_scope.clone());
 		self.history_requested_for = Some(id.clone());
 		self.history_read_at = Some(std::time::Instant::now());
 		let Ok(work_id) = EntityId::new(id.clone()) else {
@@ -502,7 +507,12 @@ impl ChiefSurface {
 			let history = request.await;
 			let _ = surface.update(cx, |surface, cx| {
 				surface.history_task = None;
+				if surface.question_notice_scope(&id) != question_scope {
+					return;
+				}
 				if surface.selected.as_ref() == Some(&id) {
+					surface.observe_question_notices(&history);
+					cx.notify();
 					if surface
 						.history
 						.as_ref()
@@ -1020,6 +1030,7 @@ impl ChiefSurface {
 			self.sending = false;
 			self.feedback = "Service changed before acceptance was confirmed. Draft retained; inspect the previous service before sending again.".into();
 		}
+		self.question_notices = Default::default();
 		self.bind_drafts(profile.as_ref(), cx);
 		let epoch = self.native_history.epoch + 1;
 		self.native_history = Default::default();
@@ -1107,6 +1118,7 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
+		self.question_notices = Default::default();
 		self.clear_activity_detail();
 		self.output_stream = Default::default();
 		self.generation += 1;
@@ -1176,6 +1188,7 @@ impl ChiefSurface {
 
 	fn apply_result(&mut self, result: Result<ChiefSnapshotResult, ()>) {
 		if !matches!(&result, Ok(ChiefSnapshotResult::Available(_))) {
+			self.question_notices = Default::default();
 			self.clear_activity_detail();
 		}
 		match result {

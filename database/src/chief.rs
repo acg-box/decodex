@@ -1656,6 +1656,110 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn live_question_provenance_survives_restart_without_promoting_replay() {
+		let directory = tempdir().unwrap();
+		let path = directory.path().join("chief.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		store.create_chief_work_item(item("chief", None)).await.unwrap();
+		store.bind_chief_thread("chief".into(), "thread".into()).await.unwrap();
+		let record = |id: &str| {
+			vec![(
+				id.to_owned(),
+				serde_json::json!({"id":id,"title":"Question","options":[]}).to_string(),
+			)]
+		};
+		store
+			.record_chief_async_questions(
+				"thread".into(),
+				"turn".into(),
+				"history".into(),
+				record("old"),
+			)
+			.await
+			.unwrap();
+		store
+			.record_live_chief_async_questions(
+				"thread".into(),
+				"turn".into(),
+				"history".into(),
+				record("old"),
+			)
+			.await
+			.unwrap();
+		store
+			.record_live_chief_async_questions(
+				"thread".into(),
+				"turn".into(),
+				"live".into(),
+				record("new"),
+			)
+			.await
+			.unwrap();
+		store
+			.record_live_chief_async_questions(
+				"thread".into(),
+				"turn".into(),
+				"live".into(),
+				record("new"),
+			)
+			.await
+			.unwrap();
+		let questions = store.read_chief_async_questions("chief".into()).await.unwrap();
+		assert_eq!(questions.len(), 2);
+		assert!(!questions[0].arrived_live);
+		assert!(questions[1].arrived_live);
+		drop(store);
+		let store = SqliteStore::open_test(&path).unwrap();
+		store.refresh_chief_async_projection("thread".into()).await.unwrap();
+		assert!(store.read_chief_async_questions("chief".into()).await.unwrap().is_empty());
+		assert!(
+			store
+				.replace_chief_async_projection(
+					"chief".into(),
+					"thread".into(),
+					None,
+					questions,
+					vec![]
+				)
+				.await
+				.unwrap()
+		);
+		let mut questions = store.read_chief_async_questions("chief".into()).await.unwrap();
+		assert!(!questions[0].arrived_live);
+		assert!(questions[1].arrived_live);
+		// Input provenance is not authority: a changed native question is history.
+		questions[1].question_json =
+			serde_json::json!({"id":"new","title":"Changed","options":[]}).to_string();
+		store.refresh_chief_async_projection("thread".into()).await.unwrap();
+		store
+			.replace_chief_async_projection(
+				"chief".into(),
+				"thread".into(),
+				None,
+				questions,
+				vec![],
+			)
+			.await
+			.unwrap();
+		assert!(
+			store
+				.read_chief_async_questions("chief".into())
+				.await
+				.unwrap()
+				.iter()
+				.all(|q| !q.arrived_live)
+		);
+		assert!(
+			store
+				.skip_chief_async_question("chief".into(), "thread".into(), "new".into())
+				.await
+				.unwrap()
+		);
+		store.resolve_chief_async_questions("thread".into(), vec!["old".into()]).await.unwrap();
+		assert!(store.read_chief_async_questions("chief".into()).await.unwrap().is_empty());
+	}
+
+	#[tokio::test]
 	async fn new_prompt_retires_questions_without_replay_or_answer_side_effects() {
 		let directory = tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("chief.sqlite3")).unwrap();

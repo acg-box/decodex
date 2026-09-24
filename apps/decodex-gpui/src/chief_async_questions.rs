@@ -577,6 +577,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |s, cx| {
 			let question = |index| decodex_protocol::ChiefAsyncQuestionDto {
+				arrived_live: false,
 				id: decodex_protocol::chief_async_question_id("message", index),
 				title: "Same title".into(),
 				options: vec!["Suggested".into()],
@@ -712,6 +713,7 @@ mod tests {
 		})));
 		let history = ChiefHistoryResult::Available {
 			questions: vec![decodex_protocol::ChiefAsyncQuestionDto {
+				arrived_live: false,
 				id: "q1".into(),
 				title: "Choose a format".into(),
 				options: vec!["PDF".into(), "Markdown".into()],
@@ -888,6 +890,7 @@ mod tests {
 			questions[0].options = vec![label.clone()];
 			for index in 2..12 {
 				questions.push(decodex_protocol::ChiefAsyncQuestionDto {
+					arrived_live: false,
 					id: format!("q{index}"),
 					title: format!("Question {index}"),
 					options: vec!["One".into(), "Two".into()],

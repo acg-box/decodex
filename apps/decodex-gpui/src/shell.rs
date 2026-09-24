@@ -7,7 +7,9 @@ mod native_status;
 #[path = "shell_reset_cards.rs"] mod reset_cards;
 #[path = "shell_status.rs"] mod status;
 use crate::ui_motion::SmoothControl;
-pub(crate) use status::count_preference as notification_count_preference;
+pub(crate) use status::{
+	count_preference as notification_count_preference, question_notice_preference,
+};
 
 #[path = "chief_surface.rs"] pub(crate) mod chief_surface;
 use chief_surface::ChiefSurface;

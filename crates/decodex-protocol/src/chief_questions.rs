@@ -9,12 +9,19 @@ const CLOSE: &str = "</send_user_message_question_reply>";
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChiefAsyncQuestionDto {
+	/// First observed in a live native event, rather than reconstructed from history.
+	#[serde(default, skip_serializing_if = "is_false")]
+	pub arrived_live: bool,
 	/// JSON-encoded tool name, source item ID and original question index.
 	pub id: String,
 	/// Provider-authored question text.
 	pub title: String,
 	/// Suggested answers. The user can always enter another answer.
 	pub options: Vec<String>,
+}
+
+fn is_false(value: &bool) -> bool {
+	!value
 }
 
 /// A committed native reply, used for readable history and exact dismissal.
@@ -76,6 +83,7 @@ pub fn project_chief_async_questions(
 				.collect::<Result<Vec<_>, _>>()?,
 		};
 		result.push(ChiefAsyncQuestionDto {
+			arrived_live: false,
 			id: chief_async_question_id(item_id, index),
 			title: title.into(),
 			options,
@@ -165,11 +173,26 @@ mod tests {
 	use super::*;
 	fn question(index: usize) -> ChiefAsyncQuestionDto {
 		ChiefAsyncQuestionDto {
+			arrived_live: false,
 			id: chief_async_question_id("message", index),
 			title: "Same title".into(),
 			options: vec!["First".into()],
 		}
 	}
+	#[test]
+	fn arrival_provenance_is_local_and_legacy_storage_stays_identical() {
+		let value = serde_json::json!({"id":"message","type":"agentMessage","delivery":"async","questions":[{"title":"Which?","arrived_live":true}]});
+		let projected = project_chief_async_questions(&value).unwrap();
+		assert!(!projected[0].arrived_live);
+		let encoded = serde_json::to_value(&projected[0]).unwrap();
+		assert!(encoded.get("arrived_live").is_none());
+		let mut observed = projected[0].clone();
+		observed.arrived_live = true;
+		let decoded: ChiefAsyncQuestionDto =
+			serde_json::from_value(serde_json::to_value(&observed).unwrap()).unwrap();
+		assert!(decoded.arrived_live);
+	}
+
 	#[test]
 	fn replies_preserve_identity_escaping_and_user_choice() {
 		let a = question(0);
