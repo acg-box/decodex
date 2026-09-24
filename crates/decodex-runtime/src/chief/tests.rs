@@ -4,6 +4,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/archive.rs"] mod archive;
 #[path = "tests/async_recovery.rs"] mod async_recovery;
 #[path = "tests/capacity.rs"] mod capacity;
+#[path = "tests/closing_resume.rs"] mod closing_resume;
 #[path = "tests/guardian.rs"] mod guardian;
 #[path = "tests/install.rs"] mod install;
 #[path = "tests/native_mcp_forms.rs"] mod native_mcp_forms;
@@ -266,7 +267,11 @@ impl FixtureFaults {
 	) -> Option<bool> {
 		if request["method"] == "thread/resume" && self.resume_failures > 0 {
 			self.resume_failures -= 1;
-			let mut frame = json!({"id":request["id"],"error":{"code":-32600,"message":"thread private-id already has an active writer"}}).to_string();
+			let message = if history["_resume_closing"] == true {
+				format!("thread {} is closing; retry thread/resume after the thread is closed", request["params"]["threadId"].as_str().unwrap())
+			} else { "thread private-id already has an active writer".into() };
+			let error = history.get("_resume_error").cloned().unwrap_or_else(|| json!({"code":-32600,"message":message}));
+			let mut frame = json!({"id":request["id"],"error":error}).to_string();
 			frame.push('\n');
 			writer.write_all(frame.as_bytes()).await.unwrap();
 			return Some(true);

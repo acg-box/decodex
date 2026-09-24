@@ -134,6 +134,7 @@ impl ChiefCoordinator {
 	}
 
 	async fn invalidate_reverted_requests(&mut self, thread: &str) -> Result<(), ChiefError> {
+		self.closing_resumes.retain(|_, pending| pending.thread != thread);
 		self.store.queue_chief_async_revert(thread.into()).await?;
 		self.loaded_threads.remove(thread);
 		self.usage_replays.remove(thread);
