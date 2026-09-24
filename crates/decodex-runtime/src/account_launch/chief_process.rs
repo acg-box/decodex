@@ -230,6 +230,15 @@ fn pump(
 
 fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result<(), ClientError> {
 	if let Some(method) = value.get("method") {
+		if method == "thread/settings/update" {
+			return if decodex_codex::app_server_client::is_thread_permission_selection(
+				&value["params"],
+			) {
+				Ok(())
+			} else {
+				Err(ClientError::InvalidFrame)
+			};
+		}
 		if method == "turn/settings/update" {
 			return if decodex_codex::app_server_client::is_live_reviewer_update(&value["params"]) {
 				Ok(())
@@ -244,6 +253,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "thread/realtime/start"
 					| "thread/realtime/stop"
 					| "model/list" | "experimentalFeature/list"
+					| "permissionProfile/list"
 					| "thread/start"
 					| "thread/resume"
 					| "thread/inject_items"
@@ -299,6 +309,17 @@ mod tests {
 		assert!(validate_outbound(&frame, &mut requests).is_err());
 		frame["method"] = json!("thread/settings/update");
 		assert!(validate_outbound(&frame, &mut requests).is_err());
+	}
+
+	#[test]
+	fn permission_bridge_rejects_unrelated_setting_changes() {
+		let mut request = json!({"id":42,"method":"thread/settings/update","params":{"threadId":"thread","permissions":"scoped"}});
+		assert!(validate_outbound(&request, &mut HashSet::new()).is_ok());
+		for field in ["model", "sandboxPolicy", "approvalPolicy", "approvalsReviewer", "cwd"] {
+			request["params"][field] = json!("unrelated");
+			assert!(validate_outbound(&request, &mut HashSet::new()).is_err());
+			request["params"].as_object_mut().unwrap().remove(field);
+		}
 	}
 
 	#[test]
