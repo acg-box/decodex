@@ -241,6 +241,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 		}
 		if method == "thread/settings/update" {
 			return if decodex_codex::app_server_client::is_thread_plugin_selection(&value["params"])
+				|| decodex_codex::app_server_client::is_thread_model_selection(&value["params"])
 				|| decodex_codex::app_server_client::is_thread_permission_selection(
 					&value["params"],
 				) {

@@ -18,6 +18,7 @@ pub(super) struct ServerRequests(
 	super::settings_guard::SettingsRevisions,
 	super::permission_observations::SettingsObservations<super::NativeTaskPermissions>,
 	super::permission_observations::SettingsObservations<super::NativeTaskPlugins>,
+	super::permission_observations::SettingsObservations<super::NativeTaskModelSettings>,
 );
 struct Entry {
 	thread: String,
@@ -130,6 +131,25 @@ impl ServerRequests {
 		Some((settings, guard))
 	}
 
+	pub(super) fn configured_models(
+		&self,
+		thread: &str,
+	) -> Option<(super::NativeTaskModelSettings, HistoryGuard)> {
+		let guard = self.thread_settings_guard(thread)?;
+		let settings = self.6.configured(thread)?;
+		guard.is_live().then_some((settings, guard))
+	}
+
+	pub(super) fn model_observation(
+		&self,
+		thread: &str,
+	) -> Option<(super::NativeTaskModelSettings, HistoryGuard)> {
+		let (settings, observed) = self.6.get(thread)?;
+		let mut guard = self.history_guard(self.history_revision())?;
+		guard.settings = Some(observed);
+		Some((settings, guard))
+	}
+
 	pub(super) fn permission_revision(&self) -> u64 {
 		self.4.revision()
 	}
@@ -142,7 +162,12 @@ impl ServerRequests {
 			super::NativeTaskPermissions::from_thread_response(response),
 			guard.clone(),
 		);
-		self.5.record(thread, super::NativeTaskPlugins::from_settings(response), guard);
+		self.5.record(thread, super::NativeTaskPlugins::from_settings(response), guard.clone());
+		self.6.record(
+			thread,
+			super::NativeTaskModelSettings::from_thread_response(response),
+			guard,
+		);
 	}
 
 	pub(super) fn question_guard(&self, revision: u64) -> Option<HistoryGuard> {
@@ -204,6 +229,7 @@ impl ServerRequests {
 		self.3.clear();
 		self.4.clear();
 		self.5.clear();
+		self.6.clear();
 		if let Ok(mut rows) = self.0.lock() {
 			rows.clear();
 		}
@@ -214,6 +240,7 @@ impl ServerRequests {
 		if method == "thread/reverted" {
 			self.4.clear();
 			self.5.clear();
+			self.6.clear();
 		}
 		let Some(thread) = params["threadId"].as_str() else { return };
 		if matches!(
@@ -236,6 +263,19 @@ impl ServerRequests {
 			"turn/completed" =>
 				self.5.finish_turn(thread, params["turn"]["id"].as_str(), self.3.capture(thread)),
 			"thread/closed" | "thread/archived" | "thread/deleted" => self.5.remove(thread),
+			_ => {},
+		}
+
+		match method.as_str() {
+			"thread/settings/updated" => self.6.record(
+				thread,
+				super::NativeTaskModelSettings::from_notification(&params["threadSettings"]),
+				self.3.capture(thread),
+			),
+			"turn/started" => self.6.start_turn(thread, params["turn"]["id"].as_str()),
+			"turn/completed" =>
+				self.6.finish_turn(thread, params["turn"]["id"].as_str(), self.3.capture(thread)),
+			"thread/closed" | "thread/archived" | "thread/deleted" => self.6.remove(thread),
 			_ => {},
 		}
 

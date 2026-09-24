@@ -12,8 +12,12 @@ use tokio::{
 
 mod settings_guard;
 mod task_settings;
+mod thread_model_selection;
 mod thread_model_settings;
 pub use task_settings::NativeTaskModelSettings;
+pub use thread_model_selection::{
+	ThreadModelSelection, ThreadModelSelectionQueued, is_thread_model_selection,
+};
 pub use thread_model_settings::NativeThreadModelSettings;
 
 mod archive;
@@ -251,6 +255,28 @@ impl AppServerClient {
 			return None;
 		}
 		self.server_requests.plugin_observation(thread)
+	}
+
+	/// Read configured models, which can differ from the model captured by an active step.
+	pub fn configured_task_models(
+		&self,
+		thread: &str,
+	) -> Option<(NativeTaskModelSettings, HistoryGuard)> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.configured_models(thread)
+	}
+
+	/// Read complete idle model settings with a source guard, without resuming the task.
+	pub fn observed_task_models(
+		&self,
+		thread: &str,
+	) -> Option<(NativeTaskModelSettings, HistoryGuard)> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.model_observation(thread)
 	}
 
 	/// The caller supplies executable, arguments, cwd, and environment. This function
