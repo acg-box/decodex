@@ -762,6 +762,7 @@ fn fixture_account_transfer(
 		lifecycle_readiness: AccountLifecycleReadiness::Ready,
 		credential: Some(credential.clone()),
 		unsettled_operation: None,
+		usage_observation: None,
 		five_hour_quota: AccountQuotaWindowObservation::unknown(
 			AccountQuotaWindow::FIVE_HOURS_MINUTES,
 		)

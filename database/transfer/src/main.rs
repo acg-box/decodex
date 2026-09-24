@@ -485,6 +485,7 @@ fn build_account(
 			lifecycle_readiness: AccountLifecycleReadiness::Ready,
 			credential: Some(binding),
 			unsettled_operation: None,
+			usage_observation: None,
 			five_hour_quota: quota(input.five_hour_quota)?,
 			seven_day_quota: quota(input.seven_day_quota)?,
 			tombstoned: false,

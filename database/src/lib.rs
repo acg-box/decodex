@@ -3,6 +3,7 @@
 
 mod account_lifecycle;
 mod account_profiles;
+mod account_usage;
 mod accounts;
 mod chief;
 mod chief_install;
