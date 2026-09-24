@@ -106,10 +106,7 @@ fn project(
 				parts.push(message.into());
 			}
 		},
-		"webSearch" =>
-			if let Some(query) = item["query"].as_str() {
-				parts.push(query.into());
-			},
+		"webSearch" => parts.extend(web_details(item)),
 		_ => return None,
 	}
 	let text = parts
@@ -134,6 +131,57 @@ fn project(
 	}
 	Some(ChiefActivityDetailResult::Available { text: text[..end].into(), truncated })
 }
+
+fn web_details(item: &Value) -> Vec<String> {
+	let action = &item["action"];
+	let mut parts = Vec::new();
+	match action["type"].as_str() {
+		Some("search") => {
+			if let Some(query) = action["query"].as_str().filter(|text| !text.is_empty()) {
+				parts.push(query.to_owned());
+			}
+			for query in action["queries"]
+				.as_array()
+				.into_iter()
+				.flatten()
+				.filter_map(Value::as_str)
+				.filter(|text| !text.is_empty())
+			{
+				if !parts.iter().any(|part| part == query) {
+					parts.push(query.to_owned());
+				}
+			}
+		},
+		Some("openPage" | "findInPage") =>
+			for field in ["url", "pattern"] {
+				if let Some(text) = action[field].as_str().filter(|text| !text.is_empty()) {
+					parts.push(text.to_owned());
+				}
+			},
+		_ => {},
+	}
+	if parts.is_empty()
+		&& let Some(query) = item["query"].as_str().filter(|text| !text.is_empty())
+	{
+		parts.push(query.to_owned());
+	}
+	match item["results"].as_array() {
+		Some(results) if results.is_empty() => parts.push("No results returned.".into()),
+		Some(results) => {
+			// Native result objects are intentionally extensible. Keep all fields,
+			// including errors, and apply the common redaction before display limits.
+			for result in results {
+				parts.push(result.to_string());
+			}
+		},
+		None => parts.push("Results not reported.".into()),
+	}
+	parts
+}
+
+#[cfg(test)]
+#[path = "chief_web_detail_tests.rs"]
+mod web_tests;
 
 #[cfg(test)]
 mod tests {

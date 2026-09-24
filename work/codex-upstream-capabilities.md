@@ -213,3 +213,23 @@ source-reviewed, not qualified with the installed binary in this batch.
 Validation covers stable discovery, directory changes, settings updates with the
 same directory, unrelated-thread updates, and the desktop integration display.
 No local protocol or database version changes are required.
+
+
+## Native web-search details — 2026-09-24
+
+Upstream `f8c6026c38682c628e71d1ae4978ba643499250a` preserves web actions
+and structured results in exec JSON. Decodex uses the native app-server item
+instead. At cutoff `595cc91e8cbb1c2ca822d0311dcf12709410c582`, its owner
+is `codex-rs/ext/items/src/web_search.rs`: camelCase actions and optional opaque
+JSON result arrays.
+
+The detail view now retains search queries, page URLs, find patterns and result
+objects, including unknown fields and error payloads. Missing results differ from
+an observed empty array. Each result passes through the existing credential
+filter before the existing 24 KiB UTF-8 display limit. Long details still show
+that output was shortened; complete detail pagination remains separate work.
+Activity labels distinguish search, page opening and page text lookup.
+
+Tests cover projection, redaction, bounds and the native paginated-history RPC
+path. These are synthetic transport tests, not installed-binary or signed-desktop
+acceptance. No protocol or database migration is required.
