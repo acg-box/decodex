@@ -776,6 +776,7 @@ impl Shell {
 			selected: Some(conversation_id.clone()),
 			live_deltas: Vec::new(),
 			can_submit: true,
+			initial_defaults_ready: false,
 			execution: decodex_protocol::ConversationExecutionSettings::new(
 				decodex_protocol::ConversationModel::new("gpt-5.6-sol")
 					.expect("visual model identifier is valid"),
@@ -1556,6 +1557,7 @@ impl Shell {
 	}
 
 	fn synchronize_conversations(&mut self) {
+		self.conversations.ensure_initial_catalog();
 		let snapshot = self.conversations.snapshot();
 		let selected = snapshot.selected.clone();
 		if selected.is_none()
@@ -4537,6 +4539,14 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let mut row =
 		div().id("conversation-service-tiers").flex().flex_wrap().gap_2().text_size(px(11.));
+	if shell.quick.selected.is_none() && !shell.quick.initial_defaults_ready {
+		row = row.child(
+			div()
+				.id("conversation-defaults-pending")
+				.debug_selector(|| "conversation-defaults-pending".into())
+				.child("Waiting for account model defaults. Refresh model options to retry."),
+		);
+	}
 	if shell.quick.execution.effective_service_tier().as_str() == "flex" {
 		row = row.child("Flex · configured");
 	}
@@ -5277,6 +5287,7 @@ impl Render for Shell {
 fn composer_send(can_send: bool, cx: &mut Context<Shell>) -> AnyElement {
 	div()
 		.id("conversation-send")
+		.debug_selector(|| "conversation-send".into())
 		.role(Role::Button)
 		.aria_label("Send message")
 		.when(!can_send, |element| {
@@ -6088,6 +6099,7 @@ mod tests {
 			selected: Some(conversation_id.clone()),
 			live_deltas,
 			can_submit: false,
+			initial_defaults_ready: false,
 			execution: decodex_protocol::ConversationExecutionSettings::new(
 				decodex_protocol::ConversationModel::new("gpt-5.6-sol")
 					.expect("test model is valid"),
@@ -6479,6 +6491,66 @@ mod tests {
 			component_presentation(Some(DoctorStatus::Unknown(DoctorIssue::Plugin))).label,
 			"Not configured"
 		);
+	}
+
+	#[gpui::test]
+	fn ordinary_creation_waits_for_defaults_then_sends_the_rendered_selection(
+		cx: &mut TestAppContext,
+	) {
+		let (shell, visual) = open_shell(cx);
+		let (conversations, server, _) = crate::conversations::tests::catalog_conversations();
+		conversations.begin_new();
+		shell.update(visual, |s, cx| {
+			s.conversations = conversations.clone();
+			s.selected = Destination::Conversations;
+			s.creating_new = true;
+			s.composer.update(cx, |input, cx| input.set_content("Keep my input", cx));
+			s.synchronize_conversations();
+		});
+		visual.update(|window, cx| {
+			window.resize(size(px(1440.), px(1000.)));
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("conversation-defaults-pending").is_some());
+		let send = visual.debug_bounds("conversation-send").unwrap();
+		visual.simulate_click(send.center(), gpui::Modifiers::default());
+		shell.update(visual, |s, cx| {
+			assert!(s.pending_submission.is_none());
+			assert_eq!(s.composer.read(cx).content(), "Keep my input");
+		});
+		crate::conversations::creation_defaults_tests::reply_defaults(
+			&conversations,
+			&server,
+			decodex_protocol::InitialModelDefaults {
+				configured: decodex_protocol::InitialExecutionDefaults {
+					model: Some(
+						decodex_protocol::ConversationModel::new("configured-model").unwrap(),
+					),
+					reasoning_effort: None,
+					service_tier: Some(decodex_protocol::ServiceTier::new("flex").unwrap()),
+				},
+				managed: Default::default(),
+				catalog_model: None,
+			},
+		);
+		shell.update(visual, |s, _| s.synchronize_conversations());
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("conversation-defaults-pending").is_none());
+		assert!(conversations.snapshot().execution.reasoning_effort.is_none());
+		let send = visual.debug_bounds("conversation-send").unwrap();
+		visual.simulate_click(send.center(), gpui::Modifiers::default());
+		let command = crate::conversations::tests::dispatched_command(&conversations, &server);
+		let decodex_protocol::CommandPayload::CreateConversation { message, execution, .. } =
+			command.payload
+		else {
+			panic!("creation")
+		};
+		assert_eq!(message.as_str(), "Keep my input");
+		assert_eq!(execution.model.as_str(), "configured-model");
+		assert!(execution.reasoning_effort.is_none());
+		assert_eq!(execution.effective_service_tier().as_str(), "flex");
 	}
 
 	#[gpui::test]

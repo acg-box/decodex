@@ -21,6 +21,7 @@ mod composer_input;
 #[allow(dead_code)]
 #[path = "../conversations.rs"]
 mod conversations;
+#[path = "../creation_defaults.rs"] mod creation_defaults;
 #[allow(dead_code)]
 #[path = "../desktop_settings.rs"]
 mod desktop_settings;
