@@ -149,6 +149,7 @@ async fn capacity_retry_keeps_model_thread_and_context_and_stops_after_three_att
 				assert_eq!(request["params"]["effort"], "high");
 				assert_eq!(request["params"]["input"], json!([]));
 				assert_eq!(request["params"]["toolOutput"]["name"], "capacity_retry");
+				assert_eq!(request["params"]["turnTrigger"], "retry");
 				assert_eq!(request["params"]["toolOutput"]["namespace"], "decodex");
 				let text = request["params"]["toolOutput"]["output"].as_str().unwrap();
 				assert!(text.contains("saved thread context"));

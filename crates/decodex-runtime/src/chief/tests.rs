@@ -2155,6 +2155,10 @@ async fn async_answers_target_running_and_idle_workers_and_preserve_sibling_ques
 		}
 		assert_eq!(inputs.len(), 1);
 		assert_eq!(inputs[0]["method"], if idle { "turn/start" } else { "turn/steer" });
+		assert_eq!(
+			inputs[0]["params"].get("turnTrigger").and_then(Value::as_str),
+			idle.then_some("user")
+		);
 		assert_eq!(inputs[0]["params"]["threadId"], thread);
 		if !idle {
 			assert_eq!(inputs[0]["params"]["expectedTurnId"], turn);

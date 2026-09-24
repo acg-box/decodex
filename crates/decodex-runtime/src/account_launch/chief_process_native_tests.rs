@@ -297,6 +297,13 @@ async fn serve_with_effort(
 		let body: Value = serde_json::from_slice(&body).expect("Responses request JSON");
 		if let Some(effort) = effort {
 			assert_eq!(body["reasoning"]["effort"], effort);
+			let metadata: Value = serde_json::from_str(
+				body["client_metadata"]["x-codex-turn-metadata"].as_str().expect("turn metadata"),
+			)
+			.expect("metadata JSON");
+			assert_eq!(metadata["turn_trigger"], "user");
+			assert!(metadata["thread_id"].as_str().is_some_and(|id| !id.is_empty()));
+			assert!(metadata["turn_id"].as_str().is_some_and(|id| !id.is_empty()));
 		}
 		let serial = requests.fetch_add(1, Ordering::AcqRel);
 		let id = format!("fixture-{serial}");

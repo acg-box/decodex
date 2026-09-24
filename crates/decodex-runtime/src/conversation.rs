@@ -2732,7 +2732,7 @@ impl ConversationRuntime {
 			session.reasoning_effort.clone(),
 		)
 		.and_then(|request| request.with_client_user_message_id(turn_id.as_str()))
-		.map(|request| request.with_service_tier(session.service_tier.clone()))
+		.map(|request| request.with_user_trigger().with_service_tier(session.service_tier.clone()))
 		{
 			Ok(request) => request,
 			Err(_) => {

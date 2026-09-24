@@ -717,7 +717,12 @@ impl ChiefHost {
 				)
 				.await
 		} else {
-			client.request("turn/start", json!({"threadId":thread,"input":input})).await
+			client
+				.request(
+					"turn/start",
+					json!({"threadId":thread,"input":input,"turnTrigger":"user"}),
+				)
+				.await
 		};
 		result.map_err(|_| {
 			ChiefHostError::Unknown(
