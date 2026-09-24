@@ -813,6 +813,7 @@ impl ChiefSurface {
 								.bg(rgb(0x29292d))
 								.flex()
 								.items_center()
+								.child(self.creation_effort_toggle(cx))
 								.child(div().flex_1().min_w_0().child(self.effort_scale(cx))),
 						)
 						.child(self.service_tier_picker(cx))

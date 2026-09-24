@@ -234,6 +234,9 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn reconcile_selected_model_effort(&mut self, cx: &mut Context<Self>) {
+		if self.root_id().is_none() && self.creation_inherit_effort {
+			return;
+		}
 		if let Some(model) = self.selected_model(cx)
 			&& !model.efforts.contains(&self.effort)
 			&& let Some(effort) =
@@ -249,7 +252,7 @@ impl ChiefSurface {
 		let choice = owner.as_deref().map(|owner| self.draft_profiles.execution.choice(owner));
 		let effort = choice
 			.as_ref()
-			.map_or(Some(self.effort.clone()), |choice| choice.reasoning_effort.clone());
+			.map_or(self.creation_effort(), |choice| choice.reasoning_effort.clone());
 		let tier = choice.as_ref().map_or_else(
 			|| {
 				Some(

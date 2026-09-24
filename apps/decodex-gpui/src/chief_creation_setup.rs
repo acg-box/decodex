@@ -9,6 +9,7 @@ impl ChiefSurface {
 			return None;
 		}
 		let setup = DesktopCreationSetup {
+			inherit_effort: self.creation_inherit_effort,
 			model: self.model.read(cx).content().into(),
 			working_directory: self.cwd.read(cx).content().into(),
 			account: self.account.read(cx).content().into(),
@@ -32,6 +33,7 @@ impl ChiefSurface {
 		self.cwd.update(cx, |input, cx| input.set_content(&setup.working_directory, cx));
 		self.account.update(cx, |input, cx| input.set_content(&setup.account, cx));
 		self.effort = setup.reasoning_effort.clone();
+		self.creation_inherit_effort = setup.inherit_effort;
 		self.fast = setup.fast;
 		self.service_tier = setup.service_tier.clone();
 		self.sandbox = setup.sandbox;
@@ -43,6 +45,7 @@ impl ChiefSurface {
 }
 fn empty_setup() -> DesktopCreationSetup {
 	DesktopCreationSetup {
+		inherit_effort: false,
 		model: DEFAULT_MODEL.into(),
 		working_directory: String::new(),
 		account: String::new(),
@@ -57,7 +60,52 @@ pub(super) fn summary(setup: &DesktopCreationSetup) -> String {
 	format!(
 		"New task · {} · {} · {}",
 		setup.model.chars().take(80).collect::<String>(),
-		setup.reasoning_effort.as_str(),
+		if setup.inherit_effort { "Inherited" } else { setup.reasoning_effort.as_str() },
 		setup.working_directory.chars().take(120).collect::<String>()
 	)
+}
+
+impl ChiefSurface {
+	pub(super) fn creation_effort(&self) -> Option<ConversationReasoningEffort> {
+		(!self.creation_inherit_effort).then(|| self.effort.clone())
+	}
+
+	pub(super) fn creation_effort_toggle(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+		if self.composer_manager.is_some() || self.root_id().is_some() {
+			return div().into_any_element();
+		}
+		let label = if self.creation_inherit_effort {
+			"Use explicit reasoning"
+		} else {
+			"Use native reasoning"
+		};
+		div()
+			.id("creation-native-effort")
+			.debug_selector(|| "creation-native-effort".into())
+			.role(Role::Button)
+			.tab_index(0)
+			.aria_label(label)
+			.cursor_pointer()
+			.px_2()
+			.py_1()
+			.child(label)
+			.on_click(cx.listener(|s, _, _, cx| s.toggle_creation_effort(cx)))
+			.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
+				if !event.is_held && matches!(event.keystroke.key.as_str(), "enter" | "space") {
+					s.toggle_creation_effort(cx);
+					cx.stop_propagation();
+				}
+			}))
+			.into_any_element()
+	}
+
+	fn toggle_creation_effort(&mut self, cx: &mut Context<Self>) {
+		if self.composer_manager.is_some() || self.root_id().is_some() {
+			return;
+		}
+		self.creation_inherit_effort = !self.creation_inherit_effort;
+		self.creation_setup_present = true;
+		self.save_draft_document(cx);
+		cx.notify();
+	}
 }

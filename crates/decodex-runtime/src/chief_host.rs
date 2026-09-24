@@ -1646,9 +1646,9 @@ async fn receive(
 }
 
 fn config(draft: &ChiefStartDto) -> ChiefConfig {
-	let mut config = ChiefConfig::new(
+	let mut config = ChiefConfig::with_optional_effort(
 		draft.model.as_str().into(),
-		draft.effort.as_str().into(),
+		draft.effort.as_ref().map(|effort| effort.as_str().into()),
 		draft.cwd.as_str().into(),
 	);
 	config.sandbox = match draft.sandbox {
@@ -1712,6 +1712,39 @@ fn resource_error(error: ChiefError) -> ChiefHostError {
 			"The resource change could not be confirmed. Refresh task resources before trying again.",
 		),
 	}
+}
+
+#[cfg(test)]
+pub(crate) async fn queue_start_for_native_test(
+	store: &SqliteStore,
+	action: ChiefActionDto,
+) -> ChiefConfig {
+	let wire = serde_json::to_vec(&action).expect("public creation wire");
+	let (action, options) =
+		normalize_input(serde_json::from_slice(&wire).expect("public creation decode"))
+			.expect("normalize public start");
+	let ChiefActionDto::Start(start) = action else { panic!("start action") };
+	let config = config(&start);
+	ChiefCoordinator::reserve_root(store, start.root_id.as_str(), start.prompt.as_str())
+		.await
+		.expect("reserve root");
+	store
+		.bind_chief_root_settings(
+			start.root_id.as_str(),
+			&serde_json::to_string(&config).expect("root settings"),
+		)
+		.await
+		.expect("persist root settings");
+	persist_input(
+		store,
+		start.root_id.as_str(),
+		"native-start",
+		start.prompt.as_str(),
+		options.as_ref(),
+	)
+	.await
+	.expect("persist first input");
+	config
 }
 
 #[cfg(test)]

@@ -33,6 +33,13 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn effort_scale(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+		if self.root_id().is_none() && self.creation_inherit_effort {
+			return div().child("Inherited from native configuration").into_any_element();
+		}
+		self.explicit_effort_scale(cx)
+	}
+
+	fn explicit_effort_scale(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
 		let levels = self.model_efforts(cx);
 		let count = levels.len();
 		if count == 0 {
