@@ -94,5 +94,17 @@ async fn qualify() {
 	);
 	assert_eq!(requests.load(Ordering::Acquire), 0, "goal observation must not start inference");
 	drop(reopened);
+	qualify_disabled(&binary, home.path(), &thread).await;
 	backend.abort();
+}
+
+async fn qualify_disabled(binary: &std::ffi::OsStr, home: &std::path::Path, thread: &str) {
+	let path = home.join("config.toml");
+	let config = std::fs::read_to_string(&path).expect("fixture config");
+	std::fs::write(path, config.replace("goals=true", "goals=false"))
+		.expect("disable fixture goals");
+	let disabled = NativeSession::start(binary, home);
+	assert!(
+		matches!(disabled.client.thread_goal(thread).await,Err(ClientError::Remote(error)) if error.code==-32600 && error.message=="goals feature is disabled")
+	);
 }

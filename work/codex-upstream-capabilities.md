@@ -427,5 +427,27 @@ At cutoff595cc91e, native goal requests require the goals feature. Activating a
 native goal can start work. The installed alpha16.3 isolated fixture uses paused
 goals and confirms updated notification data, cross-process reads and clears,
 nullable budgets and persistence after restart, with zero inference requests.
-It does not qualify active-goal accounting or complete runtime/UI integration.
+It does not qualify active-goal accounting. Runtime and desktop observation are
+now integrated as described below.
 Protocol2.57 and database35 are unchanged.
+
+
+## Source-bound native goal details
+
+Protocol2.58 exposes a read for an exact local work owner and native thread.
+The service verifies native child ancestry, reads the canonical native goal,
+and rejects replies after process, account, revision, history or root binding
+changes. Absent, disabled, unsupported and unavailable have distinct results.
+Objective previews are bounded and redact credential material; status, native
+budget, tokens and elapsed seconds retain their original meaning. The database
+remains schema35. No second persistent goal or scheduler is created.
+
+The desktop task settings panel reads the selected parent or native child. After
+an explicit read, the selected task refreshes at most once per five seconds with
+the normal snapshot cycle. Read timestamps identify snapshots. Navigation,
+source replacement and disconnect clear prior observations, including when an
+old identity returns. Public socket tests cover refresh after a goal is cleared,
+child selection and rejection of a goal with the wrong nested thread identity.
+Installed alpha16.3 also confirms the exact disabled-feature error independently
+of absence. Active-goal accounting and signed desktop acceptance remain separate
+qualification work.
