@@ -29,16 +29,19 @@ impl RenderOnce for WeatherCard {
 		let weather = &self.weather;
 		let date = &self.date;
 		let key = &self.key;
+		let pages = weather.hours.len().div_ceil(6).max(1);
 		let state = window.use_keyed_state(
-			SharedString::from(format!("weather-scroll-{key}")),
+			SharedString::from(format!("weather-page-{key}")),
 			cx,
-			|_, _| ScrollHandle::new(),
+			|_, _| (0usize, None::<std::time::Instant>),
 		);
-		let scroll = state.read(cx).clone();
-		let max = f32::from(scroll.max_offset().x);
-		let progress =
-			if max > 0. { (-f32::from(scroll.offset().x) / max).clamp(0., 1.) } else { 0. };
-		let wheel = scroll.clone();
+		let (selected, started) = *state.read(cx);
+		let page = selected.min(pages - 1);
+		let progress = started.map(|t| (t.elapsed().as_secs_f32() / 0.18).min(1.)).unwrap_or(1.);
+		let eased = 1. - (1. - progress).powi(3);
+		if progress < 1. {
+			window.request_animation_frame();
+		}
 
 		let selector = format!("weather-card-{key}");
 		let location = weather.location.split(", ").next().unwrap_or(&weather.location);
@@ -46,16 +49,7 @@ impl RenderOnce for WeatherCard {
 		div()
 			.id(SharedString::from(format!("weather-card-{key}")))
 			.debug_selector(move || selector.clone())
-			.on_scroll_wheel(move |event, window, cx| {
-				let delta = event.delta.pixel_delta(px(20.));
-				let amount = if delta.x.abs() >= delta.y.abs() { delta.x } else { delta.y };
-				wheel.set_offset(point(
-					(wheel.offset().x + amount).clamp(-wheel.max_offset().x, px(0.)),
-					px(0.),
-				));
-				cx.stop_propagation();
-				window.refresh();
-			})
+			.on_scroll_wheel(|_, _, cx| cx.stop_propagation())
 			.mt(px(14.))
 			.w(px(360.))
 			.max_w_full()
@@ -73,7 +67,7 @@ impl RenderOnce for WeatherCard {
 			.py(px(12.))
 			.flex()
 			.flex_col()
-			.gap(px(8.))
+			.gap(px(6.))
 			.child(
 				div()
 					.flex()
@@ -121,52 +115,74 @@ impl RenderOnce for WeatherCard {
 				div()
 					.id(SharedString::from(format!("weather-hours-{key}")))
 					.flex()
-					.overflow_x_scroll()
-					.track_scroll(&scroll)
-					.children(weather.hours.iter().enumerate().map(|(i, (hour, condition, t))| {
-						div()
-							.id(SharedString::from(format!("weather-hour-{key}-{i}")))
-							.debug_selector(move || format!("weather-hour-{i}"))
-							.flex_none()
-							.w(px(55.))
-							.py(px(4.))
-							.rounded(px(10.))
-							.flex()
-							.flex_col()
-							.items_center()
-							.gap_1()
-							.child(
-								div()
-									.text_size(px(10.))
-									.text_color(rgb(0xaab9c9))
-									.child(hour.trim_start_matches('0').replace(":00", "")),
-							)
-							.child(
-								div()
-									.text_size(px(15.))
-									.text_color(rgb(if condition.contains("sun") {
-										0xefcc86
-									} else {
-										0xd5e3f1
-									}))
-									.child(symbol(condition)),
-							)
-							.child(div().text_size(px(13.)).child(format!("{t}°")))
-					})),
-			)
-			.when(weather.hours.len() > 6, |card| {
-				card.child(
-					div().flex().justify_center().pt(px(2.)).child(
-						div().w(px(48.)).h(px(2.)).rounded(px(1.)).bg(rgba(0xffffff12)).child(
+					.relative()
+					.left(px(8. * (1. - eased)))
+					.opacity(eased)
+					.children(weather.hours.iter().enumerate().skip(page * 6).take(6).map(
+						|(i, (hour, condition, t))| {
 							div()
-								.ml(px(progress * 24.))
-								.w(px(24.))
-								.h(px(2.))
-								.rounded(px(1.))
-								.bg(rgba(0xffffff50)),
-						),
-					),
-				)
+								.id(SharedString::from(format!("weather-hour-{key}-{i}")))
+								.debug_selector(move || format!("weather-hour-{i}"))
+								.flex_none()
+								.w(px(55.))
+								.py(px(4.))
+								.rounded(px(10.))
+								.flex()
+								.flex_col()
+								.items_center()
+								.gap_1()
+								.child(
+									div()
+										.text_size(px(10.))
+										.text_color(rgb(0xaab9c9))
+										.child(hour.trim_start_matches('0').replace(":00", "")),
+								)
+								.child(
+									div()
+										.text_size(px(15.))
+										.text_color(rgb(if condition.contains("sun") {
+											0xefcc86
+										} else {
+											0xd5e3f1
+										}))
+										.child(symbol(condition)),
+								)
+								.child(div().text_size(px(13.)).child(format!("{t}°")))
+						},
+					)),
+			)
+			.when(pages > 1, |card| {
+				card.child(div().flex().justify_center().children((0..pages).map(|index| {
+					let state = state.clone();
+					let selector = format!("weather-page-{key}-{index}");
+					div()
+						.id(SharedString::from(selector.clone()))
+						.debug_selector(move || selector.clone())
+						.role(Role::Button)
+						.aria_label(format!("Forecast page {} of {}", index + 1, pages))
+						.w(px(22.))
+						.h(px(12.))
+						.flex()
+						.items_center()
+						.justify_center()
+						.cursor_pointer()
+						.rounded(px(8.))
+						.hover(|s| s.bg(rgba(0xffffff0a)))
+						.on_click(move |_, window, cx| {
+							state.update(cx, |s, cx| {
+								if s.0 != index {
+									*s = (index, Some(std::time::Instant::now()));
+									cx.notify();
+								}
+							});
+							window.refresh();
+						})
+						.child(div().size(px(5.)).rounded_full().bg(rgba(if page == index {
+							0xffffffb0
+						} else {
+							0xffffff30
+						})))
+				})))
 			})
 			.into_any_element()
 	}
@@ -194,7 +210,9 @@ mod tests {
 		}
 	}
 	#[gpui::test]
-	fn weather_wheel_never_scrolls_parent_even_at_edges(cx: &mut gpui::TestAppContext) {
+	fn weather_pages_change_only_on_dot_click_and_block_parent_scroll(
+		cx: &mut gpui::TestAppContext,
+	) {
 		let bubbled = std::rc::Rc::new(std::cell::Cell::new(0));
 		let (_, visual) = cx.add_window_view(|_, _| Parent { bubbled: bubbled.clone() });
 		visual.update(|window, cx| {
@@ -211,7 +229,7 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
-		assert!(visual.debug_bounds("weather-hour-0").unwrap().origin.x < start);
+		assert_eq!(visual.debug_bounds("weather-hour-0").unwrap().origin.x, start);
 
 		for delta in [
 			point(px(0.), px(-60.)),
@@ -229,5 +247,20 @@ mod tests {
 			});
 		}
 		assert_eq!(bubbled.get(), 0);
+		let dot = visual.debug_bounds("weather-page-test-1").unwrap();
+		visual.simulate_click(dot.center(), Modifiers::default());
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("weather-hour-0").is_none());
+		assert!(visual.debug_bounds("weather-hour-6").is_some());
+		assert!(visual.debug_bounds("weather-hour-11").is_some());
+		let dot = visual.debug_bounds("weather-page-test-0").unwrap();
+		visual.simulate_click(dot.center(), Modifiers::default());
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("weather-hour-0").is_some());
+		assert!(visual.debug_bounds("weather-hour-6").is_none());
 	}
 }
