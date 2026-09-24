@@ -1613,7 +1613,7 @@ impl ChiefSurface {
 		} else {
 			row = row.child("Unassigned copy · export to retain all data");
 		}
-		if copy.draft.uncertain {
+		if copy.draft.has_unconfirmed_delivery() {
 			row = row.child("Confirm delivery before removing this copy");
 		} else if self.removing_draft_copy(&copy) {
 			row = row
@@ -1664,12 +1664,20 @@ impl ChiefSurface {
 				.gap_2();
 			for (index, copy) in copies.into_iter().enumerate() {
 				let preview: String = copy.draft.composer.text.chars().take(180).collect();
+				let ordinary_preview = copy.draft.ordinary.values().next().map(|draft| {
+					format!(
+						"Ordinary draft · {} · {}",
+						draft.working_directory.as_str(),
+						draft.composer.text.chars().take(180).collect::<String>()
+					)
+				});
 				let summary = format!(
-					"Copy {} · {} files · {} task references · {} question drafts",
+					"Copy {} · {} files · {} task references · {} question drafts · {} ordinary directories",
 					index + 1,
 					copy.draft.composer.attachments.len(),
 					copy.draft.composer.references.len(),
-					copy.draft.questions.len()
+					copy.draft.questions.len(),
+					copy.draft.ordinary.len()
 				);
 				list = list.child(
 					div()
@@ -1678,6 +1686,7 @@ impl ChiefSurface {
 						.gap_1()
 						.child(summary)
 						.child(format!("Preview: {preview}"))
+						.when_some(ordinary_preview, |element, preview| element.child(preview))
 						.when_some(copy.draft.composer.creation.as_ref(), |element, setup| {
 							element.child(super::creation_setup::summary(setup))
 						})

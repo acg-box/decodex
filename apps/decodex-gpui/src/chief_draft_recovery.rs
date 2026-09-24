@@ -76,7 +76,7 @@ impl ChiefSurface {
 		copy: DesktopRecoveredDraft,
 		cx: &mut Context<Self>,
 	) {
-		if self.recovered_drafts().contains(&copy) && !copy.draft.uncertain {
+		if self.recovered_drafts().contains(&copy) && !copy.draft.has_unconfirmed_delivery() {
 			self.draft_profiles.storage.remove_candidate = Some(copy);
 			cx.notify();
 		}
@@ -103,7 +103,7 @@ impl ChiefSurface {
 			|| self.draft_profiles.storage.task.is_some()
 			|| !self.removing_draft_copy(&copy)
 			|| !self.recovered_drafts().contains(&copy)
-			|| copy.draft.uncertain
+			|| copy.draft.has_unconfirmed_delivery()
 		{
 			return;
 		}

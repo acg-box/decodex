@@ -23,6 +23,7 @@ impl DesktopRecoveredDraft {
 			}
 		} else if self.draft.composer.work_id.is_some()
 			|| self.draft.composer.thread_id.is_some()
+			|| !self.draft.ordinary.is_empty()
 			|| !self.draft.parked.is_empty()
 			|| !self.draft.execution.is_empty()
 			|| !self.draft.questions.is_empty()
@@ -77,7 +78,11 @@ impl DesktopDraftDocument {
 				result.profiles.insert(scope.clone(), selected);
 			} else {
 				// Deleting an editor must not hide an unresolved remote delivery.
-				if !latest.profiles.get(scope).is_some_and(|remote| remote.uncertain) {
+				if !latest
+					.profiles
+					.get(scope)
+					.is_some_and(|remote| remote.has_unconfirmed_delivery())
+				{
 					result.profiles.remove(scope);
 				}
 			}
@@ -149,7 +154,7 @@ impl DesktopDraftDocument {
 		if !self.recovered.contains(copy) {
 			return Err("Recovered draft is no longer available");
 		}
-		if copy.draft.uncertain {
+		if copy.draft.has_unconfirmed_delivery() {
 			return Err("Confirm delivery before removing this copy");
 		}
 		let mut result = self.clone();
@@ -166,6 +171,18 @@ impl DesktopDraftDocument {
 }
 
 fn retain_fences(selected: &mut DesktopProfileDraft, other: &DesktopProfileDraft) {
+	for (directory, remote) in &other.ordinary {
+		if remote.unconfirmed.is_empty() {
+			continue;
+		}
+		let local = selected.ordinary.entry(directory.clone()).or_insert_with(|| remote.clone());
+		for command in &remote.unconfirmed {
+			if !local.unconfirmed.contains(command) {
+				local.unconfirmed.push(command.clone());
+			}
+		}
+	}
+
 	selected.uncertain |= other.uncertain;
 	for key in other.unconfirmed_commands.iter().chain(
 		other
