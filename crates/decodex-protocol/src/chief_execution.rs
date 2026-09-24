@@ -24,7 +24,7 @@ impl From<crate::ConversationExecutionSettings> for ChiefExecutionOverrides {
 	fn from(value: crate::ConversationExecutionSettings) -> Self {
 		Self {
 			model: Some(value.model),
-			reasoning_effort: Some(value.reasoning_effort),
+			reasoning_effort: value.reasoning_effort,
 			fast: Some(value.fast),
 			service_tier: value.service_tier,
 		}

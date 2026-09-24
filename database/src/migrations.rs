@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 35;
+const CURRENT_SCHEMA_VERSION: i64 = 36;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -190,6 +190,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 35,
 		name: "chief_question_arrivals",
 		sql: include_str!("../migrations/0035_chief_question_arrivals.sql"),
+	},
+	Migration {
+		version: 36,
+		name: "nullable_conversation_effort",
+		sql: include_str!("../migrations/0036_nullable_conversation_effort.sql"),
 	},
 ];
 
@@ -644,8 +649,12 @@ mod tests {
 		assert!(
 			before
 				.iter()
-				.filter(|entry| !["desktop_settings", "chief_async_questions"]
-					.contains(&entry.2.as_str()))
+				.filter(|entry| ![
+					"desktop_settings",
+					"chief_async_questions",
+					"quick_task_requests"
+				]
+				.contains(&entry.2.as_str()))
 				.all(|entry| after.contains(entry))
 		);
 		let count: i64 = connection
@@ -656,6 +665,69 @@ mod tests {
 			.query_row("SELECT revision FROM desktop_settings", [], |row| row.get(0))
 			.expect("preserved preference");
 		assert_eq!(revision, 17);
+	}
+
+	#[test]
+	fn nullable_effort_upgrade_preserves_original_request_and_identity() {
+		let directory = tempfile::tempdir().unwrap();
+		let mut connection = Connection::open(directory.path().join("effort.sqlite3")).unwrap();
+		configure(&connection).unwrap();
+		for migration in &MIGRATIONS[..35] {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 35).unwrap();
+		let id = "10000000-0000-4000-8000-000000000001";
+		connection.execute("INSERT INTO conversations(conversation_id,kind,state,title,revision,created_at_micros,updated_at_micros) VALUES(?1,'ordinary_task','active','Legacy',1,1,1)",[id]).unwrap();
+		connection.execute("INSERT INTO quick_task_requests(conversation_id,operation_key,correlation_id,causation_id,initial_turn_id,message,working_directory,created_at_micros,model,reasoning_effort,fast,service_tier) VALUES(?1,'original-key','original-correlation','original-cause',?1,'Keep original','/tmp',1,'model','high',0,'flex')",[id]).unwrap();
+		let read = |db: &Connection| {
+			db.query_row("SELECT * FROM quick_task_requests", [], |row| {
+				(0..12)
+					.map(|index| row.get::<_, rusqlite::types::Value>(index))
+					.collect::<Result<Vec<_>, _>>()
+			})
+			.unwrap()
+		};
+		let before = read(&connection);
+		migrate(&mut connection).unwrap();
+		verify(&connection).unwrap();
+		assert_eq!(read(&connection), before);
+		for effort in
+			[None, Some("none"), Some("provider-defined-effort-over-thirty-two-characters")]
+		{
+			connection
+				.execute("UPDATE quick_task_requests SET reasoning_effort=?1", [effort])
+				.unwrap();
+			let actual: Option<String> = connection
+				.query_row("SELECT reasoning_effort FROM quick_task_requests", [], |row| row.get(0))
+				.unwrap();
+			assert_eq!(actual.as_deref(), effort);
+		}
+		for effort in [String::new(), "x".repeat(129)] {
+			assert!(
+				connection
+					.execute("UPDATE quick_task_requests SET reasoning_effort=?1", [effort])
+					.is_err()
+			);
+		}
+		assert!(
+			connection
+				.prepare("PRAGMA foreign_key_check")
+				.unwrap()
+				.query([])
+				.unwrap()
+				.next()
+				.unwrap()
+				.is_none()
+		);
+		migrate(&mut connection).unwrap();
+		assert_eq!(applied_version(&connection).unwrap(), 36);
 	}
 
 	#[test]

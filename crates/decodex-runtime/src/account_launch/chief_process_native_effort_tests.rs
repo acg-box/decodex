@@ -46,7 +46,15 @@ async fn qualify(
 	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("loopback fixture");
 	let address = listener.local_addr().expect("fixture address");
 	let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-	let backend = tokio::spawn(serve_with_effort(listener, requests.clone(), effective));
+	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let backend = tokio::spawn(serve_fixture(
+		listener,
+		requests.clone(),
+		effective,
+		Some(bodies.clone()),
+		None,
+		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native Chief answer"}]}),
+	));
 	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", serde_json::to_string(&catalog).expect("catalog path"))).expect("write config");
 	if let Some(configured) = configured {
 		let path = home.path().join("config.toml");
@@ -133,6 +141,9 @@ async fn qualify(
 		assert_eq!(recorded.effort.as_deref(), selected);
 	}
 	assert!(!backend.is_finished(), "fixture server must not fail an effort assertion");
+	for body in bodies.lock().expect("captured inference bodies").iter() {
+		assert_eq!(body["reasoning"]["effort"], json!(effective));
+	}
 	backend.abort();
 }
 

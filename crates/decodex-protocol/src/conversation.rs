@@ -353,14 +353,14 @@ impl<'de> Deserialize<'de> for ConversationReasoningEffort {
 	}
 }
 
-/// Explicit execution settings carried on every user send.
+/// Execution settings carried on every user send, with native reasoning inheritance.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationExecutionSettings {
 	/// Exact provider model selected for this send.
 	pub model: ConversationModel,
-	/// Provider reasoning effort selected for this send.
-	pub reasoning_effort: ConversationReasoningEffort,
+	/// Explicit effort for this send; absent or null inherits the native thread setting.
+	pub reasoning_effort: Option<ConversationReasoningEffort>,
 	/// `true` maps to Codex's request-scoped `priority` service tier.
 	pub fast: bool,
 	/// Explicit tier chosen from native capabilities. Absent in older saved messages.
@@ -374,7 +374,7 @@ impl ConversationExecutionSettings {
 		reasoning_effort: ConversationReasoningEffort,
 		fast: bool,
 	) -> Self {
-		Self { model, reasoning_effort, fast, service_tier: None }
+		Self { model, reasoning_effort: Some(reasoning_effort), fast, service_tier: None }
 	}
 
 	/// Resolve legacy Fast messages without losing a newer explicit tier.
@@ -912,6 +912,30 @@ mod native_effort_tests {
 			"bad\u{85}value".to_owned(),
 		] {
 			assert!(serde_json::from_value::<Effort>(serde_json::json!(invalid)).is_err());
+		}
+	}
+}
+
+#[cfg(test)]
+mod inherited_execution_tests {
+	use super::*;
+	#[test]
+	fn execution_accepts_absent_effort_without_changing_literal_none() {
+		for effort in [
+			None,
+			Some(serde_json::Value::Null),
+			Some(serde_json::json!("none")),
+			Some(serde_json::json!("provider-effort")),
+		] {
+			let mut wire = serde_json::json!({"model":"model","fast":false});
+			if let Some(effort) = effort.clone() {
+				wire["reasoning_effort"] = effort;
+			}
+			let execution: ConversationExecutionSettings = serde_json::from_value(wire).unwrap();
+			assert_eq!(
+				execution.reasoning_effort.as_ref().map(|value| value.as_str()),
+				effort.as_ref().and_then(|value| value.as_str())
+			);
 		}
 	}
 }

@@ -4454,7 +4454,13 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let can_interrupt =
 		shell.quick.can_submit && task.is_some_and(|task| task.state == ConversationState::Running);
 	let model_label = shell.quick.execution.model.as_str().to_owned();
-	let effort_label = shell.quick.execution.reasoning_effort.as_str().to_uppercase();
+	let effort_label = shell
+		.quick
+		.execution
+		.reasoning_effort
+		.as_ref()
+		.map_or("Inherited", |effort| effort.as_str())
+		.to_uppercase();
 	let fast_enabled = shell.quick.execution.fast;
 
 	let send = composer_send(can_send, cx);

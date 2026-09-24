@@ -684,7 +684,7 @@ pub struct ConversationTurnStartRequest {
 	thread_id: ExactThreadId,
 	input: ConversationTurnInput,
 	model: ConversationModel,
-	reasoning_effort: ConversationReasoningEffort,
+	reasoning_effort: Option<ConversationReasoningEffort>,
 	service_tier: decodex_core::ServiceTier,
 	client_user_message_id: Option<String>,
 	turn_trigger: Option<&'static str>,
@@ -697,11 +697,21 @@ impl ConversationTurnStartRequest {
 		model: impl Into<String>,
 		reasoning_effort: impl Into<String>,
 	) -> Result<Self, ConversationContractError> {
+		Self::with_optional_effort(thread_id, input, model, Some(reasoning_effort.into()))
+	}
+
+	/// Inherit the native thread effort when no override is selected.
+	pub fn with_optional_effort(
+		thread_id: ExactThreadId,
+		input: ConversationTurnInput,
+		model: impl Into<String>,
+		reasoning_effort: Option<String>,
+	) -> Result<Self, ConversationContractError> {
 		Ok(Self {
 			thread_id,
 			input,
 			model: ConversationModel::new(model)?,
-			reasoning_effort: ConversationReasoningEffort::new(reasoning_effort)?,
+			reasoning_effort: reasoning_effort.map(ConversationReasoningEffort::new).transpose()?,
 			service_tier: decodex_core::ServiceTier::standard(),
 			client_user_message_id: None,
 			turn_trigger: None,
@@ -755,8 +765,8 @@ impl ConversationTurnStartRequest {
 	}
 
 	/// Caller-selected reasoning effort.
-	pub fn reasoning_effort(&self) -> &ConversationReasoningEffort {
-		&self.reasoning_effort
+	pub fn reasoning_effort(&self) -> Option<&ConversationReasoningEffort> {
+		self.reasoning_effort.as_ref()
 	}
 }
 impl Serialize for ConversationTurnStartRequest {
@@ -766,13 +776,16 @@ impl Serialize for ConversationTurnStartRequest {
 	{
 		let mut request = serializer.serialize_struct(
 			"ConversationTurnStartRequest",
-			7 + usize::from(self.turn_trigger.is_some()),
+			6 + usize::from(self.turn_trigger.is_some())
+				+ usize::from(self.reasoning_effort.is_some()),
 		)?;
 
 		request.serialize_field("threadId", self.thread_id.as_str())?;
 		request.serialize_field("input", &ConversationTextInputs(self.input.items()))?;
 		request.serialize_field("model", self.model.as_str())?;
-		request.serialize_field("effort", self.reasoning_effort.as_str())?;
+		if let Some(effort) = &self.reasoning_effort {
+			request.serialize_field("effort", effort.as_str())?;
+		}
 		request.serialize_field("serviceTier", &self.service_tier.thread_value())?;
 		request.serialize_field("serviceTierForTurn", self.service_tier.as_str())?;
 		request.serialize_field("clientUserMessageId", &self.client_user_message_id)?;
@@ -2058,6 +2071,29 @@ mod tests {
 			encoded.get("clientUserMessageId"),
 			Some(&json!("50000000-0000-4000-8000-000000000001")),
 		);
+	}
+
+	#[test]
+	fn ordinary_turn_inheritance_is_distinct_from_literal_none_and_dynamic_effort() {
+		for effort in
+			[None, Some("none"), Some("provider-custom-effort-over-thirty-two-characters")]
+		{
+			let request = ConversationTurnStartRequest::with_optional_effort(
+				exact_thread(),
+				ConversationTurnInput::text("Continue").unwrap(),
+				"model",
+				effort.map(str::to_owned),
+			)
+			.unwrap();
+			assert_eq!(request.reasoning_effort().map(|value| value.as_str()), effort);
+			let wire = serde_json::to_value(request).unwrap();
+			assert_eq!(wire.get("effort").and_then(Value::as_str), effort);
+			if effort.is_none() {
+				assert!(!wire.as_object().unwrap().contains_key("effort"));
+			}
+			assert_eq!(wire["model"], "model");
+			assert_eq!(wire["serviceTierForTurn"], "default");
+		}
 	}
 
 	#[test]
