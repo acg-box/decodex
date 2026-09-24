@@ -1,9 +1,20 @@
 //! Keep editable input and uncertain submission state with its exact service profile.
 use super::*;
 use std::{collections::BTreeMap, mem};
+#[path = "chief_draft_storage.rs"] mod storage;
+
+#[derive(Default)]
+pub(super) struct SubmissionState {
+	pub(super) waiting: Option<QueuedCommand>,
+	pub(super) unconfirmed: Vec<IdempotencyKey>,
+	pub(super) command: Option<Task<()>>,
+	pub(super) pending: Option<PendingCommand>,
+}
 
 #[derive(Default)]
 pub(super) struct Profiles {
+	storage: storage::Storage,
+	threads: BTreeMap<String, String>,
 	pub(super) execution: execution_intent::Intents,
 	pub(super) texts: BTreeMap<String, String>,
 	pub(super) files: BTreeMap<String, Vec<decodex_protocol::ChiefAttachmentDto>>,
@@ -14,12 +25,14 @@ pub(super) struct Profiles {
 
 #[derive(Default)]
 struct Drafts {
-	execution: execution_intent::Intents,
+	unconfirmed: Vec<IdempotencyKey>,
+	threads: BTreeMap<String, String>,
 	restored_questions: Vec<decodex_protocol::DesktopQuestionDraft>,
 	question_inputs: BTreeMap<(String, String), Entity<ComposerInput>>,
 	question_choices: BTreeMap<(String, String), async_questions::ChoiceDraft>,
 	question_threads: BTreeMap<String, String>,
 	collapsed_questions: std::collections::BTreeSet<String>,
+	execution: execution_intent::Intents,
 	text: String,
 	manager: Option<String>,
 	attachments: Vec<decodex_protocol::ChiefAttachmentDto>,
@@ -28,6 +41,7 @@ struct Drafts {
 	files: BTreeMap<String, Vec<decodex_protocol::ChiefAttachmentDto>>,
 	tasks: BTreeMap<String, Vec<decodex_protocol::ChiefTaskReferenceDto>>,
 	uncertain: bool,
+	steer_pending: Option<PendingCommand>,
 	feedback: String,
 }
 
@@ -37,6 +51,11 @@ impl ChiefSurface {
 			self.snapshot.as_ref().is_some_and(|snapshot| {
 				snapshot.work_items.iter().any(|work| {
 					&work.id == owner
+						&& self
+							.draft_profiles
+							.threads
+							.get(owner)
+							.is_none_or(|thread| work.codex_thread_id.as_ref() == Some(thread))
 						&& (work.parent_goal_id.is_none()
 							|| work.kind == decodex_protocol::ChiefWorkKindDto::Manager)
 				})
@@ -45,20 +64,54 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn bind_drafts(&mut self, profile: Option<&ClientProfile>, cx: &mut Context<Self>) {
-		// Disconnects preserve the last owner's input. An initial profile adopts the
-		// local draft seeded before a service was selected.
-		let Some(profile) = profile else { return };
-		let Some(previous) = self.draft_profiles.active.replace(profile.clone()) else { return };
-		if previous == *profile {
+		self.remember_draft_document(cx);
+		let Some(profile) = profile else {
+			return;
+		};
+		let previous = self.draft_profiles.active.replace(profile.clone());
+		if previous.as_ref() == Some(profile) {
 			return;
 		}
-		let saved = Drafts {
-			execution: mem::take(&mut self.draft_profiles.execution),
+		let restored = self
+			.draft_profiles
+			.saved
+			.iter()
+			.position(|(owner, _)| owner == profile)
+			.map(|index| self.draft_profiles.saved.remove(index).1)
+			.or_else(|| {
+				self.draft_profiles.storage.restore(&profile.draft_scope_key(), self.command_epoch)
+			});
+		if previous.is_none() {
+			let Some(restored) = restored else {
+				self.draft_profiles.storage.clear_unbound();
+				return;
+			};
+			if !self.composer.read(cx).content().is_empty()
+				|| !self.attachments.is_empty()
+				|| !self.task_references.is_empty()
+			{
+				self.draft_profiles.storage.seed_conflict();
+				return;
+			}
+			self.apply_drafts(restored, cx);
+			self.draft_profiles.storage.clear_unbound();
+			return;
+		}
+		let saved = self.take_drafts(cx);
+		self.draft_profiles.saved.push((previous.expect("existing profile"), saved));
+		self.apply_drafts(restored.unwrap_or_default(), cx);
+	}
+
+	fn take_drafts(&mut self, cx: &Context<Self>) -> Drafts {
+		Drafts {
+			unconfirmed: mem::take(&mut self.submission.unconfirmed),
+			threads: mem::take(&mut self.draft_profiles.threads),
 			restored_questions: mem::take(&mut self.restored_question_drafts),
 			question_inputs: mem::take(&mut self.async_question_inputs),
 			question_choices: mem::take(&mut self.async_question_choices),
 			question_threads: mem::take(&mut self.async_question_threads),
 			collapsed_questions: mem::take(&mut self.collapsed_async_questions),
+			execution: mem::take(&mut self.draft_profiles.execution),
 			text: self.composer.read(cx).content().into(),
 			manager: mem::take(&mut self.composer_manager),
 			attachments: mem::take(&mut self.attachments),
@@ -67,18 +120,14 @@ impl ChiefSurface {
 			files: mem::take(&mut self.draft_profiles.files),
 			tasks: mem::take(&mut self.draft_profiles.tasks),
 			uncertain: self.uncertain,
+			steer_pending: self.submission.pending.take(),
 			feedback: if self.uncertain { self.feedback.clone() } else { String::new() },
-		};
-		let restored = self
-			.draft_profiles
-			.saved
-			.iter()
-			.position(|(owner, _)| owner == profile)
-			.map(|index| self.draft_profiles.saved.remove(index).1)
-			.unwrap_or_default();
-		self.draft_profiles.saved.push((previous, saved));
+		}
+	}
+
+	fn apply_drafts(&mut self, restored: Drafts, cx: &mut Context<Self>) {
 		self.composer.update(cx, |input, cx| input.set_content(&restored.text, cx));
-		self.draft_profiles.execution = restored.execution;
+		self.draft_profiles.threads = restored.threads;
 		self.restored_question_drafts = restored.restored_questions;
 		self.async_question_inputs = restored.question_inputs;
 		self.async_question_choices = restored.question_choices;
@@ -90,7 +139,10 @@ impl ChiefSurface {
 		self.draft_profiles.texts = restored.texts;
 		self.draft_profiles.files = restored.files;
 		self.draft_profiles.tasks = restored.tasks;
+		self.draft_profiles.execution = restored.execution;
 		self.uncertain = restored.uncertain;
+		self.submission.pending = restored.steer_pending;
+		self.submission.unconfirmed = restored.unconfirmed;
 		self.feedback = restored.feedback;
 		self.composer_menu = None;
 	}
@@ -101,10 +153,7 @@ mod tests {
 	use super::*;
 	use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-	#[gpui::test]
-	fn profile_round_trip_restores_drafts_without_cross_service_input(
-		cx: &mut gpui::TestAppContext,
-	) {
+	pub(super) fn profiles() -> (tempfile::TempDir, ClientProfile, ClientProfile) {
 		let root = tempfile::tempdir_in("/tmp").unwrap();
 		let path = root.path().canonicalize().unwrap();
 		std::fs::create_dir(path.join("server")).unwrap();
@@ -118,12 +167,22 @@ mod tests {
 		let second = first.clone().with_expected_server_id(
 			decodex_protocol::ServerId::new("018f0f9e-7b6e-4a31-8f4c-1d2e3f405163").unwrap(),
 		);
+		(root, first, second)
+	}
+
+	#[gpui::test]
+	fn profile_round_trip_restores_drafts_without_cross_service_input(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_root, first, second) = profiles();
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |s, cx| {
 			s.composer.update(cx, |input, cx| input.set_content("seed", cx));
 			s.bind_profile(Some(first.clone()), cx);
 			assert_eq!(s.composer.read(cx).content(), "seed");
 			s.composer_manager = Some("root".into());
+			s.effort = ConversationReasoningEffort::High;
+			s.mark_effort_intent();
 			let file = decodex_protocol::ChiefAttachmentDto {
 				path: ConversationWorkingDirectory::new("/tmp/first.png").unwrap(),
 				image: true,
@@ -146,7 +205,25 @@ mod tests {
 			assert_eq!(s.composer.read(cx).content(), "edited offline");
 			assert_eq!(s.attachments, vec![file.clone()]);
 			assert!(s.uncertain);
+			s.submission.pending = Some(PendingCommand {
+				recovery: None,
+				key: Some(IdempotencyKey::new("first-service-steer").unwrap()),
+				steer: Some(decodex_protocol::ChiefSteerIdentity {
+					work_id: EntityId::new("root").unwrap(),
+					thread_id: WireText::new("thread").unwrap(),
+					turn_id: WireText::new("turn").unwrap(),
+					submission_id: IdempotencyKey::new("first-service-steer").unwrap(),
+				}),
+				epoch: s.command_epoch,
+				execution_intent: None,
+				draft: Some("seed".into()),
+				owner: Some("root".into()),
+				attachments: None,
+				references: None,
+			});
 			s.bind_profile(Some(second.clone()), cx);
+			assert!(s.submission.pending.is_none());
+			assert!(s.draft_profiles.execution.choice("root").is_empty());
 			assert_eq!(s.composer.read(cx).content(), "");
 			assert!(s.attachments.is_empty() && s.task_references.is_empty());
 			assert!(s.draft_profiles.texts.is_empty() && s.draft_profiles.files.is_empty());
@@ -155,6 +232,10 @@ mod tests {
 			s.composer_manager = Some("root".into());
 			s.composer.update(cx, |input, cx| input.set_content("second draft", cx));
 			s.bind_profile(Some(first), cx);
+			assert_eq!(
+				s.draft_profiles.execution.choice("root").reasoning_effort,
+				Some(ConversationReasoningEffort::High)
+			);
 			assert_eq!(s.composer.read(cx).content(), "edited offline");
 			assert_eq!(s.selected.as_deref(), Some("root"));
 			assert!(!s.draft_owner_available(), "missing owner cannot retarget the restored draft");
@@ -165,29 +246,24 @@ mod tests {
 			assert_eq!(s.draft_profiles.files["manager"], vec![file]);
 			assert_eq!(s.draft_profiles.tasks["manager"], vec![reference]);
 			assert!(s.uncertain && s.feedback.contains("acceptance"));
-			assert!(s.command_task.is_none() && !s.sending);
+			assert_eq!(
+				s.submission
+					.pending
+					.as_ref()
+					.unwrap()
+					.steer
+					.as_ref()
+					.unwrap()
+					.submission_id
+					.as_str(),
+				"first-service-steer"
+			);
+			assert!(s.submission.command.is_none() && !s.sending);
 			s.bind_profile(Some(second), cx);
 			assert_eq!(s.composer.read(cx).content(), "second draft");
-			assert!(s.command_task.is_none() && !s.uncertain);
+			assert!(s.submission.command.is_none() && !s.uncertain);
 		});
 	}
-	pub(super) fn profiles() -> (tempfile::TempDir, ClientProfile, ClientProfile) {
-		let root = tempfile::tempdir_in("/tmp").unwrap();
-		let path = root.path().canonicalize().unwrap();
-		std::fs::create_dir(path.join("server")).unwrap();
-		std::fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700))
-			.unwrap();
-		let uid = std::fs::metadata(&path).unwrap().uid();
-		let config = path.join("config.toml");
-		std::fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
-		std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
-		let first = ClientProfile::load(&path, None).unwrap();
-		let second = first.clone().with_expected_server_id(
-			decodex_protocol::ServerId::new("018f0f9e-7b6e-4a31-8f4c-1d2e3f405163").unwrap(),
-		);
-		(root, first, second)
-	}
-
 	#[gpui::test]
 	fn async_editors_survive_disconnect_and_profile_round_trip(cx: &mut gpui::TestAppContext) {
 		let (_root, first, second) = profiles();
@@ -221,7 +297,7 @@ mod tests {
 			assert!(s.async_question_choices.contains_key(&key));
 			assert_eq!(s.async_question_threads["work"], "first-thread");
 			assert!(s.collapsed_async_questions.contains("work"));
-			assert!(s.command_task.is_none() && !s.sending);
+			assert!(s.submission.command.is_none() && !s.sending);
 			s.bind_profile(Some(second), cx);
 			assert_eq!(s.async_question_inputs[&key], other);
 			assert_eq!(other.read(cx).content(), "Second service answer");

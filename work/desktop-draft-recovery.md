@@ -6,7 +6,9 @@ Editable Chief text, attachments, task references, and asynchronous question edi
 
 Next-message model, effort, and tier choices belong to the conversation and carry a revision. SendConfigured contains only explicit changes. Acceptance clears only the captured revision. Steering keeps next-message choices. Full legacy execution objects remain readable. Protocol version: 2.47.
 
-The local store and document types are groundwork for cold recovery. The store uses private files, revision comparison, a writer lock, atomic replacement, and a bounded checked payload. Recovery documents preserve service/thread ownership and uncertain command identities. These APIs are tested, but the desktop does not yet save or load these documents in production.
+The desktop captures profile-owned text, files, task references, explicit conversation settings, and question editors in a private revisioned store. It waits for publication of the exact command identity and original input before RPC dispatch. The original in-flight copy remains available if later edits are saved before a reply. Acceptance removes that exact copy; a known failure can retain it beside newer input. Unknown delivery blocks automatic replay after reopening.
+
+A concurrent writer produces a visible conflict. The user can keep both copies, restore a copy for its exact service, export it, or confirm removal of a copy with known delivery. Uncertain copies cannot be removed. Empty edits are saved as edits. Native quit waits for publication, rechecks the latest input, and cancels termination if publication fails. The AppKit bridge adds the missing termination callback without replacing GPUI lifecycle methods.
 
 ## Upstream evidence
 
@@ -14,14 +16,14 @@ Reference: openai/codex 595cc91e8cbb1c2ca822d0311dcf12709410c582, codex-rs/app-s
 
 ## Verification
 
-- Core storage suite: 88 passed, including corrupt/oversized data, stale writers, concurrent writers, private paths, and reopen.
-- Protocol library: 106 passed, including draft recovery and partial/legacy message settings.
-- Runtime library: 481 passed, 8 ignored. Partial settings preserve existing values; explicit standard clears the requested tier.
-- Chief desktop tests: 117 passed, 1 ignored. Input ownership, question restoration, explicit settings, and late acceptance are covered.
-- Repository strict Clippy: core, protocol, runtime, and desktop passed.
+- Desktop binary tests: 286 passed, 5 ignored. This includes cold reopen with an in-flight original and later edit, accepted-copy cleanup, profile changes before dispatch, busy/conflicting writers, restored question inputs, export, recovery button clicks, and quit flush/recheck.
+- Repository strict Clippy passed for all desktop targets and features.
+- The preceding input-ownership batch passed 88 core, 106 protocol, 481 runtime, and 117 Chief desktop tests.
 
-These are source and test results. They do not prove signed desktop quit/relaunch acceptance.
+These are source and test results. The AppKit callback test uses an isolated delegate class. It is not signed desktop quit/relaunch acceptance.
 
-## Next boundary
+## Remaining acceptance and integration
 
-Connect document capture and background publication to the desktop. Persist the exact command identity before RPC dispatch. Keep both copies when another window writes. Retain the original submitted input when a failure arrives after later edits. Add explicit recovery controls and flush on native quit. Then verify cold reopen and signed desktop behavior before claiming durable recovery.
+Build and test a fresh signed desktop with isolated fixture storage. Verify the real menu, Dock, and keyboard quit paths, cancelled quit on conflict, relaunch recovery, and export. Do not run capture fixtures against the user's draft store.
+
+Exact native steering receipt reconciliation is a separate pending integration. Restored uncertain commands remain blocked and are never replayed. Complete the audit of new-task configuration drafts and task-setting presentation; this batch persists explicit conversation settings, not all setup defaults.

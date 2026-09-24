@@ -161,7 +161,7 @@ mod tests {
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, _| {
 			assert!(s.feedback.is_empty());
-			assert!(s.command_task.is_none());
+			assert!(s.submission.command.is_none());
 		});
 		visual.update(|window, cx| {
 			window.draw(cx).clear();

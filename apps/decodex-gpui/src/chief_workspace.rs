@@ -241,7 +241,9 @@ impl ChiefSurface {
 		let tip = accessible.clone();
 		let action = std::rc::Rc::new(action);
 		let keyboard = action.clone();
+		let debug_id = id.clone();
 		div()
+			.debug_selector(move || debug_id)
 			.id(SharedString::from(id))
 			.role(if is_tab { Role::Tab } else { Role::Button })
 			.aria_selected(active)
@@ -644,12 +646,13 @@ impl ChiefSurface {
 					.w_full()
 					.flex()
 					.flex_col()
+					.child(self.conversation_activity(cx))
+					.child(self.recovered_draft_panel(cx))
 					.when_some(self.composer_unavailable_reason(), |d, reason| {
 						d.child(self.unavailable_composer(reason, cx))
 					})
 					.when(self.composer_unavailable_reason().is_none(), |d| {
-						d.child(self.conversation_activity(cx))
-							.child(self.render_composer(window, cx))
+						d.child(self.render_composer(window, cx))
 					}),
 			)
 	}
@@ -761,8 +764,10 @@ impl ChiefSurface {
 		{
 			chat = chat.child(self.floating_composer(window, cx));
 		} else if !is_chief && let Some(work) = selected.as_ref() {
-			chat =
-				chat.child(self.conversation_activity(cx)).child(self.workspace_followup(work, cx));
+			chat = chat
+				.child(self.recovered_draft_panel(cx))
+				.child(self.conversation_activity(cx))
+				.child(self.workspace_followup(work, cx));
 		}
 
 		let presence = crate::ui_motion::value(
@@ -901,6 +906,8 @@ impl ChiefSurface {
 			.justify_center()
 			.items_center()
 			.pb(px(90.0))
+			.child(self.conversation_activity(cx))
+			.child(self.recovered_draft_panel(cx))
 			.child(div().w_full().max_w(px(672.0)).child(self.render_composer(window, cx)))
 			.into_any_element()
 	}
@@ -1559,7 +1566,126 @@ fn panel_icon(id: &str) -> Option<AnyElement> {
 }
 
 impl ChiefSurface {
-	fn conversation_activity(&self, _cx: &mut Context<Self>) -> AnyElement {
+	fn draft_copy_controls(
+		&self,
+		index: usize,
+		copy: decodex_protocol::DesktopRecoveredDraft,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let mut row = div().flex().flex_wrap().gap_2();
+		let export = copy.clone();
+		row = row.child(self.workspace_action(
+			format!("draft-copy-export-{index}"),
+			"Export full draft".into(),
+			move |s, cx| s.export_draft_copy(export.clone(), cx),
+			cx,
+		));
+		if self.draft_copy_matches_service(&copy) {
+			let restore = copy.clone();
+			row = row.child(self.workspace_action(
+				format!("draft-copy-restore-{index}"),
+				"Restore this copy".into(),
+				move |s, cx| s.restore_draft_copy(restore.clone(), cx),
+				cx,
+			));
+		} else {
+			row = row.child("Unassigned copy · export to retain all data");
+		}
+		if copy.draft.uncertain {
+			row = row.child("Confirm delivery before removing this copy");
+		} else if self.removing_draft_copy(&copy) {
+			row = row
+				.child("Remove this saved copy? Current input stays.")
+				.child(self.workspace_action(
+					format!("draft-copy-remove-confirm-{index}"),
+					"Confirm removal".into(),
+					move |s, cx| s.confirm_draft_copy_removal(copy.clone(), cx),
+					cx,
+				))
+				.child(self.workspace_action(
+					format!("draft-copy-remove-cancel-{index}"),
+					"Cancel".into(),
+					|s, cx| s.cancel_draft_copy_removal(cx),
+					cx,
+				));
+		} else {
+			row = row.child(self.workspace_action(
+				format!("draft-copy-remove-{index}"),
+				"Remove copy…".into(),
+				move |s, cx| s.request_draft_copy_removal(copy.clone(), cx),
+				cx,
+			));
+		}
+		row.into_any_element()
+	}
+
+	fn recovered_draft_panel(&self, cx: &mut Context<Self>) -> AnyElement {
+		let count = self.recovered_draft_count();
+		if count == 0 {
+			return div().into_any_element();
+		}
+		let mut panel = div().w_full().flex().flex_col().gap_2().px_4().py_2();
+		panel = panel.child(self.workspace_action(
+			"draft-copies-toggle".into(),
+			format!("Saved draft copies ({count})"),
+			|s, cx| s.toggle_recovered_drafts(cx),
+			cx,
+		));
+		if self.show_recovered_drafts() {
+			let copies = self.recovered_drafts();
+			let mut list = div()
+				.id("draft-copy-list")
+				.max_h(px(220.0))
+				.overflow_y_scroll()
+				.flex()
+				.flex_col()
+				.gap_2();
+			for (index, copy) in copies.into_iter().enumerate() {
+				let preview: String = copy.draft.composer.text.chars().take(180).collect();
+				let summary = format!(
+					"Copy {} · {} files · {} task references · {} question drafts",
+					index + 1,
+					copy.draft.composer.attachments.len(),
+					copy.draft.composer.references.len(),
+					copy.draft.questions.len()
+				);
+				list = list.child(
+					div()
+						.flex()
+						.flex_col()
+						.gap_1()
+						.child(summary)
+						.child(format!("Preview: {preview}"))
+						.child(self.draft_copy_controls(index, copy, cx)),
+				);
+			}
+			panel = panel.child(list);
+		}
+		panel.into_any_element()
+	}
+
+	fn keep_both_draft_button(&self, cx: &mut Context<Self>) -> AnyElement {
+		div()
+			.id("draft-keep-both")
+			.debug_selector(|| "draft-keep-both".into())
+			.role(Role::Button)
+			.tab_index(0)
+			.aria_label("Keep both draft copies")
+			.px_2()
+			.py_1()
+			.cursor_pointer()
+			.on_click(cx.listener(|s, _, _, cx| s.keep_both_drafts(cx)))
+			.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
+				if !event.is_held && matches!(event.keystroke.key.as_str(), "enter" | "space") {
+					cx.stop_propagation();
+					s.keep_both_drafts(cx);
+				}
+			}))
+			.child("Keep both drafts")
+			.into_any_element()
+	}
+
+	fn conversation_activity(&self, cx: &mut Context<Self>) -> AnyElement {
 		let selected = self.snapshot.as_ref().and_then(|snapshot| {
 			snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())
 		});
@@ -1581,6 +1707,8 @@ impl ChiefSurface {
 		}
 		let label = if self.uncertain {
 			Some("Delivery unconfirmed · Draft kept. Sending is paused to avoid duplicates.")
+		} else if let Some(notice) = self.draft_storage_notice() {
+			Some(notice)
 		} else if self.selected.as_deref().is_some_and(|id| self.thread_in_use(id)) {
 			Some("In use in another app · Your message is saved and waiting")
 		} else if pending.iter().any(|event| {
@@ -1620,6 +1748,7 @@ impl ChiefSurface {
 			.text_size(px(11.0))
 			.text_color(rgb(ui_theme::TEXT_MUTED))
 			.child(label.to_owned())
+			.when(self.can_keep_both_drafts(), |row| row.child(self.keep_both_draft_button(cx)))
 			.into_any_element()
 	}
 }
@@ -1734,7 +1863,7 @@ mod tests {
 			assert!(s.composer_unavailable_reason().unwrap().contains("could not reconnect"));
 			s.submit(cx);
 			assert!(!s.sending);
-			assert!(s.command_task.is_none());
+			assert!(s.submission.command.is_none());
 			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
 			s.snapshot.as_mut().unwrap().pending_events.clear();
 			assert!(s.composer_unavailable_reason().is_none());
