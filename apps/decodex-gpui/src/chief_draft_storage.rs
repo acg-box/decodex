@@ -99,7 +99,8 @@ impl Storage {
 
 impl ChiefSurface {
 	pub(in super::super) fn restore_unbound_draft(&mut self, cx: &mut Context<Self>) {
-		let saved = &self.draft_profiles.storage.document.unbound;
+		let saved = self.draft_profiles.storage.document.unbound.clone();
+		self.restore_creation_setup(saved.creation.as_ref(), cx);
 		self.composer.update(cx, |input, cx| input.set_content(&saved.text, cx));
 		self.attachments = saved.attachments.clone();
 		self.task_references = saved.references.clone();
@@ -171,6 +172,7 @@ impl ChiefSurface {
 				return;
 			}
 			self.draft_profiles.storage.document.unbound = DesktopComposerDraft {
+				creation: self.creation_setup(cx),
 				text: self.composer.read(cx).content().into(),
 				attachments: self.attachments.clone(),
 				references: self.task_references.clone(),
@@ -314,7 +316,14 @@ impl ChiefSurface {
 				.map(WireText::new)
 				.transpose()
 				.ok()?;
-			Some(DesktopComposerDraft { work_id, thread_id, text, attachments, references })
+			Some(DesktopComposerDraft {
+				creation: if owner.is_none() { self.creation_setup(cx) } else { None },
+				work_id,
+				thread_id,
+				text,
+				attachments,
+				references,
+			})
 		};
 		let mut parked = BTreeMap::new();
 		let owners: std::collections::BTreeSet<_> = self
@@ -474,6 +483,7 @@ fn publish_document(
 impl Drafts {
 	fn from_document(saved: DesktopProfileDraft, epoch: u64) -> Self {
 		let mut result = Self {
+			creation: saved.composer.creation,
 			unconfirmed: saved.unconfirmed_commands,
 			text: saved.composer.text,
 			manager: saved.composer.work_id.map(|id| id.as_str().into()),
@@ -1082,3 +1092,7 @@ mod tests {
 		assert_eq!(store.load().unwrap().payload, other);
 	}
 }
+
+#[cfg(test)]
+#[path = "chief_creation_setup_tests.rs"]
+mod creation_tests;

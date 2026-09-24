@@ -26,6 +26,7 @@ pub(super) struct Profiles {
 
 #[derive(Default)]
 struct Drafts {
+	creation: Option<decodex_protocol::DesktopCreationSetup>,
 	unconfirmed: Vec<IdempotencyKey>,
 	threads: BTreeMap<String, String>,
 	restored_questions: Vec<decodex_protocol::DesktopQuestionDraft>,
@@ -90,6 +91,7 @@ impl ChiefSurface {
 			if !self.composer.read(cx).content().is_empty()
 				|| !self.attachments.is_empty()
 				|| !self.task_references.is_empty()
+				|| self.creation_setup(cx).is_some()
 			{
 				self.draft_profiles.storage.seed_conflict();
 				return;
@@ -105,6 +107,7 @@ impl ChiefSurface {
 
 	fn take_drafts(&mut self, cx: &Context<Self>) -> Drafts {
 		Drafts {
+			creation: self.creation_setup(cx),
 			unconfirmed: mem::take(&mut self.submission.unconfirmed),
 			threads: mem::take(&mut self.draft_profiles.threads),
 			restored_questions: mem::take(&mut self.restored_question_drafts),
@@ -135,6 +138,9 @@ impl ChiefSurface {
 		self.async_question_threads = restored.question_threads;
 		self.collapsed_async_questions = restored.collapsed_questions;
 		self.composer_manager = restored.manager;
+		if self.composer_manager.is_none() {
+			self.restore_creation_setup(restored.creation.as_ref(), cx);
+		}
 		self.attachments = restored.attachments;
 		self.task_references = restored.references;
 		self.draft_profiles.texts = restored.texts;

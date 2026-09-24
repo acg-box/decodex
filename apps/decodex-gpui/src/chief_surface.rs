@@ -187,6 +187,7 @@ pub(crate) struct ChiefSurface {
 	cwd: Entity<ComposerInput>,
 	account: Entity<ComposerInput>,
 	effort: ConversationReasoningEffort,
+	creation_setup_present: bool,
 	sandbox: ChiefSandboxDto,
 	submission: drafts::SubmissionState,
 	command_epoch: u64,
@@ -255,6 +256,8 @@ struct PendingCommand {
 	attachments: Option<Vec<decodex_protocol::ChiefAttachmentDto>>,
 	references: Option<Vec<decodex_protocol::ChiefTaskReferenceDto>>,
 }
+
+#[path = "chief_creation_setup.rs"] mod creation_setup;
 
 impl ChiefSurface {
 	#[cfg(feature = "visual-capture")]
@@ -416,6 +419,7 @@ impl ChiefSurface {
 			cwd,
 			account: Self::account_input(cx),
 			effort: ConversationReasoningEffort::High,
+			creation_setup_present: false,
 			sandbox: ChiefSandboxDto::ReadOnly,
 			submission: Default::default(),
 			command_epoch: 0,
@@ -465,7 +469,7 @@ impl ChiefSurface {
 		Self::refresh_prompt(cx);
 		let model =
 			cx.new(|cx| ComposerInput::with_placeholder(31, "Exact model ID", "Chief model", cx));
-		model.update(cx, |input, cx| input.set_content("gpt-6-astra", cx));
+		model.update(cx, |input, cx| input.set_content(creation_setup::DEFAULT_MODEL, cx));
 		let cwd = cx.new(|cx| {
 			ComposerInput::with_placeholder(
 				32,
@@ -589,10 +593,15 @@ impl ChiefSurface {
 		accounts: Vec<(String, String)>,
 		cx: &mut Context<Self>,
 	) {
-		if self.cwd.read(cx).content().is_empty()
+		if self.root_id().is_none() && self.creation_setup(cx).is_some() {
+			self.creation_setup_present = true;
+		}
+		if !self.creation_setup_present
+			&& self.cwd.read(cx).content().is_empty()
 			&& let Some(cwd) = cwd
 		{
 			self.cwd.update(cx, |input, cx| input.set_content(cwd.as_str(), cx));
+			self.creation_setup_present = true;
 		}
 		self.accounts = accounts;
 		cx.notify();
@@ -1085,8 +1094,10 @@ impl ChiefSurface {
 		self.capability_task = None;
 		self.capabilities = None;
 		self.capabilities_context = None;
-		self.fast = false;
-		self.service_tier = None;
+		if self.composer_manager.is_some() {
+			self.fast = false;
+			self.service_tier = None;
+		}
 		self.capabilities_checked = None;
 		self.reset_model_settings();
 		self.reset_live_reviewer();

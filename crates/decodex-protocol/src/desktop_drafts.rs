@@ -30,7 +30,7 @@ pub struct DesktopDraftDocument {
 impl Default for DesktopDraftDocument {
 	fn default() -> Self {
 		Self {
-			version: 1,
+			version: 2,
 			profiles: BTreeMap::new(),
 			unbound: Default::default(),
 			recovered: vec![],
@@ -65,6 +65,9 @@ pub struct DesktopProfileDraft {
 #[derive(Clone, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopComposerDraft {
+	/// Pre-creation editor choices, absent for existing work or older saved drafts.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub creation: Option<DesktopCreationSetup>,
 	/// Original work owner; absent only before a task exists.
 	pub work_id: Option<EntityId>,
 	/// Original native thread, if bound when the draft was saved.
@@ -75,6 +78,26 @@ pub struct DesktopComposerDraft {
 	pub attachments: Vec<ChiefAttachmentDto>,
 	/// Original selected tasks and their native thread identity.
 	pub references: Vec<ChiefTaskReferenceDto>,
+}
+
+/// Editable setup before a Chief exists; values are drafts, never launch authority.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopCreationSetup {
+	/// Exact model editor text, including incomplete edits.
+	pub model: String,
+	/// Exact directory editor text, validated only when sending.
+	pub working_directory: String,
+	/// Exact account editor text; empty means automatic routing.
+	pub account: String,
+	/// Displayed reasoning selection.
+	pub reasoning_effort: crate::ConversationReasoningEffort,
+	/// Displayed legacy fast-mode selection.
+	pub fast: bool,
+	/// Displayed service tier, without inferring consent from discovery.
+	pub service_tier: Option<crate::ServiceTier>,
+	/// Displayed sandbox choice; runtime policy still controls admission.
+	pub sandbox: crate::ChiefSandboxDto,
 }
 
 /// A retained asynchronous question editor, bound to its original source.
@@ -121,8 +144,10 @@ impl DesktopDraftDocument {
 		if bytes.len() > crate::MAX_CLIENT_DRAFT_BYTES {
 			return Err("Draft snapshot is too large");
 		}
-		let value: Self = serde_json::from_slice(bytes).map_err(|_| "Draft snapshot is invalid")?;
+		let mut value: Self =
+			serde_json::from_slice(bytes).map_err(|_| "Draft snapshot is invalid")?;
 		value.validate()?;
+		value.version = 2;
 		Ok(value)
 	}
 
@@ -135,7 +160,7 @@ impl DesktopDraftDocument {
 	}
 
 	fn validate(&self) -> Result<(), &'static str> {
-		if self.version != 1 {
+		if !matches!(self.version, 1 | 2) {
 			return Err("Draft snapshot version is unsupported");
 		}
 		if self.profiles.len() > 64 {
@@ -240,6 +265,14 @@ impl DesktopProfileDraft {
 }
 impl DesktopComposerDraft {
 	fn validate(&self) -> Result<(), &'static str> {
+		if let Some(setup) = &self.creation {
+			if self.work_id.is_some() || self.thread_id.is_some() {
+				return Err("Creation setup cannot belong to existing work");
+			}
+			for value in [&setup.model, &setup.working_directory, &setup.account] {
+				validate_text(value)?;
+			}
+		}
 		if self
 			.thread_id
 			.as_ref()
@@ -279,6 +312,7 @@ mod tests {
 	fn document() -> DesktopDraftDocument {
 		let mut profile = DesktopProfileDraft {
 			composer: DesktopComposerDraft {
+				creation: None,
 				work_id: Some(EntityId::new("work").unwrap()),
 				thread_id: Some(WireText::new("native-thread").unwrap()),
 				text: "Keep the draft — 未发送".into(),
@@ -330,11 +364,41 @@ mod tests {
 			execution: Some((EntityId::new("work").unwrap(), 4)),
 		});
 		DesktopDraftDocument {
-			version: 1,
+			version: 2,
 			profiles: BTreeMap::from([("a".repeat(64), profile)]),
 			recovered: vec![],
 			unbound: Default::default(),
 		}
+	}
+
+	#[test]
+	fn creation_setup_round_trips_and_old_documents_upgrade_without_authority() {
+		let setup = DesktopCreationSetup {
+			model: "unfinished model ".into(),
+			working_directory: "relative edit/".into(),
+			account: "unfinished account".into(),
+			reasoning_effort: crate::ConversationReasoningEffort::High,
+			fast: false,
+			service_tier: Some(crate::ServiceTier::new("flex").unwrap()),
+			sandbox: crate::ChiefSandboxDto::ReadOnly,
+		};
+		let mut document = DesktopDraftDocument::default();
+		document.unbound.creation = Some(setup.clone());
+		let bytes = document.encode().unwrap();
+		assert_eq!(DesktopDraftDocument::decode(&bytes).unwrap().unbound.creation, Some(setup));
+		let old = DesktopDraftDocument::decode(br#"{"version":1,"profiles":{}}"#).unwrap();
+		assert_eq!(old.version, 2);
+		assert!(old.unbound.creation.is_none());
+		let mut remote = document.clone();
+		remote.unbound.creation.as_mut().unwrap().model = "other model".into();
+		let merged =
+			document.reconcile_keep_both(&DesktopDraftDocument::default(), &remote).unwrap();
+		assert_eq!(merged.unbound.creation, document.unbound.creation);
+		assert_eq!(merged.recovered[0].draft.composer.creation, remote.unbound.creation);
+		let restored = merged.restore_recovered_copy(&merged.recovered[0]).unwrap();
+		assert_eq!(restored.unbound.creation, remote.unbound.creation);
+		document.unbound.work_id = Some(EntityId::new("existing").unwrap());
+		assert!(document.encode().is_err());
 	}
 
 	#[test]
@@ -360,7 +424,7 @@ mod tests {
 	#[test]
 	fn draft_document_rejects_changed_contract_and_ambiguous_ownership() {
 		let mut original = document();
-		original.version = 2;
+		original.version = 3;
 		assert!(original.encode().is_err());
 		let mut json = serde_json::to_value(document()).unwrap();
 		json["unexpected"] = serde_json::json!(true);

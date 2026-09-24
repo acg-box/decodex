@@ -1678,6 +1678,9 @@ impl ChiefSurface {
 						.gap_1()
 						.child(summary)
 						.child(format!("Preview: {preview}"))
+						.when_some(copy.draft.composer.creation.as_ref(), |element, setup| {
+							element.child(super::creation_setup::summary(setup))
+						})
 						.child(self.draft_copy_controls(index, copy, cx)),
 				);
 			}
