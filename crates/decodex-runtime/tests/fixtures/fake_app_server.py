@@ -56,6 +56,9 @@ if sys.argv[1] == "generate-json-schema":
         requests.append("account/rateLimitResetCredit/consume")
     server_requests = ["account/chatgptAuthTokens/refresh"]
     notifications = ["thread/started", "turn/started", "item/started", "item/completed", "turn/completed"]
+    if "--conversation-contract" in sys.argv:
+        requests.append("turn/interrupt")
+        notifications.append("item/agentMessage/delta")
     if "--missing-required" in sys.argv:
         requests.remove("thread/list")
     if "--missing-optional-methods" in sys.argv:
@@ -261,6 +264,12 @@ for line in sys.stdin:
         time.sleep(60)
     method = message.get("method")
     if method == "initialize":
+        if mode in ("chief-form-capabilities", "ordinary-capabilities"):
+            capabilities = message["params"]["capabilities"]
+            if mode == "chief-form-capabilities":
+                assert capabilities["extensions"] == {"openai/elicitation": {"form": {}}}
+            else:
+                assert "extensions" not in capabilities
         if mode == "exact-config-warning-flood":
             for index in range(40):
                 print(json.dumps({"method": "configWarning", "params": {"summary": f"Fixture warning {index}", "details": None}}), flush=True)

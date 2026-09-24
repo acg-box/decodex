@@ -254,3 +254,23 @@ Local protocol version is 2.52; the database stays at 34. Validation includes
 complete Unicode reconstruction, changed-source and changed-content rejection,
 invalid byte offsets, desktop stale-reply cases, and rendered continuation buttons
 through the public socket. This does not certify signed desktop acceptance.
+
+
+## Chief OpenAI form negotiation
+
+At upstream `595cc91e8cbb1c2ca822d0311dcf12709410c582`,
+`codex-mcp/src/client_capabilities.rs` projects the app-server client's
+`openai/elicitation.form` extension to MCP servers. Decodex declares this extension
+only for Chief connections, which retain an elicitation request consumer.
+Ordinary conversation, probe, and activation connections do not declare it.
+
+Unsupported schemas retain their original JSON through request projection. The
+form UI offers decline and cancel but cannot accept unsupported constraints or
+interpret an opaque OpenAI schema as an empty approval. Standard MCP null-schema
+confirmations keep their existing behavior.
+
+The isolated native fixture checks negotiation, exact choice values, duplicate
+response rejection, unsupported-schema cancellation, and the native `never`
+approval policy. Installed Codex `0.155.0-alpha.16.3` passed these cases with a
+loopback inference fixture. This does not qualify MCP App UI, user verification,
+standard-form-input extensions, or signed desktop interaction.

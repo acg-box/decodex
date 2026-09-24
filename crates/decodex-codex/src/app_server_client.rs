@@ -20,6 +20,8 @@ mod archive;
 pub use archive::ThreadArchiveState;
 mod attachments;
 mod history;
+mod initialize;
+pub use initialize::InitializeCapabilities;
 mod integrations;
 mod plugin_install;
 mod server_requests;

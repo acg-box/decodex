@@ -4434,6 +4434,7 @@ impl ConversationRuntime {
 		credential: AccountProcessCredential,
 		working_directory: &str,
 	) -> Result<FencedProcess, ConversationManualRecovery> {
+		let chief_requests = matches!(&admission, AccountLaunchAdmission::Chief { .. });
 		let generation_id = admission.generation_id();
 		let callback: Arc<dyn ProcessAccountRefreshCallback> =
 			Arc::new(ConversationRefreshCallback {
@@ -4520,7 +4521,11 @@ impl ConversationRuntime {
 		let control = self.inner.process_generations.clone();
 		let initialized = task::spawn_blocking(move || {
 			control.with_fenced_child(&process_for_init, |child| {
-				child.initialize_ordinary_turns(&vault)
+				if chief_requests {
+					child.initialize_chief_turns(&vault)
+				} else {
+					child.initialize_ordinary_turns(&vault)
+				}
 			})
 		})
 		.await;

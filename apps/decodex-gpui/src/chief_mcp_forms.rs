@@ -26,7 +26,7 @@ impl ChiefSurface {
 		let Ok(value) = serde_json::from_str::<Value>(request_json.as_str()) else {
 			return;
 		};
-		if let Ok(fields) = decodex_protocol::mcp_form_fields(&value["requestedSchema"]) {
+		if let Ok(fields) = decodex_protocol::mcp_request_fields(&value) {
 			for field in fields.into_iter().filter(|field| field.choices.is_empty()) {
 				self.mcp_inputs.insert(
 					field.id,
@@ -66,7 +66,7 @@ impl ChiefSurface {
 			return;
 		}
 		let result = (|| -> Result<Value, String> {
-			let fields = decodex_protocol::mcp_form_fields(&value["requestedSchema"])?;
+			let fields = decodex_protocol::mcp_request_fields(&value)?;
 			if fields.is_empty() {
 				return Ok(
 					if value.pointer("/_meta/codex_approval_kind").and_then(Value::as_str)
@@ -145,7 +145,7 @@ impl ChiefSurface {
 		panel = self.mcp_verification_link(panel, event, value, cx);
 		let fields =
 			if matches!(value["mode"].as_str(), Some("form" | "openai/form" | "openaiForm")) {
-				decodex_protocol::mcp_form_fields(&value["requestedSchema"])
+				decodex_protocol::mcp_request_fields(value)
 			} else {
 				Err("This request requires a different verification flow.".into())
 			};
@@ -397,6 +397,42 @@ mod tests {
 			assert_eq!(s.feedback, "No service profile is configured.");
 			assert!(s.submission.command.is_none());
 		});
+		for schema in [
+			Value::Null,
+			json!(true),
+			json!({"type":"object","properties":{"template":{"type":"string","oneOf":[{"const":"a","title":"A","x-openai-preview":{"src":"fixture"}}]}}}),
+		] {
+			surface.update(visual, |s, cx| {
+				let request = ChiefRequestResult::Available {
+					event_id: 7,
+					work_id: "root".into(),
+					method: "mcpServer/elicitation/request".into(),
+					request_json: HistoryText::new(
+						json!({"mode":"openaiForm","requestedSchema":schema}).to_string(),
+					)
+					.unwrap(),
+				};
+				s.prepare_mcp_inputs(&request, cx);
+				s.request = Some(request);
+				s.submit_mcp_form(7, cx);
+				assert_eq!(
+					s.feedback,
+					if schema.is_object() {
+						"Unsupported choice constraints"
+					} else {
+						"This form schema is not supported."
+					}
+				);
+				assert!(s.submission.command.is_none());
+				cx.notify();
+			});
+			visual.update(|window, cx| {
+				window.draw(cx).clear();
+			});
+			assert!(visual.debug_bounds("mcp-submit").is_none());
+			assert!(visual.debug_bounds("mcp-decline").is_some());
+			assert!(visual.debug_bounds("mcp-cancel").is_some());
+		}
 	}
 
 	#[gpui::test]

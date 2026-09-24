@@ -4009,7 +4009,9 @@ async fn query_chief_request(
 				"command" | "cwd" | "reason" | "grantRoot" => value.is_null() || value.is_string(),
 				"serverName" | "mode" | "message" | "url" | "elicitationId" | "title"
 				| "description" => value.is_string(),
-				"requestedSchema" => value.is_null() || value.is_object(),
+				// OpenAI form schemas are opaque JSON. Preserve unsupported shapes so
+				// the client can offer decline/cancel instead of hiding the request.
+				"requestedSchema" => true,
 				"questions" => value.is_array(),
 				"isBlocking" => value.is_boolean(),
 				"availableDecisions"
@@ -5633,8 +5635,17 @@ mod tests {
 			(0, "thread", serde_json::Value::Null, true),
 			(1, "other", serde_json::Value::Null, false),
 			(2, "thread", serde_json::json!("stale"), false),
+			(3, "thread", serde_json::Value::Null, true),
+			(4, "thread", serde_json::Value::Null, true),
 		] {
-			let payload = serde_json::json!({"method":"mcpServer/elicitation/request","params":{"threadId":thread,"turnId":turn,"serverName":"calendar","mode":"form","message":"Choose a date","requestedSchema":{"type":"object","properties":{"date":{"type":"string","format":"date"}}},"challenge":"PRIVATE_CHALLENGE","_meta":{"tool_name":"calendar.create","private_token":"PRIVATE_TOKEN"}}});
+			let mode = if index >= 3 { "openaiForm" } else { "form" };
+			let schema = match index {
+				3 => serde_json::json!(true),
+				4 => serde_json::Value::Null,
+				_ =>
+					serde_json::json!({"type":"object","properties":{"date":{"type":"string","format":"date"}}}),
+			};
+			let payload = serde_json::json!({"method":"mcpServer/elicitation/request","params":{"threadId":thread,"turnId":turn,"serverName":"calendar","mode":mode,"message":"Choose a date","requestedSchema":schema,"challenge":"PRIVATE_CHALLENGE","_meta":{"tool_name":"calendar.create","private_token":"PRIVATE_TOKEN"}}});
 			let event = store
 				.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
 					source_event_id: format!("elicitation-{index}"),
@@ -5651,7 +5662,8 @@ mod tests {
 			);
 			if let decodex_protocol::ChiefRequestResult::Available { request_json, .. } = result {
 				let value: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
-				assert_eq!(value["mode"], "form");
+				assert_eq!(value["mode"], mode);
+				assert_eq!(value["requestedSchema"], schema);
 				assert_eq!(value["_meta"]["tool_name"], "calendar.create");
 				assert!(!request_json.as_str().contains("PRIVATE_"));
 			}
