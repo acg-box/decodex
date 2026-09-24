@@ -578,8 +578,8 @@ impl Shell {
 		self.reset_cards.profile = profile.clone();
 		let cwd = self.conversations.working_directory();
 		self.chief.update(cx, |surface, cx| {
-			surface.seed_context(cwd, vec![], cx);
 			surface.bind_profile(profile, cx);
+			surface.seed_context(cwd, vec![], cx);
 			surface.refresh(cx);
 		});
 		self

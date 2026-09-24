@@ -282,6 +282,6 @@ pub use decodex_core::{
 	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES,
 };
 pub use desktop_drafts::{
-	DesktopComposerDraft, DesktopDraftDocument, DesktopPendingDraft, DesktopProfileDraft,
-	DesktopQuestionDraft, DesktopRecoveredDraft,
+	DesktopComposerDraft, DesktopCreationSetup, DesktopDraftDocument, DesktopPendingDraft,
+	DesktopProfileDraft, DesktopQuestionDraft, DesktopRecoveredDraft,
 };
