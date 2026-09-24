@@ -4531,6 +4531,9 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let mut row =
 		div().id("conversation-service-tiers").flex().flex_wrap().gap_2().text_size(px(11.));
+	if shell.quick.execution.effective_service_tier().as_str() == "flex" {
+		row = row.child("Flex · configured");
+	}
 	row = row.child(
 		div()
 			.id("conversation-refresh-models")
