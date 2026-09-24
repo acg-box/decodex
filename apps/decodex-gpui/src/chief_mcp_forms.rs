@@ -135,6 +135,14 @@ impl ChiefSurface {
 					.unwrap_or("")
 					.to_owned(),
 			);
+		if value["serverName"] == "codex_apps"
+			&& ["connector_id", "link_id"].iter().all(|key| {
+				value["_meta"][key].as_str().is_some_and(|v| {
+					!v.trim().is_empty() && v.len() <= 4096 && !v.chars().any(char::is_control)
+				})
+			}) {
+			panel = panel.child(self.account_settings_panel(event, cx));
+		}
 		if let Some(params) = value
 			.pointer("/_meta/tool_params_display")
 			.or_else(|| value.pointer("/_meta/tool_params"))

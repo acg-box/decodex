@@ -240,6 +240,17 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Change one connection override without answering its pending native request.
+	SetAppSetting {
+		/// Originating task.
+		work_id: crate::EntityId,
+		/// Exact native request event.
+		event_id: i64,
+		/// Consumed native config review.
+		review_token: crate::WireText,
+		/// Explicit connection override.
+		edit: crate::ChiefAppSettingEdit,
+	},
 	/// Apply one explicitly reviewed shared hook change.
 	SetHookSetting {
 		/// Exact originating work.

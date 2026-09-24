@@ -3,9 +3,7 @@ use crate::chief_usage_estimate::Source;
 use decodex_codex::app_server_client::{
 	ClientError, HistoryGuard, HookSettingsChange, HookSettingsReview, HookSettingsWrite,
 };
-use decodex_database::{
-	ChiefHookAttempt, ChiefHookObservation, ChiefHookOwner, ChiefHookReceipt, SqliteStore,
-};
+use decodex_database::{ChiefHookAttempt, ChiefHookOwner, ChiefHookReceipt, SqliteStore};
 use decodex_protocol::{
 	ChiefHookChange as Change, ChiefHookDto, ChiefHookEditReceipt, ChiefHookSettingsState as State,
 	EntityId, WireText,
@@ -30,9 +28,6 @@ fn owner(source: &Source) -> ChiefHookOwner {
 		generation: k.generation.as_str().into(),
 		account: k.account.as_str().into(),
 	}
-}
-fn pending(receipt: &ChiefHookReceipt) -> bool {
-	matches!(receipt.state.as_str(), "reserved" | "unknown")
 }
 fn field(change: Change) -> &'static str {
 	match change {
@@ -69,28 +64,12 @@ where
 	if !guard.is_live() || source().await.is_none_or(|after| after.key != before.key) {
 		return None;
 	}
-	if let Some(prior) = store.chief_hook_receipt(scope.clone()).await.ok()?
-		&& pending(&prior)
-	{
-		store
-			.observe_chief_hook_setting(
-				prior.id,
-				ChiefHookObservation {
-					owner: owner(&before),
-					scope: scope.clone(),
-					hook: prior.attempt.hook.clone(),
-					field: prior.attempt.field.clone(),
-					value: raw(&native, &prior.attempt.hook, &prior.attempt.field),
-					config_version: native.config_version().into(),
-				},
-			)
-			.await
-			.ok()?;
-	}
+	crate::chief_config_settings::reconcile(store, &before, cwd, &scope).await;
+	let shared = store.chief_config_receipt(scope.clone()).await.ok()?;
 	let prior = store.chief_hook_receipt(scope.clone()).await.ok()?;
 	let work = store.get_chief_work_item(k.work.clone()).await.ok()?;
 	let can_update = work.status != decodex_database::ChiefWorkStatus::Resolved
-		&& !prior.as_ref().is_some_and(pending);
+		&& !shared.as_ref().is_some_and(crate::chief_config_settings::pending);
 	// Consent follows native config and content, not a temporary task-settings guard lifetime.
 	let token = digest(
 		&json!([
@@ -104,6 +83,7 @@ where
 			native.config_version(),
 			native.inventory,
 			prior.as_ref().map(|r| (r.id, &r.state)),
+			shared.as_ref().map(crate::chief_config_settings::project),
 			can_update
 		])
 		.to_string(),
@@ -113,11 +93,18 @@ where
 		.iter()
 		.map(|h| project_hook(h, &native))
 		.collect::<Option<Vec<_>>>()?;
-	let notices = ["warnings", "errors"]
+	let mut notices: Vec<String> = ["warnings", "errors"]
 		.into_iter()
 		.flat_map(|field| native.inventory[field].as_array().into_iter().flatten())
 		.map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string()))
 		.collect();
+	if let Some(decodex_database::ChiefConfigReceipt::App(_)) = &shared {
+		let receipt = crate::chief_config_settings::project(shared.as_ref()?);
+		notices.push(format!(
+			"Shared configuration: {} — {}. Original task: {}; Codex account: {}.",
+			receipt.target, receipt.outcome, receipt.work_id, receipt.account_id
+		));
+	}
 	let last_edit = match &prior {
 		Some(r) => Some(ChiefHookEditReceipt {
 			outcome: r.state.clone(),
