@@ -17,10 +17,31 @@ guard; disconnect and history replacement do. Guards retain only live readers,
 with a bounded map. A duplex test proves that an already queued settings change
 prevents the subsequent write.
 
-This adapter is a prerequisite for the pending coordinator migration. Current
-coordinator cold resume and ordinary dispatch still inject global model/effort
-defaults. Do not claim that task settings preservation or capacity-retry selection
-is fixed by this adapter alone.
+The coordinator now restores existing threads without creation defaults. This
+applies to recovery, ordinary dispatch, external-writer recovery, Guardian approval,
+misalignment continuation, and voice recovery. Voice startup retains only its
+explicit realtime feature opt-in. New tasks still receive creation defaults.
+
+Before a normal turn, omitted model/effort fields inherit native task settings;
+explicit partial user selections remain intact. The settings guard also retains
+an async answer's question-state constraint. Requested selection is committed in
+the same transaction as the exact native turn acknowledgment. It is not inference
+telemetry and does not occupy visible transcript pages.
+
+Capacity retries compare current settings with that saved acknowledgment, including
+after reopening the store. Changed or unavailable selection cancels the old retry.
+A matching native settings notification keeps the retry; changed settings retire
+it without a new turn. A known pre-write guard refusal preserves unsent input for
+user decision. A lost turn response, or failure after external-context injection,
+remains uncertain and cannot authorize replay.
+
+Validation: native cold restart preserves a custom effort and original model even
+when the restarted coordinator has different defaults. The loopback backend sees
+one initial request and one continuation; both exact selections have atomic journal
+receipts. Adapter guard tests cover combined question/settings constraints, and
+coordinator tests cover partial edits, changed-selection cancellation, store reopen,
+and known-unsent versus lost-response handling. Task-settings presentation and the
+broader permission/plugin observation migration remain separate outstanding work.
 
 ## Workspace policy for quota activation — 2026-09-24
 

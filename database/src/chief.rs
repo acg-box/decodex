@@ -196,7 +196,7 @@ impl SqliteStore {
 		let limit = page_limit(limit)?;
 		self.run(move |connection| {
 			read_work(connection, &work_id)?;
-			connection.prepare("SELECT * FROM (SELECT * FROM chief_inbox_events WHERE work_item_id = ?1 AND event_kind NOT IN ('token_usage','response_usage') AND (?3 IS NULL OR id < ?3) ORDER BY id DESC LIMIT ?2) ORDER BY id")
+			connection.prepare("SELECT * FROM (SELECT * FROM chief_inbox_events WHERE work_item_id = ?1 AND event_kind NOT IN ('turn_execution','native_task_settings','token_usage','response_usage') AND (?3 IS NULL OR id < ?3) ORDER BY id DESC LIMIT ?2) ORDER BY id")
 				.map_err(sqlite_error)?.query_map(params![work_id, limit, before], event_row)
 				.map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
 		}).await
@@ -232,7 +232,7 @@ impl SqliteStore {
 		self.run(move |connection| {
             let tx=connection.transaction().map_err(sqlite_error)?;
             read_work(&tx,&id)?;
-            let events=tx.prepare("SELECT * FROM (SELECT e.* FROM chief_inbox_events e WHERE work_item_id=?1 AND event_kind NOT IN ('token_usage','response_usage') AND (event_kind<>'activity_started' OR NOT EXISTS(SELECT 1 FROM chief_inbox_events c WHERE c.source_event_id=json_array('activity',e.work_item_id,json_extract(e.payload,'$.turn_id'),json_extract(e.payload,'$.item_id'),'completed'))) AND (event_kind<>'steer_pending' OR disposition IS NULL) AND (?3 IS NULL OR id<?3) ORDER BY id DESC LIMIT ?2) ORDER BY id").map_err(sqlite_error)?.query_map(params![id,limit,before],event_row).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(sqlite_error)?;
+            let events=tx.prepare("SELECT * FROM (SELECT e.* FROM chief_inbox_events e WHERE work_item_id=?1 AND event_kind NOT IN ('turn_execution','native_task_settings','token_usage','response_usage') AND (event_kind<>'activity_started' OR NOT EXISTS(SELECT 1 FROM chief_inbox_events c WHERE c.source_event_id=json_array('activity',e.work_item_id,json_extract(e.payload,'$.turn_id'),json_extract(e.payload,'$.item_id'),'completed'))) AND (event_kind<>'steer_pending' OR disposition IS NULL) AND (?3 IS NULL OR id<?3) ORDER BY id DESC LIMIT ?2) ORDER BY id").map_err(sqlite_error)?.query_map(params![id,limit,before],event_row).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(sqlite_error)?;
             let live=if before.is_none() {crate::chief_output::read_live(&tx,&id)?} else {vec![]};
             tx.commit().map_err(sqlite_error)?;
             Ok((events,live))
@@ -625,11 +625,28 @@ impl SqliteStore {
 		id: String,
 		turn_id: String,
 	) -> Result<ChiefWorkItem, StoreError> {
+		self.acknowledge_chief_dispatch_with_execution(id, turn_id, None).await
+	}
+
+	/// Bind requested execution settings in the same transaction as the native acknowledgment.
+	pub async fn acknowledge_chief_dispatch_with_execution(
+		&self,
+		id: String,
+		turn_id: String,
+		execution: Option<crate::ChiefTurnExecution>,
+	) -> Result<ChiefWorkItem, StoreError> {
 		bounded(&turn_id, 512)?;
+		if let Some(execution) = &execution {
+			execution.validate()?;
+		}
 		self.run(move |connection| {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			let work = read_work(&transaction, &id)?;
 			if work.dispatch_state != ChiefDispatchState::Dispatching { return Err(DatabaseError::Conflict.into()); }
+			if let Some(execution) = &execution {
+				let thread = work.codex_thread_id.as_deref().ok_or(DatabaseError::Conflict)?;
+				crate::chief_turn_execution::record(&transaction, &id, thread, &turn_id, execution)?;
+			}
 			transaction.execute("UPDATE chief_work_items SET dispatch_state = 'running', active_turn_id = ?2, updated_at_micros = max(updated_at_micros, ?3) WHERE id = ?1", params![id, turn_id, unix_micros()?]).map_err(sqlite_error)?;
 			transaction.execute("UPDATE chief_usage SET turn_id=?2,baseline_input_tokens=json_extract(usage_json,'$.input_tokens'),baseline_output_tokens=json_extract(usage_json,'$.output_tokens'),turn_input_tokens=NULL,turn_output_tokens=NULL WHERE work_id=?1 AND thread_id=?3",params![id,turn_id,work.codex_thread_id]).map_err(sqlite_error)?;
 			transaction.execute("UPDATE chief_inbox_events SET delivered_turn_id = ?2 WHERE delivery_work_item_id = ?1 AND delivered_turn_id = '' AND disposition IS NULL", params![id, turn_id]).map_err(sqlite_error)?;
@@ -1275,6 +1292,7 @@ mod tests {
 	mod legacy_setup;
 	mod steer_receipts;
 	mod task_references;
+	mod turn_execution;
 	use super::*;
 	use tempfile::tempdir;
 

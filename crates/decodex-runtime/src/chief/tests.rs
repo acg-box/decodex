@@ -7,6 +7,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/guardian.rs"] mod guardian;
 #[path = "tests/install.rs"] mod install;
 #[path = "tests/native_plan.rs"] mod native_plan;
+#[path = "tests/native_settings.rs"] mod native_settings;
 #[path = "tests/native_subagent_live.rs"] mod native_subagent_live;
 #[path = "tests/native_subagents.rs"] mod native_subagents;
 #[path = "tests/native_task_references.rs"] mod native_task_references;
@@ -363,6 +364,7 @@ async fn serve_fixture(
 	let mut lines = BufReader::new(reader).lines();
 	let mut threads = 0;
 	let mut turns = 0;
+	let mut settings = std::collections::HashMap::<String, Value>::new();
 
 	let mut faults = FixtureFaults {
 		injected: false,
@@ -393,6 +395,14 @@ async fn serve_fixture(
 				let mut result = history.get(id).cloned().unwrap_or_else(
 					|| json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
 				);
+				let configured = settings.get(id).cloned().unwrap_or_else(
+					|| json!({"model":"selected-model","reasoningEffort":"high","modelProvider":"openai"}),
+				);
+				for field in ["model", "reasoningEffort", "modelProvider"] {
+					if result["thread"].get(field).is_none() {
+						result["thread"][field] = configured[field].clone();
+					}
+				}
 				if result["thread"]["cwd"].is_null() {
 					result["thread"]["cwd"] = json!("/tmp");
 				}
@@ -433,13 +443,29 @@ async fn serve_fixture(
 				json!({"data":entries,"nextCursor":null})
 			},
 			Some("thread/resume") => {
-				json!({"thread":{"id":request["params"]["threadId"],"turns":history[request["params"]["threadId"].as_str().unwrap()]["thread"]["turns"]},"model":"selected-model","reasoningEffort":request["params"]["config"]["model_reasoning_effort"]})
+				let id = request["params"]["threadId"].as_str().unwrap();
+				let configured = settings
+					.get(id)
+					.cloned()
+					.unwrap_or_else(|| json!({"model":"selected-model","reasoningEffort":"high"}));
+				json!({"thread":{"id":id,"turns":history[id]["thread"]["turns"]},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
 			},
 			Some("thread/start") => {
 				threads += 1;
-				json!({"thread":{"id":format!("opaque thread/{threads}")},"model":"selected-model","reasoningEffort":request["params"]["config"]["model_reasoning_effort"]})
+				let id = format!("opaque thread/{threads}");
+				let configured = json!({"model":request["params"]["model"],"reasoningEffort":request["params"]["config"]["model_reasoning_effort"],"modelProvider":"openai"});
+				settings.insert(id.clone(), configured.clone());
+				json!({"thread":{"id":id},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
 			},
 			Some("turn/start") => {
+				let id = request["params"]["threadId"].as_str().unwrap();
+				if let Some(configured) = settings.get_mut(id) {
+					for (parameter, field) in [("model", "model"), ("effort", "reasoningEffort")] {
+						if let Some(value) = request["params"].get(parameter) {
+							configured[field] = value.clone();
+						}
+					}
+				}
 				turns += 1;
 				json!({"turn":{"id":format!("opaque turn/{turns}")}})
 			},
@@ -1419,7 +1445,7 @@ async fn turn_usage_sums_model_calls_without_double_counting_or_using_context_as
 
 #[tokio::test]
 async fn native_usage_replay_restores_context_and_the_next_turn_baseline() {
-	let (mut coordinator, _sent, _directory) = fixture_with_history(json!({"opaque thread/1":{"thread":{"turns":[{"id":"opaque turn/1","status":"completed","items":[]}]}}})).await;
+	let (mut coordinator, _sent, _directory) = fixture_with_history(json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"completed","items":[]}]}}})).await;
 	let first = coordinator.start_chief("chief", "Initial").await.unwrap();
 	complete(&mut coordinator, "chief").await;
 	coordinator.loaded_threads.clear();
@@ -2262,7 +2288,7 @@ async fn async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade() {
 	let mut started = false;
 	while let Ok(request) = sent.try_recv() {
 		assert!(
-			["thread/resume", "thread/inject_items", "turn/start"]
+			["thread/resume", "thread/read", "thread/inject_items", "turn/start"]
 				.contains(&request["method"].as_str().unwrap())
 		);
 		assert_eq!(request["params"]["threadId"], "opaque thread/1");

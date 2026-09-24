@@ -53,7 +53,8 @@ async fn qualify() {
 		ChiefConfig::new("gpt-5.6-sol".into(), EFFORT.into(), home.path().display().to_string());
 	let mut chief = ChiefCoordinator::new(store.clone(), session.client.clone(), config)
 		.expect("custom effort admitted");
-	chief.start_chief("chief", "Return fixture output").await.expect("start native Chief");
+	let first =
+		chief.start_chief("chief", "Return fixture output").await.expect("start native Chief");
 	loop {
 		let event = session.events.recv().await.expect("native event");
 		let terminal = matches!(&event, ServerEvent::Notification { method, params } if method == "turn/completed" && params["turn"]["status"] == "completed");
@@ -79,6 +80,36 @@ async fn qualify() {
 	assert_eq!(settings.reasoning_effort.as_deref(), Some(EFFORT));
 	assert_eq!(settings.model_provider.as_deref(), Some("fixture"));
 	assert_eq!(requests.load(Ordering::Acquire), 1, "one original request only");
+	drop(chief);
+	drop(session);
+	let mut session = NativeSession::start(&binary, home.path());
+	let config = ChiefConfig::new(
+		"unrelated-startup-model".into(),
+		"low".into(),
+		home.path().display().to_string(),
+	);
+	let mut chief = ChiefCoordinator::new(store.clone(), session.client.clone(), config)
+		.expect("restarted coordinator");
+	let second =
+		chief.continue_worker("chief", "Continue the saved task").await.expect("cold continuation");
+	loop {
+		let event = session.events.recv().await.expect("native event after restart");
+		let terminal = matches!(&event, ServerEvent::Notification { method, params } if method == "turn/completed" && params["turn"]["status"] == "completed");
+		chief.handle_event(event).await.expect("resumed native observation");
+		if terminal {
+			break;
+		}
+	}
+	assert_eq!(requests.load(Ordering::Acquire), 2, "one continuation, no replay");
+	for turn in [first.active_turn_id.expect("initial turn"), second] {
+		let selected = store
+			.chief_turn_execution("chief".into(), thread.clone(), turn)
+			.await
+			.expect("execution lookup")
+			.expect("atomic native ACK selection");
+		assert_eq!(selected.model, "gpt-5.6-sol");
+		assert_eq!(selected.effort.as_deref(), Some(EFFORT));
+	}
 	assert!(!backend.is_finished(), "fixture server must not fail an effort assertion");
 	backend.abort();
 }
