@@ -506,10 +506,22 @@ async fn bootstrap_macos_account_runtime(
 	let api = if crate::account_service::process_acceptance_fixture_endpoint().is_some() {
 		None
 	} else {
-		AccountApiRuntime::new(Arc::clone(&service), store.clone()).ok().map(Arc::new)
+		AccountApiRuntime::new(
+			Arc::clone(&service),
+			store.clone(),
+			conversation_launch_profile.clone(),
+		)
+		.ok()
+		.map(Arc::new)
 	};
 	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
-	let api = AccountApiRuntime::new(Arc::clone(&service), store.clone()).ok().map(Arc::new);
+	let api = AccountApiRuntime::new(
+		Arc::clone(&service),
+		store.clone(),
+		conversation_launch_profile.clone(),
+	)
+	.ok()
+	.map(Arc::new);
 	let status = match &api {
 		Some(_) => DoctorStatus::Ready,
 		None => DoctorStatus::Unavailable(DoctorIssue::Authentication),

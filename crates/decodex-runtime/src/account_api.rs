@@ -26,6 +26,17 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const MINIMUM_ACCESS_TOKEN_VALIDITY: Duration = Duration::from_secs(20);
 const RESET_CREDIT_DETAIL_RETRY_DELAY: Duration = Duration::from_millis(250);
 
+fn account_http_client() -> Result<reqwest::Client, AccountApiRuntimeError> {
+	reqwest::Client::builder()
+		.connect_timeout(CONNECT_TIMEOUT)
+		.timeout(HTTP_TIMEOUT)
+		.redirect(reqwest::redirect::Policy::none())
+		.retry(reqwest::retry::never())
+		.user_agent("decodex")
+		.build()
+		.map_err(|_| AccountApiRuntimeError::ProviderUnavailable)
+}
+
 /// Closed provider failure safe for UI and durable operation mapping.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AccountApiRuntimeError {
@@ -68,22 +79,17 @@ pub(crate) struct AccountApiRuntime {
 	accounts: Arc<AccountService>,
 	store: decodex_database::SqliteStore,
 	client: reqwest::Client,
+	activation_profile: Option<crate::account_launch::AttestedAppServerProfile>,
 }
 impl AccountApiRuntime {
-	/// Build one bounded client.  No Codex executable or protocol receipt is consulted.
+	/// Build the account client; only model activation needs the optional native policy profile.
 	pub(crate) fn new(
 		accounts: Arc<AccountService>,
 		store: decodex_database::SqliteStore,
+		activation_profile: Option<crate::account_launch::AttestedAppServerProfile>,
 	) -> Result<Self, AccountApiRuntimeError> {
-		let client = reqwest::Client::builder()
-			.connect_timeout(CONNECT_TIMEOUT)
-			.timeout(HTTP_TIMEOUT)
-			.redirect(reqwest::redirect::Policy::none())
-			.retry(reqwest::retry::never())
-			.user_agent("decodex")
-			.build()
-			.map_err(|_| AccountApiRuntimeError::ProviderUnavailable)?;
-		Ok(Self { accounts, store, client })
+		let client = account_http_client()?;
+		Ok(Self { accounts, store, client, activation_profile })
 	}
 
 	pub(crate) async fn reset_session(

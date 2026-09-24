@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use decodex_core::{AccountId, AccountQuotaWindow};
 
-use super::{AccountApiInventory, AccountApiObservation, AccountApiRuntime, BACKEND_API_BASE};
+use super::{AccountApiInventory, AccountApiObservation, AccountApiRuntime};
 
 const ACTIVATION_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_STREAM_BYTES: usize = 256 * 1024;
@@ -42,9 +42,15 @@ impl AccountApiRuntime {
 		{
 			return observation;
 		}
-		// Reuse the credential lock and refresh owner. No auth file or child process is created.
-		let Ok(credential) =
-			self.accounts.api_credential_for_observation(account_id, ACTIVATION_TIMEOUT).await
+		// The optional native profile supplies model routing policy; account health is independent.
+		let Some(profile) = self.activation_profile.clone() else {
+			return observation;
+		};
+		// Retain the account lock across read-only native discovery and the direct request.
+		let Ok(credential) = self
+			.accounts
+			.api_credential_for_observation(account_id, Duration::from_secs(180))
+			.await
 		else {
 			return observation;
 		};
@@ -68,9 +74,16 @@ impl AccountApiRuntime {
 		{
 			return observation;
 		}
-		let request = self
-			.client
-			.post(format!("{BACKEND_API_BASE}/codex/responses"))
+		let Ok((policy, credential)) =
+			crate::account_launch::read_activation_policy(profile, account_id.clone(), credential)
+				.await
+		else {
+			// No model request was made. Preserve the existing bounded rejection backoff.
+			let _ = self.store.finish_quota_activation(account_id, now, false).await;
+			return observation;
+		};
+		let request = policy
+			.request(&self.client)
 			.timeout(ACTIVATION_TIMEOUT)
 			.bearer_auth(credential.stored.bundle().access_token())
 			.header("ChatGPT-Account-Id", credential.binding.provider.account_id())
@@ -247,6 +260,34 @@ mod tests {
 			.timeout(Duration::from_secs(2))
 			.json(&activation_request());
 		assert_eq!(send_activation(request).await, ActivationOutcome::Rejected);
+	}
+
+	#[tokio::test]
+	async fn production_client_never_redirects_or_replays_activation() {
+		use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+		for status in ["307 Temporary Redirect", "503 Service Unavailable"] {
+			let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("backend");
+			let address = listener.local_addr().expect("address");
+			let server = tokio::spawn(async move {
+				let (mut socket, _) = listener.accept().await.expect("activation");
+				let mut bytes = [0; 4096];
+				assert!(socket.read(&mut bytes).await.expect("request") > 0);
+				socket.write_all(format!("HTTP/1.1 {status}\r\nLocation: http://{address}/redirected\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.expect("response");
+				drop(socket);
+				assert!(
+					tokio::time::timeout(Duration::from_millis(300), listener.accept())
+						.await
+						.is_err(),
+					"no redirect or replay"
+				);
+			});
+			let request = super::super::account_http_client()
+				.expect("production client")
+				.post(format!("http://{address}/responses"))
+				.json(&activation_request());
+			assert_eq!(send_activation(request).await, ActivationOutcome::Unknown);
+			server.await.expect("single request verified");
+		}
 	}
 
 	#[test]
