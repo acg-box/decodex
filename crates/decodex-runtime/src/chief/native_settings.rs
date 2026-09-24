@@ -50,8 +50,14 @@ impl ChiefCoordinator {
 			generation.clone(),
 		)
 		.await?;
-		crate::chief_plugins::persist_current(&self.store, &self.client, thread, generation)
-			.await?;
+		crate::chief_plugins::persist_current(
+			&self.store,
+			&self.client,
+			thread,
+			generation.clone(),
+		)
+		.await?;
+		crate::chief_models::persist_current(&self.store, &self.client, thread, generation).await?;
 		Ok(())
 	}
 

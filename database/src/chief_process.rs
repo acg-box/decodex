@@ -211,6 +211,7 @@ pub(crate) fn owns_work(
 mod tests {
 	mod app_settings;
 	mod hooks;
+	mod models;
 	mod permissions;
 	mod plugins;
 	mod response_usage;

@@ -1,6 +1,7 @@
 //! Native model selection, inference and cold persistence through the retained bridge.
 use super::*;
 use decodex_codex::app_server_client::ThreadModelSelection;
+#[path = "chief_process_native_model_store.rs"] mod journal;
 
 const EFFORT: &str = "future-provider-reasoning-effort-over-32-bytes";
 
@@ -63,6 +64,9 @@ async fn qualify(running: bool) {
 		run_turn(&mut session, &thread).await;
 		None
 	};
+	let (store, attempt, reserved) =
+		journal::reserve(home.path(), &session.client, &thread, active_turn.as_deref(), EFFORT)
+			.await;
 	let (_, guard) = session.client.configured_task_models(&thread).expect("configured settings");
 	session
 		.client
@@ -74,6 +78,7 @@ async fn qualify(running: bool) {
 		.await
 		.expect("native model fixture operation");
 	wait_selection(&mut session, &thread, "fixture-b").await;
+	journal::observe(&store, &session.client, attempt, reserved).await;
 	if let Some(turn) = active_turn {
 		assert!(session.client.observed_task_models(&thread).is_none());
 		backend = Some(start_backend(

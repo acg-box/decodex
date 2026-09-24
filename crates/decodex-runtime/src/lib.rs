@@ -26,6 +26,7 @@ mod chief_install;
 mod chief_integrations;
 mod chief_live_settings;
 mod chief_model_settings;
+mod chief_models;
 mod chief_native_goal;
 mod chief_permissions;
 mod chief_plugins;

@@ -15,12 +15,14 @@ pub struct ChiefTaskSettingsObservation {
 enum Kind {
 	Permissions,
 	Plugins,
+	Models,
 }
 impl Kind {
 	fn event(self) -> &'static str {
 		match self {
 			Self::Permissions => "native_task_permissions",
 			Self::Plugins => "native_task_plugins",
+			Self::Models => "native_task_models",
 		}
 	}
 
@@ -43,6 +45,14 @@ impl Kind {
 				settings,
 			),
 			Self::Plugins => crate::chief_plugins::observe(
+				connection,
+				work,
+				thread,
+				generation,
+				observation,
+				settings,
+			),
+			Self::Models => crate::chief_models::observe(
 				connection,
 				work,
 				thread,
@@ -216,6 +226,55 @@ impl SqliteStore {
 		generation: Option<String>,
 	) -> Result<Option<ChiefTaskSettingsObservation>, StoreError> {
 		self.read_settings_observation(work, thread, generation, Kind::Plugins).await
+	}
+
+	/// Record native model facts without scheduling work or claiming a local write applied.
+	pub async fn record_chief_task_models(
+		&self,
+		thread: String,
+		generation: Option<String>,
+		settings: Option<String>,
+		source_digest: String,
+	) -> Result<Option<i64>, StoreError> {
+		self.record_settings_observation(
+			thread,
+			generation,
+			settings,
+			source_digest,
+			false,
+			Kind::Models,
+		)
+		.await
+	}
+
+	/// Record model facts verified against the current transport observation. Matching later
+	/// facts can settle a reserved target; historical or stale facts must use the other method.
+	pub async fn record_chief_task_models_publication(
+		&self,
+		thread: String,
+		generation: Option<String>,
+		settings: Option<String>,
+		source_digest: String,
+	) -> Result<Option<i64>, StoreError> {
+		self.record_settings_observation(
+			thread,
+			generation,
+			settings,
+			source_digest,
+			true,
+			Kind::Models,
+		)
+		.await
+	}
+
+	/// Read only model observations from this exact current native owner.
+	pub async fn chief_task_models(
+		&self,
+		work: String,
+		thread: String,
+		generation: Option<String>,
+	) -> Result<Option<ChiefTaskSettingsObservation>, StoreError> {
+		self.read_settings_observation(work, thread, generation, Kind::Models).await
 	}
 
 	async fn read_settings_observation(
