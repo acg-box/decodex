@@ -11,6 +11,8 @@ mod chief_dispatch_rejection;
 pub use chief_dispatch_rejection::ChiefDispatchRefusal;
 
 mod chief;
+mod chief_live_settings;
+pub use chief_live_settings::{ChiefLiveReviewerAttempt, ChiefLiveReviewerReceipt};
 mod chief_install;
 pub use chief_install::{ChiefInstallAttempt, ChiefInstallRequirements};
 mod chief_guardian;
