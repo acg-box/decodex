@@ -178,3 +178,56 @@ async fn serve_policy(
 		stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.expect("native policy response");
 	}
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; attested selected-directory model defaults"]
+async fn installed_attested_model_defaults_preserve_selected_directory_and_sources() {
+	use std::sync::atomic::AtomicUsize;
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
+	let home = tempfile::tempdir().expect("home");
+	let directory = home.path().canonicalize().expect("directory");
+	let workspace = directory.join("workspace");
+	fs::create_dir_all(workspace.join(".codex")).expect("project config");
+	fs::create_dir(workspace.join(".git")).expect("project root");
+	fs::create_dir(directory.join(".codex")).expect("native home");
+	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("backend");
+	let address = listener.local_addr().expect("address");
+	let backend = tokio::spawn(serve_policy(
+		listener,
+		Arc::new(AtomicUsize::new(0)),
+		Arc::new(AtomicUsize::new(0)),
+	));
+	fs::write(directory.join(".codex/config.toml"),format!("model=\"global-model\"\nmodel_reasoning_effort=\"low\"\nchatgpt_base_url=\"http://{address}\"\n[projects.{}]\ntrust_level=\"trusted\"\n[analytics]\nenabled=false\n",serde_json::json!(workspace))).expect("native config");
+	fs::write(
+		workspace.join(".codex/config.toml"),
+		"model=\"project-model\"\nmodel_reasoning_effort=\"high\"\nservice_tier=\"flex\"\n",
+	)
+	.expect("project defaults");
+	tokio::task::spawn_blocking(move || {
+		let mut child = control_child(&binary, &directory);
+		let id = AccountId::new("10000000-0000-4000-8000-000000000001").expect("account");
+		child.initialize_ordinary_turns(&SyntheticVault(id)).expect("initialize");
+		for (path, model, effort) in
+			[(&directory, "global-model", "low"), (&workspace, "project-model", "high")]
+		{
+			let (defaults, events) =
+				child.read_ordinary_model_defaults(path.to_str().expect("directory"), false);
+			child.retain_ordinary_events(events).expect("retain events");
+			let defaults = defaults.expect("native defaults");
+			assert_eq!(defaults.model.as_deref(), Some(model));
+			assert_eq!(defaults.reasoning_effort.as_deref(), Some(effort));
+		}
+		let (managed, events) =
+			child.read_ordinary_model_defaults(workspace.to_str().expect("directory"), true);
+		child.retain_ordinary_events(events).expect("retain events");
+		assert_eq!(
+			managed.expect("managed defaults"),
+			decodex_codex::app_server_client::NativeExecutionDefaults::default()
+		);
+		child.shutdown().expect("confirmed cleanup");
+	})
+	.await
+	.expect("native owner");
+	assert!(!backend.is_finished());
+	backend.abort();
+}

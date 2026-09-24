@@ -63,6 +63,18 @@ fn project(value: &Value, managed: bool) -> Result<NativeExecutionDefaults, Clie
 	})
 }
 
+impl NativeExecutionDefaults {
+	/// Project only creation fields from a native config/read response.
+	pub fn from_config_response(value: &Value) -> Result<Self, ClientError> {
+		project(value, false)
+	}
+
+	/// Project managed new-thread defaults, preserving absence without inventing a fallback.
+	pub fn from_requirements_response(value: &Value) -> Result<Self, ClientError> {
+		project(value, true)
+	}
+}
+
 impl AppServerClient {
 	/// Read only bounded creation-default fields at an exact absolute directory.
 	/// The caller must verify account/process/directory ownership before and after this read.
@@ -80,9 +92,12 @@ impl AppServerClient {
 		tokio::time::timeout(std::time::Duration::from_secs(8), async {
 			let configured =
 				self.request("config/read", json!({"cwd":cwd,"includeLayers":false})).await?;
-			let configured = project(&configured, false)?;
+			let configured = NativeExecutionDefaults::from_config_response(&configured)?;
 			let managed = self.request("configRequirements/read", json!({})).await?;
-			Ok(NativeModelDefaults { configured, managed: project(&managed, true)? })
+			Ok(NativeModelDefaults {
+				configured,
+				managed: NativeExecutionDefaults::from_requirements_response(&managed)?,
+			})
 		})
 		.await
 		.map_err(|_| ClientError::Io)?

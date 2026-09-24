@@ -836,6 +836,7 @@ impl Conversations {
 							account_revision,
 							working_directory: actual,
 							models,
+							..
 						},
 					) = &result.payload && actual == &working_directory
 						&& *account_revision > 0
@@ -2373,6 +2374,7 @@ pub(crate) mod tests {
 					working_directory: ConversationWorkingDirectory::new("/tmp")
 						.expect("directory"),
 					models,
+					defaults: None,
 				},
 			),
 		};

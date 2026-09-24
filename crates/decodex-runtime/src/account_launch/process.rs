@@ -999,6 +999,50 @@ impl AttestedProcessChild {
 		.map_err(|()| ConversationProcessError::Incompatible)
 	}
 
+	/// Read only model-default fields from the same initialized, account-bound source.
+	pub(crate) fn read_ordinary_model_defaults(
+		&mut self,
+		cwd: &str,
+		requirements: bool,
+	) -> (
+		Result<decodex_codex::app_server_client::NativeExecutionDefaults, ConversationProcessError>,
+		Vec<ConversationProcessEvent>,
+	) {
+		let mut events = Vec::new();
+		let result = (|| {
+			self.require_ordinary_turns_initialized()?;
+			let (method, params) = if requirements {
+				("configRequirements/read", serde_json::json!({}))
+			} else {
+				("config/read", serde_json::json!({"cwd":cwd,"includeLayers":false}))
+			};
+			let request = self.process.prepare_conversation_request(method, &params)?;
+			self.process
+				.conversation_request_buffered(
+					request,
+					self.timeout.min(Duration::from_secs(8)),
+					false,
+					&mut events,
+					|bytes| {
+						let value: serde_json::Value =
+							serde_json::from_slice(bytes).map_err(|_| {
+								decodex_codex::ConversationContractError::MalformedResponse
+							})?;
+						let decoded = if requirements {
+							decodex_codex::app_server_client::NativeExecutionDefaults::from_requirements_response(&value)
+						} else {
+							decodex_codex::app_server_client::NativeExecutionDefaults::from_config_response(&value)
+						};
+						decoded.map_err(|_| {
+							decodex_codex::ConversationContractError::MalformedResponse
+						})
+					},
+				)
+				.map(|result| result.value)
+		})();
+		(result, events)
+	}
+
 	/// Read one model page on the existing account-bound transport and retain interleaved events.
 	pub(crate) fn read_ordinary_model_page(
 		&mut self,
