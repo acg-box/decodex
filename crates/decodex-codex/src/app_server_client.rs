@@ -37,7 +37,11 @@ pub use thread_plugins::{
 	NativeTaskPlugins, ThreadPluginSelection, ThreadPluginSelectionQueued,
 	is_thread_plugin_selection,
 };
+mod app_link_settings;
 mod hooks;
+pub use app_link_settings::{
+	AppLinkSettingEdit, AppLinkSettings, AppLinkSettingsWrite, is_app_link_settings_write,
+};
 mod integrations;
 pub use hooks::{
 	HookSettingsChange, HookSettingsReview, HookSettingsWrite, is_hook_settings_write,
