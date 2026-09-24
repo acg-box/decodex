@@ -47,3 +47,10 @@ port                     = 49152
 max_bytes       = 134217728
 max_entries     = 2048
 max_entry_bytes = 4194304
+
+# Independent Decodex account-login policy on the server host. Restart the daemon
+# after changes. This does not change the native Codex configuration.
+[login]
+# On macOS, retry an unsent authorization-code exchange through the system route.
+# HTTP responses, redirects, and failures after sending the code are not retried.
+system_proxy_fallback = true

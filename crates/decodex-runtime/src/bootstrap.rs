@@ -81,6 +81,7 @@ pub struct ServiceBootstrap {
 	account_profiles: Option<AccountProfileRuntime>,
 	account_api: Option<Arc<AccountApiRuntime>>,
 	reset_cards: Option<ApiResetCardRuntime>,
+	login_system_proxy_fallback: bool,
 	conversations: ConversationCapability,
 	doctor: DoctorReport,
 	// Keep the one acquired daemon capability last so an unbound bootstrap
@@ -142,6 +143,7 @@ impl ServiceBootstrap {
 			account_profiles,
 			account_api,
 			reset_cards,
+			login_system_proxy_fallback,
 			conversations,
 			doctor,
 			daemon_authority,
@@ -164,6 +166,7 @@ impl ServiceBootstrap {
 					store.clone(),
 					Arc::clone(accounts),
 					account_observations.clone(),
+					login_system_proxy_fallback,
 				))),
 			_ => None,
 		};
@@ -429,6 +432,9 @@ async fn bootstrap_with_authority(
 		account_profiles,
 		account_api,
 		reset_cards,
+		login_system_proxy_fallback: _loaded
+			.as_ref()
+			.is_ok_and(DecodexConfig::login_system_proxy_fallback),
 		conversations,
 		doctor,
 		daemon_authority: Ok(listener),
@@ -563,6 +569,7 @@ fn bootstrap_without_authority(
 		account_profiles: None,
 		account_api: None,
 		reset_cards: None,
+		login_system_proxy_fallback: false,
 		conversations,
 		doctor,
 		daemon_authority: Err(refusal),
@@ -598,6 +605,7 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		account_profiles: None,
 		account_api: None,
 		reset_cards: None,
+		login_system_proxy_fallback: false,
 		conversations,
 		doctor,
 		daemon_authority: Err(LocalTransportRefusal::ConfigurationUnavailable),

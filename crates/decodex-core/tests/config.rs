@@ -313,3 +313,31 @@ fn identity_file_accepts_only_canonical_text_and_one_optional_newline() {
 		ConfigError::InvalidServerIdentity,
 	);
 }
+
+#[test]
+fn login_proxy_policy_defaults_on_and_remains_server_owned() {
+	let input = support::valid_config();
+	assert!(
+		DecodexConfig::parse(input.as_bytes())
+			.expect("legacy config")
+			.login_system_proxy_fallback()
+	);
+	for enabled in [false, true] {
+		let input = format!("{input}\n[login]\nsystem_proxy_fallback = {enabled}\n");
+		assert_eq!(
+			DecodexConfig::parse(input.as_bytes())
+				.expect("server policy")
+				.login_system_proxy_fallback(),
+			enabled
+		);
+		assert!(DecodexClientConfig::parse(input.as_bytes()).is_ok());
+	}
+	for field in ["system_proxy_fallback = 'false'", "unknown = true"] {
+		let input = format!("{input}\n[login]\n{field}\n");
+		assert!(DecodexConfig::parse(input.as_bytes()).is_err());
+		assert!(
+			DecodexClientConfig::parse(input.as_bytes()).is_ok(),
+			"remote clients do not reinterpret host login policy"
+		);
+	}
+}

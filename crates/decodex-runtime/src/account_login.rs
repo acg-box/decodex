@@ -90,8 +90,12 @@ impl AccountLoginManager {
 		store: SqliteStore,
 		accounts: Arc<AccountService>,
 		observations: Option<AccountObservationService>,
+		system_proxy_fallback: bool,
 	) -> Self {
-		let provider = cleanup_stale_login_homes().and_then(|()| Config::production()).ok();
+		let provider = cleanup_stale_login_homes()
+			.and_then(|()| Config::production())
+			.map(|config| config.with_system_proxy_fallback(system_proxy_fallback))
+			.ok();
 		Self {
 			operation: tokio::sync::Mutex::new(()),
 			session: Mutex::new(None),
