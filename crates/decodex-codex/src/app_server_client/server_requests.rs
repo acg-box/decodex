@@ -17,6 +17,7 @@ pub(super) struct ServerRequests(
 	Arc<AtomicU64>,
 	super::settings_guard::SettingsRevisions,
 	super::permission_observations::SettingsObservations<super::NativeTaskPermissions>,
+	super::permission_observations::SettingsObservations<super::NativeTaskPlugins>,
 );
 struct Entry {
 	thread: String,
@@ -105,6 +106,25 @@ impl ServerRequests {
 		Some((settings, guard))
 	}
 
+	pub(super) fn configured_plugins(
+		&self,
+		thread: &str,
+	) -> Option<(super::NativeTaskPlugins, HistoryGuard)> {
+		let guard = self.thread_settings_guard(thread)?;
+		let settings = self.5.configured(thread)?;
+		guard.is_live().then_some((settings, guard))
+	}
+
+	pub(super) fn plugin_observation(
+		&self,
+		thread: &str,
+	) -> Option<(super::NativeTaskPlugins, HistoryGuard)> {
+		let (settings, observed) = self.5.get(thread)?;
+		let mut guard = self.history_guard(self.history_revision())?;
+		guard.settings = Some(observed);
+		Some((settings, guard))
+	}
+
 	pub(super) fn permission_revision(&self) -> u64 {
 		self.4.revision()
 	}
@@ -117,6 +137,7 @@ impl ServerRequests {
 			super::NativeTaskPermissions::from_thread_response(response),
 			guard.clone(),
 		);
+		self.5.record(thread, super::NativeTaskPlugins::from_settings(response), guard);
 	}
 
 	pub(super) fn question_guard(&self, revision: u64) -> Option<HistoryGuard> {
@@ -177,6 +198,7 @@ impl ServerRequests {
 	pub(super) fn clear(&self) {
 		self.3.clear();
 		self.4.clear();
+		self.5.clear();
 		if let Ok(mut rows) = self.0.lock() {
 			rows.clear();
 		}
@@ -186,6 +208,7 @@ impl ServerRequests {
 		let ServerEvent::Notification { method, params } = event else { return };
 		if method == "thread/reverted" {
 			self.4.clear();
+			self.5.clear();
 		}
 		let Some(thread) = params["threadId"].as_str() else { return };
 		if matches!(
@@ -198,6 +221,19 @@ impl ServerRequests {
 		) {
 			self.3.invalidate(thread);
 		}
+		match method.as_str() {
+			"thread/settings/updated" => self.5.record(
+				thread,
+				super::NativeTaskPlugins::from_settings(&params["threadSettings"]),
+				self.3.capture(thread),
+			),
+			"turn/started" => self.5.start_turn(thread, params["turn"]["id"].as_str()),
+			"turn/completed" =>
+				self.5.finish_turn(thread, params["turn"]["id"].as_str(), self.3.capture(thread)),
+			"thread/closed" | "thread/archived" | "thread/deleted" => self.5.remove(thread),
+			_ => {},
+		}
+
 		match method.as_str() {
 			"thread/settings/updated" => self.4.record(
 				thread,

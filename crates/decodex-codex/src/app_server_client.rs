@@ -26,11 +26,16 @@ mod initialize;
 mod live_settings;
 mod permission_observations;
 mod permissions;
+mod thread_plugins;
 pub use initialize::InitializeCapabilities;
 pub use live_settings::{LiveReviewer, LiveSettingsOutcome, is_live_reviewer_update};
 pub use permissions::{
 	NativePermissionProfile, NativeTaskPermissions, ThreadPermissionSelection,
 	ThreadPermissionSelectionQueued, is_thread_permission_selection,
+};
+pub use thread_plugins::{
+	NativeTaskPlugins, ThreadPluginSelection, ThreadPluginSelectionQueued,
+	is_thread_plugin_selection,
 };
 mod integrations;
 mod plugin_install;
@@ -216,6 +221,25 @@ impl AppServerClient {
 			return None;
 		}
 		self.server_requests.permission_observation(thread)
+	}
+
+	/// Read saved plugin exclusions, which activate on a subsequent admitted turn.
+	pub fn configured_task_plugins(
+		&self,
+		thread: &str,
+	) -> Option<(NativeTaskPlugins, HistoryGuard)> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.configured_plugins(thread)
+	}
+
+	/// Read idle plugin exclusions with a source guard, without resuming the task.
+	pub fn observed_task_plugins(&self, thread: &str) -> Option<(NativeTaskPlugins, HistoryGuard)> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.plugin_observation(thread)
 	}
 
 	/// The caller supplies executable, arguments, cwd, and environment. This function

@@ -231,9 +231,10 @@ fn pump(
 fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result<(), ClientError> {
 	if let Some(method) = value.get("method") {
 		if method == "thread/settings/update" {
-			return if decodex_codex::app_server_client::is_thread_permission_selection(
-				&value["params"],
-			) {
+			return if decodex_codex::app_server_client::is_thread_plugin_selection(&value["params"])
+				|| decodex_codex::app_server_client::is_thread_permission_selection(
+					&value["params"],
+				) {
 				Ok(())
 			} else {
 				Err(ClientError::InvalidFrame)
@@ -254,7 +255,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "thread/realtime/stop"
 					| "model/list" | "experimentalFeature/list"
 					| "permissionProfile/list"
-					| "thread/start"
+					| "hooks/list" | "thread/start"
 					| "thread/resume"
 					| "thread/inject_items"
 					| "thread/attachment/list"
@@ -290,6 +291,20 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 		}
 	}
 	Ok(())
+}
+
+#[cfg(test)]
+#[test]
+fn plugin_settings_bridge_accepts_only_bounded_exact_exclusions() {
+	use serde_json::json;
+	let mut requests = HashSet::new();
+	let mut frame = json!({"id":42,"method":"thread/settings/update","params":{"threadId":"thread","disabledPluginIds":["sample@test"]}});
+	assert!(validate_outbound(&frame, &mut requests).is_ok());
+	frame["params"]["permissions"] = json!(":full-access");
+	assert!(validate_outbound(&frame, &mut requests).is_err());
+	frame["params"] =
+		json!({"threadId":"thread","disabledPluginIds":["sample@test","sample@test"]});
+	assert!(validate_outbound(&frame, &mut requests).is_err());
 }
 
 #[cfg(test)]
