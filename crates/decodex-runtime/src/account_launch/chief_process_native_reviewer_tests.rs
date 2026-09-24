@@ -136,3 +136,14 @@ pub(super) async fn trust_hook(
 	let owned = store::OwnedReviewer::new(home, client, thread, "fixture-active").await;
 	owned.trust_hook().await;
 }
+
+pub(super) async fn select_task_model(
+	client: &decodex_codex::app_server_client::AppServerClient,
+	home: &std::path::Path,
+	thread: &str,
+	model: &str,
+	effort: Option<&str>,
+) {
+	let owned = store::OwnedReviewer::new(home, client, thread, "fixture-active").await;
+	owned.select_task_model(model, effort).await;
+}

@@ -92,6 +92,11 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 		.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown"));
 	let can_update = (idle || running)
 		&& !other_pending
+		&& !store
+			.chief_model_receipt(k.work.clone(), k.thread.clone())
+			.await
+			.ok()?
+			.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown"))
 		&& work.status != decodex_database::ChiefWorkStatus::Resolved;
 	let profiles: Vec<ChiefPermissionProfile> = profiles
 		.into_iter()

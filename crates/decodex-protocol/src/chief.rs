@@ -279,6 +279,19 @@ pub enum ChiefActionDto {
 		/// Explicit shared configuration change.
 		change: crate::ChiefHookChange,
 	},
+	/// Select a model for subsequent turns without starting inference.
+	SetTaskModel {
+		/// Exact local work.
+		work_id: crate::EntityId,
+		/// Exact native thread.
+		thread_id: crate::EntityId,
+		/// Reviewed source, settings and catalog identity.
+		review_token: crate::WireText,
+		/// Explicit native model.
+		model: crate::ConversationModel,
+		/// Explicit advertised effort; omission preserves configured effort.
+		effort: Option<crate::ConversationReasoningEffort>,
+	},
 	/// Change one task plugin exclusion.
 	SetTaskPlugin {
 		/// Exact local work.

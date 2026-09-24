@@ -323,7 +323,61 @@ impl OwnedReviewer {
 	}
 }
 
+#[path = "chief_process_model_service_tests.rs"] mod model_service_tests;
 #[path = "chief_process_plugin_service_tests.rs"] mod plugin_service_tests;
+
+impl OwnedReviewer {
+	pub(super) async fn select_task_model(&self, model: &str, effort: Option<&str>) {
+		use decodex_protocol::{ChiefModelOutcome as Outcome, ChiefModelSelectionState as State};
+		let source = || async { Some(self.source(&self.key)) };
+		let State::Available { review_token, .. } =
+			crate::chief_models::read(&self.store, source).await
+		else {
+			panic!("native model review")
+		};
+		crate::chief_models::write(
+			&self.store,
+			source,
+			crate::chief_models::Change {
+				thread: &self.key.thread,
+				review: review_token.as_str(),
+				model,
+				effort,
+				attempt_id: "native-model",
+			},
+		)
+		.await
+		.expect("native model selection");
+		tokio::time::timeout(std::time::Duration::from_secs(5), async {
+			loop {
+				if matches!(
+					crate::chief_models::read(&self.store, source).await,
+					State::Available { last_outcome: Some(Outcome::TargetObserved), .. }
+				) {
+					break;
+				}
+				tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+			}
+		})
+		.await
+		.expect("native model publication");
+		assert!(
+			crate::chief_models::write(
+				&self.store,
+				source,
+				crate::chief_models::Change {
+					thread: &self.key.thread,
+					review: review_token.as_str(),
+					model,
+					effort,
+					attempt_id: "replay",
+				}
+			)
+			.await
+			.is_err()
+		);
+	}
+}
 
 impl OwnedReviewer {
 	pub(super) async fn select_task_plugin(&self) {
@@ -388,9 +442,9 @@ impl OwnedReviewer {
 	}
 }
 
-#[path = "chief_process_hook_service_tests.rs"] mod hook_service_tests;
-#[path = "chief_process_app_service_tests.rs"] mod app_service_tests;
 #[path = "chief_process_app_native_tests.rs"] mod app_native_tests;
+#[path = "chief_process_app_service_tests.rs"] mod app_service_tests;
+#[path = "chief_process_hook_service_tests.rs"] mod hook_service_tests;
 
 impl OwnedReviewer {
 	pub(super) async fn trust_hook(&self) {
