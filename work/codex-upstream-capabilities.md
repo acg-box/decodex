@@ -362,3 +362,20 @@ result is not replay authority. Records survive database reopen and do not wake
 work. Internal attempt/result rows are excluded from transcript pagination before
 the limit, so they cannot displace conversation messages. Database schema35 and
 protocol2.56 are unchanged. Runtime and desktop integration remains pending.
+
+
+## Current-turn reviewer service
+
+Protocol2.57 adds an exact-work inspection query and an explicit reviewer update
+command. `ChiefReviewer` is the shared public selection type. The service binds
+inspection to process generation, account revision, native history, thread, turn,
+and the last local receipt. Publication first reserves the review in the journal,
+then uses the retained native adapter, then records its immutable outcome.
+
+Known local prewrite refusals are recorded as rejected after durable completion,
+even if the source changes afterward. Lost replies, malformed receipts, and source
+changes after submission remain unknown. No uncertain update is replayed. Native
+store qualification checks stale reviews, duplicate rejection, receipt persistence
+across database reopen, actual routing, and terminal-target refusal. The ownership
+fixture uses disposable synthetic account/process rows; it does not qualify kernel
+admission or enrollment. Desktop controls are still pending in the next batch.

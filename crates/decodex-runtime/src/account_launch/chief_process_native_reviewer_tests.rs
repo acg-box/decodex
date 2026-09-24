@@ -1,4 +1,5 @@
 //! Native active-reviewer changes preserve pending requests and future defaults.
+#[path = "chief_process_native_reviewer_store.rs"] mod store;
 use super::{NativeSession, serve_fixture};
 use decodex_codex::app_server_client::{LiveReviewer, LiveSettingsOutcome, RequestId, ServerEvent};
 use serde_json::{Value, json};
@@ -33,8 +34,8 @@ async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
 		let (id, method, params) = next_request(&mut session.events).await;
 		assert_eq!(method, "item/tool/call");
 		let pending = session.client.server_request_guard(&id, &method, &params).unwrap();
-		let guard = session.client.history_guard(session.client.history_revision()).unwrap();
-		assert_eq!(session.client.update_live_reviewer(thread, turn, LiveReviewer::User, guard).await.unwrap(), LiveSettingsOutcome::Applied);
+		let owned = store::OwnedReviewer::new(home.path(), &session.client, thread, turn).await;
+		owned.publish(turn, decodex_protocol::ChiefReviewer::User).await;
 		assert_eq!(requests.load(Ordering::Acquire), 1, "settings update cannot release pending tool");
 		assert!(session.client.server_request_guard(&id, &method, &params).is_some());
 		session.client.respond_guarded(id, json!({"contentItems":[{"type":"inputText","text":"Continue"}],"success":true}), pending).await.unwrap();
@@ -53,6 +54,7 @@ async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
 		finish(&mut session.events).await;
 		let guard = session.client.history_guard(session.client.history_revision()).unwrap();
 		assert_eq!(session.client.update_live_reviewer(thread, turn, LiveReviewer::AutoReview, guard).await.unwrap(), LiveSettingsOutcome::TargetUnavailable);
+		owned.completed_target(turn).await;
 		assert_eq!(requests.load(Ordering::Acquire), 3);
 		session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Run the next isolated turn."}]})).await.unwrap();
 		finish(&mut session.events).await;

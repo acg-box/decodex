@@ -17,6 +17,8 @@ mod chief_media;
 pub use chief_media::{
 	CHIEF_MEDIA_CHUNK_BYTES, ChiefMediaRequest, ChiefMediaResult, MAX_CHIEF_MEDIA_BYTES,
 };
+mod chief_live_settings;
+pub use chief_live_settings::{ChiefLiveReviewerOutcome, ChiefLiveReviewerState, ChiefReviewer};
 mod chief_model_settings;
 mod chief_timeline;
 pub use chief_model_settings::ChiefModelSettingsResult;
@@ -162,7 +164,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 56 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 57 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
@@ -247,7 +249,8 @@ mod tests {
 
 mod mcp_elicitation;
 pub use mcp_elicitation::{
-	McpFormChoice, McpFormField, mcp_form_content, mcp_form_fields, mcp_request_fields, validate_mcp_response,
+	McpFormChoice, McpFormField, mcp_form_content, mcp_form_fields, mcp_request_fields,
+	validate_mcp_response,
 };
 
 mod weather;
