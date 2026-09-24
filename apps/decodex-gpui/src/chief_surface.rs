@@ -22,6 +22,7 @@
 #[path = "chief_mcp_forms.rs"] mod mcp_forms;
 #[path = "chief_misalignment.rs"] mod misalignment;
 #[path = "chief_model_settings.rs"] mod model_settings;
+#[path = "chief_models.rs"] mod models;
 #[path = "chief_native_agents.rs"] mod native_agents;
 #[path = "chief_native_goal.rs"] mod native_goal;
 #[path = "chief_timeline.rs"] mod native_timeline;
@@ -177,6 +178,7 @@ pub(crate) struct ChiefSurface {
 	live_reviewer: live_settings::Panel,
 	permission_profiles: permissions::Panel,
 	task_plugins: plugins::Panel,
+	task_models: models::Panel,
 	hook_settings: hooks::Panel,
 	app_settings: app_settings::Panel,
 	saved_app_settings: saved_app_settings::Panel,
@@ -406,6 +408,7 @@ impl ChiefSurface {
 			live_reviewer: Default::default(),
 			permission_profiles: Default::default(),
 			task_plugins: Default::default(),
+			task_models: Default::default(),
 			hook_settings: Default::default(),
 			app_settings: Default::default(),
 			saved_app_settings: Default::default(),
@@ -1089,6 +1092,7 @@ impl ChiefSurface {
 		self.reset_live_reviewer();
 		self.reset_permission_profiles();
 		self.reset_task_plugins();
+		self.reset_task_models();
 		self.reset_hook_settings();
 		self.reset_app_settings();
 		self.reset_saved_app_settings();
@@ -1223,6 +1227,7 @@ impl ChiefSurface {
 			self.reset_live_reviewer();
 			self.reset_permission_profiles();
 			self.reset_task_plugins();
+			self.reset_task_models();
 			self.reset_hook_settings();
 			self.reset_app_settings();
 			self.reset_saved_app_settings();
@@ -1236,6 +1241,7 @@ impl ChiefSurface {
 				self.invalidate_live_reviewer_for_snapshot(&snapshot);
 				self.invalidate_permission_profiles(&snapshot);
 				self.invalidate_task_plugins(&snapshot);
+				self.invalidate_task_models(&snapshot);
 				self.invalidate_hook_settings(&snapshot);
 				self.invalidate_app_settings(&snapshot);
 				self.invalidate_saved_app_settings(&snapshot);
@@ -2135,6 +2141,7 @@ impl ChiefSurface {
 									.child(self.live_reviewer_panel(item, cx))
 									.child(self.permission_profiles_panel(item, cx))
 									.child(self.task_plugins_panel(item, cx))
+									.child(self.task_models_panel(item, cx))
 									.child(self.hook_settings_panel(item, cx))
 									.child(self.saved_app_settings_panel(item, cx))
 							}),
