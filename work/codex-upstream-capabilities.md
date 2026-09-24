@@ -468,3 +468,23 @@ request starts. A new retained native process reads the same goal snapshot after
 restart. Six installed-native bridge fixtures pass with the shared provider helper;
 existing fixtures retain their zero-usage defaults. No production credentials or
 paid inference are used. Protocol2.58 and database35 are unchanged.
+
+
+## External account refresh wire qualification
+
+The installed alpha16.3 app-server sends an unauthorized refresh request after a
+loopback provider returns 401. The fixture routes that request through the actual
+`SupervisedProcess::service_inbound_request` parser and response writer, with a
+synthetic account-bound refresh provider. The provider sees the refreshed token
+on the retry. After restart and explicit reauthentication, the same native thread
+continues with the successor token and does not request another refresh.
+External authentication does not write auth.json in the isolated fixture home.
+
+A second native case makes the refresh provider fail. The production response is
+a bounded error, the native turn fails, and the inference request is not replayed.
+Direct handler tests cover absent and null previous-account fields, nullable plan,
+callback failure, malformed requests and a returned provider identity mismatch.
+All tokens and endpoints are synthetic. The Account Service regression suite
+covers its existing durable refresh and successor rules separately; these fixtures
+do not prove kernel process admission or a live vault rotation through that service.
+Protocol2.58 and database35 are unchanged.

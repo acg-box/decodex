@@ -5215,6 +5215,10 @@ fn process_group_exists(_pid: u32) -> Result<bool, SupervisionError> {
 }
 
 #[cfg(test)]
+#[path = "process_refresh_tests.rs"]
+mod refresh_tests;
+
+#[cfg(test)]
 pub(crate) mod tests {
 	use std::{
 		env,
