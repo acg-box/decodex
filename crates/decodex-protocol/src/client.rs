@@ -310,6 +310,32 @@ impl ChiefClient {
 		}
 	}
 
+	/// Inspect current permission facts and the profile catalog for one task.
+	pub async fn permission_profiles(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefPermissionState, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(45),
+		};
+		let completed = time::timeout(
+			Duration::from_secs(45),
+			transport.query_inner(
+				"chief-permission-profiles",
+				QueryPayload::GetChiefPermissionProfiles { work_id },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefPermissionProfiles(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Observe coalesced native output over one retained local connection.
 	/// Dropping the receiver cancels the observation; it never starts or resumes work.
 	pub async fn observe_output(
@@ -1086,6 +1112,7 @@ impl ChiefClient {
 fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 	match action {
 		crate::ChiefActionDto::SetLiveReviewer { work_id, .. } => work_id,
+		crate::ChiefActionDto::SelectPermissions { work_id, .. } => work_id,
 		crate::ChiefActionDto::Start(start)
 		| crate::ChiefActionDto::StartConfigured { start, .. } => &start.root_id,
 		crate::ChiefActionDto::Send { root_id, .. }
@@ -3296,7 +3323,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 58 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 59 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

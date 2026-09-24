@@ -70,14 +70,18 @@ async fn qualify(running: bool) {
 		);
 	}
 	let guard = session.client.thread_settings_guard(&thread).expect("settings guard");
-	session
-		.client
-		.queue_thread_permission_selection(
-			&ThreadPermissionSelection::new(&thread, "scoped").expect("selection"),
-			guard.clone(),
-		)
-		.await
-		.expect("queue selection");
+	if running {
+		super::reviewer::select_permission(&session.client, &root, &thread).await;
+	} else {
+		session
+			.client
+			.queue_thread_permission_selection(
+				&ThreadPermissionSelection::new(&thread, "scoped").expect("selection"),
+				guard.clone(),
+			)
+			.await
+			.expect("queue selection");
+	}
 	let observed = loop {
 		let event = session.events.recv().await.expect("native notification");
 		if let ServerEvent::Notification { method, params } = event

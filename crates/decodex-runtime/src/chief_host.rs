@@ -333,6 +333,40 @@ impl ChiefHost {
 		.await
 	}
 
+	pub(crate) async fn permission_profiles(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefPermissionState {
+		crate::chief_permissions::read(&self.store, || async {
+			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+			self.timeline_source(work, &owner.codex_thread_id?).await
+		})
+		.await
+	}
+
+	async fn select_permissions(
+		&self,
+		work: &str,
+		thread: &str,
+		review: &str,
+		profile: &str,
+		key: &str,
+	) -> Result<String, ChiefHostError> {
+		crate::chief_permissions::write(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			thread,
+			review,
+			profile,
+			key,
+		)
+		.await?;
+		Ok(work.into())
+	}
+
 	pub(crate) async fn live_reviewer(
 		&self,
 		work: &str,
@@ -819,6 +853,15 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			ChiefActionDto::SelectPermissions { work_id, thread_id, review_token, profile_id } =>
+				self.select_permissions(
+					work_id.as_str(),
+					thread_id.as_str(),
+					review_token.as_str(),
+					profile_id.as_str(),
+					&key,
+				)
+				.await,
 			ChiefActionDto::SetLiveReviewer { work_id, turn_id, review_token, reviewer } =>
 				self.set_live_reviewer((&work_id, &turn_id, &review_token), reviewer, &key).await,
 			ChiefActionDto::NativeAgentInput { work_id, thread_id, text, expected_turn } =>
