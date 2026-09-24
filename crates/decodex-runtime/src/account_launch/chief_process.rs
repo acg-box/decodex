@@ -231,7 +231,9 @@ fn pump(
 fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result<(), ClientError> {
 	if let Some(method) = value.get("method") {
 		if method == "config/batchWrite" {
-			return if decodex_codex::app_server_client::is_hook_settings_write(&value["params"]) {
+			return if decodex_codex::app_server_client::is_hook_settings_write(&value["params"])
+				|| decodex_codex::app_server_client::is_app_link_settings_write(&value["params"])
+			{
 				Ok(())
 			} else {
 				Err(ClientError::InvalidFrame)
@@ -551,6 +553,24 @@ mod tests {
 		request["params"].as_object_mut().unwrap().remove("filePath");
 		request["params"]["edits"][0]["keyPath"] = json!("bypass_hook_trust");
 		assert!(validate_outbound(&request, &mut requests).is_err());
+	}
+
+	#[test]
+	fn app_link_edits_do_not_expand_to_unscoped_or_arbitrary_config_writes() {
+		let mut requests = HashSet::new();
+		let mut request = json!({"id":42,"method":"config/batchWrite","params":{"filePath":"/native/config.toml","expectedVersion":"v1","reloadUserConfig":true,"edits":[{"keyPath":"apps.\"calendar\".links.\"work\".approvals_reviewer","value":"user","mergeStrategy":"replace"}]}});
+		assert!(validate_outbound(&request, &mut requests).is_ok());
+		request["params"]["edits"][0]["value"] = Value::Null;
+		assert!(validate_outbound(&request, &mut requests).is_ok());
+		for path in [
+			"apps.\"calendar\".enabled",
+			"apps.\"calendar\".links.\"work\".enabled",
+			"model",
+			"apps.\"calendar\".links.\"work\".approvals_reviewer.extra",
+		] {
+			request["params"]["edits"][0]["keyPath"] = json!(path);
+			assert!(validate_outbound(&request, &mut requests).is_err());
+		}
 	}
 
 	#[test]
