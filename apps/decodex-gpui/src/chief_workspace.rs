@@ -184,6 +184,7 @@ impl ChiefSurface {
 
 		self.reset_model_settings();
 		self.reset_live_reviewer();
+		self.reset_native_goal();
 		self.clear_activity_detail();
 		self.selected = Some(id.to_owned());
 		self.connection_details_expanded = false;

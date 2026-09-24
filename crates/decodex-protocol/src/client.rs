@@ -252,6 +252,40 @@ pub struct ChiefClient {
 	transport: ResetCardClient,
 }
 impl ChiefClient {
+	/// Read a native goal for the exact task and native thread.
+	pub async fn native_goal(
+		&self,
+		work_id: EntityId,
+		thread_id: EntityId,
+	) -> Result<crate::ChiefNativeGoalResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let expected = (work_id.clone(), thread_id.clone());
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(45),
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport.query_inner(
+				"chief-native-goal",
+				QueryPayload::GetChiefNativeGoal { work_id, thread_id },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefNativeGoal(result) => {
+				if matches!(&result,crate::ChiefNativeGoalResult::Available{work_id,thread_id,goal,..} if (work_id,thread_id)!=(&expected.0,&expected.1) || goal.as_ref().is_some_and(|g|g.thread_id!=expected.1.as_str()))
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Inspect one live task and its last local reviewer publication.
 	pub async fn live_reviewer(
 		&self,
@@ -3262,7 +3296,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 57 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 58 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

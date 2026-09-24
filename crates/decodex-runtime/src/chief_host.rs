@@ -317,6 +317,22 @@ impl ChiefHost {
 		.await
 	}
 
+	pub(crate) async fn native_goal(
+		&self,
+		work: &str,
+		thread: &str,
+	) -> decodex_protocol::ChiefNativeGoalResult {
+		crate::chief_native_goal::read(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			thread,
+		)
+		.await
+	}
+
 	pub(crate) async fn live_reviewer(
 		&self,
 		work: &str,

@@ -16,6 +16,7 @@ mod auth_projection;
 mod bootstrap;
 mod chief;
 mod chief_capabilities;
+mod chief_native_goal;
 mod chief_detail;
 mod chief_guardian;
 mod chief_host;

@@ -297,6 +297,23 @@ pub(crate) struct ServiceApplication {
 	doctor: DoctorReport,
 }
 impl ServiceApplication {
+	async fn query_guardian_review_page(
+		&self,
+		work: &str,
+		before: Option<i64>,
+	) -> QueryResultPayload {
+		QueryResultPayload::ChiefGuardianReviews(
+			query_guardian_reviews(&self.store, self.chief.as_ref(), work, before).await,
+		)
+	}
+
+	async fn query_native_goal(&self, work: &str, thread: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefNativeGoal(match &self.chief {
+			Some(chief) => chief.native_goal(work, thread).await,
+			None => decodex_protocol::ChiefNativeGoalResult::Unavailable,
+		})
+	}
+
 	async fn query_live_reviewer(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::ChiefLiveReviewer(match &self.chief {
 			Some(chief) => chief.live_reviewer(work).await,
@@ -2025,6 +2042,8 @@ impl Application for ServiceApplication {
 
 			QueryPayload::ExchangeMcpLogin { request } =>
 				QueryResultPayload::McpLogin(query_mcp_login(self.chief.as_ref(), request).await),
+			QueryPayload::GetChiefNativeGoal { work_id, thread_id } =>
+				self.query_native_goal(work_id.as_str(), thread_id.as_str()).await,
 			QueryPayload::GetChiefLiveReviewer { work_id } =>
 				self.query_live_reviewer(work_id.as_str()).await,
 			QueryPayload::GetChiefModelSettings { work_id } =>
@@ -2070,15 +2089,7 @@ impl Application for ServiceApplication {
 					None => decodex_protocol::ChiefInstallState::Unavailable,
 				}),
 			QueryPayload::GetChiefGuardianReviews { work_id, before } =>
-				QueryResultPayload::ChiefGuardianReviews(
-					query_guardian_reviews(
-						&self.store,
-						self.chief.as_ref(),
-						work_id.as_str(),
-						*before,
-					)
-					.await,
-				),
+				self.query_guardian_review_page(work_id.as_str(), *before).await,
 			QueryPayload::GetChiefSnapshot => self.query_chief_snapshot().await,
 			QueryPayload::GetDesktopSettings =>
 				QueryResultPayload::DesktopSettings(self.desktop_settings().await),

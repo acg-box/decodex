@@ -21,6 +21,7 @@
 #[path = "chief_misalignment.rs"] mod misalignment;
 #[path = "chief_model_settings.rs"] mod model_settings;
 #[path = "chief_native_agents.rs"] mod native_agents;
+#[path = "chief_native_goal.rs"] mod native_goal;
 #[path = "chief_timeline.rs"] mod native_timeline;
 #[path = "chief_output_stream.rs"] mod output_stream;
 #[path = "chief_progress.rs"] mod progress;
@@ -169,6 +170,7 @@ pub(crate) struct ChiefSurface {
 	composer_manager: Option<String>,
 	model_settings: model_settings::Panel,
 	live_reviewer: live_settings::Panel,
+	native_goal: native_goal::Panel,
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
 	account: Entity<ComposerInput>,
@@ -392,6 +394,7 @@ impl ChiefSurface {
 			model,
 			model_settings: Default::default(),
 			live_reviewer: Default::default(),
+			native_goal: Default::default(),
 			cwd,
 			account: Self::account_input(cx),
 			effort: ConversationReasoningEffort::High,
@@ -1069,6 +1072,7 @@ impl ChiefSurface {
 		self.capabilities_checked = None;
 		self.reset_model_settings();
 		self.reset_live_reviewer();
+		self.reset_native_goal();
 		self.snapshot = None;
 		self.pages.clear();
 		self.page_views.clear();
@@ -1128,6 +1132,7 @@ impl ChiefSurface {
 		self.generation += 1;
 		self.guardian_disconnected();
 		self.archive_disconnected();
+		self.reset_native_goal();
 		self.installation_disconnected();
 		self.task = None;
 		self.state =
@@ -1172,6 +1177,7 @@ impl ChiefSurface {
 					_ => true,
 				};
 				surface.apply_result(result);
+				surface.refresh_native_goal(cx);
 				if surface.current_model_catalog(cx).is_none()
 					|| surface.capabilities_checked.is_none_or(|at| at.elapsed().as_secs() >= 60)
 				{
@@ -1193,6 +1199,7 @@ impl ChiefSurface {
 	fn apply_result(&mut self, result: Result<ChiefSnapshotResult, ()>) {
 		if !matches!(&result, Ok(ChiefSnapshotResult::Available(_))) {
 			self.reset_live_reviewer();
+			self.reset_native_goal();
 			self.question_notices = Default::default();
 			self.clear_activity_detail();
 		}
@@ -1200,6 +1207,7 @@ impl ChiefSurface {
 			Ok(ChiefSnapshotResult::Available(snapshot)) => {
 				self.invalidate_model_settings(&snapshot);
 				self.invalidate_live_reviewer_for_snapshot(&snapshot);
+				self.invalidate_native_goal(&snapshot);
 				if self.snapshot.as_ref().is_some_and(|old| {
 					old.runtime_source != snapshot.runtime_source
 						|| old.work_items.iter().any(|work| {
@@ -2081,6 +2089,7 @@ impl ChiefSurface {
 					.child(self.resources_panel(work, cx))
 					.child(self.integrations_panel(work, cx))
 					.child(self.usage_estimate_panel(work, cx))
+					.child(self.native_goal_panel(cx))
 					.children(
 						self.snapshot
 							.as_ref()
