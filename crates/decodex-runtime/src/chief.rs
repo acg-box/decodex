@@ -32,10 +32,10 @@ mod voice;
 pub struct ChiefConfig {
 	/// Default provider model for newly created tasks.
 	pub model: String,
-	/// Initial reasoning effort for a new personal Chief.
-	pub chief_effort: String,
-	/// Initial reasoning effort for new independent workers.
-	pub worker_effort: String,
+	/// Initial reasoning override for a new manager; None inherits native configuration.
+	pub chief_effort: Option<String>,
+	/// Initial reasoning override for independent workers; None inherits native configuration.
+	pub worker_effort: Option<String>,
 	/// Absolute execution directory.
 	pub cwd: String,
 	/// Provider approval policy selected by the host.
@@ -49,8 +49,8 @@ impl ChiefConfig {
 	pub fn new(model: String, chief_effort: String, cwd: String) -> Self {
 		Self {
 			model,
-			chief_effort,
-			worker_effort: "medium".into(),
+			chief_effort: Some(chief_effort),
+			worker_effort: Some("medium".into()),
 			cwd,
 			approval_policy: json!("on-request"),
 			sandbox: "workspace-write".into(),
@@ -142,10 +142,14 @@ impl ChiefCoordinator {
 	) -> Result<Self, ChiefError> {
 		if config.model.trim().is_empty()
 			|| config.cwd.is_empty()
-			|| decodex_protocol::ConversationReasoningEffort::new(&config.chief_effort).is_err()
-			|| decodex_protocol::ConversationReasoningEffort::new(&config.worker_effort).is_err()
-		{
-			return Err(ChiefError::Invalid("explicit model, effort and cwd required".into()));
+			|| config.chief_effort.as_ref().is_some_and(|effort| {
+				decodex_protocol::ConversationReasoningEffort::new(effort).is_err()
+			}) || config.worker_effort.as_ref().is_some_and(|effort| {
+			decodex_protocol::ConversationReasoningEffort::new(effort).is_err()
+		}) {
+			return Err(ChiefError::Invalid(
+				"valid model, optional effort and cwd required".into(),
+			));
 		}
 		static CONNECTION_SEQUENCE: std::sync::atomic::AtomicU64 =
 			std::sync::atomic::AtomicU64::new(0);
@@ -439,7 +443,11 @@ impl ChiefCoordinator {
 	fn thread_params(&self, chief: bool) -> Value {
 		let mut params = json!({"model":self.config.model,"cwd":self.config.cwd,
             "approvalPolicy":self.config.approval_policy,"sandbox":self.config.sandbox,
-            "config":{"model_reasoning_effort":if chief { &self.config.chief_effort } else { &self.config.worker_effort }}});
+            "config":{}});
+		let effort = if chief { &self.config.chief_effort } else { &self.config.worker_effort };
+		if let Some(effort) = effort {
+			params["config"]["model_reasoning_effort"] = json!(effort);
+		}
 		if chief {
 			params["config"]["features.realtime_conversation"] = json!(true);
 			params["developerInstructions"] = json!(INSTRUCTIONS);
@@ -756,8 +764,11 @@ impl ChiefCoordinator {
 		} else {
 			&self.config.worker_effort
 		};
-		if response["model"].as_str() != Some(&self.config.model)
-			|| response["reasoningEffort"].as_str() != Some(effort)
+		if !Self::hydrated_thread_matches(&response, &thread)
+			|| response["model"].as_str() != Some(&self.config.model)
+			|| effort
+				.as_deref()
+				.is_some_and(|expected| response["reasoningEffort"].as_str() != Some(expected))
 		{
 			return Err(ChiefError::Invalid(
 				"app-server model/effort readback differs from selection".into(),

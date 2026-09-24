@@ -8,22 +8,53 @@ const EFFORT: &str = "future-provider-reasoning-effort-over-32-bytes";
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native custom-effort qualification"]
 async fn installed_custom_effort_survives_catalog_and_coordinator_dispatch() {
-	tokio::time::timeout(Duration::from_secs(45), qualify()).await.expect("bounded fixture");
+	tokio::time::timeout(Duration::from_secs(45), qualify(Some(EFFORT), None, Some(EFFORT)))
+		.await
+		.expect("bounded fixture");
 }
 
-async fn qualify() {
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; native configured and absent effort inheritance"]
+async fn installed_inherited_effort_survives_coordinator_creation_and_restart() {
+	for (configured, catalog_default) in
+		[(Some(EFFORT), Some(EFFORT)), (None, Some(EFFORT)), (None, None)]
+	{
+		tokio::time::timeout(Duration::from_secs(45), qualify(None, configured, catalog_default))
+			.await
+			.expect("bounded inherited effort fixture");
+	}
+}
+
+async fn qualify(
+	requested: Option<&'static str>,
+	configured: Option<&'static str>,
+	catalog_default: Option<&'static str>,
+) {
+	let selected = requested.or(configured);
+	let effective = selected.or(catalog_default);
 	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	assert!(std::path::Path::new(&binary).is_absolute());
 	let home = tempfile::tempdir_in("/tmp").expect("fixture home");
 	let catalog = home.path().join("models.json");
-	let model = fixture_model("gpt-5.6-sol", EFFORT);
+	let mut model = fixture_model("gpt-5.6-sol", EFFORT);
+	model["default_reasoning_level"] = json!(catalog_default);
+	if catalog_default.is_none() {
+		model["supported_reasoning_levels"] = json!([]);
+	}
 	std::fs::write(&catalog, serde_json::to_vec(&json!({"models":[model]})).expect("catalog JSON"))
 		.expect("write catalog");
 	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("loopback fixture");
 	let address = listener.local_addr().expect("fixture address");
 	let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-	let backend = tokio::spawn(serve_with_effort(listener, requests.clone(), Some(EFFORT)));
+	let backend = tokio::spawn(serve_with_effort(listener, requests.clone(), effective));
 	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", serde_json::to_string(&catalog).expect("catalog path"))).expect("write config");
+	if let Some(configured) = configured {
+		let path = home.path().join("config.toml");
+		let original = std::fs::read_to_string(&path).expect("config");
+		std::fs::write(path, format!("model_reasoning_effort={}\n{original}", json!(configured)))
+			.expect("native effort config");
+	}
+
 	let root = decodex_core::DecodexRoot::new(
 		home.path().canonicalize().expect("fixture path").join("product"),
 	)
@@ -38,10 +69,11 @@ async fn qualify() {
 	};
 	let model =
 		models.iter().find(|model| model.model.as_str() == "gpt-5.6-sol").expect("custom model");
-	assert_eq!(model.efforts[0].as_str(), EFFORT);
-	assert_eq!(model.default_effort.as_ref().expect("advertised default").as_str(), EFFORT);
-	let config =
+	assert_eq!(model.default_effort.as_ref().map(|v| v.as_str()), catalog_default);
+	let mut config =
 		ChiefConfig::new("gpt-5.6-sol".into(), EFFORT.into(), home.path().display().to_string());
+	config.chief_effort = requested.map(str::to_owned);
+
 	let mut chief = ChiefCoordinator::new(store.clone(), session.client.clone(), config)
 		.expect("custom effort admitted");
 	let first =
@@ -68,7 +100,7 @@ async fn qualify() {
 		.expect("native settings read")
 		.expect("supported native settings");
 	assert_eq!(settings.model.as_deref(), Some("gpt-5.6-sol"));
-	assert_eq!(settings.reasoning_effort.as_deref(), Some(EFFORT));
+	assert_eq!(settings.reasoning_effort.as_deref(), selected);
 	assert_eq!(settings.model_provider.as_deref(), Some("fixture"));
 	assert_eq!(requests.load(Ordering::Acquire), 1, "one original request only");
 	drop(chief);
@@ -93,13 +125,13 @@ async fn qualify() {
 	}
 	assert_eq!(requests.load(Ordering::Acquire), 2, "one continuation, no replay");
 	for turn in [first.active_turn_id.expect("initial turn"), second] {
-		let selected = store
+		let recorded = store
 			.chief_turn_execution("chief".into(), thread.clone(), turn)
 			.await
 			.expect("execution lookup")
 			.expect("atomic native ACK selection");
-		assert_eq!(selected.model, "gpt-5.6-sol");
-		assert_eq!(selected.effort.as_deref(), Some(EFFORT));
+		assert_eq!(recorded.model, "gpt-5.6-sol");
+		assert_eq!(recorded.effort.as_deref(), selected);
 	}
 	assert!(!backend.is_finished(), "fixture server must not fail an effort assertion");
 	backend.abort();
