@@ -10,6 +10,12 @@ use tokio::{
 	sync::{mpsc, oneshot, watch},
 };
 
+mod settings_guard;
+mod task_settings;
+mod thread_model_settings;
+pub use task_settings::NativeTaskModelSettings;
+pub use thread_model_settings::NativeThreadModelSettings;
+
 mod archive;
 pub use archive::ThreadArchiveState;
 mod attachments;
@@ -268,6 +274,15 @@ impl AppServerClient {
 			return None;
 		}
 		self.server_requests.history_guard(revision)
+	}
+
+	/// Protect one task's settings and history from read through the outbound write.
+	/// Settings from unrelated tasks do not invalidate this guard.
+	pub fn thread_settings_guard(&self, thread: &str) -> Option<HistoryGuard> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.thread_settings_guard(thread)
 	}
 
 	/// Send only if the captured native history is still current immediately before writing.
