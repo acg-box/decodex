@@ -148,8 +148,8 @@ fn cold_creation_keeps_configured_effort_when_catalog_has_no_choices(
 	let ChiefActionDto::StartConfigured { start, execution, .. } = action else {
 		panic!("configured start")
 	};
-	assert_eq!(start.effort.as_str(), "provider-specific-effort");
-	assert_eq!(execution.reasoning_effort.as_str(), "provider-specific-effort");
+	assert_eq!(start.effort.as_ref().unwrap().as_str(), "provider-specific-effort");
+	assert_eq!(execution.reasoning_effort.as_ref().unwrap().as_str(), "provider-specific-effort");
 	assert_eq!(start.model.as_str(), "configured-model");
 }
 
@@ -158,7 +158,9 @@ struct EffortView {
 }
 impl gpui::Render for EffortView {
 	fn render(&mut self, _: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
-		self.surface.update(cx, |s, cx| s.effort_scale(cx))
+		self.surface.update(cx, |s, cx| {
+			gpui::div().child(s.creation_effort_toggle(cx)).child(s.effort_scale(cx))
+		})
 	}
 }
 
@@ -177,4 +179,44 @@ fn empty_effort_catalog_renders_configured_value_without_slider(cx: &mut gpui::T
 	});
 	assert!(visual.debug_bounds("reasoning-configured").is_some());
 	assert!(visual.debug_bounds("reasoning-slider").is_none());
+}
+
+#[gpui::test]
+fn native_reasoning_click_preserves_inheritance_in_both_public_start_fields(
+	cx: &mut gpui::TestAppContext,
+) {
+	let (_directory, profile, server) = profile();
+	let surface = cx.new(ChiefSurface::new);
+	surface.update(cx, |s, cx| {
+		s.bind_profile(Some(profile), cx);
+		s.state = LoadState::Ready;
+		s.model.update(cx, |input, cx| input.set_content("configured-model", cx));
+		s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
+		s.composer.update(cx, |input, cx| input.set_content("Use native reasoning", cx));
+		s.effort = ConversationReasoningEffort::new("old-choice").unwrap();
+		s.capabilities = Some(catalog(vec![ConversationReasoningEffort::High]));
+		assert!(s.composer_capability_error(cx).is_some());
+	});
+	let visible = surface.clone();
+	let (_view, visual) = cx.add_window_view(|_, _| EffortView { surface: visible });
+	visual.update(|window, cx| {
+		window.draw(cx).clear();
+	});
+	let button = visual.debug_bounds("creation-native-effort").unwrap();
+	visual.simulate_click(button.center(), Default::default());
+	visual.run_until_parked();
+	surface.update(visual, |s, cx| {
+		assert!(s.creation_inherit_effort);
+		assert_eq!(s.composer_effort_value(), "Inherited");
+		assert!(s.composer_capability_error(cx).is_none());
+		assert!(s.submission.command.is_none(), "selection alone does not send");
+		s.submit(cx);
+	});
+	visual.run_until_parked();
+	let ChiefActionDto::StartConfigured { start, execution, .. } = server.join().unwrap() else {
+		panic!("configured start")
+	};
+	assert!(start.effort.is_none());
+	assert!(execution.reasoning_effort.is_none());
+	assert_eq!(start.model.as_str(), "configured-model");
 }

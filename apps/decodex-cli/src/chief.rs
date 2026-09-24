@@ -50,7 +50,8 @@ pub enum ChiefCommand {
 		#[arg(long)]
 		model: String,
 		#[arg(long)]
-		effort: String,
+		/// Omit to inherit native reasoning configuration.
+		effort: Option<String>,
 		#[arg(long)]
 		cwd: String,
 		#[arg(long)]
@@ -266,6 +267,13 @@ async fn execute_request(
 	}
 }
 
+fn wire_identity(value: String) -> Result<WireText, &'static str> {
+	if value.is_empty() || value.len() > 512 || value.chars().any(char::is_control) {
+		return Err("invalid turn or source event identity");
+	}
+	WireText::new(value).map_err(|_| "invalid turn or source event identity")
+}
+
 fn prepare(command: ChiefCommand) -> Result<(ChiefActionDto, IdempotencyKey), &'static str> {
 	let text = |value: String| {
 		if value.trim().is_empty() {
@@ -275,12 +283,7 @@ fn prepare(command: ChiefCommand) -> Result<(ChiefActionDto, IdempotencyKey), &'
 	};
 	let identity =
 		|value: String| EntityId::new(value).map_err(|_| "invalid work or account identity");
-	let wire_identity = |value: String| {
-		if value.is_empty() || value.len() > 512 || value.chars().any(char::is_control) {
-			return Err("invalid turn or source event identity");
-		}
-		WireText::new(value).map_err(|_| "invalid turn or source event identity")
-	};
+
 	let (action, key) = match command {
 		ChiefCommand::CancelRetry { work_id, event_id, idempotency_key } => {
 			if event_id <= 0 {
@@ -322,10 +325,14 @@ fn prepare(command: ChiefCommand) -> Result<(ChiefActionDto, IdempotencyKey), &'
 				root_id: identity(root_id)?,
 				prompt: text(prompt)?,
 				model: ConversationModel::new(model).map_err(|_| "invalid model")?,
-				effort: serde_json::from_value::<ConversationReasoningEffort>(serde_json::json!(
-					effort
-				))
-				.map_err(|_| "invalid reasoning effort")?,
+				effort: effort
+					.map(|effort| {
+						serde_json::from_value::<ConversationReasoningEffort>(serde_json::json!(
+							effort
+						))
+						.map_err(|_| "invalid reasoning effort")
+					})
+					.transpose()?,
 				cwd: ConversationWorkingDirectory::new(cwd)
 					.map_err(|_| "execution directory must be an absolute bounded path")?,
 				account_id: account_id.map(identity).transpose()?,
@@ -530,6 +537,29 @@ mod tests {
 	}
 
 	#[test]
+	fn chief_start_without_effort_inherits_native_configuration() {
+		let cli = Cli::try_parse_from([
+			"decodex",
+			"chief",
+			"start",
+			"--model",
+			"model",
+			"--cwd",
+			"/tmp",
+			"--root-id",
+			"personal",
+			"--read-only",
+			"Plan work",
+		])
+		.unwrap();
+		let Command::Chief(command) = cli.command else { panic!("Chief command") };
+		let (action, _) = super::prepare(command).unwrap();
+		assert!(
+			matches!(action,decodex_protocol::ChiefActionDto::Start(start) if start.effort.is_none())
+		);
+	}
+
+	#[test]
 	fn chief_mutations_parse_exact_model_turn_and_source_identity() {
 		let cli = Cli::try_parse_from([
 			"decodex",
@@ -553,7 +583,7 @@ mod tests {
 		let (action, key) = super::prepare(command).unwrap();
 		assert!(key.as_str().starts_with("chief-"));
 		assert!(
-			matches!(action, decodex_protocol::ChiefActionDto::Start(start) if start.model.as_str() == "gpt-6-astra" && start.effort == decodex_protocol::ConversationReasoningEffort::Medium && start.sandbox == decodex_protocol::ChiefSandboxDto::ReadOnly)
+			matches!(action, decodex_protocol::ChiefActionDto::Start(start) if start.model.as_str() == "gpt-6-astra" && start.effort == Some(decodex_protocol::ConversationReasoningEffort::Medium) && start.sandbox == decodex_protocol::ChiefSandboxDto::ReadOnly)
 		);
 		for args in [
 			vec!["decodex", "chief", "send", "--root-id", "personal", "Next task"],

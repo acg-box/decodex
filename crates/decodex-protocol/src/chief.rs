@@ -192,8 +192,8 @@ pub struct ChiefStartDto {
 	pub prompt: crate::HistoryText,
 	/// Exact selected provider model.
 	pub model: crate::ConversationModel,
-	/// Chief reasoning effort.
-	pub effort: crate::ConversationReasoningEffort,
+	/// Explicit reasoning override; absent or null inherits native configuration.
+	pub effort: Option<crate::ConversationReasoningEffort>,
 	/// Absolute execution directory.
 	pub cwd: crate::ConversationWorkingDirectory,
 	/// Optional explicit account; otherwise the service selects it.
@@ -384,7 +384,7 @@ pub enum ChiefActionDto {
 		/// Initial Chief context.
 		start: ChiefStartDto,
 		/// Settings captured when the user sends.
-		execution: crate::ConversationExecutionSettings,
+		execution: crate::ChiefExecutionOverrides,
 		/// User-selected files, bounded by the service.
 		attachments: Vec<ChiefAttachmentDto>,
 		/// Tasks explicitly selected as readable evidence.

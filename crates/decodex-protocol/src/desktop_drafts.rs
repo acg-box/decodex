@@ -30,7 +30,7 @@ pub struct DesktopDraftDocument {
 impl Default for DesktopDraftDocument {
 	fn default() -> Self {
 		Self {
-			version: 2,
+			version: 3,
 			profiles: BTreeMap::new(),
 			unbound: Default::default(),
 			recovered: vec![],
@@ -84,6 +84,9 @@ pub struct DesktopComposerDraft {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopCreationSetup {
+	/// Use native reasoning and retain the explicit value only as an editable alternative.
+	#[serde(default)]
+	pub inherit_effort: bool,
 	/// Exact model editor text, including incomplete edits.
 	pub model: String,
 	/// Exact directory editor text, validated only when sending.
@@ -147,7 +150,7 @@ impl DesktopDraftDocument {
 		let mut value: Self =
 			serde_json::from_slice(bytes).map_err(|_| "Draft snapshot is invalid")?;
 		value.validate()?;
-		value.version = 2;
+		value.version = 3;
 		Ok(value)
 	}
 
@@ -160,7 +163,7 @@ impl DesktopDraftDocument {
 	}
 
 	fn validate(&self) -> Result<(), &'static str> {
-		if !matches!(self.version, 1 | 2) {
+		if !matches!(self.version, 1..=3) {
 			return Err("Draft snapshot version is unsupported");
 		}
 		if self.profiles.len() > 64 {
@@ -364,7 +367,7 @@ mod tests {
 			execution: Some((EntityId::new("work").unwrap(), 4)),
 		});
 		DesktopDraftDocument {
-			version: 2,
+			version: 3,
 			profiles: BTreeMap::from([("a".repeat(64), profile)]),
 			recovered: vec![],
 			unbound: Default::default(),
@@ -374,6 +377,7 @@ mod tests {
 	#[test]
 	fn creation_setup_round_trips_and_old_documents_upgrade_without_authority() {
 		let setup = DesktopCreationSetup {
+			inherit_effort: false,
 			model: "unfinished model ".into(),
 			working_directory: "relative edit/".into(),
 			account: "unfinished account".into(),
@@ -387,7 +391,7 @@ mod tests {
 		let bytes = document.encode().unwrap();
 		assert_eq!(DesktopDraftDocument::decode(&bytes).unwrap().unbound.creation, Some(setup));
 		let old = DesktopDraftDocument::decode(br#"{"version":1,"profiles":{}}"#).unwrap();
-		assert_eq!(old.version, 2);
+		assert_eq!(old.version, 3);
 		assert!(old.unbound.creation.is_none());
 		let mut remote = document.clone();
 		remote.unbound.creation.as_mut().unwrap().model = "other model".into();
@@ -424,7 +428,7 @@ mod tests {
 	#[test]
 	fn draft_document_rejects_changed_contract_and_ambiguous_ownership() {
 		let mut original = document();
-		original.version = 3;
+		original.version = 4;
 		assert!(original.encode().is_err());
 		let mut json = serde_json::to_value(document()).unwrap();
 		json["unexpected"] = serde_json::json!(true);

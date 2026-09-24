@@ -65,7 +65,9 @@ fn unbound_creation_edits_survive_reopen(cx: &mut gpui::TestAppContext) {
 	let surface = cx.new(ChiefSurface::new);
 	let expected = surface.update(cx, |s, cx| {
 		s.draft_profiles.storage = Storage::open(Ok(store.clone()));
-		let expected = choose(s, cx, "incomplete model ");
+		choose(s, cx, "incomplete model ");
+		s.creation_inherit_effort = true;
+		let expected = s.creation_setup(cx).unwrap();
 		s.remember_draft_document(cx);
 		publish_document(&store, 0, &s.draft_profiles.storage.document)
 			.unwrap_or_else(|_| panic!("save"));
@@ -75,6 +77,7 @@ fn unbound_creation_edits_survive_reopen(cx: &mut gpui::TestAppContext) {
 	reopened.update(cx, |s, cx| {
 		s.draft_profiles.storage = Storage::open(Ok(store));
 		s.restore_unbound_draft(cx);
+		assert_eq!(s.composer_effort_value(), "Inherited");
 		assert_eq!(s.creation_setup(cx), Some(expected));
 		assert!(s.submission.command.is_none());
 	});

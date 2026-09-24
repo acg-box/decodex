@@ -95,3 +95,21 @@ mod tests {
 		assert_eq!(decoded, action);
 	}
 }
+
+#[cfg(test)]
+mod creation_tests {
+	use crate::ChiefActionDto;
+	use serde_json::json;
+	#[test]
+	fn creation_keeps_legacy_effort_and_nullable_inheritance_distinct() {
+		for effort in [json!("none"), json!("high"), serde_json::Value::Null] {
+			let wire = json!({"action":"start_configured","data":{"start":{"root_id":"root","prompt":"hello","model":"model","effort":effort,"cwd":"/tmp","account_id":null,"sandbox":"read_only"},"execution":{"model":"model","reasoning_effort":effort,"fast":false},"attachments":[]}});
+			let action: ChiefActionDto = serde_json::from_value(wire).unwrap();
+			let ChiefActionDto::StartConfigured { start, execution, .. } = action else {
+				panic!("start")
+			};
+			assert_eq!(start.effort.as_ref().map(|v| v.as_str()), effort.as_str());
+			assert_eq!(execution.reasoning_effort.as_ref().map(|v| v.as_str()), effort.as_str());
+		}
+	}
+}

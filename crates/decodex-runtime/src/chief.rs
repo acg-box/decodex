@@ -47,9 +47,15 @@ pub struct ChiefConfig {
 impl ChiefConfig {
 	/// Select a model and directory with approval prompts and workspace edits enabled.
 	pub fn new(model: String, chief_effort: String, cwd: String) -> Self {
+		Self::with_optional_effort(model, Some(chief_effort), cwd)
+	}
+
+	/// Select an optional manager effort without inventing a placeholder for native inheritance.
+	/// Independent workers retain their existing Medium creation default.
+	pub fn with_optional_effort(model: String, chief_effort: Option<String>, cwd: String) -> Self {
 		Self {
 			model,
-			chief_effort: Some(chief_effort),
+			chief_effort,
 			worker_effort: Some("medium".into()),
 			cwd,
 			approval_policy: json!("on-request"),

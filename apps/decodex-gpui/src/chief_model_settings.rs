@@ -50,7 +50,11 @@ impl ChiefSurface {
 
 	pub(super) fn composer_effort_value(&self) -> String {
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else {
-			return self.effort.as_str().into();
+			return if self.creation_inherit_effort {
+				"Inherited".into()
+			} else {
+				self.effort.as_str().into()
+			};
 		};
 		if let Some(effort) = self.draft_profiles.execution.choice(&owner).reasoning_effort {
 			return effort.as_str().into();

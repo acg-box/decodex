@@ -70,14 +70,13 @@ async fn qualify(
 	let model =
 		models.iter().find(|model| model.model.as_str() == "gpt-5.6-sol").expect("custom model");
 	assert_eq!(model.default_effort.as_ref().map(|v| v.as_str()), catalog_default);
-	let mut config =
-		ChiefConfig::new("gpt-5.6-sol".into(), EFFORT.into(), home.path().display().to_string());
-	config.chief_effort = requested.map(str::to_owned);
-
+	let action = creation_action(requested, home.path());
+	let config = crate::chief_host::queue_start_for_native_test(&store, action).await;
 	let mut chief = ChiefCoordinator::new(store.clone(), session.client.clone(), config)
-		.expect("custom effort admitted");
-	let first =
-		chief.start_chief("chief", "Return fixture output").await.expect("start native Chief");
+		.expect("creation config admitted");
+	chief.wake_pending().await.expect("dispatch persisted first input");
+	let first = store.get_chief_work_item("chief".into()).await.expect("started Chief");
+
 	loop {
 		let event = session.events.recv().await.expect("native event");
 		let terminal = matches!(&event, ServerEvent::Notification { method, params } if method == "turn/completed" && params["turn"]["status"] == "completed");
@@ -135,6 +134,34 @@ async fn qualify(
 	}
 	assert!(!backend.is_finished(), "fixture server must not fail an effort assertion");
 	backend.abort();
+}
+
+fn creation_action(
+	requested: Option<&str>,
+	home: &std::path::Path,
+) -> decodex_protocol::ChiefActionDto {
+	let model = decodex_protocol::ConversationModel::new("gpt-5.6-sol").expect("model");
+	let effort = requested
+		.map(|value| decodex_protocol::ConversationReasoningEffort::new(value).expect("effort"));
+	decodex_protocol::ChiefActionDto::StartConfigured {
+		start: decodex_protocol::ChiefStartDto {
+			root_id: decodex_protocol::EntityId::new("chief").expect("root"),
+			prompt: decodex_protocol::HistoryText::new("Return fixture output").expect("prompt"),
+			model: model.clone(),
+			effort: effort.clone(),
+			cwd: decodex_protocol::ConversationWorkingDirectory::new(home.display().to_string())
+				.expect("cwd"),
+			account_id: None,
+			sandbox: decodex_protocol::ChiefSandboxDto::ReadOnly,
+		},
+		execution: decodex_protocol::ChiefExecutionOverrides {
+			model: Some(model),
+			reasoning_effort: effort,
+			..Default::default()
+		},
+		attachments: vec![],
+		task_references: vec![],
+	}
 }
 
 pub(super) fn fixture_model(slug: &str, effort: &str) -> Value {

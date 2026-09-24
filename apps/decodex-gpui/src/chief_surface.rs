@@ -188,6 +188,7 @@ pub(crate) struct ChiefSurface {
 	account: Entity<ComposerInput>,
 	effort: ConversationReasoningEffort,
 	creation_setup_present: bool,
+	creation_inherit_effort: bool,
 	sandbox: ChiefSandboxDto,
 	submission: drafts::SubmissionState,
 	command_epoch: u64,
@@ -420,6 +421,7 @@ impl ChiefSurface {
 			account: Self::account_input(cx),
 			effort: ConversationReasoningEffort::High,
 			creation_setup_present: false,
+			creation_inherit_effort: false,
 			sandbox: ChiefSandboxDto::ReadOnly,
 			submission: Default::default(),
 			command_epoch: 0,
@@ -784,7 +786,7 @@ impl ChiefSurface {
 							.map_err(|_| "Invalid account ID")?,
 					)
 				},
-				effort: self.effort.clone(),
+				effort: self.creation_effort(),
 				sandbox: self.sandbox,
 			}))
 		};
@@ -793,10 +795,10 @@ impl ChiefSurface {
 				let Ok(model) = ConversationModel::new(self.model.read(cx).content()) else {
 					return;
 				};
-				let execution = decodex_protocol::ConversationExecutionSettings {
-					model,
-					reasoning_effort: self.effort.clone(),
-					fast: self.fast,
+				let execution = decodex_protocol::ChiefExecutionOverrides {
+					model: Some(model),
+					reasoning_effort: self.creation_effort(),
+					fast: Some(self.fast),
 					service_tier: self.service_tier.clone(),
 				};
 				let attachments = self.attachments.clone();

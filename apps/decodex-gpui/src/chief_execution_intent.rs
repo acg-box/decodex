@@ -71,6 +71,9 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn mark_effort_intent(&mut self) {
+		if self.root_id().is_none() {
+			self.creation_inherit_effort = false;
+		}
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
 		let effort = self.effort.clone();
 		self.draft_profiles

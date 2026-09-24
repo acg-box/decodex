@@ -91,7 +91,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		let outcome=client.execute(ChiefActionDto::Start(ChiefStartDto {
 			root_id:EntityId::new("chief-service-smoke").expect("valid bounded qualification fixture"),
 			prompt:HistoryText::new(if scope == SmokeScope::Evidence { evidence::prompt() } else if scope == SmokeScope::Hierarchy { hierarchy_prompt(&working_directory) } else { "Read-only coordination qualification. Use only Chief coordination tools; never shell, file, network or native subagent tools. Create exactly two independent workers directly under this Chief: service-a asks its worker to reply exactly DRAFT_A without tools; service-b asks its worker to reply exactly RESULT_B without tools. Finish this initial turn with SERVICE_READY after creating both. When completion inbox events arrive later, assess each, record resolved disposition only if the requested output was delivered; otherwise record follow_up with the actual problem. Summarize. Do not create more work. Later explicit user inputs will request a repair and a decision.".into() }).expect("valid bounded qualification fixture"),
-			model:ConversationModel::new(model).map_err(|_|"invalid model")?,effort:ConversationReasoningEffort::Medium,
+			model:ConversationModel::new(model).map_err(|_|"invalid model")?,effort:Some(ConversationReasoningEffort::Medium),
 			cwd:ConversationWorkingDirectory::new(working_directory.to_string_lossy()).map_err(|_|"invalid smoke directory")?,account_id:Some(account),sandbox:ChiefSandboxDto::ReadOnly,
 		}),IdempotencyKey::new("smoke-start").expect("valid bounded qualification fixture")).await?;
 		if !matches!(outcome, ChiefCommandResponse::Accepted { .. }) {
