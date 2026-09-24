@@ -23,7 +23,14 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn composer_model_label(&self, cx: &Context<Self>) -> String {
-		self.composer_model_value(cx).unwrap_or_else(|| "Task model".into())
+		let Some(model) = self.composer_model_value(cx) else { return "Task model".into() };
+		if let Some(decodex_protocol::ChiefCapabilitiesResult::Available { models, .. }) =
+			self.current_model_catalog(cx)
+			&& let Some(entry) = models.iter().find(|entry| entry.model.as_str() == model)
+		{
+			return entry.name.clone();
+		}
+		model
 	}
 
 	pub(super) fn composer_model_value(&self, cx: &Context<Self>) -> Option<String> {

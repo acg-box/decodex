@@ -671,7 +671,7 @@ impl ChiefSurface {
 				.when(self.fast, |d| {
 					d.child(div().text_color(rgb(ui_theme::BLUE)).child(icon(Symbol::Fast)))
 				})
-				.child(controls::compact_model_label(&label))
+				.child(div().max_w(px(180.)).text_ellipsis().child(label))
 				.child(div().text_color(rgb(ui_theme::TEXT_MUTED)).child("·"))
 				.child(controls::effort_indicator(&self.composer_effort_value()))
 				.into_any_element(),
@@ -925,23 +925,6 @@ impl ChiefSurface {
 	}
 }
 
-fn model_label(model: &str) -> String {
-	let mut parts = model.split('-');
-	let first = parts.next().unwrap_or_default().to_uppercase();
-	let version = parts.next().unwrap_or_default();
-	let family = parts
-		.map(|part| {
-			let mut chars = part.chars();
-			chars
-				.next()
-				.map(|c| c.to_uppercase().collect::<String>() + chars.as_str())
-				.unwrap_or_default()
-		})
-		.collect::<Vec<_>>()
-		.join(" ");
-	format!("{first}-{version} {family}").trim().into()
-}
-
 fn save_clipboard_image(image: &gpui::Image) -> std::io::Result<std::path::PathBuf> {
 	use std::{
 		io::Write,
@@ -1076,6 +1059,15 @@ mod tests {
 			s.effort = ConversationReasoningEffort::Ultra;
 			s.fast = true;
 			s.select_composer_option("model", "custom-model", cx);
+			assert_eq!(s.composer_model_label(cx), "Custom");
+			assert_eq!(s.composer_model_value(cx).as_deref(), Some("custom-model"));
+			if let Some(decodex_protocol::ChiefCapabilitiesResult::Available { models, .. }) =
+				&mut s.capabilities
+			{
+				models[0].name = "Renamed catalog label".into();
+			}
+			assert_eq!(s.composer_model_label(cx), "Renamed catalog label");
+			assert_eq!(s.composer_model_value(cx).as_deref(), Some("custom-model"));
 			assert_eq!(s.effort, ConversationReasoningEffort::Medium);
 			assert!(!s.fast);
 			assert_eq!(s.model_efforts(cx).len(), 2);
@@ -1083,6 +1075,18 @@ mod tests {
 			s.select_composer_option("model", "custom-model", cx);
 			assert_eq!(s.effort, ConversationReasoningEffort::Low);
 			assert_eq!(s.composer_menu, Some("model"));
+			if let Some(decodex_protocol::ChiefCapabilitiesResult::Available { models, .. }) =
+				&mut s.capabilities
+			{
+				let mut other = models[0].clone();
+				other.model = ConversationModel::new("other-model").unwrap();
+				models.push(other);
+			}
+			s.select_composer_option("model", "other-model", cx);
+			assert_eq!(s.composer_model_label(cx), "Renamed catalog label");
+			assert_eq!(s.composer_model_value(cx).as_deref(), Some("other-model"));
+			s.capabilities = None;
+			assert_eq!(s.composer_model_label(cx), "other-model");
 		});
 	}
 
