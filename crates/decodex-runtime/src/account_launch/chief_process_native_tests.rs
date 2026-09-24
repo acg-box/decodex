@@ -276,7 +276,7 @@ async fn serve_with_effort(
 	requests: Arc<std::sync::atomic::AtomicUsize>,
 	effort: Option<&str>,
 ) {
-	serve_fixture(listener, requests, effort, None, |serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]})).await;
+	serve_fixture(listener, requests, effort, None, None, |serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]})).await;
 }
 
 async fn serve_fixture(
@@ -284,6 +284,7 @@ async fn serve_fixture(
 	requests: Arc<std::sync::atomic::AtomicUsize>,
 	effort: Option<&str>,
 	bodies: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
+	usage: Option<Value>,
 	output: fn(usize) -> Value,
 ) {
 	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
@@ -325,7 +326,7 @@ async fn serve_fixture(
 		let frames = [
 			json!({"type":"response.created","response":{"id":id}}),
 			json!({"type":"response.output_item.done","item":output(serial)}),
-			json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":{"extra":{"fixture":"native-usage"},"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
+			json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":usage.clone().unwrap_or_else(||json!({"extra":{"fixture":"native-usage"},"input_tokens":0,"output_tokens":0,"total_tokens":0}))}}),
 		];
 		let data = frames
 			.iter()

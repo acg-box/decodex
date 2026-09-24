@@ -427,7 +427,7 @@ At cutoff595cc91e, native goal requests require the goals feature. Activating a
 native goal can start work. The installed alpha16.3 isolated fixture uses paused
 goals and confirms updated notification data, cross-process reads and clears,
 nullable budgets and persistence after restart, with zero inference requests.
-It does not qualify active-goal accounting. Runtime and desktop observation are
+Active-goal accounting is qualified below. Runtime and desktop observation are
 now integrated as described below.
 Protocol2.57 and database35 are unchanged.
 
@@ -449,5 +449,22 @@ source replacement and disconnect clear prior observations, including when an
 old identity returns. Public socket tests cover refresh after a goal is cleared,
 child selection and rejection of a goal with the wrong nested thread identity.
 Installed alpha16.3 also confirms the exact disabled-feature error independently
-of absence. Active-goal accounting and signed desktop acceptance remain separate
-qualification work.
+of absence. Active-goal accounting is qualified below. Signed desktop acceptance remains
+separate qualification work.
+
+
+## Installed native goal accounting
+
+An isolated alpha16.3 fixture activates a native goal with a one-token budget and
+holds a loopback response for more than one second. The response reports 20 input
+tokens, including 4 cached tokens, and 10 output tokens, including 2 reasoning tokens.
+The native goal records 26 tokens, reaches `budgetLimited`, and reports at least
+one elapsed second. This matches cutoff accounting: input minus cached input plus
+output, without adding reasoning a second time. This is token accounting, not a
+price or billing calculation.
+
+After another full second, the goal time remains unchanged and no second model
+request starts. A new retained native process reads the same goal snapshot after
+restart. Six installed-native bridge fixtures pass with the shared provider helper;
+existing fixtures retain their zero-usage defaults. No production credentials or
+paid inference are used. Protocol2.58 and database35 are unchanged.
