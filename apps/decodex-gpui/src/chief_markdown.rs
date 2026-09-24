@@ -503,6 +503,7 @@ mod tests {
 				} else {
 					Vec::new()
 				},
+				receipt: None,
 				id: 42,
 				kind: "assistant".into(),
 				text: self.text.clone(),

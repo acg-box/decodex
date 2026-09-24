@@ -17,6 +17,7 @@
 #[path = "chief_mcp_forms.rs"] mod mcp_forms;
 #[path = "chief_misalignment.rs"] mod misalignment;
 #[path = "chief_native_agents.rs"] mod native_agents;
+#[path = "chief_timeline.rs"] mod native_timeline;
 #[path = "chief_output_stream.rs"] mod output_stream;
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
@@ -81,6 +82,7 @@ pub(crate) struct ChiefSurface {
 	resources_task: Option<Task<()>>,
 	usage_estimate: Option<(String, Option<decodex_protocol::ChiefUsageEstimateResult>)>,
 	usage_estimate_task: Option<Task<()>>,
+	native_history: native_timeline::Timeline,
 	integrations: Option<(String, Option<decodex_protocol::ChiefIntegrationsResult>)>,
 	integrations_task: Option<Task<()>>,
 	integration_refresh_task: Option<Task<()>>,
@@ -108,9 +110,9 @@ pub(crate) struct ChiefSurface {
 	graph_pan: (f32, f32),
 	graph_inset: (f32, f32),
 	graph_drag: Option<gpui::Point<gpui::Pixels>>,
-	history_marks: std::collections::BTreeMap<i64, activity::HistoryMark>,
-	history_marks_work: Option<String>,
-	history_selected: Option<i64>,
+	history_marks: std::collections::BTreeMap<activity::HistoryKey, activity::HistoryMark>,
+	history_marks_work: Option<(String, bool)>,
+	history_selected: Option<activity::HistoryKey>,
 	latest_follow_work: Option<String>,
 	connection_details_expanded: bool,
 	history_hover: Option<usize>,
@@ -197,6 +199,10 @@ pub(crate) struct ChiefSurface {
 	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
 	question_timers: std::collections::BTreeMap<i64, requests::QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
+	collapsed_async_questions: std::collections::BTreeSet<String>,
+	async_question_threads: std::collections::BTreeMap<String, String>,
+	async_question_choices:
+		std::collections::BTreeMap<(String, String), async_questions::ChoiceDraft>,
 	async_question_inputs: std::collections::BTreeMap<(String, String), Entity<ComposerInput>>,
 	details_visible: bool,
 	accounts: Vec<(String, String)>,
@@ -274,6 +280,7 @@ impl ChiefSurface {
 			resources_task: None,
 			usage_estimate: None,
 			usage_estimate_task: None,
+			native_history: Default::default(),
 			integrations: None,
 			integrations_task: None,
 			integration_refresh_task: None,
@@ -381,6 +388,9 @@ impl ChiefSurface {
 			mcp_answers: Default::default(),
 			question_timers: Default::default(),
 			question_inputs: Default::default(),
+			collapsed_async_questions: Default::default(),
+			async_question_threads: Default::default(),
+			async_question_choices: Default::default(),
 			async_question_inputs: Default::default(),
 			profile: None,
 			snapshot: None,
@@ -431,6 +441,8 @@ impl ChiefSurface {
 	}
 
 	fn load_history(&mut self, cx: &mut Context<Self>) {
+		self.refresh_open_native_history(cx);
+		self.refresh_native_input_receipts(cx);
 		self.load_guardian_reviews(cx);
 		self.load_archive_state(false, cx);
 		if self.history.as_ref().is_some_and(|(id, _)| self.selected.as_ref() != Some(id)) {
@@ -836,6 +848,9 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn bind_profile(&mut self, profile: Option<ClientProfile>, cx: &mut Context<Self>) {
+		let epoch = self.native_history.epoch + 1;
+		self.native_history = Default::default();
+		self.native_history.epoch = epoch;
 		self.generation += 1;
 		self.refresh_failures = 0;
 		self.task = None;
@@ -898,6 +913,9 @@ impl ChiefSurface {
 		self.guardian = Default::default();
 		self.archive = Default::default();
 		self.async_question_inputs.clear();
+		self.async_question_choices.clear();
+		self.async_question_threads.clear();
+		self.collapsed_async_questions.clear();
 		self.selected = None;
 		self.state = LoadState::Idle;
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
@@ -1012,6 +1030,11 @@ impl ChiefSurface {
 					self.feedback.clear();
 				}
 
+				if self.snapshot.as_ref().and_then(|old| old.runtime_source.as_ref())
+					!= snapshot.runtime_source.as_ref()
+				{
+					self.native_history.reset();
+				}
 				if !self
 					.selected
 					.as_ref()
@@ -1159,7 +1182,7 @@ impl ChiefSurface {
 			LoadState::Unavailable => if self.profile.is_none() {
 				"No local service profile is configured for this view."
 			} else {
-				"Reconnecting to Chief. Connection details are in Settings → Diagnostics."
+				"Reconnecting to Chief. Work may still be running. Connection details are in Settings → Diagnostics."
 			}
 			.into(),
 			LoadState::Stale =>
@@ -1262,6 +1285,9 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn prefetch_older_history(&mut self, cx: &mut Context<Self>) {
+		if self.prefetch_native_history(cx) {
+			return;
+		}
 		if self.history_prefetch_needed() {
 			self.load_older_history(cx);
 		}
@@ -1338,7 +1364,7 @@ impl ChiefSurface {
 								.history_marks
 								.iter()
 								.next()
-								.map(|(id, mark)| (*id, mark.position.get())),
+								.map(|(id, mark)| (id.clone(), mark.position.get())),
 						});
 					}
 					let page = s.older_history.entry(id).or_default();
@@ -1357,8 +1383,18 @@ impl ChiefSurface {
 	}
 
 	fn history_panel(&self, work: &ChiefWorkItemDto, cx: &mut Context<Self>) -> impl IntoElement {
-		let mut panel =
-			div().w_full().min_w_0().flex_none().flex().flex_col().gap(px(ui_theme::MESSAGE_GAP));
+		let panel = div()
+			.w_full()
+			.min_w_0()
+			.flex_none()
+			.flex()
+			.flex_col()
+			.gap(px(ui_theme::MESSAGE_GAP))
+			.child(self.native_timeline_panel(work, cx));
+		if self.native_history_active(work) {
+			return self.history_activity(panel.child(self.native_receipts_panel(work, cx)), work);
+		}
+		let mut panel = panel.debug_selector(|| "saved-local-history".into());
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
 			Some(ChiefHistoryResult::Available {
 				entries, has_more, next_before, live, ..
@@ -1411,6 +1447,10 @@ impl ChiefSurface {
 				panel = panel.child(muted("Messages could not be loaded. Retrying…")),
 			None => panel = panel.child(muted("Loading messages…")),
 		}
+		self.history_activity(panel, work)
+	}
+
+	fn history_activity(&self, mut panel: gpui::Div, work: &ChiefWorkItemDto) -> gpui::Div {
 		let active = matches!(
 			work.dispatch_state,
 			ChiefDispatchStateDto::Running | ChiefDispatchStateDto::Dispatching
@@ -1606,6 +1646,13 @@ fn muted(text: impl Into<SharedString>) -> impl IntoElement {
 		.child(text.into())
 }
 fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
+	history_entry_with_key(entry, &entry.id.to_string())
+}
+
+fn history_entry_with_key(
+	entry: &decodex_protocol::ChiefHistoryEntryDto,
+	identity: &str,
+) -> gpui::Div {
 	let user = entry.kind == "user";
 	let visible_text = if entry.kind == "assistant" {
 		markdown::response_text(&entry.text)
@@ -1623,7 +1670,7 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 				ui_theme::AMBER
 			}))
 			.child(selectable_text::SelectableText {
-				key: format!("notice-{}", entry.id),
+				key: format!("notice-{identity}"),
 				text: entry.text.clone(),
 				highlights: vec![],
 				links: vec![],
@@ -1654,7 +1701,7 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 						.border_color(rgb(ui_theme::BLUE))
 						.child(muted("Manager instruction"))
 				})
-				.child(markdown::render(&visible_text, &format!("message-{}", entry.id)))
+				.child(markdown::render(&visible_text, &format!("message-{identity}")))
 				.children(entry.weather.iter().enumerate().map(|(i, forecast)| {
 					let date = time::OffsetDateTime::from_unix_timestamp(
 						entry.created_at_micros / 1_000_000,
@@ -1662,7 +1709,7 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 					.ok()
 					.map(|d| format!("{} · Saved forecast", d.date()))
 					.unwrap_or_else(|| "Saved forecast".into());
-					weather::render(forecast, &date, &format!("{}-{i}", entry.id))
+					weather::render(forecast, &date, &format!("{identity}-{i}"))
 				}))
 				.when(!user, |body| {
 					body.child(
@@ -1674,7 +1721,7 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 							.child(reply_metrics(entry))
 							.when(entry.kind == "assistant", |row| {
 								row.child(markdown::copy_button(
-									&format!("copy-response-{}", entry.id),
+									&format!("copy-response-{identity}"),
 									"Copy response",
 									if entry.weather.is_empty() {
 										visible_text.clone()
@@ -1891,6 +1938,7 @@ mod tests {
 			super::history_entry(&decodex_protocol::ChiefHistoryEntryDto {
 				turn_id: None,
 				weather: Vec::new(),
+				receipt: None,
 				activity: None,
 				id: 1,
 				kind: "user".into(),
@@ -1965,6 +2013,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		let input = surface.update(visual, |surface, cx| {
 			surface.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],
@@ -2093,6 +2142,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![ChiefWorkItemDto {
 					id: "root".into(),
@@ -2123,6 +2173,7 @@ mod tests {
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
 						turn_id: None,
 						weather: Vec::new(),
+						receipt: None,
 						activity: None,
 						duration_ms: None,
 						usage: None,
@@ -2153,6 +2204,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![ChiefWorkItemDto {
 					id: "root".into(),
@@ -2188,6 +2240,7 @@ mod tests {
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
 						turn_id: None,
 						weather: Vec::new(),
+						receipt: None,
 						activity: None,
 						usage: None,
 						duration_ms: None,
@@ -2262,6 +2315,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],
@@ -2318,6 +2372,7 @@ mod tests {
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
 						turn_id: None,
 						weather: Vec::new(),
+						receipt: None,
 						activity: None,
 						usage: None,
 						duration_ms: None,
@@ -2332,6 +2387,7 @@ mod tests {
 				},
 			));
 			s.snapshot = Some(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],

@@ -448,6 +448,7 @@ mod tests {
 		let entry = |id, kind: &str, text: &str| decodex_protocol::ChiefHistoryEntryDto {
 			turn_id: None,
 			weather: Vec::new(),
+			receipt: None,
 			activity: None,
 			usage: None,
 			duration_ms: None,

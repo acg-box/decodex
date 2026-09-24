@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate the compact exact-five automation portfolio."""
+"""Evaluate the compact checked-in automation portfolio."""
 
 from __future__ import annotations
 

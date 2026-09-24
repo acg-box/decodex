@@ -434,6 +434,7 @@ mod tests {
 	}
 	fn seed(s: &mut ChiefSurface) {
 		s.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+			runtime_source: None,
 			workspaces: vec![],
 			dependencies: vec![],
 			pending_events: vec![],

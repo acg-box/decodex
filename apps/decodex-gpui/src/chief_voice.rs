@@ -398,6 +398,7 @@ impl ChiefSurface {
 			history_entry(&decodex_protocol::ChiefHistoryEntryDto {
 				turn_id: None,
 				weather: Vec::new(),
+				receipt: None,
 				activity: None,
 				usage: None,
 				duration_ms: None,
@@ -625,6 +626,7 @@ mod tests {
 				entries: vec![decodex_protocol::ChiefHistoryEntryDto {
 					turn_id: None,
 					weather: Vec::new(),
+					receipt: None,
 					activity: None,
 					usage: None,
 					duration_ms: None,

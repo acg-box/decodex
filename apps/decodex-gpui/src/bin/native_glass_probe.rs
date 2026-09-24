@@ -1,5 +1,16 @@
 //! Isolated native compositing experiment. Does not connect to the Decodex daemon.
 #![allow(dead_code)]
+// This probe shares the application's package dependency set.
+use decodex_protocol as _;
+use libc as _;
+use pulldown_cmark as _;
+use reqwest as _;
+use serde as _;
+use serde_json as _;
+use sha2 as _;
+use time as _;
+use tokio as _;
+#[cfg(test)] use {futures_util as _, tempfile as _, tokio_tungstenite as _};
 #[path = "../composer_input.rs"] mod composer_input;
 #[path = "../ui_theme.rs"] mod ui_theme;
 
@@ -74,7 +85,7 @@ mod probe {
 					},
 					|_, cx| cx.new(|_| Backdrop { child: None, submitted: String::new() }),
 				)
-				.unwrap();
+				.expect("open probe window");
 			if std::env::var_os("DECODEX_PROBE_BASELINE").is_some() {
 				cx.activate(true);
 				return;
@@ -112,7 +123,7 @@ mod probe {
 								})
 							},
 						)
-						.unwrap();
+						.expect("open probe composer");
 					child
 						.update(cx, |_, window, _| {
 							install_glass(window);
@@ -130,7 +141,7 @@ mod probe {
 								let _: () = msg_send![&*native_child, orderFront: std::ptr::null::<NSWindow>()];
 							}
 						})
-						.unwrap();
+						.expect("configure probe composer");
 					backdrop.child = Some(child);
 					parent_window.on_window_should_close(cx, |_, cx| {
 						cx.quit();
@@ -144,8 +155,10 @@ mod probe {
 					})
 					.detach();
 				})
-				.unwrap();
-			parent.update(cx, |_, window, _| window.activate_window()).unwrap();
+				.expect("configure probe window");
+			parent
+				.update(cx, |_, window, _| window.activate_window())
+				.expect("activate probe window");
 			cx.refresh_windows();
 			eprintln!("probe: native windows ready, count {}", cx.windows().len());
 			cx.activate(true);
@@ -153,18 +166,21 @@ mod probe {
 	}
 
 	fn native_view(window: &Window) -> Retained<NSView> {
-		let handle = HasWindowHandle::window_handle(window).unwrap();
+		let handle = HasWindowHandle::window_handle(window).expect("native window handle");
 		let RawWindowHandle::AppKit(handle) = handle.as_raw() else { unreachable!() };
-		unsafe { Retained::retain(handle.ns_view.as_ptr().cast::<NSView>()).unwrap() }
+		unsafe {
+			Retained::retain(handle.ns_view.as_ptr().cast::<NSView>()).expect("retain native view")
+		}
 	}
 	fn native_window(window: &Window) -> Retained<NSWindow> {
-		native_view(window).window().unwrap()
+		native_view(window).window().expect("attached native window")
 	}
 
 	fn install_glass(window: &mut Window) {
 		window.set_background_appearance(WindowBackgroundAppearance::Transparent);
 		let gpu = native_view(window);
-		let content = gpu.window().unwrap().contentView().unwrap();
+		let content =
+			gpu.window().expect("attached GPU window").contentView().expect("native content view");
 		let class = AnyClass::get(c"NSGlassEffectView").expect("macOS 26 required for this probe");
 		unsafe {
 			let glass: Retained<NSView> = msg_send![class, new];
@@ -181,7 +197,7 @@ mod probe {
 	}
 
 	fn place(parent: &NSWindow, child: &NSWindow) {
-		let content = parent.contentView().unwrap();
+		let content = parent.contentView().expect("parent content view");
 		let bounds = content.bounds();
 		let width = (bounds.size.width - 80.).clamp(320., 760.);
 		let local = NSRect::new(
@@ -252,13 +268,13 @@ mod probe {
 							s.clear = !s.clear;
 							let glass = native_window(window)
 								.contentView()
-								.unwrap()
+								.expect("composer content view")
 								.subviews()
 								.iter()
 								.find(|v| unsafe {
-									msg_send![&**v, isKindOfClass: AnyClass::get(c"NSGlassEffectView").unwrap()]
+									msg_send![&**v, isKindOfClass: AnyClass::get(c"NSGlassEffectView").expect("macOS glass class")]
 								})
-								.unwrap();
+								.expect("installed glass view");
 							unsafe {
 								let _: () = msg_send![&*glass, setStyle: isize::from(s.clear)];
 							}

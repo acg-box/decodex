@@ -379,6 +379,7 @@ mod tests {
 				updated_at_micros: 1,
 			};
 			s.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![work("root"), work("other")],
 				dependencies: vec![],

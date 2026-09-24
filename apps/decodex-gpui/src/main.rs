@@ -18,7 +18,6 @@ mod client_lifecycle;
 mod composer_input;
 mod conversations;
 mod desktop_settings;
-mod panel_preferences;
 mod health_query;
 #[cfg_attr(
 	not(test),
@@ -29,6 +28,7 @@ mod health_query;
 )]
 mod history_pager;
 mod native_menu_bar;
+mod panel_preferences;
 mod settings_surface;
 mod shell;
 mod ui_motion;

@@ -716,7 +716,7 @@ impl Render for SettingsSurface {
 							.flex_none()
 							.flex()
 							.flex_col()
-							.gap(px(24.))
+							.gap(px(ui_theme::SETTINGS_GROUP_GAP))
 							.child(ui_theme::settings_title(self.category.title()))
 							.child(self.category_content(cx)),
 					),

@@ -1,7 +1,7 @@
 # Radar GitHub Helpers
 
 These helpers support bounded, standalone Radar research. They do not orchestrate
-the exact-five Decodex automations and do not authorize code or X mutations.
+the Decodex automations and do not authorize code or X mutations.
 
 ## Collection
 

@@ -3,6 +3,29 @@ use super::*;
 use gpui::{AnyElement, canvas, point, size};
 use std::{cell::Cell, collections::BTreeMap, rc::Rc};
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) enum HistoryKey {
+	Local(i64),
+	Native { thread: String, position: u64, kind: u8, id: String },
+}
+
+impl HistoryKey {
+	fn native(thread: &str, entry: &decodex_protocol::ChiefTimelineEntry) -> Self {
+		let (position, kind, id) = super::native_timeline::key(entry);
+		Self::Native { thread: thread.into(), position, kind, id: id.into() }
+	}
+}
+
+impl std::fmt::Display for HistoryKey {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Local(id) => write!(f, "{id}"),
+			Self::Native { thread, position, kind, id } =>
+				write!(f, "native-{}", serde_json::json!([thread, position, kind, id])),
+		}
+	}
+}
+
 #[derive(Clone)]
 pub(super) struct HistoryMark {
 	pub(super) position: Rc<Cell<f32>>,
@@ -17,12 +40,12 @@ pub(super) struct HistoryScrollAnchor {
 	pub(super) work: String,
 	pub(super) offset: f32,
 	pub(super) maximum: f32,
-	pub(super) message: Option<(i64, f32)>,
+	pub(super) message: Option<(HistoryKey, f32)>,
 }
 
 pub(super) struct HistoryNavigation {
 	work: String,
-	id: Option<i64>,
+	id: Option<HistoryKey>,
 	from: f32,
 	to: f32,
 	started: std::time::Instant,
@@ -57,12 +80,22 @@ fn current_mark(positions: &[f32], offset: f32) -> usize {
 
 impl ChiefSurface {
 	pub(super) fn prepare_history_marks(&mut self) {
-		if self.history_marks_work != self.selected {
+		let native = self.snapshot.as_ref().is_some_and(|snapshot| {
+			snapshot.work_items.iter().any(|work| {
+				Some(&work.id) == self.selected.as_ref() && self.native_history_active(work)
+			})
+		});
+		let work = self.selected.clone().map(|work| (work, native));
+		if self.history_marks_work != work {
 			self.history_marks.clear();
 			self.history_selected = None;
 			self.history_hover = None;
 			self.history_navigation = None;
-			self.history_marks_work = self.selected.clone();
+			self.history_marks_work = work;
+		}
+		if native {
+			self.prepare_native_history_marks();
+			return;
 		}
 		let Some((work, ChiefHistoryResult::Available { entries, .. })) =
 			self.history.as_ref().filter(|(work, _)| Some(work) == self.selected.as_ref())
@@ -80,32 +113,35 @@ impl ChiefSurface {
 			saved.insert(entry.id, entry);
 		}
 		self.transcript_scroll.entry(work.clone()).or_default();
-		self.history_marks.retain(|id, _| saved.contains_key(id));
+		self.history_marks
+			.retain(|id, _| matches!(id, HistoryKey::Local(id) if saved.contains_key(id)));
 		let mut current = None;
 		for entry in saved.values() {
 			if entry.kind == "user" || entry.kind == "instruction" {
-				let mark = self.history_marks.entry(entry.id).or_insert_with(|| HistoryMark {
-					position: Rc::new(Cell::new(f32::INFINITY)),
-					hit_bounds: Rc::new(Cell::new(None)),
-					question: preview(&entry.text),
-					time: format!(
-						"{} · {} UTC",
-						time::OffsetDateTime::from_unix_timestamp(
-							entry.created_at_micros / 1_000_000
-						)
-						.map(|t| t.date().to_string())
-						.unwrap_or_default(),
-						workspace::clock_label(entry.created_at_micros)
-					),
-					answer: String::new(),
-				});
+				let mark =
+					self.history_marks.entry(HistoryKey::Local(entry.id)).or_insert_with(|| {
+						HistoryMark {
+							position: Rc::new(Cell::new(f32::INFINITY)),
+							hit_bounds: Rc::new(Cell::new(None)),
+							question: preview(&entry.text),
+							time: format!(
+								"{} · {} UTC",
+								time::OffsetDateTime::from_unix_timestamp(
+									entry.created_at_micros / 1_000_000
+								)
+								.map(|t| t.date().to_string())
+								.unwrap_or_default(),
+								workspace::clock_label(entry.created_at_micros)
+							),
+							answer: String::new(),
+						}
+					});
 				mark.answer.clear();
-				current = Some(entry.id);
+				current = Some(HistoryKey::Local(entry.id));
 			} else if entry.kind == "assistant"
-				&& let Some(id) = current
+				&& let Some(id) = current.as_ref()
 			{
-				self.history_marks.get_mut(&id).expect("current mark").answer =
-					preview(&entry.text);
+				self.history_marks.get_mut(id).expect("current mark").answer = preview(&entry.text);
 			}
 		}
 	}
@@ -114,8 +150,67 @@ impl ChiefSurface {
 		&self,
 		entry: &decodex_protocol::ChiefHistoryEntryDto,
 	) -> AnyElement {
-		let Some(mark) = self.history_marks.get(&entry.id) else {
-			return history_entry(entry).into_any_element();
+		self.anchor_history_row(
+			&HistoryKey::Local(entry.id),
+			history_entry(entry).into_any_element(),
+		)
+	}
+
+	fn prepare_native_history_marks(&mut self) {
+		use decodex_protocol::ChiefTimelineContent as Content;
+		let Some(binding) = &self.native_history.binding else {
+			return;
+		};
+		self.transcript_scroll.entry(binding.work.clone()).or_default();
+		let mut retained = std::collections::BTreeSet::new();
+		let mut current = None;
+		for entry in &self.native_history.entries {
+			let (user, text, label) = match &entry.content {
+				Content::Item { kind, text, .. }
+					if kind == "userMessage" || kind == "agentMessage" =>
+					(kind == "userMessage", text, "Conversation message"),
+				Content::Speech { role, text, .. } => (role == "user", text, "Voice message"),
+				_ => continue,
+			};
+			if user {
+				let key = HistoryKey::native(&binding.thread, entry);
+				retained.insert(key.clone());
+				let mark = self.history_marks.entry(key.clone()).or_insert_with(|| HistoryMark {
+					position: Rc::new(Cell::new(0.0)),
+					hit_bounds: Rc::new(Cell::new(None)),
+					question: String::new(),
+					time: label.into(),
+					answer: String::new(),
+				});
+				mark.question = preview(text);
+				mark.answer.clear();
+				current = Some(key);
+			} else if let Some(key) = &current {
+				self.history_marks.get_mut(key).expect("current native mark").answer =
+					preview(text);
+			}
+		}
+		self.history_marks.retain(|key, _| retained.contains(key));
+		if self.history_selected.as_ref().is_some_and(|key| !retained.contains(key)) {
+			self.history_selected = None;
+		}
+	}
+
+	pub(super) fn anchored_native_history_entry(
+		&self,
+		work: &ChiefWorkItemDto,
+		entry: &decodex_protocol::ChiefTimelineEntry,
+		row: AnyElement,
+	) -> AnyElement {
+		self.anchor_history_row(
+			&HistoryKey::native(work.codex_thread_id.as_deref().unwrap_or_default(), entry),
+			row,
+		)
+	}
+
+	fn anchor_history_row(&self, key: &HistoryKey, row: AnyElement) -> AnyElement {
+		let Some(mark) = self.history_marks.get(key) else {
+			return row;
 		};
 		let position = mark.position.clone();
 		let scroll = self
@@ -136,20 +231,20 @@ impl ChiefSurface {
 					}
 				}
 			})
-			.id(SharedString::from(format!("history-anchor-{}", entry.id)))
-			.child(history_entry(entry))
+			.id(SharedString::from(format!("history-anchor-{key}")))
+			.child(row)
 			.into_any_element()
 	}
 
-	fn jump_to_history(&mut self, id: i64, cx: &mut Context<Self>) {
+	fn jump_to_history(&mut self, id: HistoryKey, cx: &mut Context<Self>) {
 		self.latest_follow_work = None;
-		self.older_scroll_anchor = None;
+		self.cancel_native_scroll_anchor();
 		self.set_voice_follow(false);
 		if let Some(mark) = self.history_marks.get(&id)
 			&& let Some(work) = self.selected.as_ref()
 			&& let Some(scroll) = self.transcript_scroll.get(work)
 		{
-			self.history_selected = Some(id);
+			self.history_selected = Some(id.clone());
 			self.history_navigation = Some(HistoryNavigation {
 				work: work.clone(),
 				id: Some(id),
@@ -167,7 +262,7 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) {
 		self.latest_follow_work = None;
-		self.older_scroll_anchor = None;
+		self.cancel_native_scroll_anchor();
 		self.history_navigation = None;
 		self.history_selected = None;
 		if let Some(scroll) = self.selected.as_ref().and_then(|id| self.transcript_scroll.get(id)) {
@@ -195,15 +290,17 @@ impl ChiefSurface {
 		let Some(navigation) = &self.history_navigation else {
 			return;
 		};
-		if self.selected.as_ref() != Some(&navigation.work) {
+		if self.selected.as_ref() != Some(&navigation.work)
+			|| navigation.id.as_ref().is_some_and(|id| !self.history_marks.contains_key(id))
+		{
 			self.history_navigation = None;
 			return;
 		}
 		let t = (navigation.started.elapsed().as_secs_f32() / 0.28).min(1.0);
 		if let Some(scroll) = self.transcript_scroll.get(&navigation.work) {
-			let target = match navigation.id {
+			let target = match navigation.id.as_ref() {
 				None => -f32::from(scroll.max_offset().y),
-				Some(id) => self.history_marks.get(&id).map_or(navigation.to, |m| {
+				Some(id) => self.history_marks.get(id).map_or(navigation.to, |m| {
 					navigation_offset(m.position.get(), scroll.max_offset().y.into())
 				}),
 			};
@@ -217,14 +314,38 @@ impl ChiefSurface {
 			crate::ui_motion::request_frame(window, cx);
 			cx.notify();
 		} else {
-			let latest = navigation.id.is_none();
-			let work = navigation.work.clone();
-			self.history_navigation = None;
-			if latest {
-				self.latest_follow_work = Some(work.clone());
-				self.history_follow_paused.remove(&work);
-				self.set_voice_follow(true);
-			}
+			let (work, id, started) =
+				(navigation.work.clone(), navigation.id.clone(), navigation.started);
+			let surface = cx.entity().downgrade();
+			cx.defer(move |cx| {
+				let _ = surface.update(cx, |s, cx| {
+					if !s.history_navigation.as_ref().is_some_and(|current| {
+						current.work == work && current.id == id && current.started == started
+					}) {
+						return;
+					}
+					if id.is_none() {
+						s.latest_follow_work = Some(work.clone());
+						s.history_follow_paused.remove(&work);
+						s.set_voice_follow(true);
+					}
+					if s.selected.as_ref() == Some(&work)
+						&& let (Some(mark), Some(scroll)) = (
+							id.as_ref().and_then(|id| s.history_marks.get(id)),
+							s.transcript_scroll.get(&work),
+						) {
+						scroll.set_offset(point(
+							scroll.offset().x,
+							px(navigation_offset(
+								mark.position.get(),
+								scroll.max_offset().y.into(),
+							)),
+						));
+					}
+					s.history_navigation = None;
+					cx.notify();
+				});
+			});
 		}
 	}
 
@@ -394,7 +515,8 @@ impl ChiefSurface {
 		let at_end = scroll.max_offset().y > px(0.)
 			&& (scroll.offset().y + scroll.max_offset().y).abs() < px(1.);
 		self.history_selected
-			.and_then(|id| self.history_marks.keys().position(|key| *key == id))
+			.as_ref()
+			.and_then(|id| self.history_marks.keys().position(|key| key == id))
 			.unwrap_or_else(|| {
 				if at_end || (self.selected.is_some() && self.latest_follow_work == self.selected) {
 					last
@@ -459,7 +581,8 @@ impl ChiefSurface {
 				cx,
 			);
 			let tip = mark.clone();
-			let id = *id;
+			let id = id.clone();
+			let keyboard_id = id.clone();
 			let hit_bounds = mark.hit_bounds.clone();
 			rail = rail.child(
 				div()
@@ -481,11 +604,11 @@ impl ChiefSurface {
 					}))
 					.tooltip(move |_, cx| cx.new(|_| HistoryPreview(tip.clone())).into())
 					.on_click(cx.listener(move |s, _, _, cx| {
-						s.jump_to_history(id, cx);
+						s.jump_to_history(id.clone(), cx);
 					}))
 					.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
 						if event.keystroke.key == "enter" || event.keystroke.key == "space" {
-							s.jump_to_history(id, cx);
+							s.jump_to_history(keyboard_id.clone(), cx);
 							cx.stop_propagation();
 							cx.notify();
 						}
@@ -555,6 +678,235 @@ impl Render for HistoryPreview {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn deferred_navigation_finish_does_not_end_a_newer_jump(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(400.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		surface.update(visual, |s, cx| {
+			s.jump_to_history(HistoryKey::Local(1), cx);
+			s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+			surface.update(cx, |s, cx| s.jump_to_history(HistoryKey::Local(3), cx));
+		});
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(HistoryKey::Local(3)));
+			s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		surface.read_with(visual, |s, _| {
+			assert!(s.history_navigation.is_none());
+			assert_eq!(s.history_selected, Some(HistoryKey::Local(3)));
+		});
+	}
+
+	#[gpui::test]
+	fn native_jump_finishes_against_layout_after_an_older_page_arrives(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use decodex_protocol::{
+			ChiefTimelineContent as Content, ChiefTimelineEntry, ChiefTimelinePage,
+		};
+		let row = |position, user| ChiefTimelineEntry {
+			position,
+			content: Content::Item {
+				turn_id: "turn".into(),
+				item_id: format!("item-{position}"),
+				kind: if user { "userMessage" } else { "agentMessage" }.into(),
+				text: "Content for the scrolling test.\n\n".repeat(20),
+				truncated: false,
+				activity: None,
+				attachments: vec![],
+			},
+		};
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(400.)));
+		let binding = surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("thread".into());
+			let binding = super::super::native_timeline::Binding {
+				work: work.id.clone(),
+				thread: "thread".into(),
+				account: "account".into(),
+			};
+			assert!(s.native_history.replace(
+				binding.clone(),
+				ChiefTimelinePage {
+					thread_id: "thread".into(),
+					entries: vec![row(10, true), row(11, false), row(20, true), row(21, false)],
+					next_cursor: Some("older".into()),
+					active_realtime_session_at_page_start: None,
+				}
+			));
+			cx.notify();
+			binding
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let target = HistoryKey::native("thread", &row(20, true));
+		let bounds =
+			surface.read_with(visual, |s, _| s.history_marks[&target].hit_bounds.get().unwrap());
+		visual.simulate_click(bounds.center(), Default::default());
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(target.clone()));
+			s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
+			assert!(s.prepend_native_history(
+				&binding,
+				"older",
+				ChiefTimelinePage {
+					thread_id: "thread".into(),
+					entries: vec![row(1, false)],
+					next_cursor: None,
+					active_realtime_session_at_page_start: None,
+				}
+			));
+			cx.notify();
+		});
+		for _ in 0..3 {
+			visual.update(|window, cx| {
+				window.draw(cx).clear();
+			});
+			visual.run_until_parked();
+		}
+		surface.read_with(visual, |s, _| {
+			let scroll = &s.transcript_scroll[&binding.work];
+			let expected = navigation_offset(
+				s.history_marks[&target].position.get(),
+				scroll.max_offset().y.into(),
+			);
+			let actual = f32::from(scroll.offset().y);
+			assert!(
+				(actual - expected).abs() < 1.,
+				"jump stopped at {actual}, target is {expected}"
+			);
+			assert!(s.history_navigation.is_none());
+			assert_eq!(s.history_selected.as_ref(), Some(&target));
+		});
+	}
+
+	#[gpui::test]
+	fn native_rail_keeps_same_position_speech_and_text_distinct_and_retires_evicted_targets(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use decodex_protocol::{
+			ChiefTimelineContent as Content, ChiefTimelineEntry, ChiefTimelinePage,
+		};
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(400.)));
+		let keys = surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("native-thread".into());
+			let text = "A repeated user prompt.\n\n".repeat(20);
+			let entries = vec![
+				ChiefTimelineEntry {
+					position: 5,
+					content: Content::Item {
+						turn_id: "turn".into(),
+						item_id: "same-id".into(),
+						kind: "userMessage".into(),
+						text: text.clone(),
+						truncated: false,
+						activity: None,
+						attachments: vec![],
+					},
+				},
+				ChiefTimelineEntry {
+					position: 5,
+					content: Content::Speech {
+						item_id: "same-id".into(),
+						session_id: "voice".into(),
+						role: "user".into(),
+						text,
+						truncated: false,
+					},
+				},
+			];
+			let keys = entries
+				.iter()
+				.map(|entry| HistoryKey::native("native-thread", entry))
+				.collect::<Vec<_>>();
+			assert!(s.native_history.replace(
+				super::super::native_timeline::Binding {
+					work: work.id.clone(),
+					thread: "native-thread".into(),
+					account: "account".into(),
+				},
+				ChiefTimelinePage {
+					thread_id: "native-thread".into(),
+					entries,
+					next_cursor: None,
+					active_realtime_session_at_page_start: None
+				}
+			));
+			cx.notify();
+			keys
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let bounds = surface.read_with(visual, |s, _| {
+			assert_eq!(s.history_marks.len(), 2);
+			assert_ne!(keys[0], keys[1]);
+			assert!(
+				s.history_marks[&keys[1]].position.get() > s.history_marks[&keys[0]].position.get()
+			);
+			s.history_marks[&keys[0]].hit_bounds.get().unwrap()
+		});
+		visual.simulate_click(bounds.center(), Default::default());
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.history_selected.as_ref(), Some(&keys[0]));
+			assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(keys[0].clone()));
+			s.native_history.entries.remove(0);
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		surface.read_with(visual, |s, _| {
+			assert!(s.history_navigation.is_none() && s.history_selected.is_none());
+			assert!(!s.history_marks.contains_key(&keys[0]));
+			assert!(s.history_marks.contains_key(&keys[1]));
+		});
+	}
+
 	#[test]
 	fn clicked_anchor_and_active_marker_use_the_same_inset() {
 		let positions = [0., 340., 1117., 2400.];
@@ -579,7 +931,7 @@ mod tests {
 			w.draw(cx).clear();
 		});
 		let ids =
-			surface.read_with(visual, |s, _| s.history_marks.keys().copied().collect::<Vec<_>>());
+			surface.read_with(visual, |s, _| s.history_marks.keys().cloned().collect::<Vec<_>>());
 		for id in ids {
 			let bounds =
 				surface.read_with(visual, |s, _| s.history_marks[&id].hit_bounds.get().unwrap());
@@ -590,15 +942,15 @@ mod tests {
 			);
 			visual.simulate_mouse_up(bounds.center(), gpui::MouseButton::Left, Default::default());
 			surface.update(visual, |s, cx| {
-				assert_eq!(s.history_selected, Some(id));
-				assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(id));
+				assert_eq!(s.history_selected, Some(id.clone()));
+				assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(id.clone()));
 				s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
 				cx.notify();
 			});
 			visual.update(|w, cx| {
 				w.draw(cx).clear();
 			});
-			surface.update(visual, |s, _| assert_eq!(s.history_selected, Some(id)));
+			surface.update(visual, |s, _| assert_eq!(s.history_selected, Some(id.clone())));
 		}
 	}
 
@@ -616,8 +968,11 @@ mod tests {
 		visual.update(|_, cx| {
 			surface.update(cx, |s, cx| {
 				assert_eq!(s.history_marks.len(), 2);
-				assert!(s.history_marks[&3].position.get() > s.history_marks[&1].position.get());
-				s.jump_to_history(3, cx);
+				assert!(
+					s.history_marks[&HistoryKey::Local(3)].position.get()
+						> s.history_marks[&HistoryKey::Local(1)].position.get()
+				);
+				s.jump_to_history(HistoryKey::Local(3), cx);
 				s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
 				cx.notify();
 			})
@@ -708,12 +1063,16 @@ mod tests {
 			let scroll = s.transcript_scroll["chief"].clone();
 			scroll.set_offset(point(px(0.), px(-50.)));
 			s.history_follow_paused.insert("chief".into());
-			let before = s.history_marks[&1].position.get() + f32::from(scroll.offset().y);
+			let before = s.history_marks[&HistoryKey::Local(1)].position.get()
+				+ f32::from(scroll.offset().y);
 			s.older_scroll_anchor = Some(HistoryScrollAnchor {
 				work: "chief".into(),
 				offset: f32::from(scroll.offset().y),
 				maximum: f32::from(scroll.max_offset().y),
-				message: Some((1, s.history_marks[&1].position.get())),
+				message: Some((
+					HistoryKey::Local(1),
+					s.history_marks[&HistoryKey::Local(1)].position.get(),
+				)),
 			});
 			let Some((_, ChiefHistoryResult::Available { entries, .. })) = &s.history else {
 				panic!("fixture")
@@ -730,14 +1089,14 @@ mod tests {
 			visual.run_until_parked();
 		}
 		surface.read_with(visual, |s, _| {
-			let after = s.history_marks[&1].position.get()
+			let after = s.history_marks[&HistoryKey::Local(1)].position.get()
 				+ f32::from(s.transcript_scroll["chief"].offset().y);
 			assert!(
 				(after - before).abs() < 1.,
 				"prepend must preserve the reading anchor: {before} -> {after}; offset {:?} max {:?} mark {}",
 				s.transcript_scroll["chief"].offset(),
 				s.transcript_scroll["chief"].max_offset(),
-				s.history_marks[&1].position.get()
+				s.history_marks[&HistoryKey::Local(1)].position.get()
 			);
 		});
 	}
@@ -793,7 +1152,7 @@ mod tests {
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
 		surface.update(visual, |s, cx| {
-			s.jump_to_history(1, cx);
+			s.jump_to_history(HistoryKey::Local(1), cx);
 			s.history_follow_paused.insert("chief".into());
 			s.follow_latest_after_send(cx);
 			assert!(s.history_selected.is_none());

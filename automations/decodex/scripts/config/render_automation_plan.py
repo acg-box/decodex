@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render full native update inputs for the exact-five automation portfolio."""
+"""Render full native update inputs for the checked-in automation portfolio."""
 
 from __future__ import annotations
 

@@ -280,6 +280,21 @@ impl ChiefHost {
 		self.runtime.chief_catalog_client().map(|(generation, _)| generation.as_str().to_owned())
 	}
 
+	pub(crate) async fn runtime_source(&self) -> Option<decodex_protocol::EntityId> {
+		use sha2::{Digest, Sha256};
+		let (generation, account, revision, client) = self.runtime.chief_usage_source().await?;
+		let value = serde_json::to_vec(&(
+			generation.as_str(),
+			account.as_str(),
+			revision,
+			client.history_revision(),
+		))
+		.ok()?;
+		let digest =
+			Sha256::digest(value).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+		decodex_protocol::EntityId::new(digest).ok()
+	}
+
 	pub(crate) async fn usage_estimate(
 		&self,
 		work: &str,
@@ -289,6 +304,7 @@ impl ChiefHost {
 			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
 			Some(crate::chief_usage_estimate::Source {
 				key: crate::chief_usage_estimate::SourceKey {
+					history_revision: client.history_revision(),
 					generation,
 					account,
 					revision,
@@ -298,6 +314,54 @@ impl ChiefHost {
 				client,
 			})
 		})
+		.await
+	}
+
+	async fn timeline_source(
+		&self,
+		work: &str,
+		thread: &str,
+	) -> Option<crate::chief_usage_estimate::Source> {
+		let (generation, account, revision, client) = self.runtime.chief_usage_source().await?;
+		let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+		if owner.codex_thread_id.as_deref() != Some(thread) {
+			return None;
+		}
+		Some(crate::chief_usage_estimate::Source {
+			key: crate::chief_usage_estimate::SourceKey {
+				history_revision: client.history_revision(),
+				generation,
+				account,
+				revision,
+				thread: thread.into(),
+				work: work.into(),
+			},
+			client,
+		})
+	}
+
+	pub(crate) async fn timeline(
+		&self,
+		work: &str,
+		thread: &str,
+		cursor: Option<&str>,
+	) -> decodex_protocol::ChiefTimelineResult {
+		crate::chief::timeline::read(
+			Some(&self.store),
+			|| self.timeline_source(work, thread),
+			cursor,
+		)
+		.await
+	}
+
+	pub(crate) async fn media(
+		&self,
+		request: &decodex_protocol::ChiefMediaRequest,
+	) -> decodex_protocol::ChiefMediaResult {
+		crate::chief::timeline::media::read(
+			|| self.timeline_source(request.work_id.as_str(), request.thread_id.as_str()),
+			request,
+		)
 		.await
 	}
 
@@ -595,6 +659,25 @@ impl ChiefHost {
 		Ok(work_id.as_str().into())
 	}
 
+	async fn skip_question(
+		identity: (
+			&decodex_protocol::EntityId,
+			&decodex_protocol::WireText,
+			&decodex_protocol::WireText,
+		),
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		let (work, thread, question) =
+			(identity.0.as_str(), identity.1.as_str(), identity.2.as_str());
+		let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
+		chief.skip_async_question(work, thread, question).await.map_err(|_| {
+			ChiefHostError::Rejected(
+				"Question could not be skipped. Refresh the connected conversation before trying again.",
+			)
+		})?;
+		Ok(work.into())
+	}
+
 	async fn handle(
 		&self,
 		key: String,
@@ -722,6 +805,8 @@ impl ChiefHost {
 				chief.answer_async_question(work_id.as_str(),question_id.as_str(),answer.as_str(),&key).await.map_err(|_|ChiefHostError::Unknown("Question reply acceptance could not be confirmed. Inspect the current conversation before sending again."))?;
 				Ok(work_id.as_str().into())
 			},
+			ChiefActionDto::SkipQuestion { work_id, thread_id, question_id } =>
+				Self::skip_question((&work_id, &thread_id, &question_id), active).await,
 			ChiefActionDto::CancelCapacityRetry { work_id, event_id } =>
 				self.cancel_capacity_retry(work_id, event_id).await,
 			ChiefActionDto::Respond { work_id, event_id, response_json } =>

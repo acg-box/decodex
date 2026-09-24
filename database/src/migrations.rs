@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 30;
+const CURRENT_SCHEMA_VERSION: i64 = 34;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -165,6 +165,26 @@ const MIGRATIONS: &[Migration] = &[
 		version: 30,
 		name: "quota_activation",
 		sql: include_str!("../migrations/0030_quota_activation.sql"),
+	},
+	Migration {
+		version: 31,
+		name: "quota_activation_observation",
+		sql: include_str!("../migrations/0031_quota_activation_observation.sql"),
+	},
+	Migration {
+		version: 32,
+		name: "account_usage_observation",
+		sql: include_str!("../migrations/0032_account_usage_observation.sql"),
+	},
+	Migration {
+		version: 33,
+		name: "account_usage_conditions",
+		sql: include_str!("../migrations/0033_account_usage_conditions.sql"),
+	},
+	Migration {
+		version: 34,
+		name: "chief_async_skips",
+		sql: include_str!("../migrations/0034_chief_async_skips.sql"),
 	},
 ];
 
@@ -462,6 +482,119 @@ mod tests {
 		assert_eq!(settings, (false, true, 7));
 		verify(&connection).expect("schema parity");
 		migrate(&mut connection).expect("idempotent upgrade");
+	}
+
+	#[test]
+	fn async_skip_upgrade_preserves_questions_and_native_answer_evidence() {
+		let directory = tempfile::tempdir().unwrap();
+		let path = directory.path().join("skip-upgrade.sqlite3");
+		let mut connection = Connection::open(&path).unwrap();
+		configure(&connection).unwrap();
+		for migration in &MIGRATIONS[..33] {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 33).unwrap();
+		connection.execute("INSERT INTO chief_work_items(id,kind,title,instructions,status,codex_thread_id,created_at_micros,updated_at_micros) VALUES('w','goal','Goal','Keep','open','t',1,1)", []).unwrap();
+		connection
+			.execute(
+				"INSERT INTO chief_async_questions VALUES('w','t','turn','item','q','{}',1)",
+				[],
+			)
+			.unwrap();
+		connection
+			.execute(
+				"INSERT INTO chief_async_answers VALUES('w','t','answered-before-arrival',2)",
+				[],
+			)
+			.unwrap();
+		migrate(&mut connection).unwrap();
+		verify(&connection).unwrap();
+		assert_eq!(
+			connection
+				.query_row("SELECT count(*) FROM chief_async_skips", [], |row| row.get::<_, i64>(0))
+				.unwrap(),
+			0
+		);
+		assert_eq!(
+			connection
+				.query_row("SELECT question_id FROM chief_async_answers", [], |row| row
+					.get::<_, String>(0))
+				.unwrap(),
+			"answered-before-arrival"
+		);
+		assert!(
+			connection
+				.execute("INSERT INTO chief_async_skips VALUES('w','other','q',3)", [])
+				.is_err()
+		);
+		connection.execute("INSERT INTO chief_async_skips VALUES('w','t','q',3)", []).unwrap();
+		migrate(&mut connection).unwrap();
+		drop(connection);
+		let connection = Connection::open(path).unwrap();
+		configure(&connection).unwrap();
+		verify(&connection).unwrap();
+		assert_eq!(
+			connection
+				.query_row("SELECT question_json FROM chief_async_questions", [], |row| row
+					.get::<_, String>(0))
+				.unwrap(),
+			"{}"
+		);
+		assert_eq!(
+			connection
+				.query_row("SELECT count(*) FROM chief_async_skips", [], |row| row.get::<_, i64>(0))
+				.unwrap(),
+			1
+		);
+		connection.execute("DELETE FROM chief_work_items WHERE id='w'", []).unwrap();
+		assert_eq!(
+			connection
+				.query_row("SELECT count(*) FROM chief_async_skips", [], |row| row.get::<_, i64>(0))
+				.unwrap(),
+			0
+		);
+	}
+
+	#[test]
+	fn account_usage_upgrade_preserves_current_main_activation_settings() {
+		let directory = tempfile::tempdir().unwrap();
+		let mut connection = Connection::open(directory.path().join("upgrade.sqlite3")).unwrap();
+		configure(&connection).unwrap();
+		for migration in &MIGRATIONS[..31] {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 31).unwrap();
+		connection
+			.execute("UPDATE desktop_settings SET auto_activate_quota=0, revision=19", [])
+			.unwrap();
+		migrate(&mut connection).unwrap();
+		verify(&connection).unwrap();
+		let preference: (bool, i64) = connection
+			.query_row("SELECT auto_activate_quota, revision FROM desktop_settings", [], |row| {
+				Ok((row.get(0)?, row.get(1)?))
+			})
+			.unwrap();
+		assert_eq!(preference, (false, 19));
+		let count: i64 = connection
+			.query_row("SELECT count(*) FROM account_usage_observations", [], |row| row.get(0))
+			.unwrap();
+		assert_eq!(count, 0, "migration does not invent account permission");
+		migrate(&mut connection).unwrap();
+		assert_eq!(applied_version(&connection).unwrap(), CURRENT_SCHEMA_VERSION);
 	}
 
 	#[test]

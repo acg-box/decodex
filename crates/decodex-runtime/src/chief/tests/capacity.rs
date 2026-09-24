@@ -195,6 +195,46 @@ async fn quota_other_errors_and_missing_history_do_not_schedule_capacity_retries
 }
 
 #[tokio::test]
+async fn terminal_quota_failure_preserves_accepted_input_without_replay_after_recovery() {
+	let turn = failed("opaque turn/1", "usageLimitExceeded");
+	let (mut chief, mut sent, _dir) = fixture_with_history(
+		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[turn]}}}),
+	)
+	.await;
+	ChiefCoordinator::reserve_root(&chief.store, "chief", "original request").await.unwrap();
+	chief.enqueue_user_message("chief", "command", "original request").await.unwrap();
+	chief.wake_pending().await.unwrap();
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "turn/completed".into(),
+			params: json!({"threadId":"opaque thread/1","turn":turn}),
+		})
+		.await
+		.unwrap();
+	while sent.try_recv().is_ok() {}
+	chief.loaded_threads.clear();
+	chief.recover_persisted().await.unwrap();
+	chief.wake_pending().await.unwrap();
+	chief.check_due_followups(i64::MAX).await.unwrap();
+	assert!(
+		!std::iter::from_fn(|| sent.try_recv().ok()).any(|frame| frame["method"] == "turn/start")
+	);
+	let history = chief.store.read_chief_work_events("chief".into(), 100).await.unwrap();
+	let inputs: Vec<_> =
+		history.iter().filter(|event| event.event_kind == "user_message").collect();
+	assert_eq!(inputs.len(), 1);
+	assert_eq!(inputs[0].delivered_turn_id.as_deref(), Some("opaque turn/1"));
+	assert_eq!(inputs[0].disposition, None);
+	chief.enqueue_user_message("chief", "retry", "Try again now").await.unwrap();
+	chief.wake_pending().await.unwrap();
+	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+		.filter(|frame| frame["method"] == "turn/start")
+		.collect();
+	assert_eq!(starts.len(), 1);
+	assert_eq!(starts[0]["params"]["input"][0]["text"], "Try again now");
+}
+
+#[tokio::test]
 async fn lost_retry_submission_is_unknown_and_never_replayed() {
 	let turn = failed("opaque turn/1", "serverOverloaded");
 	let (mut chief, _sent, _dir) = fixture_with_history(

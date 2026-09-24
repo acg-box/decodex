@@ -190,6 +190,39 @@ struct ExpiryClaims {
 	exp: i64,
 }
 
+// Keep optional usage identity separate so a malformed permission claim does not
+// prevent an otherwise valid credential from being imported or refreshed.
+#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
+struct UsageIdentityClaims {
+	#[serde(rename = "https://api.openai.com/auth")]
+	authority: Option<UsageIdentityAuthority>,
+}
+
+#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
+struct UsageIdentityAuthority {
+	chatgpt_account_id: Option<String>,
+	chatgpt_user_id: Option<String>,
+	user_id: Option<String>,
+	#[serde(default)]
+	chatgpt_account_is_fedramp: bool,
+}
+
+/// Read the usage user identity only for the selected non-FedRAMP credential.
+/// This parses an already owned credential; it is not JWT signature verification.
+pub(crate) fn usage_user_id(id_token: &str, account_id: &str) -> Option<Zeroizing<String>> {
+	validate_token(id_token).ok()?;
+	let mut claims: UsageIdentityClaims = decode_claims(id_token).ok()?;
+	let mut authority = claims.authority.take()?;
+	if authority.chatgpt_account_is_fedramp
+		|| authority.chatgpt_account_id.as_deref() != Some(account_id)
+	{
+		return None;
+	}
+	let user_id = authority.chatgpt_user_id.take().or_else(|| authority.user_id.take())?;
+	validate_scalar(&user_id, MAX_PROVIDER_ACCOUNT_ID_BYTES).ok()?;
+	Some(Zeroizing::new(user_id))
+}
+
 pub(crate) fn parse_shared_codex(
 	bytes: &[u8],
 ) -> Result<ImportedCredential, CredentialImportError> {
@@ -362,6 +395,27 @@ mod tests {
 		fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
 		fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
 		(temp, path.to_string_lossy().into_owned())
+	}
+
+	#[test]
+	fn usage_identity_requires_exact_account_and_non_fedramp_user() {
+		let mut auth =
+			json!({"chatgpt_account_id":"account", "chatgpt_user_id":"user", "user_id":"fallback"});
+		let decode = |auth: &serde_json::Value, account: &str| {
+			super::usage_user_id(&token(json!({"https://api.openai.com/auth": auth})), account)
+		};
+		assert_eq!(decode(&auth, "account").as_deref().map(String::as_str), Some("user"));
+		assert!(decode(&auth, "other").is_none());
+		auth["chatgpt_account_is_fedramp"] = json!(true);
+		assert!(decode(&auth, "account").is_none());
+		auth["chatgpt_account_is_fedramp"] = json!(false);
+		auth["chatgpt_user_id"] = serde_json::Value::Null;
+		assert_eq!(decode(&auth, "account").as_deref().map(String::as_str), Some("fallback"));
+		for invalid in [json!(""), json!("x".repeat(513)), json!("user\n"), json!(42)] {
+			auth["chatgpt_user_id"] = invalid;
+			assert!(decode(&auth, "account").is_none());
+		}
+		assert!(super::usage_user_id("invalid", "account").is_none());
 	}
 
 	#[test]

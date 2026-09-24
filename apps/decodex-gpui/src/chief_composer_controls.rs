@@ -6,7 +6,7 @@ use gpui::{
 	px, rgb, rgba,
 };
 
-const LEVELS: [(&str, &str); 8] = [
+const LEVELS: [(&str, &str); 9] = [
 	("none", "None"),
 	("minimal", "Minimal"),
 	("low", "Low"),
@@ -15,6 +15,7 @@ const LEVELS: [(&str, &str); 8] = [
 	("xhigh", "XHigh"),
 	("max", "Max"),
 	("ultra", "Ultra"),
+	("persistent", "Persistent"),
 ];
 
 pub(super) fn effort_indicator(level: &str) -> gpui::AnyElement {

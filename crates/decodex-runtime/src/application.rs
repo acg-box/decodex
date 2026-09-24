@@ -297,6 +297,72 @@ pub(crate) struct ServiceApplication {
 	doctor: DoctorReport,
 }
 impl ServiceApplication {
+	async fn query_activity_detail(
+		&self,
+		work: &str,
+		turn: &str,
+		item: &str,
+	) -> QueryResultPayload {
+		QueryResultPayload::ChiefActivityDetail(match &self.chief {
+			Some(chief) => chief.activity_detail(work, turn, item).await,
+			None => decodex_protocol::ChiefActivityDetailResult::Unavailable,
+		})
+	}
+
+	async fn query_input_receipts(&self, work: &str, after: Option<i64>) -> QueryResultPayload {
+		QueryResultPayload::ChiefInputReceipts(
+			query_chief_input_receipts(&self.store, work, after).await,
+		)
+	}
+
+	async fn query_chief_snapshot(&self) -> QueryResultPayload {
+		let before = match &self.chief {
+			Some(chief) => chief.runtime_source().await,
+			None => None,
+		};
+		let mut result = query_chief_snapshot(&self.store).await;
+		let after = match &self.chief {
+			Some(chief) => chief.runtime_source().await,
+			None => None,
+		};
+		if let decodex_protocol::ChiefSnapshotResult::Available(snapshot) = &mut result {
+			snapshot.runtime_source = if before == after { after } else { None };
+			if !snapshot.is_valid() {
+				result = decodex_protocol::ChiefSnapshotResult::Unavailable;
+			}
+		}
+		QueryResultPayload::ChiefSnapshot(result)
+	}
+
+	async fn query_usage_estimate(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefUsageEstimate(match &self.chief {
+			Some(chief) => chief.usage_estimate(work).await,
+			None => decodex_protocol::ChiefUsageEstimateResult::Unavailable,
+		})
+	}
+
+	async fn query_media(
+		&self,
+		request: &decodex_protocol::ChiefMediaRequest,
+	) -> QueryResultPayload {
+		QueryResultPayload::ChiefMedia(match &self.chief {
+			Some(chief) => chief.media(request).await,
+			None => decodex_protocol::ChiefMediaResult::Unavailable,
+		})
+	}
+
+	async fn query_timeline(
+		&self,
+		work: &str,
+		thread: &str,
+		cursor: Option<&str>,
+	) -> QueryResultPayload {
+		QueryResultPayload::ChiefTimeline(match &self.chief {
+			Some(chief) => chief.timeline(work, thread, cursor).await,
+			None => decodex_protocol::ChiefTimelineResult::Unavailable,
+		})
+	}
+
 	pub(crate) fn new(
 		store: ProductStore,
 		process_generations: Option<ProcessGenerationControl>,
@@ -1869,23 +1935,25 @@ impl Application for ServiceApplication {
 			QueryPayload::ExchangeMcpLogin { request } =>
 				QueryResultPayload::McpLogin(query_mcp_login(self.chief.as_ref(), request).await),
 			QueryPayload::GetChiefUsageEstimate { work_id } =>
-				QueryResultPayload::ChiefUsageEstimate(match &self.chief {
-					Some(chief) => chief.usage_estimate(work_id.as_str()).await,
-					None => decodex_protocol::ChiefUsageEstimateResult::Unavailable,
-				}),
+				self.query_usage_estimate(work_id.as_str()).await,
+			QueryPayload::GetChiefInputReceipts { work_id, after } =>
+				self.query_input_receipts(work_id.as_str(), *after).await,
+			QueryPayload::GetChiefMedia { request } => self.query_media(request).await,
+			QueryPayload::GetChiefTimeline { work_id, thread_id, cursor } =>
+				self.query_timeline(
+					work_id.as_str(),
+					thread_id.as_str(),
+					cursor.as_ref().map(|c| c.as_str()),
+				)
+				.await,
 			QueryPayload::GetChiefIntegrations { work_id } =>
 				QueryResultPayload::ChiefIntegrations(match &self.chief {
 					Some(chief) => chief.integrations(work_id.as_str()).await,
 					None => decodex_protocol::ChiefIntegrationsResult::Unavailable,
 				}),
 			QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id } =>
-				QueryResultPayload::ChiefActivityDetail(match &self.chief {
-					Some(chief) =>
-						chief
-							.activity_detail(work_id.as_str(), turn_id.as_str(), item_id.as_str())
-							.await,
-					None => decodex_protocol::ChiefActivityDetailResult::Unavailable,
-				}),
+				self.query_activity_detail(work_id.as_str(), turn_id.as_str(), item_id.as_str())
+					.await,
 			QueryPayload::GetChiefRequest { event_id } => QueryResultPayload::ChiefRequest(
 				query_chief_request_with_details(&self.store, *event_id, self.chief.as_ref()).await,
 			),
@@ -1949,8 +2017,7 @@ impl Application for ServiceApplication {
 					)
 					.await,
 				),
-			QueryPayload::GetChiefSnapshot =>
-				QueryResultPayload::ChiefSnapshot(query_chief_snapshot(&self.store).await),
+			QueryPayload::GetChiefSnapshot => self.query_chief_snapshot().await,
 			QueryPayload::GetDesktopSettings =>
 				QueryResultPayload::DesktopSettings(self.desktop_settings().await),
 			QueryPayload::ListPrograms => QueryResultPayload::Programs(self.program_list().await),
@@ -3923,22 +3990,7 @@ async fn query_chief_request(
 
 fn chief_user_message_text(value: &serde_json::Value) -> String {
 	let raw = value["text"].as_str().unwrap_or("");
-	let mut text = match decodex_protocol::parse_chief_async_question_replies(raw) {
-		Some(replies) => replies
-			.into_iter()
-			.map(|reply| {
-				let question = reply
-					.question
-					.lines()
-					.map(|line| format!("> {line}"))
-					.collect::<Vec<_>>()
-					.join("\n");
-				format!("{question}\n\n{}", reply.answer)
-			})
-			.collect::<Vec<_>>()
-			.join("\n\n"),
-		None => raw.to_owned(),
-	};
+	let mut text = decodex_protocol::render_chief_async_question_history(raw);
 	if let Some(files) = value.pointer("/options/attachments").and_then(serde_json::Value::as_array)
 	{
 		for file in files.iter().take(16) {
@@ -4087,6 +4139,55 @@ fn completed_chief_history(
 	} else {
 		(message_kind, text)
 	}
+}
+
+async fn query_chief_input_receipts(
+	store: &ProductStore,
+	work: &str,
+	after: Option<i64>,
+) -> decodex_protocol::ChiefInputReceiptsResult {
+	use decodex_protocol::ChiefInputReceiptsResult as Result;
+	let ProductStore::Available(store) = store else {
+		return Result::Unavailable;
+	};
+	let Ok(events) = store.read_chief_unconfirmed_inputs(work.into(), after, 33).await else {
+		return Result::Unavailable;
+	};
+	let Ok(work_id) = decodex_protocol::EntityId::new(work) else {
+		return Result::Unavailable;
+	};
+	let total = events.len();
+	let mut entries = Vec::new();
+	let mut remaining = 60 * 1024usize;
+	let mut shortened = false;
+	for event in events.into_iter().take(32) {
+		let Ok(value) = serde_json::from_str::<serde_json::Value>(&event.payload) else {
+			return Result::Unavailable;
+		};
+		let (kind, text) = if event.event_kind == "work_instruction" {
+			("instruction", value["text"].as_str().unwrap_or_default().to_owned())
+		} else {
+			("user", chief_user_message_text(&value))
+		};
+		let mut entry = chief_history_entry(&event, &value, kind, String::new());
+		let Ok(metadata) = serde_json::to_vec(&entry) else {
+			return Result::Unavailable;
+		};
+		if metadata.len() + 4 >= remaining {
+			break;
+		}
+		let (text, trimmed) = bound_chief_text(text, (remaining - metadata.len() - 4).min(8192));
+		shortened |= trimmed;
+		entry.text = text;
+		let Ok(encoded) = serde_json::to_vec(&entry) else {
+			return Result::Unavailable;
+		};
+		remaining = remaining.saturating_sub(encoded.len() + 1);
+		entries.push(entry);
+	}
+	let next_after =
+		(entries.len() < total).then(|| entries.last().map(|entry| entry.id)).flatten();
+	Result::Available { work_id, entries, next_after, shortened }
 }
 
 async fn query_chief_history_page(
@@ -4253,7 +4354,8 @@ fn render_chief_history(
 		if event.event_kind == "user_message" {
 			append_task_reference_labels(&mut text, &value);
 		}
-		let activity_cost = if kind == "activity" { event.payload.len() } else { 0 };
+		let activity_cost = if kind == "activity" { event.payload.len() } else { 0 }
+			+ serde_json::to_vec(&chief_history_receipt(&event)).map_or(remaining, |v| v.len());
 		if serde_json::to_vec(&text).map_or(usize::MAX, |encoded| encoded.len())
 			+ 160 + activity_cost
 			> remaining
@@ -4348,6 +4450,7 @@ fn chief_history_entry(
 			.and_then(serde_json::Value::as_str)
 			.map(str::to_owned),
 		weather: Vec::new(),
+		receipt: chief_history_receipt(event),
 		activity: if event.event_kind.starts_with("activity_") {
 			serde_json::from_value(value.clone()).ok()
 		} else {
@@ -4367,6 +4470,63 @@ fn chief_history_entry(
 		kind: kind.into(),
 		text,
 		created_at_micros: event.created_at_micros,
+	}
+}
+
+fn chief_history_receipt(
+	event: &decodex_database::ChiefInboxEvent,
+) -> Option<decodex_protocol::ChiefHistoryReceiptDto> {
+	if event.event_kind.is_empty()
+		|| event.event_kind.len() > 80
+		|| event.delivered_turn_id.as_ref().is_some_and(|id| id.len() > 512)
+	{
+		return None;
+	}
+	Some(decodex_protocol::ChiefHistoryReceiptDto {
+		event_kind: event.event_kind.clone(),
+		delivered_turn_id: event.delivered_turn_id.clone().filter(|id| !id.is_empty()),
+		disposed: event.disposition.is_some(),
+	})
+}
+
+#[cfg(test)]
+mod history_receipt_tests {
+	#[test]
+	fn disposition_does_not_imply_native_delivery_and_opaque_ids_are_not_truncated() {
+		let mut event = decodex_database::ChiefInboxEvent {
+			id: 1,
+			source_event_id: "source".into(),
+			work_item_id: "work".into(),
+			event_kind: "async_question_answer".into(),
+			payload: "{}".into(),
+			created_at_micros: 1,
+			disposition: None,
+			disposition_note: None,
+			disposed_at_micros: None,
+			delivered_turn_id: None,
+		};
+		let entry =
+			super::chief_history_entry(&event, &serde_json::json!({}), "user", "Answer".into());
+		let receipt = entry.receipt.unwrap();
+		assert_eq!(receipt.event_kind, "async_question_answer");
+		assert!(!receipt.disposed);
+		assert!(receipt.delivered_turn_id.is_none());
+		// A claimed or uncertain dispatch uses an empty native turn fence in the store.
+		event.delivered_turn_id = Some(String::new());
+		let claimed =
+			super::chief_history_entry(&event, &serde_json::json!({}), "user", "Answer".into())
+				.receipt
+				.expect("uncertain input stays visible");
+		assert!(claimed.delivered_turn_id.is_none() && !claimed.disposed);
+		event.disposition = Some(decodex_database::ChiefDisposition::Resolved);
+		let receipt = super::chief_history_receipt(&event).unwrap();
+		assert!(receipt.disposed);
+		assert!(receipt.delivered_turn_id.is_none());
+		event.delivered_turn_id = Some("native-turn".into());
+		let receipt = super::chief_history_receipt(&event).unwrap();
+		assert_eq!(receipt.delivered_turn_id.as_deref(), Some("native-turn"));
+		event.delivered_turn_id = Some("x".repeat(513));
+		assert!(super::chief_history_receipt(&event).is_none());
 	}
 }
 
@@ -4463,6 +4623,7 @@ async fn query_chief_snapshot(store: &ProductStore) -> decodex_protocol::ChiefSn
 	};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
 	let snapshot = ChiefSnapshotDto {
+		runtime_source: None,
 		workspaces: workspaces
 			.into_iter()
 			.map(|(chief_id, name, directory)| decodex_protocol::ChiefWorkspaceDto {
@@ -4831,6 +4992,110 @@ mod tests {
 			})
 			.await
 			.unwrap();
+	}
+
+	#[tokio::test]
+	async fn unconfirmed_input_pages_survive_history_eviction_restart_and_delivery_changes() {
+		use decodex_database::{ChiefDisposition, EnqueueChiefEvent};
+		use decodex_protocol::{ChiefHistoryResult, ChiefInputReceiptsResult as Receipts};
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		chief_query_work(&store, "chosen").await;
+		chief_query_work(&store, "peer").await;
+		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
+		let mut ids = Vec::new();
+		for n in 0..40 {
+			let text = if n == 39 { "界".repeat(10000) } else { format!("Input {n}") };
+			ids.push(
+				store
+					.enqueue_chief_event(EnqueueChiefEvent {
+						source_event_id: format!("input-{n}"),
+						work_item_id: "chosen".into(),
+						event_kind: ["user_message", "async_question_answer", "work_instruction"]
+							[n % 3]
+							.into(),
+						payload: serde_json::json!({"text":text}).to_string(),
+					})
+					.await
+					.unwrap()
+					.id,
+			);
+		}
+		store.begin_chief_dispatch_with_events("chosen".into(), vec![ids[0]]).await.unwrap();
+		store
+			.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id: "peer-input".into(),
+				work_item_id: "peer".into(),
+				event_kind: "user_message".into(),
+				payload: serde_json::json!({"text":"Peer input"}).to_string(),
+			})
+			.await
+			.unwrap();
+		for n in 0..50 {
+			store
+				.enqueue_chief_event(EnqueueChiefEvent {
+					source_event_id: format!("output-{n}"),
+					work_item_id: "chosen".into(),
+					event_kind: "assistant_message".into(),
+					payload: serde_json::json!({"item":{"text":"Newer output"}}).to_string(),
+				})
+				.await
+				.unwrap();
+		}
+		drop(store);
+		let reopened = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(reopened.clone());
+		let ChiefHistoryResult::Available { entries, .. } =
+			super::query_chief_history(&owner, "chosen").await
+		else {
+			panic!("history")
+		};
+		assert!(entries.iter().all(|entry| entry.kind != "user"));
+		let Receipts::Available { entries, next_after, shortened, .. } =
+			super::query_chief_input_receipts(&owner, "chosen", None).await
+		else {
+			panic!("pending inputs")
+		};
+		assert_eq!(entries.iter().map(|entry| entry.id).collect::<Vec<_>>(), ids[..32]);
+		assert_eq!(next_after, Some(ids[31]));
+		assert!(!shortened);
+		assert!(
+			entries[0]
+				.receipt
+				.as_ref()
+				.is_some_and(|receipt| receipt.delivered_turn_id.is_none() && !receipt.disposed)
+		);
+		let second = super::query_chief_input_receipts(&owner, "chosen", next_after).await;
+		assert!(serde_json::to_vec(&second).unwrap().len() < 64 * 1024);
+		let Receipts::Available { entries, next_after, shortened, .. } = second else {
+			panic!("second page")
+		};
+		assert_eq!(entries.iter().map(|entry| entry.id).collect::<Vec<_>>(), ids[32..]);
+		assert!(next_after.is_none() && shortened);
+		assert!(entries.last().unwrap().text.ends_with('界'));
+		// A separate client acknowledges/disposes records; a fresh query must remove both.
+		let other = reopened.clone();
+		other.acknowledge_chief_dispatch("chosen".into(), "accepted-turn".into()).await.unwrap();
+		other
+			.dispose_chief_event(ids[1], ChiefDisposition::Resolved, "Handled".into(), None)
+			.await
+			.unwrap();
+		let Receipts::Available { entries, .. } =
+			super::query_chief_input_receipts(&owner, "chosen", None).await
+		else {
+			panic!("fresh inputs")
+		};
+		assert!(entries.iter().all(|entry| entry.id != ids[0] && entry.id != ids[1]));
+		assert_eq!(entries[0].id, ids[2]);
+		assert_eq!(
+			super::query_chief_input_receipts(&owner, "chosen", Some(0)).await,
+			Receipts::Unavailable
+		);
+		assert_eq!(
+			super::query_chief_input_receipts(&owner, "missing", None).await,
+			Receipts::Unavailable
+		);
 	}
 
 	#[tokio::test]
@@ -5603,6 +5868,7 @@ mod tests {
 				phase: AccountOperationPhase::Prepared,
 				recovery_code: None,
 			}),
+			usage_observation: None,
 			five_hour_quota: AccountQuotaWindowObservation::unknown(
 				AccountQuotaWindow::FIVE_HOURS_MINUTES,
 			)

@@ -1,6 +1,6 @@
 # Decodex Content Automations
 
-The exact-five portfolio contains two content roles. Their source definitions
+The automation portfolio contains two content roles. Their source definitions
 are in `automations/portfolio.toml`; this directory contains their prompts,
 compact validation code, and Publisher schemas.
 

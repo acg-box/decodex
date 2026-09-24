@@ -49,6 +49,9 @@ pub struct ChiefHistoryEntryDto {
 	pub turn_id: Option<String>,
 	#[serde(default)]
 	pub weather: Vec<crate::WeatherForecast>,
+	/// Local receipt facts, independent of native conversation ordering.
+	#[serde(default)]
+	pub receipt: Option<ChiefHistoryReceiptDto>,
 	/// Native execution activity; absent for conversation messages.
 	#[serde(default)]
 	pub activity: Option<ChiefActivityDto>,
@@ -64,6 +67,18 @@ pub struct ChiefHistoryEntryDto {
 	pub text: String,
 	/// Observation time.
 	pub created_at_micros: i64,
+}
+
+/// Local delivery evidence retained beside canonical native history.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefHistoryReceiptDto {
+	/// Original local event category, not the displayed user/assistant role.
+	pub event_kind: String,
+	/// Acknowledged native turn. Absence means unconfirmed, not necessarily unsent.
+	pub delivered_turn_id: Option<String>,
+	/// Whether the coordinator recorded a disposition; this does not prove delivery.
+	pub disposed: bool,
 }
 
 /// Current-turn text observed before final history is available.
@@ -131,6 +146,25 @@ pub enum ChiefHistoryResult {
 		live: Vec<ChiefLiveMessageDto>,
 	},
 	/// The work or source store cannot be read.
+	Unavailable,
+}
+
+/// Current unconfirmed local input, independent of the conversation history window.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ChiefInputReceiptsResult {
+	/// A bounded page in persistent event order. Reads never authorize another delivery.
+	Available {
+		/// Exact local task identity.
+		work_id: crate::EntityId,
+		/// Current inputs with no acknowledged native turn or disposition.
+		entries: Vec<ChiefHistoryEntryDto>,
+		/// Read entries strictly after this identity, when more unconfirmed inputs exist.
+		next_after: Option<i64>,
+		/// Some visible text was shortened to fit this page.
+		shortened: bool,
+	},
+	/// The task or current receipts could not be read.
 	Unavailable,
 }
 
@@ -321,6 +355,15 @@ pub enum ChiefActionDto {
 		/// Explicit free text or user-selected option.
 		answer: crate::HistoryText,
 	},
+	/// Dismiss a local question without submitting an answer or starting a turn.
+	SkipQuestion {
+		/// Work that owns the displayed question.
+		work_id: crate::EntityId,
+		/// Exact native thread displayed with the question.
+		thread_id: crate::WireText,
+		/// Stable native question identity.
+		question_id: crate::WireText,
+	},
 	/// Cancel one exact pending model-capacity retry.
 	CancelCapacityRetry {
 		/// Work that owns the pending retry.
@@ -483,10 +526,13 @@ pub struct ChiefWorkspaceDto {
 	pub directory: String,
 }
 
-/// One complete bounded transaction-consistent projection, including a valid empty state.
+/// One bounded work snapshot plus observed runtime identity, including a valid empty state.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChiefSnapshotDto {
+	/// Opaque current account revision and process identity; absent while unavailable.
+	#[serde(default)]
+	pub runtime_source: Option<crate::EntityId>,
 	/// Persisted project scopes.
 	pub workspaces: Vec<ChiefWorkspaceDto>,
 	/// All work records.
@@ -574,6 +620,7 @@ mod tests {
 	fn chief_snapshot_roundtrip_retains_empty_available_and_explicit_capacity_failure() {
 		for value in [
 			ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],
@@ -591,6 +638,7 @@ mod tests {
 		}
 		assert!(
 			ChiefSnapshotDto {
+				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
 				dependencies: vec![],

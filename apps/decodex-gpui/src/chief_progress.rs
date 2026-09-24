@@ -178,6 +178,7 @@ impl ChiefSurface {
 		entries.push(ChiefHistoryEntryDto {
 			turn_id: None,
 			weather: Vec::new(),
+			receipt: None,
 			activity: None,
 			usage: None,
 			duration_ms: None,
@@ -198,6 +199,7 @@ impl ChiefSurface {
 			entries.push(ChiefHistoryEntryDto {
 				turn_id: None,
 				weather: Vec::new(),
+				receipt: None,
 				activity: Some(ChiefActivityDto {
 					turn_id: "capture-turn".into(),
 					item_id: format!("capture-{index}"),
