@@ -412,3 +412,20 @@ Application context displays the declared app, action, connector, link and resou
 fields; it does not launch an MCP App UI. Contracts were checked against upstream
 595cc91e8cbb1c2ca822d0311dcf12709410c582 item.rs and the installed alpha16.3 schema.
 Protocol2.57 and database35 are unchanged.
+
+
+## Native goal observation adapter
+
+The retained native bridge now permits `thread/goal/get`. The adapter reads an
+exact thread's objective, six native statuses, optional token budget, token
+counter, elapsed seconds and timestamps. It rejects mismatched identities and
+invalid counters. A null goal is distinct from a malformed or failed response.
+Chief coordination goals retain their existing owner; the bridge does not expose
+native goal creation, mutation or automatic scheduling through this reader.
+
+At cutoff595cc91e, native goal requests require the goals feature. Activating a
+native goal can start work. The installed alpha16.3 isolated fixture uses paused
+goals and confirms updated notification data, cross-process reads and clears,
+nullable budgets and persistence after restart, with zero inference requests.
+It does not qualify active-goal accounting or complete runtime/UI integration.
+Protocol2.57 and database35 are unchanged.

@@ -254,6 +254,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "app/list" | "account/usage/read"
 					| "thread/unarchive"
 					| "thread/read" | "thread/list"
+					| "thread/goal/get"
 					| "thread/turns/list"
 					| "thread/items/list"
 					| "thread/timeline/list"
@@ -298,6 +299,22 @@ mod tests {
 		assert!(validate_outbound(&frame, &mut requests).is_err());
 		frame["method"] = json!("thread/settings/update");
 		assert!(validate_outbound(&frame, &mut requests).is_err());
+	}
+
+	#[test]
+	fn goal_bridge_allows_observation_without_goal_mutation() {
+		for (method, allowed) in
+			[("thread/goal/get", true), ("thread/goal/set", false), ("thread/goal/clear", false)]
+		{
+			assert_eq!(
+				validate_outbound(
+					&json!({"id":1,"method":method,"params":{"threadId":"thread"}}),
+					&mut HashSet::new()
+				)
+				.is_ok(),
+				allowed
+			);
+		}
 	}
 
 	#[test]

@@ -20,6 +20,8 @@ mod archive;
 pub use archive::ThreadArchiveState;
 mod attachments;
 mod history;
+mod goals;
+pub use goals::{NativeThreadGoal, NativeThreadGoalStatus};
 mod initialize;
 mod live_settings;
 pub use initialize::InitializeCapabilities;
