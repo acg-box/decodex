@@ -1,5 +1,6 @@
 //! Opt-in installed-native qualification with a local Responses fixture and no credentials.
 use super::*;
+#[path = "chief_process_native_steer_tests.rs"] mod steer;
 use serde_json::json;
 use std::{
 	io::{BufRead, BufReader},

@@ -341,6 +341,30 @@ impl ServiceApplication {
 		})
 	}
 
+	async fn query_steer_receipt(
+		&self,
+		identity: &decodex_protocol::ChiefSteerIdentity,
+	) -> QueryResultPayload {
+		use decodex_protocol::ChiefSteerReceiptResult as Receipt;
+		let result = match &self.store {
+			ProductStore::Available(store) => match store
+				.chief_steer_confirmed(
+					identity.work_id.as_str().into(),
+					identity.thread_id.as_str().into(),
+					identity.turn_id.as_str().into(),
+					identity.submission_id.as_str().into(),
+				)
+				.await
+			{
+				Ok(true) => Receipt::Confirmed { identity: identity.clone() },
+				Ok(false) => Receipt::Unconfirmed,
+				Err(_) => Receipt::Unavailable,
+			},
+			_ => Receipt::Unavailable,
+		};
+		QueryResultPayload::ChiefSteerReceipt(result)
+	}
+
 	async fn query_media(
 		&self,
 		request: &decodex_protocol::ChiefMediaRequest,
@@ -1938,6 +1962,8 @@ impl Application for ServiceApplication {
 				self.query_usage_estimate(work_id.as_str()).await,
 			QueryPayload::GetChiefInputReceipts { work_id, after } =>
 				self.query_input_receipts(work_id.as_str(), *after).await,
+			QueryPayload::GetChiefSteerReceipt { identity } =>
+				self.query_steer_receipt(identity).await,
 			QueryPayload::GetChiefMedia { request } => self.query_media(request).await,
 			QueryPayload::GetChiefTimeline { work_id, thread_id, cursor } =>
 				self.query_timeline(

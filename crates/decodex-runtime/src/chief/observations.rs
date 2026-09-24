@@ -5,6 +5,29 @@ use decodex_codex::ThreadTokenUsage;
 use sha2::{Digest as _, Sha256};
 
 impl ChiefCoordinator {
+	pub(super) async fn observe_steer_receipt(
+		&self,
+		thread: &str,
+		turn: &str,
+		item: &Value,
+	) -> Result<(), ChiefError> {
+		if item["type"] == "userMessage"
+			&& let Some(client_id) = item["clientId"].as_str()
+			&& !client_id.is_empty()
+			&& client_id.len() <= 512
+		{
+			self.store
+				.observe_chief_steer_receipt(
+					thread.into(),
+					turn.into(),
+					client_id.into(),
+					self.native_generation.as_ref().map(|id| id.as_str().to_owned()),
+				)
+				.await?;
+		}
+		Ok(())
+	}
+
 	pub(super) async fn observe_misalignment(
 		&mut self,
 		thread: &str,
@@ -80,6 +103,7 @@ impl ChiefCoordinator {
 					self.stop_voice_for_precaution(&thread).await?;
 				}
 				for item in items {
+					self.observe_steer_receipt(&thread, turn, item).await?;
 					saw_required |=
 						item["id"].as_str().is_some_and(|id| required_item.as_deref() == Some(id));
 					if projection.observe(&thread, turn, item).is_err() {
@@ -155,6 +179,23 @@ impl ChiefCoordinator {
 		Ok(())
 	}
 
+	async fn observe_completed_input(
+		&mut self,
+		thread: &str,
+		turn: &str,
+		item: &Value,
+	) -> Result<(), ChiefError> {
+		self.observe_steer_receipt(thread, turn, item).await?;
+		self.observe_async_question_item(thread, turn, item).await?;
+		if is_plain_user_prompt(item)
+			&& let Some(id) = item["id"].as_str()
+		{
+			self.store.request_chief_async_recovery(thread.into(), id.into()).await?;
+			self.recover_async_questions().await?;
+		}
+		Ok(())
+	}
+
 	pub(super) async fn observe_notification(
 		&mut self,
 		method: &str,
@@ -202,13 +243,7 @@ impl ChiefCoordinator {
 			&& let (Some(thread), Some(turn)) =
 				(params["threadId"].as_str(), params["turnId"].as_str())
 		{
-			self.observe_async_question_item(thread, turn, &params["item"]).await?;
-			if is_plain_user_prompt(&params["item"])
-				&& let Some(id) = params["item"]["id"].as_str()
-			{
-				self.store.request_chief_async_recovery(thread.into(), id.into()).await?;
-				self.recover_async_questions().await?;
-			}
+			self.observe_completed_input(thread, turn, &params["item"]).await?;
 		}
 		if method != "thread/tokenUsage/updated"
 			&& !(method == "item/completed"

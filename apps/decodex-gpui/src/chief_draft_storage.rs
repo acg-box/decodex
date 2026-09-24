@@ -232,6 +232,30 @@ impl ChiefSurface {
 		self.draft_profiles.storage.document.recovered.push(copy.clone());
 	}
 
+	pub(in super::super) fn resolve_steer_draft_copies(
+		&mut self,
+		identity: &decodex_protocol::ChiefSteerIdentity,
+	) {
+		let scope = self.draft_profiles.active.as_ref().map(ClientProfile::draft_scope_key);
+		for copy in &mut self.draft_profiles.storage.document.recovered {
+			if copy.scope != scope
+				|| copy.draft.composer.work_id.as_ref() != Some(&identity.work_id)
+				|| copy.draft.composer.thread_id.as_ref() != Some(&identity.thread_id)
+				|| !copy.draft.unconfirmed_commands.contains(&identity.submission_id)
+			{
+				continue;
+			}
+			copy.draft.unconfirmed_commands.retain(|key| key != &identity.submission_id);
+			if copy.draft.pending.as_ref().and_then(|pending| pending.steer.as_ref())
+				== Some(identity)
+			{
+				copy.draft.pending = None;
+			}
+			copy.draft.uncertain =
+				!copy.draft.unconfirmed_commands.is_empty() || copy.draft.pending.is_some();
+		}
+	}
+
 	pub(in super::super) fn remove_command_draft_fence(&mut self, pending: &PendingCommand) {
 		if let Some(copy) = &pending.recovery {
 			self.draft_profiles.storage.document.recovered.retain(|saved| saved != copy);
@@ -510,6 +534,44 @@ impl<T> TransposeOption<T> for Option<Option<T>> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[gpui::test]
+	fn exact_receipt_settles_only_matching_saved_copies(cx: &mut gpui::TestAppContext) {
+		let (_service, profile, other) = super::super::tests::profiles();
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.bind_profile(Some(profile.clone()), cx);
+			let identity = decodex_protocol::ChiefSteerIdentity {
+				work_id: EntityId::new("work").unwrap(),
+				thread_id: WireText::new("thread").unwrap(),
+				turn_id: WireText::new("turn").unwrap(),
+				submission_id: IdempotencyKey::new("confirmed").unwrap(),
+			};
+			let mut draft = DesktopProfileDraft::default();
+			draft.composer.work_id = Some(identity.work_id.clone());
+			draft.composer.thread_id = Some(identity.thread_id.clone());
+			draft.composer.text = "Retain this copy".into();
+			draft.uncertain = true;
+			draft.unconfirmed_commands = vec![identity.submission_id.clone()];
+			let copy = decodex_protocol::DesktopRecoveredDraft {
+				scope: Some(profile.draft_scope_key()),
+				draft,
+			};
+			let mut foreign = copy.clone();
+			foreign.scope = Some(other.draft_scope_key());
+			let mut additional = copy.clone();
+			additional.draft.unconfirmed_commands.push(IdempotencyKey::new("unknown").unwrap());
+			s.draft_profiles.storage.document.recovered =
+				vec![copy.clone(), foreign.clone(), additional];
+			s.resolve_steer_draft_copies(&identity);
+			let copies = &s.draft_profiles.storage.document.recovered;
+			assert_eq!(copies[0].draft.composer.text, "Retain this copy");
+			assert!(!copies[0].draft.uncertain && copies[0].draft.unconfirmed_commands.is_empty());
+			assert!(copies[1] == foreign, "another service retains its uncertainty");
+			assert!(copies[2].draft.uncertain, "another submission remains unconfirmed");
+			assert_eq!(copies[2].draft.unconfirmed_commands[0].as_str(), "unknown");
+		});
+	}
 
 	#[gpui::test]
 	fn cold_reopen_keeps_inflight_original_after_later_edit(cx: &mut gpui::TestAppContext) {

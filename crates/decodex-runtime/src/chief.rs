@@ -318,6 +318,7 @@ impl ChiefCoordinator {
 					for entry in
 						exact_turn.and_then(|turn| turn["items"].as_array()).into_iter().flatten()
 					{
+						self.observe_steer_receipt(&thread, &turn, entry).await?;
 						self.observe_async_question_item(&thread, &turn, entry).await?;
 						if entry["type"] == "subAgentActivity"
 							&& let Some(activity) =

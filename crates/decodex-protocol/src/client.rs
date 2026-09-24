@@ -300,6 +300,33 @@ impl ChiefClient {
 		}
 	}
 
+	/// Read positive acceptance evidence for one exact steering submission.
+	pub async fn steer_receipt(
+		&self,
+		identity: crate::ChiefSteerIdentity,
+	) -> Result<crate::ChiefSteerReceiptResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"chief-steer-receipt",
+				QueryPayload::GetChiefSteerReceipt { identity: identity.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let QueryResultPayload::ChiefSteerReceipt(result) = completed.value else {
+			return Err(ClientFailure::ProtocolMalformed);
+		};
+		if let crate::ChiefSteerReceiptResult::Confirmed { identity: actual } = &result
+			&& actual != &identity
+		{
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		Ok(result)
+	}
+
 	/// Exchange one explicit voice operation. The caller must poll after a lost start response.
 	pub async fn voice(
 		&self,
@@ -3170,7 +3197,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 48 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 49 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
@@ -4330,6 +4357,70 @@ max_entry_bytes = 0
 			task.await.unwrap();
 			if change == "none" {
 				assert!(matches!(result, Ok(crate::ChiefInputReceiptsResult::Available { .. })));
+			} else {
+				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
+			}
+		}
+	}
+	#[tokio::test]
+	async fn steer_receipt_wire_requires_all_submission_identity_fields() {
+		for change in ["none", "work", "thread", "turn", "submission"] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let identity = crate::ChiefSteerIdentity {
+				work_id: EntityId::new("work").unwrap(),
+				thread_id: crate::WireText::new("thread").unwrap(),
+				turn_id: crate::WireText::new("turn").unwrap(),
+				submission_id: IdempotencyKey::new("submission").unwrap(),
+			};
+			let expected = identity.clone();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap())
+					.await
+					.unwrap();
+				let _ = socket.next().await;
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+					panic!("query")
+				};
+				let ClientMessage::Query(query) =
+					serde_json::from_str::<ClientMessage>(&text).unwrap()
+				else {
+					panic!("query")
+				};
+				assert!(
+					matches!(&query.payload, crate::QueryPayload::GetChiefSteerReceipt { identity } if identity == &expected)
+				);
+				let mut actual = expected;
+				match change {
+					"work" => actual.work_id = EntityId::new("other").unwrap(),
+					"thread" => actual.thread_id = crate::WireText::new("other").unwrap(),
+					"turn" => actual.turn_id = crate::WireText::new("other").unwrap(),
+					"submission" => actual.submission_id = IdempotencyKey::new("other").unwrap(),
+					_ => {},
+				}
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::ChiefSteerReceipt(
+							crate::ChiefSteerReceiptResult::Confirmed { identity: actual },
+						),
+					})))
+					.await
+					.unwrap();
+				drop(socket);
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = crate::ChiefClient::new(profile).steer_receipt(identity.clone()).await;
+			task.await.unwrap();
+			if change == "none" {
+				assert_eq!(result.unwrap(), crate::ChiefSteerReceiptResult::Confirmed { identity });
 			} else {
 				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
 			}

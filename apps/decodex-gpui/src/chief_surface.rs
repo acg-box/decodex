@@ -26,6 +26,7 @@
 #[path = "chief_requests.rs"] mod requests;
 #[path = "chief_resources.rs"] mod resources;
 #[path = "chief_selectable_text.rs"] mod selectable_text;
+#[path = "chief_steer_receipts.rs"] mod steer_receipts;
 #[path = "chief_text_reveal.rs"] mod text_reveal;
 #[path = "chief_usage_estimates.rs"] mod usage_estimates;
 #[path = "chief_voice.rs"] mod voice;
@@ -1012,6 +1013,7 @@ impl ChiefSurface {
 		self.cancel_queued_command(cx);
 		self.command_epoch += 1;
 		self.submission.command = None;
+		self.submission.receipt_task = None;
 		if self.sending {
 			self.uncertain = true;
 			self.sending = false;
@@ -1116,6 +1118,7 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn refresh(&mut self, cx: &mut Context<Self>) {
+		self.refresh_steer_receipt(cx);
 		if self.state == LoadState::Loading {
 			return;
 		}

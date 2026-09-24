@@ -8,6 +8,7 @@ pub(super) struct SubmissionState {
 	pub(super) waiting: Option<QueuedCommand>,
 	pub(super) unconfirmed: Vec<IdempotencyKey>,
 	pub(super) command: Option<Task<()>>,
+	pub(super) receipt_task: Option<Task<()>>,
 	pub(super) pending: Option<PendingCommand>,
 }
 
