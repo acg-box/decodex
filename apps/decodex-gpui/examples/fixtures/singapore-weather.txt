@@ -1,0 +1,15 @@
+citeturn0forecast0 Weather for Singapore, Singapore:
+Current Conditions: Mostly cloudy, 90°F (32°C)
+Hourly Forecast:
+03:00 PM: Intermittent clouds, 89°F (32°C)
+04:00 PM: Partly sunny, 88°F (31°C)
+05:00 PM: Mostly sunny, 88°F (31°C)
+06:00 PM: Mostly sunny, 86°F (30°C)
+07:00 PM: Partly sunny, 85°F (29°C)
+08:00 PM: Partly cloudy, 84°F (29°C)
+09:00 PM: Intermittent clouds, 83°F (29°C)
+10:00 PM: Mostly cloudy, 83°F (28°C)
+11:00 PM: Cloudy, 83°F (28°C)
+12:00 AM: Cloudy, 83°F (28°C)
+01:00 AM: Showers, 82°F (28°C)
+02:00 AM: Showers, 82°F (28°C)

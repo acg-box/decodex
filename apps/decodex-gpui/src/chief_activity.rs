@@ -28,11 +28,19 @@ impl std::fmt::Display for HistoryKey {
 
 #[derive(Clone)]
 pub(super) struct HistoryMark {
-	position: Rc<Cell<f32>>,
+	pub(super) position: Rc<Cell<f32>>,
 	hit_bounds: Rc<Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
 	question: String,
 	time: String,
 	answer: String,
+}
+
+#[derive(Clone)]
+pub(super) struct HistoryScrollAnchor {
+	pub(super) work: String,
+	pub(super) offset: f32,
+	pub(super) maximum: f32,
+	pub(super) message: Option<(HistoryKey, f32)>,
 }
 
 pub(super) struct HistoryNavigation {
@@ -270,6 +278,9 @@ impl ChiefSurface {
 				}
 			}
 			self.set_voice_follow(following);
+			if delta.y > px(0.) {
+				self.prefetch_older_history(cx);
+			}
 			cx.stop_propagation();
 			cx.notify();
 		}
@@ -314,14 +325,15 @@ impl ChiefSurface {
 						return;
 					}
 					if id.is_none() {
-                        s.latest_follow_work = Some(work.clone());
-                        s.history_follow_paused.remove(&work);
-                        s.set_voice_follow(true);
-                    }
-                    if s.selected.as_ref() == Some(&work)
-						&& let (Some(mark), Some(scroll)) =
-							(id.as_ref().and_then(|id| s.history_marks.get(id)), s.transcript_scroll.get(&work))
-					{
+						s.latest_follow_work = Some(work.clone());
+						s.history_follow_paused.remove(&work);
+						s.set_voice_follow(true);
+					}
+					if s.selected.as_ref() == Some(&work)
+						&& let (Some(mark), Some(scroll)) = (
+							id.as_ref().and_then(|id| s.history_marks.get(id)),
+							s.transcript_scroll.get(&work),
+						) {
 						scroll.set_offset(point(
 							scroll.offset().x,
 							px(navigation_offset(
@@ -357,7 +369,7 @@ impl ChiefSurface {
 		self.older_scroll_anchor = None;
 		if let Some(work) = &self.selected {
 			self.history_follow_paused.remove(work);
-			self.transcript_scroll.entry(work.clone()).or_default().scroll_to_bottom();
+			self.transcript_scroll.entry(work.clone()).or_default();
 		}
 		self.set_voice_follow(true);
 		cx.notify();
@@ -1029,6 +1041,67 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn prepending_history_keeps_the_visible_message_at_the_same_position(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(320.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			if let Some((_, ChiefHistoryResult::Available { entries, .. })) = &mut s.history {
+				entries[1].text = "Existing conversation paragraph. ".repeat(80);
+			}
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		for _ in 0..40 {
+			visual.update(|window, cx| window.draw(cx).clear());
+			visual.run_until_parked();
+		}
+
+		let before = surface.update(visual, |s, cx| {
+			let scroll = s.transcript_scroll["chief"].clone();
+			scroll.set_offset(point(px(0.), px(-50.)));
+			s.history_follow_paused.insert("chief".into());
+			let before = s.history_marks[&HistoryKey::Local(1)].position.get()
+				+ f32::from(scroll.offset().y);
+			s.older_scroll_anchor = Some(HistoryScrollAnchor {
+				work: "chief".into(),
+				offset: f32::from(scroll.offset().y),
+				maximum: f32::from(scroll.max_offset().y),
+				message: Some((
+					HistoryKey::Local(1),
+					s.history_marks[&HistoryKey::Local(1)].position.get(),
+				)),
+			});
+			let Some((_, ChiefHistoryResult::Available { entries, .. })) = &s.history else {
+				panic!("fixture")
+			};
+			let mut older = entries[0].clone();
+			older.id = -10;
+			older.text = "Earlier conversation paragraph. ".repeat(50);
+			s.older_history.insert("chief".into(), (vec![older], None));
+			cx.notify();
+			before
+		});
+		for _ in 0..4 {
+			visual.update(|window, cx| window.draw(cx).clear());
+			visual.run_until_parked();
+		}
+		surface.read_with(visual, |s, _| {
+			let after = s.history_marks[&HistoryKey::Local(1)].position.get()
+				+ f32::from(s.transcript_scroll["chief"].offset().y);
+			assert!(
+				(after - before).abs() < 1.,
+				"prepend must preserve the reading anchor: {before} -> {after}; offset {:?} max {:?} mark {}",
+				s.transcript_scroll["chief"].offset(),
+				s.transcript_scroll["chief"].max_offset(),
+				s.history_marks[&HistoryKey::Local(1)].position.get()
+			);
+		});
+	}
+
+	#[gpui::test]
 	fn jump_to_latest_scrolls_to_bottom_and_resumes_follow(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		visual.simulate_resize(size(px(1400.), px(320.)));
@@ -1054,7 +1127,9 @@ mod tests {
 			}
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		for _ in 0..40 {
+			visual.update(|window, cx| window.draw(cx).clear());
+		}
 		surface.read_with(visual, |s, _| {
 			let scroll = &s.transcript_scroll["chief"];
 			assert!(
@@ -1084,7 +1159,9 @@ mod tests {
 			assert!(s.history_navigation.is_none());
 			assert!(!s.history_follow_paused.contains("chief"));
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		for _ in 0..40 {
+			visual.update(|window, cx| window.draw(cx).clear());
+		}
 		surface.read_with(visual, |s, _| {
 			let scroll = &s.transcript_scroll["chief"];
 			assert!((scroll.offset().y + scroll.max_offset().y).abs() < px(1.));
@@ -1116,7 +1193,9 @@ mod tests {
 			scroll.set_offset(point(px(0.), scroll.offset().y + px(32.)));
 			assert_eq!(s.active_history_index(&scroll), s.history_marks.len() - 1);
 		});
-		visual.update(|w, cx| w.draw(cx).clear());
+		for _ in 0..40 {
+			visual.update(|w, cx| w.draw(cx).clear());
+		}
 		surface.update(visual, |s, cx| {
 			let scroll = s.transcript_scroll["chief"].clone();
 			assert!((scroll.offset().y + scroll.max_offset().y).abs() < px(1.));

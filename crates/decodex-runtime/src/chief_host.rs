@@ -81,6 +81,7 @@ struct Request {
 
 #[derive(Clone)]
 pub(crate) struct ChiefHost {
+	weather_cache: Arc<Mutex<Option<weather::CachedWeather>>>,
 	voice: crate::chief_voice::VoiceGateway,
 	dictation: crate::dictation::DictationGateway,
 	mcp_login: crate::mcp_login::McpLoginGateway,
@@ -95,6 +96,7 @@ impl ChiefHost {
 		let (sender, receiver) = mpsc::channel(32);
 		Self {
 			voice: crate::chief_voice::VoiceGateway::new(),
+			weather_cache: Arc::new(Mutex::new(None)),
 			dictation: Default::default(),
 			mcp_login: Default::default(),
 			store,
@@ -205,18 +207,16 @@ impl ChiefHost {
 		let Some(thread) = owner.codex_thread_id else {
 			return Result::Unbound;
 		};
-		let owned = || {
-			self.store.chief_thread_is_owned(
-				work.into(),
-				thread.clone(),
-				Some(generation.as_str().into()),
-			)
-		};
-		if !owned().await.unwrap_or(false) {
-			return Result::Unavailable;
-		}
+		// Archive membership is a read-only observation of the shared native catalog.
+		// A subordinate manager need not run in the root's process to be inspected.
+		// Mutations still require exact process ownership in the coordinator.
+
 		let observed = client.thread_archive_state(&thread).await;
-		if !owned().await.unwrap_or(false)
+		if !self
+			.store
+			.get_chief_work_item(work.into())
+			.await
+			.is_ok_and(|current| current.codex_thread_id.as_deref() == Some(thread.as_str()))
 			|| !self
 				.runtime
 				.chief_catalog_client()
@@ -392,6 +392,23 @@ impl ChiefHost {
 			result
 		} else {
 			ChiefIntegrationsResult::Unavailable
+		}
+	}
+
+	pub(crate) async fn native_agents(
+		&self,
+		work: &str,
+		thread: Option<&str>,
+		cursor: Option<&str>,
+	) -> decodex_protocol::NativeAgentsResult {
+		let Some((generation, client)) = self.runtime.chief_catalog_client() else {
+			return decodex_protocol::NativeAgentsResult::Unavailable;
+		};
+		let result = crate::native_agents::read(&self.store, &client, work, thread, cursor).await;
+		if self.runtime.chief_catalog_client().is_some_and(|(current, _)| current == generation) {
+			result
+		} else {
+			decodex_protocol::NativeAgentsResult::Unavailable
 		}
 	}
 
@@ -670,6 +687,49 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			ChiefActionDto::NativeAgentInput { work_id, thread_id, text, expected_turn } => {
+				let client = self.runtime.chief_client().ok_or("Agent connection unavailable")?;
+				let result = crate::native_agents::read(
+					&self.store,
+					&client,
+					work_id.as_str(),
+					Some(thread_id.as_str()),
+					None,
+				)
+				.await;
+				let decodex_protocol::NativeAgentsResult::Conversation {
+					can_input: true,
+					active_turn,
+					..
+				} = result
+				else {
+					return Err("This native agent does not accept direct input. Ask its parent agent to follow up.".into());
+				};
+				if active_turn.as_deref() != expected_turn.as_ref().map(|t| t.as_str()) {
+					return Err(
+						"Agent state changed. Review the conversation before sending.".into()
+					);
+				}
+				let input = json!([{"type":"text","text":text.as_str()}]);
+				let result = if let Some(turn) = active_turn {
+					client
+						.request(
+							"turn/steer",
+							json!({"threadId":thread_id.as_str(),"expectedTurnId":turn,"input":input}),
+						)
+						.await
+				} else {
+					client
+						.request("turn/start", json!({"threadId":thread_id.as_str(),"input":input}))
+						.await
+				};
+				result.map_err(|_| {
+					ChiefHostError::Unknown(
+						"Native message delivery could not be confirmed. Inspect history before sending again.",
+					)
+				})?;
+				Ok(work_id.as_str().into())
+			},
 			ChiefActionDto::InstallSuggestedPlugin { work_id, event_id, review_token } =>
 				self.install_plugin(work_id.as_str(), event_id, review_token.as_str(), &key, active)
 					.await,
@@ -1451,3 +1511,5 @@ mod tests {
 		tokio::time::timeout(Duration::from_secs(1), stopped(&mut receiver)).await.unwrap();
 	}
 }
+
+#[path = "chief_weather.rs"] mod weather;

@@ -1,4 +1,5 @@
 //! Production GPUI window, navigation, focus, and lifecycle rendering boundary.
+#[path = "account_identity.rs"] mod account_identity;
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "shell_native_status.rs"]
 mod native_status;
@@ -306,10 +307,15 @@ actions!(
 		CloseSettings,
 		RefreshHealth,
 		ToggleSidebar,
+		ShrinkPanel,
+		GrowPanel,
+		ResetPanel,
+		ShrinkPanels,
+		GrowPanels,
+		ResetPanels,
 		ToggleInspector,
 		ToggleGraph,
 		DismissStatus,
-		InterruptReply,
 		NavigateBack,
 		NavigateForward,
 		SelectPreviousConversation,
@@ -347,7 +353,7 @@ impl Destination {
 
 	pub(crate) const fn label(self) -> &'static str {
 		match self {
-			Self::Chief => "Chief",
+			Self::Chief => "Main",
 			Self::Advisor => "Advisor",
 			Self::Projects => "Projects",
 			Self::Conversations => "History",
@@ -471,9 +477,18 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("cmd-3", ActivateHealth, None),
 		KeyBinding::new("cmd-,", ActivateSettings, None),
 		KeyBinding::new("cmd-e", ToggleSidebar, None),
+		KeyBinding::new("ctrl-alt--", ShrinkPanel, None),
+		KeyBinding::new("ctrl-alt-=", GrowPanel, None),
+		KeyBinding::new("ctrl-alt-0", ResetPanel, None),
+		KeyBinding::new("ctrl-alt-shift--", ShrinkPanels, None),
+		KeyBinding::new("ctrl-alt-shift-=", GrowPanels, None),
+		KeyBinding::new("ctrl-alt-shift-0", ResetPanels, None),
+		// macOS normalizes shifted punctuation and consumes the Shift modifier.
+		KeyBinding::new("ctrl-alt-+", GrowPanels, None),
+		KeyBinding::new("ctrl-alt-_", ShrinkPanels, None),
+		KeyBinding::new("ctrl-alt-)", ResetPanels, None),
 		KeyBinding::new("cmd-b", ToggleInspector, None),
 		KeyBinding::new("cmd-j", ToggleGraph, None),
-		KeyBinding::new("ctrl-c", InterruptReply, None),
 		KeyBinding::new("cmd-[", NavigateBack, None),
 		KeyBinding::new("cmd-]", NavigateForward, None),
 		KeyBinding::new("enter", ActivateDestination, Some("Destination")),
@@ -515,9 +530,9 @@ pub(crate) struct Shell {
 	account_login_cancellation: Option<Arc<AtomicBool>>,
 	opened_account_login_url: Option<String>,
 	pending_account_logout: Option<EntityId>,
-	account_actions: Option<EntityId>,
 	account_profile_controller: AccountProfileController,
 	account_profile: AccountProfileSnapshot,
+	account_emails: account_identity::Emails,
 	desktop_settings: DesktopSettingsController,
 	desktop_settings_snapshot: DesktopSettingsSnapshot,
 	accounts_controller: AccountsController,
@@ -557,6 +572,7 @@ impl Shell {
 		profile: Option<decodex_protocol::ClientProfile>,
 		cx: &mut Context<Self>,
 	) -> Self {
+		self.account_emails = Default::default();
 		self.reset_cards.profile = profile.clone();
 		let cwd = self.conversations.working_directory();
 		self.chief.update(cx, |surface, cx| {
@@ -597,11 +613,7 @@ impl Shell {
 		let account_profile_controller = AccountProfileController::production();
 		let account_profile = account_profile_controller.snapshot();
 		let settings_controller = desktop_settings.clone();
-		let preferences = cx.new(|cx| chief_surface::ChiefPreferences::new(chief.clone(), cx));
-		let settings = cx.new(|cx| {
-			SettingsSurface::new(settings_controller, cx)
-				.with_advanced_preferences(preferences.into())
-		});
+		let settings = cx.new(|cx| SettingsSurface::new(settings_controller, cx));
 		let accounts_controller = AccountsController::production();
 		let accounts = accounts_controller.snapshot();
 		let health_query = HealthQuery::production();
@@ -637,10 +649,10 @@ impl Shell {
 			account_login_cancellation: None,
 			opened_account_login_url: None,
 			pending_account_logout: None,
-			account_actions: None,
 			reset_cards: reset_cards::ResetCardsPanel::default(),
 			account_profile_controller,
 			account_profile,
+			account_emails: Default::default(),
 			desktop_settings,
 			desktop_settings_snapshot,
 			accounts_controller,
@@ -1166,9 +1178,22 @@ impl Shell {
 		cx.stop_propagation();
 	}
 
-	fn interrupt_reply(&mut self, _: &InterruptReply, _: &mut Window, cx: &mut Context<Self>) {
+	fn interrupt_reply(
+		&mut self,
+		event: &gpui::KeyDownEvent,
+		_: &mut Window,
+		cx: &mut Context<Self>,
+	) {
+		if event.keystroke.key != "escape" || event.is_held {
+			return;
+		}
 		if self.selected == Destination::Chief {
-			self.chief.update(cx, ChiefSurface::interrupt_current);
+			if self.status_open {
+				self.status_open = false;
+				cx.notify();
+				return;
+			}
+			self.chief.update(cx, ChiefSurface::escape_interrupt);
 			cx.stop_propagation();
 		}
 	}
@@ -1324,13 +1349,6 @@ impl Shell {
 			.map(account_input_error_label)
 			.map(Into::into);
 		self.synchronize_accounts();
-		cx.notify();
-	}
-
-	fn toggle_account_actions(&mut self, id: EntityId, cx: &mut Context<Self>) {
-		self.account_actions =
-			if self.account_actions.as_ref() == Some(&id) { None } else { Some(id) };
-		self.pending_account_logout = None;
 		cx.notify();
 	}
 
@@ -1935,6 +1953,27 @@ pub(crate) fn retain_lifecycle_task<R: 'static>(
 	owner
 }
 
+fn connection_requires_recovery(previous: ConnectionView, next: ConnectionView) -> bool {
+	match (previous, next) {
+		(
+			ConnectionView::Online { generation: before, .. },
+			ConnectionView::Online { generation: after, .. },
+		) => before != after,
+		_ => previous != next,
+	}
+}
+
+#[test]
+fn online_cursor_progress_does_not_invalidate_the_conversation() {
+	let online = |generation, cursor| ConnectionView::Online {
+		generation,
+		applied: Some(decodex_protocol::Cursor(cursor)),
+	};
+	assert!(!connection_requires_recovery(online(1, 10), online(1, 11)));
+	assert!(connection_requires_recovery(online(1, 10), online(2, 11)));
+	assert!(connection_requires_recovery(online(1, 10), ConnectionView::Stopped));
+}
+
 fn publish_views(
 	shell: &WeakEntity<Shell>,
 	views: &Receiver<ConnectionView>,
@@ -1942,8 +1981,10 @@ fn publish_views(
 ) {
 	while let Ok(view) = views.try_recv() {
 		let _ = shell.update(cx, |shell, cx| {
-			if shell.connection != view {
+			if connection_requires_recovery(shell.connection, view) {
 				shell.chief.update(cx, ChiefSurface::mark_stale);
+			} else if shell.connection != view && matches!(view, ConnectionView::Online { .. }) {
+				shell.chief.update(cx, |s, cx| s.refresh(cx));
 			}
 			shell.connection = view;
 			cx.notify();
@@ -2067,9 +2108,9 @@ impl Render for RefreshTooltip {
 	}
 }
 
-struct ControlTooltip(&'static str);
+struct ControlTooltip<T>(T);
 
-impl Render for ControlTooltip {
+impl<T: Clone + Into<SharedString> + 'static> Render for ControlTooltip<T> {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 		div()
 			.px_2()
@@ -2080,7 +2121,7 @@ impl Render for ControlTooltip {
 			.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
 			.text_size(px(11.0))
 			.text_color(rgb(WB_TEXT))
-			.child(self.0)
+			.child(self.0.clone().into())
 	}
 }
 
@@ -2656,12 +2697,13 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 		.iter()
 		.enumerate()
 		.map(|(index, account)| {
-			account_pool_row(
+			let row = account_pool_row(
 				account,
 				AccountRowPresentation {
 					reset_fill: shell.reset_fill_for(account),
+					email: shell.account_emails.get(account),
+					controls_busy: snapshot.controls_busy(),
 					index,
-					show_actions: shell.account_actions.as_ref() == Some(&account.account_id),
 					routing_revision: snapshot.routing.as_ref().map(|routing| routing.revision),
 					fixed: fixed == Some(&account.account_id),
 					can_manage: snapshot.can_manage,
@@ -2672,7 +2714,20 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 						== Some(&account.account_id),
 				},
 				cx,
-			)
+			);
+			div()
+				.w_full()
+				.flex()
+				.flex_col()
+				.gap_1()
+				.child(row)
+				.when(shell.account_profile.selected.as_ref() == Some(&account.account_id), |row| {
+					row.child(account_profile_panel(shell, cx))
+				})
+				.when(shell.reset_cards.is_selected(&account.account_id), |row| {
+					row.children(reset_cards::panel(shell, cx))
+				})
+				.into_any_element()
 		})
 		.collect()
 }
@@ -2712,12 +2767,16 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.flex()
 				.flex_col()
 				.gap_3()
-				.child(account_pool_header(count, available, balanced, can_manage, cx))
+				.child(account_pool_header(
+					count,
+					available,
+					balanced,
+					can_manage,
+					shell.account_emails.visible,
+					cx,
+				))
 				.child(account_login_controls(shell, cx))
-				.children(reset_cards::panel(shell, cx))
-				.when(shell.account_profile.selected.is_some(), |content| {
-					content.child(account_profile_panel(shell, cx))
-				})
+				.child(shell.settings.update(cx, |settings, cx| settings.quota_control(cx)))
 				.child(
 					div()
 						.id("account-list")
@@ -3055,10 +3114,10 @@ fn account_profile_facts(profile: &decodex_protocol::AccountProfileDto) -> Vec<S
 		facts.push(format!("Plan · {}", account_plan_label(plan.as_str())));
 	}
 	if let Some(tokens) = profile.lifetime_tokens {
-		facts.push(format!("Lifetime · {tokens} tokens"));
+		facts.push(format!("Lifetime · {} tokens", chief_surface::compact_tokens(tokens)));
 	}
 	if let Some(tokens) = profile.peak_daily_tokens {
-		facts.push(format!("Peak day · {tokens} tokens"));
+		facts.push(format!("Peak day · {} tokens", chief_surface::compact_tokens(tokens)));
 	}
 	if let Some(days) = profile.current_streak_days {
 		facts.push(format!("Streak · {days} days"));
@@ -3201,6 +3260,8 @@ impl Shell {
 
 #[derive(Clone)]
 struct AccountRowPresentation {
+	controls_busy: bool,
+	email: Option<String>,
 	reset_fill: Option<quota_meter::ResetFill>,
 	index: usize,
 	routing_revision: Option<decodex_protocol::EntityRevision>,
@@ -3209,7 +3270,6 @@ struct AccountRowPresentation {
 	can_route: bool,
 	login_available: bool,
 	logout_pending: bool,
-	show_actions: bool,
 }
 
 fn account_login_recovery_operation_id(account: &AccountDto) -> Option<EntityId> {
@@ -3227,6 +3287,13 @@ fn account_login_recovery_operation_id(account: &AccountDto) -> Option<EntityId>
 			}))
 		.then(|| operation.operation_id.clone())
 	})
+}
+
+fn account_needs_login(account: &AccountDto) -> bool {
+	account.observed_state == AccountObservedStateDto::AuthFailed
+		|| account.lifecycle_readiness == AccountLifecycleReadinessDto::CredentialAbsent
+		|| account.lifecycle_readiness == AccountLifecycleReadinessDto::Tombstoned
+		|| account_login_recovery_operation_id(account).is_some()
 }
 
 fn account_readiness_status(account: &AccountDto) -> &'static str {
@@ -3291,31 +3358,6 @@ fn account_pool_row(
 					}
 				}))
 		})
-		.child(
-			gpui::deferred(
-				div()
-					.id(("account-menu", index))
-					.absolute()
-					.right_0()
-					.top(px(40.))
-					.w(px(232.))
-					.child(crate::ui_motion::popover(
-						"account-actions-popover",
-						"account-actions",
-						presentation.show_actions,
-						div()
-							.id(("account-menu-content", index))
-							.occlude()
-							.on_mouse_down_out(cx.listener(|s, _, _, cx| {
-								s.account_actions = None;
-								s.pending_account_logout = None;
-								cx.notify();
-							}))
-							.child(account_management_actions(account, &presentation, cx)),
-					)),
-			)
-			.priority(2),
-		)
 		.into_any_element()
 }
 
@@ -3324,20 +3366,35 @@ fn account_pool_summary(
 	presentation: AccountRowPresentation,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let AccountRowPresentation { index, fixed, can_manage, can_route, .. } = presentation;
+	let AccountRowPresentation { index, fixed, can_route, .. } = presentation;
 	let account_id = account.account_id.clone();
-	let toggle_account_id = account.account_id.clone();
 	let enabled = account.enabled;
 	let pin_enabled = can_route && enabled && !fixed;
-	let toggle_enabled = can_manage;
 
+	let profile_id = account.account_id.clone();
 	div()
 		.id(("account-summary", index))
+		.cursor_pointer()
+		.hover(|style| style.bg(rgba(0xffffff05)))
+		.on_click(cx.listener(move |shell, _, _, cx| {
+			if shell.account_profile.selected.as_ref() == Some(&profile_id) {
+				shell.close_account_profile(cx);
+			} else {
+				shell.show_account_profile(profile_id.clone(), cx);
+			}
+		}))
 		.flex()
 		.min_w_0()
 		.items_center()
 		.gap(px(8.0))
-		.child(account_row_identity(account))
+		.child(account_power_control(
+			account,
+			index,
+			presentation.can_manage,
+			presentation.controls_busy,
+			cx,
+		))
+		.child(account_row_identity(account, presentation.email.as_deref()))
 		.child(
 			div().flex_1().min_w_0().flex().items_center().gap(px(8.0)).children(
 				[
@@ -3357,102 +3414,86 @@ fn account_pool_summary(
 			),
 		)
 		.child(
-			div()
-				.flex()
-				.items_center()
-				.gap_2()
-				.child(
-					div()
-						.id(("account-pin", index))
-						.role(Role::Button)
-						.aria_label(format!(
-							"Route new conversations to {}",
-							account.alias.as_str()
-						))
-						.h(px(27.0))
-						.w(px(48.0))
-						.flex()
-						.items_center()
-						.justify_center()
-						.rounded(px(7.0))
-						.bg(if fixed { rgba(0x60a5fa18) } else { rgba(0x00000000) })
-						.text_size(px(11.0))
-						.text_color(if fixed { rgb(WB_BLUE) } else { rgb(WB_TEXT_MUTED) })
-						.when(pin_enabled, |button| {
-							button
-								.cursor_pointer()
-								.hover(|element| {
-									element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT))
-								})
-								.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
-								.on_click(cx.listener(move |shell, _, _, cx| {
-									shell.select_fixed_account(&account_id, cx);
-								}))
-						})
-						.child(if fixed { "Ready" } else { "Switch" })
-						.smooth(),
-				)
-				.child(
-					div()
-						.id(("account-enabled", index))
-						.role(Role::Button)
-						.aria_label(format!(
-							"{} {}",
-							if enabled { "Disable" } else { "Enable" },
-							account.alias.as_str()
-						))
-						.h(px(27.0))
-						.w(px(24.0))
-						.flex()
-						.items_center()
-						.justify_center()
-						.rounded(px(7.0))
-						.bg(if enabled { rgba(0xffffff0c) } else { rgba(0x00000000) })
-						.text_size(px(11.0))
-						.text_color(if enabled { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
-						.when(toggle_enabled, |button| {
-							button
-								.cursor_pointer()
-								.hover(|element| {
-									element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT))
-								})
-								.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
-								.on_click(cx.listener(move |shell, _, _, cx| {
-									shell.set_account_enabled(&toggle_account_id, !enabled, cx);
-								}))
-						})
-						.child(if enabled { "✓" } else { "−" })
-						.smooth(),
-				),
+			div().flex().items_center().gap_2().child(
+				div()
+					.id(("account-pin", index))
+					.role(Role::Button)
+					.aria_label(format!("Route new conversations to {}", account.alias.as_str()))
+					.h(px(26.0))
+					.w(px(26.0))
+					.flex_none()
+					.flex()
+					.items_center()
+					.justify_center()
+					.rounded(px(7.0))
+					.bg(if fixed { rgba(0x8baaf738) } else { rgba(0x00000000) })
+					.text_size(px(11.0))
+					.text_color(if fixed { rgb(WB_BLUE) } else { rgb(WB_TEXT_MUTED) })
+					.when(pin_enabled, |button| {
+						button
+							.cursor_pointer()
+							.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
+							.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
+							.on_click(cx.listener(move |shell, _, _, cx| {
+								cx.stop_propagation();
+								shell.select_fixed_account(&account_id, cx);
+							}))
+					})
+					.child(workspace_symbols::icon(if fixed {
+						workspace_symbols::Symbol::AccountRouteActive
+					} else {
+						workspace_symbols::Symbol::AccountRoute
+					}))
+					.smooth(),
+			),
 		)
-		.child(account_manage_control(
-			account.account_id.clone(),
-			index,
-			presentation.show_actions,
-			cx,
-		))
+		.child(account_management_actions(account, &presentation, cx))
 		.into_any_element()
 }
 
-fn account_manage_control(
-	id: EntityId,
+fn account_power_control(
+	account: &AccountDto,
 	index: usize,
-	expanded: bool,
+	interactive: bool,
+	busy: bool,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let keyboard_id = id.clone();
-	account_row_action("account-manage", index, "Manage account", "···", true)
-		.tab_index(0)
-		.aria_expanded(expanded)
-		.on_click(cx.listener(move |shell, _, _, cx| shell.toggle_account_actions(id.clone(), cx)))
-		.on_key_down(cx.listener(move |shell, event: &gpui::KeyDownEvent, _, cx| {
-			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-				shell.toggle_account_actions(keyboard_id.clone(), cx);
-				cx.stop_propagation();
-			}
-		}))
-		.smooth()
-		.into_any_element()
+	let id = account.account_id.clone();
+	let enabled = account.enabled;
+	let key_id = id.clone();
+	account_icon_action(
+		"account-enabled",
+		index,
+		if enabled { "Disable account" } else { "Enable account" },
+		if enabled {
+			workspace_symbols::Symbol::PowerOn
+		} else {
+			workspace_symbols::Symbol::PowerOff
+		},
+		interactive,
+	)
+	.when(busy, |button| button.opacity(1.0))
+	.role(Role::Switch)
+	.aria_toggled(if enabled {
+		gpui::accesskit::Toggled::True
+	} else {
+		gpui::accesskit::Toggled::False
+	})
+	.flex_none()
+	.on_click(cx.listener(move |s, _, _, cx| {
+		cx.stop_propagation();
+		if interactive {
+			s.set_account_enabled(&id, !enabled, cx);
+		}
+	}))
+	.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+		if interactive && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+			cx.stop_propagation();
+			s.set_account_enabled(&key_id, !enabled, cx);
+		}
+	}))
+	.smooth()
+	.into_any_element()
 }
 
 fn account_management_actions(
@@ -3462,87 +3503,95 @@ fn account_management_actions(
 ) -> AnyElement {
 	let index = presentation.index;
 	let login_account_id = account.account_id.clone();
-	let profile_account_id = account.account_id.clone();
 	let reset_account_id = account.account_id.clone();
 	let reset_alias = account.alias.as_str().to_owned();
 	let logout_account_id = account.account_id.clone();
 	let login_account_revision = account.account_revision;
 	let login_recovery_operation_id = account_login_recovery_operation_id(account);
-	let login_label = if login_recovery_operation_id.is_some() { "Re-login" } else { "Login" };
 
 	div()
 		.flex()
-		.w_full()
-		.p_2()
 		.justify_start()
 		.items_center()
 		.gap_1()
 		.child(
-			account_row_action(
+			account_icon_action(
 				"account-reset-cards",
 				index,
 				"Show Reset Cards",
-				"Reset Cards",
+				workspace_symbols::Symbol::AccountLogin,
 				true,
 			)
 			.on_click(cx.listener(move |shell, _, _, cx| {
+				cx.stop_propagation();
 				shell.show_reset_cards(reset_account_id.clone(), reset_alias.clone(), cx)
 			})),
-		)
-		.child(
-			div().flex().items_center().gap_1().child(
-				account_row_action(
-					"account-profile",
-					index,
-					"Show account profile",
-					"Profile",
-					true,
-				)
-				.on_click(cx.listener(move |shell, _, _, cx| {
-					shell.show_account_profile(profile_account_id.clone(), cx);
-				})),
-			),
 		)
 		.child(
 			div()
 				.flex()
 				.items_center()
 				.gap_1()
-				.child(
-					account_row_action(
-						"account-login",
-						index,
-						"Refresh account login",
-						login_label,
-						presentation.login_available,
+				.when(account_needs_login(account), |row| {
+					row.child(
+						account_icon_action(
+							"account-login",
+							index,
+							"Sign in again",
+							workspace_symbols::Symbol::AccountLogout,
+							presentation.login_available,
+						)
+						.when(presentation.login_available, |button| {
+							button.on_click(cx.listener(move |shell, _, _, cx| {
+								cx.stop_propagation();
+								shell.start_account_reauthentication(
+									login_account_id.clone(),
+									login_account_revision,
+									login_recovery_operation_id.clone(),
+									cx,
+								);
+							}))
+						}),
 					)
-					.when(presentation.login_available, |button| {
-						button.on_click(cx.listener(move |shell, _, _, cx| {
-							shell.start_account_reauthentication(
-								login_account_id.clone(),
-								login_account_revision,
-								login_recovery_operation_id.clone(),
-								cx,
-							);
-						}))
-					}),
-				)
+				})
 				.child(
-					account_row_action(
+					account_icon_action(
 						"account-logout",
 						index,
 						"Log out account",
-						if presentation.logout_pending { "Confirm" } else { "Log out" },
+						if presentation.logout_pending {
+							workspace_symbols::Symbol::Confirm
+						} else {
+							workspace_symbols::Symbol::AccountLogout
+						},
 						presentation.can_manage,
 					)
+					.when(presentation.controls_busy, |button| button.opacity(1.0))
 					.when(presentation.can_manage, |button| {
 						button.on_click(cx.listener(move |shell, _, _, cx| {
+							cx.stop_propagation();
 							shell.logout_account(&logout_account_id, cx);
 						}))
 					}),
 				),
 		)
 		.into_any_element()
+}
+
+fn account_icon_action(
+	id: &'static str,
+	index: usize,
+	label: &'static str,
+	symbol: workspace_symbols::Symbol,
+	enabled: bool,
+) -> gpui::Stateful<gpui::Div> {
+	account_row_action(id, index, label, "", enabled)
+		.w(px(26.))
+		.h(px(26.))
+		.px_0()
+		.tab_index(0)
+		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
+		.child(workspace_symbols::icon(symbol))
 }
 
 fn account_row_action(
@@ -3578,19 +3627,6 @@ fn account_row_action(
 #[cfg(test)]
 fn account_quota(label: &'static str, quota: AccountQuotaWindowDto) -> Option<AnyElement> {
 	quota_meter::meter(label, quota, None)
-}
-
-fn account_state_color(account: &AccountDto) -> u32 {
-	if !account.enabled {
-		return WB_TEXT_FAINT;
-	}
-	match account.observed_state {
-		AccountObservedStateDto::Available => WB_GREEN,
-		AccountObservedStateDto::Unknown | AccountObservedStateDto::PluginUnready => WB_AMBER,
-		AccountObservedStateDto::Unavailable
-		| AccountObservedStateDto::Depleted
-		| AccountObservedStateDto::AuthFailed => 0xef4444,
-	}
 }
 
 fn account_readiness_label(readiness: AccountLifecycleReadinessDto) -> &'static str {
@@ -4862,23 +4898,36 @@ fn settings_workspace_content(
 				.font_weight(FontWeight::SEMIBOLD)
 				.child("Settings"),
 		);
-	for (destination, label) in [
-		(Destination::Settings, "General"),
-		(Destination::Accounts, "Accounts"),
-		(Destination::Health, "Diagnostics"),
+	use crate::settings_surface::SettingsCategory;
+	for (destination, category, label) in [
+		(Destination::Settings, Some(SettingsCategory::General), "General"),
+		(Destination::Settings, Some(SettingsCategory::Appearance), "Appearance"),
+		(Destination::Accounts, None, "Accounts"),
+		(Destination::Health, None, "Diagnostics"),
 	] {
 		let index =
 			Destination::ALL.iter().position(|d| *d == destination).expect("settings destination");
+		let active = selected == destination
+			&& category.is_none_or(|category| shell.settings.read(cx).category == category);
 		navigation = navigation.child(
 			div()
-				.id(("settings-section", index))
+				.id(gpui::SharedString::from(format!("settings-section-{label}")))
 				.role(Role::Tab)
 				.aria_label(label)
-				.aria_selected(selected == destination)
-				.track_focus(&shell.destination_focus[index])
+				.aria_selected(active)
+				.tab_index(0)
+				.when(category.is_none() || category == Some(SettingsCategory::General), |row| {
+					row.track_focus(&shell.destination_focus[index])
+				})
 				.key_context("Destination")
 				.on_action(cx.listener(move |s, _: &ActivateDestination, _, cx| {
 					s.select_settings_destination(destination, standalone, cx);
+					if let Some(category) = category {
+						s.settings.update(cx, |settings, cx| {
+							settings.category = category;
+							cx.notify();
+						});
+					}
 				}))
 				.on_action(cx.listener(Shell::focus_next))
 				.on_action(cx.listener(Shell::focus_previous))
@@ -4888,12 +4937,16 @@ fn settings_workspace_content(
 				.flex()
 				.items_center()
 				.cursor_pointer()
-				.when(selected == destination, |row| {
-					row.bg(rgba(0xffffff0c)).text_color(rgb(ui_theme::TEXT))
-				})
+				.when(active, |row| row.bg(rgba(0xffffff0c)).text_color(rgb(ui_theme::TEXT)))
 				.hover(|row| row.bg(rgba(ui_theme::SURFACE_MATERIAL)))
 				.on_click(cx.listener(move |s, _, _, cx| {
 					s.select_settings_destination(destination, standalone, cx);
+					if let Some(category) = category {
+						s.settings.update(cx, |settings, cx| {
+							settings.category = category;
+							cx.notify();
+						});
+					}
 				}))
 				.child(label)
 				.smooth(),
@@ -5121,6 +5174,42 @@ impl Render for Shell {
 			.on_action(cx.listener(Self::activate_health))
 			.on_action(cx.listener(Self::activate_settings))
 			.on_action(cx.listener(Self::toggle_sidebar))
+			.on_action(cx.listener(|s, _: &ShrinkPanel, window, cx| {
+				if s.selected == Destination::Chief {
+					s.chief.update(cx, |a, cx| a.resize_panel(-24.0, false, false, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &GrowPanel, window, cx| {
+				if s.selected == Destination::Chief {
+					s.chief.update(cx, |a, cx| a.resize_panel(24.0, false, false, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &ResetPanel, window, cx| {
+				if s.selected == Destination::Chief {
+					s.chief.update(cx, |a, cx| a.resize_panel(0.0, true, false, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &ShrinkPanels, window, cx| {
+				if s.selected == Destination::Chief {
+					s.chief.update(cx, |a, cx| a.resize_panel(-24.0, false, true, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &GrowPanels, window, cx| {
+				if s.selected == Destination::Chief {
+					s.chief.update(cx, |a, cx| a.resize_panel(24.0, false, true, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &ResetPanels, window, cx| {
+				if s.selected == Destination::Chief {
+					s.chief.update(cx, |a, cx| a.resize_panel(0.0, true, true, window, cx));
+					cx.stop_propagation();
+				}
+			}))
 			.on_action(cx.listener(Self::toggle_inspector))
 			.on_action(cx.listener(Self::toggle_graph))
 			.on_action(cx.listener(|s, _: &DismissStatus, _, cx| {
@@ -5129,7 +5218,7 @@ impl Render for Shell {
 					cx.notify();
 				}
 			}))
-			.on_action(cx.listener(Self::interrupt_reply))
+			.on_key_down(cx.listener(Self::interrupt_reply))
 			.on_action(cx.listener(|s, _: &NavigateBack, _, cx| s.navigate_history(false, cx)))
 			.on_action(cx.listener(|s, _: &NavigateForward, _, cx| s.navigate_history(true, cx)))
 			.on_action(cx.listener(Self::select_previous_conversation))
@@ -5408,6 +5497,7 @@ fn account_pool_header(
 	available: usize,
 	balanced: bool,
 	can_manage: bool,
+	emails_visible: bool,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	div()
@@ -5445,6 +5535,24 @@ fn account_pool_header(
 				.flex()
 				.items_center()
 				.gap_2()
+				.child(
+					account_icon_action(
+						"account-email-visibility",
+						0,
+						if emails_visible {
+							"Hide email addresses"
+						} else {
+							"Show email addresses"
+						},
+						if emails_visible {
+							workspace_symbols::Symbol::Eye
+						} else {
+							workspace_symbols::Symbol::EyeSlash
+						},
+						true,
+					)
+					.on_click(cx.listener(|shell, _, _, cx| shell.toggle_account_emails(cx))),
+				)
 				.child(account_mode_button("Balanced", balanced, can_manage, cx))
 				.child(
 					div()
@@ -5471,17 +5579,18 @@ fn account_pool_header(
 		.into_any_element()
 }
 
-fn account_row_identity(account: &AccountDto) -> AnyElement {
+fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement {
 	let enabled = account.enabled;
-	let state_color = account_state_color(account);
-	let short_id = account.account_id.as_str().get(..8).unwrap_or(account.account_id.as_str());
 	div()
-		.w(px(156.0))
-		.min_w(px(140.0))
+		.id(SharedString::from(format!("account-identity-{}", account.account_id.as_str())))
+		.when_some(email.map(str::to_owned), |row, email| {
+			row.tooltip(move |_, cx| cx.new(|_| ControlTooltip(email.clone())).into())
+		})
+		.w(px(132.0))
+		.min_w(px(108.0))
 		.flex()
 		.items_center()
 		.gap_2()
-		.child(div().size(px(7.0)).rounded_full().bg(rgb(state_color)))
 		.child(
 			div()
 				.min_w_0()
@@ -5496,7 +5605,7 @@ fn account_row_identity(account: &AccountDto) -> AnyElement {
 						.text_size(px(10.5))
 						.font_weight(FontWeight::SEMIBOLD)
 						.text_color(if enabled { rgb(WB_TEXT) } else { rgb(WB_TEXT_FAINT) })
-						.child(account.alias.as_str().to_owned()),
+						.child(email.unwrap_or(account.alias.as_str()).to_owned()),
 				)
 				.child(
 					div()
@@ -5509,8 +5618,7 @@ fn account_row_identity(account: &AccountDto) -> AnyElement {
 						.when(
 							account.lifecycle_readiness != AccountLifecycleReadinessDto::Ready,
 							|row| row.child(account_readiness_status(account)),
-						)
-						.child(short_id.to_owned()),
+						),
 				),
 		)
 		.into_any_element()
@@ -5801,7 +5909,7 @@ mod tests {
 				),
 			)),
 			[
-				("Chief", true),
+				("Main", true),
 				("Advisor", false),
 				("Projects", false),
 				("History", true),
@@ -6480,6 +6588,37 @@ mod tests {
 		assert_eq!(panels(visual), [(false, true), (false, true), (true, true), (false, true)]);
 		visual.simulate_keystrokes("cmd-e cmd-j cmd-b");
 		assert_eq!(panels(visual), [(true, true), (true, true), (true, true), (true, true)]);
+	}
+
+	#[gpui::test]
+	fn panel_resize_keyboard_bindings_reach_the_focused_panel(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		visual.simulate_resize(gpui::size(px(1400.), px(1000.)));
+		shell.update(visual, |s, cx| s.chief.update(cx, |a, cx| a.visual_workspace_fixture(cx)));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let dimensions = |visual: &mut VisualTestContext| {
+			shell.read_with(visual, |s, cx| s.chief.read(cx).panel_dimensions())
+		};
+		let initial = dimensions(visual);
+		visual.simulate_click(gpui::point(px(50.), px(170.)), Default::default());
+		visual.simulate_keystrokes("ctrl-alt-=");
+		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1, initial.2));
+		visual.simulate_keystrokes("ctrl-alt--");
+		assert_eq!(dimensions(visual), initial);
+		visual.simulate_keystrokes("ctrl-alt-shift-=");
+		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2 + 24.));
+		visual.simulate_keystrokes("ctrl-alt-_");
+		assert_eq!(dimensions(visual), initial);
+		visual.simulate_keystrokes("ctrl-alt-+");
+		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2 + 24.));
+		visual.simulate_keystrokes("ctrl-alt-)");
+		let defaults = crate::panel_preferences::PanelDefaults::configured();
+		assert_eq!(
+			dimensions(visual),
+			(defaults.sidebar.into(), defaults.sidebar.into(), defaults.dock.into())
+		);
 	}
 
 	#[gpui::test]

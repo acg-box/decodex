@@ -45,6 +45,10 @@ pub struct ChiefActivityDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChiefHistoryEntryDto {
+	#[serde(default)]
+	pub turn_id: Option<String>,
+	#[serde(default)]
+	pub weather: Vec<crate::WeatherForecast>,
 	/// Local receipt facts, independent of native conversation ordering.
 	#[serde(default)]
 	pub receipt: Option<ChiefHistoryReceiptDto>,
@@ -234,6 +238,17 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Send explicit user input to a verified native descendant that accepts direct input.
+	NativeAgentInput {
+		/// Exact local owner whose native descendants may be addressed.
+		work_id: crate::EntityId,
+		/// Exact observed native descendant identity.
+		thread_id: crate::WireText,
+		/// User-authored message; never generated from a status event.
+		text: crate::HistoryText,
+		/// Expected running turn; None requires an idle native agent.
+		expected_turn: Option<crate::WireText>,
+	},
 	/// Install the exact plugin whose current catalog details the user reviewed.
 	InstallSuggestedPlugin {
 		/// Owning task identity.
@@ -747,5 +762,22 @@ pub enum ChiefResourcesResult {
 	/// The complete list exceeds the display bound.
 	CapacityExceeded,
 	/// No authoritative result is available for the current thread and connection.
+	Unavailable,
+}
+
+/// Coalescible current-turn output, observed without replay or execution authority.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ChiefOutputResult {
+	/// Bounded output for the exact requested work item.
+	Available {
+		/// Service-lifetime wakeup revision. Reset on reconnect.
+		revision: u64,
+		/// Exact query owner.
+		work_id: crate::EntityId,
+		/// Current source-bound message snapshots; never unfinished deltas.
+		messages: Vec<ChiefLiveMessageDto>,
+	},
+	/// Observation cannot be served; use saved history for recovery.
 	Unavailable,
 }

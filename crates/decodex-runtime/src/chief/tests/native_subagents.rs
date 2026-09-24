@@ -141,3 +141,28 @@ async fn native_children_do_not_inherit_chief_management_tools() {
 	}
 	assert!(refused);
 }
+
+#[tokio::test]
+async fn native_agent_inspection_requires_exact_ancestry_and_never_starts_work() {
+	let mut native = child("child", "opaque thread/1");
+	native["thread"]["turns"] = json!([]);
+	let (mut chief, mut sent, _directory) =
+		fixture_with_history(json!({"child":native,"foreign":child("foreign","unrelated")})).await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let result =
+		crate::native_agents::read(&chief.store, &chief.client, "chief", Some("child"), None).await;
+	assert!(matches!(
+		result,
+		decodex_protocol::NativeAgentsResult::Conversation { can_input: false, .. }
+	));
+	assert!(matches!(
+		crate::native_agents::read(&chief.store, &chief.client, "chief", Some("foreign"), None)
+			.await,
+		decodex_protocol::NativeAgentsResult::Unavailable
+	));
+	while let Ok(request) = sent.try_recv() {
+		assert_eq!(request["method"], "thread/read");
+	}
+	assert_eq!(chief.store.list_chief_work_items().await.unwrap().len(), 1);
+}

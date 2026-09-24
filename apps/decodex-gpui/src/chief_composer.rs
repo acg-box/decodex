@@ -59,17 +59,150 @@ impl ChiefSurface {
 		}
 	}
 
+	fn awaiting_start(&self, cx: &Context<Self>) -> bool {
+		// Steer submits into an existing turn; it must not show new-turn startup UI.
+		(self.sending && self.running_turn().is_none())
+			|| (self.running_turn().is_none()
+				&& self.composer.read(cx).content().trim().is_empty()
+				&& (self.feedback == "Message saved · Waiting for agent…"
+					|| self.snapshot.as_ref().is_some_and(|snapshot| {
+						snapshot.work_items.iter().any(|work| {
+							Some(&work.id) == self.selected.as_ref()
+								&& work.dispatch_state == ChiefDispatchStateDto::Dispatching
+						}) || snapshot.pending_events.iter().any(|event| {
+							Some(&event.work_item_id) == self.selected.as_ref()
+								&& event.event_kind == "user_message"
+								&& !event.delivery_claimed
+						})
+					})))
+	}
+
 	fn stop_button(&self, cx: &Context<Self>) -> bool {
-		self.running_turn().is_some()
-			&& self.composer.read(cx).content().trim().is_empty()
-			&& self.attachments.is_empty()
-			&& self.task_references.is_empty()
+		self.awaiting_start(cx)
+			|| self.interrupting.as_ref().is_some_and(|(id, _)| self.selected.as_ref() == Some(id))
+			|| self.escape_stop_armed()
+			|| (self.running_turn().is_some()
+				&& self.composer.read(cx).content().trim().is_empty()
+				&& self.attachments.is_empty()
+				&& self.task_references.is_empty())
+	}
+
+	fn escape_stop_armed(&self) -> bool {
+		self.escape_stop.as_ref().is_some_and(|(work, turn, at)| {
+			at.elapsed() < std::time::Duration::from_secs(2)
+				&& self
+					.running_turn()
+					.is_some_and(|(w, t)| w.as_str() == work && t.as_str() == turn)
+		})
+	}
+
+	pub(crate) fn escape_interrupt(&mut self, cx: &mut Context<Self>) {
+		if self.composer.read(cx).is_composing() {
+			return;
+		}
+		if self.composer_menu.take().is_some() || self.dictation.is_some() {
+			self.cancel_dictation(cx);
+			self.escape_stop = None;
+			self.effort_drag = None;
+			self.effort_pointer = None;
+			cx.notify();
+			return;
+		}
+		if self.escape_stop_armed() {
+			self.escape_stop = None;
+			self.interrupt_current(cx);
+			return;
+		}
+		let Some((work, turn)) = self.running_turn() else {
+			self.escape_stop = None;
+			return;
+		};
+		let armed = (work.as_str().to_owned(), turn.as_str().to_owned(), std::time::Instant::now());
+		self.escape_stop = Some(armed.clone());
+		cx.spawn(async move |owner, cx| {
+			cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
+			let _ = owner.update(cx, |s, cx| {
+				if s.escape_stop.as_ref() == Some(&armed) {
+					s.escape_stop = None;
+					cx.notify();
+				}
+			});
+		})
+		.detach();
+		cx.notify();
 	}
 
 	pub(crate) fn interrupt_current(&mut self, cx: &mut Context<Self>) {
+		self.escape_stop = None;
 		if let Some((work_id, turn_id)) = self.running_turn() {
 			self.execute(ChiefActionDto::Interrupt { work_id, turn_id }, None, cx);
 		}
+	}
+
+	pub(super) fn request_interrupt(
+		&mut self,
+		work_id: EntityId,
+		turn_id: decodex_protocol::WireText,
+		cx: &mut Context<Self>,
+	) {
+		if self.interrupting.is_some() {
+			return;
+		}
+		let Some(profile) = self.profile.clone() else {
+			self.feedback = "No service profile is configured.".into();
+			cx.notify();
+			return;
+		};
+		let target = (work_id.as_str().to_owned(), turn_id.as_str().to_owned());
+		self.interrupting = Some(target.clone());
+		let target_for_readback = target.clone();
+		let request = cx.background_executor().spawn(async move {
+			let runtime = tokio::runtime::Builder::new_current_thread()
+				.enable_all()
+				.build()
+				.map_err(|_| "Cannot start cancellation".to_string())?;
+			runtime.block_on(async {
+				let client = ChiefClient::new(profile);
+				let result = client
+					.execute(
+						ChiefActionDto::Interrupt { work_id, turn_id },
+						IdempotencyKey::new(unique_command()).expect("command identity"),
+					)
+					.await;
+				// The turn can finish before interruption reaches Codex. Read back before
+				// presenting an error, and never reuse the send/uncertain-delivery state.
+				let mut snapshot = client.query().await.ok();
+                if !matches!(&result, Ok(ChiefCommandResponse::Accepted { .. })) {
+                    for _ in 0..2 {
+                        let ended = matches!(&snapshot, Some(ChiefSnapshotResult::Available(s)) if s.work_items.iter().any(|w| w.id == target_for_readback.0 && w.active_turn_id.as_deref() != Some(target_for_readback.1.as_str())));
+                        if ended { break; }
+                        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+                        snapshot = client.query().await.ok();
+                    }
+                }
+				Ok::<_, String>((result, snapshot))
+			})
+		});
+		self.interrupt_task = Some(cx.spawn(async move |surface, cx| {
+            let result = request.await;
+            let _ = surface.update(cx, |s, cx| {
+                if s.interrupting.as_ref() != Some(&target) { return; }
+                let accepted = match result {
+                    Ok((result, snapshot)) => {
+                        if let Some(snapshot) = snapshot { s.apply_result(Ok(snapshot)); }
+                        matches!(result, Ok(ChiefCommandResponse::Accepted { .. }))
+                    }
+                    Err(_) => false,
+                };
+                if !accepted && s.interrupting.as_ref() == Some(&target) {
+                    s.interrupting = None;
+                    s.feedback = "Stopping could not be confirmed. If the response is still running, press Stop again.".into();
+                }
+                s.load_history(cx);
+                cx.notify();
+            });
+        }));
+		cx.notify();
 	}
 
 	pub(super) fn refresh_prompt(cx: &mut Context<Self>) {
@@ -165,9 +298,9 @@ impl ChiefSurface {
 			.gap(px(4.))
 			.on_key_down(cx.listener(|s, e: &gpui::KeyDownEvent, _, cx| {
 				if e.keystroke.key == "escape" {
-					s.cancel_dictation(cx);
-					s.composer_menu = None;
-					cx.notify();
+					if !e.is_held {
+						s.escape_interrupt(cx);
+					}
 					cx.stop_propagation();
 				}
 			}))
@@ -196,7 +329,7 @@ impl ChiefSurface {
 
 	pub(super) fn render_composer_popover(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let menu = self.composer_menu.or(self.composer_menu_content);
-		let left = matches!(menu, Some("attachments" | "microphone" | "tasks"));
+		let left = matches!(menu, Some("attachments" | "microphone" | "tasks" | "agent-settings"));
 		gpui::deferred(
 			div()
 				.absolute()
@@ -205,7 +338,13 @@ impl ChiefSurface {
 				.when(left, |d| d.left(px(0.)))
 				// Align with the model trigger: inset + mic/send widths + toolbar gaps.
 				.when(!left, |d| d.right(px(79.)))
-				.w(px(if left { 280. } else { 232. }))
+				.w(px(if menu == Some("agent-settings") {
+					380.
+				} else if left {
+					280.
+				} else {
+					232.
+				}))
 				.child(
 					crate::ui_motion::popover(
 						"composer-popover-motion",
@@ -263,6 +402,16 @@ impl ChiefSurface {
 					)),
 			)
 			.child(self.composer_control(
+				"agent-settings",
+				"Agent settings…".into(),
+				"Agent settings",
+				|s, cx| {
+					s.setup_expanded = true;
+					s.toggle_composer_menu("agent-settings", cx);
+				},
+				cx,
+			))
+			.child(self.composer_control(
 				"delivery",
 				if self.steer { "Steer" } else { "Queue" }.into(),
 				if self.steer { "Add to the current turn" } else { "Send after the current turn" },
@@ -310,8 +459,12 @@ impl ChiefSurface {
 			.child(self.composer_control_with_window(
 				"send",
 				"".into(),
-				if self.stop_button(cx) {
-					"Stop response · Control-C"
+				if self.interrupting.is_some() {
+					"Stopping response"
+				} else if self.awaiting_start(cx) {
+					"Starting response"
+				} else if self.stop_button(cx) {
+					"Stop response · Esc twice"
 				} else if self.composer.read(cx).content().trim().is_empty()
 					&& self.attachments.is_empty()
 					&& self.task_references.is_empty()
@@ -321,6 +474,9 @@ impl ChiefSurface {
 					"Send · Enter"
 				},
 				|s, window, cx| {
+					if s.awaiting_start(cx) || s.interrupting.is_some() {
+						return;
+					}
 					if s.stop_button(cx) {
 						s.interrupt_current(cx);
 					} else if s.composer.read(cx).content().trim().is_empty()
@@ -441,16 +597,23 @@ impl ChiefSurface {
 	) -> gpui::AnyElement {
 		use super::super::workspace_symbols::{Symbol, icon};
 		match id {
-			"send" if self.dictation.is_some() => div().child("✓").into_any_element(),
-			"send" if self.stop_button(cx) =>
-				div().size(px(9.0)).rounded(px(2.0)).bg(rgb(ui_theme::CANVAS)).into_any_element(),
-			"send"
-				if self.composer.read(cx).content().trim().is_empty()
+			"send" => controls::PrimaryMark {
+				mode: if self.dictation.is_some() {
+					controls::PrimaryMode::Done
+				} else if self.stop_button(cx) {
+					controls::PrimaryMode::Stop
+				} else if self.composer.read(cx).content().trim().is_empty()
 					&& self.attachments.is_empty()
-					&& self.task_references.is_empty() =>
-				controls::live_mark(),
-			"send" if !self.sending => controls::launch_mark().into_any_element(),
-			"send" => div().child("…").into_any_element(),
+					&& self.task_references.is_empty()
+				{
+					controls::PrimaryMode::Live
+				} else {
+					controls::PrimaryMode::Send
+				},
+				armed: self.escape_stop_armed(),
+				pending: self.awaiting_start(cx) || self.interrupting.is_some(),
+			}
+			.into_any_element(),
 			"attach" => icon(Symbol::Plus),
 			"attachment-item" => div()
 				.flex()
@@ -517,6 +680,7 @@ impl ChiefSurface {
 	}
 
 	fn toggle_composer_menu(&mut self, name: &'static str, cx: &mut Context<Self>) {
+		self.escape_stop = None;
 		let same_menu = self.composer_menu == Some(name)
 			|| (name == "attachments" && self.composer_menu == Some("microphone"));
 		self.composer_menu = if same_menu { None } else { Some(name) };
@@ -569,6 +733,8 @@ impl ChiefSurface {
 				.gap(px(10.))
 				.child(if menu == "tasks" {
 					self.task_reference_options(cx)
+				} else if menu == "agent-settings" {
+					self.render_preferences(cx).into_any_element()
 				} else if matches!(menu, "attachments" | "microphone") {
 					self.attachment_options(cx)
 				} else {
@@ -609,7 +775,6 @@ impl ChiefSurface {
 	) {
 		if menu == "model" {
 			self.model.update(cx, |input, cx| input.set_content(value, cx));
-			self.mark_model_intent(cx);
 			self.reconcile_model_options(cx);
 			self.mark_model_intent(cx);
 		} else {
@@ -846,6 +1011,54 @@ mod tests {
 	use super::*;
 
 	#[gpui::test]
+	fn delivered_messages_do_not_keep_the_composer_waiting_after_stop(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.composer.update(cx, |input, cx| input.clear(cx));
+			s.snapshot.as_mut().unwrap().pending_events.push(
+				decodex_protocol::ChiefPendingEventDto {
+					id: 99,
+					source_event_id: "test".into(),
+					work_item_id: "chief".into(),
+					event_kind: "user_message".into(),
+					created_at_micros: 1,
+					delivery_claimed: true,
+				},
+			);
+			s.feedback = "Message saved · Waiting for agent…".into();
+			s.apply_result(Ok(ChiefSnapshotResult::Available(s.snapshot.clone().unwrap())));
+			assert!(!s.awaiting_start(cx));
+			assert!(!s.stop_button(cx));
+			s.snapshot.as_mut().unwrap().pending_events.last_mut().unwrap().delivery_claimed =
+				false;
+			assert!(s.awaiting_start(cx), "undelivered input still waits for its turn");
+		});
+	}
+
+	#[gpui::test]
+	fn cancellation_is_separate_from_send_and_clears_when_the_turn_ends(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+			s.interrupting = Some(("chief".into(), "cancelled-turn".into()));
+			assert!(s.stop_button(cx));
+			assert!(!s.sending);
+			assert!(!s.awaiting_start(cx));
+			s.apply_result(Ok(ChiefSnapshotResult::Available(s.snapshot.clone().unwrap())));
+			assert!(s.interrupting.is_none());
+			assert!(!s.uncertain);
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			assert!(s.status_notice().is_none());
+		});
+	}
+
+	#[gpui::test]
 	fn model_selection_uses_native_default_and_capabilities(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(ChiefSurface::new);
 		surface.update(cx, |s, cx| {
@@ -882,6 +1095,83 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn escape_requires_two_presses_for_the_same_current_turn(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == "chief")
+				.unwrap();
+			work.dispatch_state = ChiefDispatchStateDto::Running;
+			work.active_turn_id = Some("turn".into());
+			s.feedback.clear();
+			s.details_visible = true;
+			s.composer_menu = Some("model");
+			s.escape_interrupt(cx);
+			assert!(s.composer_menu.is_none());
+			assert!(!s.escape_stop_armed());
+			s.escape_interrupt(cx);
+			assert!(s.escape_stop_armed());
+			assert!(s.details_visible, "inspection must not intercept Escape");
+			assert!(s.feedback.is_empty(), "first Escape must not dispatch an interrupt");
+			s.escape_stop.as_mut().unwrap().2 -= std::time::Duration::from_secs(3);
+			s.escape_interrupt(cx);
+			assert!(s.feedback.is_empty(), "expired confirmation must only rearm");
+			s.escape_stop.as_mut().unwrap().1 = "old-turn".into();
+			s.escape_interrupt(cx);
+			assert!(s.feedback.is_empty(), "confirmation must not cross turn identities");
+			s.escape_interrupt(cx);
+			assert!(!s.escape_stop_armed());
+			assert_eq!(
+				s.feedback, "No service profile is configured.",
+				"second Escape reaches the native interrupt path"
+			);
+		});
+	}
+
+	#[gpui::test]
+	fn accepted_message_does_not_flash_the_live_voice_control(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.composer.update(cx, |input, cx| input.clear(cx));
+			s.sending = true;
+			assert!(s.awaiting_start(cx));
+			s.sending = false;
+			s.feedback = "Message saved · Waiting for agent…".into();
+			assert!(s.awaiting_start(cx));
+			s.feedback.clear();
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == "chief")
+				.unwrap();
+			work.dispatch_state = ChiefDispatchStateDto::Dispatching;
+			assert!(s.awaiting_start(cx));
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == "chief")
+				.unwrap();
+			work.dispatch_state = ChiefDispatchStateDto::Running;
+			work.active_turn_id = Some("turn".into());
+			assert!(!s.awaiting_start(cx));
+			assert!(s.stop_button(cx));
+		});
+	}
+
+	#[gpui::test]
 	fn delivery_mode_and_stop_follow_the_selected_turn(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(ChiefSurface::new);
 		surface.update(cx, |s, cx| {
@@ -914,6 +1204,10 @@ mod tests {
 			s.uncertain = false;
 			s.composer.update(cx, |i, cx| i.set_content("Supplement", cx));
 			assert!(!s.stop_button(cx));
+			s.sending = true;
+			assert!(!s.awaiting_start(cx), "steering does not restart the current turn");
+			assert!(!s.stop_button(cx), "keep the send glyph while the supplement is submitted");
+			s.sending = false;
 			s.steer = false;
 			assert!(matches!(action(s), ChiefActionDto::SendConfigured { .. }));
 			s.steer = true;

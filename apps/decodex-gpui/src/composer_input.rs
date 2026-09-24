@@ -178,6 +178,10 @@ impl ComposerInput {
 		cx.notify();
 	}
 
+	pub(crate) fn is_composing(&self) -> bool {
+		self.marked_range.is_some()
+	}
+
 	pub(crate) fn content(&self) -> &str {
 		&self.content
 	}

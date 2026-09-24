@@ -48,25 +48,6 @@ impl Intents {
 }
 
 impl ChiefSurface {
-	pub(super) fn apply_exact_model_button(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-		super::mcp_forms::mcp_button(
-			"apply-exact-model".into(),
-			"Use this model next turn".into(),
-			false,
-			cx,
-			|s, cx| {
-				let value = s.model.read(cx).content().trim().to_owned();
-				if ConversationModel::new(&value).is_err() {
-					s.feedback = "Enter an exact model ID.".into();
-					cx.notify();
-					return;
-				}
-				s.select_composer_option("model", &value, cx);
-			},
-		)
-		.into_any_element()
-	}
-
 	pub(super) fn mark_model_intent(&mut self, cx: &Context<Self>) {
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
 		let Ok(model) = ConversationModel::new(self.model.read(cx).content()) else { return };

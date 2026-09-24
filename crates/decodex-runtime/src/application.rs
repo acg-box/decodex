@@ -1983,9 +1983,46 @@ impl Application for ServiceApplication {
 			QueryPayload::GetChiefRequest { event_id } => QueryResultPayload::ChiefRequest(
 				query_chief_request_with_details(&self.store, *event_id, self.chief.as_ref()).await,
 			),
-			QueryPayload::GetChiefHistory { work_id, before } => QueryResultPayload::ChiefHistory(
-				query_chief_history_page(&self.store, work_id.as_str(), *before).await,
-			),
+			QueryPayload::WaitForChiefOutput { work_id, after_revision } => {
+				let result = match &self.store {
+					ProductStore::Available(store) => match store
+						.wait_chief_output(work_id.as_str().into(), *after_revision)
+						.await
+					{
+						Ok((revision, output)) => {
+							let messages = query_chief_live(output);
+							decodex_protocol::ChiefOutputResult::Available {
+								revision,
+								work_id: work_id.clone(),
+								messages,
+							}
+						},
+						Err(_) => decodex_protocol::ChiefOutputResult::Unavailable,
+					},
+					_ => decodex_protocol::ChiefOutputResult::Unavailable,
+				};
+				QueryResultPayload::ChiefOutput(result)
+			},
+			QueryPayload::GetNativeAgents { work_id, thread_id, cursor } =>
+				QueryResultPayload::NativeAgents(match &self.chief {
+					Some(chief) =>
+						chief
+							.native_agents(
+								work_id.as_str(),
+								thread_id.as_ref().map(|x| x.as_str()),
+								cursor.as_ref().map(|x| x.as_str()),
+							)
+							.await,
+					None => decodex_protocol::NativeAgentsResult::Unavailable,
+				}),
+			QueryPayload::GetChiefHistory { work_id, before } => {
+				let mut history =
+					query_chief_history_page(&self.store, work_id.as_str(), *before).await;
+				if let Some(chief) = &self.chief {
+					chief.enrich_weather(work_id.as_str(), &mut history).await;
+				}
+				QueryResultPayload::ChiefHistory(history)
+			},
 			QueryPayload::GetChiefArchiveState { work_id } =>
 				QueryResultPayload::ChiefArchiveState(match &self.chief {
 					Some(chief) => chief.archive_state(work_id.as_str()).await,
@@ -4030,10 +4067,12 @@ fn chief_assistant_history(
 		.unwrap_or_default();
 	let status = value.pointer("/terminal/turn/status").and_then(serde_json::Value::as_str);
 	if text.is_empty() {
+		if status == Some("interrupted") {
+			return ("stopped", "Stopped".into());
+		}
 		return (
 			"execution_notice",
 			match status {
-				Some("interrupted") => "Interrupted before a response was produced.",
 				Some("failed") => "Execution failed before a response was produced.",
 				_ => "Execution ended without a recoverable response.",
 			}
@@ -4043,7 +4082,7 @@ fn chief_assistant_history(
 	let mut text = text;
 	if matches!(status, Some("interrupted" | "failed")) {
 		text.push_str(if status == Some("interrupted") {
-			"\n\n*Execution interrupted.*"
+			"\n\n*Stopped.*"
 		} else {
 			"\n\n*Execution failed.*"
 		});
@@ -4078,6 +4117,27 @@ fn completed_chief_history(
 		);
 	}
 	let (message_kind, mut text) = chief_assistant_history(value, has_more);
+	// Capacity handling is process state, not an assistant response. Keep the
+	// original provider error in the persisted event rather than stacking it
+	// with a contradictory instruction to change models during an active retry.
+	if message_kind == "execution_notice" && value.get("capacityRetry").is_some() {
+		if let Some(retry) = pending_retry.filter(|retry| retry.event_id == event_id) {
+			return (
+				"capacity_retry_pending",
+				format!("Model busy · retry {}/3 scheduled automatically.", retry.attempt),
+			);
+		}
+		let notice = if value.pointer("/capacityRetry/cancelled") == Some(&serde_json::json!(true))
+		{
+			"Model busy · automatic retry cancelled."
+		} else if value.pointer("/capacityRetry/exhausted") == Some(&serde_json::json!(true)) {
+			"Model still busy after 3 retries. Try again later or choose another model."
+		} else {
+			"Model was busy · automatic retry requested."
+		};
+		return ("execution_notice", notice.into());
+	}
+
 	for path in
 		["/terminal/turn/error/message", "/terminal/turn/error/misalignment/detailedExplanation"]
 	{
@@ -4411,6 +4471,11 @@ fn chief_history_entry(
 	text: String,
 ) -> decodex_protocol::ChiefHistoryEntryDto {
 	decodex_protocol::ChiefHistoryEntryDto {
+		turn_id: value
+			.pointer("/threadReadback/turnId")
+			.and_then(serde_json::Value::as_str)
+			.map(str::to_owned),
+		weather: Vec::new(),
 		receipt: chief_history_receipt(event),
 		activity: if event.event_kind.starts_with("activity_") {
 			serde_json::from_value(value.clone()).ok()
@@ -5080,7 +5145,18 @@ mod tests {
 		};
 		assert_eq!(entries[0].kind, "capacity_retry_pending");
 		assert_eq!(entries[0].id, event.id);
-		assert!(entries[0].text.contains("1/3"));
+		assert_eq!(entries[0].text, "Model busy · retry 1/3 scheduled automatically.");
+		assert!(!entries[0].text.contains("Execution failed"));
+		let (kind, text) = super::completed_chief_history(
+			&serde_json::json!({"terminal":{"turn":{"status":"failed","error":{"message":"Selected model is at capacity."}}},"capacityRetry":{"attempt":1}}),
+			&mut false,
+			None,
+			event.id,
+			&mut Vec::new(),
+		);
+		assert_eq!(kind, "execution_notice");
+		assert_eq!(text, "Model was busy · automatic retry requested.");
+
 		store.cancel_chief_capacity_retry("chosen".into(), event.id).await.unwrap();
 		let decodex_protocol::ChiefHistoryResult::Available { entries, .. } =
 			super::query_chief_history(&owner, "chosen").await
@@ -5301,11 +5377,11 @@ mod tests {
 	}
 
 	#[test]
-	fn empty_interrupted_turn_is_an_execution_notice_not_an_assistant_answer() {
+	fn empty_interrupted_turn_is_a_normal_stop_not_a_failure() {
 		let value = serde_json::json!({"terminal":{"turn":{"status":"interrupted"}},"threadReadback":{"assistantMessages":[]}});
 		let (kind, text) = super::chief_assistant_history(&value, &mut false);
-		assert_eq!(kind, "execution_notice");
-		assert_eq!(text, "Interrupted before a response was produced.");
+		assert_eq!(kind, "stopped");
+		assert_eq!(text, "Stopped");
 	}
 
 	#[tokio::test]

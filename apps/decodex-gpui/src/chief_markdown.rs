@@ -300,7 +300,9 @@ impl gpui::RenderOnce for CopyButton {
 					|_, _, _| (),
 					move |bounds, _, window, _| {
 						let mut path = gpui::PathBuilder::stroke(px(1.1));
-						let point = |x: f32, y: f32| bounds.origin + gpui::point(px(x * 0.75), px(y * 0.75));
+						let point = |x: f32, y: f32| {
+							bounds.origin + gpui::point(px(x * 0.75), px(y * 0.75))
+						};
 						if copied {
 							path.move_to(point(2., 8.));
 							path.line_to(point(6., 12.));
@@ -372,6 +374,52 @@ pub(super) fn plain_text(text: &str) -> String {
 		.join(" ")
 }
 
+/// Text fallback for the observed weather widget. Keep the stored source intact.
+/// Full snapshots are parsed, including incomplete streaming/reveal prefixes.
+pub(super) fn response_text(text: &str) -> String {
+	const PREFIX: &str = "\u{e200}weather\u{e202}";
+	if !text.contains('\u{e200}') {
+		return text.into();
+	}
+	let mut code = Vec::new();
+	for (event, range) in Parser::new(text).into_offset_iter() {
+		if matches!(event, Event::Code(_) | Event::Start(Tag::CodeBlock(_))) {
+			code.push(range);
+		}
+	}
+	let mut out = String::with_capacity(text.len());
+	let mut cursor = 0;
+	for (start, _) in text.match_indices('\u{e200}') {
+		if start < cursor || code.iter().any(|range| range.contains(&start)) {
+			continue;
+		}
+		let tail = &text[start..];
+		let end = if let Some(payload) = tail.strip_prefix(PREFIX) {
+			if let Some(end) = payload.find('\u{e201}') {
+				let reference = &payload[..end];
+				if reference.is_empty()
+					|| !reference.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+				{
+					continue;
+				}
+				start + PREFIX.len() + end + '\u{e201}'.len_utf8()
+			} else if payload.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+				text.len()
+			} else {
+				continue;
+			}
+		} else if PREFIX.starts_with(tail) {
+			text.len()
+		} else {
+			continue;
+		};
+		out.push_str(&text[cursor..start]);
+		cursor = end;
+	}
+	out.push_str(&text[cursor..]);
+	out.trim_end().into()
+}
+
 pub(super) fn render(text: &str, key: &str) -> AnyElement {
 	div()
 		.flex()
@@ -391,6 +439,24 @@ pub(super) fn render(text: &str, key: &str) -> AnyElement {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn weather_fallback_preserves_markdown_and_hides_every_stream_prefix() {
+		let marker = "\u{e200}weather\u{e202}turn0forecast0\u{e201}";
+		let body = "Singapore: **32°C**, cloudy.";
+		assert_eq!(response_text(&format!("{body}\n\n{marker}")), body);
+		for end in marker.char_indices().map(|(i, _)| i).chain([marker.len()]) {
+			assert_eq!(response_text(&format!("{body}\n\n{}", &marker[..end])).trim_end(), body);
+		}
+		assert_eq!(response_text(&format!("Before {marker} after {marker}!")), "Before  after !");
+		for source in [
+			format!("`{marker}`"),
+			format!("```text\n{marker}\n```"),
+			"\u{e200}unknown\u{e202}data\u{e201}".into(),
+		] {
+			assert_eq!(response_text(&source), source);
+		}
+	}
 
 	#[test]
 	fn copied_code_preserves_source_content() {
@@ -426,6 +492,17 @@ mod tests {
 			_: &mut gpui::Context<Self>,
 		) -> impl gpui::IntoElement {
 			super::super::history_entry(&decodex_protocol::ChiefHistoryEntryDto {
+				turn_id: None,
+				weather: if self.text.contains("\u{e200}weather\u{e202}") {
+					vec![
+						decodex_protocol::WeatherForecast::parse(include_str!(
+							"../examples/fixtures/singapore-weather.txt"
+						))
+						.unwrap(),
+					]
+				} else {
+					Vec::new()
+				},
 				receipt: None,
 				id: 42,
 				kind: "assistant".into(),
@@ -437,6 +514,27 @@ mod tests {
 			})
 		}
 	}
+	#[gpui::test]
+	fn weather_card_is_compact_and_response_copy_includes_forecast(cx: &mut gpui::TestAppContext) {
+		let (_, visual) = cx.add_window_view(|_, _| CopyPreview {
+			text: "Cloudy.\n\n\u{e200}weather\u{e202}turn0forecast0\u{e201}".into(),
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(px(700.), px(500.)));
+			window.draw(cx).clear();
+		});
+		let card = visual.debug_bounds("weather-card-42-0").expect("inline weather card");
+		assert_eq!(card.size.width, px(360.));
+		assert!(card.size.height < px(170.));
+		let copy = visual.debug_bounds("copy-response-42").unwrap();
+		visual.simulate_click(copy.center(), gpui::Modifiers::default());
+		visual.update(|_, cx| {
+			let text = cx.read_from_clipboard().and_then(|item| item.text()).unwrap();
+			assert!(text.contains("| 02:00 AM | Showers | 28 |"));
+			assert!(!text.contains('\u{e200}'));
+		});
+	}
+
 	#[gpui::test]
 	fn response_and_code_copy_use_the_displayed_message(cx: &mut gpui::TestAppContext) {
 		let original = "Answer **中文**\n\n```sh\r\nprintf 'hello'  \r\n```";

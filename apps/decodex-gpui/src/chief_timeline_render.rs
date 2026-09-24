@@ -43,7 +43,10 @@ impl ChiefSurface {
 		else {
 			return None;
 		};
-		live.iter().find(|message| message.turn_id == turn && message.item_id == item)
+		self.streamed_output(work)
+			.unwrap_or(live.as_slice())
+			.iter()
+			.find(|message| message.turn_id == turn && message.item_id == item)
 	}
 
 	fn native_timeline_content(
@@ -64,6 +67,49 @@ impl ChiefSurface {
 				let (text, truncated) = draft.map_or((text.as_str(), *truncated), |message| {
 					(message.text.as_str(), message.truncated)
 				});
+				if matches!(kind.as_str(), "userMessage" | "agentMessage") {
+					let saved = self.history.as_ref().filter(|(id, _)| id == &work.id).and_then(
+						|(_, history)| match history {
+							super::ChiefHistoryResult::Available { entries, .. } =>
+								entries.iter().find(|entry| {
+									entry.turn_id.as_deref() == Some(turn_id) && entry.text == text
+								}),
+							_ => None,
+						},
+					);
+					let mut message =
+						saved.cloned().unwrap_or_else(|| decodex_protocol::ChiefHistoryEntryDto {
+							id: 0,
+							kind: if kind == "userMessage" { "user" } else { "assistant" }.into(),
+							text: text.into(),
+							created_at_micros: 0,
+							duration_ms: None,
+							usage: None,
+							activity: None,
+							receipt: None,
+							turn_id: Some(turn_id.clone()),
+							weather: Vec::new(),
+						});
+					message.text = text.into();
+					let mut body = div().debug_selector(|| "native-promotion-content".into());
+					for attachment in attachments {
+						body = body
+							.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
+					}
+					body = if draft.is_some() {
+						body.child(super::super::text_reveal::StreamingText {
+							text: text.into(),
+							key: identity.into(),
+						})
+					} else {
+						body.child(super::super::history_entry_with_key(&message, identity))
+					};
+					if truncated {
+						body = body
+							.child(muted("Some content was omitted from this history preview."));
+					}
+					return body.into_any_element();
+				}
 				let label = match kind.as_str() {
 					"userMessage" => "You",
 					"agentMessage" => "Assistant",

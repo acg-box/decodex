@@ -127,6 +127,8 @@ mod tests {
 	#[test]
 	fn native_view_preserves_uncertain_input_and_controls_without_text_deduplication() {
 		let mut entry = ChiefHistoryEntryDto {
+			turn_id: None,
+			weather: Vec::new(),
 			receipt: Some(decodex_protocol::ChiefHistoryReceiptDto {
 				event_kind: "user_message".into(),
 				delivered_turn_id: None,

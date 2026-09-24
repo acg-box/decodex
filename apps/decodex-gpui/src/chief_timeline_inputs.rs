@@ -142,6 +142,8 @@ mod tests {
 			entries: id
 				.into_iter()
 				.map(|id| ChiefHistoryEntryDto {
+					turn_id: None,
+					weather: Vec::new(),
 					receipt: Some(ChiefHistoryReceiptDto {
 						event_kind: "user_message".into(),
 						delivered_turn_id: None,

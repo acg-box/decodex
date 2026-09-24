@@ -10,9 +10,8 @@ impl ChiefSurface {
 		row: gpui::Div,
 		cx: &mut Context<Self>,
 	) -> gpui::AnyElement {
-		if work.kind == decodex_protocol::ChiefWorkKindDto::Manager
-			|| !["commandExecution", "fileChange", "mcpToolCall", "dynamicToolCall", "webSearch"]
-				.contains(&item.kind.as_str())
+		if !["commandExecution", "fileChange", "mcpToolCall", "dynamicToolCall", "webSearch"]
+			.contains(&item.kind.as_str())
 		{
 			return row.into_any_element();
 		}

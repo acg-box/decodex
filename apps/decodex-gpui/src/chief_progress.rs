@@ -10,24 +10,6 @@ impl ChiefSurface {
 		cx.notify();
 	}
 
-	pub(super) fn current_activity_label(&self, work: &ChiefWorkItemDto) -> Option<String> {
-		let (id, ChiefHistoryResult::Available { entries, .. }) = self.history.as_ref()? else {
-			return None;
-		};
-		if id != &work.id {
-			return None;
-		}
-		entries
-			.iter()
-			.rev()
-			.filter_map(|entry| entry.activity.as_ref())
-			.find(|item| {
-				item.status == "running"
-					&& work.active_turn_id.as_deref() == Some(item.turn_id.as_str())
-			})
-			.map(activity_title)
-	}
-
 	pub(super) fn progress_history(
 		&self,
 		entries: Vec<&ChiefHistoryEntryDto>,
@@ -58,7 +40,23 @@ impl ChiefSurface {
 					result.push(self.progress_group(&pending, work, cx));
 					pending.clear();
 				}
-				result.push(self.anchored_history_entry(entry).into_any_element());
+				if entry.kind == "capacity_retry_pending" {
+					result.push(
+						div()
+							.flex()
+							.flex_col()
+							.gap_1()
+							.child(self.anchored_history_entry(entry))
+							.child(
+								div().debug_selector(|| "capacity-retry-cancel".into()).child(
+									self.capacity_retry_control(work.id.clone(), entry.id, cx),
+								),
+							)
+							.into_any_element(),
+					);
+				} else {
+					result.push(self.anchored_history_entry(entry).into_any_element());
+				}
 			}
 		}
 		if !pending.is_empty() {
@@ -178,6 +176,8 @@ impl ChiefSurface {
 		};
 		entries.clear();
 		entries.push(ChiefHistoryEntryDto {
+			turn_id: None,
+			weather: Vec::new(),
 			receipt: None,
 			activity: None,
 			usage: None,
@@ -197,6 +197,8 @@ impl ChiefSurface {
 		.enumerate()
 		{
 			entries.push(ChiefHistoryEntryDto {
+				turn_id: None,
+				weather: Vec::new(),
 				receipt: None,
 				activity: Some(ChiefActivityDto {
 					turn_id: "capture-turn".into(),

@@ -3,6 +3,8 @@
 //! Persistent settings remain daemon-owned. This presentation controls the restored native
 //! Swift menu-bar panel only after it applies an authoritative protocol readback.
 
+#[path = "settings_power.rs"] mod power;
+
 use crate::ui_motion::{SmoothControl, switch_knob};
 use gpui::{
 	Context, Render, Role, SharedString, Window, accesskit::Toggled, div, prelude::*, px, rgb, rgba,
@@ -30,8 +32,24 @@ enum MenuBarRuntimeState {
 	Unavailable,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum SettingsCategory {
+	#[default]
+	General,
+	Appearance,
+}
+impl SettingsCategory {
+	pub(crate) fn title(self) -> &'static str {
+		match self {
+			Self::General => "General",
+			Self::Appearance => "Appearance",
+		}
+	}
+}
+
 pub(crate) struct SettingsSurface {
-	advanced_preferences: Option<gpui::AnyView>,
+	pub(crate) category: SettingsCategory,
+	power: power::PowerSettings,
 	snapshot: DesktopSettingsSnapshot,
 	runtime: MenuBarRuntimeState,
 	detail: SharedString,
@@ -42,18 +60,14 @@ pub(crate) struct SettingsSurface {
 }
 
 impl SettingsSurface {
-	pub(crate) fn with_advanced_preferences(mut self, view: gpui::AnyView) -> Self {
-		self.advanced_preferences = Some(view);
-		self
-	}
-
 	pub(crate) fn new(controller: DesktopSettingsController, _: &mut Context<Self>) -> Self {
 		let snapshot = controller.snapshot();
 		let mut menu_bar = NativeMenuBarHost::new();
 		let launch_at_login =
 			menu_bar.launch_at_login_state().unwrap_or(LaunchAtLoginState::OperationFailed);
 		let mut surface = Self {
-			advanced_preferences: None,
+			power: Default::default(),
+			category: SettingsCategory::General,
 			snapshot,
 			runtime: MenuBarRuntimeState::Waiting,
 			detail: "Loading preferences…".into(),
@@ -104,6 +118,7 @@ impl SettingsSurface {
 	}
 
 	pub(crate) fn refresh(&mut self, cx: &mut Context<Self>) {
+		self.refresh_power(cx);
 		self.synchronize(cx);
 	}
 
@@ -173,6 +188,9 @@ impl SettingsSurface {
 
 	pub(crate) fn notifications(&self) -> Vec<(&'static str, String)> {
 		let mut notices = Vec::new();
+		if let Some(error) = &self.power.error {
+			notices.push(("System sleep", error.clone()));
+		}
 		if self.menubar_needs_attention() {
 			notices.push(("Menu bar", self.detail.to_string()));
 		}
@@ -356,6 +374,7 @@ impl SettingsSurface {
 			.child(
 				div()
 					.id("notification-count-preference")
+					.debug_selector(|| "notification-count-preference".into())
 					.role(Role::Switch)
 					.aria_label("Show notification count")
 					.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
@@ -394,6 +413,85 @@ impl SettingsSurface {
 					))
 					.smooth(),
 			)
+	}
+
+	fn panel_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		use crate::panel_preferences::PanelDefaults;
+		let current = PanelDefaults::configured();
+		div().flex().flex_col().children(
+			[
+				(true, "Default sidebar width", current.sidebar),
+				(false, "Default dock height", current.dock),
+			]
+			.into_iter()
+			.map(|(sidebar, title, value)| {
+				ui_theme::settings_row().px_0().child(div().flex_1().child(title)).child(
+					div()
+						.flex()
+						.items_center()
+						.gap_2()
+						.child(div().text_size(px(12.)).child(format!("{value} px")))
+						.children(
+							[(-24i32, "−"), (24, "+")]
+								.into_iter()
+								.map(|(delta, label)| {
+									div()
+										.id(gpui::SharedString::from(format!(
+											"panel-default-{sidebar}-{delta}"
+										)))
+										.role(Role::Button)
+										.aria_label(format!(
+											"{} {title}",
+											if delta < 0 { "Decrease" } else { "Increase" }
+										))
+										.tab_index(0)
+										.size(px(26.))
+										.flex()
+										.items_center()
+										.justify_center()
+										.rounded(px(7.))
+										.cursor_pointer()
+										.hover(|s| s.bg(rgba(0xffffff12)))
+										.on_click(cx.listener(move |_, _, _, cx| {
+											let mut pref = PanelDefaults::configured();
+											if sidebar {
+												pref.sidebar = (i32::from(pref.sidebar) + delta)
+													.clamp(160, 480) as u16;
+											} else {
+												pref.dock = (i32::from(pref.dock) + delta)
+													.clamp(120, 480) as u16;
+											}
+											pref.select(cx);
+										}))
+										.on_key_down(cx.listener(
+											move |_, event: &gpui::KeyDownEvent, _, cx| {
+												if !["enter", "space"]
+													.contains(&event.keystroke.key.as_str())
+												{
+													return;
+												}
+												let mut pref = PanelDefaults::configured();
+												if sidebar {
+													pref.sidebar = (i32::from(pref.sidebar) + delta)
+														.clamp(160, 480)
+														as u16;
+												} else {
+													pref.dock = (i32::from(pref.dock) + delta)
+														.clamp(120, 480)
+														as u16;
+												}
+												pref.select(cx);
+												cx.stop_propagation();
+											},
+										))
+										.child(label)
+										.smooth()
+								})
+								.collect::<Vec<_>>(),
+						),
+				)
+			}),
+		)
 	}
 
 	fn cursor_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -509,8 +607,86 @@ impl SettingsSurface {
 	}
 }
 
+impl SettingsSurface {
+	pub(crate) fn quota_control(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+		div()
+			.flex_none()
+			.flex()
+			.flex_col()
+			.gap(px(3.))
+			.child(
+				ui_theme::settings_row()
+					.px_0()
+					.child(div().flex_1().child("Auto-activate weekly quota"))
+					.child(self.toggle(true, cx)),
+			)
+			.child(div().text_size(px(11.)).text_color(rgb(TEXT_MUTED)).child(
+				"Start the next weekly window with a small request. Uses quota; no chat is saved.",
+			))
+			.into_any_element()
+	}
+
+	fn category_content(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+		let group = || div().flex().flex_col().gap(px(2.));
+		match self.category {
+			SettingsCategory::General => div()
+				.flex()
+				.flex_col()
+				.gap(px(24.))
+				.child(
+					group()
+						.child(settings_group_title("Startup"))
+						.child(self.launch_at_login_card(cx))
+						.child(
+							ui_theme::settings_row()
+								.px_0()
+								.child(div().flex_1().child("Show in menu bar"))
+								.child(self.toggle(false, cx)),
+						),
+				)
+				.child(group().child(settings_group_title("Power")).child(self.power_control(cx)))
+				.child(
+					group()
+						.child(settings_group_title("Notifications"))
+						.child(self.notification_count_control(cx)),
+				)
+				.into_any_element(),
+			SettingsCategory::Appearance => div()
+				.flex()
+				.flex_col()
+				.gap(px(24.))
+				.child(
+					group().child(settings_group_title("Materials")).child(self.glass_controls(cx)),
+				)
+				.child(
+					group()
+						.child(settings_group_title("Panel layout"))
+						.child(self.panel_controls(cx)),
+				)
+				.child(
+					group()
+						.child(settings_group_title("Text cursor"))
+						.child(self.cursor_controls(cx)),
+				)
+				.child(quote_attribution())
+				.into_any_element(),
+		}
+	}
+}
+fn settings_group_title(label: &'static str) -> impl IntoElement {
+	div()
+		.text_size(px(11.))
+		.font_weight(gpui::FontWeight::MEDIUM)
+		.text_color(rgb(TEXT_MUTED))
+		.mb(px(4.))
+		.child(label)
+}
 impl Render for SettingsSurface {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		#[cfg(not(test))]
+		if self.category == SettingsCategory::General {
+			self.refresh_power(cx);
+		}
 		div()
 			.id("settings-surface")
 			.role(Role::Main)
@@ -523,7 +699,7 @@ impl Render for SettingsSurface {
 			.text_color(rgb(TEXT))
 			.child(
 				div()
-					.id("settings-scroll-viewport")
+					.id(("settings-scroll-viewport", self.category as usize))
 					.debug_selector(|| "settings-scroll-viewport".into())
 					.size_full()
 					.overflow_y_scroll()
@@ -541,31 +717,8 @@ impl Render for SettingsSurface {
 							.flex()
 							.flex_col()
 							.gap(px(ui_theme::SETTINGS_GROUP_GAP))
-							.child(ui_theme::settings_title("General"))
-							.child(
-								div()
-									.flex()
-									.flex_col()
-									.child(self.glass_controls(cx))
-									.child(self.cursor_controls(cx)),
-							)
-							.child(
-								div()
-									.flex()
-									.flex_col()
-									.child(self.notification_count_control(cx))
-									.child(
-										ui_theme::settings_row()
-											.px_0()
-											.child(div().flex_1().child("Show in menu bar"))
-											.child(self.toggle(false, cx)),
-									)
-									.child(self.launch_at_login_card(cx)),
-							)
-							.child(ui_theme::settings_row().child(div().flex_1().child("Auto-activate weekly quota")).child(self.toggle(true, cx)))
-                            .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child("Send a small background request when the weekly countdown has not started or its reset has expired. Uses a small amount of quota; no chat is saved."))
-                            .children(self.advanced_preferences.clone())
-							.child(quote_attribution()),
+							.child(ui_theme::settings_title(self.category.title()))
+							.child(self.category_content(cx)),
 					),
 			)
 	}
@@ -657,7 +810,7 @@ mod tests {
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
 		let viewport = visual.debug_bounds("settings-scroll-viewport").unwrap();
-		let before = visual.debug_bounds("quote-source").unwrap();
+		let before = visual.debug_bounds("notification-count-preference").unwrap();
 		assert!(before.bottom() > viewport.bottom(), "before={before:?}, viewport={viewport:?}");
 		visual.simulate_event(gpui::ScrollWheelEvent {
 			position: viewport.center(),
@@ -665,7 +818,7 @@ mod tests {
 			..Default::default()
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
-		let after = visual.debug_bounds("quote-source").unwrap();
+		let after = visual.debug_bounds("notification-count-preference").unwrap();
 		assert!(after.top() < before.top(), "wheel must move the content");
 		assert!(after.bottom() <= viewport.bottom(), "last setting must be reachable");
 	}
@@ -723,7 +876,11 @@ mod tests {
 	fn glass_style_buttons_update_the_active_material(cx: &mut TestAppContext) {
 		use ui_theme::window_material::GlassStyle;
 		let controller = DesktopSettingsController::production();
-		let (_, visual) = cx.add_window_view(|_, cx| SettingsSurface::new(controller, cx));
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			let mut settings = SettingsSurface::new(controller, cx);
+			settings.category = SettingsCategory::Appearance;
+			settings
+		});
 		visual.update(|window, cx| {
 			window.resize(size(px(800.), px(600.)));
 			window.draw(cx).clear();

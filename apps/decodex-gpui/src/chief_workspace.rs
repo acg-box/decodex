@@ -3,6 +3,8 @@ use super::*;
 use crate::ui_motion::{SmoothControl, reveal};
 use gpui::{AnyElement, MouseButton, PathBuilder, canvas, point};
 
+const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
+
 #[derive(Clone)]
 pub(super) struct PageView {
 	scope: Option<String>,
@@ -83,6 +85,7 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn open_page(&mut self, id: &str, cx: &mut Context<Self>) {
+		self.native_agents.selected = None;
 		if !self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id)) {
 			return;
 		}
@@ -223,6 +226,7 @@ impl ChiefSurface {
 			format!("{label} pending decisions · open next")
 		} else {
 			match id.as_str() {
+				"new-project" => "New project",
 				"graph-up" => "Parent work scope",
 				"graph-close" => "Close graph",
 				"zoom-in" => "Zoom in",
@@ -233,8 +237,7 @@ impl ChiefSurface {
 		};
 		let icon = panel_icon(&id);
 		let icon_only = icon.is_some();
-		let show_tip =
-			icon_only || is_tab || id.starts_with("sidebar-") || id.starts_with("attention-");
+		let show_tip = icon_only || is_tab || id.starts_with("attention-");
 		let tip = accessible.clone();
 		let action = std::rc::Rc::new(action);
 		let keyboard = action.clone();
@@ -297,7 +300,7 @@ impl ChiefSurface {
 			.pr(px(4.));
 		panel = panel.child(self.workspace_action(
 			"chief-home".into(),
-			"Overview".into(),
+			"Main".into(),
 			|s, cx| {
 				if let Some(id) = s.root_id() {
 					s.open_page(&id, cx);
@@ -311,7 +314,28 @@ impl ChiefSurface {
 				.px_2()
 				.text_size(px(11.0))
 				.text_color(rgb(ui_theme::TEXT_MUTED))
-				.child("Projects"),
+				.flex()
+				.items_center()
+				.justify_between()
+				.child("Projects")
+				.child(self.workspace_action(
+					"new-project".into(),
+					"+".into(),
+					|s, cx| {
+						if let Some(id) = s.root_id() {
+							s.open_page(&id, cx);
+						}
+						if s.composer.read(cx).content().trim().is_empty() {
+							s.composer.update(cx, |input, cx| {
+								input.set_content("Create a project workspace for ", cx)
+							});
+						} else {
+							s.feedback="Your draft is kept. Send or clear it before starting a new project.".into();
+						}
+						cx.notify();
+					},
+					cx,
+				)),
 		);
 		let mut list = div().id("chief-sidebar-work").flex_1().min_h_0().overflow_y_scroll();
 		if let Some(snapshot) = &self.snapshot {
@@ -370,27 +394,6 @@ impl ChiefSurface {
 			}
 		}
 		panel = panel.child(list);
-		{
-			panel =
-				panel.child(self.workspace_action(
-					"new-project".into(),
-					"New project…".into(),
-					|s, cx| {
-						if let Some(id) = s.root_id() {
-							s.open_page(&id, cx);
-						}
-						if s.composer.read(cx).content().trim().is_empty() {
-							s.composer.update(cx, |input, cx| {
-								input.set_content("Create a project workspace for ", cx)
-							});
-						} else {
-							s.feedback="Your draft is kept. Send or clear it before starting a new project.".into();
-						}
-						cx.notify();
-					},
-					cx,
-				));
-		}
 		panel.child(self.sidebar_resize_handle(cx)).into_any_element()
 	}
 
@@ -407,7 +410,7 @@ impl ChiefSurface {
 			.px_2()
 			.pb(px(4.));
 		let root = self.root_id();
-		let mut pages = vec![(root.clone().unwrap_or_default(), "Overview".to_owned(), false)];
+		let mut pages = vec![(root.clone().unwrap_or_default(), "Main".to_owned(), false)];
 		if let Some(snapshot) = &self.snapshot {
 			pages.extend(self.pages.iter().filter_map(|id| {
 				snapshot
@@ -464,8 +467,7 @@ impl ChiefSurface {
 				continue;
 			}
 			let reason = match event.event_kind.as_str() {
-				"thread_in_use_needs_attention" =>
-					"This conversation is in use in another app. Sending is unavailable here; your history remains readable.",
+				"thread_in_use_needs_attention" => THREAD_LOCKED_MESSAGE,
 				"reconnection_needs_attention" =>
 					"The agent could not reconnect. Messages are saved and sending is paused. Decodex will retry automatically.",
 				"configuration_needs_attention" =>
@@ -508,6 +510,29 @@ impl ChiefSurface {
 	}
 
 	fn unavailable_composer(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
+		if reason == THREAD_LOCKED_MESSAGE {
+			return div()
+				.id("conversation-unavailable")
+				.role(Role::Status)
+				.aria_label(THREAD_LOCKED_MESSAGE)
+				.mx_4()
+				.my_3()
+				.h(px(40.))
+				.rounded(px(14.))
+				.bg(rgb(0x26262b))
+				.flex()
+				.items_center()
+				.justify_center()
+				.gap(px(8.))
+				.text_size(px(12.))
+				.text_color(rgb(ui_theme::TEXT_MUTED))
+				.child(super::super::workspace_symbols::icon(
+					super::super::workspace_symbols::Symbol::Lock,
+				))
+				.child(THREAD_LOCKED_MESSAGE)
+				.into_any_element();
+		}
+
 		let detail = self.connection_failure_detail();
 		let (title, description) = match detail {
 			Some(text) if text.contains("ProcessUnavailable") => (
@@ -648,6 +673,8 @@ impl ChiefSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		self.poll_native_agents(cx);
+		self.observe_visible_output(cx);
 		self.prepare_workspace_history(window, cx);
 		let is_chief = self.selected_is_manager();
 		let selected = self
@@ -657,6 +684,8 @@ impl ChiefSurface {
 			.cloned();
 		let wide = f32::from(window.viewport_size().width) > 1000.0;
 		let mut chat = div()
+			.id("conversation-panel-focus")
+			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.focused_panel = None))
 			.relative()
 			.flex_1()
 			.min_w_0()
@@ -664,11 +693,12 @@ impl ChiefSurface {
 			.overflow_hidden()
 			.flex()
 			.flex_col()
-			.rounded(px(14.))
-			.bg(rgba(ui_theme::CHIEF_CHAT_OVERLAY))
+			.rounded(px(10.))
+			.bg(rgba(ui_theme::CHIEF_CHAT_OVERLAY));
+		chat = chat
 			.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)));
-		if !is_chief {
-			chat = chat.child(worker_status(selected.as_ref()));
+		if let (Some(snapshot), Some(work)) = (&self.snapshot, &selected) {
+			chat = chat.child(self.work_context(snapshot, work, cx));
 		}
 
 		let scroll = self
@@ -727,15 +757,48 @@ impl ChiefSurface {
 				.child(transcript)
 				.child(self.latest_button(window, cx)),
 		);
-		if is_chief && selected.is_some() && !self.selected_is_archived() {
+		if self.native_agents.selected.is_none()
+			&& is_chief
+			&& selected.is_some()
+			&& !self.selected_is_archived()
+		{
 			chat = chat.child(self.floating_composer(window, cx));
-		} else if !is_chief && let Some(work) = selected {
+		} else if !is_chief && let Some(work) = selected.as_ref() {
 			chat = chat
 				.child(self.recovered_draft_panel(cx))
 				.child(self.conversation_activity(cx))
-				.child(self.workspace_followup(&work, cx));
+				.child(self.workspace_followup(work, cx));
 		}
 
+		let presence = crate::ui_motion::value(
+			"work-details-presence",
+			if self.details_visible { 1. } else { 0. },
+			window,
+			cx,
+		);
+		if presence > 0.001
+			&& let (Some(snapshot), Some(work)) = (&self.snapshot, selected.as_ref())
+		{
+			chat = chat.child(
+				gpui::deferred(
+					div()
+						.absolute()
+						.top(px(38. + (1. - presence) * 5.))
+						.right(px(12.))
+						.w(px(320.))
+						.max_w_full()
+						.opacity(presence)
+						.child(self.inspection_card(snapshot, work, cx)),
+				)
+				.with_priority(2),
+			);
+		}
+
+		let chat = if self.native_agents.selected.is_some() {
+			self.native_agent_view(cx)
+		} else {
+			chat.into_any_element()
+		};
 		let (graph_width, graph_height) = self.workspace_graph_size(window, wide);
 		self.update_graph_inset(graph_width, graph_height);
 		let center = div().flex_1().min_w_0().h_full().flex().flex_col().child(chat).child(reveal(
@@ -778,6 +841,9 @@ impl ChiefSurface {
 	fn prepare_workspace_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		self.graph_display_zoom =
 			crate::ui_motion::value("chief-graph-zoom", self.graph_zoom, window, cx);
+		if self.older_scroll_anchor.is_none() {
+			self.prefetch_older_history(cx);
+		}
 		self.restore_history_anchor(window, cx);
 		self.prepare_history_marks();
 		self.animate_history_scroll(window, cx);
@@ -786,24 +852,48 @@ impl ChiefSurface {
 			&& let Some(scroll) =
 				self.selected.as_ref().and_then(|work| self.transcript_scroll.get(work))
 		{
-			scroll.scroll_to_bottom();
+			let current = f32::from(scroll.offset().y);
+			let target = -f32::from(scroll.max_offset().y);
+			if (target - current).abs() > 0.5 {
+				scroll.set_offset(point(px(0.), px(current + (target - current) * 0.22)));
+				crate::ui_motion::request_frame(window, cx);
+				cx.notify();
+			} else {
+				scroll.set_offset(point(px(0.), px(target)));
+			}
 		}
 	}
 
-	fn restore_history_anchor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-		let Some((id, offset, maximum)) = self.older_scroll_anchor.clone() else {
+	fn restore_history_anchor(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+		let Some(activity::HistoryScrollAnchor { work: id, offset, maximum, message: anchor }) =
+			self.older_scroll_anchor.clone()
+		else {
 			return;
 		};
 		if self.selected.as_ref() != Some(&id) {
+			self.older_scroll_anchor = None;
 			return;
 		}
-		self.older_scroll_anchor = None;
 		if let Some(scroll) = self.transcript_scroll.get(&id).cloned() {
 			let entity = cx.entity();
-			window.on_next_frame(move |_, cx| {
-				let delta = f32::from(scroll.max_offset().y) - maximum;
-				scroll.set_offset(point(scroll.offset().x, px(offset - delta)));
-				entity.update(cx, |_, cx| cx.notify());
+			cx.defer(move |cx| {
+				entity.update(cx, |s, cx| {
+					if s.selected.as_ref() != Some(&id) {
+						return;
+					}
+					let delta = anchor
+						.and_then(|(id, position)| {
+							s.history_marks.get(&id).map(|mark| mark.position.get() - position)
+						})
+						.unwrap_or_else(|| f32::from(scroll.max_offset().y) - maximum);
+					let target = (offset - delta).clamp(-f32::from(scroll.max_offset().y), 0.);
+					if (f32::from(scroll.offset().y) - target).abs() < 0.5 {
+						s.older_scroll_anchor = None;
+					} else {
+						scroll.set_offset(point(scroll.offset().x, px(target)));
+					}
+					cx.notify();
+				})
 			});
 		}
 	}
@@ -843,6 +933,11 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn work_label(&self, work: &ChiefWorkItemDto) -> String {
+		if Some(&work.id) == self.root_id().as_ref()
+			&& ["Chief", "Main"].contains(&work.title.as_str())
+		{
+			return "Main".into();
+		}
 		if let Some(snapshot) = &self.snapshot {
 			if let Some(project) = snapshot.workspaces.iter().find(|p| p.chief_id == work.id) {
 				return project.name.clone();
@@ -854,7 +949,7 @@ impl ChiefSurface {
 					.filter(|w| w.parent_goal_id == work.parent_goal_id && w.kind == work.kind)
 					.position(|w| w.id == work.id)
 					.unwrap_or(0) + 1;
-				return format!("Worker {position}");
+				return format!("Agent {position}");
 			}
 		}
 		work.title.clone()
@@ -868,7 +963,9 @@ impl ChiefSurface {
 			.and_then(|s| s.work_items.iter().find(|w| Some(&w.id) == scope.as_ref()))
 			.map(|w| self.work_label(w))
 			.unwrap_or_else(|| "Work".into());
-		let mut panel = self.graph_frame(title, cx);
+		let mut panel = self.graph_frame(title, cx).id("graph-panel-focus").capture_any_mouse_down(
+			cx.listener(|s, _, _, _| s.focused_panel = Some(workspace_size::Panel::Bottom)),
+		);
 		let Some(snapshot) = &self.snapshot else {
 			return panel.child(div().p_4().child("Work graph unavailable")).into_any_element();
 		};
@@ -941,12 +1038,11 @@ impl ChiefSurface {
 	}
 
 	fn graph_frame(&self, title: String, cx: &mut Context<Self>) -> gpui::Div {
-		let mut panel = div().w_full().min_w_0().h_full().flex().flex_col().pt(px(6.));
+		let mut panel = div().w_full().min_w_0().h_full().flex().flex_col().pt(px(8.));
 		panel = panel.child(
 			div()
 				.h(px(ui_theme::PANEL_HEADER_HEIGHT))
 				.min_h(px(ui_theme::PANEL_HEADER_HEIGHT))
-				.bg(rgba(ui_theme::PANEL_HEADER_TINT))
 				.flex()
 				.items_center()
 				.px_2()
@@ -1183,19 +1279,6 @@ impl ChiefSurface {
 	}
 }
 
-fn worker_status(work: Option<&ChiefWorkItemDto>) -> AnyElement {
-	div()
-		.h(px(24.0))
-		.min_h(px(24.0))
-		.px_4()
-		.flex()
-		.items_center()
-		.text_size(px(ui_theme::CAPTION_SIZE))
-		.text_color(rgb(ui_theme::TEXT_MUTED))
-		.child(work.map(|work| graph::state(work).0).unwrap_or(""))
-		.into_any_element()
-}
-
 pub(super) fn within_project(snapshot: &ChiefSnapshotDto, project: &str, work: &str) -> bool {
 	let mut current = Some(work);
 	for _ in 0..=snapshot.work_items.len() {
@@ -1327,7 +1410,7 @@ impl ChiefSurface {
 					});
 					entries.clear();
 					for (i,(kind,text)) in [("user","请整理检查结果，并说明下一步安排。"),("assistant","## 检查完成\n\n两位下属已提交报告，**现有会话保持可用**。\n\n- 登录流程：保留原会话\n- 启动流程：继续验证性能\n\n| 工作 | 结果 | 下一步 |\n|---|---|---|\n| 登录检查 | 已验收 | 合并检查结果 |\n| 启动检查 | 待验证 | 补充冷启动数据 |\n\n### 验证命令\n```rust\nlet status = review.result();\nassert!(status.is_verified());\n```\n\n查看 [源码](/Users/x/code/acg-box/decodex/apps/decodex-gpui/src/chief_surface.rs:1)，再确认 `review` 的结果。")].into_iter().enumerate() {
-                        entries.push(decodex_protocol::ChiefHistoryEntryDto{receipt: None, activity: None,usage: (kind == "assistant").then_some(decodex_protocol::ChiefTurnUsageDto {input_tokens:24860,output_tokens:1820}),duration_ms: (kind == "assistant").then_some(18400),id:i as i64+1,kind:kind.into(),text:text.into(),created_at_micros:1789480440000000});
+                        entries.push(decodex_protocol::ChiefHistoryEntryDto{receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: (kind == "assistant").then_some(decodex_protocol::ChiefTurnUsageDto {input_tokens:24860,output_tokens:1820}),duration_ms: (kind == "assistant").then_some(18400),id:i as i64+1,kind:kind.into(),text:text.into(),created_at_micros:1789480440000000});
                     }
 				}
 			},
@@ -1416,6 +1499,8 @@ impl ChiefSurface {
 				.into_iter()
 				.enumerate()
 				.map(|(i, (kind, text))| ChiefHistoryEntryDto {
+					turn_id: None,
+					weather: Vec::new(),
 					receipt: None,
 					activity: None,
 					usage: None,
@@ -1437,7 +1522,7 @@ impl ChiefSurface {
 		self.graph_scope = Some("release".into());
 		self.graph_selected = Some("verify".into());
 		self.timeline_visible = true;
-		self.history_cache.insert("verify".into(),ChiefHistoryResult::Available{questions:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![ChiefHistoryEntryDto{receipt: None, activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
+		self.history_cache.insert("verify".into(),ChiefHistoryResult::Available{questions:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![ChiefHistoryEntryDto{receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
 		cx.notify();
 	}
 }
@@ -1605,7 +1690,7 @@ impl ChiefSurface {
 			snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())
 		});
 		let notice = self.status_notice();
-		let current = selected.and_then(|work| self.current_activity_label(work));
+
 		let pending = self
 			.snapshot
 			.as_ref()
@@ -1617,9 +1702,10 @@ impl ChiefSurface {
 					.collect::<Vec<_>>()
 			})
 			.unwrap_or_default();
-		let label = if self.sending {
-			Some("Sending…")
-		} else if self.uncertain {
+		if self.sending {
+			return div().into_any_element();
+		}
+		let label = if self.uncertain {
 			Some("Delivery unconfirmed · Draft kept. Sending is paused to avoid duplicates.")
 		} else if let Some(notice) = self.draft_storage_notice() {
 			Some(notice)
@@ -1636,16 +1722,9 @@ impl ChiefSurface {
 			Some(self.feedback.as_str())
 		} else {
 			selected.and_then(|work| match work.dispatch_state {
-				ChiefDispatchStateDto::Dispatching => Some("Starting…"),
-				ChiefDispatchStateDto::Running => Some(current.as_deref().unwrap_or("Working…")),
+				ChiefDispatchStateDto::Dispatching | ChiefDispatchStateDto::Running => None,
 				ChiefDispatchStateDto::Unknown =>
 					Some("Connection interrupted · Checking delivery"),
-				ChiefDispatchStateDto::Idle
-					if pending.iter().any(|event| event.event_kind == "user_message") =>
-					Some("Message saved · Waiting for agent…"),
-				ChiefDispatchStateDto::Idle
-					if self.feedback == "Message saved · Waiting for agent…" =>
-					Some(self.feedback.as_str()),
 				ChiefDispatchStateDto::Idle => None,
 			})
 		}
@@ -1654,14 +1733,7 @@ impl ChiefSurface {
 		let Some(label) = label else {
 			return div().into_any_element();
 		};
-		let stop = selected
-			.filter(|work| work.dispatch_state == ChiefDispatchStateDto::Running)
-			.and_then(|work| {
-				Some((
-					EntityId::new(work.id.clone()).ok()?,
-					WireText::new(work.active_turn_id.clone()?).ok()?,
-				))
-			});
+
 		div()
 			.id("conversation-activity-status")
 			.role(Role::Status)
@@ -1677,34 +1749,6 @@ impl ChiefSurface {
 			.text_color(rgb(ui_theme::TEXT_MUTED))
 			.child(label.to_owned())
 			.when(self.can_keep_both_drafts(), |row| row.child(self.keep_both_draft_button(cx)))
-			.when_some(stop, |row, (work_id, turn_id)| {
-				row.child(
-					div()
-						.id("conversation-stop")
-						.role(Role::Button)
-						.tab_index(0)
-						.aria_label("Stop response")
-						.h(px(26.0))
-						.px_2()
-						.flex()
-						.items_center()
-						.rounded(px(5.0))
-						.cursor_pointer()
-						.hover(|style| style.bg(rgba(0xffffff10)))
-						.on_click(cx.listener(move |s, _, _, cx| {
-							s.execute(
-								ChiefActionDto::Interrupt {
-									work_id: work_id.clone(),
-									turn_id: turn_id.clone(),
-								},
-								None,
-								cx,
-							)
-						}))
-						.child("Stop")
-						.smooth(),
-				)
-			})
 			.into_any_element()
 	}
 }

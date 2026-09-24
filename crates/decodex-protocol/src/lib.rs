@@ -3,6 +3,8 @@
 
 mod account_login;
 mod chief;
+mod native_agents;
+pub use native_agents::{NativeAgentDto, NativeAgentMessage, NativeAgentsResult};
 mod chief_archive;
 pub use chief_archive::ChiefArchiveResult;
 mod chief_guardian;
@@ -42,9 +44,9 @@ pub use chief::{
 	ChiefActionDto, ChiefActivityDetailResult, ChiefActivityDto, ChiefAttachmentDto,
 	ChiefCapabilitiesResult, ChiefHistoryEntryDto, ChiefHistoryReceiptDto, ChiefHistoryResult,
 	ChiefInputReceiptsResult, ChiefLiveMessageDto, ChiefMisalignmentDto, ChiefModelDto,
-	ChiefModelUpgradeDto, ChiefRequestResult, ChiefResourceDto, ChiefResourcesResult,
-	ChiefSandboxDto, ChiefServiceTierDto, ChiefStartDto, ChiefTaskReferenceDto, ChiefTurnUsageDto,
-	ChiefUsageDto, ChiefWorkspaceDto,
+	ChiefModelUpgradeDto, ChiefOutputResult, ChiefRequestResult, ChiefResourceDto,
+	ChiefResourcesResult, ChiefSandboxDto, ChiefServiceTierDto, ChiefStartDto,
+	ChiefTaskReferenceDto, ChiefTurnUsageDto, ChiefUsageDto, ChiefWorkspaceDto,
 };
 pub use chief_questions::{
 	ChiefAsyncQuestionDto, ChiefAsyncQuestionReply, chief_async_question_id,
@@ -158,7 +160,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 48 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 49 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
@@ -246,6 +248,8 @@ pub use mcp_elicitation::{
 	McpFormChoice, McpFormField, mcp_form_content, mcp_form_fields, validate_mcp_response,
 };
 
+mod weather;
+pub use weather::WeatherForecast;
 mod chief_execution;
 pub use chief_execution::ChiefExecutionOverrides;
 mod chief_steer;

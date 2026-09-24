@@ -868,6 +868,10 @@ enum ResetCardQuotaPresentationTone: Equatable {
 	case critical
 	case muted
 	case error
+
+    static func remaining(_ value: Double) -> Self {
+        value > 50 ? .healthy : value > 20 ? .warning : .critical
+    }
 }
 
 struct ResetCardQuotaPresentation: Equatable {
@@ -894,15 +898,7 @@ struct ResetCardQuotaPresentation: Equatable {
 			let remainingPercent = 100 - min(100, usedPercent)
 			valueText = "\(remainingPercent)%"
 			detailText = nil
-			tone =
-				switch remainingPercent {
-				case 51...:
-					.healthy
-				case 21...:
-					.warning
-				default:
-					.critical
-				}
+			tone = .remaining(Double(remainingPercent))
 			self.usedPercent = usedPercent
 			self.remainingPercent = remainingPercent
 			resetDate = window.resetDate
@@ -959,7 +955,7 @@ struct ResetCardQuotaWindowView: View {
 		let animated = fill?.remaining(for: window, at: date, reduceMotion: reduceMotion)
 		let remainingPercent = animated ?? Double(presentation.remainingPercent ?? 0)
 		let tone: ResetCardQuotaPresentationTone = animated == nil ? presentation.tone
-			: (remainingPercent > 50 ? .healthy : remainingPercent > 20 ? .warning : .critical)
+			: .remaining(remainingPercent)
 		let accessibility = animated.map { "\(Int($0.rounded()))% remaining" } ?? window.accessibilityValue
 
 		HStack(alignment: .center, spacing: PanelSpacing.compact) {

@@ -1,4 +1,4 @@
-//! Chief conversation and work overview. The service owns records and execution.
+//! Agent conversation and work overview. The service owns records and execution.
 
 #[path = "chief_activity.rs"] mod activity;
 #[path = "chief_tree.rs"] mod agent_tree;
@@ -12,20 +12,25 @@
 #[path = "chief_execution_intent.rs"] mod execution_intent;
 #[path = "chief_graph.rs"] mod graph;
 #[path = "chief_guardian.rs"] mod guardian;
+#[path = "chief_inspection.rs"] mod inspection;
 #[path = "chief_install.rs"] mod install;
 #[path = "chief_integrations.rs"] mod integrations;
 #[path = "chief_markdown.rs"] mod markdown;
 #[path = "chief_mcp_forms.rs"] mod mcp_forms;
 #[path = "chief_misalignment.rs"] mod misalignment;
+#[path = "chief_native_agents.rs"] mod native_agents;
 #[path = "chief_timeline.rs"] mod native_timeline;
+#[path = "chief_output_stream.rs"] mod output_stream;
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_requests.rs"] mod requests;
 #[path = "chief_resources.rs"] mod resources;
 #[path = "chief_selectable_text.rs"] mod selectable_text;
 #[path = "chief_steer_receipts.rs"] mod steer_receipts;
+#[path = "chief_text_reveal.rs"] mod text_reveal;
 #[path = "chief_usage_estimates.rs"] mod usage_estimates;
 #[path = "chief_voice.rs"] mod voice;
+#[path = "chief_weather.rs"] mod weather;
 #[path = "chief_workspace.rs"] mod workspace;
 #[path = "chief_workspace_size.rs"] mod workspace_size;
 
@@ -37,8 +42,8 @@ use decodex_protocol::{
 	IdempotencyKey, WireText,
 };
 use gpui::{
-	ClipboardItem, Context, Entity, FocusHandle, FontWeight, Render, Role, SharedString, Task,
-	Window, div, prelude::*, px, rgb, rgba,
+	AnimationExt, ClipboardItem, Context, Entity, FocusHandle, FontWeight, Render, Role,
+	SharedString, Task, Window, div, prelude::*, px, rgb, rgba,
 };
 
 use crate::{
@@ -115,10 +120,16 @@ pub(crate) struct ChiefSurface {
 	connection_details_expanded: bool,
 	history_hover: Option<usize>,
 	history_navigation: Option<activity::HistoryNavigation>,
+	native_agents: native_agents::NativeAgents,
+	output_stream: output_stream::OutputStream,
+	history_read_at: Option<std::time::Instant>,
 	agent_tree_visible: bool,
 	agent_tree_collapsed: std::collections::BTreeSet<String>,
 	sidebar_visible: bool,
 	sidebar_width: f32,
+	agent_panel_width: f32,
+	graph_panel_height: f32,
+	focused_panel: Option<workspace_size::Panel>,
 	sidebar_drag: Option<(f32, f32)>,
 	history_cache: std::collections::BTreeMap<String, ChiefHistoryResult>,
 	transcript_scroll: std::collections::BTreeMap<String, gpui::ScrollHandle>,
@@ -130,8 +141,8 @@ pub(crate) struct ChiefSurface {
 	selected: Option<String>,
 	task: Option<Task<()>>,
 
-	copy_focus: FocusHandle,
 	generation: u64,
+	refresh_failures: u8,
 	composer: Entity<ComposerInput>,
 	composer_footer_height: f32,
 	fast: bool,
@@ -145,6 +156,9 @@ pub(crate) struct ChiefSurface {
 	effort_track_bounds: Option<gpui::Bounds<gpui::Pixels>>,
 	menu_trigger_bounds: std::collections::BTreeMap<&'static str, gpui::Bounds<gpui::Pixels>>,
 	composer_menu: Option<&'static str>,
+	escape_stop: Option<(String, String, std::time::Instant)>,
+	interrupting: Option<(String, String)>,
+	interrupt_task: Option<Task<()>>,
 	composer_menu_content: Option<&'static str>,
 	attachments: Vec<decodex_protocol::ChiefAttachmentDto>,
 	task_references: Vec<decodex_protocol::ChiefTaskReferenceDto>,
@@ -170,7 +184,8 @@ pub(crate) struct ChiefSurface {
 	>,
 	older_task: Option<Task<()>>,
 	loading_older: bool,
-	older_scroll_anchor: Option<(String, f32, f32)>,
+	older_retry_after: Option<std::time::Instant>,
+	older_scroll_anchor: Option<activity::HistoryScrollAnchor>,
 	poll_task: Option<Task<()>>,
 	request: Option<ChiefRequestResult>,
 	request_task: Option<Task<()>>,
@@ -322,6 +337,9 @@ impl ChiefSurface {
 			#[cfg(all(target_os = "macos", not(test)))]
 			native_composer: Default::default(),
 			composer_menu: None,
+			escape_stop: None,
+			interrupting: None,
+			interrupt_task: None,
 			composer_menu_content: None,
 			attachments: vec![],
 			task_references: vec![],
@@ -347,10 +365,16 @@ impl ChiefSurface {
 			connection_details_expanded: false,
 			history_hover: None,
 			history_navigation: None,
+			native_agents: Default::default(),
+			output_stream: Default::default(),
+			history_read_at: None,
 			agent_tree_visible: true,
 			agent_tree_collapsed: Default::default(),
 			sidebar_visible: true,
-			sidebar_width: 192.0,
+			sidebar_width: crate::panel_preferences::PanelDefaults::configured().sidebar.into(),
+			agent_panel_width: crate::panel_preferences::PanelDefaults::configured().sidebar.into(),
+			graph_panel_height: crate::panel_preferences::PanelDefaults::configured().dock.into(),
+			focused_panel: None,
 			sidebar_drag: None,
 			history_cache: Default::default(),
 			expanded_progress: Default::default(),
@@ -377,6 +401,7 @@ impl ChiefSurface {
 			older_history: Default::default(),
 			older_task: None,
 			loading_older: false,
+			older_retry_after: None,
 			older_scroll_anchor: None,
 			poll_task: None,
 			request: None,
@@ -403,8 +428,8 @@ impl ChiefSurface {
 			selected: None,
 			task: None,
 
-			copy_focus: cx.focus_handle().tab_index(22).tab_stop(true),
 			generation: 0,
+			refresh_failures: 0,
 		}
 	}
 
@@ -459,6 +484,7 @@ impl ChiefSurface {
 			return;
 		}
 		self.history_requested_for = Some(id.clone());
+		self.history_read_at = Some(std::time::Instant::now());
 		let Ok(work_id) = EntityId::new(id.clone()) else {
 			return;
 		};
@@ -476,6 +502,13 @@ impl ChiefSurface {
 			let _ = surface.update(cx, |surface, cx| {
 				surface.history_task = None;
 				if surface.selected.as_ref() == Some(&id) {
+					if surface
+						.history
+						.as_ref()
+						.is_some_and(|(owner, previous)| owner == &id && previous == &history)
+					{
+						return;
+					}
 					if matches!(history, ChiefHistoryResult::Available { .. })
 						|| !surface.history.as_ref().is_some_and(|(current, saved)| {
 							current == &id && matches!(saved, ChiefHistoryResult::Available { .. })
@@ -485,7 +518,7 @@ impl ChiefSurface {
 							&& !surface.history_follow_paused.contains(&id)
 							&& (scroll.offset().y + scroll.max_offset().y).abs() < px(24.0)
 						{
-							scroll.scroll_to_bottom();
+							surface.latest_follow_work = Some(id.clone());
 						}
 						if surface.feedback == "Message saved · Waiting for agent…" {
 							let last_reply = |history: &ChiefHistoryResult| match history {
@@ -530,6 +563,7 @@ impl ChiefSurface {
 		cx.notify();
 	}
 
+	#[cfg(test)]
 	fn cycle_model(&mut self, cx: &mut Context<Self>) {
 		if let Some(decodex_protocol::ChiefCapabilitiesResult::Available { models, .. }) =
 			self.current_model_catalog(cx)
@@ -767,9 +801,14 @@ impl ChiefSurface {
 	}
 
 	fn execute(&mut self, action: ChiefActionDto, draft: Option<String>, cx: &mut Context<Self>) {
-		if self.draft_quit_in_progress()
-			|| self.sending
-			|| (self.uncertain && !matches!(&action, ChiefActionDto::Interrupt { .. }))
+		if self.draft_quit_in_progress() {
+			return;
+		}
+		if let ChiefActionDto::Interrupt { work_id, turn_id } = action {
+			self.request_interrupt(work_id, turn_id, cx);
+			return;
+		}
+		if self.sending || (self.uncertain && !matches!(&action, ChiefActionDto::Interrupt { .. }))
 		{
 			return;
 		}
@@ -985,8 +1024,13 @@ impl ChiefSurface {
 		self.native_history = Default::default();
 		self.native_history.epoch = epoch;
 		self.generation += 1;
+		self.refresh_failures = 0;
 		self.task = None;
 		self.profile = profile;
+		self.output_stream = Default::default();
+		self.interrupting = None;
+		self.interrupt_task = None;
+		self.history_read_at = None;
 		self.activity_detail = None;
 		self.activity_detail_task = None;
 		self.resources = None;
@@ -1019,6 +1063,7 @@ impl ChiefSurface {
 		self.older_history.clear();
 		self.older_task = None;
 		self.loading_older = false;
+		self.older_retry_after = None;
 		self.transcript_scroll.clear();
 		self.history_follow_paused.clear();
 		self.graph_scope = None;
@@ -1043,13 +1088,7 @@ impl ChiefSurface {
 				if surface
 					.update(cx, |surface, cx| {
 						surface.save_draft_document(cx);
-						let active = surface.snapshot.as_ref().is_some_and(|snapshot| {
-							snapshot.work_items.iter().any(|work| {
-								work.dispatch_state != ChiefDispatchStateDto::Idle
-									|| work.next_check_at_micros.is_some()
-							}) || !snapshot.pending_events.is_empty()
-						});
-						if should_poll_snapshot(surface.profile.is_some(), &surface.state, active) {
+						if should_poll_snapshot(surface.profile.is_some(), &surface.state, false) {
 							surface.refresh(cx);
 						}
 						surface.load_archive_state(false, cx);
@@ -1067,6 +1106,7 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
+		self.output_stream = Default::default();
 		self.generation += 1;
 		self.guardian_disconnected();
 		self.archive_disconnected();
@@ -1108,13 +1148,20 @@ impl ChiefSurface {
 				if surface.generation != generation {
 					return;
 				}
+				let changed = match &result {
+					Ok(ChiefSnapshotResult::Available(snapshot)) =>
+						surface.snapshot.as_ref() != Some(snapshot),
+					_ => true,
+				};
 				surface.apply_result(result);
 				if surface.current_model_catalog(cx).is_none()
 					|| surface.capabilities_checked.is_none_or(|at| at.elapsed().as_secs() >= 60)
 				{
 					surface.load_capabilities(cx);
 				}
-				surface.load_history(cx);
+				if changed || surface.history_read_at.is_none_or(|at| at.elapsed().as_secs() >= 2) {
+					surface.load_history(cx);
+				}
 
 				surface.sync_request(cx);
 				surface.tick_question_timeout(cx);
@@ -1127,10 +1174,24 @@ impl ChiefSurface {
 	fn apply_result(&mut self, result: Result<ChiefSnapshotResult, ()>) {
 		match result {
 			Ok(ChiefSnapshotResult::Available(snapshot)) => {
+				self.refresh_failures = 0;
+				if self.interrupting.as_ref().is_some_and(|(id, turn)| {
+					snapshot
+						.work_items
+						.iter()
+						.any(|w| &w.id == id && w.active_turn_id.as_ref() != Some(turn))
+				}) {
+					self.interrupting = None;
+				}
 				if self.feedback == "Message saved · Waiting for agent…"
 					&& snapshot.work_items.iter().any(|work| {
 						Some(&work.id) == self.selected.as_ref()
-							&& work.dispatch_state == ChiefDispatchStateDto::Running
+							&& (work.dispatch_state != ChiefDispatchStateDto::Idle
+								|| !snapshot.pending_events.iter().any(|event| {
+									event.work_item_id == work.id
+										&& event.event_kind == "user_message"
+										&& !event.delivery_claimed
+								}))
 					}) {
 					self.feedback.clear();
 				}
@@ -1167,9 +1228,20 @@ impl ChiefSurface {
 					events: pending_events,
 				};
 			},
-			Ok(ChiefSnapshotResult::Unavailable) | Err(()) => {
+			Ok(ChiefSnapshotResult::Unavailable) => {
 				self.state =
 					if self.snapshot.is_some() { LoadState::Stale } else { LoadState::Unavailable };
+			},
+			Err(()) => {
+				self.refresh_failures = self.refresh_failures.saturating_add(1);
+				let confirmed = *self.displayed_load_state() == LoadState::Ready;
+				self.state = if self.snapshot.is_some() && confirmed && self.refresh_failures < 3 {
+					LoadState::Ready
+				} else if self.snapshot.is_some() {
+					LoadState::Stale
+				} else {
+					LoadState::Unavailable
+				};
 			},
 		}
 	}
@@ -1204,7 +1276,10 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn status_notice(&self) -> Option<(&'static str, String, bool)> {
-		if !self.feedback.is_empty() && self.feedback != "Message saved · Waiting for agent…" {
+		if !self.sending
+			&& !self.feedback.is_empty()
+			&& self.feedback != "Message saved · Waiting for agent…"
+		{
 			return Some((
 				if self.sending {
 					"Sending"
@@ -1232,10 +1307,8 @@ impl ChiefSurface {
 				.map(|work| self.work_label(work))
 				.unwrap_or_else(|| "This conversation".into());
 			return Some((
-				"In use elsewhere",
-				format!(
-					"{name} is in use in Codex or another application. Release the conversation there to continue here. Sending is unavailable here while the conversation is in use; history remains readable."
-				),
+				"In use by another app",
+				format!("{name} is in use by another app."),
 				false,
 			));
 		}
@@ -1287,6 +1360,68 @@ impl ChiefSurface {
 		}
 	}
 
+	pub(super) fn work_context(
+		&self,
+		snapshot: &ChiefSnapshotDto,
+		work: &ChiefWorkItemDto,
+		cx: &mut Context<Self>,
+	) -> gpui::AnyElement {
+		let target = cx.entity();
+		let status = graph::state_in(snapshot, work).0;
+		div()
+			.flex_none()
+			.px_4()
+			.py_1()
+			.flex()
+			.flex_col()
+			.child(
+				div()
+					.flex()
+					.items_center()
+					.justify_between()
+					.child(
+						div()
+							.text_size(px(12.))
+							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.child(format!("{} · {status}", self.work_label(work))),
+					)
+					.child(
+						div()
+							.child(self.workspace_action(
+								"inspect-work".into(),
+								"Details".into(),
+								|s, cx| {
+									s.details_visible = !s.details_visible;
+									if s.details_visible
+										&& let Some(work) = s.selected.clone()
+										&& s.resources
+											.as_ref()
+											.is_none_or(|(owner, _)| owner != &work)
+									{
+										s.toggle_resources(&work, cx);
+									}
+									cx.notify();
+								},
+								cx,
+							))
+							.relative()
+							.child(
+								gpui::canvas(
+									move |bounds, _, cx| {
+										target.update(cx, |s, _| {
+											s.menu_trigger_bounds.insert("inspect-work", bounds);
+										});
+									},
+									|_, _, _, _| {},
+								)
+								.absolute()
+								.inset_0(),
+							),
+					),
+			)
+			.into_any_element()
+	}
+
 	fn details(
 		&self,
 		snapshot: &ChiefSnapshotDto,
@@ -1313,162 +1448,45 @@ impl ChiefSurface {
 			.child(self.request_panel(snapshot, work, cx))
 			.child(self.async_question_panel(work, cx))
 			.child(self.history_panel(work, cx))
-			.child(
-				div()
-					.id("chief-toggle-details")
-					.role(Role::Button)
-					.tab_index(27)
-					.cursor_pointer()
-					.text_color(rgb(ui_theme::BLUE))
-					.on_click(cx.listener(|surface, _, _, cx| {
-						surface.details_visible = !surface.details_visible;
-						cx.notify();
-					}))
-					.on_key_down(cx.listener(|surface, event: &gpui::KeyDownEvent, _, cx| {
-						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-							surface.details_visible = !surface.details_visible;
-							cx.notify();
-						}
-					}))
-					.child(if self.details_visible {
-						"Hide work details ▾"
-					} else {
-						"Work details and dependencies ▸"
-					})
-					.smooth(),
-			)
-			.child(disclosure(
-				"chief-details-motion",
-				self.details_visible,
-				div()
-					.flex()
-					.flex_col()
-					.gap_3()
-					.child(self.work_metadata(snapshot, work, cx))
-					.child(self.work_graph(snapshot, work, cx)),
-			))
 	}
 
-	fn work_metadata(
-		&self,
-		snapshot: &ChiefSnapshotDto,
-		work: &ChiefWorkItemDto,
-		cx: &mut Context<Self>,
-	) -> impl IntoElement {
-		let mut panel = div()
-			.id("chief-work-metadata")
-			.flex()
-			.flex_col()
-			.gap_3()
-			.p_5()
-			.min_w_0()
-			.child(
-				div()
-					.text_size(px(ui_theme::HEADING_SIZE))
-					.font_weight(FontWeight::SEMIBOLD)
-					.child(work.title.clone()),
-			)
-			.child(detail("Work ID", &work.id))
-			.child(detail("Judgment", judgment(work.status)))
-			.child(detail("Execution", execution(work.dispatch_state)));
-		if let Some(parent) = &work.parent_goal_id {
-			panel = panel.child(detail("Parent goal", title(snapshot, parent)));
+	pub(super) fn prefetch_older_history(&mut self, cx: &mut Context<Self>) {
+		if self.prefetch_native_history(cx) {
+			return;
 		}
-		if let Some(thread) = &work.codex_thread_id {
-			let copied = thread.clone();
-			let copied_key = thread.clone();
-			panel = panel.child(detail("Codex thread", thread)).child(
-				div()
-					.id("chief-copy-thread")
-					.role(Role::Button)
-					.aria_label("Copy exact Codex thread ID")
-					.text_size(px(ui_theme::BODY_SIZE))
-					.text_color(rgb(ui_theme::BLUE))
-					.cursor_pointer()
-					.track_focus(&self.copy_focus)
-					.on_click(cx.listener(move |_, _, _, cx| {
-						cx.write_to_clipboard(ClipboardItem::new_string(copied.clone()))
-					}))
-					.on_key_down(cx.listener(move |_, event: &gpui::KeyDownEvent, _, cx| {
-						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-							cx.write_to_clipboard(ClipboardItem::new_string(copied_key.clone()));
-						}
-					}))
-					.child("Copy thread ID")
-					.smooth(),
-			);
-		} else {
-			panel = panel.child(detail("Codex thread", "No thread is bound"));
+		if self.history_prefetch_needed() {
+			self.load_older_history(cx);
 		}
-		if let Some(turn) = &work.active_turn_id {
-			panel = panel.child(detail("Acknowledged turn", turn));
-			if work.dispatch_state == ChiefDispatchStateDto::Running {
-				let work_id = work.id.clone();
-				let turn_id = turn.clone();
-				panel = panel.child(
-					div()
-						.id("chief-interrupt")
-						.role(Role::Button)
-						.tab_index(29)
-						.cursor_pointer()
-						.text_color(rgb(ui_theme::BLUE))
-						.on_click(cx.listener(move |surface, _, _, cx| {
-							if let (Ok(work_id), Ok(turn_id)) =
-								(EntityId::new(work_id.clone()), WireText::new(turn_id.clone()))
-							{
-								surface.execute(
-									ChiefActionDto::Interrupt { work_id, turn_id },
-									None,
-									cx,
-								);
-							}
-						}))
-						.child("Interrupt this acknowledged turn")
-						.smooth(),
-				);
-			}
-		}
-		if let Some(due) = work.next_check_at_micros {
-			panel = panel.child(detail("Next check", &next_check_text(due)));
-		}
-		panel.child(self.pending_panel(snapshot, work, cx))
 	}
 
-	fn work_graph(
-		&self,
-		snapshot: &ChiefSnapshotDto,
-		work: &ChiefWorkItemDto,
-		cx: &mut Context<Self>,
-	) -> impl IntoElement {
-		let mut panel = div().flex().flex_col().gap_3().child(
-			div()
-				.text_size(px(ui_theme::BODY_SIZE))
-				.font_weight(FontWeight::SEMIBOLD)
-				.child("Work graph"),
-		);
-		let dependencies: Vec<_> =
-			snapshot.dependencies.iter().filter(|edge| edge.work_item_id == work.id).collect();
-		if dependencies.is_empty() {
-			panel = panel.child(muted("No declared dependencies"));
+	fn history_prefetch_needed(&self) -> bool {
+		if self.loading_older || self.older_scroll_anchor.is_some() {
+			return false;
 		}
-		for edge in dependencies {
-			panel = panel.child(self.relation("Requires", snapshot, &edge.depends_on_id, cx));
-		}
-		for edge in snapshot.dependencies.iter().filter(|edge| edge.depends_on_id == work.id) {
-			panel = panel.child(self.relation("Required by", snapshot, &edge.work_item_id, cx));
-		}
-		for child in snapshot
-			.work_items
-			.iter()
-			.filter(|child| child.parent_goal_id.as_deref() == Some(&work.id))
+		let Some(id) = self.selected.as_ref().filter(|id| self.history_follow_paused.contains(*id))
+		else {
+			return false;
+		};
+		let Some((owner, ChiefHistoryResult::Available { next_before, .. })) =
+			self.history.as_ref()
+		else {
+			return false;
+		};
+		if owner != id
+			|| self.older_history.get(id).map_or(*next_before, |(_, cursor)| *cursor).is_none()
 		{
-			panel = panel.child(self.relation("Coordinates", snapshot, &child.id, cx));
+			return false;
 		}
-		panel
+		self.transcript_scroll.get(id).is_some_and(|scroll| {
+			let height = f32::from(scroll.bounds().size.height);
+			height > 0. && -f32::from(scroll.offset().y) <= (height * 0.6).clamp(240., 600.)
+		})
 	}
 
 	fn load_older_history(&mut self, cx: &mut Context<Self>) {
-		if self.loading_older {
+		if self.loading_older
+			|| self.older_retry_after.is_some_and(|at| at > std::time::Instant::now())
+		{
 			return;
 		}
 		let (Some(profile), Some((id, ChiefHistoryResult::Available { next_before, .. }))) =
@@ -1476,6 +1494,9 @@ impl ChiefSurface {
 		else {
 			return;
 		};
+		if self.selected.as_ref() != Some(id) {
+			return;
+		}
 		let before = self.older_history.get(id).map_or(*next_before, |(_, cursor)| *cursor);
 		let Some(before) = before else {
 			return;
@@ -1494,13 +1515,23 @@ impl ChiefSurface {
 			let result = request.await;
 			let _ = surface.update(cx, |s, cx| {
 				s.loading_older = false;
-				if let Some(ChiefHistoryResult::Available { entries, next_before, .. }) = result {
-					if let Some(scroll) = s.transcript_scroll.get(&id) {
-						s.older_scroll_anchor = Some((
-							id.clone(),
-							f32::from(scroll.offset().y),
-							f32::from(scroll.max_offset().y),
-						));
+				if let Some(ChiefHistoryResult::Available { entries, next_before, .. }) = result
+					&& next_before.is_none_or(|next| next < before)
+				{
+					s.older_retry_after = None;
+					if s.selected.as_ref() == Some(&id)
+						&& let Some(scroll) = s.transcript_scroll.get(&id)
+					{
+						s.older_scroll_anchor = Some(activity::HistoryScrollAnchor {
+							work: id.clone(),
+							offset: f32::from(scroll.offset().y),
+							maximum: f32::from(scroll.max_offset().y),
+							message: s
+								.history_marks
+								.iter()
+								.next()
+								.map(|(id, mark)| (id.clone(), mark.position.get())),
+						});
 					}
 					let page = s.older_history.entry(id).or_default();
 					page.0.extend(entries);
@@ -1508,7 +1539,8 @@ impl ChiefSurface {
 					page.0.dedup_by_key(|entry| entry.id);
 					page.1 = next_before;
 				} else {
-					s.feedback = "Earlier messages could not be loaded. Try again.".into();
+					s.older_retry_after =
+						Some(std::time::Instant::now() + std::time::Duration::from_secs(3));
 				}
 				cx.notify();
 			});
@@ -1524,14 +1556,9 @@ impl ChiefSurface {
 			.flex()
 			.flex_col()
 			.gap(px(ui_theme::MESSAGE_GAP))
-			.child(self.resources_panel(&work.id, cx))
-			.child(self.integrations_panel(&work.id, cx))
-			.child(self.usage_estimate_panel(&work.id, cx))
 			.child(self.native_timeline_panel(work, cx));
 		if self.native_history_active(work) {
-			return panel
-				.child(self.native_receipts_panel(work, cx))
-				.children(self.live_chat_caption());
+			return self.history_activity(panel.child(self.native_receipts_panel(work, cx)), work);
 		}
 		let mut panel = panel.debug_selector(|| "saved-local-history".into());
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
@@ -1539,25 +1566,6 @@ impl ChiefSurface {
 				entries, has_more, next_before, live, ..
 			}) => {
 				let older = self.older_history.get(&work.id);
-				let cursor = older.map_or(*next_before, |(_, cursor)| *cursor);
-				if cursor.is_some() {
-					panel = panel.child(
-						div()
-							.id("chief-earlier-history")
-							.role(Role::Button)
-							.tab_index(26)
-							.aria_label("Load earlier messages")
-							.cursor_pointer()
-							.text_color(rgb(ui_theme::BLUE))
-							.on_click(cx.listener(|s, _, _, cx| s.load_older_history(cx)))
-							.child(if self.loading_older {
-								"Loading earlier messages…"
-							} else {
-								"Load earlier messages"
-							})
-							.smooth(),
-					);
-				}
 				if *has_more && next_before.is_none() {
 					panel = panel.child(muted("Some saved message text was shortened."));
 				}
@@ -1570,27 +1578,26 @@ impl ChiefSurface {
 				for entry in entries {
 					saved.insert(entry.id, entry);
 				}
-				for entry in saved.values().filter(|entry| entry.kind == "capacity_retry_pending") {
-					panel = panel.child(
-						div()
-							.debug_selector(|| "capacity-retry-cancel".into())
-							.child(self.capacity_retry_control(work.id.clone(), entry.id, cx)),
-					);
-				}
 				panel = panel.children(self.progress_history(
 					saved.values().copied().collect(),
 					work,
 					cx,
 				));
-				for message in live {
+				let live = self.streamed_output(work).unwrap_or(live.as_slice());
+				for message in live.iter().filter(|message| {
+					work.active_turn_id.as_deref().is_none_or(|turn| turn == message.turn_id)
+				}) {
 					panel = panel.child(
 						div()
 							.w_full()
 							.py(px(2.))
-							.child(markdown::render(
-								&message.text,
-								&format!("live-{}", message.item_id),
-							))
+							.child(text_reveal::StreamingText {
+								text: message.text.clone(),
+								key: format!(
+									"live-{}-{}-{}",
+									work.id, message.turn_id, message.item_id
+								),
+							})
 							.when(message.truncated, |row| {
 								row.child(muted(
 									"Partial output shortened; waiting for saved result.",
@@ -1605,6 +1612,46 @@ impl ChiefSurface {
 			Some(ChiefHistoryResult::Unavailable) =>
 				panel = panel.child(muted("Messages could not be loaded. Retrying…")),
 			None => panel = panel.child(muted("Loading messages…")),
+		}
+		self.history_activity(panel, work)
+	}
+
+	fn history_activity(&self, mut panel: gpui::Div, work: &ChiefWorkItemDto) -> gpui::Div {
+		let active = matches!(
+			work.dispatch_state,
+			ChiefDispatchStateDto::Running | ChiefDispatchStateDto::Dispatching
+		) || (self.selected.as_ref() == Some(&work.id)
+			&& (self.sending || self.feedback == "Message saved · Waiting for agent…"));
+		if active && self.composer_unavailable_reason().is_none() {
+			panel = panel.child(
+				div()
+					.id("reply-activity")
+					.role(Role::Status)
+					.aria_label("Agent is working")
+					.h(px(22.))
+					.flex()
+					.items_center()
+					.gap(px(4.))
+					.children((0..3).map(|index| {
+						div()
+							.size(px(4.))
+							.rounded_full()
+							.bg(rgb(ui_theme::TEXT_MUTED))
+							.with_animation(
+								format!("reply-working-{index}"),
+								gpui::Animation::new(std::time::Duration::from_millis(1100))
+									.repeat(),
+								move |dot, phase| {
+									dot.opacity(
+										0.35 + 0.65
+											* ((phase * std::f32::consts::TAU
+												- index as f32 * 0.7)
+												.sin() * 0.5 + 0.5),
+									)
+								},
+							)
+					})),
+			);
 		}
 		panel.children(self.live_chat_caption())
 	}
@@ -1685,20 +1732,15 @@ impl ChiefSurface {
 					cx.notify();
 				}
 			}))
-			.child(format!("{label} → {}", title(snapshot, id)))
-	}
-
-	fn cycle_effort(&mut self, cx: &mut Context<Self>) {
-		let supported = self.model_efforts(cx);
-		if !supported.is_empty() {
-			let next = supported
-				.iter()
-				.position(|level| *level == self.effort)
-				.map_or(0, |index| (index + 1) % supported.len());
-			self.effort = supported[next];
-			self.mark_effort_intent();
-		}
-		cx.notify();
+			.child(format!(
+				"{label} → {}",
+				snapshot
+					.work_items
+					.iter()
+					.find(|w| w.id == id)
+					.map(|w| self.work_label(w))
+					.unwrap_or_else(|| id.into())
+			))
 	}
 
 	fn cycle_sandbox(&mut self, cx: &mut Context<Self>) {
@@ -1709,15 +1751,6 @@ impl ChiefSurface {
 		};
 		cx.notify();
 	}
-}
-
-fn title<'a>(snapshot: &'a ChiefSnapshotDto, id: &'a str) -> &'a str {
-	snapshot
-		.work_items
-		.iter()
-		.find(|work| work.id == id)
-		.map(|work| work.title.as_str())
-		.unwrap_or(id)
 }
 
 fn unique_command() -> String {
@@ -1772,47 +1805,42 @@ fn next_check_text(due: i64) -> String {
 		format!("In {} days", seconds / 86400)
 	}
 }
-fn judgment(status: ChiefWorkStatusDto) -> &'static str {
-	match status {
-		ChiefWorkStatusDto::Open => "Open",
-		ChiefWorkStatusDto::Resolved => "Resolved",
-		ChiefWorkStatusDto::FollowUp => "Follow-up required",
-		ChiefWorkStatusDto::Wait => "Waiting",
-		ChiefWorkStatusDto::UserDecision => "User decision required",
-	}
-}
-fn execution(state: ChiefDispatchStateDto) -> &'static str {
-	match state {
-		ChiefDispatchStateDto::Idle => "Idle · no active dispatch",
-		ChiefDispatchStateDto::Dispatching => "Dispatch claimed · awaiting acknowledgment",
-		ChiefDispatchStateDto::Running => "Turn acknowledged · running",
-		ChiefDispatchStateDto::Unknown => "Unknown outcome · reconciliation required",
-	}
-}
 fn muted(text: impl Into<SharedString>) -> impl IntoElement {
 	div()
 		.text_size(px(ui_theme::CAPTION_SIZE))
 		.text_color(rgb(ui_theme::TEXT_MUTED))
 		.child(text.into())
 }
-fn detail(label: &str, value: &str) -> impl IntoElement {
-	div()
-		.flex()
-		.flex_col()
-		.gap_1()
-		.child(muted(label.to_owned()))
-		.child(div().text_size(px(ui_theme::BODY_SIZE)).child(value.to_owned()))
+fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
+	history_entry_with_key(entry, &entry.id.to_string())
 }
 
-fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
+fn history_entry_with_key(
+	entry: &decodex_protocol::ChiefHistoryEntryDto,
+	identity: &str,
+) -> gpui::Div {
 	let user = entry.kind == "user";
-	if entry.kind == "execution_notice" {
+	let visible_text = if entry.kind == "assistant" {
+		markdown::response_text(&entry.text)
+	} else {
+		entry.text.clone()
+	};
+	if matches!(entry.kind.as_str(), "execution_notice" | "capacity_retry_pending" | "stopped") {
 		return div()
 			.w_full()
 			.py_2()
 			.text_size(px(11.))
-			.text_color(rgb(ui_theme::AMBER))
-			.child(markdown::render(&entry.text, &format!("notice-{}", entry.id)));
+			.text_color(rgb(if entry.kind == "stopped" {
+				ui_theme::TEXT_MUTED
+			} else {
+				ui_theme::AMBER
+			}))
+			.child(selectable_text::SelectableText {
+				key: format!("notice-{identity}"),
+				text: entry.text.clone(),
+				highlights: vec![],
+				links: vec![],
+			});
 	}
 	div()
 		.w_full()
@@ -1839,7 +1867,16 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 						.border_color(rgb(ui_theme::BLUE))
 						.child(muted("Manager instruction"))
 				})
-				.child(markdown::render(&entry.text, &format!("message-{}", entry.id)))
+				.child(markdown::render(&visible_text, &format!("message-{identity}")))
+				.children(entry.weather.iter().enumerate().map(|(i, forecast)| {
+					let date = time::OffsetDateTime::from_unix_timestamp(
+						entry.created_at_micros / 1_000_000,
+					)
+					.ok()
+					.map(|d| format!("{} · Saved forecast", d.date()))
+					.unwrap_or_else(|| "Saved forecast".into());
+					weather::render(forecast, &date, &format!("{identity}-{i}"))
+				}))
 				.when(!user, |body| {
 					body.child(
 						div()
@@ -1850,9 +1887,22 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 							.child(reply_metrics(entry))
 							.when(entry.kind == "assistant", |row| {
 								row.child(markdown::copy_button(
-									&format!("copy-response-{}", entry.id),
+									&format!("copy-response-{identity}"),
 									"Copy response",
-									entry.text.clone(),
+									if entry.weather.is_empty() {
+										visible_text.clone()
+									} else {
+										format!(
+											"{}\n\n{}",
+											visible_text,
+											entry
+												.weather
+												.iter()
+												.map(|f| f.markdown())
+												.collect::<Vec<_>>()
+												.join("\n\n")
+										)
+									},
 								))
 							}),
 					)
@@ -1860,8 +1910,10 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 		)
 }
 
-fn compact_tokens(value: u64) -> String {
-	let (divisor, suffix) = if value >= 999_950 {
+pub(crate) fn compact_tokens(value: u64) -> String {
+	let (divisor, suffix) = if value >= 999_950_000 {
+		(1_000_000_000.0, "B")
+	} else if value >= 999_950 {
 		(1_000_000.0, "M")
 	} else if value >= 1000 {
 		(1000.0, "K")
@@ -1917,23 +1969,6 @@ fn reply_metrics(entry: &decodex_protocol::ChiefHistoryEntryDto) -> impl IntoEle
 		})
 }
 
-pub(crate) struct ChiefPreferences {
-	chief: Entity<ChiefSurface>,
-}
-
-impl ChiefPreferences {
-	pub(crate) fn new(chief: Entity<ChiefSurface>, cx: &mut Context<Self>) -> Self {
-		cx.observe(&chief, |_, _, cx| cx.notify()).detach();
-		Self { chief }
-	}
-}
-
-impl Render for ChiefPreferences {
-	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.chief.update(cx, |chief, cx| chief.render_preferences(cx).into_any_element())
-	}
-}
-
 impl ChiefSurface {}
 
 impl Render for ChiefSurface {
@@ -1956,7 +1991,7 @@ impl ChiefSurface {
 				div()
 					.id("chief-advanced-preferences")
 					.role(Role::Button)
-					.aria_label("Advanced Chief defaults")
+					.aria_label("New agent defaults")
 					.aria_expanded(self.setup_expanded)
 					.tab_index(0)
 					.h(px(32.0))
@@ -1977,7 +2012,7 @@ impl ChiefSurface {
 					}))
 					.w_full()
 					.justify_between()
-					.child("Chief defaults")
+					.child("New agent defaults")
 					.child(super::workspace_symbols::icon(
 						super::workspace_symbols::Symbol::ChevronDown,
 					))
@@ -2003,129 +2038,45 @@ impl ChiefSurface {
 				self.setup_expanded,
 				self.render_setup_controls(cx),
 			))
+			.when_some(self.selected.as_ref(), |panel, work| {
+				panel
+					.child(self.resources_panel(work, cx))
+					.child(self.integrations_panel(work, cx))
+					.child(self.usage_estimate_panel(work, cx))
+			})
 	}
 
 	fn render_setup_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		div()
-			.flex()
-			.flex_col()
-			.gap(px(6.0))
-			.child(self.context_choices(cx))
-			.when(self.root_id().is_some(), |d| d.child(self.apply_exact_model_button(cx)))
-			.child(muted(
-				"Model and reasoning apply next turn; other defaults apply to new Chiefs.",
-			))
-			.children(
-				[
-					("Model", self.model.clone()),
-					("Working directory", self.cwd.clone()),
-					("Account ID", self.account.clone()),
-				]
-				.into_iter()
-				.map(|(label, input)| {
-					div()
-						.w_full()
-						.flex()
-						.items_center()
-						.gap(px(12.0))
-						.child(
-							div()
-								.w(px(92.0))
-								.flex_none()
-								.text_size(px(ui_theme::CAPTION_SIZE))
-								.text_color(rgb(ui_theme::TEXT_MUTED))
-								.child(label),
-						)
-						.child(div().flex_1().min_w_0().child(input))
-				}),
-			)
-			.child(
-				div()
-					.flex()
-					.gap_3()
-					.child(
-						div()
-							.id("chief-effort")
-							.role(Role::Button)
-							.tab_index(34)
-							.cursor_pointer()
-							.on_key_down(cx.listener(
-								|surface, event: &gpui::KeyDownEvent, _, cx| {
-									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-										surface.cycle_effort(cx);
-									}
-								},
-							))
-							.on_click(cx.listener(|surface, _, _, cx| {
-								surface.cycle_effort(cx);
-							}))
-							.child(format!("Reasoning: {} ▸", self.effort.as_str()))
-							.smooth(),
-					)
-					.child(
-						div()
-							.id("chief-sandbox")
-							.role(Role::Button)
-							.tab_index(35)
-							.cursor_pointer()
-							.on_key_down(cx.listener(
-								|surface, event: &gpui::KeyDownEvent, _, cx| {
-									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-										surface.cycle_sandbox(cx);
-									}
-								},
-							))
-							.on_click(cx.listener(|surface, _, _, cx| {
-								surface.cycle_sandbox(cx);
-							}))
-							.child(format!("Access: {:?} ▸", self.sandbox))
-							.smooth(),
-					),
-			)
-	}
-
-	fn context_choices(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let account = self
 			.accounts
 			.iter()
 			.find(|(id, _)| id == self.account.read(cx).content())
-			.map_or("Automatic routing", |(_, alias)| alias.as_str());
+			.map_or("Automatic routing", |(_, label)| label.as_str());
 		div()
 			.flex()
-			.gap_4()
+			.flex_col()
+			.gap_2()
+			.child(muted("Applies when starting a new agent."))
 			.child(
 				div()
-					.id("chief-model-choice")
-					.role(Role::Button)
-					.tab_index(30)
-					.cursor_pointer()
-					.text_color(rgb(ui_theme::BLUE))
-					.on_click(cx.listener(|surface, _, _, cx| surface.cycle_model(cx)))
-					.on_key_down(cx.listener(|surface, event: &gpui::KeyDownEvent, _, cx| {
-						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-							surface.cycle_model(cx);
-						}
-					}))
-					.child("Model")
-					.smooth(),
+					.flex()
+					.items_center()
+					.gap_2()
+					.child(div().w(px(72.)).child(muted("Directory")))
+					.child(div().flex_1().min_w_0().child(self.cwd.clone())),
 			)
-			.child(
-				div()
-					.id("chief-account-choice")
-					.role(Role::Button)
-					.tab_index(31)
-					.cursor_pointer()
-					.text_color(rgb(ui_theme::BLUE))
-					.on_click(cx.listener(|surface, _, _, cx| surface.cycle_account(cx)))
-					.on_key_down(cx.listener(|surface, event: &gpui::KeyDownEvent, _, cx| {
-						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-							surface.cycle_account(cx);
-						}
-					}))
-					.child(format!("Account: {account} ▸"))
-					.smooth(),
-			)
-			.child(muted(""))
+			.child(self.workspace_action(
+				"agent-default-account".into(),
+				format!("Account · {account}"),
+				|s, cx| s.cycle_account(cx),
+				cx,
+			))
+			.child(self.workspace_action(
+				"agent-default-access".into(),
+				format!("Access · {:?}", self.sandbox),
+				|s, cx| s.cycle_sandbox(cx),
+				cx,
+			))
 	}
 }
 
@@ -2151,6 +2102,8 @@ mod tests {
 		) -> impl gpui::IntoElement {
 			let bounds = self.bounds.clone();
 			super::history_entry(&decodex_protocol::ChiefHistoryEntryDto {
+				turn_id: None,
+				weather: Vec::new(),
 				receipt: None,
 				activity: None,
 				id: 1,
@@ -2190,6 +2143,8 @@ mod tests {
 		assert_eq!(super::compact_tokens(24860), "24.9K");
 		assert_eq!(super::compact_tokens(999950), "1M");
 		assert_eq!(super::compact_tokens(1280000), "1.3M");
+		assert_eq!(super::compact_tokens(999950000), "1B");
+		assert_eq!(super::compact_tokens(2450000000), "2.5B");
 	}
 	#[gpui::test]
 	fn context_is_hidden_without_reported_usage(cx: &mut gpui::TestAppContext) {
@@ -2297,6 +2252,58 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn history_prefetch_requires_reading_near_top_and_a_remaining_cursor(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(gpui::size(px(1400.), px(320.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			if let Some((_, ChiefHistoryResult::Available { next_before, .. })) = &mut s.history {
+				*next_before = Some(1);
+			}
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		surface.update(visual, |s, _| {
+			s.transcript_scroll["chief"].set_offset(gpui::point(px(0.), px(-20.)));
+			assert!(
+				!s.history_prefetch_needed(),
+				"startup and bottom-follow must not fetch all history"
+			);
+			s.history_follow_paused.insert("chief".into());
+			assert!(s.history_prefetch_needed(), "prefetch before reaching the edge");
+			s.loading_older = true;
+			assert!(!s.history_prefetch_needed(), "only one request may be in flight");
+			s.loading_older = false;
+			s.older_history.insert("chief".into(), (vec![], None));
+			assert!(!s.history_prefetch_needed(), "stop when history is exhausted");
+		});
+	}
+
+	#[gpui::test]
+	fn completed_dispatch_clears_waiting_feedback_without_observing_running(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let mut snapshot = s.snapshot.clone().unwrap();
+			snapshot.pending_events.clear();
+			for work in &mut snapshot.work_items {
+				work.dispatch_state = ChiefDispatchStateDto::Idle;
+				work.active_turn_id = None;
+			}
+			s.feedback = "Message saved · Waiting for agent…".into();
+			s.apply_result(Ok(ChiefSnapshotResult::Available(snapshot)));
+			assert!(
+				s.feedback.is_empty(),
+				"a completed or failed fast turn must not leave a phantom queue"
+			);
+		});
+	}
+
+	#[gpui::test]
 	fn pending_capacity_retry_has_an_actionable_cancel_button(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |surface, _| {
@@ -2330,6 +2337,8 @@ mod tests {
 					next_before: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						turn_id: None,
+						weather: Vec::new(),
 						receipt: None,
 						activity: None,
 						duration_ms: None,
@@ -2395,6 +2404,8 @@ mod tests {
 					misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						turn_id: None,
+						weather: Vec::new(),
 						receipt: None,
 						activity: None,
 						usage: None,
@@ -2587,6 +2598,11 @@ mod tests {
 			})));
 			assert_eq!(surface.state, LoadState::Ready);
 			surface.apply_result(Err(()));
+			assert_eq!(surface.state, LoadState::Ready);
+			assert!(surface.status_notice().is_none(), "one read failure is not a disconnect");
+			surface.apply_result(Err(()));
+			assert_eq!(surface.state, LoadState::Ready);
+			surface.apply_result(Err(()));
 			assert_eq!(surface.state, LoadState::Stale);
 			assert_eq!(surface.status_notice().unwrap().0, "Updates paused");
 			surface.status_before_refresh = Some(LoadState::Stale);
@@ -2629,6 +2645,8 @@ mod tests {
 					misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						turn_id: None,
+						weather: Vec::new(),
 						receipt: None,
 						activity: None,
 						usage: None,
@@ -2664,7 +2682,7 @@ mod tests {
 			assert_eq!(s.status_notice().unwrap().0, "Work needs attention");
 			s.snapshot.as_mut().unwrap().pending_events[0].event_kind =
 				"thread_in_use_needs_attention".into();
-			assert_eq!(s.status_notice().unwrap().0, "In use elsewhere");
+			assert_eq!(s.status_notice().unwrap().0, "In use by another app");
 			assert!(s.thread_in_use("chief"));
 			assert!(!s.thread_in_use("another-chief"));
 			s.snapshot.as_mut().unwrap().pending_events.clear();

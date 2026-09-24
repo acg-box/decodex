@@ -1,0 +1,8 @@
+[
+  {"remaining": 0, "tone": "critical"},
+  {"remaining": 20, "tone": "critical"},
+  {"remaining": 21, "tone": "warning"},
+  {"remaining": 50, "tone": "warning"},
+  {"remaining": 51, "tone": "healthy"},
+  {"remaining": 100, "tone": "healthy"}
+]

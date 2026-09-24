@@ -24,10 +24,20 @@ pub(super) enum Symbol {
 	BellAttention,
 	BellInfo,
 	ArrowDown,
+	AccountRoute,
+	AccountLogin,
+	AccountLogout,
+	Confirm,
+	AccountRouteActive,
+	PowerOn,
+	PowerOff,
+	Eye,
+	EyeSlash,
+	Lock,
 }
 
-static IMAGES: LazyLock<[Arc<Image>; 19]> = LazyLock::new(|| {
-	let sources: [&[u8]; 19] = [
+static IMAGES: LazyLock<[Arc<Image>; 29]> = LazyLock::new(|| {
+	let sources: [&[u8]; 29] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
 		include_bytes!("../../../assets/workspace-symbols/graph.png"),
 		include_bytes!("../../../assets/workspace-symbols/timeline.png"),
@@ -47,6 +57,16 @@ static IMAGES: LazyLock<[Arc<Image>; 19]> = LazyLock::new(|| {
 		include_bytes!("../../../assets/workspace-symbols/bell-attention.png"),
 		include_bytes!("../../../assets/workspace-symbols/bell-info.png"),
 		include_bytes!("../../../assets/workspace-symbols/arrow-down.png"),
+		include_bytes!("../../../assets/workspace-symbols/account-route.png"),
+		include_bytes!("../../../assets/workspace-symbols/account-login.png"),
+		include_bytes!("../../../assets/workspace-symbols/account-logout.png"),
+		include_bytes!("../../../assets/workspace-symbols/confirm.png"),
+		include_bytes!("../../../assets/workspace-symbols/account-route-active.png"),
+		include_bytes!("../../../assets/workspace-symbols/power-on.png"),
+		include_bytes!("../../../assets/workspace-symbols/power-off.png"),
+		include_bytes!("../../../assets/workspace-symbols/eye.png"),
+		include_bytes!("../../../assets/workspace-symbols/eye-slash.png"),
+		include_bytes!("../../../assets/workspace-symbols/lock.png"),
 	];
 	sources.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
 });

@@ -31,6 +31,12 @@ pub(super) struct ResetCardsPanel {
 	pending_fill: Option<ResetFill>,
 	fills: std::collections::HashMap<EntityId, ResetFill>,
 }
+impl ResetCardsPanel {
+	pub(super) fn is_selected(&self, account: &EntityId) -> bool {
+		self.selected.as_ref().is_some_and(|(id, _)| id == account)
+	}
+}
+
 struct Update {
 	completed_reset: Option<(EntityId, IdempotencyKey)>,
 	inventory: Option<ResetCardInventoryResult>,

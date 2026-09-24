@@ -869,10 +869,7 @@ mod tests {
 			s.bind_profile(Some(profile.clone()), cx);
 			s.state = LoadState::Ready;
 			s.execute(
-				ChiefActionDto::Interrupt {
-					work_id: EntityId::new("work").unwrap(),
-					turn_id: WireText::new("turn").unwrap(),
-				},
+				ChiefActionDto::RefreshIntegrations { work_id: EntityId::new("work").unwrap() },
 				None,
 				cx,
 			);
@@ -918,10 +915,7 @@ mod tests {
 			assert!(s.draft_profiles.storage.task.is_some());
 			s.state = LoadState::Ready;
 			s.execute(
-				ChiefActionDto::Interrupt {
-					work_id: EntityId::new("work").unwrap(),
-					turn_id: WireText::new("turn").unwrap(),
-				},
+				ChiefActionDto::RefreshIntegrations { work_id: EntityId::new("work").unwrap() },
 				None,
 				cx,
 			);
@@ -958,10 +952,7 @@ mod tests {
 			s.bind_profile(Some(profile.clone()), cx);
 			s.state = LoadState::Ready;
 			s.execute(
-				ChiefActionDto::Interrupt {
-					work_id: EntityId::new("work").unwrap(),
-					turn_id: WireText::new("turn").unwrap(),
-				},
+				ChiefActionDto::RefreshIntegrations { work_id: EntityId::new("work").unwrap() },
 				None,
 				cx,
 			);
@@ -993,10 +984,7 @@ mod tests {
 			s.state = LoadState::Ready;
 			store.save(0, &DesktopDraftDocument::default().encode().unwrap()).unwrap();
 			s.execute(
-				ChiefActionDto::Interrupt {
-					work_id: EntityId::new("work").unwrap(),
-					turn_id: WireText::new("turn").unwrap(),
-				},
+				ChiefActionDto::RefreshIntegrations { work_id: EntityId::new("work").unwrap() },
 				None,
 				cx,
 			);

@@ -9,6 +9,25 @@ use std::collections::BTreeSet;
 #[path = "chief_timeline_scroll.rs"] mod scroll;
 
 impl ChiefSurface {
+	pub(super) fn prefetch_native_history(&mut self, cx: &mut Context<Self>) -> bool {
+		let Some(binding) = self.native_history.binding.clone().filter(|binding| {
+			!self.native_history.show_saved && self.selected.as_ref() == Some(&binding.work)
+		}) else {
+			return false;
+		};
+		if self.native_history.older_cursor.is_some()
+			&& self.native_history.task.is_none()
+			&& self.native_history.can_retry(std::time::Instant::now())
+			&& self.history_follow_paused.contains(&binding.work)
+			&& self.transcript_scroll.get(&binding.work).is_some_and(|scroll| {
+				let height = f32::from(scroll.bounds().size.height);
+				height > 0. && -f32::from(scroll.offset().y) <= (height * 0.6).clamp(240., 600.)
+			}) {
+			self.load_native_timeline(&binding.work, &binding.thread, true, cx);
+		}
+		true
+	}
+
 	pub(super) fn refresh_open_native_history(&mut self, cx: &mut Context<Self>) {
 		let Some((work, thread)) = self.snapshot.as_ref().and_then(|snapshot| {
 			snapshot
@@ -118,6 +137,18 @@ impl ChiefSurface {
 			}
 			for entry in &self.native_history.entries {
 				panel = panel.child(self.native_timeline_row(work, entry, cx));
+			}
+			if let Some(messages) = self.streamed_output(work) {
+				for message in messages.iter().filter(|message| {
+                    work.active_turn_id.as_deref() == Some(&message.turn_id)
+                        && !self.native_history.entries.iter().any(|entry| matches!(&entry.content,
+                            Content::Item { turn_id, item_id, .. } if turn_id == &message.turn_id && item_id == &message.item_id))
+                }) {
+                    panel = panel.child(super::text_reveal::StreamingText {
+                        text: message.text.clone(),
+                        key: format!("native-draft-{}-{}-{}", work.id, message.turn_id, message.item_id),
+                    });
+                }
 			}
 		}
 		panel.into_any_element()

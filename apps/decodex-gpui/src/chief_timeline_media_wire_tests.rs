@@ -43,7 +43,8 @@ fn fixture(
 
 async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefMediaRequest> {
 	let mut requests = Vec::new();
-	for index in 0..if mode == "complete" { 2 } else { 1 } {
+	while requests.len() < if mode == "complete" { 2 } else { 1 } {
+		let index = requests.len();
 		let mut socket =
 			tokio_tungstenite::accept_async(listener.accept().await.unwrap().0).await.unwrap();
 		let _hello = socket.next().await.unwrap().unwrap();
@@ -74,7 +75,17 @@ async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefMedia
 		else {
 			panic!("query")
 		};
-		let QueryPayload::GetChiefMedia { request } = query.payload else { panic!("media query") };
+		if matches!(
+			query.payload,
+			QueryPayload::WaitForChiefOutput { .. } | QueryPayload::GetNativeAgents { .. }
+		) {
+			// The workspace also opens an independent live-output and agent observations.
+			socket.close(None).await.unwrap();
+			continue;
+		}
+		let QueryPayload::GetChiefMedia { request } = query.payload else {
+			panic!("media query: {:?}", query.payload)
+		};
 		assert_eq!(request.thread_id.as_str(), "native-thread");
 		assert_eq!(request.turn_id.as_str(), "turn");
 		assert_eq!(request.item_id.as_str(), "image");

@@ -29,6 +29,7 @@ mod health_query;
 mod history_pager;
 mod native_menu_bar;
 #[cfg(target_os = "macos")] mod native_quit;
+mod panel_preferences;
 mod settings_surface;
 mod shell;
 mod ui_motion;

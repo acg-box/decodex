@@ -181,3 +181,93 @@ mod ordering_tests {
 		);
 	}
 }
+
+/// A stable stop glyph with a soft confirmation halo; its footprint never changes.
+#[derive(gpui::IntoElement)]
+pub(super) struct StopMark {
+	pub armed: bool,
+	pub pending: bool,
+}
+impl gpui::RenderOnce for StopMark {
+	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
+		let strength = crate::ui_motion::value(
+			"stop-confirmation",
+			if self.armed { 1. } else { 0. },
+			window,
+			cx,
+		);
+		let pending =
+			crate::ui_motion::value("stop-pending", if self.pending { 1. } else { 0. }, window, cx);
+		div()
+			.size(px(16.))
+			.relative()
+			.flex()
+			.items_center()
+			.justify_center()
+			.child(
+				div()
+					.absolute()
+					.size(px(24.))
+					.rounded_full()
+					.bg(rgba(0xf5c98500 | (strength * 48.) as u32)),
+			)
+			.child(
+				div()
+					.size(px(9.))
+					.rounded(px(2.))
+					.bg(rgb(ui_theme::CANVAS))
+					.opacity(0.9 - pending * 0.35)
+					.child(
+						div()
+							.size_full()
+							.rounded(px(2.))
+							.bg(rgba(0xf5c98500 | (strength * 255.) as u32)),
+					),
+			)
+	}
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum PrimaryMode {
+	Live,
+	Stop,
+	Send,
+	Done,
+}
+
+/// Keep all primary glyphs on one footprint so phase changes crossfade in place.
+#[derive(gpui::IntoElement)]
+pub(super) struct PrimaryMark {
+	pub mode: PrimaryMode,
+	pub armed: bool,
+	pub pending: bool,
+}
+impl gpui::RenderOnce for PrimaryMark {
+	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
+		let mut row = div().size(px(16.)).relative();
+		for (id, mode, glyph) in [
+			("primary-live", PrimaryMode::Live, live_mark()),
+			(
+				"primary-stop",
+				PrimaryMode::Stop,
+				StopMark { armed: self.armed, pending: self.pending }.into_any_element(),
+			),
+			("primary-send", PrimaryMode::Send, launch_mark().into_any_element()),
+			("primary-done", PrimaryMode::Done, div().child("✓").into_any_element()),
+		] {
+			let opacity =
+				crate::ui_motion::value(id, if self.mode == mode { 1. } else { 0. }, window, cx);
+			row = row.child(
+				div()
+					.absolute()
+					.inset_0()
+					.flex()
+					.items_center()
+					.justify_center()
+					.opacity(opacity)
+					.child(glyph),
+			);
+		}
+		row
+	}
+}

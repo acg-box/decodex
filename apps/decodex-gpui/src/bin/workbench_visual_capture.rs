@@ -33,6 +33,7 @@ mod history_pager;
 #[allow(dead_code)]
 #[path = "../native_menu_bar.rs"]
 mod native_menu_bar;
+#[path = "../panel_preferences.rs"] mod panel_preferences;
 #[allow(dead_code)]
 #[path = "../settings_surface.rs"]
 mod settings_surface;

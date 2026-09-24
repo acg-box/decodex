@@ -56,7 +56,7 @@ impl ChiefSurface {
 			.or_else(|| self.root_id())
 			.and_then(|id| EntityId::new(id).ok())
 		else {
-			self.feedback = "Start a Chief conversation before opening Live voice.".into();
+			self.feedback = "Start a Agent conversation before opening Live voice.".into();
 			cx.notify();
 			return;
 		};
@@ -396,6 +396,8 @@ impl ChiefSurface {
 
 		Some(
 			history_entry(&decodex_protocol::ChiefHistoryEntryDto {
+				turn_id: None,
+				weather: Vec::new(),
 				receipt: None,
 				activity: None,
 				usage: None,
@@ -622,6 +624,8 @@ mod tests {
 				next_before: None,
 				live: vec![],
 				entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+					turn_id: None,
+					weather: Vec::new(),
 					receipt: None,
 					activity: None,
 					usage: None,
