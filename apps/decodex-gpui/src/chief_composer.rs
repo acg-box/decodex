@@ -435,7 +435,7 @@ impl ChiefSurface {
 	}
 
 	fn text_composer_toolbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-		let model = self.model.read(cx).content().to_owned();
+		let model = self.composer_model_label(cx);
 		div()
 			.flex_none()
 			.flex()
@@ -673,7 +673,7 @@ impl ChiefSurface {
 				})
 				.child(controls::compact_model_label(&label))
 				.child(div().text_color(rgb(ui_theme::TEXT_MUTED)).child("·"))
-				.child(controls::effort_indicator(self.effort.as_str()))
+				.child(controls::effort_indicator(&self.composer_effort_value()))
 				.into_any_element(),
 			_ => div().child(label).into_any_element(),
 		}
@@ -687,6 +687,7 @@ impl ChiefSurface {
 		if self.composer_menu.is_some() {
 			self.composer_menu_content = self.composer_menu;
 			self.load_capabilities(cx);
+			self.refresh_composer_model_settings(cx);
 		}
 		cx.notify();
 	}
@@ -775,8 +776,8 @@ impl ChiefSurface {
 	) {
 		if menu == "model" {
 			self.model.update(cx, |input, cx| input.set_content(value, cx));
-			self.reconcile_model_options(cx);
 			self.mark_model_intent(cx);
+			self.reconcile_model_options(cx);
 		} else {
 			let Ok(effort) = ConversationReasoningEffort::new(value) else { return };
 			self.effort = effort;

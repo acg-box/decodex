@@ -17,7 +17,9 @@ mod chief_media;
 pub use chief_media::{
 	CHIEF_MEDIA_CHUNK_BYTES, ChiefMediaRequest, ChiefMediaResult, MAX_CHIEF_MEDIA_BYTES,
 };
+mod chief_model_settings;
 mod chief_timeline;
+pub use chief_model_settings::ChiefModelSettingsResult;
 mod chief_usage_estimate;
 pub use chief_timeline::{
 	ChiefTimelineAttachment, ChiefTimelineAttachmentSource, ChiefTimelineContent,
@@ -160,7 +162,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 50 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 51 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

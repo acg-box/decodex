@@ -95,7 +95,7 @@ impl ChiefSurface {
 			for entry in pair {
 				let model = entry.model.as_str().to_owned();
 				let click_model = model.clone();
-				let selected = self.model.read(cx).content() == model.as_str();
+				let selected = self.composer_model_value(cx).as_deref() == Some(model.as_str());
 				let full = entry.name.clone();
 
 				row = row.child(

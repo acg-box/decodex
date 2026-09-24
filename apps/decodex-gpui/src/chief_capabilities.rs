@@ -195,7 +195,8 @@ impl ChiefSurface {
 		else {
 			return None;
 		};
-		models.iter().find(|model| model.model.as_str() == self.model.read(cx).content())
+		let selected = self.composer_model_value(cx)?;
+		models.iter().find(|model| model.model.as_str() == selected)
 	}
 
 	pub(super) fn model_efforts(&self, cx: &Context<Self>) -> Vec<ConversationReasoningEffort> {
@@ -295,6 +296,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.model.update(cx, |input, cx| input.set_content("custom", cx));
+			s.mark_model_intent(cx);
 			s.capabilities = Some(ChiefCapabilitiesResult::Available {
 				memory_enabled: None,
 				models: vec![ChiefModelDto {
@@ -391,6 +393,7 @@ mod tests {
 				}],
 			});
 			s.model.update(cx, |input, cx| input.set_content("current-model", cx));
+			s.mark_model_intent(cx);
 			s.reconcile_model_options(cx);
 			s.composer_menu = Some("model");
 			s.composer_menu_content = Some("model");
