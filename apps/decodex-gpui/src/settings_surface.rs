@@ -563,7 +563,7 @@ impl Render for SettingsSurface {
 									.child(self.launch_at_login_card(cx)),
 							)
 							.child(ui_theme::settings_row().child(div().flex_1().child("Auto-activate weekly quota")).child(self.toggle(true, cx)))
-                            .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child("Send a small background request when the weekly reset expires without a new countdown. Uses a small amount of quota; no chat is saved."))
+                            .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child("Send a small background request when the weekly countdown has not started or its reset has expired. Uses a small amount of quota; no chat is saved."))
                             .children(self.advanced_preferences.clone())
 							.child(quote_attribution()),
 					),
