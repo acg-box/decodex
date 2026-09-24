@@ -4290,12 +4290,13 @@ async fn query_chief_history_page(
 	let mut questions_truncated = false;
 	let mut question_bytes = 2;
 	for pending in pending_questions {
-		let Ok(question) =
+		let Ok(mut question) =
 			serde_json::from_str::<decodex_protocol::ChiefAsyncQuestionDto>(&pending.question_json)
 		else {
 			return ChiefHistoryResult::Unavailable;
 		};
-		let cost = pending.question_json.len() + 1;
+		question.arrived_live = pending.arrived_live;
+		let cost = serde_json::to_vec(&question).expect("serializable question").len() + 1;
 		if questions.len() >= 32
 			|| question_bytes + cost > decodex_protocol::MAX_HISTORY_INLINE_BYTES
 		{
@@ -4929,6 +4930,7 @@ mod tests {
 	#[test]
 	fn async_reply_history_is_readable_without_interpreting_partial_envelopes() {
 		let question = decodex_protocol::ChiefAsyncQuestionDto {
+			arrived_live: false,
 			id: "question-1".into(),
 			title: "Which region?".into(),
 			options: vec![],
@@ -5194,6 +5196,58 @@ mod tests {
 		assert!(entries.iter().all(|entry| entry.kind != "capacity_retry_pending"));
 		assert!(entries[0].text.contains("cancelled"));
 	}
+	#[tokio::test]
+	async fn history_projects_live_question_provenance_and_other_client_resolution() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		chief_query_work(&store, "chosen").await;
+		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
+		let record = |id: &str| {
+			vec![(
+				id.to_owned(),
+				serde_json::json!({"id":id,"title":"Question","options":[]}).to_string(),
+			)]
+		};
+		store
+			.record_chief_async_questions(
+				"thread".into(),
+				"turn".into(),
+				"old".into(),
+				record("old"),
+			)
+			.await
+			.unwrap();
+		store
+			.record_live_chief_async_questions(
+				"thread".into(),
+				"turn".into(),
+				"live".into(),
+				record("live"),
+			)
+			.await
+			.unwrap();
+		let owner = ProductStore::Available(store.clone());
+		let decodex_protocol::ChiefHistoryResult::Available { questions, .. } =
+			super::query_chief_history(&owner, "chosen").await
+		else {
+			panic!("history")
+		};
+		assert_eq!(questions.len(), 2);
+		assert!(!questions[0].arrived_live);
+		assert!(questions[1].arrived_live);
+		let other = SqliteStore::open(&root.paths()).unwrap();
+		other.resolve_chief_async_questions("thread".into(), vec!["live".into()]).await.unwrap();
+		let decodex_protocol::ChiefHistoryResult::Available { questions, .. } =
+			super::query_chief_history(&owner, "chosen").await
+		else {
+			panic!("history")
+		};
+		assert_eq!(questions.len(), 1);
+		assert_eq!(questions[0].id, "old");
+		assert!(!questions[0].arrived_live);
+	}
+
 	#[tokio::test]
 	async fn chief_history_deduplicates_async_questions_against_terminal_readback() {
 		use decodex_database::EnqueueChiefEvent;

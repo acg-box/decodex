@@ -366,53 +366,57 @@ impl SettingsSurface {
 }
 
 impl SettingsSurface {
-	fn notification_count_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		let enabled = crate::shell::notification_count_preference(None);
-		ui_theme::settings_row()
-			.px_0()
-			.child(div().flex_1().child("Show notification count"))
-			.child(
-				div()
-					.id("notification-count-preference")
-					.debug_selector(|| "notification-count-preference".into())
-					.role(Role::Switch)
-					.aria_label("Show notification count")
-					.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
-					.tab_index(0)
-					.w(px(36.))
-					.h(px(20.))
-					.p(px(2.))
-					.flex()
-					.items_center()
-					.rounded_full()
-					.border_1()
-					.border_color(rgb(if enabled { BLUE } else { LINE }))
-					.bg(if enabled { rgba(0x8baaf730) } else { rgba(0xffffff0c) })
-					.cursor_pointer()
-					.hover(|d| d.border_color(rgb(TEXT_MUTED)))
-					.focus_visible(|d| d.border_color(rgb(BLUE)))
-					.on_click(cx.listener(move |_, _, _, cx| {
-						crate::shell::notification_count_preference(Some(!enabled));
+	fn notification_control(
+		&self,
+		id: &'static str,
+		knob: &'static str,
+		label: &'static str,
+		preference: fn(Option<bool>) -> bool,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement {
+		let enabled = preference(None);
+		ui_theme::settings_row().px_0().child(div().flex_1().child(label)).child(
+			div()
+				.id(id)
+				.debug_selector(move || id.into())
+				.role(Role::Switch)
+				.aria_label(label)
+				.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
+				.tab_index(0)
+				.w(px(36.))
+				.h(px(20.))
+				.p(px(2.))
+				.flex()
+				.items_center()
+				.rounded_full()
+				.border_1()
+				.border_color(rgb(if enabled { BLUE } else { LINE }))
+				.bg(if enabled { rgba(0x8baaf730) } else { rgba(0xffffff0c) })
+				.cursor_pointer()
+				.hover(|d| d.border_color(rgb(TEXT_MUTED)))
+				.focus_visible(|d| d.border_color(rgb(BLUE)))
+				.on_click(cx.listener(move |_, _, _, cx| {
+					preference(Some(!enabled));
+					cx.refresh_windows();
+				}))
+				.on_key_down(cx.listener(move |_, event: &gpui::KeyDownEvent, _, cx| {
+					if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+						preference(Some(!enabled));
 						cx.refresh_windows();
-					}))
-					.on_key_down(cx.listener(move |_, event: &gpui::KeyDownEvent, _, cx| {
-						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-							crate::shell::notification_count_preference(Some(!enabled));
-							cx.refresh_windows();
-							cx.stop_propagation();
-						}
-					}))
-					.child(switch_knob(
-						"notification-count-knob",
-						enabled,
-						div().size(px(14.)).rounded_full().bg(rgb(if enabled {
-							BLUE
-						} else {
-							TEXT_MUTED
-						})),
-					))
-					.smooth(),
-			)
+						cx.stop_propagation();
+					}
+				}))
+				.child(switch_knob(
+					knob,
+					enabled,
+					div().size(px(14.)).rounded_full().bg(rgb(if enabled {
+						BLUE
+					} else {
+						TEXT_MUTED
+					})),
+				))
+				.smooth(),
+		)
 	}
 
 	fn panel_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -648,7 +652,20 @@ impl SettingsSurface {
 				.child(
 					group()
 						.child(settings_group_title("Notifications"))
-						.child(self.notification_count_control(cx)),
+						.child(self.notification_control(
+							"notification-count-preference",
+							"notification-count-knob",
+							"Show notification count",
+							crate::shell::notification_count_preference,
+							cx,
+						))
+						.child(self.notification_control(
+							"question-notice-preference",
+							"question-notice-knob",
+							"Show new question notices",
+							crate::shell::question_notice_preference,
+							cx,
+						)),
 				)
 				.into_any_element(),
 			SettingsCategory::Appearance => div()

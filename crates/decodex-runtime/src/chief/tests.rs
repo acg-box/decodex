@@ -1713,6 +1713,7 @@ async fn async_question_answers_survive_replay_and_reopening_without_waking_work
 	let first_id = decodex_protocol::chief_async_question_id("questions", 0);
 	let reply = decodex_protocol::chief_async_question_reply(
 		&decodex_protocol::ChiefAsyncQuestionDto {
+			arrived_live: false,
 			id: first_id.clone(),
 			title: "Same".into(),
 			options: vec![],
@@ -1769,6 +1770,7 @@ async fn async_question_upgrade_reads_native_history_and_preserves_later_questio
 	let question = |id: &str| json!({"id":id,"type":"agentMessage","delivery":"async","text":"Question","questions":[{"title":"Which?","options":["A","B"]}]});
 	let answer = decodex_protocol::chief_async_question_reply(
 		&decodex_protocol::ChiefAsyncQuestionDto {
+			arrived_live: false,
 			id: decodex_protocol::chief_async_question_id("answered", 0),
 			title: "Which?".into(),
 			options: vec![],

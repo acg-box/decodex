@@ -30,6 +30,7 @@ impl Projection {
 					return Err(ChiefError::Invalid("duplicate native question identity".into()));
 				}
 				self.questions.push(ChiefAsyncQuestion {
+					arrived_live: false,
 					thread_id: thread.into(),
 					turn_id: turn.into(),
 					item_id: id.into(),

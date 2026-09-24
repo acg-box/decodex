@@ -68,3 +68,29 @@ async fn native_changes_during_question_rebuild_preserve_recovery_until_fresh_re
 		}
 	}
 }
+
+#[tokio::test]
+async fn only_live_item_events_mark_question_arrivals() {
+	let (mut chief, mut sent, _directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let question = |id: &str| json!({"id":id,"type":"agentMessage","delivery":"async","questions":[{"title":"Continue?"}]});
+	chief
+		.observe_async_question_item("opaque thread/1", "old", &question("history"))
+		.await
+		.unwrap();
+	for id in ["history", "live", "live"] {
+		chief
+			.handle_event(ServerEvent::Notification {
+				method: "item/completed".into(),
+				params: json!({"threadId":"opaque thread/1","turnId":"old","item":question(id)}),
+			})
+			.await
+			.unwrap();
+	}
+	let questions = chief.store.read_chief_async_questions("chief".into()).await.unwrap();
+	assert_eq!(questions.len(), 2);
+	assert!(!questions[0].arrived_live);
+	assert!(questions[1].arrived_live);
+	assert!(sent.try_recv().is_err(), "arrival observation cannot submit a turn");
+}

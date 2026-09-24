@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 34;
+const CURRENT_SCHEMA_VERSION: i64 = 35;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -185,6 +185,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 34,
 		name: "chief_async_skips",
 		sql: include_str!("../migrations/0034_chief_async_skips.sql"),
+	},
+	Migration {
+		version: 35,
+		name: "chief_question_arrivals",
+		sql: include_str!("../migrations/0035_chief_question_arrivals.sql"),
 	},
 ];
 
@@ -516,6 +521,19 @@ mod tests {
 			.unwrap();
 		migrate(&mut connection).unwrap();
 		verify(&connection).unwrap();
+		let old: (String, bool) = connection
+			.query_row(
+				"SELECT question_json,arrived_live FROM chief_async_questions WHERE question_id='q'",
+				[],
+				|row| Ok((row.get(0)?, row.get(1)?)),
+			)
+			.unwrap();
+		assert_eq!(
+			old,
+			("{}".into(), false),
+			"migration cannot turn historical questions into new arrivals"
+		);
+
 		assert_eq!(
 			connection
 				.query_row("SELECT count(*) FROM chief_async_skips", [], |row| row.get::<_, i64>(0))
@@ -626,7 +644,8 @@ mod tests {
 		assert!(
 			before
 				.iter()
-				.filter(|entry| entry.2 != "desktop_settings")
+				.filter(|entry| !["desktop_settings", "chief_async_questions"]
+					.contains(&entry.2.as_str()))
 				.all(|entry| after.contains(entry))
 		);
 		let count: i64 = connection
@@ -669,8 +688,12 @@ mod tests {
 		assert!(
 			before
 				.iter()
-				.filter(|entry| !["quick_task_requests", "desktop_settings"]
-					.contains(&entry.2.as_str()))
+				.filter(|entry| ![
+					"quick_task_requests",
+					"desktop_settings",
+					"chief_async_questions"
+				]
+				.contains(&entry.2.as_str()))
 				.all(|entry| after.contains(entry))
 		);
 		let field:(String,i64,Option<String>) = connection.query_row("SELECT type,\"notnull\",dflt_value FROM pragma_table_info('quick_task_requests') WHERE name='service_tier'",[],|r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
