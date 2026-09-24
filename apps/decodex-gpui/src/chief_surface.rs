@@ -33,6 +33,7 @@
 #[path = "chief_question_notices.rs"] mod question_notices;
 #[path = "chief_requests.rs"] mod requests;
 #[path = "chief_resources.rs"] mod resources;
+#[path = "chief_saved_app_settings.rs"] mod saved_app_settings;
 #[path = "chief_selectable_text.rs"] mod selectable_text;
 #[path = "chief_steer_receipts.rs"] mod steer_receipts;
 #[path = "chief_text_reveal.rs"] mod text_reveal;
@@ -178,6 +179,7 @@ pub(crate) struct ChiefSurface {
 	task_plugins: plugins::Panel,
 	hook_settings: hooks::Panel,
 	app_settings: app_settings::Panel,
+	saved_app_settings: saved_app_settings::Panel,
 	native_goal: native_goal::Panel,
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
@@ -406,6 +408,7 @@ impl ChiefSurface {
 			task_plugins: Default::default(),
 			hook_settings: Default::default(),
 			app_settings: Default::default(),
+			saved_app_settings: Default::default(),
 			native_goal: Default::default(),
 			cwd,
 			account: Self::account_input(cx),
@@ -1088,6 +1091,7 @@ impl ChiefSurface {
 		self.reset_task_plugins();
 		self.reset_hook_settings();
 		self.reset_app_settings();
+		self.reset_saved_app_settings();
 		self.reset_native_goal();
 		self.snapshot = None;
 		self.pages.clear();
@@ -1143,6 +1147,7 @@ impl ChiefSurface {
 
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
 		self.reset_app_settings();
+		self.reset_saved_app_settings();
 		self.question_notices = Default::default();
 		self.clear_activity_detail();
 		self.output_stream = Default::default();
@@ -1220,6 +1225,7 @@ impl ChiefSurface {
 			self.reset_task_plugins();
 			self.reset_hook_settings();
 			self.reset_app_settings();
+			self.reset_saved_app_settings();
 			self.reset_native_goal();
 			self.question_notices = Default::default();
 			self.clear_activity_detail();
@@ -1232,6 +1238,7 @@ impl ChiefSurface {
 				self.invalidate_task_plugins(&snapshot);
 				self.invalidate_hook_settings(&snapshot);
 				self.invalidate_app_settings(&snapshot);
+				self.invalidate_saved_app_settings(&snapshot);
 				self.invalidate_native_goal(&snapshot);
 				if self.snapshot.as_ref().is_some_and(|old| {
 					old.runtime_source != snapshot.runtime_source
@@ -2129,6 +2136,7 @@ impl ChiefSurface {
 									.child(self.permission_profiles_panel(item, cx))
 									.child(self.task_plugins_panel(item, cx))
 									.child(self.hook_settings_panel(item, cx))
+									.child(self.saved_app_settings_panel(item, cx))
 							}),
 					)
 			})

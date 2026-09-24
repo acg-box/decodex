@@ -328,6 +328,13 @@ impl ServiceApplication {
 		})
 	}
 
+	async fn query_saved_app_settings(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefSavedAppSettings(match &self.chief {
+			Some(chief) => chief.saved_app_settings(work).await,
+			None => decodex_protocol::ChiefSavedAppSettingsResult::Unavailable,
+		})
+	}
+
 	async fn query_hook_settings(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::ChiefHookSettings(match &self.chief {
 			Some(chief) => chief.hook_settings(work).await,
@@ -2081,6 +2088,8 @@ impl Application for ServiceApplication {
 				self.query_native_goal(work_id.as_str(), thread_id.as_str()).await,
 			QueryPayload::GetChiefAppSettings { work_id, event_id } =>
 				self.query_app_settings(work_id.as_str(), *event_id).await,
+			QueryPayload::GetChiefSavedAppSettings { work_id } =>
+				self.query_saved_app_settings(work_id.as_str()).await,
 			QueryPayload::GetChiefHookSettings { work_id } =>
 				self.query_hook_settings(work_id.as_str()).await,
 			QueryPayload::GetChiefPluginSelection { work_id } =>

@@ -240,6 +240,21 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Change an existing saved app connection override from current native configuration.
+	SetSavedAppSetting {
+		/// Originating task.
+		work_id: crate::EntityId,
+		/// Current native thread.
+		thread_id: crate::EntityId,
+		/// Exact native app key.
+		connector_id: crate::WireText,
+		/// Exact native connection key.
+		link_id: crate::WireText,
+		/// Consumed once for this reviewed configuration.
+		review_token: crate::WireText,
+		/// Explicit change to the saved override.
+		edit: crate::ChiefAppSettingEdit,
+	},
 	/// Change one connection override without answering its pending native request.
 	SetAppSetting {
 		/// Originating task.

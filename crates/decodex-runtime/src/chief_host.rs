@@ -366,6 +366,34 @@ impl ChiefHost {
 		Ok(work.into())
 	}
 
+	pub(crate) async fn saved_app_settings(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefSavedAppSettingsResult {
+		crate::chief_app_settings::read_saved(&self.store, || async {
+			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+			self.timeline_source(work, &owner.codex_thread_id?).await
+		})
+		.await
+	}
+
+	async fn set_saved_app_setting(
+		&self,
+		work: &str,
+		change: crate::chief_app_settings::SavedSelection<'_>,
+	) -> Result<String, ChiefHostError> {
+		crate::chief_app_settings::write_saved(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			change,
+		)
+		.await?;
+		Ok(work.into())
+	}
+
 	pub(crate) async fn hook_settings(
 		&self,
 		work: &str,
@@ -939,6 +967,26 @@ impl ChiefHost {
 		action: ChiefActionDto,
 	) -> Result<String, ChiefHostError> {
 		match action {
+			ChiefActionDto::SetSavedAppSetting {
+				work_id,
+				thread_id,
+				connector_id,
+				link_id,
+				review_token,
+				edit,
+			} =>
+				self.set_saved_app_setting(
+					work_id.as_str(),
+					crate::chief_app_settings::SavedSelection {
+						thread: thread_id.as_str(),
+						connector: connector_id.as_str(),
+						link: link_id.as_str(),
+						review: review_token.as_str(),
+						edit: &edit,
+						attempt_id: key,
+					},
+				)
+				.await,
 			ChiefActionDto::SetAppSetting { work_id, event_id, review_token, edit } =>
 				self.set_app_setting(
 					work_id.as_str(),
@@ -1010,7 +1058,8 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			action @ (ChiefActionDto::SetAppSetting { .. }
+			action @ (ChiefActionDto::SetSavedAppSetting { .. }
+			| ChiefActionDto::SetAppSetting { .. }
 			| ChiefActionDto::SetHookSetting { .. }
 			| ChiefActionDto::SetTaskPlugin { .. }
 			| ChiefActionDto::SelectPermissions { .. }

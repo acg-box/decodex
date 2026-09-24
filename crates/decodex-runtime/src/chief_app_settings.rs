@@ -1,15 +1,27 @@
 //! Native app settings with one-shot consent and independent durable write receipts.
 use crate::{chief_config_settings as shared, chief_usage_estimate::Source};
 use decodex_codex::app_server_client::{
-	AppLinkSettingEdit, AppLinkSettings, ClientError, ServerRequestGuard,
+	AppLinkSettingEdit, AppLinkSettings, ClientError, HistoryGuard, ServerRequestGuard,
 };
 use decodex_database::{ChiefAppSettingsAttempt, ChiefAppSettingsReceipt, SqliteStore};
 use decodex_protocol::{ChiefAppSettingEdit, ChiefAppSettingsResult as State};
 use serde_json::{Value, json};
+enum SettingsGuard {
+	Request(ServerRequestGuard),
+	Saved(HistoryGuard),
+}
+impl SettingsGuard {
+	fn is_live(&self) -> bool {
+		match self {
+			Self::Request(g) => g.is_live(),
+			Self::Saved(g) => g.is_live(),
+		}
+	}
+}
 struct Review {
 	state: State,
 	native: AppLinkSettings,
-	guard: Option<ServerRequestGuard>,
+	guard: Option<SettingsGuard>,
 	prior: Option<ChiefAppSettingsReceipt>,
 	scope: String,
 }
@@ -50,7 +62,10 @@ where
 		}
 	}
 	let id = serde_json::from_value(payload["id"].clone()).ok()?;
-	let guard = before.client.server_request_guard(&id, "mcpServer/elicitation/request", params);
+	let guard = before
+		.client
+		.server_request_guard(&id, "mcpServer/elicitation/request", params)
+		.map(SettingsGuard::Request);
 	let native_thread =
 		before.client.thread_read(json!({"threadId":thread,"includeTurns":false})).await.ok()?;
 	if native_thread["thread"]["id"] != thread {
@@ -129,7 +144,7 @@ where
 	F: Fn() -> Fut,
 	Fut: std::future::Future<Output = Option<Source>>,
 {
-	use crate::chief_host::ChiefHostError::{Rejected, Unknown};
+	use crate::chief_host::ChiefHostError::Rejected;
 	let (before, review) = tokio::time::timeout(
 		std::time::Duration::from_secs(40),
 		inspect(store, &source, selection.event),
@@ -138,6 +153,38 @@ where
 	.ok()
 	.flatten()
 	.ok_or(Rejected("Current app settings are unavailable."))?;
+	submit(
+		store,
+		&source,
+		before,
+		review,
+		EditRequest {
+			event: Some(selection.event),
+			review: selection.review,
+			edit: selection.edit,
+			attempt_id: selection.attempt_id,
+		},
+	)
+	.await
+}
+struct EditRequest<'a> {
+	event: Option<i64>,
+	review: &'a str,
+	edit: &'a ChiefAppSettingEdit,
+	attempt_id: &'a str,
+}
+async fn submit<F, Fut>(
+	store: &SqliteStore,
+	source: &F,
+	before: Source,
+	review: Review,
+	selection: EditRequest<'_>,
+) -> Result<(), crate::chief_host::ChiefHostError>
+where
+	F: Fn() -> Fut,
+	Fut: std::future::Future<Output = Option<Source>>,
+{
+	use crate::chief_host::ChiefHostError::{Rejected, Unknown};
 	let State::Available { can_update: true, review_token, connector_id, link_id, .. } =
 		&review.state
 	else {
@@ -161,7 +208,7 @@ where
 	let id = store
 		.reserve_chief_app_settings_attempt(ChiefAppSettingsAttempt {
 			owner: shared::owner(&before),
-			request_event_id: Some(selection.event),
+			request_event_id: selection.event,
 			scope: review.scope,
 			connector: connector_id.clone(),
 			link: link_id.clone(),
@@ -186,7 +233,12 @@ where
 	{
 		Err(ClientError::StaleHistory)
 	} else {
-		before.client.write_app_link_setting_guarded(&review.native, native, guard).await
+		match guard {
+			SettingsGuard::Request(g) =>
+				before.client.write_app_link_setting_guarded(&review.native, native, g).await,
+			SettingsGuard::Saved(g) =>
+				before.client.write_saved_app_link_setting(&review.native, native, g).await,
+		}
 	};
 	let (state, version) = match response {
 		Ok(ack) => (if ack.overridden { "overridden" } else { "saved" }, Some(ack.version)),
@@ -247,3 +299,6 @@ mod tests {
 		assert_eq!(account_identity(&value), None);
 	}
 }
+
+#[path = "chief_saved_app_settings.rs"] mod saved;
+pub(crate) use saved::{SavedSelection, read_saved, write_saved};
