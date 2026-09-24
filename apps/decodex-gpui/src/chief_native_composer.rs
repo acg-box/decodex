@@ -56,7 +56,7 @@ impl ChiefSurface {
 			&& native_glass_panel::available()
 			&& self.resources.is_none()
 			&& self.integrations.is_none()
-			&& self.activity_detail.is_none()
+			&& self.activity_detail.value.is_none()
 			&& self.usage_estimate.is_none()
 			&& !self.graph_expanded;
 		let now = std::time::Instant::now();

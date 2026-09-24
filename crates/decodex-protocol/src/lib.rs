@@ -43,10 +43,10 @@ pub use model_catalog::{
 };
 mod chief_questions;
 pub use chief::{
-	ChiefActionDto, ChiefActivityDetailResult, ChiefActivityDto, ChiefAttachmentDto,
-	ChiefCapabilitiesResult, ChiefHistoryEntryDto, ChiefHistoryReceiptDto, ChiefHistoryResult,
-	ChiefInputReceiptsResult, ChiefLiveMessageDto, ChiefMisalignmentDto, ChiefModelDto,
-	ChiefModelUpgradeDto, ChiefOutputResult, ChiefRequestResult, ChiefResourceDto,
+	ChiefActionDto, ChiefActivityDetailCursor, ChiefActivityDetailResult, ChiefActivityDto,
+	ChiefAttachmentDto, ChiefCapabilitiesResult, ChiefHistoryEntryDto, ChiefHistoryReceiptDto,
+	ChiefHistoryResult, ChiefInputReceiptsResult, ChiefLiveMessageDto, ChiefMisalignmentDto,
+	ChiefModelDto, ChiefModelUpgradeDto, ChiefOutputResult, ChiefRequestResult, ChiefResourceDto,
 	ChiefResourcesResult, ChiefSandboxDto, ChiefServiceTierDto, ChiefStartDto,
 	ChiefTaskReferenceDto, ChiefTurnUsageDto, ChiefUsageDto, ChiefWorkspaceDto,
 };
@@ -162,7 +162,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 51 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 52 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

@@ -1,9 +1,11 @@
 //! On-demand native evidence, without a second tool-output store.
 use decodex_codex::app_server_client::AppServerClient;
-use decodex_protocol::ChiefActivityDetailResult;
+use decodex_protocol::{ChiefActivityDetailCursor, ChiefActivityDetailResult};
 use serde_json::Value;
 #[cfg(test)] use serde_json::json;
+use sha2::{Digest as _, Sha256};
 
+#[cfg(test)]
 pub(crate) async fn read(
 	client: &AppServerClient,
 	thread: &str,
@@ -19,6 +21,48 @@ pub(crate) async fn read(
 		return ChiefActivityDetailResult::Unavailable;
 	};
 	project(&history, thread, turn, item).unwrap_or(ChiefActivityDetailResult::Unavailable)
+}
+
+pub(crate) async fn read_bound<F, Fut>(
+	source: F,
+	turn: &str,
+	item: &str,
+	cursor: Option<&ChiefActivityDetailCursor>,
+) -> ChiefActivityDetailResult
+where
+	F: Fn() -> Fut,
+	Fut: std::future::Future<Output = Option<crate::chief_usage_estimate::Source>>,
+{
+	let Some(before) = source().await else {
+		return ChiefActivityDetailResult::Unavailable;
+	};
+	let history = tokio::time::timeout(
+		std::time::Duration::from_secs(8),
+		before.client.thread_read_turn(&before.key.thread, turn),
+	)
+	.await;
+	let Ok(Ok(history)) = history else {
+		return ChiefActivityDetailResult::Unavailable;
+	};
+	let key = &before.key;
+	let scope = serde_json::json!([
+		key.generation.as_str(),
+		key.account.as_str(),
+		key.revision,
+		key.history_revision,
+		key.work,
+		key.thread,
+		turn,
+		item
+	])
+	.to_string();
+	let result = project_text(&history, &key.thread, turn, item)
+		.and_then(|text| page(&text, &scope, cursor))
+		.unwrap_or(ChiefActivityDetailResult::Unavailable);
+	if source().await.is_none_or(|after| after.key != before.key) {
+		return ChiefActivityDetailResult::Unavailable;
+	}
+	result
 }
 
 pub(crate) async fn read_file_changes(
@@ -49,12 +93,7 @@ pub(crate) async fn read_file_changes(
 	project(&history, thread, turn, item).unwrap_or(ChiefActivityDetailResult::Unavailable)
 }
 
-fn project(
-	history: &Value,
-	thread: &str,
-	turn: &str,
-	item: &str,
-) -> Option<ChiefActivityDetailResult> {
+fn project_text(history: &Value, thread: &str, turn: &str, item: &str) -> Option<String> {
 	if history.pointer("/thread/id")?.as_str()? != thread {
 		return None;
 	}
@@ -123,13 +162,28 @@ fn project(
 	if text.is_empty() {
 		return None;
 	}
+	Some(text)
+}
+
+fn project(
+	history: &Value,
+	thread: &str,
+	turn: &str,
+	item: &str,
+) -> Option<ChiefActivityDetailResult> {
+	let text = project_text(history, thread, turn, item)?;
 	let limit = 24 * 1024;
 	let truncated = text.len() > limit;
 	let mut end = text.len().min(limit);
 	while !text.is_char_boundary(end) {
 		end -= 1;
 	}
-	Some(ChiefActivityDetailResult::Available { text: text[..end].into(), truncated })
+	Some(ChiefActivityDetailResult::Available {
+		text: text[..end].into(),
+		truncated,
+		offset: 0,
+		next: None,
+	})
 }
 
 fn web_details(item: &Value) -> Vec<String> {
@@ -177,6 +231,43 @@ fn web_details(item: &Value) -> Vec<String> {
 		None => parts.push("Results not reported.".into()),
 	}
 	parts
+}
+
+fn page(
+	text: &str,
+	scope: &str,
+	cursor: Option<&ChiefActivityDetailCursor>,
+) -> Option<ChiefActivityDetailResult> {
+	let fingerprint = Sha256::digest(serde_json::json!([scope, text]).to_string().as_bytes())
+		.iter()
+		.map(|byte| format!("{byte:02x}"))
+		.collect::<String>();
+	let offset = cursor.map_or(0, |c| c.offset as usize);
+	if cursor.is_some_and(|c| c.fingerprint.as_str() != fingerprint || c.offset == 0)
+		|| offset >= text.len()
+		|| !text.is_char_boundary(offset)
+	{
+		return None;
+	}
+	// Eight KiB stays within a public frame even if every byte needs JSON escaping.
+	let mut end = (offset + 8 * 1024).min(text.len());
+	while !text.is_char_boundary(end) {
+		end -= 1;
+	}
+	let next = (end < text.len())
+		.then(|| {
+			Some(ChiefActivityDetailCursor {
+				offset: u32::try_from(end).ok()?,
+				fingerprint: decodex_protocol::WireText::new(fingerprint).ok()?,
+			})
+		})
+		.flatten();
+	Some(ChiefActivityDetailResult::Available {
+		text: text[offset..end].into(),
+		truncated: next.is_some(),
+		offset: u32::try_from(offset).ok()?,
+		next,
+	})
 }
 
 #[cfg(test)]
@@ -229,7 +320,7 @@ mod tests {
 			let detail = read_file_changes(&client, "thread", "turn", "patch").await;
 			server.await.unwrap();
 			if kind == "fileChange" {
-				let ChiefActivityDetailResult::Available { text, truncated } = detail else {
+				let ChiefActivityDetailResult::Available { text, truncated, .. } = detail else {
 					panic!("file detail");
 				};
 				assert!(text.contains("old.txt"));
@@ -247,8 +338,8 @@ mod tests {
 	#[test]
 	fn output_is_bounded_at_utf8_boundary() {
 		let history = json!({"thread":{"id":"t","turns":[{"id":"u","items":[{"id":"i","type":"commandExecution","aggregatedOutput":"界".repeat(10000)}]}]}});
-		let Some(ChiefActivityDetailResult::Available { text, truncated }) =
-			project(&history, "t", "u", "i")
+		let Some(ChiefActivityDetailResult::Available { text, truncated, .. }) =
+			page(&project_text(&history, "t", "u", "i").unwrap(), "scope", None)
 		else {
 			panic!("detail");
 		};

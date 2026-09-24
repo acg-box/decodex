@@ -5,8 +5,8 @@ fn detail(mut item: Value) -> (String, bool) {
 	item["id"] = json!("i");
 	item["type"] = json!("webSearch");
 	let history = json!({"thread":{"id":"t","turns":[{"id":"u","items":[item]}]}});
-	let Some(ChiefActivityDetailResult::Available { text, truncated }) =
-		project(&history, "t", "u", "i")
+	let Some(ChiefActivityDetailResult::Available { text, truncated, .. }) =
+		page(&project_text(&history, "t", "u", "i").unwrap(), "scope", None)
 	else {
 		panic!("web detail")
 	};
@@ -81,7 +81,7 @@ async fn paginated_native_history_preserves_page_action_and_result_error() {
 				.unwrap();
 		}
 	});
-	let ChiefActivityDetailResult::Available { text, truncated } =
+	let ChiefActivityDetailResult::Available { text, truncated, .. } =
 		read(&client, "thread", "turn", "web").await
 	else {
 		panic!("native detail")
@@ -91,4 +91,41 @@ async fn paginated_native_history_preserves_page_action_and_result_error() {
 	assert!(text.contains("404"));
 	assert!(!truncated);
 	server.await.unwrap();
+}
+
+#[test]
+fn complete_patch_pages_preserve_unicode_and_reject_changed_evidence() {
+	let diff = format!("{}\nfinal patch line", "+界🙂e\u{301}\n".repeat(9000));
+	let history = json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{
+		"id":"patch","type":"fileChange","changes":[{"path":"file.rs","kind":{"type":"update"},"diff":diff}]
+	}]}]}});
+	let text = project_text(&history, "thread", "turn", "patch").unwrap();
+	let mut cursor = None;
+	let mut complete = String::new();
+	loop {
+		let result = page(&text, "source-a", cursor.as_ref()).unwrap();
+		assert!(serde_json::to_vec(&result).unwrap().len() < 60 * 1024);
+		let ChiefActivityDetailResult::Available { text: portion, offset, next, truncated } =
+			result
+		else {
+			panic!("page");
+		};
+		assert_eq!(offset as usize, complete.len());
+		assert_eq!(truncated, next.is_some());
+		complete.push_str(&portion);
+		let Some(next) = next else {
+			break;
+		};
+		assert_eq!(next.offset as usize, complete.len());
+		assert!(page(&text, "source-b", Some(&next)).is_none());
+		assert!(page(&format!("{text}changed"), "source-a", Some(&next)).is_none());
+		let mut invalid = next.clone();
+		invalid.offset = u32::try_from(text.len() + 1).unwrap();
+		assert!(page(&text, "source-a", Some(&invalid)).is_none());
+		invalid.offset = u32::try_from(text.find('界').unwrap() + 1).unwrap();
+		assert!(page(&text, "source-a", Some(&invalid)).is_none());
+		cursor = Some(next);
+	}
+	assert_eq!(complete, text);
+	assert!(complete.ends_with("final patch line"));
 }
