@@ -297,6 +297,13 @@ pub(crate) struct ServiceApplication {
 	doctor: DoctorReport,
 }
 impl ServiceApplication {
+	async fn query_live_reviewer(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefLiveReviewer(match &self.chief {
+			Some(chief) => chief.live_reviewer(work).await,
+			None => decodex_protocol::ChiefLiveReviewerState::Unavailable,
+		})
+	}
+
 	fn query_voice(&self, request: &decodex_protocol::ChiefVoiceRequest) -> QueryResultPayload {
 		QueryResultPayload::ChiefVoice(match &self.chief {
 			Some(chief) => chief.voice(request),
@@ -2018,6 +2025,8 @@ impl Application for ServiceApplication {
 
 			QueryPayload::ExchangeMcpLogin { request } =>
 				QueryResultPayload::McpLogin(query_mcp_login(self.chief.as_ref(), request).await),
+			QueryPayload::GetChiefLiveReviewer { work_id } =>
+				self.query_live_reviewer(work_id.as_str()).await,
 			QueryPayload::GetChiefModelSettings { work_id } =>
 				self.query_model_settings(work_id.as_str()).await,
 			QueryPayload::GetChiefUsageEstimate { work_id } =>

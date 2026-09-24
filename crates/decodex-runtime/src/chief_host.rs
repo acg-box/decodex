@@ -317,6 +317,43 @@ impl ChiefHost {
 		.await
 	}
 
+	pub(crate) async fn live_reviewer(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefLiveReviewerState {
+		crate::chief_live_settings::read(&self.store, || async {
+			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+			self.timeline_source(work, &owner.codex_thread_id?).await
+		})
+		.await
+	}
+
+	async fn set_live_reviewer(
+		&self,
+		ids: (
+			&decodex_protocol::EntityId,
+			&decodex_protocol::EntityId,
+			&decodex_protocol::WireText,
+		),
+		reviewer: decodex_protocol::ChiefReviewer,
+		key: &str,
+	) -> Result<String, ChiefHostError> {
+		let (work, turn, review) = (ids.0.as_str(), ids.1.as_str(), ids.2.as_str());
+		crate::chief_live_settings::write(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			turn,
+			review,
+			reviewer,
+			key,
+		)
+		.await?;
+		Ok(work.into())
+	}
+
 	pub(crate) async fn model_settings(
 		&self,
 		work: &str,
@@ -736,6 +773,27 @@ impl ChiefHost {
 		Ok(work.into())
 	}
 
+	async fn continue_reviewed_misalignment(
+		&self,
+		work_id: decodex_protocol::EntityId,
+		review_id: decodex_protocol::WireText,
+		key: &str,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		let review = self
+			.store
+			.chief_misalignment(work_id.as_str().into())
+			.await
+			.map_err(|_| "Provider findings unavailable")?
+			.ok_or("Provider precaution is no longer current")?;
+		if review.review_id() != review_id.as_str() {
+			return Err("Provider findings changed; review them again".into());
+		}
+		let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
+		chief.continue_misalignment(work_id.as_str(),review,key).await.map_err(|error| match error { ChiefError::Rejected(_) => ChiefHostError::Rejected("Continuation was rejected or the findings changed. Review the latest findings before trying again."), _ => ChiefHostError::Unknown("Continuation was not confirmed. Inspect the latest conversation state before trying again.") })?;
+		Ok(work_id.as_str().into())
+	}
+
 	async fn handle(
 		&self,
 		key: String,
@@ -745,6 +803,8 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			ChiefActionDto::SetLiveReviewer { work_id, turn_id, review_token, reviewer } =>
+				self.set_live_reviewer((&work_id, &turn_id, &review_token), reviewer, &key).await,
 			ChiefActionDto::NativeAgentInput { work_id, thread_id, text, expected_turn } =>
 				self.native_agent_input(
 					(work_id.as_str(), thread_id.as_str()),
@@ -789,20 +849,8 @@ impl ChiefHost {
 			ChiefActionDto::StartConfigured { .. } | ChiefActionDto::SendConfigured { .. } =>
 				unreachable!("normalized input"),
 			action @ ChiefActionDto::Steer { .. } => Self::steer_action(action, &key, active).await,
-			ChiefActionDto::ContinueMisalignment { work_id, review_id } => {
-				let review = self
-					.store
-					.chief_misalignment(work_id.as_str().into())
-					.await
-					.map_err(|_| "Provider findings unavailable")?
-					.ok_or("Provider precaution is no longer current")?;
-				if review.review_id() != review_id.as_str() {
-					return Err("Provider findings changed; review them again".into());
-				}
-				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
-				chief.continue_misalignment(work_id.as_str(),review,&key).await.map_err(|error| match error { ChiefError::Rejected(_) => ChiefHostError::Rejected("Continuation was rejected or the findings changed. Review the latest findings before trying again."), _ => ChiefHostError::Unknown("Continuation was not confirmed. Inspect the latest conversation state before trying again.") })?;
-				Ok(work_id.as_str().into())
-			},
+			ChiefActionDto::ContinueMisalignment { work_id, review_id } =>
+				self.continue_reviewed_misalignment(work_id, review_id, &key, active).await,
 
 			ChiefActionDto::ApproveGuardianDenial { work_id, review_row, review_digest } => {
 				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
