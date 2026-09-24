@@ -28,6 +28,7 @@ mod health_query;
 )]
 mod history_pager;
 mod native_menu_bar;
+#[cfg(target_os = "macos")] mod native_quit;
 mod settings_surface;
 mod shell;
 mod ui_motion;
@@ -65,6 +66,8 @@ fn main() {
 	});
 	application.run(move |cx: &mut App| {
 		install_application_menu(cx);
+		#[cfg(target_os = "macos")]
+		install_native_quit_preflight(cx);
 		shell::bind_keys(cx);
 		let profile = ClientProfile::load_default(None);
 		let chief_profile = profile.as_ref().ok().cloned();
@@ -338,6 +341,71 @@ fn hide_main_window(cx: &mut App) {
 	cx.hide();
 }
 
+#[cfg(target_os = "macos")]
+fn install_native_quit_preflight(cx: &mut App) {
+	assert!(native_quit::install(), "Cannot attach draft-saving termination preflight to GPUI");
+	let app = cx.to_async();
+	native_quit::set_request_handler(move || app.update(request_saved_quit));
+}
+
+#[derive(Default)]
+struct QuitPreflight(bool);
+impl gpui::Global for QuitPreflight {}
+
+fn request_saved_quit(cx: &mut App) {
+	if !cx.has_global::<QuitPreflight>() {
+		cx.set_global(QuitPreflight::default());
+	}
+	if cx.global::<QuitPreflight>().0 {
+		return;
+	}
+	cx.global_mut::<QuitPreflight>().0 = true;
+	let saves = cx
+		.windows()
+		.into_iter()
+		.filter_map(|window| window.downcast::<Shell>())
+		.filter_map(|window| window.update(cx, |shell, _, cx| shell.flush_drafts_for_quit(cx)).ok())
+		.collect::<Vec<_>>();
+	cx.spawn(async move |cx| {
+		let mut saved = true;
+		for save in saves {
+			saved &= save.await;
+		}
+		cx.update(|cx| {
+			cx.global_mut::<QuitPreflight>().0 = false;
+			for window in cx.windows().into_iter().filter_map(|window| window.downcast::<Shell>()) {
+				saved &= window
+					.update(cx, |shell, _, cx| shell.drafts_ready_for_quit(cx))
+					.unwrap_or(false);
+			}
+			#[cfg(target_os = "macos")]
+			let native = native_quit::awaiting_reply();
+			#[cfg(not(target_os = "macos"))]
+			let native = false;
+			#[cfg(target_os = "macos")]
+			if native {
+				native_quit::reply(saved);
+			}
+			if saved {
+				if !native {
+					#[cfg(target_os = "macos")]
+					native_quit::request();
+					#[cfg(not(target_os = "macos"))]
+					cx.quit();
+				}
+			} else {
+				cx.activate(true);
+				for window in
+					cx.windows().into_iter().filter_map(|window| window.downcast::<Shell>())
+				{
+					activate_main_window(&window, cx);
+				}
+			}
+		});
+	})
+	.detach();
+}
+
 fn install_application_menu(cx: &mut App) {
 	use gpui::{KeyBinding, Menu, MenuItem, SystemMenuType};
 	cx.bind_keys([
@@ -347,7 +415,7 @@ fn install_application_menu(cx: &mut App) {
 		KeyBinding::new("cmd-h", Hide, None),
 		KeyBinding::new("alt-cmd-h", HideOthers, None),
 	]);
-	cx.on_action(|_: &Quit, cx| cx.quit());
+	cx.on_action(|_: &Quit, cx| request_saved_quit(cx));
 	cx.on_action(|_: &CloseWindow, cx| hide_main_window(cx));
 	cx.on_action(|_: &Hide, cx| cx.hide());
 	cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());

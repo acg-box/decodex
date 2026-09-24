@@ -1,0 +1,1034 @@
+//! Local cold recovery and background publication of unsent desktop inputs.
+use super::*;
+use decodex_protocol::{
+	ClientDraftStore, DesktopComposerDraft, DesktopDraftDocument, DesktopPendingDraft,
+	DesktopProfileDraft,
+};
+use std::time::Duration;
+
+#[path = "chief_draft_recovery.rs"] mod recovery;
+
+enum SaveFailure {
+	Conflict,
+	Invalid(&'static str),
+	Busy,
+	Failed,
+}
+
+pub(super) struct Storage {
+	store: Option<ClientDraftStore>,
+	document: DesktopDraftDocument,
+	saved: DesktopDraftDocument,
+	revision: u64,
+	task: Option<Task<()>>,
+	error: Option<String>,
+	busy: bool,
+	quitting: bool,
+	reconcilable: bool,
+	seeded: bool,
+	show_recovered: bool,
+	remove_candidate: Option<decodex_protocol::DesktopRecoveredDraft>,
+}
+impl Default for Storage {
+	fn default() -> Self {
+		#[cfg(not(test))]
+		{
+			Self::open(ClientDraftStore::open_default())
+		}
+		#[cfg(test)]
+		{
+			Self::empty()
+		}
+	}
+}
+impl Storage {
+	pub(super) fn clear_unbound(&mut self) {
+		self.document.unbound = Default::default();
+	}
+
+	pub(super) fn restore(&self, scope: &str, epoch: u64) -> Option<Drafts> {
+		self.document.profiles.get(scope).cloned().map(|saved| Drafts::from_document(saved, epoch))
+	}
+
+	pub(super) fn seed_conflict(&mut self) {
+		self.reconcilable = true;
+		self.seeded = true;
+		self.error = Some("A saved draft and new input both exist. Current input remains in memory; the saved draft is unchanged.".into());
+	}
+
+	fn empty() -> Self {
+		Self {
+			store: None,
+			document: Default::default(),
+			saved: Default::default(),
+			revision: 0,
+			task: None,
+			error: None,
+			busy: false,
+			quitting: false,
+			reconcilable: false,
+			seeded: false,
+			show_recovered: false,
+			remove_candidate: None,
+		}
+	}
+
+	fn open(store: Result<ClientDraftStore, decodex_protocol::ClientDraftError>) -> Self {
+		let mut state = Self::empty();
+		let result = (|| {
+			let store = store.map_err(|error| error.to_string())?;
+			let snapshot = store.load().map_err(|error| error.to_string())?;
+			let document = if snapshot.revision == 0 {
+				DesktopDraftDocument::default()
+			} else {
+				DesktopDraftDocument::decode(&snapshot.payload).map_err(str::to_owned)?
+			};
+			state.revision = snapshot.revision;
+			state.saved = document.clone();
+			state.document = document;
+			state.store = Some(store);
+			Ok::<(), String>(())
+		})();
+		if result.is_err() {
+			state.error =
+				Some("Saved drafts could not be read. Current edits remain in memory.".into());
+		}
+		state
+	}
+}
+
+impl ChiefSurface {
+	pub(in super::super) fn restore_unbound_draft(&mut self, cx: &mut Context<Self>) {
+		let saved = &self.draft_profiles.storage.document.unbound;
+		self.composer.update(cx, |input, cx| input.set_content(&saved.text, cx));
+		self.attachments = saved.attachments.clone();
+		self.task_references = saved.references.clone();
+	}
+
+	pub(crate) fn drafts_ready_for_quit(&mut self, cx: &mut Context<Self>) -> bool {
+		self.save_draft_document(cx);
+		let state = &self.draft_profiles.storage;
+		state.error.is_none() && state.task.is_none() && state.document == state.saved
+	}
+
+	pub(in super::super) fn draft_quit_in_progress(&self) -> bool {
+		self.draft_profiles.storage.quitting
+	}
+
+	pub(crate) fn flush_drafts_for_quit(&mut self, cx: &mut Context<Self>) -> Task<bool> {
+		self.cancel_queued_command(cx);
+		self.draft_profiles.storage.quitting = true;
+		self.save_draft_document(cx);
+		let retained = cx.entity();
+		cx.spawn(async move |_, cx| {
+			let deadline = std::time::Instant::now() + Duration::from_secs(5);
+			loop {
+				let result = retained.update(cx, |surface, cx| {
+					surface.save_draft_document(cx);
+					let storage = &mut surface.draft_profiles.storage;
+					let result = if storage.error.is_some() || std::time::Instant::now() >= deadline
+					{
+						Some(false)
+					} else if storage.task.is_none() && storage.document == storage.saved {
+						Some(true)
+					} else {
+						None
+					};
+					if result.is_some() {
+						storage.quitting = false;
+						if result == Some(false) {
+							surface.feedback =
+								"Quit canceled: drafts are not saved. Keep this window open."
+									.into();
+						}
+						cx.notify();
+					}
+					result
+				});
+				if let Some(saved) = result {
+					return saved;
+				}
+				cx.background_executor().timer(Duration::from_millis(50)).await;
+			}
+		})
+	}
+
+	pub(in super::super) fn draft_storage_notice(&self) -> Option<&str> {
+		self.draft_profiles.storage.error.as_deref().or_else(|| {
+			self.draft_profiles
+				.storage
+				.busy
+				.then_some("Waiting to save drafts. Keep this window open.")
+		})
+	}
+
+	pub(super) fn remember_draft_document(&mut self, cx: &Context<Self>) {
+		let Some(profile) = self.draft_profiles.active.as_ref() else {
+			if self.composer_manager.is_some() {
+				self.draft_profiles.storage.error = Some(
+					"Draft service identity is unavailable. Current edits remain in memory.".into(),
+				);
+				return;
+			}
+			self.draft_profiles.storage.document.unbound = DesktopComposerDraft {
+				text: self.composer.read(cx).content().into(),
+				attachments: self.attachments.clone(),
+				references: self.task_references.clone(),
+				..Default::default()
+			};
+			return;
+		};
+		let scope = profile.draft_scope_key();
+		match self.capture_draft_document(cx) {
+			Some(draft) => {
+				for composer in std::iter::once(&draft.composer).chain(draft.parked.values()) {
+					if let (Some(work), Some(thread)) = (&composer.work_id, &composer.thread_id) {
+						self.draft_profiles
+							.threads
+							.entry(work.as_str().into())
+							.or_insert_with(|| thread.as_str().into());
+					}
+				}
+				self.draft_profiles.storage.document.profiles.insert(scope, draft);
+			},
+			None =>
+				self.draft_profiles.storage.error =
+					Some("Draft identity is unavailable. Current edits remain in memory.".into()),
+		}
+	}
+
+	pub(in super::super) fn command_draft_copy(
+		&self,
+		cx: &Context<Self>,
+	) -> Result<decodex_protocol::DesktopRecoveredDraft, &'static str> {
+		let scope = self
+			.draft_profiles
+			.active
+			.as_ref()
+			.ok_or("Draft service identity is unavailable.")?
+			.draft_scope_key();
+		let mut draft = self.capture_draft_document(cx).ok_or("Draft identity is unavailable.")?;
+		// Capture the original source and choices before asynchronous dispatch.
+		// Other editors remain in the current document, not in this alternative.
+		draft.parked.clear();
+		draft.questions.clear();
+		let copy = decodex_protocol::DesktopRecoveredDraft { scope: Some(scope), draft };
+		let mut prospective = self.draft_profiles.storage.document.clone();
+		if !prospective.recovered.contains(&copy) {
+			prospective.recovered.push(copy.clone());
+		}
+		prospective.encode().map_err(
+			|_| "Free space in saved draft copies before sending. Current input is retained.",
+		)?;
+		Ok(copy)
+	}
+
+	pub(in super::super) fn fence_command_draft(&mut self, pending: &mut PendingCommand) {
+		let Some(copy) = pending.recovery.as_mut() else { return };
+		copy.draft.uncertain = true;
+		if let Some(key) = &pending.key {
+			copy.draft.unconfirmed_commands.push(key.clone());
+		}
+		self.draft_profiles.storage.document.recovered.push(copy.clone());
+	}
+
+	pub(in super::super) fn remove_command_draft_fence(&mut self, pending: &PendingCommand) {
+		if let Some(copy) = &pending.recovery {
+			self.draft_profiles.storage.document.recovered.retain(|saved| saved != copy);
+		}
+	}
+
+	pub(in super::super) fn retain_failed_command_draft(
+		&mut self,
+		pending: &PendingCommand,
+		uncertain: bool,
+		cx: &Context<Self>,
+	) {
+		let Some(mut copy) = pending.recovery.clone() else { return };
+		let current = self.capture_draft_document(cx);
+		let same_editor = current.as_ref().and_then(|draft| {
+			if draft.composer.work_id == copy.draft.composer.work_id {
+				Some(&draft.composer)
+			} else {
+				copy.draft.composer.work_id.as_ref().and_then(|id| draft.parked.get(id.as_str()))
+			}
+		}) == Some(&copy.draft.composer);
+		if same_editor
+			&& current.as_ref().is_some_and(|draft| draft.execution == copy.draft.execution)
+		{
+			return;
+		}
+		copy.draft.uncertain = uncertain;
+		copy.draft.unconfirmed_commands.retain(|key| Some(key) != pending.key.as_ref());
+		if uncertain && let Some(key) = &pending.key {
+			copy.draft.unconfirmed_commands.push(key.clone());
+		}
+		let storage = &mut self.draft_profiles.storage;
+		if !storage.document.recovered.contains(&copy) {
+			storage.document.recovered.push(copy);
+		}
+		storage.show_recovered = true;
+		// The ordinary save reports capacity/conflict errors and keeps both copies
+		// in memory. It must not discard the original to make a write fit.
+	}
+
+	fn capture_draft_document(&self, cx: &Context<Self>) -> Option<DesktopProfileDraft> {
+		let composer = |owner: Option<&str>, text: String, attachments, references| {
+			let work_id = owner.map(EntityId::new).transpose().ok()?;
+			let thread_id = owner
+				.and_then(|owner| {
+					self.draft_profiles.threads.get(owner).cloned().or_else(|| {
+						self.snapshot
+							.as_ref()?
+							.work_items
+							.iter()
+							.find(|work| work.id == owner)?
+							.codex_thread_id
+							.clone()
+					})
+				})
+				.map(WireText::new)
+				.transpose()
+				.ok()?;
+			Some(DesktopComposerDraft { work_id, thread_id, text, attachments, references })
+		};
+		let mut parked = BTreeMap::new();
+		let owners: std::collections::BTreeSet<_> = self
+			.draft_profiles
+			.texts
+			.keys()
+			.chain(self.draft_profiles.files.keys())
+			.chain(self.draft_profiles.tasks.keys())
+			.collect();
+		for owner in owners {
+			parked.insert(
+				owner.clone(),
+				composer(
+					Some(owner),
+					self.draft_profiles.texts.get(owner).cloned().unwrap_or_default(),
+					self.draft_profiles.files.get(owner).cloned().unwrap_or_default(),
+					self.draft_profiles.tasks.get(owner).cloned().unwrap_or_default(),
+				)?,
+			);
+		}
+		let (execution_revision, execution) = self.draft_profiles.execution.saved_choices();
+		let pending = self
+			.submission
+			.pending
+			.as_ref()
+			.map(|pending| {
+				Some(DesktopPendingDraft {
+					steer: pending.steer.clone(),
+					owner: pending.owner.as_deref().map(EntityId::new).transpose().ok()?,
+					text: pending.draft.clone(),
+					attachments: pending.attachments.clone(),
+					references: pending.references.clone(),
+					execution: pending
+						.execution_intent
+						.as_ref()
+						.map(|(owner, revision)| Some((EntityId::new(owner).ok()?, *revision)))
+						.transpose_option()?,
+				})
+			})
+			.transpose_option()?;
+		Some(DesktopProfileDraft {
+			unconfirmed_commands: self.submission.unconfirmed.clone(),
+			composer: composer(
+				self.composer_manager.as_deref(),
+				self.composer.read(cx).content().into(),
+				self.attachments.clone(),
+				self.task_references.clone(),
+			)?,
+			parked,
+			execution,
+			execution_revision,
+			questions: self.capture_async_drafts(cx)?,
+			uncertain: self.uncertain || self.sending || pending.is_some(),
+			pending,
+		})
+	}
+
+	pub(in super::super) fn save_draft_document(&mut self, cx: &mut Context<Self>) {
+		self.remember_draft_document(cx);
+		if self.draft_profiles.storage.store.is_some()
+			&& self
+				.submission
+				.waiting
+				.as_ref()
+				.is_some_and(|queued| self.draft_profiles.active.as_ref() != Some(&queued.profile))
+		{
+			self.draft_profiles.storage.error =
+				Some("Draft service identity is unavailable. Nothing was sent.".into());
+		}
+		let state = &mut self.draft_profiles.storage;
+		if state.task.is_some() {
+			return;
+		}
+		if state.error.is_some() {
+			if let Some(queued) = self.submission.waiting.take() {
+				self.finish_command(
+					queued.pending,
+					Err("Draft could not be saved. Nothing was sent.".into()),
+					cx,
+				);
+			}
+			return;
+		}
+		if state.document == state.saved {
+			if let Some(queued) = self.submission.waiting.take() {
+				self.dispatch_saved_command(queued, cx);
+			}
+			return;
+		}
+		let Some(store) = state.store.clone() else {
+			#[cfg(test)]
+			if let Some(queued) = self.submission.waiting.take() {
+				self.dispatch_saved_command(queued, cx);
+			}
+			return;
+		};
+		let document = state.document.clone();
+		let saved = document.clone();
+		let revision = state.revision;
+		let write = cx
+			.background_executor()
+			.spawn(async move { publish_document(&store, revision, &document) });
+		state.task = Some(cx.spawn(async move |surface, cx| {
+			let result = write.await;
+			let _ = surface.update(cx, |surface, cx| {
+				let state = &mut surface.draft_profiles.storage;
+				state.task = None;
+				match result {
+					Ok(revision) => {
+						state.busy = false;
+						state.revision = revision;
+						state.saved = saved;
+					},
+					Err(SaveFailure::Busy) => {
+						state.busy = true;
+						cx.notify();
+						return;
+					},
+					Err(SaveFailure::Conflict) => {
+						state.reconcilable = true;
+						state.error = Some(
+							"Another window saved different drafts. Keep both copies to continue."
+								.into(),
+						);
+					},
+					Err(SaveFailure::Invalid(reason)) => state.error = Some(reason.into()),
+					Err(SaveFailure::Failed) => state.error = Some(
+						"Drafts could not be saved. Keep this window open to retain current edits."
+							.into(),
+					),
+				}
+				surface.save_draft_document(cx);
+				cx.notify();
+			});
+		}));
+	}
+}
+
+fn publish_document(
+	store: &ClientDraftStore,
+	revision: u64,
+	document: &DesktopDraftDocument,
+) -> Result<u64, SaveFailure> {
+	let bytes = document.encode().map_err(SaveFailure::Invalid)?;
+	match store.save(revision, &bytes) {
+		Ok(revision) => Ok(revision),
+		Err(decodex_protocol::ClientDraftError::WriteUnconfirmed(_)) => {
+			let actual = store.load().map_err(|_| SaveFailure::Failed)?;
+			if actual.payload == bytes { Ok(actual.revision) } else { Err(SaveFailure::Failed) }
+		},
+		Err(decodex_protocol::ClientDraftError::Busy) => Err(SaveFailure::Busy),
+		Err(decodex_protocol::ClientDraftError::Conflict) => Err(SaveFailure::Conflict),
+		Err(_) => Err(SaveFailure::Failed),
+	}
+}
+
+impl Drafts {
+	fn from_document(saved: DesktopProfileDraft, epoch: u64) -> Self {
+		let mut result = Self {
+			unconfirmed: saved.unconfirmed_commands,
+			text: saved.composer.text,
+			manager: saved.composer.work_id.map(|id| id.as_str().into()),
+			attachments: saved.composer.attachments,
+			references: saved.composer.references,
+			uncertain: saved.uncertain,
+			restored_questions: saved.questions,
+			execution: execution_intent::Intents::from_saved(
+				saved.execution_revision,
+				saved.execution,
+			),
+			..Default::default()
+		};
+		if let (Some(owner), Some(thread)) = (&result.manager, saved.composer.thread_id) {
+			result.threads.insert(owner.clone(), thread.as_str().into());
+		}
+		for (owner, draft) in saved.parked {
+			result.texts.insert(owner.clone(), draft.text);
+			result.files.insert(owner.clone(), draft.attachments);
+			result.tasks.insert(owner.clone(), draft.references);
+			if let Some(thread) = draft.thread_id {
+				result.threads.insert(owner, thread.as_str().into());
+			}
+		}
+		result.steer_pending = saved.pending.map(|pending| PendingCommand {
+			recovery: None,
+			key: pending.steer.as_ref().map(|steer| steer.submission_id.clone()),
+			steer: pending.steer,
+			epoch,
+			execution_intent: pending
+				.execution
+				.map(|(owner, revision)| (owner.as_str().into(), revision)),
+			draft: pending.text,
+			owner: pending.owner.map(|id| id.as_str().into()),
+			attachments: pending.attachments,
+			references: pending.references,
+		});
+		if result.uncertain {
+			result.feedback = "Previous submission acceptance is unknown. Inspect the conversation before sending again.".into();
+		}
+		result
+	}
+}
+
+// Preserve absence separately from a failed bounded conversion.
+trait TransposeOption<T> {
+	fn transpose_option(self) -> Option<Option<T>>;
+}
+impl<T> TransposeOption<T> for Option<Option<T>> {
+	fn transpose_option(self) -> Self {
+		match self {
+			None => Some(None),
+			Some(value) => value.map(Some),
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[gpui::test]
+	fn cold_reopen_keeps_inflight_original_after_later_edit(cx: &mut gpui::TestAppContext) {
+		let (_service, profile, _) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let surface = cx.new(ChiefSurface::new);
+		let key = IdempotencyKey::new("inflight-original").unwrap();
+		surface.update(cx, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile.clone()), cx);
+			s.composer.update(cx, |input, cx| input.set_content("Original in flight", cx));
+			let mut pending = PendingCommand {
+				recovery: Some(s.command_draft_copy(cx).unwrap()),
+				key: Some(key.clone()),
+				steer: None,
+				epoch: s.command_epoch,
+				execution_intent: None,
+				draft: Some("Original in flight".into()),
+				owner: None,
+				attachments: Some(vec![]),
+				references: Some(vec![]),
+			};
+			s.fence_command_draft(&mut pending);
+			s.submission.unconfirmed.push(key.clone());
+			s.sending = true;
+			s.composer.update(cx, |input, cx| input.set_content("Later unsent edit", cx));
+			s.remember_draft_document(cx);
+			publish_document(&store, 0, &s.draft_profiles.storage.document)
+				.unwrap_or_else(|_| panic!("saved"));
+		});
+		let reopened = cx.new(ChiefSurface::new);
+		reopened.update(cx, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile), cx);
+			assert_eq!(s.composer.read(cx).content(), "Later unsent edit");
+			assert!(s.uncertain && !s.sending && s.submission.command.is_none());
+			let copies = s.recovered_drafts();
+			assert_eq!(copies.len(), 1);
+			assert_eq!(copies[0].draft.composer.text, "Original in flight");
+			assert!(copies[0].draft.uncertain);
+			assert_eq!(copies[0].draft.unconfirmed_commands, vec![key]);
+		});
+	}
+
+	#[gpui::test]
+	fn failed_send_keeps_original_copy_and_new_editor_after_reopen(cx: &mut gpui::TestAppContext) {
+		let (_service, profile, _) = super::super::tests::profiles();
+		for unknown in [false, true] {
+			let directory = tempfile::tempdir().unwrap();
+			let root = directory.path().canonicalize().unwrap().join("desktop");
+			let store = ClientDraftStore::open_at(&root).unwrap();
+			let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+			surface.update(visual, |s, cx| {
+				s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+				s.bind_profile(Some(profile.clone()), cx);
+				s.composer_manager = Some("original-work".into());
+				s.draft_profiles.threads.insert("original-work".into(), "original-thread".into());
+				s.composer.update(cx, |input, cx| input.set_content("Original failed message", cx));
+				let pending = PendingCommand {
+					recovery: Some(s.command_draft_copy(cx).unwrap()),
+					key: Some(IdempotencyKey::new("failed-message").unwrap()),
+					steer: None,
+					epoch: s.command_epoch,
+					execution_intent: None,
+					draft: Some("Original failed message".into()),
+					owner: Some("original-work".into()),
+					attachments: Some(vec![]),
+					references: Some(vec![]),
+				};
+				s.composer.update(cx, |input, cx| input.set_content("Newer editor", cx));
+				// The late result must retain the thread captured before dispatch.
+				s.draft_profiles
+					.threads
+					.insert("original-work".into(), "replacement-thread".into());
+				s.finish_command(
+					pending,
+					if unknown {
+						Ok(ChiefCommandResponse::PotentiallyDispatched {
+							failure: decodex_protocol::ClientFailure::ProtocolTimeout,
+						})
+					} else {
+						Err("Fixture dispatch failed".into())
+					},
+					cx,
+				);
+				assert_eq!(s.composer.read(cx).content(), "Newer editor");
+				assert!(s.show_recovered_drafts());
+			});
+			visual.run_until_parked();
+			let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+			assert_eq!(saved.profiles[&profile.draft_scope_key()].composer.text, "Newer editor");
+			assert_eq!(saved.recovered.len(), 1);
+			let copy = &saved.recovered[0];
+			assert_eq!(copy.scope, Some(profile.draft_scope_key()));
+			assert_eq!(copy.draft.composer.text, "Original failed message");
+			assert_eq!(copy.draft.composer.thread_id.as_ref().unwrap().as_str(), "original-thread");
+			assert_eq!(copy.draft.uncertain, unknown);
+			assert_eq!(copy.draft.unconfirmed_commands.len(), usize::from(unknown));
+			if unknown {
+				assert!(saved.remove_recovered_copy(copy).is_err());
+			}
+		}
+	}
+
+	#[gpui::test]
+	fn cold_unbound_draft_reopens_and_moves_only_to_first_profile(cx: &mut gpui::TestAppContext) {
+		let (_service, profile, other) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let root = directory.path().canonicalize().unwrap().join("desktop");
+		let store = ClientDraftStore::open_at(&root).unwrap();
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.composer.update(cx, |input, cx| input.set_content("Before choosing a service", cx));
+			s.attachments.push(decodex_protocol::ChiefAttachmentDto {
+				path: ConversationWorkingDirectory::new("/tmp/local.png").unwrap(),
+				image: true,
+			});
+			assert!(!s.drafts_ready_for_quit(cx));
+		});
+		visual.run_until_parked();
+		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		assert_eq!(saved.unbound.text, "Before choosing a service");
+		assert!(saved.profiles.is_empty());
+		let (restored, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		restored.update(visual, |s, cx| {
+			s.draft_profiles.storage = Storage::open(ClientDraftStore::open_at(&root));
+			s.restore_unbound_draft(cx);
+			assert_eq!(s.composer.read(cx).content(), saved.unbound.text);
+			assert_eq!(s.attachments, saved.unbound.attachments);
+			assert!(s.profile.is_none() && s.composer_manager.is_none());
+			s.bind_profile(Some(profile.clone()), cx);
+			s.save_draft_document(cx);
+		});
+		visual.run_until_parked();
+		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		assert!(saved.unbound.text.is_empty() && saved.unbound.attachments.is_empty());
+		assert_eq!(
+			saved.profiles[&profile.draft_scope_key()].composer.text,
+			"Before choosing a service"
+		);
+		restored.update(visual, |s, cx| {
+			s.bind_profile(Some(other), cx);
+			assert!(s.composer.read(cx).content().is_empty());
+			assert!(s.attachments.is_empty());
+			s.bind_profile(Some(profile), cx);
+			assert_eq!(s.composer.read(cx).content(), "Before choosing a service");
+			assert!(s.submission.command.is_none());
+		});
+	}
+
+	#[gpui::test]
+	fn cold_quit_flush_saves_latest_edit_and_checks_again_before_exit(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_service, profile, _) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		let flush = surface.update(visual, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile.clone()), cx);
+			s.composer.update(cx, |input, cx| input.set_content("First edit", cx));
+			s.save_draft_document(cx);
+			s.composer.update(cx, |input, cx| input.set_content("Last edit before quit", cx));
+			s.flush_drafts_for_quit(cx)
+		});
+		let outcome = std::rc::Rc::new(std::cell::Cell::new(None));
+		let result = outcome.clone();
+		visual.spawn(async move |_| result.set(Some(flush.await))).detach();
+		visual.run_until_parked();
+		visual.executor().advance_clock(Duration::from_millis(100));
+		visual.run_until_parked();
+		assert_eq!(outcome.get(), Some(true));
+		let doc = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		assert_eq!(doc.profiles[&profile.draft_scope_key()].composer.text, "Last edit before quit");
+		surface.update(visual, |s, cx| {
+			assert!(s.drafts_ready_for_quit(cx));
+			s.composer.update(cx, |input, cx| input.set_content("Edited after preflight", cx));
+			assert!(!s.drafts_ready_for_quit(cx));
+		});
+		visual.run_until_parked();
+	}
+
+	#[gpui::test]
+	fn cold_quit_conflict_retains_window_input(cx: &mut gpui::TestAppContext) {
+		let (_service, profile, _) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		let flush = surface.update(visual, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile), cx);
+			s.composer.update(cx, |input, cx| input.set_content("Unmerged edit", cx));
+			store.save(0, &DesktopDraftDocument::default().encode().unwrap()).unwrap();
+			s.flush_drafts_for_quit(cx)
+		});
+		let outcome = std::rc::Rc::new(std::cell::Cell::new(None));
+		let result = outcome.clone();
+		visual.spawn(async move |_| result.set(Some(flush.await))).detach();
+		visual.run_until_parked();
+		visual.executor().advance_clock(Duration::from_millis(100));
+		visual.run_until_parked();
+		assert_eq!(outcome.get(), Some(false));
+		surface.update(visual, |s, cx| {
+			assert!(!s.drafts_ready_for_quit(cx));
+			assert_eq!(s.composer.read(cx).content(), "Unmerged edit");
+			assert!(s.feedback.contains("Quit canceled"));
+		});
+		assert_eq!(store.load().unwrap().revision, 1);
+	}
+
+	#[gpui::test]
+	fn cold_accepted_command_publishes_cleanup_without_waiting_for_poll(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_service, profile, _) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		let key = IdempotencyKey::new("accepted-command").unwrap();
+		let pending = surface.update(visual, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile.clone()), cx);
+			s.composer_manager = Some("work".into());
+			s.composer.update(cx, |input, cx| input.set_content("Accepted input", cx));
+			let mut pending = PendingCommand {
+				recovery: Some(s.command_draft_copy(cx).unwrap()),
+				key: Some(key.clone()),
+				steer: None,
+				epoch: s.command_epoch,
+				execution_intent: None,
+				draft: Some("Accepted input".into()),
+				owner: Some("work".into()),
+				attachments: None,
+				references: None,
+			};
+			s.fence_command_draft(&mut pending);
+			s.sending = true;
+			s.submission.unconfirmed.push(key.clone());
+			s.save_draft_document(cx);
+			pending
+		});
+		visual.run_until_parked();
+		assert_eq!(store.load().unwrap().revision, 1);
+		surface.update(visual, |s, cx| {
+			s.finish_command(
+				pending,
+				Ok(ChiefCommandResponse::Accepted { work_id: EntityId::new("work").unwrap() }),
+				cx,
+			);
+			assert!(s.draft_profiles.storage.task.is_some());
+		});
+		visual.run_until_parked();
+		let snapshot = store.load().unwrap();
+		assert_eq!(snapshot.revision, 2);
+		let doc = DesktopDraftDocument::decode(&snapshot.payload).unwrap();
+		assert!(doc.recovered.is_empty(), "accepted copy is removed with its fence");
+		let saved = &doc.profiles[&profile.draft_scope_key()];
+		assert!(saved.composer.text.is_empty());
+		assert!(saved.unconfirmed_commands.is_empty());
+		assert!(!saved.uncertain);
+	}
+
+	#[gpui::test]
+	fn cold_dispatch_busy_writer_retries_without_dispatch_or_losing_edits(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use std::os::unix::fs::OpenOptionsExt;
+		let (_service, profile, _) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let root = directory.path().canonicalize().unwrap().join("desktop");
+		let store = ClientDraftStore::open_at(&root).unwrap();
+		let lock = std::fs::OpenOptions::new()
+			.create(true)
+			.truncate(false)
+			.read(true)
+			.write(true)
+			.mode(0o600)
+			.open(root.join("client-drafts/writer.lock"))
+			.unwrap();
+		lock.try_lock().unwrap();
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile.clone()), cx);
+			s.state = LoadState::Ready;
+			s.execute(
+				ChiefActionDto::Interrupt {
+					work_id: EntityId::new("work").unwrap(),
+					turn_id: WireText::new("turn").unwrap(),
+				},
+				None,
+				cx,
+			);
+		});
+		visual.run_until_parked();
+		surface.update(visual, |s, cx| {
+			assert!(s.draft_profiles.storage.busy);
+			assert!(s.draft_profiles.storage.error.is_none());
+			assert!(s.submission.waiting.is_some() && s.submission.command.is_none());
+			s.composer.update(cx, |input, cx| input.set_content("Edit while writer is busy", cx));
+		});
+		assert_eq!(store.load().unwrap().revision, 0);
+		drop(lock);
+		surface.update(visual, |s, cx| s.save_draft_document(cx));
+		visual.run_until_parked();
+		surface.read_with(visual, |s, _| {
+			assert!(!s.draft_profiles.storage.busy);
+			assert!(s.draft_profiles.storage.error.is_none());
+			assert!(s.submission.waiting.is_none());
+		});
+		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		assert_eq!(
+			saved.profiles[&profile.draft_scope_key()].composer.text,
+			"Edit while writer is busy"
+		);
+	}
+
+	#[gpui::test]
+	fn cold_dispatch_waits_for_existing_save_and_clears_definite_failure(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_service, profile, _) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile.clone()), cx);
+			s.composer.update(cx, |input, cx| input.set_content("Original input", cx));
+			s.save_draft_document(cx);
+			assert!(s.draft_profiles.storage.task.is_some());
+			s.state = LoadState::Ready;
+			s.execute(
+				ChiefActionDto::Interrupt {
+					work_id: EntityId::new("work").unwrap(),
+					turn_id: WireText::new("turn").unwrap(),
+				},
+				None,
+				cx,
+			);
+			assert!(s.submission.command.is_none(), "network task cannot precede durable save");
+			let key = s.submission.waiting.as_ref().unwrap().key.clone();
+			assert_eq!(s.submission.unconfirmed, vec![key.clone()]);
+		});
+		visual.run_until_parked();
+		let snapshot = store.load().unwrap();
+		assert!(
+			snapshot.revision >= 3,
+			"save draft, publish dispatch fence, then settle known failure"
+		);
+		let document = DesktopDraftDocument::decode(&snapshot.payload).unwrap();
+		let saved = &document.profiles[&profile.draft_scope_key()];
+		assert!(saved.unconfirmed_commands.is_empty());
+		assert!(!saved.uncertain);
+		assert_eq!(saved.composer.text, "Original input");
+		let restored = Drafts::from_document(saved.clone(), 99);
+		assert!(!restored.uncertain);
+		assert!(restored.unconfirmed.is_empty());
+	}
+
+	#[gpui::test]
+	fn cold_dispatch_profile_change_cancels_before_network(cx: &mut gpui::TestAppContext) {
+		let (_service, profile, other) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile.clone()), cx);
+			s.state = LoadState::Ready;
+			s.execute(
+				ChiefActionDto::Interrupt {
+					work_id: EntityId::new("work").unwrap(),
+					turn_id: WireText::new("turn").unwrap(),
+				},
+				None,
+				cx,
+			);
+			assert!(s.submission.waiting.is_some());
+			s.bind_profile(Some(other), cx);
+			assert!(s.submission.waiting.is_none());
+			assert!(s.submission.command.is_none());
+			assert!(!s.sending && !s.uncertain);
+		});
+		visual.run_until_parked();
+		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		let original = &saved.profiles[&profile.draft_scope_key()];
+		assert!(original.unconfirmed_commands.is_empty());
+		assert!(!original.uncertain);
+		surface.read_with(visual, |s, _| assert!(s.submission.command.is_none()));
+	}
+
+	#[gpui::test]
+	fn cold_dispatch_save_conflict_never_starts_network_task(cx: &mut gpui::TestAppContext) {
+		let (_service, profile, _) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile), cx);
+			s.state = LoadState::Ready;
+			store.save(0, &DesktopDraftDocument::default().encode().unwrap()).unwrap();
+			s.execute(
+				ChiefActionDto::Interrupt {
+					work_id: EntityId::new("work").unwrap(),
+					turn_id: WireText::new("turn").unwrap(),
+				},
+				None,
+				cx,
+			);
+			assert!(s.submission.command.is_none());
+		});
+		visual.run_until_parked();
+		surface.read_with(visual, |s, _| {
+			assert!(s.submission.command.is_none());
+			assert!(s.submission.waiting.is_none());
+			assert!(s.submission.unconfirmed.is_empty());
+			assert!(!s.sending && !s.uncertain);
+			assert!(s.feedback.contains("Nothing was sent"));
+		});
+		assert_eq!(store.load().unwrap().revision, 1);
+	}
+
+	#[gpui::test]
+	fn cold_drafts_restore_primary_input_and_keep_questions_pending(cx: &mut gpui::TestAppContext) {
+		let (_service, profile, _) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let root = directory.path().canonicalize().unwrap().join("desktop");
+		let store = ClientDraftStore::open_at(&root).unwrap();
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile.clone()), cx);
+			s.composer_manager = Some("work".into());
+			s.draft_profiles.threads.insert("work".into(), "native-thread".into());
+			s.composer.update(cx, |input, cx| input.set_content("Unsent cold draft", cx));
+			s.effort = ConversationReasoningEffort::High;
+			s.mark_effort_intent();
+			s.attachments.push(decodex_protocol::ChiefAttachmentDto {
+				path: ConversationWorkingDirectory::new("/tmp/selected.png").unwrap(),
+				image: true,
+			});
+			s.restored_question_drafts.push(decodex_protocol::DesktopQuestionDraft {
+				work_id: EntityId::new("work").unwrap(),
+				thread_id: WireText::new("native-thread").unwrap(),
+				question_id: WireText::new("q").unwrap(),
+				text: "Question draft".into(),
+				selected: None,
+				custom: Some("Alternative".into()),
+				collapsed: true,
+			});
+			s.uncertain = true;
+			s.submission.unconfirmed.push(IdempotencyKey::new("original-command").unwrap());
+			s.save_draft_document(cx);
+		});
+		visual.run_until_parked();
+		assert_eq!(store.load().unwrap().revision, 1);
+		let (restored, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		restored.update(visual, |s, cx| {
+			s.draft_profiles.storage = Storage::open(ClientDraftStore::open_at(&root));
+			s.bind_profile(Some(profile), cx);
+			assert_eq!(s.composer.read(cx).content(), "Unsent cold draft");
+			assert_eq!(s.composer_manager.as_deref(), Some("work"));
+			assert_eq!(s.draft_profiles.threads["work"], "native-thread");
+			assert_eq!(s.attachments.len(), 1);
+			assert_eq!(
+				s.draft_profiles.execution.choice("work").reasoning_effort,
+				Some(ConversationReasoningEffort::High)
+			);
+			assert_eq!(s.restored_question_drafts.len(), 1);
+			assert!(
+				s.async_question_inputs.is_empty(),
+				"native history must admit question restoration"
+			);
+			assert!(s.uncertain && !s.sending && s.submission.command.is_none());
+			assert_eq!(s.submission.unconfirmed[0].as_str(), "original-command");
+			assert!(!s.draft_owner_available());
+		});
+	}
+
+	#[gpui::test]
+	fn cold_draft_conflict_keeps_disk_and_current_input(cx: &mut gpui::TestAppContext) {
+		let (_service, profile, _) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile), cx);
+			s.composer.update(cx, |input, cx| input.set_content("Keep current edit", cx));
+		});
+		let other = DesktopDraftDocument::default().encode().unwrap();
+		store.save(0, &other).unwrap();
+		surface.update(visual, |s, cx| s.save_draft_document(cx));
+		visual.run_until_parked();
+		surface.read_with(visual, |s, cx| {
+			assert_eq!(s.composer.read(cx).content(), "Keep current edit");
+			assert!(s.draft_storage_notice().is_some());
+		});
+		assert_eq!(store.load().unwrap().payload, other);
+	}
+}

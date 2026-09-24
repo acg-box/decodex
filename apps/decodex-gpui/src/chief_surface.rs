@@ -155,7 +155,7 @@ pub(crate) struct ChiefSurface {
 	account: Entity<ComposerInput>,
 	effort: ConversationReasoningEffort,
 	sandbox: ChiefSandboxDto,
-	command_task: Option<Task<()>>,
+	submission: drafts::SubmissionState,
 	command_epoch: u64,
 	sending: bool,
 	uncertain: bool,
@@ -200,9 +200,21 @@ struct ChiefInputs {
 	composer: Entity<ComposerInput>,
 }
 
+#[derive(Clone)]
+struct QueuedCommand {
+	profile: ClientProfile,
+	action: ChiefActionDto,
+	key: IdempotencyKey,
+	pending: PendingCommand,
+}
+
+#[derive(Clone)]
 struct PendingCommand {
-	execution_intent: Option<(String, u64)>,
+	recovery: Option<decodex_protocol::DesktopRecoveredDraft>,
+	key: Option<IdempotencyKey>,
+	steer: Option<decodex_protocol::ChiefSteerIdentity>,
 	epoch: u64,
+	execution_intent: Option<(String, u64)>,
 	draft: Option<String>,
 	owner: Option<String>,
 	attachments: Option<Vec<decodex_protocol::ChiefAttachmentDto>>,
@@ -257,10 +269,17 @@ impl ChiefSurface {
 		surface
 	}
 
+	pub(crate) fn new(cx: &mut Context<Self>) -> Self {
+		let inputs = Self::new_inputs(cx);
+		let mut surface = Self::with_inputs(inputs, cx);
+		surface.restore_unbound_draft(cx);
+		surface
+	}
+
 	// Keep the initial values for this view's owned state together.
 	#[allow(clippy::too_many_lines)]
-	pub(crate) fn new(cx: &mut Context<Self>) -> Self {
-		let ChiefInputs { model, cwd, composer } = Self::new_inputs(cx);
+	fn with_inputs(inputs: ChiefInputs, cx: &mut Context<Self>) -> Self {
+		let ChiefInputs { model, cwd, composer } = inputs;
 		Self {
 			voice: None,
 			voice_task: None,
@@ -346,7 +365,7 @@ impl ChiefSurface {
 			account: Self::account_input(cx),
 			effort: ConversationReasoningEffort::High,
 			sandbox: ChiefSandboxDto::ReadOnly,
-			command_task: None,
+			submission: Default::default(),
 			command_epoch: 0,
 			sending: false,
 			uncertain: false,
@@ -730,8 +749,26 @@ impl ChiefSurface {
 				&& self.snapshot.is_some())
 	}
 
+	pub(super) fn steer_identity(
+		&self,
+		action: &ChiefActionDto,
+		key: &IdempotencyKey,
+	) -> Option<decodex_protocol::ChiefSteerIdentity> {
+		let ChiefActionDto::Steer { work_id, turn_id, .. } = action else { return None };
+		let work =
+			self.snapshot.as_ref()?.work_items.iter().find(|work| work.id == work_id.as_str())?;
+		Some(decodex_protocol::ChiefSteerIdentity {
+			work_id: work_id.clone(),
+			thread_id: WireText::new(work.codex_thread_id.clone()?).ok()?,
+			turn_id: turn_id.clone(),
+			submission_id: key.clone(),
+		})
+	}
+
 	fn execute(&mut self, action: ChiefActionDto, draft: Option<String>, cx: &mut Context<Self>) {
-		if self.sending || (self.uncertain && !matches!(&action, ChiefActionDto::Interrupt { .. }))
+		if self.draft_quit_in_progress()
+			|| self.sending
+			|| (self.uncertain && !matches!(&action, ChiefActionDto::Interrupt { .. }))
 		{
 			return;
 		}
@@ -746,7 +783,23 @@ impl ChiefSurface {
 			cx.notify();
 			return;
 		}
-		let pending = PendingCommand {
+		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
+		let recovery = if draft.is_some() {
+			match self.command_draft_copy(cx) {
+				Ok(copy) => Some(copy),
+				Err(message) => {
+					self.feedback = message.into();
+					cx.notify();
+					return;
+				},
+			}
+		} else {
+			None
+		};
+		let mut pending = PendingCommand {
+			recovery,
+			key: Some(key.clone()),
+			steer: self.steer_identity(&action, &key),
 			execution_intent: self.draft_profiles.execution.capture(&action),
 			epoch: self.command_epoch,
 			attachments: draft.as_ref().map(|_| self.attachments.clone()),
@@ -754,9 +807,31 @@ impl ChiefSurface {
 			owner: self.composer_manager.clone().or_else(|| self.root_id()),
 			draft,
 		};
+		self.fence_command_draft(&mut pending);
 		self.sending = true;
 		self.feedback = "Waiting for durable acceptance…".into();
-		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
+		if pending.steer.is_some() {
+			self.submission.pending = Some(pending.clone());
+		}
+		self.submission.unconfirmed.push(key.clone());
+		self.submission.waiting = Some(QueuedCommand { profile, action, key, pending });
+		self.save_draft_document(cx);
+		cx.notify();
+	}
+
+	fn dispatch_saved_command(&mut self, queued: QueuedCommand, cx: &mut Context<Self>) {
+		let QueuedCommand { profile, action, key, pending } = queued;
+		if self.command_epoch != pending.epoch || self.profile.as_ref() != Some(&profile) {
+			return;
+		}
+		if !self.command_connection_ready() {
+			self.finish_command(
+				pending,
+				Err("Connection changed before dispatch. Draft retained.".into()),
+				cx,
+			);
+			return;
+		}
 		let request = cx.background_executor().spawn(async move {
 			let runtime = tokio::runtime::Builder::new_current_thread()
 				.enable_all()
@@ -766,7 +841,7 @@ impl ChiefSurface {
 				.block_on(ChiefClient::new(profile).execute(action, key))
 				.map_err(|error| format!("Request failed before dispatch: {error:?}"))
 		});
-		self.command_task = Some(cx.spawn(async move |surface, cx| {
+		self.submission.command = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |surface, cx| {
 				surface.finish_command(pending, result, cx);
@@ -785,6 +860,25 @@ impl ChiefSurface {
 			return;
 		}
 		self.sending = false;
+		self.remove_command_draft_fence(&pending);
+		if !matches!(&result, Ok(ChiefCommandResponse::Accepted { .. })) {
+			self.retain_failed_command_draft(
+				&pending,
+				matches!(&result, Ok(ChiefCommandResponse::PotentiallyDispatched { .. })),
+				cx,
+			);
+		}
+		if !matches!(&result, Ok(ChiefCommandResponse::PotentiallyDispatched { .. })) {
+			self.submission.unconfirmed.retain(|key| Some(key) != pending.key.as_ref());
+		}
+		// A different command must not erase an unresolved steering receipt.
+		if !matches!(&result, Ok(ChiefCommandResponse::PotentiallyDispatched { .. }))
+			&& pending.steer.is_some()
+			&& self.submission.pending.as_ref().and_then(|saved| saved.steer.as_ref())
+				== pending.steer.as_ref()
+		{
+			self.submission.pending = None;
+		}
 		let current_owner = self.composer_manager.clone().or_else(|| self.root_id());
 		let same_owner = current_owner == pending.owner
 			|| (pending.owner.is_none()
@@ -815,11 +909,13 @@ impl ChiefSurface {
 		if matches!(&result, Ok(ChiefCommandResponse::Accepted { .. })) {
 			self.draft_profiles.execution.accepted(pending.execution_intent.as_ref());
 		}
+
 		self.apply_command_result(
 			result,
 			if same_owner { pending.draft.as_deref() } else { None },
 			cx,
 		);
+		self.save_draft_document(cx);
 		self.refresh(cx);
 		cx.notify();
 	}
@@ -861,9 +957,22 @@ impl ChiefSurface {
 		}
 	}
 
+	fn cancel_queued_command(&mut self, cx: &Context<Self>) {
+		if let Some(queued) = self.submission.waiting.take() {
+			self.remove_command_draft_fence(&queued.pending);
+			self.retain_failed_command_draft(&queued.pending, false, cx);
+			self.submission.unconfirmed.retain(|key| key != &queued.key);
+			if queued.pending.steer.is_some() {
+				self.submission.pending = None;
+			}
+			self.sending = false;
+		}
+	}
+
 	pub(crate) fn bind_profile(&mut self, profile: Option<ClientProfile>, cx: &mut Context<Self>) {
+		self.cancel_queued_command(cx);
 		self.command_epoch += 1;
-		self.command_task = None;
+		self.submission.command = None;
 		if self.sending {
 			self.uncertain = true;
 			self.sending = false;
@@ -931,6 +1040,7 @@ impl ChiefSurface {
 				cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
 				if surface
 					.update(cx, |surface, cx| {
+						surface.save_draft_document(cx);
 						let active = surface.snapshot.as_ref().is_some_and(|snapshot| {
 							snapshot.work_items.iter().any(|work| {
 								work.dispatch_state != ChiefDispatchStateDto::Idle
@@ -2352,7 +2462,7 @@ mod tests {
 					Some("draft".into()),
 					cx,
 				);
-				assert!(s.command_task.is_none());
+				assert!(s.submission.command.is_none());
 				assert!(!s.sending);
 				assert!(s.feedback.contains("Connection unavailable"));
 				assert_eq!(s.attachments.len(), 1);
@@ -2371,7 +2481,7 @@ mod tests {
 				pending_events: vec![],
 			})));
 			assert!(s.command_connection_ready());
-			assert!(s.command_task.is_none(), "fresh readback must not replay the draft");
+			assert!(s.submission.command.is_none(), "fresh readback must not replay the draft");
 			s.state = LoadState::Loading;
 			s.status_before_refresh = None;
 			assert!(s.command_connection_ready(), "normal polling must not disable sending");
@@ -2387,6 +2497,9 @@ mod tests {
 				image: true,
 			};
 			let pending = PendingCommand {
+				recovery: None,
+				key: None,
+				steer: None,
 				execution_intent: None,
 				epoch: s.command_epoch,
 				draft: Some("same draft".into()),
@@ -2452,7 +2565,7 @@ mod tests {
 			assert!(surface.uncertain);
 			assert_eq!(surface.composer.read(cx).content(), "do work");
 			surface.submit(cx);
-			assert!(surface.command_task.is_none());
+			assert!(surface.submission.command.is_none());
 			assert!(surface.feedback.contains("Acceptance unknown"));
 		});
 	}
