@@ -2,6 +2,7 @@
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_protocol::{ChiefActivityDetailCursor, ChiefActivityDetailResult};
 use serde_json::Value;
+#[path = "chief_tool_detail.rs"] mod tool_detail;
 #[cfg(test)] use serde_json::json;
 use sha2::{Digest as _, Sha256};
 
@@ -127,24 +128,7 @@ fn project_text(history: &Value, thread: &str, turn: &str, item: &str) -> Option
 					parts.push(diff.into());
 				}
 			},
-		"mcpToolCall" | "dynamicToolCall" => {
-			for field in ["server", "tool"] {
-				if let Some(text) = item[field].as_str() {
-					parts.push(text.into());
-				}
-			}
-			let content = item.pointer("/result/content").or_else(|| item.get("contentItems"));
-			for part in content.and_then(Value::as_array).into_iter().flatten() {
-				if matches!(part["type"].as_str(), Some("text" | "inputText"))
-					&& let Some(text) = part["text"].as_str()
-				{
-					parts.push(text.into());
-				}
-			}
-			if let Some(message) = item.pointer("/error/message").and_then(Value::as_str) {
-				parts.push(message.into());
-			}
-		},
+		"mcpToolCall" | "dynamicToolCall" => parts.extend(tool_detail::parts(item)),
 		"webSearch" => parts.extend(web_details(item)),
 		_ => return None,
 	}
@@ -269,6 +253,10 @@ fn page(
 		next,
 	})
 }
+
+#[cfg(test)]
+#[path = "chief_tool_detail_tests.rs"]
+mod tool_tests;
 
 #[cfg(test)]
 #[path = "chief_web_detail_tests.rs"]
