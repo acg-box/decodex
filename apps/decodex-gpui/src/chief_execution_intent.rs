@@ -9,6 +9,10 @@ pub(super) struct Intents {
 	choices: BTreeMap<String, (u64, ChiefExecutionOverrides)>,
 }
 impl Intents {
+	pub(super) fn revision(&self) -> u64 {
+		self.revision
+	}
+
 	pub(super) fn saved_choices(&self) -> (u64, BTreeMap<String, (u64, ChiefExecutionOverrides)>) {
 		(self.revision, self.choices.clone())
 	}

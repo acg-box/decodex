@@ -2216,7 +2216,12 @@ pub enum QueryPayload {
 		/// Caller-owned sign-in intent or observation.
 		request: crate::McpLoginRequest,
 	},
-	/// Read native backend estimates for one exact task.
+	/// Read configured native model settings for one exact task.
+	GetChiefModelSettings {
+		/// Exact local task whose configured native settings are requested.
+		work_id: EntityId,
+	},
+	/// Read the current native usage estimate.
 	GetChiefUsageEstimate {
 		/// Exact work identity.
 		work_id: EntityId,
@@ -2906,6 +2911,8 @@ pub enum QueryResultPayload {
 	ChiefInputReceipts(crate::ChiefInputReceiptsResult),
 	/// Account-scoped backend task estimates.
 	ChiefUsageEstimate(crate::ChiefUsageEstimateResult),
+	/// Configured native model settings for one exact task.
+	ChiefModelSettings(crate::ChiefModelSettingsResult),
 	/// Ephemeral native MCP sign-in state.
 	McpLogin(crate::McpLoginStatus),
 	/// Selected pending request fields.
@@ -4509,7 +4516,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":50},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":51},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4518,7 +4525,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":50},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":51},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4560,7 +4567,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":50},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":51},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

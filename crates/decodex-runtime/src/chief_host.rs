@@ -317,6 +317,17 @@ impl ChiefHost {
 		.await
 	}
 
+	pub(crate) async fn model_settings(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefModelSettingsResult {
+		crate::chief_model_settings::read(&self.store, || async {
+			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+			self.timeline_source(work, owner.codex_thread_id.as_deref()?).await
+		})
+		.await
+	}
+
 	async fn timeline_source(
 		&self,
 		work: &str,

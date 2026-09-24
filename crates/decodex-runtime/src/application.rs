@@ -392,6 +392,13 @@ impl ServiceApplication {
 		QueryResultPayload::ChiefSnapshot(result)
 	}
 
+	async fn query_model_settings(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefModelSettings(match &self.chief {
+			Some(chief) => chief.model_settings(work).await,
+			None => decodex_protocol::ChiefModelSettingsResult::Unavailable,
+		})
+	}
+
 	async fn query_usage_estimate(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::ChiefUsageEstimate(match &self.chief {
 			Some(chief) => chief.usage_estimate(work).await,
@@ -2009,6 +2016,8 @@ impl Application for ServiceApplication {
 
 			QueryPayload::ExchangeMcpLogin { request } =>
 				QueryResultPayload::McpLogin(query_mcp_login(self.chief.as_ref(), request).await),
+			QueryPayload::GetChiefModelSettings { work_id } =>
+				self.query_model_settings(work_id.as_str()).await,
 			QueryPayload::GetChiefUsageEstimate { work_id } =>
 				self.query_usage_estimate(work_id.as_str()).await,
 			QueryPayload::GetChiefInputReceipts { work_id, after } =>

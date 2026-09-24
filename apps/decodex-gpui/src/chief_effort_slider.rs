@@ -43,7 +43,7 @@ impl ChiefSurface {
 					.text_size(px(12.))
 					.whitespace_nowrap()
 					.text_color(rgb(ui_theme::TEXT))
-					.child(level_label(self.effort.as_str())),
+					.child(level_label(&self.composer_effort_value())),
 			)
 			.child(
 				div()
@@ -53,7 +53,7 @@ impl ChiefSurface {
 					.tab_index(0)
 					.aria_label(format!(
 						"Reasoning: {}. Use Left and Right to adjust.",
-						level_label(self.effort.as_str())
+						level_label(&self.composer_effort_value())
 					))
 					.flex_1()
 					.h(px(24.))
@@ -228,6 +228,7 @@ mod tests {
 		visual.simulate_resize(gpui::size(px(1400.), px(900.)));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+			s.mark_model_intent(cx);
 			s.capabilities = Some(ChiefCapabilitiesResult::Available {
 				models: vec![ChiefModelDto {
 					model: decodex_protocol::ConversationModel::new(s.model.read(cx).content())
@@ -326,6 +327,7 @@ mod tests {
 		let surface = cx.new(ChiefSurface::new);
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+			s.mark_model_intent(cx);
 			let custom = ConversationReasoningEffort::new("provider-defined-effort").unwrap();
 			s.capabilities = Some(ChiefCapabilitiesResult::Available {
 				memory_enabled: None,

@@ -182,6 +182,7 @@ impl ChiefSurface {
 			self.graph_expanded = false;
 		}
 
+		self.reset_model_settings();
 		self.selected = Some(id.to_owned());
 		self.connection_details_expanded = false;
 		self.history = self.history_cache.get(id).cloned().map(|h| (id.to_owned(), h));

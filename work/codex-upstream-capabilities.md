@@ -1,5 +1,28 @@
 # Codex capability reference
 
+## Native task settings display — 2026-09-24
+
+Protocol 2.51 adds a read-only task model query. The runtime checks the exact
+work, thread, account revision, process generation, and history source before and
+after the native read. A concurrent settings change invalidates the reply. Missing
+metadata stays distinct from explicit null values. The query does not resume the
+thread, send input, or change settings.
+
+The desktop composer and model picker display the task model and reasoning effort
+from this observation, unless the user has an explicit next-message choice. The
+settings panel shows the native provider and permits an explicit refresh. The
+composer and inspected task retain separate scoped observations. Connected
+snapshot polling refreshes observations at most once every two seconds. Changing
+profile, task, thread, turn, or native source clears the old observation; an old
+async reply cannot replace a newer source or user choice. Unreported values do not
+fall back to startup defaults. New model choices use the new model's capabilities.
+
+Runtime tests cover source changes, unknown metadata, and foreign-thread refusal.
+Rendered desktop tests use the public local socket to read known, null, missing,
+and mismatched responses, and cover source changes and explicit-choice precedence.
+These are read-only owner and rendered interaction checks, not signed-app release
+acceptance. Broader permission/plugin observations remain outstanding.
+
 ## Native task settings adapter — 2026-09-24
 
 At cutoff `595cc91e8cbb1c2ca822d0311dcf12709410c582`, `Thread.model` and

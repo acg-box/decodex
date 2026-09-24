@@ -18,6 +18,7 @@
 #[path = "chief_markdown.rs"] mod markdown;
 #[path = "chief_mcp_forms.rs"] mod mcp_forms;
 #[path = "chief_misalignment.rs"] mod misalignment;
+#[path = "chief_model_settings.rs"] mod model_settings;
 #[path = "chief_native_agents.rs"] mod native_agents;
 #[path = "chief_timeline.rs"] mod native_timeline;
 #[path = "chief_output_stream.rs"] mod output_stream;
@@ -165,6 +166,7 @@ pub(crate) struct ChiefSurface {
 	task_reference_search: Entity<ComposerInput>,
 	draft_profiles: drafts::Profiles,
 	composer_manager: Option<String>,
+	model_settings: model_settings::Panel,
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
 	account: Entity<ComposerInput>,
@@ -386,6 +388,7 @@ impl ChiefSurface {
 			composer,
 			composer_footer_height: 74.,
 			model,
+			model_settings: Default::default(),
 			cwd,
 			account: Self::account_input(cx),
 			effort: ConversationReasoningEffort::High,
@@ -1053,6 +1056,7 @@ impl ChiefSurface {
 		self.fast = false;
 		self.service_tier = None;
 		self.capabilities_checked = None;
+		self.reset_model_settings();
 		self.snapshot = None;
 		self.pages.clear();
 		self.page_views.clear();
@@ -1164,6 +1168,7 @@ impl ChiefSurface {
 				}
 
 				surface.sync_request(cx);
+				surface.refresh_composer_model_settings(cx);
 				surface.tick_question_timeout(cx);
 				cx.notify();
 			});
@@ -1174,6 +1179,7 @@ impl ChiefSurface {
 	fn apply_result(&mut self, result: Result<ChiefSnapshotResult, ()>) {
 		match result {
 			Ok(ChiefSnapshotResult::Available(snapshot)) => {
+				self.invalidate_model_settings(&snapshot);
 				self.refresh_failures = 0;
 				if self.interrupting.as_ref().is_some_and(|(id, turn)| {
 					snapshot
@@ -2043,6 +2049,12 @@ impl ChiefSurface {
 					.child(self.resources_panel(work, cx))
 					.child(self.integrations_panel(work, cx))
 					.child(self.usage_estimate_panel(work, cx))
+					.children(
+						self.snapshot
+							.as_ref()
+							.and_then(|s| s.work_items.iter().find(|w| &w.id == work))
+							.map(|item| self.model_settings_panel(item, cx)),
+					)
 			})
 	}
 
