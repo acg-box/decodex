@@ -1,6 +1,7 @@
 //! Opt-in installed-native qualification with a local Responses fixture and no credentials.
 use super::*;
 #[path = "chief_process_native_catalog_tests.rs"] mod catalog;
+#[path = "chief_process_native_catalog_auth_tests.rs"] mod catalog_auth;
 #[path = "chief_process_native_effort_tests.rs"] mod effort;
 #[path = "chief_process_native_goal_tests.rs"] mod goals;
 #[path = "chief_process_native_model_tests.rs"] mod models;
