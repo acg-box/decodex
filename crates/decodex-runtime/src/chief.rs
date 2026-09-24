@@ -1168,6 +1168,28 @@ impl ChiefCoordinator {
 		}
 	}
 
+	/// Persist local dismissal only while the original native history is available.
+	pub async fn skip_async_question(
+		&mut self,
+		id: &str,
+		thread: &str,
+		question: &str,
+	) -> Result<(), ChiefError> {
+		if self.dispatch_paused
+			|| self.client.question_guard(self.handled_question_revision).is_none()
+		{
+			return Err(ChiefError::Invalid(
+				"Refresh the connected question before skipping".into(),
+			));
+		}
+		if !self.store.skip_chief_async_question(id.into(), thread.into(), question.into()).await? {
+			return Err(ChiefError::Invalid(
+				"Question changed or an answer is pending; refresh before skipping".into(),
+			));
+		}
+		Ok(())
+	}
+
 	/// Route an explicit async answer to its original work and retain native reply identity.
 	pub async fn answer_async_question(
 		&mut self,

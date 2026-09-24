@@ -642,6 +642,25 @@ impl ChiefHost {
 		Ok(work_id.as_str().into())
 	}
 
+	async fn skip_question(
+		identity: (
+			&decodex_protocol::EntityId,
+			&decodex_protocol::WireText,
+			&decodex_protocol::WireText,
+		),
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		let (work, thread, question) =
+			(identity.0.as_str(), identity.1.as_str(), identity.2.as_str());
+		let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
+		chief.skip_async_question(work, thread, question).await.map_err(|_| {
+			ChiefHostError::Rejected(
+				"Question could not be skipped. Refresh the connected conversation before trying again.",
+			)
+		})?;
+		Ok(work.into())
+	}
+
 	async fn handle(
 		&self,
 		key: String,
@@ -726,6 +745,8 @@ impl ChiefHost {
 				chief.answer_async_question(work_id.as_str(),question_id.as_str(),answer.as_str(),&key).await.map_err(|_|ChiefHostError::Unknown("Question reply acceptance could not be confirmed. Inspect the current conversation before sending again."))?;
 				Ok(work_id.as_str().into())
 			},
+			ChiefActionDto::SkipQuestion { work_id, thread_id, question_id } =>
+				Self::skip_question((&work_id, &thread_id, &question_id), active).await,
 			ChiefActionDto::CancelCapacityRetry { work_id, event_id } =>
 				self.cancel_capacity_retry(work_id, event_id).await,
 			ChiefActionDto::Respond { work_id, event_id, response_json } =>

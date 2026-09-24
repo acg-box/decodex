@@ -2513,3 +2513,110 @@ async fn standalone_mcp_resolution_and_reconnection_never_replay_a_reply() {
 	);
 	assert!(sent.try_recv().is_err());
 }
+
+#[tokio::test]
+async fn async_question_skip_is_source_bound_durable_and_never_a_native_answer() {
+	let (mut chief, mut sent, directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let item = json!({"type":"agentMessage","delivery":"async","id":"skip-source","questions":[{"title":"First?"},{"title":"Second?"}]});
+	chief.observe_async_question_item("opaque thread/1", "opaque turn/1", &item).await.unwrap();
+	let first = decodex_protocol::chief_async_question_id("skip-source", 0);
+	let second = decodex_protocol::chief_async_question_id("skip-source", 1);
+	assert!(chief.skip_async_question("chief", "other-thread", &first).await.is_err());
+	assert!(chief.skip_async_question("other-work", "opaque thread/1", &first).await.is_err());
+	chief.dispatch_paused = true;
+	assert!(chief.skip_async_question("chief", "opaque thread/1", &first).await.is_err());
+	chief.dispatch_paused = false;
+	chief.skip_async_question("chief", "opaque thread/1", &first).await.unwrap();
+	chief.skip_async_question("chief", "opaque thread/1", &first).await.unwrap();
+	chief.observe_async_question_item("opaque thread/1", "opaque turn/1", &item).await.unwrap();
+	let pending = chief.store.read_chief_async_questions("chief".into()).await.unwrap();
+	assert_eq!(pending.len(), 1);
+	assert_eq!(pending[0].question_id, second);
+	assert!(chief.answer_async_question("chief", &first, "Must not send", "key").await.is_err());
+	let paths =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap()
+			.paths();
+	let reopened = SqliteStore::open(&paths).unwrap();
+	assert_eq!(
+		reopened.read_chief_async_questions("chief".into()).await.unwrap()[0].question_id,
+		second
+	);
+	let db = rusqlite::Connection::open(paths.product_database_file()).unwrap();
+	assert_eq!(
+		db.query_row("SELECT count(*) FROM chief_async_answers", [], |row| row.get::<_, i64>(0))
+			.unwrap(),
+		0
+	);
+	assert_eq!(
+		db.query_row("SELECT count(*) FROM chief_async_skips", [], |row| row.get::<_, i64>(0))
+			.unwrap(),
+		1
+	);
+	assert!(chief.store.list_pending_chief_events(100).await.unwrap().is_empty());
+	assert!(sent.try_recv().is_err());
+	// Recovery and transport-uncertain answers cannot be hidden by a skip.
+	reopened
+		.request_chief_async_recovery("opaque thread/1".into(), "skip-source".into())
+		.await
+		.unwrap();
+	assert!(chief.skip_async_question("chief", "opaque thread/1", &second).await.is_err());
+	reopened.finish_chief_async_recovery("chief".into(), "opaque thread/1".into()).await.unwrap();
+	reopened
+		.enqueue_chief_event(EnqueueChiefEvent {
+			source_event_id: "pending-answer".into(),
+			work_item_id: "chief".into(),
+			event_kind: "steer_pending".into(),
+			payload: json!({"asyncQuestionId":second}).to_string(),
+		})
+		.await
+		.unwrap();
+	assert!(chief.skip_async_question("chief", "opaque thread/1", &second).await.is_err());
+	assert_eq!(reopened.read_chief_async_questions("chief".into()).await.unwrap().len(), 1);
+	assert!(sent.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn skipped_question_survives_rebuild_only_while_native_content_is_unchanged() {
+	let (mut chief, mut sent, directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let mut item = json!({"type":"agentMessage","delivery":"async","id":"skip-rebuild","questions":[{"title":"Original?"}]});
+	chief.observe_async_question_item("opaque thread/1", "opaque turn/1", &item).await.unwrap();
+	let id = decodex_protocol::chief_async_question_id("skip-rebuild", 0);
+	for (step, expected) in [(0, 0), (1, 1), (2, 0)] {
+		chief.skip_async_question("chief", "opaque thread/1", &id).await.unwrap();
+		let mut projection = super::async_projection::Projection::default();
+		if step == 1 {
+			item["questions"][0]["title"] = json!("Changed?");
+		}
+		if step < 2 {
+			projection.observe("opaque thread/1", "opaque turn/1", &item).unwrap();
+		}
+		chief.store.refresh_chief_async_projection("opaque thread/1".into()).await.unwrap();
+		assert!(
+			chief
+				.store
+				.replace_chief_async_projection(
+					"chief".into(),
+					"opaque thread/1".into(),
+					None,
+					projection.questions,
+					vec![]
+				)
+				.await
+				.unwrap()
+		);
+		let root =
+			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+				.unwrap();
+		let reopened = SqliteStore::open(&root.paths()).unwrap();
+		assert_eq!(
+			reopened.read_chief_async_questions("chief".into()).await.unwrap().len(),
+			expected
+		);
+	}
+	assert!(sent.try_recv().is_err(), "local dismissal never sends model input");
+}
