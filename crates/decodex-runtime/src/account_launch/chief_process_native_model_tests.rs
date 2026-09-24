@@ -8,27 +8,34 @@ const EFFORT: &str = "future-provider-reasoning-effort-over-32-bytes";
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native model selection qualification"]
 async fn installed_model_selection_changes_next_inference_and_survives_restart() {
-	tokio::time::timeout(Duration::from_secs(45), qualify(false)).await.expect("bounded fixture");
+	tokio::time::timeout(Duration::from_secs(45), qualify(false, false))
+		.await
+		.expect("bounded fixture");
 }
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated active model selection qualification"]
 async fn installed_active_model_selection_preserves_admitted_inference() {
-	tokio::time::timeout(Duration::from_secs(45), qualify(true)).await.expect("bounded fixture");
+	tokio::time::timeout(Duration::from_secs(45), qualify(true, false))
+		.await
+		.expect("bounded fixture");
 }
 
-async fn qualify(running: bool) {
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated model without effort choices"]
+async fn installed_model_without_effort_choices_remains_selectable() {
+	tokio::time::timeout(Duration::from_secs(45), qualify(false, true))
+		.await
+		.expect("bounded fixture");
+}
+
+async fn qualify(running: bool, no_reasoning: bool) {
 	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	assert!(std::path::Path::new(&binary).is_absolute());
 	let home = tempfile::tempdir_in("/tmp").expect("fixture home");
 	let catalog = home.path().join("models.json");
-	let models =
-		[effort::fixture_model("fixture-a", EFFORT), effort::fixture_model("fixture-b", EFFORT)];
-	std::fs::write(
-		&catalog,
-		serde_json::to_vec(&json!({"models":models})).expect("native model fixture operation"),
-	)
-	.expect("native model fixture operation");
+	write_catalog(&catalog, no_reasoning);
+	let selected_effort = (!no_reasoning).then_some(EFFORT);
 	let listener =
 		tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("native model fixture operation");
 	let address = listener.local_addr().expect("native model fixture operation");
@@ -64,19 +71,22 @@ async fn qualify(running: bool) {
 		run_turn(&mut session, &thread).await;
 		None
 	};
-	let (store, attempt, reserved) =
-		journal::reserve(home.path(), &session.client, &thread, active_turn.as_deref(), EFFORT)
-			.await;
-	let (_, guard) = session.client.configured_task_models(&thread).expect("configured settings");
-	session
-		.client
-		.queue_thread_model_selection(
-			&ThreadModelSelection::new(&thread, "fixture-b", Some(EFFORT.into()))
-				.expect("native model fixture operation"),
-			guard,
-		)
-		.await
-		.expect("native model fixture operation");
+	let (store, attempt, reserved) = journal::reserve(
+		home.path(),
+		&session.client,
+		&thread,
+		active_turn.as_deref(),
+		selected_effort,
+	)
+	.await;
+	reviewer::select_task_model(
+		&session.client,
+		home.path(),
+		&thread,
+		"fixture-b",
+		selected_effort,
+	)
+	.await;
 	wait_selection(&mut session, &thread, "fixture-b").await;
 	journal::observe(&store, &session.client, attempt, reserved).await;
 	if let Some(turn) = active_turn {
@@ -124,11 +134,11 @@ async fn qualify(running: bool) {
 			.0
 			.effort
 			.as_deref(),
-		Some(EFFORT)
+		selected_effort
 	);
 	run_turn(&mut session, &thread).await;
 	assert_eq!(requests.load(Ordering::Acquire), 4);
-	assert_inference_sequence(&bodies);
+	assert_inference_sequence(&bodies, no_reasoning);
 	let backend = backend.expect("native model fixture operation");
 	assert!(!backend.is_finished(), "fixture assertions passed");
 	backend.abort();
@@ -188,7 +198,7 @@ fn start_backend(
 	))
 }
 
-fn assert_inference_sequence(bodies: &std::sync::Mutex<Vec<Value>>) {
+fn assert_inference_sequence(bodies: &std::sync::Mutex<Vec<Value>>, no_reasoning: bool) {
 	let bodies = bodies.lock().expect("native model fixture operation");
 	assert_eq!(
 		bodies
@@ -198,10 +208,27 @@ fn assert_inference_sequence(bodies: &std::sync::Mutex<Vec<Value>>) {
 		["fixture-a", "fixture-b", "fixture-b", "fixture-a"]
 	);
 	for body in bodies.iter() {
-		assert_eq!(body["reasoning"]["effort"], EFFORT);
+		assert_eq!(
+			body["reasoning"]["effort"].as_str(),
+			if no_reasoning && body["model"] == "fixture-b" { None } else { Some(EFFORT) }
+		);
 		assert!(
 			body.to_string().contains("Keep fixture instructions"),
 			"preserve native developer instructions"
 		);
 	}
+}
+
+fn write_catalog(catalog: &std::path::Path, no_reasoning: bool) {
+	let mut target = effort::fixture_model("fixture-b", EFFORT);
+	if no_reasoning {
+		target["supported_reasoning_levels"] = json!([]);
+		target["default_reasoning_level"] = Value::Null;
+	}
+	let models = [effort::fixture_model("fixture-a", EFFORT), target];
+	std::fs::write(
+		catalog,
+		serde_json::to_vec(&json!({"models":models})).expect("native model fixture operation"),
+	)
+	.expect("native model fixture operation");
 }

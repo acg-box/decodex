@@ -450,6 +450,34 @@ impl ChiefHost {
 		Ok(work.into())
 	}
 
+	pub(crate) async fn model_selection(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefModelSelectionState {
+		crate::chief_models::read(&self.store, || async {
+			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+			self.timeline_source(work, &owner.codex_thread_id?).await
+		})
+		.await
+	}
+
+	async fn set_task_model(
+		&self,
+		work: &str,
+		change: crate::chief_models::Change<'_>,
+	) -> Result<String, ChiefHostError> {
+		crate::chief_models::write(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			change,
+		)
+		.await?;
+		Ok(work.into())
+	}
+
 	pub(crate) async fn permission_profiles(
 		&self,
 		work: &str,
@@ -1034,6 +1062,18 @@ impl ChiefHost {
 					},
 				)
 				.await,
+			ChiefActionDto::SetTaskModel { work_id, thread_id, review_token, model, effort } =>
+				self.set_task_model(
+					work_id.as_str(),
+					crate::chief_models::Change {
+						thread: thread_id.as_str(),
+						review: review_token.as_str(),
+						model: model.as_str(),
+						effort: effort.as_ref().map(|e| e.as_str()),
+						attempt_id: key,
+					},
+				)
+				.await,
 			ChiefActionDto::SelectPermissions { work_id, thread_id, review_token, profile_id } =>
 				self.select_permissions(
 					work_id.as_str(),
@@ -1062,6 +1102,7 @@ impl ChiefHost {
 			| ChiefActionDto::SetAppSetting { .. }
 			| ChiefActionDto::SetHookSetting { .. }
 			| ChiefActionDto::SetTaskPlugin { .. }
+			| ChiefActionDto::SetTaskModel { .. }
 			| ChiefActionDto::SelectPermissions { .. }
 			| ChiefActionDto::SetLiveReviewer { .. }) => self.handle_settings(key.as_str(), action).await,
 			ChiefActionDto::NativeAgentInput { work_id, thread_id, text, expected_turn } =>

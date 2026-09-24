@@ -349,6 +349,13 @@ impl ServiceApplication {
 		})
 	}
 
+	async fn query_model_selection(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefModelSelection(match &self.chief {
+			Some(chief) => chief.model_selection(work).await,
+			None => decodex_protocol::ChiefModelSelectionState::Unavailable,
+		})
+	}
+
 	async fn query_permission_profiles(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::ChiefPermissionProfiles(match &self.chief {
 			Some(chief) => chief.permission_profiles(work).await,
@@ -360,6 +367,17 @@ impl ServiceApplication {
 		QueryResultPayload::ChiefLiveReviewer(match &self.chief {
 			Some(chief) => chief.live_reviewer(work).await,
 			None => decodex_protocol::ChiefLiveReviewerState::Unavailable,
+		})
+	}
+
+	async fn query_dictation(
+		&self,
+		request: &decodex_protocol::DictationRequest,
+	) -> QueryResultPayload {
+		QueryResultPayload::Dictation(match &self.chief {
+			Some(chief) => chief.dictation(request).await,
+			None =>
+				crate::dictation::failed(request.session_id().clone(), "Chief is not connected."),
 		})
 	}
 
@@ -2066,14 +2084,7 @@ impl Application for ServiceApplication {
 			| QueryPayload::GetChiefCapabilities
 			| QueryPayload::GetConversationCapabilities { .. } => self.query_model_catalog(query).await,
 
-			QueryPayload::ExchangeDictation { request } =>
-				QueryResultPayload::Dictation(match &self.chief {
-					Some(chief) => chief.dictation(request).await,
-					None => crate::dictation::failed(
-						request.session_id().clone(),
-						"Chief is not connected.",
-					),
-				}),
+			QueryPayload::ExchangeDictation { request } => self.query_dictation(request).await,
 			QueryPayload::ExchangeChiefVoice { request } => self.query_voice(request),
 
 			QueryPayload::GetChiefResources { work_id } =>
@@ -2094,6 +2105,8 @@ impl Application for ServiceApplication {
 				self.query_hook_settings(work_id.as_str()).await,
 			QueryPayload::GetChiefPluginSelection { work_id } =>
 				self.query_plugin_selection(work_id.as_str()).await,
+			QueryPayload::GetChiefModelSelection { work_id } =>
+				self.query_model_selection(work_id.as_str()).await,
 			QueryPayload::GetChiefPermissionProfiles { work_id } =>
 				self.query_permission_profiles(work_id.as_str()).await,
 			QueryPayload::GetChiefLiveReviewer { work_id } =>

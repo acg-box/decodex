@@ -10,7 +10,7 @@ pub(super) async fn reserve(
 	client: &AppServerClient,
 	thread: &str,
 	active_turn: Option<&str>,
-	effort: &str,
+	effort: Option<&str>,
 ) -> (SqliteStore, ChiefModelAttempt, i64) {
 	let root = decodex_core::DecodexRoot::new(home.canonicalize().expect("home").join("product"))
 		.expect("product root");
@@ -54,7 +54,9 @@ pub(super) async fn reserve(
 		settings_event: observed.id,
 		model: "fixture-b".into(),
 		model_provider: "fixture".into(),
-		effort: Some(effort.into()),
+		effort: effort
+			.map(str::to_owned)
+			.or_else(|| client.configured_task_models(thread).expect("current model").0.effort),
 		review_token: "a".repeat(64),
 		attempt_id: "model-selection".into(),
 	};

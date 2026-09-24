@@ -2202,6 +2202,11 @@ pub enum QueryPayload {
 		/// Originating local task.
 		work_id: EntityId,
 	},
+	/// Review model settings and native choices for one task.
+	GetChiefModelSelection {
+		/// Owning task.
+		work_id: EntityId,
+	},
 	/// Read task plugin exclusions.
 	GetChiefPluginSelection {
 		/// Owning task.
@@ -2923,6 +2928,8 @@ pub enum QueryResultPayload {
 	ChiefPermissionProfiles(crate::ChiefPermissionState),
 	/// Task plugin selections and operation receipts.
 	ChiefPluginSelection(crate::ChiefPluginSelectionState),
+	/// Native model selection and operation receipt.
+	ChiefModelSelection(crate::ChiefModelSelectionState),
 	/// Current shared hook review.
 	ChiefHookSettings(crate::ChiefHookSettingsState),
 	/// App connection settings and shared receipts.
@@ -4572,7 +4579,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":63},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":64},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4581,7 +4588,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":63},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":64},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4623,7 +4630,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":63},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":64},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
