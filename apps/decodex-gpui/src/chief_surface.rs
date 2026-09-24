@@ -24,6 +24,7 @@
 #[path = "chief_native_goal.rs"] mod native_goal;
 #[path = "chief_timeline.rs"] mod native_timeline;
 #[path = "chief_output_stream.rs"] mod output_stream;
+#[path = "chief_permissions.rs"] mod permissions;
 #[path = "chief_progress.rs"] mod progress;
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_question_notices.rs"] mod question_notices;
@@ -170,6 +171,7 @@ pub(crate) struct ChiefSurface {
 	composer_manager: Option<String>,
 	model_settings: model_settings::Panel,
 	live_reviewer: live_settings::Panel,
+	permission_profiles: permissions::Panel,
 	native_goal: native_goal::Panel,
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
@@ -394,6 +396,7 @@ impl ChiefSurface {
 			model,
 			model_settings: Default::default(),
 			live_reviewer: Default::default(),
+			permission_profiles: Default::default(),
 			native_goal: Default::default(),
 			cwd,
 			account: Self::account_input(cx),
@@ -1072,6 +1075,7 @@ impl ChiefSurface {
 		self.capabilities_checked = None;
 		self.reset_model_settings();
 		self.reset_live_reviewer();
+		self.reset_permission_profiles();
 		self.reset_native_goal();
 		self.snapshot = None;
 		self.pages.clear();
@@ -1199,6 +1203,7 @@ impl ChiefSurface {
 	fn apply_result(&mut self, result: Result<ChiefSnapshotResult, ()>) {
 		if !matches!(&result, Ok(ChiefSnapshotResult::Available(_))) {
 			self.reset_live_reviewer();
+			self.reset_permission_profiles();
 			self.reset_native_goal();
 			self.question_notices = Default::default();
 			self.clear_activity_detail();
@@ -1207,6 +1212,7 @@ impl ChiefSurface {
 			Ok(ChiefSnapshotResult::Available(snapshot)) => {
 				self.invalidate_model_settings(&snapshot);
 				self.invalidate_live_reviewer_for_snapshot(&snapshot);
+				self.invalidate_permission_profiles(&snapshot);
 				self.invalidate_native_goal(&snapshot);
 				if self.snapshot.as_ref().is_some_and(|old| {
 					old.runtime_source != snapshot.runtime_source
@@ -2101,6 +2107,7 @@ impl ChiefSurface {
 									.gap_2()
 									.child(self.model_settings_panel(item, cx))
 									.child(self.live_reviewer_panel(item, cx))
+									.child(self.permission_profiles_panel(item, cx))
 							}),
 					)
 			})
