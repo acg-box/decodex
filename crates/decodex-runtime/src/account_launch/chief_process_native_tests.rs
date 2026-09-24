@@ -1,5 +1,6 @@
 //! Opt-in installed-native qualification with a local Responses fixture and no credentials.
 use super::*;
+#[path = "chief_process_native_effort_tests.rs"] mod effort;
 #[path = "chief_process_native_steer_tests.rs"] mod steer;
 use serde_json::json;
 use std::{
@@ -265,6 +266,14 @@ async fn qualify_media(
 }
 
 async fn serve(listener: tokio::net::TcpListener, requests: Arc<std::sync::atomic::AtomicUsize>) {
+	serve_with_effort(listener, requests, None).await;
+}
+
+async fn serve_with_effort(
+	listener: tokio::net::TcpListener,
+	requests: Arc<std::sync::atomic::AtomicUsize>,
+	effort: Option<&str>,
+) {
 	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = tokio::io::BufReader::new(socket);
@@ -285,7 +294,10 @@ async fn serve(listener: tokio::net::TcpListener, requests: Arc<std::sync::atomi
 		assert!((1..=2 * 1024 * 1024).contains(&length));
 		let mut body = vec![0; length];
 		socket.read_exact(&mut body).await.expect("native history fixture operation");
-		let _: Value = serde_json::from_slice(&body).expect("Responses request JSON");
+		let body: Value = serde_json::from_slice(&body).expect("Responses request JSON");
+		if let Some(effort) = effort {
+			assert_eq!(body["reasoning"]["effort"], effort);
+		}
 		let serial = requests.fetch_add(1, Ordering::AcqRel);
 		let id = format!("fixture-{serial}");
 		let frames = [

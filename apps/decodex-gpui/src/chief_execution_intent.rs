@@ -51,7 +51,7 @@ impl ChiefSurface {
 	pub(super) fn mark_model_intent(&mut self, cx: &Context<Self>) {
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
 		let Ok(model) = ConversationModel::new(self.model.read(cx).content()) else { return };
-		let effort = self.effort;
+		let effort = self.effort.clone();
 		let tier = self
 			.service_tier
 			.clone()
@@ -68,7 +68,7 @@ impl ChiefSurface {
 
 	pub(super) fn mark_effort_intent(&mut self) {
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
-		let effort = self.effort;
+		let effort = self.effort.clone();
 		self.draft_profiles
 			.execution
 			.change(owner, |choice| choice.reasoning_effort = Some(effort));
@@ -122,6 +122,17 @@ mod tests {
 			assert!(selected.model.is_none() && selected.selected_service_tier().is_none());
 			assert!(choice(action(s, "other-manager")).is_empty());
 
+			s.select_composer_option("effort", "provider-defined-effort", cx);
+			assert_eq!(
+				choice(action(s, "chief")).reasoning_effort.unwrap().as_str(),
+				"provider-defined-effort"
+			);
+			let encoded = serde_json::to_value(action(s, "chief")).unwrap();
+			let decoded = serde_json::from_value(encoded).unwrap();
+			assert_eq!(
+				choice(decoded).reasoning_effort.unwrap().as_str(),
+				"provider-defined-effort"
+			);
 			s.select_composer_option("model", "explicit-model", cx);
 			assert_eq!(choice(action(s, "chief")).model.unwrap().as_str(), "explicit-model");
 			assert!(choice(action(s, "chief")).selected_service_tier().is_none());

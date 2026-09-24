@@ -92,9 +92,9 @@ pub use self::{
 		ConversationProgramContext, ConversationReadError, ConversationReasoningEffort,
 		ConversationRecoveryAction, ConversationResult, ConversationState, ConversationSummary,
 		ConversationTitle, ConversationTurnOutcome, ConversationUnavailableReason,
-		ConversationWorkingDirectory, MAX_CONVERSATION_LIST_SIZE, MAX_CONVERSATION_MODEL_BYTES,
-		MAX_CONVERSATION_TITLE_BYTES, MAX_CONVERSATION_WORKING_DIRECTORY_BYTES,
-		MAX_PROVIDER_THREAD_ID_BYTES, ProviderThreadId,
+		ConversationWorkingDirectory, CustomReasoningEffort, MAX_CONVERSATION_LIST_SIZE,
+		MAX_CONVERSATION_MODEL_BYTES, MAX_CONVERSATION_TITLE_BYTES,
+		MAX_CONVERSATION_WORKING_DIRECTORY_BYTES, MAX_PROVIDER_THREAD_ID_BYTES, ProviderThreadId,
 	},
 	doctor::{
 		AppServerCapability, DoctorCheck, DoctorComponent, DoctorContractError, DoctorIssue,
@@ -160,7 +160,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 49 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 50 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

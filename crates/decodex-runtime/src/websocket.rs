@@ -1403,7 +1403,7 @@ enum OwnerDeadlineState {
 }
 
 enum ActiveActorOperation {
-	Command(ActiveCommand),
+	Command(Box<ActiveCommand>),
 	RegistrationSnapshot(PendingRegistrationSnapshot),
 }
 
@@ -2252,14 +2252,14 @@ where
 				.await
 				.map_err(|_| ())
 		});
-		self.operation = Some(ActiveActorOperation::Command(ActiveCommand {
+		self.operation = Some(ActiveActorOperation::Command(Box::new(ActiveCommand {
 			connection_id,
 			command,
 			version,
 			fingerprint,
 			reply,
 			future,
-		}));
+		})));
 
 		OwnerDirective::Continue
 	}
@@ -2271,7 +2271,7 @@ where
 		match operation {
 			ActiveActorOperation::Command(command) => match completion {
 				ActiveActorOperationCompletion::Command(execution) =>
-					self.finish_active_command(command, *execution),
+					self.finish_active_command(*command, *execution),
 				ActiveActorOperationCompletion::RegistrationSnapshot(_) => {
 					self.operation = Some(ActiveActorOperation::Command(command));
 

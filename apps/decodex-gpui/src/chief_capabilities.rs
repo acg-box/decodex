@@ -199,7 +199,8 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn model_efforts(&self, cx: &Context<Self>) -> Vec<ConversationReasoningEffort> {
-		self.selected_model(cx).map_or_else(|| vec![self.effort], |model| model.efforts.clone())
+		self.selected_model(cx)
+			.map_or_else(|| vec![self.effort.clone()], |model| model.efforts.clone())
 	}
 
 	pub(super) fn reconcile_model_options(&mut self, cx: &mut Context<Self>) {
@@ -208,12 +209,12 @@ impl ChiefSurface {
 			.clone()
 			.or_else(|| self.root_id())
 			.map(|owner| self.draft_profiles.execution.choice(&owner));
-		let before_effort = self.effort;
+		let before_effort = self.effort.clone();
 		let before_tier = self.service_tier.clone();
 		if let Some(model) = self.selected_model(cx).cloned() {
 			if !model.efforts.contains(&self.effort)
 				&& let Some(effort) =
-					model.default_effort.or_else(|| model.efforts.first().copied())
+					model.default_effort.or_else(|| model.efforts.first().cloned())
 			{
 				self.effort = effort;
 			}
@@ -243,7 +244,9 @@ impl ChiefSurface {
 	pub(super) fn composer_capability_error(&self, cx: &Context<Self>) -> Option<&'static str> {
 		let owner = self.composer_manager.clone().or_else(|| self.root_id());
 		let choice = owner.as_deref().map(|owner| self.draft_profiles.execution.choice(owner));
-		let effort = choice.as_ref().map_or(Some(self.effort), |choice| choice.reasoning_effort);
+		let effort = choice
+			.as_ref()
+			.map_or(Some(self.effort.clone()), |choice| choice.reasoning_effort.clone());
 		let tier = choice.as_ref().map_or_else(
 			|| {
 				Some(

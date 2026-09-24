@@ -13,34 +13,36 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/task_history.rs"] mod task_history;
 
 #[tokio::test]
-async fn persistent_effort_survives_coordinator_admission_and_dispatch() {
-	let (fixture, mut sent, _directory) = fixture().await;
-	let mut config = fixture.config.clone();
-	config.chief_effort = "persistent".into();
-	config.worker_effort = "persistent".into();
-	let mut chief =
-		ChiefCoordinator::new(fixture.store.clone(), fixture.client.clone(), config.clone())
-			.unwrap();
-	chief.start_chief("chief", "Coordinate").await.unwrap();
-	let mut starts = 0;
-	while let Ok(request) = sent.try_recv() {
-		match request["method"].as_str() {
-			Some("thread/start") => {
-				assert_eq!(request["params"]["config"]["model_reasoning_effort"], "persistent");
-				starts += 1;
-			},
-			Some("turn/start") => {
-				assert_eq!(request["params"]["effort"], "persistent");
-				starts += 1;
-			},
-			_ => {},
+async fn advertised_efforts_survive_coordinator_admission_and_dispatch() {
+	for effort in ["persistent", "future-provider-reasoning-effort-over-32-bytes"] {
+		let (fixture, mut sent, _directory) = fixture().await;
+		let mut config = fixture.config.clone();
+		config.chief_effort = effort.into();
+		config.worker_effort = effort.into();
+		let mut chief =
+			ChiefCoordinator::new(fixture.store.clone(), fixture.client.clone(), config.clone())
+				.unwrap();
+		chief.start_chief("chief", "Coordinate").await.unwrap();
+		let mut starts = 0;
+		while let Ok(request) = sent.try_recv() {
+			match request["method"].as_str() {
+				Some("thread/start") => {
+					assert_eq!(request["params"]["config"]["model_reasoning_effort"], effort);
+					starts += 1;
+				},
+				Some("turn/start") => {
+					assert_eq!(request["params"]["effort"], effort);
+					starts += 1;
+				},
+				_ => {},
+			}
 		}
+		assert_eq!(starts, 2);
+		for field in [&mut config.chief_effort, &mut config.worker_effort] {
+			*field = "invalid\neffort".into();
+		}
+		assert!(ChiefCoordinator::new(fixture.store, fixture.client, config).is_err());
 	}
-	assert_eq!(starts, 2);
-	for field in [&mut config.chief_effort, &mut config.worker_effort] {
-		*field = "not-an-effort".into();
-	}
-	assert!(ChiefCoordinator::new(fixture.store, fixture.client, config).is_err());
 }
 
 #[tokio::test]

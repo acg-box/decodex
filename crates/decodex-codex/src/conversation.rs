@@ -21,7 +21,7 @@ use crate::{ExactThreadId, ThreadCwd, protocol::MAX_APP_SERVER_FRAME_BYTES};
 /// Maximum UTF-8 bytes in one caller-selected model identifier.
 pub const MAX_CONVERSATION_MODEL_BYTES: usize = 128;
 /// Maximum UTF-8 bytes in one caller-selected reasoning-effort value.
-pub const MAX_CONVERSATION_REASONING_EFFORT_BYTES: usize = 32;
+pub const MAX_CONVERSATION_REASONING_EFFORT_BYTES: usize = 128;
 /// Maximum UTF-8 bytes in developer instructions.
 pub const MAX_CONVERSATION_INSTRUCTIONS_BYTES: usize = 64 * 1_024;
 /// Maximum UTF-8 bytes in one text input item.

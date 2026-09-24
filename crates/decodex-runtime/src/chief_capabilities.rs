@@ -200,13 +200,25 @@ mod tests {
 		let value = json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[{"reasoningEffort":"persistent"}],"defaultReasoningEffort":"persistent"});
 		let model = project_model(&value).expect("advertised model");
 		assert_eq!(model.efforts[0].as_str(), "persistent");
-		assert_eq!(model.default_effort, Some(model.efforts[0]));
+		assert_eq!(model.default_effort, Some(model.efforts[0].clone()));
 		let mut value = value;
 		value["supportedReasoningEfforts"] = json!([{"reasoningEffort":"high"}]);
 		let model = project_model(&value).expect("model without persistent support");
 		assert_eq!(model.efforts.len(), 1);
 		assert_eq!(model.efforts[0].as_str(), "high");
 		assert_eq!(model.default_effort, None, "an unadvertised default is not selected");
+	}
+
+	#[test]
+	fn custom_catalog_efforts_and_default_keep_exact_native_values() {
+		let custom = "future-provider-reasoning-effort-over-32-bytes";
+		let value = json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[{"reasoningEffort":"high"},{"reasoningEffort":custom},{"reasoningEffort":custom}],"defaultReasoningEffort":custom});
+		let model = project_model(&value).expect("advertised model");
+		assert_eq!(model.efforts.len(), 2);
+		assert_eq!(model.efforts[1].as_str(), custom);
+		assert_eq!(model.default_effort.as_ref().unwrap().as_str(), custom);
+		let native = decodex_codex::ConversationReasoningEffort::new(custom).unwrap();
+		assert_eq!(native.as_str(), model.efforts[1].as_str());
 	}
 
 	#[test]
@@ -310,8 +322,14 @@ mod tests {
 	fn catalog_uses_advertised_values_not_model_name_guesses() {
 		let value = json!({"model":"custom-model","displayName":"Custom","supportedReasoningEfforts":[{"reasoningEffort":"medium"},{"reasoningEffort":"future-level"}],"defaultReasoningEffort":"medium","inputModalities":["text"],"serviceTiers":[{"id":"priority"}]});
 		let model = project_model(&value).expect("native model");
-		assert_eq!(model.efforts, vec![decodex_protocol::ConversationReasoningEffort::Medium]);
-		assert_eq!(model.default_effort, model.efforts.first().copied());
+		assert_eq!(
+			model.efforts,
+			vec![
+				decodex_protocol::ConversationReasoningEffort::Medium,
+				decodex_protocol::ConversationReasoningEffort::new("future-level").unwrap()
+			]
+		);
+		assert_eq!(model.default_effort, model.efforts.first().cloned());
 		assert!(model.supports_fast);
 		assert!(!model.supports_images);
 		let mut invalid = value;
