@@ -1,7 +1,7 @@
 # Radar Research Assets
 
 This directory contains reusable assets for the standalone Radar auxiliary tool.
-Radar has no native schedule in the exact-five Decodex automation portfolio.
+Radar has no native schedule in the Decodex automation portfolio.
 
 - `radar.toml` declares only Radar-owned private cache paths.
 - `scripts/github/` contains bounded GitHub collection and analysis helpers.
