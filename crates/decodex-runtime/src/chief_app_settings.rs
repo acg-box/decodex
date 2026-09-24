@@ -161,7 +161,7 @@ where
 	let id = store
 		.reserve_chief_app_settings_attempt(ChiefAppSettingsAttempt {
 			owner: shared::owner(&before),
-			request_event_id: selection.event,
+			request_event_id: Some(selection.event),
 			scope: review.scope,
 			connector: connector_id.clone(),
 			link: link_id.clone(),
@@ -192,6 +192,7 @@ where
 		Ok(ack) => (if ack.overridden { "overridden" } else { "saved" }, Some(ack.version)),
 		Err(
 			ClientError::StaleHistory
+			| ClientError::StaleRequest
 			| ClientError::RequestTooLarge
 			| ClientError::RequestQueueFull,
 		) => ("rejected", None),

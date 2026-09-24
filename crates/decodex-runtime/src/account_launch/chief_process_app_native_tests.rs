@@ -138,13 +138,7 @@ async fn qualify() {
 		.await
 		.expect("native fixture");
 	finish(&mut session.events, &thread).await;
-	let current =
-		session.client.app_link_settings(cwd, "calendar", "work").await.expect("native fixture");
-	session
-		.client
-		.write_app_link_setting(&current, AppLinkSettingEdit::ApprovalMode(None))
-		.await
-		.expect("native fixture");
+	restore_saved_prompting(&session, cwd).await;
 	start_turn(&session.client, &thread).await;
 	let (id, _) = approval(&mut session.events, &thread, "work").await;
 	session
@@ -187,6 +181,22 @@ async fn qualify() {
 		1,
 		"only work link uses native Guardian"
 	);
+}
+// The work connection no longer prompts. Recover its saved override from native config.
+async fn restore_saved_prompting(session: &Session, cwd: &str) {
+	let catalog = session.client.saved_app_link_settings(cwd).await.expect("saved connections");
+	let current = catalog
+		.entries
+		.iter()
+		.find(|entry| entry.app_id() == "calendar" && entry.link_id() == "work")
+		.expect("saved work connection");
+	let guard =
+		session.client.history_guard(session.client.history_revision()).expect("current source");
+	session
+		.client
+		.write_saved_app_link_setting(current, AppLinkSettingEdit::ApprovalMode(None), guard)
+		.await
+		.expect("restore inherited prompting without another approval request");
 }
 async fn qualify_reviewer(session: &mut Session, cwd: &str, thread: &str) {
 	let current =

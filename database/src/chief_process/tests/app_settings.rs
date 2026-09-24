@@ -23,7 +23,7 @@ async fn request(store: &SqliteStore, n: u8, child: bool) -> i64 {
 fn attempt(n: u8, event: i64, token: char, previous: Option<i64>) -> ChiefAppSettingsAttempt {
 	ChiefAppSettingsAttempt {
 		owner: owner(n),
-		request_event_id: event,
+		request_event_id: Some(event),
 		scope: DIGEST.into(),
 		connector: "calendar".into(),
 		link: " work.link ".into(),
@@ -312,5 +312,57 @@ async fn concurrent_app_and_hook_reservations_have_only_one_winner() {
 	assert_eq!(
 		store.chief_config_receipt(DIGEST.into()).await.unwrap(),
 		other.chief_config_receipt(DIGEST.into()).await.unwrap()
+	);
+}
+
+#[tokio::test]
+async fn saved_connection_edits_reuse_receipts_without_requiring_another_tool_request() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("saved-apps.sqlite3");
+	let store = setup(&path).await;
+	let event = request(&store, 1, false).await;
+	let original = attempt(1, event, 'a', None);
+	assert_eq!(
+		serde_json::to_value(&original).unwrap()["request_event_id"],
+		json!(event),
+		"keep prior request receipt format"
+	);
+	let first = store.reserve_chief_app_settings_attempt(original).await.unwrap().unwrap();
+	store
+		.finish_chief_app_settings_attempt(
+			first,
+			"attempt-a".into(),
+			"saved".into(),
+			Some("after".into()),
+		)
+		.await
+		.unwrap();
+	store.acknowledge_chief_request_event(event).await.unwrap();
+	let mut saved = attempt(2, event, 'b', Some(first));
+	saved.request_event_id = None;
+	saved.previous_value = Some(json!("approve"));
+	saved.value = None;
+	let mut foreign = saved.clone();
+	foreign.owner.account = owner(1).account;
+	assert!(store.reserve_chief_app_settings_attempt(foreign).await.is_err());
+	let id = store.reserve_chief_app_settings_attempt(saved.clone()).await.unwrap().unwrap();
+	drop(store);
+	let store = SqliteStore::open_test(&path).unwrap();
+	let receipt = store.chief_app_settings_receipt(DIGEST.into()).await.unwrap().unwrap();
+	assert_eq!(receipt.attempt.request_event_id, None);
+	assert_eq!(receipt.state, "reserved");
+	saved.previous_id = Some(id);
+	saved.attempt_id = "retry-after-reopen".into();
+	assert!(store.reserve_chief_app_settings_attempt(saved).await.unwrap().is_none());
+	assert!(
+		store.reserve_chief_hook_setting(hooks::attempt(1, 'c', None)).await.unwrap().is_none()
+	);
+	assert!(store.observe_chief_app_settings(id, observation(2, None)).await.unwrap());
+	assert_eq!(
+		store.chief_app_settings_receipt(DIGEST.into()).await.unwrap().unwrap().state,
+		"target_observed"
+	);
+	assert!(
+		store.reserve_chief_hook_setting(hooks::attempt(1, 'c', None)).await.unwrap().is_some()
 	);
 }
