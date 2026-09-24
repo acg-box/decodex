@@ -2234,6 +2234,11 @@ pub enum QueryPayload {
 		/// Read current inputs strictly after this persistent event identity.
 		after: Option<i64>,
 	},
+	/// Read positive evidence for one exact steering submission.
+	GetChiefSteerReceipt {
+		/// Identity captured before dispatch.
+		identity: crate::ChiefSteerIdentity,
+	},
 	/// Read a bounded chunk of an exact native attachment.
 	GetChiefMedia {
 		/// Source identity and continuation.
@@ -2875,6 +2880,8 @@ pub enum QueryResultPayload {
 	ChiefTimeline(crate::ChiefTimelineResult),
 	/// Exact native attachment content.
 	ChiefMedia(crate::ChiefMediaResult),
+	/// Exact positive steering acceptance evidence.
+	ChiefSteerReceipt(crate::ChiefSteerReceiptResult),
 	/// Independent unconfirmed input page.
 	ChiefInputReceipts(crate::ChiefInputReceiptsResult),
 	/// Account-scoped backend task estimates.
@@ -4482,7 +4489,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":47},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":48},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4491,7 +4498,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":47},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":48},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4533,7 +4540,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":47},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":48},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

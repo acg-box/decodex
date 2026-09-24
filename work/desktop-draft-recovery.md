@@ -4,7 +4,7 @@
 
 Editable Chief text, attachments, task references, and asynchronous question editors belong to the exact service profile. Disconnecting keeps the editors. Returning to a profile restores its in-memory inputs. A late command result cannot clear a different profile or newer text.
 
-Next-message model, effort, and tier choices belong to the conversation and carry a revision. SendConfigured contains only explicit changes. Acceptance clears only the captured revision. Steering keeps next-message choices. Full legacy execution objects remain readable. Protocol version: 2.47.
+Next-message model, effort, and tier choices belong to the conversation and carry a revision. SendConfigured contains only explicit changes. Acceptance clears only the captured revision. Steering keeps next-message choices. Full legacy execution objects remain readable. Protocol version: 2.48.
 
 The desktop captures profile-owned text, files, task references, explicit conversation settings, and question editors in a private revisioned store. It waits for publication of the exact command identity and original input before RPC dispatch. The original in-flight copy remains available if later edits are saved before a reply. Acceptance removes that exact copy; a known failure can retain it beside newer input. Unknown delivery blocks automatic replay after reopening.
 
@@ -26,4 +26,12 @@ These are source and test results. The AppKit callback test uses an isolated del
 
 Build and test a fresh signed desktop with isolated fixture storage. Verify the real menu, Dock, and keyboard quit paths, cancelled quit on conflict, relaunch recovery, and export. Do not run capture fixtures against the user's draft store.
 
-Exact native steering receipt reconciliation is a separate pending integration. Restored uncertain commands remain blocked and are never replayed. Complete the audit of new-task configuration drafts and task-setting presentation; this batch persists explicit conversation settings, not all setup defaults.
+## Exact steering receipt recovery
+
+A positive receipt now requires the saved work, native thread, turn, and client submission ID. The coordinator consumes native userMessage.clientId from completed items and exact terminal or cold history. The local read-only query returns confirmed, unconfirmed, or unavailable. Only a matching confirmed response can release the desktop submission fence. Missing history and pending-list absence never authorize replay.
+
+The desktop retains later edits and other outstanding command IDs. It settles matching recovery-copy uncertainty without discarding the saved text. A delayed duplicate RPC acceptance is idempotent after native receipt confirmation.
+
+Verification: 84 database tests, 107 protocol tests, 481 runtime tests (9 ignored), and 288 desktop tests (5 ignored). Strict Clippy passed for all four affected packages. Installed codex-cli 0.155.0-alpha.16.3 passed an isolated app-server qualification with a loopback Responses backend. Both live receipt delivery and cold recovery after the turn became idle confirmed the exact submission, passed through the real local query transport, and retained exactly two inference requests: the original and the intentional steer. Restart and receipt queries issued no model work. Reference: upstream 595cc91e8cbb1c2ca822d0311dcf12709410c582 TurnSteerParams.client_user_message_id.
+
+Older local steering records without the original thread identity remain unconfirmed; do not infer acceptance from matching text. General uncertain non-steering submissions, new-task configuration drafts, and task-setting presentation still need their own integration audit. Real signed desktop quit/relaunch acceptance remains outstanding.
