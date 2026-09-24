@@ -16,16 +16,7 @@ async fn qualify() {
 	assert!(std::path::Path::new(&binary).is_absolute());
 	let home = tempfile::tempdir_in("/tmp").expect("fixture home");
 	let catalog = home.path().join("models.json");
-	let model = json!({
-		"slug":"gpt-5.6-sol","display_name":"Fixture","description":"Synthetic model",
-		"default_reasoning_level":EFFORT,"supported_reasoning_levels":[{"effort":EFFORT,"description":"Custom"}],
-		"shell_type":"shell_command","visibility":"list","minimal_client_version":"0.1.0",
-		"supported_in_api":true,"priority":0,"support_verbosity":false,"default_verbosity":null,
-		"apply_patch_tool_type":null,"truncation_policy":{"mode":"bytes","limit":10000},
-		"supports_image_detail_original":false,"multi_agent_version":"v2","context_window":272000,
-		"max_context_window":272000,"experimental_supported_tools":[],
-		"model_messages":{"instructions_template":"Synthetic fixture","instructions_variables":null}
-	});
+	let model = fixture_model("gpt-5.6-sol", EFFORT);
 	std::fs::write(&catalog, serde_json::to_vec(&json!({"models":[model]})).expect("catalog JSON"))
 		.expect("write catalog");
 	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("loopback fixture");
@@ -112,4 +103,17 @@ async fn qualify() {
 	}
 	assert!(!backend.is_finished(), "fixture server must not fail an effort assertion");
 	backend.abort();
+}
+
+pub(super) fn fixture_model(slug: &str, effort: &str) -> Value {
+	json!({
+		"slug":slug,"display_name":"Fixture","description":"Synthetic model",
+		"default_reasoning_level":effort,"supported_reasoning_levels":[{"effort":effort,"description":"Custom"}],
+		"shell_type":"shell_command","visibility":"list","minimal_client_version":"0.1.0",
+		"supported_in_api":true,"priority":0,"support_verbosity":false,"default_verbosity":null,
+		"apply_patch_tool_type":null,"truncation_policy":{"mode":"bytes","limit":10000},
+		"supports_image_detail_original":false,"multi_agent_version":"v2","context_window":272000,
+		"max_context_window":272000,"experimental_supported_tools":[],
+		"model_messages":{"instructions_template":"Synthetic fixture","instructions_variables":null}
+	})
 }
