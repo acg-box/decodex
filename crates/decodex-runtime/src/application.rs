@@ -3982,7 +3982,7 @@ async fn query_chief_request(
 			"proposedNetworkPolicyAmendments",
 		],
 		"item/fileChange/requestApproval" => &["reason", "grantRoot"],
-		"item/permissions/requestApproval" => &["cwd", "reason", "permissions"],
+		"item/permissions/requestApproval" => &["cwd", "reason", "permissions", "environmentId"],
 		"item/tool/requestUserInput" => &["questions", "isBlocking"],
 		"mcpServer/elicitation/request" => &[
 			"serverName",
@@ -4008,7 +4008,8 @@ async fn query_chief_request(
 			}
 			let valid = match *key {
 				"kind" => matches!(value.as_str(), Some("command" | "writeStdin")),
-				"command" | "cwd" | "reason" | "grantRoot" => value.is_null() || value.is_string(),
+				"command" | "cwd" | "reason" | "grantRoot" | "environmentId" =>
+					value.is_null() || value.is_string(),
 				"serverName" | "mode" | "message" | "url" | "elicitationId" | "title"
 				| "description" => value.is_string(),
 				// OpenAI form schemas are opaque JSON. Preserve unsupported shapes so
@@ -5779,6 +5780,49 @@ mod tests {
 			super::query_chief_request(&owner, 99999).await,
 			ChiefRequestResult::Unavailable
 		);
+	}
+
+	#[tokio::test]
+	async fn permission_request_projection_preserves_the_native_executor() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(store.clone());
+		chief_query_work(&store, "worker").await;
+		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
+		store.begin_chief_dispatch("worker".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("worker".into(), "turn".into()).await.unwrap();
+		for (index, environment) in
+			[serde_json::json!("remote/工作"), serde_json::Value::Null, serde_json::json!(42)]
+				.into_iter()
+				.enumerate()
+		{
+			let permissions = serde_json::json!({"fileSystem":{"entries":[{"path":{"type":"special","value":{"kind":"project_roots"}},"access":"write"}]}});
+			let payload = serde_json::json!({"method":"item/permissions/requestApproval","params":{"threadId":"thread","turnId":"turn","environmentId":environment,"cwd":"C:\\workspace","permissions":permissions,"privateToken":"hidden"}});
+			let event = store
+				.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
+					source_event_id: format!("executor-{index}"),
+					work_item_id: "worker".into(),
+					event_kind: "permission_pending".into(),
+					payload: payload.to_string(),
+				})
+				.await
+				.unwrap();
+			let result = super::query_chief_request(&owner, event.id).await;
+			if environment.is_number() {
+				assert_eq!(result, decodex_protocol::ChiefRequestResult::Unavailable);
+				continue;
+			}
+			let decodex_protocol::ChiefRequestResult::Available { request_json, .. } = result
+			else {
+				panic!("permission request")
+			};
+			let value: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
+			assert_eq!(value["environmentId"], environment);
+			assert_eq!(value["cwd"], "C:\\workspace");
+			assert_eq!(value["permissions"], permissions);
+			assert!(value.get("privateToken").is_none());
+		}
 	}
 
 	async fn assert_question_metadata_projection(store: &SqliteStore, owner: &ProductStore) {
