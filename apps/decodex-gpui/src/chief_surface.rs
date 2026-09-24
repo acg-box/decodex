@@ -9,6 +9,7 @@
 #[path = "chief_detail.rs"] mod detail;
 #[path = "chief_dictation.rs"] mod dictation;
 #[path = "chief_drafts.rs"] mod drafts;
+#[path = "chief_execution_intent.rs"] mod execution_intent;
 #[path = "chief_graph.rs"] mod graph;
 #[path = "chief_guardian.rs"] mod guardian;
 #[path = "chief_install.rs"] mod install;
@@ -200,6 +201,7 @@ struct ChiefInputs {
 }
 
 struct PendingCommand {
+	execution_intent: Option<(String, u64)>,
 	epoch: u64,
 	draft: Option<String>,
 	owner: Option<String>,
@@ -520,7 +522,7 @@ impl ChiefSurface {
 				.position(|model| model.model.as_str() == self.model.read(cx).content())
 				.map_or(0, |index| (index + 1) % models.len());
 			let model = models[next].model.as_str().to_owned();
-			self.model.update(cx, |input, cx| input.set_content(&model, cx));
+			self.select_composer_option("model", &model, cx);
 			self.reconcile_model_options(cx);
 		} else {
 			self.load_capabilities(cx);
@@ -708,7 +710,7 @@ impl ChiefSurface {
 						task_references: self.task_references.clone(),
 					},
 					ChiefActionDto::Send { root_id, text } =>
-						self.configured_send(root_id, text, execution, attachments),
+						self.configured_send(root_id, text, attachments),
 					action => action,
 				};
 				self.follow_latest_after_send(cx);
@@ -745,6 +747,7 @@ impl ChiefSurface {
 			return;
 		}
 		let pending = PendingCommand {
+			execution_intent: self.draft_profiles.execution.capture(&action),
 			epoch: self.command_epoch,
 			attachments: draft.as_ref().map(|_| self.attachments.clone()),
 			references: draft.as_ref().map(|_| self.task_references.clone()),
@@ -808,6 +811,9 @@ impl ChiefSurface {
 			&& let Some(sent) = &pending.references
 		{
 			self.clear_sent_task_references(sent, same_owner, pending.owner.as_deref());
+		}
+		if matches!(&result, Ok(ChiefCommandResponse::Accepted { .. })) {
+			self.draft_profiles.execution.accepted(pending.execution_intent.as_ref());
 		}
 		self.apply_command_result(
 			result,
@@ -1577,6 +1583,7 @@ impl ChiefSurface {
 				.position(|level| *level == self.effort)
 				.map_or(0, |index| (index + 1) % supported.len());
 			self.effort = supported[next];
+			self.mark_effort_intent();
 		}
 		cx.notify();
 	}
@@ -1891,6 +1898,7 @@ impl ChiefSurface {
 			.flex_col()
 			.gap(px(6.0))
 			.child(self.context_choices(cx))
+			.when(self.root_id().is_some(), |d| d.child(self.apply_exact_model_button(cx)))
 			.child(muted(
 				"Model and reasoning apply next turn; other defaults apply to new Chiefs.",
 			))
@@ -2379,6 +2387,7 @@ mod tests {
 				image: true,
 			};
 			let pending = PendingCommand {
+				execution_intent: None,
 				epoch: s.command_epoch,
 				draft: Some("same draft".into()),
 				owner: Some("root".into()),

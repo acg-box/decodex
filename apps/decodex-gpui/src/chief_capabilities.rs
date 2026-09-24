@@ -49,6 +49,7 @@ impl ChiefSurface {
 							}) {
 							s.fast = id.as_str() == "priority";
 							s.service_tier = Some(id.clone());
+							s.mark_tier_intent();
 							cx.notify();
 						}
 					})),
@@ -202,6 +203,13 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn reconcile_model_options(&mut self, cx: &mut Context<Self>) {
+		let intent = self
+			.composer_manager
+			.clone()
+			.or_else(|| self.root_id())
+			.map(|owner| self.draft_profiles.execution.choice(&owner));
+		let before_effort = self.effort;
+		let before_tier = self.service_tier.clone();
 		if let Some(model) = self.selected_model(cx).cloned() {
 			if !model.efforts.contains(&self.effort)
 				&& let Some(effort) =
@@ -220,24 +228,48 @@ impl ChiefSurface {
 				self.fast = false;
 			}
 		}
+		if intent.as_ref().is_some_and(|choice| choice.reasoning_effort.is_some())
+			&& self.effort != before_effort
+		{
+			self.mark_effort_intent();
+		}
+		if intent.as_ref().is_some_and(|choice| choice.selected_service_tier().is_some())
+			&& self.service_tier != before_tier
+		{
+			self.mark_tier_intent();
+		}
 	}
 
 	pub(super) fn composer_capability_error(&self, cx: &Context<Self>) -> Option<&'static str> {
+		let owner = self.composer_manager.clone().or_else(|| self.root_id());
+		let choice = owner.as_deref().map(|owner| self.draft_profiles.execution.choice(owner));
+		let effort = choice.as_ref().map_or(Some(self.effort), |choice| choice.reasoning_effort);
+		let tier = choice.as_ref().map_or_else(
+			|| {
+				Some(
+					self.service_tier
+						.clone()
+						.unwrap_or_else(|| decodex_protocol::ServiceTier::from_fast(self.fast)),
+				)
+			},
+			|choice| choice.selected_service_tier(),
+		);
 		let Some(model) = self.selected_model(cx) else {
-			return (self.fast
-				|| self.service_tier.as_ref().is_some_and(|tier| tier.as_str() != "default"))
-			.then_some("Refresh model capabilities before selecting a service tier.");
+			return tier
+				.as_ref()
+				.is_some_and(|tier| tier.as_str() != "default")
+				.then_some("Refresh model capabilities before selecting a service tier.");
 		};
-		if self.service_tier.as_ref().is_some_and(|selected| {
+		if tier.as_ref().is_some_and(|selected| {
 			selected.as_str() != "default"
 				&& !model.service_tiers.iter().any(|tier| &tier.id == selected)
 		}) {
 			return Some("This service tier is unavailable for the selected model.");
 		}
-		if !model.efforts.contains(&self.effort) {
+		if effort.is_some_and(|effort| !model.efforts.contains(&effort)) {
 			return Some("This model's reasoning levels are not supported by this version.");
 		}
-		if self.fast && !model.supports_fast {
+		if tier.as_ref().is_some_and(|tier| tier.as_str() == "priority") && !model.supports_fast {
 			return Some("Fast mode is not available for this model.");
 		}
 		if !model.supports_images && self.attachments.iter().any(|file| file.image) {

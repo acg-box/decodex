@@ -291,8 +291,9 @@ pub enum ChiefActionDto {
 		root_id: crate::EntityId,
 		/// User-authored message.
 		text: crate::HistoryText,
-		/// Settings for this message.
-		execution: crate::ConversationExecutionSettings,
+		/// Explicit next-message changes; omitted fields inherit native task settings.
+		#[serde(default)]
+		execution: crate::ChiefExecutionOverrides,
 		/// User-selected files, bounded by the service.
 		attachments: Vec<ChiefAttachmentDto>,
 		/// Tasks explicitly selected as readable evidence.

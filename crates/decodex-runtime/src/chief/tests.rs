@@ -1439,6 +1439,27 @@ async fn native_usage_replay_restores_context_and_the_next_turn_baseline() {
 	);
 }
 
+#[test]
+fn partial_message_settings_preserve_existing_values_and_explicit_standard_clears_tier() {
+	let baseline =
+		json!({"input":[],"model":"native-model","effort":"high","serviceTier":"priority"});
+	let mut params = baseline.clone();
+	let message =
+		|execution: Value| json!({"options":{"execution":execution,"attachments":[]}}).to_string();
+	apply_message_options(&mut params, &message(json!({}))).unwrap();
+	assert_eq!(params, baseline);
+	apply_message_options(&mut params, &message(json!({"reasoning_effort":"medium"}))).unwrap();
+	assert_eq!(params["model"], "native-model");
+	assert_eq!(params["effort"], "medium");
+	assert_eq!(params["serviceTier"], "priority");
+	assert!(params.get("serviceTierForTurn").is_none());
+	apply_message_options(&mut params, &message(json!({"service_tier":"default"}))).unwrap();
+	assert!(params["serviceTier"].is_null());
+	assert_eq!(params["serviceTierForTurn"], "default");
+	assert_eq!(params["model"], "native-model");
+	assert_eq!(params["effort"], "medium");
+}
+
 #[tokio::test]
 async fn configured_message_dispatches_native_images_and_exact_turn_settings_once() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;

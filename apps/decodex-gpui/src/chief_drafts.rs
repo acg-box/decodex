@@ -4,6 +4,7 @@ use std::{collections::BTreeMap, mem};
 
 #[derive(Default)]
 pub(super) struct Profiles {
+	pub(super) execution: execution_intent::Intents,
 	pub(super) texts: BTreeMap<String, String>,
 	pub(super) files: BTreeMap<String, Vec<decodex_protocol::ChiefAttachmentDto>>,
 	pub(super) tasks: BTreeMap<String, Vec<decodex_protocol::ChiefTaskReferenceDto>>,
@@ -13,6 +14,7 @@ pub(super) struct Profiles {
 
 #[derive(Default)]
 struct Drafts {
+	execution: execution_intent::Intents,
 	restored_questions: Vec<decodex_protocol::DesktopQuestionDraft>,
 	question_inputs: BTreeMap<(String, String), Entity<ComposerInput>>,
 	question_choices: BTreeMap<(String, String), async_questions::ChoiceDraft>,
@@ -51,6 +53,7 @@ impl ChiefSurface {
 			return;
 		}
 		let saved = Drafts {
+			execution: mem::take(&mut self.draft_profiles.execution),
 			restored_questions: mem::take(&mut self.restored_question_drafts),
 			question_inputs: mem::take(&mut self.async_question_inputs),
 			question_choices: mem::take(&mut self.async_question_choices),
@@ -75,6 +78,7 @@ impl ChiefSurface {
 			.unwrap_or_default();
 		self.draft_profiles.saved.push((previous, saved));
 		self.composer.update(cx, |input, cx| input.set_content(&restored.text, cx));
+		self.draft_profiles.execution = restored.execution;
 		self.restored_question_drafts = restored.restored_questions;
 		self.async_question_inputs = restored.question_inputs;
 		self.async_question_choices = restored.question_choices;

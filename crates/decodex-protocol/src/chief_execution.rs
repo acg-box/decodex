@@ -73,4 +73,25 @@ mod tests {
 				.is_err()
 		);
 	}
+	#[test]
+	fn configured_send_wire_roundtrip_retains_partial_selection_and_task_references() {
+		let action = crate::ChiefActionDto::SendConfigured {
+			root_id: crate::EntityId::new("manager").unwrap(),
+			text: crate::HistoryText::new("continue").unwrap(),
+			execution: ChiefExecutionOverrides {
+				reasoning_effort: Some(crate::ConversationReasoningEffort::Medium),
+				..Default::default()
+			},
+			attachments: vec![],
+			task_references: vec![crate::ChiefTaskReferenceDto {
+				work_id: crate::EntityId::new("other").unwrap(),
+				thread_id: crate::WireText::new("native-other").unwrap(),
+				title: crate::WireText::new("Evidence").unwrap(),
+			}],
+		};
+		let wire = serde_json::to_value(&action).unwrap();
+		assert_eq!(wire["data"]["execution"], json!({"reasoning_effort":"medium"}));
+		let decoded: crate::ChiefActionDto = serde_json::from_value(wire).unwrap();
+		assert_eq!(decoded, action);
+	}
 }

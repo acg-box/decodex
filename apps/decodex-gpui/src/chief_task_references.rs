@@ -257,12 +257,6 @@ mod tests {
 			let action = s.configured_send(
 				EntityId::new("chief").unwrap(),
 				HistoryText::new("Read it").unwrap(),
-				decodex_protocol::ConversationExecutionSettings {
-					model: ConversationModel::new("gpt-6-astra").unwrap(),
-					reasoning_effort: ConversationReasoningEffort::High,
-					fast: false,
-					service_tier: None,
-				},
 				vec![],
 			);
 			match action {
