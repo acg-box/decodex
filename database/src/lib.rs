@@ -13,6 +13,8 @@ pub use chief_dispatch_rejection::ChiefDispatchRefusal;
 mod chief;
 mod chief_settings_observations;
 pub use chief_settings_observations::ChiefTaskSettingsObservation;
+mod chief_hooks;
+pub use chief_hooks::{ChiefHookAttempt, ChiefHookObservation, ChiefHookOwner, ChiefHookReceipt};
 mod chief_plugins;
 pub use chief_plugins::{ChiefPluginAttempt, ChiefPluginReceipt};
 mod chief_permissions;
