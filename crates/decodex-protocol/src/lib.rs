@@ -182,7 +182,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 68 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 69 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
@@ -278,6 +278,7 @@ pub use chief_execution::ChiefExecutionOverrides;
 mod chief_steer;
 pub use chief_steer::{ChiefSteerIdentity, ChiefSteerReceiptResult};
 mod desktop_drafts;
+mod desktop_ordinary_drafts;
 pub use decodex_core::{
 	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES,
 };
@@ -285,3 +286,4 @@ pub use desktop_drafts::{
 	DesktopComposerDraft, DesktopCreationIntent, DesktopCreationSetup, DesktopDraftDocument,
 	DesktopPendingDraft, DesktopProfileDraft, DesktopQuestionDraft, DesktopRecoveredDraft,
 };
+pub use desktop_ordinary_drafts::{DesktopOrdinaryComposerDraft, DesktopOrdinaryDraft};

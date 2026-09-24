@@ -30,7 +30,7 @@ pub struct DesktopDraftDocument {
 impl Default for DesktopDraftDocument {
 	fn default() -> Self {
 		Self {
-			version: 4,
+			version: 5,
 			profiles: BTreeMap::new(),
 			unbound: Default::default(),
 			recovered: vec![],
@@ -42,6 +42,9 @@ impl Default for DesktopDraftDocument {
 #[derive(Clone, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopProfileDraft {
+	/// Ordinary editors by exact directory within this service profile.
+	#[serde(default)]
+	pub ordinary: BTreeMap<String, crate::DesktopOrdinaryDraft>,
 	/// Original command IDs whose delivery is not yet confirmed. Never replay these.
 	#[serde(default)]
 	pub unconfirmed_commands: Vec<crate::IdempotencyKey>,
@@ -168,7 +171,7 @@ impl DesktopDraftDocument {
 		let mut value: Self =
 			serde_json::from_slice(bytes).map_err(|_| "Draft snapshot is invalid")?;
 		value.validate()?;
-		value.version = 4;
+		value.version = 5;
 		Ok(value)
 	}
 
@@ -181,7 +184,7 @@ impl DesktopDraftDocument {
 	}
 
 	fn validate(&self) -> Result<(), &'static str> {
-		if !matches!(self.version, 1..=4) {
+		if !matches!(self.version, 1..=5) {
 			return Err("Draft snapshot version is unsupported");
 		}
 		if self.profiles.len() > 64 {
@@ -209,8 +212,22 @@ impl DesktopDraftDocument {
 	}
 }
 impl DesktopProfileDraft {
+	/// Whether any retained command still needs delivery reconciliation.
+	pub fn has_unconfirmed_delivery(&self) -> bool {
+		self.uncertain || self.ordinary.values().any(|draft| !draft.unconfirmed.is_empty())
+	}
+
 	fn validate(&self) -> Result<(), &'static str> {
 		self.composer.validate()?;
+		if self.ordinary.len() > 64 {
+			return Err("Too many ordinary directory drafts");
+		}
+		for (directory, draft) in &self.ordinary {
+			if directory != draft.working_directory.as_str() {
+				return Err("Ordinary draft directory does not match");
+			}
+			draft.validate()?;
+		}
 		if self.unconfirmed_commands.len() > 64
 			|| (!self.unconfirmed_commands.is_empty() && !self.uncertain)
 		{
@@ -308,7 +325,7 @@ impl DesktopComposerDraft {
 		Ok(())
 	}
 }
-fn validate_text(text: &str) -> Result<(), &'static str> {
+pub(super) fn validate_text(text: &str) -> Result<(), &'static str> {
 	if text.len() > 16 * 1024 { Err("Draft editor text is too large") } else { Ok(()) }
 }
 struct BoundedOutput(Vec<u8>);
@@ -385,7 +402,7 @@ mod tests {
 			execution: Some((EntityId::new("work").unwrap(), 4)),
 		});
 		DesktopDraftDocument {
-			version: 4,
+			version: 5,
 			profiles: BTreeMap::from([("a".repeat(64), profile)]),
 			recovered: vec![],
 			unbound: Default::default(),
@@ -411,7 +428,7 @@ mod tests {
 		let bytes = document.encode().unwrap();
 		assert_eq!(DesktopDraftDocument::decode(&bytes).unwrap().unbound.creation, Some(setup));
 		let old = DesktopDraftDocument::decode(br#"{"version":1,"profiles":{}}"#).unwrap();
-		assert_eq!(old.version, 4);
+		assert_eq!(old.version, 5);
 		assert!(old.unbound.creation.is_none());
 		let mut remote = document.clone();
 		remote.unbound.creation.as_mut().unwrap().model = "other model".into();
@@ -448,7 +465,7 @@ mod tests {
 	#[test]
 	fn draft_document_rejects_changed_contract_and_ambiguous_ownership() {
 		let mut original = document();
-		original.version = 5;
+		original.version = 6;
 		assert!(original.encode().is_err());
 		let mut json = serde_json::to_value(document()).unwrap();
 		json["unexpected"] = serde_json::json!(true);

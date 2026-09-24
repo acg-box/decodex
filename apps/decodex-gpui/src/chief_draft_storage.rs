@@ -365,6 +365,15 @@ impl ChiefSurface {
 			})
 			.transpose_option()?;
 		Some(DesktopProfileDraft {
+			ordinary: self
+				.draft_profiles
+				.active
+				.as_ref()
+				.and_then(|profile| {
+					self.draft_profiles.storage.document.profiles.get(&profile.draft_scope_key())
+				})
+				.map(|draft| draft.ordinary.clone())
+				.unwrap_or_default(),
 			unconfirmed_commands: self.submission.unconfirmed.clone(),
 			composer: composer(
 				self.composer_manager.as_deref(),
@@ -1096,3 +1105,61 @@ mod tests {
 #[cfg(test)]
 #[path = "chief_creation_setup_tests.rs"]
 mod creation_tests;
+
+#[cfg(test)]
+mod ordinary_owner_tests {
+	use super::*;
+	#[gpui::test]
+	fn chief_capture_and_profile_switch_preserve_ordinary_edits(cx: &mut gpui::TestAppContext) {
+		let (_root, first, second) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let surface = cx.new(ChiefSurface::new);
+		let ordinary = decodex_protocol::DesktopOrdinaryDraft {
+			working_directory: decodex_protocol::ConversationWorkingDirectory::new("/tmp").unwrap(),
+			composer: decodex_protocol::DesktopOrdinaryComposerDraft {
+				conversation_id: None,
+				text: "Ordinary input".into(),
+				execution: decodex_protocol::ConversationExecutionSettings {
+					model: decodex_protocol::ConversationModel::new("native-model").unwrap(),
+					reasoning_effort: None,
+					fast: false,
+					service_tier: None,
+				},
+				creation_intent: Default::default(),
+			},
+			new_conversation: None,
+			parked: Default::default(),
+			unconfirmed: vec![],
+		};
+		surface.update(cx, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(first.clone()), cx);
+			s.draft_profiles
+				.storage
+				.document
+				.profiles
+				.entry(first.draft_scope_key())
+				.or_default()
+				.ordinary
+				.insert("/tmp".into(), ordinary.clone());
+			s.composer.update(cx, |input, cx| input.set_content("Chief input", cx));
+			s.bind_profile(Some(second.clone()), cx);
+			s.composer.update(cx, |input, cx| input.set_content("Other service input", cx));
+			s.bind_profile(Some(first.clone()), cx);
+			s.remember_draft_document(cx);
+			assert_eq!(s.composer.read(cx).content(), "Chief input");
+			assert!(
+				s.draft_profiles.storage.document.profiles[&second.draft_scope_key()]
+					.ordinary
+					.is_empty()
+			);
+			publish_document(&store, 0, &s.draft_profiles.storage.document)
+				.unwrap_or_else(|_| panic!("publish"));
+		});
+		let decoded = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		assert_eq!(decoded.profiles[&first.draft_scope_key()].ordinary["/tmp"], ordinary);
+	}
+}
