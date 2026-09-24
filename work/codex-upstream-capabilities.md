@@ -319,3 +319,17 @@ witness and an unsent-input diagnostic in the existing session. The desktop offe
 refresh of that conversation with a wait-for-close message. Local protocol2.56
 adds this recovery action; the database schema remains35. Fixture and database
 restart tests qualify these paths; they do not prove a live native unload race.
+
+
+## Permission request execution environment
+
+At cutoff `595cc91e8cbb1c2ca822d0311dcf12709410c582`, app-server forwards the
+native permissions request's optional `environmentId`. Decodex preserves that
+field in the owned approval projection and displays the native identifier next
+to the requested permissions. An absent or empty identifier does not produce an
+inferred local environment. Numeric values cannot become approval display text.
+
+Installed Codex `0.155.0-alpha.16.3` includes the nullable string field in its
+experimental generated `PermissionsRequestApprovalParams` schema. Projection and
+rendered tests cover Unicode identifiers and missing or invalid values. This is
+request attribution, not proof of remote executor availability or a remote grant.
