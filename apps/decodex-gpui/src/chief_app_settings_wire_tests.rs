@@ -9,7 +9,9 @@ use futures_util::{SinkExt, StreamExt};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use tokio_tungstenite::tungstenite::Message;
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
-fn fixture() -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<ChiefActionDto>>) {
+fn fixture(
+	saved: bool,
+) -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<ChiefActionDto>>) {
 	let root = tempfile::tempdir_in("/tmp").unwrap();
 	let path = root.path().canonicalize().unwrap();
 	let server = path.join("server");
@@ -28,13 +30,15 @@ fn fixture() -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<C
 		let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
 		runtime.block_on(async {
 			let listener = tokio::net::UnixListener::from_std(listener).unwrap();
-			tokio::time::timeout(std::time::Duration::from_secs(5), serve(listener)).await.unwrap()
+			tokio::time::timeout(std::time::Duration::from_secs(5), serve(listener, saved))
+				.await
+				.unwrap()
 		})
 	});
 	(root, profile, thread)
 }
 
-async fn serve(listener: tokio::net::UnixListener) -> Vec<ChiefActionDto> {
+async fn serve(listener: tokio::net::UnixListener, saved: bool) -> Vec<ChiefActionDto> {
 	let mut actions = Vec::new();
 	for index in 0..3 {
 		let mut socket =
@@ -67,48 +71,103 @@ async fn serve(listener: tokio::net::UnixListener) -> Vec<ChiefActionDto> {
 		if index == 1 {
 			let ClientMessage::Command(command) = request else { panic!("setting command") };
 			let CommandPayload::Chief { action } = command.payload else { panic!("Chief command") };
-			let ChiefActionDto::SetAppSetting { work_id, event_id, review_token, edit } = &*action
-			else {
-				panic!("account setting")
-			};
-			assert_eq!(work_id.as_str(), "root");
-			assert_eq!(*event_id, 7);
-			assert_eq!(review_token.as_str(), "a".repeat(64));
-			assert_eq!(*edit, Edit::ApprovalMode(Some(Mode::Auto)));
+			assert_action(&action, saved);
 			actions.push(*action);
 			// Lose the response after dispatch. The client must read, never resend.
 			socket.close(None).await.unwrap();
 			continue;
 		}
 		let ClientMessage::Query(query) = request else { panic!("settings read") };
-		let QueryPayload::GetChiefAppSettings { work_id, event_id } = query.payload else {
-			panic!("account query")
-		};
-		assert_eq!(work_id.as_str(), "root");
-		assert_eq!(event_id, 7);
-		let state = State::Available {
-			can_update: true,
-			config_file: "/native/config.toml".into(),
-			last_edit: None,
-			connector_id: "calendar".into(),
-			link_id: "work".into(),
-			review_token: if index == 0 { "a" } else { "b" }.repeat(64),
-			effective_mode: Some(if index == 0 { "prompt" } else { "auto" }.into()),
-			effective_reviewer: None,
-			user_mode: Some(if index == 0 { "prompt" } else { "auto" }.into()),
-			user_reviewer: None,
-		};
+		let payload = reply(query.payload, index, saved);
 		let result = ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
 			server_id: ServerId::new(SERVER).unwrap(),
 			query_id: query.query_id,
-			payload: QueryResultPayload::ChiefAppSettings(state),
+			payload,
 		});
 		socket.send(Message::Text(serde_json::to_string(&result).unwrap().into())).await.unwrap();
 	}
 	actions
 }
 
+fn assert_action(action: &ChiefActionDto, saved: bool) {
+	if saved {
+		let ChiefActionDto::SetSavedAppSetting {
+			work_id,
+			thread_id,
+			connector_id,
+			link_id,
+			review_token,
+			edit,
+		} = action
+		else {
+			panic!("saved edit")
+		};
+		assert_eq!(work_id.as_str(), "root");
+		assert_eq!(thread_id.as_str(), "thread");
+		assert_eq!(connector_id.as_str(), "calendar");
+		assert_eq!(link_id.as_str(), "work");
+		assert_eq!(review_token.as_str(), "a".repeat(64));
+		assert_eq!(*edit, Edit::ApprovalMode(None));
+	} else {
+		let ChiefActionDto::SetAppSetting { work_id, event_id, review_token, edit } = action else {
+			panic!("request edit")
+		};
+		assert_eq!(work_id.as_str(), "root");
+		assert_eq!(*event_id, 7);
+		assert_eq!(review_token.as_str(), "a".repeat(64));
+		assert_eq!(*edit, Edit::ApprovalMode(Some(Mode::Auto)));
+	}
+}
+fn reply(payload: QueryPayload, index: usize, saved: bool) -> QueryResultPayload {
+	if saved {
+		let QueryPayload::GetChiefSavedAppSettings { work_id } = payload else {
+			panic!("saved query")
+		};
+		assert_eq!(work_id.as_str(), "root");
+		let connections = if index == 0 {
+			vec![decodex_protocol::ChiefSavedAppConnection {
+				connector_id: "calendar".into(),
+				link_id: "work".into(),
+				review_token: "a".repeat(64),
+				user_mode: Some("approve".into()),
+				user_reviewer: None,
+				effective_mode: Some("approve".into()),
+				effective_reviewer: None,
+			}]
+		} else {
+			vec![]
+		};
+		return QueryResultPayload::ChiefSavedAppSettings(
+			decodex_protocol::ChiefSavedAppSettingsResult::Available {
+				work_id: "root".into(),
+				thread_id: "thread".into(),
+				config_file: "/native/config.toml".into(),
+				connections,
+				can_update: true,
+				last_edit: None,
+			},
+		);
+	}
+	let QueryPayload::GetChiefAppSettings { work_id, event_id } = payload else {
+		panic!("account query")
+	};
+	assert_eq!(work_id.as_str(), "root");
+	assert_eq!(event_id, 7);
+	let state = State::Available {
+		can_update: true,
+		config_file: "/native/config.toml".into(),
+		last_edit: None,
+		connector_id: "calendar".into(),
+		link_id: "work".into(),
+		review_token: if index == 0 { "a" } else { "b" }.repeat(64),
+		effective_mode: Some(if index == 0 { "prompt" } else { "auto" }.into()),
+		effective_reviewer: None,
+		user_mode: Some(if index == 0 { "prompt" } else { "auto" }.into()),
+		user_reviewer: None,
+	};
+	QueryResultPayload::ChiefAppSettings(state)
+}
 struct AccountView {
 	surface: Entity<ChiefSurface>,
 }
@@ -123,7 +182,7 @@ fn real_settings_click_reads_then_sends_once_and_refreshes_unknown_result(
 ) {
 	use decodex_protocol::{ChiefPendingEventDto, ChiefWorkKindDto};
 	use serde_json::json;
-	let (_directory, profile, server) = fixture();
+	let (_directory, profile, server) = fixture(false);
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(ChiefSurface::new);
 		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
@@ -168,4 +227,64 @@ fn real_settings_click_reads_then_sends_once_and_refreshes_unknown_result(
 		visual.debug_bounds("account-mode-auto").is_none(),
 		"post-write readback is not a new consent"
 	);
+}
+
+fn saved_work() -> ChiefWorkItemDto {
+	ChiefWorkItemDto {
+		id: "root".into(),
+		parent_goal_id: None,
+		kind: decodex_protocol::ChiefWorkKindDto::Goal,
+		title: "Root".into(),
+		codex_thread_id: Some("thread".into()),
+		active_turn_id: None,
+		dispatch_state: ChiefDispatchStateDto::Idle,
+		status: ChiefWorkStatusDto::Open,
+		next_check_at_micros: None,
+		created_at_micros: 1,
+		updated_at_micros: 1,
+	}
+}
+struct SavedView {
+	surface: Entity<ChiefSurface>,
+}
+impl Render for SavedView {
+	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.surface.update(cx, |s, cx| s.saved_app_settings_panel(&saved_work(), cx))
+	}
+}
+#[gpui::test]
+fn saved_connection_can_restore_inheritance_without_a_pending_request(
+	cx: &mut gpui::TestAppContext,
+) {
+	let (_dir, profile, server) = fixture(true);
+	let (view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(ChiefSurface::new);
+		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+		surface.update(cx, |s, _| {
+			s.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {
+				runtime_source: Some(EntityId::new("source").unwrap()),
+				workspaces: vec![],
+				dependencies: vec![],
+				work_items: vec![saved_work()],
+				pending_events: vec![],
+			})));
+			s.profile = Some(profile);
+		});
+		SavedView { surface }
+	});
+	visual.update(|w, cx| {
+		w.resize(gpui::size(px(900.), px(1100.)));
+		w.draw(cx).clear();
+	});
+	for id in ["saved-app-settings-read", "saved-app-edit-0", "saved-app-0-account-mode-inherit"] {
+		let button = visual.debug_bounds(id).unwrap();
+		visual.simulate_click(button.center(), Default::default());
+		visual.run_until_parked();
+		visual.update(|w, cx| {
+			w.draw(cx).clear();
+		});
+	}
+	assert_eq!(server.join().unwrap().len(), 1);
+	assert!(visual.debug_bounds("saved-app-edit-0").is_none());
+	view.read_with(visual, |v, cx| v.surface.read_with(cx, |s, _| assert!(s.request.is_none())));
 }

@@ -292,3 +292,129 @@ async fn reject_changed_sources(owned: &OwnedReviewer, event: i64, review: &str,
 		);
 	}
 }
+
+#[tokio::test]
+async fn saved_app_service_survives_resolved_requests_and_rejects_unreviewed_connections() {
+	for outcome in ["saved", "unknown", "unknown-applied", "read-failed"] {
+		tokio::time::timeout(std::time::Duration::from_secs(15), saved_scenario(outcome))
+			.await
+			.expect("bounded saved settings scenario");
+	}
+}
+async fn saved_scenario(outcome: &'static str) {
+	use decodex_protocol::ChiefSavedAppSettingsResult as Saved;
+	let home = tempfile::tempdir().expect("home");
+	let (local, remote) = tokio::io::duplex(32768);
+	let (r, w) = tokio::io::split(local);
+	let (client, mut events) = AppServerClient::from_io(r, w);
+	let writes = Arc::new(AtomicUsize::new(0));
+	let edit = Edit::ApprovalMode(None);
+	let backend = tokio::spawn(serve(remote, writes.clone(), outcome, edit.clone()));
+	client.request("test/pending", json!({})).await.expect("pending");
+	let decodex_codex::app_server_client::ServerEvent::Request { id, .. } =
+		events.recv().await.expect("request")
+	else {
+		panic!("pending")
+	};
+	let owned = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
+	let event = reserve_event(&owned).await;
+	client.respond(id, json!({"action":"accept","content":null})).await.expect("answer");
+	owned.store.acknowledge_chief_request_event(event).await.expect("resolved");
+	let source = || async { Some(owned.source(&owned.key)) };
+	let Saved::Available { connections, can_update: true, .. } =
+		crate::chief_app_settings::read_saved(&owned.store, source).await
+	else {
+		panic!("saved catalog")
+	};
+	let row = connections.first().expect("saved override");
+	for (thread, connector) in [("foreign", "calendar"), ("thread", "unlisted")] {
+		assert!(
+			crate::chief_app_settings::write_saved(
+				&owned.store,
+				source,
+				crate::chief_app_settings::SavedSelection {
+					thread,
+					connector,
+					link: "work",
+					review: &row.review_token,
+					edit: &edit,
+					attempt_id: "invalid"
+				}
+			)
+			.await
+			.is_err()
+		);
+	}
+	let calls = AtomicUsize::new(0);
+	let changing = || {
+		let changed = calls.fetch_add(1, Ordering::AcqRel) > 0;
+		let fixture = &owned;
+		async move {
+			let mut key = fixture.key.clone();
+			if changed {
+				key.revision += 1
+			}
+			Some(fixture.source(&key))
+		}
+	};
+	assert_eq!(
+		crate::chief_app_settings::read_saved(&owned.store, changing).await,
+		Saved::Unavailable
+	);
+	let response = crate::chief_app_settings::write_saved(
+		&owned.store,
+		source,
+		crate::chief_app_settings::SavedSelection {
+			thread: "thread",
+			connector: "calendar",
+			link: "work",
+			review: &row.review_token,
+			edit: &edit,
+			attempt_id: "saved-origin",
+		},
+	)
+	.await;
+	assert_eq!(response.is_ok(), matches!(outcome, "saved" | "read-failed"));
+	assert_eq!(writes.load(Ordering::Acquire), 1);
+	let state = crate::chief_app_settings::read_saved(&owned.store, source).await;
+	let expected = match outcome {
+		"unknown-applied" => "target_observed",
+		"read-failed" => "saved",
+		other => other,
+	};
+	if outcome == "read-failed" {
+		assert_eq!(state, Saved::Unavailable)
+	} else {
+		let Saved::Available { last_edit: Some(last), can_update, .. } = state else {
+			panic!("result")
+		};
+		assert_eq!(last.outcome, expected);
+		assert_eq!(can_update, outcome != "unknown");
+	}
+	assert!(
+		crate::chief_app_settings::write_saved(
+			&owned.store,
+			source,
+			crate::chief_app_settings::SavedSelection {
+				thread: "thread",
+				connector: "calendar",
+				link: "work",
+				review: &row.review_token,
+				edit: &edit,
+				attempt_id: "replay"
+			}
+		)
+		.await
+		.is_err()
+	);
+	assert_eq!(writes.load(Ordering::Acquire), 1);
+	let reopened = SqliteStore::open(&owned.root.paths()).expect("reopen");
+	let receipt = reopened
+		.chief_app_settings_receipt(crate::chief_config_settings::digest("/native/config.toml"))
+		.await
+		.expect("receipt")
+		.expect("saved");
+	assert_eq!(receipt.state, expected);
+	assert_eq!(receipt.attempt.request_event_id, None);
+	backend.abort();
+}

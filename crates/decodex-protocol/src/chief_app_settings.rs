@@ -106,6 +106,47 @@ pub struct ChiefConfigEditReceipt {
 	pub saved_version: Option<String>,
 }
 
+/// One native connection with an explicit saved override.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ChiefSavedAppConnection {
+	/// Exact native app key.
+	pub connector_id: String,
+	/// Exact native connection key, without claiming current cloud connectivity.
+	pub link_id: String,
+	/// Source and native configuration reviewed for one edit.
+	pub review_token: String,
+	/// Saved approval mode; None inherits.
+	pub user_mode: Option<String>,
+	/// Saved reviewer; None inherits.
+	pub user_reviewer: Option<String>,
+	/// Merged link mode before managed and tool policy.
+	pub effective_mode: Option<String>,
+	/// Merged link reviewer before managed policy.
+	pub effective_reviewer: Option<String>,
+}
+/// Native saved overrides, independently of pending tool requests.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ChiefSavedAppSettingsResult {
+	/// Complete saved configuration for the current task's native source.
+	Available {
+		/// Originating local task.
+		work_id: String,
+		/// Native thread whose directory selected this configuration.
+		thread_id: String,
+		/// Shared writable configuration file.
+		config_file: String,
+		/// Saved connections; empty means there are no explicit overrides.
+		connections: Vec<ChiefSavedAppConnection>,
+		/// False while a shared edit remains unresolved.
+		can_update: bool,
+		/// Latest app or hook edit to this file.
+		last_edit: Option<Box<ChiefConfigEditReceipt>>,
+	},
+	/// No current source or complete readable configuration.
+	Unavailable,
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

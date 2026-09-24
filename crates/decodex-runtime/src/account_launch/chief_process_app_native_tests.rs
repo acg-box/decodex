@@ -101,7 +101,7 @@ async fn qualify() {
 		.client
 		.server_request_guard(&id, "mcpServer/elicitation/request", &params)
 		.expect("native fixture");
-	service_edits(&root, &session.client, &thread, &id, &params).await;
+	let (owned, event) = service_edits(&root, &session.client, &thread, &id, &params).await;
 	let read =
 		session.client.app_link_settings(cwd, "calendar", "work").await.expect("native fixture");
 	assert!(guard.is_live(), "config reload must not resolve the waiting approval");
@@ -112,6 +112,7 @@ async fn qualify() {
 		.expect("native fixture");
 	finish(&mut session.events, &thread).await;
 	assert!(!guard.is_live());
+	owned.store.acknowledge_chief_request_event(event).await.expect("resolved original request");
 	assert!(
 		session
 			.client
@@ -138,7 +139,7 @@ async fn qualify() {
 		.await
 		.expect("native fixture");
 	finish(&mut session.events, &thread).await;
-	restore_saved_prompting(&session, cwd).await;
+	restore_saved_prompting(&owned).await;
 	start_turn(&session.client, &thread).await;
 	let (id, _) = approval(&mut session.events, &thread, "work").await;
 	session
@@ -183,20 +184,53 @@ async fn qualify() {
 	);
 }
 // The work connection no longer prompts. Recover its saved override from native config.
-async fn restore_saved_prompting(session: &Session, cwd: &str) {
-	let catalog = session.client.saved_app_link_settings(cwd).await.expect("saved connections");
-	let current = catalog
-		.entries
+async fn restore_saved_prompting(owned: &OwnedReviewer) {
+	use decodex_protocol::{ChiefAppSettingEdit as Edit, ChiefSavedAppSettingsResult as State};
+	let source = || async { Some(owned.source(&owned.key)) };
+	let State::Available { connections, .. } =
+		crate::chief_app_settings::read_saved(&owned.store, source).await
+	else {
+		panic!("saved config review")
+	};
+	let row = connections
 		.iter()
-		.find(|entry| entry.app_id() == "calendar" && entry.link_id() == "work")
+		.find(|r| r.connector_id == "calendar" && r.link_id == "work")
 		.expect("saved work connection");
-	let guard =
-		session.client.history_guard(session.client.history_revision()).expect("current source");
-	session
+	crate::chief_app_settings::write_saved(
+		&owned.store,
+		source,
+		crate::chief_app_settings::SavedSelection {
+			thread: &owned.key.thread,
+			connector: &row.connector_id,
+			link: &row.link_id,
+			review: &row.review_token,
+			edit: &Edit::ApprovalMode(None),
+			attempt_id: "restore-prompting",
+		},
+	)
+	.await
+	.expect("restore inherited prompting without another approval request");
+	let State::Available { connections, last_edit: Some(receipt), .. } =
+		crate::chief_app_settings::read_saved(&owned.store, source).await
+	else {
+		panic!("restored state")
+	};
+	assert!(connections.iter().all(|r| r.link_id != "work"));
+	assert_eq!(receipt.outcome, "saved");
+	let reopened = SqliteStore::open(&owned.root.paths()).expect("reopen");
+	let native =
+		owned.client.thread_read(json!({"threadId":owned.key.thread})).await.expect("thread");
+	let catalog = owned
 		.client
-		.write_saved_app_link_setting(current, AppLinkSettingEdit::ApprovalMode(None), guard)
+		.saved_app_link_settings(native["thread"]["cwd"].as_str().expect("cwd"))
 		.await
-		.expect("restore inherited prompting without another approval request");
+		.expect("catalog");
+	let receipt = reopened
+		.chief_app_settings_receipt(crate::chief_config_settings::digest(catalog.config_file()))
+		.await
+		.expect("receipt")
+		.expect("saved");
+	assert_eq!(receipt.attempt.request_event_id, None);
 }
 async fn qualify_reviewer(session: &mut Session, cwd: &str, thread: &str) {
 	let current =
@@ -272,7 +306,7 @@ async fn service_edits(
 	thread: &str,
 	id: &RequestId,
 	params: &Value,
-) {
+) -> (OwnedReviewer, i64) {
 	use decodex_protocol::{
 		ChiefAppApprovalMode as Mode, ChiefAppReviewer as Reviewer, ChiefAppSettingEdit as Edit,
 		ChiefAppSettingsResult as State,
@@ -366,4 +400,5 @@ async fn service_edits(
 		.expect("saved");
 	assert_eq!(receipt.state, "saved");
 	assert_eq!(receipt.saved_version.as_deref(), Some(native.config_version()));
+	(owned, event.id)
 }

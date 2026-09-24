@@ -198,10 +198,10 @@ impl ChiefSurface {
 	}
 }
 
-fn display(value: &Option<String>) -> &str {
+pub(super) fn display(value: &Option<String>) -> &str {
 	value.as_deref().unwrap_or("inherit")
 }
-fn choices() -> [(&'static str, &'static str, Edit); 8] {
+pub(super) fn choices() -> [(&'static str, &'static str, Edit); 8] {
 	[
 		("account-mode-inherit", "Inherit approval mode", Edit::ApprovalMode(None)),
 		("account-mode-auto", "Use automatic approval rules", Edit::ApprovalMode(Some(Mode::Auto))),
