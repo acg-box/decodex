@@ -150,11 +150,6 @@ impl ChiefSurface {
 	}
 }
 
-pub(super) fn compact_model_label(model: &str) -> String {
-	let full = super::model_label(model);
-	full.split_once(' ').map_or_else(|| full.clone(), |(_, name)| name.to_owned())
-}
-
 /// Group GPT releases newest first while retaining catalog order within a release.
 fn model_version(model: &str) -> Vec<u32> {
 	model
