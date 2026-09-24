@@ -108,6 +108,10 @@ impl ChiefSurface {
 			cx.notify();
 			return;
 		}
+		if !self.command_connection_ready() {
+			self.escape_stop = None;
+			return;
+		}
 		if self.escape_stop_armed() {
 			self.escape_stop = None;
 			self.interrupt_current(cx);
@@ -134,6 +138,9 @@ impl ChiefSurface {
 
 	pub(crate) fn interrupt_current(&mut self, cx: &mut Context<Self>) {
 		self.escape_stop = None;
+		if !self.command_connection_ready() {
+			return;
+		}
 		if let Some((work_id, turn_id)) = self.running_turn() {
 			self.execute(ChiefActionDto::Interrupt { work_id, turn_id }, None, cx);
 		}
@@ -223,6 +230,53 @@ impl ChiefSurface {
 		}
 		#[cfg(test)]
 		let _ = cx;
+	}
+
+	pub(super) fn recovery_composer(&self, cx: &mut Context<Self>) -> gpui::Div {
+		div()
+			.mx_4()
+			.mb_3()
+			.p_3()
+			.rounded(px(14.))
+			.bg(rgb(0x27272b))
+			.flex()
+			.flex_col()
+			.gap_2()
+			.children(self.attachment_row(cx))
+			.children(self.task_reference_row(cx))
+			.child(
+				div()
+					.flex()
+					.items_center()
+					.justify_between()
+					.child(
+						div()
+							.text_size(px(11.))
+							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.child("Draft only · Sending paused"),
+					)
+					.child(self.composer_control(
+						"copy-draft",
+						"Copy text".into(),
+						"Copy draft text",
+						|s, cx| {
+							cx.write_to_clipboard(ClipboardItem::new_string(
+								s.composer.read(cx).content().to_owned(),
+							));
+						},
+						cx,
+					)),
+			)
+			.child(
+				div()
+					.id("recovery-draft-editor")
+					.debug_selector(|| "recovery-draft-editor".into())
+					.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
+						s.submit(cx);
+						cx.stop_propagation();
+					}))
+					.child(self.composer.clone()),
+			)
 	}
 
 	pub(super) fn render_composer(

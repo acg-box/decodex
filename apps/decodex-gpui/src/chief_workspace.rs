@@ -458,10 +458,10 @@ impl ChiefSurface {
 				"Delivery is unconfirmed. Your draft is kept; sending is paused to avoid duplicates.",
 			);
 		}
-		let selected = self.selected.as_deref()?;
 		if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
 			return Some("The service connection is unavailable. Your history and draft are kept.");
 		}
+		let selected = self.selected.as_deref()?;
 		let snapshot = self.snapshot.as_ref()?;
 		let root = self.root_id();
 		for event in &snapshot.pending_events {
@@ -652,6 +652,7 @@ impl ChiefSurface {
 					.child(self.recovered_draft_panel(cx))
 					.when_some(self.composer_unavailable_reason(), |d, reason| {
 						d.child(self.unavailable_composer(reason, cx))
+							.child(self.recovery_composer(cx))
 					})
 					.when(self.composer_unavailable_reason().is_none(), |d| {
 						d.child(self.render_composer(window, cx))
@@ -1881,6 +1882,67 @@ mod tests {
 			s.snapshot.as_mut().unwrap().pending_events.clear();
 			assert!(s.composer_unavailable_reason().is_none());
 			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+		});
+	}
+
+	#[gpui::test]
+	fn unavailable_draft_remains_visible_editable_and_never_dispatches(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use gpui::Focusable as _;
+		cx.update(crate::composer_input::bind_keys);
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		let input = surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.state = LoadState::Stale;
+			s.snapshot.as_mut().unwrap().pending_events.clear();
+			s.composer.update(cx, |input, cx| input.set_content("Saved", cx));
+			s.attachments = vec![decodex_protocol::ChiefAttachmentDto {
+				path: ConversationWorkingDirectory::new("/tmp/retained.txt").unwrap(),
+				image: false,
+			}];
+			s.composer.clone()
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(px(1180.), px(1200.)));
+			window.focus(&input.focus_handle(cx), cx);
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("recovery-draft-editor").is_some());
+		visual.simulate_keystrokes("cmd-end space e d i t e d enter cmd-enter");
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.composer.read(cx).content(), "Saved edited");
+			assert_eq!(s.attachments.len(), 1);
+			s.escape_interrupt(cx);
+			s.escape_interrupt(cx);
+			s.interrupt_current(cx);
+			assert!(!s.sending);
+			assert!(s.submission.command.is_none());
+			assert!(s.interrupt_task.is_none());
+			assert!(s.escape_stop.is_none());
+			s.state = LoadState::Ready;
+			assert_eq!(s.composer.read(cx).content(), "Saved edited");
+			assert!(s.submission.command.is_none(), "reconnection cannot submit retained edits");
+		});
+	}
+
+	#[gpui::test]
+	fn disconnected_empty_workspace_and_uncertain_delivery_keep_sending_blocked(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.state = LoadState::Unavailable;
+			s.composer.update(cx, |input, cx| input.set_content("Keep before connection", cx));
+			assert!(s.composer_unavailable_reason().is_some());
+			s.submit(cx);
+			assert!(s.submission.command.is_none());
+			s.state = LoadState::Ready;
+			s.uncertain = true;
+			s.composer.update(cx, |input, cx| input.set_content("Edited uncertain draft", cx));
+			s.submit(cx);
+			assert!(s.submission.command.is_none());
+			assert_eq!(s.composer.read(cx).content(), "Edited uncertain draft");
 		});
 	}
 
