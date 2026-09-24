@@ -213,15 +213,8 @@ impl ChiefSurface {
 			.clone()
 			.or_else(|| self.root_id())
 			.map(|owner| self.draft_profiles.execution.choice(&owner));
-		let before_effort = self.effort.clone();
 		let before_tier = self.service_tier.clone();
 		if let Some(model) = self.selected_model(cx).cloned() {
-			if !model.efforts.contains(&self.effort)
-				&& let Some(effort) =
-					model.default_effort.or_else(|| model.efforts.first().cloned())
-			{
-				self.effort = effort;
-			}
 			if !model.supports_fast {
 				self.fast = false;
 			}
@@ -233,15 +226,21 @@ impl ChiefSurface {
 				self.fast = false;
 			}
 		}
-		if intent.as_ref().is_some_and(|choice| choice.reasoning_effort.is_some())
-			&& self.effort != before_effort
-		{
-			self.mark_effort_intent();
-		}
 		if intent.as_ref().is_some_and(|choice| choice.selected_service_tier().is_some())
 			&& self.service_tier != before_tier
 		{
 			self.mark_tier_intent();
+		}
+	}
+
+	pub(super) fn reconcile_selected_model_effort(&mut self, cx: &mut Context<Self>) {
+		if let Some(model) = self.selected_model(cx)
+			&& !model.efforts.contains(&self.effort)
+			&& let Some(effort) =
+				model.default_effort.clone().or_else(|| model.efforts.first().cloned())
+		{
+			self.effort = effort;
+			self.mark_effort_intent();
 		}
 	}
 
@@ -273,7 +272,9 @@ impl ChiefSurface {
 		}) {
 			return Some("This service tier is unavailable for the selected model.");
 		}
-		if effort.is_some_and(|effort| !model.efforts.contains(&effort)) {
+		if !model.efforts.is_empty()
+			&& effort.is_some_and(|effort| !model.efforts.contains(&effort))
+		{
 			return Some("This model's reasoning levels are not supported by this version.");
 		}
 		if tier.as_ref().is_some_and(|tier| tier.as_str() == "priority") && !model.supports_fast {
@@ -287,6 +288,10 @@ impl ChiefSurface {
 		None
 	}
 }
+
+#[cfg(test)]
+#[path = "chief_effort_catalog_tests.rs"]
+mod effort_tests;
 
 #[cfg(test)]
 mod tests {

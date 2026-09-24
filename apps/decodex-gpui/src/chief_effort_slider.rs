@@ -22,9 +22,22 @@ impl ChiefSurface {
 		}
 	}
 
+	fn configured_effort_label(&self) -> gpui::AnyElement {
+		div()
+			.id("reasoning-configured")
+			.debug_selector(|| "reasoning-configured".into())
+			.text_size(px(12.))
+			.text_color(rgb(ui_theme::TEXT))
+			.child(format!("{} · configured", level_label(&self.composer_effort_value())))
+			.into_any_element()
+	}
+
 	pub(crate) fn effort_scale(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
 		let levels = self.model_efforts(cx);
 		let count = levels.len();
+		if count == 0 {
+			return self.configured_effort_label();
+		}
 		let index = levels.iter().position(|v| *v == self.effort).unwrap_or(0);
 		let fraction =
 			self.effort_pointer.unwrap_or(index as f32 / count.saturating_sub(1).max(1) as f32);
@@ -48,6 +61,7 @@ impl ChiefSurface {
 			.child(
 				div()
 					.id("reasoning-slider")
+					.debug_selector(|| "reasoning-slider".into())
 					.role(Role::Slider)
 					.track_focus(&self.effort_focus)
 					.tab_index(0)
