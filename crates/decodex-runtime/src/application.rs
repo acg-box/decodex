@@ -4352,6 +4352,8 @@ fn render_chief_history(
 			"config_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a configuration warning.").to_owned()),
 			"strict_review_notice" => ("execution_notice", "Codex requested additional safety checks for this turn. Tool calls may take longer; no action is required for this notice.".into()),
 			"activity_started" | "activity_completed" => ("activity", String::new()),
+            "user_message" if event.disposition == Some(decodex_database::ChiefDisposition::UserDecision) && event.delivered_turn_id.is_none() =>
+                ("unsent_input", chief_user_message_text(&value)),
 			"user_message" | "async_question_answer" | "voice_user" =>
 				("user", chief_user_message_text(&value)),
 			"voice_assistant" => ("assistant", chief_user_message_text(&value)),
@@ -4388,22 +4390,22 @@ fn render_chief_history(
 			| "connection_needs_attention" => ("system", chief_history_notice(&event.event_kind, &value)),
 			_ => ("system", event.event_kind.clone()),
 		};
-		if let Some(note) = event.disposition_note.as_ref().filter(|_| {
-			!matches!(
-				event.event_kind.as_str(),
-				"chief_turn_completed"
-					| "worker_turn_completed"
-					| "user_message"
-					| "voice_user" | "voice_assistant"
-					| "activity_started"
-					| "activity_completed"
-					| "assistant_message"
-					| "context_compacted"
-					| "strict_review_notice"
-					| "config_warning"
-			)
-		}) {
-			text.push_str("\n\nDisposition: ");
+		if let Some(note) =
+			event.disposition_note.as_ref().filter(|_| {
+				kind == "unsent_input"
+					|| !matches!(
+						event.event_kind.as_str(),
+						"chief_turn_completed"
+							| "worker_turn_completed"
+							| "user_message" | "voice_user"
+							| "voice_assistant" | "activity_started"
+							| "activity_completed"
+							| "assistant_message" | "context_compacted"
+							| "strict_review_notice"
+							| "config_warning"
+					)
+			}) {
+			text.push_str(if kind == "unsent_input" { "\n\n" } else { "\n\nDisposition: " });
 			text.push_str(note);
 		}
 		if event.event_kind == "user_message" {
@@ -4546,6 +4548,27 @@ fn chief_history_receipt(
 
 #[cfg(test)]
 mod history_receipt_tests {
+	#[test]
+	fn refused_input_stays_visible_with_attachments_without_calling_unknown_input_unsent() {
+		let mut event = decodex_database::ChiefInboxEvent {
+            id: 1, source_event_id: "input".into(), work_item_id: "work".into(), event_kind: "user_message".into(),
+            payload: serde_json::json!({"text":"Keep this input","options":{"attachments":[{"path":"/tmp/retained.txt","image":false}]}}).to_string(),
+            created_at_micros: 1, disposition: Some(decodex_database::ChiefDisposition::UserDecision),
+            disposition_note: Some("Not sent: the local connection queue is full.".into()), disposed_at_micros: Some(2), delivered_turn_id: None,
+        };
+		let rows = super::render_chief_history(vec![event.clone()], 0, None).entries;
+		assert_eq!(rows[0].kind, "unsent_input");
+		assert!(rows[0].text.contains("Keep this input"));
+		assert!(rows[0].text.contains("Attached: /tmp/retained.txt"));
+		assert!(rows[0].text.contains("Not sent: the local connection queue is full."));
+		for turn in ["", "acknowledged"] {
+			event.delivered_turn_id = Some(turn.into());
+			let rows = super::render_chief_history(vec![event.clone()], 0, None).entries;
+			assert_eq!(rows[0].kind, "user", "a claimed or acknowledged turn is not known-unsent");
+			assert!(!rows[0].text.contains("Not sent:"));
+		}
+	}
+
 	#[test]
 	fn disposition_does_not_imply_native_delivery_and_opaque_ids_are_not_truncated() {
 		let mut event = decodex_database::ChiefInboxEvent {

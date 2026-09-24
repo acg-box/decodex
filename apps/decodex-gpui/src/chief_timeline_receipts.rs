@@ -98,6 +98,9 @@ impl ChiefSurface {
 }
 
 fn receipt_label(entry: &ChiefHistoryEntryDto) -> Option<&'static str> {
+	if entry.kind == "unsent_input" {
+		return Some("Local input · Not sent");
+	}
 	if entry.kind == "capacity_retry_pending" {
 		return Some("Automatic retry");
 	}
@@ -147,6 +150,8 @@ mod tests {
 		assert_eq!(receipt_label(&entry), None);
 		entry.receipt = None;
 		assert_eq!(receipt_label(&entry), None);
+		entry.kind = "unsent_input".into();
+		assert_eq!(receipt_label(&entry), Some("Local input · Not sent"));
 		entry.kind = "capacity_retry_pending".into();
 		assert_eq!(receipt_label(&entry), Some("Automatic retry"));
 		entry.kind = "execution_notice".into();

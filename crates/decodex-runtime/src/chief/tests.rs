@@ -12,6 +12,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/native_subagents.rs"] mod native_subagents;
 #[path = "tests/native_task_references.rs"] mod native_task_references;
 #[path = "tests/task_history.rs"] mod task_history;
+#[path = "tests/unsent_input.rs"] mod unsent_input;
 
 #[tokio::test]
 async fn advertised_efforts_survive_coordinator_admission_and_dispatch() {
@@ -1998,7 +1999,17 @@ async fn stale_history_guard_prevents_async_turn_and_steer_without_unknown_recei
 				.unwrap();
 			chief.dispatch_with_claim(&work, "answer", vec![event.id], None, Some(guard)).await
 		};
-		assert!(matches!(result, Err(super::ChiefError::Transport(ClientError::StaleHistory))));
+		if running {
+			assert!(matches!(
+				result,
+				Err(super::ChiefError::InputNotSent(
+					decodex_database::ChiefDispatchRefusal::SettingsChanged
+				))
+			));
+		} else {
+			// The foreign guard is rejected before a turn dispatch claim exists.
+			assert!(matches!(result, Err(super::ChiefError::Transport(ClientError::StaleHistory))));
+		}
 		let after = chief.store.get_chief_work_item("chief".into()).await.unwrap();
 		assert_eq!(after.dispatch_state, work.dispatch_state);
 		assert_eq!(after.status, work.status);

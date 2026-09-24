@@ -68,6 +68,10 @@ impl fmt::Debug for RpcError {
 pub enum ClientError {
 	/// The expected native history changed; this request was rejected before transport write.
 	StaleHistory,
+	/// The local request exceeded the wire bound before any bytes were sent.
+	RequestTooLarge,
+	/// The local request queue was full; this request was not sent.
+	RequestQueueFull,
 	/// The connection has closed or was revoked.
 	Closed,
 	/// An input/output operation failed; details are intentionally omitted.
@@ -600,16 +604,21 @@ async fn run_frames(
 					},
 					Outbound::Request { method, params, reply, .. } => {
 						if pending.len() >= MAX_PENDING_REQUESTS {
-							let _ = reply.send(Err(ClientError::CapacityExceeded));
+							let _ = reply.send(Err(ClientError::RequestQueueFull));
 							continue;
 						}
 						let Some(next) = sequence.checked_add(1) else { break ClientError::Closed; };
 						sequence = next;
 						let id = RequestId::Number(sequence);
 						let result = writer.write(json!({"id": id, "method": method, "params": params})).await;
-						if matches!(result, Err(ClientError::FrameTooLarge)) {
-							// Both sinks reject size before writing anything. Keep unrelated requests live.
-							let _ = reply.send(Err(ClientError::FrameTooLarge));
+						let refusal = match &result {
+							Err(ClientError::FrameTooLarge) => Some(ClientError::RequestTooLarge),
+							Err(ClientError::CapacityExceeded) => Some(ClientError::RequestQueueFull),
+							_ => None,
+						};
+						if let Some(refusal) = refusal {
+							// Both sinks reject these requests before forwarding any bytes.
+							let _ = reply.send(Err(refusal));
 							continue;
 						}
 						pending.insert(id, reply);
@@ -977,7 +986,7 @@ mod tests {
 		let request = read(&mut reader).await;
 		assert!(matches!(
 			client.turn_start(json!({"text":"x".repeat(MAX_FRAME_BYTES)})).await,
-			Err(ClientError::FrameTooLarge)
+			Err(ClientError::RequestTooLarge)
 		));
 		assert!(!pending.is_finished());
 		write_frame(&mut writer, json!({"id":request["id"],"result":{"retained":true}}))
@@ -1004,12 +1013,72 @@ mod tests {
 		let request = requests.recv().await.unwrap();
 		assert!(matches!(
 			client.turn_start(json!({"text":"x".repeat(MAX_FRAME_BYTES)})).await,
-			Err(ClientError::FrameTooLarge)
+			Err(ClientError::RequestTooLarge)
 		));
 		assert!(requests.try_recv().is_err());
 		assert!(!pending.is_finished());
 		incoming.send(Ok(json!({"id":request["id"],"result":{"retained":true}}))).await.unwrap();
 		assert_eq!(pending.await.unwrap().unwrap()["retained"], true);
+		assert!(events.try_recv().is_err());
+		client.shutdown().await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn outbound_queue_refusal_is_local_but_inbound_overflow_is_uncertain() {
+		let (incoming, frames) = mpsc::channel(4);
+		let (outgoing, mut requests) = mpsc::channel(1);
+		let (client, mut events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+		let peer = client.clone();
+		let first = tokio::spawn(async move { peer.turn_start(json!({"threadId":"first"})).await });
+		timeout(Duration::from_secs(2), async {
+			while requests.is_empty() {
+				tokio::task::yield_now().await;
+			}
+		})
+		.await
+		.unwrap();
+		assert!(matches!(
+			client.turn_start(json!({"threadId":"refused"})).await,
+			Err(ClientError::RequestQueueFull)
+		));
+		assert!(!first.is_finished());
+		let request = requests.recv().await.unwrap();
+		assert_eq!(request["params"]["threadId"], "first");
+		incoming
+			.send(Ok(json!({"id":request["id"],"result":{"turn":{"id":"accepted"}}})))
+			.await
+			.unwrap();
+		first.await.unwrap().unwrap();
+		assert!(events.try_recv().is_err());
+		let next =
+			tokio::spawn(async move { client.turn_start(json!({"threadId":"uncertain"})).await });
+		requests.recv().await.unwrap();
+		incoming.send(Err(ClientError::FrameTooLarge)).await.unwrap();
+		assert!(matches!(next.await.unwrap(), Err(ClientError::FrameTooLarge)));
+		assert!(matches!(
+			events.recv().await,
+			Some(ServerEvent::Closed(ClientError::FrameTooLarge))
+		));
+	}
+
+	#[tokio::test]
+	async fn pending_request_limit_refuses_only_the_new_request() {
+		let (incoming, frames) = mpsc::channel(4);
+		let (outgoing, mut requests) = mpsc::channel(4);
+		let (client, mut events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+		let mut pending = Vec::new();
+		for _ in 0..MAX_PENDING_REQUESTS {
+			let peer = client.clone();
+			let task = tokio::spawn(async move { peer.thread_read(json!({})).await });
+			let request = requests.recv().await.unwrap();
+			pending.push((request["id"].clone(), task));
+		}
+		assert!(matches!(client.turn_start(json!({})).await, Err(ClientError::RequestQueueFull)));
+		assert!(requests.try_recv().is_err());
+		for (id, task) in pending {
+			incoming.send(Ok(json!({"id":id,"result":{}}))).await.unwrap();
+			task.await.unwrap().unwrap();
+		}
 		assert!(events.try_recv().is_err());
 		client.shutdown().await.unwrap();
 	}
