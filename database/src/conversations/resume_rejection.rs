@@ -10,6 +10,8 @@ use crate::{CommandIdentity, SqliteStore, StoreError, unix_micros};
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConversationResumeRejection {
+	/// The exact thread is still closing after bounded resume retries.
+	ClosingThread,
 	/// Native storage explicitly reports the exact requested thread missing.
 	MissingThread,
 	/// The exact requested thread exists in the native archive.
@@ -24,6 +26,8 @@ impl ConversationResumeRejection {
 	/// Stable diagnostic text, without provider error text or credentials.
 	pub const fn diagnostic(self) -> &'static str {
 		match self {
+			Self::ClosingThread =>
+				"Codex is still closing this thread. This input was not sent. Wait briefly, then refresh this conversation.",
 			Self::MissingThread =>
 				"Codex could not find this thread. This input was not sent. Check the selected account and native thread storage before starting another conversation.",
 			Self::ArchivedThread =>

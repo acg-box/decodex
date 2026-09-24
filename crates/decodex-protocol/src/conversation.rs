@@ -476,6 +476,8 @@ pub enum ConversationTurnOutcome {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConversationRecoveryAction {
+	/// Wait for native thread closure, then refresh the same conversation.
+	WaitForThreadClose,
 	/// Unarchive the existing native thread before refreshing its state.
 	RestoreArchivedThread,
 	/// Correct native sandbox configuration, then refresh before another submission.

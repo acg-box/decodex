@@ -2055,6 +2055,7 @@ fn task_has_safe_stale_reconciliation(task: &ConversationSummary) -> bool {
 					ConversationRecoveryAction::ResolvePriorActiveTurn
 						| ConversationRecoveryAction::SelectWorkingDirectory
 						| ConversationRecoveryAction::RestoreArchivedThread
+						| ConversationRecoveryAction::WaitForThreadClose
 						| ConversationRecoveryAction::ReviewSandboxConfiguration
 						| ConversationRecoveryAction::ReviewCodexConfiguration
 						| ConversationRecoveryAction::StartNewConversation,
@@ -2227,6 +2228,7 @@ pub(crate) mod tests {
 	#[test]
 	fn native_resume_refusals_refresh_the_same_conversation_without_replacement() {
 		for action in [
+			ConversationRecoveryAction::WaitForThreadClose,
 			ConversationRecoveryAction::RestoreArchivedThread,
 			ConversationRecoveryAction::ReviewSandboxConfiguration,
 			ConversationRecoveryAction::ReviewCodexConfiguration,
