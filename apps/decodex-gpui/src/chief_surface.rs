@@ -15,6 +15,7 @@
 #[path = "chief_inspection.rs"] mod inspection;
 #[path = "chief_install.rs"] mod install;
 #[path = "chief_integrations.rs"] mod integrations;
+#[path = "chief_live_settings.rs"] mod live_settings;
 #[path = "chief_markdown.rs"] mod markdown;
 #[path = "chief_mcp_forms.rs"] mod mcp_forms;
 #[path = "chief_misalignment.rs"] mod misalignment;
@@ -167,6 +168,7 @@ pub(crate) struct ChiefSurface {
 	draft_profiles: drafts::Profiles,
 	composer_manager: Option<String>,
 	model_settings: model_settings::Panel,
+	live_reviewer: live_settings::Panel,
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
 	account: Entity<ComposerInput>,
@@ -389,6 +391,7 @@ impl ChiefSurface {
 			composer_footer_height: 74.,
 			model,
 			model_settings: Default::default(),
+			live_reviewer: Default::default(),
 			cwd,
 			account: Self::account_input(cx),
 			effort: ConversationReasoningEffort::High,
@@ -1065,6 +1068,7 @@ impl ChiefSurface {
 		self.service_tier = None;
 		self.capabilities_checked = None;
 		self.reset_model_settings();
+		self.reset_live_reviewer();
 		self.snapshot = None;
 		self.pages.clear();
 		self.page_views.clear();
@@ -1188,12 +1192,14 @@ impl ChiefSurface {
 
 	fn apply_result(&mut self, result: Result<ChiefSnapshotResult, ()>) {
 		if !matches!(&result, Ok(ChiefSnapshotResult::Available(_))) {
+			self.reset_live_reviewer();
 			self.question_notices = Default::default();
 			self.clear_activity_detail();
 		}
 		match result {
 			Ok(ChiefSnapshotResult::Available(snapshot)) => {
 				self.invalidate_model_settings(&snapshot);
+				self.invalidate_live_reviewer_for_snapshot(&snapshot);
 				if self.snapshot.as_ref().is_some_and(|old| {
 					old.runtime_source != snapshot.runtime_source
 						|| old.work_items.iter().any(|work| {
@@ -2079,7 +2085,14 @@ impl ChiefSurface {
 						self.snapshot
 							.as_ref()
 							.and_then(|s| s.work_items.iter().find(|w| &w.id == work))
-							.map(|item| self.model_settings_panel(item, cx)),
+							.map(|item| {
+								div()
+									.flex()
+									.flex_col()
+									.gap_2()
+									.child(self.model_settings_panel(item, cx))
+									.child(self.live_reviewer_panel(item, cx))
+							}),
 					)
 			})
 	}
