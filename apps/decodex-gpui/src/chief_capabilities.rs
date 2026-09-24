@@ -53,6 +53,7 @@ impl ChiefSurface {
 							s.fast = id.as_str() == "priority";
 							s.service_tier = Some(id.clone());
 							s.mark_tier_intent();
+							s.save_draft_document(cx);
 							cx.notify();
 						}
 					})),
@@ -159,17 +160,31 @@ impl ChiefSurface {
 			if let Some(request) = cold_request {
 				let directory = request.working_directory.clone();
 				match runtime.block_on(client.initial_model_catalog(request)).ok()? {
-					decodex_protocol::InitialModelCatalogResult::Available {
-						models,
-						account_revision,
-						working_directory,
-						..
-					} if account_revision > 0 && working_directory == directory =>
-						Some(ChiefCapabilitiesResult::Available { models, memory_enabled: None }),
-					_ => Some(ChiefCapabilitiesResult::Unavailable),
+					result @ decodex_protocol::InitialModelCatalogResult::Available { .. } => {
+						let decodex_protocol::InitialModelCatalogResult::Available {
+							models,
+							account_revision,
+							working_directory,
+							..
+						} = &result
+						else {
+							unreachable!()
+						};
+						if *account_revision <= 0 || working_directory != &directory {
+							return Some((ChiefCapabilitiesResult::Unavailable, None));
+						}
+						Some((
+							ChiefCapabilitiesResult::Available {
+								models: models.clone(),
+								memory_enabled: None,
+							},
+							Some(result),
+						))
+					},
+					_ => Some((ChiefCapabilitiesResult::Unavailable, None)),
 				}
 			} else {
-				runtime.block_on(client.capabilities()).ok()
+				runtime.block_on(client.capabilities()).ok().map(|result| (result, None))
 			}
 		});
 		self.capability_task = Some(cx.spawn(async move |surface, cx| {
@@ -185,8 +200,12 @@ impl ChiefSurface {
 					return;
 				}
 				surface.capabilities_context = Some(context);
-				surface.capabilities = result;
+				surface.creation_defaults =
+					result.as_ref().and_then(|(_, defaults)| defaults.clone());
+				surface.capabilities = result.map(|(capabilities, _)| capabilities);
+				surface.apply_creation_defaults(cx);
 				surface.reconcile_model_options(cx);
+				surface.save_draft_document(cx);
 				cx.notify();
 			});
 		}));
@@ -243,11 +262,14 @@ impl ChiefSurface {
 				model.default_effort.clone().or_else(|| model.efforts.first().cloned())
 		{
 			self.effort = effort;
-			self.mark_effort_intent();
+			self.mark_effort_intent(cx);
 		}
 	}
 
 	pub(super) fn composer_capability_error(&self, cx: &Context<Self>) -> Option<&'static str> {
+		if self.creation_defaults_need_refresh(cx) {
+			return Some("Refresh account defaults for this directory before sending.");
+		}
 		let owner = self.composer_manager.clone().or_else(|| self.root_id());
 		let choice = owner.as_deref().map(|owner| self.draft_profiles.execution.choice(owner));
 		let effort = choice
@@ -427,7 +449,7 @@ mod tests {
 				s.model.update(cx, |input, cx| input.set_content("configured-model", cx));
 				s.mark_model_intent(cx);
 				s.effort = ConversationReasoningEffort::High;
-				s.mark_effort_intent();
+				s.mark_effort_intent(cx);
 				s.fast = false;
 				s.service_tier = Some(decodex_protocol::ServiceTier::new("flex").unwrap());
 				s.mark_tier_intent();

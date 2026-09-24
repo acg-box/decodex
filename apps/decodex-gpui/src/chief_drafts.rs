@@ -189,7 +189,7 @@ mod tests {
 			assert_eq!(s.composer.read(cx).content(), "seed");
 			s.composer_manager = Some("root".into());
 			s.effort = ConversationReasoningEffort::High;
-			s.mark_effort_intent();
+			s.mark_effort_intent(cx);
 			let file = decodex_protocol::ChiefAttachmentDto {
 				path: ConversationWorkingDirectory::new("/tmp/first.png").unwrap(),
 				image: true,

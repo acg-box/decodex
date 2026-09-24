@@ -1025,7 +1025,7 @@ mod tests {
 			s.draft_profiles.threads.insert("work".into(), "native-thread".into());
 			s.composer.update(cx, |input, cx| input.set_content("Unsent cold draft", cx));
 			s.effort = ConversationReasoningEffort::new("provider-defined-effort").unwrap();
-			s.mark_effort_intent();
+			s.mark_effort_intent(cx);
 			s.attachments.push(decodex_protocol::ChiefAttachmentDto {
 				path: ConversationWorkingDirectory::new("/tmp/selected.png").unwrap(),
 				image: true,

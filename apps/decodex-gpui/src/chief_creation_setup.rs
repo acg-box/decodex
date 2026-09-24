@@ -9,6 +9,8 @@ impl ChiefSurface {
 			return None;
 		}
 		let setup = DesktopCreationSetup {
+			defaults_applied: self.creation_defaults_applied,
+			intent: Some(self.creation_intent.clone()),
 			inherit_effort: self.creation_inherit_effort,
 			model: self.model.read(cx).content().into(),
 			working_directory: self.cwd.read(cx).content().into(),
@@ -34,6 +36,14 @@ impl ChiefSurface {
 		self.account.update(cx, |input, cx| input.set_content(&setup.account, cx));
 		self.effort = setup.reasoning_effort.clone();
 		self.creation_inherit_effort = setup.inherit_effort;
+		self.creation_intent =
+			setup.intent.clone().unwrap_or(decodex_protocol::DesktopCreationIntent {
+				model: true,
+				reasoning: true,
+				service_tier: true,
+			});
+		self.creation_defaults = None;
+		self.creation_defaults_applied = setup.defaults_applied;
 		self.fast = setup.fast;
 		self.service_tier = setup.service_tier.clone();
 		self.sandbox = setup.sandbox;
@@ -45,6 +55,8 @@ impl ChiefSurface {
 }
 fn empty_setup() -> DesktopCreationSetup {
 	DesktopCreationSetup {
+		defaults_applied: false,
+		intent: Some(Default::default()),
 		inherit_effort: false,
 		model: DEFAULT_MODEL.into(),
 		working_directory: String::new(),
@@ -104,6 +116,8 @@ impl ChiefSurface {
 			return;
 		}
 		self.creation_inherit_effort = !self.creation_inherit_effort;
+		self.creation_intent.reasoning = true;
+		self.apply_creation_defaults(cx);
 		self.creation_setup_present = true;
 		self.save_draft_document(cx);
 		cx.notify();

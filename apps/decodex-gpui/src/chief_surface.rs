@@ -189,6 +189,9 @@ pub(crate) struct ChiefSurface {
 	effort: ConversationReasoningEffort,
 	creation_setup_present: bool,
 	creation_inherit_effort: bool,
+	creation_intent: decodex_protocol::DesktopCreationIntent,
+	creation_defaults_applied: bool,
+	creation_defaults: Option<decodex_protocol::InitialModelCatalogResult>,
 	sandbox: ChiefSandboxDto,
 	submission: drafts::SubmissionState,
 	command_epoch: u64,
@@ -258,6 +261,7 @@ struct PendingCommand {
 	references: Option<Vec<decodex_protocol::ChiefTaskReferenceDto>>,
 }
 
+#[path = "chief_creation_defaults.rs"] mod creation_defaults;
 #[path = "chief_creation_setup.rs"] mod creation_setup;
 
 impl ChiefSurface {
@@ -422,6 +426,9 @@ impl ChiefSurface {
 			effort: ConversationReasoningEffort::High,
 			creation_setup_present: false,
 			creation_inherit_effort: false,
+			creation_intent: Default::default(),
+			creation_defaults_applied: false,
+			creation_defaults: None,
 			sandbox: ChiefSandboxDto::ReadOnly,
 			submission: Default::default(),
 			command_epoch: 0,

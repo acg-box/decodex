@@ -52,7 +52,11 @@ impl Intents {
 }
 
 impl ChiefSurface {
-	pub(super) fn mark_model_intent(&mut self, cx: &Context<Self>) {
+	pub(super) fn mark_model_intent(&mut self, cx: &mut Context<Self>) {
+		if self.root_id().is_none() && self.composer_manager.is_none() {
+			self.creation_intent.model = true;
+			self.apply_creation_defaults(cx);
+		}
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
 		let Ok(model) = ConversationModel::new(self.model.read(cx).content()) else { return };
 		let effort = self.effort.clone();
@@ -70,9 +74,11 @@ impl ChiefSurface {
 		});
 	}
 
-	pub(super) fn mark_effort_intent(&mut self) {
+	pub(super) fn mark_effort_intent(&mut self, cx: &mut Context<Self>) {
 		if self.root_id().is_none() {
 			self.creation_inherit_effort = false;
+			self.creation_intent.reasoning = true;
+			self.apply_creation_defaults(cx);
 		}
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
 		let effort = self.effort.clone();
@@ -82,6 +88,9 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn mark_tier_intent(&mut self) {
+		if self.root_id().is_none() && self.composer_manager.is_none() {
+			self.creation_intent.service_tier = true;
+		}
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
 		let tier = self
 			.service_tier
@@ -123,7 +132,7 @@ mod tests {
 			s.effort = ConversationReasoningEffort::Ultra;
 			s.fast = true;
 			assert!(choice(action(s, "chief")).is_empty());
-			s.mark_effort_intent();
+			s.mark_effort_intent(cx);
 			let selected = choice(action(s, "chief"));
 			assert_eq!(selected.reasoning_effort, Some(ConversationReasoningEffort::Ultra));
 			assert!(selected.model.is_none() && selected.selected_service_tier().is_none());
@@ -155,10 +164,10 @@ mod tests {
 			s.visual_workspace_fixture(cx);
 			s.steer = false;
 			s.effort = ConversationReasoningEffort::High;
-			s.mark_effort_intent();
+			s.mark_effort_intent(cx);
 			let older = s.draft_profiles.execution.capture(&action(s, "chief")).unwrap();
 			s.effort = ConversationReasoningEffort::Low;
-			s.mark_effort_intent();
+			s.mark_effort_intent(cx);
 			s.draft_profiles.execution.accepted(Some(&older));
 			assert_eq!(
 				choice(action(s, "chief")).reasoning_effort,
@@ -168,7 +177,7 @@ mod tests {
 			s.draft_profiles.execution.accepted(Some(&current));
 			assert!(choice(action(s, "chief")).is_empty());
 			s.effort = ConversationReasoningEffort::Medium;
-			s.mark_effort_intent();
+			s.mark_effort_intent(cx);
 			s.steer = true;
 			let work = s
 				.snapshot
