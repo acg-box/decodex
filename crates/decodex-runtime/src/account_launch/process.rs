@@ -5128,14 +5128,12 @@ fn configure_process_session(_command: &mut Command, _max_file_bytes: Option<u64
 
 #[cfg(unix)]
 fn signal_process_group(pid: u32, signal: i32) -> Result<(), SupervisionError> {
-	let pid = i32::try_from(pid).map_err(|_| SupervisionError::ShutdownFailed)?;
-	// SAFETY: a negative pid targets only the child-created session/process group.
-	let result = unsafe { libc::kill(-pid, signal) };
-
-	if result == 0 || io::Error::last_os_error().raw_os_error() == Some(ESRCH) {
-		Ok(())
-	} else {
-		Err(SupervisionError::ShutdownFailed)
+	match crate::process_platform::signal_owned_process_group_id(pid, signal) {
+		Ok(()) => Ok(()),
+		Err(crate::process_platform::ProcessPlatformError::Signal(error))
+			if error.raw_os_error() == Some(ESRCH) =>
+			Ok(()),
+		Err(_) => Err(SupervisionError::ShutdownFailed),
 	}
 }
 

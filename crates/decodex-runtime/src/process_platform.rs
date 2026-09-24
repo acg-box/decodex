@@ -24,6 +24,10 @@ use decodex_core::{
 	ProcessBootIdentity, ProcessDeathEvidenceKind, ProcessIdentity, ProcessStartIdentity,
 };
 
+#[cfg(target_os = "macos")]
+#[path = "process_platform_macos_signal.rs"]
+mod macos_signal;
+
 /// A supported-OS observation that never interprets absence as death.
 #[derive(Debug)]
 pub(crate) enum ExactProcessObservation {
@@ -508,10 +512,22 @@ pub(crate) fn signal_owned_process_group_id(
 	signal: i32,
 ) -> Result<(), ProcessPlatformError> {
 	let process_group_id = i32::try_from(process_group_id)
-		.map_err(|_| ProcessPlatformError::Signal(invalid_identity()))?;
-	// SAFETY: ProcessSupervisor calls this only while it retains the exact unreaped `Child`.
-	let result = unsafe { libc::kill(-process_group_id, signal) };
-	if result == 0 { Ok(()) } else { Err(ProcessPlatformError::Signal(io::Error::last_os_error())) }
+		.ok()
+		.filter(|id| *id > 1)
+		.ok_or_else(|| ProcessPlatformError::Signal(invalid_identity()))?;
+	// SAFETY: callers retain the exact unreaped child and its signaling authority.
+	let signal_target = |target, signal| {
+		if unsafe { libc::kill(target, signal) } == 0 {
+			Ok(())
+		} else {
+			Err(io::Error::last_os_error())
+		}
+	};
+	#[cfg(target_os = "macos")]
+	let result = macos_signal::signal_group(process_group_id, signal, signal_target);
+	#[cfg(not(target_os = "macos"))]
+	let result = signal_target(-process_group_id, signal);
+	result.map_err(ProcessPlatformError::Signal)
 }
 
 /// Recover a bound macOS generation after its original exit witness was lost.
