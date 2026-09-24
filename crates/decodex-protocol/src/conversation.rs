@@ -290,6 +290,8 @@ pub enum ConversationReasoningEffort {
 	Max,
 	/// Ultra provider reasoning effort.
 	Ultra,
+	/// Persistent reasoning, only when advertised by the selected model.
+	Persistent,
 }
 impl ConversationReasoningEffort {
 	/// Return the exact app-server wire value.
@@ -303,6 +305,7 @@ impl ConversationReasoningEffort {
 			Self::XHigh => "xhigh",
 			Self::Max => "max",
 			Self::Ultra => "ultra",
+			Self::Persistent => "persistent",
 		}
 	}
 }
