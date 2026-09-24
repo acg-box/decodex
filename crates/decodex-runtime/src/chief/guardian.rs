@@ -42,15 +42,7 @@ impl ChiefCoordinator {
 			return Err(stale());
 		}
 		if !self.loaded_threads.contains(&review.thread_id) {
-			let effort = if self.is_manager(id).await.map_err(|_| stale())? {
-				&self.config.chief_effort
-			} else {
-				&self.config.worker_effort
-			};
-			let mut params = self.work_thread_params(&work).await.map_err(|_| stale())?;
-			params.as_object_mut().expect("thread params").remove("dynamicTools");
-			params["threadId"] = json!(review.thread_id);
-			params["excludeTurns"] = json!(true);
+			let params = Self::resume_params(&review.thread_id);
 			let response = tokio::time::timeout(
 				std::time::Duration::from_secs(20),
 				self.client.thread_resume(params),
@@ -58,10 +50,7 @@ impl ChiefCoordinator {
 			.await
 			.map_err(|_| stale())?
 			.map_err(|_| stale())?;
-			if response["thread"]["id"].as_str() != Some(&review.thread_id)
-				|| response["model"].as_str() != Some(&self.config.model)
-				|| response["reasoningEffort"].as_str() != Some(effort)
-			{
+			if !Self::hydrated_thread_matches(&response, &review.thread_id) {
 				return Err(stale());
 			}
 			self.loaded_threads.insert(review.thread_id.clone());

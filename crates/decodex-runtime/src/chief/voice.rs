@@ -89,9 +89,7 @@ impl ChiefCoordinator {
 					.generation
 					.clone();
 				if !self.loaded_threads.contains(&thread) {
-					let mut params = self.work_thread_params(&item).await?;
-					params.as_object_mut().expect("thread params").remove("dynamicTools");
-					params["threadId"] = json!(thread);
+					let mut params = Self::resume_params(&thread);
 					params["config"]["features.realtime_conversation"] = json!(true);
 					let resumed = self
 						.client
@@ -252,10 +250,7 @@ impl ChiefCoordinator {
 	/// Recover observed native work after a lost call without replaying audio or instructions.
 	pub(super) async fn recover_voice_calls(&mut self) -> Result<(), ChiefError> {
 		for call in self.store.open_chief_voice_calls().await? {
-			let item = self.store.get_chief_work_item(call.work_id.clone()).await?;
-			let mut params = self.work_thread_params(&item).await?;
-			params.as_object_mut().expect("thread params").remove("dynamicTools");
-			params["threadId"] = json!(call.thread_id);
+			let params = Self::resume_params(&call.thread_id);
 			let resumed = self
 				.client
 				.thread_resume(params)

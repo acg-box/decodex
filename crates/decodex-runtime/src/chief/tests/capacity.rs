@@ -249,12 +249,24 @@ async fn lost_retry_submission_is_unknown_and_never_replayed() {
 		})
 		.await
 		.unwrap();
-	let (io, remote) = tokio::io::duplex(1);
-	drop(remote);
+	let (io, remote) = tokio::io::duplex(8192);
 	let (reader, writer) = tokio::io::split(io);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
+	let server = tokio::spawn(async move {
+		let (reader, mut writer) = tokio::io::split(remote);
+		let mut lines = BufReader::new(reader).lines();
+		let request: Value =
+			serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+		assert_eq!(request["method"], "thread/read");
+		writer.write_all(format!("{}\n",json!({"id":request["id"],"result":{"thread":{"id":"opaque thread/1","model":"selected-model","reasoningEffort":"high"}}})).as_bytes()).await.unwrap();
+		let request: Value =
+			serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+		assert_eq!(request["method"], "turn/start");
+		// The model request was written; discard its response, not the preceding settings read.
+	});
 	chief.client = client;
 	assert!(chief.check_due_followups(i64::MAX).await.is_err());
+	server.await.unwrap();
 	assert_eq!(
 		chief.store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state,
 		decodex_database::ChiefDispatchState::Unknown

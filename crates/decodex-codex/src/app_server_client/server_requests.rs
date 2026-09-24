@@ -100,6 +100,18 @@ impl ServerRequests {
 		Some(guard)
 	}
 
+	pub(super) fn with_thread_settings_guard(
+		&self,
+		thread: &str,
+		mut guard: HistoryGuard,
+	) -> Option<HistoryGuard> {
+		if !guard.belongs_to(self) || !guard.is_live() {
+			return None;
+		}
+		guard.settings = Some(self.3.capture(thread)?);
+		Some(guard)
+	}
+
 	pub(super) fn question_revision(&self) -> u64 {
 		self.2.load(Ordering::Acquire)
 	}

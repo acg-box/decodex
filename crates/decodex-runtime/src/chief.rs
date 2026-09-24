@@ -17,21 +17,23 @@ mod async_projection;
 mod guardian;
 mod install;
 mod misalignment;
+mod native_settings;
 pub(crate) mod native_subagents;
 pub(crate) mod observations;
 mod result_messages;
 mod task_history;
 pub(crate) mod timeline;
+mod turn_execution;
 mod voice;
 
-/// Execution policy selected by the user, applied to actual app-server requests.
+/// Creation defaults for new native tasks. Existing tasks keep their native settings.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ChiefConfig {
-	/// Exact provider model used for all coordinated work.
+	/// Default provider model for newly created tasks.
 	pub model: String,
-	/// Reasoning effort for the personal Chief.
+	/// Initial reasoning effort for a new personal Chief.
 	pub chief_effort: String,
-	/// Reasoning effort for independent workers.
+	/// Initial reasoning effort for new independent workers.
 	pub worker_effort: String,
 	/// Absolute execution directory.
 	pub cwd: String,
@@ -219,22 +221,11 @@ impl ChiefCoordinator {
 			else {
 				continue;
 			};
-			let mut params = self.work_thread_params(&item).await?;
-			params.as_object_mut().expect("thread params").remove("dynamicTools");
-			params["threadId"] = json!(thread);
-			params["excludeTurns"] = json!(true);
+			let params = Self::resume_params(thread);
 			let Ok(resumed) = self.client.thread_resume(params).await else {
 				continue;
 			};
-			let effort = if self.is_manager(&item.id).await? {
-				&self.config.chief_effort
-			} else {
-				&self.config.worker_effort
-			};
-			if resumed.pointer("/thread/id").and_then(Value::as_str) != Some(thread)
-				|| resumed["model"].as_str() != Some(&self.config.model)
-				|| resumed["reasoningEffort"].as_str() != Some(effort)
-			{
+			if !Self::hydrated_thread_matches(&resumed, thread) {
 				continue;
 			}
 			self.expect_usage_replay(thread, &resumed);
@@ -879,43 +870,24 @@ impl ChiefCoordinator {
 			return Err(ChiefError::Busy);
 		}
 		// Resume is idempotent hydration of the exact thread, never a turn retry.
-		let mut resume = self.work_thread_params(&item).await?;
-		resume.as_object_mut().expect("thread params").remove("dynamicTools");
-		resume["threadId"] = json!(thread);
-		resume["excludeTurns"] = json!(true);
-		if !self.loaded_threads.contains(thread) {
-			let response = self
-				.client
-				.thread_resume(resume)
-				.await
-				.map_err(|error| resume_error(error, thread))?;
-			let effort = if self.is_manager(&item.id).await? {
-				&self.config.chief_effort
-			} else {
-				&self.config.worker_effort
-			};
-			if exact(&response, "/thread/id")? != *thread
-				|| response["model"].as_str() != Some(&self.config.model)
-				|| response["reasoningEffort"].as_str() != Some(effort)
-			{
-				return Err(ChiefError::Invalid(
-					"resumed thread/model/effort readback differs from selection".into(),
-				));
-			}
-			let last_turn = response
-				.pointer("/thread/turns")
-				.and_then(Value::as_array)
-				.and_then(|turns| turns.last())
-				.and_then(|turn| turn["id"].as_str())
-				.map(str::to_owned);
-			self.store.validate_chief_usage_resume(thread.clone(), last_turn).await?;
-			self.expect_usage_replay(thread, &response);
-			self.loaded_threads.insert(thread.clone());
-		}
-		let (params, external) =
+		self.hydrate_dispatch_thread(thread).await?;
+		let (mut params, external) =
 			self.dispatch_input(&item, prompt, &events, retry.is_some()).await?;
-		let history_event = history_guard.as_ref().and_then(|_| events.first().copied());
-		if history_guard.is_some() && (events.len() != 1 || !external.is_empty()) {
+		let question_guard = history_guard.is_some();
+		let history_guard = match history_guard {
+			Some(guard) => self.client.with_thread_settings_guard(thread, guard),
+			None => self.client.thread_settings_guard(thread),
+		}
+		.ok_or(ClientError::StaleHistory)?;
+		let mut execution = None;
+		if !question_guard {
+			execution = self.select_turn_execution(&mut params, history_guard.clone()).await?;
+		}
+		if let Some((event, _)) = retry {
+			self.validate_capacity_execution(&item, event, execution.as_ref()).await?;
+		}
+		let history_event = question_guard.then(|| events.first().copied()).flatten();
+		if question_guard && (events.len() != 1 || !external.is_empty()) {
 			return Err(ChiefError::Invalid("question answers require one isolated input".into()));
 		}
 		let instruction = events.is_empty().then(|| prompt.to_owned());
@@ -929,18 +901,26 @@ impl ChiefCoordinator {
 		// The durable dispatch fence owns both effects. An uncertain injection must
 		// never be retried: native injection does not deduplicate response-item IDs.
 		let turn = async {
+			if question_guard {
+				execution = self.select_turn_execution(&mut params, history_guard.clone()).await?;
+			}
 			if !external.is_empty() {
 				self.inject_external_context(thread, "work_updates", &json!(external)).await?;
 			}
-			let value = if let Some(guard) = history_guard {
-				self.client.request_with_history("turn/start", params, guard).await?
-			} else {
-				self.client.turn_start(params).await?
-			};
+			let value =
+				self.client.request_with_history("turn/start", params, history_guard).await?;
 			exact(&value, "/turn/id")
 		}
 		.await;
-		self.finish_dispatch_attempt(&item, history_event, turn).await
+		self.finish_dispatch_attempt(
+			&item,
+			history_event,
+			turn,
+			execution,
+			external.is_empty(),
+			retry.map(|(event, _)| event),
+		)
+		.await
 	}
 
 	async fn finish_dispatch_attempt(
@@ -948,10 +928,19 @@ impl ChiefCoordinator {
 		item: &ChiefWorkItem,
 		history_event: Option<i64>,
 		turn: Result<String, ChiefError>,
+		execution: Option<decodex_database::ChiefTurnExecution>,
+		no_prior_effects: bool,
+		retry_event: Option<i64>,
 	) -> Result<String, ChiefError> {
 		match turn {
 			Ok(turn) => {
-				self.store.acknowledge_chief_dispatch(item.id.clone(), turn.clone()).await?;
+				self.store
+					.acknowledge_chief_dispatch_with_execution(
+						item.id.clone(),
+						turn.clone(),
+						execution,
+					)
+					.await?;
 				Ok(turn)
 			},
 			Err(error) => {
@@ -960,6 +949,17 @@ impl ChiefCoordinator {
 				{
 					self.store
 						.reject_chief_async_before_write(item.id.clone(), event, Some(item.clone()))
+						.await?;
+				} else if no_prior_effects
+					&& matches!(error, ChiefError::Transport(ClientError::StaleHistory))
+				{
+					self.store
+						.reject_chief_dispatch(
+							item.clone(),
+							self.native_generation.as_ref().map(|id| id.as_str().into()),
+							retry_event,
+							decodex_database::ChiefDispatchRefusal::SettingsChanged,
+						)
 						.await?;
 				} else {
 					self.store.mark_chief_dispatch_unknown(item.id.clone()).await?;
@@ -980,8 +980,7 @@ impl ChiefCoordinator {
 			.codex_thread_id
 			.as_deref()
 			.ok_or_else(|| ChiefError::Invalid("unbound work".into()))?;
-		let mut params = json!({"threadId":thread,"model":self.config.model,
-            "effort":if self.is_manager(&item.id).await? { &self.config.chief_effort } else { &self.config.worker_effort },
+		let mut params = json!({"threadId":thread,
             "input":[{"type":"text","text":prompt,"text_elements":[]}]});
 		let mut external = Vec::new();
 		let mut has_user_input = false;
@@ -1286,6 +1285,9 @@ impl ChiefCoordinator {
 	pub async fn handle_event(&mut self, event: ServerEvent) -> Result<(), ChiefError> {
 		self.voice_event(&event).await?;
 		if let ServerEvent::Notification { method, params } = &event {
+			if self.observe_settings_notification(method, params).await? {
+				return Ok(());
+			}
 			self.observe_question_state_notification(method, params).await?;
 		}
 		match event {
@@ -1852,10 +1854,7 @@ impl ChiefCoordinator {
 			self.store.hold_chief_unsent_input(notice.work_item_id.clone()).await?;
 			let item = self.store.get_chief_work_item(notice.work_item_id.clone()).await?;
 			if let Some(thread) = &item.codex_thread_id {
-				let mut params = self.work_thread_params(&item).await?;
-				params.as_object_mut().expect("thread params").remove("dynamicTools");
-				params["threadId"] = json!(thread);
-				params["excludeTurns"] = json!(true);
+				let params = Self::resume_params(thread);
 				let resumed =
 					self.client.thread_resume(params).await.map_err(|e| resume_error(e, thread))?;
 				if resumed.pointer("/thread/id").and_then(Value::as_str) != Some(thread.as_str()) {

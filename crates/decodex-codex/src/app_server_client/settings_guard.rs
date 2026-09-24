@@ -132,3 +132,56 @@ mod transport_tests {
 		);
 	}
 }
+
+#[cfg(test)]
+mod combined_tests {
+	use super::super::{AppServerClient, ServerEvent, server_requests::ServerRequests};
+	use serde_json::json;
+
+	#[test]
+	fn settings_constraint_retains_question_revision_and_connection_identity() {
+		let requests = ServerRequests::default();
+		let combined = requests
+			.with_thread_settings_guard("task", requests.question_guard(0).unwrap())
+			.unwrap();
+		requests
+			.observe(&ServerEvent::Notification {
+				method: "thread/settings/updated".into(),
+				params: json!({"threadId":"other"}),
+			})
+			.unwrap();
+		assert!(combined.is_live());
+		requests
+			.observe(&ServerEvent::Notification {
+				method: "item/completed".into(),
+				params: json!({"threadId":"task","turnId":"turn","item":{"id":"input","type":"userMessage"}}),
+			})
+			.unwrap();
+		assert!(!combined.is_live());
+		assert!(requests.with_thread_settings_guard("task", combined).is_none());
+		let combined = requests
+			.with_thread_settings_guard("task", requests.question_guard(1).unwrap())
+			.unwrap();
+		requests
+			.observe(&ServerEvent::Notification {
+				method: "thread/settings/updated".into(),
+				params: json!({"threadId":"task"}),
+			})
+			.unwrap();
+		assert!(!combined.is_live());
+		let other = ServerRequests::default();
+		assert!(
+			requests.with_thread_settings_guard("task", other.question_guard(0).unwrap()).is_none()
+		);
+	}
+
+	#[tokio::test]
+	async fn closed_connection_cannot_combine_guards() {
+		let (io, _remote) = tokio::io::duplex(128);
+		let (reader, writer) = tokio::io::split(io);
+		let (client, _events) = AppServerClient::from_io(reader, writer);
+		let guard = client.question_guard(0).unwrap();
+		client.close();
+		assert!(client.with_thread_settings_guard("task", guard).is_none());
+	}
+}

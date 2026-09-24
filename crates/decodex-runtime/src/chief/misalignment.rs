@@ -27,20 +27,9 @@ impl ChiefCoordinator {
 				"The displayed precaution is no longer current.".into(),
 			));
 		}
-		let effort = if self.is_manager(id).await? {
-			self.config.chief_effort.clone()
-		} else {
-			self.config.worker_effort.clone()
-		};
-		let mut resume = self.work_thread_params(&work).await?;
-		resume.as_object_mut().expect("thread params").remove("dynamicTools");
-		resume["threadId"] = json!(review.thread_id);
-		resume["excludeTurns"] = json!(true);
+		let resume = Self::resume_params(&review.thread_id);
 		let resumed = self.client.thread_resume(resume).await?;
-		if exact(&resumed, "/thread/id")? != review.thread_id
-			|| resumed["model"].as_str() != Some(self.config.model.as_str())
-			|| resumed["reasoningEffort"].as_str() != Some(effort.as_str())
-		{
+		if !Self::hydrated_thread_matches(&resumed, &review.thread_id) {
 			return Err(ChiefError::Rejected("Continuation thread changed.".into()));
 		}
 		if self.client.thread_latest_turn_id(&review.thread_id).await?.as_deref()
@@ -79,7 +68,7 @@ impl ChiefCoordinator {
 			.store
 			.begin_chief_misalignment_continuation(id.into(), review.clone(), key.into())
 			.await?;
-		let result=self.client.turn_start(json!({"threadId":review.thread_id,"model":self.config.model,"effort":effort,"input":[{"type":"text","text":text,"text_elements":[]}],"responsesapiClientMetadata":{"misalignment_override":json!({"timestamp":timestamp}).to_string()}})).await;
+		let result=self.client.turn_start(json!({"threadId":review.thread_id,"input":[{"type":"text","text":text,"text_elements":[]}],"responsesapiClientMetadata":{"misalignment_override":json!({"timestamp":timestamp}).to_string()}})).await;
 		match result {
 			Ok(value) => {
 				let turn = exact(&value, "/turn/id")?;

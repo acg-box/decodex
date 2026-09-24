@@ -285,6 +285,18 @@ impl AppServerClient {
 		self.server_requests.thread_settings_guard(thread)
 	}
 
+	/// Add a task-settings constraint without replacing an existing question/history version.
+	pub fn with_thread_settings_guard(
+		&self,
+		thread: &str,
+		guard: HistoryGuard,
+	) -> Option<HistoryGuard> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.with_thread_settings_guard(thread, guard)
+	}
+
 	/// Send only if the captured native history is still current immediately before writing.
 	pub async fn request_with_history(
 		&self,
