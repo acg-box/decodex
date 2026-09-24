@@ -936,6 +936,22 @@ impl AttestedProcessChild {
 		&mut self,
 		vault: &dyn CredentialVault,
 	) -> Result<(), ConversationProcessError> {
+		self.initialize_turns(vault, InitializeCapabilities::default())
+	}
+
+	/// Initialize the admitted Chief child with its retained form request consumer.
+	pub(crate) fn initialize_chief_turns(
+		&mut self,
+		vault: &dyn CredentialVault,
+	) -> Result<(), ConversationProcessError> {
+		self.initialize_turns(vault, InitializeCapabilities::for_chief())
+	}
+
+	fn initialize_turns(
+		&mut self,
+		vault: &dyn CredentialVault,
+		capabilities: InitializeCapabilities,
+	) -> Result<(), ConversationProcessError> {
 		if self.initialized {
 			return Err(ConversationProcessError::Unavailable);
 		}
@@ -945,8 +961,14 @@ impl AttestedProcessChild {
 			.map_err(|_| ConversationProcessError::Incompatible)?;
 		let mut cache = CapabilityCache::default();
 		let mut negotiation = ProbeNegotiation::new(&mut cache, &self.build, &self.generated);
-		initialize_probe(&mut self.process, Some(vault), self.timeout, &mut negotiation)
-			.map_err(|_| ConversationProcessError::Unavailable)?;
+		initialize_probe(
+			&mut self.process,
+			Some(vault),
+			self.timeout,
+			&mut negotiation,
+			capabilities,
+		)
+		.map_err(|_| ConversationProcessError::Unavailable)?;
 		self.initialized = true;
 		Ok(())
 	}
@@ -2787,8 +2809,13 @@ impl ReadOnlyProbe {
 			Ok(process) => process,
 			Err(error) => return negotiation.fail(Capability::Initialize, error.into()),
 		};
-		let _account_identity =
-			initialize_probe(&mut process, vault, self.timeout, &mut negotiation)?;
+		let _account_identity = initialize_probe(
+			&mut process,
+			vault,
+			self.timeout,
+			&mut negotiation,
+			InitializeCapabilities::default(),
+		)?;
 		let list = probe_thread_list(&mut process, self.timeout, &mut negotiation)?;
 
 		probe_thread_read(&mut process, &list, self.timeout, &mut negotiation)?;
@@ -2870,8 +2897,14 @@ impl ExactThreadReconciler {
 		let mut process = SupervisedProcess::spawn_bound(self.command, self.binding, guard)
 			.map_err(|error| ExactThreadReconciliationFailure::Probe(error.into()))?;
 
-		initialize_probe(&mut process, Some(vault), self.timeout, &mut negotiation)
-			.map_err(ExactThreadReconciliationFailure::Probe)?;
+		initialize_probe(
+			&mut process,
+			Some(vault),
+			self.timeout,
+			&mut negotiation,
+			InitializeCapabilities::default(),
+		)
+		.map_err(ExactThreadReconciliationFailure::Probe)?;
 
 		let result = match operation {
 			ExactThreadReconciliation::List(filter) => ExactThreadReconciliationResult::List(
@@ -4594,11 +4627,12 @@ fn initialize_probe(
 	vault: Option<&dyn CredentialVault>,
 	timeout: Duration,
 	negotiation: &mut ProbeNegotiation<'_>,
+	capabilities: InitializeCapabilities,
 ) -> Result<AccountIdentity, ProbeError> {
 	if let Some(vault) = vault {
-		initialize_probe_projection(process, vault, timeout, negotiation)?;
+		initialize_probe_projection(process, vault, timeout, negotiation, capabilities)?;
 	} else {
-		initialize_probe_connection(process, timeout, negotiation)?;
+		initialize_probe_connection(process, timeout, negotiation, capabilities)?;
 	}
 
 	let identity = match process.read_account_identity(timeout) {
@@ -4616,8 +4650,9 @@ fn initialize_probe_projection(
 	vault: &dyn CredentialVault,
 	timeout: Duration,
 	negotiation: &mut ProbeNegotiation<'_>,
+	capabilities: InitializeCapabilities,
 ) -> Result<(), ProbeError> {
-	initialize_probe_connection(process, timeout, negotiation)?;
+	initialize_probe_connection(process, timeout, negotiation, capabilities)?;
 	let account_id = process.binding.account_id().clone();
 	let mut projection = CredentialProjection { process, timeout, used: false };
 	let expected =
@@ -4636,15 +4671,13 @@ fn initialize_probe_connection(
 	process: &mut SupervisedProcess,
 	timeout: Duration,
 	negotiation: &mut ProbeNegotiation<'_>,
+	capabilities: InitializeCapabilities,
 ) -> Result<(), ProbeError> {
 	let initialize = match process.request::<_, InitializeResponse>(
 		ReadOnlyMethod::Initialize,
 		&InitializeParams {
 			client_info: ClientInfo { name: "decodex", version: env!("CARGO_PKG_VERSION") },
-			capabilities: InitializeCapabilities {
-				experimental_api: true,
-				opt_out_notification_methods: &["rawResponseItem/completed"],
-			},
+			capabilities,
 		},
 		timeout,
 	) {
@@ -5399,6 +5432,9 @@ pub(crate) mod tests {
 			"--out".into(),
 		];
 
+		if matches!(mode, "chief-form-capabilities" | "ordinary-capabilities") {
+			schema_args.push("--conversation-contract".into());
+		}
 		if mode == "schema-missing" {
 			schema_args.push("--missing-required".into());
 		}
@@ -7407,10 +7443,7 @@ pub(crate) mod tests {
 				ReadOnlyMethod::Initialize,
 				&InitializeParams {
 					client_info: ClientInfo { name: "decodex-test", version: "0" },
-					capabilities: InitializeCapabilities {
-						experimental_api: true,
-						opt_out_notification_methods: &["rawResponseItem/completed"],
-					},
+					capabilities: InitializeCapabilities::default(),
 				},
 				timeout,
 			)
@@ -7456,6 +7489,37 @@ pub(crate) mod tests {
 		process.read_account_identity(timeout).unwrap();
 
 		(temp, process)
+	}
+
+	#[test]
+	fn admitted_chief_and_ordinary_children_negotiate_their_own_capabilities() {
+		for chief in [false, true] {
+			let temp = TempDir::new().unwrap();
+			let mode = if chief { "chief-form-capabilities" } else { "ordinary-capabilities" };
+			let command = fake_command(mode, temp.path(), None);
+			let binding = binding();
+			let profile = AttestedAppServerProfile::attest_for_test(
+				command.clone(),
+				&binding.expected_codex_home,
+				Duration::from_secs(2),
+			)
+			.unwrap();
+			let mut child = super::AttestedProcessChild {
+				process: SupervisedProcess::spawn(command, binding).unwrap(),
+				build: profile.build,
+				generated: profile.generated,
+				timeout: Duration::from_secs(2),
+				initialized: false,
+			};
+			let vault = FixtureVault::matching();
+			if chief {
+				child.initialize_chief_turns(&vault).unwrap();
+			} else {
+				child.initialize_ordinary_turns(&vault).unwrap();
+			}
+			assert!(child.initialized);
+			child.close_private_lifetime_channels();
+		}
 	}
 
 	#[tokio::test]

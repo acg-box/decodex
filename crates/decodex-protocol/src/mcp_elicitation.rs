@@ -62,6 +62,17 @@ fn choices(schema: &Value) -> Result<Vec<McpFormChoice>, String> {
 	Ok(Vec::new())
 }
 
+/// Validate the request mode before interpreting its form schema.
+/// Only standard MCP retains the legacy null-schema confirmation convention.
+pub fn mcp_request_fields(request: &Value) -> Result<Vec<McpFormField>, String> {
+	let schema = request.get("requestedSchema").ok_or("Missing form schema")?;
+	match request["mode"].as_str() {
+		Some("form") => mcp_form_fields(schema),
+		Some("openai/form" | "openaiForm") if !schema.is_null() => mcp_form_fields(schema),
+		_ => Err("This form schema is not supported.".into()),
+	}
+}
+
 /// Project the standard primitive schema shared by MCP and supported OpenAI forms.
 pub fn mcp_form_fields(schema: &Value) -> Result<Vec<McpFormField>, String> {
 	if schema.is_null() {
@@ -282,7 +293,7 @@ pub fn validate_mcp_response(request: &Value, response: &Value) -> Result<(), St
 	}
 	match request["mode"].as_str() {
 		Some("form" | "openai/form" | "openaiForm") => {
-			let fields = mcp_form_fields(&request["requestedSchema"])?;
+			let fields = mcp_request_fields(request)?;
 			if fields.is_empty() {
 				if !response["content"].is_null() && response["content"] != json!({}) {
 					return Err("This approval has no input fields".into());
@@ -327,6 +338,54 @@ pub fn validate_mcp_response(request: &Value, response: &Value) -> Result<(), St
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn opaque_openai_schemas_never_become_empty_approvals() {
+		for mode in ["form", "openai/form", "openaiForm"] {
+			assert!(mcp_request_fields(&json!({"mode":mode})).is_err());
+		}
+		for mode in ["openai/form", "openaiForm"] {
+			for schema in [Value::Null, json!(true), json!("unknown"), json!([]), json!({})] {
+				let request = json!({"mode":mode,"requestedSchema":schema});
+				assert!(mcp_request_fields(&request).is_err());
+				assert!(
+					validate_mcp_response(&request, &json!({"action":"accept","content":null}))
+						.is_err()
+				);
+				for action in ["decline", "cancel"] {
+					assert!(
+						validate_mcp_response(&request, &json!({"action":action,"content":null}))
+							.is_ok()
+					);
+				}
+			}
+		}
+		assert!(
+			mcp_request_fields(&json!({"mode":"form","requestedSchema":null})).unwrap().is_empty()
+		);
+	}
+
+	#[test]
+	fn openai_form_unknown_semantics_require_decline_or_cancel() {
+		let request = json!({"mode":"openaiForm","requestedSchema":{
+			"type":"object","properties":{"template":{"type":"string","oneOf":[{
+				"const":"wire-value","title":"Display label","x-openai-preview":{"src":"data:image/png;base64,fixture"}
+			}]}},"required":["template"]
+		}});
+		assert!(mcp_form_fields(&request["requestedSchema"]).is_err());
+		assert!(
+			validate_mcp_response(
+				&request,
+				&json!({"action":"accept","content":{"template":"wire-value"}})
+			)
+			.is_err()
+		);
+		for action in ["decline", "cancel"] {
+			assert!(
+				validate_mcp_response(&request, &json!({"action":action,"content":null})).is_ok()
+			);
+		}
+	}
+
 	#[test]
 	fn response_permissions_are_limited_to_advertised_scope() {
 		let request = json!({"mode":"form","requestedSchema":null,"_meta":{"persist":["session"]}});

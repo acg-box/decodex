@@ -187,7 +187,7 @@ impl ChiefCoordinator {
 			.client
 			.initialize(json!({
 				"clientInfo":{"name":"decodex_chief","version":env!("CARGO_PKG_VERSION")},
-				"capabilities":{"experimentalApi":true,"optOutNotificationMethods":["rawResponseItem/completed"]}
+				"capabilities":decodex_codex::app_server_client::InitializeCapabilities::for_chief()
 			}))
 			.await?)
 	}
