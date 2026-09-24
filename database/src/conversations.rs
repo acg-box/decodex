@@ -484,6 +484,33 @@ struct Payload {
 }
 
 impl SqliteStore {
+	/// Read the original creation receipt without replaying or reserving a command.
+	/// A match proves local creation, not provider acceptance or turn completion.
+	pub async fn read_conversation_creation_receipt(
+		&self,
+		command: &CommandIdentity,
+		conversation_id: &ConversationId,
+	) -> Result<Option<StoredConversation>, StoreError> {
+		let command = command.clone();
+		let conversation_id = conversation_id.clone();
+		self.run(move |connection| {
+			let transaction = connection.transaction().map_err(sql_error)?;
+			let receipt = read_receipt(
+				&transaction,
+				&command,
+				"create_quick_task_conversation",
+				conversation_id.as_str(),
+			)?
+			.map(|response| {
+				serde_json::from_str(&response).map_err(|_| incompatible("Conversation receipt"))
+			})
+			.transpose()?;
+			transaction.commit().map_err(sql_error)?;
+			Ok(receipt)
+		})
+		.await
+	}
+
 	pub async fn create_conversation(
 		&self,
 		command: &CommandIdentity,

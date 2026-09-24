@@ -861,3 +861,51 @@ async fn original_reasoning_choice_survives_reopen_and_idempotent_creation() {
 		}
 	}
 }
+
+#[tokio::test]
+async fn creation_receipt_readback_is_exact_and_survives_reopen() {
+	let temporary = tempdir().unwrap();
+	let root = DecodexRoot::new(temporary.path().canonicalize().unwrap()).unwrap();
+	let paths = root.paths();
+	let store = SqliteStore::open(&paths).unwrap();
+	let id = ConversationId::new(CONVERSATION_ID).unwrap();
+	let command = CommandIdentity::new("receipt-original", b"exact request").unwrap();
+	assert_eq!(store.read_conversation_creation_receipt(&command, &id).await.unwrap(), None);
+	let record = CreateConversationRecord {
+		conversation_id: id.clone(),
+		title: "Original request".into(),
+		message: "Keep this message".into(),
+		working_directory: "/tmp".into(),
+		model: "native-model".into(),
+		reasoning_effort: None,
+		fast: false,
+		service_tier: None,
+	};
+	let created = store.create_conversation(&command, &record).await.unwrap();
+	assert_eq!(
+		store.read_conversation_creation_receipt(&command, &id).await.unwrap(),
+		Some(created.clone())
+	);
+	let different_key = CommandIdentity::new("unseen-command", b"exact request").unwrap();
+	assert_eq!(store.read_conversation_creation_receipt(&different_key, &id).await.unwrap(), None);
+	let changed = CommandIdentity::new("receipt-original", b"changed request").unwrap();
+	assert!(matches!(
+		store.read_conversation_creation_receipt(&changed, &id).await,
+		Err(decodex_database::StoreError::IdempotencyConflict)
+	));
+	let other = ConversationId::new("30000000-0000-4000-8000-000000000099").unwrap();
+	assert!(matches!(
+		store.read_conversation_creation_receipt(&command, &other).await,
+		Err(decodex_database::StoreError::IdempotencyConflict)
+	));
+	drop(store);
+	let reopened = SqliteStore::open(&paths).unwrap();
+	assert_eq!(
+		reopened.read_conversation_creation_receipt(&command, &id).await.unwrap(),
+		Some(created)
+	);
+	assert_eq!(
+		reopened.read_conversation_request(&id).await.unwrap().unwrap().message,
+		record.message
+	);
+}

@@ -318,6 +318,27 @@ pub(crate) struct CreateConversation {
 	pub execution: ConversationExecutionSettings,
 }
 
+impl CreateConversation {
+	fn creation_identity(&self) -> Result<CommandIdentity, ()> {
+		exact_command(
+			"conversation",
+			&self.operation_key,
+			&[
+				self.conversation_id.as_str(),
+				"Conversation",
+				&self.message,
+				&self.working_directory,
+				&self.execution.model,
+				// Empty only encodes absence in the fingerprint; explicit effort cannot be empty.
+				// Keep existing explicit request fingerprints unchanged.
+				self.execution.reasoning_effort.as_deref().unwrap_or(""),
+				self.execution.service_tier.as_str(),
+				"ordinary",
+			],
+		)
+	}
+}
+
 /// Public recovery coordinates. Message, directory, and route authority come from durable state.
 pub(crate) struct RecoverConversation {
 	pub operation_key: String,
@@ -1350,22 +1371,7 @@ impl ConversationRuntime {
 	#[allow(clippy::too_many_lines)]
 	async fn create_inner(&self, command: CreateConversation) -> ConversationOutcome {
 		let title = bounded_conversation_title(&command.message);
-		let conversation_command = match exact_command(
-			"conversation",
-			&command.operation_key,
-			&[
-				command.conversation_id.as_str(),
-				"Conversation",
-				&command.message,
-				&command.working_directory,
-				&command.execution.model,
-				// Empty only encodes absence in the fingerprint; explicit effort cannot be empty.
-				// Keep existing explicit request fingerprints unchanged.
-				command.execution.reasoning_effort.as_deref().unwrap_or(""),
-				command.execution.service_tier.as_str(),
-				"ordinary",
-			],
-		) {
+		let conversation_command = match command.creation_identity() {
 			Ok(command) => command,
 			Err(()) => return ConversationOutcome::Conflict,
 		};
@@ -6007,6 +6013,73 @@ mod tests {
 			status,
 			revision,
 		}
+	}
+
+	#[tokio::test]
+	async fn creation_readback_reuses_the_original_runtime_fingerprint() {
+		let temp = tempfile::tempdir().unwrap();
+		let root = decodex_core::DecodexRoot::new(temp.path().canonicalize().unwrap()).unwrap();
+		let store = super::SqliteStore::open(&root.paths()).unwrap();
+		let id = super::ConversationId::new("30000000-0000-4000-8000-000000000001").unwrap();
+		let mut command = super::CreateConversation {
+			operation_key: "original-creation".into(),
+			correlation_id: "correlation".into(),
+			causation_id: None,
+			conversation_id: id.clone(),
+			message: "Original input".into(),
+			working_directory: "/tmp".into(),
+			execution: super::ConversationExecutionSettings {
+				model: "native-model".into(),
+				reasoning_effort: None,
+				fast: false,
+				service_tier: decodex_core::ServiceTier::new("default").unwrap(),
+			},
+		};
+		let original = super::exact_command(
+			"conversation",
+			"original-creation",
+			&[
+				id.as_str(),
+				"Conversation",
+				"Original input",
+				"/tmp",
+				"native-model",
+				"",
+				"default",
+				"ordinary",
+			],
+		)
+		.unwrap();
+		let created = store
+			.create_conversation(
+				&original,
+				&super::CreateConversationRecord {
+					conversation_id: id.clone(),
+					title: "Original input".into(),
+					message: command.message.clone(),
+					working_directory: command.working_directory.clone(),
+					model: command.execution.model.clone(),
+					reasoning_effort: None,
+					fast: false,
+					service_tier: Some(command.execution.service_tier.clone()),
+				},
+			)
+			.await
+			.unwrap();
+		assert_eq!(
+			store
+				.read_conversation_creation_receipt(&command.creation_identity().unwrap(), &id)
+				.await
+				.unwrap(),
+			Some(created)
+		);
+		command.execution.reasoning_effort = Some("none".into());
+		assert!(matches!(
+			store
+				.read_conversation_creation_receipt(&command.creation_identity().unwrap(), &id)
+				.await,
+			Err(super::StoreError::IdempotencyConflict)
+		));
 	}
 
 	#[test]
