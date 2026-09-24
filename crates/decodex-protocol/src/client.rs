@@ -164,6 +164,28 @@ impl ClientProfile {
 		&self.expected_server_id
 	}
 
+	/// Opaque stable namespace for local unsent drafts, bound to this exact profile.
+	/// Includes native endpoint authority without exposing its path or owner identity.
+	pub fn draft_scope_key(&self) -> String {
+		let kind = match self.kind {
+			ProfileKind::Local => "local",
+			ProfileKind::Remote => "remote",
+		};
+		let authority = self
+			.local_transport
+			.as_ref()
+			.map(LocalTransportAuthority::draft_scope_key)
+			.unwrap_or_default();
+		let server = self.expected_server_id.as_str();
+		let identity = format!(
+			"desktop-draft-v1:{kind}:{}:{}:{}:{server}:{authority}",
+			self.profile_name.len(),
+			self.profile_name,
+			server.len()
+		);
+		decodex_core::BlobHash::digest(identity.as_bytes()).to_hex()
+	}
+
 	/// Apply a stricter caller-retained server-identity pin.
 	pub fn with_expected_server_id(mut self, expected_server_id: ServerId) -> Self {
 		self.expected_server_id = expected_server_id;
@@ -2888,6 +2910,37 @@ mod tests {
 	}
 
 	#[test]
+	fn client_draft_scope_binds_profile_server_and_endpoint() {
+		let (_first_root, first_transport) = local_transport();
+		let (_second_root, second_transport) = local_transport();
+		let first = ClientProfile::fixture(first_transport, ServerId::new(SERVER_ID).unwrap());
+		let key = first.draft_scope_key();
+		assert_eq!(key.len(), 64);
+		assert!(key.bytes().all(|byte| byte.is_ascii_hexdigit()));
+		assert_eq!(first.clone().draft_scope_key(), key);
+		let other_endpoint =
+			ClientProfile::fixture(second_transport, ServerId::new(SERVER_ID).unwrap());
+		assert_ne!(other_endpoint.draft_scope_key(), key);
+		assert_ne!(
+			first
+				.clone()
+				.with_expected_server_id(ServerId::new("different-service").unwrap())
+				.draft_scope_key(),
+			key
+		);
+		let mut renamed = first.clone();
+		renamed.profile_name = "another profile".into();
+		assert_ne!(renamed.draft_scope_key(), key);
+		let remote = ClientProfile {
+			profile_name: first.profile_name.clone(),
+			kind: ProfileKind::Remote,
+			local_transport: None,
+			expected_server_id: first.expected_server_id.clone(),
+		};
+		assert_ne!(remote.draft_scope_key(), key);
+	}
+
+	#[test]
 	fn active_local_profile_uses_stable_identity_and_remote_uses_only_profile_data() {
 		let temp = TempDir::new().expect("test operation must succeed");
 		let root = DecodexRoot::new(
@@ -2963,7 +3016,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 46 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 47 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

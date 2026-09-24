@@ -54,6 +54,82 @@ impl ChiefSurface {
 				},
 			);
 		}
+		self.restore_async_drafts(work, questions, *questions_truncated, cx);
+	}
+
+	#[cfg(test)]
+	pub(super) fn capture_async_drafts(
+		&self,
+		cx: &Context<Self>,
+	) -> Option<Vec<decodex_protocol::DesktopQuestionDraft>> {
+		let mut saved = self.restored_question_drafts.clone();
+		for ((work, question), input) in &self.async_question_inputs {
+			let thread = self.async_question_threads.get(work)?;
+			let state = self.async_question_choices.get(&(work.clone(), question.clone()));
+			saved.push(decodex_protocol::DesktopQuestionDraft {
+				work_id: EntityId::new(work).ok()?,
+				thread_id: WireText::new(thread).ok()?,
+				question_id: WireText::new(question).ok()?,
+				text: input.read(cx).content().into(),
+				selected: state.and_then(|state| state.selected.clone()),
+				custom: state
+					.and_then(|state| state.custom.as_ref())
+					.map(|input| input.read(cx).content().into()),
+				collapsed: self.collapsed_async_questions.contains(work),
+			});
+		}
+		Some(saved)
+	}
+
+	fn restore_async_drafts(
+		&mut self,
+		work: &str,
+		questions: &[decodex_protocol::ChiefAsyncQuestionDto],
+		truncated: bool,
+		cx: &mut Context<Self>,
+	) {
+		let Some(thread) = self.async_question_threads.get(work).cloned() else {
+			return;
+		};
+		for saved in std::mem::take(&mut self.restored_question_drafts) {
+			if saved.work_id.as_str() != work {
+				self.restored_question_drafts.push(saved);
+				continue;
+			}
+			if saved.thread_id.as_str() != thread {
+				continue;
+			}
+			let Some(question) =
+				questions.iter().find(|question| question.id == saved.question_id.as_str())
+			else {
+				if truncated {
+					self.restored_question_drafts.push(saved);
+				}
+				continue;
+			};
+			let key = (work.into(), question.id.clone());
+			if let Some(input) = self.async_question_inputs.get(&key) {
+				input.update(cx, |input, cx| input.set_content(&saved.text, cx));
+			}
+			let custom = saved.custom.map(|text| {
+				cx.new(|cx| {
+					let mut input = ComposerInput::with_placeholder(
+						40,
+						"Write an answer",
+						"Answer to Chief",
+						cx,
+					);
+					input.set_content(&text, cx);
+					input
+				})
+			});
+			let selected = saved.selected.filter(|option| question.options.contains(option));
+			self.async_question_choices
+				.insert(key, ChoiceDraft { selected, custom, ..Default::default() });
+			if saved.collapsed {
+				self.collapsed_async_questions.insert(work.into());
+			}
+		}
 	}
 
 	fn bind_async_question_thread(&mut self, work: &str) {
@@ -451,6 +527,52 @@ impl ChiefSurface {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn async_cold_restore_waits_for_history_and_prunes_resolved_questions(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			install_question_fixture(s, cx);
+			let key = ("root".into(), "q1".into());
+			s.async_question_inputs[&key]
+				.update(cx, |input, cx| input.set_content("Saved answer", cx));
+			s.restored_question_drafts = s.capture_async_drafts(cx).unwrap();
+			s.async_question_inputs.clear();
+			s.async_question_choices.clear();
+			let (_, mut history) = s.history.clone().unwrap();
+			if let ChiefHistoryResult::Available { questions_recovering, .. } = &mut history {
+				*questions_recovering = true;
+			}
+			s.prepare_async_question_inputs("root", &history, cx);
+			assert!(s.async_question_inputs.is_empty());
+			assert_eq!(s.capture_async_drafts(cx).unwrap().len(), 1);
+			if let ChiefHistoryResult::Available { questions_recovering, .. } = &mut history {
+				*questions_recovering = false;
+			}
+			s.prepare_async_question_inputs("root", &history, cx);
+			assert_eq!(s.async_question_inputs[&key].read(cx).content(), "Saved answer");
+			assert!(s.restored_question_drafts.is_empty());
+			s.restored_question_drafts = s.capture_async_drafts(cx).unwrap();
+			s.async_question_inputs.clear();
+			s.async_question_choices.clear();
+			if let ChiefHistoryResult::Available { questions, questions_truncated, .. } =
+				&mut history
+			{
+				questions.clear();
+				*questions_truncated = true;
+			}
+			s.prepare_async_question_inputs("root", &history, cx);
+			assert_eq!(s.restored_question_drafts.len(), 1);
+			if let ChiefHistoryResult::Available { questions_truncated, .. } = &mut history {
+				*questions_truncated = false;
+			}
+			s.prepare_async_question_inputs("root", &history, cx);
+			assert!(s.restored_question_drafts.is_empty());
+			assert!(s.async_question_inputs.is_empty());
+			assert!(!s.sending);
+		});
+	}
 	#[gpui::test]
 	fn async_question_drafts_survive_refresh_and_other_work(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));

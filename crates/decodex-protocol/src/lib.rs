@@ -158,7 +158,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 46 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 47 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
@@ -244,4 +244,17 @@ mod tests {
 mod mcp_elicitation;
 pub use mcp_elicitation::{
 	McpFormChoice, McpFormField, mcp_form_content, mcp_form_fields, validate_mcp_response,
+};
+
+mod chief_execution;
+pub use chief_execution::ChiefExecutionOverrides;
+mod chief_steer;
+pub use chief_steer::{ChiefSteerIdentity, ChiefSteerReceiptResult};
+mod desktop_drafts;
+pub use decodex_core::{
+	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES,
+};
+pub use desktop_drafts::{
+	DesktopComposerDraft, DesktopDraftDocument, DesktopPendingDraft, DesktopProfileDraft,
+	DesktopQuestionDraft, DesktopRecoveredDraft,
 };

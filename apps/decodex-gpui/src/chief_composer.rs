@@ -36,7 +36,6 @@ impl ChiefSurface {
 		&self,
 		root_id: EntityId,
 		text: HistoryText,
-		execution: decodex_protocol::ConversationExecutionSettings,
 		attachments: Vec<ChiefAttachmentDto>,
 	) -> ChiefActionDto {
 		if let Some((work_id, turn_id)) =
@@ -51,9 +50,9 @@ impl ChiefSurface {
 			}
 		} else {
 			ChiefActionDto::SendConfigured {
+				execution: self.draft_profiles.execution.choice(root_id.as_str()),
 				root_id,
 				text,
-				execution,
 				attachments,
 				task_references: self.task_references.clone(),
 			}
@@ -602,10 +601,17 @@ impl ChiefSurface {
 		)
 	}
 
-	fn select_composer_option(&mut self, menu: &str, value: &str, cx: &mut Context<Self>) {
+	pub(super) fn select_composer_option(
+		&mut self,
+		menu: &str,
+		value: &str,
+		cx: &mut Context<Self>,
+	) {
 		if menu == "model" {
 			self.model.update(cx, |input, cx| input.set_content(value, cx));
+			self.mark_model_intent(cx);
 			self.reconcile_model_options(cx);
+			self.mark_model_intent(cx);
 		} else {
 			self.effort = match value {
 				"none" => ConversationReasoningEffort::None,
@@ -618,6 +624,7 @@ impl ChiefSurface {
 				"persistent" => ConversationReasoningEffort::Persistent,
 				_ => ConversationReasoningEffort::High,
 			};
+			self.mark_effort_intent();
 		}
 		cx.notify();
 	}
@@ -893,12 +900,6 @@ mod tests {
 				s.configured_send(
 					EntityId::new("chief").unwrap(),
 					HistoryText::new("Supplement").unwrap(),
-					decodex_protocol::ConversationExecutionSettings {
-						model: ConversationModel::new("gpt-6-astra").unwrap(),
-						reasoning_effort: s.effort,
-						fast: false,
-						service_tier: None,
-					},
 					vec![],
 				)
 			};

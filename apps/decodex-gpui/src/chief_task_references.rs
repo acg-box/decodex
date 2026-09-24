@@ -36,7 +36,7 @@ impl ChiefSurface {
 	) {
 		if same_owner {
 			self.task_references.retain(|reference| !sent.contains(reference));
-		} else if let Some(draft) = owner.and_then(|id| self.task_reference_drafts.get_mut(id)) {
+		} else if let Some(draft) = owner.and_then(|id| self.draft_profiles.tasks.get_mut(id)) {
 			draft.retain(|reference| !sent.contains(reference));
 		}
 	}
@@ -238,9 +238,9 @@ mod tests {
 			assert_eq!(s.task_references.len(), 2);
 			s.clear_sent_task_references(std::slice::from_ref(&first), true, None);
 			assert_eq!(s.task_references, vec![later.clone()]);
-			s.task_reference_drafts.insert("other".into(), vec![first.clone(), later.clone()]);
+			s.draft_profiles.tasks.insert("other".into(), vec![first.clone(), later.clone()]);
 			s.clear_sent_task_references(&[first], false, Some("other"));
-			assert_eq!(s.task_reference_drafts["other"], vec![later.clone()]);
+			assert_eq!(s.draft_profiles.tasks["other"], vec![later.clone()]);
 			assert_eq!(s.task_references, vec![later]);
 		});
 	}
@@ -257,12 +257,6 @@ mod tests {
 			let action = s.configured_send(
 				EntityId::new("chief").unwrap(),
 				HistoryText::new("Read it").unwrap(),
-				decodex_protocol::ConversationExecutionSettings {
-					model: ConversationModel::new("gpt-6-astra").unwrap(),
-					reasoning_effort: ConversationReasoningEffort::High,
-					fast: false,
-					service_tier: None,
-				},
 				vec![],
 			);
 			match action {
