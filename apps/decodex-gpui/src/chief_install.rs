@@ -280,7 +280,7 @@ mod tests {
 		visual.simulate_click(continue_button.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, _| {
 			assert_eq!(s.feedback, "No service profile is configured.");
-			assert!(s.command_task.is_none());
+			assert!(s.submission.command.is_none());
 		});
 		surface.update(visual, |s, _| {
 			s.installation_disconnected();

@@ -544,6 +544,14 @@ pub(crate) struct Shell {
 }
 
 impl Shell {
+	pub(crate) fn drafts_ready_for_quit(&mut self, cx: &mut Context<Self>) -> bool {
+		self.chief.update(cx, |surface, cx| surface.drafts_ready_for_quit(cx))
+	}
+
+	pub(crate) fn flush_drafts_for_quit(&mut self, cx: &mut Context<Self>) -> Task<bool> {
+		self.chief.update(cx, |surface, cx| surface.flush_drafts_for_quit(cx))
+	}
+
 	pub(crate) fn with_chief_profile(
 		mut self,
 		profile: Option<decodex_protocol::ClientProfile>,

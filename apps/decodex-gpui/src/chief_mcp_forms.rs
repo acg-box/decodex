@@ -383,7 +383,7 @@ mod tests {
             s.feedback.clear();
             s.submit_mcp_form_with_scope(6,Some("session"),cx);
             assert!(s.feedback.is_empty());
-            assert!(s.command_task.is_none());
+            assert!(s.submission.command.is_none());
         });
 		visual.update(|window, cx| {
 			window.resize(gpui::size(px(1180.0), px(1200.0)));
@@ -395,7 +395,7 @@ mod tests {
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, _| {
 			assert_eq!(s.feedback, "No service profile is configured.");
-			assert!(s.command_task.is_none());
+			assert!(s.submission.command.is_none());
 		});
 	}
 
@@ -429,7 +429,7 @@ mod tests {
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, _| {
 			assert_eq!(s.mcp_url_opened, Some((7, "https://example.test/verify".into())));
-			assert!(s.command_task.is_none());
+			assert!(s.submission.command.is_none());
 			assert!(s.feedback.is_empty());
 		});
 		visual.update(|window, cx| {
@@ -469,13 +469,13 @@ mod tests {
             let request=ChiefRequestResult::Available {event_id:7,work_id:"chief".into(),method:"mcpServer/elicitation/request".into(),request_json:HistoryText::new(json!({"mode":"form","requestedSchema":{"type":"object","properties":{"agree":{"type":"boolean","default":true},"name":{"type":"string"}},"required":["agree","name"]}}).to_string()).unwrap()};
             s.prepare_mcp_inputs(&request,cx);s.request=Some(request.clone());s.selected=Some("chief".into());
             s.submit_mcp_form(7,cx);
-            assert!(s.feedback.contains("required"));assert!(s.command_task.is_none());
+            assert!(s.feedback.contains("required"));assert!(s.submission.command.is_none());
             s.mcp_answers.insert("agree".into(),json!(false));
             s.mcp_inputs["name"].update(cx,|input,cx|input.set_content("My name",cx));
             s.prepare_mcp_inputs(&request,cx);
             assert_eq!(s.mcp_inputs["name"].read(cx).content(),"My name");
             assert_eq!(s.mcp_answers["agree"],false);
-            s.submit_mcp_form(6,cx);assert!(s.command_task.is_none());
+            s.submit_mcp_form(6,cx);assert!(s.submission.command.is_none());
             s.submit_mcp_form(7,cx);assert_eq!(s.feedback,"No service profile is configured.");
         });
 	}

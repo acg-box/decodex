@@ -57,7 +57,6 @@ impl ChiefSurface {
 		self.restore_async_drafts(work, questions, *questions_truncated, cx);
 	}
 
-	#[cfg(test)]
 	pub(super) fn capture_async_drafts(
 		&self,
 		cx: &Context<Self>,
@@ -628,7 +627,7 @@ mod tests {
 				""
 			);
 			assert!(!s.sending);
-			assert!(s.command_task.is_none());
+			assert!(s.submission.command.is_none());
 		});
 	}
 	#[gpui::test]
@@ -649,7 +648,7 @@ mod tests {
 				"PDF"
 			);
 			assert!(!s.sending);
-			assert!(s.command_task.is_none());
+			assert!(s.submission.command.is_none());
 		});
 		let bounds = visual.debug_bounds("async-option-q1-1").expect("visible async option");
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
@@ -659,7 +658,7 @@ mod tests {
 				"Markdown"
 			);
 			assert!(!s.sending);
-			assert!(s.command_task.is_none());
+			assert!(s.submission.command.is_none());
 		});
 		let bounds = visual.debug_bounds("async-send-q1").expect("visible explicit send");
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
@@ -752,7 +751,7 @@ mod tests {
 				assert!(!s.collapsed_async_questions.contains("other"));
 				assert!(s.composer.focus_handle(cx).is_focused(window));
 				assert!(!s.sending);
-				assert!(s.command_task.is_none());
+				assert!(s.submission.command.is_none());
 			});
 			window.draw(cx).clear();
 		});
@@ -774,7 +773,7 @@ mod tests {
 				"Answer draft"
 			);
 			assert!(!s.sending);
-			assert!(s.command_task.is_none());
+			assert!(s.submission.command.is_none());
 		});
 	}
 	#[gpui::test]
@@ -798,7 +797,7 @@ mod tests {
 				"PDF"
 			);
 			assert!(!s.sending);
-			assert!(s.command_task.is_none());
+			assert!(s.submission.command.is_none());
 		});
 	}
 	#[gpui::test]
@@ -868,7 +867,7 @@ mod tests {
 		surface.read_with(visual, |s, _| {
 			assert!(s.feedback.is_empty(), "a held key must not reach command submission");
 			assert!(!s.sending);
-			assert!(s.command_task.is_none());
+			assert!(s.submission.command.is_none());
 		});
 		visual.simulate_keystrokes("enter");
 		surface
@@ -939,7 +938,7 @@ mod tests {
 					label
 				);
 				assert!(!s.sending);
-				assert!(s.command_task.is_none());
+				assert!(s.submission.command.is_none());
 			});
 		}
 	}

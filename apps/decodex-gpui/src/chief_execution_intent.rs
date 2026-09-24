@@ -9,6 +9,17 @@ pub(super) struct Intents {
 	choices: BTreeMap<String, (u64, ChiefExecutionOverrides)>,
 }
 impl Intents {
+	pub(super) fn saved_choices(&self) -> (u64, BTreeMap<String, (u64, ChiefExecutionOverrides)>) {
+		(self.revision, self.choices.clone())
+	}
+
+	pub(super) fn from_saved(
+		revision: u64,
+		choices: BTreeMap<String, (u64, ChiefExecutionOverrides)>,
+	) -> Self {
+		Self { revision, choices }
+	}
+
 	fn change(&mut self, owner: String, update: impl FnOnce(&mut ChiefExecutionOverrides)) {
 		self.revision = self.revision.wrapping_add(1);
 		let value = self.choices.entry(owner).or_default();
