@@ -11,8 +11,10 @@ mod chief_dispatch_rejection;
 pub use chief_dispatch_rejection::ChiefDispatchRefusal;
 
 mod chief;
-mod chief_permission_observations;
-pub use chief_permission_observations::ChiefPermissionObservation;
+mod chief_settings_observations;
+pub use chief_settings_observations::ChiefTaskSettingsObservation;
+mod chief_plugins;
+pub use chief_plugins::{ChiefPluginAttempt, ChiefPluginReceipt};
 mod chief_permissions;
 pub use chief_permissions::{ChiefPermissionAttempt, ChiefPermissionReceipt};
 mod chief_live_settings;
