@@ -165,13 +165,35 @@ impl SqliteStore {
 		.await
 	}
 
+	/// Dismiss an exact current question without recording a native answer or queuing work.
+	pub async fn skip_chief_async_question(
+		&self,
+		work: String,
+		thread: String,
+		question: String,
+	) -> Result<bool, StoreError> {
+		self.run(move |connection| {
+			let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let eligible: bool = tx.query_row(
+				"SELECT EXISTS(SELECT 1 FROM chief_async_questions q JOIN chief_work_items w ON w.id=q.work_id AND w.codex_thread_id=q.thread_id WHERE q.work_id=?1 AND q.thread_id=?2 AND q.question_id=?3 AND w.status<>'resolved'
+				AND NOT EXISTS(SELECT 1 FROM chief_async_recovery r WHERE r.work_id=q.work_id AND r.thread_id=q.thread_id)
+				AND NOT EXISTS(SELECT 1 FROM chief_async_answers a WHERE a.work_id=q.work_id AND a.thread_id=q.thread_id AND a.question_id IN(q.question_id,q.item_id))
+				AND NOT EXISTS(SELECT 1 FROM chief_inbox_events e WHERE e.work_item_id=q.work_id AND e.disposition IS NULL AND json_extract(e.payload,'$.asyncQuestionId')=q.question_id AND (e.event_kind IN('steer_pending','async_question_answer'))))",
+				params![work,thread,question], |row| row.get(0)).map_err(sqlite_error)?;
+			if !eligible { return Ok(false); }
+			tx.execute("INSERT OR IGNORE INTO chief_async_skips VALUES(?1,?2,?3,?4)", params![work,thread,question,unix_micros()?]).map_err(sqlite_error)?;
+			tx.commit().map_err(sqlite_error)?;
+			Ok(true)
+		}).await
+	}
+
 	/// Current native thread only; resolved question and legacy whole-message replies are excluded.
 	pub async fn read_chief_async_questions(
 		&self,
 		work: String,
 	) -> Result<Vec<ChiefAsyncQuestion>, StoreError> {
 		self.run(move |connection| {
-            let mut statement=connection.prepare("SELECT q.thread_id,q.turn_id,q.item_id,q.question_id,q.question_json FROM chief_async_questions q JOIN chief_work_items w ON w.id=q.work_id AND w.codex_thread_id=q.thread_id WHERE q.work_id=?1 AND NOT EXISTS(SELECT 1 FROM chief_async_recovery r WHERE r.work_id=q.work_id AND r.thread_id=q.thread_id) AND NOT EXISTS(SELECT 1 FROM chief_async_answers a WHERE a.work_id=q.work_id AND a.thread_id=q.thread_id AND a.question_id IN(q.question_id,q.item_id)) ORDER BY q.created_at_micros,q.rowid LIMIT 33").map_err(sqlite_error)?;
+            let mut statement=connection.prepare("SELECT q.thread_id,q.turn_id,q.item_id,q.question_id,q.question_json FROM chief_async_questions q JOIN chief_work_items w ON w.id=q.work_id AND w.codex_thread_id=q.thread_id WHERE q.work_id=?1 AND NOT EXISTS(SELECT 1 FROM chief_async_recovery r WHERE r.work_id=q.work_id AND r.thread_id=q.thread_id) AND NOT EXISTS(SELECT 1 FROM chief_async_answers a WHERE a.work_id=q.work_id AND a.thread_id=q.thread_id AND a.question_id IN(q.question_id,q.item_id)) AND NOT EXISTS(SELECT 1 FROM chief_async_skips s WHERE s.work_id=q.work_id AND s.thread_id=q.thread_id AND s.question_id=q.question_id) ORDER BY q.created_at_micros,q.rowid LIMIT 33").map_err(sqlite_error)?;
             let result=statement.query_map([work],|row|Ok(ChiefAsyncQuestion {thread_id:row.get(0)?,turn_id:row.get(1)?,item_id:row.get(2)?,question_id:row.get(3)?,question_json:row.get(4)?})).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(sqlite_error)?;
             Ok(result)
         }).await

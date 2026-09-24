@@ -159,6 +159,38 @@ impl ChiefSurface {
 						}))
 						.child("Send answer"),
 				);
+			if let Some(thread) = work.codex_thread_id.clone() {
+				let owner = work.id.clone();
+				let question = question.id.clone();
+				let selector = format!("async-skip-{question}");
+				card = card.child(
+					div()
+						.id(SharedString::from(format!("async-skip-{question}")))
+						.debug_selector(move || selector)
+						.role(Role::Button)
+						.tab_index(0)
+						.aria_label("Skip question")
+						.cursor_pointer()
+						.on_click(cx.listener(move |s, _, _, cx| {
+							if s.sending || s.uncertain {
+								return;
+							}
+							let (Ok(work_id), Ok(thread_id), Ok(question_id)) = (
+								EntityId::new(&owner),
+								decodex_protocol::WireText::new(&thread),
+								decodex_protocol::WireText::new(&question),
+							) else {
+								return;
+							};
+							s.execute(
+								ChiefActionDto::SkipQuestion { work_id, thread_id, question_id },
+								None,
+								cx,
+							);
+						}))
+						.child("Skip"),
+				);
+			}
 			panel = panel.child(card);
 		}
 		if *questions_truncated {
@@ -295,6 +327,16 @@ mod tests {
 			);
 			assert!(!s.sending);
 			assert!(s.command_task.is_none());
+		});
+		let skip = visual.debug_bounds("async-skip-q1").expect("visible skip action");
+		visual.simulate_click(skip.center(), gpui::Modifiers::default());
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(
+				s.async_question_inputs[&("root".into(), "q1".into())].read(cx).content(),
+				"Markdown"
+			);
+			s.feedback.clear();
 		});
 		let bounds = visual.debug_bounds("async-send-q1").expect("visible explicit send");
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());

@@ -340,6 +340,15 @@ pub enum ChiefActionDto {
 		/// Explicit free text or user-selected option.
 		answer: crate::HistoryText,
 	},
+	/// Dismiss a local question without submitting an answer or starting a turn.
+	SkipQuestion {
+		/// Work that owns the displayed question.
+		work_id: crate::EntityId,
+		/// Exact native thread displayed with the question.
+		thread_id: crate::WireText,
+		/// Stable native question identity.
+		question_id: crate::WireText,
+	},
 	/// Cancel one exact pending model-capacity retry.
 	CancelCapacityRetry {
 		/// Work that owns the pending retry.
