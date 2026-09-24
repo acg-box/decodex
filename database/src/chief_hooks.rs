@@ -1,17 +1,16 @@
 //! Shared native hook config receipts. Task ownership authorizes a write, not its shared scope.
-use crate::{SqliteStore, StoreError, chief_process::owns_work, error::sqlite_error, unix_micros};
+use crate::{
+	SqliteStore, StoreError,
+	chief_config_journal::{available, dead, digest, owned, text},
+	error::sqlite_error,
+	unix_micros,
+};
 use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ChiefHookOwner {
-	pub work: String,
-	pub thread: String,
-	pub generation: String,
-	pub account: String,
-}
+pub type ChiefHookOwner = crate::ChiefConfigOwner;
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ChiefHookAttempt {
 	pub owner: ChiefHookOwner,
@@ -43,12 +42,6 @@ pub struct ChiefHookObservation {
 	pub value: Option<Value>,
 	pub config_version: String,
 }
-fn text(value: &str) -> bool {
-	!value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
-}
-fn digest(value: &str) -> bool {
-	value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
-}
 fn target(field: &str, value: &Value) -> bool {
 	match field {
 		"enabled" => value.is_boolean(),
@@ -56,13 +49,10 @@ fn target(field: &str, value: &Value) -> bool {
 		_ => false,
 	}
 }
-fn owned(c: &rusqlite::Connection, owner: &ChiefHookOwner) -> Result<bool, StoreError> {
-	if !owns_work(c, &owner.work, Some(&owner.generation))? {
-		return Ok(false);
-	}
-	c.query_row("SELECT EXISTS(SELECT 1 FROM chief_work_items w JOIN process_generations g ON g.generation_id=?3 WHERE w.id=?1 AND w.codex_thread_id=?2 AND w.status<>'resolved' AND g.account_id=?4 AND g.state='ready')",params![owner.work,owner.thread,owner.generation,owner.account],|r|r.get(0)).map_err(|e|sqlite_error(e).into())
-}
-fn latest(c: &rusqlite::Connection, scope: &str) -> Result<Option<ChiefHookReceipt>, StoreError> {
+pub(crate) fn latest(
+	c: &rusqlite::Connection,
+	scope: &str,
+) -> Result<Option<ChiefHookReceipt>, StoreError> {
 	let row:Option<(i64,String,String)>=c.query_row("SELECT a.id,a.payload,COALESCE(o.disposition_note,r.disposition_note,'reserved') FROM chief_inbox_events a LEFT JOIN chief_inbox_events r ON r.source_event_id='hook-result:'||a.id AND r.event_kind='hook_setting_result' LEFT JOIN chief_inbox_events o ON o.source_event_id='hook-observation:'||a.id AND o.event_kind='hook_setting_observation' WHERE a.event_kind='hook_setting_attempt' AND json_extract(a.payload,'$.scope')=?1 ORDER BY a.id DESC LIMIT 1",[scope],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(sqlite_error)?;
 	row.map(|(id, payload, state)| {
 		Ok(ChiefHookReceipt {
@@ -115,7 +105,7 @@ impl SqliteStore {
    let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
    if !owned(&tx,&a.owner)? {return Err(StoreError::OwnershipLost("hook configuration owner"));}
    let prior=latest(&tx,&a.scope)?;
-   if prior.as_ref().map(|r|r.id)!=a.previous_id || prior.as_ref().is_some_and(|r|unresolved(&r.state)) {return Ok(None);}
+   if prior.as_ref().map(|r|r.id)!=a.previous_id || !available(&tx,&a.scope,&a.review_token)? {return Ok(None);}
    let hash:String=Sha256::digest(json!([a.scope,a.review_token]).to_string().as_bytes()).iter().map(|b|format!("{b:02x}")).collect();
    let source=format!("hook-attempt:{hash}");
    let now=unix_micros()?;
@@ -161,10 +151,7 @@ impl SqliteStore {
    let same=a.owner.generation==o.owner.generation;
    let matches=o.value.as_ref()==Some(&a.value);
    if same && (!matches || a.config_version==o.config_version) {return Ok(false);}
-   if !same {
-    let dead:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM process_generations g JOIN process_generation_death_evidence e ON e.evidence_id=g.death_evidence_id AND e.generation_id=g.generation_id WHERE g.generation_id=?1 AND g.state='dead')",[&a.owner.generation],|r|r.get(0)).map_err(sqlite_error)?;
-    if !dead {return Ok(false);}
-   }
+   if !same && !dead(&tx,&a.owner.generation)? {return Ok(false);}
    let state=if matches {"target_observed"} else {"superseded"};
    let payload=json!({"reservation":id,"observer":o.owner,"configVersion":o.config_version,"value":o.value});let now=unix_micros()?;
    let changed=tx.execute("INSERT OR IGNORE INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'hook_setting_observation',?3,?4,'resolved',?5,?4)",params![format!("hook-observation:{id}"),a.owner.work,payload.to_string(),now,state]).map_err(sqlite_error)?;

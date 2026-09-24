@@ -2,7 +2,7 @@
 use super::*;
 use crate::{ChiefHookAttempt, ChiefHookObservation, ChiefHookOwner};
 use serde_json::json;
-fn identity(n: u32) -> decodex_core::ProcessIdentity {
+pub(super) fn identity(n: u32) -> decodex_core::ProcessIdentity {
 	decodex_core::ProcessIdentity::new(
 		ProcessBootIdentity::new("fixture-boot").unwrap(),
 		n,
@@ -12,7 +12,7 @@ fn identity(n: u32) -> decodex_core::ProcessIdentity {
 	)
 	.unwrap()
 }
-fn owner(n: u8) -> ChiefHookOwner {
+pub(super) fn owner(n: u8) -> ChiefHookOwner {
 	ChiefHookOwner {
 		work: if n == 1 { "root" } else { "second-root" }.into(),
 		thread: format!("thread-{n}"),
@@ -20,7 +20,7 @@ fn owner(n: u8) -> ChiefHookOwner {
 		account: account_id(n).as_str().into(),
 	}
 }
-fn attempt(n: u8, token: char, previous_id: Option<i64>) -> ChiefHookAttempt {
+pub(super) fn attempt(n: u8, token: char, previous_id: Option<i64>) -> ChiefHookAttempt {
 	ChiefHookAttempt {
 		owner: owner(n),
 		scope: DIGEST.into(),
@@ -44,7 +44,7 @@ fn observation(n: u8, value: Option<bool>) -> ChiefHookObservation {
 		config_version: "after".into(),
 	}
 }
-async fn setup(path: &std::path::Path) -> SqliteStore {
+pub(super) async fn setup(path: &std::path::Path) -> SqliteStore {
 	let store = SqliteStore::open_test(path).unwrap();
 	seed(&store).await;
 	for n in [1, 2] {

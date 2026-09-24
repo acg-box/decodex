@@ -209,6 +209,7 @@ pub(crate) fn owns_work(
 
 #[cfg(test)]
 mod tests {
+	mod app_settings;
 	mod hooks;
 	mod permissions;
 	mod plugins;
