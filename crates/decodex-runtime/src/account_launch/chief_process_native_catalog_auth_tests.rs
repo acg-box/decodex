@@ -279,3 +279,5 @@ async fn installed_login_policy_reports_and_enforces_running_restrictions() {
         }
     }).await.expect("bounded login policy fixture");
 }
+
+#[path = "chief_process_native_defaults_tests.rs"] mod defaults;

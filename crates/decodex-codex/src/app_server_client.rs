@@ -43,10 +43,12 @@ pub use thread_plugins::{
 };
 mod app_link_settings;
 mod hooks;
+mod model_defaults;
 pub use app_link_settings::{
 	AppLinkSettingEdit, AppLinkSettings, AppLinkSettingsCatalog, AppLinkSettingsWrite,
 	is_app_link_settings_write,
 };
+pub use model_defaults::{NativeExecutionDefaults, NativeModelDefaults};
 mod integrations;
 pub use hooks::{
 	HookSettingsChange, HookSettingsReview, HookSettingsWrite, is_hook_settings_write,
