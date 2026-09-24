@@ -13,6 +13,11 @@ pub(super) struct Profiles {
 
 #[derive(Default)]
 struct Drafts {
+	restored_questions: Vec<decodex_protocol::DesktopQuestionDraft>,
+	question_inputs: BTreeMap<(String, String), Entity<ComposerInput>>,
+	question_choices: BTreeMap<(String, String), async_questions::ChoiceDraft>,
+	question_threads: BTreeMap<String, String>,
+	collapsed_questions: std::collections::BTreeSet<String>,
 	text: String,
 	manager: Option<String>,
 	attachments: Vec<decodex_protocol::ChiefAttachmentDto>,
@@ -46,6 +51,11 @@ impl ChiefSurface {
 			return;
 		}
 		let saved = Drafts {
+			restored_questions: mem::take(&mut self.restored_question_drafts),
+			question_inputs: mem::take(&mut self.async_question_inputs),
+			question_choices: mem::take(&mut self.async_question_choices),
+			question_threads: mem::take(&mut self.async_question_threads),
+			collapsed_questions: mem::take(&mut self.collapsed_async_questions),
 			text: self.composer.read(cx).content().into(),
 			manager: mem::take(&mut self.composer_manager),
 			attachments: mem::take(&mut self.attachments),
@@ -65,6 +75,11 @@ impl ChiefSurface {
 			.unwrap_or_default();
 		self.draft_profiles.saved.push((previous, saved));
 		self.composer.update(cx, |input, cx| input.set_content(&restored.text, cx));
+		self.restored_question_drafts = restored.restored_questions;
+		self.async_question_inputs = restored.question_inputs;
+		self.async_question_choices = restored.question_choices;
+		self.async_question_threads = restored.question_threads;
+		self.collapsed_async_questions = restored.collapsed_questions;
 		self.composer_manager = restored.manager;
 		self.attachments = restored.attachments;
 		self.task_references = restored.references;
@@ -150,6 +165,63 @@ mod tests {
 			s.bind_profile(Some(second), cx);
 			assert_eq!(s.composer.read(cx).content(), "second draft");
 			assert!(s.command_task.is_none() && !s.uncertain);
+		});
+	}
+	pub(super) fn profiles() -> (tempfile::TempDir, ClientProfile, ClientProfile) {
+		let root = tempfile::tempdir_in("/tmp").unwrap();
+		let path = root.path().canonicalize().unwrap();
+		std::fs::create_dir(path.join("server")).unwrap();
+		std::fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700))
+			.unwrap();
+		let uid = std::fs::metadata(&path).unwrap().uid();
+		let config = path.join("config.toml");
+		std::fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
+		std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
+		let first = ClientProfile::load(&path, None).unwrap();
+		let second = first.clone().with_expected_server_id(
+			decodex_protocol::ServerId::new("018f0f9e-7b6e-4a31-8f4c-1d2e3f405163").unwrap(),
+		);
+		(root, first, second)
+	}
+
+	#[gpui::test]
+	fn async_editors_survive_disconnect_and_profile_round_trip(cx: &mut gpui::TestAppContext) {
+		let (_root, first, second) = profiles();
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			let key = ("work".into(), "question".into());
+			s.bind_profile(Some(first.clone()), cx);
+			let input = cx.new(|cx| ComposerInput::with_placeholder(40, "Answer", "Answer", cx));
+			input.update(cx, |input, cx| input.set_content("First service answer", cx));
+			s.async_question_inputs.insert(key.clone(), input.clone());
+			s.async_question_choices.insert(key.clone(), Default::default());
+			s.async_question_threads.insert("work".into(), "first-thread".into());
+			s.collapsed_async_questions.insert("work".into());
+			s.bind_profile(None, cx);
+			assert_eq!(s.async_question_inputs[&key], input);
+			input.update(cx, |input, cx| input.set_content("Edited offline", cx));
+			s.bind_profile(Some(first.clone()), cx);
+			assert_eq!(s.async_question_inputs[&key], input);
+			s.bind_profile(Some(second.clone()), cx);
+			assert!(s.async_question_inputs.is_empty());
+			assert!(s.async_question_choices.is_empty());
+			assert!(s.async_question_threads.is_empty());
+			assert!(s.collapsed_async_questions.is_empty());
+			let other = cx.new(|cx| ComposerInput::with_placeholder(40, "Answer", "Answer", cx));
+			other.update(cx, |input, cx| input.set_content("Second service answer", cx));
+			s.async_question_inputs.insert(key.clone(), other.clone());
+			s.async_question_threads.insert("work".into(), "second-thread".into());
+			s.bind_profile(Some(first), cx);
+			assert_eq!(s.async_question_inputs[&key], input);
+			assert_eq!(input.read(cx).content(), "Edited offline");
+			assert!(s.async_question_choices.contains_key(&key));
+			assert_eq!(s.async_question_threads["work"], "first-thread");
+			assert!(s.collapsed_async_questions.contains("work"));
+			assert!(s.command_task.is_none() && !s.sending);
+			s.bind_profile(Some(second), cx);
+			assert_eq!(s.async_question_inputs[&key], other);
+			assert_eq!(other.read(cx).content(), "Second service answer");
+			assert_eq!(s.async_question_threads["work"], "second-thread");
 		});
 	}
 }

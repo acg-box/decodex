@@ -182,6 +182,7 @@ pub(crate) struct ChiefSurface {
 	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
 	question_timers: std::collections::BTreeMap<i64, requests::QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
+	restored_question_drafts: Vec<decodex_protocol::DesktopQuestionDraft>,
 	collapsed_async_questions: std::collections::BTreeSet<String>,
 	async_question_threads: std::collections::BTreeMap<String, String>,
 	async_question_choices:
@@ -368,6 +369,7 @@ impl ChiefSurface {
 			mcp_answers: Default::default(),
 			question_timers: Default::default(),
 			question_inputs: Default::default(),
+			restored_question_drafts: Vec::new(),
 			collapsed_async_questions: Default::default(),
 			async_question_threads: Default::default(),
 			async_question_choices: Default::default(),
@@ -916,10 +918,6 @@ impl ChiefSurface {
 		self.misalignment_reviewed = None;
 		self.guardian = Default::default();
 		self.archive = Default::default();
-		self.async_question_inputs.clear();
-		self.async_question_choices.clear();
-		self.async_question_threads.clear();
-		self.collapsed_async_questions.clear();
 		self.selected = self.composer_manager.clone();
 		self.state = LoadState::Idle;
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
