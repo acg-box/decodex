@@ -761,7 +761,7 @@ mod tests {
 			surface.read_with(visual, |s, _| s.history_marks[&target].hit_bounds.get().unwrap());
 		visual.simulate_click(bounds.center(), Default::default());
 		surface.update(visual, |s, cx| {
-			assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(target));
+			assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(target.clone()));
 			s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
 			assert!(s.prepend_native_history(
 				&binding,
@@ -931,7 +931,7 @@ mod tests {
 			visual.simulate_mouse_up(bounds.center(), gpui::MouseButton::Left, Default::default());
 			surface.update(visual, |s, cx| {
 				assert_eq!(s.history_selected, Some(id.clone()));
-				assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(id));
+				assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(id.clone()));
 				s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
 				cx.notify();
 			});
@@ -1077,7 +1077,7 @@ mod tests {
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
 		surface.update(visual, |s, cx| {
-			s.jump_to_history(1, cx);
+			s.jump_to_history(HistoryKey::Local(1), cx);
 			s.history_follow_paused.insert("chief".into());
 			s.follow_latest_after_send(cx);
 			assert!(s.history_selected.is_none());

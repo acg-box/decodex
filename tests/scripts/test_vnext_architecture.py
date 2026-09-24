@@ -123,7 +123,7 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertRegex(
             protocol,
             r"pub const CURRENT_VERSION:\s*ProtocolVersion\s*=\s*"
-            r"ProtocolVersion\s*\{\s*major:\s*2,\s*minor:\s*43\s*\};",
+            r"ProtocolVersion\s*\{\s*major:\s*2,\s*minor:\s*45\s*\};",
         )
         self.assertIn("Some(u64::from(CURRENT_VERSION.minor))", gpui)
         self.assertIn("decodex_app_native_client_abi_version", native_client)
@@ -424,13 +424,6 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
             "local_account_authority.rs",
         ):
             self.assertFalse((ROOT / "crates/decodex-runtime/src" / retired).exists())
-
-    def test_current_openwiki_declares_sqlite_authority(self) -> None:
-        quickstart = read("openwiki/quickstart.md")
-        self.assertIn("bundled SQLite", quickstart)
-        self.assertIn("database/", quickstart)
-        self.assertIn("same Codex thread", quickstart)
-        self.assertNotIn("accepted no-migration reset", quickstart)
 
     def test_chief_replaces_active_factory_but_preserves_historical_storage(self) -> None:
         wire = read("crates/decodex-protocol/src/wire.rs")

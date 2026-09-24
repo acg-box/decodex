@@ -4,7 +4,7 @@ use super::{
 	ParentElement, Styled, div, markdown, muted,
 };
 use decodex_protocol::ChiefHistoryEntryDto;
-use gpui::InteractiveElement;
+use gpui::{InteractiveElement, StatefulInteractiveElement};
 
 impl ChiefSurface {
 	pub(in super::super) fn native_receipts_panel(
@@ -14,13 +14,28 @@ impl ChiefSurface {
 	) -> gpui::AnyElement {
 		let mut panel =
 			div().flex().flex_col().gap_2().child(self.native_input_receipts_panel(work, cx));
-		let Some((_, ChiefHistoryResult::Available { entries, live, .. })) =
+		let Some((_, ChiefHistoryResult::Available { entries, live, next_before, .. })) =
 			self.history.as_ref().filter(|(id, _)| id == &work.id)
 		else {
 			return panel
 				.child(muted("Local delivery records are unavailable. Retrying…"))
 				.into_any_element();
 		};
+		let cursor = self.older_history.get(&work.id).map_or(*next_before, |(_, cursor)| *cursor);
+		if cursor.is_some() {
+			panel = panel.child(
+				div()
+					.id("native-earlier-local-records")
+					.debug_selector(|| "native-earlier-local-records".into())
+					.cursor_pointer()
+					.on_click(cx.listener(|surface, _, _, cx| surface.load_older_history(cx)))
+					.child(if self.loading_older {
+						"Loading earlier records…"
+					} else {
+						"Load earlier local records"
+					}),
+			);
+		}
 		let mut saved = std::collections::BTreeMap::new();
 		if let Some((older, _)) = self.older_history.get(&work.id) {
 			for entry in older {

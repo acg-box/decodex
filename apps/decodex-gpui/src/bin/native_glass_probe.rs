@@ -8,9 +8,9 @@ use reqwest as _;
 use serde as _;
 use serde_json as _;
 use sha2 as _;
-#[cfg(test)] use tempfile as _;
 use time as _;
 use tokio as _;
+#[cfg(test)] use {futures_util as _, tempfile as _, tokio_tungstenite as _};
 #[path = "../composer_input.rs"] mod composer_input;
 #[path = "../ui_theme.rs"] mod ui_theme;
 
