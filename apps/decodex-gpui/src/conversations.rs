@@ -58,6 +58,7 @@ pub(crate) struct ConversationsSnapshot {
 	pub(crate) can_submit: bool,
 	pub(crate) execution: ConversationExecutionSettings,
 	pub(crate) catalog: Option<Vec<decodex_protocol::ChiefModelDto>>,
+	pub(crate) initial_defaults_ready: bool,
 }
 
 impl ConversationsSnapshot {
@@ -224,6 +225,7 @@ impl Conversations {
 
 	pub(crate) fn begin_new(&self) {
 		let mut state = self.lock();
+		state.creation_intent = Default::default();
 		state.clear_catalog();
 		state.selected = None;
 		state.selection_suppressed = true;
@@ -237,6 +239,9 @@ impl Conversations {
 
 	pub(crate) fn cycle_model(&self) {
 		let mut state = self.lock();
+		if state.selected.is_none() {
+			state.creation_intent.model = true;
+		}
 		if let Some(models) = state.current_catalog() {
 			if models.is_empty() {
 				return;
@@ -247,6 +252,7 @@ impl Conversations {
 				.map_or(0, |i| (i + 1) % models.len());
 			let model = models[next].clone();
 			state.execution.model = model.model;
+			state.apply_initial_defaults();
 			if state
 				.execution
 				.reasoning_effort
@@ -256,6 +262,9 @@ impl Conversations {
 					model.default_effort.or_else(|| model.efforts.first().cloned())
 			{
 				state.execution.reasoning_effort = Some(effort);
+				if state.selected.is_none() {
+					state.creation_intent.reasoning = true;
+				}
 			}
 			state.reconcile_catalog_tier();
 			return;
@@ -267,6 +276,7 @@ impl Conversations {
 			.map_or(0, |index| (index + 1) % CONVERSATION_MODELS.len());
 		state.execution.model = ConversationModel::new(CONVERSATION_MODELS[next])
 			.expect("curated model identifier is valid");
+		state.apply_initial_defaults();
 		state.clamp_effort_for_model();
 		state.reconcile_catalog_tier();
 	}
@@ -286,12 +296,29 @@ impl Conversations {
 			.position(|effort| Some(effort) == state.execution.reasoning_effort.as_ref())
 			.map_or(0, |index| (index + 1) % supported.len());
 		state.execution.reasoning_effort = Some(supported[next].clone());
+		if state.selected.is_none() {
+			state.creation_intent.reasoning = true;
+			state.apply_initial_defaults();
+		}
 	}
 
 	pub(crate) fn toggle_fast(&self) {
 		let mut state = self.lock();
 		state.execution.fast = !state.execution.fast;
 		state.execution.service_tier = None;
+		if state.selected.is_none() {
+			state.creation_intent.service_tier = true;
+		}
+	}
+
+	pub(crate) fn ensure_initial_catalog(&self) {
+		let needed = {
+			let state = self.lock();
+			state.selected.is_none() && !state.initial_defaults_requested
+		};
+		if needed {
+			self.refresh_catalog();
+		}
 	}
 
 	pub(crate) fn refresh_catalog(&self) -> bool {
@@ -326,7 +353,12 @@ impl Conversations {
 				ConversationQueryPurpose::InitialCatalog { epoch, working_directory },
 			)
 		};
+		let cold = state.selected.is_none();
 		let queued = state.queue_query(query, purpose);
+		if queued && cold {
+			state.initial_defaults_requested = true;
+			state.initial_defaults_ready = false;
+		}
 		if queued {
 			state.catalog = None;
 		}
@@ -349,6 +381,9 @@ impl Conversations {
 			return false;
 		}
 		state.execution = state.execution.clone().with_service_tier(tier);
+		if state.selected.is_none() {
+			state.creation_intent.service_tier = true;
+		}
 		true
 	}
 
@@ -475,6 +510,15 @@ impl Conversations {
 			working_directory,
 			execution: {
 				let state = self.lock();
+				if state.pending_command.is_some()
+					|| state.in_flight_command.is_some()
+					|| state.command == ConversationCommandState::OutcomeUnknown
+				{
+					return Err(ConversationInputError::Busy);
+				}
+				if state.selected.is_none() && !state.creation_ready() {
+					return Err(ConversationInputError::NotReady);
+				}
 				if state
 					.execution
 					.service_tier
@@ -760,6 +804,18 @@ impl Conversations {
 			state.command = ConversationCommandState::Idle;
 		}
 
+		if state.selected.is_none()
+			&& matches!(
+				&event.payload,
+				EventPayload::AccountChanged { .. }
+					| EventPayload::AccountLoggedOut { .. }
+					| EventPayload::AccountRoutingChanged { .. }
+					| EventPayload::AccountRouted { .. }
+					| EventPayload::DesktopSettingsChanged { .. }
+			) {
+			state.clear_catalog();
+		}
+
 		match &event.payload {
 			EventPayload::ConversationChanged { conversation }
 			| EventPayload::ConversationTurnFinished { conversation, .. } => {
@@ -834,13 +890,15 @@ impl Conversations {
 				if state.selected.is_none() && state.catalog_epoch == epoch {
 					state.catalog = None;
 					state.catalog_source = None;
+					state.initial_defaults = None;
+					state.initial_defaults_ready = false;
 					if let QueryResultPayload::InitialModelCatalog(
 						decodex_protocol::InitialModelCatalogResult::Available {
 							account_id,
 							account_revision,
 							working_directory: actual,
 							models,
-							..
+							defaults,
 						},
 					) = &result.payload && actual == &working_directory
 						&& *account_revision > 0
@@ -850,6 +908,8 @@ impl Conversations {
 							account_revision: *account_revision,
 						});
 						state.catalog = Some(models.clone());
+						state.initial_defaults = defaults.clone();
+						state.apply_initial_defaults();
 					}
 					state.reconcile_catalog_tier();
 				}
@@ -1147,6 +1207,10 @@ struct State {
 	catalog: Option<Vec<decodex_protocol::ChiefModelDto>>,
 	catalog_epoch: u64,
 	catalog_source: Option<CatalogSource>,
+	initial_defaults: Option<Box<decodex_protocol::InitialModelDefaults>>,
+	initial_defaults_requested: bool,
+	initial_defaults_ready: bool,
+	creation_intent: decodex_protocol::DesktopCreationIntent,
 	session: Option<SessionBinding>,
 	active: bool,
 	load: ConversationsLoadState,
@@ -1179,6 +1243,49 @@ struct State {
 }
 
 impl State {
+	fn creation_ready(&self) -> bool {
+		self.initial_defaults_ready
+			|| (self.creation_intent.model
+				&& self.creation_intent.reasoning
+				&& self.creation_intent.service_tier)
+	}
+
+	fn apply_initial_defaults(&mut self) {
+		if self.selected.is_some() {
+			return;
+		}
+		self.initial_defaults_ready = false;
+		if self.pending_command.is_some()
+			|| self.in_flight_command.is_some()
+			|| self.command == ConversationCommandState::OutcomeUnknown
+		{
+			return;
+		}
+		let Some(defaults) = self.initial_defaults.as_ref() else { return };
+		if self.current_catalog().is_none() {
+			return;
+		}
+		let resolved = crate::creation_defaults::resolve(
+			defaults,
+			&self.creation_intent,
+			decodex_protocol::InitialExecutionDefaults {
+				model: Some(self.execution.model.clone()),
+				reasoning_effort: self.execution.reasoning_effort.clone(),
+				service_tier: Some(self.execution.effective_service_tier()),
+			},
+		);
+		let Some(model) = resolved.model else { return };
+		self.execution = ConversationExecutionSettings {
+			model,
+			reasoning_effort: resolved.reasoning_effort,
+			fast: resolved.service_tier.as_ref().is_some_and(|tier| tier.as_str() == "priority"),
+			service_tier: resolved.service_tier,
+		};
+		self.initial_defaults_ready = true;
+	}
+}
+
+impl State {
 	fn current_catalog(&self) -> Option<&Vec<decodex_protocol::ChiefModelDto>> {
 		let current = match &self.catalog_source {
 			Some(CatalogSource::Conversation(source)) =>
@@ -1193,9 +1300,14 @@ impl State {
 	fn clear_catalog(&mut self) {
 		self.catalog = None;
 		self.catalog_source = None;
+		self.initial_defaults = None;
+		self.initial_defaults_ready = false;
+		self.initial_defaults_requested = false;
 		self.catalog_epoch = self.catalog_epoch.wrapping_add(1);
-		self.execution.service_tier = None;
-		self.execution.fast = false;
+		if self.selected.is_some() || !self.creation_intent.service_tier {
+			self.execution.service_tier = None;
+			self.execution.fast = false;
+		}
 	}
 
 	fn reconcile_catalog_tier(&mut self) {
@@ -1217,6 +1329,10 @@ impl State {
 			catalog: None,
 			catalog_epoch: 0,
 			catalog_source: None,
+			initial_defaults: None,
+			initial_defaults_requested: false,
+			initial_defaults_ready: false,
+			creation_intent: Default::default(),
 			session: None,
 			active: false,
 			load: ConversationsLoadState::NeverRequested,
@@ -1263,6 +1379,9 @@ impl State {
 		{
 			self.execution.reasoning_effort =
 				Some(supported.last().expect("every curated model has a reasoning effort").clone());
+			if self.selected.is_none() {
+				self.creation_intent.reasoning = true;
+			}
 		}
 	}
 
@@ -1777,6 +1896,7 @@ impl State {
 			};
 		ConversationsSnapshot {
 			catalog: self.current_catalog().cloned(),
+			initial_defaults_ready: self.creation_ready(),
 			load: self.load,
 			command: self.command,
 			command_conversation_id,
@@ -1786,7 +1906,8 @@ impl State {
 			tasks: self.tasks.clone(),
 			selected: self.selected.clone(),
 			live_deltas: self.live_deltas.iter().cloned().collect(),
-			can_submit: self.session.is_some()
+			can_submit: (self.selected.is_some() || self.creation_ready())
+				&& self.session.is_some()
 				&& self.refresh_batch.is_none()
 				&& self.pending_command.is_none()
 				&& self.in_flight_command.is_none()
@@ -2437,6 +2558,24 @@ pub(crate) mod tests {
 				assert_eq!(state.execution.effective_service_tier().as_str(), "flex");
 			}
 			if create {
+				assert_eq!(
+					conversations.create("Preserve configured tier"),
+					Err(ConversationInputError::NotReady)
+				);
+				let selection = conversations.snapshot().execution;
+				super::creation_defaults_tests::install_defaults(
+					&conversations,
+					&server_id,
+					decodex_protocol::InitialModelDefaults {
+						configured: decodex_protocol::InitialExecutionDefaults {
+							model: Some(selection.model),
+							reasoning_effort: selection.reasoning_effort,
+							service_tier: selection.service_tier,
+						},
+						managed: Default::default(),
+						catalog_model: None,
+					},
+				);
 				conversations.create("Preserve configured tier").unwrap();
 			} else {
 				conversations.submit("Preserve configured tier").unwrap();
@@ -3048,7 +3187,7 @@ pub(crate) mod tests {
 		let reconciled = conversations.snapshot();
 		assert_eq!(reconciled.command, ConversationCommandState::Idle);
 		assert_eq!(reconciled.tasks, vec![task.clone()]);
-		assert!(reconciled.can_submit);
+		assert!(!reconciled.can_submit, "new creation still needs current defaults");
 		assert!(conversations.select(task.conversation_id));
 		assert!(conversations.submit("retry explicitly").is_ok());
 	}
@@ -3429,3 +3568,7 @@ pub(crate) mod tests {
 		assert!(conversations.try_take_dispatch(2, &server_id).is_none());
 	}
 }
+
+#[cfg(test)]
+#[path = "conversation_creation_defaults_tests.rs"]
+pub(crate) mod creation_defaults_tests;

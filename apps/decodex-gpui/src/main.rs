@@ -17,6 +17,7 @@ mod client_cache;
 mod client_lifecycle;
 mod composer_input;
 mod conversations;
+mod creation_defaults;
 mod desktop_settings;
 mod health_query;
 #[cfg_attr(
