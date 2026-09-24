@@ -289,3 +289,8 @@ mod tests {
 		assert!(!status.is_operational());
 	}
 }
+
+mod client_drafts;
+pub use client_drafts::{
+	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES,
+};
