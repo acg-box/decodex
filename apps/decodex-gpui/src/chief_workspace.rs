@@ -186,6 +186,7 @@ impl ChiefSurface {
 		self.reset_live_reviewer();
 		self.reset_permission_profiles();
 		self.reset_task_plugins();
+		self.reset_task_models();
 		self.reset_hook_settings();
 		self.reset_app_settings();
 		self.reset_saved_app_settings();
