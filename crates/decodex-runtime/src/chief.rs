@@ -21,6 +21,7 @@ mod native_settings;
 pub(crate) mod native_subagents;
 pub(crate) mod observations;
 mod result_messages;
+mod resume_recovery;
 mod task_history;
 pub(crate) mod timeline;
 mod turn_execution;
@@ -105,6 +106,7 @@ pub struct ChiefCoordinator {
 	client: AppServerClient,
 	config: ChiefConfig,
 	loaded_threads: std::collections::HashSet<String>,
+	closing_resumes: std::collections::HashMap<String, resume_recovery::ClosingResume>,
 	usage_replays: std::collections::HashMap<String, std::collections::HashSet<String>>,
 	pending_requests: std::collections::HashMap<RequestId, i64>,
 	connection_id: String,
@@ -163,6 +165,7 @@ impl ChiefCoordinator {
 			client,
 			config,
 			loaded_threads: std::collections::HashSet::new(),
+			closing_resumes: Default::default(),
 			usage_replays: Default::default(),
 			pending_requests: std::collections::HashMap::new(),
 			connection_id,
@@ -228,51 +231,7 @@ impl ChiefCoordinator {
 			.filter(|item| item.dispatch_state != decodex_database::ChiefDispatchState::Idle)
 		{
 			let item = self.store.get_chief_work_item(old.id).await?;
-			let (Some(thread), Some(turn)) =
-				(item.codex_thread_id.as_ref(), item.active_turn_id.as_ref())
-			else {
-				continue;
-			};
-			let params = Self::resume_params(thread);
-			let Ok(resumed) = self.client.thread_resume(params).await else {
-				continue;
-			};
-			if !Self::hydrated_thread_matches(&resumed, thread) {
-				continue;
-			}
-			self.expect_usage_replay(thread, &resumed);
-			self.loaded_threads.insert(thread.clone());
-			let Ok(history) = self.client.thread_read_turn(thread, turn).await else {
-				continue;
-			};
-			if history.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
-				continue;
-			}
-			let Some(exact_turn) = history
-				.pointer("/thread/turns")
-				.and_then(Value::as_array)
-				.and_then(|turns| turns.iter().find(|entry| entry["id"].as_str() == Some(turn)))
-				.cloned()
-			else {
-				continue;
-			};
-			match exact_turn["status"].as_str() {
-				Some("completed" | "failed" | "interrupted") => {
-					self.record_terminal(
-						json!({"threadId":thread,"turn":exact_turn}),
-						Ok(history),
-						false,
-					)
-					.await?;
-				},
-				Some("inProgress")
-					if history.pointer("/thread/status/type").and_then(Value::as_str)
-						== Some("active") =>
-				{
-					self.store.reconcile_chief_dispatch(item.id, turn.clone()).await?;
-				},
-				_ => {},
-			}
+			self.recover_persisted_work(item, None, 0).await?;
 		}
 		Ok(())
 	}
@@ -1363,7 +1322,7 @@ impl ChiefCoordinator {
 				if ["thread/closed", "thread/archived", "thread/deleted"]
 					.contains(&method.as_str()) =>
 			{
-				self.loaded_threads.remove(&exact(&params, "/threadId")?);
+				self.observe_unloaded_thread(&method, &exact(&params, "/threadId")?);
 			},
 			ServerEvent::Notification { method, params }
 				if method == "thread/tokenUsage/updated" =>
@@ -1854,8 +1813,9 @@ impl ChiefCoordinator {
 		self.wake_pending().await
 	}
 
-	/// Dispatch only undelivered external evidence while the personal Chief is idle.
+	/// Recover deferred resumes and dispatch undelivered evidence while Chief is idle.
 	pub async fn check_due_followups(&mut self, now: i64) -> Result<(), ChiefError> {
+		self.recover_closing_threads().await?;
 		self.recover_async_questions().await?;
 		if now < 0 {
 			return Err(ChiefError::Invalid("invalid due-check time".into()));

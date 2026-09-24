@@ -286,3 +286,19 @@ send do not hide it. A completion from another turn cannot clear it. History fro
 another work or a terminal turn cannot start the status. Existing delivery and
 connection warnings retain priority. The desktop does not synthesize compaction
 elapsed time from history replay.
+
+
+## Closing-thread recovery
+
+At cutoff `595cc91e8cbb1c2ca822d0311dcf12709410c582`, app-server rejects a
+resume before activation with `-32600` and an exact thread-specific `is closing;`
+message. The TUI treats only that refusal as retryable. Chief now schedules the
+same native resume on its retained connection after 1, 2, 4, and 8 seconds, then
+at most once per minute. It does not sleep inside the coordinator or replay input.
+
+Each retry checks the saved work, thread, turn, history revision, and dispatch
+state. Archive, deletion, revert, and account suspension prevent stale recovery.
+Resume requests retain native settings instead of applying new-thread defaults.
+A restarted coordinator reconstructs recovery from durable unresolved work and
+fresh native evidence. The schedule itself is connection-local. This batch does
+not qualify ordinary-conversation recovery or a live native shutdown race.
