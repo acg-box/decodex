@@ -1,5 +1,27 @@
 # Codex capability reference
 
+## Native task settings adapter — 2026-09-24
+
+At cutoff `595cc91e8cbb1c2ca822d0311dcf12709410c582`, `Thread.model` and
+`Thread.reasoningEffort` expose loaded or persisted configuration through exact
+`thread/read`. These fields are not per-turn inference telemetry. The adapter reads
+them without resuming a thread or sending input, keeps native provider identity,
+and distinguishes an older server's missing fields from explicit null values.
+Start/resume replies and settings notifications have separate bounded projections;
+private collaboration instructions are excluded.
+
+A per-thread settings guard extends the existing connection/history write fence.
+The transport invalidates it when `thread/settings/updated` arrives, before the
+coordinator consumes its event queue. Unrelated task updates do not invalidate the
+guard; disconnect and history replacement do. Guards retain only live readers,
+with a bounded map. A duplex test proves that an already queued settings change
+prevents the subsequent write.
+
+This adapter is a prerequisite for the pending coordinator migration. Current
+coordinator cold resume and ordinary dispatch still inject global model/effort
+defaults. Do not claim that task settings preservation or capacity-retry selection
+is fixed by this adapter alone.
+
 ## Workspace policy for quota activation — 2026-09-24
 
 Reference: openai/codex `0a5b9991698e8e3c126da6101aa9e4da421f7ddd`,

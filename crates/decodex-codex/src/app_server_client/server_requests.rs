@@ -15,6 +15,7 @@ pub(super) struct ServerRequests(
 	Arc<Mutex<HashMap<RequestId, Entry>>>,
 	Arc<AtomicU64>,
 	Arc<AtomicU64>,
+	super::settings_guard::SettingsRevisions,
 );
 struct Entry {
 	thread: String,
@@ -28,6 +29,7 @@ pub struct HistoryGuard {
 	requests: ServerRequests,
 	revision: u64,
 	questions: bool,
+	settings: Option<super::settings_guard::SettingsGuard>,
 }
 impl HistoryGuard {
 	pub(super) fn belongs_to(&self, requests: &ServerRequests) -> bool {
@@ -41,6 +43,7 @@ impl HistoryGuard {
 		} else {
 			self.requests.history_revision()
 		}) == self.revision
+			&& self.settings.as_ref().is_none_or(super::settings_guard::SettingsGuard::is_live)
 	}
 }
 
@@ -78,6 +81,7 @@ impl ServerRequests {
 			requests: self.clone(),
 			revision,
 			questions: false,
+			settings: None,
 		})
 	}
 
@@ -86,7 +90,14 @@ impl ServerRequests {
 			requests: self.clone(),
 			revision,
 			questions: true,
+			settings: None,
 		})
+	}
+
+	pub(super) fn thread_settings_guard(&self, thread: &str) -> Option<HistoryGuard> {
+		let mut guard = self.history_guard(self.history_revision())?;
+		guard.settings = Some(self.3.capture(thread)?);
+		Some(guard)
 	}
 
 	pub(super) fn question_revision(&self) -> u64 {
@@ -118,6 +129,7 @@ impl ServerRequests {
 	}
 
 	pub(super) fn clear(&self) {
+		self.3.clear();
 		if let Ok(mut rows) = self.0.lock() {
 			rows.clear();
 		}
@@ -136,6 +148,13 @@ impl ServerRequests {
 		{
 			self.1.fetch_add(1, Ordering::AcqRel);
 		}
+		if let ServerEvent::Notification { method, params } = event
+			&& method == "thread/settings/updated"
+			&& let Some(thread) = params["threadId"].as_str()
+		{
+			self.3.invalidate(thread);
+		}
+
 		match event {
 			ServerEvent::Request { id, method, params } => {
 				if let Some(thread) = params["threadId"].as_str() {

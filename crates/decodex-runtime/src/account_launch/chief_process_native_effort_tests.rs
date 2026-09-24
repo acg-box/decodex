@@ -51,7 +51,7 @@ async fn qualify() {
 	assert_eq!(model.default_effort.as_ref().expect("advertised default").as_str(), EFFORT);
 	let config =
 		ChiefConfig::new("gpt-5.6-sol".into(), EFFORT.into(), home.path().display().to_string());
-	let mut chief = ChiefCoordinator::new(store, session.client.clone(), config)
+	let mut chief = ChiefCoordinator::new(store.clone(), session.client.clone(), config)
 		.expect("custom effort admitted");
 	chief.start_chief("chief", "Return fixture output").await.expect("start native Chief");
 	loop {
@@ -62,6 +62,22 @@ async fn qualify() {
 			break;
 		}
 	}
+	let thread = store
+		.get_chief_work_item("chief".into())
+		.await
+		.expect("work")
+		.codex_thread_id
+		.expect("bound native thread");
+	let guard = session.client.thread_settings_guard(&thread).expect("live native settings");
+	let settings = session
+		.client
+		.thread_model_settings(&thread, guard)
+		.await
+		.expect("native settings read")
+		.expect("supported native settings");
+	assert_eq!(settings.model.as_deref(), Some("gpt-5.6-sol"));
+	assert_eq!(settings.reasoning_effort.as_deref(), Some(EFFORT));
+	assert_eq!(settings.model_provider.as_deref(), Some("fixture"));
 	assert_eq!(requests.load(Ordering::Acquire), 1, "one original request only");
 	assert!(!backend.is_finished(), "fixture server must not fail an effort assertion");
 	backend.abort();
