@@ -126,7 +126,7 @@ async fn recovery_retries_closing_thread_and_reconciles_without_replaying_input(
 		let mut recovered = ChiefCoordinator::new(reopened, original.client.clone(), {
 			let mut config = original.config.clone();
 			config.model = "new-default-model".into();
-			config.chief_effort = "low".into();
+			config.chief_effort = Some("low".into());
 			config
 		})
 		.unwrap();

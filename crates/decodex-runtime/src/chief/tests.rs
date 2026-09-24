@@ -17,12 +17,46 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/unsent_input.rs"] mod unsent_input;
 
 #[tokio::test]
+async fn native_effort_inheritance_omits_overrides_and_preserves_legacy_config() {
+	let (mut chief, mut sent, _directory) = fixture().await;
+	let legacy = serde_json::to_value(&chief.config).unwrap();
+	assert!(legacy["chief_effort"].is_string() && legacy["worker_effort"].is_string());
+	let restored: ChiefConfig = serde_json::from_value(legacy).unwrap();
+	assert_eq!(restored.chief_effort, chief.config.chief_effort);
+	chief.config.chief_effort = None;
+	chief.config.worker_effort = None;
+	for manager in [false, true] {
+		assert!(chief.thread_params(manager)["config"].get("model_reasoning_effort").is_none());
+	}
+	let saved = serde_json::to_vec(&chief.config).unwrap();
+	assert!(serde_json::from_slice::<ChiefConfig>(&saved).unwrap().chief_effort.is_none());
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	let mut starts = 0;
+	while let Ok(request) = sent.try_recv() {
+		match request["method"].as_str() {
+			Some("thread/start") => {
+				assert!(request["params"]["config"].get("model_reasoning_effort").is_none());
+				starts += 1;
+			},
+			Some("turn/start") => {
+				assert!(request["params"].get("effort").is_none());
+				starts += 1;
+			},
+			_ => {},
+		}
+	}
+	assert_eq!(starts, 2);
+	chief.config.chief_effort = Some("none".into());
+	assert_eq!(chief.thread_params(true)["config"]["model_reasoning_effort"], "none");
+}
+
+#[tokio::test]
 async fn advertised_efforts_survive_coordinator_admission_and_dispatch() {
 	for effort in ["persistent", "future-provider-reasoning-effort-over-32-bytes"] {
 		let (fixture, mut sent, _directory) = fixture().await;
 		let mut config = fixture.config.clone();
-		config.chief_effort = effort.into();
-		config.worker_effort = effort.into();
+		config.chief_effort = Some(effort.into());
+		config.worker_effort = Some(effort.into());
 		let mut chief =
 			ChiefCoordinator::new(fixture.store.clone(), fixture.client.clone(), config.clone())
 				.unwrap();
@@ -43,7 +77,7 @@ async fn advertised_efforts_survive_coordinator_admission_and_dispatch() {
 		}
 		assert_eq!(starts, 2);
 		for field in [&mut config.chief_effort, &mut config.worker_effort] {
-			*field = "invalid\neffort".into();
+			*field = Some("invalid\neffort".into());
 		}
 		assert!(ChiefCoordinator::new(fixture.store, fixture.client, config).is_err());
 	}
@@ -268,9 +302,17 @@ impl FixtureFaults {
 		if request["method"] == "thread/resume" && self.resume_failures > 0 {
 			self.resume_failures -= 1;
 			let message = if history["_resume_closing"] == true {
-				format!("thread {} is closing; retry thread/resume after the thread is closed", request["params"]["threadId"].as_str().unwrap())
-			} else { "thread private-id already has an active writer".into() };
-			let error = history.get("_resume_error").cloned().unwrap_or_else(|| json!({"code":-32600,"message":message}));
+				format!(
+					"thread {} is closing; retry thread/resume after the thread is closed",
+					request["params"]["threadId"].as_str().unwrap()
+				)
+			} else {
+				"thread private-id already has an active writer".into()
+			};
+			let error = history
+				.get("_resume_error")
+				.cloned()
+				.unwrap_or_else(|| json!({"code":-32600,"message":message}));
 			let mut frame = json!({"id":request["id"],"error":error}).to_string();
 			frame.push('\n');
 			writer.write_all(frame.as_bytes()).await.unwrap();
