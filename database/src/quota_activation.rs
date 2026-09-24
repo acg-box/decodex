@@ -191,7 +191,7 @@ mod tests {
 		}
 		// A positive receipt alone does not permit another request for the drifting window.
 		store.finish_quota_activation(&id, now, true).await.unwrap();
-		let later = start + 7200_000_000;
+		let later = start + 7_200_000_000;
 		assert!(
 			!store
 				.claim_quota_activation(&id, 1, quota(0, later + week), true, later)

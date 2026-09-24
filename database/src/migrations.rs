@@ -480,6 +480,40 @@ mod tests {
 	}
 
 	#[test]
+	fn account_usage_upgrade_preserves_current_main_activation_settings() {
+		let mut connection = Connection::open_in_memory().unwrap();
+		configure(&connection).unwrap();
+		for migration in &MIGRATIONS[..31] {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 31).unwrap();
+		connection
+			.execute("UPDATE desktop_settings SET auto_activate_quota=0, revision=19", [])
+			.unwrap();
+		migrate(&mut connection).unwrap();
+		verify(&connection).unwrap();
+		let preference: (bool, i64) = connection
+			.query_row("SELECT auto_activate_quota, revision FROM desktop_settings", [], |row| {
+				Ok((row.get(0)?, row.get(1)?))
+			})
+			.unwrap();
+		assert_eq!(preference, (false, 19));
+		let count: i64 = connection
+			.query_row("SELECT count(*) FROM account_usage_observations", [], |row| row.get(0))
+			.unwrap();
+		assert_eq!(count, 0, "migration does not invent account permission");
+		migrate(&mut connection).unwrap();
+		assert_eq!(applied_version(&connection).unwrap(), CURRENT_SCHEMA_VERSION);
+	}
+
+	#[test]
 	fn reset_card_upgrade_preserves_existing_schema_and_initializes_an_empty_ledger() {
 		let directory = tempfile::tempdir().expect("isolated migration root");
 		let mut connection =
