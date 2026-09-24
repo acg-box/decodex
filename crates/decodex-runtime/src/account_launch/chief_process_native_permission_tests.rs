@@ -1,4 +1,4 @@
-//! Native permission catalog, publication and restart without inference.
+//! Native permission catalog, observations and restart with one materialization turn.
 use super::*;
 use decodex_codex::app_server_client::{NativeTaskPermissions, ThreadPermissionSelection};
 
@@ -34,7 +34,15 @@ async fn qualify() {
 	let initial =
 		NativeTaskPermissions::from_thread_response(&started).expect("initial permission facts");
 	assert_eq!(initial.profile_id.as_deref(), Some(":read-only"));
+	assert_eq!(
+		session.client.observed_task_permissions(&thread).expect("start hydration").0,
+		initial
+	);
 	materialize(&mut session, &thread).await;
+	assert_eq!(
+		session.client.observed_task_permissions(&thread).expect("idle after exact completion").0,
+		initial
+	);
 	assert_eq!(calls.load(Ordering::Acquire), 1);
 	let guard = session.client.thread_settings_guard(&thread).expect("settings guard");
 	session
@@ -58,6 +66,10 @@ async fn qualify() {
 			}
 		}
 	};
+	assert_eq!(
+		session.client.observed_task_permissions(&thread).expect("wire observation").0,
+		observed
+	);
 	assert!(!guard.is_live(), "wire publication invalidates the previous settings guard");
 	assert_eq!(observed.cwd, workspace.to_str().expect("cwd"));
 	assert_eq!(observed.approval_policy, initial.approval_policy);
@@ -80,7 +92,11 @@ async fn qualify() {
 		.thread_resume(json!({"threadId":thread,"excludeTurns":true}))
 		.await
 		.expect("resume exact thread without defaults");
-	assert_eq!(NativeTaskPermissions::from_thread_response(&resumed), Some(observed));
+	assert_eq!(NativeTaskPermissions::from_thread_response(&resumed), Some(observed.clone()));
+	assert_eq!(
+		reopened.client.observed_task_permissions(&thread).expect("resume hydration").0,
+		observed
+	);
 	assert_eq!(
 		calls.load(Ordering::Acquire),
 		1,

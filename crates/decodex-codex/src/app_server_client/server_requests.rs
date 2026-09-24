@@ -16,6 +16,7 @@ pub(super) struct ServerRequests(
 	Arc<AtomicU64>,
 	Arc<AtomicU64>,
 	super::settings_guard::SettingsRevisions,
+	super::permission_observations::SettingsObservations<super::NativeTaskPermissions>,
 );
 struct Entry {
 	thread: String,
@@ -85,6 +86,39 @@ impl ServerRequests {
 		})
 	}
 
+	pub(super) fn configured_permissions(
+		&self,
+		thread: &str,
+	) -> Option<(super::NativeTaskPermissions, HistoryGuard)> {
+		let guard = self.thread_settings_guard(thread)?;
+		let settings = self.4.configured(thread)?;
+		guard.is_live().then_some((settings, guard))
+	}
+
+	pub(super) fn permission_observation(
+		&self,
+		thread: &str,
+	) -> Option<(super::NativeTaskPermissions, HistoryGuard)> {
+		let (settings, observed) = self.4.get(thread)?;
+		let mut guard = self.history_guard(self.history_revision())?;
+		guard.settings = Some(observed);
+		Some((settings, guard))
+	}
+
+	pub(super) fn permission_revision(&self) -> u64 {
+		self.4.revision()
+	}
+
+	pub(super) fn observe_permission_hydration(&self, thread: &str, response: &Value) {
+		self.3.invalidate(thread);
+		let guard = self.3.capture(thread);
+		self.4.record(
+			thread,
+			super::NativeTaskPermissions::from_thread_response(response),
+			guard.clone(),
+		);
+	}
+
 	pub(super) fn question_guard(&self, revision: u64) -> Option<HistoryGuard> {
 		(self.question_revision() == revision).then(|| HistoryGuard {
 			requests: self.clone(),
@@ -142,12 +176,44 @@ impl ServerRequests {
 
 	pub(super) fn clear(&self) {
 		self.3.clear();
+		self.4.clear();
 		if let Ok(mut rows) = self.0.lock() {
 			rows.clear();
 		}
 	}
 
+	fn observe_permission_event(&self, event: &ServerEvent) {
+		let ServerEvent::Notification { method, params } = event else { return };
+		if method == "thread/reverted" {
+			self.4.clear();
+		}
+		let Some(thread) = params["threadId"].as_str() else { return };
+		if matches!(
+			method.as_str(),
+			"thread/settings/updated"
+				| "thread/closed"
+				| "thread/archived"
+				| "thread/deleted"
+				| "turn/started"
+		) {
+			self.3.invalidate(thread);
+		}
+		match method.as_str() {
+			"thread/settings/updated" => self.4.record(
+				thread,
+				super::NativeTaskPermissions::from_notification(&params["threadSettings"]),
+				self.3.capture(thread),
+			),
+			"turn/started" => self.4.start_turn(thread, params["turn"]["id"].as_str()),
+			"turn/completed" =>
+				self.4.finish_turn(thread, params["turn"]["id"].as_str(), self.3.capture(thread)),
+			"thread/closed" | "thread/archived" | "thread/deleted" => self.4.remove(thread),
+			_ => {},
+		}
+	}
+
 	pub(super) fn observe(&self, event: &ServerEvent) -> Result<(), ClientError> {
+		self.observe_permission_event(event);
 		let mut rows = self.0.lock().map_err(|_| ClientError::Closed)?;
 		if let ServerEvent::Notification { method, params } = event
 			&& invalidates_question_state(method, params)
@@ -159,12 +225,6 @@ impl ServerRequests {
 			&& params["threadId"].as_str().is_some_and(|id| !id.is_empty())
 		{
 			self.1.fetch_add(1, Ordering::AcqRel);
-		}
-		if let ServerEvent::Notification { method, params } = event
-			&& method == "thread/settings/updated"
-			&& let Some(thread) = params["threadId"].as_str()
-		{
-			self.3.invalidate(thread);
 		}
 
 		match event {
