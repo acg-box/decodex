@@ -223,28 +223,7 @@ impl ChiefSurface {
 		(rows.into_any_element(), count)
 	}
 
-	pub(super) fn native_agent_view(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-		let Some((owner, thread)) = &self.native_agents.selected else {
-			return div().into_any_element();
-		};
-		let title = self
-			.native_agents
-			.lists
-			.get(owner)
-			.into_iter()
-			.flatten()
-			.find(|a| &a.thread_id == thread)
-			.map(|a| a.title.as_str())
-			.unwrap_or("Agent");
-		let back = owner.clone();
-		let parent = self
-			.native_agents
-			.lists
-			.get(owner)
-			.into_iter()
-			.flatten()
-			.find(|a| &a.thread_id == thread)
-			.map(|a| a.parent_thread_id.clone());
+	fn native_agent_transcript(&self, thread: &str) -> (gpui::AnyElement, bool) {
 		let mut body = div()
 			.id("native-agent-transcript")
 			.flex_1()
@@ -284,6 +263,32 @@ impl ChiefSurface {
 			None => body = body.child(muted("Loading conversation…")),
 			_ => body = body.child(muted("This agent's conversation is unavailable. Retrying…")),
 		}
+		(body.into_any_element(), can_input)
+	}
+
+	pub(super) fn native_agent_view(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+		let Some((owner, thread)) = &self.native_agents.selected else {
+			return div().into_any_element();
+		};
+		let title = self
+			.native_agents
+			.lists
+			.get(owner)
+			.into_iter()
+			.flatten()
+			.find(|a| &a.thread_id == thread)
+			.map(|a| a.title.as_str())
+			.unwrap_or("Agent");
+		let back = owner.clone();
+		let parent = self
+			.native_agents
+			.lists
+			.get(owner)
+			.into_iter()
+			.flatten()
+			.find(|a| &a.thread_id == thread)
+			.map(|a| a.parent_thread_id.clone());
+		let (body, can_input) = self.native_agent_transcript(thread);
 		let mut panel =
 			div()
 				.size_full()

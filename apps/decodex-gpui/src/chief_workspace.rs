@@ -668,6 +668,61 @@ impl ChiefSurface {
 			})
 	}
 
+	fn workspace_transcript(
+		&mut self,
+		selected: Option<&ChiefWorkItemDto>,
+		is_chief: bool,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let scroll = self
+			.transcript_scroll
+			.entry(self.selected.clone().unwrap_or_default())
+			.or_default()
+			.clone();
+		let mut transcript = div()
+			.id(SharedString::from(format!(
+				"transcript-{}",
+				self.selected.as_deref().unwrap_or("chief")
+			)))
+			.flex_1()
+			.min_w_0()
+			.min_h_0()
+			.overflow_hidden()
+			.track_scroll(&scroll)
+			.on_scroll_wheel(cx.listener(|s, event, _, cx| s.scroll_history(event, cx)));
+		if let Some(work) = selected {
+			if let Some(snapshot) = &self.snapshot {
+				let content = if is_chief {
+					div()
+						.p_4()
+						.pb(px(self.composer_footer_height + 16.))
+						.w_full()
+						.mx_auto()
+						.line_height(px(ui_theme::BODY_LINE_HEIGHT))
+						.child(self.history_panel(work, cx))
+						.when(
+							snapshot.pending_events.iter().any(|e| {
+								e.work_item_id == work.id && e.event_kind.ends_with("_pending")
+							}) && self.request.is_none(),
+							|row| row.child(self.pending_panel(snapshot, work, cx)),
+						)
+						.child(self.misalignment_panel(work, cx))
+						.child(self.guardian_panel(work, cx))
+						.child(self.request_panel(snapshot, work, cx))
+						.child(self.async_question_panel(work, cx))
+						.into_any_element()
+				} else {
+					self.details(snapshot, work, cx).into_any_element()
+				};
+				transcript = transcript.child(content);
+			}
+		} else {
+			transcript = transcript.child(self.workspace_welcome(window, cx));
+		}
+		transcript.into_any_element()
+	}
+
 	pub(super) fn render_workspace(
 		&mut self,
 		window: &mut Window,
@@ -701,51 +756,7 @@ impl ChiefSurface {
 			chat = chat.child(self.work_context(snapshot, work, cx));
 		}
 
-		let scroll = self
-			.transcript_scroll
-			.entry(self.selected.clone().unwrap_or_default())
-			.or_default()
-			.clone();
-		let mut transcript = div()
-			.id(SharedString::from(format!(
-				"transcript-{}",
-				self.selected.as_deref().unwrap_or("chief")
-			)))
-			.flex_1()
-			.min_w_0()
-			.min_h_0()
-			.overflow_hidden()
-			.track_scroll(&scroll)
-			.on_scroll_wheel(cx.listener(|s, event, _, cx| s.scroll_history(event, cx)));
-		if let Some(work) = &selected {
-			if let Some(snapshot) = &self.snapshot {
-				let content = if is_chief {
-					div()
-						.p_4()
-						.pb(px(self.composer_footer_height + 16.))
-						.w_full()
-						.mx_auto()
-						.line_height(px(ui_theme::BODY_LINE_HEIGHT))
-						.child(self.history_panel(work, cx))
-						.when(
-							snapshot.pending_events.iter().any(|e| {
-								e.work_item_id == work.id && e.event_kind.ends_with("_pending")
-							}) && self.request.is_none(),
-							|row| row.child(self.pending_panel(snapshot, work, cx)),
-						)
-						.child(self.misalignment_panel(work, cx))
-						.child(self.guardian_panel(work, cx))
-						.child(self.request_panel(snapshot, work, cx))
-						.child(self.async_question_panel(work, cx))
-						.into_any_element()
-				} else {
-					self.details(snapshot, work, cx).into_any_element()
-				};
-				transcript = transcript.child(content);
-			}
-		} else {
-			transcript = transcript.child(self.workspace_welcome(window, cx));
-		}
+		let transcript = self.workspace_transcript(selected.as_ref(), is_chief, window, cx);
 
 		chat = chat.child(
 			div()

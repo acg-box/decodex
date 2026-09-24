@@ -12,13 +12,19 @@ values display their exact name instead of High. Legacy `x_high` saved values
 still map to native `xhigh`. Both protocol and native request adapters accept
 up to 128 UTF-8 bytes and reject empty values and control characters.
 
-Validation: 128 Codex adapter tests, 108 protocol tests, 482 runtime tests, and
-289 desktop tests passed. Strict Clippy passed for all four affected packages.
+Validation: 128 Codex adapter tests, 109 protocol tests, 485 runtime tests, and
+310 desktop tests passed. Strict Clippy passed for all four affected packages.
 An isolated installed-native test reads the model catalog through Decodex,
 starts Chief with the advertised custom effort, and checks the exact outbound
 Responses value at a loopback backend. It completed with one model request and
 no real credentials. This proves the custom-effort path, not all model capability
 or workspace-routing integration.
+
+This batch is rebased on workspace PR #1393 (37a88d008). It retains the native
+agent hierarchy, live output subscription, weather cards, interruption controls,
+and the previously delivered draft and receipt recovery. Small owner extractions,
+explicit imports, and public field documentation repair strict validation failures
+introduced by that baseline; no lint checks are disabled.
 
 ## Earlier usage audit
 

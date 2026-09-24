@@ -1,5 +1,8 @@
 //! Compact in-message weather presentation.
-use gpui::{prelude::*, *};
+use gpui::{
+	AnyElement, App, BoxShadow, FontWeight, Role, SharedString, Window, div, point, prelude::*, px,
+	rgb, rgba,
+};
 
 fn symbol(condition: &str) -> &'static str {
 	let value = condition.to_ascii_lowercase();
@@ -44,7 +47,6 @@ impl RenderOnce for WeatherCard {
 		}
 
 		let selector = format!("weather-card-{key}");
-		let location = weather.location.split(", ").next().unwrap_or(&weather.location);
 
 		div()
 			.id(SharedString::from(format!("weather-card-{key}")))
@@ -67,49 +69,7 @@ impl RenderOnce for WeatherCard {
 			.flex()
 			.flex_col()
 			.gap(px(6.))
-			.child(
-				div()
-					.flex()
-					.items_center()
-					.justify_between()
-					.child(
-						div()
-							.flex()
-							.flex_col()
-							.gap_1()
-							.child(
-								div()
-									.text_size(px(13.))
-									.font_weight(FontWeight::SEMIBOLD)
-									.child(location.to_owned()),
-							)
-							.child(div().text_size(px(11.)).text_color(rgb(0xaab9c9)).child(
-								format!(
-									"{} · {}",
-									weather.condition,
-									date.split(" · ").next().unwrap_or(date)
-								),
-							)),
-					)
-					.child(
-						div()
-							.flex()
-							.items_center()
-							.gap_2()
-							.child(
-								div()
-									.text_size(px(20.))
-									.text_color(rgb(0xd5e3f1))
-									.child(symbol(&weather.condition)),
-							)
-							.child(
-								div()
-									.text_size(px(28.))
-									.line_height(px(32.))
-									.child(format!("{}°", weather.celsius)),
-							),
-					),
-			)
+			.child(weather_header(weather, date))
 			.child(
 				div()
 					.id(SharedString::from(format!("weather-hours-{key}")))
@@ -187,10 +147,55 @@ impl RenderOnce for WeatherCard {
 	}
 }
 
+fn weather_header(weather: &decodex_protocol::WeatherForecast, date: &str) -> AnyElement {
+	let location = weather.location.split(", ").next().unwrap_or(&weather.location);
+	div()
+		.flex()
+		.items_center()
+		.justify_between()
+		.child(
+			div()
+				.flex()
+				.flex_col()
+				.gap_1()
+				.child(
+					div()
+						.text_size(px(13.))
+						.font_weight(FontWeight::SEMIBOLD)
+						.child(location.to_owned()),
+				)
+				.child(div().text_size(px(11.)).text_color(rgb(0xaab9c9)).child(format!(
+					"{} · {}",
+					weather.condition,
+					date.split(" · ").next().unwrap_or(date)
+				))),
+		)
+		.child(
+			div()
+				.flex()
+				.items_center()
+				.gap_2()
+				.child(
+					div()
+						.text_size(px(20.))
+						.text_color(rgb(0xd5e3f1))
+						.child(symbol(&weather.condition)),
+				)
+				.child(
+					div()
+						.text_size(px(28.))
+						.line_height(px(32.))
+						.child(format!("{}°", weather.celsius)),
+				),
+		)
+		.into_any_element()
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use core::prelude::v1::test;
+	use gpui::{Context, Modifiers, Render, ScrollDelta, ScrollWheelEvent, size};
 	struct Parent {
 		bubbled: std::rc::Rc<std::cell::Cell<usize>>,
 	}
