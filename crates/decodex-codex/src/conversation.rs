@@ -687,6 +687,7 @@ pub struct ConversationTurnStartRequest {
 	reasoning_effort: ConversationReasoningEffort,
 	service_tier: decodex_core::ServiceTier,
 	client_user_message_id: Option<String>,
+	turn_trigger: Option<&'static str>,
 }
 impl ConversationTurnStartRequest {
 	/// Accept one bounded turn without selecting or defaulting model settings.
@@ -703,7 +704,14 @@ impl ConversationTurnStartRequest {
 			reasoning_effort: ConversationReasoningEffort::new(reasoning_effort)?,
 			service_tier: decodex_core::ServiceTier::standard(),
 			client_user_message_id: None,
+			turn_trigger: None,
 		})
+	}
+
+	/// Classify a user-originated turn at its owning dispatch boundary.
+	pub fn with_user_trigger(mut self) -> Self {
+		self.turn_trigger = Some("user");
+		self
 	}
 
 	/// Select request-scoped Codex Fast mode without changing global configuration.
@@ -756,7 +764,10 @@ impl Serialize for ConversationTurnStartRequest {
 	where
 		S: Serializer,
 	{
-		let mut request = serializer.serialize_struct("ConversationTurnStartRequest", 7)?;
+		let mut request = serializer.serialize_struct(
+			"ConversationTurnStartRequest",
+			7 + usize::from(self.turn_trigger.is_some()),
+		)?;
 
 		request.serialize_field("threadId", self.thread_id.as_str())?;
 		request.serialize_field("input", &ConversationTextInputs(self.input.items()))?;
@@ -765,6 +776,9 @@ impl Serialize for ConversationTurnStartRequest {
 		request.serialize_field("serviceTier", &self.service_tier.thread_value())?;
 		request.serialize_field("serviceTierForTurn", self.service_tier.as_str())?;
 		request.serialize_field("clientUserMessageId", &self.client_user_message_id)?;
+		if let Some(trigger) = self.turn_trigger {
+			request.serialize_field("turnTrigger", trigger)?;
+		}
 		request.end()
 	}
 }
@@ -2030,11 +2044,13 @@ mod tests {
 			"xhigh",
 		)
 		.expect("turn request is valid")
+		.with_user_trigger()
 		.with_client_user_message_id("50000000-0000-4000-8000-000000000001")
 		.expect("client user-message identity is valid")
 		.with_fast(true);
 		let encoded = serde_json::to_value(turn).expect("turn request must serialize");
 
+		assert_eq!(encoded.get("turnTrigger"), Some(&json!("user")));
 		assert_eq!(encoded.get("model"), Some(&json!("gpt-5.6-terra")));
 		assert_eq!(encoded.get("effort"), Some(&json!("xhigh")));
 		assert_eq!(encoded.get("serviceTier"), Some(&json!("priority")));

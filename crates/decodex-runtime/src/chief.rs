@@ -984,6 +984,7 @@ impl ChiefCoordinator {
             "input":[{"type":"text","text":prompt,"text_elements":[]}]});
 		let mut external = Vec::new();
 		let mut has_user_input = false;
+		let mut automated = false;
 		for event_id in events {
 			let event = self.store.get_chief_inbox_event(*event_id).await?;
 			if event.event_kind == "user_message" {
@@ -992,6 +993,8 @@ impl ChiefCoordinator {
 			} else if event.event_kind == "async_question_answer" {
 				has_user_input = true;
 			} else {
+				automated |=
+					matches!(event.event_kind.as_str(), "automation_result" | "followup_due");
 				external.push(wake_evidence(&event));
 			}
 		}
@@ -999,6 +1002,16 @@ impl ChiefCoordinator {
 		// capacity continuations retain application tool authority, including after
 		// deferred dispatch or recovery. Never fall back to user input on rejection.
 		let direct_root_input = events.is_empty() && item.parent_goal_id.is_none() && !retry;
+		// Native recovery uses a new retry turn; steering never changes an active trigger.
+		params["turnTrigger"] = json!(if retry {
+			"retry"
+		} else if has_user_input || direct_root_input {
+			"user"
+		} else if automated {
+			"automation"
+		} else {
+			"goal"
+		});
 		if !has_user_input && !direct_root_input {
 			let name = if retry {
 				"capacity_retry"

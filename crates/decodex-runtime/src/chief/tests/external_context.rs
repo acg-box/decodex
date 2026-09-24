@@ -85,6 +85,7 @@ async fn external_results_use_named_tool_context_before_the_wake_turn() {
 	let injection = messages.iter().position(|v| v["method"] == "thread/inject_items").unwrap();
 	let turn = messages.iter().position(|v| v["method"] == "turn/start").unwrap();
 	assert!(injection < turn);
+	assert_eq!(messages[turn]["params"]["turnTrigger"], "automation");
 	assert_eq!(messages[injection]["params"]["threadId"], messages[turn]["params"]["threadId"]);
 	let item = &messages[injection]["params"]["items"][0];
 	assert_eq!(item["type"], "function_call_output");
@@ -131,6 +132,7 @@ async fn delegated_instructions_keep_tool_authority_on_creation_and_followup() {
 		"Manage this delegated outcome",
 	]) {
 		assert_eq!(turn["params"]["input"], json!([]));
+		assert_eq!(turn["params"]["turnTrigger"], "goal");
 		assert_eq!(
 			turn["params"]["toolOutput"],
 			json!({"name":"work_instruction","namespace":"decodex","output":prompt})
