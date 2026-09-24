@@ -86,7 +86,7 @@ impl<T: Clone + Serialize> SettingsObservations<T> {
 		};
 		if let Some(row) = rows.get_mut(thread) {
 			row.active_turn = Some(turn.into());
-			row.guard = None;
+			// Keep the invalid guard as a revision anchor while running; get() still refuses it.
 		} else if rows.len() < 256 {
 			rows.insert(
 				thread.into(),

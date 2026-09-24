@@ -118,3 +118,12 @@ pub(super) async fn select_permission(
 	let owned = store::OwnedReviewer::new(home, client, thread, "fixture-active").await;
 	owned.select_permission().await;
 }
+
+pub(super) async fn select_task_plugin(
+	client: &decodex_codex::app_server_client::AppServerClient,
+	home: &std::path::Path,
+	thread: &str,
+) {
+	let owned = store::OwnedReviewer::new(home, client, thread, "fixture-active").await;
+	owned.select_task_plugin().await;
+}

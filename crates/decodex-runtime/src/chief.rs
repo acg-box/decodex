@@ -764,7 +764,7 @@ impl ChiefCoordinator {
 			));
 		}
 		self.store.initialize_chief_usage(thread.clone()).await?;
-		self.persist_permission_observation(&thread).await?;
+		self.persist_task_settings(&thread).await?;
 		self.loaded_threads.insert(thread);
 		Ok(bound)
 	}

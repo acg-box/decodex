@@ -34,6 +34,11 @@ pub struct HistoryGuard {
 	settings: Option<super::settings_guard::SettingsGuard>,
 }
 impl HistoryGuard {
+	/// Connection-local settings revision for review identities. Check `is_live` before use.
+	pub fn settings_revision(&self) -> Option<u64> {
+		self.settings.as_ref().map(super::settings_guard::SettingsGuard::revision)
+	}
+
 	pub(super) fn belongs_to(&self, requests: &ServerRequests) -> bool {
 		Arc::ptr_eq(&self.requests.0, &requests.0)
 	}

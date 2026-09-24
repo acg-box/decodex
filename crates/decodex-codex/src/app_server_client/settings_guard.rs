@@ -8,7 +8,7 @@ use std::{
 };
 
 #[derive(Clone, Default)]
-pub(super) struct SettingsRevisions(Arc<Mutex<HashMap<String, Weak<AtomicU64>>>>);
+pub(super) struct SettingsRevisions(Arc<Mutex<HashMap<String, Weak<AtomicU64>>>>, Arc<AtomicU64>);
 
 #[derive(Clone)]
 pub(super) struct SettingsGuard {
@@ -17,12 +17,23 @@ pub(super) struct SettingsGuard {
 }
 
 impl SettingsGuard {
+	pub(super) fn revision(&self) -> u64 {
+		self.revision
+	}
+
 	pub(super) fn is_live(&self) -> bool {
 		self.revision != u64::MAX && self.counter.load(Ordering::Acquire) == self.revision
 	}
 }
 
 impl SettingsRevisions {
+	fn next_revision(&self) -> u64 {
+		self.1
+			.fetch_update(Ordering::AcqRel, Ordering::Acquire, |v| Some(v.saturating_add(1)))
+			.unwrap_or(u64::MAX)
+			.saturating_add(1)
+	}
+
 	pub(super) fn capture(&self, thread: &str) -> Option<SettingsGuard> {
 		if thread.is_empty() || thread.len() > 512 || thread.chars().any(char::is_control) {
 			return None;
@@ -35,7 +46,7 @@ impl SettingsRevisions {
 				if rows.len() >= 256 {
 					return None;
 				}
-				let counter = Arc::new(AtomicU64::new(0));
+				let counter = Arc::new(AtomicU64::new(self.next_revision()));
 				rows.insert(thread.into(), Arc::downgrade(&counter));
 				counter
 			},
@@ -47,9 +58,7 @@ impl SettingsRevisions {
 		if let Ok(rows) = self.0.lock()
 			&& let Some(counter) = rows.get(thread).and_then(Weak::upgrade)
 		{
-			let _ = counter.fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
-				Some(value.saturating_add(1))
-			});
+			counter.store(self.next_revision(), Ordering::Release);
 		}
 	}
 
@@ -66,6 +75,24 @@ impl SettingsRevisions {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn revision_identities_do_not_repeat_after_values_return_or_guards_are_dropped() {
+		let revisions = SettingsRevisions::default();
+		let first = revisions.capture("task").unwrap();
+		let other = revisions.capture("other").unwrap();
+		let revision = first.revision();
+		revisions.invalidate("task");
+		revisions.invalidate("task");
+		assert!(!first.is_live());
+		assert!(other.is_live());
+		let next = revisions.capture("task").unwrap();
+		assert!(next.revision() > revision);
+		let revision = next.revision();
+		drop(first);
+		drop(next);
+		assert!(revisions.capture("task").unwrap().revision() > revision);
+	}
+
 	#[test]
 	fn source_changes_invalidate_live_guards_and_dead_sources_do_not_accumulate() {
 		let revisions = SettingsRevisions::default();

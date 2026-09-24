@@ -25,6 +25,7 @@ mod chief_live_settings;
 mod chief_model_settings;
 mod chief_native_goal;
 mod chief_permissions;
+mod chief_plugins;
 mod chief_resources;
 mod chief_usage_estimate;
 mod chief_voice;
