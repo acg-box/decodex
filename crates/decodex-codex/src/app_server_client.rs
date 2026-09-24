@@ -24,6 +24,7 @@ mod history;
 pub use goals::{NativeThreadGoal, NativeThreadGoalStatus};
 mod initialize;
 mod live_settings;
+mod permission_observations;
 mod permissions;
 pub use initialize::InitializeCapabilities;
 pub use live_settings::{LiveReviewer, LiveSettingsOutcome, is_live_reviewer_update};
@@ -194,6 +195,29 @@ impl AppServerProcess {
 }
 
 impl AppServerClient {
+	/// Read the latest configured permissions, which may differ from an active step capture.
+	pub fn configured_task_permissions(
+		&self,
+		thread: &str,
+	) -> Option<(NativeTaskPermissions, HistoryGuard)> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.configured_permissions(thread)
+	}
+
+	/// Return latest transport-observed native permissions with a read-to-write guard.
+	/// No resume or other request is sent. Missing/stale facts remain unavailable.
+	pub fn observed_task_permissions(
+		&self,
+		thread: &str,
+	) -> Option<(NativeTaskPermissions, HistoryGuard)> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.permission_observation(thread)
+	}
+
 	/// The caller supplies executable, arguments, cwd, and environment. This function
 	/// never reads or writes authentication. Stderr is discarded to prevent secret logging.
 	pub fn spawn(
@@ -573,6 +597,35 @@ impl FrameSink {
 	}
 }
 
+// Start has no identity before its reply. Intervening publications invalidate hydration.
+enum PermissionHydration {
+	Start { revision: u64 },
+	Resume { thread: String, guard: HistoryGuard },
+}
+struct PendingReply {
+	reply: Reply,
+	permissions: Option<PermissionHydration>,
+}
+impl PermissionHydration {
+	fn observe(self, response: &Value, requests: &ServerRequests) {
+		match self {
+			Self::Start { revision } => {
+				if let Some(thread) = response["thread"]["id"].as_str()
+					&& revision != u64::MAX
+					&& revision == requests.permission_revision()
+				{
+					requests.observe_permission_hydration(thread, response);
+				}
+			},
+			Self::Resume { thread, guard } => {
+				if guard.is_live() && response["thread"]["id"].as_str() == Some(&thread) {
+					requests.observe_permission_hydration(&thread, response);
+				}
+			},
+		}
+	}
+}
+
 async fn run_frames(
 	mut writer: FrameSink,
 	mut commands: mpsc::Receiver<Outbound>,
@@ -582,7 +635,7 @@ async fn run_frames(
 	mut cancellation: watch::Receiver<bool>,
 	server_requests: ServerRequests,
 ) {
-	let mut pending: HashMap<RequestId, Reply> = HashMap::new();
+	let mut pending: HashMap<RequestId, PendingReply> = HashMap::new();
 	let reason = 'transport: loop {
 		tokio::select! {
 			biased;
@@ -621,6 +674,11 @@ async fn run_frames(
 						let Some(next) = sequence.checked_add(1) else { break ClientError::Closed; };
 						sequence = next;
 						let id = RequestId::Number(sequence);
+						let permissions=match method.as_str() {
+							"thread/start"=>Some(PermissionHydration::Start{revision:server_requests.permission_revision()}),
+							"thread/resume"=>params["threadId"].as_str().and_then(|thread|server_requests.thread_settings_guard(thread).map(|guard|PermissionHydration::Resume{thread:thread.into(),guard})),
+							_=>None,
+						};
 						let result = writer.write(json!({"id": id, "method": method, "params": params})).await;
 						let refusal = match &result {
 							Err(ClientError::FrameTooLarge) => Some(ClientError::RequestTooLarge),
@@ -632,7 +690,7 @@ async fn run_frames(
 							let _ = reply.send(Err(refusal));
 							continue;
 						}
-						pending.insert(id, reply);
+						pending.insert(id, PendingReply{reply,permissions});
 						if let Err(error) = result { break error; }
 					},
 				}
@@ -646,8 +704,8 @@ async fn run_frames(
 	server_requests.clear();
 	drop(writer);
 	commands.close();
-	for (_, reply) in pending {
-		let _ = reply.send(Err(reason.clone()));
+	for (_, pending) in pending {
+		let _ = pending.reply.send(Err(reason.clone()));
 	}
 	while let Some(command) = commands.recv().await {
 		let reply = match command {
@@ -662,7 +720,7 @@ async fn run_frames(
 
 fn dispatch(
 	frame: Value,
-	pending: &mut HashMap<RequestId, Reply>,
+	pending: &mut HashMap<RequestId, PendingReply>,
 	events: &mpsc::Sender<ServerEvent>,
 	server_requests: &ServerRequests,
 ) -> Result<(), ClientError> {
@@ -691,8 +749,11 @@ fn dispatch(
 				.map_err(|_| ClientError::InvalidFrame)?),
 			_ => return Err(ClientError::InvalidFrame),
 		};
-		if let Some(reply) = pending.remove(&id) {
-			let _ = reply.send(result.map_err(ClientError::Remote));
+		if let Some(pending) = pending.remove(&id) {
+			if let (Some(hydration), Ok(response)) = (pending.permissions, &result) {
+				hydration.observe(response, server_requests);
+			}
+			let _ = pending.reply.send(result.map_err(ClientError::Remote));
 			return Ok(());
 		}
 		ServerEvent::UnmatchedResponse { id, result }

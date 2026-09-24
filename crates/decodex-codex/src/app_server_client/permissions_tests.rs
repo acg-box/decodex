@@ -120,3 +120,252 @@ fn permission_projection_keeps_native_facts_without_copying_unrelated_instructio
 	no_profile["activePermissionProfile"] = Value::Null;
 	assert_eq!(NativeTaskPermissions::from_notification(&no_profile).unwrap().profile_id, None);
 }
+
+use crate::app_server_client::{
+	PendingReply, PermissionHydration, RequestId, ServerRequests, dispatch,
+};
+use std::collections::HashMap;
+use tokio::sync::{mpsc, oneshot};
+
+fn permission_facts(profile: &str) -> Value {
+	json!({"cwd":"/native", "activePermissionProfile":{"id":profile},
+		"approvalPolicy":"on-request", "approvalsReviewer":"user",
+		"sandboxPolicy":{"type":"readOnly"}})
+}
+
+#[test]
+fn wire_publication_invalidates_old_authority_before_owner_consumption() {
+	let requests = ServerRequests::default();
+	let (events, mut receiver) = mpsc::channel(8);
+	let mut pending = HashMap::new();
+	let publish = |facts: Value| {
+		json!({"method":"thread/settings/updated",
+		"params":{"threadId":"task", "threadSettings":facts}})
+	};
+	dispatch(publish(permission_facts("old")), &mut pending, &events, &requests).unwrap();
+	let (_, old_guard) = requests.permission_observation("task").unwrap();
+	dispatch(publish(permission_facts("new")), &mut pending, &events, &requests).unwrap();
+	assert!(!old_guard.is_live());
+	let (current, current_guard) = requests.permission_observation("task").unwrap();
+	assert_eq!(current.profile_id.as_deref(), Some("new"));
+	assert!(current_guard.is_live());
+	// Both publications are still queued for the coordinator.
+	assert_eq!(receiver.len(), 2);
+	dispatch(publish(json!({"cwd":"/native"})), &mut pending, &events, &requests).unwrap();
+	assert!(!current_guard.is_live());
+	assert!(requests.permission_observation("task").is_none());
+	assert!(receiver.try_recv().is_ok());
+}
+
+#[test]
+fn late_hydration_cannot_restore_invalidated_or_foreign_permission_facts() {
+	for start in [false, true] {
+		for malformed in [false, true] {
+			let requests = ServerRequests::default();
+			let (events, _receiver) = mpsc::channel(8);
+			let (reply, _result) = oneshot::channel();
+			let hydration = if start {
+				PermissionHydration::Start { revision: requests.permission_revision() }
+			} else {
+				PermissionHydration::Resume {
+					thread: "task".into(),
+					guard: requests.thread_settings_guard("task").unwrap(),
+				}
+			};
+			let mut pending = HashMap::from([(
+				RequestId::Number(1),
+				PendingReply { reply, permissions: Some(hydration) },
+			)]);
+			let facts = if malformed { json!({}) } else { permission_facts("new") };
+			dispatch(json!({"method":"thread/settings/updated", "params":{"threadId":"task", "threadSettings":facts}}), &mut pending, &events, &requests).unwrap();
+			let mut old = permission_facts("old");
+			old["sandbox"] = old["sandboxPolicy"].take();
+			old["thread"] = json!({"id":"task"});
+			dispatch(json!({"id":1,"result":old}), &mut pending, &events, &requests).unwrap();
+			let observed = requests.permission_observation("task");
+			if malformed {
+				assert!(observed.is_none());
+			} else {
+				assert_eq!(observed.unwrap().0.profile_id.as_deref(), Some("new"));
+			}
+		}
+	}
+	let requests = ServerRequests::default();
+	let (events, _receiver) = mpsc::channel(8);
+	let (reply, _result) = oneshot::channel();
+	let hydration = PermissionHydration::Resume {
+		thread: "task".into(),
+		guard: requests.thread_settings_guard("task").unwrap(),
+	};
+	let mut pending = HashMap::from([(
+		RequestId::Number(1),
+		PendingReply { reply, permissions: Some(hydration) },
+	)]);
+	let mut response = permission_facts("foreign");
+	response["sandbox"] = response["sandboxPolicy"].take();
+	response["thread"] = json!({"id":"other"});
+	dispatch(json!({"id":1,"result":response}), &mut pending, &events, &requests).unwrap();
+	assert!(requests.permission_observation("task").is_none());
+	assert!(requests.permission_observation("other").is_none());
+}
+
+#[test]
+fn permission_cache_is_bounded_and_connection_close_revokes_authority() {
+	let requests = ServerRequests::default();
+	let mut response = permission_facts("scoped");
+	response["sandbox"] = response["sandboxPolicy"].take();
+	for index in 0..257 {
+		requests.observe_permission_hydration(&format!("task-{index}"), &response);
+	}
+	assert!(requests.permission_observation("task-255").is_some());
+	assert!(requests.permission_observation("task-256").is_none());
+	let (_, old_guard) = requests.permission_observation("task-0").unwrap();
+	response["activePermissionProfile"] = json!({"id":"replacement"});
+	requests.observe_permission_hydration("task-0", &response);
+	assert!(!old_guard.is_live());
+	let (_, guard) = requests.permission_observation("task-0").unwrap();
+	requests.clear();
+	assert!(!guard.is_live());
+	assert!(requests.permission_observation("task-0").is_none());
+}
+
+#[tokio::test]
+async fn newer_wire_settings_reject_permission_write_before_owner_drain() {
+	let (local, remote) = tokio::io::duplex(32768);
+	let (reader, writer) = tokio::io::split(local);
+	let (client, events) = AppServerClient::from_io(reader, writer);
+	let (reader, mut writer) = tokio::io::split(remote);
+	let mut lines = BufReader::new(reader).lines();
+	let owned_client = client.clone();
+	let hydrate = tokio::spawn(async move {
+		owned_client.request("thread/resume", json!({"threadId":"task"})).await
+	});
+	let request: Value = serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+	let mut facts = permission_facts("old");
+	facts["sandbox"] = facts["sandboxPolicy"].take();
+	facts["thread"] = json!({"id":"task"});
+	writer
+		.write_all(format!("{}\n", json!({"id":request["id"],"result":facts})).as_bytes())
+		.await
+		.unwrap();
+	hydrate.await.unwrap().unwrap();
+	let (_, old_guard) = client.observed_task_permissions("task").unwrap();
+	let barrier_client = client.clone();
+	let barrier =
+		tokio::spawn(async move { barrier_client.request("test/barrier", json!({})).await });
+	let request: Value = serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+	writer.write_all(format!("{}\n{}\n", json!({"method":"thread/settings/updated","params":{"threadId":"task","threadSettings":permission_facts("new")}}), json!({"id":request["id"],"result":{}})).as_bytes()).await.unwrap();
+	barrier.await.unwrap().unwrap();
+	assert_eq!(events.len(), 1);
+	assert_eq!(
+		client.observed_task_permissions("task").unwrap().0.profile_id.as_deref(),
+		Some("new")
+	);
+	let selection = ThreadPermissionSelection::new("task", "scoped").unwrap();
+	assert!(matches!(
+		client.queue_thread_permission_selection(&selection, old_guard).await,
+		Err(ClientError::StaleHistory)
+	));
+	assert!(
+		tokio::time::timeout(std::time::Duration::from_millis(20), lines.next_line())
+			.await
+			.is_err()
+	);
+}
+
+#[test]
+fn idle_permission_facts_return_only_after_exact_turn_completion_without_reviving_old_guards() {
+	for update in ["unchanged", "changed", "malformed"] {
+		let requests = ServerRequests::default();
+		let (events, _receiver) = mpsc::channel(8);
+		let mut pending = HashMap::new();
+		let publish = |facts: Value| json!({"method":"thread/settings/updated","params":{"threadId":"task","threadSettings":facts}});
+		dispatch(publish(permission_facts("old")), &mut pending, &events, &requests).unwrap();
+		let (_, old_guard) = requests.permission_observation("task").unwrap();
+		dispatch(
+			json!({"method":"turn/started","params":{"threadId":"task","turn":{"id":"active"}}}),
+			&mut pending,
+			&events,
+			&requests,
+		)
+		.unwrap();
+		assert!(!old_guard.is_live());
+		assert!(requests.permission_observation("task").is_none());
+		let (configured, selection_guard) =
+			requests.configured_permissions("task").expect("running configured facts");
+		assert_eq!(configured.profile_id.as_deref(), Some("old"));
+		assert!(selection_guard.is_live());
+		match update {
+			"changed" =>
+				dispatch(publish(permission_facts("new")), &mut pending, &events, &requests)
+					.unwrap(),
+			"malformed" => dispatch(publish(json!({})), &mut pending, &events, &requests).unwrap(),
+			_ => {},
+		}
+		if update == "malformed" {
+			assert!(requests.configured_permissions("task").is_none());
+		} else {
+			assert_eq!(
+				requests
+					.configured_permissions("task")
+					.expect("configured facts")
+					.0
+					.profile_id
+					.as_deref(),
+				Some(if update == "changed" { "new" } else { "old" })
+			);
+		}
+		assert_eq!(selection_guard.is_live(), update == "unchanged");
+
+		assert!(requests.permission_observation("task").is_none());
+		dispatch(
+			json!({"method":"turn/completed","params":{"threadId":"task","turn":{"id":"older"}}}),
+			&mut pending,
+			&events,
+			&requests,
+		)
+		.unwrap();
+		assert!(requests.permission_observation("task").is_none());
+		dispatch(
+			json!({"method":"turn/completed","params":{"threadId":"task","turn":{"id":"active"}}}),
+			&mut pending,
+			&events,
+			&requests,
+		)
+		.unwrap();
+		assert!(!old_guard.is_live());
+		if update == "malformed" {
+			assert!(requests.permission_observation("task").is_none());
+		} else {
+			let (facts, guard) = requests.permission_observation("task").unwrap();
+			assert!(guard.is_live());
+			assert_eq!(
+				facts.profile_id.as_deref(),
+				Some(if update == "changed" { "new" } else { "old" })
+			);
+		}
+	}
+}
+
+#[test]
+fn permission_lifecycle_revokes_facts_and_pending_resume_hydration() {
+	for method in ["thread/closed", "thread/archived", "thread/deleted", "thread/reverted"] {
+		let requests = ServerRequests::default();
+		let mut facts = permission_facts("scoped");
+		facts["sandbox"] = facts["sandboxPolicy"].take();
+		facts["thread"] = json!({"id":"task"});
+		requests.observe_permission_hydration("task", &facts);
+		let (_, guard) = requests.permission_observation("task").unwrap();
+		let hydration = PermissionHydration::Resume { thread: "task".into(), guard: guard.clone() };
+		requests
+			.observe(&crate::app_server_client::ServerEvent::Notification {
+				method: method.into(),
+				params: json!({"threadId":"task"}),
+			})
+			.unwrap();
+		assert!(!guard.is_live(), "{method}");
+		hydration.observe(&facts, &requests);
+		assert!(requests.permission_observation("task").is_none(), "{method}");
+		assert!(requests.configured_permissions("task").is_none(), "{method}");
+	}
+}
