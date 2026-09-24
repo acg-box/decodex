@@ -831,6 +831,7 @@ impl ChiefSurface {
 		if menu == "model" {
 			self.model.update(cx, |input, cx| input.set_content(value, cx));
 			self.mark_model_intent(cx);
+			self.reconcile_selected_model_effort(cx);
 			self.reconcile_model_options(cx);
 		} else {
 			let Ok(effort) = ConversationReasoningEffort::new(value) else { return };
