@@ -209,6 +209,7 @@ pub(crate) fn owns_work(
 
 #[cfg(test)]
 mod tests {
+	mod permissions;
 	mod response_usage;
 	use super::*;
 	use crate::{
