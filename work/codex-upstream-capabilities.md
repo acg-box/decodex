@@ -348,8 +348,8 @@ requires an exact thread/turn and connection-bound history guard. It does not
 permit model or approval-policy fields through this route. It never retries an
 uncertain reply. The installed alpha16.3 fixture verifies actual approval routing,
 pending request retention, terminal-target refusal, and unchanged next-turn
-defaults using isolated home directories and loopback inference. Durable edit
-receipts and desktop controls are separate pending integration work.
+defaults using isolated home directories and loopback inference. The runtime
+records durable edit receipts, and desktop controls require an explicit review.
 
 
 ## Live reviewer publication journal
@@ -361,7 +361,8 @@ records applied, unavailable, rejected, or unknown publication; an uncertain
 result is not replay authority. Records survive database reopen and do not wake
 work. Internal attempt/result rows are excluded from transcript pagination before
 the limit, so they cannot displace conversation messages. Database schema35 and
-protocol2.56 are unchanged. Runtime and desktop integration remains pending.
+protocol2.56 were unchanged by the journal batch. The service and desktop now
+consume these records through protocol2.57.
 
 
 ## Current-turn reviewer service
@@ -378,4 +379,19 @@ changes after submission remain unknown. No uncertain update is replayed. Native
 store qualification checks stale reviews, duplicate rejection, receipt persistence
 across database reopen, actual routing, and terminal-target refusal. The ownership
 fixture uses disposable synthetic account/process rows; it does not qualify kernel
-admission or enrollment. Desktop controls are still pending in the next batch.
+admission or enrollment. Desktop controls require a fresh explicit review before
+each publication.
+
+
+## Current-turn reviewer desktop controls
+
+The task settings panel lets the user inspect an exact running managed turn,
+then choose user or automatic review. It displays the last local publication
+receipt without claiming that reviewer is currently effective. Each submission
+consumes the reviewed UI state; a receipt refresh does not enable another edit
+until the user explicitly reviews again. Navigation, disconnect, source change,
+thread replacement, and turn completion invalidate cached reviews, even when an
+old identity later returns. Viewing a native child cannot edit its parent's
+reviewer through this panel. Child reviewer control is not exposed by this
+managed-work journal. Rendered tests use the public local socket and lose a reply
+after dispatch to verify one submission followed only by receipt reads.
