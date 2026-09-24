@@ -2,6 +2,7 @@
 
 #[path = "chief_activity.rs"] mod activity;
 #[path = "chief_tree.rs"] mod agent_tree;
+#[path = "chief_app_settings.rs"] mod app_settings;
 #[path = "chief_archive.rs"] mod archive;
 #[path = "chief_async_questions.rs"] mod async_questions;
 #[path = "chief_capabilities.rs"] mod capabilities;
@@ -176,6 +177,7 @@ pub(crate) struct ChiefSurface {
 	permission_profiles: permissions::Panel,
 	task_plugins: plugins::Panel,
 	hook_settings: hooks::Panel,
+	app_settings: app_settings::Panel,
 	native_goal: native_goal::Panel,
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
@@ -403,6 +405,7 @@ impl ChiefSurface {
 			permission_profiles: Default::default(),
 			task_plugins: Default::default(),
 			hook_settings: Default::default(),
+			app_settings: Default::default(),
 			native_goal: Default::default(),
 			cwd,
 			account: Self::account_input(cx),
@@ -1084,6 +1087,7 @@ impl ChiefSurface {
 		self.reset_permission_profiles();
 		self.reset_task_plugins();
 		self.reset_hook_settings();
+		self.reset_app_settings();
 		self.reset_native_goal();
 		self.snapshot = None;
 		self.pages.clear();
@@ -1138,6 +1142,7 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
+		self.reset_app_settings();
 		self.question_notices = Default::default();
 		self.clear_activity_detail();
 		self.output_stream = Default::default();
@@ -1214,6 +1219,7 @@ impl ChiefSurface {
 			self.reset_permission_profiles();
 			self.reset_task_plugins();
 			self.reset_hook_settings();
+			self.reset_app_settings();
 			self.reset_native_goal();
 			self.question_notices = Default::default();
 			self.clear_activity_detail();
@@ -1225,6 +1231,7 @@ impl ChiefSurface {
 				self.invalidate_permission_profiles(&snapshot);
 				self.invalidate_task_plugins(&snapshot);
 				self.invalidate_hook_settings(&snapshot);
+				self.invalidate_app_settings(&snapshot);
 				self.invalidate_native_goal(&snapshot);
 				if self.snapshot.as_ref().is_some_and(|old| {
 					old.runtime_source != snapshot.runtime_source

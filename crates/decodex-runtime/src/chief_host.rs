@@ -333,6 +333,39 @@ impl ChiefHost {
 		.await
 	}
 
+	pub(crate) async fn app_settings(
+		&self,
+		work: &str,
+		event: i64,
+	) -> decodex_protocol::ChiefAppSettingsResult {
+		crate::chief_app_settings::read(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			event,
+		)
+		.await
+	}
+
+	async fn set_app_setting(
+		&self,
+		work: &str,
+		change: crate::chief_app_settings::Selection<'_>,
+	) -> Result<String, ChiefHostError> {
+		crate::chief_app_settings::write(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			change,
+		)
+		.await?;
+		Ok(work.into())
+	}
+
 	pub(crate) async fn hook_settings(
 		&self,
 		work: &str,
@@ -906,6 +939,17 @@ impl ChiefHost {
 		action: ChiefActionDto,
 	) -> Result<String, ChiefHostError> {
 		match action {
+			ChiefActionDto::SetAppSetting { work_id, event_id, review_token, edit } =>
+				self.set_app_setting(
+					work_id.as_str(),
+					crate::chief_app_settings::Selection {
+						event: event_id,
+						review: review_token.as_str(),
+						edit: &edit,
+						attempt_id: key,
+					},
+				)
+				.await,
 			ChiefActionDto::SetHookSetting {
 				work_id,
 				thread_id,
@@ -966,7 +1010,8 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			action @ (ChiefActionDto::SetHookSetting { .. }
+			action @ (ChiefActionDto::SetAppSetting { .. }
+			| ChiefActionDto::SetHookSetting { .. }
 			| ChiefActionDto::SetTaskPlugin { .. }
 			| ChiefActionDto::SelectPermissions { .. }
 			| ChiefActionDto::SetLiveReviewer { .. }) => self.handle_settings(key.as_str(), action).await,

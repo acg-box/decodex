@@ -2185,6 +2185,13 @@ impl AccountObservationSignal {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
+	/// Inspect configuration and receipts for an app request.
+	GetChiefAppSettings {
+		/// Originating task.
+		work_id: EntityId,
+		/// Request event, which can be resolved when reading saved state.
+		event_id: i64,
+	},
 	/// Review shared native hooks and durable configuration results.
 	GetChiefHookSettings {
 		/// Originating local task.
@@ -2913,6 +2920,8 @@ pub enum QueryResultPayload {
 	ChiefPluginSelection(crate::ChiefPluginSelectionState),
 	/// Current shared hook review.
 	ChiefHookSettings(crate::ChiefHookSettingsState),
+	/// App connection settings and shared receipts.
+	ChiefAppSettings(crate::ChiefAppSettingsResult),
 	/// Ephemeral voice signaling readback.
 	ChiefVoice(crate::ChiefVoiceStatus),
 	/// Latest ephemeral dictation draft.
@@ -4556,7 +4565,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":61},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":62},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4565,7 +4574,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":61},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":62},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4607,7 +4616,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":61},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":62},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

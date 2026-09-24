@@ -389,6 +389,8 @@ impl OwnedReviewer {
 }
 
 #[path = "chief_process_hook_service_tests.rs"] mod hook_service_tests;
+#[path = "chief_process_app_service_tests.rs"] mod app_service_tests;
+#[path = "chief_process_app_native_tests.rs"] mod app_native_tests;
 
 impl OwnedReviewer {
 	pub(super) async fn trust_hook(&self) {

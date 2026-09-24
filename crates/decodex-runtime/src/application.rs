@@ -314,6 +314,20 @@ impl ServiceApplication {
 		})
 	}
 
+	async fn query_integrations(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefIntegrations(match &self.chief {
+			Some(chief) => chief.integrations(work).await,
+			None => decodex_protocol::ChiefIntegrationsResult::Unavailable,
+		})
+	}
+
+	async fn query_app_settings(&self, work: &str, event: i64) -> QueryResultPayload {
+		QueryResultPayload::ChiefAppSettings(match &self.chief {
+			Some(chief) => chief.app_settings(work, event).await,
+			None => decodex_protocol::ChiefAppSettingsResult::Unavailable,
+		})
+	}
+
 	async fn query_hook_settings(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::ChiefHookSettings(match &self.chief {
 			Some(chief) => chief.hook_settings(work).await,
@@ -2065,6 +2079,8 @@ impl Application for ServiceApplication {
 				QueryResultPayload::McpLogin(query_mcp_login(self.chief.as_ref(), request).await),
 			QueryPayload::GetChiefNativeGoal { work_id, thread_id } =>
 				self.query_native_goal(work_id.as_str(), thread_id.as_str()).await,
+			QueryPayload::GetChiefAppSettings { work_id, event_id } =>
+				self.query_app_settings(work_id.as_str(), *event_id).await,
 			QueryPayload::GetChiefHookSettings { work_id } =>
 				self.query_hook_settings(work_id.as_str()).await,
 			QueryPayload::GetChiefPluginSelection { work_id } =>
@@ -2090,10 +2106,7 @@ impl Application for ServiceApplication {
 				)
 				.await,
 			QueryPayload::GetChiefIntegrations { work_id } =>
-				QueryResultPayload::ChiefIntegrations(match &self.chief {
-					Some(chief) => chief.integrations(work_id.as_str()).await,
-					None => decodex_protocol::ChiefIntegrationsResult::Unavailable,
-				}),
+				self.query_integrations(work_id.as_str()).await,
 			QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id, cursor } =>
 				self.query_activity_detail(work_id, turn_id, item_id, cursor.as_ref()).await,
 			QueryPayload::GetChiefRequest { event_id } => QueryResultPayload::ChiefRequest(
