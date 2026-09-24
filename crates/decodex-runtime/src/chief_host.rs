@@ -280,6 +280,21 @@ impl ChiefHost {
 		self.runtime.chief_catalog_client().map(|(generation, _)| generation.as_str().to_owned())
 	}
 
+	pub(crate) async fn runtime_source(&self) -> Option<decodex_protocol::EntityId> {
+		use sha2::{Digest, Sha256};
+		let (generation, account, revision, client) = self.runtime.chief_usage_source().await?;
+		let value = serde_json::to_vec(&(
+			generation.as_str(),
+			account.as_str(),
+			revision,
+			client.history_revision(),
+		))
+		.ok()?;
+		let digest =
+			Sha256::digest(value).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+		decodex_protocol::EntityId::new(digest).ok()
+	}
+
 	pub(crate) async fn usage_estimate(
 		&self,
 		work: &str,
@@ -289,6 +304,7 @@ impl ChiefHost {
 			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
 			Some(crate::chief_usage_estimate::Source {
 				key: crate::chief_usage_estimate::SourceKey {
+					history_revision: client.history_revision(),
 					generation,
 					account,
 					revision,
@@ -298,6 +314,54 @@ impl ChiefHost {
 				client,
 			})
 		})
+		.await
+	}
+
+	async fn timeline_source(
+		&self,
+		work: &str,
+		thread: &str,
+	) -> Option<crate::chief_usage_estimate::Source> {
+		let (generation, account, revision, client) = self.runtime.chief_usage_source().await?;
+		let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+		if owner.codex_thread_id.as_deref() != Some(thread) {
+			return None;
+		}
+		Some(crate::chief_usage_estimate::Source {
+			key: crate::chief_usage_estimate::SourceKey {
+				history_revision: client.history_revision(),
+				generation,
+				account,
+				revision,
+				thread: thread.into(),
+				work: work.into(),
+			},
+			client,
+		})
+	}
+
+	pub(crate) async fn timeline(
+		&self,
+		work: &str,
+		thread: &str,
+		cursor: Option<&str>,
+	) -> decodex_protocol::ChiefTimelineResult {
+		crate::chief::timeline::read(
+			Some(&self.store),
+			|| self.timeline_source(work, thread),
+			cursor,
+		)
+		.await
+	}
+
+	pub(crate) async fn media(
+		&self,
+		request: &decodex_protocol::ChiefMediaRequest,
+	) -> decodex_protocol::ChiefMediaResult {
+		crate::chief::timeline::media::read(
+			|| self.timeline_source(request.work_id.as_str(), request.thread_id.as_str()),
+			request,
+		)
 		.await
 	}
 

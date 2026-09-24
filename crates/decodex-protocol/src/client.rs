@@ -514,6 +514,143 @@ impl ChiefClient {
 		}
 	}
 
+	/// Read a current page of unconfirmed input for one exact local task.
+	pub async fn input_receipts(
+		&self,
+		work_id: EntityId,
+		after: Option<i64>,
+	) -> Result<crate::ChiefInputReceiptsResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		if after.is_some_and(|id| id < 1) {
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"chief-input-receipts",
+				QueryPayload::GetChiefInputReceipts { work_id: work_id.clone(), after },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let QueryResultPayload::ChiefInputReceipts(result) = completed.value else {
+			return Err(ClientFailure::ProtocolMalformed);
+		};
+		if let crate::ChiefInputReceiptsResult::Available {
+			work_id: actual,
+			entries,
+			next_after,
+			..
+		} = &result
+			&& (actual != &work_id
+				|| entries.len() > 32
+				|| entries.iter().any(|entry| {
+					entry.id <= after.unwrap_or(0)
+						|| !entry.receipt.as_ref().is_some_and(|receipt| {
+							!receipt.disposed
+								&& receipt.delivered_turn_id.is_none()
+								&& matches!(
+									receipt.event_kind.as_str(),
+									"user_message" | "async_question_answer" | "work_instruction"
+								)
+						})
+				}) || entries.windows(2).any(|pair| pair[0].id >= pair[1].id)
+				|| next_after
+					.is_some_and(|next| entries.last().is_none_or(|entry| entry.id != next))
+				|| serde_json::to_vec(&result).map_or(true, |encoded| encoded.len() > 64 * 1024))
+		{
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		Ok(result)
+	}
+
+	/// Read a bounded native attachment chunk without executing the thread.
+	pub async fn media(
+		&self,
+		request: crate::ChiefMediaRequest,
+	) -> Result<crate::ChiefMediaResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(30),
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport.query_inner(
+				"chief-media",
+				QueryPayload::GetChiefMedia { request: request.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefMedia(result) => {
+				if let crate::ChiefMediaResult::Available {
+					request: actual,
+					fingerprint,
+					mime_type,
+					total_bytes,
+					bytes,
+					..
+				} = &result && (actual.as_ref() != &request
+					|| bytes.is_empty()
+					|| bytes.len() > crate::CHIEF_MEDIA_CHUNK_BYTES
+					|| *total_bytes as usize > crate::MAX_CHIEF_MEDIA_BYTES
+					|| u64::from(request.offset) + bytes.len() as u64 > u64::from(*total_bytes)
+					|| fingerprint.as_str().len() != 64
+					|| !fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
+					|| request.fingerprint.as_ref().is_some_and(|expected| expected != fingerprint)
+					|| mime_type.len() > 128)
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read one native timeline page for an exact task binding, without running it.
+	pub async fn timeline(
+		&self,
+		work_id: EntityId,
+		thread_id: EntityId,
+		cursor: Option<crate::WireText>,
+	) -> Result<crate::ChiefTimelineResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(30),
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport.query_inner(
+				"chief-timeline",
+				QueryPayload::GetChiefTimeline {
+					work_id: work_id.clone(),
+					thread_id: thread_id.clone(),
+					cursor,
+				},
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefTimeline(result) => {
+				if let crate::ChiefTimelineResult::Available { work_id: actual, page, .. } = &result
+					&& (actual != &work_id || page.thread_id != thread_id.as_str())
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read source-bound native integration observations without running the thread.
 	pub async fn integrations(
 		&self,
@@ -2825,7 +2962,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 44 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 45 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
@@ -3829,5 +3966,163 @@ max_entry_bytes = 0
 		task.abort();
 		let _ = task.await;
 		drop(temp);
+	}
+	#[tokio::test]
+	async fn native_media_wire_rejects_cross_item_mixed_content_and_unbounded_chunks() {
+		for change in
+			["none", "item", "offset", "empty", "chunk", "total", "capacity", "fingerprint", "mime"]
+		{
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let request = crate::ChiefMediaRequest {
+				work_id: EntityId::new("work").unwrap(),
+				thread_id: EntityId::new("thread").unwrap(),
+				turn_id: EntityId::new("turn").unwrap(),
+				item_id: EntityId::new("item").unwrap(),
+				index: 2,
+				offset: 5,
+				fingerprint: Some(EntityId::new("a".repeat(64)).unwrap()),
+			};
+			let expected = request.clone();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap())
+					.await
+					.unwrap();
+				let _ = socket.next().await;
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+					panic!("text query")
+				};
+				let ClientMessage::Query(query) =
+					serde_json::from_str::<ClientMessage>(&text).unwrap()
+				else {
+					panic!("query")
+				};
+				let crate::QueryPayload::GetChiefMedia { request: actual } = query.payload else {
+					panic!("media request")
+				};
+				assert_eq!(actual, expected);
+				let mut returned = actual;
+				if change == "item" {
+					returned.item_id = EntityId::new("another-item").unwrap();
+				}
+				if change == "offset" {
+					returned.offset += 1;
+				}
+				let bytes = match change {
+					"empty" => vec![],
+					"chunk" => vec![255; crate::CHIEF_MEDIA_CHUNK_BYTES + 1],
+					_ => vec![255; crate::CHIEF_MEDIA_CHUNK_BYTES],
+				};
+				let total_bytes = match change {
+					"total" => 4,
+					"capacity" => crate::MAX_CHIEF_MEDIA_BYTES as u32 + 1,
+					_ => 5 + crate::CHIEF_MEDIA_CHUNK_BYTES as u32,
+				};
+				let result = crate::ChiefMediaResult::Available {
+					request: Box::new(returned),
+					account_id: EntityId::new("account").unwrap(),
+					fingerprint: EntityId::new(
+						if change == "fingerprint" { "b" } else { "a" }.repeat(64),
+					)
+					.unwrap(),
+					mime_type: if change == "mime" { "x".repeat(129) } else { "image/png".into() },
+					total_bytes,
+					bytes,
+				};
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::ChiefMedia(result),
+					})))
+					.await
+					.unwrap();
+				drop(socket);
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = crate::ChiefClient::new(profile).media(request).await;
+			task.await.unwrap();
+			if change == "none" {
+				assert!(matches!(result, Ok(crate::ChiefMediaResult::Available { .. })));
+			} else {
+				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
+			}
+		}
+	}
+	#[tokio::test]
+	async fn input_receipts_wire_rejects_stale_or_different_work_records() {
+		for change in ["none", "work", "replay", "delivered", "disposed", "cursor"] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap())
+					.await
+					.unwrap();
+				let _ = socket.next().await;
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+					panic!("query")
+				};
+				let ClientMessage::Query(query) =
+					serde_json::from_str::<ClientMessage>(&text).unwrap()
+				else {
+					panic!("query")
+				};
+				assert!(
+					matches!(&query.payload,crate::QueryPayload::GetChiefInputReceipts {work_id,after:Some(40)} if work_id.as_str()=="work")
+				);
+				let entry = crate::ChiefHistoryEntryDto {
+					receipt: Some(crate::ChiefHistoryReceiptDto {
+						event_kind: "user_message".into(),
+						delivered_turn_id: (change == "delivered").then(|| "turn".into()),
+						disposed: change == "disposed",
+					}),
+					activity: None,
+					usage: None,
+					duration_ms: None,
+					id: if change == "replay" { 40 } else { 41 },
+					kind: "user".into(),
+					text: "Pending input".into(),
+					created_at_micros: 1,
+				};
+				let result = crate::ChiefInputReceiptsResult::Available {
+					work_id: EntityId::new(if change == "work" { "other" } else { "work" })
+						.unwrap(),
+					entries: vec![entry],
+					next_after: Some(if change == "cursor" { 42 } else { 41 }),
+					shortened: false,
+				};
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::ChiefInputReceipts(result),
+					})))
+					.await
+					.unwrap();
+				drop(socket);
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = crate::ChiefClient::new(profile)
+				.input_receipts(EntityId::new("work").unwrap(), Some(40))
+				.await;
+			task.await.unwrap();
+			if change == "none" {
+				assert!(matches!(result, Ok(crate::ChiefInputReceiptsResult::Available { .. })));
+			} else {
+				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
+			}
+		}
 	}
 }

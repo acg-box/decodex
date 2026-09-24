@@ -1,3 +1,5 @@
+#[path = "exact_history.rs"] mod exact_history;
+
 #[cfg(target_os = "linux")] use std::os::fd::{AsRawFd as _, FromRawFd as _};
 #[cfg(test)] use std::sync::atomic::AtomicU32;
 use std::{
@@ -2153,10 +2155,11 @@ impl SupervisedProcess {
 	) -> Result<ExactThreadReadResult, ExactReconciliationError> {
 		self.re_attest_exact_account(timeout)?;
 
-		let response = self
+		let started = Instant::now();
+		let mut response = self
 			.request_rpc::<_, ThreadReadResponse>(
 				"thread/read",
-				&ExactThreadReadParams { thread_id, include_turns: true },
+				&ExactThreadReadParams { thread_id, include_turns: false },
 				timeout,
 			)
 			.map_err(ExactReconciliationError::from_rpc)?;
@@ -2171,6 +2174,11 @@ impl SupervisedProcess {
 		if &facts.id != thread_id {
 			return Err(ExactReconciliationError::InvalidResult);
 		}
+		let history = if client_user_message_id.is_some() {
+			self.read_submission_history(&mut response.thread, thread_id, started, timeout)?
+		} else {
+			LossyThreadHistory::MetadataOnly
+		};
 		let submitted_turn = client_user_message_id
 			.map(|client_id| project_exact_submitted_turn(&response.thread, client_id))
 			.transpose()?
@@ -2178,11 +2186,7 @@ impl SupervisedProcess {
 
 		self.re_attest_exact_account(timeout)?;
 
-		Ok(ExactThreadReadResult {
-			facts,
-			history: LossyThreadHistory::IncludeTurnsReadback,
-			submitted_turn,
-		})
+		Ok(ExactThreadReadResult { facts, history, submitted_turn })
 	}
 
 	fn resolve_exact_thread_archived_state(
@@ -4594,7 +4598,10 @@ fn initialize_probe_connection(
 		ReadOnlyMethod::Initialize,
 		&InitializeParams {
 			client_info: ClientInfo { name: "decodex", version: env!("CARGO_PKG_VERSION") },
-			capabilities: InitializeCapabilities { experimental_api: true },
+			capabilities: InitializeCapabilities {
+				experimental_api: true,
+				opt_out_notification_methods: &["rawResponseItem/completed"],
+			},
 		},
 		timeout,
 	) {
@@ -6104,6 +6111,36 @@ pub(crate) mod tests {
 	}
 
 	#[test]
+	fn stdout_pump_preserves_large_native_media_and_the_following_peer_frame() {
+		let value = serde_json::json!({"id":17,"result":{"data":[{"turnId":"turn","item":{"id":"image","type":"dynamicToolCall","contentItems":[{"type":"inputImage","imageUrl":format!("data:image/png;base64,{}", "A".repeat(2*1024*1024))}]}}],"nextCursor":null}});
+		let mut input = serde_json::to_vec(&value).unwrap();
+		input.extend_from_slice(b"\n{\"id\":18,\"result\":{\"thread\":{\"id\":\"peer\"}}}\n");
+		let (sender, receiver) = mpsc::sync_channel(2);
+		let exceeded = Arc::new(AtomicBool::new(false));
+		let before = process::ZEROIZED_INBOUND_BLOCKS.load(Ordering::Acquire);
+		process::pump_stdout(
+			Cursor::new(input),
+			sender,
+			Arc::clone(&exceeded),
+			&AtomicBool::new(false),
+			None,
+		);
+		assert!(
+			!exceeded.load(Ordering::Acquire),
+			"ordinary native media exceeded admitted transport limit"
+		);
+		let first = receiver.recv().unwrap().into_contiguous();
+		assert_eq!(serde_json::from_slice::<serde_json::Value>(&first).unwrap(), value);
+		let peer = receiver.recv().unwrap().into_contiguous();
+		assert_eq!(
+			serde_json::from_slice::<serde_json::Value>(&peer).unwrap()["result"]["thread"]["id"],
+			"peer"
+		);
+		drop((first, peer));
+		assert!(process::ZEROIZED_INBOUND_BLOCKS.load(Ordering::Acquire) > before);
+	}
+
+	#[test]
 	fn oversized_no_newline_stdout_frame_fails_closed() {
 		let temp = TempDir::new().unwrap();
 		let error = ReadOnlyProbe::new_for_test(
@@ -7329,7 +7366,10 @@ pub(crate) mod tests {
 				ReadOnlyMethod::Initialize,
 				&InitializeParams {
 					client_info: ClientInfo { name: "decodex-test", version: "0" },
-					capabilities: InitializeCapabilities { experimental_api: true },
+					capabilities: InitializeCapabilities {
+						experimental_api: true,
+						opt_out_notification_methods: &["rawResponseItem/completed"],
+					},
 				},
 				timeout,
 			)
@@ -7588,7 +7628,7 @@ pub(crate) mod tests {
 		let read = process.read_exact_thread(&exact, timeout).unwrap();
 
 		assert_eq!(read.facts.id, exact);
-		assert_eq!(read.history, decodex_codex::LossyThreadHistory::IncludeTurnsReadback);
+		assert_eq!(read.history, decodex_codex::LossyThreadHistory::MetadataOnly);
 		assert_eq!(
 			process.reconcile_archive(&exact, timeout),
 			ArchiveReconciliationOutcome::Archived
@@ -7605,6 +7645,96 @@ pub(crate) mod tests {
 		assert_eq!(
 			process.reconcile_archive(&exact, timeout),
 			ArchiveReconciliationOutcome::AlreadyArchived
+		);
+	}
+
+	#[test]
+	fn submitted_turn_reconciliation_still_requests_positive_history_evidence() {
+		let (_temp, mut process) = initialized_bound_process("exact-submitted-read");
+		let read = process
+			.read_exact_thread_for_client(
+				&exact_thread_id(),
+				"50000000-0000-4000-8000-000000000001",
+				Duration::from_secs(2),
+			)
+			.expect("submitted turn read");
+		assert_eq!(read.history, decodex_codex::LossyThreadHistory::IncludeTurnsReadback);
+		assert_eq!(
+			read.submitted_turn.expect("positive correlation").assistant_text(),
+			"Confirmed response"
+		);
+	}
+
+	#[test]
+	fn paginated_submission_reconciliation_rejects_incomplete_or_ambiguous_evidence() {
+		let client = "50000000-0000-4000-8000-000000000001";
+		for mode in [
+			"exact-paged-ok",
+			"exact-paged-cycle",
+			"exact-paged-summary",
+			"exact-paged-duplicate-client",
+			"exact-paged-duplicate-item",
+			"exact-paged-wrong-turn",
+			"exact-paged-missing-cursor",
+		] {
+			let (_temp, mut process) = initialized_bound_process(mode);
+			let read = process.read_exact_thread_for_client(
+				&exact_thread_id(),
+				client,
+				Duration::from_secs(2),
+			);
+			if mode == "exact-paged-ok" {
+				let read = read.expect("complete native pages");
+				assert_eq!(read.history, decodex_codex::LossyThreadHistory::PaginatedReadback);
+				assert_eq!(
+					read.submitted_turn.expect("positive correlation").assistant_text(),
+					"Paged response"
+				);
+				let absent = process
+					.read_exact_thread_for_client(
+						&exact_thread_id(),
+						"50000000-0000-4000-8000-000000000003",
+						Duration::from_secs(2),
+					)
+					.expect("bounded read without a matching client ID");
+				assert!(absent.submitted_turn.is_none());
+				assert_eq!(absent.history, decodex_codex::LossyThreadHistory::PaginatedReadback);
+			} else {
+				assert!(read.is_err(), "{mode} accepted invalid history");
+			}
+		}
+	}
+
+	#[test]
+	fn paginated_submission_enforces_page_and_aggregate_byte_bounds() {
+		for mode in ["exact-paged-too-many", "exact-paged-byte-budget"] {
+			let (_temp, mut process) = initialized_bound_process(mode);
+			let result = process.read_exact_thread_for_client(
+				&exact_thread_id(),
+				"50000000-0000-4000-8000-000000000001",
+				Duration::from_secs(10),
+			);
+			assert!(
+				matches!(result, Err(super::ExactReconciliationError::InvalidResult)),
+				"{mode}: expected invalid history to be rejected"
+			);
+		}
+	}
+
+	#[test]
+	fn metadata_reconciliation_does_not_hydrate_history() {
+		let (_temp, mut process) = initialized_bound_process("exact-metadata-only");
+		let timeout = Duration::from_secs(2);
+		let exact = exact_thread_id();
+		let read = process.read_exact_thread(&exact, timeout).expect("metadata read");
+		assert_eq!(read.history, decodex_codex::LossyThreadHistory::MetadataOnly);
+		assert!(read.submitted_turn.is_none());
+		assert_eq!(
+			process.reconcile_archive(&exact, timeout),
+			ArchiveReconciliationOutcome::Archived
+		);
+		assert!(
+			process.read_exact_thread(&exact, timeout).expect("archived metadata").facts.archived
 		);
 	}
 

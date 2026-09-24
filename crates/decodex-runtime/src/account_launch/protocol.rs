@@ -12,7 +12,7 @@ use decodex_codex::{
 };
 
 #[doc(hidden)]
-pub const MAX_APP_SERVER_FRAME_BYTES: usize = 1_024 * 1_024;
+pub use decodex_codex::app_server_client::MAX_FRAME_BYTES as MAX_APP_SERVER_FRAME_BYTES;
 
 impl From<&ProtocolThread> for ThreadSummary {
 	fn from(value: &ProtocolThread) -> Self {
@@ -105,6 +105,7 @@ pub struct ClientInfo<'a> {
 #[serde(rename_all = "camelCase")]
 pub struct InitializeCapabilities {
 	pub experimental_api: bool,
+	pub opt_out_notification_methods: &'static [&'static str],
 }
 
 #[derive(Debug, Deserialize)]
@@ -198,6 +199,7 @@ pub struct ProtocolAccount {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProtocolThread {
+	pub history_mode: Option<SensitiveString>,
 	pub id: SensitiveString,
 	/// Legacy app-server versions repeated the list filter on every Thread. Current versions do
 	/// not.
@@ -219,6 +221,7 @@ pub struct ProtocolThread {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProtocolTurn {
+	pub items_view: Option<SensitiveString>,
 	pub id: SensitiveString,
 	pub status: ProtocolTurnStatus,
 	#[serde(default)]
@@ -247,6 +250,7 @@ impl ProtocolTurnStatus {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProtocolThreadItem {
+	pub id: Option<SensitiveString>,
 	#[serde(rename = "type")]
 	pub kind: SensitiveString,
 	#[serde(default)]

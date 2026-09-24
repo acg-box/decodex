@@ -17,14 +17,16 @@ mod history;
 mod integrations;
 mod plugin_install;
 mod server_requests;
+mod timeline;
 pub use plugin_install::{PluginInstallReceipt, PluginInstallTarget};
-pub use server_requests::ServerRequestGuard;
 use server_requests::ServerRequests;
+pub use server_requests::{HistoryGuard, ServerRequestGuard, invalidates_question_state};
 mod usage;
 pub use attachments::{ThreadAttachment, ThreadAttachmentAddOutcome, ThreadAttachmentAddResult};
 pub use usage::{ThreadUsageEstimate, ThreadUsageEstimateGroup};
 
-const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
+/// Shared JSON-RPC frame bound for direct and admitted native process transports.
+pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 const MAX_PENDING_REQUESTS: usize = 256;
 const MAX_BUFFERED_EVENTS: usize = 256;
 
@@ -58,6 +60,8 @@ impl fmt::Debug for RpcError {
 /// A transport failure after submission is an unknown dispatch outcome, never retry authority.
 #[derive(Clone, Debug)]
 pub enum ClientError {
+	/// The expected native history changed; this request was rejected before transport write.
+	StaleHistory,
 	/// The connection has closed or was revoked.
 	Closed,
 	/// An input/output operation failed; details are intentionally omitted.
@@ -112,9 +116,23 @@ pub enum ServerEvent {
 }
 
 type Reply = oneshot::Sender<Result<Value, ClientError>>;
+enum Guard {
+	Request(ServerRequestGuard),
+	History(HistoryGuard),
+}
+impl Guard {
+	fn validate(&self, requests: &ServerRequests) -> Result<(), ClientError> {
+		match self {
+			Self::Request(guard) if guard.belongs_to(requests) && guard.is_live() => Ok(()),
+			Self::History(guard) if guard.belongs_to(requests) && guard.is_live() => Ok(()),
+			Self::History(_) => Err(ClientError::StaleHistory),
+			Self::Request(_) => Err(ClientError::InvalidFrame),
+		}
+	}
+}
 enum Outbound {
-	Request { method: String, params: Value, reply: Reply, guard: Option<ServerRequestGuard> },
-	Message { value: Value, reply: Reply, guard: Option<ServerRequestGuard> },
+	Request { method: String, params: Value, reply: Reply, guard: Option<Guard> },
+	Message { value: Value, reply: Reply, guard: Option<Guard> },
 	Shutdown { reply: Reply },
 }
 
@@ -225,6 +243,56 @@ impl AppServerClient {
 		self.closed.send_replace(true);
 	}
 
+	/// Connection-local history invalidation counter, observed before queued owner events.
+	/// Any native thread revert invalidates cached history on this connection.
+	pub fn history_revision(&self) -> u64 {
+		self.server_requests.history_revision()
+	}
+
+	/// Connection-local revision of committed inputs and history reverts affecting questions.
+	pub fn question_revision(&self) -> u64 {
+		self.server_requests.question_revision()
+	}
+
+	/// Protect a question answer against committed inputs and reverts observed before write.
+	pub fn question_guard(&self, revision: u64) -> Option<HistoryGuard> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.question_guard(revision)
+	}
+
+	/// Capture a caller-observed history version on this exact connection.
+	pub fn history_guard(&self, revision: u64) -> Option<HistoryGuard> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.history_guard(revision)
+	}
+
+	/// Send only if the captured native history is still current immediately before writing.
+	pub async fn request_with_history(
+		&self,
+		method: &str,
+		params: Value,
+		guard: HistoryGuard,
+	) -> Result<Value, ClientError> {
+		if *self.closed.borrow() {
+			return Err(ClientError::Closed);
+		}
+		let (reply, result) = oneshot::channel();
+		self.outbound
+			.send(Outbound::Request {
+				method: method.into(),
+				params,
+				reply,
+				guard: Some(Guard::History(guard)),
+			})
+			.await
+			.map_err(|_| ClientError::Closed)?;
+		result.await.unwrap_or(Err(ClientError::Closed))
+	}
+
 	/// Capture the exact request while the transport, rather than the owner queue, sees it live.
 	pub fn server_request_guard(
 		&self,
@@ -250,7 +318,12 @@ impl AppServerClient {
 		}
 		let (reply, result) = oneshot::channel();
 		self.outbound
-			.send(Outbound::Request { method: method.into(), params, reply, guard: Some(guard) })
+			.send(Outbound::Request {
+				method: method.into(),
+				params,
+				reply,
+				guard: Some(Guard::Request(guard)),
+			})
 			.await
 			.map_err(|_| ClientError::Closed)?;
 		result.await.unwrap_or(Err(ClientError::Closed))
@@ -274,7 +347,7 @@ impl AppServerClient {
 			.send(Outbound::Message {
 				value: json!({"id":id,"result":result}),
 				reply,
-				guard: Some(guard),
+				guard: Some(Guard::Request(guard)),
 			})
 			.await
 			.map_err(|_| ClientError::Closed)?;
@@ -481,9 +554,9 @@ async fn run_frames(
 						let frame=match frames.try_recv() {Ok(Ok(frame))=>frame,Ok(Err(error))=>break 'transport error,Err(_)=>break};
 						if let Err(error)=dispatch(frame,&mut pending,&events,&server_requests) {break 'transport error;}
 					}
-					if !guard.belongs_to(&server_requests) || !guard.is_live() {
+					if let Err(error) = guard.validate(&server_requests) {
 						let reply=match command {Outbound::Request{reply,..}|Outbound::Message{reply,..}|Outbound::Shutdown{reply}=>reply};
-						let _=reply.send(Err(ClientError::InvalidFrame));
+						let _=reply.send(Err(error));
 						continue;
 					}
 				}
@@ -606,64 +679,126 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn resolved_request_guard_prevents_effect_before_owner_consumes_notification() {
-		let (client, mut events, mut reader, mut writer) = connection();
-		let id = RequestId::String("suggestion".into());
-		let params = json!({"threadId":"thread","turnId":"turn","message":"Install"});
-		write_frame(
-			&mut writer,
-			json!({"id":id,"method":"mcpServer/elicitation/request","params":params}),
-		)
-		.await
-		.unwrap();
-		let _ = events.recv().await.unwrap();
-		let guard =
-			client.server_request_guard(&id, "mcpServer/elicitation/request", &params).unwrap();
-		assert!(
+	async fn committed_input_invalidates_questions_without_invalidating_history_pages() {
+		let (incoming, frames) = mpsc::channel(8);
+		let (outgoing, mut writes) = mpsc::channel(8);
+		let (client, _events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+		let history = client.history_guard(0).unwrap();
+		let question = client.question_guard(0).unwrap();
+		incoming.send(Ok(json!({"method":"item/completed","params":{"threadId":"thread","turnId":"turn","item":{"id":"input","type":"userMessage","content":[{"type":"text","text":"new input"}]}}}))).await.unwrap();
+		assert!(matches!(
+			client.request_with_history("turn/steer", json!({}), question).await,
+			Err(ClientError::StaleHistory)
+		));
+		assert!(writes.try_recv().is_err());
+		assert_eq!(client.question_revision(), 1);
+		assert_eq!(client.history_revision(), 0);
+		assert!(history.is_live());
+		assert!(client.question_guard(0).is_none());
+		assert!(client.question_guard(1).is_some());
+	}
+
+	#[tokio::test]
+	async fn history_guard_drains_reverts_before_write_and_is_connection_bound() {
+		let (incoming, frames) = mpsc::channel(8);
+		let (outgoing, mut writes) = mpsc::channel(8);
+		let (client, _events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+		let guard = client.history_guard(0).unwrap();
+		incoming
+			.send(Ok(json!({"method":"thread/reverted","params":{"threadId":"thread"}})))
+			.await
+			.unwrap();
+		assert!(matches!(
+			client.request_with_history("turn/start", json!({"threadId":"thread"}), guard).await,
+			Err(ClientError::StaleHistory)
+		));
+		assert!(writes.try_recv().is_err());
+		assert!(client.history_guard(0).is_none());
+		let (other, _events, _reader, _writer) = connection();
+		assert!(matches!(
 			client
-				.server_request_guard(
-					&id,
-					"mcpServer/elicitation/request",
-					&json!({"threadId":"other"})
-				)
-				.is_none()
-		);
-		let rpc = {
-			let client = client.clone();
-			tokio::spawn(async move { client.request("plugin/list", json!({})).await })
-		};
-		let request = read(&mut reader).await;
-		write_frame(
-			&mut writer,
-			json!({"method":"serverRequest/resolved","params":{"threadId":"other","requestId":id}}),
-		)
-		.await
-		.unwrap();
-		write_frame(&mut writer, json!({"id":request["id"],"result":{}})).await.unwrap();
-		rpc.await.unwrap().unwrap();
-		assert!(guard.is_live(), "another thread cannot resolve this request");
-		let rpc = {
-			let client = client.clone();
-			tokio::spawn(async move { client.request("plugin/read", json!({})).await })
-		};
-		let request = read(&mut reader).await;
-		write_frame(
-			&mut writer,
-			json!({"method":"serverRequest/resolved","params":{"threadId":"thread","requestId":id}}),
-		)
-		.await
-		.unwrap();
-		write_frame(&mut writer, json!({"id":request["id"],"result":{}})).await.unwrap();
-		rpc.await.unwrap().unwrap();
-		// Both notifications are still unread in the owner's event queue.
-		assert!(!guard.is_live());
-		assert!(client.request_guarded("plugin/install", json!({}), guard.clone()).await.is_err());
-		assert!(client.respond_guarded(id, json!({"action":"accept"}), guard).await.is_err());
-		let mut line = String::new();
-		assert!(
-			timeout(Duration::from_millis(25), reader.read_line(&mut line)).await.is_err(),
-			"no guarded write may reach native"
-		);
+				.request_with_history("turn/steer", json!({}), other.history_guard(0).unwrap())
+				.await,
+			Err(ClientError::StaleHistory)
+		));
+		assert!(writes.try_recv().is_err());
+		let live = client.history_guard(1).unwrap();
+		let request = tokio::spawn(async move {
+			client.request_with_history("turn/start", json!({"threadId":"thread"}), live).await
+		});
+		let wire = writes.recv().await.unwrap();
+		incoming
+			.send(Ok(json!({"id":wire["id"],"result":{"turn":{"id":"accepted"}}})))
+			.await
+			.unwrap();
+		assert_eq!(request.await.unwrap().unwrap()["turn"]["id"], "accepted");
+	}
+
+	#[tokio::test]
+	async fn resolved_request_guard_prevents_effect_before_owner_consumes_notification() {
+		for method in ["serverRequest/resolved", "thread/reverted"] {
+			let (client, mut events, mut reader, mut writer) = connection();
+			let id = RequestId::String("suggestion".into());
+			let params = json!({"threadId":"thread","turnId":"turn","message":"Install"});
+			write_frame(
+				&mut writer,
+				json!({"id":id,"method":"mcpServer/elicitation/request","params":params}),
+			)
+			.await
+			.unwrap();
+			let _ = events.recv().await.unwrap();
+			let guard =
+				client.server_request_guard(&id, "mcpServer/elicitation/request", &params).unwrap();
+			assert!(
+				client
+					.server_request_guard(
+						&id,
+						"mcpServer/elicitation/request",
+						&json!({"threadId":"other"})
+					)
+					.is_none()
+			);
+			let rpc = {
+				let client = client.clone();
+				tokio::spawn(async move { client.request("plugin/list", json!({})).await })
+			};
+			let request = read(&mut reader).await;
+			write_frame(
+				&mut writer,
+				json!({"method":method,"params":{"threadId":"other","requestId":id}}),
+			)
+			.await
+			.unwrap();
+			write_frame(&mut writer, json!({"id":request["id"],"result":{}})).await.unwrap();
+			rpc.await.unwrap().unwrap();
+			assert!(guard.is_live(), "another thread cannot resolve this request");
+			assert_eq!(client.history_revision(), u64::from(method == "thread/reverted"));
+			let rpc = {
+				let client = client.clone();
+				tokio::spawn(async move { client.request("plugin/read", json!({})).await })
+			};
+			let request = read(&mut reader).await;
+			write_frame(
+				&mut writer,
+				json!({"method":method,"params":{"threadId":"thread","requestId":id}}),
+			)
+			.await
+			.unwrap();
+			write_frame(&mut writer, json!({"id":request["id"],"result":{}})).await.unwrap();
+			rpc.await.unwrap().unwrap();
+			// Both notifications are still unread in the owner's event queue.
+			assert!(!guard.is_live());
+			assert_eq!(client.history_revision(), 2 * u64::from(method == "thread/reverted"));
+			assert!(
+				client.request_guarded("plugin/install", json!({}), guard.clone()).await.is_err()
+			);
+			assert!(client.respond_guarded(id, json!({"action":"accept"}), guard).await.is_err());
+			let mut line = String::new();
+			assert!(
+				timeout(Duration::from_millis(25), reader.read_line(&mut line)).await.is_err(),
+				"no guarded write may reach native"
+			);
+		}
 	}
 
 	#[tokio::test]
