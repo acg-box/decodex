@@ -19,13 +19,18 @@ pub use thread_model_settings::NativeThreadModelSettings;
 mod archive;
 pub use archive::ThreadArchiveState;
 mod attachments;
-mod history;
 mod goals;
+mod history;
 pub use goals::{NativeThreadGoal, NativeThreadGoalStatus};
 mod initialize;
 mod live_settings;
+mod permissions;
 pub use initialize::InitializeCapabilities;
 pub use live_settings::{LiveReviewer, LiveSettingsOutcome, is_live_reviewer_update};
+pub use permissions::{
+	NativePermissionProfile, NativeTaskPermissions, ThreadPermissionSelection,
+	ThreadPermissionSelectionQueued, is_thread_permission_selection,
+};
 mod integrations;
 mod plugin_install;
 mod server_requests;

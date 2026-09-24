@@ -488,3 +488,27 @@ All tokens and endpoints are synthetic. The Account Service regression suite
 covers its existing durable refresh and successor rules separately; these fixtures
 do not prove kernel process admission or a live vault rotation through that service.
 Protocol2.58 and database35 are unchanged.
+
+
+## Native permission profile adapter
+
+At cutoff595cc91e, `permissionProfile/list` resolves the selected cwd's config
+layers and reports allowed and disallowed profiles. The adapter retains all pages
+within bounded limits and rejects incomplete catalogs. `thread/settings/update`
+queues a sparse permissions-only selection. Its empty reply is a queue receipt,
+not application evidence. The native server retains authority over requirements
+and subsequent-turn behavior; an uncertain response is never retried.
+
+The retained bridge permits this narrow selection and rejects unrelated model,
+reviewer, approval or sandbox fields. Native settings publications invalidate the
+previous read-to-write guard. Complete start/resume and notification projections
+preserve profile identity, cwd, reviewer, approval policy and the native sandbox
+summary; this summary does not describe every named-profile filesystem rule.
+
+The installed alpha16.3 fixture resolves a custom profile, observes its selection,
+rejects a stale local write and restores the same snapshot after process restart.
+One loopback fixture turn first materializes the thread; selection and restart
+create no further inference. An initial empty-thread restart failed and is retained
+as a distinct lifecycle limit. Durable permission receipts, wire-order observation
+hydration and desktop controls remain the next integration work. Protocol2.58 and
+database35 are unchanged.
