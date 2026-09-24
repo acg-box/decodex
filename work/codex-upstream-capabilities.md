@@ -187,3 +187,29 @@ only context remains below the composer. This is a native capture fixture, not a
 fabricated result in the real Chief history. Reopened one signed preview process.
 The existing external Codex writer conflict still prevents a live model round trip;
 the request to release that exact Chief task remains unanswered.
+
+
+## Integration observations across environment changes — 2026-09-24
+
+Upstream `c775dd3c332de1b69b25a4580f6c5bc44b94e284` separates saved
+thread environments from the environments of an active turn. The fixed cutoff
+`595cc91e8cbb1c2ca822d0311dcf12709410c582` retains this distinction.
+Plugin discovery uses the configured repository; MCP status describes the loaded
+native task. The desktop now states this distinction instead of presenting both
+as the current execution repository.
+
+Integration discovery captures the existing native thread-settings guard before
+reading its scope. It rejects an observation if settings change during discovery,
+even when the final directory string is unchanged. Changes to another thread do
+not invalidate this observation. Native code remains responsible for environment
+activation and MCP runtime ownership.
+
+Upstream `0c9be8a836a65681bb4e2366f05590babf89edf2` preserves native
+plugin, skill, and MCP caches after display-only metadata refreshes. Decodex status
+discovery does not reload those caches. The separate explicit “Sync plugins and
+reload MCP” action remains a deliberate reload. Native cache preservation was
+source-reviewed, not qualified with the installed binary in this batch.
+
+Validation covers stable discovery, directory changes, settings updates with the
+same directory, unrelated-thread updates, and the desktop integration display.
+No local protocol or database version changes are required.

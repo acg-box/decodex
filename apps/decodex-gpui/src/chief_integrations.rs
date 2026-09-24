@@ -317,7 +317,10 @@ fn integration_text(result: &ChiefIntegrationsResult) -> String {
 		}
 		.into();
 	};
-	let mut lines = vec![format!("Repository: {cwd}")];
+	let mut lines = vec![
+		format!("Configured repository: {cwd}"),
+		"Plugin inventory uses the configured repository. MCP status reflects the loaded task; a running turn keeps its previous environment until the next turn.".into(),
+	];
 	match mcp {
 		ChiefMcpInventory::Available { servers } => {
 			if servers.is_empty() {

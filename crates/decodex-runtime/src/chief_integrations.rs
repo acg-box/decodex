@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 
 pub(crate) async fn read(client: &AppServerClient, thread: &str) -> ChiefIntegrationsResult {
 	let result = tokio::time::timeout(std::time::Duration::from_secs(35), async {
+		let guard = client.thread_settings_guard(thread)?;
 		let before = client.thread_read(json!({"threadId":thread})).await.ok()?;
 		let cwd = thread_cwd(&before, thread)?.to_owned();
 		let (mcp, plugins) = tokio::join!(
@@ -15,7 +16,7 @@ pub(crate) async fn read(client: &AppServerClient, thread: &str) -> ChiefIntegra
 			client.installed_plugins_for_directory(&cwd)
 		);
 		let after = client.thread_read(json!({"threadId":thread})).await.ok()?;
-		if thread_cwd(&after, thread) != Some(cwd.as_str()) {
+		if !guard.is_live() || thread_cwd(&after, thread) != Some(cwd.as_str()) {
 			return None;
 		}
 		let result = ChiefIntegrationsResult::Available {
@@ -186,10 +187,11 @@ mod tests {
 
 	#[tokio::test]
 	async fn repository_change_during_discovery_invalidates_the_combined_observation() {
-		for changed in [false, true] {
+		for scenario in ["stable", "directory", "settings", "other_thread"] {
 			let (local, remote) = tokio::io::duplex(65536);
 			let (reader, writer) = tokio::io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
+			let (finish, finished) = tokio::sync::oneshot::channel::<()>();
 			let server = tokio::spawn(async move {
 				let (reader, mut writer) = tokio::io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
@@ -200,8 +202,13 @@ mod tests {
 					let result = match request["method"].as_str().unwrap() {
 						"thread/read" => {
 							metadata += 1;
+							if metadata == 2 && matches!(scenario, "settings" | "other_thread") {
+								let target =
+									if scenario == "settings" { "thread" } else { "another" };
+								writer.write_all(format!("{}\n", json!({"method":"thread/settings/updated","params":{"threadId":target,"threadSettings":{"cwd":"/repo"}}})).as_bytes()).await.unwrap();
+							}
 							assert_eq!(request["params"]["threadId"], "thread");
-							json!({"thread":{"id":"thread","cwd":if changed && metadata==2 {"/different"} else {"/repo"}}})
+							json!({"thread":{"id":"thread","cwd":if scenario == "directory" && metadata==2 {"/different"} else {"/repo"}}})
 						},
 						"mcpServerStatus/list" => {
 							assert_eq!(request["params"]["threadId"], "thread");
@@ -220,15 +227,17 @@ mod tests {
 						.await
 						.unwrap();
 				}
+				let _ = finished.await;
 			});
 			let result = read(&client, "thread").await;
-			if changed {
+			if matches!(scenario, "directory" | "settings") {
 				assert_eq!(result, ChiefIntegrationsResult::Unavailable);
 			} else {
 				assert!(
 					matches!(result,ChiefIntegrationsResult::Available {cwd,..} if cwd=="/repo")
 				);
 			}
+			finish.send(()).unwrap();
 			server.await.unwrap();
 		}
 	}
