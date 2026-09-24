@@ -4,6 +4,7 @@ use rusqlite::{Connection, OptionalExtension as _, Row, TransactionBehavior, par
 use serde::{Deserialize, Serialize};
 
 mod capacity;
+mod steer;
 pub use capacity::ChiefCapacityRetry;
 
 use crate::{DatabaseError, SqliteStore, StoreError, error::sqlite_error, unix_micros};
@@ -592,6 +593,12 @@ impl SqliteStore {
 				return Err(DatabaseError::Conflict.into());
 			}
 			crate::chief_task_references::validate_references(&tx, &payload)?;
+			let mut value: serde_json::Value = serde_json::from_str(&payload)
+				.map_err(|_| StoreError::InvalidInput("invalid steering input"))?;
+			let fields = value.as_object_mut().ok_or(StoreError::InvalidInput("invalid steering input"))?;
+			fields.insert("threadId".into(), serde_json::json!(work.codex_thread_id));
+			let payload = value.to_string();
+			bounded(&payload, 65536)?;
 			let source = serde_json::json!(["user_steer", id, key]).to_string();
 			tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'steer_pending',?3,?4,?2,?5)",params![source,id,payload,unix_micros()?,turn]).map_err(sqlite_error)?;
 			let event = tx.last_insert_rowid();
@@ -603,20 +610,14 @@ impl SqliteStore {
 	/// Publish only confirmed steering input as a delivered user message.
 	pub async fn finish_chief_steer(&self, event: i64, accepted: bool) -> Result<(), StoreError> {
 		self.run(move |connection| {
-			let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
-			let attempt=read_event(&tx,event)?;
-			if attempt.event_kind != "steer_pending" || attempt.disposition.is_some() { return Err(DatabaseError::Conflict.into()); }
-			let note=if accepted { "Steer accepted by the provider." } else { "Steer rejected by the provider; no input was queued." };
-			let now=unix_micros()?.max(attempt.created_at_micros);
-			tx.execute("UPDATE chief_inbox_events SET disposition='resolved',disposition_note=?2,disposed_at_micros=?3 WHERE id=?1",params![event,note,now]).map_err(sqlite_error)?;
-			if accepted {
-				let source=serde_json::json!(["steer_receipt",event]).to_string();
-                crate::chief_questions::retire_for_prompt(&tx, &attempt.work_item_id, &attempt.payload)?;
-				tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'user_message',?3,?4,?2,?5)",params![source,attempt.work_item_id,attempt.payload,now,attempt.delivered_turn_id]).map_err(sqlite_error)?;
-			}
+			let tx = connection
+				.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(sqlite_error)?;
+			steer::finish(&tx, event, accepted)?;
 			tx.commit().map_err(sqlite_error)?;
 			Ok(())
-		}).await
+		})
+		.await
 	}
 
 	pub async fn acknowledge_chief_dispatch(
@@ -1272,6 +1273,7 @@ mod tests {
 	mod activity;
 	mod inbox_carryover;
 	mod legacy_setup;
+	mod steer_receipts;
 	mod task_references;
 	use super::*;
 	use tempfile::tempdir;
