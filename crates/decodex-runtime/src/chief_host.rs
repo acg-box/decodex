@@ -428,18 +428,18 @@ impl ChiefHost {
 		work: &str,
 		turn: &str,
 		item: &str,
+		cursor: Option<&decodex_protocol::ChiefActivityDetailCursor>,
 	) -> decodex_protocol::ChiefActivityDetailResult {
-		let unavailable = decodex_protocol::ChiefActivityDetailResult::Unavailable;
-		let Some(client) = self.runtime.chief_client() else {
-			return unavailable;
-		};
-		let Ok(work) = self.store.get_chief_work_item(work.into()).await else {
-			return unavailable;
-		};
-		let Some(thread) = work.codex_thread_id else {
-			return unavailable;
-		};
-		crate::chief_detail::read(&client, &thread, turn, item).await
+		crate::chief_detail::read_bound(
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, owner.codex_thread_id.as_deref()?).await
+			},
+			turn,
+			item,
+			cursor,
+		)
+		.await
 	}
 
 	pub(crate) async fn file_approval_detail(

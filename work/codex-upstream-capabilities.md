@@ -233,3 +233,24 @@ Activity labels distinguish search, page opening and page text lookup.
 Tests cover projection, redaction, bounds and the native paginated-history RPC
 path. These are synthetic transport tests, not installed-binary or signed-desktop
 acceptance. No protocol or database migration is required.
+
+
+## Complete activity detail paging — 2026-09-24
+
+The activity detail query now returns an 8 KiB UTF-8 portion and a continuation
+cursor. Its fingerprint binds the complete filtered text to the account revision,
+process generation, history revision, work, thread, turn and item. The runtime
+rechecks the source after reading. Changed content or ownership invalidates the
+cursor; no pages from different observations are combined.
+
+The desktop provides Read next portion and Back to start. It retains one portion
+at a time, clears pending reads on navigation or disconnect, and rejects replies
+from replaced sources or earlier open requests. A failed continuation remains
+unavailable until the user reopens the detail. The client checks returned offsets,
+page size and continuation consistency. File-approval previews retain their
+separate existing bound. Web result projection from PR1403 is preserved.
+
+Local protocol version is 2.52; the database stays at 34. Validation includes
+complete Unicode reconstruction, changed-source and changed-content rejection,
+invalid byte offsets, desktop stale-reply cases, and rendered continuation buttons
+through the public socket. This does not certify signed desktop acceptance.
