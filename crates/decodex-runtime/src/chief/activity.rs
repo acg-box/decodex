@@ -73,6 +73,8 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<ChiefActivityDt
 		|| item["exitCode"].as_i64().is_some_and(|code| code != 0);
 	let status = if !completed {
 		"running"
+	} else if search_exit_without_failure(item) {
+		"exited"
 	} else if failed {
 		"failed"
 	} else if item["status"] == "declined" {
@@ -89,6 +91,16 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<ChiefActivityDt
 		detail: detail.chars().filter(|c| !c.is_control()).take(160).collect(),
 		duration_ms: item["durationMs"].as_u64(),
 	})
+}
+
+// Upstream 71406edb: search exit 1 can mean no matches. Keep the code visible
+// without classifying the whole command as a failure or claiming search success.
+fn search_exit_without_failure(item: &Value) -> bool {
+	item["type"] == "commandExecution"
+		&& item["exitCode"] == 1
+		&& item["commandActions"]
+			.as_array()
+			.is_some_and(|actions| actions.iter().any(|action| action["type"] == "search"))
 }
 
 #[cfg(test)]
@@ -128,5 +140,21 @@ mod tests {
 		assert_eq!(project(&value, true).expect("failed").status, "failed");
 		value["item"]["type"] = json!("agentMessage");
 		assert!(project(&value, true).is_none());
+	}
+	#[test]
+	fn search_exit_one_keeps_the_code_without_marking_activity_failed() {
+		for (actions, code, expected) in [
+			(json!([{"type":"search"}]), 1, "exited"),
+			(json!([{"type":"read"},{"type":"search"}]), 1, "exited"),
+			(json!([{"type":"search"}]), 2, "failed"),
+			(json!([{"type":"read"}]), 1, "failed"),
+			(json!([]), 1, "failed"),
+		] {
+			let value = json!({"turnId":"turn","item":{"id":"command","type":"commandExecution","status":"failed","exitCode":code,"commandActions":actions}});
+			let activity = project(&value, true).unwrap();
+			assert_eq!(activity.status, expected);
+			assert_eq!(activity.detail, format!("Exit code {code}"));
+			assert_eq!(project(&value, false).unwrap().status, "running");
+		}
 	}
 }

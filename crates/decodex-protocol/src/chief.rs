@@ -31,7 +31,7 @@ pub struct ChiefActivityDto {
 	pub item_id: String,
 	/// Presentation category derived from the native item type.
 	pub kind: String,
-	/// Running, completed, failed, or declined.
+	/// Running, completed, exited, failed, or declined. Exited does not assert success.
 	pub status: String,
 	/// Short, human-readable action.
 	pub label: String,

@@ -106,6 +106,7 @@ impl ChiefSurface {
 				match item.status.as_str() {
 					"running" => "In progress",
 					"failed" => "Failed",
+					"exited" => "Exited",
 					"declined" => "Declined",
 					_ => "Done",
 				}
