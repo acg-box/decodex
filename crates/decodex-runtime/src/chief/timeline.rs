@@ -5,7 +5,7 @@ mod attachments;
 pub(crate) mod media;
 pub(crate) mod metrics;
 mod promotions;
-mod tool_output;
+pub(crate) mod tool_output;
 
 pub(crate) async fn read<F, Fut>(
 	store: Option<&decodex_database::SqliteStore>,

@@ -2,6 +2,10 @@
 use serde_json::Value;
 
 pub(super) fn text(item: &Value) -> Option<String> {
+	Some(parts(item)?.join("\n"))
+}
+
+pub(crate) fn parts(item: &Value) -> Option<Vec<String>> {
 	let name = item["name"].as_str().filter(|name| !name.is_empty())?;
 	let title = if item["namespace"].is_null() {
 		name.to_owned()
@@ -10,16 +14,15 @@ pub(super) fn text(item: &Value) -> Option<String> {
 		if namespace.is_empty() { name.to_owned() } else { format!("{namespace}/{name}") }
 	};
 	let output = match &item["output"] {
-		Value::String(text) => text.clone(),
+		Value::String(text) => vec![text.clone()],
 		Value::Array(parts) => parts
 			.iter()
 			.filter(|part| part["type"] == "input_text")
-			.map(|part| part["text"].as_str())
-			.collect::<Option<Vec<_>>>()?
-			.join("\n"),
+			.map(|part| part["text"].as_str().map(str::to_owned))
+			.collect::<Option<Vec<_>>>()?,
 		_ => return None,
 	};
-	Some(format!("{title}\n{output}"))
+	Some(std::iter::once(title).chain(output).collect())
 }
 
 #[cfg(test)]

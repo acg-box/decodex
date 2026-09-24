@@ -32,6 +32,7 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<ChiefActivityDt
 			"completed" => "Subagent completed a turn",
 			_ => return None,
 		},
+		"functionCallOutput" => "Tool result",
 		"contextCompaction" => "Compacting context",
 		"imageView" => "Viewing image",
 		"imageGeneration" => "Generating image",

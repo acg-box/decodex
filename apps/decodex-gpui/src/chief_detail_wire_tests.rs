@@ -142,7 +142,14 @@ impl Render for DetailView {
 fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
 	cx: &mut gpui::TestAppContext,
 ) {
-	for kind in ["fileChange", "commandExecution", "webSearch", "mcpToolCall"] {
+	for kind in [
+		"fileChange",
+		"commandExecution",
+		"webSearch",
+		"mcpToolCall",
+		"functionCallOutput",
+		"imageView",
+	] {
 		let (_directory, profile, server) = fixture();
 		let (view, visual) = cx.add_window_view(|_, cx| {
 			let surface = cx.new(ChiefSurface::new);

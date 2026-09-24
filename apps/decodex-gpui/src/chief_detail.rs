@@ -54,8 +54,16 @@ impl ChiefSurface {
 		row: gpui::Div,
 		cx: &mut Context<Self>,
 	) -> gpui::AnyElement {
-		if !["commandExecution", "fileChange", "mcpToolCall", "dynamicToolCall", "webSearch"]
-			.contains(&item.kind.as_str())
+		if ![
+			"commandExecution",
+			"fileChange",
+			"mcpToolCall",
+			"dynamicToolCall",
+			"webSearch",
+			"functionCallOutput",
+			"imageView",
+		]
+		.contains(&item.kind.as_str())
 		{
 			return row.into_any_element();
 		}

@@ -87,3 +87,72 @@ fn dynamic_media_and_malformed_blocks_do_not_disappear() {
 	}
 	assert!(!text.contains("DO_NOT_RENDER"));
 }
+
+#[test]
+fn standalone_result_details_retain_long_text_without_media_or_encrypted_bodies() {
+	let long = "界".repeat(12000);
+	let item = json!({"id":"item","type":"functionCallOutput","name":"result","namespace":"tools","output":[
+	 {"type":"input_text","text":long},
+	 {"type":"input_image","image_url":"data:image/png;base64,RAW_DO_NOT_RENDER"},
+	 {"type":"encrypted_content","encrypted_content":"RAW_DO_NOT_RENDER"},
+	 {"type":"input_text","text":"Bearer fixture-private-access-token-123456789"},
+	 {"type":"input_text","text":"Public tail"}
+	]});
+	let text = project_text(&history(item.clone()), "thread", "turn", "item").unwrap();
+	assert!(text.starts_with("tools/result"));
+	assert!(text.contains(&long));
+	assert!(text.ends_with("Public tail"));
+	assert!(text.contains("[Sensitive content omitted]"));
+	assert!(!text.contains("DO_NOT_RENDER"));
+	let mut combined = String::new();
+	let mut cursor = None;
+	loop {
+		let ChiefActivityDetailResult::Available { text: chunk, next, .. } =
+			page(&text, "scope", cursor.as_ref()).unwrap()
+		else {
+			panic!("page")
+		};
+		assert!(chunk.len() <= 8192);
+		combined.push_str(&chunk);
+		if next.is_none() {
+			break;
+		}
+		cursor = next;
+	}
+	assert_eq!(combined, text);
+	let mut scalar = item;
+	scalar["output"] = json!("Plain result");
+	assert!(
+		project_text(&history(scalar), "thread", "turn", "item").unwrap().ends_with("Plain result")
+	);
+}
+
+#[test]
+fn image_path_and_app_context_are_descriptive_native_evidence() {
+	let item = json!({"id":"item","type":"imageView","path":"/remote/image.png"});
+	let text = project_text(&history(item), "thread", "turn", "item").unwrap();
+	assert!(text.contains("/remote/image.png"));
+	assert!(text.contains("does not identify the executor"));
+	let item = json!({"id":"item","type":"mcpToolCall","appContext":{
+  "connectorId":"app-fixture","appName":"Calendar","actionName":"Read event",
+  "linkId":"link-fixture","resourceUri":"ui://event","private":"RAW_DO_NOT_RENDER"
+ },"result":{"content":[{"type":"text","text":"Event found"}]}});
+	let text = project_text(&history(item.clone()), "thread", "turn", "item").unwrap();
+	for expected in [
+		"App: Calendar",
+		"Action: Read event",
+		"Connector: app-fixture",
+		"Link: link-fixture",
+		"Resource: ui://event",
+		"Event found",
+	] {
+		assert!(text.contains(expected), "{expected}");
+	}
+	assert!(!text.contains("DO_NOT_RENDER"));
+	let mut partial = item;
+	partial["appContext"] = json!({"appName":"Calendar","linkId":false,"resourceUri":null});
+	let text = project_text(&history(partial), "thread", "turn", "item").unwrap();
+	assert!(text.contains("App: Calendar"));
+	assert!(!text.contains("Link:"));
+	assert!(!text.contains("Resource:"));
+}

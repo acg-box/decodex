@@ -129,6 +129,11 @@ fn project_text(history: &Value, thread: &str, turn: &str, item: &str) -> Option
 				}
 			},
 		"mcpToolCall" | "dynamicToolCall" => parts.extend(tool_detail::parts(item)),
+		"functionCallOutput" => parts.extend(crate::chief::timeline::tool_output::parts(item)?),
+		"imageView" => {
+			parts.push(format!("Execution environment image: {}", item["path"].as_str()?));
+			parts.push("The native record does not identify the executor. Image bytes are unavailable through this record.".into());
+		},
 		"webSearch" => parts.extend(web_details(item)),
 		_ => return None,
 	}
