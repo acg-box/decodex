@@ -1921,9 +1921,14 @@ impl Application for ServiceApplication {
 							.await,
 					None => decodex_protocol::NativeAgentsResult::Unavailable,
 				}),
-			QueryPayload::GetChiefHistory { work_id, before } => QueryResultPayload::ChiefHistory(
-				query_chief_history_page(&self.store, work_id.as_str(), *before).await,
-			),
+			QueryPayload::GetChiefHistory { work_id, before } => {
+				let mut history =
+					query_chief_history_page(&self.store, work_id.as_str(), *before).await;
+				if let Some(chief) = &self.chief {
+					chief.enrich_weather(work_id.as_str(), &mut history).await;
+				}
+				QueryResultPayload::ChiefHistory(history)
+			},
 			QueryPayload::GetChiefArchiveState { work_id } =>
 				QueryResultPayload::ChiefArchiveState(match &self.chief {
 					Some(chief) => chief.archive_state(work_id.as_str()).await,
@@ -4338,6 +4343,11 @@ fn chief_history_entry(
 	text: String,
 ) -> decodex_protocol::ChiefHistoryEntryDto {
 	decodex_protocol::ChiefHistoryEntryDto {
+		turn_id: value
+			.pointer("/threadReadback/turnId")
+			.and_then(serde_json::Value::as_str)
+			.map(str::to_owned),
+		weather: Vec::new(),
 		activity: if event.event_kind.starts_with("activity_") {
 			serde_json::from_value(value.clone()).ok()
 		} else {

@@ -26,6 +26,7 @@
 #[path = "chief_text_reveal.rs"] mod text_reveal;
 #[path = "chief_usage_estimates.rs"] mod usage_estimates;
 #[path = "chief_voice.rs"] mod voice;
+#[path = "chief_weather.rs"] mod weather;
 #[path = "chief_workspace.rs"] mod workspace;
 #[path = "chief_workspace_size.rs"] mod workspace_size;
 
@@ -1654,6 +1655,15 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 						.child(muted("Manager instruction"))
 				})
 				.child(markdown::render(&visible_text, &format!("message-{}", entry.id)))
+				.children(entry.weather.iter().enumerate().map(|(i, forecast)| {
+					let date = time::OffsetDateTime::from_unix_timestamp(
+						entry.created_at_micros / 1_000_000,
+					)
+					.ok()
+					.map(|d| format!("{} · Saved forecast", d.date()))
+					.unwrap_or_else(|| "Saved forecast".into());
+					weather::render(forecast, &date, &format!("{}-{i}", entry.id))
+				}))
 				.when(!user, |body| {
 					body.child(
 						div()
@@ -1666,7 +1676,20 @@ fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
 								row.child(markdown::copy_button(
 									&format!("copy-response-{}", entry.id),
 									"Copy response",
-									visible_text.clone(),
+									if entry.weather.is_empty() {
+										visible_text.clone()
+									} else {
+										format!(
+											"{}\n\n{}",
+											visible_text,
+											entry
+												.weather
+												.iter()
+												.map(|f| f.markdown())
+												.collect::<Vec<_>>()
+												.join("\n\n")
+										)
+									},
 								))
 							}),
 					)
@@ -1866,6 +1889,8 @@ mod tests {
 		) -> impl gpui::IntoElement {
 			let bounds = self.bounds.clone();
 			super::history_entry(&decodex_protocol::ChiefHistoryEntryDto {
+				turn_id: None,
+				weather: Vec::new(),
 				activity: None,
 				id: 1,
 				kind: "user".into(),
@@ -2096,6 +2121,8 @@ mod tests {
 					next_before: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						turn_id: None,
+						weather: Vec::new(),
 						activity: None,
 						duration_ms: None,
 						usage: None,
@@ -2159,6 +2186,8 @@ mod tests {
 					misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						turn_id: None,
+						weather: Vec::new(),
 						activity: None,
 						usage: None,
 						duration_ms: None,
@@ -2287,6 +2316,8 @@ mod tests {
 					misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						turn_id: None,
+						weather: Vec::new(),
 						activity: None,
 						usage: None,
 						duration_ms: None,

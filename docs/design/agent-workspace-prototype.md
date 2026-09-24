@@ -136,3 +136,22 @@ Revealed addresses remain in memory, are tied to the account revision, and are c
 the user hides them. Hiding also cancels the reveal task and invalidates late results.
 The existing menu-bar eye control remains unchanged. The desktop power icon retains switch
 accessibility semantics, supports keyboard activation, and does not expand account details.
+
+
+## Weather cards
+
+Protocol 2.46 adds optional turn identity and weather projections to saved assistant
+entries. Cards use the exact turn and weather reference, retain the saved forecast,
+and include a readable forecast table in Copy response. Missing data leaves the
+assistant text available. Cards appear after completed history readback.
+
+The installed app-server can omit weather data from `webSearch.results`. A bounded
+read-only compatibility adapter uses only `thread/read`'s path for the selected
+thread and checks the session header and turn identity. It reads at most 16 MiB,
+extracts only weather text, and caches one thread's parsed results. It does not scan
+session directories or alter native records. The native path field is unstable;
+replace this adapter when native structured results are available. Track this in
+https://github.com/acg-box/decodex/issues/1385.
+
+The compact card uses the existing GPUI background with a translucent tint; it is
+not a separate native Liquid Glass window.

@@ -492,6 +492,17 @@ mod tests {
 			_: &mut gpui::Context<Self>,
 		) -> impl gpui::IntoElement {
 			super::super::history_entry(&decodex_protocol::ChiefHistoryEntryDto {
+				turn_id: None,
+				weather: if self.text.contains("\u{e200}weather\u{e202}") {
+					vec![
+						decodex_protocol::WeatherForecast::parse(include_str!(
+							"../examples/fixtures/singapore-weather.txt"
+						))
+						.unwrap(),
+					]
+				} else {
+					Vec::new()
+				},
 				id: 42,
 				kind: "assistant".into(),
 				text: self.text.clone(),
@@ -502,6 +513,27 @@ mod tests {
 			})
 		}
 	}
+	#[gpui::test]
+	fn weather_card_is_compact_and_response_copy_includes_forecast(cx: &mut gpui::TestAppContext) {
+		let (_, visual) = cx.add_window_view(|_, _| CopyPreview {
+			text: "Cloudy.\n\n\u{e200}weather\u{e202}turn0forecast0\u{e201}".into(),
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(px(700.), px(500.)));
+			window.draw(cx).clear();
+		});
+		let card = visual.debug_bounds("weather-card-42-0").expect("inline weather card");
+		assert_eq!(card.size.width, px(420.));
+		assert!(card.size.height < px(240.));
+		let copy = visual.debug_bounds("copy-response-42").unwrap();
+		visual.simulate_click(copy.center(), gpui::Modifiers::default());
+		visual.update(|_, cx| {
+			let text = cx.read_from_clipboard().and_then(|item| item.text()).unwrap();
+			assert!(text.contains("| 02:00 AM | Showers | 28 |"));
+			assert!(!text.contains('\u{e200}'));
+		});
+	}
+
 	#[gpui::test]
 	fn response_and_code_copy_use_the_displayed_message(cx: &mut gpui::TestAppContext) {
 		let original = "Answer **中文**\n\n```sh\r\nprintf 'hello'  \r\n```";

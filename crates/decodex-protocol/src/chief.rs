@@ -45,6 +45,10 @@ pub struct ChiefActivityDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChiefHistoryEntryDto {
+	#[serde(default)]
+	pub turn_id: Option<String>,
+	#[serde(default)]
+	pub weather: Vec<crate::WeatherForecast>,
 	/// Native execution activity; absent for conversation messages.
 	#[serde(default)]
 	pub activity: Option<ChiefActivityDto>,

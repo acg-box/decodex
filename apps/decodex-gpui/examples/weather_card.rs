@@ -1,59 +1,7 @@
 //! Native component preview using an actual saved tool response, not live weather.
 use gpui::{prelude::*, *};
 
-#[derive(Debug, PartialEq)]
-struct Forecast {
-	reference: String,
-	location: String,
-	condition: String,
-	celsius: i32,
-	hours: Vec<(String, String, i32)>,
-}
-fn temperature(value: &str) -> Option<i32> {
-	value.rsplit_once('(')?.1.strip_suffix("°C)")?.parse().ok()
-}
-impl Forecast {
-	fn parse(source: &str) -> Option<Self> {
-		let (reference, body) =
-			source.strip_prefix("\u{e200}cite\u{e202}")?.split_once('\u{e201}')?;
-		let mut lines = body.trim().lines();
-		let location = lines.next()?.strip_prefix("Weather for ")?.strip_suffix(':')?;
-		let current = lines.next()?.strip_prefix("Current Conditions: ")?;
-		let (condition, _) = current.rsplit_once(", ")?;
-		if lines.next()? != "Hourly Forecast:" {
-			return None;
-		}
-		let hours = lines
-			.take(24)
-			.map(|line| {
-				let (hour, value) = line.split_once(": ")?;
-				let (condition, _) = value.rsplit_once(", ")?;
-				Some((hour.to_owned(), condition.to_owned(), temperature(value)?))
-			})
-			.collect::<Option<Vec<_>>>()?;
-		if hours.is_empty() {
-			return None;
-		}
-		Some(Self {
-			reference: reference.into(),
-			location: location.into(),
-			condition: condition.into(),
-			celsius: temperature(current)?,
-			hours,
-		})
-	}
-
-	fn markdown(&self) -> String {
-		let mut result = format!(
-			"## {}\n\n{}°C · {}\n\n| Time | Weather | °C |\n| --- | --- | --- |\n",
-			self.location, self.celsius, self.condition
-		);
-		for (hour, condition, temperature) in &self.hours {
-			result.push_str(&format!("| {hour} | {condition} | {temperature} |\n"));
-		}
-		result
-	}
-}
+use decodex_protocol::WeatherForecast as Forecast;
 fn symbol(condition: &str) -> &'static str {
 	let value = condition.to_ascii_lowercase();
 	if value.contains("shower") || value.contains("rain") {

@@ -81,6 +81,7 @@ struct Request {
 
 #[derive(Clone)]
 pub(crate) struct ChiefHost {
+	weather_cache: Arc<Mutex<Option<weather::CachedWeather>>>,
 	voice: crate::chief_voice::VoiceGateway,
 	dictation: crate::dictation::DictationGateway,
 	mcp_login: crate::mcp_login::McpLoginGateway,
@@ -95,6 +96,7 @@ impl ChiefHost {
 		let (sender, receiver) = mpsc::channel(32);
 		Self {
 			voice: crate::chief_voice::VoiceGateway::new(),
+			weather_cache: Arc::new(Mutex::new(None)),
 			dictation: Default::default(),
 			mcp_login: Default::default(),
 			store,
@@ -1424,3 +1426,5 @@ mod tests {
 		tokio::time::timeout(Duration::from_secs(1), stopped(&mut receiver)).await.unwrap();
 	}
 }
+
+#[path = "chief_weather.rs"] mod weather;

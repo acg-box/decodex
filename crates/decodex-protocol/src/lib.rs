@@ -149,7 +149,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 45 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 46 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
@@ -235,3 +235,6 @@ mod mcp_elicitation;
 pub use mcp_elicitation::{
 	McpFormChoice, McpFormField, mcp_form_content, mcp_form_fields, validate_mcp_response,
 };
+
+mod weather;
+pub use weather::WeatherForecast;
