@@ -395,3 +395,20 @@ old identity later returns. Viewing a native child cannot edit its parent's
 reviewer through this panel. Child reviewer control is not exposed by this
 managed-work journal. Rendered tests use the public local socket and lose a reply
 after dispatch to verify one submission followed only by receipt reads.
+
+
+## Standalone tool and application details
+
+The existing source-bound detail reader now includes standalone function outputs,
+image-view path metadata, and MCP application context. Function results retain
+scalar and structured text through eight-KiB pages and redact each text part
+before display. Image, audio, and encrypted bodies stay on their existing media
+or native-history paths. Timeline activity and desktop disclosure expose these
+details without assigning user authority to tool output.
+
+Image-view paths are descriptive executor evidence. The public native record has
+no executor identity, so Decodex does not read a same-named service-host file.
+Application context displays the declared app, action, connector, link and resource
+fields; it does not launch an MCP App UI. Contracts were checked against upstream
+595cc91e8cbb1c2ca822d0311dcf12709410c582 item.rs and the installed alpha16.3 schema.
+Protocol2.57 and database35 are unchanged.

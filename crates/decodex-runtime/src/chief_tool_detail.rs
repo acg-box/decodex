@@ -6,6 +6,19 @@ pub(super) fn parts(item: &Value) -> Vec<String> {
 	for field in ["server", "namespace", "tool"] {
 		append_text(&mut parts, &item[field]);
 	}
+	if let Some(context) = item.get("appContext").filter(|value| value.is_object()) {
+		for (field, label) in [
+			("appName", "App"),
+			("actionName", "Action"),
+			("connectorId", "Connector"),
+			("linkId", "Link"),
+			("resourceUri", "Resource"),
+		] {
+			if let Some(value) = context[field].as_str().filter(|value| !value.is_empty()) {
+				parts.push(format!("{label}: {value}"));
+			}
+		}
+	}
 	let content = item.pointer("/result/content").or_else(|| item.get("contentItems"));
 	for block in content.and_then(Value::as_array).into_iter().flatten() {
 		content_parts(block, &mut parts);
