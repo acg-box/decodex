@@ -350,3 +350,15 @@ uncertain reply. The installed alpha16.3 fixture verifies actual approval routin
 pending request retention, terminal-target refusal, and unchanged next-turn
 defaults using isolated home directories and loopback inference. Durable edit
 receipts and desktop controls are separate pending integration work.
+
+
+## Live reviewer publication journal
+
+Current-turn reviewer edits reserve a durable attempt against the exact work,
+thread, turn, process generation, reviewed receipt, and review token. A competing
+or repeated review cannot submit another attempt. A separate immutable result
+records applied, unavailable, rejected, or unknown publication; an uncertain
+result is not replay authority. Records survive database reopen and do not wake
+work. Internal attempt/result rows are excluded from transcript pagination before
+the limit, so they cannot displace conversation messages. Database schema35 and
+protocol2.56 are unchanged. Runtime and desktop integration remains pending.
