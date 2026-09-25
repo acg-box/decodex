@@ -378,3 +378,65 @@ const fn provider_text(provider: AccountProvider) -> &'static str {
 fn incompatible() -> StoreError {
 	StoreError::Incompatible("stored account profile is malformed".to_owned())
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[tokio::test]
+	async fn refreshed_missing_peak_replaces_cached_peak_and_preserves_explicit_zero() {
+		let directory = tempfile::tempdir().unwrap();
+		let path = directory.path().join("profile.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		let account = AccountId::new("10000000-0000-4000-8000-000000000001").unwrap();
+		let id = account.clone();
+		store.run(move |connection| {
+			connection.execute("INSERT INTO account_identities VALUES (?1,1)",[id.as_str()]).unwrap();
+			connection.execute("INSERT INTO accounts(account_id,display_label,enabled,state,revision,provider,provider_account_id,created_at_micros,updated_at_micros) VALUES(?1,'Profile',1,'available',1,'chatgpt','provider',1,1)",[id.as_str()]).unwrap();
+			Ok(())
+		}).await.unwrap();
+		let mut observation = AccountProfileObservation {
+			account_id: account.clone(),
+			account_revision: 1,
+			provider: ProviderIdentity::new(AccountProvider::Chatgpt, "provider").unwrap(),
+			observed_at_unix_micros: 100,
+			display_name: None,
+			username: None,
+			lifetime_tokens: Some(1000),
+			peak_daily_tokens: Some(900),
+			longest_task_seconds: None,
+			current_streak_days: None,
+			longest_streak_days: None,
+			daily_usage: vec![AccountProfileDailyUsage {
+				start_date: "2026-09-09".into(),
+				tokens: 500,
+			}],
+		};
+		assert_eq!(
+			store.observe_account_profile(&observation).await.unwrap(),
+			AccountProfileObservationOutcome::Observed
+		);
+		for (timestamp, peak) in [(200, None), (300, Some(0))] {
+			observation.observed_at_unix_micros = timestamp;
+			observation.peak_daily_tokens = peak;
+			assert_eq!(
+				store.observe_account_profile(&observation).await.unwrap(),
+				AccountProfileObservationOutcome::Observed
+			);
+			let reopened = SqliteStore::open_test(&path).unwrap();
+			let snapshot = reopened.read_account_profile(&account).await.unwrap().unwrap();
+			assert_eq!(snapshot.peak_daily_tokens, peak);
+			assert_eq!(snapshot.daily_usage, observation.daily_usage);
+		}
+		observation.observed_at_unix_micros = 150;
+		observation.peak_daily_tokens = Some(900);
+		assert_eq!(
+			store.observe_account_profile(&observation).await.unwrap(),
+			AccountProfileObservationOutcome::StaleObservation
+		);
+		assert_eq!(
+			store.read_account_profile(&account).await.unwrap().unwrap().peak_daily_tokens,
+			Some(0)
+		);
+	}
+}

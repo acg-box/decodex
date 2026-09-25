@@ -60,6 +60,10 @@ live/history display after this baseline. It does not enable a new summary mode
 or expose raw reasoning. Native and rendered-test evidence and remaining limits
 are recorded in the feature note.
 
+[Account peak correction](account-profile-peak.md) preserves missing versus reported
+profile statistics after this baseline. This fixes the existing profile; it does
+not deliver full Analytics reports or Top chats.
+
 ## Evidence boundaries
 
 The 128 distinct PRs cited above were read from GitHub and their merge commits were checked as ancestors of this snapshot. Current source owners were inspected or located in this checkout. This confirms merge and source presence, not full live acceptance or release installation. No new behavioral test was run for this documentation reconciliation.
