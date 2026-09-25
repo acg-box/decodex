@@ -760,6 +760,68 @@ impl ServiceApplication {
 		}
 	}
 
+	async fn query_accounts(&self, payload: &QueryPayload) -> QueryResultPayload {
+		match payload {
+			QueryPayload::ListAccounts => QueryResultPayload::Accounts(self.account_list().await),
+			QueryPayload::InspectAccount { account_id } =>
+				QueryResultPayload::Account(self.account_inspect(account_id).await),
+			QueryPayload::PrepareAccountRecovery { .. }
+			| QueryPayload::GetAccountRecovery { .. }
+			| QueryPayload::GetAccountRecoveryNudge { .. } => self.query_account_recovery(payload).await,
+			QueryPayload::GetAccountProfile { account_id, include_email } =>
+				QueryResultPayload::AccountProfile(
+					self.account_profile(account_id, *include_email).await,
+				),
+			QueryPayload::GetInitialAccountSelection =>
+				QueryResultPayload::InitialAccountSelection(self.initial_account_selection().await),
+			QueryPayload::GetCodexAuthProjection =>
+				QueryResultPayload::CodexAuthProjection(self.codex_auth_projection().await),
+			QueryPayload::WaitForAccountObservation { after_generation, request_refresh } =>
+				self.query_account_observation(*after_generation, *request_refresh == Some(true))
+					.await,
+			_ => unreachable!("account query dispatch"),
+		}
+	}
+
+	async fn query_account_recovery(&self, query: &QueryPayload) -> QueryResultPayload {
+		match query {
+			QueryPayload::GetAccountRecoveryNudge { account_id, action, operation_key } =>
+				self.account_nudge_status(account_id, *action, operation_key.as_ref()).await,
+			QueryPayload::PrepareAccountRecovery { source, action } =>
+				self.prepare_account_recovery(source, *action).await,
+			QueryPayload::GetAccountRecovery { account_id, account_revision } =>
+				self.account_recovery(account_id, *account_revision).await,
+			_ => unreachable!("account recovery query dispatch"),
+		}
+	}
+
+	async fn prepare_account_recovery(
+		&self,
+		source: &decodex_protocol::AccountRecoveryResult,
+		action: decodex_protocol::AccountRecoveryAction,
+	) -> QueryResultPayload {
+		QueryResultPayload::AccountRecoveryPreparation(match &self.account_observations {
+			Some(observations) => observations.prepare_recovery(source, action).await,
+			None => decodex_protocol::AccountRecoveryPreparation::Unavailable,
+		})
+	}
+
+	async fn account_recovery(
+		&self,
+		account_id: &EntityId,
+		account_revision: EntityRevision,
+	) -> QueryResultPayload {
+		QueryResultPayload::AccountRecovery(match &self.account_observations {
+			Some(observations) => observations.recovery(account_id, account_revision).await,
+			None => decodex_protocol::AccountRecoveryResult {
+				account_id: account_id.clone(),
+				account_revision,
+				observed_at_unix_micros: None,
+				state: decodex_protocol::AccountRecoveryState::Unavailable,
+			},
+		})
+	}
+
 	async fn account_profile(
 		&self,
 		account_id: &EntityId,
@@ -1988,6 +2050,8 @@ impl Application for ServiceApplication {
 		command: &'a CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
 		match &command.payload {
+			CommandPayload::SendAccountRecoveryNudge { source, action } =>
+				self.execute_recovery_nudge(command, source, *action).await,
 			CommandPayload::Chief { action } => {
 				let chief = self
 					.chief
@@ -2204,20 +2268,15 @@ impl Application for ServiceApplication {
 				QueryResultPayload::ResetCardOperation(
 					self.reset_card_operation(idempotency_key.as_str()).await,
 				),
-			QueryPayload::ListAccounts => QueryResultPayload::Accounts(self.account_list().await),
-			QueryPayload::InspectAccount { account_id } =>
-				QueryResultPayload::Account(self.account_inspect(account_id).await),
-			QueryPayload::GetAccountProfile { account_id, include_email } =>
-				QueryResultPayload::AccountProfile(
-					self.account_profile(account_id, *include_email).await,
-				),
-			QueryPayload::GetInitialAccountSelection =>
-				QueryResultPayload::InitialAccountSelection(self.initial_account_selection().await),
-			QueryPayload::GetCodexAuthProjection =>
-				QueryResultPayload::CodexAuthProjection(self.codex_auth_projection().await),
-			QueryPayload::WaitForAccountObservation { after_generation, request_refresh } =>
-				self.query_account_observation(*after_generation, *request_refresh == Some(true))
-					.await,
+			QueryPayload::ListAccounts
+			| QueryPayload::InspectAccount { .. }
+			| QueryPayload::PrepareAccountRecovery { .. }
+			| QueryPayload::GetAccountRecovery { .. }
+			| QueryPayload::GetAccountRecoveryNudge { .. }
+			| QueryPayload::GetAccountProfile { .. }
+			| QueryPayload::GetInitialAccountSelection
+			| QueryPayload::GetCodexAuthProjection
+			| QueryPayload::WaitForAccountObservation { .. } => self.query_accounts(&query.payload).await,
 		}
 	}
 
@@ -6346,4 +6405,5 @@ mod tests {
 
 #[path = "application_conversation_receipts.rs"] mod conversation_receipts;
 
+#[path = "application_account_nudge.rs"] mod account_nudge;
 #[path = "application_turn_outcomes.rs"] mod turn_outcomes;

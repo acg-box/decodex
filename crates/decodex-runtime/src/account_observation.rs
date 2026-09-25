@@ -1,5 +1,9 @@
 //! Daemon-owned background observation for every independent account.
 
+mod recovery;
+mod recovery_actions;
+use recovery::CachedAccountBanner;
+
 use std::{
 	collections::{HashMap, HashSet},
 	future,
@@ -326,12 +330,14 @@ fn map_profile_api_error(error: AccountApiRuntimeError) -> AccountProfileRuntime
 
 #[derive(Default)]
 struct AccountObservationState {
+	banners: HashMap<AccountId, CachedAccountBanner>,
 	reset_cards: HashMap<AccountId, CachedResetCardInventory>,
 	profiles: HashMap<AccountId, AccountProfileRefreshStatus>,
 	cache_generations: HashMap<AccountId, Arc<()>>,
 }
 
 struct AccountObservationOutcome {
+	banner: Option<CachedAccountBanner>,
 	account_id: AccountId,
 	requested_revision: i64,
 	cache_generation: Arc<()>,
@@ -341,6 +347,8 @@ struct AccountObservationOutcome {
 
 impl AccountObservationState {
 	fn retain_current(&mut self, current: &HashMap<AccountId, i64>) -> bool {
+		let prior_banners = self.banners.len();
+		self.banners.retain(|id, banner| current.get(id) == Some(&banner.account_revision));
 		let prior_reset_cards = self.reset_cards.len();
 		let prior_profiles = self.profiles.len();
 		let prior_generations = self.cache_generations.len();
@@ -351,13 +359,15 @@ impl AccountObservationState {
 			current.get(account_id).is_some_and(|revision| *revision == status.account_revision)
 		});
 		self.cache_generations.retain(|account_id, _| current.contains_key(account_id));
-		prior_reset_cards != self.reset_cards.len()
+		prior_banners != self.banners.len()
+			|| prior_reset_cards != self.reset_cards.len()
 			|| prior_profiles != self.profiles.len()
 			|| prior_generations != self.cache_generations.len()
 	}
 
 	fn invalidate_account(&mut self, account_id: &AccountId) {
 		self.cache_generations.insert(account_id.clone(), Arc::new(()));
+		self.banners.remove(account_id);
 		self.reset_cards.remove(account_id);
 		self.profiles.remove(account_id);
 	}
@@ -387,6 +397,20 @@ impl AccountObservationState {
 		if !self.generation_matches(&observation.account_id, &observation.cache_generation) {
 			return false;
 		}
+		let banner_changed = if let Some(next) = observation.banner.clone() {
+			let changed = self.banners.get(&observation.account_id).is_none_or(|old| {
+				old.account_revision != next.account_revision
+					|| old.current != next.current
+					|| old.banner != next.banner
+					|| old.context != next.context
+			});
+			self.banners.insert(observation.account_id.clone(), next);
+			changed
+		} else if let Some(old) = self.banners.get_mut(&observation.account_id) {
+			std::mem::replace(&mut old.current, false)
+		} else {
+			false
+		};
 		let mut observation = observation;
 		if let Some(next) = observation.reset_cards.take() {
 			observation.reset_cards = Some(
@@ -430,7 +454,57 @@ impl AccountObservationState {
 		if let Some(profile) = observation.profile {
 			self.profiles.insert(account_id, profile);
 		}
-		reset_cards_changed || profile_changed
+		banner_changed || reset_cards_changed || profile_changed
+	}
+}
+
+#[cfg(test)]
+mod recovery_cache_tests {
+	use super::{
+		AccountId, AccountObservationOutcome, AccountObservationState, CachedAccountBanner,
+	};
+	use decodex_codex::AccountApiBannerState;
+	use std::{collections::HashMap, sync::Arc};
+	#[test]
+	fn invalidated_generation_cannot_restore_recovery_and_failures_expire_it() {
+		let account = AccountId::new("10000000-0000-4000-8000-000000000001").unwrap();
+		let mut state = AccountObservationState::default();
+		let generation = state.cache_generation(&account);
+		let outcome = |generation, banner| AccountObservationOutcome {
+			account_id: account.clone(),
+			requested_revision: 1,
+			cache_generation: generation,
+			banner,
+			reset_cards: None,
+			profile: None,
+		};
+		let banner = CachedAccountBanner {
+			account_revision: 1,
+			observed_at: 100,
+			current: true,
+			banner: AccountApiBannerState::Unsupported,
+			context: None,
+		};
+		assert!(state.insert(outcome(Arc::clone(&generation), Some(banner.clone()))));
+		let mut same_copy = banner.clone();
+		same_copy.observed_at += 1;
+		assert!(!state.insert(outcome(Arc::clone(&generation), Some(same_copy.clone()))));
+		same_copy.context = Some(decodex_codex::AccountApiRecoveryContext {
+			provider_account_id: "workspace-id".into(),
+			plan_type: Some("team".into()),
+		});
+		assert!(state.insert(outcome(Arc::clone(&generation), Some(same_copy.clone()))));
+		same_copy.context.as_mut().unwrap().plan_type = Some("pro".into());
+		assert!(state.insert(outcome(Arc::clone(&generation), Some(same_copy))));
+		assert!(state.insert(outcome(Arc::clone(&generation), None)));
+		assert!(!state.banners[&account].current);
+		state.invalidate_account(&account);
+		assert!(!state.insert(outcome(generation, Some(banner.clone()))));
+		assert!(!state.banners.contains_key(&account));
+		let successor = state.cache_generation(&account);
+		assert!(state.insert(outcome(successor, Some(banner))));
+		assert!(state.retain_current(&HashMap::from([(account.clone(), 2)])));
+		assert!(!state.banners.contains_key(&account));
 	}
 }
 
@@ -572,6 +646,27 @@ pub(crate) struct AccountObservationService {
 }
 
 impl AccountObservationService {
+	#[cfg(test)]
+	pub(crate) async fn cache_recovery_fixture(
+		&self,
+		account: AccountId,
+		revision: i64,
+		usage: decodex_codex::AccountApiUsage,
+		provider: &str,
+		user: &str,
+	) {
+		self.state.write().await.banners.insert(
+			account,
+			CachedAccountBanner {
+				account_revision: revision,
+				observed_at: current_unix_micros().expect("fixture clock"),
+				current: true,
+				banner: usage.banner_for(provider, user),
+				context: usage.recovery_context_for(provider, user),
+			},
+		);
+	}
+
 	pub(crate) fn new(
 		accounts: Arc<AccountService>,
 		api: Option<Arc<AccountApiRuntime>>,
@@ -615,6 +710,37 @@ impl AccountObservationService {
 	pub(crate) async fn heartbeat(generation: u64) -> AccountObservationSignal {
 		time::sleep(OBSERVATION_WAIT_TIMEOUT).await;
 		AccountObservationSignal::new(generation)
+	}
+
+	/// Read exact-revision recovery copy without making a provider request.
+	pub(crate) async fn recovery(
+		&self,
+		account_id: &decodex_protocol::EntityId,
+		revision: decodex_protocol::EntityRevision,
+	) -> decodex_protocol::AccountRecoveryResult {
+		let unavailable = || recovery::unavailable(account_id.clone(), revision);
+		let Ok(id) = AccountId::new(account_id.as_str()) else {
+			return unavailable();
+		};
+		let Ok(before) = self.accounts.inspect(&id).await else {
+			return unavailable();
+		};
+		if before.account.tombstoned
+			|| u64::try_from(before.account.revision).ok() != Some(revision.0)
+		{
+			return unavailable();
+		}
+		let cached = self.state.read().await.banners.get(&id).cloned();
+		let Ok(after) = self.accounts.inspect(&id).await else {
+			return unavailable();
+		};
+		if after.account.tombstoned || after.account.revision != before.account.revision {
+			return unavailable();
+		}
+		let Some(now) = current_unix_micros() else {
+			return unavailable();
+		};
+		recovery::project(account_id.clone(), revision, cached, now)
 	}
 
 	/// Read one last daemon-owned Reset Card value without contacting the provider.
@@ -771,6 +897,22 @@ impl AccountObservationService {
 				Some(api) => Some(api.observe_and_activate(&task_account_id).await),
 				None => None,
 			};
+			let banner = api_observation
+				.as_ref()
+				.and_then(|observation| observation.inventory.as_ref().ok())
+				.and_then(|inventory| {
+					if matches!(inventory.banner, decodex_codex::AccountApiBannerState::Unavailable)
+					{
+						return None;
+					}
+					Some(CachedAccountBanner {
+						account_revision: inventory.account_revision,
+						observed_at: current_unix_micros()?,
+						current: true,
+						banner: inventory.banner.clone(),
+						context: inventory.recovery_context.clone(),
+					})
+				});
 			let (reset_cards, profile) = match api_observation {
 				Some(observation) => {
 					let reset_cards = Some(
@@ -834,6 +976,7 @@ impl AccountObservationService {
 				},
 			};
 			AccountObservationOutcome {
+				banner,
 				account_id: task_account_id,
 				requested_revision: account_revision,
 				cache_generation,
@@ -1109,6 +1252,7 @@ mod tests {
 		let mut state = AccountObservationState::default();
 		let cache_generation = state.cache_generation(&account_id);
 		state.insert(AccountObservationOutcome {
+			banner: None,
 			account_id: account_id.clone(),
 			requested_revision: 7,
 			cache_generation,
@@ -1138,6 +1282,7 @@ mod tests {
 		let stale_generation = state.cache_generation(&account_id);
 		state.invalidate_account(&account_id);
 		state.insert(AccountObservationOutcome {
+			banner: None,
 			account_id: account_id.clone(),
 			requested_revision: 9,
 			cache_generation: stale_generation,
@@ -1158,6 +1303,7 @@ mod tests {
 
 		let cache_generation = state.cache_generation(&account_id);
 		state.insert(AccountObservationOutcome {
+			banner: None,
 			account_id: account_id.clone(),
 			requested_revision: 9,
 			cache_generation,
@@ -1183,6 +1329,7 @@ mod tests {
 		let mut state = AccountObservationState::default();
 		let cache_generation = state.cache_generation(&account_id);
 		state.insert(AccountObservationOutcome {
+			banner: None,
 			account_id: account_id.clone(),
 			requested_revision: 9,
 			cache_generation,
@@ -1212,6 +1359,7 @@ mod tests {
 		let cache_generation = state.cache_generation(&account_id);
 
 		assert!(state.insert(AccountObservationOutcome {
+			banner: None,
 			account_id: account_id.clone(),
 			requested_revision: 11,
 			cache_generation: Arc::clone(&cache_generation),
@@ -1220,6 +1368,7 @@ mod tests {
 		}));
 
 		assert!(!state.insert(AccountObservationOutcome {
+			banner: None,
 			account_id: account_id.clone(),
 			requested_revision: 11,
 			cache_generation,
@@ -1242,6 +1391,7 @@ mod tests {
 		let cache_generation = state.cache_generation(&account_id);
 
 		assert!(state.insert(AccountObservationOutcome {
+			banner: None,
 			account_id: account_id.clone(),
 			requested_revision: 12,
 			cache_generation: Arc::clone(&cache_generation),
@@ -1250,6 +1400,7 @@ mod tests {
 		}));
 
 		assert!(!state.insert(AccountObservationOutcome {
+			banner: None,
 			account_id: account_id.clone(),
 			requested_revision: 12,
 			cache_generation,
@@ -1274,6 +1425,7 @@ mod tests {
 		let cache_generation = state.cache_generation(&account_id);
 
 		assert!(state.insert(AccountObservationOutcome {
+			banner: None,
 			account_id: account_id.clone(),
 			requested_revision: 11,
 			cache_generation: Arc::clone(&cache_generation),
@@ -1282,6 +1434,7 @@ mod tests {
 		}));
 
 		assert!(!state.insert(AccountObservationOutcome {
+			banner: None,
 			account_id: account_id.clone(),
 			requested_revision: 11,
 			cache_generation,
@@ -1302,6 +1455,7 @@ mod tests {
 		let mut state = AccountObservationState::default();
 		let cache_generation = state.cache_generation(&account_id);
 		assert!(state.insert(AccountObservationOutcome {
+			banner: None,
 			account_id: account_id.clone(),
 			requested_revision: 11,
 			cache_generation: Arc::clone(&cache_generation),
@@ -1319,6 +1473,7 @@ mod tests {
 			seven_day_quota: quota(10_080, 200, 50, 3_000_000),
 		});
 		assert!(state.insert(AccountObservationOutcome {
+			banner: None,
 			account_id: account_id.clone(),
 			requested_revision: 11,
 			cache_generation,

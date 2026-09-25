@@ -10,6 +10,8 @@ use tokio::{
 	sync::{mpsc, oneshot, watch},
 };
 
+mod account_nudge;
+pub use account_nudge::{AccountNudgeCreditType, AccountNudgeOutcome};
 mod settings_guard;
 mod task_settings;
 mod thread_model_selection;

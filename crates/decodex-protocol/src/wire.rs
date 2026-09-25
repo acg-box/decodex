@@ -2435,6 +2435,29 @@ pub enum QueryPayload {
 		/// Canonical account identity to inspect.
 		account_id: EntityId,
 	},
+	/// Read a durable account notification receipt without sending a request.
+	GetAccountRecoveryNudge {
+		/// Exact affected account.
+		account_id: EntityId,
+		/// NotifyOwner or RequestIncrease.
+		action: crate::AccountRecoveryAction,
+		/// Omit to read the latest matching operation after restart.
+		operation_key: Option<IdempotencyKey>,
+	},
+	/// Revalidate a displayed recovery action without executing it.
+	PrepareAccountRecovery {
+		/// Exact displayed account-bound source.
+		source: Box<crate::AccountRecoveryResult>,
+		/// Explicitly selected action.
+		action: crate::AccountRecoveryAction,
+	},
+	/// Read daemon-owned exact-revision recovery copy without provider work.
+	GetAccountRecovery {
+		/// Exact selected account.
+		account_id: EntityId,
+		/// Revision shown when the client requested recovery information.
+		account_revision: EntityRevision,
+	},
 	/// Observe one account's bounded provider profile independently from Reset Card inventory.
 	GetAccountProfile {
 		/// Canonical account identity to observe.
@@ -2467,6 +2490,13 @@ impl QueryPayload {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
+	/// Send one source-bound workspace-owner notification after explicit user action.
+	SendAccountRecoveryNudge {
+		/// Exact recovery source confirmed by the user.
+		source: Box<crate::AccountRecoveryResult>,
+		/// NotifyOwner or URL-less RequestIncrease only.
+		action: crate::AccountRecoveryAction,
+	},
 	/// Submit one explicit Chief operation to the service-owned coordinator.
 	Chief {
 		/// Bounded operation and selected execution configuration.
@@ -2695,6 +2725,15 @@ pub enum Channel {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EventPayload {
+	/// A durable explicit account notification attempt has a bounded result.
+	AccountRecoveryNudge {
+		/// Exact affected local account.
+		account_id: EntityId,
+		/// Stable operation key; retrying it never sends again.
+		operation_key: IdempotencyKey,
+		/// Native delivery evidence or uncertainty.
+		status: crate::AccountRecoveryNudgeStatus,
+	},
 	/// A Chief operation was durably accepted or an interrupt was delivered.
 	ChiefChanged {
 		/// Affected work or personal Chief identity.
@@ -2828,6 +2867,15 @@ pub enum CommandOutcome {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ResultPayload {
+	/// A durable explicit account notification attempt has a bounded result.
+	AccountRecoveryNudge {
+		/// Exact affected local account.
+		account_id: EntityId,
+		/// Stable operation key; retrying it never sends again.
+		operation_key: IdempotencyKey,
+		/// Native delivery evidence or uncertainty.
+		status: crate::AccountRecoveryNudgeStatus,
+	},
 	/// A Chief operation reached its explicit acceptance boundary.
 	ChiefAccepted {
 		/// Affected work or personal Chief identity.
@@ -3034,6 +3082,12 @@ pub enum QueryResultPayload {
 	Account(AccountInspectResult),
 	/// One independent bounded account-profile observation.
 	AccountProfile(AccountProfileResult),
+	/// Exact-revision backend recovery copy and freshness.
+	AccountRecovery(crate::AccountRecoveryResult),
+	/// Source-revalidated recovery destination; no effect has executed.
+	AccountRecoveryPreparation(crate::AccountRecoveryPreparation),
+	/// Durable account notification state.
+	AccountRecoveryNudge(crate::AccountRecoveryNudgeResult),
 	/// Deterministic initial account choice or typed recovery.
 	InitialAccountSelection(AccountInitialSelectionResult),
 	/// Current shared Codex authentication projection.
@@ -3328,9 +3382,27 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 			| QueryPayload::GetConversationModelSettings { conversation_id }
 				if !is_canonical_uuid(conversation_id.as_str()) =>
 				Err("Conversation conversation identity is not canonical"),
+			QueryPayload::GetAccountRecoveryNudge { account_id, action, .. }
+				if !is_canonical_uuid(account_id.as_str())
+					|| !matches!(
+						action,
+						crate::AccountRecoveryAction::NotifyOwner
+							| crate::AccountRecoveryAction::RequestIncrease
+					) =>
+				Err("account notification query source is invalid"),
+			QueryPayload::PrepareAccountRecovery { source, .. }
+				if !is_canonical_uuid(source.account_id.as_str())
+					|| !source.valid_for(&source.account_id, source.account_revision)
+					|| source.account_revision.0 > i64::MAX as u64
+					|| !matches!(source.state, crate::AccountRecoveryState::Current(_)) =>
+				Err("account recovery action source is invalid"),
+			QueryPayload::GetAccountRecovery { account_revision, .. }
+				if account_revision.0 == 0 || account_revision.0 > i64::MAX as u64 =>
+				Err("account recovery revision is invalid"),
 			QueryPayload::GetResetCards { account_id }
 			| QueryPayload::InspectAccount { account_id }
 			| QueryPayload::GetAccountProfile { account_id, .. }
+			| QueryPayload::GetAccountRecovery { account_id, .. }
 				if !is_canonical_uuid(account_id.as_str()) =>
 				Err("account query identity is not canonical"),
 			_ => Ok(()),
@@ -3349,6 +3421,13 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static str> {
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
 	match &command.payload {
+		CommandPayload::SendAccountRecoveryNudge { source, action } => (source
+			.allows_nudge(*action)
+			&& command.expected_revision == Some(source.account_revision)
+			&& is_canonical_uuid(source.account_id.as_str())
+			&& source.account_revision.0 <= i64::MAX as u64)
+			.then_some(())
+			.ok_or("account nudge source is invalid"),
 		CommandPayload::Chief { .. } => Ok(()),
 		CommandPayload::SetDesktopSettings { .. } =>
 			positive_expected.then_some(()).ok_or("desktop settings revision is required"),
@@ -4612,7 +4691,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":73},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":74},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4621,7 +4700,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":73},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":74},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4663,7 +4742,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":73},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":74},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

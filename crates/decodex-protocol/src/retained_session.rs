@@ -46,6 +46,14 @@ pub struct RetainedSessionConfig {
 	operation_timeout: Duration,
 }
 impl RetainedSessionConfig {
+	/// Open independent account queries with this session's exact admitted local authority.
+	pub fn account_client(&self) -> crate::AccountClient {
+		crate::AccountClient::new(crate::ClientProfile::from_local_authority(
+			self.local_transport.clone(),
+			self.expected_server_id.clone(),
+		))
+	}
+
 	/// Bind one already validated local authority to a stable server identity pin.
 	pub const fn new(
 		local_transport: LocalTransportAuthority,

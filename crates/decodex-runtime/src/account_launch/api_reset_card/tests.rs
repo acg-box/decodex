@@ -71,6 +71,8 @@ fn fixture()
 	let usage = decodex_codex::decode_account_api_usage(br#"{"rate_limit":{"primary_window":{"used_percent":100,"limit_window_seconds":18000,"reset_at":4102444800},"secondary_window":{"used_percent":100,"limit_window_seconds":604800,"reset_at":4102444800}}}"#).expect("isolated reset fixture");
 	let fake = Arc::new(Fake {
 		inventory: StdMutex::new(AccountApiInventory {
+			banner: Default::default(),
+			recovery_context: None,
 			account_revision: 1,
 			ordinary_usage_allowed: None,
 			conditions: Default::default(),
