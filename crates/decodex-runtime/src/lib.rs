@@ -34,6 +34,7 @@ mod chief_plugins;
 mod chief_resources;
 mod chief_usage_estimate;
 mod chief_voice;
+mod chief_voice_settings;
 mod conversation;
 mod dictation;
 mod domain_packs;

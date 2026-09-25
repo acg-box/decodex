@@ -268,6 +268,39 @@ pub struct ChiefClient {
 	transport: ResetCardClient,
 }
 impl ChiefClient {
+	/// Read the current task's voice catalog and effective preference.
+	pub async fn voice_settings(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefVoiceSettingsResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(35),
+		};
+		let completed = time::timeout(
+			Duration::from_secs(35),
+			transport.query_inner(
+				"chief-voice-settings",
+				QueryPayload::GetChiefVoiceSettings { work_id: work_id.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefVoiceSettings(result) => {
+				if let crate::ChiefVoiceSettingsResult::Available { work_id: actual, .. } = &result
+					&& actual != &work_id
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read connector exposure from the current task source.
 	pub async fn app_tool_exposure(
 		&self,
@@ -1159,8 +1192,11 @@ impl ChiefClient {
 		let restore = matches!(&action, crate::ChiefActionDto::RestoreArchivedThread { .. });
 		let timeout = if refresh
 			|| install
-			|| matches!(&action, crate::ChiefActionDto::SetAppToolExposure { .. })
-		{
+			|| matches!(
+				&action,
+				crate::ChiefActionDto::SetAppToolExposure { .. }
+					| crate::ChiefActionDto::SetVoicePreference { .. }
+			) {
 			Duration::from_secs(65)
 		} else {
 			RESET_CARD_CLIENT_TIMEOUT
@@ -1170,8 +1206,11 @@ impl ChiefClient {
 				profile: self.transport.profile.clone(),
 				timeout: if refresh
 					|| restore || install
-					|| matches!(&action, crate::ChiefActionDto::SetAppToolExposure { .. })
-				{
+					|| matches!(
+						&action,
+						crate::ChiefActionDto::SetAppToolExposure { .. }
+							| crate::ChiefActionDto::SetVoicePreference { .. }
+					) {
 					timeout
 				} else {
 					self.transport.timeout
@@ -1292,6 +1331,7 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		crate::ChiefActionDto::SetTaskModel { work_id, .. } => work_id,
 		crate::ChiefActionDto::SetHookSetting { work_id, .. }
 		| crate::ChiefActionDto::SetAppToolExposure { work_id, .. }
+		| crate::ChiefActionDto::SetVoicePreference { work_id, .. }
 		| crate::ChiefActionDto::SetAppSetting { work_id, .. }
 		| crate::ChiefActionDto::SetSavedAppSetting { work_id, .. } => work_id,
 		crate::ChiefActionDto::Start(start)
@@ -4123,7 +4163,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 81 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 82 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

@@ -323,6 +323,16 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Save a reviewed voice preference for subsequent calls.
+	SetVoicePreference {
+		/// Owning task.
+		work_id: crate::EntityId,
+		/// Current source and configuration identity.
+		review_token: crate::WireText,
+		/// Explicit supported voice selection.
+		voice: crate::WireText,
+	},
+
 	/// Save a reviewed connector exposure preference in native user configuration.
 	SetAppToolExposure {
 		/// Owning task.

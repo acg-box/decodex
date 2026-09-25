@@ -492,6 +492,13 @@ impl ServiceApplication {
 		})
 	}
 
+	async fn query_voice_settings(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefVoiceSettings(match &self.chief {
+			Some(chief) => chief.voice_settings(work).await,
+			None => decodex_protocol::ChiefVoiceSettingsResult::Unavailable,
+		})
+	}
+
 	async fn query_usage_estimate(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::ChiefUsageEstimate(match &self.chief {
 			Some(chief) => chief.usage_estimate(work).await,
@@ -2208,6 +2215,8 @@ impl Application for ServiceApplication {
 				self.query_live_reviewer(work_id.as_str()).await,
 			QueryPayload::GetChiefModelSettings { work_id } =>
 				self.query_model_settings(work_id.as_str()).await,
+			QueryPayload::GetChiefVoiceSettings { work_id } =>
+				self.query_voice_settings(work_id.as_str()).await,
 			QueryPayload::GetChiefUsageEstimate { work_id } =>
 				self.query_usage_estimate(work_id.as_str()).await,
 			QueryPayload::GetChiefInputReceipts { work_id, after } =>
