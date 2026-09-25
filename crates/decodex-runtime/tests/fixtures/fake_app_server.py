@@ -276,6 +276,7 @@ for line in sys.stdin:
                 print(json.dumps({"method": "configWarning", "params": {"summary": f"Fixture warning {index}", "details": None}}), flush=True)
         if mode == "exact-config-warning":
             print(json.dumps({"method": "configWarning", "params": {"summary": 'Ignored "fixture" setting', "details": "first\nsecond", "path": "/private/not-retained"}}), flush=True)
+            print(json.dumps({"method": "warning", "params": {"message": 'Retained "fixture" instructions', "threadId": None, "path": "/private/not-retained"}}), flush=True)
         if mode in ("server-request", "server-request-id-collision"):
             server_request_id = (
                 message["id"] if mode == "server-request-id-collision" else 90_001

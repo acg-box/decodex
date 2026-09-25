@@ -174,6 +174,7 @@ async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 		.await
 		.expect("diagnostics after reopen");
 
+	assert!(events.iter().any(|e| e.payload.contains("/fixture/config.toml:1:24: unclosed array")));
 	assert!(events.iter().all(|e| !e.payload.contains("do-not-retain")));
 	assert!(
 		reopened.list_chief_wake_events("root".into(), 100).await.expect("wake events").is_empty()

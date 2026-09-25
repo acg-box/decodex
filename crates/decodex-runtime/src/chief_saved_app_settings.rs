@@ -38,7 +38,19 @@ where
 		return None;
 	}
 	let cwd = thread["thread"]["cwd"].as_str()?;
-	let native = before.client.saved_app_link_settings(cwd).await.ok()?;
+	let response = before.client.saved_app_link_settings(cwd).await;
+	if source().await.is_some_and(|after| after.key == before.key)
+		&& let Err(error) = &response
+	{
+		crate::native_config_warning::record_settings_error(
+			store,
+			&before,
+			"Saved connection settings could not be read",
+			error,
+		)
+		.await;
+	}
+	let native = response.ok()?;
 	let scope = shared::digest(native.config_file());
 	if !guard.is_live() || source().await.is_none_or(|after| after.key != before.key) {
 		return None;

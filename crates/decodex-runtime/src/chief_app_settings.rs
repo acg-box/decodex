@@ -72,7 +72,19 @@ where
 		return None;
 	}
 	let cwd = native_thread["thread"]["cwd"].as_str()?;
-	let native = before.client.app_link_settings(cwd, connector, link).await.ok()?;
+	let response = before.client.app_link_settings(cwd, connector, link).await;
+	if source().await.is_some_and(|after| after.key == before.key)
+		&& let Err(error) = &response
+	{
+		crate::native_config_warning::record_settings_error(
+			store,
+			&before,
+			"Connection settings could not be read",
+			error,
+		)
+		.await;
+	}
+	let native = response.ok()?;
 	let scope = shared::digest(native.config_file());
 	if source().await.is_none_or(|after| after.key != before.key) {
 		return None;
@@ -240,6 +252,17 @@ where
 				before.client.write_saved_app_link_setting(&review.native, native, g).await,
 		}
 	};
+	if source().await.is_some_and(|after| after.key == before.key)
+		&& let Err(error) = &response
+	{
+		crate::native_config_warning::record_settings_error(
+			store,
+			&before,
+			"Settings write or readback failed",
+			error,
+		)
+		.await;
+	}
 	let (state, version) = match response {
 		Ok(ack) => (if ack.overridden { "overridden" } else { "saved" }, Some(ack.version)),
 		Err(

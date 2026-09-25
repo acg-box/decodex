@@ -4538,6 +4538,13 @@ struct RenderedChiefHistory {
 	next_before: Option<i64>,
 }
 
+#[cfg(test)]
+pub(crate) fn render_chief_history_for_test(
+	events: Vec<decodex_database::ChiefInboxEvent>,
+) -> Vec<decodex_protocol::ChiefHistoryEntryDto> {
+	render_chief_history(events, 0, None).entries
+}
+
 fn render_chief_history(
 	events: Vec<decodex_database::ChiefInboxEvent>,
 	question_bytes: usize,
@@ -4553,6 +4560,7 @@ fn render_chief_history(
 		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap_or_default();
 		let mut completed_message_ids = Vec::new();
 		let (kind, mut text) = match event.event_kind.as_str() {
+			"native_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a warning.").to_owned()),
 			"config_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a configuration warning.").to_owned()),
 			"strict_review_notice" => ("execution_notice", "Codex requested additional safety checks for this turn. Tool calls may take longer; no action is required for this notice.".into()),
 			"activity_started" | "activity_completed" => ("activity", String::new()),
@@ -4606,7 +4614,7 @@ fn render_chief_history(
 							| "activity_completed"
 							| "assistant_message" | "context_compacted"
 							| "strict_review_notice"
-							| "config_warning"
+							| "config_warning" | "native_warning"
 					)
 			}) {
 			text.push_str(if kind == "unsent_input" { "\n\n" } else { "\n\nDisposition: " });
