@@ -1906,7 +1906,13 @@ impl State {
 			&& self.command == ConversationCommandState::OutcomeUnknown
 			&& self.pending_command.is_none()
 			&& self.in_flight_command.is_none()
-		{
+			&& !self.delivery.unconfirmed.iter().any(|command| {
+				matches!(
+					command.payload,
+					CommandPayload::CreateConversation { .. }
+						| CommandPayload::SubmitConversationTurn { .. }
+				)
+			}) {
 			self.command = ConversationCommandState::Idle;
 		}
 	}
@@ -3701,7 +3707,99 @@ pub(crate) mod tests {
 	}
 
 	#[test]
-	fn sent_command_disconnect_requires_readback_before_explicit_retry() {
+	fn unknown_message_stays_blocked_after_reconnect_list_refresh() {
+		let (conversations, server, task) = connected_conversations();
+		conversations.submit("Possibly executed message").unwrap();
+		let original = dispatched_command(&conversations, &server);
+		conversations.session_ended(1);
+		conversations.bind_session(2, server.clone());
+		let query = conversations.try_take_dispatch(2, &server).unwrap().query().unwrap().clone();
+		let reply = QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server.clone(),
+			query_id: query.query_id,
+			payload: QueryResultPayload::Conversations(ConversationListResult::Available(
+				ConversationListPage::new(vec![task], None).unwrap(),
+			)),
+		};
+		assert_eq!(
+			conversations.route_query_result(2, &server, &reply),
+			ConversationRouteOutcome::Fresh
+		);
+		assert_eq!(
+			conversations.ordinary_draft("Possibly executed message").unwrap().unconfirmed,
+			vec![original.clone()]
+		);
+		assert_eq!(conversations.snapshot().command, ConversationCommandState::OutcomeUnknown);
+		assert!(!conversations.snapshot().can_submit);
+		assert_eq!(
+			conversations.submit("Possibly executed message"),
+			Err(ConversationInputError::Busy)
+		);
+		assert!(conversations.check_ordinary_turn(&original));
+		let query = conversations.try_take_dispatch(2, &server).unwrap().query().unwrap().clone();
+		let CommandPayload::SubmitConversationTurn { conversation_id, turn_id, .. } =
+			&original.payload
+		else {
+			panic!("original turn")
+		};
+		let outcome = decodex_protocol::ConversationTurnOutcomeState::NotSubmitted;
+		let reply = QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server.clone(),
+			query_id: query.query_id,
+			payload: QueryResultPayload::ConversationTurnOutcome(
+				decodex_protocol::ConversationTurnOutcomeResult::Observed {
+					conversation_id: conversation_id.clone(),
+					turn_id: turn_id.clone(),
+					outcome,
+				},
+			),
+		};
+		assert_eq!(
+			conversations.route_query_result(2, &server, &reply),
+			ConversationRouteOutcome::Fresh
+		);
+		assert_eq!(
+			conversations.snapshot().command,
+			ConversationCommandState::OutcomeUnknown,
+			"observation alone does not acknowledge the original"
+		);
+		assert_eq!(conversations.acknowledge_ordinary_turn(&original), Some(outcome));
+		assert_eq!(conversations.snapshot().command, ConversationCommandState::Idle);
+		assert!(conversations.submit("Explicit send after confirmed non-submission").is_ok());
+	}
+
+	#[test]
+	fn unknown_creation_is_not_settled_by_an_empty_conversation_list() {
+		let (conversations, server, _) = connected_conversations();
+		conversations.create("Possibly created").unwrap();
+		let original = dispatched_command(&conversations, &server);
+		conversations.session_ended(1);
+		conversations.bind_session(2, server.clone());
+		let query = conversations.try_take_dispatch(2, &server).unwrap().query().unwrap().clone();
+		let reply = QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server.clone(),
+			query_id: query.query_id,
+			payload: QueryResultPayload::Conversations(ConversationListResult::Available(
+				ConversationListPage::new(vec![], None).unwrap(),
+			)),
+		};
+		assert_eq!(
+			conversations.route_query_result(2, &server, &reply),
+			ConversationRouteOutcome::Fresh
+		);
+		assert_eq!(conversations.snapshot().command, ConversationCommandState::OutcomeUnknown);
+		assert_eq!(
+			conversations.ordinary_draft("Possibly created").unwrap().unconfirmed,
+			vec![original]
+		);
+		assert_eq!(conversations.create("Possibly created"), Err(ConversationInputError::Busy));
+	}
+
+	#[test]
+	fn sent_command_disconnect_requires_exact_message_outcome() {
 		let (conversations, server_id, task) = connected_conversations();
 		drop(take_and_mark_command_sent(&conversations, &server_id));
 
@@ -3740,19 +3838,19 @@ pub(crate) mod tests {
 			ConversationRouteOutcome::Fresh
 		);
 		let reconciled = conversations.snapshot();
-		assert_eq!(reconciled.command, ConversationCommandState::Idle);
+		assert_eq!(reconciled.command, ConversationCommandState::OutcomeUnknown);
 		assert_eq!(reconciled.tasks, vec![task.clone()]);
 		assert!(!reconciled.can_submit, "new creation still needs current defaults");
 		assert!(conversations.select(task.conversation_id));
-		assert_eq!(conversations.submit("retry explicitly"), Err(ConversationInputError::NotReady));
+		assert_eq!(conversations.submit("retry explicitly"), Err(ConversationInputError::Busy));
 		conversations.cycle_model();
 		conversations.cycle_reasoning_effort();
 		assert!(conversations.select_service_tier(decodex_protocol::ServiceTier::standard()));
-		assert!(conversations.submit("retry explicitly").is_ok());
+		assert_eq!(conversations.submit("retry explicitly"), Err(ConversationInputError::Busy));
 	}
 
 	#[test]
-	fn send_failure_requires_readback_before_explicit_retry() {
+	fn send_failure_requires_exact_message_outcome() {
 		let (conversations, server_id, task) = connected_conversations();
 		assert!(conversations.submit("possibly accepted").is_ok());
 		let dispatch =
@@ -3790,9 +3888,9 @@ pub(crate) mod tests {
 			conversations.route_query_result(2, &server_id, &result),
 			ConversationRouteOutcome::Fresh
 		);
-		assert_eq!(conversations.snapshot().command, ConversationCommandState::Idle);
+		assert_eq!(conversations.snapshot().command, ConversationCommandState::OutcomeUnknown);
 		assert!(conversations.select(task.conversation_id));
-		assert!(conversations.submit("retry explicitly").is_ok());
+		assert_eq!(conversations.submit("retry explicitly"), Err(ConversationInputError::Busy));
 	}
 
 	#[test]
@@ -3857,7 +3955,7 @@ pub(crate) mod tests {
 				)),
 			},
 		);
-		assert_eq!(conversations.snapshot().command, ConversationCommandState::Idle);
+		assert_eq!(conversations.snapshot().command, ConversationCommandState::OutcomeUnknown);
 		assert!(!conversations.snapshot().last_submission_accepted);
 		assert!(conversations.try_take_dispatch(1, &server_id).is_none());
 	}
