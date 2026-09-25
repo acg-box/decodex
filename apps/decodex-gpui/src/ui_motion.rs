@@ -6,6 +6,28 @@ use gpui::{
 	prelude::*, px,
 };
 
+/// Follow host reduced-motion and VoiceOver preferences without changing configuration.
+pub(crate) fn reduced() -> bool {
+	#[cfg(all(target_os = "macos", not(test)))]
+	{
+		use objc2::{
+			msg_send,
+			rc::Retained,
+			runtime::{AnyClass, AnyObject},
+		};
+		// AppKit owns this process-wide preference; called from UI rendering.
+		unsafe {
+			let workspace: Retained<AnyObject> =
+				msg_send![AnyClass::get(c"NSWorkspace").expect("AppKit"), sharedWorkspace];
+			let reduce_motion: bool = msg_send![&*workspace, accessibilityDisplayShouldReduceMotion];
+			let voice_over: bool = msg_send![&*workspace, isVoiceOverEnabled];
+			reduce_motion || voice_over
+		}
+	}
+	#[cfg(any(not(target_os = "macos"), test))]
+	false
+}
+
 /// Keep animation cadence shared by a workspace and its attached controls.
 pub(crate) fn request_frame(window: &Window, cx: &mut App) {
 	#[cfg(all(target_os = "macos", not(test)))]
@@ -35,6 +57,13 @@ impl Tween {
 	}
 
 	fn sample(&self, now: Instant) -> f32 {
+		self.sample_with_motion(now, reduced())
+	}
+
+	fn sample_with_motion(&self, now: Instant, reduced: bool) -> f32 {
+		if reduced {
+			return self.to;
+		}
 		let t =
 			(now.duration_since(self.started).as_secs_f32() / self.duration.as_secs_f32()).min(1.0);
 		let eased = 1.0 - (1.0 - t).powi(3);
@@ -50,7 +79,7 @@ impl Tween {
 	}
 
 	fn moving(&self, now: Instant) -> bool {
-		self.from != self.to && now.duration_since(self.started) < self.duration
+		!reduced() && self.from != self.to && now.duration_since(self.started) < self.duration
 	}
 }
 
@@ -313,6 +342,18 @@ impl RenderOnce for SwitchKnob {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn reduced_motion_finishes_an_in_progress_transition_immediately() {
+		let mut tween = Tween::new(0.0);
+		let start = Instant::now();
+		tween.target(192.0, start);
+		let middle = start + Duration::from_millis(80);
+		assert!(tween.sample_with_motion(middle, false) < 192.0);
+		assert_eq!(tween.sample_with_motion(middle, true), 192.0);
+		tween.target(0.0, middle);
+		assert_eq!(tween.sample_with_motion(middle, true), 0.0);
+	}
+
 	#[test]
 	fn reversing_a_transition_preserves_current_position_and_settles() {
 		let mut tween = Tween::new(0.0);
