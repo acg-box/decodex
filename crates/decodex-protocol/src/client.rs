@@ -104,6 +104,18 @@ pub struct ClientProfile {
 	expected_server_id: ServerId,
 }
 impl ClientProfile {
+	pub(crate) fn from_local_authority(
+		local_transport: LocalTransportAuthority,
+		expected_server_id: ServerId,
+	) -> Self {
+		Self {
+			profile_name: "retained-account-observation".into(),
+			kind: ProfileKind::Local,
+			local_transport: Some(local_transport),
+			expected_server_id,
+		}
+	}
+
 	/// Load the active or explicitly named profile from the platform default root.
 	pub fn load_default(selected: Option<&str>) -> Result<Self, ClientFailure> {
 		let root = DecodexRoot::platform_default().map_err(map_root_error)?;
@@ -2125,6 +2137,116 @@ impl AccountClient {
 		}
 	}
 
+	/// Read exact-revision recovery information without starting provider work.
+	pub async fn recovery(
+		&self,
+		account_id: EntityId,
+		account_revision: EntityRevision,
+	) -> Result<crate::AccountRecoveryResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let expected = account_id.clone();
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"decodex-account-recovery",
+				QueryPayload::GetAccountRecovery { account_id, account_revision },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::AccountRecovery(result)
+				if result.valid_for(&expected, account_revision) =>
+				Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read one requested notification or the latest receipt for its account and purpose.
+	pub async fn recovery_nudge_status(
+		&self,
+		account_id: EntityId,
+		action: crate::AccountRecoveryAction,
+		operation_key: Option<IdempotencyKey>,
+	) -> Result<crate::AccountRecoveryNudgeResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"decodex-account-notification-status",
+				QueryPayload::GetAccountRecoveryNudge {
+					account_id: account_id.clone(),
+					action,
+					operation_key: operation_key.clone(),
+				},
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let QueryResultPayload::AccountRecoveryNudge(result) = completed.value else {
+			return Err(ClientFailure::ProtocolMalformed);
+		};
+		if let crate::AccountRecoveryNudgeResult::Found(operation) = &result
+			&& (operation.account_id != account_id
+				|| operation.action != action
+				|| operation.account_revision.0 == 0
+				|| operation.account_revision.0 > i64::MAX as u64
+				|| operation.reserved_at_unix_micros <= 0
+				|| operation_key.as_ref().is_some_and(|key| key != &operation.operation_key))
+		{
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		Ok(result)
+	}
+
+	/// Send one explicitly selected notification with a stable durable operation key.
+	/// Uncertain delivery is read back with recovery_nudge_status; never retry with a new key
+	/// automatically.
+	pub async fn send_recovery_nudge(
+		&self,
+		source: crate::AccountRecoveryResult,
+		action: crate::AccountRecoveryAction,
+		operation_key: IdempotencyKey,
+	) -> Result<AccountCommandResponse, ClientFailure> {
+		if !source.allows_nudge(action) {
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		let revision = source.account_revision;
+		self.execute(
+			CommandPayload::SendAccountRecoveryNudge { source: Box::new(source), action },
+			Some(revision),
+			operation_key,
+		)
+		.await
+	}
+
+	/// Prepare one explicitly selected recovery action without sending its effect.
+	pub async fn prepare_recovery(
+		&self,
+		source: crate::AccountRecoveryResult,
+		action: crate::AccountRecoveryAction,
+	) -> Result<crate::AccountRecoveryPreparation, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"decodex-prepare-account-recovery",
+				QueryPayload::PrepareAccountRecovery { source: Box::new(source.clone()), action },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::AccountRecoveryPreparation(result)
+				if result.valid_for(&source, action) =>
+				Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Observe one bounded provider profile independently from Reset Card inventory.
 	pub async fn profile(
 		&self,
@@ -2289,7 +2411,8 @@ impl AccountClient {
 		self.transport.require_local_profile()?;
 		if !matches!(
 			&payload,
-			CommandPayload::EnrollAccountFromSharedCodex { .. }
+			CommandPayload::SendAccountRecoveryNudge { .. }
+				| CommandPayload::EnrollAccountFromSharedCodex { .. }
 				| CommandPayload::ImportAccountCredentialFile { .. }
 				| CommandPayload::SetAccountEnabled { .. }
 				| CommandPayload::LogoutAccount { .. }
@@ -2381,7 +2504,8 @@ impl AccountClient {
 						result.error,
 					) {
 						(CommandOutcome::Succeeded, Some(entity_revision), Some(result), None)
-							if account_result_matches(&payload, entity_revision, &result) =>
+							if account_result_matches(&payload, entity_revision, &result)
+								&& !matches!(&result, ResultPayload::AccountRecoveryNudge { operation_key, .. } if operation_key != &idempotency_key) =>
 							Ok(AccountCommandResponse::Applied {
 								entity_revision,
 								result: Box::new(result),
@@ -2423,6 +2547,11 @@ fn account_result_matches(
 		return false;
 	}
 	match (command, result) {
+		(
+			CommandPayload::SendAccountRecoveryNudge { source, .. },
+			ResultPayload::AccountRecoveryNudge { account_id, .. },
+		) => account_id == &source.account_id && entity_revision == source.account_revision,
+
 		(
 			CommandPayload::EnrollAccountFromSharedCodex { account_id, .. },
 			ResultPayload::AccountChanged { account },
@@ -3102,6 +3231,398 @@ mod tests {
 		response
 	}
 
+	fn notification_source() -> crate::AccountRecoveryResult {
+		crate::AccountRecoveryResult {
+			account_id: EntityId::new("40000000-0000-4000-8000-000000000001")
+				.expect("notification fixture must be valid"),
+			account_revision: EntityRevision(1),
+			observed_at_unix_micros: Some(100),
+			state: crate::AccountRecoveryState::Current(Box::new(crate::AccountRecoveryBanner {
+				banner_type: WireText::new("limit").expect("notification fixture must be valid"),
+				title: WireText::new("Limit").expect("notification fixture must be valid"),
+				description: WireText::new("Description")
+					.expect("notification fixture must be valid"),
+				reset_at: None,
+				model_slug: None,
+				blocked_model_slug: None,
+				fallback_model_slugs: Vec::new(),
+				dismissible: false,
+				actions: vec![crate::AccountRecoveryCta {
+					action: crate::AccountRecoveryAction::NotifyOwner,
+					label: WireText::new("Notify").expect("notification fixture must be valid"),
+				}],
+				request_url: None,
+			})),
+		}
+	}
+
+	async fn notification_command_exchange(mode: &'static str) -> crate::AccountCommandResponse {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.expect("notification fixture must be valid");
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("notification fixture must be valid"),
+		);
+		let task = tokio::spawn(async move {
+			let _temp = temp;
+			let mut socket = tokio_tungstenite::accept_async(
+				listener.accept().await.expect("notification fixture must be valid"),
+			)
+			.await
+			.expect("notification fixture must be valid");
+			let _ = socket.next().await;
+			for message in initial(SERVER_ID) {
+				socket.send(message).await.expect("notification fixture must be valid");
+			}
+			let Message::Text(raw) = socket
+				.next()
+				.await
+				.expect("notification fixture must be valid")
+				.expect("notification fixture must be valid")
+			else {
+				panic!("command")
+			};
+			let ClientMessage::Command(command) =
+				serde_json::from_str(&raw).expect("notification fixture must be valid")
+			else {
+				panic!("command")
+			};
+			assert_eq!(command.idempotency_key.as_str(), "notification-once");
+			assert_eq!(command.expected_revision, Some(EntityRevision(1)));
+			assert!(
+				matches!(&command.payload, crate::CommandPayload::SendAccountRecoveryNudge { source, action: crate::AccountRecoveryAction::NotifyOwner } if **source == notification_source())
+			);
+			if mode != "drop-before-receipt" {
+				if mode != "missing-receipt" {
+					socket
+						.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
+							version: CURRENT_VERSION,
+							server_id: ServerId::new(SERVER_ID)
+								.expect("notification fixture must be valid"),
+							client_command_id: command.client_command_id.clone(),
+							idempotency_key: command.idempotency_key.clone(),
+							disposition: ReceiptDisposition::Executed,
+							original_client_command_id: command.client_command_id.clone(),
+						})))
+						.await
+						.expect("notification fixture must be valid");
+				}
+				if mode != "drop-after-receipt" {
+					socket
+						.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
+							version: CURRENT_VERSION,
+							server_id: ServerId::new(SERVER_ID)
+								.expect("notification fixture must be valid"),
+							client_command_id: command.client_command_id,
+							idempotency_key: command.idempotency_key,
+							outcome: crate::CommandOutcome::Succeeded,
+							entity_revision: Some(EntityRevision(if mode == "wrong-revision" {
+								2
+							} else {
+								1
+							})),
+							payload: Some(ResultPayload::AccountRecoveryNudge {
+								account_id: EntityId::new(if mode == "wrong-account" {
+									"40000000-0000-4000-8000-000000000002"
+								} else {
+									"40000000-0000-4000-8000-000000000001"
+								})
+								.expect("notification fixture must be valid"),
+								operation_key: IdempotencyKey::new(if mode == "wrong-key" {
+									"other-notification"
+								} else {
+									"notification-once"
+								})
+								.expect("notification fixture must be valid"),
+								status: crate::AccountRecoveryNudgeStatus::Sent,
+							}),
+							error: None,
+						})))
+						.await
+						.expect("notification fixture must be valid");
+				}
+			}
+			drop(socket);
+			assert!(
+				tokio::time::timeout(Duration::from_millis(30), listener.accept()).await.is_err(),
+				"notification transport must not reconnect to retry"
+			);
+			listener.cleanup().expect("notification fixture must be valid");
+		});
+		let result = AccountClient::new(profile)
+			.send_recovery_nudge(
+				notification_source(),
+				crate::AccountRecoveryAction::NotifyOwner,
+				IdempotencyKey::new("notification-once")
+					.expect("notification fixture must be valid"),
+			)
+			.await
+			.expect("notification fixture must be valid");
+		task.await.expect("notification fixture must be valid");
+		result
+	}
+
+	#[tokio::test]
+	async fn notification_command_requires_bound_receipt_and_never_retries_uncertainty() {
+		for mode in [
+			"good",
+			"wrong-key",
+			"wrong-account",
+			"wrong-revision",
+			"missing-receipt",
+			"drop-before-receipt",
+			"drop-after-receipt",
+		] {
+			let response = notification_command_exchange(mode).await;
+			if mode == "good" {
+				assert!(
+					matches!(response, crate::AccountCommandResponse::Applied { result, .. } if matches!(*result, ResultPayload::AccountRecoveryNudge { status: crate::AccountRecoveryNudgeStatus::Sent, .. }))
+				);
+			} else {
+				assert!(
+					matches!(response, crate::AccountCommandResponse::PotentiallyDispatched { .. }),
+					"{mode}"
+				);
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn notification_status_transport_rejects_other_account_purpose_or_key() {
+		use crate::{
+			AccountRecoveryAction as A, AccountRecoveryNudgeOperation, AccountRecoveryNudgeResult,
+			AccountRecoveryNudgeStatus,
+		};
+		let expected_account = "40000000-0000-4000-8000-000000000001";
+		for (account, action, key, accepted) in [
+			(expected_account, A::NotifyOwner, "requested-key", true),
+			("40000000-0000-4000-8000-000000000002", A::NotifyOwner, "requested-key", false),
+			(expected_account, A::RequestIncrease, "requested-key", false),
+			(expected_account, A::NotifyOwner, "foreign-key", false),
+		] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let server = tokio::spawn(async move {
+				let _temp = temp;
+				let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap())
+					.await
+					.unwrap();
+				let _ = socket.next().await;
+				for frame in initial(SERVER_ID) {
+					socket.send(frame).await.unwrap();
+				}
+				let Message::Text(raw) = socket.next().await.unwrap().unwrap() else {
+					panic!("query")
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&raw).unwrap() else {
+					panic!("query")
+				};
+				assert!(matches!(
+					query.payload,
+					crate::QueryPayload::GetAccountRecoveryNudge {
+						action: A::NotifyOwner,
+						operation_key: Some(_),
+						..
+					}
+				));
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::AccountRecoveryNudge(
+							AccountRecoveryNudgeResult::Found(AccountRecoveryNudgeOperation {
+								account_id: EntityId::new(account).unwrap(),
+								account_revision: EntityRevision(1),
+								action,
+								operation_key: IdempotencyKey::new(key).unwrap(),
+								reserved_at_unix_micros: 100,
+								outcome: AccountRecoveryNudgeStatus::Uncertain,
+							}),
+						),
+					})))
+					.await
+					.unwrap();
+				drop(socket);
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = AccountClient::new(profile)
+				.recovery_nudge_status(
+					EntityId::new(expected_account).unwrap(),
+					A::NotifyOwner,
+					Some(IdempotencyKey::new("requested-key").unwrap()),
+				)
+				.await;
+			assert_eq!(result.is_ok(), accepted);
+			server.await.unwrap();
+		}
+	}
+
+	#[tokio::test]
+	async fn independent_observation_wait_does_not_block_retained_queries() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let config = profile.retained_session_config().unwrap();
+		let (started, ready) = tokio::sync::oneshot::channel();
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let mut main =
+				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
+			let _ = main.next().await;
+			for response in initial(SERVER_ID) {
+				let Message::Text(raw) = response else { unreachable!() };
+				let mut message: ServerMessage = serde_json::from_str(&raw).unwrap();
+				if let ServerMessage::Welcome(welcome) = &mut message {
+					welcome.instance_id = Some(
+						crate::ServerInstanceId::new("50000000-0000-4000-8000-000000000001")
+							.unwrap(),
+					);
+				}
+				main.send(typed(message)).await.unwrap();
+			}
+			let mut wait =
+				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
+			let _ = wait.next().await;
+			for response in initial(SERVER_ID) {
+				wait.send(response).await.unwrap();
+			}
+			let Message::Text(request) = wait.next().await.unwrap().unwrap() else {
+				panic!("wait query")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("wait query")
+			};
+			assert!(matches!(
+				query.payload,
+				crate::QueryPayload::WaitForAccountObservation { after_generation: 9, .. }
+			));
+			started.send(()).unwrap();
+			// Deliberately leave this socket unanswered while serving the retained connection.
+			let Message::Text(request) = main.next().await.unwrap().unwrap() else {
+				panic!("main query")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("main query")
+			};
+			assert!(matches!(query.payload, crate::QueryPayload::GetAccountRecovery { .. }));
+			main.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: ServerId::new(SERVER_ID).unwrap(),
+				query_id: query.query_id,
+				payload: QueryResultPayload::AccountRecovery(crate::AccountRecoveryResult {
+					account_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+					account_revision: EntityRevision(1),
+					observed_at_unix_micros: None,
+					state: crate::AccountRecoveryState::Unavailable,
+				}),
+			})))
+			.await
+			.unwrap();
+			let closed = tokio::time::timeout(Duration::from_secs(2), wait.next()).await.unwrap();
+			assert!(matches!(closed, None | Some(Err(_)) | Some(Ok(Message::Close(_)))));
+			drop(main);
+			listener.cleanup().unwrap();
+		});
+		let mut main = crate::RetainedSession::connect(
+			config.clone(),
+			None,
+			crate::SessionCancellation::new(),
+		)
+		.await
+		.unwrap();
+		let crate::SessionDelivery::Snapshot { confirmation, .. } = main.next().await.unwrap()
+		else {
+			panic!("snapshot")
+		};
+		main.confirm_applied(confirmation).unwrap();
+		let wait =
+			tokio::spawn(async move { config.account_client().wait_for_observation(9).await });
+		tokio::time::timeout(Duration::from_secs(2), ready).await.unwrap().unwrap();
+		let query_id = QueryId::new("main-remains-responsive").unwrap();
+		main.send_query(crate::QueryEnvelope {
+			version: CURRENT_VERSION,
+			query_id: query_id.clone(),
+			payload: crate::QueryPayload::GetAccountRecovery {
+				account_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+				account_revision: EntityRevision(1),
+			},
+		})
+		.await
+		.unwrap();
+		let result =
+			tokio::time::timeout(Duration::from_secs(2), main.next()).await.unwrap().unwrap();
+		assert!(
+			matches!(result, crate::SessionDelivery::QueryResult(result) if result.query_id == query_id)
+		);
+		assert!(!wait.is_finished());
+		wait.abort();
+		assert!(wait.await.unwrap_err().is_cancelled());
+		server.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn account_recovery_transport_rejects_wrong_account_and_revision() {
+		for (account, revision, accepted) in [
+			("40000000-0000-4000-8000-000000000001", 1, true),
+			("40000000-0000-4000-8000-000000000002", 1, false),
+			("40000000-0000-4000-8000-000000000001", 2, false),
+		] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let stream = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let _ = socket.next().await;
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+					panic!("query")
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+					panic!("query")
+				};
+				assert!(matches!(
+					query.payload,
+					crate::QueryPayload::GetAccountRecovery {
+						account_revision: crate::EntityRevision(1),
+						..
+					}
+				));
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::AccountRecovery(
+							crate::AccountRecoveryResult {
+								account_id: EntityId::new(account).unwrap(),
+								account_revision: crate::EntityRevision(revision),
+								observed_at_unix_micros: Some(100),
+								state: crate::AccountRecoveryState::Absent,
+							},
+						),
+					})))
+					.await
+					.unwrap();
+				drop(socket);
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = AccountClient::new(profile)
+				.recovery(
+					EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+					crate::EntityRevision(1),
+				)
+				.await;
+			assert_eq!(result.is_ok(), accepted);
+			task.await.unwrap();
+		}
+	}
+
 	#[tokio::test]
 	async fn chief_request_transport_admits_mcp_forms_but_rejects_wrong_event_and_unknown_method() {
 		for (method, returned, accepted) in [
@@ -3457,7 +3978,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 73 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 74 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

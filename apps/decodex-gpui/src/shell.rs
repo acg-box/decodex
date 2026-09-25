@@ -4,6 +4,7 @@
 #[path = "shell_native_status.rs"]
 mod native_status;
 #[path = "quota_meter.rs"] mod quota_meter;
+#[path = "shell_recovery_actions.rs"] mod recovery_actions;
 #[path = "shell_reset_cards.rs"] mod reset_cards;
 #[path = "shell_status.rs"] mod status;
 use crate::ui_motion::SmoothControl;
@@ -510,6 +511,7 @@ pub(crate) struct Shell {
 	ordinary_owner: Option<EntityId>,
 	ordinary_syncing: bool,
 	reset_cards: reset_cards::ResetCardsPanel,
+	recovery_actions: recovery_actions::RecoveryActions,
 	settings_window: Option<WindowHandle<SettingsWindow>>,
 	settings_selected: Destination,
 	selected: Destination,
@@ -662,6 +664,7 @@ impl Shell {
 			opened_account_login_url: None,
 			pending_account_logout: None,
 			reset_cards: reset_cards::ResetCardsPanel::default(),
+			recovery_actions: recovery_actions::RecoveryActions::default(),
 			account_profile_controller,
 			account_profile,
 			account_emails: Default::default(),
@@ -1382,7 +1385,10 @@ impl Shell {
 	}
 
 	fn show_account_profile(&mut self, account_id: EntityId, cx: &mut Context<Self>) {
-		self.account_profile_controller.select(account_id);
+		if let Some(account) = self.accounts.accounts.iter().find(|a| a.account_id == account_id) {
+			self.account_profile_controller
+				.select_at_revision(account_id, account.account_revision);
+		}
 		self.account_profile = self.account_profile_controller.snapshot();
 		cx.notify();
 	}
@@ -2014,7 +2020,17 @@ fn publish_views(
 	let _ = shell.update(cx, |shell, cx| {
 		shell.poll_account_login(cx);
 		shell.poll_reset_cards(cx);
+		shell.poll_recovery_action(cx);
 		let accounts = shell.accounts_controller.snapshot();
+		if let Some(selected) = &shell.account_profile.selected {
+			if let Some(account) = accounts.accounts.iter().find(|a| &a.account_id == selected) {
+				shell
+					.account_profile_controller
+					.select_at_revision(account.account_id.clone(), account.account_revision);
+			} else {
+				shell.account_profile_controller.close();
+			}
+		}
 		let account_profile = shell.account_profile_controller.snapshot();
 		let desktop_settings = shell.desktop_settings.snapshot();
 		let health = shell.health_query.snapshot();
@@ -3072,6 +3088,8 @@ fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						),
 				)
 				.child(div().text_size(px(11.0)).text_color(rgb(WB_TEXT_MUTED)).child(status))
+				.children(account_recovery_copy(shell, cx))
+				.child(recovery_actions::status_panel(shell, cx))
 				.child(div().flex().flex_wrap().gap_2().children(facts.into_iter().map(|fact| {
 					div()
 						.px_2()
@@ -3107,6 +3125,59 @@ fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				),
 		)
 		.into_any_element()
+}
+
+fn account_recovery_copy(shell: &Shell, cx: &mut Context<Shell>) -> Option<AnyElement> {
+	use decodex_protocol::AccountRecoveryState;
+	let result = shell.account_profile.recovery.as_ref()?;
+	let (banner, stale) = match &result.state {
+		AccountRecoveryState::Current(banner) => (banner, false),
+		AccountRecoveryState::Stale(banner) => (banner, true),
+		_ => return None,
+	};
+	Some(
+		div()
+			.id("account-recovery-copy")
+			.flex()
+			.flex_col()
+			.gap_2()
+			.p_2()
+			.rounded(px(5.0))
+			.bg(rgba(0xffffff08))
+			.text_size(px(12.0))
+			.text_color(rgb(WB_TEXT_MUTED))
+			.child(div().text_color(rgb(WB_AMBER)).child(crate::account_profile::recovery_copy(
+				banner.title.as_str(),
+				banner.reset_at,
+			)))
+			.child(crate::account_profile::recovery_copy(
+				banner.description.as_str(),
+				banner.reset_at,
+			))
+			.children(
+				banner
+					.blocked_model_slug
+					.as_ref()
+					.map(|model| div().child(format!("Affected model · {}", model.as_str()))),
+			)
+			.when(stale, |panel| {
+				panel.child("This notice is out of date. Refresh account details.")
+			})
+			.child(recovery_actions::buttons(shell, result, cx))
+			.when(!stale && banner.dismissible, |panel| {
+				let expected = result.clone();
+				panel.child(
+					account_login_button("dismiss-account-notice", "Dismiss", true)
+						.debug_selector(|| "dismiss-account-notice".into())
+						.on_click(cx.listener(move |shell, _, _, cx| {
+							shell.account_profile_controller.dismiss_recovery(&expected);
+							shell.account_profile = shell.account_profile_controller.snapshot();
+							cx.notify();
+						})),
+				)
+			})
+			.into_any_element(),
+	)
 }
 
 // Match native account labels; preserve unknown provider values and stored SKU identity.
@@ -3163,14 +3234,15 @@ const fn account_profile_load_label(load: AccountProfileLoadState) -> &'static s
 }
 
 fn account_login_button(
-	id: &'static str,
-	label: &'static str,
+	id: impl Into<gpui::ElementId>,
+	label: impl Into<SharedString>,
 	enabled: bool,
 ) -> gpui::Stateful<gpui::Div> {
+	let label = label.into();
 	div()
 		.id(id)
 		.role(Role::Button)
-		.aria_label(label)
+		.aria_label(label.clone())
 		.h(px(27.0))
 		.px_3()
 		.flex()

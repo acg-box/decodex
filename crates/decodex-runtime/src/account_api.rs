@@ -58,6 +58,8 @@ pub(crate) struct AccountApiInventory {
 	pub(crate) account_revision: i64,
 	pub(crate) ordinary_usage_allowed: Option<bool>,
 	pub(crate) conditions: decodex_core::AccountUsageConditions,
+	pub(crate) banner: decodex_codex::AccountApiBannerState,
+	pub(crate) recovery_context: Option<decodex_codex::AccountApiRecoveryContext>,
 	pub(crate) quota_windows: [AccountApiQuotaWindow; 2],
 	pub(crate) reported_available_count: Option<u64>,
 	pub(crate) details_complete: bool,
@@ -237,7 +239,7 @@ impl AccountApiRuntime {
 		credential: &AccountApiCredential,
 		usage: AccountApiUsage,
 	) -> Result<AccountApiInventory, AccountApiRuntimeError> {
-		let (ordinary_usage_allowed, conditions) = credential
+		let (ordinary_usage_allowed, conditions, banner, recovery_context) = credential
 			.stored
 			.bundle()
 			.id_token()
@@ -247,6 +249,8 @@ impl AccountApiRuntime {
 				Some((
 					usage.ordinary_usage_allowed_for(account_id, &user_id),
 					usage.conditions_for(account_id, &user_id),
+					usage.banner_for(account_id, &user_id),
+					usage.recovery_context_for(account_id, &user_id),
 				))
 			})
 			.unwrap_or_default();
@@ -255,6 +259,8 @@ impl AccountApiRuntime {
 				account_revision: credential.account_revision,
 				ordinary_usage_allowed,
 				conditions,
+				banner: banner.clone(),
+				recovery_context: recovery_context.clone(),
 				quota_windows: usage.quota_windows,
 				reported_available_count: None,
 				details_complete: false,
@@ -266,6 +272,8 @@ impl AccountApiRuntime {
 				account_revision: credential.account_revision,
 				ordinary_usage_allowed,
 				conditions,
+				banner: banner.clone(),
+				recovery_context: recovery_context.clone(),
 				quota_windows: usage.quota_windows,
 				reported_available_count: Some(0),
 				details_complete: true,
@@ -287,6 +295,8 @@ impl AccountApiRuntime {
 					account_revision: credential.account_revision,
 					ordinary_usage_allowed,
 					conditions,
+					banner: banner.clone(),
+					recovery_context: recovery_context.clone(),
 					quota_windows: usage.quota_windows,
 					reported_available_count: Some(reported_available_count),
 					details_complete: true,
@@ -301,6 +311,8 @@ impl AccountApiRuntime {
 				account_revision: credential.account_revision,
 				ordinary_usage_allowed,
 				conditions,
+				banner: banner.clone(),
+				recovery_context: recovery_context.clone(),
 				quota_windows: usage.quota_windows,
 				reported_available_count: Some(reported_available_count),
 				details_complete: false,

@@ -213,6 +213,9 @@ enum SessionStep<C> {
 	Delivery(Box<Result<Delivery<C>, RetainedSessionFailure>>),
 	Account(AccountDispatch),
 	AccountProfile(QueryEnvelope),
+	AccountObservation(
+		(QueryEnvelope, Result<decodex_protocol::AccountObservationSignal, ClientFailure>),
+	),
 	DesktopSettings(DesktopSettingsDispatch),
 	Health(HealthDispatch),
 	History(HistoryDispatch),
@@ -580,6 +583,7 @@ impl ClientLifecycle {
 	where
 		I: LifecycleIo,
 	{
+		let mut observation: Option<account_observation::Wait> = None;
 		loop {
 			let accounts = self.accounts.clone();
 			let account_profile = self.account_profile.clone();
@@ -590,6 +594,7 @@ impl ClientLifecycle {
 			let server_id = self.server_id.clone();
 			let step = tokio::select! {
 				delivery = io.next() => SessionStep::Delivery(Box::new(delivery)),
+				result = account_observation::poll(&mut observation) => SessionStep::AccountObservation(result),
 				dispatch = accounts.next_dispatch(generation, &server_id),
 					if !requires_snapshot => SessionStep::Account(dispatch),
 				dispatch = account_profile.next_dispatch(generation, &server_id),
@@ -636,7 +641,24 @@ impl ClientLifecycle {
 						return failure;
 					}
 				},
+				SessionStep::AccountObservation((query, result)) => {
+					observation = None;
+					self.account_profile.finish_observation(
+						generation,
+						&self.server_id,
+						query,
+						result,
+					);
+				},
 				SessionStep::AccountProfile(query) => {
+					if matches!(
+						query.payload,
+						decodex_protocol::QueryPayload::WaitForAccountObservation { .. }
+					) {
+						observation =
+							Some(account_observation::start(self.config.account_client(), query));
+						continue;
+					}
 					if let Err(failure) = io.send_query(query).await {
 						return failure;
 					}
@@ -723,6 +745,7 @@ impl ClientLifecycle {
 				}
 				self.conversations.apply_event(&conversation_event);
 				self.accounts.apply_event(&conversation_event);
+				self.account_profile.apply_event(&conversation_event);
 				self.desktop_settings.apply_event(&conversation_event);
 				let checkpoint = match io.confirm_applied(confirmation) {
 					Ok(checkpoint) => checkpoint,
@@ -1317,3 +1340,5 @@ fn next_cursor(cursor: Cursor) -> Option<Cursor> {
 #[cfg(test)]
 #[path = "client_lifecycle/tests.rs"]
 mod tests;
+
+#[path = "account_observation_wait.rs"] mod account_observation;

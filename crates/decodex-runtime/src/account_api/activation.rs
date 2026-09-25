@@ -227,6 +227,8 @@ mod tests {
 	fn ordinary_denial_blocks_activation_even_after_the_displayed_reset() {
 		let usage = decodex_codex::decode_account_api_usage(br#"{"rate_limit":{"primary_window":{"used_percent":0,"limit_window_seconds":604800,"reset_at":1800000000}}}"#).unwrap();
 		let mut inventory = super::AccountApiInventory {
+			banner: Default::default(),
+			recovery_context: None,
 			account_revision: 1,
 			ordinary_usage_allowed: Some(false),
 			conditions: Default::default(),

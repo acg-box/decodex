@@ -29,16 +29,20 @@ mod response_usage;
 mod usage;
 
 pub use response_usage::{ResponseUsage, ResponseUsageMetadata, decode_response_usage};
+mod account_api_banner;
+pub use account_api_banner::{
+	AccountApiBanner, AccountApiBannerAction, AccountApiBannerCta, AccountApiBannerState,
+};
 pub use usage::{ThreadTokenUsage, TokenUsageBreakdown};
 
 pub use self::{
 	account_api::{
 		AccountApiConsumeOutcome, AccountApiDailyUsage, AccountApiProfile, AccountApiProtocolError,
-		AccountApiQuotaWindow, AccountApiResetCredit, AccountApiResetCredits, AccountApiUsage,
-		ExactResetCreditId, MAX_ACCOUNT_API_BODY_BYTES, MAX_EXACT_RESET_CREDIT_ID_BYTES,
-		MAX_RESET_CARD_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARDS_PER_INVENTORY,
-		ResetCardIdempotencyKey, decode_account_api_consume, decode_account_api_profile,
-		decode_account_api_reset_credits, decode_account_api_usage,
+		AccountApiQuotaWindow, AccountApiRecoveryContext, AccountApiResetCredit,
+		AccountApiResetCredits, AccountApiUsage, ExactResetCreditId, MAX_ACCOUNT_API_BODY_BYTES,
+		MAX_EXACT_RESET_CREDIT_ID_BYTES, MAX_RESET_CARD_IDEMPOTENCY_KEY_BYTES,
+		MAX_RESET_CARDS_PER_INVENTORY, ResetCardIdempotencyKey, decode_account_api_consume,
+		decode_account_api_profile, decode_account_api_reset_credits, decode_account_api_usage,
 	},
 	capability::{
 		Capability, CapabilityCache, CapabilityContradiction, CapabilityProfile, CapabilityState,

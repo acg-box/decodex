@@ -103,6 +103,10 @@ pub struct CodexAccountCapabilityAttestation {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AccountCommandKind {
+	/// Non-idempotent native notification; an unfinished claim is never reassigned.
+	NotifyWorkspaceOwner,
+	/// Request a workspace usage-limit increase without replay after an uncertain send.
+	RequestWorkspaceUsageIncrease,
 	Enroll,
 	Import,
 	SetEnabled,
@@ -117,6 +121,8 @@ pub enum AccountCommandKind {
 impl AccountCommandKind {
 	const fn as_str(self) -> &'static str {
 		match self {
+			Self::NotifyWorkspaceOwner => "notify_workspace_owner",
+			Self::RequestWorkspaceUsageIncrease => "request_workspace_usage_increase",
 			Self::Enroll => "enroll_account",
 			Self::Import => "import_account_credential_file",
 			Self::SetEnabled => "set_account_enabled",
@@ -196,6 +202,14 @@ impl SqliteStore {
 		if entity_id.is_empty() || entity_id.len() > 256 || entity_id.chars().any(char::is_control)
 		{
 			return Err(StoreError::InvalidInput("account command entity identity is invalid"));
+		}
+		if expected_revision.is_none()
+			&& matches!(
+				kind,
+				AccountCommandKind::NotifyWorkspaceOwner
+					| AccountCommandKind::RequestWorkspaceUsageIncrease
+			) {
+			return Err(StoreError::InvalidInput("account notification revision is required"));
 		}
 		if expected_revision.is_some_and(|revision| revision < 1) {
 			return Err(StoreError::InvalidInput("account command revision must be positive"));
@@ -923,6 +937,18 @@ fn reserve_command_sync(
 				serde_json::from_str(&response).map_err(|_| incompatible("command response"))?;
 			transaction.commit().map_err(sql_error)?;
 			return Ok(AccountCommandReceiptClaim::Replayed(response));
+		}
+		if matches!(
+			kind,
+			AccountCommandKind::NotifyWorkspaceOwner
+				| AccountCommandKind::RequestWorkspaceUsageIncrease
+		) {
+			// Native notification has no idempotency parameter. A crashed or timed-out
+			// attempt may already have sent, including after this lease expired.
+			transaction.commit().map_err(sql_error)?;
+			return Ok(AccountCommandReceiptClaim::Pending(
+				serde_json::json!({"status":"uncertain"}),
+			));
 		}
 		if expires.is_some_and(|expires| expires > now) {
 			return Err(StoreError::OwnershipLost("command receipt claim is active"));
@@ -2805,5 +2831,199 @@ mod optional_quota_tests {
 			assert!(matches!(quota_observation_sync(connection,&account,300)?.disposition,AccountQuotaDisposition::Current(fact) if fact.used_percent==7));
 			Ok(())
 		}).await.expect("current readback");
+	}
+}
+
+/// One durable account notification receipt; absence of a response means uncertain delivery.
+pub struct AccountNudgeReceipt {
+	pub operation_key: String,
+	pub account_revision: i64,
+	pub reserved_at_unix_micros: i64,
+	pub response: Option<Value>,
+}
+impl SqliteStore {
+	pub async fn read_account_nudge_receipt(
+		&self,
+		account_id: &AccountId,
+		kind: AccountCommandKind,
+		operation_key: Option<&str>,
+	) -> Result<Option<AccountNudgeReceipt>, StoreError> {
+		if !matches!(
+			kind,
+			AccountCommandKind::NotifyWorkspaceOwner
+				| AccountCommandKind::RequestWorkspaceUsageIncrease
+		) {
+			return Err(StoreError::InvalidInput("invalid account notification kind"));
+		}
+		let account_id = account_id.as_str().to_owned();
+		let operation_key = operation_key.map(str::to_owned);
+		self.run(move |connection| {
+			let row = connection.query_row("SELECT idempotency_key,expected_revision,reserved_at_micros,response_json FROM command_receipts WHERE protocol=?1 AND operation=?2 AND entity_id=?3 AND (?4 IS NULL OR idempotency_key=?4) ORDER BY reserved_at_micros DESC,idempotency_key DESC LIMIT 1", params![ACCOUNT_COMMAND_PROTOCOL,kind.as_str(),account_id,operation_key], |row| Ok((row.get::<_,String>(0)?,row.get::<_,i64>(1)?,row.get::<_,i64>(2)?,row.get::<_,Option<String>>(3)?))).optional().map_err(sql_error)?;
+			row.map(|(operation_key,account_revision,reserved_at_unix_micros,response)| Ok(AccountNudgeReceipt { operation_key, account_revision, reserved_at_unix_micros, response: response.map(|s| serde_json::from_str(&s).map_err(|_| incompatible("account notification receipt"))).transpose()? })).transpose()
+		}).await
+	}
+}
+
+#[cfg(test)]
+mod nudge_receipt_tests {
+	use super::*;
+	#[tokio::test]
+	async fn native_nudge_claim_cannot_be_reassigned_after_restart_or_expiry() {
+		let temp = tempfile::tempdir().unwrap();
+		let path = temp.path().join("state.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		let request = CommandIdentity::new("nudge-once", b"exact-account-and-credit-type").unwrap();
+		let account = "10000000-0000-4000-8000-000000000001";
+		let claim = store
+			.reserve_account_command(
+				&request,
+				AccountCommandKind::NotifyWorkspaceOwner,
+				account,
+				Some(1),
+			)
+			.await
+			.unwrap();
+		assert!(matches!(claim, AccountCommandReceiptClaim::Owned(_)));
+		assert!(
+			matches!(store.reserve_account_command(&request, AccountCommandKind::NotifyWorkspaceOwner, account, Some(1)).await.unwrap(), AccountCommandReceiptClaim::Pending(value) if value == serde_json::json!({"status":"uncertain"}))
+		);
+		store.run(|connection| {
+			connection.execute("UPDATE command_receipts SET reserved_at_micros=1,claim_expires_at_micros=2 WHERE idempotency_key='nudge-once'", []).map_err(sql_error)?;
+			Ok(())
+		}).await.unwrap();
+		drop(store);
+		let store = SqliteStore::open_test(&path).unwrap();
+		assert!(
+			matches!(store.reserve_account_command(&request, AccountCommandKind::NotifyWorkspaceOwner, account, Some(1)).await.unwrap(), AccountCommandReceiptClaim::Pending(value) if value == serde_json::json!({"status":"uncertain"}))
+		);
+		let different = CommandIdentity::new("nudge-once", b"different-credit-type").unwrap();
+		assert!(matches!(
+			store
+				.reserve_account_command(
+					&different,
+					AccountCommandKind::NotifyWorkspaceOwner,
+					account,
+					Some(1)
+				)
+				.await,
+			Err(StoreError::IdempotencyConflict)
+		));
+	}
+	#[tokio::test]
+	async fn concurrent_notification_clients_cannot_both_acquire_send_authority() {
+		let temp = tempfile::tempdir().unwrap();
+		let path = temp.path().join("state.sqlite3");
+		let first = SqliteStore::open_test(&path).unwrap();
+		let second = SqliteStore::open_test(&path).unwrap();
+		let request = CommandIdentity::new("shared-semantic-key", b"same-notification").unwrap();
+		let account = "10000000-0000-4000-8000-000000000001";
+		let (a, b) = tokio::join!(
+			first.reserve_account_command(
+				&request,
+				AccountCommandKind::NotifyWorkspaceOwner,
+				account,
+				Some(1)
+			),
+			second.reserve_account_command(
+				&request,
+				AccountCommandKind::NotifyWorkspaceOwner,
+				account,
+				Some(1)
+			),
+		);
+		let claims = [a.unwrap(), b.unwrap()];
+		assert_eq!(
+			claims
+				.iter()
+				.filter(|claim| matches!(claim, AccountCommandReceiptClaim::Owned(_)))
+				.count(),
+			1
+		);
+		assert_eq!(
+			claims
+				.iter()
+				.filter(|claim| matches!(claim, AccountCommandReceiptClaim::Pending(_)))
+				.count(),
+			1
+		);
+	}
+
+	#[tokio::test]
+	async fn nudge_readback_keeps_account_purpose_and_key_boundaries() {
+		let temp = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&temp.path().join("state.sqlite3")).unwrap();
+		let account = AccountId::new("10000000-0000-4000-8000-000000000001").unwrap();
+		let other = AccountId::new("10000000-0000-4000-8000-000000000002").unwrap();
+		let request = CommandIdentity::new("usage-increase", b"exact-usage-increase").unwrap();
+		let kind = AccountCommandKind::RequestWorkspaceUsageIncrease;
+		let AccountCommandReceiptClaim::Owned(lease) =
+			store.reserve_account_command(&request, kind, account.as_str(), Some(2)).await.unwrap()
+		else {
+			panic!("owned")
+		};
+		let pending =
+			store.read_account_nudge_receipt(&account, kind, None).await.unwrap().unwrap();
+		assert_eq!(pending.operation_key, "usage-increase");
+		assert_eq!(pending.account_revision, 2);
+		assert!(pending.response.is_none());
+		assert!(store.read_account_nudge_receipt(&other, kind, None).await.unwrap().is_none());
+		assert!(
+			store
+				.read_account_nudge_receipt(
+					&account,
+					AccountCommandKind::NotifyWorkspaceOwner,
+					None
+				)
+				.await
+				.unwrap()
+				.is_none()
+		);
+		assert!(
+			store
+				.read_account_nudge_receipt(&account, kind, Some("another-key"))
+				.await
+				.unwrap()
+				.is_none()
+		);
+		assert!(matches!(
+			store.reserve_account_command(&request, kind, account.as_str(), Some(2)).await.unwrap(),
+			AccountCommandReceiptClaim::Pending(_)
+		));
+		store
+			.complete_account_command(lease, &serde_json::json!({"status":"cooldown_active"}))
+			.await
+			.unwrap();
+		let completed = store
+			.read_account_nudge_receipt(&account, kind, Some("usage-increase"))
+			.await
+			.unwrap()
+			.unwrap();
+		assert_eq!(completed.response, Some(serde_json::json!({"status":"cooldown_active"})));
+	}
+
+	#[tokio::test]
+	async fn completed_native_nudge_replays_the_recorded_result() {
+		let temp = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&temp.path().join("state.sqlite3")).unwrap();
+		let request =
+			CommandIdentity::new("nudge-confirmed", b"exact-account-and-credit-type").unwrap();
+		let account = "10000000-0000-4000-8000-000000000001";
+		let AccountCommandReceiptClaim::Owned(lease) = store
+			.reserve_account_command(
+				&request,
+				AccountCommandKind::NotifyWorkspaceOwner,
+				account,
+				Some(1),
+			)
+			.await
+			.unwrap()
+		else {
+			panic!("owned")
+		};
+		let response = serde_json::json!({"status":"sent"});
+		store.complete_account_command(lease, &response).await.unwrap();
+		assert!(
+			matches!(store.reserve_account_command(&request, AccountCommandKind::NotifyWorkspaceOwner, account, Some(1)).await.unwrap(), AccountCommandReceiptClaim::Replayed(value) if value == response)
+		);
 	}
 }

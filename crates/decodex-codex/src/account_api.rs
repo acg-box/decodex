@@ -128,11 +128,46 @@ pub struct AccountApiUsage {
 	pub reported_available_count: Option<u64>,
 	ordinary_usage_allowed: Option<bool>,
 	conditions: AccountUsageConditions,
+	banner: crate::AccountApiBannerState,
+	plan_type: Option<String>,
 	account_id: Option<String>,
 	user_id: Option<String>,
 }
 
+/// Identity-matched usage context for resolving backend recovery destinations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountApiRecoveryContext {
+	/// Backend workspace/account identity; never the local Decodex account UUID.
+	pub provider_account_id: String,
+	/// Fresh usage-response plan. Missing or unknown values do not imply a personal plan.
+	pub plan_type: Option<String>,
+}
+
 impl AccountApiUsage {
+	/// Return action context only when both outer identities match the authenticated source.
+	pub fn recovery_context_for(
+		&self,
+		account_id: &str,
+		user_id: &str,
+	) -> Option<AccountApiRecoveryContext> {
+		(self.account_id.as_deref() == Some(account_id) && self.user_id.as_deref() == Some(user_id))
+			.then(|| AccountApiRecoveryContext {
+				provider_account_id: account_id.to_owned(),
+				plan_type: self.plan_type.clone(),
+			})
+	}
+
+	/// Return banner presence and model scope only for the exact authenticated account and user.
+	pub fn banner_for(&self, account_id: &str, user_id: &str) -> crate::AccountApiBannerState {
+		if self.account_id.as_deref() == Some(account_id)
+			&& self.user_id.as_deref() == Some(user_id)
+		{
+			self.banner.clone()
+		} else {
+			crate::AccountApiBannerState::Unavailable
+		}
+	}
+
 	/// Return account-wide usage facts only for the exact authenticated account and user.
 	pub fn conditions_for(&self, account_id: &str, user_id: &str) -> AccountUsageConditions {
 		if self.account_id.as_deref() == Some(account_id)
@@ -316,6 +351,8 @@ pub fn decode_account_api_usage(bytes: &[u8]) -> Result<AccountApiUsage, Account
 		reported_available_count,
 		ordinary_usage_allowed,
 		conditions: decode_usage_conditions(object)?,
+		banner: crate::account_api_banner::decode_banner(object.get("rate_limit_upsell")),
+		plan_type: identity("plan_type").filter(|plan| plan.len() <= 256),
 		account_id: identity("account_id"),
 		user_id: identity("user_id"),
 	})
@@ -881,6 +918,45 @@ fn canonical_calendar_date(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn recovery_context_requires_both_outer_identities_and_preserves_plan_uncertainty() {
+		let mut body = serde_json::json!({"account_id":"workspace-id", "user_id":"user-id", "plan_type":"team", "rate_limit":{}, "rate_limit_upsell":{"plan_type":"pro", "account_id":"foreign"}});
+		let read = |body: &Value| decode_account_api_usage(body.to_string().as_bytes()).unwrap();
+		let usage = read(&body);
+		assert_eq!(
+			usage.recovery_context_for("workspace-id", "user-id"),
+			Some(AccountApiRecoveryContext {
+				provider_account_id: "workspace-id".into(),
+				plan_type: Some("team".into())
+			})
+		);
+		assert!(usage.recovery_context_for("foreign", "user-id").is_none());
+		assert!(usage.recovery_context_for("workspace-id", "foreign").is_none());
+		for plan in [
+			Value::Null,
+			serde_json::json!(false),
+			serde_json::json!("x".repeat(257)),
+			serde_json::json!("team\n"),
+		] {
+			body["plan_type"] = plan;
+			assert_eq!(
+				read(&body).recovery_context_for("workspace-id", "user-id").unwrap().plan_type,
+				None
+			);
+		}
+		body["plan_type"] = serde_json::json!("future-plan");
+		assert_eq!(
+			read(&body)
+				.recovery_context_for("workspace-id", "user-id")
+				.unwrap()
+				.plan_type
+				.as_deref(),
+			Some("future-plan")
+		);
+		body.as_object_mut().unwrap().remove("user_id");
+		assert!(read(&body).recovery_context_for("workspace-id", "user-id").is_none());
+	}
 
 	#[test]
 	fn decodes_upstream_profile_shape_and_bounds_daily_buckets() {

@@ -6256,3 +6256,5 @@ mod tests {
 		assert_eq!(continuation_recovery(ContinuationRejection::SameThreadUnavailable), None);
 	}
 }
+
+#[path = "conversation/account_nudge.rs"] mod account_nudge;

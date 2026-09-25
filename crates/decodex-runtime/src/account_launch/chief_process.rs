@@ -26,7 +26,7 @@ const BRIDGE_CAPACITY: usize = 64;
 
 #[cfg(all(test, unix))]
 #[path = "chief_process_native_tests.rs"]
-mod native_tests;
+pub(crate) mod native_tests;
 
 pub(super) struct ChiefProcessBridge {
 	cancelled: Arc<AtomicBool>,
@@ -250,6 +250,16 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 				Err(ClientError::InvalidFrame)
 			};
 		}
+		if method == "account/sendAddCreditsNudgeEmail" {
+			let params = &value["params"];
+			return if params.as_object().is_some_and(|p| p.len() == 1)
+				&& matches!(params["creditType"].as_str(), Some("credits" | "usage_limit"))
+			{
+				Ok(())
+			} else {
+				Err(ClientError::InvalidFrame)
+			};
+		}
 		if method == "turn/settings/update" {
 			return if decodex_codex::app_server_client::is_live_reviewer_update(&value["params"]) {
 				Ok(())
@@ -324,6 +334,27 @@ mod tests {
 	use super::*;
 	use serde_json::json;
 	use std::sync::mpsc as sync_mpsc;
+	#[test]
+	fn account_notification_bridge_accepts_only_exact_native_purposes() {
+		for (params, valid) in [
+			(json!({"creditType":"credits"}), true),
+			(json!({"creditType":"usage_limit"}), true),
+			(json!({"creditType":"future"}), false),
+			(json!({"creditType":"credits","accountId":"other"}), false),
+			(json!({"creditType":null}), false),
+			(json!({}), false),
+		] {
+			assert_eq!(
+				validate_outbound(
+					&json!({"id":2,
+				"method":"account/sendAddCreditsNudgeEmail","params":params}),
+					&mut HashSet::new()
+				)
+				.is_ok(),
+				valid
+			);
+		}
+	}
 
 	#[cfg(unix)]
 	#[test]

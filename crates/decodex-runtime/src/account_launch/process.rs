@@ -2,6 +2,9 @@
 #[path = "activation_policy_native_tests.rs"]
 mod activation_policy_native_tests;
 #[path = "exact_history.rs"] mod exact_history;
+#[cfg(all(test, target_os = "macos"))]
+#[path = "process_native_control_tests.rs"]
+pub(crate) mod native_control_tests;
 
 #[cfg(target_os = "linux")] use std::os::fd::{AsRawFd as _, FromRawFd as _};
 #[cfg(test)] use std::sync::atomic::AtomicU32;
@@ -536,6 +539,11 @@ pub(crate) struct AttestedAppServerProfile {
 	capability: ExactBuildLaunchCapability,
 }
 impl AttestedAppServerProfile {
+	/// Existing attested control directory for account-only native operations.
+	pub(crate) fn control_working_directory(&self) -> PathBuf {
+		self.command.working_directory.clone()
+	}
+
 	/// Prove the current Codex executable and generated account callback contract at startup.
 	pub(crate) fn attest(
 		working_directory: impl Into<PathBuf>,
@@ -905,10 +913,23 @@ impl AttestedProcessChild {
 		),
 		ConversationProcessError,
 	> {
-		self.require_ordinary_turns_initialized()?;
 		if !self.generated.supports_standalone_tool_output() {
 			return Err(ConversationProcessError::Incompatible);
 		}
+		self.retain_account_control_connection()
+	}
+
+	/// Transfer initialized account-control I/O without requiring conversation tool features.
+	pub(crate) fn retain_account_control_connection(
+		&mut self,
+	) -> Result<
+		(
+			decodex_codex::app_server_client::AppServerClient,
+			tokio::sync::mpsc::Receiver<decodex_codex::app_server_client::ServerEvent>,
+		),
+		ConversationProcessError,
+	> {
+		self.require_ordinary_turns_initialized()?;
 		if !self.process.abandoned_request_ids.is_empty() {
 			return Err(ConversationProcessError::Unavailable);
 		}
