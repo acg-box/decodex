@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 39;
+const CURRENT_SCHEMA_VERSION: i64 = 40;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -210,6 +210,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 39,
 		name: "chief_request_payloads",
 		sql: include_str!("../migrations/0039_chief_request_payloads.sql"),
+	},
+	Migration {
+		version: 40,
+		name: "chief_file_approval_envelopes",
+		sql: include_str!("../migrations/0040_chief_file_approval_envelopes.sql"),
 	},
 ];
 
@@ -1135,6 +1140,54 @@ mod tests {
 		migrate(&mut connection).unwrap();
 	}
 	#[test]
+	fn file_envelope_upgrade_preserves_version39_payload_and_ledger() {
+		let directory = tempfile::tempdir().unwrap();
+		let mut connection =
+			Connection::open(directory.path().join("file-envelope.sqlite3")).unwrap();
+		configure(&connection).unwrap();
+		for migration in &MIGRATIONS[..39] {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 39).unwrap();
+		connection.execute("INSERT INTO chief_work_items(id,kind,title,instructions,status,created_at_micros,updated_at_micros) VALUES('w','goal','Goal','Keep','open',1,1)",[]).unwrap();
+		connection.execute("INSERT INTO chief_inbox_events(id,source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES(1,'request','w','permission_pending','{}',1)",[]).unwrap();
+		let payload = serde_json::json!({"command":"界".repeat(30000)}).to_string();
+		connection.execute("INSERT INTO chief_request_payloads VALUES(1,?1)", [&payload]).unwrap();
+		let before: String = connection
+			.query_row("SELECT group_concat(sha256) FROM schema_migrations", [], |r| r.get(0))
+			.unwrap();
+		migrate(&mut connection).unwrap();
+		let after: String = connection
+			.query_row(
+				"SELECT group_concat(sha256) FROM schema_migrations WHERE version<=39",
+				[],
+				|r| r.get(0),
+			)
+			.unwrap();
+		assert_eq!(before, after);
+		assert_eq!(
+			connection
+				.query_row("SELECT payload FROM chief_request_payloads WHERE event_id=1", [], |r| r
+					.get::<_, String>(0))
+				.unwrap(),
+			payload
+		);
+		assert!(connection.execute("UPDATE chief_request_payloads SET payload='{}'", []).is_err());
+		assert!(
+			connection.execute("INSERT INTO chief_request_payloads VALUES(2,'{}')", []).is_err()
+		);
+		migrate(&mut connection).unwrap();
+		verify(&connection).unwrap();
+	}
+
+	#[test]
 	fn large_request_upgrade_preserves_inbox_and_bounds_complete_details() {
 		let directory = tempfile::tempdir().unwrap();
 		let mut connection = Connection::open(directory.path().join("requests.sqlite3")).unwrap();
@@ -1161,7 +1214,7 @@ mod tests {
 		let insert = "INSERT INTO chief_request_payloads(event_id,payload) VALUES(?1,?2)";
 		assert!(connection.execute(insert, params![999, "{}"]).is_err());
 		assert!(connection.execute(insert, params![1, "not JSON"]).is_err());
-		let oversized = serde_json::json!({"command":"界".repeat(3_000_000)}).to_string();
+		let oversized = serde_json::json!({"command":"界".repeat(6_000_000)}).to_string();
 		assert!(connection.execute(insert, params![1, oversized]).is_err());
 		let complete = serde_json::json!({"command":"界".repeat(100_000)}).to_string();
 		connection.execute(insert, params![1, complete]).unwrap();

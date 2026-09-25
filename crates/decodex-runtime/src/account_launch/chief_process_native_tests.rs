@@ -5,6 +5,7 @@ use super::*;
 #[path = "chief_process_native_catalog_auth_tests.rs"] mod catalog_auth;
 #[path = "chief_process_native_cold_settings_tests.rs"] mod cold_settings;
 #[path = "chief_process_native_effort_tests.rs"] mod effort;
+#[path = "chief_process_native_file_approval_tests.rs"] mod file_approval;
 #[path = "chief_process_native_goal_tests.rs"] mod goals;
 #[path = "chief_process_native_model_tests.rs"] mod models;
 #[path = "chief_process_native_ordinary_effort_tests.rs"] mod ordinary_effort;
@@ -293,7 +294,7 @@ async fn serve_fixture(
 	effort: Option<&str>,
 	bodies: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
 	usage: Option<Value>,
-	output: fn(usize) -> Value,
+	output: impl Fn(usize) -> Value,
 ) {
 	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
 	while let Ok((socket, _)) = listener.accept().await {

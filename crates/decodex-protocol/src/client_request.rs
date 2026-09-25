@@ -41,7 +41,7 @@ pub(super) async fn collect(
 				|| digest.len() != 64
 				|| !digest.bytes().all(|b| b.is_ascii_hexdigit())
 				|| *total_bytes <= crate::MAX_HISTORY_INLINE_BYTES
-				|| *total_bytes > decodex_core::MAX_NATIVE_MESSAGE_BYTES
+				|| *total_bytes > decodex_core::MAX_APPROVAL_ENVELOPE_BYTES
 			{
 				return Err(ClientFailure::ProtocolMalformed);
 			}

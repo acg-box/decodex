@@ -46,8 +46,9 @@ Desktop changes in this batch adapt request text types; they do not implement a
 new reader layout or claim visual acceptance.
 
 [The decision and reader batch](large-native-approval-decisions.md) adds large
-explicit decisions and complete-content navigation. Pending file-change evidence
-before native history is available and signed desktop acceptance remain. The complete manual catch-up remains open. Automation
+explicit decisions and complete-content navigation. [Live file evidence](live-native-file-approvals.md)
+adds pending diffs before native history and expands the composed envelope bound.
+Signed desktop acceptance remains. The complete manual catch-up remains open. Automation
 stays paused, including after delivery.
 
 Validation results: protocol135 unit and six integration tests passed; adapter188

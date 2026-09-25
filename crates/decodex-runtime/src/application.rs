@@ -3990,6 +3990,9 @@ async fn query_chief_request_with_details(
 	{
 		return request;
 	}
+	if crate::chief_detail::saved_file_changes(&payload).is_some() {
+		return request;
+	}
 	let params = &payload["params"];
 	let (Some(thread), Some(turn), Some(item)) =
 		(params["threadId"].as_str(), params["turnId"].as_str(), params["itemId"].as_str())
@@ -4299,6 +4302,10 @@ async fn query_chief_request_scoped(
 	}
 	if method == "item/commandExecution/requestApproval" && !selected.contains_key("kind") {
 		selected.insert("kind".into(), serde_json::json!("command"));
+	}
+	if let Some(text) = crate::chief_detail::saved_file_changes(&payload) {
+		selected.insert("changeDetails".into(), serde_json::json!(text));
+		selected.insert("changeDetailsTruncated".into(), serde_json::json!(false));
 	}
 	let Ok(request_json) =
 		decodex_protocol::ChiefRequestText::new(serde_json::Value::Object(selected).to_string())
@@ -6086,6 +6093,54 @@ mod tests {
 		assert!(super::request_belongs_to_work(&payload, &work, true));
 		payload["ownerThreadId"] = serde_json::json!("foreign");
 		assert!(!super::request_belongs_to_work(&payload, &work, true));
+	}
+
+	#[tokio::test]
+	async fn saved_file_approval_pages_keep_complete_diff_and_reject_changed_evidence() {
+		use decodex_protocol::ChiefRequestResult as Request;
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		chief_query_work(&store, "worker").await;
+		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
+		store.begin_chief_dispatch("worker".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("worker".into(), "turn".into()).await.unwrap();
+		let diff = format!("+{} REQUIRED FILE SUFFIX", "界".repeat(30000));
+		let file = serde_json::json!({"id":"patch","type":"fileChange","changes":[{"path":"/tmp/fixture","kind":{"type":"add"},"diff":diff}]});
+		let event=store.enqueue_chief_event(decodex_database::EnqueueChiefEvent{source_event_id:"file".into(),work_item_id:"worker".into(),event_kind:"permission_pending".into(),payload:serde_json::json!({"id":7,"method":"item/fileChange/requestApproval","params":{"threadId":"thread","turnId":"turn","itemId":"patch","reason":"Review"},"fileChange":file}).to_string()}).await.unwrap();
+		let owner = ProductStore::Available(store);
+		let request = super::query_chief_request(&owner, event.id).await;
+		let mut offset = 0;
+		let mut digest = None;
+		let mut assembled = String::new();
+		loop {
+			let Request::Page { text, digest: current, next_offset, .. } =
+				super::page_chief_request(request.clone(), digest.as_deref(), offset)
+			else {
+				panic!("file page")
+			};
+			assembled.push_str(text.as_str());
+			digest = Some(current);
+			let Some(next) = next_offset else { break };
+			offset = next;
+		}
+		let fields: serde_json::Value = serde_json::from_str(&assembled).unwrap();
+		assert!(fields["changeDetails"].as_str().unwrap().ends_with("REQUIRED FILE SUFFIX"));
+		assert!(fields["changeDetails"].as_str().unwrap().contains(&diff));
+		assert_eq!(fields["changeDetailsTruncated"], false);
+		let Request::Available { event_id, work_id, method, .. } = request else {
+			panic!("selected file")
+		};
+		let changed = Request::Available {
+			event_id,
+			work_id,
+			method,
+			request_json: decodex_protocol::ChiefRequestText::new(
+				assembled.replace("REQUIRED FILE SUFFIX", "CHANGED FILE SUFFIX"),
+			)
+			.unwrap(),
+		};
+		assert_eq!(super::page_chief_request(changed, digest.as_deref(), 0), Request::Unavailable);
 	}
 
 	#[tokio::test]

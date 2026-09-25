@@ -6,6 +6,21 @@ use serde_json::Value;
 #[cfg(test)] use serde_json::json;
 use sha2::{Digest as _, Sha256};
 
+pub(crate) fn saved_file_changes(payload: &Value) -> Option<String> {
+	let params = &payload["params"];
+	let item = &payload["fileChange"];
+	if payload["method"] != "item/fileChange/requestApproval"
+		|| item["type"] != "fileChange"
+		|| item["id"] != params["itemId"]
+	{
+		return None;
+	}
+	let (thread, turn, id) =
+		(params["threadId"].as_str()?, params["turnId"].as_str()?, params["itemId"].as_str()?);
+	let history = serde_json::json!({"thread":{"id":thread,"turns":[{"id":turn,"items":[item]}]}});
+	project_text(&history, thread, turn, id)
+}
+
 #[cfg(test)]
 pub(crate) async fn read(
 	client: &AppServerClient,
