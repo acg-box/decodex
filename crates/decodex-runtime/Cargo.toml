@@ -20,7 +20,7 @@ decodex-database      = { workspace = true }
 decodex-protocol      = { workspace = true }
 futures-util          = { workspace = true }
 libc                  = { workspace = true }
-reqwest               = { workspace = true }
+reqwest               = { workspace = true, features = ["cookies"] }
 serde                 = { workspace = true }
 serde_json            = { workspace = true }
 sha2                  = { workspace = true }
