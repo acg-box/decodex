@@ -423,7 +423,7 @@ fn setting(value: Option<&Value>, field: &str) -> Result<Option<String>, ClientE
 
 #[cfg(test)]
 #[path = "app_link_settings_tests.rs"]
-mod tests;
+pub(super) mod tests;
 
 #[cfg(test)]
 #[path = "app_link_native_tests.rs"]

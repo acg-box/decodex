@@ -233,6 +233,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 		if method == "config/batchWrite" {
 			return if decodex_codex::app_server_client::is_hook_settings_write(&value["params"])
 				|| decodex_codex::app_server_client::is_app_link_settings_write(&value["params"])
+				|| decodex_codex::app_server_client::is_app_tool_exposure_write(&value["params"])
 			{
 				Ok(())
 			} else {
@@ -604,6 +605,30 @@ mod tests {
 			request["params"]["edits"][0]["keyPath"] = json!(path);
 			assert!(validate_outbound(&request, &mut requests).is_err());
 		}
+	}
+
+	#[test]
+	fn connector_exposure_bridge_preserves_the_single_connector_boundary() {
+		let mut requests = HashSet::new();
+		let frame = json!({"id":48,"method":"config/batchWrite","params":{
+			"filePath":"/fixture/config.toml","expectedVersion":"v1","reloadUserConfig":true,
+			"edits":[{"keyPath":"apps.\"connector.with.dot\".omit_tools_from","value":["deferred"],"mergeStrategy":"replace"}]}});
+		assert!(validate_outbound(&frame, &mut requests).is_ok());
+		for path in [
+			"apps.\"_default\".omit_tools_from",
+			"apps.\"connector.with.dot\".links.\"work\".omit_tools_from",
+			"apps.\"connector.with.dot\".enabled",
+		] {
+			let mut changed = frame.clone();
+			changed["params"]["edits"][0]["keyPath"] = json!(path);
+			assert!(validate_outbound(&changed, &mut requests).is_err());
+		}
+		let mut changed = frame;
+		changed["params"]["edits"]
+			.as_array_mut()
+			.unwrap()
+			.push(json!({"keyPath":"model","value":"other","mergeStrategy":"replace"}));
+		assert!(validate_outbound(&changed, &mut requests).is_err());
 	}
 
 	#[test]
