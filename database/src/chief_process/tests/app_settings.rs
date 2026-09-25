@@ -369,6 +369,12 @@ async fn saved_connection_edits_reuse_receipts_without_requiring_another_tool_re
 
 #[tokio::test]
 async fn connector_exposure_shares_config_arbitration_and_recovers_after_reopen() {
+	for hook_first in [false, true] {
+		exposure_recovery(hook_first).await;
+	}
+}
+
+async fn exposure_recovery(hook_first: bool) {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("exposure.sqlite3");
 	let store = setup(&path).await;
@@ -389,21 +395,25 @@ async fn connector_exposure_shares_config_arbitration_and_recovers_after_reopen(
 	let mut invalid = exposure.clone();
 	invalid.value = Some(json!(["future"]));
 	assert!(store.reserve_chief_app_settings_attempt(invalid).await.is_err());
-	let (first, second) = tokio::join!(
-		store.reserve_chief_app_settings_attempt(exposure.clone()),
-		store.reserve_chief_hook_setting(hooks::attempt(2, 'b', None))
-	);
-	assert_ne!(first.as_ref().unwrap().is_some(), second.as_ref().unwrap().is_some());
-	// If the hook won, settle it and then reserve the exposure edit.
-	let id = if let Some(id) = first.unwrap() {
-		id
-	} else {
-		let id = second.unwrap().unwrap();
+	// The separate race test covers exclusion. Exercise both recovery orders here.
+	let previous_hook = if hook_first {
+		let id =
+			store.reserve_chief_hook_setting(hooks::attempt(2, 'b', None)).await.unwrap().unwrap();
+		assert!(
+			store.reserve_chief_app_settings_attempt(exposure.clone()).await.unwrap().is_none()
+		);
 		store.finish_chief_hook_setting(id, "attempt-b".into(), "rejected".into()).await.unwrap();
-		store.reserve_chief_app_settings_attempt(exposure.clone()).await.unwrap().unwrap()
+		Some(id)
+	} else {
+		None
 	};
+	let id = store.reserve_chief_app_settings_attempt(exposure.clone()).await.unwrap().unwrap();
 	assert!(
-		store.reserve_chief_hook_setting(hooks::attempt(2, 'c', None)).await.unwrap().is_none()
+		store
+			.reserve_chief_hook_setting(hooks::attempt(2, 'c', previous_hook))
+			.await
+			.unwrap()
+			.is_none()
 	);
 	let event = request(&store, 2, false).await;
 	assert!(
@@ -433,6 +443,10 @@ async fn connector_exposure_shares_config_arbitration_and_recovers_after_reopen(
 	let r = store.chief_app_settings_receipt(DIGEST.into()).await.unwrap().unwrap();
 	assert_eq!(r.state, "target_observed");
 	assert!(
-		store.reserve_chief_hook_setting(hooks::attempt(2, 'c', None)).await.unwrap().is_some()
+		store
+			.reserve_chief_hook_setting(hooks::attempt(2, 'c', previous_hook))
+			.await
+			.unwrap()
+			.is_some()
 	);
 }
