@@ -1,12 +1,15 @@
 # Upstream adoption review
 
-Snapshot: Decodex `ccbacdf0ee66c06096516a5365ba16264c65985f`. Fixed upstream range:
+Snapshot: Decodex `3f131d80b9e90d2badf2394249bbf3b0266f72d3`. Fixed upstream range:
 `a397079287e6638b39dda329835350d93222681f..595cc91e8cbb1c2ca822d0311dcf12709410c582`.
 
 Status: the manual update and inherited-change reconciliation are not complete.
 The 1,569-entry upstream inventory is a scan scope, not a count of adopted features.
 This register combines early integration deliveries and later catch-up PRs. It does
 not imply that every early PR came from one of those 1,569 commits.
+
+See the [inherited-file audit](upstream-inherited-audit.md) for the 360 preserved
+paths, exact content evidence and remaining core gaps.
 
 Core means compatibility or correctness for an existing Decodex consumer. Optional
 means a product behavior or control that the user can assess for removal. Mixed
@@ -33,13 +36,13 @@ not instructions to delete code or weaken native enforcement.
 | Reviewer, permission, plugin, hook and app controls | Optional | Expose native settings through reviewed commands and durable receipts. Core correctness inside these features must stay intact if the controls are retained. | [1420](https://github.com/acg-box/decodex/pull/1420), [1421](https://github.com/acg-box/decodex/pull/1421), [1422](https://github.com/acg-box/decodex/pull/1422), [1423](https://github.com/acg-box/decodex/pull/1423), [1429](https://github.com/acg-box/decodex/pull/1429), [1430](https://github.com/acg-box/decodex/pull/1430), [1431](https://github.com/acg-box/decodex/pull/1431), [1432](https://github.com/acg-box/decodex/pull/1432), [1433](https://github.com/acg-box/decodex/pull/1433), [1434](https://github.com/acg-box/decodex/pull/1434), [1435](https://github.com/acg-box/decodex/pull/1435), [1436](https://github.com/acg-box/decodex/pull/1436), [1437](https://github.com/acg-box/decodex/pull/1437), [1438](https://github.com/acg-box/decodex/pull/1438), [1439](https://github.com/acg-box/decodex/pull/1439), [1440](https://github.com/acg-box/decodex/pull/1440), [1441](https://github.com/acg-box/decodex/pull/1441), [1442](https://github.com/acg-box/decodex/pull/1442), [1443](https://github.com/acg-box/decodex/pull/1443), [1444](https://github.com/acg-box/decodex/pull/1444) | [crates/decodex-runtime/src/chief_config_settings.rs](../crates/decodex-runtime/src/chief_config_settings.rs) |
 | Account recovery notices and notifications | Optional | Display recovery actions and send workspace-owner/usage-increase requests only after an explicit click. No automatic model fallback is delivered by this batch. | [1479](https://github.com/acg-box/decodex/pull/1479) | [work/account-recovery-notices.md](../work/account-recovery-notices.md) |
 | Connector tool visibility controls | Optional | Edit per-connector omissions for initial tools, tool search and Code Mode. Share the existing config journal; native Codex owns actual filtering. | [1480](https://github.com/acg-box/decodex/pull/1480), [1481](https://github.com/acg-box/decodex/pull/1481) | [work/app-tool-exposure.md](../work/app-tool-exposure.md) |
-| Unfinished output and live proposed plans | Mixed | Retain existing assistant text after termination/restart (core). Stream proposed plans with a distinct label (optional). Replace fallback only with exact complete native content. | This change; outside the merged baseline count below | [work/partial-output-retention.md](../work/partial-output-retention.md) |
+| Unfinished output and live proposed plans | Mixed | Retain existing assistant text after termination/restart (core). Stream proposed plans with a distinct label (optional). Replace fallback only with exact complete native content. | [1486](https://github.com/acg-box/decodex/pull/1486) | [work/partial-output-retention.md](../work/partial-output-retention.md) |
 | Reduced-motion transitions | Optional | Honor system reduced-motion and VoiceOver preferences. | [1478](https://github.com/acg-box/decodex/pull/1478) | [apps/decodex-gpui/src/ui_motion.rs](../apps/decodex-gpui/src/ui_motion.rs) |
 | Configuration warnings and subagent activity | Core | Retain bounded native startup warnings and native subagent observations. Chief settings errors retain public native causes; ordinary warnings persist as Status history with exact history refresh. Partial-output retention remains a separate batch. | [1356](https://github.com/acg-box/decodex/pull/1356), [1357](https://github.com/acg-box/decodex/pull/1357), [1484](https://github.com/acg-box/decodex/pull/1484), [1485](https://github.com/acg-box/decodex/pull/1485) | [crates/decodex-runtime/src/native_config_warning.rs](../crates/decodex-runtime/src/native_config_warning.rs) |
 
 ## Evidence boundaries
 
-The 127 distinct PRs cited above were read from GitHub and their merge commits were checked as ancestors of this snapshot. Current source owners were inspected or located in this checkout. This confirms merge and source presence, not full live acceptance or release installation. No new behavioral test was run for this documentation reconciliation.
+The 128 distinct PRs cited above were read from GitHub and their merge commits were checked as ancestors of this snapshot. Current source owners were inspected or located in this checkout. This confirms merge and source presence, not full live acceptance or release installation. No new behavioral test was run for this documentation reconciliation.
 
 - The old nonblocking request timer remains active in `chief_requests.rs::tick_question_timeout`. Do not infer its removal from the separate asynchronous-question changes.
 - Native login-policy qualification in PR1452 does not prove that Decodex's independent browser/device-code account-enrollment UI enforces that policy. Its applicability and authority still require a decision.
