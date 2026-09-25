@@ -264,6 +264,7 @@ fn a_new_explicit_model_uses_its_own_capabilities_not_the_observed_model(
 				efforts: vec![effort.clone()],
 				default_effort: Some(effort),
 				supports_fast: false,
+				available_cyber_programs: None,
 				supports_images: true,
 				availability: None,
 				upgrade: None,

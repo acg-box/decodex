@@ -862,6 +862,9 @@ pub struct ChiefModelDto {
 	pub service_tiers: Vec<ChiefServiceTierDto>,
 	/// Informational catalog default. Never changes an explicit user selection.
 	pub default_service_tier: Option<decodex_core::ServiceTier>,
+	/// Known caller-specific catalog programs; None means metadata was not supplied.
+	/// This observation never grants access or selects a program for inference.
+	pub available_cyber_programs: Option<Vec<String>>,
 	/// The provider accepts image input for this model.
 	pub supports_images: bool,
 	/// Provider availability information for the current account, when supplied.

@@ -20,6 +20,7 @@ fn catalog(efforts: Vec<ConversationReasoningEffort>) -> ChiefCapabilitiesResult
 			default_effort: efforts.first().cloned(),
 			efforts,
 			supports_fast: false,
+			available_cyber_programs: None,
 			supports_images: true,
 			availability: None,
 			upgrade: None,

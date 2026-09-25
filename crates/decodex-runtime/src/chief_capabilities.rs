@@ -160,6 +160,23 @@ fn project_model(value: &Value) -> Option<ChiefModelDto> {
 		Some(decodex_core::ServiceTier::new(value["defaultServiceTier"].as_str()?).ok()?)
 	};
 	let supports_fast = service_tiers.iter().any(|tier| tier.id.as_str() == "priority");
+	let available_cyber_programs = if value["availableAccessPrograms"].is_null() {
+		None
+	} else {
+		let programs = value["availableAccessPrograms"]["cyber"]
+			.as_array()
+			.filter(|programs| programs.len() <= 32)?;
+		let mut known = Vec::new();
+		for program in programs {
+			let program = program.as_str()?;
+			if matches!(program, "standard" | "daybreakBlue" | "daybreakRed")
+				&& !known.iter().any(|value| value == program)
+			{
+				known.push(program.to_owned());
+			}
+		}
+		Some(known)
+	};
 	let supports_images = value["inputModalities"]
 		.as_array()
 		.is_none_or(|modes| modes.iter().any(|mode| mode == "image"));
@@ -186,6 +203,7 @@ fn project_model(value: &Value) -> Option<ChiefModelDto> {
 		supports_fast,
 		service_tiers,
 		default_service_tier,
+		available_cyber_programs,
 		supports_images,
 		availability: notice(&value["availabilityNux"]["message"]),
 		upgrade,
@@ -195,6 +213,31 @@ fn project_model(value: &Value) -> Option<ChiefModelDto> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn access_programs_preserve_unknown_empty_and_changed_catalog_metadata() {
+		let mut value = json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[],"defaultReasoningEffort":"high"});
+		assert_eq!(project_model(&value).unwrap().available_cyber_programs, None);
+		let mut observations = Vec::new();
+		for (metadata, expected) in [
+			(Value::Null, None),
+			(
+				json!({"cyber":["standard","daybreakBlue","future","daybreakBlue"]}),
+				Some(vec!["standard".to_string(), "daybreakBlue".to_string()]),
+			),
+			(json!({"cyber":[]}), Some(vec![])),
+		] {
+			value["availableAccessPrograms"] = metadata;
+			let mut catalog = ModelCatalogPages::default();
+			catalog.push(&json!({"data":[value.clone()],"nextCursor":null})).unwrap();
+			assert_eq!(catalog.models[0].available_cyber_programs, expected);
+			observations.push(serde_json::to_value(&catalog.models).unwrap());
+		}
+		assert_ne!(observations[0], observations[2]);
+		assert_ne!(observations[1], observations[2]);
+		value["availableAccessPrograms"] = json!({"cyber":[1]});
+		assert!(project_model(&value).is_none());
+	}
+
 	#[test]
 	fn advertised_persistent_effort_retains_native_value() {
 		let value = json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[{"reasoningEffort":"persistent"}],"defaultReasoningEffort":"persistent"});

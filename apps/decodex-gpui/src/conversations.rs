@@ -3140,6 +3140,7 @@ pub(crate) mod tests {
 			efforts: vec![ConversationReasoningEffort::High],
 			default_effort: Some(ConversationReasoningEffort::High),
 			supports_fast: false,
+			available_cyber_programs: None,
 			supports_images: true,
 			availability: None,
 			upgrade: None,

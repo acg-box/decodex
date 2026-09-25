@@ -354,3 +354,5 @@ async fn serve_fixture(
 			.expect("native history fixture operation");
 	}
 }
+
+#[path = "chief_process_native_model_access_tests.rs"] mod model_access;
