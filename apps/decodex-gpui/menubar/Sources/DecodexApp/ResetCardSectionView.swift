@@ -200,31 +200,27 @@ struct ResetCardAccountRow: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.compact) {
-			HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
-				identityHeader
-				AccountPrimaryActionsView(
-					state: state,
-					store: store
-				)
-			}
-
-			if exceptionalStatusText != nil {
-				exceptionalStatus
-					.transition(.panelInline)
-			}
-
-			quotaWindows
-
 			HStack(alignment: .center, spacing: PanelSpacing.compact) {
-				cardInventory
-					.frame(maxWidth: .infinity, alignment: .leading)
-					.layoutPriority(1)
-
-				AccountUtilityActionsView(
-					state: state,
-					store: store,
-					isPresentingDetails: detailsBinding
-				)
+				AccountPowerButton(state: state, store: store)
+				Button { detailsBinding.wrappedValue.toggle() } label: { identityHeader }
+					.buttonStyle(PanelPressButtonStyle(pressedScale: 0.99))
+					.accessibilityLabel(identityAccessibilityLabel)
+					.accessibilityValue(detailsBinding.wrappedValue ? "Expanded" : "Collapsed")
+				AccountPrimaryActionsView(state: state, store: store)
+				AccountUtilityActionsView(state: state, store: store)
+			}
+			Button { detailsBinding.wrappedValue.toggle() } label: {
+				quotaWindows.contentShape(Rectangle())
+			}
+			.buttonStyle(.plain)
+			.accessibilityLabel("Account usage details")
+			.opacity(state.account.enabled ? 1 : 0.45)
+			if exceptionalStatusText != nil { exceptionalStatus.transition(.panelInline) }
+			cardInventory
+			if detailsBinding.wrappedValue {
+				AccountProfileDetailView(state: state)
+					.padding(.top, PanelSpacing.related)
+					.transition(.panelInline)
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
@@ -249,6 +245,8 @@ struct ResetCardAccountRow: View {
 		.task(id: countdownAttempt) {
 			await runConfirmationCountdown(for: countdownAttempt)
 		}
+		.animation(rowStateAnimation, value: detailedAccountID)
+		.animation(rowStateAnimation, value: state.account.enabled)
 		.animation(rowStateAnimation, value: exceptionalStatusText)
 		.animation(rowStateAnimation, value: inventoryPresentation)
 		.animation(rowStateAnimation, value: showsReorderHandle)
@@ -371,6 +369,7 @@ struct ResetCardAccountRow: View {
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel(identityAccessibilityLabel)
+		.opacity(state.account.enabled ? 1 : 0.45)
 	}
 
 	private var exceptionalStatus: some View {
@@ -420,9 +419,6 @@ struct ResetCardAccountRow: View {
 	}
 
 	private var exceptionalStatusText: String? {
-		if state.account.enabled == false {
-			return "Disabled"
-		}
 		if state.requiresLoginRefresh {
 			return "Login refresh required"
 		}
@@ -514,6 +510,10 @@ struct ResetCardAccountRow: View {
 		case .available:
 			HorizontalCardScroller {
 				HStack(spacing: PanelSpacing.compact) {
+					Image(systemName: "arrow.clockwise")
+						.font(PanelFont.tertiary)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+						.accessibilityHidden(true)
 					ForEach(state.targets, id: \.self) { target in
 						Button {
 							tap(target)
@@ -869,9 +869,9 @@ enum ResetCardQuotaPresentationTone: Equatable {
 	case muted
 	case error
 
-    static func remaining(_ value: Double) -> Self {
-        value > 50 ? .healthy : value > 20 ? .warning : .critical
-    }
+	static func remaining(_ value: Double) -> Self {
+		value > 50 ? .healthy : value > 20 ? .warning : .critical
+	}
 }
 
 struct ResetCardQuotaPresentation: Equatable {

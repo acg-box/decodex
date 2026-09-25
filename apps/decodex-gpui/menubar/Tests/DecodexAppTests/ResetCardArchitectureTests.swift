@@ -275,7 +275,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 				)
 			)
 		}
-		XCTAssertTrue(details.contains(".padding(PanelSpacing.popoverInset)"))
+		XCTAssertFalse(details.contains(".frame(width: 270)"))
 		XCTAssertTrue(login.contains(".padding(PanelSpacing.popoverInset)"))
 	}
 
@@ -645,7 +645,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(store.contains("pendingRoute"))
 		XCTAssertTrue(actions.contains("title: presentation.title("))
 		XCTAssertTrue(actions.contains(#"return "Switching""#))
-		XCTAssertTrue(actions.contains(#"return isCurrent ? "Ready" : "Switch""#))
+		XCTAssertTrue(actions.contains(#"return isCurrent ? "Use automatic routing" : "Route through this account""#))
 		XCTAssertFalse(actions.contains("AccountRoutePending"))
 		XCTAssertFalse(section.contains("AccountRoutePending"))
 	}

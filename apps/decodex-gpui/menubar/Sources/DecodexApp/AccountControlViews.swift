@@ -8,8 +8,7 @@ struct AccountRouteActionPresentation: Equatable {
 	let isSubmittingResetCard: Bool
 
 	var isDisabled: Bool {
-		isCurrent
-			|| canSelect == false
+		(isCurrent == false && canSelect == false)
 			|| canPerformDirectAccountControl == false
 			|| isAccountControlInProgress
 			|| isSubmittingResetCard
@@ -25,14 +24,14 @@ struct AccountRouteActionPresentation: Equatable {
 	}
 
 	var usesDisabledEnvironment: Bool {
-		isCurrent || isVisuallyDisabled
+		isVisuallyDisabled
 	}
 
 	func title(isSwitching: Bool) -> String {
 		if isSwitching {
 			return "Switching"
 		}
-		return isCurrent ? "Ready" : "Switch"
+		return isCurrent ? "Use automatic routing" : "Route through this account"
 	}
 }
 
@@ -56,11 +55,12 @@ struct AccountPrimaryActionsView: View {
 					activity: .route
 				),
 				help: presentation.isCurrent
-					? "This account is synchronized for Decodex and Codex."
-					: "Synchronize this account for Decodex and Codex."
+					? "Pinned account · click to use automatic routing"
+					: "Route through this account"
 			) {
 				Task {
-					await store.routeAccount(state.account.accountID)
+					if presentation.isCurrent { await store.selectBalancedAccounts() }
+					else { await store.routeAccount(state.account.accountID) }
 				}
 			}
 		}
@@ -105,65 +105,19 @@ struct AccountPrimaryActionsView: View {
 struct AccountUtilityActionsView: View {
 	let state: ResetCardAccountState
 	let store: ResetCardStore
-	@Binding var isPresentingDetails: Bool
-	@Environment(\.colorScheme) private var colorScheme
+		@Environment(\.colorScheme) private var colorScheme
 	@State private var isLogoutArmed = false
 
 	var body: some View {
-		HStack(spacing: PanelSpacing.micro) {
-			PanelIconButtonView(
-				symbol: "chart.bar.xaxis",
-				tint: PanelPalette.actionBlue(colorScheme),
-				isActive: isPresentingDetails,
-				isDisabled: false,
-				isSubtle: true,
-				size: 24,
-				action: {
-					isPresentingDetails.toggle()
-				},
-				help: "Show account details"
-			)
-			.popover(isPresented: $isPresentingDetails, arrowEdge: .trailing) {
-				AccountProfileDetailView(state: state)
-			}
-
-			Menu {
-				Button(state.account.enabled ? "Disable account" : "Enable account") {
-					Task {
-						await store.setAccount(
-							state.account.accountID,
-							enabled: state.account.enabled == false
-						)
-					}
-				}
-				.disabled(lifecycleActionIsDisabled)
-
-				Divider()
-
-				Button("Log out…", role: .destructive) {
-					isLogoutArmed = true
-				}
-				.disabled(lifecycleActionIsDisabled)
-			} label: {
-				Image(systemName: "ellipsis")
-					.font(PanelFont.iconButton)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.frame(width: 24, height: 24)
-					.contentShape(Rectangle())
-			}
-			.menuStyle(.borderlessButton)
-			.menuIndicator(.hidden)
-			.fixedSize()
-			.help("More account actions")
-			.accessibilityLabel("More account actions")
-			.popover(isPresented: $isLogoutArmed, arrowEdge: .trailing) {
-				logoutConfirmation
-			}
-		}
-		.fixedSize(horizontal: true, vertical: false)
-		.onChange(of: state.account.accountRevision) {
-			isLogoutArmed = false
-		}
+		CompactAccountActionButton(
+			title: "Log out", symbol: "rectangle.portrait.and.arrow.right",
+			isActive: false, isDisabled: lifecycleActionIsDisabled,
+			isVisuallyDisabled: !store.canPerformDirectAccountControl,
+			usesDisabledEnvironment: !store.canPerformDirectAccountControl,
+			isBusy: false, help: "Log out"
+		) { isLogoutArmed = true }
+		.popover(isPresented: $isLogoutArmed, arrowEdge: .trailing) { logoutConfirmation }
+		.onChange(of: state.account.accountRevision) { isLogoutArmed = false }
 	}
 
 	private var logoutConfirmation: some View {
@@ -253,61 +207,54 @@ private struct CompactAccountActionButton: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 
+	@State private var hovered = false
 	var body: some View {
 		Button {
-			guard isDisabled == false else {
-				return
-			}
+			guard !isDisabled else { return }
 			action()
 		} label: {
-			ZStack {
-				HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
-					Image(systemName: symbol)
-						.contentTransition(.symbolEffect(.replace))
-
-					Text(title)
-						.contentTransition(.opacity)
-				}
-					.opacity(isBusy ? 0 : 1)
-					.scaleEffect(isBusy ? 0.96 : 1)
-
-				if isBusy {
-					ProgressView()
-						.controlSize(.mini)
-						.transition(
-							.opacity.combined(
-								with: .scale(scale: 0.88)
-							)
-						)
-						.accessibilityHidden(true)
-				}
-			}
-			.font(PanelFont.compactAction)
-			.lineLimit(1)
-			.foregroundStyle(
-				isActive
-					? PanelPalette.routeAccent(colorScheme)
-					: PanelPalette.primaryText(colorScheme).opacity(0.88)
-			)
-			.padding(.horizontal, PanelSpacing.micro)
-			.frame(minHeight: 20)
-			.contentShape(Rectangle())
+			Image(systemName: symbol)
+				.font(PanelFont.iconButton)
+				.symbolRenderingMode(.hierarchical)
+				.foregroundStyle(isActive ? PanelPalette.routeAccent(colorScheme) : PanelPalette.secondaryText(colorScheme))
+				.frame(width: 24, height: 24)
+				.background(RoundedRectangle(cornerRadius: 7).fill(
+					isActive ? PanelPalette.routeAccent(colorScheme).opacity(0.16)
+					: PanelPalette.primaryText(colorScheme).opacity(hovered ? 0.07 : 0)))
+				.contentShape(RoundedRectangle(cornerRadius: 7))
+				.symbolEffect(.pulse, options: .repeating, isActive: isBusy && !reduceMotion)
 		}
-		.buttonStyle(PanelPressButtonStyle(pressedScale: 0.97))
+		.buttonStyle(PanelPressButtonStyle(pressedScale: 0.92))
 		.disabled(usesDisabledEnvironment)
-		.allowsHitTesting(isDisabled == false)
-		.opacity(isVisuallyDisabled && isActive == false ? 0.44 : 1)
+		.allowsHitTesting(!isDisabled)
+		.opacity(isVisuallyDisabled && !isActive ? 0.44 : 1)
+		.onHover { hovered = $0 }
 		.animation(controlStateAnimation, value: isActive)
-		.animation(controlStateAnimation, value: isBusy)
+		.animation(controlStateAnimation, value: hovered)
 		.help(help)
 		.accessibilityLabel(title)
-		.accessibilityHint(help)
-		.accessibilityValue(
-			isBusy ? "In progress" : (isActive ? "Current" : "")
-		)
+		.accessibilityValue(isBusy ? "In progress" : (isActive ? "Selected" : ""))
 	}
 
 	private var controlStateAnimation: Animation? {
 		reduceMotion ? nil : PanelMotion.controlState
+	}
+}
+
+struct AccountPowerButton: View {
+	let state: ResetCardAccountState
+	let store: ResetCardStore
+	var body: some View {
+		let enabled = state.account.enabled
+		let unavailable = !store.canPerformDirectAccountControl
+		CompactAccountActionButton(
+			title: enabled ? "Disable account" : "Enable account", symbol: "power",
+			isActive: enabled,
+			isDisabled: unavailable || store.isAccountControlInProgress || store.submittingKey != nil,
+			isVisuallyDisabled: unavailable, usesDisabledEnvironment: unavailable,
+			isBusy: store.isControllingAccount(state.account.accountID, activity: .lifecycle),
+			help: enabled ? "Disable account" : "Enable account"
+		) { Task { await store.setAccount(state.account.accountID, enabled: !enabled) } }
+		.accessibilityValue(enabled ? "Enabled" : "Disabled")
 	}
 }
