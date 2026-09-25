@@ -11,13 +11,40 @@ async fn installed_ordinary_turn_effort_preserves_inheritance_across_restart() {
 		(Some("none"), Some("provider-effort")),
 		(Some("provider-effort"), None),
 	] {
-		tokio::time::timeout(Duration::from_secs(30), qualify(requested, configured))
+		tokio::time::timeout(Duration::from_secs(30), qualify(requested, configured, false, false))
 			.await
 			.expect("bounded native ordinary effort fixture");
 	}
 }
 
-async fn qualify(requested: Option<&'static str>, configured: Option<&'static str>) {
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native inheritance qualification"]
+async fn installed_ordinary_model_inherits_but_configured_flex_is_not_effective() {
+	tokio::time::timeout(
+		Duration::from_secs(30),
+		qualify(None, Some("provider-effort"), true, false),
+	)
+	.await
+	.expect("bounded native inheritance fixture");
+}
+
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated per-turn tier qualification"]
+async fn installed_ordinary_advertised_flex_reaches_per_turn_request() {
+	tokio::time::timeout(
+		Duration::from_secs(30),
+		qualify(None, Some("provider-effort"), true, true),
+	)
+	.await
+	.expect("bounded per-turn tier fixture");
+}
+
+async fn qualify(
+	requested: Option<&'static str>,
+	configured: Option<&'static str>,
+	inherit: bool,
+	tier_override: bool,
+) {
 	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
 	let home = tempfile::tempdir_in("/tmp").expect("native ordinary effort fixture");
 	let listener =
@@ -33,8 +60,13 @@ async fn qualify(requested: Option<&'static str>, configured: Option<&'static st
 		None,
 		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native ordinary answer"}]}),
 	));
-	let mut model = effort::fixture_model("gpt-5.6-sol", "provider-effort");
+	let model_name = if inherit { "fixture-selected" } else { "gpt-5.6-sol" };
+	let mut model = effort::fixture_model(model_name, "provider-effort");
 	model["default_reasoning_level"] = Value::Null;
+	if tier_override {
+		model["service_tiers"] =
+			json!([{ "id":"flex", "name":"Flex", "description":"Synthetic Flex capability" }]);
+	}
 	let catalog = home.path().join("models.json");
 	std::fs::write(
 		&catalog,
@@ -44,21 +76,28 @@ async fn qualify(requested: Option<&'static str>, configured: Option<&'static st
 	let reasoning = configured
 		.map(|value| format!("model_reasoning_effort={}\n", json!(value)))
 		.unwrap_or_default();
-	std::fs::write(home.path().join("config.toml"), format!("{reasoning}model=\"gpt-5.6-sol\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(catalog))).expect("native ordinary effort fixture");
+	std::fs::write(home.path().join("config.toml"), format!("{reasoning}model={}\nservice_tier=\"flex\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(model_name),json!(catalog))).expect("native ordinary effort fixture");
 	let mut session = NativeSession::start(&binary, home.path());
 	let started = session
 		.client
 		.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}))
 		.await
 		.expect("native ordinary effort fixture");
+	if inherit {
+		assert_eq!(started["serviceTier"], if tier_override { json!("flex") } else { Value::Null });
+	}
 	let id = started["thread"]["id"].as_str().expect("native ordinary effort fixture").to_owned();
 	let first_client_id = "50000000-0000-4000-8000-000000000001";
 	let second_client_id = "50000000-0000-4000-8000-000000000002";
-	let first_turn = send(&mut session, &id, requested, first_client_id).await;
+	let first_turn =
+		send(&mut session, &id, requested, first_client_id, inherit, tier_override).await;
 	assert_readback(&session, &id, first_client_id, &first_turn).await;
+	assert_settings(&session, &id, model_name, requested.or(configured)).await;
 	assert_eq!(requests.load(Ordering::Acquire), 1);
 	drop(session);
 	let mut session = NativeSession::start(&binary, home.path());
+	assert_settings(&session, &id, model_name, requested.or(configured)).await;
+	assert_eq!(requests.load(Ordering::Acquire), 1, "cold settings read cannot infer");
 	session
 		.client
 		.thread_resume(json!({"threadId":id}))
@@ -66,7 +105,8 @@ async fn qualify(requested: Option<&'static str>, configured: Option<&'static st
 		.expect("native ordinary effort fixture");
 	assert_readback(&session, &id, first_client_id, &first_turn).await;
 	assert_eq!(requests.load(Ordering::Acquire), 1, "restart and readback cannot replay input");
-	let second_turn = send(&mut session, &id, requested, second_client_id).await;
+	let second_turn =
+		send(&mut session, &id, requested, second_client_id, inherit, tier_override).await;
 	assert_ne!(first_turn, second_turn);
 	assert_readback(&session, &id, first_client_id, &first_turn).await;
 	assert_readback(&session, &id, second_client_id, &second_turn).await;
@@ -74,6 +114,18 @@ async fn qualify(requested: Option<&'static str>, configured: Option<&'static st
 	assert!(!backend.is_finished(), "backend effort assertions must pass");
 	for body in bodies.lock().expect("captured inference bodies").iter() {
 		assert_eq!(body["reasoning"]["effort"], json!(requested.or(configured)));
+		if inherit {
+			assert_eq!(body["model"], model_name);
+			if tier_override {
+				assert_eq!(body["service_tier"], "flex");
+			} else {
+				assert_eq!(
+					body.get("service_tier"),
+					None,
+					"configured Flex did not become an effective native thread tier"
+				);
+			}
+		}
 	}
 	backend.abort();
 }
@@ -83,6 +135,8 @@ async fn send(
 	id: &str,
 	requested: Option<&str>,
 	client_id: &str,
+	inherit: bool,
+	tier_override: bool,
 ) -> String {
 	let request = ConversationTurnStartRequest::with_optional_effort(
 		ExactThreadId::new(id).expect("native ordinary effort fixture"),
@@ -95,11 +149,17 @@ async fn send(
 	.with_client_user_message_id(client_id)
 	.expect("stable native user message ID")
 	.with_user_trigger();
-	let turn = session
-		.client
-		.turn_start(serde_json::to_value(request).expect("native ordinary effort fixture"))
-		.await
-		.expect("native ordinary effort fixture");
+	let mut wire = serde_json::to_value(request).expect("native ordinary effort fixture");
+	if inherit {
+		let fields = wire.as_object_mut().expect("native turn object");
+		fields.remove("model");
+		fields.remove("serviceTier");
+		fields.remove("serviceTierForTurn");
+		if tier_override {
+			fields.insert("serviceTierForTurn".into(), json!("flex"));
+		}
+	}
+	let turn = session.client.turn_start(wire).await.expect("native ordinary effort fixture");
 	loop {
 		let event = session.events.recv().await.expect("native ordinary effort fixture");
 		if let ServerEvent::Notification { method, params } = event
@@ -138,4 +198,25 @@ async fn assert_readback(session: &NativeSession, thread_id: &str, client_id: &s
 		.expect("absent identity readback")
 		.is_none()
 	);
+}
+
+async fn assert_settings(
+	session: &NativeSession,
+	thread: &str,
+	expected_model: &str,
+	expected_effort: Option<&str>,
+) {
+	let guard = session
+		.client
+		.history_guard(session.client.history_revision())
+		.expect("current connection history");
+	let settings = session
+		.client
+		.thread_model_settings(thread, guard)
+		.await
+		.expect("exact settings read")
+		.expect("installed thread settings support");
+	assert_eq!(settings.model.as_deref(), Some(expected_model));
+	assert_eq!(settings.model_provider.as_deref(), Some("fixture"));
+	assert_eq!(settings.reasoning_effort.as_deref(), expected_effort);
 }
