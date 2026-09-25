@@ -1,6 +1,29 @@
 //! Provider request forms bound to the exact persisted request event.
 use super::*;
 
+#[derive(Default)]
+pub(super) struct RequestReader {
+	event: i64,
+	revision: u64,
+	offset: usize,
+	starts: Vec<usize>,
+}
+impl RequestReader {
+	fn reset(&mut self, event: i64) {
+		*self = Self { event, revision: self.revision.wrapping_add(1), offset: 0, starts: vec![0] };
+	}
+
+	fn navigate(&mut self, event: i64, revision: u64, from: usize, to: usize) {
+		if self.event != event || self.revision != revision || self.offset != from {
+			return;
+		}
+		if !self.starts.contains(&to) {
+			self.starts.push(to);
+		}
+		self.offset = to;
+	}
+}
+
 /// A timer belongs to one provider request, including after selection changes.
 pub(super) struct QuestionTimer {
 	started: std::time::Instant,
@@ -37,6 +60,11 @@ impl ChiefSurface {
 		request: &ChiefRequestResult,
 		cx: &mut Context<Self>,
 	) {
+		let event = match request {
+			ChiefRequestResult::Available { event_id, .. } => *event_id,
+			_ => 0,
+		};
+		self.request_reader.reset(event);
 		self.prepare_mcp_inputs(request, cx);
 		self.question_inputs.clear();
 		if let ChiefRequestResult::Available { event_id, method, request_json, .. } = request
@@ -83,10 +111,17 @@ impl ChiefSurface {
 		{
 			return div().into_any_element();
 		}
+		let large = request_json.as_str().len() > decodex_protocol::MAX_HISTORY_INLINE_BYTES;
 		let value: serde_json::Value =
 			serde_json::from_str(request_json.as_str()).unwrap_or_default();
 		if method == "mcpServer/elicitation/request" {
-			return self.mcp_form_panel(*event_id, &value, cx);
+			return if large {
+				self.large_request_panel(*event_id, request_json.as_str(), cx)
+					.child(self.mcp_form_panel(*event_id, &value, cx))
+					.into_any_element()
+			} else {
+				self.mcp_form_panel(*event_id, &value, cx)
+			};
 		}
 		let mut panel = div()
 			.capture_key_down(cx.listener(|s, _, _, cx| {
@@ -108,6 +143,9 @@ impl ChiefSurface {
 			.flex()
 			.flex_col()
 			.gap_2();
+		if large {
+			panel = panel.child(self.large_request_panel(*event_id, request_json.as_str(), cx));
+		}
 		if method == "item/tool/requestUserInput" {
 			for question in value["questions"].as_array().into_iter().flatten() {
 				panel = panel.child(self.question_form(question, cx));
@@ -139,6 +177,68 @@ impl ChiefSurface {
 		panel.into_any_element()
 	}
 
+	fn large_request_panel(&self, event: i64, text: &str, cx: &mut Context<Self>) -> gpui::Div {
+		let offset = self.request_reader.offset.min(text.len());
+		let mut end = offset.saturating_add(8192).min(text.len());
+		while !text.is_char_boundary(end) {
+			end -= 1;
+		}
+		let generation = self.generation;
+		let revision = self.request_reader.revision;
+		let section =
+			self.request_reader.starts.iter().position(|start| *start == offset).unwrap_or(0) + 1;
+		let mut panel = div()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.child(format!("Request details · section {section}"))
+			.child(
+				div()
+					.id("large-request-detail")
+					.max_h(px(280.0))
+					.overflow_y_scroll()
+					.font_family("Menlo")
+					.text_size(px(12.0))
+					.child(text[offset..end].to_owned()),
+			);
+		let previous =
+			self.request_reader.starts.iter().copied().filter(|start| *start < offset).max();
+		for (id, label, target) in [
+			("large-request-previous", "Previous section", previous),
+			("large-request-next", "Next section", (end < text.len()).then_some(end)),
+		] {
+			let Some(target) = target else { continue };
+			panel = panel.child(div().id(id).debug_selector(move || id.into())
+				.role(Role::Button).tab_index(0).aria_label(label).cursor_pointer().child(label)
+				.on_key_down(cx.listener(move |s, key: &gpui::KeyDownEvent, _, cx| {
+					if ["enter", "space"].contains(&key.keystroke.key.as_str()) && s.generation == generation
+						&& matches!(&s.request, Some(ChiefRequestResult::Available { event_id, .. }) if *event_id == event) {
+						cx.stop_propagation();
+						s.request_reader.navigate(event, revision, offset, target); cx.notify();
+					}
+				}))
+				.on_click(cx.listener(move |s, _, _, cx| {
+					if s.generation == generation && matches!(&s.request, Some(ChiefRequestResult::Available { event_id, .. }) if *event_id == event) {
+						s.request_reader.navigate(event, revision, offset, target); cx.notify();
+					}
+				})));
+		}
+		if end == text.len() {
+			panel = panel.child(muted("End of request"));
+		}
+		panel
+	}
+
+	pub(super) fn request_summary(&self, text: String) -> String {
+		if text.len() > 4096
+			&& matches!(&self.request, Some(ChiefRequestResult::Available { request_json, .. }) if request_json.as_str().len() > decodex_protocol::MAX_HISTORY_INLINE_BYTES)
+		{
+			"Complete content is in the request details above.".into()
+		} else {
+			text
+		}
+	}
+
 	fn approval_request_panel(
 		&self,
 		mut panel: gpui::Div,
@@ -160,7 +260,8 @@ impl ChiefSurface {
 		panel = panel.child(div().debug_selector(move || selector.into()).child(heading));
 		for key in ["reason", "command", "cwd", "grantRoot"] {
 			if let Some(text) = value[key].as_str() {
-				panel = panel.child(div().text_size(px(12.0)).child(text.to_owned()));
+				panel = panel
+					.child(div().text_size(px(12.0)).child(self.request_summary(text.to_owned())));
 			}
 		}
 		if method == "item/fileChange/requestApproval" {
@@ -174,24 +275,31 @@ impl ChiefSurface {
 					.overflow_y_scroll()
 					.text_size(px(12.0))
 					.font_family("Menlo")
-					.child(details.to_owned()),
+					.child(self.request_summary(details.to_owned())),
 			);
 			if value["changeDetailsTruncated"] == true {
 				panel = panel.child(muted("File change details shortened"));
 			}
 		}
 
+		if matches!(
+			method,
+			"item/permissions/requestApproval" | "item/commandExecution/requestApproval"
+		) && let Some(environment) = value["environmentId"].as_str().filter(|id| !id.is_empty())
+		{
+			panel = panel.child(
+				div()
+					.debug_selector(|| "approval-executor-environment".into())
+					.text_size(px(12.0))
+					.child(self.request_summary(format!("Execution environment: {environment}"))),
+			);
+		}
 		if method == "item/permissions/requestApproval" {
-			if let Some(environment) = value["environmentId"].as_str().filter(|id| !id.is_empty()) {
-				panel = panel.child(
-					div()
-						.debug_selector(|| "approval-executor-environment".into())
-						.text_size(px(12.0))
-						.child(format!("Execution environment: {environment}")),
-				);
-			}
-			panel = panel
-				.child(div().text_size(px(12.0)).child(permission_summary(&value["permissions"])));
+			panel = panel.child(
+				div()
+					.text_size(px(12.0))
+					.child(self.request_summary(permission_summary(&value["permissions"]))),
+			);
 			panel = panel.child(self.request_choice(
 				"decline",
 				"Decline",
@@ -239,11 +347,10 @@ impl ChiefSurface {
 				} else {
 					continue;
 				};
-				panel = panel.child(
-					div()
-						.text_size(px(11.0))
-						.child(serde_json::to_string_pretty(decision).unwrap_or_default()),
-				);
+				panel =
+					panel.child(div().text_size(px(11.0)).child(self.request_summary(
+						serde_json::to_string_pretty(decision).unwrap_or_default(),
+					)));
 				panel = panel.child(self.request_choice(
 					&format!("policy-{index}"),
 					label,
@@ -405,9 +512,17 @@ impl ChiefSurface {
 		response: serde_json::Value,
 		cx: &mut Context<Self>,
 	) -> gpui::AnyElement {
+		let event = match &self.request {
+			Some(ChiefRequestResult::Available { event_id, .. }) => *event_id,
+			_ => 0,
+		};
+		let generation = self.generation;
+		let revision = self.request_reader.revision;
 		let response = response.to_string();
+		let selector = format!("request-{id}");
 		div()
 			.id(SharedString::from(format!("request-{id}")))
+			.debug_selector(move || selector)
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(label)
@@ -419,7 +534,12 @@ impl ChiefSurface {
 			.cursor_pointer()
 			.hover(|s| s.bg(rgba(0xffffff10)))
 			.text_color(rgb(ui_theme::BLUE))
-			.on_click(cx.listener(move |s, _, _, cx| s.respond(response.clone(), cx)))
+			.on_click(cx.listener(move |s, _, _, cx| {
+				if s.generation == generation && s.request_reader.revision == revision
+					&& matches!(&s.request, Some(ChiefRequestResult::Available { event_id, .. }) if *event_id == event) {
+					s.respond(response.clone(), cx);
+				}
+			}))
 			.child(label)
 			.smooth()
 			.into_any_element()
@@ -468,6 +588,137 @@ mod timing_tests {
 		assert!(!timer.claim_expired(start + Duration::from_secs(500)));
 	}
 	#[gpui::test]
+	fn large_request_reader_navigates_and_rejects_stale_sections(cx: &mut gpui::TestAppContext) {
+		use super::*;
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx); s.graph_visible = false;
+			let work = s.selected.clone().unwrap();
+			s.snapshot.as_mut().unwrap().pending_events = vec![decodex_protocol::ChiefPendingEventDto { id:902, source_event_id:"large".into(),work_item_id:work.clone(),event_kind:"permission_pending".into(),created_at_micros:1,delivery_claimed:false }];
+			let request = ChiefRequestResult::Available { event_id:902,work_id:work,method:"item/commandExecution/requestApproval".into(),request_json:decodex_protocol::ChiefRequestText::new(json!({"command":"echo 界🙂".repeat(2000),"availableDecisions":["accept","decline"]}).to_string()).unwrap() };
+			s.prepare_question_inputs(&request,cx); s.request = Some(request);
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(px(1180.), px(1200.)));
+			window.draw(cx).clear();
+		});
+		surface.update(visual, |s, cx| {
+			s.transcript_scroll.get(s.selected.as_ref().unwrap()).unwrap().scroll_to_bottom();
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let next = visual.debug_bounds("large-request-next").expect("next section");
+		visual.simulate_click(next.center(), gpui::Modifiers::default());
+		surface.read_with(visual, |s, _| {
+			assert!(s.request_reader.offset > 0);
+			assert!(s.submission.command.is_none());
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let first_offset = surface.read_with(visual, |s, _| s.request_reader.offset);
+		visual.simulate_keystrokes("space");
+		surface.read_with(visual, |s, _| {
+			assert!(
+				s.request_reader.offset > first_offset,
+				"Space advances the focused section control"
+			)
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+
+		let previous = visual.debug_bounds("large-request-previous").expect("previous section");
+		visual.simulate_click(previous.center(), gpui::Modifiers::default());
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.request_reader.offset, first_offset);
+			let revision = s.request_reader.revision;
+			let request = s.request.clone().unwrap();
+			s.prepare_question_inputs(&request, cx);
+			s.request_reader.navigate(902, revision, 0, 8192);
+			assert_eq!(
+				s.request_reader.offset, 0,
+				"a control from the previous request rendering cannot move the new reader"
+			);
+			assert!(s.submission.command.is_none());
+		});
+	}
+
+	#[gpui::test]
+	fn large_permission_grant_reaches_dispatch_without_copying_reply(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use super::*;
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			let work = s.selected.clone().unwrap();
+			s.snapshot.as_mut().unwrap().pending_events =
+				vec![decodex_protocol::ChiefPendingEventDto {
+					id: 904,
+					source_event_id: "large-permissions".into(),
+					work_item_id: work.clone(),
+					event_kind: "permission_pending".into(),
+					created_at_micros: 1,
+					delivery_claimed: false,
+				}];
+			let request = ChiefRequestResult::Available {
+				event_id: 904,
+				work_id: work,
+				method: "item/permissions/requestApproval".into(),
+				request_json: decodex_protocol::ChiefRequestText::new(
+					json!({"permissions":{"fileSystem":{"write":["/tmp/界".repeat(10000)]}}})
+						.to_string(),
+				)
+				.unwrap(),
+			};
+			s.prepare_question_inputs(&request, cx);
+			s.request = Some(request);
+		});
+		for _ in 0..32 {
+			visual.update(|window, cx| {
+				window.resize(gpui::size(px(1180.), px(1200.)));
+				window.draw(cx).clear();
+			});
+			surface.update(visual, |s, cx| {
+				s.transcript_scroll.get(s.selected.as_ref().unwrap()).unwrap().scroll_to_bottom();
+				cx.notify();
+			});
+			visual.update(|window, cx| {
+				window.draw(cx).clear();
+			});
+			if visual.debug_bounds("request-allow").is_some() {
+				surface.update(visual, |s, cx| {
+					s.transcript_scroll
+						.get(s.selected.as_ref().unwrap())
+						.unwrap()
+						.scroll_to_bottom();
+					cx.notify();
+				});
+				visual.update(|window, cx| {
+					window.draw(cx).clear();
+				});
+				let allow = visual.debug_bounds("request-allow").unwrap();
+				visual.simulate_click(allow.center(), gpui::Modifiers::default());
+				surface.read_with(visual, |s, _| {
+					assert_eq!(
+						s.feedback, "No service profile is configured.",
+						"must reach dispatch, not reject the full grant as oversized"
+					);
+				});
+				return;
+			}
+			let next =
+				visual.debug_bounds("large-request-next").expect("complete permission detail");
+			visual.simulate_click(next.center(), gpui::Modifiers::default());
+		}
+		panic!("permission approval did not become available");
+	}
+
+	#[gpui::test]
 	fn question_option_interaction_snoozes_only_its_request(cx: &mut gpui::TestAppContext) {
 		use super::*;
 		use decodex_protocol::{ChiefPendingEventDto, ChiefWorkKindDto};
@@ -507,6 +758,18 @@ mod timing_tests {
 			let request = s.request.clone().unwrap();
 			s.prepare_question_inputs(&request, cx);
 			assert!(s.question_timers[&7].disabled, "reloading must not rearm the same event");
+			// JSON escaping exceeds the wire limit even though the editable answer fits.
+			let answer = "\"".repeat(9_000);
+			s.question_inputs["format"].update(cx, |input, cx| input.set_content(&answer, cx));
+			s.submit_answers(cx);
+			assert!(s.feedback.starts_with("Response is too large after encoding"));
+			assert_eq!(s.question_inputs["format"].read(cx).content(), answer);
+			assert!(s.submission.command.is_none() && !s.sending);
+			assert_eq!(s.request, Some(request));
+			s.question_inputs["format"].update(cx, |input, cx| input.set_content("PDF", cx));
+			s.submit_answers(cx);
+			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.question_inputs["format"].read(cx).content(), "PDF");
 		});
 	}
 	#[gpui::test]

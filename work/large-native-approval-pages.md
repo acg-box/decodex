@@ -45,9 +45,9 @@ requests, live background/child scope and reused RPC IDs after reconnect.
 Desktop changes in this batch adapt request text types; they do not implement a
 new reader layout or claim visual acceptance.
 
-Remaining: large explicit permission/policy decision encoding, the full inspection
-reader, pending file-change evidence before native history is available, and
-signed desktop acceptance. The complete manual catch-up remains open. Automation
+[The decision and reader batch](large-native-approval-decisions.md) adds large
+explicit decisions and complete-content navigation. Pending file-change evidence
+before native history is available and signed desktop acceptance remain. The complete manual catch-up remains open. Automation
 stays paused, including after delivery.
 
 Validation results: protocol135 unit and six integration tests passed; adapter188

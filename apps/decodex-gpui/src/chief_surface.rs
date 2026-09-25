@@ -214,6 +214,7 @@ pub(crate) struct ChiefSurface {
 	older_scroll_anchor: Option<activity::HistoryScrollAnchor>,
 	poll_task: Option<Task<()>>,
 	request: Option<ChiefRequestResult>,
+	request_reader: requests::RequestReader,
 	request_task: Option<Task<()>>,
 	misalignment_reviewed: Option<(String, String)>,
 	guardian: guardian::Panel,
@@ -310,6 +311,9 @@ impl ChiefSurface {
 		}
 		if let (Some(selected), Some(history)) = (surface.selected.clone(), history) {
 			surface.history = Some((selected, history));
+		}
+		if let Some(request) = surface.request.clone() {
+			surface.prepare_question_inputs(&request, cx);
 		}
 		surface.feedback = "Read-only capture of a disposable service projection".into();
 		surface
@@ -450,6 +454,7 @@ impl ChiefSurface {
 			older_scroll_anchor: None,
 			poll_task: None,
 			request: None,
+			request_reader: Default::default(),
 			request_task: None,
 			misalignment_reviewed: None,
 			guardian: Default::default(),
@@ -698,7 +703,9 @@ impl ChiefSurface {
 	}
 
 	fn respond(&mut self, json: String, cx: &mut Context<Self>) {
-		let Some(ChiefRequestResult::Available { event_id, work_id, .. }) = &self.request else {
+		let Some(ChiefRequestResult::Available { event_id, work_id, method, request_json }) =
+			&self.request
+		else {
 			return;
 		};
 		if self.selected.as_ref() != Some(work_id) {
@@ -711,9 +718,30 @@ impl ChiefSurface {
 			cx.notify();
 			return;
 		}
-		let (Ok(work_id), Ok(response_json)) =
-			(EntityId::new(work_id.clone()), HistoryText::new(json))
-		else {
+		let Ok(work_id) = EntityId::new(work_id.clone()) else { return };
+		if json.len() > decodex_protocol::MAX_HISTORY_INLINE_BYTES
+			&& let (Ok(params), Ok(response)) =
+				(serde_json::from_str(request_json.as_str()), serde_json::from_str(&json))
+			&& let Some(decision) = decodex_protocol::ChiefRequestedDecision::matching_response(
+				method, &params, &response,
+			) {
+			self.execute(
+				ChiefActionDto::RespondWithRequestedDecision {
+					work_id,
+					event_id: *event_id,
+					decision,
+				},
+				None,
+				cx,
+			);
+			return;
+		}
+		let Ok(response_json) = HistoryText::new(json) else {
+			self.feedback = format!(
+				"Response is too large after encoding (limit {} bytes). Shorten your answers and retry; your entries are preserved.",
+				decodex_protocol::MAX_HISTORY_INLINE_BYTES
+			);
+			cx.notify();
 			return;
 		};
 		self.execute(
