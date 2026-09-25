@@ -10,6 +10,10 @@ use tokio::{
 	sync::{mpsc, oneshot, watch},
 };
 
+mod app_tool_exposure;
+pub use app_tool_exposure::{
+	AppToolExposureSettings, AppToolExposureWrite, is_app_tool_exposure_write,
+};
 mod account_nudge;
 pub use account_nudge::{AccountNudgeCreditType, AccountNudgeOutcome};
 mod settings_guard;
