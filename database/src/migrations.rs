@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 40;
+const CURRENT_SCHEMA_VERSION: i64 = 41;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -215,6 +215,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 40,
 		name: "chief_file_approval_envelopes",
 		sql: include_str!("../migrations/0040_chief_file_approval_envelopes.sql"),
+	},
+	Migration {
+		version: 41,
+		name: "chief_reasoning_summary",
+		sql: include_str!("../migrations/0041_chief_reasoning_summary.sql"),
 	},
 ];
 
@@ -1139,6 +1144,58 @@ mod tests {
 		verify(&connection).unwrap();
 		migrate(&mut connection).unwrap();
 	}
+	#[test]
+	fn reasoning_upgrade_preserves_live_output_and_migration_ledger() {
+		let directory = tempfile::tempdir().unwrap();
+		let mut connection = Connection::open(directory.path().join("reasoning.sqlite3")).unwrap();
+		configure(&connection).unwrap();
+		for migration in &MIGRATIONS[..40] {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 40).unwrap();
+		connection.execute("INSERT INTO chief_work_items(id,kind,title,instructions,status,created_at_micros,updated_at_micros) VALUES('w','goal','Goal','Keep','open',1,1)",[]).unwrap();
+		connection.execute("INSERT INTO chief_live_output(id,work_id,turn_id,item_id,text,truncated,kind,completed) VALUES(7,'w','turn','item','Keep plan',1,'plan',1)",[]).unwrap();
+		let before: String = connection
+			.query_row("SELECT group_concat(sha256) FROM schema_migrations", [], |r| r.get(0))
+			.unwrap();
+		migrate(&mut connection).unwrap();
+		assert_eq!(
+			connection
+				.query_row(
+					"SELECT text,kind,truncated,completed FROM chief_live_output WHERE id=7",
+					[],
+					|r| Ok((
+						r.get::<_, String>(0)?,
+						r.get::<_, String>(1)?,
+						r.get::<_, bool>(2)?,
+						r.get::<_, bool>(3)?
+					))
+				)
+				.unwrap(),
+			("Keep plan".into(), "plan".into(), true, true)
+		);
+		assert_eq!(
+			before,
+			connection
+				.query_row(
+					"SELECT group_concat(sha256) FROM schema_migrations WHERE version<=40",
+					[],
+					|r| r.get::<_, String>(0)
+				)
+				.unwrap()
+		);
+		assert!(connection.execute("INSERT INTO chief_live_output(work_id,turn_id,item_id,kind,summary_parts) VALUES('missing','t','i','reasoningSummary','[]')",[]).is_err());
+		migrate(&mut connection).unwrap();
+		verify(&connection).unwrap();
+	}
+
 	#[test]
 	fn file_envelope_upgrade_preserves_version39_payload_and_ledger() {
 		let directory = tempfile::tempdir().unwrap();

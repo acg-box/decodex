@@ -1740,6 +1740,11 @@ impl ChiefSurface {
 						div()
 							.w_full()
 							.py(px(2.))
+							.children(
+								(message.kind
+									== decodex_protocol::ChiefLiveMessageKind::ReasoningSummary)
+									.then(|| muted("Reasoning summary")),
+							)
 							.child(text_reveal::StreamingText {
 								text: message.text.clone(),
 								key: format!(

@@ -55,6 +55,11 @@ baseline. Its conditional save path is separate from the existing-call effective
 voice fix in [PR1495](https://github.com/acg-box/decodex/pull/1495). The note records
 source checks, readback and the outstanding signed audio acceptance.
 
+[Public reasoning summaries](public-reasoning-summaries.md) adds a separate optional
+live/history display after this baseline. It does not enable a new summary mode
+or expose raw reasoning. Native and rendered-test evidence and remaining limits
+are recorded in the feature note.
+
 ## Evidence boundaries
 
 The 128 distinct PRs cited above were read from GitHub and their merge commits were checked as ancestors of this snapshot. Current source owners were inspected or located in this checkout. This confirms merge and source presence, not full live acceptance or release installation. No new behavioral test was run for this documentation reconciliation.

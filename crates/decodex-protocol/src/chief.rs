@@ -161,6 +161,8 @@ pub enum ChiefLiveMessageKind {
 	AgentMessage,
 	/// Proposed plan text.
 	Plan,
+	/// Public summary text, never raw reasoning content.
+	ReasoningSummary,
 }
 
 /// Current-turn text observed before final history is available.

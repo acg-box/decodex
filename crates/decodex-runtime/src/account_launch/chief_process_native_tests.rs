@@ -332,11 +332,15 @@ async fn serve_fixture(
 		}
 		let serial = requests.fetch_add(1, Ordering::AcqRel);
 		let id = format!("fixture-{serial}");
-		let frames = [
-			json!({"type":"response.created","response":{"id":id}}),
-			json!({"type":"response.output_item.done","item":output(serial)}),
+		let output = output(serial);
+		let items = output.as_array().cloned().unwrap_or_else(|| vec![output]);
+		let mut frames = vec![json!({"type":"response.created","response":{"id":id}})];
+		frames.extend(
+			items.into_iter().map(|item| json!({"type":"response.output_item.done","item":item})),
+		);
+		frames.extend([
 			json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":usage.clone().unwrap_or_else(||json!({"extra":{"fixture":"native-usage"},"input_tokens":0,"output_tokens":0,"total_tokens":0}))}}),
-		];
+		]);
 		let data = frames
 			.iter()
 			.map(|v| {
@@ -356,3 +360,5 @@ async fn serve_fixture(
 }
 
 #[path = "chief_process_native_model_access_tests.rs"] mod model_access;
+
+#[path = "chief_process_native_reasoning_tests.rs"] mod reasoning;

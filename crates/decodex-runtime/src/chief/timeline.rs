@@ -38,7 +38,15 @@ where
 				return Result::Unavailable;
 			}
 			match response {
-				Ok(value) => match project(&before.key.thread, &value) {
+				Ok(value) => match project_with_saved_origins(
+					store,
+					&before.client,
+					&before.key.work,
+					&before.key.thread,
+					&value,
+				)
+				.await
+				{
 					Ok(mut page) => {
 						promotions::enrich(&before.client, &mut page).await;
 						if let Some(store) = store
@@ -84,22 +92,101 @@ pub(crate) enum ProjectionError {
 	Capacity,
 }
 
+#[cfg(test)]
 pub(crate) fn project(thread: &str, value: &Value) -> Result<ChiefTimelinePage, ProjectionError> {
-	let page = project_fields(thread, value).ok_or(ProjectionError::Malformed)?;
+	project_with_origins(thread, value, &[])
+}
+
+async fn project_with_saved_origins(
+	store: Option<&decodex_database::SqliteStore>,
+	client: &decodex_codex::app_server_client::AppServerClient,
+	work: &str,
+	thread: &str,
+	value: &Value,
+) -> Result<ChiefTimelinePage, ProjectionError> {
+	let rows = value["data"].as_array().ok_or(ProjectionError::Malformed)?;
+	let turns = rows
+		.iter()
+		.filter(|row| row["item"]["type"] == "reasoning")
+		.filter_map(|row| row["turnId"].as_str().map(str::to_owned))
+		.collect::<std::collections::BTreeSet<_>>();
+	let mut origins = match store {
+		Some(store) => store
+			.read_chief_reasoning_origins(
+				work.into(),
+				thread.into(),
+				turns.iter().cloned().collect(),
+			)
+			.await
+			.map_err(|_| ProjectionError::Malformed)?,
+		None => Vec::new(),
+	};
+	for turn in turns {
+		if origins.iter().any(|(saved, _)| saved == &turn) {
+			continue;
+		}
+		let items = client
+			.thread_read_turn_items(thread, &turn)
+			.await
+			.map_err(|_| ProjectionError::Malformed)?;
+		let items = items.as_array().ok_or(ProjectionError::Malformed)?;
+		// Read from the turn's beginning, not from the displayed timeline page.
+		// This includes handoffs recorded by another client or before first launch.
+		let typed = items
+			.iter()
+			.take_while(|item| !super::reasoning::voice_handoff(item))
+			.filter(|item| item["type"] == "reasoning")
+			.filter_map(|item| item["id"].as_str().map(str::to_owned))
+			.collect();
+		origins.push((turn, typed));
+	}
+	project_with_origins(thread, value, &origins)
+}
+
+fn project_with_origins(
+	thread: &str,
+	value: &Value,
+	origins: &[(String, Vec<String>)],
+) -> Result<ChiefTimelinePage, ProjectionError> {
+	let page = project_fields(thread, value, origins).ok_or(ProjectionError::Malformed)?;
 	if serde_json::to_vec(&page).map_err(|_| ProjectionError::Malformed)?.len() > 60 * 1024 {
 		return Err(ProjectionError::Capacity);
 	}
 	Ok(page)
 }
 
-fn project_fields(thread: &str, value: &Value) -> Option<ChiefTimelinePage> {
+fn project_fields(
+	thread: &str,
+	value: &Value,
+	origins: &[(String, Vec<String>)],
+) -> Option<ChiefTimelinePage> {
 	let rows = value["data"].as_array()?;
 	if rows.len() > 100 {
 		return None;
 	}
+	let handoffs = rows
+		.iter()
+		.filter(|row| row["type"] == "item" && super::reasoning::voice_handoff(&row["item"]))
+		.filter_map(|row| Some((row["turnId"].as_str()?, row["position"].as_u64()?)))
+		.collect::<Vec<_>>();
+	let visible = |row: &&Value| {
+		if row["item"]["type"] != "reasoning" {
+			return true;
+		}
+		let turn = row["turnId"].as_str().unwrap_or_default();
+		if let Some((_, typed)) = origins.iter().find(|(saved, _)| saved == turn) {
+			return row["item"]["id"]
+				.as_str()
+				.is_some_and(|id| typed.iter().any(|saved| saved == id));
+		}
+		!handoffs.iter().any(|(delegated, position)| {
+			*delegated == turn
+				&& row["position"].as_u64().is_some_and(|current| current > *position)
+		})
+	};
 	let page = ChiefTimelinePage {
 		thread_id: id(&Value::String(thread.into()))?,
-		entries: rows.iter().map(entry).collect::<Option<Vec<_>>>()?,
+		entries: rows.iter().filter(visible).map(entry).collect::<Option<Vec<_>>>()?,
 		next_cursor: nullable_text(value.get("nextCursor")?, 4096)?,
 		active_realtime_session_at_page_start: nullable_text(
 			value.get("activeRealtimeSessionAtPageStart")?,
@@ -149,6 +236,12 @@ fn ordinary(row: &Value) -> Option<Content> {
 	let (attachments, omitted) = attachments::project(item);
 	let source = match kind.as_str() {
 		"agentMessage" | "plan" => item["text"].as_str()?.to_owned(),
+		"reasoning" => item["summary"]
+			.as_array()?
+			.iter()
+			.map(Value::as_str)
+			.collect::<Option<Vec<_>>>()?
+			.join("\n\n"),
 		"functionCallOutput" => tool_output::text(item)?,
 		"userMessage" => {
 			let parts = item["content"].as_array()?;
@@ -165,7 +258,9 @@ fn ordinary(row: &Value) -> Option<Content> {
 	let (text, truncated) = visible_text(&source);
 	let turn_id = id(&row["turnId"])?;
 	let completed = !matches!(item["status"].as_str(), Some("inProgress" | "in_progress"));
-	let activity = super::activity::project(&json!({"turnId":turn_id,"item":item}), completed);
+	let activity = (kind != "reasoning")
+		.then(|| super::activity::project(&json!({"turnId":turn_id,"item":item}), completed))
+		.flatten();
 	Some(Content::Item {
 		turn_id,
 		item_id: id(&item["id"])?,
@@ -247,6 +342,90 @@ fn visible_text(text: &str) -> (String, bool) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[tokio::test]
+	async fn reasoning_origins_read_earlier_native_item_pages_without_local_handoff() {
+		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+		let (local, remote) = tokio::io::duplex(65536);
+		let (reader, writer) = tokio::io::split(local);
+		let (client, _events) =
+			decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
+		let server = tokio::spawn(async move {
+			let (reader, mut writer) = tokio::io::split(remote);
+			let mut lines = BufReader::new(reader).lines();
+			let item = |id, kind, text| json!({"turnId":"turn","item":{"id":id,"type":kind,"summary":[text]}});
+			let marker = json!({"turnId":"turn","item":{"type":"userMessage","id":"handoff","content":[{"type":"text","text":"<realtime_delegation><input>Voice</input></realtime_delegation>"}]}});
+			for (cursor, page) in [
+				(
+					Value::Null,
+					json!({"data":[item("typed","reasoning","Public"),marker],"nextCursor":"next"}),
+				),
+				(
+					json!("next"),
+					json!({"data":[item("voice","reasoning","PRIVATE")],"nextCursor":null}),
+				),
+			] {
+				let request: Value =
+					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+				assert_eq!(request["method"], "thread/items/list");
+				assert_eq!(request["params"]["threadId"], "thread");
+				assert_eq!(request["params"]["turnId"], "turn");
+				assert_eq!(request["params"]["sortDirection"], "asc");
+				assert_eq!(request["params"]["cursor"], cursor);
+				writer
+					.write_all(
+						format!("{}\n", json!({"id":request["id"],"result":page})).as_bytes(),
+					)
+					.await
+					.unwrap();
+			}
+		});
+		let row = |position, id, text| json!({"type":"item","position":position,"turnId":"turn","item":{"type":"reasoning","id":id,"summary":[text]}});
+		let page = json!({"data":[row(40,"typed","Public"),row(41,"voice","PRIVATE")],"nextCursor":"older","activeRealtimeSessionAtPageStart":null});
+		let projected =
+			project_with_saved_origins(None, &client, "work", "thread", &page).await.unwrap();
+		assert_eq!(projected.entries.len(), 1);
+		assert!(!serde_json::to_string(&projected).unwrap().contains("PRIVATE"));
+		assert!(
+			matches!(&projected.entries[0].content,Content::Item { item_id,.. } if item_id == "typed")
+		);
+		server.await.unwrap();
+	}
+	#[test]
+	fn reasoning_history_hides_voice_items_and_uses_saved_origins_across_pages() {
+		let row = |position, item: &str| json!({"type":"item","position":position,"turnId":"turn","item":{"type":"reasoning","id":item,"summary":[item]}});
+		let marker = json!({"type":"item","position":2,"turnId":"turn","item":{"type":"userMessage","id":"handoff","content":[{"type":"text","text":"<realtime_delegation><input>Voice</input></realtime_delegation>","textElements":[]}]}});
+		let mut page = json!({"data":[row(1,"typed"),marker,row(3,"voice")],"nextCursor":null,"activeRealtimeSessionAtPageStart":null});
+		let projected = project("thread", &page).unwrap();
+		assert_eq!(projected.entries.len(), 2);
+		assert!(!serde_json::to_string(&projected).unwrap().contains("\"voice\""));
+		// A later page can omit the marker and contain a typed completion after it.
+		page["data"] = json!([row(4, "typed"), row(5, "voice")]);
+		let projected =
+			project_with_origins("thread", &page, &[("turn".into(), vec!["typed".into()])])
+				.unwrap();
+		assert_eq!(projected.entries.len(), 1);
+		assert!(
+			matches!(&projected.entries[0].content, Content::Item { item_id, .. } if item_id == "typed")
+		);
+	}
+	#[test]
+	fn reasoning_history_projects_only_public_summary_without_inventing_completion() {
+		let mut row = json!({"type":"item","position":1,"turnId":"turn","item":{
+			"type":"reasoning","id":"reasoning-item","summary":["Checking the request.","Comparing the results."],
+			"content":["PRIVATE_RAW_REASONING"],"encryptedContent":"PRIVATE_ENCRYPTED"}});
+		let projected = ordinary(&row).expect("public summary");
+		assert!(matches!(&projected, Content::Item { text, activity: None, truncated: false, .. }
+			if text == "Checking the request.\n\nComparing the results."));
+		assert!(!serde_json::to_string(&projected).unwrap().contains("PRIVATE"));
+		row["item"]["summary"] = json!(["界".repeat(4000)]);
+		assert!(matches!(ordinary(&row).unwrap(), Content::Item { text, truncated: true, .. }
+			if text.len() <= 8192 && text.chars().all(|c| c == '界')));
+		row["item"]["summary"] = json!([]);
+		assert!(matches!(ordinary(&row).unwrap(), Content::Item { text, .. } if text.is_empty()));
+		row["item"]["summary"] = json!([{"text":"do not coerce"}]);
+		assert!(ordinary(&row).is_none());
+	}
+
 	#[test]
 	fn proposed_plan_history_preserves_authoritative_text_and_bounds() {
 		let mut row = json!({"type":"item","position":4,"turnId":"turn","item":{"type":"plan","id":"plan-item","text":"## Final plan\n1. Verify the source\n2. Apply the change"}});

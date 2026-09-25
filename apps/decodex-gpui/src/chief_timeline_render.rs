@@ -96,7 +96,7 @@ impl ChiefSurface {
 		let row = div().w_full().min_w_0().flex().flex_col().gap_1();
 		match &entry.content {
 			Content::Item { text, kind, truncated, activity, turn_id, item_id, attachments } => {
-				let draft = if matches!(kind.as_str(), "agentMessage" | "plan") {
+				let draft = if matches!(kind.as_str(), "agentMessage" | "plan" | "reasoning") {
 					self.native_live_message(work, turn_id, item_id)
 				} else {
 					None
@@ -129,6 +129,7 @@ impl ChiefSurface {
 					"userMessage" => "You",
 					"agentMessage" => "Assistant",
 					"plan" => "Proposed plan",
+					"reasoning" => "Reasoning summary",
 					"functionCallOutput" => "Tool result",
 					_ => kind,
 				};
@@ -137,17 +138,14 @@ impl ChiefSurface {
 					row = row.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
 				}
 				if !text.is_empty() {
-					let is_plan = kind == "plan";
+					let selector = match kind.as_str() {
+						"plan" => "native-plan-content",
+						"reasoning" => "native-reasoning-summary",
+						_ => "native-promotion-content",
+					};
 					row = row.child(
 						div()
-							.debug_selector(move || {
-								if is_plan {
-									"native-plan-content"
-								} else {
-									"native-promotion-content"
-								}
-								.into()
-							})
+							.debug_selector(move || selector.into())
 							.child(markdown::render(text, identity)),
 					);
 				}
@@ -422,6 +420,91 @@ mod tests {
 			},
 			plan_entry(),
 		]
+	}
+
+	#[gpui::test]
+	fn live_plan_and_reasoning_wait_for_exact_native_items(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(1400.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("native-thread".into());
+			let mut history = Timeline::default();
+			assert!(history.replace(
+				Binding {
+					work: work.id.clone(),
+					thread: "native-thread".into(),
+					account: "account".into()
+				},
+				ChiefTimelinePage {
+					thread_id: "native-thread".into(),
+					entries: vec![],
+					next_cursor: None,
+					active_realtime_session_at_page_start: None
+				}
+			));
+			s.native_history = history;
+			let Some((_, decodex_protocol::ChiefHistoryResult::Available { live, .. })) =
+				&mut s.history
+			else {
+				panic!("fixture history")
+			};
+			live.push(decodex_protocol::ChiefLiveMessageDto {
+				kind: decodex_protocol::ChiefLiveMessageKind::Plan,
+				turn_id: "plan-turn".into(),
+				item_id: "plan-item".into(),
+				text: "Draft proposal".into(),
+				truncated: false,
+			});
+			live.push(decodex_protocol::ChiefLiveMessageDto {
+				kind: decodex_protocol::ChiefLiveMessageKind::ReasoningSummary,
+				turn_id: "reasoning-turn".into(),
+				item_id: "plan-item".into(),
+				text: "Public summary in progress".into(),
+				truncated: false,
+			});
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("native-live-plan").is_some());
+		assert!(visual.debug_bounds("native-live-reasoning-summary").is_some());
+		surface.update(visual, |s, cx| {
+			s.native_history.entries.push(plan_entry());
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("native-live-plan").is_none());
+		assert!(visual.debug_bounds("native-plan-content").is_some());
+		assert!(visual.debug_bounds("native-live-reasoning-summary").is_some());
+		surface.update(visual, |s, cx| {
+			let mut entry = plan_entry();
+			entry.position += 1;
+			if let Content::Item { turn_id, kind, text, .. } = &mut entry.content {
+				*turn_id = "reasoning-turn".into();
+				*kind = "reasoning".into();
+				*text = "Final public summary".into();
+			}
+			s.native_history.entries.push(entry);
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("native-live-reasoning-summary").is_none());
+		assert!(visual.debug_bounds("native-reasoning-summary").is_some());
 	}
 
 	#[gpui::test]
