@@ -1149,6 +1149,18 @@ impl AttestedProcessChild {
 		Ok(())
 	}
 
+	/// Retain display-only notices without treating them as execution evidence.
+	fn retain_ordinary_notices(
+		&mut self,
+		events: Vec<ConversationProcessEvent>,
+	) -> Result<Vec<ConversationProcessEvent>, ConversationProcessError> {
+		let (notices, execution): (Vec<_>, Vec<_>) = events
+			.into_iter()
+			.partition(|event| matches!(event, ConversationProcessEvent::Warning { .. }));
+		self.retain_ordinary_events(notices)?;
+		Ok(execution)
+	}
+
 	/// Reserve the exact `thread/start` frame before its durable fence is committed.
 	pub(crate) fn prepare_ordinary_thread_start(
 		&mut self,
@@ -1188,7 +1200,11 @@ impl AttestedProcessChild {
 		});
 		debug_assert_eq!(request_id, binding.thread_start_request_id);
 		debug_assert_eq!(request_sha256, binding.thread_start_request_sha256);
-		Ok(EstablishedOrdinaryThread { codex_thread_id, binding, events: success.events })
+		Ok(EstablishedOrdinaryThread {
+			codex_thread_id,
+			binding,
+			events: self.retain_ordinary_notices(success.events)?,
+		})
 	}
 
 	/// Resume one exact normal Codex thread and return exact positive wire facts.
@@ -1216,6 +1232,7 @@ impl AttestedProcessChild {
 				return Err(error);
 			},
 		};
+		let events = self.retain_ordinary_notices(events)?;
 		Ok(ResumedOrdinaryThread {
 			codex_thread_id: success.value.thread_id().as_str().to_owned(),
 			request_id: success.wire.request_id,
@@ -1256,11 +1273,21 @@ impl AttestedProcessChild {
 			true,
 			decode_conversation_turn_start_response,
 		)?;
+		let mut notices: Vec<_> = self.process.deferred_conversation_events.drain(..).collect();
+		for warning in mem::take(&mut self.process.config_warnings) {
+			if let Some(event) = decode_conversation_process_event(
+				&serde_json::to_vec(&warning)
+					.map_err(|_| ConversationProcessError::Incompatible)?,
+			)? {
+				notices.push(event);
+			}
+		}
+		notices.extend(success.events);
 		Ok(StartedOrdinaryTurn {
 			turn_id: success.value.turn_id().as_str().to_owned(),
 			status: success.value.status(),
 			response_sha256: success.wire.response_sha256,
-			events: success.events,
+			events: notices,
 		})
 	}
 
@@ -1396,6 +1423,8 @@ pub(crate) struct StartedOrdinaryTurn {
 
 /// Closed user-visible event set emitted by the private ordinary-turn child gateway.
 pub(crate) enum ConversationProcessEvent {
+	/// Display-only public notice; never turn-completion evidence.
+	Warning { thread_id: Option<String>, text: String },
 	/// One bounded assistant-message delta.
 	MessageDelta(ConversationMessageDelta),
 	/// One exact turn reached a terminal app-server notification.
@@ -2640,6 +2669,31 @@ pub(super) fn project_exact_submitted_turn(
 fn decode_conversation_process_event(
 	bytes: &[u8],
 ) -> Result<Option<ConversationProcessEvent>, ConversationProcessError> {
+	let header: InboundHeader =
+		serde_json::from_slice(bytes).map_err(|_| ConversationProcessError::Incompatible)?;
+	if header.id.is_none() && matches!(header.method.as_deref(), Some("warning" | "configWarning"))
+	{
+		let frame: serde_json::Value =
+			serde_json::from_slice(bytes).map_err(|_| ConversationProcessError::Incompatible)?;
+		let value = if header.method.as_deref() == Some("warning") {
+			crate::native_config_warning::warning(&frame["params"])
+		} else {
+			crate::native_config_warning::project(&frame["params"]).map(|value| {
+				let mut message = value["summary"].as_str().unwrap_or_default().to_owned();
+				if let Some(details) =
+					value["details"].as_str().filter(|text| !text.trim().is_empty())
+				{
+					message.push_str("\n\n");
+					message.push_str(details);
+				}
+				serde_json::json!({"threadId":null,"message":message})
+			})
+		};
+		return Ok(value.map(|value| ConversationProcessEvent::Warning {
+			thread_id: value["threadId"].as_str().map(str::to_owned),
+			text: format!("Codex warning: {}", value["message"].as_str().unwrap_or_default()),
+		}));
+	}
 	if let Some(delta) = project_conversation_message_delta(bytes)
 		.map_err(|_| ConversationProcessError::Incompatible)?
 	{
@@ -7690,6 +7744,60 @@ pub(crate) mod tests {
 		}
 		assert!(child.process.config_warnings.is_empty());
 		child.close_private_lifetime_channels();
+	}
+
+	#[test]
+	fn ordinary_warnings_preserve_scope_without_terminal_authority() {
+		use super::{ConversationProcessEvent, decode_conversation_process_event};
+		for frame in [
+			br#"{"method":"warning","params":{"threadId":"exact-thread","message":"Retained old instructions"}}"#.as_slice(),
+			br#"{"method":"configWarning","params":{"summary":"Ignored setting","details":"Details"}}"#.as_slice(),
+		] {
+			let event = decode_conversation_process_event(frame).unwrap().unwrap();
+			let ConversationProcessEvent::Warning { thread_id, text } = event else {
+				panic!("display-only notice");
+			};
+			assert!(text.starts_with("Codex warning:"));
+			if text.contains("Retained") {
+				assert_eq!(thread_id.as_deref(), Some("exact-thread"));
+			} else {
+				assert!(thread_id.is_none());
+			}
+		}
+		assert!(
+			decode_conversation_process_event(
+				br#"{"method":"warning","params":{"threadId":42,"message":"bad"}}"#
+			)
+			.unwrap()
+			.is_none()
+		);
+	}
+
+	#[test]
+	fn resume_notices_are_retained_without_implying_execution() {
+		let (_temp, mut child) = ordinary_catalog_child("exact-resume-warning");
+		let request = decodex_codex::ConversationThreadResumeRequest::new(
+			exact_thread_id(),
+			"fixture-model",
+			"/tmp",
+			"Fixture instructions",
+		)
+		.unwrap();
+		for _ in 0..2 {
+			let resumed = child.resume_ordinary_thread(&request).unwrap();
+			assert!(resumed.events.is_empty(), "A warning does not make an idle resume ambiguous");
+			assert_eq!(child.process.deferred_conversation_events.len(), 2);
+		}
+		for expected in [
+			"Codex warning: Project configuration is disabled",
+			"Codex warning: Existing settings retained",
+		] {
+			assert!(
+				matches!(child.process.next_conversation_event(Duration::from_millis(10)).unwrap(), Some(super::ConversationProcessEvent::Warning { text, .. }) if text == expected)
+			);
+		}
+		assert!(child.process.deferred_conversation_events.is_empty());
+		child.shutdown().unwrap();
 	}
 
 	#[test]

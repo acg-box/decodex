@@ -545,8 +545,12 @@ for line in sys.stdin:
                     "parentThreadId": None,
                 }
             }
-    elif method == "thread/resume" and mode == "resume-reject-closing-once" and resume_attempts == 1:
+    elif method == "thread/resume" and ((mode == "resume-reject-closing-once" and resume_attempts == 1) or mode == "exact-resume-warning"):
         params = message["params"]
+        if mode == "exact-resume-warning" and resume_attempts == 0:
+            print(json.dumps({"method":"configWarning","params":{"summary":"Project configuration is disabled"}}), flush=True)
+            print(json.dumps({"method":"warning","params":{"threadId":params["threadId"],"message":"Existing settings retained"}}), flush=True)
+            resume_attempts += 1
         result = {
             "thread": {"id": params["threadId"], "sessionId": "fixture-session", "preview": "", "ephemeral": False,
                        "modelProvider": "openai", "createdAt": 1, "updatedAt": 1, "status": {"type": "idle"},

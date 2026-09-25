@@ -2447,3 +2447,33 @@ async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
 		}
 	}
 }
+
+#[tokio::test]
+async fn status_history_event_refreshes_only_its_open_conversation() {
+	for target in ["selected", "other"] {
+		let temporary = TempDir::new().expect("history invalidation fixture");
+		let root = cache_parent(&temporary);
+		let mut lifecycle = lifecycle(&root);
+		lifecycle.history_pager.open(entity("selected")).expect("history invalidation fixture");
+		let before = lifecycle.history_pager.snapshot().view_generation;
+		let mut notice = event(6, "warning-item", 1);
+		notice.channel = Channel::ConversationStream;
+		notice.payload =
+			EventPayload::ConversationHistoryChanged { conversation_id: entity(target) };
+		let mut io = FakeIo::new(
+			root,
+			vec![connected(
+				vec![
+					SessionAction::Snapshot(snapshot(5, "system", 1)),
+					SessionAction::Event(Box::new(notice)),
+					SessionAction::Cancel,
+				],
+				None,
+			)],
+		);
+		assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::Stopped);
+		let after = lifecycle.history_pager.snapshot();
+		assert_eq!(after.conversation_id, Some(entity("selected")));
+		assert_eq!(after.view_generation > before, target == "selected");
+	}
+}

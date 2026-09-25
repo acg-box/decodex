@@ -400,7 +400,7 @@ impl HistoryPager {
 		Ok(())
 	}
 
-	/// Reload an open terminal Conversation or mark its cached head stale until the next open.
+	/// Reload changed Conversation history or mark its cached head stale until the next open.
 	pub(crate) fn reload_if_open(
 		&self,
 		conversation_id: &EntityId,

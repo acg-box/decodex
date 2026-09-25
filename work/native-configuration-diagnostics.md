@@ -42,9 +42,9 @@ unreadable global AGENTS.md and checks retained history after reopening the stor
 The setting-error fixture checks that an unconfirmed write stays unconfirmed while
 its public parse cause becomes readable.
 
-The ordinary-conversation warning projection in the inherited snapshot is a
-separate outstanding consumer. This Chief delivery does not claim that all
-ordinary warning or partial-output behavior is integrated.
+The ordinary-conversation warning consumer is documented separately in
+[Ordinary native warnings](ordinary-native-warnings.md). Ordinary partial-output
+retention remains a separate, incomplete delivery.
 
 Final batch validation: database118 and runtime563 tests passed;41 opt-in tests
 were skipped. The new installed-native warning test passed separately. Strict
