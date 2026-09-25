@@ -15,14 +15,21 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     private var initializationFailed = false
     private var pendingCommand: String?
     private var captureRequestedAt: Date?
-    private var nativeDictation: DictationCapture?
+    private var nativeDictation: (any DictationCapturing)?
+    private let dictationFactoryForTesting: ((@escaping @MainActor @Sendable ([String: Any]) -> Void) -> any DictationCapturing)?
     private var desiredMute = false
     private var captureCancelled = false
+    private var captureIdentity: UUID?
+    private let authorizationRequestForTesting: ((@escaping @MainActor (Bool) -> Void) -> Void)?
     private var syntheticAudio = false
     private static let mediaDataStore = WKWebsiteDataStore.nonPersistent()
     private let origin = URL(string: "https://decodex.invalid")!
 
-    init(syntheticAudioForTesting: Bool = false, sampleForTesting: Data? = nil, hostWindow: NSWindow? = nil) {
+    init(syntheticAudioForTesting: Bool = false, sampleForTesting: Data? = nil, hostWindow: NSWindow? = nil,
+         authorizationRequestForTesting: ((@escaping @MainActor (Bool) -> Void) -> Void)? = nil,
+         dictationFactoryForTesting: ((@escaping @MainActor @Sendable ([String: Any]) -> Void) -> any DictationCapturing)? = nil) {
+        self.authorizationRequestForTesting = authorizationRequestForTesting
+        self.dictationFactoryForTesting = dictationFactoryForTesting
         super.init()
         syntheticAudio = syntheticAudioForTesting
         let configuration = WKWebViewConfiguration()
@@ -69,16 +76,26 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
             emit(["type":"devices", "inputs":discovery.devices.map { $0.localizedName }])
             return true
         }
-        if operation == "dictate", !syntheticAudio {
+        if operation == "dictate", !syntheticAudio || dictationFactoryForTesting != nil {
             captureCancelled = false
+            let identity = UUID()
+            captureIdentity = identity
+            nativeDictation?.stop()
+            nativeDictation = nil
             captureRequestedAt = Date()
             let input = value["input"] as? String ?? ""
-            if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized {
+            if let authorizationRequestForTesting {
+                authorizationRequestForTesting { [weak self] allowed in
+                    guard let self, !self.isClosed, !self.captureCancelled, self.captureIdentity == identity else { return }
+                    if allowed { self.beginNativeDictation(input) }
+                    else { self.emit(["type":"error", "message":"Allow microphone access in System Settings."]) }
+                }
+            } else if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized {
                 beginNativeDictation(input)
             } else {
                 AVCaptureDevice.requestAccess(for: .audio) { [weak self] allowed in
                     DispatchQueue.main.async {
-                        guard let self, !self.isClosed, !self.captureCancelled else { return }
+                        guard let self, !self.isClosed, !self.captureCancelled, self.captureIdentity == identity else { return }
                         if allowed { self.beginNativeDictation(input) }
                         else { self.emit(["type":"error", "message":"Allow microphone access in System Settings."]) }
                     }
@@ -88,13 +105,21 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
         }
         if let nativeDictation, operation == "finish" || operation == "stop" {
             captureCancelled = true
+            // Finish must still deliver this capture's final PCM and ended event.
             if operation == "finish" { nativeDictation.finish() }
-            else { nativeDictation.stop(); self.nativeDictation = nil; emit(["type":"ended"]) }
+            else { captureIdentity = nil; nativeDictation.stop(); self.nativeDictation = nil; emit(["type":"ended"]) }
             return true
         }
-        if operation == "start" || operation == "dictate" { captureCancelled = false }
+        if operation == "start" || operation == "dictate" {
+            if !isReady && pendingCommand != nil { return false }
+            captureCancelled = false
+            captureIdentity = UUID()
+            nativeDictation?.stop()
+            nativeDictation = nil
+        }
         if operation == "stop" || operation == "finish" {
             captureCancelled = true
+            captureIdentity = nil
             if !isReady { pendingCommand = nil; emit(["type":"ended"]); return true }
         }
         if operation == "mute" { desiredMute = value["muted"] as? Bool ?? false }
@@ -109,15 +134,26 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     }
 
     private func beginNativeDictation(_ input: String) {
-        guard !isClosed, !captureCancelled else { return }
+        guard let identity = captureIdentity, !isClosed, !captureCancelled else { return }
         nativeDictation?.stop()
-        let capture = DictationCapture { [weak self] value in self?.emit(value) }
+        let emitCapture: @MainActor @Sendable ([String: Any]) -> Void = { [weak self] value in
+            guard let self, !self.isClosed, self.captureIdentity == identity else { return }
+            if let type = value["type"] as? String, type == "ended" || type == "error" {
+                self.captureIdentity = nil
+                self.captureCancelled = true
+                self.nativeDictation?.stop()
+                self.nativeDictation = nil
+            }
+            self.emit(value)
+        }
+        let capture = dictationFactoryForTesting?(emitCapture) ?? DictationCapture(emit: emitCapture)
         nativeDictation = capture
         do { try capture.start(input: input) }
         catch { capture.stop(); nativeDictation = nil; emit(["type":"error", "message":"The selected microphone could not start. Check the input device and try again."]) }
     }
 
     private func startCapture(_ json: String) {
+        guard let identity = captureIdentity, !captureCancelled, !isClosed else { return }
         captureRequestedAt = Date()
         guard let window = webView?.window else {
             emit(["type":"error", "message":"The voice window closed. Start a new call from an open window."])
@@ -129,18 +165,24 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
             window.orderFrontRegardless()
         }
         emit(["type":"status", "message":"Waiting for microphone permission…"])
-        if syntheticAudio { finishAuthorization(true, command: json); return }
+        if let authorizationRequestForTesting {
+            authorizationRequestForTesting { [weak self] permitted in
+                self?.finishAuthorization(permitted, command: json, identity: identity)
+            }
+            return
+        }
+        if syntheticAudio { finishAuthorization(true, command: json, identity: identity); return }
         if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized {
-            finishAuthorization(true, command: json)
+            finishAuthorization(true, command: json, identity: identity)
             return
         }
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] permitted in
-            DispatchQueue.main.async { self?.finishAuthorization(permitted, command: json) }
+            DispatchQueue.main.async { self?.finishAuthorization(permitted, command: json, identity: identity) }
         }
     }
 
-    private func finishAuthorization(_ permitted: Bool, command: String) {
-        guard !isClosed, !captureCancelled else { return }
+    private func finishAuthorization(_ permitted: Bool, command: String, identity: UUID) {
+        guard !isClosed, !captureCancelled, captureIdentity == identity else { return }
         guard permitted else {
             emit(["type":"error", "message":"Microphone access is unavailable. Allow Decodex in System Settings > Privacy & Security > Microphone."])
             return
@@ -151,17 +193,19 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     }
 
     private func evaluate(_ json: String) {
+        let identity = captureIdentity
         // callAsyncJavaScript passes data as an argument; SDP never becomes executable source.
         webView?.callAsyncJavaScript(
             "await window.decodexVoice.command(JSON.parse(command))",
             arguments: ["command": json], in: nil, in: .page
         ) { [weak self] result in
-            guard case .failure = result else { return }
-            self?.emit(["type": "error", "message": "The audio session could not continue."])
+            guard let self, !self.isClosed, self.captureIdentity == identity, case .failure = result else { return }
+            self.emit(["type": "error", "message": "The audio session could not continue."])
         }
     }
 
     #if DEBUG
+    var mediaViewForTesting: WKWebView? { syntheticAudio ? webView : nil }
     var hasHostWindow: Bool { webView?.window != nil }
     var hasRequestedCapture: Bool { captureRequestedAt != nil }
 
@@ -248,6 +292,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     func close() {
         guard !isClosed else { return }
         isClosed = true
+        captureIdentity = nil
         nativeDictation?.stop()
         nativeDictation = nil
         pendingCommand = nil
@@ -285,9 +330,11 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
       async function start(dictation = false, input = "") {
         stop(); const active = generation;
         let capture;
+        let failureMessage = "The microphone could not open. Check its connection and Decodex microphone permission in System Settings.";
         try {
           connectionTimeout = setTimeout(() => { if (active === generation) { stop(); emit({type:'error',message:'The microphone did not open. Check its connection and try again.'}); } }, 15000);
           const knownInputs = input ? await navigator.mediaDevices.enumerateDevices() : [];
+          if (active !== generation) return;
           const preferred = knownInputs.find(d => d.kind === 'audioinput' && (d.label === input || d.label.startsWith(input + ' (')));
           if (preferred) {
             capture = await navigator.mediaDevices.getUserMedia({video:false,audio:{deviceId:{exact:preferred.deviceId},echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
@@ -296,8 +343,9 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
           }
           if (input && !preferred) {
             const devices = await navigator.mediaDevices.enumerateDevices();
+            if (active !== generation) { capture.getTracks().forEach(track=>track.stop()); return; }
             const selected = devices.find(d => d.kind === 'audioinput' && (d.label === input || d.label.startsWith(input + ' (')));
-            if (!selected) { capture.getTracks().forEach(track=>track.stop()); emit({type:'error',message:'The selected microphone is unavailable. Choose another input.'}); return; }
+            if (!selected) { capture.getTracks().forEach(track=>track.stop()); stop(); emit({type:'error',message:'The selected microphone is unavailable. Choose another input.'}); return; }
             if (capture.getAudioTracks()[0]?.getSettings().deviceId !== selected.deviceId) {
               capture.getTracks().forEach(track=>track.stop());
               capture = await navigator.mediaDevices.getUserMedia({video:false,audio:{deviceId:{exact:selected.deviceId},echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
@@ -307,6 +355,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
           microphone = capture;
           capture.getAudioTracks().forEach(track => track.enabled = !muted);
           clearTimeout(connectionTimeout);
+          failureMessage = "The audio runtime could not initialize. Check the input device and start a new call.";
           if (dictation) {
             audioContext = new AudioContext({sampleRate:24000});
             source = audioContext.createMediaStreamSource(capture);
@@ -321,7 +370,9 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
               if (finishRequested) { stop(); emit({type:'ended'}); }
             };
             source.connect(processor); processor.connect(audioContext.destination);
-            await audioContext.resume(); emit({type:'dictation_ready'}); return;
+            await audioContext.resume();
+            if (active !== generation) return;
+            emit({type:'dictation_ready'}); return;
           }
           audioContext = new AudioContext();
           source = audioContext.createMediaStreamSource(capture);
@@ -329,20 +380,40 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
           const silent = audioContext.createGain(); silent.gain.value = 0;
           source.connect(analyser); analyser.connect(silent); silent.connect(audioContext.destination);
           await audioContext.resume();
+          if (active !== generation) return;
           levelTimer = setInterval(() => {
             const values = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(values);
             emit({type:'level',level:Math.min(1,Math.sqrt(values.reduce((sum,v)=>sum+v*v,0)/values.length)*5)});
           }, 50);
           connectionTimeout = setTimeout(() => { if (active === generation) { stop(); emit({type:'error',message:'The audio connection timed out.'}); } }, 30000);
+          failureMessage = "The audio connection could not be established. Start a new call.";
           const connection = new RTCPeerConnection(); peer = connection;
           capture.getAudioTracks().forEach(track => connection.addTrack(track,capture));
-          connection.ontrack = event => { reply.srcObject = event.streams[0] || new MediaStream([event.track]); reply.play().catch(() => emit({type:'error',message:'Audio playback was blocked.'})); };
+          connection.ontrack = event => {
+            if (active !== generation) return;
+            reply.srcObject = event.streams[0] || new MediaStream([event.track]);
+            reply.play().catch(() => { if (active === generation) emit({type:'error',message:'Audio playback was blocked.'}); });
+          };
+          const events = connection.createDataChannel('oai-events', {ordered:true}); channel = events;
+          let announced = false;
+          const ready = () => {
+            if (active !== generation || announced || connection.connectionState !== 'connected' || events.readyState !== 'open') return;
+            announced = true; clearTimeout(connectionTimeout); emit({type:'connected'});
+          };
+          const lost = () => {
+            if (active !== generation) return;
+            stop(); emit({type:'error',message:'The audio connection was lost.'});
+          };
           connection.onconnectionstatechange = () => {
             if (active !== generation) return;
-            if (connection.connectionState === 'connected') { clearTimeout(connectionTimeout); emit({type:'connected'}); }
-            if (['failed','disconnected'].includes(connection.connectionState)) { stop(); emit({type:'error',message:'The audio connection was lost.'}); }
+            if (['failed','disconnected','closed'].includes(connection.connectionState)) lost();
+            else ready();
           };
-          channel = connection.createDataChannel('oai-events');
+          // Only the locally created ordered channel belongs to this call.
+          connection.ondatachannel = event => event.channel.close();
+          events.onopen = ready;
+          events.onclose = lost;
+          events.onerror = lost;
           channel.onmessage = event => {
             if (active !== generation || event.data.length > 65536) return;
             try {
@@ -352,7 +423,10 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
               if (['input_transcript.added','output_transcript.added','turn.created','turn.done','turn.delta'].includes(value.type)) emit({type:'caption',event:value});
             } catch {}
           };
-          await connection.setLocalDescription(await connection.createOffer());
+          const offer = await connection.createOffer();
+          if (active !== generation) return;
+          await connection.setLocalDescription(offer);
+          if (active !== generation) return;
           if (connection.iceGatheringState !== 'complete') await new Promise(resolve => {
             const finish = () => { clearTimeout(timer); connection.removeEventListener('icegatheringstatechange', changed); resolve(); };
             const changed = () => { if (connection.iceGatheringState === 'complete') finish(); };
@@ -360,7 +434,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
             connection.addEventListener('icegatheringstatechange', changed);
           });
           if (active === generation) emit({type:'offer',sdp:connection.localDescription.sdp});
-        } catch { if (active === generation) { stop(); emit({type:'error',message:'Microphone access is unavailable. Check Decodex microphone permission in System Settings.'}); } }
+        } catch { if (active === generation) { stop(); emit({type:'error',message:failureMessage}); } }
       }
       window.decodexVoice = {async diagnostics() { const stats=peer ? [...(await peer.getStats()).values()].filter(s=>['outbound-rtp','inbound-rtp'].includes(s.type)).map(s=>({type:s.type,bytesSent:s.bytesSent,bytesReceived:s.bytesReceived,packetsSent:s.packetsSent})) : []; return {muted:microphone?.getAudioTracks().every(track=>!track.enabled),audio:window.testAudioContext?.state,stats,connection:peer?.connectionState,ice:peer?.iceConnectionState,gathering:peer?.iceGatheringState,signaling:peer?.signalingState,channel:channel?.readyState,localCandidates:(peer?.localDescription?.sdp.match(/a=candidate:/g)||[]).length,remoteCandidates:(peer?.remoteDescription?.sdp.match(/a=candidate:/g)||[]).length}; },async command(value) {
         if (value.operation === 'start') return start(false,value.input || '');
