@@ -274,6 +274,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 				"getAuthStatus"
 					| "thread/realtime/start"
 					| "thread/realtime/stop"
+					| "thread/realtime/listVoices"
 					| "model/list" | "experimentalFeature/list"
 					| "permissionProfile/list"
 					| "hooks/list" | "config/read"
