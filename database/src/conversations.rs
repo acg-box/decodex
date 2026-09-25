@@ -1,5 +1,6 @@
 //! Ordinary Conversation conversations, turns, and normalized history.
 
+pub(crate) mod non_submission;
 mod resume_rejection;
 pub use resume_rejection::{ConversationResumeRejection, RecordConversationResumeRejection};
 
@@ -3728,6 +3729,94 @@ mod archive_tests {
 				.expect("read terminalized projection"),
 			None
 		);
+	}
+
+	#[tokio::test]
+	async fn positive_non_submission_finishes_input_atomically_and_survives_reopen() {
+		for acknowledged in [false, true] {
+			let directory = tempdir().unwrap();
+			let path = directory.path().join("non-submission.sqlite3");
+			let store = SqliteStore::open_test(&path).unwrap();
+			seed_provider_less_starting_task(&store).await;
+			seed_active_user_turn(&store);
+			seed_unknown_provider_attempt(&store);
+			store
+				.with_connection(|connection| {
+					connection
+						.execute(
+							"UPDATE runtime_sessions SET has_acknowledged_turn=?1 WHERE runtime_session_id=?2",
+							params![acknowledged, RUNTIME_SESSION_ID],
+						)
+						.map_err(sqlite_error)
+				})
+				.unwrap();
+
+			let evidence = ProviderPositiveEvidence::new(
+				ProviderEvidenceId::new("64000000-0000-4000-8000-000000000002").unwrap(),
+				ProviderAttemptId::new(ATTEMPT_ID).unwrap(),
+				ProviderRequestId::new("61000000-0000-4000-8000-000000000001").unwrap(),
+				ProviderEvidenceSource::PositiveNonSubmissionReceipt,
+				ProviderTerminalOutcome::NotSubmitted,
+				ProviderRequestKey::new("app-server:test:1").unwrap(),
+				Some("native-refusal".into()),
+				Some("codex-thread-unknown".into()),
+				None,
+				"9".repeat(64),
+			)
+			.unwrap();
+			let mut wrong_thread = evidence.clone();
+			wrong_thread.provider_thread_id = Some("another-thread".into());
+			assert!(
+				store.record_provider_attempt_positive_evidence(1, &wrong_thread).await.is_err()
+			);
+			assert_eq!(
+				store.read_provider_attempt(&evidence.attempt_id).await.unwrap().unwrap().state,
+				ProviderAttemptState::Unknown
+			);
+
+			store.with_connection(|connection|connection.execute_batch("CREATE TRIGGER refuse_non_submission_history BEFORE INSERT ON history_items WHEN json_extract(NEW.metadata_json,'$.type')='native_turn_not_submitted' BEGIN SELECT RAISE(ABORT,'fixture history failure'); END;").map_err(sqlite_error)).unwrap();
+			assert!(store.record_provider_attempt_positive_evidence(1, &evidence).await.is_err());
+			assert_eq!(
+				store.read_provider_attempt(&evidence.attempt_id).await.unwrap().unwrap().state,
+				ProviderAttemptState::Unknown
+			);
+			store
+				.with_connection(|connection| {
+					connection
+						.execute_batch("DROP TRIGGER refuse_non_submission_history;")
+						.map_err(sqlite_error)
+				})
+				.unwrap();
+			assert!(matches!(
+				store.record_provider_attempt_positive_evidence(1, &evidence).await.unwrap(),
+				ProviderAttemptMutationOutcome::Applied(_)
+			));
+			drop(store);
+			let store = SqliteStore::open_test(&path).unwrap();
+			assert!(matches!(
+				store.record_provider_attempt_positive_evidence(1, &evidence).await.unwrap(),
+				ProviderAttemptMutationOutcome::Replayed(_)
+			));
+			let session: (bool, Option<String>, i64) = store.with_connection(|connection| connection.query_row("SELECT has_acknowledged_turn,last_known_turn_id,revision FROM runtime_sessions WHERE runtime_session_id=?1",[RUNTIME_SESSION_ID],|row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(sqlite_error)).unwrap();
+			assert_eq!(
+				session,
+				(acknowledged, None, 7),
+				"Refusal must not invent a native turn or revise native session evidence"
+			);
+			let saved: (String,String,i64) = store.with_connection(|connection|connection.query_row("SELECT t.status,p.state,(SELECT count(*) FROM history_items h WHERE h.turn_id=t.turn_id AND json_extract(h.metadata_json,'$.type')='native_turn_not_submitted') FROM turns t JOIN provider_attempts p ON p.turn_id=t.turn_id WHERE p.attempt_id=?1",[ATTEMPT_ID],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(sqlite_error)).unwrap();
+			assert_eq!(saved, ("failed".into(), "not_submitted".into(), 1));
+			let projection = store
+				.read_ordinary_task_conversations(
+					Some(&ConversationId::new(CONVERSATION_ID).unwrap()),
+					None,
+					1,
+				)
+				.await
+				.unwrap();
+			assert!(
+				matches!(projection.as_slice(),[OrdinaryTaskConversationProjection::Current(row)] if !row.has_unknown_provider_attempt && row.active_turn_id.is_none())
+			);
+		}
 	}
 
 	#[tokio::test]

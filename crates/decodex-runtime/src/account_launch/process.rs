@@ -1460,6 +1460,16 @@ fn conversation_rejection_reason(
 	resume_thread_id: Option<&str>,
 ) -> ConversationRejectionReason {
 	let message = error.message();
+	if let Some(refusal) =
+		decodex_codex::app_server_client::classify_dispatch_refusal(error.code, message)
+	{
+		return match refusal {
+			decodex_codex::app_server_client::NativeDispatchRefusal::ServerDraining =>
+				ConversationRejectionReason::ServerDraining,
+			decodex_codex::app_server_client::NativeDispatchRefusal::ManagedProviderChanged =>
+				ConversationRejectionReason::ManagedProviderChanged,
+		};
+	}
 	if let Some(thread) = resume_thread_id {
 		if error.code == -32600 && message.starts_with(&format!("thread {thread} is closing;")) {
 			return ConversationRejectionReason::ClosingThread;
@@ -2064,6 +2074,7 @@ impl SupervisedProcess {
 		frame.write_to(&mut self.stdin).map_err(|_| ambiguous())?;
 		self.stdin.flush().map_err(|_| ambiguous())?;
 
+		let mut native_activity = false;
 		let deadline = Instant::now() + timeout;
 		loop {
 			let remaining = deadline.saturating_duration_since(Instant::now());
@@ -2080,6 +2091,11 @@ impl SupervisedProcess {
 			};
 			let header: InboundHeader =
 				serde_json::from_slice(&line).map_err(|_| invalid_response())?;
+			if header.method.is_some()
+				&& !matches!(header.method.as_deref(), Some("warning" | "configWarning"))
+			{
+				native_activity = true;
+			}
 			if let (Some(id), Some(inbound_method)) = (header.id, header.method.as_deref()) {
 				Self::service_inbound_request(
 					&self.binding,
@@ -2116,7 +2132,17 @@ impl SupervisedProcess {
 					},
 					(None, Some(error)) => Err(ConversationProcessError::Rejected {
 						witness_digest,
-						reason: conversation_rejection_reason(&error, resume_thread_id.as_deref()),
+						reason: if native_activity
+							&& decodex_codex::app_server_client::classify_dispatch_refusal(
+								error.code,
+								error.message(),
+							)
+							.is_some()
+						{
+							ConversationRejectionReason::Other
+						} else {
+							conversation_rejection_reason(&error, resume_thread_id.as_deref())
+						},
 					}),
 					_ => Err(invalid_response()),
 				};
@@ -7771,6 +7797,41 @@ pub(crate) mod tests {
 			.unwrap()
 			.is_none()
 		);
+	}
+
+	#[test]
+	fn ordinary_refusal_requires_exact_response_identity_code_and_message() {
+		for (prefix, expected) in [
+			("turn-reject-draining", super::ConversationRejectionReason::ServerDraining),
+			(
+				"turn-reject-managed-provider",
+				super::ConversationRejectionReason::ManagedProviderChanged,
+			),
+		] {
+			for suffix in ["", "-wrong-code", "-wrong-text", "-wrong-id", "-prior-activity"] {
+				let mode = format!("{prefix}{suffix}");
+				let (_temp, mut process) = initialized_bound_process(&mode);
+				let request = process
+					.prepare_conversation_request(
+						"turn/start",
+						&serde_json::json!({"threadId":exact_thread_id().as_str(),"input":[]}),
+					)
+					.unwrap();
+				let error = process
+					.conversation_request(request, Duration::from_secs(2), true, |_| Ok(()))
+					.err()
+					.expect("refusal");
+				if mode.ends_with("wrong-id") {
+					assert!(matches!(error, super::ConversationProcessError::Ambiguous { .. }));
+				} else {
+					assert!(
+						matches!(&error,super::ConversationProcessError::Rejected {reason,witness_digest} if (*reason == expected) == suffix.is_empty() && witness_digest.len() == 64)
+					);
+				}
+				assert!(!format!("{error:?}").contains("fixture-secret"));
+				process.shutdown(Duration::from_secs(2)).unwrap();
+			}
+		}
 	}
 
 	#[test]
