@@ -2488,7 +2488,7 @@ impl SupervisedProcess {
 	}
 }
 
-fn project_exact_submitted_turn(
+pub(super) fn project_exact_submitted_turn(
 	thread: &crate::account_launch::protocol::ProtocolThread,
 	client_user_message_id: &str,
 ) -> Result<Option<ExactSubmittedTurnReadback>, ExactReconciliationError> {
