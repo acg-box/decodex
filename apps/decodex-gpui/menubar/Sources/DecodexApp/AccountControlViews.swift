@@ -43,9 +43,7 @@ struct AccountPrimaryActionsView: View {
 		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
 			CompactAccountActionButton(
 				title: presentation.title(isSwitching: isSwitching),
-				symbol: presentation.isCurrent
-						? "point.3.connected.trianglepath.dotted"
-						: "arrow.triangle.branch",
+				symbol: "arrow.triangle.branch",
 				isActive: presentation.isCurrent,
 				isDisabled: presentation.isDisabled,
 				isVisuallyDisabled: presentation.isVisuallyDisabled,
@@ -214,17 +212,17 @@ private struct CompactAccountActionButton: View {
 			action()
 		} label: {
 			Image(systemName: symbol)
-				.font(PanelFont.iconButton)
+				.font(.system(size: 12, weight: isActive ? .semibold : .regular))
+				.symbolVariant(isActive ? .fill : .none)
 				.symbolRenderingMode(.hierarchical)
 				.foregroundStyle(isActive ? PanelPalette.routeAccent(colorScheme) : PanelPalette.secondaryText(colorScheme))
 				.frame(width: 24, height: 24)
-				.background(RoundedRectangle(cornerRadius: 7).fill(
-					isActive ? PanelPalette.routeAccent(colorScheme).opacity(0.16)
-					: PanelPalette.primaryText(colorScheme).opacity(hovered ? 0.07 : 0)))
+				.opacity(hovered ? 1 : 0.85)
 				.contentShape(RoundedRectangle(cornerRadius: 7))
 				.symbolEffect(.pulse, options: .repeating, isActive: isBusy && !reduceMotion)
 		}
-		.buttonStyle(PanelPressButtonStyle(pressedScale: 0.92))
+		.buttonStyle(PanelPressButtonStyle(pressedScale: 0.94))
+		.frame(width: 24, height: 24)
 		.disabled(usesDisabledEnvironment)
 		.allowsHitTesting(!isDisabled)
 		.opacity(isVisuallyDisabled && !isActive ? 0.44 : 1)

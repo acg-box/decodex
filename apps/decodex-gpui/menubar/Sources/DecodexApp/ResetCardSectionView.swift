@@ -200,14 +200,18 @@ struct ResetCardAccountRow: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.compact) {
-			HStack(alignment: .center, spacing: PanelSpacing.compact) {
-				AccountPowerButton(state: state, store: store)
+			HStack(alignment: .center, spacing: PanelSpacing.section) {
 				Button { detailsBinding.wrappedValue.toggle() } label: { identityHeader }
 					.buttonStyle(PanelPressButtonStyle(pressedScale: 0.99))
 					.accessibilityLabel(identityAccessibilityLabel)
 					.accessibilityValue(detailsBinding.wrappedValue ? "Expanded" : "Collapsed")
-				AccountPrimaryActionsView(state: state, store: store)
-				AccountUtilityActionsView(state: state, store: store)
+				HStack(spacing: PanelSpacing.micro) {
+					AccountPrimaryActionsView(state: state, store: store)
+					AccountPowerButton(state: state, store: store)
+					AccountUtilityActionsView(state: state, store: store)
+					reorderHandle
+				}
+				.fixedSize(horizontal: true, vertical: false)
 			}
 			Button { detailsBinding.wrappedValue.toggle() } label: {
 				quotaWindows.contentShape(Rectangle())
@@ -226,10 +230,7 @@ struct ResetCardAccountRow: View {
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.padding(.horizontal, PanelSpacing.cardHorizontal)
 		.padding(.vertical, PanelSpacing.cardVertical)
-		.overlay(alignment: .trailing) {
-			reorderHandle
-				.offset(x: -PanelSpacing.micro)
-		}
+
 		.fixedSize(horizontal: false, vertical: true)
 		.accessibilityIdentifier("decodex.account.\(state.account.accountID)")
 		.onAppear {
@@ -254,26 +255,12 @@ struct ResetCardAccountRow: View {
 	}
 
 	private var reorderHandle: some View {
-		ZStack {
-			RoundedRectangle(cornerRadius: 5, style: .continuous)
-				.frame(width: 14, height: 18)
-				.foregroundStyle(
-					isReorderHandleHovered
-						? PanelPalette.actionBlue(colorScheme).opacity(0.15)
-						: PanelPalette.primaryText(colorScheme).opacity(
-							colorScheme == .dark ? 0.08 : 0.055
-						)
-				)
-
-			Image(systemName: "line.3.horizontal")
-				.font(.system(size: 9, weight: .semibold))
-				.foregroundStyle(
-					isReorderHandleHovered
-						? PanelPalette.actionBlue(colorScheme)
-						: PanelPalette.secondaryText(colorScheme).opacity(0.68)
-				)
-		}
-			.frame(width: 18, height: 28)
+		Image(systemName: "line.3.horizontal")
+			.font(.system(size: 11, weight: .medium))
+			.foregroundStyle(isReorderHandleHovered
+				? PanelPalette.actionBlue(colorScheme)
+				: PanelPalette.secondaryText(colorScheme).opacity(0.68))
+			.frame(width: 24, height: 24)
 			.opacity(showsReorderHandle ? 1 : 0)
 			.contentShape(Rectangle())
 			.highPriorityGesture(

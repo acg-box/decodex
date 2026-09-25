@@ -133,7 +133,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(accountPanel.contains("ForEach(presentedAccountStates)"))
 	}
 
-	func testAccountCardsUseConstrainedWholeCardReorderingWithAnOverlayGrip() throws {
+	func testAccountCardsUseConstrainedReorderingWithAnInlineSquareGrip() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
@@ -205,9 +205,8 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(panel.contains("DECODEX_HOVER_DEBUG"))
 		XCTAssertFalse(support.contains("DECODEX_HOVER_DEBUG"))
 		XCTAssertTrue(rows.contains(".opacity(showsReorderHandle ? 1 : 0)"))
-		XCTAssertTrue(rows.contains(".frame(width: 14, height: 18)"))
-		XCTAssertTrue(rows.contains(".font(.system(size: 9, weight: .semibold))"))
-		XCTAssertTrue(rows.contains(".overlay(alignment: .trailing)"))
+		XCTAssertTrue(rows.contains(".frame(width: 24, height: 24)"))
+		XCTAssertFalse(rows.contains(".overlay(alignment: .trailing)"))
 		XCTAssertTrue(rows.contains("DragGesture("))
 		XCTAssertTrue(rows.contains("coordinateSpace: .named("))
 		XCTAssertTrue(rows.contains("value.translation.height"))
