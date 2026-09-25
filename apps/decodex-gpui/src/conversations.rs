@@ -39,6 +39,7 @@ const CONVERSATION_EFFORTS: &[ConversationReasoningEffort] = &[
 ];
 
 #[path = "conversation_drafts.rs"] mod drafts;
+#[path = "conversation_turn_recovery.rs"] mod turn_recovery;
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -690,6 +691,7 @@ impl Conversations {
 			return;
 		}
 		state.delivery.readbacks.clear();
+		state.delivery.turn_readbacks.clear();
 		state.latch_in_flight_outcome_unknown();
 		state.cancel_refresh_batch();
 		state.reset_pagination();
@@ -713,6 +715,7 @@ impl Conversations {
 			return;
 		}
 		state.delivery.readbacks.clear();
+		state.delivery.turn_readbacks.clear();
 		state.latch_in_flight_outcome_unknown();
 		state.cancel_refresh_batch();
 		state.reset_pagination();
@@ -903,6 +906,8 @@ impl Conversations {
 		}
 		state.in_flight_query = None;
 		let (outcome, query_queued) = match purpose {
+			ConversationQueryPurpose::TurnOutcome { command } =>
+				state.route_turn_outcome(&command, &result.payload),
 			ConversationQueryPurpose::CreationReceipt { command } =>
 				state.route_creation_receipt(&command, &result.payload),
 			ConversationQueryPurpose::InitialCatalog { epoch, working_directory } => {
@@ -1986,6 +1991,9 @@ struct InFlightQuery {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ConversationQueryPurpose {
+	TurnOutcome {
+		command: Box<CommandEnvelope>,
+	},
 	CreationReceipt {
 		command: Box<CommandEnvelope>,
 	},
@@ -2417,6 +2425,126 @@ pub(crate) mod tests {
 			assert!(take_ready_command(&restored, &server).is_none());
 			restored.session_ended(1);
 			assert_eq!(restored.ordinary_creation_receipts(), vec![(original.clone(), None)]);
+		}
+	}
+
+	pub(crate) fn recorded_turn_fixture(
+		outcome: decodex_protocol::ConversationTurnOutcomeState,
+	) -> (Conversations, ServerId, CommandEnvelope) {
+		let (source, server, _) = connected_conversations();
+		source.submit("Original message").expect("submit");
+		let original = dispatched_command(&source, &server);
+		source.session_ended(1);
+		let draft = source.ordinary_draft("Original message").expect("draft");
+		let (restored, server, _) = connected_conversations();
+		assert!(restored.restore_ordinary_draft(&draft));
+		restored.lock().pending_query = None;
+		assert!(restored.check_ordinary_turn(&original));
+		let dispatch = restored.try_take_dispatch(1, &server).expect("query");
+		let query = dispatch.query().expect("read only");
+		let CommandPayload::SubmitConversationTurn { conversation_id, turn_id, .. } =
+			&original.payload
+		else {
+			panic!("turn")
+		};
+		assert_eq!(
+			restored.route_query_result(
+				1,
+				&server,
+				&QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					query_id: query.query_id.clone(),
+					server_id: server.clone(),
+					payload: QueryResultPayload::ConversationTurnOutcome(
+						decodex_protocol::ConversationTurnOutcomeResult::Observed {
+							conversation_id: conversation_id.clone(),
+							turn_id: turn_id.clone(),
+							outcome
+						}
+					),
+				}
+			),
+			ConversationRouteOutcome::Fresh
+		);
+		(restored, server, original)
+	}
+
+	#[test]
+	fn ordinary_turn_readback_requires_exact_source_and_terminal_evidence() {
+		use decodex_protocol::{
+			ConversationTurnOutcomeResult as Result, ConversationTurnOutcomeState as Outcome,
+		};
+		let (source, server, _) = connected_conversations();
+		source.submit("Original message").expect("queue submission");
+		let original = dispatched_command(&source, &server);
+		source.session_ended(1);
+		let draft = source.ordinary_draft("Later editor text").expect("draft");
+		let CommandPayload::SubmitConversationTurn { conversation_id, turn_id, .. } =
+			&original.payload
+		else {
+			panic!("turn")
+		};
+		for (wrong_server, wrong_turn, outcome) in [
+			(false, false, Outcome::Unknown),
+			(false, false, Outcome::Pending),
+			(false, false, Outcome::Completed),
+			(false, false, Outcome::Failed),
+			(false, false, Outcome::NotSubmitted),
+			(true, false, Outcome::Completed),
+			(false, true, Outcome::Completed),
+		] {
+			let (restored, server, _) = connected_conversations();
+			restored.require_saved_dispatch();
+			assert!(restored.restore_ordinary_draft(&draft));
+			restored.lock().pending_query = None;
+			assert!(restored.check_ordinary_turn(&original));
+			let dispatch = restored.try_take_dispatch(1, &server).expect("read query");
+			let query = dispatch.query().expect("never resend");
+			let QueryPayload::GetConversationTurnOutcome { request } = &query.payload else {
+				panic!("outcome query")
+			};
+			assert_eq!(request.turn_id, *turn_id);
+			assert_eq!(request.idempotency_key, original.idempotency_key);
+			let result = QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				query_id: query.query_id.clone(),
+				server_id: if wrong_server {
+					ServerId::new("other-server").expect("server")
+				} else {
+					server.clone()
+				},
+				payload: QueryResultPayload::ConversationTurnOutcome(Result::Observed {
+					conversation_id: conversation_id.clone(),
+					turn_id: if wrong_turn {
+						EntityId::new("50000000-0000-4000-8000-000000000099").expect("ID")
+					} else {
+						turn_id.clone()
+					},
+					outcome,
+				}),
+			};
+			let valid = !wrong_server && !wrong_turn;
+			assert_eq!(
+				restored.route_query_result(1, &server, &result),
+				if valid {
+					ConversationRouteOutcome::Fresh
+				} else {
+					ConversationRouteOutcome::Refused
+				}
+			);
+			assert_eq!(restored.ordinary_draft("Later editor text"), Some(draft.clone()));
+			assert!(take_ready_command(&restored, &server).is_none());
+			let terminal = valid
+				&& matches!(outcome, Outcome::Completed | Outcome::Failed | Outcome::NotSubmitted);
+			assert_eq!(restored.acknowledge_ordinary_turn(&original), terminal.then_some(outcome));
+			let after = restored.ordinary_draft("Later editor text").expect("draft");
+			assert_eq!(after.composer.text, "Later editor text");
+			assert_eq!(after.unconfirmed.is_empty(), terminal);
+			assert!(take_ready_command(&restored, &server).is_none());
+			restored.session_ended(1);
+			if !terminal {
+				assert_eq!(restored.ordinary_turn_outcomes(), vec![(original.clone(), None)]);
+			}
 		}
 	}
 

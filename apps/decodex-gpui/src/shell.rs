@@ -6538,6 +6538,44 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn recorded_turn_acknowledgement_preserves_later_and_failed_input(cx: &mut TestAppContext) {
+		use decodex_protocol::ConversationTurnOutcomeState as Outcome;
+		let (shell, visual) = open_shell(cx);
+		for (outcome, text, expected) in [
+			(Outcome::Completed, "Original message", ""),
+			(Outcome::Completed, "Later unsent input", "Later unsent input"),
+			(Outcome::Failed, "Original message", "Original message"),
+			(Outcome::NotSubmitted, "Original message", "Original message"),
+		] {
+			let (conversations, server, original) =
+				crate::conversations::tests::recorded_turn_fixture(outcome);
+			shell.update(visual, |s, cx| {
+				s.conversations = conversations.clone();
+				s.selected = Destination::Conversations;
+				s.ordinary_owner = conversations.ordinary_editor_owner();
+				s.composer.update(cx, |input, cx| input.set_content(text, cx));
+				s.synchronize_conversations(cx);
+			});
+			visual.update(|window, cx| {
+				window.resize(size(px(1440.), px(1000.)));
+				window.draw(cx).clear();
+			});
+			let button = visual
+				.debug_bounds("ordinary-turn-acknowledge-0")
+				.expect("acknowledge terminal outcome");
+			visual.simulate_click(button.center(), gpui::Modifiers::default());
+			shell.read_with(visual, |s, cx| {
+				assert_eq!(s.composer.read(cx).content(), expected);
+				assert!(s.conversations.ordinary_turn_outcomes().is_empty());
+			});
+			assert_eq!(conversations.confirmed_ordinary_commands(), vec![original]);
+			assert!(
+				crate::conversations::tests::take_ready_command(&conversations, &server).is_none()
+			);
+		}
+	}
+
+	#[gpui::test]
 	fn recorded_creation_open_button_retains_later_input_without_replay(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 		for text in ["Original creation input", "Later unsent input"] {

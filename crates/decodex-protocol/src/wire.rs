@@ -2246,6 +2246,11 @@ pub enum QueryPayload {
 	},
 	/// Read current native model and Memory configuration evidence.
 	GetChiefCapabilities,
+	/// Observe an original later-turn provider attempt without replay.
+	GetConversationTurnOutcome {
+		/// Stable original submission coordinates.
+		request: crate::ConversationTurnOutcomeRequest,
+	},
 	/// Read exact local creation evidence without replaying a command.
 	GetConversationCreationReceipt {
 		/// Original request coordinates.
@@ -2949,6 +2954,8 @@ pub enum QueryResultPayload {
 	ChiefActivityDetail(crate::ChiefActivityDetailResult),
 	/// Native model and Memory configuration evidence.
 	ChiefCapabilities(crate::ChiefCapabilitiesResult),
+	/// Evidence for one original later-turn provider attempt.
+	ConversationTurnOutcome(crate::ConversationTurnOutcomeResult),
 	/// Exact local creation evidence, not provider completion.
 	ConversationCreationReceipt(crate::ConversationCreationReceiptResult),
 	/// Native pre-conversation model metadata and its observation source.
@@ -3281,6 +3288,10 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 			Err("current protocol resume requires a publication instance"),
 		ClientMessage::Hello(_) => Ok(()),
 		ClientMessage::Query(query) => match &query.payload {
+			QueryPayload::GetConversationTurnOutcome { request }
+				if !is_canonical_uuid(request.conversation_id.as_str())
+					|| !is_canonical_uuid(request.turn_id.as_str()) =>
+				Err("turn outcome requires canonical original conversation and turn identities"),
 			QueryPayload::GetConversationCreationReceipt { request }
 				if !is_canonical_uuid(request.conversation_id.as_str())
 					|| request.message.as_str().trim().is_empty() =>
@@ -4590,7 +4601,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":70},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":71},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4599,7 +4610,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":70},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":71},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4641,7 +4652,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":70},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":71},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

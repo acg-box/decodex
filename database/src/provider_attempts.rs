@@ -575,6 +575,36 @@ impl SqliteStore {
 		self.run(move |connection| read_attempt(connection, attempt_id.as_str())).await
 	}
 
+	/// Verify that the observed terminal pointer names matching durable provider evidence.
+	pub async fn provider_attempt_terminal_evidence_matches(
+		&self,
+		attempt: &ProviderAttempt,
+	) -> Result<bool, StoreError> {
+		if attempt.terminal_evidence_id.is_none() {
+			return Ok(false);
+		}
+		let id = attempt.attempt_id.clone();
+		let revision = attempt.revision;
+		let state = attempt.state.as_sql();
+		let request = attempt.request_id.clone();
+		self.run(move |connection| {
+			connection
+				.query_row(
+					"SELECT EXISTS (
+			 SELECT 1 FROM provider_attempts a JOIN provider_attempt_positive_evidence e
+			 ON e.evidence_id = a.terminal_evidence_id AND e.attempt_id = a.attempt_id
+			 WHERE a.attempt_id = ?1 AND a.revision = ?2 AND a.state = ?3 AND a.request_id = ?4
+			 AND e.request_id = a.request_id AND e.outcome = a.state
+			 AND (e.provider_key = a.provider_idempotency_key OR e.provider_key = a.provider_correlation_key)
+			)",
+					params![id.as_str(), revision, state, request.as_str()],
+					|row| row.get(0),
+				)
+				.map_err(sql_error)
+		})
+		.await
+	}
+
 	async fn transition_attempt(
 		&self,
 		attempt_id: &ProviderAttemptId,
