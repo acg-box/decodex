@@ -2,6 +2,7 @@
 #![cfg_attr(all(feature = "process-acceptance-fixture", debug_assertions), allow(dead_code))]
 
 mod activation;
+mod routing_cookies;
 
 use std::{sync::Arc, time::Duration};
 
@@ -33,6 +34,7 @@ fn account_http_client() -> Result<reqwest::Client, AccountApiRuntimeError> {
 		.redirect(reqwest::redirect::Policy::none())
 		.retry(reqwest::retry::never())
 		.user_agent("decodex")
+		.cookie_provider(Arc::new(routing_cookies::RoutingCookies::default()))
 		.build()
 		.map_err(|_| AccountApiRuntimeError::ProviderUnavailable)
 }

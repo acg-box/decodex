@@ -64,6 +64,14 @@ are recorded in the feature note.
 profile statistics after this baseline. This fixes the existing profile; it does
 not deliver full Analytics reports or Top chats.
 
+[Dependency repair](dependency-security-repair.md) resolves three inherited RustSec
+findings in [PR1499](https://github.com/acg-box/decodex/pull/1499). It also restores
+CLI compatibility with the delivered approval pagination. These are core fixes.
+
+[Account routing affinity](account-routing-cookie.md) restores the upstream
+infrastructure routing cookie for the existing account HTTP consumer. It adds no
+account authentication cookie storage or optional product control.
+
 ## Evidence boundaries
 
 The 128 distinct PRs cited above were read from GitHub and their merge commits were checked as ancestors of this snapshot. Current source owners were inspected or located in this checkout. This confirms merge and source presence, not full live acceptance or release installation. No new behavioral test was run for this documentation reconciliation.
