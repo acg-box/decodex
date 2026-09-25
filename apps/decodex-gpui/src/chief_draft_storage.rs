@@ -1439,3 +1439,7 @@ mod ordinary_owner_tests {
 		assert_eq!(decoded.profiles[&first.draft_scope_key()].ordinary["/tmp"], ordinary);
 	}
 }
+
+#[cfg(test)]
+#[path = "chief_ordinary_outcome_tests.rs"]
+mod ordinary_outcome_tests;
