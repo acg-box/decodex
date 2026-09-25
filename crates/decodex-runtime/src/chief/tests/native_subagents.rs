@@ -50,18 +50,17 @@ async fn native_child_reconnect_and_peer_resolution_require_exact_child_request(
 async fn nested_native_approval_keeps_child_identity_and_resolves_once() {
 	let history =
 		json!({"child":child("child","opaque thread/1"),"grandchild":child("grandchild","child")});
-	let (mut chief, mut sent, directory) = fixture_with_history(history).await;
+	let (mut chief, _old_sent, directory) = fixture_with_history(history.clone()).await;
 	chief.start_chief("chief", "Coordinate").await.unwrap();
 	let params =
 		json!({"threadId":"grandchild","turnId":"child-turn","itemId":"command","command":"pwd"});
-	chief
-		.handle_event(ServerEvent::Request {
-			id: RequestId::Number(71),
-			method: "item/commandExecution/requestApproval".into(),
-			params: params.clone(),
-		})
-		.await
-		.unwrap();
+	let mut sent = attach_request_transport(
+		&mut chief,
+		history,
+		json!({"id":71,"method":"item/commandExecution/requestApproval","params":params}),
+	)
+	.await;
+
 	let event_id = chief.pending_requests[&RequestId::Number(71)];
 	let event = chief.store.get_chief_inbox_event(event_id).await.unwrap();
 	assert_eq!(event.work_item_id, "chief");

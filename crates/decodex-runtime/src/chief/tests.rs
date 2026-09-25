@@ -289,6 +289,26 @@ pub(super) async fn fixture_with_history(
 	)
 }
 
+// Deliver through the actual native transport so response guards have real evidence.
+async fn attach_request_transport(
+	chief: &mut ChiefCoordinator,
+	history: Value,
+	request: Value,
+) -> tokio::sync::mpsc::UnboundedReceiver<Value> {
+	let (local, mut remote) = tokio::io::duplex(65536);
+	let (reader, writer) = tokio::io::split(local);
+	let (client, mut events) = AppServerClient::from_io(reader, writer);
+	chief.client = client;
+	let (sent, received) = tokio::sync::mpsc::unbounded_channel();
+	tokio::spawn(async move {
+		remote.write_all(format!("{request}\n").as_bytes()).await.unwrap();
+		serve_fixture(remote, history, sent).await;
+	});
+	chief.handle_event(events.recv().await.unwrap()).await.unwrap();
+	tokio::spawn(async move { while events.recv().await.is_some() {} });
+	received
+}
+
 struct FixtureFaults {
 	resume_failures: u64,
 	archived: bool,
@@ -863,10 +883,59 @@ async fn initial_user_input_starts_once_and_receipt_ack_leaves_newer_input_pendi
 }
 
 #[tokio::test]
+async fn large_requested_decisions_reach_native_once_without_truncation() {
+	use decodex_protocol::{ChiefRequestedDecision, requested_decision_response};
+	for (method, requested, decision) in [
+		(
+			"item/permissions/requestApproval",
+			json!({"permissions":{"fileSystem":{"write":["/tmp/界".repeat(10000)]}}}),
+			ChiefRequestedDecision::PermissionsForTurn,
+		),
+		(
+			"item/commandExecution/requestApproval",
+			json!({"command":"fixture","availableDecisions":["decline",{"acceptWithExecpolicyAmendment":{"execpolicy_amendment":["large-argument".repeat(8000)]}}]}),
+			ChiefRequestedDecision::CommandPolicy { index: 1 },
+		),
+	] {
+		let (mut chief, _old_sent, _directory) = fixture().await;
+		let root = chief.start_chief("chief", "Coordinate").await.unwrap();
+		let mut params = requested;
+		params["threadId"] = json!(root.codex_thread_id);
+		params["turnId"] = json!(root.active_turn_id);
+		params["itemId"] = json!("large-selected-decision");
+		let mut sent = attach_request_transport(
+			&mut chief,
+			json!({}),
+			json!({"id":7,"method":method,"params":params}),
+		)
+		.await;
+		let event = chief
+			.store
+			.list_pending_chief_events(100)
+			.await
+			.unwrap()
+			.into_iter()
+			.find(|event| event.event_kind == "permission_pending")
+			.unwrap();
+		assert!(event.payload.len() < 4096);
+		let stored = chief.store.get_chief_inbox_event(event.id).await.unwrap();
+		let payload: Value = serde_json::from_str(&stored.payload).unwrap();
+		let response = requested_decision_response(method, &payload["params"], &decision).unwrap();
+		assert!(response.to_string().len() > decodex_protocol::MAX_HISTORY_INLINE_BYTES);
+		chief.respond_pending_event(event.id, response.clone()).await.unwrap();
+		assert_eq!(sent.recv().await.unwrap(), json!({"id":7,"result":response}));
+		assert!(chief.respond_pending_event(event.id, response).await.is_err());
+		assert!(sent.try_recv().is_err());
+		assert!(chief.store.get_chief_inbox_event(event.id).await.unwrap().disposition.is_some());
+	}
+}
+
+#[tokio::test]
 async fn permission_response_uses_live_event_identity_even_when_rpc_id_is_reused() {
-	let (mut coordinator, mut sent, _directory) = fixture().await;
+	let (mut coordinator, _old_sent, _directory) = fixture().await;
 	let root = coordinator.start_chief("chief", "Coordinate").await.unwrap();
-	let params = json!({"threadId":root.codex_thread_id,"turnId":root.active_turn_id});
+	let params = json!({"threadId":root.codex_thread_id,"turnId":root.active_turn_id,
+		"command": "true # 界".repeat(10000), "availableDecisions":["accept","decline"]});
 	coordinator
 		.handle_event(ServerEvent::Request {
 			id: RequestId::Number(7),
@@ -882,14 +951,12 @@ async fn permission_response_uses_live_event_identity_even_when_rpc_id_is_reused
 		coordinator.config.clone(),
 	)
 	.unwrap();
-	reconnected
-		.handle_event(ServerEvent::Request {
-			id: RequestId::Number(7),
-			method: "item/commandExecution/requestApproval".into(),
-			params,
-		})
-		.await
-		.unwrap();
+	let mut sent = attach_request_transport(
+		&mut reconnected,
+		json!({}),
+		json!({"id":7,"method":"item/commandExecution/requestApproval","params":params}),
+	)
+	.await;
 	let new_id = reconnected
 		.store
 		.list_pending_chief_events(100)
@@ -2552,11 +2619,11 @@ async fn misalignment_does_not_send_or_consume_pending_provider_approval() {
 
 #[tokio::test]
 async fn mcp_form_response_validates_original_schema_before_consuming_live_request() {
-	let (mut chief, mut sent, _directory) = fixture().await;
+	let (mut chief, _old_sent, _directory) = fixture().await;
 	chief.start_chief("chief", "Coordinate").await.unwrap();
 	chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
 	let id = RequestId::String("mcp-form".into());
-	chief.handle_event(ServerEvent::Request {id:id.clone(),method:"mcpServer/elicitation/request".into(),params:json!({"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":"form","requestedSchema":{"type":"object","properties":{"allow":{"type":"boolean"}},"required":["allow"]}})}).await.unwrap();
+	let mut sent = attach_request_transport(&mut chief, json!({}), json!({"id":id,"method":"mcpServer/elicitation/request","params":{"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":"form","requestedSchema":{"type":"object","properties":{"allow":{"type":"boolean"}},"required":["allow"]}}})).await;
 	let event = chief.pending_requests[&id];
 	while sent.try_recv().is_ok() {}
 	for response in [

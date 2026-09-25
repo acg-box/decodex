@@ -504,6 +504,9 @@ impl ChiefCoordinator {
 				return Err(ChiefError::Rejected("Native request ownership has changed.".into()));
 			}
 		}
+		if payload["connectionId"].as_str() != Some(self.client.connection_identity()) {
+			return Err(ChiefError::Rejected("Native request connection has changed.".into()));
+		}
 		let mut install_guard = None;
 		if payload["method"] == "mcpServer/elicitation/request" {
 			decodex_protocol::validate_mcp_response(&payload["params"], &response)
@@ -515,15 +518,24 @@ impl ChiefCoordinator {
 				install_guard = Some(self.install_request_guard(event_id).await?);
 			}
 		}
-		if let Some(guard) = install_guard {
-			// A queued peer resolution may revoke the guard before the write. Keep
-			// the inbox mapping until success so that notification can still settle it.
-			self.client.respond_guarded(request_id.clone(), response, guard).await?;
-			self.pending_requests.remove(&request_id);
-		} else {
-			self.pending_requests.remove(&request_id);
-			self.client.respond(request_id, response).await?;
-		}
+		let guard = match install_guard {
+			Some(guard) => guard,
+			None => self
+				.client
+				.server_request_guard(
+					&request_id,
+					payload["method"].as_str().unwrap_or_default(),
+					&payload["params"],
+				)
+				.ok_or_else(|| {
+					ChiefError::Rejected(
+						"Native request has changed or is no longer pending.".into(),
+					)
+				})?,
+		};
+		// The transport consumes only the exact original request guard before writing.
+		self.client.respond_guarded(request_id.clone(), response, guard).await?;
+		self.pending_requests.remove(&request_id);
 		self.store.acknowledge_chief_request_event(event_id).await?;
 		Ok(())
 	}

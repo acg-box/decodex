@@ -1241,6 +1241,8 @@ impl ChiefHost {
 				self.cancel_capacity_retry(work_id, event_id).await,
 			ChiefActionDto::Respond { work_id, event_id, response_json } =>
 				self.respond(work_id.as_str(), event_id, response_json.as_str(), active).await,
+			ChiefActionDto::RespondWithRequestedDecision { work_id, event_id, decision } =>
+				self.respond_requested(work_id.as_str(), event_id, &decision, active).await,
 			ChiefActionDto::Start(draft) =>
 				self.start(draft, &key, input_options.as_ref(), active).await,
 			ChiefActionDto::Send { root_id, text } =>
@@ -1342,6 +1344,32 @@ impl ChiefHost {
 				"Integration refresh could not be confirmed. Read current status; do not automatically retry.",
 			)),
 		}
+	}
+
+	async fn respond_requested(
+		&self,
+		work: &str,
+		event_id: i64,
+		decision: &decodex_protocol::ChiefRequestedDecision,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		let event = self
+			.store
+			.get_chief_inbox_event(event_id)
+			.await
+			.map_err(|_| "pending request is unavailable; refresh state")?;
+		if event.work_item_id != work || event.disposition.is_some() {
+			return Err("request identity or state changed; refresh state".into());
+		}
+		let payload: serde_json::Value =
+			serde_json::from_str(&event.payload).map_err(|_| "stored request is unavailable")?;
+		let response = decodex_protocol::requested_decision_response(
+			payload["method"].as_str().unwrap_or_default(),
+			&payload["params"],
+			decision,
+		)
+		.ok_or("the selected decision is not offered by this request")?;
+		self.respond(work, event_id, &response.to_string(), active).await
 	}
 
 	async fn respond(

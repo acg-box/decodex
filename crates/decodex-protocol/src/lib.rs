@@ -1,6 +1,9 @@
 //! Typed vNext wire contracts and same-UID local transport shared by clients and
 //! `decodex serve`.
 
+mod chief_requested_decision;
+pub use chief_requested_decision::{ChiefRequestedDecision, requested_decision_response};
+
 mod account_login;
 mod chief;
 mod chief_app_exposure;
@@ -200,7 +203,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 78 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 79 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

@@ -47,8 +47,9 @@ then verifies complete original params and cold database readback.
 
 The bounded query in this storage batch returned unavailable for oversized
 selected content. [The page transport batch](large-native-approval-pages.md) adds
-identity-bound pages, native liveness and complete client assembly. Large explicit
-decisions and desktop inspection controls remain. Pending native file-change
+identity-bound pages, native liveness and complete client assembly.
+[The decision and reader batch](large-native-approval-decisions.md) adds explicit
+large replies and content navigation. Pending native file-change
 evidence must also be retained before native history contains it.
 
 This storage batch does not establish complete large-approval UI, accept/decline

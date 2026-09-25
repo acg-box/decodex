@@ -566,6 +566,15 @@ pub enum ChiefActionDto {
 		/// Explicit provider response object.
 		response_json: crate::HistoryText,
 	},
+	/// Select an exact provider-proposed decision without copying its large payload.
+	RespondWithRequestedDecision {
+		/// Related work identity.
+		work_id: crate::EntityId,
+		/// Immutable pending inbox event identity.
+		event_id: i64,
+		/// Explicit decision selected from the displayed request.
+		decision: crate::ChiefRequestedDecision,
+	},
 	/// Start or reconnect the personal Chief and enqueue user input.
 	Start(ChiefStartDto),
 	/// Enqueue subsequent input to the existing Chief.

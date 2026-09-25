@@ -1302,6 +1302,7 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		| crate::ChiefActionDto::NativeAgentInput { work_id, .. }
 		| crate::ChiefActionDto::Interrupt { work_id, .. }
 		| crate::ChiefActionDto::Respond { work_id, .. }
+		| crate::ChiefActionDto::RespondWithRequestedDecision { work_id, .. }
 		| crate::ChiefActionDto::AutomationResult { work_id, .. }
 		| crate::ChiefActionDto::Steer { work_id, .. }
 		| crate::ChiefActionDto::AnswerQuestion { work_id, .. }
@@ -4122,7 +4123,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 78 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 79 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

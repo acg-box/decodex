@@ -129,11 +129,13 @@ impl ChiefSurface {
 			.gap_2()
 			.child(format!("Request from {}", value["serverName"].as_str().unwrap_or("MCP server")))
 			.child(
-				value["message"]
-					.as_str()
-					.or_else(|| value["description"].as_str())
-					.unwrap_or("")
-					.to_owned(),
+				self.request_summary(
+					value["message"]
+						.as_str()
+						.or_else(|| value["description"].as_str())
+						.unwrap_or("")
+						.to_owned(),
+				),
 			);
 		if value["serverName"] == "codex_apps"
 			&& ["connector_id", "link_id"].iter().all(|key| {
@@ -147,7 +149,9 @@ impl ChiefSurface {
 			.pointer("/_meta/tool_params_display")
 			.or_else(|| value.pointer("/_meta/tool_params"))
 		{
-			panel = panel.child(serde_json::to_string_pretty(params).unwrap_or_default());
+			panel = panel.child(
+				self.request_summary(serde_json::to_string_pretty(params).unwrap_or_default()),
+			);
 		}
 
 		panel = self.mcp_verification_link(panel, event, value, cx);
