@@ -843,13 +843,12 @@ impl SqliteStore {
 	) -> Result<ChiefInboxEvent, StoreError> {
 		bounded(&input.source_event_id, 2048)?;
 		bounded(&input.event_kind, 128)?;
-		if input.payload.len() > 65536 {
-			return Err(StoreError::InvalidInput("Chief event payload is too large"));
-		}
+		let compact = crate::chief_request_payload::compact(&input)?;
 		self.run(move |connection| {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			let previous = transaction.query_row("SELECT * FROM chief_inbox_events WHERE source_event_id = ?1", [&input.source_event_id], event_row).optional().map_err(sqlite_error)?;
 			if let Some(event) = previous {
+				let event = crate::chief_request_payload::hydrate(&transaction, event)?;
 				return if event.work_item_id == input.work_item_id && event.event_kind == input.event_kind && event.payload == input.payload {
 					Ok(event)
 				} else { Err(StoreError::IdempotencyConflict) };
@@ -860,9 +859,13 @@ impl SqliteStore {
 
 			let now = unix_micros()?;
 			transaction.execute("INSERT INTO chief_inbox_events (source_event_id, work_item_id, event_kind, payload, created_at_micros, disposition, disposition_note, disposed_at_micros) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-				params![input.source_event_id, input.work_item_id, input.event_kind, input.payload, now,
+				params![input.source_event_id, input.work_item_id, input.event_kind, compact.as_ref().unwrap_or(&input.payload), now,
 					observation.then_some("resolved"), observation.then_some("Provider observation recorded; work judgment unchanged."), observation.then_some(now)]).map_err(sqlite_error)?;
-			let event = read_event(&transaction, transaction.last_insert_rowid())?;
+			let event_id = transaction.last_insert_rowid();
+			if compact.is_some() {
+				transaction.execute("INSERT INTO chief_request_payloads(event_id,payload) VALUES(?1,?2)",params![event_id,input.payload]).map_err(sqlite_error)?;
+			}
+			let event = read_event(&transaction, event_id)?;
             if input.event_kind == "user_message" { crate::chief_questions::retire_for_prompt(&transaction, &input.work_item_id, &input.payload)?; }
 			transaction.commit().map_err(sqlite_error)?;
 			Ok(event)
@@ -1217,11 +1220,12 @@ fn read_work(connection: &Connection, id: &str) -> Result<ChiefWorkItem, StoreEr
 }
 
 fn read_event(connection: &Connection, id: i64) -> Result<ChiefInboxEvent, StoreError> {
-	connection
+	let event = connection
 		.query_row("SELECT * FROM chief_inbox_events WHERE id = ?1", [id], event_row)
 		.optional()
 		.map_err(sqlite_error)?
-		.ok_or_else(|| DatabaseError::NotFound.into())
+		.ok_or(DatabaseError::NotFound)?;
+	crate::chief_request_payload::hydrate(connection, event)
 }
 
 fn work_row(row: &Row<'_>) -> rusqlite::Result<ChiefWorkItem> {
@@ -1295,6 +1299,7 @@ mod tests {
 	mod inbox_carryover;
 	mod legacy_setup;
 	mod partial_output;
+	mod request_payloads;
 	mod steer_receipts;
 	mod task_references;
 	mod turn_execution;

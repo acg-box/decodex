@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 38;
+const CURRENT_SCHEMA_VERSION: i64 = 39;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -205,6 +205,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 38,
 		name: "chief_dispatch_refusals",
 		sql: include_str!("../migrations/0038_chief_dispatch_refusals.sql"),
+	},
+	Migration {
+		version: 39,
+		name: "chief_request_payloads",
+		sql: include_str!("../migrations/0039_chief_request_payloads.sql"),
 	},
 ];
 
@@ -1129,6 +1134,51 @@ mod tests {
 		verify(&connection).unwrap();
 		migrate(&mut connection).unwrap();
 	}
+	#[test]
+	fn large_request_upgrade_preserves_inbox_and_bounds_complete_details() {
+		let directory = tempfile::tempdir().unwrap();
+		let mut connection = Connection::open(directory.path().join("requests.sqlite3")).unwrap();
+		configure(&connection).unwrap();
+		for migration in &MIGRATIONS[..38] {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 38).unwrap();
+		connection.execute("INSERT INTO chief_work_items(id,kind,title,instructions,status,created_at_micros,updated_at_micros) VALUES('work','goal','Goal','Keep input','open',1,1)",[]).unwrap();
+		connection.execute("INSERT INTO chief_inbox_events(id,source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES(1,'request','work','permission_pending','{}',1)",[]).unwrap();
+		migrate(&mut connection).unwrap();
+		verify(&connection).unwrap();
+		let saved: String = connection
+			.query_row("SELECT payload FROM chief_inbox_events WHERE id=1", [], |row| row.get(0))
+			.unwrap();
+		assert_eq!(saved, "{}");
+		let insert = "INSERT INTO chief_request_payloads(event_id,payload) VALUES(?1,?2)";
+		assert!(connection.execute(insert, params![999, "{}"]).is_err());
+		assert!(connection.execute(insert, params![1, "not JSON"]).is_err());
+		let oversized = serde_json::json!({"command":"界".repeat(3_000_000)}).to_string();
+		assert!(connection.execute(insert, params![1, oversized]).is_err());
+		let complete = serde_json::json!({"command":"界".repeat(100_000)}).to_string();
+		connection.execute(insert, params![1, complete]).unwrap();
+		assert!(
+			connection
+				.execute("UPDATE chief_request_payloads SET payload='{}' WHERE event_id=1", [])
+				.is_err()
+		);
+		migrate(&mut connection).unwrap();
+		let detail: String = connection
+			.query_row("SELECT payload FROM chief_request_payloads WHERE event_id=1", [], |row| {
+				row.get(0)
+			})
+			.unwrap();
+		assert_eq!(detail, complete);
+	}
+
 	#[test]
 	fn capacity_refusal_upgrade_requires_exact_resolved_proof() {
 		let directory = tempfile::tempdir().unwrap();
