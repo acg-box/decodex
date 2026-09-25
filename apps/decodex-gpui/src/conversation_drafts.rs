@@ -18,6 +18,7 @@ pub(super) struct DeliveryDrafts {
 	pub(super) confirmed: Vec<CommandEnvelope>,
 	pub(super) turn_readbacks:
 		Vec<(CommandEnvelope, decodex_protocol::ConversationTurnOutcomeResult)>,
+	pub(super) control_readbacks: Vec<(CommandEnvelope, super::ControlObservation)>,
 	pub(super) readbacks: Vec<(CommandEnvelope, ConversationCreationReceiptResult)>,
 	parked: BTreeMap<String, DesktopOrdinaryComposerDraft>,
 	new_conversation: Option<DesktopOrdinaryComposerDraft>,
@@ -202,6 +203,7 @@ impl Conversations {
 		state.delivery.saved.clear();
 		state.delivery.readbacks.clear();
 		state.delivery.turn_readbacks.clear();
+		state.delivery.control_readbacks.clear();
 		state.requested_selection = draft.composer.conversation_id.clone();
 		state.selected = state
 			.requested_selection

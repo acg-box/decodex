@@ -196,6 +196,7 @@ async fn restart_and_submit(
 		"62000000-0000-4000-8000-000000000002",
 	)
 	.await;
+	submit::archive(&restarted, &store).await;
 	restarted.begin_shutdown();
 	restarted.wait_for_shutdown().await;
 }

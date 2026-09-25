@@ -1298,7 +1298,8 @@ impl ServiceApplication {
 					conversation_state_text(summary.state)
 				},
 				ConversationResult::RoutingSuccessorRedirect { .. } => "routing_successor",
-				ConversationResult::NotFound => "archived",
+				ConversationResult::Archived { .. } => "archived",
+				ConversationResult::NotFound => "not_found",
 				ConversationResult::Unavailable { .. } => "unavailable",
 			};
 			run_states.push((conversation_id.clone(), state));
@@ -1471,7 +1472,24 @@ impl ServiceApplication {
 					error: ConversationReadError::IntegrityUnavailable,
 				},
 			},
-			OrdinaryTaskConversationProjection::Archived { .. } => ConversationResult::NotFound,
+			OrdinaryTaskConversationProjection::Archived {
+				conversation_id,
+				conversation_revision,
+			} => {
+				match (
+					EntityId::new(conversation_id.as_str()),
+					u64::try_from(conversation_revision),
+				) {
+					(Ok(conversation_id), Ok(revision)) if revision > 0 =>
+						ConversationResult::Archived {
+							conversation_id,
+							conversation_revision: EntityRevision(revision),
+						},
+					_ => ConversationResult::Unavailable {
+						error: ConversationReadError::IntegrityUnavailable,
+					},
+				}
+			},
 		}
 	}
 
