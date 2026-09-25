@@ -203,16 +203,19 @@ struct ResetCardAccountRow: View {
 			HStack(alignment: .center, spacing: PanelSpacing.section) {
 				Button { detailsBinding.wrappedValue.toggle() } label: { identityHeader }
 					.buttonStyle(PanelPressButtonStyle(pressedScale: 0.99))
+					.frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: 20, alignment: .center)
 					.accessibilityLabel(identityAccessibilityLabel)
 					.accessibilityValue(detailsBinding.wrappedValue ? "Expanded" : "Collapsed")
 				HStack(spacing: PanelSpacing.micro) {
+					reorderHandle
 					AccountPrimaryActionsView(state: state, store: store)
 					AccountPowerButton(state: state, store: store)
 					AccountUtilityActionsView(state: state, store: store)
-					reorderHandle
 				}
 				.fixedSize(horizontal: true, vertical: false)
 			}
+            .frame(maxWidth: .infinity, alignment: .leading)
 			Button { detailsBinding.wrappedValue.toggle() } label: {
 				quotaWindows.contentShape(Rectangle())
 			}
@@ -256,11 +259,11 @@ struct ResetCardAccountRow: View {
 
 	private var reorderHandle: some View {
 		Image(systemName: "line.3.horizontal")
-			.font(.system(size: 11, weight: .medium))
+			.font(.system(size: 10, weight: .medium))
 			.foregroundStyle(isReorderHandleHovered
 				? PanelPalette.actionBlue(colorScheme)
 				: PanelPalette.secondaryText(colorScheme).opacity(0.68))
-			.frame(width: 24, height: 24)
+			.frame(width: 20, height: 20)
 			.opacity(showsReorderHandle ? 1 : 0)
 			.contentShape(Rectangle())
 			.highPriorityGesture(
@@ -335,7 +338,7 @@ struct ResetCardAccountRow: View {
 	}
 
 	private var identityHeader: some View {
-		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
+		HStack(alignment: .center, spacing: PanelSpacing.compact) {
 			Text(identity.text)
 				.font(PanelFont.accountName)
 				.foregroundStyle(PanelPalette.primaryText(colorScheme))

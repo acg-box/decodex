@@ -40,7 +40,7 @@ struct AccountPrimaryActionsView: View {
 	let store: ResetCardStore
 
 	var body: some View {
-		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
+		HStack(alignment: .center, spacing: PanelSpacing.compact) {
 			CompactAccountActionButton(
 				title: presentation.title(isSwitching: isSwitching),
 				symbol: "arrow.triangle.branch",
@@ -212,17 +212,17 @@ private struct CompactAccountActionButton: View {
 			action()
 		} label: {
 			Image(systemName: symbol)
-				.font(.system(size: 12, weight: isActive ? .semibold : .regular))
+				.font(.system(size: 11, weight: isActive ? .semibold : .regular))
 				.symbolVariant(isActive ? .fill : .none)
 				.symbolRenderingMode(.hierarchical)
 				.foregroundStyle(isActive ? PanelPalette.routeAccent(colorScheme) : PanelPalette.secondaryText(colorScheme))
-				.frame(width: 24, height: 24)
+				.frame(width: 20, height: 20)
 				.opacity(hovered ? 1 : 0.85)
 				.contentShape(RoundedRectangle(cornerRadius: 7))
 				.symbolEffect(.pulse, options: .repeating, isActive: isBusy && !reduceMotion)
 		}
 		.buttonStyle(PanelPressButtonStyle(pressedScale: 0.94))
-		.frame(width: 24, height: 24)
+		.frame(width: 20, height: 20)
 		.disabled(usesDisabledEnvironment)
 		.allowsHitTesting(!isDisabled)
 		.opacity(isVisuallyDisabled && !isActive ? 0.44 : 1)

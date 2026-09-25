@@ -205,7 +205,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(panel.contains("DECODEX_HOVER_DEBUG"))
 		XCTAssertFalse(support.contains("DECODEX_HOVER_DEBUG"))
 		XCTAssertTrue(rows.contains(".opacity(showsReorderHandle ? 1 : 0)"))
-		XCTAssertTrue(rows.contains(".frame(width: 24, height: 24)"))
+		XCTAssertTrue(rows.contains(".frame(width: 20, height: 20)"))
 		XCTAssertFalse(rows.contains(".overlay(alignment: .trailing)"))
 		XCTAssertTrue(rows.contains("DragGesture("))
 		XCTAssertTrue(rows.contains("coordinateSpace: .named("))
