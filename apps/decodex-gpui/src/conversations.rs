@@ -2438,9 +2438,19 @@ pub(crate) mod tests {
 		let draft = source.ordinary_draft("Original message").expect("draft");
 		let (restored, server, _) = connected_conversations();
 		assert!(restored.restore_ordinary_draft(&draft));
+		reply_recorded_turn(&restored, &server, &original, outcome);
+		(restored, server, original)
+	}
+
+	pub(crate) fn reply_recorded_turn(
+		restored: &Conversations,
+		server: &ServerId,
+		original: &CommandEnvelope,
+		outcome: decodex_protocol::ConversationTurnOutcomeState,
+	) {
 		restored.lock().pending_query = None;
-		assert!(restored.check_ordinary_turn(&original));
-		let dispatch = restored.try_take_dispatch(1, &server).expect("query");
+		assert!(restored.check_ordinary_turn(original));
+		let dispatch = restored.try_take_dispatch(1, server).expect("query");
 		let query = dispatch.query().expect("read only");
 		let CommandPayload::SubmitConversationTurn { conversation_id, turn_id, .. } =
 			&original.payload
@@ -2450,7 +2460,7 @@ pub(crate) mod tests {
 		assert_eq!(
 			restored.route_query_result(
 				1,
-				&server,
+				server,
 				&QueryResultEnvelope {
 					version: CURRENT_VERSION,
 					query_id: query.query_id.clone(),
@@ -2466,7 +2476,6 @@ pub(crate) mod tests {
 			),
 			ConversationRouteOutcome::Fresh
 		);
-		(restored, server, original)
 	}
 
 	#[test]
