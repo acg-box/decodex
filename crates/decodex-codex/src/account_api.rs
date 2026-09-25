@@ -288,7 +288,7 @@ pub fn decode_account_api_profile(
 		.transpose()?
 		.flatten();
 	let lifetime_tokens = optional_nonnegative_i64(stats.get("lifetime_tokens"))?;
-	let mut peak_daily_tokens = optional_nonnegative_i64(stats.get("peak_daily_tokens"))?;
+	let peak_daily_tokens = optional_nonnegative_i64(stats.get("peak_daily_tokens"))?;
 	let longest_task_seconds = optional_nonnegative_i64(stats.get("longest_running_turn_sec"))?;
 	let current_streak_days = optional_nonnegative_i32(stats.get("current_streak_days"))?;
 	let longest_streak_days = optional_nonnegative_i32(stats.get("longest_streak_days"))?;
@@ -301,9 +301,6 @@ pub fn decode_account_api_profile(
 	daily_usage.sort_by(|left, right| left.start_date.cmp(&right.start_date));
 	if daily_usage.windows(2).any(|values| values[0].start_date == values[1].start_date) {
 		return Err(AccountApiProtocolError::InvalidValue);
-	}
-	if peak_daily_tokens.is_none() {
-		peak_daily_tokens = daily_usage.iter().map(|fact| fact.tokens).max();
 	}
 	if daily_usage.len() > MAX_PROFILE_DAILY_BUCKETS {
 		daily_usage = daily_usage.split_off(daily_usage.len() - MAX_PROFILE_DAILY_BUCKETS);
@@ -977,8 +974,26 @@ mod tests {
 		.to_string();
 		let profile = decode_account_api_profile(body.as_bytes()).expect("profile should decode");
 		assert_eq!(profile.display_name.as_deref(), Some("Val"));
-		assert_eq!(profile.peak_daily_tokens, Some(39));
+		assert_eq!(profile.peak_daily_tokens, None);
 		assert_eq!(profile.daily_usage.len(), MAX_PROFILE_DAILY_BUCKETS);
+	}
+
+	#[test]
+	fn profile_peak_preserves_reported_zero_and_missing_values() {
+		for (reported, expected) in [
+			(serde_json::Value::Null, None),
+			(serde_json::json!(0), Some(0)),
+			(serde_json::json!(900), Some(900)),
+		] {
+			let body = serde_json::json!({"stats": {
+				"peak_daily_tokens": reported,
+				"daily_usage_buckets": [{"start_date": "2026-09-09", "tokens": 500}]
+			}});
+			let profile = decode_account_api_profile(body.to_string().as_bytes())
+				.expect("optional peak should decode");
+			assert_eq!(profile.peak_daily_tokens, expected);
+			assert_eq!(profile.daily_usage[0].tokens, 500);
+		}
 	}
 
 	#[test]
