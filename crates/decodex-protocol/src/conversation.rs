@@ -818,6 +818,15 @@ pub enum ConversationListResult {
 pub enum ConversationResult {
 	/// Current ordinary Conversation and RuntimeSession projection.
 	Available(ConversationSummary),
+	/// The product store records this exact conversation as archived.
+	/// This is current local state, not a receipt for a particular client command.
+	Archived {
+		/// Exact archived conversation.
+		conversation_id: EntityId,
+		/// Committed archive revision.
+		conversation_revision: EntityRevision,
+	},
+
 	/// The requested archived source redirects to its sole routing successor.
 	RoutingSuccessorRedirect {
 		/// Archived source Conversation identity.

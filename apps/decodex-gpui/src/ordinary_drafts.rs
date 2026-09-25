@@ -185,7 +185,9 @@ pub(super) fn creation_receipt_controls(
 			);
 		}
 	}
-	rows.child(turn_outcome_controls(shell, cx)).into_any_element()
+	rows.child(turn_outcome_controls(shell, cx))
+		.child(control_state_controls(shell, cx))
+		.into_any_element()
 }
 
 /// Query and acknowledge terminal provider evidence without resubmission.
@@ -272,6 +274,71 @@ fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyEle
 								shell.composer.update(cx, |input, cx| input.set_content("", cx));
 								shell.ordinary_syncing = false;
 							}
+							shell.sync_ordinary_drafts(cx);
+						}
+						shell.synchronize_conversations(cx);
+						cx.notify();
+					})),
+			);
+		}
+	}
+	rows.into_any_element()
+}
+
+/// Acknowledge observed control state without claiming delivery or replaying the command.
+fn control_state_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyElement {
+	use decodex_protocol::CommandPayload;
+	use gpui::{
+		InteractiveElement as _, IntoElement as _, ParentElement as _,
+		StatefulInteractiveElement as _, Styled as _, div,
+	};
+	let mut rows = div().flex().flex_col();
+	for (index, (command, observation)) in
+		shell.conversations.ordinary_control_states().into_iter().enumerate()
+	{
+		let (label, target) = match &command.payload {
+			CommandPayload::ArchiveConversation { conversation_id } => ("Archive", conversation_id),
+			CommandPayload::RefreshConversation { conversation_id } => ("Refresh", conversation_id),
+			CommandPayload::InterruptConversation { conversation_id, .. } =>
+				("Interrupt", conversation_id),
+			_ => continue,
+		};
+		let title = shell
+			.quick
+			.tasks
+			.iter()
+			.find(|task| &task.conversation_id == target)
+			.map_or(target.as_str(), |task| task.title.as_str());
+		let status = observation
+			.map_or("Saved control request has not been checked.", |value| value.message());
+		let check = command.clone();
+		rows = rows.child(
+			div().child(format!("{label}: {title}")).child(status).child(
+				div()
+					.id(format!("ordinary-control-check-{index}"))
+					.debug_selector(move || format!("ordinary-control-check-{index}"))
+					.cursor_pointer()
+					.child("Check current state")
+					.on_click(cx.listener(move |shell, _, _, cx| {
+						if !shell.conversations.check_ordinary_control(&check) {
+							shell.input_status = Some(
+								"Wait for the current query or reconnect, then check again.".into(),
+							);
+						}
+						shell.synchronize_conversations(cx);
+						cx.notify();
+					})),
+			),
+		);
+		if observation.is_some_and(|value| value.can_acknowledge()) {
+			rows = rows.child(
+				div()
+					.id(format!("ordinary-control-acknowledge-{index}"))
+					.debug_selector(move || format!("ordinary-control-acknowledge-{index}"))
+					.cursor_pointer()
+					.child("Acknowledge current state")
+					.on_click(cx.listener(move |shell, _, _, cx| {
+						if shell.conversations.acknowledge_ordinary_control(&command) {
 							shell.sync_ordinary_drafts(cx);
 						}
 						shell.synchronize_conversations(cx);

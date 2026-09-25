@@ -66,26 +66,7 @@ pub(super) async fn submit_inherited(
 		.await
 		.expect("source")
 		.expect("saved session");
-	let doctor = DoctorReport::new(
-		ServerId::new("native-fixture").expect("server"),
-		CURRENT_VERSION,
-		DoctorComponent::ALL
-			.into_iter()
-			.map(|component| {
-				DoctorCheck::new(component, DoctorStatus::Unavailable(DoctorIssue::NotProbed))
-			})
-			.collect(),
-	)
-	.expect("doctor");
-	let app = ServiceApplication::new(
-		ProductStore::Available(store.clone()),
-		None,
-		None,
-		decodex_codex::CodexAdapter::unavailable(),
-		None,
-		ConversationCapability::Ready(runtime.clone()),
-		doctor,
-	);
+	let app = application(runtime, store);
 	let command = CommandEnvelope {
 		version: CURRENT_VERSION,
 		client_command_id: ClientCommandId::new(key).expect("command"),
@@ -131,4 +112,79 @@ async fn complete(runtime: &ConversationRuntime) {
 			other => panic!("unexpected production runtime event: {other:?}"),
 		}
 	}
+}
+
+fn application(runtime: &ConversationRuntime, store: &SqliteStore) -> ServiceApplication {
+	let doctor = DoctorReport::new(
+		ServerId::new("native-fixture").expect("server"),
+		CURRENT_VERSION,
+		DoctorComponent::ALL
+			.into_iter()
+			.map(|component| {
+				DoctorCheck::new(component, DoctorStatus::Unavailable(DoctorIssue::NotProbed))
+			})
+			.collect(),
+	)
+	.expect("doctor");
+	ServiceApplication::new(
+		ProductStore::Available(store.clone()),
+		None,
+		None,
+		decodex_codex::CodexAdapter::unavailable(),
+		None,
+		ConversationCapability::Ready(runtime.clone()),
+		doctor,
+	)
+}
+
+pub(super) async fn archive(runtime: &ConversationRuntime, store: &SqliteStore) {
+	let id = ConversationId::new("61000000-0000-4000-8000-000000000001").expect("conversation");
+	let source =
+		store.read_ordinary_runtime_session_for_resume(&id).await.expect("read").expect("session");
+	let app = application(runtime, store);
+	let command = CommandEnvelope {
+		version: CURRENT_VERSION,
+		client_command_id: ClientCommandId::new("archive-native").expect("command"),
+		idempotency_key: IdempotencyKey::new("archive-native").expect("key"),
+		correlation_id: CorrelationId::new("archive-native").expect("correlation"),
+		causation_id: None,
+		expected_revision: Some(EntityRevision(
+			source.conversation_revision.try_into().expect("revision"),
+		)),
+		payload: CommandPayload::ArchiveConversation {
+			conversation_id: EntityId::new(id.as_str()).expect("id"),
+		},
+	};
+	app.execute(&command).await.expect("native archive and local projection");
+	let query = decodex_protocol::QueryEnvelope {
+		version: CURRENT_VERSION,
+		query_id: decodex_protocol::QueryId::new("archived-state").expect("query"),
+		payload: decodex_protocol::QueryPayload::GetConversation {
+			conversation_id: EntityId::new(id.as_str()).expect("id"),
+		},
+	};
+	assert_eq!(
+		app.query(&query).await,
+		decodex_protocol::QueryResultPayload::Conversation(
+			decodex_protocol::ConversationResult::Archived {
+				conversation_id: EntityId::new(id.as_str()).expect("id"),
+				conversation_revision: EntityRevision(
+					(source.conversation_revision + 1).try_into().expect("revision")
+				),
+			}
+		)
+	);
+	let missing = decodex_protocol::QueryEnvelope {
+		payload: decodex_protocol::QueryPayload::GetConversation {
+			conversation_id: EntityId::new("61000000-0000-4000-8000-000000000099")
+				.expect("missing"),
+		},
+		..query
+	};
+	assert_eq!(
+		app.query(&missing).await,
+		decodex_protocol::QueryResultPayload::Conversation(
+			decodex_protocol::ConversationResult::NotFound
+		)
+	);
 }

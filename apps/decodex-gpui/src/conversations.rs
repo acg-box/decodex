@@ -38,6 +38,8 @@ const CONVERSATION_EFFORTS: &[ConversationReasoningEffort] = &[
 	ConversationReasoningEffort::Ultra,
 ];
 
+#[path = "conversation_control_recovery.rs"] mod control_recovery;
+pub(crate) use control_recovery::ControlObservation;
 #[path = "conversation_drafts.rs"] mod drafts;
 #[path = "conversation_model_settings.rs"] mod model_settings;
 #[path = "conversation_turn_recovery.rs"] mod turn_recovery;
@@ -699,6 +701,7 @@ impl Conversations {
 		}
 		state.delivery.readbacks.clear();
 		state.delivery.turn_readbacks.clear();
+		state.delivery.control_readbacks.clear();
 		state.latch_in_flight_outcome_unknown();
 		state.cancel_refresh_batch();
 		state.reset_pagination();
@@ -724,6 +727,7 @@ impl Conversations {
 		}
 		state.delivery.readbacks.clear();
 		state.delivery.turn_readbacks.clear();
+		state.delivery.control_readbacks.clear();
 		state.latch_in_flight_outcome_unknown();
 		state.cancel_refresh_batch();
 		state.reset_pagination();
@@ -847,6 +851,7 @@ impl Conversations {
 		match &event.payload {
 			EventPayload::ConversationChanged { conversation }
 			| EventPayload::ConversationTurnFinished { conversation, .. } => {
+				state.invalidate_control_state(&conversation.conversation_id);
 				state.upsert_task(conversation.clone());
 				if state.command == ConversationCommandState::Accepted {
 					state.command = ConversationCommandState::Idle;
@@ -861,6 +866,7 @@ impl Conversations {
 				});
 			},
 			EventPayload::ConversationArchived { conversation_id, .. } => {
+				state.invalidate_control_state(conversation_id);
 				state.remove_task(conversation_id);
 				if state.command == ConversationCommandState::Accepted {
 					state.command = ConversationCommandState::Idle;
@@ -914,6 +920,8 @@ impl Conversations {
 		}
 		state.in_flight_query = None;
 		let (outcome, query_queued) = match purpose {
+			ConversationQueryPurpose::ControlState { command, source } =>
+				state.route_control_state(&command, source.as_deref(), &result.payload),
 			ConversationQueryPurpose::ModelSettings { epoch, source } =>
 				state.route_model_settings(epoch, &source, &result.payload),
 			ConversationQueryPurpose::TurnOutcome { command } =>
@@ -1779,6 +1787,9 @@ impl State {
 	}
 
 	fn replace_tasks(&mut self, mut tasks: Vec<ConversationSummary>) {
+		if self.tasks != tasks {
+			self.delivery.control_readbacks.clear();
+		}
 		let prior_selection = self.selected.clone().or_else(|| self.requested_selection.clone());
 		for task in &mut tasks {
 			let Some(existing) =
@@ -2022,6 +2033,10 @@ struct InFlightQuery {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ConversationQueryPurpose {
+	ControlState {
+		command: Box<CommandEnvelope>,
+		source: Option<Box<ConversationSummary>>,
+	},
 	ModelSettings {
 		epoch: u64,
 		source: Box<ConversationSummary>,
@@ -2767,6 +2782,56 @@ pub(crate) mod tests {
 			"observed defaults need a fresh read after restore"
 		);
 		assert!(take_ready_command(&conversations, &server).is_none());
+	}
+
+	pub(crate) fn recorded_archive_fixture() -> (Conversations, ServerId, CommandEnvelope) {
+		let (source, server, _) = connected_conversations();
+		source.archive_selected().expect("archive");
+		let original = dispatched_command(&source, &server);
+		source.session_ended(1);
+		let draft = source.ordinary_draft("Preserved draft").expect("draft");
+		let (restored, server, _) = connected_conversations();
+		assert!(restored.restore_ordinary_draft(&draft));
+		restored.lock().pending_query = None;
+		(restored, server, original)
+	}
+
+	pub(crate) fn prepare_control_check(controller: &Conversations) {
+		controller.lock().pending_query = None;
+	}
+
+	pub(crate) fn reply_archive_check(
+		controller: &Conversations,
+		server: &ServerId,
+		original: &CommandEnvelope,
+	) {
+		let dispatch = controller.try_take_dispatch(1, server).expect("check query");
+		let query = dispatch.query().expect("read-only control check");
+		let CommandPayload::ArchiveConversation { conversation_id } = &original.payload else {
+			panic!("archive command")
+		};
+		assert_eq!(
+			query.payload,
+			QueryPayload::GetConversation { conversation_id: conversation_id.clone() }
+		);
+		assert_eq!(
+			controller.route_query_result(
+				1,
+				server,
+				&QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					query_id: query.query_id.clone(),
+					server_id: server.clone(),
+					payload: QueryResultPayload::Conversation(ConversationResult::Archived {
+						conversation_id: conversation_id.clone(),
+						conversation_revision: EntityRevision(
+							original.expected_revision.expect("revision").0 + 1
+						),
+					}),
+				}
+			),
+			ConversationRouteOutcome::Fresh
+		);
 	}
 
 	pub(crate) fn connected_conversations() -> (Conversations, ServerId, ConversationSummary) {
