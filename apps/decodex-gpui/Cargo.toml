@@ -13,6 +13,7 @@ native-glass-probe = []
 visual-capture = ["gpui/test-support", "gpui_platform/test-support"]
 
 [dependencies]
+unicode-width       = { workspace = true }
 decodex-protocol     = { workspace = true }
 gpui                 = { workspace = true }
 gpui_platform        = { workspace = true }

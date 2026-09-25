@@ -1990,7 +1990,7 @@ fn history_entry_with_key(
 							.gap(px(8.))
 							.child(reply_metrics(entry))
 							.when(entry.kind == "assistant", |row| {
-								row.child(markdown::copy_button(
+								row.child(markdown::response_copy_button(
 									&format!("copy-response-{identity}"),
 									"Copy response",
 									if entry.weather.is_empty() {

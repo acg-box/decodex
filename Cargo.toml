@@ -25,6 +25,7 @@ repository  = "https://github.com/acg-box/decodex"
 version     = "0.2.0"
 
 [workspace.dependencies]
+unicode-width        = { version = "~0.2" }
 decodex-account-login = { path = "crates/decodex-account-login" }
 decodex-codex         = { path = "crates/decodex-codex" }
 decodex-core          = { path = "crates/decodex-core" }
