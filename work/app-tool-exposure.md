@@ -63,3 +63,17 @@ live model turn. Signed desktop and live connector acceptance remain separate.
 Batch validation passed: protocol134, adapter186, database117, runtime561 and
 GPUI460 tests; 52 opt-in tests skipped. Strict all-target/all-feature Clippy passed
 for all five affected packages.
+
+## Explicit integration refresh
+
+The existing Sync plugins and tools action now keeps the selected native thread
+through plugin reconciliation, MCP reload, a complete App directory refetch and
+`app/installed` with `forceRefresh=true`. Only this explicit action forces a live
+refresh. Ordinary inventory reads remain `forceRefresh=false`.
+
+A partial plugin reconciliation remains partial. A failure or malformed response
+from App refresh cannot acknowledge the whole operation, even if earlier plugin
+or MCP changes applied. The adapter sends each stage once and does not retry.
+The fixed upstream `request_processors/apps_processor/installed.rs` owns runtime
+publication through `thread.refresh_codex_apps_tools()`. This corrects the existing
+sync flow; it does not create another local tool registry.
