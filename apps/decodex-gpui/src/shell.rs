@@ -3868,6 +3868,18 @@ fn animated_horizontal_panel_slot(
 	full_width: f32,
 	panel: AnyElement,
 ) -> AnyElement {
+	if crate::ui_motion::reduced() {
+		let width = px(if visible { full_width } else { 0. });
+		return div()
+			.h_full()
+			.flex_none()
+			.overflow_hidden()
+			.w(width)
+			.min_w(width)
+			.max_w(width)
+			.child(panel)
+			.into_any_element();
+	}
 	let animation_id = format!("{id}-{generation}-{}", if visible { "open" } else { "close" });
 	div()
 		.h_full()
