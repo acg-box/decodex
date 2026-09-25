@@ -2246,6 +2246,11 @@ pub enum QueryPayload {
 	},
 	/// Read current native model and Memory configuration evidence.
 	GetChiefCapabilities,
+	/// Read exact local creation evidence without replaying a command.
+	GetConversationCreationReceipt {
+		/// Original request coordinates.
+		request: crate::ConversationCreationReceiptRequest,
+	},
 	/// Discover account-scoped model metadata before creating a thread.
 	GetInitialModelCatalog {
 		/// Intended directory and account routing policy.
@@ -2944,6 +2949,8 @@ pub enum QueryResultPayload {
 	ChiefActivityDetail(crate::ChiefActivityDetailResult),
 	/// Native model and Memory configuration evidence.
 	ChiefCapabilities(crate::ChiefCapabilitiesResult),
+	/// Exact local creation evidence, not provider completion.
+	ConversationCreationReceipt(crate::ConversationCreationReceiptResult),
 	/// Native pre-conversation model metadata and its observation source.
 	InitialModelCatalog(crate::InitialModelCatalogResult),
 	/// Source-bound Chief history, without raw provider frames.
@@ -3274,6 +3281,10 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 			Err("current protocol resume requires a publication instance"),
 		ClientMessage::Hello(_) => Ok(()),
 		ClientMessage::Query(query) => match &query.payload {
+			QueryPayload::GetConversationCreationReceipt { request }
+				if !is_canonical_uuid(request.conversation_id.as_str())
+					|| request.message.as_str().trim().is_empty() =>
+				Err("creation receipt requires the original conversation and nonempty message"),
 			QueryPayload::GetInitialModelCatalog { request }
 				if request
 					.account_id
@@ -4579,7 +4590,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":69},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":70},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4588,7 +4599,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":69},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":70},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4630,7 +4641,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":69},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":70},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

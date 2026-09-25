@@ -2080,6 +2080,10 @@ impl Application for ServiceApplication {
 
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
+			QueryPayload::GetConversationCreationReceipt { request } =>
+				QueryResultPayload::ConversationCreationReceipt(
+					conversation_receipts::query_creation_receipt(&self.store, request).await,
+				),
 			QueryPayload::GetInitialModelCatalog { .. }
 			| QueryPayload::GetChiefCapabilities
 			| QueryPayload::GetConversationCapabilities { .. } => self.query_model_catalog(query).await,
@@ -6297,3 +6301,5 @@ mod tests {
 		assert_eq!(decode_account_command_receipt(encoded), Ok(Err(error)));
 	}
 }
+
+#[path = "application_conversation_receipts.rs"] mod conversation_receipts;
