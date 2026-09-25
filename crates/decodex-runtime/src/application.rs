@@ -492,6 +492,13 @@ impl ServiceApplication {
 		})
 	}
 
+	async fn query_recap(&self, work: EntityId) -> QueryResultPayload {
+		QueryResultPayload::ChiefRecap(match &self.chief {
+			Some(chief) => chief.recap_status(work).await,
+			None => crate::chief_recap::Recaps::default().status(work, None),
+		})
+	}
+
 	async fn query_voice_settings(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::ChiefVoiceSettings(match &self.chief {
 			Some(chief) => chief.voice_settings(work).await,
@@ -2215,6 +2222,7 @@ impl Application for ServiceApplication {
 				self.query_live_reviewer(work_id.as_str()).await,
 			QueryPayload::GetChiefModelSettings { work_id } =>
 				self.query_model_settings(work_id.as_str()).await,
+			QueryPayload::GetChiefRecap { work_id } => self.query_recap(work_id.clone()).await,
 			QueryPayload::GetChiefVoiceSettings { work_id } =>
 				self.query_voice_settings(work_id.as_str()).await,
 			QueryPayload::GetChiefUsageEstimate { work_id } =>

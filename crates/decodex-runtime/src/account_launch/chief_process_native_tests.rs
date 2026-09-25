@@ -11,6 +11,7 @@ use super::*;
 #[path = "chief_process_native_ordinary_effort_tests.rs"] mod ordinary_effort;
 #[path = "chief_process_native_permission_tests.rs"] mod permissions;
 #[path = "chief_process_native_plugin_tests.rs"] mod plugins;
+#[path = "chief_process_native_recap_service_tests.rs"] mod recap_service;
 #[path = "chief_process_native_reviewer_tests.rs"] mod reviewer;
 #[path = "chief_process_native_steer_tests.rs"] mod steer;
 #[path = "chief_process_native_structured_tests.rs"] mod structured;

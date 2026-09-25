@@ -22,6 +22,7 @@ mod native_settings;
 pub(crate) mod native_subagents;
 pub(crate) mod observations;
 mod reasoning;
+pub(crate) use reasoning::voice_handoff;
 mod result_messages;
 mod resume_recovery;
 mod task_history;

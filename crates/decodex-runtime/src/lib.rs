@@ -31,6 +31,7 @@ mod chief_models;
 mod chief_native_goal;
 mod chief_permissions;
 mod chief_plugins;
+mod chief_recap;
 mod chief_resources;
 mod chief_usage_estimate;
 mod chief_voice;

@@ -1,5 +1,7 @@
 //! Single service-owned Chief actor. The existing Conversation runtime owns its account process.
 
+#[path = "chief_recap/host.rs"] mod recap;
+
 use std::{
 	sync::Arc,
 	time::{Duration, SystemTime, UNIX_EPOCH},
@@ -81,6 +83,7 @@ struct Request {
 
 #[derive(Clone)]
 pub(crate) struct ChiefHost {
+	recaps: crate::chief_recap::Recaps,
 	weather_cache: Arc<Mutex<Option<weather::CachedWeather>>>,
 	voice: crate::chief_voice::VoiceGateway,
 	dictation: crate::dictation::DictationGateway,
@@ -108,6 +111,7 @@ impl ChiefHost {
 		let (sender, receiver) = mpsc::channel(32);
 		Self {
 			voice: crate::chief_voice::VoiceGateway::new(),
+			recaps: Default::default(),
 			weather_cache: Arc::new(Mutex::new(None)),
 			dictation: Default::default(),
 			mcp_login: Default::default(),
@@ -790,9 +794,11 @@ impl ChiefHost {
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
 						self.rotate_exhausted(&mut active).await;
+						let recap = matches!(&request.action,ChiefActionDto::GenerateRecap{..}|ChiefActionDto::CancelRecap{..});
+						self.recaps.note_input(&request.action);
 						let outcome = self.handle(request.key,request.action,&mut active).await;
 						let _ = request.reply.send(outcome);
-						if let Some((root,chief,_)) = active.as_mut() {
+						if !recap && let Some((root,chief,_)) = active.as_mut() {
 							self.record_delivery(root, chief.wake_pending().await).await;
 						}
 					},
@@ -800,6 +806,8 @@ impl ChiefHost {
 						if let Some((root,chief,_)) = active.as_mut() {
 							chief.pause_dispatch(self.runtime.chief_account_exhausted(root).await);
 							let closed = event.is_none() || matches!(&event,Some(ServerEvent::Closed(_)));
+							if closed { self.recaps.stop(); }
+							let event = event.and_then(|event|self.recaps.route(event));
 							if let Some(event)=event.as_ref() && let Some(generation)=chief.native_generation() {
 								self.mcp_login.observe(generation,event).await;
 								if let ServerEvent::Notification { method, params } = event
@@ -843,6 +851,7 @@ impl ChiefHost {
 			_ = stopped(&mut stop) => {},
 			_ = drive => {},
 		}
+		self.recaps.stop();
 		requests.close();
 		while let Ok(request) = requests.try_recv() {
 			let _ = request.reply.send(Err(ChiefHostError::Rejected("Chief service is stopped")));
@@ -1187,29 +1196,32 @@ impl ChiefHost {
 		action: ChiefActionDto,
 		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) -> Result<String, ChiefHostError> {
+		use decodex_protocol::ChiefActionDto as Action;
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			action @ (ChiefActionDto::SetVoicePreference { .. }
-			| ChiefActionDto::SetAppToolExposure { .. }
-			| ChiefActionDto::SetSavedAppSetting { .. }
-			| ChiefActionDto::SetAppSetting { .. }
-			| ChiefActionDto::SetHookSetting { .. }
-			| ChiefActionDto::SetTaskPlugin { .. }
-			| ChiefActionDto::SetTaskModel { .. }
-			| ChiefActionDto::SelectPermissions { .. }
-			| ChiefActionDto::SetLiveReviewer { .. }) => self.handle_settings(key.as_str(), action).await,
-			ChiefActionDto::NativeAgentInput { work_id, thread_id, text, expected_turn } =>
+			action @ (Action::GenerateRecap { .. } | Action::CancelRecap { .. }) =>
+				self.handle_recap(&key, action).await,
+			action @ (Action::SetVoicePreference { .. }
+			| Action::SetAppToolExposure { .. }
+			| Action::SetSavedAppSetting { .. }
+			| Action::SetAppSetting { .. }
+			| Action::SetHookSetting { .. }
+			| Action::SetTaskPlugin { .. }
+			| Action::SetTaskModel { .. }
+			| Action::SelectPermissions { .. }
+			| Action::SetLiveReviewer { .. }) => self.handle_settings(key.as_str(), action).await,
+			Action::NativeAgentInput { work_id, thread_id, text, expected_turn } =>
 				self.native_agent_input(
 					(work_id.as_str(), thread_id.as_str()),
 					text.as_str(),
 					expected_turn.as_ref().map(|turn| turn.as_str()),
 				)
 				.await,
-			ChiefActionDto::InstallSuggestedPlugin { work_id, event_id, review_token } =>
+			Action::InstallSuggestedPlugin { work_id, event_id, review_token } =>
 				self.install_plugin(work_id.as_str(), event_id, review_token.as_str(), &key, active)
 					.await,
-			ChiefActionDto::RestoreArchivedThread { work_id, thread_id } => {
+			Action::RestoreArchivedThread { work_id, thread_id } => {
 				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
 				chief.restore_archived_thread(work_id.as_str(),thread_id.as_str()).await.map_err(|error|match error {
                     ChiefError::Rejected(_)=>ChiefHostError::Rejected("Restoration was not accepted. Refresh the task archive state before trying again."),
@@ -1217,9 +1229,9 @@ impl ChiefHost {
                 })?;
 				Ok(work_id.as_str().into())
 			},
-			ChiefActionDto::RefreshIntegrations { work_id } =>
+			Action::RefreshIntegrations { work_id } =>
 				self.refresh_integrations(work_id.as_str(), active).await,
-			ChiefActionDto::AddResourceLink { work_id, title, url } => {
+			Action::AddResourceLink { work_id, title, url } => {
 				let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
 				chief
 					.add_resource_link(work_id.as_str(), title.as_str(), url.as_str())
@@ -1227,7 +1239,7 @@ impl ChiefHost {
 					.map_err(resource_error)?;
 				Ok(work_id.as_str().into())
 			},
-			ChiefActionDto::RemoveResource { work_id, attachment_type, identity_key } => {
+			Action::RemoveResource { work_id, attachment_type, identity_key } => {
 				let (_, chief, _) = active.as_ref().ok_or("Chief is not connected")?;
 				chief
 					.remove_resource(
@@ -1240,13 +1252,13 @@ impl ChiefHost {
 				Ok(work_id.as_str().into())
 			},
 
-			ChiefActionDto::StartConfigured { .. } | ChiefActionDto::SendConfigured { .. } =>
+			Action::StartConfigured { .. } | Action::SendConfigured { .. } =>
 				unreachable!("normalized input"),
-			action @ ChiefActionDto::Steer { .. } => Self::steer_action(action, &key, active).await,
-			ChiefActionDto::ContinueMisalignment { work_id, review_id } =>
+			action @ Action::Steer { .. } => Self::steer_action(action, &key, active).await,
+			Action::ContinueMisalignment { work_id, review_id } =>
 				self.continue_reviewed_misalignment(work_id, review_id, &key, active).await,
 
-			ChiefActionDto::ApproveGuardianDenial { work_id, review_row, review_digest } => {
+			Action::ApproveGuardianDenial { work_id, review_row, review_digest } => {
 				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
 				chief.approve_guardian_denial(work_id.as_str(),review_row,review_digest.as_str(),&key).await
 					.map_err(|error| match error {
@@ -1255,7 +1267,7 @@ impl ChiefHost {
 					})?;
 				Ok(work_id.as_str().into())
 			},
-			ChiefActionDto::AnswerQuestion { work_id, question_id, answer } => {
+			Action::AnswerQuestion { work_id, question_id, answer } => {
 				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
 				chief
 					.answer_async_question(
@@ -1268,19 +1280,18 @@ impl ChiefHost {
 					.map_err(question_input_error)?;
 				Ok(work_id.as_str().into())
 			},
-			ChiefActionDto::SkipQuestion { work_id, thread_id, question_id } =>
+			Action::SkipQuestion { work_id, thread_id, question_id } =>
 				Self::skip_question((&work_id, &thread_id, &question_id), active).await,
-			ChiefActionDto::CancelCapacityRetry { work_id, event_id } =>
+			Action::CancelCapacityRetry { work_id, event_id } =>
 				self.cancel_capacity_retry(work_id, event_id).await,
-			ChiefActionDto::Respond { work_id, event_id, response_json } =>
+			Action::Respond { work_id, event_id, response_json } =>
 				self.respond(work_id.as_str(), event_id, response_json.as_str(), active).await,
-			ChiefActionDto::RespondWithRequestedDecision { work_id, event_id, decision } =>
+			Action::RespondWithRequestedDecision { work_id, event_id, decision } =>
 				self.respond_requested(work_id.as_str(), event_id, &decision, active).await,
-			ChiefActionDto::Start(draft) =>
-				self.start(draft, &key, input_options.as_ref(), active).await,
-			ChiefActionDto::Send { root_id, text } =>
+			Action::Start(draft) => self.start(draft, &key, input_options.as_ref(), active).await,
+			Action::Send { root_id, text } =>
 				self.accept_message(&root_id, &text, &key, input_options.as_ref(), active).await,
-			ChiefActionDto::Interrupt { work_id, turn_id } => {
+			Action::Interrupt { work_id, turn_id } => {
 				let (_, chief, _) = active.as_mut().ok_or("Chief is not connected")?;
 				chief.interrupt_work(work_id.as_str(), turn_id.as_str()).await.map_err(|_| {
 					ChiefHostError::Unknown(
@@ -1289,7 +1300,7 @@ impl ChiefHost {
 				})?;
 				Ok(work_id.as_str().into())
 			},
-			ChiefActionDto::AutomationResult { work_id, source_event_id, payload } => {
+			Action::AutomationResult { work_id, source_event_id, payload } => {
 				self.store
 					.enqueue_chief_event(EnqueueChiefEvent {
 						source_event_id: json!(["automation", source_event_id.as_str()])

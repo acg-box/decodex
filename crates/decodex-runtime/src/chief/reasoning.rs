@@ -49,7 +49,7 @@ impl ChiefCoordinator {
 	}
 }
 
-pub(super) fn voice_handoff(item: &Value) -> bool {
+pub(crate) fn voice_handoff(item: &Value) -> bool {
 	if item["type"] != "userMessage" {
 		return false;
 	}
