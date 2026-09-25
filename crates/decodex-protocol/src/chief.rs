@@ -325,6 +325,21 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Start an optional recap for the exact displayed native thread.
+	GenerateRecap {
+		/// Owning local task.
+		work_id: crate::EntityId,
+		/// Native thread reviewed by the caller.
+		thread_id: crate::WireText,
+	},
+	/// Cancel one exact request, without cancelling a newer recap.
+	CancelRecap {
+		/// Owning local task.
+		work_id: crate::EntityId,
+		/// Original recap command key.
+		request_id: crate::WireText,
+	},
+
 	/// Save a reviewed voice preference for subsequent calls.
 	SetVoicePreference {
 		/// Owning task.

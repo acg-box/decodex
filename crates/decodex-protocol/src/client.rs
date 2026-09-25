@@ -268,6 +268,27 @@ pub struct ChiefClient {
 	transport: ResetCardClient,
 }
 impl ChiefClient {
+	/// Read the existing recap; this method never starts a model request.
+	pub async fn recap(&self, work_id: EntityId) -> Result<crate::TaskRecapStatus, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"chief-recap",
+				QueryPayload::GetChiefRecap { work_id: work_id.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefRecap(status)
+				if status.work_id == work_id && status.is_valid() =>
+				Ok(status),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read the current task's voice catalog and effective preference.
 	pub async fn voice_settings(
 		&self,
@@ -1331,6 +1352,8 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		crate::ChiefActionDto::SetTaskModel { work_id, .. } => work_id,
 		crate::ChiefActionDto::SetHookSetting { work_id, .. }
 		| crate::ChiefActionDto::SetAppToolExposure { work_id, .. }
+		| crate::ChiefActionDto::GenerateRecap { work_id, .. }
+		| crate::ChiefActionDto::CancelRecap { work_id, .. }
 		| crate::ChiefActionDto::SetVoicePreference { work_id, .. }
 		| crate::ChiefActionDto::SetAppSetting { work_id, .. }
 		| crate::ChiefActionDto::SetSavedAppSetting { work_id, .. } => work_id,
@@ -4163,7 +4186,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 83 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 84 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
