@@ -2325,6 +2325,18 @@ mod tests {
 		});
 		visual.simulate_keystrokes("cmd-enter");
 		surface.update(visual, |surface, cx| {
+			assert_eq!(
+				surface.feedback,
+				"Refresh account defaults for this directory before sending."
+			);
+			assert_eq!(surface.composer.read(cx).content(), "Please coordinate this goal");
+			assert!(!surface.sending);
+			surface.mark_model_intent(cx);
+			surface.mark_effort_intent(cx);
+			surface.mark_tier_intent();
+		});
+		visual.simulate_keystrokes("cmd-enter");
+		surface.update(visual, |surface, cx| {
 			assert_eq!(surface.feedback, "No service profile is configured.");
 			assert_eq!(surface.composer.read(cx).content(), "Please coordinate this goal");
 			assert!(!surface.sending);
