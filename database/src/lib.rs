@@ -11,6 +11,7 @@ mod chief_dispatch_rejection;
 pub use chief_dispatch_rejection::ChiefDispatchRefusal;
 
 mod chief;
+mod chief_request_payload;
 mod chief_settings_observations;
 pub use chief_settings_observations::ChiefTaskSettingsObservation;
 mod chief_app_settings;

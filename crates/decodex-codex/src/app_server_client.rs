@@ -73,7 +73,7 @@ pub use attachments::{ThreadAttachment, ThreadAttachmentAddOutcome, ThreadAttach
 pub use usage::{ThreadUsageEstimate, ThreadUsageEstimateGroup};
 
 /// Shared JSON-RPC frame bound for direct and admitted native process transports.
-pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
+pub const MAX_FRAME_BYTES: usize = decodex_core::MAX_NATIVE_MESSAGE_BYTES;
 const MAX_PENDING_REQUESTS: usize = 256;
 const MAX_BUFFERED_EVENTS: usize = 256;
 
