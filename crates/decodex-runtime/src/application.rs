@@ -2584,7 +2584,9 @@ fn conversation_command_projection(
 		ConversationOutcome::Unknown { .. } => return Err(CommandError::AcceptanceUnknown),
 		ConversationOutcome::Busy(_) => return Err(conversation_busy()),
 		ConversationOutcome::Conflict => return Err(conversation_conflict()),
-		ConversationOutcome::Streaming { .. } | ConversationOutcome::Unavailable => {
+		ConversationOutcome::HistoryChanged { .. }
+		| ConversationOutcome::Streaming { .. }
+		| ConversationOutcome::Unavailable => {
 			return Err(application_unavailable("Conversation execution is unavailable"));
 		},
 	};
@@ -3087,6 +3089,22 @@ impl ServiceApplication {
 		outcome: ConversationOutcome,
 	) -> Option<ApplicationEventPublication> {
 		match outcome {
+			ConversationOutcome::HistoryChanged { readback, history_item_id } =>
+				Some(ApplicationEventPublication {
+					correlation_id: CorrelationId::new(readback.correlation_id.as_deref()?).ok()?,
+					causation_id: readback
+						.causation_id
+						.as_deref()
+						.map(CausationId::new)
+						.transpose()
+						.ok()?,
+					channel: Channel::ConversationStream,
+					entity_id: EntityId::new(history_item_id.as_str()).ok()?,
+					entity_revision: EntityRevision(1),
+					event: EventPayload::ConversationHistoryChanged {
+						conversation_id: EntityId::new(readback.conversation_id.as_str()).ok()?,
+					},
+				}),
 			ConversationOutcome::Streaming { readback, history_item_id, text } => {
 				let correlation_id =
 					CorrelationId::new(readback.correlation_id.as_deref()?).ok()?;

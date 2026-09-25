@@ -3,7 +3,7 @@ use crate::{
 	application::{Application, ProductStore, ServiceApplication},
 	conversation::{
 		ConversationCapability, ConversationExecutionSettings, ConversationOutcome,
-		ConversationRuntime, ConversationTerminalState, CreateConversation,
+		ConversationRuntime, CreateConversation,
 	},
 };
 use decodex_core::{ConversationId, ServiceTier};
@@ -22,6 +22,8 @@ pub(super) async fn qualify(
 ) {
 	let conversation_id =
 		ConversationId::new("61000000-0000-4000-8000-000000000001").expect("conversation");
+	let instructions = home.join(".codex/AGENTS.md");
+	std::fs::write(&instructions, "Keep the fixture local.").expect("native warning fixture");
 	let created = runtime
 		.create(CreateConversation {
 			operation_key: "native-runtime-create".into(),
@@ -42,8 +44,10 @@ pub(super) async fn qualify(
 		matches!(created, ConversationOutcome::Started { .. }),
 		"initial production submission: {created:?}"
 	);
-	complete(runtime).await;
-	submit_inherited(
+	complete(runtime, store, home).await;
+	std::fs::remove_file(&instructions).expect("native warning fixture");
+	std::os::unix::fs::symlink("AGENTS.md", &instructions).expect("native warning fixture");
+	let notices = submit_inherited(
 		runtime,
 		store,
 		home,
@@ -51,6 +55,10 @@ pub(super) async fn qualify(
 		"62000000-0000-4000-8000-000000000001",
 	)
 	.await;
+	assert!(notices > 0, "warning must publish a history refresh");
+	assert_warning_history(runtime, store, home).await;
+	std::fs::remove_file(&instructions).expect("native warning fixture");
+	std::fs::write(&instructions, "Keep the fixture local.").expect("native warning fixture");
 }
 
 pub(super) async fn submit_inherited(
@@ -59,14 +67,14 @@ pub(super) async fn submit_inherited(
 	home: &std::path::Path,
 	key: &str,
 	turn: &str,
-) {
+) -> usize {
 	let id = ConversationId::new("61000000-0000-4000-8000-000000000001").expect("conversation");
 	let source = store
 		.read_ordinary_runtime_session_for_resume(&id)
 		.await
 		.expect("source")
 		.expect("saved session");
-	let app = application(runtime, store);
+	let app = application(runtime, store, home);
 	let command = CommandEnvelope {
 		version: CURRENT_VERSION,
 		client_command_id: ClientCommandId::new(key).expect("command"),
@@ -98,23 +106,76 @@ pub(super) async fn submit_inherited(
 			.expect("restored command");
 	assert_eq!(restored, command);
 	app.execute(&restored).await.expect("public service inherited submission");
-	complete(runtime).await;
+	complete(runtime, store, home).await
 }
 
-async fn complete(runtime: &ConversationRuntime) {
+async fn complete(
+	runtime: &ConversationRuntime,
+	store: &SqliteStore,
+	home: &std::path::Path,
+) -> usize {
+	let app = application(runtime, store, home);
+	let mut notices = 0;
 	loop {
-		match runtime.next_event().await.expect("runtime output") {
-			ConversationOutcome::Terminal { state, .. } => {
-				assert_eq!(state, ConversationTerminalState::Succeeded);
-				return;
+		match app.next_publication().await.expect("public runtime output").event {
+			decodex_protocol::EventPayload::ConversationTurnFinished { outcome, .. } => {
+				assert_eq!(outcome, decodex_protocol::ConversationTurnOutcome::Succeeded);
+				return notices;
 			},
-			ConversationOutcome::Streaming { .. } | ConversationOutcome::Started { .. } => {},
-			other => panic!("unexpected production runtime event: {other:?}"),
+			decodex_protocol::EventPayload::ConversationHistoryChanged { conversation_id } => {
+				assert_eq!(conversation_id.as_str(), "61000000-0000-4000-8000-000000000001");
+				notices += 1;
+			},
+			decodex_protocol::EventPayload::ConversationMessageDelta { delta, .. } => {
+				assert!(!delta.as_str().contains("Codex warning:"));
+			},
+			other => panic!("unexpected public runtime event: {other:?}"),
 		}
 	}
 }
 
-fn application(runtime: &ConversationRuntime, store: &SqliteStore) -> ServiceApplication {
+pub(super) async fn assert_warning_history(
+	runtime: &ConversationRuntime,
+	store: &SqliteStore,
+	home: &std::path::Path,
+) {
+	let query = decodex_protocol::QueryEnvelope {
+		version: CURRENT_VERSION,
+		query_id: decodex_protocol::QueryId::new("native-warning-history")
+			.expect("native warning fixture"),
+		payload: decodex_protocol::QueryPayload::GetConversationHistory {
+			conversation_id: EntityId::new("61000000-0000-4000-8000-000000000001")
+				.expect("native warning fixture"),
+			after: None,
+			page_size: decodex_protocol::MAX_HISTORY_PAGE_SIZE,
+		},
+	};
+	let result = application(runtime, store, home).query(&query).await;
+	let decodex_protocol::QueryResultPayload::ConversationHistory(
+		decodex_protocol::ConversationHistoryResult::Page(page),
+	) = result
+	else {
+		panic!("history unavailable: {result:?}");
+	};
+	let notices: Vec<_> = page
+		.items
+		.iter()
+		.filter(|item| {
+			item.payload.inline_text().is_some_and(|text| {
+				text.as_str().contains("AGENTS.md") && text.as_str().starts_with("Codex warning:")
+			})
+		})
+		.collect();
+	assert_eq!(notices.len(), 1, "native warning persists once");
+	assert_eq!(notices[0].kind, decodex_protocol::HistoryItemKindDto::Status);
+	assert_eq!(notices[0].status, decodex_protocol::HistoryItemStatusDto::Completed);
+}
+
+fn application(
+	runtime: &ConversationRuntime,
+	store: &SqliteStore,
+	home: &std::path::Path,
+) -> ServiceApplication {
 	let doctor = DoctorReport::new(
 		ServerId::new("native-fixture").expect("server"),
 		CURRENT_VERSION,
@@ -126,22 +187,27 @@ fn application(runtime: &ConversationRuntime, store: &SqliteStore) -> ServiceApp
 			.collect(),
 	)
 	.expect("doctor");
+	let root = decodex_core::DecodexRoot::new(home.join("product")).expect("fixture root");
 	ServiceApplication::new(
 		ProductStore::Available(store.clone()),
 		None,
 		None,
 		decodex_codex::CodexAdapter::unavailable(),
-		None,
+		Some(decodex_core::BlobStore::open(root.paths()).expect("fixture blobs")),
 		ConversationCapability::Ready(runtime.clone()),
 		doctor,
 	)
 }
 
-pub(super) async fn archive(runtime: &ConversationRuntime, store: &SqliteStore) {
+pub(super) async fn archive(
+	runtime: &ConversationRuntime,
+	store: &SqliteStore,
+	home: &std::path::Path,
+) {
 	let id = ConversationId::new("61000000-0000-4000-8000-000000000001").expect("conversation");
 	let source =
 		store.read_ordinary_runtime_session_for_resume(&id).await.expect("read").expect("session");
-	let app = application(runtime, store);
+	let app = application(runtime, store, home);
 	let command = CommandEnvelope {
 		version: CURRENT_VERSION,
 		client_command_id: ClientCommandId::new("archive-native").expect("command"),

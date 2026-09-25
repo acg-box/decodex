@@ -188,6 +188,7 @@ async fn restart_and_submit(
 		.await
 		.expect("restore account callback capability");
 	let restarted = runtime(root, &store, accounts, profile).await;
+	submit::assert_warning_history(&restarted, &store, home).await;
 	submit::submit_inherited(
 		&restarted,
 		&store,
@@ -196,7 +197,7 @@ async fn restart_and_submit(
 		"62000000-0000-4000-8000-000000000002",
 	)
 	.await;
-	submit::archive(&restarted, &store).await;
+	submit::archive(&restarted, &store, home).await;
 	restarted.begin_shutdown();
 	restarted.wait_for_shutdown().await;
 }

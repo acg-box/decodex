@@ -738,10 +738,14 @@ impl ClientLifecycle {
 				let cursor = event.cursor;
 				let conversation_event = event.clone();
 				let inspection = self.apply_event(generation, event)?;
-				if let EventPayload::ConversationTurnFinished { conversation, .. } =
-					&conversation_event.payload
-				{
-					let _ = self.history_pager.reload_if_open(&conversation.conversation_id);
+				match &conversation_event.payload {
+					EventPayload::ConversationTurnFinished { conversation, .. } => {
+						let _ = self.history_pager.reload_if_open(&conversation.conversation_id);
+					},
+					EventPayload::ConversationHistoryChanged { conversation_id } => {
+						let _ = self.history_pager.reload_if_open(conversation_id);
+					},
+					_ => {},
 				}
 				self.conversations.apply_event(&conversation_event);
 				self.accounts.apply_event(&conversation_event);

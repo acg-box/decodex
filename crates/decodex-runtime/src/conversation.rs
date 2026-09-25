@@ -496,6 +496,10 @@ pub(crate) enum ConversationOutcome {
 		readback: ConversationReadback,
 		provider_turn_id: String,
 	},
+	HistoryChanged {
+		readback: ConversationReadback,
+		history_item_id: HistoryItemId,
+	},
 	Streaming {
 		readback: ConversationReadback,
 		history_item_id: HistoryItemId,
@@ -3078,8 +3082,12 @@ impl ConversationRuntime {
 		commands: mpsc::Receiver<WorkerCommand>,
 	) {
 		let mut assistant_ordinal = 0_i32;
+		let mut warning_ids = std::collections::HashSet::new();
 		for event in started.events {
-			match self.handle_process_event(&context, &mut assistant_ordinal, event).await {
+			match self
+				.handle_process_event(&context, &mut assistant_ordinal, &mut warning_ids, event)
+				.await
+			{
 				Ok(true) => return,
 				Ok(false) => {},
 				Err(()) => {
@@ -3099,6 +3107,7 @@ impl ConversationRuntime {
 				.handle_process_event(
 					&context,
 					&mut assistant_ordinal,
+					&mut warning_ids,
 					ConversationProcessEvent::TurnCompleted {
 						turn_id: context.provider_turn_id.clone(),
 						status,
@@ -3133,7 +3142,15 @@ impl ConversationRuntime {
 		while let Some(output) = outputs.recv().await {
 			match output {
 				WorkerOutput::Event(event) => {
-					match self.handle_process_event(&context, &mut assistant_ordinal, event).await {
+					match self
+						.handle_process_event(
+							&context,
+							&mut assistant_ordinal,
+							&mut warning_ids,
+							event,
+						)
+						.await
+					{
 						Ok(is_terminal) => {
 							terminal = is_terminal;
 							if terminal {
@@ -3163,9 +3180,12 @@ impl ConversationRuntime {
 		&self,
 		context: &TurnContext,
 		assistant_ordinal: &mut i32,
+		warning_ids: &mut std::collections::HashSet<String>,
 		event: ConversationProcessEvent,
 	) -> Result<bool, ()> {
 		match event {
+			ConversationProcessEvent::Warning { thread_id, text } =>
+				self.record_native_warning(context, warning_ids, thread_id, text).await,
 			ConversationProcessEvent::MessageDelta(delta) => {
 				if delta.thread_id().as_str() != context.session.codex_thread_id.as_str()
 					|| delta.turn_id().as_str() != context.provider_turn_id.as_str()
@@ -3253,6 +3273,64 @@ impl ConversationRuntime {
 				Ok(true)
 			},
 		}
+	}
+
+	async fn record_native_warning(
+		&self,
+		context: &TurnContext,
+		warning_ids: &mut std::collections::HashSet<String>,
+		thread_id: Option<String>,
+		text: String,
+	) -> Result<bool, ()> {
+		if thread_id.as_deref().is_some_and(|id| id != context.session.codex_thread_id.as_str()) {
+			return Ok(false);
+		}
+		let id = derived_uuid("native-warning", &[context.attempt_id.as_str(), &text]);
+		if warning_ids.len() >= 64 || !warning_ids.insert(id.clone()) {
+			return Ok(false);
+		}
+		let history_item_id = HistoryItemId::new(id).map_err(|_| ())?;
+		let command = exact_command(
+			"native-warning",
+			history_item_id.as_str(),
+			&[context.attempt_id.as_str(), &text],
+		)
+		.map_err(|_| ())?;
+		self.inner
+			.store
+			.record_history_item(
+				&self.inner.blob_store,
+				&command,
+				&RecordHistoryItem {
+					conversation_id: context.session.conversation_id.clone(),
+					runtime_session_id: context.session.runtime_session_id.clone(),
+					turn_id: context.logical_turn_id.clone(),
+					turn_sequence: context.logical_turn_sequence,
+					turn_role: TurnRole::User,
+					possible_side_effects: PossibleSideEffects::Unknown,
+					history_item_id: history_item_id.clone(),
+					ordinal: 1,
+					kind: HistoryItemKind::Status,
+					status: ItemStatus::Completed,
+					text,
+					media_type: markdown_media_type(),
+					metadata: HistoryMetadata::empty(),
+					expected_revision: None,
+					artifact: None,
+				},
+			)
+			.await
+			.map_err(|_| ())?;
+		self.emit(ConversationOutcome::HistoryChanged {
+			readback: session_readback(
+				&context.session,
+				ConversationLocalState::Running,
+				Some(context.logical_turn_id.clone()),
+			),
+			history_item_id,
+		})
+		.await;
+		Ok(false)
 	}
 
 	async fn finish_positive_turn(
