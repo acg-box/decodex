@@ -92,8 +92,7 @@ impl ChiefSurface {
 		if self.selected.as_deref() != Some(id) {
 			self.resources = None;
 			self.resources_task = None;
-			self.usage_estimate = None;
-			self.usage_estimate_task = None;
+			self.clear_usage_estimate();
 			self.integrations = None;
 			self.integrations_task = None;
 			self.integration_refresh_task = None;

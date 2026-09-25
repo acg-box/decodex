@@ -94,6 +94,7 @@ pub(crate) struct ChiefSurface {
 	resources_task: Option<Task<()>>,
 	usage_estimate: Option<(String, Option<decodex_protocol::ChiefUsageEstimateResult>)>,
 	usage_estimate_task: Option<Task<()>>,
+	usage_estimate_epoch: u64,
 	native_history: native_timeline::Timeline,
 	integrations: Option<(String, Option<decodex_protocol::ChiefIntegrationsResult>)>,
 	integrations_task: Option<Task<()>>,
@@ -335,6 +336,7 @@ impl ChiefSurface {
 			resources_task: None,
 			usage_estimate: None,
 			usage_estimate_task: None,
+			usage_estimate_epoch: 0,
 			native_history: Default::default(),
 			integrations: None,
 			integrations_task: None,
@@ -1088,8 +1090,7 @@ impl ChiefSurface {
 		self.clear_activity_detail();
 		self.resources = None;
 		self.resources_task = None;
-		self.usage_estimate = None;
-		self.usage_estimate_task = None;
+		self.clear_usage_estimate();
 		self.integrations = None;
 		self.integrations_task = None;
 		self.integration_refresh_task = None;
@@ -1254,9 +1255,11 @@ impl ChiefSurface {
 			self.reset_native_goal();
 			self.question_notices = Default::default();
 			self.clear_activity_detail();
+			self.clear_usage_estimate();
 		}
 		match result {
 			Ok(ChiefSnapshotResult::Available(snapshot)) => {
+				self.invalidate_usage_estimate(&snapshot);
 				self.invalidate_model_settings(&snapshot);
 				self.invalidate_live_reviewer_for_snapshot(&snapshot);
 				self.invalidate_permission_profiles(&snapshot);

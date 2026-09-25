@@ -15,8 +15,7 @@ impl ChiefSurface {
 				"Usage estimate".into(),
 				move |s, cx| {
 					if s.usage_estimate.as_ref().is_some_and(|(work, _)| work == &owner) {
-						s.usage_estimate = None;
-						s.usage_estimate_task = None;
+						s.clear_usage_estimate();
 						cx.notify();
 					} else {
 						s.load_usage_estimate(&owner, cx);
@@ -35,16 +34,64 @@ impl ChiefSurface {
 		panel.into_any_element()
 	}
 
+	pub(super) fn clear_usage_estimate(&mut self) {
+		self.usage_estimate_epoch = self.usage_estimate_epoch.wrapping_add(1);
+		self.usage_estimate = None;
+		self.usage_estimate_task = None;
+	}
+
+	fn usage_estimate_binding(&self, work: &str) -> Option<(EntityId, String)> {
+		let snapshot = self.snapshot.as_ref()?;
+		Some((
+			snapshot.runtime_source.clone()?,
+			snapshot.work_items.iter().find(|w| w.id == work)?.codex_thread_id.clone()?,
+		))
+	}
+
+	pub(super) fn invalidate_usage_estimate(&mut self, next: &ChiefSnapshotDto) {
+		let Some((work, _)) = &self.usage_estimate else { return };
+		let next_binding = next.runtime_source.clone().zip(
+			next.work_items.iter().find(|w| &w.id == work).and_then(|w| w.codex_thread_id.clone()),
+		);
+		if self.usage_estimate_binding(work) != next_binding
+			|| self.selected.as_deref() != Some(work)
+		{
+			self.clear_usage_estimate();
+		}
+	}
+
+	fn finish_usage_estimate(
+		&mut self,
+		work: String,
+		epoch: u64,
+		binding: (EntityId, String),
+		result: ChiefUsageEstimateResult,
+	) {
+		if self.usage_estimate_epoch != epoch
+			|| self.selected.as_deref() != Some(&work)
+			|| self.usage_estimate_binding(&work).as_ref() != Some(&binding)
+		{
+			return;
+		}
+		self.usage_estimate = Some((work, Some(result)));
+		self.usage_estimate_task = None;
+	}
+
 	fn load_usage_estimate(&mut self, work: &str, cx: &mut Context<Self>) {
 		if self.selected.as_deref() != Some(work) || self.usage_estimate_task.is_some() {
 			return;
 		}
-		let (Some(profile), Ok(work_id)) = (self.profile.clone(), EntityId::new(work.to_owned()))
-		else {
+		let (Some(profile), Ok(work_id), Some(binding)) = (
+			self.profile.clone(),
+			EntityId::new(work.to_owned()),
+			self.usage_estimate_binding(work),
+		) else {
 			self.usage_estimate = Some((work.into(), Some(ChiefUsageEstimateResult::Unavailable)));
 			cx.notify();
 			return;
 		};
+		self.usage_estimate_epoch = self.usage_estimate_epoch.wrapping_add(1);
+		let epoch = self.usage_estimate_epoch;
 		self.usage_estimate = Some((work.into(), None));
 		let work = work.to_owned();
 		let generation = self.generation;
@@ -59,8 +106,7 @@ impl ChiefSurface {
 				if s.generation != generation || s.selected.as_deref() != Some(&work) {
 					return;
 				}
-				s.usage_estimate = Some((work, Some(result)));
-				s.usage_estimate_task = None;
+				s.finish_usage_estimate(work, epoch, binding, result);
 				cx.notify();
 			});
 		}));
@@ -176,6 +222,75 @@ mod tests {
 			s.open_page("other", cx);
 			assert!(s.usage_estimate.is_none());
 			assert!(s.usage_estimate_task.is_none());
+		});
+	}
+
+	#[gpui::test]
+	fn estimates_discard_changed_sources_and_late_reopened_requests(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(ChiefSurface::new);
+		let snapshot = |source: &str, thread: &str| ChiefSnapshotDto {
+			runtime_source: Some(EntityId::new(source).unwrap()),
+			workspaces: vec![],
+			dependencies: vec![],
+			pending_events: vec![],
+			work_items: vec![ChiefWorkItemDto {
+				id: "root".into(),
+				parent_goal_id: None,
+				kind: decodex_protocol::ChiefWorkKindDto::Goal,
+				title: "Task".into(),
+				codex_thread_id: Some(thread.into()),
+				active_turn_id: None,
+				dispatch_state: ChiefDispatchStateDto::Idle,
+				status: ChiefWorkStatusDto::Open,
+				next_check_at_micros: None,
+				created_at_micros: 1,
+				updated_at_micros: 1,
+			}],
+		};
+		let estimate = || ChiefUsageEstimateResult::Available {
+			work_id: EntityId::new("root").unwrap(),
+			account_id: EntityId::new("account-a").unwrap(),
+			observed_at_micros: 1,
+			estimate: decodex_protocol::ThreadUsageEstimate {
+				thread_id: "thread-a".into(),
+				estimated_usage_credits_micros: 5_000_000,
+				estimated_usage_usd_micros: Some(100_000),
+				groups: vec![],
+			},
+		};
+		surface.update(cx, |s, _| {
+			for next in [
+				Some(snapshot("source-b", "thread-a")),
+				Some(snapshot("source-a", "thread-b")),
+				None,
+			] {
+				s.apply_result(Ok(ChiefSnapshotResult::Available(snapshot(
+					"source-a", "thread-a",
+				))));
+				let binding = s.usage_estimate_binding("root").unwrap();
+				let epoch = s.usage_estimate_epoch;
+				s.finish_usage_estimate("root".into(), epoch, binding.clone(), estimate());
+				assert!(s.usage_estimate.is_some());
+				s.apply_result(next.map(ChiefSnapshotResult::Available).ok_or(()));
+				assert!(s.usage_estimate.is_none());
+				s.finish_usage_estimate("root".into(), epoch, binding, estimate());
+				assert!(
+					s.usage_estimate.is_none(),
+					"Late old-source result cannot repopulate the panel"
+				);
+			}
+			s.apply_result(Ok(ChiefSnapshotResult::Available(snapshot("source-a", "thread-a"))));
+			let binding = s.usage_estimate_binding("root").unwrap();
+			let previous = s.usage_estimate_epoch;
+			s.clear_usage_estimate();
+			s.usage_estimate = Some(("root".into(), None));
+			s.finish_usage_estimate("root".into(), previous, binding.clone(), estimate());
+			assert!(matches!(s.usage_estimate, Some((_, None))));
+			s.finish_usage_estimate("root".into(), s.usage_estimate_epoch, binding, estimate());
+			assert!(matches!(
+				s.usage_estimate,
+				Some((_, Some(ChiefUsageEstimateResult::Available { .. })))
+			));
 		});
 	}
 
