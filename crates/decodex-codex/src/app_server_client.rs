@@ -53,6 +53,7 @@ pub use thread_plugins::{
 mod app_link_settings;
 mod hooks;
 mod model_defaults;
+mod realtime_settings;
 pub use app_link_settings::{
 	AppLinkSettingEdit, AppLinkSettings, AppLinkSettingsCatalog, AppLinkSettingsWrite,
 	is_app_link_settings_write,

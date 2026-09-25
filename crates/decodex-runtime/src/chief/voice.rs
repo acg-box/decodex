@@ -101,6 +101,7 @@ impl ChiefCoordinator {
 					}
 					self.loaded_threads.insert(thread.clone());
 				}
+				let selected_voice = self.client.realtime_voice_for_thread(&thread).await?;
 				let baseline = self.client.thread_latest_turn_id(&thread).await?;
 				self.store
 					.begin_chief_voice_call(decodex_database::ChiefVoiceCall {
@@ -117,7 +118,7 @@ impl ChiefCoordinator {
 				self.voice.as_mut().expect("voice host").session =
 					Some((session_id.as_str().into(), thread.clone()));
 				let result=self.client.request("thread/realtime/start",json!({
-                    "threadId":thread,"version":"v3","outputModality":"audio",
+                    "threadId":thread,"version":"v3","outputModality":"audio","voice":selected_voice,
                     "includeStartupContext":true,"flushTranscriptTailOnSessionEnd":true,
                     "prompt":"Continue this Chief conversation by voice. Wait for the user's new spoken request before starting new work. Use the existing conversation and its tools when the user asks for work.",
                     "transport":{"type":"webrtc","sdp":offer.as_str()}
