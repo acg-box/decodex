@@ -1291,6 +1291,7 @@ fn event_row(row: &Row<'_>) -> rusqlite::Result<ChiefInboxEvent> {
 #[cfg(test)]
 mod tests {
 	mod activity;
+	mod dispatch_refusals;
 	mod inbox_carryover;
 	mod legacy_setup;
 	mod partial_output;
