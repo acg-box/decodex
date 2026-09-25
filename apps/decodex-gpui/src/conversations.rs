@@ -38,6 +38,8 @@ const CONVERSATION_EFFORTS: &[ConversationReasoningEffort] = &[
 	ConversationReasoningEffort::Ultra,
 ];
 
+#[path = "conversation_drafts.rs"] mod drafts;
+
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
 /// Current bounded state rendered by the Conversations destination.
@@ -219,6 +221,7 @@ impl Conversations {
 			state.clear_catalog();
 		}
 		state.selected = Some(conversation_id);
+		state.requested_selection = None;
 		state.selection_suppressed = false;
 		true
 	}
@@ -226,6 +229,7 @@ impl Conversations {
 	pub(crate) fn begin_new(&self) {
 		let mut state = self.lock();
 		state.creation_intent = Default::default();
+		state.requested_selection = None;
 		state.clear_catalog();
 		state.selected = None;
 		state.selection_suppressed = true;
@@ -516,7 +520,9 @@ impl Conversations {
 				{
 					return Err(ConversationInputError::Busy);
 				}
-				if state.selected.is_none() && !state.creation_ready() {
+				if state.selected.is_none()
+					&& (state.requested_selection.is_some() || !state.creation_ready())
+				{
 					return Err(ConversationInputError::NotReady);
 				}
 				if state
@@ -668,6 +674,7 @@ impl Conversations {
 		state.outcome_unknown_readback_generation = None;
 		state.refresh = ConversationRefreshState::Idle;
 		state.routing_successor_reconciliation = routing_successor_reconciliation;
+		state.delivery.unconfirmed.push(envelope.clone());
 		state.pending_command = Some(PendingCommand { envelope, select_after_acceptance });
 		state.command = ConversationCommandState::Sending;
 		state.command_feedback_visible = feedback_visible;
@@ -682,6 +689,7 @@ impl Conversations {
 		if state.session.as_ref() == Some(&binding) {
 			return;
 		}
+		state.delivery.readbacks.clear();
 		state.latch_in_flight_outcome_unknown();
 		state.cancel_refresh_batch();
 		state.reset_pagination();
@@ -704,6 +712,7 @@ impl Conversations {
 		if !state.session.as_ref().is_some_and(|binding| binding.generation == generation) {
 			return;
 		}
+		state.delivery.readbacks.clear();
 		state.latch_in_flight_outcome_unknown();
 		state.cancel_refresh_batch();
 		state.reset_pagination();
@@ -740,9 +749,17 @@ impl Conversations {
 			return None;
 		}
 		if state.in_flight_command.is_none()
+			&& (!state.delivery.required
+				|| state
+					.pending_command
+					.as_ref()
+					.is_some_and(|pending| state.delivery.saved.contains(&pending.envelope)))
 			&& let Some(pending) = state.pending_command.take()
 		{
 			let envelope = pending.envelope.clone();
+			if !state.delivery.unconfirmed.contains(&envelope) {
+				state.delivery.unconfirmed.push(envelope.clone());
+			}
 			state.in_flight_command = Some(InFlightCommand {
 				envelope: pending.envelope,
 				binding,
@@ -886,6 +903,8 @@ impl Conversations {
 		}
 		state.in_flight_query = None;
 		let (outcome, query_queued) = match purpose {
+			ConversationQueryPurpose::CreationReceipt { command } =>
+				state.route_creation_receipt(&command, &result.payload),
 			ConversationQueryPurpose::InitialCatalog { epoch, working_directory } => {
 				if state.selected.is_none() && state.catalog_epoch == epoch {
 					state.catalog = None;
@@ -986,6 +1005,7 @@ impl Conversations {
 			}
 			return ConversationRouteOutcome::Refused;
 		}
+		let original = in_flight.envelope.clone();
 		let submission = is_submission_command(&in_flight.envelope.payload);
 		let dispatch_queued = match receipt.disposition {
 			ReceiptDisposition::Executed | ReceiptDisposition::Duplicate => {
@@ -993,6 +1013,7 @@ impl Conversations {
 				false
 			},
 			ReceiptDisposition::Refused => {
+				state.confirm_delivery(&original);
 				if submission {
 					state.submission_result_generation =
 						state.submission_result_generation.saturating_add(1);
@@ -1055,6 +1076,7 @@ impl Conversations {
 			.in_flight_command
 			.take()
 			.expect("matching Conversation command remains in flight");
+		state.confirm_terminal_delivery(&in_flight, result);
 		self.apply_command_outcome(state, in_flight, result)
 	}
 
@@ -1204,6 +1226,7 @@ enum CatalogSource {
 }
 
 struct State {
+	delivery: drafts::DeliveryDrafts,
 	catalog: Option<Vec<decodex_protocol::ChiefModelDto>>,
 	catalog_epoch: u64,
 	catalog_source: Option<CatalogSource>,
@@ -1326,6 +1349,7 @@ impl State {
 
 	fn new() -> Self {
 		Self {
+			delivery: Default::default(),
 			catalog: None,
 			catalog_epoch: 0,
 			catalog_source: None,
@@ -1840,7 +1864,10 @@ impl State {
 	}
 
 	fn latch_in_flight_outcome_unknown(&mut self) {
-		if self.in_flight_command.take().is_some() {
+		if let Some(command) = self.in_flight_command.take() {
+			if !self.delivery.unconfirmed.contains(&command.envelope) {
+				self.delivery.unconfirmed.push(command.envelope);
+			}
 			self.pending_command = None;
 			self.command = ConversationCommandState::OutcomeUnknown;
 		}
@@ -1906,7 +1933,8 @@ impl State {
 			tasks: self.tasks.clone(),
 			selected: self.selected.clone(),
 			live_deltas: self.live_deltas.iter().cloned().collect(),
-			can_submit: (self.selected.is_some() || self.creation_ready())
+			can_submit: (self.selected.is_some()
+				|| (self.requested_selection.is_none() && self.creation_ready()))
 				&& self.session.is_some()
 				&& self.refresh_batch.is_none()
 				&& self.pending_command.is_none()
@@ -1958,6 +1986,9 @@ struct InFlightQuery {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ConversationQueryPurpose {
+	CreationReceipt {
+		command: Box<CommandEnvelope>,
+	},
 	InitialCatalog {
 		epoch: u64,
 		working_directory: ConversationWorkingDirectory,
@@ -2316,6 +2347,176 @@ pub(crate) mod tests {
 		assert_eq!(decodex_protocol::decode_client_message(&encoded).unwrap(), message);
 	}
 
+	#[test]
+	fn ordinary_creation_receipt_requires_exact_source_and_never_replays() {
+		use decodex_protocol::ConversationCreationReceiptResult as Receipt;
+		let (source, server, _) = connected_conversations();
+		source.create("Original creation input").expect("queue creation");
+		let original = dispatched_command(&source, &server);
+		source.session_ended(1);
+		let draft = source.ordinary_draft("Later editor text").expect("draft");
+		let CommandPayload::CreateConversation { conversation_id, .. } = &original.payload else {
+			panic!("creation")
+		};
+		for (wrong_server, receipt, accepted) in [
+			(
+				false,
+				Receipt::Recorded {
+					conversation_id: conversation_id.clone(),
+					creation_revision: EntityRevision(1),
+				},
+				true,
+			),
+			(true, Receipt::NotRecorded, false),
+			(
+				false,
+				Receipt::Recorded {
+					conversation_id: EntityId::new("30000000-0000-4000-8000-000000000099")
+						.expect("ID"),
+					creation_revision: EntityRevision(1),
+				},
+				false,
+			),
+			(false, Receipt::NotRecorded, true),
+		] {
+			let (restored, server, _) = connected_conversations();
+			restored.require_saved_dispatch();
+			assert!(restored.restore_ordinary_draft(&draft));
+			restored.lock().pending_query = None;
+			assert!(restored.check_ordinary_creation(&original));
+			let dispatch = restored.try_take_dispatch(1, &server).expect("read query");
+			let query = dispatch.query().expect("never a command");
+			let QueryPayload::GetConversationCreationReceipt { request } = &query.payload else {
+				panic!("receipt query")
+			};
+			assert_eq!(request.message.as_str(), "Original creation input");
+			let result = QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				query_id: query.query_id.clone(),
+				server_id: if wrong_server {
+					ServerId::new("other-server").expect("server")
+				} else {
+					server.clone()
+				},
+				payload: QueryResultPayload::ConversationCreationReceipt(receipt.clone()),
+			};
+			assert_eq!(
+				restored.route_query_result(1, &server, &result),
+				if accepted {
+					ConversationRouteOutcome::Fresh
+				} else {
+					ConversationRouteOutcome::Refused
+				}
+			);
+			assert_eq!(
+				restored.ordinary_creation_receipts(),
+				vec![(original.clone(), accepted.then_some(receipt))]
+			);
+			assert_eq!(restored.ordinary_draft("Later editor text"), Some(draft.clone()));
+			assert!(!restored.cancel_unsent_ordinary());
+			assert!(take_ready_command(&restored, &server).is_none());
+			restored.session_ended(1);
+			assert_eq!(restored.ordinary_creation_receipts(), vec![(original.clone(), None)]);
+		}
+	}
+
+	#[test]
+	fn ordinary_cancel_only_removes_a_command_still_owned_by_the_queue() {
+		let (conversations, server, _) = connected_conversations();
+		conversations.require_saved_dispatch();
+		conversations.submit("Unsent message").expect("queue submission");
+		let draft = conversations.ordinary_draft("Later input").expect("draft");
+		assert!(conversations.can_cancel_unsent_ordinary());
+		assert!(conversations.cancel_unsent_ordinary());
+		assert_eq!(conversations.confirmed_ordinary_commands(), draft.unconfirmed);
+		assert!(conversations.ordinary_draft("Later input").expect("draft").unconfirmed.is_empty());
+		conversations.release_saved_commands(&draft.unconfirmed);
+		assert!(take_ready_command(&conversations, &server).is_none());
+		conversations.submit("Dispatched message").expect("queue next submission");
+		let outgoing = conversations.ordinary_draft("Still later input").expect("draft");
+		conversations.release_saved_commands(&outgoing.unconfirmed);
+		assert!(take_ready_command(&conversations, &server).is_some());
+		assert!(!conversations.cancel_unsent_ordinary());
+		conversations.session_ended(1);
+		assert!(!conversations.cancel_unsent_ordinary());
+		assert_eq!(conversations.ordinary_draft("Still later input"), Some(outgoing.clone()));
+		let (restored, _, _) = connected_conversations();
+		restored.require_saved_dispatch();
+		assert!(restored.restore_ordinary_draft(&outgoing));
+		assert!(!restored.cancel_unsent_ordinary());
+	}
+
+	#[test]
+	fn ordinary_dispatch_requires_the_exact_saved_envelope() {
+		let (conversations, server_id, _) = connected_conversations();
+		conversations.require_saved_dispatch();
+		conversations.submit("Original message").expect("queue submission");
+		let draft = conversations.ordinary_draft("Later editor text").expect("draft");
+		assert_eq!(draft.unconfirmed.len(), 1);
+		let original = draft.unconfirmed[0].clone();
+		assert!(!matches!(
+			conversations.try_take_dispatch(1, &server_id),
+			Some(ConversationDispatch::Command(_))
+		));
+		let mut altered = original.clone();
+		altered.expected_revision = Some(EntityRevision(999));
+		conversations.release_saved_commands(&[altered]);
+		assert!(!matches!(
+			conversations.try_take_dispatch(1, &server_id),
+			Some(ConversationDispatch::Command(_))
+		));
+		conversations.release_saved_commands(&draft.unconfirmed);
+		let dispatch = conversations.try_take_dispatch(1, &server_id).expect("saved dispatch");
+		assert_eq!(dispatch.command(), Some(&original));
+		assert!(!matches!(
+			conversations.try_take_dispatch(1, &server_id),
+			Some(ConversationDispatch::Command(_))
+		));
+	}
+
+	#[test]
+	fn ordinary_disconnect_and_restore_preserve_original_without_replay() {
+		let (conversations, server_id, _) = connected_conversations();
+		conversations.submit("Original message").expect("queue submission");
+		let dispatch = conversations.try_take_dispatch(1, &server_id).expect("dispatch");
+		let original = dispatch.command().expect("command").clone();
+		conversations.command_sent(&dispatch);
+		conversations.session_ended(1);
+		let draft = conversations.ordinary_draft("Later editor text").expect("draft");
+		assert_eq!(draft.unconfirmed, vec![original]);
+		assert_eq!(draft.composer.text, "Later editor text");
+		let encoded = serde_json::to_string(&draft).expect("encode persisted draft");
+		let restored = serde_json::from_str(&encoded).expect("decode persisted draft");
+		let (replacement, replacement_server, _) = connected_conversations();
+		replacement.require_saved_dispatch();
+		assert!(replacement.restore_ordinary_draft(&restored));
+		replacement.release_saved_commands(&draft.unconfirmed);
+		assert_eq!(replacement.ordinary_draft("Later editor text"), Some(draft));
+		assert_eq!(replacement.snapshot().command, ConversationCommandState::OutcomeUnknown);
+		assert!(!matches!(
+			replacement.try_take_dispatch(1, &replacement_server),
+			Some(ConversationDispatch::Command(_))
+		));
+		assert!(replacement.lock().pending_command.is_none());
+	}
+
+	#[test]
+	fn ordinary_restore_keeps_missing_owner_and_rejects_live_delivery() {
+		let (source, _, _) = connected_conversations();
+		let draft = source.ordinary_draft("Owner-bound text").expect("draft");
+		let (replacement, _, _) = connected_conversations();
+		replacement.lock().tasks.clear();
+		assert!(replacement.restore_ordinary_draft(&draft));
+		assert_eq!(replacement.ordinary_editor_owner(), draft.composer.conversation_id);
+		assert!(!replacement.snapshot().can_submit);
+		assert!(replacement.create("Must not retarget").is_err());
+		let (busy, _, _) = connected_conversations();
+		busy.submit("Pending original").expect("queue submission");
+		let before = busy.ordinary_draft("Current editor");
+		assert!(!busy.restore_ordinary_draft(&draft));
+		assert_eq!(busy.ordinary_draft("Current editor"), before);
+	}
+
 	fn connected_conversations() -> (Conversations, ServerId, ConversationSummary) {
 		let conversations = Conversations {
 			inner: Arc::new(ConversationsInner {
@@ -2428,6 +2629,52 @@ pub(crate) mod tests {
 		conversations.command_sent(&dispatch);
 		conversations.session_ended(1);
 		conversations.bind_session(2, server_id.clone());
+	}
+
+	pub(crate) fn recorded_creation_fixture(
+		text: &str,
+	) -> (Conversations, ServerId, CommandEnvelope) {
+		let (source, server, _) = connected_conversations();
+		source.create("Original creation input").expect("creation");
+		let original = dispatched_command(&source, &server);
+		source.session_ended(1);
+		let mut draft = source.ordinary_draft(text).expect("draft");
+		draft.composer.conversation_id = None;
+		let (restored, server, _) = connected_conversations();
+		restored.require_saved_dispatch();
+		assert!(restored.restore_ordinary_draft(&draft));
+		restored.lock().pending_query = None;
+		assert!(restored.check_ordinary_creation(&original));
+		let dispatch = restored.try_take_dispatch(1, &server).expect("query");
+		let query = dispatch.query().expect("read query");
+		let CommandPayload::CreateConversation { conversation_id, .. } = &original.payload else {
+			panic!("creation")
+		};
+		let result = QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server.clone(),
+			query_id: query.query_id.clone(),
+			payload: QueryResultPayload::ConversationCreationReceipt(
+				decodex_protocol::ConversationCreationReceiptResult::Recorded {
+					conversation_id: conversation_id.clone(),
+					creation_revision: EntityRevision(1),
+				},
+			),
+		};
+		assert_eq!(
+			restored.route_query_result(1, &server, &result),
+			ConversationRouteOutcome::Fresh
+		);
+		(restored, server, original)
+	}
+
+	pub(crate) fn take_ready_command(
+		conversations: &Conversations,
+		server_id: &ServerId,
+	) -> Option<CommandEnvelope> {
+		conversations
+			.try_take_dispatch(1, server_id)
+			.and_then(|dispatch| dispatch.command().cloned())
 	}
 
 	pub(crate) fn dispatched_command(
@@ -2877,6 +3124,33 @@ pub(crate) mod tests {
 			ConversationRefreshState::Complete { checked: 4, archived: 2, failed: 1 }
 		);
 		assert!(snapshot.can_submit);
+	}
+
+	#[test]
+	fn ordinary_refresh_preserves_original_after_mismatched_result() {
+		let (conversations, server_id, current) = connected_conversations();
+		seed_refresh_batch(&conversations, &current);
+		conversations.refresh_all().expect("queue refresh");
+		let dispatch = conversations.try_take_dispatch(1, &server_id).expect("refresh dispatch");
+		let original = dispatch.command().expect("refresh command").clone();
+		conversations.command_sent(&dispatch);
+		let result = CommandResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: ServerId::new("other-server").expect("server ID"),
+			client_command_id: original.client_command_id.clone(),
+			idempotency_key: original.idempotency_key.clone(),
+			outcome: CommandOutcome::Succeeded,
+			entity_revision: Some(current.conversation_revision),
+			payload: Some(ResultPayload::ConversationAccepted { conversation: current }),
+			error: None,
+		};
+		assert_eq!(
+			conversations.route_command_result(1, &server_id, &result),
+			ConversationRouteOutcome::Refused
+		);
+		let draft = conversations.ordinary_draft("Unsent editor").expect("draft");
+		assert_eq!(draft.unconfirmed, vec![original]);
+		assert!(conversations.confirmed_ordinary_commands().is_empty());
 	}
 
 	#[test]
