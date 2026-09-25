@@ -17,6 +17,7 @@ use sha2 as _;
 use tempfile as _;
 use time as _;
 use tokio as _;
+use unicode_width as _;
 use tokio_tungstenite as _;
 use unicode_segmentation as _;
 

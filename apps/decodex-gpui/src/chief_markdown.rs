@@ -4,6 +4,11 @@ use gpui::{AnyElement, FontStyle, HighlightStyle};
 use pulldown_cmark::{Event, Options, Parser, Tag};
 use std::ops::Range;
 
+#[path = "chief_clipboard.rs"] mod clipboard;
+#[path = "chief_math/mod.rs"] mod math;
+#[path = "chief_mermaid/mod.rs"] mod mermaid;
+#[path = "chief_mermaid_view.rs"] mod mermaid_view;
+
 #[derive(Clone, Debug)]
 enum Kind {
 	Paragraph,
@@ -12,6 +17,7 @@ enum Kind {
 	Item,
 	Quote,
 	Code,
+	Mermaid { fence: Range<usize>, content_end: usize },
 	Table,
 	Row(bool),
 	Cell,
@@ -19,6 +25,7 @@ enum Kind {
 	Emphasis,
 	Strike,
 	InlineCode,
+	Math { source: String, display: bool },
 	Link(String),
 	Group,
 }
@@ -29,13 +36,16 @@ enum Node {
 	Rule,
 }
 
-fn tag_kind(tag: Tag<'_>) -> Kind {
+fn tag_kind(tag: Tag<'_>, range: Range<usize>) -> Kind {
 	match tag {
 		Tag::Paragraph => Kind::Paragraph,
 		Tag::Heading { level, .. } => Kind::Heading(level as u8),
 		Tag::List(start) => Kind::List(start),
 		Tag::Item => Kind::Item,
 		Tag::BlockQuote => Kind::Quote,
+		Tag::CodeBlock(pulldown_cmark::CodeBlockKind::Fenced(info))
+			if info.split([',', ' ', '\t']).next() == Some("mermaid") =>
+			Kind::Mermaid { content_end: range.start, fence: range },
 		Tag::CodeBlock(_) => Kind::Code,
 		Tag::Table(_) => Kind::Table,
 		Tag::TableHead => Kind::Row(true),
@@ -51,30 +61,46 @@ fn tag_kind(tag: Tag<'_>) -> Kind {
 fn parse(text: &str) -> Vec<Node> {
 	let mut stack = vec![(Kind::Group, Vec::new())];
 	let mut flattened = 0;
-	for (event, range) in Parser::new_ext(
-		text,
-		Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS,
-	)
-	.into_offset_iter()
-	{
+	let options =
+		Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
+	let math = math::MathMarkdown::new(text, options, None);
+	for (event, range) in math.events(Parser::new_ext(&math.markdown, options).into_offset_iter()) {
 		match event {
 			Event::Start(tag) =>
 				if stack.len() < 64 && flattened == 0 {
-					stack.push((tag_kind(tag), Vec::new()));
+					stack.push((tag_kind(tag, range), Vec::new()));
 				} else {
 					flattened += 1;
 				},
 			Event::End(_) =>
-				if stack.len() > 1 {
-					let (kind, children) = stack.pop().expect("open block");
+				if flattened > 0 {
+					flattened -= 1;
+				} else if stack.len() > 1 {
+					let (mut kind, children) = stack.pop().expect("open block");
+					if let Kind::Mermaid { fence, content_end } = &kind
+						&& !mermaid_view::has_closing_fence(text, fence.clone(), *content_end)
+					{
+						kind = Kind::Code;
+					}
 					stack.last_mut().expect("root").1.push(Node::Block(kind, children));
 				},
 			event => {
 				let node = match event {
 					Event::Text(value) | Event::Html(value) | Event::InlineHtml(value) => {
-						let crlf = matches!(stack.last(), Some((Kind::Code, _)))
-							&& value.starts_with('\n')
-							&& range.start > 0 && text.as_bytes()[range.start - 1] == b'\r';
+						if let Some((Kind::Mermaid { content_end, .. }, _)) = stack.last_mut() {
+							*content_end = range.end;
+						}
+						if let Some(display) = math.span(&range) {
+							stack.last_mut().expect("root").1.push(Node::Block(
+								Kind::Math { source: text[range].to_owned(), display },
+								vec![Node::Text(value.into_string())],
+							));
+							continue;
+						}
+						let crlf =
+							matches!(stack.last(), Some((Kind::Code | Kind::Mermaid { .. }, _)))
+								&& value.starts_with('\n')
+								&& range.start > 0 && text.as_bytes()[range.start - 1] == b'\r';
 						Node::Text(if crlf { format!("\r{value}") } else { value.into_string() })
 					},
 					Event::Code(text) =>
@@ -141,6 +167,25 @@ fn inline(nodes: &[Node], key: &str) -> AnyElement {
 	}
 	.into_any_element()
 }
+
+fn render_math_paragraph(nodes: &[Node], key: &str) -> AnyElement {
+	let mut elements = Vec::new();
+	let mut start = 0;
+	for (index, node) in nodes.iter().enumerate() {
+		if matches!(node, Node::Block(Kind::Math { display: true, .. }, _)) {
+			if start < index {
+				elements.push(inline(&nodes[start..index], &format!("{key}-before-{index}")));
+			}
+			elements.push(render_node(node, &format!("{key}-formula-{index}")));
+			start = index + 1;
+		}
+	}
+	if start < nodes.len() {
+		elements.push(inline(&nodes[start..], &format!("{key}-after")));
+	}
+	div().w_full().min_w_0().flex().flex_col().gap_2().children(elements).into_any_element()
+}
+
 fn render_node(node: &Node, key: &str) -> AnyElement {
 	let Node::Block(kind, children) = node else {
 		return match node {
@@ -148,7 +193,36 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 			_ => div().child(inline(std::slice::from_ref(node), key)).into_any_element(),
 		};
 	};
+	if matches!(kind, Kind::Paragraph)
+		&& children
+			.iter()
+			.any(|node| matches!(node, Node::Block(Kind::Math { display: true, .. }, _)))
+	{
+		return render_math_paragraph(children, key);
+	}
+	if matches!(kind, Kind::Mermaid { .. })
+		&& let Some(diagram) = mermaid_view::render(children, key)
+	{
+		return diagram;
+	}
 	match kind {
+		Kind::Math { source, display: true } => div()
+			.id(SharedString::from(format!("math-{key}")))
+			.debug_selector({
+				let key = key.to_owned();
+				move || format!("math-{key}")
+			})
+			.flex()
+			.flex_col()
+			.items_start()
+			.w_full()
+			.min_w_0()
+			.overflow_x_scroll()
+			.font_family("Menlo")
+			.whitespace_nowrap()
+			.child(inline(children, &format!("math-text-{key}")))
+			.child(copy_button(&format!("math-copy-{key}"), "Copy formula", source.clone()))
+			.into_any_element(),
 		Kind::Paragraph | Kind::Cell | Kind::Heading(_) => div()
 			.when(matches!(kind, Kind::Cell), |d| d.flex_1().min_w_0().p_2())
 			.when(matches!(kind, Kind::Heading(_)), |d| {
@@ -162,7 +236,7 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 			})
 			.child(inline(children, key))
 			.into_any_element(),
-		Kind::Code => div()
+		Kind::Code | Kind::Mermaid { .. } => div()
 			.flex()
 			.flex_col()
 			.gap_2()
@@ -241,13 +315,17 @@ fn code_text(children: &[Node]) -> String {
 }
 
 pub(super) fn copy_button(key: &str, label: &'static str, text: String) -> AnyElement {
-	CopyButton { key: key.into(), label, text }.into_any_element()
+	CopyButton { key: key.into(), label, text, rich: false }.into_any_element()
+}
+pub(super) fn response_copy_button(key: &str, label: &'static str, text: String) -> AnyElement {
+	CopyButton { key: key.into(), label, text, rich: true }.into_any_element()
 }
 #[derive(gpui::IntoElement)]
 struct CopyButton {
 	key: String,
 	label: &'static str,
 	text: String,
+	rich: bool,
 }
 impl gpui::RenderOnce for CopyButton {
 	fn render(self, window: &mut Window, cx: &mut gpui::App) -> impl IntoElement {
@@ -279,7 +357,7 @@ impl gpui::RenderOnce for CopyButton {
 			.cursor_pointer()
 			.hover(|s| s.bg(rgba(0xffffff10)))
 			.on_click(move |_, _, cx| {
-				cx.write_to_clipboard(ClipboardItem::new_string(click_text.clone()));
+				clipboard::copy(click_text.clone(), self.rich, cx);
 				click_state.update(cx, |s, cx| {
 					*s = Some(std::time::Instant::now());
 					cx.notify();
@@ -287,7 +365,7 @@ impl gpui::RenderOnce for CopyButton {
 			})
 			.on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
 				if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-					cx.write_to_clipboard(ClipboardItem::new_string(self.text.clone()));
+					clipboard::copy(self.text.clone(), self.rich, cx);
 					state.update(cx, |s, cx| {
 						*s = Some(std::time::Instant::now());
 						cx.notify();
@@ -338,7 +416,10 @@ fn render_item(nodes: &[Node], key: &str) -> Vec<AnyElement> {
 		if matches!(
 			node,
 			Node::Block(
-				Kind::Paragraph | Kind::List(_) | Kind::Code | Kind::Quote | Kind::Table,
+				Kind::Paragraph
+					| Kind::List(_) | Kind::Code
+					| Kind::Mermaid { .. }
+					| Kind::Quote | Kind::Table,
 				_
 			) | Node::Rule
 		) {
@@ -458,6 +539,22 @@ mod tests {
 		}
 	}
 
+
+	#[test]
+	fn deep_markdown_preserves_text_and_following_blocks() {
+		for depth in [63, 64, 65, 128] {
+			let source = format!("{}Deep 中文\n\nAfter **limit**\n", "> ".repeat(depth));
+			let nodes = parse(&source);
+			let mut out = Inline::default();
+			append_inline(&nodes, HighlightStyle::default(), None, &mut out);
+			assert_eq!(out.text, "Deep 中文After limit", "depth {depth}");
+			assert!(out.highlights.iter().any(|(range, style)| {
+				&out.text[range.clone()] == "limit" && style.font_weight == Some(FontWeight::BOLD)
+			}));
+		}
+	}
+
+
 	#[test]
 	fn copied_code_preserves_source_content() {
 		for (source, expected) in [
@@ -534,6 +631,7 @@ mod tests {
 			assert!(!text.contains('\u{e200}'));
 		});
 	}
+
 
 	#[gpui::test]
 	fn response_and_code_copy_use_the_displayed_message(cx: &mut gpui::TestAppContext) {
@@ -613,3 +711,7 @@ mod tests {
 		assert!(nodes.iter().any(|n| matches!(n, Node::Block(Kind::List(_), _))));
 	}
 }
+
+#[cfg(test)]
+#[path = "chief_math_tests.rs"]
+mod math_tests;

@@ -152,7 +152,7 @@ impl ChiefSurface {
 					row = row.child(muted("Some content was omitted from this history preview."));
 				}
 				if matches!(kind.as_str(), "agentMessage" | "plan") && !text.is_empty() {
-					row = row.child(markdown::copy_button(
+					row = row.child(markdown::response_copy_button(
 						&format!("copy-{identity}"),
 						if kind == "plan" { "Copy plan" } else { "Copy response" },
 						text.to_owned(),
