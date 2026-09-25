@@ -96,3 +96,80 @@ fn acknowledged_turn_stays_removed_after_store_reopen(cx: &mut gpui::TestAppCont
 		});
 	}
 }
+
+#[gpui::test]
+fn inherited_ordinary_choices_survive_storage_and_rendered_send(cx: &mut gpui::TestAppContext) {
+	use crate::conversations::tests::{connected_conversations, reply_native_model_settings};
+	use decodex_protocol::{CommandPayload, ConversationReasoningEffort, DesktopCreationIntent};
+	let (_service, profile, _) = super::super::tests::profiles();
+	let scope = profile.draft_scope_key();
+	let directory = tempfile::tempdir().unwrap();
+	let root = directory.path().canonicalize().unwrap().join("desktop");
+	let store = ClientDraftStore::open_at(&root).unwrap();
+	let (conversations, server, _) = connected_conversations();
+	let mut draft = conversations.ordinary_draft("Native continuation").unwrap();
+	draft.composer.creation_intent =
+		DesktopCreationIntent { model: false, reasoning: true, service_tier: false };
+	draft.composer.execution.reasoning_effort = Some(ConversationReasoningEffort::High);
+	let mut document = DesktopDraftDocument::default();
+	document.profiles.entry(scope.clone()).or_default().ordinary.insert("/tmp".into(), draft);
+	store.save(0, &document.encode().unwrap()).unwrap();
+	let (shell, visual) =
+		cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+	shell.update(visual, |s, cx| {
+		s.conversations = conversations.clone();
+		s.reset_cards.profile = Some(profile.clone());
+		s.selected = Destination::Conversations;
+		s.chief.update(cx, |chief, cx| {
+			chief.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			chief.bind_profile(Some(profile.clone()), cx);
+		});
+		s.reset_ordinary_draft_binding(cx);
+		assert_eq!(s.composer.read(cx).content(), "Native continuation");
+		assert!(
+			!s.conversations.snapshot().can_submit,
+			"restore cannot retain observed-default authority"
+		);
+	});
+	reply_native_model_settings(&conversations, &server);
+	shell.update(visual, |s, cx| s.synchronize_conversations(cx));
+	visual.run_until_parked();
+	visual.update(|window, cx| {
+		window.resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));
+		window.draw(cx).clear();
+	});
+	let button = visual.debug_bounds("conversation-send").unwrap();
+	visual.simulate_click(button.center(), gpui::Modifiers::default());
+	visual.run_until_parked();
+	let original = take_ready_command(&conversations, &server).expect("saved rendered submission");
+	let CommandPayload::SubmitConversationTurn { execution, overrides: Some(intent), .. } =
+		&original.payload
+	else {
+		panic!("ordinary intent")
+	};
+	assert_eq!(execution.model.as_str(), "new-native-model");
+	assert_eq!(execution.reasoning_effort, Some(ConversationReasoningEffort::High));
+	assert!(!intent.model && intent.reasoning && !intent.service_tier);
+	let reopened = ClientDraftStore::open_at(&root).unwrap();
+	let saved = DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
+	assert_eq!(saved.profiles[&scope].ordinary["/tmp"].unconfirmed, vec![original.clone()]);
+	let (restored, restored_server, _) = connected_conversations();
+	let (cold, cold_visual) =
+		cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+	cold.update(cold_visual, |s, cx| {
+		s.conversations = restored.clone();
+		s.reset_cards.profile = Some(profile.clone());
+		s.chief.update(cx, |chief, cx| {
+			chief.draft_profiles.storage = Storage::open(Ok(reopened));
+			chief.bind_profile(Some(profile), cx);
+		});
+		s.reset_ordinary_draft_binding(cx);
+		assert_eq!(s.composer.read(cx).content(), "Native continuation");
+		assert!(!s.conversations.snapshot().can_submit);
+	});
+	assert_eq!(restored.ordinary_draft("Native continuation").unwrap().unconfirmed, vec![original]);
+	assert!(
+		take_ready_command(&restored, &restored_server).is_none(),
+		"restart never replays the saved command"
+	);
+}

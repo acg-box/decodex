@@ -39,6 +39,7 @@ const CONVERSATION_EFFORTS: &[ConversationReasoningEffort] = &[
 ];
 
 #[path = "conversation_drafts.rs"] mod drafts;
+#[path = "conversation_model_settings.rs"] mod model_settings;
 #[path = "conversation_turn_recovery.rs"] mod turn_recovery;
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
@@ -62,6 +63,7 @@ pub(crate) struct ConversationsSnapshot {
 	pub(crate) execution: ConversationExecutionSettings,
 	pub(crate) catalog: Option<Vec<decodex_protocol::ChiefModelDto>>,
 	pub(crate) initial_defaults_ready: bool,
+	pub(crate) model_settings_ready: bool,
 }
 
 impl ConversationsSnapshot {
@@ -219,6 +221,8 @@ impl Conversations {
 			return false;
 		}
 		if state.selected.as_ref() != Some(&conversation_id) {
+			state.creation_intent = Default::default();
+			state.execution_source = None;
 			state.clear_catalog();
 		}
 		state.selected = Some(conversation_id);
@@ -244,9 +248,8 @@ impl Conversations {
 
 	pub(crate) fn cycle_model(&self) {
 		let mut state = self.lock();
-		if state.selected.is_none() {
-			state.creation_intent.model = true;
-		}
+		state.prepare_execution_choice();
+		state.creation_intent.model = true;
 		if let Some(models) = state.current_catalog() {
 			if models.is_empty() {
 				return;
@@ -267,9 +270,7 @@ impl Conversations {
 					model.default_effort.or_else(|| model.efforts.first().cloned())
 			{
 				state.execution.reasoning_effort = Some(effort);
-				if state.selected.is_none() {
-					state.creation_intent.reasoning = true;
-				}
+				state.creation_intent.reasoning = true;
 			}
 			state.reconcile_catalog_tier();
 			return;
@@ -288,6 +289,7 @@ impl Conversations {
 
 	pub(crate) fn cycle_reasoning_effort(&self) {
 		let mut state = self.lock();
+		state.prepare_execution_choice();
 		let supported = state
 			.current_catalog()
 			.and_then(|models| models.iter().find(|model| model.model == state.execution.model))
@@ -301,19 +303,16 @@ impl Conversations {
 			.position(|effort| Some(effort) == state.execution.reasoning_effort.as_ref())
 			.map_or(0, |index| (index + 1) % supported.len());
 		state.execution.reasoning_effort = Some(supported[next].clone());
-		if state.selected.is_none() {
-			state.creation_intent.reasoning = true;
-			state.apply_initial_defaults();
-		}
+		state.creation_intent.reasoning = true;
+		state.apply_initial_defaults();
 	}
 
 	pub(crate) fn toggle_fast(&self) {
 		let mut state = self.lock();
+		state.prepare_execution_choice();
 		state.execution.fast = !state.execution.fast;
 		state.execution.service_tier = None;
-		if state.selected.is_none() {
-			state.creation_intent.service_tier = true;
-		}
+		state.creation_intent.service_tier = true;
 	}
 
 	pub(crate) fn ensure_initial_catalog(&self) {
@@ -328,6 +327,8 @@ impl Conversations {
 
 	pub(crate) fn refresh_catalog(&self) -> bool {
 		let mut state = self.lock();
+		state.model_settings_requested = None;
+		state.execution_source = None;
 		let epoch = state.catalog_epoch;
 		let (query, purpose) = if let Some(conversation_id) = state.selected.clone() {
 			let Some(source) = state.selected_task().cloned() else {
@@ -376,6 +377,7 @@ impl Conversations {
 
 	pub(crate) fn select_service_tier(&self, tier: decodex_protocol::ServiceTier) -> bool {
 		let mut state = self.lock();
+		state.prepare_execution_choice();
 		if tier.as_str() != "default"
 			&& !state.current_catalog().is_some_and(|models| {
 				models.iter().any(|model| {
@@ -386,9 +388,7 @@ impl Conversations {
 			return false;
 		}
 		state.execution = state.execution.clone().with_service_tier(tier);
-		if state.selected.is_none() {
-			state.creation_intent.service_tier = true;
-		}
+		state.creation_intent.service_tier = true;
 		true
 	}
 
@@ -554,9 +554,27 @@ impl Conversations {
 			return Err(ConversationInputError::Busy);
 		}
 		let task = state.selected_task().ok_or(ConversationInputError::NoSelection)?.clone();
-		if !task_accepts_turn(&task) {
+		if !state.ordinary_execution_ready() || !task_accepts_turn(&task) {
 			return Err(ConversationInputError::NotReady);
 		}
+		let execution = {
+			if state.creation_intent.service_tier
+				&& state
+					.execution
+					.service_tier
+					.as_ref()
+					.is_some_and(|tier| !matches!(tier.as_str(), "default" | "flex"))
+				&& state.current_catalog().is_none()
+			{
+				return Err(ConversationInputError::NotReady);
+			}
+			state.execution.clone()
+		};
+		let overrides = Some(decodex_protocol::ConversationExecutionOverrides {
+			model: state.creation_intent.model,
+			reasoning: state.creation_intent.reasoning,
+			service_tier: state.creation_intent.service_tier,
+		});
 		drop(state);
 		let turn_id = entity_id()?;
 		let message = message_text(message)?;
@@ -574,19 +592,8 @@ impl Conversations {
 			turn_id,
 			message,
 			working_directory,
-			execution: {
-				let state = self.lock();
-				if state
-					.execution
-					.service_tier
-					.as_ref()
-					.is_some_and(|tier| !matches!(tier.as_str(), "default" | "flex"))
-					&& state.current_catalog().is_none()
-				{
-					return Err(ConversationInputError::NotReady);
-				}
-				state.execution.clone()
-			},
+			execution,
+			overrides,
 		};
 		self.queue_command(payload, Some(task.conversation_revision), None, true)?;
 		Ok(submission)
@@ -695,6 +702,7 @@ impl Conversations {
 		state.latch_in_flight_outcome_unknown();
 		state.cancel_refresh_batch();
 		state.reset_pagination();
+		state.clear_catalog();
 		state.session = Some(binding);
 		state.outcome_unknown_readback_generation = (state.command
 			== ConversationCommandState::OutcomeUnknown
@@ -906,6 +914,8 @@ impl Conversations {
 		}
 		state.in_flight_query = None;
 		let (outcome, query_queued) = match purpose {
+			ConversationQueryPurpose::ModelSettings { epoch, source } =>
+				state.route_model_settings(epoch, &source, &result.payload),
 			ConversationQueryPurpose::TurnOutcome { command } =>
 				state.route_turn_outcome(&command, &result.payload),
 			ConversationQueryPurpose::CreationReceipt { command } =>
@@ -1237,6 +1247,9 @@ struct State {
 	catalog_source: Option<CatalogSource>,
 	initial_defaults: Option<Box<decodex_protocol::InitialModelDefaults>>,
 	initial_defaults_requested: bool,
+	execution_source: Option<model_settings::Observation>,
+	execution_choice_owner: Option<EntityId>,
+	model_settings_requested: Option<Box<ConversationSummary>>,
 	initial_defaults_ready: bool,
 	creation_intent: decodex_protocol::DesktopCreationIntent,
 	session: Option<SessionBinding>,
@@ -1326,13 +1339,15 @@ impl State {
 	}
 
 	fn clear_catalog(&mut self) {
+		self.model_settings_requested = None;
+		self.execution_source = None;
 		self.catalog = None;
 		self.catalog_source = None;
 		self.initial_defaults = None;
 		self.initial_defaults_ready = false;
 		self.initial_defaults_requested = false;
 		self.catalog_epoch = self.catalog_epoch.wrapping_add(1);
-		if self.selected.is_some() || !self.creation_intent.service_tier {
+		if self.selected.is_none() && !self.creation_intent.service_tier {
 			self.execution.service_tier = None;
 			self.execution.fast = false;
 		}
@@ -1360,6 +1375,9 @@ impl State {
 			catalog_source: None,
 			initial_defaults: None,
 			initial_defaults_requested: false,
+			execution_source: None,
+			execution_choice_owner: None,
+			model_settings_requested: None,
 			initial_defaults_ready: false,
 			creation_intent: Default::default(),
 			session: None,
@@ -1408,9 +1426,7 @@ impl State {
 		{
 			self.execution.reasoning_effort =
 				Some(supported.last().expect("every curated model has a reasoning effort").clone());
-			if self.selected.is_none() {
-				self.creation_intent.reasoning = true;
-			}
+			self.creation_intent.reasoning = true;
 		}
 	}
 
@@ -1763,6 +1779,7 @@ impl State {
 	}
 
 	fn replace_tasks(&mut self, mut tasks: Vec<ConversationSummary>) {
+		let prior_selection = self.selected.clone().or_else(|| self.requested_selection.clone());
 		for task in &mut tasks {
 			let Some(existing) =
 				self.tasks.iter().find(|existing| existing.conversation_id == task.conversation_id)
@@ -1792,6 +1809,11 @@ impl State {
 			} else {
 				tasks.first().map(|task| task.conversation_id.clone())
 			};
+		}
+		if prior_selection != self.selected.clone().or_else(|| self.requested_selection.clone()) {
+			self.creation_intent = Default::default();
+			self.execution_source = None;
+			self.clear_catalog();
 		}
 		self.tasks = tasks;
 	}
@@ -1929,6 +1951,7 @@ impl State {
 		ConversationsSnapshot {
 			catalog: self.current_catalog().cloned(),
 			initial_defaults_ready: self.creation_ready(),
+			model_settings_ready: self.ordinary_execution_ready(),
 			load: self.load,
 			command: self.command,
 			command_conversation_id,
@@ -1938,8 +1961,10 @@ impl State {
 			tasks: self.tasks.clone(),
 			selected: self.selected.clone(),
 			live_deltas: self.live_deltas.iter().cloned().collect(),
-			can_submit: (self.selected.is_some()
-				|| (self.requested_selection.is_none() && self.creation_ready()))
+			can_submit: ((self.selected.is_some() && self.ordinary_execution_ready())
+				|| (self.selected.is_none()
+					&& self.requested_selection.is_none()
+					&& self.creation_ready()))
 				&& self.session.is_some()
 				&& self.refresh_batch.is_none()
 				&& self.pending_command.is_none()
@@ -1991,6 +2016,10 @@ struct InFlightQuery {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ConversationQueryPurpose {
+	ModelSettings {
+		epoch: u64,
+		source: Box<ConversationSummary>,
+	},
 	TurnOutcome {
 		command: Box<CommandEnvelope>,
 	},
@@ -2654,7 +2683,87 @@ pub(crate) mod tests {
 		assert_eq!(busy.ordinary_draft("Current editor"), before);
 	}
 
-	fn connected_conversations() -> (Conversations, ServerId, ConversationSummary) {
+	#[test]
+	fn selecting_an_unseen_conversation_cannot_send_previous_execution_choices() {
+		let (conversations, _, mut other) = connected_conversations();
+		conversations.cycle_model();
+		other.conversation_id = EntityId::new("00000000-0000-4000-8000-000000000099").unwrap();
+		conversations.lock().tasks.push(other.clone());
+		assert!(conversations.select(other.conversation_id));
+		assert!(matches!(
+			conversations.submit("Do not use the prior model"),
+			Err(ConversationInputError::NotReady)
+		));
+	}
+
+	#[test]
+	fn configured_settings_are_source_bound_and_preserve_current_explicit_model() {
+		let (conversations, server, mut target) = connected_conversations();
+		target.conversation_id = EntityId::new("00000000-0000-4000-8000-000000000099").unwrap();
+		conversations.lock().tasks.push(target.clone());
+		assert!(conversations.select(target.conversation_id.clone()));
+		let unknown = conversations.ordinary_draft("Pending configuration").unwrap();
+		assert!(!unknown.composer.creation_intent.model);
+		let (cold, _, _) = connected_conversations();
+		assert!(cold.restore_ordinary_draft(&unknown));
+		assert!(!cold.snapshot().model_settings_ready);
+		assert!(!cold.snapshot().can_submit);
+		conversations.lock().pending_query = None;
+		conversations.ensure_model_settings();
+		let dispatch = conversations.try_take_dispatch(1, &server).unwrap();
+		let query = dispatch.query().unwrap();
+		assert!(
+			matches!(&query.payload, QueryPayload::GetConversationModelSettings { conversation_id } if conversation_id == &target.conversation_id)
+		);
+		conversations.cycle_model();
+		let selected = conversations.snapshot().execution.model;
+		let mut result = QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server.clone(),
+			query_id: query.query_id.clone(),
+			payload: QueryResultPayload::ConversationModelSettings(
+				decodex_protocol::ConversationModelSettingsResult::Available {
+					model_provider: Some("native-provider".into()),
+					model: Some(ConversationModel::new("native-model").unwrap()),
+					reasoning_effort: None,
+					requested_service_tier: Some(
+						decodex_protocol::ServiceTier::new("flex").unwrap(),
+					),
+				},
+			),
+		};
+		let mut foreign = result.clone();
+		foreign.server_id = ServerId::new("foreign-server").unwrap();
+		assert_eq!(
+			conversations.route_query_result(1, &server, &foreign),
+			ConversationRouteOutcome::Refused
+		);
+		assert!(!conversations.snapshot().model_settings_ready);
+		conversations.lock().model_settings_requested = None;
+		conversations.ensure_model_settings();
+		let fresh = conversations.try_take_dispatch(1, &server).unwrap();
+		result.query_id = fresh.query().unwrap().query_id.clone();
+		assert_eq!(
+			conversations.route_query_result(1, &server, &result),
+			ConversationRouteOutcome::Fresh
+		);
+		let snapshot = conversations.snapshot();
+		assert!(snapshot.can_submit && snapshot.model_settings_ready);
+		assert_eq!(snapshot.execution.model, selected);
+		assert_eq!(snapshot.execution.reasoning_effort, None);
+		assert_eq!(snapshot.execution.effective_service_tier().as_str(), "flex");
+		let saved = conversations.ordinary_draft("Owned choices").unwrap();
+		assert!(saved.composer.creation_intent.model);
+		assert!(cold.restore_ordinary_draft(&saved));
+		assert_eq!(cold.snapshot().execution, snapshot.execution);
+		assert!(
+			!cold.snapshot().model_settings_ready,
+			"observed defaults need a fresh read after restore"
+		);
+		assert!(take_ready_command(&conversations, &server).is_none());
+	}
+
+	pub(crate) fn connected_conversations() -> (Conversations, ServerId, ConversationSummary) {
 		let conversations = Conversations {
 			inner: Arc::new(ConversationsInner {
 				state: Mutex::new(State::new()),
@@ -2689,6 +2798,12 @@ pub(crate) mod tests {
 			let mut state = conversations.lock();
 			state.tasks = vec![task.clone()];
 			state.selected = Some(conversation_id.clone());
+			state.execution_choice_owner = Some(conversation_id.clone());
+			state.creation_intent = decodex_protocol::DesktopCreationIntent {
+				model: true,
+				reasoning: true,
+				service_tier: true,
+			};
 			state.selection_suppressed = false;
 		}
 		(conversations, server_id, task)
@@ -2819,6 +2934,31 @@ pub(crate) mod tests {
 		server_id: &ServerId,
 	) -> CommandEnvelope {
 		conversations.try_take_dispatch(1, server_id).unwrap().command().unwrap().clone()
+	}
+
+	pub(crate) fn reply_native_model_settings(conversations: &Conversations, server: &ServerId) {
+		conversations.lock().pending_query = None;
+		conversations.ensure_model_settings();
+		let dispatch = conversations.try_take_dispatch(1, server).expect("settings query");
+		let query = dispatch.query().expect("read-only query");
+		assert!(matches!(query.payload, QueryPayload::GetConversationModelSettings { .. }));
+		let reply = QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server.clone(),
+			query_id: query.query_id.clone(),
+			payload: QueryResultPayload::ConversationModelSettings(
+				decodex_protocol::ConversationModelSettingsResult::Available {
+					model_provider: Some("native-provider".into()),
+					model: Some(ConversationModel::new("new-native-model").expect("model")),
+					reasoning_effort: Some(ConversationReasoningEffort::Low),
+					requested_service_tier: None,
+				},
+			),
+		};
+		assert_eq!(
+			conversations.route_query_result(1, server, &reply),
+			ConversationRouteOutcome::Fresh
+		);
 	}
 
 	pub(crate) fn catalog_conversations() -> (Conversations, ServerId, ConversationSummary) {
@@ -2993,7 +3133,11 @@ pub(crate) mod tests {
 		);
 		assert_eq!(conversations.submit("Continue"), Err(ConversationInputError::NotReady));
 		conversations.session_ended(1);
-		assert_eq!(conversations.snapshot().execution.effective_service_tier().as_str(), "default");
+		assert_eq!(
+			conversations.snapshot().execution.effective_service_tier().as_str(),
+			"ultrafast"
+		);
+		assert!(!conversations.snapshot().can_submit);
 		assert_eq!(conversations.snapshot().selected, Some(task.conversation_id));
 	}
 
@@ -3600,6 +3744,10 @@ pub(crate) mod tests {
 		assert_eq!(reconciled.tasks, vec![task.clone()]);
 		assert!(!reconciled.can_submit, "new creation still needs current defaults");
 		assert!(conversations.select(task.conversation_id));
+		assert_eq!(conversations.submit("retry explicitly"), Err(ConversationInputError::NotReady));
+		conversations.cycle_model();
+		conversations.cycle_reasoning_effort();
+		assert!(conversations.select_service_tier(decodex_protocol::ServiceTier::standard()));
 		assert!(conversations.submit("retry explicitly").is_ok());
 	}
 
@@ -3910,7 +4058,11 @@ pub(crate) mod tests {
 		assert_eq!(reconciled.tasks, vec![successor]);
 		assert_eq!(reconciled.selected, Some(successor_id));
 		assert_eq!(reconciled.command, ConversationCommandState::Idle);
-		assert!(reconciled.can_submit);
+		assert!(!reconciled.can_submit, "successor settings must not come from the source editor");
+		conversations.cycle_model();
+		conversations.cycle_reasoning_effort();
+		assert!(conversations.select_service_tier(decodex_protocol::ServiceTier::standard()));
+		assert!(conversations.snapshot().can_submit);
 	}
 
 	#[test]

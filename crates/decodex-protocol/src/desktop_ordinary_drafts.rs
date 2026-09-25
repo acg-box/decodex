@@ -16,7 +16,7 @@ pub struct DesktopOrdinaryComposerDraft {
 	pub text: String,
 	/// Displayed settings; non-explicit values must be observed again after restore.
 	pub execution: ConversationExecutionSettings,
-	/// Explicit creation choices, kept separately from displayed defaults.
+	/// Explicit choices for this editor, kept separately from displayed defaults.
 	pub creation_intent: DesktopCreationIntent,
 }
 
@@ -178,7 +178,30 @@ mod tests {
 			matches!(&saved.unconfirmed[0].payload, CommandPayload::CreateConversation { message,.. } if message.as_str()=="Original submitted input")
 		);
 		let old = DesktopDraftDocument::decode(br#"{"version":4,"profiles":{}}"#).unwrap();
-		assert_eq!(old.version, 5);
+		assert_eq!(old.version, 6);
+	}
+
+	#[test]
+	fn legacy_selected_preferences_migrate_to_explicit_choices() {
+		let mut value = serde_json::to_value(document("Editor", "command")).unwrap();
+		let owner = "30000000-0000-4000-8000-000000000001";
+		value["profiles"]["a".repeat(64)]["ordinary"]["/tmp/work"]["composer"]["conversation_id"] =
+			owner.into();
+		let modern = DesktopDraftDocument::decode(&serde_json::to_vec(&value).unwrap()).unwrap();
+		assert!(
+			!modern.profiles[&"a".repeat(64)].ordinary["/tmp/work"]
+				.composer
+				.creation_intent
+				.reasoning
+		);
+		value["version"] = 5.into();
+		let legacy = DesktopDraftDocument::decode(&serde_json::to_vec(&value).unwrap()).unwrap();
+		let choices =
+			&legacy.profiles[&"a".repeat(64)].ordinary["/tmp/work"].composer.creation_intent;
+		assert!(choices.model && choices.reasoning && choices.service_tier);
+		assert_eq!(legacy.version, 6);
+		let reopened = DesktopDraftDocument::decode(&legacy.encode().unwrap()).unwrap();
+		assert!(reopened == legacy);
 	}
 
 	#[test]

@@ -939,3 +939,63 @@ mod inherited_execution_tests {
 		}
 	}
 }
+
+/// Configured native model facts, not per-turn execution telemetry or a model catalog.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ConversationModelSettingsResult {
+	/// Native model facts and the same session's saved tier choice.
+	Available {
+		/// Last requested tier of a live session, not native readback. Unavailable after a cold
+		/// read.
+		requested_service_tier: Option<decodex_core::ServiceTier>,
+		/// Native provider name, if exposed.
+		model_provider: Option<String>,
+		/// Native model; null is unavailable and never a local default.
+		model: Option<ConversationModel>,
+		/// Null means unset or unavailable. Native thread/read cannot distinguish them.
+		reasoning_effort: Option<ConversationReasoningEffort>,
+	},
+	/// No current owned process or supported native settings read was available.
+	Unavailable,
+}
+
+/// Fields explicitly selected for one later turn. Omitted command intent preserves legacy behavior.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationExecutionOverrides {
+	/// Override the native model.
+	pub model: bool,
+	/// Send the chosen effort; an absent effort still inherits natively.
+	pub reasoning: bool,
+	/// Override the native service tier, including an explicit Standard choice.
+	pub service_tier: bool,
+}
+
+#[cfg(test)]
+mod override_wire_tests {
+	use crate::CommandPayload;
+	use serde_json::json;
+
+	#[test]
+	fn legacy_turn_bytes_and_new_override_intent_roundtrip_separately() {
+		let legacy = json!({"name":"submit_conversation_turn","arguments":{
+			"conversation_id":"44000000-0000-4000-8000-000000000001",
+			"turn_id":"45000000-0000-4000-8000-000000000001",
+			"message":"Continue","working_directory":"/tmp",
+			"execution":{"model":"saved-model","reasoning_effort":"high","fast":false}
+		}});
+		let payload: CommandPayload = serde_json::from_value(legacy.clone()).expect("legacy turn");
+		assert!(matches!(payload, CommandPayload::SubmitConversationTurn { overrides: None, .. }));
+		assert_eq!(serde_json::to_value(payload).expect("legacy wire"), legacy);
+		let mut modern = legacy.clone();
+		modern["arguments"]["overrides"] =
+			json!({"model":false,"reasoning":true,"service_tier":false});
+		let payload: CommandPayload = serde_json::from_value(modern.clone()).expect("modern turn");
+		assert_eq!(serde_json::to_value(payload).expect("modern wire"), modern);
+		assert_ne!(
+			serde_json::to_vec(&legacy).expect("legacy identity"),
+			serde_json::to_vec(&modern).expect("modern identity")
+		);
+	}
+}

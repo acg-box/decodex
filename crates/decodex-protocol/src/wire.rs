@@ -2396,6 +2396,11 @@ pub enum QueryPayload {
 		/// Exact selected Conversation; never substitutes another account's process.
 		conversation_id: EntityId,
 	},
+	/// Read configured model facts from the exact Conversation process without inference.
+	GetConversationModelSettings {
+		/// Exact selected Conversation.
+		conversation_id: EntityId,
+	},
 	/// Revalidate and return the bounded authoritative doctor/status report.
 	GetDoctorStatus,
 	/// Read one bounded deterministic logical-conversation history page.
@@ -2513,6 +2518,9 @@ pub enum CommandPayload {
 		working_directory: ConversationWorkingDirectory,
 		/// Explicit execution settings for this user send.
 		execution: ConversationExecutionSettings,
+		/// Explicit field choices. Absent preserves the legacy all-explicit command.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		overrides: Option<crate::ConversationExecutionOverrides>,
 	},
 	/// Reconcile one selected Decodex task with its exact Codex archive state.
 	RefreshConversation {
@@ -3008,6 +3016,8 @@ pub enum QueryResultPayload {
 	Conversation(ConversationResult),
 	/// Model choices from the exact queried Conversation process, or unavailable.
 	ConversationCapabilities(crate::ChiefCapabilitiesResult),
+	/// Configured model metadata for the original Conversation query.
+	ConversationModelSettings(crate::ConversationModelSettingsResult),
 	/// Bounded authoritative doctor/status readback.
 	DoctorStatus(DoctorReport),
 	/// Bounded daemon-owned logical-conversation history result.
@@ -3315,6 +3325,7 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 				Err("Conversation list cursor identity is not canonical"),
 			QueryPayload::GetConversation { conversation_id }
 			| QueryPayload::GetConversationCapabilities { conversation_id }
+			| QueryPayload::GetConversationModelSettings { conversation_id }
 				if !is_canonical_uuid(conversation_id.as_str()) =>
 				Err("Conversation conversation identity is not canonical"),
 			QueryPayload::GetResetCards { account_id }
@@ -4601,7 +4612,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":71},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":72},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4610,7 +4621,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":71},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":72},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4652,7 +4663,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":71},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":72},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

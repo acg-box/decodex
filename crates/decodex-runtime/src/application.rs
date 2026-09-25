@@ -1718,6 +1718,7 @@ impl ServiceApplication {
 			message,
 			working_directory,
 			execution,
+			overrides,
 		} = &command.payload
 		else {
 			return Err(conversation_conflict());
@@ -1739,6 +1740,7 @@ impl ServiceApplication {
 				message: message.as_str().to_owned(),
 				working_directory: working_directory.as_str().to_owned(),
 				execution: runtime_execution_settings(execution),
+				overrides: *overrides,
 			})
 			.await)
 	}
@@ -2085,6 +2087,7 @@ impl Application for ServiceApplication {
 				self.query_ordinary_recovery(&query.payload).await,
 			QueryPayload::GetInitialModelCatalog { .. }
 			| QueryPayload::GetChiefCapabilities
+			| QueryPayload::GetConversationModelSettings { .. }
 			| QueryPayload::GetConversationCapabilities { .. } => self.query_model_catalog(query).await,
 
 			QueryPayload::ExchangeDictation { request } => self.query_dictation(request).await,
@@ -3940,6 +3943,14 @@ impl ServiceApplication {
 				QueryResultPayload::ChiefCapabilities(match &self.chief {
 					Some(chief) => chief.capabilities().await,
 					None => decodex_protocol::ChiefCapabilitiesResult::Unavailable,
+				}),
+			QueryPayload::GetConversationModelSettings { conversation_id } =>
+				QueryResultPayload::ConversationModelSettings(match self.conversations.runtime() {
+					Some(runtime) =>
+						runtime
+							.model_settings(query.query_id.as_str(), conversation_id.as_str())
+							.await,
+					None => decodex_protocol::ConversationModelSettingsResult::Unavailable,
 				}),
 			QueryPayload::GetConversationCapabilities { conversation_id } =>
 				QueryResultPayload::ConversationCapabilities(match self.conversations.runtime() {

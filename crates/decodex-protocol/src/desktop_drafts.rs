@@ -30,7 +30,7 @@ pub struct DesktopDraftDocument {
 impl Default for DesktopDraftDocument {
 	fn default() -> Self {
 		Self {
-			version: 5,
+			version: 6,
 			profiles: BTreeMap::new(),
 			unbound: Default::default(),
 			recovered: vec![],
@@ -170,8 +170,30 @@ impl DesktopDraftDocument {
 		}
 		let mut value: Self =
 			serde_json::from_slice(bytes).map_err(|_| "Draft snapshot is invalid")?;
+		if value.version <= 5 {
+			for profile in value
+				.profiles
+				.values_mut()
+				.chain(value.recovered.iter_mut().map(|copy| &mut copy.draft))
+			{
+				for ordinary in profile.ordinary.values_mut() {
+					for editor in std::iter::once(&mut ordinary.composer)
+						.chain(ordinary.new_conversation.iter_mut())
+						.chain(ordinary.parked.values_mut())
+					{
+						if editor.conversation_id.is_some() {
+							editor.creation_intent = crate::DesktopCreationIntent {
+								model: true,
+								reasoning: true,
+								service_tier: true,
+							};
+						}
+					}
+				}
+			}
+		}
 		value.validate()?;
-		value.version = 5;
+		value.version = 6;
 		Ok(value)
 	}
 
@@ -184,7 +206,7 @@ impl DesktopDraftDocument {
 	}
 
 	fn validate(&self) -> Result<(), &'static str> {
-		if !matches!(self.version, 1..=5) {
+		if !matches!(self.version, 1..=6) {
 			return Err("Draft snapshot version is unsupported");
 		}
 		if self.profiles.len() > 64 {
@@ -402,7 +424,7 @@ mod tests {
 			execution: Some((EntityId::new("work").unwrap(), 4)),
 		});
 		DesktopDraftDocument {
-			version: 5,
+			version: 6,
 			profiles: BTreeMap::from([("a".repeat(64), profile)]),
 			recovered: vec![],
 			unbound: Default::default(),
@@ -428,7 +450,7 @@ mod tests {
 		let bytes = document.encode().unwrap();
 		assert_eq!(DesktopDraftDocument::decode(&bytes).unwrap().unbound.creation, Some(setup));
 		let old = DesktopDraftDocument::decode(br#"{"version":1,"profiles":{}}"#).unwrap();
-		assert_eq!(old.version, 5);
+		assert_eq!(old.version, 6);
 		assert!(old.unbound.creation.is_none());
 		let mut remote = document.clone();
 		remote.unbound.creation.as_mut().unwrap().model = "other model".into();
@@ -465,7 +487,7 @@ mod tests {
 	#[test]
 	fn draft_document_rejects_changed_contract_and_ambiguous_ownership() {
 		let mut original = document();
-		original.version = 6;
+		original.version = 7;
 		assert!(original.encode().is_err());
 		let mut json = serde_json::to_value(document()).unwrap();
 		json["unexpected"] = serde_json::json!(true);
