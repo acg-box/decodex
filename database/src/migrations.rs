@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 36;
+const CURRENT_SCHEMA_VERSION: i64 = 37;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -195,6 +195,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 36,
 		name: "nullable_conversation_effort",
 		sql: include_str!("../migrations/0036_nullable_conversation_effort.sql"),
+	},
+	Migration {
+		version: 37,
+		name: "chief_output_completion",
+		sql: include_str!("../migrations/0037_chief_output_completion.sql"),
 	},
 ];
 
@@ -652,7 +657,8 @@ mod tests {
 				.filter(|entry| ![
 					"desktop_settings",
 					"chief_async_questions",
-					"quick_task_requests"
+					"quick_task_requests",
+					"chief_live_output"
 				]
 				.contains(&entry.2.as_str()))
 				.all(|entry| after.contains(entry))
@@ -727,7 +733,7 @@ mod tests {
 				.is_none()
 		);
 		migrate(&mut connection).unwrap();
-		assert_eq!(applied_version(&connection).unwrap(), 36);
+		assert_eq!(applied_version(&connection).unwrap(), CURRENT_SCHEMA_VERSION);
 	}
 
 	#[test]
@@ -763,7 +769,8 @@ mod tests {
 				.filter(|entry| ![
 					"quick_task_requests",
 					"desktop_settings",
-					"chief_async_questions"
+					"chief_async_questions",
+					"chief_live_output"
 				]
 				.contains(&entry.2.as_str()))
 				.all(|entry| after.contains(entry))
@@ -898,7 +905,8 @@ mod tests {
 					"account_quota_facts",
 					"desktop_settings",
 					"process_generation_death_evidence",
-					"quick_task_requests"
+					"quick_task_requests",
+					"chief_live_output"
 				]
 				.contains(&entry.2.as_str()))
 				.all(|entry| upgraded.contains(entry))
@@ -1058,5 +1066,62 @@ mod tests {
 		);
 		verify(&connection).expect("canonical schema parity");
 		migrate(&mut connection).expect("idempotent reopen");
+	}
+	#[test]
+	fn output_completion_upgrade_preserves_existing_stream_rows_and_history() {
+		let directory = tempfile::tempdir().unwrap();
+		let mut connection = Connection::open(directory.path().join("output.sqlite3")).unwrap();
+		configure(&connection).unwrap();
+		for migration in &MIGRATIONS[..36] {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 36).unwrap();
+		connection.execute("INSERT INTO chief_work_items(id,kind,title,instructions,status,codex_thread_id,created_at_micros,updated_at_micros) VALUES('w','goal','Goal','Keep','open','t',1,1)", []).unwrap();
+		connection.execute("INSERT INTO chief_live_output(id,work_id,turn_id,item_id,text,truncated) VALUES(7,'w','turn','item','Keep streamed text',1)",[]).unwrap();
+		let prior = connection
+			.query_row("SELECT group_concat(sha256) FROM schema_migrations", [], |row| {
+				row.get::<_, String>(0)
+			})
+			.unwrap();
+		migrate(&mut connection).unwrap();
+		let row = connection
+			.query_row(
+				"SELECT id,text,truncated,kind,completed FROM chief_live_output",
+				[],
+				|row| {
+					Ok((
+						row.get::<_, i64>(0)?,
+						row.get::<_, String>(1)?,
+						row.get::<_, bool>(2)?,
+						row.get::<_, String>(3)?,
+						row.get::<_, bool>(4)?,
+					))
+				},
+			)
+			.unwrap();
+		assert_eq!(row, (7, "Keep streamed text".into(), true, "agentMessage".into(), false));
+		assert_eq!(
+			prior,
+			connection
+				.query_row(
+					"SELECT group_concat(sha256) FROM schema_migrations WHERE version<=36",
+					[],
+					|row| row.get::<_, String>(0)
+				)
+				.unwrap()
+		);
+		assert!(connection.execute("UPDATE chief_live_output SET completed=2", []).is_err());
+		assert!(
+			connection.execute("UPDATE chief_live_output SET kind='rawReasoning'", []).is_err()
+		);
+		verify(&connection).unwrap();
+		migrate(&mut connection).unwrap();
 	}
 }

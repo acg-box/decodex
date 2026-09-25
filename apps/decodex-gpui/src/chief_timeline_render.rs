@@ -61,13 +61,16 @@ impl ChiefSurface {
 				match history {
 					super::ChiefHistoryResult::Available { entries, .. } =>
 						entries.iter().find(|entry| {
-							entry.turn_id.as_deref() == Some(turn_id) && entry.text == text
+							!matches!(entry.kind.as_str(), "partial_answer" | "partial_plan")
+								&& entry.turn_id.as_deref() == Some(turn_id)
+								&& entry.text == text
 						}),
 					_ => None,
 				}
 			});
 		let mut message =
 			saved.cloned().unwrap_or_else(|| decodex_protocol::ChiefHistoryEntryDto {
+				native_source: None,
 				id: 0,
 				kind: if kind == "userMessage" { "user" } else { "assistant" }.into(),
 				text: text.into(),
@@ -93,7 +96,7 @@ impl ChiefSurface {
 		let row = div().w_full().min_w_0().flex().flex_col().gap_1();
 		match &entry.content {
 			Content::Item { text, kind, truncated, activity, turn_id, item_id, attachments } => {
-				let draft = if kind == "agentMessage" {
+				let draft = if matches!(kind.as_str(), "agentMessage" | "plan") {
 					self.native_live_message(work, turn_id, item_id)
 				} else {
 					None
@@ -503,5 +506,80 @@ mod tests {
 			window.draw(cx).clear();
 		});
 		assert!(visual.debug_bounds("native-promotion-unavailable").is_some());
+	}
+	#[gpui::test]
+	fn unfinished_plan_stays_copyable_until_exact_native_history_is_complete(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(1400.)));
+		let original = "## Draft\n\n$$\n\\frac{a}{b}";
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("native-thread".into());
+			let work = work.clone();
+			let mut partial = s.native_message_entry(&work, "plan-turn", original, "agentMessage");
+			partial.id = 991;
+			partial.kind = "partial_plan".into();
+			partial.native_source = Some(decodex_protocol::ChiefHistorySourceDto {
+				thread_id: "native-thread".into(),
+				turn_id: "plan-turn".into(),
+				item_id: "plan-item".into(),
+			});
+			let (_, super::super::ChiefHistoryResult::Available { entries, .. }) =
+				s.history.as_mut().unwrap()
+			else {
+				panic!("fixture history");
+			};
+			*entries = vec![partial];
+			let mut history = Timeline::default();
+			assert!(history.replace(
+				Binding {
+					work: work.id.clone(),
+					thread: "native-thread".into(),
+					account: "account".into()
+				},
+				ChiefTimelinePage {
+					thread_id: "native-thread".into(),
+					entries: vec![],
+					next_cursor: None,
+					active_realtime_session_at_page_start: None
+				}
+			));
+			s.native_history = history;
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let copy = visual.debug_bounds("copy-partial-991").expect("retained plan is visible");
+		visual.simulate_click(copy.center(), Default::default());
+		visual.update(|_, cx| {
+			assert_eq!(cx.read_from_clipboard().and_then(|item| item.text()), Some(original.into()))
+		});
+		for truncated in [true, false] {
+			surface.update(visual, |s, cx| {
+				let mut entry = plan_entry();
+				if let Content::Item { truncated: value, .. } = &mut entry.content {
+					*value = truncated;
+				}
+				s.native_history.entries = vec![entry];
+				cx.notify();
+			});
+			visual.update(|window, cx| {
+				window.draw(cx).clear();
+			});
+			assert_eq!(visual.debug_bounds("copy-partial-991").is_some(), truncated);
+			assert!(visual.debug_bounds("native-plan-content").is_some());
+		}
 	}
 }

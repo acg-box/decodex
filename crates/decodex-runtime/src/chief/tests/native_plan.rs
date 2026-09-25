@@ -36,11 +36,21 @@ async fn native_proposed_plan_history_survives_restart_without_model_replay() {
    if !cold {
     let response = chief.client.thread_start(json!({"model":"gpt-5.6-sol","cwd":path,"approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
     thread = response["thread"]["id"].as_str().unwrap().into();
-    chief.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Propose the fixture plan.","text_elements":[]}],"collaborationMode":{"mode":"plan","settings":{"model":"gpt-5.6-sol","reasoning_effort":"medium","developer_instructions":null}}})).await.unwrap();
+    ChiefCoordinator::reserve_root(&chief.store,"chief","Plan fixture").await.unwrap();
+    chief.store.bind_chief_thread("chief".into(),thread.clone()).await.unwrap();
+    chief.store.begin_chief_dispatch("chief".into()).await.unwrap();
+    let started = chief.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Propose the fixture plan.","text_elements":[]}],"collaborationMode":{"mode":"plan","settings":{"model":"gpt-5.6-sol","reasoning_effort":"medium","developer_instructions":null}}})).await.unwrap();
+    chief.store.acknowledge_chief_dispatch("chief".into(),started["turn"]["id"].as_str().unwrap().into()).await.unwrap();
     let mut streamed = String::new();
     let mut completed_plan = None;
     loop {
      if let ServerEvent::Notification {method,params} = events.recv().await.unwrap() {
+      chief.handle_event(ServerEvent::Notification {method:method.clone(),params:params.clone()}).await.unwrap();
+      if method == "item/plan/delta" {
+       let output = chief.store.read_chief_output("chief".into()).await.unwrap();
+       let plan = output.iter().find(|item|item.kind=="plan").expect("native plan reaches live store");
+       assert_eq!(plan.text,"Draft only\n");
+      }
       match method.as_str() {
        "item/plan/delta" => streamed.push_str(params["delta"].as_str().unwrap()),
        "item/completed" if params["item"]["type"] == "plan" => completed_plan = Some(params["item"]["text"].as_str().unwrap().to_owned()),
@@ -51,6 +61,7 @@ async fn native_proposed_plan_history_survives_restart_without_model_replay() {
     }
     assert_eq!(streamed,"Draft only\n");
     assert_eq!(completed_plan.as_deref(),Some(FINAL_PLAN));
+    assert!(chief.store.read_chief_transcript("chief".into(),None,32).await.unwrap().0.iter().all(|event|event.event_kind!="partial_output"),"completed native plan must not become unfinished fallback");
    }
    let mut cursor = None;
    let mut plans = Vec::new();

@@ -45,7 +45,7 @@ mod chief_task_references;
 pub use chief_questions::ChiefAsyncQuestion;
 mod chief_process;
 mod chief_voice;
-pub use chief_output::ChiefLiveOutput;
+pub use chief_output::{ChiefLiveOutput, ChiefOutputUpdate};
 pub use chief_voice::ChiefVoiceCall;
 mod command;
 mod continuations;

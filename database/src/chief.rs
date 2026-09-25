@@ -722,6 +722,9 @@ impl SqliteStore {
                     input.payload=encoded;
                 } else { retry=None; }
             }
+            if let Some(thread) = work.codex_thread_id.as_deref() {
+                crate::chief_output::retain_partial_output(&transaction, &id, thread, &turn_id)?;
+            }
 			let previous = transaction.query_row("SELECT * FROM chief_inbox_events WHERE source_event_id = ?1", [&input.source_event_id], event_row).optional().map_err(sqlite_error)?;
 			let event = if let Some(event) = previous {
 				if event.work_item_id != input.work_item_id || event.event_kind != input.event_kind || event.payload != input.payload {
@@ -1290,6 +1293,7 @@ mod tests {
 	mod activity;
 	mod inbox_carryover;
 	mod legacy_setup;
+	mod partial_output;
 	mod steer_receipts;
 	mod task_references;
 	mod turn_execution;

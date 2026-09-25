@@ -4571,6 +4571,7 @@ fn render_chief_history(
 	let older_available = events.len() > 32;
 	let mut has_more = older_available;
 	let mut rendered_messages = std::collections::HashSet::<(String, String)>::new();
+	let mut rendered_sources = std::collections::HashSet::<(String, String, String)>::new();
 	let mut entries = Vec::new();
 	let mut remaining = 64 * 1024 - question_bytes;
 	let mut page_full = false;
@@ -4578,6 +4579,10 @@ fn render_chief_history(
 		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap_or_default();
 		let mut completed_message_ids = Vec::new();
 		let (kind, mut text) = match event.event_kind.as_str() {
+			"partial_output" => {
+				let Some(display) = partial_history_text(&event, &value, &rendered_sources) else { continue; };
+				display
+			},
 			"native_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a warning.").to_owned()),
 			"config_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a configuration warning.").to_owned()),
 			"strict_review_notice" => ("execution_notice", "Codex requested additional safety checks for this turn. Tool calls may take longer; no action is required for this notice.".into()),
@@ -4633,6 +4638,7 @@ fn render_chief_history(
 							| "assistant_message" | "context_compacted"
 							| "strict_review_notice"
 							| "config_warning" | "native_warning"
+							| "partial_output"
 					)
 			}) {
 			text.push_str(if kind == "unsent_input" { "\n\n" } else { "\n\nDisposition: " });
@@ -4642,7 +4648,11 @@ fn render_chief_history(
 			append_task_reference_labels(&mut text, &value);
 		}
 		let activity_cost = if kind == "activity" { event.payload.len() } else { 0 }
-			+ serde_json::to_vec(&chief_history_receipt(&event)).map_or(remaining, |v| v.len());
+			+ serde_json::to_vec(&(
+				chief_history_receipt(&event),
+				partial_history_source(&event, &value),
+			))
+			.map_or(remaining, |v| v.len());
 		if serde_json::to_vec(&text).map_or(usize::MAX, |encoded| encoded.len())
 			+ 160 + activity_cost
 			> remaining
@@ -4664,6 +4674,7 @@ fn render_chief_history(
 		if !shortened
 			&& value.pointer("/threadReadback/truncated") != Some(&serde_json::json!(true))
 		{
+			rendered_sources.extend(completed_partial_sources(&value));
 			rendered_messages.extend(completed_message_ids);
 		}
 		entries.push(chief_history_entry(&event, &value, kind, text));
@@ -4725,6 +4736,63 @@ mod task_reference_display_tests {
 	}
 }
 
+fn partial_history_text(
+	event: &decodex_database::ChiefInboxEvent,
+	value: &serde_json::Value,
+	rendered: &std::collections::HashSet<(String, String, String)>,
+) -> Option<(&'static str, String)> {
+	if let Some(source) = partial_history_source(event, value)
+		&& rendered.contains(&(source.thread_id, source.turn_id, source.item_id))
+	{
+		return None;
+	}
+	let kind = if value["kind"] == "plan" { "partial_plan" } else { "partial_answer" };
+	let mut text = value["text"].as_str().unwrap_or_default().to_owned();
+	if value["truncated"] == true {
+		text.push_str("\n\n[Saved output shortened.]");
+	}
+	Some((kind, text))
+}
+
+fn completed_partial_sources(value: &serde_json::Value) -> Vec<(String, String, String)> {
+	let Some(thread) =
+		value.pointer("/threadReadback/threadId").and_then(serde_json::Value::as_str)
+	else {
+		return Vec::new();
+	};
+	let Some(turn) = value.pointer("/threadReadback/turnId").and_then(serde_json::Value::as_str)
+	else {
+		return Vec::new();
+	};
+	let messages = value.pointer("/threadReadback/assistantMessages");
+	let parsed = messages
+		.and_then(serde_json::Value::as_str)
+		.and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
+	parsed
+		.as_ref()
+		.or(messages)
+		.and_then(serde_json::Value::as_array)
+		.into_iter()
+		.flatten()
+		.filter(|item| {
+			item["text"].as_str().is_some_and(|text| !text.is_empty()) && item["truncated"] != true
+		})
+		.filter_map(|item| Some((thread.into(), turn.into(), item["id"].as_str()?.into())))
+		.collect()
+}
+
+fn partial_history_source(
+	event: &decodex_database::ChiefInboxEvent,
+	value: &serde_json::Value,
+) -> Option<decodex_protocol::ChiefHistorySourceDto> {
+	(event.event_kind == "partial_output").then_some(())?;
+	Some(decodex_protocol::ChiefHistorySourceDto {
+		thread_id: value["threadId"].as_str()?.into(),
+		turn_id: value["turnId"].as_str()?.into(),
+		item_id: value["itemId"].as_str()?.into(),
+	})
+}
+
 fn chief_history_entry(
 	event: &decodex_database::ChiefInboxEvent,
 	value: &serde_json::Value,
@@ -4732,8 +4800,10 @@ fn chief_history_entry(
 	text: String,
 ) -> decodex_protocol::ChiefHistoryEntryDto {
 	decodex_protocol::ChiefHistoryEntryDto {
+		native_source: partial_history_source(event, value),
 		turn_id: value
 			.pointer("/threadReadback/turnId")
+			.or_else(|| (event.event_kind == "partial_output").then(|| &value["turnId"]))
 			.and_then(serde_json::Value::as_str)
 			.map(str::to_owned),
 		weather: Vec::new(),
@@ -4885,6 +4955,11 @@ fn query_chief_live(
 		);
 
 		live.push(decodex_protocol::ChiefLiveMessageDto {
+			kind: if output.kind == "plan" {
+				decodex_protocol::ChiefLiveMessageKind::Plan
+			} else {
+				decodex_protocol::ChiefLiveMessageKind::AgentMessage
+			},
 			turn_id: output.turn_id,
 			item_id: output.item_id,
 			text,

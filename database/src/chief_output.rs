@@ -2,15 +2,73 @@
 use crate::{SqliteStore, StoreError, error::sqlite_error};
 use rusqlite::{OptionalExtension as _, params};
 
+pub struct ChiefOutputUpdate {
+	pub thread_id: String,
+	pub turn_id: String,
+	pub item_id: String,
+	pub kind: String,
+	pub text: String,
+	pub completed: bool,
+}
+
 pub struct ChiefLiveOutput {
 	pub id: i64,
 	pub turn_id: String,
 	pub item_id: String,
 	pub text: String,
 	pub truncated: bool,
+	pub kind: String,
 }
 
 impl SqliteStore {
+	/// Retire display-only output after the native source invalidates its history.
+	/// Submission receipts and durable conversation facts are not changed.
+	pub async fn invalidate_chief_output(
+		&self,
+		thread: String,
+		generation: Option<String>,
+	) -> Result<(), StoreError> {
+		if thread.is_empty() || thread.len() > 512 {
+			return Err(StoreError::InvalidInput("invalid output source"));
+		}
+		let changed = self
+			.run(move |connection| {
+				let tx = connection
+					.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+					.map_err(sqlite_error)?;
+				let work = tx
+					.prepare("SELECT id FROM chief_work_items WHERE codex_thread_id=?1")
+					.map_err(sqlite_error)?
+					.query_map([thread], |row| row.get::<_, String>(0))
+					.map_err(sqlite_error)?
+					.collect::<Result<Vec<_>, _>>()
+					.map_err(sqlite_error)?;
+				let mut changed = false;
+				for id in work {
+					if crate::chief_process::owns_work(&tx, &id, generation.as_deref())? {
+						changed |=
+							tx.execute("DELETE FROM chief_live_output WHERE work_id=?1", [&id])
+								.map_err(sqlite_error)? > 0;
+						changed |=
+							tx.execute(
+								"DELETE FROM chief_inbox_events WHERE work_item_id=?1 AND event_kind='partial_output'",
+								[&id],
+							)
+							.map_err(sqlite_error)? > 0;
+					}
+				}
+				tx.commit().map_err(sqlite_error)?;
+				Ok(changed)
+			})
+			.await?;
+		if changed {
+			self.inner
+				.chief_output_revision
+				.send_modify(|revision| *revision = revision.wrapping_add(1));
+		}
+		Ok(())
+	}
+
 	/// Save a configuration warning only for the current ready process of this root.
 	pub async fn record_chief_config_warning(
 		&self,
@@ -96,25 +154,58 @@ impl SqliteStore {
 		text: String,
 		replace: bool,
 	) -> Result<(), StoreError> {
+		self.update_chief_output_record(ChiefOutputUpdate {
+			thread_id: thread,
+			turn_id: turn,
+			item_id: item,
+			kind: "agentMessage".into(),
+			text,
+			completed: replace,
+		})
+		.await
+	}
+
+	pub async fn update_chief_output_record(
+		&self,
+		update: ChiefOutputUpdate,
+	) -> Result<(), StoreError> {
+		let ChiefOutputUpdate {
+			thread_id: thread,
+			turn_id: turn,
+			item_id: item,
+			kind,
+			text,
+			completed: replace,
+		} = update;
+		if !matches!(kind.as_str(), "agentMessage" | "plan") {
+			return Err(StoreError::InvalidInput("invalid live output kind"));
+		}
 		if thread.len() > 512 || turn.len() > 512 || item.len() > 512 || item.is_empty() {
 			return Err(StoreError::InvalidInput("invalid live output identity"));
 		}
 
 		let changed = self.run(move |connection| {
+            let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
+            let connection = &tx;
             let work: Option<String> = connection.query_row("SELECT id FROM chief_work_items WHERE codex_thread_id=?1 AND active_turn_id=?2 AND dispatch_state='running'", params![thread,turn], |row|row.get(0)).optional().map_err(sqlite_error)?;
-            let Some(work) = work else { return Ok(false); };
-            let previous: Option<(String,bool)> = connection.query_row("SELECT text,truncated FROM chief_live_output WHERE work_id=?1 AND turn_id=?2 AND item_id=?3", params![work,turn,item], |row|Ok((row.get(0)?,row.get(1)?))).optional().map_err(sqlite_error)?;
+            let Some(work) = work else { tx.commit().map_err(sqlite_error)?; return Ok(false); };
+            let previous: Option<(String,bool,String,bool)> = connection.query_row("SELECT text,truncated,kind,completed FROM chief_live_output WHERE work_id=?1 AND turn_id=?2 AND item_id=?3", params![work,turn,item], |row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).optional().map_err(sqlite_error)?;
+            if let Some((_,_,prior_kind,completed)) = &previous {
+                if prior_kind != &kind { return Err(StoreError::InvalidInput("live output kind changed")); }
+                if *completed && !replace { return Ok(false); }
+            }
             if previous.is_none() {
                 let count: i64 = connection.query_row("SELECT count(*) FROM chief_live_output WHERE work_id=?1 AND turn_id=?2",params![work,turn],|row|row.get(0)).map_err(sqlite_error)?;
                 if count >= 32 { return Ok(false); }
             }
-            let (mut content, was_truncated) = if replace { (text, false) } else { let (mut prior, truncated) = previous.unwrap_or_default(); prior.push_str(&text); (prior, truncated) };
+            let (mut content, was_truncated) = if replace { (text, false) } else { let (mut prior, truncated) = previous.map(|(text,truncated,_,_)|(text,truncated)).unwrap_or_default(); prior.push_str(&text); (prior, truncated) };
             let truncated = was_truncated || content.len() > 65536;
             let mut end = content.len().min(65536);
             while !content.is_char_boundary(end) { end -= 1; }
             content.truncate(end);
             connection.execute("DELETE FROM chief_live_output WHERE work_id=?1 AND turn_id<>?2",params![work,turn]).map_err(sqlite_error)?;
-            connection.execute("INSERT INTO chief_live_output(work_id,turn_id,item_id,text,truncated) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(work_id,turn_id,item_id) DO UPDATE SET text=excluded.text,truncated=excluded.truncated",params![work,turn,item,content,truncated]).map_err(sqlite_error)?;
+            connection.execute("INSERT INTO chief_live_output(work_id,turn_id,item_id,text,truncated,kind,completed) VALUES(?1,?2,?3,?4,?5,?6,?7) ON CONFLICT(work_id,turn_id,item_id) DO UPDATE SET text=excluded.text,truncated=excluded.truncated,completed=excluded.completed",params![work,turn,item,content,truncated,kind,replace]).map_err(sqlite_error)?;
+            tx.commit().map_err(sqlite_error)?;
             Ok(true)
         }).await?;
 		if changed {
@@ -247,8 +338,8 @@ pub(crate) fn read_live(
 	connection: &rusqlite::Connection,
 	work: &str,
 ) -> Result<Vec<ChiefLiveOutput>, StoreError> {
-	connection.prepare("SELECT o.id,o.turn_id,o.item_id,o.text,o.truncated FROM chief_live_output o JOIN chief_work_items w ON w.id=o.work_id AND w.active_turn_id=o.turn_id WHERE w.id=?1 AND w.dispatch_state IN ('running','unknown') ORDER BY o.id LIMIT 32").map_err(sqlite_error)?
-        .query_map([work],|row|Ok(ChiefLiveOutput {id:row.get(0)?,turn_id:row.get(1)?,item_id:row.get(2)?,text:row.get(3)?,truncated:row.get(4)?})).map_err(sqlite_error)?
+	connection.prepare("SELECT o.id,o.turn_id,o.item_id,o.text,o.truncated,o.kind FROM chief_live_output o JOIN chief_work_items w ON w.id=o.work_id AND w.active_turn_id=o.turn_id WHERE w.id=?1 AND w.dispatch_state IN ('running','unknown') ORDER BY o.id LIMIT 32").map_err(sqlite_error)?
+        .query_map([work],|row|Ok(ChiefLiveOutput {id:row.get(0)?,turn_id:row.get(1)?,item_id:row.get(2)?,text:row.get(3)?,truncated:row.get(4)?,kind:row.get(5)?})).map_err(sqlite_error)?
         .collect::<Result<Vec<_>,_>>().map_err(|error|sqlite_error(error).into())
 }
 
@@ -454,5 +545,38 @@ fn insert_warning(
 	let payload = serde_json::json!({"generation":generation,"text":text}).to_string();
 	let now = crate::unix_micros()?;
 	tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,?3,?4,?5,'resolved','Observed native warning',?5) ON CONFLICT(source_event_id) DO NOTHING",params![source,work,kind,payload,now]).map_err(sqlite_error)?;
+	Ok(())
+}
+
+/// Preserve unfinished display text in the same transaction as its terminal receipt.
+/// These resolved records cannot wake a manager or serve as worker result evidence.
+pub(crate) fn retain_partial_output(
+	tx: &rusqlite::Transaction<'_>,
+	work: &str,
+	thread: &str,
+	turn: &str,
+) -> Result<(), StoreError> {
+	let rows = tx.prepare("SELECT item_id,kind,text,truncated FROM chief_live_output WHERE work_id=?1 AND turn_id=?2 AND completed=0 AND kind IN ('agentMessage','plan') ORDER BY id LIMIT 32")
+        .map_err(sqlite_error)?.query_map(params![work,turn], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?,row.get::<_,String>(2)?,row.get::<_,bool>(3)?)))
+        .map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(sqlite_error)?;
+	for (item, kind, text, truncated) in rows {
+		if text.is_empty() {
+			continue;
+		}
+		let source = serde_json::json!(["partial_output", thread, turn, item]).to_string();
+		let mut value = serde_json::json!({"threadId":thread,"turnId":turn,"itemId":item,"kind":kind,"text":text,"truncated":truncated});
+		// Include JSON escaping in the existing inbox payload bound.
+		while value.to_string().len() > 65536 {
+			let text = value["text"].as_str().unwrap_or_default();
+			let mut end = text.len().saturating_sub(1024);
+			while !text.is_char_boundary(end) {
+				end -= 1;
+			}
+			value["text"] = text[..end].into();
+			value["truncated"] = true.into();
+		}
+		let now = crate::unix_micros()?;
+		tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'partial_output',?3,?4,'resolved','Display-only unfinished output',?4,?2,?5) ON CONFLICT(source_event_id) DO NOTHING",params![source,work,value.to_string(),now,turn]).map_err(sqlite_error)?;
+	}
 	Ok(())
 }

@@ -121,6 +121,7 @@ mod tests {
 				owner: Some(work.id.clone()),
 				ready: true,
 				messages: vec![ChiefLiveMessageDto {
+					kind: Default::default(),
 					turn_id: "old".into(),
 					item_id: "answer".into(),
 					text: "old output".into(),
