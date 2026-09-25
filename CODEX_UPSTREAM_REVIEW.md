@@ -1,6 +1,15 @@
 # Codex integration review
 
-## Current checkpoint: 2026-09-19
+## Current reconciliation: 2026-09-25
+
+Read [Upstream adoption review](work/upstream-adoption-review.md) for verified merged
+capabilities, core versus optional classifications, and remaining work. The manual
+update is incomplete. The September 19 cursor and capability statements below are
+historical evidence, not current delivery status. Do not restart the fixed-range
+scan from that old cursor. The maintainer remains paused after manual completion
+until the user explicitly requests resumption.
+
+## Historical checkpoint: 2026-09-19
 
 Decodex base: `009b49ca4f17ebaef5f096fa237a9c04936b746e` (PR #1352).
 This includes PRs #1346–#1351 and the native integration/OAuth delivery.
