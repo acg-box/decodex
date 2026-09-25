@@ -1,5 +1,5 @@
 //! Preserve source-bound alternatives when the user elects to keep both drafts.
-use super::{DesktopComposerDraft, DesktopDraftDocument, DesktopProfileDraft};
+use super::{DesktopDraftDocument, DesktopProfileDraft};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -23,7 +23,6 @@ impl DesktopRecoveredDraft {
 			}
 		} else if self.draft.composer.work_id.is_some()
 			|| self.draft.composer.thread_id.is_some()
-			|| !self.draft.ordinary.is_empty()
 			|| !self.draft.parked.is_empty()
 			|| !self.draft.execution.is_empty()
 			|| !self.draft.questions.is_empty()
@@ -32,6 +31,9 @@ impl DesktopRecoveredDraft {
 			|| !self.draft.unconfirmed_commands.is_empty()
 		{
 			return Err("Recovered unbound draft cannot own service state");
+		}
+		if self.scope.is_none() {
+			crate::desktop_ordinary_drafts::validate_unbound(&self.draft.ordinary)?;
 		}
 		Ok(())
 	}
@@ -87,17 +89,25 @@ impl DesktopDraftDocument {
 				}
 			}
 		}
+		let before = result.unbound_profile();
 		if self.unbound != baseline.unbound && self.unbound != latest.unbound {
-			if latest.unbound != DesktopComposerDraft::default() {
-				result.retain_alternative(DesktopRecoveredDraft {
-					scope: None,
-					draft: DesktopProfileDraft {
-						composer: latest.unbound.clone(),
-						..Default::default()
-					},
-				});
-			}
 			result.unbound = self.unbound.clone();
+		}
+		let directories: BTreeSet<_> =
+			self.unbound_ordinary.keys().chain(baseline.unbound_ordinary.keys()).collect();
+		for directory in directories {
+			let local = self.unbound_ordinary.get(directory);
+			if local == baseline.unbound_ordinary.get(directory) {
+				continue;
+			}
+			if let Some(local) = local {
+				result.unbound_ordinary.insert(directory.clone(), local.clone());
+			} else {
+				result.unbound_ordinary.remove(directory);
+			}
+		}
+		if result.unbound_profile() != before && before != DesktopProfileDraft::default() {
+			result.retain_alternative(DesktopRecoveredDraft { scope: None, draft: before });
 		}
 		// Enforce the same aggregate byte limit before returning an intended write.
 		result.encode()?;
@@ -129,16 +139,12 @@ impl DesktopDraftDocument {
 			}
 			result.profiles.insert(scope.clone(), selected);
 		} else {
-			if self.unbound != copy.draft.composer {
-				result.retain_alternative(DesktopRecoveredDraft {
-					scope: None,
-					draft: DesktopProfileDraft {
-						composer: self.unbound.clone(),
-						..Default::default()
-					},
-				});
+			let current = self.unbound_profile();
+			if current != copy.draft {
+				result.retain_alternative(DesktopRecoveredDraft { scope: None, draft: current });
 			}
 			result.unbound = copy.draft.composer.clone();
+			result.unbound_ordinary = copy.draft.ordinary.clone();
 		}
 		result.encode()?;
 		Ok(result)
@@ -159,6 +165,39 @@ impl DesktopDraftDocument {
 		}
 		let mut result = self.clone();
 		result.recovered.retain(|saved| saved != copy);
+		result.encode()?;
+		Ok(result)
+	}
+
+	fn unbound_profile(&self) -> DesktopProfileDraft {
+		DesktopProfileDraft {
+			composer: self.unbound.clone(),
+			ordinary: self.unbound_ordinary.clone(),
+			..Default::default()
+		}
+	}
+
+	/// Move service-free ordinary editors to the first selected profile.
+	/// Preserve a displaced saved profile as a recoverable copy; never send input.
+	pub fn adopt_unbound_ordinary(&self, scope: &str) -> Result<Self, &'static str> {
+		self.validate()?;
+		let mut result = self.clone();
+		if !self.unbound_ordinary.is_empty() {
+			if let Some(saved) = self.profiles.get(scope)
+				&& self.unbound_ordinary.iter().any(|(directory, draft)| {
+					saved.ordinary.get(directory).is_some_and(|old| old != draft)
+				}) {
+				result.retain_alternative(DesktopRecoveredDraft {
+					scope: Some(scope.into()),
+					draft: saved.clone(),
+				});
+			}
+			let selected = result.profiles.entry(scope.into()).or_default();
+			selected.ordinary.extend(std::mem::take(&mut result.unbound_ordinary));
+			if let Some(saved) = self.profiles.get(scope) {
+				retain_fences(selected, saved);
+			}
+		}
 		result.encode()?;
 		Ok(result)
 	}
@@ -200,7 +239,7 @@ fn retain_fences(selected: &mut DesktopProfileDraft, other: &DesktopProfileDraft
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::EntityId;
+	use crate::{DesktopComposerDraft, EntityId};
 
 	fn profile(text: &str) -> DesktopProfileDraft {
 		DesktopProfileDraft {

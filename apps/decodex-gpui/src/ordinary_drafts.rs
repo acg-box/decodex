@@ -54,7 +54,7 @@ impl Shell {
 	}
 
 	pub(super) fn sync_ordinary_drafts(&mut self, cx: &mut Context<Self>) {
-		if self.ordinary_syncing || self.reset_cards.profile.is_none() {
+		if self.ordinary_syncing {
 			return;
 		}
 		let Some(directory) = self.conversations.working_directory() else { return };

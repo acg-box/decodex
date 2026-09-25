@@ -150,8 +150,13 @@ impl ChiefSurface {
 					{
 						latest.profiles.insert(scope.clone(), current.clone());
 					}
-				} else if latest.unbound == baseline.unbound {
-					latest.unbound = local.unbound.clone();
+				} else {
+					if latest.unbound == baseline.unbound {
+						latest.unbound = local.unbound.clone();
+					}
+					if latest.unbound_ordinary == baseline.unbound_ordinary {
+						latest.unbound_ordinary = local.unbound_ordinary.clone();
+					}
 				}
 			}
 			let mut merged =

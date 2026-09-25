@@ -22,6 +22,9 @@ pub struct DesktopDraftDocument {
 	/// Input entered before any service profile was selected. Never a work-owned draft.
 	#[serde(default)]
 	pub unbound: DesktopComposerDraft,
+	/// Ordinary input by exact directory before a service is selected. No service authority.
+	#[serde(default)]
+	pub unbound_ordinary: BTreeMap<String, crate::DesktopOrdinaryDraft>,
 	/// Local storage schema version, independent of the service wire version.
 	pub version: u32,
 	/// Saved service-scoped drafts; a missing profile does not authorize migration.
@@ -30,9 +33,10 @@ pub struct DesktopDraftDocument {
 impl Default for DesktopDraftDocument {
 	fn default() -> Self {
 		Self {
-			version: 6,
+			version: 7,
 			profiles: BTreeMap::new(),
 			unbound: Default::default(),
+			unbound_ordinary: Default::default(),
 			recovered: vec![],
 		}
 	}
@@ -193,7 +197,7 @@ impl DesktopDraftDocument {
 			}
 		}
 		value.validate()?;
-		value.version = 6;
+		value.version = 7;
 		Ok(value)
 	}
 
@@ -206,7 +210,7 @@ impl DesktopDraftDocument {
 	}
 
 	fn validate(&self) -> Result<(), &'static str> {
-		if !matches!(self.version, 1..=6) {
+		if !matches!(self.version, 1..=7) {
 			return Err("Draft snapshot version is unsupported");
 		}
 		if self.profiles.len() > 64 {
@@ -219,6 +223,8 @@ impl DesktopDraftDocument {
 			saved.validate()?;
 		}
 		self.unbound.validate()?;
+		super::desktop_ordinary_drafts::validate_unbound(&self.unbound_ordinary)?;
+
 		if self.unbound.work_id.is_some() || self.unbound.thread_id.is_some() {
 			return Err("Unbound draft cannot own a work or native thread");
 		}
@@ -424,10 +430,11 @@ mod tests {
 			execution: Some((EntityId::new("work").unwrap(), 4)),
 		});
 		DesktopDraftDocument {
-			version: 6,
+			version: 7,
 			profiles: BTreeMap::from([("a".repeat(64), profile)]),
 			recovered: vec![],
 			unbound: Default::default(),
+			unbound_ordinary: Default::default(),
 		}
 	}
 
@@ -450,7 +457,7 @@ mod tests {
 		let bytes = document.encode().unwrap();
 		assert_eq!(DesktopDraftDocument::decode(&bytes).unwrap().unbound.creation, Some(setup));
 		let old = DesktopDraftDocument::decode(br#"{"version":1,"profiles":{}}"#).unwrap();
-		assert_eq!(old.version, 6);
+		assert_eq!(old.version, 7);
 		assert!(old.unbound.creation.is_none());
 		let mut remote = document.clone();
 		remote.unbound.creation.as_mut().unwrap().model = "other model".into();
@@ -487,7 +494,7 @@ mod tests {
 	#[test]
 	fn draft_document_rejects_changed_contract_and_ambiguous_ownership() {
 		let mut original = document();
-		original.version = 7;
+		original.version = 8;
 		assert!(original.encode().is_err());
 		let mut json = serde_json::to_value(document()).unwrap();
 		json["unexpected"] = serde_json::json!(true);

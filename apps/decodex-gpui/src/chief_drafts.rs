@@ -74,6 +74,9 @@ impl ChiefSurface {
 		if previous.as_ref() == Some(profile) {
 			return;
 		}
+		if previous.is_none() {
+			self.adopt_unbound_ordinary(&profile.draft_scope_key());
+		}
 		let restored = self
 			.draft_profiles
 			.saved

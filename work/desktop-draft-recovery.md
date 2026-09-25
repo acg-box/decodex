@@ -35,3 +35,17 @@ The desktop retains later edits and other outstanding command IDs. It settles ma
 Verification: 84 database tests, 107 protocol tests, 481 runtime tests (9 ignored), and 288 desktop tests (5 ignored). Strict Clippy passed for all four affected packages. Installed codex-cli 0.155.0-alpha.16.3 passed an isolated app-server qualification with a loopback Responses backend. Both live receipt delivery and cold recovery after the turn became idle confirmed the exact submission, passed through the real local query transport, and retained exactly two inference requests: the original and the intentional steer. Restart and receipt queries issued no model work. Reference: upstream 595cc91e8cbb1c2ca822d0311dcf12709410c582 TurnSteerParams.client_user_message_id.
 
 Older local steering records without the original thread identity remain unconfirmed; do not infer acceptance from matching text. General uncertain non-steering submissions, new-task configuration drafts, and task-setting presentation still need their own integration audit. Real signed desktop quit/relaunch acceptance remains outstanding.
+
+## Ordinary input before service setup
+
+Local draft schema 7 stores ordinary input by exact working directory before a
+service profile is selected. These records cannot contain a conversation ID,
+parked conversation editors, or unresolved commands. They use the existing shared
+writer and quit flush.
+
+Keep-both reconciliation retains displaced input as a recoverable copy, including
+ordinary editors. On the first profile binding, input moves to that profile.
+A conflicting saved profile remains recoverable, and unresolved delivery records
+remain in the selected profile. Later profile changes do not move that input again.
+The schema checks the aggregate encoded size and existing recovery capacity before
+publication. No restore or migration authorizes a send.
