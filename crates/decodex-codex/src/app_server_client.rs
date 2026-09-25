@@ -53,12 +53,14 @@ pub use thread_plugins::{
 mod app_link_settings;
 mod hooks;
 mod model_defaults;
+mod realtime_preferences;
 mod realtime_settings;
 pub use app_link_settings::{
 	AppLinkSettingEdit, AppLinkSettings, AppLinkSettingsCatalog, AppLinkSettingsWrite,
 	is_app_link_settings_write,
 };
 pub use model_defaults::{NativeExecutionDefaults, NativeModelDefaults};
+pub use realtime_preferences::{NativeVoiceSettings, is_realtime_voice_write};
 mod integrations;
 pub use hooks::{
 	HookSettingsChange, HookSettingsReview, HookSettingsWrite, is_hook_settings_write,

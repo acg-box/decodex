@@ -41,6 +41,7 @@
 #[path = "chief_text_reveal.rs"] mod text_reveal;
 #[path = "chief_usage_estimates.rs"] mod usage_estimates;
 #[path = "chief_voice.rs"] mod voice;
+#[path = "chief_voice_settings.rs"] mod voice_settings;
 #[path = "chief_weather.rs"] mod weather;
 #[path = "chief_workspace.rs"] mod workspace;
 #[path = "chief_workspace_size.rs"] mod workspace_size;
@@ -86,6 +87,7 @@ pub(crate) struct ChiefSurface {
 	native_composer: native_composer::NativeComposer,
 	voice: Option<voice::VoiceUi>,
 	voice_task: Option<Task<()>>,
+	voice_settings: voice_settings::Panel,
 	audio_inputs: Vec<String>,
 	audio_input: String,
 	dictation: Option<dictation::DictationUi>,
@@ -333,6 +335,7 @@ impl ChiefSurface {
 		Self {
 			voice: None,
 			voice_task: None,
+			voice_settings: Default::default(),
 			audio_inputs: Vec::new(),
 			audio_input: String::new(),
 			dictation: None,
@@ -1149,6 +1152,7 @@ impl ChiefSurface {
 		self.reset_app_exposure();
 		self.reset_app_settings();
 		self.reset_saved_app_settings();
+		self.reset_voice_settings();
 		self.reset_native_goal();
 		self.snapshot = None;
 		self.pages.clear();
@@ -1206,6 +1210,7 @@ impl ChiefSurface {
 		self.reset_app_exposure();
 		self.reset_app_settings();
 		self.reset_saved_app_settings();
+		self.reset_voice_settings();
 		self.question_notices = Default::default();
 		self.clear_activity_detail();
 		self.output_stream = Default::default();
@@ -1286,6 +1291,7 @@ impl ChiefSurface {
 			self.reset_app_exposure();
 			self.reset_app_settings();
 			self.reset_saved_app_settings();
+			self.reset_voice_settings();
 			self.reset_native_goal();
 			self.question_notices = Default::default();
 			self.clear_activity_detail();
@@ -1303,6 +1309,7 @@ impl ChiefSurface {
 				self.invalidate_app_exposure(&snapshot);
 				self.invalidate_app_settings(&snapshot);
 				self.invalidate_saved_app_settings(&snapshot);
+				self.invalidate_voice_settings(&snapshot);
 				self.invalidate_native_goal(&snapshot);
 				if self.snapshot.as_ref().is_some_and(|old| {
 					old.runtime_source != snapshot.runtime_source
@@ -2200,6 +2207,7 @@ impl ChiefSurface {
 				panel
 					.child(self.resources_panel(work, cx))
 					.child(self.integrations_panel(work, cx))
+					.child(self.voice_settings_panel(work, cx))
 					.child(self.usage_estimate_panel(work, cx))
 					.child(self.native_goal_panel(cx))
 					.children(

@@ -50,6 +50,11 @@ native model catalog or account-source checks. The model-access note records
 current validation and limits. Its presence does not close the other optional
 analytics, voice, widget, prompt-editing or recap scopes below.
 
+[Voice preferences](voice-settings.md) adds an optional explicit picker after this
+baseline. Its conditional save path is separate from the existing-call effective
+voice fix in [PR1495](https://github.com/acg-box/decodex/pull/1495). The note records
+source checks, readback and the outstanding signed audio acceptance.
+
 ## Evidence boundaries
 
 The 128 distinct PRs cited above were read from GitHub and their merge commits were checked as ancestors of this snapshot. Current source owners were inspected or located in this checkout. This confirms merge and source presence, not full live acceptance or release installation. No new behavioral test was run for this documentation reconciliation.

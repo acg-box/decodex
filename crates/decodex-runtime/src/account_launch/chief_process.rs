@@ -234,6 +234,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 			return if decodex_codex::app_server_client::is_hook_settings_write(&value["params"])
 				|| decodex_codex::app_server_client::is_app_link_settings_write(&value["params"])
 				|| decodex_codex::app_server_client::is_app_tool_exposure_write(&value["params"])
+				|| decodex_codex::app_server_client::is_realtime_voice_write(&value["params"])
 			{
 				Ok(())
 			} else {

@@ -1046,6 +1046,35 @@ impl ChiefHost {
 		Ok(work_id.as_str().into())
 	}
 
+	pub(crate) async fn voice_settings(
+		&self,
+		work: &str,
+	) -> decodex_protocol::ChiefVoiceSettingsResult {
+		crate::chief_voice_settings::read(|| async {
+			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+			self.timeline_source(work, owner.codex_thread_id.as_deref()?).await
+		})
+		.await
+	}
+
+	async fn set_voice_preference(
+		&self,
+		work: &str,
+		review: &str,
+		voice: &str,
+	) -> Result<String, ChiefHostError> {
+		crate::chief_voice_settings::write(
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, owner.codex_thread_id.as_deref()?).await
+			},
+			review,
+			voice,
+		)
+		.await?;
+		Ok(work.into())
+	}
+
 	async fn handle_settings(
 		&self,
 		key: &str,
@@ -1072,6 +1101,9 @@ impl ChiefHost {
 					},
 				)
 				.await,
+			ChiefActionDto::SetVoicePreference { work_id, review_token, voice } =>
+				self.set_voice_preference(work_id.as_str(), review_token.as_str(), voice.as_str())
+					.await,
 			ChiefActionDto::SetAppToolExposure { work_id, connector_id, review_token, omit } =>
 				self.set_app_tool_exposure((&work_id, &connector_id, &review_token), omit, key)
 					.await,
@@ -1158,7 +1190,8 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			action @ (ChiefActionDto::SetAppToolExposure { .. }
+			action @ (ChiefActionDto::SetVoicePreference { .. }
+			| ChiefActionDto::SetAppToolExposure { .. }
 			| ChiefActionDto::SetSavedAppSetting { .. }
 			| ChiefActionDto::SetAppSetting { .. }
 			| ChiefActionDto::SetHookSetting { .. }

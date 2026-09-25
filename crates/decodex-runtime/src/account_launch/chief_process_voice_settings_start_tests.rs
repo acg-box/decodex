@@ -120,3 +120,25 @@ async fn installed_native_voice_reads_project_override_and_refreshed_user_defaul
 		Some("cove")
 	);
 }
+
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native voice preference bridge"]
+async fn installed_voice_preference_bridge_saves_absent_file_and_rejects_old_connection() {
+	use super::super::super::NativeSession;
+	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
+	let home = tempfile::tempdir().unwrap();
+	let session = NativeSession::start(&binary, home.path());
+	let cwd = home.path().to_str().unwrap();
+	let before = session.client.realtime_voice_settings(cwd).await.unwrap();
+	assert_eq!(before.preference, None);
+	let saved = session.client.write_realtime_voice(&before, "juniper").await.unwrap();
+	assert_eq!(saved.preference.as_deref(), Some("juniper"));
+	assert_eq!(saved.effective.as_deref(), Some("juniper"));
+	drop(session);
+	let session = NativeSession::start(&binary, home.path());
+	assert!(session.client.write_realtime_voice(&saved, "maple").await.is_err());
+	assert_eq!(
+		session.client.realtime_voice_settings(cwd).await.unwrap().preference.as_deref(),
+		Some("juniper")
+	);
+}
