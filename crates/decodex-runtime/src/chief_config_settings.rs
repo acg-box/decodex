@@ -28,10 +28,14 @@ pub(super) fn project(receipt: &Receipt) -> ChiefConfigEditReceipt {
 		Receipt::App(r) => (
 			&r.state,
 			&r.attempt.owner,
-			format!(
-				"App {} · connection {} · {}",
-				r.attempt.connector, r.attempt.link, r.attempt.field
-			),
+			if r.attempt.field == "omit_tools_from" {
+				format!("App {} · tool visibility", r.attempt.connector)
+			} else {
+				format!(
+					"App {} · connection {} · {}",
+					r.attempt.connector, r.attempt.link, r.attempt.field
+				)
+			},
 			r.saved_version.clone(),
 		),
 	};
@@ -97,14 +101,27 @@ pub(super) async fn reconcile(
 				.ok()?;
 		},
 		Receipt::App(r) => {
-			let native = source
-				.client
-				.app_link_settings(cwd, &r.attempt.connector, &r.attempt.link)
-				.await
-				.ok()?;
-			if digest(native.config_file()) != scope {
-				return None;
-			}
+			let (value, version) = if r.attempt.field == "omit_tools_from" {
+				let native =
+					source.client.app_tool_exposure(cwd, &r.attempt.connector).await.ok()?;
+				if digest(native.config_file()) != scope {
+					return None;
+				}
+				(
+					native.preference.as_ref().map(|v| serde_json::json!(v)),
+					native.config_version().to_owned(),
+				)
+			} else {
+				let native = source
+					.client
+					.app_link_settings(cwd, &r.attempt.connector, &r.attempt.link)
+					.await
+					.ok()?;
+				if digest(native.config_file()) != scope {
+					return None;
+				}
+				(raw_app(&native, &r.attempt.field), native.config_version().to_owned())
+			};
 			store
 				.observe_chief_app_settings(
 					r.id,
@@ -113,9 +130,9 @@ pub(super) async fn reconcile(
 						scope: scope.into(),
 						connector: r.attempt.connector,
 						link: r.attempt.link,
-						value: raw_app(&native, &r.attempt.field),
+						value,
 						field: r.attempt.field,
-						config_version: native.config_version().into(),
+						config_version: version,
 					},
 				)
 				.await

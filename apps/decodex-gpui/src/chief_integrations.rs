@@ -1,6 +1,8 @@
 //! Task-scoped native integration observations; discovery never grants capability.
 use super::*;
-use decodex_protocol::{ChiefIntegrationsResult, ChiefMcpInventory, ChiefPluginInventory};
+use decodex_protocol::{
+	ChiefAppInventory, ChiefIntegrationsResult, ChiefMcpInventory, ChiefPluginInventory,
+};
 
 impl ChiefSurface {
 	pub(super) fn integrations_panel(
@@ -16,6 +18,7 @@ impl ChiefSurface {
 			cx,
 			move |s, cx| {
 				if s.integrations.as_ref().is_some_and(|(owner, _)| owner == &work_id) {
+					s.reset_app_exposure();
 					s.integrations = None;
 					s.integrations_task = None;
 					cx.notify();
@@ -83,6 +86,25 @@ impl ChiefSurface {
 					));
 				}
 			}
+			if let Some(ChiefIntegrationsResult::Available {
+				apps: ChiefAppInventory::Available { apps },
+				..
+			}) = result
+			{
+				for (index, app) in apps.iter().enumerate() {
+					let (owner, connector) = (work.to_owned(), app.id.clone());
+					panel = panel.child(integration_button(
+						format!("app-exposure-open-{index}"),
+						format!(
+							"Tool visibility for {}",
+							app.runtime_name.as_deref().unwrap_or(&app.id)
+						),
+						cx,
+						move |s, cx| s.update_app_exposure(&owner, &connector, false, cx),
+					));
+				}
+			}
+			panel = panel.child(self.app_exposure_panel(work, cx));
 			let text = match result {
 				None => "Reading native integration status…".into(),
 				Some(result) => integration_text(result),
@@ -309,7 +331,7 @@ fn integration_refresh_feedback(receipt: Option<ChiefCommandResponse>) -> String
 }
 
 fn integration_text(result: &ChiefIntegrationsResult) -> String {
-	let ChiefIntegrationsResult::Available { cwd, mcp, plugins } = result else {
+	let ChiefIntegrationsResult::Available { cwd, mcp, plugins, apps } = result else {
 		return match result {
 			ChiefIntegrationsResult::CapacityExceeded =>
 				"The complete integration inventory exceeds the display limit.",
@@ -319,6 +341,7 @@ fn integration_text(result: &ChiefIntegrationsResult) -> String {
 	};
 	let mut lines = vec![
 		format!("Configured repository: {cwd}"),
+        app_inventory_text(apps),
 		"Plugin inventory uses the configured repository. MCP status reflects the loaded task; a running turn keeps its previous environment until the next turn.".into(),
 	];
 	match mcp {
@@ -431,6 +454,36 @@ fn integration_button(
 		.into_any_element()
 }
 
+
+fn app_inventory_text(inventory: &ChiefAppInventory) -> String {
+	match inventory {
+		ChiefAppInventory::Available { apps } if apps.is_empty() =>
+			"No installed Apps were reported for this task.".into(),
+		ChiefAppInventory::Available { apps } => apps
+			.iter()
+			.map(|a| {
+				format!(
+					"{} — {}",
+					a.runtime_name.as_deref().unwrap_or(&a.id),
+					if !a.enabled {
+						"Disabled"
+					} else if !a.callable {
+						"No callable tools reported"
+					} else {
+						"Callable tools reported"
+					}
+				)
+			})
+			.collect::<Vec<_>>()
+			.join("\n"),
+		ChiefAppInventory::Unsupported =>
+			"This Codex version does not report installed Apps.".into(),
+		ChiefAppInventory::CapacityExceeded =>
+			"Installed App inventory exceeds the display limit.".into(),
+		ChiefAppInventory::Unavailable => "Installed App status could not be read.".into(),
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -530,6 +583,7 @@ mod tests {
 	#[test]
 	fn incomplete_plugin_discovery_and_mcp_failure_never_render_as_empty_success() {
 		let text = integration_text(&ChiefIntegrationsResult::Available {
+			apps: ChiefAppInventory::Unavailable,
 			cwd: "/repo".into(),
 			mcp: ChiefMcpInventory::Available {
 				servers: vec![decodex_protocol::ChiefMcpStatusDto {

@@ -15,6 +15,7 @@ mod application;
 mod auth_projection;
 mod bootstrap;
 mod chief;
+mod chief_app_exposure;
 mod chief_app_settings;
 mod chief_capabilities;
 mod chief_config_settings;

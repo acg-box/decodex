@@ -314,6 +314,13 @@ impl ServiceApplication {
 		})
 	}
 
+	async fn query_app_exposure(&self, work: &str, connector: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefAppExposure(match &self.chief {
+			Some(chief) => chief.app_tool_exposure(work, connector).await,
+			None => decodex_protocol::ChiefAppExposureResult::Unavailable,
+		})
+	}
+
 	async fn query_integrations(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::ChiefIntegrations(match &self.chief {
 			Some(chief) => chief.integrations(work).await,
@@ -2215,6 +2222,8 @@ impl Application for ServiceApplication {
 					cursor.as_ref().map(|c| c.as_str()),
 				)
 				.await,
+			QueryPayload::GetChiefAppExposure { work_id, connector_id } =>
+				self.query_app_exposure(work_id.as_str(), connector_id.as_str()).await,
 			QueryPayload::GetChiefIntegrations { work_id } =>
 				self.query_integrations(work_id.as_str()).await,
 			QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id, cursor } =>

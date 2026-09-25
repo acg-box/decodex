@@ -3,6 +3,8 @@
 
 mod account_login;
 mod chief;
+mod chief_app_exposure;
+pub use chief_app_exposure::{ChiefAppExposureResult, ChiefToolExposureSurface};
 mod native_agents;
 pub use native_agents::{NativeAgentDto, NativeAgentMessage, NativeAgentsResult};
 mod chief_archive;
@@ -13,6 +15,7 @@ pub use chief_guardian::{
 	ChiefGuardianSubmission,
 };
 mod chief_integrations;
+pub use chief_integrations::{ChiefAppInventory, ChiefAppStatusDto};
 mod chief_media;
 pub use chief_media::{
 	CHIEF_MEDIA_CHUNK_BYTES, ChiefMediaRequest, ChiefMediaResult, MAX_CHIEF_MEDIA_BYTES,
@@ -196,7 +199,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 74 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 75 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

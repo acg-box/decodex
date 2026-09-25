@@ -28,6 +28,16 @@ impl std::fmt::Debug for AppToolExposureSettings {
 }
 
 impl AppToolExposureSettings {
+	/// Native writable file identity for shared configuration arbitration.
+	pub fn config_file(&self) -> &str {
+		&self.file
+	}
+
+	/// Version of the reviewed writable layer.
+	pub fn config_version(&self) -> &str {
+		&self.version
+	}
+
 	/// Bind the reviewed preference to its native scope, version and effective configuration.
 	pub fn fingerprint(&self) -> String {
 		use sha2::{Digest as _, Sha256};

@@ -240,6 +240,17 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Save a reviewed connector exposure preference in native user configuration.
+	SetAppToolExposure {
+		/// Owning task.
+		work_id: crate::EntityId,
+		/// Connector selected from current native inventory.
+		connector_id: crate::WireText,
+		/// Reviewed source and configuration identity.
+		review_token: crate::WireText,
+		/// None restores inheritance; an empty list clears connector omissions.
+		omit: Option<Vec<crate::ChiefToolExposureSurface>>,
+	},
 	/// Change an existing saved app connection override from current native configuration.
 	SetSavedAppSetting {
 		/// Originating task.

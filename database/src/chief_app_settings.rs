@@ -18,6 +18,7 @@ pub struct ChiefAppSettingsAttempt {
 	/// Digest of the native writable config file, without account or task partitioning.
 	pub scope: String,
 	pub connector: String,
+	/// Empty only for connector-level omit_tools_from; connection edits require a link.
 	pub link: String,
 	pub field: String,
 	pub value: Option<Value>,
@@ -40,14 +41,37 @@ pub struct ChiefAppSettingsObservation {
 	pub owner: ChiefConfigOwner,
 	pub scope: String,
 	pub connector: String,
+	/// Empty only for connector-level omit_tools_from; connection edits require a link.
 	pub link: String,
 	pub field: String,
 	/// Raw override in the writable native layer. None means the field is absent, not disabled.
 	pub value: Option<Value>,
 	pub config_version: String,
 }
+fn address(field: &str, link: &str) -> bool {
+	match field {
+		"omit_tools_from" => link.is_empty(),
+		"default_tools_approval_mode" | "approvals_reviewer" => text(link),
+		_ => false,
+	}
+}
+fn raw_value(field: &str, value: &Value) -> bool {
+	if field == "omit_tools_from" {
+		value
+			.as_array()
+			.is_some_and(|a| a.len() <= 16 && a.iter().all(|v| v.as_str().is_some_and(text)))
+	} else {
+		value.as_str().is_some_and(text)
+	}
+}
 fn target(field: &str, value: &Value) -> bool {
 	match field {
+		"omit_tools_from" => value.as_array().is_some_and(|a| {
+			a.len() <= 3
+				&& a.iter().all(|v| {
+					v.as_str().is_some_and(|s| matches!(s, "code_mode" | "deferred" | "direct"))
+				}) && a.iter().collect::<std::collections::HashSet<_>>().len() == a.len()
+		}),
 		"default_tools_approval_mode" =>
 			value.as_str().is_some_and(|v| matches!(v, "auto" | "prompt" | "writes" | "approve")),
 		"approvals_reviewer" => value.as_str().is_some_and(|v| matches!(v, "user" | "auto_review")),
@@ -97,7 +121,6 @@ impl SqliteStore {
 			&a.owner.generation,
 			&a.owner.account,
 			&a.connector,
-			&a.link,
 			&a.config_version,
 			&a.attempt_id,
 		]
@@ -106,10 +129,12 @@ impl SqliteStore {
 			|| !digest(&a.scope)
 			|| !digest(&a.review_token)
 			|| a.request_event_id.is_some_and(|id| id <= 0)
-			|| !matches!(a.field.as_str(), "default_tools_approval_mode" | "approvals_reviewer")
+			|| !address(&a.field, &a.link)
+			|| (a.field == "omit_tools_from"
+				&& (a.request_event_id.is_some() || a.connector == "_default"))
 			|| a.value.as_ref().is_some_and(|v| !target(&a.field, v))
 			|| a.previous_value == a.value
-			|| a.previous_value.as_ref().is_some_and(|v| !v.as_str().is_some_and(text))
+			|| a.previous_value.as_ref().is_some_and(|v| !raw_value(&a.field, v))
 			|| a.previous_id.is_some_and(|id| id <= 0)
 		{
 			return Err(StoreError::InvalidInput("invalid app settings attempt"));
@@ -154,9 +179,8 @@ impl SqliteStore {
 		if !digest(&o.scope)
 			|| !text(&o.config_version)
 			|| !text(&o.connector)
-			|| !text(&o.link)
-			|| !matches!(o.field.as_str(), "default_tools_approval_mode" | "approvals_reviewer")
-			|| o.value.as_ref().is_some_and(|v| !v.as_str().is_some_and(text))
+			|| !address(&o.field, &o.link)
+			|| o.value.as_ref().is_some_and(|v| !raw_value(&o.field, v))
 		{
 			return Err(StoreError::InvalidInput("invalid app settings observation"));
 		}

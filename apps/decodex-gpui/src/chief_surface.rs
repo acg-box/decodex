@@ -2,6 +2,7 @@
 
 #[path = "chief_activity.rs"] mod activity;
 #[path = "chief_tree.rs"] mod agent_tree;
+#[path = "chief_app_exposure.rs"] mod app_exposure;
 #[path = "chief_app_settings.rs"] mod app_settings;
 #[path = "chief_archive.rs"] mod archive;
 #[path = "chief_async_questions.rs"] mod async_questions;
@@ -181,6 +182,7 @@ pub(crate) struct ChiefSurface {
 	task_plugins: plugins::Panel,
 	task_models: models::Panel,
 	hook_settings: hooks::Panel,
+	app_exposure: app_exposure::Panel,
 	app_settings: app_settings::Panel,
 	saved_app_settings: saved_app_settings::Panel,
 	native_goal: native_goal::Panel,
@@ -420,6 +422,7 @@ impl ChiefSurface {
 			task_plugins: Default::default(),
 			task_models: Default::default(),
 			hook_settings: Default::default(),
+			app_exposure: Default::default(),
 			app_settings: Default::default(),
 			saved_app_settings: Default::default(),
 			native_goal: Default::default(),
@@ -1115,6 +1118,7 @@ impl ChiefSurface {
 		self.reset_task_plugins();
 		self.reset_task_models();
 		self.reset_hook_settings();
+		self.reset_app_exposure();
 		self.reset_app_settings();
 		self.reset_saved_app_settings();
 		self.reset_native_goal();
@@ -1171,6 +1175,7 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
+		self.reset_app_exposure();
 		self.reset_app_settings();
 		self.reset_saved_app_settings();
 		self.question_notices = Default::default();
@@ -1250,6 +1255,7 @@ impl ChiefSurface {
 			self.reset_task_plugins();
 			self.reset_task_models();
 			self.reset_hook_settings();
+			self.reset_app_exposure();
 			self.reset_app_settings();
 			self.reset_saved_app_settings();
 			self.reset_native_goal();
@@ -1266,6 +1272,7 @@ impl ChiefSurface {
 				self.invalidate_task_plugins(&snapshot);
 				self.invalidate_task_models(&snapshot);
 				self.invalidate_hook_settings(&snapshot);
+				self.invalidate_app_exposure(&snapshot);
 				self.invalidate_app_settings(&snapshot);
 				self.invalidate_saved_app_settings(&snapshot);
 				self.invalidate_native_goal(&snapshot);
