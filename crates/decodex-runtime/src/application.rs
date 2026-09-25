@@ -2228,9 +2228,9 @@ impl Application for ServiceApplication {
 				self.query_integrations(work_id.as_str()).await,
 			QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id, cursor } =>
 				self.query_activity_detail(work_id, turn_id, item_id, cursor.as_ref()).await,
-			QueryPayload::GetChiefRequest { event_id } => QueryResultPayload::ChiefRequest(
-				query_chief_request_with_details(&self.store, *event_id, self.chief.as_ref()).await,
-			),
+			QueryPayload::GetChiefRequest { event_id } => self.query_request(*event_id, None).await,
+			QueryPayload::GetChiefRequestPage { event_id, digest, offset } =>
+				self.query_request(*event_id, Some((digest.as_str(), *offset))).await,
 			QueryPayload::WaitForChiefOutput { work_id, after_revision } =>
 				self.query_output(work_id, *after_revision).await,
 			QueryPayload::GetNativeAgents { work_id, thread_id, cursor } =>
@@ -3970,13 +3970,8 @@ async fn query_chief_request_with_details(
 	chief: Option<&crate::chief_host::ChiefHost>,
 ) -> decodex_protocol::ChiefRequestResult {
 	use decodex_protocol::ChiefRequestResult;
-	let request = query_chief_request(store, event_id).await;
-	if !matches!(&request, ChiefRequestResult::Available { method, .. } if method == "item/fileChange/requestApproval")
-	{
-		return request;
-	}
 	let (Some(chief), ProductStore::Available(database)) = (chief, store) else {
-		return request;
+		return ChiefRequestResult::Unavailable;
 	};
 	let Ok(event) = database.get_chief_inbox_event(event_id).await else {
 		return ChiefRequestResult::Unavailable;
@@ -3984,6 +3979,17 @@ async fn query_chief_request_with_details(
 	let Ok(payload) = serde_json::from_str::<serde_json::Value>(&event.payload) else {
 		return ChiefRequestResult::Unavailable;
 	};
+	if !chief.request_is_live(&payload) {
+		return ChiefRequestResult::Unavailable;
+	}
+	let request = query_chief_request_scoped(store, event_id, true).await;
+	if !chief.request_is_live(&payload) {
+		return ChiefRequestResult::Unavailable;
+	}
+	if !matches!(&request, ChiefRequestResult::Available { method, .. } if method == "item/fileChange/requestApproval")
+	{
+		return request;
+	}
 	let params = &payload["params"];
 	let (Some(thread), Some(turn), Some(item)) =
 		(params["threadId"].as_str(), params["turnId"].as_str(), params["itemId"].as_str())
@@ -3991,8 +3997,9 @@ async fn query_chief_request_with_details(
 		return request;
 	};
 	let detail = chief.file_approval_detail(thread, turn, item).await;
-	// The native read can overlap a completed turn or a resolved request.
-	if query_chief_request(store, event_id).await != request {
+	// A native read can overlap connection replacement or request resolution.
+	let current = query_chief_request_scoped(store, event_id, true).await;
+	if current != request || !chief.request_is_live(&payload) {
 		return ChiefRequestResult::Unavailable;
 	}
 	attach_file_approval_detail(request, detail)
@@ -4011,7 +4018,7 @@ fn attach_file_approval_detail(
 	{
 		fields["changeDetails"] = serde_json::json!(text);
 		fields["changeDetailsTruncated"] = serde_json::json!(truncated);
-		if let Ok(updated) = decodex_protocol::HistoryText::new(fields.to_string()) {
+		if let Ok(updated) = decodex_protocol::ChiefRequestText::new(fields.to_string()) {
 			*request_json = updated;
 		}
 	}
@@ -4113,6 +4120,20 @@ async fn query_guardian_reviews(
 	}
 }
 
+impl ServiceApplication {
+	async fn query_request(
+		&self,
+		event_id: i64,
+		continuation: Option<(&str, usize)>,
+	) -> QueryResultPayload {
+		let request =
+			query_chief_request_with_details(&self.store, event_id, self.chief.as_ref()).await;
+		let (digest, offset) =
+			continuation.map(|(digest, offset)| (Some(digest), offset)).unwrap_or((None, 0));
+		QueryResultPayload::ChiefRequest(page_chief_request(request, digest, offset))
+	}
+}
+
 fn chief_request_metadata(value: &serde_json::Value) -> Option<serde_json::Value> {
 	let meta = value.as_object()?;
 	let selected_meta: serde_json::Map<String, serde_json::Value> = meta
@@ -4142,9 +4163,46 @@ fn chief_request_metadata(value: &serde_json::Value) -> Option<serde_json::Value
 	Some(serde_json::Value::Object(selected_meta))
 }
 
+fn request_belongs_to_work(
+	payload: &serde_json::Value,
+	work: &decodex_database::ChiefWorkItem,
+	native_live: bool,
+) -> bool {
+	let Some(params) = payload["params"].as_object() else { return false };
+	let standalone_elicitation = payload["method"] == "mcpServer/elicitation/request"
+		&& params.get("turnId").is_none_or(serde_json::Value::is_null);
+	// The coordinator resolved native ancestry when it persisted this envelope.
+	// Its child's active turn can outlive the parent's turn. Service queries also
+	// require the exact request guard on the currently retained native connection.
+	let native_child = payload["ownerThreadId"].as_str() == work.codex_thread_id.as_deref()
+		&& params.get("threadId").and_then(serde_json::Value::as_str).is_some_and(|thread| {
+			!thread.is_empty() && Some(thread) != work.codex_thread_id.as_deref()
+		});
+	!(work.codex_thread_id.is_none()
+		|| (!native_child
+			&& params.get("threadId").and_then(serde_json::Value::as_str)
+				!= work.codex_thread_id.as_deref())
+		|| (!native_live
+			&& !native_child
+			&& !standalone_elicitation
+			&& (work.dispatch_state != decodex_database::ChiefDispatchState::Running
+				|| work.active_turn_id.is_none()
+				|| params.get("turnId").and_then(serde_json::Value::as_str)
+					!= work.active_turn_id.as_deref())))
+}
+
+#[cfg(test)]
 async fn query_chief_request(
 	store: &ProductStore,
 	event_id: i64,
+) -> decodex_protocol::ChiefRequestResult {
+	query_chief_request_scoped(store, event_id, false).await
+}
+
+async fn query_chief_request_scoped(
+	store: &ProductStore,
+	event_id: i64,
+	native_live: bool,
 ) -> decodex_protocol::ChiefRequestResult {
 	use decodex_protocol::ChiefRequestResult;
 	let ProductStore::Available(store) = store else {
@@ -4169,17 +4227,7 @@ async fn query_chief_request(
 	let Ok(work) = store.get_chief_work_item(event.work_item_id.clone()).await else {
 		return ChiefRequestResult::Unavailable;
 	};
-	let standalone_elicitation = payload["method"] == "mcpServer/elicitation/request"
-		&& params.get("turnId").is_none_or(serde_json::Value::is_null);
-	if work.codex_thread_id.is_none()
-		|| params.get("threadId").and_then(serde_json::Value::as_str)
-			!= work.codex_thread_id.as_deref()
-		|| (!standalone_elicitation
-			&& (work.dispatch_state != decodex_database::ChiefDispatchState::Running
-				|| work.active_turn_id.is_none()
-				|| params.get("turnId").and_then(serde_json::Value::as_str)
-					!= work.active_turn_id.as_deref()))
-	{
+	if !request_belongs_to_work(&payload, &work, native_live) {
 		return ChiefRequestResult::Unavailable;
 	}
 
@@ -4191,6 +4239,7 @@ async fn query_chief_request(
 			"kind",
 			"command",
 			"cwd",
+			"environmentId",
 			"reason",
 			"availableDecisions",
 			"additionalPermissions",
@@ -4252,7 +4301,7 @@ async fn query_chief_request(
 		selected.insert("kind".into(), serde_json::json!("command"));
 	}
 	let Ok(request_json) =
-		decodex_protocol::HistoryText::new(serde_json::Value::Object(selected).to_string())
+		decodex_protocol::ChiefRequestText::new(serde_json::Value::Object(selected).to_string())
 	else {
 		return ChiefRequestResult::Unavailable;
 	};
@@ -4261,6 +4310,54 @@ async fn query_chief_request(
 		work_id: event.work_item_id,
 		method: method.into(),
 		request_json,
+	}
+}
+
+fn page_chief_request(
+	request: decodex_protocol::ChiefRequestResult,
+	expected_digest: Option<&str>,
+	offset: usize,
+) -> decodex_protocol::ChiefRequestResult {
+	use decodex_protocol::ChiefRequestResult as Request;
+	use sha2::{Digest as _, Sha256};
+	let Request::Available { event_id, work_id, method, request_json } = &request else {
+		return Request::Unavailable;
+	};
+	let content = request_json.as_str();
+	if content.len() <= decodex_protocol::MAX_HISTORY_INLINE_BYTES {
+		return if expected_digest.is_none() && offset == 0 {
+			request
+		} else {
+			Request::Unavailable
+		};
+	}
+	let digest: String = Sha256::digest(
+		serde_json::to_vec(&(event_id, work_id, method, content)).expect("request identity"),
+	)
+	.iter()
+	.map(|byte| format!("{byte:02x}"))
+	.collect();
+	if expected_digest.is_some_and(|expected| expected != digest)
+		|| (offset != 0 && expected_digest.is_none())
+		|| offset >= content.len()
+		|| !content.is_char_boundary(offset)
+	{
+		return Request::Unavailable;
+	}
+	let mut end = offset.saturating_add(8192).min(content.len());
+	while !content.is_char_boundary(end) {
+		end -= 1;
+	}
+	Request::Page {
+		event_id: *event_id,
+		work_id: work_id.clone(),
+		method: method.clone(),
+		digest,
+		offset,
+		total_bytes: content.len(),
+		text: decodex_protocol::HistoryText::new(content[offset..end].to_owned())
+			.expect("bounded page"),
+		next_offset: (end < content.len()).then_some(end),
 	}
 }
 
@@ -5850,13 +5947,14 @@ mod tests {
 
 	#[test]
 	fn file_approval_details_preserve_request_identity_and_do_not_enrich_other_methods() {
-		use decodex_protocol::{ChiefActivityDetailResult, ChiefRequestResult, HistoryText};
+		use decodex_protocol::{ChiefActivityDetailResult, ChiefRequestResult};
 		for method in ["item/fileChange/requestApproval", "item/tool/requestUserInput"] {
 			let request = ChiefRequestResult::Available {
 				event_id: 7,
 				work_id: "work".into(),
 				method: method.into(),
-				request_json: HistoryText::new("{\"reason\":\"Review\"}").unwrap(),
+				request_json: decodex_protocol::ChiefRequestText::new("{\"reason\":\"Review\"}")
+					.unwrap(),
 			};
 			assert_eq!(
 				super::attach_file_approval_detail(
@@ -5974,6 +6072,103 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn request_scope_keeps_live_background_and_owned_child_approvals() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		chief_query_work(&store, "worker").await;
+		let mut work = store.get_chief_work_item("worker".into()).await.unwrap();
+		work.codex_thread_id = Some("parent".into());
+		let mut payload = serde_json::json!({"method":"item/commandExecution/requestApproval","ownerThreadId":"parent","params":{"threadId":"parent","turnId":"old-turn"}});
+		assert!(!super::request_belongs_to_work(&payload, &work, false));
+		assert!(super::request_belongs_to_work(&payload, &work, true));
+		payload["params"]["threadId"] = serde_json::json!("child");
+		assert!(super::request_belongs_to_work(&payload, &work, true));
+		payload["ownerThreadId"] = serde_json::json!("foreign");
+		assert!(!super::request_belongs_to_work(&payload, &work, true));
+	}
+
+	#[tokio::test]
+	async fn large_request_pages_preserve_selected_action_and_recheck_liveness() {
+		use decodex_database::EnqueueChiefEvent;
+		use decodex_protocol::ChiefRequestResult as Request;
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(store.clone());
+		chief_query_work(&store, "worker").await;
+		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
+		store.begin_chief_dispatch("worker".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("worker".into(), "turn".into()).await.unwrap();
+		let command = "echo 界🙂\\\"\n".repeat(20_000) + "REQUIRED SUFFIX";
+		let event = store
+			.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id: "large-request".into(),
+				work_item_id: "worker".into(),
+				event_kind: "permission_pending".into(),
+				payload:
+					serde_json::json!({"id":7,"method":"item/commandExecution/requestApproval",
+				"params":{"threadId":"thread","turnId":"turn","command":command,"cwd":"/tmp",
+				"authorization":"PRIVATE PROVIDER FIELD","availableDecisions":["accept","decline"]}})
+					.to_string(),
+			})
+			.await
+			.unwrap();
+		assert_eq!(
+			super::query_chief_request_with_details(&owner, event.id, None).await,
+			Request::Unavailable,
+			"Stored content alone is not a live request"
+		);
+
+		let mut offset = 0;
+		let mut digest: Option<String> = None;
+		let mut assembled = String::new();
+		loop {
+			let request = super::query_chief_request(&owner, event.id).await;
+			let page = super::page_chief_request(request, digest.as_deref(), offset);
+			assert!(serde_json::to_vec(&page).unwrap().len() < 64 * 1024);
+			let Request::Page {
+				event_id,
+				text,
+				digest: returned,
+				offset: returned_offset,
+				next_offset,
+				..
+			} = page
+			else {
+				panic!("request page")
+			};
+			assert_eq!(event_id, event.id);
+			assert_eq!(returned_offset, assembled.len());
+			assembled.push_str(text.as_str());
+			digest = Some(returned);
+			let Some(next) = next_offset else { break };
+			offset = next;
+		}
+		let selected: serde_json::Value = serde_json::from_str(&assembled).unwrap();
+		assert_eq!(selected["command"], command);
+		assert!(!assembled.contains("PRIVATE PROVIDER FIELD"));
+		assert!(selected.get("threadId").is_none());
+		assert_eq!(
+			super::page_chief_request(
+				super::query_chief_request(&owner, event.id).await,
+				Some("wrong"),
+				8192
+			),
+			Request::Unavailable
+		);
+		store.acknowledge_chief_request_event(event.id).await.unwrap();
+		assert_eq!(
+			super::page_chief_request(
+				super::query_chief_request(&owner, event.id).await,
+				digest.as_deref(),
+				offset
+			),
+			Request::Unavailable
+		);
+	}
+
+	#[tokio::test]
 	async fn chief_request_query_filters_private_fields_and_rejects_stale_malformed_or_resolved() {
 		use decodex_database::EnqueueChiefEvent;
 		use decodex_protocol::ChiefRequestResult;
@@ -6055,10 +6250,7 @@ mod tests {
 		let mut unsupported = payload.clone();
 		unsupported["method"] = serde_json::json!("account/login");
 		invalids.push(unsupported);
-		let mut oversized = payload;
-		oversized["params"]["command"] =
-			serde_json::json!("x".repeat(decodex_protocol::MAX_HISTORY_INLINE_BYTES + 1));
-		invalids.push(oversized);
+
 		invalids.push(serde_json::Value::Null);
 		for (index, payload) in invalids.into_iter().enumerate() {
 			let event = store

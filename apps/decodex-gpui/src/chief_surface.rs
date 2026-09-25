@@ -2588,7 +2588,7 @@ mod tests {
 				work_id: "root".into(),
 				event_id: 1,
 				method: "item/commandExecution/requestApproval".into(),
-				request_json: HistoryText::new(
+				request_json: decodex_protocol::ChiefRequestText::new(
 					r#"{"command":"pwd","availableDecisions":["accept","decline"]}"#,
 				)
 				.unwrap(),

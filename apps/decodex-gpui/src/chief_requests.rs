@@ -484,7 +484,7 @@ mod timing_tests {
                 }],
                 pending_events:vec![ChiefPendingEventDto { id:7, source_event_id:"question".into(), work_item_id:"root".into(),event_kind:"user_input_pending".into(),created_at_micros:1,delivery_claimed:false }]
             })));
-            let request=ChiefRequestResult::Available {event_id:7,work_id:"root".into(),method:"item/tool/requestUserInput".into(),request_json:HistoryText::new(json!({"isBlocking":false,"questions":[{"id":"format","question":"Which format?","options":[{"label":"PDF","description":"Document"}]}]}).to_string()).unwrap()};
+            let request=ChiefRequestResult::Available {event_id:7,work_id:"root".into(),method:"item/tool/requestUserInput".into(),request_json:decodex_protocol::ChiefRequestText::new(json!({"isBlocking":false,"questions":[{"id":"format","question":"Which format?","options":[{"label":"PDF","description":"Document"}]}]}).to_string()).unwrap()};
             s.prepare_question_inputs(&request,cx);
             s.question_timers.get_mut(&7).unwrap().started = Instant::now() - Duration::from_secs(61);
             s.question_timers.insert(8, QuestionTimer::new(&json!({"isBlocking":false}),Instant::now()));
@@ -511,7 +511,7 @@ mod timing_tests {
 	}
 	#[gpui::test]
 	fn permission_panel_shows_only_the_native_executor(cx: &mut gpui::TestAppContext) {
-		use super::{ChiefRequestResult, ChiefSurface, HistoryText, px};
+		use super::{ChiefRequestResult, ChiefSurface, px};
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		for environment in [Some("remote/工作"), None, Some("")] {
 			surface.update(visual, |s, cx| {
@@ -523,7 +523,7 @@ mod timing_tests {
 				}];
 				s.request = Some(ChiefRequestResult::Available {
 					event_id:902, work_id:work, method:"item/permissions/requestApproval".into(),
-					request_json:HistoryText::new(json!({"environmentId":environment,"cwd":"/workspace","permissions":{"network":{"enabled":true}}}).to_string()).unwrap(),
+					request_json:decodex_protocol::ChiefRequestText::new(json!({"environmentId":environment,"cwd":"/workspace","permissions":{"network":{"enabled":true}}}).to_string()).unwrap(),
 				});
 				cx.notify();
 			});
@@ -557,7 +557,7 @@ mod timing_tests {
 				if let Some(kind) = kind { value["kind"] = json!(kind); }
 				s.request = Some(ChiefRequestResult::Available {
 					event_id: 901, work_id: work, method: "item/commandExecution/requestApproval".into(),
-					request_json: HistoryText::new(value.to_string()).unwrap(),
+					request_json: decodex_protocol::ChiefRequestText::new(value.to_string()).unwrap(),
 				});
 				cx.notify();
 			});

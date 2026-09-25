@@ -45,10 +45,10 @@ then verifies complete original params and cold database readback.
 
 ## Remaining delivery
 
-The current bounded request query returns unavailable for oversized selected
-content. It must not truncate actions to make them fit. The next batch adds
-identity-bound pages, native request liveness, complete client assembly, large
-explicit decisions and desktop inspection controls. Pending native file-change
+The bounded query in this storage batch returned unavailable for oversized
+selected content. [The page transport batch](large-native-approval-pages.md) adds
+identity-bound pages, native liveness and complete client assembly. Large explicit
+decisions and desktop inspection controls remain. Pending native file-change
 evidence must also be retained before native history contains it.
 
 This storage batch does not establish complete large-approval UI, accept/decline
