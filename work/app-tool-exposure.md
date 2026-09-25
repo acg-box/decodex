@@ -23,20 +23,43 @@ reads back the saved value and preserves higher-layer override feedback. It does
 not retry a failed or uncertain write. The retained bridge rejects global defaults,
 account-level paths and additional edits. App approval settings are unchanged.
 
-## Evidence and remaining product work
+## Service and desktop ownership
 
-The installed-native fixture verifies cross-client conflicts, empty versus
-inherited settings, cold restart, and preservation of connected-account approval
-settings. A second native fixture verifies that invalid configuration is not
-silently overwritten and its parse cause remains available without Debug leakage.
-Both use disposable configuration directories and start no model turn.
+The installed App inventory uses native `app/installed` for the selected thread.
+It preserves disabled and non-callable states and distinguishes unavailable,
+unsupported, empty and over-capacity results. Reads do not force a live refresh.
 
-The complete adapter suite passes 185 tests with 7 opt-in tests skipped. The two
-new native tests pass explicitly. The retained bridge suite passes 19 tests.
-Strict adapter and runtime Clippy results are recorded in the batch ledger.
+The Tools and plugins panel opens a connector-specific editor. The first edit
+from inheritance copies effective omissions before changing one surface. The user
+can restore inheritance or clear connector omissions explicitly. Draft changes
+require Save. Source changes discard the reviewed state; an uncertain command
+reply triggers a read instead of another write. A saved setting is not proof
+that an active model step changed its tool list.
 
-This adapter is not a delivered desktop control. The service, durable receipt and
-UI integration remain pending. The inherited task-scoped receipt implementation
-predates the current shared hook/app configuration journal. Adapt it to that
-canonical writable-file owner before enabling edits. Preserve unresolved writes
-across clients and restart. Do not copy the old shared files over current owners.
+Connector exposure reuses the existing App configuration receipt and shared native
+file arbitration with hooks and connection approvals. Its target field is
+`omit_tools_from`, with no connection link or pending approval request. This does
+not create a new journal or database migration. Raw values preserve absent versus
+empty settings. Another live writer cannot settle an uncertain attempt; the
+existing process-death and exact readback rules remain in force. The shared
+recovery owner reads the original connector target even from another settings
+panel. Local protocol version 2.75 includes the query, command and inventory.
+
+## Validation scope
+
+The installed-native adapter fixtures verify cross-client conflicts, empty versus
+inherited settings, cold restart, approval preservation and parse failures. They
+use disposable configuration and start no model turn.
+
+Database tests verify shared Hook/App/exposure exclusion and restart recovery.
+The owned-process fixture verifies inventory identity, stale review rejection,
+save, durable uncertainty and no replay. Rendered panel and local socket tests
+verify inherited editing, source changes and lost-reply readback. Discovery tests
+verify invalidation when the task directory or native settings change.
+
+These fixtures do not prove a real installed connector's tools changed during a
+live model turn. Signed desktop and live connector acceptance remain separate.
+
+Batch validation passed: protocol134, adapter186, database117, runtime561 and
+GPUI460 tests; 52 opt-in tests skipped. Strict all-target/all-feature Clippy passed
+for all five affected packages.

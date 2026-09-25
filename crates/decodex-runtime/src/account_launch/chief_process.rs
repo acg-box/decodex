@@ -285,6 +285,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "mcpServerStatus/list"
 					| "plugin/installed"
 					| "plugin/list" | "plugin/read"
+					| "app/installed"
 					| "app/list" | "account/usage/read"
 					| "thread/unarchive"
 					| "thread/read" | "thread/list"

@@ -264,6 +264,42 @@ pub struct ChiefClient {
 	transport: ResetCardClient,
 }
 impl ChiefClient {
+	/// Read connector exposure from the current task source.
+	pub async fn app_tool_exposure(
+		&self,
+		work_id: EntityId,
+		connector_id: crate::WireText,
+	) -> Result<crate::ChiefAppExposureResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(45),
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport.query_inner(
+				"chief-app-exposure",
+				QueryPayload::GetChiefAppExposure {
+					work_id: work_id.clone(),
+					connector_id: connector_id.clone(),
+				},
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefAppExposure(result) => {
+				if matches!(&result,crate::ChiefAppExposureResult::Available {work_id: actual,connector_id: connector,..} if actual != &work_id || connector != &connector_id)
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read a native goal for the exact task and native thread.
 	pub async fn native_goal(
 		&self,
@@ -1132,12 +1168,21 @@ impl ChiefClient {
 		let refresh = matches!(&action, crate::ChiefActionDto::RefreshIntegrations { .. });
 		let install = matches!(&action, crate::ChiefActionDto::InstallSuggestedPlugin { .. });
 		let restore = matches!(&action, crate::ChiefActionDto::RestoreArchivedThread { .. });
-		let timeout =
-			if refresh || install { Duration::from_secs(65) } else { RESET_CARD_CLIENT_TIMEOUT };
+		let timeout = if refresh
+			|| install
+			|| matches!(&action, crate::ChiefActionDto::SetAppToolExposure { .. })
+		{
+			Duration::from_secs(65)
+		} else {
+			RESET_CARD_CLIENT_TIMEOUT
+		};
 		let executor = Self {
 			transport: ResetCardClient {
 				profile: self.transport.profile.clone(),
-				timeout: if refresh || restore || install {
+				timeout: if refresh
+					|| restore || install
+					|| matches!(&action, crate::ChiefActionDto::SetAppToolExposure { .. })
+				{
 					timeout
 				} else {
 					self.transport.timeout
@@ -1257,6 +1302,7 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		crate::ChiefActionDto::SetTaskPlugin { work_id, .. } => work_id,
 		crate::ChiefActionDto::SetTaskModel { work_id, .. } => work_id,
 		crate::ChiefActionDto::SetHookSetting { work_id, .. }
+		| crate::ChiefActionDto::SetAppToolExposure { work_id, .. }
 		| crate::ChiefActionDto::SetAppSetting { work_id, .. }
 		| crate::ChiefActionDto::SetSavedAppSetting { work_id, .. } => work_id,
 		crate::ChiefActionDto::Start(start)
@@ -3978,7 +4024,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 74 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 75 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

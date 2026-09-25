@@ -515,3 +515,5 @@ impl OwnedReviewer {
 		);
 	}
 }
+
+#[path = "chief_process_app_exposure_tests.rs"] mod exposure;

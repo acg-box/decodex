@@ -1,4 +1,35 @@
 //! Independent native catalog and runtime observations for one task.
+/// One installed connector in the native committed runtime snapshot.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefAppStatusDto {
+	/// Exact native connector identity.
+	pub id: String,
+	/// Best-effort runtime name, not canonical directory metadata.
+	pub runtime_name: Option<String>,
+	/// Effective configuration permits this connector.
+	pub enabled: bool,
+	/// The snapshot has a model-visible tool permitted by effective policy.
+	pub callable: bool,
+}
+
+/// Installed connector discovery, independent of MCP and plugin discovery.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ChiefAppInventory {
+	/// Complete bounded runtime snapshot; not a successful tool execution receipt.
+	Available {
+		/// Installed connector observations.
+		apps: Vec<ChiefAppStatusDto>,
+	},
+	/// This provider has no supported endpoint.
+	Unsupported,
+	/// Complete inventory exceeds the public bound.
+	CapacityExceeded,
+	/// Current status cannot be read.
+	Unavailable,
+}
+
 use serde::{Deserialize, Serialize};
 
 /// Selected MCP status fields; tool inventory does not prove runtime readiness.
@@ -91,6 +122,8 @@ pub enum ChiefIntegrationsResult {
 		mcp: ChiefMcpInventory,
 		/// Repository plugin observations.
 		plugins: ChiefPluginInventory,
+		/// Native installed connector state.
+		apps: ChiefAppInventory,
 	},
 	/// The complete projection exceeds the response bound.
 	CapacityExceeded,

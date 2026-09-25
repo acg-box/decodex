@@ -4,6 +4,43 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 
 impl AppServerClient {
+	/// Read installed connector state for one loaded native thread. An explicit
+	/// refresh publishes its live tools; failure must not become an empty inventory.
+	pub async fn installed_apps_for_thread(
+		&self,
+		thread: &str,
+		force_refresh: bool,
+	) -> Result<Vec<Value>, ClientError> {
+		if thread.is_empty() || thread.len() > 4096 || thread.chars().any(char::is_control) {
+			return Err(ClientError::InvalidFrame);
+		}
+		let response = tokio::time::timeout(
+			std::time::Duration::from_secs(30),
+			self.request("app/installed", json!({"threadId":thread,"forceRefresh":force_refresh})),
+		)
+		.await
+		.map_err(|_| ClientError::Io)??;
+		let rows = response["apps"].as_array().ok_or(ClientError::InvalidFrame)?;
+		let mut ids = HashSet::new();
+		for row in rows {
+			let id = row["id"]
+				.as_str()
+				.filter(|id| {
+					!id.is_empty() && id.len() <= 4096 && !id.chars().any(char::is_control)
+				})
+				.ok_or(ClientError::InvalidFrame)?;
+			if !ids.insert(id)
+				|| !row["enabled"].is_boolean()
+				|| !row["callable"].is_boolean()
+				|| (!row["runtimeName"].is_null() && !row["runtimeName"].is_string())
+				|| (row["callable"] == true && row["enabled"] == false)
+			{
+				return Err(ClientError::InvalidFrame);
+			}
+		}
+		Ok(rows.clone())
+	}
+
 	/// Explicitly synchronize installed plugin bundles, then request native MCP reload.
 	/// Partial reconciliation remains visible and no write is automatically retried.
 	pub async fn refresh_integrations(&self) -> Result<bool, ClientError> {
@@ -246,3 +283,7 @@ mod tests {
 		}
 	}
 }
+
+#[cfg(test)]
+#[path = "installed_apps_tests.rs"]
+mod installed_apps_tests;

@@ -366,3 +366,73 @@ async fn saved_connection_edits_reuse_receipts_without_requiring_another_tool_re
 		store.reserve_chief_hook_setting(hooks::attempt(1, 'c', None)).await.unwrap().is_some()
 	);
 }
+
+#[tokio::test]
+async fn connector_exposure_shares_config_arbitration_and_recovers_after_reopen() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("exposure.sqlite3");
+	let store = setup(&path).await;
+	let mut exposure = attempt(1, 0, 'a', None);
+	exposure.request_event_id = None;
+	exposure.link.clear();
+	exposure.field = "omit_tools_from".into();
+	exposure.value = Some(json!([]));
+	exposure.previous_value = None;
+	for field in ["approvals_reviewer", "default_tools_approval_mode"] {
+		let mut invalid = exposure.clone();
+		invalid.field = field.into();
+		assert!(store.reserve_chief_app_settings_attempt(invalid).await.is_err());
+	}
+	let mut invalid = exposure.clone();
+	invalid.link = "work".into();
+	assert!(store.reserve_chief_app_settings_attempt(invalid).await.is_err());
+	let mut invalid = exposure.clone();
+	invalid.value = Some(json!(["future"]));
+	assert!(store.reserve_chief_app_settings_attempt(invalid).await.is_err());
+	let (first, second) = tokio::join!(
+		store.reserve_chief_app_settings_attempt(exposure.clone()),
+		store.reserve_chief_hook_setting(hooks::attempt(2, 'b', None))
+	);
+	assert_ne!(first.as_ref().unwrap().is_some(), second.as_ref().unwrap().is_some());
+	// If the hook won, settle it and then reserve the exposure edit.
+	let id = if let Some(id) = first.unwrap() {
+		id
+	} else {
+		let id = second.unwrap().unwrap();
+		store.finish_chief_hook_setting(id, "attempt-b".into(), "rejected".into()).await.unwrap();
+		store.reserve_chief_app_settings_attempt(exposure.clone()).await.unwrap().unwrap()
+	};
+	assert!(
+		store.reserve_chief_hook_setting(hooks::attempt(2, 'c', None)).await.unwrap().is_none()
+	);
+	let event = request(&store, 2, false).await;
+	assert!(
+		store
+			.reserve_chief_app_settings_attempt(attempt(2, event, 'd', Some(id)))
+			.await
+			.unwrap()
+			.is_none()
+	);
+	drop(store);
+	let store = SqliteStore::open_test(&path).unwrap();
+	let r = store.chief_app_settings_receipt(DIGEST.into()).await.unwrap().unwrap();
+	assert_eq!(r.attempt.value, Some(json!([])));
+	assert_eq!(r.state, "reserved");
+	let mut observed = observation(1, None);
+	observed.link.clear();
+	observed.field = "omit_tools_from".into();
+	assert!(
+		!store.observe_chief_app_settings(id, observed).await.unwrap(),
+		"absent is not an explicit empty list"
+	);
+	let mut observed = observation(1, None);
+	observed.link.clear();
+	observed.field = "omit_tools_from".into();
+	observed.value = Some(json!([]));
+	assert!(store.observe_chief_app_settings(id, observed).await.unwrap());
+	let r = store.chief_app_settings_receipt(DIGEST.into()).await.unwrap().unwrap();
+	assert_eq!(r.state, "target_observed");
+	assert!(
+		store.reserve_chief_hook_setting(hooks::attempt(2, 'c', None)).await.unwrap().is_some()
+	);
+}

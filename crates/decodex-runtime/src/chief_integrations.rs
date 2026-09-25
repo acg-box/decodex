@@ -1,8 +1,8 @@
 //! Read each integration source independently, scoped to the native task directory.
 use decodex_codex::app_server_client::{AppServerClient, ClientError};
 use decodex_protocol::{
-	ChiefIntegrationsResult, ChiefMcpInventory, ChiefMcpStatusDto, ChiefPluginInventory,
-	ChiefPluginStatusDto,
+	ChiefAppInventory, ChiefAppStatusDto, ChiefIntegrationsResult, ChiefMcpInventory,
+	ChiefMcpStatusDto, ChiefPluginInventory, ChiefPluginStatusDto,
 };
 use serde_json::{Value, json};
 
@@ -11,9 +11,10 @@ pub(crate) async fn read(client: &AppServerClient, thread: &str) -> ChiefIntegra
 		let guard = client.thread_settings_guard(thread)?;
 		let before = client.thread_read(json!({"threadId":thread})).await.ok()?;
 		let cwd = thread_cwd(&before, thread)?.to_owned();
-		let (mcp, plugins) = tokio::join!(
+		let (mcp, plugins, apps) = tokio::join!(
 			client.mcp_server_statuses(thread),
-			client.installed_plugins_for_directory(&cwd)
+			client.installed_plugins_for_directory(&cwd),
+			client.installed_apps_for_thread(thread, false)
 		);
 		let after = client.thread_read(json!({"threadId":thread})).await.ok()?;
 		if !guard.is_live() || thread_cwd(&after, thread) != Some(cwd.as_str()) {
@@ -23,6 +24,7 @@ pub(crate) async fn read(client: &AppServerClient, thread: &str) -> ChiefIntegra
 			cwd,
 			mcp: project_mcp(mcp),
 			plugins: project_plugins(plugins),
+			apps: project_apps(apps),
 		};
 		Some(if serde_json::to_vec(&result).ok()?.len() > 64 * 1024 {
 			ChiefIntegrationsResult::CapacityExceeded
@@ -48,6 +50,37 @@ fn text(value: &str) -> String {
 }
 fn optional(value: &Value) -> Option<String> {
 	value.as_str().map(text)
+}
+
+fn project_apps(result: Result<Vec<Value>, ClientError>) -> ChiefAppInventory {
+	let rows = match result {
+		Ok(rows) => rows,
+		Err(ClientError::Remote(error)) if error.code == -32601 =>
+			return ChiefAppInventory::Unsupported,
+		Err(ClientError::CapacityExceeded) => return ChiefAppInventory::CapacityExceeded,
+		Err(_) => return ChiefAppInventory::Unavailable,
+	};
+	if rows.len() > 128 {
+		return ChiefAppInventory::CapacityExceeded;
+	}
+	let mut apps = Vec::new();
+	for row in rows {
+		let (Some(id), Some(enabled), Some(callable)) =
+			(row["id"].as_str(), row["enabled"].as_bool(), row["callable"].as_bool())
+		else {
+			return ChiefAppInventory::Unavailable;
+		};
+		if decodex_core::contains_credential_material(id) {
+			return ChiefAppInventory::Unavailable;
+		}
+		apps.push(ChiefAppStatusDto {
+			id: id.into(),
+			runtime_name: optional(&row["runtimeName"]),
+			enabled,
+			callable,
+		});
+	}
+	ChiefAppInventory::Available { apps }
 }
 
 fn project_mcp(result: Result<Vec<Value>, ClientError>) -> ChiefMcpInventory {
@@ -196,7 +229,7 @@ mod tests {
 				let (reader, mut writer) = tokio::io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
 				let mut metadata = 0;
-				for _ in 0..4 {
+				for _ in 0..5 {
 					let request: Value =
 						serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 					let result = match request["method"].as_str().unwrap() {
@@ -213,6 +246,13 @@ mod tests {
 						"mcpServerStatus/list" => {
 							assert_eq!(request["params"]["threadId"], "thread");
 							json!({"data":[],"nextCursor":null})
+						},
+						"app/installed" => {
+							assert_eq!(
+								request["params"],
+								json!({"threadId":"thread","forceRefresh":false})
+							);
+							json!({"apps":[]})
 						},
 						"plugin/installed" => {
 							assert_eq!(request["params"]["cwds"], json!(["/repo"]));

@@ -512,6 +512,47 @@ impl ChiefHost {
 		Ok(work.into())
 	}
 
+	pub(crate) async fn app_tool_exposure(
+		&self,
+		work: &str,
+		connector: &str,
+	) -> decodex_protocol::ChiefAppExposureResult {
+		crate::chief_app_exposure::read(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			connector,
+		)
+		.await
+	}
+
+	async fn set_app_tool_exposure(
+		&self,
+		identity: (
+			&decodex_protocol::EntityId,
+			&decodex_protocol::WireText,
+			&decodex_protocol::WireText,
+		),
+		omit: Option<Vec<decodex_protocol::ChiefToolExposureSurface>>,
+		attempt: &str,
+	) -> Result<String, ChiefHostError> {
+		let (work, connector, review) =
+			(identity.0.as_str(), identity.1.as_str(), identity.2.as_str());
+		let change = crate::chief_app_exposure::Change { connector, review, omit, attempt };
+		crate::chief_app_exposure::write(
+			&self.store,
+			|| async {
+				let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, &owner.codex_thread_id?).await
+			},
+			change,
+		)
+		.await?;
+		Ok(work.into())
+	}
+
 	pub(crate) async fn live_reviewer(
 		&self,
 		work: &str,
@@ -1015,6 +1056,9 @@ impl ChiefHost {
 					},
 				)
 				.await,
+			ChiefActionDto::SetAppToolExposure { work_id, connector_id, review_token, omit } =>
+				self.set_app_tool_exposure((&work_id, &connector_id, &review_token), omit, key)
+					.await,
 			ChiefActionDto::SetAppSetting { work_id, event_id, review_token, edit } =>
 				self.set_app_setting(
 					work_id.as_str(),
@@ -1098,7 +1142,8 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			action @ (ChiefActionDto::SetSavedAppSetting { .. }
+			action @ (ChiefActionDto::SetAppToolExposure { .. }
+			| ChiefActionDto::SetSavedAppSetting { .. }
 			| ChiefActionDto::SetAppSetting { .. }
 			| ChiefActionDto::SetHookSetting { .. }
 			| ChiefActionDto::SetTaskPlugin { .. }
