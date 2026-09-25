@@ -230,26 +230,30 @@ async fn execute_request(
 		Err(error) => Err(error),
 	};
 	let (document, text, exit_code) = match result {
-		Ok(result) => {
-			let (text, code) = match &result {
-				decodex_protocol::ChiefRequestResult::Available {
-					event_id,
-					work_id,
-					method,
-					request_json,
-				} => (
-					format!(
-						"Request {event_id} | {} | {}\n{}\n",
-						safe(work_id),
-						safe(method),
-						safe(request_json.as_str())
-					),
-					0,
+		Ok(result) => match &result {
+			decodex_protocol::ChiefRequestResult::Available {
+				event_id,
+				work_id,
+				method,
+				request_json,
+			} => (
+				serde_json::json!(result),
+				format!(
+					"Request {event_id} | {} | {}\n{}\n",
+					safe(work_id),
+					safe(method),
+					safe(request_json.as_str())
 				),
-				decodex_protocol::ChiefRequestResult::Unavailable =>
-					("Request unavailable or no longer pending.\n".into(), 1),
-			};
-			(serde_json::json!(result), text, code)
+				0,
+			),
+			decodex_protocol::ChiefRequestResult::Unavailable =>
+				(serde_json::json!(result), "Request unavailable or no longer pending.\n".into(), 1),
+			// The high-level client assembles transport pages before returning.
+			decodex_protocol::ChiefRequestResult::Page { .. } => (
+				serde_json::json!({"error": "Incomplete request response"}),
+				"Request unavailable: incomplete request response.\n".into(),
+				1,
+			),
 		},
 		Err(error) => (
 			serde_json::json!({"error":format!("{error:?}")}),
