@@ -1303,6 +1303,33 @@ impl ChiefCoordinator {
 		Ok(())
 	}
 
+	async fn observe_live_text(&self, method: &str, params: &Value) -> Result<bool, ChiefError> {
+		let (kind, completed) = match method {
+			"item/plan/delta" => ("plan", false),
+			"item/agentMessage/delta" => ("agentMessage", false),
+			"item/completed" => match params["item"]["type"].as_str() {
+				Some(kind @ ("plan" | "agentMessage")) => (kind, true),
+				_ => return Ok(false),
+			},
+			_ => return Ok(false),
+		};
+		// Async question items can use agentMessage without a text body.
+		if completed && !params["item"]["text"].is_string() {
+			return Ok(false);
+		}
+		self.store
+			.update_chief_output_record(decodex_database::ChiefOutputUpdate {
+				thread_id: exact(params, "/threadId")?,
+				turn_id: exact(params, "/turnId")?,
+				item_id: exact(params, if completed { "/item/id" } else { "/itemId" })?,
+				kind: kind.into(),
+				text: exact(params, if completed { "/item/text" } else { "/delta" })?,
+				completed,
+			})
+			.await?;
+		Ok(true)
+	}
+
 	/// Consume notifications and requests serially. Transport reads and RPC reply
 	/// correlation continue independently while this method awaits a response.
 	pub async fn handle_event(&mut self, event: ServerEvent) -> Result<(), ChiefError> {
@@ -1312,6 +1339,9 @@ impl ChiefCoordinator {
 				return Ok(());
 			}
 			self.observe_question_state_notification(method, params).await?;
+			if self.observe_live_text(method, params).await? {
+				return Ok(());
+			}
 		}
 		match event {
 			ServerEvent::Notification { method, params } if method == "serverRequest/resolved" => {
@@ -1360,30 +1390,6 @@ impl ChiefCoordinator {
 			},
 			ServerEvent::Notification { method, params } if method == "turn/completed" => {
 				self.handle_completed_turn(params).await?;
-			},
-			ServerEvent::Notification { method, params } if method == "item/agentMessage/delta" => {
-				self.store
-					.update_chief_output(
-						exact(&params, "/threadId")?,
-						exact(&params, "/turnId")?,
-						exact(&params, "/itemId")?,
-						exact(&params, "/delta")?,
-						false,
-					)
-					.await?;
-			},
-			ServerEvent::Notification { method, params }
-				if method == "item/completed" && params["item"]["type"] == "agentMessage" =>
-			{
-				self.store
-					.update_chief_output(
-						exact(&params, "/threadId")?,
-						exact(&params, "/turnId")?,
-						exact(&params, "/item/id")?,
-						params["item"]["text"].as_str().unwrap_or_default().to_owned(),
-						true,
-					)
-					.await?;
 			},
 
 			ServerEvent::Notification { method, params }

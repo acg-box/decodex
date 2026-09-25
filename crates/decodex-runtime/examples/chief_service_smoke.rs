@@ -446,6 +446,7 @@ mod tests {
 	#[test]
 	fn automation_receipt_uses_public_kind_and_source_payload() {
 		let entry = |id, kind: &str, text: &str| decodex_protocol::ChiefHistoryEntryDto {
+			native_source: None,
 			turn_id: None,
 			weather: Vec::new(),
 			receipt: None,

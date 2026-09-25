@@ -2872,6 +2872,7 @@ mod tests {
 								revision,
 								work_id: EntityId::new("root").unwrap(),
 								messages: vec![crate::ChiefLiveMessageDto {
+									kind: Default::default(),
 									turn_id: "turn".into(),
 									item_id: "item".into(),
 									text: "你好世界".chars().take(revision as usize).collect(),
@@ -4024,7 +4025,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 76 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 77 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
@@ -5143,6 +5144,7 @@ max_entry_bytes = 0
 					matches!(&query.payload,crate::QueryPayload::GetChiefInputReceipts {work_id,after:Some(40)} if work_id.as_str()=="work")
 				);
 				let entry = crate::ChiefHistoryEntryDto {
+					native_source: None,
 					turn_id: None,
 					weather: Vec::new(),
 					receipt: Some(crate::ChiefHistoryReceiptDto {

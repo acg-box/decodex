@@ -1933,6 +1933,22 @@ fn history_entry_with_key(
 	entry: &decodex_protocol::ChiefHistoryEntryDto,
 	identity: &str,
 ) -> gpui::Div {
+	if matches!(entry.kind.as_str(), "partial_plan" | "partial_answer") {
+		return div()
+			.w_full()
+			.py_2()
+			.child(muted(if entry.kind == "partial_plan" {
+				"Proposed plan · Unfinished"
+			} else {
+				"Assistant · Unfinished"
+			}))
+			.child(markdown::render(&entry.text, &format!("partial-{}", entry.id)))
+			.child(markdown::response_copy_button(
+				&format!("copy-partial-{}", entry.id),
+				"Copy unfinished output",
+				entry.text.clone(),
+			));
+	}
 	let user = entry.kind == "user";
 	let visible_text = if entry.kind == "assistant" {
 		markdown::response_text(&entry.text)
@@ -2235,6 +2251,7 @@ mod tests {
 		) -> impl gpui::IntoElement {
 			let bounds = self.bounds.clone();
 			super::history_entry(&decodex_protocol::ChiefHistoryEntryDto {
+				native_source: None,
 				turn_id: None,
 				weather: Vec::new(),
 				receipt: None,
@@ -2482,6 +2499,7 @@ mod tests {
 					next_before: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						native_source: None,
 						turn_id: None,
 						weather: Vec::new(),
 						receipt: None,
@@ -2549,6 +2567,7 @@ mod tests {
 					misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						native_source: None,
 						turn_id: None,
 						weather: Vec::new(),
 						receipt: None,
@@ -2790,6 +2809,7 @@ mod tests {
 					misalignment: None,
 					usage: None,
 					entries: vec![decodex_protocol::ChiefHistoryEntryDto {
+						native_source: None,
 						turn_id: None,
 						weather: Vec::new(),
 						receipt: None,

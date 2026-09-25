@@ -2752,3 +2752,66 @@ async fn skipped_question_survives_rebuild_only_while_native_content_is_unchange
 	}
 	assert!(sent.try_recv().is_err(), "local dismissal never sends model input");
 }
+
+#[tokio::test]
+async fn unfinished_native_text_keeps_source_and_display_only_status_after_reopen() {
+	for final_readback in ["missing", "complete", "empty"] {
+		let items = if final_readback != "missing" {
+			json!([{"id":"answer","type":"agentMessage","text":if final_readback == "complete" { "Authoritative final answer" } else { "" }}])
+		} else {
+			json!([])
+		};
+		let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"interrupted","items":items}]}}});
+		let (mut chief, mut sent, directory) = fixture_with_history(history).await;
+		chief.start_chief("chief", "Talk").await.unwrap();
+		while sent.try_recv().is_ok() {}
+		let source = "Unfinished $$\\frac{a}{b}";
+		for (id, method) in [("answer", "item/agentMessage/delta"), ("plan", "item/plan/delta")] {
+			chief.handle_event(ServerEvent::Notification {
+			method: method.into(),
+			params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":id,"delta":source}),
+		}).await.unwrap();
+		}
+		let live = chief.store.read_chief_output("chief".into()).await.unwrap();
+		assert_eq!(
+			live.iter().map(|item| item.kind.as_str()).collect::<Vec<_>>(),
+			["agentMessage", "plan"]
+		);
+		chief.handle_event(ServerEvent::Notification {
+		method: "turn/completed".into(),
+		params: json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"interrupted","items":[]}}),
+	}).await.unwrap();
+		let root =
+			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+				.unwrap();
+		let reopened = SqliteStore::open(&root.paths()).unwrap();
+		let events = reopened.read_chief_transcript("chief".into(), None, 32).await.unwrap().0;
+		let rendered = crate::application::render_chief_history_for_test(events);
+		let partial: Vec<_> =
+			rendered.iter().filter(|entry| entry.kind.starts_with("partial_")).collect();
+		assert_eq!(partial.len(), if final_readback == "complete" { 1 } else { 2 });
+		for entry in partial {
+			assert_eq!(entry.text, source);
+			assert_eq!(entry.turn_id.as_deref(), Some("opaque turn/1"));
+			let identity = entry.native_source.as_ref().unwrap();
+			assert_eq!(identity.thread_id, "opaque thread/1");
+			assert_eq!(identity.turn_id, "opaque turn/1");
+			assert_eq!(
+				identity.item_id,
+				if entry.kind == "partial_plan" { "plan" } else { "answer" }
+			);
+			assert!(entry.receipt.as_ref().unwrap().disposed);
+		}
+		assert!(
+			reopened
+				.list_pending_chief_events(32)
+				.await
+				.unwrap()
+				.iter()
+				.all(|event| event.event_kind != "partial_output")
+		);
+		while let Ok(request) = sent.try_recv() {
+			assert_ne!(request["method"], "turn/start");
+		}
+	}
+}

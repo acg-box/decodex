@@ -142,6 +142,7 @@ mod tests {
 			entries: id
 				.into_iter()
 				.map(|id| ChiefHistoryEntryDto {
+					native_source: None,
 					turn_id: None,
 					weather: Vec::new(),
 					receipt: Some(ChiefHistoryReceiptDto {

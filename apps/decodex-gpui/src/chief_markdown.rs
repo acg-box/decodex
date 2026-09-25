@@ -539,7 +539,6 @@ mod tests {
 		}
 	}
 
-
 	#[test]
 	fn deep_markdown_preserves_text_and_following_blocks() {
 		for depth in [63, 64, 65, 128] {
@@ -553,7 +552,6 @@ mod tests {
 			}));
 		}
 	}
-
 
 	#[test]
 	fn copied_code_preserves_source_content() {
@@ -589,6 +587,7 @@ mod tests {
 			_: &mut gpui::Context<Self>,
 		) -> impl gpui::IntoElement {
 			super::super::history_entry(&decodex_protocol::ChiefHistoryEntryDto {
+				native_source: None,
 				turn_id: None,
 				weather: if self.text.contains("\u{e200}weather\u{e202}") {
 					vec![
@@ -631,7 +630,6 @@ mod tests {
 			assert!(!text.contains('\u{e200}'));
 		});
 	}
-
 
 	#[gpui::test]
 	fn response_and_code_copy_use_the_displayed_message(cx: &mut gpui::TestAppContext) {

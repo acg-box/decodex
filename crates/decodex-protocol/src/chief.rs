@@ -45,6 +45,9 @@ pub struct ChiefActivityDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChiefHistoryEntryDto {
+	/// Exact native identity of a retained display fallback, when present.
+	#[serde(default)]
+	pub native_source: Option<ChiefHistorySourceDto>,
 	/// Native turn identity that binds the entry to its saved source.
 	#[serde(default)]
 	pub turn_id: Option<String>,
@@ -71,6 +74,18 @@ pub struct ChiefHistoryEntryDto {
 	pub created_at_micros: i64,
 }
 
+/// Exact native identity; text equality does not establish replacement.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefHistorySourceDto {
+	/// Native thread that produced the item.
+	pub thread_id: String,
+	/// Native turn that produced the item.
+	pub turn_id: String,
+	/// Native item identity.
+	pub item_id: String,
+}
+
 /// Local delivery evidence retained beside canonical native history.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -83,10 +98,24 @@ pub struct ChiefHistoryReceiptDto {
 	pub disposed: bool,
 }
 
+/// Public streamed text category; this does not change execution authority.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChiefLiveMessageKind {
+	/// Assistant response text.
+	#[default]
+	AgentMessage,
+	/// Proposed plan text.
+	Plan,
+}
+
 /// Current-turn text observed before final history is available.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChiefLiveMessageDto {
+	/// Exact public native item category.
+	#[serde(default)]
+	pub kind: ChiefLiveMessageKind,
 	/// Provider turn identity.
 	pub turn_id: String,
 	/// Provider item identity.

@@ -197,6 +197,7 @@ impl ChiefSurface {
 		};
 		entries.clear();
 		entries.push(ChiefHistoryEntryDto {
+			native_source: None,
 			turn_id: None,
 			weather: Vec::new(),
 			receipt: None,
@@ -218,6 +219,7 @@ impl ChiefSurface {
 		.enumerate()
 		{
 			entries.push(ChiefHistoryEntryDto {
+				native_source: None,
 				turn_id: None,
 				weather: Vec::new(),
 				receipt: None,
