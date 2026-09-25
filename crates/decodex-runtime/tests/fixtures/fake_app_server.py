@@ -559,6 +559,17 @@ for line in sys.stdin:
             "approvalPolicy": "never", "approvalsReviewer": "user", "sandbox": {"type": "dangerFullAccess"},
             "reasoningEffort": "high", "multiAgentMode": "explicitRequestOnly"
         }
+    elif method == "turn/start" and mode.startswith(("turn-reject-draining", "turn-reject-managed-provider")):
+        if mode.endswith("prior-activity"):
+            print(json.dumps({"method": "turn/started", "params": {"threadId": message["params"]["threadId"], "turn": {"id": "unexpected-turn"}}}), flush=True)
+        code = -32603 if mode.endswith("wrong-code") else -32600
+        text = ("failed to load configuration: Your organization's required model provider settings changed. Restart Codex to apply them; this request was not sent"
+                if mode.startswith("turn-reject-managed-provider") else "Server is draining; retry after reconnecting")
+        if mode.endswith("wrong-text"):
+            text += " fixture-secret"
+        request_id = message["id"] + 100 if mode.endswith("wrong-id") else message["id"]
+        print(json.dumps({"id": request_id, "error": {"code": code, "message": text}}), flush=True)
+        continue
     elif method == "thread/resume" and mode.startswith("resume-reject-"):
         resume_attempts += 1
         thread = message["params"]["threadId"]

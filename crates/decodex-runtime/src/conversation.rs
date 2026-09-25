@@ -90,6 +90,7 @@ use crate::account_launch::process::{
 mod execution_overrides;
 mod model_catalog;
 mod model_settings;
+mod non_submission;
 use execution_overrides::{apply_resume_overrides, apply_start_overrides, apply_turn_overrides};
 mod resume_retry;
 
@@ -772,6 +773,9 @@ fn resume_rejection_recovery(reason: ConversationRejectionReason) -> Conversatio
 			ConversationManualRecovery::RestoreArchivedThread,
 		ConversationRejectionReason::SandboxConfiguration =>
 			ConversationManualRecovery::ReviewSandboxConfiguration,
+		ConversationRejectionReason::ServerDraining
+		| ConversationRejectionReason::ManagedProviderChanged =>
+			ConversationManualRecovery::ProcessUnavailable,
 		ConversationRejectionReason::Other => ConversationManualRecovery::ReviewCodexConfiguration,
 	}
 }
@@ -3013,6 +3017,31 @@ impl ConversationRuntime {
 		}
 		let started = match self.start_turn(&session.process, prepared, authorization).await {
 			Ok(started) => started,
+			Err(ConversationProcessError::Rejected {
+				reason:
+					ConversationRejectionReason::ServerDraining
+					| ConversationRejectionReason::ManagedProviderChanged,
+				witness_digest,
+			}) => {
+				let outcome = self
+					.finish_native_non_submission(
+						session,
+						turn_id,
+						attempt_id.clone(),
+						request_id,
+						provider_key,
+						witness_digest,
+					)
+					.await;
+				if matches!(outcome, ConversationOutcome::Unknown { .. }) {
+					let _ = self
+						.inner
+						.provider_attempts
+						.mark_unknown(&attempt_id, authorized_revision)
+						.await;
+				}
+				return outcome;
+			},
 			Err(_) => {
 				let _ = self
 					.inner

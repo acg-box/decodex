@@ -506,6 +506,7 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+			crate::conversations::non_submission::finalize(&transaction, &current, &evidence, now)?;
 			transaction.commit().map_err(sql_error)?;
 			Ok(ProviderAttemptMutationOutcome::Applied(ProviderAttemptMutation {
 				revision,

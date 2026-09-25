@@ -18,6 +18,10 @@ pub enum ConversationResumeRejection {
 	ArchivedThread,
 	/// Native filesystem sandbox preparation failed.
 	SandboxConfiguration,
+	/// Native admission stopped on the current connection.
+	ServerDraining,
+	/// Managed provider requirements require a fresh connection.
+	ManagedProviderChanged,
 	/// Native resume rejected the request without a more specific safe classification.
 	Other,
 }
@@ -34,6 +38,10 @@ impl ConversationResumeRejection {
 				"Codex refused to resume an archived thread. This input was not sent. Unarchive the existing Codex thread, then refresh this conversation.",
 			Self::SandboxConfiguration =>
 				"Codex could not prepare its filesystem sandbox. This input was not sent. Check sandbox permissions and writable roots, then refresh this conversation.",
+			Self::ServerDraining =>
+				"Codex is draining this connection. This input was not sent. Reconnect before sending again.",
+			Self::ManagedProviderChanged =>
+				"Codex provider requirements changed. This input was not sent. Restart Codex before sending again.",
 			Self::Other =>
 				"Codex rejected this thread resume. This input was not sent. Check the model, provider and project configuration, then refresh this conversation.",
 		}

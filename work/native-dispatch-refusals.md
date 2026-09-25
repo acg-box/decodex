@@ -49,9 +49,9 @@ request succeeded on the same thread. It observed three bundle reads and two tot
 inference requests. This validates the native policy contract, not a production
 policy change or signed desktop recovery interaction.
 
-Ordinary conversations still need the separate positive non-submission adaptation
-through their provider-attempt and local-turn transaction owners. This Chief batch
-does not close that remaining audit item. Large approvals and optional product
+The ordinary conversation adaptation is documented separately in
+[Ordinary native non-submission](ordinary-native-non-submission.md). This Chief
+batch alone did not close that audit item. Large approvals and optional product
 scopes remain separate. Scheduled automation stays paused.
 
 Local validation: 123 database tests passed; the exact-message adapter test, two
