@@ -9,6 +9,7 @@ use super::{
 pub(crate) enum ControlObservation {
 	Archived,
 	Current,
+	RoutingAdvanced,
 	TurnInactive,
 	StillActive,
 	Missing,
@@ -17,12 +18,14 @@ pub(crate) enum ControlObservation {
 }
 impl ControlObservation {
 	pub(crate) fn can_acknowledge(self) -> bool {
-		matches!(self, Self::Archived | Self::Current | Self::TurnInactive)
+		matches!(self, Self::Archived | Self::Current | Self::TurnInactive | Self::RoutingAdvanced)
 	}
 
 	pub(crate) fn message(self) -> &'static str {
 		match self {
 			Self::Archived => "Conversation is archived.",
+			Self::RoutingAdvanced =>
+				"Routing state has advanced; original command delivery is unconfirmed.",
 			Self::Current =>
 				"Current conversation state is available; original refresh delivery is unconfirmed.",
 			Self::TurnInactive =>
@@ -39,7 +42,10 @@ pub(super) fn control_target(command: &CommandEnvelope) -> Option<&EntityId> {
 	match &command.payload {
 		CommandPayload::ArchiveConversation { conversation_id }
 		| CommandPayload::RefreshConversation { conversation_id }
-		| CommandPayload::InterruptConversation { conversation_id, .. } => Some(conversation_id),
+		| CommandPayload::InterruptConversation { conversation_id, .. }
+		| CommandPayload::ResumeConversationRouting { conversation_id }
+		| CommandPayload::ResumeConversationEstablishment { conversation_id }
+		| CommandPayload::CreateConversationRoutingSuccessor { conversation_id } => Some(conversation_id),
 		_ => None,
 	}
 }
@@ -104,6 +110,14 @@ impl Conversations {
 			return false;
 		}
 		state.confirm_delivery(command);
+		if super::RoutingSuccessorReconciliation::from_command(command)
+			.as_ref()
+			.is_some_and(|saved| state.routing_successor_reconciliation.as_ref() == Some(saved))
+		{
+			state.routing_successor_reconciliation = None;
+			state.outcome_unknown_readback_generation = None;
+		}
+
 		state.delivery.control_readbacks.retain(|(original, _)| original != command);
 		if state.delivery.unconfirmed.is_empty() {
 			state.command = ConversationCommandState::Idle;
@@ -158,7 +172,12 @@ fn observe(
 	};
 	match result {
 		ConversationResult::Archived { conversation_id, conversation_revision }
-			if conversation_id == target && conversation_revision.0 > expected.0 =>
+			if conversation_id == target
+				&& conversation_revision.0 > expected.0
+				&& !matches!(
+					command.payload,
+					CommandPayload::CreateConversationRoutingSuccessor { .. }
+				) =>
 			O::Archived,
 		ConversationResult::RoutingSuccessorRedirect {
 			source_conversation_id,
@@ -169,12 +188,43 @@ fn observe(
 			&& source_conversation_revision.0 > expected.0
 			&& successor_conversation_id != target
 			&& successor_conversation_revision.0 > 0 =>
-			O::Archived,
+			if matches!(command.payload, CommandPayload::CreateConversationRoutingSuccessor { .. })
+			{
+				if expected.0.checked_add(1) == Some(source_conversation_revision.0) {
+					O::RoutingAdvanced
+				} else {
+					O::Conflict
+				}
+			} else {
+				O::Archived
+			},
 		ConversationResult::Available(current)
 			if &current.conversation_id == target
 				&& current.conversation_revision.0 >= expected.0 =>
 			match &command.payload {
 				CommandPayload::RefreshConversation { .. } => O::Current,
+				CommandPayload::ResumeConversationRouting { .. }
+					if current.conversation_revision.0 > expected.0
+						&& matches!(
+							current.state,
+							decodex_protocol::ConversationState::EstablishmentPending
+								| decodex_protocol::ConversationState::QuotaExhausted
+								| decodex_protocol::ConversationState::NoRoute
+								| decodex_protocol::ConversationState::Establishing
+								| decodex_protocol::ConversationState::Ready
+								| decodex_protocol::ConversationState::Running
+								| decodex_protocol::ConversationState::ManualRecovery
+						) =>
+					O::RoutingAdvanced,
+				CommandPayload::ResumeConversationEstablishment { .. }
+					if current.conversation_revision.0 > expected.0
+						&& matches!(
+							current.state,
+							decodex_protocol::ConversationState::Ready
+								| decodex_protocol::ConversationState::Running
+								| decodex_protocol::ConversationState::ManualRecovery
+						) =>
+					O::RoutingAdvanced,
 				CommandPayload::InterruptConversation { turn_id, .. }
 					if current.conversation_revision.0 > expected.0
 						&& matches!(
@@ -325,5 +375,51 @@ mod tests {
 		controller.session_ended(1);
 		assert!(!controller.acknowledge_ordinary_control(&original));
 		assert_eq!(controller.ordinary_control_states()[0].1, None);
+	}
+	#[test]
+	fn routing_controls_require_newer_definite_progress() {
+		let (mut command, mut current) = fixture();
+		let target = current.conversation_id.clone();
+		for establishment in [false, true] {
+			command.payload = if establishment {
+				CommandPayload::ResumeConversationEstablishment { conversation_id: target.clone() }
+			} else {
+				CommandPayload::ResumeConversationRouting { conversation_id: target.clone() }
+			};
+			for (revision, state, expected) in [
+				(1, ConversationState::Ready, ControlObservation::Conflict),
+				(2, ConversationState::OutcomeUnknown, ControlObservation::Conflict),
+				(2, ConversationState::RoutingPending, ControlObservation::Conflict),
+				(2, ConversationState::Ready, ControlObservation::RoutingAdvanced),
+			] {
+				current.conversation_revision = EntityRevision(revision);
+				current.state = state;
+				assert_eq!(
+					observe(&command, &target, &ConversationResult::Available(current.clone())),
+					expected
+				);
+			}
+		}
+		command.payload =
+			CommandPayload::CreateConversationRoutingSuccessor { conversation_id: target.clone() };
+		let archived = ConversationResult::Archived {
+			conversation_id: target.clone(),
+			conversation_revision: EntityRevision(2),
+		};
+		assert_eq!(observe(&command, &target, &archived), ControlObservation::Conflict);
+		for (revision, expected) in
+			[(2, ControlObservation::RoutingAdvanced), (3, ControlObservation::Conflict)]
+		{
+			let redirect = ConversationResult::RoutingSuccessorRedirect {
+				source_conversation_id: target.clone(),
+				source_conversation_revision: EntityRevision(revision),
+				successor_conversation_id: decodex_protocol::EntityId::new(
+					"00000000-0000-4000-8000-000000000099",
+				)
+				.expect("id"),
+				successor_conversation_revision: EntityRevision(7),
+			};
+			assert_eq!(observe(&command, &target, &redirect), expected);
+		}
 	}
 }

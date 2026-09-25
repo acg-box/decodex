@@ -301,6 +301,12 @@ fn control_state_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyEl
 			CommandPayload::RefreshConversation { conversation_id } => ("Refresh", conversation_id),
 			CommandPayload::InterruptConversation { conversation_id, .. } =>
 				("Interrupt", conversation_id),
+			CommandPayload::ResumeConversationRouting { conversation_id } =>
+				("Resume routing", conversation_id),
+			CommandPayload::ResumeConversationEstablishment { conversation_id } =>
+				("Resume establishment", conversation_id),
+			CommandPayload::CreateConversationRoutingSuccessor { conversation_id } =>
+				("Routing successor", conversation_id),
 			_ => continue,
 		};
 		let title = shell
