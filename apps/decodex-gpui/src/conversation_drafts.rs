@@ -200,6 +200,15 @@ impl Conversations {
 		state.delivery.parked = draft.parked.clone();
 		state.delivery.new_conversation = draft.new_conversation.clone();
 		state.delivery.unconfirmed = draft.unconfirmed.clone();
+		let mut successors = draft
+			.unconfirmed
+			.iter()
+			.filter_map(super::RoutingSuccessorReconciliation::from_command);
+		let first = successors.next();
+		state.routing_successor_reconciliation =
+			if successors.next().is_none() { first } else { None };
+		state.outcome_unknown_readback_generation = None;
+
 		state.delivery.saved.clear();
 		state.delivery.readbacks.clear();
 		state.delivery.turn_readbacks.clear();

@@ -670,17 +670,8 @@ impl Conversations {
 			causation_id: None::<CausationId>,
 			payload,
 		};
-		let routing_successor_reconciliation = match (&envelope.payload, envelope.expected_revision)
-		{
-			(
-				CommandPayload::CreateConversationRoutingSuccessor { conversation_id },
-				Some(expected_source_revision),
-			) => Some(RoutingSuccessorReconciliation {
-				source_conversation_id: conversation_id.clone(),
-				expected_source_revision,
-			}),
-			_ => None,
-		};
+		let routing_successor_reconciliation =
+			RoutingSuccessorReconciliation::from_command(&envelope);
 		state.outcome_unknown_readback_generation = None;
 		state.refresh = ConversationRefreshState::Idle;
 		state.routing_successor_reconciliation = routing_successor_reconciliation;
@@ -1650,7 +1641,9 @@ impl State {
 		match payload {
 			QueryResultPayload::Conversation(ConversationResult::Available(source))
 				if self.routing_successor_reconciliation_matches(generation, &reconciliation)
-					&& source.conversation_id == reconciliation.source_conversation_id =>
+					&& source.conversation_id == reconciliation.source_conversation_id
+					&& source.conversation_revision.0
+						>= reconciliation.expected_source_revision.0 =>
 			{
 				self.upsert_task(source.clone());
 				self.finish_routing_successor_reconciliation();
@@ -1705,7 +1698,7 @@ impl State {
 			QueryResultPayload::Conversation(ConversationResult::Available(projection))
 				if self.routing_successor_reconciliation_matches(generation, &reconciliation)
 					&& projection.conversation_id == successor.conversation_id
-					&& projection.conversation_revision == successor.conversation_revision =>
+					&& projection.conversation_revision.0 >= successor.conversation_revision.0 =>
 			{
 				self.apply_routing_successor_transition(
 					&reconciliation.source_conversation_id,
@@ -1922,6 +1915,9 @@ impl State {
 					command.payload,
 					CommandPayload::CreateConversation { .. }
 						| CommandPayload::SubmitConversationTurn { .. }
+						| CommandPayload::ResumeConversationRouting { .. }
+						| CommandPayload::ResumeConversationEstablishment { .. }
+						| CommandPayload::CreateConversationRoutingSuccessor { .. }
 				)
 			}) {
 			self.command = ConversationCommandState::Idle;
@@ -1943,7 +1939,11 @@ impl State {
 	fn finish_routing_successor_reconciliation(&mut self) {
 		self.routing_successor_reconciliation = None;
 		self.outcome_unknown_readback_generation = None;
-		self.command = ConversationCommandState::Idle;
+		self.command = if self.delivery.unconfirmed.is_empty() {
+			ConversationCommandState::Idle
+		} else {
+			ConversationCommandState::OutcomeUnknown
+		};
 	}
 
 	fn snapshot(&self) -> ConversationsSnapshot {
@@ -2073,6 +2073,19 @@ enum ConversationQueryPurpose {
 struct RoutingSuccessorReconciliation {
 	source_conversation_id: EntityId,
 	expected_source_revision: EntityRevision,
+}
+
+impl RoutingSuccessorReconciliation {
+	fn from_command(command: &CommandEnvelope) -> Option<Self> {
+		let CommandPayload::CreateConversationRoutingSuccessor { conversation_id } =
+			&command.payload
+		else {
+			return None;
+		};
+		let expected_source_revision =
+			command.expected_revision.filter(|revision| revision.0 > 0)?;
+		Some(Self { source_conversation_id: conversation_id.clone(), expected_source_revision })
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2794,6 +2807,89 @@ pub(crate) mod tests {
 		assert!(restored.restore_ordinary_draft(&draft));
 		restored.lock().pending_query = None;
 		(restored, server, original)
+	}
+
+	pub(crate) fn recorded_routing_fixture(
+		kind: usize,
+	) -> (Conversations, ServerId, CommandEnvelope) {
+		let (source, server, _) = connected_conversations();
+		let (state, action) = match kind {
+			0 => (ConversationState::RoutingPending, ConversationRecoveryAction::ResumeRouting),
+			1 => (
+				ConversationState::EstablishmentPending,
+				ConversationRecoveryAction::ResumeEstablishment,
+			),
+			_ => (ConversationState::NoRoute, ConversationRecoveryAction::CreateRoutingSuccessor),
+		};
+		let id = EntityId::new(format!("00000000-0000-4000-8000-00000000010{kind}")).expect("id");
+		let task = conversation_summary(
+			id.clone(),
+			EntityRevision(1),
+			1,
+			None,
+			None,
+			state,
+			None,
+			Some(action),
+		)
+		.expect("routing projection");
+		{
+			let mut state = source.lock();
+			state.tasks = vec![task];
+			state.selected = Some(id);
+		}
+		source.recover_selected().expect("recovery command");
+		let original = dispatched_command(&source, &server);
+		source.session_ended(1);
+		let draft = source.ordinary_draft("Preserved source text").expect("draft");
+		let (restored, server, _) = connected_conversations();
+		assert!(restored.restore_ordinary_draft(&draft));
+		restored.lock().pending_query = None;
+		(restored, server, original)
+	}
+
+	pub(crate) fn reply_routing_check(
+		controller: &Conversations,
+		server: &ServerId,
+		original: &CommandEnvelope,
+	) {
+		let dispatch = controller.try_take_dispatch(1, server).expect("check query");
+		let query = dispatch.query().expect("read only");
+		let target = command_conversation_id(&original.payload);
+		assert_eq!(
+			query.payload,
+			QueryPayload::GetConversation { conversation_id: target.clone() }
+		);
+		let result = if matches!(
+			original.payload,
+			CommandPayload::CreateConversationRoutingSuccessor { .. }
+		) {
+			ConversationResult::RoutingSuccessorRedirect {
+				source_conversation_id: target.clone(),
+				source_conversation_revision: EntityRevision(2),
+				successor_conversation_id: EntityId::new("00000000-0000-4000-8000-000000000199")
+					.expect("successor"),
+				successor_conversation_revision: EntityRevision(3),
+			}
+		} else {
+			let mut ready = connected_conversations().2;
+			ready.conversation_id = target.clone();
+			ready.conversation_revision = EntityRevision(2);
+			ConversationResult::Available(ready)
+		};
+		assert_eq!(
+			controller.route_query_result(
+				1,
+				server,
+				&QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					query_id: query.query_id.clone(),
+					server_id: server.clone(),
+					payload: QueryResultPayload::Conversation(result),
+				}
+			),
+			ConversationRouteOutcome::Fresh
+		);
 	}
 
 	pub(crate) fn prepare_control_check(controller: &Conversations) {
@@ -4103,6 +4199,53 @@ pub(crate) mod tests {
 	#[test]
 	fn routing_successor_lost_response_reconnect_selects_exact_redirect_and_removes_archived_source()
 	 {
+		assert_routing_successor_recovery(false);
+	}
+
+	fn restore_routing_controller(
+		conversations: Conversations,
+		server_id: &ServerId,
+		cold: bool,
+	) -> Conversations {
+		if !cold {
+			return conversations;
+		}
+		let draft = conversations.ordinary_draft("Preserved source text").expect("saved draft");
+		let (restored, _, _) = connected_conversations();
+		assert!(restored.restore_ordinary_draft(&draft));
+		restored.session_ended(1);
+		restored.bind_session(2, server_id.clone());
+		restored
+	}
+
+	fn acknowledge_routing_redirect(
+		controller: &Conversations,
+		server: &ServerId,
+		payload: &QueryResultPayload,
+	) {
+		let original = controller.ordinary_control_states()[0].0.clone();
+		controller.lock().pending_query = None;
+		assert!(controller.check_ordinary_control(&original));
+		let dispatch = controller.try_take_dispatch(2, server).expect("query");
+		let query = dispatch.query().expect("no replay");
+		assert_eq!(
+			controller.route_query_result(
+				2,
+				server,
+				&QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: server.clone(),
+					query_id: query.query_id.clone(),
+					payload: payload.clone(),
+				}
+			),
+			ConversationRouteOutcome::Fresh
+		);
+		assert!(controller.acknowledge_ordinary_control(&original));
+		assert!(controller.ordinary_control_states().is_empty());
+	}
+
+	fn assert_routing_successor_recovery(cold: bool) {
 		let (conversations, server_id, existing) = connected_conversations();
 		let source = conversation_summary(
 			existing.conversation_id,
@@ -4116,6 +4259,7 @@ pub(crate) mod tests {
 		)
 		.expect("waiting source projection is valid");
 		send_routing_successor_and_reconnect_without_result(&conversations, &server_id, &source);
+		let conversations = restore_routing_controller(conversations, &server_id, cold);
 
 		let successor_id =
 			EntityId::new("00000000-0000-4000-8000-000000000003").expect("test ID is valid");
@@ -4130,15 +4274,9 @@ pub(crate) mod tests {
 			Some(ConversationRecoveryAction::ResumeRouting),
 		)
 		.expect("successor projection is valid");
-		let list = match conversations
-			.try_take_dispatch(2, &server_id)
-			.expect("reconnect queues list readback")
-		{
-			ConversationDispatch::Query(query) => query,
-			ConversationDispatch::Command(_) => {
-				panic!("unknown outcome must not resend the command")
-			},
-		};
+		let list_dispatch = conversations.try_take_dispatch(2, &server_id).expect("list readback");
+		let list =
+			list_dispatch.query().expect("unknown outcome must not resend the command").clone();
 		assert!(matches!(&list.payload, QueryPayload::ListConversations { .. }));
 		let list_result = QueryResultEnvelope {
 			version: CURRENT_VERSION,
@@ -4204,6 +4342,9 @@ pub(crate) mod tests {
 			&successor_query.payload,
 			QueryPayload::GetConversation { conversation_id } if conversation_id == &successor_id
 		));
+		let mut successor = successor;
+		successor.conversation_revision = EntityRevision(2);
+		successor.projection_updated_at_micros = 3;
 		let successor_result = QueryResultEnvelope {
 			version: CURRENT_VERSION,
 			server_id: server_id.clone(),
@@ -4220,12 +4361,30 @@ pub(crate) mod tests {
 		let reconciled = conversations.snapshot();
 		assert_eq!(reconciled.tasks, vec![successor]);
 		assert_eq!(reconciled.selected, Some(successor_id));
-		assert_eq!(reconciled.command, ConversationCommandState::Idle);
+		assert_eq!(reconciled.command, ConversationCommandState::OutcomeUnknown);
+		acknowledge_routing_redirect(&conversations, &server_id, &redirect_result.payload);
 		assert!(!reconciled.can_submit, "successor settings must not come from the source editor");
 		conversations.cycle_model();
 		conversations.cycle_reasoning_effort();
 		assert!(conversations.select_service_tier(decodex_protocol::ServiceTier::standard()));
 		assert!(conversations.snapshot().can_submit);
+	}
+
+	#[test]
+	fn routing_reconciliation_does_not_unlock_unrelated_saved_input() {
+		let (controller, _, original) =
+			recorded_turn_fixture(decodex_protocol::ConversationTurnOutcomeState::Unknown);
+		controller.lock().finish_routing_successor_reconciliation();
+		assert_eq!(controller.snapshot().command, ConversationCommandState::OutcomeUnknown);
+		assert_eq!(controller.submit("must remain blocked"), Err(ConversationInputError::Busy));
+		assert!(
+			controller.ordinary_draft("Later text").expect("draft").unconfirmed.contains(&original)
+		);
+	}
+
+	#[test]
+	fn routing_successor_cold_restore_selects_exact_redirect_without_replay() {
+		assert_routing_successor_recovery(true);
 	}
 
 	#[test]
