@@ -360,3 +360,91 @@ fn acknowledged_routing_control_preserves_other_records_after_restart(
 		});
 	}
 }
+
+#[gpui::test]
+fn ordinary_input_without_service_is_not_reported_safe_to_quit(cx: &mut gpui::TestAppContext) {
+	let directory = tempfile::tempdir().unwrap();
+	let root = directory.path().canonicalize().unwrap().join("desktop");
+	let store = ClientDraftStore::open_at(&root).unwrap();
+	let (shell, visual) =
+		cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+	shell.update(visual, |s, cx| {
+		assert!(s.reset_cards.profile.is_none());
+		s.selected = Destination::Conversations;
+		s.chief.update(cx, |chief, _| chief.draft_profiles.storage = Storage::open(Ok(store)));
+		s.composer
+			.update(cx, |input, cx| input.set_content("Ordinary input before service setup", cx));
+		assert!(
+			!s.drafts_ready_for_quit(cx),
+			"unsaved ordinary input must reach the shared writer before quit"
+		);
+	});
+}
+
+#[gpui::test]
+fn ordinary_unbound_input_reopens_without_execution_authority(cx: &mut gpui::TestAppContext) {
+	let directory = tempfile::tempdir().unwrap();
+	let root = directory.path().canonicalize().unwrap().join("desktop");
+	let store = ClientDraftStore::open_at(&root).unwrap();
+	let (shell, visual) =
+		cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+	let cwd = shell.update(visual, |s, cx| {
+		s.chief
+			.update(cx, |chief, _| chief.draft_profiles.storage = Storage::open(Ok(store.clone())));
+		s.composer.update(cx, |input, cx| input.set_content("Unbound ordinary draft", cx));
+		s.sync_ordinary_drafts(cx);
+		s.conversations.working_directory().unwrap().as_str().to_owned()
+	});
+	visual.run_until_parked();
+	let reopened = ClientDraftStore::open_at(&root).unwrap();
+	let document = DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
+	assert_eq!(document.unbound_ordinary[&cwd].composer.text, "Unbound ordinary draft");
+	assert!(document.unbound_ordinary[&cwd].unconfirmed.is_empty());
+	assert!(document.profiles.is_empty());
+	let (cold, cold_visual) =
+		cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+	cold.update(cold_visual, |s, cx| {
+		s.chief.update(cx, |chief, _| chief.draft_profiles.storage = Storage::open(Ok(reopened)));
+		s.reset_ordinary_draft_binding(cx);
+		assert_eq!(s.composer.read(cx).content(), "Unbound ordinary draft");
+		assert!(!s.conversations.snapshot().can_submit);
+		assert!(
+			s.conversations
+				.ordinary_draft("Unbound ordinary draft")
+				.unwrap()
+				.unconfirmed
+				.is_empty()
+		);
+	});
+}
+
+#[gpui::test]
+fn ordinary_first_profile_adopts_cold_input(cx: &mut gpui::TestAppContext) {
+	let (_service, profile, _) = super::super::tests::profiles();
+	let directory = tempfile::tempdir().unwrap();
+	let root = directory.path().canonicalize().unwrap().join("desktop");
+	let store = ClientDraftStore::open_at(&root).unwrap();
+	let (shell, visual) =
+		cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+	let cwd = shell.update(visual, |s, cx| {
+		s.chief
+			.update(cx, |chief, _| chief.draft_profiles.storage = Storage::open(Ok(store.clone())));
+		s.composer.update(cx, |input, cx| input.set_content("Before service selection", cx));
+		s.sync_ordinary_drafts(cx);
+		s.conversations.working_directory().unwrap().as_str().to_owned()
+	});
+	visual.run_until_parked();
+	shell.update(visual, |s, cx| {
+		s.reset_cards.profile = Some(profile.clone());
+		s.chief.update(cx, |chief, cx| chief.bind_profile(Some(profile.clone()), cx));
+		s.reset_ordinary_draft_binding(cx);
+		assert_eq!(s.composer.read(cx).content(), "Before service selection");
+	});
+	visual.run_until_parked();
+	let document = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+	assert!(document.unbound_ordinary.is_empty());
+	assert_eq!(
+		document.profiles[&profile.draft_scope_key()].ordinary[&cwd].composer.text,
+		"Before service selection"
+	);
+}

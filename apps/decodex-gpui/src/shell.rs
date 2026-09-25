@@ -589,6 +589,7 @@ impl Shell {
 			surface.seed_context(cwd, vec![], cx);
 			surface.refresh(cx);
 		});
+		self.reset_ordinary_draft_binding(cx);
 		self
 	}
 
@@ -6563,10 +6564,12 @@ mod tests {
 			(Outcome::Failed, "Original message", "Original message"),
 			(Outcome::NotSubmitted, "Original message", "Original message"),
 		] {
-			let (conversations, server, original) =
+			let (conversations, server, _original) =
 				crate::conversations::tests::recorded_turn_fixture(outcome);
 			shell.update(visual, |s, cx| {
 				s.conversations = conversations.clone();
+				// Controller-only fixture; shared writer coverage uses a real store separately.
+				s.ordinary_syncing = true;
 				s.selected = Destination::Conversations;
 				s.ordinary_owner = conversations.ordinary_editor_owner();
 				s.composer.update(cx, |input, cx| input.set_content(text, cx));
@@ -6584,7 +6587,6 @@ mod tests {
 				assert_eq!(s.composer.read(cx).content(), expected);
 				assert!(s.conversations.ordinary_turn_outcomes().is_empty());
 			});
-			assert_eq!(conversations.confirmed_ordinary_commands(), vec![original]);
 			assert!(
 				crate::conversations::tests::take_ready_command(&conversations, &server).is_none()
 			);
@@ -6599,6 +6601,8 @@ mod tests {
 				crate::conversations::tests::recorded_creation_fixture(text);
 			shell.update(visual, |s, cx| {
 				s.conversations = conversations.clone();
+				// Controller-only fixture; shared writer coverage uses a real store separately.
+				s.ordinary_syncing = true;
 				s.selected = Destination::Conversations;
 				s.ordinary_owner = None;
 				s.composer.update(cx, |input, cx| input.set_content(text, cx));
@@ -6629,7 +6633,8 @@ mod tests {
 					"missing task must first be read back"
 				);
 			});
-			assert_eq!(conversations.confirmed_ordinary_commands(), vec![original]);
+			// The shared writer consumes acknowledgements during synchronization.
+			assert!(conversations.confirmed_ordinary_commands().is_empty());
 			assert!(
 				crate::conversations::tests::take_ready_command(&conversations, &server).is_none()
 			);
@@ -6645,6 +6650,8 @@ mod tests {
 		conversations.begin_new();
 		shell.update(visual, |s, cx| {
 			s.conversations = conversations.clone();
+			// Controller-only fixture; shared writer coverage uses a real store separately.
+			s.ordinary_syncing = true;
 			s.selected = Destination::Conversations;
 			s.creating_new = true;
 			s.composer.update(cx, |input, cx| input.set_content("Keep my input", cx));
@@ -6704,6 +6711,8 @@ mod tests {
 		let (conversations, server_id, _) = crate::conversations::tests::catalog_conversations();
 		shell.update(visual, |s, cx| {
 			s.conversations = conversations.clone();
+			// Controller-only fixture; shared writer coverage uses a real store separately.
+			s.ordinary_syncing = true;
 			s.synchronize_conversations(cx);
 			s.select_destination(Destination::Conversations, cx);
 		});

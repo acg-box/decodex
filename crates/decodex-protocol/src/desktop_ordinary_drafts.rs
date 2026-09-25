@@ -89,6 +89,26 @@ impl DesktopOrdinaryDraft {
 	}
 }
 
+/// Validate editors with no service authority.
+pub(super) fn validate_unbound(
+	drafts: &BTreeMap<String, DesktopOrdinaryDraft>,
+) -> Result<(), &'static str> {
+	if drafts.len() > 64 {
+		return Err("Too many unbound ordinary directory drafts");
+	}
+	for (directory, draft) in drafts {
+		draft.validate()?;
+		if directory != draft.working_directory.as_str()
+			|| draft.composer.conversation_id.is_some()
+			|| !draft.unconfirmed.is_empty()
+			|| !draft.parked.is_empty()
+		{
+			return Err("Unbound ordinary draft cannot own service state");
+		}
+	}
+	Ok(())
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -178,7 +198,7 @@ mod tests {
 			matches!(&saved.unconfirmed[0].payload, CommandPayload::CreateConversation { message,.. } if message.as_str()=="Original submitted input")
 		);
 		let old = DesktopDraftDocument::decode(br#"{"version":4,"profiles":{}}"#).unwrap();
-		assert_eq!(old.version, 6);
+		assert_eq!(old.version, 7);
 	}
 
 	#[test]
@@ -199,7 +219,7 @@ mod tests {
 		let choices =
 			&legacy.profiles[&"a".repeat(64)].ordinary["/tmp/work"].composer.creation_intent;
 		assert!(choices.model && choices.reasoning && choices.service_tier);
-		assert_eq!(legacy.version, 6);
+		assert_eq!(legacy.version, 7);
 		let reopened = DesktopDraftDocument::decode(&legacy.encode().unwrap()).unwrap();
 		assert!(reopened == legacy);
 	}
@@ -224,6 +244,38 @@ mod tests {
 			deleted.profiles.contains_key(&"a".repeat(64)),
 			"deletion cannot hide unresolved delivery"
 		);
+	}
+
+	#[test]
+	fn unbound_conflicts_restore_and_first_profile_adoption_preserve_input() {
+		let mut base = DesktopDraftDocument::default();
+		let mut editor = draft("Original unbound", "unused");
+		editor.unconfirmed.clear();
+		base.unbound_ordinary.insert("/tmp/work".into(), editor.clone());
+		let mut local = base.clone();
+		local.unbound_ordinary.get_mut("/tmp/work").unwrap().composer.text = "Local edit".into();
+		let merged = local.reconcile_keep_both(&base, &base).unwrap();
+		assert_eq!(merged.unbound_ordinary["/tmp/work"].composer.text, "Local edit");
+		assert_eq!(merged.recovered.len(), 1);
+		let restored = merged.restore_recovered_copy(&merged.recovered[0]).unwrap();
+		assert_eq!(restored.unbound_ordinary["/tmp/work"].composer.text, "Original unbound");
+		assert_eq!(restored.recovered[0].draft.ordinary["/tmp/work"].composer.text, "Local edit");
+		let mut with_profile = merged.clone();
+		with_profile.profiles = document("Saved service input", "pending").profiles;
+		let adopted = with_profile.adopt_unbound_ordinary(&"a".repeat(64)).unwrap();
+		assert!(adopted.unbound_ordinary.is_empty());
+		let selected = &adopted.profiles[&"a".repeat(64)].ordinary["/tmp/work"];
+		assert_eq!(selected.composer.text, "Local edit");
+		assert_eq!(selected.unconfirmed.len(), 1);
+		assert!(adopted.recovered.iter().any(|copy| copy.scope.is_some()
+			&& copy.draft.ordinary["/tmp/work"].composer.text == "Saved service input"));
+		let reopened = DesktopDraftDocument::decode(&adopted.encode().unwrap()).unwrap();
+		assert!(reopened == adopted);
+		let other = adopted.adopt_unbound_ordinary(&"b".repeat(64)).unwrap();
+		assert!(!other.profiles.contains_key(&"b".repeat(64)));
+		base.unbound_ordinary.get_mut("/tmp/work").unwrap().composer.conversation_id =
+			Some(EntityId::new("foreign").unwrap());
+		assert!(base.encode().is_err());
 	}
 
 	#[test]

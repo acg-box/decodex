@@ -3,6 +3,14 @@ use super::{ChiefSurface, Context};
 use decodex_protocol::{CommandEnvelope, DesktopOrdinaryDraft};
 
 impl ChiefSurface {
+	pub(in super::super) fn adopt_unbound_ordinary(&mut self, scope: &str) {
+		let storage = &mut self.draft_profiles.storage;
+		match storage.document.adopt_unbound_ordinary(scope) {
+			Ok(document) => storage.document = document,
+			Err(reason) => storage.error = Some(reason.into()),
+		}
+	}
+
 	pub(crate) fn ordinary_draft_notice(&self) -> Option<&str> {
 		self.draft_storage_notice()
 	}
@@ -30,10 +38,13 @@ impl ChiefSurface {
 		directory: &str,
 		saved: bool,
 	) -> Option<DesktopOrdinaryDraft> {
-		let scope = self.draft_profiles.active.as_ref()?.draft_scope_key();
+		let scope = self.draft_profiles.active.as_ref().map(|profile| profile.draft_scope_key());
 		let storage = &self.draft_profiles.storage;
 		let document = if saved { &storage.saved } else { &storage.document };
-		document.profiles.get(&scope)?.ordinary.get(directory).cloned()
+		match scope {
+			Some(scope) => document.profiles.get(&scope)?.ordinary.get(directory).cloned(),
+			None => document.unbound_ordinary.get(directory).cloned(),
+		}
 	}
 
 	pub(crate) fn save_ordinary_storage(
@@ -42,7 +53,15 @@ impl ChiefSurface {
 		confirmed: &[CommandEnvelope],
 		cx: &mut Context<Self>,
 	) {
-		let Some(profile) = self.draft_profiles.active.as_ref() else { return };
+		let Some(profile) = self.draft_profiles.active.as_ref() else {
+			self.draft_profiles
+				.storage
+				.document
+				.unbound_ordinary
+				.insert(draft.working_directory.as_str().into(), draft);
+			self.save_draft_document(cx);
+			return;
+		};
 		let scope = profile.draft_scope_key();
 		let document = &mut self.draft_profiles.storage.document;
 		document
