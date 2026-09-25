@@ -5,14 +5,16 @@ use decodex_protocol::InitialExecutionDefaults;
 
 impl ChiefSurface {
 	pub(super) fn creation_defaults_need_refresh(&self, cx: &Context<Self>) -> bool {
-		if !self.creation_defaults_applied
-			|| self.root_id().is_some()
+		if self.root_id().is_some()
 			|| self.composer_manager.is_some()
 			|| (self.creation_intent.model
 				&& self.creation_intent.reasoning
 				&& self.creation_intent.service_tier)
 		{
 			return false;
+		}
+		if !self.creation_defaults_applied {
+			return true;
 		}
 		let Some(decodex_protocol::InitialModelCatalogResult::Available {
 			defaults: Some(defaults),
@@ -111,6 +113,45 @@ mod tests {
 			},
 			catalog_model: Some(ConversationModel::new("catalog").unwrap()),
 		}
+	}
+
+	#[gpui::test]
+	fn fresh_creation_requires_observed_defaults_or_complete_explicit_intent(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
+			s.composer.update(cx, |input, cx| input.set_content("Keep this unsent request", cx));
+			assert!(s.creation_defaults_need_refresh(cx));
+			assert!(s.composer_capability_error(cx).is_some());
+			s.creation_defaults = Some(InitialModelCatalogResult::Unavailable);
+			s.apply_creation_defaults(cx);
+			assert!(s.creation_defaults_need_refresh(cx));
+			assert_eq!(s.composer.read(cx).content(), "Keep this unsent request");
+			assert!(s.submission.command.is_none() && s.submission.waiting.is_none());
+			s.creation_intent.model = true;
+			s.creation_intent.reasoning = true;
+			assert!(s.creation_defaults_need_refresh(cx));
+			s.creation_intent.service_tier = true;
+			assert!(!s.creation_defaults_need_refresh(cx));
+			s.creation_intent = Default::default();
+			s.capabilities = Some(decodex_protocol::ChiefCapabilitiesResult::Available {
+				models: vec![],
+				memory_enabled: None,
+			});
+			s.creation_defaults = Some(InitialModelCatalogResult::Available {
+				account_id: EntityId::new("account").unwrap(),
+				account_revision: 1,
+				working_directory: ConversationWorkingDirectory::new("/tmp").unwrap(),
+				models: vec![],
+				defaults: Some(Box::new(defaults())),
+			});
+			s.apply_creation_defaults(cx);
+			assert!(!s.creation_defaults_need_refresh(cx));
+			assert_eq!(s.model.read(cx).content(), "managed");
+			assert_eq!(s.composer.read(cx).content(), "Keep this unsent request");
+		});
 	}
 
 	#[gpui::test]

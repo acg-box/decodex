@@ -137,6 +137,9 @@ fn cold_creation_keeps_configured_effort_when_catalog_has_no_choices(
 		s.composer.update(cx, |input, cx| input.set_content("Create with configured effort", cx));
 		let configured = ConversationReasoningEffort::new("provider-specific-effort").unwrap();
 		s.effort = configured.clone();
+		s.mark_model_intent(cx);
+		s.mark_effort_intent(cx);
+		s.mark_tier_intent();
 		s.capabilities = Some(catalog(vec![]));
 		s.reconcile_model_options(cx);
 		assert!(s.model_efforts(cx).is_empty());
@@ -194,6 +197,8 @@ fn native_reasoning_click_preserves_inheritance_in_both_public_start_fields(
 		s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
 		s.composer.update(cx, |input, cx| input.set_content("Use native reasoning", cx));
 		s.effort = ConversationReasoningEffort::new("old-choice").unwrap();
+		s.mark_model_intent(cx);
+		s.mark_tier_intent();
 		s.capabilities = Some(catalog(vec![ConversationReasoningEffort::High]));
 		assert!(s.composer_capability_error(cx).is_some());
 	});
