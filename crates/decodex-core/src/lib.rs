@@ -3,6 +3,9 @@
 /// Maximum complete native Chief message and persisted approval envelope, in bytes.
 pub const MAX_NATIVE_MESSAGE_BYTES: usize = 8 * 1024 * 1024;
 
+/// Two native messages plus bounded local routing metadata for a file approval.
+pub const MAX_APPROVAL_ENVELOPE_BYTES: usize = 2 * MAX_NATIVE_MESSAGE_BYTES + 65536;
+
 mod account;
 mod agent;
 mod automation;

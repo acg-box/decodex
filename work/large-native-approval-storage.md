@@ -49,8 +49,8 @@ The bounded query in this storage batch returned unavailable for oversized
 selected content. [The page transport batch](large-native-approval-pages.md) adds
 identity-bound pages, native liveness and complete client assembly.
 [The decision and reader batch](large-native-approval-decisions.md) adds explicit
-large replies and content navigation. Pending native file-change
-evidence must also be retained before native history contains it.
+large replies and content navigation. [Live file evidence](live-native-file-approvals.md)
+retains pending diffs and expands the local composed envelope bound in schema40.
 
 This storage batch does not establish complete large-approval UI, accept/decline
 or signed desktop acceptance. Scheduled automation remains paused.

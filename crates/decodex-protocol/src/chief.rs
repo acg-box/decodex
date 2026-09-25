@@ -8,11 +8,11 @@ use serde::{Deserialize, Serialize};
 pub struct ChiefRequestText(String);
 
 impl ChiefRequestText {
-	/// Accept complete content within the native message bound.
+	/// Accept complete content within the approval envelope bound.
 	pub fn new(value: impl Into<String>) -> Result<Self, &'static str> {
 		let value = value.into();
-		if value.len() > decodex_core::MAX_NATIVE_MESSAGE_BYTES {
-			return Err("request content exceeds the native message bound");
+		if value.len() > decodex_core::MAX_APPROVAL_ENVELOPE_BYTES {
+			return Err("request content exceeds the approval envelope bound");
 		}
 		Ok(Self(value))
 	}

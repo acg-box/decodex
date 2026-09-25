@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 mod activity;
 mod archive;
 mod async_projection;
+mod file_changes;
 mod guardian;
 mod install;
 mod misalignment;
@@ -116,6 +117,7 @@ pub struct ChiefCoordinator {
 	usage_replays: std::collections::HashMap<String, std::collections::HashSet<String>>,
 	pending_requests: std::collections::HashMap<RequestId, i64>,
 	connection_id: String,
+	pending_file_changes: file_changes::PendingFileChanges,
 	native_generation: Option<decodex_core::ProcessGenerationId>,
 	dispatch_paused: bool,
 	async_recovery_queued: bool,
@@ -179,6 +181,7 @@ impl ChiefCoordinator {
 			usage_replays: Default::default(),
 			pending_requests: std::collections::HashMap::new(),
 			connection_id,
+			pending_file_changes: Default::default(),
 			native_generation: None,
 			dispatch_paused: false,
 			async_recovery_queued: false,
@@ -1363,6 +1366,7 @@ impl ChiefCoordinator {
 	pub async fn handle_event(&mut self, event: ServerEvent) -> Result<(), ChiefError> {
 		self.voice_event(&event).await?;
 		if let ServerEvent::Notification { method, params } = &event {
+			self.pending_file_changes.observe(self.client.connection_identity(), method, params);
 			if self.observe_settings_notification(method, params).await? {
 				return Ok(());
 			}
@@ -1440,6 +1444,7 @@ impl ChiefCoordinator {
 				self.handle_request(id, method, params).await?;
 			},
 			ServerEvent::Closed(error) => {
+				self.pending_file_changes = Default::default();
 				self.loaded_threads.clear();
 				self.usage_replays.clear();
 				self.pending_requests.clear();
@@ -1498,6 +1503,9 @@ impl ChiefCoordinator {
 				)
 				.await?;
 		} else {
+			let payload = self
+				.request_payload(&id, &method, &params, item.codex_thread_id.as_deref())
+				.await?;
 			let event = self
 				.store
 				.enqueue_chief_event(EnqueueChiefEvent {
@@ -1521,9 +1529,10 @@ impl ChiefCoordinator {
 						"server_request_pending"
 					}
 					.into(),
-					payload: json!({"id":id,"method":method,"params":params,"ownerThreadId":item.codex_thread_id,"connectionId":self.client.connection_identity()}).to_string(),
+					payload: payload.to_string(),
 				})
 				.await?;
+			self.pending_file_changes.committed(self.client.connection_identity(), &params);
 			if event.disposition.is_none() {
 				if self.pending_requests.get(&id).is_some_and(|existing| *existing != event.id) {
 					self.pending_requests.remove(&id);

@@ -9,6 +9,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/guardian.rs"] mod guardian;
 #[path = "tests/install.rs"] mod install;
 #[path = "tests/large_approval.rs"] mod large_approval;
+#[path = "tests/live_file_approval.rs"] mod live_file_approval;
 #[path = "tests/native_mcp_forms.rs"] mod native_mcp_forms;
 #[path = "tests/native_plan.rs"] mod native_plan;
 #[path = "tests/native_settings.rs"] mod native_settings;
@@ -300,11 +301,17 @@ async fn attach_request_transport(
 	let (client, mut events) = AppServerClient::from_io(reader, writer);
 	chief.client = client;
 	let (sent, received) = tokio::sync::mpsc::unbounded_channel();
+	let frames = request.as_array().cloned().unwrap_or_else(|| vec![request]);
+	let count = frames.len();
 	tokio::spawn(async move {
-		remote.write_all(format!("{request}\n").as_bytes()).await.unwrap();
+		for frame in frames {
+			remote.write_all(format!("{frame}\n").as_bytes()).await.unwrap();
+		}
 		serve_fixture(remote, history, sent).await;
 	});
-	chief.handle_event(events.recv().await.unwrap()).await.unwrap();
+	for _ in 0..count {
+		chief.handle_event(events.recv().await.unwrap()).await.unwrap();
+	}
 	tokio::spawn(async move { while events.recv().await.is_some() {} });
 	received
 }

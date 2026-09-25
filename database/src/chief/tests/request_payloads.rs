@@ -81,3 +81,29 @@ async fn large_approval_bounds_do_not_expand_other_inbox_events() {
 	input.payload = serde_json::json!({"id":42,"method":"item/commandExecution/requestApproval","params":{"command":"界".repeat(3_000_000)}}).to_string();
 	assert!(store.enqueue_chief_event(input).await.is_err());
 }
+
+#[tokio::test]
+async fn combined_file_evidence_preserves_two_native_sized_parts() {
+	let directory = tempdir().unwrap();
+	let path = directory.path().join("combined.sqlite3");
+	let store = SqliteStore::open_test(&path).unwrap();
+	store.create_chief_work_item(item("chief", None)).await.unwrap();
+	let mut input = request("combined", "item/fileChange/requestApproval", "permission_pending");
+	let mut value: serde_json::Value = serde_json::from_str(&input.payload).unwrap();
+	value["params"]["command"] = serde_json::Value::Null;
+	value["params"]["reason"] = serde_json::json!("r".repeat(4 * 1024 * 1024));
+	value["fileChange"] = serde_json::json!({"id":"item","type":"fileChange","changes":[{"path":"fixture","kind":{"type":"add"},"diff":"+".repeat(5 * 1024 * 1024)}]});
+	input.payload = value.to_string();
+	assert!(input.payload.len() > decodex_core::MAX_NATIVE_MESSAGE_BYTES);
+	let event = store.enqueue_chief_event(input.clone()).await.unwrap();
+	drop(store);
+	let store = SqliteStore::open_test(&path).unwrap();
+	assert_eq!(store.get_chief_inbox_event(event.id).await.unwrap().payload, input.payload);
+	assert_eq!(store.enqueue_chief_event(input.clone()).await.unwrap().id, event.id);
+	let (rows, _) = store.read_chief_transcript("chief".into(), None, 10).await.unwrap();
+	assert!(rows[0].payload.len() < 1024);
+	value["fileChange"]["changes"][0]["diff"] = serde_json::json!("+".repeat(9 * 1024 * 1024));
+	input.source_event_id = "oversized-file".into();
+	input.payload = value.to_string();
+	assert!(store.enqueue_chief_event(input).await.is_err());
+}
