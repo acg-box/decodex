@@ -445,7 +445,7 @@ impl ConversationThreadStartResponse {
 		let facts = validate_thread_response_facts(
 			ThreadResponseContext::Start,
 			request.cwd(),
-			request.model(),
+			Some(request.model()),
 			wire.thread,
 			wire.cwd.into_string(),
 			wire.model,
@@ -503,10 +503,10 @@ pub fn decode_conversation_thread_start_response(
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ConversationThreadResumeRequest {
 	thread_id: ExactThreadId,
-	model: ConversationModel,
+	model: Option<ConversationModel>,
 	cwd: ThreadCwd,
 	developer_instructions: ConversationInstructions,
-	service_tier: decodex_core::ServiceTier,
+	service_tier: Option<decodex_core::ServiceTier>,
 }
 impl ConversationThreadResumeRequest {
 	/// Accept one exact thread and explicit caller configuration.
@@ -518,11 +518,11 @@ impl ConversationThreadResumeRequest {
 	) -> Result<Self, ConversationContractError> {
 		Ok(Self {
 			thread_id,
-			model: ConversationModel::new(model)?,
+			model: Some(ConversationModel::new(model)?),
 			cwd: ThreadCwd::from_protocol(cwd)
 				.map_err(|_| ConversationContractError::InvalidCwd)?,
 			developer_instructions: ConversationInstructions::new(developer_instructions)?,
-			service_tier: decodex_core::ServiceTier::standard(),
+			service_tier: Some(decodex_core::ServiceTier::standard()),
 		})
 	}
 
@@ -533,7 +533,19 @@ impl ConversationThreadResumeRequest {
 
 	/// Send the exact caller-selected tier without reducing it to a Fast flag.
 	pub fn with_service_tier(mut self, tier: decodex_core::ServiceTier) -> Self {
-		self.service_tier = tier;
+		self.service_tier = Some(tier);
+		self
+	}
+
+	/// Preserve the native thread model instead of sending a local override.
+	pub fn inherit_model(mut self) -> Self {
+		self.model = None;
+		self
+	}
+
+	/// Preserve the native thread tier instead of explicitly selecting Standard.
+	pub fn inherit_service_tier(mut self) -> Self {
+		self.service_tier = None;
 		self
 	}
 
@@ -543,8 +555,8 @@ impl ConversationThreadResumeRequest {
 	}
 
 	/// Caller-selected model sent to the app server.
-	pub fn model(&self) -> &ConversationModel {
-		&self.model
+	pub fn model(&self) -> Option<&ConversationModel> {
+		self.model.as_ref()
 	}
 
 	/// Exact absolute working directory.
@@ -567,14 +579,21 @@ impl Serialize for ConversationThreadResumeRequest {
 	where
 		S: Serializer,
 	{
-		let mut request = serializer.serialize_struct("ConversationThreadResumeRequest", 6)?;
+		let mut request = serializer.serialize_struct(
+			"ConversationThreadResumeRequest",
+			4 + usize::from(self.model.is_some()) + usize::from(self.service_tier.is_some()),
+		)?;
 
 		request.serialize_field("threadId", self.thread_id.as_str())?;
-		request.serialize_field("model", self.model.as_str())?;
+		if let Some(model) = &self.model {
+			request.serialize_field("model", model.as_str())?;
+		}
 		request.serialize_field("cwd", self.cwd.as_str())?;
 		request.serialize_field("developerInstructions", self.developer_instructions.as_str())?;
 		request.serialize_field("excludeTurns", &true)?;
-		request.serialize_field("serviceTier", &self.service_tier.thread_value())?;
+		if let Some(tier) = &self.service_tier {
+			request.serialize_field("serviceTier", &tier.thread_value())?;
+		}
 		request.end()
 	}
 }
@@ -683,9 +702,9 @@ impl Serialize for ConversationTextInputs<'_> {
 pub struct ConversationTurnStartRequest {
 	thread_id: ExactThreadId,
 	input: ConversationTurnInput,
-	model: ConversationModel,
+	model: Option<ConversationModel>,
 	reasoning_effort: Option<ConversationReasoningEffort>,
-	service_tier: decodex_core::ServiceTier,
+	service_tier: Option<decodex_core::ServiceTier>,
 	client_user_message_id: Option<String>,
 	turn_trigger: Option<&'static str>,
 }
@@ -710,9 +729,9 @@ impl ConversationTurnStartRequest {
 		Ok(Self {
 			thread_id,
 			input,
-			model: ConversationModel::new(model)?,
+			model: Some(ConversationModel::new(model)?),
 			reasoning_effort: reasoning_effort.map(ConversationReasoningEffort::new).transpose()?,
-			service_tier: decodex_core::ServiceTier::standard(),
+			service_tier: Some(decodex_core::ServiceTier::standard()),
 			client_user_message_id: None,
 			turn_trigger: None,
 		})
@@ -731,7 +750,7 @@ impl ConversationTurnStartRequest {
 
 	/// Send the exact caller-selected tier without reducing it to a Fast flag.
 	pub fn with_service_tier(mut self, tier: decodex_core::ServiceTier) -> Self {
-		self.service_tier = tier;
+		self.service_tier = Some(tier);
 		self
 	}
 
@@ -749,6 +768,24 @@ impl ConversationTurnStartRequest {
 		Ok(self)
 	}
 
+	/// Preserve the native thread model instead of sending a local override.
+	pub fn inherit_model(mut self) -> Self {
+		self.model = None;
+		self
+	}
+
+	/// Preserve the native thread tier instead of explicitly selecting Standard.
+	pub fn inherit_service_tier(mut self) -> Self {
+		self.service_tier = None;
+		self
+	}
+
+	/// Preserve native effort even when the displayed local value is populated.
+	pub fn inherit_reasoning_effort(mut self) -> Self {
+		self.reasoning_effort = None;
+		self
+	}
+
 	/// Exact target thread.
 	pub fn thread_id(&self) -> &ExactThreadId {
 		&self.thread_id
@@ -760,8 +797,8 @@ impl ConversationTurnStartRequest {
 	}
 
 	/// Caller-selected model.
-	pub fn model(&self) -> &ConversationModel {
-		&self.model
+	pub fn model(&self) -> Option<&ConversationModel> {
+		self.model.as_ref()
 	}
 
 	/// Caller-selected reasoning effort.
@@ -776,18 +813,24 @@ impl Serialize for ConversationTurnStartRequest {
 	{
 		let mut request = serializer.serialize_struct(
 			"ConversationTurnStartRequest",
-			6 + usize::from(self.turn_trigger.is_some())
+			3 + usize::from(self.model.is_some())
+				+ 2 * usize::from(self.service_tier.is_some())
+				+ usize::from(self.turn_trigger.is_some())
 				+ usize::from(self.reasoning_effort.is_some()),
 		)?;
 
 		request.serialize_field("threadId", self.thread_id.as_str())?;
 		request.serialize_field("input", &ConversationTextInputs(self.input.items()))?;
-		request.serialize_field("model", self.model.as_str())?;
+		if let Some(model) = &self.model {
+			request.serialize_field("model", model.as_str())?;
+		}
 		if let Some(effort) = &self.reasoning_effort {
 			request.serialize_field("effort", effort.as_str())?;
 		}
-		request.serialize_field("serviceTier", &self.service_tier.thread_value())?;
-		request.serialize_field("serviceTierForTurn", self.service_tier.as_str())?;
+		if let Some(tier) = &self.service_tier {
+			request.serialize_field("serviceTier", &tier.thread_value())?;
+			request.serialize_field("serviceTierForTurn", tier.as_str())?;
+		}
 		request.serialize_field("clientUserMessageId", &self.client_user_message_id)?;
 		if let Some(trigger) = self.turn_trigger {
 			request.serialize_field("turnTrigger", trigger)?;
@@ -1567,7 +1610,7 @@ enum ThreadResponseContext<'a> {
 fn validate_thread_response_facts(
 	context: ThreadResponseContext<'_>,
 	expected_cwd: &ThreadCwd,
-	expected_model: &ConversationModel,
+	expected_model: Option<&ConversationModel>,
 	thread: ConversationThreadResponseWire,
 	response_cwd: String,
 	response_model: String,
@@ -1601,7 +1644,7 @@ fn validate_thread_response_facts(
 	}
 
 	let model = ConversationModel::new(response_model)?;
-	if expected_model != &model {
+	if expected_model.is_some_and(|expected| expected != &model) {
 		return Err(ConversationContractError::ModelMismatch);
 	}
 
@@ -2094,6 +2137,56 @@ mod tests {
 			assert_eq!(wire["model"], "model");
 			assert_eq!(wire["serviceTierForTurn"], "default");
 		}
+	}
+
+	#[test]
+	fn inherited_model_and_tier_are_absent_without_weakening_resume_identity() {
+		let resume = resume_request().inherit_model().inherit_service_tier();
+		let wire = serde_json::to_value(&resume).unwrap();
+		assert!(wire.get("model").is_none());
+		assert!(wire.get("serviceTier").is_none());
+		let response = thread_response("thread-1", "native-new-model", "/workspace");
+		let bytes = serde_json::to_vec(&response).unwrap();
+		assert_eq!(
+			decode_conversation_thread_resume_response(&resume, &bytes).unwrap().model().as_str(),
+			"native-new-model"
+		);
+		assert_eq!(
+			decode_conversation_thread_resume_response(&resume_request(), &bytes).unwrap_err(),
+			ConversationContractError::ModelMismatch
+		);
+		for response in [
+			thread_response("wrong-thread", "native-new-model", "/workspace"),
+			thread_response("thread-1", "native-new-model", "/wrong-directory"),
+			thread_response("thread-1", "", "/workspace"),
+		] {
+			assert!(
+				decode_conversation_thread_resume_response(
+					&resume,
+					&serde_json::to_vec(&response).unwrap()
+				)
+				.is_err()
+			);
+		}
+		let turn = ConversationTurnStartRequest::new(
+			exact_thread(),
+			ConversationTurnInput::text("Continue").unwrap(),
+			"stale-model",
+			"stale-effort",
+		)
+		.unwrap()
+		.inherit_model()
+		.inherit_reasoning_effort()
+		.inherit_service_tier();
+		let inherited = serde_json::to_value(&turn).unwrap();
+		for field in ["model", "effort", "serviceTier", "serviceTierForTurn"] {
+			assert!(inherited.get(field).is_none());
+		}
+		let standard =
+			serde_json::to_value(turn.with_service_tier(decodex_core::ServiceTier::standard()))
+				.unwrap();
+		assert_eq!(standard.get("serviceTier"), Some(&Value::Null));
+		assert_eq!(standard["serviceTierForTurn"], "default");
 	}
 
 	#[test]
