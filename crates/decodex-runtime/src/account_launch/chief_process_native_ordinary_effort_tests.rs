@@ -1,8 +1,8 @@
 //! Ordinary typed turns preserve native reasoning and exact recovery identity.
 use super::*;
 use decodex_codex::{
-	ConversationThreadResumeRequest, ConversationTurnInput, ConversationTurnStartRequest,
-	ExactThreadId, decode_conversation_thread_resume_response,
+	ConversationThreadResumeRequest, ConversationThreadStartRequest, ConversationTurnInput,
+	ConversationTurnStartRequest, ExactThreadId, decode_conversation_thread_resume_response,
 };
 
 #[tokio::test]
@@ -81,11 +81,18 @@ async fn qualify(
 		.unwrap_or_default();
 	std::fs::write(home.path().join("config.toml"), format!("{reasoning}model={}\nservice_tier=\"flex\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(model_name),json!(catalog))).expect("native ordinary effort fixture");
 	let mut session = NativeSession::start(&binary, home.path());
-	let started = session
-		.client
-		.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}))
-		.await
-		.expect("native ordinary effort fixture");
+	let start = ConversationThreadStartRequest::new(
+		"stale-display-model",
+		home.path().to_str().expect("fixture path"),
+		"Return fixture output",
+	)
+	.expect("typed native defaults")
+	.inherit_model()
+	.inherit_service_tier();
+	let mut wire = serde_json::to_value(start).expect("native start wire");
+	wire["approvalPolicy"] = json!("never");
+	wire["sandbox"] = json!("read-only");
+	let started = session.client.thread_start(wire).await.expect("native ordinary effort fixture");
 	if inherit {
 		assert_eq!(started["serviceTier"], if tier_override { json!("flex") } else { Value::Null });
 	}

@@ -38,6 +38,20 @@ fn project(value: Value, expected: &str) -> Result<Option<NativeThreadModelSetti
 	Ok(Some(settings))
 }
 
+impl NativeThreadModelSettings {
+	/// Project one exact thread/read response. Missing fields mean unsupported metadata.
+	/// Callers must independently verify process and account ownership of the read.
+	pub fn from_read_response(
+		value: Value,
+		expected_thread: &str,
+	) -> Result<Option<Self>, ClientError> {
+		if !valid(expected_thread, 512) {
+			return Err(ClientError::InvalidFrame);
+		}
+		project(value, expected_thread)
+	}
+}
+
 impl AppServerClient {
 	/// Read one exact thread without activation. Missing fields indicate an older server.
 	/// The caller must verify account/process ownership before and after this read.
@@ -59,7 +73,7 @@ impl AppServerClient {
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
-		project(response, thread)
+		NativeThreadModelSettings::from_read_response(response, thread)
 	}
 }
 

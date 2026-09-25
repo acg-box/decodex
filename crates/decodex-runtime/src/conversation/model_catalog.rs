@@ -127,6 +127,20 @@ impl ConversationRuntime {
 		credential: AccountProcessCredential,
 		callback: Arc<dyn ProcessAccountRefreshCallback>,
 	) -> Option<(Vec<ChiefModelDto>, InitialModelDefaults)> {
+		self.read_metadata_process(account, revision, directory, credential, callback, |child| {
+			read_initial_defaults(child, directory, || self.is_shutting_down())
+		})
+	}
+
+	pub(super) fn read_metadata_process<T>(
+		&self,
+		account: &AccountId,
+		revision: i64,
+		directory: &str,
+		credential: AccountProcessCredential,
+		callback: Arc<dyn ProcessAccountRefreshCallback>,
+		read: impl FnOnce(&mut AttestedProcessChild) -> Option<T>,
+	) -> Option<T> {
 		let selected = Arc::new(SelectedWorkingDirectory::acquire(directory).ok()?);
 		let binding =
 			AccountBinding::shared_home_bound(account.clone(), credential.binding, callback)
@@ -149,11 +163,7 @@ impl ConversationRuntime {
 		let mut child = launch.spawn().ok()?;
 		let initialized = child.initialize_ordinary_turns(&vault);
 		drop(credential.launch_guard);
-		let result = if initialized.is_ok() {
-			read_initial_defaults(&mut child, directory, || self.is_shutting_down())
-		} else {
-			None
-		};
+		let result = if initialized.is_ok() { read(&mut child) } else { None };
 		// Cleanup failure cannot produce a successful catalog observation.
 		child.shutdown().ok()?;
 		selected.revalidate().ok()?;

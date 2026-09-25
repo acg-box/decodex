@@ -789,6 +789,7 @@ impl Shell {
 			live_deltas: Vec::new(),
 			can_submit: true,
 			initial_defaults_ready: false,
+			model_settings_ready: false,
 			execution: decodex_protocol::ConversationExecutionSettings::new(
 				decodex_protocol::ConversationModel::new("gpt-5.6-sol")
 					.expect("visual model identifier is valid"),
@@ -1572,6 +1573,7 @@ impl Shell {
 	fn synchronize_conversations(&mut self, cx: &mut Context<Self>) {
 		self.sync_ordinary_drafts(cx);
 		self.conversations.ensure_initial_catalog();
+		self.conversations.ensure_model_settings();
 		let snapshot = self.conversations.snapshot();
 		let selected = snapshot.selected.clone();
 		if selected.is_none()
@@ -4591,8 +4593,16 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 				.child("Waiting for account model defaults. Refresh model options to retry."),
 		);
 	}
-	if shell.quick.execution.effective_service_tier().as_str() == "flex" {
-		row = row.child("Flex · configured");
+	if shell.quick.selected.is_some() && !shell.quick.model_settings_ready {
+		row = row.child(div().id("conversation-settings-pending").child("Read this conversation's settings or select model, reasoning and service tier before sending. Refresh model options to retry."));
+	}
+	if shell.conversations.service_tier_unknown() {
+		row = row.child("Service tier follows the native thread");
+	}
+	if !shell.conversations.service_tier_unknown()
+		&& shell.quick.execution.effective_service_tier().as_str() == "flex"
+	{
+		row = row.child("Flex");
 	}
 	row = row.child(
 		div()
@@ -4605,7 +4615,8 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 				cx.notify();
 			})),
 	);
-	if let Some(models) = &shell.quick.catalog {
+	{
+		let models = shell.quick.catalog.as_deref().unwrap_or(&[]);
 		let mut choices = vec![decodex_protocol::ChiefServiceTierDto {
 			id: decodex_protocol::ServiceTier::standard(),
 			name: "Standard".into(),
@@ -4631,7 +4642,11 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 					.px_2()
 					.py_1()
 					.rounded_md()
-					.text_color(if current == id { rgb(WB_AMBER) } else { rgb(WB_TEXT_MUTED) })
+					.text_color(if current == id && !shell.conversations.service_tier_unknown() {
+						rgb(WB_AMBER)
+					} else {
+						rgb(WB_TEXT_MUTED)
+					})
 					.child(if choice.description.is_empty() {
 						choice.name
 					} else {
@@ -6144,6 +6159,7 @@ mod tests {
 			live_deltas,
 			can_submit: false,
 			initial_defaults_ready: false,
+			model_settings_ready: false,
 			execution: decodex_protocol::ConversationExecutionSettings::new(
 				decodex_protocol::ConversationModel::new("gpt-5.6-sol")
 					.expect("test model is valid"),

@@ -493,6 +493,18 @@ for line in sys.stdin:
                 result["data"] = [{"turnId": turn, "item": {"id": f"{cursor}-{index}", "type": "agentMessage", "text": "x" * (1024 * 1024)}} for index in range(5)]
             if mode == "exact-paged-missing-cursor":
                 result.pop("nextCursor")
+    elif method == "thread/read" and mode.startswith("exact-settings-"):
+        assert message["params"]["includeTurns"] is False
+        print(json.dumps({"method":"turn/completed","params":{"threadId":message["params"]["threadId"],"turn":{"id":"settings-turn","status":"completed"}}}), flush=True)
+        if mode == "exact-settings-rejected":
+            print(json.dumps({"id":message["id"],"error":{"code":-32000,"message":"settings unavailable"}}), flush=True)
+            continue
+        thread = {"id":message["params"]["threadId"],"model":"configured-model","modelProvider":"fixture","reasoningEffort":None}
+        if mode == "exact-settings-foreign":
+            thread["id"] = "foreign-thread"
+        if mode == "exact-settings-missing":
+            thread.pop("reasoningEffort")
+        result = {"thread":thread}
     elif method == "thread/read" and mode != "optional-unsupported":
         if message["params"]["threadId"] == exact_thread["id"]:
             if mode == "exact-metadata-only":

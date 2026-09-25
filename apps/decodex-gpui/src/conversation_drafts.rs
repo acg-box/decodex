@@ -193,7 +193,9 @@ impl Conversations {
 		}
 		state.clear_catalog();
 		state.execution = draft.composer.execution.clone();
+		state.execution_source = None;
 		state.creation_intent = draft.composer.creation_intent.clone();
+		state.execution_choice_owner = draft.composer.conversation_id.clone();
 		state.delivery.parked = draft.parked.clone();
 		state.delivery.new_conversation = draft.new_conversation.clone();
 		state.delivery.unconfirmed = draft.unconfirmed.clone();
@@ -235,7 +237,9 @@ impl Conversations {
 			None => state.delivery.new_conversation.clone(),
 		}?;
 		state.execution = editor.execution.clone();
+		state.execution_source = None;
 		state.creation_intent = editor.creation_intent.clone();
+		state.execution_choice_owner = editor.conversation_id.clone();
 		Some(editor)
 	}
 

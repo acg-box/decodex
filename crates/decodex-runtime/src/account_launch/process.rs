@@ -1075,6 +1075,45 @@ impl AttestedProcessChild {
 		(result, events)
 	}
 
+	/// Read exact native model configuration without resuming or starting a turn.
+	pub(crate) fn read_ordinary_model_settings(
+		&mut self,
+		thread: &str,
+	) -> (
+		Result<
+			Option<decodex_codex::app_server_client::NativeThreadModelSettings>,
+			ConversationProcessError,
+		>,
+		Vec<ConversationProcessEvent>,
+	) {
+		let mut events = Vec::new();
+		let result = (|| {
+			self.require_ordinary_turns_initialized()?;
+			let thread =
+				ExactThreadId::new(thread).map_err(|_| ConversationProcessError::Incompatible)?;
+			let request = self.process.prepare_conversation_request(
+				"thread/read",
+				&serde_json::json!({"threadId":thread.as_str(),"includeTurns":false}),
+			)?;
+			let result = self.process.conversation_request_buffered(
+				request,
+				self.timeout.min(Duration::from_secs(8)),
+				false,
+				&mut events,
+				|bytes| {
+					serde_json::from_slice(bytes)
+						.map_err(|_| decodex_codex::ConversationContractError::MalformedResponse)
+				},
+			)?;
+			decodex_codex::app_server_client::NativeThreadModelSettings::from_read_response(
+				result.value,
+				thread.as_str(),
+			)
+			.map_err(|_| ConversationProcessError::Incompatible)
+		})();
+		(result, events)
+	}
+
 	/// Retain events received by an idle metadata query for the existing event consumer.
 	pub(crate) fn retain_ordinary_events(
 		&mut self,

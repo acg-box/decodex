@@ -87,7 +87,10 @@ use crate::account_launch::process::{
 	spawn_admitted_conversation_process,
 };
 
+mod execution_overrides;
 mod model_catalog;
+mod model_settings;
+use execution_overrides::{apply_resume_overrides, apply_start_overrides, apply_turn_overrides};
 mod resume_retry;
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
@@ -358,6 +361,7 @@ pub(crate) struct SubmitConversationTurn {
 	pub message: String,
 	pub working_directory: String,
 	pub execution: ConversationExecutionSettings,
+	pub overrides: Option<decodex_protocol::ConversationExecutionOverrides>,
 }
 
 /// Explicit selected-thread reconciliation request.
@@ -690,9 +694,15 @@ struct LocalSession {
 	working_directory: String,
 	instructions: String,
 	next_user_sequence: i64,
+	execution_overrides: Option<decodex_protocol::ConversationExecutionOverrides>,
 }
 
 enum WorkerCommand {
+	ModelSettings(
+		tokio::sync::oneshot::Sender<
+			Option<decodex_codex::app_server_client::NativeThreadModelSettings>,
+		>,
+	),
 	Interrupt,
 	Shutdown,
 	ModelCatalog(tokio::sync::oneshot::Sender<Option<Vec<decodex_protocol::ChiefModelDto>>>),
@@ -1883,6 +1893,7 @@ impl ConversationRuntime {
 			return self.ambiguous(fenced, ConversationAmbiguity::ThreadBind).await;
 		}
 		let local = LocalSession {
+			execution_overrides: None,
 			operation_key: command.operation_key.clone(),
 			correlation_id: command.correlation_id.clone(),
 			causation_id: command.causation_id.clone(),
@@ -2087,8 +2098,12 @@ impl ConversationRuntime {
 			working_directory.clone(),
 			runtime_session.profile_snapshot.instructions.clone(),
 		)
-		.map(|request| request.with_service_tier(command.execution.service_tier.clone()))
-		{
+		.map(|request| {
+			apply_start_overrides(
+				request.with_service_tier(command.execution.service_tier.clone()),
+				command.overrides,
+			)
+		}) {
 			Ok(request) => request,
 			Err(_) => {
 				self.terminate_process(&process).await;
@@ -2232,6 +2247,7 @@ impl ConversationRuntime {
 			return self.ambiguous(fenced, ConversationAmbiguity::ThreadBind).await;
 		}
 		let local = LocalSession {
+			execution_overrides: command.overrides,
 			operation_key: command.operation_key.clone(),
 			correlation_id: command.correlation_id.clone(),
 			causation_id: command.causation_id.clone(),
@@ -2471,7 +2487,12 @@ impl ConversationRuntime {
 			session.working_directory.clone(),
 			session.instructions.clone(),
 		)
-		.map(|request| request.with_service_tier(session.service_tier.clone()))
+		.map(|request| {
+			apply_resume_overrides(
+				request.with_service_tier(session.service_tier.clone()),
+				session.execution_overrides,
+			)
+		})
 		.map_err(|_| SameThreadResumeRefusal::IncompatibleThread)?;
 		let resumed =
 			self.resume_thread(&session.process, request).await.map_err(|error| match error {
@@ -2519,6 +2540,7 @@ impl ConversationRuntime {
 				outcome => return outcome,
 			},
 		};
+		session.execution_overrides = command.overrides;
 		session.model.clone_from(&command.execution.model);
 		session.reasoning_effort.clone_from(&command.execution.reasoning_effort);
 		session.fast = command.execution.fast;
@@ -2744,8 +2766,12 @@ impl ConversationRuntime {
 			session.reasoning_effort.clone(),
 		)
 		.and_then(|request| request.with_client_user_message_id(turn_id.as_str()))
-		.map(|request| request.with_user_trigger().with_service_tier(session.service_tier.clone()))
-		{
+		.map(|request| {
+			apply_turn_overrides(
+				request.with_user_trigger().with_service_tier(session.service_tier.clone()),
+				session.execution_overrides,
+			)
+		}) {
 			Ok(request) => request,
 			Err(_) => {
 				return self
@@ -4947,6 +4973,7 @@ impl ConversationRuntime {
 			},
 		};
 		let session = LocalSession {
+			execution_overrides: command.overrides,
 			operation_key: command.operation_key.clone(),
 			correlation_id: command.correlation_id.clone(),
 			causation_id: command.causation_id.clone(),
@@ -5582,6 +5609,20 @@ fn run_event_loop(
 			return Err(ConversationProcessError::Unavailable);
 		}
 		match commands.try_recv() {
+			Ok(WorkerCommand::ModelSettings(reply)) => {
+				let (result, events) = child.read_ordinary_model_settings(thread_id.as_str());
+				let mut terminal = false;
+				for event in events {
+					terminal |= matches!(&event, ConversationProcessEvent::TurnCompleted { .. });
+					output
+						.blocking_send(WorkerOutput::Event(event))
+						.map_err(|_| ConversationProcessError::Unavailable)?;
+				}
+				let _ = reply.send(result.ok().flatten());
+				if terminal {
+					return Ok(());
+				}
+			},
 			Ok(WorkerCommand::ModelCatalog(reply)) => {
 				let mut pages = crate::chief_capabilities::ModelCatalogPages::default();
 				let mut cursor = None;
