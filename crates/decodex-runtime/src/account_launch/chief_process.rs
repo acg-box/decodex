@@ -290,6 +290,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "app/installed"
 					| "app/list" | "account/usage/read"
 					| "thread/unarchive"
+					| "thread/unsubscribe"
 					| "thread/read" | "thread/list"
 					| "thread/goal/get"
 					| "thread/turns/list"
