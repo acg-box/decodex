@@ -100,7 +100,19 @@ impl ChiefSurface {
 			}
 			panel = panel.child(
 				div()
+					.debug_selector({
+						let selector = match message.kind {
+							decodex_protocol::ChiefLiveMessageKind::ReasoningSummary =>
+								"native-live-reasoning-summary",
+							decodex_protocol::ChiefLiveMessageKind::Plan => "native-live-plan",
+							decodex_protocol::ChiefLiveMessageKind::AgentMessage =>
+								"native-live-output",
+						};
+						move || selector.into()
+					})
 					.child(muted(match message.kind {
+						decodex_protocol::ChiefLiveMessageKind::ReasoningSummary =>
+							"Reasoning summary",
 						decodex_protocol::ChiefLiveMessageKind::AgentMessage =>
 							"Assistant · In progress",
 						decodex_protocol::ChiefLiveMessageKind::Plan =>

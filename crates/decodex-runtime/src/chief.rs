@@ -21,6 +21,7 @@ mod misalignment;
 mod native_settings;
 pub(crate) mod native_subagents;
 pub(crate) mod observations;
+mod reasoning;
 mod result_messages;
 mod resume_recovery;
 mod task_history;
@@ -1367,6 +1368,7 @@ impl ChiefCoordinator {
 		self.voice_event(&event).await?;
 		if let ServerEvent::Notification { method, params } = &event {
 			self.pending_file_changes.observe(self.client.connection_identity(), method, params);
+			self.observe_reasoning_summary(method, params).await?;
 			if self.observe_settings_notification(method, params).await? {
 				return Ok(());
 			}

@@ -5068,7 +5068,9 @@ fn query_chief_live(
 		);
 
 		live.push(decodex_protocol::ChiefLiveMessageDto {
-			kind: if output.kind == "plan" {
+			kind: if output.kind == "reasoningSummary" {
+				decodex_protocol::ChiefLiveMessageKind::ReasoningSummary
+			} else if output.kind == "plan" {
 				decodex_protocol::ChiefLiveMessageKind::Plan
 			} else {
 				decodex_protocol::ChiefLiveMessageKind::AgentMessage

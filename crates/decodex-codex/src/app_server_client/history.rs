@@ -81,6 +81,23 @@ impl AppServerClient {
 		.map_err(|_| ClientError::Io)?
 	}
 
+	/// Read every item of one exact turn in native order, including earlier pages.
+	pub async fn thread_read_turn_items(
+		&self,
+		thread: &str,
+		turn: &str,
+	) -> Result<Value, ClientError> {
+		if [thread, turn].iter().any(|id| id.is_empty() || id.len() > 512) {
+			return Err(ClientError::InvalidFrame);
+		}
+		tokio::time::timeout(std::time::Duration::from_secs(20), async {
+			let mut budget = MAX_FRAME_BYTES;
+			self.read_turn_items(thread, turn, &mut budget).await
+		})
+		.await
+		.map_err(|_| ClientError::Io)?
+	}
+
 	/// Read turn headers newer than an exact baseline, in chronological order.
 	/// Missing baselines and incomplete pages are errors, never empty recovery.
 	pub async fn thread_turns_since(

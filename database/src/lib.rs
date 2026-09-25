@@ -38,6 +38,8 @@ pub use chief_guardian::{ChiefGuardianObservation, ChiefGuardianReview};
 mod chief_misalignment;
 pub use chief_misalignment::ChiefMisalignment;
 mod chief_output;
+mod chief_reasoning_summary;
+pub use chief_reasoning_summary::ChiefReasoningSummaryChange;
 mod chief_question_rebuild;
 mod chief_questions;
 mod chief_response_usage;
