@@ -175,6 +175,7 @@ struct ResetCardAccountRow: View {
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var confirmation = ResetCardUseConfirmation()
 	@State private var confirmationSecondsRemaining = 0
+	@State private var isIdentityHovered = false
 	@State private var isReorderHandleHovered = false
 	@State private var isReorderHandleDragging = false
 
@@ -201,14 +202,18 @@ struct ResetCardAccountRow: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.compact) {
 			HStack(alignment: .center, spacing: PanelSpacing.section) {
+                HStack(spacing: PanelSpacing.micro) {
+                    reorderHandle
 				Button { detailsBinding.wrappedValue.toggle() } label: { identityHeader }
 					.buttonStyle(PanelPressButtonStyle(pressedScale: 0.99))
 					.frame(maxWidth: .infinity, alignment: .leading)
                     .frame(height: 20, alignment: .center)
 					.accessibilityLabel(identityAccessibilityLabel)
 					.accessibilityValue(detailsBinding.wrappedValue ? "Expanded" : "Collapsed")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onHover { isIdentityHovered = $0 }
 				HStack(spacing: PanelSpacing.micro) {
-					reorderHandle
 					AccountPrimaryActionsView(state: state, store: store)
 					AccountPowerButton(state: state, store: store)
 					AccountUtilityActionsView(state: state, store: store)
@@ -243,6 +248,7 @@ struct ResetCardAccountRow: View {
 			confirmation.retainOnly(Set(targets))
 		}
 		.onDisappear {
+			if isReorderHandleHovered || isReorderHandleDragging { NSCursor.arrow.set() }
 			confirmation.cancelPendingConfirmation()
 			confirmationSecondsRemaining = 0
 		}
@@ -268,17 +274,19 @@ struct ResetCardAccountRow: View {
 			.contentShape(Rectangle())
 			.highPriorityGesture(
 				DragGesture(
-					minimumDistance: 1,
+					minimumDistance: 4,
 					coordinateSpace: .named(
 						AccountCardReorderLayout.coordinateSpaceName
 					)
 				)
 					.onChanged { value in
 						isReorderHandleDragging = true
+                        NSCursor.closedHand.set()
 						onReorderDragChanged(value.translation.height)
 					}
 					.onEnded { _ in
 						isReorderHandleDragging = false
+                        (isReorderHandleHovered ? NSCursor.openHand : NSCursor.arrow).set()
 						onReorderDragEnded()
 					}
 			)
@@ -287,6 +295,7 @@ struct ResetCardAccountRow: View {
 			)
 			.onHover { isHovered in
 				isReorderHandleHovered = isHovered
+                if !isReorderHandleDragging { (isHovered ? NSCursor.openHand : NSCursor.arrow).set() }
 			}
 			.help("Drag to reorder accounts")
 			.accessibilityElement()
@@ -306,7 +315,7 @@ struct ResetCardAccountRow: View {
 		store.canReorderAccounts
 			&& (
 				(
-					(isAccountCardHovered || isReorderHandleHovered)
+					(isIdentityHovered || isReorderHandleHovered)
 						&& isReorderGestureEnabled
 				)
 					|| isReorderHandleDragging

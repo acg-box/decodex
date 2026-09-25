@@ -199,7 +199,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 			support.contains("override func hitTest(_: NSPoint) -> NSView?")
 		)
 		XCTAssertTrue(
-			rows.contains("isAccountCardHovered || isReorderHandleHovered")
+			rows.contains("isIdentityHovered || isReorderHandleHovered")
 		)
 		XCTAssertFalse(rows.contains("DECODEX_HOVER_DEBUG"))
 		XCTAssertFalse(panel.contains("DECODEX_HOVER_DEBUG"))
@@ -227,7 +227,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(motion.contains("static let accountReorder"))
 		XCTAssertTrue(
 			[rows, controls].allSatisfy {
-				$0.contains("HStack(alignment: .firstTextBaseline")
+				$0.contains("HStack(alignment: .center")
 			}
 		)
 		XCTAssertTrue(rows.contains(#"Text("Move up")"#))
