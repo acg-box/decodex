@@ -275,3 +275,83 @@ async fn lost_retry_submission_is_unknown_and_never_replayed() {
 	chief.recover_persisted().await.unwrap();
 	assert!(chief.store.due_chief_capacity_retries(i64::MAX).await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn refused_capacity_continuation_retains_original_delivery_and_cannot_replay() {
+	for (managed, message) in [
+		(false, "Server is draining; retry after reconnecting"),
+		(
+			true,
+			"failed to load configuration: Your organization's required model provider settings changed. Restart Codex to apply them; this request was not sent",
+		),
+	] {
+		let first = failed("opaque turn/1", "serverOverloaded");
+		let (mut chief,mut sent,directory) = fixture_with_history(json!({"_capacity_draining":true,"_refusal_message":message,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}})).await;
+		ChiefCoordinator::reserve_root(&chief.store, "chief", "original request").await.unwrap();
+		chief.enqueue_user_message("chief", "command", "original request").await.unwrap();
+		chief.wake_pending().await.unwrap();
+		chief
+			.handle_event(ServerEvent::Notification {
+				method: "turn/completed".into(),
+				params: json!({"threadId":"opaque thread/1","turn":first}),
+			})
+			.await
+			.unwrap();
+		let retry =
+			chief.store.pending_chief_capacity_retry("chief".into()).await.unwrap().unwrap();
+		while sent.try_recv().is_ok() {}
+		let result = chief.check_due_followups(retry.due_at_micros).await;
+		assert!(
+			if managed {
+				matches!(
+					&result,
+					Err(ChiefError::InputNotSent(
+						decodex_database::ChiefDispatchRefusal::ManagedProviderChanged
+					))
+				)
+			} else {
+				matches!(
+					&result,
+					Err(ChiefError::InputNotSent(
+						decodex_database::ChiefDispatchRefusal::ServerDraining
+					))
+				)
+			},
+			"managed={managed}, result={result:?}"
+		);
+		let requests = std::iter::from_fn(|| sent.try_recv().ok()).collect::<Vec<_>>();
+		assert_eq!(requests.iter().filter(|request| request["method"] == "turn/start").count(), 1);
+		assert!(requests.iter().all(|request| request["method"] != "thread/inject_items"));
+		chief.check_due_followups(i64::MAX).await.unwrap();
+		assert!(
+			std::iter::from_fn(|| sent.try_recv().ok())
+				.all(|request| request["method"] != "turn/start")
+		);
+		drop(chief);
+		let root =
+			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+				.unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let work = store.get_chief_work_item("chief".into()).await.unwrap();
+		assert_eq!(work.dispatch_state, decodex_database::ChiefDispatchState::Idle);
+		assert_eq!(work.status, decodex_database::ChiefWorkStatus::UserDecision);
+		assert!(store.pending_chief_capacity_retry("chief".into()).await.unwrap().is_none());
+		assert!(
+			store
+				.begin_chief_capacity_retry("chief".into(), retry.event_id, i64::MAX)
+				.await
+				.is_err()
+		);
+		let history = store.read_chief_work_events("chief".into(), 100).await.unwrap();
+		let input = history.iter().find(|event| event.event_kind == "user_message").unwrap();
+		assert_eq!(input.delivered_turn_id.as_deref(), Some("opaque turn/1"));
+		assert!(input.payload.contains("original request"));
+		let refused =
+			history.iter().find(|event| event.event_kind == "capacity_retry_rejected").unwrap();
+		let payload: Value = serde_json::from_str(&refused.payload).unwrap();
+		assert_eq!(
+			payload["reason"],
+			if managed { "managedProviderChanged" } else { "serverDraining" }
+		);
+	}
+}

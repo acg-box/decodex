@@ -934,7 +934,23 @@ impl ChiefCoordinator {
 				Ok(turn)
 			},
 			Err(error) => {
-				let refusal = unsent_request_refusal(&error);
+				let refusal = unsent_request_refusal(&error).or_else(|| {
+					if !no_prior_effects {
+						return None;
+					}
+					let ChiefError::Transport(ClientError::Remote(remote)) = &error else {
+						return None;
+					};
+					use decodex_codex::app_server_client::{
+						NativeDispatchRefusal, classify_dispatch_refusal,
+					};
+					Some(match classify_dispatch_refusal(remote.code, &remote.message)? {
+						NativeDispatchRefusal::ServerDraining =>
+							decodex_database::ChiefDispatchRefusal::ServerDraining,
+						NativeDispatchRefusal::ManagedProviderChanged =>
+							decodex_database::ChiefDispatchRefusal::ManagedProviderChanged,
+					})
+				});
 				if let (Some(event), Some(refusal)) = (history_event, refusal) {
 					self.store
 						.reject_chief_async_before_write(

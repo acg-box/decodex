@@ -45,6 +45,10 @@ They prove preservation, not complete integration.
 | Claimed capacity retry refusal | Migration16 allows pending-to-cancelled and claimed-to-submitted, but not claimed-to-cancelled. `reject_chief_dispatch` already attempts the latter with a receipt. | Reconcile inherited migrations40/42 through one current forward migration and exact refusal tests; do not renumber old applied files. |
 | Large native approval payloads | Current `insert_chief_event` rejects payloads over 65,536 bytes. The inherited `chief_request_payloads` owner and migration41 are absent. | Review full source-bound payload storage, selected detail pages, native liveness and one-shot replies. Do not treat a larger JSON limit alone as completion. |
 
+The [Chief refusal adaptation](native-dispatch-refusals.md) follows this audit and
+addresses Chief input and claimed capacity refusal. Ordinary conversation positive
+non-submission remains open. The table records evidence at the audit baseline.
+
 These findings have current consumer evidence. The audit itself does not implement
 them or promote historical test logs into current acceptance.
 

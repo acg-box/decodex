@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 37;
+const CURRENT_SCHEMA_VERSION: i64 = 38;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -200,6 +200,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 37,
 		name: "chief_output_completion",
 		sql: include_str!("../migrations/0037_chief_output_completion.sql"),
+	},
+	Migration {
+		version: 38,
+		name: "chief_dispatch_refusals",
+		sql: include_str!("../migrations/0038_chief_dispatch_refusals.sql"),
 	},
 ];
 
@@ -661,7 +666,7 @@ mod tests {
 					"chief_live_output"
 				]
 				.contains(&entry.2.as_str()))
-				.all(|entry| after.contains(entry))
+				.all(|entry| entry.1 == "chief_capacity_transition" || after.contains(entry))
 		);
 		let count: i64 = connection
 			.query_row("SELECT COUNT(*) FROM reset_card_operations", [], |row| row.get(0))
@@ -773,7 +778,7 @@ mod tests {
 					"chief_live_output"
 				]
 				.contains(&entry.2.as_str()))
-				.all(|entry| after.contains(entry))
+				.all(|entry| entry.1 == "chief_capacity_transition" || after.contains(entry))
 		);
 		let field:(String,i64,Option<String>) = connection.query_row("SELECT type,\"notnull\",dflt_value FROM pragma_table_info('quick_task_requests') WHERE name='service_tier'",[],|r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
 		assert_eq!(field, ("TEXT".into(), 0, None));
@@ -1121,6 +1126,76 @@ mod tests {
 		assert!(
 			connection.execute("UPDATE chief_live_output SET kind='rawReasoning'", []).is_err()
 		);
+		verify(&connection).unwrap();
+		migrate(&mut connection).unwrap();
+	}
+	#[test]
+	fn capacity_refusal_upgrade_requires_exact_resolved_proof() {
+		let directory = tempfile::tempdir().unwrap();
+		let mut connection = Connection::open(directory.path().join("refusal.sqlite3")).unwrap();
+		configure(&connection).unwrap();
+		for migration in &MIGRATIONS[..37] {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 37).unwrap();
+		connection.execute("INSERT INTO chief_work_items(id,kind,title,instructions,status,codex_thread_id,created_at_micros,updated_at_micros) VALUES('w','goal','Goal','Keep','open','t',1,1),('other','goal','Other','Keep','open','other-thread',1,1)",[]).unwrap();
+		connection.execute("INSERT INTO chief_inbox_events(id,source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES(1,'failed','w','capacity_retry','{}',1)",[]).unwrap();
+		connection.execute("INSERT INTO chief_capacity_retries(event_id,work_item_id,failed_turn_id,attempt,due_at_micros,state) VALUES(1,'w','failed',1,1,'claimed')",[]).unwrap();
+		let prior = connection
+			.query_row("SELECT group_concat(sha256) FROM schema_migrations", [], |row| {
+				row.get::<_, String>(0)
+			})
+			.unwrap();
+		migrate(&mut connection).unwrap();
+		assert_eq!(
+			prior,
+			connection
+				.query_row(
+					"SELECT group_concat(sha256) FROM schema_migrations WHERE version<=37",
+					[],
+					|row| row.get::<_, String>(0)
+				)
+				.unwrap()
+		);
+		assert!(
+			connection.execute("UPDATE chief_capacity_retries SET state='cancelled'", []).is_err()
+		);
+		for (work, retry, reason, resolved, allowed) in [
+			("w", 1, "serverDraining", true, true),
+			("w", 1, "managedProviderChanged", true, true),
+			("w", 1, "requestQueueFull", true, true),
+			("w", 1, "requestTooLarge", true, true),
+			("w", 1, "settingsChanged", true, true),
+			("other", 1, "serverDraining", true, false),
+			("w", 2, "serverDraining", true, false),
+			("w", 1, "unknown", true, false),
+			("w", 1, "serverDraining", false, false),
+		] {
+			connection.execute_batch("SAVEPOINT refusal").unwrap();
+			let payload = serde_json::json!({"retryEventId":retry,"reason":reason}).to_string();
+			connection.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('refusal',?1,'capacity_retry_rejected',?2,1,?3,?4,?5)",params![work,payload,resolved.then_some("resolved"),resolved.then_some("Proven refusal"),resolved.then_some(1)]).unwrap();
+			assert_eq!(
+				connection
+					.execute("UPDATE chief_capacity_retries SET state='cancelled'", [])
+					.is_ok(),
+				allowed
+			);
+			if allowed {
+				assert!(
+					connection
+						.execute("UPDATE chief_capacity_retries SET state='pending'", [])
+						.is_err()
+				);
+			}
+			connection.execute_batch("ROLLBACK TO refusal; RELEASE refusal").unwrap();
+		}
 		verify(&connection).unwrap();
 		migrate(&mut connection).unwrap();
 	}

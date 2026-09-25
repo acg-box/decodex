@@ -10,6 +10,9 @@ use tokio::{
 	sync::{mpsc, oneshot, watch},
 };
 
+mod dispatch_refusal;
+pub use dispatch_refusal::{NativeDispatchRefusal, classify_dispatch_refusal};
+
 mod app_tool_exposure;
 pub use app_tool_exposure::{
 	AppToolExposureSettings, AppToolExposureWrite, is_app_tool_exposure_write,

@@ -5,6 +5,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/async_recovery.rs"] mod async_recovery;
 #[path = "tests/capacity.rs"] mod capacity;
 #[path = "tests/closing_resume.rs"] mod closing_resume;
+#[path = "tests/drain_rejection.rs"] mod drain_rejection;
 #[path = "tests/guardian.rs"] mod guardian;
 #[path = "tests/install.rs"] mod install;
 #[path = "tests/native_mcp_forms.rs"] mod native_mcp_forms;
@@ -299,6 +300,15 @@ impl FixtureFaults {
 		history: &Value,
 		writer: &mut tokio::io::WriteHalf<tokio::io::DuplexStream>,
 	) -> Option<bool> {
+		if request["method"] == "turn/start"
+			&& (history["_turn_draining"] == true
+				|| (history["_capacity_draining"] == true
+					&& request["params"]["toolOutput"]["name"] == "capacity_retry")
+				|| (self.injected && history["_turn_draining_after_injection"] == true))
+		{
+			writer.write_all(format!("{}\n",json!({"id":request["id"],"error":{"code":-32600,"message":history["_refusal_message"].as_str().unwrap_or("Server is draining; retry after reconnecting")}})).as_bytes()).await.unwrap();
+			return Some(true);
+		}
 		if request["method"] == "thread/resume" && self.resume_failures > 0 {
 			self.resume_failures -= 1;
 			let message = if history["_resume_closing"] == true {
