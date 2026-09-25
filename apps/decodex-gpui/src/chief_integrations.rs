@@ -36,8 +36,8 @@ impl ChiefSurface {
 				move |s, cx| s.load_integrations(&refresh, cx),
 			));
 			let refresh_work = work.to_owned();
-			panel=panel.child(integration_button("integration-reload","Sync plugins and reload MCP",cx,move |s,cx|s.refresh_native_integrations(&refresh_work,cx)))
-                .child(muted("Updates shared plugin bundles and MCP configuration for loaded tasks. Connection status is checked separately."));
+			panel=panel.child(integration_button("integration-reload","Sync plugins and tools",cx,move |s,cx|s.refresh_native_integrations(&refresh_work,cx)))
+                .child(muted("Updates shared plugin bundles, reloads MCP configuration and refreshes App tools for this task. Connection status is checked separately."));
 			if let Some(ChiefIntegrationsResult::Available {
 				mcp: ChiefMcpInventory::Available { servers },
 				..
@@ -453,7 +453,6 @@ fn integration_button(
 		.child(label)
 		.into_any_element()
 }
-
 
 fn app_inventory_text(inventory: &ChiefAppInventory) -> String {
 	match inventory {

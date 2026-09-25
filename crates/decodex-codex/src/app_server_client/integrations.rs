@@ -41,9 +41,12 @@ impl AppServerClient {
 		Ok(rows.clone())
 	}
 
-	/// Explicitly synchronize installed plugin bundles, then request native MCP reload.
+	/// Synchronize plugin bundles, reload MCP, and refresh Apps for the exact thread.
 	/// Partial reconciliation remains visible and no write is automatically retried.
-	pub async fn refresh_integrations(&self) -> Result<bool, ClientError> {
+	pub async fn refresh_integrations(&self, thread: &str) -> Result<bool, ClientError> {
+		if thread.is_empty() || thread.len() > 4096 || thread.chars().any(char::is_control) {
+			return Err(ClientError::InvalidFrame);
+		}
 		tokio::time::timeout(std::time::Duration::from_secs(45), async {
 			let receipt = self
 				.request(
@@ -75,6 +78,13 @@ impl AppServerClient {
 			if response != json!({}) {
 				return Err(ClientError::InvalidFrame);
 			}
+			// MCP runtime replacement does not refresh the separate Apps directory cache.
+			// Read every page through the native owner; failure cannot acknowledge the
+			// whole refresh, although earlier bundle and MCP changes may have applied.
+			self.apps_for_thread(thread).await?;
+			// Directory metadata is not the live thread's executable tool catalog.
+			// Ask the native owner to publish that exact runtime before acknowledging.
+			self.installed_apps_for_thread(thread, true).await?;
 			Ok(!partial)
 		})
 		.await
@@ -263,12 +273,24 @@ mod tests {
 						json!({"changedPlugins":[{"id":"example@market","hasMcps":true,"hasApps":false,"hasHooks":false,"hasSkills":true}],"failedRemotePluginIds":if partial {json!(["failed-plugin"])} else {json!([])},"failedMaterializationRemotePluginIds":[]}),
 					),
 					("config/mcpServer/reload", json!({})),
+					("app/list", json!({"data":[],"nextCursor":null})),
+					("app/installed", json!({"apps":[]})),
 				] {
 					let request: Value =
 						serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 					assert_eq!(request["method"], method);
 					if method == "config/mcpServer/reload" {
 						assert!(request["params"].is_null());
+					}
+					if method == "app/list" {
+						assert_eq!(request["params"]["threadId"], "exact-thread");
+						assert_eq!(request["params"]["forceRefetch"], true);
+					}
+					if method == "app/installed" {
+						assert_eq!(
+							request["params"],
+							json!({"threadId":"exact-thread","forceRefresh":true})
+						);
 					}
 					writer
 						.write_all(
@@ -278,7 +300,7 @@ mod tests {
 						.unwrap();
 				}
 			});
-			assert_eq!(client.refresh_integrations().await.unwrap(), !partial);
+			assert_eq!(client.refresh_integrations("exact-thread").await.unwrap(), !partial);
 			server.await.unwrap();
 		}
 	}

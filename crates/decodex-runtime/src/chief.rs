@@ -529,12 +529,13 @@ impl ChiefCoordinator {
 	}
 
 	pub(crate) async fn refresh_integrations(&self, work: &str) -> Result<bool, ChiefError> {
-		self.store
+		let thread = self
+			.store
 			.get_chief_work_item(work.into())
 			.await?
 			.codex_thread_id
 			.ok_or_else(|| ChiefError::Rejected("Task has no native thread".into()))?;
-		Ok(self.client.refresh_integrations().await?)
+		Ok(self.client.refresh_integrations(&thread).await?)
 	}
 
 	pub(crate) async fn add_resource_link(

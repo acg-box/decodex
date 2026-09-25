@@ -783,6 +783,8 @@ mod tests {
 					json!({"changedPlugins":[],"failedRemotePluginIds":[],"failedMaterializationRemotePluginIds":[]}),
 				),
 				("config/mcpServer/reload", json!({})),
+				("app/list", json!({"data":[],"nextCursor":null})),
+				("app/installed", json!({"apps":[]})),
 			] {
 				let Some(Ok(line)) = lines.next() else {
 					return;
@@ -809,7 +811,7 @@ mod tests {
 			client.installed_plugins_for_directory("/project").await.unwrap()["marketplaces"],
 			json!([])
 		);
-		assert!(client.refresh_integrations().await.unwrap());
+		assert!(client.refresh_integrations("thread").await.unwrap());
 		server.join().unwrap();
 		drop(bridge);
 	}
