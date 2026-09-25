@@ -1,6 +1,9 @@
 //! Ordinary typed turns preserve native reasoning and exact recovery identity.
 use super::*;
-use decodex_codex::{ConversationTurnInput, ConversationTurnStartRequest, ExactThreadId};
+use decodex_codex::{
+	ConversationThreadResumeRequest, ConversationTurnInput, ConversationTurnStartRequest,
+	ExactThreadId, decode_conversation_thread_resume_response,
+};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated ordinary effort qualification"]
@@ -98,11 +101,26 @@ async fn qualify(
 	let mut session = NativeSession::start(&binary, home.path());
 	assert_settings(&session, &id, model_name, requested.or(configured)).await;
 	assert_eq!(requests.load(Ordering::Acquire), 1, "cold settings read cannot infer");
-	session
+	let resume = ConversationThreadResumeRequest::new(
+		ExactThreadId::new(&id).expect("exact saved thread"),
+		"deliberately-stale-model",
+		home.path().to_str().expect("fixture directory"),
+		"Continue the existing task.",
+	)
+	.expect("typed resume request")
+	.inherit_model()
+	.inherit_service_tier();
+	let response = session
 		.client
-		.thread_resume(json!({"threadId":id}))
+		.thread_resume(serde_json::to_value(&resume).expect("typed resume wire"))
 		.await
 		.expect("native ordinary effort fixture");
+	let decoded = decode_conversation_thread_resume_response(
+		&resume,
+		&serde_json::to_vec(&response).expect("native resume response"),
+	)
+	.expect("inheritance accepts actual native model while checking thread and directory");
+	assert_eq!(decoded.model().as_str(), model_name);
 	assert_readback(&session, &id, first_client_id, &first_turn).await;
 	assert_eq!(requests.load(Ordering::Acquire), 1, "restart and readback cannot replay input");
 	let second_turn =
@@ -149,15 +167,12 @@ async fn send(
 	.with_client_user_message_id(client_id)
 	.expect("stable native user message ID")
 	.with_user_trigger();
+	let request = if inherit { request.inherit_model().inherit_service_tier() } else { request };
 	let mut wire = serde_json::to_value(request).expect("native ordinary effort fixture");
-	if inherit {
-		let fields = wire.as_object_mut().expect("native turn object");
-		fields.remove("model");
-		fields.remove("serviceTier");
-		fields.remove("serviceTierForTurn");
-		if tier_override {
-			fields.insert("serviceTierForTurn".into(), json!("flex"));
-		}
+	if inherit && tier_override {
+		wire.as_object_mut()
+			.expect("native turn object")
+			.insert("serviceTierForTurn".into(), json!("flex"));
 	}
 	let turn = session.client.turn_start(wire).await.expect("native ordinary effort fixture");
 	loop {
