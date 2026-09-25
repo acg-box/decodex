@@ -70,6 +70,19 @@ impl ChiefSurface {
 			.flex_col()
 			.gap_2();
 		if let Some(model) = self.selected_model(cx) {
+			if let Some(programs) = &model.available_cyber_programs {
+				let names = if programs.is_empty() {
+					"None advertised".into()
+				} else {
+					programs.join(", ")
+				};
+				panel = panel.child(
+					gpui::div()
+						.id("model-access-programs")
+						.debug_selector(|| "model-access-programs".into())
+						.child(super::muted(format!("Catalog access programs: {names}"))),
+				);
+			}
 			if let Some(notice) = &model.availability {
 				panel = panel.child(super::muted(notice.clone()));
 			}
@@ -338,6 +351,7 @@ mod tests {
 					efforts: vec![ConversationReasoningEffort::High],
 					default_effort: Some(ConversationReasoningEffort::High),
 					supports_fast: false,
+					available_cyber_programs: None,
 					supports_images: true,
 					availability: None,
 					upgrade: None,
@@ -402,7 +416,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn upgrade_notice_is_visible_without_replacing_selected_model(cx: &mut gpui::TestAppContext) {
+	fn model_notices_refresh_without_replacing_selected_model(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -416,6 +430,7 @@ mod tests {
 					supports_fast: false,
 					service_tiers: vec![],
 					default_service_tier: None,
+					available_cyber_programs: None,
 					supports_images: true,
 					availability: Some("Available for this account".into()),
 					upgrade: Some(decodex_protocol::ChiefModelUpgradeDto {
@@ -439,6 +454,22 @@ mod tests {
 		let bounds = visual.debug_bounds("model-catalog-notices").expect("visible model notices");
 		assert!(bounds.size.height > gpui::px(20.0));
 		surface.update(visual, |s, cx| assert_eq!(s.model.read(cx).content(), "current-model"));
+		for programs in [Some(vec!["standard".into(), "daybreakBlue".into()]), Some(vec![]), None] {
+			let visible = programs.is_some();
+			surface.update(visual, |s, cx| {
+				let Some(ChiefCapabilitiesResult::Available { models, .. }) = &mut s.capabilities
+				else {
+					panic!("catalog fixture")
+				};
+				models[0].available_cyber_programs = programs;
+				assert_eq!(s.model.read(cx).content(), "current-model");
+				cx.notify();
+			});
+			visual.update(|window, cx| {
+				window.draw(cx).clear();
+			});
+			assert_eq!(visual.debug_bounds("model-access-programs").is_some(), visible);
+		}
 	}
 	#[gpui::test]
 	fn configured_flex_survives_missing_catalog_and_fast_support(cx: &mut gpui::TestAppContext) {
@@ -463,6 +494,7 @@ mod tests {
 							efforts: vec![ConversationReasoningEffort::High],
 							default_effort: Some(ConversationReasoningEffort::High),
 							supports_fast: false,
+							available_cyber_programs: None,
 							supports_images: true,
 							availability: None,
 							upgrade: None,

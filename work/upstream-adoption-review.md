@@ -40,6 +40,16 @@ not instructions to delete code or weaken native enforcement.
 | Reduced-motion transitions | Optional | Honor system reduced-motion and VoiceOver preferences. | [1478](https://github.com/acg-box/decodex/pull/1478) | [apps/decodex-gpui/src/ui_motion.rs](../apps/decodex-gpui/src/ui_motion.rs) |
 | Configuration warnings and subagent activity | Core | Retain bounded native startup warnings and native subagent observations. Chief settings errors retain public native causes; ordinary warnings persist as Status history with exact history refresh. Partial-output retention remains a separate batch. | [1356](https://github.com/acg-box/decodex/pull/1356), [1357](https://github.com/acg-box/decodex/pull/1357), [1484](https://github.com/acg-box/decodex/pull/1484), [1485](https://github.com/acg-box/decodex/pull/1485) | [crates/decodex-runtime/src/native_config_warning.rs](../crates/decodex-runtime/src/native_config_warning.rs) |
 
+## Later optional display
+
+[Model access metadata](model-access-programs.md) adds an optional Chief model
+notice after this register's historical baseline. The shared ordinary/Chief
+catalog carries the observed programs; only Chief gains the detail display.
+Removing that notice and informational projection does not require removing the
+native model catalog or account-source checks. The model-access note records
+current validation and limits. Its presence does not close the other optional
+analytics, voice, widget, prompt-editing or recap scopes below.
+
 ## Evidence boundaries
 
 The 128 distinct PRs cited above were read from GitHub and their merge commits were checked as ancestors of this snapshot. Current source owners were inspected or located in this checkout. This confirms merge and source presence, not full live acceptance or release installation. No new behavioral test was run for this documentation reconciliation.
