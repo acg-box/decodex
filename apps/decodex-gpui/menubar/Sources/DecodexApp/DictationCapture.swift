@@ -62,9 +62,16 @@ final class DictationPCMEncoder: @unchecked Sendable {
 
 enum CaptureError: Error { case format, device }
 
+@MainActor
+protocol DictationCapturing: AnyObject {
+    func start(input: String) throws
+    func finish()
+    func stop()
+}
+
 /// Direct Core Audio input for dictation; speech recognition stays in the subscription.
 @MainActor
-final class DictationCapture {
+final class DictationCapture: DictationCapturing {
     private static let logger = Logger(subsystem: "box.acg.decodex", category: "DictationCapture")
     private let engine = AVAudioEngine()
     private var encoder: DictationPCMEncoder?
