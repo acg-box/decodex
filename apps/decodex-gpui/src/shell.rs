@@ -506,6 +506,9 @@ pub(crate) fn bind_keys(cx: &mut App) {
 
 /// One window-owned production shell. Connection ownership lives at application scope.
 pub(crate) struct Shell {
+	ordinary_last: Option<decodex_protocol::DesktopOrdinaryDraft>,
+	ordinary_owner: Option<EntityId>,
+	ordinary_syncing: bool,
 	reset_cards: reset_cards::ResetCardsPanel,
 	settings_window: Option<WindowHandle<SettingsWindow>>,
 	settings_selected: Destination,
@@ -560,12 +563,16 @@ pub(crate) struct Shell {
 	native_status: native_status::NativeStatus,
 }
 
+#[path = "ordinary_drafts.rs"] mod ordinary_drafts;
+
 impl Shell {
 	pub(crate) fn drafts_ready_for_quit(&mut self, cx: &mut Context<Self>) -> bool {
+		self.sync_ordinary_drafts(cx);
 		self.chief.update(cx, |surface, cx| surface.drafts_ready_for_quit(cx))
 	}
 
 	pub(crate) fn flush_drafts_for_quit(&mut self, cx: &mut Context<Self>) -> Task<bool> {
+		self.sync_ordinary_drafts(cx);
 		self.chief.update(cx, |surface, cx| surface.flush_drafts_for_quit(cx))
 	}
 
@@ -601,12 +608,14 @@ impl Shell {
 		let composer = cx.new(|cx| ComposerInput::new(Destination::ALL.len() as isize + 1, cx));
 		cx.subscribe(&composer, |shell, _, _: &ComposerEvent, cx| {
 			shell.input_status = None;
+			shell.sync_ordinary_drafts(cx);
 			cx.notify();
 		})
 		.detach();
 		let chief = cx.new(ChiefSurface::new);
 		cx.observe(&chief, |shell, _, cx| {
 			shell.record_navigation(cx);
+			shell.sync_ordinary_drafts(cx);
 			cx.notify();
 		})
 		.detach();
@@ -671,6 +680,9 @@ impl Shell {
 			last_provider_sync: None,
 			creating_new: true,
 			pending_submission: None,
+			ordinary_last: None,
+			ordinary_owner: None,
+			ordinary_syncing: false,
 			input_status: None,
 			titlebar_drag_pending: false,
 			navigation: navigation::NavigationHistory::new(),
@@ -1264,12 +1276,13 @@ impl Shell {
 	) {
 		self.conversations.deactivate();
 		self.conversations = conversations;
+		self.reset_ordinary_draft_binding(cx);
 		self.history_pager = Some(history_pager);
 		if self.selected == Destination::Conversations {
 			self.conversations.activate();
 			self.last_provider_sync = None;
 		}
-		self.synchronize_conversations();
+		self.synchronize_conversations(cx);
 		self.reconcile_pending_submission(cx);
 		cx.notify();
 	}
@@ -1556,7 +1569,8 @@ impl Shell {
 		}
 	}
 
-	fn synchronize_conversations(&mut self) {
+	fn synchronize_conversations(&mut self, cx: &mut Context<Self>) {
+		self.sync_ordinary_drafts(cx);
 		self.conversations.ensure_initial_catalog();
 		let snapshot = self.conversations.snapshot();
 		let selected = snapshot.selected.clone();
@@ -1637,7 +1651,7 @@ impl Shell {
 		self.opened_history = None;
 		self.creating_new = true;
 		self.input_status = None;
-		self.synchronize_conversations();
+		self.synchronize_conversations(cx);
 		window.focus(&self.composer.focus_handle(cx), cx);
 		cx.notify();
 	}
@@ -1655,7 +1669,7 @@ impl Shell {
 			self.creating_new = false;
 			self.opened_history = None;
 			self.input_status = None;
-			self.synchronize_conversations();
+			self.synchronize_conversations(cx);
 			window.focus(&self.composer.focus_handle(cx), cx);
 			cx.notify();
 		}
@@ -1677,7 +1691,7 @@ impl Shell {
 			self.creating_new = false;
 			self.opened_history = None;
 			self.input_status = None;
-			self.synchronize_conversations();
+			self.synchronize_conversations(cx);
 			cx.notify();
 		}
 	}
@@ -1732,7 +1746,7 @@ impl Shell {
 			},
 			Err(error) => self.input_status = Some(input_error_label(error).into()),
 		}
-		self.synchronize_conversations();
+		self.synchronize_conversations(cx);
 		self.reconcile_pending_submission(cx);
 		cx.notify();
 	}
@@ -1743,7 +1757,7 @@ impl Shell {
 		if state == Some(ConversationState::OutcomeUnknown) {
 			self.input_status =
 				self.conversations.refresh_selected().err().map(input_error_label).map(Into::into);
-			self.synchronize_conversations();
+			self.synchronize_conversations(cx);
 			cx.notify();
 			return;
 		}
@@ -1753,7 +1767,7 @@ impl Shell {
 		}
 		self.input_status =
 			self.conversations.recover_selected().err().map(input_error_label).map(Into::into);
-		self.synchronize_conversations();
+		self.synchronize_conversations(cx);
 		cx.notify();
 	}
 
@@ -1761,39 +1775,39 @@ impl Shell {
 		if let Err(error) = self.conversations.interrupt() {
 			self.input_status = Some(input_error_label(error).into());
 		}
-		self.synchronize_conversations();
+		self.synchronize_conversations(cx);
 		cx.notify();
 	}
 
 	fn refresh_conversation(&mut self, _: &mut Window, cx: &mut Context<Self>) {
 		self.input_status =
 			self.conversations.refresh_all().err().map(input_error_label).map(Into::into);
-		self.synchronize_conversations();
+		self.synchronize_conversations(cx);
 		cx.notify();
 	}
 
 	fn archive_conversation(&mut self, _: &mut Window, cx: &mut Context<Self>) {
 		self.input_status =
 			self.conversations.archive_selected().err().map(input_error_label).map(Into::into);
-		self.synchronize_conversations();
+		self.synchronize_conversations(cx);
 		cx.notify();
 	}
 
 	fn cycle_conversation_model(&mut self, cx: &mut Context<Self>) {
 		self.conversations.cycle_model();
-		self.synchronize_conversations();
+		self.synchronize_conversations(cx);
 		cx.notify();
 	}
 
 	fn cycle_conversation_effort(&mut self, cx: &mut Context<Self>) {
 		self.conversations.cycle_reasoning_effort();
-		self.synchronize_conversations();
+		self.synchronize_conversations(cx);
 		cx.notify();
 	}
 
 	fn toggle_conversation_fast(&mut self, cx: &mut Context<Self>) {
 		self.conversations.toggle_fast();
-		self.synchronize_conversations();
+		self.synchronize_conversations(cx);
 		cx.notify();
 	}
 
@@ -1801,7 +1815,7 @@ impl Shell {
 		if let Some(pager) = self.history_pager.as_ref() {
 			let _ = pager.show_previous();
 		}
-		self.synchronize_conversations();
+		self.synchronize_conversations(cx);
 		cx.notify();
 	}
 
@@ -1809,7 +1823,7 @@ impl Shell {
 		if let Some(pager) = self.history_pager.as_ref() {
 			let _ = pager.show_next();
 		}
-		self.synchronize_conversations();
+		self.synchronize_conversations(cx);
 		cx.notify();
 	}
 
@@ -1817,7 +1831,7 @@ impl Shell {
 		if let Some(pager) = self.history_pager.as_ref() {
 			let _ = pager.retry();
 		}
-		self.synchronize_conversations();
+		self.synchronize_conversations(cx);
 		cx.notify();
 	}
 }
@@ -2029,7 +2043,7 @@ fn publish_views(
 			cx.notify();
 		}
 		if quick != shell.quick || history != shell.history {
-			shell.synchronize_conversations();
+			shell.synchronize_conversations(cx);
 			shell.reconcile_pending_submission(cx);
 			cx.notify();
 		}
@@ -4496,6 +4510,7 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				])
 				.child(div().h(px(35.0)).min_h(px(35.0)).child(shell.composer.clone()))
 				.child(conversation_service_tiers(shell, cx))
+				.child(ordinary_drafts::creation_receipt_controls(shell, cx))
 				.child(
 					div()
 						.h(px(27.0))
@@ -4539,6 +4554,35 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let mut row =
 		div().id("conversation-service-tiers").flex().flex_wrap().gap_2().text_size(px(11.));
+	if let Some(notice) = shell.chief.read(cx).ordinary_draft_notice() {
+		row = row.child(div().id("ordinary-draft-storage-notice").child(notice.to_owned())).child(
+			div()
+				.id("ordinary-draft-recovery")
+				.cursor_pointer()
+				.child("Review saved drafts")
+				.on_click(cx.listener(|shell, _, _, cx| {
+					shell.chief.update(cx, |chief, cx| chief.show_ordinary_draft_recovery(cx));
+					shell.selected = Destination::Chief;
+					cx.notify();
+				})),
+		);
+	}
+
+	if shell.conversations.can_cancel_unsent_ordinary() {
+		row = row.child(
+			div()
+				.id("ordinary-cancel-unsent")
+				.debug_selector(|| "ordinary-cancel-unsent".into())
+				.cursor_pointer()
+				.child("Cancel pending send")
+				.on_click(cx.listener(|shell, _, _, cx| {
+					shell.conversations.cancel_unsent_ordinary();
+					shell.synchronize_conversations(cx);
+					cx.notify();
+				})),
+		);
+	}
+
 	if shell.quick.selected.is_none() && !shell.quick.initial_defaults_ready {
 		row = row.child(
 			div()
@@ -4557,7 +4601,7 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 			.child("Refresh model options")
 			.on_click(cx.listener(|shell, _, _, cx| {
 				shell.conversations.refresh_catalog();
-				shell.synchronize_conversations();
+				shell.synchronize_conversations(cx);
 				cx.notify();
 			})),
 	);
@@ -4595,7 +4639,7 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 					})
 					.on_click(cx.listener(move |shell, _, _, cx| {
 						shell.conversations.select_service_tier(id.clone());
-						shell.synchronize_conversations();
+						shell.synchronize_conversations(cx);
 						cx.notify();
 					})),
 			);
@@ -6494,6 +6538,51 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn recorded_creation_open_button_retains_later_input_without_replay(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		for text in ["Original creation input", "Later unsent input"] {
+			let (conversations, server, original) =
+				crate::conversations::tests::recorded_creation_fixture(text);
+			shell.update(visual, |s, cx| {
+				s.conversations = conversations.clone();
+				s.selected = Destination::Conversations;
+				s.ordinary_owner = None;
+				s.composer.update(cx, |input, cx| input.set_content(text, cx));
+				s.synchronize_conversations(cx);
+			});
+			visual.update(|window, cx| {
+				window.resize(size(px(1440.), px(1000.)));
+				window.draw(cx).clear();
+			});
+			let button = visual
+				.debug_bounds("ordinary-creation-open-0")
+				.expect("open saved creation button");
+			visual.simulate_click(button.center(), gpui::Modifiers::default());
+			let decodex_protocol::CommandPayload::CreateConversation { conversation_id, .. } =
+				&original.payload
+			else {
+				panic!("creation")
+			};
+			shell.read_with(visual, |s, cx| {
+				assert_eq!(
+					s.composer.read(cx).content(),
+					if text == "Original creation input" { "" } else { text }
+				);
+				assert_eq!(s.conversations.ordinary_editor_owner().as_ref(), Some(conversation_id));
+				assert!(s.conversations.ordinary_creation_receipts().is_empty());
+				assert!(
+					!s.conversations.snapshot().can_submit,
+					"missing task must first be read back"
+				);
+			});
+			assert_eq!(conversations.confirmed_ordinary_commands(), vec![original]);
+			assert!(
+				crate::conversations::tests::take_ready_command(&conversations, &server).is_none()
+			);
+		}
+	}
+
+	#[gpui::test]
 	fn ordinary_creation_waits_for_defaults_then_sends_the_rendered_selection(
 		cx: &mut TestAppContext,
 	) {
@@ -6505,7 +6594,7 @@ mod tests {
 			s.selected = Destination::Conversations;
 			s.creating_new = true;
 			s.composer.update(cx, |input, cx| input.set_content("Keep my input", cx));
-			s.synchronize_conversations();
+			s.synchronize_conversations(cx);
 		});
 		visual.update(|window, cx| {
 			window.resize(size(px(1440.), px(1000.)));
@@ -6533,7 +6622,7 @@ mod tests {
 				catalog_model: None,
 			},
 		);
-		shell.update(visual, |s, _| s.synchronize_conversations());
+		shell.update(visual, |s, cx| s.synchronize_conversations(cx));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
@@ -6561,7 +6650,7 @@ mod tests {
 		let (conversations, server_id, _) = crate::conversations::tests::catalog_conversations();
 		shell.update(visual, |s, cx| {
 			s.conversations = conversations.clone();
-			s.synchronize_conversations();
+			s.synchronize_conversations(cx);
 			s.select_destination(Destination::Conversations, cx);
 		});
 		visual.update(|window, cx| {

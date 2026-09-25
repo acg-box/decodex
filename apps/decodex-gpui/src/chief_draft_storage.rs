@@ -6,6 +6,7 @@ use decodex_protocol::{
 };
 use std::time::Duration;
 
+#[path = "chief_ordinary_storage.rs"] mod ordinary;
 #[path = "chief_draft_recovery.rs"] mod recovery;
 
 enum SaveFailure {
@@ -1109,6 +1110,281 @@ mod creation_tests;
 #[cfg(test)]
 mod ordinary_owner_tests {
 	use super::*;
+
+	#[gpui::test]
+	fn ordinary_creation_acceptance_saves_the_new_owner_and_later_editor(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use crate::{
+			client_lifecycle::ConnectionView,
+			conversations::tests::{catalog_conversations, take_ready_command},
+			shell::{Destination, Shell},
+		};
+		for later in ["Original input", "Later unsent input"] {
+			let (_service, profile, _) = super::super::tests::profiles();
+			let directory = tempfile::tempdir().unwrap();
+			let store = ClientDraftStore::open_at(
+				&directory.path().canonicalize().unwrap().join("desktop"),
+			)
+			.unwrap();
+			let (conversations, server, mut task) = catalog_conversations();
+			conversations.begin_new();
+			let (shell, visual) =
+				cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+			shell.update(visual, |s, cx| {
+				s.conversations = conversations.clone();
+				s.reset_cards.profile = Some(profile.clone());
+				s.selected = Destination::Conversations;
+				s.chief.update(cx, |chief, cx| {
+					chief.draft_profiles.storage = Storage::open(Ok(store.clone()));
+					chief.bind_profile(Some(profile.clone()), cx);
+				});
+				s.reset_ordinary_draft_binding(cx);
+				s.composer.update(cx, |input, cx| input.set_content("Original input", cx));
+				s.synchronize_conversations(cx);
+			});
+			crate::conversations::creation_defaults_tests::reply_defaults(
+				&conversations,
+				&server,
+				decodex_protocol::InitialModelDefaults {
+					configured: decodex_protocol::InitialExecutionDefaults {
+						model: Some(
+							decodex_protocol::ConversationModel::new("native-model").unwrap(),
+						),
+						reasoning_effort: None,
+						service_tier: None,
+					},
+					managed: Default::default(),
+					catalog_model: None,
+				},
+			);
+			shell.update(visual, |s, cx| s.synchronize_conversations(cx));
+			visual.run_until_parked();
+			visual.update(|window, cx| {
+				window.resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));
+				window.draw(cx).clear();
+			});
+			let send = visual.debug_bounds("conversation-send").unwrap();
+			visual.simulate_click(send.center(), gpui::Modifiers::default());
+			visual.run_until_parked();
+			let original =
+				take_ready_command(&conversations, &server).expect("saved creation command");
+			let decodex_protocol::CommandPayload::CreateConversation { conversation_id, .. } =
+				&original.payload
+			else {
+				panic!("creation")
+			};
+			shell.update(visual, |s, cx| {
+				s.composer.update(cx, |input, cx| input.set_content(later, cx))
+			});
+			task.conversation_id = conversation_id.clone();
+			let result = decodex_protocol::CommandResultEnvelope {
+				version: decodex_protocol::CURRENT_VERSION,
+				server_id: server.clone(),
+				client_command_id: original.client_command_id,
+				idempotency_key: original.idempotency_key,
+				outcome: decodex_protocol::CommandOutcome::Succeeded,
+				entity_revision: Some(task.conversation_revision),
+				payload: Some(decodex_protocol::ResultPayload::ConversationAccepted {
+					conversation: task,
+				}),
+				error: None,
+			};
+			assert_eq!(
+				conversations.route_command_result(1, &server, &result),
+				crate::conversations::ConversationRouteOutcome::Fresh
+			);
+			shell.update(visual, |s, cx| s.synchronize_conversations(cx));
+			visual.run_until_parked();
+			let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+			let draft = &saved.profiles[&profile.draft_scope_key()].ordinary["/tmp"];
+			assert_eq!(draft.composer.conversation_id.as_ref(), Some(conversation_id));
+			assert_eq!(draft.composer.text, if later == "Original input" { "" } else { later });
+			assert!(draft.unconfirmed.is_empty());
+			assert!(draft.new_conversation.is_none());
+			assert!(take_ready_command(&conversations, &server).is_none());
+		}
+	}
+
+	#[gpui::test]
+	fn ordinary_competing_writer_blocks_dispatch_until_keep_both(cx: &mut gpui::TestAppContext) {
+		exercise_ordinary_competing_writer(cx, false);
+	}
+
+	#[gpui::test]
+	fn ordinary_competing_writer_cancel_button_keeps_input_without_sending(
+		cx: &mut gpui::TestAppContext,
+	) {
+		exercise_ordinary_competing_writer(cx, true);
+	}
+
+	fn exercise_ordinary_competing_writer(cx: &mut gpui::TestAppContext, cancel: bool) {
+		use crate::{
+			client_lifecycle::ConnectionView,
+			conversations::tests::{catalog_conversations, take_ready_command},
+			shell::Shell,
+		};
+		let (_service, profile, _) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let (conversations, server, _) = catalog_conversations();
+		let (shell, visual) =
+			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+		shell.update(visual, |s, cx| {
+			s.conversations = conversations.clone();
+			s.reset_cards.profile = Some(profile.clone());
+			s.chief.update(cx, |chief, cx| {
+				chief.draft_profiles.storage = Storage::open(Ok(store.clone()));
+				chief.bind_profile(Some(profile.clone()), cx);
+			});
+			s.reset_ordinary_draft_binding(cx);
+			s.composer.update(cx, |input, cx| input.set_content("Original input", cx));
+			s.sync_ordinary_drafts(cx);
+		});
+		visual.run_until_parked();
+		let snapshot = store.load().unwrap();
+		let mut remote = DesktopDraftDocument::decode(&snapshot.payload).unwrap();
+		remote
+			.profiles
+			.get_mut(&profile.draft_scope_key())
+			.unwrap()
+			.ordinary
+			.get_mut("/tmp")
+			.unwrap()
+			.composer
+			.text = "Other client input".into();
+		let competing_store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		competing_store.save(snapshot.revision, &remote.encode().unwrap()).unwrap();
+		conversations.submit("Original input").unwrap();
+		shell.update(visual, |s, cx| s.sync_ordinary_drafts(cx));
+		visual.run_until_parked();
+		assert!(take_ready_command(&conversations, &server).is_none());
+		shell.update(visual, |s, cx| {
+			assert!(s.chief.read(cx).ordinary_draft_notice().is_some());
+			assert_eq!(s.composer.read(cx).content(), "Original input");
+			s.composer.update(cx, |input, cx| input.set_content("Later local input", cx));
+			s.sync_ordinary_drafts(cx);
+			s.selected = crate::shell::Destination::Conversations;
+			s.synchronize_conversations(cx);
+		});
+		if cancel {
+			visual.update(|window, cx| {
+				window.resize(gpui::size(gpui::px(1440.), gpui::px(1000.)));
+				window.draw(cx).clear();
+			});
+			let button = visual.debug_bounds("ordinary-cancel-unsent").expect("cancel button");
+			visual.simulate_click(button.center(), gpui::Modifiers::default());
+			assert!(!conversations.can_cancel_unsent_ordinary());
+		}
+		shell.update(visual, |s, cx| {
+			assert_eq!(s.composer.read(cx).content(), "Later local input");
+			s.chief.update(cx, |chief, cx| {
+				assert!(chief.can_keep_both_drafts());
+				chief.keep_both_drafts(cx);
+			});
+			assert!(take_ready_command(&conversations, &server).is_none());
+		});
+		visual.run_until_parked();
+		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		let scope = profile.draft_scope_key();
+		let records: Vec<_> = saved
+			.profiles
+			.get(&scope)
+			.into_iter()
+			.chain(
+				saved
+					.recovered
+					.iter()
+					.filter(|copy| copy.scope.as_ref() == Some(&scope))
+					.map(|copy| &copy.draft),
+			)
+			.filter_map(|profile| profile.ordinary.get("/tmp"))
+			.collect();
+		assert!(records.iter().any(|record| record.composer.text == "Other client input"));
+		let local =
+			records.iter().find(|record| record.composer.text == "Later local input").unwrap();
+		if cancel {
+			assert!(records.iter().all(|record| record.unconfirmed.is_empty()));
+			assert!(take_ready_command(&conversations, &server).is_none());
+		} else {
+			assert_eq!(local.unconfirmed.len(), 1);
+			assert_eq!(
+				take_ready_command(&conversations, &server),
+				Some(local.unconfirmed[0].clone())
+			);
+		}
+	}
+
+	#[gpui::test]
+	fn ordinary_live_restore_keeps_both_and_saves_later_input(cx: &mut gpui::TestAppContext) {
+		use crate::{
+			client_lifecycle::ConnectionView,
+			conversations::tests::{catalog_conversations, take_ready_command},
+			shell::Shell,
+		};
+		let (_service, profile, _) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let (conversations, server, _) = catalog_conversations();
+		let (shell, visual) =
+			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+		shell.update(visual, |s, cx| {
+			s.conversations = conversations.clone();
+			s.reset_cards.profile = Some(profile.clone());
+			s.chief.update(cx, |chief, cx| {
+				chief.draft_profiles.storage = Storage::open(Ok(store.clone()));
+				chief.bind_profile(Some(profile.clone()), cx);
+			});
+			s.reset_ordinary_draft_binding(cx);
+			s.composer.update(cx, |input, cx| input.set_content("Original input", cx));
+			s.sync_ordinary_drafts(cx);
+		});
+		visual.run_until_parked();
+		conversations.submit("Original input").unwrap();
+		shell.update(visual, |s, cx| {
+			s.sync_ordinary_drafts(cx);
+			assert!(take_ready_command(&conversations, &server).is_none());
+			s.chief.update(cx, |chief, _| {
+				let record = chief
+					.draft_profiles
+					.storage
+					.document
+					.profiles
+					.get_mut(&profile.draft_scope_key())
+					.unwrap()
+					.ordinary
+					.get_mut("/tmp")
+					.unwrap();
+				record.composer.text = "Requested replacement".into();
+			});
+			s.composer.update(cx, |input, cx| input.set_content("Later local input", cx));
+			s.sync_ordinary_drafts(cx);
+			assert_eq!(s.composer.read(cx).content(), "Later local input");
+		});
+		visual.run_until_parked();
+		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		let scope = profile.draft_scope_key();
+		let active = &saved.profiles[&scope].ordinary["/tmp"];
+		assert_eq!(active.composer.text, "Later local input");
+		assert_eq!(active.unconfirmed.len(), 1);
+		assert!(saved.recovered.iter().any(|copy| {
+			copy.scope.as_ref() == Some(&scope)
+				&& copy.draft.ordinary.get("/tmp").is_some_and(|draft| {
+					draft.composer.text == "Requested replacement"
+						&& draft.unconfirmed == active.unconfirmed
+				})
+		}));
+		assert_eq!(
+			take_ready_command(&conversations, &server),
+			Some(active.unconfirmed[0].clone())
+		);
+	}
 	#[gpui::test]
 	fn chief_capture_and_profile_switch_preserve_ordinary_edits(cx: &mut gpui::TestAppContext) {
 		let (_root, first, second) = super::super::tests::profiles();

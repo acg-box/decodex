@@ -48,12 +48,16 @@ pub use chief_timeline::{
 pub use chief_usage_estimate::{
 	ChiefUsageEstimateResult, ThreadUsageEstimate, ThreadUsageEstimateGroup,
 };
+mod conversation_receipts;
 mod mcp_install;
 mod mcp_login;
 mod model_catalog;
 pub use chief_integrations::{
 	ChiefIntegrationsResult, ChiefMcpInventory, ChiefMcpStatusDto, ChiefPluginInventory,
 	ChiefPluginStatusDto,
+};
+pub use conversation_receipts::{
+	ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
 };
 pub use mcp_install::{ChiefInstallApp, ChiefInstallState, McpInstallSuggestion, McpInstallTarget};
 pub use mcp_login::{McpAuthorizationUrl, McpLoginPhase, McpLoginRequest, McpLoginStatus};
@@ -182,7 +186,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 69 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 70 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

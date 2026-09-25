@@ -319,7 +319,7 @@ pub(crate) struct CreateConversation {
 }
 
 impl CreateConversation {
-	fn creation_identity(&self) -> Result<CommandIdentity, ()> {
+	pub(crate) fn creation_identity(&self) -> Result<CommandIdentity, ()> {
 		exact_command(
 			"conversation",
 			&self.operation_key,
