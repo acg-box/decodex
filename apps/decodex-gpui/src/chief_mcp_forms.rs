@@ -383,7 +383,7 @@ mod tests {
                 }],
                 pending_events:vec![ChiefPendingEventDto { id:7, source_event_id:"approval".into(), work_item_id:"root".into(),event_kind:"user_input_pending".into(),created_at_micros:1,delivery_claimed:false }]
             })));
-            let request=ChiefRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:HistoryText::new(json!({"mode":"form","serverName":"test","message":"Allow this tool?","requestedSchema":null,"_meta":{"persist":["session"]}}).to_string()).unwrap()};
+            let request=ChiefRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::ChiefRequestText::new(json!({"mode":"form","serverName":"test","message":"Allow this tool?","requestedSchema":null,"_meta":{"persist":["session"]}}).to_string()).unwrap()};
             s.prepare_mcp_inputs(&request,cx);
             s.request=Some(request);
             s.submit_mcp_form_with_scope(7,Some("always"),cx);
@@ -415,7 +415,7 @@ mod tests {
 					event_id: 7,
 					work_id: "root".into(),
 					method: "mcpServer/elicitation/request".into(),
-					request_json: HistoryText::new(
+					request_json: decodex_protocol::ChiefRequestText::new(
 						json!({"mode":"openaiForm","requestedSchema":schema}).to_string(),
 					)
 					.unwrap(),
@@ -459,7 +459,7 @@ mod tests {
                 }],
                 pending_events:vec![ChiefPendingEventDto { id:7, source_event_id:"approval".into(), work_item_id:"root".into(),event_kind:"user_input_pending".into(),created_at_micros:1,delivery_claimed:false }]
             })));
-            let request=ChiefRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:HistoryText::new(json!({"mode":"url","serverName":"test","message":"Sign in","url":"https://example.test/verify","elicitationId":"verification"}).to_string()).unwrap()};
+            let request=ChiefRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::ChiefRequestText::new(json!({"mode":"url","serverName":"test","message":"Sign in","url":"https://example.test/verify","elicitationId":"verification"}).to_string()).unwrap()};
             s.prepare_mcp_inputs(&request,cx);
             s.request=Some(request);
             cx.notify();
@@ -488,7 +488,7 @@ mod tests {
 				event_id: 8,
 				work_id: "root".into(),
 				method: "mcpServer/elicitation/request".into(),
-				request_json: HistoryText::new(
+				request_json: decodex_protocol::ChiefRequestText::new(
 					json!({"mode":"url","url":"file:///tmp/private"}).to_string(),
 				)
 				.unwrap(),
@@ -510,7 +510,7 @@ mod tests {
 	fn form_defaults_are_not_answers_and_same_request_keeps_drafts(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(ChiefSurface::new);
 		surface.update(cx,|s,cx| {
-            let request=ChiefRequestResult::Available {event_id:7,work_id:"chief".into(),method:"mcpServer/elicitation/request".into(),request_json:HistoryText::new(json!({"mode":"form","requestedSchema":{"type":"object","properties":{"agree":{"type":"boolean","default":true},"name":{"type":"string"}},"required":["agree","name"]}}).to_string()).unwrap()};
+            let request=ChiefRequestResult::Available {event_id:7,work_id:"chief".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::ChiefRequestText::new(json!({"mode":"form","requestedSchema":{"type":"object","properties":{"agree":{"type":"boolean","default":true},"name":{"type":"string"}},"required":["agree","name"]}}).to_string()).unwrap()};
             s.prepare_mcp_inputs(&request,cx);s.request=Some(request.clone());s.selected=Some("chief".into());
             s.submit_mcp_form(7,cx);
             assert!(s.feedback.contains("required"));assert!(s.submission.command.is_none());

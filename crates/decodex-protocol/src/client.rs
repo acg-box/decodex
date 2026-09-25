@@ -1,5 +1,7 @@
 //! Bounded API-only client transport and profile projection.
 
+#[path = "client_request.rs"] mod request_pages;
+
 use std::{
 	fmt::{Debug, Display, Formatter},
 	io::ErrorKind,
@@ -34,6 +36,8 @@ use decodex_core::{
 };
 
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
+// Native file-detail reads have an eight-second budget.
+const REQUEST_CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 // Doctor revalidates the complete local database and runtime-authority contract.
 // Keep its bounded read budget separate from ordinary cached UI queries.
 const DOCTOR_CLIENT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -632,34 +636,19 @@ impl ChiefClient {
 	pub async fn request(&self, event_id: i64) -> Result<crate::ChiefRequestResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
-			CLIENT_TIMEOUT,
+			REQUEST_CLIENT_TIMEOUT,
 			self.transport.query_inner("chief-request", QueryPayload::GetChiefRequest { event_id }),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefRequest(result) => {
-				if let crate::ChiefRequestResult::Available {
-					event_id: returned,
-					work_id,
-					method,
-					..
-				} = &result && (*returned != event_id
-					|| event_id <= 0
-					|| EntityId::new(work_id.clone()).is_err()
-					|| !matches!(
-						method.as_str(),
-						"item/commandExecution/requestApproval"
-							| "item/fileChange/requestApproval"
-							| "item/permissions/requestApproval"
-							| "item/tool/requestUserInput"
-							| "mcpServer/elicitation/request"
-					)) {
-					return Err(ClientFailure::ProtocolMalformed);
-				}
-				Ok(result)
-			},
+			QueryResultPayload::ChiefRequest(result) => time::timeout(
+				Duration::from_secs(60),
+				request_pages::collect(self, event_id, result),
+			)
+			.await
+			.map_err(|_| ClientFailure::ProtocolTimeout)?,
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -3671,6 +3660,114 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn chief_request_pages_preserve_complete_content_and_reject_changed_identity() {
+		use crate::QueryPayload;
+		for failure in ["none", "digest", "offset", "expired", "content"] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let text = serde_json::json!({"command":"界🙂\\\"".repeat(4000)}).to_string();
+			let expected = text.clone();
+			let digest = decodex_core::BlobHash::digest(
+				&serde_json::to_vec(&(7, "chief", "item/commandExecution/requestApproval", &text))
+					.unwrap(),
+			)
+			.to_hex();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let mut offset = 0;
+				loop {
+					let mut socket =
+						tokio_tungstenite::accept_async(listener.accept().await.unwrap())
+							.await
+							.unwrap();
+					let _ = socket.next().await;
+					for response in initial(SERVER_ID) {
+						socket.send(response).await.unwrap();
+					}
+					let Message::Text(wire) = socket.next().await.unwrap().unwrap() else {
+						panic!("query")
+					};
+					let ClientMessage::Query(query) =
+						serde_json::from_str::<ClientMessage>(&wire).unwrap()
+					else {
+						panic!("query")
+					};
+					if offset == 0 {
+						assert!(matches!(
+							query.payload,
+							QueryPayload::GetChiefRequest { event_id: 7 }
+						));
+					} else {
+						assert!(
+							matches!(query.payload, QueryPayload::GetChiefRequestPage { event_id:7, digest: returned, offset: requested } if requested==offset && returned.as_str()==digest)
+						);
+					}
+					let mut end = (offset + 8192).min(text.len());
+					while !text.is_char_boundary(end) {
+						end -= 1;
+					}
+					let fail = if failure == "content" {
+						end == text.len()
+					} else {
+						offset > 0 && failure != "none"
+					};
+					let result = if fail && failure == "expired" {
+						crate::ChiefRequestResult::Unavailable
+					} else {
+						crate::ChiefRequestResult::Page {
+							event_id: 7,
+							work_id: "chief".into(),
+							method: "item/commandExecution/requestApproval".into(),
+							digest: if fail && failure == "digest" {
+								"b".repeat(64)
+							} else {
+								digest.clone()
+							},
+							offset: if fail && failure == "offset" { 0 } else { offset },
+							total_bytes: text.len(),
+							text: crate::HistoryText::new(if fail && failure == "content" {
+								let mut changed = text[offset..end].to_owned();
+								changed.pop();
+								changed.push(']');
+								changed
+							} else {
+								text[offset..end].to_owned()
+							})
+							.unwrap(),
+							next_offset: (end < text.len()).then_some(end),
+						}
+					};
+					socket
+						.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+							version: CURRENT_VERSION,
+							server_id: ServerId::new(SERVER_ID).unwrap(),
+							query_id: query.query_id,
+							payload: QueryResultPayload::ChiefRequest(result),
+						})))
+						.await
+						.unwrap();
+					drop(socket);
+					if end == text.len() || fail {
+						break;
+					}
+					offset = end;
+				}
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = crate::ChiefClient::new(profile).request(7).await;
+			task.await.unwrap();
+			match failure {
+				"none" => assert!(
+					matches!(result, Ok(crate::ChiefRequestResult::Available { request_json, .. }) if request_json.as_str()==expected)
+				),
+				"expired" => assert_eq!(result.unwrap(), crate::ChiefRequestResult::Unavailable),
+				_ => assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed),
+			}
+		}
+	}
+
+	#[tokio::test]
 	async fn chief_request_transport_admits_mcp_forms_but_rejects_wrong_event_and_unknown_method() {
 		for (method, returned, accepted) in [
 			("mcpServer/elicitation/request", 7, true),
@@ -3709,7 +3806,7 @@ mod tests {
 								event_id: returned,
 								work_id: "chief".into(),
 								method: method.into(),
-								request_json: crate::HistoryText::new(
+								request_json: crate::ChiefRequestText::new(
 									r#"{"mode":"form","requestedSchema":null,"message":"Allow this request?"}"#,
 								)
 								.unwrap(),
@@ -4025,7 +4122,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 77 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 78 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

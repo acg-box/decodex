@@ -2,6 +2,41 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Complete selected request content assembled from bounded local protocol pages.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct ChiefRequestText(String);
+
+impl ChiefRequestText {
+	/// Accept complete content within the native message bound.
+	pub fn new(value: impl Into<String>) -> Result<Self, &'static str> {
+		let value = value.into();
+		if value.len() > decodex_core::MAX_NATIVE_MESSAGE_BYTES {
+			return Err("request content exceeds the native message bound");
+		}
+		Ok(Self(value))
+	}
+
+	/// Borrow the complete selected request JSON.
+	pub fn as_str(&self) -> &str {
+		&self.0
+	}
+}
+
+impl TryFrom<String> for ChiefRequestText {
+	type Error = &'static str;
+
+	fn try_from(value: String) -> Result<Self, Self::Error> {
+		Self::new(value)
+	}
+}
+
+impl From<ChiefRequestText> for String {
+	fn from(value: ChiefRequestText) -> Self {
+		value.0
+	}
+}
+
 /// A bounded, selected view of one unresolved provider request.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
@@ -14,8 +49,27 @@ pub enum ChiefRequestResult {
 		work_id: String,
 		/// Supported provider method.
 		method: String,
-		/// Selected request fields, bounded by the history text limit.
-		request_json: crate::HistoryText,
+		/// Complete selected fields. Large values are assembled locally from pages.
+		request_json: ChiefRequestText,
+	},
+	/// A bounded part of a complete request. Clients must assemble every part.
+	Page {
+		/// Persistent inbox identity.
+		event_id: i64,
+		/// Related work identity.
+		work_id: String,
+		/// Supported provider method.
+		method: String,
+		/// Digest of the complete selected content.
+		digest: String,
+		/// UTF-8 byte offset of this page.
+		offset: usize,
+		/// Total UTF-8 byte length of the selected content.
+		total_bytes: usize,
+		/// Exact source text at this offset.
+		text: crate::HistoryText,
+		/// Next byte offset, absent at the end.
+		next_offset: Option<usize>,
 	},
 	/// The event is absent, resolved, unsupported, or cannot be safely projected.
 	Unavailable,

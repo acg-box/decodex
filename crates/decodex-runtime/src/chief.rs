@@ -1509,7 +1509,7 @@ impl ChiefCoordinator {
 						"server_request_pending"
 					}
 					.into(),
-					payload: json!({"id":id,"method":method,"params":params,"ownerThreadId":item.codex_thread_id}).to_string(),
+					payload: json!({"id":id,"method":method,"params":params,"ownerThreadId":item.codex_thread_id,"connectionId":self.client.connection_identity()}).to_string(),
 				})
 				.await?;
 			if event.disposition.is_none() {

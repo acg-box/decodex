@@ -91,6 +91,18 @@ pub(crate) struct ChiefHost {
 	receiver: Arc<Mutex<Option<mpsc::Receiver<Request>>>>,
 }
 
+fn request_is_live_on(
+	client: &decodex_codex::app_server_client::AppServerClient,
+	payload: &serde_json::Value,
+) -> bool {
+	if payload["connectionId"].as_str() != Some(client.connection_identity()) {
+		return false;
+	}
+	let Ok(id) = serde_json::from_value(payload["id"].clone()) else { return false };
+	let Some(method) = payload["method"].as_str() else { return false };
+	client.server_request_guard(&id, method, &payload["params"]).is_some()
+}
+
 impl ChiefHost {
 	pub(crate) fn new(store: SqliteStore, runtime: ConversationRuntime) -> Self {
 		let (sender, receiver) = mpsc::channel(32);
@@ -725,6 +737,10 @@ impl ChiefHost {
 			return decodex_protocol::ChiefActivityDetailResult::Unavailable;
 		};
 		crate::chief_detail::read_file_changes(&client, thread, turn, item).await
+	}
+
+	pub(crate) fn request_is_live(&self, payload: &serde_json::Value) -> bool {
+		self.runtime.chief_client().is_some_and(|client| request_is_live_on(&client, payload))
 	}
 
 	pub(crate) async fn capabilities(&self) -> decodex_protocol::ChiefCapabilitiesResult {
@@ -1794,6 +1810,31 @@ pub(crate) async fn queue_start_for_native_test(
 
 #[cfg(test)]
 mod tests {
+	#[tokio::test]
+	async fn request_liveness_rejects_reused_rpc_identity_after_reconnect() {
+		use decodex_codex::app_server_client::AppServerClient;
+		let params = serde_json::json!({"threadId":"thread","turnId":"turn","command":"pwd"});
+		let mut retained = None;
+		for _ in 0..2 {
+			let (send, incoming) = tokio::sync::mpsc::channel(8);
+			let (outgoing, _sent) = tokio::sync::mpsc::channel(8);
+			let (client, mut events) = AppServerClient::from_framed(1, incoming, outgoing).unwrap();
+			let mut payload = serde_json::json!({"id":7,"method":"item/commandExecution/requestApproval","params":params});
+			send.send(Ok(payload.clone())).await.unwrap();
+			events.recv().await.unwrap();
+			assert!(!super::request_is_live_on(&client, &payload));
+			payload["connectionId"] = serde_json::json!(client.connection_identity());
+			assert!(super::request_is_live_on(&client, &payload));
+			assert!(super::request_is_live_on(&client.clone(), &payload));
+			if let Some(old) = retained {
+				assert!(!super::request_is_live_on(&client, &old));
+			}
+			retained = Some(payload.clone());
+			send.send(Ok(serde_json::json!({"method":"serverRequest/resolved","params":{"threadId":"thread","requestId":7}}))).await.unwrap();
+			events.recv().await.unwrap();
+			assert!(!super::request_is_live_on(&client, &payload));
+		}
+	}
 	use super::*;
 	use decodex_core::DecodexRoot;
 

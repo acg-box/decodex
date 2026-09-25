@@ -1841,7 +1841,8 @@ impl ChiefSurface {
 			work_id: "chief".into(),
 			event_id: 987,
 			method: method.into(),
-			request_json: HistoryText::new(value.to_string()).expect("bounded fixture"),
+			request_json: decodex_protocol::ChiefRequestText::new(value.to_string())
+				.expect("bounded fixture"),
 		};
 		self.prepare_question_inputs(&request, cx);
 		self.request = Some(request);

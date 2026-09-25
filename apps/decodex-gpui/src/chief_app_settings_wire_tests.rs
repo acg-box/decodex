@@ -192,7 +192,7 @@ fn real_settings_click_reads_then_sends_once_and_refreshes_unknown_result(
 	surface.update(visual,|s,_| {
   s.apply_result(Ok(ChiefSnapshotResult::Available(ChiefSnapshotDto {runtime_source:None,workspaces:vec![],dependencies:vec![],work_items:vec![ChiefWorkItemDto{id:"root".into(),parent_goal_id:None,kind:ChiefWorkKindDto::Goal,title:"Chief".into(),codex_thread_id:Some("thread".into()),active_turn_id:None,dispatch_state:ChiefDispatchStateDto::Idle,status:ChiefWorkStatusDto::Open,next_check_at_micros:None,created_at_micros:1,updated_at_micros:1}],pending_events:vec![ChiefPendingEventDto{id:7,source_event_id:"approval".into(),work_item_id:"root".into(),event_kind:"server_request_pending".into(),created_at_micros:1,delivery_claimed:false}]})));
   s.profile=Some(profile);
-  s.request=Some(ChiefRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::HistoryText::new(json!({"serverName":"codex_apps","mode":"form","message":"Review","requestedSchema":{"type":"object","properties":{}},"_meta":{"connector_id":"calendar","link_id":"work"}}).to_string()).unwrap()});
+  s.request=Some(ChiefRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::ChiefRequestText::new(json!({"serverName":"codex_apps","mode":"form","message":"Review","requestedSchema":{"type":"object","properties":{}},"_meta":{"connector_id":"calendar","link_id":"work"}}).to_string()).unwrap()});
  });
 	visual.update(|w, cx| {
 		w.resize(gpui::size(px(1180.0), px(1800.0)));

@@ -192,6 +192,7 @@ enum Outbound {
 /// Clones share one connection and one request-ID namespace across independent threads.
 #[derive(Clone)]
 pub struct AppServerClient {
+	connection_identity: String,
 	outbound: mpsc::Sender<Outbound>,
 	closed: watch::Sender<bool>,
 	server_requests: ServerRequests,
@@ -225,7 +226,22 @@ impl AppServerProcess {
 	}
 }
 
+fn new_connection_identity() -> String {
+	static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+	format!(
+		"{}:{:?}:{}",
+		std::process::id(),
+		std::time::SystemTime::now(),
+		SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+	)
+}
+
 impl AppServerClient {
+	/// Opaque identity of this transport, shared by clones and distinct after reconnect.
+	pub fn connection_identity(&self) -> &str {
+		&self.connection_identity
+	}
+
 	/// Read the latest configured permissions, which may differ from an active step capture.
 	pub fn configured_task_permissions(
 		&self,
@@ -320,7 +336,16 @@ impl AppServerClient {
 		let (closed, cancellation) = watch::channel(false);
 		let server_requests = ServerRequests::default();
 		tokio::spawn(run(reader, writer, commands, events, cancellation, server_requests.clone()));
-		(Self { outbound, closed, server_requests, install_receipts: Default::default() }, receiver)
+		(
+			Self {
+				connection_identity: new_connection_identity(),
+				outbound,
+				closed,
+				server_requests,
+				install_receipts: Default::default(),
+			},
+			receiver,
+		)
 	}
 
 	/// Attach a caller-owned framed transport after its private initialization. The caller
@@ -348,7 +373,13 @@ impl AppServerClient {
 			server_requests.clone(),
 		));
 		Ok((
-			Self { outbound, closed, server_requests, install_receipts: Default::default() },
+			Self {
+				connection_identity: new_connection_identity(),
+				outbound,
+				closed,
+				server_requests,
+				install_receipts: Default::default(),
+			},
 			receiver,
 		))
 	}
