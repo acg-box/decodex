@@ -40,7 +40,19 @@ async fn inspect(store: &SqliteStore, source: &Source, connector: &str) -> Optio
 		return None;
 	}
 	let cwd = native["thread"]["cwd"].as_str()?;
-	let settings = source.client.app_tool_exposure(cwd, connector).await.ok()?;
+	let response = source.client.app_tool_exposure(cwd, connector).await;
+	if guard.is_live()
+		&& let Err(error) = &response
+	{
+		crate::native_config_warning::record_settings_error(
+			store,
+			source,
+			"App tool visibility settings could not be read",
+			error,
+		)
+		.await;
+	}
+	let settings = response.ok()?;
 	let scope = shared::digest(settings.config_file());
 	shared::reconcile(store, source, cwd, &scope).await;
 	let prior = store.chief_app_settings_receipt(scope.clone()).await.ok()?;
@@ -182,6 +194,23 @@ where
 			},
 			Err(ClientError::StaleHistory) =>
 				("rejected", Err(Rejected("The native source changed before dispatch."))),
+			Err(error) => {
+				if source().await.is_some_and(|after| after.key == before.key) {
+					crate::native_config_warning::record_settings_error(
+						store,
+						&before,
+						"App tool visibility write or readback failed",
+						&error,
+					)
+					.await;
+				}
+				(
+					"unknown",
+					Err(Unknown(
+						"App setting write or readback is unconfirmed. Read task diagnostics and refresh; it will not be retried.",
+					)),
+				)
+			},
 			_ => (
 				"unknown",
 				Err(Unknown(

@@ -212,6 +212,7 @@ mod tests {
 	mod app_settings;
 	mod hooks;
 	mod models;
+	mod native_warnings;
 	mod permissions;
 	mod plugins;
 	mod response_usage;

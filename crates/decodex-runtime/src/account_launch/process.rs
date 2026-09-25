@@ -1882,8 +1882,15 @@ impl SupervisedProcess {
 
 			let header: InboundHeader = serde_json::from_slice(&line)
 				.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
-			if header.id.is_none() && header.method.as_deref() == Some("configWarning") {
-				if let Some(warning) = crate::native_config_warning::from_frame(&line)
+			if header.id.is_none()
+				&& matches!(header.method.as_deref(), Some("configWarning" | "warning"))
+			{
+				let projected = if header.method.as_deref() == Some("warning") {
+					crate::native_config_warning::warning_from_frame(&line)
+				} else {
+					crate::native_config_warning::from_frame(&line)
+				};
+				if let Some(warning) = projected
 					&& !self.config_warnings.contains(&warning)
 				{
 					if self.config_warnings.len() < 32 {
@@ -7650,7 +7657,7 @@ pub(crate) mod tests {
 	#[tokio::test]
 	async fn config_warnings_survive_initialization_and_retained_handoff() {
 		let (_temp, process) = initialized_bound_process("exact-config-warning");
-		assert_eq!(process.config_warnings.len(), 2);
+		assert_eq!(process.config_warnings.len(), 3);
 		let profile = AttestedAppServerProfile::attest_for_test(
 			process.command.clone(),
 			&process.binding.expected_codex_home,
@@ -7665,7 +7672,11 @@ pub(crate) mod tests {
 			initialized: true,
 		};
 		let (_client, mut events) = child.retain_chief_connection().unwrap();
-		for expected in ["Ignored \"fixture\" setting", "Second fixture warning"] {
+		for (expected_method, field, expected) in [
+			("configWarning", "summary", "Ignored \"fixture\" setting"),
+			("warning", "message", "Retained \"fixture\" instructions"),
+			("configWarning", "summary", "Second fixture warning"),
+		] {
 			let event =
 				tokio::time::timeout(Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
 			let decodex_codex::app_server_client::ServerEvent::Notification { method, params } =
@@ -7673,8 +7684,8 @@ pub(crate) mod tests {
 			else {
 				panic!("warning notification")
 			};
-			assert_eq!(method, "configWarning");
-			assert_eq!(params["summary"], expected);
+			assert_eq!(method, expected_method);
+			assert_eq!(params[field], expected);
 			assert!(params.get("path").is_none());
 		}
 		assert!(child.process.config_warnings.is_empty());

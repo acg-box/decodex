@@ -59,7 +59,19 @@ where
 		return None;
 	}
 	let cwd = thread["thread"]["cwd"].as_str()?;
-	let native = before.client.hook_settings(cwd).await.ok()?;
+	let response = before.client.hook_settings(cwd).await;
+	if source().await.is_some_and(|after| after.key == before.key)
+		&& let Err(error) = &response
+	{
+		crate::native_config_warning::record_settings_error(
+			store,
+			&before,
+			"Hook settings could not be read",
+			error,
+		)
+		.await;
+	}
+	let native = response.ok()?;
 	let scope = digest(native.config_file());
 	if !guard.is_live() || source().await.is_none_or(|after| after.key != before.key) {
 		return None;
@@ -222,6 +234,17 @@ where
 		} else {
 			before.client.write_hook_settings(params, review.guard).await
 		};
+	if source().await.is_some_and(|after| after.key == before.key)
+		&& let Err(error) = &response
+	{
+		crate::native_config_warning::record_settings_error(
+			store,
+			&before,
+			"Settings write or readback failed",
+			error,
+		)
+		.await;
+	}
 	let state = match response {
 		Ok(HookSettingsWrite::Saved) => "saved",
 		Ok(HookSettingsWrite::Overridden) => "overridden",
