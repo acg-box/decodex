@@ -185,5 +185,100 @@ pub(super) fn creation_receipt_controls(
 			);
 		}
 	}
+	rows.child(turn_outcome_controls(shell, cx)).into_any_element()
+}
+
+/// Query and acknowledge terminal provider evidence without resubmission.
+fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyElement {
+	use decodex_protocol::{
+		CommandPayload, ConversationTurnOutcomeResult as Result,
+		ConversationTurnOutcomeState as Outcome,
+	};
+	use gpui::{
+		InteractiveElement as _, IntoElement as _, ParentElement as _,
+		StatefulInteractiveElement as _, Styled as _, div,
+	};
+	let mut rows = div().flex().flex_col();
+	for (index, (command, result)) in
+		shell.conversations.ordinary_turn_outcomes().into_iter().enumerate()
+	{
+		let CommandPayload::SubmitConversationTurn { message, .. } = &command.payload else {
+			continue;
+		};
+		let original: String = message.as_str().chars().take(160).collect();
+		let terminal = matches!(
+			&result,
+			Some(Result::Observed {
+				outcome: Outcome::Completed | Outcome::Failed | Outcome::NotSubmitted,
+				..
+			})
+		);
+		let status = match result {
+			Some(Result::Observed { outcome: Outcome::Completed, .. }) =>
+				"Provider confirmed completion.",
+			Some(Result::Observed { outcome: Outcome::Failed, .. }) =>
+				"Provider confirmed failure. Input is retained.",
+			Some(Result::Observed { outcome: Outcome::NotSubmitted, .. }) =>
+				"Message was not submitted. Input is retained.",
+			Some(Result::Observed { outcome: Outcome::Pending, .. }) =>
+				"Message has no terminal outcome yet.",
+			Some(Result::Observed { outcome: Outcome::Unknown, .. }) =>
+				"Provider outcome remains unknown. Do not resend yet.",
+			Some(Result::NotRecorded) =>
+				"No provider record found. This does not confirm non-submission.",
+			Some(Result::Conflict) => "Saved message does not match the service record.",
+			Some(Result::Unavailable) => "Provider evidence is unavailable. Try again.",
+			None => "Saved message outcome has not been checked.",
+		};
+		let check = command.clone();
+		rows = rows.child(
+			div().child(original).child(status).child(
+				div()
+					.id(format!("ordinary-turn-check-{index}"))
+					.cursor_pointer()
+					.child("Check message outcome")
+					.on_click(cx.listener(move |shell, _, _, cx| {
+						if !shell.conversations.check_ordinary_turn(&check) {
+							shell.input_status = Some(
+								"Wait for the current query or reconnect, then check again.".into(),
+							);
+						}
+						shell.synchronize_conversations(cx);
+						cx.notify();
+					})),
+			),
+		);
+		if terminal {
+			rows = rows.child(
+				div()
+					.id(format!("ordinary-turn-acknowledge-{index}"))
+					.debug_selector(move || format!("ordinary-turn-acknowledge-{index}"))
+					.cursor_pointer()
+					.child("Acknowledge outcome")
+					.on_click(cx.listener(move |shell, _, _, cx| {
+						if let Some(outcome) =
+							shell.conversations.acknowledge_ordinary_turn(&command)
+						{
+							if let CommandPayload::SubmitConversationTurn {
+								conversation_id,
+								message,
+								..
+							} = &command.payload && outcome == Outcome::Completed
+								&& shell.conversations.ordinary_editor_owner().as_ref()
+									== Some(conversation_id)
+								&& shell.composer.read(cx).content() == message.as_str()
+							{
+								shell.ordinary_syncing = true;
+								shell.composer.update(cx, |input, cx| input.set_content("", cx));
+								shell.ordinary_syncing = false;
+							}
+							shell.sync_ordinary_drafts(cx);
+						}
+						shell.synchronize_conversations(cx);
+						cx.notify();
+					})),
+			);
+		}
+	}
 	rows.into_any_element()
 }

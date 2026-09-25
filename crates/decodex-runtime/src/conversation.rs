@@ -2753,10 +2753,7 @@ impl ConversationRuntime {
 					.await;
 			},
 		};
-		let attempt_id = match ProviderAttemptId::new(derived_uuid(
-			"provider-attempt",
-			&[operation_key, turn_id.as_str()],
-		)) {
+		let attempt_id = match ordinary_provider_attempt_id(operation_key, &turn_id) {
 			Ok(value) => value,
 			Err(_) => {
 				return self
@@ -5963,6 +5960,14 @@ fn request_digest(parts: &[&str]) -> String {
 		digest.update(part.as_bytes());
 	}
 	digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+pub(crate) fn ordinary_provider_attempt_id(
+	operation_key: &str,
+	turn_id: &TurnId,
+) -> Result<ProviderAttemptId, ()> {
+	ProviderAttemptId::new(derived_uuid("provider-attempt", &[operation_key, turn_id.as_str()]))
+		.map_err(|_| ())
 }
 
 fn derived_uuid(scope: &str, parts: &[&str]) -> String {

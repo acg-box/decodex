@@ -49,6 +49,10 @@ pub use chief_usage_estimate::{
 	ChiefUsageEstimateResult, ThreadUsageEstimate, ThreadUsageEstimateGroup,
 };
 mod conversation_receipts;
+mod conversation_turn_outcomes;
+pub use conversation_turn_outcomes::{
+	ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult, ConversationTurnOutcomeState,
+};
 mod mcp_install;
 mod mcp_login;
 mod model_catalog;
@@ -186,7 +190,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 70 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 71 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
