@@ -43,6 +43,8 @@ mod chief_install;
 pub use chief_install::{ChiefInstallAttempt, ChiefInstallRequirements};
 mod chief_guardian;
 pub use chief_guardian::{ChiefGuardianObservation, ChiefGuardianReview};
+mod chief_auth_recovery;
+pub use chief_auth_recovery::ChiefAuthRecoveryObservation;
 mod chief_misalignment;
 pub use chief_misalignment::ChiefMisalignment;
 mod chief_output;

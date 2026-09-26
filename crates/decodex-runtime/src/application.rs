@@ -5019,6 +5019,28 @@ pub(crate) fn render_chief_history_for_test(
 	render_chief_history(events, 0, None).entries
 }
 
+fn chief_history_shows_disposition(event_kind: &str, kind: &str) -> bool {
+	kind == "unsent_input"
+		|| !matches!(
+			event_kind,
+			"chief_turn_completed"
+				| "worker_turn_completed"
+				| "user_message"
+				| "voice_user"
+				| "voice_assistant"
+				| "activity_started"
+				| "activity_completed"
+				| "assistant_message"
+				| "context_compacted"
+				| "auth_recovery_started"
+				| "auth_recovery_completed"
+				| "strict_review_notice"
+				| "config_warning"
+				| "native_warning"
+				| "partial_output"
+		)
+}
+
 fn render_chief_history(
 	events: Vec<decodex_database::ChiefInboxEvent>,
 	question_bytes: usize,
@@ -5035,6 +5057,7 @@ fn render_chief_history(
 		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap_or_default();
 		let mut completed_message_ids = Vec::new();
 		let (kind, mut text) = match event.event_kind.as_str() {
+			"auth_recovery_started" | "auth_recovery_completed" => ("auth_recovery", format!("{}\n\n{}: {}\n\nSaved event; current sign-in status is not confirmed by this record.", if event.event_kind == "auth_recovery_started" { "Codex reported that provider sign-in recovery started." } else { "Codex reported that provider sign-in recovery succeeded." }, value["provider"].as_str().unwrap_or("Provider"), value["message"].as_str().unwrap_or(""))),
 			"partial_output" => {
 				let Some(display) = partial_history_text(&event, &value, &rendered_sources) else { continue; };
 				display
@@ -5081,22 +5104,11 @@ fn render_chief_history(
 			| "connection_needs_attention" => ("system", chief_history_notice(&event.event_kind, &value)),
 			_ => ("system", event.event_kind.clone()),
 		};
-		if let Some(note) =
-			event.disposition_note.as_ref().filter(|_| {
-				kind == "unsent_input"
-					|| !matches!(
-						event.event_kind.as_str(),
-						"chief_turn_completed"
-							| "worker_turn_completed"
-							| "user_message" | "voice_user"
-							| "voice_assistant" | "activity_started"
-							| "activity_completed"
-							| "assistant_message" | "context_compacted"
-							| "strict_review_notice"
-							| "config_warning" | "native_warning"
-							| "partial_output"
-					)
-			}) {
+		if let Some(note) = event
+			.disposition_note
+			.as_ref()
+			.filter(|_| chief_history_shows_disposition(&event.event_kind, kind))
+		{
 			text.push_str(if kind == "unsent_input" { "\n\n" } else { "\n\nDisposition: " });
 			text.push_str(note);
 		}
