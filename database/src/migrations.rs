@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 43;
+const CURRENT_SCHEMA_VERSION: i64 = 44;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -230,6 +230,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 43,
 		name: "chief_prompt_edit_contract",
 		sql: include_str!("../migrations/0043_chief_prompt_edit_contract.sql"),
+	},
+	Migration {
+		version: 44,
+		name: "chief_prompt_inputs",
+		sql: include_str!("../migrations/0044_chief_prompt_inputs.sql"),
 	},
 ];
 
@@ -1419,11 +1424,17 @@ mod tests {
 		migrate(&mut connection).unwrap();
 	}
 	#[test]
-	fn prompt_edit_contract_upgrade_preserves_schema_and_preferences() {
+	fn prompt_input_upgrade_preserves_existing_schema_and_preferences() {
+		for version in [42, 43] {
+			assert_prompt_input_upgrade(version);
+		}
+	}
+
+	fn assert_prompt_input_upgrade(version: i64) {
 		let directory = tempfile::tempdir().unwrap();
 		let mut connection = Connection::open(directory.path().join("edit.sqlite3")).unwrap();
 		configure(&connection).unwrap();
-		for migration in MIGRATIONS.iter().filter(|m| m.version <= 42) {
+		for migration in MIGRATIONS.iter().filter(|m| m.version <= version) {
 			connection.execute_batch(migration.sql).unwrap();
 			connection
 				.execute(
@@ -1433,12 +1444,32 @@ mod tests {
 				.unwrap();
 		}
 		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
-		connection.pragma_update(None, "user_version", 42).unwrap();
+		connection.pragma_update(None, "user_version", version).unwrap();
 		connection.execute("UPDATE desktop_settings SET auto_recap=0,revision=19", []).unwrap();
 		let original = schema_inventory(&connection).unwrap();
 		migrate(&mut connection).unwrap();
-		assert_eq!(schema_inventory(&connection).unwrap(), original);
-		assert_eq!(applied_version(&connection).unwrap(), 43);
+		let inventory = schema_inventory(&connection).unwrap();
+		assert_eq!(
+			inventory
+				.iter()
+				.filter(|row| matches!(
+					row.2.as_str(),
+					"chief_prompt_inputs" | "chief_prompt_input_chunks"
+				))
+				.count(),
+			4
+		);
+		assert_eq!(
+			inventory
+				.into_iter()
+				.filter(|row| !matches!(
+					row.2.as_str(),
+					"chief_prompt_inputs" | "chief_prompt_input_chunks"
+				))
+				.collect::<Vec<_>>(),
+			original
+		);
+		assert_eq!(applied_version(&connection).unwrap(), CURRENT_SCHEMA_VERSION);
 		assert_eq!(
 			connection
 				.query_row("SELECT auto_recap,revision FROM desktop_settings", [], |r| Ok((

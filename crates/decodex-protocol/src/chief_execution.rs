@@ -32,6 +32,20 @@ impl From<crate::ConversationExecutionSettings> for ChiefExecutionOverrides {
 }
 
 impl ChiefExecutionOverrides {
+	/// Apply explicit per-message settings to native turn parameters.
+	pub fn apply_to_native_turn(&self, params: &mut serde_json::Value) {
+		if let Some(model) = &self.model {
+			params["model"] = serde_json::json!(model.as_str());
+		}
+		if let Some(effort) = &self.reasoning_effort {
+			params["effort"] = serde_json::json!(effort.as_str());
+		}
+		if let Some(tier) = self.selected_service_tier() {
+			params["serviceTier"] = serde_json::json!(tier.thread_value());
+			params["serviceTierForTurn"] = serde_json::json!(tier.as_str());
+		}
+	}
+
 	/// Whether a message changes no native execution setting.
 	pub fn is_empty(&self) -> bool {
 		self.model.is_none()

@@ -192,6 +192,7 @@ impl ChiefSurface {
 		self.reset_native_goal();
 		self.clear_activity_detail();
 		self.reset_recap();
+		self.reset_prompt_edit();
 		self.selected = Some(id.to_owned());
 		self.connection_details_expanded = false;
 		self.history = self.history_cache.get(id).cloned().map(|h| (id.to_owned(), h));
@@ -223,6 +224,9 @@ impl ChiefSurface {
 	) -> AnyElement {
 		let is_tab = id.starts_with("page-");
 		let is_event = id.starts_with("event-");
+		let is_prompt = id.starts_with("prompt-")
+			|| id.starts_with("saved-prompt-")
+			|| id.starts_with("discard-prompt-");
 		let active = if is_tab {
 			self.selected.as_deref() == id.strip_prefix("page-")
 		} else if let Some(work) = id.strip_prefix("sidebar-") {
@@ -280,13 +284,14 @@ impl ChiefSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.when(is_event, |button| button.w_full().min_w_0())
+			.when(is_event || is_prompt, |button| button.w_full().min_w_0())
 			.child(if let Some(icon) = icon {
 				icon
 			} else {
 				div()
 					.min_w_0()
-					.when(!is_event, |text| text.whitespace_nowrap().text_ellipsis())
+					.when(is_prompt, |text| text.flex_1())
+					.when(!is_event && !is_prompt, |text| text.whitespace_nowrap().text_ellipsis())
 					.child(label)
 					.into_any_element()
 			})
@@ -1380,6 +1385,8 @@ impl ChiefSurface {
 			return;
 		}
 		match page {
+			#[cfg(feature = "visual-capture")]
+			"prompt-editor" | "prompt-remove" => self.visual_prompt_editor(page == "prompt-remove", cx),
 			"recap" => self.visual_recap(),
 			"worker" => self.open_page("verify", cx),
 			"empty" | "empty-draft" => {

@@ -99,6 +99,204 @@ impl Storage {
 }
 
 impl ChiefSurface {
+	pub(in super::super) fn clear_prepared_prompt_record(
+		&mut self,
+		profile: &ClientProfile,
+		pending: &decodex_protocol::DesktopPromptEditDraft,
+	) -> bool {
+		let Some(saved) = self
+			.draft_profiles
+			.storage
+			.document
+			.profiles
+			.get_mut(&profile.draft_scope_key())
+			.and_then(|profile| profile.prompt_edits.get_mut(pending.review_token.as_str()))
+		else {
+			return false;
+		};
+		if saved != pending {
+			return false;
+		}
+		saved.pending_send = None;
+		true
+	}
+
+	pub(in super::super) fn settle_prompt_send(
+		&mut self,
+		expected: &decodex_protocol::DesktopPromptEditDraft,
+		accepted: bool,
+		cx: &mut Context<Self>,
+	) -> Result<Option<decodex_protocol::DesktopPromptEditDraft>, &'static str> {
+		expected.send_identity()?;
+		let scope =
+			self.profile.as_ref().ok_or("Service profile is unavailable")?.draft_scope_key();
+		self.remember_draft_document(cx);
+		let mut next = self.draft_profiles.storage.document.clone();
+		let profile = next.profiles.get_mut(&scope).ok_or("Draft profile is unavailable")?;
+		let key = expected.review_token.as_str();
+		if profile.prompt_edits.get(key) != Some(expected) {
+			return Err("The retained send draft changed");
+		}
+		let mut retained = expected.clone();
+		retained.pending_send = None;
+		if accepted {
+			profile.prompt_edits.remove(key);
+			// Keep a manually restorable copy; acceptance never loses canonical media.
+			let mut copy = DesktopProfileDraft::default();
+			copy.prompt_edits.insert(key.into(), retained);
+			let copy = decodex_protocol::DesktopRecoveredDraft { scope: Some(scope), draft: copy };
+			if !next.recovered.contains(&copy) {
+				next.recovered.push(copy);
+			}
+			next.encode()?;
+			self.draft_profiles.storage.document = next;
+			self.save_draft_document(cx);
+			Ok(None)
+		} else {
+			profile.prompt_edits.insert(key.into(), retained.clone());
+			next.encode()?;
+			self.draft_profiles.storage.document = next;
+			self.save_draft_document(cx);
+			Ok(Some(retained))
+		}
+	}
+
+	pub(in super::super) fn prompt_editor_saved(
+		&self,
+		expected: &decodex_protocol::DesktopPromptEditDraft,
+	) -> bool {
+		let Some(profile) = &self.profile else {
+			return false;
+		};
+		if self.draft_profiles.active.as_ref() != Some(profile) {
+			return false;
+		}
+		let state = &self.draft_profiles.storage;
+		let scope = profile.draft_scope_key();
+		let get = |document: &DesktopDraftDocument| {
+			document
+				.profiles
+				.get(&scope)
+				.and_then(|profile| profile.prompt_edits.get(expected.review_token.as_str()))
+				== Some(expected)
+		};
+		state.store.is_some() && get(&state.document) && get(&state.saved)
+	}
+
+	pub(in super::super) fn renew_prompt_editor(
+		&mut self,
+		previous: &decodex_protocol::DesktopPromptEditDraft,
+		fresh: &decodex_protocol::DesktopPromptEditDraft,
+		cx: &mut Context<Self>,
+	) -> Result<decodex_protocol::DesktopPromptEditDraft, &'static str> {
+		if self.selected.as_deref() != Some(previous.work_id.as_str())
+			|| !self.saved_prompt_editors(previous.work_id.as_str()).contains(previous)
+		{
+			return Err("Draft changed while history was being reviewed");
+		}
+		let renewed = previous.refresh_review(fresh)?;
+		let scope =
+			self.profile.as_ref().ok_or("Service profile is unavailable")?.draft_scope_key();
+		self.remember_draft_document(cx);
+		let mut next = self.draft_profiles.storage.document.clone();
+		let editors =
+			&mut next.profiles.get_mut(&scope).ok_or("Draft profile is unavailable")?.prompt_edits;
+		if editors
+			.get(renewed.review_token.as_str())
+			.is_some_and(|other| other != previous && other != &renewed)
+		{
+			return Err("Another draft already uses this review");
+		}
+		editors.remove(previous.review_token.as_str());
+		editors.insert(renewed.review_token.as_str().into(), renewed.clone());
+		next.encode()?;
+		self.draft_profiles.storage.document = next;
+		self.save_draft_document(cx);
+		Ok(renewed)
+	}
+
+	pub(in super::super) fn saved_prompt_editors(
+		&self,
+		work: &str,
+	) -> Vec<decodex_protocol::DesktopPromptEditDraft> {
+		let Some(profile) = &self.profile else {
+			return Vec::new();
+		};
+		let Some(thread) = self
+			.snapshot
+			.as_ref()
+			.and_then(|snapshot| snapshot.work_items.iter().find(|item| item.id == work))
+			.and_then(|item| item.codex_thread_id.as_deref())
+		else {
+			return Vec::new();
+		};
+		self.draft_profiles
+			.storage
+			.document
+			.profiles
+			.get(&profile.draft_scope_key())
+			.into_iter()
+			.flat_map(|profile| profile.prompt_edits.values())
+			.filter(|draft| draft.work_id.as_str() == work && draft.thread_id.as_str() == thread)
+			.cloned()
+			.collect()
+	}
+
+	pub(in super::super) fn discard_prompt_editor(
+		&mut self,
+		draft: &decodex_protocol::DesktopPromptEditDraft,
+		cx: &mut Context<Self>,
+	) -> Result<(), &'static str> {
+		if self.selected.as_deref() != Some(draft.work_id.as_str())
+			|| !self.saved_prompt_editors(draft.work_id.as_str()).contains(draft)
+		{
+			return Err("Draft source changed");
+		}
+		if draft.handback_pending || draft.receipt_id.is_some() {
+			return Err("Recover the history edit before discarding its draft");
+		}
+		let scope =
+			self.profile.as_ref().ok_or("Service profile is unavailable")?.draft_scope_key();
+		let saved = self
+			.draft_profiles
+			.storage
+			.document
+			.profiles
+			.get_mut(&scope)
+			.ok_or("Draft profile is unavailable")?;
+		if saved.prompt_edits.get(draft.review_token.as_str()) != Some(draft) {
+			return Err("Saved draft changed");
+		}
+		saved.prompt_edits.remove(draft.review_token.as_str());
+		self.save_draft_document(cx);
+		Ok(())
+	}
+
+	pub(in super::super) fn stage_prompt_editor(
+		&mut self,
+		draft: decodex_protocol::DesktopPromptEditDraft,
+		cx: &mut Context<Self>,
+	) -> Result<(), &'static str> {
+		let scope =
+			self.profile.as_ref().ok_or("Service profile is unavailable")?.draft_scope_key();
+		if self.draft_profiles.active.as_ref().map(ClientProfile::draft_scope_key)
+			!= Some(scope.clone())
+		{
+			return Err("Draft profile changed");
+		}
+		self.remember_draft_document(cx);
+		let mut next = self.draft_profiles.storage.document.clone();
+		next.profiles
+			.entry(scope)
+			.or_default()
+			.prompt_edits
+			.insert(draft.review_token.as_str().into(), draft);
+		next.encode()?;
+		self.draft_profiles.storage.document = next;
+		self.save_draft_document(cx);
+		Ok(())
+	}
+
 	pub(in super::super) fn restore_unbound_draft(&mut self, cx: &mut Context<Self>) {
 		let saved = self.draft_profiles.storage.document.unbound.clone();
 		self.restore_creation_setup(saved.creation.as_ref(), cx);
@@ -119,6 +317,7 @@ impl ChiefSurface {
 
 	pub(crate) fn flush_drafts_for_quit(&mut self, cx: &mut Context<Self>) -> Task<bool> {
 		self.cancel_queued_command(cx);
+		self.cancel_prepared_prompt_send();
 		self.draft_profiles.storage.quitting = true;
 		self.save_draft_document(cx);
 		let retained = cx.entity();
@@ -366,6 +565,15 @@ impl ChiefSurface {
 			})
 			.transpose_option()?;
 		Some(DesktopProfileDraft {
+			prompt_edits: self
+				.draft_profiles
+				.active
+				.as_ref()
+				.and_then(|profile| {
+					self.draft_profiles.storage.document.profiles.get(&profile.draft_scope_key())
+				})
+				.map(|draft| draft.prompt_edits.clone())
+				.unwrap_or_default(),
 			ordinary: self
 				.draft_profiles
 				.active
@@ -552,8 +760,149 @@ impl<T> TransposeOption<T> for Option<Option<T>> {
 }
 
 #[cfg(test)]
+#[path = "chief_prompt_confirm_wire_tests.rs"]
+mod prompt_confirm_tests;
+
+#[cfg(test)]
+#[path = "chief_prompt_handback_wire_tests.rs"]
+mod prompt_handback_tests;
+
+#[cfg(test)]
+#[path = "chief_prompt_send_wire_tests.rs"]
+mod prompt_send_tests;
+
+#[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn prompt_send_acceptance_retains_full_copy_and_clears_only_exact_editor(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_service, profile, _) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let input = decodex_protocol::PromptDraft::new(vec![
+			serde_json::json!({"type":"text","text":"Edited"}),
+			serde_json::json!({"type":"image","fileId":"retained-file","detail":"original"}),
+		])
+		.unwrap();
+		let draft = decodex_protocol::DesktopPromptEditDraft {
+			work_id: EntityId::new("work").unwrap(),
+			thread_id: WireText::new("thread").unwrap(),
+			before_turn_id: WireText::new("turn").unwrap(),
+			item_id: WireText::new("item").unwrap(),
+			original_hash: input.fingerprint().unwrap(),
+			review_token: WireText::new("a".repeat(64)).unwrap(),
+			receipt_id: Some(42),
+			confirmation_key: None,
+			pending_send: None,
+			handback_pending: false,
+			input,
+		};
+		let pending = draft
+			.begin_send(7, IdempotencyKey::new("send-once").unwrap(), Default::default())
+			.unwrap();
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile.clone()), cx);
+			s.composer.update(cx, |input, cx| input.set_content("Unrelated main input", cx));
+			s.stage_prompt_editor(pending.clone(), cx).unwrap();
+			let mut other = draft.clone();
+			other.review_token = WireText::new("b".repeat(64)).unwrap();
+			s.stage_prompt_editor(other, cx).unwrap();
+		});
+		cx.run_until_parked();
+		surface.update(cx, |s, cx| {
+			let mut crossed = pending.clone();
+			crossed.pending_send.as_mut().unwrap().command_key =
+				IdempotencyKey::new("different").unwrap();
+			assert!(s.settle_prompt_send(&crossed, true, cx).is_err());
+			assert!(s.settle_prompt_send(&pending, true, cx).unwrap().is_none());
+			assert_eq!(s.composer.read(cx).content(), "Unrelated main input");
+		});
+		cx.run_until_parked();
+		let document = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		let saved = &document.profiles[&profile.draft_scope_key()];
+		assert!(!saved.prompt_edits.contains_key(pending.review_token.as_str()));
+		assert!(saved.prompt_edits.contains_key(&"b".repeat(64)));
+		assert_eq!(saved.composer.text, "Unrelated main input");
+		let copy =
+			&document.recovered.last().unwrap().draft.prompt_edits[pending.review_token.as_str()];
+		assert_eq!(copy.input, draft.input);
+		assert!(copy.pending_send.is_none());
+		assert!(!document.recovered.last().unwrap().draft.has_unconfirmed_delivery());
+		let restored = document.restore_recovered_copy(document.recovered.last().unwrap()).unwrap();
+		assert_eq!(
+			restored.profiles[&profile.draft_scope_key()].composer.text,
+			"Unrelated main input"
+		);
+		assert_eq!(
+			restored.profiles[&profile.draft_scope_key()].prompt_edits
+				[pending.review_token.as_str()]
+			.input,
+			draft.input
+		);
+		assert!(
+			restored.profiles[&profile.draft_scope_key()]
+				.prompt_edits
+				.contains_key(&"b".repeat(64))
+		);
+	}
+
+	#[gpui::test]
+	fn prompt_handback_requires_the_exact_saved_draft_and_profile(cx: &mut gpui::TestAppContext) {
+		let (_service, profile, other) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let surface = cx.new(ChiefSurface::new);
+		let input = decodex_protocol::PromptDraft::new(vec![
+			serde_json::json!({"type":"text","text":"Retained edit"}),
+		])
+		.unwrap();
+		let mut draft = decodex_protocol::DesktopPromptEditDraft {
+			work_id: EntityId::new("work").unwrap(),
+			thread_id: WireText::new("thread").unwrap(),
+			before_turn_id: WireText::new("turn").unwrap(),
+			item_id: WireText::new("item").unwrap(),
+			original_hash: input.fingerprint().unwrap(),
+			review_token: WireText::new("a".repeat(64)).unwrap(),
+			receipt_id: Some(42),
+			handback_pending: true,
+			confirmation_key: None,
+			pending_send: None,
+			input,
+		};
+		surface.update(cx, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile.clone()), cx);
+			s.stage_prompt_editor(draft.clone(), cx).unwrap();
+			assert!(!s.prompt_editor_saved(&draft));
+		});
+		cx.run_until_parked();
+		surface.update(cx, |s, _| assert!(s.prompt_editor_saved(&draft)));
+		let doc = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		assert_eq!(
+			doc.profiles[&profile.draft_scope_key()].prompt_edits[draft.review_token.as_str()],
+			draft
+		);
+		draft.input.replace_text(0, 0..0, "Later ").unwrap();
+		surface.update(cx, |s, cx| {
+			assert!(!s.prompt_editor_saved(&draft));
+			s.stage_prompt_editor(draft.clone(), cx).unwrap();
+			assert!(!s.prompt_editor_saved(&draft));
+		});
+		cx.run_until_parked();
+		surface.update(cx, |s, cx| {
+			assert!(s.prompt_editor_saved(&draft));
+			s.bind_profile(Some(other), cx);
+			assert!(!s.prompt_editor_saved(&draft));
+		});
+	}
 
 	#[gpui::test]
 	fn exact_receipt_settles_only_matching_saved_copies(cx: &mut gpui::TestAppContext) {
@@ -1421,6 +1770,33 @@ mod ordinary_owner_tests {
 				.or_default()
 				.ordinary
 				.insert("/tmp".into(), ordinary.clone());
+			let review = "b".repeat(64);
+			s.draft_profiles
+				.storage
+				.document
+				.profiles
+				.get_mut(&first.draft_scope_key())
+				.unwrap()
+				.prompt_edits
+				.insert(
+					review.clone(),
+					decodex_protocol::DesktopPromptEditDraft {
+						work_id: EntityId::new("edited-work").unwrap(),
+						thread_id: WireText::new("native-thread").unwrap(),
+						before_turn_id: WireText::new("turn").unwrap(),
+						item_id: WireText::new("item").unwrap(),
+						original_hash: decodex_protocol::Sha256Digest::new("a".repeat(64)).unwrap(),
+						review_token: WireText::new(review).unwrap(),
+						receipt_id: Some(42),
+						handback_pending: true,
+						confirmation_key: None,
+						pending_send: None,
+						input: decodex_protocol::PromptDraft::new(vec![
+							serde_json::json!({"type":"image","fileId":"retained-native-file"}),
+						])
+						.unwrap(),
+					},
+				);
 			s.composer.update(cx, |input, cx| input.set_content("Chief input", cx));
 			s.bind_profile(Some(second.clone()), cx);
 			s.composer.update(cx, |input, cx| input.set_content("Other service input", cx));
@@ -1437,6 +1813,10 @@ mod ordinary_owner_tests {
 		});
 		let decoded = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
 		assert_eq!(decoded.profiles[&first.draft_scope_key()].ordinary["/tmp"], ordinary);
+		let restored = &decoded.profiles[&first.draft_scope_key()].prompt_edits[&"b".repeat(64)];
+		assert_eq!(restored.input.parts()[0]["fileId"], "retained-native-file");
+		assert!(restored.handback_pending);
+		assert!(decoded.profiles[&second.draft_scope_key()].prompt_edits.is_empty());
 	}
 }
 

@@ -268,6 +268,223 @@ pub struct ChiefClient {
 	transport: ResetCardClient,
 }
 impl ChiefClient {
+	/// Reconcile an exact send by reading its queue receipt. Never submit or retry it.
+	pub async fn prompt_input_send_status(
+		&self,
+		identity: crate::PromptInputSendIdentity,
+	) -> Result<crate::PromptInputSendStatus, ClientFailure> {
+		self.transport.require_local_profile()?;
+		if identity.send.input_id <= 0
+			|| identity.edit_receipt_id <= 0
+			|| identity.thread_id.as_str().is_empty()
+		{
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"chief-prompt-send",
+				QueryPayload::GetChiefPromptInputSend { identity: identity.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefPromptInputSend(status)
+				if status.identity == identity
+					&& status.accepted_event_id.is_none_or(|id| id > 0) =>
+				Ok(status),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Resolve relative local media against the exact retained native process.
+	/// Preserve all other parts and fields; this method never submits input.
+	pub async fn resolve_prompt_media(
+		&self,
+		work: EntityId,
+		thread: crate::WireText,
+		input: &crate::PromptDraft,
+	) -> Result<crate::PromptDraft, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let relative: Vec<_> = input
+			.parts()
+			.iter()
+			.enumerate()
+			.filter_map(|(index, part)| {
+				matches!(part["type"].as_str(), Some("localImage" | "localAudio"))
+					.then_some(part["path"].as_str())
+					.flatten()
+					.filter(|path| std::path::Path::new(path).is_relative())
+					.map(|path| (index, path))
+			})
+			.collect();
+		if relative.is_empty() {
+			return Ok(input.clone());
+		}
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"chief-prompt-directory",
+				QueryPayload::GetChiefPromptInputDirectory {
+					work_id: work.clone(),
+					thread_id: thread.clone(),
+				},
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let QueryResultPayload::ChiefPromptInputDirectory {
+			work_id,
+			thread_id,
+			directory: Some(directory),
+		} = completed.value
+		else {
+			return Err(ClientFailure::ProtocolViolation);
+		};
+		if work_id != work
+			|| thread_id != thread
+			|| !std::path::Path::new(directory.as_str()).is_absolute()
+		{
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		let mut resolved = input.clone();
+		for (index, path) in relative {
+			let mut part = input.parts()[index].clone();
+			part["path"] = serde_json::json!(
+				std::path::Path::new(directory.as_str())
+					.join(path)
+					.to_str()
+					.ok_or(ClientFailure::ProtocolMalformed)?
+			);
+			resolved.replace_part(index, part).map_err(|_| ClientFailure::ProtocolMalformed)?;
+		}
+		Ok(resolved)
+	}
+
+	/// Check edited input against fresh thread settings without changing native history.
+	pub async fn preflight_prompt_input(
+		&self,
+		work: EntityId,
+		thread: crate::WireText,
+		input: &crate::PromptDraft,
+		execution: &crate::ChiefExecutionOverrides,
+	) -> Result<(), ClientFailure> {
+		self.transport.require_local_profile()?;
+		input.validate_native_input().map_err(|_| ClientFailure::ProtocolViolation)?;
+		let crate::ChiefModelSettingsResult::Available {
+			work_id,
+			thread_id,
+			model,
+			reasoning_effort,
+			..
+		} = self.model_settings(work.clone()).await?
+		else {
+			return Err(ClientFailure::ProtocolViolation);
+		};
+		if work_id != work || thread_id.as_str() != thread.as_str() {
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		let mut params = serde_json::json!({"threadId":thread,"input":input,"turnTrigger":"user"});
+		execution.apply_to_native_turn(&mut params);
+		if params.get("model").is_none() {
+			let Some(model) = model else {
+				return Err(ClientFailure::ProtocolViolation);
+			};
+			params["model"] = serde_json::json!(model.as_str());
+		}
+		if params.get("effort").is_none()
+			&& let Some(effort) = reasoning_effort
+		{
+			params["effort"] = serde_json::json!(effort.as_str());
+		}
+		// Match the native transport envelope, including its longest positive request ID.
+		let envelope = serde_json::json!({"id":i64::MAX,"method":"turn/start","params":params});
+		if serde_json::to_vec(&envelope).map_err(|_| ClientFailure::ProtocolMalformed)?.len()
+			> decodex_core::MAX_NATIVE_MESSAGE_BYTES
+		{
+			return Err(ClientFailure::ProtocolViolation);
+		}
+		Ok(())
+	}
+
+	/// Stage complete input with durable progress. This never submits a model turn.
+	/// Reuse the same upload identity to resume after interruption.
+	pub async fn stage_prompt_input(
+		&self,
+		upload: crate::PromptInputUpload,
+		input: &crate::PromptDraft,
+	) -> Result<i64, ClientFailure> {
+		self.transport.require_local_profile()?;
+		input.validate().map_err(|_| ClientFailure::ProtocolMalformed)?;
+		let encoded = serde_json::to_string(input).map_err(|_| ClientFailure::ProtocolMalformed)?;
+		if !upload.is_valid()
+			|| encoded.len() as u64 != upload.total_bytes
+			|| input.fingerprint().map_err(|_| ClientFailure::ProtocolMalformed)? != upload.sha256
+		{
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		time::timeout(Duration::from_secs(120), self.transfer_prompt_input(upload, encoded))
+			.await
+			.map_err(|_| ClientFailure::ProtocolTimeout)?
+	}
+
+	async fn transfer_prompt_input(
+		&self,
+		upload: crate::PromptInputUpload,
+		encoded: String,
+	) -> Result<i64, ClientFailure> {
+		let mut status = self.prompt_input_upload_status(upload.clone()).await?;
+		// At most 129 UTF-8 chunks for an 8 MiB input, plus finalization/readback.
+		for _ in 0..131 {
+			let offset = match status {
+				crate::PromptInputUploadStatus::Ready { input_id, .. } => return Ok(input_id),
+				crate::PromptInputUploadStatus::Receiving { received_bytes, .. } =>
+					received_bytes as usize,
+				crate::PromptInputUploadStatus::Unavailable { .. } =>
+					return Err(ClientFailure::ProtocolViolation),
+			};
+			if !encoded.is_char_boundary(offset) {
+				return Err(ClientFailure::ProtocolMalformed);
+			}
+			let complete = offset == encoded.len();
+			let action = if complete {
+				crate::ChiefActionDto::CompletePromptInputUpload { upload: upload.clone() }
+			} else {
+				let mut end = (offset + 65536).min(encoded.len());
+				while !encoded.is_char_boundary(end) {
+					end -= 1;
+				}
+				crate::ChiefActionDto::UploadPromptInput {
+					upload: upload.clone(),
+					offset: offset as u64,
+					fragment: encoded[offset..end].into(),
+				}
+			};
+			// Hash the full action so chunk and finalization keys cannot collide or truncate.
+			let bytes =
+				serde_json::to_vec(&action).map_err(|_| ClientFailure::ProtocolMalformed)?;
+			let key = IdempotencyKey::new(decodex_core::BlobHash::digest(&bytes).to_hex())
+				.map_err(|_| ClientFailure::ProtocolMalformed)?;
+			match self.execute(action, key).await? {
+				ChiefCommandResponse::Rejected { .. } =>
+					return Err(ClientFailure::ProtocolViolation),
+				ChiefCommandResponse::Accepted { .. }
+				| ChiefCommandResponse::PotentiallyDispatched { .. } => {},
+			}
+			status = self.prompt_input_upload_status(upload.clone()).await?;
+			if let crate::PromptInputUploadStatus::Receiving { received_bytes, .. } = &status
+				&& (complete || *received_bytes <= offset as u64)
+			{
+				// Do not spin or infer acceptance from an inconclusive command reply.
+				return Err(ClientFailure::ApplicationAcceptanceUnknown);
+			}
+		}
+		Err(ClientFailure::ProtocolMalformed)
+	}
+
 	/// Read complete canonical edit input through bounded pages. Never confirms or retries an edit.
 	pub async fn prompt_edit(
 		&self,
@@ -323,6 +540,33 @@ impl ChiefClient {
 				.await?;
 		}
 		Err(ClientFailure::ProtocolMalformed)
+	}
+
+	/// Read durable staging progress without finalizing or submitting input.
+	pub async fn prompt_input_upload_status(
+		&self,
+		upload: crate::PromptInputUpload,
+	) -> Result<crate::PromptInputUploadStatus, ClientFailure> {
+		self.transport.require_local_profile()?;
+		if !upload.is_valid() {
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"chief-prompt-upload",
+				QueryPayload::GetChiefPromptInputUpload { upload: upload.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefPromptInputUpload(status)
+				if status.upload() == &upload && status.is_valid() =>
+				Ok(status),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
 	}
 
 	async fn prompt_edit_page(
@@ -1431,7 +1675,10 @@ impl ChiefClient {
 
 fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 	match action {
-		crate::ChiefActionDto::SetLiveReviewer { work_id, .. } => work_id,
+		crate::ChiefActionDto::UploadPromptInput { upload, .. }
+		| crate::ChiefActionDto::CompletePromptInputUpload { upload } => &upload.work_id,
+		crate::ChiefActionDto::SendPromptInput { work_id, .. }
+		| crate::ChiefActionDto::SetLiveReviewer { work_id, .. } => work_id,
 		crate::ChiefActionDto::SelectPermissions { work_id, .. } => work_id,
 		crate::ChiefActionDto::SetTaskPlugin { work_id, .. } => work_id,
 		crate::ChiefActionDto::SetTaskModel { work_id, .. } => work_id,
@@ -4276,7 +4523,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 86 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 87 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

@@ -123,6 +123,18 @@ impl ChiefSurface {
 						body = body
 							.child(muted("Some content was omitted from this history preview."));
 					}
+					if kind == "userMessage"
+						&& let Some(thread) = &work.codex_thread_id
+					{
+						let (owner, thread, turn, item) =
+							(work.id.clone(), thread.clone(), turn_id.clone(), item_id.clone());
+						body = body.child(self.workspace_action(
+							format!("review-prompt-{identity}"),
+							"Review earlier input".into(),
+							move |s, cx| s.review_prompt(&owner, &thread, &turn, &item, cx),
+							cx,
+						));
+					}
 					return body.into_any_element();
 				}
 				let label = match kind.as_str() {

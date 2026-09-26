@@ -56,7 +56,8 @@ impl Recaps {
 		match action {
 			Action::Send { root_id, .. } | Action::SendConfigured { root_id, .. } =>
 				self.cancel_work(root_id.as_str()),
-			Action::Steer { work_id, .. }
+			Action::SendPromptInput { work_id, .. }
+			| Action::Steer { work_id, .. }
 			| Action::NativeAgentInput { work_id, .. }
 			| Action::AnswerQuestion { work_id, .. }
 			| Action::SkipQuestion { work_id, .. } => self.cancel_work(work_id.as_str()),

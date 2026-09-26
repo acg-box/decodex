@@ -5,8 +5,9 @@ use sha2::{Digest as _, Sha256};
 
 use crate::{DecodexPaths, PathError, path_unix, paths};
 
-/// Aggregate byte ceiling for one desktop draft snapshot.
-pub const MAX_CLIENT_DRAFT_BYTES: usize = 4 * 1024 * 1024;
+/// Aggregate byte ceiling for one desktop draft snapshot. Allow full native inputs,
+/// retained conflict copies and regular editors without creating a second store.
+pub const MAX_CLIENT_DRAFT_BYTES: usize = 4 * crate::MAX_NATIVE_MESSAGE_BYTES;
 const MAGIC: &[u8; 8] = b"DDRAFT1\n";
 const OVERHEAD: usize = 8 + 8 + 32;
 

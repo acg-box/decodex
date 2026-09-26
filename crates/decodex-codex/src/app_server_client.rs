@@ -261,6 +261,17 @@ fn new_connection_identity() -> String {
 }
 
 impl AppServerClient {
+	/// Check the complete JSON-RPC request before an earlier related side effect.
+	/// Reserve the longest positive numeric ID used by this transport.
+	pub fn preflight_request(method: &str, params: &Value) -> Result<(), ClientError> {
+		let envelope = json!({"id":i64::MAX,"method":method,"params":params});
+		let bytes = serde_json::to_vec(&envelope).map_err(|_| ClientError::InvalidFrame)?;
+		if bytes.len() > MAX_FRAME_BYTES {
+			return Err(ClientError::RequestTooLarge);
+		}
+		Ok(())
+	}
+
 	/// Opaque identity of this transport, shared by clones and distinct after reconnect.
 	pub fn connection_identity(&self) -> &str {
 		&self.connection_identity
@@ -894,6 +905,28 @@ fn dispatch(
 
 #[cfg(test)]
 mod tests {
+
+	#[test]
+	fn request_preflight_counts_envelope_and_escaping_at_the_native_boundary() {
+		let empty = serde_json::json!({"input":""});
+		let overhead = serde_json::to_vec(
+			&serde_json::json!({"id":i64::MAX,"method":"turn/start","params":empty}),
+		)
+		.unwrap()
+		.len();
+		let mut params = serde_json::json!({"input":"x".repeat(super::MAX_FRAME_BYTES - overhead)});
+		super::AppServerClient::preflight_request("turn/start", &params).unwrap();
+		params["input"] = serde_json::json!("x".repeat(super::MAX_FRAME_BYTES - overhead + 1));
+		assert!(matches!(
+			super::AppServerClient::preflight_request("turn/start", &params),
+			Err(super::ClientError::RequestTooLarge)
+		));
+		let escaped = serde_json::json!({"input":"\n".repeat(super::MAX_FRAME_BYTES / 2)});
+		assert!(matches!(
+			super::AppServerClient::preflight_request("turn/start", &escaped),
+			Err(super::ClientError::RequestTooLarge)
+		));
+	}
 	use super::*;
 	use tokio::{
 		io::{DuplexStream, ReadHalf, WriteHalf},

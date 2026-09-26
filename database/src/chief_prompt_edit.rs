@@ -67,7 +67,10 @@ pub(crate) fn pending(c: &Connection, work: &str) -> Result<bool, StoreError> {
 	c.query_row("SELECT EXISTS(SELECT 1 FROM chief_inbox_events a WHERE a.work_item_id=?1 AND a.event_kind='prompt_edit_attempt' AND NOT EXISTS(SELECT 1 FROM chief_inbox_events r WHERE r.source_event_id=a.source_event_id||':release' AND r.event_kind='prompt_edit_release'))",[work],|r|r.get(0)).map_err(|e|sqlite_error(e).into())
 }
 
-fn receipt(c: &Connection, id: i64) -> Result<Option<ChiefPromptEditReceipt>, StoreError> {
+pub(crate) fn receipt(
+	c: &Connection,
+	id: i64,
+) -> Result<Option<ChiefPromptEditReceipt>, StoreError> {
 	let row: Option<(String,String)> = c.query_row("SELECT a.payload,coalesce(r.disposition_note,o.disposition_note,'reserved') FROM chief_inbox_events a LEFT JOIN chief_inbox_events o ON o.source_event_id=a.source_event_id||':observation' AND o.event_kind='prompt_edit_observation' LEFT JOIN chief_inbox_events r ON r.source_event_id=a.source_event_id||':release' AND r.event_kind='prompt_edit_release' WHERE a.id=?1 AND a.event_kind='prompt_edit_attempt'",[id],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(sqlite_error)?;
 	row.map(|(payload, state)| {
 		Ok(ChiefPromptEditReceipt {

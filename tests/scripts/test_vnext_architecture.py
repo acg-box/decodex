@@ -123,7 +123,7 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertRegex(
             protocol,
             r"pub const CURRENT_VERSION:\s*ProtocolVersion\s*=\s*"
-            r"ProtocolVersion\s*\{\s*major:\s*2,\s*minor:\s*63\s*\};",
+            r"ProtocolVersion\s*\{\s*major:\s*2,\s*minor:\s*87\s*\};",
         )
         self.assertIn("Some(u64::from(CURRENT_VERSION.minor))", gpui)
         self.assertIn("decodex_app_native_client_abi_version", native_client)
@@ -196,7 +196,9 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
                 self.assertNotIn(retired, settings + staging + native_menu_bar)
         self.assertIn('APP="$STAGE_ROOT/Decodex.app"', staging)
         self.assertIn('HELPERS="$CONTENTS/Helpers"', staging)
-        self.assertIn('cp "$ROOT/target/release/decodex" "$HELPERS/decodex"', staging)
+        self.assertIn('cp "$BUILD_ROOT/release/decodex" "$HELPERS/decodex"', staging)
+        self.assertIn("cargo +stable metadata --locked --no-deps --format-version 1", staging)
+        self.assertIn('"target_directory"', staging)
         self.assertIn("--product DecodexMenuBar", staging)
         self.assertIn(
             'DEFAULT_SIGN_IDENTITY="4EBCADF6B4D513E45CE33EC6934C08DBB0F03D7F"',

@@ -76,3 +76,382 @@ async fn prompt_edit_pages_preserve_canonical_content_and_reject_changed_evidenc
 		}
 	}
 }
+
+#[tokio::test]
+async fn prompt_upload_query_rejects_crossed_sources_and_impossible_progress() {
+	for mode in ["valid", "crossed", "overflow"] {
+		let upload = crate::PromptInputUpload {
+			work_id: EntityId::new("root").unwrap(),
+			thread_id: WireText::new("native").unwrap(),
+			edit_receipt_id: 1,
+			upload_id: crate::IdempotencyKey::new("upload").unwrap(),
+			sha256: crate::Sha256Digest::new("a".repeat(64)).unwrap(),
+			total_bytes: 128,
+		};
+		let expected = upload.clone();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query frame")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("read-only query")
+			};
+			assert!(
+				matches!(&query.payload, crate::QueryPayload::GetChiefPromptInputUpload { upload } if upload == &expected)
+			);
+			let mut echoed = expected;
+			if mode == "crossed" {
+				echoed.edit_receipt_id += 1;
+			}
+			let status = crate::PromptInputUploadStatus::Receiving {
+				upload: echoed,
+				received_bytes: if mode == "overflow" { 129 } else { 64 },
+			};
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::ChiefPromptInputUpload(status),
+				})))
+				.await
+				.unwrap();
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let result = crate::ChiefClient::new(profile).prompt_input_upload_status(upload).await;
+		server.await.unwrap();
+		if mode == "valid" {
+			assert!(result.is_ok());
+		} else {
+			assert!(matches!(result, Err(ClientFailure::ProtocolMalformed)));
+		}
+	}
+}
+
+#[tokio::test]
+async fn prompt_upload_resumes_durable_bytes_after_lost_replies_without_submitting() {
+	for mode in ["fresh", "resume", "no-progress"] {
+		let input = crate::PromptDraft::new(vec![
+			serde_json::json!({"type":"text","text":"界\\\"".repeat(18000),"text_elements":[]}),
+		])
+		.unwrap();
+		let encoded = serde_json::to_string(&input).unwrap();
+		let upload = crate::PromptInputUpload {
+			work_id: EntityId::new("root").unwrap(),
+			thread_id: WireText::new("native").unwrap(),
+			edit_receipt_id: 1,
+			upload_id: crate::IdempotencyKey::new("upload").unwrap(),
+			sha256: input.fingerprint().unwrap(),
+			total_bytes: encoded.len() as u64,
+		};
+		let expected = upload.clone();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let mut saved = if mode == "resume" { encoded[..13].to_owned() } else { String::new() };
+			let mut complete = false;
+			let mut commands = 0;
+			loop {
+				let stream = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let _ = socket.next().await;
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+					panic!("text frame")
+				};
+				assert!(request.len() < 256 * 1024);
+				match serde_json::from_str::<ClientMessage>(&request).unwrap() {
+					ClientMessage::Query(query) => {
+						assert!(
+							matches!(&query.payload, crate::QueryPayload::GetChiefPromptInputUpload { upload } if upload == &expected)
+						);
+						let status = if complete {
+							crate::PromptInputUploadStatus::Ready {
+								upload: expected.clone(),
+								input_id: 7,
+							}
+						} else {
+							crate::PromptInputUploadStatus::Receiving {
+								upload: expected.clone(),
+								received_bytes: saved.len() as u64,
+							}
+						};
+						socket
+							.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+								version: CURRENT_VERSION,
+								server_id: ServerId::new(SERVER_ID).unwrap(),
+								query_id: query.query_id,
+								payload: QueryResultPayload::ChiefPromptInputUpload(status),
+							})))
+							.await
+							.unwrap();
+						if complete || (mode == "no-progress" && commands > 0) {
+							break;
+						}
+					},
+					ClientMessage::Command(command) => {
+						let crate::CommandPayload::Chief { action } = command.payload else {
+							panic!("only staging commands")
+						};
+						commands += 1;
+						match *action {
+							crate::ChiefActionDto::UploadPromptInput {
+								upload,
+								offset,
+								fragment,
+							} => {
+								assert_eq!(upload, expected);
+								assert_eq!(offset as usize, saved.len());
+								assert!(fragment.len() <= 65536);
+								if mode != "no-progress" {
+									saved.push_str(&fragment);
+								}
+							},
+							crate::ChiefActionDto::CompletePromptInputUpload { upload } => {
+								assert_eq!(upload, expected);
+								assert_eq!(saved, encoded);
+								complete = true;
+							},
+							_ => panic!("staging must never submit input"),
+						}
+						// Simulate a lost command reply after durable storage.
+					},
+					_ => panic!("unexpected client message"),
+				}
+			}
+			listener.cleanup().unwrap();
+		});
+		let result = crate::ChiefClient::new(profile).stage_prompt_input(upload, &input).await;
+		server.await.unwrap();
+		if mode == "no-progress" {
+			assert_eq!(result, Err(ClientFailure::ApplicationAcceptanceUnknown));
+		} else {
+			assert_eq!(result, Ok(7));
+		}
+	}
+}
+
+#[tokio::test]
+async fn prompt_preflight_reads_current_settings_without_mutating_history() {
+	for mode in ["valid", "crossed", "oversized", "missing-model"] {
+		let input = crate::PromptDraft::new(vec![serde_json::json!({"type":"image","url":if mode == "oversized" { "x".repeat(decodex_core::MAX_NATIVE_MESSAGE_BYTES) } else { "data:image/png;base64,AA==".into() }})]).unwrap();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query frame")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("preflight must not mutate history")
+			};
+			assert!(
+				matches!(&query.payload, crate::QueryPayload::GetChiefModelSettings { work_id } if work_id.as_str()=="root")
+			);
+			let state = crate::ChiefModelSettingsResult::Available {
+				work_id: EntityId::new("root").unwrap(),
+				thread_id: EntityId::new(if mode == "crossed" { "other" } else { "native" })
+					.unwrap(),
+				account_id: EntityId::new("account").unwrap(),
+				model_provider: None,
+				model: if mode == "missing-model" {
+					None
+				} else {
+					Some(WireText::new("configured-model").unwrap())
+				},
+				reasoning_effort: Some(WireText::new("high").unwrap()),
+			};
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::ChiefModelSettings(state),
+				})))
+				.await
+				.unwrap();
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let result = crate::ChiefClient::new(profile)
+			.preflight_prompt_input(
+				EntityId::new("root").unwrap(),
+				WireText::new("native").unwrap(),
+				&input,
+				&crate::ChiefExecutionOverrides::default(),
+			)
+			.await;
+		server.await.unwrap();
+		assert_eq!(result.is_ok(), mode == "valid");
+	}
+}
+
+#[tokio::test]
+async fn prompt_send_readback_is_read_only_and_rejects_crossed_identity() {
+	for mode in ["accepted", "unknown", "crossed"] {
+		let identity = crate::PromptInputSendIdentity {
+			work_id: EntityId::new("root").unwrap(),
+			thread_id: WireText::new("native").unwrap(),
+			edit_receipt_id: 1,
+			send: crate::PromptInputSend {
+				input_id: 2,
+				sha256: crate::Sha256Digest::new("a".repeat(64)).unwrap(),
+				command_key: IdempotencyKey::new("send-once").unwrap(),
+				execution: Default::default(),
+			},
+		};
+		let expected = identity.clone();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let mut socket =
+				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
+			let _ = socket.next().await;
+			for message in initial(SERVER_ID) {
+				socket.send(message).await.unwrap();
+			}
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query frame")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("readback must not resubmit input")
+			};
+			assert!(
+				matches!(&query.payload, crate::QueryPayload::GetChiefPromptInputSend { identity } if identity == &expected)
+			);
+			let mut echoed = expected;
+			if mode == "crossed" {
+				echoed.send.command_key = IdempotencyKey::new("other").unwrap();
+			}
+			let payload = QueryResultPayload::ChiefPromptInputSend(crate::PromptInputSendStatus {
+				identity: echoed,
+				accepted_event_id: (mode != "unknown").then_some(42),
+			});
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload,
+				})))
+				.await
+				.unwrap();
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let result = crate::ChiefClient::new(profile).prompt_input_send_status(identity).await;
+		server.await.unwrap();
+		match mode {
+			"accepted" => assert_eq!(result.unwrap().accepted_event_id, Some(42)),
+			"unknown" => assert_eq!(result.unwrap().accepted_event_id, None),
+			_ => assert_eq!(result, Err(ClientFailure::ProtocolMalformed)),
+		}
+	}
+}
+
+#[tokio::test]
+async fn prompt_media_resolution_preserves_parts_and_rejects_crossed_or_relative_bases() {
+	for mode in ["valid", "crossed", "relative", "missing"] {
+		let input = crate::PromptDraft::new(vec![
+			serde_json::json!({"type":"text","text":"Keep ../photo.png as literal prose"}),
+			serde_json::json!({"type":"localImage","path":"../photo.png","detail":"original","extension":{"keep":true}}),
+			serde_json::json!({"type":"localAudio","path":"recording.wav"}),
+			serde_json::json!({"type":"localImage","path":"/already/absolute.png"}),
+		]).unwrap();
+		let original = input.clone();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let mut socket =
+				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("resolution cannot submit")
+			};
+			assert!(
+				matches!(&query.payload, crate::QueryPayload::GetChiefPromptInputDirectory {work_id,thread_id} if work_id.as_str()=="root" && thread_id.as_str()=="native")
+			);
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::ChiefPromptInputDirectory {
+						work_id: EntityId::new("root").unwrap(),
+						thread_id: WireText::new(if mode == "crossed" {
+							"other"
+						} else {
+							"native"
+						})
+						.unwrap(),
+						directory: if mode == "missing" {
+							None
+						} else {
+							Some(
+								WireText::new(if mode == "relative" {
+									"relative"
+								} else {
+									"/native/process"
+								})
+								.unwrap(),
+							)
+						},
+					},
+				})))
+				.await
+				.unwrap();
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let result = crate::ChiefClient::new(profile)
+			.resolve_prompt_media(
+				EntityId::new("root").unwrap(),
+				WireText::new("native").unwrap(),
+				&input,
+			)
+			.await;
+		server.await.unwrap();
+		assert_eq!(input, original);
+		if mode == "valid" {
+			let result = result.unwrap();
+			let mut expected = original.parts().to_vec();
+			expected[1]["path"] = serde_json::json!("/native/process/../photo.png");
+			expected[2]["path"] = serde_json::json!("/native/process/recording.wav");
+			assert_eq!(result.parts(), expected);
+		} else {
+			assert!(result.is_err());
+		}
+	}
+}

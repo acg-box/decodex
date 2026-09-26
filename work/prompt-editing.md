@@ -1,10 +1,13 @@
 # Edit an earlier prompt
 
-Classification: optional product capability. Canonical input selection is
-implemented, with a durable journal and service-owned native confirmation/recovery.
-The local protocol now carries review, confirmation, recovery and explicit draft
-acknowledgement. Desktop presentation, canonical draft storage and editor integration
-remain open; this is not a complete editing action.
+Classification: optional product capability. Desktop review, complete canonical
+input editing, durable confirmation, history refresh, draft handback and explicit
+resend are implemented. Native Codex owns history mutation and execution. The
+existing Decodex draft store and service inbox retain recovery and send identities.
+
+The feature is pending final combined validation, local signed-app checks and PR
+merge. It is not installed or publicly released. Core native envelope qualification
+and revert observation remain useful independently of this optional editor.
 
 ## Native authority
 
@@ -44,7 +47,7 @@ account/process ownership.
 An unsupported or non-editable candidate returns None; malformed, incomplete or
 changed native evidence returns an error. Neither is permission to use old UI text.
 
-## Remaining delivery
+## Acceptance requirements
 
 - Present the complete selected input and the history boundary for review. Preserve
   attachments and canonical mentions when restoring an editable draft.
@@ -173,5 +176,208 @@ must persist the returned draft and refresh its presentation before it explicitl
 acknowledges the exact receipt ID and review token. The service rechecks native
 history and question recovery before releasing the input fence. A duplicate exact
 acknowledgement is harmless; another receipt cannot release this edit. Querying,
-recovering or acknowledging does not submit the restored draft. The current GPUI
-composer still needs canonical binding/file-ID storage and editing support.
+recovering or acknowledging does not submit the restored draft. GPUI retains canonical
+input in a separate editor; final send and recovery acceptance remain open.
+
+## Canonical draft staging and send integration
+
+The current feature branch adds protocol2.87 staging commands and a separate
+SendPromptInput command. The desktop editor retains complete parts and text
+markers in the existing version10 draft document. Input staging uses immutable
+SQLite records and durable 64KiB chunks. A lost staging reply permits progress
+only after a read confirms saved bytes. Staging never authorizes a model turn.
+
+SendPromptInput identifies the exact work, thread, edit receipt, immutable record
+and digest, with execution settings captured at send time. Queue admission checks
+the source and acknowledged draft handback in the same transaction as the existing
+user_message event. The event contains a labeled, bounded preview and an input
+reference. It does not contain full image data. The existing dispatch owner loads
+complete parts, checks their source, applies the captured settings, and uses the
+normal dispatch fence and native request path. The preview is not model input.
+The input retains its native thread instead of triggering a tool-upgrade fork.
+
+Focused tests cover exact part and marker retention, large image data, execution
+settings, bounded queue payloads, repeated admission, pending handback rejection,
+and changed thread or digest rejection. These tests construct native request
+parameters; they do not prove a complete desktop send or installed-native result.
+
+Explicit send, ambiguous send recovery, and installed-native acceptance remain
+required before
+this optional feature is accepted. Local protocol and database tests do not close
+those acceptance requirements.
+
+The local version10 draft contract retains a confirmation command key before a native
+receipt exists. begin_confirmation marks handback pending and refuses a second
+confirmation. The existing draft writer must save this exact state before dispatch.
+Receipt recovery clears the local key only when exact native evidence is available.
+An Unchanged receipt permits a fresh review while preserving edited content;
+Uncertain or Applied receipts retain the handback fence. Missing or failed network
+responses do not release it. Versions1 through9 upgrade with no invented confirmation
+identity. Desktop confirmation now waits for this exact record to be saved.
+
+Native input qualification follows the fixed cutoff's public UserInput schema and
+TurnProcessor::validate_v2_input_limit. It checks the seven supported variants and
+sums Unicode scalar counts across text parts, with a limit of1048576. Review storage
+can still retain unknown parts without permitting their submission. Qualification
+does not read local files or prove remote media availability.
+
+AppServerClient::preflight_request measures the complete serialized JSON-RPC envelope
+with the largest positive request ID. Canonical send admission checks captured
+settings. Dispatch checks again after inherited settings are resolved, before any
+external context injection. A size refusal before injection uses the existing
+positive-unsent result; an attempted injection retains the existing uncertainty
+rules. The actual transport still checks its final frame before writing.
+
+These checks protect send admission and dispatch. Desktop confirmation also reruns
+the client preflight before saving its confirmation record and sending the edit.
+
+The desktop now exposes a read-only Check edited input action. Its client reads
+current model settings for the exact work and thread, combines inherited values
+with captured explicit choices, and measures a full native request envelope. It
+rejects unavailable model evidence, crossed threads and oversized requests. The
+runtime and client share execution-option serialization. A changed local draft or
+execution choice invalidates the result shown in the panel.
+
+This check is a current observation, not a reusable confirmation permit. Local
+media readability and remote media availability are not established by it. The
+confirmation action reruns required checks before persisting confirmation intent
+and submitting the native edit.
+
+
+## Desktop confirmation
+
+The confirmation panel states that the selected and later turns will be removed,
+workspace file changes will remain, and the edited draft will not be sent. An
+explicit second action starts fresh input/settings qualification and checks that
+absolute local media paths are readable files. A relative path directs the user to
+Check edited input, which resolves and saves its native process location before
+confirmation. Remote media availability is not proven by local checks.
+
+A worker waits on a one-shot permit. The UI sends that permit only after the existing
+draft writer confirms the exact pending record, current profile, draft and execution
+choice. Closing or invalidating the pending operation drops the permit. A timeout,
+changed input or connection loss before dispatch retains the draft. Known rejection
+or a first-attempt pre-dispatch client failure can clear that local intent; prior
+uncertainty remains on an aborted explicit continuation. An accepted or ambiguous
+reply starts read-only receipt recovery, never automatic native confirmation replay.
+An explicit continuation uses the saved command identity.
+
+A rendered-control/socket test reads the actual draft file when the service receives
+ConfirmPromptEdit. It proves the matching confirmation key and draft are durable and
+the occupied main composer is preserved. It uses a simulated rejection and does not
+prove native success, draft handback ACK, or a subsequent model send.
+
+
+## Draft handback acknowledgement
+
+Finish restoring draft first recovers the exact native receipt. It accepts only an
+Applied or Restored receipt, then reads fresh local history and the native timeline.
+The UI requires complete question recovery and matching work/thread identities. It
+applies a new timeline epoch, replaces current history, and cancels older-page and
+visible-output tasks that could reintroduce removed content. A failed read does not
+reuse an older Available history result as acknowledgement evidence.
+
+The I/O worker waits for the UI to apply these results and confirm that the exact
+draft is saved before it sends AcknowledgePromptEditDraft. It then reads the receipt
+again and requires Restored before marking handback complete locally. An unavailable
+reply retains the draft and requires receipt recovery. Neither acknowledgement nor
+recovery submits edited input. Changes during the operation retain the edited copy.
+
+Focused UI tests cover unavailable history, incomplete question recovery, a crossed
+native thread, and replacement of old timeline rows/cursors after a fresh read. The
+full installed-native desktop confirmation/handback/send sequence still needs end-to-
+end acceptance; these projection tests do not establish that result.
+
+
+## Explicit edited-input send
+
+Send edited input reruns preflight, stages complete native parts, and saves a
+version10 draft with immutable input ID, content digest, execution choices and the
+original command key. Only a matching durable local record permits SendPromptInput.
+The retained canonical input cannot change while that send remains unresolved.
+A known pre-dispatch failure or definite rejection retains an editable copy.
+
+GetChiefPromptInputSend is read-only. It matches the original user_message source
+identity and exact canonical reference/execution values in SQLite. An event ID proves
+queue acceptance, not native execution or completion. Missing or unavailable evidence
+means unknown and never permits replay. The client rejects crossed reply identities.
+Check send receipt performs only this read and keeps the original command key.
+
+On positive acceptance, the desktop removes only the exact active editor and retains
+a complete manually restorable copy in the existing recovered-draft document. The
+main composer and other editors are preserved. If settlement cannot be saved, the
+original pending record remains available for another readback. No new persistence
+owner or inference queue is introduced.
+
+The desktop retains a live-only prepared-send marker until it grants the worker
+permission to submit. Closing or replacing the panel cancels that permission and
+clears only the exact known-unsent record. After permission, or after restart without
+that live proof, the original record remains unresolved until receipt readback.
+Quit uses the existing draft flush to save known-unsent cancellation.
+
+A socket/UI fixture checks that the complete send identity is already on disk when
+SendPromptInput arrives. It drops the reply, returns unknown on the first readback,
+and accepts the later explicit receipt check. It requires exactly one submission
+and preserves the occupied main composer and canonical attachment in recovery.
+
+Restoring a copy that contains only canonical editors preserves the main composer
+and other editors. Conflict reconciliation preserves complete pending-send content
+and identity together; it retains displaced edits as alternatives. History-edit
+confirmation and handback fences preserve local edits and their recovery key or
+receipt. Protocol tests cover these distinct conflict cases.
+
+A separate socket/UI handback fixture reads an Applied receipt and fresh history
+and timeline. At AcknowledgePromptEditDraft, it checks the saved edited input,
+receipt, occupied main composer, removed older-history cache and applied native
+history binding. It loses the acknowledgement reply, then returns Restored on
+readback. The editor keeps changed text and its attachment. No model-input command
+is permitted by this fixture.
+
+The installed-native service fixture now continues from revert and acknowledgement
+through preflight, a 70 KB multichunk upload, repeat staging, explicit send and exact
+queue receipt readback. Staging makes no provider request. Sending adds exactly one
+provider request and retains the same thread. Native history contains the full text,
+including its final sentinel, rather than the queue preview. A later receipt read
+keeps the provider count unchanged. This fixture uses a private product root and
+local synthetic Responses provider with installed Codex 0.158.0-alpha.2.
+
+Complete interactive and signed-desktop acceptance remain required.
+Fixed upstream protocol/src/models.rs reads local media paths directly; public input
+conversion and history reconstruction retain those paths. The native process working
+directory must be established before interpreting a relative path. A child thread's
+working directory is not sufficient proof for a shared Chief app-server process.
+
+## Image review and visual qualification
+
+Image controls use one-based numbers in canonical input order across remote images,
+file-ID images and local images. This matches fixed upstream
+ResponseInputItem::from_user_input, which increments the image counter for each
+image variant. Local filenames and native file IDs distinguish the selected input.
+Removal remains explicit and atomic with selected structured text references.
+The confirmation explains that remaining image numbers change; ordinary message
+text is not rewritten by searching for a matching label.
+
+The isolated visual-capture pages prompt-editor and prompt-remove exercise the
+production editor panel. DECODEX_VISUAL_PROMPT_ROOT selects a private test profile;
+run with a private HOME so the normal draft owner is also isolated. Capture exposed
+collapsed action labels. Prompt panels now take available width, and prompt action
+labels use flexible width and wrapping. Existing sidebar and tab layout is unchanged.
+The expanded removal view is render-checked; complete interactive and signed-app
+acceptance are separate requirements.
+
+## Relative local media
+
+Check edited input resolves localImage and localAudio paths through a read-only
+GetChiefPromptInputDirectory query. The retained Chief process owns its launch
+directory. The host checks exact task/thread ownership and the same generation,
+account revision and history source before returning that directory. It does not
+substitute a child thread directory or launch another process.
+
+The client rejects crossed bindings, missing directories and non-absolute bases.
+It joins only relative local media paths and keeps complete parts, detail fields,
+unknown extensions, absolute paths and ordinary text unchanged. It leaves path
+segments such as '..' for normal filesystem resolution, preserving symlink semantics.
+The desktop checks readable files and the complete native envelope before saving
+the resolved draft. The original review hash remains unchanged. History confirmation
+and model submission remain separate explicit actions. A failed check keeps the
+original draft. Pending send content remains immutable under existing validation.

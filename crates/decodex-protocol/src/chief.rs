@@ -325,6 +325,35 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Send retained canonical input through the existing user-message queue.
+	SendPromptInput {
+		/// Exact task owner.
+		work_id: crate::EntityId,
+		/// Native thread retained by the history edit.
+		thread_id: crate::WireText,
+		/// Immutable staged input record.
+		input_id: i64,
+		/// Applied history edit with acknowledged draft handback.
+		edit_receipt_id: i64,
+		/// Complete input digest.
+		sha256: crate::Sha256Digest,
+		/// Settings captured at explicit send time.
+		execution: crate::ChiefExecutionOverrides,
+	},
+	/// Store one bounded input fragment without queuing or sending it.
+	UploadPromptInput {
+		/// Exact transfer identity.
+		upload: crate::PromptInputUpload,
+		/// UTF-8 byte offset into the compact canonical array.
+		offset: u64,
+		/// At most 64KiB of complete UTF-8 bytes; may split a JSON escape.
+		fragment: String,
+	},
+	/// Materialize a complete immutable input without authorizing a model turn.
+	CompletePromptInputUpload {
+		/// Exact transfer identity.
+		upload: crate::PromptInputUpload,
+	},
 	/// Prepare a read-only review for one exact visible input.
 	PreparePromptEdit {
 		/// Local owner.

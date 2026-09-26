@@ -855,7 +855,7 @@ impl SqliteStore {
 			}
 			if !work_exists(&transaction, &input.work_item_id)? { return Err(DatabaseError::NotFound.into()); }
 			if matches!(input.event_kind.as_str(), "user_message" | "async_question_answer" | "steer_pending") && crate::chief_prompt_edit::pending(&transaction, &input.work_item_id)? { return Err(DatabaseError::Conflict.into()); }
-			if input.event_kind == "user_message" { crate::chief_task_references::validate_references(&transaction, &input.payload)?; }
+			if input.event_kind == "user_message" { crate::chief_task_references::validate_references(&transaction, &input.payload)?; crate::chief_prompt_inputs::validate_queued_input(&transaction, &input.work_item_id, &input.payload)?; }
             if input.event_kind == "user_message" && transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_misalignment m JOIN chief_work_items w ON w.id=m.work_id AND w.codex_thread_id=m.thread_id WHERE m.work_id=?1)",[&input.work_item_id],|row|row.get::<_,bool>(0)).map_err(sqlite_error)? { return Err(StoreError::InvalidInput("conversation paused for provider findings")); }
 
 			let now = unix_micros()?;
