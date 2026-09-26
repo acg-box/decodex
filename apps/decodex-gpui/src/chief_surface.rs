@@ -1997,7 +1997,22 @@ fn muted(text: impl Into<SharedString>) -> impl IntoElement {
 		.text_color(rgb(ui_theme::TEXT_MUTED))
 		.child(text.into())
 }
+fn auth_recovery_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
+	let id = entry.id;
+	div()
+		.w_full()
+		.flex()
+		.flex_col()
+		.gap_1()
+		.debug_selector(move || format!("auth-recovery-receipt-{id}"))
+		.child(muted("Provider sign-in · Recorded event"))
+		.child(entry.text.clone())
+}
+
 fn history_entry(entry: &decodex_protocol::ChiefHistoryEntryDto) -> gpui::Div {
+	if entry.kind == "auth_recovery" {
+		return auth_recovery_entry(entry);
+	}
 	history_entry_with_key(entry, &entry.id.to_string())
 }
 

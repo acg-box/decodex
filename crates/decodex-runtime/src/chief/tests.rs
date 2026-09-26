@@ -3007,3 +3007,6 @@ async fn unfinished_native_text_keeps_source_and_display_only_status_after_reope
 mod misalignment_recovery;
 #[path = "tests/native_misalignment.rs"]
 mod native_misalignment;
+
+#[path = "tests/auth_recovery.rs"]
+mod auth_recovery;

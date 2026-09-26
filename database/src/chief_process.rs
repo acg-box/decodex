@@ -211,6 +211,7 @@ pub(crate) fn owns_work(
 mod tests {
 	mod app_settings;
 	mod app_ui_calls;
+	mod auth_recovery;
 	mod hooks;
 	mod models;
 	mod native_warnings;

@@ -421,3 +421,16 @@ differences from the preserved snapshot. The original hash was verified and the
 current hash is recorded. This closes one content-review row; see
 [history refresh recovery](history-refresh-recovery.md) for the reproduced
 failure and event-routing boundary.
+
+## Pre-scan provider recovery files restored on 2026-09-26
+
+The authentication recovery implementation and two tests exist in the pre-scan
+base commit but were absent from current main. They are not among the 360 changed
+snapshot paths, so this recovery does not reduce that register count. The complete
+storage implementation and process-ownership test match the base. The runtime
+test uses the retained history renderer and verifies the actual transcript path.
+See [provider recovery history](provider-auth-recovery-history.md).
+
+This optional Bedrock-specific display is explicitly marked for the user's
+removal review. Native credential and retry authority stays in Codex. No generic
+shared file or broad capability group is closed by this restoration.
