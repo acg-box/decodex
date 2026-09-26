@@ -114,6 +114,27 @@ async fn canonical_prompt_input_is_durable_immutable_and_never_a_wake_event() {
 		.retain_chief_prompt_input("task".into(), "native".into(), receipt, content.clone())
 		.await
 		.unwrap();
+	let bytes = serde_json::to_vec(&content).unwrap().len() as i64;
+	for (thread, count, expected) in [
+		("native", bytes, Some(saved.id)),
+		("other-thread", bytes, None),
+		("native", bytes + 1, None),
+	] {
+		assert_eq!(
+			store
+				.chief_prompt_input_id(
+					"task".into(),
+					thread.into(),
+					receipt,
+					saved.sha256.clone(),
+					count
+				)
+				.await
+				.unwrap(),
+			expected
+		);
+	}
+
 	assert_eq!(
 		store
 			.retain_chief_prompt_input("task".into(), "native".into(), receipt, content.clone())

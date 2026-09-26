@@ -1,6 +1,7 @@
 //! Single service-owned Chief actor. The existing Conversation runtime owns its account process.
 
 #[path = "chief_prompt_edit_host.rs"] mod prompt_edit;
+#[path = "chief_prompt_upload_host.rs"] mod prompt_upload;
 #[path = "chief_recap/host.rs"] mod recap;
 
 use std::{
@@ -796,7 +797,7 @@ impl ChiefHost {
 					},
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
-						let history_edit = matches!(&request.action,ChiefActionDto::PreparePromptEdit{..}|ChiefActionDto::ConfirmPromptEdit{..}|ChiefActionDto::RecoverPromptEdit{..}|ChiefActionDto::AcknowledgePromptEditDraft{..});
+						let history_edit = matches!(&request.action,ChiefActionDto::PreparePromptEdit{..}|ChiefActionDto::ConfirmPromptEdit{..}|ChiefActionDto::RecoverPromptEdit{..}|ChiefActionDto::AcknowledgePromptEditDraft{..}|ChiefActionDto::UploadPromptInput{..}|ChiefActionDto::CompletePromptInputUpload{..});
 						if !history_edit { self.rotate_exhausted(&mut active).await; }
 						let suppress_wake = history_edit || matches!(&request.action,ChiefActionDto::GenerateRecap{..}|ChiefActionDto::CancelRecap{..});
 						self.recaps.note_input(&request.action);
@@ -1204,6 +1205,8 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			action @ (Action::UploadPromptInput { .. }
+			| Action::CompletePromptInputUpload { .. }) => self.handle_prompt_upload(action).await,
 			action @ (Action::PreparePromptEdit { .. }
 			| Action::ConfirmPromptEdit { .. }
 			| Action::RecoverPromptEdit { .. }

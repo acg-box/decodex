@@ -41,6 +41,20 @@ fn read(
 }
 
 impl SqliteStore {
+	/// Find immutable data by exact source and digest without loading its full content.
+	pub async fn chief_prompt_input_id(
+		&self,
+		work: String,
+		thread: String,
+		edit_receipt_id: i64,
+		sha256: String,
+		total_bytes: i64,
+	) -> Result<Option<i64>, StoreError> {
+		self.run(move |c| {
+			c.query_row("SELECT id FROM chief_prompt_inputs WHERE work_item_id=?1 AND thread_id=?2 AND edit_receipt_id=?3 AND sha256=?4 AND length(CAST(content AS BLOB))=?5", params![work,thread,edit_receipt_id,sha256,total_bytes], |r|r.get(0)).optional().map_err(|error|sqlite_error(error).into())
+		}).await
+	}
+
 	/// Retain a complete edited input after native history application, without queuing it.
 	/// Exact content replay returns the existing identity. A changed input gets a new identity.
 	pub async fn retain_chief_prompt_input(

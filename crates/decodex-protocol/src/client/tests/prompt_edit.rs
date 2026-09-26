@@ -76,3 +76,65 @@ async fn prompt_edit_pages_preserve_canonical_content_and_reject_changed_evidenc
 		}
 	}
 }
+
+#[tokio::test]
+async fn prompt_upload_query_rejects_crossed_sources_and_impossible_progress() {
+	for mode in ["valid", "crossed", "overflow"] {
+		let upload = crate::PromptInputUpload {
+			work_id: EntityId::new("root").unwrap(),
+			thread_id: WireText::new("native").unwrap(),
+			edit_receipt_id: 1,
+			upload_id: crate::IdempotencyKey::new("upload").unwrap(),
+			sha256: crate::Sha256Digest::new("a".repeat(64)).unwrap(),
+			total_bytes: 128,
+		};
+		let expected = upload.clone();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query frame")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("read-only query")
+			};
+			assert!(
+				matches!(&query.payload, crate::QueryPayload::GetChiefPromptInputUpload { upload } if upload == &expected)
+			);
+			let mut echoed = expected;
+			if mode == "crossed" {
+				echoed.edit_receipt_id += 1;
+			}
+			let status = crate::PromptInputUploadStatus::Receiving {
+				upload: echoed,
+				received_bytes: if mode == "overflow" { 129 } else { 64 },
+			};
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::ChiefPromptInputUpload(status),
+				})))
+				.await
+				.unwrap();
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let result = crate::ChiefClient::new(profile).prompt_input_upload_status(upload).await;
+		server.await.unwrap();
+		if mode == "valid" {
+			assert!(result.is_ok());
+		} else {
+			assert!(matches!(result, Err(ClientFailure::ProtocolMalformed)));
+		}
+	}
+}

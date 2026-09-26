@@ -2187,6 +2187,11 @@ impl AccountObservationSignal {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
+	/// Read durable input transfer status without finalizing or submitting it.
+	GetChiefPromptInputUpload {
+		/// Exact transfer identity.
+		upload: crate::PromptInputUpload,
+	},
 	/// Read one bounded canonical-input fragment from the same reviewed history edit.
 	GetChiefPromptEdit {
 		/// Local owner.
@@ -3036,6 +3041,8 @@ impl ResultPayload {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
+	/// Durable data transfer status; not an inference receipt.
+	ChiefPromptInputUpload(crate::PromptInputUploadStatus),
 	/// Service-owned task recap state.
 	ChiefRecap(crate::TaskRecapStatus),
 	/// Canonical source-bound prompt-edit evidence page.
@@ -4772,7 +4779,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":86},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":87},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4781,7 +4788,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":86},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":87},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4823,7 +4830,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":86},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":87},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

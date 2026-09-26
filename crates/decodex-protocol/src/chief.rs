@@ -325,6 +325,20 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Store one bounded input fragment without queuing or sending it.
+	UploadPromptInput {
+		/// Exact transfer identity.
+		upload: crate::PromptInputUpload,
+		/// UTF-8 byte offset into the compact canonical array.
+		offset: u64,
+		/// At most 64KiB of complete UTF-8 bytes; may split a JSON escape.
+		fragment: String,
+	},
+	/// Materialize a complete immutable input without authorizing a model turn.
+	CompletePromptInputUpload {
+		/// Exact transfer identity.
+		upload: crate::PromptInputUpload,
+	},
 	/// Prepare a read-only review for one exact visible input.
 	PreparePromptEdit {
 		/// Local owner.

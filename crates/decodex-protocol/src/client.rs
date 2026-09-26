@@ -325,6 +325,33 @@ impl ChiefClient {
 		Err(ClientFailure::ProtocolMalformed)
 	}
 
+	/// Read durable staging progress without finalizing or submitting input.
+	pub async fn prompt_input_upload_status(
+		&self,
+		upload: crate::PromptInputUpload,
+	) -> Result<crate::PromptInputUploadStatus, ClientFailure> {
+		self.transport.require_local_profile()?;
+		if !upload.is_valid() {
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"chief-prompt-upload",
+				QueryPayload::GetChiefPromptInputUpload { upload: upload.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefPromptInputUpload(status)
+				if status.upload() == &upload && status.is_valid() =>
+				Ok(status),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	async fn prompt_edit_page(
 		&self,
 		work: EntityId,
@@ -1431,6 +1458,8 @@ impl ChiefClient {
 
 fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 	match action {
+		crate::ChiefActionDto::UploadPromptInput { upload, .. }
+		| crate::ChiefActionDto::CompletePromptInputUpload { upload } => &upload.work_id,
 		crate::ChiefActionDto::SetLiveReviewer { work_id, .. } => work_id,
 		crate::ChiefActionDto::SelectPermissions { work_id, .. } => work_id,
 		crate::ChiefActionDto::SetTaskPlugin { work_id, .. } => work_id,
@@ -4276,7 +4305,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 86 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 87 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
