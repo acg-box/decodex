@@ -2033,6 +2033,10 @@ fn publish_views(
 		}
 		let account_profile = shell.account_profile_controller.snapshot();
 		let desktop_settings = shell.desktop_settings.snapshot();
+		let auto_recap = desktop_settings.settings.is_some_and(|s| s.auto_recap)
+			&& shell.selected == Destination::Chief
+			&& matches!(shell.connection, ConnectionView::Online { .. });
+		shell.chief.update(cx, |s, cx| s.poll_automatic_recap(auto_recap, cx));
 		let health = shell.health_query.snapshot();
 		if shell.selected == Destination::Conversations
 			&& shell.pending_submission.is_none()

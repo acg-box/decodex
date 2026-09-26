@@ -3,10 +3,13 @@ use super::{mcp_forms::mcp_button, *};
 use decodex_protocol::{TaskRecapPhase as Phase, TaskRecapStatus};
 use tokio::sync::watch;
 
+#[path = "chief_recap_automatic.rs"] mod automatic;
 #[path = "chief_recap_request.rs"] mod request;
+pub(super) use automatic::Automatic;
 
 #[derive(Default)]
 pub(super) struct Panel {
+	automatic: bool,
 	work: Option<String>,
 	state: Option<TaskRecapStatus>,
 	cancel: Option<watch::Sender<bool>>,
@@ -43,10 +46,20 @@ impl ChiefSurface {
 	}
 
 	fn read_recap(&mut self, work: &str, generate: bool, cx: &mut Context<Self>) {
+		self.request_recap(work, generate, false, cx);
+	}
+
+	fn request_recap(
+		&mut self,
+		work: &str,
+		generate: bool,
+		automatic: bool,
+		cx: &mut Context<Self>,
+	) {
 		if self.selected.as_deref() != Some(work)
 			|| self.native_agents.selected.is_some()
 			|| self.recap.busy()
-			|| (generate && self.recap.state.is_none())
+			|| (generate && !automatic && self.recap.state.is_none())
 		{
 			return;
 		}
@@ -64,13 +77,15 @@ impl ChiefSurface {
 		let Ok(owner) = EntityId::new(work) else { return };
 		self.reset_recap();
 		self.recap.work = Some(work.into());
+		self.recap.automatic = automatic;
 		self.recap.feedback = if generate { "Generating recap…" } else { "Reading recap…" }.into();
 		let epoch = self.recap.epoch;
 		let (cancel, cancellation) = watch::channel(false);
 		let (updates, mut results) = watch::channel(None);
 		self.recap.cancel = Some(cancel);
-		cx.background_executor()
-			.spawn(async move {
+		if std::thread::Builder::new()
+			.name("task-recap-io".into())
+			.spawn(move || {
 				if let Ok(runtime) =
 					tokio::runtime::Builder::new_current_thread().enable_all().build()
 				{
@@ -84,7 +99,13 @@ impl ChiefSurface {
 					));
 				}
 			})
-			.detach();
+			.is_err()
+		{
+			self.recap.cancel = None;
+			self.recap.feedback = "Recap worker could not start. Refresh to try again.".into();
+			cx.notify();
+			return;
+		}
 		self.recap.task = Some(cx.spawn(async move |surface, cx| {
 			while results.changed().await.is_ok() {
 				let result = results.borrow_and_update().clone();
@@ -98,6 +119,9 @@ impl ChiefSurface {
 								&& s.recap.cancel.as_ref().is_some_and(|cancel| *cancel.borrow())
 							{
 								return;
+							}
+							if let Some(state) = &state {
+								s.record_recap_result(state);
 							}
 							s.recap.state = state;
 							s.recap.feedback = feedback;
