@@ -525,6 +525,58 @@ mod tests {
 			crate::DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
 		let profile = &restored.profiles[&"a".repeat(64)];
 		assert!(profile.has_unconfirmed_delivery());
+		assert_pending_send_retained(&draft, &reopened);
+
+		assert_eq!(profile.prompt_edits[draft.review_token.as_str()], draft);
+		let fragment = serde_json::to_string(&original).unwrap();
+		let mut status = crate::PromptEditStatus {
+			work_id: draft.work_id.clone(),
+			thread_id: draft.thread_id.clone(),
+			phase: crate::PromptEditPhase::Applied,
+			evidence: Some(crate::PromptEditEvidence {
+				review_token: draft.review_token.clone(),
+				receipt_id: Some(42),
+				before_turn_id: draft.before_turn_id.clone(),
+				item_id: draft.item_id.clone(),
+				removed_turns: 2,
+				content_bytes: fragment.len() as u64,
+				offset: 0,
+				fragment,
+			}),
+		};
+		for phase in [
+			crate::PromptEditPhase::Uncertain,
+			crate::PromptEditPhase::Applied,
+			crate::PromptEditPhase::Restored,
+		] {
+			status.phase = phase;
+			let recovered = draft.recover_receipt(&status, &original).unwrap();
+			assert_eq!(recovered.input, draft.input);
+			assert_eq!(recovered.receipt_id, Some(42));
+			assert!(recovered.confirmation_key.is_none());
+			assert_eq!(recovered.handback_pending, phase != crate::PromptEditPhase::Restored);
+		}
+		status.phase = crate::PromptEditPhase::Unchanged;
+		let unchanged = draft.recover_receipt(&status, &original).unwrap();
+		assert!(
+			unchanged.receipt_id.is_none()
+				&& unchanged.confirmation_key.is_none()
+				&& !unchanged.handback_pending
+		);
+		assert_eq!(unchanged.input, draft.input);
+		assert!(draft.recover_receipt(&status, &draft.input).is_err());
+		draft.confirmation_key = None;
+		draft.receipt_id = Some(43);
+		assert!(draft.recover_receipt(&status, &original).is_err());
+		draft.receipt_id = None;
+		status.thread_id = crate::WireText::new("other").unwrap();
+		assert!(draft.recover_receipt(&status, &original).is_err());
+	}
+
+	fn assert_pending_send_retained(
+		draft: &DesktopPromptEditDraft,
+		reopened: &crate::ClientDraftStore,
+	) {
 		let mut restored_edit = draft.clone();
 		restored_edit.confirmation_key = None;
 		restored_edit.handback_pending = false;
@@ -575,51 +627,6 @@ mod tests {
 			reopened_send.profiles[&"a".repeat(64)].prompt_edits[sending.review_token.as_str()],
 			sending
 		);
-
-		assert_eq!(profile.prompt_edits[draft.review_token.as_str()], draft);
-		let fragment = serde_json::to_string(&original).unwrap();
-		let mut status = crate::PromptEditStatus {
-			work_id: draft.work_id.clone(),
-			thread_id: draft.thread_id.clone(),
-			phase: crate::PromptEditPhase::Applied,
-			evidence: Some(crate::PromptEditEvidence {
-				review_token: draft.review_token.clone(),
-				receipt_id: Some(42),
-				before_turn_id: draft.before_turn_id.clone(),
-				item_id: draft.item_id.clone(),
-				removed_turns: 2,
-				content_bytes: fragment.len() as u64,
-				offset: 0,
-				fragment,
-			}),
-		};
-		for phase in [
-			crate::PromptEditPhase::Uncertain,
-			crate::PromptEditPhase::Applied,
-			crate::PromptEditPhase::Restored,
-		] {
-			status.phase = phase;
-			let recovered = draft.recover_receipt(&status, &original).unwrap();
-			assert_eq!(recovered.input, draft.input);
-			assert_eq!(recovered.receipt_id, Some(42));
-			assert!(recovered.confirmation_key.is_none());
-			assert_eq!(recovered.handback_pending, phase != crate::PromptEditPhase::Restored);
-		}
-		status.phase = crate::PromptEditPhase::Unchanged;
-		let unchanged = draft.recover_receipt(&status, &original).unwrap();
-		assert!(
-			unchanged.receipt_id.is_none()
-				&& unchanged.confirmation_key.is_none()
-				&& !unchanged.handback_pending
-		);
-		assert_eq!(unchanged.input, draft.input);
-		assert!(draft.recover_receipt(&status, &draft.input).is_err());
-		draft.confirmation_key = None;
-		draft.receipt_id = Some(43);
-		assert!(draft.recover_receipt(&status, &original).is_err());
-		draft.receipt_id = None;
-		status.thread_id = crate::WireText::new("other").unwrap();
-		assert!(draft.recover_receipt(&status, &original).is_err());
 	}
 
 	#[test]

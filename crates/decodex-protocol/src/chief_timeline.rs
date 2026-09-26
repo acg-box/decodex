@@ -172,6 +172,17 @@ pub enum ChiefTimelineResult {
 		/// Native timeline page.
 		page: ChiefTimelinePage,
 	},
+	/// Incomplete recent display content; never execution or pagination evidence.
+	Summary {
+		/// Exact requested local task.
+		work_id: crate::EntityId,
+		/// Account that authenticated the read.
+		account_id: crate::EntityId,
+		/// Exact native conversation.
+		thread_id: String,
+		/// Recent prompts and final replies without canonical timeline positions.
+		items: Vec<ChiefTimelineContent>,
+	},
 	/// This thread or server cannot serve a native timeline. Local history remains available.
 	Unsupported,
 	/// The page exceeds the public wire bound.

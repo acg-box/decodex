@@ -1,5 +1,6 @@
 //! Explicit history confirmation waits for the existing local draft writer.
 use super::*;
+type ConfirmationReply = Result<ChiefCommandResponse, decodex_protocol::ClientFailure>;
 
 impl ChiefSurface {
 	pub(super) fn confirm_prompt_editor(
@@ -7,13 +8,7 @@ impl ChiefSurface {
 		expected: DesktopPromptEditDraft,
 		cx: &mut Context<Self>,
 	) {
-		if self.prompt_edit.task.is_some()
-			|| !self.prompt_editor_source_current()
-			|| self.prompt_edit.draft.as_ref() != Some(&expected)
-			|| self.prompt_edit.confirmation.as_ref() != Some(&expected)
-			|| expected.receipt_id.is_some()
-			|| !self.command_connection_ready()
-		{
+		if !self.prompt_confirmation_eligible(&expected) {
 			return;
 		}
 		let Some(profile) = self.profile.clone() else {
@@ -45,38 +40,12 @@ impl ChiefSurface {
 					let _ = checked.send(Err("Could not start history confirmation"));
 					return;
 				};
-				runtime.block_on(async move {
-					let client = ChiefClient::new(profile);
-					let result = match readable_local_media(&worker_draft.input) {
-						Err(message) => Err(message),
-						Ok(()) => client
-							.preflight_prompt_input(
-								worker_draft.work_id.clone(),
-								worker_draft.thread_id.clone(),
-								&worker_draft.input,
-								&execution,
-							)
-							.await
-							.map_err(
-								|_| "Input or thread settings could not be checked. History was not changed.",
-							),
-					};
-					let qualified = result.is_ok();
-					if checked.send(result).is_err() || !qualified || permitted.await.is_err() {
-						return;
-					}
-					let result = client
-						.execute(
-							ChiefActionDto::ConfirmPromptEdit {
-								work_id: worker_draft.work_id,
-								thread_id: worker_draft.thread_id,
-								review_token: worker_draft.review_token,
-							},
-							worker_draft.confirmation_key.expect("retained confirmation identity"),
-						)
-						.await;
-					let _ = completed.send(result);
-				});
+				runtime.block_on(confirm_worker(
+					ChiefClient::new(profile),
+					worker_draft,
+					execution,
+					(checked, permitted, completed),
+				));
 			});
 		if started.is_err() {
 			self.prompt_edit.feedback = "Could not start history confirmation".into();
@@ -93,28 +62,13 @@ impl ChiefSurface {
 					if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() {
 						return false;
 					}
-					let result = checked.and_then(|()| {
-						if s.prompt_edit.draft.as_ref() != Some(&expected)
-							|| s.draft_profiles.execution.choice(expected.work_id.as_str())
-								!= expected_execution
-						{
-							return Err(
-								"Draft or settings changed. Review the current edit again.",
-							);
-						}
-						s.stage_prompt_editor(pending.clone(), cx)?;
-						s.prompt_edit.draft = Some(pending.clone());
-						Ok(())
-					});
-					if let Err(message) = result {
-						s.prompt_edit.task = None;
-						s.prompt_edit.feedback = message.into();
-						cx.notify();
-						return false;
-					}
-					s.prompt_edit.feedback = "Saving the confirmation record…".into();
-					cx.notify();
-					true
+					s.stage_prompt_confirmation(
+						&expected,
+						&pending,
+						&expected_execution,
+						checked,
+						cx,
+					)
 				})
 				.unwrap_or(false);
 			if !staged {
@@ -127,24 +81,13 @@ impl ChiefSurface {
 						if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() {
 							return Some(false);
 						}
-						if s.prompt_edit.draft.as_ref() != Some(&pending)
-							|| s.draft_profiles.execution.choice(pending.work_id.as_str())
-								!= expected_execution
-							|| !s.command_connection_ready()
-							|| std::time::Instant::now() >= deadline
-						{
-							s.cancel_unsent_prompt_confirmation(
-								&pending,
-								resuming,
-								"Confirmation stopped before dispatch. Draft retained.",
-								cx,
-							);
-							return Some(false);
-						}
-						if s.prompt_editor_saved(&pending) {
-							return Some(true);
-						}
-						None
+						s.prompt_confirmation_ready(
+							&pending,
+							&expected_execution,
+							resuming,
+							deadline,
+							cx,
+						)
 					})
 					.unwrap_or(Some(false));
 				if let Some(ready) = ready {
@@ -171,32 +114,108 @@ impl ChiefSurface {
 				if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() {
 					return;
 				}
-				s.prompt_edit.task = None;
-				match result {
-					Ok(Ok(ChiefCommandResponse::Rejected { .. })) => s
-						.cancel_unsent_prompt_confirmation(
-							&pending,
-							false,
-							"Confirmation was rejected. Draft retained; review the history again.",
-							cx,
-						),
-					Ok(Err(_)) if !resuming => s.cancel_unsent_prompt_confirmation(
-						&pending,
-						false,
-						"Confirmation failed before dispatch. Draft retained.",
-						cx,
-					),
-					_ => {
-						// Accepted and uncertain replies both require native receipt recovery.
-						if let Some(current) = s.prompt_edit.draft.clone() {
-							s.recover_prompt_editor(current, cx);
-						}
-					},
-				}
-				cx.notify();
+				s.apply_prompt_confirmation_reply(&pending, resuming, result, cx);
 			});
 		}));
 		cx.notify();
+	}
+
+	fn apply_prompt_confirmation_reply(
+		&mut self,
+		pending: &DesktopPromptEditDraft,
+		resuming: bool,
+		result: Result<ConfirmationReply, tokio::sync::oneshot::error::RecvError>,
+		cx: &mut Context<Self>,
+	) {
+		self.prompt_edit.task = None;
+		match result {
+			Ok(Ok(ChiefCommandResponse::Rejected { .. })) => self
+				.cancel_unsent_prompt_confirmation(
+					pending,
+					false,
+					"Confirmation was rejected. Draft retained; review the history again.",
+					cx,
+				),
+			Ok(Err(_)) if !resuming => self.cancel_unsent_prompt_confirmation(
+				pending,
+				false,
+				"Confirmation failed before dispatch. Draft retained.",
+				cx,
+			),
+			_ => {
+				// Accepted and uncertain replies both require native receipt recovery.
+				if let Some(current) = self.prompt_edit.draft.clone() {
+					self.recover_prompt_editor(current, cx);
+				}
+			},
+		}
+		cx.notify();
+	}
+
+	fn prompt_confirmation_eligible(&self, expected: &DesktopPromptEditDraft) -> bool {
+		!(self.prompt_edit.task.is_some()
+			|| !self.prompt_editor_source_current()
+			|| self.prompt_edit.draft.as_ref() != Some(expected)
+			|| self.prompt_edit.confirmation.as_ref() != Some(expected)
+			|| expected.receipt_id.is_some()
+			|| !self.command_connection_ready())
+	}
+
+	fn prompt_confirmation_ready(
+		&mut self,
+		pending: &DesktopPromptEditDraft,
+		expected_execution: &decodex_protocol::ChiefExecutionOverrides,
+		resuming: bool,
+		deadline: std::time::Instant,
+		cx: &mut Context<Self>,
+	) -> Option<bool> {
+		if self.prompt_edit.draft.as_ref() != Some(pending)
+			|| self.draft_profiles.execution.choice(pending.work_id.as_str()) != *expected_execution
+			|| !self.command_connection_ready()
+			|| std::time::Instant::now() >= deadline
+		{
+			self.cancel_unsent_prompt_confirmation(
+				pending,
+				resuming,
+				"Confirmation stopped before dispatch. Draft retained.",
+				cx,
+			);
+			return Some(false);
+		}
+		if self.prompt_editor_saved(pending) {
+			return Some(true);
+		}
+		None
+	}
+
+	fn stage_prompt_confirmation(
+		&mut self,
+		expected: &DesktopPromptEditDraft,
+		pending: &DesktopPromptEditDraft,
+		expected_execution: &decodex_protocol::ChiefExecutionOverrides,
+		checked: Result<(), &'static str>,
+		cx: &mut Context<Self>,
+	) -> bool {
+		let result = checked.and_then(|()| {
+			if self.prompt_edit.draft.as_ref() != Some(expected)
+				|| self.draft_profiles.execution.choice(expected.work_id.as_str())
+					!= *expected_execution
+			{
+				return Err("Draft or settings changed. Review the current edit again.");
+			}
+			self.stage_prompt_editor(pending.clone(), cx)?;
+			self.prompt_edit.draft = Some(pending.clone());
+			Ok(())
+		});
+		if let Err(message) = result {
+			self.prompt_edit.task = None;
+			self.prompt_edit.feedback = message.into();
+			cx.notify();
+			return false;
+		}
+		self.prompt_edit.feedback = "Saving the confirmation record…".into();
+		cx.notify();
+		true
 	}
 
 	fn cancel_unsent_prompt_confirmation(
@@ -250,6 +269,46 @@ pub(super) fn readable_local_media(input: &PromptDraft) -> Result<(), &'static s
 		}
 	}
 	Ok(())
+}
+
+async fn confirm_worker(
+	client: ChiefClient,
+	worker_draft: DesktopPromptEditDraft,
+	execution: decodex_protocol::ChiefExecutionOverrides,
+	channels: (
+		tokio::sync::oneshot::Sender<Result<(), &'static str>>,
+		tokio::sync::oneshot::Receiver<()>,
+		tokio::sync::oneshot::Sender<ConfirmationReply>,
+	),
+) {
+	let (checked, permitted, completed) = channels;
+	let result = match readable_local_media(&worker_draft.input) {
+		Err(message) => Err(message),
+		Ok(()) => client
+			.preflight_prompt_input(
+				worker_draft.work_id.clone(),
+				worker_draft.thread_id.clone(),
+				&worker_draft.input,
+				&execution,
+			)
+			.await
+			.map_err(|_| "Input or thread settings could not be checked. History was not changed."),
+	};
+	let qualified = result.is_ok();
+	if checked.send(result).is_err() || !qualified || permitted.await.is_err() {
+		return;
+	}
+	let result = client
+		.execute(
+			ChiefActionDto::ConfirmPromptEdit {
+				work_id: worker_draft.work_id,
+				thread_id: worker_draft.thread_id,
+				review_token: worker_draft.review_token,
+			},
+			worker_draft.confirmation_key.expect("retained confirmation identity"),
+		)
+		.await;
+	let _ = completed.send(result);
 }
 
 #[cfg(test)]

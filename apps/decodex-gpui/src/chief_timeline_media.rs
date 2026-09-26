@@ -20,6 +20,10 @@ impl Preview {
 
 impl ChiefSurface {
 	#[cfg(feature = "visual-capture")]
+	#[allow(
+		dead_code,
+		reason = "Used by the separate workbench capture binary; this module is also compiled into the main binary"
+	)]
 	pub(crate) fn visual_preview_native_media(
 		&mut self,
 		profile: ClientProfile,
@@ -42,6 +46,10 @@ impl ChiefSurface {
 	}
 
 	#[cfg(feature = "visual-capture")]
+	#[allow(
+		dead_code,
+		reason = "Used by the separate workbench capture binary; this module is also compiled into the main binary"
+	)]
 	pub(crate) fn visual_media_evidence(&self) -> serde_json::Value {
 		let preview = &self.native_history.preview;
 		serde_json::json!({"imageLoaded":preview.image.is_some(),"notice":preview.notice,"request":preview.request})

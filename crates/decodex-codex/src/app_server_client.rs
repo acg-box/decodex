@@ -34,6 +34,7 @@ pub use archive::ThreadArchiveState;
 mod attachments;
 mod goals;
 mod history;
+mod history_summary;
 mod prompt_edit;
 pub use goals::{NativeThreadGoal, NativeThreadGoalStatus};
 pub use prompt_edit::PromptEditCandidate;

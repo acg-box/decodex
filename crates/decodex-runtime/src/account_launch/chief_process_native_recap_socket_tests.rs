@@ -182,6 +182,7 @@ async fn check(
 	let thread = settled(client).await;
 	qualify_completed_progress(client, &work, &thread, account, requests).await;
 	let native = runtime.chief_client().expect("active native client");
+	qualify_summary_read(&native, &thread, requests).await;
 	qualify_prompt_selection(&native, &thread, requests).await;
 	let before = native.thread_latest_turn_id(&thread).await.expect("native parent turn");
 	prepare_voice_call(client, runtime, store, &work, &thread, before.clone()).await;
@@ -920,4 +921,34 @@ fn assert_preserved_native_settings(before: &Value, after: &Value) {
 		value.as_str().filter(|tier| *tier != "default").map(str::to_owned)
 	};
 	assert_eq!(request_tier(&after["serviceTier"]), request_tier(&before["serviceTier"]));
+}
+
+async fn qualify_summary_read(
+	native: &decodex_codex::app_server_client::AppServerClient,
+	thread: &str,
+	requests: &std::sync::atomic::AtomicUsize,
+) {
+	let count = requests.load(Ordering::Acquire);
+	let before = native.thread_latest_turn_id(thread).await.expect("parent before summary");
+	let summary =
+		native.thread_history_summary(thread, 100).await.expect("installed native summary");
+	assert_eq!(summary["threadId"], thread);
+	assert!(summary.get("nextCursor").is_none());
+	let turns = summary["turns"].as_array().expect("summary turns");
+	assert!(!turns.is_empty());
+	assert!(turns.iter().all(|turn| turn["itemsView"] == "summary"));
+	assert!(
+		turns
+			.iter()
+			.flat_map(|turn| turn["items"].as_array().expect("items"))
+			.any(|item| item["type"] == "userMessage")
+	);
+	assert!(
+		turns
+			.iter()
+			.flat_map(|turn| turn["items"].as_array().expect("items"))
+			.any(|item| item["type"] == "agentMessage")
+	);
+	assert_eq!(native.thread_latest_turn_id(thread).await.expect("parent after summary"), before);
+	assert_eq!(requests.load(Ordering::Acquire), count, "summary display must not infer");
 }

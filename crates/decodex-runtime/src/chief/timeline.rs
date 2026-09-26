@@ -6,6 +6,7 @@ mod attachments;
 pub(crate) mod media;
 pub(crate) mod metrics;
 mod promotions;
+mod summary;
 pub(crate) mod tool_output;
 
 pub(crate) async fn read<F, Fut>(
@@ -82,9 +83,20 @@ where
 		}
 		Result::CapacityExceeded
 	};
-	tokio::time::timeout(std::time::Duration::from_secs(25), operation)
+	let result = tokio::time::timeout(std::time::Duration::from_secs(25), operation)
 		.await
-		.unwrap_or(Result::Unavailable)
+		.unwrap_or(Result::Unavailable);
+	if cursor.is_some() || matches!(result, Result::Available { .. }) {
+		return result;
+	}
+	if source().await.is_none_or(|after| after.key != before.key) {
+		return Result::Unavailable;
+	}
+	let recovered = summary::read(&before).await;
+	if source().await.is_none_or(|after| after.key != before.key) {
+		return Result::Unavailable;
+	}
+	recovered.unwrap_or(result)
 }
 
 #[derive(Debug)]

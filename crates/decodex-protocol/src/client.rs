@@ -1597,7 +1597,7 @@ impl ChiefClient {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
-			timeout: Duration::from_secs(30),
+			timeout: Duration::from_secs(45),
 		};
 		let completed = time::timeout(
 			transport.timeout,
@@ -1617,6 +1617,14 @@ impl ChiefClient {
 			QueryResultPayload::ChiefTimeline(result) => {
 				if let crate::ChiefTimelineResult::Available { work_id: actual, page, .. } = &result
 					&& (actual != &work_id || page.thread_id != thread_id.as_str())
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				if let crate::ChiefTimelineResult::Summary {
+					work_id: actual,
+					thread_id: actual_thread,
+					..
+				} = &result && (actual != &work_id || actual_thread != thread_id.as_str())
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -3391,6 +3399,7 @@ fn version_failure(_version: ProtocolVersion) -> ClientFailure {
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests {
 	mod prompt_edit;
+	mod timeline;
 	#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
 	use std::{fs, time::Duration};
 
@@ -4710,7 +4719,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 88 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 89 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

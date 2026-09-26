@@ -34,49 +34,7 @@ impl ChiefSurface {
 				};
 				runtime.block_on(async move {
 					let client = ChiefClient::new(profile);
-					let result = async {
-						let _ = client
-							.execute(
-								ChiefActionDto::RecoverPromptEdit {
-									work_id: original.work_id.clone(),
-									thread_id: original.thread_id.clone(),
-								},
-								IdempotencyKey::new(unique_command())
-									.map_err(|_| "Invalid recovery identity")?,
-							)
-							.await;
-						let (status, content) = client
-							.prompt_edit(original.work_id.clone(), original.thread_id.clone())
-							.await
-							.map_err(|_| "Edit receipt is unavailable")?;
-						if !matches!(
-							status.phase,
-							PromptEditPhase::Applied | PromptEditPhase::Restored
-						) {
-							return Err(
-								"History edit is not yet confirmed. Keep the draft and recover again.",
-							);
-						}
-						let recovered = original.recover_receipt(
-							&status,
-							&PromptDraft::new(content.ok_or("Original input is unavailable")?)?,
-						)?;
-						let history = client
-							.history(original.work_id.clone())
-							.await
-							.map_err(|_| "History refresh failed")?;
-						let timeline = client
-							.timeline(
-								original.work_id.clone(),
-								EntityId::new(original.thread_id.as_str())
-									.map_err(|_| "Invalid history identity")?,
-								None,
-							)
-							.await
-							.map_err(|_| "Native history refresh failed")?;
-						Ok((recovered, history, timeline))
-					}
-					.await;
+					let result = load_restored_history(&client, &original).await;
 					let ready = result.is_ok();
 					if loaded.send(result).is_err() || !ready || permitted.await.is_err() {
 						return;
@@ -169,4 +127,44 @@ impl ChiefSurface {
 		}));
 		cx.notify();
 	}
+}
+
+async fn load_restored_history(
+	client: &ChiefClient,
+	original: &DesktopPromptEditDraft,
+) -> Result<
+	(DesktopPromptEditDraft, ChiefHistoryResult, decodex_protocol::ChiefTimelineResult),
+	&'static str,
+> {
+	let _ = client
+		.execute(
+			ChiefActionDto::RecoverPromptEdit {
+				work_id: original.work_id.clone(),
+				thread_id: original.thread_id.clone(),
+			},
+			IdempotencyKey::new(unique_command()).map_err(|_| "Invalid recovery identity")?,
+		)
+		.await;
+	let (status, content) = client
+		.prompt_edit(original.work_id.clone(), original.thread_id.clone())
+		.await
+		.map_err(|_| "Edit receipt is unavailable")?;
+	if !matches!(status.phase, PromptEditPhase::Applied | PromptEditPhase::Restored) {
+		return Err("History edit is not yet confirmed. Keep the draft and recover again.");
+	}
+	let recovered = original.recover_receipt(
+		&status,
+		&PromptDraft::new(content.ok_or("Original input is unavailable")?)?,
+	)?;
+	let history =
+		client.history(original.work_id.clone()).await.map_err(|_| "History refresh failed")?;
+	let timeline = client
+		.timeline(
+			original.work_id.clone(),
+			EntityId::new(original.thread_id.as_str()).map_err(|_| "Invalid history identity")?,
+			None,
+		)
+		.await
+		.map_err(|_| "Native history refresh failed")?;
+	Ok((recovered, history, timeline))
 }
