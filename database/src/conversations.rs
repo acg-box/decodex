@@ -1,6 +1,10 @@
 //! Ordinary Conversation conversations, turns, and normalized history.
 
+mod initial_model_source;
 pub(crate) mod non_submission;
+pub use initial_model_source::{
+	InitialModelReviewOutcome, InitialModelSource, ReviewInitialModelSettings,
+};
 mod resume_rejection;
 pub use resume_rejection::{ConversationResumeRejection, RecordConversationResumeRejection};
 
@@ -78,6 +82,8 @@ pub struct CreateConversationRecord {
 	pub reasoning_effort: Option<String>,
 	pub fast: bool,
 	pub service_tier: Option<decodex_core::ServiceTier>,
+	/// Account observation that supplied the initial model choices, if available.
+	pub initial_model_source: Option<InitialModelSource>,
 }
 
 /// Immutable original request coordinates.
@@ -89,6 +95,8 @@ pub struct ConversationRequest {
 	pub reasoning_effort: Option<String>,
 	pub fast: bool,
 	pub service_tier: Option<decodex_core::ServiceTier>,
+	/// Account observation that supplied the initial model choices, if available.
+	pub initial_model_source: Option<InitialModelSource>,
 }
 
 /// Exact active projection that may be closed after provider archive verification.
@@ -530,6 +538,14 @@ impl SqliteStore {
 				"create_quick_task_conversation",
 				create.conversation_id.as_str(),
 			)? {
+				let source = transaction.query_row(
+                    "SELECT model_source_account_id, model_source_account_revision FROM quick_task_requests WHERE conversation_id = ?1",
+                    params![create.conversation_id.as_str()],
+                    |row| initial_model_source::from_row(row, 0),
+                ).map_err(sql_error)?;
+                if source != create.initial_model_source {
+                    return Err(StoreError::IdempotencyConflict);
+                }
 				let stored: StoredConversation = serde_json::from_str(&response)
 					.map_err(|_| incompatible("Conversation receipt"))?;
 				transaction.commit().map_err(sql_error)?;
@@ -563,8 +579,9 @@ impl SqliteStore {
 				.execute(
 					"INSERT INTO quick_task_requests (
 				   conversation_id, operation_key, correlation_id, initial_turn_id,
-					 message, working_directory, model, reasoning_effort, fast, created_at_micros, service_tier
-				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+					 message, working_directory, model, reasoning_effort, fast, created_at_micros, service_tier,
+                     model_source_account_id, model_source_account_revision
+				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
 					params![
 						create.conversation_id.as_str(),
 						command.key,
@@ -576,6 +593,8 @@ impl SqliteStore {
 						create.fast,
 						now,
 						create.service_tier.as_ref().map(|tier| tier.as_str()),
+                        create.initial_model_source.as_ref().map(|source| source.account_id.as_str()),
+                        create.initial_model_source.as_ref().map(|source| source.account_revision),
 					],
 				)
 				.map_err(sql_error)?;
@@ -607,13 +626,14 @@ impl SqliteStore {
 		self.run(move |connection| {
 			connection
 				.query_row(
-					"SELECT q.message, q.working_directory, q.model, q.reasoning_effort, q.fast, q.service_tier
+					"SELECT q.message, q.working_directory, q.model, q.reasoning_effort, q.fast, q.service_tier, q.model_source_account_id, q.model_source_account_revision
 				 FROM quick_task_requests AS q
 				 JOIN conversations AS c USING (conversation_id)
 				 WHERE q.conversation_id = ?1 AND c.state = 'active'",
 					params![conversation_id.as_str()],
 					|row| {
 						Ok(ConversationRequest {
+                            initial_model_source: initial_model_source::from_row(row, 6)?,
 							message: row.get(0)?,
 							working_directory: row.get(1)?,
 							model: row.get(2)?,
@@ -1385,6 +1405,14 @@ impl SqliteStore {
 				params![successor_id, key, request.source_conversation_id.as_str(), initial_turn_id, message, working_directory, model, reasoning_effort, fast, now, service_tier],
 			).map_err(sql_error)?;
 			transaction.execute(
+				"UPDATE quick_task_requests SET
+				   (model_source_account_id, model_source_account_revision) = (
+				     SELECT model_source_account_id, model_source_account_revision
+				     FROM quick_task_requests WHERE conversation_id = ?1
+				   ) WHERE conversation_id = ?2",
+				params![request.source_conversation_id.as_str(), successor_id],
+			).map_err(sql_error)?;
+			transaction.execute(
 				"INSERT INTO conversation_routing_successors (
 				 source_conversation_id, successor_conversation_id, source_routing_decision_id,
 				 idempotency_key, request_sha256, created_at_micros
@@ -1439,10 +1467,14 @@ impl SqliteStore {
 				 FROM continuation_plans AS p
 				 JOIN runtime_sessions AS s ON s.runtime_session_id = p.runtime_session_id
 				 JOIN conversations AS c ON c.conversation_id = p.conversation_id
+				 JOIN quick_task_requests AS q ON q.conversation_id = c.conversation_id
 				 WHERE p.continuation_plan_id = ?1 AND p.kind = 'initial_thread'
 				   AND p.conversation_id = ?2 AND p.turn_id = ?3
 				   AND c.state = 'active' AND c.revision = ?4
-				   AND s.revision = ?5 AND s.state = 'starting'",
+				   AND s.revision = ?5 AND s.state = 'starting'
+				   AND (q.model_source_account_id IS NULL OR
+				        (q.model_source_account_id = s.account_id
+				         AND q.model_source_account_revision = s.account_revision))",
 					params![
 						request.continuation_plan_id,
 						request.message.conversation_id.as_str(),
@@ -1501,7 +1533,8 @@ impl SqliteStore {
 }
 
 fn validate_conversation_conversation(create: &CreateConversationRecord) -> Result<(), StoreError> {
-	if create.title.is_empty()
+	if create.initial_model_source.as_ref().is_some_and(|source| source.account_revision <= 0)
+		|| create.title.is_empty()
 		|| create.title.len() > 512
 		|| create.message.is_empty()
 		|| create.message.len() > 16_384
@@ -1509,18 +1542,29 @@ fn validate_conversation_conversation(create: &CreateConversationRecord) -> Resu
 		|| create.working_directory.len() > 4_096
 		|| !create.working_directory.starts_with('/')
 		|| create.working_directory.chars().any(char::is_control)
-		|| create.model.is_empty()
-		|| create.model.len() > 128
-		|| create.model.chars().any(char::is_control)
-		|| create.reasoning_effort.as_ref().is_some_and(|effort| {
-			effort.is_empty() || effort.len() > 128 || effort.chars().any(char::is_control)
-		}) {
+	{
 		return Err(StoreError::InvalidInput(
 			"initial Conversation Conversation request is invalid",
 		));
 	}
+	validate_initial_execution(&create.model, create.reasoning_effort.as_deref())?;
 	credential_negative(&create.title)?;
 	credential_negative(&create.message)
+}
+
+fn validate_initial_execution(
+	model: &str,
+	reasoning_effort: Option<&str>,
+) -> Result<(), StoreError> {
+	if model.is_empty()
+		|| model.len() > 128
+		|| model.chars().any(char::is_control)
+		|| reasoning_effort.is_some_and(|effort| {
+			effort.is_empty() || effort.len() > 128 || effort.chars().any(char::is_control)
+		}) {
+		return Err(StoreError::InvalidInput("initial model settings are invalid"));
+	}
+	Ok(())
 }
 
 fn validate_initial_admission(request: &AdmitInitialConversationTurn) -> Result<(), StoreError> {
@@ -3039,6 +3083,7 @@ mod archive_tests {
 				&CommandIdentity::new("create-local-fixture", b"create local fixture")
 					.expect("create command"),
 				&CreateConversationRecord {
+					initial_model_source: None,
 					conversation_id,
 					title: "Local fixture".to_owned(),
 					message: "Start this task.".to_owned(),
@@ -3412,6 +3457,7 @@ mod archive_tests {
 				&CommandIdentity::new("create-archive-fixture", b"create archive fixture")
 					.expect("create command"),
 				&CreateConversationRecord {
+					initial_model_source: None,
 					conversation_id: conversation_id.clone(),
 					title: "Archive fixture".to_owned(),
 					message: "Archive this task.".to_owned(),

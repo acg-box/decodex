@@ -55,6 +55,7 @@ async fn persist_original(root: &DecodexRoot, original: &CommandEnvelope, scope:
 		.create_conversation(
 			&command.creation_identity().unwrap(),
 			&CreateConversationRecord {
+				initial_model_source: None,
 				conversation_id: command.conversation_id,
 				title: "Original input".into(),
 				message: command.message,

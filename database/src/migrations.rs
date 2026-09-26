@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 45;
+const CURRENT_SCHEMA_VERSION: i64 = 46;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -240,6 +240,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 45,
 		name: "chief_app_ui_call_contract",
 		sql: include_str!("../migrations/0045_chief_app_ui_call_contract.sql"),
+	},
+	Migration {
+		version: 46,
+		name: "initial_model_source",
+		sql: include_str!("../migrations/0046_initial_model_source.sql"),
 	},
 ];
 
@@ -1464,15 +1469,17 @@ mod tests {
 				.count(),
 			4
 		);
+		// Migration 46 changes quick_task_requests; its dedicated upgrade test
+		// verifies the retained rows and new source constraints. Other schema stays exact.
 		assert_eq!(
 			inventory
 				.into_iter()
 				.filter(|row| !matches!(
 					row.2.as_str(),
-					"chief_prompt_inputs" | "chief_prompt_input_chunks"
+					"chief_prompt_inputs" | "chief_prompt_input_chunks" | "quick_task_requests"
 				))
 				.collect::<Vec<_>>(),
-			original
+			original.into_iter().filter(|row| row.2 != "quick_task_requests").collect::<Vec<_>>()
 		);
 		assert_eq!(applied_version(&connection).unwrap(), CURRENT_SCHEMA_VERSION);
 		assert_eq!(
@@ -1488,3 +1495,7 @@ mod tests {
 		verify(&connection).unwrap();
 	}
 }
+
+#[cfg(test)]
+#[path = "initial_model_source_migration_tests.rs"]
+mod initial_model_source_tests;

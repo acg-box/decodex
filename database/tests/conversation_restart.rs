@@ -90,6 +90,10 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		.create_conversation(
 			&conversation_command,
 			&CreateConversationRecord {
+				initial_model_source: Some(decodex_database::InitialModelSource {
+					account_id: account_id.clone(),
+					account_revision: 1,
+				}),
 				conversation_id: conversation_id.clone(),
 				title: "SQLite restart proof".to_owned(),
 				message: "Start the persisted task.".to_owned(),
@@ -491,6 +495,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			)
 			.expect("alternate conversation command"),
 			&CreateConversationRecord {
+				initial_model_source: None,
 				conversation_id: alternate_conversation_id.clone(),
 				title: "Independent account affinity proof".to_owned(),
 				message: "Start an independent task.".to_owned(),
@@ -829,6 +834,7 @@ async fn original_reasoning_choice_survives_reopen_and_idempotent_creation() {
 		let id = ConversationId::new(CONVERSATION_ID).unwrap();
 		let command = CommandIdentity::new("original-effort", b"original-effort").unwrap();
 		let record = CreateConversationRecord {
+			initial_model_source: None,
 			conversation_id: id.clone(),
 			title: "Native reasoning".into(),
 			message: "Preserve the original input".into(),
@@ -872,6 +878,7 @@ async fn creation_receipt_readback_is_exact_and_survives_reopen() {
 	let command = CommandIdentity::new("receipt-original", b"exact request").unwrap();
 	assert_eq!(store.read_conversation_creation_receipt(&command, &id).await.unwrap(), None);
 	let record = CreateConversationRecord {
+		initial_model_source: None,
 		conversation_id: id.clone(),
 		title: "Original request".into(),
 		message: "Keep this message".into(),
@@ -908,4 +915,388 @@ async fn creation_receipt_readback_is_exact_and_survives_reopen() {
 		reopened.read_conversation_request(&id).await.unwrap().unwrap().message,
 		record.message
 	);
+}
+
+#[tokio::test]
+async fn initial_model_source_survives_reopen_and_rejects_changed_replays() {
+	let temporary = tempdir().unwrap();
+	let root = DecodexRoot::new(temporary.path().canonicalize().unwrap()).unwrap();
+	let paths = root.paths();
+	let store = SqliteStore::open(&paths).unwrap();
+	let command = CommandIdentity::new("source-bound-create", b"original request").unwrap();
+	let source = decodex_database::InitialModelSource {
+		account_id: AccountId::new(ACCOUNT_ID).unwrap(),
+		account_revision: 7,
+	};
+	let record = CreateConversationRecord {
+		conversation_id: ConversationId::new(CONVERSATION_ID).unwrap(),
+		title: "Source-bound request".into(),
+		message: "Preserve this original input".into(),
+		working_directory: "/tmp".into(),
+		model: "native-model".into(),
+		reasoning_effort: None,
+		fast: false,
+		service_tier: None,
+		initial_model_source: Some(source.clone()),
+	};
+	let created = store.create_conversation(&command, &record).await.unwrap();
+	drop(store);
+	let reopened = SqliteStore::open(&paths).unwrap();
+	let request =
+		reopened.read_conversation_request(&record.conversation_id).await.unwrap().unwrap();
+	assert_eq!(request.initial_model_source, Some(source.clone()));
+	assert_eq!(request.message, record.message);
+	assert_eq!(request.working_directory, record.working_directory);
+	assert_eq!(request.reasoning_effort, None);
+	assert_eq!(request.service_tier, None);
+	assert_eq!(reopened.create_conversation(&command, &record).await.unwrap(), created);
+	for replacement in [
+		None,
+		Some(decodex_database::InitialModelSource { account_revision: 8, ..source.clone() }),
+		Some(decodex_database::InitialModelSource {
+			account_id: AccountId::new(ALTERNATE_ACCOUNT_ID).unwrap(),
+			..source.clone()
+		}),
+	] {
+		let mut changed = record.clone();
+		changed.initial_model_source = replacement;
+		assert!(matches!(
+			reopened.create_conversation(&command, &changed).await,
+			Err(decodex_database::StoreError::IdempotencyConflict)
+		));
+	}
+	let mut invalid = record.clone();
+	invalid.initial_model_source =
+		Some(decodex_database::InitialModelSource { account_revision: 0, ..source });
+	assert!(matches!(
+		reopened.create_conversation(&command, &invalid).await,
+		Err(decodex_database::StoreError::InvalidInput(_))
+	));
+	assert_eq!(
+		reopened.read_conversation_request(&record.conversation_id).await.unwrap(),
+		Some(request)
+	);
+}
+
+async fn seed_model_review(store: &SqliteStore) -> CreateConversationRecord {
+	let (account_id, _, _) = import_ready_accounts(store).await;
+	let request = CreateConversationRecord {
+		conversation_id: ConversationId::new(CONVERSATION_ID).expect("review conversation"),
+		title: "Keep saved request".to_owned(),
+		message: "Original user input".to_owned(),
+		working_directory: "/tmp/original-source".to_owned(),
+		model: "gpt-5.6-sol".to_owned(),
+		reasoning_effort: Some("high".to_owned()),
+		fast: false,
+		service_tier: None,
+		initial_model_source: Some(decodex_database::InitialModelSource {
+			account_id,
+			account_revision: 9,
+		}),
+	};
+	store
+		.create_conversation(
+			&CommandIdentity::new("review-create", b"original request").expect("command"),
+			&request,
+		)
+		.await
+		.expect("save original request");
+	let before = store
+		.read_ordinary_task_conversations(Some(&request.conversation_id), None, 1)
+		.await
+		.expect("read before source rejection");
+	assert!(matches!(
+		store
+			.route_conversation_initial(
+				"review-original-route",
+				&RouteConversationInitial {
+					conversation_id: request.conversation_id.clone(),
+					expected_conversation_revision: 1,
+				}
+			)
+			.await
+			.expect("block stale source"),
+		ConversationInitialRouteOutcome::Rejected(_)
+	));
+	let after = store
+		.read_ordinary_task_conversations(Some(&request.conversation_id), None, 1)
+		.await
+		.expect("read after source rejection");
+	let (
+		OrdinaryTaskConversationProjection::Current(before),
+		OrdinaryTaskConversationProjection::Current(after),
+	) = (&before[0], &after[0])
+	else {
+		panic!("current source task");
+	};
+	assert!(
+		after.updated_at_micros > before.updated_at_micros,
+		"other clients must accept the changed review state"
+	);
+	request
+}
+
+#[tokio::test]
+async fn model_review_is_explicit_revision_fenced_and_idempotent_after_reopen() {
+	use decodex_database::{
+		InitialModelReviewOutcome, InitialModelSource, ReviewInitialModelSettings,
+	};
+	let temporary = tempdir().expect("temporary review store");
+	let root =
+		DecodexRoot::new(temporary.path().canonicalize().expect("canonical root")).expect("root");
+	let paths = root.paths();
+	let store = SqliteStore::open(&paths).expect("open review store");
+	let original = seed_model_review(&store).await;
+	let mut review = ReviewInitialModelSettings {
+		conversation_id: original.conversation_id.clone(),
+		expected_revision: 2,
+		model: "gpt-6-astra".to_owned(),
+		reasoning_effort: None,
+		fast: false,
+		service_tier: None,
+		source: InitialModelSource {
+			account_id: AccountId::new(ACCOUNT_ID).expect("account"),
+			account_revision: 1,
+		},
+	};
+	assert_eq!(
+		store.review_initial_model_settings("stale-review", &review).await.expect("stale review"),
+		InitialModelReviewOutcome::Rejected
+	);
+	review.expected_revision = 1;
+	let (first, concurrent) = tokio::join!(
+		store.review_initial_model_settings("confirmed-review", &review),
+		store.review_initial_model_settings("concurrent-review", &review),
+	);
+	let first = first.expect("first review");
+	let concurrent = concurrent.expect("concurrent review");
+	let winning_key = match (&first, &concurrent) {
+		(
+			InitialModelReviewOutcome::Applied { revision: 2, replayed: false },
+			InitialModelReviewOutcome::Rejected,
+		) => "confirmed-review",
+		(
+			InitialModelReviewOutcome::Rejected,
+			InitialModelReviewOutcome::Applied { revision: 2, replayed: false },
+		) => "concurrent-review",
+		other => panic!("exactly one confirmation must win: {other:?}"),
+	};
+	drop(store);
+	let store = SqliteStore::open(&paths).expect("reopen reviewed request");
+	assert_eq!(
+		store.review_initial_model_settings(winning_key, &review).await.expect("replay review"),
+		InitialModelReviewOutcome::Applied { revision: 2, replayed: true }
+	);
+	let saved = store
+		.read_conversation_request(&original.conversation_id)
+		.await
+		.expect("read reviewed request")
+		.expect("saved request");
+	assert_eq!(saved.message, original.message);
+	assert_eq!(saved.working_directory, original.working_directory);
+	assert_eq!(saved.model, review.model);
+	assert_eq!(saved.reasoning_effort, review.reasoning_effort);
+	assert_eq!(saved.service_tier, review.service_tier.clone());
+	assert_eq!(saved.initial_model_source, Some(review.source.clone()));
+	let mut changed = review.clone();
+	changed.model = "gpt-5.6-sol".to_owned();
+	assert!(matches!(
+		store.review_initial_model_settings(winning_key, &changed).await,
+		Err(decodex_database::StoreError::IdempotencyConflict)
+	));
+	assert!(matches!(
+		store
+			.route_conversation_initial(
+				"review-confirmed-route",
+				&RouteConversationInitial {
+					conversation_id: original.conversation_id.clone(),
+					expected_conversation_revision: 2,
+				}
+			)
+			.await
+			.expect("route reviewed settings"),
+		ConversationInitialRouteOutcome::Fresh(_)
+	));
+	review.expected_revision = 2;
+	assert_eq!(
+		store
+			.review_initial_model_settings("review-after-route", &review)
+			.await
+			.expect("reject late review"),
+		InitialModelReviewOutcome::Rejected
+	);
+	let rows = store
+		.read_ordinary_task_conversations(Some(&original.conversation_id), None, 1)
+		.await
+		.expect("read confirmed task");
+	let OrdinaryTaskConversationProjection::Current(task) = &rows[0] else {
+		panic!("current task");
+	};
+	assert!(!task.has_admitted_user_turn, "confirmation alone does not send");
+	assert!(task.runtime_session_id.is_none(), "confirmation alone does not spawn");
+}
+
+#[tokio::test]
+async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
+	for (source_id, source_revision, accepted) in
+		[(ACCOUNT_ID, 1, true), (ACCOUNT_ID, 3, false), (ALTERNATE_ACCOUNT_ID, 1, false)]
+	{
+		let temporary = tempdir().expect("temporary model-source root");
+		let root = DecodexRoot::new(temporary.path().canonicalize().expect("canonical root"))
+			.expect("typed root");
+		let paths = root.paths();
+		let store = SqliteStore::open(&paths).expect("open source store");
+		import_ready_accounts(&store).await;
+		let source = decodex_database::InitialModelSource {
+			account_id: AccountId::new(source_id).expect("source identity"),
+			account_revision: source_revision,
+		};
+		let mut request = CreateConversationRecord {
+			conversation_id: ConversationId::new(CONVERSATION_ID).expect("conversation identity"),
+			title: "Source-bound creation".to_owned(),
+			message: "Use the reviewed model settings".to_owned(),
+			working_directory: temporary.path().display().to_string(),
+			model: "gpt-6-astra".to_owned(),
+			reasoning_effort: Some("low".to_owned()),
+			fast: false,
+			service_tier: None,
+			initial_model_source: Some(source.clone()),
+		};
+		let command = CommandIdentity::new("source-create", b"source creation").expect("command");
+		store.create_conversation(&command, &request).await.expect("create source request");
+		drop(store);
+		let store = SqliteStore::open(&paths).expect("reopen source store");
+		let restored = store
+			.read_conversation_request(&request.conversation_id)
+			.await
+			.expect("read original request")
+			.expect("request persists");
+		assert_eq!(restored.initial_model_source, Some(source));
+		store.create_conversation(&command, &request).await.expect("same-source replay");
+		request.initial_model_source = None;
+		assert!(matches!(
+			store.create_conversation(&command, &request).await,
+			Err(decodex_database::StoreError::IdempotencyConflict)
+		));
+		let route_request = RouteConversationInitial {
+			conversation_id: request.conversation_id.clone(),
+			expected_conversation_revision: 1,
+		};
+		for replay in [false, true] {
+			// Use cold storage for the second attempt, including rejected creation.
+			let store = SqliteStore::open(&paths).expect("reopen before route attempt");
+			let route = store
+				.route_conversation_initial("source-route", &route_request)
+				.await
+				.expect("route source-bound request");
+			match route {
+				ConversationInitialRouteOutcome::Fresh(_) => assert!(accepted && !replay),
+				ConversationInitialRouteOutcome::Replayed(_) => assert!(accepted && replay),
+				ConversationInitialRouteOutcome::Rejected(rejection) => {
+					assert!(!accepted);
+					assert_eq!(rejection.code, "initial_model_source_changed");
+					if !replay && source_id == ACCOUNT_ID {
+						let id = AccountId::new(ACCOUNT_ID).expect("fixed account");
+						assert!(matches!(
+							store
+								.set_account_enabled(&id, 1, false)
+								.await
+								.expect("disable account"),
+							decodex_database::AccountAdministrationOutcome::Updated { revision: 2 }
+						));
+						assert!(matches!(
+							store.set_account_enabled(&id, 2, true).await.expect("restore account"),
+							decodex_database::AccountAdministrationOutcome::Updated { revision: 3 }
+						));
+						// The next cold attempt now matches the saved source, but must still
+						// require review.
+					}
+
+					let projections = store
+						.read_ordinary_task_conversations(Some(&request.conversation_id), None, 1)
+						.await
+						.expect("read blocked task");
+					let OrdinaryTaskConversationProjection::Current(task) = &projections[0] else {
+						panic!("current task");
+					};
+					assert!(!task.has_admitted_user_turn);
+					assert!(task.runtime_session_id.is_none());
+					assert!(
+						store
+							.read_conversation_initial_route(&request.conversation_id)
+							.await
+							.expect("read rejected route")
+							.is_none()
+					);
+				},
+				other => panic!("unexpected route: {other:?}"),
+			}
+		}
+	}
+}
+
+#[tokio::test]
+async fn routing_successor_retains_initial_model_source_after_reopen() {
+	let temporary = tempdir().expect("temporary successor source root");
+	let root = DecodexRoot::new(temporary.path().canonicalize().expect("canonical root"))
+		.expect("typed root");
+	let paths = root.paths();
+	let store = SqliteStore::open(&paths).expect("open successor source store");
+	let (account_id, _, _) = import_ready_accounts(&store).await;
+	store.set_account_enabled(&account_id, 1, false).await.expect("disable fixed account");
+	let source = decodex_database::InitialModelSource { account_id, account_revision: 1 };
+	let conversation_id = ConversationId::new(CONVERSATION_ID).expect("source conversation");
+	store
+		.create_conversation(
+			&CommandIdentity::new("successor-source-create", b"source creation").expect("command"),
+			&CreateConversationRecord {
+				conversation_id: conversation_id.clone(),
+				title: "No-route source".to_owned(),
+				message: "Keep reviewed settings".to_owned(),
+				working_directory: temporary.path().display().to_string(),
+				model: "gpt-6-astra".to_owned(),
+				reasoning_effort: Some("low".to_owned()),
+				fast: false,
+				service_tier: None,
+				initial_model_source: Some(source.clone()),
+			},
+		)
+		.await
+		.expect("create source");
+	assert!(
+		matches!(store.route_conversation_initial("successor-source-route", &RouteConversationInitial {
+        conversation_id: conversation_id.clone(), expected_conversation_revision: 1,
+    }).await.expect("persist no-route result"), ConversationInitialRouteOutcome::Fresh(route)
+        if route.decision.selected_account_id.is_none())
+	);
+	let request = decodex_database::CreateConversationRoutingSuccessor {
+		source_conversation_id: conversation_id,
+		expected_source_revision: 1,
+	};
+	let successor = match store
+		.create_conversation_routing_successor("source-successor", &request)
+		.await
+		.expect("create successor")
+	{
+		decodex_database::ConversationRoutingSuccessorOutcome::Fresh(successor) => successor,
+		other => panic!("unexpected successor: {other:?}"),
+	};
+	drop(store);
+	let store = SqliteStore::open(&paths).expect("reopen successor");
+	assert_eq!(
+		store
+			.read_conversation_request(&successor.successor_conversation_id)
+			.await
+			.expect("read successor request")
+			.expect("active successor")
+			.initial_model_source,
+		Some(source)
+	);
+	assert!(matches!(
+		store
+			.create_conversation_routing_successor("source-successor", &request)
+			.await
+			.expect("replay successor"),
+		decodex_database::ConversationRoutingSuccessorOutcome::Replayed(_)
+	));
 }

@@ -147,6 +147,19 @@ impl SqliteStore {
 				}));
 			}
 
+			let review_required: bool = transaction
+				.query_row(
+					"SELECT model_source_review_required FROM quick_task_requests WHERE conversation_id = ?1",
+					params![request.conversation_id.as_str()],
+					|row| row.get(0),
+				)
+				.map_err(sql_error)?;
+			if review_required {
+				return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
+					operation: "route_quick_task_initial".to_owned(),
+					code: "initial_model_source_changed".to_owned(),
+				}));
+			}
 			let accounts = read_account_registry_sync(&transaction, None, 512)?;
 			if accounts.is_empty() {
 				return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
@@ -183,6 +196,38 @@ impl SqliteStore {
 					.find(|account| account.account_id == *selected)
 					.map(|account| account.revision)
 			});
+			if let Some(selected) = decision.selected_account_id.as_ref() {
+				let source_matches: bool = transaction
+					.query_row(
+						"SELECT model_source_account_id IS NULL OR
+					   (model_source_account_id = ?2 AND model_source_account_revision = ?3)
+					 FROM quick_task_requests WHERE conversation_id = ?1",
+						params![
+							request.conversation_id.as_str(),
+							selected.as_str(),
+							account_revision
+						],
+						|row| row.get(0),
+					)
+					.map_err(sql_error)?;
+				if !source_matches {
+					transaction
+						.execute(
+							"UPDATE quick_task_requests SET model_source_review_required = 1 WHERE conversation_id = ?1",
+							params![request.conversation_id.as_str()],
+						)
+						.map_err(sql_error)?;
+                    transaction.execute(
+                        "UPDATE conversations SET updated_at_micros = MAX(updated_at_micros + 1, ?2) WHERE conversation_id = ?1",
+                        params![request.conversation_id.as_str(), decided_at_micros],
+                    ).map_err(sql_error)?;
+					transaction.commit().map_err(sql_error)?;
+					return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
+						operation: "route_quick_task_initial".to_owned(),
+						code: "initial_model_source_changed".to_owned(),
+					}));
+				}
+			}
 			let quota_classification = quota_classification(&decision, &snapshot);
 			transaction
 				.execute(
