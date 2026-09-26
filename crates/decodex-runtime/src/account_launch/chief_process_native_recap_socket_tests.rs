@@ -147,10 +147,12 @@ async fn check(
 	)
 	.await;
 	let thread = settled(client).await;
+	qualify_completed_progress(client, &work, &thread, account, requests).await;
 	let native = runtime.chief_client().expect("active native client");
 	let before = native.thread_latest_turn_id(&thread).await.expect("native parent turn");
 	prepare_voice_call(client, runtime, store, &work, &thread, before.clone()).await;
-	assert_eq!(requests.load(Ordering::Acquire), 1, "active voice must not infer a recap");
+	assert_eq!(requests.load(Ordering::Acquire), 9, "active voice must not infer a recap");
+	let automatic = qualify_desktop_recap(client, store, home, &work).await;
 	let generate = Action::GenerateRecap {
 		work_id: work.clone(),
 		thread_id: WireText::new(&thread).expect("native thread"),
@@ -163,7 +165,11 @@ async fn check(
 		state.recap.expect("summary").summary.as_str().contains("installation is still pending")
 	);
 	assert_eq!(state.request_id.as_ref().map(WireText::as_str), Some("recap-one"));
-	assert_eq!(requests.load(Ordering::Acquire), 2, "same-key socket retry must not infer again");
+	assert_eq!(
+		requests.load(Ordering::Acquire),
+		10 + automatic,
+		"same-key socket retry must not infer again"
+	);
 	assert_eq!(native.thread_latest_turn_id(&thread).await.expect("parent history"), before);
 	store
 		.record_chief_voice_transcript(
@@ -179,7 +185,11 @@ async fn check(
 		client.recap(work.clone()).await.expect("voice version read").phase,
 		Phase::Cancelled
 	);
-	assert_eq!(requests.load(Ordering::Acquire), 2, "voice version query is read-only");
+	assert_eq!(
+		requests.load(Ordering::Acquire),
+		10 + automatic,
+		"voice version query is read-only"
+	);
 	accepted(client, generate.clone(), "recap-voice-refresh").await;
 	wait_phase(client, &work, Phase::Ready).await;
 	accepted(
@@ -216,6 +226,127 @@ async fn check(
 	.await;
 	wait_phase(client, &work, Phase::Cancelled).await;
 	assert!(client.recap(work).await.expect("cancelled query").recap.is_none());
+}
+
+async fn qualify_desktop_recap(
+	client: &ChiefClient,
+	store: &SqliteStore,
+	home: &std::path::Path,
+	work: &EntityId,
+) -> usize {
+	let Some(binary) = std::env::var_os("DECODEX_TEST_RECAP_GUI_BINARY") else {
+		return 0;
+	};
+	assert!(std::path::Path::new(&binary).is_absolute());
+	let settings = store.read_desktop_settings().await.expect("fixture preferences");
+	assert!(!settings.auto_recap, "fixture starts with automatic recaps disabled");
+	let enabled = store
+		.set_desktop_settings(settings.revision, settings.show_in_menu_bar, None, Some(true))
+		.await
+		.expect("enable only disposable fixture preference");
+	let screenshot = home.join("automatic-recap.png");
+	let log = home.join("automatic-recap-capture.log");
+	let stdout = std::fs::File::create(&log).expect("capture diagnostics");
+	let stderr = stdout.try_clone().expect("shared capture log");
+	let mut child = tokio::process::Command::new(binary)
+		.env("DECODEX_VISUAL_CHIEF_ROOT", home.join("product"))
+		.env("DECODEX_VISUAL_CHIEF_WORK", work.as_str())
+		.env("DECODEX_VISUAL_AUTO_RECAP", "1")
+		.env("DECODEX_VISUAL_OUTPUT", &screenshot)
+		.stdout(stdout)
+		.stderr(stderr)
+		.kill_on_drop(true)
+		.spawn()
+		.expect("desktop capture process");
+	std::fs::write(home.join("automatic-recap.pid"), child.id().expect("child PID").to_string())
+		.expect("child identity");
+	let status = tokio::time::timeout(Duration::from_secs(30), child.wait())
+		.await
+		.expect("bounded desktop capture")
+		.expect("desktop capture exit");
+	assert!(status.success(), "desktop capture failed; inspect {}", log.display());
+	let evidence: serde_json::Value = serde_json::from_slice(
+		&std::fs::read(screenshot.with_extension("recap.json")).expect("desktop evidence"),
+	)
+	.expect("desktop JSON");
+	assert_eq!(evidence["automatic"], true);
+	assert_eq!(evidence["state"]["phase"], "ready");
+	assert_eq!(evidence["completed_turns"].as_array().expect("native progress").len(), 3);
+	let ready = client.recap(work.clone()).await.expect("public automatic result");
+	assert_eq!(serde_json::to_value(ready).expect("result JSON"), evidence["state"]);
+	assert!(screenshot.is_file());
+	let disabled = store
+		.set_desktop_settings(enabled.revision, settings.show_in_menu_bar, None, Some(false))
+		.await
+		.expect("restore fixture opt-out");
+	assert!(!disabled.auto_recap);
+	1
+}
+
+async fn qualify_completed_progress(
+	client: &ChiefClient,
+	work: &EntityId,
+	thread: &str,
+	account: &AccountId,
+	requests: &std::sync::atomic::AtomicUsize,
+) {
+	use decodex_protocol::{ChiefTimelineContent, ChiefTimelineResult};
+	for index in 1..=8 {
+		accepted(
+			client,
+			Action::Send {
+				root_id: work.clone(),
+				text: HistoryText::new(format!("Validate step {index}; do not install."))
+					.expect("input"),
+			},
+			&format!("progress-{index}"),
+		)
+		.await;
+		assert_eq!(settled(client).await, thread);
+	}
+	assert_eq!(requests.load(Ordering::Acquire), 9, "only parent turns inferred");
+	let mut cursor = None;
+	let mut completed = std::collections::BTreeSet::new();
+	let mut seen = std::collections::BTreeSet::new();
+	let mut pages = 0;
+	loop {
+		let result = client
+			.timeline(work.clone(), EntityId::new(thread).expect("thread"), cursor)
+			.await
+			.expect("native progress query");
+		let ChiefTimelineResult::Available { work_id, account_id, page } = result else {
+			panic!("native progress unavailable: {result:?}")
+		};
+		assert_eq!(&work_id, work);
+		assert_eq!(account_id.as_str(), account.as_str());
+		assert_eq!(page.thread_id, thread);
+		for entry in page.entries {
+			if let ChiefTimelineContent::TurnBoundary {
+				turn_id,
+				completed: true,
+				status: Some(status),
+				..
+			} = entry.content
+			{
+				assert_eq!(status, "completed");
+				completed.insert(turn_id);
+			}
+		}
+		pages += 1;
+		let Some(next) = page.next_cursor else { break };
+		assert!(pages < 8 && seen.insert(next.clone()), "bounded distinct cursors");
+		cursor = Some(WireText::new(next).expect("cursor"));
+	}
+	assert!(pages >= 2, "qualify native pagination");
+	assert_eq!(completed.len(), 9, "exact successful turn identities");
+	assert!(matches!(
+		client
+			.timeline(work.clone(), EntityId::new("other-thread").expect("other identity"), None)
+			.await
+			.expect("wrong binding read"),
+		ChiefTimelineResult::Unavailable
+	));
+	assert_eq!(requests.load(Ordering::Acquire), 9, "progress reads must not infer");
 }
 
 async fn accepted(client: &ChiefClient, action: Action, key: &str) {

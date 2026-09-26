@@ -72,17 +72,20 @@ fn main() -> gpui::Result<()> {
 	let inspector_visible = std::env::var("DECODEX_VISUAL_CONTEXT").as_deref() != Ok("hidden");
 	let panel_motion = std::env::var("DECODEX_VISUAL_PANEL_MOTION").ok();
 	let send_message = std::env::var("DECODEX_VISUAL_CHIEF_SEND").ok();
-	if send_message.is_some() && std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").is_none() {
-		return Err(std::io::Error::other(
-			"Chief send capture requires an explicit disposable root",
-		)
-		.into());
+	let automatic_recap = std::env::var_os("DECODEX_VISUAL_AUTO_RECAP").is_some();
+	if (send_message.is_some() || automatic_recap)
+		&& std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").is_none()
+	{
+		return Err(std::io::Error::other("Command capture requires a disposable root").into());
 	}
-	// An explicit disposable root opts into read-only protocol evidence. Never use
-	// the installed profile as an implicit screenshot source.
+	// The explicit root supplies protocol evidence; command probes require their own flags.
+	// Never use the installed profile as an implicit screenshot source.
 	let service_projection = std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT")
 		.map(|root| -> gpui::Result<_> {
 			let root = PathBuf::from(root);
+			if automatic_recap && root.parent().and_then(|parent| std::fs::read_to_string(parent.join(".decodex-recap-fixture")).ok()).as_deref() != Some("isolated-recap\n") {
+				return Err(std::io::Error::other("Automatic recap capture requires the isolated native fixture marker").into());
+			}
 			let profile = decodex_protocol::ClientProfile::load(&root, None)
 				.map_err(|error| std::io::Error::other(format!("capture profile: {error:?}")))?;
 			let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
@@ -140,6 +143,9 @@ fn main() -> gpui::Result<()> {
 					surface
 				})
 			})?;
+			if automatic_recap {
+				prove_automatic_recap(&mut cx, handle, profile.clone(), &output)?;
+			}
 			if let Some(message) = send_message {
 				prove_composer_send(&mut cx, handle, profile, &message, &output)?;
 			}
@@ -354,4 +360,36 @@ fn prove_composer_send(
 		}
 	}
 	Ok(())
+}
+
+fn prove_automatic_recap(
+	cx: &mut VisualTestAppContext,
+	handle: gpui::WindowHandle<ChiefSurface>,
+	profile: decodex_protocol::ClientProfile,
+	output: &std::path::Path,
+) -> gpui::Result<()> {
+	// This capture intentionally combines deterministic UI scheduling with real service I/O.
+	cx.background_executor.allow_parking();
+	eprintln!("Automatic recap fixture: initial draw");
+	cx.update_window(handle.into(), |_, window, cx| window.draw(cx).clear())?;
+	cx.update_window(handle.into(), |view, _, cx| {
+		view.downcast::<ChiefSurface>()
+			.expect("Chief capture root")
+			.update(cx, |s, cx| s.visual_begin_automatic_recap(profile, cx));
+	})?;
+	eprintln!("Automatic recap fixture: driver armed");
+	for _ in 0..60 {
+		cx.run_until_parked();
+		let evidence = cx.update_window(handle.into(), |view, _, cx| {
+			view.downcast::<ChiefSurface>()
+				.expect("Chief capture root")
+				.update(cx, ChiefSurface::visual_automatic_recap_evidence)
+		})?;
+		std::fs::write(output.with_extension("recap.json"), serde_json::to_vec_pretty(&evidence)?)?;
+		if evidence["automatic"] == true && evidence["state"]["phase"] == "ready" {
+			return Ok(());
+		}
+		std::thread::sleep(std::time::Duration::from_millis(250));
+	}
+	Err(std::io::Error::other("Automatic recap did not reach Ready in the isolated capture").into())
 }
