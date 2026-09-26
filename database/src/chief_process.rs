@@ -1086,6 +1086,7 @@ mod tests {
 				1,
 				"user".into(),
 				"A spoken request".into(),
+				true,
 			)
 			.await
 			.unwrap();
@@ -1093,6 +1094,53 @@ mod tests {
 		store.begin_chief_voice_call(other.clone()).await.unwrap();
 		drop(store);
 		let reopened = SqliteStore::open_test(&path).unwrap();
-		assert_eq!(reopened.open_chief_voice_calls().await.unwrap(), vec![other]);
+		assert_eq!(reopened.open_chief_voice_calls().await.unwrap(), vec![other.clone()]);
+		verify_voice_history_projection(&reopened, other).await;
+	}
+	async fn verify_voice_history_projection(store: &SqliteStore, mut next: crate::ChiefVoiceCall) {
+		let history =
+			store.read_chief_voice_history("root".into(), "voice-thread".into()).await.unwrap();
+		assert_eq!(history.calls[0].entries[0].complete, Some(true));
+		assert_eq!(history.revision.open_calls, 1);
+		store
+			.record_chief_voice_transcript(
+				"voice-1".into(),
+				2,
+				"assistant".into(),
+				"Partial closing caption".into(),
+				false,
+			)
+			.await
+			.unwrap();
+		store.run(|connection| {
+   connection.execute(r#"INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('["voice_transcript","voice-1",3]','root','voice_user','{"text":"Legacy spoken sentence","source":"voice"}',1,'resolved','Legacy fixture',1)"#,[]).map_err(crate::error::sqlite_error)?;
+   Ok(())
+  }).await.unwrap();
+		let changed =
+			store.read_chief_voice_history("root".into(), "voice-thread".into()).await.unwrap();
+		assert!(changed.revision.last_event > history.revision.last_event);
+		assert_eq!(changed.calls[0].entries[2].complete, None, "legacy completeness stays unknown");
+		assert_eq!(changed.calls[0].entries[1].complete, Some(false));
+		assert!(
+			store
+				.read_chief_voice_history("another-work".into(), "voice-thread".into())
+				.await
+				.unwrap()
+				.calls
+				.is_empty()
+		);
+		store.close_chief_voice_call(next.session_id.clone()).await.unwrap();
+		for index in 3..=10 {
+			next.session_id = format!("voice-{index}");
+			store.begin_chief_voice_call(next.clone()).await.unwrap();
+			store.close_chief_voice_call(next.session_id.clone()).await.unwrap();
+		}
+		let bounded =
+			store.read_chief_voice_history("root".into(), "voice-thread".into()).await.unwrap();
+		assert_eq!(bounded.calls.len(), 8);
+		assert_eq!(bounded.calls[0].session_id, "voice-3");
+		assert_eq!(bounded.calls[7].session_id, "voice-10");
+		assert!(bounded.truncated);
+		assert_eq!(bounded.revision.open_calls, 0);
 	}
 }

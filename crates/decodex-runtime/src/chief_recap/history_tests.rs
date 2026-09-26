@@ -17,10 +17,13 @@ fn latest_eight_answered_exchanges_and_pending_correction_exclude_tool_and_reaso
 	let mut messages = visible(&items).expect("visible fixture");
 	messages.reverse();
 	let result = finish(select(&messages), Some("latest".into())).expect("bounded history");
-	assert!(!result.prompt.contains("question-1"));
-	assert!(result.prompt.contains("question-2"));
-	assert!(result.prompt.contains("Pending user request: latest correction\n\nsteer detail"));
-	assert!(!result.prompt.contains("PRIVATE_"));
+	assert!(!crate::chief_recap::excerpts::render(&result.exchanges).contains("question-1"));
+	assert!(crate::chief_recap::excerpts::render(&result.exchanges).contains("question-2"));
+	assert!(
+		crate::chief_recap::excerpts::render(&result.exchanges)
+			.contains("Pending user request: latest correction\n\nsteer detail")
+	);
+	assert!(!crate::chief_recap::excerpts::render(&result.exchanges).contains("PRIVATE_"));
 }
 
 #[test]
@@ -104,9 +107,29 @@ async fn native_turn_and_item_pages_are_joined_without_model_requests() {
 				.expect("reply");
 		}
 	});
-	let prepared = super::read(&client, "source").await.expect("complete native pages");
+	let prepared = super::read(&client, "source", false).await.expect("complete native pages");
 	assert_eq!(prepared.latest_turn.as_deref(), Some("turn"));
-	assert!(prepared.prompt.contains("Keep the current goal"));
-	assert!(prepared.prompt.contains("Tested; not deployed"));
+	assert!(
+		crate::chief_recap::excerpts::render(&prepared.exchanges).contains("Keep the current goal")
+	);
+	assert!(
+		crate::chief_recap::excerpts::render(&prepared.exchanges).contains("Tested; not deployed")
+	);
 	server.await.expect("fixture");
+}
+
+#[test]
+fn voice_history_skips_internal_handoff_but_keeps_native_task_output_and_anchor() {
+	let mut recent = Recent { voice: true, ..Default::default() };
+	let items = json!([
+	 {"type":"userMessage","content":[{"type":"text","text":"<realtime_delegation><input>PRIVATE_INTERNAL_HANDOFF</input></realtime_delegation>"}]},
+	 {"type":"agentMessage","text":"The task was tested, not installed."}
+	]);
+	recent.push(&json!({"id":"native-output","status":"completed"}), &items).unwrap();
+	let history = recent.finish().unwrap();
+	let rendered = crate::chief_recap::excerpts::render(&history.exchanges);
+	assert!(rendered.contains("The task was tested, not installed."));
+	assert!(rendered.contains("native-output"));
+	assert!(!rendered.contains("PRIVATE_INTERNAL_HANDOFF"));
+	assert!(!rendered.contains("User:"));
 }

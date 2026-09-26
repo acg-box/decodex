@@ -61,7 +61,7 @@ async fn qualify(home: &std::path::Path) {
 	let address = listener.local_addr().expect("native cold-read qualification");
 	let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 	let metadata_requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-	let backend = tokio::spawn(serve(listener, requests.clone(), metadata_requests.clone()));
+	let backend = tokio::spawn(serve(listener, requests.clone(), metadata_requests.clone(), None));
 	let catalog = native_home.join("models.json");
 	std::fs::write(
 		&catalog,
@@ -320,6 +320,7 @@ async fn serve(
 	listener: tokio::net::TcpListener,
 	requests: Arc<std::sync::atomic::AtomicUsize>,
 	metadata: Arc<std::sync::atomic::AtomicUsize>,
+	expected_recap: Option<&str>,
 ) {
 	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
 	while let Ok((socket, _)) = listener.accept().await {
@@ -370,6 +371,12 @@ async fn serve(
 			let serial = requests.fetch_add(1, Ordering::AcqRel);
 			let id = format!("cold-fixture-{serial}");
 			let answer = if input["text"]["format"]["type"] == "json_schema" {
+				if let Some(expected) = expected_recap {
+					assert!(
+						input.to_string().contains(expected),
+						"recap omitted visible voice input"
+					);
+				}
 				assert!(
 					input["tools"].as_array().is_none_or(Vec::is_empty),
 					"structured fixture tool names: {:?}; schema fields: {:?}",

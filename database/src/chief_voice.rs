@@ -19,6 +19,7 @@ impl SqliteStore {
 		sequence: u64,
 		role: String,
 		text: String,
+		complete: bool,
 	) -> Result<(), StoreError> {
 		if !["user", "assistant"].contains(&role.as_str()) || text.len() > 32768 {
 			return Err(StoreError::InvalidInput("invalid voice transcript"));
@@ -26,7 +27,7 @@ impl SqliteStore {
 		self.run(move |connection| {
             let work:String=connection.query_row("SELECT work_id FROM chief_voice_calls WHERE session_id=?1",[&session],|r|r.get(0)).map_err(sqlite_error)?;
             let source=serde_json::json!(["voice_transcript",session,sequence]).to_string();
-            let payload=serde_json::json!({"text":text,"source":"voice"}).to_string();
+            let payload=serde_json::json!({"text":text,"source":"voice","complete":complete}).to_string();
             let now=unix_micros()?;
             connection.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros)
                 VALUES(?1,?2,?3,?4,?5,'resolved','Recorded live voice transcript.',?5)",params![source,work,format!("voice_{role}"),payload,now]).map_err(sqlite_error)?;

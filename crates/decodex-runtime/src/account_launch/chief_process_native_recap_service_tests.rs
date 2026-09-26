@@ -61,9 +61,10 @@ async fn qualify(mode: &str) {
 				key: source.key.clone(),
 			},
 			"recap-one",
+			Default::default(),
 		)
 		.expect("recap start");
-	let prepared = chief_recap::prepare(&source).await.expect("native public history");
+	let prepared = chief_recap::prepare(&source, None).await.expect("native public history");
 	assert!(prepared.prompt.contains("Do not install"));
 	assert!(prepared.prompt.contains("not installed"));
 	let before = prepared.latest_turn;
