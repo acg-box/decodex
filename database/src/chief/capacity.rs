@@ -42,7 +42,19 @@ pub(super) fn next_retry(
 }
 
 pub(super) fn cancel_pending(connection: &Connection, work: &str) -> Result<(), StoreError> {
-	connection.execute("UPDATE chief_inbox_events SET disposition='resolved', disposition_note='Automatic retry cancelled or superseded by new input.', disposed_at_micros=max(created_at_micros,?2) WHERE disposition IS NULL AND id IN (SELECT event_id FROM chief_capacity_retries WHERE work_item_id=?1 AND state='pending')",params![work,unix_micros()?]).map_err(sqlite_error)?;
+	cancel_pending_with_note(
+		connection,
+		work,
+		"Automatic retry cancelled or superseded by new input.",
+	)
+}
+
+fn cancel_pending_with_note(
+	connection: &Connection,
+	work: &str,
+	note: &str,
+) -> Result<(), StoreError> {
+	connection.execute("UPDATE chief_inbox_events SET disposition='resolved', disposition_note=?3, disposed_at_micros=max(created_at_micros,?2) WHERE disposition IS NULL AND id IN (SELECT event_id FROM chief_capacity_retries WHERE work_item_id=?1 AND state='pending')",params![work,unix_micros()?,note]).map_err(sqlite_error)?;
 	connection
 		.execute(
 			"UPDATE chief_capacity_retries SET state='cancelled' WHERE work_item_id=?1 AND state='pending'",
@@ -53,6 +65,40 @@ pub(super) fn cancel_pending(connection: &Connection, work: &str) -> Result<(), 
 }
 
 impl SqliteStore {
+	/// A native revert invalidates pending continuation intent, not claimed delivery receipts.
+	/// Do not publish a worker completion or wake its manager for this history observation.
+	pub async fn cancel_reverted_chief_capacity_retries(
+		&self,
+		thread: String,
+		generation: Option<String>,
+	) -> Result<(), StoreError> {
+		bounded(&thread, 512)?;
+		self.run(move |connection| {
+			let tx = connection
+				.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(sqlite_error)?;
+			let work = tx
+				.prepare("SELECT id FROM chief_work_items WHERE codex_thread_id=?1")
+				.map_err(sqlite_error)?
+				.query_map([thread], |row| row.get::<_, String>(0))
+				.map_err(sqlite_error)?
+				.collect::<Result<Vec<_>, _>>()
+				.map_err(sqlite_error)?;
+			for id in work {
+				if crate::chief_process::owns_work(&tx, &id, generation.as_deref())? {
+					cancel_pending_with_note(
+						&tx,
+						&id,
+						"Automatic retry cancelled because native history was reverted.",
+					)?;
+				}
+			}
+			tx.commit().map_err(sqlite_error)?;
+			Ok(())
+		})
+		.await
+	}
+
 	pub async fn pending_chief_capacity_retry(
 		&self,
 		work: String,
