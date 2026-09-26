@@ -45,12 +45,9 @@ pub(crate) async fn inspect(
 		{
 			return None;
 		}
-	} else if !params["turnId"].is_null()
-		&& (params["turnId"].as_str() != owner.active_turn_id.as_deref()
-			|| owner.dispatch_state != decodex_database::ChiefDispatchState::Running)
-	{
-		return None;
 	}
+	// A yielded request retains its original turn. Exact native request liveness
+	// remains authoritative after the local turn completes.
 	let suggestion = McpInstallSuggestion::from_request(params).ok()??;
 	let request_id = serde_json::from_value(value["id"].clone()).ok()?;
 	let guard =
