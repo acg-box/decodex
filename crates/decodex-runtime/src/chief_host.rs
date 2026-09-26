@@ -690,6 +690,7 @@ impl ChiefHost {
 	) -> decodex_protocol::ChiefMediaResult {
 		crate::chief::timeline::media::read(
 			|| self.timeline_source(request.work_id.as_str(), request.thread_id.as_str()),
+			|key| self.runtime.chief_input_directory(&key.generation),
 			request,
 		)
 		.await

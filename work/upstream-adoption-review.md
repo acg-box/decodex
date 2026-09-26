@@ -1,7 +1,7 @@
 # Upstream adoption review
 
 Original capability-table snapshot: Decodex `3f131d80b9e90d2badf2394249bbf3b0266f72d3`.
-Current delivery snapshot: `b766af329c2bb62218be65059f971c6f648628b6` (PR1518).
+Current delivery snapshot: `8407e7a102f8df4385ff3c4ffbdbedf4caf823a7` (PR1519).
 The inherited-file byte audit remains at PR1507; it has not been rerun at this snapshot.
 Fixed upstream range:
 `a397079287e6638b39dda329835350d93222681f..595cc91e8cbb1c2ca822d0311dcf12709410c582`.
@@ -22,15 +22,15 @@ not instructions to delete code or weaken native enforcement.
 ## Current completion boundary
 
 The source inventory covers 1,569 commits. It does not establish feature delivery.
-The original acceptance ledger has twelve unequal groups. R01 and R02 have recorded
-closure; R03 through R12 remain open. The table below retains those boundaries.
+The original acceptance ledger has twelve unequal groups. R01 through R03 have recorded
+closure; R04 through R12 remain open. The table below retains those boundaries.
 Later implementation does not close a group without its remaining acceptance.
 
 | Group | Delivered or recorded evidence | Remaining exit condition |
 | --- | --- | --- |
 | R01 Permission settings | Native, journal, service and desktop flow; recorded group closure. | Shared signed application acceptance remains in R07/R12. |
 | R02 Plugin, hook and app-link settings | Recorded group closure; distinct from embedded App UI. | Shared signed acceptance remains in R07/R12; widgets remain R05. |
-| R03 Models, defaults and routing | Native defaults, explicit choices, ordinary recovery and profileless draft storage are merged. | Current-consumer audit and installed-native rotation qualification address the remaining implementation questions; merge the [routing acceptance](upstream-routing-acceptance.md) batch before closure. Shared signed lifecycle remains R07/R12. |
+| R03 Models, defaults and routing | Native defaults, explicit choices, ordinary recovery and profileless draft storage are merged. | Closed by PR1519 after current-consumer audit and installed-native rotation qualification; see [routing acceptance](upstream-routing-acceptance.md). Shared signed lifecycle remains R07/R12. |
 | R04 Attachments, media and context | Resource add/list/remove, references and context presentation exist. | Verify final consumer behavior and installed file/image limitations; native internal storage is not a public byte-resolution API. |
 | R05 Interactive MCP App UI | Integration metadata and settings exist. | Determine installed interaction support and complete the applicable widget consumer. Metadata alone does not close this group. |
 | R06 Prompt editing and recap | Recap service/UI and opt-in automatic eligibility are implemented. Prompt editing now includes canonical desktop editing, durable confirmation, history handback and explicit resend. | Qualify remaining recap signed/live-voice and combined lost-reply flows; retain shared signed desktop acceptance in R07/R12. See the feature notes below. |

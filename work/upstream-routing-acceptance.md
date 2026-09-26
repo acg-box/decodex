@@ -69,7 +69,7 @@ was found or that creation succeeded. Do not infer identity from the newest thre
 ## Evidence boundary
 
 R03's remaining implementation questions have source dispositions and targeted
-qualification. These additions need normal PR merge before the delivery ledger closes
-R03. Signed whole-app quit, menu, Dock, relaunch, export and blank-task acceptance remain
+qualification. PR1519 merged these additions as
+`8407e7a102f8df4385ff3c4ffbdbedf4caf823a7`; R03 is closed. Signed whole-app quit, menu, Dock, relaunch, export and blank-task acceptance remain
 in R07/R12. Live voice and remaining recap acceptance stay in R06. No result in this
 record establishes public release, installation or complete upstream catch-up.
