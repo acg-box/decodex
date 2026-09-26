@@ -1,8 +1,9 @@
 # Upstream adoption review
 
 Original capability-table snapshot: Decodex `3f131d80b9e90d2badf2394249bbf3b0266f72d3`.
-Current delivery snapshot: `8407e7a102f8df4385ff3c4ffbdbedf4caf823a7` (PR1519).
-The inherited-file byte audit remains at PR1507; it has not been rerun at this snapshot.
+Current delivery snapshot: `63f3b110afb6f40fb55cbd46d1ef9ac13acd56a9` (PR1523).
+The inherited byte-comparison baseline remains PR1507. Three dependency and nine
+source dispositions have since been refreshed; the complete register is not closed.
 Fixed upstream range:
 `a397079287e6638b39dda329835350d93222681f..595cc91e8cbb1c2ca822d0311dcf12709410c582`.
 
@@ -22,8 +23,8 @@ not instructions to delete code or weaken native enforcement.
 ## Current completion boundary
 
 The source inventory covers 1,569 commits. It does not establish feature delivery.
-The original acceptance ledger has twelve unequal groups. R01 through R03 have recorded
-closure; R04 through R12 remain open. The table below retains those boundaries.
+The original acceptance ledger has twelve unequal groups. R01 through R05 have recorded
+closure; R06 through R12 remain open. The table below retains those boundaries.
 Later implementation does not close a group without its remaining acceptance.
 
 | Group | Delivered or recorded evidence | Remaining exit condition |
@@ -33,8 +34,8 @@ Later implementation does not close a group without its remaining acceptance.
 | R03 Models, defaults and routing | Native defaults, explicit choices, ordinary recovery and profileless draft storage are merged. | Closed by PR1519 after current-consumer audit and installed-native rotation qualification; see [routing acceptance](upstream-routing-acceptance.md). Shared signed lifecycle remains R07/R12. |
 | R04 Attachments, media and context | Native/public media reads, signed desktop Preview, resource add/list/remove and native context authority qualified. | Closed by PR1522; see [media acceptance and limits](upstream-media-acceptance.md). Shared installed lifecycle remains R07/R12. |
 | R05 Interactive MCP App UI | Closed by PR1521: exact native documents, isolated WebKit, confirmed callbacks and durable recovery. | See [App UI contract and limits](mcp-app-ui.md). Signed local packaging and installed-native/service/desktop fixture passed; shared installed lifecycle remains R07/R12. Optional capability. |
-| R06 Prompt editing and recap | Recap service/UI and opt-in automatic eligibility are implemented. Prompt editing now includes canonical desktop editing, durable confirmation, history handback and explicit resend. | Qualify remaining recap signed/live-voice and combined lost-reply flows; retain shared signed desktop acceptance in R07/R12. See the feature notes below. |
-| R07 Draft and signed desktop lifecycle | Draft persistence and source-bound recovery have targeted evidence. | Isolated signed-app blank-task/worktree, quit/menu/Dock/CmdQ, relaunch and export acceptance. |
+| R06 Prompt editing and recap | Recap service/UI and opt-in automatic eligibility are implemented. Prompt editing now includes canonical desktop editing, durable confirmation, history handback and explicit resend. | PR1523 verifies combined lost-reply recovery and normal signed-app recap/quit/relaunch interactions. Foreground/background, opt-out, live voice and remaining shared desktop acceptance in R07/R12 stay open. See the feature notes below. |
+| R07 Draft and signed desktop lifecycle | Draft persistence and source-bound recovery have targeted evidence. PR1523 adds isolated normal signed-app Command-Q, menu quit and relaunch evidence. | Blank-task/worktree, Dock, conflict cancellation, draft recovery, export and app-owned service shutdown acceptance remain. PR1523 kept its fixture service alive across GUI relaunches. |
 | R08 Uncertain dispatch and closing | Known-unsent, refusal and no-replay recovery fixes are merged. | Reconcile general ambiguous replies and installed shutdown/unload races with current evidence. |
 | R09 Other runtime consumers | Usage estimates, voice preferences, reasoning summaries and connector exposure have deliveries. | Close remaining Analytics, voice, provider/freeform, external-writer, accessibility and child/OS notice applicability. Do not rebuild existing usage owners. |
 | R10 Native execution and security | Native CLI admission and account routing-cookie fixes are merged. | Map remaining Guardian/context, network/checkpoint and OS execution changes to native or local owners. Native ownership needs source evidence, not a duplicate implementation. |
