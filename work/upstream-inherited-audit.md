@@ -9,6 +9,24 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Live model transport restored on 2026-09-26
+
+The current bridge rejected a valid exact-turn model request. The focused test
+failed before the fix and passed after restoration. Restore the inherited
+`app_server_client/live_settings.rs` adapter, its exports and the narrow bridge
+admission. The adapter sends model and effort only to `turn/settings/update`.
+It does not retry uncertain replies or write future thread defaults.
+
+Verify the original snapshot hash and compare the complete adapter file. All
+inherited bytes are restored except that the retained foreign-history-guard test
+now checks model updates as well as reviewer updates. Close that one file row.
+The shared bridge and export module remain open for their other differences.
+
+This is transport support for an optional explicit control. The service catalog
+and native feature checks, shared durable journal, desktop control and installed
+native current-turn/next-turn qualification remain open. No local protocol,
+configuration, feature flag or automation changes occur in this batch.
+
 ## Four settings and review owners reconciled on 2026-09-26
 
 Verify the original SHA-256 and inspect every difference in these complete files.

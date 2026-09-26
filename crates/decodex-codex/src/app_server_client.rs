@@ -44,7 +44,10 @@ mod permission_observations;
 mod permissions;
 mod thread_plugins;
 pub use initialize::InitializeCapabilities;
-pub use live_settings::{LiveReviewer, LiveSettingsOutcome, is_live_reviewer_update};
+pub use live_settings::{
+	LiveModelUpdate, LiveReviewer, LiveSettingsOutcome, is_live_model_update,
+	is_live_reviewer_update,
+};
 pub use permissions::{
 	NativePermissionProfile, NativeTaskPermissions, ThreadPermissionSelection,
 	ThreadPermissionSelectionQueued, is_thread_permission_selection,
