@@ -33,6 +33,20 @@ count further. All 360 entries remain. Complete shared-file, native and signed
 desktop acceptance boundaries are unchanged. No production code changes in this
 audit, and prior executable checks are not repeated for unchanged files.
 
+## Stored tool image references restored on 2026-09-26
+
+`crates/decodex-runtime/src/chief/timeline/attachments.rs` now matches the complete
+preserved snapshot. A valid native `file_id` image keeps its stored-image source
+and content index without exposing the reference. Empty and malformed IDs still
+produce an unknown descriptor. The regression failed before the fix; all 38
+Chief timeline tests and strict runtime lint pass. See
+[Stored tool image references](stored-tool-images-recovery.md).
+
+The original snapshot hash matches. This batch closes one file and retains all
+360 register rows. Its main baseline has 193 pending rows; this isolated change
+reduces that count to 192. Other pending batches close separate rows. No shared
+desktop acceptance group is closed by this change.
+
 ## File evidence
 
 [The complete 360-row register](upstream-inherited-files.tsv) contains hashes
