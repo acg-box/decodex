@@ -9,6 +9,30 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Restored owners reconciled after PR1544
+
+Nine complete-file comparisons were verified at
+`e52af9dbabcbf48ab4536306a79c4c338531b6b8`. Every original snapshot hash matches
+its register entry. The register refreshes each current path and owner hash.
+
+| Original path | Complete disposition and delivery evidence |
+| --- | --- |
+| `crates/decodex-codex/src/lib.rs` | Exact snapshot bytes after PR1544 restores the native provider bound export. |
+| `database/migrations/0038_conversation_native_settings.sql` | Exact snapshot bytes at registered migration 47 after PR1544. The original path remains absent; existing migration history was not rewritten. |
+| `database/src/conversations/native_settings.rs` | Only the effort bound changes from 32 to the current protocol's 128 bytes. PR1544 verifies source checks, response ordering, preserved intent, durable readback and migration upgrade. |
+| `crates/decodex-runtime/src/chief/tests/result_integrity.rs` | All inherited assertions remain. PR1541 runs the original large-result case with an item ID and the additional no-ID case. PR1531 already restored native terminal timing. |
+| `crates/decodex-runtime/src/chief/guardian.rs` | Resume now uses the canonical native settings parameters and response-observation owner. PR1542 verifies unloaded-thread approval without startup overrides, new turns or changed denial evidence. See `guardian-large-observations.md`. |
+| `crates/decodex-protocol/src/chief_timeline.rs` | Adds only the defaulted `app_ui` metadata flag from PR1521 and clarifies Summary comments. Summary wire fields are unchanged; PR1528 restores its consumer. |
+| `crates/decodex-runtime/src/account_launch/chief_process_app_exposure_tests.rs` | Two explicit imports and shared App configuration receipt calls replace the retired per-app receipt API. All other assertions remain. The focused host fixture passes; PR1480/PR1481 and `app-tool-exposure.md` document the canonical journal. |
+| `apps/decodex-gpui/src/chief_app_exposure_tests.rs` | The fixture observes ChiefSurface and renders its integration panel through an explicit view. All test actions and assertions remain. |
+| `apps/decodex-gpui/src/chief_app_exposure_wire_tests.rs` | The same explicit panel fixture replaces the old whole-surface render. Lost-reply and single-send assertions remain. Both GUI files passed in the latest full GUI run. |
+
+This batch closes nine content-review rows. Its baseline has 204 pending rows;
+the standalone batch leaves 195. Separately submitted batches can reduce that
+count further. All 360 entries remain. Complete shared-file, native and signed
+desktop acceptance boundaries are unchanged. No production code changes in this
+audit, and prior executable checks are not repeated for unchanged files.
+
 ## File evidence
 
 [The complete 360-row register](upstream-inherited-files.tsv) contains hashes
