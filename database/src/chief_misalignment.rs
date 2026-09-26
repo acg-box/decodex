@@ -87,6 +87,38 @@ impl SqliteStore {
         }).await
 	}
 
+	/// Clear an exact old precaution after complete native history proves a later turn.
+	/// Do not restore retired input or treat this observation as a continuation request.
+	pub async fn reconcile_chief_misalignment(
+		&self,
+		work: String,
+		expected: ChiefMisalignment,
+		still_current: impl Fn() -> bool + Send + 'static,
+	) -> Result<(), StoreError> {
+		self.run(move |connection| {
+			let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			if !still_current() { return Ok(()); }
+			tx.execute("DELETE FROM chief_misalignment WHERE work_id=?1 AND thread_id=?2 AND turn_id=?3 AND details_json IS ?4 AND retired_voice=0 AND EXISTS(SELECT 1 FROM chief_work_items w WHERE w.id=?1 AND w.codex_thread_id=?2 AND w.dispatch_state='idle' AND w.active_turn_id IS NULL)", params![work, expected.thread_id, expected.turn_id, expected.details_json]).map_err(sqlite_error)?;
+			if still_current() { tx.commit().map_err(sqlite_error)?; }
+			Ok(())
+		}).await
+	}
+
+	/// Retain the precaution across late voice turns, native stop, and process restart.
+	/// Call before stopping media; only an acknowledged continuation may clear it.
+	pub async fn retire_chief_misalignment_voice(&self, thread: String) -> Result<(), StoreError> {
+		self.run(move |connection| {
+			connection
+				.execute(
+					"UPDATE chief_misalignment SET retired_voice=1 WHERE thread_id=?1",
+					[thread],
+				)
+				.map_err(sqlite_error)?;
+			Ok(())
+		})
+		.await
+	}
+
 	pub async fn record_chief_misalignment(
 		&self,
 		thread: String,
@@ -128,7 +160,7 @@ impl SqliteStore {
             let tx=connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
             let work:Option<String>=tx.query_row("SELECT id FROM chief_work_items WHERE codex_thread_id=?1 AND (active_turn_id=?2 OR (?3 AND dispatch_state='idle' AND active_turn_id IS NULL) OR (active_turn_id IS NULL AND EXISTS(SELECT 1 FROM chief_misalignment m WHERE m.work_id=chief_work_items.id AND m.thread_id=?1 AND m.turn_id=?2)))",params![thread,turn,restore_idle],|row|row.get(0)).optional().map_err(sqlite_error)?;
             if let Some(work)=work {
-                tx.execute("INSERT INTO chief_misalignment VALUES(?1,?2,?3,?4,?5) ON CONFLICT(work_id) DO UPDATE SET thread_id=excluded.thread_id,turn_id=excluded.turn_id,details_json=CASE WHEN chief_misalignment.thread_id=excluded.thread_id AND chief_misalignment.turn_id=excluded.turn_id THEN coalesce(excluded.details_json,chief_misalignment.details_json) ELSE excluded.details_json END,created_at_micros=excluded.created_at_micros",params![work,thread,turn,details,unix_micros()?]).map_err(sqlite_error)?;
+                tx.execute("INSERT INTO chief_misalignment(work_id,thread_id,turn_id,details_json,created_at_micros,retired_voice) VALUES(?1,?2,?3,?4,?5,EXISTS(SELECT 1 FROM chief_voice_calls WHERE work_id=?1 AND thread_id=?2 AND closed_at_micros IS NULL)) ON CONFLICT(work_id) DO UPDATE SET thread_id=excluded.thread_id,turn_id=excluded.turn_id,details_json=CASE WHEN chief_misalignment.thread_id=excluded.thread_id AND chief_misalignment.turn_id=excluded.turn_id THEN coalesce(excluded.details_json,chief_misalignment.details_json) ELSE excluded.details_json END,retired_voice=CASE WHEN chief_misalignment.thread_id=excluded.thread_id THEN max(chief_misalignment.retired_voice,excluded.retired_voice) ELSE excluded.retired_voice END,created_at_micros=excluded.created_at_micros",params![work,thread,turn,details,unix_micros()?]).map_err(sqlite_error)?;
                 tx.execute("UPDATE chief_inbox_events SET disposition='resolved',disposition_note='Input retired without delivery because the provider paused this conversation.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind IN ('user_message','async_question_answer') AND disposition IS NULL AND delivered_turn_id IS NULL",params![work,unix_micros()?]).map_err(sqlite_error)?;
                 tx.execute("UPDATE chief_capacity_retries SET state='cancelled' WHERE work_item_id=?1 AND state='pending'",[&work]).map_err(sqlite_error)?;
 

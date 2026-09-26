@@ -2928,3 +2928,6 @@ async fn unfinished_native_text_keeps_source_and_display_only_status_after_reope
 		}
 	}
 }
+
+#[path = "tests/misalignment_recovery.rs"]
+mod misalignment_recovery;
