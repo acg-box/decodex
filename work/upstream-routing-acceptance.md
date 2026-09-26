@@ -101,3 +101,13 @@ currently unexposed ordinary-workbench surface from active Chief/native routing.
 Do not add a new navigation control merely to make a fixture pass. The user can
 assess the complete optional surface during removal review. Shared signed desktop
 lifecycle acceptance remains in R07/R12.
+
+## Remaining ordinary native observation path
+
+Complete-file review found another inherited gap: ordinary start/resume response
+observations no longer reach durable storage or the public summary. Model
+inheritance and the restored initial-source confirmation path do not replace
+these historical facts. See [native settings recovery](ordinary-native-settings-recovery.md)
+for the adapter/store foundation and remaining process, service and display
+consumers. This belongs to the optional ordinary History workspace and does not
+justify a new navigation control or changes to current Chief model ownership.

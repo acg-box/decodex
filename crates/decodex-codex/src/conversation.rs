@@ -20,6 +20,8 @@ use crate::{ExactThreadId, ThreadCwd, protocol::MAX_APP_SERVER_FRAME_BYTES};
 
 /// Maximum UTF-8 bytes in one caller-selected model identifier.
 pub const MAX_CONVERSATION_MODEL_BYTES: usize = 128;
+/// Maximum UTF-8 bytes in a native model provider identifier.
+pub const MAX_CONVERSATION_MODEL_PROVIDER_BYTES: usize = 512;
 /// Maximum UTF-8 bytes in one caller-selected reasoning-effort value.
 pub const MAX_CONVERSATION_REASONING_EFFORT_BYTES: usize = 128;
 /// Maximum UTF-8 bytes in developer instructions.
@@ -108,6 +110,8 @@ pub enum ConversationContractError {
 	InvalidInstructions,
 	/// The caller-selected model is empty, oversized, or contains control text.
 	InvalidModel,
+	/// The native model provider identifier is empty, oversized, or contains control text.
+	InvalidModelProvider,
 	/// The caller-selected reasoning effort is empty, oversized, or contains control text.
 	InvalidReasoningEffort,
 	/// A user text item is empty, oversized, or contains a NUL byte.
@@ -453,6 +457,7 @@ pub struct ConversationThreadStartResponse {
 	thread_id: ExactThreadId,
 	cwd: ThreadCwd,
 	model: ConversationModel,
+	model_provider: String,
 	reasoning_effort: Option<ConversationReasoningEffort>,
 }
 impl ConversationThreadStartResponse {
@@ -475,6 +480,7 @@ impl ConversationThreadStartResponse {
 			thread_id: facts.thread_id,
 			cwd: facts.cwd,
 			model: facts.model,
+			model_provider: wire.model_provider,
 			reasoning_effort: facts.reasoning_effort,
 		})
 	}
@@ -492,6 +498,11 @@ impl ConversationThreadStartResponse {
 	/// Actual bounded model reported by the app server.
 	pub fn model(&self) -> &ConversationModel {
 		&self.model
+	}
+
+	/// Exact native provider identifier, not its display name or connection URL.
+	pub fn model_provider(&self) -> &str {
+		&self.model_provider
 	}
 
 	/// Actual bounded reasoning effort reported by the app server, when present.
@@ -623,6 +634,7 @@ pub struct ConversationThreadResumeResponse {
 	thread_id: ExactThreadId,
 	cwd: ThreadCwd,
 	model: ConversationModel,
+	model_provider: String,
 	reasoning_effort: Option<ConversationReasoningEffort>,
 }
 impl ConversationThreadResumeResponse {
@@ -645,6 +657,7 @@ impl ConversationThreadResumeResponse {
 			thread_id: facts.thread_id,
 			cwd: facts.cwd,
 			model: facts.model,
+			model_provider: wire.model_provider,
 			reasoning_effort: facts.reasoning_effort,
 		})
 	}
@@ -662,6 +675,11 @@ impl ConversationThreadResumeResponse {
 	/// Actual bounded model reported by the app server.
 	pub fn model(&self) -> &ConversationModel {
 		&self.model
+	}
+
+	/// Exact native provider identifier, not its display name or connection URL.
+	pub fn model_provider(&self) -> &str {
+		&self.model_provider
 	}
 
 	/// Actual bounded reasoning effort reported by the app server, when present.
@@ -1026,6 +1044,11 @@ struct ConversationThreadStartResponseWire {
 }
 impl ConversationThreadStartResponseWire {
 	fn validate_private_facts(&self) -> Result<(), ConversationContractError> {
+		if self.model_provider.trim().is_empty() {
+			return Err(ConversationContractError::InvalidModelProvider);
+		}
+		validate_label(&self.model_provider, MAX_CONVERSATION_MODEL_PROVIDER_BYTES)
+			.map_err(|()| ConversationContractError::InvalidModelProvider)?;
 		self.sandbox.validate()?;
 		if self.multi_agent_mode != ConversationMultiAgentModeWire::ExplicitRequestOnly {
 			return Err(ConversationContractError::ResponseSemanticMismatch);
@@ -1069,6 +1092,11 @@ struct ConversationThreadResumeResponseWire {
 }
 impl ConversationThreadResumeResponseWire {
 	fn validate_private_facts(&self) -> Result<(), ConversationContractError> {
+		if self.model_provider.trim().is_empty() {
+			return Err(ConversationContractError::InvalidModelProvider);
+		}
+		validate_label(&self.model_provider, MAX_CONVERSATION_MODEL_PROVIDER_BYTES)
+			.map_err(|()| ConversationContractError::InvalidModelProvider)?;
 		self.sandbox.validate()?;
 		if self.multi_agent_mode != ConversationMultiAgentModeWire::ExplicitRequestOnly {
 			return Err(ConversationContractError::ResponseSemanticMismatch);
@@ -1966,9 +1994,10 @@ mod tests {
 	use super::{
 		ConversationContractError, ConversationThreadResumeRequest, ConversationThreadStartRequest,
 		ConversationTurnInput, ConversationTurnStartRequest, ConversationTurnStatus,
-		MAX_CONVERSATION_RESPONSE_BYTES, decode_conversation_thread_archive_response,
-		decode_conversation_thread_resume_response, decode_conversation_thread_start_response,
-		decode_conversation_turn_interrupt_response, decode_conversation_turn_start_response,
+		MAX_CONVERSATION_MODEL_PROVIDER_BYTES, MAX_CONVERSATION_RESPONSE_BYTES,
+		decode_conversation_thread_archive_response, decode_conversation_thread_resume_response,
+		decode_conversation_thread_start_response, decode_conversation_turn_interrupt_response,
+		decode_conversation_turn_start_response,
 	};
 
 	fn exact_thread() -> ExactThreadId {
@@ -2034,6 +2063,55 @@ mod tests {
 				assert!(start.is_ok(), "{start:?}");
 				assert!(resume.is_ok(), "{resume:?}");
 			}
+		}
+	}
+
+	#[test]
+	fn native_provider_is_retained_and_invalid_identifiers_are_rejected() {
+		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+		// The top-level value is the current session provider. Thread metadata may
+		// describe its original provider; do not substitute the historical value.
+		response["modelProvider"] = json!("current-provider");
+		response["thread"]["modelProvider"] = json!("original-provider");
+		let bytes = serde_json::to_vec(&response).unwrap();
+		assert_eq!(
+			decode_conversation_thread_start_response(&start_request(), &bytes)
+				.unwrap()
+				.model_provider(),
+			"current-provider"
+		);
+		assert_eq!(
+			decode_conversation_thread_resume_response(&resume_request(), &bytes)
+				.unwrap()
+				.model_provider(),
+			"current-provider"
+		);
+		for value in [
+			"".to_owned(),
+			"   ".to_owned(),
+			"unsafe\nprovider".to_owned(),
+			"x".repeat(MAX_CONVERSATION_MODEL_PROVIDER_BYTES + 1),
+		] {
+			response["modelProvider"] = json!(value);
+			let bytes = serde_json::to_vec(&response).unwrap();
+			assert_eq!(
+				decode_conversation_thread_start_response(&start_request(), &bytes).unwrap_err(),
+				ConversationContractError::InvalidModelProvider
+			);
+			assert_eq!(
+				decode_conversation_thread_resume_response(
+					&resume_request().inherit_model().inherit_service_tier(),
+					&bytes
+				)
+				.unwrap_err(),
+				ConversationContractError::InvalidModelProvider
+			);
+		}
+		for value in [Value::Null, json!(42), json!({"id":"provider"})] {
+			response["modelProvider"] = value;
+			let bytes = serde_json::to_vec(&response).unwrap();
+			assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_err());
+			assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_err());
 		}
 	}
 

@@ -66,6 +66,10 @@ mod command;
 mod continuations;
 mod conversation_routing;
 mod conversations;
+pub use conversations::{
+	ConversationNativeSettings, ConversationNativeSettingsObservation,
+	RecordConversationNativeSettings,
+};
 mod credentials;
 mod desktop_settings;
 mod error;

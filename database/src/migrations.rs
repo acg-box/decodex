@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 46;
+const CURRENT_SCHEMA_VERSION: i64 = 47;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -245,6 +245,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 46,
 		name: "initial_model_source",
 		sql: include_str!("../migrations/0046_initial_model_source.sql"),
+	},
+	Migration {
+		version: 47,
+		name: "conversation_native_settings",
+		sql: include_str!("../migrations/0047_conversation_native_settings.sql"),
 	},
 ];
 
@@ -1434,6 +1439,49 @@ mod tests {
 		migrate(&mut connection).unwrap();
 	}
 	#[test]
+	fn native_settings_upgrade_only_adds_its_observation_table() {
+		let directory = tempfile::tempdir().unwrap();
+		let mut connection = Connection::open(directory.path().join("settings.sqlite3")).unwrap();
+		configure(&connection).unwrap();
+		for migration in MIGRATIONS.iter().filter(|m| m.version <= 46) {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 46).unwrap();
+		connection.execute("UPDATE desktop_settings SET auto_recap=0,revision=19", []).unwrap();
+		let original = schema_inventory(&connection).unwrap();
+		migrate(&mut connection).unwrap();
+		verify(&connection).unwrap();
+		let inventory = schema_inventory(&connection).unwrap();
+		assert!(inventory.iter().any(|row| row.2 == "conversation_native_settings"));
+		assert_eq!(
+			inventory
+				.into_iter()
+				.filter(|row| row.2 != "conversation_native_settings")
+				.collect::<Vec<_>>(),
+			original
+		);
+		let retained: (bool, i64) = connection
+			.query_row("SELECT auto_recap,revision FROM desktop_settings", [], |r| {
+				Ok((r.get(0)?, r.get(1)?))
+			})
+			.unwrap();
+		assert_eq!(retained, (false, 19));
+		let count: i64 = connection
+			.query_row("SELECT COUNT(*) FROM conversation_native_settings", [], |r| r.get(0))
+			.unwrap();
+		assert_eq!(count, 0);
+		migrate(&mut connection).unwrap();
+		verify(&connection).unwrap();
+	}
+
+	#[test]
 	fn prompt_input_upgrade_preserves_existing_schema_and_preferences() {
 		for version in [42, 43] {
 			assert_prompt_input_upgrade(version);
@@ -1476,7 +1524,10 @@ mod tests {
 				.into_iter()
 				.filter(|row| !matches!(
 					row.2.as_str(),
-					"chief_prompt_inputs" | "chief_prompt_input_chunks" | "quick_task_requests"
+					"chief_prompt_inputs"
+						| "chief_prompt_input_chunks"
+						| "quick_task_requests"
+						| "conversation_native_settings"
 				))
 				.collect::<Vec<_>>(),
 			original.into_iter().filter(|row| row.2 != "quick_task_requests").collect::<Vec<_>>()
