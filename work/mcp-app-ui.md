@@ -48,6 +48,20 @@ malformed responses and account/process/history changes during widget reads.
 Strict protocol/runtime Clippy and 15 architecture tests passed. These checks do not
 establish an interactive view or installed application acceptance.
 
+## Native view document preparation
+
+`McpAppDocument` selects one exact ui:// HTML resource from the service document.
+It supports UTF-8 text or base64 UTF-8 content and nullable legacy URI fields. Duplicate
+resources, ambiguous text/blob content and unsupported MIME types are rejected.
+Declared CSP domains are validated as explicit HTTPS origins (WSS for connections),
+including wildcard subdomains; policy injection, credentials, file URLs and path/query
+forms are rejected. An initial CSP meta element restricts network, frames, objects and
+forms. The consumer must still enforce the opaque sandbox, navigation and browser
+permission boundaries. Four focused Swift document tests passed.
+
+The lifecycle reference is the [MCP Apps specification](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx).
+Document preparation is not a rendered widget or complete sandbox acceptance.
+
 ## Remaining consumer obligations
 
 - Connect the desktop view to the source-bound service document query.
