@@ -6,6 +6,9 @@ use std::{
 };
 
 pub(super) fn find(requested: &Path) -> Option<PathBuf> {
+	#[cfg(not(target_os = "macos"))]
+	let applications = Vec::new();
+	#[cfg(target_os = "macos")]
 	let mut applications = Vec::new();
 	#[cfg(target_os = "macos")]
 	if requested == Path::new("codex") {
