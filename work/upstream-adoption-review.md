@@ -1,7 +1,7 @@
 # Upstream adoption review
 
 Original capability-table snapshot: Decodex `3f131d80b9e90d2badf2394249bbf3b0266f72d3`.
-Current delivery snapshot: `9c22c8e7c2ca8e6bef992d07c45b693b7987be20` (PR1516).
+Current delivery snapshot: `b766af329c2bb62218be65059f971c6f648628b6` (PR1518).
 The inherited-file byte audit remains at PR1507; it has not been rerun at this snapshot.
 Fixed upstream range:
 `a397079287e6638b39dda329835350d93222681f..595cc91e8cbb1c2ca822d0311dcf12709410c582`.
@@ -30,10 +30,10 @@ Later implementation does not close a group without its remaining acceptance.
 | --- | --- | --- |
 | R01 Permission settings | Native, journal, service and desktop flow; recorded group closure. | Shared signed application acceptance remains in R07/R12. |
 | R02 Plugin, hook and app-link settings | Recorded group closure; distinct from embedded App UI. | Shared signed acceptance remains in R07/R12; widgets remain R05. |
-| R03 Models, defaults and routing | Native defaults, explicit choices, ordinary recovery and profileless draft storage are merged. | Reconcile directory/service transitions, capacity/pre-profile input, cross-account fallback and uncertain-root materialization against actual consumers. Do not create a profile-switch feature from an old fixture checklist. |
+| R03 Models, defaults and routing | Native defaults, explicit choices, ordinary recovery and profileless draft storage are merged. | Current-consumer audit and installed-native rotation qualification address the remaining implementation questions; merge the [routing acceptance](upstream-routing-acceptance.md) batch before closure. Shared signed lifecycle remains R07/R12. |
 | R04 Attachments, media and context | Resource add/list/remove, references and context presentation exist. | Verify final consumer behavior and installed file/image limitations; native internal storage is not a public byte-resolution API. |
 | R05 Interactive MCP App UI | Integration metadata and settings exist. | Determine installed interaction support and complete the applicable widget consumer. Metadata alone does not close this group. |
-| R06 Prompt editing and recap | Recap service/UI and opt-in automatic eligibility are implemented. Prompt editing has selection, journal, native mutation/recovery and public transport. | Complete canonical desktop draft editing and review; qualify remaining recap and editing end-to-end flows. See the feature notes below. |
+| R06 Prompt editing and recap | Recap service/UI and opt-in automatic eligibility are implemented. Prompt editing now includes canonical desktop editing, durable confirmation, history handback and explicit resend. | Qualify remaining recap signed/live-voice and combined lost-reply flows; retain shared signed desktop acceptance in R07/R12. See the feature notes below. |
 | R07 Draft and signed desktop lifecycle | Draft persistence and source-bound recovery have targeted evidence. | Isolated signed-app blank-task/worktree, quit/menu/Dock/CmdQ, relaunch and export acceptance. |
 | R08 Uncertain dispatch and closing | Known-unsent, refusal and no-replay recovery fixes are merged. | Reconcile general ambiguous replies and installed shutdown/unload races with current evidence. |
 | R09 Other runtime consumers | Usage estimates, voice preferences, reasoning summaries and connector exposure have deliveries. | Close remaining Analytics, voice, provider/freeform, external-writer, accessibility and child/OS notice applicability. Do not rebuild existing usage owners. |
@@ -171,20 +171,26 @@ feature counts.
 | --- | --- | --- | --- |
 | Automatic recap | Optional | Persisted preference and selected-task desktop lifecycle; off by default. Installed-native synthetic-provider and rendered evidence exist. Signed desktop, live voice and combined lost-reply acceptance remain open. Removing recap must retain the output-observation fix below. | [1509](https://github.com/acg-box/decodex/pull/1509), [1510](https://github.com/acg-box/decodex/pull/1510), [1511](https://github.com/acg-box/decodex/pull/1511) |
 | Live output I/O | Core | Move the existing long-lived output connection off the shared desktop executor. Preserve this fix if recap is removed. | [1511](https://github.com/acg-box/decodex/pull/1511) |
-| Earlier-prompt editing | Optional, incomplete | Canonical native selection, durable receipt, one-shot revert/recovery and public paged transport are merged. GPUI review, canonical draft editing/storage and end-user acceptance remain open. Applied native history is not desktop draft restoration. | [1512](https://github.com/acg-box/decodex/pull/1512), [1514](https://github.com/acg-box/decodex/pull/1514), [1515](https://github.com/acg-box/decodex/pull/1515), [1516](https://github.com/acg-box/decodex/pull/1516) |
+| Earlier-prompt editing | Optional | Canonical desktop review/editing, durable confirmation, fresh history handback and explicit resend are merged. Relative local media uses the owned native process directory. Lost replies use readback without replay; occupied main input and conflicting drafts remain recoverable. Native socket, rendered interaction and local signed-package evidence exist. Shared installed desktop acceptance remains open. | [1512](https://github.com/acg-box/decodex/pull/1512), [1514](https://github.com/acg-box/decodex/pull/1514), [1515](https://github.com/acg-box/decodex/pull/1515), [1516](https://github.com/acg-box/decodex/pull/1516), [1518](https://github.com/acg-box/decodex/pull/1518) |
+| Native request envelope qualification | Core | Reject oversized native requests before external injection. Preserve the shared native request-size qualification if the optional editor is removed. | [1518](https://github.com/acg-box/decodex/pull/1518) |
 | Native revert and capacity retry | Core | Cancel unclaimed continuation after an owned native revert; preserve claimed attempts and receipts. Retain this fix if the editor is removed. | [1513](https://github.com/acg-box/decodex/pull/1513) |
 
 See [recap integration](task-recaps.md), [output observation](chief-output-observation.md)
 and [prompt editing](prompt-editing.md) for contracts and validation limits.
-Prompt-edit removal must account for outstanding durable receipts and the schema43
-minimum-reader contract; hiding its UI is not authority to discard recovery state.
+Prompt-edit removal must account for outstanding durable receipts, schema43 history
+edit fences and schema44 immutable input/upload records. Hiding the UI is not authority
+to discard recovery state or permit an older reader to replay unresolved input.
 The [native CLI bundle admission](codex-cli-bundle-compatibility.md) repair remains
 core for all native execution, even if both optional features are removed.
 
-This refresh checks documentation consistency and merged ancestry. It adds no
-application behavior and does not rerun the earlier runtime or desktop tests.
-At readback, PR1516 Dependency Review and JavaScript/Python CodeQL passed; Rust
-CodeQL was still running. Merge state is not evidence that every check finished.
+PR1518 merged after all remote checks passed. Its 22 signed commits are ancestors of
+canonical main and were verified by GitHub. Combined affected-package nextest ran
+2,377 tests successfully, with 68 skipped and one leaky-handle warning on an unchanged
+pure account-profile test; an isolated run passed. Architecture checks and local
+signed-package tests passed, including a deliberately rejected ABI mismatch.
+Installed Codex 0.158.0-alpha.2 against a private synthetic provider received the full
+70 KB edited input through the public service with exactly one additional request.
+These results do not establish publication, installation or full R07/R12 acceptance.
 
 ## Maintenance policy
 

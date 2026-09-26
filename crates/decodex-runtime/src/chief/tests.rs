@@ -4,7 +4,6 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/archive.rs"] mod archive;
 #[path = "tests/async_recovery.rs"] mod async_recovery;
 #[path = "tests/capacity.rs"] mod capacity;
-#[path = "tests/prompt_edit.rs"] mod prompt_edit;
 #[path = "tests/closing_resume.rs"] mod closing_resume;
 #[path = "tests/drain_rejection.rs"] mod drain_rejection;
 #[path = "tests/guardian.rs"] mod guardian;
@@ -17,6 +16,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/native_subagent_live.rs"] mod native_subagent_live;
 #[path = "tests/native_subagents.rs"] mod native_subagents;
 #[path = "tests/native_task_references.rs"] mod native_task_references;
+#[path = "tests/prompt_edit.rs"] mod prompt_edit;
 #[path = "tests/reasoning_summary.rs"] mod reasoning_summary;
 #[path = "tests/task_history.rs"] mod task_history;
 #[path = "tests/unsent_input.rs"] mod unsent_input;
@@ -760,7 +760,7 @@ async fn wait_requires_future_due_and_due_checks_wake_once_per_timestamp() {
 
 #[tokio::test]
 async fn failed_thread_start_remains_unknown_without_retry() {
-	let (mut coordinator, _sent, _directory) = fixture().await;
+	let (mut coordinator, _sent, directory) = fixture().await;
 	coordinator.client.shutdown().await.unwrap();
 	assert!(coordinator.start_chief("chief", "Coordinate").await.is_err());
 	let work = coordinator.store.get_chief_work_item("chief".into()).await.unwrap();
@@ -775,6 +775,28 @@ async fn failed_thread_start_remains_unknown_without_retry() {
 		coordinator.continue_worker("chief", "Retry").await,
 		Err(ChiefError::UnknownDispatch)
 	));
+	let paths =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap()
+			.paths();
+	drop(coordinator);
+	let reopened = SqliteStore::open(&paths).unwrap();
+	let (mut cold, mut sent, _fresh_directory) = fixture().await;
+	cold.store = reopened;
+	cold.recover_persisted().await.unwrap();
+	let root = cold.store.get_chief_work_item("chief".into()).await.unwrap();
+	assert!(root.codex_thread_id.is_none());
+	assert_eq!(root.instructions, "Coordinate");
+	assert_eq!(root.dispatch_state, decodex_database::ChiefDispatchState::Unknown);
+	assert!(matches!(
+		cold.start_reserved_chief("chief", "Retry after restart").await,
+		Err(ChiefError::UnknownDispatch)
+	));
+	assert!(cold.start_chief("replacement", "Duplicate root").await.is_err());
+	assert!(
+		sent.try_recv().is_err(),
+		"a fresh native connection must not materialize an uncertain root again"
+	);
 }
 
 #[tokio::test]
