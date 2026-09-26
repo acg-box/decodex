@@ -47,7 +47,22 @@ impl ChiefHost {
 			Some(thread) => self.recap_source(work.as_str(), &thread).await,
 			None => None,
 		};
-		self.recaps.status(work, source.as_ref())
+		let mut result = self.recaps.status(work.clone(), source.as_ref());
+		if result.phase != decodex_protocol::TaskRecapPhase::Idle {
+			let revision = match &source {
+				Some(source) => self
+					.store
+					.chief_voice_history_revision(work.as_str().into(), source.key.thread.clone())
+					.await
+					.ok(),
+				None => None,
+			};
+			if revision.as_ref().is_none_or(|v| !self.recaps.voice_is_current(work.as_str(), v)) {
+				result.phase = decodex_protocol::TaskRecapPhase::Cancelled;
+				result.recap = None;
+			}
+		}
+		result
 	}
 
 	pub(super) async fn start_recap(
@@ -58,29 +73,56 @@ impl ChiefHost {
 	) -> Result<String, ChiefHostError> {
 		let source =
 			self.recap_source(work, thread).await.ok_or("Task connection is unavailable")?;
+		let voice = self
+			.store
+			.read_chief_voice_history(work.into(), thread.into())
+			.await
+			.map_err(|_| "Voice history is unavailable")?;
+		if voice.revision.open_calls > 0 {
+			return Err("Finish the voice conversation before generating a recap".into());
+		}
 		let copy = Source { key: source.key.clone(), client: source.client.clone() };
-		let cancelled = self.recaps.start(copy, key)?;
+		let cancelled = self.recaps.start(copy, key, voice.revision.clone())?;
 		let host = self.clone();
 		let key = key.to_owned();
 		tokio::spawn(async move {
-			host.run_recap(key, source, cancelled).await;
+			host.run_recap(key, source, cancelled, voice).await;
 		});
 		Ok(work.into())
 	}
 
-	async fn recap_owner_is_current(&self, source: &Source) -> bool {
+	async fn recap_owner_is_current(
+		&self,
+		source: &Source,
+		voice: &decodex_database::ChiefVoiceHistoryRevision,
+	) -> bool {
+		if self
+			.store
+			.chief_voice_history_revision(source.key.work.clone(), source.key.thread.clone())
+			.await
+			.ok()
+			.as_ref() != Some(voice)
+		{
+			return false;
+		}
 		self.recap_source(&source.key.work, &source.key.thread)
 			.await
 			.is_some_and(|current| crate::chief_recap::same_owner(source, &current))
 	}
 
-	async fn run_recap(&self, key: String, source: Source, cancelled: watch::Receiver<bool>) {
+	async fn run_recap(
+		&self,
+		key: String,
+		source: Source,
+		cancelled: watch::Receiver<bool>,
+		voice: decodex_database::ChiefVoiceHistory,
+	) {
 		let mut temporary_id = None;
 		let result = async {
-			let prepared = crate::chief_recap::prepare(&source).await?;
+			let prepared = crate::chief_recap::prepare(&source, Some(&voice)).await?;
 			if *cancelled.borrow()
 				|| !prepared.guard.is_live()
-				|| !self.recap_owner_is_current(&source).await
+				|| !self.recap_owner_is_current(&source, &voice.revision).await
 			{
 				return None;
 			}
@@ -90,7 +132,7 @@ impl ChiefHost {
 			let latest = source.client.thread_latest_turn_id(&source.key.thread).await;
 			if *cancelled.borrow()
 				|| !prepared.guard.is_live()
-				|| !self.recap_owner_is_current(&source).await
+				|| !self.recap_owner_is_current(&source, &voice.revision).await
 				|| latest.ok() != Some(prepared.latest_turn)
 			{
 				let _ = temporary.cancel().await;
@@ -106,7 +148,7 @@ impl ChiefHost {
 				.ok()?;
 			if *cancelled.borrow()
 				|| !prepared.guard.is_live()
-				|| !self.recap_owner_is_current(&source).await
+				|| !self.recap_owner_is_current(&source, &voice.revision).await
 			{
 				return None;
 			}

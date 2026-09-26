@@ -198,6 +198,7 @@ impl ChiefCoordinator {
 							voice.transcript_sequence,
 							role.into(),
 							text.into(),
+							true,
 						)
 						.await?;
 				}
@@ -235,6 +236,7 @@ impl ChiefCoordinator {
 								voice.transcript_sequence,
 								role.into(),
 								text,
+								false,
 							)
 							.await?;
 					}

@@ -18,12 +18,22 @@ pub(super) async fn run(
 	let mut cancellable = generate;
 	let mut request = generate.then(|| WireText::new(key.as_str()).expect("bounded identity"));
 	if generate {
-		let _ = client
+		let outcome = client
 			.execute(
 				ChiefActionDto::GenerateRecap { work_id: owner.clone(), thread_id: thread.clone() },
 				key,
 			)
 			.await;
+		if let Ok(ChiefCommandResponse::Rejected { error }) = outcome {
+			let feedback = match error {
+				decodex_protocol::CommandError::ApplicationUnavailable { message } =>
+					message.as_str().to_owned(),
+				_ => "The recap request was not accepted. Refresh to review its current state."
+					.into(),
+			};
+			let _ = updates.send(Some((None, feedback)));
+			return;
+		}
 	}
 	loop {
 		if *cancellation.borrow() || cancellation.has_changed().is_err() {

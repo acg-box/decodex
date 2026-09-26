@@ -2,6 +2,9 @@
 const OMITTED_HISTORY: &str = "[Earlier exchanges omitted]\n\n";
 const EXCERPT_MARKER: &str = "\n[... excerpted ...]\n";
 pub(super) fn render(exchanges: &[Exchange]) -> String {
+	render_budget(exchanges, super::prompt::HISTORY_MAX_BYTES)
+}
+pub(super) fn render_budget(exchanges: &[Exchange], max_bytes: usize) -> String {
 	let Some(latest) = exchanges.last() else {
 		return String::new();
 	};
@@ -16,7 +19,7 @@ pub(super) fn render(exchanges: &[Exchange]) -> String {
 		})
 		.collect::<Vec<_>>();
 	let mut bytes = blocks.iter().map(String::len).sum::<usize>() + 2 * (blocks.len() - 1);
-	if bytes <= super::prompt::HISTORY_MAX_BYTES {
+	if bytes <= max_bytes {
 		return blocks.join("\n\n");
 	}
 
@@ -24,14 +27,12 @@ pub(super) fn render(exchanges: &[Exchange]) -> String {
 	let retained = if latest.assistant.is_empty() { 2 } else { 1 };
 	let oldest_retained = exchanges.len().saturating_sub(retained);
 	let mut start = 0;
-	while bytes > super::prompt::HISTORY_MAX_BYTES - OMITTED_HISTORY.len()
-		&& start < oldest_retained
-	{
+	while bytes > max_bytes - OMITTED_HISTORY.len() && start < oldest_retained {
 		bytes -= blocks[start].len() + 2;
 		start += 1;
 	}
 	let omission = if start > 0 { OMITTED_HISTORY } else { "" };
-	let budget = super::prompt::HISTORY_MAX_BYTES - omission.len();
+	let budget = max_bytes - omission.len();
 	if bytes <= budget {
 		return format!("{omission}{}", blocks[start..].join("\n\n"));
 	}

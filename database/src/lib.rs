@@ -48,8 +48,12 @@ mod chief_task_references;
 pub use chief_questions::ChiefAsyncQuestion;
 mod chief_process;
 mod chief_voice;
+mod chief_voice_history;
 pub use chief_output::{ChiefLiveOutput, ChiefOutputUpdate};
 pub use chief_voice::ChiefVoiceCall;
+pub use chief_voice_history::{
+	ChiefVoiceHistory, ChiefVoiceHistoryRevision, ChiefVoiceTranscript, ChiefVoiceTranscriptCall,
+};
 mod command;
 mod continuations;
 mod conversation_routing;

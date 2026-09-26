@@ -35,7 +35,12 @@ async fn qualify(home: &std::path::Path) {
 	let address = listener.local_addr().expect("loopback address");
 	let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 	let metadata = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-	let backend = tokio::spawn(serve(listener, requests.clone(), metadata));
+	let backend = tokio::spawn(serve(
+		listener,
+		requests.clone(),
+		metadata,
+		Some("Spoken fixture correction"),
+	));
 	let catalog = native_home.join("models.json");
 	std::fs::write(
 		&catalog,
@@ -106,7 +111,7 @@ async fn qualify(home: &std::path::Path) {
 	use futures_util::FutureExt as _;
 	let outcome = std::panic::AssertUnwindSafe(tokio::time::timeout(
 		Duration::from_secs(50),
-		check(&client, &runtime, home, &account, &requests),
+		check(&client, &runtime, &store, home, &account, &requests),
 	))
 	.catch_unwind()
 	.await;
@@ -118,6 +123,7 @@ async fn qualify(home: &std::path::Path) {
 async fn check(
 	client: &ChiefClient,
 	runtime: &ConversationRuntime,
+	store: &SqliteStore,
 	home: &std::path::Path,
 	account: &AccountId,
 	requests: &std::sync::atomic::AtomicUsize,
@@ -143,6 +149,8 @@ async fn check(
 	let thread = settled(client).await;
 	let native = runtime.chief_client().expect("active native client");
 	let before = native.thread_latest_turn_id(&thread).await.expect("native parent turn");
+	prepare_voice_call(client, runtime, store, &work, &thread, before.clone()).await;
+	assert_eq!(requests.load(Ordering::Acquire), 1, "active voice must not infer a recap");
 	let generate = Action::GenerateRecap {
 		work_id: work.clone(),
 		thread_id: WireText::new(&thread).expect("native thread"),
@@ -157,6 +165,23 @@ async fn check(
 	assert_eq!(state.request_id.as_ref().map(WireText::as_str), Some("recap-one"));
 	assert_eq!(requests.load(Ordering::Acquire), 2, "same-key socket retry must not infer again");
 	assert_eq!(native.thread_latest_turn_id(&thread).await.expect("parent history"), before);
+	store
+		.record_chief_voice_transcript(
+			"recap-voice".into(),
+			36,
+			"user".into(),
+			"Late spoken correction: do not publish.".into(),
+			true,
+		)
+		.await
+		.expect("late caption");
+	assert_eq!(
+		client.recap(work.clone()).await.expect("voice version read").phase,
+		Phase::Cancelled
+	);
+	assert_eq!(requests.load(Ordering::Acquire), 2, "voice version query is read-only");
+	accepted(client, generate.clone(), "recap-voice-refresh").await;
+	wait_phase(client, &work, Phase::Ready).await;
 	accepted(
 		client,
 		Action::Send {
@@ -229,4 +254,73 @@ async fn wait_phase(client: &ChiefClient, work: &EntityId, phase: Phase) {
 		assert_ne!(state.phase, Phase::Failed, "native recap failed: {state:?}");
 		tokio::time::sleep(Duration::from_millis(20)).await;
 	}
+}
+
+async fn prepare_voice_call(
+	client: &ChiefClient,
+	runtime: &ConversationRuntime,
+	store: &SqliteStore,
+	work: &EntityId,
+	thread: &str,
+	baseline: Option<String>,
+) {
+	let (generation, _, _, _) = runtime.chief_usage_source().await.expect("voice source");
+	store
+		.begin_chief_voice_call(decodex_database::ChiefVoiceCall {
+			session_id: "recap-voice".into(),
+			work_id: work.as_str().into(),
+			thread_id: thread.into(),
+			generation_id: generation.as_str().into(),
+			baseline_turn_id: baseline.clone(),
+		})
+		.await
+		.expect("authorized voice call");
+	for sequence in 1..=35 {
+		let text = if sequence == 35 {
+			"Spoken fixture correction: keep deployment paused.".into()
+		} else {
+			format!("Earlier spoken sentence {sequence}")
+		};
+		store
+			.record_chief_voice_transcript(
+				"recap-voice".into(),
+				sequence,
+				"user".into(),
+				text,
+				true,
+			)
+			.await
+			.expect("visible voice input");
+	}
+	let history = store
+		.read_chief_voice_history(work.as_str().into(), thread.into())
+		.await
+		.expect("voice source read");
+	assert_eq!(history.calls.len(), 1);
+	assert_eq!(history.calls[0].entries.len(), 32);
+	assert_eq!(history.calls[0].entries[0].sequence, 4);
+	assert_eq!(history.calls[0].entries[31].sequence, 35);
+	assert_eq!(history.calls[0].baseline_turn_id, baseline);
+	assert!(history.truncated);
+	assert_eq!(history.revision.open_calls, 1);
+	assert!(
+		store
+			.read_chief_voice_history(work.as_str().into(), "another-thread".into())
+			.await
+			.expect("other source")
+			.calls
+			.is_empty()
+	);
+	let response = client
+		.execute(
+			Action::GenerateRecap {
+				work_id: work.clone(),
+				thread_id: WireText::new(thread).expect("thread"),
+			},
+			IdempotencyKey::new("recap-during-voice").expect("key"),
+		)
+		.await
+		.expect("voice overlap response");
+	assert!(matches!(response, ChiefCommandResponse::Rejected { .. }));
+	store.close_chief_voice_call("recap-voice".into()).await.expect("voice call closed");
 }

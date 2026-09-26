@@ -50,18 +50,18 @@ fn recap_requires_nullable_next_action_and_character_bounds() {
 async fn exact_cancel_and_source_changes_never_replace_a_newer_request() {
 	let (source, _remote, _events) = source();
 	let recaps = Recaps::default();
-	let cancel = recaps.start(copy(&source), "one").expect("first request");
+	let cancel = recaps.start(copy(&source), "one", Default::default()).expect("first request");
 	recaps.cancel_request("work", "other");
 	assert!(!*cancel.borrow());
 	recaps.cancel_request("work", "one");
 	assert!(*cancel.borrow());
-	assert!(recaps.start(copy(&source), "two").is_err());
+	assert!(recaps.start(copy(&source), "two", Default::default()).is_err());
 	recaps.finish("work", "one", None, Some(result()));
 	assert_eq!(
 		recaps.status(EntityId::new("work").expect("id"), Some(&source)).phase,
 		Phase::Cancelled
 	);
-	let _second = recaps.start(copy(&source), "two").expect("cleanup finished");
+	let _second = recaps.start(copy(&source), "two", Default::default()).expect("cleanup finished");
 	recaps.finish("work", "one", None, Some(result()));
 	assert_eq!(
 		recaps.status(EntityId::new("work").expect("id"), Some(&source)).phase,
@@ -84,7 +84,7 @@ async fn exact_cancel_and_source_changes_never_replace_a_newer_request() {
 async fn temporary_events_are_private_and_new_user_input_invalidates_only_its_source() {
 	let (source, _remote, _events) = source();
 	let recaps = Recaps::default();
-	let cancelled = recaps.start(copy(&source), "one").expect("request");
+	let cancelled = recaps.start(copy(&source), "one", Default::default()).expect("request");
 	let mut routed = recaps.register("temporary").expect("route");
 	let event = |thread: &str, method: &str| ServerEvent::Notification {
 		method: method.into(),
@@ -103,10 +103,10 @@ async fn temporary_events_are_private_and_new_user_input_invalidates_only_its_so
 async fn restarting_the_transient_owner_does_not_restore_or_replay_a_recap() {
 	let (source, _remote, _events) = source();
 	let recaps = Recaps::default();
-	let _cancel = recaps.start(copy(&source), "one").expect("request");
+	let _cancel = recaps.start(copy(&source), "one", Default::default()).expect("request");
 	let mut other = copy(&source);
 	other.key.work = "other".into();
-	assert!(recaps.start(other, "two").is_err());
+	assert!(recaps.start(other, "two", Default::default()).is_err());
 	recaps.finish("work", "one", None, Some(result()));
 	let restarted = Recaps::default();
 	let state = restarted.status(EntityId::new("work").expect("id"), Some(&source));
@@ -120,7 +120,7 @@ async fn transport_observed_changes_hide_ready_results_before_service_event_deli
 	use tokio::io::AsyncWriteExt as _;
 	let (source, mut remote, mut events) = source();
 	let recaps = Recaps::default();
-	let cancelled = recaps.start(copy(&source), "one").expect("request");
+	let cancelled = recaps.start(copy(&source), "one", Default::default()).expect("request");
 	recaps.finish("work", "one", None, Some(result()));
 	remote.write_all(format!("{}\n",json!({"method":"turn/started","params":{"threadId":"native","turn":{"id":"new","status":"inProgress"}}})).as_bytes()).await.expect("native notification");
 	let _queued = events.recv().await.expect("transport observed event");
@@ -141,7 +141,8 @@ async fn voice_transcripts_retire_a_recap_before_service_routing_without_a_nativ
 	] {
 		let (source, mut remote, mut events) = source();
 		let recaps = Recaps::default();
-		let cancelled = recaps.start(copy(&source), "voice-recap").expect("request");
+		let cancelled =
+			recaps.start(copy(&source), "voice-recap", Default::default()).expect("request");
 		recaps.finish("work", "voice-recap", None, Some(result()));
 		for (thread, text, expected) in [
 			("another-thread", "Spoken correction", Phase::Ready),

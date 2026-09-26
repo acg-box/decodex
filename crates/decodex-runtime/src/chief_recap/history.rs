@@ -5,22 +5,30 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 
 pub(super) struct History {
-	pub prompt: String,
+	pub exchanges: Vec<Exchange>,
 	pub latest_turn: Option<String>,
 }
 
-pub(super) async fn read(client: &AppServerClient, thread: &str) -> Result<History, ClientError> {
-	tokio::time::timeout(std::time::Duration::from_secs(25), read_inner(client, thread))
+pub(super) async fn read(
+	client: &AppServerClient,
+	thread: &str,
+	voice: bool,
+) -> Result<History, ClientError> {
+	tokio::time::timeout(std::time::Duration::from_secs(25), read_inner(client, thread, voice))
 		.await
 		.map_err(|_| ClientError::Io)?
 }
 
-async fn read_inner(client: &AppServerClient, thread: &str) -> Result<History, ClientError> {
+async fn read_inner(
+	client: &AppServerClient,
+	thread: &str,
+	voice: bool,
+) -> Result<History, ClientError> {
 	let metadata = client.thread_read(json!({"threadId":thread})).await?;
 	if metadata["thread"]["id"] != thread {
 		return Err(ClientError::InvalidFrame);
 	}
-	let mut recent = Recent::default();
+	let mut recent = Recent { voice, ..Default::default() };
 	match metadata["thread"]["historyMode"].as_str() {
 		None | Some("legacy") => {
 			let history =
@@ -82,6 +90,7 @@ fn turn_id(turn: &Value) -> Result<&str, ClientError> {
 }
 #[derive(Default)]
 struct Recent {
+	voice: bool,
 	seen: HashSet<String>,
 	messages: Vec<Message>,
 	latest: Option<String>,
@@ -103,7 +112,18 @@ impl Recent {
 		if self.bytes > decodex_codex::app_server_client::MAX_FRAME_BYTES {
 			return Err(ClientError::CapacityExceeded);
 		}
-		let mut next = visible(items.as_array().ok_or(ClientError::InvalidFrame)?)?;
+		let items = items.as_array().ok_or(ClientError::InvalidFrame)?;
+		let filtered: Vec<_> = items
+			.iter()
+			.filter(|item| !self.voice || !crate::chief::voice_handoff(item))
+			.cloned()
+			.collect();
+		let mut next = visible(&filtered)?;
+		if self.voice {
+			for message in &mut next {
+				message.text = format!("[Native task turn {}]\n{}", json!(id), message.text);
+			}
+		}
 		if turn["status"] != "completed"
 			&& let Some(user) = next.iter_mut().find(|m| m.user)
 		{
@@ -119,7 +139,11 @@ impl Recent {
 	}
 
 	fn finish(self) -> Result<History, ClientError> {
-		finish(select(&self.messages), self.latest)
+		if self.voice {
+			Ok(History { exchanges: select(&self.messages), latest_turn: self.latest })
+		} else {
+			finish(select(&self.messages), self.latest)
+		}
 	}
 }
 
@@ -128,12 +152,12 @@ fn finish(exchanges: Vec<Exchange>, latest_turn: Option<String>) -> Result<Histo
 	if history.is_empty() {
 		return Err(ClientError::InvalidFrame);
 	}
-	Ok(History { prompt: super::prompt::build(&history), latest_turn })
+	Ok(History { exchanges, latest_turn })
 }
 
-struct Message {
-	user: bool,
-	text: String,
+pub(super) struct Message {
+	pub user: bool,
+	pub text: String,
 }
 fn visible(items: &[Value]) -> Result<Vec<Message>, ClientError> {
 	let mut messages = Vec::new();
@@ -175,7 +199,7 @@ fn visible(items: &[Value]) -> Result<Vec<Message>, ClientError> {
 }
 
 // Input is newest-first, including native item order within each turn.
-fn select(messages: &[Message]) -> Vec<Exchange> {
+pub(super) fn select(messages: &[Message]) -> Vec<Exchange> {
 	let mut exchanges = Vec::new();
 	let mut current = Exchange::default();
 	let mut answered = 0;
@@ -194,7 +218,7 @@ fn select(messages: &[Message]) -> Vec<Exchange> {
 			format!("{}\n\n{field}", message.text)
 		};
 	}
-	if !current.user.is_empty() {
+	if !current.user.is_empty() || !current.assistant.is_empty() {
 		exchanges.push(current);
 	}
 	exchanges.reverse();

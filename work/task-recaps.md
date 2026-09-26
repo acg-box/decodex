@@ -1,156 +1,111 @@
 # Task recap integration
 
-Classification: optional product capability. The complete feature is not delivered.
-This batch adds native-history preparation and service request state on top of
-[the temporary request lifecycle](temporary-structured-requests.md).
+Classification: optional product capability. Manual recap and saved voice input
+are implemented. The complete feature still needs automatic eligibility and
+signed desktop acceptance.
 
-Reference endpoint: 595cc91e8cbb1c2ca822d0311dcf12709410c582. The implementation
-uses the upstream recap_history selection, recap_prompt instructions and structured
-result contract. Local protocol 2.84 adds GenerateRecap, CancelRecap and GetChiefRecap.
+Fixed upstream reference: `595cc91e8cbb1c2ca822d0311dcf12709410c582`.
+Local protocol 2.84 supplies GenerateRecap, CancelRecap and GetChiefRecap.
+The [temporary request owner](temporary-structured-requests.md) runs inference.
 
-## Current service behavior
+## Service ownership
 
-An explicit generation command identifies the local work and its exact native
-thread. The existing database ownership check binds it to the active process
-generation before admission and before publication. The existing Chief command/publication owner handles acceptance and duplicate
-commands in its current server instance. A query reads status; it does not start,
-replay or interrupt inference. Recap commands do not wake ordinary pending work.
-No new database table, durable job or automatic restart replay is added. A service
-restart clears transient recap state; it does not resume the old request. This is
-not a claim of cross-restart durable command deduplication.
+Generation names the exact work and native thread. Database ownership, account,
+process generation, native history/settings guards and voice-history revision
+must remain current before preparation, inference and publication. A query reads
+state; it does not start, replay or cancel inference. Recap commands do not wake
+ordinary pending work. One request can be active or cleaning up; up to 32 recent
+states remain in memory. Service restart clears them and does not replay them.
+Same-key command receipts apply to the current server instance, not across restart.
 
-One recap can be preparing, running or cleaning up at a time. Up to 32 recent task
-states are retained. The native event receiver routes temporary-thread events to
-their bounded channel and leaves normal task events with the existing coordinator.
-Cancel commands name the exact request. Old completion callbacks cannot replace a
-new request. New user input, native task changes and disconnects invalidate results.
-Native history/settings guards remain alive through preparation, inference and
-cached presentation, so transport-observed changes also hide a result before the
-service event loop consumes their notifications. Existing native history guards
-can conservatively invalidate observations when another thread is reverted.
+The selected native model/provider and permissions remain in force. An ephemeral
+system thread disables tools, MCP servers, apps, plugins and native agents. The
+explicit `agents.enabled=false` setting is required even when both multi-agent
+feature flags are false: model metadata can otherwise enable collaboration tools.
+The parent thread receives no recap prompt or result. Cancellation attempts exact
+interruption and detachment. Local Cancelled state is not proof of immediate native
+termination. An uncertain generation command is never replayed.
 
-The reader selects eight recent answered exchanges and a newer unanswered request,
-including adjacent steering text. It uses native turn headers and complete item
-pages for paginated threads, and the native bounded includeTurns read for legacy
-threads. It does not pass tool output, reasoning or other item kinds to the model.
-Images and references use text placeholders, not image payloads. Failed or
-interrupted turns retain an explicit status caveat. A running turn is not eligible.
-Source reads have a time and aggregate byte bound; incomplete or malformed history
-is an error, not evidence of an empty conversation.
+## Native and voice input
 
-The complete prompt is at most 32 KiB. It drops old whole exchanges before it
-excerpts both ends of the newest answer and pending correction. The prompt retains
-upstream instructions about the active goal, completed progress, latest corrections
-and unresolved validation or availability caveats. Conversation text is data.
+Native history uses complete turn/item pages for paginated threads and bounded
+includeTurns for legacy threads. The reader selects recent answered exchanges and
+newer unanswered input. It rejects running turns and incomplete or malformed
+pages. Reads have a 25-second deadline and an aggregate native frame bound.
+Tool output and private reasoning are excluded. Images use placeholders; named
+references retain their names. Failed or interrupted turns retain their caveats.
+Unpaired public assistant output is retained without inventing a user message.
 
-The result requires summary and nullable next_action with no extra fields. Limits
-are 700 and 200 Unicode characters. Native inference remains in a separate tool-
-isolated ephemeral thread with the selected native model/provider and permissions.
-The main thread receives no recap prompt or result. Cancellation attempts exact
-interruption and detachment; a cancelled local view is not proof of immediate native
-termination. No uncertain model request is replayed.
+Voice input reuses chief_voice_calls and resolved chief_inbox_events. It reads
+only the exact work/thread, with the voice_transcript source namespace and exact
+session identity. Up to eight recent calls and 32 recent recorded sentences per
+call are read in one database snapshot. The source marks omissions. No duplicate
+transcript store or new database migration is added.
 
-## Evidence and remaining work
+Native task turns and spoken dialogue remain separate sources in the prompt.
+Native turn IDs, voice session/sequence and the pre-call native baseline preserve
+known provenance. Recording sequence does not prove a total spoken/native order.
+Partial captions can be flushed by role when a call closes. The prompt tells the
+model to preserve uncertainty when conflicting corrections cannot be ordered and
+not to count repeated spoken/native wording as additional completed work.
 
-The native fixture uses an isolated Codex home and local synthetic Responses server.
-It calls the runtime recap owner directly, verifies native history and unchanged
-parent turn identity, observes no tools in recap inference, and verifies that a new
-parent input invalidates the result. It is not a full desktop or socket-command
-acceptance test. The full workspace run passed 2,468 tests with 66 skipped. After the final native
-source guard and legacy-history changes, all nine focused recap tests and the
-native fixture passed again. The native fixture covers both legacy and paginated
-history. Strict Clippy passed for all workspace packages; the final runtime check
-covers these later changes. The socket-command and desktop acceptance gaps below
-remain open.
+New records distinguish complete transcript events from partial closing captions.
+Old records retain unknown completeness; there is no backfill that guesses it.
+A selected call without stored text is disclosed as missing transcript evidence,
+not evidence that no instruction was spoken. Known voice history permits the
+reader to omit internal realtime delegation envelopes while retaining public task
+output. Those internal execution instructions are never presented as spoken text.
 
-The full workspace run also exposed an older configuration-recovery test error:
-when a hook reservation won first, the test later omitted its prior receipt ID.
-The fixture now exercises both orders and supplies the correct ID. The separate
-concurrent-exclusion test remains. Database behavior is unchanged.
+Both sources share the 32-KiB full-prompt budget. Excerpts retain the beginning and
+end of the latest answer and pending correction, with explicit omission markers.
+The response requires summary and nullable next_action, with no extra fields;
+limits are 700 and 200 Unicode characters.
 
-Still required for complete recaps:
+## Freshness and desktop behavior
 
-- Complete signed desktop acceptance for the manual controls delivered in PR1503.
-- Add the upstream automatic delay, progress eligibility and opt-out controls.
-- Complete end-to-end lost-reply, task-selection and cold desktop acceptance.
-  The public native socket command scenario is qualified below.
-- Integrate visible voice transcripts. Current history preparation rejects internal
-  realtime handoff envelopes instead of treating them as user-visible text. It does
-  not yet provide a voice-history recap.
+Generation waits until the selected voice call is closed. The desktop displays
+that known rejection reason. A voice-history revision covers appended transcript
+IDs, call count, open-call count and closure state. A changed revision hides cached
+results and prevents an old prepared request from publishing.
+
+Nonempty user/assistant realtime transcript delta/done notifications also
+invalidate the existing per-thread guard before service event delivery. A read
+then hides the old recap without a cancellation effect. The service cancels its
+request and passes the same event to the normal voice owner. Empty text and other
+threads do not invalidate this result.
+
+The task conversation has a Task recap control for native-backed tasks. Opening
+it only reads. Generate is explicit. Lost replies lead to status queries, never a
+second generation. Source changes, new input, task changes and panel closure
+retire pending work by exact request ID. Completed results survive panel closure
+while their source remains current. The UI checks its epoch and cancellation
+state before displaying updates. Text is plain; it does not execute markup.
+
+## Evidence
+
+The installed-native fixture uses the real ProtocolServer, ServiceApplication,
+ChiefHost and account-bound runtime with synthetic credentials and a local
+Responses provider. It verifies that stored voice text reaches the recap request,
+that no tools are present, that open voice calls reject generation, and that late
+stored captions invalidate prior results without inference from the status query.
+It also checks same-key replay counts, unchanged parent history, new input and
+exact versus stale cancellation. The fixture runs with Codex 0.158.0-alpha.2.
+
+The test child HOME must be a fresh private directory under the user-owned home,
+outside any existing .codex directory. /tmp fails the normal selected-directory
+policy. Set HOME, CODEX_HOME, DECODEX_TEST_ACCOUNT_HOME and DECODEX_TEST_CODEX_BINARY
+only in the test child. The .decodex-recap-fixture marker contains isolated-recap
+and a newline. Test shutdown also runs after assertion failures.
+
+Other tests cover UTF-8 budget/provenance, internal-handoff exclusion, missing
+captions, stored complete/partial/legacy metadata, bounds, transport-observed
+invalidation, lost desktop command replies and known rejection feedback.
+These fixtures do not prove microphone capture or signed desktop acceptance.
+
+## Remaining scope
+
+- Automatic delay, progress eligibility and opt-out controls.
+- Signed desktop and live voice acceptance, including task selection and cold UI.
+- End-to-end lost-reply acceptance across desktop and real service together.
 
 The upstream maintainer remains paused, including after manual completion.
-
-## Manual desktop entry
-
-The task conversation shows a `Task recap` control when it has a native thread.
-Opening the control reads the current service state. `Generate recap` is an
-explicit action. The desktop polls the state while the request or its displayed
-result is current. It never repeats a generation command after a lost reply.
-A failed read hides the old text and retries only the query. The user can cancel.
-
-The panel sends cancellation for the exact pending request when it closes, when
-the task changes, or when its service/native source changes. Sending new input
-also clears the panel. A completed result does not need a cancellation command
-when its panel closes. The service remains the authority for result validity.
-The UI checks its panel epoch and cancellation state before it displays an update.
-A local cancellation message does not assert that native inference has stopped.
-
-The control uses the existing accessible mouse and keyboard button component.
-Recap text is plain text; it does not execute links or interpret markup. The
-visual fixture is selected with `DECODEX_VISUAL_WORKSPACE_PAGE=recap` in the
-repository's workbench capture binary. It uses synthetic text and no account.
-
-This is an optional product control for the final subtraction review. It does
-not complete automatic eligibility/delay/opt-out, visible voice transcript
-integration, public service command acceptance, or signed desktop acceptance.
-
-
-## Public native service qualification
-
-The opt-in `installed_recap_public_socket_preserves_parent_and_exact_request_identity`
-fixture uses the actual local ProtocolServer, ServiceApplication, ChiefHost and
-account-bound native runtime. Credentials and the Responses provider are synthetic.
-The child HOME must be a private directory under the user-owned home, outside any
-existing `.codex` directory; `/tmp` fails the normal selected-directory policy.
-The `.decodex-recap-fixture` marker contains `isolated-recap` and a newline. Set
-HOME, CODEX_HOME, DECODEX_TEST_ACCOUNT_HOME and DECODEX_TEST_CODEX_BINARY only in
-the test child. Start from a fresh directory. The fixture supplies fresh synthetic
-quota facts and shuts down its service even when an assertion fails.
-
-The installed 0.158.0-alpha.2 passed: a cold query makes no model request; a public
-Start command creates the parent; GenerateRecap reaches Ready; same-key socket
-replay does not infer again; parent latest-turn identity is unchanged; new public
-input invalidates the result; stale cancellation cannot cancel the newer request;
-exact cancellation removes its result. The separate synthetic desktop socket test
-covers a lost command reply. These are distinct from signed desktop acceptance.
-
-This fixture exposed a missing isolation setting. With model metadata selecting
-multi-agent v2, `features.multi_agent=false` and `features.multi_agent_v2=false`
-do not suppress the `collaboration` namespace. At the fixed upstream endpoint,
-`core/src/config/mod.rs::multi_agent_version_override` gives `agents.enabled=false`
-precedence over model metadata. The temporary thread now sets that value too.
-The same fixture failed on nonempty recap tools before the change and passed
-with no tools afterward. It keeps the assertion and never executes those tools.
-This changes only the temporary request config, not the parent task's agent policy.
-
-## Voice transcript freshness
-
-A nonempty user or assistant realtime transcript delta/done changes the selected
-conversation even when no task turn starts. The transport now invalidates that
-thread's existing read-to-write guard before service delivery. A recap query then
-hides the old result without causing a cancellation effect. The service routes the
-same notification to its normal voice owner and cancels the affected recap.
-Empty transcript events and another thread's events do not retire this result.
-
-The regression fixture sends native JSON notifications through the retained
-transport. It failed with Ready before the fix and passed with Cancelled after it,
-before the service routed the event. It also verifies that the read has no native
-cancellation side effect and that routing preserves the voice event for its owner.
-This is transport evidence, not microphone or live voice acceptance.
-
-Visible voice-history integration is still open. The existing store owns session
-identity, transcript sequence, thread/generation and the pre-call baseline turn.
-It does not record an exact native turn for each spoken sentence. An integration
-must preserve that partial ordering and must not invent a total order from text
-similarity or observation timestamps. Internal realtime delegation envelopes remain
-excluded from recap input.

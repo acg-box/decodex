@@ -127,3 +127,11 @@ installed-native test verifies no recap tools, no inference on query or same-key
 replay, unchanged parent history, new-input invalidation and exact cancellation.
 See [task recap qualification](task-recaps.md). Automatic scheduling, visible voice
 transcripts and signed desktop acceptance remain open.
+
+## Saved voice input in manual recap
+
+[Task recap input](task-recaps.md) now includes bounded stored voice transcripts
+with session, recording sequence, native baseline and caption completeness. The
+prompt preserves uncertain cross-source ordering and excludes internal delegation
+instructions. This is part of the optional recap capability. Automatic scheduling
+and signed/live voice acceptance remain open.

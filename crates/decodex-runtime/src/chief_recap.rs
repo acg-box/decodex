@@ -3,6 +3,7 @@ mod excerpts;
 mod history;
 mod prompt;
 mod response;
+mod voice;
 
 use crate::chief_usage_estimate::Source;
 use decodex_codex::app_server_client::ServerEvent;
@@ -21,6 +22,7 @@ struct State {
 	routes: BTreeMap<String, mpsc::Sender<ServerEvent>>,
 }
 struct Record {
+	voice_revision: decodex_database::ChiefVoiceHistoryRevision,
 	source: Source,
 	guard: Option<decodex_codex::app_server_client::HistoryGuard>,
 	key: String,
@@ -83,6 +85,7 @@ impl Recaps {
 		&self,
 		source: Source,
 		key: &str,
+		voice_revision: decodex_database::ChiefVoiceHistoryRevision,
 	) -> Result<watch::Receiver<bool>, &'static str> {
 		let mut state = self.0.lock().map_err(|_| "Recap service unavailable")?;
 		if state.requests.values().any(|r| matches!(r.phase, Phase::Pending | Phase::Cancelling)) {
@@ -102,6 +105,7 @@ impl Recaps {
 		state.requests.insert(
 			source.key.work.clone(),
 			Record {
+				voice_revision,
 				source,
 				guard,
 				key: key.into(),
@@ -120,6 +124,16 @@ impl Recaps {
 		{
 			cancel(record);
 		}
+	}
+
+	pub(crate) fn voice_is_current(
+		&self,
+		work: &str,
+		revision: &decodex_database::ChiefVoiceHistoryRevision,
+	) -> bool {
+		self.0.lock().is_ok_and(|state| {
+			state.requests.get(work).is_none_or(|r| &r.voice_revision == revision)
+		})
 	}
 
 	pub(crate) fn status(&self, work: EntityId, source: Option<&Source>) -> TaskRecapStatus {
@@ -227,11 +241,15 @@ pub(crate) struct Prepared {
 	pub prompt: String,
 	pub latest_turn: Option<String>,
 }
-pub(crate) async fn prepare(source: &Source) -> Option<Prepared> {
+pub(crate) async fn prepare(
+	source: &Source,
+	voice: Option<&decodex_database::ChiefVoiceHistory>,
+) -> Option<Prepared> {
 	let (permissions, guard) = source.client.configured_task_permissions(&source.key.thread)?;
 	let model =
 		source.client.thread_model_settings(&source.key.thread, guard.clone()).await.ok()??;
-	let history = history::read(&source.client, &source.key.thread).await.ok()?;
+	let has_voice = voice.is_some_and(|v| v.revision.calls > 0);
+	let history = history::read(&source.client, &source.key.thread, has_voice).await.ok()?;
 	if !guard.is_live() {
 		return None;
 	}
@@ -244,7 +262,10 @@ pub(crate) async fn prepare(source: &Source) -> Option<Prepared> {
 			active_permission_profile: permissions.profile_id,
 			mcp_server_names: Vec::new(),
 		},
-		prompt: history.prompt,
+		prompt: match voice {
+			Some(voice) => self::voice::compose(&history, voice)?,
+			None => prompt::build(&excerpts::render(&history.exchanges)),
+		},
 		latest_turn: history.latest_turn,
 	})
 }
