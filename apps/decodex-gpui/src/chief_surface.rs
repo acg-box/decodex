@@ -1229,6 +1229,7 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
+		self.reset_model_settings();
 		self.reset_app_exposure();
 		self.reset_app_settings();
 		self.reset_saved_app_settings();
@@ -1307,6 +1308,7 @@ impl ChiefSurface {
 
 	fn apply_result(&mut self, result: Result<ChiefSnapshotResult, ()>) {
 		if !matches!(&result, Ok(ChiefSnapshotResult::Available(_))) {
+			self.reset_model_settings();
 			self.reset_live_reviewer();
 			self.reset_permission_profiles();
 			self.reset_task_plugins();

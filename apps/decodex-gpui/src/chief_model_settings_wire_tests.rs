@@ -311,3 +311,31 @@ fn inspecting_a_worker_does_not_replace_the_composers_model_observation(
 		assert_eq!(s.model_settings.observations.len(), 2);
 	});
 }
+
+#[gpui::test]
+fn unavailable_service_clears_model_observations_but_detail_close_keeps_them(
+	cx: &mut gpui::TestAppContext,
+) {
+	let surface = cx.new(ChiefSurface::new);
+	surface.update(cx, |s, cx| {
+		s.visual_workspace_fixture(cx);
+		s.model_settings.observations.insert("chief".into(), State::NotReported);
+		s.clear_activity_detail();
+		assert_eq!(s.model_settings.observations.get("chief"), Some(&State::NotReported));
+		let before = s.model_settings.epoch;
+		s.mark_stale(cx);
+		assert!(
+			s.model_settings.observations.is_empty(),
+			"disconnect invalidates native observations"
+		);
+		assert_ne!(s.model_settings.epoch, before, "late reads must be discarded");
+		s.model_settings.observations.insert("chief".into(), State::NotReported);
+		let before = s.model_settings.epoch;
+		s.apply_result(Err(()));
+		assert!(
+			s.model_settings.observations.is_empty(),
+			"failed snapshot invalidates observations"
+		);
+		assert_ne!(s.model_settings.epoch, before);
+	});
+}
