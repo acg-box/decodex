@@ -90,6 +90,7 @@ pub(crate) struct ChiefSurface {
 	voice_task: Option<Task<()>>,
 	voice_settings: voice_settings::Panel,
 	recap: recap::Panel,
+	automatic_recap: recap::Automatic,
 	audio_inputs: Vec<String>,
 	audio_input: String,
 	dictation: Option<dictation::DictationUi>,
@@ -339,6 +340,7 @@ impl ChiefSurface {
 			voice_task: None,
 			voice_settings: Default::default(),
 			recap: Default::default(),
+			automatic_recap: Default::default(),
 			audio_inputs: Vec::new(),
 			audio_input: String::new(),
 			dictation: None,
@@ -2162,6 +2164,7 @@ impl ChiefSurface {}
 
 impl Render for ChiefSurface {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.observe_recap_focus(window, cx);
 		self.prepare_voice_media(window);
 		self.render_workspace(window, cx)
 	}

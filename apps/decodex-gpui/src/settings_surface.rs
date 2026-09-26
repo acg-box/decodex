@@ -47,6 +47,13 @@ impl SettingsCategory {
 	}
 }
 
+#[derive(Clone, Copy)]
+enum DesktopPreference {
+	MenuBar,
+	Quota,
+	Recap,
+}
+
 pub(crate) struct SettingsSurface {
 	pub(crate) category: SettingsCategory,
 	power: power::PowerSettings,
@@ -231,6 +238,15 @@ impl SettingsSurface {
 		cx.notify();
 	}
 
+	fn toggle_recap(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+		let Some(settings) = self.snapshot.settings else { return };
+		if let Err(error) = self.controller.set_auto_recap(!settings.auto_recap) {
+			self.detail = input_error_detail(error).into();
+		}
+		self.snapshot = self.controller.snapshot();
+		cx.notify();
+	}
+
 	fn toggle_launch_at_login(
 		&mut self,
 		_: &gpui::ClickEvent,
@@ -265,19 +281,29 @@ impl SettingsSurface {
 		cx.notify();
 	}
 
-	fn toggle(&self, activation: bool, cx: &mut Context<Self>) -> impl IntoElement {
-		let enabled = self.snapshot.settings.is_some_and(|settings| {
-			if activation { settings.auto_activate_quota } else { settings.show_in_menu_bar }
+	fn toggle(&self, preference: DesktopPreference, cx: &mut Context<Self>) -> impl IntoElement {
+		let enabled = self.snapshot.settings.is_some_and(|settings| match preference {
+			DesktopPreference::MenuBar => settings.show_in_menu_bar,
+			DesktopPreference::Quota => settings.auto_activate_quota,
+			DesktopPreference::Recap => settings.auto_recap,
 		});
+		let (id, label, knob) = match preference {
+			DesktopPreference::MenuBar =>
+				("menubar-surface-toggle", "Show Decodex in the menu bar", "settings-knob"),
+			DesktopPreference::Quota => (
+				"quota-activation-toggle",
+				"Automatically activate weekly quota",
+				"activation-knob",
+			),
+			DesktopPreference::Recap =>
+				("automatic-recap-toggle", "Automatically recap tasks", "recap-knob"),
+		};
 		let interactive = self.snapshot.can_toggle;
 		div()
-			.id(if activation { "quota-activation-toggle" } else { "menubar-surface-toggle" })
+			.id(id)
+			.debug_selector(move || id.into())
 			.role(Role::Switch)
-			.aria_label(if activation {
-				"Automatically activate weekly quota"
-			} else {
-				"Show Decodex in the menu bar"
-			})
+			.aria_label(label)
 			.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
 			.w(px(36.0))
 			.h(px(20.0))
@@ -295,14 +321,14 @@ impl SettingsSurface {
 					.hover(|element| element.border_color(rgb(TEXT_MUTED)))
 					.active(|element| element.opacity(0.78))
 					.focus_visible(|element| element.border_color(rgb(BLUE)))
-					.on_click(cx.listener(if activation {
-						Self::toggle_activation
-					} else {
-						Self::toggle_menubar
+					.on_click(cx.listener(match preference {
+						DesktopPreference::Quota => Self::toggle_activation,
+						DesktopPreference::MenuBar => Self::toggle_menubar,
+						DesktopPreference::Recap => Self::toggle_recap,
 					}))
 			})
 			.child(switch_knob(
-				if activation { "activation-knob" } else { "settings-knob" },
+				knob,
 				enabled,
 				div().size(px(14.0)).rounded_full().bg(rgb(if enabled {
 					BLUE
@@ -622,7 +648,7 @@ impl SettingsSurface {
 				ui_theme::settings_row()
 					.px_0()
 					.child(div().flex_1().child("Auto-activate weekly quota"))
-					.child(self.toggle(true, cx)),
+					.child(self.toggle(DesktopPreference::Quota, cx)),
 			)
 			.child(div().text_size(px(11.)).text_color(rgb(TEXT_MUTED)).child(
 				"Start the next weekly window with a small request. Uses quota; no chat is saved.",
@@ -645,8 +671,12 @@ impl SettingsSurface {
 							ui_theme::settings_row()
 								.px_0()
 								.child(div().flex_1().child("Show in menu bar"))
-								.child(self.toggle(false, cx)),
+								.child(self.toggle(DesktopPreference::MenuBar, cx)),
 						),
+				)
+				.child(group().child(settings_group_title("Task recaps"))
+						.child(ui_theme::settings_row().px_0().child(div().flex_1().child("Automatic task recaps")).child(self.toggle(DesktopPreference::Recap, cx)))
+						.child(div().text_size(px(11.)).text_color(rgb(TEXT_MUTED)).child("After 30 minutes away, recap the selected task when it has new completed work. Uses its model and quota."))
 				)
 				.child(group().child(settings_group_title("Power")).child(self.power_control(cx)))
 				.child(

@@ -1,11 +1,12 @@
 # Task recap integration
 
-Classification: optional product capability. Manual recap and saved voice input
-are implemented. The complete feature still needs automatic eligibility and
-signed desktop acceptance.
+Classification: optional product capability. Manual recap, saved voice input and
+optional desktop scheduling are implemented. Signed desktop and live voice
+acceptance remain open. Automatic scheduling defaults to disabled.
 
 Fixed upstream reference: `595cc91e8cbb1c2ca822d0311dcf12709410c582`.
-Local protocol 2.84 supplies GenerateRecap, CancelRecap and GetChiefRecap.
+Protocol2.84 introduced GenerateRecap, CancelRecap and GetChiefRecap.
+The current local protocol is 2.85, including the desktop preference.
 The [temporary request owner](temporary-structured-requests.md) runs inference.
 
 ## Service ownership
@@ -111,10 +112,10 @@ stores. It preserves prior settings and their revision. An omitted command field
 preserves the stored choice; an explicit false disables it. The existing optimistic
 revision and settings publication apply.
 
-This batch supplies persistence and service readback only. It does not add a
-visible toggle or start a timer. The desktop trigger must consume this preference
-before automatic generation can be called implemented. Keep it disabled during
-the manual catch-up; daily upstream maintenance also remains paused.
+The General settings page exposes Automatic task recaps with a model/quota cost
+notice. The existing settings controller sends the explicit choice and waits for
+service readback. Keep it disabled during the manual catch-up; daily upstream
+maintenance also remains paused.
 
 The fixed upstream TUI policy requires at least three completed turns, then two
 new completed turns between recaps. The deadline is 30 minutes after the later
@@ -127,9 +128,52 @@ checksums, preference isolation, exact revisions, reopen, optional wire fields,
 and the service command/result/event/readback path without a native provider.
 No production database or user preference was changed by these tests.
 
+## Desktop automatic lifecycle
+
+The existing shell lifecycle poll drives checks; there is no second scheduling
+loop. Only the selected Chief task is eligible, while the Chief destination is
+selected, the service is online, the setting is enabled and the window is away.
+Running work, undisposed events and local voice/dictation keep the quiet period
+open. A source or activity change resets the quiet observation. The deadline is
+30 minutes after the later observed focus loss or quiet start. These conservative
+observations do not reconstruct native wall-clock completion times.
+
+At the deadline, the desktop reads native timeline pages through the existing
+service owner. Up to eight pages and 25 seconds can establish the three most
+recent distinct successful completed turns. Failed terminal boundaries do not
+count; repeated IDs across pages count once. Task/thread and account identities
+must remain consistent. Insufficient or unavailable evidence does not start
+inference. No history is inserted into the UI or persisted by this reader.
+
+Three completed turns permit the first automatic recap. At least two different
+completed turn IDs are required after the previous recap baseline. Automatic
+results keep the pre-request baseline; manual results establish a read-only
+baseline before automatic generation. Closing the panel does not discard a
+pending manual baseline. Native progress after a delayed baseline observation
+can require additional work before the next automatic recap.
+
+An eligible check calls the same one-shot generation path as the manual action.
+A failed history read or known failed recap permits at most one 30-second retry
+for the same observed source/activity version. An uncertain command is still
+resolved through read-only polling, never resent. Focus gain, opt-out, leaving
+the Chief destination or loss of the selected source cancels pending automatic
+work. These automatic controls do not cancel a manual request. Native source
+invalidation still applies to both.
+
+The ongoing recap I/O loop uses its own thread so it cannot occupy the shared
+GPUI executor indefinitely. The existing watch channel owns cancellation and
+normal exit. Generation identity and exact service cancellation remain unchanged.
+
+Desktop tests cover eligibility timing, retry bounds, progress paging and account
+changes, setting readback, baseline retention, and the real UI request path over
+a same-UID synthetic service. The latter drops the generation reply, confirms one
+generation through status and receives exact cancellation on focus gain. It uses
+GPUI's documented parking mode for real I/O. These tests do not substitute for
+signed desktop or installed-native acceptance of the automatic path.
+
 ## Remaining scope
 
-- Automatic delay, progress eligibility and the visible preference control.
+- Installed-native automatic-path acceptance and signed desktop interaction.
 - Signed desktop and live voice acceptance, including task selection and cold UI.
 - End-to-end lost-reply acceptance across desktop and real service together.
 

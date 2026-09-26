@@ -165,3 +165,12 @@ The optional recap capability now has a persisted, revision-checked auto_recap
 preference in the existing desktop settings owner. It defaults to false and adds
 no scheduler or visible toggle by itself. Automatic generation remains incomplete;
 see [task recap integration](task-recaps.md). This does not enable daily maintenance.
+
+## Desktop automatic recap lifecycle
+
+The optional recap setting now has a visible control and desktop lifecycle
+integration. It remains off by default. Only the selected idle Chief task can
+qualify after 30 minutes away and sufficient new completed native turns. Focus,
+selection and preference changes cancel automatic requests through the existing
+owner. See [task recap integration](task-recaps.md) for bounds and remaining
+signed/installed-native acceptance. Daily maintenance remains paused.

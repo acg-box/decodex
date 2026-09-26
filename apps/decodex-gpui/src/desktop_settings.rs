@@ -126,7 +126,7 @@ impl DesktopSettingsController {
 		if settings.show_in_menu_bar == show_in_menu_bar {
 			return Ok(());
 		}
-		state.queue_command(show_in_menu_bar, None, settings.revision)?;
+		state.queue_command(show_in_menu_bar, None, None, settings.revision)?;
 		drop(state);
 		self.inner.notify.notify_one();
 		Ok(())
@@ -138,7 +138,16 @@ impl DesktopSettingsController {
 	) -> Result<(), DesktopSettingsInputError> {
 		let mut state = self.lock();
 		let settings = state.settings.ok_or(DesktopSettingsInputError::NotLoaded)?;
-		state.queue_command(settings.show_in_menu_bar, Some(enabled), settings.revision)?;
+		state.queue_command(settings.show_in_menu_bar, Some(enabled), None, settings.revision)?;
+		drop(state);
+		self.inner.notify.notify_one();
+		Ok(())
+	}
+
+	pub(crate) fn set_auto_recap(&self, enabled: bool) -> Result<(), DesktopSettingsInputError> {
+		let mut state = self.lock();
+		let settings = state.settings.ok_or(DesktopSettingsInputError::NotLoaded)?;
+		state.queue_command(settings.show_in_menu_bar, None, Some(enabled), settings.revision)?;
 		drop(state);
 		self.inner.notify.notify_one();
 		Ok(())
@@ -503,6 +512,7 @@ impl State {
 		&mut self,
 		show_in_menu_bar: bool,
 		auto_activate_quota: Option<bool>,
+		auto_recap: Option<bool>,
 		expected_revision: EntityRevision,
 	) -> Result<(), DesktopSettingsInputError> {
 		if self.session.is_none() {
@@ -531,7 +541,7 @@ impl State {
 			payload: CommandPayload::SetDesktopSettings {
 				show_in_menu_bar,
 				auto_activate_quota,
-				auto_recap: None,
+				auto_recap,
 			},
 		});
 		self.command = DesktopSettingsCommandState::Sending;
@@ -656,7 +666,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn toggle_applies_only_the_matching_daemon_result() {
-		for activation in [false, true] {
+		for preference in [0, 1, 2] {
 			let controller = DesktopSettingsController::production();
 			let server = server();
 			controller.bind_session(7, server.clone());
@@ -682,7 +692,9 @@ mod tests {
 				},
 			);
 
-			if activation {
+			if preference == 2 {
+				controller.set_auto_recap(true).expect("queue recap preference");
+			} else if preference == 1 {
 				controller.set_auto_activate_quota(true).expect("queue activation preference");
 			} else {
 				controller.set_show_in_menu_bar(false).expect("queue menu-bar preference");
@@ -707,9 +719,9 @@ mod tests {
 				DesktopSettingsRouteOutcome::Fresh
 			);
 			let settings = DesktopSettingsDto {
-				show_in_menu_bar: activation,
-				auto_activate_quota: activation,
-				auto_recap: false,
+				show_in_menu_bar: preference != 0,
+				auto_activate_quota: preference == 1,
+				auto_recap: preference == 2,
 				revision: EntityRevision(9),
 			};
 			assert_eq!(
@@ -731,13 +743,14 @@ mod tests {
 			);
 			let snapshot = controller.snapshot();
 			assert_eq!(snapshot.command, DesktopSettingsCommandState::Accepted);
+			assert_eq!(snapshot.settings.unwrap().auto_recap, preference == 2);
 			assert_eq!(
 				snapshot.settings.expect("settings remain available").show_in_menu_bar,
-				activation
+				preference != 0
 			);
 			assert_eq!(
 				snapshot.settings.expect("settings remain available").auto_activate_quota,
-				activation
+				preference == 1
 			);
 		}
 	}
