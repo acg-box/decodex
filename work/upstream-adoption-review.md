@@ -109,3 +109,11 @@ The [task recap](task-recaps.md) now has a manual desktop control for reading,
 generating and cancelling the service-owned result. This is **optional**, not a
 core app-server compatibility requirement. Opening it does not start inference.
 Automatic recap eligibility and visible voice transcript integration remain open.
+
+## Installed CLI packaging compatibility
+
+[Signed CLI bundle admission](codex-cli-bundle-compatibility.md) is **core**. The
+installed 0.158.0-alpha.2 packages its executable inside CodexCLI.app. Preserve its
+signed context and compare the signed main-executable URL during static and
+suspended-child verification. This repair adds no optional product feature and
+does not extend the fixed upstream feature scan.

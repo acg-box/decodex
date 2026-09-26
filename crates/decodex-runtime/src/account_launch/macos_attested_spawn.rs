@@ -31,7 +31,7 @@ use core_foundation::{
 	data::{CFDataGetBytePtr, CFDataGetLength, CFDataGetTypeID, CFDataRef},
 	dictionary::{CFDictionary, CFDictionaryGetValue, CFDictionaryRef},
 	string::{CFString, CFStringRef},
-	url::CFURL,
+	url::{CFURL, CFURLGetTypeID, CFURLRef},
 };
 use libc::{
 	EINTR, ESRCH, F_GETFD, F_GETFL, F_SETFL, FD_CLOEXEC, O_CLOEXEC, O_NOFOLLOW, O_NONBLOCK,
@@ -66,6 +66,7 @@ const DYNAMIC_CODE_VALIDATION_FLAGS: Flags =
 #[link(name = "Security", kind = "framework")]
 unsafe extern "C" {
 	static kSecCodeInfoUnique: CFStringRef;
+	static kSecCodeInfoMainExecutable: CFStringRef;
 	static kSecCodeAttributeArchitecture: CFStringRef;
 	fn SecStaticCodeCreateWithPathAndAttributes(
 		path: core_foundation::url::CFURLRef,
@@ -495,11 +496,8 @@ fn validated_static_code(canonical_path: &Path) -> io::Result<SecStaticCode> {
 
 	check_static_validity(&code)?;
 
-	let reported_path = code
-		.path(Flags::NONE)
-		.map_err(|_| invalid_data("static code path is unavailable"))?
-		.to_path()
-		.ok_or_else(|| invalid_data("static code path is malformed"))?;
+	let reported_path =
+		copy_main_executable(code.as_concrete_TypeRef().cast::<c_void>().cast_const())?;
 
 	if reported_path != canonical_path {
 		return Err(invalid_data("static code path does not match the canonical executable"));
@@ -544,11 +542,8 @@ fn verify_dynamic_identity(pid: libc::pid_t, expected: &AttestedCodeIdentity) ->
 		)
 	})?;
 
-	let reported_path = code
-		.path(Flags::NONE)
-		.map_err(|_| invalid_data("dynamic code path is unavailable"))?
-		.to_path()
-		.ok_or_else(|| invalid_data("dynamic code path is malformed"))?;
+	let reported_path =
+		copy_main_executable(code.as_concrete_TypeRef().cast::<c_void>().cast_const())?;
 
 	if reported_path != expected.execution_path {
 		return Err(permission_denied("dynamic code path changed during spawn"));
@@ -654,7 +649,9 @@ fn dynamic_code_for_pid(pid: libc::pid_t) -> io::Result<SecCode> {
 	))
 }
 
-fn copy_unique_identity(code: *const c_void) -> io::Result<([u8; MAX_CODE_IDENTITY_BYTES], u8)> {
+fn signing_information(
+	code: *const c_void,
+) -> io::Result<CFDictionary<*const c_void, *const c_void>> {
 	let mut raw_information: CFDictionaryRef = ptr::null();
 	// SAFETY: `code` is a live SecCodeRef or SecStaticCodeRef. The returned dictionary follows the
 	// Create Rule and is immediately wrapped below.
@@ -669,6 +666,33 @@ fn copy_unique_identity(code: *const c_void) -> io::Result<([u8; MAX_CODE_IDENTI
 	let information = unsafe {
 		CFDictionary::<*const c_void, *const c_void>::wrap_under_create_rule(raw_information)
 	};
+	Ok(information)
+}
+
+fn copy_main_executable(code: *const c_void) -> io::Result<PathBuf> {
+	let information = signing_information(code)?;
+	// SAFETY: the signed information dictionary and global key are live during lookup.
+	let value = unsafe {
+		CFDictionaryGetValue(
+			information.as_concrete_TypeRef(),
+			kSecCodeInfoMainExecutable.cast::<c_void>(),
+		)
+	};
+	if value.is_null() {
+		return Err(invalid_data("signed code has no main executable"));
+	}
+	// SAFETY: value is a dictionary member; verify its CF type before wrapping it.
+	if unsafe { CFGetTypeID(value as CFTypeRef) } != unsafe { CFURLGetTypeID() } {
+		return Err(invalid_data("signed executable path is not a URL"));
+	}
+	// SAFETY: the type check establishes a CFURL. Get Rule retains it independently.
+	let url = unsafe { CFURL::wrap_under_get_rule(value as CFURLRef) };
+	let path = url.to_path().ok_or_else(|| invalid_data("signed executable URL is malformed"))?;
+	fs::canonicalize(path)
+}
+
+fn copy_unique_identity(code: *const c_void) -> io::Result<([u8; MAX_CODE_IDENTITY_BYTES], u8)> {
+	let information = signing_information(code)?;
 	// SAFETY: the dictionary and global key are live for this lookup.
 	let value = unsafe {
 		CFDictionaryGetValue(information.as_concrete_TypeRef(), kSecCodeInfoUnique.cast::<c_void>())
