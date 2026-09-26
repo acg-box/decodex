@@ -9,6 +9,24 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Four settings and review owners reconciled on 2026-09-26
+
+Verify the original SHA-256 and inspect every difference in these complete files.
+This documentation batch changes no production code or tests.
+
+| Original path | Complete difference and current evidence |
+| --- | --- |
+| `crates/decodex-runtime/src/chief/misalignment.rs` | The only production changes replace creation-default resume parameters with `chief/native_settings.rs::resume_params` and remove a duplicate model-observation call. The app-server client's guarded resume response records model facts through `ServerRequests::observe_permission_hydration`; the task model inspection persists current facts. PR1558 preserves the entire live-bound continuation flow, including stale/rejected/uncertain cases. Fresh focused tests retain those cases. |
+| `crates/decodex-codex/src/app_server_client/permissions_tests.rs` | Imports move within the same module. The only additional test invalidates both permission facts and pending resume hydration on close, archive, delete and revert. All inherited cases remain. |
+| `apps/decodex-gpui/src/chief_permissions_wire_tests.rs` | The current command is `SelectPermissions`. Unknown replies clear review authority, and the test exercises actual snapshot failure handling instead of a removed helper. Invalidation includes turn changes and child navigation. Running named profiles follow service eligibility like builtins: `chief_permissions.rs::inspect` and the sparse native `thread/settings/update` adapter own this behavior. The inherited expectation that every running named profile is disabled is superseded. |
+| `apps/decodex-gpui/src/chief_plugins_wire_tests.rs` | Unknown replies clear review authority; unavailable snapshots replace the old disconnect helper. Added cases verify that child navigation cannot edit parent settings and running-task controls follow current service eligibility. Other inherited cases remain unchanged. |
+
+Focused permission-adapter, rendered wire and misalignment suites validate these
+owners. The ignored installed-native misalignment test is not counted as run in
+this documentation pass; PR1558 records its separate native result. Close four
+register rows only. Model/reviewer DTO changes, shared runtime modules, signed
+application acceptance and the other open files remain separate.
+
 ## Restored owners reconciled after PR1544
 
 Nine complete-file comparisons were verified at
