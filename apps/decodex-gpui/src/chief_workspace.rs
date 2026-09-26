@@ -191,6 +191,7 @@ impl ChiefSurface {
 		self.reset_saved_app_settings();
 		self.reset_native_goal();
 		self.clear_activity_detail();
+		self.reset_recap();
 		self.selected = Some(id.to_owned());
 		self.connection_details_expanded = false;
 		self.history = self.history_cache.get(id).cloned().map(|h| (id.to_owned(), h));
@@ -1379,6 +1380,7 @@ impl ChiefSurface {
 			return;
 		}
 		match page {
+			"recap" => self.visual_recap(),
 			"worker" => self.open_page("verify", cx),
 			"empty" | "empty-draft" => {
 				self.sidebar_visible = false;

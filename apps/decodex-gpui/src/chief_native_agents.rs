@@ -114,6 +114,7 @@ impl ChiefSurface {
 			self.native_agents.drafts.insert(previous.clone(), input.read(cx).content().into());
 		}
 		self.open_page(owner, cx);
+		self.reset_recap();
 		self.native_agents.selected = Some((owner.into(), thread.into()));
 		self.native_agents.detail = None;
 		self.native_agents.feedback = if self.native_agents.uncertain.as_deref() == Some(thread) {
