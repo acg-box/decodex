@@ -99,6 +99,28 @@ impl Storage {
 }
 
 impl ChiefSurface {
+	pub(in super::super) fn prompt_editor_saved(
+		&self,
+		expected: &decodex_protocol::DesktopPromptEditDraft,
+	) -> bool {
+		let Some(profile) = &self.profile else {
+			return false;
+		};
+		if self.draft_profiles.active.as_ref() != Some(profile) {
+			return false;
+		}
+		let state = &self.draft_profiles.storage;
+		let scope = profile.draft_scope_key();
+		let get = |document: &DesktopDraftDocument| {
+			document
+				.profiles
+				.get(&scope)
+				.and_then(|profile| profile.prompt_edits.get(expected.review_token.as_str()))
+				== Some(expected)
+		};
+		state.store.is_some() && get(&state.document) && get(&state.saved)
+	}
+
 	pub(in super::super) fn renew_prompt_editor(
 		&mut self,
 		previous: &decodex_protocol::DesktopPromptEditDraft,
@@ -677,6 +699,56 @@ impl<T> TransposeOption<T> for Option<Option<T>> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[gpui::test]
+	fn prompt_handback_requires_the_exact_saved_draft_and_profile(cx: &mut gpui::TestAppContext) {
+		let (_service, profile, other) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let surface = cx.new(ChiefSurface::new);
+		let input = decodex_protocol::PromptDraft::new(vec![
+			serde_json::json!({"type":"text","text":"Retained edit"}),
+		])
+		.unwrap();
+		let mut draft = decodex_protocol::DesktopPromptEditDraft {
+			work_id: EntityId::new("work").unwrap(),
+			thread_id: WireText::new("thread").unwrap(),
+			before_turn_id: WireText::new("turn").unwrap(),
+			item_id: WireText::new("item").unwrap(),
+			original_hash: input.fingerprint().unwrap(),
+			review_token: WireText::new("a".repeat(64)).unwrap(),
+			receipt_id: Some(42),
+			handback_pending: true,
+			input,
+		};
+		surface.update(cx, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile.clone()), cx);
+			s.stage_prompt_editor(draft.clone(), cx).unwrap();
+			assert!(!s.prompt_editor_saved(&draft));
+		});
+		cx.run_until_parked();
+		surface.update(cx, |s, _| assert!(s.prompt_editor_saved(&draft)));
+		let doc = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		assert_eq!(
+			doc.profiles[&profile.draft_scope_key()].prompt_edits[draft.review_token.as_str()],
+			draft
+		);
+		draft.input.replace_text(0, 0..0, "Later ").unwrap();
+		surface.update(cx, |s, cx| {
+			assert!(!s.prompt_editor_saved(&draft));
+			s.stage_prompt_editor(draft.clone(), cx).unwrap();
+			assert!(!s.prompt_editor_saved(&draft));
+		});
+		cx.run_until_parked();
+		surface.update(cx, |s, cx| {
+			assert!(s.prompt_editor_saved(&draft));
+			s.bind_profile(Some(other), cx);
+			assert!(!s.prompt_editor_saved(&draft));
+		});
+	}
 
 	#[gpui::test]
 	fn exact_receipt_settles_only_matching_saved_copies(cx: &mut gpui::TestAppContext) {

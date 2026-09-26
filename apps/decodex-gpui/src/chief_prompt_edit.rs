@@ -18,6 +18,89 @@ pub(super) struct Panel {
 }
 
 impl ChiefSurface {
+	fn recover_prompt_editor(&mut self, expected: DesktopPromptEditDraft, cx: &mut Context<Self>) {
+		if self.prompt_edit.task.is_some()
+			|| !self.prompt_editor_source_current()
+			|| self.prompt_edit.draft.as_ref() != Some(&expected)
+			|| !self.command_connection_ready()
+		{
+			return;
+		}
+		let Some(profile) = self.profile.clone() else {
+			return;
+		};
+		let key = self.prompt_edit.key.clone();
+		let original = expected.clone();
+		let (send, receive) = tokio::sync::oneshot::channel();
+		let started =
+			std::thread::Builder::new().name("prompt-recovery-io".into()).spawn(move || {
+				let result = (|| {
+					let runtime = tokio::runtime::Builder::new_current_thread()
+						.enable_all()
+						.build()
+						.map_err(|_| "Could not start history recovery")?;
+					runtime.block_on(async {
+						let client = ChiefClient::new(profile);
+						// Recovery only re-reads native history; never replay confirmation or send.
+						let _ = client
+							.execute(
+								ChiefActionDto::RecoverPromptEdit {
+									work_id: original.work_id.clone(),
+									thread_id: original.thread_id.clone(),
+								},
+								IdempotencyKey::new(unique_command())
+									.map_err(|_| "Invalid recovery identity")?,
+							)
+							.await;
+						let (status, content) = client
+							.prompt_edit(original.work_id.clone(), original.thread_id.clone())
+							.await
+							.map_err(|_| "History edit status is unavailable")?;
+						let input =
+							PromptDraft::new(content.ok_or("Original input is unavailable")?)?;
+						let recovered = original.recover_receipt(&status, &input)?;
+						Ok((recovered, status.phase))
+					})
+				})();
+				let _ = send.send(result);
+			});
+		if started.is_err() {
+			self.prompt_edit.feedback = "Could not start history recovery".into();
+			cx.notify();
+			return;
+		}
+		self.prompt_edit.feedback = "Reading the history edit receipt…".into();
+		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
+			let result = receive.await.unwrap_or(Err("History recovery stopped"));
+			let _ = surface.update(cx, |s, cx| {
+				if s.prompt_edit.key != key || !s.prompt_editor_source_current() { return; }
+				s.prompt_edit.task = None;
+				if s.prompt_edit.draft.as_ref() != Some(&expected) {
+					s.prompt_edit.feedback = "Draft changed during recovery. Read the receipt again.".into();
+				} else {
+					match result {
+						Ok((recovered, phase)) => match s.stage_prompt_editor(recovered.clone(), cx) {
+							Ok(()) => {
+								s.prompt_edit.draft = Some(recovered);
+								s.prompt_edit.feedback = match phase {
+									PromptEditPhase::Restored => "History edit receipt recovered. Edited input retained; nothing was sent.",
+									PromptEditPhase::Applied => "History edit applied. Saving the retained draft; handback is still pending.",
+									_ => "History edit remains uncertain. Retain this draft and recover again; do not repeat confirmation.",
+								}.into();
+								s.history_requested_for = None;
+								s.load_history(cx);
+							},
+							Err(message) => s.prompt_edit.feedback = message.into(),
+						},
+						Err(message) => s.prompt_edit.feedback = message.into(),
+					}
+				}
+				cx.notify();
+			});
+		}));
+		cx.notify();
+	}
+
 	pub(super) fn reset_prompt_edit(&mut self) {
 		self.prompt_edit = Panel::default();
 	}
@@ -306,6 +389,18 @@ impl ChiefSurface {
 			panel = panel.child(editor.clone());
 		}
 		if let Some(draft) = &self.prompt_edit.draft {
+			panel = panel.child(if self.prompt_editor_saved(draft) {
+				"Edited draft saved locally."
+			} else {
+				"Edited draft is not yet confirmed saved locally."
+			});
+			let expected = draft.clone();
+			panel = panel.child(self.workspace_action(
+				"prompt-recover".into(),
+				"Read history edit receipt".into(),
+				move |s, cx| s.recover_prompt_editor(expected.clone(), cx),
+				cx,
+			));
 			if draft.receipt_id.is_none() && !draft.handback_pending {
 				let original = draft.clone();
 				panel = panel.child(self.workspace_action(

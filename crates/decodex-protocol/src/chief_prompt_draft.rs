@@ -38,6 +38,36 @@ pub struct DesktopPromptEditDraft {
 }
 
 impl DesktopPromptEditDraft {
+	/// Bind a recovered native receipt without replacing the user's edited input.
+	pub fn recover_receipt(
+		&self,
+		status: &crate::PromptEditStatus,
+		original: &PromptDraft,
+	) -> Result<Self, &'static str> {
+		self.validate()?;
+		let evidence = status.evidence.as_ref().ok_or("History edit receipt is unavailable")?;
+		if !status.is_valid()
+			|| status.work_id != self.work_id
+			|| status.thread_id != self.thread_id
+			|| evidence.review_token != self.review_token
+			|| evidence.before_turn_id != self.before_turn_id
+			|| evidence.item_id != self.item_id
+			|| original.fingerprint()? != self.original_hash
+			|| self.receipt_id.is_some_and(|id| Some(id) != evidence.receipt_id)
+			|| !matches!(
+				status.phase,
+				crate::PromptEditPhase::Uncertain
+					| crate::PromptEditPhase::Applied
+					| crate::PromptEditPhase::Restored
+			) {
+			return Err("History edit source changed; retain this draft separately");
+		}
+		let mut recovered = self.clone();
+		recovered.receipt_id = evidence.receipt_id;
+		recovered.handback_pending = status.phase != crate::PromptEditPhase::Restored;
+		Ok(recovered)
+	}
+
 	/// Use a fresh review only when its original input still matches this edited draft.
 	pub fn refresh_review(&self, fresh: &Self) -> Result<Self, &'static str> {
 		self.validate()?;
@@ -306,6 +336,56 @@ mod tests {
 		fresh.thread_id = saved.thread_id.clone();
 		saved.receipt_id = Some(42);
 		assert!(saved.refresh_review(&fresh).is_err());
+	}
+
+	#[test]
+	fn recovered_receipt_preserves_edits_and_rejects_crossed_history() {
+		let original = sample();
+		let mut draft = DesktopPromptEditDraft {
+			work_id: crate::EntityId::new("work").unwrap(),
+			thread_id: crate::WireText::new("thread").unwrap(),
+			before_turn_id: crate::WireText::new("turn").unwrap(),
+			item_id: crate::WireText::new("item").unwrap(),
+			original_hash: original.fingerprint().unwrap(),
+			review_token: crate::WireText::new("a".repeat(64)).unwrap(),
+			receipt_id: None,
+			handback_pending: false,
+			input: original.clone(),
+		};
+		draft.input.replace_text(0, 0..3, "Edited").unwrap();
+		let fragment = serde_json::to_string(&original).unwrap();
+		let mut status = crate::PromptEditStatus {
+			work_id: draft.work_id.clone(),
+			thread_id: draft.thread_id.clone(),
+			phase: crate::PromptEditPhase::Applied,
+			evidence: Some(crate::PromptEditEvidence {
+				review_token: draft.review_token.clone(),
+				receipt_id: Some(42),
+				before_turn_id: draft.before_turn_id.clone(),
+				item_id: draft.item_id.clone(),
+				removed_turns: 2,
+				content_bytes: fragment.len() as u64,
+				offset: 0,
+				fragment,
+			}),
+		};
+		for phase in [
+			crate::PromptEditPhase::Uncertain,
+			crate::PromptEditPhase::Applied,
+			crate::PromptEditPhase::Restored,
+		] {
+			status.phase = phase;
+			let recovered = draft.recover_receipt(&status, &original).unwrap();
+			assert_eq!(recovered.input, draft.input);
+			assert_eq!(recovered.receipt_id, Some(42));
+			assert_eq!(recovered.handback_pending, phase != crate::PromptEditPhase::Restored);
+		}
+		assert!(draft.recover_receipt(&status, &draft.input).is_err());
+		draft.receipt_id = Some(43);
+		assert!(draft.recover_receipt(&status, &original).is_err());
+		draft.receipt_id = None;
+		status.thread_id = crate::WireText::new("other").unwrap();
+		assert!(draft.recover_receipt(&status, &original).is_err());
 	}
 
 	#[test]
