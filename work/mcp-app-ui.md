@@ -62,6 +62,22 @@ permission boundaries. Four focused Swift document tests passed.
 The lifecycle reference is the [MCP Apps specification](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx).
 Document preparation is not a rendered widget or complete sandbox acceptance.
 
+## WebKit lifecycle implementation
+
+`McpAppView` loads the prepared HTML in an opaque-origin iframe with script permission
+only, inside a nonpersistent WKWebView. The parent relay accepts messages only from
+that iframe, and the native handler accepts only main-frame relay messages. It handles
+2026-01-26 initialization, waits for the initialized notification, then sends the
+original tool input and result. Ping is supported. Tool and resource callbacks are
+not advertised or forwarded yet. The view denies media capture, file panels, new
+windows, JavaScript dialogs and external navigation. It removes handlers on close.
+
+Five Swift tests pass, including a real WebKit fixture that receives the tool result,
+cannot access the host DOM, and cannot call the native handler directly from the
+child frame. This is browser lifecycle evidence, not complete desktop integration.
+External nested frames, display-mode changes, graceful resource teardown, source
+invalidation after display and explicitly mediated interactive callbacks remain open.
+
 ## Remaining consumer obligations
 
 - Connect the desktop view to the source-bound service document query.
