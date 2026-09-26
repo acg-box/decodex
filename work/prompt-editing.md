@@ -1,10 +1,13 @@
 # Edit an earlier prompt
 
-Classification: optional product capability. Canonical input selection is
-implemented, with a durable journal and service-owned native confirmation/recovery.
-The local protocol now carries review, confirmation, recovery and explicit draft
-acknowledgement. Desktop presentation, canonical draft storage and editor integration
-remain open; this is not a complete editing action.
+Classification: optional product capability. Desktop review, complete canonical
+input editing, durable confirmation, history refresh, draft handback and explicit
+resend are implemented. Native Codex owns history mutation and execution. The
+existing Decodex draft store and service inbox retain recovery and send identities.
+
+The feature is pending final combined validation, local signed-app checks and PR
+merge. It is not installed or publicly released. Core native envelope qualification
+and revert observation remain useful independently of this optional editor.
 
 ## Native authority
 
@@ -44,7 +47,7 @@ account/process ownership.
 An unsupported or non-editable candidate returns None; malformed, incomplete or
 changed native evidence returns an error. Neither is permission to use old UI text.
 
-## Remaining delivery
+## Acceptance requirements
 
 - Present the complete selected input and the history boundary for review. Preserve
   attachments and canonical mentions when restoring an editable draft.
