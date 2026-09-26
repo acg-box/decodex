@@ -405,3 +405,24 @@ async fn guardian_expanded_approval_frame_is_rejected_before_reservation_or_rpc(
 	assert_eq!(stored.approval_state, None);
 	assert_eq!(stored.event_json, saved.event_json);
 }
+
+#[tokio::test]
+async fn strict_review_from_unbound_native_generation_is_not_retained() {
+	let (mut chief, mut sent, _directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	chief.bind_native_generation(
+		decodex_core::ProcessGenerationId::new("30000000-0000-4000-8000-000000000001").unwrap(),
+	);
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "autoApprovalReview/strictReviewRequired".into(),
+			params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","startedAtMs":100}),
+		})
+		.await
+		.unwrap();
+	let (history, _) = chief.store.read_chief_transcript("chief".into(), None, 32).await.unwrap();
+	assert!(!history.iter().any(|event| event.event_kind == "strict_review_notice"));
+	assert!(sent.try_recv().is_err());
+	assert!(chief.store.list_chief_wake_events("chief".into(), 32).await.unwrap().is_empty());
+}

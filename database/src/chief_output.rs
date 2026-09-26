@@ -441,12 +441,14 @@ impl SqliteStore {
 		thread: String,
 		turn: String,
 		started_at_ms: i64,
+		generation: Option<String>,
 	) -> Result<(), StoreError> {
 		if thread.is_empty()
 			|| turn.is_empty()
 			|| thread.len() > 512
 			|| turn.len() > 512
 			|| started_at_ms < 0
+			|| generation.as_deref().is_some_and(|id| id.trim().is_empty() || id.len() > 512)
 		{
 			return Err(StoreError::InvalidInput("invalid strict review notice"));
 		}
@@ -454,6 +456,9 @@ impl SqliteStore {
 			let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			let work: Option<String> = tx.query_row("SELECT id FROM chief_work_items WHERE codex_thread_id=?1 AND active_turn_id=?2 AND dispatch_state='running'",params![thread,turn],|row|row.get(0)).optional().map_err(sqlite_error)?;
 			if let Some(work) = work {
+				if !crate::chief_process::owns_work(&tx, &work, generation.as_deref())? {
+					return Ok(());
+				}
 				let source = serde_json::json!(["strict_review",work,thread,turn]).to_string();
 				let payload = serde_json::json!({"threadId":thread,"turnId":turn,"startedAtMs":started_at_ms}).to_string();
 				let now = crate::unix_micros()?;
