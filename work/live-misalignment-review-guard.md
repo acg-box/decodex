@@ -27,7 +27,7 @@ all features and targets. Existing model, plugin, permission and history guards
 retain their current owners and behavior.
 
 The complete `app_server_client/live_reviews.rs` matches the verified preserved
-snapshot. The shared transport files remain open in the inherited review. This
-batch restores the adapter foundation only: runtime publication, explicit user
-confirmation and continuation still need to consume the live review identity.
-It does not establish end-to-end continuation or signed desktop acceptance.
+snapshot. The shared transport files remain open in the inherited review. The
+runtime consumer is described in [live continuation](live-misalignment-continuation.md):
+publication, explicit confirmation and the final guarded write bind this identity.
+Adapter tests alone do not establish signed desktop acceptance.
