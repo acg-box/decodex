@@ -4310,6 +4310,10 @@ fn resolve_executable(
 	Ok((canonical, Arc::new(snapshot), digest))
 }
 
+#[cfg(target_os = "macos")]
+#[path = "process_bundle_snapshot.rs"]
+mod bundle_snapshot;
+
 fn capture_executable_snapshot(
 	path: &Path,
 ) -> Result<(ExecutableSnapshot, [u8; 32]), SupervisionError> {
@@ -4319,16 +4323,17 @@ fn capture_executable_snapshot(
 	validate_executable_metadata(&metadata)?;
 	validate_native_executable(&source)?;
 
-	capture_platform_executable_snapshot(&source, &metadata)
+	capture_platform_executable_snapshot(&source, &metadata, path)
 }
 
 #[cfg(target_os = "macos")]
 fn capture_platform_executable_snapshot(
 	source: &File,
 	metadata: &Metadata,
+	_source_path: &Path,
 ) -> Result<(ExecutableSnapshot, [u8; 32]), SupervisionError> {
 	let directory = TempDir::new().map_err(|_| SupervisionError::ExecutableUnavailable)?;
-	let snapshot_path = directory.path().join("verified-codex-image");
+	let snapshot_path = bundle_snapshot::path(_source_path, directory.path())?;
 	let mut snapshot_writer = OpenOptions::new()
 		.create_new(true)
 		.write(true)
@@ -4380,6 +4385,7 @@ fn capture_platform_executable_snapshot(
 fn capture_platform_executable_snapshot(
 	source: &File,
 	metadata: &Metadata,
+	_source_path: &Path,
 ) -> Result<(ExecutableSnapshot, [u8; 32]), SupervisionError> {
 	let name = c"decodex-codex-image";
 	let flags = MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_EXEC;
