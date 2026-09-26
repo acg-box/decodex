@@ -228,6 +228,20 @@ not the complete continuation flow or either shared transport file. This batch
 retains all 360 rows and reduces its 180-row pending baseline to 179. Parallel
 batches close separate rows.
 
+## Native interrupted-output coverage restored on 2026-09-26
+
+Restore the exact inherited `chief/tests/native_partial_output.rs` fixture and
+register it. The installed Codex 0.158.0-alpha.2 passes both real answer and plan
+interruptions: native history omits the unfinished item, the reopened local store
+retains its exact source, and each case makes only its initial inference request.
+
+Restore and update [the partial-output note](partial-output.md). Replace its
+superseded late-completion deletion claim with the delivered PR1511 exact-source
+fallback rule. Replace old temporary-log claims and the stale unmerged statement
+with current evidence, while retaining outstanding signed desktop and math
+acceptance. Original hashes were verified for both paths. This closes those two
+rows only; the shared runtime and desktop files remain under review.
+
 ## Optional and separately reviewed work
 
 The preserved notes describe voice preferences, public reasoning summaries,
