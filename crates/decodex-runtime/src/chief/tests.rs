@@ -4,6 +4,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/archive.rs"] mod archive;
 #[path = "tests/async_recovery.rs"] mod async_recovery;
 #[path = "tests/capacity.rs"] mod capacity;
+#[path = "tests/prompt_edit.rs"] mod prompt_edit;
 #[path = "tests/closing_resume.rs"] mod closing_resume;
 #[path = "tests/drain_rejection.rs"] mod drain_rejection;
 #[path = "tests/guardian.rs"] mod guardian;

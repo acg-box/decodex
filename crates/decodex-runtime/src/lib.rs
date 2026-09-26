@@ -57,7 +57,7 @@ pub use account_service::{
 };
 pub use application::{Application, ApplicationEventPublication, ApplicationPublication};
 pub use bootstrap::{LocalDatabaseError, ServiceBootstrap};
-pub use chief::{ChiefConfig, ChiefCoordinator, ChiefError};
+pub use chief::{ChiefConfig, ChiefCoordinator, ChiefError, PromptEditReview};
 pub use conversation::ConversationReadiness;
 pub use decodex_core::DecodexRoot;
 pub use decodex_protocol::ServerId;

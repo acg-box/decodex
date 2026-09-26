@@ -95,6 +95,7 @@ async fn full_input_preserves_native_text_spans_mentions_and_attachments() {
 	assert_eq!(candidate.before_turn_id, "target");
 	assert_eq!(candidate.latest_turn_id, "target");
 	assert_eq!(candidate.item_id, "selected");
+	assert_eq!(candidate.turn_ids.last().map(String::as_str), Some("target"));
 	assert_eq!(Value::Array(candidate.content), content);
 	assert_eq!(requests.iter().filter(|r| r["method"] == "thread/items/list").count(), 2);
 }

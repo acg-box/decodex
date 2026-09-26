@@ -130,8 +130,9 @@ impl SqliteStore {
 		}).await
 	}
 
-	/// Use only positive pre-write rejection evidence; never a timeout or generic remote error.
-	pub async fn reject_chief_prompt_edit_before_write(
+	/// Use only positive pre-write or native validation rejection evidence; never a timeout
+	/// or generic remote error. Native -32602..=-32600 errors leave history unchanged.
+	pub async fn reject_chief_prompt_edit_without_mutation(
 		&self,
 		id: i64,
 		a: ChiefPromptEditAttempt,
