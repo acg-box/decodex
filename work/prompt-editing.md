@@ -2,7 +2,8 @@
 
 Classification: optional product capability. Canonical input selection is
 implemented, with a durable journal and service-owned native confirmation/recovery.
-Public command wiring, complete presentation recovery and desktop draft handback
+The local protocol now carries review, confirmation, recovery and explicit draft
+acknowledgement. Desktop presentation, canonical draft storage and editor integration
 remain open; this is not a complete editing action.
 
 ## Native authority
@@ -47,8 +48,9 @@ changed native evidence returns an error. Neither is permission to use old UI te
 
 - Present the complete selected input and the history boundary for review. Preserve
   attachments and canonical mentions when restoring an editable draft.
-- Connect public commands to the service-held review and confirmation methods.
-  Do not reconstruct the opaque review or native guard from client JSON.
+- Connect desktop selection and its existing draft owner to the public commands.
+  Save the complete canonical input durably and refresh displayed history before
+  acknowledging handback. Do not rebuild a service guard from client JSON.
 - After confirmed mutation, consume thread/reverted and replace removed history,
   questions, approvals, queued autosend/capacity retry, live output, usage and voice
   replay state before accepting more input. Keep unrelated tasks and durable
@@ -113,8 +115,7 @@ An applied observation keeps input blocked until the service reconciles its
 projections and hands back the canonical draft. Runtime must perform those steps
 before it calls release_chief_prompt_edit_draft. The store cannot validate native
 transport guards or prove UI draft receipt. The native bridge now admits
-thread/revert for the coordinator confirmation path. Public command and desktop
-integration remain required.
+thread/revert for the coordinator confirmation path. Desktop integration remains required.
 Tests prove durable store behavior, ownership and dispatch exclusion, not the
 remaining native mutation or signed desktop editing flow.
 
@@ -150,3 +151,27 @@ ModelInfo::service_tier_for_request omits both values from model requests; the
 fixture compares that request meaning while comparing other selected settings
 exactly. This does not claim raw service-tier metadata is byte-identical or that
 a different explicit tier may be discarded.
+
+## Public local protocol
+
+Local protocol2.86 adds PreparePromptEdit, ConfirmPromptEdit, RecoverPromptEdit and
+AcknowledgePromptEditDraft. The existing Chief actor owns all four. It keeps at
+most eight service-held reviews for ten minutes; stale or consumed reviews cannot
+be reconstructed from client input. Confirming the same durable review again only
+reports its receipt, even if the caller uses a different command key. These actions
+neither rotate an exhausted account nor run the post-command wake path.
+
+GetChiefPromptEdit reads an exact work/thread and returns a 64KiB UTF-8 fragment
+of the canonical input JSON. Continuations require the same review token and an
+exact byte offset. ChiefClient::prompt_edit assembles at most8MiB within sixty
+seconds and rejects changed phases, identities, sizes or offsets. It parses only
+the complete array. This keeps large text and image/file evidence below the256KiB
+transport frame limit without truncating canonical input.
+
+Applied reports native history evidence, not a restored desktop editor. The client
+must persist the returned draft and refresh its presentation before it explicitly
+acknowledges the exact receipt ID and review token. The service rechecks native
+history and question recovery before releasing the input fence. A duplicate exact
+acknowledgement is harmless; another receipt cannot release this edit. Querying,
+recovering or acknowledging does not submit the restored draft. The current GPUI
+composer still needs canonical binding/file-ID storage and editing support.

@@ -492,6 +492,24 @@ impl ServiceApplication {
 		})
 	}
 
+	async fn query_prompt_edit(&self, query: &QueryPayload) -> QueryResultPayload {
+		let QueryPayload::GetChiefPromptEdit { work_id, thread_id, review_token, offset } = query
+		else {
+			unreachable!("prompt edit query")
+		};
+		let (work, thread) = (work_id.clone(), thread_id.clone());
+		QueryResultPayload::ChiefPromptEdit(match &self.chief {
+			Some(chief) =>
+				chief.prompt_edit_status(work, thread, review_token.as_ref(), *offset).await,
+			None => decodex_protocol::PromptEditStatus {
+				work_id: work,
+				thread_id: thread,
+				phase: decodex_protocol::PromptEditPhase::Unavailable,
+				evidence: None,
+			},
+		})
+	}
+
 	async fn query_recap(&self, work: EntityId) -> QueryResultPayload {
 		QueryResultPayload::ChiefRecap(match &self.chief {
 			Some(chief) => chief.recap_status(work).await,
@@ -2230,6 +2248,7 @@ impl Application for ServiceApplication {
 				self.query_live_reviewer(work_id.as_str()).await,
 			QueryPayload::GetChiefModelSettings { work_id } =>
 				self.query_model_settings(work_id.as_str()).await,
+			edit @ QueryPayload::GetChiefPromptEdit { .. } => self.query_prompt_edit(edit).await,
 			QueryPayload::GetChiefRecap { work_id } => self.query_recap(work_id.clone()).await,
 			QueryPayload::GetChiefVoiceSettings { work_id } =>
 				self.query_voice_settings(work_id.as_str()).await,

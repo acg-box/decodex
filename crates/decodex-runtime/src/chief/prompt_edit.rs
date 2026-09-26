@@ -11,6 +11,10 @@ pub struct PromptEditReview {
 	guard: HistoryGuard,
 }
 impl PromptEditReview {
+	pub(crate) fn is_live(&self) -> bool {
+		self.guard.is_live()
+	}
+
 	/// Native input and boundary for presentation, not permission to construct another review.
 	pub fn evidence(&self) -> &ChiefPromptEditAttempt {
 		&self.attempt

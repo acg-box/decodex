@@ -268,6 +268,91 @@ pub struct ChiefClient {
 	transport: ResetCardClient,
 }
 impl ChiefClient {
+	/// Read complete canonical edit input through bounded pages. Never confirms or retries an edit.
+	pub async fn prompt_edit(
+		&self,
+		work_id: EntityId,
+		thread_id: crate::WireText,
+	) -> Result<(crate::PromptEditStatus, Option<Vec<serde_json::Value>>), ClientFailure> {
+		self.transport.require_local_profile()?;
+		time::timeout(Duration::from_secs(60), self.read_prompt_edit(work_id, thread_id))
+			.await
+			.map_err(|_| ClientFailure::ProtocolTimeout)?
+	}
+
+	async fn read_prompt_edit(
+		&self,
+		work: EntityId,
+		thread: crate::WireText,
+	) -> Result<(crate::PromptEditStatus, Option<Vec<serde_json::Value>>), ClientFailure> {
+		let first = self.prompt_edit_page(work.clone(), thread.clone(), None, 0).await?;
+		let Some(expected) = first.evidence.clone() else {
+			return Ok((first, None));
+		};
+		let mut page = first.clone();
+		let mut content = String::new();
+		for _ in 0..129 {
+			let evidence = page.evidence.as_ref().ok_or(ClientFailure::ProtocolMalformed)?;
+			if page.phase != first.phase
+				|| evidence.review_token != expected.review_token
+				|| evidence.receipt_id != expected.receipt_id
+				|| evidence.before_turn_id != expected.before_turn_id
+				|| evidence.item_id != expected.item_id
+				|| evidence.removed_turns != expected.removed_turns
+				|| evidence.content_bytes != expected.content_bytes
+				|| evidence.offset != content.len() as u64
+			{
+				return Err(ClientFailure::ProtocolMalformed);
+			}
+			content.push_str(&evidence.fragment);
+			if content.len() as u64 == expected.content_bytes {
+				let values: Vec<serde_json::Value> =
+					serde_json::from_str(&content).map_err(|_| ClientFailure::ProtocolMalformed)?;
+				if values.is_empty() || values.iter().any(|v| !v.is_object()) {
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				return Ok((first, Some(values)));
+			}
+			page = self
+				.prompt_edit_page(
+					work.clone(),
+					thread.clone(),
+					Some(expected.review_token.clone()),
+					content.len() as u64,
+				)
+				.await?;
+		}
+		Err(ClientFailure::ProtocolMalformed)
+	}
+
+	async fn prompt_edit_page(
+		&self,
+		work: EntityId,
+		thread: crate::WireText,
+		review: Option<crate::WireText>,
+		offset: u64,
+	) -> Result<crate::PromptEditStatus, ClientFailure> {
+		let completed = self
+			.transport
+			.query_inner(
+				"chief-prompt-edit",
+				QueryPayload::GetChiefPromptEdit {
+					work_id: work.clone(),
+					thread_id: thread.clone(),
+					review_token: review,
+					offset,
+				},
+			)
+			.await?;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefPromptEdit(status)
+				if status.work_id == work && status.thread_id == thread && status.is_valid() =>
+				Ok(status),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read the existing recap; this method never starts a model request.
 	pub async fn recap(&self, work_id: EntityId) -> Result<crate::TaskRecapStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
@@ -1352,6 +1437,10 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		crate::ChiefActionDto::SetTaskModel { work_id, .. } => work_id,
 		crate::ChiefActionDto::SetHookSetting { work_id, .. }
 		| crate::ChiefActionDto::SetAppToolExposure { work_id, .. }
+		| crate::ChiefActionDto::AcknowledgePromptEditDraft { work_id, .. }
+		| crate::ChiefActionDto::PreparePromptEdit { work_id, .. }
+		| crate::ChiefActionDto::ConfirmPromptEdit { work_id, .. }
+		| crate::ChiefActionDto::RecoverPromptEdit { work_id, .. }
 		| crate::ChiefActionDto::GenerateRecap { work_id, .. }
 		| crate::ChiefActionDto::CancelRecap { work_id, .. }
 		| crate::ChiefActionDto::SetVoicePreference { work_id, .. }
@@ -2867,6 +2956,7 @@ fn version_failure(_version: ProtocolVersion) -> ClientFailure {
 
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests {
+	mod prompt_edit;
 	#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
 	use std::{fs, time::Duration};
 
@@ -4186,7 +4276,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 85 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 86 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
