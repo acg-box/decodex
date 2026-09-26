@@ -225,9 +225,7 @@ impl ChiefCoordinator {
 						voice.save_transcript_tail(&self.store, &id, index).await?;
 					}
 					let delta = params["delta"].as_str().unwrap_or_default();
-					if voice.transcript_tail[index].len() + delta.len() <= 32_768 {
-						voice.transcript_tail[index].push_str(delta);
-					}
+					append_transcript_tail(&mut voice.transcript_tail[index], delta);
 				}
 			},
 			"thread/realtime/transcript/done" => {
@@ -237,8 +235,9 @@ impl ChiefCoordinator {
 					if voice.transcript_complete[index] {
 						voice.save_transcript_tail(&self.store, &id, index).await?;
 					}
-					voice.transcript_tail[index] = text.into();
-					voice.transcript_complete[index] = true;
+					voice.transcript_tail[index].clear();
+					append_transcript_tail(&mut voice.transcript_tail[index], text);
+					voice.transcript_complete[index] = text.len() <= TRANSCRIPT_TAIL_BYTES;
 					voice.save_transcript_tail(&self.store, &id, index).await?;
 				}
 			},
@@ -325,6 +324,26 @@ impl ChiefCoordinator {
 			self.store.close_chief_voice_call(call.session_id).await?;
 		}
 		Ok(())
+	}
+}
+
+const TRANSCRIPT_TAIL_BYTES: usize = 32_768;
+
+fn append_transcript_tail(tail: &mut String, delta: &str) {
+	if delta.len() >= TRANSCRIPT_TAIL_BYTES {
+		let mut start = delta.len() - TRANSCRIPT_TAIL_BYTES;
+		while !delta.is_char_boundary(start) {
+			start += 1;
+		}
+		tail.clear();
+		tail.push_str(&delta[start..]);
+	} else {
+		let mut start = (tail.len() + delta.len()).saturating_sub(TRANSCRIPT_TAIL_BYTES);
+		while !tail.is_char_boundary(start) {
+			start += 1;
+		}
+		tail.drain(..start);
+		tail.push_str(delta);
 	}
 }
 

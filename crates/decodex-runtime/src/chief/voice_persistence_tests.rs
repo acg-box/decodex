@@ -123,3 +123,49 @@ async fn failed_transcript_write_preserves_text_sequence_and_finality_until_save
 		assert!(sent.try_recv().is_err(), "persistence cannot submit native input");
 	}
 }
+
+#[tokio::test]
+async fn long_voice_transcripts_keep_utf8_suffix_and_never_claim_truncated_finality() {
+	for finalized in [false, true] {
+		let (mut chief, mut sent, _directory, database) = fixture().await;
+		let prefix = "界".repeat(11_000);
+		let suffix = " The latest correction must remain.";
+		if finalized {
+			chief
+				.voice_event(&ServerEvent::Notification {
+					method: "thread/realtime/transcript/done".into(),
+					params: json!({"threadId":"opaque thread/1","role":"user","text":prefix.clone()+suffix}),
+				})
+				.await
+				.expect("bounded final transcript");
+		} else {
+			for text in [&prefix, suffix] {
+				chief
+					.voice_event(&ServerEvent::Notification {
+						method: "thread/realtime/transcript/delta".into(),
+						params: json!({"threadId":"opaque thread/1","role":"user","delta":text}),
+					})
+					.await
+					.expect("bounded delta");
+			}
+		}
+		chief
+			.voice_event(&ServerEvent::Closed(ClientError::Closed))
+			.await
+			.expect("save received suffix");
+		let saved: String = database
+			.query_row(
+				"SELECT payload FROM chief_inbox_events WHERE event_kind='voice_user'",
+				[],
+				|row| row.get(0),
+			)
+			.expect("saved suffix");
+		let saved: Value = serde_json::from_str(&saved).expect("transcript JSON");
+		let text = saved["text"].as_str().expect("transcript text");
+		assert!((TRANSCRIPT_TAIL_BYTES - 3..=TRANSCRIPT_TAIL_BYTES).contains(&text.len()));
+		assert!(text.ends_with(suffix));
+		assert!((prefix + suffix).ends_with(text));
+		assert_eq!(saved["complete"], false);
+		assert!(sent.try_recv().is_err());
+	}
+}
