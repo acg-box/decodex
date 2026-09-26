@@ -48,3 +48,44 @@ pub enum ChiefAppUiCallReview {
 	/// The source, visibility or ownership evidence is unavailable or changed.
 	Unavailable,
 }
+
+/// Maximum complete saved invocation and native result document.
+pub const MAX_CHIEF_APP_UI_RECEIPT_BYTES: usize =
+	2 * decodex_core::MAX_NATIVE_MESSAGE_BYTES + 65536;
+/// Binary chunk limit for saved tool-call readback.
+pub const CHIEF_APP_UI_RECEIPT_CHUNK_BYTES: usize = 32 * 1024;
+
+/// Exact durable operation readback, independent of a live native process.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefAppUiReceiptRequest {
+	/// Owning task.
+	pub work_id: crate::EntityId,
+	/// Host-generated operation identity used at confirmation.
+	pub operation_id: crate::EntityId,
+	/// Byte offset into the complete saved document.
+	pub offset: u32,
+	/// Required content identity for continuation chunks.
+	pub fingerprint: Option<crate::EntityId>,
+}
+
+/// Durable evidence; unavailable never authorizes retry of a mutation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ChiefAppUiReceiptResult {
+	/// A bounded part of the saved invocation, status and native result.
+	Available {
+		/// Exact requested operation and offset.
+		request: Box<ChiefAppUiReceiptRequest>,
+		/// Complete document hash, including saved identity and status.
+		fingerprint: crate::EntityId,
+		/// Complete document length in bytes.
+		total_bytes: u32,
+		/// Bytes beginning at the requested offset.
+		bytes: Vec<u8>,
+	},
+	/// No exact readable evidence, or content changed during continuation.
+	Unavailable,
+	/// The saved evidence exceeds the supported transfer capacity.
+	CapacityExceeded,
+}

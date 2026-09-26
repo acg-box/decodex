@@ -18,6 +18,7 @@ mod chief;
 mod chief_app_exposure;
 mod chief_app_settings;
 mod chief_app_ui_call;
+mod chief_app_ui_receipt;
 mod chief_capabilities;
 mod chief_config_settings;
 mod chief_detail;

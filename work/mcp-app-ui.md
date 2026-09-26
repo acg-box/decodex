@@ -205,6 +205,25 @@ It rejects changed arguments with an old token, proves the dispatch count is at 
 one, and reads exact results after database reopen. Strict protocol/runtime Clippy
 passed. Desktop confirmation and bounded receipt transfer are still pending.
 
+## Durable receipt transfer and recovery
+
+The local receipt query reads the saved invocation and outcome without a live native
+connection. It transfers bounded 32 KiB chunks and binds each continuation to the
+complete document hash. A changed result or acknowledgment invalidates continuation;
+readback does not dispatch the tool again.
+
+An unfinished reservation becomes unknown only after positive evidence that its
+original process died. A missing process record or uncertain death does not settle the
+call. Explicit acknowledgment applies only to the exact unknown reservation and does
+not change its outcome to success or replay it.
+
+The current-source selected protocol, runtime, database and desktop run passed all
+179 tests. The native-wire fixture preserves a 70,000-character result through store
+reopen and chunked receipt transfer. Tests also reject mixed receipt content and
+invalid wire bounds, and distinguish live, death-unknown and positively dead process
+states. Strict protocol/runtime/database Clippy passed. Desktop confirmation, receipt
+presentation and browser response delivery remain incomplete.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.

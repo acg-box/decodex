@@ -32,7 +32,11 @@ pub use chief_guardian::{
 mod chief_integrations;
 pub use chief_integrations::{ChiefAppInventory, ChiefAppStatusDto};
 mod chief_app_ui_call;
-pub use chief_app_ui_call::{ChiefAppUiCall, ChiefAppUiCallReview, MAX_CHIEF_APP_UI_CALL_BYTES};
+pub use chief_app_ui_call::{
+	CHIEF_APP_UI_RECEIPT_CHUNK_BYTES, ChiefAppUiCall, ChiefAppUiCallReview,
+	ChiefAppUiReceiptRequest, ChiefAppUiReceiptResult, MAX_CHIEF_APP_UI_CALL_BYTES,
+	MAX_CHIEF_APP_UI_RECEIPT_BYTES,
+};
 mod chief_app_ui;
 pub use chief_app_ui::{
 	CHIEF_APP_UI_CHUNK_BYTES, ChiefAppUiRequest, ChiefAppUiResult, MAX_CHIEF_APP_UI_BYTES,

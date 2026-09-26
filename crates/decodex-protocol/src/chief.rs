@@ -418,6 +418,15 @@ pub enum ChiefActionDto {
 		voice: crate::WireText,
 	},
 
+	/// Acknowledge an unknown outcome without replaying or changing that outcome.
+	AcknowledgeAppUiCall {
+		/// Exact owning task.
+		work_id: crate::EntityId,
+		/// Host operation identity from the saved receipt.
+		operation_id: crate::EntityId,
+		/// Exact saved reservation, shown to the user with its unknown outcome.
+		reservation_id: i64,
+	},
 	/// Execute exactly one widget callback after explicit user confirmation.
 	ConfirmAppUiTool {
 		/// Complete source-bound invocation.

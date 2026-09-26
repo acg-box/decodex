@@ -684,6 +684,33 @@ impl ChiefHost {
 		.await
 	}
 
+	async fn acknowledge_app_ui_call(
+		&self,
+		work: &str,
+		operation: &str,
+		reservation: i64,
+	) -> Result<String, ChiefHostError> {
+		let receipt = self
+			.store
+			.chief_app_ui_call_receipt(work.into(), operation.into())
+			.await
+			.map_err(|_| ChiefHostError::Unknown("App call receipt could not be read."))?
+			.ok_or(ChiefHostError::Rejected("App call receipt is unavailable."))?;
+		if receipt.id != reservation || receipt.state != "unknown" {
+			return Err(ChiefHostError::Rejected("Review the exact unknown app call first."));
+		}
+		if !receipt.uncertainty_acknowledged
+			&& !self
+				.store
+				.acknowledge_chief_app_ui_uncertainty(work.into(), reservation, operation.into())
+				.await
+				.map_err(|_| ChiefHostError::Unknown("App call acknowledgment is unconfirmed."))?
+		{
+			return Err(ChiefHostError::Unknown("Read the saved app call acknowledgment."));
+		}
+		Ok(work.into())
+	}
+
 	pub(crate) async fn review_app_ui_call(
 		&self,
 		call: &decodex_protocol::ChiefAppUiCall,
@@ -1195,6 +1222,13 @@ impl ChiefHost {
 			ChiefActionDto::SetVoicePreference { work_id, review_token, voice } =>
 				self.set_voice_preference(work_id.as_str(), review_token.as_str(), voice.as_str())
 					.await,
+			ChiefActionDto::AcknowledgeAppUiCall { work_id, operation_id, reservation_id } =>
+				self.acknowledge_app_ui_call(
+					work_id.as_str(),
+					operation_id.as_str(),
+					reservation_id,
+				)
+				.await,
 			ChiefActionDto::ConfirmAppUiTool { request, review_token } =>
 				self.execute_app_ui_call(&request, &review_token).await,
 			ChiefActionDto::SetAppToolExposure { work_id, connector_id, review_token, omit } =>
@@ -1299,6 +1333,7 @@ impl ChiefHost {
 			action @ (Action::SetVoicePreference { .. }
 			| Action::SetAppToolExposure { .. }
 			| Action::ConfirmAppUiTool { .. }
+			| Action::AcknowledgeAppUiCall { .. }
 			| Action::SetSavedAppSetting { .. }
 			| Action::SetAppSetting { .. }
 			| Action::SetHookSetting { .. }

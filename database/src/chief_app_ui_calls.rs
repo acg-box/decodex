@@ -139,6 +139,24 @@ impl SqliteStore {
 		}
 	}
 
+	/// A dead original process makes an unfinished reservation uncertain, never successful.
+	/// Missing process evidence does not settle or replay the call.
+	pub async fn recover_chief_app_ui_call(
+		&self,
+		work: String,
+		attempt_id: String,
+	) -> Result<bool, StoreError> {
+		let operation = attempt_id.clone();
+		let id=self.run(move|c|{
+			let row:Option<(i64,String)>=c.query_row("SELECT a.id,json_extract(a.payload,'$.owner.generation') FROM chief_inbox_events a WHERE a.work_item_id=?1 AND a.event_kind='app_ui_tool_attempt' AND json_extract(a.payload,'$.attempt_id')=?2 AND NOT EXISTS(SELECT 1 FROM chief_inbox_events r WHERE r.source_event_id=a.source_event_id||':result')",params![work,operation],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(sqlite_error)?;
+			match row { Some((id,generation)) if crate::chief_config_journal::dead(c,&generation)?=>Ok(Some(id)),_=>Ok(None) }
+		}).await?;
+		match id {
+			Some(id) => self.finish_chief_app_ui_call(id, attempt_id, "unknown".into(), None).await,
+			None => Ok(false),
+		}
+	}
+
 	/// An explicit user acknowledgment permits later, separately confirmed calls. Never replay this
 	/// call.
 	pub async fn acknowledge_chief_app_ui_uncertainty(

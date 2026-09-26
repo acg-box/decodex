@@ -30,7 +30,7 @@ async fn server(remote: tokio::io::DuplexStream, calls: Arc<AtomicUsize>, lost: 
 				if lost {
 					return;
 				}
-				json!({"content":[],"structuredContent":{"value":7},"_meta":{"view":"retained"}})
+				json!({"content":[{"type":"text","text":"z".repeat(70000)}],"structuredContent":{"value":7},"_meta":{"view":"retained"}})
 			},
 			other => panic!("unexpected native operation {other}"),
 		};
@@ -111,6 +111,35 @@ async fn app_ui_confirmation_preserves_exact_intent_and_lost_reply_without_repla
 			.await
 			.unwrap()
 			.unwrap();
+		let mut request = decodex_protocol::ChiefAppUiReceiptRequest {
+			work_id: call.work_id.clone(),
+			operation_id: call.operation_id.clone(),
+			offset: 0,
+			fingerprint: None,
+		};
+		let mut bytes = Vec::new();
+		loop {
+			let decodex_protocol::ChiefAppUiReceiptResult::Available {
+				fingerprint,
+				total_bytes,
+				bytes: part,
+				..
+			} = crate::chief_app_ui_receipt::read(&reopened, &request).await
+			else {
+				panic!("saved readback")
+			};
+			bytes.extend(part);
+			if bytes.len() == total_bytes as usize {
+				break;
+			}
+			request.offset = bytes.len() as u32;
+			request.fingerprint = Some(fingerprint);
+		}
+		let saved: Value = serde_json::from_slice(&bytes).unwrap();
+		assert_eq!(saved["operationId"], call.operation_id.as_str());
+		assert_eq!(saved["arguments"], call.arguments);
+		assert_eq!(saved["state"], receipt.state);
+
 		assert_eq!(receipt.attempt.arguments, call.arguments);
 		assert_eq!(
 			receipt.state,
