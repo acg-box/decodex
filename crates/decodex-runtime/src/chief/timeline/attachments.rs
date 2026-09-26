@@ -74,6 +74,10 @@ fn dynamic(index: u32, part: &Value) -> (Attachment, bool) {
 
 fn standalone(index: u32, part: &Value) -> (Attachment, bool) {
 	match part["type"].as_str() {
+		Some("input_image")
+			if part["image_url"].as_str().is_none()
+				&& part["file_id"].as_str().is_some_and(|id| !id.is_empty()) =>
+			make(index, "inputImage", "Stored image", Source::Stored),
 		Some("input_image") =>
 			make(index, "inputImage", "Image", uri_source(part["image_url"].as_str())),
 		Some("input_audio") =>
@@ -201,6 +205,25 @@ mod tests {
 			assert!(!encoded.contains(private));
 		}
 	}
+	#[test]
+	fn tool_image_references_keep_indices_and_do_not_expose_file_ids() {
+		let (parts, omitted) = project(&json!({"type":"functionCallOutput","output":[
+			{"type":"input_text","text":"Result"},
+			{"type":"input_image","file_id":"private-file-id","detail":"original"},
+			{"type":"input_image","image_url":"data:image/png;base64,PRIVATE"}
+		]}));
+		assert!(!omitted);
+		assert_eq!(parts.iter().map(|part| part.index).collect::<Vec<_>>(), vec![1, 2]);
+		assert_eq!((parts[0].label.as_str(), parts[0].source), ("Stored image", Source::Stored));
+		assert_eq!(parts[1].source, Source::Inline);
+		let encoded = serde_json::to_string(&parts).unwrap();
+		assert!(!encoded.contains("private-file-id") && !encoded.contains("PRIVATE"));
+		let (parts, omitted) = project(&json!({"type":"functionCallOutput","output":[
+			{"type":"input_image","file_id":""}, {"type":"input_image","file_id":42}
+		]}));
+		assert!(omitted && parts.iter().all(|part| part.source == Source::Unknown));
+	}
+
 	#[test]
 	fn dynamic_tool_media_preserves_native_indices_and_never_copies_payloads() {
 		let (parts, omitted) = project(&json!({"type":"dynamicToolCall","contentItems":[
