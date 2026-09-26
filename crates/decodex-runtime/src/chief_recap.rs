@@ -168,6 +168,7 @@ impl Recaps {
 				return None;
 			}
 			if new_input
+				|| event.has_voice_transcript()
 				|| matches!(
 					method,
 					"turn/started"

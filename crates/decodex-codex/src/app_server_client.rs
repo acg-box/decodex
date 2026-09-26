@@ -173,6 +173,23 @@ pub enum ServerEvent {
 	Closed(ClientError),
 }
 
+impl ServerEvent {
+	/// Whether this notification adds visible voice text to its native thread.
+	/// A transcript can change the conversation without starting a task turn.
+	pub fn has_voice_transcript(&self) -> bool {
+		let Self::Notification { method, params } = self else { return false };
+		if !matches!(params["role"].as_str(), Some("user" | "assistant")) {
+			return false;
+		}
+		let field = match method.as_str() {
+			"thread/realtime/transcript/delta" => "delta",
+			"thread/realtime/transcript/done" => "text",
+			_ => return false,
+		};
+		params[field].as_str().is_some_and(|text| !text.is_empty())
+	}
+}
+
 type Reply = oneshot::Sender<Result<Value, ClientError>>;
 enum Guard {
 	Request(ServerRequestGuard),

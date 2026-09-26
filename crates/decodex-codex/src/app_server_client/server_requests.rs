@@ -250,7 +250,8 @@ impl ServerRequests {
 				| "thread/archived"
 				| "thread/deleted"
 				| "turn/started"
-		) {
+		) || event.has_voice_transcript()
+		{
 			self.3.invalidate(thread);
 		}
 		match method.as_str() {

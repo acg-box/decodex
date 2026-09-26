@@ -132,3 +132,25 @@ precedence over model metadata. The temporary thread now sets that value too.
 The same fixture failed on nonempty recap tools before the change and passed
 with no tools afterward. It keeps the assertion and never executes those tools.
 This changes only the temporary request config, not the parent task's agent policy.
+
+## Voice transcript freshness
+
+A nonempty user or assistant realtime transcript delta/done changes the selected
+conversation even when no task turn starts. The transport now invalidates that
+thread's existing read-to-write guard before service delivery. A recap query then
+hides the old result without causing a cancellation effect. The service routes the
+same notification to its normal voice owner and cancels the affected recap.
+Empty transcript events and another thread's events do not retire this result.
+
+The regression fixture sends native JSON notifications through the retained
+transport. It failed with Ready before the fix and passed with Cancelled after it,
+before the service routed the event. It also verifies that the read has no native
+cancellation side effect and that routing preserves the voice event for its owner.
+This is transport evidence, not microphone or live voice acceptance.
+
+Visible voice-history integration is still open. The existing store owns session
+identity, transcript sequence, thread/generation and the pre-call baseline turn.
+It does not record an exact native turn for each spoken sentence. An integration
+must preserve that partial ordering and must not invent a total order from text
+similarity or observation timestamps. Internal realtime delegation envelopes remain
+excluded from recap input.
