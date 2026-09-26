@@ -88,6 +88,8 @@ pub enum ChiefError {
 	Busy,
 	/// A prior dispatch has no conclusive acknowledgment.
 	UnknownDispatch,
+	/// New task settings superseded an automatic capacity continuation.
+	CapacityRetrySuperseded,
 	/// Input was refused before dispatch and its durable claim has been released.
 	InputNotSent(decodex_database::ChiefDispatchRefusal),
 	/// Required work has not yet resolved.
@@ -1926,9 +1928,12 @@ impl ChiefCoordinator {
 		self.wake_pending().await?;
 		for retry in self.store.due_chief_capacity_retries(now).await? {
 			let work = self.store.get_chief_work_item(retry.work_item_id).await?;
-			self.dispatch_with_claim(&work,
+			match self.dispatch_with_claim(&work,
                 "The previous turn stopped because the selected model was temporarily at capacity. Continue the existing request from the saved thread context. Preserve completed work and do not repeat completed actions. This is a capacity retry, not a new goal or a change of model.",
-                Vec::new(),Some((retry.event_id,now)),None).await?;
+                Vec::new(),Some((retry.event_id,now)),None).await {
+				Ok(_) | Err(ChiefError::CapacityRetrySuperseded) => {},
+				Err(error) => return Err(error),
+			}
 		}
 		for work in self.store.list_unnotified_due_chief_work_items(now, 1000).await? {
 			let due = work

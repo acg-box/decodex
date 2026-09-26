@@ -503,3 +503,38 @@ async fn reverted_worker_capacity_wait_does_not_publish_a_completion_or_wake_chi
 	);
 	assert!(chief.store.pending_chief_capacity_retry("worker".into()).await.unwrap().is_none());
 }
+
+#[tokio::test]
+async fn task_selection_during_capacity_backoff_cancels_old_retry() {
+	let first = failed("opaque turn/1", "serverOverloaded");
+	let (mut chief, mut sent, _dir) = fixture_with_history(
+		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
+	)
+	.await;
+	chief.start_chief("chief", "request").await.unwrap();
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "turn/completed".into(),
+			params: json!({"threadId":"opaque thread/1","turn":first}),
+		})
+		.await
+		.unwrap();
+	chief
+		.client
+		.request(
+			"thread/settings/update",
+			json!({"threadId":"opaque thread/1","model":"new-user-choice","effort":"medium"}),
+		)
+		.await
+		.unwrap();
+	while sent.try_recv().is_ok() {}
+	chief.check_due_followups(i64::MAX).await.unwrap();
+	assert!(!std::iter::from_fn(|| sent.try_recv().ok()).any(|v| v["method"] == "turn/start"));
+	assert!(chief.store.pending_chief_capacity_retry("chief".into()).await.unwrap().is_none());
+	assert_eq!(
+		chief.store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state,
+		decodex_database::ChiefDispatchState::Idle
+	);
+	chief.check_due_followups(i64::MAX).await.unwrap();
+	assert!(!std::iter::from_fn(|| sent.try_recv().ok()).any(|v| v["method"] == "turn/start"));
+}

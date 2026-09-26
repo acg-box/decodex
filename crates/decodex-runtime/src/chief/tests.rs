@@ -546,7 +546,7 @@ async fn serve_fixture(
 				settings.insert(id.clone(), configured.clone());
 				json!({"thread":{"id":id},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
 			},
-			Some("turn/start") => {
+			Some("turn/start" | "thread/settings/update") => {
 				let id = request["params"]["threadId"].as_str().unwrap();
 				if let Some(configured) = settings.get_mut(id) {
 					for (parameter, field) in [("model", "model"), ("effort", "reasoningEffort")] {
@@ -555,8 +555,12 @@ async fn serve_fixture(
 						}
 					}
 				}
-				turns += 1;
-				json!({"turn":{"id":format!("opaque turn/{turns}")}})
+				if request["method"] == "turn/start" {
+					turns += 1;
+					json!({"turn":{"id":format!("opaque turn/{turns}")}})
+				} else {
+					json!({})
+				}
 			},
 			_ => json!({}),
 		};
