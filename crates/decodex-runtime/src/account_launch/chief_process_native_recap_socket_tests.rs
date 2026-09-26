@@ -608,8 +608,10 @@ async fn qualify_native_prompt_revert(
 		"installed-edit-recover",
 	)
 	.await;
+	let receipt_id = status.evidence.as_ref().unwrap().receipt_id.unwrap();
 	qualify_prompt_acknowledgement(client, status, &content, home).await;
 	assert_eq!(requests.load(Ordering::Acquire), count, "acknowledgement must not send the draft");
+	qualify_canonical_prompt_send(client, native, work_id, thread_id, receipt_id, requests).await;
 }
 
 async fn qualify_prompt_acknowledgement(
@@ -651,4 +653,96 @@ async fn qualify_prompt_acknowledgement(
 	let (restored, _) =
 		client.prompt_edit(status.work_id, status.thread_id).await.expect("released receipt");
 	assert_eq!(restored.phase, decodex_protocol::PromptEditPhase::Restored);
+}
+
+async fn qualify_canonical_prompt_send(
+	client: &ChiefClient,
+	native: &decodex_codex::app_server_client::AppServerClient,
+	work_id: EntityId,
+	thread_id: WireText,
+	receipt_id: i64,
+	requests: &std::sync::atomic::AtomicUsize,
+) {
+	let text = format!("Edited canonical input: {} END-OF-FULL-INPUT", "x".repeat(70_000));
+	let input = decodex_protocol::PromptDraft::new(vec![json!({"type":"text","text":text})])
+		.expect("full input");
+	let execution = decodex_protocol::ChiefExecutionOverrides::default();
+	let count = requests.load(Ordering::Acquire);
+	client
+		.preflight_prompt_input(work_id.clone(), thread_id.clone(), &input, &execution)
+		.await
+		.expect("native envelope preflight");
+	let upload = decodex_protocol::PromptInputUpload {
+		work_id: work_id.clone(),
+		thread_id: thread_id.clone(),
+		edit_receipt_id: receipt_id,
+		upload_id: IdempotencyKey::new("installed-native-edited-input").unwrap(),
+		sha256: input.fingerprint().unwrap(),
+		total_bytes: serde_json::to_vec(&input).unwrap().len() as u64,
+	};
+	let input_id =
+		client.stage_prompt_input(upload.clone(), &input).await.expect("durable multichunk input");
+	assert_eq!(client.stage_prompt_input(upload.clone(), &input).await.unwrap(), input_id);
+	assert_eq!(requests.load(Ordering::Acquire), count, "staging must not submit input");
+	let identity = decodex_protocol::PromptInputSendIdentity {
+		work_id: work_id.clone(),
+		thread_id: thread_id.clone(),
+		edit_receipt_id: receipt_id,
+		send: decodex_protocol::PromptInputSend {
+			input_id,
+			sha256: upload.sha256.clone(),
+			command_key: IdempotencyKey::new("installed-edited-send").unwrap(),
+			execution: execution.clone(),
+		},
+	};
+	assert!(
+		client
+			.prompt_input_send_status(identity.clone())
+			.await
+			.unwrap()
+			.accepted_event_id
+			.is_none()
+	);
+	accepted(
+		client,
+		Action::SendPromptInput {
+			work_id,
+			thread_id: thread_id.clone(),
+			input_id,
+			edit_receipt_id: receipt_id,
+			sha256: upload.sha256,
+			execution,
+		},
+		"installed-edited-send",
+	)
+	.await;
+	let accepted = client
+		.prompt_input_send_status(identity.clone())
+		.await
+		.unwrap()
+		.accepted_event_id
+		.expect("exact queue receipt");
+	assert_eq!(settled(client).await, thread_id.as_str());
+	assert_eq!(
+		requests.load(Ordering::Acquire),
+		count + 1,
+		"one explicit send performs one native turn"
+	);
+	let turn = native.thread_latest_turn_id(thread_id.as_str()).await.unwrap().unwrap();
+	let items = native.thread_read_turn_items(thread_id.as_str(), &turn).await.unwrap();
+	let user = items
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|item| item["type"] == "userMessage")
+		.expect("new native input");
+	assert_eq!(
+		user["content"][0]["text"], text,
+		"full canonical input must reach native history without preview truncation"
+	);
+	assert_eq!(
+		client.prompt_input_send_status(identity).await.unwrap().accepted_event_id,
+		Some(accepted)
+	);
+	assert_eq!(requests.load(Ordering::Acquire), count + 1, "receipt readback must not replay");
 }

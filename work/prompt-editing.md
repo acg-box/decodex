@@ -330,4 +330,16 @@ history binding. It loses the acknowledgement reply, then returns Restored on
 readback. The editor keeps changed text and its attachment. No model-input command
 is permitted by this fixture.
 
-Installed-native end-to-end execution and rendered acceptance remain required.
+The installed-native service fixture now continues from revert and acknowledgement
+through preflight, a 70 KB multichunk upload, repeat staging, explicit send and exact
+queue receipt readback. Staging makes no provider request. Sending adds exactly one
+provider request and retains the same thread. Native history contains the full text,
+including its final sentinel, rather than the queue preview. A later receipt read
+keeps the provider count unchanged. This fixture uses a private product root and
+local synthetic Responses provider with installed Codex 0.158.0-alpha.2.
+
+Relative local-media qualification and rendered desktop acceptance remain required.
+Fixed upstream protocol/src/models.rs reads local media paths directly; public input
+conversion and history reconstruction retain those paths. The native process working
+directory must be established before interpreting a relative path. A child thread's
+working directory is not sufficient proof for a shared Chief app-server process.
