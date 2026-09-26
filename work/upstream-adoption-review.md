@@ -174,3 +174,13 @@ qualify after 30 minutes away and sufficient new completed native turns. Focus,
 selection and preference changes cancel automatic requests through the existing
 owner. See [task recap integration](task-recaps.md) for bounds and remaining
 signed/installed-native acceptance. Daily maintenance remains paused.
+
+## Native automatic recap evidence and output observation
+
+The installed Codex automatic recap path now has desktop-to-service-to-native
+evidence with an elapsed fixture clock and a synthetic local provider. This
+qualifies the optional feature's native integration, not signed/live voice use.
+The same run exposed a core issue in existing live output: its ongoing connection
+occupied the shared desktop executor. [Output observation ownership](chief-output-observation.md)
+now uses a dedicated I/O thread with the existing cancellation channel. Keep this
+core fix if the optional recap feature is removed.

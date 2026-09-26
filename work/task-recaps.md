@@ -168,12 +168,40 @@ Desktop tests cover eligibility timing, retry bounds, progress paging and accoun
 changes, setting readback, baseline retention, and the real UI request path over
 a same-UID synthetic service. The latter drops the generation reply, confirms one
 generation through status and receives exact cancellation on focus gain. It uses
-GPUI's documented parking mode for real I/O. These tests do not substitute for
-signed desktop or installed-native acceptance of the automatic path.
+GPUI's documented parking mode for real I/O. These synthetic-service tests do not substitute for signed desktop acceptance.
+The installed-native automatic qualification below covers the actual service path.
+
+## Installed-native automatic qualification
+
+Codex 0.158.0-alpha.2 passed the public-socket fixture with the actual GPUI capture
+binary. Nine parent turns produced nine distinct completed native turn IDs over
+multiple pages. Progress and wrong-binding reads did not add model requests.
+The desktop then used its normal automatic driver, with an elapsed fixture clock,
+to read native progress and generate one recap. Its Ready state, request ID and
+result matched the service query exactly. Native parent history stayed unchanged;
+same-key replay and later caption invalidation retained the established behavior.
+
+Set DECODEX_TEST_RECAP_GUI_BINARY to the built
+`decodex-gpui-workbench-visual-capture` binary to include this branch of
+`installed_recap_public_socket_preserves_parent_and_exact_request_identity`.
+Without that variable, the test covers the native service and progress only.
+The child capture requires the explicit fixture root and .decodex-recap-fixture
+marker. It emits automatic-recap.png, automatic-recap.recap.json, a process ID
+and incremental capture diagnostics under that isolated home. Its timeout kills
+the child. The preference is enabled and restored only in the fixture database.
+
+This run used the real installed native process and desktop code with a synthetic
+local model provider. It did not use a microphone, wait 30 real minutes, change
+production preferences or qualify a signed installed Decodex application.
+
+The run exposed [shared-executor occupation by live output observation](chief-output-observation.md).
+Moving that existing long-lived I/O loop off the shared executor allowed the
+native automatic path to finish. The desktop capture uses GPUI's documented
+parking mode for real I/O with deterministic rendering.
 
 ## Remaining scope
 
-- Installed-native automatic-path acceptance and signed desktop interaction.
+- Signed desktop foreground/background and opt-out interaction.
 - Signed desktop and live voice acceptance, including task selection and cold UI.
 - End-to-end lost-reply acceptance across desktop and real service together.
 
