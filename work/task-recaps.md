@@ -102,9 +102,34 @@ captions, stored complete/partial/legacy metadata, bounds, transport-observed
 invalidation, lost desktop command replies and known rejection feedback.
 These fixtures do not prove microphone capture or signed desktop acceptance.
 
+## Automatic recap preference foundation
+
+Local protocol 2.85 adds auto_recap to the existing desktop settings readback and
+an optional field in SetDesktopSettings. Database migration42 adds the preference
+to the existing singleton, with false as the default for both fresh and upgraded
+stores. It preserves prior settings and their revision. An omitted command field
+preserves the stored choice; an explicit false disables it. The existing optimistic
+revision and settings publication apply.
+
+This batch supplies persistence and service readback only. It does not add a
+visible toggle or start a timer. The desktop trigger must consume this preference
+before automatic generation can be called implemented. Keep it disabled during
+the manual catch-up; daily upstream maintenance also remains paused.
+
+The fixed upstream TUI policy requires at least three completed turns, then two
+new completed turns between recaps. The deadline is 30 minutes after the later
+of focus loss and the last finished turn. Focus gain cancels automatic work;
+manual generation remains separate from automatic eligibility. A failed automatic
+attempt permits at most one 30-second retry for the same turn revision.
+
+Validation covers fresh defaults, version41 upgrade and unchanged migration
+checksums, preference isolation, exact revisions, reopen, optional wire fields,
+and the service command/result/event/readback path without a native provider.
+No production database or user preference was changed by these tests.
+
 ## Remaining scope
 
-- Automatic delay, progress eligibility and opt-out controls.
+- Automatic delay, progress eligibility and the visible preference control.
 - Signed desktop and live voice acceptance, including task selection and cold UI.
 - End-to-end lost-reply acceptance across desktop and real service together.
 

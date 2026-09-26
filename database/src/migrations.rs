@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 41;
+const CURRENT_SCHEMA_VERSION: i64 = 42;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -220,6 +220,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 41,
 		name: "chief_reasoning_summary",
 		sql: include_str!("../migrations/0041_chief_reasoning_summary.sql"),
+	},
+	Migration {
+		version: 42,
+		name: "desktop_auto_recap",
+		sql: include_str!("../migrations/0042_desktop_auto_recap.sql"),
 	},
 ];
 
@@ -1144,6 +1149,55 @@ mod tests {
 		verify(&connection).unwrap();
 		migrate(&mut connection).unwrap();
 	}
+	#[test]
+	fn recap_preference_upgrade_preserves_version41_choices_and_history() {
+		let directory = tempfile::tempdir().unwrap();
+		let mut connection = Connection::open(directory.path().join("recap.sqlite3")).unwrap();
+		configure(&connection).unwrap();
+		for migration in &MIGRATIONS[..41] {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 41).unwrap();
+		connection
+			.execute(
+				"UPDATE desktop_settings SET show_in_menu_bar=0,auto_activate_quota=0,revision=9",
+				[],
+			)
+			.unwrap();
+		let before: String = connection
+			.query_row("SELECT group_concat(sha256) FROM schema_migrations", [], |r| r.get(0))
+			.unwrap();
+		migrate(&mut connection).unwrap();
+		let settings: (bool, bool, bool, i64) = connection
+			.query_row(
+				"SELECT show_in_menu_bar,auto_activate_quota,auto_recap,revision FROM desktop_settings",
+				[],
+				|r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+			)
+			.unwrap();
+		assert_eq!(settings, (false, false, false, 9));
+		assert_eq!(
+			before,
+			connection
+				.query_row(
+					"SELECT group_concat(sha256) FROM schema_migrations WHERE version<=41",
+					[],
+					|r| r.get::<_, String>(0)
+				)
+				.unwrap()
+		);
+		assert!(connection.execute("UPDATE desktop_settings SET auto_recap=2", []).is_err());
+		verify(&connection).unwrap();
+		migrate(&mut connection).unwrap();
+	}
+
 	#[test]
 	fn reasoning_upgrade_preserves_live_output_and_migration_ledger() {
 		let directory = tempfile::tempdir().unwrap();

@@ -158,3 +158,10 @@ with session, recording sequence, native baseline and caption completeness. The
 prompt preserves uncertain cross-source ordering and excludes internal delegation
 instructions. This is part of the optional recap capability. Automatic scheduling
 and signed/live voice acceptance remain open.
+
+## Automatic recap preference foundation
+
+The optional recap capability now has a persisted, revision-checked auto_recap
+preference in the existing desktop settings owner. It defaults to false and adds
+no scheduler or visible toggle by itself. Automatic generation remains incomplete;
+see [task recap integration](task-recaps.md). This does not enable daily maintenance.

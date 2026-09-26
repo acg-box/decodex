@@ -286,6 +286,7 @@ mod tests {
 			CommandPayload::SetDesktopSettings {
 				show_in_menu_bar: true,
 				auto_activate_quota: None,
+				auto_recap: None,
 			};
 		assert!(value.encode().is_err());
 		let mut value = document("Input", "command");
