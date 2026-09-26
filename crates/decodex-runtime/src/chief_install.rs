@@ -252,6 +252,10 @@ fn installation_summary(target: &PluginInstallTarget, detail: &Value) -> Option<
 	if let Some(marketplace) = catalog["marketplace"].as_str() {
 		lines.push(format!("Marketplace: {marketplace}"));
 	}
+	if catalog["selector"]["marketplacePath"].is_string() {
+		lines.push("Installing applies pending user configuration changes, including hooks, to open tasks.".into());
+	}
+	lines.push("Installed status does not confirm that tools have connected. Check Tools and plugins for connection status.".into());
 	let source = &catalog["source"];
 	for (field, label) in [
 		("type", "Source"),

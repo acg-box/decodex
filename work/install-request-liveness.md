@@ -24,3 +24,12 @@ The inherited inspection code used request liveness. The fixed upstream
 `595cc91e8cbb1c2ca822d0311dcf12709410c582` plugin handler awaits its exact
 elicitation response and verifies installation afterward. This change does not
 authorize installation from an old stored event without a live native request.
+
+## Installation review
+
+Restore the inherited local-marketplace notice: installation reloads pending user
+configuration and refreshes hooks in open tasks. The fixed upstream plugin
+processor calls `reload_user_config`, invalidates MCP runtimes, and refreshes hook
+runtimes after local installation. The local `marketplacePath` selector limits
+this notice to that route. All installation summaries distinguish installed
+state from connected tools and direct the user to the existing connection view.
