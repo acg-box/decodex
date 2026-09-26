@@ -263,7 +263,9 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 			};
 		}
 		if method == "turn/settings/update" {
-			return if decodex_codex::app_server_client::is_live_reviewer_update(&value["params"]) {
+			return if decodex_codex::app_server_client::is_live_reviewer_update(&value["params"])
+				|| decodex_codex::app_server_client::is_live_model_update(&value["params"])
+			{
 				Ok(())
 			} else {
 				Err(ClientError::InvalidFrame)
@@ -363,6 +365,27 @@ mod tests {
 				valid
 			);
 		}
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn live_model_bridge_preserves_exact_turn_and_separate_edit_scope() {
+		let mut requests = HashSet::new();
+		let frame = json!({"id":42,"method":"turn/settings/update","params":{
+            "threadId":"thread","turnId":"turn","model":"selected-model","effort":"high"}});
+		assert!(validate_outbound(&frame, &mut requests).is_ok());
+		for (field, value) in [
+			("approvalPolicy", json!("never")),
+			("approvalsReviewer", json!("auto_review")),
+			("serviceTier", json!("fast")),
+		] {
+			let mut mixed = frame.clone();
+			mixed["params"][field] = value;
+			assert!(validate_outbound(&mixed, &mut requests).is_err());
+		}
+		let mut saved = frame;
+		saved["method"] = json!("thread/settings/update");
+		assert!(validate_outbound(&saved, &mut requests).is_err());
 	}
 
 	#[cfg(unix)]

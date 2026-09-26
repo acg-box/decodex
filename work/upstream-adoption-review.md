@@ -21,6 +21,21 @@ means a product behavior or control that the user can assess for removal. Mixed
 rows need a finer split before removal. These labels are review classifications,
 not instructions to delete code or weaken native enforcement.
 
+## Live model control restoration
+
+Current-turn model selection is optional. It differs from the delivered future-turn
+model selector: native `turn/settings/update` changes subsequent captures in the
+selected running turn; `thread/settings/update` changes saved defaults. Fixed
+upstream `595cc91e8cbb1c2ca822d0311dcf12709410c582` defines both contracts in
+`app-server-protocol/src/protocol/v2/turn.rs` and verifies A/B/A versus A/A/B model
+sequences in `app-server/tests/suite/v2/turn_settings_update.rs`. The installed
+0.158.0-alpha.2 generated schema includes the live method.
+
+The restored adapter and bridge have focused local tests. This does not complete
+the feature. Its service and durable journal integration, gated desktop control,
+and installed-native sequence test remain open. Keep the native experimental
+feature setting unchanged. Include this control in the user's removal review.
+
 ## Current completion boundary
 
 The source inventory covers 1,569 commits. It does not establish feature delivery.
