@@ -3864,6 +3864,10 @@ pub(crate) fn account_lifecycle_command_error(error: AccountLifecycleError) -> C
 			account_rejection(AccountCommandRejectionDto::InvalidRequest, None),
 		AccountLifecycleError::CodexIsRunning =>
 			account_rejection(AccountCommandRejectionDto::CodexIsRunning, None),
+		AccountLifecycleError::AuthSourceAccountUnknown =>
+			account_rejection(AccountCommandRejectionDto::AuthSourceAccountUnknown, None),
+		AccountLifecycleError::AuthCredentialConflict =>
+			account_rejection(AccountCommandRejectionDto::AuthCredentialConflict, None),
 		AccountLifecycleError::AuthFileUnreadable =>
 			account_rejection(AccountCommandRejectionDto::AuthFileUnreadable, None),
 		AccountLifecycleError::AuthFileChanged =>

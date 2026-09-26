@@ -3775,6 +3775,10 @@ fn account_rejection_label(rejection: AccountCommandRejectionDto) -> &'static st
 			"ChatGPT rejected the credential refresh. Sign in again.",
 		AccountCommandRejectionDto::CredentialRefreshUnavailable =>
 			"Credential refresh is unavailable. Try again later.",
+		AccountCommandRejectionDto::AuthSourceAccountUnknown =>
+			"The current Codex login is not in Accounts. Add that account before switching.",
+		AccountCommandRejectionDto::AuthCredentialConflict =>
+			"The current Codex login and saved account could not be synchronized. Sign in again to reconnect the account.",
 		AccountCommandRejectionDto::AuthFileUnreadable =>
 			"The Codex authentication file could not be read.",
 		AccountCommandRejectionDto::AuthFileChanged =>

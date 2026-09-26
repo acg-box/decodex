@@ -677,6 +677,8 @@ fn map_install_error(error: &CommandError) -> AccountLoginFailure {
 			| AccountCommandRejectionDto::CredentialNeedsLogin
 			| AccountCommandRejectionDto::CredentialRefreshRejected
 			| AccountCommandRejectionDto::CredentialRefreshUnavailable
+			| AccountCommandRejectionDto::AuthSourceAccountUnknown
+			| AccountCommandRejectionDto::AuthCredentialConflict
 			| AccountCommandRejectionDto::AuthFileUnreadable
 			| AccountCommandRejectionDto::AuthFileChanged
 			| AccountCommandRejectionDto::AuthWriteFailed

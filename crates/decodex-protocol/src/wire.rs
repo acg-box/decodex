@@ -3412,6 +3412,10 @@ pub enum AccountCommandRejectionDto {
 	CredentialRefreshRejected,
 	/// The provider refresh could not start or complete before any known effect.
 	CredentialRefreshUnavailable,
+	/// The current shared login does not match an enrolled account.
+	AuthSourceAccountUnknown,
+	/// Shared and stored credentials could not be reconciled.
+	AuthCredentialConflict,
 	/// The shared auth file could not be read safely.
 	AuthFileUnreadable,
 	/// The shared auth source changed before projection.

@@ -17,9 +17,9 @@ use sha2 as _;
 use tempfile as _;
 use time as _;
 use tokio as _;
-use unicode_width as _;
 use tokio_tungstenite as _;
 use unicode_segmentation as _;
+use unicode_width as _;
 
 use decodex_protocol::WeatherForecast as Forecast;
 #[path = "../src/chief_weather.rs"] mod weather_card;

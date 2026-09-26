@@ -379,6 +379,9 @@ struct AccountPanelView: View {
 								)
 							}
 						}
+                        .scaleEffect(isDraggedAccount(state.id) && !reduceMotion ? 1.012 : 1)
+                        .shadow(color: .black.opacity(isDraggedAccount(state.id) ? 0.16 : 0), radius: 8, y: 3)
+                        .animation(reduceMotion ? nil : PanelMotion.controlState, value: isDraggedAccount(state.id))
 						.offset(y: accountReorderOffset(for: state.id))
 						.zIndex(isDraggedAccount(state.id) ? 1 : 0)
 						.animation(

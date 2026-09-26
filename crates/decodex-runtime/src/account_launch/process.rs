@@ -4289,20 +4289,14 @@ fn rpc_supervision(error: ProbeError) -> RpcError {
 	}
 }
 
+#[path = "executable_discovery.rs"] mod executable_discovery;
+
 fn resolve_executable(
 	program: &OsStr,
 ) -> Result<(PathBuf, Arc<ExecutableSnapshot>, [u8; 32]), SupervisionError> {
 	let requested = Path::new(program);
-	let candidate = if requested.components().count() > 1 {
-		requested.to_owned()
-	} else {
-		let path = env::var_os("PATH").ok_or(SupervisionError::ExecutableUnavailable)?;
-
-		env::split_paths(&path)
-			.map(|directory| directory.join(requested))
-			.find(|candidate| candidate.is_file())
-			.ok_or(SupervisionError::ExecutableUnavailable)?
-	};
+	let candidate =
+		executable_discovery::find(requested).ok_or(SupervisionError::ExecutableUnavailable)?;
 	let canonical =
 		candidate.canonicalize().map_err(|_| SupervisionError::ExecutableUnavailable)?;
 	let (snapshot, digest) = capture_executable_snapshot(&canonical)?;

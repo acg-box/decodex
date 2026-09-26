@@ -175,6 +175,7 @@ struct ResetCardAccountRow: View {
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var confirmation = ResetCardUseConfirmation()
 	@State private var confirmationSecondsRemaining = 0
+	@State private var isIdentityHovered = false
 	@State private var isReorderHandleHovered = false
 	@State private var isReorderHandleDragging = false
 
@@ -200,40 +201,44 @@ struct ResetCardAccountRow: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.compact) {
-			HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
-				identityHeader
-				AccountPrimaryActionsView(
-					state: state,
-					store: store
-				)
-			}
-
-			if exceptionalStatusText != nil {
-				exceptionalStatus
-					.transition(.panelInline)
-			}
-
-			quotaWindows
-
-			HStack(alignment: .center, spacing: PanelSpacing.compact) {
-				cardInventory
+			HStack(alignment: .center, spacing: PanelSpacing.section) {
+                HStack(spacing: PanelSpacing.micro) {
+                    reorderHandle
+				Button { detailsBinding.wrappedValue.toggle() } label: { identityHeader }
+					.buttonStyle(PanelPressButtonStyle(pressedScale: 0.99))
 					.frame(maxWidth: .infinity, alignment: .leading)
-					.layoutPriority(1)
-
-				AccountUtilityActionsView(
-					state: state,
-					store: store,
-					isPresentingDetails: detailsBinding
-				)
+                    .frame(height: 20, alignment: .center)
+					.accessibilityLabel(identityAccessibilityLabel)
+					.accessibilityValue(detailsBinding.wrappedValue ? "Expanded" : "Collapsed")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onHover { isIdentityHovered = $0 }
+				HStack(spacing: PanelSpacing.micro) {
+					AccountPrimaryActionsView(state: state, store: store)
+					AccountPowerButton(state: state, store: store)
+					AccountUtilityActionsView(state: state, store: store)
+				}
+				.fixedSize(horizontal: true, vertical: false)
+			}
+            .frame(maxWidth: .infinity, alignment: .leading)
+			Button { detailsBinding.wrappedValue.toggle() } label: {
+				quotaWindows.contentShape(Rectangle())
+			}
+			.buttonStyle(.plain)
+			.accessibilityLabel("Account usage details")
+			.opacity(state.account.enabled ? 1 : 0.45)
+			if exceptionalStatusText != nil { exceptionalStatus.transition(.panelInline) }
+			cardInventory
+			if detailsBinding.wrappedValue {
+				AccountProfileDetailView(state: state)
+					.padding(.top, PanelSpacing.related)
+					.transition(.panelInline)
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.padding(.horizontal, PanelSpacing.cardHorizontal)
 		.padding(.vertical, PanelSpacing.cardVertical)
-		.overlay(alignment: .trailing) {
-			reorderHandle
-				.offset(x: -PanelSpacing.micro)
-		}
+
 		.fixedSize(horizontal: false, vertical: true)
 		.accessibilityIdentifier("decodex.account.\(state.account.accountID)")
 		.onAppear {
@@ -243,12 +248,15 @@ struct ResetCardAccountRow: View {
 			confirmation.retainOnly(Set(targets))
 		}
 		.onDisappear {
+			if isReorderHandleHovered || isReorderHandleDragging { NSCursor.arrow.set() }
 			confirmation.cancelPendingConfirmation()
 			confirmationSecondsRemaining = 0
 		}
 		.task(id: countdownAttempt) {
 			await runConfirmationCountdown(for: countdownAttempt)
 		}
+		.animation(rowStateAnimation, value: detailedAccountID)
+		.animation(rowStateAnimation, value: state.account.enabled)
 		.animation(rowStateAnimation, value: exceptionalStatusText)
 		.animation(rowStateAnimation, value: inventoryPresentation)
 		.animation(rowStateAnimation, value: showsReorderHandle)
@@ -256,41 +264,29 @@ struct ResetCardAccountRow: View {
 	}
 
 	private var reorderHandle: some View {
-		ZStack {
-			RoundedRectangle(cornerRadius: 5, style: .continuous)
-				.frame(width: 14, height: 18)
-				.foregroundStyle(
-					isReorderHandleHovered
-						? PanelPalette.actionBlue(colorScheme).opacity(0.15)
-						: PanelPalette.primaryText(colorScheme).opacity(
-							colorScheme == .dark ? 0.08 : 0.055
-						)
-				)
-
-			Image(systemName: "line.3.horizontal")
-				.font(.system(size: 9, weight: .semibold))
-				.foregroundStyle(
-					isReorderHandleHovered
-						? PanelPalette.actionBlue(colorScheme)
-						: PanelPalette.secondaryText(colorScheme).opacity(0.68)
-				)
-		}
-			.frame(width: 18, height: 28)
+		Image(systemName: "line.3.horizontal")
+			.font(.system(size: 10, weight: .medium))
+			.foregroundStyle(isReorderHandleHovered
+				? PanelPalette.actionBlue(colorScheme)
+				: PanelPalette.secondaryText(colorScheme).opacity(0.68))
+			.frame(width: 20, height: 20)
 			.opacity(showsReorderHandle ? 1 : 0)
 			.contentShape(Rectangle())
 			.highPriorityGesture(
 				DragGesture(
-					minimumDistance: 1,
+					minimumDistance: 4,
 					coordinateSpace: .named(
 						AccountCardReorderLayout.coordinateSpaceName
 					)
 				)
 					.onChanged { value in
 						isReorderHandleDragging = true
+                        NSCursor.closedHand.set()
 						onReorderDragChanged(value.translation.height)
 					}
 					.onEnded { _ in
 						isReorderHandleDragging = false
+                        (isReorderHandleHovered ? NSCursor.openHand : NSCursor.arrow).set()
 						onReorderDragEnded()
 					}
 			)
@@ -299,6 +295,7 @@ struct ResetCardAccountRow: View {
 			)
 			.onHover { isHovered in
 				isReorderHandleHovered = isHovered
+                if !isReorderHandleDragging { (isHovered ? NSCursor.openHand : NSCursor.arrow).set() }
 			}
 			.help("Drag to reorder accounts")
 			.accessibilityElement()
@@ -318,7 +315,7 @@ struct ResetCardAccountRow: View {
 		store.canReorderAccounts
 			&& (
 				(
-					(isAccountCardHovered || isReorderHandleHovered)
+					(isIdentityHovered || isReorderHandleHovered)
 						&& isReorderGestureEnabled
 				)
 					|| isReorderHandleDragging
@@ -350,7 +347,7 @@ struct ResetCardAccountRow: View {
 	}
 
 	private var identityHeader: some View {
-		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
+		HStack(alignment: .center, spacing: PanelSpacing.compact) {
 			Text(identity.text)
 				.font(PanelFont.accountName)
 				.foregroundStyle(PanelPalette.primaryText(colorScheme))
@@ -371,6 +368,7 @@ struct ResetCardAccountRow: View {
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel(identityAccessibilityLabel)
+		.opacity(state.account.enabled ? 1 : 0.45)
 	}
 
 	private var exceptionalStatus: some View {
@@ -420,9 +418,6 @@ struct ResetCardAccountRow: View {
 	}
 
 	private var exceptionalStatusText: String? {
-		if state.account.enabled == false {
-			return "Disabled"
-		}
 		if state.requiresLoginRefresh {
 			return "Login refresh required"
 		}
@@ -514,6 +509,10 @@ struct ResetCardAccountRow: View {
 		case .available:
 			HorizontalCardScroller {
 				HStack(spacing: PanelSpacing.compact) {
+					Image(systemName: "arrow.clockwise")
+						.font(PanelFont.tertiary)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+						.accessibilityHidden(true)
 					ForEach(state.targets, id: \.self) { target in
 						Button {
 							tap(target)
@@ -869,9 +868,9 @@ enum ResetCardQuotaPresentationTone: Equatable {
 	case muted
 	case error
 
-    static func remaining(_ value: Double) -> Self {
-        value > 50 ? .healthy : value > 20 ? .warning : .critical
-    }
+	static func remaining(_ value: Double) -> Self {
+		value > 50 ? .healthy : value > 20 ? .warning : .critical
+	}
 }
 
 struct ResetCardQuotaPresentation: Equatable {

@@ -34,7 +34,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertTrue(presentation.usesDisabledEnvironment)
 	}
 
-	func testTerminalReadbackAndNativeRecoveryUseReadyAndRestartStates() {
+	func testPinnedRouteCanReturnToAutomaticAndNativeRecoveryUsesRestart() {
 		let current = AccountRouteActionPresentation(
 			isCurrent: true,
 			canSelect: false,
@@ -45,8 +45,10 @@ final class AccountPanelPresentationTests: XCTestCase {
 
 		XCTAssertEqual(
 			current.title(isSwitching: false),
-			"Ready"
+			"Use automatic routing"
 		)
+        XCTAssertFalse(current.isDisabled, "A pinned account can be unpinned even when it cannot accept new work")
+        XCTAssertFalse(current.isVisuallyDisabled)
 		XCTAssertEqual(
 			ResetCardClientError.nativeClientUnavailable.errorDescription,
 			"Restart Decodex."

@@ -133,7 +133,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(accountPanel.contains("ForEach(presentedAccountStates)"))
 	}
 
-	func testAccountCardsUseConstrainedWholeCardReorderingWithAnOverlayGrip() throws {
+	func testAccountCardsUseConstrainedReorderingWithAnInlineSquareGrip() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
@@ -199,15 +199,14 @@ final class ResetCardArchitectureTests: XCTestCase {
 			support.contains("override func hitTest(_: NSPoint) -> NSView?")
 		)
 		XCTAssertTrue(
-			rows.contains("isAccountCardHovered || isReorderHandleHovered")
+			rows.contains("isIdentityHovered || isReorderHandleHovered")
 		)
 		XCTAssertFalse(rows.contains("DECODEX_HOVER_DEBUG"))
 		XCTAssertFalse(panel.contains("DECODEX_HOVER_DEBUG"))
 		XCTAssertFalse(support.contains("DECODEX_HOVER_DEBUG"))
 		XCTAssertTrue(rows.contains(".opacity(showsReorderHandle ? 1 : 0)"))
-		XCTAssertTrue(rows.contains(".frame(width: 14, height: 18)"))
-		XCTAssertTrue(rows.contains(".font(.system(size: 9, weight: .semibold))"))
-		XCTAssertTrue(rows.contains(".overlay(alignment: .trailing)"))
+		XCTAssertTrue(rows.contains(".frame(width: 20, height: 20)"))
+		XCTAssertFalse(rows.contains(".overlay(alignment: .trailing)"))
 		XCTAssertTrue(rows.contains("DragGesture("))
 		XCTAssertTrue(rows.contains("coordinateSpace: .named("))
 		XCTAssertTrue(rows.contains("value.translation.height"))
@@ -228,7 +227,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(motion.contains("static let accountReorder"))
 		XCTAssertTrue(
 			[rows, controls].allSatisfy {
-				$0.contains("HStack(alignment: .firstTextBaseline")
+				$0.contains("HStack(alignment: .center")
 			}
 		)
 		XCTAssertTrue(rows.contains(#"Text("Move up")"#))
@@ -275,7 +274,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 				)
 			)
 		}
-		XCTAssertTrue(details.contains(".padding(PanelSpacing.popoverInset)"))
+		XCTAssertFalse(details.contains(".frame(width: 270)"))
 		XCTAssertTrue(login.contains(".padding(PanelSpacing.popoverInset)"))
 	}
 
@@ -645,7 +644,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(store.contains("pendingRoute"))
 		XCTAssertTrue(actions.contains("title: presentation.title("))
 		XCTAssertTrue(actions.contains(#"return "Switching""#))
-		XCTAssertTrue(actions.contains(#"return isCurrent ? "Ready" : "Switch""#))
+		XCTAssertTrue(actions.contains(#"return isCurrent ? "Use automatic routing" : "Route through this account""#))
 		XCTAssertFalse(actions.contains("AccountRoutePending"))
 		XCTAssertFalse(section.contains("AccountRoutePending"))
 	}
@@ -794,7 +793,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(script.contains("-p decodex-app-client-ffi"))
 		XCTAssertTrue(script.contains("--bin decodex"))
 		XCTAssertTrue(script.contains("--product DecodexMenuBar"))
-		XCTAssertTrue(script.contains(#"cp "$ROOT/target/release/decodex" "$HELPERS/decodex""#))
+		XCTAssertTrue(script.contains(#"cp "$BUILD_ROOT/release/decodex" "$HELPERS/decodex""#))
 		XCTAssertTrue(
 			script.contains(
 				#"DEFAULT_SIGN_IDENTITY="4EBCADF6B4D513E45CE33EC6934C08DBB0F03D7F""#

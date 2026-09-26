@@ -6010,6 +6010,8 @@ fn account_recovery(error: AccountLifecycleError) -> ConversationManualRecovery 
 		| AccountLifecycleError::InvalidOperation
 		| AccountLifecycleError::CredentialImport
 		| AccountLifecycleError::CodexIsRunning
+		| AccountLifecycleError::AuthSourceAccountUnknown
+		| AccountLifecycleError::AuthCredentialConflict
 		| AccountLifecycleError::AuthFileUnreadable
 		| AccountLifecycleError::AuthFileChanged
 		| AccountLifecycleError::AuthWriteFailed

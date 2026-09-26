@@ -86,6 +86,8 @@ enum AccountControlRejection: String, Decodable, Equatable, Sendable {
 	case credentialNeedsLogin = "credential_needs_login"
 	case credentialRefreshRejected = "credential_refresh_rejected"
 	case credentialRefreshUnavailable = "credential_refresh_unavailable"
+	case authSourceAccountUnknown = "auth_source_account_unknown"
+	case authCredentialConflict = "auth_credential_conflict"
 	case authFileUnreadable = "auth_file_unreadable"
 	case authFileChanged = "auth_file_changed"
 	case authWriteFailed = "auth_write_failed"
@@ -131,6 +133,10 @@ enum AccountControlRejection: String, Decodable, Equatable, Sendable {
 			return "ChatGPT rejected the credential refresh. Sign in again."
 		case .credentialRefreshUnavailable:
 			return "Credential refresh is unavailable. Try again later."
+		case .authSourceAccountUnknown:
+			return "The current Codex login is not in Accounts. Add that account before switching."
+		case .authCredentialConflict:
+			return "The current Codex login and saved account could not be synchronized. Sign in again to reconnect the account."
 		case .authFileUnreadable:
 			return "The Codex authentication file could not be read."
 		case .authFileChanged:

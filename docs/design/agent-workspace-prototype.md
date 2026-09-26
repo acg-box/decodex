@@ -158,3 +158,17 @@ not a separate native Liquid Glass window.
 
 Weather cards show six hours per page. Small clickable dots select each page with
 a brief transition. Wheel input over the card scrolls the conversation without changing the forecast page. Single-page forecasts have no pagination controls.
+
+
+### Menu-bar account UI parity
+
+The menu-bar account list now uses the same account interaction model as Settings > Accounts:
+
+- The trailing control group contains route, power, and logout. A reserved slot before the account name reveals a grip on identity hover without moving the text. The grip uses open/closed hand cursors; dragging lifts the card while neighboring cards move into their new positions. Clicking the name still opens details. The identity expands to fill available space and the last action aligns with the content edge. All targets are 20-point squares with 2-point gaps. Selection changes only the glyph weight, fill, and tint; it adds no button background. The power icon enables or disables participation. Disabled identity and quota content is dimmed; controls remain reachable.
+- A square route icon pins an account. Selecting that same icon again uses the existing balanced-selection command. No separate manual-mode selector is required.
+- Selecting the identity or quota area expands that account's activity inline. Only one account is expanded. Account rows have no details icon or overflow menu.
+- Reset Cards remain directly visible. Redemption and logout retain their confirmation steps. Reauthentication appears only for existing login failures or explicit recovery needs.
+- Email visibility, drag reordering, compact K/M/B counts, and quota tone thresholds remain shared behavioral contracts.
+- In-flight commands block conflicting input without changing unrelated glyphs, opacity, or layout. The affected icon pulses when motion is enabled.
+
+This is presentation parity across GPUI and SwiftUI, not a second routing or account-state owner.

@@ -227,6 +227,16 @@ impl SqliteStore {
 		lease: AccountCommandReceiptLease,
 		result: &Value,
 	) -> Result<(), StoreError> {
+		self.complete_account_command_with_diagnostic(lease, result, None).await
+	}
+
+	/// Retain a credential-negative failure stage beside the command receipt.
+	pub async fn complete_account_command_with_diagnostic(
+		&self,
+		lease: AccountCommandReceiptLease,
+		result: &Value,
+		diagnostic: Option<(&'static str, String)>,
+	) -> Result<(), StoreError> {
 		validate_account_command_response(result)?;
 		let result = result.clone();
 		self.run(move |connection| {
@@ -234,6 +244,13 @@ impl SqliteStore {
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			finish_command_sync(&transaction, &lease.0, &result)?;
+			if let Some((stage, cause)) = diagnostic {
+				let diagnostic = serde_json::json!({"stage":stage,"cause":cause}).to_string();
+				transaction.execute(
+					"UPDATE command_receipts SET progress_json=?1 WHERE protocol=?2 AND idempotency_key=?3 AND request_sha256=?4",
+					params![diagnostic, lease.0.protocol, lease.0.key, lease.0.request_hash],
+				).map_err(sql_error)?;
+			}
 			transaction.commit().map_err(sql_error)
 		})
 		.await

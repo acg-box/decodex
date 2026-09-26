@@ -1038,8 +1038,50 @@ mod tests {
 			Err(StoreError::IdempotencyConflict)
 		));
 
+		let diagnostic_command = CommandIdentity::new("route-read-failure", b"route").unwrap();
+		let AccountCommandReceiptClaim::Owned(lease) = store
+			.reserve_account_command(
+				&diagnostic_command,
+				AccountCommandKind::SetEnabled,
+				account_id.as_str(),
+				Some(1),
+			)
+			.await
+			.unwrap()
+		else {
+			panic!("diagnostic command must be owned");
+		};
+		let rejected = json!({"outcome":"rejected"});
+		store
+			.complete_account_command_with_diagnostic(
+				lease,
+				&rejected,
+				Some(("initial_read", "UnsafePath".to_owned())),
+			)
+			.await
+			.unwrap();
 		drop(store);
 		let reopened = SqliteStore::open_test(&path).expect("reopen store");
+		let diagnostic: String = reopened
+			.run(|connection| {
+				connection
+					.query_row(
+						"SELECT progress_json FROM command_receipts WHERE idempotency_key='route-read-failure'",
+						[],
+						|row| row.get(0),
+					)
+					.map_err(crate::error::sqlite_error)
+					.map_err(StoreError::from)
+			})
+			.await
+			.unwrap();
+		assert_eq!(
+			serde_json::from_str::<serde_json::Value>(&diagnostic).unwrap(),
+			json!({"stage":"initial_read","cause":"UnsafePath"})
+		);
+		assert!(
+			matches!(reopened.reserve_account_command(&diagnostic_command, AccountCommandKind::SetEnabled, account_id.as_str(), Some(1)).await.unwrap(), AccountCommandReceiptClaim::Replayed(value) if value == rejected)
+		);
 		let (accounts, routing) =
 			reopened.read_account_registry_snapshot(512).await.expect("read restarted registry");
 		assert_eq!(accounts.len(), 1);

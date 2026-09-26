@@ -72,8 +72,7 @@ struct AccountProfileDetailView: View {
 					.help(quotaDiagnostic)
 			}
 		}
-		.frame(width: 270)
-		.padding(PanelSpacing.popoverInset)
+		.frame(maxWidth: .infinity, alignment: .leading)
 		.accessibilityElement(children: .contain)
 	}
 
