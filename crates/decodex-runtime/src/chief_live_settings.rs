@@ -1,7 +1,7 @@
 //! Source-bound live reviewer inspection and durable, non-replayed publication.
 use crate::chief_usage_estimate::Source;
 use decodex_codex::app_server_client::{ClientError, LiveReviewer, LiveSettingsOutcome};
-use decodex_database::{ChiefLiveReviewerAttempt, SqliteStore};
+use decodex_database::{ChiefLiveSettingsAttempt, ChiefLiveSettingsEdit, SqliteStore};
 use decodex_protocol::{ChiefLiveReviewerState as State, ChiefReviewer};
 use serde_json::json;
 use sha2::{Digest as _, Sha256};
@@ -32,15 +32,22 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	}
 	let turn = work.active_turn_id?;
 	let prior = store
-		.chief_live_reviewer_receipt(key.work.clone(), key.thread.clone(), turn.clone())
+		.chief_live_settings_receipt(key.work.clone(), key.thread.clone(), turn.clone())
 		.await
 		.ok()?;
 	let previous_id = prior.as_ref().map(|p| p.id);
 	let can_update = !prior.as_ref().is_some_and(|p| {
 		p.outcome == "reserved" && p.generation_id.as_deref() == Some(key.generation.as_str())
 	});
-	let last_reviewer =
-		prior.as_ref().map(|p| serde_json::from_value(json!(p.reviewer))).transpose().ok()?;
+	let last_reviewer = prior
+		.as_ref()
+		.and_then(|p| match &p.edit {
+			ChiefLiveSettingsEdit::Reviewer { reviewer } =>
+				Some(serde_json::from_value(json!(reviewer))),
+			ChiefLiveSettingsEdit::Model { .. } => None,
+		})
+		.transpose()
+		.ok()?;
 	let last_outcome =
 		prior.as_ref().map(|p| serde_json::from_value(json!(p.outcome))).transpose().ok()?;
 	let facts = json!([
@@ -119,13 +126,13 @@ where
 		return Err(Rejected("The task source changed before dispatch."));
 	}
 	let id = store
-		.reserve_chief_live_reviewer(ChiefLiveReviewerAttempt {
+		.reserve_chief_live_settings(ChiefLiveSettingsAttempt {
 			work_id: before.key.work.clone(),
 			thread_id: before.key.thread.clone(),
 			turn_id: turn.into(),
 			generation_id: Some(before.key.generation.as_str().into()),
 			review_token: review.into(),
-			reviewer: value.into(),
+			edit: ChiefLiveSettingsEdit::Reviewer { reviewer: value.into() },
 			attempt_id: attempt.into(),
 			previous_id: inspected.previous_id,
 		})
@@ -163,7 +170,7 @@ where
 			_ => "unknown",
 		}
 	};
-	if !store.finish_chief_live_reviewer(id, attempt.into(), outcome.into()).await.unwrap_or(false)
+	if !store.finish_chief_live_settings(id, attempt.into(), outcome.into()).await.unwrap_or(false)
 	{
 		return Err(Unknown("The operation result could not be saved. It will not be retried."));
 	}

@@ -169,7 +169,7 @@ impl OwnedReviewer {
 		);
 		assert!(
 			self.store
-				.chief_live_reviewer_receipt("root".into(), self.key.thread.clone(), turn.into())
+				.chief_live_settings_receipt("root".into(), self.key.thread.clone(), turn.into())
 				.await
 				.expect("receipt query")
 				.is_none()

@@ -39,7 +39,9 @@ pub use chief_plugins::{ChiefPluginAttempt, ChiefPluginReceipt};
 mod chief_permissions;
 pub use chief_permissions::{ChiefPermissionAttempt, ChiefPermissionReceipt};
 mod chief_live_settings;
-pub use chief_live_settings::{ChiefLiveReviewerAttempt, ChiefLiveReviewerReceipt};
+pub use chief_live_settings::{
+	ChiefLiveSettingsAttempt, ChiefLiveSettingsEdit, ChiefLiveSettingsReceipt,
+};
 mod chief_install;
 pub use chief_install::{ChiefInstallAttempt, ChiefInstallRequirements};
 mod chief_guardian;
