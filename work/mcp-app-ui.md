@@ -245,6 +245,26 @@ result forwarding alone is not interactive delivery. The real WebKit suite passe
 seven tests, including duplicate and conflicting browser requests and exact reply
 routing. Signed desktop acceptance and R05 delivery remain open.
 
+## Saved outcome controls
+
+The callback consumer now retains the submitted receipt identity when the view closes
+or its source becomes unavailable. The saved-outcome action only reads the local
+journal. Unknown outcomes have a separate explicit acknowledgment action, bound to the
+saved reservation. Its reply is followed by receipt readback; it does not assume success
+from a missing reply. An earlier tool review is discarded after acknowledgment, so a
+later call requires a new request and review.
+
+The view receives saved completed results or an explicit unsent/unknown error. Reserved
+and unavailable outcomes remain unresolved. Readback validates the saved document's
+work and operation IDs as well as the local chunk envelope. A local-wire fixture covers
+query-only two-chunk reads, rejection of a foreign saved owner, and retention of an
+unacknowledged unknown outcome when the view closes.
+
+Cold discovery still requires a separate work-owned pending-operation read that does
+not depend on a new live widget review. The current view controls do not complete that
+requirement. Keep tools/call capability disabled until cold discovery and rendered
+confirmation/recovery acceptance are complete.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.

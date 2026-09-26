@@ -12,7 +12,7 @@ const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 const DOCUMENT: &[u8] =
 	br#"{"item":{"id":"image"},"resources":[{"text":"<button>Fixture</button>"}]}"#;
 
-fn fixture(
+pub(super) fn fixture(
 	mode: &'static str,
 ) -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<ChiefAppUiRequest>>) {
 	let root = tempfile::tempdir_in("/tmp").unwrap();
@@ -43,8 +43,9 @@ fn fixture(
 
 async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefAppUiRequest> {
 	let mut requests = Vec::new();
+	let mut receipt_index = 0;
 	while requests.len() < if mode == "complete" { 2 } else { 1 } {
-		let index = requests.len();
+		let index = if mode.starts_with("receipt-") { receipt_index } else { requests.len() };
 		let mut socket =
 			tokio_tungstenite::accept_async(listener.accept().await.unwrap().0).await.unwrap();
 		let _hello = socket.next().await.unwrap().unwrap();
@@ -100,6 +101,40 @@ async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefAppUi
 				.await
 				.unwrap();
 			return requests;
+		}
+		if let QueryPayload::GetChiefAppUiReceipt { request } = &query.payload {
+			assert_eq!(request.work_id.as_str(), "work");
+			assert_eq!(request.operation_id.as_str(), "saved-operation");
+			let document = serde_json::to_vec(&serde_json::json!({"workId": if mode == "receipt-foreign" { "foreign" } else { "work" },
+                "operationId":"saved-operation", "reservationId":42, "server":"fixture", "tool":"calculate", "arguments":{"value":7},
+                "state":"unknown", "uncertaintyAcknowledged":false})).unwrap();
+			let split = document.len() / 2;
+			assert_eq!(request.offset as usize, if index == 0 { 0 } else { split });
+			let response = decodex_protocol::ChiefAppUiReceiptResult::Available {
+				request: Box::new(request.clone()),
+				fingerprint: EntityId::new("a".repeat(64)).unwrap(),
+				total_bytes: document.len() as u32,
+				bytes: if index == 0 {
+					document[..split].to_vec()
+				} else {
+					document[split..].to_vec()
+				},
+			};
+			let result = ServerMessage::QueryResult(QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: ServerId::new(SERVER).unwrap(),
+				query_id: query.query_id,
+				payload: QueryResultPayload::ChiefAppUiReceipt(response),
+			});
+			socket
+				.send(Message::Text(serde_json::to_string(&result).unwrap().into()))
+				.await
+				.unwrap();
+			receipt_index += 1;
+			if receipt_index == 2 {
+				return requests;
+			}
+			continue;
 		}
 		let QueryPayload::GetChiefAppUi { request } = query.payload else {
 			panic!("media query: {:?}", query.payload)

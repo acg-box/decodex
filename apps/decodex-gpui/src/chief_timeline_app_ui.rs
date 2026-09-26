@@ -27,7 +27,10 @@ impl ChiefSurface {
 			self.native_history.app_ui.host.as_mut().and_then(native::AppHost::poll)
 		{
 			if matches!(event["type"].as_str(), Some("closed" | "unavailable")) {
-				self.native_history.app_ui.clear();
+				let state = &mut self.native_history.app_ui;
+				state.host = None;
+				state.source = None;
+				state.callback.close_view();
 				break;
 			}
 			if event["type"] == "tool_call" {
@@ -112,6 +115,8 @@ impl ChiefSurface {
 						let state = &mut s.native_history.app_ui;
 						if state.serial == serial {
 							state.host = None;
+							state.source = None;
+							state.callback.close_view();
 							state.notice = Some(
 								"App source changed or disconnected. Open it again to refresh.",
 							);

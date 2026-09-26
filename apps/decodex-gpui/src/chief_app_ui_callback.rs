@@ -9,6 +9,18 @@ use serde_json::{Value, json};
 pub(super) struct State {
 	review: Option<ChiefAppUiCallReview>,
 	task: Option<Task<()>>,
+	receipt_request: Option<ChiefAppUiReceiptRequest>,
+	receipt: Option<Value>,
+}
+
+impl State {
+	pub(super) fn close_view(&mut self) {
+		self.review = None;
+		// Submitted work has an independent durable outcome. Keep its readback alive.
+		if self.receipt_request.is_none() {
+			self.task = None;
+		}
+	}
 }
 
 impl ChiefSurface {
@@ -41,6 +53,10 @@ impl ChiefSurface {
                 state.callback.task = None;
                 match review {
                     Some(review @ ChiefAppUiCallReview::Available { .. }) => {
+                        if let ChiefAppUiCallReview::Available { request, pending_operation: Some(operation), .. } = &review {
+                            state.callback.receipt_request = Some(ChiefAppUiReceiptRequest { work_id:request.work_id.clone(), operation_id:operation.clone(), offset:0, fingerprint:None });
+                            state.callback.receipt = None;
+                        }
                         state.callback.review = Some(review);
                         state.notice = Some("Review the app request below before allowing it.");
                     },
@@ -99,7 +115,115 @@ impl ChiefSurface {
                     cx.notify();
                 })));
 		}
+		let callback = &self.native_history.app_ui.callback;
+		if callback.receipt_request.is_some() {
+			if let Some(receipt) = &callback.receipt {
+				row = row
+					.child(format!(
+						"Saved call: {} · {}",
+						receipt["server"].as_str().unwrap_or(""),
+						receipt["tool"].as_str().unwrap_or("")
+					))
+					.child(serde_json::to_string_pretty(&receipt["arguments"]).unwrap_or_default())
+					.child(receipt_notice(Some(receipt)));
+			}
+			if callback.task.is_none() {
+				row = row.child(
+					div()
+						.id("app-call-refresh")
+						.cursor_pointer()
+						.p_2()
+						.child("Read saved outcome")
+						.on_click(cx.listener(|surface, _, _, cx| {
+							surface.refresh_native_app_receipt(false, cx)
+						})),
+				);
+				if callback.receipt.as_ref().is_some_and(|r| {
+					r["state"] == "unknown" && r["uncertaintyAcknowledged"] == false
+				}) {
+					row = row.child(
+						div()
+							.id("app-call-acknowledge")
+							.cursor_pointer()
+							.p_2()
+							.child("I understand this call may have run")
+							.on_click(cx.listener(|surface, _, _, cx| {
+								surface.refresh_native_app_receipt(true, cx)
+							})),
+					);
+				}
+			}
+		}
 		row.into_any_element()
+	}
+
+	fn refresh_native_app_receipt(&mut self, acknowledge: bool, cx: &mut Context<Self>) {
+		let Some(profile) = self.profile.clone() else {
+			return;
+		};
+		let state = &mut self.native_history.app_ui;
+		if state.callback.task.is_some() {
+			return;
+		}
+		let Some(request) = state.callback.receipt_request.clone() else {
+			return;
+		};
+		let action = if acknowledge {
+			let Some(receipt) = state
+				.callback
+				.receipt
+				.as_ref()
+				.filter(|r| r["state"] == "unknown" && r["uncertaintyAcknowledged"] == false)
+			else {
+				return;
+			};
+			let Some(reservation_id) = receipt["reservationId"].as_i64() else {
+				return;
+			};
+			Some(decodex_protocol::ChiefActionDto::AcknowledgeAppUiCall {
+				work_id: request.work_id.clone(),
+				operation_id: request.operation_id.clone(),
+				reservation_id,
+			})
+		} else {
+			None
+		};
+		let serial = state.serial;
+		let operation = request.operation_id.clone();
+		let read = cx.background_executor().spawn(async move {
+			let runtime =
+				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			runtime.block_on(async {
+				let client = ChiefClient::new(profile);
+				if let Some(action) = action {
+					let _ = client
+						.execute(
+							action,
+							IdempotencyKey::new(unique_command()).expect("command identity"),
+						)
+						.await;
+				}
+				read_receipt(&client, request).await
+			})
+		});
+		state.callback.task = Some(cx.spawn(async move |surface, cx| {
+            let receipt = read.await;
+            let _ = surface.update(cx, |surface, cx| {
+                let state = &mut surface.native_history.app_ui;
+                if state.serial != serial { return; }
+                state.callback.task = None;
+                apply_receipt(state, &operation, receipt);
+                // A prior review never becomes permission after acknowledgment. Require a
+                // fresh browser request and fresh service review for any subsequent call.
+                if acknowledge
+                    && let Some(ChiefAppUiCallReview::Available { request, .. }) = state.callback.review.take()
+                    && let Some(host) = state.host.as_mut() {
+                    host.command(json!({"operation":"tool_result","operationId":request.operation_id,"error":"Request a fresh review after checking the saved outcome"}));
+                }
+                cx.notify();
+            });
+        }));
+		cx.notify();
 	}
 
 	fn confirm_native_app_call(&mut self, cx: &mut Context<Self>) {
@@ -128,6 +252,8 @@ impl ChiefSurface {
 			offset: 0,
 			fingerprint: None,
 		};
+		state.callback.receipt_request = Some(receipt.clone());
+		state.callback.receipt = None;
 		state.notice = Some("App call submitted. Waiting for its saved outcome…");
 		let run = cx.background_executor().spawn(async move {
 			let runtime =
@@ -155,29 +281,46 @@ impl ChiefSurface {
 					return;
 				}
 				state.callback.task = None;
-				let response = match receipt.as_ref().and_then(|r| r["state"].as_str()) {
-					Some("completed") => receipt
-						.as_ref()
-						.and_then(|r| r.get("result"))
-						.filter(|r| r.is_object())
-						.cloned(),
-					_ => None,
-				};
-				if let Some(result) = response {
-					if let Some(host) = state.host.as_mut() {
-						host.command(
-							json!({"operation":"tool_result","operationId":operation,"result":result}),
-						);
-					}
-					state.notice = Some("App response received.");
-				} else {
-					state.notice = Some("App outcome is not confirmed. Do not repeat the call.");
-				}
+				apply_receipt(state, &operation, receipt);
 				cx.notify();
 			});
 		}));
 		cx.notify();
 	}
+}
+
+fn receipt_notice(receipt: Option<&Value>) -> &'static str {
+	match receipt.and_then(|r| r["state"].as_str()) {
+		Some("completed") => "App response saved.",
+		Some("unsent") => "This call was not sent.",
+		Some("unknown") if receipt.is_some_and(|r| r["uncertaintyAcknowledged"] == true) =>
+			"Uncertain outcome acknowledged. This call will not be repeated.",
+		Some("unknown") => "This call may have run. Check the app before making another request.",
+		Some("reserved") => "This call is still unresolved. Read its saved outcome again later.",
+		_ => "App outcome is unavailable. Do not repeat the call.",
+	}
+}
+
+fn apply_receipt(state: &mut super::State, operation: &EntityId, receipt: Option<Value>) {
+	state.notice = Some(receipt_notice(receipt.as_ref()));
+	if let Some(host) = state.host.as_mut() {
+		match receipt.as_ref().and_then(|r| r["state"].as_str()) {
+			Some("completed") => {
+				if let Some(result) =
+					receipt.as_ref().and_then(|r| r.get("result")).filter(|r| r.is_object())
+				{
+					host.command(
+						json!({"operation":"tool_result","operationId":operation,"result":result}),
+					);
+				}
+			},
+			Some("unsent" | "unknown") => {
+				host.command(json!({"operation":"tool_result","operationId":operation,"error":receipt_notice(receipt.as_ref())}));
+			},
+			_ => {},
+		}
+	}
+	state.callback.receipt = receipt;
 }
 
 fn callback_request(
@@ -219,7 +362,13 @@ async fn read_receipt(
 		total = Some(total_bytes);
 		document.extend(bytes);
 		if document.len() == total_bytes as usize {
-			return serde_json::from_slice(&document).ok();
+			let receipt: Value = serde_json::from_slice(&document).ok()?;
+			if receipt["workId"].as_str() != Some(request.work_id.as_str())
+				|| receipt["operationId"].as_str() != Some(request.operation_id.as_str())
+			{
+				return None;
+			}
+			return Some(receipt);
 		}
 		request.offset = document.len() as u32;
 		request.fingerprint = Some(fingerprint);
@@ -252,5 +401,48 @@ mod tests {
 		let mut malformed = event;
 		malformed["arguments"] = json!(["not an argument object"]);
 		assert!(callback_request(&request, call.source_fingerprint, &malformed).is_none());
+	}
+	#[tokio::test]
+	async fn app_ui_saved_outcome_read_is_query_only_and_rejects_foreign_owner() {
+		for mode in ["receipt-valid", "receipt-foreign"] {
+			let (_root, profile, server) = super::super::wire_tests::fixture(mode);
+			let receipt = read_receipt(
+				&ChiefClient::new(profile),
+				ChiefAppUiReceiptRequest {
+					work_id: EntityId::new("work").unwrap(),
+					operation_id: EntityId::new("saved-operation").unwrap(),
+					offset: 0,
+					fingerprint: None,
+				},
+			)
+			.await;
+			assert!(
+				server.join().unwrap().is_empty(),
+				"Receipt read must not request native resources"
+			);
+			if mode == "receipt-valid" {
+				let mut state = super::super::State::default();
+				state.callback.receipt_request = Some(ChiefAppUiReceiptRequest {
+					work_id: EntityId::new("work").unwrap(),
+					operation_id: EntityId::new("saved-operation").unwrap(),
+					offset: 0,
+					fingerprint: None,
+				});
+				apply_receipt(&mut state, &EntityId::new("saved-operation").unwrap(), receipt);
+				state.callback.close_view();
+				assert!(state.callback.receipt_request.is_some());
+				assert_eq!(state.callback.receipt.as_ref().unwrap()["state"], "unknown");
+				assert_eq!(
+					state.callback.receipt.as_ref().unwrap()["uncertaintyAcknowledged"],
+					false
+				);
+				assert_eq!(
+					state.notice,
+					Some("This call may have run. Check the app before making another request.")
+				);
+			} else {
+				assert!(receipt.is_none());
+			}
+		}
 	}
 }
