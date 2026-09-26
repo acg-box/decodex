@@ -14,6 +14,41 @@ pub struct NativeAppUi {
 }
 
 impl AppServerClient {
+	/// Execute one explicitly confirmed and durably reserved widget tool call.
+	/// The caller owns origin/catalog validation and uncertain-outcome recovery.
+	/// A transport or malformed-response error is not proof that no effect occurred.
+	pub async fn call_mcp_app_tool(
+		&self,
+		thread: &str,
+		server: &str,
+		tool: &str,
+		arguments: Value,
+	) -> Result<Value, ClientError> {
+		if [thread, server, tool].iter().any(|value| {
+			value.is_empty() || value.len() > 4096 || value.chars().any(char::is_control)
+		}) || !arguments.is_object()
+		{
+			return Err(ClientError::InvalidFrame);
+		}
+		// Widget-supplied transport metadata is never forwarded. Account and thread
+		// routing remain with the native process and its retained connection.
+		let result = tokio::time::timeout(
+			std::time::Duration::from_secs(60),
+			self.request(
+				"mcpServer/tool/call",
+				json!({"threadId":thread,"server":server,"tool":tool,"arguments":arguments}),
+			),
+		)
+		.await
+		.map_err(|_| ClientError::Io)??;
+		if !result["content"].is_array()
+			|| (!result["isError"].is_null() && !result["isError"].is_boolean())
+		{
+			return Err(ClientError::InvalidFrame);
+		}
+		Ok(result)
+	}
+
 	/// Resolve a widget from exact native history, never from a UI-provided resource URI.
 	/// Account and process ownership must also be revalidated by the service caller.
 	pub async fn mcp_app_for_item(
@@ -322,5 +357,53 @@ mod tests {
 			.is_none()
 		);
 		assert!(resource_target(&json!({"type":"mcpToolCall","server":"widget","mcpAppUi":{"resourceUri":7},"mcpAppResourceUri":"ui://fallback"})).is_err());
+	}
+	#[tokio::test]
+	async fn confirmed_tool_transport_preserves_result_and_never_retries_uncertainty() {
+		for mode in ["success", "lost", "malformed"] {
+			let (local, remote) = tokio::io::duplex(65536);
+			let (reader, writer) = tokio::io::split(local);
+			let (client, _events) = AppServerClient::from_io(reader, writer);
+			let task = tokio::spawn(async move {
+				let (reader, mut writer) = tokio::io::split(remote);
+				let mut lines = BufReader::new(reader).lines();
+				let request: Value =
+					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+				assert_eq!(request["method"], "mcpServer/tool/call");
+				assert_eq!(
+					request["params"],
+					json!({"threadId":"thread","server":"widget","tool":"counter","arguments":{"value":7}})
+				);
+				if mode == "lost" {
+					return;
+				}
+				let result = if mode == "malformed" {
+					json!({"content":false})
+				} else {
+					json!({"content":[],"structuredContent":{"value":7},"_meta":{"privateViewState":"retained"},"isError":false})
+				};
+				writer
+					.write_all(
+						format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+					)
+					.await
+					.unwrap();
+				assert!(
+					tokio::time::timeout(std::time::Duration::from_millis(100), lines.next_line())
+						.await
+						.is_err()
+				);
+			});
+			let result =
+				client.call_mcp_app_tool("thread", "widget", "counter", json!({"value":7})).await;
+			if mode == "success" {
+				let result = result.unwrap();
+				assert_eq!(result["structuredContent"]["value"], 7);
+				assert_eq!(result["_meta"]["privateViewState"], "retained");
+			} else {
+				assert!(result.is_err());
+			}
+			task.await.unwrap();
+		}
 	}
 }

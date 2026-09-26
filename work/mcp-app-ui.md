@@ -126,6 +126,22 @@ the real lightweight local query and desktop host closure after a stale response
 This is display lifetime control; each future effectful callback
 still requires a fresh authority check at dispatch.
 
+## Tool transport boundary
+
+`call_mcp_app_tool` performs one native mcpServer/tool/call request and preserves
+content, structuredContent and result metadata. It does not forward widget-supplied
+transport metadata. Malformed responses and lost replies remain errors whose effect
+status is unknown; the adapter never retries. Five native adapter tests pass, including
+lost and malformed responses. Strict adapter Clippy passes.
+
+The adapter is not exposed to the view yet. Before dispatch, the service must confirm
+the target tool belongs to the originating app/server, obtain explicit user authority,
+and durably reserve the exact arguments. Direct native calls bypass the model-tool
+approval path. Existing configuration receipts arbitrate config-file writes and must
+not be reused with misleading tool-result states. The existing task event store can
+retain a distinct tool-attempt/result lifecycle without a second database. Hosted app
+tool ownership requires authoritative catalog evidence, not a tool-name guess.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.
