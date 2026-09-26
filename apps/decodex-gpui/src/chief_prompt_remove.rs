@@ -150,11 +150,9 @@ impl ChiefSurface {
 					cx,
 					move |s, cx| {
 						if let Some(removal) = &mut s.prompt_edit.removal
-							&& removal.key == key
+							&& removal.key == key && !removal.markers.insert(identity)
 						{
-							if !removal.markers.insert(identity) {
-								removal.markers.remove(&identity);
-							}
+							removal.markers.remove(&identity);
 						}
 						cx.notify();
 					},

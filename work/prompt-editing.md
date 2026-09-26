@@ -198,8 +198,8 @@ settings, bounded queue payloads, repeated admission, pending handback rejection
 and changed thread or digest rejection. These tests construct native request
 parameters; they do not prove a complete desktop send or installed-native result.
 
-Desktop confirmation, durable handback, history refresh, explicit send, ambiguous
-send recovery, and full native request size qualification remain required before
+Complete desktop handback, fresh history presentation, explicit send, ambiguous
+send recovery, and installed-native acceptance remain required before
 this optional feature is accepted. Local protocol and database tests do not close
 those acceptance requirements.
 
@@ -210,7 +210,7 @@ Receipt recovery clears the local key only when exact native evidence is availab
 An Unchanged receipt permits a fresh review while preserving edited content;
 Uncertain or Applied receipts retain the handback fence. Missing or failed network
 responses do not release it. Versions1 through8 upgrade with no invented confirmation
-identity. The desktop confirmation button is not yet connected to this contract.
+identity. Desktop confirmation now waits for this exact record to be saved.
 
 Native input qualification follows the fixed cutoff's public UserInput schema and
 TurnProcessor::validate_v2_input_limit. It checks the seven supported variants and
@@ -225,8 +225,8 @@ external context injection. A size refusal before injection uses the existing
 positive-unsent result; an attempted injection retains the existing uncertainty
 rules. The actual transport still checks its final frame before writing.
 
-These checks currently protect send admission and dispatch. Connecting equivalent
-qualification before the desktop's destructive history confirmation remains open.
+These checks protect send admission and dispatch. Desktop confirmation also reruns
+the client preflight before saving its confirmation record and sending the edit.
 
 The desktop now exposes a read-only Check edited input action. Its client reads
 current model settings for the exact work and thread, combines inherited values
@@ -237,5 +237,29 @@ execution choice invalidates the result shown in the panel.
 
 This check is a current observation, not a reusable confirmation permit. Local
 media readability and remote media availability are not established by it. The
-confirmation action must rerun required checks before persisting confirmation
-intent and submitting the native edit; that action remains unconnected.
+confirmation action reruns required checks before persisting confirmation intent
+and submitting the native edit.
+
+
+## Desktop confirmation
+
+The confirmation panel states that the selected and later turns will be removed,
+workspace file changes will remain, and the edited draft will not be sent. An
+explicit second action starts fresh input/settings qualification and checks that
+absolute local media paths are readable files. Relative local media paths currently
+stop confirmation with an explicit error; resolving their native working directory
+remains an acceptance item. Remote media availability is not proven by local checks.
+
+A worker waits on a one-shot permit. The UI sends that permit only after the existing
+draft writer confirms the exact pending record, current profile, draft and execution
+choice. Closing or invalidating the pending operation drops the permit. A timeout,
+changed input or connection loss before dispatch retains the draft. Known rejection
+or a first-attempt pre-dispatch client failure can clear that local intent; prior
+uncertainty remains on an aborted explicit continuation. An accepted or ambiguous
+reply starts read-only receipt recovery, never automatic native confirmation replay.
+An explicit continuation uses the saved command identity.
+
+A rendered-control/socket test reads the actual draft file when the service receives
+ConfirmPromptEdit. It proves the matching confirmation key and draft are durable and
+the occupied main composer is preserved. It uses a simulated rejection and does not
+prove native success, draft handback ACK, or a subsequent model send.

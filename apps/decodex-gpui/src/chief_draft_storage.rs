@@ -697,6 +697,10 @@ impl<T> TransposeOption<T> for Option<Option<T>> {
 }
 
 #[cfg(test)]
+#[path = "chief_prompt_confirm_wire_tests.rs"]
+mod prompt_confirm_tests;
+
+#[cfg(test)]
 mod tests {
 	use super::*;
 

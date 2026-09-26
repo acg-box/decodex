@@ -1,6 +1,7 @@
 //! Source-bound native prompt review. Opening or editing this panel never reverts history.
 use super::*;
 use decodex_protocol::{DesktopPromptEditDraft, PromptDraft, PromptEditPhase};
+#[path = "chief_prompt_confirm.rs"] mod confirmation;
 #[path = "chief_prompt_remove.rs"] mod removal;
 
 #[derive(Default)]
@@ -15,6 +16,7 @@ pub(super) struct Panel {
 	task: Option<Task<()>>,
 	feedback: String,
 	removal: Option<removal::Removal>,
+	confirmation: Option<DesktopPromptEditDraft>,
 }
 
 impl ChiefSurface {
@@ -377,6 +379,8 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) -> Result<(), &'static str> {
 		self.stage_prompt_editor(draft.clone(), cx)?;
+		self.prompt_edit.task = None;
+		self.prompt_edit.confirmation = None;
 		self.prompt_edit.key = unique_command();
 		self.prompt_edit.draft = Some(draft);
 		self.prompt_edit.subscriptions.clear();
@@ -404,6 +408,7 @@ impl ChiefSurface {
 					return;
 				}
 				s.prompt_edit.draft = Some(draft);
+				s.prompt_edit.confirmation = None;
 				cx.notify();
 			}));
 		}
@@ -460,6 +465,36 @@ impl ChiefSurface {
 			panel = panel.child(editor.clone());
 		}
 		if let Some(draft) = &self.prompt_edit.draft {
+			if draft.receipt_id.is_none() {
+				let expected = draft.clone();
+				panel = panel.child(
+					self.workspace_action(
+						"prompt-confirm-review".into(),
+						if draft.confirmation_key.is_some() {
+							"Continue saved confirmation…"
+						} else {
+							"Confirm history edit…"
+						}
+						.into(),
+						move |s, cx| {
+							if s.prompt_edit.task.is_none()
+								&& s.prompt_edit.draft.as_ref() == Some(&expected)
+								&& s.prompt_editor_source_current()
+							{
+								s.prompt_edit.confirmation = Some(expected.clone());
+								cx.notify();
+							}
+						},
+						cx,
+					),
+				);
+			}
+			if let Some(expected) = &self.prompt_edit.confirmation {
+				let expected = expected.clone();
+				panel = panel.child("Remove the selected turn and all later turns? Workspace file changes remain. The edited draft will be kept and will not be sent.")
+					.child(self.workspace_action("prompt-confirm-apply".into(), "Remove turns and keep draft".into(), move |s, cx| s.confirm_prompt_editor(expected.clone(), cx), cx))
+					.child(self.workspace_action("prompt-confirm-cancel".into(), "Cancel".into(), |s, cx| { s.prompt_edit.confirmation = None; cx.notify(); }, cx));
+			}
 			let expected = draft.clone();
 			panel = panel.child(self.workspace_action(
 				"prompt-preflight".into(),
