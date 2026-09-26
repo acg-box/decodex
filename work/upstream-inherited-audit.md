@@ -189,3 +189,19 @@ on the spelling of the source label.
 These four decisions reduce pending content-review rows from 223 to 219 after
 the prior four-row batch. The register retains all 360 rows. This does not close
 shared production files, skipped native tests, or final desktop acceptance.
+
+## Delivered recovery files reconciled on 2026-09-26
+
+Three rows now reference merged recovery deliveries. The full comparisons were
+made at `d337ec4d3da23259e23390e304dbe33e0272322c` and the same hashes were verified
+again at `3790eb3569301b151323acfbfc890bd5d3da4ee6`.
+
+| Original path | Delivered relationship |
+| --- | --- |
+| `crates/decodex-codex/src/app_server_client/history_summary.rs` | PR1528 restores the complete inherited implementation and negative tests. The only additional content is a positive read-only, chronology and cursor-removal test. |
+| `crates/decodex-runtime/src/chief/timeline/summary.rs` | Exact preserved file bytes after PR1528. The service, client, GUI and installed-native qualification are recorded in `history-summary-recovery.md`. |
+| `crates/decodex-runtime/src/chief/result_messages.rs` | Exact preserved file bytes after PR1531. Native timestamp bounds and paginated durable recovery are recorded in `native-terminal-times.md`. |
+
+All three original snapshot hashes match. All 360 rows remain; pending
+content-review rows decrease from 219 to 216. This closes only these three files,
+not shared timeline consumers or final signed desktop acceptance.
