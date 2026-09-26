@@ -375,6 +375,28 @@ visible without overlap. Evidence images are target/visual-tests/r05-confirmatio
 and target/visual-tests/r05-unknown.png in the task worktree. These are component
 layout evidence, not a signed whole-app service/native interaction or user approval.
 
+## Hosted connector and link qualification with installed native code
+
+The installed native app-server passed two local hosted-backend fixtures using synthetic
+identity data. Its app/read projection retained the raw calendar_create_event tool name
+and enabled state, matching the connected MCP catalog. The original item retained
+connectorId=calendar and linkId=work. With matching descriptor link metadata, resource
+read returned the exact originCallId and HTML resource. A direct callback used the work
+selector and did not start another model request.
+
+With descriptor link metadata set to personal while the originating item still belonged
+to work, native resource read rejected the mismatched connection. The fixture observed
+only the original tool call, with no callback after refusal. Both cases used two local
+model requests; the matching case had two MCP calls and the refusal case had one.
+The native processes and fixture servers were stopped.
+
+Probe and reports are retained as native-app-ui-hosted-20260926.py and the matching/
+mismatched JSON reports in the task evidence directory. The fixture implements the
+fixed upstream apps/batch metadata response shape. This qualifies installed native
+projection and connection behavior with a local backend; it is not real hosted-account
+or whole-desktop acceptance. Initial missing apps/batch fixture routes returned 404
+and are not counted as successful evidence.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.
