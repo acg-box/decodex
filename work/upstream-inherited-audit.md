@@ -13,7 +13,8 @@ one shared file can contain both delivered and outstanding behavior.
 
 [The complete 360-row register](upstream-inherited-files.tsv) contains hashes
 from the committed audit baseline, with the three dependency rows refreshed at
-`943eb039ddf785fd99200326180887bcc657fa7e`. It separates direct content comparison from
+`943eb039ddf785fd99200326180887bcc657fa7e` and nine source rows refreshed at
+`63f3b110afb6f40fb55cbd46d1ef9ac13acd56a9`. It separates direct content comparison from
 recorded adaptation decisions. The owner hash refers to current_owner; the current
 hash always refers to the original snapshot path. This distinction matters when a
 migration number now names a different migration.
@@ -66,14 +67,46 @@ values match the recorded evidence. Complete parsed TOML comparisons prove:
 The implementation commits `69754d2658` and `8def1e392c` are ancestors of the
 checked revision. These three rows have no remaining file-level difference that
 requires a decision. This closes three entries from the historical 239-row
-`requires-content-review` set. The remaining 236 entries in that set still need
-review; other previously partial dispositions also remain open. The original
+`requires-content-review` set. At that stage, 236 entries in that set still needed
+review; the source review below resolves nine more. Other previously partial
+dispositions also remain open. The original
 byte-comparison counts above are unchanged: structural equality is not byte equality.
 
 Risk coverage: structural reconciliation only; no advisory or runtime dependency
 risk assessment. Risk delta: no new package identities, sources or checksums in
 these inherited differences. Decision: retain the delivered dependency changes.
 No manifest, lockfile, dependency version or application code changed in this audit.
+
+## Nine source rows reconciled after PR1523
+
+The following complete-file comparisons were rechecked at
+`63f3b110afb6f40fb55cbd46d1ef9ac13acd56a9`. Snapshot and current SHA-256 values
+match the register. These nine rows now have explicit dispositions.
+
+| Source file | Complete difference and retained owner |
+| --- | --- |
+| `crates/decodex-core/src/path_unix.rs` | One doc comment was removed. All executable source is equal. |
+| `crates/decodex-codex/src/app_server_client/permissions.rs` | One doc comment now distinguishes sandbox projection from full named-profile filesystem rules. All executable source is equal. |
+| `crates/decodex-protocol/src/chief_permissions.rs` | One doc comment no longer says named profiles require idle. All executable source is equal; this row does not establish runtime selection policy. |
+| `database/src/chief_turn_execution.rs` | Three doc comments were added. All executable source is equal. |
+| `database/src/chief_process/tests/plugins.rs` | The fixture converts `Option<&str>` to a vector with `map` instead of iterator collection. Both produce `[]` for `None` and `[p]` for `Some(p)`. All other source is equal after whitespace normalization. |
+| `crates/decodex-runtime/src/account_launch/api_reset_card/tests.rs` | Two constant/default struct fields moved within the same initializer. All other source is equal. |
+| `crates/decodex-runtime/src/chief_model_settings.rs` | The inherited file remains an exact prefix. A `cfg(test)` module registration was added. Its tests exist and passed in the PR1523 Runtime run. |
+| `crates/decodex-runtime/src/account_launch.rs` | Only the `activation_policy` module and its export were added. [PR1428](https://github.com/acg-box/decodex/pull/1428) supplies the module and the quota activation consumer. Commit `95a898289` and merge `1aa0357c6` are ancestors of the checked revision. |
+| `apps/decodex-gpui/src/chief_app_exposure.rs` | The shared configuration write label and three outcome labels were added or clarified. All controls and existing outcome branches remain. [PR1481](https://github.com/acg-box/decodex/pull/1481), commit `6791a8ba9` and merge `b67449a14`, delivers these labels. |
+
+There are now 227 rows with `requires-content-review`, down from the historical
+239 after three dependency and nine source dispositions. This is a file-review
+count, not a feature completion percentage. Partial dispositions outside this
+set remain open. These comparisons do not establish new runtime or visual acceptance.
+
+A same-formatter comparison also checked 149 existing Rust files in the pending
+set at the earlier `4f5bba9bd` revision. All parsed, but none became equal from
+formatting alone. The register does not close files based on that check.
+
+Guardian observation retention remains a separate open delivery at this snapshot.
+[PR1524](https://github.com/acg-box/decodex/pull/1524) addresses the decoder and
+store limits; its pending status does not close the inherited Guardian row here.
 
 ## Core gaps resolved since the earlier audit
 
