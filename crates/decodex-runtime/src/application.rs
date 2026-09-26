@@ -2283,6 +2283,13 @@ impl Application for ServiceApplication {
 				self.query_input_receipts(work_id.as_str(), *after).await,
 			QueryPayload::GetChiefSteerReceipt { identity } =>
 				self.query_steer_receipt(identity).await,
+			QueryPayload::GetChiefPendingAppUiCall { work_id } =>
+				QueryResultPayload::ChiefPendingAppUiCall(match &self.store {
+					ProductStore::Available(store) =>
+						crate::chief_app_ui_receipt::pending(store, work_id).await,
+					ProductStore::Unavailable(_) =>
+						decodex_protocol::ChiefPendingAppUiCall::Unavailable,
+				}),
 			QueryPayload::GetChiefAppUiReceipt { request } =>
 				QueryResultPayload::ChiefAppUiReceipt(match &self.store {
 					ProductStore::Available(store) =>

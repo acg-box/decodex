@@ -142,6 +142,7 @@ impl ChiefSurface {
 				cx,
 			)),
 		);
+		panel = panel.child(self.render_native_app_recovery(work, cx));
 		if self.native_history.requested.as_ref().is_some_and(|(id, thread)| {
 			id == &work.id && Some(thread) == work.codex_thread_id.as_ref()
 		}) {

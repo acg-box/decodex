@@ -7,6 +7,26 @@ use decodex_protocol::{
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+pub(crate) async fn pending(
+	store: &SqliteStore,
+	work_id: &EntityId,
+) -> decodex_protocol::ChiefPendingAppUiCall {
+	use decodex_protocol::ChiefPendingAppUiCall;
+	match store.pending_chief_app_ui_call(work_id.as_str().into()).await {
+		Ok(receipt) => {
+			let operation_id = match receipt {
+				Some(receipt) => match EntityId::new(receipt.attempt.attempt_id) {
+					Ok(id) => Some(id),
+					Err(_) => return ChiefPendingAppUiCall::Unavailable,
+				},
+				None => None,
+			};
+			ChiefPendingAppUiCall::Available { work_id: work_id.clone(), operation_id }
+		},
+		Err(_) => ChiefPendingAppUiCall::Unavailable,
+	}
+}
+
 pub(crate) async fn read(store: &SqliteStore, request: &ChiefAppUiReceiptRequest) -> Result {
 	if request.offset as usize >= MAX_CHIEF_APP_UI_RECEIPT_BYTES
 		|| (request.offset > 0 && request.fingerprint.is_none())

@@ -265,6 +265,29 @@ not depend on a new live widget review. The current view controls do not complet
 requirement. Keep tools/call capability disabled until cold discovery and rendered
 confirmation/recovery acceptance are complete.
 
+## Cold pending-call discovery
+
+A work-owned local query now discovers the unresolved operation from the existing
+journal without a live Chief or native process. The response separates a successful
+empty read from unavailable storage. The typed client checks the echoed work owner.
+
+The conversation panel includes a recovery action independent of widget visibility.
+It discovers the operation, collects its saved receipt, and exposes the same read and
+acknowledgment controls used after a live call. Confirmation and recovery controls are
+rendered once at the task level. A task switch rejects a late recovery result.
+
+The current selected run passed 186 tests. The native-wire fixture verifies pending
+lookup after database reopen for lost, completed and unsent calls. Desktop tests verify
+cold discovery without a widget, unavailable versus empty results, foreign-owner
+rejection, and rendered recovery/acknowledgment controls. The initial repeat found an
+unrelated output-stream OS thread in the deterministic GPUI fixture; the fixture now
+clears the surface profile after the recovery task captures its local client. Runtime
+and protocol strict Clippy passed; desktop Clippy passed with its existing allowances.
+
+The tools/call capability remains disabled pending complete confirmation/recovery,
+exact lost-reply command behavior and signed native consumer acceptance. This local
+recovery path does not itself establish full App UI delivery.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.

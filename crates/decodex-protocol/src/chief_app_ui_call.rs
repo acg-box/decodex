@@ -89,3 +89,18 @@ pub enum ChiefAppUiReceiptResult {
 	/// The saved evidence exceeds the supported transfer capacity.
 	CapacityExceeded,
 }
+
+/// Cold discovery from the saved work journal; no native connection is required.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ChiefPendingAppUiCall {
+	/// The work journal was read successfully.
+	Available {
+		/// Exact work queried.
+		work_id: crate::EntityId,
+		/// Unresolved call, or none when no call needs acknowledgment.
+		operation_id: Option<crate::EntityId>,
+	},
+	/// The journal could not be read. This is not evidence of no pending call.
+	Unavailable,
+}

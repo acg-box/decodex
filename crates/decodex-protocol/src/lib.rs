@@ -34,8 +34,8 @@ pub use chief_integrations::{ChiefAppInventory, ChiefAppStatusDto};
 mod chief_app_ui_call;
 pub use chief_app_ui_call::{
 	CHIEF_APP_UI_RECEIPT_CHUNK_BYTES, ChiefAppUiCall, ChiefAppUiCallReview,
-	ChiefAppUiReceiptRequest, ChiefAppUiReceiptResult, MAX_CHIEF_APP_UI_CALL_BYTES,
-	MAX_CHIEF_APP_UI_RECEIPT_BYTES,
+	ChiefAppUiReceiptRequest, ChiefAppUiReceiptResult, ChiefPendingAppUiCall,
+	MAX_CHIEF_APP_UI_CALL_BYTES, MAX_CHIEF_APP_UI_RECEIPT_BYTES,
 };
 mod chief_app_ui;
 pub use chief_app_ui::{

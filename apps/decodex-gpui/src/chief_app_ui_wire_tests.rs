@@ -45,7 +45,11 @@ async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefAppUi
 	let mut requests = Vec::new();
 	let mut receipt_index = 0;
 	while requests.len() < if mode == "complete" { 2 } else { 1 } {
-		let index = if mode.starts_with("receipt-") { receipt_index } else { requests.len() };
+		let index = if mode.starts_with("receipt-") || mode.starts_with("pending-") {
+			receipt_index
+		} else {
+			requests.len()
+		};
 		let mut socket =
 			tokio_tungstenite::accept_async(listener.accept().await.unwrap().0).await.unwrap();
 		let _hello = socket.next().await.unwrap().unwrap();
@@ -101,6 +105,39 @@ async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefAppUi
 				.await
 				.unwrap();
 			return requests;
+		}
+		if let QueryPayload::GetChiefPendingAppUiCall { work_id } = &query.payload {
+			assert_eq!(work_id.as_str(), "work");
+			let response = match mode {
+				"pending-unavailable" => decodex_protocol::ChiefPendingAppUiCall::Unavailable,
+				_ => decodex_protocol::ChiefPendingAppUiCall::Available {
+					work_id: EntityId::new(if mode == "pending-foreign" {
+						"foreign"
+					} else {
+						"work"
+					})
+					.unwrap(),
+					operation_id: if mode == "pending-none" {
+						None
+					} else {
+						Some(EntityId::new("saved-operation").unwrap())
+					},
+				},
+			};
+			let result = ServerMessage::QueryResult(QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: ServerId::new(SERVER).unwrap(),
+				query_id: query.query_id,
+				payload: QueryResultPayload::ChiefPendingAppUiCall(response),
+			});
+			socket
+				.send(Message::Text(serde_json::to_string(&result).unwrap().into()))
+				.await
+				.unwrap();
+			if mode != "pending-cold" {
+				return requests;
+			}
+			continue;
 		}
 		if let QueryPayload::GetChiefAppUiReceipt { request } = &query.payload {
 			assert_eq!(request.work_id.as_str(), "work");

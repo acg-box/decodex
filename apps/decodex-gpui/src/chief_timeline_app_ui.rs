@@ -66,9 +66,6 @@ impl ChiefSurface {
 		if let Some(notice) = notice {
 			row = row.child(muted(notice));
 		}
-		if selected {
-			row = row.child(self.render_app_call(cx));
-		}
 		row.into_any_element()
 	}
 

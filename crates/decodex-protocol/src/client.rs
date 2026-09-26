@@ -1406,6 +1406,33 @@ impl ChiefClient {
 		}
 	}
 
+	/// Discover saved unresolved widget calls without contacting the native server.
+	pub async fn pending_app_ui_call(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::ChiefPendingAppUiCall, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"chief-pending-app-ui-call",
+				QueryPayload::GetChiefPendingAppUiCall { work_id: work_id.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let QueryResultPayload::ChiefPendingAppUiCall(result) = completed.value else {
+			return Err(ClientFailure::ProtocolMalformed);
+		};
+		if let crate::ChiefPendingAppUiCall::Available { work_id: actual, .. } = &result
+			&& actual != &work_id
+		{
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		Ok(result)
+	}
+
 	/// Read exact native callback evidence for a later user confirmation.
 	pub async fn review_app_ui_call(
 		&self,

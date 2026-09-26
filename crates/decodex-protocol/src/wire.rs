@@ -2350,6 +2350,12 @@ pub enum QueryPayload {
 		identity: crate::ChiefSteerIdentity,
 	},
 	/// Read saved App UI call evidence without repeating the native call.
+	/// Discover an unresolved App UI call without a live native source.
+	GetChiefPendingAppUiCall {
+		/// Exact work journal owner.
+		work_id: EntityId,
+	},
+	/// Read the exact saved operation.
 	GetChiefAppUiReceipt {
 		/// Exact saved operation and continuation.
 		request: crate::ChiefAppUiReceiptRequest,
@@ -3154,6 +3160,8 @@ pub enum QueryResultPayload {
 	ChiefAppUiCallReview(crate::ChiefAppUiCallReview),
 	/// A bounded chunk of durable App UI call evidence.
 	ChiefAppUiReceipt(crate::ChiefAppUiReceiptResult),
+	/// Work-owned unresolved operation discovery.
+	ChiefPendingAppUiCall(crate::ChiefPendingAppUiCall),
 	/// Exact positive steering acceptance evidence.
 	ChiefSteerReceipt(crate::ChiefSteerReceiptResult),
 	/// Independent unconfirmed input page.

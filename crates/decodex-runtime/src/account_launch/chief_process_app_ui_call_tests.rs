@@ -106,6 +106,13 @@ async fn app_ui_confirmation_preserves_exact_intent_and_lost_reply_without_repla
 		assert_eq!(outcome.is_ok(), mode == "success");
 		assert_eq!(calls.load(Ordering::SeqCst), expected_calls);
 		let reopened = SqliteStore::open(&owner.root.paths()).unwrap();
+		assert_eq!(
+			crate::chief_app_ui_receipt::pending(&reopened, &call.work_id).await,
+			decodex_protocol::ChiefPendingAppUiCall::Available {
+				work_id: call.work_id.clone(),
+				operation_id: if mode == "lost" { Some(call.operation_id.clone()) } else { None },
+			}
+		);
 		let receipt = reopened
 			.chief_app_ui_call_receipt("root".into(), "call-1".into())
 			.await

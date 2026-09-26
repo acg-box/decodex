@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 #[derive(Default)]
 pub(super) struct State {
+	work: Option<EntityId>,
 	review: Option<ChiefAppUiCallReview>,
 	task: Option<Task<()>>,
 	receipt_request: Option<ChiefAppUiReceiptRequest>,
@@ -24,6 +25,104 @@ impl State {
 }
 
 impl ChiefSurface {
+	pub(in super::super) fn render_native_app_recovery(
+		&self,
+		work: &ChiefWorkItemDto,
+		cx: &mut Context<Self>,
+	) -> gpui::AnyElement {
+		let owner = work.id.clone();
+		let mut row = div().flex().flex_col().gap_2().child(
+			div()
+				.id("app-call-discover")
+				.debug_selector(|| "app-call-discover".into())
+				.cursor_pointer()
+				.p_2()
+				.child("Check unresolved app calls")
+				.on_click(cx.listener(move |surface, _, _, cx| {
+					surface.discover_native_app_call(&owner, cx)
+				})),
+		);
+		let state = &self.native_history.app_ui;
+		if state.callback.work.as_ref().is_some_and(|id| id.as_str() == work.id) {
+			if let Some(notice) = state.notice {
+				row = row.child(notice);
+			}
+			row = row.child(self.render_app_call(cx));
+		}
+		row.into_any_element()
+	}
+
+	fn discover_native_app_call(&mut self, work: &str, cx: &mut Context<Self>) {
+		if self.selected.as_deref() != Some(work) {
+			return;
+		}
+		let (Some(profile), Ok(work_id)) = (self.profile.clone(), EntityId::new(work)) else {
+			return;
+		};
+		let state = &mut self.native_history.app_ui;
+		if state.callback.task.is_some() || state.callback.review.is_some() {
+			return;
+		}
+		let serial = state.serial;
+		state.callback.work = Some(work_id.clone());
+		state.notice = Some("Reading saved app calls…");
+		let owner = work_id.clone();
+		let read = cx.background_executor().spawn(async move {
+			let runtime =
+				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			runtime.block_on(async {
+				let client = ChiefClient::new(profile);
+				match client.pending_app_ui_call(work_id.clone()).await.ok()? {
+					decodex_protocol::ChiefPendingAppUiCall::Available {
+						operation_id: Some(operation_id),
+						..
+					} => {
+						let request = ChiefAppUiReceiptRequest {
+							work_id,
+							operation_id,
+							offset: 0,
+							fingerprint: None,
+						};
+						let receipt = read_receipt(&client, request.clone()).await;
+						Some(Some((request, receipt)))
+					},
+					decodex_protocol::ChiefPendingAppUiCall::Available {
+						operation_id: None,
+						..
+					} => Some(None),
+					decodex_protocol::ChiefPendingAppUiCall::Unavailable => None,
+				}
+			})
+		});
+		state.callback.task = Some(cx.spawn(async move |surface, cx| {
+			let result = read.await;
+			let _ = surface.update(cx, |surface, cx| {
+				if surface.selected.as_deref() != Some(owner.as_str()) {
+					return;
+				}
+				let state = &mut surface.native_history.app_ui;
+				if state.serial != serial {
+					return;
+				}
+				state.callback.task = None;
+				match result {
+					Some(Some((request, receipt))) => {
+						let operation = request.operation_id.clone();
+						state.callback.receipt_request = Some(request);
+						apply_receipt(state, &operation, receipt);
+					},
+					Some(None) => state.notice = Some("No unresolved app calls were found."),
+					None =>
+						state.notice = Some(
+							"Saved app calls are unavailable. This does not confirm their outcome.",
+						),
+				}
+				cx.notify();
+			});
+		}));
+		cx.notify();
+	}
+
 	pub(super) fn review_native_app_call(&mut self, event: Value, cx: &mut Context<Self>) {
 		let state = &mut self.native_history.app_ui;
 		if state.callback.task.is_some() || state.callback.review.is_some() {
@@ -37,6 +136,7 @@ impl ChiefSurface {
 		let Some(call) = callback_request(&request, source, &event) else {
 			return;
 		};
+		state.callback.work = Some(request.work_id.clone());
 		let serial = state.serial;
 		let operation = call.operation_id.clone();
 		state.notice = Some("Reviewing app request…");
@@ -131,6 +231,7 @@ impl ChiefSurface {
 				row = row.child(
 					div()
 						.id("app-call-refresh")
+						.debug_selector(|| "app-call-refresh".into())
 						.cursor_pointer()
 						.p_2()
 						.child("Read saved outcome")
@@ -144,6 +245,7 @@ impl ChiefSurface {
 					row = row.child(
 						div()
 							.id("app-call-acknowledge")
+							.debug_selector(|| "app-call-acknowledge".into())
 							.cursor_pointer()
 							.p_2()
 							.child("I understand this call may have run")
@@ -444,5 +546,92 @@ mod tests {
 				assert!(receipt.is_none());
 			}
 		}
+	}
+	#[tokio::test]
+	async fn app_ui_pending_discovery_distinguishes_missing_data_and_foreign_owner() {
+		for mode in ["pending-none", "pending-unavailable", "pending-foreign"] {
+			let (_root, profile, server) = super::super::wire_tests::fixture(mode);
+			let result =
+				ChiefClient::new(profile).pending_app_ui_call(EntityId::new("work").unwrap()).await;
+			assert!(server.join().unwrap().is_empty());
+			match mode {
+				"pending-none" => assert!(matches!(
+					result,
+					Ok(decodex_protocol::ChiefPendingAppUiCall::Available {
+						operation_id: None,
+						..
+					})
+				)),
+				"pending-unavailable" => assert_eq!(
+					result.unwrap(),
+					decodex_protocol::ChiefPendingAppUiCall::Unavailable
+				),
+				_ => assert!(result.is_err()),
+			}
+		}
+	}
+
+	#[gpui::test]
+	fn app_ui_cold_discovery_loads_unknown_receipt_without_a_widget(cx: &mut gpui::TestAppContext) {
+		let (_root, profile, server) = super::super::wire_tests::fixture("pending-cold");
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |surface, cx| {
+			surface.selected = Some("work".into());
+			surface.profile = Some(profile);
+			assert!(surface.native_history.app_ui.host.is_none());
+			surface.discover_native_app_call("work", cx);
+			// The recovery task captured its real local client. Do not start the unrelated
+			// OS-thread output subscription in GPUI's deterministic test scheduler.
+			surface.profile = None;
+		});
+		visual.run_until_parked();
+		assert!(server.join().unwrap().is_empty());
+		surface.read_with(visual, |surface, _| {
+			let state = &surface.native_history.app_ui;
+			assert!(state.host.is_none());
+			assert_eq!(
+				state.callback.receipt_request.as_ref().unwrap().operation_id.as_str(),
+				"saved-operation"
+			);
+			assert_eq!(state.callback.receipt.as_ref().unwrap()["state"], "unknown");
+			assert_eq!(state.callback.receipt.as_ref().unwrap()["uncertaintyAcknowledged"], false);
+		});
+	}
+	#[gpui::test]
+	fn app_ui_recovery_controls_render_without_the_native_view(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(gpui::size(px(1400.), px(1400.)));
+		surface.update(visual, |surface, cx| {
+            surface.visual_workspace_fixture(cx);
+            surface.graph_visible = false;
+            let owner = EntityId::new(surface.selected.clone().unwrap()).unwrap();
+            let state = &mut surface.native_history.app_ui;
+            state.callback.work = Some(owner.clone());
+            state.callback.receipt_request = Some(ChiefAppUiReceiptRequest {
+                work_id:owner.clone(), operation_id:EntityId::new("saved-operation").unwrap(), offset:0, fingerprint:None,
+            });
+            apply_receipt(state, &EntityId::new("saved-operation").unwrap(), Some(json!({
+                "workId":owner,"operationId":"saved-operation","reservationId":42,"server":"fixture","tool":"calculate",
+                "arguments":{"value":7},"state":"unknown","uncertaintyAcknowledged":false,
+            })));
+            assert!(state.host.is_none());
+            cx.notify();
+        });
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("app-call-discover").is_some());
+		assert!(visual.debug_bounds("app-call-refresh").is_some());
+		assert!(visual.debug_bounds("app-call-acknowledge").is_some());
+		surface.update(visual, |surface, cx| {
+			surface.native_history.app_ui.callback.receipt.as_mut().unwrap()["uncertaintyAcknowledged"] =
+				json!(true);
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("app-call-refresh").is_some());
+		assert!(visual.debug_bounds("app-call-acknowledge").is_none());
 	}
 }
