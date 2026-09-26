@@ -41,7 +41,7 @@ pub(super) fn next_retry(
 	)))
 }
 
-pub(super) fn cancel_pending(connection: &Connection, work: &str) -> Result<(), StoreError> {
+pub(crate) fn cancel_pending(connection: &Connection, work: &str) -> Result<(), StoreError> {
 	cancel_pending_with_note(
 		connection,
 		work,

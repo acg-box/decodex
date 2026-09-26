@@ -10,6 +10,9 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/install.rs"] mod install;
 #[path = "tests/large_approval.rs"] mod large_approval;
 #[path = "tests/live_file_approval.rs"] mod live_file_approval;
+#[path = "tests/native_goal_fixture.rs"] mod native_goal_fixture;
+#[path = "tests/native_goal_recovery.rs"] mod native_goal_recovery;
+#[path = "tests/native_goals.rs"] mod native_goals;
 #[path = "tests/native_mcp_forms.rs"] mod native_mcp_forms;
 #[path = "tests/native_plan.rs"] mod native_plan;
 #[path = "tests/native_settings.rs"] mod native_settings;
@@ -466,6 +469,40 @@ async fn emit_fixture_review_events(
 	}
 }
 
+fn fixture_thread_read(
+	request: &Value,
+	history: &Value,
+	settings: &std::collections::HashMap<String, Value>,
+	started_turns: u64,
+) -> Value {
+	let id = request["params"]["threadId"].as_str().unwrap();
+	let mut result = history
+		.get(id)
+		.cloned()
+		.unwrap_or_else(|| json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}));
+	let configured = settings.get(id).cloned().unwrap_or_else(
+		|| json!({"model":"selected-model","reasoningEffort":"high","modelProvider":"openai"}),
+	);
+	for field in ["model", "reasoningEffort", "modelProvider"] {
+		if result["thread"].get(field).is_none() {
+			result["thread"][field] = configured[field].clone();
+		}
+	}
+	if result["thread"]["cwd"].is_null() {
+		result["thread"]["cwd"] = json!("/tmp");
+	}
+	if history["_started_turns_only"] == true
+		&& let Some(turns) = result["thread"]["turns"].as_array_mut()
+	{
+		turns.truncate(usize::try_from(started_turns).expect("fixture turn count"));
+	}
+	if result["thread"]["historyMode"] == "paginated" {
+		assert_ne!(request["params"]["includeTurns"], true);
+		result["thread"]["turns"] = json!([]);
+	}
+	result
+}
+
 async fn serve_fixture(
 	server_io: tokio::io::DuplexStream,
 	history: Value,
@@ -501,28 +538,8 @@ async fn serve_fixture(
 				json!({"thread":{"id":request["params"]["threadId"]}})
 			},
 			Some("turn/steer") => json!({"turnId":request["params"]["expectedTurnId"]}),
-			Some("thread/read") => {
-				let id = request["params"]["threadId"].as_str().unwrap();
-				let mut result = history.get(id).cloned().unwrap_or_else(
-					|| json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
-				);
-				let configured = settings.get(id).cloned().unwrap_or_else(
-					|| json!({"model":"selected-model","reasoningEffort":"high","modelProvider":"openai"}),
-				);
-				for field in ["model", "reasoningEffort", "modelProvider"] {
-					if result["thread"].get(field).is_none() {
-						result["thread"][field] = configured[field].clone();
-					}
-				}
-				if result["thread"]["cwd"].is_null() {
-					result["thread"]["cwd"] = json!("/tmp");
-				}
-				if result["thread"]["historyMode"] == "paginated" {
-					assert_ne!(request["params"]["includeTurns"], true);
-					result["thread"]["turns"] = json!([]);
-				}
-				result
-			},
+			Some("thread/goal/get") => json!({"goal":history["_goal"]}),
+			Some("thread/read") => fixture_thread_read(&request, &history, &settings, turns),
 			Some("thread/turns/list") => {
 				let id = request["params"]["threadId"].as_str().unwrap();
 				let mut turns = history[id]["thread"]["turns"].clone();
@@ -858,7 +875,13 @@ async fn recovery_records_only_exact_terminal_evidence_without_dispatching() {
 		assert!(["thread/resume", "thread/read"].contains(&request["method"].as_str().unwrap()));
 	}
 	recovered.recover_persisted().await.unwrap();
-	assert!(sent.try_recv().is_err());
+	while let Ok(request) = sent.try_recv() {
+		assert_eq!(
+			request["method"], "thread/read",
+			"repeat recovery only checks existing native history"
+		);
+	}
+	assert_eq!(recovered.store.list_pending_chief_events(100).await.unwrap().len(), 1);
 }
 
 #[tokio::test]
@@ -3004,10 +3027,35 @@ async fn unfinished_native_text_keeps_source_and_display_only_status_after_reope
 	}
 }
 
-#[path = "tests/misalignment_recovery.rs"]
-mod misalignment_recovery;
-#[path = "tests/native_misalignment.rs"]
-mod native_misalignment;
+#[path = "tests/misalignment_recovery.rs"] mod misalignment_recovery;
+#[path = "tests/native_misalignment.rs"] mod native_misalignment;
 
-#[path = "tests/auth_recovery.rs"]
-mod auth_recovery;
+#[path = "tests/auth_recovery.rs"] mod auth_recovery;
+
+#[tokio::test]
+async fn missed_native_active_turn_recovery_rejects_reverted_readback() {
+	for reverted in [false, true] {
+		let history = json!({"_misalignment_revert_on_read":reverted,"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"active"},"turns":[{"id":"native-turn","status":"inProgress","items":[]}]}}});
+		let (mut chief, mut sent, _home) = fixture_with_history(history).await;
+		chief.start_chief("chief", "Original user input").await.unwrap();
+		complete(&mut chief, "chief").await;
+		while sent.try_recv().is_ok() {}
+		chief.recover_native_turns().await.unwrap();
+		let work = chief.store.get_chief_work_item("chief".into()).await.unwrap();
+		assert_eq!(
+			work.active_turn_id.as_deref(),
+			if reverted { None } else { Some("native-turn") }
+		);
+		while let Ok(request) = sent.try_recv() {
+			assert!(
+				!["thread/start", "turn/start", "turn/steer", "thread/inject_items"]
+					.contains(&request["method"].as_str().unwrap())
+			);
+			if request["method"] == "thread/resume" {
+				for field in ["cwd", "model", "sandbox", "approvalPolicy", "config"] {
+					assert!(request["params"].get(field).is_none());
+				}
+			}
+		}
+	}
+}

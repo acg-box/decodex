@@ -215,6 +215,7 @@ mod tests {
 	mod guardian_notices;
 	mod hooks;
 	mod models;
+	mod native_turns;
 	mod native_warnings;
 	mod permissions;
 	mod plugins;

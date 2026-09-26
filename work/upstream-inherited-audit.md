@@ -246,6 +246,20 @@ upgrade validation. This batch closes two rows from its 183-row main baseline
 to 181 and retains all 360 entries. Parallel deliveries can reduce the combined
 count further. No broad capability group or final desktop acceptance is closed.
 
+## Native-admitted turns restored on 2026-09-26
+
+The real native goal lifecycle regression first showed a new native turn while
+Decodex remained idle. Restore the process-bound database observer, event handler
+and cold/missed-event reconciliation. Use the retained typed goal getter and
+native settings owners. See [native turn recovery](native-turn-recovery.md).
+
+Close the complete `chief/native_turns.rs` and
+`chief/tests/native_goal_recovery.rs` delta paths after verified snapshot hashes
+and current-owner adaptation. Four restored pre-scan implementation/test files
+are outside the delta and do not reduce its count. Keep native scheduling,
+optional goal display and shared signed desktop acceptance distinct. The broad
+Chief, capacity and fixture files remain under review for other differences.
+
 ## Core gaps resolved since the earlier audit
 
 The earlier baseline was 3f131d80b9e90d2badf2394249bbf3b0266f72d3. Its three core

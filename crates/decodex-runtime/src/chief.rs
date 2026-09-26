@@ -20,6 +20,7 @@ mod install;
 pub(crate) mod misalignment;
 mod native_settings;
 pub(crate) mod native_subagents;
+mod native_turns;
 pub(crate) mod observations;
 mod prompt_edit;
 pub use prompt_edit::PromptEditReview;
@@ -215,7 +216,8 @@ impl ChiefCoordinator {
 	}
 
 	/// Reconcile exact persisted turns after the host reconnects the selected account.
-	/// This hydrates threads and records evidence; it never starts or replays a turn.
+	/// This hydrates native ownership and records evidence without local turn submission.
+	/// Native Codex can continue a persisted active goal when its thread is resumed.
 	pub async fn recover_persisted(&mut self) -> Result<(), ChiefError> {
 		self.recover_voice_calls().await?;
 		if !self.async_recovery_queued {
@@ -252,6 +254,7 @@ impl ChiefCoordinator {
 			let item = self.store.get_chief_work_item(old.id).await?;
 			self.recover_persisted_work(item, None, 0).await?;
 		}
+		self.recover_native_turns().await?;
 		Ok(())
 	}
 
@@ -332,6 +335,15 @@ impl ChiefCoordinator {
 				json!({"readbackError":bounded,"truncated":bounded.len()<detail.len()})
 			},
 		};
+		if evidence["capacityRetryEligible"] == true
+			&& self
+				.store
+				.chief_turn_execution(item.id.clone(), thread.clone(), turn.clone())
+				.await?
+				.is_none()
+		{
+			evidence["capacityRetryEligible"] = json!(false);
+		}
 		let usage = if usage_complete {
 			self.store
 				.read_chief_turn_usage(thread.clone(), turn.clone())
@@ -1418,6 +1430,9 @@ impl ChiefCoordinator {
 			}
 		}
 		match event {
+			ServerEvent::Notification { method, params } if method == "turn/started" => {
+				self.observe_native_turn(&params).await?;
+			},
 			ServerEvent::Notification { method, params } if method == "serverRequest/resolved" => {
 				let (Some(thread), Some(raw_id)) =
 					(params["threadId"].as_str(), params.get("requestId"))
