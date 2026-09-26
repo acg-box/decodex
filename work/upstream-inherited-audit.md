@@ -411,6 +411,34 @@ journal. This does not qualify model publication through the service. Native
 catalog/feature eligibility, model service and desktop controls remain open.
 No database migration, local wire change or automatic model switch is introduced.
 
+## Closing resume adapter restored on 2026-09-26
+
+Restore the complete inherited `app_server_client/resume.rs` and connect it to
+`AppServerClient::thread_resume`. Verify the original snapshot hash. The only
+snapshot difference adds a native close notification to the successful retry test.
+The same test fails before the helper is connected and passes afterward.
+
+Only the explicit same-thread native closing refusal allows finite retries. Raw
+requests and the current Chief/ordinary-conversation recovery owners keep their
+existing retry boundaries. Correct the transport comments to distinguish native
+resume activation from local input submission. Close the one adapter-file entry;
+shared `app_server_client.rs` remains open. The runtime recovery file has a separate
+complete disposition below.
+See [closing recovery](closing-resume-recovery.md) for source evidence, validation
+and the remaining installed-race acceptance boundary.
+
+## Deferred recovery receipt ownership reconciled on 2026-09-26
+
+Verify the original hash and the full `chief/resume_recovery.rs` difference.
+Keep the current source-bound scheduler, unload cancellation and current-work
+recheck. Hydration and native setting persistence moved to `chief/native_settings.rs`.
+The unified history projection and terminal readback retain the removed per-resume
+steer-receipt observation. A rebuilt-coordinator test verifies exact client-ID
+confirmation, duplicate-text isolation, durable readback and no input replay for
+active and completed turns after a closing refusal. No production code changes
+are required. Close this one runtime file entry; broader R08 acceptance remains
+open. See [recovery ownership](closing-resume-recovery.md).
+
 ## Validation boundary
 
 This documentation refresh checked snapshot hashes, current committed bytes, all

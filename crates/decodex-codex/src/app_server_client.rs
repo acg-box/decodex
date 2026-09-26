@@ -1,5 +1,6 @@
 //! Multiplexed app-server stdio transport. The caller owns authorization, environment,
-//! event consumption, and process lifetime. No request is retried by this transport.
+//! event consumption, and process lifetime. Raw requests are never retried. The resume helper
+//! retries only exact native closing refusals on the same connection.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -36,6 +37,7 @@ mod goals;
 mod history;
 mod history_summary;
 mod prompt_edit;
+mod resume;
 pub use goals::{NativeThreadGoal, NativeThreadGoalStatus};
 pub use prompt_edit::PromptEditCandidate;
 mod initialize;
@@ -634,9 +636,10 @@ impl AppServerClient {
 		self.request("thread/start", params).await
 	}
 
-	/// Load an existing provider thread without starting a turn.
+	/// Resume an existing thread; native queued work or active goals can continue.
+	/// Retry only explicit closing-thread refusals, never uncertain acceptance.
 	pub async fn thread_resume(&self, params: Value) -> Result<Value, ClientError> {
-		self.request("thread/resume", params).await
+		resume::resume(self, params).await
 	}
 
 	/// Read provider thread evidence without executing work.
