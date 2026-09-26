@@ -259,6 +259,65 @@ mod tests {
 		server.await.unwrap();
 	}
 	#[tokio::test]
+	async fn refresh_does_not_acknowledge_or_retry_a_failed_apps_continuation() {
+		let (local, remote) = tokio::io::duplex(65536);
+		let (reader, writer) = tokio::io::split(local);
+		let (client, _events) = AppServerClient::from_io(reader, writer);
+		let server = tokio::spawn(async move {
+			let (reader, mut writer) = tokio::io::split(remote);
+			let mut lines = BufReader::new(reader).lines();
+			for (method, result) in [
+				(
+					"plugin/reconcile",
+					json!({"changedPlugins":[],"failedRemotePluginIds":[],"failedMaterializationRemotePluginIds":[]}),
+				),
+				("config/mcpServer/reload", json!({})),
+				(
+					"app/list",
+					json!({"data":[{"id":"connector-fixture","name":"Fixture"}],"nextCursor":"next"}),
+				),
+			] {
+				let request: Value =
+					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+				assert_eq!(request["method"], method);
+				writer
+					.write_all(
+						format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+					)
+					.await
+					.unwrap();
+			}
+			let request: Value =
+				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+			assert_eq!(request["method"], "app/list");
+			assert_eq!(request["params"]["threadId"], "exact-thread");
+			assert_eq!(request["params"]["forceRefetch"], true);
+			assert_eq!(request["params"]["cursor"], "next");
+			writer
+				.write_all(
+					format!(
+						"{}\n",
+						json!({"id":request["id"],"error":{"code":-32603,"message":"Fixture Apps refresh failed"}})
+					)
+					.as_bytes(),
+				)
+				.await
+				.unwrap();
+			// A read failure must not replay the already applied shared mutations.
+			assert!(
+				tokio::time::timeout(std::time::Duration::from_millis(50), lines.next_line())
+					.await
+					.is_err()
+			);
+		});
+		assert!(matches!(
+			client.refresh_integrations("exact-thread").await,
+			Err(ClientError::Remote(_))
+		));
+		server.await.unwrap();
+	}
+
+	#[tokio::test]
 	async fn explicit_refresh_reloads_after_partial_reconcile_without_claiming_readiness() {
 		for partial in [false, true] {
 			let (local, remote) = tokio::io::duplex(65536);

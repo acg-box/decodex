@@ -130,13 +130,9 @@ impl AppServerClient {
 		baseline: Option<&str>,
 		latest: bool,
 	) -> Result<Vec<Value>, ClientError> {
-		let history = self.thread_read(json!({"threadId":thread})).await?;
-		validate_thread(&history, thread)?;
+		let history = self.read_history_metadata(thread).await?;
 		match history.pointer("/thread/historyMode").and_then(Value::as_str) {
 			None | Some("legacy") => {
-				let history =
-					self.thread_read(json!({"threadId":thread,"includeTurns":true})).await?;
-				validate_thread(&history, thread)?;
 				let turns = history
 					.pointer("/thread/turns")
 					.and_then(Value::as_array)
@@ -203,13 +199,23 @@ impl AppServerClient {
 		}
 	}
 
-	async fn read_turn_history(&self, thread: &str, turn: &str) -> Result<Value, ClientError> {
+	/// Migration may change the mode between metadata and the legacy full read.
+	/// Consumers must choose pagination from the returned response, not the first snapshot.
+	async fn read_history_metadata(&self, thread: &str) -> Result<Value, ClientError> {
 		let mut history = self.thread_read(json!({"threadId":thread})).await?;
 		validate_thread(&history, thread)?;
 		let mode = history.pointer("/thread/historyMode");
 		if mode.is_none() || mode == Some(&json!("legacy")) {
-			let history = self.thread_read(json!({"threadId":thread,"includeTurns":true})).await?;
+			history = self.thread_read(json!({"threadId":thread,"includeTurns":true})).await?;
 			validate_thread(&history, thread)?;
+		}
+		Ok(history)
+	}
+
+	async fn read_turn_history(&self, thread: &str, turn: &str) -> Result<Value, ClientError> {
+		let mut history = self.read_history_metadata(thread).await?;
+		let mode = history.pointer("/thread/historyMode");
+		if mode.is_none() || mode == Some(&json!("legacy")) {
 			return Ok(history);
 		}
 		if mode != Some(&json!("paginated")) {
@@ -376,7 +382,13 @@ mod tests {
 			Some(baseline) =>
 				client.thread_turns_since("thread/opaque", baseline).await.map(Value::Array),
 		};
-		(result, server.await.unwrap())
+		(
+			result,
+			tokio::time::timeout(std::time::Duration::from_secs(2), server)
+				.await
+				.expect("history reader did not send the expected requests")
+				.unwrap(),
+		)
 	}
 
 	#[tokio::test]
@@ -514,6 +526,44 @@ mod tests {
 			(
 				"thread/items/list",
 				json!({"data":[{"turnId":"other","item":{"id":"message"}}],"nextCursor":null}),
+			),
+		])
+		.await;
+		assert!(matches!(result, Err(ClientError::InvalidFrame)));
+	}
+
+	#[tokio::test]
+	async fn legacy_migration_between_reads_uses_pages_instead_of_empty_history() {
+		let legacy = json!({"thread":{"id":"thread/opaque","historyMode":"legacy"}});
+		let (result, requests) = read(vec![
+			("thread/read", legacy.clone()),
+			("thread/read", metadata()),
+			("thread/turns/list", turn_page()),
+			("thread/items/list", json!({"data":[{"turnId":"target","item":{"id":"answer","type":"agentMessage","text":"preserved"}}],"nextCursor":null})),
+		]).await;
+		assert_eq!(result.unwrap()["thread"]["turns"][0]["items"][0]["text"], "preserved");
+		assert_eq!(requests[1]["params"]["includeTurns"], true);
+		let (result, _) = run(
+			vec![
+				("thread/read", legacy.clone()),
+				("thread/read", metadata()),
+				("thread/turns/list", turn_page()),
+			],
+			Some(None),
+		)
+		.await;
+		assert_eq!(result.unwrap()[0]["id"], "target");
+		for mode in ["future-format", "paginated"] {
+			let response = json!({"thread":{"id":"other","historyMode":mode,"turns":[]}});
+			let (result, _) =
+				read(vec![("thread/read", legacy.clone()), ("thread/read", response)]).await;
+			assert!(matches!(result, Err(ClientError::InvalidFrame)));
+		}
+		let (result, _) = read(vec![
+			("thread/read", legacy),
+			(
+				"thread/read",
+				json!({"thread":{"id":"thread/opaque","historyMode":"future-format","turns":[]}}),
 			),
 		])
 		.await;
