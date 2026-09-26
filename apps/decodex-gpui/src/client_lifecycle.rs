@@ -739,7 +739,8 @@ impl ClientLifecycle {
 				let conversation_event = event.clone();
 				let inspection = self.apply_event(generation, event)?;
 				match &conversation_event.payload {
-					EventPayload::ConversationTurnFinished { conversation, .. } => {
+					EventPayload::ConversationTurnFinished { conversation, .. }
+					| EventPayload::ConversationChanged { conversation } => {
 						let _ = self.history_pager.reload_if_open(&conversation.conversation_id);
 					},
 					EventPayload::ConversationHistoryChanged { conversation_id } => {
