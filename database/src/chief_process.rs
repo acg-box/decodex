@@ -136,7 +136,7 @@ impl SqliteStore {
 			let affinity_conflict: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM chief_process_bindings b JOIN process_generations g ON g.generation_id=b.generation_id WHERE b.root_id = ?1 AND b.account_id <> ?2 AND g.state <> 'dead')", params![root_id, intent.account_id.as_str()], |row| row.get(0)).map_err(sql_error)?;
             let changing_account: bool = transaction.query_row("SELECT coalesce((SELECT account_id <> ?2 FROM chief_process_bindings WHERE root_id=?1 ORDER BY created_at_micros DESC,rowid DESC LIMIT 1),0)",params![root_id,intent.account_id.as_str()],|row|row.get(0)).map_err(sql_error)?;
             if changing_account {
-                let busy: bool = transaction.query_row("WITH RECURSIVE family(id) AS (SELECT ?1 UNION SELECT w.id FROM chief_work_items w JOIN family f ON w.parent_goal_id=f.id) SELECT EXISTS(SELECT 1 FROM chief_work_items WHERE id IN (SELECT id FROM family) AND dispatch_state <> 'idle')",[&root_id],|row|row.get(0)).map_err(sql_error)?;
+                let busy: bool = transaction.query_row("WITH RECURSIVE family(id) AS (SELECT ?1 UNION SELECT w.id FROM chief_work_items w JOIN family f ON w.parent_goal_id=f.id) SELECT EXISTS(SELECT 1 FROM chief_work_items WHERE id IN (SELECT id FROM family) AND (dispatch_state <> 'idle' OR EXISTS(SELECT 1 FROM chief_inbox_events a WHERE a.work_item_id=chief_work_items.id AND a.event_kind='prompt_edit_attempt' AND NOT EXISTS(SELECT 1 FROM chief_inbox_events r WHERE r.source_event_id=a.source_event_id||':release' AND r.event_kind='prompt_edit_release'))))",[&root_id],|row|row.get(0)).map_err(sql_error)?;
                 if busy { return Ok(rejected(ProcessGenerationRejection::IdentityConflict)); }
             }
 			if affinity_conflict || read_generation(&transaction, intent.generation_id.as_str())?.is_some() {
@@ -215,6 +215,7 @@ mod tests {
 	mod native_warnings;
 	mod permissions;
 	mod plugins;
+	mod prompt_edit;
 	mod response_usage;
 	use super::*;
 	use crate::{

@@ -54,7 +54,7 @@ impl SqliteStore {
                     WHERE w.id=?1 AND w.codex_thread_id=?2 AND w.dispatch_state IN ('idle','running')
                     AND w.id IN (SELECT id FROM family) AND g.state='ready')",
                 params![call.work_id,call.thread_id,call.generation_id],|r|r.get(0)).map_err(sqlite_error)?;
-            if !owned { return Err(DatabaseError::Conflict.into()); }
+            if !owned || crate::chief_prompt_edit::pending(&tx,&call.work_id)? { return Err(DatabaseError::Conflict.into()); }
             tx.execute("INSERT INTO chief_voice_calls(session_id,work_id,thread_id,generation_id,baseline_turn_id,created_at_micros)
                 VALUES(?1,?2,?3,?4,?5,?6)",params![call.session_id,call.work_id,call.thread_id,call.generation_id,call.baseline_turn_id,unix_micros()?]).map_err(sqlite_error)?;
             tx.commit().map_err(sqlite_error)?;

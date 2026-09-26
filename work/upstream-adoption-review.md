@@ -201,3 +201,12 @@ worker completion or wake its manager. The installed notification has only a
 thread ID, so it cannot prove that a pending retry retained its earlier context.
 This core fix is independent of the optional earlier-prompt editor. The editor's
 native mutation and durable recovery remain open in [prompt editing](prompt-editing.md).
+
+### Optional earlier-prompt editing: durable reservation
+
+Add source-bound canonical draft and history-boundary receipts to the existing
+product event journal. Persist input exclusion through restart, require exact
+native prefix evidence and same-account process-death recovery, and keep the
+reservation until draft restoration. This remains an optional feature foundation;
+native mutation, guarded runtime recovery and desktop integration are incomplete.
+See [prompt editing](prompt-editing.md). Automation remains paused.

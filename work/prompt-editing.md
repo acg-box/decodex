@@ -1,8 +1,9 @@
 # Edit an earlier prompt
 
 Classification: optional product capability. Canonical input selection is
-implemented. Native mutation, durable uncertain-outcome recovery and desktop draft
-restoration remain open; this is not a complete editing action.
+implemented. A durable reservation and recovery store now exists. Native mutation,
+guarded recovery integration and desktop draft restoration remain open; this is
+not a complete editing action.
 
 ## Native authority
 
@@ -85,3 +86,35 @@ config journal arbitrates a shared file and is not a history-mutation owner.
 Neither is sufficient evidence for admitting thread/revert. A later history-edit
 receipt must retain its canonical draft, native boundary and process ownership,
 and must block further input until an uncertain outcome is reconciled.
+
+## Durable edit reservation
+
+The existing chief_inbox_events journal owns prompt_edit_attempt,
+prompt_edit_observation and prompt_edit_release. Schema43 marks the minimum
+reader contract so an older service cannot ignore a pending edit after downgrade.
+The versioned migration changes no tables or existing product data. A reservation stores the reviewed native content, complete ordered
+turn IDs, selected item/boundary, work/thread identity and process generation.
+It accepts only an idle owned task with no queued input or open voice call.
+A review token can reserve only once, even with a new request ID after release.
+
+Until release, normal input and dispatch, capacity retry, voice admission, tool
+upgrade and model/permission/plugin selection reject the task. An account change
+also rejects a root with an unresolved edit in its subtree. Other tasks can
+continue. Journal entries stay out of transcript pages and never wake a model.
+
+No reply leaves the reservation unresolved across restart. A positive pre-write
+rejection can release the exact original attempt. A timeout or generic remote
+error is not that evidence. A guarded complete native read can mark application
+only when all turn IDs equal the exact retained prefix. An unchanged full history
+can release the attempt only after the old process has confirmed death and a
+current process on the same account supplies the observation. Other histories
+remain unresolved; neither a missing suffix nor a thread/reverted notification
+alone supplies sufficient evidence.
+
+An applied observation keeps input blocked until the service reconciles its
+projections and hands back the canonical draft. Runtime must perform those steps
+before it calls release_chief_prompt_edit_draft. The store cannot validate native
+transport guards or prove UI draft receipt. The native bridge still does not admit
+thread/revert; connecting that write and the desktop workflow remains required.
+Tests prove durable store behavior, ownership and dispatch exclusion, not the
+remaining native mutation or signed desktop editing flow.

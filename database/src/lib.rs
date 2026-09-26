@@ -23,6 +23,8 @@ pub use chief_app_settings::{
 pub use chief_config_journal::ChiefConfigOwner;
 mod chief_hooks;
 pub use chief_hooks::{ChiefHookAttempt, ChiefHookObservation, ChiefHookOwner, ChiefHookReceipt};
+mod chief_prompt_edit;
+pub use chief_prompt_edit::{ChiefPromptEditAttempt, ChiefPromptEditReceipt};
 mod chief_models;
 pub use chief_models::{ChiefModelAttempt, ChiefModelReceipt};
 mod chief_plugins;
