@@ -16,13 +16,17 @@ pub(super) fn terminal(params: &Value) -> Value {
 			error["codexErrorInfo"] = classification;
 		}
 	}
+	let mut retained = json!({"id":turn["id"],"status":turn["status"],"error":error});
+	for field in ["startedAt", "completedAt", "durationMs"] {
+		retained[field] = turn[field].as_i64().filter(|value| *value >= 0).into();
+	}
 	let omitted = params
 		.as_object()
 		.is_some_and(|fields| fields.keys().any(|key| key != "threadId" && key != "turn"))
 		|| turn.as_object().is_some_and(|fields| {
-			fields.keys().any(|key| key != "id" && key != "status" && key != "error")
-		}) || error != turn["error"];
-	json!({"threadId":params["threadId"],"turn":{"id":turn["id"],"status":turn["status"],"error":error,"durationMs":turn["durationMs"]},"detailsOmitted":omitted})
+			fields.iter().any(|(key, value)| retained.get(key) != Some(value))
+		});
+	json!({"threadId":params["threadId"],"turn":retained,"detailsOmitted":omitted})
 }
 
 pub(super) fn collect(turn: Option<&Value>) -> (Vec<Value>, bool) {
@@ -125,6 +129,29 @@ mod tests {
 		assert_eq!(output["turn"]["error"]["truncated"], true);
 		assert!(output["turn"]["error"]["misalignment"].is_null());
 		assert!(output.to_string().len() < 4096);
+	}
+
+	#[test]
+	fn terminal_retains_native_times_without_inventing_replay_times() {
+		let value = terminal(&json!({"threadId":"thread","turn":{
+			"id":"turn","status":"completed","error":null,
+			"startedAt":1700000000,"completedAt":1700000125,"durationMs":125000
+		}}));
+		assert_eq!(value["turn"]["startedAt"], 1700000000);
+		assert_eq!(value["turn"]["completedAt"], 1700000125);
+		assert_eq!(value["detailsOmitted"], false);
+		let old = terminal(&json!({"turn":{"id":"old","status":"completed"}}));
+		assert!(old["turn"]["startedAt"].is_null());
+		assert!(old["turn"]["completedAt"].is_null());
+		for invalid in [json!(-1), json!("x".repeat(70000)), json!({"unexpected":true})] {
+			let bounded = terminal(&json!({"turn":{"id":"turn","startedAt":invalid,
+				"completedAt":invalid,"durationMs":invalid}}));
+			assert!(bounded["turn"]["startedAt"].is_null());
+			assert!(bounded["turn"]["completedAt"].is_null());
+			assert!(bounded["turn"]["durationMs"].is_null());
+			assert_eq!(bounded["detailsOmitted"], true);
+			assert!(bounded.to_string().len() < 512);
+		}
 	}
 
 	#[test]
