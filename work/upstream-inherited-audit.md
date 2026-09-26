@@ -77,6 +77,27 @@ The deterministic local migration fixture covers the response change between
 reads; it is not a claim that a live installed migration race was reproduced.
 Shared client-module and model/auth recovery differences remain open.
 
+## Ordinary native resume reconciled on 2026-09-26
+
+Review the complete 534-line snapshot diff for `decodex-codex/src/conversation.rs`.
+Retain the current 128-byte effort bound, optional model/effort/tier semantics,
+explicit user trigger and response identity checks. Restore the missing inherited
+resume path and its original identity regression. Current nullable model handling
+replaces the old separate inherited-response enum without weakening thread or cwd
+checks. Start and turn overrides remain unchanged. All other snapshot differences
+are the retained APIs, serialization and tests for those current semantics.
+
+Restore the complete `work/folder-trust.md` history with a separate current evidence
+section. Restore its installed-native test in a separate module and wait for native
+shutdown before stopping the backend. The runtime caller now hydrates without old
+creation overrides; a RED/GREEN regression proves the prior wire defect. Adapter,
+runtime, installed trust and production cold-runtime qualification pass.
+
+These two full file dispositions close. The shared runtime conversation, process
+and native-test parent modules have other differences and remain open. See
+[folder trust and native resume](folder-trust.md) for optional surface and acceptance
+limits. No trust mutation, UI entry point or automation enablement is added.
+
 ## Four settings and review owners reconciled on 2026-09-26
 
 Verify the original SHA-256 and inspect every difference in these complete files.

@@ -91,7 +91,7 @@ mod execution_overrides;
 mod model_catalog;
 mod model_settings;
 mod non_submission;
-use execution_overrides::{apply_resume_overrides, apply_start_overrides, apply_turn_overrides};
+use execution_overrides::{apply_start_overrides, apply_turn_overrides, inherit_resume_settings};
 mod resume_retry;
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
@@ -2591,12 +2591,7 @@ impl ConversationRuntime {
 			session.working_directory.clone(),
 			session.instructions.clone(),
 		)
-		.map(|request| {
-			apply_resume_overrides(
-				request.with_service_tier(session.service_tier.clone()),
-				session.execution_overrides,
-			)
-		})
+		.map(inherit_resume_settings)
 		.map_err(|_| SameThreadResumeRefusal::IncompatibleThread)?;
 		let resumed =
 			self.resume_thread(&session.process, request).await.map_err(|error| match error {

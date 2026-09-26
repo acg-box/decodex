@@ -18,19 +18,10 @@ pub(super) fn apply_start_overrides(
 	request
 }
 
-pub(super) fn apply_resume_overrides(
-	mut request: ConversationThreadResumeRequest,
-	intent: Option<decodex_protocol::ConversationExecutionOverrides>,
+pub(super) fn inherit_resume_settings(
+	request: ConversationThreadResumeRequest,
 ) -> ConversationThreadResumeRequest {
-	if let Some(intent) = intent {
-		if !intent.model {
-			request = request.inherit_model();
-		}
-		if !intent.service_tier {
-			request = request.inherit_service_tier();
-		}
-	}
-	request
+	request.inherit_native_settings()
 }
 
 pub(super) fn apply_turn_overrides(
@@ -56,6 +47,19 @@ mod tests {
 	use super::*;
 	use decodex_codex::{ConversationTurnInput, ExactThreadId};
 	use decodex_protocol::ConversationExecutionOverrides;
+
+	#[test]
+	fn resume_does_not_reapply_creation_configuration() {
+		let request = ConversationThreadResumeRequest::new(
+			ExactThreadId::new("native-thread").unwrap(),
+			"stale-model",
+			"/tmp",
+			"Stale creation instructions",
+		)
+		.unwrap();
+		let wire = serde_json::to_value(inherit_resume_settings(request)).unwrap();
+		assert_eq!(wire, serde_json::json!({"threadId":"native-thread", "excludeTurns":true}));
+	}
 
 	#[test]
 	fn legacy_and_each_field_choice_apply_across_resume_turn_and_fallback() {
@@ -87,10 +91,10 @@ mod tests {
 			.expect("turn");
 			let wires = [
 				serde_json::to_value(apply_start_overrides(start, intent)).expect("start wire"),
-				serde_json::to_value(apply_resume_overrides(resume, intent)).expect("resume wire"),
+				serde_json::to_value(inherit_resume_settings(resume)).expect("resume wire"),
 				serde_json::to_value(apply_turn_overrides(turn, intent)).expect("turn wire"),
 			];
-			for wire in &wires {
+			for wire in [&wires[0], &wires[2]] {
 				assert_eq!(wire.get("model").is_some(), intent.is_none_or(|v| v.model));
 				assert_eq!(
 					wire.get("serviceTier").is_some(),
@@ -102,7 +106,10 @@ mod tests {
 				wires[2].get("serviceTierForTurn").is_some(),
 				intent.is_none_or(|v| v.service_tier)
 			);
-			assert_eq!(wires[1]["threadId"], "native-thread");
+			assert_eq!(
+				wires[1],
+				serde_json::json!({"threadId":"native-thread","excludeTurns":true})
+			);
 			assert_eq!(wires[0]["cwd"], "/tmp");
 		}
 	}
