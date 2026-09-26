@@ -366,3 +366,5 @@ async fn serve_fixture(
 #[path = "chief_process_native_model_access_tests.rs"] mod model_access;
 
 #[path = "chief_process_native_reasoning_tests.rs"] mod reasoning;
+
+#[path = "chief_process_native_discovery_tests.rs"] mod discovery;

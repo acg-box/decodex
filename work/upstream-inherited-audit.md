@@ -48,6 +48,17 @@ See [current-turn model control](live-model-control.md) for native sequence evid
 optional removal boundaries and pending signed desktop acceptance. No configuration
 or maintenance automation is enabled.
 
+## Native discovery evidence restored on 2026-09-26
+
+Restore the complete `native_mcp_capabilities.py` fixture byte-for-byte, and move
+three inherited tests into a dedicated native-discovery test module. Installed
+Codex 0.158.0-alpha.2 passes MCP capability retention/pagination/restart, per-directory
+permission-profile eligibility and enterprise project-override rejection.
+
+Only the complete Python fixture row closes. The parent native-test module has
+other open differences. See [native discovery qualification](native-discovery-qualification.md)
+for source ownership and acceptance limits. No product capability is added.
+
 ## History and shared adapter owners reconciled on 2026-09-26
 
 Read every snapshot difference and verify the original SHA-256 for four complete
