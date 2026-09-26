@@ -86,7 +86,7 @@ async fn qualify(home: &std::path::Path) {
 		.attest_callback_capability(profile.account_callback_attestation())
 		.await
 		.expect("native callback attestation");
-	let runtime = runtime(&root, &store, accounts, profile).await;
+	let runtime = runtime(&root, &store, accounts.clone(), profile).await;
 	let server_id = ServerId::new("20000000-0000-4000-8000-000000000001").expect("server id");
 	let authority = || {
 		LocalTransportAuthority::new(
@@ -109,12 +109,18 @@ async fn qualify(home: &std::path::Path) {
 		.await
 		.expect("public local server");
 	use futures_util::FutureExt as _;
-	let outcome = std::panic::AssertUnwindSafe(tokio::time::timeout(
-		Duration::from_secs(50),
-		check(&client, &runtime, &store, home, &account, &requests),
-	))
-	.catch_unwind()
-	.await;
+	let outcome =
+		std::panic::AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(50), async {
+			check(&client, &runtime, &store, home, &account, &requests).await;
+			if std::env::var("DECODEX_TEST_ACCOUNT_ROTATION").as_deref() == Ok("1") {
+				qualify_account_rotation(
+					&client, &runtime, &store, &accounts, home, &account, &requests,
+				)
+				.await;
+			}
+		}))
+		.catch_unwind()
+		.await;
 	assert!(server.shutdown().await.expect("service shutdown").is_success());
 	backend.abort();
 	outcome.expect("fixture assertions").expect("bounded command checks");
@@ -765,4 +771,68 @@ async fn qualify_canonical_prompt_send(
 		Some(accepted)
 	);
 	assert_eq!(requests.load(Ordering::Acquire), count + 1, "receipt readback must not replay");
+}
+
+async fn qualify_account_rotation(
+	client: &ChiefClient,
+	runtime: &ConversationRuntime,
+	store: &SqliteStore,
+	accounts: &AccountService,
+	home: &std::path::Path,
+	first: &AccountId,
+	requests: &std::sync::atomic::AtomicUsize,
+) {
+	let thread = settled(client).await;
+	let original = store.read_chief_process_binding("recap-root").await.unwrap().unwrap();
+	assert_eq!(&original.account_id, first);
+	let second = enroll_numbered(store, accounts, home, 2).await;
+	let count = requests.load(Ordering::Acquire);
+	let observed =
+		std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros()
+			as i64;
+	for (account, used) in [(&second, 0), (first, 100)] {
+		for minutes in [300, 10080] {
+			accounts
+				.observe_quota(
+					account,
+					decodex_core::AccountQuotaWindow::new(minutes, used, observed + 3_600_000_000)
+						.unwrap(),
+					observed,
+				)
+				.await
+				.unwrap();
+		}
+	}
+	tokio::time::timeout(Duration::from_secs(20), async {
+		loop {
+			if runtime.chief_usage_source().await.is_some_and(|(generation, account, _, _)| {
+				account == second && generation != original.generation_id
+			}) {
+				break;
+			}
+			tokio::time::sleep(Duration::from_millis(25)).await;
+		}
+	})
+	.await
+	.expect("exhausted native account rotates after positive process death");
+	assert_eq!(settled(client).await, thread);
+	assert_eq!(requests.load(Ordering::Acquire), count, "rotation must not replay parent input");
+	accepted(
+		client,
+		Action::Send {
+			root_id: EntityId::new("recap-root").unwrap(),
+			text: HistoryText::new("Continue once after account rotation.").unwrap(),
+		},
+		"after-account-rotation",
+	)
+	.await;
+	assert_eq!(settled(client).await, thread);
+	assert_eq!(requests.load(Ordering::Acquire), count + 1);
+	let binding = store.read_chief_process_binding("recap-root").await.unwrap().unwrap();
+	assert_eq!(binding.account_id, second);
+	let native = runtime.chief_client().unwrap();
+	let turn = native.thread_latest_turn_id(&thread).await.unwrap().unwrap();
+	let items = native.thread_read_turn_items(&thread, &turn).await.unwrap();
+	assert!(items.as_array().unwrap().iter().any(|item| item["type"] == "userMessage"
+		&& item["content"][0]["text"] == "Continue once after account rotation."));
 }

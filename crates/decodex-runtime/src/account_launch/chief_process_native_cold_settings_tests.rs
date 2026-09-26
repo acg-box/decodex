@@ -208,16 +208,30 @@ async fn enroll(
 	service: &AccountService,
 	home: &std::path::Path,
 ) -> AccountId {
+	enroll_numbered(store, service, home, 1).await
+}
+
+async fn enroll_numbered(
+	store: &SqliteStore,
+	service: &AccountService,
+	home: &std::path::Path,
+	number: u64,
+) -> AccountId {
 	use std::{io::Write as _, os::unix::fs::OpenOptionsExt as _};
-	let account = AccountId::new("10000000-0000-4000-8000-000000000001")
+	let account = AccountId::new(format!("10000000-0000-4000-8000-{number:012}"))
 		.expect("synthetic account enrollment");
-	let claims = json!({"email":"fixture@example.test","exp":4102444800_u64,"https://api.openai.com/auth":{"chatgpt_account_id":"workspace-fixture","chatgpt_user_id":"user-fixture","chatgpt_plan_type":"team"}});
+	let workspace = if number == 1 {
+		"workspace-fixture".to_owned()
+	} else {
+		format!("workspace-fixture-{number}")
+	};
+	let claims = json!({"email":"fixture@example.test","exp":4102444800_u64,"https://api.openai.com/auth":{"chatgpt_account_id":workspace,"chatgpt_user_id":"user-fixture","chatgpt_plan_type":"team"}});
 	let token = format!(
 		"{}.{}.fixture-signature",
 		URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#),
 		URL_SAFE_NO_PAD.encode(claims.to_string())
 	);
-	let value = json!({"auth_mode":"chatgpt","tokens":{"access_token":token,"id_token":token,"refresh_token":"fixture-only","account_id":"workspace-fixture"},"last_refresh":"2026-09-24T00:00:00Z"});
+	let value = json!({"auth_mode":"chatgpt","tokens":{"access_token":token,"id_token":token,"refresh_token":"fixture-only","account_id":workspace},"last_refresh":"2026-09-24T00:00:00Z"});
 	let path = home.join("synthetic-credential.json");
 	let mut file = std::fs::OpenOptions::new()
 		.write(true)
@@ -227,8 +241,9 @@ async fn enroll(
 		.expect("synthetic account enrollment");
 	file.write_all(value.to_string().as_bytes()).expect("synthetic account enrollment");
 	drop(file);
-	let identity = CommandIdentity::new("cold-fixture-enroll", b"synthetic enrollment")
-		.expect("synthetic account enrollment");
+	let identity =
+		CommandIdentity::new(format!("cold-fixture-enroll-{number}"), b"synthetic enrollment")
+			.expect("synthetic account enrollment");
 	let AccountCommandReceiptClaim::Owned(lease) = store
 		.reserve_account_command(&identity, AccountCommandKind::Enroll, account.as_str(), None)
 		.await
@@ -239,7 +254,7 @@ async fn enroll(
 	service
 		.enroll_from_credential_file_command(
 			lease,
-			AccountOperationId::new("20000000-0000-4000-8000-000000000001")
+			AccountOperationId::new(format!("20000000-0000-4000-8000-{number:012}"))
 				.expect("synthetic account enrollment"),
 			account.clone(),
 			true,
@@ -344,7 +359,7 @@ async fn serve(
 			if path.contains("/models") {
 				(200, "application/json", json!({"models":[effort::fixture_model("cold-native-model", "provider-effort")]}).to_string())
 			} else if path.contains("/accounts/check") {
-				(200,"application/json",json!({"accounts":[{"id":"workspace-fixture","workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"}]}).to_string())
+				(200,"application/json",json!({"accounts":[{"id":"workspace-fixture","workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"},{"id":"workspace-fixture-2","workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"}]}).to_string())
 			} else if path.contains("/settings/user") {
 				(200, "application/json", json!({"commit_attribution_enabled":false}).to_string())
 			} else if path.contains("/plugins/featured") {
