@@ -25,6 +25,51 @@ impl State {
 }
 
 impl ChiefSurface {
+	#[cfg(feature = "visual-capture")]
+	pub(crate) fn visual_app_ui_confirmation(&mut self, unknown: bool, cx: &mut Context<Self>) {
+		self.visual_workspace_fixture(cx);
+		self.graph_visible = false;
+		self.profile = None;
+		let owner =
+			EntityId::new(self.selected.clone().expect("fixture selection")).expect("fixture work");
+		let state = &mut self.native_history.app_ui;
+		state.callback.work = Some(owner.clone());
+		let operation = EntityId::new("visual-fixture-operation").expect("fixture operation");
+		if unknown {
+			state.callback.receipt_request = Some(ChiefAppUiReceiptRequest {
+				work_id: owner.clone(),
+				operation_id: operation.clone(),
+				offset: 0,
+				fingerprint: None,
+			});
+			apply_receipt(
+				state,
+				&operation,
+				Some(json!({"workId":owner,"operationId":operation,"reservationId":42,
+                "server":"Local counter","tool":"set_counter","arguments":{"value":42},"state":"unknown","uncertaintyAcknowledged":false})),
+			);
+		} else {
+			state.callback.review = Some(ChiefAppUiCallReview::Available {
+				request: Box::new(ChiefAppUiCall {
+					work_id: owner,
+					thread_id: EntityId::new("fixture-thread").unwrap(),
+					turn_id: EntityId::new("fixture-turn").unwrap(),
+					item_id: EntityId::new("fixture-widget").unwrap(),
+					source_fingerprint: EntityId::new("c".repeat(64)).unwrap(),
+					operation_id: operation,
+					tool: decodex_protocol::WireText::new("set_counter").unwrap(),
+					arguments: json!({"value":42}),
+				}),
+				review_token: EntityId::new("a".repeat(64)).unwrap(),
+				server: decodex_protocol::WireText::new("Local counter").unwrap(),
+				title: decodex_protocol::WireText::new("Update counter").unwrap(),
+				pending_operation: None,
+			});
+			state.notice = Some("Review the app request below before allowing it.");
+		}
+		cx.notify();
+	}
+
 	pub(in super::super) fn render_native_app_recovery(
 		&self,
 		work: &ChiefWorkItemDto,
@@ -44,7 +89,13 @@ impl ChiefSurface {
 		);
 		let state = &self.native_history.app_ui;
 		if state.callback.work.as_ref().is_some_and(|id| id.as_str() == work.id) {
-			if let Some(notice) = state.notice {
+			if let Some(notice) = state.notice
+				&& state
+					.callback
+					.receipt
+					.as_ref()
+					.is_none_or(|receipt| receipt_notice(Some(receipt)) != notice)
+			{
 				row = row.child(notice);
 			}
 			row = row.child(self.render_app_call(cx));

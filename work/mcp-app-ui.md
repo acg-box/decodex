@@ -360,6 +360,21 @@ identity and contents, callback result metadata, completed status and unchanged 
 request count after the callback. Hosted codex_apps connection qualification and the
 combined signed desktop/service/native interaction remain separate acceptance work.
 
+## Desktop confirmation and recovery visual review
+
+The existing visual-capture binary now accepts DECODEX_VISUAL_APP_UI=confirmation or
+unknown for synthetic layout review. It renders the actual Chief confirmation and
+saved-outcome controls with no service profile. It rejects combination with a live
+service-root capture to prevent synthetic layout from being recorded as service
+acceptance. No new product runtime or separate renderer was introduced.
+
+Both scenes were captured and inspected at 1248 by 840 logical pixels. The review
+found duplicate unknown-outcome text; the panel now shows that status once while
+retaining distinct connection notices. Exact tool arguments and action labels were
+visible without overlap. Evidence images are target/visual-tests/r05-confirmation.png
+and target/visual-tests/r05-unknown.png in the task worktree. These are component
+layout evidence, not a signed whole-app service/native interaction or user approval.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.

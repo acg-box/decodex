@@ -78,6 +78,19 @@ fn main() -> gpui::Result<()> {
 	{
 		return Err(std::io::Error::other("Command capture requires a disposable root").into());
 	}
+	let app_ui_mode = std::env::var("DECODEX_VISUAL_APP_UI").ok();
+	if app_ui_mode
+		.as_ref()
+		.is_some_and(|mode| !["confirmation", "unknown"].contains(&mode.as_str()))
+	{
+		return Err(std::io::Error::other("Unknown App UI capture fixture").into());
+	}
+	if app_ui_mode.is_some() && std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").is_some() {
+		return Err(std::io::Error::other(
+			"App UI layout fixtures cannot be combined with service evidence",
+		)
+		.into());
+	}
 	// The explicit root supplies protocol evidence; command probes require their own flags.
 	// Never use the installed profile as an implicit screenshot source.
 	let service_projection = std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT")
@@ -132,38 +145,47 @@ fn main() -> gpui::Result<()> {
 			Ok((snapshot, selected, history, request, guardian, profile))
 		})
 		.transpose()?;
-	let window: gpui::AnyWindowHandle =
-		if let Some((snapshot, selected, history, request, guardian, profile)) = service_projection
-		{
-			let handle = cx.open_offscreen_window(size(px(1_248.0), px(840.0)), |_, cx| {
-				cx.new(|cx| {
-					let mut surface =
-						ChiefSurface::visual_from_service(snapshot, selected, history, request, cx);
-					surface.visual_guardian_reviews(guardian);
-					surface
-				})
-			})?;
-			if automatic_recap {
-				prove_automatic_recap(&mut cx, handle, profile.clone(), &output)?;
-			}
-			if let Some(message) = send_message {
-				prove_composer_send(&mut cx, handle, profile, &message, &output)?;
-			}
-			handle.into()
-		} else {
-			cx.open_offscreen_window(size(px(1_248.0), px(840.0)), |window, cx| {
-				cx.new(|cx| {
-					Shell::visual_destination(
-						destination,
-						left_sidebar_visible,
-						inspector_visible,
-						window,
-						cx,
-					)
-				})
-			})?
-			.into()
-		};
+	let window: gpui::AnyWindowHandle = if let Some(mode) = app_ui_mode {
+		cx.open_offscreen_window(size(px(1248.0), px(840.0)), |_, cx| {
+			cx.new(|cx| {
+				let mut surface = ChiefSurface::new(cx);
+				surface.visual_app_ui_confirmation(mode == "unknown", cx);
+				surface
+			})
+		})?
+		.into()
+	} else if let Some((snapshot, selected, history, request, guardian, profile)) =
+		service_projection
+	{
+		let handle = cx.open_offscreen_window(size(px(1_248.0), px(840.0)), |_, cx| {
+			cx.new(|cx| {
+				let mut surface =
+					ChiefSurface::visual_from_service(snapshot, selected, history, request, cx);
+				surface.visual_guardian_reviews(guardian);
+				surface
+			})
+		})?;
+		if automatic_recap {
+			prove_automatic_recap(&mut cx, handle, profile.clone(), &output)?;
+		}
+		if let Some(message) = send_message {
+			prove_composer_send(&mut cx, handle, profile, &message, &output)?;
+		}
+		handle.into()
+	} else {
+		cx.open_offscreen_window(size(px(1_248.0), px(840.0)), |window, cx| {
+			cx.new(|cx| {
+				Shell::visual_destination(
+					destination,
+					left_sidebar_visible,
+					inspector_visible,
+					window,
+					cx,
+				)
+			})
+		})?
+		.into()
+	};
 	cx.run_until_parked();
 	cx.update_window(window, |_, window, _| window.refresh())?;
 	cx.run_until_parked();
