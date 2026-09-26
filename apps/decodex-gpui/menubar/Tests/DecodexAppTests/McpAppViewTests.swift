@@ -109,4 +109,51 @@ final class McpAppViewTests: XCTestCase {
         XCTAssertTrue(observed.contains("exact-result"))
     }
 
+    func testTeardownWaitsForExactReplyAndBoundsAnUnresponsiveWidget() async throws {
+        _ = NSApplication.shared
+        for responds in [true, false] {
+            let html = """
+            <script>
+            window.addEventListener('message',event=>{
+              const m=event.data;
+              if(m.id==='init' && m.result) parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/initialized'},'*');
+              if(m.method==='ui/resource-teardown') {
+                parent.postMessage({jsonrpc:'2.0',id:'wrong-teardown',result:{}},'*');
+                parent.postMessage({jsonrpc:'2.0',id:'during-close',method:'tools/call',params:{name:'calculate',arguments:{value:999}}},'*');
+                if(\(responds ? "true" : "false")) setTimeout(()=>parent.postMessage({jsonrpc:'2.0',id:m.id,result:{}},'*'),30);
+              }
+            });
+            parent.postMessage({jsonrpc:'2.0',id:'init',method:'ui/initialize',params:{protocolVersion:'2026-01-26'}},'*');
+            </script>
+            """
+            let data = try JSONSerialization.data(withJSONObject: [
+                "item": ["type": "mcpToolCall", "mcpAppUi": ["resourceUri": "ui://fixture/view"]],
+                "resources": [["uri": "ui://fixture/view", "mimeType": "text/html;profile=mcp-app", "text": html]]
+            ])
+            var calls = 0
+            let view = try McpAppView(document: McpAppDocument(data: data), toolCallsEnabled: true) { event in
+                if event["type"] as? String == "tool_call" { calls += 1 }
+            }
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 480), styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = view.webView
+            window.orderFront(nil)
+            defer { view.close(immediate: true); window.orderOut(nil) }
+            let initializedDeadline = Date().addingTimeInterval(20)
+            while !view.initialized && Date() < initializedDeadline { try await Task.sleep(for: .milliseconds(20)) }
+            XCTAssertTrue(view.initialized)
+            view.close()
+            view.close()
+            XCTAssertTrue(view.closed)
+            XCTAssertFalse(view.initialized)
+            XCTAssertFalse(view.disposed)
+            let closedDeadline = Date().addingTimeInterval(3)
+            while !view.disposed && Date() < closedDeadline { try await Task.sleep(for: .milliseconds(20)) }
+            XCTAssertTrue(view.disposed)
+            XCTAssertEqual(view.teardownAcknowledged, responds)
+            XCTAssertEqual(calls, 0, "A closing view must never create new tool authority")
+            XCTAssertNil(view.webView.navigationDelegate)
+            XCTAssertNil(view.webView.uiDelegate)
+        }
+    }
+
 }

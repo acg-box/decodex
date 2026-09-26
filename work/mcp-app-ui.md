@@ -307,6 +307,20 @@ load command omits toolCallsEnabled are superseded by this section.
 Signed desktop interaction, installed native integration and the remaining consumer
 obligations below are still required before R05 closure and normal PR delivery.
 
+## Bounded resource teardown
+
+The native view sends ui/resource-teardown before closing an initialized connection,
+as required by the [MCP Apps lifecycle specification](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx).
+It stops admitting new widget requests immediately. An exact teardown response releases
+WebKit handlers and delegates; no response reaches the same cleanup after 500 ms. A
+terminated WebKit process is released immediately because it cannot respond. The view
+retains itself only through this bounded cleanup, even if its native panel is destroyed.
+
+Eight native tests passed. Real WebKit tests cover exact response matching, an unrelated
+response, a silent widget, repeated close and rejected tools/call during teardown.
+The prior signed artifact still represents a6688590b; it does not contain this change.
+A final signed build must include this lifecycle update before acceptance is complete.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.

@@ -9,6 +9,10 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
     private let document: McpAppDocument
     private(set) var initialized = false
     private(set) var closed = false
+    private(set) var disposed = false
+    private(set) var teardownAcknowledged = false
+    private var teardownID: String?
+    private var teardownTask: Task<Void, Never>?
     private var handshake = false
     private let toolCallsEnabled: Bool
     private var pendingTool: (operation: String, rpcID: Any)?
@@ -46,9 +50,8 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard !closed, message.frameInfo.isMainFrame, message.name == "mcpApp",
+        guard !disposed, message.frameInfo.isMainFrame, message.name == "mcpApp",
               let value = message.body as? [String: Any], value["jsonrpc"] as? String == "2.0",
-              let method = value["method"] as? String,
               JSONSerialization.isValidJSONObject(value),
               let encoded = try? JSONSerialization.data(withJSONObject: value), encoded.count <= 256 * 1024 else { return }
         let id = value["id"]
@@ -57,6 +60,15 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
                 guard CFGetTypeID(number) != CFBooleanGetTypeID() else { return }
             } else if !(id is String) { return }
         }
+        if closed {
+            if let teardownID, id as? String == teardownID, value["method"] == nil,
+               (value["result"] as? [String: Any] != nil) != (value["error"] as? [String: Any] != nil) {
+                teardownAcknowledged = true
+                finishClose()
+            }
+            return
+        }
+        guard let method = value["method"] as? String else { return }
         switch method {
         case "ui/initialize":
             guard !handshake, let id,
@@ -141,11 +153,38 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
         webView.evaluateJavaScript("window.decodexDeliver(\(json))", completionHandler: nil)
     }
 
-    func close() {
-        guard !closed else { return }
+    func close(immediate: Bool = false) {
+        guard !closed else {
+            if immediate { finishClose() }
+            return
+        }
+        let canNotify = handshake && !immediate
+        if canNotify {
+            let identity = "teardown-" + UUID().uuidString
+            teardownID = identity
+            deliver(["jsonrpc": "2.0", "id": identity, "method": "ui/resource-teardown",
+                     "params": ["reason": "View closed or source changed"]])
+        }
         closed = true
         pendingTool = nil
         initialized = false
+        if canNotify {
+            // Retain this view while it releases resources. No further widget requests
+            // are admitted; an unresponsive widget cannot retain the host indefinitely.
+            teardownTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled else { return }
+                finishClose()
+            }
+        } else { finishClose() }
+    }
+
+    private func finishClose() {
+        guard !disposed else { return }
+        disposed = true
+        teardownID = nil
+        teardownTask?.cancel()
+        teardownTask = nil
         webView.stopLoading()
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "mcpApp")
         webView.navigationDelegate = nil
@@ -187,7 +226,7 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         observe(["type": "unavailable"])
-        close()
+        close(immediate: true)
     }
 
     private static func json(_ value: Any) throws -> String {
