@@ -123,3 +123,105 @@ async fn failed_transcript_write_preserves_text_sequence_and_finality_until_save
 		assert!(sent.try_recv().is_err(), "persistence cannot submit native input");
 	}
 }
+
+#[tokio::test]
+async fn long_voice_transcripts_keep_utf8_suffix_and_never_claim_truncated_finality() {
+	for finalized in [false, true] {
+		let (mut chief, mut sent, _directory, database) = fixture().await;
+		let prefix = "界".repeat(11_000);
+		let suffix = " The latest correction must remain.";
+		if finalized {
+			chief
+				.voice_event(&ServerEvent::Notification {
+					method: "thread/realtime/transcript/done".into(),
+					params: json!({"threadId":"opaque thread/1","role":"user","text":prefix.clone()+suffix}),
+				})
+				.await
+				.expect("bounded final transcript");
+		} else {
+			for text in [&prefix, suffix] {
+				chief
+					.voice_event(&ServerEvent::Notification {
+						method: "thread/realtime/transcript/delta".into(),
+						params: json!({"threadId":"opaque thread/1","role":"user","delta":text}),
+					})
+					.await
+					.expect("bounded delta");
+			}
+		}
+		chief
+			.voice_event(&ServerEvent::Closed(ClientError::Closed))
+			.await
+			.expect("save received suffix");
+		let saved: String = database
+			.query_row(
+				"SELECT payload FROM chief_inbox_events WHERE event_kind='voice_user'",
+				[],
+				|row| row.get(0),
+			)
+			.expect("saved suffix");
+		let saved: Value = serde_json::from_str(&saved).expect("transcript JSON");
+		let text = saved["text"].as_str().expect("transcript text");
+		assert!((TRANSCRIPT_TAIL_BYTES - 3..=TRANSCRIPT_TAIL_BYTES).contains(&text.len()));
+		assert!(text.ends_with(suffix));
+		assert!((prefix + suffix).ends_with(text));
+		assert_eq!(saved["complete"], false);
+		assert!(sent.try_recv().is_err());
+	}
+}
+
+#[tokio::test]
+async fn precaution_stop_preserves_text_before_retiring_the_call() {
+	let (mut chief, mut sent, _directory, database) = fixture().await;
+	chief.voice_event(&ServerEvent::Notification {
+		method: "thread/realtime/transcript/delta".into(),
+		params: json!({"threadId":"opaque thread/1","role":"user","delta":"Received before native precaution."}),
+	}).await.expect("received delta");
+	chief.stop_voice_for_precaution("opaque thread/1").await.expect("native stop acknowledged");
+	let saved: String = database
+		.query_row(
+			"SELECT payload FROM chief_inbox_events WHERE event_kind='voice_user'",
+			[],
+			|row| row.get(0),
+		)
+		.expect("precaution transcript retained");
+	let saved: Value = serde_json::from_str(&saved).expect("saved transcript");
+	assert_eq!(saved["text"], "Received before native precaution.");
+	assert_eq!(saved["complete"], false);
+	assert!(chief.store.open_chief_voice_calls().await.expect("call state").is_empty());
+	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	assert_eq!(requests.len(), 1);
+	assert_eq!(requests[0]["method"], "thread/realtime/stop");
+}
+
+#[tokio::test]
+async fn precaution_storage_failure_does_not_prevent_native_stop() {
+	let (mut chief, mut sent, _directory, database) = fixture().await;
+	chief.voice.as_mut().expect("voice").transcript_tail[0] = "Unsaved precaution text.".into();
+	database.execute_batch("CREATE TRIGGER fail_transcript BEFORE INSERT ON chief_inbox_events WHEN NEW.event_kind='voice_user' BEGIN SELECT RAISE(FAIL, 'injected transcript failure'); END;").expect("inject failure");
+	assert!(chief.stop_voice_for_precaution("opaque thread/1").await.is_err());
+	let voice = chief.voice.as_ref().expect("retained voice");
+	assert!(voice.precaution_retired);
+	assert!(voice.session.is_some());
+	assert_eq!(voice.transcript_tail[0], "Unsaved precaution text.");
+	assert_eq!(voice.transcript_sequence, 0);
+	assert_eq!(sent.try_recv().expect("native stop")["method"], "thread/realtime/stop");
+	assert!(sent.try_recv().is_err());
+	database.execute_batch("DROP TRIGGER fail_transcript;").expect("restore writes");
+	chief
+		.voice_event(&ServerEvent::Notification {
+			method: "thread/realtime/closed".into(),
+			params: json!({"threadId":"opaque thread/1"}),
+		})
+		.await
+		.expect("native closure saves retained text");
+	let count: i64 = database
+		.query_row(
+			"SELECT count(*) FROM chief_inbox_events WHERE event_kind='voice_user'",
+			[],
+			|row| row.get(0),
+		)
+		.expect("saved record");
+	assert_eq!(count, 1);
+	assert!(chief.voice.as_ref().expect("voice").session.is_none());
+}
