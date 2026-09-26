@@ -51,6 +51,7 @@ impl ChiefHost {
 			return Err("Prompt input source changed".into());
 		}
 		decodex_protocol::PromptDraft::new(input.content.clone())
+			.and_then(|draft| draft.validate_native_input())
 			.map_err(|_| "Prompt input is invalid")?;
 		let text: String = input
 			.content
@@ -65,6 +66,15 @@ impl ChiefHost {
 		.map_err(|_| "Prompt preview is unavailable")?;
 		let options = serde_json::json!({"execution":execution,"attachments":[],"taskReferences":[],
 			"canonicalInput":{"id":input_id,"threadId":thread_id,"editReceiptId":edit_receipt_id,"sha256":sha256}});
+		let mut params =
+			serde_json::json!({"threadId":thread_id,"input":input.content,"turnTrigger":"user"});
+		crate::chief::apply_message_options(
+			&mut params,
+			&serde_json::json!({"options":options}).to_string(),
+		)
+		.map_err(|_| "Prompt execution settings are invalid")?;
+		decodex_codex::app_server_client::AppServerClient::preflight_request("turn/start", &params)
+			.map_err(|_| "Prompt input is too large for the native request")?;
 		self.accept_message(&work_id, &preview, key, Some(&options), active).await
 	}
 

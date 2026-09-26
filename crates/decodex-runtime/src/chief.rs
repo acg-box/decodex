@@ -918,11 +918,14 @@ impl ChiefCoordinator {
 		}
 		// The durable dispatch fence owns both effects. An uncertain injection must
 		// never be retried: native injection does not deduplicate response-item IDs.
+		let mut external_attempted = false;
 		let turn = async {
 			if question_guard {
 				execution = self.select_turn_execution(&mut params, history_guard.clone()).await?;
 			}
+			AppServerClient::preflight_request("turn/start", &params)?;
 			if !external.is_empty() {
+				external_attempted = true;
 				self.inject_external_context(thread, "work_updates", &json!(external)).await?;
 			}
 			let value =
@@ -935,7 +938,7 @@ impl ChiefCoordinator {
 			history_event,
 			turn,
 			execution,
-			external.is_empty(),
+			!external_attempted,
 			retry.map(|(event, _)| event),
 		)
 		.await
@@ -2024,7 +2027,7 @@ impl ChiefCoordinator {
 	}
 }
 
-fn apply_message_options(params: &mut Value, payload: &str) -> Result<(), ChiefError> {
+pub(super) fn apply_message_options(params: &mut Value, payload: &str) -> Result<(), ChiefError> {
 	let payload: Value = serde_json::from_str(payload)
 		.map_err(|_| ChiefError::Invalid("invalid saved message".into()))?;
 	let options = &payload["options"];

@@ -211,3 +211,19 @@ An Unchanged receipt permits a fresh review while preserving edited content;
 Uncertain or Applied receipts retain the handback fence. Missing or failed network
 responses do not release it. Versions1 through8 upgrade with no invented confirmation
 identity. The desktop confirmation button is not yet connected to this contract.
+
+Native input qualification follows the fixed cutoff's public UserInput schema and
+TurnProcessor::validate_v2_input_limit. It checks the seven supported variants and
+sums Unicode scalar counts across text parts, with a limit of1048576. Review storage
+can still retain unknown parts without permitting their submission. Qualification
+does not read local files or prove remote media availability.
+
+AppServerClient::preflight_request measures the complete serialized JSON-RPC envelope
+with the largest positive request ID. Canonical send admission checks captured
+settings. Dispatch checks again after inherited settings are resolved, before any
+external context injection. A size refusal before injection uses the existing
+positive-unsent result; an attempted injection retains the existing uncertainty
+rules. The actual transport still checks its final frame before writing.
+
+These checks currently protect send admission and dispatch. Connecting equivalent
+qualification before the desktop's destructive history confirmation remains open.

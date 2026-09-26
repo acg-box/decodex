@@ -137,6 +137,46 @@ impl DesktopPromptEditDraft {
 }
 
 impl PromptDraft {
+	/// Check the seven public input variants at the fixed Codex cutoff.
+	/// Local file readability and the complete native request envelope are separate checks.
+	pub fn validate_native_input(&self) -> Result<(), &'static str> {
+		self.validate()?;
+		let mut text_chars = 0usize;
+		for part in &self.0 {
+			let string = |key: &str| part.get(key).and_then(Value::as_str).is_some();
+			let valid = match part["type"].as_str() {
+				Some("text") => {
+					text_chars = text_chars.saturating_add(
+						part["text"].as_str().ok_or("Input text is missing")?.chars().count(),
+					);
+					true
+				},
+				Some("image") => string("url") || string("fileId"),
+				Some("localImage" | "localAudio") => string("path"),
+				Some("audio") => string("url"),
+				Some("skill" | "mention") => string("name") && string("path"),
+				_ =>
+					return Err(
+						"This native input type is not supported by the qualified Codex contract",
+					),
+			};
+			if !valid {
+				return Err("A native input part is incomplete");
+			}
+			if matches!(part["type"].as_str(), Some("image" | "localImage"))
+				&& !part["detail"].is_null()
+				&& !matches!(part["detail"].as_str(), Some("auto" | "low" | "high" | "original"))
+			{
+				return Err("Image detail is not supported by the qualified Codex contract");
+			}
+		}
+		// Upstream protocol::user_input and TurnProcessor::validate_v2_input_limit.
+		if text_chars > 1 << 20 {
+			return Err("Input exceeds the native limit of 1048576 text characters");
+		}
+		Ok(())
+	}
+
 	/// Hash complete canonical parts without flattening native input or ignoring fields.
 	pub fn fingerprint(&self) -> Result<crate::Sha256Digest, &'static str> {
 		let bytes = serde_json::to_vec(&self.0).map_err(|_| "Prompt encoding failed")?;
@@ -330,6 +370,38 @@ mod tests {
 			json!({"type":"audio","url":"data:audio/wav;base64,example"}),
 			json!({"type":"future-input","evidence":{"keep":true}}),
 		]).unwrap()
+	}
+
+	#[test]
+	fn native_input_qualification_counts_unicode_across_parts_and_preserves_all_variants() {
+		let mut draft = PromptDraft::new(vec![
+			json!({"type":"text","text":"界".repeat(1 << 19),"text_elements":[]}),
+			json!({"type":"text","text":"a".repeat(1 << 19)}),
+			json!({"type":"image","fileId":"file","detail":"original","extension":true}),
+			json!({"type":"localImage","path":"/fixture/image.png"}),
+			json!({"type":"audio","url":"data:audio/wav;base64,AA=="}),
+			json!({"type":"localAudio","path":"/fixture/audio.wav"}),
+			json!({"type":"skill","name":"skill","path":"/fixture/SKILL.md"}),
+			json!({"type":"mention","name":"App","path":"app://fixture"}),
+		])
+		.unwrap();
+		let unchanged = draft.clone();
+		draft.validate_native_input().unwrap();
+		assert_eq!(draft, unchanged);
+		draft.replace_text(1, 0..0, "x").unwrap();
+		assert!(draft.validate_native_input().is_err());
+		for part in [
+			json!({"type":"image"}),
+			json!({"type":"audio","audio_url":"old-internal-field"}),
+			json!({"type":"localAudio"}),
+			json!({"type":"skill","path":"/skill"}),
+			json!({"type":"futureInput"}),
+			json!({"type":"image","url":"data:image/png;base64,AA==","detail":"unsupported"}),
+		] {
+			let retained = PromptDraft::new(vec![part.clone()]).unwrap();
+			assert!(retained.validate_native_input().is_err());
+			assert_eq!(retained.parts(), &[part]);
+		}
 	}
 
 	#[test]
