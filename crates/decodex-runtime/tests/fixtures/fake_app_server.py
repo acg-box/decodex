@@ -462,6 +462,10 @@ for line in sys.stdin:
             if mode == "exact-malformed-list":
                 data = [{**exact_thread, "createdAt": "not-a-timestamp"}]
             result = {"data": data, "nextCursor": None}
+            if mode in {"exact-list-more", "exact-list-empty-more"}:
+                result["nextCursor"] = "unread-candidates"
+                if mode == "exact-list-empty-more":
+                    result["data"] = []
         else:
             assert message["params"]["useStateDbOnly"] is True
             count = 101 if mode == "oversized-thread-list" else 1
@@ -609,12 +613,16 @@ for line in sys.stdin:
         result = {"data": [], "nextCursor": None}
     elif method == "config/read":
         assert message["params"] == {"cwd": "/tmp", "includeLayers": False}
+        if mode == "exact-config-defaults-rejected":
+            print(json.dumps({"id": message["id"], "error": {"code": -32603, "message": "configuration unavailable"}}), flush=True)
+            continue
         result = {"config": {"model": "configured-model", "model_reasoning_effort": "high", "service_tier": "flex", "model_providers": {"fixture": {"secret": "not-public"}}}}
     elif method == "configRequirements/read":
+        assert message["params"] == {}
         if mode == "exact-defaults-rejected":
             print(json.dumps({"id": message["id"], "error": {"code": -32601, "message": "unsupported"}}), flush=True)
             continue
-        result = {"requirements": {"models": {"newThread": {"model": "managed-model", "modelReasoningEffort": "low"}}}}
+        result = {"requirements": {"models": {"newThread": {"model": "managed-model", "modelReasoningEffort": "low", "serviceTier": "priority"}}}}
     elif method == "model/list":
         assert message["params"]["includeHidden"] is False
         print(json.dumps({"method":"turn/completed","params":{"threadId":"catalog-thread","turn":{"id":"catalog-turn","status":"completed","items":[]}}}), flush=True)

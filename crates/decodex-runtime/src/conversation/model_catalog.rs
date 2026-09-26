@@ -265,12 +265,15 @@ mod tests {
 		assert_eq!(defaults.managed.model.as_ref().unwrap().as_str(), "managed-model");
 		assert_eq!(defaults.catalog_model.as_ref().unwrap().as_str(), "catalog-model");
 		assert_eq!(defaults.configured.service_tier.as_ref().unwrap().as_str(), "flex");
+		assert_eq!(defaults.managed.service_tier.as_ref().unwrap().as_str(), "priority");
 		assert!(!serde_json::to_string(&defaults).unwrap().contains("not-public"));
 		assert!(child.next_ordinary_turn_event(std::time::Duration::ZERO).unwrap().is_some());
 		child.shutdown().unwrap();
-		let (_temp, mut child) = ordinary_catalog_child("exact-defaults-rejected");
-		assert!(super::read_initial_defaults(&mut child, "/tmp", || false).is_none());
-		child.shutdown().unwrap();
+		for mode in ["exact-defaults-rejected", "exact-config-defaults-rejected"] {
+			let (_temp, mut child) = ordinary_catalog_child(mode);
+			assert!(super::read_initial_defaults(&mut child, "/tmp", || false).is_none());
+			child.shutdown().unwrap();
+		}
 	}
 
 	#[test]

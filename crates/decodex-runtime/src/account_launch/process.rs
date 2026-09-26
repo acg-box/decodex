@@ -5,6 +5,9 @@ mod activation_policy_native_tests;
 #[cfg(all(test, target_os = "macos"))]
 #[path = "process_native_control_tests.rs"]
 pub(crate) mod native_control_tests;
+#[cfg(target_os = "macos")]
+#[path = "provisioned_cli.rs"]
+mod provisioned_cli;
 
 #[cfg(target_os = "linux")] use std::os::fd::{AsRawFd as _, FromRawFd as _};
 #[cfg(test)] use std::sync::atomic::AtomicU32;
@@ -2363,7 +2366,8 @@ impl SupervisedProcess {
 			)
 			.map_err(ExactReconciliationError::from_rpc)?;
 
-		if response.data.len() > MAX_EXACT_THREAD_LIST_RESULTS {
+		// This result cannot carry a continuation; an unread page is incomplete evidence.
+		if response.next_cursor.is_some() || response.data.len() > MAX_EXACT_THREAD_LIST_RESULTS {
 			return Err(ExactReconciliationError::InvalidResult);
 		}
 
@@ -4319,6 +4323,8 @@ fn resolve_executable(
 		executable_discovery::find(requested).ok_or(SupervisionError::ExecutableUnavailable)?;
 	let canonical =
 		candidate.canonicalize().map_err(|_| SupervisionError::ExecutableUnavailable)?;
+	#[cfg(target_os = "macos")]
+	let canonical = provisioned_cli::native_entrypoint(canonical)?;
 	let (snapshot, digest) = capture_executable_snapshot(&canonical)?;
 
 	Ok((canonical, Arc::new(snapshot), digest))
@@ -8020,6 +8026,9 @@ pub(crate) mod tests {
 		));
 		let success = child.resume_ordinary_thread(&request).unwrap();
 		assert_eq!(success.codex_thread_id, request.thread_id().as_str());
+		assert_eq!(success.settings.model, "fixture-model");
+		assert_eq!(success.settings.model_provider, "openai");
+		assert_eq!(success.settings.cwd, "/tmp");
 		assert_eq!(success.request_id, success.response_id);
 		assert_eq!(success.request_sha256.len(), 64);
 		assert_eq!(success.response_sha256.len(), 64);
@@ -8326,7 +8335,13 @@ pub(crate) mod tests {
 
 	#[test]
 	fn exact_list_rejects_malformed_wrong_correlation_and_missing_result() {
-		for mode in ["exact-malformed-list", "exact-wrong-correlation", "exact-missing-result"] {
+		for mode in [
+			"exact-malformed-list",
+			"exact-wrong-correlation",
+			"exact-missing-result",
+			"exact-list-more",
+			"exact-list-empty-more",
+		] {
 			let (_temp, mut process) = initialized_bound_process(mode);
 
 			assert!(
