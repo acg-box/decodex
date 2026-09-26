@@ -721,6 +721,7 @@ mod tests {
 		let row = |position, user| ChiefTimelineEntry {
 			position,
 			content: Content::Item {
+				app_ui: false,
 				turn_id: "turn".into(),
 				item_id: format!("item-{position}"),
 				kind: if user { "userMessage" } else { "agentMessage" }.into(),
@@ -835,6 +836,7 @@ mod tests {
 				ChiefTimelineEntry {
 					position: 5,
 					content: Content::Item {
+						app_ui: false,
 						turn_id: "turn".into(),
 						item_id: "same-id".into(),
 						kind: "userMessage".into(),

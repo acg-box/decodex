@@ -1,20 +1,20 @@
-//! Exercise real Preview clicks through the same-UID local WebSocket protocol.
+//! Collect complete App UI documents through the real local wire boundary.
 use super::*;
 use decodex_protocol::{
-	CURRENT_VERSION, ChiefTimelineAttachment, ChiefTimelineAttachmentSource, ChiefTimelinePage,
-	ClientMessage, Cursor, QueryPayload, QueryResultEnvelope, QueryResultPayload, ReconnectMode,
-	ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
+	CURRENT_VERSION, ClientMessage, Cursor, QueryPayload, QueryResultEnvelope, QueryResultPayload,
+	ReconnectMode, ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
 };
 use futures_util::{SinkExt, StreamExt};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use tokio_tungstenite::tungstenite::Message;
 
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
-const PNG: &[u8] = include_bytes!("../../../assets/workspace-symbols/plus.png");
+const DOCUMENT: &[u8] =
+	br#"{"item":{"id":"image"},"resources":[{"text":"<button>Fixture</button>"}]}"#;
 
 fn fixture(
 	mode: &'static str,
-) -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<ChiefMediaRequest>>) {
+) -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<ChiefAppUiRequest>>) {
 	let root = tempfile::tempdir_in("/tmp").unwrap();
 	let path = root.path().canonicalize().unwrap();
 	let server = path.join("server");
@@ -41,7 +41,7 @@ fn fixture(
 	(root, profile, thread)
 }
 
-async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefMediaRequest> {
+async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefAppUiRequest> {
 	let mut requests = Vec::new();
 	while requests.len() < if mode == "complete" { 2 } else { 1 } {
 		let index = requests.len();
@@ -83,14 +83,13 @@ async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefMedia
 			socket.close(None).await.unwrap();
 			continue;
 		}
-		let QueryPayload::GetChiefMedia { request } = query.payload else {
+		let QueryPayload::GetChiefAppUi { request } = query.payload else {
 			panic!("media query: {:?}", query.payload)
 		};
 		assert_eq!(request.thread_id.as_str(), "native-thread");
 		assert_eq!(request.turn_id.as_str(), "turn");
 		assert_eq!(request.item_id.as_str(), "image");
-		assert_eq!(request.index, 0);
-		let split = PNG.len() / 2;
+		let split = DOCUMENT.len() / 2;
 		assert_eq!(request.offset as usize, if index == 0 { 0 } else { split });
 		assert_eq!(
 			request.fingerprint,
@@ -98,9 +97,9 @@ async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefMedia
 		);
 		requests.push(request.clone());
 		let result = if mode == "unavailable" {
-			ChiefMediaResult::Unavailable
+			ChiefAppUiResult::Unavailable
 		} else {
-			ChiefMediaResult::Available {
+			ChiefAppUiResult::Available {
 				request: Box::new(request),
 				account_id: EntityId::new(if mode == "account" {
 					"other-account"
@@ -109,99 +108,45 @@ async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefMedia
 				})
 				.unwrap(),
 				fingerprint: EntityId::new("a".repeat(64)).unwrap(),
-				mime_type: "image/png".into(),
-				total_bytes: PNG.len() as u32,
-				bytes: if index == 0 { PNG[..split].to_vec() } else { PNG[split..].to_vec() },
+				total_bytes: DOCUMENT.len() as u32,
+				bytes: if index == 0 {
+					DOCUMENT[..split].to_vec()
+				} else {
+					DOCUMENT[split..].to_vec()
+				},
 			}
 		};
 		let result = ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
 			server_id: ServerId::new(SERVER).unwrap(),
 			query_id: query.query_id,
-			payload: QueryResultPayload::ChiefMedia(result),
+			payload: QueryResultPayload::ChiefAppUi(result),
 		});
 		socket.send(Message::Text(serde_json::to_string(&result).unwrap().into())).await.unwrap();
 	}
 	requests
 }
 
-fn prepare(
-	surface: &mut ChiefSurface,
-	profile: ClientProfile,
-	cx: &mut Context<ChiefSurface>,
-) -> String {
-	surface.visual_workspace_fixture(cx);
-	surface.graph_visible = false;
-	surface.profile = Some(profile);
-	let work = surface
-		.snapshot
-		.as_mut()
-		.unwrap()
-		.work_items
-		.iter_mut()
-		.find(|work| Some(&work.id) == surface.selected.as_ref())
-		.unwrap();
-	work.codex_thread_id = Some("native-thread".into());
-	let work_id = work.id.clone();
-	assert!(surface.native_history.replace(
-		Binding {
-			work: work_id.clone(),
-			thread: "native-thread".into(),
-			account: "account".into()
-		},
-		ChiefTimelinePage {
-			thread_id: "native-thread".into(),
-			entries: vec![ChiefTimelineEntry {
-				position: 1,
-				content: Content::Item {
-					app_ui: false,
-					turn_id: "turn".into(),
-					item_id: "image".into(),
-					kind: "userMessage".into(),
-					text: "Image question".into(),
-					truncated: false,
-					activity: None,
-					attachments: vec![ChiefTimelineAttachment {
-						index: 0,
-						kind: "localImage".into(),
-						label: "photo.png".into(),
-						source: ChiefTimelineAttachmentSource::Local
-					}],
-				}
-			}],
-			next_cursor: None,
-			active_realtime_session_at_page_start: None,
-		}
-	));
-	cx.notify();
-	work_id
-}
-
-#[gpui::test]
-fn preview_click_reads_real_local_chunks_and_rejects_changed_account(
-	cx: &mut gpui::TestAppContext,
-) {
+#[tokio::test]
+async fn app_document_collection_requires_one_account_and_complete_chunks() {
 	for mode in ["complete", "account", "unavailable"] {
 		let (_root, profile, server) = fixture(mode);
-		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
-		visual.update(|window, _| window.resize(gpui::size(gpui::px(1000.), gpui::px(700.))));
-		let work = surface.update(visual, |surface, cx| prepare(surface, profile, cx));
-		visual.update(|window, cx| {
-			window.draw(cx).clear();
-		});
-		let action = visual.debug_bounds("native-media-action").unwrap();
-		visual.simulate_click(action.center(), Default::default());
-		visual.run_until_parked();
-		visual.update(|window, cx| {
-			window.draw(cx).clear();
-		});
+		let request = ChiefAppUiRequest {
+			work_id: EntityId::new("work").unwrap(),
+			thread_id: EntityId::new("native-thread").unwrap(),
+			turn_id: EntityId::new("turn").unwrap(),
+			item_id: EntityId::new("image").unwrap(),
+			offset: 0,
+			fingerprint: None,
+		};
+		let result = load(&ChiefClient::new(profile), request, "account").await;
 		let requests = server.join().unwrap();
-		assert!(requests.iter().all(|request| request.work_id.as_str() == work));
-		surface.read_with(visual, |surface, _| {
-			assert!(surface.native_history.preview.task.is_none());
-			assert_eq!(surface.native_history.preview.image.is_some(), mode == "complete");
-			assert_eq!(surface.native_history.preview.notice.is_some(), mode != "complete");
-		});
-		assert_eq!(visual.debug_bounds("native-media-preview").is_some(), mode == "complete");
+		if mode == "complete" {
+			assert_eq!(result.unwrap()["resources"][0]["text"], "<button>Fixture</button>");
+			assert_eq!(requests.len(), 2);
+		} else {
+			assert!(result.is_err());
+			assert_eq!(requests.len(), 1);
+		}
 	}
 }

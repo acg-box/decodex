@@ -87,11 +87,30 @@ the child window, closes WebKit and releases the retained event buffer on destru
 The ABI carries copied JSON and does not own task state or tool permissions.
 
 Six focused Swift tests pass, including the real native ABI create/load/close sequence
-and rejection of a second document. GPUI has not yet connected this ABI to the timeline.
+and rejection of a second document. GPUI connects this ABI through the timeline action described below.
+
+## Desktop entry and document collection
+
+Native timeline items carry an explicit app_ui flag derived from MCP resource metadata.
+Only those items show Open app. The action creates a native host, collects the document
+through the source-bound service query and opens the child window after checking the
+selected task, timeline epoch, request serial and account binding again. A different
+account or a cleared timeline drops the host and outstanding request. Native closed
+and unavailable events are consumed during desktop rendering.
+
+The collector checks the account and total length across all chunks; the typed client
+checks each echoed request and fingerprint. It parses JSON only after the complete
+length arrives. Tests cover actual local-wire collection and account refusal, native
+metadata projection and rendered action visibility. The selected desktop/runtime/
+protocol run passed 247 tests. Clippy passed with the repository's existing unused-import
+and dead-code allowances. The first run had a malformed new test fixture (missing
+agent-message text); the corrected full run passed with no leaky warning.
+
+This does not establish signed desktop visual acceptance or tool callback authority.
 
 ## Remaining consumer obligations
 
-- Connect the desktop view to the source-bound service document query.
+- Complete signed desktop visual acceptance of the source-bound document action.
 - Host untrusted HTML in a separate restricted view within the existing Swift module.
   Do not reuse the trusted voice document or its microphone grants.
 - Implement MCP Apps initialization, input/result notifications and teardown. Advertise

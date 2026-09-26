@@ -223,6 +223,7 @@ mod tests {
 			decodex_protocol::ChiefTimelineEntry {
 				position: 1,
 				content: Content::Item {
+					app_ui: false,
 					turn_id: turn.into(),
 					item_id: id.into(),
 					kind: "plan".into(),

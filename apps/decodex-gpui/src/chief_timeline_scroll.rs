@@ -179,6 +179,7 @@ mod tests {
 		ChiefTimelineEntry {
 			position,
 			content: Content::Item {
+				app_ui: false,
 				turn_id: "turn".into(),
 				item_id: format!("item-{position}"),
 				kind: "agentMessage".into(),

@@ -95,7 +95,16 @@ impl ChiefSurface {
 	) -> gpui::AnyElement {
 		let row = div().w_full().min_w_0().flex().flex_col().gap_1();
 		match &entry.content {
-			Content::Item { text, kind, truncated, activity, turn_id, item_id, attachments } => {
+			Content::Item {
+				app_ui,
+				text,
+				kind,
+				truncated,
+				activity,
+				turn_id,
+				item_id,
+				attachments,
+			} => {
 				let draft = if matches!(kind.as_str(), "agentMessage" | "plan" | "reasoning") {
 					self.native_live_message(work, turn_id, item_id)
 				} else {
@@ -146,6 +155,9 @@ impl ChiefSurface {
 					_ => kind,
 				};
 				let mut row = row.child(muted(label));
+				if *app_ui {
+					row = row.child(self.native_app_ui_action(work, turn_id, item_id, cx));
+				}
 				for attachment in attachments {
 					row = row.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
 				}
@@ -333,6 +345,7 @@ mod tests {
 		ChiefTimelineEntry {
 			position: 6,
 			content: Content::Item {
+				app_ui: false,
 				turn_id: "plan-turn".into(),
 				item_id: "plan-item".into(),
 				kind: "plan".into(),
@@ -348,7 +361,7 @@ mod tests {
 		vec![
 			ChiefTimelineEntry {
 				position: 0,
-				content: Content::Item {
+				content: Content::Item { app_ui: false,
 					turn_id: "turn".into(),
 					item_id: "input".into(),
 					kind: "userMessage".into(),
@@ -365,7 +378,7 @@ mod tests {
 			},
 			ChiefTimelineEntry {
 				position: 1,
-				content: Content::Item {
+				content: Content::Item { app_ui: false,
 					turn_id: "turn".into(),
 					item_id: "message".into(),
 					kind: "agentMessage".into(),
@@ -676,5 +689,65 @@ mod tests {
 			assert_eq!(visual.debug_bounds("copy-partial-991").is_some(), truncated);
 			assert!(visual.debug_bounds("native-plan-content").is_some());
 		}
+	}
+	#[gpui::test]
+	fn only_widget_items_render_the_open_app_action(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(1400.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("native-thread".into());
+			let mut history = Timeline::default();
+			assert!(history.replace(
+				Binding {
+					work: work.id.clone(),
+					thread: "native-thread".into(),
+					account: "account".into()
+				},
+				ChiefTimelinePage {
+					thread_id: "native-thread".into(),
+					next_cursor: None,
+					active_realtime_session_at_page_start: None,
+					entries: vec![ChiefTimelineEntry {
+						position: 1,
+						content: Content::Item {
+							turn_id: "turn".into(),
+							item_id: "widget".into(),
+							kind: "mcpToolCall".into(),
+							text: "Widget result".into(),
+							truncated: false,
+							activity: None,
+							attachments: vec![],
+							app_ui: true
+						}
+					}],
+				}
+			));
+			s.native_history = history;
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("native-app-ui-open").is_some());
+		surface.update(visual, |s, cx| {
+			if let Content::Item { app_ui, .. } = &mut s.native_history.entries[0].content {
+				*app_ui = false;
+			}
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("native-app-ui-open").is_none());
 	}
 }
