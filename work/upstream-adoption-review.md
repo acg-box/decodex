@@ -23,15 +23,16 @@ not instructions to delete code or weaken native enforcement.
 ## Current completion boundary
 
 The source inventory covers 1,569 commits. It does not establish feature delivery.
-The original acceptance ledger has twelve unequal groups. R01 through R05 have recorded
-closure; R06 through R12 remain open. The table below retains those boundaries.
+The original acceptance ledger has twelve unequal groups. R01, R02, R04 and R05
+have recorded closure. R03 is reopened for inherited initial-source review; R06
+through R12 remain open. The table below retains those boundaries.
 Later implementation does not close a group without its remaining acceptance.
 
 | Group | Delivered or recorded evidence | Remaining exit condition |
 | --- | --- | --- |
 | R01 Permission settings | Native, journal, service and desktop flow; recorded group closure. | Shared signed application acceptance remains in R07/R12. |
 | R02 Plugin, hook and app-link settings | Recorded group closure; distinct from embedded App UI. | Shared signed acceptance remains in R07/R12; widgets remain R05. |
-| R03 Models, defaults and routing | Native defaults, explicit choices, ordinary recovery and profileless draft storage are merged. | Closed by PR1519 after current-consumer audit and installed-native rotation qualification; see [routing acceptance](upstream-routing-acceptance.md). Shared signed lifecycle remains R07/R12. |
+| R03 Models, defaults and routing | Native defaults, explicit choices, ordinary recovery and profileless draft storage are merged. | PR1519 qualified the current routing consumers and native rotation. Reopened for the inherited initial-model-source review workflow: its durable source binding and confirmation have not been mapped to a current owner. See [routing acceptance](upstream-routing-acceptance.md). Shared signed lifecycle remains R07/R12. |
 | R04 Attachments, media and context | Native/public media reads, signed desktop Preview, resource add/list/remove and native context authority qualified. | Closed by PR1522; see [media acceptance and limits](upstream-media-acceptance.md). Shared installed lifecycle remains R07/R12. |
 | R05 Interactive MCP App UI | Closed by PR1521: exact native documents, isolated WebKit, confirmed callbacks and durable recovery. | See [App UI contract and limits](mcp-app-ui.md). Signed local packaging and installed-native/service/desktop fixture passed; shared installed lifecycle remains R07/R12. Optional capability. |
 | R06 Prompt editing and recap | Recap service/UI and opt-in automatic eligibility are implemented. Prompt editing now includes canonical desktop editing, durable confirmation, history handback and explicit resend. | PR1523 verifies combined lost-reply recovery and normal signed-app recap/quit/relaunch interactions. Foreground/background, opt-out, live voice and remaining shared desktop acceptance in R07/R12 stay open. See the feature notes below. |

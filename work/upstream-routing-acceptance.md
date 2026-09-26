@@ -73,3 +73,24 @@ qualification. PR1519 merged these additions as
 `8407e7a102f8df4385ff3c4ffbdbedf4caf823a7`; R03 is closed. Signed whole-app quit, menu, Dock, relaunch, export and blank-task acceptance remain
 in R07/R12. Live voice and remaining recap acceptance stay in R06. No result in this
 record establishes public release, installation or complete upstream catch-up.
+
+## Reopened inherited initial-source review boundary
+
+The current routing and rotation qualifications above remain valid. They do not
+close the separate inherited initial-model-source workflow. Its preserved native
+fixture saved the original message, directory and model choice, bound them to an
+account revision, rejected routing after that source changed, queried replacement
+native defaults without starting a turn, and confirmed once with cold readback.
+
+Current `InitialModelCatalogResult::Available` still reports the account revision
+and directory after discovery. However, `CreateConversationRecord` does not retain
+`initial_model_source`, the old `initial_model_source_changed` routing outcome is
+absent, and the public conversation-model-review query/confirmation path was not
+found. The ordinary native-default and Chief task-model controls are separate
+consumers; their existence does not prove this workflow was migrated.
+
+Keep R03 open for this reconciliation. Determine whether the preserved behavior
+must be restored or has an explicit replacement, with source-bound confirmation,
+no duplicate dispatch, and saved-directory qualification. Do not copy the old SQL
+or mark missing modules as retired without that decision and evidence. The
+initial-source review fixture and its registration remain open inherited rows.
