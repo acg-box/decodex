@@ -142,6 +142,27 @@ not be reused with misleading tool-result states. The existing task event store 
 retain a distinct tool-attempt/result lifecycle without a second database. Hosted app
 tool ownership requires authoritative catalog evidence, not a tool-name guess.
 
+## Durable tool attempts
+
+Schema 45 marks the App UI call persistence contract. `chief_app_ui_calls` uses the
+existing immutable inbox events for small routing records and chief_request_payloads
+for complete arguments and results. It creates no second database or execution owner.
+Reservation checks the live task/thread/process/account and atomically rejects an
+existing attempt, reused review token or unresolved call for that work item. Only the
+caller that receives a new reservation ID may dispatch.
+
+A result is stored once as completed, unknown or positively unsent. Completed means a
+native response was recorded, not that the tool reported success. Unknown remains
+unknown after restart. An explicit acknowledgment permits later, separately confirmed
+calls but does not change the old outcome or permit replay of its review. A pending
+lookup makes unresolved calls discoverable after a view restart.
+
+The complete database suite passed 147 tests. The strengthened focused tests also
+passed after adding pending lookup, unknown-result reopen and review-token replay
+checks. They preserve arguments/results larger than 64 KiB and reject another account
+or work owner. Strict database Clippy passed. Runtime confirmation and callback dispatch
+are still pending; these persistence APIs are not exposed to the widget.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.
