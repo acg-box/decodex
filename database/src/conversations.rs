@@ -1,4 +1,9 @@
 //! Ordinary Conversation conversations, turns, and normalized history.
+mod native_settings;
+pub use native_settings::{
+	ConversationNativeSettings, ConversationNativeSettingsObservation,
+	RecordConversationNativeSettings,
+};
 
 mod initial_model_source;
 pub(crate) mod non_submission;
@@ -362,6 +367,7 @@ pub struct OrdinaryTaskConversationCursor {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OrdinaryTaskConversationReadback {
+	pub native_settings: Option<Box<ConversationNativeSettingsObservation>>,
 	pub conversation_id: ConversationId,
 	pub title: String,
 	pub conversation_revision: i64,
@@ -2143,7 +2149,13 @@ fn conversation_projection(
 			Some(_) => OrdinaryTaskPreSessionState::NoRoute,
 		})
 	};
+	let native_settings = match (&runtime_session_id, &codex_thread_id) {
+		(Some(session), Some(thread)) =>
+			native_settings::read(connection, session.as_str(), thread)?.map(Box::new),
+		_ => None,
+	};
 	Ok(OrdinaryTaskConversationProjection::Current(OrdinaryTaskConversationReadback {
+		native_settings,
 		conversation_id,
 		title,
 		conversation_revision: row.2,

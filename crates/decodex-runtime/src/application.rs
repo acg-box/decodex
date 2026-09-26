@@ -6756,6 +6756,7 @@ mod tests {
 		decision_id: Option<&str>,
 	) -> OrdinaryTaskConversationReadback {
 		OrdinaryTaskConversationReadback {
+			native_settings: None,
 			conversation_id: ConversationId::new("40000000-0000-4000-8000-000000001276").unwrap(),
 			title: "Conversation fixture".to_owned(),
 			conversation_revision: 1,
@@ -6804,6 +6805,7 @@ mod tests {
 	#[test]
 	fn terminal_session_projection_never_reopens_routing_recovery() {
 		let row = OrdinaryTaskConversationReadback {
+			native_settings: None,
 			conversation_id: ConversationId::new("40000000-0000-4000-8000-000000001276").unwrap(),
 			title: "Conversation fixture".to_owned(),
 			conversation_revision: 1,

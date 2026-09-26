@@ -320,6 +320,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	};
 	assert_eq!(bound_session.revision, 3);
 	assert_eq!(bound_session.codex_thread_id, codex_thread_id);
+	verify_native_settings_observations(&store, &root, &bound_session, &generation_id).await;
 
 	let attempt_id = ProviderAttemptId::new(ATTEMPT_ID).expect("attempt identity");
 	let request_id = ProviderRequestId::new(REQUEST_ID).expect("provider request identity");
@@ -1300,4 +1301,116 @@ async fn routing_successor_retains_initial_model_source_after_reopen() {
 			.expect("replay successor"),
 		decodex_database::ConversationRoutingSuccessorOutcome::Replayed(_)
 	));
+}
+
+async fn verify_native_settings_observations(
+	store: &SqliteStore,
+	root: &DecodexRoot,
+	binding: &decodex_database::RuntimeSessionThreadBindingReadback,
+	generation: &ProcessGenerationId,
+) {
+	let original =
+		store.read_conversation_request(&binding.conversation_id).await.expect("original request");
+	let rows = store
+		.read_ordinary_task_conversations(Some(&binding.conversation_id), None, 1)
+		.await
+		.expect("legacy projection");
+	let OrdinaryTaskConversationProjection::Current(row) = &rows[0] else {
+		panic!("current conversation")
+	};
+	assert!(row.native_settings.is_none());
+	assert!(original.is_some(), "saved execution intent remains available");
+	let mut observation = decodex_database::RecordConversationNativeSettings {
+		runtime_session_id: binding.runtime_session_id.clone(),
+		expected_session_revision: binding.revision,
+		codex_thread_id: binding.codex_thread_id.clone(),
+		process_generation_id: generation.clone(),
+		expected_process_revision: 3,
+		response_id: 2,
+		response_sha256: DIGEST_B.into(),
+		settings: decodex_database::ConversationNativeSettings {
+			model: "native-current-model".into(),
+			model_provider: "native-provider".into(),
+			cwd: "/native/project".into(),
+			reasoning_effort: Some("ultra".into()),
+		},
+	};
+	assert!(
+		store
+			.record_conversation_native_settings(&observation)
+			.await
+			.expect("retain native settings")
+	);
+	let before = store
+		.conversation_native_settings(
+			binding.runtime_session_id.clone(),
+			binding.codex_thread_id.clone(),
+		)
+		.await
+		.expect("read observation")
+		.expect("observed facts");
+	assert!(
+		store.record_conversation_native_settings(&observation).await.expect("idempotent response")
+	);
+	assert_eq!(
+		Some(before.clone()),
+		store
+			.conversation_native_settings(
+				binding.runtime_session_id.clone(),
+				binding.codex_thread_id.clone()
+			)
+			.await
+			.expect("replay preserves timestamp")
+	);
+	observation.response_id = 1;
+	assert!(!store.record_conversation_native_settings(&observation).await.expect("late response"));
+	observation.response_id = 3;
+	observation.codex_thread_id = "foreign-thread".into();
+	assert!(
+		!store.record_conversation_native_settings(&observation).await.expect("foreign thread")
+	);
+	observation.codex_thread_id = binding.codex_thread_id.clone();
+	observation.expected_process_revision += 1;
+	assert!(
+		!store.record_conversation_native_settings(&observation).await.expect("changed process")
+	);
+	observation.expected_process_revision -= 1;
+	observation.expected_session_revision += 1;
+	assert!(
+		!store.record_conversation_native_settings(&observation).await.expect("changed session")
+	);
+	observation.expected_session_revision -= 1;
+	observation.settings.model_provider = " ".into();
+	assert!(store.record_conversation_native_settings(&observation).await.is_err());
+	observation.settings.model_provider = "replacement-provider".into();
+	observation.response_sha256 = DIGEST_C.into();
+	assert!(store.record_conversation_native_settings(&observation).await.expect("new response"));
+	let reopened = SqliteStore::open(&root.paths()).expect("reopen settings");
+	let after = reopened
+		.conversation_native_settings(
+			binding.runtime_session_id.clone(),
+			binding.codex_thread_id.clone(),
+		)
+		.await
+		.expect("restored settings")
+		.expect("saved settings");
+	assert_eq!(after.settings, observation.settings);
+	assert!(after.observed_at_micros > before.observed_at_micros);
+	assert_eq!(after.process_generation_id, generation.as_str());
+	assert_eq!(after.account_id, ACCOUNT_ID);
+	assert_eq!(
+		reopened
+			.read_conversation_request(&binding.conversation_id)
+			.await
+			.expect("original intent unchanged"),
+		original
+	);
+	let rows = reopened
+		.read_ordinary_task_conversations(Some(&binding.conversation_id), None, 1)
+		.await
+		.expect("durable projection");
+	let OrdinaryTaskConversationProjection::Current(row) = &rows[0] else {
+		panic!("current conversation")
+	};
+	assert_eq!(row.native_settings.as_deref(), Some(&after));
 }
