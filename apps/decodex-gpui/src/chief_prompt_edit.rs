@@ -50,11 +50,11 @@ impl ChiefSurface {
 		let work = self.selected.clone().expect("fixture selection");
 		self.snapshot
 			.as_mut()
-			.unwrap()
+			.expect("fixture snapshot")
 			.work_items
 			.iter_mut()
 			.find(|item| item.id == work)
-			.unwrap()
+			.expect("selected fixture task")
 			.codex_thread_id = Some("fixture-thread".into());
 		self.composer
 			.update(cx, |input, cx| input.set_content("Keep this separate draft for later.", cx));
@@ -62,14 +62,14 @@ impl ChiefSurface {
 			serde_json::json!({"type":"text","text":"Compare Image #1 with Image #2 and explain the layout changes."}),
 			serde_json::json!({"type":"image","fileId":"original-layout"}),
 			serde_json::json!({"type":"localImage","path":"/fixture/revised-layout.png"}),
-		]).unwrap();
+		]).expect("valid fixture prompt");
 		let draft = DesktopPromptEditDraft {
-			work_id: EntityId::new(&work).unwrap(),
-			thread_id: WireText::new("fixture-thread").unwrap(),
-			before_turn_id: WireText::new("fixture-turn").unwrap(),
-			item_id: WireText::new("fixture-item").unwrap(),
-			original_hash: input.fingerprint().unwrap(),
-			review_token: WireText::new("a".repeat(64)).unwrap(),
+			work_id: EntityId::new(&work).expect("fixture work identity"),
+			thread_id: WireText::new("fixture-thread").expect("fixture thread identity"),
+			before_turn_id: WireText::new("fixture-turn").expect("fixture turn identity"),
+			item_id: WireText::new("fixture-item").expect("fixture item identity"),
+			original_hash: input.fingerprint().expect("fixture prompt fingerprint"),
+			review_token: WireText::new("a".repeat(64)).expect("fixture review token"),
 			receipt_id: None,
 			confirmation_key: None,
 			pending_send: None,
@@ -82,7 +82,7 @@ impl ChiefSurface {
 			profile: Some(profile),
 			..Default::default()
 		};
-		self.install_prompt_editors(draft.clone(), cx).unwrap();
+		self.install_prompt_editors(draft.clone(), cx).expect("install fixture prompt editors");
 		self.prompt_edit.feedback =
 			"Review the earlier message. Later turns will be removed only after confirmation."
 				.into();
@@ -560,106 +560,7 @@ impl ChiefSurface {
 			panel = panel.child(editor.clone());
 		}
 		if let Some(draft) = &self.prompt_edit.draft {
-			if draft.receipt_id.is_some() && !draft.handback_pending {
-				let expected = draft.clone();
-				let checking = draft.pending_send.is_some();
-				panel = panel.child(self.workspace_action(
-					"prompt-send".into(),
-					if checking { "Check send receipt" } else { "Send edited input" }.into(),
-					move |s, cx| s.send_prompt_editor(expected.clone(), checking, cx),
-					cx,
-				));
-			}
-			if draft.receipt_id.is_some() && draft.handback_pending {
-				let expected = draft.clone();
-				panel = panel.child(self.workspace_action(
-					"prompt-handback".into(),
-					"Finish restoring draft".into(),
-					move |s, cx| s.handback_prompt_editor(expected.clone(), cx),
-					cx,
-				));
-			}
-			if draft.receipt_id.is_none() {
-				let expected = draft.clone();
-				panel = panel.child(
-					self.workspace_action(
-						"prompt-confirm-review".into(),
-						if draft.confirmation_key.is_some() {
-							"Continue saved confirmation…"
-						} else {
-							"Confirm history edit…"
-						}
-						.into(),
-						move |s, cx| {
-							if s.prompt_edit.task.is_none()
-								&& s.prompt_edit.draft.as_ref() == Some(&expected)
-								&& s.prompt_editor_source_current()
-							{
-								s.prompt_edit.confirmation = Some(expected.clone());
-								cx.notify();
-							}
-						},
-						cx,
-					),
-				);
-			}
-			if let Some(expected) = &self.prompt_edit.confirmation {
-				let expected = expected.clone();
-				panel = panel.child("Remove the selected turn and all later turns? Workspace file changes remain. The edited draft will be kept and will not be sent.")
-					.child(self.workspace_action("prompt-confirm-apply".into(), "Remove turns and keep draft".into(), move |s, cx| s.confirm_prompt_editor(expected.clone(), cx), cx))
-					.child(self.workspace_action("prompt-confirm-cancel".into(), "Cancel".into(), |s, cx| { s.prompt_edit.confirmation = None; cx.notify(); }, cx));
-			}
-			let expected = draft.clone();
-			panel = panel.child(self.workspace_action(
-				"prompt-preflight".into(),
-				"Check edited input".into(),
-				move |s, cx| s.preflight_prompt_editor(expected.clone(), cx),
-				cx,
-			));
-			panel = panel.child(if self.prompt_editor_saved(draft) {
-				"Edited draft saved locally."
-			} else {
-				"Edited draft is not yet confirmed saved locally."
-			});
-			let expected = draft.clone();
-			panel = panel.child(self.workspace_action(
-				"prompt-recover".into(),
-				"Read history edit receipt".into(),
-				move |s, cx| s.recover_prompt_editor(expected.clone(), cx),
-				cx,
-			));
-			if draft.receipt_id.is_none() && !draft.handback_pending {
-				let original = draft.clone();
-				panel = panel.child(self.workspace_action(
-					"prompt-review-refresh".into(),
-					"Recheck original history".into(),
-					move |s, cx| {
-						let source = (
-							original.work_id.as_str(),
-							original.thread_id.as_str(),
-							original.before_turn_id.as_str(),
-							original.item_id.as_str(),
-						);
-						s.request_prompt_review(source, Some(original.clone()), cx);
-					},
-					cx,
-				));
-			}
-			for (index, _) in draft
-				.input
-				.parts()
-				.iter()
-				.enumerate()
-				.filter(|(_, part)| part["type"].as_str() != Some("text"))
-			{
-				let expected = draft.clone();
-				panel = panel.child(self.workspace_action(
-					format!("prompt-remove-{index}"),
-					format!("Remove {}…", removal::label(&draft.input, index)),
-					move |s, cx| s.begin_prompt_removal(index, &expected, cx),
-					cx,
-				));
-			}
+			panel = self.prompt_edit_actions(panel, draft, cx);
 		}
 		panel = panel.child(self.prompt_removal_panel(cx));
 		panel
@@ -675,6 +576,115 @@ impl ChiefSurface {
 			))
 			.into_any_element()
 	}
+
+	fn prompt_edit_actions(
+		&self,
+		mut panel: gpui::Div,
+		draft: &DesktopPromptEditDraft,
+		cx: &mut Context<Self>,
+	) -> gpui::Div {
+		if draft.receipt_id.is_some() && !draft.handback_pending {
+			let expected = draft.clone();
+			let checking = draft.pending_send.is_some();
+			panel = panel.child(self.workspace_action(
+				"prompt-send".into(),
+				if checking { "Check send receipt" } else { "Send edited input" }.into(),
+				move |s, cx| s.send_prompt_editor(expected.clone(), checking, cx),
+				cx,
+			));
+		}
+		if draft.receipt_id.is_some() && draft.handback_pending {
+			let expected = draft.clone();
+			panel = panel.child(self.workspace_action(
+				"prompt-handback".into(),
+				"Finish restoring draft".into(),
+				move |s, cx| s.handback_prompt_editor(expected.clone(), cx),
+				cx,
+			));
+		}
+		if draft.receipt_id.is_none() {
+			let expected = draft.clone();
+			panel = panel.child(
+				self.workspace_action(
+					"prompt-confirm-review".into(),
+					if draft.confirmation_key.is_some() {
+						"Continue saved confirmation…"
+					} else {
+						"Confirm history edit…"
+					}
+					.into(),
+					move |s, cx| {
+						if s.prompt_edit.task.is_none()
+							&& s.prompt_edit.draft.as_ref() == Some(&expected)
+							&& s.prompt_editor_source_current()
+						{
+							s.prompt_edit.confirmation = Some(expected.clone());
+							cx.notify();
+						}
+					},
+					cx,
+				),
+			);
+		}
+		if let Some(expected) = &self.prompt_edit.confirmation {
+			let expected = expected.clone();
+			panel = panel.child("Remove the selected turn and all later turns? Workspace file changes remain. The edited draft will be kept and will not be sent.")
+				.child(self.workspace_action("prompt-confirm-apply".into(), "Remove turns and keep draft".into(), move |s, cx| s.confirm_prompt_editor(expected.clone(), cx), cx))
+				.child(self.workspace_action("prompt-confirm-cancel".into(), "Cancel".into(), |s, cx| { s.prompt_edit.confirmation = None; cx.notify(); }, cx));
+		}
+		let expected = draft.clone();
+		panel = panel.child(self.workspace_action(
+			"prompt-preflight".into(),
+			"Check edited input".into(),
+			move |s, cx| s.preflight_prompt_editor(expected.clone(), cx),
+			cx,
+		));
+		panel = panel.child(if self.prompt_editor_saved(draft) {
+			"Edited draft saved locally."
+		} else {
+			"Edited draft is not yet confirmed saved locally."
+		});
+		let expected = draft.clone();
+		panel = panel.child(self.workspace_action(
+			"prompt-recover".into(),
+			"Read history edit receipt".into(),
+			move |s, cx| s.recover_prompt_editor(expected.clone(), cx),
+			cx,
+		));
+		if draft.receipt_id.is_none() && !draft.handback_pending {
+			let original = draft.clone();
+			panel = panel.child(self.workspace_action(
+				"prompt-review-refresh".into(),
+				"Recheck original history".into(),
+				move |s, cx| {
+					let source = (
+						original.work_id.as_str(),
+						original.thread_id.as_str(),
+						original.before_turn_id.as_str(),
+						original.item_id.as_str(),
+					);
+					s.request_prompt_review(source, Some(original.clone()), cx);
+				},
+				cx,
+			));
+		}
+		for (index, _) in draft
+			.input
+			.parts()
+			.iter()
+			.enumerate()
+			.filter(|(_, part)| part["type"].as_str() != Some("text"))
+		{
+			let expected = draft.clone();
+			panel = panel.child(self.workspace_action(
+				format!("prompt-remove-{index}"),
+				format!("Remove {}…", removal::label(&draft.input, index)),
+				move |s, cx| s.begin_prompt_removal(index, &expected, cx),
+				cx,
+			));
+		}
+		panel
+	}
 }
 
 #[cfg(test)]
@@ -689,22 +699,12 @@ mod tests {
 		.unwrap()
 	}
 
-	#[gpui::test]
-	fn prompt_review_keeps_the_main_composer_and_stops_after_source_invalidation(
+	fn install_fixture_editor(
+		surface: &Entity<ChiefSurface>,
+		profile: ClientProfile,
 		cx: &mut gpui::TestAppContext,
-	) {
-		let root = tempfile::tempdir().unwrap();
-		let path = root.path().canonicalize().unwrap();
-		std::fs::create_dir(path.join("server")).unwrap();
-		std::fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700))
-			.unwrap();
-		let uid = std::fs::metadata(&path).unwrap().uid();
-		let config = path.join("config.toml");
-		std::fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
-		std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o600)).unwrap();
-		let profile = ClientProfile::load(&path, None).unwrap();
-		let surface = cx.new(ChiefSurface::new);
-		let editor = surface.update(cx, |s, cx| {
+	) -> Entity<ComposerInput> {
+		surface.update(cx, |s, cx| {
 			s.bind_profile(Some(profile.clone()), cx);
 			s.visual_workspace_fixture(cx);
 			let work = s.selected.clone().unwrap();
@@ -747,7 +747,25 @@ mod tests {
 			.unwrap();
 			assert_eq!(s.composer.read(cx).content(), "Unrelated unsent input");
 			s.prompt_edit.editors[0].1.clone()
-		});
+		})
+	}
+
+	#[gpui::test]
+	fn prompt_review_keeps_the_main_composer_and_stops_after_source_invalidation(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let root = tempfile::tempdir().unwrap();
+		let path = root.path().canonicalize().unwrap();
+		std::fs::create_dir(path.join("server")).unwrap();
+		std::fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700))
+			.unwrap();
+		let uid = std::fs::metadata(&path).unwrap().uid();
+		let config = path.join("config.toml");
+		std::fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
+		std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o600)).unwrap();
+		let profile = ClientProfile::load(&path, None).unwrap();
+		let surface = cx.new(ChiefSurface::new);
+		let editor = install_fixture_editor(&surface, profile, cx);
 		editor.update(cx, |input, cx| {
 			input.set_native_part(serde_json::json!({"type":"text","text":"Edited"}), cx).unwrap()
 		});

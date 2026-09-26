@@ -14,14 +14,7 @@ impl ChiefSurface {
 		checking: bool,
 		cx: &mut Context<Self>,
 	) {
-		if self.prompt_edit.task.is_some()
-			|| !self.prompt_editor_source_current()
-			|| self.prompt_edit.draft.as_ref() != Some(&expected)
-			|| expected.receipt_id.is_none()
-			|| expected.handback_pending
-			|| expected.pending_send.is_some() != checking
-			|| !self.command_connection_ready()
-		{
+		if !self.prompt_send_eligible(&expected, checking) {
 			return;
 		}
 		let Some(profile) = self.profile.clone() else {
@@ -42,87 +35,14 @@ impl ChiefSurface {
 				let _ = staged.send(Err("Could not start input submission"));
 				return;
 			};
-			runtime.block_on(async move {
-				let client = ChiefClient::new(profile);
-				let result = async {
-					if checking {
-						return Ok(worker_draft);
-					}
-					super::confirmation::readable_local_media(&worker_draft.input)?;
-					client
-						.preflight_prompt_input(
-							worker_draft.work_id.clone(),
-							worker_draft.thread_id.clone(),
-							&worker_draft.input,
-							&execution,
-						)
-						.await
-						.map_err(|_| "Edited input could not be qualified. Nothing was sent.")?;
-					let receipt = worker_draft.receipt_id.ok_or("Missing edit receipt")?;
-					let hash = worker_draft.input.fingerprint()?;
-					let upload = decodex_protocol::PromptInputUpload {
-						work_id: worker_draft.work_id.clone(),
-						thread_id: worker_draft.thread_id.clone(),
-						edit_receipt_id: receipt,
-						upload_id: IdempotencyKey::new(format!(
-							"prompt-{receipt}-{}",
-							hash.as_str()
-						))
-						.map_err(|_| "Invalid upload identity")?,
-						sha256: hash,
-						total_bytes: serde_json::to_vec(&worker_draft.input)
-							.map_err(|_| "Input encoding failed")?
-							.len() as u64,
-					};
-					let input_id =
-						client.stage_prompt_input(upload, &worker_draft.input).await.map_err(
-							|_| "Input upload stopped. Draft retained; no model input was submitted.",
-						)?;
-					worker_draft.begin_send(input_id, command_key, execution)
-				}
-				.await;
-				let Ok(pending) = result else {
-					let _ = staged.send(result);
-					return;
-				};
-				if staged.send(Ok(pending.clone())).is_err() || permitted.await.is_err() {
-					return;
-				}
-				let identity = pending.send_identity().expect("validated pending send");
-				let outcome = if checking {
-					Outcome::Unknown
-				} else {
-					match client
-						.execute(
-							ChiefActionDto::SendPromptInput {
-								work_id: identity.work_id.clone(),
-								thread_id: identity.thread_id.clone(),
-								input_id: identity.send.input_id,
-								edit_receipt_id: identity.edit_receipt_id,
-								sha256: identity.send.sha256.clone(),
-								execution: identity.send.execution.clone(),
-							},
-							identity.send.command_key.clone(),
-						)
-						.await
-					{
-						Ok(ChiefCommandResponse::Accepted { .. }) => Outcome::Accepted,
-						Ok(ChiefCommandResponse::Rejected { .. }) | Err(_) => Outcome::Rejected,
-						Ok(ChiefCommandResponse::PotentiallyDispatched { .. }) => Outcome::Unknown,
-					}
-				};
-				let outcome = if matches!(outcome, Outcome::Unknown)
-					&& client
-						.prompt_input_send_status(identity)
-						.await
-						.is_ok_and(|status| status.accepted_event_id.is_some())
-				{
-					Outcome::Accepted
-				} else {
-					outcome
-				};
-				let _ = completed.send(outcome);
-			});
+			runtime.block_on(send_worker(
+				ChiefClient::new(profile),
+				worker_draft,
+				execution,
+				command_key,
+				checking,
+				(staged, permitted, completed),
+			));
 		});
 		if started.is_err() {
 			self.prompt_edit.feedback = "Could not start input submission".into();
@@ -182,27 +102,7 @@ impl ChiefSurface {
 			loop {
 				let ready = surface
 					.update(cx, |s, cx| {
-						if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() {
-							return Some(false);
-						}
-						if s.prompt_edit.draft.as_ref() != Some(&pending)
-							|| !s.command_connection_ready()
-							|| std::time::Instant::now() >= deadline
-						{
-							s.finish_prompt_send(
-								&pending,
-								if checking { Outcome::Unknown } else { Outcome::Rejected },
-								cx,
-							);
-							return Some(false);
-						}
-						if checking || s.prompt_editor_saved(&pending) {
-							// No UI yield occurs between removing this known-unsent marker and
-							// granting the worker permit.
-							s.prompt_edit.prepared_send = None;
-							return Some(true);
-						}
-						None
+						s.prompt_send_ready(&panel_key, &pending, checking, deadline, cx)
 					})
 					.unwrap_or(Some(false));
 				if let Some(ready) = ready {
@@ -233,6 +133,47 @@ impl ChiefSurface {
 			});
 		}));
 		cx.notify();
+	}
+
+	fn prompt_send_eligible(&self, expected: &DesktopPromptEditDraft, checking: bool) -> bool {
+		!(self.prompt_edit.task.is_some()
+			|| !self.prompt_editor_source_current()
+			|| self.prompt_edit.draft.as_ref() != Some(expected)
+			|| expected.receipt_id.is_none()
+			|| expected.handback_pending
+			|| expected.pending_send.is_some() != checking
+			|| !self.command_connection_ready())
+	}
+
+	fn prompt_send_ready(
+		&mut self,
+		panel_key: &str,
+		pending: &DesktopPromptEditDraft,
+		checking: bool,
+		deadline: std::time::Instant,
+		cx: &mut Context<Self>,
+	) -> Option<bool> {
+		if self.prompt_edit.key != panel_key || !self.prompt_editor_source_current() {
+			return Some(false);
+		}
+		if self.prompt_edit.draft.as_ref() != Some(pending)
+			|| !self.command_connection_ready()
+			|| std::time::Instant::now() >= deadline
+		{
+			self.finish_prompt_send(
+				pending,
+				if checking { Outcome::Unknown } else { Outcome::Rejected },
+				cx,
+			);
+			return Some(false);
+		}
+		if checking || self.prompt_editor_saved(pending) {
+			// No UI yield occurs between removing this known-unsent marker and
+			// granting the worker permit.
+			self.prompt_edit.prepared_send = None;
+			return Some(true);
+		}
+		None
 	}
 
 	fn finish_prompt_send(
@@ -267,4 +208,94 @@ impl ChiefSurface {
 		}
 		cx.notify();
 	}
+}
+
+async fn send_worker(
+	client: ChiefClient,
+	worker_draft: DesktopPromptEditDraft,
+	execution: decodex_protocol::ChiefExecutionOverrides,
+	command_key: IdempotencyKey,
+	checking: bool,
+	channels: (
+		tokio::sync::oneshot::Sender<Result<DesktopPromptEditDraft, &'static str>>,
+		tokio::sync::oneshot::Receiver<()>,
+		tokio::sync::oneshot::Sender<Outcome>,
+	),
+) {
+	let (staged, permitted, completed) = channels;
+	let result = async {
+		if checking {
+			return Ok(worker_draft);
+		}
+		super::confirmation::readable_local_media(&worker_draft.input)?;
+		client
+			.preflight_prompt_input(
+				worker_draft.work_id.clone(),
+				worker_draft.thread_id.clone(),
+				&worker_draft.input,
+				&execution,
+			)
+			.await
+			.map_err(|_| "Edited input could not be qualified. Nothing was sent.")?;
+		let receipt = worker_draft.receipt_id.ok_or("Missing edit receipt")?;
+		let hash = worker_draft.input.fingerprint()?;
+		let upload = decodex_protocol::PromptInputUpload {
+			work_id: worker_draft.work_id.clone(),
+			thread_id: worker_draft.thread_id.clone(),
+			edit_receipt_id: receipt,
+			upload_id: IdempotencyKey::new(format!("prompt-{receipt}-{}", hash.as_str()))
+				.map_err(|_| "Invalid upload identity")?,
+			sha256: hash,
+			total_bytes: serde_json::to_vec(&worker_draft.input)
+				.map_err(|_| "Input encoding failed")?
+				.len() as u64,
+		};
+		let input_id = client
+			.stage_prompt_input(upload, &worker_draft.input)
+			.await
+			.map_err(|_| "Input upload stopped. Draft retained; no model input was submitted.")?;
+		worker_draft.begin_send(input_id, command_key, execution)
+	}
+	.await;
+	let Ok(pending) = result else {
+		let _ = staged.send(result);
+		return;
+	};
+	if staged.send(Ok(pending.clone())).is_err() || permitted.await.is_err() {
+		return;
+	}
+	let identity = pending.send_identity().expect("validated pending send");
+	let outcome = if checking {
+		Outcome::Unknown
+	} else {
+		match client
+			.execute(
+				ChiefActionDto::SendPromptInput {
+					work_id: identity.work_id.clone(),
+					thread_id: identity.thread_id.clone(),
+					input_id: identity.send.input_id,
+					edit_receipt_id: identity.edit_receipt_id,
+					sha256: identity.send.sha256.clone(),
+					execution: identity.send.execution.clone(),
+				},
+				identity.send.command_key.clone(),
+			)
+			.await
+		{
+			Ok(ChiefCommandResponse::Accepted { .. }) => Outcome::Accepted,
+			Ok(ChiefCommandResponse::Rejected { .. }) | Err(_) => Outcome::Rejected,
+			Ok(ChiefCommandResponse::PotentiallyDispatched { .. }) => Outcome::Unknown,
+		}
+	};
+	let outcome = if matches!(outcome, Outcome::Unknown)
+		&& client
+			.prompt_input_send_status(identity)
+			.await
+			.is_ok_and(|status| status.accepted_event_id.is_some())
+	{
+		Outcome::Accepted
+	} else {
+		outcome
+	};
+	let _ = completed.send(outcome);
 }

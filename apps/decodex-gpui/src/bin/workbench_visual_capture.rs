@@ -96,55 +96,12 @@ fn main() -> gpui::Result<()> {
 	// The explicit root supplies protocol evidence; command probes require their own flags.
 	// Never use the installed profile as an implicit screenshot source.
 	let service_projection = std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT")
-		.map(|root| -> gpui::Result<_> {
-			let root = PathBuf::from(root);
-			if (automatic_recap || live_app_ui || live_media) && root.parent().and_then(|parent| std::fs::read_to_string(parent.join(".decodex-recap-fixture")).ok()).as_deref() != Some("isolated-recap\n") {
-				return Err(std::io::Error::other("Automatic recap capture requires the isolated native fixture marker").into());
-			}
-			let profile = decodex_protocol::ClientProfile::load(&root, None)
-				.map_err(|error| std::io::Error::other(format!("capture profile: {error:?}")))?;
-			let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
-			let client = decodex_protocol::ChiefClient::new(profile.clone());
-			let snapshot = runtime
-				.block_on(client.query())
-				.map_err(|error| std::io::Error::other(format!("capture snapshot: {error:?}")))?;
-			let selected = match &snapshot {
-				decodex_protocol::ChiefSnapshotResult::Available(snapshot) => {
-					std::env::var("DECODEX_VISUAL_CHIEF_WORK")
-						.ok()
-						.filter(|id| snapshot.work_items.iter().any(|work| &work.id == id))
-						.or_else(|| {
-							snapshot
-								.work_items
-								.iter()
-								.find(|work| work.parent_goal_id.is_none())
-								.map(|work| work.id.clone())
-						})
-				},
-				_ => None,
-			};
-			let history = selected.as_ref().map(|id| {
-				let id = decodex_protocol::EntityId::new(id.clone())
-					.expect("validated snapshot identity");
-				runtime
-					.block_on(client.history(id))
-					.unwrap_or(decodex_protocol::ChiefHistoryResult::Unavailable)
-			});
-			let request = match &snapshot {
-				decodex_protocol::ChiefSnapshotResult::Available(snapshot) => snapshot.pending_events.iter().find(|event| Some(&event.work_item_id) == selected.as_ref() && ["permission_pending", "user_input_pending", "server_request_pending"].contains(&event.event_kind.as_str())).map(|event| runtime.block_on(client.request(event.id)).unwrap_or(decodex_protocol::ChiefRequestResult::Unavailable)),
-				_ => None,
-			};
-			let guardian = selected.as_ref().map(|id| {
-				runtime.block_on(client.guardian_reviews(decodex_protocol::EntityId::new(id.clone()).expect("validated work"),None))
-					.unwrap_or(decodex_protocol::ChiefGuardianReviewsResult::Unavailable)
-			});
-			std::fs::write(
-				output.with_extension("evidence.json"),
-				serde_json::to_vec_pretty(
-					&serde_json::json!({"source_root": &root, "observed_at_micros": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_micros(), "snapshot": &snapshot, "selected": &selected, "history": &history, "request": &request,"guardian":&guardian}),
-				)?,
-			)?;
-			Ok((snapshot, selected, history, request, guardian, profile))
+		.map(|root| {
+			read_service_projection(
+				PathBuf::from(root),
+				&output,
+				automatic_recap || live_app_ui || live_media,
+			)
 		})
 		.transpose()?;
 	let window: gpui::AnyWindowHandle = if let Some(mode) = app_ui_mode {
@@ -220,6 +177,92 @@ fn main() -> gpui::Result<()> {
 	screenshot.save(&output)?;
 	println!("{}", output.display());
 	Ok(())
+}
+
+type ServiceProjection = (
+	decodex_protocol::ChiefSnapshotResult,
+	Option<String>,
+	Option<decodex_protocol::ChiefHistoryResult>,
+	Option<decodex_protocol::ChiefRequestResult>,
+	Option<decodex_protocol::ChiefGuardianReviewsResult>,
+	decodex_protocol::ClientProfile,
+);
+
+fn read_service_projection(
+	root: PathBuf,
+	output: &std::path::Path,
+	require_fixture: bool,
+) -> gpui::Result<ServiceProjection> {
+	if require_fixture
+		&& root
+			.parent()
+			.and_then(|parent| std::fs::read_to_string(parent.join(".decodex-recap-fixture")).ok())
+			.as_deref()
+			!= Some("isolated-recap\n")
+	{
+		return Err(std::io::Error::other(
+			"Automatic recap capture requires the isolated native fixture marker",
+		)
+		.into());
+	}
+	let profile = decodex_protocol::ClientProfile::load(&root, None)
+		.map_err(|error| std::io::Error::other(format!("capture profile: {error:?}")))?;
+	let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+	let client = decodex_protocol::ChiefClient::new(profile.clone());
+	let snapshot = runtime
+		.block_on(client.query())
+		.map_err(|error| std::io::Error::other(format!("capture snapshot: {error:?}")))?;
+	let selected = match &snapshot {
+		decodex_protocol::ChiefSnapshotResult::Available(snapshot) =>
+			std::env::var("DECODEX_VISUAL_CHIEF_WORK")
+				.ok()
+				.filter(|id| snapshot.work_items.iter().any(|work| &work.id == id))
+				.or_else(|| {
+					snapshot
+						.work_items
+						.iter()
+						.find(|work| work.parent_goal_id.is_none())
+						.map(|work| work.id.clone())
+				}),
+		_ => None,
+	};
+	let history = selected.as_ref().map(|id| {
+		let id = decodex_protocol::EntityId::new(id.clone()).expect("validated snapshot identity");
+		runtime
+			.block_on(client.history(id))
+			.unwrap_or(decodex_protocol::ChiefHistoryResult::Unavailable)
+	});
+	let request = match &snapshot {
+		decodex_protocol::ChiefSnapshotResult::Available(snapshot) => snapshot
+			.pending_events
+			.iter()
+			.find(|event| {
+				Some(&event.work_item_id) == selected.as_ref()
+					&& ["permission_pending", "user_input_pending", "server_request_pending"]
+						.contains(&event.event_kind.as_str())
+			})
+			.map(|event| {
+				runtime
+					.block_on(client.request(event.id))
+					.unwrap_or(decodex_protocol::ChiefRequestResult::Unavailable)
+			}),
+		_ => None,
+	};
+	let guardian = selected.as_ref().map(|id| {
+		runtime
+			.block_on(client.guardian_reviews(
+				decodex_protocol::EntityId::new(id.clone()).expect("validated work"),
+				None,
+			))
+			.unwrap_or(decodex_protocol::ChiefGuardianReviewsResult::Unavailable)
+	});
+	std::fs::write(
+		output.with_extension("evidence.json"),
+		serde_json::to_vec_pretty(
+			&serde_json::json!({"source_root": &root, "observed_at_micros": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_micros(), "snapshot": &snapshot, "selected": &selected, "history": &history, "request": &request,"guardian":&guardian}),
+		)?,
+	)?;
+	Ok((snapshot, selected, history, request, guardian, profile))
 }
 
 fn animate_panel_motion(

@@ -26,6 +26,10 @@ impl State {
 
 impl ChiefSurface {
 	#[cfg(feature = "visual-capture")]
+	#[allow(
+		dead_code,
+		reason = "Used by the separate workbench capture binary; this module is also compiled into the main binary"
+	)]
 	pub(crate) fn visual_open_live_app_ui(
 		&mut self,
 		profile: ClientProfile,
@@ -47,6 +51,10 @@ impl ChiefSurface {
 	}
 
 	#[cfg(feature = "visual-capture")]
+	#[allow(
+		dead_code,
+		reason = "Used by the separate workbench capture binary; this module is also compiled into the main binary"
+	)]
 	pub(crate) fn visual_live_app_ui_evidence(
 		&mut self,
 		confirm: bool,
@@ -61,6 +69,10 @@ impl ChiefSurface {
 	}
 
 	#[cfg(feature = "visual-capture")]
+	#[allow(
+		dead_code,
+		reason = "Used by the separate workbench capture binary; this module is also compiled into the main binary"
+	)]
 	pub(crate) fn visual_app_ui_confirmation(&mut self, unknown: bool, cx: &mut Context<Self>) {
 		self.visual_workspace_fixture(cx);
 		self.graph_visible = false;
@@ -87,17 +99,20 @@ impl ChiefSurface {
 			state.callback.review = Some(ChiefAppUiCallReview::Available {
 				request: Box::new(ChiefAppUiCall {
 					work_id: owner,
-					thread_id: EntityId::new("fixture-thread").unwrap(),
-					turn_id: EntityId::new("fixture-turn").unwrap(),
-					item_id: EntityId::new("fixture-widget").unwrap(),
-					source_fingerprint: EntityId::new("c".repeat(64)).unwrap(),
+					thread_id: EntityId::new("fixture-thread").expect("fixture thread identity"),
+					turn_id: EntityId::new("fixture-turn").expect("fixture turn identity"),
+					item_id: EntityId::new("fixture-widget").expect("fixture item identity"),
+					source_fingerprint: EntityId::new("c".repeat(64))
+						.expect("fixture source fingerprint"),
 					operation_id: operation,
-					tool: decodex_protocol::WireText::new("set_counter").unwrap(),
+					tool: decodex_protocol::WireText::new("set_counter")
+						.expect("fixture tool name"),
 					arguments: json!({"value":42}),
 				}),
-				review_token: EntityId::new("a".repeat(64)).unwrap(),
-				server: decodex_protocol::WireText::new("Local counter").unwrap(),
-				title: decodex_protocol::WireText::new("Update counter").unwrap(),
+				review_token: EntityId::new("a".repeat(64)).expect("fixture review token"),
+				server: decodex_protocol::WireText::new("Local counter")
+					.expect("fixture server name"),
+				title: decodex_protocol::WireText::new("Update counter").expect("fixture title"),
 				pending_operation: None,
 			});
 			state.notice = Some("Review the app request below before allowing it.");

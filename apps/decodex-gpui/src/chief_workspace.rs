@@ -1372,10 +1372,7 @@ impl ChiefSurface {
 				memory_enabled: None,
 			});
 			self.fast = true;
-			if page == "composer-menu" {
-				self.composer_menu = Some("model");
-			}
-			if page == "composer-effort" {
+			if matches!(page, "composer-menu" | "composer-effort") {
 				self.composer_menu = Some("model");
 			}
 			return;

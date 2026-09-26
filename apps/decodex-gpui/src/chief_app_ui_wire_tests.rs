@@ -56,27 +56,7 @@ async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefAppUi
 		};
 		let mut socket =
 			tokio_tungstenite::accept_async(listener.accept().await.unwrap().0).await.unwrap();
-		let _hello = socket.next().await.unwrap().unwrap();
-		for message in [
-			ServerMessage::Welcome(ServerWelcome {
-				version: CURRENT_VERSION,
-				server_id: ServerId::new(SERVER).unwrap(),
-				instance_id: None,
-				cursor: Cursor(0),
-				reconnect: ReconnectMode::Snapshot,
-			}),
-			ServerMessage::Snapshot(SnapshotEnvelope {
-				version: CURRENT_VERSION,
-				server_id: ServerId::new(SERVER).unwrap(),
-				cursor: Cursor(0),
-				items: vec![],
-			}),
-		] {
-			socket
-				.send(Message::Text(serde_json::to_string(&message).unwrap().into()))
-				.await
-				.unwrap();
-		}
+		welcome(&mut socket).await;
 		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 			panic!("text query")
 		};
@@ -87,31 +67,7 @@ async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefAppUi
 			let decodex_protocol::CommandPayload::Chief { action } = command.payload else {
 				panic!("chief command")
 			};
-			match (*action, mode) {
-				(
-					decodex_protocol::ChiefActionDto::ConfirmAppUiTool { request, review_token },
-					"call-lost",
-				) => {
-					assert_eq!(request.work_id.as_str(), "work");
-					assert_eq!(request.operation_id.as_str(), "saved-operation");
-					assert_eq!(request.tool.as_str(), "calculate");
-					assert_eq!(request.arguments, serde_json::json!({"value":7}));
-					assert_eq!(review_token.as_str(), "a".repeat(64));
-				},
-				(
-					decodex_protocol::ChiefActionDto::AcknowledgeAppUiCall {
-						work_id,
-						operation_id,
-						reservation_id,
-					},
-					"ack-lost",
-				) => {
-					assert_eq!(work_id.as_str(), "work");
-					assert_eq!(operation_id.as_str(), "saved-operation");
-					assert_eq!(reservation_id, 42);
-				},
-				other => panic!("unexpected command {other:?}"),
-			}
+			assert_command(*action, mode);
 			// The effect is recorded, but the local command reply is lost.
 			socket.close(None).await.unwrap();
 			continue;
@@ -125,79 +81,8 @@ async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefAppUi
 			socket.close(None).await.unwrap();
 			continue;
 		}
-		if let QueryPayload::ReviewChiefAppUiCall { request } = &query.payload {
-			assert_eq!(mode, "review-valid");
-			assert_eq!(request.work_id.as_str(), "work");
-			assert_eq!(request.thread_id.as_str(), "native-thread");
-			assert_eq!(request.arguments, serde_json::json!({"value":7}));
-			let result = ServerMessage::QueryResult(QueryResultEnvelope {
-				version: CURRENT_VERSION,
-				server_id: ServerId::new(SERVER).unwrap(),
-				query_id: query.query_id,
-				payload: QueryResultPayload::ChiefAppUiCallReview(
-					decodex_protocol::ChiefAppUiCallReview::Available {
-						request: Box::new(request.clone()),
-						review_token: EntityId::new("a".repeat(64)).unwrap(),
-						server: decodex_protocol::WireText::new("fixture").unwrap(),
-						title: decodex_protocol::WireText::new("Calculate").unwrap(),
-						pending_operation: None,
-					},
-				),
-			});
-			socket
-				.send(Message::Text(serde_json::to_string(&result).unwrap().into()))
-				.await
-				.unwrap();
-			assert_eq!(commands, 0);
-			return requests;
-		}
-		if let QueryPayload::GetChiefAppUiSource { work_id, thread_id, fingerprint } =
-			&query.payload
-		{
-			assert_eq!(work_id.as_str(), "work");
-			assert_eq!(thread_id.as_str(), "native-thread");
-			assert_eq!(fingerprint.as_str(), "c".repeat(64));
-			let result = ServerMessage::QueryResult(QueryResultEnvelope {
-				version: CURRENT_VERSION,
-				server_id: ServerId::new(SERVER).unwrap(),
-				query_id: query.query_id,
-				payload: QueryResultPayload::ChiefAppUiSource(mode == "current"),
-			});
-			socket
-				.send(Message::Text(serde_json::to_string(&result).unwrap().into()))
-				.await
-				.unwrap();
-			return requests;
-		}
-		if let QueryPayload::GetChiefPendingAppUiCall { work_id } = &query.payload {
-			assert_eq!(work_id.as_str(), "work");
-			let response = match mode {
-				"pending-unavailable" => decodex_protocol::ChiefPendingAppUiCall::Unavailable,
-				_ => decodex_protocol::ChiefPendingAppUiCall::Available {
-					work_id: EntityId::new(if mode == "pending-foreign" {
-						"foreign"
-					} else {
-						"work"
-					})
-					.unwrap(),
-					operation_id: if mode == "pending-none" {
-						None
-					} else {
-						Some(EntityId::new("saved-operation").unwrap())
-					},
-				},
-			};
-			let result = ServerMessage::QueryResult(QueryResultEnvelope {
-				version: CURRENT_VERSION,
-				server_id: ServerId::new(SERVER).unwrap(),
-				query_id: query.query_id,
-				payload: QueryResultPayload::ChiefPendingAppUiCall(response),
-			});
-			socket
-				.send(Message::Text(serde_json::to_string(&result).unwrap().into()))
-				.await
-				.unwrap();
-			if mode != "pending-cold" {
+		if let Some(done) = metadata_reply(&mut socket, &query, mode, commands).await {
+			if done {
 				return requests;
 			}
 			continue;
@@ -205,21 +90,7 @@ async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefAppUi
 		if let QueryPayload::GetChiefAppUiReceipt { request } = &query.payload {
 			assert_eq!(request.work_id.as_str(), "work");
 			assert_eq!(request.operation_id.as_str(), "saved-operation");
-			let document = serde_json::to_vec(&serde_json::json!({"workId": if mode == "receipt-foreign" { "foreign" } else { "work" },
-                "operationId":"saved-operation", "reservationId":42, "server":"fixture", "tool":"calculate", "arguments":{"value":7},
-                "state":if mode == "call-lost" { "completed" } else { "unknown" }, "uncertaintyAcknowledged":mode == "ack-lost", "result":{"content":[],"structuredContent":{"value":42}}})).unwrap();
-			let split = document.len() / 2;
-			assert_eq!(request.offset as usize, if index == 0 { 0 } else { split });
-			let response = decodex_protocol::ChiefAppUiReceiptResult::Available {
-				request: Box::new(request.clone()),
-				fingerprint: EntityId::new("a".repeat(64)).unwrap(),
-				total_bytes: document.len() as u32,
-				bytes: if index == 0 {
-					document[..split].to_vec()
-				} else {
-					document[split..].to_vec()
-				},
-			};
+			let response = receipt_response(request, mode, index);
 			let result = ServerMessage::QueryResult(QueryResultEnvelope {
 				version: CURRENT_VERSION,
 				server_id: ServerId::new(SERVER).unwrap(),
@@ -282,6 +153,144 @@ async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefAppUi
 		socket.send(Message::Text(serde_json::to_string(&result).unwrap().into())).await.unwrap();
 	}
 	requests
+}
+
+async fn metadata_reply(
+	socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::UnixStream>,
+	query: &decodex_protocol::QueryEnvelope,
+	mode: &str,
+	commands: usize,
+) -> Option<bool> {
+	if let QueryPayload::ReviewChiefAppUiCall { request } = &query.payload {
+		assert_eq!(mode, "review-valid");
+		assert_eq!(request.work_id.as_str(), "work");
+		assert_eq!(request.thread_id.as_str(), "native-thread");
+		assert_eq!(request.arguments, serde_json::json!({"value":7}));
+		let result = ServerMessage::QueryResult(QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: ServerId::new(SERVER).unwrap(),
+			query_id: query.query_id.clone(),
+			payload: QueryResultPayload::ChiefAppUiCallReview(
+				decodex_protocol::ChiefAppUiCallReview::Available {
+					request: Box::new(request.clone()),
+					review_token: EntityId::new("a".repeat(64)).unwrap(),
+					server: decodex_protocol::WireText::new("fixture").unwrap(),
+					title: decodex_protocol::WireText::new("Calculate").unwrap(),
+					pending_operation: None,
+				},
+			),
+		});
+		socket.send(Message::Text(serde_json::to_string(&result).unwrap().into())).await.unwrap();
+		assert_eq!(commands, 0);
+		return Some(true);
+	}
+	if let QueryPayload::GetChiefAppUiSource { work_id, thread_id, fingerprint } = &query.payload {
+		assert_eq!(work_id.as_str(), "work");
+		assert_eq!(thread_id.as_str(), "native-thread");
+		assert_eq!(fingerprint.as_str(), "c".repeat(64));
+		let result = ServerMessage::QueryResult(QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: ServerId::new(SERVER).unwrap(),
+			query_id: query.query_id.clone(),
+			payload: QueryResultPayload::ChiefAppUiSource(mode == "current"),
+		});
+		socket.send(Message::Text(serde_json::to_string(&result).unwrap().into())).await.unwrap();
+		return Some(true);
+	}
+	if let QueryPayload::GetChiefPendingAppUiCall { work_id } = &query.payload {
+		assert_eq!(work_id.as_str(), "work");
+		let response = match mode {
+			"pending-unavailable" => decodex_protocol::ChiefPendingAppUiCall::Unavailable,
+			_ => decodex_protocol::ChiefPendingAppUiCall::Available {
+				work_id: EntityId::new(if mode == "pending-foreign" { "foreign" } else { "work" })
+					.unwrap(),
+				operation_id: if mode == "pending-none" {
+					None
+				} else {
+					Some(EntityId::new("saved-operation").unwrap())
+				},
+			},
+		};
+		let result = ServerMessage::QueryResult(QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: ServerId::new(SERVER).unwrap(),
+			query_id: query.query_id.clone(),
+			payload: QueryResultPayload::ChiefPendingAppUiCall(response),
+		});
+		socket.send(Message::Text(serde_json::to_string(&result).unwrap().into())).await.unwrap();
+		if mode != "pending-cold" {
+			return Some(true);
+		}
+		return Some(false);
+	}
+	None
+}
+
+async fn welcome(socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::UnixStream>) {
+	let _hello = socket.next().await.unwrap().unwrap();
+	for message in [
+		ServerMessage::Welcome(ServerWelcome {
+			version: CURRENT_VERSION,
+			server_id: ServerId::new(SERVER).unwrap(),
+			instance_id: None,
+			cursor: Cursor(0),
+			reconnect: ReconnectMode::Snapshot,
+		}),
+		ServerMessage::Snapshot(SnapshotEnvelope {
+			version: CURRENT_VERSION,
+			server_id: ServerId::new(SERVER).unwrap(),
+			cursor: Cursor(0),
+			items: vec![],
+		}),
+	] {
+		socket.send(Message::Text(serde_json::to_string(&message).unwrap().into())).await.unwrap();
+	}
+}
+
+fn assert_command(action: decodex_protocol::ChiefActionDto, mode: &str) {
+	match (action, mode) {
+		(
+			decodex_protocol::ChiefActionDto::ConfirmAppUiTool { request, review_token },
+			"call-lost",
+		) => {
+			assert_eq!(request.work_id.as_str(), "work");
+			assert_eq!(request.operation_id.as_str(), "saved-operation");
+			assert_eq!(request.tool.as_str(), "calculate");
+			assert_eq!(request.arguments, serde_json::json!({"value":7}));
+			assert_eq!(review_token.as_str(), "a".repeat(64));
+		},
+		(
+			decodex_protocol::ChiefActionDto::AcknowledgeAppUiCall {
+				work_id,
+				operation_id,
+				reservation_id,
+			},
+			"ack-lost",
+		) => {
+			assert_eq!(work_id.as_str(), "work");
+			assert_eq!(operation_id.as_str(), "saved-operation");
+			assert_eq!(reservation_id, 42);
+		},
+		other => panic!("unexpected command {other:?}"),
+	}
+}
+
+fn receipt_response(
+	request: &decodex_protocol::ChiefAppUiReceiptRequest,
+	mode: &str,
+	index: usize,
+) -> decodex_protocol::ChiefAppUiReceiptResult {
+	let document = serde_json::to_vec(&serde_json::json!({"workId": if mode == "receipt-foreign" { "foreign" } else { "work" },
+                "operationId":"saved-operation", "reservationId":42, "server":"fixture", "tool":"calculate", "arguments":{"value":7},
+                "state":if mode == "call-lost" { "completed" } else { "unknown" }, "uncertaintyAcknowledged":mode == "ack-lost", "result":{"content":[],"structuredContent":{"value":42}}})).unwrap();
+	let split = document.len() / 2;
+	assert_eq!(request.offset as usize, if index == 0 { 0 } else { split });
+	decodex_protocol::ChiefAppUiReceiptResult::Available {
+		request: Box::new(request.clone()),
+		fingerprint: EntityId::new("a".repeat(64)).unwrap(),
+		total_bytes: document.len() as u32,
+		bytes: if index == 0 { document[..split].to_vec() } else { document[split..].to_vec() },
+	}
 }
 
 #[tokio::test]
