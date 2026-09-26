@@ -115,6 +115,10 @@ pub(super) async fn check(
 		evidence.push(json!({"index":index,"mime":mime,"bytes":bytes.len(),"chunks":chunks}));
 		request.offset = 0;
 		request.fingerprint = None;
+		if index == 1 {
+			std::fs::write(home.join("media-source.json"), serde_json::to_vec(&request).unwrap())
+				.unwrap();
+		}
 		request.work_id = EntityId::new("foreign-work").unwrap();
 		assert_eq!(client.media(request).await.unwrap(), ChiefMediaResult::Unavailable);
 	}
@@ -127,4 +131,68 @@ pub(super) async fn check(
 		.unwrap(),
 	)
 	.unwrap();
+	if let Some(binary) = std::env::var_os("DECODEX_TEST_MEDIA_GUI_BINARY") {
+		assert!(std::path::Path::new(&binary).is_absolute());
+		let log = home.join("media-capture.log");
+		let stdout = std::fs::File::create(&log).unwrap();
+		let stderr = stdout.try_clone().unwrap();
+		let output = home.join("media-live.png");
+		let mut child = tokio::process::Command::new(binary)
+			.env("DECODEX_VISUAL_CHIEF_ROOT", home.join("product"))
+			.env("DECODEX_VISUAL_CHIEF_WORK", work.as_str())
+			.env("DECODEX_VISUAL_MEDIA", "1")
+			.env("DECODEX_VISUAL_OUTPUT", &output)
+			.stdout(stdout)
+			.stderr(stderr)
+			.kill_on_drop(true)
+			.spawn()
+			.unwrap();
+		let status = tokio::time::timeout(Duration::from_secs(30), child.wait())
+			.await
+			.expect("bounded desktop capture")
+			.unwrap();
+		assert!(status.success(), "media capture failed; inspect {}", log.display());
+		let saved: Value =
+			serde_json::from_slice(&std::fs::read(output.with_extension("media.json")).unwrap())
+				.unwrap();
+		assert_eq!(saved["imageLoaded"], true);
+		assert!(saved["notice"].is_null());
+		assert_eq!(saved["request"]["item_id"], item["id"]);
+		assert_eq!(requests.load(Ordering::Acquire), before, "desktop preview cannot infer");
+	}
+	qualify_resources(client, &work).await;
+	assert_eq!(requests.load(Ordering::Acquire), before, "resource association cannot infer");
+}
+
+async fn qualify_resources(client: &ChiefClient, work: &EntityId) {
+	use decodex_protocol::ChiefResourcesResult;
+	let empty = ChiefResourcesResult::Available { resources: vec![] };
+	assert_eq!(client.resources(work.clone()).await.unwrap(), empty);
+	let add = Action::AddResourceLink {
+		work_id: work.clone(),
+		title: WireText::new("Local fixture link").unwrap(),
+		url: WireText::new("https://example.invalid/media-fixture").unwrap(),
+	};
+	accepted(client, add.clone(), "resource-add").await;
+	let first = client.resources(work.clone()).await.unwrap();
+	let ChiefResourcesResult::Available { resources } = &first else {
+		panic!("native resources: {first:?}");
+	};
+	assert_eq!(resources.len(), 1);
+	let resource = &resources[0];
+	assert!(!resource.payload_omitted);
+	assert!(resource.payload_json.contains("https://example.invalid/media-fixture"));
+	accepted(client, add, "resource-add-again").await;
+	assert_eq!(client.resources(work.clone()).await.unwrap(), first);
+	accepted(
+		client,
+		Action::RemoveResource {
+			work_id: work.clone(),
+			attachment_type: WireText::new(&resource.attachment_type).unwrap(),
+			identity_key: WireText::new(&resource.identity_key).unwrap(),
+		},
+		"resource-remove",
+	)
+	.await;
+	assert_eq!(client.resources(work.clone()).await.unwrap(), empty);
 }

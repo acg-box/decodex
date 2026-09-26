@@ -73,8 +73,9 @@ fn main() -> gpui::Result<()> {
 	let panel_motion = std::env::var("DECODEX_VISUAL_PANEL_MOTION").ok();
 	let send_message = std::env::var("DECODEX_VISUAL_CHIEF_SEND").ok();
 	let live_app_ui = std::env::var_os("DECODEX_VISUAL_APP_UI_EXECUTE").is_some();
+	let live_media = std::env::var_os("DECODEX_VISUAL_MEDIA").is_some();
 	let automatic_recap = std::env::var_os("DECODEX_VISUAL_AUTO_RECAP").is_some();
-	if (send_message.is_some() || automatic_recap || live_app_ui)
+	if (send_message.is_some() || automatic_recap || live_app_ui || live_media)
 		&& std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").is_none()
 	{
 		return Err(std::io::Error::other("Command capture requires a disposable root").into());
@@ -97,7 +98,7 @@ fn main() -> gpui::Result<()> {
 	let service_projection = std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT")
 		.map(|root| -> gpui::Result<_> {
 			let root = PathBuf::from(root);
-			if (automatic_recap || live_app_ui) && root.parent().and_then(|parent| std::fs::read_to_string(parent.join(".decodex-recap-fixture")).ok()).as_deref() != Some("isolated-recap\n") {
+			if (automatic_recap || live_app_ui || live_media) && root.parent().and_then(|parent| std::fs::read_to_string(parent.join(".decodex-recap-fixture")).ok()).as_deref() != Some("isolated-recap\n") {
 				return Err(std::io::Error::other("Automatic recap capture requires the isolated native fixture marker").into());
 			}
 			let profile = decodex_protocol::ClientProfile::load(&root, None)
@@ -171,6 +172,12 @@ fn main() -> gpui::Result<()> {
 				std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").expect("explicit root"),
 			);
 			prove_app_ui(&mut cx, handle, profile.clone(), &root, &output)?;
+		}
+		if live_media {
+			let root = PathBuf::from(
+				std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").expect("explicit root"),
+			);
+			prove_media(&mut cx, handle, profile.clone(), &root, &output)?;
 		}
 		if automatic_recap {
 			prove_automatic_recap(&mut cx, handle, profile.clone(), &output)?;
@@ -491,4 +498,52 @@ fn prove_app_ui(
 		cx.advance_clock(std::time::Duration::from_millis(100));
 	}
 	Err(std::io::Error::other("App UI did not complete its confirmed browser round trip").into())
+}
+
+fn prove_media(
+	cx: &mut VisualTestAppContext,
+	handle: gpui::WindowHandle<ChiefSurface>,
+	profile: decodex_protocol::ClientProfile,
+	root: &std::path::Path,
+	output: &std::path::Path,
+) -> gpui::Result<()> {
+	let request: decodex_protocol::ChiefMediaRequest = serde_json::from_slice(&std::fs::read(
+		root.parent().expect("fixture parent").join("media-source.json"),
+	)?)?;
+	let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+	let client = decodex_protocol::ChiefClient::new(profile.clone());
+	let (history, timeline) = runtime
+		.block_on(async {
+			Ok::<_, decodex_protocol::ClientFailure>((
+				client.history(request.work_id.clone()).await?,
+				client.timeline(request.work_id.clone(), request.thread_id.clone(), None).await?,
+			))
+		})
+		.map_err(|error| std::io::Error::other(format!("media source: {error:?}")))?;
+	cx.background_executor.allow_parking();
+	cx.update_window(handle.into(), |view, _, cx| {
+		view.downcast::<ChiefSurface>().expect("Chief capture").update(cx, |surface, cx| {
+			surface.visual_preview_native_media(profile, request, history, timeline, cx)
+		})
+	})?
+	.map_err(std::io::Error::other)?;
+	for _ in 0..80 {
+		cx.run_until_parked();
+		let evidence = cx.update_window(handle.into(), |view, window, cx| {
+			window.draw(cx).clear();
+			view.downcast::<ChiefSurface>().expect("Chief capture").read(cx).visual_media_evidence()
+		})?;
+		std::fs::write(output.with_extension("media.json"), serde_json::to_vec_pretty(&evidence)?)?;
+		if evidence["imageLoaded"] == true {
+			return Ok(());
+		}
+		if let Some(notice) =
+			evidence["notice"].as_str().filter(|notice| *notice != "Loading image…")
+		{
+			return Err(std::io::Error::other(notice.to_owned()).into());
+		}
+		std::thread::sleep(std::time::Duration::from_millis(100));
+		cx.advance_clock(std::time::Duration::from_millis(100));
+	}
+	Err(std::io::Error::other("Native media preview did not load").into())
 }
