@@ -1789,6 +1789,8 @@ private enum ResetCardAccountCommandRejectionWire: String, Decodable {
 	case credentialNeedsLogin = "credential_needs_login"
 	case credentialRefreshRejected = "credential_refresh_rejected"
 	case credentialRefreshUnavailable = "credential_refresh_unavailable"
+	case authSourceAccountUnknown = "auth_source_account_unknown"
+	case authCredentialConflict = "auth_credential_conflict"
 	case authFileUnreadable = "auth_file_unreadable"
 	case authFileChanged = "auth_file_changed"
 	case authWriteFailed = "auth_write_failed"

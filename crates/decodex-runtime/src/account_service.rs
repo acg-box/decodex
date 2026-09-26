@@ -983,11 +983,13 @@ impl AccountService {
 		};
 		let stable = match initial_auth {
 			Ok(snapshot) => *snapshot,
-			Err(_) => {
+			Err(error) => {
 				return self
-					.finish_route_error(
+					.finish_route_auth_error(
 						lease,
-						AccountLifecycleError::AuthFileUnreadable,
+						"initial_read",
+						projection_error(error),
+						format!("{error:?}"),
 						build_response.take().expect("Route builder is retained"),
 					)
 					.await;
@@ -996,11 +998,17 @@ impl AccountService {
 		let shared_auth =
 			match self.shared_auth_route_source(account_id, &target_binding, stable).await {
 				Ok(source) => source,
-				Err(_) => {
+				Err(error) => {
 					return self
-						.finish_route_error(
+						.finish_route_auth_error(
 							lease,
-							AccountLifecycleError::AuthFileUnreadable,
+							"source_account_match",
+							if matches!(error, AccountLifecycleError::ProviderMismatch) {
+								AccountLifecycleError::AuthSourceAccountUnknown
+							} else {
+								AccountLifecycleError::AuthCredentialConflict
+							},
+							error.to_string(),
 							build_response.take().expect("Route builder is retained"),
 						)
 						.await;
@@ -1025,11 +1033,12 @@ impl AccountService {
 				self.reconcile_shared_auth_route_source(source).await
 			};
 			if let Err(error) = result {
-				let _ = error;
 				return self
-					.finish_route_error(
+					.finish_route_auth_error(
 						lease,
-						AccountLifecycleError::AuthFileUnreadable,
+						"source_credential_reconcile",
+						AccountLifecycleError::AuthCredentialConflict,
+						error.to_string(),
 						build_response.take().expect("Route builder is retained"),
 					)
 					.await;
@@ -1147,11 +1156,13 @@ impl AccountService {
 					)
 					.await;
 			},
-			Err(_) => {
+			Err(error) => {
 				return self
-					.finish_route_error(
+					.finish_route_auth_error(
 						lease,
-						AccountLifecycleError::AuthFileUnreadable,
+						"final_read",
+						projection_error(error),
+						format!("{error:?}"),
 						build_response.take().expect("Route builder is retained"),
 					)
 					.await;
@@ -1178,9 +1189,11 @@ impl AccountService {
 				},
 				Err(AccountLifecycleError::CoordinatorUnavailable) => {
 					return self
-						.finish_route_error(
+						.finish_route_auth_error(
 							lease,
-							AccountLifecycleError::AuthFileUnreadable,
+							"target_confirmation",
+							AccountLifecycleError::AuthCredentialConflict,
+							"coordinator_unavailable".to_owned(),
 							build_response.take().expect("Route builder is retained"),
 						)
 						.await;
@@ -1218,9 +1231,11 @@ impl AccountService {
 					AccountLifecycleError::CoordinatorUnavailable,
 				)) => {
 					return self
-						.finish_route_error(
+						.finish_route_auth_error(
 							lease,
-							AccountLifecycleError::AuthFileUnreadable,
+							"projection_readback",
+							AccountLifecycleError::AuthCredentialConflict,
+							"coordinator_unavailable".to_owned(),
 							build_response.take().expect("Route builder is retained"),
 						)
 						.await;
@@ -3256,6 +3271,26 @@ impl AccountService {
 		Ok(response)
 	}
 
+	async fn finish_route_auth_error<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		stage: &'static str,
+		error: AccountLifecycleError,
+		cause: String,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<AccountRouteResult, AccountRouteFailure>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
+		let response = build_response(Err(AccountRouteFailure::Lifecycle(error)))?;
+		self.store
+			.complete_account_command_with_diagnostic(lease, &response, Some((stage, cause)))
+			.await?;
+		Ok(response)
+	}
+
 	async fn finish_route_error<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
@@ -5150,6 +5185,10 @@ pub enum AccountLifecycleError {
 	CodexIsRunning,
 	/// The shared auth file cannot be read safely.
 	AuthFileUnreadable,
+	/// The current shared login is not in the account pool.
+	AuthSourceAccountUnknown,
+	/// The current shared credential could not be reconciled with the saved account.
+	AuthCredentialConflict,
 	/// The shared auth source changed before projection.
 	AuthFileChanged,
 	/// Atomic shared auth replacement failed.
@@ -5176,6 +5215,8 @@ impl Display for AccountLifecycleError {
 			Self::CredentialImport => "account credential source unavailable",
 			Self::CodexIsRunning => "Codex or ChatGPT is running",
 			Self::AuthFileUnreadable => "shared auth file is unreadable",
+			Self::AuthSourceAccountUnknown => "shared login account is not enrolled",
+			Self::AuthCredentialConflict => "shared and saved credentials could not be reconciled",
 			Self::AuthFileChanged => "shared auth file changed",
 			Self::AuthWriteFailed => "shared auth file write failed",
 			Self::AuthReadbackMismatch => "shared auth file readback mismatch",
@@ -5261,6 +5302,74 @@ mod tests {
 	};
 
 	const OBSERVED_AT_MICROS: i64 = 1_000_000;
+
+	#[tokio::test]
+	async fn quiescent_route_distinguishes_unknown_source_and_conflicting_credential() {
+		use decodex_database::{AccountCommandKind, AccountCommandReceiptClaim, CommandIdentity};
+		for conflict in [false, true] {
+			let (_directory, store, service, account_id, shared) =
+				independently_owned_observation_service(Err(CredentialRefreshError::Unavailable))
+					.await;
+			if conflict {
+				let mut state = shared.state.lock().unwrap();
+				state.provider =
+					ProviderIdentity::new(AccountProvider::Chatgpt, "observed-account").unwrap();
+				state.bundle = shared_bundle("observed-account", "different-expired-access", 1);
+			}
+			let service = service.with_shared_auth_coordinator(test_coordinator(
+				shared.clone(),
+				CodexLiveness::Quiescent,
+			));
+			service
+				.attest_callback_capability(super::CodexAccountCapabilityAttestation {
+					build_identity: "codex-test-build".into(),
+					executable_sha256: "1".repeat(64),
+					schema_sha256: "2".repeat(64),
+					callback_profile_sha256: "1".repeat(64),
+					login_chatgpt_auth_tokens: true,
+					refresh_callback: true,
+				})
+				.await
+				.unwrap();
+			let before = store.read_account_routing_control().await.unwrap();
+			let command = CommandIdentity::new("route-failure", b"route").unwrap();
+			let AccountCommandReceiptClaim::Owned(lease) = store
+				.reserve_account_command(
+					&command,
+					AccountCommandKind::Route,
+					account_id.as_str(),
+					None,
+				)
+				.await
+				.unwrap()
+			else {
+				panic!("new receipt");
+			};
+			service
+				.route_account_command_sync(lease, &account_id, move |result| {
+					let error = match result {
+						Err(super::AccountRouteFailure::Lifecycle(error)) => error,
+						_ => panic!("expected route failure"),
+					};
+					if conflict {
+						assert!(
+							matches!(error, AccountLifecycleError::AuthCredentialConflict),
+							"{error:?}"
+						);
+					} else {
+						assert!(
+							matches!(error, AccountLifecycleError::AuthSourceAccountUnknown),
+							"{error:?}"
+						);
+					}
+					Ok(serde_json::json!({"outcome":"rejected"}))
+				})
+				.await
+				.unwrap();
+			assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
+			assert_eq!(store.read_account_routing_control().await.unwrap(), before);
+		}
+	}
 
 	struct UnusedCredentialRefresher;
 	impl CredentialRefreshPort for UnusedCredentialRefresher {

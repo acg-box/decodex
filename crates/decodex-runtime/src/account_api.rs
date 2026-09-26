@@ -508,6 +508,8 @@ fn map_account_service_error(error: AccountLifecycleError) -> AccountApiRuntimeE
 		| AccountLifecycleError::Persistence(_)
 		| AccountLifecycleError::CoordinatorUnavailable
 		| AccountLifecycleError::CodexIsRunning
+		| AccountLifecycleError::AuthSourceAccountUnknown
+		| AccountLifecycleError::AuthCredentialConflict
 		| AccountLifecycleError::AuthFileUnreadable
 		| AccountLifecycleError::AuthFileChanged
 		| AccountLifecycleError::AuthWriteFailed
