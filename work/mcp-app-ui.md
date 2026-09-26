@@ -78,6 +78,17 @@ child frame. This is browser lifecycle evidence, not complete desktop integratio
 External nested frames, display-mode changes, graceful resource teardown, source
 invalidation after display and explicitly mediated interactive callbacks remain open.
 
+## Native window ABI
+
+`McpAppHost` exposes versioned create, command, poll and destroy functions in the
+existing Swift library. A host accepts one document and attaches one child panel to
+the desktop window. It refuses replacement and reuse after closure. Closing removes
+the child window, closes WebKit and releases the retained event buffer on destruction.
+The ABI carries copied JSON and does not own task state or tool permissions.
+
+Six focused Swift tests pass, including the real native ABI create/load/close sequence
+and rejection of a second document. GPUI has not yet connected this ABI to the timeline.
+
 ## Remaining consumer obligations
 
 - Connect the desktop view to the source-bound service document query.
