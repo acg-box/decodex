@@ -13,10 +13,11 @@ use tokio::io::AsyncWriteExt as _;
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY; isolated native MCP form qualification"]
 async fn native_openai_form_negotiates_and_round_trips_through_chief() {
-	for (approval, sandbox, opaque) in [
-		("on-request", "read-only", false),
-		("on-request", "read-only", true),
-		("never", "danger-full-access", false),
+	for (approval, sandbox, opaque, verification) in [
+		("on-request", "read-only", false, false),
+		("on-request", "read-only", true, false),
+		("never", "danger-full-access", false, false),
+		("on-request", "read-only", false, true),
 	] {
 		let binary = std::env::var("DECODEX_NATIVE_BINARY").unwrap();
 		let home = tempfile::tempdir().unwrap();
@@ -29,8 +30,8 @@ async fn native_openai_form_negotiates_and_round_trips_through_chief() {
 		let calls = Arc::new(AtomicUsize::new(0));
 		let backend = tokio::spawn(serve(listener, Arc::clone(&calls)));
 		std::fs::write(home_path.join("config.toml"), format!(
-		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\napprovals_reviewer = \"user\"\n[model_providers.fixture]\nname = \"Isolated form fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[mcp_servers.fixture]\ncommand = \"/usr/bin/python3\"\nargs = [{}, {}, {}]\nrequired = true\n",
-		json!(server_path),json!(record),json!(opaque.to_string()))).unwrap();
+		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\napprovals_reviewer = \"user\"\n[model_providers.fixture]\nname = \"Isolated form fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[mcp_servers.fixture]\ncommand = \"/usr/bin/python3\"\nargs = [{}, {}, {}, {}]\nrequired = true\n",
+		json!(server_path),json!(record),json!(opaque.to_string()),json!(verification.to_string()))).unwrap();
 		let (mut chief, _, _store_home) = fixture().await;
 		let mut command = tokio::process::Command::new(binary);
 		command
@@ -61,6 +62,7 @@ async fn native_openai_form_negotiates_and_round_trips_through_chief() {
 					ServerEvent::Request { id, method, params }
 						if method == "mcpServer/elicitation/request" =>
 					{
+						assert!(!verification, "undeclared verification must not become a Chief form");
 						assert_eq!(params["mode"], "openaiForm");
 						assert_eq!(params["_meta"]["fixture/source"], "native-mcp");
 						if opaque { assert_eq!(params["requestedSchema"], true); } else {
@@ -84,13 +86,13 @@ async fn native_openai_form_negotiates_and_round_trips_through_chief() {
 					break;
 				}
 			}
-            if approval == "on-request" {
+            if approval == "on-request" && !verification {
                 let event = chief.store.get_chief_inbox_event(saved.expect("native form forwarded")).await.unwrap();
                 assert!(event.disposition.is_some());
             } else {
-                assert!(saved.is_none(), "native never policy must remain authoritative");
+                assert!(saved.is_none(), "native policy and capability gates must remain authoritative");
             }
-            assert_record(&record, if approval == "never" {"decline"} else if opaque {"cancel"} else {"accept"});
+            assert_record(&record, if verification {"error"} else if approval == "never" {"decline"} else if opaque {"cancel"} else {"accept"});
 			assert_eq!(calls.load(Ordering::Acquire), 2);
 		},
 	))
@@ -101,6 +103,81 @@ async fn native_openai_form_negotiates_and_round_trips_through_chief() {
 		result
 			.expect("native form qualification panicked")
 			.expect("native form qualification timed out");
+	}
+}
+
+#[tokio::test]
+#[ignore = "requires DECODEX_NATIVE_BINARY; isolated native MCP user review qualification"]
+async fn native_user_review_preserves_standard_form_and_url_requests() {
+	for mode in ["form", "url"] {
+		let home = tempfile::tempdir().unwrap();
+		let path = home.path().canonicalize().unwrap();
+		let script = path.join("server.py");
+		let record = path.join("record.json");
+		std::fs::write(&script, include_str!("native_form_server.py")).unwrap();
+		let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let address = listener.local_addr().unwrap();
+		let calls = Arc::new(AtomicUsize::new(0));
+		let backend = tokio::spawn(serve(listener, Arc::clone(&calls)));
+		std::fs::write(path.join("config.toml"), format!(
+			"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\napprovals_reviewer = \"user\"\n[model_providers.fixture]\nname = \"Isolated MCP review\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[mcp_servers.fixture]\ncommand = \"/usr/bin/python3\"\nargs = [{}, {}, \"false\", \"false\", {}]\nrequired = true\n",
+			json!(script), json!(record), json!(mode))).unwrap();
+		let mut command =
+			tokio::process::Command::new(std::env::var("DECODEX_NATIVE_BINARY").unwrap());
+		command
+			.arg("app-server")
+			.current_dir(&path)
+			.env_clear()
+			.env("HOME", &path)
+			.env("CODEX_HOME", &path)
+			.env("PATH", "/usr/bin:/bin");
+		let (client, mut events, mut process) = AppServerClient::spawn(&mut command).unwrap();
+		let (mut chief, _, _store_home) = fixture().await;
+		chief.client = client;
+		chief.config =
+			ChiefConfig::new("gpt-5.6-sol".into(), "medium".into(), path.display().to_string());
+		chief.config.sandbox = "read-only".into();
+		chief.config.approval_policy = json!("on-request");
+		let result = std::panic::AssertUnwindSafe(tokio::time::timeout(
+			std::time::Duration::from_secs(30), async {
+				chief.initialize().await.unwrap();
+				chief.start_chief("chief", "Call the fixture and ask for my decision.").await.unwrap();
+				let mut request_count = 0;
+				loop {
+					let event = events.recv().await.expect("native MCP event");
+					let pending = match &event {
+						ServerEvent::Request { id, method, params } if method == "mcpServer/elicitation/request" => {
+							assert_eq!(params["mode"], mode);
+							if mode == "url" { assert_eq!(params["url"], "https://example.test/approval"); }
+							else { assert_eq!(params["requestedSchema"]["required"], json!(["answer"])); }
+							Some(id.clone())
+						},
+						_ => None,
+					};
+					let done = matches!(&event, ServerEvent::Notification {method,..} if method == "turn/completed");
+					if let ServerEvent::Notification { method, params } = &event
+						&& method == "turn/completed"
+					{
+						assert_eq!(params["turn"]["status"], "completed", "native MCP terminal: {params}");
+					}
+					chief.handle_event(event).await.unwrap();
+					if let Some(id) = pending {
+						request_count += 1;
+						let saved = chief.pending_requests[&id];
+						chief.respond_pending_event(saved, json!({"action":"decline","content":null})).await.unwrap();
+						assert!(chief.store.get_chief_inbox_event(saved).await.unwrap().disposition.is_some());
+						assert!(chief.respond_pending_event(saved, json!({"action":"accept"})).await.is_err());
+					}
+					if done { break; }
+				}
+				assert_eq!(request_count, 1);
+				assert_record(&record, "decline");
+				assert_eq!(calls.load(Ordering::Acquire), 2);
+			},
+		)).catch_unwind().await;
+		process.shutdown().await.unwrap();
+		backend.abort();
+		result.expect("native MCP user review panicked").expect("native MCP user review timed out");
 	}
 }
 
@@ -137,6 +214,14 @@ fn assert_record(path: &std::path::Path, action: &str) {
 	assert_eq!(recorded["capabilities"]["extensions"], json!({"openai/elicitation":{"form":{}}}));
 	let replies = recorded["replies"].as_array().expect("MCP replies");
 	assert_eq!(replies.len(), 1);
+	if action == "error" {
+		assert_eq!(replies[0]["error"]["code"], -32602);
+		assert!(
+			replies[0].get("result").is_none(),
+			"unsupported verification must not produce proof"
+		);
+		return;
+	}
 	assert_eq!(replies[0]["result"]["action"], action);
 	assert_eq!(
 		replies[0]["result"]["content"],

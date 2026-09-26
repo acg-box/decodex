@@ -31,7 +31,7 @@ for line in sys.stdin:
         }]}})
     elif method == "tools/call":
         pending = request["id"]
-        send({"id": "form-request", "method": "openai/elicitation/create", "params": {
+        params = {
             "mode": "form", "message": "Select the fixture value",
             "_meta": {"fixture/source": "native-mcp"},
             "requestedSchema": True if sys.argv[2] == "true" else {"type": "object", "properties": {
@@ -39,7 +39,23 @@ for line in sys.stdin:
                     {"const": "wire-value", "title": "Display label"}
                 ]}
             }, "required": ["answer"]},
-        }})
+        }
+        if len(sys.argv) > 3 and sys.argv[3] == "true":
+            params = {"mode": "openai/userVerification", "title": "Verify fixture",
+                      "description": "Synthetic unsupported request", "challenge": "AQID"}
+        method = "openai/elicitation/create"
+        if len(sys.argv) > 4:
+            method = "elicitation/create"
+            params["_meta"].update({"codex_request_type": "approval_request",
+                                  "codex_approval_kind": "mcp_tool_call", "tool_name": "form_fixture"})
+            if sys.argv[4] == "url":
+                params.pop("requestedSchema")
+                params.update({"mode": "url", "url": "https://example.test/approval",
+                               "elicitationId": "fixture-url"})
+            else:
+                params["requestedSchema"] = {"type": "object", "properties": {
+                    "answer": {"type": "string"}}, "required": ["answer"]}
+        send({"id": "form-request", "method": method, "params": params})
     elif method is None and request.get("id") == "form-request":
         state["replies"].append(request)
         record.write_text(json.dumps(state))
