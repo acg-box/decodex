@@ -193,6 +193,18 @@ This documentation refresh checked snapshot hashes, current committed bytes, all
 three registered migration mappings, current refusal/payload owners, stash
 identities and GitHub PR state. No application code or production data changed. The register deliberately leaves uncertain rows open.
 
+## Voice failure retention restored on 2026-09-26
+
+The complete `crates/decodex-runtime/src/chief_voice.rs` matches its verified
+preserved snapshot. Restore failure retention when cleanup reaches the mailbox
+before the desktop polls, and avoid another stop after cleanup acknowledgment.
+The restored regression failed with `Ended` instead of `Failed` before the fix.
+See [voice failure retention](voice-failure-retention.md).
+
+This batch closes one row from its 184-row main baseline to 183, retaining all
+360 entries. Parallel patches close separate rows. It does not establish live
+media or final desktop acceptance and does not close other voice owners.
+
 ## Four additional source dispositions on 2026-09-26
 
 These four rows were compared in full at
