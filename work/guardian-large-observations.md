@@ -31,3 +31,28 @@ notification-to-coordinator path, unchanged no-wake/no-auto-approval behavior,
 bounded withheld display details and rejection above the native message limit.
 These fixtures do not establish live-provider Guardian execution or signed
 large-review desktop acceptance.
+
+## Resume configuration ownership
+
+The inherited Guardian approval path rebuilt resume parameters from local task
+configuration. Current `chief/native_settings.rs::resume_params` sends only the
+thread identity, history exclusion and raw-event subscription. Codex restores
+the saved settings. A changed startup default must not replace them.
+
+At fixed upstream commit `595cc91e8cbb1c2ca822d0311dcf12709410c582`,
+`app-server/tests/suite/v2/thread_resume.rs` includes
+`thread_resume_preserves_acknowledged_model_effort_and_approvals_reviewer_update`.
+It verifies saved settings after resume. This is upstream source evidence, not
+an execution claim for the installed binary.
+
+The old model-observation call is now owned by the app-server client's guarded
+resume response handler. `ServerRequests::observe_permission_hydration` records
+permission, plugin and model observations together. `chief_models::inspect`
+persists the current observation before it reads the model review. Do not restore
+the old, separate observation owner.
+
+A local unloaded-thread regression changes startup model settings and delivers
+a native thread-closed notification on the original connection. It verifies one resume without configuration overrides,
+one approval for the saved denial, no thread or turn creation, and an unchanged
+durable denial event with submitted approval state. This does not establish
+live-provider Guardian execution or packaged desktop acceptance.
