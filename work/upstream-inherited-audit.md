@@ -411,6 +411,21 @@ journal. This does not qualify model publication through the service. Native
 catalog/feature eligibility, model service and desktop controls remain open.
 No database migration, local wire change or automatic model switch is introduced.
 
+## Closing resume adapter restored on 2026-09-26
+
+Restore the complete inherited `app_server_client/resume.rs` and connect it to
+`AppServerClient::thread_resume`. Verify the original snapshot hash. The only
+snapshot difference adds a native close notification to the successful retry test.
+The same test fails before the helper is connected and passes afterward.
+
+Only the explicit same-thread native closing refusal allows finite retries. Raw
+requests and the current Chief/ordinary-conversation recovery owners keep their
+existing retry boundaries. Correct the transport comments to distinguish native
+resume activation from local input submission. Close the one adapter-file entry;
+shared `app_server_client.rs` and runtime recovery differences remain open.
+See [closing recovery](closing-resume-recovery.md) for source evidence, validation
+and the remaining installed-race acceptance boundary.
+
 ## Validation boundary
 
 This documentation refresh checked snapshot hashes, current committed bytes, all
