@@ -48,6 +48,35 @@ See [current-turn model control](live-model-control.md) for native sequence evid
 optional removal boundaries and pending signed desktop acceptance. No configuration
 or maintenance automation is enabled.
 
+## History and shared adapter owners reconciled on 2026-09-26
+
+Read every snapshot difference and verify the original SHA-256 for four complete
+files. The only production change in this batch restores history mode selection
+from the latest response. Other owners retain their current implementations.
+
+| Original file | Complete disposition and evidence |
+| --- | --- |
+| `app_server_client/history.rs` | Restore the inherited shared metadata read and migration test. If the second read reports paginated history, fetch native pages instead of treating its turns field as legacy history. Revalidate exact thread identity and reject unknown formats. The only remaining difference from the snapshot bounds the test server wait, so missing expected requests fail instead of hanging. |
+| `app_server_client/integrations.rs` | Preserve the installed-App reader and existing refresh sequence. The refresh function moved and adds thread-ID length/control-character checks; its mutation/read order is unchanged. Restore the inherited failed Apps continuation test, which proves a failed page cannot acknowledge or replay earlier shared mutations. The installed-Apps test module moved to the end of the file. |
+| `app_server_client/server_requests.rs` | Keep the current tuple layout and native model observation owner. Permission, plugin and model hydration share the source settings revision. Added configured-state accessors, combined guards and voice-input invalidation retain current authority. Native request-ID/digest handling is unchanged. Restore the inherited late-request test in the client module: a request arriving after its origin turn completes remains exact-request scoped and is revoked when native resolves it. |
+| `app_server_client/app_link_settings.rs` | Keep saved-link catalog projection, active writable-layer validation, file/version identity accessors and request/history guard variants. Native write acknowledgement is separate from later readback, so readback failure cannot erase a successful save. The former inline tests moved to `app_link_settings_tests.rs`; they retain scope, conflict, restart and cross-connection assertions with current typed errors and receipt/readback APIs. Added catalog and saved-write cases cover the new owner. Hosted policy tests are registered separately. |
+
+The migration test fails before the history fix because the expected page requests
+are absent, then passes afterward. The full adapter library passes 226 tests after resume-recovery integration;
+eight installed-native tests remain opt-in. Explicit installed Codex
+0.158.0-alpha.2 runs pass both App-link scenarios and the retained-bridge history
+restart test without new readback inference. Strict all-feature/all-target adapter
+checks pass. App-link controls remain an already delivered optional capability;
+this batch adds no product control or configuration change.
+
+Fixed upstream `595cc91e8cbb1c2ca822d0311dcf12709410c582` builds each thread read
+from current persisted/live metadata in `thread_processor.rs::read_thread_view`.
+Its `thread_read.rs::paginated_stored_thread_routes_projected_turns` test identifies
+paginated history and directs callers to `thread/turns/list` and `thread/items/list`.
+The deterministic local migration fixture covers the response change between
+reads; it is not a claim that a live installed migration race was reproduced.
+Shared client-module and model/auth recovery differences remain open.
+
 ## Four settings and review owners reconciled on 2026-09-26
 
 Verify the original SHA-256 and inspect every difference in these complete files.
