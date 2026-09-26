@@ -4,6 +4,7 @@ use decodex_protocol::{DesktopPromptEditDraft, PromptDraft, PromptEditPhase};
 #[path = "chief_prompt_confirm.rs"] mod confirmation;
 #[path = "chief_prompt_handback.rs"] mod handback;
 #[path = "chief_prompt_remove.rs"] mod removal;
+#[path = "chief_prompt_send.rs"] mod sending;
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -310,6 +311,7 @@ impl ChiefSurface {
 								receipt_id: None,
 								handback_pending: false,
 								confirmation_key: None,
+			pending_send: None,
 								input,
 							},
 							evidence.removed_turns,
@@ -466,6 +468,16 @@ impl ChiefSurface {
 			panel = panel.child(editor.clone());
 		}
 		if let Some(draft) = &self.prompt_edit.draft {
+			if draft.receipt_id.is_some() && !draft.handback_pending {
+				let expected = draft.clone();
+				let checking = draft.pending_send.is_some();
+				panel = panel.child(self.workspace_action(
+					"prompt-send".into(),
+					if checking { "Check send receipt" } else { "Send edited input" }.into(),
+					move |s, cx| s.send_prompt_editor(expected.clone(), checking, cx),
+					cx,
+				));
+			}
 			if draft.receipt_id.is_some() && draft.handback_pending {
 				let expected = draft.clone();
 				panel = panel.child(self.workspace_action(
@@ -630,6 +642,7 @@ mod tests {
 					receipt_id: None,
 					handback_pending: false,
 					confirmation_key: None,
+					pending_send: None,
 					input: PromptDraft::new(vec![
 						serde_json::json!({"type":"text","text":"Original"}),
 						serde_json::json!({"type":"image","fileId":"native-image"}),

@@ -187,7 +187,7 @@ async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_
 		.await
 		.unwrap();
 	let event = decodex_database::EnqueueChiefEvent {
-		source_event_id: "canonical-send".into(), work_item_id: "chief".into(), event_kind: "user_message".into(),
+		source_event_id: json!(["user_message", "chief", "canonical-send"]).to_string(), work_item_id: "chief".into(), event_kind: "user_message".into(),
 		payload: json!({"text":"BOUNDED PREVIEW ONLY","source":"user","options":{
 			"canonicalInput":{"id":saved.id,"threadId":saved.thread,"editReceiptId":receipt.id,"sha256":saved.sha256},
 			"execution":{"reasoning_effort":"high"},"attachments":[],"taskReferences":[]
@@ -200,6 +200,59 @@ async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_
 	assert!(chief.store.release_chief_prompt_edit_draft(receipt.id, None).await.unwrap());
 	let queued = chief.store.enqueue_chief_event(event.clone()).await.unwrap();
 	assert!(queued.payload.len() < 2048);
+	let payload: Value = serde_json::from_str(&queued.payload).unwrap();
+	let reference = payload["options"]["canonicalInput"].clone();
+	let execution = payload["options"]["execution"].clone();
+	assert_eq!(
+		chief
+			.store
+			.chief_prompt_send_event(
+				"chief".into(),
+				"canonical-send".into(),
+				reference.clone(),
+				execution.clone()
+			)
+			.await
+			.unwrap(),
+		Some(queued.id)
+	);
+	assert_eq!(
+		chief
+			.store
+			.chief_prompt_send_event(
+				"chief".into(),
+				"unknown-send".into(),
+				reference.clone(),
+				execution.clone()
+			)
+			.await
+			.unwrap(),
+		None
+	);
+	assert_eq!(
+		chief
+			.store
+			.chief_prompt_send_event(
+				"chief".into(),
+				"canonical-send".into(),
+				reference.clone(),
+				json!({"reasoning_effort":"low"})
+			)
+			.await
+			.unwrap(),
+		None
+	);
+	let mut crossed = reference;
+	crossed["threadId"] = json!("different-thread");
+	assert_eq!(
+		chief
+			.store
+			.chief_prompt_send_event("chief".into(), "canonical-send".into(), crossed, execution)
+			.await
+			.unwrap(),
+		None
+	);
+
 	assert_eq!(chief.store.enqueue_chief_event(event.clone()).await.unwrap().id, queued.id);
 	let item = chief.store.get_chief_work_item("chief".into()).await.unwrap();
 	let (params, _) =

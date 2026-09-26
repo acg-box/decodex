@@ -20,6 +20,25 @@ fn source(upload: &PromptInputUpload) -> Result<ChiefPromptUpload, ChiefHostErro
 }
 
 impl ChiefHost {
+	pub(crate) async fn prompt_send_status(
+		&self,
+		identity: decodex_protocol::PromptInputSendIdentity,
+	) -> decodex_protocol::PromptInputSendStatus {
+		let reference = serde_json::json!({"id":identity.send.input_id,"threadId":identity.thread_id,"editReceiptId":identity.edit_receipt_id,"sha256":identity.send.sha256});
+		let accepted_event_id = self
+			.store
+			.chief_prompt_send_event(
+				identity.work_id.as_str().into(),
+				identity.send.command_key.as_str().into(),
+				reference,
+				serde_json::json!(identity.send.execution),
+			)
+			.await
+			.ok()
+			.flatten();
+		decodex_protocol::PromptInputSendStatus { identity, accepted_event_id }
+	}
+
 	pub(super) async fn send_prompt_input(
 		&self,
 		key: &str,

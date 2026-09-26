@@ -268,6 +268,37 @@ pub struct ChiefClient {
 	transport: ResetCardClient,
 }
 impl ChiefClient {
+	/// Reconcile an exact send by reading its queue receipt. Never submit or retry it.
+	pub async fn prompt_input_send_status(
+		&self,
+		identity: crate::PromptInputSendIdentity,
+	) -> Result<crate::PromptInputSendStatus, ClientFailure> {
+		self.transport.require_local_profile()?;
+		if identity.send.input_id <= 0
+			|| identity.edit_receipt_id <= 0
+			|| identity.thread_id.as_str().is_empty()
+		{
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"chief-prompt-send",
+				QueryPayload::GetChiefPromptInputSend { identity: identity.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefPromptInputSend(status)
+				if status.identity == identity
+					&& status.accepted_event_id.is_none_or(|id| id > 0) =>
+				Ok(status),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Check edited input against fresh thread settings without changing native history.
 	pub async fn preflight_prompt_input(
 		&self,

@@ -33,7 +33,7 @@ pub struct DesktopDraftDocument {
 impl Default for DesktopDraftDocument {
 	fn default() -> Self {
 		Self {
-			version: 9,
+			version: 10,
 			profiles: BTreeMap::new(),
 			unbound: Default::default(),
 			unbound_ordinary: Default::default(),
@@ -201,7 +201,7 @@ impl DesktopDraftDocument {
 			}
 		}
 		value.validate()?;
-		value.version = 9;
+		value.version = 10;
 		Ok(value)
 	}
 
@@ -214,7 +214,7 @@ impl DesktopDraftDocument {
 	}
 
 	fn validate(&self) -> Result<(), &'static str> {
-		if !matches!(self.version, 1..=9) {
+		if !matches!(self.version, 1..=10) {
 			return Err("Draft snapshot version is unsupported");
 		}
 		if self.profiles.len() > 64 {
@@ -247,7 +247,10 @@ impl DesktopProfileDraft {
 	/// Whether any retained command still needs delivery reconciliation.
 	pub fn has_unconfirmed_delivery(&self) -> bool {
 		self.uncertain
-			|| self.prompt_edits.values().any(|draft| draft.handback_pending)
+			|| self
+				.prompt_edits
+				.values()
+				.any(|draft| draft.handback_pending || draft.pending_send.is_some())
 			|| self.ordinary.values().any(|draft| !draft.unconfirmed.is_empty())
 	}
 
@@ -445,7 +448,7 @@ mod tests {
 			execution: Some((EntityId::new("work").unwrap(), 4)),
 		});
 		DesktopDraftDocument {
-			version: 9,
+			version: 10,
 			profiles: BTreeMap::from([("a".repeat(64), profile)]),
 			recovered: vec![],
 			unbound: Default::default(),
@@ -472,7 +475,7 @@ mod tests {
 		let bytes = document.encode().unwrap();
 		assert_eq!(DesktopDraftDocument::decode(&bytes).unwrap().unbound.creation, Some(setup));
 		let old = DesktopDraftDocument::decode(br#"{"version":1,"profiles":{}}"#).unwrap();
-		assert_eq!(old.version, 9);
+		assert_eq!(old.version, 10);
 		assert!(old.unbound.creation.is_none());
 		let mut remote = document.clone();
 		remote.unbound.creation.as_mut().unwrap().model = "other model".into();
@@ -509,7 +512,7 @@ mod tests {
 	#[test]
 	fn draft_document_rejects_changed_contract_and_ambiguous_ownership() {
 		let mut original = document();
-		original.version = 10;
+		original.version = 11;
 		assert!(original.encode().is_err());
 		let mut json = serde_json::to_value(document()).unwrap();
 		json["unexpected"] = serde_json::json!(true);

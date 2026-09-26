@@ -2188,6 +2188,11 @@ impl AccountObservationSignal {
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
 	/// Read durable input transfer status without finalizing or submitting it.
+	GetChiefPromptInputSend {
+		/// Original source, content, command and execution identity.
+		identity: crate::PromptInputSendIdentity,
+	},
+	/// Read durable input transfer progress.
 	GetChiefPromptInputUpload {
 		/// Exact transfer identity.
 		upload: crate::PromptInputUpload,
@@ -3043,6 +3048,8 @@ impl ResultPayload {
 pub enum QueryResultPayload {
 	/// Durable data transfer status; not an inference receipt.
 	ChiefPromptInputUpload(crate::PromptInputUploadStatus),
+	/// Read-only canonical input acceptance.
+	ChiefPromptInputSend(crate::PromptInputSendStatus),
 	/// Service-owned task recap state.
 	ChiefRecap(crate::TaskRecapStatus),
 	/// Canonical source-bound prompt-edit evidence page.

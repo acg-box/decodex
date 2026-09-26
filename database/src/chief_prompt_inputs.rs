@@ -41,6 +41,23 @@ fn read(
 }
 
 impl SqliteStore {
+	/// Read exact durable queue acceptance. Absence is not evidence of non-delivery.
+	pub async fn chief_prompt_send_event(
+		&self,
+		work: String,
+		command_key: String,
+		reference: Value,
+		execution: Value,
+	) -> Result<Option<i64>, StoreError> {
+		self.run(move |c| {
+			let source = serde_json::json!(["user_message",work,command_key]).to_string();
+			let row: Option<(i64,String)> = c.query_row("SELECT id,payload FROM chief_inbox_events WHERE source_event_id=?1 AND work_item_id=?2 AND event_kind='user_message'", params![source,work], |r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(sqlite_error)?;
+			let Some((id,payload)) = row else { return Ok(None); };
+			let payload: Value = serde_json::from_str(&payload).map_err(|_|StoreError::InvalidInput("invalid input receipt"))?;
+			Ok((payload.pointer("/options/canonicalInput") == Some(&reference) && payload.pointer("/options/execution") == Some(&execution)).then_some(id))
+		}).await
+	}
+
 	/// Find immutable data by exact source and digest without loading its full content.
 	pub async fn chief_prompt_input_id(
 		&self,

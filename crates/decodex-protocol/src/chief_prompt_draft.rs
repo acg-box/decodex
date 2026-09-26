@@ -34,6 +34,9 @@ pub struct DesktopPromptEditDraft {
 	/// Exact confirmation command retained before dispatch until a native receipt is read.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub confirmation_key: Option<crate::IdempotencyKey>,
+	/// A single pending send; input must remain unchanged until acceptance is resolved.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub pending_send: Option<crate::PromptInputSend>,
 	/// Confirmation may be in flight, or draft handback is not yet confirmed by the service.
 	pub handback_pending: bool,
 	/// Complete editable input, never a flattened history preview.
@@ -41,6 +44,40 @@ pub struct DesktopPromptEditDraft {
 }
 
 impl DesktopPromptEditDraft {
+	/// Bind a single send to the complete saved input before any submission.
+	pub fn begin_send(
+		&self,
+		input_id: i64,
+		command_key: crate::IdempotencyKey,
+		execution: crate::ChiefExecutionOverrides,
+	) -> Result<Self, &'static str> {
+		self.validate()?;
+		if self.pending_send.is_some() || self.receipt_id.is_none() || self.handback_pending {
+			return Err("Resolve the existing edit or send before submitting input");
+		}
+		self.input.validate_native_input()?;
+		let mut pending = self.clone();
+		pending.pending_send = Some(crate::PromptInputSend {
+			input_id,
+			sha256: self.input.fingerprint()?,
+			command_key,
+			execution,
+		});
+		pending.validate()?;
+		Ok(pending)
+	}
+
+	/// Read the unchanged owner and send identity for acceptance reconciliation.
+	pub fn send_identity(&self) -> Result<crate::PromptInputSendIdentity, &'static str> {
+		self.validate()?;
+		Ok(crate::PromptInputSendIdentity {
+			work_id: self.work_id.clone(),
+			thread_id: self.thread_id.clone(),
+			edit_receipt_id: self.receipt_id.ok_or("Edit receipt is missing")?,
+			send: self.pending_send.clone().ok_or("No retained send identity")?,
+		})
+	}
+
 	/// Retain confirmation intent before any native history mutation can be sent.
 	pub fn begin_confirmation(&self, key: crate::IdempotencyKey) -> Result<Self, &'static str> {
 		self.validate()?;
@@ -132,6 +169,16 @@ impl DesktopPromptEditDraft {
 		{
 			return Err("Prompt draft source is invalid");
 		}
+		if let Some(send) = &self.pending_send
+			&& (send.input_id <= 0
+				|| self.receipt_id.is_none()
+				|| self.handback_pending
+				|| self.confirmation_key.is_some()
+				|| send.sha256 != self.input.fingerprint()?)
+		{
+			return Err("Pending prompt send does not match the retained draft");
+		}
+
 		self.input.validate()
 	}
 }
@@ -416,6 +463,7 @@ mod tests {
 			receipt_id: None,
 			handback_pending: false,
 			confirmation_key: None,
+			pending_send: None,
 			input: sample(),
 		};
 		let mut fresh = saved.clone();
@@ -450,6 +498,7 @@ mod tests {
 			receipt_id: None,
 			handback_pending: false,
 			confirmation_key: None,
+			pending_send: None,
 			input: original.clone(),
 		};
 		draft.input.replace_text(0, 0..3, "Edited").unwrap();
@@ -476,6 +525,57 @@ mod tests {
 			crate::DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
 		let profile = &restored.profiles[&"a".repeat(64)];
 		assert!(profile.has_unconfirmed_delivery());
+		let mut restored_edit = draft.clone();
+		restored_edit.confirmation_key = None;
+		restored_edit.handback_pending = false;
+		restored_edit.receipt_id = Some(42);
+		assert!(
+			restored_edit
+				.begin_send(
+					7,
+					crate::IdempotencyKey::new("unsupported").unwrap(),
+					Default::default()
+				)
+				.is_err()
+		);
+		restored_edit.input.remove_part(5).unwrap();
+		let sending = restored_edit
+			.begin_send(
+				7,
+				crate::IdempotencyKey::new("send-once").unwrap(),
+				crate::ChiefExecutionOverrides::default(),
+			)
+			.unwrap();
+		assert_eq!(sending.send_identity().unwrap().send.command_key.as_str(), "send-once");
+		assert!(
+			sending
+				.begin_send(
+					7,
+					crate::IdempotencyKey::new("do-not-replay").unwrap(),
+					Default::default()
+				)
+				.is_err()
+		);
+		let mut changed = sending.clone();
+		changed.input.replace_text(0, 0..0, "changed").unwrap();
+		assert!(changed.validate().is_err());
+		let mut sending_document = crate::DesktopDraftDocument::default();
+		sending_document
+			.profiles
+			.entry("a".repeat(64))
+			.or_default()
+			.prompt_edits
+			.insert(sending.review_token.as_str().into(), sending.clone());
+		let next_revision = reopened.load().unwrap().revision;
+		reopened.save(next_revision, &sending_document.encode().unwrap()).unwrap();
+		let reopened_send =
+			crate::DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
+		assert!(reopened_send.profiles[&"a".repeat(64)].has_unconfirmed_delivery());
+		assert_eq!(
+			reopened_send.profiles[&"a".repeat(64)].prompt_edits[sending.review_token.as_str()],
+			sending
+		);
+
 		assert_eq!(profile.prompt_edits[draft.review_token.as_str()], draft);
 		let fragment = serde_json::to_string(&original).unwrap();
 		let mut status = crate::PromptEditStatus {
@@ -657,6 +757,7 @@ mod tests {
 				receipt_id: Some(42),
 				handback_pending: true,
 				confirmation_key: None,
+				pending_send: None,
 				input,
 			},
 		);
@@ -721,6 +822,7 @@ mod tests {
 				receipt_id: Some(42),
 				handback_pending: true,
 				confirmation_key: None,
+				pending_send: None,
 				input: sample(),
 			},
 		);
@@ -767,7 +869,7 @@ mod tests {
 		let reconciled = removed.reconcile_keep_both(&restored, &remote).unwrap();
 		assert_eq!(reconciled.profiles[&scope].prompt_edits, remote.profiles[&scope].prompt_edits);
 		let old = DesktopDraftDocument::decode(br#"{"version":7,"profiles":{}}"#).unwrap();
-		assert_eq!(old.version, 9);
+		assert_eq!(old.version, 10);
 		assert!(old.profiles.is_empty());
 	}
 }

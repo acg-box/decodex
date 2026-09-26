@@ -2249,6 +2249,14 @@ impl Application for ServiceApplication {
 			QueryPayload::GetChiefModelSettings { work_id } =>
 				self.query_model_settings(work_id.as_str()).await,
 			edit @ QueryPayload::GetChiefPromptEdit { .. } => self.query_prompt_edit(edit).await,
+			QueryPayload::GetChiefPromptInputSend { identity } =>
+				QueryResultPayload::ChiefPromptInputSend(match &self.chief {
+					Some(chief) => chief.prompt_send_status(identity.clone()).await,
+					None => decodex_protocol::PromptInputSendStatus {
+						identity: identity.clone(),
+						accepted_event_id: None,
+					},
+				}),
 			QueryPayload::GetChiefPromptInputUpload { upload } =>
 				QueryResultPayload::ChiefPromptInputUpload(match &self.chief {
 					Some(chief) => chief.prompt_upload_status(upload.clone()).await,

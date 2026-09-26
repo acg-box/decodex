@@ -99,6 +99,46 @@ impl Storage {
 }
 
 impl ChiefSurface {
+	pub(in super::super) fn settle_prompt_send(
+		&mut self,
+		expected: &decodex_protocol::DesktopPromptEditDraft,
+		accepted: bool,
+		cx: &mut Context<Self>,
+	) -> Result<Option<decodex_protocol::DesktopPromptEditDraft>, &'static str> {
+		expected.send_identity()?;
+		let scope =
+			self.profile.as_ref().ok_or("Service profile is unavailable")?.draft_scope_key();
+		self.remember_draft_document(cx);
+		let mut next = self.draft_profiles.storage.document.clone();
+		let profile = next.profiles.get_mut(&scope).ok_or("Draft profile is unavailable")?;
+		let key = expected.review_token.as_str();
+		if profile.prompt_edits.get(key) != Some(expected) {
+			return Err("The retained send draft changed");
+		}
+		let mut retained = expected.clone();
+		retained.pending_send = None;
+		if accepted {
+			profile.prompt_edits.remove(key);
+			// Keep a manually restorable copy; acceptance never loses canonical media.
+			let mut copy = DesktopProfileDraft::default();
+			copy.prompt_edits.insert(key.into(), retained);
+			let copy = decodex_protocol::DesktopRecoveredDraft { scope: Some(scope), draft: copy };
+			if !next.recovered.contains(&copy) {
+				next.recovered.push(copy);
+			}
+			next.encode()?;
+			self.draft_profiles.storage.document = next;
+			self.save_draft_document(cx);
+			Ok(None)
+		} else {
+			profile.prompt_edits.insert(key.into(), retained.clone());
+			next.encode()?;
+			self.draft_profiles.storage.document = next;
+			self.save_draft_document(cx);
+			Ok(Some(retained))
+		}
+	}
+
 	pub(in super::super) fn prompt_editor_saved(
 		&self,
 		expected: &decodex_protocol::DesktopPromptEditDraft,
@@ -703,6 +743,67 @@ mod prompt_confirm_tests;
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn prompt_send_acceptance_retains_full_copy_and_clears_only_exact_editor(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_service, profile, _) = super::super::tests::profiles();
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let input = decodex_protocol::PromptDraft::new(vec![
+			serde_json::json!({"type":"text","text":"Edited"}),
+			serde_json::json!({"type":"image","fileId":"retained-file","detail":"original"}),
+		])
+		.unwrap();
+		let draft = decodex_protocol::DesktopPromptEditDraft {
+			work_id: EntityId::new("work").unwrap(),
+			thread_id: WireText::new("thread").unwrap(),
+			before_turn_id: WireText::new("turn").unwrap(),
+			item_id: WireText::new("item").unwrap(),
+			original_hash: input.fingerprint().unwrap(),
+			review_token: WireText::new("a".repeat(64)).unwrap(),
+			receipt_id: Some(42),
+			confirmation_key: None,
+			pending_send: None,
+			handback_pending: false,
+			input,
+		};
+		let pending = draft
+			.begin_send(7, IdempotencyKey::new("send-once").unwrap(), Default::default())
+			.unwrap();
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+			s.bind_profile(Some(profile.clone()), cx);
+			s.composer.update(cx, |input, cx| input.set_content("Unrelated main input", cx));
+			s.stage_prompt_editor(pending.clone(), cx).unwrap();
+			let mut other = draft.clone();
+			other.review_token = WireText::new("b".repeat(64)).unwrap();
+			s.stage_prompt_editor(other, cx).unwrap();
+		});
+		cx.run_until_parked();
+		surface.update(cx, |s, cx| {
+			let mut crossed = pending.clone();
+			crossed.pending_send.as_mut().unwrap().command_key =
+				IdempotencyKey::new("different").unwrap();
+			assert!(s.settle_prompt_send(&crossed, true, cx).is_err());
+			assert!(s.settle_prompt_send(&pending, true, cx).unwrap().is_none());
+			assert_eq!(s.composer.read(cx).content(), "Unrelated main input");
+		});
+		cx.run_until_parked();
+		let document = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		let saved = &document.profiles[&profile.draft_scope_key()];
+		assert!(!saved.prompt_edits.contains_key(pending.review_token.as_str()));
+		assert!(saved.prompt_edits.contains_key(&"b".repeat(64)));
+		assert_eq!(saved.composer.text, "Unrelated main input");
+		let copy =
+			&document.recovered.last().unwrap().draft.prompt_edits[pending.review_token.as_str()];
+		assert_eq!(copy.input, draft.input);
+		assert!(copy.pending_send.is_none());
+		assert!(!document.recovered.last().unwrap().draft.has_unconfirmed_delivery());
+	}
 
 	#[gpui::test]
 	fn prompt_handback_requires_the_exact_saved_draft_and_profile(cx: &mut gpui::TestAppContext) {
@@ -726,6 +827,7 @@ mod tests {
 			receipt_id: Some(42),
 			handback_pending: true,
 			confirmation_key: None,
+			pending_send: None,
 			input,
 		};
 		surface.update(cx, |s, cx| {
@@ -1641,6 +1743,7 @@ mod ordinary_owner_tests {
 						receipt_id: Some(42),
 						handback_pending: true,
 						confirmation_key: None,
+						pending_send: None,
 						input: decodex_protocol::PromptDraft::new(vec![
 							serde_json::json!({"type":"image","fileId":"retained-native-file"}),
 						])

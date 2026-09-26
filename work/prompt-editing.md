@@ -180,7 +180,7 @@ input in a separate editor; final send and recovery acceptance remain open.
 
 The current feature branch adds protocol2.87 staging commands and a separate
 SendPromptInput command. The desktop editor retains complete parts and text
-markers in the existing version9 draft document. Input staging uses immutable
+markers in the existing version10 draft document. Input staging uses immutable
 SQLite records and durable 64KiB chunks. A lost staging reply permits progress
 only after a read confirms saved bytes. Staging never authorizes a model turn.
 
@@ -203,13 +203,13 @@ required before
 this optional feature is accepted. Local protocol and database tests do not close
 those acceptance requirements.
 
-The local version9 draft contract retains a confirmation command key before a native
+The local version10 draft contract retains a confirmation command key before a native
 receipt exists. begin_confirmation marks handback pending and refuses a second
 confirmation. The existing draft writer must save this exact state before dispatch.
 Receipt recovery clears the local key only when exact native evidence is available.
 An Unchanged receipt permits a fresh review while preserving edited content;
 Uncertain or Applied receipts retain the handback fence. Missing or failed network
-responses do not release it. Versions1 through8 upgrade with no invented confirmation
+responses do not release it. Versions1 through9 upgrade with no invented confirmation
 identity. Desktop confirmation now waits for this exact record to be saved.
 
 Native input qualification follows the fixed cutoff's public UserInput schema and
@@ -284,3 +284,29 @@ Focused UI tests cover unavailable history, incomplete question recovery, a cros
 native thread, and replacement of old timeline rows/cursors after a fresh read. The
 full installed-native desktop confirmation/handback/send sequence still needs end-to-
 end acceptance; these projection tests do not establish that result.
+
+
+## Explicit edited-input send
+
+Send edited input reruns preflight, stages complete native parts, and saves a
+version10 draft with immutable input ID, content digest, execution choices and the
+original command key. Only a matching durable local record permits SendPromptInput.
+The retained canonical input cannot change while that send remains unresolved.
+A known pre-dispatch failure or definite rejection retains an editable copy.
+
+GetChiefPromptInputSend is read-only. It matches the original user_message source
+identity and exact canonical reference/execution values in SQLite. An event ID proves
+queue acceptance, not native execution or completion. Missing or unavailable evidence
+means unknown and never permits replay. The client rejects crossed reply identities.
+Check send receipt performs only this read and keeps the original command key.
+
+On positive acceptance, the desktop removes only the exact active editor and retains
+a complete manually restorable copy in the existing recovered-draft document. The
+main composer and other editors are preserved. If settlement cannot be saved, the
+original pending record remains available for another readback. No new persistence
+owner or inference queue is introduced.
+
+Full socket/UI send acceptance, close/profile-switch boundaries before dispatch,
+installed-native end-to-end execution and rendered acceptance remain required. In
+particular, cancellation after a pending record is saved must not silently discard
+an unresolved send or leave a known-unsent operation without a recovery path.

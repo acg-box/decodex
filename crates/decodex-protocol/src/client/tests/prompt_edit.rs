@@ -307,3 +307,68 @@ async fn prompt_preflight_reads_current_settings_without_mutating_history() {
 		assert_eq!(result.is_ok(), mode == "valid");
 	}
 }
+
+#[tokio::test]
+async fn prompt_send_readback_is_read_only_and_rejects_crossed_identity() {
+	for mode in ["accepted", "unknown", "crossed"] {
+		let identity = crate::PromptInputSendIdentity {
+			work_id: EntityId::new("root").unwrap(),
+			thread_id: WireText::new("native").unwrap(),
+			edit_receipt_id: 1,
+			send: crate::PromptInputSend {
+				input_id: 2,
+				sha256: crate::Sha256Digest::new("a".repeat(64)).unwrap(),
+				command_key: IdempotencyKey::new("send-once").unwrap(),
+				execution: Default::default(),
+			},
+		};
+		let expected = identity.clone();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let mut socket =
+				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
+			let _ = socket.next().await;
+			for message in initial(SERVER_ID) {
+				socket.send(message).await.unwrap();
+			}
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query frame")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("readback must not resubmit input")
+			};
+			assert!(
+				matches!(&query.payload, crate::QueryPayload::GetChiefPromptInputSend { identity } if identity == &expected)
+			);
+			let mut echoed = expected;
+			if mode == "crossed" {
+				echoed.send.command_key = IdempotencyKey::new("other").unwrap();
+			}
+			let payload = QueryResultPayload::ChiefPromptInputSend(crate::PromptInputSendStatus {
+				identity: echoed,
+				accepted_event_id: (mode != "unknown").then_some(42),
+			});
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload,
+				})))
+				.await
+				.unwrap();
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let result = crate::ChiefClient::new(profile).prompt_input_send_status(identity).await;
+		server.await.unwrap();
+		match mode {
+			"accepted" => assert_eq!(result.unwrap().accepted_event_id, Some(42)),
+			"unknown" => assert_eq!(result.unwrap().accepted_event_id, None),
+			_ => assert_eq!(result, Err(ClientFailure::ProtocolMalformed)),
+		}
+	}
+}

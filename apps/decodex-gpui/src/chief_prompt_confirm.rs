@@ -231,7 +231,7 @@ impl ChiefSurface {
 	}
 }
 
-fn readable_local_media(input: &PromptDraft) -> Result<(), &'static str> {
+pub(super) fn readable_local_media(input: &PromptDraft) -> Result<(), &'static str> {
 	for part in input.parts() {
 		if !matches!(part["type"].as_str(), Some("localImage" | "localAudio")) {
 			continue;

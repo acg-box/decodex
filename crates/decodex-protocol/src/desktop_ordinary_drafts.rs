@@ -198,7 +198,7 @@ mod tests {
 			matches!(&saved.unconfirmed[0].payload, CommandPayload::CreateConversation { message,.. } if message.as_str()=="Original submitted input")
 		);
 		let old = DesktopDraftDocument::decode(br#"{"version":4,"profiles":{}}"#).unwrap();
-		assert_eq!(old.version, 9);
+		assert_eq!(old.version, 10);
 	}
 
 	#[test]
@@ -219,7 +219,7 @@ mod tests {
 		let choices =
 			&legacy.profiles[&"a".repeat(64)].ordinary["/tmp/work"].composer.creation_intent;
 		assert!(choices.model && choices.reasoning && choices.service_tier);
-		assert_eq!(legacy.version, 9);
+		assert_eq!(legacy.version, 10);
 		let reopened = DesktopDraftDocument::decode(&legacy.encode().unwrap()).unwrap();
 		assert!(reopened == legacy);
 	}
