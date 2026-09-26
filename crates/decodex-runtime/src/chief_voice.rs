@@ -103,6 +103,14 @@ impl VoiceGateway {
 		if let Ok(mut slot) = self.call.lock()
 			&& let Some(call) = slot.as_mut().filter(|c| c.status.session_id.as_str() == id)
 		{
+			// Cleanup acknowledgement must not erase a failure before the client polls.
+			if phase == ChiefVoicePhase::Ended {
+				call.stopping = true;
+				if call.status.phase == ChiefVoicePhase::Failed {
+					call.status.answer = None;
+					return;
+				}
+			}
 			call.status.phase = phase;
 			call.status.answer = answer;
 			call.status.message = message.and_then(|v| WireText::new(v).ok());
@@ -150,6 +158,32 @@ pub(crate) fn provider_error_message(message: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[tokio::test]
+	async fn failure_survives_cleanup_before_poll_without_another_stop() {
+		let gateway = VoiceGateway::new();
+		let mut commands = gateway.take_receiver().await.unwrap();
+		let id = EntityId::new("failed-call").unwrap();
+		gateway.exchange(&ChiefVoiceRequest::Start {
+			session_id: id.clone(),
+			work_id: EntityId::new("chief").unwrap(),
+			offer: VoiceSdp::new("offer".into()).unwrap(),
+		});
+		commands.recv().await.unwrap();
+		gateway.update(
+			id.as_str(),
+			ChiefVoicePhase::Failed,
+			None,
+			Some("Audio connection failed."),
+		);
+		gateway.update(id.as_str(), ChiefVoicePhase::Ended, None, None);
+		let result = gateway.exchange(&ChiefVoiceRequest::Poll { session_id: id.clone() });
+		assert_eq!(result.phase, ChiefVoicePhase::Failed);
+		assert_eq!(result.message.unwrap().as_str(), "Audio connection failed.");
+		gateway.exchange(&ChiefVoiceRequest::Stop { session_id: id });
+		assert!(commands.try_recv().is_err());
+		assert!(gateway.expire().is_none());
+	}
+
 	#[tokio::test]
 	async fn lost_start_response_is_observed_without_replaying_a_call() {
 		let gateway = VoiceGateway::new();
