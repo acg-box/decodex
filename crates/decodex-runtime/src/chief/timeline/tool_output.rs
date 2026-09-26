@@ -36,11 +36,13 @@ mod tests {
 			"type":"functionCallOutput","id":"output","name":"work_instruction",
 			"namespace":"decodex","output":"Inspect the delegated task."
 		}});
-		let ChiefTimelineContent::Item { kind, text, .. } = super::super::ordinary(&row).unwrap()
+		let ChiefTimelineContent::Item { kind, text, activity, .. } =
+			super::super::ordinary(&row).unwrap()
 		else {
 			panic!("item")
 		};
 		assert_eq!(kind, "functionCallOutput");
+		assert_eq!(activity.unwrap().kind, "functionCallOutput");
 		assert_eq!(text, "decodex/work_instruction\nInspect the delegated task.");
 		for namespace in [json!(null), json!("")] {
 			let mut unnamed = row.clone();
