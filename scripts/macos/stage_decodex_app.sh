@@ -34,6 +34,8 @@ verify_signing_team() {
 	fi
 }
 
+BUILD_ROOT=$(cargo +stable metadata --locked --no-deps --format-version 1 | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')
+
 cargo +stable build --locked --release --bin decodex-gpui
 cargo +stable build --locked --release --bin decodex
 cargo +stable build --locked --release -p decodex-app-client-ffi --lib
@@ -48,9 +50,9 @@ esac
 rm -rf -- "$APP"
 mkdir -p "$MACOS" "$RESOURCES" "$FRAMEWORKS" "$HELPERS"
 cp "$ROOT/apps/decodex-gpui/packaging/Info.plist" "$CONTENTS/Info.plist"
-cp "$ROOT/target/release/decodex-gpui" "$MACOS/decodex-gpui"
-cp "$ROOT/target/release/decodex" "$HELPERS/decodex"
-cp "$ROOT/target/release/$NATIVE_CLIENT_LIBRARY" "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY"
+cp "$BUILD_ROOT/release/decodex-gpui" "$MACOS/decodex-gpui"
+cp "$BUILD_ROOT/release/decodex" "$HELPERS/decodex"
+cp "$BUILD_ROOT/release/$NATIVE_CLIENT_LIBRARY" "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY"
 cp "$SWIFT_BIN/$MENU_BAR_LIBRARY" "$FRAMEWORKS/$MENU_BAR_LIBRARY"
 "$ROOT/scripts/macos/compile_decodex_app_icon.sh" "$RESOURCES"
 ICON_VARIANT=$(cat "$ROOT/assets/app-icon/default-variant")
