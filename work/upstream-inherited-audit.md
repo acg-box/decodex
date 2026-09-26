@@ -55,9 +55,16 @@ three inherited tests into a dedicated native-discovery test module. Installed
 Codex 0.158.0-alpha.2 passes MCP capability retention/pagination/restart, per-directory
 permission-profile eligibility and enterprise project-override rejection.
 
-Only the complete Python fixture row closes. The parent native-test module has
+The complete Python fixture row closes. The parent native-test module has
 other open differences. See [native discovery qualification](native-discovery-qualification.md)
 for source ownership and acceptance limits. No product capability is added.
+
+Restore the media-notification on/off comparison using the current backend helper,
+and restore standalone chronological summary/cold-read qualification. Installed
+native runs pass without new readback inference. The complete history-summary
+review document is mapped to its current adapter/service/UI owners and updated
+with current restart evidence. That document row also closes; remaining shared
+native-test differences stay open.
 
 ## History and shared adapter owners reconciled on 2026-09-26
 

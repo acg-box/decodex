@@ -54,3 +54,18 @@ The full GUI suite passed 503 tests, with five existing opt-in tests skipped.
 The service timeline regression passed 37 tests. The installed native fixture also passed after the summary check was added.
 Final current-artifact acceptance remains open; these test results do not prove
 installed desktop failure recovery.
+
+## Restored native restart evidence
+
+The inherited standalone summary test is restored in
+`chief_process_native_summary_tests.rs` using the existing native session and
+Responses fixture. On installed Codex 0.158.0-alpha.2, two completed turns appear
+in chronological order, cold process readback is identical, and a one-turn limit
+returns only the latest turn. The request count stays at two. This complements
+the public-socket check above; it does not replace desktop failure acceptance.
+
+The original document's source, projection limits, omission notice, separate
+summary state and no-replay boundaries remain represented by the current adapter,
+service and UI owners. The current document retains newer socket and source-guard
+qualification. Old version-specific evidence is superseded by these explicit
+current runs. The shared native-test module still has other open differences.

@@ -28,7 +28,26 @@ policies. Decodex's existing integration projection keeps `serverCapabilities`
 separate from `toolsError`.
 
 This closes the complete Python fixture disposition. The shared native test
-module still has other inherited differences, including media notification and
-summary-history coverage. Its ledger row remains open. The result is not signed
+module still has other inherited differences, in additional native fixture modules. Its ledger row remains open. The result is not signed
 desktop acceptance, managed policy deployment or support for enterprise login.
 Automations remain paused.
+
+## Native media and summary history
+
+A second focused commit restores the inherited notification-media comparison.
+Run the same two image-bearing turns with native notification-media filtering off
+and on. Both user item notifications retain text; their image content follows the
+filter setting. The captured model requests contain the same image inputs in both
+runs, and persisted history remains readable after process restart. The original
+valid PNG fixture is retained. The current `serve_fixture` remains the single
+backend helper; no old duplicate helper stack is restored.
+
+Installed Codex 0.158.0-alpha.2 passes both filter cases. The fixed upstream
+`turn_start_omits_notification_media_without_changing_model_input` test and
+`notification_media.rs` define the same distinction between notifications and
+model input. They were inspected, not run locally. Only private fixture config
+sets the feature; the user's application configuration stays unchanged.
+
+The inherited standalone summary/cold-restart test also passes. See
+[history summary recovery](history-summary-recovery.md). This closes that complete
+document's disposition, not the parent native-test file or final desktop review.
