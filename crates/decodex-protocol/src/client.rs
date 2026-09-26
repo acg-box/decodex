@@ -268,6 +268,52 @@ pub struct ChiefClient {
 	transport: ResetCardClient,
 }
 impl ChiefClient {
+	/// Check edited input against fresh thread settings without changing native history.
+	pub async fn preflight_prompt_input(
+		&self,
+		work: EntityId,
+		thread: crate::WireText,
+		input: &crate::PromptDraft,
+		execution: &crate::ChiefExecutionOverrides,
+	) -> Result<(), ClientFailure> {
+		self.transport.require_local_profile()?;
+		input.validate_native_input().map_err(|_| ClientFailure::ProtocolViolation)?;
+		let crate::ChiefModelSettingsResult::Available {
+			work_id,
+			thread_id,
+			model,
+			reasoning_effort,
+			..
+		} = self.model_settings(work.clone()).await?
+		else {
+			return Err(ClientFailure::ProtocolViolation);
+		};
+		if work_id != work || thread_id.as_str() != thread.as_str() {
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		let mut params = serde_json::json!({"threadId":thread,"input":input,"turnTrigger":"user"});
+		execution.apply_to_native_turn(&mut params);
+		if params.get("model").is_none() {
+			let Some(model) = model else {
+				return Err(ClientFailure::ProtocolViolation);
+			};
+			params["model"] = serde_json::json!(model.as_str());
+		}
+		if params.get("effort").is_none()
+			&& let Some(effort) = reasoning_effort
+		{
+			params["effort"] = serde_json::json!(effort.as_str());
+		}
+		// Match the native transport envelope, including its longest positive request ID.
+		let envelope = serde_json::json!({"id":i64::MAX,"method":"turn/start","params":params});
+		if serde_json::to_vec(&envelope).map_err(|_| ClientFailure::ProtocolMalformed)?.len()
+			> decodex_core::MAX_NATIVE_MESSAGE_BYTES
+		{
+			return Err(ClientFailure::ProtocolViolation);
+		}
+		Ok(())
+	}
+
 	/// Stage complete input with durable progress. This never submits a model turn.
 	/// Reuse the same upload identity to resume after interruption.
 	pub async fn stage_prompt_input(

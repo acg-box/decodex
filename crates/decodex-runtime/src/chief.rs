@@ -2038,17 +2038,7 @@ pub(super) fn apply_message_options(params: &mut Value, payload: &str) -> Result
 		let execution: decodex_protocol::ChiefExecutionOverrides =
 			serde_json::from_value(options["execution"].clone())
 				.map_err(|_| ChiefError::Invalid("invalid saved execution settings".into()))?;
-		if let Some(model) = &execution.model {
-			params["model"] = json!(model.as_str());
-		}
-		if let Some(effort) = &execution.reasoning_effort {
-			params["effort"] = json!(effort.as_str());
-		}
-		if let Some(tier) = execution.selected_service_tier() {
-			params["serviceTier"] = json!(tier.thread_value());
-			// Explicit standard is different from inherited native tier selection.
-			params["serviceTierForTurn"] = json!(tier.as_str());
-		}
+		execution.apply_to_native_turn(params);
 	}
 	let files: Vec<decodex_protocol::ChiefAttachmentDto> =
 		serde_json::from_value(options["attachments"].clone())

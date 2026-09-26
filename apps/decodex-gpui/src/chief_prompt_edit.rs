@@ -18,6 +18,75 @@ pub(super) struct Panel {
 }
 
 impl ChiefSurface {
+	fn preflight_prompt_editor(
+		&mut self,
+		expected: DesktopPromptEditDraft,
+		cx: &mut Context<Self>,
+	) {
+		if self.prompt_edit.task.is_some()
+			|| !self.prompt_editor_source_current()
+			|| self.prompt_edit.draft.as_ref() != Some(&expected)
+			|| !self.command_connection_ready()
+		{
+			return;
+		}
+		if let Err(error) = expected.input.validate_native_input() {
+			self.prompt_edit.feedback = error.into();
+			cx.notify();
+			return;
+		}
+		let Some(profile) = self.profile.clone() else {
+			return;
+		};
+		let execution = self.draft_profiles.execution.choice(expected.work_id.as_str());
+		let expected_execution = execution.clone();
+		let key = self.prompt_edit.key.clone();
+		let draft = expected.clone();
+		let (send, receive) = tokio::sync::oneshot::channel();
+		let started =
+			std::thread::Builder::new().name("prompt-preflight-io".into()).spawn(move || {
+				let result = (|| {
+					let runtime = tokio::runtime::Builder::new_current_thread()
+						.enable_all()
+						.build()
+						.map_err(|_| "Could not start input check")?;
+					runtime
+						.block_on(ChiefClient::new(profile).preflight_prompt_input(
+							draft.work_id,
+							draft.thread_id,
+							&draft.input,
+							&execution,
+						))
+						.map_err(
+							|_| "Input or current thread settings could not be qualified. History is unchanged.",
+						)
+				})();
+				let _ = send.send(result);
+			});
+		if started.is_err() {
+			self.prompt_edit.feedback = "Could not start input check".into();
+			cx.notify();
+			return;
+		}
+		self.prompt_edit.feedback = "Checking edited input and current thread settings…".into();
+		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
+			let result = receive.await.unwrap_or(Err("Input check stopped"));
+			let _ = surface.update(cx, |s, cx| {
+				if s.prompt_edit.key != key || !s.prompt_editor_source_current() { return; }
+				s.prompt_edit.task = None;
+				s.prompt_edit.feedback = if s.prompt_edit.draft.as_ref() != Some(&expected)
+					|| s.draft_profiles.execution.choice(expected.work_id.as_str()) != expected_execution {
+					"Draft or execution settings changed during the check. Check the current input again."
+				} else { match result {
+					Ok(()) => "Input fields and request size fit the current thread settings. History is unchanged; local files and remote media still require qualification.",
+					Err(message) => message,
+				}}.into();
+				cx.notify();
+			});
+		}));
+		cx.notify();
+	}
+
 	fn recover_prompt_editor(&mut self, expected: DesktopPromptEditDraft, cx: &mut Context<Self>) {
 		if self.prompt_edit.task.is_some()
 			|| !self.prompt_editor_source_current()
@@ -391,6 +460,13 @@ impl ChiefSurface {
 			panel = panel.child(editor.clone());
 		}
 		if let Some(draft) = &self.prompt_edit.draft {
+			let expected = draft.clone();
+			panel = panel.child(self.workspace_action(
+				"prompt-preflight".into(),
+				"Check edited input".into(),
+				move |s, cx| s.preflight_prompt_editor(expected.clone(), cx),
+				cx,
+			));
 			panel = panel.child(if self.prompt_editor_saved(draft) {
 				"Edited draft saved locally."
 			} else {

@@ -245,3 +245,65 @@ async fn prompt_upload_resumes_durable_bytes_after_lost_replies_without_submitti
 		}
 	}
 }
+
+#[tokio::test]
+async fn prompt_preflight_reads_current_settings_without_mutating_history() {
+	for mode in ["valid", "crossed", "oversized", "missing-model"] {
+		let input = crate::PromptDraft::new(vec![serde_json::json!({"type":"image","url":if mode == "oversized" { "x".repeat(decodex_core::MAX_NATIVE_MESSAGE_BYTES) } else { "data:image/png;base64,AA==".into() }})]).unwrap();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query frame")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("preflight must not mutate history")
+			};
+			assert!(
+				matches!(&query.payload, crate::QueryPayload::GetChiefModelSettings { work_id } if work_id.as_str()=="root")
+			);
+			let state = crate::ChiefModelSettingsResult::Available {
+				work_id: EntityId::new("root").unwrap(),
+				thread_id: EntityId::new(if mode == "crossed" { "other" } else { "native" })
+					.unwrap(),
+				account_id: EntityId::new("account").unwrap(),
+				model_provider: None,
+				model: if mode == "missing-model" {
+					None
+				} else {
+					Some(WireText::new("configured-model").unwrap())
+				},
+				reasoning_effort: Some(WireText::new("high").unwrap()),
+			};
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::ChiefModelSettings(state),
+				})))
+				.await
+				.unwrap();
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let result = crate::ChiefClient::new(profile)
+			.preflight_prompt_input(
+				EntityId::new("root").unwrap(),
+				WireText::new("native").unwrap(),
+				&input,
+				&crate::ChiefExecutionOverrides::default(),
+			)
+			.await;
+		server.await.unwrap();
+		assert_eq!(result.is_ok(), mode == "valid");
+	}
+}

@@ -227,3 +227,15 @@ rules. The actual transport still checks its final frame before writing.
 
 These checks currently protect send admission and dispatch. Connecting equivalent
 qualification before the desktop's destructive history confirmation remains open.
+
+The desktop now exposes a read-only Check edited input action. Its client reads
+current model settings for the exact work and thread, combines inherited values
+with captured explicit choices, and measures a full native request envelope. It
+rejects unavailable model evidence, crossed threads and oversized requests. The
+runtime and client share execution-option serialization. A changed local draft or
+execution choice invalidates the result shown in the panel.
+
+This check is a current observation, not a reusable confirmation permit. Local
+media readability and remote media availability are not established by it. The
+confirmation action must rerun required checks before persisting confirmation
+intent and submitting the native edit; that action remains unconnected.
