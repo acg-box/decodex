@@ -77,6 +77,8 @@ impl ChiefCoordinator {
 		// Retire local microphone authority even if native stop acknowledgment is lost.
 		let result =
 			self.client.request("thread/realtime/stop", json!({"threadId":active_thread})).await;
+		// Stop microphone authority before storage; retain the session if saving fails.
+		voice.save_transcript_tails(&self.store, &id).await?;
 		if result.is_ok() {
 			self.store.close_chief_voice_call(id).await?;
 			voice.session = None;

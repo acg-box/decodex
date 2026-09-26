@@ -33,3 +33,9 @@ These are service recovery tests, not microphone or WebRTC acceptance.
 A Unicode overflow fixture checks both delta accumulation and final text. It
 requires a nearly full bounded suffix, the exact latest correction, valid UTF-8
 and partial provenance, without a native replay.
+
+A provider precaution first retires microphone authority and requests native stop.
+It then saves received text before clearing the session. A storage failure keeps
+the pending text and session available for the subsequent native closure event;
+it does not prevent the stop request. Fixtures cover successful stop and an
+injected insert failure followed by successful closure.
