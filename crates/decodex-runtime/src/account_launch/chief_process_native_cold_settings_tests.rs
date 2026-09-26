@@ -410,34 +410,7 @@ async fn serve(
 			let output = if std::env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1")
 				&& serial == 0
 			{
-				{
-					let mut specs = input["tools"].as_array().cloned().unwrap_or_default();
-					for item in input["input"].as_array().expect("fixture input") {
-						if item["type"] == "additional_tools" {
-							specs.extend(item["tools"].as_array().cloned().unwrap_or_default());
-						}
-					}
-					fn counter(specs: &[Value], namespace: Option<&str>) -> Option<Value> {
-						for spec in specs {
-							if let Some(children) = spec["tools"].as_array() {
-								if let Some(call) = counter(children, spec["name"].as_str()) {
-									return Some(call);
-								}
-							} else if spec["name"]
-								.as_str()
-								.is_some_and(|name| name.contains("counter"))
-							{
-								let mut call = json!({"type":"function_call","id":"widget-origin","call_id":"widget-origin-call","name":spec["name"],"arguments":"{\"value\":7}"});
-								if let Some(namespace) = namespace {
-									call["namespace"] = json!(namespace);
-								}
-								return Some(call);
-							}
-						}
-						None
-					}
-					counter(&specs, None).expect("advertised native counter tool")
-				}
+				counter_output(&input)
 			} else {
 				json!({"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":answer}]})
 			};
@@ -462,4 +435,30 @@ async fn serve(
 		};
 		socket.get_mut().write_all(format!("HTTP/1.1 {status} Fixture\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.expect("loopback native backend");
 	}
+}
+
+fn counter_output(input: &Value) -> Value {
+	let mut specs = input["tools"].as_array().cloned().unwrap_or_default();
+	for item in input["input"].as_array().expect("fixture input") {
+		if item["type"] == "additional_tools" {
+			specs.extend(item["tools"].as_array().cloned().unwrap_or_default());
+		}
+	}
+	fn counter(specs: &[Value], namespace: Option<&str>) -> Option<Value> {
+		for spec in specs {
+			if let Some(children) = spec["tools"].as_array() {
+				if let Some(call) = counter(children, spec["name"].as_str()) {
+					return Some(call);
+				}
+			} else if spec["name"].as_str().is_some_and(|name| name.contains("counter")) {
+				let mut call = json!({"type":"function_call","id":"widget-origin","call_id":"widget-origin-call","name":spec["name"],"arguments":"{\"value\":7}"});
+				if let Some(namespace) = namespace {
+					call["namespace"] = json!(namespace);
+				}
+				return Some(call);
+			}
+		}
+		None
+	}
+	counter(&specs, None).expect("advertised native counter tool")
 }

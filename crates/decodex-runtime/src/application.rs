@@ -2223,10 +2223,7 @@ impl Application for ServiceApplication {
 			QueryPayload::ExchangeChiefVoice { request } => self.query_voice(request),
 
 			QueryPayload::GetChiefResources { work_id } =>
-				QueryResultPayload::ChiefResources(match &self.chief {
-					Some(chief) => chief.resources(work_id.as_str()).await,
-					None => decodex_protocol::ChiefResourcesResult::Unavailable,
-				}),
+				self.query_resources(work_id.as_str()).await,
 
 			QueryPayload::ExchangeMcpLogin { request } =>
 				QueryResultPayload::McpLogin(query_mcp_login(self.chief.as_ref(), request).await),
@@ -2249,31 +2246,10 @@ impl Application for ServiceApplication {
 			QueryPayload::GetChiefModelSettings { work_id } =>
 				self.query_model_settings(work_id.as_str()).await,
 			edit @ QueryPayload::GetChiefPromptEdit { .. } => self.query_prompt_edit(edit).await,
-			QueryPayload::GetChiefPromptInputDirectory { work_id, thread_id } =>
-				QueryResultPayload::ChiefPromptInputDirectory {
-					work_id: work_id.clone(),
-					thread_id: thread_id.clone(),
-					directory: match &self.chief {
-						Some(chief) =>
-							chief.prompt_input_directory(work_id.as_str(), thread_id.as_str()).await,
-						None => None,
-					},
-				},
-			QueryPayload::GetChiefPromptInputSend { identity } =>
-				QueryResultPayload::ChiefPromptInputSend(match &self.chief {
-					Some(chief) => chief.prompt_send_status(identity.clone()).await,
-					None => decodex_protocol::PromptInputSendStatus {
-						identity: identity.clone(),
-						accepted_event_id: None,
-					},
-				}),
-			QueryPayload::GetChiefPromptInputUpload { upload } =>
-				QueryResultPayload::ChiefPromptInputUpload(match &self.chief {
-					Some(chief) => chief.prompt_upload_status(upload.clone()).await,
-					None => decodex_protocol::PromptInputUploadStatus::Unavailable {
-						upload: upload.clone(),
-					},
-				}),
+			QueryPayload::GetChiefPromptInputDirectory { .. }
+			| QueryPayload::GetChiefPromptInputSend { .. }
+			| QueryPayload::GetChiefPromptInputUpload { .. } =>
+				self.query_prompt_input(&query.payload).await,
 			QueryPayload::GetChiefRecap { work_id } => self.query_recap(work_id.clone()).await,
 			QueryPayload::GetChiefVoiceSettings { work_id } =>
 				self.query_voice_settings(work_id.as_str()).await,
@@ -2283,36 +2259,11 @@ impl Application for ServiceApplication {
 				self.query_input_receipts(work_id.as_str(), *after).await,
 			QueryPayload::GetChiefSteerReceipt { identity } =>
 				self.query_steer_receipt(identity).await,
-			QueryPayload::GetChiefPendingAppUiCall { work_id } =>
-				QueryResultPayload::ChiefPendingAppUiCall(match &self.store {
-					ProductStore::Available(store) =>
-						crate::chief_app_ui_receipt::pending(store, work_id).await,
-					ProductStore::Unavailable(_) =>
-						decodex_protocol::ChiefPendingAppUiCall::Unavailable,
-				}),
-			QueryPayload::GetChiefAppUiReceipt { request } =>
-				QueryResultPayload::ChiefAppUiReceipt(match &self.store {
-					ProductStore::Available(store) =>
-						crate::chief_app_ui_receipt::read(store, request).await,
-					ProductStore::Unavailable(_) =>
-						decodex_protocol::ChiefAppUiReceiptResult::Unavailable,
-				}),
-			QueryPayload::ReviewChiefAppUiCall { request } =>
-				QueryResultPayload::ChiefAppUiCallReview(match &self.chief {
-					Some(chief) => chief.review_app_ui_call(request).await,
-					None => decodex_protocol::ChiefAppUiCallReview::Unavailable,
-				}),
-			QueryPayload::GetChiefAppUiSource { work_id, thread_id, fingerprint } =>
-				QueryResultPayload::ChiefAppUiSource(match &self.chief {
-					Some(chief) =>
-						chief.app_ui_source(work_id.as_str(), thread_id.as_str(), fingerprint).await,
-					None => false,
-				}),
-			QueryPayload::GetChiefAppUi { request } =>
-				QueryResultPayload::ChiefAppUi(match &self.chief {
-					Some(chief) => chief.app_ui(request).await,
-					None => decodex_protocol::ChiefAppUiResult::Unavailable,
-				}),
+			QueryPayload::GetChiefPendingAppUiCall { .. }
+			| QueryPayload::GetChiefAppUiReceipt { .. }
+			| QueryPayload::ReviewChiefAppUiCall { .. }
+			| QueryPayload::GetChiefAppUiSource { .. }
+			| QueryPayload::GetChiefAppUi { .. } => self.query_app_ui(&query.payload).await,
 			QueryPayload::GetChiefMedia { request } => self.query_media(request).await,
 			QueryPayload::GetChiefTimeline { work_id, thread_id, cursor } =>
 				self.query_timeline(
@@ -2336,16 +2287,8 @@ impl Application for ServiceApplication {
 				self.query_native_agents(work_id, thread_id.as_ref(), cursor.as_ref()).await,
 			QueryPayload::GetChiefHistory { work_id, before } =>
 				self.query_history(work_id.as_str(), *before).await,
-			QueryPayload::GetChiefArchiveState { work_id } =>
-				QueryResultPayload::ChiefArchiveState(match &self.chief {
-					Some(chief) => chief.archive_state(work_id.as_str()).await,
-					None => decodex_protocol::ChiefArchiveResult::Unavailable,
-				}),
-			QueryPayload::GetChiefInstallState { work_id, event_id } =>
-				QueryResultPayload::ChiefInstallState(match &self.chief {
-					Some(chief) => chief.install_state(work_id.as_str(), *event_id).await,
-					None => decodex_protocol::ChiefInstallState::Unavailable,
-				}),
+			QueryPayload::GetChiefArchiveState { .. }
+			| QueryPayload::GetChiefInstallState { .. } => self.query_native_lifecycle(&query.payload).await,
 			QueryPayload::GetChiefGuardianReviews { work_id, before } =>
 				self.query_guardian_review_page(work_id.as_str(), *before).await,
 			QueryPayload::GetChiefSnapshot => self.query_chief_snapshot().await,
@@ -4139,6 +4082,96 @@ impl ServiceApplication {
 					conversation_receipts::query_creation_receipt(&self.store, request).await,
 				),
 			_ => unreachable!("ordinary recovery query dispatched above"),
+		}
+	}
+
+	async fn query_resources(&self, work_id: &str) -> QueryResultPayload {
+		QueryResultPayload::ChiefResources(match &self.chief {
+			Some(chief) => chief.resources(work_id).await,
+			None => decodex_protocol::ChiefResourcesResult::Unavailable,
+		})
+	}
+
+	async fn query_native_lifecycle(&self, payload: &QueryPayload) -> QueryResultPayload {
+		match payload {
+			QueryPayload::GetChiefArchiveState { work_id } =>
+				QueryResultPayload::ChiefArchiveState(match &self.chief {
+					Some(chief) => chief.archive_state(work_id.as_str()).await,
+					None => decodex_protocol::ChiefArchiveResult::Unavailable,
+				}),
+			QueryPayload::GetChiefInstallState { work_id, event_id } =>
+				QueryResultPayload::ChiefInstallState(match &self.chief {
+					Some(chief) => chief.install_state(work_id.as_str(), *event_id).await,
+					None => decodex_protocol::ChiefInstallState::Unavailable,
+				}),
+			_ => unreachable!("native lifecycle query dispatched above"),
+		}
+	}
+
+	async fn query_prompt_input(&self, payload: &QueryPayload) -> QueryResultPayload {
+		match payload {
+			QueryPayload::GetChiefPromptInputDirectory { work_id, thread_id } =>
+				QueryResultPayload::ChiefPromptInputDirectory {
+					work_id: work_id.clone(),
+					thread_id: thread_id.clone(),
+					directory: match &self.chief {
+						Some(chief) =>
+							chief.prompt_input_directory(work_id.as_str(), thread_id.as_str()).await,
+						None => None,
+					},
+				},
+			QueryPayload::GetChiefPromptInputSend { identity } =>
+				QueryResultPayload::ChiefPromptInputSend(match &self.chief {
+					Some(chief) => chief.prompt_send_status(identity.clone()).await,
+					None => decodex_protocol::PromptInputSendStatus {
+						identity: identity.clone(),
+						accepted_event_id: None,
+					},
+				}),
+			QueryPayload::GetChiefPromptInputUpload { upload } =>
+				QueryResultPayload::ChiefPromptInputUpload(match &self.chief {
+					Some(chief) => chief.prompt_upload_status(upload.clone()).await,
+					None => decodex_protocol::PromptInputUploadStatus::Unavailable {
+						upload: upload.clone(),
+					},
+				}),
+			_ => unreachable!("query_prompt_input dispatched above"),
+		}
+	}
+
+	async fn query_app_ui(&self, payload: &QueryPayload) -> QueryResultPayload {
+		match payload {
+			QueryPayload::GetChiefPendingAppUiCall { work_id } =>
+				QueryResultPayload::ChiefPendingAppUiCall(match &self.store {
+					ProductStore::Available(store) =>
+						crate::chief_app_ui_receipt::pending(store, work_id).await,
+					ProductStore::Unavailable(_) =>
+						decodex_protocol::ChiefPendingAppUiCall::Unavailable,
+				}),
+			QueryPayload::GetChiefAppUiReceipt { request } =>
+				QueryResultPayload::ChiefAppUiReceipt(match &self.store {
+					ProductStore::Available(store) =>
+						crate::chief_app_ui_receipt::read(store, request).await,
+					ProductStore::Unavailable(_) =>
+						decodex_protocol::ChiefAppUiReceiptResult::Unavailable,
+				}),
+			QueryPayload::ReviewChiefAppUiCall { request } =>
+				QueryResultPayload::ChiefAppUiCallReview(match &self.chief {
+					Some(chief) => chief.review_app_ui_call(request).await,
+					None => decodex_protocol::ChiefAppUiCallReview::Unavailable,
+				}),
+			QueryPayload::GetChiefAppUiSource { work_id, thread_id, fingerprint } =>
+				QueryResultPayload::ChiefAppUiSource(match &self.chief {
+					Some(chief) =>
+						chief.app_ui_source(work_id.as_str(), thread_id.as_str(), fingerprint).await,
+					None => false,
+				}),
+			QueryPayload::GetChiefAppUi { request } =>
+				QueryResultPayload::ChiefAppUi(match &self.chief {
+					Some(chief) => chief.app_ui(request).await,
+					None => decodex_protocol::ChiefAppUiResult::Unavailable,
+				}),
+			_ => unreachable!("query_app_ui dispatched above"),
 		}
 	}
 
