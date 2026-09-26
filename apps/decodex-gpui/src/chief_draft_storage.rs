@@ -99,6 +99,38 @@ impl Storage {
 }
 
 impl ChiefSurface {
+	pub(in super::super) fn renew_prompt_editor(
+		&mut self,
+		previous: &decodex_protocol::DesktopPromptEditDraft,
+		fresh: &decodex_protocol::DesktopPromptEditDraft,
+		cx: &mut Context<Self>,
+	) -> Result<decodex_protocol::DesktopPromptEditDraft, &'static str> {
+		if self.selected.as_deref() != Some(previous.work_id.as_str())
+			|| !self.saved_prompt_editors(previous.work_id.as_str()).contains(previous)
+		{
+			return Err("Draft changed while history was being reviewed");
+		}
+		let renewed = previous.refresh_review(fresh)?;
+		let scope =
+			self.profile.as_ref().ok_or("Service profile is unavailable")?.draft_scope_key();
+		self.remember_draft_document(cx);
+		let mut next = self.draft_profiles.storage.document.clone();
+		let editors =
+			&mut next.profiles.get_mut(&scope).ok_or("Draft profile is unavailable")?.prompt_edits;
+		if editors
+			.get(renewed.review_token.as_str())
+			.is_some_and(|other| other != previous && other != &renewed)
+		{
+			return Err("Another draft already uses this review");
+		}
+		editors.remove(previous.review_token.as_str());
+		editors.insert(renewed.review_token.as_str().into(), renewed.clone());
+		next.encode()?;
+		self.draft_profiles.storage.document = next;
+		self.save_draft_document(cx);
+		Ok(renewed)
+	}
+
 	pub(in super::super) fn saved_prompt_editors(
 		&self,
 		work: &str,

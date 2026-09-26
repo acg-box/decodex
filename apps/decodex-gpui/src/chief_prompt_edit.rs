@@ -1,6 +1,7 @@
 //! Source-bound native prompt review. Opening or editing this panel never reverts history.
 use super::*;
 use decodex_protocol::{DesktopPromptEditDraft, PromptDraft, PromptEditPhase};
+#[path = "chief_prompt_remove.rs"] mod removal;
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -13,6 +14,7 @@ pub(super) struct Panel {
 	subscriptions: Vec<gpui::Subscription>,
 	task: Option<Task<()>>,
 	feedback: String,
+	removal: Option<removal::Removal>,
 }
 
 impl ChiefSurface {
@@ -75,6 +77,16 @@ impl ChiefSurface {
 		item: &str,
 		cx: &mut Context<Self>,
 	) {
+		self.request_prompt_review((work, thread, turn, item), None, cx);
+	}
+
+	fn request_prompt_review(
+		&mut self,
+		source: (&str, &str, &str, &str),
+		previous: Option<DesktopPromptEditDraft>,
+		cx: &mut Context<Self>,
+	) {
+		let (work, thread, turn, item) = source;
 		if self.selected.as_deref() != Some(work) || !self.command_connection_ready() {
 			return;
 		}
@@ -161,7 +173,8 @@ impl ChiefSurface {
 				s.prompt_edit.task = None;
 				match result {
 					Ok((draft, turns)) => {
-						if let Err(message) = s.install_prompt_editors(draft, cx) {
+						let reviewed = match previous.as_ref() { Some(previous) => s.renew_prompt_editor(previous, &draft, cx), None => Ok(draft) };
+						if let Err(message) = reviewed.and_then(|draft| s.install_prompt_editors(draft, cx)) {
 							s.prompt_edit.feedback = message.into();
 						} else {
 							s.prompt_edit.feedback = format!("Editing this input would remove {turns} turns, including this one. Workspace file changes would remain. History is unchanged.");
@@ -200,7 +213,17 @@ impl ChiefSurface {
 				editors.push((index, editor));
 			}
 		}
+		self.bind_prompt_editors(draft, editors, cx)
+	}
+
+	fn bind_prompt_editors(
+		&mut self,
+		draft: DesktopPromptEditDraft,
+		editors: Vec<(usize, Entity<ComposerInput>)>,
+		cx: &mut Context<Self>,
+	) -> Result<(), &'static str> {
 		self.stage_prompt_editor(draft.clone(), cx)?;
+		self.prompt_edit.key = unique_command();
 		self.prompt_edit.draft = Some(draft);
 		self.prompt_edit.subscriptions.clear();
 		for (index, editor) in &editors {
@@ -283,15 +306,40 @@ impl ChiefSurface {
 			panel = panel.child(editor.clone());
 		}
 		if let Some(draft) = &self.prompt_edit.draft {
-			for part in
-				draft.input.parts().iter().filter(|part| part["type"].as_str() != Some("text"))
+			if draft.receipt_id.is_none() && !draft.handback_pending {
+				let original = draft.clone();
+				panel = panel.child(self.workspace_action(
+					"prompt-review-refresh".into(),
+					"Recheck original history".into(),
+					move |s, cx| {
+						let source = (
+							original.work_id.as_str(),
+							original.thread_id.as_str(),
+							original.before_turn_id.as_str(),
+							original.item_id.as_str(),
+						);
+						s.request_prompt_review(source, Some(original.clone()), cx);
+					},
+					cx,
+				));
+			}
+			for (index, part) in draft
+				.input
+				.parts()
+				.iter()
+				.enumerate()
+				.filter(|(_, part)| part["type"].as_str() != Some("text"))
 			{
-				panel = panel.child(format!(
-					"Retained input: {}",
-					part["type"].as_str().unwrap_or("unknown")
+				let expected = draft.clone();
+				panel = panel.child(self.workspace_action(
+					format!("prompt-remove-{index}"),
+					format!("Remove {}…", removal::label(part)),
+					move |s, cx| s.begin_prompt_removal(index, &expected, cx),
+					cx,
 				));
 			}
 		}
+		panel = panel.child(self.prompt_removal_panel(cx));
 		panel
 			.child(self.workspace_action(
 				"prompt-review-close".into(),
@@ -310,6 +358,13 @@ impl ChiefSurface {
 mod tests {
 	use super::*;
 	use std::os::unix::fs::{MetadataExt, PermissionsExt};
+	fn original_input() -> PromptDraft {
+		PromptDraft::new(vec![
+			serde_json::json!({"type":"text","text":"Original"}),
+			serde_json::json!({"type":"image","fileId":"native-image"}),
+		])
+		.unwrap()
+	}
 
 	#[gpui::test]
 	fn prompt_review_keeps_the_main_composer_and_stops_after_source_invalidation(
@@ -352,7 +407,7 @@ mod tests {
 					thread_id: WireText::new("thread").unwrap(),
 					before_turn_id: WireText::new("turn").unwrap(),
 					item_id: WireText::new("item").unwrap(),
-					original_hash: decodex_protocol::Sha256Digest::new("a".repeat(64)).unwrap(),
+					original_hash: original_input().fingerprint().unwrap(),
 					review_token: WireText::new("b".repeat(64)).unwrap(),
 					receipt_id: None,
 					handback_pending: false,
@@ -386,13 +441,38 @@ mod tests {
 			assert_eq!(s.prompt_edit.draft.as_ref(), Some(&saved));
 			assert_eq!(s.prompt_edit.editors[0].1.read(cx).content(), "Edited");
 			assert!(s.submission.waiting.is_none());
+			let retained_editor = s.prompt_edit.editors[0].1.clone();
+			s.begin_prompt_removal(1, &saved, cx);
+			let old_removal = s.prompt_edit.removal.as_ref().unwrap().key.clone();
+			s.begin_prompt_removal(1, &saved, cx);
+			let current_removal = s.prompt_edit.removal.as_ref().unwrap().key.clone();
+			s.apply_prompt_removal(&old_removal, cx);
+			assert_eq!(s.prompt_edit.draft.as_ref(), Some(&saved));
+			s.apply_prompt_removal(&current_removal, cx);
+			assert_eq!(s.prompt_edit.draft.as_ref().unwrap().input.parts().len(), 1);
+			assert_eq!(s.prompt_edit.editors[0].1, retained_editor);
+			assert_eq!(s.prompt_edit.editors[0].1.read(cx).content(), "Edited");
+			assert!(s.submission.waiting.is_none());
+			s.install_prompt_editors(saved.clone(), cx).unwrap();
 			let mut stale = saved.clone();
 			stale.input.replace_text(0, 0..0, "stale").unwrap();
 			assert!(s.discard_prompt_editor(&stale, cx).is_err());
 			assert_eq!(s.saved_prompt_editors(&work), vec![saved.clone()]);
 			s.discard_prompt_editor(&saved, cx).unwrap();
 			assert!(s.saved_prompt_editors(&work).is_empty());
-			s.stage_prompt_editor(saved, cx).unwrap();
+			s.stage_prompt_editor(saved.clone(), cx).unwrap();
+			let mut fresh = saved.clone();
+			fresh.input = original_input();
+			fresh.review_token = WireText::new("c".repeat(64)).unwrap();
+			let renewed = s.renew_prompt_editor(&saved, &fresh, cx).unwrap();
+			assert_eq!(renewed.input, saved.input);
+			assert_eq!(s.saved_prompt_editors(&work), vec![renewed.clone()]);
+			let mut later = renewed.clone();
+			later.input.replace_text(0, 0..0, "Later edit ").unwrap();
+			s.stage_prompt_editor(later.clone(), cx).unwrap();
+			fresh.review_token = WireText::new("d".repeat(64)).unwrap();
+			assert!(s.renew_prompt_editor(&renewed, &fresh, cx).is_err());
+			assert_eq!(s.saved_prompt_editors(&work), vec![later]);
 			s.mark_stale(cx);
 			assert!(s.prompt_edit.draft.is_none());
 			assert!(!s.prompt_editor_source_current());

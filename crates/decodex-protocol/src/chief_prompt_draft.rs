@@ -119,6 +119,56 @@ impl PromptDraft {
 		Ok(())
 	}
 
+	/// Remove an input and explicitly identified text markers as one local edit.
+	///
+	/// Marker identities refer to the original draft. Callers must establish their
+	/// association from native evidence or an explicit user choice, not text search.
+	/// Any ambiguous overlap leaves the complete draft unchanged.
+	pub fn remove_bound_part(
+		&mut self,
+		part_index: usize,
+		markers: &[(usize, usize)],
+	) -> Result<(), &'static str> {
+		self.validate()?;
+		if self.0.get(part_index).is_none_or(|part| part["type"] == "text") {
+			return Err("Select a non-text input to remove");
+		}
+		let mut selected = std::collections::BTreeMap::<usize, Vec<(usize, Range<usize>)>>::new();
+		let mut identities = std::collections::BTreeSet::new();
+		for &(text_index, element_index) in markers {
+			if !identities.insert((text_index, element_index)) {
+				return Err("Text marker was selected twice");
+			}
+			let part = self.0.get(text_index).ok_or("Input part is missing")?;
+			if part["type"] != "text" {
+				return Err("Selected marker does not belong to text");
+			}
+			let element = elements(part)?.get(element_index).ok_or("Text marker is missing")?;
+			selected.entry(text_index).or_default().push((element_index, element_range(element)?));
+		}
+		let mut updated = self.clone();
+		for (text_index, mut targets) in selected {
+			let original = elements(&self.0[text_index])?;
+			let retained: Vec<_> = original
+				.iter()
+				.enumerate()
+				.filter(|(index, _)| !identities.contains(&(text_index, *index)))
+				.map(|(_, element)| element.clone())
+				.collect();
+			updated.0[text_index]["text_elements"] = Value::Array(retained);
+			targets.sort_by_key(|(_, range)| (range.start, range.end));
+			if targets.windows(2).any(|pair| pair[0].1.end > pair[1].1.start) {
+				return Err("Selected text markers overlap");
+			}
+			for (_, range) in targets.into_iter().rev() {
+				updated.replace_text(text_index, range, "")?;
+			}
+		}
+		updated.remove_part(part_index)?;
+		*self = updated;
+		Ok(())
+	}
+
 	/// Check locally editable structure, including data loaded from disk.
 	pub fn validate(&self) -> Result<(), &'static str> {
 		if self.0.is_empty() {
@@ -321,6 +371,50 @@ mod tests {
 		assert!(!draft.parts().iter().any(|part| part.get("fileId").is_some()));
 		assert_eq!(draft.parts()[3]["type"], "audio");
 		assert!(editor.remove_part(0).is_err());
+	}
+
+	#[test]
+	fn removing_bound_input_is_atomic_and_does_not_search_plain_text() {
+		let mut draft = sample();
+		let image = draft.parts()[3].clone();
+		draft.remove_bound_part(1, &[(0, 0)]).unwrap();
+		assert_eq!(draft.parts()[0]["text"], "你  end");
+		assert_eq!(draft.parts()[0]["text_elements"], json!([]));
+		assert_eq!(draft.parts()[2], image);
+		assert_eq!(draft.parts()[0]["extension"], "retain");
+		let mut original = sample();
+		assert!(original.remove_bound_part(1, &[(0, 0), (0, 0)]).is_err());
+		assert_eq!(original, sample());
+		assert!(original.remove_bound_part(1, &[(0, 99)]).is_err());
+		assert_eq!(original, sample());
+		original.remove_bound_part(1, &[]).unwrap();
+		assert_eq!(original.parts()[0], sample().parts()[0]);
+		let mut overlapping = sample();
+		overlapping.0[0]["text_elements"]
+			.as_array_mut()
+			.unwrap()
+			.push(json!({"byteRange":{"start":7,"end":10},"placeholder":"overlap"}));
+		let before = overlapping.clone();
+		assert!(overlapping.remove_bound_part(1, &[(0, 0)]).is_err());
+		assert_eq!(overlapping, before);
+		assert!(overlapping.remove_bound_part(1, &[(0, 0), (0, 1)]).is_err());
+		assert_eq!(overlapping, before);
+	}
+
+	#[test]
+	fn removing_multiple_markers_remaps_retained_unicode_ranges() {
+		let mut draft = PromptDraft::new(vec![
+			json!({"type":"text","text":"a界b好c","text_elements":[
+				{"byteRange":{"start":1,"end":4},"placeholder":"first"},
+				{"byteRange":{"start":5,"end":8},"placeholder":"keep"},
+				{"byteRange":{"start":8,"end":9},"placeholder":"last"}]}),
+			json!({"type":"image","fileId":"remove"}),
+		])
+		.unwrap();
+		draft.remove_bound_part(1, &[(0, 2), (0, 0)]).unwrap();
+		assert_eq!(draft.parts()[0]["text"], "ab好");
+		assert_eq!(draft.parts()[0]["text_elements"][0]["byteRange"], json!({"start":2,"end":5}));
+		assert_eq!(draft.parts()[0]["text_elements"][0]["placeholder"], "keep");
 	}
 
 	#[test]
