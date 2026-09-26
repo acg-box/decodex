@@ -60,7 +60,7 @@ impl SqliteStore {
 			|| !valid_id(&o.review_id)
 			|| !valid_id(&o.connection_id)
 			|| o.generation_id.as_deref().is_some_and(|s| !valid_id(s))
-			|| o.event_json.len() > 256 * 1024
+			|| o.event_json.len() > decodex_core::MAX_NATIVE_MESSAGE_BYTES
 		{
 			return Err(StoreError::InvalidInput("invalid Guardian observation"));
 		}

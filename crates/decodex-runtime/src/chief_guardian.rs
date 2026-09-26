@@ -163,7 +163,11 @@ mod tests {
 	}
 	#[test]
 	fn withheld_or_unknown_action_details_cannot_be_approved() {
-		for command in ["sk-".to_owned() + &"A".repeat(60), "x".repeat(100_000)] {
+		for command in [
+			"sk-".to_owned() + &"A".repeat(60),
+			"x".repeat(100_000),
+			"界".repeat(100_000) + " exact-required-suffix",
+		] {
 			let mut row = denial();
 			let mut event: serde_json::Value = serde_json::from_str(&row.event_json).unwrap();
 			event["action"]["command"] = json!(command);

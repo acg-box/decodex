@@ -913,6 +913,49 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn large_guardian_action_survives_reopen_without_approval() {
+		let directory = tempfile::tempdir().expect("Guardian fixture directory");
+		let path = directory.path().join("large-guardian.sqlite3");
+		let store = SqliteStore::open_test(&path).expect("Guardian fixture store");
+		seed(&store).await;
+		assert_guardian_observation_ownership(&store).await;
+		let mut observation = guardian_observation("root", Some(generation_id(1).as_str().into()));
+		observation.review_id = "large-action".into();
+		let mut event: serde_json::Value =
+			serde_json::from_str(&observation.event_json).expect("fixture event");
+		event["reviewId"] = serde_json::json!(observation.review_id);
+		event["action"]["command"] =
+			serde_json::json!("界".repeat(100_000) + " exact-required-suffix");
+		observation.event_json = event.to_string();
+		assert!(observation.event_json.len() > 256 * 1024);
+		let expected = observation.event_json.clone();
+		store
+			.record_chief_guardian_review(observation)
+			.await
+			.expect("retain complete native action");
+		drop(store);
+		let reopened = SqliteStore::open_test(&path).expect("reopen Guardian store");
+		let rows = reopened
+			.read_chief_guardian_reviews("root".into(), None, 8)
+			.await
+			.expect("saved reviews");
+		let saved =
+			rows.iter().find(|row| row.review_id == "large-action").expect("large review retained");
+		assert_eq!(saved.event_json, expected);
+		assert!(saved.approval_state.is_none());
+		let mut oversized = guardian_observation("root", Some(generation_id(1).as_str().into()));
+		let mut oversized_event: serde_json::Value =
+			serde_json::from_str(&oversized.event_json).expect("valid oversized fixture");
+		oversized_event["action"]["command"] =
+			serde_json::json!("x".repeat(decodex_core::MAX_NATIVE_MESSAGE_BYTES));
+		oversized.event_json = oversized_event.to_string();
+		assert!(matches!(
+			reopened.record_chief_guardian_review(oversized).await,
+			Err(StoreError::InvalidInput(_))
+		));
+	}
+
+	#[tokio::test]
 	async fn guardian_observation_and_submission_require_current_process_and_root_ownership() {
 		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("guardian.sqlite3")).unwrap();
