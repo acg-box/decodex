@@ -70,27 +70,34 @@ was found or that creation succeeded. Do not infer identity from the newest thre
 
 R03's remaining implementation questions have source dispositions and targeted
 qualification. PR1519 merged these additions as
-`8407e7a102f8df4385ff3c4ffbdbedf4caf823a7`; R03 is closed. Signed whole-app quit, menu, Dock, relaunch, export and blank-task acceptance remain
+`8407e7a102f8df4385ff3c4ffbdbedf4caf823a7`. The later source-review finding and
+current optional-workbench boundary are recorded below. Signed whole-app quit,
+menu, Dock, relaunch, export and blank-task acceptance remain
 in R07/R12. Live voice and remaining recap acceptance stay in R06. No result in this
 record establishes public release, installation or complete upstream catch-up.
 
-## Reopened inherited initial-source review boundary
+## Restored inherited source review and optional workbench boundary
 
-The current routing and rotation qualifications above remain valid. They do not
-close the separate inherited initial-model-source workflow. Its preserved native
-fixture saved the original message, directory and model choice, bound them to an
-account revision, rejected routing after that source changed, queried replacement
-native defaults without starting a turn, and confirmed once with cold readback.
+The current routing and rotation qualifications above remain valid. The later
+inherited-file audit found a separate missing initial-model-source workflow.
+PR1537 and PR1538 restored source persistence, changed-source routing refusal,
+review of saved input and directory, explicit confirmation, and source-bound
+creation receipt recovery. The current nullable effort and service tier contracts
+remain in effect.
 
-Current `InitialModelCatalogResult::Available` still reports the account revision
-and directory after discovery. However, `CreateConversationRecord` does not retain
-`initial_model_source`, the old `initial_model_source_changed` routing outcome is
-absent, and the public conversation-model-review query/confirmation path was not
-found. The ordinary native-default and Chief task-model controls are separate
-consumers; their existence does not prove this workflow was migrated.
+Installed-native qualification passed for saved-directory discovery without
+inference, exactly one inference across confirmation retries, cold readback and
+retained project warnings. Protocol, service and desktop tests also passed.
+These facts replace the earlier claim that the implementation was absent.
 
-Keep R03 open for this reconciliation. Determine whether the preserved behavior
-must be restored or has an explicit replacement, with source-bound confirmation,
-no duplicate dispatch, and saved-directory qualification. Do not copy the old SQL
-or mark missing modules as retired without that decision and evidence. The
-initial-source review fixture and its registration remain open inherited rows.
+Normal signed desktop inspection did not expose an entry to the ordinary History
+workbench. The current startup and main shortcuts select Chief. A seeded ordinary
+task therefore remained review-required with no provider request; the interactive
+confirmation acceptance did not pass. See `initial-model-source-recovery.md` for
+the exact boundary and preserved diagnostic evidence.
+
+Keep R03 open while the final capability inventory distinguishes this optional,
+currently unexposed ordinary-workbench surface from active Chief/native routing.
+Do not add a new navigation control merely to make a fixture pass. The user can
+assess the complete optional surface during removal review. Shared signed desktop
+lifecycle acceptance remains in R07/R12.

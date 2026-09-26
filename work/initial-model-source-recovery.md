@@ -75,3 +75,32 @@ or final signed desktop presentation.
 
 Final signed desktop acceptance remains open. Maintenance automation remains
 paused.
+
+## Signed desktop inspection on 2026-09-26
+
+A normal signed application built from
+`048768e2e6b0664753d5cc2deddcf209836d873c`, with a clean build identity and protocol
+2.90, passed bundle, embedded-component and signature verification. The isolated
+same-UID service contained one ordinary task that required model review.
+
+The running application displayed Main and Projects. The inspected File menu and
+General settings did not expose History. The source confirms that normal startup
+selects Chief and that Command-1 and Command-2 both select Chief. The
+`ActivateConversations` action still has a declaration, handler and registration,
+but the source search found no production menu or key binding that dispatches it.
+The History renderer and its programmatic UI tests remain in the source.
+
+The inspection did not reach the ordinary task review controls. The desktop quit
+normally. After service shutdown, readback retained the review flag and zero turns.
+The interactive fixture failed its required one-submission assertion with zero
+provider requests. This is failed desktop acceptance, not a successful no-replay
+qualification. The diagnostic patch, output and readback were preserved outside
+application sources; the isolated home was removed after process and open-file
+checks. No navigation control was added to make the test pass.
+
+Treat the ordinary History workbench as a separate optional, currently unexposed
+product surface in the final removal review. Its restored protocol and storage
+contracts do not establish that it is part of the current Chief user journey.
+The user can assess the complete surface and its consumers before removal. R03
+and shared desktop acceptance remain open; native fixture success does not close
+this user-interface gap.

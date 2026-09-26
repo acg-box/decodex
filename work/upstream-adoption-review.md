@@ -1,9 +1,10 @@
 # Upstream adoption review
 
 Original capability-table snapshot: Decodex `3f131d80b9e90d2badf2394249bbf3b0266f72d3`.
-Current delivery snapshot: `63f3b110afb6f40fb55cbd46d1ef9ac13acd56a9` (PR1523).
-The inherited byte-comparison baseline remains PR1507. Three dependency and nine
-source dispositions have since been refreshed; the complete register is not closed.
+Current delivery snapshot: `1f35c8d695e8e912c160da6612e59bf0ea34a11b` (through PR1539).
+The inherited byte-comparison baseline remains PR1507. Subsequent source and
+dependency dispositions are recorded in the inherited-file audit; the register
+is not closed.
 Fixed upstream range:
 `a397079287e6638b39dda329835350d93222681f..595cc91e8cbb1c2ca822d0311dcf12709410c582`.
 
@@ -32,7 +33,7 @@ Later implementation does not close a group without its remaining acceptance.
 | --- | --- | --- |
 | R01 Permission settings | Native, journal, service and desktop flow; recorded group closure. | Shared signed application acceptance remains in R07/R12. |
 | R02 Plugin, hook and app-link settings | Recorded group closure; distinct from embedded App UI. | Shared signed acceptance remains in R07/R12; widgets remain R05. |
-| R03 Models, defaults and routing | Native defaults, explicit choices, ordinary recovery and profileless draft storage are merged. | PR1519 qualified the current routing consumers and native rotation. Reopened for the inherited initial-model-source review workflow: its durable source binding and confirmation have not been mapped to a current owner. See [routing acceptance](upstream-routing-acceptance.md). Shared signed lifecycle remains R07/R12. |
+| R03 Models, defaults and routing | Native defaults, explicit choices, ordinary recovery and profileless drafts are merged. PR1537/1538 restore ordinary model-source review with installed-native qualification. | Current routing and native rotation were qualified by PR1519. The signed desktop does not expose the ordinary History entry; classify this surface separately for optional removal review. Its desktop confirmation was not accepted. See [source review](initial-model-source-recovery.md). Shared signed lifecycle remains R07/R12. |
 | R04 Attachments, media and context | Native/public media reads, signed desktop Preview, resource add/list/remove and native context authority qualified. | Closed by PR1522; see [media acceptance and limits](upstream-media-acceptance.md). Shared installed lifecycle remains R07/R12. |
 | R05 Interactive MCP App UI | Closed by PR1521: exact native documents, isolated WebKit, confirmed callbacks and durable recovery. | See [App UI contract and limits](mcp-app-ui.md). Signed local packaging and installed-native/service/desktop fixture passed; shared installed lifecycle remains R07/R12. Optional capability. |
 | R06 Prompt editing and recap | Recap service/UI and opt-in automatic eligibility are implemented. Prompt editing now includes canonical desktop editing, durable confirmation, history handback and explicit resend. | PR1523 verifies combined lost-reply recovery and normal signed-app recap/quit/relaunch interactions. Foreground/background, opt-out, live voice and remaining shared desktop acceptance in R07/R12 stay open. See the feature notes below. |
@@ -202,3 +203,19 @@ consumer. Optional product additions require notification and user selection.
 The scheduled upstream maintainer remains PAUSED, including after manual completion.
 The old instruction to restore daily UTC20:05 execution is superseded. Automatic
 recaps are a separate, opt-in product preference; they do not enable maintenance.
+
+## Optional ordinary History surface
+
+The initial-model-source storage and protocol flow was restored in PR1537 and
+PR1538. It belongs to the ordinary direct-conversation workbench, whose current
+navigation exposure differs from Chief. Normal signed desktop inspection found
+Main and Projects, with no supported History entry in the inspected shell. The
+source retains the History renderer and programmatic tests, but normal startup
+and both main shortcuts select Chief.
+
+Classify this complete ordinary-workbench surface as optional for the user's
+removal review. Do not treat its presence or passing service tests as proof that
+Chief requires it. Do not add navigation solely to complete an acceptance fixture.
+The existing account-routing and native model-default correctness requirements
+remain distinct. See `initial-model-source-recovery.md` for the failed desktop
+attempt, preserved input, zero provider requests and the remaining boundary.
