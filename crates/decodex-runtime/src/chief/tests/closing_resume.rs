@@ -223,3 +223,75 @@ async fn closing_retry_requires_both_the_exact_thread_and_native_error_code() {
 		assert_eq!(resumes, 1);
 	}
 }
+
+#[tokio::test]
+async fn closing_recovery_confirms_exact_steer_history_without_resubmitting_input() {
+	for terminal in [false, true] {
+		let history = json!({"_resume_failures":1,"_resume_closing":true,
+			"opaque thread/1":{"thread":{"id":"opaque thread/1",
+				"status":{"type":if terminal {"idle"} else {"active"}},
+				"turns":[{"id":"opaque turn/1",
+					"status":if terminal {"completed"} else {"inProgress"},
+					"items":[{"type":"userMessage","id":"accepted-input","clientId":"confirmed",
+						"content":[{"type":"text","text":"Identical input"}]}]}]}}});
+		let (mut original, mut sent, directory) = fixture_with_history(history).await;
+		original.start_chief("chief", "Coordinate").await.unwrap();
+		for key in ["confirmed", "unconfirmed"] {
+			original
+				.store
+				.begin_chief_steer(
+					"chief".into(),
+					"opaque turn/1".into(),
+					key.into(),
+					json!({"text":"Identical input","source":"user"}).to_string(),
+				)
+				.await
+				.unwrap();
+		}
+		let paths =
+			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+				.unwrap()
+				.paths();
+		let mut recovered = ChiefCoordinator::new(
+			decodex_database::SqliteStore::open(&paths).unwrap(),
+			original.client.clone(),
+			original.config.clone(),
+		)
+		.unwrap();
+		drop(original);
+		while sent.try_recv().is_ok() {}
+		recovered.recover_persisted().await.unwrap();
+		assert_eq!(recovered.closing_resumes.len(), 1);
+		recovered.closing_resumes.get_mut("chief").unwrap().next = tokio::time::Instant::now();
+		recovered.check_due_followups(0).await.unwrap();
+		assert!(recovered.closing_resumes.is_empty());
+		let reopened = decodex_database::SqliteStore::open(&paths).unwrap();
+		for (key, confirmed) in [("confirmed", true), ("unconfirmed", false)] {
+			assert_eq!(
+				reopened
+					.chief_steer_confirmed(
+						"chief".into(),
+						"opaque thread/1".into(),
+						"opaque turn/1".into(),
+						key.into()
+					)
+					.await
+					.unwrap(),
+				confirmed
+			);
+		}
+		let (events, _) = reopened.read_chief_transcript("chief".into(), None, 100).await.unwrap();
+		assert_eq!(events.iter().filter(|event| event.event_kind == "user_message").count(), 1);
+		let mut resumes = 0;
+		while let Ok(request) = sent.try_recv() {
+			assert!(
+				["thread/resume", "thread/read", "thread/turns/list", "thread/items/list"]
+					.contains(&request["method"].as_str().unwrap()),
+				"unexpected request: {request}"
+			);
+			assert_eq!(request["params"]["threadId"], "opaque thread/1");
+			resumes += usize::from(request["method"] == "thread/resume");
+		}
+		assert_eq!(resumes, 2);
+	}
+}
