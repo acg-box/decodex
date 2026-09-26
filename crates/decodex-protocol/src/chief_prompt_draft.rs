@@ -418,6 +418,73 @@ mod tests {
 	}
 
 	#[test]
+	fn large_native_input_and_conflicting_copy_survive_the_existing_draft_store() {
+		use crate::{
+			ClientDraftStore, DesktopDraftDocument, DesktopProfileDraft, EntityId, WireText,
+		};
+		let input = PromptDraft::new(vec![
+			json!({"type":"text","text":"Original"}),
+			json!({"type":"image","url":format!("data:image/png;base64,{}", "A".repeat(6 * 1024 * 1024))}),
+		])
+		.unwrap();
+		let review = "b".repeat(64);
+		let scope = "a".repeat(64);
+		let mut profile = DesktopProfileDraft::default();
+		profile.composer.text = "Other unsent input".into();
+		profile.prompt_edits.insert(
+			review.clone(),
+			DesktopPromptEditDraft {
+				work_id: EntityId::new("work").unwrap(),
+				thread_id: WireText::new("thread").unwrap(),
+				before_turn_id: WireText::new("turn").unwrap(),
+				item_id: WireText::new("item").unwrap(),
+				original_hash: input.fingerprint().unwrap(),
+				review_token: WireText::new(&review).unwrap(),
+				receipt_id: Some(42),
+				handback_pending: true,
+				input,
+			},
+		);
+		let mut baseline = DesktopDraftDocument::default();
+		baseline.profiles.insert(scope.clone(), profile);
+		let mut local = baseline.clone();
+		local
+			.profiles
+			.get_mut(&scope)
+			.unwrap()
+			.prompt_edits
+			.get_mut(&review)
+			.unwrap()
+			.input
+			.replace_text(0, 0..8, "Local")
+			.unwrap();
+		let mut remote = baseline.clone();
+		remote
+			.profiles
+			.get_mut(&scope)
+			.unwrap()
+			.prompt_edits
+			.get_mut(&review)
+			.unwrap()
+			.input
+			.replace_text(0, 0..8, "Remote")
+			.unwrap();
+		let merged = local.reconcile_keep_both(&baseline, &remote).unwrap();
+		let encoded = merged.encode().unwrap();
+		assert!(encoded.len() > 12 * 1024 * 1024);
+		let directory = tempfile::tempdir().unwrap();
+		let root = directory.path().canonicalize().unwrap().join("desktop");
+		let store = ClientDraftStore::open_at(&root).unwrap();
+		store.save(0, &encoded).unwrap();
+		drop(store);
+		let reopened = ClientDraftStore::open_at(&root).unwrap();
+		let restored = DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
+		assert!(restored == merged);
+		assert_eq!(restored.profiles[&scope].composer.text, "Other unsent input");
+		assert_eq!(restored.recovered.len(), 1);
+	}
+
+	#[test]
 	fn saved_canonical_editor_survives_reopen_and_keeps_an_occupied_composer() {
 		use crate::{
 			ClientDraftStore, DesktopDraftDocument, DesktopProfileDraft, EntityId, WireText,

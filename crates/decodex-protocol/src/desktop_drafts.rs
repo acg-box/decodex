@@ -564,7 +564,7 @@ mod tests {
 		assert!(original.encode().is_err());
 		let mut original = document();
 		let profile = original.profiles.values_mut().next().unwrap();
-		for index in 0..128 {
+		for index in 0..256 {
 			profile.parked.insert(
 				format!("work-{index}"),
 				DesktopComposerDraft {
@@ -574,6 +574,8 @@ mod tests {
 				},
 			);
 		}
+		let other = profile.clone();
+		original.profiles.insert("b".repeat(64), other);
 		assert_eq!(original.encode().unwrap_err(), "Draft snapshot is too large");
 	}
 }
