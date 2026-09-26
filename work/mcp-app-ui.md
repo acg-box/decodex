@@ -321,6 +321,23 @@ response, a silent widget, repeated close and rejected tools/call during teardow
 The prior signed artifact still represents a6688590b; it does not contain this change.
 A final signed build must include this lifecycle update before acceptance is complete.
 
+## Native display modes and dimensions
+
+The fixed upstream protocol contains preferredModelDisplayMode. The native host now
+honors fullscreen preference when the widget supports it. Fullscreen fills the owning
+window's area in the child panel; it does not create a separate macOS Space. Returning
+to inline restores the previous panel frame. The panel can also be resized normally.
+
+Initialization reports actual view dimensions and the intersection of supported host
+and declared widget modes. ui/request-display-mode returns the actual mode, including
+when a request is declined. Host-context notifications carry mode and dimensions after
+changes. This follows the [MCP Apps display-mode requirements](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx).
+
+Nine native tests passed, including actual NSPanel geometry, a widget that excludes
+fullscreen, restoration to inline, declined picture-in-picture, and notification of
+an 800 by 600 content resize. These component tests do not replace final signed visual
+acceptance. Earlier descriptions of a fixed 720 by 480-only host are superseded.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.

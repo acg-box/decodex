@@ -14,13 +14,17 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
     private var teardownID: String?
     private var teardownTask: Task<Void, Never>?
     private var handshake = false
+    private var displayMode = "inline"
+    private var availableDisplayModes = ["inline"]
+    private let changeDisplayMode: ((String) -> String)?
     private let toolCallsEnabled: Bool
     private var pendingTool: (operation: String, rpcID: Any)?
     private let observe: ([String: Any]) -> Void
 
-    init(document: McpAppDocument, toolCallsEnabled: Bool = false, observe: @escaping ([String: Any]) -> Void) throws {
+    init(document: McpAppDocument, toolCallsEnabled: Bool = false, changeDisplayMode: ((String) -> String)? = nil, observe: @escaping ([String: Any]) -> Void) throws {
         self.document = document
         self.toolCallsEnabled = toolCallsEnabled
+        self.changeDisplayMode = changeDisplayMode
         self.observe = observe
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
@@ -78,11 +82,17 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
                 return
             }
             handshake = true
+            let supported = changeDisplayMode == nil ? ["inline"] : ["inline", "fullscreen"]
+            let declared = (parameters["appCapabilities"] as? [String: Any])?["availableDisplayModes"] as? [String]
+            availableDisplayModes = supported.filter { declared == nil || declared!.contains($0) }
+            if availableDisplayModes.contains(document.preferredDisplayMode) {
+                displayMode = changeDisplayMode?(document.preferredDisplayMode) ?? "inline"
+            }
             deliver(["jsonrpc": "2.0", "id": id, "result": [
                 "protocolVersion": "2026-01-26", "hostInfo": ["name": "Decodex", "version": "1"],
                 "hostCapabilities": hostCapabilities,
-                "hostContext": ["platform": "desktop", "displayMode": "inline", "availableDisplayModes": ["inline"],
-                                "containerDimensions": ["width": 720, "height": 480],
+                "hostContext": ["platform": "desktop", "displayMode": displayMode, "availableDisplayModes": availableDisplayModes,
+                                "containerDimensions": dimensions,
                                 "locale": Locale.current.identifier, "timeZone": TimeZone.current.identifier]
             ]])
         case "ui/notifications/initialized":
@@ -94,6 +104,16 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
                 deliver(["jsonrpc": "2.0", "method": "ui/notifications/tool-result", "params": result])
             }
             observe(["type": "initialized"])
+        case "ui/request-display-mode":
+            guard initialized, let id, let parameters = value["params"] as? [String: Any],
+                  let requested = parameters["mode"] as? String else {
+                reject(id, code: -32602, message: "Invalid display mode request")
+                return
+            }
+            if availableDisplayModes.contains(requested) {
+                updateHostContext(mode: changeDisplayMode?(requested) ?? displayMode)
+            }
+            deliver(["jsonrpc": "2.0", "id": id, "result": ["mode": displayMode]])
         case "tools/call":
             guard initialized, toolCallsEnabled, let id else {
                 reject(id, code: -32601, message: "Tool calls are unavailable")
@@ -121,6 +141,19 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
             observe(["type": "ping", "id": id])
         default:
             reject(id, code: -32601, message: "This host capability is not available")
+        }
+    }
+
+    private var dimensions: [String: CGFloat] {
+        ["width": webView.bounds.width, "height": webView.bounds.height]
+    }
+
+    func updateHostContext(mode: String) {
+        guard !closed else { return }
+        displayMode = mode
+        if initialized {
+            deliver(["jsonrpc": "2.0", "method": "ui/notifications/host-context-changed",
+                     "params": ["displayMode": displayMode, "containerDimensions": dimensions]])
         }
     }
 

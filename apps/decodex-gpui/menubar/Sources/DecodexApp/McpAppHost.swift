@@ -9,6 +9,8 @@ final class McpAppHost: NSObject, NSWindowDelegate {
     private var events: [String] = []
     private var retainedEvent: UnsafeMutablePointer<CChar>?
     private var closed = false
+    private var displayMode = "inline"
+    private var inlineFrame: NSRect?
 
     init(parent: NSWindow) { self.parent = parent }
 
@@ -27,9 +29,10 @@ final class McpAppHost: NSObject, NSWindowDelegate {
               let bytes = try? JSONSerialization.data(withJSONObject: document),
               let parsed = try? McpAppDocument(data: bytes) else { return false }
         do {
-            let view = try McpAppView(document: parsed, toolCallsEnabled: command["toolCallsEnabled"] as? Bool == true) { [weak self] in self?.emit($0) }
+            let view = try McpAppView(document: parsed, toolCallsEnabled: command["toolCallsEnabled"] as? Bool == true,
+                                      changeDisplayMode: { [weak self] mode in self?.setDisplayMode(mode) ?? "inline" }) { [weak self] in self?.emit($0) }
             let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 720, height: 480),
-                                styleMask: [.titled, .closable], backing: .buffered, defer: false)
+                                styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             panel.title = "App"
             panel.isReleasedWhenClosed = false
             panel.delegate = self
@@ -41,6 +44,27 @@ final class McpAppHost: NSObject, NSWindowDelegate {
             panel.makeKeyAndOrderFront(nil)
             return true
         } catch { return false }
+    }
+
+    /// Fullscreen uses the host window's available area, not a separate macOS Space.
+    private func setDisplayMode(_ mode: String) -> String {
+        guard !closed, let panel, let parent, ["inline", "fullscreen"].contains(mode) else { return displayMode }
+        guard mode != displayMode else { return displayMode }
+        if mode == "fullscreen" {
+            inlineFrame = panel.frame
+            displayMode = mode
+            panel.setFrame(parent.frame, display: true)
+        } else {
+            displayMode = mode
+            if let inlineFrame { panel.setFrame(inlineFrame, display: true) }
+            inlineFrame = nil
+        }
+        view?.updateHostContext(mode: displayMode)
+        return displayMode
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        view?.updateHostContext(mode: displayMode)
     }
 
     func poll() -> UnsafePointer<CChar>? {
