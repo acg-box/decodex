@@ -534,6 +534,20 @@ pub enum ChiefActionDto {
 		reviewer: crate::ChiefReviewer,
 	},
 
+	/// Publish a model and effort for subsequent captures in one reviewed running turn.
+	SetLiveModel {
+		/// Exact owning task.
+		work_id: crate::EntityId,
+		/// Exact active turn, never a successor.
+		turn_id: crate::EntityId,
+		/// Source and shared settings receipt identity.
+		review_token: crate::WireText,
+		/// Model from the current account-bound catalog.
+		model: crate::ConversationModel,
+		/// Advertised effort for the selected model.
+		effort: crate::ConversationReasoningEffort,
+	},
+
 	/// Send explicit user input to a verified native descendant that accepts direct input.
 	NativeAgentInput {
 		/// Exact local owner whose native descendants may be addressed.

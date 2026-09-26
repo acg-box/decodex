@@ -31,10 +31,14 @@ upstream `595cc91e8cbb1c2ca822d0311dcf12709410c582` defines both contracts in
 sequences in `app-server/tests/suite/v2/turn_settings_update.rs`. The installed
 0.158.0-alpha.2 generated schema includes the live method.
 
-The restored adapter and bridge have focused local tests. This does not complete
-the feature. Its service and durable journal integration, gated desktop control,
-and installed-native sequence test remain open. Keep the native experimental
-feature setting unchanged. Include this control in the user's removal review.
+PR1566 restores transport and PR1567 restores the shared journal. The service,
+local protocol 2.92 and explicit desktop control now have focused validation.
+Installed-native fixtures pass A/B/A, disabled-feature A/A/A, cold defaults,
+child inheritance and model-owned spawn descriptions. Rendered socket tests
+verify explicit submission and lost-reply readback without replay.
+See [current-turn model control](live-model-control.md). Signed desktop visual
+acceptance remains in R07/R12. Keep the native experimental feature setting
+unchanged and retain this optional control in the user's removal review.
 
 ## Current completion boundary
 

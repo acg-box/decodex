@@ -27,6 +27,27 @@ and native feature checks, shared durable journal, desktop control and installed
 native current-turn/next-turn qualification remain open. No local protocol,
 configuration, feature flag or automation changes occur in this batch.
 
+## Current-turn model control restored on 2026-09-26
+
+Verify the original SHA-256 and read the full snapshot difference for five files.
+Close their content reconciliation entries with the following dispositions:
+
+| File | Complete disposition |
+| --- | --- |
+| `apps/decodex-gpui/src/chief_live_settings.rs` | Restore model/effort draft, explicit apply and receipt display. Keep the current source, connection, child-selection and fresh-user-review checks. Use canonical `ChiefReviewer`. Extract action construction without changing the catalog check. |
+| `crates/decodex-protocol/src/chief_live_settings.rs` | Restore model receipt and choices. Keep the canonical shared reviewer enum and clarify settings-publication comments. |
+| `crates/decodex-runtime/src/chief_live_settings.rs` | Restore account-catalog and native task-feature eligibility, exact-turn model publication and shared journal use. Keep canonical reviewer types and known-unsent refusal precedence over later source changes. |
+| `crates/decodex-runtime/src/account_launch/chief_process_native_live_model_tests.rs` | Restore the full held-tool, cold-next-turn, saved-default and receipt scenario with existing fixture owners. Also run the disabled-feature case and reject an absent catalog model before reservation. |
+| `crates/decodex-runtime/src/account_launch/chief_process_native_child_model_tests.rs` | Restore both inherited child/model-description assertions with the current shared HTTP fixture. Both pass on installed 0.158.0-alpha.2; update the stale ignored-test explanation. |
+
+The adapter and shared journal have separate PR1566/1567 evidence. Local protocol
+2.92 connects the action and explicit catalog query to the host and desktop.
+Capability discovery now shares the existing feature pager for task-scoped reads.
+The wire-test helper and other shared files remain open for their full differences.
+See [current-turn model control](live-model-control.md) for native sequence evidence,
+optional removal boundaries and pending signed desktop acceptance. No configuration
+or maintenance automation is enabled.
+
 ## Four settings and review owners reconciled on 2026-09-26
 
 Verify the original SHA-256 and inspect every difference in these complete files.

@@ -63,7 +63,9 @@ pub use chief_plugins::{ChiefPluginOutcome, ChiefPluginSelectionState};
 mod chief_permissions;
 pub use chief_permissions::{ChiefPermissionOutcome, ChiefPermissionProfile, ChiefPermissionState};
 mod chief_live_settings;
-pub use chief_live_settings::{ChiefLiveReviewerOutcome, ChiefLiveReviewerState, ChiefReviewer};
+pub use chief_live_settings::{
+	ChiefLiveModelSelection, ChiefLiveReviewerOutcome, ChiefLiveReviewerState, ChiefReviewer,
+};
 mod chief_model_settings;
 mod chief_timeline;
 pub use chief_model_settings::ChiefModelSettingsResult;
@@ -228,7 +230,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 91 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 92 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

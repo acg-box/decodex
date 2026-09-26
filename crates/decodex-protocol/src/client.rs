@@ -721,10 +721,11 @@ impl ChiefClient {
 		}
 	}
 
-	/// Inspect one live task and its last local reviewer publication.
-	pub async fn live_reviewer(
+	/// Inspect one live task and its last local settings publication.
+	pub async fn live_settings(
 		&self,
 		work_id: EntityId,
+		include_models: bool,
 	) -> Result<crate::ChiefLiveReviewerState, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
@@ -733,8 +734,10 @@ impl ChiefClient {
 		};
 		let completed = time::timeout(
 			Duration::from_secs(45),
-			transport
-				.query_inner("chief-live-reviewer", QueryPayload::GetChiefLiveReviewer { work_id }),
+			transport.query_inner(
+				"chief-live-reviewer",
+				QueryPayload::GetChiefLiveReviewer { work_id, include_models },
+			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
@@ -1873,7 +1876,8 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 		crate::ChiefActionDto::UploadPromptInput { upload, .. }
 		| crate::ChiefActionDto::CompletePromptInputUpload { upload } => &upload.work_id,
 		crate::ChiefActionDto::SendPromptInput { work_id, .. }
-		| crate::ChiefActionDto::SetLiveReviewer { work_id, .. } => work_id,
+		| crate::ChiefActionDto::SetLiveReviewer { work_id, .. }
+		| crate::ChiefActionDto::SetLiveModel { work_id, .. } => work_id,
 		crate::ChiefActionDto::SelectPermissions { work_id, .. } => work_id,
 		crate::ChiefActionDto::SetTaskPlugin { work_id, .. } => work_id,
 		crate::ChiefActionDto::SetTaskModel { work_id, .. } => work_id,
@@ -4719,7 +4723,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 91 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 92 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 

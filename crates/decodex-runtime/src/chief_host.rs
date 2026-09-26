@@ -590,22 +590,23 @@ impl ChiefHost {
 	pub(crate) async fn live_reviewer(
 		&self,
 		work: &str,
+		include_models: bool,
 	) -> decodex_protocol::ChiefLiveReviewerState {
-		crate::chief_live_settings::read(&self.store, || async {
+		crate::chief_live_settings::read_options(&self.store, include_models, || async {
 			let owner = self.store.get_chief_work_item(work.into()).await.ok()?;
 			self.timeline_source(work, &owner.codex_thread_id?).await
 		})
 		.await
 	}
 
-	async fn set_live_reviewer(
+	async fn set_live_settings(
 		&self,
 		ids: (
 			&decodex_protocol::EntityId,
 			&decodex_protocol::EntityId,
 			&decodex_protocol::WireText,
 		),
-		reviewer: decodex_protocol::ChiefReviewer,
+		edit: crate::chief_live_settings::LiveEdit,
 		key: &str,
 	) -> Result<String, ChiefHostError> {
 		let (work, turn, review) = (ids.0.as_str(), ids.1.as_str(), ids.2.as_str());
@@ -617,7 +618,7 @@ impl ChiefHost {
 			},
 			turn,
 			review,
-			reviewer,
+			edit,
 			key,
 		)
 		.await?;
@@ -1317,7 +1318,15 @@ impl ChiefHost {
 				)
 				.await,
 			ChiefActionDto::SetLiveReviewer { work_id, turn_id, review_token, reviewer } =>
-				self.set_live_reviewer((&work_id, &turn_id, &review_token), reviewer, key).await,
+				self.set_live_settings((&work_id, &turn_id, &review_token), reviewer.into(), key)
+					.await,
+			ChiefActionDto::SetLiveModel { work_id, turn_id, review_token, model, effort } =>
+				self.set_live_settings(
+					(&work_id, &turn_id, &review_token),
+					crate::chief_live_settings::LiveEdit::Model { model, effort },
+					key,
+				)
+				.await,
 			_ => Err(ChiefHostError::Rejected("Unsupported settings action.")),
 		}
 	}
@@ -1354,7 +1363,8 @@ impl ChiefHost {
 			| Action::SetTaskPlugin { .. }
 			| Action::SetTaskModel { .. }
 			| Action::SelectPermissions { .. }
-			| Action::SetLiveReviewer { .. }) => self.handle_settings(key.as_str(), action).await,
+			| Action::SetLiveReviewer { .. }
+			| Action::SetLiveModel { .. }) => self.handle_settings(key.as_str(), action).await,
 			Action::NativeAgentInput { work_id, thread_id, text, expected_turn } =>
 				self.native_agent_input(
 					(work_id.as_str(), thread_id.as_str()),

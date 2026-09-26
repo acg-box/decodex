@@ -1,10 +1,26 @@
-//! Source-bound live reviewer inspection and durable, non-replayed publication.
+//! Source-bound live settings inspection and durable, non-replayed publication.
 use crate::chief_usage_estimate::Source;
-use decodex_codex::app_server_client::{ClientError, LiveReviewer, LiveSettingsOutcome};
+use decodex_codex::app_server_client::{
+	ClientError, LiveModelUpdate, LiveReviewer, LiveSettingsOutcome,
+};
 use decodex_database::{ChiefLiveSettingsAttempt, ChiefLiveSettingsEdit, SqliteStore};
 use decodex_protocol::{ChiefLiveReviewerState as State, ChiefReviewer};
 use serde_json::json;
 use sha2::{Digest as _, Sha256};
+
+pub(crate) enum LiveEdit {
+	Reviewer(ChiefReviewer),
+	Model {
+		model: decodex_protocol::ConversationModel,
+		effort: decodex_protocol::ConversationReasoningEffort,
+	},
+}
+
+impl From<ChiefReviewer> for LiveEdit {
+	fn from(reviewer: ChiefReviewer) -> Self {
+		Self::Reviewer(reviewer)
+	}
+}
 
 struct Inspection {
 	state: State,
@@ -48,6 +64,18 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 		})
 		.transpose()
 		.ok()?;
+	let last_model = prior
+		.as_ref()
+		.and_then(|p| match &p.edit {
+			ChiefLiveSettingsEdit::Model { model, effort } => Some((model, effort)),
+			_ => None,
+		})
+		.and_then(|(model, effort)| {
+			Some(decodex_protocol::ChiefLiveModelSelection {
+				model: decodex_protocol::ConversationModel::new(model.clone()).ok()?,
+				effort: serde_json::from_value(json!(effort)).ok()?,
+			})
+		});
 	let last_outcome =
 		prior.as_ref().map(|p| serde_json::from_value(json!(p.outcome))).transpose().ok()?;
 	let facts = json!([
@@ -71,12 +99,27 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 			review_token: decodex_protocol::WireText::new(token).ok()?,
 			can_update,
 			last_reviewer,
+			last_model,
+			model_choices: None,
 			last_outcome,
 		},
 	})
 }
 
+#[cfg(test)]
 pub(crate) async fn read<F, Fut>(store: &SqliteStore, source: F) -> State
+where
+	F: Fn() -> Fut,
+	Fut: std::future::Future<Output = Option<Source>>,
+{
+	read_options(store, false, source).await
+}
+
+pub(crate) async fn read_options<F, Fut>(
+	store: &SqliteStore,
+	include_models: bool,
+	source: F,
+) -> State
 where
 	F: Fn() -> Fut,
 	Fut: std::future::Future<Output = Option<Source>>,
@@ -84,9 +127,45 @@ where
 	let Some(before) = source().await else {
 		return State::Unavailable;
 	};
-	let result = inspect(store, &before).await;
+	let mut result = inspect(store, &before).await;
+	if include_models && let Some(ref mut inspected) = result {
+		let choices = tokio::time::timeout(std::time::Duration::from_secs(16), async {
+			if crate::chief_capabilities::feature_enabled(
+				&before.client,
+				"step_model_switching",
+				Some(&before.key.thread),
+			)
+			.await != Some(true)
+			{
+				return None;
+			}
+			match crate::chief_capabilities::read(&before.client).await {
+				decodex_protocol::ChiefCapabilitiesResult::Available { models, .. } => Some(
+					models
+						.into_iter()
+						.filter(|m| m.model.as_str() != "gpt-reserve" && !m.efforts.is_empty())
+						.collect(),
+				),
+				_ => None,
+			}
+		})
+		.await
+		.ok()
+		.flatten();
+		if let State::Available { model_choices, .. } = &mut inspected.state {
+			*model_choices = choices;
+		}
+	}
 	if source().await.is_none_or(|after| after.key != before.key) {
 		return State::Unavailable;
+	}
+	if include_models {
+		let current = inspect(store, &before).await;
+		let unchanged = matches!((&result,&current), (Some(a),Some(b)) if matches!((&a.state,&b.state),
+            (State::Available { review_token:a,.. },State::Available { review_token:b,.. }) if a==b));
+		if !unchanged {
+			return State::Unavailable;
+		}
 	}
 	result.map_or(State::Unavailable, |v| v.state)
 }
@@ -96,7 +175,7 @@ pub(crate) async fn write<F, Fut>(
 	source: F,
 	turn: &str,
 	review: &str,
-	reviewer: ChiefReviewer,
+	edit: LiveEdit,
 	attempt: &str,
 ) -> Result<(), crate::chief_host::ChiefHostError>
 where
@@ -107,7 +186,7 @@ where
 	let before = source().await.ok_or(Rejected("Live task source is unavailable."))?;
 	let inspected = inspect(store, &before)
 		.await
-		.ok_or(Rejected("Refresh the live task before changing its reviewer."))?;
+		.ok_or(Rejected("Refresh the live task before changing its settings."))?;
 	let State::Available { turn_id, review_token, can_update, .. } = &inspected.state else {
 		return Err(Rejected("Live task is unavailable."));
 	};
@@ -118,9 +197,22 @@ where
 		.client
 		.history_guard(before.key.history_revision)
 		.ok_or(Rejected("Native history changed. Refresh the task."))?;
-	let (native, value) = match reviewer {
-		ChiefReviewer::User => (LiveReviewer::User, "user"),
-		ChiefReviewer::AutoReview => (LiveReviewer::AutoReview, "auto_review"),
+	let model_update = prepare_model_update(&before, turn, &edit).await?;
+	let stored_edit = match &edit {
+		LiveEdit::Reviewer(reviewer) => ChiefLiveSettingsEdit::Reviewer {
+			reviewer: match reviewer {
+				ChiefReviewer::User => "user",
+				ChiefReviewer::AutoReview => "auto_review",
+			}
+			.into(),
+		},
+		LiveEdit::Model { model, effort } => ChiefLiveSettingsEdit::Model {
+			model: model.as_str().into(),
+			effort: serde_json::to_value(effort)
+				.ok()
+				.and_then(|v| v.as_str().map(str::to_owned))
+				.ok_or(Rejected("Invalid reasoning effort."))?,
+		},
 	};
 	if source().await.is_none_or(|after| after.key != before.key) {
 		return Err(Rejected("The task source changed before dispatch."));
@@ -132,7 +224,7 @@ where
 			turn_id: turn.into(),
 			generation_id: Some(before.key.generation.as_str().into()),
 			review_token: review.into(),
-			edit: ChiefLiveSettingsEdit::Reviewer { reviewer: value.into() },
+			edit: stored_edit,
 			attempt_id: attempt.into(),
 			previous_id: inspected.previous_id,
 		})
@@ -148,7 +240,26 @@ where
 	let result = if source().await.is_none_or(|after| after.key != before.key) {
 		Err(ClientError::StaleHistory)
 	} else {
-		before.client.update_live_reviewer(&before.key.thread, turn, native, guard).await
+		match edit {
+			LiveEdit::Reviewer(reviewer) =>
+				before
+					.client
+					.update_live_reviewer(
+						&before.key.thread,
+						turn,
+						match reviewer {
+							ChiefReviewer::User => LiveReviewer::User,
+							ChiefReviewer::AutoReview => LiveReviewer::AutoReview,
+						},
+						guard,
+					)
+					.await,
+			LiveEdit::Model { .. } =>
+				before
+					.client
+					.update_live_model(model_update.as_ref().expect("validated model edit"), guard)
+					.await,
+		}
 	};
 	let changed = source().await.is_none_or(|after| after.key != before.key);
 	let known_unsent = matches!(
@@ -178,10 +289,50 @@ where
 		"applied" => Ok(()),
 		"target_unavailable" =>
 			Err(Rejected("The reviewed turn is no longer active. No replacement was selected.")),
-		"rejected" =>
-			Err(Rejected("The reviewer edit was rejected. Existing approvals are unchanged.")),
-		_ => Err(Unknown(
-			"Reviewer publication is unconfirmed. It will not be retried automatically.",
+		"rejected" => Err(Rejected(
+			"Native policy or source changes rejected this edit. Existing approvals are unchanged.",
 		)),
+		_ => Err(Unknown(
+			"Settings publication is unconfirmed. It will not be retried automatically.",
+		)),
+	}
+}
+
+async fn prepare_model_update(
+	before: &Source,
+	turn: &str,
+	edit: &LiveEdit,
+) -> Result<Option<LiveModelUpdate>, crate::chief_host::ChiefHostError> {
+	use crate::chief_host::ChiefHostError::Rejected;
+	if let LiveEdit::Model { model, effort } = &edit {
+		let capabilities = crate::chief_capabilities::read(&before.client).await;
+		let supported = matches!(capabilities, decodex_protocol::ChiefCapabilitiesResult::Available { models, .. }
+            if models.iter().any(|entry| entry.model == *model && entry.efforts.contains(effort)));
+		let enabled = tokio::time::timeout(
+			std::time::Duration::from_secs(8),
+			crate::chief_capabilities::feature_enabled(
+				&before.client,
+				"step_model_switching",
+				Some(&before.key.thread),
+			),
+		)
+		.await
+		.ok()
+		.flatten();
+		if !supported || enabled != Some(true) {
+			return Err(Rejected(
+				"The current native catalog or task feature does not allow this model selection.",
+			));
+		}
+		let effort = serde_json::to_value(effort)
+			.ok()
+			.and_then(|v| v.as_str().map(str::to_owned))
+			.ok_or(Rejected("Invalid reasoning effort."))?;
+		Ok(Some(
+			LiveModelUpdate::new(&before.key.thread, turn, model.as_str(), &effort)
+				.map_err(|_| Rejected("Invalid live model selection."))?,
+		))
+	} else {
+		Ok(None)
 	}
 }

@@ -73,7 +73,7 @@ async fn reviewer_publication_records_remote_and_uncertain_outcomes_without_repl
 			},
 			"turn",
 			review_token.as_str(),
-			ChiefReviewer::User,
+			ChiefReviewer::User.into(),
 			"attempt",
 		)
 		.await;
@@ -92,7 +92,7 @@ async fn reviewer_publication_records_remote_and_uncertain_outcomes_without_repl
 				|| async { Some(owned.source(&owned.key)) },
 				"turn",
 				review_token.as_str(),
-				ChiefReviewer::AutoReview,
+				ChiefReviewer::AutoReview.into(),
 				"duplicate"
 			)
 			.await
@@ -131,7 +131,7 @@ async fn local_queue_refusal_is_durably_rejected_even_if_source_changes_afterwar
 		},
 		"turn",
 		review_token.as_str(),
-		ChiefReviewer::User,
+		ChiefReviewer::User.into(),
 		"refused",
 	)
 	.await;
