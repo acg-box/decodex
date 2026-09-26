@@ -83,6 +83,7 @@ mod tests {
 			.create_conversation(
 				&command.creation_identity().unwrap(),
 				&decodex_database::CreateConversationRecord {
+					initial_model_source: None,
 					conversation_id: command.conversation_id.clone(),
 					title: "Original input".into(),
 					message: command.message.clone(),

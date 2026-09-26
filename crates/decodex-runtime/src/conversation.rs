@@ -1409,6 +1409,7 @@ impl ConversationRuntime {
 			.create_conversation(
 				&conversation_command,
 				&CreateConversationRecord {
+					initial_model_source: None,
 					conversation_id: command.conversation_id.clone(),
 					title,
 					message: command.message.clone(),
@@ -6219,6 +6220,7 @@ mod tests {
 			.create_conversation(
 				&original,
 				&super::CreateConversationRecord {
+					initial_model_source: None,
 					conversation_id: id.clone(),
 					title: "Original input".into(),
 					message: command.message.clone(),
