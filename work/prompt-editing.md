@@ -306,7 +306,22 @@ main composer and other editors are preserved. If settlement cannot be saved, th
 original pending record remains available for another readback. No new persistence
 owner or inference queue is introduced.
 
-Full socket/UI send acceptance, close/profile-switch boundaries before dispatch,
-installed-native end-to-end execution and rendered acceptance remain required. In
-particular, cancellation after a pending record is saved must not silently discard
-an unresolved send or leave a known-unsent operation without a recovery path.
+The desktop retains a live-only prepared-send marker until it grants the worker
+permission to submit. Closing or replacing the panel cancels that permission and
+clears only the exact known-unsent record. After permission, or after restart without
+that live proof, the original record remains unresolved until receipt readback.
+Quit uses the existing draft flush to save known-unsent cancellation.
+
+A socket/UI fixture checks that the complete send identity is already on disk when
+SendPromptInput arrives. It drops the reply, returns unknown on the first readback,
+and accepts the later explicit receipt check. It requires exactly one submission
+and preserves the occupied main composer and canonical attachment in recovery.
+
+Restoring a copy that contains only canonical editors preserves the main composer
+and other editors. Conflict reconciliation preserves complete pending-send content
+and identity together; it retains displaced edits as alternatives. History-edit
+confirmation and handback fences preserve local edits and their recovery key or
+receipt. Protocol tests cover these distinct conflict cases.
+
+Installed-native end-to-end execution, full desktop handback acknowledgement and
+rendered acceptance remain required.

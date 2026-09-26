@@ -27,6 +27,7 @@ impl ChiefSurface {
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
+		let source_profile = profile.clone();
 		let execution = self.draft_profiles.execution.choice(expected.work_id.as_str());
 		let expected_execution = execution.clone();
 		let worker_draft = expected.clone();
@@ -152,6 +153,10 @@ impl ChiefSurface {
 						}
 						s.stage_prompt_editor(pending.clone(), cx)?;
 						s.prompt_edit.draft = Some(pending.clone());
+						if !checking {
+							s.prompt_edit.prepared_send =
+								Some((source_profile.clone(), pending.clone()));
+						}
 						Ok(pending)
 					});
 					match result {
@@ -192,6 +197,9 @@ impl ChiefSurface {
 							return Some(false);
 						}
 						if checking || s.prompt_editor_saved(&pending) {
+							// No UI yield occurs between removing this known-unsent marker and
+							// granting the worker permit.
+							s.prompt_edit.prepared_send = None;
 							return Some(true);
 						}
 						None
@@ -234,6 +242,7 @@ impl ChiefSurface {
 		cx: &mut Context<Self>,
 	) {
 		self.prompt_edit.task = None;
+		self.prompt_edit.prepared_send = None;
 		if self.prompt_edit.draft.as_ref() != Some(pending) {
 			return;
 		}

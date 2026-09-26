@@ -19,9 +19,24 @@ pub(super) struct Panel {
 	feedback: String,
 	removal: Option<removal::Removal>,
 	confirmation: Option<DesktopPromptEditDraft>,
+	prepared_send: Option<(ClientProfile, DesktopPromptEditDraft)>,
 }
 
 impl ChiefSurface {
+	pub(super) fn cancel_prepared_prompt_send(&mut self) {
+		let Some((profile, pending)) = self.prompt_edit.prepared_send.take() else {
+			return;
+		};
+		self.prompt_edit.task = None; // Drop the unsent worker permit before clearing its record.
+		if self.clear_prepared_prompt_record(&profile, &pending)
+			&& self.prompt_edit.draft.as_ref() == Some(&pending)
+		{
+			let mut draft = pending;
+			draft.pending_send = None;
+			self.prompt_edit.draft = Some(draft);
+		}
+	}
+
 	fn preflight_prompt_editor(
 		&mut self,
 		expected: DesktopPromptEditDraft,
@@ -176,6 +191,7 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn reset_prompt_edit(&mut self) {
+		self.cancel_prepared_prompt_send();
 		self.prompt_edit = Panel::default();
 	}
 
@@ -183,6 +199,7 @@ impl ChiefSurface {
 		if self.selected.as_deref() != Some(work) {
 			return;
 		}
+		self.reset_prompt_edit();
 		let Some(draft) = self
 			.saved_prompt_editors(work)
 			.into_iter()
@@ -190,6 +207,7 @@ impl ChiefSurface {
 		else {
 			return;
 		};
+		let sending = draft.pending_send.is_some();
 		let pending = draft.handback_pending || draft.receipt_id.is_some();
 		self.prompt_edit = Panel {
 			key: unique_command(),
@@ -199,6 +217,7 @@ impl ChiefSurface {
 			..Default::default()
 		};
 		self.prompt_edit.feedback = match self.install_prompt_editors(draft, cx) {
+			Ok(()) if sending => "Draft reopened. Check the original send receipt; the input will not be sent again automatically.".into(),
 			Ok(()) if pending =>
 				"Draft reopened. Read the history edit status before continuing.".into(),
 			Ok(()) =>
@@ -254,6 +273,7 @@ impl ChiefSurface {
 			return;
 		};
 		let key = unique_command();
+		self.reset_prompt_edit();
 		self.prompt_edit = Panel {
 			key: key.clone(),
 			profile: Some(profile.clone()),
@@ -435,7 +455,11 @@ impl ChiefSurface {
 			let id = format!("saved-prompt-{review}");
 			saved = saved.child(self.workspace_action(
 				id,
-				format!("Edit draft: {title}"),
+				if draft.pending_send.is_some() {
+					format!("Pending send: {title}")
+				} else {
+					format!("Edit draft: {title}")
+				},
 				move |s, cx| s.reopen_prompt_editor(&owner, &review, cx),
 				cx,
 			));
@@ -575,7 +599,8 @@ impl ChiefSurface {
 				"prompt-review-close".into(),
 				"Close review".into(),
 				|s, cx| {
-					s.prompt_edit = Panel::default();
+					s.reset_prompt_edit();
+					s.save_draft_document(cx);
 					cx.notify();
 				},
 				cx,
@@ -659,6 +684,7 @@ mod tests {
 			input.set_native_part(serde_json::json!({"type":"text","text":"Edited"}), cx).unwrap()
 		});
 		cx.run_until_parked();
+		let mut canceled_permit = None;
 		surface.update(cx, |s, cx| {
 			let draft = s.prompt_edit.draft.as_ref().unwrap();
 			assert_eq!(draft.input.parts()[0]["text"], "Edited");
@@ -711,12 +737,41 @@ mod tests {
 			assert!(s.discard_prompt_editor(&pending, cx).is_err());
 			assert!(s.renew_prompt_editor(&pending, &fresh, cx).is_err());
 			assert_eq!(s.saved_prompt_editors(&work), vec![pending]);
+			let mut restored = later;
+			restored.receipt_id = Some(42);
+			let sending = restored
+				.begin_send(7, IdempotencyKey::new("send-once").unwrap(), Default::default())
+				.unwrap();
+			s.install_prompt_editors(sending.clone(), cx).unwrap();
+			s.prompt_edit.prepared_send = Some((s.profile.clone().unwrap(), sending.clone()));
+			let (permit, receive) = tokio::sync::oneshot::channel::<()>();
+			canceled_permit = Some(receive);
+			s.prompt_edit.task = Some(cx.spawn(async move |_, _| {
+				std::future::pending::<()>().await;
+				drop(permit);
+			}));
+			s.reset_prompt_edit();
+			assert!(
+				s.saved_prompt_editors(&work)[0].pending_send.is_none(),
+				"known-unsent marker is cleared on close"
+			);
+			s.install_prompt_editors(sending.clone(), cx).unwrap();
+			s.reset_prompt_edit();
+			assert_eq!(
+				s.saved_prompt_editors(&work)[0].pending_send,
+				sending.pending_send,
+				"unknown send must not be cleared without live pre-dispatch proof"
+			);
 			s.mark_stale(cx);
 			assert!(s.prompt_edit.draft.is_none());
 			assert!(!s.prompt_editor_source_current());
 		});
 		editor.update(cx, |input, cx| input.set_content("Old callback", cx));
 		cx.run_until_parked();
+		assert!(matches!(
+			canceled_permit.unwrap().try_recv(),
+			Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+		));
 		surface.update(cx, |s, _| assert!(s.prompt_edit.draft.is_none()));
 	}
 }

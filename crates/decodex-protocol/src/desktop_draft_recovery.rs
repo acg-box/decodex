@@ -76,6 +76,12 @@ impl DesktopDraftDocument {
 			if let Some(local) = local {
 				let mut selected = local.clone();
 				if let Some(remote) = latest.profiles.get(scope) {
+					if displaces_pending_prompt(&selected, remote) {
+						result.retain_alternative(DesktopRecoveredDraft {
+							scope: Some(scope.clone()),
+							draft: selected.clone(),
+						});
+					}
 					retain_fences(&mut selected, remote);
 				}
 				result.profiles.insert(scope.clone(), selected);
@@ -130,6 +136,17 @@ impl DesktopDraftDocument {
 		if let Some(scope) = &copy.scope {
 			let mut selected = copy.draft.clone();
 			if let Some(current) = self.profiles.get(scope) {
+				let mut remainder = copy.draft.clone();
+				remainder.prompt_edits.clear();
+				if !copy.draft.prompt_edits.is_empty()
+					&& remainder == DesktopProfileDraft::default()
+				{
+					selected = current.clone();
+					selected.prompt_edits.extend(copy.draft.prompt_edits.clone());
+				}
+				if displaces_pending_prompt(&selected, current) {
+					result.retain_alternative(copy.clone());
+				}
 				if current != &copy.draft {
 					result.retain_alternative(DesktopRecoveredDraft {
 						scope: Some(scope.clone()),
@@ -210,14 +227,33 @@ impl DesktopDraftDocument {
 	}
 }
 
+fn displaces_pending_prompt(selected: &DesktopProfileDraft, other: &DesktopProfileDraft) -> bool {
+	other.prompt_edits.iter().any(|(review, draft)| {
+		draft.pending_send.is_some()
+			&& selected.prompt_edits.get(review).is_some_and(|local| local != draft)
+	})
+}
+
 fn retain_fences(selected: &mut DesktopProfileDraft, other: &DesktopProfileDraft) {
 	for (review, draft) in &other.prompt_edits {
+		if draft.pending_send.is_some() {
+			selected.prompt_edits.insert(review.clone(), draft.clone());
+			continue;
+		}
 		if draft.handback_pending {
 			let local =
 				selected.prompt_edits.entry(review.clone()).or_insert_with(|| draft.clone());
 			if local.work_id == draft.work_id && local.thread_id == draft.thread_id {
+				if local.pending_send.is_some() {
+					continue;
+				}
 				local.receipt_id = local.receipt_id.or(draft.receipt_id);
 				local.handback_pending = true;
+				local.confirmation_key = if local.receipt_id.is_some() {
+					None
+				} else {
+					local.confirmation_key.clone().or_else(|| draft.confirmation_key.clone())
+				};
 			} else {
 				selected.uncertain = true;
 			}
@@ -258,6 +294,95 @@ mod tests {
 		DesktopProfileDraft {
 			composer: DesktopComposerDraft { text: text.into(), ..Default::default() },
 			..Default::default()
+		}
+	}
+
+	fn prompt(text: &str) -> crate::DesktopPromptEditDraft {
+		let input =
+			crate::PromptDraft::new(vec![serde_json::json!({"type":"text","text":text})]).unwrap();
+		crate::DesktopPromptEditDraft {
+			work_id: EntityId::new("work").unwrap(),
+			thread_id: crate::WireText::new("thread").unwrap(),
+			before_turn_id: crate::WireText::new("turn").unwrap(),
+			item_id: crate::WireText::new("item").unwrap(),
+			original_hash: input.fingerprint().unwrap(),
+			review_token: crate::WireText::new("b".repeat(64)).unwrap(),
+			receipt_id: None,
+			confirmation_key: None,
+			pending_send: None,
+			handback_pending: false,
+			input,
+		}
+	}
+
+	#[test]
+	fn conflicting_prompt_operations_keep_exact_bindings_and_both_inputs() {
+		let scope = "a".repeat(64);
+		let review = "b".repeat(64);
+		let original = prompt("original input");
+		let confirming = original
+			.begin_confirmation(crate::IdempotencyKey::new("confirm-original").unwrap())
+			.unwrap();
+		let mut restored = original.clone();
+		restored.receipt_id = Some(42);
+		let sending = restored
+			.begin_send(7, crate::IdempotencyKey::new("send-original").unwrap(), Default::default())
+			.unwrap();
+		let mut handback = restored.clone();
+		handback.handback_pending = true;
+		for remote in [confirming, handback, sending] {
+			let mut base = DesktopDraftDocument::default();
+			base.profiles.insert(scope.clone(), profile("occupied composer"));
+			base.profiles
+				.get_mut(&scope)
+				.unwrap()
+				.prompt_edits
+				.insert(review.clone(), original.clone());
+			let mut local = base.clone();
+			let mut edited = original.clone();
+			edited.input.replace_text(0, 0..0, "local edit: ").unwrap();
+			if remote.receipt_id.is_some() && remote.pending_send.is_none() {
+				edited = edited
+					.begin_confirmation(crate::IdempotencyKey::new("confirm-local").unwrap())
+					.unwrap();
+			}
+			local
+				.profiles
+				.get_mut(&scope)
+				.unwrap()
+				.prompt_edits
+				.insert(review.clone(), edited.clone());
+			let mut disk = base.clone();
+			disk.profiles
+				.get_mut(&scope)
+				.unwrap()
+				.prompt_edits
+				.insert(review.clone(), remote.clone());
+			let merged = local.reconcile_keep_both(&base, &disk).unwrap();
+			let active = &merged.profiles[&scope].prompt_edits[&review];
+			if remote.pending_send.is_none() {
+				assert_eq!(active.input, edited.input);
+				assert_eq!(active.receipt_id, remote.receipt_id);
+				assert_eq!(active.confirmation_key, remote.confirmation_key);
+				assert!(active.handback_pending);
+				continue;
+			}
+			assert_eq!(active, &remote);
+			assert!(
+				merged
+					.recovered
+					.iter()
+					.any(|copy| copy.draft.prompt_edits.get(&review) == Some(&edited))
+			);
+			let copy = merged
+				.recovered
+				.iter()
+				.find(|copy| copy.draft.prompt_edits.get(&review) == Some(&edited))
+				.unwrap();
+			let recovered = merged.restore_recovered_copy(copy).unwrap();
+			assert_eq!(recovered.profiles[&scope].prompt_edits[&review], remote);
+			assert!(recovered.recovered.contains(copy));
+			assert_eq!(recovered.profiles[&scope].composer.text, "occupied composer");
 		}
 	}
 

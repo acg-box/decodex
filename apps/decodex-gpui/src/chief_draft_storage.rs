@@ -99,6 +99,28 @@ impl Storage {
 }
 
 impl ChiefSurface {
+	pub(in super::super) fn clear_prepared_prompt_record(
+		&mut self,
+		profile: &ClientProfile,
+		pending: &decodex_protocol::DesktopPromptEditDraft,
+	) -> bool {
+		let Some(saved) = self
+			.draft_profiles
+			.storage
+			.document
+			.profiles
+			.get_mut(&profile.draft_scope_key())
+			.and_then(|profile| profile.prompt_edits.get_mut(pending.review_token.as_str()))
+		else {
+			return false;
+		};
+		if saved != pending {
+			return false;
+		}
+		saved.pending_send = None;
+		true
+	}
+
 	pub(in super::super) fn settle_prompt_send(
 		&mut self,
 		expected: &decodex_protocol::DesktopPromptEditDraft,
@@ -295,6 +317,7 @@ impl ChiefSurface {
 
 	pub(crate) fn flush_drafts_for_quit(&mut self, cx: &mut Context<Self>) -> Task<bool> {
 		self.cancel_queued_command(cx);
+		self.cancel_prepared_prompt_send();
 		self.draft_profiles.storage.quitting = true;
 		self.save_draft_document(cx);
 		let retained = cx.entity();
@@ -741,6 +764,10 @@ impl<T> TransposeOption<T> for Option<Option<T>> {
 mod prompt_confirm_tests;
 
 #[cfg(test)]
+#[path = "chief_prompt_send_wire_tests.rs"]
+mod prompt_send_tests;
+
+#[cfg(test)]
 mod tests {
 	use super::*;
 	#[gpui::test]
@@ -803,6 +830,22 @@ mod tests {
 		assert_eq!(copy.input, draft.input);
 		assert!(copy.pending_send.is_none());
 		assert!(!document.recovered.last().unwrap().draft.has_unconfirmed_delivery());
+		let restored = document.restore_recovered_copy(document.recovered.last().unwrap()).unwrap();
+		assert_eq!(
+			restored.profiles[&profile.draft_scope_key()].composer.text,
+			"Unrelated main input"
+		);
+		assert_eq!(
+			restored.profiles[&profile.draft_scope_key()].prompt_edits
+				[pending.review_token.as_str()]
+			.input,
+			draft.input
+		);
+		assert!(
+			restored.profiles[&profile.draft_scope_key()]
+				.prompt_edits
+				.contains_key(&"b".repeat(64))
+		);
 	}
 
 	#[gpui::test]
