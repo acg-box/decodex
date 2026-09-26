@@ -34,11 +34,21 @@ impl ChiefSurface {
 			return;
 		};
 		let (sender, mut receiver) = tokio::sync::watch::channel(None);
-		let background = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
-			Some(runtime.block_on(ChiefClient::new(profile).observe_output(work, sender)))
-		});
+		if std::thread::Builder::new()
+			.name("chief-output-io".into())
+			.spawn(move || {
+				if let Ok(runtime) =
+					tokio::runtime::Builder::new_current_thread().enable_all().build()
+				{
+					let _ =
+						runtime.block_on(ChiefClient::new(profile).observe_output(work, sender));
+				}
+			})
+			.is_err()
+		{
+			self.output_stream.retry_after = Some(Instant::now() + Duration::from_secs(2));
+			return;
+		}
 		self.output_stream.task = Some(cx.spawn(async move |surface, cx| {
 			while receiver.changed().await.is_ok() {
 				// The latest-value channel coalesces bursts without an unbounded delta queue.
@@ -73,7 +83,6 @@ impl ChiefSurface {
 					}
 				});
 			}
-			let _ = background.await;
 			let _ = surface.update(cx, |s, cx| {
 				if s.output_stream.owner.as_ref() == Some(&owner) {
 					s.output_stream.task = None;
