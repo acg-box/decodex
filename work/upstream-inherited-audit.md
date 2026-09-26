@@ -205,3 +205,24 @@ again at `3790eb3569301b151323acfbfc890bd5d3da4ee6`.
 All three original snapshot hashes match. All 360 rows remain; pending
 content-review rows decrease from 219 to 216. This closes only these three files,
 not shared timeline consumers or final signed desktop acceptance.
+
+## Model source foundation and warning fixture reconciled on 2026-09-26
+
+Four complete file comparisons were checked against merged main
+`3dc4fab3df1353192b9cfa452db8d8fdcb43c39b`. All original snapshot hashes match.
+
+| Original path | Delivered relationship |
+| --- | --- |
+| `database/migrations/0035_initial_model_source.sql` | Exact bytes registered as migration 46 by PR1537. The upgrade fixture preserves old requests and nullable settings, rejects invalid source pairs and flags, and retains the new state on repeat migration. |
+| `database/src/conversation_routing.rs` | Exact preserved file bytes after PR1537. Account/revision mismatch tests verify that rejection creates no route, session or admitted turn. A later matching account still requires review after reopen. |
+| `database/src/conversations/initial_model_source.rs` | PR1537 retains the complete receipt, revision, authority and input-preservation logic. The only changes adapt reasoning effort and service tier to current nullable types, their validation, digest encoding and SQL binding. Concurrent confirmation, stale revision, cold replay and post-route refusal passed. |
+| `crates/decodex-runtime/src/account_launch/chief_process_warning_tests.rs` | The complete difference adds an explicit `ServerEvent` import and adapts the provider helper to `serve_fixture`, with the same usage/output and no body capture. All warning transport, owner, history and reopened-store assertions remain. The installed-native test passed with Codex 0.158.0-alpha.2; current file bytes match that tested file. |
+
+The database foundation passed all 147 library tests, seven restart integration
+tests, and strict database/runtime lint. The source-bound full continuation
+fixture and public creation-receipt restart test also passed. The warning test
+passed independently with an isolated local provider.
+
+All 360 rows remain. Pending content-review rows decrease from 216 to 212.
+These dispositions do not close the pending PR1538 protocol/desktop integration,
+shared production files, R03 acceptance or final signed desktop acceptance.
