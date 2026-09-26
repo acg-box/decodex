@@ -323,5 +323,11 @@ and identity together; it retains displaced edits as alternatives. History-edit
 confirmation and handback fences preserve local edits and their recovery key or
 receipt. Protocol tests cover these distinct conflict cases.
 
-Installed-native end-to-end execution, full desktop handback acknowledgement and
-rendered acceptance remain required.
+A separate socket/UI handback fixture reads an Applied receipt and fresh history
+and timeline. At AcknowledgePromptEditDraft, it checks the saved edited input,
+receipt, occupied main composer, removed older-history cache and applied native
+history binding. It loses the acknowledgement reply, then returns Restored on
+readback. The editor keeps changed text and its attachment. No model-input command
+is permitted by this fixture.
+
+Installed-native end-to-end execution and rendered acceptance remain required.

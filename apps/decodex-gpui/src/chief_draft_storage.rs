@@ -764,6 +764,10 @@ impl<T> TransposeOption<T> for Option<Option<T>> {
 mod prompt_confirm_tests;
 
 #[cfg(test)]
+#[path = "chief_prompt_handback_wire_tests.rs"]
+mod prompt_handback_tests;
+
+#[cfg(test)]
 #[path = "chief_prompt_send_wire_tests.rs"]
 mod prompt_send_tests;
 
