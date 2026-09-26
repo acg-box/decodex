@@ -1,6 +1,116 @@
 use super::*;
 use crate::{ChiefDispatchState, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus, EnqueueChiefEvent};
 
+#[tokio::test]
+async fn canonical_prompt_input_is_durable_immutable_and_never_a_wake_event() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("input.sqlite3");
+	let store = SqliteStore::open_test(&path).unwrap();
+	seed(&store, "task", "native").await;
+	seed(&store, "other", "other-thread").await;
+	let receipt = store.reserve_chief_prompt_edit(attempt()).await.unwrap().unwrap();
+	let content = vec![
+		json!({"type":"text","text":"Edited — 保留","text_elements":[]}),
+		json!({"type":"image","fileId":"native-file","detail":"original"}),
+		json!({"type":"mention","name":"App","path":"app://exact-id"}),
+	];
+	assert!(
+		store
+			.retain_chief_prompt_input("task".into(), "native".into(), receipt, content.clone())
+			.await
+			.is_err()
+	);
+	assert!(store.observe_chief_prompt_edit(receipt, None, vec!["prefix".into()]).await.unwrap());
+	let saved = store
+		.retain_chief_prompt_input("task".into(), "native".into(), receipt, content.clone())
+		.await
+		.unwrap();
+	assert_eq!(
+		store
+			.retain_chief_prompt_input("task".into(), "native".into(), receipt, content.clone())
+			.await
+			.unwrap(),
+		saved
+	);
+	assert!(
+		store
+			.retain_chief_prompt_input(
+				"other".into(),
+				"other-thread".into(),
+				receipt,
+				content.clone()
+			)
+			.await
+			.is_err()
+	);
+	assert!(
+		store
+			.chief_prompt_input(saved.id, "other".into(), "other-thread".into())
+			.await
+			.unwrap()
+			.is_none()
+	);
+	assert!(store.read_chief_work_events("task".into(), 100).await.unwrap().is_empty());
+	let id = saved.id;
+	assert!(
+		store
+			.run(move |c| {
+				Ok(c.execute("UPDATE chief_prompt_inputs SET content='[]' WHERE id=?1", [id])
+					.is_err())
+			})
+			.await
+			.unwrap()
+	);
+	drop(store);
+	let store = SqliteStore::open_test(&path).unwrap();
+	assert_eq!(
+		store.chief_prompt_input(id, "task".into(), "native".into()).await.unwrap(),
+		Some(saved)
+	);
+	assert!(store.release_chief_prompt_edit_draft(receipt, None).await.unwrap());
+	let mut changed = content;
+	changed[0]["text"] = json!("Another explicit edit");
+	let next = store
+		.retain_chief_prompt_input("task".into(), "native".into(), receipt, changed)
+		.await
+		.unwrap();
+	assert_ne!(next.id, id);
+	assert!(store.read_chief_work_events("task".into(), 100).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn canonical_prompt_input_retains_large_media_and_rejects_oversized_content() {
+	let directory = tempfile::tempdir().unwrap();
+	let store = SqliteStore::open_test(&directory.path().join("large-input.sqlite3")).unwrap();
+	seed(&store, "task", "native").await;
+	let receipt = store.reserve_chief_prompt_edit(attempt()).await.unwrap().unwrap();
+	store.observe_chief_prompt_edit(receipt, None, vec!["prefix".into()]).await.unwrap();
+	let content = vec![
+		json!({"type":"image","url":format!("data:image/png;base64,{}", "A".repeat(1024 * 1024))}),
+	];
+	let saved = store
+		.retain_chief_prompt_input("task".into(), "native".into(), receipt, content.clone())
+		.await
+		.unwrap();
+	assert_eq!(saved.content, content);
+	assert!(
+		store
+			.retain_chief_prompt_input(
+				"task".into(),
+				"native".into(),
+				receipt,
+				vec![
+					json!({"type":"text","text":"x".repeat(decodex_core::MAX_NATIVE_MESSAGE_BYTES)})
+				]
+			)
+			.await
+			.is_err()
+	);
+	assert!(
+		store.chief_prompt_input(saved.id, "task".into(), "native".into()).await.unwrap().is_some()
+	);
+}
+
 fn attempt() -> ChiefPromptEditAttempt {
 	ChiefPromptEditAttempt {
 		work: "task".into(),
