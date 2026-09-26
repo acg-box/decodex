@@ -308,7 +308,7 @@ impl SqliteStore {
 	) -> Result<(), StoreError> {
 		self.run(move |connection| {
             let tx=connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
-            if crate::chief_permissions::pending(&tx,&id)? || crate::chief_plugins::pending(&tx,&id)? || crate::chief_models::pending(&tx,&id)? {return Err(crate::DatabaseError::Conflict.into());}
+            if crate::chief_prompt_edit::pending(&tx,&id)? || crate::chief_permissions::pending(&tx,&id)? || crate::chief_plugins::pending(&tx,&id)? || crate::chief_models::pending(&tx,&id)? {return Err(crate::DatabaseError::Conflict.into());}
             let changed=tx.execute("UPDATE chief_work_items SET dispatch_state='dispatching' WHERE id=?1 AND codex_thread_id=?2 AND dispatch_state='idle' AND active_turn_id IS NULL",params![id,old_thread]).map_err(sqlite_error)?;
             if changed!=1 { return Err(crate::DatabaseError::Conflict.into()); }
             tx.commit().map_err(sqlite_error)?;

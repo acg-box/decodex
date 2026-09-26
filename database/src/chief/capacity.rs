@@ -133,7 +133,7 @@ impl SqliteStore {
 		self.run(move |connection| {
             let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
             let item=read_work(&tx,&work)?;
-            if item.dispatch_state!=ChiefDispatchState::Idle || item.codex_thread_id.is_none() { return Err(DatabaseError::Conflict.into()); }
+            if item.dispatch_state!=ChiefDispatchState::Idle || item.codex_thread_id.is_none() || crate::chief_prompt_edit::pending(&tx,&work)? { return Err(DatabaseError::Conflict.into()); }
             let retry=tx.query_row("SELECT * FROM chief_capacity_retries WHERE event_id=?1 AND work_item_id=?2 AND state='pending' AND due_at_micros<=?3",params![event,work,now],retry_row).optional().map_err(sqlite_error)?.ok_or(DatabaseError::Conflict)?;
             tx.execute("UPDATE chief_capacity_retries SET state='claimed' WHERE event_id=?1",[event]).map_err(sqlite_error)?;
             tx.execute("UPDATE chief_inbox_events SET disposition='resolved', disposition_note='Automatic capacity retry requested.', disposed_at_micros=max(created_at_micros,?2) WHERE id=?1 AND disposition IS NULL",params![event,unix_micros()?]).map_err(sqlite_error)?;

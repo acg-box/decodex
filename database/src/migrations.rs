@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 42;
+const CURRENT_SCHEMA_VERSION: i64 = 43;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -225,6 +225,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 42,
 		name: "desktop_auto_recap",
 		sql: include_str!("../migrations/0042_desktop_auto_recap.sql"),
+	},
+	Migration {
+		version: 43,
+		name: "chief_prompt_edit_contract",
+		sql: include_str!("../migrations/0043_chief_prompt_edit_contract.sql"),
 	},
 ];
 
@@ -1412,5 +1417,38 @@ mod tests {
 		}
 		verify(&connection).unwrap();
 		migrate(&mut connection).unwrap();
+	}
+	#[test]
+	fn prompt_edit_contract_upgrade_preserves_schema_and_preferences() {
+		let directory = tempfile::tempdir().unwrap();
+		let mut connection = Connection::open(directory.path().join("edit.sqlite3")).unwrap();
+		configure(&connection).unwrap();
+		for migration in MIGRATIONS.iter().filter(|m| m.version <= 42) {
+			connection.execute_batch(migration.sql).unwrap();
+			connection
+				.execute(
+					"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
+					params![migration.version, migration.name, migration_digest(migration.sql)],
+				)
+				.unwrap();
+		}
+		connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+		connection.pragma_update(None, "user_version", 42).unwrap();
+		connection.execute("UPDATE desktop_settings SET auto_recap=0,revision=19", []).unwrap();
+		let original = schema_inventory(&connection).unwrap();
+		migrate(&mut connection).unwrap();
+		assert_eq!(schema_inventory(&connection).unwrap(), original);
+		assert_eq!(applied_version(&connection).unwrap(), 43);
+		assert_eq!(
+			connection
+				.query_row("SELECT auto_recap,revision FROM desktop_settings", [], |r| Ok((
+					r.get::<_, bool>(0)?,
+					r.get::<_, i64>(1)?
+				)))
+				.unwrap(),
+			(false, 19)
+		);
+		migrate(&mut connection).unwrap();
+		verify(&connection).unwrap();
 	}
 }
