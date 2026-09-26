@@ -1,5 +1,6 @@
 //! Isolated account-bound runtime qualification; never use the real user's home.
 use super::*;
+#[path = "chief_process_native_recap_socket_tests.rs"] mod recap_socket;
 #[path = "chief_process_native_runtime_submit_tests.rs"] mod submit;
 use crate::{
 	account_service::{
@@ -368,9 +369,25 @@ async fn serve(
 			);
 			let serial = requests.fetch_add(1, Ordering::AcqRel);
 			let id = format!("cold-fixture-{serial}");
+			let answer = if input["text"]["format"]["type"] == "json_schema" {
+				assert!(
+					input["tools"].as_array().is_none_or(Vec::is_empty),
+					"structured fixture tool names: {:?}; schema fields: {:?}",
+					input["tools"].as_array().map(|tools| tools
+						.iter()
+						.map(|tool| (&tool["type"], &tool["name"]))
+						.collect::<Vec<_>>()),
+					input["text"]["format"]["schema"]["properties"]
+						.as_object()
+						.map(|p| p.keys().collect::<Vec<_>>())
+				);
+				r#"{"summary":"The requested fix was tested; installation is still pending.","next_action":null}"#
+			} else {
+				"Saved native answer"
+			};
 			let frames = [
 				json!({"type":"response.created","response":{"id":id}}),
-				json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":"Saved native answer"}]}}),
+				json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":answer}]}}),
 				json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
 			];
 			(

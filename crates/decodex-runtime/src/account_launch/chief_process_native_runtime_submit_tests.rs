@@ -171,7 +171,7 @@ pub(super) async fn assert_warning_history(
 	assert_eq!(notices[0].status, decodex_protocol::HistoryItemStatusDto::Completed);
 }
 
-fn application(
+pub(super) fn application(
 	runtime: &ConversationRuntime,
 	store: &SqliteStore,
 	home: &std::path::Path,

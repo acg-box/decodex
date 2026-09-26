@@ -117,3 +117,13 @@ installed 0.158.0-alpha.2 packages its executable inside CodexCLI.app. Preserve 
 signed context and compare the signed main-executable URL during static and
 suspended-child verification. This repair adds no optional product feature and
 does not extend the fixed upstream feature scan.
+
+
+## Recap isolation and public service evidence
+
+The optional recap now explicitly disables native agents in its temporary thread,
+including when model metadata enables multi-agent v2. A real local-service and
+installed-native test verifies no recap tools, no inference on query or same-key
+replay, unchanged parent history, new-input invalidation and exact cancellation.
+See [task recap qualification](task-recaps.md). Automatic scheduling, visible voice
+transcripts and signed desktop acceptance remain open.
