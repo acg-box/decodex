@@ -184,3 +184,11 @@ The same run exposed a core issue in existing live output: its ongoing connectio
 occupied the shared desktop executor. [Output observation ownership](chief-output-observation.md)
 now uses a dedicated I/O thread with the existing cancellation channel. Keep this
 core fix if the optional recap feature is removed.
+
+## Earlier-prompt selection foundation
+
+[Prompt editing](prompt-editing.md) now has a read-only canonical input selector:
+exact native IDs, complete item pages, steer/review exclusion and unchanged-history
+evidence. It preserves native attachment and mention fields. This is an optional
+feature foundation; no revert action, mutation recovery or desktop draft restore
+is delivered by this entry.

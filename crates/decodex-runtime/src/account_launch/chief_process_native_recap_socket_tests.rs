@@ -149,6 +149,7 @@ async fn check(
 	let thread = settled(client).await;
 	qualify_completed_progress(client, &work, &thread, account, requests).await;
 	let native = runtime.chief_client().expect("active native client");
+	qualify_prompt_selection(&native, &thread, requests).await;
 	let before = native.thread_latest_turn_id(&thread).await.expect("native parent turn");
 	prepare_voice_call(client, runtime, store, &work, &thread, before.clone()).await;
 	assert_eq!(requests.load(Ordering::Acquire), 9, "active voice must not infer a recap");
@@ -226,6 +227,42 @@ async fn check(
 	.await;
 	wait_phase(client, &work, Phase::Cancelled).await;
 	assert!(client.recap(work).await.expect("cancelled query").recap.is_none());
+}
+
+async fn qualify_prompt_selection(
+	client: &decodex_codex::app_server_client::AppServerClient,
+	thread: &str,
+	requests: &std::sync::atomic::AtomicUsize,
+) {
+	let headers = client.thread_turns_since(thread, None).await.expect("native turn headers");
+	let latest = headers.last().expect("latest turn")["id"].as_str().expect("latest id");
+	for header in [headers.first().expect("first turn"), headers.last().expect("last turn")] {
+		let turn = header["id"].as_str().expect("turn id");
+		let items = client.thread_read_turn_items(thread, turn).await.expect("native turn items");
+		let input = items
+			.as_array()
+			.expect("items")
+			.iter()
+			.find(|item| item["type"] == "userMessage")
+			.expect("first input");
+		let item = input["id"].as_str().expect("input id");
+		let selected = client
+			.prompt_edit_candidate(thread, turn, item)
+			.await
+			.expect("native selection")
+			.expect("editable first input");
+		assert_eq!(selected.thread_id, thread);
+		assert_eq!(selected.before_turn_id, turn);
+		assert_eq!(selected.item_id, item);
+		assert_eq!(selected.latest_turn_id, latest);
+		assert_eq!(serde_json::Value::Array(selected.content), input["content"]);
+		assert!(selected.guard.is_live());
+	}
+	assert_eq!(requests.load(Ordering::Acquire), 9, "prompt selection is read-only");
+	assert_eq!(
+		client.thread_latest_turn_id(thread).await.expect("unchanged native history").as_deref(),
+		Some(latest)
+	);
 }
 
 async fn qualify_desktop_recap(
