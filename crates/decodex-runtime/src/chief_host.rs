@@ -684,6 +684,18 @@ impl ChiefHost {
 		.await
 	}
 
+	pub(crate) async fn app_ui_source(
+		&self,
+		work: &str,
+		thread: &str,
+		fingerprint: &decodex_protocol::EntityId,
+	) -> bool {
+		self.timeline_source(work, thread).await.is_some_and(|source| {
+			source.client.thread_settings_guard(thread).is_some_and(|guard| guard.is_live())
+				&& crate::chief::timeline::app_ui::source_fingerprint(&source.key) == *fingerprint
+		})
+	}
+
 	pub(crate) async fn app_ui(
 		&self,
 		request: &decodex_protocol::ChiefAppUiRequest,

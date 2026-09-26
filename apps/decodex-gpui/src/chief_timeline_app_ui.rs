@@ -8,6 +8,7 @@ pub(super) struct State {
 	request: Option<ChiefAppUiRequest>,
 	host: Option<native::AppHost>,
 	task: Option<Task<()>>,
+	monitor: Option<Task<()>>,
 	notice: Option<&'static str>,
 	serial: u64,
 }
@@ -58,6 +59,62 @@ impl ChiefSurface {
 		row.into_any_element()
 	}
 
+	fn monitor_app_ui(
+		&mut self,
+		profile: ClientProfile,
+		request: ChiefAppUiRequest,
+		source: EntityId,
+		serial: u64,
+		cx: &mut Context<Self>,
+	) {
+		self.native_history.app_ui.monitor = Some(cx.spawn(async move |surface, cx| {
+			loop {
+				let active = surface
+					.update(cx, |s, _| {
+						s.poll_native_app_ui();
+						s.native_history.app_ui.serial == serial
+							&& s.native_history.app_ui.host.is_some()
+					})
+					.unwrap_or(false);
+				if !active {
+					break;
+				}
+				let (profile, request, source) = (profile.clone(), request.clone(), source.clone());
+				let valid = cx
+					.background_executor()
+					.spawn(async move {
+						let Ok(runtime) =
+							tokio::runtime::Builder::new_current_thread().enable_all().build()
+						else {
+							return false;
+						};
+						runtime
+							.block_on(ChiefClient::new(profile).app_ui_source(
+								request.work_id,
+								request.thread_id,
+								source,
+							))
+							.unwrap_or(false)
+					})
+					.await;
+				if !valid {
+					let _ = surface.update(cx, |s, cx| {
+						let state = &mut s.native_history.app_ui;
+						if state.serial == serial {
+							state.host = None;
+							state.notice = Some(
+								"App source changed or disconnected. Open it again to refresh.",
+							);
+							cx.notify();
+						}
+					});
+					break;
+				}
+				cx.background_executor().timer(std::time::Duration::from_secs(1)).await;
+			}
+		}));
+	}
+
 	fn load_native_app_ui(
 		&mut self,
 		request: ChiefAppUiRequest,
@@ -86,6 +143,8 @@ impl ChiefSurface {
 		let serial = state.serial;
 		let epoch = self.native_history.epoch;
 		let account = binding.account.clone();
+		let monitor_profile = profile.clone();
+		let monitor_request = request.clone();
 		let read = cx.background_executor().spawn(async move {
 			let runtime = tokio::runtime::Builder::new_current_thread()
 				.enable_all()
@@ -112,17 +171,35 @@ impl ChiefSurface {
 				}
 				let state = &mut surface.native_history.app_ui;
 				state.task = None;
-				state.notice = Some(match result {
-					Ok(document)
+				let source = match result {
+					Ok((document, source))
 						if state.host.as_mut().is_some_and(|host| {
 							host.command(
 								serde_json::json!({"operation":"load","document":document}),
 							)
 						}) =>
-						"App opened in a separate window.",
-					Ok(_) => "This app document could not be displayed.",
-					Err(message) => message,
-				});
+					{
+						state.notice = Some("App opened in a separate window.");
+						Some(source)
+					},
+					Ok(_) => {
+						state.notice = Some("This app document could not be displayed.");
+						None
+					},
+					Err(message) => {
+						state.notice = Some(message);
+						None
+					},
+				};
+				if let Some(source) = source {
+					surface.monitor_app_ui(
+						monitor_profile.clone(),
+						monitor_request.clone(),
+						source,
+						serial,
+						cx,
+					);
+				}
 				cx.notify();
 			});
 		}));
@@ -145,14 +222,21 @@ async fn load(
 	client: &ChiefClient,
 	mut request: ChiefAppUiRequest,
 	account: &str,
-) -> Result<serde_json::Value, &'static str> {
+) -> Result<(serde_json::Value, EntityId), &'static str> {
 	let mut document = Vec::new();
 	let mut total = None;
+	let mut source = None;
 	loop {
 		let result =
 			client.app_ui(request.clone()).await.map_err(|_| "App could not be loaded.")?;
-		let ChiefAppUiResult::Available { account_id, fingerprint, total_bytes, bytes, .. } =
-			result
+		let ChiefAppUiResult::Available {
+			account_id,
+			source_fingerprint,
+			fingerprint,
+			total_bytes,
+			bytes,
+			..
+		} = result
 		else {
 			return Err(match result {
 				ChiefAppUiResult::Unsupported =>
@@ -161,13 +245,19 @@ async fn load(
 				_ => "App source changed or is unavailable.",
 			});
 		};
-		if account_id.as_str() != account || total.is_some_and(|expected| expected != total_bytes) {
+		if source.as_ref().is_some_and(|expected| expected != &source_fingerprint)
+			|| account_id.as_str() != account
+			|| total.is_some_and(|expected| expected != total_bytes)
+		{
 			return Err("App source changed.");
 		}
 		total = Some(total_bytes);
+		source = Some(source_fingerprint.clone());
 		document.extend(bytes);
 		if document.len() == total_bytes as usize {
-			return serde_json::from_slice(&document).map_err(|_| "App document is invalid.");
+			return serde_json::from_slice(&document)
+				.map(|document| (document, source_fingerprint))
+				.map_err(|_| "App document is invalid.");
 		}
 		request.offset = document.len() as u32;
 		request.fingerprint = Some(fingerprint);

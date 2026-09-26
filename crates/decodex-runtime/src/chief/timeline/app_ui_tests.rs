@@ -117,3 +117,25 @@ async fn widget_document_is_discarded_after_account_process_or_history_changes()
 		server.await.unwrap();
 	}
 }
+
+#[test]
+fn displayed_source_identity_covers_each_owner_revision() {
+	let original = key();
+	let expected = source_fingerprint(&original);
+	for field in ["account", "generation", "history", "revision", "thread", "work"] {
+		let mut changed = original.clone();
+		match field {
+			"account" =>
+				changed.account = AccountId::new("40000000-0000-4000-8000-000000000004").unwrap(),
+			"generation" =>
+				changed.generation =
+					ProcessGenerationId::new("20000000-0000-4000-8000-000000000002").unwrap(),
+			"history" => changed.history_revision += 1,
+			"revision" => changed.revision += 1,
+			"thread" => changed.thread = "other-thread".into(),
+			"work" => changed.work = "other-work".into(),
+			_ => unreachable!(),
+		}
+		assert_ne!(source_fingerprint(&changed), expected, "{field}");
+	}
+}

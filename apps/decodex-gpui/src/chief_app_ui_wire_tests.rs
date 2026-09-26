@@ -83,6 +83,24 @@ async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefAppUi
 			socket.close(None).await.unwrap();
 			continue;
 		}
+		if let QueryPayload::GetChiefAppUiSource { work_id, thread_id, fingerprint } =
+			&query.payload
+		{
+			assert_eq!(work_id.as_str(), "work");
+			assert_eq!(thread_id.as_str(), "native-thread");
+			assert_eq!(fingerprint.as_str(), "c".repeat(64));
+			let result = ServerMessage::QueryResult(QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: ServerId::new(SERVER).unwrap(),
+				query_id: query.query_id,
+				payload: QueryResultPayload::ChiefAppUiSource(mode == "current"),
+			});
+			socket
+				.send(Message::Text(serde_json::to_string(&result).unwrap().into()))
+				.await
+				.unwrap();
+			return requests;
+		}
 		let QueryPayload::GetChiefAppUi { request } = query.payload else {
 			panic!("media query: {:?}", query.payload)
 		};
@@ -100,6 +118,7 @@ async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<ChiefAppUi
 			ChiefAppUiResult::Unavailable
 		} else {
 			ChiefAppUiResult::Available {
+				source_fingerprint: EntityId::new("c".repeat(64)).unwrap(),
 				request: Box::new(request),
 				account_id: EntityId::new(if mode == "account" {
 					"other-account"
@@ -142,11 +161,61 @@ async fn app_document_collection_requires_one_account_and_complete_chunks() {
 		let result = load(&ChiefClient::new(profile), request, "account").await;
 		let requests = server.join().unwrap();
 		if mode == "complete" {
-			assert_eq!(result.unwrap()["resources"][0]["text"], "<button>Fixture</button>");
+			assert_eq!(result.unwrap().0["resources"][0]["text"], "<button>Fixture</button>");
 			assert_eq!(requests.len(), 2);
 		} else {
 			assert!(result.is_err());
 			assert_eq!(requests.len(), 1);
 		}
 	}
+}
+
+#[tokio::test]
+async fn displayed_source_check_uses_only_the_lightweight_query() {
+	for mode in ["current", "changed"] {
+		let (_root, profile, server) = fixture(mode);
+		let current = ChiefClient::new(profile)
+			.app_ui_source(
+				EntityId::new("work").unwrap(),
+				EntityId::new("native-thread").unwrap(),
+				EntityId::new("c".repeat(64)).unwrap(),
+			)
+			.await
+			.unwrap();
+		assert_eq!(current, mode == "current");
+		assert!(server.join().unwrap().is_empty(), "source check must not reload resource chunks");
+	}
+}
+
+#[gpui::test]
+fn stale_display_source_closes_the_desktop_host(cx: &mut gpui::TestAppContext) {
+	let (_root, profile, server) = fixture("changed");
+	let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+	surface.update(visual, |s, cx| {
+		s.native_history.app_ui.host = Some(native::AppHost);
+		let request = ChiefAppUiRequest {
+			work_id: EntityId::new("work").unwrap(),
+			thread_id: EntityId::new("native-thread").unwrap(),
+			turn_id: EntityId::new("turn").unwrap(),
+			item_id: EntityId::new("image").unwrap(),
+			offset: 0,
+			fingerprint: None,
+		};
+		s.monitor_app_ui(
+			profile,
+			request,
+			EntityId::new("c".repeat(64)).unwrap(),
+			s.native_history.app_ui.serial,
+			cx,
+		);
+	});
+	visual.run_until_parked();
+	assert!(server.join().unwrap().is_empty());
+	surface.read_with(visual, |s, _| {
+		assert!(s.native_history.app_ui.host.is_none());
+		assert_eq!(
+			s.native_history.app_ui.notice,
+			Some("App source changed or disconnected. Open it again to refresh.")
+		);
+	});
 }

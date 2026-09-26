@@ -34,6 +34,8 @@ pub enum ChiefAppUiResult {
 		request: Box<ChiefAppUiRequest>,
 		/// Account that owns this read.
 		account_id: crate::EntityId,
+		/// Opaque current account/process/history identity for lightweight validity reads.
+		source_fingerprint: crate::EntityId,
 		/// SHA-256 of the source binding and complete document bytes.
 		fingerprint: crate::EntityId,
 		/// Complete decoded content length.

@@ -1406,6 +1406,34 @@ impl ChiefClient {
 		}
 	}
 
+	/// Check the displayed widget source without reading resources or starting model work.
+	pub async fn app_ui_source(
+		&self,
+		work_id: EntityId,
+		thread_id: EntityId,
+		fingerprint: EntityId,
+	) -> Result<bool, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(3),
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport.query_inner(
+				"chief-app-ui-source",
+				QueryPayload::GetChiefAppUiSource { work_id, thread_id, fingerprint },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefAppUiSource(current) => Ok(current),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read a bounded native App UI document chunk without executing the thread.
 	pub async fn app_ui(
 		&self,
@@ -1430,11 +1458,14 @@ impl ChiefClient {
 			QueryResultPayload::ChiefAppUi(result) => {
 				if let crate::ChiefAppUiResult::Available {
 					request: actual,
+					source_fingerprint,
 					fingerprint,
 					total_bytes,
 					bytes,
 					..
 				} = &result && (actual.as_ref() != &request
+					|| source_fingerprint.as_str().len() != 64
+					|| !source_fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
 					|| bytes.is_empty()
 					|| bytes.len() > crate::CHIEF_APP_UI_CHUNK_BYTES
 					|| *total_bytes as usize > crate::MAX_CHIEF_APP_UI_BYTES
@@ -5718,6 +5749,7 @@ max_entry_bytes = 0
 				let result = crate::ChiefAppUiResult::Available {
 					request: Box::new(returned),
 					account_id: EntityId::new("account").unwrap(),
+					source_fingerprint: EntityId::new("c".repeat(64)).unwrap(),
 					fingerprint: EntityId::new(
 						if change == "fingerprint" { "b" } else { "a" }.repeat(64),
 					)

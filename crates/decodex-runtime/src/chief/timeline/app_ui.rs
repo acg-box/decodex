@@ -58,6 +58,22 @@ where
 	}
 }
 
+pub(crate) fn source_fingerprint(key: &SourceKey) -> EntityId {
+	let bytes = serde_json::to_vec(&json!([
+		key.work,
+		key.thread,
+		key.account.as_str(),
+		key.generation.as_str(),
+		key.revision,
+		key.history_revision
+	]))
+	.expect("source JSON serializes");
+	EntityId::new(
+		Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
+	)
+	.expect("SHA-256 is an entity ID")
+}
+
 fn chunk(key: &SourceKey, request: &ChiefAppUiRequest, bytes: Vec<u8>) -> Result {
 	let mut hash = Sha256::new();
 	// Structured fields bind every source transition and the exact native attachment.
@@ -93,6 +109,7 @@ fn chunk(key: &SourceKey, request: &ChiefAppUiRequest, bytes: Vec<u8>) -> Result
 		request: Box::new(request.clone()),
 		account_id,
 		fingerprint,
+		source_fingerprint: source_fingerprint(key),
 		total_bytes: bytes.len() as u32,
 		bytes: bytes[start..end].to_vec(),
 	}

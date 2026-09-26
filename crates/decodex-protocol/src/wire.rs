@@ -2349,6 +2349,15 @@ pub enum QueryPayload {
 		/// Identity captured before dispatch.
 		identity: crate::ChiefSteerIdentity,
 	},
+	/// Check whether a displayed widget still belongs to the current native source.
+	GetChiefAppUiSource {
+		/// Exact work owner.
+		work_id: EntityId,
+		/// Expected native thread.
+		thread_id: EntityId,
+		/// Opaque source identity returned with the document.
+		fingerprint: EntityId,
+	},
 	/// Read a source-bound MCP App UI document chunk.
 	GetChiefAppUi {
 		/// Exact native tool item and chunk continuation.
@@ -3129,6 +3138,8 @@ pub enum QueryResultPayload {
 	ChiefMedia(crate::ChiefMediaResult),
 	/// Source-bound MCP App UI resource document.
 	ChiefAppUi(crate::ChiefAppUiResult),
+	/// Current source equality; this grants no tool execution authority.
+	ChiefAppUiSource(bool),
 	/// Exact positive steering acceptance evidence.
 	ChiefSteerReceipt(crate::ChiefSteerReceiptResult),
 	/// Independent unconfirmed input page.

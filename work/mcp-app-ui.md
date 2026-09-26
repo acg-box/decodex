@@ -75,8 +75,7 @@ windows, JavaScript dialogs and external navigation. It removes handlers on clos
 Five Swift tests pass, including a real WebKit fixture that receives the tool result,
 cannot access the host DOM, and cannot call the native handler directly from the
 child frame. This is browser lifecycle evidence, not complete desktop integration.
-External nested frames, display-mode changes, graceful resource teardown, source
-invalidation after display and explicitly mediated interactive callbacks remain open.
+External nested frames, display-mode changes, graceful resource teardown, signed lifecycle acceptance and explicitly mediated interactive callbacks remain open.
 
 ## Native window ABI
 
@@ -107,6 +106,25 @@ and dead-code allowances. The first run had a malformed new test fixture (missin
 agent-message text); the corrected full run passed with no leaky warning.
 
 This does not establish signed desktop visual acceptance or tool callback authority.
+
+## Display source lifetime
+
+Each document chunk also returns an opaque source fingerprint that covers its task,
+thread, account, process generation, credential revision and history revision. The
+collector requires one source fingerprint across all chunks. `GetChiefAppUiSource`
+compares that identity with the current service owner and checks the native connection
+guard. It does not read HTML, call MCP tools or start model work.
+
+After opening the view, the desktop checks immediately and then once per second.
+A changed source, failed query or disconnected service drops the native host and
+shows a refresh notice. Closing the native window or changing the selected timeline
+cancels the monitor. The selected protocol/runtime/desktop run passed 173 tests, with one leaky-handle
+warning on an unchanged account-recovery transport test. That test passed in isolation
+without the warning. Clippy passed with the existing desktop allowances. Tests include
+the real lightweight local query and desktop host closure after a stale response.
+
+This is display lifetime control; each future effectful callback
+still requires a fresh authority check at dispatch.
 
 ## Remaining consumer obligations
 

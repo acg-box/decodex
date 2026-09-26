@@ -2283,6 +2283,12 @@ impl Application for ServiceApplication {
 				self.query_input_receipts(work_id.as_str(), *after).await,
 			QueryPayload::GetChiefSteerReceipt { identity } =>
 				self.query_steer_receipt(identity).await,
+			QueryPayload::GetChiefAppUiSource { work_id, thread_id, fingerprint } =>
+				QueryResultPayload::ChiefAppUiSource(match &self.chief {
+					Some(chief) =>
+						chief.app_ui_source(work_id.as_str(), thread_id.as_str(), fingerprint).await,
+					None => false,
+				}),
 			QueryPayload::GetChiefAppUi { request } =>
 				QueryResultPayload::ChiefAppUi(match &self.chief {
 					Some(chief) => chief.app_ui(request).await,
