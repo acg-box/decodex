@@ -268,6 +268,81 @@ pub struct ChiefClient {
 	transport: ResetCardClient,
 }
 impl ChiefClient {
+	/// Stage complete input with durable progress. This never submits a model turn.
+	/// Reuse the same upload identity to resume after interruption.
+	pub async fn stage_prompt_input(
+		&self,
+		upload: crate::PromptInputUpload,
+		input: &crate::PromptDraft,
+	) -> Result<i64, ClientFailure> {
+		self.transport.require_local_profile()?;
+		input.validate().map_err(|_| ClientFailure::ProtocolMalformed)?;
+		let encoded = serde_json::to_string(input).map_err(|_| ClientFailure::ProtocolMalformed)?;
+		if !upload.is_valid()
+			|| encoded.len() as u64 != upload.total_bytes
+			|| input.fingerprint().map_err(|_| ClientFailure::ProtocolMalformed)? != upload.sha256
+		{
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		time::timeout(Duration::from_secs(120), self.transfer_prompt_input(upload, encoded))
+			.await
+			.map_err(|_| ClientFailure::ProtocolTimeout)?
+	}
+
+	async fn transfer_prompt_input(
+		&self,
+		upload: crate::PromptInputUpload,
+		encoded: String,
+	) -> Result<i64, ClientFailure> {
+		let mut status = self.prompt_input_upload_status(upload.clone()).await?;
+		// At most 129 UTF-8 chunks for an 8 MiB input, plus finalization/readback.
+		for _ in 0..131 {
+			let offset = match status {
+				crate::PromptInputUploadStatus::Ready { input_id, .. } => return Ok(input_id),
+				crate::PromptInputUploadStatus::Receiving { received_bytes, .. } =>
+					received_bytes as usize,
+				crate::PromptInputUploadStatus::Unavailable { .. } =>
+					return Err(ClientFailure::ProtocolViolation),
+			};
+			if !encoded.is_char_boundary(offset) {
+				return Err(ClientFailure::ProtocolMalformed);
+			}
+			let complete = offset == encoded.len();
+			let action = if complete {
+				crate::ChiefActionDto::CompletePromptInputUpload { upload: upload.clone() }
+			} else {
+				let mut end = (offset + 65536).min(encoded.len());
+				while !encoded.is_char_boundary(end) {
+					end -= 1;
+				}
+				crate::ChiefActionDto::UploadPromptInput {
+					upload: upload.clone(),
+					offset: offset as u64,
+					fragment: encoded[offset..end].into(),
+				}
+			};
+			// Hash the full action so chunk and finalization keys cannot collide or truncate.
+			let bytes =
+				serde_json::to_vec(&action).map_err(|_| ClientFailure::ProtocolMalformed)?;
+			let key = IdempotencyKey::new(decodex_core::BlobHash::digest(&bytes).to_hex())
+				.map_err(|_| ClientFailure::ProtocolMalformed)?;
+			match self.execute(action, key).await? {
+				ChiefCommandResponse::Rejected { .. } =>
+					return Err(ClientFailure::ProtocolViolation),
+				ChiefCommandResponse::Accepted { .. }
+				| ChiefCommandResponse::PotentiallyDispatched { .. } => {},
+			}
+			status = self.prompt_input_upload_status(upload.clone()).await?;
+			if let crate::PromptInputUploadStatus::Receiving { received_bytes, .. } = &status
+				&& (complete || *received_bytes <= offset as u64)
+			{
+				// Do not spin or infer acceptance from an inconclusive command reply.
+				return Err(ClientFailure::ApplicationAcceptanceUnknown);
+			}
+		}
+		Err(ClientFailure::ProtocolMalformed)
+	}
+
 	/// Read complete canonical edit input through bounded pages. Never confirms or retries an edit.
 	pub async fn prompt_edit(
 		&self,
