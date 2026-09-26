@@ -6,7 +6,9 @@ pub use chief_requested_decision::{ChiefRequestedDecision, requested_decision_re
 
 mod account_login;
 mod chief;
+mod chief_prompt_draft;
 mod chief_prompt_edit;
+pub use chief_prompt_draft::{DesktopPromptEditDraft, PromptDraft};
 mod chief_recap;
 pub use chief_prompt_edit::{PromptEditEvidence, PromptEditPhase, PromptEditStatus};
 mod chief_voice_settings;

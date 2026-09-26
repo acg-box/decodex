@@ -33,7 +33,7 @@ pub struct DesktopDraftDocument {
 impl Default for DesktopDraftDocument {
 	fn default() -> Self {
 		Self {
-			version: 7,
+			version: 8,
 			profiles: BTreeMap::new(),
 			unbound: Default::default(),
 			unbound_ordinary: Default::default(),
@@ -46,6 +46,10 @@ impl Default for DesktopDraftDocument {
 #[derive(Clone, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopProfileDraft {
+	/// Canonical history editors, retained separately from an occupied main composer.
+	/// Keyed by service review identity so competing edits remain distinct.
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub prompt_edits: BTreeMap<String, crate::DesktopPromptEditDraft>,
 	/// Ordinary editors by exact directory within this service profile.
 	#[serde(default)]
 	pub ordinary: BTreeMap<String, crate::DesktopOrdinaryDraft>,
@@ -197,7 +201,7 @@ impl DesktopDraftDocument {
 			}
 		}
 		value.validate()?;
-		value.version = 7;
+		value.version = 8;
 		Ok(value)
 	}
 
@@ -210,7 +214,7 @@ impl DesktopDraftDocument {
 	}
 
 	fn validate(&self) -> Result<(), &'static str> {
-		if !matches!(self.version, 1..=7) {
+		if !matches!(self.version, 1..=8) {
 			return Err("Draft snapshot version is unsupported");
 		}
 		if self.profiles.len() > 64 {
@@ -242,11 +246,22 @@ impl DesktopDraftDocument {
 impl DesktopProfileDraft {
 	/// Whether any retained command still needs delivery reconciliation.
 	pub fn has_unconfirmed_delivery(&self) -> bool {
-		self.uncertain || self.ordinary.values().any(|draft| !draft.unconfirmed.is_empty())
+		self.uncertain
+			|| self.prompt_edits.values().any(|draft| draft.handback_pending)
+			|| self.ordinary.values().any(|draft| !draft.unconfirmed.is_empty())
 	}
 
 	fn validate(&self) -> Result<(), &'static str> {
 		self.composer.validate()?;
+		if self.prompt_edits.len() > 64 {
+			return Err("Too many prompt editors");
+		}
+		for (review, draft) in &self.prompt_edits {
+			if review != draft.review_token.as_str() {
+				return Err("Prompt draft review does not match");
+			}
+			draft.validate()?;
+		}
 		if self.ordinary.len() > 64 {
 			return Err("Too many ordinary directory drafts");
 		}
@@ -430,7 +445,7 @@ mod tests {
 			execution: Some((EntityId::new("work").unwrap(), 4)),
 		});
 		DesktopDraftDocument {
-			version: 7,
+			version: 8,
 			profiles: BTreeMap::from([("a".repeat(64), profile)]),
 			recovered: vec![],
 			unbound: Default::default(),
@@ -457,7 +472,7 @@ mod tests {
 		let bytes = document.encode().unwrap();
 		assert_eq!(DesktopDraftDocument::decode(&bytes).unwrap().unbound.creation, Some(setup));
 		let old = DesktopDraftDocument::decode(br#"{"version":1,"profiles":{}}"#).unwrap();
-		assert_eq!(old.version, 7);
+		assert_eq!(old.version, 8);
 		assert!(old.unbound.creation.is_none());
 		let mut remote = document.clone();
 		remote.unbound.creation.as_mut().unwrap().model = "other model".into();
@@ -494,7 +509,7 @@ mod tests {
 	#[test]
 	fn draft_document_rejects_changed_contract_and_ambiguous_ownership() {
 		let mut original = document();
-		original.version = 8;
+		original.version = 9;
 		assert!(original.encode().is_err());
 		let mut json = serde_json::to_value(document()).unwrap();
 		json["unexpected"] = serde_json::json!(true);

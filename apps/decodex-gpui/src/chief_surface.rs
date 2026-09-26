@@ -31,6 +31,7 @@
 #[path = "chief_permissions.rs"] mod permissions;
 #[path = "chief_plugins.rs"] mod plugins;
 #[path = "chief_progress.rs"] mod progress;
+#[path = "chief_prompt_edit.rs"] mod prompt_edit;
 #[path = "chief_prompts.rs"] mod prompts;
 #[path = "chief_question_notices.rs"] mod question_notices;
 #[path = "chief_recap.rs"] mod recap;
@@ -90,6 +91,7 @@ pub(crate) struct ChiefSurface {
 	voice_task: Option<Task<()>>,
 	voice_settings: voice_settings::Panel,
 	recap: recap::Panel,
+	prompt_edit: prompt_edit::Panel,
 	automatic_recap: recap::Automatic,
 	audio_inputs: Vec<String>,
 	audio_input: String,
@@ -340,6 +342,7 @@ impl ChiefSurface {
 			voice_task: None,
 			voice_settings: Default::default(),
 			recap: Default::default(),
+			prompt_edit: Default::default(),
 			automatic_recap: Default::default(),
 			audio_inputs: Vec::new(),
 			audio_input: String::new(),
@@ -905,6 +908,7 @@ impl ChiefSurface {
 				| ChiefActionDto::SkipQuestion { .. }
 		) {
 			self.reset_recap();
+			self.reset_prompt_edit();
 		}
 		if self.draft_quit_in_progress() {
 			return;
@@ -1170,6 +1174,7 @@ impl ChiefSurface {
 		self.reset_saved_app_settings();
 		self.reset_voice_settings();
 		self.reset_recap();
+		self.reset_prompt_edit();
 		self.reset_native_goal();
 		self.snapshot = None;
 		self.pages.clear();
@@ -1229,6 +1234,7 @@ impl ChiefSurface {
 		self.reset_saved_app_settings();
 		self.reset_voice_settings();
 		self.reset_recap();
+		self.reset_prompt_edit();
 		self.question_notices = Default::default();
 		self.clear_activity_detail();
 		self.output_stream = Default::default();
@@ -1311,6 +1317,7 @@ impl ChiefSurface {
 			self.reset_saved_app_settings();
 			self.reset_voice_settings();
 			self.reset_recap();
+			self.reset_prompt_edit();
 			self.reset_native_goal();
 			self.question_notices = Default::default();
 			self.clear_activity_detail();
@@ -1330,6 +1337,7 @@ impl ChiefSurface {
 				self.invalidate_saved_app_settings(&snapshot);
 				self.invalidate_voice_settings(&snapshot);
 				self.invalidate_recap(&snapshot);
+				self.invalidate_prompt_edit(&snapshot);
 				self.invalidate_native_goal(&snapshot);
 				if self.snapshot.as_ref().is_some_and(|old| {
 					old.runtime_source != snapshot.runtime_source
@@ -1726,6 +1734,7 @@ impl ChiefSurface {
 			.flex_col()
 			.gap(px(ui_theme::MESSAGE_GAP))
 			.child(self.recap_panel(&work.id, cx))
+			.child(self.prompt_edit_panel(&work.id, cx))
 			.child(self.native_timeline_panel(work, cx));
 		if self.native_history_active(work) {
 			return self.history_activity(panel.child(self.native_receipts_panel(work, cx)), work);

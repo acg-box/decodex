@@ -1,5 +1,6 @@
 #[path = "composer_cursor.rs"] pub(crate) mod cursor;
 #[path = "composer_edit.rs"] mod edit;
+#[path = "composer_native.rs"] mod native;
 #[path = "composer_shortcuts.rs"] mod shortcuts;
 use unicode_segmentation::UnicodeSegmentation as _;
 #[path = "composer_text.rs"] mod text;
@@ -94,6 +95,7 @@ pub(crate) struct ComposerInput {
 	placeholder: SharedString,
 	aria_label: SharedString,
 	content: String,
+	native_part: Option<decodex_protocol::PromptDraft>,
 	selected_range: Range<usize>,
 	selection_reversed: bool,
 	marked_range: Option<Range<usize>>,
@@ -150,6 +152,7 @@ impl ComposerInput {
 			placeholder: placeholder.into(),
 			aria_label: aria_label.into(),
 			content: String::new(),
+			native_part: None,
 			selected_range: 0..0,
 			selection_reversed: false,
 			marked_range: None,
@@ -191,10 +194,11 @@ impl ComposerInput {
 	}
 
 	pub(crate) fn clear(&mut self, cx: &mut Context<Self>) {
-		if self.content.is_empty() {
+		if self.content.is_empty() && self.native_part.is_none() {
 			return;
 		}
 		self.content.clear();
+		self.native_part = None;
 		self.undo.clear();
 		self.redo.clear();
 		self.selected_range = 0..0;
@@ -205,9 +209,10 @@ impl ComposerInput {
 	}
 
 	pub(crate) fn set_content(&mut self, value: &str, cx: &mut Context<Self>) {
-		if self.content == value {
+		if self.content == value && self.native_part.is_none() {
 			return;
 		}
+		self.native_part = None;
 		self.replace_bytes(0..self.content.len(), value, false, None, cx);
 		self.undo.clear();
 		self.redo.clear();
@@ -449,9 +454,22 @@ impl ComposerInput {
 		selected_range_utf16: Option<&Range<usize>>,
 		cx: &mut Context<Self>,
 	) {
-		self.checkpoint();
 		let retained = self.content.len().saturating_sub(range.end.saturating_sub(range.start));
-		let replacement = bounded_input(new_text, MAX_COMPOSER_BYTES.saturating_sub(retained));
+		let maximum = if self.native_part.is_some() {
+			native::MAX_NATIVE_EDITOR_BYTES
+		} else {
+			MAX_COMPOSER_BYTES
+		};
+		let replacement = bounded_input(new_text, maximum.saturating_sub(retained));
+		let mut native_part = self.native_part.clone();
+		if let Some(part) = &mut native_part {
+			// Native restoration never truncates an edit or strips a bound marker.
+			if replacement != new_text || part.replace_text(0, range.clone(), new_text).is_err() {
+				return;
+			}
+		}
+		self.checkpoint();
+		self.native_part = native_part;
 		let inserted = range.start..range.start + replacement.len();
 		let relative_selection =
 			selected_range_utf16.map(|selection| range_from_utf16(&replacement, selection));

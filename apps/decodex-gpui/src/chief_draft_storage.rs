@@ -99,6 +99,88 @@ impl Storage {
 }
 
 impl ChiefSurface {
+	pub(in super::super) fn saved_prompt_editors(
+		&self,
+		work: &str,
+	) -> Vec<decodex_protocol::DesktopPromptEditDraft> {
+		let Some(profile) = &self.profile else {
+			return Vec::new();
+		};
+		let Some(thread) = self
+			.snapshot
+			.as_ref()
+			.and_then(|snapshot| snapshot.work_items.iter().find(|item| item.id == work))
+			.and_then(|item| item.codex_thread_id.as_deref())
+		else {
+			return Vec::new();
+		};
+		self.draft_profiles
+			.storage
+			.document
+			.profiles
+			.get(&profile.draft_scope_key())
+			.into_iter()
+			.flat_map(|profile| profile.prompt_edits.values())
+			.filter(|draft| draft.work_id.as_str() == work && draft.thread_id.as_str() == thread)
+			.cloned()
+			.collect()
+	}
+
+	pub(in super::super) fn discard_prompt_editor(
+		&mut self,
+		draft: &decodex_protocol::DesktopPromptEditDraft,
+		cx: &mut Context<Self>,
+	) -> Result<(), &'static str> {
+		if self.selected.as_deref() != Some(draft.work_id.as_str())
+			|| !self.saved_prompt_editors(draft.work_id.as_str()).contains(draft)
+		{
+			return Err("Draft source changed");
+		}
+		if draft.handback_pending || draft.receipt_id.is_some() {
+			return Err("Recover the history edit before discarding its draft");
+		}
+		let scope =
+			self.profile.as_ref().ok_or("Service profile is unavailable")?.draft_scope_key();
+		let saved = self
+			.draft_profiles
+			.storage
+			.document
+			.profiles
+			.get_mut(&scope)
+			.ok_or("Draft profile is unavailable")?;
+		if saved.prompt_edits.get(draft.review_token.as_str()) != Some(draft) {
+			return Err("Saved draft changed");
+		}
+		saved.prompt_edits.remove(draft.review_token.as_str());
+		self.save_draft_document(cx);
+		Ok(())
+	}
+
+	pub(in super::super) fn stage_prompt_editor(
+		&mut self,
+		draft: decodex_protocol::DesktopPromptEditDraft,
+		cx: &mut Context<Self>,
+	) -> Result<(), &'static str> {
+		let scope =
+			self.profile.as_ref().ok_or("Service profile is unavailable")?.draft_scope_key();
+		if self.draft_profiles.active.as_ref().map(ClientProfile::draft_scope_key)
+			!= Some(scope.clone())
+		{
+			return Err("Draft profile changed");
+		}
+		self.remember_draft_document(cx);
+		let mut next = self.draft_profiles.storage.document.clone();
+		next.profiles
+			.entry(scope)
+			.or_default()
+			.prompt_edits
+			.insert(draft.review_token.as_str().into(), draft);
+		next.encode()?;
+		self.draft_profiles.storage.document = next;
+		self.save_draft_document(cx);
+		Ok(())
+	}
+
 	pub(in super::super) fn restore_unbound_draft(&mut self, cx: &mut Context<Self>) {
 		let saved = self.draft_profiles.storage.document.unbound.clone();
 		self.restore_creation_setup(saved.creation.as_ref(), cx);
@@ -366,6 +448,15 @@ impl ChiefSurface {
 			})
 			.transpose_option()?;
 		Some(DesktopProfileDraft {
+			prompt_edits: self
+				.draft_profiles
+				.active
+				.as_ref()
+				.and_then(|profile| {
+					self.draft_profiles.storage.document.profiles.get(&profile.draft_scope_key())
+				})
+				.map(|draft| draft.prompt_edits.clone())
+				.unwrap_or_default(),
 			ordinary: self
 				.draft_profiles
 				.active
@@ -1421,6 +1512,31 @@ mod ordinary_owner_tests {
 				.or_default()
 				.ordinary
 				.insert("/tmp".into(), ordinary.clone());
+			let review = "b".repeat(64);
+			s.draft_profiles
+				.storage
+				.document
+				.profiles
+				.get_mut(&first.draft_scope_key())
+				.unwrap()
+				.prompt_edits
+				.insert(
+					review.clone(),
+					decodex_protocol::DesktopPromptEditDraft {
+						work_id: EntityId::new("edited-work").unwrap(),
+						thread_id: WireText::new("native-thread").unwrap(),
+						before_turn_id: WireText::new("turn").unwrap(),
+						item_id: WireText::new("item").unwrap(),
+						original_hash: decodex_protocol::Sha256Digest::new("a".repeat(64)).unwrap(),
+						review_token: WireText::new(review).unwrap(),
+						receipt_id: Some(42),
+						handback_pending: true,
+						input: decodex_protocol::PromptDraft::new(vec![
+							serde_json::json!({"type":"image","fileId":"retained-native-file"}),
+						])
+						.unwrap(),
+					},
+				);
 			s.composer.update(cx, |input, cx| input.set_content("Chief input", cx));
 			s.bind_profile(Some(second.clone()), cx);
 			s.composer.update(cx, |input, cx| input.set_content("Other service input", cx));
@@ -1437,6 +1553,10 @@ mod ordinary_owner_tests {
 		});
 		let decoded = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
 		assert_eq!(decoded.profiles[&first.draft_scope_key()].ordinary["/tmp"], ordinary);
+		let restored = &decoded.profiles[&first.draft_scope_key()].prompt_edits[&"b".repeat(64)];
+		assert_eq!(restored.input.parts()[0]["fileId"], "retained-native-file");
+		assert!(restored.handback_pending);
+		assert!(decoded.profiles[&second.draft_scope_key()].prompt_edits.is_empty());
 	}
 }
 

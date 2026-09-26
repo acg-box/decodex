@@ -29,6 +29,7 @@ impl DesktopRecoveredDraft {
 			|| self.draft.uncertain
 			|| self.draft.pending.is_some()
 			|| !self.draft.unconfirmed_commands.is_empty()
+			|| !self.draft.prompt_edits.is_empty()
 		{
 			return Err("Recovered unbound draft cannot own service state");
 		}
@@ -210,6 +211,18 @@ impl DesktopDraftDocument {
 }
 
 fn retain_fences(selected: &mut DesktopProfileDraft, other: &DesktopProfileDraft) {
+	for (review, draft) in &other.prompt_edits {
+		if draft.handback_pending {
+			let local =
+				selected.prompt_edits.entry(review.clone()).or_insert_with(|| draft.clone());
+			if local.work_id == draft.work_id && local.thread_id == draft.thread_id {
+				local.receipt_id = local.receipt_id.or(draft.receipt_id);
+				local.handback_pending = true;
+			} else {
+				selected.uncertain = true;
+			}
+		}
+	}
 	for (directory, remote) in &other.ordinary {
 		if remote.unconfirmed.is_empty() {
 			continue;
