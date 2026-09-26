@@ -1,5 +1,6 @@
 //! Single service-owned Chief actor. The existing Conversation runtime owns its account process.
 
+#[path = "chief_prompt_edit_host.rs"] mod prompt_edit;
 #[path = "chief_recap/host.rs"] mod recap;
 
 use std::{
@@ -83,6 +84,7 @@ struct Request {
 
 #[derive(Clone)]
 pub(crate) struct ChiefHost {
+	prompt_edits: prompt_edit::Reviews,
 	recaps: crate::chief_recap::Recaps,
 	weather_cache: Arc<Mutex<Option<weather::CachedWeather>>>,
 	voice: crate::chief_voice::VoiceGateway,
@@ -112,6 +114,7 @@ impl ChiefHost {
 		Self {
 			voice: crate::chief_voice::VoiceGateway::new(),
 			recaps: Default::default(),
+			prompt_edits: Default::default(),
 			weather_cache: Arc::new(Mutex::new(None)),
 			dictation: Default::default(),
 			mcp_login: Default::default(),
@@ -793,12 +796,13 @@ impl ChiefHost {
 					},
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
-						self.rotate_exhausted(&mut active).await;
-						let recap = matches!(&request.action,ChiefActionDto::GenerateRecap{..}|ChiefActionDto::CancelRecap{..});
+						let history_edit = matches!(&request.action,ChiefActionDto::PreparePromptEdit{..}|ChiefActionDto::ConfirmPromptEdit{..}|ChiefActionDto::RecoverPromptEdit{..}|ChiefActionDto::AcknowledgePromptEditDraft{..});
+						if !history_edit { self.rotate_exhausted(&mut active).await; }
+						let suppress_wake = history_edit || matches!(&request.action,ChiefActionDto::GenerateRecap{..}|ChiefActionDto::CancelRecap{..});
 						self.recaps.note_input(&request.action);
 						let outcome = self.handle(request.key,request.action,&mut active).await;
 						let _ = request.reply.send(outcome);
-						if !recap && let Some((root,chief,_)) = active.as_mut() {
+						if !suppress_wake && let Some((root,chief,_)) = active.as_mut() {
 							self.record_delivery(root, chief.wake_pending().await).await;
 						}
 					},
@@ -1200,6 +1204,12 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			action @ (Action::PreparePromptEdit { .. }
+			| Action::ConfirmPromptEdit { .. }
+			| Action::RecoverPromptEdit { .. }
+			| Action::AcknowledgePromptEditDraft { .. }) =>
+				self.handle_prompt_edit(&key, action, active.as_mut().map(|(_, chief, _)| chief))
+					.await,
 			action @ (Action::GenerateRecap { .. } | Action::CancelRecap { .. }) =>
 				self.handle_recap(&key, action).await,
 			action @ (Action::SetVoicePreference { .. }
@@ -1300,23 +1310,31 @@ impl ChiefHost {
 				})?;
 				Ok(work_id.as_str().into())
 			},
-			Action::AutomationResult { work_id, source_event_id, payload } => {
-				self.store
-					.enqueue_chief_event(EnqueueChiefEvent {
-						source_event_id: json!(["automation", source_event_id.as_str()])
-							.to_string(),
-						work_item_id: work_id.as_str().into(),
-						event_kind: "automation_result".into(),
-						payload: payload.as_str().into(),
-					})
-					.await
-					.map_err(|_| "automation result could not be accepted")?;
-				if active.is_none() {
-					*active = self.restore().await;
-				}
-				Ok(work_id.as_str().into())
-			},
+			Action::AutomationResult { work_id, source_event_id, payload } =>
+				self.accept_automation_result(work_id, source_event_id, payload, active).await,
 		}
+	}
+
+	async fn accept_automation_result(
+		&self,
+		work_id: decodex_protocol::EntityId,
+		source_event_id: decodex_protocol::WireText,
+		payload: decodex_protocol::HistoryText,
+		active: &mut Option<(String, ChiefCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, ChiefHostError> {
+		self.store
+			.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id: json!(["automation", source_event_id.as_str()]).to_string(),
+				work_item_id: work_id.as_str().into(),
+				event_kind: "automation_result".into(),
+				payload: payload.as_str().into(),
+			})
+			.await
+			.map_err(|_| "automation result could not be accepted")?;
+		if active.is_none() {
+			*active = self.restore().await;
+		}
+		Ok(work_id.as_str().into())
 	}
 
 	async fn steer_action(

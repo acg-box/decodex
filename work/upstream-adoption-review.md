@@ -219,3 +219,12 @@ fresh guarded native history after success, lost replies or post-commit errors;
 it never replays the mutation. The durable input fence remains until desktop draft
 handback. Public command/presentation integration is still incomplete; this is not
 a delivered end-user editing action. See [prompt editing](prompt-editing.md).
+
+### Optional earlier-prompt editing: public transport
+
+Protocol2.86 exposes exact review, one-shot confirmation, read-only recovery and
+separate draft acknowledgement through the existing Chief actor. Canonical input
+uses bounded source-consistent pages, including large Unicode text and native
+image/file fields. Retries do not repeat the native mutation; acknowledgement does
+not send the draft. GPUI canonical draft storage/editor support and visual acceptance
+are still required before this becomes a complete desktop capability.

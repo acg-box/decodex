@@ -228,7 +228,16 @@ async fn check(
 	wait_phase(client, &work, Phase::Cancelled).await;
 	assert!(client.recap(work.clone()).await.expect("cancelled query").recap.is_none());
 	if std::env::var("DECODEX_TEST_PROMPT_REVERT").as_deref() == Ok("1") {
-		qualify_native_prompt_revert(store, &native, work.as_str(), &thread, requests).await;
+		qualify_native_prompt_revert(
+			store,
+			&native,
+			work.as_str(),
+			&thread,
+			requests,
+			client,
+			home,
+		)
+		.await;
 	}
 }
 
@@ -502,6 +511,8 @@ async fn qualify_native_prompt_revert(
 	work: &str,
 	thread: &str,
 	requests: &std::sync::atomic::AtomicUsize,
+	client: &ChiefClient,
+	home: &std::path::Path,
 ) {
 	let before = native
 		.request("thread/resume", json!({"threadId":thread,"excludeTurns":true}))
@@ -516,38 +527,42 @@ async fn qualify_native_prompt_revert(
 		.iter()
 		.find(|i| i["type"] == "userMessage")
 		.expect("input");
-	let mut coordinator = crate::ChiefCoordinator::new(
-		store.clone(),
-		native.clone(),
-		crate::ChiefConfig::new("unused".into(), "high".into(), "/tmp".into()),
+	let work_id = EntityId::new(work).expect("work");
+	let thread_id = WireText::new(thread).expect("thread");
+	accepted(
+		client,
+		Action::PreparePromptEdit {
+			work_id: work_id.clone(),
+			thread_id: thread_id.clone(),
+			turn_id: WireText::new(selected).expect("turn"),
+			item_id: WireText::new(input["id"].as_str().expect("input id")).expect("item"),
+		},
+		"installed-edit-review",
 	)
-	.expect("fixture coordinator");
-	coordinator.bind_native_generation(
-		store
-			.read_chief_process_binding(work)
-			.await
-			.expect("binding")
-			.expect("owner")
-			.generation_id,
-	);
-	let review = coordinator
-		.prepare_prompt_edit(
-			work,
-			thread,
-			selected,
-			input["id"].as_str().expect("input id"),
-			"installed-native-revert",
-		)
-		.await
-		.expect("native review")
-		.expect("editable input");
-	assert_eq!(
-		review.evidence().content,
-		input["content"].as_array().expect("canonical content").clone()
-	);
+	.await;
+	let (review, content) =
+		client.prompt_edit(work_id.clone(), thread_id.clone()).await.expect("public review");
+	assert_eq!(review.phase, decodex_protocol::PromptEditPhase::Review);
+	let content = content.expect("canonical input");
+	assert_eq!(content, input["content"].as_array().expect("canonical content").clone());
+	let token = review.evidence.expect("review evidence").review_token;
 	let count = requests.load(Ordering::Acquire);
-	let receipt = coordinator.confirm_prompt_edit(review).await.expect("native confirm");
-	assert_eq!(receipt.state, "applied");
+	for key in ["installed-edit-confirm", "installed-edit-confirm-readback"] {
+		accepted(
+			client,
+			Action::ConfirmPromptEdit {
+				work_id: work_id.clone(),
+				thread_id: thread_id.clone(),
+				review_token: token.clone(),
+			},
+			key,
+		)
+		.await;
+	}
+	let (status, restored) =
+		client.prompt_edit(work_id.clone(), thread_id.clone()).await.expect("public receipt");
+	assert_eq!(status.phase, decodex_protocol::PromptEditPhase::Applied);
+	assert_eq!(restored.as_ref(), Some(&content));
 	let retained = native.thread_turns_since(thread, None).await.expect("retained history");
 	assert_eq!(
 		retained.iter().map(|t| t["id"].clone()).collect::<Vec<_>>(),
@@ -587,11 +602,53 @@ async fn qualify_native_prompt_revert(
 		store.begin_chief_dispatch(work.into()).await.is_err(),
 		"desktop draft handback remains required"
 	);
-	assert!(
-		coordinator
-			.recover_prompt_edit(work, thread)
+	accepted(
+		client,
+		Action::RecoverPromptEdit { work_id: work_id.clone(), thread_id: thread_id.clone() },
+		"installed-edit-recover",
+	)
+	.await;
+	qualify_prompt_acknowledgement(client, status, &content, home).await;
+	assert_eq!(requests.load(Ordering::Acquire), count, "acknowledgement must not send the draft");
+}
+
+async fn qualify_prompt_acknowledgement(
+	client: &ChiefClient,
+	status: decodex_protocol::PromptEditStatus,
+	content: &[serde_json::Value],
+	home: &std::path::Path,
+) {
+	let evidence = status.evidence.expect("edit receipt");
+	let draft = home.join("saved-canonical-prompt.json");
+	std::fs::write(&draft, serde_json::to_vec(content).expect("canonical bytes"))
+		.expect("save client draft");
+	std::fs::File::open(&draft).expect("saved draft").sync_all().expect("durable client draft");
+	std::fs::File::open(home).expect("fixture directory").sync_all().expect("durable draft entry");
+	let saved: Vec<serde_json::Value> =
+		serde_json::from_slice(&std::fs::read(&draft).expect("saved bytes"))
+			.expect("saved canonical input");
+	assert_eq!(saved, content);
+	let receipt_id = evidence.receipt_id.expect("durable receipt");
+	for (id, key) in [
+		(receipt_id + 1, "wrong-draft-receipt"),
+		(receipt_id, "draft-saved"),
+		(receipt_id, "draft-saved-readback"),
+	] {
+		let result = client
+			.execute(
+				Action::AcknowledgePromptEditDraft {
+					work_id: status.work_id.clone(),
+					thread_id: status.thread_id.clone(),
+					receipt_id: id,
+					review_token: evidence.review_token.clone(),
+				},
+				IdempotencyKey::new(key).expect("key"),
+			)
 			.await
-			.expect("read-only recovery")
-			.is_some_and(|r| r.state == "applied")
-	);
+			.expect("ack response");
+		assert_eq!(matches!(result, ChiefCommandResponse::Accepted { .. }), id == receipt_id);
+	}
+	let (restored, _) =
+		client.prompt_edit(status.work_id, status.thread_id).await.expect("released receipt");
+	assert_eq!(restored.phase, decodex_protocol::PromptEditPhase::Restored);
 }

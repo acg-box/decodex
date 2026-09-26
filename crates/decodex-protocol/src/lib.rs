@@ -6,7 +6,9 @@ pub use chief_requested_decision::{ChiefRequestedDecision, requested_decision_re
 
 mod account_login;
 mod chief;
+mod chief_prompt_edit;
 mod chief_recap;
+pub use chief_prompt_edit::{PromptEditEvidence, PromptEditPhase, PromptEditStatus};
 mod chief_voice_settings;
 pub use chief_recap::{TaskRecap, TaskRecapPhase, TaskRecapStatus};
 pub use chief_voice_settings::ChiefVoiceSettingsResult;
@@ -207,7 +209,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 85 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 86 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

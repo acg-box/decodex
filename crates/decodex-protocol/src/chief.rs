@@ -325,6 +325,45 @@ pub struct ChiefTaskReferenceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChiefActionDto {
+	/// Prepare a read-only review for one exact visible input.
+	PreparePromptEdit {
+		/// Local owner.
+		work_id: crate::EntityId,
+		/// Exact native thread.
+		thread_id: crate::WireText,
+		/// Selected native turn.
+		turn_id: crate::WireText,
+		/// Selected first user item.
+		item_id: crate::WireText,
+	},
+	/// Confirm a service-held review once. A lost reply never permits another native write.
+	ConfirmPromptEdit {
+		/// Local owner.
+		work_id: crate::EntityId,
+		/// Exact native thread.
+		thread_id: crate::WireText,
+		/// Token returned by the complete review query.
+		review_token: crate::WireText,
+	},
+	/// Recover native history by reading only; do not release the desktop draft fence.
+	RecoverPromptEdit {
+		/// Local owner.
+		work_id: crate::EntityId,
+		/// Exact native thread.
+		thread_id: crate::WireText,
+	},
+	/// Acknowledge that the exact canonical draft is durably saved and presentation is refreshed.
+	/// This releases input only after the service rechecks native history and its projections.
+	AcknowledgePromptEditDraft {
+		/// Local owner.
+		work_id: crate::EntityId,
+		/// Exact native thread.
+		thread_id: crate::WireText,
+		/// Durable edit receipt returned with the saved canonical input.
+		receipt_id: i64,
+		/// Exact review token saved with that draft.
+		review_token: crate::WireText,
+	},
 	/// Start an optional recap for the exact displayed native thread.
 	GenerateRecap {
 		/// Owning local task.
