@@ -149,12 +149,16 @@ async fn native_reads_use_exact_item_and_discard_bytes_after_source_changes() {
 	let path = directory.path().join("photo.png");
 	std::fs::write(&path, b"\x89PNG\r\n\x1a\nfixture").unwrap();
 	for change in ["none", "revision", "history", "account", "process", "thread", "closed"] {
-		for local in [false, true] {
+		for local in ["inline", "absolute", "relative"] {
 			let (io, remote) = tokio::io::duplex(65536);
 			let (reader, writer) = tokio::io::split(io);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
-			let server =
-				tokio::spawn(server(remote, local.then(|| path.to_str().unwrap().to_owned())));
+			let native_path = match local {
+				"absolute" => Some(path.to_str().unwrap().to_owned()),
+				"relative" => Some("photo.png".into()),
+				_ => None,
+			};
+			let server = tokio::spawn(server(remote, native_path));
 			let calls = AtomicUsize::new(0);
 			let result = read(
 				|| {
@@ -182,6 +186,10 @@ async fn native_reads_use_exact_item_and_discard_bytes_after_source_changes() {
 						}
 						Some(Source { key, client })
 					}
+				},
+				|source| {
+					assert_eq!(source, &key());
+					Some(directory.path().to_str().unwrap().into())
 				},
 				&request(),
 			)
@@ -230,6 +238,7 @@ async fn oversized_local_attachment_does_not_send_file_bytes_through_native_tran
 	});
 	let result = read(
 		|| std::future::ready(Some(Source { key: key(), client: client.clone() })),
+		|_| None,
 		&request(),
 	)
 	.await;
@@ -285,14 +294,28 @@ async fn generated_image_uses_native_bytes_even_when_saved_path_exists() {
 	let mut item =
 		json!({"type":"imageGeneration","savedPath":path,"result":STANDARD.encode(expected)});
 	assert_eq!(
-		resolve(locate(&item, 0).unwrap()).await,
+		resolve(locate(&item, 0).unwrap(), None).await,
 		Ok(("image/png".into(), expected.to_vec()))
 	);
 	std::fs::remove_file(&path).unwrap();
 	assert_eq!(
-		resolve(locate(&item, 0).unwrap()).await,
+		resolve(locate(&item, 0).unwrap(), None).await,
 		Ok(("image/png".into(), expected.to_vec()))
 	);
 	item["result"] = json!("");
 	assert!(matches!(locate(&item, 0), Err(Result::Unsupported)));
+}
+
+#[tokio::test]
+async fn relative_media_requires_an_absolute_admitted_process_directory() {
+	let directory = tempfile::tempdir().unwrap();
+	let expected = b"\x89PNG\r\n\x1a\nrelative-native-image";
+	std::fs::write(directory.path().join("photo.png"), expected).unwrap();
+	for base in [None, Some("relative-base")] {
+		assert_eq!(resolve(Media::Local("photo.png"), base).await, Err(Result::Unavailable));
+	}
+	assert_eq!(
+		resolve(Media::Local("photo.png"), directory.path().to_str()).await,
+		Ok(("image/png".into(), expected.to_vec()))
+	);
 }

@@ -8,7 +8,11 @@ use decodex_protocol::{
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-pub(crate) async fn read<F, Fut>(source: F, request: &ChiefMediaRequest) -> Result
+pub(crate) async fn read<F, Fut>(
+	source: F,
+	directory: impl Fn(&SourceKey) -> Option<String>,
+	request: &ChiefMediaRequest,
+) -> Result
 where
 	F: Fn() -> Fut,
 	Fut: std::future::Future<Output = Option<Source>>,
@@ -38,7 +42,7 @@ where
 		)
 		.ok_or(Result::Unavailable)?;
 		let media = locate(item, request.index as usize)?;
-		resolve(media).await
+		resolve(media, directory(&before.key).as_deref()).await
 	})
 	.await;
 	let Some(after) = source().await else { return Result::Unavailable };
@@ -127,7 +131,10 @@ fn locate(item: &Value, index: usize) -> std::result::Result<Media<'_>, Result> 
 	}
 }
 
-async fn resolve(media: Media<'_>) -> std::result::Result<(String, Vec<u8>), Result> {
+async fn resolve(
+	media: Media<'_>,
+	directory: Option<&str>,
+) -> std::result::Result<(String, Vec<u8>), Result> {
 	match media {
 		Media::Encoded(mime, data) => decode(mime, data),
 		Media::Uri(uri) => {
@@ -136,7 +143,20 @@ async fn resolve(media: Media<'_>) -> std::result::Result<(String, Vec<u8>), Res
 			let mime = header.strip_suffix(";base64").ok_or(Result::Unsupported)?;
 			decode(mime, encoded)
 		},
-		Media::Local(path) => local_media(path).await,
+		Media::Local(path) => {
+			let original = std::path::Path::new(path);
+			if original.is_absolute() {
+				return local_media(path).await;
+			}
+			// Relative user input is interpreted by the admitted native process,
+			// not by this service or a child thread's configured directory.
+			let base = directory
+				.map(std::path::Path::new)
+				.filter(|base| base.is_absolute())
+				.ok_or(Result::Unavailable)?;
+			let resolved = base.join(original);
+			local_media(resolved.to_str().ok_or(Result::Unavailable)?).await
+		},
 	}
 }
 

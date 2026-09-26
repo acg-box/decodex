@@ -262,6 +262,7 @@ async fn qualify_media(
 				})
 			}
 		},
+		|_| None,
 		&request,
 	)
 	.await;
