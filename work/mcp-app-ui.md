@@ -184,6 +184,27 @@ Eight adapter tests cover catalog ownership, visibility, connection identity, ex
 read-only review, response preservation and foreign-guard refusal. Strict adapter
 Clippy passed. Hosted installed-native integration acceptance is still required.
 
+## Runtime confirmation and dispatch
+
+`ReviewChiefAppUiCall` returns an exact invocation echo, native server/title, review
+token and any unresolved operation. The complete local confirmation request is bounded
+to 64 KiB. The token includes the source, original item, live descriptor, exact arguments
+and host operation identity. A fresh confirmation is a separate `ConfirmAppUiTool`
+action. It re-reads evidence, rejects a changed token, reserves once, rechecks source
+and sends with the captured native transport guard.
+
+A recorded response is saved before acknowledgment. Positive pre-send source changes
+are saved as unsent. Lost/malformed native replies are unknown. Existing operation IDs
+are rejected before any native review or dispatch; callers must use durable readback.
+Review reads are bounded to 30 seconds; the command transport allows review plus the
+60-second native call. The browser still has no direct authority to execute this action.
+
+The selected protocol/runtime run passed 168 tests. A strengthened real-store/native-wire
+test also passed for successful calls, lost replies and source change after reservation.
+It rejects changed arguments with an old token, proves the dispatch count is at most
+one, and reads exact results after database reopen. Strict protocol/runtime Clippy
+passed. Desktop confirmation and bounded receipt transfer are still pending.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.

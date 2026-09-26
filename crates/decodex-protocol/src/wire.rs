@@ -2349,6 +2349,11 @@ pub enum QueryPayload {
 		/// Identity captured before dispatch.
 		identity: crate::ChiefSteerIdentity,
 	},
+	/// Read native evidence for a widget callback; never execute it.
+	ReviewChiefAppUiCall {
+		/// Complete proposed invocation.
+		request: crate::ChiefAppUiCall,
+	},
 	/// Check whether a displayed widget still belongs to the current native source.
 	GetChiefAppUiSource {
 		/// Exact work owner.
@@ -3140,6 +3145,8 @@ pub enum QueryResultPayload {
 	ChiefAppUi(crate::ChiefAppUiResult),
 	/// Current source equality; this grants no tool execution authority.
 	ChiefAppUiSource(bool),
+	/// Native review for an explicit widget call confirmation.
+	ChiefAppUiCallReview(crate::ChiefAppUiCallReview),
 	/// Exact positive steering acceptance evidence.
 	ChiefSteerReceipt(crate::ChiefSteerReceiptResult),
 	/// Independent unconfirmed input page.

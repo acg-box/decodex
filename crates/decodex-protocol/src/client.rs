@@ -1406,6 +1406,39 @@ impl ChiefClient {
 		}
 	}
 
+	/// Read exact native callback evidence for a later user confirmation.
+	pub async fn review_app_ui_call(
+		&self,
+		request: crate::ChiefAppUiCall,
+	) -> Result<crate::ChiefAppUiCallReview, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(40),
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport.query_inner(
+				"chief-app-ui-review",
+				QueryPayload::ReviewChiefAppUiCall { request: request.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let QueryResultPayload::ChiefAppUiCallReview(result) = completed.value else {
+			return Err(ClientFailure::ProtocolMalformed);
+		};
+		if let crate::ChiefAppUiCallReview::Available { request: actual, review_token, .. } =
+			&result && (actual.as_ref() != &request
+			|| review_token.as_str().len() != 64
+			|| !review_token.as_str().bytes().all(|b| b.is_ascii_hexdigit()))
+		{
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		Ok(result)
+	}
+
 	/// Check the displayed widget source without reading resources or starting model work.
 	pub async fn app_ui_source(
 		&self,
@@ -1616,11 +1649,14 @@ impl ChiefClient {
 		let refresh = matches!(&action, crate::ChiefActionDto::RefreshIntegrations { .. });
 		let install = matches!(&action, crate::ChiefActionDto::InstallSuggestedPlugin { .. });
 		let restore = matches!(&action, crate::ChiefActionDto::RestoreArchivedThread { .. });
-		let timeout = if refresh
+		let timeout = if matches!(&action, crate::ChiefActionDto::ConfirmAppUiTool { .. }) {
+			Duration::from_secs(100)
+		} else if refresh
 			|| install
 			|| matches!(
 				&action,
 				crate::ChiefActionDto::SetAppToolExposure { .. }
+					| crate::ChiefActionDto::ConfirmAppUiTool { .. }
 					| crate::ChiefActionDto::SetVoicePreference { .. }
 			) {
 			Duration::from_secs(65)
@@ -1635,6 +1671,7 @@ impl ChiefClient {
 					|| matches!(
 						&action,
 						crate::ChiefActionDto::SetAppToolExposure { .. }
+							| crate::ChiefActionDto::ConfirmAppUiTool { .. }
 							| crate::ChiefActionDto::SetVoicePreference { .. }
 					) {
 					timeout
@@ -1751,6 +1788,7 @@ impl ChiefClient {
 
 fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 	match action {
+		crate::ChiefActionDto::ConfirmAppUiTool { request, .. } => &request.work_id,
 		crate::ChiefActionDto::UploadPromptInput { upload, .. }
 		| crate::ChiefActionDto::CompletePromptInputUpload { upload } => &upload.work_id,
 		crate::ChiefActionDto::SendPromptInput { work_id, .. }

@@ -418,6 +418,13 @@ pub enum ChiefActionDto {
 		voice: crate::WireText,
 	},
 
+	/// Execute exactly one widget callback after explicit user confirmation.
+	ConfirmAppUiTool {
+		/// Complete source-bound invocation.
+		request: crate::ChiefAppUiCall,
+		/// Token obtained from a fresh native tool review.
+		review_token: crate::EntityId,
+	},
 	/// Save a reviewed connector exposure preference in native user configuration.
 	SetAppToolExposure {
 		/// Owning task.

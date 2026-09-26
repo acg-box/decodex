@@ -684,6 +684,33 @@ impl ChiefHost {
 		.await
 	}
 
+	pub(crate) async fn review_app_ui_call(
+		&self,
+		call: &decodex_protocol::ChiefAppUiCall,
+	) -> decodex_protocol::ChiefAppUiCallReview {
+		crate::chief_app_ui_call::read(
+			&self.store,
+			|| self.timeline_source(call.work_id.as_str(), call.thread_id.as_str()),
+			call,
+		)
+		.await
+	}
+
+	async fn execute_app_ui_call(
+		&self,
+		call: &decodex_protocol::ChiefAppUiCall,
+		token: &decodex_protocol::EntityId,
+	) -> Result<String, ChiefHostError> {
+		crate::chief_app_ui_call::execute(
+			&self.store,
+			|| self.timeline_source(call.work_id.as_str(), call.thread_id.as_str()),
+			call,
+			token,
+		)
+		.await?;
+		Ok(call.work_id.as_str().into())
+	}
+
 	pub(crate) async fn app_ui_source(
 		&self,
 		work: &str,
@@ -1168,6 +1195,8 @@ impl ChiefHost {
 			ChiefActionDto::SetVoicePreference { work_id, review_token, voice } =>
 				self.set_voice_preference(work_id.as_str(), review_token.as_str(), voice.as_str())
 					.await,
+			ChiefActionDto::ConfirmAppUiTool { request, review_token } =>
+				self.execute_app_ui_call(&request, &review_token).await,
 			ChiefActionDto::SetAppToolExposure { work_id, connector_id, review_token, omit } =>
 				self.set_app_tool_exposure((&work_id, &connector_id, &review_token), omit, key)
 					.await,
@@ -1269,6 +1298,7 @@ impl ChiefHost {
 				self.handle_recap(&key, action).await,
 			action @ (Action::SetVoicePreference { .. }
 			| Action::SetAppToolExposure { .. }
+			| Action::ConfirmAppUiTool { .. }
 			| Action::SetSavedAppSetting { .. }
 			| Action::SetAppSetting { .. }
 			| Action::SetHookSetting { .. }
