@@ -53,9 +53,12 @@ async fn guardian_observations_are_monotonic_bound_durable_and_do_not_wake_work(
 		value["targetItemId"] = json!("parent-command");
 		deliver(&mut chief, value).await;
 	}
+	let mut large = review("large-action", "denied");
+	large["action"] = json!({"type":"command","source":"shell","command":"界".repeat(100_000) + " exact-required-suffix","cwd":"/tmp"});
+	deliver(&mut chief, large.clone()).await;
 	deliver(&mut chief, review("unresolved", "inProgress")).await;
 	let rows = chief.store.read_chief_guardian_reviews("chief".into(), None, 100).await.unwrap();
-	assert_eq!(rows.len(), 4);
+	assert_eq!(rows.len(), 5);
 	assert!(rows.iter().all(|r| !r.conflicted));
 	assert_eq!(rows.iter().find(|r| r.review_id == "network").unwrap().status, "denied");
 	let work = chief.store.get_chief_work_item("chief".into()).await.unwrap();
@@ -78,7 +81,14 @@ async fn guardian_observations_are_monotonic_bound_durable_and_do_not_wake_work(
 	let first = store.read_chief_guardian_reviews("chief".into(), None, 2).await.unwrap();
 	let rest =
 		store.read_chief_guardian_reviews("chief".into(), Some(first[1].id), 100).await.unwrap();
-	assert_eq!(first.len() + rest.len(), 5);
+	assert_eq!(first.len() + rest.len(), 6);
+	let retained =
+		rest.iter().find(|row| row.review_id == "large-action").expect("large Guardian action");
+	assert_eq!(
+		serde_json::from_str::<Value>(&retained.event_json).expect("saved native event"),
+		large
+	);
+	assert!(retained.approval_state.is_none());
 	assert_eq!(first[1].status, "inProgress");
 	assert_eq!(first[1].connection_id, connection);
 	assert_eq!(first[0].status, "approved");

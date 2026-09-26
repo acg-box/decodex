@@ -12,7 +12,7 @@ mod approval;
 pub use approval::core_denial_event;
 
 /// Maximum retained public review, including its action and explanation.
-pub const MAX_REVIEW_BYTES: usize = 256 * 1024;
+pub const MAX_REVIEW_BYTES: usize = decodex_core::MAX_NATIVE_MESSAGE_BYTES;
 
 /// Native review lifecycle, independent of the reviewed command's lifecycle.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -139,6 +139,19 @@ mod tests {
 				"userAuthorization":"low","rationale":"This host was not requested."},
 			"action":{"type":"networkAccess","target":"https://example.test:443",
 				"host":"example.test","protocol":"https","port":443}})
+	}
+
+	#[test]
+	fn retains_complete_large_native_action_and_denial_conversion() {
+		let command = "界".repeat(100_000) + " exact-required-suffix";
+		let mut event = denial();
+		event["action"] = json!({"type":"command","source":"shell","command":command,"cwd":"/tmp"});
+		assert!(event.to_string().len() > 256 * 1024);
+		assert!(event.to_string().len() < decodex_core::MAX_NATIVE_MESSAGE_BYTES);
+		let observed = decode_review(COMPLETED, &event).expect("complete native review");
+		assert_eq!(observed.event, event);
+		let converted = core_denial_event(&observed).expect("complete supported command action");
+		assert_eq!(converted["action"]["command"], command);
 	}
 
 	#[test]
