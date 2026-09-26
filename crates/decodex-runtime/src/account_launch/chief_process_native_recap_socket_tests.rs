@@ -1,6 +1,7 @@
 //! Real local socket, Chief host and installed Codex; only the model provider is synthetic.
 use super::*;
 #[path = "chief_process_native_app_ui_socket_tests.rs"] mod app_ui;
+#[path = "chief_process_native_desktop_acceptance.rs"] mod desktop;
 #[path = "chief_process_native_media_socket_tests.rs"] mod media;
 #[path = "chief_process_native_recap_reply_proxy.rs"] mod reply_proxy;
 use crate::{ProtocolServer, ServerConfig};
@@ -26,12 +27,14 @@ async fn installed_recap_public_socket_preserves_parent_and_exact_request_identi
 		"isolated-recap\n"
 	);
 	assert!(!home.join(".codex").exists());
-	tokio::time::timeout(Duration::from_secs(90), qualify(&home))
+	let seconds = if std::env::var_os("DECODEX_TEST_DESKTOP_APP").is_some() { 1260 } else { 90 };
+	tokio::time::timeout(Duration::from_secs(seconds), qualify(&home))
 		.await
 		.expect("bounded real service fixture");
 }
 
 async fn qualify(home: &std::path::Path) {
+	let interactive = std::env::var_os("DECODEX_TEST_DESKTOP_APP").is_some();
 	let native_home = home.join(".codex");
 	std::fs::create_dir(&native_home).expect("fixture native home");
 	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("loopback provider");
@@ -42,7 +45,11 @@ async fn qualify(home: &std::path::Path) {
 		listener,
 		requests.clone(),
 		metadata,
-		Some("Spoken fixture correction"),
+		Some(if interactive {
+			"Isolated desktop acceptance. Reply briefly."
+		} else {
+			"Spoken fixture correction"
+		}),
 	));
 	let catalog = native_home.join("models.json");
 	std::fs::write(
@@ -57,7 +64,8 @@ async fn qualify(home: &std::path::Path) {
 	if std::env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") {
 		app_ui::configure(home);
 	}
-	let root = DecodexRoot::new(home.join("product")).expect("fixture root");
+	let root = DecodexRoot::new(home.join(if interactive { ".decodex" } else { "product" }))
+		.expect("fixture root");
 	root.paths().ensure_layout().expect("private layout");
 	let store = SqliteStore::open(&root.paths()).expect("product database");
 	let accounts = Arc::new(AccountService::new(
@@ -115,9 +123,12 @@ async fn qualify(home: &std::path::Path) {
 		.await
 		.expect("public local server");
 	use futures_util::FutureExt as _;
-	let outcome =
-		std::panic::AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(50), async {
-			if std::env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") {
+	let outcome = std::panic::AssertUnwindSafe(tokio::time::timeout(
+		Duration::from_secs(if interactive { 1200 } else { 50 }),
+		async {
+			if interactive {
+				desktop::check(&client, home, &account, &requests).await;
+			} else if std::env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") {
 				app_ui::check(&client, &runtime, home, &account, &requests).await;
 			} else if std::env::var("DECODEX_TEST_MEDIA").as_deref() == Ok("1") {
 				media::check(&client, &runtime, home, &account, &requests).await;
@@ -130,11 +141,15 @@ async fn qualify(home: &std::path::Path) {
 				)
 				.await;
 			}
-		}))
-		.catch_unwind()
-		.await;
+		},
+	))
+	.catch_unwind()
+	.await;
 	assert!(server.shutdown().await.expect("service shutdown").is_success());
 	backend.abort();
+	if let Err(error) = backend.await {
+		assert!(error.is_cancelled(), "fixture provider failed: {error}");
+	}
 	outcome.expect("fixture assertions").expect("bounded command checks");
 }
 

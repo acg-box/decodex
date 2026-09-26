@@ -218,6 +218,37 @@ The ordinary signed capture also passed and its rendered Ready summary was inspe
 These captures use the desktop's normal driver with a controlled clock. They do not
 claim physical foreground/background events, a microphone or a live subscription.
 
+## Normal signed application interaction
+
+On 2026-09-26, the opt-in `DECODEX_TEST_DESKTOP_APP` fixture launched the normal
+signed application from an explicit executable path. The bundled helper reports
+commit `c9abecb1709629090e68c027f8f359d5f538c7c4`, with `dirty: false`.
+The bundle passed `codesign --verify --deep --strict`. The real local service and
+installed Codex used a private HOME and synthetic provider. No real subscription
+or microphone was used.
+
+The interaction run opened the isolated task, selected Task recap, and selected
+Generate recap. The controls returned from Cancel recap to Refresh/Generate.
+Command-Q exited the exact child process successfully. The fixture relaunched the
+same executable, and the accessibility tree showed the same task and saved native
+answer. Opening Task recap did not submit another model request. Quit Decodex from
+the native app menu also exited successfully. The fixture recorded two launches,
+two successful exits and two total model requests: the initial task and its recap.
+The final real-service fixture passed without a provider panic.
+
+The screenshot API returned a blank image, so this run does not prove visual
+rendering or recap text visibility. The service remained alive across both GUI
+processes; this does not test app-owned service shutdown or a cold service restart.
+The harness writes process counters to `desktop-ready.json`; `desktop-relaunch`
+and `desktop-finish` are explicit operator markers. A finish marker checks process
+exit only and does not certify all manual acceptance steps.
+
+An earlier run exposed a fixture mismatch: the shared provider expected spoken
+input in a task without voice. Interactive mode now checks its actual initial
+prompt. Provider task panics now fail the enclosing fixture instead of producing
+a misleading pass after GUI shutdown. Check exits through the fixture process
+readback: an accessibility inspection can reopen an app after it has quit.
+
 ## Remaining scope
 
 - Signed desktop foreground/background and opt-out interaction.
