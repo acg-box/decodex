@@ -1,5 +1,6 @@
 //! Real local socket, Chief host and installed Codex; only the model provider is synthetic.
 use super::*;
+#[path = "chief_process_native_app_ui_socket_tests.rs"] mod app_ui;
 use crate::{ProtocolServer, ServerConfig};
 use decodex_protocol::{
 	ChiefActionDto as Action, ChiefClient, ChiefCommandResponse, ChiefDispatchStateDto,
@@ -51,6 +52,9 @@ async fn qualify(home: &std::path::Path) {
 	)
 	.expect("catalog");
 	std::fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=true\nsupports_websockets=false\n", json!(catalog))).expect("fixture config");
+	if std::env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") {
+		app_ui::configure(home);
+	}
 	let root = DecodexRoot::new(home.join("product")).expect("fixture root");
 	root.paths().ensure_layout().expect("private layout");
 	let store = SqliteStore::open(&root.paths()).expect("product database");
@@ -111,7 +115,11 @@ async fn qualify(home: &std::path::Path) {
 	use futures_util::FutureExt as _;
 	let outcome =
 		std::panic::AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(50), async {
-			check(&client, &runtime, &store, home, &account, &requests).await;
+			if std::env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") {
+				app_ui::check(&client, &runtime, home, &account, &requests).await;
+			} else {
+				check(&client, &runtime, &store, home, &account, &requests).await;
+			}
 			if std::env::var("DECODEX_TEST_ACCOUNT_ROTATION").as_deref() == Ok("1") {
 				qualify_account_rotation(
 					&client, &runtime, &store, &accounts, home, &account, &requests,

@@ -397,6 +397,27 @@ projection and connection behavior with a local backend; it is not real hosted-a
 or whole-desktop acceptance. Initial missing apps/batch fixture routes returned 404
 and are not counted as successful evidence.
 
+## Production service bridge acceptance and missing-method fix
+
+The existing isolated account/runtime/socket fixture now has an App UI variant selected
+with DECODEX_TEST_APP_UI=1. It runs the installed native binary, the production Chief
+host and public local client against a synthetic MCP counter and local model backend.
+It reads the exact native document, obtains a review, submits confirmation and reads
+the saved result. The test uses the model's advertised tool shape rather than assuming
+functions.exec is always available.
+
+This acceptance exposed a production gap: the retained Chief connection did not admit
+mcpServer/resource/read, mcpServer/tool/call or app/read. Component mocks had bypassed
+that bridge. The outbound method list now admits these implemented paths; account
+method restrictions and service confirmation/source checks remain in force.
+
+Before the fix, public document read returned Unsupported with a local Chief-connection
+method refusal. After the fix, the same fixture passed: saved completed result value42,
+two original model requests, and exactly two MCP calls (the original value7 call and
+the confirmed value42 callback). Review and callback do not add model requests. The
+25 selected bridge/App UI regression tests also passed. Full desktop/native interaction
+and a signed artifact containing this bridge fix are still required.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.
