@@ -72,6 +72,7 @@ mod integrations;
 pub use hooks::{
 	HookSettingsChange, HookSettingsReview, HookSettingsWrite, is_hook_settings_write,
 };
+mod live_reviews;
 mod plugin_install;
 mod server_requests;
 mod timeline;
@@ -475,6 +476,19 @@ impl AppServerClient {
 			return None;
 		}
 		self.server_requests.with_thread_settings_guard(thread, guard)
+	}
+
+	/// Capture continuation details received live on this connection, invalidated by new input,
+	/// a new turn, history changes, or connection closure. Never reconstructed from history.
+	pub fn live_misalignment_review(
+		&self,
+		thread: &str,
+		turn: &str,
+	) -> Option<(Value, HistoryGuard)> {
+		if *self.closed.borrow() || self.outbound.is_closed() {
+			return None;
+		}
+		self.server_requests.live_misalignment_review(thread, turn)
 	}
 
 	/// Send only if the captured native history is still current immediately before writing.

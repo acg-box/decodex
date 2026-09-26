@@ -19,6 +19,7 @@ pub(super) struct ServerRequests(
 	super::permission_observations::SettingsObservations<super::NativeTaskPermissions>,
 	super::permission_observations::SettingsObservations<super::NativeTaskPlugins>,
 	super::permission_observations::SettingsObservations<super::NativeTaskModelSettings>,
+	super::live_reviews::LiveReviews,
 );
 struct Entry {
 	thread: String,
@@ -26,15 +27,21 @@ struct Entry {
 	digest: [u8; 32],
 }
 
-/// Exact history or question-state version on one native connection.
+/// Exact history, question state, or live continuation evidence on one native connection.
 #[derive(Clone)]
 pub struct HistoryGuard {
 	requests: ServerRequests,
 	revision: u64,
 	questions: bool,
+	review: Option<super::live_reviews::LiveReviewGuard>,
 	settings: Option<super::settings_guard::SettingsGuard>,
 }
 impl HistoryGuard {
+	/// Identity of the exact live review, absent for history guards or invalidated evidence.
+	pub fn live_review_identity(&self) -> Option<String> {
+		self.review.as_ref()?.identity()
+	}
+
 	/// Connection-local settings revision for review identities. Check `is_live` before use.
 	pub fn settings_revision(&self) -> Option<u64> {
 		self.settings.as_ref().map(super::settings_guard::SettingsGuard::revision)
@@ -46,6 +53,13 @@ impl HistoryGuard {
 
 	/// Whether the selected native state is unchanged since this version.
 	pub fn is_live(&self) -> bool {
+		if let Some(review) = &self.review {
+			return review.is_live()
+				&& self
+					.settings
+					.as_ref()
+					.is_none_or(super::settings_guard::SettingsGuard::is_live);
+		}
 		(if self.questions {
 			self.requests.question_revision()
 		} else {
@@ -84,11 +98,30 @@ fn digest(method: &str, params: &Value) -> [u8; 32] {
 	Sha256::digest(json!([method, params]).to_string().as_bytes()).into()
 }
 impl ServerRequests {
+	pub(super) fn live_misalignment_review(
+		&self,
+		thread: &str,
+		turn: &str,
+	) -> Option<(Value, HistoryGuard)> {
+		let (error, review) = self.7.capture(thread, turn)?;
+		Some((
+			error,
+			HistoryGuard {
+				requests: self.clone(),
+				revision: 0,
+				questions: false,
+				review: Some(review),
+				settings: None,
+			},
+		))
+	}
+
 	pub(super) fn history_guard(&self, revision: u64) -> Option<HistoryGuard> {
 		(self.history_revision() == revision).then(|| HistoryGuard {
 			requests: self.clone(),
 			revision,
 			questions: false,
+			review: None,
 			settings: None,
 		})
 	}
@@ -175,6 +208,7 @@ impl ServerRequests {
 			requests: self.clone(),
 			revision,
 			questions: true,
+			review: None,
 			settings: None,
 		})
 	}
@@ -226,6 +260,7 @@ impl ServerRequests {
 	}
 
 	pub(super) fn clear(&self) {
+		self.7.clear();
 		self.3.clear();
 		self.4.clear();
 		self.5.clear();
@@ -295,6 +330,7 @@ impl ServerRequests {
 	}
 
 	pub(super) fn observe(&self, event: &ServerEvent) -> Result<(), ClientError> {
+		self.7.observe(event)?;
 		self.observe_permission_event(event);
 		let mut rows = self.0.lock().map_err(|_| ClientError::Closed)?;
 		if let ServerEvent::Notification { method, params } = event
