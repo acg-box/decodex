@@ -537,6 +537,7 @@ pub struct ConversationThreadResumeRequest {
 	cwd: ThreadCwd,
 	developer_instructions: ConversationInstructions,
 	service_tier: Option<decodex_core::ServiceTier>,
+	inherit_native_settings: bool,
 }
 impl ConversationThreadResumeRequest {
 	/// Accept one exact thread and explicit caller configuration.
@@ -553,7 +554,17 @@ impl ConversationThreadResumeRequest {
 				.map_err(|_| ConversationContractError::InvalidCwd)?,
 			developer_instructions: ConversationInstructions::new(developer_instructions)?,
 			service_tier: Some(decodex_core::ServiceTier::standard()),
+			inherit_native_settings: false,
 		})
+	}
+
+	/// Hydrate the saved thread without reapplying creation configuration.
+	/// The expected directory still guards the response against retargeting.
+	pub fn inherit_native_settings(mut self) -> Self {
+		self.inherit_native_settings = true;
+		self.model = None;
+		self.service_tier = None;
+		self
 	}
 
 	/// Select request-scoped Codex Fast mode without changing global configuration.
@@ -609,6 +620,12 @@ impl Serialize for ConversationThreadResumeRequest {
 	where
 		S: Serializer,
 	{
+		if self.inherit_native_settings {
+			let mut request = serializer.serialize_struct("ConversationThreadResumeRequest", 2)?;
+			request.serialize_field("threadId", self.thread_id.as_str())?;
+			request.serialize_field("excludeTurns", &true)?;
+			return request.end();
+		}
 		let mut request = serializer.serialize_struct(
 			"ConversationThreadResumeRequest",
 			4 + usize::from(self.model.is_some()) + usize::from(self.service_tier.is_some()),
@@ -2112,6 +2129,26 @@ mod tests {
 			let bytes = serde_json::to_vec(&response).unwrap();
 			assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_err());
 			assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_err());
+		}
+	}
+
+	#[test]
+	fn inherited_resume_omits_old_configuration_and_accepts_current_model_without_retargeting() {
+		let request = resume_request().with_fast(true).inherit_native_settings();
+		assert_eq!(
+			serde_json::to_value(&request).unwrap(),
+			json!({"threadId":"thread-1","excludeTurns":true})
+		);
+		let native =
+			serde_json::to_vec(&thread_response("thread-1", "server-model", "/workspace")).unwrap();
+		assert_eq!(
+			decode_conversation_thread_resume_response(&request, &native).unwrap().model().as_str(),
+			"server-model"
+		);
+		assert!(decode_conversation_thread_resume_response(&resume_request(), &native).is_err());
+		for (thread, cwd) in [("foreign", "/workspace"), ("thread-1", "/native-moved")] {
+			let native = serde_json::to_vec(&thread_response(thread, "server-model", cwd)).unwrap();
+			assert!(decode_conversation_thread_resume_response(&request, &native).is_err());
 		}
 	}
 
