@@ -201,6 +201,20 @@ PR validation records. This refresh verifies committed owners and merge ancestry
 it does not rerun application tests or claim signed desktop acceptance.
 
 
+## Live continuation evidence adapter restored on 2026-09-26
+
+`crates/decodex-codex/src/app_server_client/live_reviews.rs` matches the complete
+preserved snapshot and verified original hash. It is connected to the current
+transport observation, closure and guarded-request owners, retaining current
+model/settings observation behavior. All 217 adapter tests and strict lint pass;
+eight existing external tests remain ignored.
+
+See [live review guard](live-misalignment-review-guard.md). Runtime confirmation
+and publication are not yet restored, so this closes only the adapter file and
+not the complete continuation flow or either shared transport file. This batch
+retains all 360 rows and reduces its 180-row pending baseline to 179. Parallel
+batches close separate rows.
+
 ## Optional and separately reviewed work
 
 The preserved notes describe voice preferences, public reasoning summaries,
