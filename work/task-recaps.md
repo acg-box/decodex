@@ -199,10 +199,29 @@ Moving that existing long-lived I/O loop off the shared executor allowed the
 native automatic path to finish. The desktop capture uses GPUI's documented
 parking mode for real I/O with deterministic rendering.
 
+## Real service acceptance after a lost desktop reply
+
+Set DECODEX_TEST_RECAP_LOST_REPLY=1 with DECODEX_TEST_RECAP_GUI_BINARY to include a
+transport fault in the isolated public-socket fixture. A test-only local proxy forwards
+to the original production service. It suppresses the selected generation receipt,
+waits for the successful real command result, drops that result and closes the socket.
+Subsequent desktop status queries still reach the same service. No second recap or
+execution owner is introduced.
+
+The signed desktop capture passed this case. Exactly one generation command reached
+the service, one successful result was dropped, and three subsequent status queries
+recovered Ready with the original request ID. The enclosing native fixture still
+verified the expected model-request count and unchanged parent history. The recap
+preference was restored only in the isolated database. Runtime Clippy passed.
+
+The ordinary signed capture also passed and its rendered Ready summary was inspected.
+These captures use the desktop's normal driver with a controlled clock. They do not
+claim physical foreground/background events, a microphone or a live subscription.
+
 ## Remaining scope
 
 - Signed desktop foreground/background and opt-out interaction.
 - Signed desktop and live voice acceptance, including task selection and cold UI.
-- End-to-end lost-reply acceptance across desktop and real service together.
+- Normal installed application lifecycle acceptance remains shared with R07/R12.
 
 The upstream maintainer remains paused, including after manual completion.

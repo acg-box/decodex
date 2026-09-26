@@ -81,7 +81,8 @@ storage/event/timeline owners. Its migration, exact-source replacement, process 
 late completion and next-turn retention have regression coverage. This acceptance
 adds no alternative context, download, media or playback owner.
 
-The current media regression run passed 25 tests. R04 delivery still requires normal
-PR merge; shared installed application lifecycle remains R07/R12.
+The current media regression run passed 25 tests. R04 was delivered in [PR1522](https://github.com/acg-box/decodex/pull/1522), merged
+as `3a7b3594b11a1ef6afb726818d1e2f74732c9255` after all remote checks passed.
+Shared installed application lifecycle remains R07/R12.
 Interactive MCP App UI remains the separate optional R05 capability. This record
 does not establish signed whole-app acceptance, installation or full catch-up.

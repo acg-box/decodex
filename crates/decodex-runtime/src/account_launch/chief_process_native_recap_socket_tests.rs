@@ -2,6 +2,7 @@
 use super::*;
 #[path = "chief_process_native_app_ui_socket_tests.rs"] mod app_ui;
 #[path = "chief_process_native_media_socket_tests.rs"] mod media;
+#[path = "chief_process_native_recap_reply_proxy.rs"] mod reply_proxy;
 use crate::{ProtocolServer, ServerConfig};
 use decodex_protocol::{
 	ChiefActionDto as Action, ChiefClient, ChiefCommandResponse, ChiefDispatchStateDto,
@@ -314,8 +315,15 @@ async fn qualify_desktop_recap(
 	let log = home.join("automatic-recap-capture.log");
 	let stdout = std::fs::File::create(&log).expect("capture diagnostics");
 	let stderr = stdout.try_clone().expect("shared capture log");
+	let proxy = if std::env::var("DECODEX_TEST_RECAP_LOST_REPLY").as_deref() == Ok("1") {
+		Some(reply_proxy::Proxy::start(home).await)
+	} else {
+		None
+	};
+	let capture_root =
+		proxy.as_ref().map_or_else(|| home.join("product"), |proxy| proxy.root.clone());
 	let mut child = tokio::process::Command::new(binary)
-		.env("DECODEX_VISUAL_CHIEF_ROOT", home.join("product"))
+		.env("DECODEX_VISUAL_CHIEF_ROOT", capture_root)
 		.env("DECODEX_VISUAL_CHIEF_WORK", work.as_str())
 		.env("DECODEX_VISUAL_AUTO_RECAP", "1")
 		.env("DECODEX_VISUAL_OUTPUT", &screenshot)
@@ -340,6 +348,9 @@ async fn qualify_desktop_recap(
 	assert_eq!(evidence["completed_turns"].as_array().expect("native progress").len(), 3);
 	let ready = client.recap(work.clone()).await.expect("public automatic result");
 	assert_eq!(serde_json::to_value(ready).expect("result JSON"), evidence["state"]);
+	if let Some(proxy) = &proxy {
+		proxy.verify(&evidence["state"]["request_id"], home);
+	}
 	assert!(screenshot.is_file());
 	let disabled = store
 		.set_desktop_settings(enabled.revision, settings.show_in_menu_bar, None, Some(false))
