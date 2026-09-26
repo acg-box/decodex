@@ -355,3 +355,151 @@ async fn refused_capacity_continuation_retains_original_delivery_and_cannot_repl
 		);
 	}
 }
+
+#[tokio::test]
+async fn native_revert_cancels_only_unclaimed_capacity_intent_durably() {
+	for claimed in [false, true] {
+		let failure = failed("opaque turn/1", "serverOverloaded");
+		let (mut chief, mut sent, directory) = fixture_with_history(
+			json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[failure]}}}),
+		)
+		.await;
+		chief.start_chief("chief", "original request").await.unwrap();
+		chief
+			.handle_event(ServerEvent::Notification {
+				method: "turn/completed".into(),
+				params: json!({"threadId":"opaque thread/1","turn":failure}),
+			})
+			.await
+			.unwrap();
+		let retry =
+			chief.store.pending_chief_capacity_retry("chief".into()).await.unwrap().unwrap();
+		chief
+			.store
+			.cancel_reverted_chief_capacity_retries(
+				"opaque thread/1".into(),
+				Some("foreign-generation".into()),
+			)
+			.await
+			.unwrap();
+		chief
+			.handle_event(ServerEvent::Notification {
+				method: "thread/reverted".into(),
+				params: json!({"threadId":"other"}),
+			})
+			.await
+			.unwrap();
+		assert!(chief.store.pending_chief_capacity_retry("chief".into()).await.unwrap().is_some());
+		if claimed {
+			chief
+				.store
+				.begin_chief_capacity_retry("chief".into(), retry.event_id, i64::MAX)
+				.await
+				.unwrap();
+		}
+		let before = chief.store.get_chief_inbox_event(retry.event_id).await.unwrap();
+		let work_before = chief.store.get_chief_work_item("chief".into()).await.unwrap();
+		while sent.try_recv().is_ok() {}
+		for _ in 0..2 {
+			chief
+				.handle_event(ServerEvent::Notification {
+					method: "thread/reverted".into(),
+					params: json!({"threadId":"opaque thread/1"}),
+				})
+				.await
+				.unwrap();
+		}
+		chief.check_due_followups(i64::MAX).await.unwrap();
+		assert!(std::iter::from_fn(|| sent.try_recv().ok()).all(|r| r["method"] != "turn/start"));
+		drop(chief);
+		let root =
+			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+				.unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		assert!(store.pending_chief_capacity_retry("chief".into()).await.unwrap().is_none());
+		assert!(
+			store
+				.begin_chief_capacity_retry("chief".into(), retry.event_id, i64::MAX)
+				.await
+				.is_err()
+		);
+		let after = store.get_chief_inbox_event(retry.event_id).await.unwrap();
+		assert_eq!(after.payload, before.payload);
+		assert_eq!(after.delivered_turn_id, before.delivered_turn_id);
+		assert_eq!(
+			store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state,
+			work_before.dispatch_state
+		);
+		if claimed {
+			assert_eq!(after.disposition_note, before.disposition_note);
+		} else {
+			assert_eq!(after.disposition, Some(ChiefDisposition::Resolved));
+			assert_eq!(
+				after.disposition_note.as_deref(),
+				Some("Automatic retry cancelled because native history was reverted.")
+			);
+		}
+	}
+}
+
+#[tokio::test]
+async fn reverted_worker_capacity_wait_does_not_publish_a_completion_or_wake_chief() {
+	let first = json!({"id":"opaque turn/1","status":"completed","items":[]});
+	let failure = failed("opaque turn/2", "serverOverloaded");
+	let (mut chief, mut sent, _dir) = fixture_with_history(json!({
+		"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}},
+		"opaque thread/2":{"thread":{"id":"opaque thread/2","turns":[failure]}}
+	}))
+	.await;
+	chief.start_chief("chief", "coordinate").await.unwrap();
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "turn/completed".into(),
+			params: json!({"threadId":"opaque thread/1","turn":first}),
+		})
+		.await
+		.unwrap();
+	chief.create_worker("chief", "worker", "work").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "turn/completed".into(),
+			params: json!({"threadId":"opaque thread/2","turn":failure}),
+		})
+		.await
+		.unwrap();
+	assert!(
+		!std::iter::from_fn(|| sent.try_recv().ok()).any(|frame| frame["method"] == "turn/start")
+	);
+	let retry = chief.store.pending_chief_capacity_retry("worker".into()).await.unwrap().unwrap();
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "thread/reverted".into(),
+			params: json!({"threadId":"opaque thread/2"}),
+		})
+		.await
+		.unwrap();
+	chief.check_due_followups(i64::MAX).await.unwrap();
+	chief.wake_pending().await.unwrap();
+	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+		.filter(|frame| frame["method"] == "turn/start")
+		.collect();
+	assert!(starts.is_empty());
+	assert!(
+		chief
+			.store
+			.begin_chief_capacity_retry("worker".into(), retry.event_id, i64::MAX)
+			.await
+			.is_err()
+	);
+	assert!(
+		chief
+			.store
+			.list_pending_chief_events(100)
+			.await
+			.unwrap()
+			.iter()
+			.all(|e| e.event_kind != "worker_turn_completed")
+	);
+	assert!(chief.store.pending_chief_capacity_retry("worker".into()).await.unwrap().is_none());
+}

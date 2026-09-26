@@ -192,3 +192,12 @@ exact native IDs, complete item pages, steer/review exclusion and unchanged-hist
 evidence. It preserves native attachment and mention fields. This is an optional
 feature foundation; no revert action, mutation recovery or desktop draft restore
 is delivered by this entry.
+
+### Core native revert observation: pending capacity retry
+
+Cancel unclaimed capacity continuation after an exact owned thread/reverted
+notification. Preserve claimed attempts and delivery receipts; do not synthesize
+worker completion or wake its manager. The installed notification has only a
+thread ID, so it cannot prove that a pending retry retained its earlier context.
+This core fix is independent of the optional earlier-prompt editor. The editor's
+native mutation and durable recovery remain open in [prompt editing](prompt-editing.md).

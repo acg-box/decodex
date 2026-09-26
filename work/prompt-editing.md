@@ -69,3 +69,19 @@ selection reader do not prove the remaining editing lifecycle.
 
 The maintenance automation remains paused. This optional feature remains part of
 the authorized manual pass and the later user subtraction review.
+
+## Core revert observation: capacity retries
+
+Native thread/reverted identifies only the thread. It does not give the removed
+turn range. Cancel all still-pending capacity retries for that exact owned thread
+in one database transaction. Their previous continuation context is no longer a
+safe automatic input. Keep claimed/submitted attempts and delivery receipts.
+Do not report a worker completion or wake a manager as a side effect of observing
+a revert. This is core native-history correctness and remains useful if the
+optional editing UI is removed.
+
+The existing archive restoration path has no durable history-edit journal. The
+config journal arbitrates a shared file and is not a history-mutation owner.
+Neither is sufficient evidence for admitting thread/revert. A later history-edit
+receipt must retain its canonical draft, native boundary and process ownership,
+and must block further input until an uncertain outcome is reconciled.
