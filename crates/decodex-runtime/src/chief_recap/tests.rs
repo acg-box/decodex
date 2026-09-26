@@ -130,3 +130,36 @@ async fn transport_observed_changes_hide_ready_results_before_service_event_deli
 	assert!(status.recap.is_none());
 	assert!(!*cancelled.borrow(), "query did not send a cancellation effect");
 }
+
+#[tokio::test]
+async fn voice_transcripts_retire_a_recap_before_service_routing_without_a_native_turn() {
+	use tokio::io::AsyncWriteExt as _;
+	for (method, role, field) in [
+		("thread/realtime/transcript/delta", "user", "delta"),
+		("thread/realtime/transcript/done", "user", "text"),
+		("thread/realtime/transcript/done", "assistant", "text"),
+	] {
+		let (source, mut remote, mut events) = source();
+		let recaps = Recaps::default();
+		let cancelled = recaps.start(copy(&source), "voice-recap").expect("request");
+		recaps.finish("work", "voice-recap", None, Some(result()));
+		for (thread, text, expected) in [
+			("another-thread", "Spoken correction", Phase::Ready),
+			("native", "", Phase::Ready),
+			("native", "Spoken correction", Phase::Cancelled),
+		] {
+			let mut params = json!({"threadId":thread,"role":role});
+			params[field] = json!(text);
+			remote
+				.write_all(format!("{}\n", json!({"method":method,"params":params})).as_bytes())
+				.await
+				.expect("native voice notification");
+			let event = events.recv().await.expect("transport observed caption");
+			let state = recaps.status(EntityId::new("work").expect("work"), Some(&source));
+			assert_eq!(state.phase, expected, "{method} {role} {thread}");
+			assert!(!*cancelled.borrow(), "readonly status must not cancel native inference");
+			assert!(recaps.route(event).is_some(), "voice still reaches its normal owner");
+		}
+		assert!(*cancelled.borrow(), "service routing retires the exact recap");
+	}
+}
