@@ -163,6 +163,27 @@ checks. They preserve arguments/results larger than 64 KiB and reject another ac
 or work owner. Strict database Clippy passed. Runtime confirmation and callback dispatch
 are still pending; these persistence APIs are not exposed to the widget.
 
+## Callback catalog and connection identity
+
+`review_mcp_app_tool` reads the exact originating item and the loaded thread's MCP
+catalog. It requires a connected server, a unique raw tool name and app-visible tool
+metadata. Model-only tools and legacy widgetAccessible=false tools are excluded.
+For codex_apps, it cross-checks the enabled tool in `app/read` for the exact connector;
+metadata summaries alone never establish runtime readiness. It compares the effective
+link with the originating appContext, using the fixed upstream account rule: explicit
+link_id arguments when required, otherwise descriptor _meta.link_id.
+
+This follows the fixed source in core/src/mcp_tool_call/account.rs and the public
+AppsReadParams/AppsReadResponse schemas. Raw names are compared exactly; normalized
+model namespaces are not used for native dispatch. The returned review retains the
+original item, live descriptor and history/settings guard. Tool dispatch now passes
+that guard to the native transport writer, which can refuse a stale or foreign review
+before writing. Runtime still must reserve the reviewed invocation before calling it.
+
+Eight adapter tests cover catalog ownership, visibility, connection identity, exact
+read-only review, response preservation and foreign-guard refusal. Strict adapter
+Clippy passed. Hosted installed-native integration acceptance is still required.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.

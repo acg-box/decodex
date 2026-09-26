@@ -13,7 +13,71 @@ pub struct NativeAppUi {
 	pub guard: HistoryGuard,
 }
 
+/// Fresh native evidence for a later explicitly confirmed widget call.
+#[derive(Clone)]
+pub struct NativeAppUiToolReview {
+	/// Exact originating native item.
+	pub origin: Value,
+	/// Live tool descriptor, including schema and visibility metadata.
+	pub descriptor: Value,
+	/// Raw server identity used by native dispatch.
+	pub server: String,
+	/// Native history/settings/connection validity guard.
+	pub guard: HistoryGuard,
+}
+
 impl AppServerClient {
+	/// Resolve callback ownership using native history and the live thread catalog.
+	/// This reads evidence only; it does not approve, reserve or execute the call.
+	pub async fn review_mcp_app_tool(
+		&self,
+		thread: &str,
+		turn: &str,
+		item: &str,
+		tool: &str,
+		arguments: &Value,
+	) -> Result<Option<NativeAppUiToolReview>, ClientError> {
+		if [thread, turn, item, tool]
+			.iter()
+			.any(|id| id.is_empty() || id.len() > 4096 || id.chars().any(char::is_control))
+			|| !arguments.is_object()
+		{
+			return Err(ClientError::InvalidFrame);
+		}
+		let guard = self.thread_settings_guard(thread).ok_or(ClientError::InvalidFrame)?;
+		let history = self.thread_read_turn(thread, turn).await?;
+		let Some(origin) = select_item(&history, thread, turn, item)? else { return Ok(None) };
+		let Some(target) = resource_target(origin)? else { return Ok(None) };
+		if !target.uri.starts_with("ui://") || target.uri.len() == 5 {
+			return Ok(None);
+		}
+		let catalog = self.mcp_server_statuses(thread).await?;
+		let Some(descriptor) = callback_tool(&catalog, target.server, tool)? else {
+			return Ok(None);
+		};
+		if target.server == "codex_apps" {
+			let Some(connector) = target.connector else { return Ok(None) };
+			let apps = self
+				.request(
+					"app/read",
+					json!({"threadId":thread,"appIds":[connector],"includeTools":true}),
+				)
+				.await?;
+			if !hosted_callback_owned(&apps, connector, tool, &descriptor, origin, arguments)? {
+				return Ok(None);
+			}
+		}
+		if !guard.is_live() {
+			return Err(ClientError::InvalidFrame);
+		}
+		Ok(Some(NativeAppUiToolReview {
+			origin: origin.clone(),
+			descriptor,
+			server: target.server.into(),
+			guard,
+		}))
+	}
+
 	/// Execute one explicitly confirmed and durably reserved widget tool call.
 	/// The caller owns origin/catalog validation and uncertain-outcome recovery.
 	/// A transport or malformed-response error is not proof that no effect occurred.
@@ -23,6 +87,7 @@ impl AppServerClient {
 		server: &str,
 		tool: &str,
 		arguments: Value,
+		guard: HistoryGuard,
 	) -> Result<Value, ClientError> {
 		if [thread, server, tool].iter().any(|value| {
 			value.is_empty() || value.len() > 4096 || value.chars().any(char::is_control)
@@ -34,9 +99,10 @@ impl AppServerClient {
 		// routing remain with the native process and its retained connection.
 		let result = tokio::time::timeout(
 			std::time::Duration::from_secs(60),
-			self.request(
+			self.request_with_history(
 				"mcpServer/tool/call",
 				json!({"threadId":thread,"server":server,"tool":tool,"arguments":arguments}),
+				guard,
 			),
 		)
 		.await
@@ -130,6 +196,75 @@ impl AppServerClient {
 		}
 		Ok(contents.clone())
 	}
+}
+
+fn callback_tool(
+	catalog: &[Value],
+	server: &str,
+	tool: &str,
+) -> Result<Option<Value>, ClientError> {
+	let mut servers = catalog.iter().filter(|row| row["name"] == server);
+	let Some(server) = servers.next() else { return Ok(None) };
+	if servers.next().is_some() {
+		return Err(ClientError::InvalidFrame);
+	}
+	if server["runtimeStatus"] != "connected" || !server["toolsError"].is_null() {
+		return Ok(None);
+	}
+	let tools = server["tools"].as_object().ok_or(ClientError::InvalidFrame)?;
+	let mut matches = tools.values().filter(|value| value["name"] == tool);
+	let Some(tool) = matches.next() else { return Ok(None) };
+	if matches.next().is_some() {
+		return Err(ClientError::InvalidFrame);
+	}
+	if let Some(visibility) = tool.pointer("/_meta/ui/visibility") {
+		let visibility = visibility.as_array().ok_or(ClientError::InvalidFrame)?;
+		if !visibility.iter().any(|v| v == "app") {
+			return Ok(None);
+		}
+	}
+	if tool.pointer("/_meta/openai~1widgetAccessible") == Some(&Value::Bool(false)) {
+		return Ok(None);
+	}
+	Ok(Some(tool.clone()))
+}
+
+fn hosted_callback_owned(
+	apps: &Value,
+	connector: &str,
+	name: &str,
+	tool: &Value,
+	origin: &Value,
+	arguments: &Value,
+) -> Result<bool, ClientError> {
+	let rows = apps["apps"].as_array().ok_or(ClientError::InvalidFrame)?;
+	let missing = apps["missingAppIds"].as_array().ok_or(ClientError::InvalidFrame)?;
+	if missing.iter().any(|id| id == connector) {
+		return Ok(false);
+	}
+	let mut matched = rows.iter().filter(|app| app["id"] == connector);
+	let Some(app) = matched.next() else { return Ok(false) };
+	if matched.next().is_some() {
+		return Err(ClientError::InvalidFrame);
+	}
+	let Some(tools) = app["toolSummaries"].as_array() else { return Ok(false) };
+	let mut matched = tools.iter().filter(|tool| tool["name"] == name);
+	let Some(summary) = matched.next() else { return Ok(false) };
+	if matched.next().is_some() || summary["isEnabled"] != true {
+		return Ok(false);
+	}
+	let explicit =
+		tool.pointer("/_meta/_codex_apps/requires_explicit_link_id") == Some(&Value::Bool(true));
+	let link = if explicit { arguments.get("link_id") } else { tool.pointer("/_meta/link_id") };
+	let link = link.and_then(Value::as_str).filter(|link| !link.trim().is_empty());
+	if explicit && link.is_none() {
+		return Ok(false);
+	}
+	let origin_link = origin
+		.pointer("/appContext/linkId")
+		.and_then(Value::as_str)
+		.filter(|link| !link.trim().is_empty());
+	Ok(link == origin_link)
 }
 
 fn select_item<'a>(
@@ -394,8 +529,15 @@ mod tests {
 						.is_err()
 				);
 			});
-			let result =
-				client.call_mcp_app_tool("thread", "widget", "counter", json!({"value":7})).await;
+			let result = client
+				.call_mcp_app_tool(
+					"thread",
+					"widget",
+					"counter",
+					json!({"value":7}),
+					client.thread_settings_guard("thread").unwrap(),
+				)
+				.await;
 			if mode == "success" {
 				let result = result.unwrap();
 				assert_eq!(result["structuredContent"]["value"], 7);
@@ -405,5 +547,142 @@ mod tests {
 			}
 			task.await.unwrap();
 		}
+	}
+	#[test]
+	fn callback_catalog_requires_app_visibility_and_exact_hosted_account() {
+		let tool = json!({"name":"calendar.find","inputSchema":{"type":"object"},"_meta":{"ui":{"visibility":["app"]},"link_id":"link-1"}});
+		let catalog = vec![
+			json!({"name":"codex_apps","runtimeStatus":"connected","tools":{"display-name":tool},"toolsError":null}),
+		];
+		let selected = callback_tool(&catalog, "codex_apps", "calendar.find").unwrap().unwrap();
+		assert!(callback_tool(&catalog, "codex_apps", "other.find").unwrap().is_none());
+		let mut hidden = catalog.clone();
+		hidden[0]["tools"]["display-name"]["_meta"]["ui"]["visibility"] = json!(["model"]);
+		assert!(callback_tool(&hidden, "codex_apps", "calendar.find").unwrap().is_none());
+		let apps = json!({"apps":[{"id":"calendar","toolSummaries":[{"name":"calendar.find","isEnabled":true}]}],"missingAppIds":[]});
+		let origin = json!({"appContext":{"connectorId":"calendar","linkId":"link-1"}});
+		assert!(
+			hosted_callback_owned(
+				&apps,
+				"calendar",
+				"calendar.find",
+				&selected,
+				&origin,
+				&json!({})
+			)
+			.unwrap()
+		);
+		assert!(
+			!hosted_callback_owned(&apps, "other", "calendar.find", &selected, &origin, &json!({}))
+				.unwrap()
+		);
+		let mut explicit = selected.clone();
+		explicit["_meta"]["_codex_apps"] = json!({"requires_explicit_link_id":true});
+		for arguments in [json!({}), json!({"link_id":"link-2"}), json!({"link_id":false})] {
+			assert!(
+				!hosted_callback_owned(
+					&apps,
+					"calendar",
+					"calendar.find",
+					&explicit,
+					&origin,
+					&arguments
+				)
+				.unwrap()
+			);
+		}
+		assert!(
+			hosted_callback_owned(
+				&apps,
+				"calendar",
+				"calendar.find",
+				&explicit,
+				&origin,
+				&json!({"link_id":"link-1"})
+			)
+			.unwrap()
+		);
+	}
+
+	#[tokio::test]
+	async fn tool_review_reads_native_app_membership_without_executing() {
+		let (local, remote) = tokio::io::duplex(65536);
+		let (reader, writer) = tokio::io::split(local);
+		let (client, _events) = AppServerClient::from_io(reader, writer);
+		let (release, hold) = tokio::sync::oneshot::channel::<()>();
+		let server = tokio::spawn(async move {
+			let (reader, mut writer) = tokio::io::split(remote);
+			let mut lines = BufReader::new(reader).lines();
+			for (method, result) in [
+				("thread/read", json!({"thread":{"id":"thread","historyMode":"paginated"}})),
+				("thread/turns/list", json!({"data":[{"id":"turn"}],"nextCursor":null})),
+				(
+					"thread/items/list",
+					json!({"data":[{"turnId":"turn","item":{"id":"call","type":"mcpToolCall","server":"codex_apps","mcpAppUi":{"resourceUri":"ui://fixture/view"},"appContext":{"connectorId":"calendar","linkId":"link-1"}}}],"nextCursor":null}),
+				),
+				(
+					"mcpServerStatus/list",
+					json!({"data":[{"name":"codex_apps","runtimeStatus":"connected","tools":{"normalized":{"name":"calendar.find","inputSchema":{"type":"object"},"_meta":{"link_id":"link-1"}}},"authStatus":"oAuth","resources":[],"resourceTemplates":[]}],"nextCursor":null}),
+				),
+				(
+					"app/read",
+					json!({"apps":[{"id":"calendar","toolSummaries":[{"name":"calendar.find","isEnabled":true}]}],"missingAppIds":[]}),
+				),
+			] {
+				let request: Value =
+					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+				assert_eq!(request["method"], method);
+				if method == "app/read" {
+					assert_eq!(
+						request["params"],
+						json!({"threadId":"thread","appIds":["calendar"],"includeTools":true})
+					);
+				}
+				writer
+					.write_all(
+						format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+					)
+					.await
+					.unwrap();
+			}
+			let _ = hold.await;
+		});
+		let review = client
+			.review_mcp_app_tool(
+				"thread",
+				"turn",
+				"call",
+				"calendar.find",
+				&json!({"query":"meeting"}),
+			)
+			.await
+			.unwrap()
+			.unwrap();
+		assert_eq!(review.server, "codex_apps");
+		assert_eq!(review.descriptor["name"], "calendar.find");
+		assert!(review.guard.is_live());
+		release.send(()).unwrap();
+		server.await.unwrap();
+	}
+	#[tokio::test]
+	async fn tool_dispatch_rejects_foreign_review_guard_before_writing() {
+		let (local, remote) = tokio::io::duplex(65536);
+		let (reader, writer) = tokio::io::split(local);
+		let (client, _events) = AppServerClient::from_io(reader, writer);
+		let (other, other_remote) = tokio::io::duplex(65536);
+		let (reader, writer) = tokio::io::split(other);
+		let (other_client, _other_events) = AppServerClient::from_io(reader, writer);
+		let guard = other_client.thread_settings_guard("thread").unwrap();
+		assert!(matches!(
+			client.call_mcp_app_tool("thread", "widget", "counter", json!({}), guard).await,
+			Err(ClientError::StaleHistory)
+		));
+		let mut lines = BufReader::new(remote).lines();
+		assert!(
+			tokio::time::timeout(std::time::Duration::from_millis(100), lines.next_line())
+				.await
+				.is_err()
+		);
+		drop(other_remote);
 	}
 }
