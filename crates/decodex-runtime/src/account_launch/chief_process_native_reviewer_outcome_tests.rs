@@ -80,7 +80,7 @@ async fn reviewer_publication_records_remote_and_uncertain_outcomes_without_repl
 		assert_eq!(result.is_ok(), expected == "applied", "{scenario}");
 		let reopened = SqliteStore::open(&owned.root.paths()).unwrap();
 		let receipt = reopened
-			.chief_live_reviewer_receipt("root".into(), "thread".into(), "turn".into())
+			.chief_live_settings_receipt("root".into(), "thread".into(), "turn".into())
 			.await
 			.unwrap()
 			.unwrap();
@@ -138,7 +138,7 @@ async fn local_queue_refusal_is_durably_rejected_even_if_source_changes_afterwar
 	assert!(matches!(result, Err(crate::chief_host::ChiefHostError::Rejected(_))));
 	let receipt = owned
 		.store
-		.chief_live_reviewer_receipt("root".into(), "thread".into(), "turn".into())
+		.chief_live_settings_receipt("root".into(), "thread".into(), "turn".into())
 		.await
 		.unwrap()
 		.unwrap();

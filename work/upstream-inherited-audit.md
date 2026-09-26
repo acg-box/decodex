@@ -368,6 +368,28 @@ rows only. The separate database file and old model-recovery journal compatibili
 remain open. See [native permission qualification](native-permission-recovery.md)
 for evidence and the native enforcement/signed desktop boundary.
 
+## Shared live settings journal restored on 2026-09-26
+
+Restore `database/src/chief_live_settings.rs` from the verified inherited snapshot,
+with the current visible-message, transcript-before-page-limit and no-wake
+assertions retained. Close this complete database file row. The existing reviewer
+service and its test fixtures now use the shared settings receipt API. Other
+runtime and database export differences remain open.
+
+Model and reviewer edits share the existing reservation sequence. Existing
+`live_reviewer_attempt` and `live_reviewer_result` event names and source keys stay
+stable. The reader accepts both the legacy top-level reviewer payload and the
+tagged edit payload. Reservations survive reopening, reject stale reviews and
+prevent an unresolved model edit from being overtaken by a reviewer edit. Result
+receipts remain immutable and do not wake work.
+
+Focused database and reviewer service tests cover these contracts. The installed
+0.158.0-alpha.2 isolated reviewer test verifies existing reviewer publication,
+retained pending approvals and unchanged future defaults through the adapted
+journal. This does not qualify model publication through the service. Native
+catalog/feature eligibility, model service and desktop controls remain open.
+No database migration, local wire change or automatic model switch is introduced.
+
 ## Validation boundary
 
 This documentation refresh checked snapshot hashes, current committed bytes, all
