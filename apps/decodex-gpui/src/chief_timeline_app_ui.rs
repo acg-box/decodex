@@ -187,7 +187,7 @@ impl ChiefSurface {
 					Ok((document, source))
 						if state.host.as_mut().is_some_and(|host| {
 							host.command(
-								serde_json::json!({"operation":"load","document":document}),
+								serde_json::json!({"operation":"load","document":document,"toolCallsEnabled":true}),
 							)
 						}) =>
 					{

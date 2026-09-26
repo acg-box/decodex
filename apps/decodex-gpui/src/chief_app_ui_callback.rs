@@ -196,6 +196,7 @@ impl ChiefSurface {
 				row = row.child(
 					div()
 						.id("app-call-confirm")
+						.debug_selector(|| "app-call-confirm".into())
 						.cursor_pointer()
 						.p_2()
 						.child("Allow this call")
@@ -633,5 +634,106 @@ mod tests {
 		});
 		assert!(visual.debug_bounds("app-call-refresh").is_some());
 		assert!(visual.debug_bounds("app-call-acknowledge").is_none());
+	}
+	#[gpui::test]
+	fn app_ui_confirm_and_acknowledge_read_saved_outcomes_after_lost_replies(
+		cx: &mut gpui::TestAppContext,
+	) {
+		for mode in ["call-lost", "ack-lost"] {
+			let (_root, profile, server) = super::super::wire_tests::fixture(mode);
+			let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+			surface.update(visual, |surface, cx| {
+				surface.selected = Some("work".into());
+				surface.profile = Some(profile);
+				let state = &mut surface.native_history.app_ui;
+				let owner = EntityId::new("work").unwrap();
+				state.callback.work = Some(owner.clone());
+				state.host = Some(super::super::native::AppHost);
+				if mode == "call-lost" {
+					state.callback.review = Some(ChiefAppUiCallReview::Available {
+						request: Box::new(ChiefAppUiCall {
+							work_id: owner,
+							thread_id: EntityId::new("native-thread").unwrap(),
+							turn_id: EntityId::new("turn").unwrap(),
+							item_id: EntityId::new("widget").unwrap(),
+							source_fingerprint: EntityId::new("c".repeat(64)).unwrap(),
+							operation_id: EntityId::new("saved-operation").unwrap(),
+							tool: decodex_protocol::WireText::new("calculate").unwrap(),
+							arguments: json!({"value":7}),
+						}),
+						review_token: EntityId::new("a".repeat(64)).unwrap(),
+						server: decodex_protocol::WireText::new("fixture").unwrap(),
+						title: decodex_protocol::WireText::new("Calculate").unwrap(),
+						pending_operation: None,
+					});
+					surface.confirm_native_app_call(cx);
+					surface.confirm_native_app_call(cx);
+				} else {
+					state.callback.receipt_request = Some(ChiefAppUiReceiptRequest {
+						work_id: owner,
+						operation_id: EntityId::new("saved-operation").unwrap(),
+						offset: 0,
+						fingerprint: None,
+					});
+					state.callback.receipt = Some(
+						json!({"state":"unknown","uncertaintyAcknowledged":false,"reservationId":42}),
+					);
+					surface.refresh_native_app_receipt(true, cx);
+					surface.refresh_native_app_receipt(true, cx);
+				}
+				// Closing the widget does not cancel the independent saved-outcome read.
+				surface.native_history.app_ui.host = None;
+				surface.native_history.app_ui.callback.close_view();
+				surface.profile = None;
+			});
+			visual.run_until_parked();
+			assert!(server.join().unwrap().is_empty());
+			surface.read_with(visual, |surface, _| {
+				let callback = &surface.native_history.app_ui.callback;
+				assert!(callback.review.is_none());
+				assert!(callback.task.is_none());
+				let receipt = callback.receipt.as_ref().unwrap();
+				if mode == "call-lost" {
+					assert_eq!(receipt["state"], "completed");
+					assert_eq!(receipt["result"]["structuredContent"]["value"], 42);
+				} else {
+					assert_eq!(receipt["state"], "unknown");
+					assert_eq!(receipt["uncertaintyAcknowledged"], true);
+				}
+			});
+		}
+	}
+	#[gpui::test]
+	fn app_ui_browser_request_only_prepares_confirmation(cx: &mut gpui::TestAppContext) {
+		let (_root, profile, server) = super::super::wire_tests::fixture("review-valid");
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |surface, cx| {
+			surface.selected = Some("work".into());
+			surface.profile = Some(profile);
+			let state = &mut surface.native_history.app_ui;
+			state.host = Some(super::super::native::AppHost);
+			state.request = Some(ChiefAppUiRequest {
+				work_id: EntityId::new("work").unwrap(),
+				thread_id: EntityId::new("native-thread").unwrap(),
+				turn_id: EntityId::new("turn").unwrap(),
+				item_id: EntityId::new("widget").unwrap(),
+				offset: 0,
+				fingerprint: None,
+			});
+			state.source = Some(EntityId::new("c".repeat(64)).unwrap());
+			surface.review_native_app_call(
+				json!({"operationId":"saved-operation","tool":"calculate","arguments":{"value":7}}),
+				cx,
+			);
+			surface.profile = None;
+		});
+		visual.run_until_parked();
+		assert!(server.join().unwrap().is_empty());
+		surface.read_with(visual, |surface, _| {
+            let state = &surface.native_history.app_ui;
+            assert!(state.callback.task.is_none());
+            assert!(matches!(&state.callback.review, Some(ChiefAppUiCallReview::Available { request, .. }) if request.arguments == json!({"value":7})));
+            assert!(state.callback.receipt_request.is_none(), "Review alone must not submit a call");
+        });
 	}
 }

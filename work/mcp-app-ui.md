@@ -288,6 +288,25 @@ The tools/call capability remains disabled pending complete confirmation/recover
 exact lost-reply command behavior and signed native consumer acceptance. This local
 recovery path does not itself establish full App UI delivery.
 
+## Confirmed callback path enabled for desktop acceptance
+
+The desktop load command now enables serverTools in the native view. The browser
+request path only prepares a service-backed confirmation. Allow consumes that review
+once; repeated clicks do not submit another command. Cancel returns a browser error.
+After a lost command reply, the consumer reads the saved outcome. The same rule applies
+to the separate unknown-outcome acknowledgment. Closing the widget keeps the submitted
+call's receipt read alive.
+
+Twenty selected desktop test instances passed, including real local-wire review-only,
+lost execution reply, lost acknowledgment reply, repeated clicks and source/owner
+checks. Seven native Swift tests passed; the real WebKit bridge received a text result
+of 8 MiB minus 1 KiB in full, with the original browser RPC ID. This qualifies component
+behavior, not signed whole-app or installed-native acceptance. Earlier notes that the
+load command omits toolCallsEnabled are superseded by this section.
+
+Signed desktop interaction, installed native integration and the remaining consumer
+obligations below are still required before R05 closure and normal PR delivery.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.

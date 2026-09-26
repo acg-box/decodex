@@ -68,7 +68,7 @@ final class McpAppViewTests: XCTestCase {
             parent.postMessage({...call,id:'second'},'*');
           }
           if(m.id==='second' && m.error) parent.postMessage({jsonrpc:'2.0',id:'busy-refused',method:'ping'},'*');
-          if(m.id==='browser-id' && m.result && m.result.structuredContent.value===42)
+          if(m.id==='browser-id' && m.result && m.result.structuredContent.value===42 && m.result.content[0].text.length===8*1024*1024-1024)
             parent.postMessage({jsonrpc:'2.0',id:'exact-result',method:'ping'},'*');
         });
         parent.postMessage({jsonrpc:'2.0',id:'init',method:'ui/initialize',params:{protocolVersion:'2026-01-26'}},'*');
@@ -100,7 +100,8 @@ final class McpAppViewTests: XCTestCase {
         XCTAssertNotEqual(operation, "browser-id")
         XCTAssertEqual((call["arguments"] as? [String: Int])?["value"], 7)
         XCTAssertFalse(view.resolveTool(operation: "browser-id", result: [:], error: nil))
-        XCTAssertTrue(view.resolveTool(operation: operation, result: ["content": [], "structuredContent": ["value": 42]], error: nil))
+        let largeResult = String(repeating: "x", count: 8 * 1024 * 1024 - 1024)
+        XCTAssertTrue(view.resolveTool(operation: operation, result: ["content": [["type": "text", "text": largeResult]], "structuredContent": ["value": 42]], error: nil))
         XCTAssertFalse(view.resolveTool(operation: operation, result: [:], error: nil))
         while Date() < deadline && !observed.contains("exact-result") {
             try await Task.sleep(for: .milliseconds(20))
