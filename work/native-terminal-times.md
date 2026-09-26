@@ -22,3 +22,9 @@ provider-duration checks remain.
 
 This batch changes retained evidence only. It does not introduce a new usage
 store or estimate missing timing values.
+
+The full inherited result-integrity test file is retained. The large-result
+regression now covers both native messages with an item ID and legacy messages
+without an ID. Both cases preserve a valid text prefix and keep the completion
+event within 65,536 bytes without duplicating terminal items. Both cases pass;
+this closes a coverage omission and does not identify a production failure.
