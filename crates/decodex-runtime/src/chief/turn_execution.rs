@@ -47,21 +47,16 @@ impl ChiefCoordinator {
 		execution: Option<&ChiefTurnExecution>,
 	) -> Result<(), ChiefError> {
 		let pending = self.store.pending_chief_capacity_retry(item.id.clone()).await?;
-		let pending = pending.filter(|p| p.event_id == event).ok_or(ChiefError::Rejected(
-			"The task model or effort changed; the saved capacity retry was cancelled.".into(),
-		))?;
-		let thread = item.codex_thread_id.clone().ok_or(ChiefError::Rejected(
-			"The task model or effort changed; the saved capacity retry was cancelled.".into(),
-		))?;
+		let pending =
+			pending.filter(|p| p.event_id == event).ok_or(ChiefError::CapacityRetrySuperseded)?;
+		let thread = item.codex_thread_id.clone().ok_or(ChiefError::CapacityRetrySuperseded)?;
 		let expected = self
 			.store
 			.chief_turn_execution(item.id.clone(), thread, pending.failed_turn_id)
 			.await?;
 		if expected.is_none() || execution != expected.as_ref() {
 			self.store.cancel_chief_capacity_retry(item.id.clone(), event).await?;
-			return Err(ChiefError::Rejected(
-				"The task model or effort changed; the saved capacity retry was cancelled.".into(),
-			));
+			return Err(ChiefError::CapacityRetrySuperseded);
 		}
 		Ok(())
 	}
