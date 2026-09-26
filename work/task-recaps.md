@@ -79,3 +79,27 @@ Still required for complete recaps:
   not yet provide a voice-history recap.
 
 The upstream maintainer remains paused, including after manual completion.
+
+## Manual desktop entry
+
+The task conversation shows a `Task recap` control when it has a native thread.
+Opening the control reads the current service state. `Generate recap` is an
+explicit action. The desktop polls the state while the request or its displayed
+result is current. It never repeats a generation command after a lost reply.
+A failed read hides the old text and retries only the query. The user can cancel.
+
+The panel sends cancellation for the exact pending request when it closes, when
+the task changes, or when its service/native source changes. Sending new input
+also clears the panel. A completed result does not need a cancellation command
+when its panel closes. The service remains the authority for result validity.
+The UI checks its panel epoch and cancellation state before it displays an update.
+A local cancellation message does not assert that native inference has stopped.
+
+The control uses the existing accessible mouse and keyboard button component.
+Recap text is plain text; it does not execute links or interpret markup. The
+visual fixture is selected with `DECODEX_VISUAL_WORKSPACE_PAGE=recap` in the
+repository's workbench capture binary. It uses synthetic text and no account.
+
+This is an optional product control for the final subtraction review. It does
+not complete automatic eligibility/delay/opt-out, visible voice transcript
+integration, public service command acceptance, or signed desktop acceptance.

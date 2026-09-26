@@ -102,3 +102,10 @@ claims that every inherited change has reached main.
 - Reconcile the historical baseline and full fixed-cutoff evidence before claiming completion.
 
 The upstream maintainer remains PAUSED. Completion does not authorize enabling it.
+
+## Manual recap desktop follow-up
+
+The [task recap](task-recaps.md) now has a manual desktop control for reading,
+generating and cancelling the service-owned result. This is **optional**, not a
+core app-server compatibility requirement. Opening it does not start inference.
+Automatic recap eligibility and visible voice transcript integration remain open.
