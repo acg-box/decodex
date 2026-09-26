@@ -6144,9 +6144,9 @@ mod tests {
 		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
 		store.begin_chief_dispatch("chosen".into()).await.unwrap();
 		store.acknowledge_chief_dispatch("chosen".into(), "turn".into()).await.unwrap();
-		store.record_chief_strict_review("thread".into(), "turn".into(), 10).await.unwrap();
+		store.record_chief_strict_review("thread".into(), "turn".into(), 10, None).await.unwrap();
 		store.mark_chief_dispatch_unknown("chosen".into()).await.unwrap();
-		store.record_chief_strict_review("thread".into(), "turn".into(), 20).await.unwrap();
+		store.record_chief_strict_review("thread".into(), "turn".into(), 20, None).await.unwrap();
 		drop(store);
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let decodex_protocol::ChiefHistoryResult::Available { entries, .. } =

@@ -212,6 +212,7 @@ mod tests {
 	mod app_settings;
 	mod app_ui_calls;
 	mod auth_recovery;
+	mod guardian_notices;
 	mod hooks;
 	mod models;
 	mod native_warnings;

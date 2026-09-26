@@ -247,6 +247,27 @@ impl ChiefCoordinator {
 		Ok(())
 	}
 
+	async fn observe_strict_review(&self, params: &Value) -> Result<(), ChiefError> {
+		if let (Some(thread), Some(turn), Some(started)) =
+			(params["threadId"].as_str(), params["turnId"].as_str(), params["startedAtMs"].as_i64())
+			&& started >= 0
+			&& !thread.is_empty()
+			&& !turn.is_empty()
+			&& thread.len() <= 512
+			&& turn.len() <= 512
+		{
+			self.store
+				.record_chief_strict_review(
+					thread.into(),
+					turn.into(),
+					started,
+					self.native_generation.as_ref().map(|id| id.as_str().to_owned()),
+				)
+				.await?;
+		}
+		Ok(())
+	}
+
 	pub(super) async fn observe_notification(
 		&mut self,
 		method: &str,
@@ -269,19 +290,7 @@ impl ChiefCoordinator {
 			return Ok(());
 		}
 		if method == "autoApprovalReview/strictReviewRequired" {
-			if let (Some(thread), Some(turn), Some(started)) = (
-				params["threadId"].as_str(),
-				params["turnId"].as_str(),
-				params["startedAtMs"].as_i64(),
-			) && started >= 0
-				&& !thread.is_empty()
-				&& !turn.is_empty()
-				&& thread.len() <= 512
-				&& turn.len() <= 512
-			{
-				self.store.record_chief_strict_review(thread.into(), turn.into(), started).await?;
-			}
-			return Ok(());
+			return self.observe_strict_review(params).await;
 		}
 		if method == "error"
 			&& params["willRetry"] == false

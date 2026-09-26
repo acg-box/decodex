@@ -47,6 +47,19 @@ The original snapshot hash matches. This batch closes one file and retains all
 reduces that count to 192. Other pending batches close separate rows. No shared
 desktop acceptance group is closed by this change.
 
+## Strict review ownership restored on 2026-09-26
+
+The saved strict-review notice now requires the current ready native process in
+the existing database ownership transaction. Restore the exact inherited
+`database/src/chief_process/tests/guardian_notices.rs` file and its original
+SHA-256. The restored runtime regression first reproduces a notice incorrectly
+saved from an unbound generation. See
+[strict review process recovery](strict-review-process-recovery.md).
+
+This closes one content-review row. Shared output, observation and runtime test
+files remain open for their other differences. No new review feature or automatic
+approval is introduced, and native/desktop acceptance remains separate.
+
 ## File evidence
 
 [The complete 360-row register](upstream-inherited-files.tsv) contains hashes
