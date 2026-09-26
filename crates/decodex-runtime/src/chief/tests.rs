@@ -14,6 +14,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/native_goal_recovery.rs"] mod native_goal_recovery;
 #[path = "tests/native_goals.rs"] mod native_goals;
 #[path = "tests/native_mcp_forms.rs"] mod native_mcp_forms;
+#[path = "tests/native_permissions.rs"] mod native_permissions;
 #[path = "tests/native_plan.rs"] mod native_plan;
 #[path = "tests/native_settings.rs"] mod native_settings;
 #[path = "tests/native_subagent_live.rs"] mod native_subagent_live;

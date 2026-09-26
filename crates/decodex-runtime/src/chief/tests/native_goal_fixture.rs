@@ -1,4 +1,4 @@
-//! Isolated Responses fixture shared by native goal lifecycle tests.
+//! Isolated Responses fixture shared by native lifecycle tests.
 use super::native_task_references;
 use serde_json::json;
 use std::sync::{

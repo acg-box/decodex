@@ -337,6 +337,19 @@ This batch closes one row from its 192-row pending baseline to 191 and retains
 all 360 entries. Parallel batches close separate rows. It does not close the
 shared runtime test file or any broader acceptance group.
 
+## Native permission restoration qualified on 2026-09-26
+
+Restore `chief/tests/native_permissions.rs` with its complete warm/cold scenario
+and the shared original Responses helper. Installed Codex 0.158.0-alpha.2 retains
+the selected profile, policy, reviewer and directory across native restart. No
+production changes are required. The complete runtime `chief_permissions.rs`
+difference is mapped to current native publication and reservation owners.
+
+Original hashes and all differences were checked for both files. Close these two
+rows only. The separate database file and old model-recovery journal compatibility
+remain open. See [native permission qualification](native-permission-recovery.md)
+for evidence and the native enforcement/signed desktop boundary.
+
 ## Validation boundary
 
 This documentation refresh checked snapshot hashes, current committed bytes, all
