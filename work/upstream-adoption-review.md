@@ -1,6 +1,8 @@
 # Upstream adoption review
 
-Snapshot: Decodex `3f131d80b9e90d2badf2394249bbf3b0266f72d3`. Fixed upstream range:
+Original capability-table snapshot: Decodex `3f131d80b9e90d2badf2394249bbf3b0266f72d3`.
+Delivery refresh through `7410a97b690f95a8567253f9833a9d47d436d1dd` (PR1507).
+Fixed upstream range:
 `a397079287e6638b39dda329835350d93222681f..595cc91e8cbb1c2ca822d0311dcf12709410c582`.
 
 Status: the manual update and inherited-change reconciliation are not complete.
@@ -40,6 +42,27 @@ not instructions to delete code or weaken native enforcement.
 | Reduced-motion transitions | Optional | Honor system reduced-motion and VoiceOver preferences. | [1478](https://github.com/acg-box/decodex/pull/1478) | [apps/decodex-gpui/src/ui_motion.rs](../apps/decodex-gpui/src/ui_motion.rs) |
 | Configuration warnings and subagent activity | Core | Retain bounded native startup warnings and native subagent observations. Chief settings errors retain public native causes; ordinary warnings persist as Status history with exact history refresh. Partial-output retention remains a separate batch. | [1356](https://github.com/acg-box/decodex/pull/1356), [1357](https://github.com/acg-box/decodex/pull/1357), [1484](https://github.com/acg-box/decodex/pull/1484), [1485](https://github.com/acg-box/decodex/pull/1485) | [crates/decodex-runtime/src/native_config_warning.rs](../crates/decodex-runtime/src/native_config_warning.rs) |
 
+## Deliveries after the original table
+
+All 20 PRs below were read from GitHub as merged. Their merge commits are
+ancestors of the refresh baseline. Each row describes delivered behavior; test
+and live-acceptance limits remain in its linked feature note or PR. These are
+additional PRs, not a count of additional upstream commits or independent features.
+
+| Capability | Classification | Result and subtraction boundary | Merged PRs |
+| --- | --- | --- | --- |
+| Native positive refusal and capacity cancellation | Core | Preserve unsent Chief/ordinary input and exact refusal receipts without replay. Keep these correctness rules for existing input consumers. | [1488](https://github.com/acg-box/decodex/pull/1488), [1489](https://github.com/acg-box/decodex/pull/1489) |
+| Complete approvals and live file review | Core | Retain large approval payloads, read complete source-bound pages and preserve explicit decisions and file evidence. | [1490](https://github.com/acg-box/decodex/pull/1490), [1491](https://github.com/acg-box/decodex/pull/1491), [1492](https://github.com/acg-box/decodex/pull/1492), [1493](https://github.com/acg-box/decodex/pull/1493) |
+| Model access program display | Optional | Show observed catalog metadata; this grants no access and selects no program. | [1494](https://github.com/acg-box/decodex/pull/1494) |
+| Effective voice configuration | Core | Apply the effective native configuration before an existing voice call. Keep separate from the new preference picker. | [1495](https://github.com/acg-box/decodex/pull/1495) |
+| Voice preference picker | Optional | Choose native preferences for future calls through the settings surface. | [1496](https://github.com/acg-box/decodex/pull/1496) |
+| Public reasoning summary display | Optional | Render native public summaries with provenance; do not enable or expose raw reasoning. | [1497](https://github.com/acg-box/decodex/pull/1497) |
+| Missing profile statistics | Core | Preserve unknown historical peaks instead of presenting them as observed values. Full Analytics remains open. | [1498](https://github.com/acg-box/decodex/pull/1498) |
+| Dependency and CLI compatibility | Core | Repair inherited advisories and CLI approval pagination compatibility. | [1499](https://github.com/acg-box/decodex/pull/1499) |
+| Account routing affinity | Core | Retain the account HTTP routing cookie under the existing consumer. | [1500](https://github.com/acg-box/decodex/pull/1500) |
+| Signed native CLI admission | Core | Preserve the installed CLI bundle context and verify its actual main executable. This repair supports all native execution, not only recaps. | [1504](https://github.com/acg-box/decodex/pull/1504) |
+| Manual recap and saved voice input | Optional | Add isolated generation, desktop controls, source invalidation and stored spoken context. Review its temporary request helper together with the recap consumer; automatic eligibility and signed/live acceptance remain open. | [1501](https://github.com/acg-box/decodex/pull/1501), [1502](https://github.com/acg-box/decodex/pull/1502), [1503](https://github.com/acg-box/decodex/pull/1503), [1505](https://github.com/acg-box/decodex/pull/1505), [1506](https://github.com/acg-box/decodex/pull/1506), [1507](https://github.com/acg-box/decodex/pull/1507) |
+
 ## Later optional display
 
 [Model access metadata](model-access-programs.md) adds an optional Chief model
@@ -74,7 +97,7 @@ account authentication cookie storage or optional product control.
 
 ## Evidence boundaries
 
-The 128 distinct PRs cited above were read from GitHub and their merge commits were checked as ancestors of this snapshot. Current source owners were inspected or located in this checkout. This confirms merge and source presence, not full live acceptance or release installation. No new behavioral test was run for this documentation reconciliation.
+The original table cited 128 distinct PRs, checked at its original snapshot. The refresh separately checks the 20 later PRs above; it does not reclassify nearby unrelated work as scan adoption. Current source owners were inspected or located in this checkout. This confirms merge and source presence, not full live acceptance or release installation. No new behavioral test was run for this documentation reconciliation.
 
 - The old nonblocking request timer remains active in `chief_requests.rs::tick_question_timeout`. Do not infer its removal from the separate asynchronous-question changes.
 - Native login-policy qualification in PR1452 does not prove that Decodex's independent browser/device-code account-enrollment UI enforces that policy. Its applicability and authority still require a decision.
@@ -96,7 +119,7 @@ claims that every inherited change has reached main.
 ## Still open
 
 - Complete the disposition of the recovered 360 paths, both preserved stashes and original PR1378. A preserved file is not necessarily merged; a shared file can contain both delivered and outstanding changes.
-- Resolve remaining inherited analytics, voice settings, native diagnostics, model/access policy, media and other consumer differences against current owners.
+- Resolve remaining inherited analytics, native diagnostics, model/access policy, media and shared-file differences against current owners. Delivered voice preferences and catalog access display do not close those separate differences.
 - Complete applicable MCP App UI, earlier-prompt editing and recap work in the authorized fixed pass, with separate optional-feature labels.
 - Complete signed desktop, live voice/connector and remaining native-owner acceptance or record precise supported limitations.
 - Reconcile the historical baseline and full fixed-cutoff evidence before claiming completion.
