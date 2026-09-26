@@ -159,7 +159,7 @@ The original table cited 128 distinct PRs, checked at its original snapshot. The
 
 - The old nonblocking request timer remains active in `chief_requests.rs::tick_question_timeout`. Do not infer its removal from the separate asynchronous-question changes.
 - Native login-policy qualification in PR1452 does not prove that Decodex's independent browser/device-code account-enrollment UI enforces that policy. Its applicability and authority still require a decision.
-- Flex preservation in Decodex and actual native provider routing are different claims. Historical alpha.16.3 failures do not prove the installed alpha.16.4 outcome; retain separate provider/version evidence.
+- Current Codex 0.158.0-alpha.2 fixtures verify configured Flex without catalog support or Fast mode, advertised per-turn Flex, and cold continuation on a synthetic Responses provider. This supersedes the historical configured-Flex failure. The old model-recovery setter, Bedrock and signed desktop paths remain separate; see [Flex evidence](service-tier-flex.md).
 - Workspace routing applies to native model requests and the adapted quota activation path. It is not authority to redirect every account/profile/reset API to a model backend origin.
 - Native execution, provider transport, tool filtering, enterprise registration and security remain Codex responsibilities. Source review does not justify a second local implementation.
 

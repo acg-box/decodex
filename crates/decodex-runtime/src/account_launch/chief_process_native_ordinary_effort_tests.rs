@@ -22,7 +22,7 @@ async fn installed_ordinary_turn_effort_preserves_inheritance_across_restart() {
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native inheritance qualification"]
-async fn installed_ordinary_model_inherits_but_configured_flex_is_not_effective() {
+async fn installed_ordinary_configured_flex_survives_without_catalog_or_fast_mode() {
 	tokio::time::timeout(
 		Duration::from_secs(30),
 		qualify(None, Some("provider-effort"), true, false),
@@ -79,7 +79,7 @@ async fn qualify(
 	let reasoning = configured
 		.map(|value| format!("model_reasoning_effort={}\n", json!(value)))
 		.unwrap_or_default();
-	std::fs::write(home.path().join("config.toml"), format!("{reasoning}model={}\nservice_tier=\"flex\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(model_name),json!(catalog))).expect("native ordinary effort fixture");
+	std::fs::write(home.path().join("config.toml"), format!("{reasoning}model={}\nservice_tier=\"flex\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nfast_mode=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(model_name),json!(catalog))).expect("native ordinary effort fixture");
 	let mut session = NativeSession::start(&binary, home.path());
 	let start = ConversationThreadStartRequest::new(
 		"stale-display-model",
@@ -94,7 +94,7 @@ async fn qualify(
 	wire["sandbox"] = json!("read-only");
 	let started = session.client.thread_start(wire).await.expect("native ordinary effort fixture");
 	if inherit {
-		assert_eq!(started["serviceTier"], if tier_override { json!("flex") } else { Value::Null });
+		assert_eq!(started["serviceTier"], "flex");
 	}
 	let id = started["thread"]["id"].as_str().expect("native ordinary effort fixture").to_owned();
 	let first_client_id = "50000000-0000-4000-8000-000000000001";
@@ -115,8 +115,7 @@ async fn qualify(
 		"Continue the existing task.",
 	)
 	.expect("typed resume request")
-	.inherit_model()
-	.inherit_service_tier();
+	.inherit_native_settings();
 	let response = session
 		.client
 		.thread_resume(serde_json::to_value(&resume).expect("typed resume wire"))
@@ -141,15 +140,7 @@ async fn qualify(
 		assert_eq!(body["reasoning"]["effort"], json!(requested.or(configured)));
 		if inherit {
 			assert_eq!(body["model"], model_name);
-			if tier_override {
-				assert_eq!(body["service_tier"], "flex");
-			} else {
-				assert_eq!(
-					body.get("service_tier"),
-					None,
-					"configured Flex did not become an effective native thread tier"
-				);
-			}
+			assert_eq!(body["service_tier"], "flex", "explicit Flex survives native filtering");
 		}
 	}
 	backend.abort();
