@@ -6,7 +6,7 @@ acceptance remain open. Automatic scheduling defaults to disabled.
 
 Fixed upstream reference: `595cc91e8cbb1c2ca822d0311dcf12709410c582`.
 Protocol2.84 introduced GenerateRecap, CancelRecap and GetChiefRecap.
-The current local protocol is 2.85, including the desktop preference.
+Protocol2.85 added the desktop preference; protocol2.86 retains that contract.
 The [temporary request owner](temporary-structured-requests.md) runs inference.
 
 ## Service ownership
