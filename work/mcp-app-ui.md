@@ -18,6 +18,20 @@ call, rather than accepting a global discovery fallback. The service must also c
 work, account and process identity before and after reads. The installed schema has
 an additional explicit target field; this is not part of the fixed upstream contract.
 
+## Exact native item selection
+
+`mcp_app_for_item` reads the exact thread/turn/item through native paginated history.
+It rejects duplicate identities and non-MCP items. Resource metadata uses the current
+mcpAppUi field first, then legacy mcpAppResourceUri and appContext.resourceUri fields.
+Malformed preferred metadata is not silently replaced by a legacy URI. It retains
+the complete native item, resources and a live history/settings/connection guard.
+A revert during resource loading invalidates the result. This native guard does not
+replace service account/process ownership checks.
+
+Four adapter tests cover scope confirmation, unavailable resource handling without
+retry, exact native history with a concurrent revert, and ambiguous/legacy item
+selection. The strict adapter Clippy check also passes.
+
 ## Remaining consumer obligations
 
 - Resolve the resource from the exact native tool item and preserve source identity.
