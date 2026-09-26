@@ -226,3 +226,24 @@ passed independently with an isolated local provider.
 All 360 rows remain. Pending content-review rows decrease from 216 to 212.
 These dispositions do not close the pending PR1538 protocol/desktop integration,
 shared production files, R03 acceptance or final signed desktop acceptance.
+
+## Restored model review files reconciled after PR1538
+
+Five complete comparisons were checked at merged main
+`1f35c8d695e8e912c160da6612e59bf0ea34a11b`. All original snapshot hashes match.
+
+| Original path | Complete difference and evidence |
+| --- | --- |
+| `crates/decodex-protocol/src/model_catalog.rs` | All inherited DTOs remain. The current optional defaults omit serialization when absent, retain default decoding, and add a backward-compatible round-trip test. The 161-test protocol suite passed. |
+| `crates/decodex-runtime/src/application_model_review_confirmation_tests.rs` | Exact restored file bytes. Installed-native confirmation submits once across retries and verifies cold readback. |
+| `crates/decodex-runtime/src/application_model_review_native_tests.rs` | All inherited tests remain. The fixture adapts effort to `Option` and adds an assertion that runtime recovery returns the explicit review-required state. All three installed-native tests passed. |
+| `crates/decodex-runtime/src/application_account_nudge_native_tests.rs` | Registration is restored. The only remaining full-file difference clarifies the isolated-home error text. The registered model-review fixtures ran successfully. |
+| `crates/decodex-runtime/src/routing_orchestration.rs` | The only full-file difference removes one private-variant comment. All routing behavior, including review-required refusal, matches the preserved source; installed-native recovery exercises it. |
+
+All 360 rows remain; pending content-review rows decrease from 212 to 207.
+File preservation does not establish an active desktop consumer. The separate
+signed desktop inspection did not find a current History entry and did not pass
+interactive ordinary-model confirmation. Its optional-workbench classification
+and failed acceptance remain explicit in `initial-model-source-recovery.md`.
+Shared application, shell and conversation files are not closed by these narrow
+file comparisons.
