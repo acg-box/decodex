@@ -77,6 +77,28 @@ The original PR1378 remains open. Both stash objects remain present:
 Do not close the original PR or remove the snapshot/stashes from these counts.
 They prove preservation, not complete integration.
 
+## Recovery and draft owners reconciled after PR1547
+
+Eight complete-file comparisons were verified at
+`eaba4009094d203d28ef39422d6baa51accd379e`. All original snapshot hashes match.
+
+| Original path | Complete difference and retained owner |
+| --- | --- |
+| `crates/decodex-protocol/src/conversation_native_settings.rs` | Exact snapshot bytes after PR1545. Native and local projection evidence is recorded in `ordinary-native-settings-recovery.md`. |
+| `crates/decodex-runtime/src/chief/turn_execution.rs` | Exact snapshot bytes after PR1547 restores typed capacity supersession. The regression failed before the repair; all 29 capacity-filtered tests pass. |
+| `database/src/conversations/resume_rejection.rs` | Only variant order, comments and two refusal messages differ. Serde snake-case names and every persistence transition remain unchanged. See `ordinary-native-non-submission.md`. |
+| `database/src/chief_dispatch_rejection.rs` | Adds settings-changed, request-too-large and queue-full refusals and exposes the existing note within the crate. The old refusal transitions are unchanged. `chief.rs::unsent_request_refusal` classifies only proven pre-write failures; `chief/tests/unsent_input.rs` checks that prior effects and uncertain transport failures remain fenced. |
+| `database/src/provider_attempts.rs` | Only adds a read-only positive-evidence check. `application_turn_outcomes.rs` reads the existing attempt, checks its consumer, then validates durable terminal evidence. Four focused outcome tests pass, including database reopen, foreign consumer and a deleted evidence row. No execution journal is added. |
+| `apps/decodex-gpui/src/chief_drafts.rs` | Adds submission-state grouping, creation-setup retention and first-profile adoption of ordinary drafts; the effort-intent test now passes its context. All inherited draft handling remains. Creation setup has cold-reopen tests and ordinary drafts keep the existing store. |
+| `apps/decodex-gpui/src/chief_draft_recovery.rs` | Replaces the narrow uncertainty flag with the shared complete delivery predicate, retains queued input during cancellation, and merges unbound ordinary drafts under their own baseline check. The predicate covers pending prompt edits and unconfirmed ordinary commands. All other source is unchanged. |
+| `apps/decodex-gpui/src/shell_recovery_actions.rs` | Adds only the account DTO required by the account-control fixture. The original actions and assertions remain, and the fixture cannot contact a real service. |
+
+The focused draft run passes 64 tests. The unchanged creation-setup and account
+fixture paths also passed the preceding full GUI run. This batch closes eight
+rows: its standalone baseline changes from 202 to 194 pending rows, before other
+pending batches. All 360 entries remain. File reconciliation does not close the
+remaining signed desktop, live-provider or shared-file acceptance work.
+
 ## Dependency rows reconciled on 2026-09-26
 
 The three dependency rows were rechecked at
