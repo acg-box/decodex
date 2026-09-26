@@ -124,6 +124,22 @@ risk assessment. Risk delta: no new package identities, sources or checksums in
 these inherited differences. Decision: retain the delivered dependency changes.
 No manifest, lockfile, dependency version or application code changed in this audit.
 
+## Native MCP form coverage restored on 2026-09-26
+
+The complete `chief/tests/native_form_server.py` matches the preserved snapshot.
+`chief/tests/native_mcp_forms.rs` retains every original test and assertion with
+explicit imports. The restored cases cover standard form and URL approval
+requests, and native rejection of undeclared user verification.
+
+Both ignored tests were explicitly run with installed Codex 0.158.0-alpha.2 and
+isolated local fixtures. All six scenarios pass; strict runtime lint passes.
+See [native MCP form evidence](native-mcp-form-recovery.md). No production
+capability declaration or verification implementation changed.
+
+This batch closes two original-hash-verified rows, from its 184-row main baseline
+to 182, retaining all 360 entries. Parallel patches close separate rows. It does
+not close other R09 consumers or rendered desktop acceptance.
+
 ## Nine source rows reconciled after PR1523
 
 The following complete-file comparisons were rechecked at
