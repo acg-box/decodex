@@ -184,6 +184,42 @@ async fn guardian_user_approval_submits_exact_denial_once_without_executing_a_tu
 }
 
 #[tokio::test]
+async fn guardian_unloaded_approval_preserves_native_settings_without_starting_a_turn() {
+	let (mut chief, mut sent, _directory) = fixture_with_history(approval_history()).await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	deliver(&mut chief, review("network", "denied")).await;
+	let saved =
+		chief.store.read_chief_guardian_reviews("chief".into(), None, 1).await.unwrap().remove(0);
+	chief.config = ChiefConfig::new("different-startup-model".into(), "low".into(), "/tmp".into());
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "thread/closed".into(),
+			params: json!({"threadId":"opaque thread/1"}),
+		})
+		.await
+		.unwrap();
+	while sent.try_recv().is_ok() {}
+	chief.approve_guardian_denial("chief", saved.id, &saved.digest(), "cold-click").await.unwrap();
+	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	assert!(requests.iter().all(|r| r["method"] != "turn/start" && r["method"] != "thread/start"));
+	let resumes: Vec<_> = requests.iter().filter(|r| r["method"] == "thread/resume").collect();
+	assert_eq!(resumes.len(), 1);
+	assert_eq!(
+		resumes[0]["params"],
+		json!({"threadId":"opaque thread/1","excludeTurns":true,"experimentalRawEvents":true})
+	);
+	let approvals: Vec<_> =
+		requests.iter().filter(|r| r["method"] == "thread/approveGuardianDeniedAction").collect();
+	assert_eq!(approvals.len(), 1);
+	assert_eq!(approvals[0]["params"]["threadId"], "opaque thread/1");
+	assert_eq!(approvals[0]["params"]["event"]["action"]["type"], "network_access");
+	let stored =
+		chief.store.chief_guardian_review("chief".into(), saved.id).await.unwrap().unwrap();
+	assert_eq!(stored.approval_state.as_deref(), Some("submitted"));
+	assert_eq!(stored.event_json, saved.event_json);
+}
+
+#[tokio::test]
 async fn guardian_rejection_and_lost_reply_have_distinct_durable_outcomes() {
 	for (mode, expected) in [("_guardian_reject", "rejected"), ("_guardian_disconnect", "pending")]
 	{
