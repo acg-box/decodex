@@ -247,3 +247,19 @@ interactive ordinary-model confirmation. Its optional-workbench classification
 and failed acceptance remain explicit in `initial-model-source-recovery.md`.
 Shared application, shell and conversation files are not closed by these narrow
 file comparisons.
+
+## Three delivered owners reconciled on 2026-09-26
+
+Full-file comparisons and snapshot hashes were checked at
+`1f35c8d695e8e912c160da6612e59bf0ea34a11b` and rechecked after PR1540 at
+`5eb65fdb56a14309e09fd67a27a66901df7366e0`.
+
+| Original path | Complete difference and evidence |
+| --- | --- |
+| `apps/decodex-gpui/src/chief_detail.rs` | Model invalidation moved from detail-panel closing to the stale-service and unsuccessful-snapshot owners in PR1530. The only other difference is the order of two entries in a membership list. The regression proves invalidation on service loss and retention when only details close; see `model-observation-recovery.md`. |
+| `crates/decodex-runtime/src/chief_install.rs` | Only comment wording differs after PR1533. Executable source is identical, including native request liveness after local turn completion. See `install-request-liveness.md`. |
+| `tests/scripts/test_vnext_architecture.py` | The expected protocol version changes from 2.50 to 2.90. The staging assertion uses the Cargo metadata target directory and adds two assertions for that owner. All other test content is identical. The 15 architecture checks and the signed stage build passed for the delivered source flow; see `initial-model-source-recovery.md`. |
+
+These decisions reduce pending content-review rows from 207 to 204. All 360
+register entries remain. This documentation batch changes no production code and
+does not close shared desktop acceptance or any other incomplete file.
