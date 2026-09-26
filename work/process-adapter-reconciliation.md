@@ -52,10 +52,30 @@ The full preserved process-file diff contains these other retained changes:
 - Remaining differences are field order, visibility for retained history projection,
   helper signatures, test movement and the added capability/refusal regressions.
 
-The fake server has other inherited differences, so its complete ledger row stays
-open. This batch changes only its two restored continuation responses.
+## macOS identity and fixture owners
+
+The complete `macos_attested_spawn.rs` diff replaces bundle-root path matching
+with `kSecCodeInfoMainExecutable` for both static and dynamic code objects. The
+returned dictionary member must be a CFURL, and its canonical path must equal the
+selected executable. The shared signing-information helper retains the existing
+identity-byte checks. The old path-predicate test no longer applies; current tests
+exercise real signed system executables, exact identity, suspended-child failure,
+closed environment, descriptor ownership, cleanup and SIGPIPE behavior. Preserve
+this stricter current owner without adding another path-matching fallback.
+
+The complete fake-server diff retains separate Chief/ordinary capabilities,
+combined warning delivery, exact settings reads and prior-activity refusal cases.
+The list continuation scenarios are restored above. Configured-default failures
+and managed-requirement failures now have separate modes; both must refuse a
+partial defaults result. Restore empty requirements parameters and managed-tier
+projection assertions. Keep the current fixed fixture cwd and private nested
+provider data checks. These complete fixture and macOS file dispositions close;
+the broader model-catalog source file still has other differences under review.
 
 ## Evidence and limits
+
+The macOS attested-spawn module passes all nine tests. The extended defaults
+fixture passes both read-failure cases and managed-tier projection.
 
 The process module passes 108 tests; six native tests are opt-in. This includes the
 restored list cases, relocated launcher, altered launcher/layout rejection, native

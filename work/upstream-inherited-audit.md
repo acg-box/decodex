@@ -668,4 +668,11 @@ The process module passes 108 tests with six opt-in skips. Exact-list regression
 fails before restoration and passes afterward. The explicit installed signed CLI
 snapshot check and strict runtime lint qualify the retained admission owner.
 See [process adapter reconciliation](process-adapter-reconciliation.md) for the
-complete mapping and evidence limits. The larger fake-server row remains open.
+complete mapping and evidence limits.
+
+A follow-up complete-file review retains the stricter current macOS signed-main-
+executable lookup and its static/dynamic identity checks. The fake server retains
+current capability, settings and warning owners. Restore separate configured and
+managed defaults failure cases, empty requirements parameters and managed-tier
+coverage. Both full file dispositions are now closed; the larger model-catalog
+file remains open for its other differences.
