@@ -4,7 +4,8 @@ use super::*;
 async fn paginated_recovery_retains_exact_worker_output_without_full_thread_hydration() {
 	let history = json!({"opaque thread/1":{"thread":{
 		"id":"opaque thread/1","historyMode":"paginated","status":{"type":"idle"},
-		"turns":[{"id":"opaque turn/1","status":"completed","items":[
+		"turns":[{"id":"opaque turn/1","status":"completed",
+		"startedAt":1700000000,"completedAt":1700000125,"durationMs":125000,"items":[
 			{"id":"answer","type":"agentMessage","text":"Recovered result","phase":"final_answer"}
 		]}]
 	}}});
@@ -19,6 +20,9 @@ async fn paginated_recovery_retains_exact_worker_output_without_full_thread_hydr
 	let payload: Value = serde_json::from_str(&event.payload).unwrap();
 	assert_eq!(payload["threadReadback"]["assistantMessages"][0]["text"], "Recovered result");
 	assert_eq!(payload["threadReadback"]["exactTurnReadback"], true);
+	assert_eq!(payload["terminal"]["turn"]["startedAt"], 1700000000);
+	assert_eq!(payload["terminal"]["turn"]["completedAt"], 1700000125);
+	assert_eq!(payload["terminal"]["turn"]["durationMs"], 125000);
 	while let Ok(request) = sent.try_recv() {
 		assert_ne!(request["method"], "turn/start");
 		assert_ne!(request["params"]["includeTurns"], true);
