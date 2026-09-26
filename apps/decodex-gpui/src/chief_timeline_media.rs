@@ -19,6 +19,34 @@ impl Preview {
 }
 
 impl ChiefSurface {
+	#[cfg(feature = "visual-capture")]
+	pub(crate) fn visual_preview_native_media(
+		&mut self,
+		profile: ClientProfile,
+		request: ChiefMediaRequest,
+		history: ChiefHistoryResult,
+		timeline: decodex_protocol::ChiefTimelineResult,
+		cx: &mut Context<Self>,
+	) -> Result<(), &'static str> {
+		self.restore_prompt_presentation(
+			request.work_id.as_str(),
+			request.thread_id.as_str(),
+			history,
+			timeline,
+			cx,
+		)?;
+		self.profile = Some(profile);
+		self.feedback = "Image preview from an isolated native service".into();
+		self.load_native_media(request, cx);
+		Ok(())
+	}
+
+	#[cfg(feature = "visual-capture")]
+	pub(crate) fn visual_media_evidence(&self) -> serde_json::Value {
+		let preview = &self.native_history.preview;
+		serde_json::json!({"imageLoaded":preview.image.is_some(),"notice":preview.notice,"request":preview.request})
+	}
+
 	pub(super) fn native_attachment(
 		&self,
 		work: &ChiefWorkItemDto,

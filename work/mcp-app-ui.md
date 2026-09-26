@@ -1,7 +1,8 @@
 # Interactive MCP App UI
 
-Classification: optional product capability. R05 remains open until its delivery
-checks and normal PR merge complete. This document describes the current contract;
+Classification: optional product capability. R05 was delivered in
+[PR1521](https://github.com/acg-box/decodex/pull/1521), merged as
+`9622cb749ebb3df062729ce411f54ac82c2211b9`. This document describes the current contract;
 Git history retains the incremental implementation records.
 
 ## Delivered behavior in this branch
@@ -123,6 +124,8 @@ update directly because a hidden window can defer animation frames.
 This proves the action-handler round trip, not a mouse click or a painted widget
 screenshot. Hosted matching/mismatched-link qualification uses synthetic account
 metadata and local servers, not a real user's hosted connector. A signed capture
-bundle is not a normal installed release. Current normal-package verification and
-PR merge must be recorded separately before R05 delivery; shared installed lifecycle
-acceptance remains in R07/R12.
+bundle is not a normal installed release. The normal signed package and packaging checks passed at clean
+commit `c9abecb1709629090e68c027f8f359d5f538c7c4`. All 25 branch commits passed signature
+verification; remote checks passed before normal merge. Current core suites passed
+1,133 tests and the desktop suite passed 501. Two desktop leaky-process notices
+passed isolated rechecks. Shared installed lifecycle acceptance remains in R07/R12.
