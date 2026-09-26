@@ -71,17 +71,22 @@ async fn native_plugin_suggestion_runs_through_the_coordinator()
 
 #[tokio::test]
 async fn plugin_installation_requires_real_installation_and_connector_access_before_reply() {
-	exercise_installation(true, false).await;
+	exercise_installation(true, false, false).await;
 }
 
 #[tokio::test]
 async fn remote_install_without_confirmed_receipt_keeps_authorization_unknown() {
-	exercise_installation(false, false).await;
+	exercise_installation(false, false, false).await;
 }
 
 #[tokio::test]
 async fn native_child_installation_preserves_root_receipt_and_child_request() {
-	exercise_installation(true, true).await;
+	exercise_installation(true, true, false).await;
+}
+
+#[tokio::test]
+async fn live_installation_request_survives_a_completed_local_turn() {
+	exercise_installation(true, false, true).await;
 }
 
 struct InstallationFixtureState {
@@ -192,7 +197,7 @@ async fn review_before_installation(
 	review_token
 }
 
-async fn exercise_installation(receipt_confirmed: bool, native_child: bool) {
+async fn exercise_installation(receipt_confirmed: bool, native_child: bool, yielded: bool) {
 	let (mut chief, _sent, _directory) = fixture().await;
 	chief.start_chief("chief", "Coordinate").await.unwrap();
 	let (local, remote) = tokio::io::duplex(65536);
@@ -222,6 +227,9 @@ async fn exercise_installation(receipt_confirmed: bool, native_child: bool) {
 	let server = tokio::spawn(serve_installation_fixture(remote, params, receipt_confirmed, state));
 	chief.handle_event(events.recv().await.unwrap()).await.unwrap();
 	let event = *chief.pending_requests.get(&RequestId::String("suggestion-1".into())).unwrap();
+	if yielded {
+		complete_local_turn_with_live_request(&chief, event).await;
+	}
 	let response = json!({"action":"accept","content":{},"_meta":null});
 	let review_token = review_before_installation(&mut chief, event, &response, &installs).await;
 	chief.install_suggested_plugin("chief", event, &review_token, "attempt-1").await.unwrap();
@@ -304,4 +312,20 @@ async fn exercise_installation(receipt_confirmed: bool, native_child: bool) {
 	);
 	server.abort();
 	let _ = server.await;
+}
+
+async fn complete_local_turn_with_live_request(chief: &ChiefCoordinator, event: i64) {
+	chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
+	let event = chief.store.get_chief_inbox_event(event).await.unwrap();
+	let payload: Value = serde_json::from_str(&event.payload).unwrap();
+	assert!(
+		chief
+			.client
+			.server_request_guard(
+				&RequestId::String("suggestion-1".into()),
+				"mcpServer/elicitation/request",
+				&payload["params"]
+			)
+			.is_some()
+	);
 }

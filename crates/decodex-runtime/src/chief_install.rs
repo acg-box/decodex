@@ -45,12 +45,9 @@ pub(crate) async fn inspect(
 		{
 			return None;
 		}
-	} else if !params["turnId"].is_null()
-		&& (params["turnId"].as_str() != owner.active_turn_id.as_deref()
-			|| owner.dispatch_state != decodex_database::ChiefDispatchState::Running)
-	{
-		return None;
 	}
+	// A yielded request retains its original turn. Exact native request liveness
+	// remains authoritative after the local turn completes.
 	let suggestion = McpInstallSuggestion::from_request(params).ok()??;
 	let request_id = serde_json::from_value(value["id"].clone()).ok()?;
 	let guard =
@@ -255,6 +252,10 @@ fn installation_summary(target: &PluginInstallTarget, detail: &Value) -> Option<
 	if let Some(marketplace) = catalog["marketplace"].as_str() {
 		lines.push(format!("Marketplace: {marketplace}"));
 	}
+	if catalog["selector"]["marketplacePath"].is_string() {
+		lines.push("Installing applies pending user configuration changes, including hooks, to open tasks.".into());
+	}
+	lines.push("Installed status does not confirm that tools have connected. Check Tools and plugins for connection status.".into());
 	let source = &catalog["source"];
 	for (field, label) in [
 		("type", "Source"),
