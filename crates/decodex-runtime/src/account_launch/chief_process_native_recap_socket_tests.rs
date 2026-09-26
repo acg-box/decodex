@@ -1,7 +1,9 @@
 //! Real local socket, Chief host and installed Codex; only the model provider is synthetic.
 use super::*;
 #[path = "chief_process_native_app_ui_socket_tests.rs"] mod app_ui;
+#[path = "chief_process_native_desktop_acceptance.rs"] mod desktop;
 #[path = "chief_process_native_media_socket_tests.rs"] mod media;
+#[path = "chief_process_native_recap_reply_proxy.rs"] mod reply_proxy;
 use crate::{ProtocolServer, ServerConfig};
 use decodex_protocol::{
 	ChiefActionDto as Action, ChiefClient, ChiefCommandResponse, ChiefDispatchStateDto,
@@ -25,12 +27,14 @@ async fn installed_recap_public_socket_preserves_parent_and_exact_request_identi
 		"isolated-recap\n"
 	);
 	assert!(!home.join(".codex").exists());
-	tokio::time::timeout(Duration::from_secs(90), qualify(&home))
+	let seconds = if std::env::var_os("DECODEX_TEST_DESKTOP_APP").is_some() { 1260 } else { 90 };
+	tokio::time::timeout(Duration::from_secs(seconds), qualify(&home))
 		.await
 		.expect("bounded real service fixture");
 }
 
 async fn qualify(home: &std::path::Path) {
+	let interactive = std::env::var_os("DECODEX_TEST_DESKTOP_APP").is_some();
 	let native_home = home.join(".codex");
 	std::fs::create_dir(&native_home).expect("fixture native home");
 	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("loopback provider");
@@ -41,7 +45,11 @@ async fn qualify(home: &std::path::Path) {
 		listener,
 		requests.clone(),
 		metadata,
-		Some("Spoken fixture correction"),
+		Some(if interactive {
+			"Isolated desktop acceptance. Reply briefly."
+		} else {
+			"Spoken fixture correction"
+		}),
 	));
 	let catalog = native_home.join("models.json");
 	std::fs::write(
@@ -56,7 +64,8 @@ async fn qualify(home: &std::path::Path) {
 	if std::env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") {
 		app_ui::configure(home);
 	}
-	let root = DecodexRoot::new(home.join("product")).expect("fixture root");
+	let root = DecodexRoot::new(home.join(if interactive { ".decodex" } else { "product" }))
+		.expect("fixture root");
 	root.paths().ensure_layout().expect("private layout");
 	let store = SqliteStore::open(&root.paths()).expect("product database");
 	let accounts = Arc::new(AccountService::new(
@@ -114,9 +123,12 @@ async fn qualify(home: &std::path::Path) {
 		.await
 		.expect("public local server");
 	use futures_util::FutureExt as _;
-	let outcome =
-		std::panic::AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(50), async {
-			if std::env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") {
+	let outcome = std::panic::AssertUnwindSafe(tokio::time::timeout(
+		Duration::from_secs(if interactive { 1200 } else { 50 }),
+		async {
+			if interactive {
+				desktop::check(&client, home, &account, &requests).await;
+			} else if std::env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") {
 				app_ui::check(&client, &runtime, home, &account, &requests).await;
 			} else if std::env::var("DECODEX_TEST_MEDIA").as_deref() == Ok("1") {
 				media::check(&client, &runtime, home, &account, &requests).await;
@@ -129,11 +141,15 @@ async fn qualify(home: &std::path::Path) {
 				)
 				.await;
 			}
-		}))
-		.catch_unwind()
-		.await;
+		},
+	))
+	.catch_unwind()
+	.await;
 	assert!(server.shutdown().await.expect("service shutdown").is_success());
 	backend.abort();
+	if let Err(error) = backend.await {
+		assert!(error.is_cancelled(), "fixture provider failed: {error}");
+	}
 	outcome.expect("fixture assertions").expect("bounded command checks");
 }
 
@@ -314,8 +330,15 @@ async fn qualify_desktop_recap(
 	let log = home.join("automatic-recap-capture.log");
 	let stdout = std::fs::File::create(&log).expect("capture diagnostics");
 	let stderr = stdout.try_clone().expect("shared capture log");
+	let proxy = if std::env::var("DECODEX_TEST_RECAP_LOST_REPLY").as_deref() == Ok("1") {
+		Some(reply_proxy::Proxy::start(home).await)
+	} else {
+		None
+	};
+	let capture_root =
+		proxy.as_ref().map_or_else(|| home.join("product"), |proxy| proxy.root.clone());
 	let mut child = tokio::process::Command::new(binary)
-		.env("DECODEX_VISUAL_CHIEF_ROOT", home.join("product"))
+		.env("DECODEX_VISUAL_CHIEF_ROOT", capture_root)
 		.env("DECODEX_VISUAL_CHIEF_WORK", work.as_str())
 		.env("DECODEX_VISUAL_AUTO_RECAP", "1")
 		.env("DECODEX_VISUAL_OUTPUT", &screenshot)
@@ -340,6 +363,9 @@ async fn qualify_desktop_recap(
 	assert_eq!(evidence["completed_turns"].as_array().expect("native progress").len(), 3);
 	let ready = client.recap(work.clone()).await.expect("public automatic result");
 	assert_eq!(serde_json::to_value(ready).expect("result JSON"), evidence["state"]);
+	if let Some(proxy) = &proxy {
+		proxy.verify(&evidence["state"]["request_id"], home);
+	}
 	assert!(screenshot.is_file());
 	let disabled = store
 		.set_desktop_settings(enabled.revision, settings.show_in_menu_bar, None, Some(false))
@@ -589,27 +615,7 @@ async fn qualify_native_prompt_revert(
 		.request("thread/resume", json!({"threadId":thread,"excludeTurns":true}))
 		.await
 		.expect("retained settings");
-	assert_eq!(before["model"], "cold-native-model");
-	assert_eq!(after["thread"]["id"], before["thread"]["id"]);
-	for field in [
-		"model",
-		"modelProvider",
-		"reasoningEffort",
-		"cwd",
-		"approvalPolicy",
-		"approvalsReviewer",
-		"sandbox",
-		"disabledPluginIds",
-		"activePermissionProfile",
-	] {
-		assert_eq!(after[field], before[field], "preserve {field}");
-	}
-	// Fixed upstream ModelInfo::service_tier_for_request omits both null and default.
-	// Native restoration can materialize the current step's default tier in resume metadata.
-	let request_tier = |value: &serde_json::Value| {
-		value.as_str().filter(|tier| *tier != "default").map(str::to_owned)
-	};
-	assert_eq!(request_tier(&after["serviceTier"]), request_tier(&before["serviceTier"]));
+	assert_preserved_native_settings(&before, &after);
 	assert_eq!(
 		requests.load(Ordering::Acquire),
 		count,
@@ -625,23 +631,31 @@ async fn qualify_native_prompt_revert(
 		"installed-edit-recover",
 	)
 	.await;
-	let receipt_id = status.evidence.as_ref().unwrap().receipt_id.unwrap();
+	let receipt_id = status
+		.evidence
+		.as_ref()
+		.expect("native recap fixture")
+		.receipt_id
+		.expect("native recap fixture");
 	qualify_prompt_acknowledgement(client, status, &content, home).await;
 	assert_eq!(requests.load(Ordering::Acquire), count, "acknowledgement must not send the draft");
 	let relative = decodex_protocol::PromptDraft::new(vec![
 		json!({"type":"localImage","path":"images/photo.png","detail":"original"}),
 	])
-	.unwrap();
+	.expect("native recap fixture");
 	let resolved = client
 		.resolve_prompt_media(work_id.clone(), thread_id.clone(), &relative)
 		.await
 		.expect("owned native directory");
-	assert_eq!(resolved.parts()[0]["path"], home.join("images/photo.png").to_str().unwrap());
+	assert_eq!(
+		resolved.parts()[0]["path"],
+		home.join("images/photo.png").to_str().expect("native recap fixture")
+	);
 	assert!(
 		client
 			.resolve_prompt_media(
 				work_id.clone(),
-				WireText::new("foreign-thread").unwrap(),
+				WireText::new("foreign-thread").expect("native recap fixture"),
 				&relative
 			)
 			.await
@@ -713,13 +727,17 @@ async fn qualify_canonical_prompt_send(
 		work_id: work_id.clone(),
 		thread_id: thread_id.clone(),
 		edit_receipt_id: receipt_id,
-		upload_id: IdempotencyKey::new("installed-native-edited-input").unwrap(),
-		sha256: input.fingerprint().unwrap(),
-		total_bytes: serde_json::to_vec(&input).unwrap().len() as u64,
+		upload_id: IdempotencyKey::new("installed-native-edited-input")
+			.expect("native recap fixture"),
+		sha256: input.fingerprint().expect("native recap fixture"),
+		total_bytes: serde_json::to_vec(&input).expect("native recap fixture").len() as u64,
 	};
 	let input_id =
 		client.stage_prompt_input(upload.clone(), &input).await.expect("durable multichunk input");
-	assert_eq!(client.stage_prompt_input(upload.clone(), &input).await.unwrap(), input_id);
+	assert_eq!(
+		client.stage_prompt_input(upload.clone(), &input).await.expect("native recap fixture"),
+		input_id
+	);
 	assert_eq!(requests.load(Ordering::Acquire), count, "staging must not submit input");
 	let identity = decodex_protocol::PromptInputSendIdentity {
 		work_id: work_id.clone(),
@@ -728,7 +746,8 @@ async fn qualify_canonical_prompt_send(
 		send: decodex_protocol::PromptInputSend {
 			input_id,
 			sha256: upload.sha256.clone(),
-			command_key: IdempotencyKey::new("installed-edited-send").unwrap(),
+			command_key: IdempotencyKey::new("installed-edited-send")
+				.expect("native recap fixture"),
 			execution: execution.clone(),
 		},
 	};
@@ -736,7 +755,7 @@ async fn qualify_canonical_prompt_send(
 		client
 			.prompt_input_send_status(identity.clone())
 			.await
-			.unwrap()
+			.expect("native recap fixture")
 			.accepted_event_id
 			.is_none()
 	);
@@ -756,7 +775,7 @@ async fn qualify_canonical_prompt_send(
 	let accepted = client
 		.prompt_input_send_status(identity.clone())
 		.await
-		.unwrap()
+		.expect("native recap fixture")
 		.accepted_event_id
 		.expect("exact queue receipt");
 	assert_eq!(settled(client).await, thread_id.as_str());
@@ -765,11 +784,18 @@ async fn qualify_canonical_prompt_send(
 		count + 1,
 		"one explicit send performs one native turn"
 	);
-	let turn = native.thread_latest_turn_id(thread_id.as_str()).await.unwrap().unwrap();
-	let items = native.thread_read_turn_items(thread_id.as_str(), &turn).await.unwrap();
+	let turn = native
+		.thread_latest_turn_id(thread_id.as_str())
+		.await
+		.expect("native recap fixture")
+		.expect("native recap fixture");
+	let items = native
+		.thread_read_turn_items(thread_id.as_str(), &turn)
+		.await
+		.expect("native recap fixture");
 	let user = items
 		.as_array()
-		.unwrap()
+		.expect("native recap fixture")
 		.iter()
 		.find(|item| item["type"] == "userMessage")
 		.expect("new native input");
@@ -778,7 +804,11 @@ async fn qualify_canonical_prompt_send(
 		"full canonical input must reach native history without preview truncation"
 	);
 	assert_eq!(
-		client.prompt_input_send_status(identity).await.unwrap().accepted_event_id,
+		client
+			.prompt_input_send_status(identity)
+			.await
+			.expect("native recap fixture")
+			.accepted_event_id,
 		Some(accepted)
 	);
 	assert_eq!(requests.load(Ordering::Acquire), count + 1, "receipt readback must not replay");
@@ -794,24 +824,29 @@ async fn qualify_account_rotation(
 	requests: &std::sync::atomic::AtomicUsize,
 ) {
 	let thread = settled(client).await;
-	let original = store.read_chief_process_binding("recap-root").await.unwrap().unwrap();
+	let original = store
+		.read_chief_process_binding("recap-root")
+		.await
+		.expect("native recap fixture")
+		.expect("native recap fixture");
 	assert_eq!(&original.account_id, first);
 	let second = enroll_numbered(store, accounts, home, 2).await;
 	let count = requests.load(Ordering::Acquire);
-	let observed =
-		std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros()
-			as i64;
+	let observed = std::time::SystemTime::now()
+		.duration_since(std::time::UNIX_EPOCH)
+		.expect("native recap fixture")
+		.as_micros() as i64;
 	for (account, used) in [(&second, 0), (first, 100)] {
 		for minutes in [300, 10080] {
 			accounts
 				.observe_quota(
 					account,
 					decodex_core::AccountQuotaWindow::new(minutes, used, observed + 3_600_000_000)
-						.unwrap(),
+						.expect("native recap fixture"),
 					observed,
 				)
 				.await
-				.unwrap();
+				.expect("native recap fixture");
 		}
 	}
 	tokio::time::timeout(Duration::from_secs(20), async {
@@ -831,19 +866,58 @@ async fn qualify_account_rotation(
 	accepted(
 		client,
 		Action::Send {
-			root_id: EntityId::new("recap-root").unwrap(),
-			text: HistoryText::new("Continue once after account rotation.").unwrap(),
+			root_id: EntityId::new("recap-root").expect("native recap fixture"),
+			text: HistoryText::new("Continue once after account rotation.")
+				.expect("native recap fixture"),
 		},
 		"after-account-rotation",
 	)
 	.await;
 	assert_eq!(settled(client).await, thread);
 	assert_eq!(requests.load(Ordering::Acquire), count + 1);
-	let binding = store.read_chief_process_binding("recap-root").await.unwrap().unwrap();
+	let binding = store
+		.read_chief_process_binding("recap-root")
+		.await
+		.expect("native recap fixture")
+		.expect("native recap fixture");
 	assert_eq!(binding.account_id, second);
-	let native = runtime.chief_client().unwrap();
-	let turn = native.thread_latest_turn_id(&thread).await.unwrap().unwrap();
-	let items = native.thread_read_turn_items(&thread, &turn).await.unwrap();
-	assert!(items.as_array().unwrap().iter().any(|item| item["type"] == "userMessage"
-		&& item["content"][0]["text"] == "Continue once after account rotation."));
+	let native = runtime.chief_client().expect("native recap fixture");
+	let turn = native
+		.thread_latest_turn_id(&thread)
+		.await
+		.expect("native recap fixture")
+		.expect("native recap fixture");
+	let items = native.thread_read_turn_items(&thread, &turn).await.expect("native recap fixture");
+	assert!(
+		items
+			.as_array()
+			.expect("native recap fixture")
+			.iter()
+			.any(|item| item["type"] == "userMessage"
+				&& item["content"][0]["text"] == "Continue once after account rotation.")
+	);
+}
+
+fn assert_preserved_native_settings(before: &Value, after: &Value) {
+	assert_eq!(before["model"], "cold-native-model");
+	assert_eq!(after["thread"]["id"], before["thread"]["id"]);
+	for field in [
+		"model",
+		"modelProvider",
+		"reasoningEffort",
+		"cwd",
+		"approvalPolicy",
+		"approvalsReviewer",
+		"sandbox",
+		"disabledPluginIds",
+		"activePermissionProfile",
+	] {
+		assert_eq!(after[field], before[field], "preserve {field}");
+	}
+	// Fixed upstream ModelInfo::service_tier_for_request omits both null and default.
+	// Native restoration can materialize the current step's default tier in resume metadata.
+	let request_tier = |value: &serde_json::Value| {
+		value.as_str().filter(|tier| *tier != "default").map(str::to_owned)
+	};
+	assert_eq!(request_tier(&after["serviceTier"]), request_tier(&before["serviceTier"]));
 }

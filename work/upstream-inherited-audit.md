@@ -11,8 +11,9 @@ one shared file can contain both delivered and outstanding behavior.
 
 ## File evidence
 
-[The complete 360-row register](upstream-inherited-files.tsv) contains fresh hashes
-from the committed audit baseline. It separates direct content comparison from
+[The complete 360-row register](upstream-inherited-files.tsv) contains hashes
+from the committed audit baseline, with the three dependency rows refreshed at
+`943eb039ddf785fd99200326180887bcc657fa7e`. It separates direct content comparison from
 recorded adaptation decisions. The owner hash refers to current_owner; the current
 hash always refers to the original snapshot path. This distinction matters when a
 migration number now names a different migration.
@@ -49,6 +50,30 @@ The original PR1378 remains open. Both stash objects remain present:
 
 Do not close the original PR or remove the snapshot/stashes from these counts.
 They prove preservation, not complete integration.
+
+## Dependency rows reconciled on 2026-09-26
+
+The three dependency rows were rechecked at
+`943eb039ddf785fd99200326180887bcc657fa7e`. Their snapshot and current SHA-256
+values match the recorded evidence. Complete parsed TOML comparisons prove:
+
+| File | Disposition and evidence |
+| --- | --- |
+| `Cargo.toml` | Semantically equal. Only the position of `unicode-width` differs. |
+| `Cargo.lock` | All 800 resolved package identities, sources and checksums match. The only graph difference is the added `decodex-account-login` dependency on `core-foundation 0.10.0`. Removing that edge makes the complete parsed files equal. [PR1411](https://github.com/acg-box/decodex/pull/1411) provides the manifest dependency and macOS proxy consumer. |
+| `apps/decodex-gpui/Cargo.toml` | Complete parsed equality after removal of the added `NSDate` and `NSRunLoop` features. [PR1521](https://github.com/acg-box/decodex/pull/1521) uses them to service native callbacks. |
+
+The implementation commits `69754d2658` and `8def1e392c` are ancestors of the
+checked revision. These three rows have no remaining file-level difference that
+requires a decision. This closes three entries from the historical 239-row
+`requires-content-review` set. The remaining 236 entries in that set still need
+review; other previously partial dispositions also remain open. The original
+byte-comparison counts above are unchanged: structural equality is not byte equality.
+
+Risk coverage: structural reconciliation only; no advisory or runtime dependency
+risk assessment. Risk delta: no new package identities, sources or checksums in
+these inherited differences. Decision: retain the delivered dependency changes.
+No manifest, lockfile, dependency version or application code changed in this audit.
 
 ## Core gaps resolved since the earlier audit
 
