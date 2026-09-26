@@ -424,3 +424,6 @@ async fn serve_fixture(
 #[path = "chief_process_native_discovery_tests.rs"] mod discovery;
 
 #[path = "chief_process_native_summary_tests.rs"] mod summary;
+
+#[path = "chief_process_native_audio_tests.rs"] mod audio;
+#[path = "chief_process_native_file_image_tests.rs"] mod file_image;

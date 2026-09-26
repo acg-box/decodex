@@ -66,6 +66,11 @@ review document is mapped to its current adapter/service/UI owners and updated
 with current restart evidence. That document row also closes; remaining shared
 native-test differences stay open.
 
+Restore the complete native audio and file-image fixtures using the current shared
+backend helper. Installed runs pass selective failed-audio replacement and ordered
+file/inline image preservation across cold history and explicit continuation.
+Both complete test-file rows close; no production media owner changes.
+
 ## History and shared adapter owners reconciled on 2026-09-26
 
 Read every snapshot difference and verify the original SHA-256 for four complete

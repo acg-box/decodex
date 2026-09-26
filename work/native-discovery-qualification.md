@@ -51,3 +51,20 @@ sets the feature; the user's application configuration stays unchanged.
 The inherited standalone summary/cold-restart test also passes. See
 [history summary recovery](history-summary-recovery.md). This closes that complete
 document's disposition, not the parent native-test file or final desktop review.
+
+## Tool audio and stored image references
+
+Restore the complete inherited audio and file-image test files, replacing only
+the retired backend helper calls with current `serve_fixture` calls. Installed
+Codex 0.158.0-alpha.2 passes both tests. An empty tool-audio payload becomes the
+native omission placeholder while adjacent text remains in order. File and inline
+images retain order and history detail through cold readback and one explicit
+continuation, without duplicated images. Both notification-filter settings pass.
+Model-wire detail remains absent under the native Responses Lite contract.
+
+The fixed upstream audio preparation test preserves valid content and replaces
+only failed audio. The existing app-server media test retains file and inline
+images on the model wire while filtering notifications. These policies remain
+native-owned; this batch adds no media conversion or feature setting to Decodex.
+Both complete inherited test-file dispositions close. Live voice, provider-backed
+media and final desktop acceptance remain separate.
