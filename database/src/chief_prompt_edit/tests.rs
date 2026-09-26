@@ -2,6 +2,95 @@ use super::*;
 use crate::{ChiefDispatchState, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus, EnqueueChiefEvent};
 
 #[tokio::test]
+async fn upload_acknowledgements_survive_restart_without_repeating_input_submission() {
+	let directory = tempfile::tempdir().unwrap();
+	let path = directory.path().join("upload.sqlite3");
+	let store = SqliteStore::open_test(&path).unwrap();
+	seed(&store, "task", "native").await;
+	let receipt = store.reserve_chief_prompt_edit(attempt()).await.unwrap().unwrap();
+	store.observe_chief_prompt_edit(receipt, None, vec!["prefix".into()]).await.unwrap();
+	let content = vec![
+		json!({"type":"text","text":"界\\\"".repeat(12000)}),
+		json!({"type":"image","fileId":"native-image"}),
+	];
+	let bytes = serde_json::to_string(&content).unwrap();
+	let upload = crate::ChiefPromptUpload {
+		upload_id: "upload".into(),
+		work: "task".into(),
+		thread: "native".into(),
+		edit_receipt_id: receipt,
+		sha256: decodex_core::BlobHash::digest(bytes.as_bytes()).to_hex(),
+		total_bytes: bytes.len() as i64,
+	};
+	let mut cut = 60000;
+	while !bytes.is_char_boundary(cut) {
+		cut -= 1;
+	}
+	assert!(bytes.len() - cut <= 65536);
+	assert!(store.append_chief_prompt_chunk(upload.clone(), 1, "[".into()).await.is_err());
+	assert_eq!(
+		store.append_chief_prompt_chunk(upload.clone(), 0, bytes[..cut].into()).await.unwrap(),
+		cut as i64
+	);
+	assert!(store.append_chief_prompt_chunk(upload.clone(), 0, "changed".into()).await.is_err());
+	drop(store);
+	let store = SqliteStore::open_test(&path).unwrap();
+	assert_eq!(store.chief_prompt_upload_received(upload.clone()).await.unwrap(), cut as i64);
+	assert_eq!(
+		store.append_chief_prompt_chunk(upload.clone(), 0, bytes[..cut].into()).await.unwrap(),
+		cut as i64
+	);
+	let mut foreign = upload.clone();
+	foreign.thread = "foreign".into();
+	assert!(store.chief_prompt_upload_received(foreign).await.is_err());
+	assert!(store.complete_chief_prompt_upload(upload.clone()).await.is_err());
+	assert_eq!(
+		store
+			.append_chief_prompt_chunk(upload.clone(), cut as i64, bytes[cut..].into())
+			.await
+			.unwrap(),
+		bytes.len() as i64
+	);
+	let saved = store.complete_chief_prompt_upload(upload.clone()).await.unwrap();
+	assert_eq!(saved.content, content);
+	assert_eq!(saved.sha256, upload.sha256);
+	assert_eq!(store.complete_chief_prompt_upload(upload.clone()).await.unwrap().id, saved.id);
+	assert_eq!(
+		store.append_chief_prompt_chunk(upload, 0, bytes[..cut].into()).await.unwrap(),
+		bytes.len() as i64
+	);
+	assert!(store.read_chief_work_events("task".into(), 100).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_bad_final_chunk_is_not_acknowledged_or_committed() {
+	let directory = tempfile::tempdir().unwrap();
+	let store = SqliteStore::open_test(&directory.path().join("bad-upload.sqlite3")).unwrap();
+	seed(&store, "task", "native").await;
+	let receipt = store.reserve_chief_prompt_edit(attempt()).await.unwrap().unwrap();
+	store.observe_chief_prompt_edit(receipt, None, vec!["prefix".into()]).await.unwrap();
+	let bytes = json!([{"type":"text","text":"original"}]).to_string();
+	let upload = crate::ChiefPromptUpload {
+		upload_id: "upload".into(),
+		work: "task".into(),
+		thread: "native".into(),
+		edit_receipt_id: receipt,
+		sha256: decodex_core::BlobHash::digest(bytes.as_bytes()).to_hex(),
+		total_bytes: bytes.len() as i64,
+	};
+	store.append_chief_prompt_chunk(upload.clone(), 0, bytes[..1].into()).await.unwrap();
+	assert!(
+		store
+			.append_chief_prompt_chunk(upload.clone(), 1, "x".repeat(bytes.len() - 1))
+			.await
+			.is_err()
+	);
+	assert_eq!(store.chief_prompt_upload_received(upload.clone()).await.unwrap(), 1);
+	store.append_chief_prompt_chunk(upload.clone(), 1, bytes[1..].into()).await.unwrap();
+	assert!(store.complete_chief_prompt_upload(upload).await.is_ok());
+}
+
+#[tokio::test]
 async fn canonical_prompt_input_is_durable_immutable_and_never_a_wake_event() {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("input.sqlite3");

@@ -27,6 +27,8 @@ mod chief_prompt_edit;
 mod chief_prompt_inputs;
 pub use chief_prompt_edit::{ChiefPromptEditAttempt, ChiefPromptEditReceipt};
 pub use chief_prompt_inputs::ChiefPromptInput;
+mod chief_prompt_upload;
+pub use chief_prompt_upload::ChiefPromptUpload;
 mod chief_models;
 pub use chief_models::{ChiefModelAttempt, ChiefModelReceipt};
 mod chief_plugins;

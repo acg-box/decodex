@@ -1449,9 +1449,24 @@ mod tests {
 		let original = schema_inventory(&connection).unwrap();
 		migrate(&mut connection).unwrap();
 		let inventory = schema_inventory(&connection).unwrap();
-		assert_eq!(inventory.iter().filter(|row| row.2 == "chief_prompt_inputs").count(), 2);
 		assert_eq!(
-			inventory.into_iter().filter(|row| row.2 != "chief_prompt_inputs").collect::<Vec<_>>(),
+			inventory
+				.iter()
+				.filter(|row| matches!(
+					row.2.as_str(),
+					"chief_prompt_inputs" | "chief_prompt_input_chunks"
+				))
+				.count(),
+			4
+		);
+		assert_eq!(
+			inventory
+				.into_iter()
+				.filter(|row| !matches!(
+					row.2.as_str(),
+					"chief_prompt_inputs" | "chief_prompt_input_chunks"
+				))
+				.collect::<Vec<_>>(),
 			original
 		);
 		assert_eq!(applied_version(&connection).unwrap(), CURRENT_SCHEMA_VERSION);
