@@ -1,9 +1,9 @@
 # Edit an earlier prompt
 
 Classification: optional product capability. Canonical input selection is
-implemented. A durable reservation and recovery store now exists. Native mutation,
-guarded recovery integration and desktop draft restoration remain open; this is
-not a complete editing action.
+implemented, with a durable journal and service-owned native confirmation/recovery.
+Public command wiring, complete presentation recovery and desktop draft handback
+remain open; this is not a complete editing action.
 
 ## Native authority
 
@@ -32,13 +32,14 @@ native reconstructed nested-review pair are excluded.
 The candidate retains the complete native content array, including text_elements,
 text spans, skill/plugin/app mentions, local image paths and native file IDs. The
 reader does not resolve files, download attachments, interpret prompt text as
-instructions, start model work or mutate history. It returns the exact latest turn
+instructions, start model work or mutate history. It returns all chronological turn IDs, the exact latest turn
 and the existing connection/history/settings guard. A changed latest turn or
 observed revert rejects the read. These are preview evidence, not mutation authority.
 
 The selection uses IDs instead of visible prompt ordinals. The service and UI must
-still enforce current visible selection, internal voice-handoff exclusion,
-restorable content and exact account/process ownership before offering a write.
+still enforce current visible selection and restorable content before offering a
+write. The coordinator enforces internal voice-handoff exclusion and exact
+account/process ownership.
 An unsupported or non-editable candidate returns None; malformed, incomplete or
 changed native evidence returns an error. Neither is permission to use old UI text.
 
@@ -46,11 +47,8 @@ changed native evidence returns an error. Neither is permission to use old UI te
 
 - Present the complete selected input and the history boundary for review. Preserve
   attachments and canonical mentions when restoring an editable draft.
-- Revalidate the reviewed item/content and current source before submitting one
-  native revert. Add the native mutation to the retained bridge only with its
-  service-owned uncertain-outcome boundary in place.
-- Persist enough input/boundary evidence before submission to reconcile a lost
-  reply or service restart. Never retry a possibly committed revert.
+- Connect public commands to the service-held review and confirmation methods.
+  Do not reconstruct the opaque review or native guard from client JSON.
 - After confirmed mutation, consume thread/reverted and replace removed history,
   questions, approvals, queued autosend/capacity retry, live output, usage and voice
   replay state before accepting more input. Keep unrelated tasks and durable
@@ -114,7 +112,41 @@ alone supplies sufficient evidence.
 An applied observation keeps input blocked until the service reconciles its
 projections and hands back the canonical draft. Runtime must perform those steps
 before it calls release_chief_prompt_edit_draft. The store cannot validate native
-transport guards or prove UI draft receipt. The native bridge still does not admit
-thread/revert; connecting that write and the desktop workflow remains required.
+transport guards or prove UI draft receipt. The native bridge now admits
+thread/revert for the coordinator confirmation path. Public command and desktop
+integration remain required.
 Tests prove durable store behavior, ownership and dispatch exclusion, not the
 remaining native mutation or signed desktop editing flow.
+
+## Native coordinator confirmation and recovery
+
+prepare_prompt_edit returns an opaque service-held review with canonical content,
+all native turn IDs and its live guard. It rejects internal voice handoff input.
+confirm_prompt_edit re-reads the exact item and complete history, compares them
+with the review, reserves the journal, then submits one guarded native request.
+The transport checks the guard immediately before writing. The native API has no
+expected-latest compare-and-swap parameter; this is not an atomic cross-client
+history lock.
+
+Only positive pre-write errors or native validation/unsupported-method errors
+(-32602 through -32600, as specified by the fixed upstream TUI) release the
+reservation without history observation. Success, lost reply and other errors
+all require a fresh guarded complete read. No recovery path resubmits the write.
+An applied receipt proves native history only. Recovery invokes existing request,
+output, capacity-retry and question invalidation/rebuild, but keeps the reservation
+until the remaining presentation state and desktop draft handback are complete.
+Repeated recovery rechecks applied history and retries incomplete projection reads.
+
+Transport tests cover changed canonical input, successful confirmation, validation
+rejection, post-commit internal error and lost reply with a new coordinator. They
+assert one mutation and read-only recovery. The isolated installed-native fixture
+can opt in with DECODEX_TEST_PROMPT_REVERT=1 after the recap checks. It removes only
+its final synthetic parent turn, verifies the exact retained prefix and native
+settings, and requires an unchanged model request count and a retained input fence.
+
+Installed-native qualification observed serviceTier change from null to "default"
+in resume metadata after restoration. Fixed upstream
+ModelInfo::service_tier_for_request omits both values from model requests; the
+fixture compares that request meaning while comparing other selected settings
+exactly. This does not claim raw service-tier metadata is byte-identical or that
+a different explicit tier may be discarded.

@@ -91,7 +91,7 @@ async fn restart_keeps_unknown_edit_fenced_until_exact_prefix_and_draft_release(
 		store.begin_chief_dispatch_with_events("task".into(), vec![]).await.is_err(),
 		"applied history still needs draft restoration"
 	);
-	assert!(!store.reject_chief_prompt_edit_before_write(id, a.clone()).await.unwrap());
+	assert!(!store.reject_chief_prompt_edit_without_mutation(id, a.clone()).await.unwrap());
 	assert!(
 		store.read_chief_work_events("task".into(), 100).await.unwrap().is_empty(),
 		"journal cannot leak into transcript or consume its page"
@@ -134,8 +134,8 @@ async fn reservation_and_prewrite_rejection_require_exact_idle_owned_evidence() 
 	let id = store.reserve_chief_prompt_edit(a.clone()).await.unwrap().unwrap();
 	let mut wrong = a.clone();
 	wrong.attempt_id = "wrong".into();
-	assert!(!store.reject_chief_prompt_edit_before_write(id, wrong).await.unwrap());
-	assert!(store.reject_chief_prompt_edit_before_write(id, a.clone()).await.unwrap());
+	assert!(!store.reject_chief_prompt_edit_without_mutation(id, wrong).await.unwrap());
+	assert!(store.reject_chief_prompt_edit_without_mutation(id, a.clone()).await.unwrap());
 	assert!(store.reserve_chief_prompt_edit(a.clone()).await.unwrap().is_none());
 	store.enqueue_chief_event(input("queued")).await.unwrap();
 	let mut next = a;

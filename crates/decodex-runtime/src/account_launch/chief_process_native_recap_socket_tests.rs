@@ -226,7 +226,10 @@ async fn check(
 	)
 	.await;
 	wait_phase(client, &work, Phase::Cancelled).await;
-	assert!(client.recap(work).await.expect("cancelled query").recap.is_none());
+	assert!(client.recap(work.clone()).await.expect("cancelled query").recap.is_none());
+	if std::env::var("DECODEX_TEST_PROMPT_REVERT").as_deref() == Ok("1") {
+		qualify_native_prompt_revert(store, &native, work.as_str(), &thread, requests).await;
+	}
 }
 
 async fn qualify_prompt_selection(
@@ -491,4 +494,104 @@ async fn prepare_voice_call(
 		.expect("voice overlap response");
 	assert!(matches!(response, ChiefCommandResponse::Rejected { .. }));
 	store.close_chief_voice_call("recap-voice".into()).await.expect("voice call closed");
+}
+
+async fn qualify_native_prompt_revert(
+	store: &SqliteStore,
+	native: &decodex_codex::app_server_client::AppServerClient,
+	work: &str,
+	thread: &str,
+	requests: &std::sync::atomic::AtomicUsize,
+) {
+	let before = native
+		.request("thread/resume", json!({"threadId":thread,"excludeTurns":true}))
+		.await
+		.expect("native settings");
+	let headers = native.thread_turns_since(thread, None).await.expect("all native turns");
+	let selected = headers.last().expect("last input")["id"].as_str().expect("turn id");
+	let items = native.thread_read_turn_items(thread, selected).await.expect("native input");
+	let input = items
+		.as_array()
+		.expect("items")
+		.iter()
+		.find(|i| i["type"] == "userMessage")
+		.expect("input");
+	let mut coordinator = crate::ChiefCoordinator::new(
+		store.clone(),
+		native.clone(),
+		crate::ChiefConfig::new("unused".into(), "high".into(), "/tmp".into()),
+	)
+	.expect("fixture coordinator");
+	coordinator.bind_native_generation(
+		store
+			.read_chief_process_binding(work)
+			.await
+			.expect("binding")
+			.expect("owner")
+			.generation_id,
+	);
+	let review = coordinator
+		.prepare_prompt_edit(
+			work,
+			thread,
+			selected,
+			input["id"].as_str().expect("input id"),
+			"installed-native-revert",
+		)
+		.await
+		.expect("native review")
+		.expect("editable input");
+	assert_eq!(
+		review.evidence().content,
+		input["content"].as_array().expect("canonical content").clone()
+	);
+	let count = requests.load(Ordering::Acquire);
+	let receipt = coordinator.confirm_prompt_edit(review).await.expect("native confirm");
+	assert_eq!(receipt.state, "applied");
+	let retained = native.thread_turns_since(thread, None).await.expect("retained history");
+	assert_eq!(
+		retained.iter().map(|t| t["id"].clone()).collect::<Vec<_>>(),
+		headers[..headers.len() - 1].iter().map(|t| t["id"].clone()).collect::<Vec<_>>()
+	);
+	let after = native
+		.request("thread/resume", json!({"threadId":thread,"excludeTurns":true}))
+		.await
+		.expect("retained settings");
+	assert_eq!(before["model"], "cold-native-model");
+	assert_eq!(after["thread"]["id"], before["thread"]["id"]);
+	for field in [
+		"model",
+		"modelProvider",
+		"reasoningEffort",
+		"cwd",
+		"approvalPolicy",
+		"approvalsReviewer",
+		"sandbox",
+		"disabledPluginIds",
+		"activePermissionProfile",
+	] {
+		assert_eq!(after[field], before[field], "preserve {field}");
+	}
+	// Fixed upstream ModelInfo::service_tier_for_request omits both null and default.
+	// Native restoration can materialize the current step's default tier in resume metadata.
+	let request_tier = |value: &serde_json::Value| {
+		value.as_str().filter(|tier| *tier != "default").map(str::to_owned)
+	};
+	assert_eq!(request_tier(&after["serviceTier"]), request_tier(&before["serviceTier"]));
+	assert_eq!(
+		requests.load(Ordering::Acquire),
+		count,
+		"revert must not infer or send the restored draft"
+	);
+	assert!(
+		store.begin_chief_dispatch(work.into()).await.is_err(),
+		"desktop draft handback remains required"
+	);
+	assert!(
+		coordinator
+			.recover_prompt_edit(work, thread)
+			.await
+			.expect("read-only recovery")
+			.is_some_and(|r| r.state == "applied")
+	);
 }

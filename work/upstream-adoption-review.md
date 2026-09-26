@@ -210,3 +210,12 @@ native prefix evidence and same-account process-death recovery, and keep the
 reservation until draft restoration. This remains an optional feature foundation;
 native mutation, guarded runtime recovery and desktop integration are incomplete.
 See [prompt editing](prompt-editing.md). Automation remains paused.
+
+### Optional earlier-prompt editing: native coordinator lifecycle
+
+The coordinator now holds the reviewed guard, revalidates canonical content and
+full history, persists intent, and submits one native thread/revert. Recovery uses
+fresh guarded native history after success, lost replies or post-commit errors;
+it never replays the mutation. The durable input fence remains until desktop draft
+handback. Public command/presentation integration is still incomplete; this is not
+a delivered end-user editing action. See [prompt editing](prompt-editing.md).

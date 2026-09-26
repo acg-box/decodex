@@ -21,6 +21,8 @@ mod misalignment;
 mod native_settings;
 pub(crate) mod native_subagents;
 pub(crate) mod observations;
+mod prompt_edit;
+pub use prompt_edit::PromptEditReview;
 mod reasoning;
 pub(crate) use reasoning::voice_handoff;
 mod result_messages;

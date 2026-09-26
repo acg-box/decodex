@@ -15,6 +15,8 @@ pub struct PromptEditCandidate {
 	pub content: Vec<Value>,
 	/// Latest native turn observed before and after reading the selected input.
 	pub latest_turn_id: String,
+	/// Complete chronological native history used by durable recovery.
+	pub turn_ids: Vec<String>,
 	/// Existing connection/history/settings guard; this is not mutation authorization.
 	pub guard: HistoryGuard,
 }
@@ -81,6 +83,12 @@ impl AppServerClient {
 				item_id: item.into(),
 				content,
 				latest_turn_id: latest,
+				turn_ids: headers
+					.iter()
+					.map(|turn| {
+						turn["id"].as_str().map(str::to_owned).ok_or(ClientError::InvalidFrame)
+					})
+					.collect::<Result<_, _>>()?,
 				guard,
 			}))
 		})

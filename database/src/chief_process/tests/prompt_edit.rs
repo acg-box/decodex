@@ -103,7 +103,7 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 		store.mark_process_generation_ready(&generation_id(2), 2).await.unwrap();
 		drop(store);
 		let store = SqliteStore::open_test(&path).unwrap();
-		assert!(!store.reject_chief_prompt_edit_before_write(id, a.clone()).await.unwrap());
+		assert!(!store.reject_chief_prompt_edit_without_mutation(id, a.clone()).await.unwrap());
 		let turns = if applied { vec!["prefix".into()] } else { a.turn_ids };
 		assert!(
 			store
