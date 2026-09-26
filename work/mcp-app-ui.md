@@ -418,6 +418,28 @@ the confirmed value42 callback). Review and callback do not add model requests. 
 25 selected bridge/App UI regression tests also passed. Full desktop/native interaction
 and a signed artifact containing this bridge fix are still required.
 
+## Desktop-to-native round trip
+
+The isolated socket test also accepts DECODEX_TEST_APP_UI_GUI_BINARY. This must be
+an absolute path to the visual-capture executable in a signed test bundle with the
+current native library. The test launches the desktop while the production service
+and installed Codex process remain live. The widget initializes in WebKit, requests
+counter value42, and waits for the desktop confirmation handler. The desktop checks
+that no third tool call occurred before confirmation. The page must receive the
+result and send its own acknowledgement before the test can pass.
+
+The capture loop services both the deterministic GPUI executor and the macOS run
+loop. A hidden window can defer animation frames, so page acknowledgement follows
+the DOM update directly. It proves browser result delivery, not a painted widget
+screenshot. The captured desktop review uses real service data and real controls;
+confirmation invokes the action handler, not a simulated mouse click.
+
+The full fixture passed with two model requests and three tool calls: the original
+value7 call, the public-client value42 confirmation, and the distinct desktop value42
+confirmation. The saved desktop receipt and browser acknowledgement both passed.
+This is isolated local-backend acceptance, not a real hosted-account or installed
+production application test.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.
@@ -431,5 +453,5 @@ and a signed artifact containing this bridge fix are still required.
 - Qualify a rendered interactive fixture, source changes, rejected permissions,
   uncertain replies and cold recovery before normal delivery and R05 closure.
 
-The transport adapter does not expose tool execution, create another MCP connection,
-store credentials or grant a widget authority over other threads.
+The adapter uses the retained native MCP connection. It does not store credentials
+or grant a widget authority over other threads.

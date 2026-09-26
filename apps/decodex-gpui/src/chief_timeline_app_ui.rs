@@ -14,6 +14,8 @@ pub(super) struct State {
 	monitor: Option<Task<()>>,
 	notice: Option<&'static str>,
 	serial: u64,
+	#[cfg(feature = "visual-capture")]
+	last_ping: Option<String>,
 }
 impl State {
 	pub(super) fn clear(&mut self) {
@@ -32,6 +34,10 @@ impl ChiefSurface {
 				state.source = None;
 				state.callback.close_view();
 				break;
+			}
+			#[cfg(feature = "visual-capture")]
+			if event["type"] == "ping" {
+				self.native_history.app_ui.last_ping = event["id"].as_str().map(str::to_owned);
 			}
 			if event["type"] == "tool_call" {
 				self.review_native_app_call(event, cx);

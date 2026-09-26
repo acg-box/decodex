@@ -87,6 +87,14 @@ pub(super) async fn check(
 	let document: Value = serde_json::from_slice(&document).unwrap();
 	assert_eq!(document["item"], *item);
 	assert!(document["resources"][0]["text"].as_str().unwrap().contains("Counter"));
+	let mut desktop_request = request.clone();
+	desktop_request.offset = 0;
+	desktop_request.fingerprint = None;
+	std::fs::write(
+		home.join("app-ui-source.json"),
+		serde_json::to_vec(&json!({"request":desktop_request,"account":account.as_str()})).unwrap(),
+	)
+	.unwrap();
 	let call = ChiefAppUiCall {
 		work_id: work.clone(),
 		thread_id: request.thread_id,
@@ -153,4 +161,37 @@ pub(super) async fn check(
 		.unwrap(),
 	)
 	.unwrap();
+	if let Some(binary) = std::env::var_os("DECODEX_TEST_APP_UI_GUI_BINARY") {
+		assert!(std::path::Path::new(&binary).is_absolute());
+		let log = home.join("app-ui-capture.log");
+		let stdout = std::fs::File::create(&log).unwrap();
+		let stderr = stdout.try_clone().unwrap();
+		let output = home.join("app-ui-live.png");
+		let mut child = tokio::process::Command::new(binary)
+			.env("DECODEX_VISUAL_CHIEF_ROOT", home.join("product"))
+			.env("DECODEX_VISUAL_CHIEF_WORK", "recap-root")
+			.env("DECODEX_VISUAL_APP_UI_EXECUTE", "1")
+			.env("DECODEX_VISUAL_OUTPUT", &output)
+			.stdout(stdout)
+			.stderr(stderr)
+			.kill_on_drop(true)
+			.spawn()
+			.unwrap();
+		let status = tokio::time::timeout(Duration::from_secs(30), child.wait())
+			.await
+			.expect("bounded desktop capture")
+			.unwrap();
+		assert!(status.success(), "desktop capture failed; inspect {}", log.display());
+		let evidence: Value =
+			serde_json::from_slice(&std::fs::read(output.with_extension("app-ui.json")).unwrap())
+				.unwrap();
+		assert_eq!(evidence["receipt"]["state"], "completed");
+		assert_eq!(evidence["receipt"]["result"]["structuredContent"]["value"], 42);
+		assert_eq!(evidence["browserPing"], "fixture-counter-42");
+		assert_eq!(requests.load(Ordering::Acquire), before, "desktop callback cannot infer");
+		assert_eq!(
+			std::fs::read_to_string(home.join("widget-calls.jsonl")).unwrap().lines().count(),
+			3
+		);
+	}
 }

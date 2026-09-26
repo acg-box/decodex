@@ -72,8 +72,9 @@ fn main() -> gpui::Result<()> {
 	let inspector_visible = std::env::var("DECODEX_VISUAL_CONTEXT").as_deref() != Ok("hidden");
 	let panel_motion = std::env::var("DECODEX_VISUAL_PANEL_MOTION").ok();
 	let send_message = std::env::var("DECODEX_VISUAL_CHIEF_SEND").ok();
+	let live_app_ui = std::env::var_os("DECODEX_VISUAL_APP_UI_EXECUTE").is_some();
 	let automatic_recap = std::env::var_os("DECODEX_VISUAL_AUTO_RECAP").is_some();
-	if (send_message.is_some() || automatic_recap)
+	if (send_message.is_some() || automatic_recap || live_app_ui)
 		&& std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").is_none()
 	{
 		return Err(std::io::Error::other("Command capture requires a disposable root").into());
@@ -96,7 +97,7 @@ fn main() -> gpui::Result<()> {
 	let service_projection = std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT")
 		.map(|root| -> gpui::Result<_> {
 			let root = PathBuf::from(root);
-			if automatic_recap && root.parent().and_then(|parent| std::fs::read_to_string(parent.join(".decodex-recap-fixture")).ok()).as_deref() != Some("isolated-recap\n") {
+			if (automatic_recap || live_app_ui) && root.parent().and_then(|parent| std::fs::read_to_string(parent.join(".decodex-recap-fixture")).ok()).as_deref() != Some("isolated-recap\n") {
 				return Err(std::io::Error::other("Automatic recap capture requires the isolated native fixture marker").into());
 			}
 			let profile = decodex_protocol::ClientProfile::load(&root, None)
@@ -165,6 +166,12 @@ fn main() -> gpui::Result<()> {
 				surface
 			})
 		})?;
+		if live_app_ui {
+			let root = PathBuf::from(
+				std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").expect("explicit root"),
+			);
+			prove_app_ui(&mut cx, handle, profile.clone(), &root, &output)?;
+		}
 		if automatic_recap {
 			prove_automatic_recap(&mut cx, handle, profile.clone(), &output)?;
 		}
@@ -414,4 +421,74 @@ fn prove_automatic_recap(
 		std::thread::sleep(std::time::Duration::from_millis(250));
 	}
 	Err(std::io::Error::other("Automatic recap did not reach Ready in the isolated capture").into())
+}
+
+fn prove_app_ui(
+	cx: &mut VisualTestAppContext,
+	handle: gpui::WindowHandle<ChiefSurface>,
+	profile: decodex_protocol::ClientProfile,
+	root: &std::path::Path,
+	output: &std::path::Path,
+) -> gpui::Result<()> {
+	let source: serde_json::Value = serde_json::from_slice(&std::fs::read(
+		root.parent().expect("fixture parent").join("app-ui-source.json"),
+	)?)?;
+	let request: decodex_protocol::ChiefAppUiRequest =
+		serde_json::from_value(source["request"].clone())?;
+	let account = source["account"]
+		.as_str()
+		.ok_or_else(|| std::io::Error::other("fixture account"))?
+		.to_owned();
+	cx.background_executor.allow_parking();
+	cx.update_window(handle.into(), |view, window, cx| {
+		view.downcast::<ChiefSurface>().expect("Chief capture").update(cx, |surface, cx| {
+			surface.visual_open_live_app_ui(profile, request, account, window, cx)
+		});
+	})?;
+	let mut confirmed = false;
+	for _ in 0..80 {
+		cx.run_until_parked();
+		let evidence = cx.update_window(handle.into(), |view, window, cx| {
+			window.draw(cx).clear();
+			view.downcast::<ChiefSurface>()
+				.expect("Chief capture")
+				.update(cx, |surface, cx| surface.visual_live_app_ui_evidence(false, cx))
+		})?;
+		std::fs::write(
+			output.with_extension("app-ui.json"),
+			serde_json::to_vec_pretty(&evidence)?,
+		)?;
+		if !confirmed && evidence["reviewReady"] == true {
+			let calls = std::fs::read_to_string(
+				root.parent().expect("fixture parent").join("widget-calls.jsonl"),
+			)?;
+			if calls.lines().count() != 2 {
+				return Err(
+					std::io::Error::other("Widget executed before desktop confirmation").into()
+				);
+			}
+			cx.capture_screenshot(handle.into())?
+				.save(output.with_extension("confirmation.png"))?;
+			cx.update_window(handle.into(), |view, _, cx| {
+				view.downcast::<ChiefSurface>()
+					.expect("Chief capture")
+					.update(cx, |surface, cx| surface.visual_live_app_ui_evidence(true, cx))
+			})?;
+			confirmed = true;
+		}
+		if confirmed
+			&& evidence["receipt"]["state"] == "completed"
+			&& evidence["browserPing"] == "fixture-counter-42"
+		{
+			return Ok(());
+		}
+		// The deterministic GPUI executor does not service WebKit's native callbacks.
+		#[cfg(target_os = "macos")]
+		objc2_foundation::NSRunLoop::currentRunLoop()
+			.runUntilDate(&objc2_foundation::NSDate::dateWithTimeIntervalSinceNow(0.1));
+		#[cfg(not(target_os = "macos"))]
+		std::thread::sleep(std::time::Duration::from_millis(100));
+		cx.advance_clock(std::time::Duration::from_millis(100));
+	}
+	Err(std::io::Error::other("App UI did not complete its confirmed browser round trip").into())
 }

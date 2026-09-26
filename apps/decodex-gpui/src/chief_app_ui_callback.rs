@@ -26,6 +26,41 @@ impl State {
 
 impl ChiefSurface {
 	#[cfg(feature = "visual-capture")]
+	pub(crate) fn visual_open_live_app_ui(
+		&mut self,
+		profile: ClientProfile,
+		request: ChiefAppUiRequest,
+		account: String,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) {
+		assert_eq!(self.selected.as_deref(), Some(request.work_id.as_str()));
+		self.native_history.binding = Some(Binding {
+			work: request.work_id.as_str().into(),
+			thread: request.thread_id.as_str().into(),
+			account,
+		});
+		self.profile = Some(profile);
+		self.feedback = "Interactive capture of an isolated App UI fixture".into();
+		self.native_history.app_ui.last_ping = None;
+		self.load_native_app_ui(request, window, cx);
+	}
+
+	#[cfg(feature = "visual-capture")]
+	pub(crate) fn visual_live_app_ui_evidence(
+		&mut self,
+		confirm: bool,
+		cx: &mut Context<Self>,
+	) -> Value {
+		self.poll_native_app_ui(cx);
+		if confirm {
+			self.confirm_native_app_call(cx);
+		}
+		let state = &self.native_history.app_ui;
+		json!({"reviewReady":state.callback.review.is_some(),"notice":state.notice,"receipt":state.callback.receipt,"browserPing":state.last_ping,"hostPresent":state.host.is_some()})
+	}
+
+	#[cfg(feature = "visual-capture")]
 	pub(crate) fn visual_app_ui_confirmation(&mut self, unknown: bool, cx: &mut Context<Self>) {
 		self.visual_workspace_fixture(cx);
 		self.graph_visible = false;
