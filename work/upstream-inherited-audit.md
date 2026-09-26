@@ -278,3 +278,14 @@ Both original snapshot hashes were verified. These changes restore test coverage
 not a newly reproduced production failure. The complete register retains 360
 entries and has 202 pending content-review rows after this batch, down from 204.
 This does not close any shared desktop acceptance group.
+
+## Conversation history invalidation restored on 2026-09-26
+
+`apps/decodex-gpui/src/client_lifecycle.rs` again reloads an open history page
+after `ConversationChanged`, which the service publishes after explicit recovery.
+It also retains `ConversationTurnFinished` and the added
+`ConversationHistoryChanged` branch. Full-file comparison shows no other
+differences from the preserved snapshot. The original hash was verified and the
+current hash is recorded. This closes one content-review row; see
+[history refresh recovery](history-refresh-recovery.md) for the reproduced
+failure and event-routing boundary.

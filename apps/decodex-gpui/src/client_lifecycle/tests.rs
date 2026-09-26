@@ -2449,17 +2449,37 @@ async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
 }
 
 #[tokio::test]
-async fn status_history_event_refreshes_only_its_open_conversation() {
-	for target in ["selected", "other"] {
+async fn history_events_refresh_only_their_open_conversation() {
+	let selected = "10000000-0000-4000-8000-000000000001";
+	let other = "10000000-0000-4000-8000-000000000002";
+	for (changed, target) in [(false, selected), (false, other), (true, selected), (true, other)] {
 		let temporary = TempDir::new().expect("history invalidation fixture");
 		let root = cache_parent(&temporary);
 		let mut lifecycle = lifecycle(&root);
-		lifecycle.history_pager.open(entity("selected")).expect("history invalidation fixture");
+		lifecycle.history_pager.open(entity(selected)).expect("history invalidation fixture");
 		let before = lifecycle.history_pager.snapshot().view_generation;
 		let mut notice = event(6, "warning-item", 1);
 		notice.channel = Channel::ConversationStream;
-		notice.payload =
-			EventPayload::ConversationHistoryChanged { conversation_id: entity(target) };
+		notice.payload = if changed {
+			EventPayload::ConversationChanged {
+				conversation: decodex_protocol::ConversationSummary::new(
+					entity(target),
+					decodex_protocol::ConversationTitle::new("Recovered task").unwrap(),
+					Some(decodex_protocol::ProviderThreadId::new("native-thread").unwrap()),
+					None,
+					EntityRevision(1),
+					1,
+					Some(entity("20000000-0000-4000-8000-000000000001")),
+					Some(EntityRevision(1)),
+					decodex_protocol::ConversationState::Ready,
+					None,
+					None,
+				)
+				.unwrap(),
+			}
+		} else {
+			EventPayload::ConversationHistoryChanged { conversation_id: entity(target) }
+		};
 		let mut io = FakeIo::new(
 			root,
 			vec![connected(
@@ -2473,7 +2493,7 @@ async fn status_history_event_refreshes_only_its_open_conversation() {
 		);
 		assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::Stopped);
 		let after = lifecycle.history_pager.snapshot();
-		assert_eq!(after.conversation_id, Some(entity("selected")));
-		assert_eq!(after.view_generation > before, target == "selected");
+		assert_eq!(after.conversation_id, Some(entity(selected)));
+		assert_eq!(after.view_generation > before, target == selected);
 	}
 }
