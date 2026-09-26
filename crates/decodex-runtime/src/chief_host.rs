@@ -610,6 +610,32 @@ impl ChiefHost {
 		Ok(work.into())
 	}
 
+	pub(crate) async fn prompt_input_directory(
+		&self,
+		work: &str,
+		thread: &str,
+	) -> Option<decodex_protocol::WireText> {
+		let before = self.timeline_source(work, thread).await?;
+		let directory = self.runtime.chief_input_directory(&before.key.generation)?;
+		if !self
+			.store
+			.chief_thread_is_owned(
+				work.into(),
+				thread.into(),
+				Some(before.key.generation.as_str().into()),
+			)
+			.await
+			.ok()?
+		{
+			return None;
+		}
+		let after = self.timeline_source(work, thread).await?;
+		if before.key != after.key || !std::path::Path::new(&directory).is_absolute() {
+			return None;
+		}
+		decodex_protocol::WireText::new(directory).ok()
+	}
+
 	pub(crate) async fn model_settings(
 		&self,
 		work: &str,

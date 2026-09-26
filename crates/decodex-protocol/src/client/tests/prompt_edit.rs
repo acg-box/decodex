@@ -372,3 +372,86 @@ async fn prompt_send_readback_is_read_only_and_rejects_crossed_identity() {
 		}
 	}
 }
+
+#[tokio::test]
+async fn prompt_media_resolution_preserves_parts_and_rejects_crossed_or_relative_bases() {
+	for mode in ["valid", "crossed", "relative", "missing"] {
+		let input = crate::PromptDraft::new(vec![
+			serde_json::json!({"type":"text","text":"Keep ../photo.png as literal prose"}),
+			serde_json::json!({"type":"localImage","path":"../photo.png","detail":"original","extension":{"keep":true}}),
+			serde_json::json!({"type":"localAudio","path":"recording.wav"}),
+			serde_json::json!({"type":"localImage","path":"/already/absolute.png"}),
+		]).unwrap();
+		let original = input.clone();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let mut socket =
+				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("resolution cannot submit")
+			};
+			assert!(
+				matches!(&query.payload, crate::QueryPayload::GetChiefPromptInputDirectory {work_id,thread_id} if work_id.as_str()=="root" && thread_id.as_str()=="native")
+			);
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::ChiefPromptInputDirectory {
+						work_id: EntityId::new("root").unwrap(),
+						thread_id: WireText::new(if mode == "crossed" {
+							"other"
+						} else {
+							"native"
+						})
+						.unwrap(),
+						directory: if mode == "missing" {
+							None
+						} else {
+							Some(
+								WireText::new(if mode == "relative" {
+									"relative"
+								} else {
+									"/native/process"
+								})
+								.unwrap(),
+							)
+						},
+					},
+				})))
+				.await
+				.unwrap();
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let result = crate::ChiefClient::new(profile)
+			.resolve_prompt_media(
+				EntityId::new("root").unwrap(),
+				WireText::new("native").unwrap(),
+				&input,
+			)
+			.await;
+		server.await.unwrap();
+		assert_eq!(input, original);
+		if mode == "valid" {
+			let result = result.unwrap();
+			let mut expected = original.parts().to_vec();
+			expected[1]["path"] = serde_json::json!("/native/process/../photo.png");
+			expected[2]["path"] = serde_json::json!("/native/process/recording.wav");
+			assert_eq!(result.parts(), expected);
+		} else {
+			assert!(result.is_err());
+		}
+	}
+}

@@ -299,6 +299,71 @@ impl ChiefClient {
 		}
 	}
 
+	/// Resolve relative local media against the exact retained native process.
+	/// Preserve all other parts and fields; this method never submits input.
+	pub async fn resolve_prompt_media(
+		&self,
+		work: EntityId,
+		thread: crate::WireText,
+		input: &crate::PromptDraft,
+	) -> Result<crate::PromptDraft, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let relative: Vec<_> = input
+			.parts()
+			.iter()
+			.enumerate()
+			.filter_map(|(index, part)| {
+				matches!(part["type"].as_str(), Some("localImage" | "localAudio"))
+					.then_some(part["path"].as_str())
+					.flatten()
+					.filter(|path| std::path::Path::new(path).is_relative())
+					.map(|path| (index, path))
+			})
+			.collect();
+		if relative.is_empty() {
+			return Ok(input.clone());
+		}
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"chief-prompt-directory",
+				QueryPayload::GetChiefPromptInputDirectory {
+					work_id: work.clone(),
+					thread_id: thread.clone(),
+				},
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let QueryResultPayload::ChiefPromptInputDirectory {
+			work_id,
+			thread_id,
+			directory: Some(directory),
+		} = completed.value
+		else {
+			return Err(ClientFailure::ProtocolViolation);
+		};
+		if work_id != work
+			|| thread_id != thread
+			|| !std::path::Path::new(directory.as_str()).is_absolute()
+		{
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		let mut resolved = input.clone();
+		for (index, path) in relative {
+			let mut part = input.parts()[index].clone();
+			part["path"] = serde_json::json!(
+				std::path::Path::new(directory.as_str())
+					.join(path)
+					.to_str()
+					.ok_or(ClientFailure::ProtocolMalformed)?
+			);
+			resolved.replace_part(index, part).map_err(|_| ClientFailure::ProtocolMalformed)?;
+		}
+		Ok(resolved)
+	}
+
 	/// Check edited input against fresh thread settings without changing native history.
 	pub async fn preflight_prompt_input(
 		&self,

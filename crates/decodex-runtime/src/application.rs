@@ -2249,6 +2249,16 @@ impl Application for ServiceApplication {
 			QueryPayload::GetChiefModelSettings { work_id } =>
 				self.query_model_settings(work_id.as_str()).await,
 			edit @ QueryPayload::GetChiefPromptEdit { .. } => self.query_prompt_edit(edit).await,
+			QueryPayload::GetChiefPromptInputDirectory { work_id, thread_id } =>
+				QueryResultPayload::ChiefPromptInputDirectory {
+					work_id: work_id.clone(),
+					thread_id: thread_id.clone(),
+					directory: match &self.chief {
+						Some(chief) =>
+							chief.prompt_input_directory(work_id.as_str(), thread_id.as_str()).await,
+						None => None,
+					},
+				},
 			QueryPayload::GetChiefPromptInputSend { identity } =>
 				QueryResultPayload::ChiefPromptInputSend(match &self.chief {
 					Some(chief) => chief.prompt_send_status(identity.clone()).await,

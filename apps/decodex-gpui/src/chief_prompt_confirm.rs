@@ -240,7 +240,7 @@ pub(super) fn readable_local_media(input: &PromptDraft) -> Result<(), &'static s
 		let path = std::path::Path::new(path);
 		if !path.is_absolute() {
 			return Err(
-				"A local media path is relative. Keep this draft and resolve the file location before changing history.",
+				"A local media path is relative. Use Check edited input to resolve and save its location before continuing.",
 			);
 		}
 		if !std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file())

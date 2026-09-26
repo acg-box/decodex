@@ -611,6 +611,26 @@ async fn qualify_native_prompt_revert(
 	let receipt_id = status.evidence.as_ref().unwrap().receipt_id.unwrap();
 	qualify_prompt_acknowledgement(client, status, &content, home).await;
 	assert_eq!(requests.load(Ordering::Acquire), count, "acknowledgement must not send the draft");
+	let relative = decodex_protocol::PromptDraft::new(vec![
+		json!({"type":"localImage","path":"images/photo.png","detail":"original"}),
+	])
+	.unwrap();
+	let resolved = client
+		.resolve_prompt_media(work_id.clone(), thread_id.clone(), &relative)
+		.await
+		.expect("owned native directory");
+	assert_eq!(resolved.parts()[0]["path"], home.join("images/photo.png").to_str().unwrap());
+	assert!(
+		client
+			.resolve_prompt_media(
+				work_id.clone(),
+				WireText::new("foreign-thread").unwrap(),
+				&relative
+			)
+			.await
+			.is_err()
+	);
+	assert_eq!(requests.load(Ordering::Acquire), count, "media directory queries do not infer");
 	qualify_canonical_prompt_send(client, native, work_id, thread_id, receipt_id, requests).await;
 }
 

@@ -628,6 +628,7 @@ impl std::error::Error for ChiefLaunchError {}
 
 struct RetainedChiefProcess {
 	root_id: String,
+	working_directory: String,
 	generation_id: ProcessGenerationId,
 	client: Option<decodex_codex::app_server_client::AppServerClient>,
 }
@@ -1031,6 +1032,14 @@ impl ConversationRuntime {
 		)
 	}
 
+	/// Actual shared process directory, not a child thread's configured directory.
+	pub(crate) fn chief_input_directory(&self, generation: &ProcessGenerationId) -> Option<String> {
+		let slot = self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner);
+		let process = slot.as_ref()?;
+		(process.generation_id == *generation && process.client.is_some())
+			.then(|| process.working_directory.clone())
+	}
+
 	/// Bind account-scoped observations to retained process admission and credential revision.
 	pub(crate) async fn chief_usage_source(
 		&self,
@@ -1153,6 +1162,7 @@ impl ConversationRuntime {
 		*self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner) =
 			Some(RetainedChiefProcess {
 				root_id: request.root_id.clone(),
+				working_directory: request.working_directory.clone(),
 				generation_id: generation_id.clone(),
 				client: None,
 			});
@@ -6269,6 +6279,7 @@ mod tests {
 	#[tokio::test]
 	async fn chief_retirement_retries_only_the_revoked_original_owner() {
 		let mut slot = super::RetainedChiefProcess {
+			working_directory: "/fixture".into(),
 			root_id: "chief".into(),
 			generation_id: decodex_core::ProcessGenerationId::new(derived_uuid(
 				"generation",

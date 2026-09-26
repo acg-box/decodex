@@ -246,9 +246,9 @@ and submitting the native edit.
 The confirmation panel states that the selected and later turns will be removed,
 workspace file changes will remain, and the edited draft will not be sent. An
 explicit second action starts fresh input/settings qualification and checks that
-absolute local media paths are readable files. Relative local media paths currently
-stop confirmation with an explicit error; resolving their native working directory
-remains an acceptance item. Remote media availability is not proven by local checks.
+absolute local media paths are readable files. A relative path directs the user to
+Check edited input, which resolves and saves its native process location before
+confirmation. Remote media availability is not proven by local checks.
 
 A worker waits on a one-shot permit. The UI sends that permit only after the existing
 draft writer confirms the exact pending record, current profile, draft and execution
@@ -338,7 +338,7 @@ including its final sentinel, rather than the queue preview. A later receipt rea
 keeps the provider count unchanged. This fixture uses a private product root and
 local synthetic Responses provider with installed Codex 0.158.0-alpha.2.
 
-Relative local-media qualification and rendered desktop acceptance remain required.
+Complete interactive and signed-desktop acceptance remain required.
 Fixed upstream protocol/src/models.rs reads local media paths directly; public input
 conversion and history reconstruction retain those paths. The native process working
 directory must be established before interpreting a relative path. A child thread's
@@ -361,3 +361,20 @@ collapsed action labels. Prompt panels now take available width, and prompt acti
 labels use flexible width and wrapping. Existing sidebar and tab layout is unchanged.
 The expanded removal view is render-checked; complete interactive and signed-app
 acceptance are separate requirements.
+
+## Relative local media
+
+Check edited input resolves localImage and localAudio paths through a read-only
+GetChiefPromptInputDirectory query. The retained Chief process owns its launch
+directory. The host checks exact task/thread ownership and the same generation,
+account revision and history source before returning that directory. It does not
+substitute a child thread directory or launch another process.
+
+The client rejects crossed bindings, missing directories and non-absolute bases.
+It joins only relative local media paths and keeps complete parts, detail fields,
+unknown extensions, absolute paths and ordinary text unchanged. It leaves path
+segments such as '..' for normal filesystem resolution, preserving symlink semantics.
+The desktop checks readable files and the complete native envelope before saving
+the resolved draft. The original review hash remains unchanged. History confirmation
+and model submission remain separate explicit actions. A failed check keeps the
+original draft. Pending send content remains immutable under existing validation.

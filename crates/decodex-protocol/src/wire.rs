@@ -2187,6 +2187,13 @@ impl AccountObservationSignal {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
+	/// Read the current native process directory for canonical local media.
+	GetChiefPromptInputDirectory {
+		/// Exact task owner.
+		work_id: EntityId,
+		/// Exact native thread.
+		thread_id: WireText,
+	},
 	/// Read durable input transfer status without finalizing or submitting it.
 	GetChiefPromptInputSend {
 		/// Original source, content, command and execution identity.
@@ -3050,6 +3057,15 @@ pub enum QueryResultPayload {
 	ChiefPromptInputUpload(crate::PromptInputUploadStatus),
 	/// Read-only canonical input acceptance.
 	ChiefPromptInputSend(crate::PromptInputSendStatus),
+	/// Source-bound local media base. Missing directory means unavailable.
+	ChiefPromptInputDirectory {
+		/// Requested task.
+		work_id: EntityId,
+		/// Requested native thread.
+		thread_id: WireText,
+		/// Absolute working directory of the retained native process.
+		directory: Option<WireText>,
+	},
 	/// Service-owned task recap state.
 	ChiefRecap(crate::TaskRecapStatus),
 	/// Canonical source-bound prompt-edit evidence page.

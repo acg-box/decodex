@@ -123,16 +123,15 @@ impl ChiefSurface {
 						.enable_all()
 						.build()
 						.map_err(|_| "Could not start input check")?;
-					runtime
-						.block_on(ChiefClient::new(profile).preflight_prompt_input(
-							draft.work_id,
-							draft.thread_id,
-							&draft.input,
-							&execution,
-						))
-						.map_err(
-							|_| "Input or current thread settings could not be qualified. History is unchanged.",
-						)
+					runtime.block_on(async {
+						let client = ChiefClient::new(profile);
+						let input = client.resolve_prompt_media(draft.work_id.clone(), draft.thread_id.clone(), &draft.input).await
+							.map_err(|_| "Local media locations could not be resolved from the current native process. History is unchanged.")?;
+						confirmation::readable_local_media(&input)?;
+						client.preflight_prompt_input(draft.work_id, draft.thread_id, &input, &execution).await
+							.map_err(|_| "Input or current thread settings could not be qualified. History is unchanged.")?;
+						Ok(input)
+					})
 				})();
 				let _ = send.send(result);
 			});
@@ -145,15 +144,30 @@ impl ChiefSurface {
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
 			let result = receive.await.unwrap_or(Err("Input check stopped"));
 			let _ = surface.update(cx, |s, cx| {
-				if s.prompt_edit.key != key || !s.prompt_editor_source_current() { return; }
+				if s.prompt_edit.key != key || !s.prompt_editor_source_current() {
+					return;
+				}
 				s.prompt_edit.task = None;
 				s.prompt_edit.feedback = if s.prompt_edit.draft.as_ref() != Some(&expected)
-					|| s.draft_profiles.execution.choice(expected.work_id.as_str()) != expected_execution {
+					|| s.draft_profiles.execution.choice(expected.work_id.as_str())
+						!= expected_execution
+				{
 					"Draft or execution settings changed during the check. Check the current input again."
-				} else { match result {
-					Ok(()) => "Input fields and request size fit the current thread settings. History is unchanged; local files and remote media still require qualification.",
-					Err(message) => message,
-				}}.into();
+				} else {
+					match result {
+						Ok(input) => {
+							let mut resolved = expected.clone();
+							resolved.input = input;
+							match s.install_prompt_editors(resolved, cx) {
+								Ok(()) =>
+									"Input checked and local media locations saved. History is unchanged.",
+								Err(message) => message,
+							}
+						},
+						Err(message) => message,
+					}
+				}
+				.into();
 				cx.notify();
 			});
 		}));
