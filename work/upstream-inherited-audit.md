@@ -91,6 +91,23 @@ The original PR1378 remains open. Both stash objects remain present:
 Do not close the original PR or remove the snapshot/stashes from these counts.
 They prove preservation, not complete integration.
 
+## Three receipt owners reconciled on 2026-09-26
+
+Compare every line of each complete file against the preserved snapshot. Verify
+all three original SHA-256 values before recording the current owner hashes.
+
+| Original path | Complete difference and retained owner |
+| --- | --- |
+| `crates/decodex-runtime/src/chief/timeline/tool_output.rs` | The current `parts` helper supplies both the timeline text and `chief_detail.rs` detail view. The same names, namespaces, supported text parts and malformed-input rejection remain. An empty array produces the title without the previous trailing newline. Restore the missing assertion that the projected activity has kind `functionCallOutput`; `chief/activity.rs` remains its owner. Media indices and credential filtering remain covered. |
+| `database/src/chief/tests/partial_output.rs` | PR1511 keeps both saved partial records after a late completion until complete matching native history is available. The test also rejects foreign-generation invalidation, then verifies that owner-authorized invalidation clears saved and live output. All other snapshot content is unchanged. |
+| `crates/decodex-codex/src/guardian.rs` | PR1524 names and bounds the retained rationale to 65,536 bytes and tests the bound. Its added large-action regression requires a complete 300 KB Unicode command and exact suffix through decoding and denial conversion. All other snapshot content is unchanged. See `guardian-large-observations.md`. |
+
+This batch restores one removed assertion and adds no production behavior.
+Focused tool-output, partial-output and Guardian adapter checks verify these
+owners. The register retains all 360 rows; pending content reviews decrease from
+176 to 173. These dispositions do not close the shared runtime files, the strict
+review generation gap, native provider acceptance, or signed desktop acceptance.
+
 ## Recovery and draft owners reconciled after PR1547
 
 Eight complete-file comparisons were verified at
