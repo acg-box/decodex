@@ -1578,6 +1578,36 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn misalignment_reconciliation_preserves_changed_or_invalidated_evidence() {
+		use std::sync::atomic::{AtomicUsize, Ordering};
+		let directory = tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("chief.sqlite3")).unwrap();
+		store.create_chief_work_item(item("chief", None)).await.unwrap();
+		store.bind_chief_thread("chief".into(), "thread".into()).await.unwrap();
+		store.restore_chief_misalignment("thread".into(), "failed".into(), None).await.unwrap();
+		let review = store.chief_misalignment("chief".into()).await.unwrap().unwrap();
+		store.reconcile_chief_misalignment("chief".into(), review.clone(), || false).await.unwrap();
+		assert_eq!(store.chief_misalignment("chief".into()).await.unwrap(), Some(review.clone()));
+		let calls = AtomicUsize::new(0);
+		store
+			.reconcile_chief_misalignment("chief".into(), review.clone(), move || {
+				calls.fetch_add(1, Ordering::SeqCst) == 0
+			})
+			.await
+			.unwrap();
+		assert_eq!(store.chief_misalignment("chief".into()).await.unwrap(), Some(review.clone()));
+		store
+			.restore_chief_misalignment("thread".into(), "new-failure".into(), None)
+			.await
+			.unwrap();
+		store.reconcile_chief_misalignment("chief".into(), review, || true).await.unwrap();
+		let new_review = store.chief_misalignment("chief".into()).await.unwrap().unwrap();
+		assert_eq!(new_review.turn_id, "new-failure");
+		store.reconcile_chief_misalignment("chief".into(), new_review, || true).await.unwrap();
+		assert!(store.chief_misalignment("chief".into()).await.unwrap().is_none());
+	}
+
+	#[tokio::test]
 	async fn misalignment_continuation_requires_exact_review_and_positive_acknowledgment() {
 		let directory = tempdir().unwrap();
 		let path = directory.path().join("chief.sqlite3");
@@ -1593,6 +1623,9 @@ mod tests {
 			.unwrap();
 		store.complete_chief_turn("chief".into(), "failed".into()).await.unwrap();
 		let review = store.chief_misalignment("chief".into()).await.unwrap().unwrap();
+		store.retire_chief_misalignment_voice("thread".into()).await.unwrap();
+		store.reconcile_chief_misalignment("chief".into(), review.clone(), || true).await.unwrap();
+		assert_eq!(store.chief_misalignment("chief".into()).await.unwrap(), Some(review.clone()));
 		let mut stale = review.clone();
 		stale.turn_id = "older".into();
 		assert!(

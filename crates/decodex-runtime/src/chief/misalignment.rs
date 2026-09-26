@@ -10,6 +10,22 @@ pub(super) fn details(error: &Value) -> Option<String> {
 }
 
 impl ChiefCoordinator {
+	pub(super) async fn superseded_misalignment(
+		&self,
+		work: &str,
+		thread: &str,
+		turns: &[Value],
+	) -> Result<Option<decodex_database::ChiefMisalignment>, ChiefError> {
+		let expected = self.store.chief_misalignment(work.into()).await?;
+		Ok(expected.filter(|review| {
+			review.thread_id == thread
+				&& turns
+					.iter()
+					.position(|turn| turn["id"].as_str() == Some(&review.turn_id))
+					.is_some_and(|index| index + 1 < turns.len())
+		}))
+	}
+
 	/// The host calls this only for an explicit acknowledgment of the displayed review.
 	pub async fn continue_misalignment(
 		&mut self,
