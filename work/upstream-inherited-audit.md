@@ -14,7 +14,8 @@ one shared file can contain both delivered and outstanding behavior.
 [The complete 360-row register](upstream-inherited-files.tsv) contains hashes
 from the committed audit baseline, with the three dependency rows refreshed at
 `943eb039ddf785fd99200326180887bcc657fa7e` and nine source rows refreshed at
-`63f3b110afb6f40fb55cbd46d1ef9ac13acd56a9`. It separates direct content comparison from
+`63f3b110afb6f40fb55cbd46d1ef9ac13acd56a9`, plus the four source rows described
+below at `10ccb2bd3e44a29d39e23d521c44ff2e34807916`. It separates direct content comparison from
 recorded adaptation decisions. The owner hash refers to current_owner; the current
 hash always refers to the original snapshot path. This distinction matters when a
 migration number now names a different migration.
@@ -145,3 +146,21 @@ The scheduled automation remains paused, including after manual completion.
 This documentation refresh checked snapshot hashes, current committed bytes, all
 three registered migration mappings, current refusal/payload owners, stash
 identities and GitHub PR state. No application code or production data changed. The register deliberately leaves uncertain rows open.
+
+## Four additional source dispositions on 2026-09-26
+
+These four rows were compared in full at
+`10ccb2bd3e44a29d39e23d521c44ff2e34807916`. The preserved hashes match the
+register. Each row now records the current content hash and its disposition.
+
+| Original path | Complete difference and disposition |
+| --- | --- |
+| `database/src/chief_guardian.rs` | Exact snapshot bytes after PR1524. The shared 8 MiB native observation bound is restored. This closes this file, not all Guardian UI or live-provider acceptance. |
+| `apps/decodex-gpui/src/chief_timeline_inputs.rs` | Only a test fixture differs: new history DTO fields use empty values, and the removed receipt-level voice-session field is omitted. All production input projection code is identical. |
+| `apps/decodex-gpui/src/chief_usage_estimates.rs` | Only the visual test differs: it opens the current agent-settings menu and waits for the existing transition before checking layout. Production estimate behavior and the original assertions remain. |
+| `apps/decodex-gpui/src/chief_task_references.rs` | The function body is identical. The old test-or-capture compilation guard is removed so the existing workspace fixture call can compile in the shared module. No inherited behavior was deleted. |
+
+The register still has 360 rows. `requires-content-review` decreases from 227 to
+223. Other partial dispositions remain open. Summary recovery in PR1528 is not
+included in these four closures while that PR awaits merge. These are source
+reconciliation decisions, not new feature adoption or an overall completion rate.
