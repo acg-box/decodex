@@ -1219,6 +1219,7 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 					let OrdinaryTaskConversationProjection::Current(task) = &projections[0] else {
 						panic!("current task");
 					};
+					assert_eq!(task.pre_session_state, Some(decodex_database::OrdinaryTaskPreSessionState::ModelSettingsReviewRequired));
 					assert!(!task.has_admitted_user_turn);
 					assert!(task.runtime_session_id.is_none());
 					assert!(

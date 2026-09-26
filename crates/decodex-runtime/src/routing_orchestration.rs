@@ -184,6 +184,7 @@ pub(crate) enum ExecutionFailureKind {
 /// One dispatch-disabled result from stateless pre-process routing and planning.
 #[allow(clippy::large_enum_variant)] // The closed handoff remains one typed by-value authority result.
 pub(crate) enum PreProcessOutcome {
+	ModelSettingsReviewRequired,
 	/// Routing Decision and Continuation Plan are committed; no process or ProviderAttempt
 	/// operation has occurred.
 	Planned {
@@ -243,6 +244,9 @@ impl ExecutionCoordinator {
 		{
 			Ok(ConversationInitialRouteOutcome::Fresh(route))
 			| Ok(ConversationInitialRouteOutcome::Replayed(route)) => route,
+			Ok(ConversationInitialRouteOutcome::Rejected(rejection))
+				if rejection.code == "initial_model_source_changed" =>
+				return PreProcessOutcome::ModelSettingsReviewRequired,
 			Ok(
 				ConversationInitialRouteOutcome::Rejected(_)
 				| ConversationInitialRouteOutcome::ReplayedRejection(_),

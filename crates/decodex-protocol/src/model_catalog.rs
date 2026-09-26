@@ -74,6 +74,42 @@ pub struct InitialModelDefaults {
 	pub catalog_model: Option<ConversationModel>,
 }
 
+/// Account observation used to choose a new conversation's execution settings.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InitialModelSource {
+	/// Exact local account observed by model discovery.
+	pub account_id: EntityId,
+	/// Positive account revision returned by discovery.
+	pub account_revision: i64,
+}
+
+/// Saved request and fresh capabilities for explicit model review before first launch.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationModelReview {
+	/// Conversation whose request supplied the directory and original input.
+	pub conversation_id: EntityId,
+	/// Exact revision checked before and after discovery.
+	pub conversation_revision: crate::EntityRevision,
+	/// Original user input; review must not replace it with a later composer draft.
+	pub message: crate::HistoryText,
+	/// Saved choices to present for review rather than silently replace.
+	pub execution: crate::ConversationExecutionSettings,
+	/// Fresh native catalog observed at the saved working directory.
+	pub catalog: InitialModelCatalogResult,
+}
+
+/// Review discovery never starts a conversation or clears its review requirement.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ConversationModelReviewResult {
+	/// Complete observation of the same unchanged blocked request.
+	Available(Box<ConversationModelReview>),
+	/// The task changed, is not reviewable, or discovery failed.
+	Unavailable,
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

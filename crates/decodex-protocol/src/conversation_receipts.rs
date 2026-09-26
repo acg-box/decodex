@@ -19,6 +19,9 @@ pub struct ConversationCreationReceiptRequest {
 	pub working_directory: ConversationWorkingDirectory,
 	/// Original execution choices, including inherited reasoning effort.
 	pub execution: ConversationExecutionSettings,
+	/// Original account observation, when creation used native model discovery.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub initial_model_source: Option<Box<crate::InitialModelSource>>,
 }
 
 impl ConversationCreationReceiptRequest {
@@ -32,6 +35,7 @@ impl ConversationCreationReceiptRequest {
 			message,
 			working_directory,
 			execution,
+			initial_model_source,
 		} = &command.payload
 		else {
 			return None;
@@ -42,6 +46,7 @@ impl ConversationCreationReceiptRequest {
 			message: message.clone(),
 			working_directory: working_directory.clone(),
 			execution: execution.clone(),
+			initial_model_source: initial_model_source.clone(),
 		})
 	}
 }
@@ -75,6 +80,7 @@ mod tests {
 	#[test]
 	fn creation_receipt_is_a_read_query_and_preserves_original_choices() {
 		let request = ConversationCreationReceiptRequest {
+			initial_model_source: None,
 			idempotency_key: IdempotencyKey::new("original-command").unwrap(),
 			conversation_id: EntityId::new("30000000-0000-4000-8000-000000000001").unwrap(),
 			message: HistoryText::new("Original message").unwrap(),

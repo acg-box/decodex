@@ -34,10 +34,23 @@ Confirmation alone does not spawn or send.
 
 ## Delivery boundary
 
-This is a database foundation, not completion of R03. Existing service creation
-callers still supply no source. The public source DTO, creation command, review
-query, confirmation command, service projection, desktop flow and installed-native
-qualification must be connected before this workflow is available to users.
+The public creation command now carries the discovery source. Explicit creation
+without a catalog observation remains available. Source-bearing creation and
+receipt queries share a source-bound fingerprint; source-less requests retain
+their previous fingerprint.
+
+Protocol 2.90 adds the review query, confirmation command, and review-required
+state. The service reads the original request and queries the native catalog at
+its saved directory. It checks the task revision before and after discovery.
+The desktop presents the saved request and requires an explicit confirmation.
+A stale selection cannot apply discovery, and a lost confirmation reply triggers
+readback without automatic replay. The current nullable reasoning effort and
+service tier contracts remain in effect.
+
+The database foundation is PR1537. The protocol, service and desktop integration
+are a subsequent batch. R03 remains open until that batch is merged and its
+remaining acceptance is recorded. Shared signed application lifecycle acceptance
+remains in R07/R12.
 
 The fixed upstream cutoff remains
 `595cc91e8cbb1c2ca822d0311dcf12709410c582`. This change restores a Decodex account
@@ -53,5 +66,12 @@ replays, account and revision routing mismatches, persistent review after the
 source matches again, successor inheritance, concurrent and stale confirmation,
 cold receipt replay, preserved input, and rejection after routing.
 
-Final desktop and installed-native acceptance remain open. Maintenance automation
-remains paused.
+The installed Codex 0.158.0-alpha.2 fixtures use synthetic credentials, a loopback
+provider, and isolated temporary homes. They verify saved-directory defaults
+without inference, explicit confirmation with one provider request despite
+retries, cold readback, and retained project warnings. Successful fixture homes
+are removed after shutdown. These fixtures do not prove real-provider behavior
+or final signed desktop presentation.
+
+Final signed desktop acceptance remains open. Maintenance automation remains
+paused.

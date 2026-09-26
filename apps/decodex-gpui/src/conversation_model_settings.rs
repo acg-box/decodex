@@ -56,6 +56,11 @@ impl State {
 	}
 
 	pub(super) fn ordinary_execution_ready(&self) -> bool {
+		if matches!(&self.catalog_source, Some(super::CatalogSource::Review { .. }))
+			&& self.current_catalog().is_some()
+		{
+			return true;
+		}
 		let owner = self.selected.as_ref().or(self.requested_selection.as_ref());
 		owner.is_some()
 			&& (self.execution_source.as_ref().is_some_and(|observed| {

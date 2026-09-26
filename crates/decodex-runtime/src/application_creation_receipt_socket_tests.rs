@@ -26,6 +26,7 @@ fn original() -> CommandEnvelope {
 		correlation_id: CorrelationId::new("original-correlation").unwrap(),
 		causation_id: None,
 		payload: CommandPayload::CreateConversation {
+			initial_model_source: None,
 			conversation_id: EntityId::new("30000000-0000-4000-8000-000000000001").unwrap(),
 			message: HistoryText::new("Original input").unwrap(),
 			working_directory: ConversationWorkingDirectory::new("/tmp").unwrap(),
@@ -42,6 +43,10 @@ fn original() -> CommandEnvelope {
 async fn persist_original(root: &DecodexRoot, original: &CommandEnvelope, scope: &str) {
 	let request = ConversationCreationReceiptRequest::from_command(original).unwrap();
 	let command = CreateConversation {
+		initial_model_source: crate::application::runtime_initial_model_source(
+			request.initial_model_source.as_deref(),
+		)
+		.unwrap(),
 		operation_key: request.idempotency_key.as_str().into(),
 		correlation_id: "original-correlation".into(),
 		causation_id: None,

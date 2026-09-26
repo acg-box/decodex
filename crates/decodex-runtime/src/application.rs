@@ -1659,6 +1659,7 @@ impl ServiceApplication {
 			message,
 			working_directory,
 			execution,
+			initial_model_source,
 		} = &command.payload
 		else {
 			return Err(conversation_conflict());
@@ -1670,6 +1671,8 @@ impl ServiceApplication {
 			ConversationId::new(conversation_id.as_str()).map_err(|_| conversation_conflict())?;
 		Ok(runtime
 			.create(CreateConversation {
+				initial_model_source: runtime_initial_model_source(initial_model_source.as_deref())
+					.map_err(|()| conversation_conflict())?,
 				operation_key: command.idempotency_key.as_str().to_owned(),
 				correlation_id: command.correlation_id.as_str().to_owned(),
 				causation_id: command.causation_id.as_ref().map(|id| id.as_str().to_owned()),
@@ -1679,6 +1682,78 @@ impl ServiceApplication {
 				execution: runtime_execution_settings(execution),
 			})
 			.await)
+	}
+
+	async fn execute_model_settings_review(
+		&self,
+		runtime: &ConversationRuntime,
+		command: &CommandEnvelope,
+	) -> Result<ApplicationPublication, CommandError> {
+		let CommandPayload::ReviewConversationModelSettings { conversation_id, execution, source } =
+			&command.payload
+		else {
+			return Err(conversation_conflict());
+		};
+		let ProductStore::Available(store) = &self.store else {
+			return Err(application_unavailable("Conversation store is unavailable"));
+		};
+		let id =
+			ConversationId::new(conversation_id.as_str()).map_err(|_| conversation_conflict())?;
+		let expected_revision = command
+			.expected_revision
+			.and_then(|value| i64::try_from(value.0).ok())
+			.ok_or_else(conversation_conflict)?;
+		let outcome = store
+			.review_initial_model_settings(
+				command.idempotency_key.as_str(),
+				&decodex_database::ReviewInitialModelSettings {
+					conversation_id: id.clone(),
+					expected_revision,
+					model: execution.model.as_str().to_owned(),
+					reasoning_effort: execution
+						.reasoning_effort
+						.as_ref()
+						.map(|effort| effort.as_str().to_owned()),
+					fast: execution.fast,
+					service_tier: execution.service_tier.clone(),
+					source: decodex_database::InitialModelSource {
+						account_id: decodex_core::AccountId::new(source.account_id.as_str())
+							.map_err(|_| conversation_conflict())?,
+						account_revision: source.account_revision,
+					},
+				},
+			)
+			.await
+			.map_err(|_| conversation_conflict())?;
+		let decodex_database::InitialModelReviewOutcome::Applied { revision, .. } = outcome else {
+			return Err(conversation_conflict());
+		};
+		let ConversationResult::Available(current) = self.conversation_get(conversation_id).await
+		else {
+			return Err(application_unavailable("Conversation projection is unavailable"));
+		};
+		if current.state == ConversationState::RoutingPending
+			&& current.conversation_revision.0 == revision as u64
+		{
+			let outcome = runtime
+				.resume_routing(RecoverConversation {
+					operation_key: command.idempotency_key.as_str().to_owned(),
+					correlation_id: command.correlation_id.as_str().to_owned(),
+					causation_id: command
+						.causation_id
+						.as_ref()
+						.map(|value| value.as_str().to_owned()),
+					conversation_id: id,
+					expected_conversation_revision: revision,
+				})
+				.await;
+			conversation_command_projection(outcome)?;
+		}
+		let ConversationResult::Available(current) = self.conversation_get(conversation_id).await
+		else {
+			return Err(application_unavailable("Conversation projection is unavailable"));
+		};
+		conversation_command_publication(current, false)
 	}
 
 	async fn execute_conversation_recovery(
@@ -1985,6 +2060,9 @@ impl ServiceApplication {
 				return Err(CommandError::ConversationUnavailable { unavailable_reason: *reason });
 			},
 		};
+		if matches!(&command.payload, CommandPayload::ReviewConversationModelSettings { .. }) {
+			return self.execute_model_settings_review(runtime, command).await;
+		}
 		if matches!(
 			&command.payload,
 			CommandPayload::RefreshConversation { .. } | CommandPayload::ArchiveConversation { .. }
@@ -2125,7 +2203,8 @@ impl Application for ServiceApplication {
 			},
 			CommandPayload::SetDesktopSettings { .. } =>
 				self.execute_desktop_settings(command).await,
-			CommandPayload::CreateConversation { .. }
+			CommandPayload::ReviewConversationModelSettings { .. }
+			| CommandPayload::CreateConversation { .. }
 			| CommandPayload::ResumeConversationRouting { .. }
 			| CommandPayload::CreateConversationRoutingSuccessor { .. }
 			| CommandPayload::ResumeConversationEstablishment { .. }
@@ -2214,7 +2293,8 @@ impl Application for ServiceApplication {
 			QueryPayload::GetConversationTurnOutcome { .. }
 			| QueryPayload::GetConversationCreationReceipt { .. } =>
 				self.query_ordinary_recovery(&query.payload).await,
-			QueryPayload::GetInitialModelCatalog { .. }
+			QueryPayload::GetConversationModelReview { .. }
+			| QueryPayload::GetInitialModelCatalog { .. }
 			| QueryPayload::GetChiefCapabilities
 			| QueryPayload::GetConversationModelSettings { .. }
 			| QueryPayload::GetConversationCapabilities { .. } => self.query_model_catalog(query).await,
@@ -2351,6 +2431,27 @@ fn conversation_read_error(error: &StoreError) -> ConversationReadError {
 	}
 }
 
+fn pre_session_presentation(
+	pre_session_state: OrdinaryTaskPreSessionState,
+) -> (ConversationState, ConversationRecoveryAction) {
+	match pre_session_state {
+		OrdinaryTaskPreSessionState::ModelSettingsReviewRequired => (
+			ConversationState::ModelSettingsReviewRequired,
+			ConversationRecoveryAction::ReviewModelSettings,
+		),
+		OrdinaryTaskPreSessionState::RoutingPending =>
+			(ConversationState::RoutingPending, ConversationRecoveryAction::ResumeRouting),
+		OrdinaryTaskPreSessionState::EstablishmentPending => (
+			ConversationState::EstablishmentPending,
+			ConversationRecoveryAction::ResumeEstablishment,
+		),
+		OrdinaryTaskPreSessionState::QuotaExhausted =>
+			(ConversationState::QuotaExhausted, ConversationRecoveryAction::CreateRoutingSuccessor),
+		OrdinaryTaskPreSessionState::NoRoute =>
+			(ConversationState::NoRoute, ConversationRecoveryAction::CreateRoutingSuccessor),
+	}
+}
+
 fn conversation_summary_from_row(
 	row: OrdinaryTaskConversationReadback,
 	projection: Option<ConversationProjection>,
@@ -2377,20 +2478,7 @@ fn conversation_summary_from_row(
 		);
 	}
 	if let Some(pre_session_state) = row.pre_session_state {
-		let (state, recovery_action) = match pre_session_state {
-			OrdinaryTaskPreSessionState::RoutingPending =>
-				(ConversationState::RoutingPending, ConversationRecoveryAction::ResumeRouting),
-			OrdinaryTaskPreSessionState::EstablishmentPending => (
-				ConversationState::EstablishmentPending,
-				ConversationRecoveryAction::ResumeEstablishment,
-			),
-			OrdinaryTaskPreSessionState::QuotaExhausted => (
-				ConversationState::QuotaExhausted,
-				ConversationRecoveryAction::CreateRoutingSuccessor,
-			),
-			OrdinaryTaskPreSessionState::NoRoute =>
-				(ConversationState::NoRoute, ConversationRecoveryAction::CreateRoutingSuccessor),
-		};
+		let (state, recovery_action) = pre_session_presentation(pre_session_state);
 		return ConversationSummary::new(
 			EntityId::new(row.conversation_id.as_str().to_owned()).map_err(|_| ())?,
 			title,
@@ -2495,6 +2583,8 @@ fn conversation_summary_from_readback(
 		.transpose()
 		.map_err(|_| ())?;
 	let state = match readback.state {
+		ConversationLocalState::ModelSettingsReviewRequired =>
+			ConversationState::ModelSettingsReviewRequired,
 		ConversationLocalState::RoutingPending => ConversationState::RoutingPending,
 		ConversationLocalState::EstablishmentPending => ConversationState::EstablishmentPending,
 		ConversationLocalState::QuotaExhausted => ConversationState::QuotaExhausted,
@@ -2521,6 +2611,8 @@ fn conversation_summary_from_readback(
 			.transpose()
 			.map_err(|_| ())?,
 		match state {
+			ConversationState::ModelSettingsReviewRequired =>
+				Some(ConversationRecoveryAction::ReviewModelSettings),
 			ConversationState::RoutingPending => Some(ConversationRecoveryAction::ResumeRouting),
 			ConversationState::EstablishmentPending =>
 				Some(ConversationRecoveryAction::ResumeEstablishment),
@@ -3082,6 +3174,7 @@ fn wire(value: impl Into<String>) -> Result<WireText, ()> {
 
 const fn conversation_state_text(state: ConversationState) -> &'static str {
 	match state {
+		ConversationState::ModelSettingsReviewRequired => "model_settings_review_required",
 		ConversationState::RoutingPending => "routing_pending",
 		ConversationState::EstablishmentPending => "establishment_pending",
 		ConversationState::QuotaExhausted => "quota_exhausted",
@@ -4179,8 +4272,85 @@ impl ServiceApplication {
 		}
 	}
 
+	async fn saved_model_review_request(
+		&self,
+		id: &ConversationId,
+		revision: EntityRevision,
+	) -> Option<decodex_database::ConversationRequest> {
+		let row = self.conversation_command_row(id, Some(revision)).await.ok()?;
+		if row.pre_session_state != Some(OrdinaryTaskPreSessionState::ModelSettingsReviewRequired)
+			|| row.runtime_session_id.is_some()
+			|| row.has_admitted_user_turn
+		{
+			return None;
+		}
+		let ProductStore::Available(store) = &self.store else {
+			return None;
+		};
+		store.read_conversation_request(id).await.ok()?
+	}
+
+	async fn conversation_model_review(
+		&self,
+		key: &str,
+		conversation_id: &EntityId,
+		revision: EntityRevision,
+	) -> Option<Box<decodex_protocol::ConversationModelReview>> {
+		let id = ConversationId::new(conversation_id.as_str()).ok()?;
+		let saved = self.saved_model_review_request(&id, revision).await?;
+		let execution = ConversationExecutionSettingsDto {
+			model: decodex_protocol::ConversationModel::new(saved.model.clone()).ok()?,
+			reasoning_effort: serde_json::from_value(
+				serde_json::to_value(&saved.reasoning_effort).ok()?,
+			)
+			.ok()?,
+			fast: saved.fast,
+			service_tier: saved.service_tier.clone(),
+		};
+		let working_directory =
+			decodex_protocol::ConversationWorkingDirectory::new(saved.working_directory.clone())
+				.ok()?;
+		let catalog = self
+			.conversations
+			.runtime()?
+			.initial_model_catalog(
+				key,
+				decodex_protocol::InitialModelCatalogRequest {
+					working_directory,
+					purpose: decodex_protocol::ModelCatalogPurpose::Conversation,
+					account_id: None,
+				},
+			)
+			.await;
+		if !matches!(&catalog, decodex_protocol::InitialModelCatalogResult::Available { .. })
+			|| self.saved_model_review_request(&id, revision).await.as_ref() != Some(&saved)
+		{
+			return None;
+		}
+		Some(Box::new(decodex_protocol::ConversationModelReview {
+			conversation_id: conversation_id.clone(),
+			conversation_revision: revision,
+			message: decodex_protocol::HistoryText::new(saved.message).ok()?,
+			execution,
+			catalog,
+		}))
+	}
+
 	async fn query_model_catalog(&self, query: &QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
+			QueryPayload::GetConversationModelReview { conversation_id, expected_revision } =>
+				QueryResultPayload::ConversationModelReview(
+					self.conversation_model_review(
+						query.query_id.as_str(),
+						conversation_id,
+						*expected_revision,
+					)
+					.await
+					.map_or(
+						decodex_protocol::ConversationModelReviewResult::Unavailable,
+						decodex_protocol::ConversationModelReviewResult::Available,
+					),
+				),
 			QueryPayload::GetInitialModelCatalog { request } =>
 				QueryResultPayload::InitialModelCatalog(match self.conversations.runtime() {
 					Some(runtime) =>
@@ -6907,3 +7077,20 @@ mod tests {
 #[cfg(test)]
 #[path = "application_desktop_settings_tests.rs"]
 mod desktop_settings_tests;
+
+fn runtime_initial_model_source(
+	source: Option<&decodex_protocol::InitialModelSource>,
+) -> Result<Option<decodex_database::InitialModelSource>, ()> {
+	source
+		.map(|source| {
+			if source.account_revision <= 0 {
+				return Err(());
+			}
+			Ok(decodex_database::InitialModelSource {
+				account_id: decodex_core::AccountId::new(source.account_id.as_str())
+					.map_err(|_| ())?,
+				account_revision: source.account_revision,
+			})
+		})
+		.transpose()
+}

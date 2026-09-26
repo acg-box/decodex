@@ -442,6 +442,8 @@ impl<'de> Deserialize<'de> for ConversationWorkingDirectory {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConversationState {
+	/// Initial settings came from a different account observation and require confirmation.
+	ModelSettingsReviewRequired,
 	/// The Conversation is durable but no L0 Routing Decision has committed yet.
 	RoutingPending,
 	/// A selected initial decision is durable, but first-session planning is incomplete.
@@ -476,6 +478,8 @@ pub enum ConversationTurnOutcome {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConversationRecoveryAction {
+	/// Review current native choices before the first launch.
+	ReviewModelSettings,
 	/// Wait for native thread closure, then refresh the same conversation.
 	WaitForThreadClose,
 	/// Unarchive the existing native thread before refreshing its state.
@@ -653,12 +657,16 @@ impl ConversationSummary {
 		let has_session = runtime_session_id.is_some() && runtime_session_revision.is_some();
 		let pre_session = matches!(
 			state,
-			ConversationState::RoutingPending
+			ConversationState::ModelSettingsReviewRequired
+				| ConversationState::RoutingPending
 				| ConversationState::EstablishmentPending
 				| ConversationState::QuotaExhausted
 				| ConversationState::NoRoute
 		);
 		let state_shape = match state {
+			ConversationState::ModelSettingsReviewRequired =>
+				active_turn_id.is_none()
+					&& recovery_action == Some(ConversationRecoveryAction::ReviewModelSettings),
 			ConversationState::RoutingPending =>
 				active_turn_id.is_none()
 					&& recovery_action == Some(ConversationRecoveryAction::ResumeRouting),
