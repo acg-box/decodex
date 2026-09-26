@@ -161,7 +161,7 @@ impl OwnedReviewer {
 				|| async { Some(self.source(&changed)) },
 				turn,
 				review_token.as_str(),
-				ChiefReviewer::User,
+				ChiefReviewer::User.into(),
 				"stale-source"
 			)
 			.await
@@ -179,7 +179,7 @@ impl OwnedReviewer {
 			|| async { Some(self.source(&self.key)) },
 			turn,
 			review_token.as_str(),
-			reviewer,
+			reviewer.into(),
 			"native-publish",
 		)
 		.await
@@ -190,7 +190,7 @@ impl OwnedReviewer {
 				|| async { Some(self.source(&self.key)) },
 				turn,
 				review_token.as_str(),
-				ChiefReviewer::AutoReview,
+				ChiefReviewer::AutoReview.into(),
 				"duplicate-review"
 			)
 			.await
@@ -226,7 +226,7 @@ impl OwnedReviewer {
 				|| async { Some(self.source(&self.key)) },
 				turn,
 				review_token.as_str(),
-				ChiefReviewer::AutoReview,
+				ChiefReviewer::AutoReview.into(),
 				"completed-target"
 			)
 			.await
@@ -523,3 +523,5 @@ impl OwnedReviewer {
 #[path = "chief_process_voice_settings_start_tests.rs"] mod voice_settings_start;
 
 #[path = "chief_process_app_ui_call_tests.rs"] mod app_ui_call;
+
+#[path = "chief_process_native_live_model_tests.rs"] mod live_model;

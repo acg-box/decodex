@@ -77,21 +77,35 @@ impl ModelCatalogPages {
 }
 
 async fn memory_feature(client: &AppServerClient) -> Option<bool> {
+	feature_enabled(client, "memories", None).await
+}
+
+pub(crate) async fn feature_enabled(
+	client: &AppServerClient,
+	name: &str,
+	thread: Option<&str>,
+) -> Option<bool> {
 	let mut cursor = Value::Null;
 	let mut seen = std::collections::HashSet::new();
 	for _ in 0..8 {
 		let page = client
-			.request("experimentalFeature/list", json!({"limit":100,"cursor":cursor}))
+			.request(
+				"experimentalFeature/list",
+				json!({"limit":100,"cursor":cursor,"threadId":thread}),
+			)
 			.await
 			.ok()?;
-		if let Some(feature) =
-			page["data"].as_array()?.iter().find(|feature| feature["name"] == "memories")
+		if let Some(feature) = page["data"]
+			.as_array()
+			.filter(|entries| entries.len() <= 100)?
+			.iter()
+			.find(|feature| feature["name"] == name)
 		{
 			return feature["enabled"].as_bool();
 		}
 		cursor = page["nextCursor"].clone();
 		let next = cursor.as_str()?;
-		if next.len() > 4096 || !seen.insert(next.to_owned()) {
+		if next.is_empty() || next.len() > 4096 || !seen.insert(next.to_owned()) {
 			return None;
 		}
 	}
@@ -378,5 +392,47 @@ mod tests {
 		let mut invalid = value;
 		invalid["displayName"] = json!("invalid\nlabel");
 		assert!(project_model(&invalid).is_none());
+	}
+	#[tokio::test]
+	async fn feature_discovery_uses_task_config_and_rejects_oversized_pages() {
+		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+		for thread in [None, Some("opaque thread/1")] {
+			for oversized in [false, true] {
+				let (client_io, server_io) = tokio::io::duplex(65536);
+				let (reader, writer) = tokio::io::split(client_io);
+				let (client, _events) = AppServerClient::from_io(reader, writer);
+				let server = tokio::spawn(async move {
+					let (reader, mut writer) = tokio::io::split(server_io);
+					let mut lines = BufReader::new(reader).lines();
+					for index in 0..2 {
+						let request: Value =
+							serde_json::from_str(&lines.next_line().await.unwrap().unwrap())
+								.unwrap();
+						assert_eq!(request["method"], "experimentalFeature/list");
+						assert_eq!(
+							request["params"],
+							json!({"threadId":thread,"limit":100,"cursor":if index == 0 {Value::Null} else {json!("page2")}})
+						);
+						let result = if index == 0 {
+							json!({"data":[],"nextCursor":"page2"})
+						} else {
+							json!({"data":vec![json!({"name":"fast_mode","enabled":thread.is_some()});if oversized {101} else {1}],"nextCursor":null})
+						};
+						writer
+							.write_all(
+								format!("{}\n", json!({"id":request["id"],"result":result}))
+									.as_bytes(),
+							)
+							.await
+							.unwrap();
+					}
+				});
+				assert_eq!(
+					feature_enabled(&client, "fast_mode", thread).await,
+					if oversized { None } else { Some(thread.is_some()) }
+				);
+				server.await.unwrap();
+			}
+		}
 	}
 }

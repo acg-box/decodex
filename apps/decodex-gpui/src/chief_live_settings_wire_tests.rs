@@ -8,7 +8,9 @@ use futures_util::{SinkExt, StreamExt};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use tokio_tungstenite::tungstenite::Message;
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
-fn fixture() -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<ChiefActionDto>>) {
+fn fixture(
+	model: bool,
+) -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<ChiefActionDto>>) {
 	let root = tempfile::tempdir_in("/tmp").unwrap();
 	let path = root.path().canonicalize().unwrap();
 	let server = path.join("server");
@@ -27,13 +29,15 @@ fn fixture() -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<C
 		let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
 		runtime.block_on(async {
 			let listener = tokio::net::UnixListener::from_std(listener).unwrap();
-			tokio::time::timeout(std::time::Duration::from_secs(5), serve(listener)).await.unwrap()
+			tokio::time::timeout(std::time::Duration::from_secs(5), serve(listener, model))
+				.await
+				.unwrap()
 		})
 	});
 	(root, profile, thread)
 }
 
-async fn serve(listener: tokio::net::UnixListener) -> Vec<ChiefActionDto> {
+async fn serve(listener: tokio::net::UnixListener, model: bool) -> Vec<ChiefActionDto> {
 	let mut actions = Vec::new();
 	for index in 0..3 {
 		let mut socket =
@@ -66,34 +70,35 @@ async fn serve(listener: tokio::net::UnixListener) -> Vec<ChiefActionDto> {
 		if index == 1 {
 			let ClientMessage::Command(command) = request else { panic!("setting command") };
 			let CommandPayload::Chief { action } = command.payload else { panic!("Chief command") };
-			let ChiefActionDto::SetLiveReviewer { work_id, turn_id, review_token, reviewer } =
-				&*action
-			else {
-				panic!("account setting")
+			let (work_id, turn_id, review_token) = match &*action {
+				ChiefActionDto::SetLiveReviewer { work_id, turn_id, review_token, reviewer }
+					if !model =>
+				{
+					assert_eq!(*reviewer, Reviewer::User);
+					(work_id, turn_id, review_token)
+				},
+				ChiefActionDto::SetLiveModel { work_id, turn_id, review_token, model, effort } => {
+					assert_eq!(model.as_str(), "selected");
+					assert_eq!(effort.as_str(), "high");
+					(work_id, turn_id, review_token)
+				},
+				_ => panic!("wrong live settings action"),
 			};
 			assert_eq!(work_id.as_str(), "root");
 			assert_eq!(turn_id.as_str(), "turn");
 			assert_eq!(review_token.as_str(), "a".repeat(64));
-			assert_eq!(*reviewer, Reviewer::User);
 			actions.push(*action);
 			// Lose the response after dispatch. The client must read, never resend.
 			socket.close(None).await.unwrap();
 			continue;
 		}
 		let ClientMessage::Query(query) = request else { panic!("settings read") };
-		let QueryPayload::GetChiefLiveReviewer { work_id } = query.payload else {
+		let QueryPayload::GetChiefLiveReviewer { work_id, include_models: true } = query.payload
+		else {
 			panic!("account query")
 		};
 		assert_eq!(work_id.as_str(), "root");
-		let state = State::Available {
-			thread_id: EntityId::new("thread").unwrap(),
-			turn_id: EntityId::new("turn").unwrap(),
-			review_token: WireText::new(if index == 0 { "a" } else { "b" }.repeat(64)).unwrap(),
-			can_update: true,
-			last_reviewer: (index != 0).then_some(Reviewer::User),
-			last_outcome: (index != 0)
-				.then_some(decodex_protocol::ChiefLiveReviewerOutcome::Unknown),
-		};
+		let state = live_state(index, model);
 		let result = ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
 			server_id: ServerId::new(SERVER).unwrap(),
@@ -103,6 +108,41 @@ async fn serve(listener: tokio::net::UnixListener) -> Vec<ChiefActionDto> {
 		socket.send(Message::Text(serde_json::to_string(&result).unwrap().into())).await.unwrap();
 	}
 	actions
+}
+
+fn live_state(index: usize, model: bool) -> State {
+	State::Available {
+		thread_id: EntityId::new("thread").unwrap(),
+		turn_id: EntityId::new("turn").unwrap(),
+		review_token: WireText::new(if index == 0 { "a" } else { "b" }.repeat(64)).unwrap(),
+		can_update: true,
+		last_reviewer: (index != 0 && !model).then_some(Reviewer::User),
+		last_model: (model && index != 0).then(|| decodex_protocol::ChiefLiveModelSelection {
+			model: decodex_protocol::ConversationModel::new("selected").unwrap(),
+			effort: decodex_protocol::ConversationReasoningEffort::High,
+		}),
+		model_choices: model.then(|| vec![model_choice()]),
+		last_outcome: (index != 0).then_some(decodex_protocol::ChiefLiveReviewerOutcome::Unknown),
+	}
+}
+
+fn model_choice() -> decodex_protocol::ChiefModelDto {
+	decodex_protocol::ChiefModelDto {
+		model: decodex_protocol::ConversationModel::new("selected").unwrap(),
+		name: "Selected".into(),
+		efforts: vec![
+			decodex_protocol::ConversationReasoningEffort::Low,
+			decodex_protocol::ConversationReasoningEffort::High,
+		],
+		default_effort: Some(decodex_protocol::ConversationReasoningEffort::Low),
+		supports_fast: false,
+		service_tiers: vec![],
+		default_service_tier: None,
+		available_cyber_programs: None,
+		supports_images: true,
+		availability: None,
+		upgrade: None,
+	}
 }
 
 fn work() -> ChiefWorkItemDto {
@@ -143,6 +183,8 @@ fn reviewed_live_turn_is_invalidated_even_if_the_old_identity_returns(
 				review_token: WireText::new("a".repeat(64)).unwrap(),
 				can_update: true,
 				last_reviewer: None,
+				last_model: None,
+				model_choices: None,
 				last_outcome: None,
 			});
 			let before = s.live_reviewer.epoch;
@@ -172,7 +214,14 @@ impl Render for ReviewerView {
 }
 #[gpui::test]
 fn reviewer_click_sends_exact_turn_once_and_reads_unknown_receipt(cx: &mut gpui::TestAppContext) {
-	let (_dir, profile, server) = fixture();
+	exercise_live_settings(cx, false);
+}
+#[gpui::test]
+fn model_click_sends_exact_turn_once_and_reads_unknown_receipt(cx: &mut gpui::TestAppContext) {
+	exercise_live_settings(cx, true);
+}
+fn exercise_live_settings(cx: &mut gpui::TestAppContext, model: bool) {
+	let (_dir, profile, server) = fixture(model);
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(ChiefSurface::new);
 		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
@@ -198,7 +247,18 @@ fn reviewer_click_sends_exact_turn_once_and_reads_unknown_receipt(cx: &mut gpui:
 	visual.update(|w, cx| {
 		w.draw(cx).clear();
 	});
-	let button = visual.debug_bounds("live-reviewer-user").unwrap();
+	if model {
+		for selector in ["live-model-open", "live-model-choice-0", "live-model-effort-1"] {
+			let button = visual.debug_bounds(selector).unwrap();
+			visual.simulate_click(button.center(), Default::default());
+			visual.run_until_parked();
+			visual.update(|w, cx| {
+				w.draw(cx).clear();
+			});
+		}
+	}
+	let button =
+		visual.debug_bounds(if model { "live-model-apply" } else { "live-reviewer-user" }).unwrap();
 	visual.simulate_click(button.center(), Default::default());
 	visual.run_until_parked();
 	assert_eq!(server.join().unwrap().len(), 1);
@@ -216,13 +276,26 @@ fn reviewer_click_sends_exact_turn_once_and_reads_unknown_receipt(cx: &mut gpui:
 	});
 	surface.update(visual, |s, cx| {
 		assert!(!s.live_reviewer.reviewed, "receipt refresh is not a new user review");
-		s.update_live_reviewer("root".into(), "turn".into(), Some(Reviewer::User), cx);
+		s.update_live_settings(
+			"root".into(),
+			"turn".into(),
+			Some(if model {
+				Edit::Model(decodex_protocol::ChiefLiveModelSelection {
+					model: decodex_protocol::ConversationModel::new("selected").unwrap(),
+					effort: decodex_protocol::ConversationReasoningEffort::High,
+				})
+			} else {
+				Edit::Reviewer(Reviewer::User)
+			}),
+			cx,
+		);
 		assert!(s.live_reviewer.task.is_none(), "a repeated click cannot publish again");
 	});
 	visual.update(|window, cx| {
 		window.draw(cx).clear();
 	});
 	assert!(visual.debug_bounds("live-reviewer-user").is_none());
+	assert!(visual.debug_bounds("live-model-apply").is_none());
 	assert!(visual.debug_bounds("live-reviewer-read").is_some());
 	surface.update(visual, |s, _| s.apply_result(Err(())));
 	surface.read_with(visual, |s, _| {

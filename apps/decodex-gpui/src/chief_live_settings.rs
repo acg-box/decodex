@@ -1,4 +1,4 @@
-//! Explicit current-turn reviewer changes, separate from future defaults and pending approvals.
+//! Explicit current-turn settings, separate from future defaults and pending approvals.
 use super::{mcp_forms::mcp_button, *};
 use decodex_protocol::{ChiefLiveReviewerState as State, ChiefReviewer as Reviewer};
 
@@ -10,6 +10,48 @@ pub(super) struct Panel {
 	epoch: u64,
 	feedback: String,
 	reviewed: bool,
+	model_draft: Option<decodex_protocol::ChiefLiveModelSelection>,
+	choosing_model: bool,
+}
+
+enum Edit {
+	Reviewer(Reviewer),
+	Model(decodex_protocol::ChiefLiveModelSelection),
+}
+
+impl Edit {
+	fn action(
+		self,
+		work: &EntityId,
+		turn: &EntityId,
+		review: &WireText,
+		models: Option<&[decodex_protocol::ChiefModelDto]>,
+	) -> Option<ChiefActionDto> {
+		Some(match self {
+			Self::Reviewer(reviewer) => ChiefActionDto::SetLiveReviewer {
+				work_id: work.clone(),
+				turn_id: turn.clone(),
+				review_token: review.clone(),
+				reviewer,
+			},
+			Self::Model(selection) => {
+				if !models.is_some_and(|models| {
+					models.iter().any(|m| {
+						m.model == selection.model && m.efforts.contains(&selection.effort)
+					})
+				}) {
+					return None;
+				}
+				ChiefActionDto::SetLiveModel {
+					work_id: work.clone(),
+					turn_id: turn.clone(),
+					review_token: review.clone(),
+					model: selection.model,
+					effort: selection.effort,
+				}
+			},
+		})
+	}
 }
 
 impl ChiefSurface {
@@ -34,18 +76,18 @@ impl ChiefSurface {
 			Panel { epoch: self.live_reviewer.epoch.wrapping_add(1), ..Default::default() };
 	}
 
-	fn update_live_reviewer(
+	fn update_live_settings(
 		&mut self,
 		work: String,
 		turn: String,
-		reviewer: Option<Reviewer>,
+		edit: Option<Edit>,
 		cx: &mut Context<Self>,
 	) {
 		if self.live_reviewer.task.is_some()
 			|| self.selected.as_ref() != Some(&work)
 			|| !self.command_connection_ready()
 			|| self.native_agents.selected.is_some()
-			|| (reviewer.is_some() && !self.live_reviewer.reviewed)
+			|| (edit.is_some() && !self.live_reviewer.reviewed)
 		{
 			return;
 		}
@@ -72,9 +114,14 @@ impl ChiefSurface {
 		let Ok(work_id) = EntityId::new(work.clone()) else {
 			return;
 		};
-		let action = if let Some(reviewer) = reviewer {
+		let action = if let Some(edit) = edit {
 			let Some(State::Available {
-				thread_id, turn_id, review_token, can_update: true, ..
+				thread_id,
+				turn_id,
+				review_token,
+				can_update: true,
+				model_choices,
+				..
 			}) = &self.live_reviewer.state
 			else {
 				return;
@@ -85,12 +132,12 @@ impl ChiefSurface {
 			{
 				return;
 			}
-			Some(ChiefActionDto::SetLiveReviewer {
-				work_id: work_id.clone(),
-				turn_id: turn_id.clone(),
-				review_token: review_token.clone(),
-				reviewer,
-			})
+			let Some(action) =
+				edit.action(&work_id, turn_id, review_token, model_choices.as_deref())
+			else {
+				return;
+			};
+			Some(action)
 		} else {
 			None
 		};
@@ -102,7 +149,7 @@ impl ChiefSurface {
 		self.live_reviewer.state = None;
 		self.live_reviewer.reviewed = false;
 		self.live_reviewer.feedback = if saving {
-			"Updating current-turn reviewer…"
+			"Updating current-turn settings…"
 		} else {
 			"Reading current-turn operation state…"
 		}
@@ -114,7 +161,7 @@ impl ChiefSurface {
 			let client = ChiefClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
 			let state =
-				runtime.block_on(client.live_reviewer(work_id)).unwrap_or(State::Unavailable);
+				runtime.block_on(client.live_settings(work_id, true)).unwrap_or(State::Unavailable);
 			Some((outcome, state))
 		});
 		self.live_reviewer.task=Some(cx.spawn(async move |surface,cx| {
@@ -128,12 +175,12 @@ impl ChiefSurface {
 				let (outcome,state)=result.unwrap_or((None,State::Unavailable));
 				s.live_reviewer.reviewed = !saving;
 				s.live_reviewer.feedback=match outcome {
-					Some(Ok(ChiefCommandResponse::Accepted {..}))=>"Published for subsequent approval requests in this turn. Pending requests and future defaults are unchanged.",
+					Some(Ok(ChiefCommandResponse::Accepted {..}))=>"Published for subsequent steps of this turn. This does not confirm a later inference used the selection.",
 					Some(Ok(ChiefCommandResponse::Rejected {..}))=>"The edit was not accepted. Refresh and review the current turn.",
 					Some(_)=>"Publication could not be confirmed. No automatic retry was made.",
 					None if saving=>"The operation could not be confirmed. Refresh its receipt before another edit.",
 					None if matches!(state,State::Unavailable)=>"No editable active turn is available. Refresh the task.",
-					None=>"Choose how new approval requests in this turn are reviewed. Account and managed policies still apply.",
+					None=>"Changes apply to subsequent steps of this turn. Saved task defaults stay unchanged.",
 				}.into();
 				s.live_reviewer.state=Some(match state {State::Available {ref thread_id,ref turn_id,..} if thread_id.as_str()!=thread || turn_id.as_str()!=turn=>State::Unavailable,other=>other});
 				cx.notify();
@@ -159,19 +206,23 @@ impl ChiefSurface {
 		};
 		let (owner, target) = (work.id.clone(), turn.clone());
 		let mut panel =
-			div().flex().flex_col().gap_2().child("Current-turn approval reviewer").child(
-				mcp_button(
-					"live-reviewer-read".into(),
-					"Review current-turn settings".into(),
-					false,
-					cx,
-					move |s, cx| s.update_live_reviewer(owner.clone(), target.clone(), None, cx),
-				),
-			);
+			div().flex().flex_col().gap_2().child("Current-turn settings").child(mcp_button(
+				"live-reviewer-read".into(),
+				"Review current-turn settings".into(),
+				false,
+				cx,
+				move |s, cx| s.update_live_settings(owner.clone(), target.clone(), None, cx),
+			));
 		if self.live_reviewer.work.as_ref() == Some(&work.id) {
 			panel = panel.child(self.live_reviewer.feedback.clone());
 			if let Some(State::Available {
-				turn_id, can_update, last_reviewer, last_outcome, ..
+				turn_id,
+				can_update,
+				last_reviewer,
+				last_model,
+				last_outcome,
+				model_choices,
+				..
 			}) = &self.live_reviewer.state
 				&& turn_id.as_str() == turn
 			{
@@ -185,6 +236,20 @@ impl ChiefSurface {
 						outcome_label(*outcome)
 					));
 				}
+				if let (Some(selection), Some(outcome)) = (last_model, last_outcome) {
+					panel = panel.child(format!(
+						"Last model request: {} / {} — {}",
+						selection.model.as_str(),
+						selection.effort.as_str(),
+						outcome_label(*outcome)
+					));
+				}
+				if *can_update
+					&& self.live_reviewer.reviewed
+					&& let Some(models) = model_choices
+				{
+					panel = panel.child(self.live_model_controls(work, models, cx));
+				}
 				if *can_update && self.live_reviewer.reviewed {
 					for (id, label, reviewer) in [
 						("live-reviewer-user", "Ask me", Reviewer::User),
@@ -197,10 +262,10 @@ impl ChiefSurface {
 							false,
 							cx,
 							move |s, cx| {
-								s.update_live_reviewer(
+								s.update_live_settings(
 									owner.clone(),
 									target.clone(),
-									Some(reviewer),
+									Some(Edit::Reviewer(reviewer)),
 									cx,
 								)
 							},
@@ -208,6 +273,95 @@ impl ChiefSurface {
 					}
 				}
 			}
+		}
+		panel.into_any_element()
+	}
+
+	fn live_model_controls(
+		&self,
+		work: &ChiefWorkItemDto,
+		models: &[decodex_protocol::ChiefModelDto],
+		cx: &mut Context<Self>,
+	) -> gpui::AnyElement {
+		let mut panel = div().flex().flex_col().gap_2().child(mcp_button(
+			"live-model-open".into(),
+			"Change model and effort…".into(),
+			false,
+			cx,
+			|s, cx| {
+				s.live_reviewer.choosing_model = !s.live_reviewer.choosing_model;
+				cx.notify();
+			},
+		));
+		if !self.live_reviewer.choosing_model {
+			return panel.into_any_element();
+		}
+		let mut choices = div()
+			.id("live-model-choices")
+			.flex()
+			.flex_col()
+			.gap_1()
+			.max_h(px(180.))
+			.overflow_y_scroll();
+		for (index, model) in models.iter().enumerate() {
+			let Some(effort) =
+				model.default_effort.clone().or_else(|| model.efforts.first().cloned())
+			else {
+				continue;
+			};
+			let selection =
+				decodex_protocol::ChiefLiveModelSelection { model: model.model.clone(), effort };
+			choices = choices.child(mcp_button(
+				format!("live-model-choice-{index}"),
+				model.name.clone(),
+				false,
+				cx,
+				move |s, cx| {
+					s.live_reviewer.model_draft = Some(selection.clone());
+					cx.notify();
+				},
+			));
+		}
+		panel = panel.child(choices);
+		if let Some(selection) = &self.live_reviewer.model_draft
+			&& let Some(model) = models.iter().find(|m| m.model == selection.model)
+		{
+			panel = panel.child(format!("{} / {}", model.name, selection.effort.as_str()));
+			let mut efforts = div().flex().flex_wrap().gap_1();
+			for (index, effort) in model.efforts.iter().enumerate() {
+				let effort = effort.clone();
+				efforts = efforts.child(mcp_button(
+					format!("live-model-effort-{index}"),
+					effort.as_str().into(),
+					false,
+					cx,
+					move |s, cx| {
+						if let Some(draft) = &mut s.live_reviewer.model_draft {
+							draft.effort = effort.clone();
+						}
+						cx.notify();
+					},
+				));
+			}
+			let (owner, turn, selection) = (
+				work.id.clone(),
+				work.active_turn_id.clone().unwrap_or_default(),
+				selection.clone(),
+			);
+			panel = panel.child(efforts).child(mcp_button(
+				"live-model-apply".into(),
+				"Apply to this turn".into(),
+				false,
+				cx,
+				move |s, cx| {
+					s.update_live_settings(
+						owner.clone(),
+						turn.clone(),
+						Some(Edit::Model(selection.clone())),
+						cx,
+					)
+				},
+			));
 		}
 		panel.into_any_element()
 	}
@@ -226,4 +380,4 @@ fn outcome_label(outcome: decodex_protocol::ChiefLiveReviewerOutcome) -> &'stati
 
 #[cfg(test)]
 #[path = "chief_live_settings_wire_tests.rs"]
-mod wire_tests;
+pub(super) mod wire_tests;

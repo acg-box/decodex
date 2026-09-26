@@ -1,4 +1,4 @@
-//! Current-turn reviewer controls and local publication receipts.
+//! Current-turn settings controls and local publication receipts.
 use serde::{Deserialize, Serialize};
 
 /// Native approval reviewer selection shared by reviewer controls.
@@ -17,7 +17,7 @@ pub enum ChiefReviewer {
 pub enum ChiefLiveReviewerOutcome {
 	/// Reserved before dispatch; delivery may be unresolved.
 	Reserved,
-	/// Native published the requested reviewer for subsequent captures.
+	/// Native published the requested settings for subsequent captures.
 	Applied,
 	/// The exact native task was no longer available.
 	TargetUnavailable,
@@ -43,9 +43,23 @@ pub enum ChiefLiveReviewerState {
 		can_update: bool,
 		/// The last requested reviewer, not necessarily the current effective reviewer.
 		last_reviewer: Option<crate::ChiefReviewer>,
+		/// Last locally requested model and effort, not observed inference settings.
+		last_model: Option<crate::ChiefLiveModelSelection>,
+		/// Account-bound choices when explicitly requested and live switching is enabled.
+		model_choices: Option<Vec<crate::ChiefModelDto>>,
 		/// Last local publication receipt. None means no recorded local edit.
 		last_outcome: Option<ChiefLiveReviewerOutcome>,
 	},
 	/// No exact editable live task is available.
 	Unavailable,
+}
+
+/// One explicit model/effort selection recorded for a running turn.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefLiveModelSelection {
+	/// Requested model identifier.
+	pub model: crate::ConversationModel,
+	/// Requested reasoning effort.
+	pub effort: crate::ConversationReasoningEffort,
 }

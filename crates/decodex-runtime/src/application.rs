@@ -370,9 +370,9 @@ impl ServiceApplication {
 		})
 	}
 
-	async fn query_live_reviewer(&self, work: &str) -> QueryResultPayload {
+	async fn query_live_reviewer(&self, work: &str, include_models: bool) -> QueryResultPayload {
 		QueryResultPayload::ChiefLiveReviewer(match &self.chief {
-			Some(chief) => chief.live_reviewer(work).await,
+			Some(chief) => chief.live_reviewer(work, include_models).await,
 			None => decodex_protocol::ChiefLiveReviewerState::Unavailable,
 		})
 	}
@@ -2322,8 +2322,8 @@ impl Application for ServiceApplication {
 				self.query_model_selection(work_id.as_str()).await,
 			QueryPayload::GetChiefPermissionProfiles { work_id } =>
 				self.query_permission_profiles(work_id.as_str()).await,
-			QueryPayload::GetChiefLiveReviewer { work_id } =>
-				self.query_live_reviewer(work_id.as_str()).await,
+			QueryPayload::GetChiefLiveReviewer { work_id, include_models } =>
+				self.query_live_reviewer(work_id.as_str(), *include_models).await,
 			QueryPayload::GetChiefModelSettings { work_id } =>
 				self.query_model_settings(work_id.as_str()).await,
 			edit @ QueryPayload::GetChiefPromptEdit { .. } => self.query_prompt_edit(edit).await,
