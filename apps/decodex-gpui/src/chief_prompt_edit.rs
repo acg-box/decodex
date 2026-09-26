@@ -37,6 +37,60 @@ impl ChiefSurface {
 		}
 	}
 
+	#[cfg(feature = "visual-capture")]
+	pub(super) fn visual_prompt_editor(&mut self, remove: bool, cx: &mut Context<Self>) {
+		let root =
+			std::env::var_os("DECODEX_VISUAL_PROMPT_ROOT").expect("isolated prompt fixture root");
+		let profile =
+			ClientProfile::load(std::path::Path::new(&root), None).expect("fixture profile");
+		self.bind_profile(Some(profile.clone()), cx);
+		self.visual_workspace_fixture(cx);
+		self.graph_visible = false;
+		self.poll_task = None;
+		let work = self.selected.clone().expect("fixture selection");
+		self.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|item| item.id == work)
+			.unwrap()
+			.codex_thread_id = Some("fixture-thread".into());
+		self.composer
+			.update(cx, |input, cx| input.set_content("Keep this separate draft for later.", cx));
+		let input = PromptDraft::new(vec![
+			serde_json::json!({"type":"text","text":"Compare Image #1 with Image #2 and explain the layout changes."}),
+			serde_json::json!({"type":"image","fileId":"original-layout"}),
+			serde_json::json!({"type":"localImage","path":"/fixture/revised-layout.png"}),
+		]).unwrap();
+		let draft = DesktopPromptEditDraft {
+			work_id: EntityId::new(&work).unwrap(),
+			thread_id: WireText::new("fixture-thread").unwrap(),
+			before_turn_id: WireText::new("fixture-turn").unwrap(),
+			item_id: WireText::new("fixture-item").unwrap(),
+			original_hash: input.fingerprint().unwrap(),
+			review_token: WireText::new("a".repeat(64)).unwrap(),
+			receipt_id: None,
+			confirmation_key: None,
+			pending_send: None,
+			handback_pending: false,
+			input,
+		};
+		self.prompt_edit = Panel {
+			work,
+			thread: "fixture-thread".into(),
+			profile: Some(profile),
+			..Default::default()
+		};
+		self.install_prompt_editors(draft.clone(), cx).unwrap();
+		self.prompt_edit.feedback =
+			"Review the earlier message. Later turns will be removed only after confirmation."
+				.into();
+		if remove {
+			self.begin_prompt_removal(1, &draft, cx);
+		}
+	}
+
 	fn preflight_prompt_editor(
 		&mut self,
 		expected: DesktopPromptEditDraft,
@@ -440,7 +494,7 @@ impl ChiefSurface {
 	}
 
 	pub(super) fn prompt_edit_panel(&self, work: &str, cx: &mut Context<Self>) -> gpui::AnyElement {
-		let mut saved = div().flex().flex_col().gap_2();
+		let mut saved = div().w_full().min_w_0().flex_none().flex().flex_col().gap_2();
 		for draft in self.saved_prompt_editors(work) {
 			let review = draft.review_token.as_str().to_owned();
 			let owner = work.to_owned();
@@ -577,7 +631,7 @@ impl ChiefSurface {
 					cx,
 				));
 			}
-			for (index, part) in draft
+			for (index, _) in draft
 				.input
 				.parts()
 				.iter()
@@ -587,7 +641,7 @@ impl ChiefSurface {
 				let expected = draft.clone();
 				panel = panel.child(self.workspace_action(
 					format!("prompt-remove-{index}"),
-					format!("Remove {}…", removal::label(part)),
+					format!("Remove {}…", removal::label(&draft.input, index)),
 					move |s, cx| s.begin_prompt_removal(index, &expected, cx),
 					cx,
 				));

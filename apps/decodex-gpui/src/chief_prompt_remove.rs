@@ -9,10 +9,12 @@ pub(super) struct Removal {
 	markers: BTreeSet<(usize, usize)>,
 }
 
-pub(super) fn label(part: &serde_json::Value) -> String {
+pub(super) fn label(input: &PromptDraft, index: usize) -> String {
+	let part = &input.parts()[index];
 	let kind = part["type"].as_str().unwrap_or("input");
 	let title = match kind {
 		"skill" | "mention" => part["name"].as_str(),
+		"image" => part["fileId"].as_str(),
 		"localImage" | "localAudio" => part["path"]
 			.as_str()
 			.and_then(|path| std::path::Path::new(path).file_name())
@@ -20,14 +22,20 @@ pub(super) fn label(part: &serde_json::Value) -> String {
 		_ => None,
 	};
 	let kind = match kind {
-		"image" | "localImage" => "image",
-		"audio" | "localAudio" => "audio",
-		"mention" => "reference",
-		other => other,
+		"image" | "localImage" => {
+			let number = input.parts()[..=index]
+				.iter()
+				.filter(|part| matches!(part["type"].as_str(), Some("image" | "localImage")))
+				.count();
+			format!("Image #{number}")
+		},
+		"audio" | "localAudio" => "audio".into(),
+		"mention" => "reference".into(),
+		other => other.into(),
 	};
 	match title {
 		Some(title) => format!("{kind}: {}", title.chars().take(80).collect::<String>()),
-		None => kind.into(),
+		None => kind,
 	}
 }
 
@@ -113,16 +121,25 @@ impl ChiefSurface {
 			return div().into_any_element();
 		};
 		let mut panel = div()
+			.w_full()
+			.min_w_0()
+			.flex_none()
 			.flex()
 			.flex_col()
 			.gap_2()
 			.child(format!(
 				"Remove {} from this draft?",
-				label(&removal.before.input.parts()[removal.part])
+				label(&removal.before.input, removal.part)
 			))
 			.child(
 				"Also select any references to remove from the message. Unselected text is kept.",
 			);
+		if matches!(
+			removal.before.input.parts()[removal.part]["type"].as_str(),
+			Some("image" | "localImage")
+		) {
+			panel = panel.child("Remaining images will be numbered in their new order. Review any image numbers in your message.");
+		}
 		for (part_index, part) in removal.before.input.parts().iter().enumerate() {
 			let Some(elements) = part["text_elements"].as_array() else {
 				continue;

@@ -343,3 +343,21 @@ Fixed upstream protocol/src/models.rs reads local media paths directly; public i
 conversion and history reconstruction retain those paths. The native process working
 directory must be established before interpreting a relative path. A child thread's
 working directory is not sufficient proof for a shared Chief app-server process.
+
+## Image review and visual qualification
+
+Image controls use one-based numbers in canonical input order across remote images,
+file-ID images and local images. This matches fixed upstream
+ResponseInputItem::from_user_input, which increments the image counter for each
+image variant. Local filenames and native file IDs distinguish the selected input.
+Removal remains explicit and atomic with selected structured text references.
+The confirmation explains that remaining image numbers change; ordinary message
+text is not rewritten by searching for a matching label.
+
+The isolated visual-capture pages prompt-editor and prompt-remove exercise the
+production editor panel. DECODEX_VISUAL_PROMPT_ROOT selects a private test profile;
+run with a private HOME so the normal draft owner is also isolated. Capture exposed
+collapsed action labels. Prompt panels now take available width, and prompt action
+labels use flexible width and wrapping. Existing sidebar and tab layout is unchanged.
+The expanded removal view is render-checked; complete interactive and signed-app
+acceptance are separate requirements.
