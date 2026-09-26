@@ -46,6 +46,18 @@ async fn execution_selection_is_atomic_exact_non_waking_and_not_inferred_after_r
 		.unwrap();
 	assert!(store.list_pending_chief_events(10).await.unwrap().is_empty());
 
+	assert!(
+		store
+			.record_chief_task_models(
+				"thread".into(),
+				None,
+				Some(serde_json::json!({"model":"chosen-model"}).to_string()),
+				"a".repeat(64),
+			)
+			.await
+			.unwrap()
+			.is_some()
+	);
 	let (visible, _) = store.read_chief_transcript("chief".into(), None, 1).await.unwrap();
 	assert_eq!(visible.len(), 1);
 	assert_eq!(

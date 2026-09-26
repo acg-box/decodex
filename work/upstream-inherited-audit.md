@@ -263,3 +263,18 @@ Full-file comparisons and snapshot hashes were checked at
 These decisions reduce pending content-review rows from 207 to 204. All 360
 register entries remain. This documentation batch changes no production code and
 does not close shared desktop acceptance or any other incomplete file.
+
+## Review and model-observation coverage restored on 2026-09-26
+
+Two inherited test blocks had been removed while their production behavior
+remained. Restore the missing scenarios and compare both complete files.
+
+| Original path | Complete disposition |
+| --- | --- |
+| `apps/decodex-gpui/src/chief_misalignment.rs` | Exact snapshot bytes restored. After findings are reviewed, a missing continuation request must keep the action hidden and cannot submit. The existing stale-review and second-click checks remain. The focused rendered test passes. |
+| `database/src/chief/tests/turn_execution.rs` | Restore the model-observation write before the one-item visible-history read. Use the current `record_chief_task_models` owner and require a positive record ID. The internal record must not consume the visible page or wake work. All original remaining assertions are retained; the focused persistence test passes. |
+
+Both original snapshot hashes were verified. These changes restore test coverage,
+not a newly reproduced production failure. The complete register retains 360
+entries and has 202 pending content-review rows after this batch, down from 204.
+This does not close any shared desktop acceptance group.
