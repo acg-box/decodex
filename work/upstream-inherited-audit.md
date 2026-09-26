@@ -641,3 +641,17 @@ See [provider recovery history](provider-auth-recovery-history.md).
 This optional Bedrock-specific display is explicitly marked for the user's
 removal review. Native credential and retry authority stays in Codex. No generic
 shared file or broad capability group is closed by this restoration.
+
+## Native filesystem evidence restored on 2026-09-26
+
+Restore `scripts/vnext/codex_exec_policy_probe.py` byte-for-byte from the preserved
+snapshot. Read its complete source before execution. The explicit installed
+0.158.0-alpha.2 run passes all ten synthetic permission checks and awaits executor
+shutdown. Restore `work/filesystem-policy-cwd.md` with its complete historical
+review and add a current qualification section. Keep historical version limits
+separate from the fresh result.
+
+Both complete file dispositions are closed. No application permission code,
+configuration, package or product control changes. The native owner remains
+responsible for enforcement; broader R10 and signed desktop acceptance stay open.
+See [the current evidence and scope](filesystem-policy-cwd.md).
