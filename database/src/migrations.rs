@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 47;
+const CURRENT_SCHEMA_VERSION: i64 = 48;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -250,6 +250,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 47,
 		name: "conversation_native_settings",
 		sql: include_str!("../migrations/0047_conversation_native_settings.sql"),
+	},
+	Migration {
+		version: 48,
+		name: "chief_misalignment_voice",
+		sql: include_str!("../migrations/0048_chief_misalignment_voice.sql"),
 	},
 ];
 
@@ -708,7 +713,8 @@ mod tests {
 					"desktop_settings",
 					"chief_async_questions",
 					"quick_task_requests",
-					"chief_live_output"
+					"chief_live_output",
+					"chief_misalignment"
 				]
 				.contains(&entry.2.as_str()))
 				.all(|entry| entry.1 == "chief_capacity_transition" || after.contains(entry))
@@ -813,6 +819,7 @@ mod tests {
 		migrate(&mut connection).unwrap();
 		verify(&connection).unwrap();
 		let after = schema_inventory(&connection).unwrap();
+		// Migration 48 separately proves the retained precaution rows and schema change.
 		assert!(
 			before
 				.iter()
@@ -820,7 +827,8 @@ mod tests {
 					"quick_task_requests",
 					"desktop_settings",
 					"chief_async_questions",
-					"chief_live_output"
+					"chief_live_output",
+					"chief_misalignment"
 				]
 				.contains(&entry.2.as_str()))
 				.all(|entry| entry.1 == "chief_capacity_transition" || after.contains(entry))
@@ -1460,12 +1468,16 @@ mod tests {
 		verify(&connection).unwrap();
 		let inventory = schema_inventory(&connection).unwrap();
 		assert!(inventory.iter().any(|row| row.2 == "conversation_native_settings"));
+		// Migration 48 has its own retained-row and unrelated-schema proof.
 		assert_eq!(
 			inventory
 				.into_iter()
-				.filter(|row| row.2 != "conversation_native_settings")
+				.filter(|row| !matches!(
+					row.2.as_str(),
+					"conversation_native_settings" | "chief_misalignment"
+				))
 				.collect::<Vec<_>>(),
-			original
+			original.into_iter().filter(|row| row.2 != "chief_misalignment").collect::<Vec<_>>()
 		);
 		let retained: (bool, i64) = connection
 			.query_row("SELECT auto_recap,revision FROM desktop_settings", [], |r| {
@@ -1517,8 +1529,8 @@ mod tests {
 				.count(),
 			4
 		);
-		// Migration 46 changes quick_task_requests; its dedicated upgrade test
-		// verifies the retained rows and new source constraints. Other schema stays exact.
+		// Migrations 46 and 48 change quick_task_requests and chief_misalignment;
+		// dedicated upgrade tests verify their retained rows and constraints.
 		assert_eq!(
 			inventory
 				.into_iter()
@@ -1528,9 +1540,16 @@ mod tests {
 						| "chief_prompt_input_chunks"
 						| "quick_task_requests"
 						| "conversation_native_settings"
+						| "chief_misalignment"
 				))
 				.collect::<Vec<_>>(),
-			original.into_iter().filter(|row| row.2 != "quick_task_requests").collect::<Vec<_>>()
+			original
+				.into_iter()
+				.filter(|row| !matches!(
+					row.2.as_str(),
+					"quick_task_requests" | "chief_misalignment"
+				))
+				.collect::<Vec<_>>()
 		);
 		assert_eq!(applied_version(&connection).unwrap(), CURRENT_SCHEMA_VERSION);
 		assert_eq!(
@@ -1550,3 +1569,7 @@ mod tests {
 #[cfg(test)]
 #[path = "initial_model_source_migration_tests.rs"]
 mod initial_model_source_tests;
+
+#[cfg(test)]
+#[path = "misalignment_voice_migration_tests.rs"]
+mod misalignment_voice_tests;

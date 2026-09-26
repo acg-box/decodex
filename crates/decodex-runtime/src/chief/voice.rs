@@ -75,10 +75,12 @@ impl ChiefCoordinator {
 			Some("Conversation paused. Review the provider findings before continuing."),
 		);
 		// Retire local microphone authority even if native stop acknowledgment is lost.
+		let persisted = self.store.retire_chief_misalignment_voice(thread.into()).await;
 		let result =
 			self.client.request("thread/realtime/stop", json!({"threadId":active_thread})).await;
-		// Stop microphone authority before storage; retain the session if saving fails.
+		// Retain the session until the durable cause and transcript tails are saved.
 		voice.save_transcript_tails(&self.store, &id).await?;
+		persisted?;
 		if result.is_ok() {
 			self.store.close_chief_voice_call(id).await?;
 			voice.session = None;
@@ -362,12 +364,73 @@ mod tests {
 	use super::*;
 
 	#[tokio::test]
+	async fn precaution_storage_failure_still_retires_voice_and_requests_native_stop() {
+		use decodex_protocol::EntityId;
+		for disconnected in [false, true] {
+			let (mut chief, mut sent, directory) = super::super::tests::fixture_with_history(
+				json!({"_voice_stop_disconnect":disconnected}),
+			)
+			.await;
+			chief.start_chief("chief", "Coordinate").await.unwrap();
+			let gateway = crate::chief_voice::VoiceGateway::new();
+			chief.attach_voice_host("generation".into(), gateway.clone());
+			gateway.exchange(&ChiefVoiceRequest::Start {
+				session_id: EntityId::new("voice").unwrap(),
+				work_id: EntityId::new("chief").unwrap(),
+				offer: VoiceSdp::new("offer".into()).unwrap(),
+			});
+			chief.voice.as_mut().unwrap().session =
+				Some(("voice".into(), "opaque thread/1".into()));
+			let root = decodex_core::DecodexRoot::new(
+				directory.path().canonicalize().unwrap().join("root"),
+			)
+			.unwrap();
+			let database =
+				rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+			database.execute_batch("CREATE TRIGGER fail_voice_retirement BEFORE UPDATE OF retired_voice ON chief_misalignment BEGIN SELECT RAISE(FAIL, 'injected retirement write failure'); END;").unwrap();
+			while sent.try_recv().is_ok() {}
+			assert!(
+				chief
+					.observe_misalignment(
+						"opaque thread/1",
+						"opaque turn/1",
+						&json!({"codexErrorInfo":"misalignmentPolicyViolation"})
+					)
+					.await
+					.is_err()
+			);
+			chief
+				.voice_event(&ServerEvent::Notification {
+					method: "thread/realtime/sdp".into(),
+					params: json!({"threadId":"opaque thread/1","sdp":"late-answer"}),
+				})
+				.await
+				.unwrap();
+			assert_eq!(
+				gateway
+					.exchange(&ChiefVoiceRequest::Poll {
+						session_id: EntityId::new("voice").unwrap()
+					})
+					.phase,
+				ChiefVoicePhase::Failed
+			);
+			assert!(chief.voice.as_ref().unwrap().precaution_retired);
+			assert!(chief.voice.as_ref().unwrap().session.is_some());
+			assert!(chief.store.chief_misalignment("chief".into()).await.unwrap().is_some());
+			let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+			assert_eq!(requests.len(), 1);
+			assert_eq!(requests[0]["method"], "thread/realtime/stop");
+		}
+	}
+
+	#[tokio::test]
 	async fn misalignment_retires_voice_even_when_stop_acknowledgment_is_lost() {
 		use decodex_protocol::{ChiefVoicePhase, ChiefVoiceRequest, EntityId, VoiceSdp};
-		{
-			let (mut chief, mut sent, _directory) =
-				super::super::tests::fixture_with_history(json!({"_voice_stop_disconnect":true}))
-					.await;
+		for disconnected in [false, true] {
+			let (mut chief, mut sent, directory) = super::super::tests::fixture_with_history(
+				json!({"_voice_stop_disconnect":disconnected}),
+			)
+			.await;
 			chief.start_chief("chief", "Coordinate").await.unwrap();
 			let gateway = crate::chief_voice::VoiceGateway::new();
 			chief.attach_voice_host("generation".into(), gateway.clone());
@@ -404,6 +467,19 @@ mod tests {
 				ChiefVoicePhase::Failed
 			);
 			assert!(chief.voice_request(start).await.is_err());
+			chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
+			let review = chief.store.chief_misalignment("chief".into()).await.unwrap().unwrap();
+			let root = decodex_core::DecodexRoot::new(
+				directory.path().canonicalize().unwrap().join("root"),
+			)
+			.unwrap();
+			let reopened = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+			// Even fully current later-turn evidence cannot clear a voice-retired precaution.
+			reopened
+				.reconcile_chief_misalignment("chief".into(), review.clone(), || true)
+				.await
+				.unwrap();
+			assert_eq!(reopened.chief_misalignment("chief".into()).await.unwrap(), Some(review));
 			let mut stops = 0;
 			while let Ok(request) = sent.try_recv() {
 				assert_eq!(request["method"], "thread/realtime/stop");

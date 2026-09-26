@@ -185,6 +185,19 @@ Guardian observation retention remains a separate open delivery at this snapshot
 [PR1524](https://github.com/acg-box/decodex/pull/1524) addresses the decoder and
 store limits; its pending status does not close the inherited Guardian row here.
 
+## Misalignment history and voice retirement restored on 2026-09-26
+
+`database/src/chief_misalignment.rs` now matches its complete preserved snapshot.
+The inherited `0034_chief_misalignment_voice.sql` matches the new registered
+migration 48. Existing historical migrations are unchanged. Both original
+hashes match; shared runtime files remain open because other differences remain.
+
+See [misalignment recovery](misalignment-history-recovery.md) for complete-history
+reconciliation, source guards, durable voice retirement, no-replay behavior and
+upgrade validation. This batch closes two rows from its 183-row main baseline
+to 181 and retains all 360 entries. Parallel deliveries can reduce the combined
+count further. No broad capability group or final desktop acceptance is closed.
+
 ## Core gaps resolved since the earlier audit
 
 The earlier baseline was 3f131d80b9e90d2badf2394249bbf3b0266f72d3. Its three core

@@ -54,6 +54,7 @@ impl ChiefCoordinator {
 	pub(super) async fn recover_async_questions(&mut self) -> Result<(), ChiefError> {
 		for (work, thread, required_item) in self.store.pending_chief_async_recovery().await? {
 			let revision = self.client.question_revision();
+			let lifecycle = self.client.thread_settings_guard(&thread);
 			let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
 			let mut projection = super::async_projection::Projection::default();
 			let mut saw_required = required_item.is_none();
@@ -64,6 +65,7 @@ impl ChiefCoordinator {
 				continue;
 			};
 			let latest = turns.last().and_then(|turn| turn["id"].as_str()).map(str::to_owned);
+			let superseded = self.superseded_misalignment(&work, &thread, &turns).await?;
 			let mut complete = true;
 			for header in turns {
 				let Some(turn) = header["id"].as_str() else {
@@ -116,6 +118,16 @@ impl ChiefCoordinator {
 				}
 			}
 			if complete && saw_required && self.client.question_revision() == revision {
+				if let Some(expected) = superseded
+					&& let Some(guard) = self.client.question_guard(revision)
+					&& let Some(lifecycle) = lifecycle
+				{
+					self.store
+						.reconcile_chief_misalignment(work.clone(), expected, move || {
+							guard.is_live() && lifecycle.is_live()
+						})
+						.await?;
+				}
 				self.store
 					.replace_chief_async_projection(
 						work,
