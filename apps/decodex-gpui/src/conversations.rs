@@ -630,11 +630,18 @@ impl Conversations {
 		drop(state);
 		let turn_id = entity_id()?;
 		let message = message_text(message)?;
-		let working_directory = self
-			.inner
-			.working_directory
-			.clone()
-			.ok_or(ConversationInputError::WorkingDirectoryUnavailable)?;
+		// Use the selected native directory, or its persisted original request
+		// directory when native settings have not yet been observed.
+		// This remains untrusted input: runtime revalidates the directory and exact
+		// resumed thread before authorizing model execution.
+		let working_directory = match task.native_settings.as_deref() {
+			Some(settings) => ConversationWorkingDirectory::new(settings.cwd.clone())
+				.map_err(|_| ConversationInputError::WorkingDirectoryUnavailable)?,
+			None => task
+				.original_working_directory
+				.clone()
+				.ok_or(ConversationInputError::WorkingDirectoryUnavailable)?,
+		};
 		let submission = QueuedConversationSubmission {
 			conversation_id: task.conversation_id.clone(),
 			turn_id: Some(turn_id.clone()),
@@ -2483,6 +2490,13 @@ pub(crate) mod tests {
 			active_turn_id,
 			recovery_action,
 		)
+		.map(|mut summary| {
+			summary.original_working_directory = Some(
+				ConversationWorkingDirectory::new("/saved/project")
+					.expect("saved directory fixture"),
+			);
+			summary
+		})
 	}
 
 	#[test]
@@ -3251,6 +3265,106 @@ pub(crate) mod tests {
 			conversations.route_query_result(1, server, &reply),
 			ConversationRouteOutcome::Fresh
 		);
+	}
+
+	pub(crate) fn native_settings_fixture() -> Conversations {
+		let (conversations, _, mut task) = connected_conversations();
+		task.codex_thread_id = Some(
+			decodex_protocol::ProviderThreadId::new("native-thread")
+				.expect("valid native settings fixture"),
+		);
+		task.native_settings = Some(serde_json::from_value(serde_json::json!({
+			"model":"native-observed-model","model_provider":"native-observed-provider","cwd":"/native/project","reasoning_effort":"ultra","observed_at_micros":42,
+			"source_account_id":"10000000-0000-4000-8000-000000000001","source_account_revision":3,"source_process_generation_id":"20000000-0000-4000-8000-000000000001"
+		})).expect("valid native settings fixture"));
+		task.projection_updated_at_micros = 43;
+		conversations.lock().upsert_task(task);
+		conversations
+	}
+
+	#[test]
+	fn continuation_uses_selected_native_directory_without_changing_explicit_model() {
+		for directory in [Some("/native/project"), None] {
+			let (conversations, server, mut task) = connected_conversations();
+			if directory.is_some() {
+				task = native_settings_fixture().snapshot().selected_task().unwrap().clone();
+			}
+			{
+				let mut state = conversations.lock();
+				state.pending_query = None;
+				state.upsert_task(task.clone());
+				state.execution.model = ConversationModel::new("explicit-next-model").unwrap();
+				state.creation_intent.model = true;
+				state.creation_intent.reasoning = true;
+			}
+			conversations.submit("Continue in this thread").unwrap();
+			let dispatch = conversations.try_take_dispatch(1, &server).unwrap();
+			let CommandPayload::SubmitConversationTurn {
+				conversation_id,
+				working_directory,
+				execution,
+				message,
+				..
+			} = &dispatch.command().unwrap().payload
+			else {
+				panic!("continuation command")
+			};
+			assert_eq!(conversation_id, &task.conversation_id);
+			assert_eq!(working_directory.as_str(), directory.unwrap_or("/saved/project"));
+			assert_eq!(execution.model.as_str(), "explicit-next-model");
+			assert_eq!(message.as_str(), "Continue in this thread");
+		}
+	}
+
+	#[test]
+	fn missing_saved_directory_never_uses_application_default_for_continuation() {
+		let (conversations, _, _) = connected_conversations();
+		{
+			let mut state = conversations.lock();
+			state.pending_query = None;
+			state.tasks[0].original_working_directory = None;
+		}
+		assert!(conversations.inner.working_directory.is_some());
+		assert_eq!(
+			conversations.submit("Keep this draft"),
+			Err(ConversationInputError::WorkingDirectoryUnavailable)
+		);
+		assert!(conversations.lock().pending_command.is_none());
+	}
+
+	#[test]
+	fn unusable_native_directory_does_not_fall_back_to_another_workspace() {
+		let conversations = native_settings_fixture();
+		{
+			let mut state = conversations.lock();
+			state.pending_query = None;
+			state.tasks[0].native_settings.as_mut().unwrap().cwd = "/".into();
+		}
+		assert_eq!(
+			conversations.submit("Keep this draft"),
+			Err(ConversationInputError::WorkingDirectoryUnavailable)
+		);
+		assert!(conversations.lock().pending_command.is_none());
+	}
+
+	#[test]
+	fn native_observation_updates_preserve_explicit_execution_and_reject_older_results() {
+		let conversations = native_settings_fixture();
+		let mut state = conversations.lock();
+		state.execution.model = ConversationModel::new("explicit-next-model").unwrap();
+		state.creation_intent.model = true;
+		state.creation_intent.reasoning = true;
+		let execution = state.execution.clone();
+		let current = state.selected_task().unwrap().clone();
+		let mut changed = current.clone();
+		changed.projection_updated_at_micros += 1;
+		changed.native_settings.as_mut().unwrap().model_provider = "new-native-provider".into();
+		state.upsert_task(changed.clone());
+		state.upsert_task(current);
+		assert_eq!(state.selected_task(), Some(&changed));
+		assert_eq!(state.execution, execution);
+		assert!(state.creation_intent.model);
+		assert!(state.creation_intent.reasoning);
 	}
 
 	pub(crate) fn catalog_conversations() -> (Conversations, ServerId, ConversationSummary) {

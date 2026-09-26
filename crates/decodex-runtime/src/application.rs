@@ -2452,7 +2452,49 @@ fn pre_session_presentation(
 	}
 }
 
+fn native_conversation_settings(
+	observed: decodex_database::ConversationNativeSettingsObservation,
+) -> Result<decodex_protocol::ConversationNativeSettings, ()> {
+	decodex_protocol::ConversationNativeSettings {
+		model: decodex_protocol::ConversationModel::new(observed.settings.model).map_err(|_| ())?,
+		model_provider: observed.settings.model_provider,
+		cwd: observed.settings.cwd,
+		reasoning_effort: observed
+			.settings
+			.reasoning_effort
+			.map(decodex_protocol::ConversationReasoningEffort::new)
+			.transpose()
+			.map_err(|_| ())?,
+		observed_at_micros: observed.observed_at_micros,
+		source_account_id: EntityId::new(observed.account_id).map_err(|_| ())?,
+		source_account_revision: EntityRevision(
+			u64::try_from(observed.account_revision).map_err(|_| ())?,
+		),
+		source_process_generation_id: EntityId::new(observed.process_generation_id)
+			.map_err(|_| ())?,
+	}
+	.validate()
+	.map_err(|_| ())
+}
+
 fn conversation_summary_from_row(
+	row: OrdinaryTaskConversationReadback,
+	projection: Option<ConversationProjection>,
+) -> Result<ConversationSummary, ()> {
+	let native_settings = row
+		.native_settings
+		.clone()
+		.map(|observation| native_conversation_settings(*observation))
+		.transpose()?;
+	let directory =
+		decodex_protocol::ConversationWorkingDirectory::new(row.original_working_directory.clone())
+			.map_err(|_| ())?;
+	let mut summary = conversation_summary_without_original_directory(row, projection)?;
+	summary.original_working_directory = Some(directory);
+	summary.with_native_settings(native_settings).map_err(|_| ())
+}
+
+fn conversation_summary_without_original_directory(
 	row: OrdinaryTaskConversationReadback,
 	projection: Option<ConversationProjection>,
 ) -> Result<ConversationSummary, ()> {
@@ -6756,6 +6798,7 @@ mod tests {
 		decision_id: Option<&str>,
 	) -> OrdinaryTaskConversationReadback {
 		OrdinaryTaskConversationReadback {
+			original_working_directory: "/saved/project".into(),
 			native_settings: None,
 			conversation_id: ConversationId::new("40000000-0000-4000-8000-000000001276").unwrap(),
 			title: "Conversation fixture".to_owned(),
@@ -6775,6 +6818,63 @@ mod tests {
 			routing_decision_id: decision_id.map(str::to_owned),
 			updated_at_micros: 1,
 		}
+	}
+
+	#[test]
+	fn ordinary_native_settings_survive_durable_and_local_projection_without_becoming_intent() {
+		let mut row = pre_session_conversation(OrdinaryTaskPreSessionState::RoutingPending, None);
+		row.pre_session_state = None;
+		row.runtime_session_id = Some(
+			decodex_core::RuntimeSessionId::new("42000000-0000-4000-8000-000000001276").unwrap(),
+		);
+		row.runtime_session_revision = Some(3);
+		row.runtime_session_state = Some(RuntimeSessionState::Active);
+		row.codex_thread_id = Some("native-thread".into());
+		row.has_acknowledged_turn = true;
+		row.native_settings =
+			Some(Box::new(decodex_database::ConversationNativeSettingsObservation {
+				settings: decodex_database::ConversationNativeSettings {
+					model: "server-model".into(),
+					model_provider: "server-provider".into(),
+					cwd: "/server/project".into(),
+					reasoning_effort: Some("ultra".into()),
+				},
+				observed_at_micros: 42,
+				process_generation_id: "43000000-0000-4000-8000-000000001276".into(),
+				account_id: "44000000-0000-4000-8000-000000001276".into(),
+				account_revision: 7,
+			}));
+		let durable = conversation_summary_from_row(row.clone(), None).unwrap();
+		assert_eq!(durable.original_working_directory.as_ref().unwrap().as_str(), "/saved/project");
+		assert_eq!(durable.native_settings.as_ref().unwrap().model_provider, "server-provider");
+		let local = crate::conversation::ConversationProjection {
+			readback: crate::conversation::ConversationReadback {
+				operation_key: None,
+				correlation_id: None,
+				causation_id: None,
+				conversation_id: row.conversation_id.clone(),
+				conversation_revision: Some(row.conversation_revision),
+				runtime_session_id: row.runtime_session_id.clone(),
+				runtime_session_revision: row.runtime_session_revision,
+				codex_thread_id: row.codex_thread_id.clone(),
+				process_generation_id: None,
+				active_turn_id: None,
+				state: crate::conversation::ConversationLocalState::Ready,
+			},
+			recovery: None,
+		};
+		let live = conversation_summary_from_row(row.clone(), Some(local.clone())).unwrap();
+		assert_eq!(live.native_settings, durable.native_settings);
+		let wire = serde_json::to_vec(&live).unwrap();
+		assert_eq!(
+			serde_json::from_slice::<decodex_protocol::ConversationSummary>(&wire).unwrap(),
+			live
+		);
+		let mut foreign = local;
+		foreign.readback.codex_thread_id = Some("other-thread".into());
+		assert!(conversation_summary_from_row(row.clone(), Some(foreign)).is_err());
+		row.native_settings.as_mut().unwrap().settings.model_provider.clear();
+		assert!(conversation_summary_from_row(row, None).is_err());
 	}
 
 	#[test]
@@ -6805,6 +6905,7 @@ mod tests {
 	#[test]
 	fn terminal_session_projection_never_reopens_routing_recovery() {
 		let row = OrdinaryTaskConversationReadback {
+			original_working_directory: "/saved/project".into(),
 			native_settings: None,
 			conversation_id: ConversationId::new("40000000-0000-4000-8000-000000001276").unwrap(),
 			title: "Conversation fixture".to_owned(),

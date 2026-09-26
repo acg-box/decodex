@@ -119,8 +119,16 @@ async fn complete(
 	let mut notices = 0;
 	loop {
 		match app.next_publication().await.expect("public runtime output").event {
-			decodex_protocol::EventPayload::ConversationTurnFinished { outcome, .. } => {
+			decodex_protocol::EventPayload::ConversationTurnFinished {
+				conversation,
+				outcome,
+				..
+			} => {
 				assert_eq!(outcome, decodex_protocol::ConversationTurnOutcome::Succeeded);
+				let observed = conversation.native_settings.as_deref().expect("native observation");
+				assert_eq!(observed.model.as_str(), "cold-native-model");
+				assert_eq!(observed.model_provider, "fixture");
+				assert_eq!(observed.cwd, home.to_str().expect("fixture directory"));
 				return notices;
 			},
 			decodex_protocol::EventPayload::ConversationHistoryChanged { conversation_id } => {

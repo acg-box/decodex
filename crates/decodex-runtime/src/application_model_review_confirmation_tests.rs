@@ -14,6 +14,20 @@ pub(super) async fn assert_cold_readback(root: &DecodexRoot, id: &decodex_core::
 	assert_eq!(current.conversation_revision, EntityRevision(2));
 	assert!(current.codex_thread_id.is_some());
 	assert!(current.active_turn_id.is_none());
+	assert_native_observation(&current);
+}
+
+fn assert_native_observation(summary: &decodex_protocol::ConversationSummary) {
+	let native = summary.native_settings.as_deref().expect("native response observation");
+	assert_eq!(native.model.as_str(), "gpt-5.6-sol");
+	assert_eq!(native.model_provider, "fixture");
+	assert!(native.cwd.ends_with("/saved-request"));
+	assert_eq!(
+		summary.original_working_directory.as_ref().expect("saved directory").as_str(),
+		native.cwd
+	);
+	assert!(native.observed_at_micros > 0);
+	assert!(native.source_account_revision.0 > 0);
 }
 
 pub(super) async fn qualify(
@@ -57,6 +71,7 @@ pub(super) async fn qualify(
 				if let decodex_protocol::EventPayload::ConversationTurnFinished { conversation, outcome, .. } = publication.event {
 					assert_eq!(outcome, decodex_protocol::ConversationTurnOutcome::Succeeded);
 					assert_eq!(conversation.state, decodex_protocol::ConversationState::Ready);
+					assert_native_observation(&conversation);
 					break;
 				}
 			}

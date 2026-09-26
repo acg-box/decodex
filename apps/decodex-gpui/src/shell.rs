@@ -4083,6 +4083,40 @@ fn inspector_metadata_row(label: &'static str, value: String) -> AnyElement {
 		.into_any_element()
 }
 
+fn conversation_native_settings_inspector(
+	settings: Option<&decodex_protocol::ConversationNativeSettings>,
+) -> AnyElement {
+	let Some(settings) = settings else {
+		return div()
+			.id("conversation-native-settings-unavailable")
+			.debug_selector(|| "conversation-native-settings-unavailable".into())
+			.role(Role::Status)
+			.text_size(px(11.0))
+			.text_color(rgb(WB_TEXT_FAINT))
+			.child("Native settings have not been observed.")
+			.into_any_element();
+	};
+	div()
+		.id("conversation-native-settings")
+		.debug_selector(|| "conversation-native-settings".into())
+		.role(Role::Group)
+		.aria_label("Last read Codex settings")
+		.flex()
+		.flex_col()
+		.gap_2()
+		.child(
+			div().text_size(px(11.0)).text_color(rgb(WB_TEXT_FAINT)).child("Last read from Codex"),
+		)
+		.child(inspector_metadata_row("Model", settings.model.as_str().to_owned()))
+		.child(inspector_metadata_row("Provider", settings.model_provider.clone()))
+		.child(inspector_metadata_row("Directory", settings.cwd.clone()))
+		.child(inspector_metadata_row(
+			"Reasoning",
+			settings.reasoning_effort.as_ref().map_or("Not reported", |e| e.as_str()).to_owned(),
+		))
+		.into_any_element()
+}
+
 fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let Some(task) = shell.quick.selected_task() else {
 		return div()
@@ -4118,6 +4152,8 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 		))
 		.child(inspector_metadata_row("Runtime", runtime))
 		.child(inspector_metadata_row("Revision", format!("r{}", task.conversation_revision.0)));
+	content =
+		content.child(conversation_native_settings_inspector(task.native_settings.as_deref()));
 	if let Some(program) = task.program.as_ref() {
 		content = content
 			.child(inspector_metadata_row("Program", compact_identity(program.program_id.as_str())))
@@ -7049,5 +7085,52 @@ mod tests {
 				assert_eq!(WORKBENCH_INSPECTOR_WIDTH, 344.0);
 			});
 		}
+	}
+	#[gpui::test]
+	fn native_settings_inspector_preserves_draft_and_next_message_settings(
+		cx: &mut TestAppContext,
+	) {
+		let (shell, visual) = open_shell(cx);
+		let conversations = crate::conversations::tests::native_settings_fixture();
+		let execution = conversations.snapshot().execution.clone();
+		shell.update(visual, |s, cx| {
+			s.select_destination(Destination::Conversations, cx);
+			s.conversations = conversations;
+			s.synchronize_conversations(cx);
+			s.inspector_visible = true;
+			s.inspector_mounted = true;
+			s.inspector_tab = InspectorTab::Context;
+			s.composer.update(cx, |composer, cx| composer.set_content("Unsent local draft", cx));
+		});
+		visual.update(|window, cx| {
+			window.resize(size(px(1440.), px(1000.)));
+			window.draw(cx).clear();
+		});
+		visual.executor().advance_clock(ui_theme::MOTION_PANEL + Duration::from_millis(24));
+		visual.run_until_parked();
+		visual.update(|window, cx| window.draw(cx).clear());
+		shell.read_with(visual, |s, _| {
+			assert_eq!(s.selected, Destination::Conversations);
+			assert!(s.quick.selected_task().unwrap().native_settings.is_some());
+		});
+		assert!(
+			visual.debug_bounds("conversation-native-settings").is_some(),
+			"inspector={:?}, heading={:?}",
+			visual.debug_bounds("workbench-inspector"),
+			visual.debug_bounds("inspector-conversation-heading")
+		);
+		shell.update(visual, |s, cx| {
+			assert_eq!(s.composer.read(cx).content(), "Unsent local draft");
+			assert_eq!(s.quick.execution, execution);
+			assert_eq!(
+				s.quick.selected_task().unwrap().native_settings.as_ref().unwrap().model_provider,
+				"native-observed-provider"
+			);
+			s.quick.tasks[0].native_settings = None;
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(visual.debug_bounds("conversation-native-settings").is_none());
+		assert!(visual.debug_bounds("conversation-native-settings-unavailable").is_some());
 	}
 }
