@@ -6,6 +6,44 @@ use super::{
 };
 
 impl ChiefSurface {
+	pub(super) fn native_summary_row(
+		&self,
+		work: &ChiefWorkItemDto,
+		item: &Content,
+		cx: &mut Context<Self>,
+	) -> gpui::AnyElement {
+		let Content::Item { turn_id, item_id, kind, text, truncated, attachments, .. } = item
+		else {
+			return div().into_any_element();
+		};
+		let identity =
+			serde_json::json!(["summary", work.id, work.codex_thread_id, turn_id, item_id])
+				.to_string();
+		let mut row = div()
+			.w_full()
+			.min_w_0()
+			.flex()
+			.flex_col()
+			.gap_1()
+			.debug_selector(|| "native-summary-message".into())
+			.child(muted(if kind == "userMessage" { "You" } else { "Assistant" }))
+			.child(markdown::render(text, &identity));
+		for attachment in attachments {
+			row = row.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
+		}
+		if *truncated {
+			row = row.child(muted("Some content was omitted from this history preview."));
+		}
+		if kind == "agentMessage" && !text.is_empty() {
+			row = row.child(markdown::response_copy_button(
+				&format!("copy-{identity}"),
+				"Copy response",
+				text.clone(),
+			));
+		}
+		row.into_any_element()
+	}
+
 	pub(super) fn native_timeline_row(
 		&self,
 		work: &ChiefWorkItemDto,
@@ -95,104 +133,7 @@ impl ChiefSurface {
 	) -> gpui::AnyElement {
 		let row = div().w_full().min_w_0().flex().flex_col().gap_1();
 		match &entry.content {
-			Content::Item {
-				app_ui,
-				text,
-				kind,
-				truncated,
-				activity,
-				turn_id,
-				item_id,
-				attachments,
-			} => {
-				let draft = if matches!(kind.as_str(), "agentMessage" | "plan" | "reasoning") {
-					self.native_live_message(work, turn_id, item_id)
-				} else {
-					None
-				};
-				let (text, truncated) = draft.map_or((text.as_str(), *truncated), |message| {
-					(message.text.as_str(), message.truncated)
-				});
-				if matches!(kind.as_str(), "userMessage" | "agentMessage") {
-					let message = self.native_message_entry(work, turn_id, text, kind);
-					let mut body = div().debug_selector(|| "native-promotion-content".into());
-					for attachment in attachments {
-						body = body
-							.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
-					}
-					body = if draft.is_some() {
-						body.child(super::super::text_reveal::StreamingText {
-							text: text.into(),
-							key: identity.into(),
-						})
-					} else {
-						body.child(super::super::history_entry_with_key(&message, identity))
-					};
-					if truncated {
-						body = body
-							.child(muted("Some content was omitted from this history preview."));
-					}
-					if kind == "userMessage"
-						&& let Some(thread) = &work.codex_thread_id
-					{
-						let (owner, thread, turn, item) =
-							(work.id.clone(), thread.clone(), turn_id.clone(), item_id.clone());
-						body = body.child(self.workspace_action(
-							format!("review-prompt-{identity}"),
-							"Review earlier input".into(),
-							move |s, cx| s.review_prompt(&owner, &thread, &turn, &item, cx),
-							cx,
-						));
-					}
-					return body.into_any_element();
-				}
-				let label = match kind.as_str() {
-					"userMessage" => "You",
-					"agentMessage" => "Assistant",
-					"plan" => "Proposed plan",
-					"reasoning" => "Reasoning summary",
-					"functionCallOutput" => "Tool result",
-					_ => kind,
-				};
-				let mut row = row.child(muted(label));
-				if *app_ui {
-					row = row.child(self.native_app_ui_action(work, turn_id, item_id, cx));
-				}
-				for attachment in attachments {
-					row = row.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
-				}
-				if !text.is_empty() {
-					let selector = match kind.as_str() {
-						"plan" => "native-plan-content",
-						"reasoning" => "native-reasoning-summary",
-						_ => "native-promotion-content",
-					};
-					row = row.child(
-						div()
-							.debug_selector(move || selector.into())
-							.child(markdown::render(text, identity)),
-					);
-				}
-				if truncated {
-					row = row.child(muted("Some content was omitted from this history preview."));
-				}
-				if matches!(kind.as_str(), "agentMessage" | "plan") && !text.is_empty() {
-					row = row.child(markdown::response_copy_button(
-						&format!("copy-{identity}"),
-						if kind == "plan" { "Copy plan" } else { "Copy response" },
-						text.to_owned(),
-					));
-				}
-				if let Some(activity) = activity {
-					return self.detail_row(
-						work,
-						activity,
-						row.child(format!("{} · {}", activity.label, activity.status)),
-						cx,
-					);
-				}
-				row.into_any_element()
-			},
+			content @ Content::Item { .. } => self.native_item_content(work, content, identity, cx),
 			Content::Speech { role, text, truncated, .. } => row
 				.child(muted(if role == "user" { "You · Voice" } else { "Assistant · Voice" }))
 				.child(text.clone())
@@ -233,6 +174,114 @@ impl ChiefSurface {
 			content @ Content::Promotion { .. } =>
 				self.native_promotion(work, content, identity, cx),
 		}
+	}
+
+	fn native_item_content(
+		&self,
+		work: &ChiefWorkItemDto,
+		content: &Content,
+		identity: &str,
+		cx: &mut Context<Self>,
+	) -> gpui::AnyElement {
+		let row = div().w_full().min_w_0().flex().flex_col().gap_1();
+		let Content::Item {
+			app_ui,
+			text,
+			kind,
+			truncated,
+			activity,
+			turn_id,
+			item_id,
+			attachments,
+		} = content
+		else {
+			unreachable!("item renderer")
+		};
+		let draft = if matches!(kind.as_str(), "agentMessage" | "plan" | "reasoning") {
+			self.native_live_message(work, turn_id, item_id)
+		} else {
+			None
+		};
+		let (text, truncated) = draft.map_or((text.as_str(), *truncated), |message| {
+			(message.text.as_str(), message.truncated)
+		});
+		if matches!(kind.as_str(), "userMessage" | "agentMessage") {
+			let message = self.native_message_entry(work, turn_id, text, kind);
+			let mut body = div().debug_selector(|| "native-promotion-content".into());
+			for attachment in attachments {
+				body = body.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
+			}
+			body = if draft.is_some() {
+				body.child(super::super::text_reveal::StreamingText {
+					text: text.into(),
+					key: identity.into(),
+				})
+			} else {
+				body.child(super::super::history_entry_with_key(&message, identity))
+			};
+			if truncated {
+				body = body.child(muted("Some content was omitted from this history preview."));
+			}
+			if kind == "userMessage"
+				&& let Some(thread) = &work.codex_thread_id
+			{
+				let (owner, thread, turn, item) =
+					(work.id.clone(), thread.clone(), turn_id.clone(), item_id.clone());
+				body = body.child(self.workspace_action(
+					format!("review-prompt-{identity}"),
+					"Review earlier input".into(),
+					move |s, cx| s.review_prompt(&owner, &thread, &turn, &item, cx),
+					cx,
+				));
+			}
+			return body.into_any_element();
+		}
+		let label = match kind.as_str() {
+			"userMessage" => "You",
+			"agentMessage" => "Assistant",
+			"plan" => "Proposed plan",
+			"reasoning" => "Reasoning summary",
+			"functionCallOutput" => "Tool result",
+			_ => kind,
+		};
+		let mut row = row.child(muted(label));
+		if *app_ui {
+			row = row.child(self.native_app_ui_action(work, turn_id, item_id, cx));
+		}
+		for attachment in attachments {
+			row = row.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
+		}
+		if !text.is_empty() {
+			let selector = match kind.as_str() {
+				"plan" => "native-plan-content",
+				"reasoning" => "native-reasoning-summary",
+				_ => "native-promotion-content",
+			};
+			row = row.child(
+				div()
+					.debug_selector(move || selector.into())
+					.child(markdown::render(text, identity)),
+			);
+		}
+		if truncated {
+			row = row.child(muted("Some content was omitted from this history preview."));
+		}
+		if matches!(kind.as_str(), "agentMessage" | "plan") && !text.is_empty() {
+			row = row.child(markdown::response_copy_button(
+				&format!("copy-{identity}"),
+				if kind == "plan" { "Copy plan" } else { "Copy response" },
+				text.to_owned(),
+			));
+		}
+		if let Some(activity) = activity {
+			return self.detail_row(
+				work,
+				activity,
+				row.child(format!("{} · {}", activity.label, activity.status)),
+				cx,
+			);
+		}
+		row.into_any_element()
 	}
 
 	fn native_promotion(

@@ -149,7 +149,9 @@ impl ChiefSurface {
 			if self.native_history.task.is_some() {
 				panel = panel.child(muted("Loading native history…"));
 			} else if let Some(message) = self.native_history.notice {
-				panel = panel.child(muted(message));
+				panel = panel.child(
+					div().debug_selector(|| "native-history-notice".into()).child(muted(message)),
+				);
 			}
 		}
 		if self
@@ -199,6 +201,9 @@ impl ChiefSurface {
 			}
 			if self.native_history.opening_session.is_some() {
 				panel = panel.child(muted("Voice conversation continued from an earlier page."));
+			}
+			for item in &self.native_history.summary {
+				panel = panel.child(self.native_summary_row(work, item, cx));
 			}
 			for entry in &self.native_history.entries {
 				panel = panel.child(self.native_timeline_row(work, entry, cx));
@@ -306,6 +311,27 @@ impl ChiefSurface {
 					}) {
 					return;
 				}
+				if let Some(decodex_protocol::ChiefTimelineResult::Summary {
+					work_id,
+					account_id,
+					thread_id,
+					items,
+				}) = &result && sent_cursor.is_none()
+					&& work_id.as_str() == work
+					&& thread_id == &thread
+				{
+					s.cancel_native_scroll_anchor();
+					s.native_history.accept_summary(
+						Binding {
+							work: work.clone(),
+							thread: thread.clone(),
+							account: account_id.as_str().into(),
+						},
+						items.clone(),
+					);
+					cx.notify();
+					return;
+				}
 				if let Some(decodex_protocol::ChiefTimelineResult::Available {
 					account_id,
 					page,
@@ -351,6 +377,7 @@ pub(super) struct Timeline {
 	pub epoch: u64,
 	pub binding: Option<Binding>,
 	pub entries: Vec<ChiefTimelineEntry>,
+	summary: Vec<Content>,
 	pub older_cursor: Option<String>,
 	pub opening_session: Option<String>,
 	requested: Option<(String, String)>,
@@ -413,12 +440,24 @@ impl Timeline {
 		});
 	}
 
+	fn accept_summary(&mut self, binding: Binding, items: Vec<Content>) {
+		self.clear_page();
+		self.binding = Some(binding);
+		self.summary = items;
+		self.recovered();
+		self.retry_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+		self.notice = Some(
+			"Showing up to 100 recent prompts and final replies. Intermediate messages and tool activity are unavailable.",
+		);
+	}
+
 	fn clear_page(&mut self) {
 		self.preview.clear();
 		self.app_ui.clear();
 		self.viewport = Default::default();
 		self.binding = None;
 		self.entries.clear();
+		self.summary.clear();
 		self.older_cursor = None;
 		self.opening_session = None;
 		self.seen_cursors.clear();
@@ -457,6 +496,7 @@ impl Timeline {
 		{
 			return false;
 		}
+		self.summary.clear();
 		self.viewport = Default::default();
 		if self.binding.as_ref() != Some(&binding) {
 			self.preview.clear();
@@ -552,6 +592,112 @@ pub(super) fn key(entry: &ChiefTimelineEntry) -> (u64, u8, &str) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn summary_recovery_renders_notice_and_copies_only_message_text(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+		let mut copy_key = String::new();
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			let work = s
+				.snapshot
+				.as_mut()
+				.expect("snapshot")
+				.work_items
+				.iter_mut()
+				.find(|w| Some(&w.id) == s.selected.as_ref())
+				.expect("work");
+			work.codex_thread_id = Some("thread".into());
+			let binding = Binding {
+				work: work.id.clone(),
+				thread: "thread".into(),
+				account: "account".into(),
+			};
+			copy_key = format!(
+				"copy-{}",
+				serde_json::json!(["summary", work.id, work.codex_thread_id, "turn", "answer"])
+			);
+			s.native_history.requested = Some((work.id.clone(), "thread".into()));
+			s.native_history.accept_summary(
+				binding,
+				vec![Content::Item {
+					turn_id: "turn".into(),
+					item_id: "answer".into(),
+					kind: "agentMessage".into(),
+					text: "Recovered **reply**".into(),
+					truncated: false,
+					app_ui: false,
+					activity: None,
+					attachments: vec![],
+				}],
+			);
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("native-summary-message").is_some());
+		assert!(visual.debug_bounds("native-history-notice").is_some());
+		let button =
+			visual.debug_bounds(Box::leak(copy_key.into_boxed_str())).expect("summary copy action");
+		visual.simulate_click(button.center(), gpui::Modifiers::default());
+		visual.update(|_, cx| {
+			assert_eq!(
+				cx.read_from_clipboard().and_then(|v| v.text()),
+				Some("Recovered **reply**".into())
+			)
+		});
+		surface.update(visual, |s, cx| {
+			s.native_history.reset();
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("native-summary-message").is_none());
+	}
+
+	#[test]
+	fn summary_recovery_never_reuses_timeline_positions_or_cursors() {
+		let binding =
+			Binding { work: "work".into(), thread: "thread".into(), account: "account".into() };
+		let item = Content::Item {
+			turn_id: "turn".into(),
+			item_id: "answer".into(),
+			kind: "agentMessage".into(),
+			text: "Recovered".into(),
+			truncated: false,
+			app_ui: false,
+			activity: None,
+			attachments: vec![],
+		};
+		let mut state = Timeline::default();
+		state.entries.push(ChiefTimelineEntry { position: 42, content: item.clone() });
+		state.older_cursor = Some("old".into());
+		state.opening_session = Some("voice".into());
+		state.accept_summary(binding.clone(), vec![item.clone()]);
+		assert!(state.entries.is_empty());
+		assert!(state.older_cursor.is_none() && state.opening_session.is_none());
+		assert_eq!(state.summary, vec![item.clone()]);
+		assert!(state.notice.expect("summary notice").contains("Intermediate messages"));
+		assert!(state.refresh(
+			binding,
+			ChiefTimelinePage {
+				thread_id: "thread".into(),
+				entries: vec![ChiefTimelineEntry { position: 77, content: item }],
+				next_cursor: Some("real-cursor".into()),
+				active_realtime_session_at_page_start: None
+			}
+		));
+		state.recovered();
+		assert!(state.summary.is_empty() && state.notice.is_none());
+		assert_eq!(state.entries[0].position, 77);
+		assert_eq!(state.older_cursor.as_deref(), Some("real-cursor"));
+		state.reset();
+		assert!(state.summary.is_empty() && state.binding.is_none());
+	}
+
 	#[gpui::test]
 	fn prompt_handback_replaces_old_history_only_with_fresh_bound_pages(
 		cx: &mut gpui::TestAppContext,
