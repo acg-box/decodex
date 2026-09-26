@@ -521,3 +521,5 @@ impl OwnedReviewer {
 #[path = "chief_process_warning_tests.rs"] mod warning_tests;
 
 #[path = "chief_process_voice_settings_start_tests.rs"] mod voice_settings_start;
+
+#[path = "chief_process_app_ui_call_tests.rs"] mod app_ui_call;

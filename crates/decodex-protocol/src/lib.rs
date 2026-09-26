@@ -31,6 +31,16 @@ pub use chief_guardian::{
 };
 mod chief_integrations;
 pub use chief_integrations::{ChiefAppInventory, ChiefAppStatusDto};
+mod chief_app_ui_call;
+pub use chief_app_ui_call::{
+	CHIEF_APP_UI_RECEIPT_CHUNK_BYTES, ChiefAppUiCall, ChiefAppUiCallReview,
+	ChiefAppUiReceiptRequest, ChiefAppUiReceiptResult, ChiefPendingAppUiCall,
+	MAX_CHIEF_APP_UI_CALL_BYTES, MAX_CHIEF_APP_UI_RECEIPT_BYTES,
+};
+mod chief_app_ui;
+pub use chief_app_ui::{
+	CHIEF_APP_UI_CHUNK_BYTES, ChiefAppUiRequest, ChiefAppUiResult, MAX_CHIEF_APP_UI_BYTES,
+};
 mod chief_media;
 pub use chief_media::{
 	CHIEF_MEDIA_CHUNK_BYTES, ChiefMediaRequest, ChiefMediaResult, MAX_CHIEF_MEDIA_BYTES,
@@ -215,7 +225,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 87 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 88 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

@@ -31,7 +31,7 @@ unicode-segmentation = "1.13.3"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2            = { version = "~0.6" }
 objc2-app-kit    = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSButton", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSPanel", "NSResponder", "NSRunningApplication", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSTrackingArea", "NSView", "NSVisualEffectView", "NSWindow", "block2", "objc2-core-foundation"] }
-objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSString"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSString", "NSDate", "NSRunLoop"] }
 
 [dev-dependencies]
 futures-util      = { workspace = true }

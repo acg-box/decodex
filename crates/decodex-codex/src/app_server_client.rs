@@ -65,6 +65,8 @@ pub use app_link_settings::{
 pub use model_defaults::{NativeExecutionDefaults, NativeModelDefaults};
 pub use realtime_preferences::{NativeVoiceSettings, is_realtime_voice_write};
 pub use temporary_structured::{TemporaryStructuredOptions, TemporaryStructuredThread};
+mod app_ui;
+pub use app_ui::{NativeAppUi, NativeAppUiToolReview};
 mod integrations;
 pub use hooks::{
 	HookSettingsChange, HookSettingsReview, HookSettingsWrite, is_hook_settings_write,

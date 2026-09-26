@@ -210,6 +210,7 @@ pub(crate) fn owns_work(
 #[cfg(test)]
 mod tests {
 	mod app_settings;
+	mod app_ui_calls;
 	mod hooks;
 	mod models;
 	mod native_warnings;

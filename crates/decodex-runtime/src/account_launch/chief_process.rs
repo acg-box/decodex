@@ -285,10 +285,13 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "thread/inject_items"
 					| "thread/attachment/list"
 					| "mcpServerStatus/list"
+					| "mcpServer/resource/read"
+					| "mcpServer/tool/call"
 					| "plugin/installed"
 					| "plugin/list" | "plugin/read"
 					| "app/installed"
-					| "app/list" | "account/usage/read"
+					| "app/list" | "app/read"
+					| "account/usage/read"
 					| "thread/unarchive"
 					| "thread/revert"
 					| "thread/unsubscribe"
@@ -433,6 +436,8 @@ mod tests {
 		for method in [
 			"thread/attachment/list",
 			"mcpServerStatus/list",
+			"mcpServer/resource/read",
+			"app/read",
 			"plugin/installed",
 			"plugin/list",
 			"plugin/read",

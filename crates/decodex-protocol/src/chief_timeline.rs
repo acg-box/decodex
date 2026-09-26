@@ -95,6 +95,9 @@ pub enum ChiefTimelineContent {
 		truncated: bool,
 		/// Existing public activity projection, if applicable.
 		activity: Option<crate::ChiefActivityDto>,
+		/// Native tool metadata declares an interactive App UI resource.
+		#[serde(default)]
+		app_ui: bool,
 		/// Non-text content descriptors in original source order.
 		attachments: Vec<ChiefTimelineAttachment>,
 	},

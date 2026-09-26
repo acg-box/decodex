@@ -1,6 +1,7 @@
 //! Bounded public projection of native timeline facts; never enqueue history as input.
 use decodex_protocol::{ChiefTimelineContent as Content, ChiefTimelineEntry, ChiefTimelinePage};
 use serde_json::{Value, json};
+pub(crate) mod app_ui;
 mod attachments;
 pub(crate) mod media;
 pub(crate) mod metrics;
@@ -90,6 +91,23 @@ where
 pub(crate) enum ProjectionError {
 	Malformed,
 	Capacity,
+}
+
+#[cfg(test)]
+mod app_ui_projection_tests {
+	use super::*;
+	#[test]
+	fn only_native_mcp_resource_metadata_enables_the_app_entry() {
+		for (kind, metadata, expected) in [
+			("mcpToolCall", json!({"resourceUri":"ui://fixture/view"}), true),
+			("mcpToolCall", json!(null), false),
+			("mcpToolCall", json!({"resourceUri":"https://example.com"}), false),
+			("agentMessage", json!({"resourceUri":"ui://fixture/view"}), false),
+		] {
+			let row = json!({"turnId":"turn","item":{"id":"call","type":kind,"text":"Fixture","mcpAppUi":metadata}});
+			assert!(matches!(ordinary(&row).unwrap(),Content::Item{app_ui,..} if app_ui==expected));
+		}
+	}
 }
 
 #[cfg(test)]
@@ -261,7 +279,17 @@ fn ordinary(row: &Value) -> Option<Content> {
 	let activity = (kind != "reasoning")
 		.then(|| super::activity::project(&json!({"turnId":turn_id,"item":item}), completed))
 		.flatten();
+	let app_ui = kind == "mcpToolCall"
+		&& [
+			item.pointer("/mcpAppUi/resourceUri"),
+			item.get("mcpAppResourceUri"),
+			item.pointer("/appContext/resourceUri"),
+		]
+		.into_iter()
+		.flatten()
+		.any(|uri| uri.as_str().is_some_and(|uri| uri.starts_with("ui://") && uri.len() > 5));
 	Some(Content::Item {
+		app_ui,
 		turn_id,
 		item_id: id(&item["id"])?,
 		kind,

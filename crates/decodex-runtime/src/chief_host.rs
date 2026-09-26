@@ -684,6 +684,83 @@ impl ChiefHost {
 		.await
 	}
 
+	async fn acknowledge_app_ui_call(
+		&self,
+		work: &str,
+		operation: &str,
+		reservation: i64,
+	) -> Result<String, ChiefHostError> {
+		let receipt = self
+			.store
+			.chief_app_ui_call_receipt(work.into(), operation.into())
+			.await
+			.map_err(|_| ChiefHostError::Unknown("App call receipt could not be read."))?
+			.ok_or(ChiefHostError::Rejected("App call receipt is unavailable."))?;
+		if receipt.id != reservation || receipt.state != "unknown" {
+			return Err(ChiefHostError::Rejected("Review the exact unknown app call first."));
+		}
+		if !receipt.uncertainty_acknowledged
+			&& !self
+				.store
+				.acknowledge_chief_app_ui_uncertainty(work.into(), reservation, operation.into())
+				.await
+				.map_err(|_| ChiefHostError::Unknown("App call acknowledgment is unconfirmed."))?
+		{
+			return Err(ChiefHostError::Unknown("Read the saved app call acknowledgment."));
+		}
+		Ok(work.into())
+	}
+
+	pub(crate) async fn review_app_ui_call(
+		&self,
+		call: &decodex_protocol::ChiefAppUiCall,
+	) -> decodex_protocol::ChiefAppUiCallReview {
+		crate::chief_app_ui_call::read(
+			&self.store,
+			|| self.timeline_source(call.work_id.as_str(), call.thread_id.as_str()),
+			call,
+		)
+		.await
+	}
+
+	async fn execute_app_ui_call(
+		&self,
+		call: &decodex_protocol::ChiefAppUiCall,
+		token: &decodex_protocol::EntityId,
+	) -> Result<String, ChiefHostError> {
+		crate::chief_app_ui_call::execute(
+			&self.store,
+			|| self.timeline_source(call.work_id.as_str(), call.thread_id.as_str()),
+			call,
+			token,
+		)
+		.await?;
+		Ok(call.work_id.as_str().into())
+	}
+
+	pub(crate) async fn app_ui_source(
+		&self,
+		work: &str,
+		thread: &str,
+		fingerprint: &decodex_protocol::EntityId,
+	) -> bool {
+		self.timeline_source(work, thread).await.is_some_and(|source| {
+			source.client.thread_settings_guard(thread).is_some_and(|guard| guard.is_live())
+				&& crate::chief::timeline::app_ui::source_fingerprint(&source.key) == *fingerprint
+		})
+	}
+
+	pub(crate) async fn app_ui(
+		&self,
+		request: &decodex_protocol::ChiefAppUiRequest,
+	) -> decodex_protocol::ChiefAppUiResult {
+		crate::chief::timeline::app_ui::read(
+			|| self.timeline_source(request.work_id.as_str(), request.thread_id.as_str()),
+			request,
+		)
+		.await
+	}
+
 	pub(crate) async fn media(
 		&self,
 		request: &decodex_protocol::ChiefMediaRequest,
@@ -1145,6 +1222,15 @@ impl ChiefHost {
 			ChiefActionDto::SetVoicePreference { work_id, review_token, voice } =>
 				self.set_voice_preference(work_id.as_str(), review_token.as_str(), voice.as_str())
 					.await,
+			ChiefActionDto::AcknowledgeAppUiCall { work_id, operation_id, reservation_id } =>
+				self.acknowledge_app_ui_call(
+					work_id.as_str(),
+					operation_id.as_str(),
+					reservation_id,
+				)
+				.await,
+			ChiefActionDto::ConfirmAppUiTool { request, review_token } =>
+				self.execute_app_ui_call(&request, &review_token).await,
 			ChiefActionDto::SetAppToolExposure { work_id, connector_id, review_token, omit } =>
 				self.set_app_tool_exposure((&work_id, &connector_id, &review_token), omit, key)
 					.await,
@@ -1246,6 +1332,8 @@ impl ChiefHost {
 				self.handle_recap(&key, action).await,
 			action @ (Action::SetVoicePreference { .. }
 			| Action::SetAppToolExposure { .. }
+			| Action::ConfirmAppUiTool { .. }
+			| Action::AcknowledgeAppUiCall { .. }
 			| Action::SetSavedAppSetting { .. }
 			| Action::SetAppSetting { .. }
 			| Action::SetHookSetting { .. }

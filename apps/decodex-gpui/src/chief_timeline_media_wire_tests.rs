@@ -154,6 +154,7 @@ fn prepare(
 			entries: vec![ChiefTimelineEntry {
 				position: 1,
 				content: Content::Item {
+					app_ui: false,
 					turn_id: "turn".into(),
 					item_id: "image".into(),
 					kind: "userMessage".into(),

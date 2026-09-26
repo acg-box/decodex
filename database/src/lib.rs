@@ -14,6 +14,8 @@ mod chief;
 mod chief_request_payload;
 mod chief_settings_observations;
 pub use chief_settings_observations::ChiefTaskSettingsObservation;
+mod chief_app_ui_calls;
+pub use chief_app_ui_calls::{ChiefAppUiCallAttempt, ChiefAppUiCallReceipt};
 mod chief_app_settings;
 mod chief_config_journal;
 pub use chief_app_settings::{

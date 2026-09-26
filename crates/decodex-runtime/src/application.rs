@@ -2283,6 +2283,36 @@ impl Application for ServiceApplication {
 				self.query_input_receipts(work_id.as_str(), *after).await,
 			QueryPayload::GetChiefSteerReceipt { identity } =>
 				self.query_steer_receipt(identity).await,
+			QueryPayload::GetChiefPendingAppUiCall { work_id } =>
+				QueryResultPayload::ChiefPendingAppUiCall(match &self.store {
+					ProductStore::Available(store) =>
+						crate::chief_app_ui_receipt::pending(store, work_id).await,
+					ProductStore::Unavailable(_) =>
+						decodex_protocol::ChiefPendingAppUiCall::Unavailable,
+				}),
+			QueryPayload::GetChiefAppUiReceipt { request } =>
+				QueryResultPayload::ChiefAppUiReceipt(match &self.store {
+					ProductStore::Available(store) =>
+						crate::chief_app_ui_receipt::read(store, request).await,
+					ProductStore::Unavailable(_) =>
+						decodex_protocol::ChiefAppUiReceiptResult::Unavailable,
+				}),
+			QueryPayload::ReviewChiefAppUiCall { request } =>
+				QueryResultPayload::ChiefAppUiCallReview(match &self.chief {
+					Some(chief) => chief.review_app_ui_call(request).await,
+					None => decodex_protocol::ChiefAppUiCallReview::Unavailable,
+				}),
+			QueryPayload::GetChiefAppUiSource { work_id, thread_id, fingerprint } =>
+				QueryResultPayload::ChiefAppUiSource(match &self.chief {
+					Some(chief) =>
+						chief.app_ui_source(work_id.as_str(), thread_id.as_str(), fingerprint).await,
+					None => false,
+				}),
+			QueryPayload::GetChiefAppUi { request } =>
+				QueryResultPayload::ChiefAppUi(match &self.chief {
+					Some(chief) => chief.app_ui(request).await,
+					None => decodex_protocol::ChiefAppUiResult::Unavailable,
+				}),
 			QueryPayload::GetChiefMedia { request } => self.query_media(request).await,
 			QueryPayload::GetChiefTimeline { work_id, thread_id, cursor } =>
 				self.query_timeline(

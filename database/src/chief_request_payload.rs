@@ -1,4 +1,5 @@
-//! Complete native approval details; inbox scans retain only routing identity.
+//! Complete native event details; inbox scans retain only routing identity.
+//! Approval compaction is validated here; App UI call receipts use their dedicated owner API.
 use crate::{ChiefInboxEvent, EnqueueChiefEvent, StoreError, error::sqlite_error};
 use rusqlite::{Connection, OptionalExtension as _};
 use serde_json::{Value, json};

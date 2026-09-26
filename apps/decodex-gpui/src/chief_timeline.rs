@@ -2,6 +2,7 @@
 use super::*;
 use decodex_protocol::{ChiefTimelineContent as Content, ChiefTimelineEntry, ChiefTimelinePage};
 use std::collections::BTreeSet;
+#[path = "chief_timeline_app_ui.rs"] mod app_ui;
 #[path = "chief_timeline_inputs.rs"] mod inputs;
 #[path = "chief_timeline_media.rs"] mod media;
 #[path = "chief_timeline_receipts.rs"] mod receipts;
@@ -141,6 +142,7 @@ impl ChiefSurface {
 				cx,
 			)),
 		);
+		panel = panel.child(self.render_native_app_recovery(work, cx));
 		if self.native_history.requested.as_ref().is_some_and(|(id, thread)| {
 			id == &work.id && Some(thread) == work.codex_thread_id.as_ref()
 		}) {
@@ -343,6 +345,7 @@ pub(super) struct Binding {
 #[derive(Default)]
 pub(super) struct Timeline {
 	preview: media::Preview,
+	app_ui: app_ui::State,
 	input_receipts: inputs::InputReceipts,
 	pub task: Option<Task<()>>,
 	pub epoch: u64,
@@ -412,6 +415,7 @@ impl Timeline {
 
 	fn clear_page(&mut self) {
 		self.preview.clear();
+		self.app_ui.clear();
 		self.viewport = Default::default();
 		self.binding = None;
 		self.entries.clear();
@@ -456,6 +460,7 @@ impl Timeline {
 		self.viewport = Default::default();
 		if self.binding.as_ref() != Some(&binding) {
 			self.preview.clear();
+			self.app_ui.clear();
 		}
 		self.binding = Some(binding);
 		self.entries = page.entries;
