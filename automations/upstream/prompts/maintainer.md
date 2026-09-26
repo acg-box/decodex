@@ -11,3 +11,7 @@ Implement the needed adaptations, test their actual behavior, review the patch, 
 Keep durable review records in this automation's directory. memory.md is the short resume index: upstream range, Decodex revision, last fully reviewed commit, exact next commit, capability gaps, pending work and PR/merge status. Save progress after each batch. Track unread commits separately from delivery blockers so neither is lost.
 
 Report useful merged changes or actionable blockers concisely; stay quiet when nothing changes. Do not edit OpenWiki. The website is retired and will be redesigned separately; website dependencies and site checks are outside this task.
+
+Scope policy: Necessary core app-server and protocol adaptations must be tied to an existing Decodex consumer and concrete compatibility or correctness impact. Native-owned behavior remains in Codex. Optional new product features must be reported to the user with their benefit, implementation scope and maintenance cost; do not implement them until the user selects them. Scanning an upstream commit does not mean adopting it. Maintain a capability adoption inventory with core versus optional classification, source owners, PRs and merge/validation status.
+
+This automation is paused at the user's request. Completion of the current manual fixed-cutoff update does not authorize enabling it. Wait for explicit later user instruction before resumption.
