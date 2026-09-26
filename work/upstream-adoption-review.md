@@ -1,7 +1,7 @@
 # Upstream adoption review
 
 Original capability-table snapshot: Decodex `3f131d80b9e90d2badf2394249bbf3b0266f72d3`.
-Current delivery snapshot: `1f35c8d695e8e912c160da6612e59bf0ea34a11b` (through PR1539).
+Current delivery snapshot: `eaba4009094d203d28ef39422d6baa51accd379e` (through PR1547).
 The inherited byte-comparison baseline remains PR1507. Subsequent source and
 dependency dispositions are recorded in the inherited-file audit; the register
 is not closed.
@@ -176,7 +176,8 @@ feature counts.
 | Live output I/O | Core | Move the existing long-lived output connection off the shared desktop executor. Preserve this fix if recap is removed. | [1511](https://github.com/acg-box/decodex/pull/1511) |
 | Earlier-prompt editing | Optional | Canonical desktop review/editing, durable confirmation, fresh history handback and explicit resend are merged. Relative local media uses the owned native process directory. Lost replies use readback without replay; occupied main input and conflicting drafts remain recoverable. Native socket, rendered interaction and local signed-package evidence exist. Shared installed desktop acceptance remains open. | [1512](https://github.com/acg-box/decodex/pull/1512), [1514](https://github.com/acg-box/decodex/pull/1514), [1515](https://github.com/acg-box/decodex/pull/1515), [1516](https://github.com/acg-box/decodex/pull/1516), [1518](https://github.com/acg-box/decodex/pull/1518) |
 | Native request envelope qualification | Core | Reject oversized native requests before external injection. Preserve the shared native request-size qualification if the optional editor is removed. | [1518](https://github.com/acg-box/decodex/pull/1518) |
-| Native revert and capacity retry | Core | Cancel unclaimed continuation after an owned native revert; preserve claimed attempts and receipts. Retain this fix if the editor is removed. | [1513](https://github.com/acg-box/decodex/pull/1513) |
+| Native revert and capacity retry | Core | Cancel unclaimed continuation after an owned native revert; preserve claimed attempts and receipts. A native selection change cancels an old capacity retry without aborting due-work processing. Retain these checks if the editor is removed. | [1513](https://github.com/acg-box/decodex/pull/1513), [1547](https://github.com/acg-box/decodex/pull/1547) |
+| Ordinary native settings history | Optional | Persist source-bound model/provider/directory/effort and show last-read facts in the currently unexposed ordinary History workspace. Continuation uses the selected task directory; observations do not replace explicit execution intent. Native synthetic-provider, cold-readback and rendered tests pass; signed desktop acceptance remains separate. Removing this surface must preserve core routing and no-replay checks. | [1544](https://github.com/acg-box/decodex/pull/1544), [1545](https://github.com/acg-box/decodex/pull/1545) |
 
 See [recap integration](task-recaps.md), [output observation](chief-output-observation.md)
 and [prompt editing](prompt-editing.md) for contracts and validation limits.
