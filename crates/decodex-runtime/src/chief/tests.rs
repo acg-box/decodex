@@ -273,7 +273,8 @@ pub(super) async fn fixture_with_history(
 	let store = SqliteStore::open(&root.paths()).unwrap();
 	let (client_io, server_io) = tokio::io::duplex(65536);
 	let (reader, writer) = tokio::io::split(client_io);
-	let (client, _events) = AppServerClient::from_io(reader, writer);
+	let (client, mut events) = AppServerClient::from_io(reader, writer);
+	tokio::spawn(async move { while events.recv().await.is_some() {} });
 	let (sent, received) = tokio::sync::mpsc::unbounded_channel();
 	tokio::spawn(serve_fixture(server_io, history, sent));
 	(
@@ -434,13 +435,33 @@ impl FixtureFaults {
 			if history["_continuation_reject"] == true {
 				let frame = format!(
 					"{}\n",
-					json!({"id":request["id"],"error":{"code":-32600,"message":"continuation rejected"}})
+					json!({"id":request["id"],"error":{"code":-32600,"message":"continuation rejected private-steer-sentinel"}})
 				);
 				writer.write_all(frame.as_bytes()).await.unwrap();
 				return Some(true);
 			}
 		}
 		None
+	}
+}
+
+async fn emit_fixture_review_events(
+	request: &Value,
+	history: &Value,
+	turns: u64,
+	writer: &mut tokio::io::WriteHalf<tokio::io::DuplexStream>,
+) {
+	if request["method"] == "thread/read"
+		&& request["params"]["includeTurns"] != false
+		&& history["_misalignment_revert_on_read"] == true
+	{
+		let notice = json!({"method":"thread/reverted","params":{"threadId":"opaque thread/1"}});
+		writer.write_all(format!("{notice}\n").as_bytes()).await.unwrap();
+	}
+	if request["method"] == "turn/start" && turns == 1 && history["_live_misalignment"].is_object()
+	{
+		let notification = json!({"method":"error","params":{"threadId":"opaque thread/1","turnId":"opaque turn/1","willRetry":false,"error":history["_live_misalignment"]}});
+		writer.write_all(format!("{notification}\n").as_bytes()).await.unwrap();
 	}
 }
 
@@ -564,8 +585,8 @@ async fn serve_fixture(
 			},
 			_ => json!({}),
 		};
-		let mut frame = json!({"id":request["id"],"result":result}).to_string();
-		frame.push('\n');
+		emit_fixture_review_events(&request, &history, turns, &mut writer).await;
+		let frame = format!("{}\n", json!({"id":request["id"],"result":result}));
 		writer.write_all(frame.as_bytes()).await.unwrap();
 	}
 }
@@ -2530,17 +2551,34 @@ async fn misalignment_precaution_survives_reopen_and_blocks_ordinary_dispatch() 
 	assert_eq!(reopened.chief_misalignment("chief".into()).await.unwrap(), Some(saved));
 }
 
+fn live_review_token(
+	chief: &ChiefCoordinator,
+	review: &decodex_database::ChiefMisalignment,
+) -> String {
+	let (_, guard) =
+		chief.client.live_misalignment_review(&review.thread_id, &review.turn_id).unwrap();
+	super::misalignment::review_token(review, &guard).unwrap()
+}
+
 #[tokio::test]
 async fn explicit_misalignment_continuation_uses_native_override_and_clears_after_ack() {
 	let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
-	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":error,"items":[]}]}}});
+	let history = json!({"_live_misalignment":error,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":{"codexErrorInfo":"misalignmentPolicyViolation"},"items":[]}]}}});
 	let (mut chief, mut sent, _directory) = fixture_with_history(history).await;
 	chief.start_chief("chief", "Coordinate").await.unwrap();
 	chief.observe_misalignment("opaque thread/1", "opaque turn/1", &error).await.unwrap();
 	chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
 	let review = chief.store.chief_misalignment("chief".into()).await.unwrap().unwrap();
 	while sent.try_recv().is_ok() {}
-	chief.continue_misalignment("chief", review, "acknowledged").await.unwrap();
+	let token = live_review_token(&chief, &review);
+	assert!(
+		chief
+			.continue_misalignment("chief", review.clone(), "stale-click", "older-live-evidence")
+			.await
+			.is_err()
+	);
+	assert!(sent.try_recv().is_err());
+	chief.continue_misalignment("chief", review, "acknowledged", &token).await.unwrap();
 	let mut turns = Vec::new();
 	while let Ok(request) = sent.try_recv() {
 		if request["method"] == "turn/start" {
@@ -2550,6 +2588,8 @@ async fn explicit_misalignment_continuation_uses_native_override_and_clears_afte
 	assert_eq!(turns.len(), 1);
 	assert_eq!(turns[0]["params"]["threadId"], "opaque thread/1");
 	assert_eq!(turns[0]["params"]["input"][0]["text"], "Clarified scope");
+	assert!(turns[0]["params"].get("model").is_none());
+	assert!(turns[0]["params"].get("effort").is_none());
 	let metadata: Value = serde_json::from_str(
 		turns[0]["params"]["responsesapiClientMetadata"]["misalignment_override"].as_str().unwrap(),
 	)
@@ -2564,22 +2604,26 @@ async fn explicit_misalignment_continuation_uses_native_override_and_clears_afte
 
 #[tokio::test]
 async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution() {
-	for outcome in ["changed", "rejected", "uncertain"] {
+	for outcome in ["changed", "rejected", "uncertain", "reverted"] {
 		let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
 		let mut native_error = error.clone();
 		if outcome == "changed" {
 			native_error["misalignment"]["detailedExplanation"] = json!("New findings");
 		}
-		let history = json!({"_continuation_disconnect":outcome=="uncertain","_continuation_reject":outcome=="rejected","opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":native_error,"items":[]}]}}});
+		let history = json!({"_live_misalignment":error,"_misalignment_revert_on_read":outcome=="reverted","_continuation_disconnect":outcome=="uncertain","_continuation_reject":outcome=="rejected","opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":native_error,"items":[]}]}}});
 		let (mut chief, mut sent, directory) = fixture_with_history(history).await;
 		chief.start_chief("chief", "Coordinate").await.unwrap();
 		chief.observe_misalignment("opaque thread/1", "opaque turn/1", &error).await.unwrap();
 		chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
 		let review = chief.store.chief_misalignment("chief".into()).await.unwrap().unwrap();
 		while sent.try_recv().is_ok() {}
-		let failure =
-			chief.continue_misalignment("chief", review.clone(), "acknowledged").await.unwrap_err();
+		let token = live_review_token(&chief, &review);
+		let failure = chief
+			.continue_misalignment("chief", review.clone(), "acknowledged", &token)
+			.await
+			.unwrap_err();
 		assert_eq!(matches!(failure, ChiefError::Rejected(_)), outcome != "uncertain");
+		assert!(!failure.to_string().contains("private-steer-sentinel"));
 		assert!(chief.store.chief_misalignment("chief".into()).await.unwrap().is_some());
 		let state = chief.store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state;
 		assert_eq!(
@@ -2594,7 +2638,7 @@ async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution
 		while let Ok(request) = sent.try_recv() {
 			starts += usize::from(request["method"] == "turn/start");
 		}
-		assert_eq!(starts, usize::from(outcome != "changed"));
+		assert_eq!(starts, usize::from(!["changed", "reverted"].contains(&outcome)));
 		if outcome == "uncertain" {
 			let root = decodex_core::DecodexRoot::new(
 				directory.path().canonicalize().unwrap().join("root"),
@@ -2602,10 +2646,40 @@ async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution
 			.unwrap();
 			let (mut reopened, mut requests, _other) = fixture().await;
 			reopened.store = SqliteStore::open(&root.paths()).unwrap();
-			assert!(reopened.continue_misalignment("chief", review, "new-key").await.is_err());
+			assert!(
+				reopened.continue_misalignment("chief", review, "new-key", &token).await.is_err()
+			);
 			assert!(requests.try_recv().is_err());
 		}
 	}
+}
+
+#[tokio::test]
+async fn misalignment_saved_details_cannot_authorize_a_reconnected_transport() {
+	let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
+	let (mut chief, _sent, directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	chief.observe_misalignment("opaque thread/1", "opaque turn/1", &error).await.unwrap();
+	chief.store.complete_chief_turn("chief".into(), "opaque turn/1".into()).await.unwrap();
+	let review = chief.store.chief_misalignment("chief".into()).await.unwrap().unwrap();
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	drop(chief);
+	let (mut reopened, mut requests, _other) = fixture().await;
+	reopened.store = SqliteStore::open(&root.paths()).unwrap();
+	assert!(matches!(
+		reopened
+			.continue_misalignment("chief", review.clone(), "confirm", "old-source-review")
+			.await,
+		Err(ChiefError::Rejected(_))
+	));
+	assert!(requests.try_recv().is_err());
+	assert_eq!(reopened.store.chief_misalignment("chief".into()).await.unwrap(), Some(review));
+	assert_eq!(
+		reopened.store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state,
+		decodex_database::ChiefDispatchState::Idle
+	);
 }
 
 #[tokio::test]
@@ -2931,3 +3005,5 @@ async fn unfinished_native_text_keeps_source_and_display_only_status_after_reope
 
 #[path = "tests/misalignment_recovery.rs"]
 mod misalignment_recovery;
+#[path = "tests/native_misalignment.rs"]
+mod native_misalignment;

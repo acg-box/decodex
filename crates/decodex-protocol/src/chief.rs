@@ -259,7 +259,7 @@ pub enum ChiefInputReceiptsResult {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChiefMisalignmentDto {
-	/// Exact thread, turn and findings digest.
+	/// Exact findings digest; a live continuation also binds its source connection.
 	pub review_id: String,
 	/// Full provider explanation, at most 64 KiB; absent when not available.
 	pub explanation: Option<String>,

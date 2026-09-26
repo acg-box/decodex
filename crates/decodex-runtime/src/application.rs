@@ -439,7 +439,8 @@ impl ServiceApplication {
 	}
 
 	async fn query_history(&self, work: &str, before: Option<i64>) -> QueryResultPayload {
-		let mut history = query_chief_history_page(&self.store, work, before).await;
+		let mut history =
+			query_chief_history_page(&self.store, work, before, self.chief.as_ref()).await;
 		if let Some(chief) = &self.chief {
 			chief.enrich_weather(work, &mut history).await;
 		}
@@ -4736,7 +4737,7 @@ async fn query_chief_history(
 	store: &ProductStore,
 	id: &str,
 ) -> decodex_protocol::ChiefHistoryResult {
-	query_chief_history_page(store, id, None).await
+	query_chief_history_page(store, id, None, None).await
 }
 
 fn chief_history_notice(kind: &str, value: &serde_json::Value) -> String {
@@ -4922,6 +4923,7 @@ async fn query_chief_history_page(
 	store: &ProductStore,
 	id: &str,
 	before: Option<i64>,
+	chief: Option<&crate::chief_host::ChiefHost>,
 ) -> decodex_protocol::ChiefHistoryResult {
 	use decodex_protocol::ChiefHistoryResult;
 	let ProductStore::Available(store) = store else {
@@ -4935,13 +4937,14 @@ async fn query_chief_history_page(
 	};
 	let misalignment = precaution
 		.map(|saved| {
+			let live_token = chief.and_then(|chief| chief.misalignment_review_token(&saved));
 			let details: serde_json::Value = saved
 				.details_json
 				.as_deref()
 				.and_then(|value| serde_json::from_str(value).ok())
 				.unwrap_or_default();
 			decodex_protocol::ChiefMisalignmentDto {
-				review_id: saved.review_id(),
+				review_id: live_token.clone().unwrap_or_else(|| saved.review_id()),
 				explanation: details["detailedExplanation"]
 					.as_str()
 					.filter(|text| !text.trim().is_empty() && text.len() <= 65536)
@@ -4949,6 +4952,7 @@ async fn query_chief_history_page(
 				continuation: details
 					.pointer("/steer/message")
 					.and_then(serde_json::Value::as_str)
+					.filter(|_| live_token.is_some())
 					.filter(|text| !text.trim().is_empty() && text.len() <= 1024)
 					.map(str::to_owned),
 			}
@@ -6097,6 +6101,29 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn saved_misalignment_history_omits_continuation_without_live_native_evidence() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		chief_query_work(&store, "chosen").await;
+		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
+		store.begin_chief_dispatch("chosen".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("chosen".into(), "turn".into()).await.unwrap();
+		let details = serde_json::json!({"detailedExplanation":"Review scope","steer":{"message":"Continue within scope"}}).to_string();
+		store
+			.record_chief_misalignment("thread".into(), "turn".into(), Some(details))
+			.await
+			.unwrap();
+		let decodex_protocol::ChiefHistoryResult::Available { misalignment: Some(review), .. } =
+			super::query_chief_history(&ProductStore::Available(store), "chosen").await
+		else {
+			panic!("precaution must remain visible");
+		};
+		assert_eq!(review.explanation.as_deref(), Some("Review scope"));
+		assert!(review.continuation.is_none());
+	}
+
+	#[tokio::test]
 	async fn strict_review_history_survives_restart_without_claiming_a_review_result() {
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
@@ -6207,7 +6234,7 @@ mod tests {
 		assert!(entries.windows(2).all(|pair| pair[0].id < pair[1].id));
 		let before = entries.first().unwrap().id;
 		let ChiefHistoryResult::Available { entries: older, next_before, live, .. } =
-			super::query_chief_history_page(&owner, "chosen", Some(before)).await
+			super::query_chief_history_page(&owner, "chosen", Some(before), None).await
 		else {
 			panic!("older page");
 		};
