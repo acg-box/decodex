@@ -1,11 +1,14 @@
 //! Explicit, source-bound desktop App UI loading.
 use super::*;
 use decodex_protocol::{ChiefAppUiRequest, ChiefAppUiResult};
+#[path = "chief_app_ui_callback.rs"] mod callback;
 #[path = "chief_app_ui_native.rs"] mod native;
 
 #[derive(Default)]
 pub(super) struct State {
 	request: Option<ChiefAppUiRequest>,
+	source: Option<EntityId>,
+	callback: callback::State,
 	host: Option<native::AppHost>,
 	task: Option<Task<()>>,
 	monitor: Option<Task<()>>,
@@ -19,12 +22,16 @@ impl State {
 }
 
 impl ChiefSurface {
-	pub(in super::super) fn poll_native_app_ui(&mut self) {
-		let state = &mut self.native_history.app_ui;
-		while let Some(event) = state.host.as_mut().and_then(native::AppHost::poll) {
+	pub(in super::super) fn poll_native_app_ui(&mut self, cx: &mut Context<Self>) {
+		while let Some(event) =
+			self.native_history.app_ui.host.as_mut().and_then(native::AppHost::poll)
+		{
 			if matches!(event["type"].as_str(), Some("closed" | "unavailable")) {
-				state.clear();
+				self.native_history.app_ui.clear();
 				break;
+			}
+			if event["type"] == "tool_call" {
+				self.review_native_app_call(event, cx);
 			}
 		}
 	}
@@ -56,6 +63,9 @@ impl ChiefSurface {
 		if let Some(notice) = notice {
 			row = row.child(muted(notice));
 		}
+		if selected {
+			row = row.child(self.render_app_call(cx));
+		}
 		row.into_any_element()
 	}
 
@@ -70,8 +80,8 @@ impl ChiefSurface {
 		self.native_history.app_ui.monitor = Some(cx.spawn(async move |surface, cx| {
 			loop {
 				let active = surface
-					.update(cx, |s, _| {
-						s.poll_native_app_ui();
+					.update(cx, |s, cx| {
+						s.poll_native_app_ui(cx);
 						s.native_history.app_ui.serial == serial
 							&& s.native_history.app_ui.host.is_some()
 					})
@@ -192,6 +202,7 @@ impl ChiefSurface {
 					},
 				};
 				if let Some(source) = source {
+					state.source = Some(source.clone());
 					surface.monitor_app_ui(
 						monitor_profile.clone(),
 						monitor_request.clone(),

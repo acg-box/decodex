@@ -1,4 +1,5 @@
 import AppKit
+import CoreFoundation
 import WebKit
 
 /// One disposable, nonpersistent browser for one source-bound native widget document.
@@ -9,10 +10,13 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
     private(set) var initialized = false
     private(set) var closed = false
     private var handshake = false
+    private let toolCallsEnabled: Bool
+    private var pendingTool: (operation: String, rpcID: Any)?
     private let observe: ([String: Any]) -> Void
 
-    init(document: McpAppDocument, observe: @escaping ([String: Any]) -> Void) throws {
+    init(document: McpAppDocument, toolCallsEnabled: Bool = false, observe: @escaping ([String: Any]) -> Void) throws {
         self.document = document
+        self.toolCallsEnabled = toolCallsEnabled
         self.observe = observe
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
@@ -48,7 +52,11 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
               JSONSerialization.isValidJSONObject(value),
               let encoded = try? JSONSerialization.data(withJSONObject: value), encoded.count <= 256 * 1024 else { return }
         let id = value["id"]
-        if let id, !(id is String) && !(id is NSNumber) { return }
+        if let id {
+            if let number = id as? NSNumber {
+                guard CFGetTypeID(number) != CFBooleanGetTypeID() else { return }
+            } else if !(id is String) { return }
+        }
         switch method {
         case "ui/initialize":
             guard !handshake, let id,
@@ -60,7 +68,7 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
             handshake = true
             deliver(["jsonrpc": "2.0", "id": id, "result": [
                 "protocolVersion": "2026-01-26", "hostInfo": ["name": "Decodex", "version": "1"],
-                "hostCapabilities": ["sandbox": ["permissions": [:]]],
+                "hostCapabilities": hostCapabilities,
                 "hostContext": ["platform": "desktop", "displayMode": "inline", "availableDisplayModes": ["inline"],
                                 "containerDimensions": ["width": 720, "height": 480],
                                 "locale": Locale.current.identifier, "timeZone": TimeZone.current.identifier]
@@ -74,6 +82,27 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
                 deliver(["jsonrpc": "2.0", "method": "ui/notifications/tool-result", "params": result])
             }
             observe(["type": "initialized"])
+        case "tools/call":
+            guard initialized, toolCallsEnabled, let id else {
+                reject(id, code: -32601, message: "Tool calls are unavailable")
+                return
+            }
+            // A repeated browser request cannot mint another operation or replace intent.
+            if let pendingTool {
+                if NSDictionary(dictionary: ["id": pendingTool.rpcID]).isEqual(to: ["id": id]) { return }
+                reject(id, code: -32000, message: "Another app call is awaiting resolution")
+                return
+            }
+            guard let parameters = value["params"] as? [String: Any],
+                  let name = parameters["name"] as? String, !name.isEmpty,
+                  let arguments = (parameters["arguments"] ?? [:]) as? [String: Any],
+                  encoded.count <= 64 * 1024 else {
+                reject(id, code: -32602, message: "Invalid or oversized tool invocation")
+                return
+            }
+            let operation = UUID().uuidString
+            pendingTool = (operation, id)
+            observe(["type": "tool_call", "operationId": operation, "tool": name, "arguments": arguments])
         case "ping":
             guard initialized, let id else { return }
             deliver(["jsonrpc": "2.0", "id": id, "result": [:]])
@@ -81,6 +110,25 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
         default:
             reject(id, code: -32601, message: "This host capability is not available")
         }
+    }
+
+    private var hostCapabilities: [String: Any] {
+        var capabilities: [String: Any] = ["sandbox": ["permissions": [:]]]
+        if toolCallsEnabled { capabilities["serverTools"] = [:] }
+        return capabilities
+    }
+
+    /// Only the native controller can resolve the operation; browser IDs are never authority.
+    func resolveTool(operation: String, result: [String: Any]?, error: String?) -> Bool {
+        guard !closed, let pendingTool, pendingTool.operation == operation,
+              (result != nil) != (error != nil) else { return false }
+        if let result {
+            deliver(["jsonrpc": "2.0", "id": pendingTool.rpcID, "result": result])
+        } else {
+            reject(pendingTool.rpcID, code: -32000, message: error!)
+        }
+        self.pendingTool = nil
+        return true
     }
 
     private func reject(_ id: Any?, code: Int, message: String) {
@@ -96,6 +144,7 @@ final class McpAppView: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
     func close() {
         guard !closed else { return }
         closed = true
+        pendingTool = nil
         initialized = false
         webView.stopLoading()
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "mcpApp")

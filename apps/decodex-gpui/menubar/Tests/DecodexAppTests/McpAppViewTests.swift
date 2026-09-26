@@ -53,4 +53,59 @@ final class McpAppViewTests: XCTestCase {
         XCTAssertTrue(view.closed)
         XCTAssertFalse(view.initialized)
     }
+    func testToolBridgePreservesOneHostOperationAndExactBrowserReply() async throws {
+        _ = NSApplication.shared
+        let html = #"""
+        <script>
+        window.addEventListener('message',event=>{
+          const m=event.data;
+          if(m.id==='init' && m.result && m.result.hostCapabilities.serverTools){
+            parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/initialized'},'*');
+            const call={jsonrpc:'2.0',id:'browser-id',method:'tools/call',params:{name:'calculate',arguments:{value:7}}};
+            parent.postMessage(call,'*');
+            parent.postMessage(call,'*');
+            parent.postMessage({...call,params:{name:'calculate',arguments:{value:999}}},'*');
+            parent.postMessage({...call,id:'second'},'*');
+          }
+          if(m.id==='second' && m.error) parent.postMessage({jsonrpc:'2.0',id:'busy-refused',method:'ping'},'*');
+          if(m.id==='browser-id' && m.result && m.result.structuredContent.value===42)
+            parent.postMessage({jsonrpc:'2.0',id:'exact-result',method:'ping'},'*');
+        });
+        parent.postMessage({jsonrpc:'2.0',id:'init',method:'ui/initialize',params:{protocolVersion:'2026-01-26'}},'*');
+        </script>
+        """#
+        let data = try JSONSerialization.data(withJSONObject: [
+            "item": ["type": "mcpToolCall", "mcpAppUi": ["resourceUri": "ui://fixture/view"]],
+            "resources": [["uri": "ui://fixture/view", "mimeType": "text/html;profile=mcp-app", "text": html]]
+        ])
+        var calls: [[String: Any]] = []
+        var observed: Set<String> = []
+        let view = try McpAppView(document: McpAppDocument(data: data), toolCallsEnabled: true) { event in
+            if event["type"] as? String == "tool_call" { calls.append(event) }
+            if let id = event["id"] as? String { observed.insert(id) }
+        }
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 480), styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = view.webView
+        window.orderFront(nil)
+        defer { view.close(); window.orderOut(nil) }
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline && !observed.contains("busy-refused") {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(observed.contains("busy-refused"))
+        XCTAssertEqual(calls.count, 1)
+        let call = try XCTUnwrap(calls.first)
+        let operation = try XCTUnwrap(call["operationId"] as? String)
+        XCTAssertNotNil(UUID(uuidString: operation))
+        XCTAssertNotEqual(operation, "browser-id")
+        XCTAssertEqual((call["arguments"] as? [String: Int])?["value"], 7)
+        XCTAssertFalse(view.resolveTool(operation: "browser-id", result: [:], error: nil))
+        XCTAssertTrue(view.resolveTool(operation: operation, result: ["content": [], "structuredContent": ["value": 42]], error: nil))
+        XCTAssertFalse(view.resolveTool(operation: operation, result: [:], error: nil))
+        while Date() < deadline && !observed.contains("exact-result") {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(observed.contains("exact-result"))
+    }
+
 }

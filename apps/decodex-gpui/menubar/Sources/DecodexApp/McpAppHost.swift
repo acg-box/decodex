@@ -13,16 +13,21 @@ final class McpAppHost: NSObject, NSWindowDelegate {
     init(parent: NSWindow) { self.parent = parent }
 
     func command(_ text: String) -> Bool {
-        guard !closed, let data = text.data(using: .utf8), data.count <= 8 * 1024 * 1024,
+        guard !closed, let data = text.data(using: .utf8), data.count <= 32 * 1024 * 1024,
               let command = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let operation = command["operation"] as? String else { return false }
         if operation == "close" { close(); return true }
-        guard operation == "load", view == nil, let parent,
+        if operation == "tool_result" {
+            guard let view, let identity = command["operationId"] as? String else { return false }
+            return view.resolveTool(operation: identity, result: command["result"] as? [String: Any],
+                                    error: command["error"] as? String)
+        }
+        guard data.count <= 8 * 1024 * 1024, operation == "load", view == nil, let parent,
               let document = command["document"], JSONSerialization.isValidJSONObject(document),
               let bytes = try? JSONSerialization.data(withJSONObject: document),
               let parsed = try? McpAppDocument(data: bytes) else { return false }
         do {
-            let view = try McpAppView(document: parsed) { [weak self] in self?.emit($0) }
+            let view = try McpAppView(document: parsed, toolCallsEnabled: command["toolCallsEnabled"] as? Bool == true) { [weak self] in self?.emit($0) }
             let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 720, height: 480),
                                 styleMask: [.titled, .closable], backing: .buffered, defer: false)
             panel.title = "App"
@@ -46,9 +51,14 @@ final class McpAppHost: NSObject, NSWindowDelegate {
     }
 
     private func emit(_ event: [String: Any]) {
-        guard !closed, events.count < 32,
+        guard !closed,
               let data = try? JSONSerialization.data(withJSONObject: event),
               let text = String(data: data, encoding: .utf8) else { return }
+        if events.count >= 32 {
+            // Status pings cannot make an accepted tool request disappear.
+            guard event["type"] as? String == "tool_call" else { return }
+            events.removeFirst()
+        }
         events.append(text)
     }
 

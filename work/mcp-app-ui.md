@@ -224,6 +224,27 @@ invalid wire bounds, and distinguish live, death-unknown and positively dead pro
 states. Strict protocol/runtime/database Clippy passed. Desktop confirmation, receipt
 presentation and browser response delivery remain incomplete.
 
+## Desktop callback integration in progress
+
+The isolated WebKit view can emit one pending tools/call request with a native UUID.
+Repeated browser IDs, including changed arguments, cannot replace that pending
+operation. A distinct request receives a busy error. Native responses must match the
+host operation before the view returns the original browser RPC ID. Tool events cannot
+be dropped by a full queue of status pings. The host accepts larger result commands
+separately from the existing document-load limit.
+
+The desktop controller binds each callback to its displayed source, queries the
+service review, shows the exact server/tool/arguments, and submits only from its local
+confirmation action. After submission it reads the durable receipt even if the local
+command reply is lost. It never resubmits from that result path.
+
+This integration remains disabled in the document load command. It must stay disabled
+until unresolved receipt read/acknowledgment and cold recovery are accessible in the
+consumer, followed by complete native-wire and rendered confirmation tests. Successful
+result forwarding alone is not interactive delivery. The real WebKit suite passed
+seven tests, including duplicate and conflicting browser requests and exact reply
+routing. Signed desktop acceptance and R05 delivery remain open.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.
