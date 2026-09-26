@@ -1,6 +1,7 @@
 //! Real local socket, Chief host and installed Codex; only the model provider is synthetic.
 use super::*;
 #[path = "chief_process_native_app_ui_socket_tests.rs"] mod app_ui;
+#[path = "chief_process_native_media_socket_tests.rs"] mod media;
 use crate::{ProtocolServer, ServerConfig};
 use decodex_protocol::{
 	ChiefActionDto as Action, ChiefClient, ChiefCommandResponse, ChiefDispatchStateDto,
@@ -117,6 +118,8 @@ async fn qualify(home: &std::path::Path) {
 		std::panic::AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(50), async {
 			if std::env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") {
 				app_ui::check(&client, &runtime, home, &account, &requests).await;
+			} else if std::env::var("DECODEX_TEST_MEDIA").as_deref() == Ok("1") {
+				media::check(&client, &runtime, home, &account, &requests).await;
 			} else {
 				check(&client, &runtime, &store, home, &account, &requests).await;
 			}
