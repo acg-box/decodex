@@ -1,6 +1,7 @@
 //! Bounded public projection of native timeline facts; never enqueue history as input.
 use decodex_protocol::{ChiefTimelineContent as Content, ChiefTimelineEntry, ChiefTimelinePage};
 use serde_json::{Value, json};
+pub(crate) mod app_ui;
 mod attachments;
 pub(crate) mod media;
 pub(crate) mod metrics;

@@ -32,9 +32,25 @@ Four adapter tests cover scope confirmation, unavailable resource handling witho
 retry, exact native history with a concurrent revert, and ambiguous/legacy item
 selection. The strict adapter Clippy check also passes.
 
+## Service document reads
+
+Protocol 2.88 adds `GetChiefAppUi` and `ChiefClient::app_ui`. The request identifies
+work, thread, turn and item; it does not accept a resource URI or server from the UI.
+The service checks its current account, process generation, credential revision and
+history before and after the native read. It returns the original item and resource
+contents as a JSON document in 32 KiB chunks, up to 6 MiB. A SHA-256 fingerprint binds
+the complete bytes and source. Every continuation requires the same fingerprint;
+a changed resource fails instead of mixing content from separate reads.
+
+The desktop client checks the exact echoed request, fingerprint and byte bounds.
+The selected protocol/runtime run passed 165 tests, including real local-wire
+malformed responses and account/process/history changes during widget reads.
+Strict protocol/runtime Clippy and 15 architecture tests passed. These checks do not
+establish an interactive view or installed application acceptance.
+
 ## Remaining consumer obligations
 
-- Resolve the resource from the exact native tool item and preserve source identity.
+- Connect the desktop view to the source-bound service document query.
 - Host untrusted HTML in a separate restricted view within the existing Swift module.
   Do not reuse the trusted voice document or its microphone grants.
 - Implement MCP Apps initialization, input/result notifications and teardown. Advertise

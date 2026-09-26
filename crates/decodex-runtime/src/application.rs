@@ -2283,6 +2283,11 @@ impl Application for ServiceApplication {
 				self.query_input_receipts(work_id.as_str(), *after).await,
 			QueryPayload::GetChiefSteerReceipt { identity } =>
 				self.query_steer_receipt(identity).await,
+			QueryPayload::GetChiefAppUi { request } =>
+				QueryResultPayload::ChiefAppUi(match &self.chief {
+					Some(chief) => chief.app_ui(request).await,
+					None => decodex_protocol::ChiefAppUiResult::Unavailable,
+				}),
 			QueryPayload::GetChiefMedia { request } => self.query_media(request).await,
 			QueryPayload::GetChiefTimeline { work_id, thread_id, cursor } =>
 				self.query_timeline(

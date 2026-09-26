@@ -684,6 +684,17 @@ impl ChiefHost {
 		.await
 	}
 
+	pub(crate) async fn app_ui(
+		&self,
+		request: &decodex_protocol::ChiefAppUiRequest,
+	) -> decodex_protocol::ChiefAppUiResult {
+		crate::chief::timeline::app_ui::read(
+			|| self.timeline_source(request.work_id.as_str(), request.thread_id.as_str()),
+			request,
+		)
+		.await
+	}
+
 	pub(crate) async fn media(
 		&self,
 		request: &decodex_protocol::ChiefMediaRequest,

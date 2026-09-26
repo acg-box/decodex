@@ -1406,6 +1406,51 @@ impl ChiefClient {
 		}
 	}
 
+	/// Read a bounded native App UI document chunk without executing the thread.
+	pub async fn app_ui(
+		&self,
+		request: crate::ChiefAppUiRequest,
+	) -> Result<crate::ChiefAppUiResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(30),
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport.query_inner(
+				"chief-app-ui",
+				QueryPayload::GetChiefAppUi { request: request.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefAppUi(result) => {
+				if let crate::ChiefAppUiResult::Available {
+					request: actual,
+					fingerprint,
+					total_bytes,
+					bytes,
+					..
+				} = &result && (actual.as_ref() != &request
+					|| bytes.is_empty()
+					|| bytes.len() > crate::CHIEF_APP_UI_CHUNK_BYTES
+					|| *total_bytes as usize > crate::MAX_CHIEF_APP_UI_BYTES
+					|| u64::from(request.offset) + bytes.len() as u64 > u64::from(*total_bytes)
+					|| fingerprint.as_str().len() != 64
+					|| !fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
+					|| request.fingerprint.as_ref().is_some_and(|expected| expected != fingerprint))
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read one native timeline page for an exact task binding, without running it.
 	pub async fn timeline(
 		&self,
@@ -4523,7 +4568,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 87 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 88 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
@@ -5611,6 +5656,92 @@ max_entry_bytes = 0
 			task.await.unwrap();
 			if change == "none" {
 				assert!(matches!(result, Ok(crate::ChiefMediaResult::Available { .. })));
+			} else {
+				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
+			}
+		}
+	}
+	#[tokio::test]
+	async fn native_app_ui_wire_rejects_cross_item_mixed_content_and_unbounded_chunks() {
+		for change in
+			["none", "item", "offset", "empty", "chunk", "total", "capacity", "fingerprint"]
+		{
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let request = crate::ChiefAppUiRequest {
+				work_id: EntityId::new("work").unwrap(),
+				thread_id: EntityId::new("thread").unwrap(),
+				turn_id: EntityId::new("turn").unwrap(),
+				item_id: EntityId::new("item").unwrap(),
+				offset: 5,
+				fingerprint: Some(EntityId::new("a".repeat(64)).unwrap()),
+			};
+			let expected = request.clone();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap())
+					.await
+					.unwrap();
+				let _ = socket.next().await;
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+					panic!("text query")
+				};
+				let ClientMessage::Query(query) =
+					serde_json::from_str::<ClientMessage>(&text).unwrap()
+				else {
+					panic!("query")
+				};
+				let crate::QueryPayload::GetChiefAppUi { request: actual } = query.payload else {
+					panic!("media request")
+				};
+				assert_eq!(actual, expected);
+				let mut returned = actual;
+				if change == "item" {
+					returned.item_id = EntityId::new("another-item").unwrap();
+				}
+				if change == "offset" {
+					returned.offset += 1;
+				}
+				let bytes = match change {
+					"empty" => vec![],
+					"chunk" => vec![255; crate::CHIEF_APP_UI_CHUNK_BYTES + 1],
+					_ => vec![255; crate::CHIEF_APP_UI_CHUNK_BYTES],
+				};
+				let total_bytes = match change {
+					"total" => 4,
+					"capacity" => crate::MAX_CHIEF_APP_UI_BYTES as u32 + 1,
+					_ => 5 + crate::CHIEF_APP_UI_CHUNK_BYTES as u32,
+				};
+				let result = crate::ChiefAppUiResult::Available {
+					request: Box::new(returned),
+					account_id: EntityId::new("account").unwrap(),
+					fingerprint: EntityId::new(
+						if change == "fingerprint" { "b" } else { "a" }.repeat(64),
+					)
+					.unwrap(),
+					total_bytes,
+					bytes,
+				};
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::ChiefAppUi(result),
+					})))
+					.await
+					.unwrap();
+				drop(socket);
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = crate::ChiefClient::new(profile).app_ui(request).await;
+			task.await.unwrap();
+			if change == "none" {
+				assert!(matches!(result, Ok(crate::ChiefAppUiResult::Available { .. })));
 			} else {
 				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
 			}
