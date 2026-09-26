@@ -17,14 +17,14 @@ const ACCOUNT: &str = "10000000-0000-4000-8000-000000000001";
 const OPERATION: &str = "20000000-0000-4000-8000-000000000001";
 const GENERATION: &str = "30000000-0000-4000-8000-000000000001";
 
-pub(super) struct OwnedReviewer {
-	store: SqliteStore,
-	key: SourceKey,
+pub(crate) struct OwnedReviewer {
+	pub(crate) store: SqliteStore,
+	pub(crate) key: SourceKey,
 	client: AppServerClient,
 }
 
 impl OwnedReviewer {
-	pub(super) async fn new(
+	pub(crate) async fn new(
 		home: &std::path::Path,
 		client: &AppServerClient,
 		thread: &str,

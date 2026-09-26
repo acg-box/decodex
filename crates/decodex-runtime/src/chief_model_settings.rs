@@ -56,4 +56,4 @@ where
 
 #[cfg(test)]
 #[path = "chief_model_settings_tests.rs"]
-mod tests;
+pub(crate) mod tests;

@@ -11,9 +11,49 @@ pub(super) struct VoiceConnection {
 	answer_seen: bool,
 	precaution_retired: bool,
 	transcript_tail: [String; 2],
+	transcript_complete: [bool; 2],
 	gateway: VoiceGateway,
 	session: Option<(String, String)>,
 }
+impl VoiceConnection {
+	async fn save_transcript_tail(
+		&mut self,
+		store: &decodex_database::SqliteStore,
+		id: &str,
+		index: usize,
+	) -> Result<(), ChiefError> {
+		if self.transcript_tail[index].is_empty() {
+			self.transcript_complete[index] = false;
+			return Ok(());
+		}
+		let sequence = self.transcript_sequence + 1;
+		store
+			.record_chief_voice_transcript(
+				id.into(),
+				sequence,
+				["user", "assistant"][index].into(),
+				self.transcript_tail[index].clone(),
+				self.transcript_complete[index],
+			)
+			.await?;
+		self.transcript_sequence = sequence;
+		self.transcript_tail[index].clear();
+		self.transcript_complete[index] = false;
+		Ok(())
+	}
+
+	async fn save_transcript_tails(
+		&mut self,
+		store: &decodex_database::SqliteStore,
+		id: &str,
+	) -> Result<(), ChiefError> {
+		for index in 0..2 {
+			self.save_transcript_tail(store, id, index).await?;
+		}
+		Ok(())
+	}
+}
+
 impl ChiefCoordinator {
 	pub(super) async fn stop_voice_for_precaution(
 		&mut self,
@@ -51,6 +91,7 @@ impl ChiefCoordinator {
 			answer_seen: false,
 			precaution_retired: false,
 			transcript_tail: Default::default(),
+			transcript_complete: Default::default(),
 			gateway,
 			session: None,
 		});
@@ -115,6 +156,7 @@ impl ChiefCoordinator {
 				self.voice.as_mut().expect("voice host").answer_seen = false;
 				self.voice.as_mut().expect("voice host").precaution_retired = false;
 				self.voice.as_mut().expect("voice host").transcript_tail = Default::default();
+				self.voice.as_mut().expect("voice host").transcript_complete = Default::default();
 				self.voice.as_mut().expect("voice host").session =
 					Some((session_id.as_str().into(), thread.clone()));
 				let result=self.client.request("thread/realtime/start",json!({
@@ -148,14 +190,15 @@ impl ChiefCoordinator {
 		let Some(voice) = self.voice.as_mut() else { return Ok(()) };
 		let ServerEvent::Notification { method, params } = event else {
 			if matches!(event, ServerEvent::Closed(_))
-				&& let Some((id, _)) = &voice.session
+				&& let Some((id, _)) = voice.session.clone()
 			{
 				voice.gateway.update(
-					id,
+					&id,
 					ChiefVoicePhase::Failed,
 					None,
 					Some("Voice disconnected. Spoken input will not be replayed."),
 				);
+				voice.save_transcript_tails(&self.store, &id).await?;
 			}
 			return Ok(());
 		};
@@ -178,6 +221,9 @@ impl ChiefCoordinator {
 				if let Some(index) =
 					transcript_role_index(params["role"].as_str().unwrap_or_default())
 				{
+					if voice.transcript_complete[index] {
+						voice.save_transcript_tail(&self.store, &id, index).await?;
+					}
 					let delta = params["delta"].as_str().unwrap_or_default();
 					if voice.transcript_tail[index].len() + delta.len() <= 32_768 {
 						voice.transcript_tail[index].push_str(delta);
@@ -188,19 +234,12 @@ impl ChiefCoordinator {
 				let role = params["role"].as_str().unwrap_or_default();
 				let text = params["text"].as_str().unwrap_or_default();
 				if let Some(index) = transcript_role_index(role) {
-					voice.transcript_tail[index].clear();
-				}
-				if ["user", "assistant"].contains(&role) && !text.is_empty() {
-					voice.transcript_sequence += 1;
-					self.store
-						.record_chief_voice_transcript(
-							id.clone(),
-							voice.transcript_sequence,
-							role.into(),
-							text.into(),
-							true,
-						)
-						.await?;
+					if voice.transcript_complete[index] {
+						voice.save_transcript_tail(&self.store, &id, index).await?;
+					}
+					voice.transcript_tail[index] = text.into();
+					voice.transcript_complete[index] = true;
+					voice.save_transcript_tail(&self.store, &id, index).await?;
 				}
 			},
 			"thread/realtime/sdp" => {
@@ -226,21 +265,7 @@ impl ChiefCoordinator {
 			"thread/realtime/closed" => {
 				// Native stop can close a reply before a final transcript event. Preserve the
 				// text already received without replaying it as a new user instruction.
-				for (index, role) in ["user", "assistant"].into_iter().enumerate() {
-					let text = std::mem::take(&mut voice.transcript_tail[index]);
-					if !text.is_empty() {
-						voice.transcript_sequence += 1;
-						self.store
-							.record_chief_voice_transcript(
-								id.clone(),
-								voice.transcript_sequence,
-								role.into(),
-								text,
-								false,
-							)
-							.await?;
-					}
-				}
+				voice.save_transcript_tails(&self.store, &id).await?;
 				self.store.close_chief_voice_call(id.clone()).await?;
 				voice.gateway.update(&id, ChiefVoicePhase::Ended, None, None);
 				voice.session = None;
@@ -367,3 +392,7 @@ mod tests {
 		}
 	}
 }
+
+#[cfg(test)]
+#[path = "voice_persistence_tests.rs"]
+mod persistence_tests;
