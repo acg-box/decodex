@@ -2305,6 +2305,14 @@ pub enum QueryPayload {
 		request: crate::ConversationCreationReceiptRequest,
 	},
 	/// Discover account-scoped model metadata before creating a thread.
+	/// Read saved input and fresh native choices for a blocked initial task.
+	GetConversationModelReview {
+		/// Exact blocked conversation.
+		conversation_id: EntityId,
+		/// Revision displayed to the user.
+		expected_revision: EntityRevision,
+	},
+	/// Inspect native model choices before a conversation exists.
 	GetInitialModelCatalog {
 		/// Intended directory and account routing policy.
 		request: crate::InitialModelCatalogRequest,
@@ -2610,6 +2618,18 @@ pub enum CommandPayload {
 		working_directory: ConversationWorkingDirectory,
 		/// Explicit execution settings for this user send.
 		execution: ConversationExecutionSettings,
+		/// Source of the reviewed model settings; absent for legacy clients.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		initial_model_source: Option<Box<crate::InitialModelSource>>,
+	},
+	/// Confirm refreshed model settings for a blocked, unstarted conversation and start it.
+	ReviewConversationModelSettings {
+		/// Stable conversation whose saved message and directory remain unchanged.
+		conversation_id: EntityId,
+		/// Explicit choices reviewed by the user.
+		execution: ConversationExecutionSettings,
+		/// Fresh discovery observation used for those choices.
+		source: crate::InitialModelSource,
 	},
 	/// Resume the sole initial route for one routing-pending Conversation.
 	ResumeConversationRouting {
@@ -3132,6 +3152,8 @@ pub enum QueryResultPayload {
 	ConversationCreationReceipt(crate::ConversationCreationReceiptResult),
 	/// Native pre-conversation model metadata and its observation source.
 	InitialModelCatalog(crate::InitialModelCatalogResult),
+	/// Saved request and current choices for explicit review.
+	ConversationModelReview(crate::ConversationModelReviewResult),
 	/// Source-bound Chief history, without raw provider frames.
 	ChiefHistory(crate::ChiefHistoryResult),
 	/// Transient current-turn output outside retained history publication.
@@ -3488,8 +3510,17 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 				Err("turn outcome requires canonical original conversation and turn identities"),
 			QueryPayload::GetConversationCreationReceipt { request }
 				if !is_canonical_uuid(request.conversation_id.as_str())
-					|| request.message.as_str().trim().is_empty() =>
+					|| request.message.as_str().trim().is_empty()
+					|| request.initial_model_source.as_ref().is_some_and(|source| {
+						source.account_revision <= 0
+							|| !is_canonical_uuid(source.account_id.as_str())
+					}) =>
 				Err("creation receipt requires the original conversation and nonempty message"),
+			QueryPayload::GetConversationModelReview { conversation_id, expected_revision }
+				if !is_canonical_uuid(conversation_id.as_str())
+					|| expected_revision.0 == 0
+					|| expected_revision.0 > i64::MAX as u64 =>
+				Err("model review query coordinates are invalid"),
 			QueryPayload::GetInitialModelCatalog { request }
 				if request
 					.account_id
@@ -3561,7 +3592,8 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 		CommandPayload::Chief { .. } => Ok(()),
 		CommandPayload::SetDesktopSettings { .. } =>
 			positive_expected.then_some(()).ok_or("desktop settings revision is required"),
-		CommandPayload::CreateConversation { .. }
+		CommandPayload::ReviewConversationModelSettings { .. }
+		| CommandPayload::CreateConversation { .. }
 		| CommandPayload::ResumeConversationRouting { .. }
 		| CommandPayload::CreateConversationRoutingSuccessor { .. }
 		| CommandPayload::ResumeConversationEstablishment { .. }
@@ -3650,11 +3682,26 @@ fn validate_account_order_command(
 fn validate_conversation_command(command: &CommandEnvelope) -> Result<(), &'static str> {
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
 	match &command.payload {
-		CommandPayload::CreateConversation { conversation_id, message, .. } => {
+		CommandPayload::ReviewConversationModelSettings { conversation_id, source, .. } =>
+			(positive_expected
+				&& command.expected_revision.is_some_and(|value| value.0 <= i64::MAX as u64)
+				&& is_canonical_uuid(conversation_id.as_str())
+				&& is_canonical_uuid(source.account_id.as_str())
+				&& source.account_revision > 0)
+				.then_some(())
+				.ok_or("model review coordinates are invalid"),
+		CommandPayload::CreateConversation {
+			conversation_id,
+			message,
+			initial_model_source,
+			..
+		} => {
 			if command.expected_revision.is_some()
 				|| !is_canonical_uuid(conversation_id.as_str())
 				|| message.as_str().trim().is_empty()
-			{
+				|| initial_model_source.as_ref().is_some_and(|source| {
+					source.account_revision <= 0 || !is_canonical_uuid(source.account_id.as_str())
+				}) {
 				Err("Conversation create identity, revision, or message is invalid")
 			} else {
 				Ok(())
@@ -4342,6 +4389,7 @@ mod tests {
 		let successor =
 			EntityId::new("11234567-89ab-4def-8123-456789abcdef").expect("canonical successor ID");
 		let create = CommandPayload::CreateConversation {
+			initial_model_source: None,
 			conversation_id: source.clone(),
 			message: HistoryText::new("route this request").expect("bounded message"),
 			working_directory: ConversationWorkingDirectory::new("/tmp/work")
@@ -4846,7 +4894,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":89},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":90},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4855,7 +4903,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":89},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":90},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4897,7 +4945,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":89},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":90},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -5285,5 +5333,61 @@ mod tests {
 			serde_json::from_value::<AccountInitialSelectionResult>(unknown_selection_field)
 				.is_err()
 		);
+	}
+	#[test]
+	fn model_review_query_is_revision_bound() {
+		for (id, revision, accepted) in [
+			("01234567-89ab-4def-8123-456789abcdef", 1, true),
+			("01234567-89ab-4def-8123-456789abcdef", 0, false),
+			("01234567-89ab-4def-8123-456789abcdef", u64::MAX, false),
+			("another-task", 1, false),
+		] {
+			let query = ClientMessage::Query(QueryEnvelope {
+				version: CURRENT_VERSION,
+				query_id: QueryId::new("model-review").expect("query ID"),
+				payload: QueryPayload::GetConversationModelReview {
+					conversation_id: EntityId::new(id).expect("bounded identity"),
+					expected_revision: EntityRevision(revision),
+				},
+			});
+			let encoded = serde_json::to_string(&query).expect("encode review query");
+			let decoded = decode_client_message(&encoded);
+			assert_eq!(decoded.is_ok(), accepted);
+			if accepted {
+				assert_eq!(decoded.expect("valid query"), query);
+			}
+		}
+	}
+
+	#[test]
+	fn model_review_requires_revision_and_exact_source() {
+		for (revision, source_revision, accepted) in
+			[(None, 1, false), (Some(0), 1, false), (Some(1), 0, false), (Some(1), 1, true)]
+		{
+			let message = ClientMessage::Command(CommandEnvelope {
+				version: CURRENT_VERSION,
+				client_command_id: ClientCommandId::new("review").expect("command"),
+				idempotency_key: IdempotencyKey::new("review").expect("key"),
+				expected_revision: revision.map(EntityRevision),
+				correlation_id: CorrelationId::new("review").expect("correlation"),
+				causation_id: None,
+				payload: CommandPayload::ReviewConversationModelSettings {
+					conversation_id: EntityId::new("01234567-89ab-4def-8123-456789abcdef")
+						.expect("conversation"),
+					execution: crate::ConversationExecutionSettings::new(
+						crate::ConversationModel::new("gpt-6-astra").expect("model"),
+						crate::ConversationReasoningEffort::Low,
+						false,
+					),
+					source: crate::InitialModelSource {
+						account_id: EntityId::new("11234567-89ab-4def-8123-456789abcdef")
+							.expect("account"),
+						account_revision: source_revision,
+					},
+				},
+			});
+			let encoded = serde_json::to_string(&message).expect("encode review");
+			assert_eq!(decode_client_message(&encoded).is_ok(), accepted);
+		}
 	}
 }

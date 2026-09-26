@@ -756,6 +756,7 @@ impl Shell {
 			.expect("visual Conversation projection is valid")
 		};
 		shell.quick = ConversationsSnapshot {
+			model_review_message: None,
 			catalog: None,
 			load: ConversationsLoadState::Ready,
 			command: ConversationCommandState::Idle,
@@ -1766,6 +1767,22 @@ impl Shell {
 		if state == Some(ConversationState::OutcomeUnknown) {
 			self.input_status =
 				self.conversations.refresh_selected().err().map(input_error_label).map(Into::into);
+			self.synchronize_conversations(cx);
+			cx.notify();
+			return;
+		}
+		if action == Some(ConversationRecoveryAction::ReviewModelSettings) {
+			self.input_status = if self.quick.model_review_message.is_some() {
+				self.conversations
+					.confirm_model_review()
+					.err()
+					.map(input_error_label)
+					.map(Into::into)
+			} else if self.conversations.refresh_catalog() {
+				None
+			} else {
+				Some("Model options could not be refreshed.".into())
+			};
 			self.synchronize_conversations(cx);
 			cx.notify();
 			return;
@@ -3808,6 +3825,7 @@ fn conversation_state_label(state: ConversationState) -> &'static str {
 		ConversationState::QuotaExhausted => "Quota exhausted",
 		ConversationState::NoRoute => "No route",
 		ConversationState::Establishing => "Establishing",
+		ConversationState::ModelSettingsReviewRequired => "Review model settings",
 		ConversationState::Ready => "Ready",
 		ConversationState::Running => "Running",
 		ConversationState::ManualRecovery => "Action required",
@@ -3817,6 +3835,7 @@ fn conversation_state_label(state: ConversationState) -> &'static str {
 
 fn conversation_state_color(state: ConversationState) -> u32 {
 	match state {
+		ConversationState::ModelSettingsReviewRequired => 0xf59e0b,
 		ConversationState::Ready => 0x22c55e,
 		ConversationState::Running | ConversationState::Establishing => 0x60a5fa,
 		ConversationState::RoutingPending
@@ -3843,6 +3862,8 @@ fn command_status(command: ConversationCommandState) -> Option<&'static str> {
 
 fn recovery_action_label(action: ConversationRecoveryAction) -> &'static str {
 	match action {
+		ConversationRecoveryAction::ReviewModelSettings =>
+			"The model account changed. Refresh and confirm model settings before starting.",
 		ConversationRecoveryAction::ResumeRouting => "Resume the pending account route.",
 		ConversationRecoveryAction::CreateRoutingSuccessor =>
 			"Create a new conversation and route it explicitly.",
@@ -4553,7 +4574,20 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 
 fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let task = shell.quick.selected_task();
-	let (has_executable_recovery, recovery_label) = conversation_recovery_presentation(task);
+	let (has_executable_recovery, recovery_label) = if task.is_some_and(|task| {
+		task.recovery_action == Some(ConversationRecoveryAction::ReviewModelSettings)
+	}) {
+		(
+			true,
+			if shell.quick.model_review_message.is_some() {
+				"Confirm and start"
+			} else {
+				"Review settings"
+			},
+		)
+	} else {
+		conversation_recovery_presentation(task)
+	};
 	let can_continue = shell.creating_new
 		|| task.is_none()
 		|| task.is_some_and(|task| task.state == ConversationState::Ready);
@@ -4603,6 +4637,20 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.blur_radius(px(28.0))
 						.spread_radius(px(-10.0)),
 				])
+				.when_some(shell.quick.model_review_message.clone(), |element, message| {
+					element.child(
+						div()
+							.id("model-review-original-input")
+							.debug_selector(|| "model-review-original-input".into())
+							.max_h(px(120.0))
+							.overflow_y_scroll()
+							.p_2()
+							.text_size(px(12.0))
+							.child(format!(
+								"Confirm and start will send the saved request:\n{message}"
+							)),
+					)
+				})
 				.child(div().h(px(35.0)).min_h(px(35.0)).child(shell.composer.clone()))
 				.child(conversation_service_tiers(shell, cx))
 				.child(ordinary_drafts::creation_receipt_controls(shell, cx))
@@ -6240,6 +6288,7 @@ mod tests {
 		live_deltas: Vec<crate::conversations::ConversationLiveDelta>,
 	) -> ConversationsSnapshot {
 		ConversationsSnapshot {
+			model_review_message: None,
 			catalog: None,
 			load: ConversationsLoadState::Ready,
 			command: ConversationCommandState::AwaitingResult,

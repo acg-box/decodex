@@ -337,3 +337,5 @@ async fn concurrent_sends(
 fn fixture_usage() -> decodex_codex::AccountApiUsage {
 	decodex_codex::decode_account_api_usage(br#"{"account_id":"workspace-fixture","user_id":"user-fixture","plan_type":"team","rate_limit":{},"rate_limit_upsell":{"banner_type":"limit","title":"Workspace limit","description":"Ask the owner","ctas":[{"action":"notify_owner","label":"Notify owner"}]}}"#).expect("backend recovery source")
 }
+
+#[path = "application_model_review_native_tests.rs"] mod model_review;

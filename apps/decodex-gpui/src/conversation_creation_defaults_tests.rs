@@ -34,7 +34,7 @@ fn response(
 		server_id: server.clone(),
 		query_id,
 		payload: QueryResultPayload::InitialModelCatalog(InitialModelCatalogResult::Available {
-			account_id: EntityId::new("account").unwrap(),
+			account_id: EntityId::new("10000000-0000-4000-8000-000000000001").unwrap(),
 			account_revision: 1,
 			working_directory: ConversationWorkingDirectory::new("/tmp").unwrap(),
 			models: vec![],
@@ -78,9 +78,18 @@ fn automatic_discovery_is_once_per_context_and_missing_defaults_cannot_send() {
 	assert_eq!(conversations.snapshot().execution.model.as_str(), "managed-model");
 	conversations.create("Original input").unwrap();
 	let command = tests::dispatched_command(&conversations, &server);
-	let CommandPayload::CreateConversation { execution, message, .. } = command.payload else {
+	let CommandPayload::CreateConversation { execution, message, initial_model_source, .. } =
+		command.payload
+	else {
 		panic!("create")
 	};
+	assert_eq!(
+		initial_model_source,
+		Some(Box::new(decodex_protocol::InitialModelSource {
+			account_id: EntityId::new("10000000-0000-4000-8000-000000000001").unwrap(),
+			account_revision: 1
+		}))
+	);
 	assert_eq!(message.as_str(), "Original input");
 	assert_eq!(execution.model.as_str(), "managed-model");
 	assert_eq!(execution.reasoning_effort, Some(ConversationReasoningEffort::Low));
@@ -115,12 +124,12 @@ fn account_event_invalidates_default_source_and_stale_reply_cannot_restore_it() 
 		server_id: server.clone(),
 		cursor: decodex_protocol::Cursor(1),
 		channel: decodex_protocol::Channel::AccountsHealth,
-		entity_id: EntityId::new("account").unwrap(),
+		entity_id: EntityId::new("10000000-0000-4000-8000-000000000001").unwrap(),
 		entity_revision: EntityRevision(2),
 		correlation_id: CorrelationId::new("change").unwrap(),
 		causation_id: None,
 		payload: EventPayload::AccountLoggedOut {
-			account_id: EntityId::new("account").unwrap(),
+			account_id: EntityId::new("10000000-0000-4000-8000-000000000001").unwrap(),
 			tombstone_revision: EntityRevision(2),
 		},
 	});

@@ -410,6 +410,7 @@ pub enum OrdinaryTaskConversationProjection {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OrdinaryTaskPreSessionState {
+	ModelSettingsReviewRequired,
 	RoutingPending,
 	EstablishmentPending,
 	QuotaExhausted,
@@ -2124,10 +2125,16 @@ fn conversation_projection(
 		None => (None, None, None, false, None),
 	};
 	let routing_decision_id = route.as_ref().map(|value| value.0.clone());
+	let model_source_review_required: bool = connection.query_row(
+        "SELECT COALESCE((SELECT model_source_review_required FROM quick_task_requests WHERE conversation_id = ?1), 0)",
+        params![conversation_id.as_str()], |row| row.get(0),
+    ).map_err(sql_error)?;
 	let pre_session_state = if runtime_session_id.is_some() {
 		None
 	} else {
 		Some(match route.as_ref() {
+			None if model_source_review_required =>
+				OrdinaryTaskPreSessionState::ModelSettingsReviewRequired,
 			None => OrdinaryTaskPreSessionState::RoutingPending,
 			Some((_, decision, _)) if decision == "selected" =>
 				OrdinaryTaskPreSessionState::EstablishmentPending,

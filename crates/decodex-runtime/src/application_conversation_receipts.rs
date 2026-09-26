@@ -19,6 +19,12 @@ pub(super) async fn query_creation_receipt(
 		return Receipt::Conflict;
 	};
 	let command = CreateConversation {
+		initial_model_source: match super::runtime_initial_model_source(
+			request.initial_model_source.as_deref(),
+		) {
+			Ok(source) => source,
+			Err(()) => return Receipt::Conflict,
+		},
 		operation_key: request.idempotency_key.as_str().into(),
 		correlation_id: String::new(),
 		causation_id: None,
@@ -55,6 +61,10 @@ mod tests {
 		let store = decodex_database::SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
 		let mut request = ConversationCreationReceiptRequest {
+			initial_model_source: Some(Box::new(decodex_protocol::InitialModelSource {
+				account_id: EntityId::new("10000000-0000-4000-8000-000000000001").unwrap(),
+				account_revision: 7,
+			})),
 			idempotency_key: decodex_protocol::IdempotencyKey::new("original").unwrap(),
 			conversation_id: EntityId::new("30000000-0000-4000-8000-000000000001").unwrap(),
 			message: decodex_protocol::HistoryText::new("Original input").unwrap(),
@@ -71,6 +81,10 @@ mod tests {
 			ConversationCreationReceiptResult::NotRecorded
 		);
 		let command = CreateConversation {
+			initial_model_source: super::super::runtime_initial_model_source(
+				request.initial_model_source.as_deref(),
+			)
+			.unwrap(),
 			operation_key: "original".into(),
 			correlation_id: "correlation".into(),
 			causation_id: None,
@@ -83,7 +97,7 @@ mod tests {
 			.create_conversation(
 				&command.creation_identity().unwrap(),
 				&decodex_database::CreateConversationRecord {
-					initial_model_source: None,
+					initial_model_source: command.initial_model_source.clone(),
 					conversation_id: command.conversation_id.clone(),
 					title: "Original input".into(),
 					message: command.message.clone(),
@@ -102,6 +116,17 @@ mod tests {
 				conversation_id: request.conversation_id.clone(),
 				creation_revision: EntityRevision(1),
 			}
+		);
+		let mut changed_source = request.clone();
+		changed_source.initial_model_source.as_mut().unwrap().account_revision = 8;
+		assert_eq!(
+			query_creation_receipt(&owner, &changed_source).await,
+			ConversationCreationReceiptResult::Conflict
+		);
+		changed_source.initial_model_source = None;
+		assert_eq!(
+			query_creation_receipt(&owner, &changed_source).await,
+			ConversationCreationReceiptResult::Conflict
 		);
 		request.message = decodex_protocol::HistoryText::new("Later composer text").unwrap();
 		assert_eq!(

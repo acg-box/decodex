@@ -26,6 +26,7 @@ pub(super) async fn qualify(
 	std::fs::write(&instructions, "Keep the fixture local.").expect("native warning fixture");
 	let created = runtime
 		.create(CreateConversation {
+			initial_model_source: None,
 			operation_key: "native-runtime-create".into(),
 			correlation_id: "native-runtime-create".into(),
 			causation_id: None,

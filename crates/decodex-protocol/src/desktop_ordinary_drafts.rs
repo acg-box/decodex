@@ -147,6 +147,7 @@ mod tests {
 				correlation_id: CorrelationId::new(key).unwrap(),
 				causation_id: None,
 				payload: CommandPayload::CreateConversation {
+					initial_model_source: None,
 					conversation_id: EntityId::new("original-conversation").unwrap(),
 					message: HistoryText::new("Original submitted input").unwrap(),
 					working_directory,

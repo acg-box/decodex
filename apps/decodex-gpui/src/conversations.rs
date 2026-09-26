@@ -49,6 +49,7 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 /// Current bounded state rendered by the Conversations destination.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ConversationsSnapshot {
+	pub(crate) model_review_message: Option<String>,
 	pub(crate) load: ConversationsLoadState,
 	pub(crate) command: ConversationCommandState,
 	/// Exact Conversation affected by the visible command state. Background batch
@@ -336,16 +337,26 @@ impl Conversations {
 			let Some(source) = state.selected_task().cloned() else {
 				return false;
 			};
-			(
-				QueryPayload::GetConversationCapabilities {
-					conversation_id: conversation_id.clone(),
-				},
-				ConversationQueryPurpose::Catalog {
-					conversation_id,
-					epoch,
-					source: Box::new(source),
-				},
-			)
+			if source.state == ConversationState::ModelSettingsReviewRequired {
+				(
+					QueryPayload::GetConversationModelReview {
+						conversation_id,
+						expected_revision: source.conversation_revision,
+					},
+					ConversationQueryPurpose::ReviewCatalog { epoch, source: Box::new(source) },
+				)
+			} else {
+				(
+					QueryPayload::GetConversationCapabilities {
+						conversation_id: conversation_id.clone(),
+					},
+					ConversationQueryPurpose::Catalog {
+						conversation_id,
+						epoch,
+						source: Box::new(source),
+					},
+				)
+			}
 		} else {
 			let Some(working_directory) = self.inner.working_directory.clone() else {
 				return false;
@@ -501,6 +512,32 @@ impl Conversations {
 		)
 	}
 
+	pub(crate) fn confirm_model_review(&self) -> Result<(), ConversationInputError> {
+		let state = self.lock();
+		let Some(CatalogSource::Review { task, source, .. }) = &state.catalog_source else {
+			return Err(ConversationInputError::NotReady);
+		};
+		let models = state.current_catalog().ok_or(ConversationInputError::NotReady)?;
+		if !models.iter().any(|model| {
+			model.model == state.execution.model
+				&& state
+					.execution
+					.reasoning_effort
+					.as_ref()
+					.is_none_or(|effort| model.efforts.contains(effort))
+		}) {
+			return Err(ConversationInputError::NotReady);
+		}
+		let payload = CommandPayload::ReviewConversationModelSettings {
+			conversation_id: task.conversation_id.clone(),
+			execution: state.execution.clone(),
+			source: source.clone(),
+		};
+		let revision = task.conversation_revision;
+		drop(state);
+		self.queue_command(payload, Some(revision), None, true)
+	}
+
 	pub(crate) fn create(
 		&self,
 		message: &str,
@@ -511,34 +548,47 @@ impl Conversations {
 			.clone()
 			.ok_or(ConversationInputError::WorkingDirectoryUnavailable)?;
 		let conversation_id = entity_id()?;
+		let (execution, initial_model_source) = {
+			let state = self.lock();
+			if state.pending_command.is_some()
+				|| state.in_flight_command.is_some()
+				|| state.command == ConversationCommandState::OutcomeUnknown
+			{
+				return Err(ConversationInputError::Busy);
+			}
+			if state.selected.is_none()
+				&& (state.requested_selection.is_some() || !state.creation_ready())
+			{
+				return Err(ConversationInputError::NotReady);
+			}
+			if state
+				.execution
+				.service_tier
+				.as_ref()
+				.is_some_and(|tier| !matches!(tier.as_str(), "default" | "flex"))
+				&& state.current_catalog().is_none()
+			{
+				return Err(ConversationInputError::NotReady);
+			}
+			(
+				state.execution.clone(),
+				match &state.catalog_source {
+					Some(CatalogSource::Initial { account_id, account_revision })
+						if state.current_catalog().is_some() =>
+						Some(Box::new(decodex_protocol::InitialModelSource {
+							account_id: account_id.clone(),
+							account_revision: *account_revision,
+						})),
+					_ => None,
+				},
+			)
+		};
 		let payload = CommandPayload::CreateConversation {
 			conversation_id: conversation_id.clone(),
 			message: message_text(message)?,
 			working_directory,
-			execution: {
-				let state = self.lock();
-				if state.pending_command.is_some()
-					|| state.in_flight_command.is_some()
-					|| state.command == ConversationCommandState::OutcomeUnknown
-				{
-					return Err(ConversationInputError::Busy);
-				}
-				if state.selected.is_none()
-					&& (state.requested_selection.is_some() || !state.creation_ready())
-				{
-					return Err(ConversationInputError::NotReady);
-				}
-				if state
-					.execution
-					.service_tier
-					.as_ref()
-					.is_some_and(|tier| !matches!(tier.as_str(), "default" | "flex"))
-					&& state.current_catalog().is_none()
-				{
-					return Err(ConversationInputError::NotReady);
-				}
-				state.execution.clone()
-			},
+			execution,
+			initial_model_source,
 		};
 		self.queue_command(payload, None, Some(conversation_id.clone()), true)?;
 		Ok(QueuedConversationSubmission { conversation_id, turn_id: None })
@@ -911,6 +961,10 @@ impl Conversations {
 		}
 		state.in_flight_query = None;
 		let (outcome, query_queued) = match purpose {
+			ConversationQueryPurpose::ReviewCatalog { epoch, source } => {
+				state.apply_model_review(epoch, source.as_ref(), &result.payload);
+				(ConversationRouteOutcome::Fresh, false)
+			},
 			ConversationQueryPurpose::ControlState { command, source } =>
 				state.route_control_state(&command, source.as_deref(), &result.payload),
 			ConversationQueryPurpose::ModelSettings { epoch, source } =>
@@ -1235,8 +1289,16 @@ struct SessionBinding {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum CatalogSource {
+	Review {
+		task: Box<ConversationSummary>,
+		source: decodex_protocol::InitialModelSource,
+		message: HistoryText,
+	},
 	Conversation(Box<ConversationSummary>),
-	Initial { account_id: EntityId, account_revision: i64 },
+	Initial {
+		account_id: EntityId,
+		account_revision: i64,
+	},
 }
 
 struct State {
@@ -1283,6 +1345,55 @@ struct State {
 }
 
 impl State {
+	fn apply_model_review(
+		&mut self,
+		epoch: u64,
+		source: &ConversationSummary,
+		payload: &QueryResultPayload,
+	) {
+		if self.catalog_epoch != epoch || self.selected_task() != Some(source) {
+			return;
+		}
+		self.catalog = None;
+		self.catalog_source = None;
+		let QueryResultPayload::ConversationModelReview(
+			decodex_protocol::ConversationModelReviewResult::Available(review),
+		) = payload
+		else {
+			return;
+		};
+		if review.conversation_id != source.conversation_id
+			|| review.conversation_revision != source.conversation_revision
+		{
+			return;
+		}
+		let decodex_protocol::InitialModelCatalogResult::Available {
+			account_id,
+			account_revision,
+			models,
+			..
+		} = &review.catalog
+		else {
+			return;
+		};
+		if *account_revision <= 0 {
+			return;
+		}
+		self.execution = review.execution.clone();
+		self.execution_choice_owner = Some(source.conversation_id.clone());
+		self.creation_intent = Default::default();
+
+		self.catalog = Some(models.clone());
+		self.catalog_source = Some(CatalogSource::Review {
+			task: Box::new(source.clone()),
+			source: decodex_protocol::InitialModelSource {
+				account_id: account_id.clone(),
+				account_revision: *account_revision,
+			},
+			message: review.message.clone(),
+		});
+	}
+
 	fn creation_ready(&self) -> bool {
 		self.initial_defaults_ready
 			|| (self.creation_intent.model
@@ -1328,8 +1439,8 @@ impl State {
 impl State {
 	fn current_catalog(&self) -> Option<&Vec<decodex_protocol::ChiefModelDto>> {
 		let current = match &self.catalog_source {
-			Some(CatalogSource::Conversation(source)) =>
-				self.selected_task() == Some(source.as_ref()),
+			Some(CatalogSource::Review { task: source, .. })
+			| Some(CatalogSource::Conversation(source)) => self.selected_task() == Some(source.as_ref()),
 			Some(CatalogSource::Initial { account_id, account_revision }) =>
 				self.selected.is_none() && *account_revision > 0 && !account_id.as_str().is_empty(),
 			None => false,
@@ -1966,6 +2077,11 @@ impl State {
 					})
 			};
 		ConversationsSnapshot {
+			model_review_message: match &self.catalog_source {
+				Some(CatalogSource::Review { message, .. }) if self.current_catalog().is_some() =>
+					Some(message.as_str().to_owned()),
+				_ => None,
+			},
 			catalog: self.current_catalog().cloned(),
 			initial_defaults_ready: self.creation_ready(),
 			model_settings_ready: self.ordinary_execution_ready(),
@@ -1978,10 +2094,13 @@ impl State {
 			tasks: self.tasks.clone(),
 			selected: self.selected.clone(),
 			live_deltas: self.live_deltas.iter().cloned().collect(),
-			can_submit: ((self.selected.is_some() && self.ordinary_execution_ready())
-				|| (self.selected.is_none()
-					&& self.requested_selection.is_none()
-					&& self.creation_ready()))
+			can_submit: ((self.selected.is_some()
+				&& (self.ordinary_execution_ready()
+					|| self.selected_task().is_some_and(|task| {
+						task.state == ConversationState::ModelSettingsReviewRequired
+					}))) || (self.selected.is_none()
+				&& self.requested_selection.is_none()
+				&& self.creation_ready()))
 				&& self.session.is_some()
 				&& self.refresh_batch.is_none()
 				&& self.pending_command.is_none()
@@ -2033,6 +2152,10 @@ struct InFlightQuery {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ConversationQueryPurpose {
+	ReviewCatalog {
+		epoch: u64,
+		source: Box<ConversationSummary>,
+	},
 	ControlState {
 		command: Box<CommandEnvelope>,
 		source: Option<Box<ConversationSummary>>,
@@ -2117,6 +2240,7 @@ fn accepted_result_task(
 	let conversation = match (&in_flight.envelope.payload, result.payload.as_ref()) {
 		(
 			CommandPayload::CreateConversation { .. }
+			| CommandPayload::ReviewConversationModelSettings { .. }
 			| CommandPayload::ResumeConversationRouting { .. }
 			| CommandPayload::ResumeConversationEstablishment { .. }
 			| CommandPayload::SubmitConversationTurn { .. }
@@ -2246,6 +2370,7 @@ fn message_text(value: &str) -> Result<HistoryText, ConversationInputError> {
 fn command_conversation_id(payload: &CommandPayload) -> EntityId {
 	match payload {
 		CommandPayload::CreateConversation { conversation_id, .. }
+		| CommandPayload::ReviewConversationModelSettings { conversation_id, .. }
 		| CommandPayload::ResumeConversationRouting { conversation_id }
 		| CommandPayload::CreateConversationRoutingSuccessor { conversation_id }
 		| CommandPayload::ResumeConversationEstablishment { conversation_id }
@@ -4452,6 +4577,208 @@ pub(crate) mod tests {
 		assert!(!snapshot.can_submit);
 		assert_eq!(conversations.submit("must remain fenced"), Err(ConversationInputError::Busy));
 		assert!(conversations.try_take_dispatch(2, &server_id).is_none());
+	}
+	#[test]
+	fn model_review_refresh_requires_explicit_confirmation_and_ignores_stale_selection() {
+		for stale in [false, true] {
+			let (conversations, server_id, original) = catalog_conversations();
+			let models = conversations.snapshot().catalog.expect("fixture catalog");
+			let task = conversation_summary(
+				original.conversation_id.clone(),
+				EntityRevision(1),
+				2,
+				None,
+				None,
+				ConversationState::ModelSettingsReviewRequired,
+				None,
+				Some(ConversationRecoveryAction::ReviewModelSettings),
+			)
+			.expect("blocked task");
+			{
+				let mut state = conversations.lock();
+				state.tasks = vec![task.clone()];
+				state.clear_catalog();
+			}
+			assert!(matches!(
+				conversations.confirm_model_review(),
+				Err(ConversationInputError::NotReady)
+			));
+			assert!(conversations.refresh_catalog());
+			let query = conversations
+				.try_take_dispatch(1, &server_id)
+				.expect("review dispatch")
+				.query()
+				.expect("review query")
+				.clone();
+			assert!(
+				matches!(&query.payload, QueryPayload::GetConversationModelReview { conversation_id, expected_revision }
+                if conversation_id == &task.conversation_id && *expected_revision == task.conversation_revision)
+			);
+			let execution = ConversationExecutionSettings::new(
+				models[0].model.clone(),
+				ConversationReasoningEffort::High,
+				false,
+			);
+			let source = decodex_protocol::InitialModelSource {
+				account_id: EntityId::new("11234567-89ab-4def-8123-456789abcdef").expect("account"),
+				account_revision: 7,
+			};
+			let result = QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: server_id.clone(),
+				query_id: query.query_id,
+				payload: QueryResultPayload::ConversationModelReview(
+					decodex_protocol::ConversationModelReviewResult::Available(Box::new(
+						decodex_protocol::ConversationModelReview {
+							conversation_id: task.conversation_id.clone(),
+							conversation_revision: task.conversation_revision,
+							message: HistoryText::new("Keep the original request")
+								.expect("saved input"),
+							execution: execution.clone(),
+							catalog: decodex_protocol::InitialModelCatalogResult::Available {
+								account_id: source.account_id.clone(),
+								account_revision: source.account_revision,
+								working_directory: ConversationWorkingDirectory::new(
+									"/tmp/original-request",
+								)
+								.expect("original cwd"),
+								models,
+								defaults: None,
+							},
+						},
+					)),
+				),
+			};
+			if stale {
+				conversations.begin_new();
+			}
+			conversations.route_query_result(1, &server_id, &result);
+			assert!(
+				conversations.try_take_dispatch(1, &server_id).is_none(),
+				"refresh alone cannot send"
+			);
+			if stale {
+				assert!(conversations.snapshot().model_review_message.is_none());
+				assert!(conversations.confirm_model_review().is_err());
+				continue;
+			}
+			assert_eq!(
+				conversations.snapshot().model_review_message.as_deref(),
+				Some("Keep the original request")
+			);
+			conversations.confirm_model_review().expect("explicit confirmation");
+			let command = conversations
+				.try_take_dispatch(1, &server_id)
+				.expect("confirmation dispatch")
+				.command()
+				.expect("confirmation command")
+				.clone();
+			assert_eq!(command.expected_revision, Some(task.conversation_revision));
+			assert!(matches!(command.payload, CommandPayload::ReviewConversationModelSettings {
+                conversation_id, execution: selected, source: observed,
+            } if conversation_id == task.conversation_id && selected == execution && observed == source));
+		}
+	}
+
+	#[test]
+	fn model_review_lost_response_reads_state_without_resending_or_clearing_later_drafts() {
+		for stage in 0..3 {
+			let (conversations, server_id, original) = catalog_conversations();
+			let blocked = conversation_summary(
+				original.conversation_id.clone(),
+				EntityRevision(1),
+				2,
+				None,
+				None,
+				ConversationState::ModelSettingsReviewRequired,
+				None,
+				Some(ConversationRecoveryAction::ReviewModelSettings),
+			)
+			.expect("blocked task");
+			{
+				let mut state = conversations.lock();
+				state.tasks = vec![blocked.clone()];
+				state.catalog_source = Some(CatalogSource::Review {
+					task: Box::new(blocked.clone()),
+					source: decodex_protocol::InitialModelSource {
+						account_id: EntityId::new("11234567-89ab-4def-8123-456789abcdef")
+							.expect("account"),
+						account_revision: 1,
+					},
+					message: HistoryText::new("Original saved message").expect("saved input"),
+				});
+			}
+			let before = conversations.snapshot();
+			conversations.confirm_model_review().expect("explicit confirmation");
+			let dispatch =
+				conversations.try_take_dispatch(1, &server_id).expect("confirmation dispatch");
+			assert!(matches!(
+				dispatch.command().expect("command").payload,
+				CommandPayload::ReviewConversationModelSettings { .. }
+			));
+			conversations.command_sent(&dispatch);
+			conversations.session_ended(1);
+			conversations.bind_session(2, server_id.clone());
+			assert_eq!(conversations.snapshot().command, ConversationCommandState::OutcomeUnknown);
+			assert!(conversations.confirm_model_review().is_err());
+			let query = conversations
+				.try_take_dispatch(2, &server_id)
+				.expect("readback")
+				.query()
+				.expect("read-only recovery")
+				.clone();
+			let current = match stage {
+				0 => blocked,
+				1 => conversation_summary(
+					original.conversation_id.clone(),
+					EntityRevision(2),
+					3,
+					None,
+					None,
+					ConversationState::RoutingPending,
+					None,
+					Some(ConversationRecoveryAction::ResumeRouting),
+				)
+				.expect("confirmed but unstarted"),
+				_ => conversation_summary(
+					original.conversation_id.clone(),
+					EntityRevision(2),
+					3,
+					original.runtime_session_id.clone(),
+					original.runtime_session_revision,
+					ConversationState::Ready,
+					None,
+					None,
+				)
+				.expect("started task"),
+			};
+			conversations.route_query_result(
+				2,
+				&server_id,
+				&QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: server_id.clone(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::Conversations(ConversationListResult::Available(
+						ConversationListPage::new(vec![current.clone()], None)
+							.expect("complete authoritative readback"),
+					)),
+				},
+			);
+			let after = conversations.snapshot();
+			assert_eq!(after.command, ConversationCommandState::Idle);
+			assert_eq!(after.selected_task(), Some(&current));
+			assert_eq!(after.submission_result_generation, before.submission_result_generation);
+			assert_eq!(after.last_submission_accepted, before.last_submission_accepted);
+			assert!(
+				after.model_review_message.is_none(),
+				"old discovery is invalid after reconnect"
+			);
+			assert!(
+				conversations.try_take_dispatch(2, &server_id).is_none(),
+				"never replay confirmation or the saved prompt"
+			);
+		}
 	}
 }
 

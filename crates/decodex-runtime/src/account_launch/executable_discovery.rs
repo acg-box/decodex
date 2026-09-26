@@ -61,7 +61,10 @@ mod tests {
 		fs::create_dir(&bin).unwrap();
 		fs::write(bin.join("codex"), b"fixture").unwrap();
 		let path = env::join_paths([bin]).unwrap();
-		assert_eq!(select(Path::new("codex"), &[app.clone()], Some(path)), Some(bundled.clone()));
+		assert_eq!(
+			select(Path::new("codex"), std::slice::from_ref(&app), Some(path)),
+			Some(bundled.clone())
+		);
 		assert_eq!(select(Path::new("codex"), &[app], None), Some(bundled));
 	}
 

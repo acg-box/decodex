@@ -313,6 +313,7 @@ pub(crate) struct ConversationExecutionSettings {
 
 /// First ordinary Turn input. Selected settings survive pre-session recovery.
 pub(crate) struct CreateConversation {
+	pub initial_model_source: Option<decodex_database::InitialModelSource>,
 	pub operation_key: String,
 	pub correlation_id: String,
 	pub causation_id: Option<String>,
@@ -324,22 +325,29 @@ pub(crate) struct CreateConversation {
 
 impl CreateConversation {
 	pub(crate) fn creation_identity(&self) -> Result<CommandIdentity, ()> {
-		exact_command(
-			"conversation",
-			&self.operation_key,
-			&[
-				self.conversation_id.as_str(),
-				"Conversation",
-				&self.message,
-				&self.working_directory,
-				&self.execution.model,
-				// Empty only encodes absence in the fingerprint; explicit effort cannot be empty.
-				// Keep existing explicit request fingerprints unchanged.
-				self.execution.reasoning_effort.as_deref().unwrap_or(""),
-				self.execution.service_tier.as_str(),
-				"ordinary",
-			],
-		)
+		let revision =
+			self.initial_model_source.as_ref().map(|source| source.account_revision.to_string());
+		let mut parts = vec![
+			self.conversation_id.as_str(),
+			"Conversation",
+			&self.message,
+			&self.working_directory,
+			&self.execution.model,
+			self.execution.reasoning_effort.as_deref().unwrap_or(""),
+			self.execution.service_tier.as_str(),
+			"ordinary",
+		];
+		if let Some(source) = &self.initial_model_source {
+			if source.account_revision <= 0 {
+				return Err(());
+			}
+			parts.extend([
+				"initial_model_source",
+				source.account_id.as_str(),
+				revision.as_deref().ok_or(())?,
+			]);
+		}
+		exact_command("conversation", &self.operation_key, &parts)
 	}
 }
 
@@ -427,6 +435,7 @@ pub(crate) struct ConversationReadback {
 /// Closed local lifecycle projection with no durable transition power.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ConversationLocalState {
+	ModelSettingsReviewRequired,
 	RoutingPending,
 	EstablishmentPending,
 	QuotaExhausted,
@@ -1314,6 +1323,7 @@ impl ConversationRuntime {
 				Ok(None) | Err(_) => return,
 			};
 		let initial = CreateConversation {
+			initial_model_source: request.initial_model_source,
 			operation_key: command.operation_key,
 			correlation_id: command.correlation_id,
 			causation_id: command.causation_id,
@@ -1353,6 +1363,7 @@ impl ConversationRuntime {
 			};
 		self.run_reserved_initial(
 			CreateConversation {
+				initial_model_source: request.initial_model_source,
 				operation_key: command.operation_key,
 				correlation_id: command.correlation_id,
 				causation_id: command.causation_id,
@@ -1409,7 +1420,7 @@ impl ConversationRuntime {
 			.create_conversation(
 				&conversation_command,
 				&CreateConversationRecord {
-					initial_model_source: None,
+					initial_model_source: command.initial_model_source.clone(),
 					conversation_id: command.conversation_id.clone(),
 					title,
 					message: command.message.clone(),
@@ -1453,6 +1464,13 @@ impl ConversationRuntime {
 		};
 		let (decision, plan) = match outcome {
 			PreProcessOutcome::Planned { decision, plan } => (decision, plan),
+			PreProcessOutcome::ModelSettingsReviewRequired => {
+				return self.pre_session(
+					&command,
+					conversation_revision,
+					ConversationLocalState::ModelSettingsReviewRequired,
+				);
+			},
 			PreProcessOutcome::Waiting => {
 				return self.pre_session(
 					&command,
@@ -2490,7 +2508,9 @@ impl ConversationRuntime {
 				Err(ExistingSessionPlanningRefusal::Unknown),
 			PreProcessOutcome::Waiting
 			| PreProcessOutcome::NoRoute
-			| PreProcessOutcome::EstablishmentPending => Err(ExistingSessionPlanningRefusal::Conflict),
+			| PreProcessOutcome::EstablishmentPending
+			| PreProcessOutcome::ModelSettingsReviewRequired =>
+				Err(ExistingSessionPlanningRefusal::Conflict),
 		}
 	}
 
@@ -6188,6 +6208,7 @@ mod tests {
 		let store = super::SqliteStore::open(&root.paths()).unwrap();
 		let id = super::ConversationId::new("30000000-0000-4000-8000-000000000001").unwrap();
 		let mut command = super::CreateConversation {
+			initial_model_source: None,
 			operation_key: "original-creation".into(),
 			correlation_id: "correlation".into(),
 			causation_id: None,
