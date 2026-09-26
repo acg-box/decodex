@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 mod capacity;
 mod steer;
 pub use capacity::ChiefCapacityRetry;
+pub(crate) use capacity::cancel_pending as cancel_pending_capacity;
 
 use crate::{DatabaseError, SqliteStore, StoreError, error::sqlite_error, unix_micros};
 
@@ -1299,6 +1300,7 @@ mod tests {
 	mod dispatch_refusals;
 	mod inbox_carryover;
 	mod legacy_setup;
+	mod native_turns;
 	mod partial_output;
 	mod reasoning_summary;
 	mod request_payloads;
