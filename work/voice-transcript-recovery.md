@@ -1,0 +1,28 @@
+# Voice transcript persistence after disconnect
+
+Classification: core recovery for the existing optional live voice feature.
+Fixed upstream reference: `595cc91e8cbb1c2ca822d0311dcf12709410c582`,
+`app-server-protocol/src/protocol/v2/realtime.rs`. Native transcript deltas and
+final transcript parts are distinct notifications.
+
+A transport close previously marked voice failed without saving its received
+text. Final and normal-close handlers also cleared text and advanced the local
+sequence before the store accepted the write.
+
+The runtime now saves received tails on transport close. It keeps the call open
+until native closure or process-death reconciliation establishes its lifetime.
+Text and sequence advance only after a successful store write. A failed final
+write retains both the corrected text and its finality for a later save. A new
+transcript cannot overwrite an unsaved final part. Saving never sends native
+input, requests approval or restarts voice.
+
+The existing 32 KiB per-record and delta-buffer limits remain. This change does
+not claim complete capture of transcripts above those bounds. No schema or
+native execution owner changes. Received partial text remains marked partial;
+it is not promoted to a completed native transcript.
+
+A real store fixture with an admitted process and bound work reproduces the
+missing record before the fix. Tests cover disconnect, repeated disconnect,
+injected insert failure for partial and final text, later successful closure,
+exact text/finality, sequence retention, call lifetime and no native replay.
+These are service recovery tests, not microphone or WebRTC acceptance.
