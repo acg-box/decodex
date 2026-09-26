@@ -75,9 +75,9 @@ pub(crate) const CANVAS: u32 = 0x0b0a0f;
 pub(crate) const SHELL_MATERIAL: u32 = 0x10101459;
 pub(crate) const CONTENT_MATERIAL: u32 = 0x14141978;
 pub(crate) const TOPBAR_MATERIAL: u32 = 0x15151b68;
-// Chief sidebar is a direct child of the shell, never a child of content tint.
-pub(crate) const CHIEF_SIDEBAR_MATERIAL: u32 = 0x17171c58;
-pub(crate) const CHIEF_CHAT_OVERLAY: u32 = 0x17171c0e;
+// Agent sidebar is a direct child of the shell, never a child of content tint.
+pub(crate) const AGENT_SIDEBAR_MATERIAL: u32 = 0x17171c58;
+pub(crate) const AGENT_CHAT_OVERLAY: u32 = 0x17171c0e;
 pub(crate) const SIDEBAR_MATERIAL: u32 = 0x100e1584;
 pub(crate) const SURFACE_MATERIAL: u32 = 0x100e152a;
 pub(crate) const SURFACE_RAISED_MATERIAL: u32 = 0x17151e46;
@@ -107,8 +107,8 @@ mod tests {
 	fn nested_shell_materials_keep_a_visible_blur_budget() {
 		for material in [
 			SHELL_MATERIAL,
-			CHIEF_SIDEBAR_MATERIAL,
-			CHIEF_CHAT_OVERLAY,
+			AGENT_SIDEBAR_MATERIAL,
+			AGENT_CHAT_OVERLAY,
 			CONTENT_MATERIAL,
 			TOPBAR_MATERIAL,
 			SIDEBAR_MATERIAL,
@@ -131,9 +131,9 @@ mod tests {
 		let window = (SHELL_MATERIAL & 0xff) as f32 / 255.0;
 		let page = composite(window, CONTENT_MATERIAL);
 		let pane = composite(window, SIDEBAR_MATERIAL);
-		let chief_sidebar = composite(window, CHIEF_SIDEBAR_MATERIAL);
-		assert!((0.56..=0.60).contains(&chief_sidebar));
-		assert!(chief_sidebar < page);
+		let agent_sidebar = composite(window, AGENT_SIDEBAR_MATERIAL);
+		assert!((0.56..=0.60).contains(&agent_sidebar));
+		assert!(agent_sidebar < page);
 		assert!((0.64..=0.68).contains(&page), "conversation must retain visible glass");
 		assert!((0.66..=0.70).contains(&pane));
 		let composer = composite(page, COMPOSER_MATERIAL);

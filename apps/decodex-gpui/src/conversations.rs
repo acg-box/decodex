@@ -64,7 +64,7 @@ pub(crate) struct ConversationsSnapshot {
 	pub(crate) live_deltas: Vec<ConversationLiveDelta>,
 	pub(crate) can_submit: bool,
 	pub(crate) execution: ConversationExecutionSettings,
-	pub(crate) catalog: Option<Vec<decodex_protocol::ChiefModelDto>>,
+	pub(crate) catalog: Option<Vec<decodex_protocol::AgentModelDto>>,
 	pub(crate) initial_defaults_ready: bool,
 	pub(crate) model_settings_ready: bool,
 }
@@ -1018,7 +1018,7 @@ impl Conversations {
 					state.catalog_source = Some(CatalogSource::Conversation(source));
 					state.catalog = match &result.payload {
 						QueryResultPayload::ConversationCapabilities(
-							decodex_protocol::ChiefCapabilitiesResult::Available { models, .. },
+							decodex_protocol::AgentCapabilitiesResult::Available { models, .. },
 						) => Some(models.clone()),
 						_ => None,
 					};
@@ -1310,7 +1310,7 @@ enum CatalogSource {
 
 struct State {
 	delivery: drafts::DeliveryDrafts,
-	catalog: Option<Vec<decodex_protocol::ChiefModelDto>>,
+	catalog: Option<Vec<decodex_protocol::AgentModelDto>>,
 	catalog_epoch: u64,
 	catalog_source: Option<CatalogSource>,
 	initial_defaults: Option<Box<decodex_protocol::InitialModelDefaults>>,
@@ -1444,7 +1444,7 @@ impl State {
 }
 
 impl State {
-	fn current_catalog(&self) -> Option<&Vec<decodex_protocol::ChiefModelDto>> {
+	fn current_catalog(&self) -> Option<&Vec<decodex_protocol::AgentModelDto>> {
 		let current = match &self.catalog_source {
 			Some(CatalogSource::Review { task: source, .. })
 			| Some(CatalogSource::Conversation(source)) => self.selected_task() == Some(source.as_ref()),
@@ -3479,7 +3479,7 @@ pub(crate) mod tests {
 		assert!(conversations.refresh_catalog());
 		let query =
 			conversations.try_take_dispatch(1, &server_id).unwrap().query().unwrap().clone();
-		let model = decodex_protocol::ChiefModelDto {
+		let model = decodex_protocol::AgentModelDto {
 			model: ConversationModel::new("gpt-5.6-sol").unwrap(),
 			name: "Sol".into(),
 			efforts: vec![ConversationReasoningEffort::High],
@@ -3489,7 +3489,7 @@ pub(crate) mod tests {
 			supports_images: true,
 			availability: None,
 			upgrade: None,
-			service_tiers: vec![decodex_protocol::ChiefServiceTierDto {
+			service_tiers: vec![decodex_protocol::AgentServiceTierDto {
 				id: decodex_protocol::ServiceTier::new("ultrafast").unwrap(),
 				name: "Ultrafast".into(),
 				description: "More usage".into(),
@@ -3501,7 +3501,7 @@ pub(crate) mod tests {
 			server_id: server_id.clone(),
 			query_id: query.query_id,
 			payload: QueryResultPayload::ConversationCapabilities(
-				decodex_protocol::ChiefCapabilitiesResult::Available {
+				decodex_protocol::AgentCapabilitiesResult::Available {
 					models: vec![model],
 					memory_enabled: None,
 				},

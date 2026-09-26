@@ -1,7 +1,7 @@
 //! Opt-in native media qualification. Private SDP travels through inherited pipes only.
 use decodex_core as _;
 use decodex_protocol::{
-	ChiefClient, ChiefVoicePhase, ChiefVoiceRequest, ClientProfile, EntityId, VoiceSdp,
+	AgentClient, AgentVoicePhase, AgentVoiceRequest, ClientProfile, EntityId, VoiceSdp,
 };
 use futures_util as _;
 #[cfg(unix)] use libc as _;
@@ -19,8 +19,8 @@ use url as _;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let root = std::env::args().nth(1).ok_or("explicit service root required")?;
-	let work = std::env::args().nth(2).ok_or("explicit authorized test Chief required")?;
-	let client = ChiefClient::new(ClientProfile::load(Path::new(&root), None)?);
+	let work = std::env::args().nth(2).ok_or("explicit authorized test Agent required")?;
+	let client = AgentClient::new(ClientProfile::load(Path::new(&root), None)?);
 	let session = EntityId::new(format!(
 		"voice-qualification-{}",
 		SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
@@ -37,9 +37,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	});
 	let offer = lines.recv().await.ok_or("missing offer")?;
 	let offer: VoiceSdp = serde_json::from_str(&offer)?;
-	let start = ChiefVoiceRequest::Start {
+	let start = AgentVoiceRequest::Start {
 		session_id: session.clone(),
-		work_id: EntityId::new(work).map_err(|_| "invalid Chief identity")?,
+		work_id: EntityId::new(work).map_err(|_| "invalid Agent identity")?,
 		offer,
 	};
 	let result = async {
@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let mut answered = false;
 		let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
 		loop {
-			if status.phase == ChiefVoicePhase::Failed {
+			if status.phase == AgentVoicePhase::Failed {
 				if let Some(message) = &status.message {
 					eprintln!("{}", message.as_str());
 				}
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 				std::io::stdout().flush()?;
 				answered = true;
 			}
-			if status.phase == ChiefVoicePhase::Ended {
+			if status.phase == AgentVoicePhase::Ended {
 				return Ok(());
 			}
 			tokio::select! {
@@ -66,11 +66,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 				line=lines.recv()=>{if line.as_deref()==Some("stop") || line.is_none() {return Ok(())}},
 				_=tokio::time::sleep(Duration::from_millis(200))=>{},
 			}
-			status = client.voice(ChiefVoiceRequest::Poll { session_id: session.clone() }).await?;
+			status = client.voice(AgentVoiceRequest::Poll { session_id: session.clone() }).await?;
 		}
 	}
 	.await;
-	let _ = client.voice(ChiefVoiceRequest::Stop { session_id: session }).await;
+	let _ = client.voice(AgentVoiceRequest::Stop { session_id: session }).await;
 	if result.is_err() {
 		println!("null");
 	}

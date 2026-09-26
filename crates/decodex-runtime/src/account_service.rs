@@ -3485,9 +3485,9 @@ impl AccountService {
 			.await?)
 	}
 
-	/// Keep a usable Chief account; otherwise choose the least utilized eligible account.
+	/// Keep a usable Agent account; otherwise choose the least utilized eligible account.
 	/// This selects process admission only. It does not project shared desktop credentials.
-	pub(crate) async fn select_chief_route(
+	pub(crate) async fn select_agent_route(
 		&self,
 		preferred: Option<&AccountId>,
 		now: i64,
@@ -3505,7 +3505,7 @@ impl AccountService {
 
 		let mut available = accounts;
 		while let Some(account) =
-			self.chief_route_candidate(&available, &order.order, preferred, now)
+			self.agent_route_candidate(&available, &order.order, preferred, now)
 		{
 			let account = account.clone();
 			let occupied = self
@@ -3528,7 +3528,7 @@ impl AccountService {
 		})
 	}
 
-	fn chief_route_candidate<'a>(
+	fn agent_route_candidate<'a>(
 		&self,
 		accounts: &'a [AccountRecord],
 		order: &[AccountId],
@@ -5500,7 +5500,7 @@ mod tests {
 		let (_directory, store, service, account_id, shared) =
 			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
 		let routing = store.read_account_routing_control().await.unwrap();
-		let selected = service.select_chief_route(Some(&account_id), OBSERVED_AT_MICROS).await;
+		let selected = service.select_agent_route(Some(&account_id), OBSERVED_AT_MICROS).await;
 		assert!(selected.is_err(), "missing callback authority must reject process selection");
 		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
 		assert_eq!(store.read_account_routing_control().await.unwrap(), routing);
@@ -7585,7 +7585,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn chief_routes_stick_until_exhausted_then_choose_available_capacity() {
+	async fn agent_routes_stick_until_exhausted_then_choose_available_capacity() {
 		use decodex_core::AccountQuotaDisposition as D;
 		let (_, _, service, _, _) =
 			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
@@ -7602,25 +7602,25 @@ mod tests {
 		}
 		let ids = accounts.iter().map(|a| a.account_id.clone()).collect::<Vec<_>>();
 		assert_eq!(
-			service.chief_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).unwrap().account_id,
+			service.agent_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).unwrap().account_id,
 			ids[0]
 		);
 		accounts[0].seven_day_quota.disposition =
 			D::Current(AccountQuotaWindow::new(10080, 100, 2000000).unwrap());
 		assert_eq!(
-			service.chief_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).unwrap().account_id,
+			service.agent_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).unwrap().account_id,
 			ids[2]
 		);
 		accounts[2].enabled = false;
 		assert_eq!(
-			service.chief_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).unwrap().account_id,
+			service.agent_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).unwrap().account_id,
 			ids[1]
 		);
 		accounts[1].lifecycle_readiness = AccountLifecycleReadiness::CredentialAbsent;
-		assert!(service.chief_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).is_none());
+		assert!(service.agent_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).is_none());
 		accounts[1].lifecycle_readiness = AccountLifecycleReadiness::Ready;
 		accounts[1].seven_day_quota.disposition = D::Unknown;
-		assert!(service.chief_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).is_none());
+		assert!(service.agent_route_candidate(&accounts, &ids, Some(&ids[0]), 1000).is_none());
 	}
 
 	#[test]

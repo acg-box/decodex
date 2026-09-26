@@ -5,7 +5,7 @@ use serde_json::Value;
 /// One connector's fresh native access state and optional authorization page.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ChiefInstallApp {
+pub struct AgentInstallApp {
 	/// Exact native connector identity.
 	pub id: String,
 	/// Native display name.
@@ -21,7 +21,7 @@ pub struct ChiefInstallApp {
 /// Inspection is read-only. Only explicit commands may install or answer a suggestion.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
-pub enum ChiefInstallState {
+pub enum AgentInstallState {
 	/// Fresh, exact-target catalog and connector evidence.
 	Available {
 		/// Exact pending event inspected.
@@ -45,7 +45,7 @@ pub enum ChiefInstallState {
 		/// Native source and policy facts that must accompany installation consent.
 		review_details: String,
 		/// Required connectors and their independent access observations.
-		apps: Vec<ChiefInstallApp>,
+		apps: Vec<AgentInstallApp>,
 	},
 	/// Missing, stale or incomplete evidence; this never authorizes installation.
 	Unavailable,

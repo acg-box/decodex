@@ -856,8 +856,8 @@ pub(crate) async fn spawn_admitted_conversation_process(
 	control.spawn_fenced_conversation(admission, execution_authorization, launch).await
 }
 
-/// Keep the same attested directory boundary for a retained Chief process admission.
-pub(crate) async fn spawn_admitted_chief_process(
+/// Keep the same attested directory boundary for a retained Agent process admission.
+pub(crate) async fn spawn_admitted_agent_process(
 	control: &ProcessGenerationControl,
 	root_id: String,
 	operation_key: String,
@@ -868,7 +868,7 @@ pub(crate) async fn spawn_admitted_chief_process(
 ) -> Result<FencedProcess, ProcessSupervisorError> {
 	launch.conversation_pre_spawn_check = Some(pre_spawn_check);
 	control
-		.spawn_fenced_chief(root_id, operation_key, generation_id, execution_authorization, launch)
+		.spawn_fenced_agent(root_id, operation_key, generation_id, execution_authorization, launch)
 		.await
 }
 
@@ -899,7 +899,7 @@ impl AttestedProcessChild {
 
 	/// Close private lifetime channels without returning either raw protocol handle.
 	pub(crate) fn close_private_lifetime_channels(&mut self) {
-		if let Some(bridge) = &self.process.chief_bridge {
+		if let Some(bridge) = &self.process.agent_bridge {
 			bridge.close();
 		}
 		self.process.stdin = Box::new(io::sink());
@@ -907,7 +907,7 @@ impl AttestedProcessChild {
 
 	/// Transfer protocol I/O once after the existing account initialization and admission.
 	/// The supervisor retains this child, its process group, and its account authority.
-	pub(crate) fn retain_chief_connection(
+	pub(crate) fn retain_agent_connection(
 		&mut self,
 	) -> Result<
 		(
@@ -938,11 +938,11 @@ impl AttestedProcessChild {
 		}
 		let sequence = i64::try_from(self.process.next_request_id)
 			.map_err(|_| ConversationProcessError::Incompatible)?;
-		self.process.chief_retained = true;
+		self.process.agent_retained = true;
 		let stdin = mem::replace(&mut self.process.stdin, Box::new(io::sink()));
 		let (_, empty) = mpsc::sync_channel(1);
 		let stdout = mem::replace(&mut self.process.stdout, empty);
-		let (bridge, client, events) = super::chief_process::ChiefProcessBridge::start(
+		let (bridge, client, events) = super::agent_process::AgentProcessBridge::start(
 			stdin,
 			stdout,
 			self.process.binding.clone(),
@@ -951,7 +951,7 @@ impl AttestedProcessChild {
 			mem::take(&mut self.process.config_warnings),
 		)
 		.map_err(|_| ConversationProcessError::Unavailable)?;
-		self.process.chief_bridge = Some(bridge);
+		self.process.agent_bridge = Some(bridge);
 		Ok((client, events))
 	}
 
@@ -963,12 +963,12 @@ impl AttestedProcessChild {
 		self.initialize_turns(vault, InitializeCapabilities::default())
 	}
 
-	/// Initialize the admitted Chief child with its retained form request consumer.
-	pub(crate) fn initialize_chief_turns(
+	/// Initialize the admitted Agent child with its retained form request consumer.
+	pub(crate) fn initialize_agent_turns(
 		&mut self,
 		vault: &dyn CredentialVault,
 	) -> Result<(), ConversationProcessError> {
-		self.initialize_turns(vault, InitializeCapabilities::for_chief())
+		self.initialize_turns(vault, InitializeCapabilities::for_agent())
 	}
 
 	fn initialize_turns(
@@ -1381,7 +1381,7 @@ impl AttestedProcessChild {
 	}
 
 	fn require_ordinary_turns_initialized(&self) -> Result<(), ConversationProcessError> {
-		(self.initialized && !self.process.chief_retained)
+		(self.initialized && !self.process.agent_retained)
 			.then_some(())
 			.ok_or(ConversationProcessError::Unavailable)
 	}
@@ -1725,8 +1725,8 @@ pub(super) struct SupervisedProcess {
 	expected_account_identity: Option<AccountIdentity>,
 	next_request_id: u64,
 	abandoned_request_ids: BTreeSet<u64>,
-	chief_retained: bool,
-	chief_bridge: Option<super::chief_process::ChiefProcessBridge>,
+	agent_retained: bool,
+	agent_bridge: Option<super::agent_process::AgentProcessBridge>,
 	config_warnings: Vec<serde_json::Value>,
 	deferred_conversation_events: std::collections::VecDeque<ConversationProcessEvent>,
 }
@@ -1794,8 +1794,8 @@ impl SupervisedProcess {
 			expected_account_identity: None,
 			next_request_id: 1,
 			abandoned_request_ids: BTreeSet::new(),
-			chief_retained: false,
-			chief_bridge: None,
+			agent_retained: false,
+			agent_bridge: None,
 			config_warnings: Vec::new(),
 			deferred_conversation_events: Default::default(),
 		})
@@ -1827,8 +1827,8 @@ impl SupervisedProcess {
 			expected_account_identity: None,
 			next_request_id: 1,
 			abandoned_request_ids: BTreeSet::new(),
-			chief_retained: false,
-			chief_bridge: None,
+			agent_retained: false,
+			agent_bridge: None,
 			config_warnings: Vec::new(),
 			deferred_conversation_events: Default::default(),
 		})
@@ -2612,7 +2612,7 @@ impl SupervisedProcess {
 	}
 
 	fn shutdown_inner(&mut self, timeout: Duration) -> Result<ShutdownOutcome, SupervisionError> {
-		if let Some(bridge) = &self.chief_bridge {
+		if let Some(bridge) = &self.agent_bridge {
 			bridge.close();
 		}
 		self.owner.shutdown(timeout)
@@ -5670,7 +5670,7 @@ pub(crate) mod tests {
 			"--out".into(),
 		];
 
-		if matches!(mode, "chief-form-capabilities" | "ordinary-capabilities") {
+		if matches!(mode, "agent-form-capabilities" | "ordinary-capabilities") {
 			schema_args.push("--conversation-contract".into());
 		}
 		if mode == "schema-missing" {
@@ -7730,10 +7730,10 @@ pub(crate) mod tests {
 	}
 
 	#[test]
-	fn admitted_chief_and_ordinary_children_negotiate_their_own_capabilities() {
-		for chief in [false, true] {
+	fn admitted_agent_and_ordinary_children_negotiate_their_own_capabilities() {
+		for agent in [false, true] {
 			let temp = TempDir::new().unwrap();
-			let mode = if chief { "chief-form-capabilities" } else { "ordinary-capabilities" };
+			let mode = if agent { "agent-form-capabilities" } else { "ordinary-capabilities" };
 			let command = fake_command(mode, temp.path(), None);
 			let binding = binding();
 			let profile = AttestedAppServerProfile::attest_for_test(
@@ -7750,8 +7750,8 @@ pub(crate) mod tests {
 				initialized: false,
 			};
 			let vault = FixtureVault::matching();
-			if chief {
-				child.initialize_chief_turns(&vault).unwrap();
+			if agent {
+				child.initialize_agent_turns(&vault).unwrap();
 			} else {
 				child.initialize_ordinary_turns(&vault).unwrap();
 			}
@@ -7777,7 +7777,7 @@ pub(crate) mod tests {
 			timeout: Duration::from_secs(2),
 			initialized: true,
 		};
-		let (_client, mut events) = child.retain_chief_connection().unwrap();
+		let (_client, mut events) = child.retain_agent_connection().unwrap();
 		for (expected_method, field, expected) in [
 			("configWarning", "summary", "Ignored \"fixture\" setting"),
 			("warning", "message", "Retained \"fixture\" instructions"),
@@ -7916,11 +7916,11 @@ pub(crate) mod tests {
 			initialized: true,
 		};
 		let process_id = child.process_id();
-		let (client, _events) = child.retain_chief_connection().unwrap();
+		let (client, _events) = child.retain_agent_connection().unwrap();
 		assert_eq!(child.process_id(), process_id);
 		assert!(child.has_private_lifetime_channels());
 		assert!(matches!(
-			child.retain_chief_connection(),
+			child.retain_agent_connection(),
 			Err(super::ConversationProcessError::Unavailable)
 		));
 		assert!(matches!(
@@ -7936,14 +7936,14 @@ pub(crate) mod tests {
 	}
 
 	#[test]
-	fn retained_chief_rejects_missing_tool_input_support_without_transferring_io() {
+	fn retained_agent_rejects_missing_tool_input_support_without_transferring_io() {
 		let (_temp, mut child) = ordinary_catalog_child("missing-optional");
 		assert!(matches!(
-			child.retain_chief_connection(),
+			child.retain_agent_connection(),
 			Err(super::ConversationProcessError::Incompatible)
 		));
-		assert!(!child.process.chief_retained);
-		assert!(child.process.chief_bridge.is_none());
+		assert!(!child.process.agent_retained);
+		assert!(child.process.agent_bridge.is_none());
 		child.shutdown().unwrap();
 	}
 

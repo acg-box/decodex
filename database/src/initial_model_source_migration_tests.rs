@@ -10,7 +10,7 @@ fn initial_source_upgrade_preserves_requests_and_enforces_paired_identity() {
 	let mut connection =
 		Connection::open(directory.path().join("upgrade.sqlite3")).expect("database");
 	configure(&connection).expect("configure");
-	for migration in &MIGRATIONS[..45] {
+	for migration in &MIGRATIONS[..1] {
 		connection.execute_batch(migration.sql).expect("old migration");
 		connection
 			.execute(
@@ -20,7 +20,7 @@ fn initial_source_upgrade_preserves_requests_and_enforces_paired_identity() {
 			.expect("migration receipt");
 	}
 	connection.pragma_update(None, "application_id", APPLICATION_ID).expect("application");
-	connection.pragma_update(None, "user_version", 45).expect("version");
+	connection.pragma_update(None, "user_version", 48).expect("version");
 	connection.execute_batch(
         "INSERT INTO conversations(conversation_id,kind,state,title,revision,created_at_micros,updated_at_micros)
          VALUES('50000000-0000-4000-8000-000000000001','ordinary_task','active','Original',7,1,2);

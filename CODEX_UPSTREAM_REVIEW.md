@@ -849,7 +849,7 @@ evidence; they do not override this checkpoint.
 | Inputs and resources | Composer images/path references and native task attachment associations with cross-client readback. PR #1350. | Remaining upstream input/resource capability dispositions. |
 | Execution | Per-message model, effort and Fast; bounded same-model serverOverloaded recovery. | Live turn/settings/update has no current UI consumer; record final applicability assessment. |
 | Observations and recovery | Token usage, compaction, approval details and native agent activity. This change adds account-scoped task estimates. | Remaining account/usage and analytics capability dispositions. |
-| Voice | Chief subscription voice and native media host. | Assess remaining realtime changes against actual consumers. |
+| Voice | Agent subscription voice and native media host. | Assess remaining realtime changes against actual consumers. |
 | Plugins/MCP | Native typed elicitation and scoped replies (#1349/#1351); PR #1352 adds repository plugin status, independent MCP runtime/auth/discovery states, explicit reconcile/reload and native OAuth. | Remaining resource/error contracts and commit dispositions. |
 
 The resumable consecutive full-diff review covers 76 of 1,569 commits in
@@ -863,7 +863,7 @@ capability result does not advance the consecutive cursor.
 
 For this integration change, all tests in the four affected packages pass,
 including the rendered explicit-authorization interaction and real local
-ChiefClient transport. All-target/all-feature Clippy passes for those packages.
+AgentClient transport. All-target/all-feature Clippy passes for those packages.
 The installed 0.155.0-alpha.9.2 binary passed isolated two-client integration
 reload and local OAuth/MCP acceptance. These checks prove this adaptation's
 boundaries, not completion of the overall upstream audit. Automation stays paused.
@@ -883,7 +883,7 @@ This review establishes a current integration baseline from source, official
 experimental schema exports, the installed binary's generated schema, and tests.
 It does not certify that all 1,445 historical commits after the old August 18
 cursor were individually reviewed. That cursor was not accepted as proof of
-current compatibility. The current Conversation and Chief implementations
+current compatibility. The current Conversation and Agent implementations
 supersede the old Quick Task implementation and PRs #1300 and #1301.
 
 ## Changes delivered
@@ -892,11 +892,11 @@ supersede the old Quick Task implementation and PRs #1300 and #1301.
 | --- | --- | --- |
 | [`c62d191c4c`](https://github.com/openai/codex/commit/c62d191c4c8c0cab7045fca6efc399197334bb6c): `thread.rs`, `turn.rs`, thread processor and resume/fork tests | New `disabledPluginIds` response fields fail the strict Conversation start/resume decoder. | Accept the actual string-array field, default it when omitted by older servers, and reject malformed values. Upstream main only relative to the tested stable release. The field does not yet enforce plugin filtering. |
 | [`91d54f1667`](https://github.com/openai/codex/commit/91d54f1667e627538db9d44d2ce88a260b4213b0): resume protocol, thread processor, persisted/legacy collaboration-mode tests | The new `collaborationMode` response field fails Conversation resume decoding. | Decode the optional typed mode/settings object, including snake-case settings. Preserve existing model, effort, cwd, and permission checks. Upstream owns restoration of saved mode. Main only relative to the tested stable release. |
-| [`5cb7a35de9`](https://github.com/openai/codex/commit/5cb7a35de938e2475e5c1c088f111915008fd100), [`d132b69219`](https://github.com/openai/codex/commit/d132b692199c53c085c7b2cbec3c44e2dc5cf277): native history list APIs, thread processor, `thread_read.rs` and `thread_resume.rs` tests | Chief completion and recovery load the whole thread and use deprecated full-history hydration for paginated threads. | New Chief/worker threads select paginated history. Resume requests exclude turns. Exact result reads page turns and items, preserve item order and metadata, and reject repeated cursors, wrong identities, and exhausted bounds. Existing legacy threads retain their supported read path. This capability is released and was tested with the installed binary. |
+| [`5cb7a35de9`](https://github.com/openai/codex/commit/5cb7a35de938e2475e5c1c088f111915008fd100), [`d132b69219`](https://github.com/openai/codex/commit/d132b692199c53c085c7b2cbec3c44e2dc5cf277): native history list APIs, thread processor, `thread_read.rs` and `thread_resume.rs` tests | Agent completion and recovery load the whole thread and use deprecated full-history hydration for paginated threads. | New Agent/worker threads select paginated history. Resume requests exclude turns. Exact result reads page turns and items, preserve item order and metadata, and reject repeated cursors, wrong identities, and exhausted bounds. Existing legacy threads retain their supported read path. This capability is released and was tested with the installed binary. |
 
 The page reader has a 60-second deadline, 128-page limits, and an 8 MiB aggregate
 page budget. A missing turn remains missing. An incomplete read returns an error;
-it does not invent a complete result or grant dispatch replay authority. Chief
+it does not invent a complete result or grant dispatch replay authority. Agent
 still records positive terminal evidence separately from result-read failure.
 
 ## Current integration coverage
@@ -905,12 +905,12 @@ still records positive terminal evidence separately from result-read failure.
 | --- | --- |
 | Initialization, transport and process ownership | Current `AppServerClient` and account-process bridge were compared with official request/notification exports. Stdio and the initialize/initialized handshake remain supported. Multiplexing, exact response IDs, event overflow, disconnect handling, and explicit process ownership have local regression coverage. |
 | Thread start/resume/read/list/archive | Compared current and installed experimental exports for these methods and nested Thread/Turn definitions. The response additions above were the uncovered start/resume fields. Current Decodex already accepts project, model, effort, originator, environment and Daybreak metadata. Read/list projection tolerates additive fields. |
-| Turn dispatch, steering, interruption and recovery | Current turn request/result shapes remain compatible. Chief preserves independent thread and active-turn identity and does not replay uncertain submissions. Pagination tests cover missing exact turns and cross-turn result rejection. |
+| Turn dispatch, steering, interruption and recovery | Current turn request/result shapes remain compatible. Agent preserves independent thread and active-turn identity and does not replay uncertain submissions. Pagination tests cover missing exact turns and cross-turn result rejection. |
 | Authentication | `ChatgptAuthTokensRefreshParams` and response shapes are unchanged in installed, stable and main exports. The copied login source has an explicit baseline, `9392c3fa5bcda342b5b96a1a04d67b2f781617c2`. Comparing its four cited source files with current main found only an added optional Bedrock storage field and its `None` initializer. Browser/device flow and PKCE logic are unchanged in that bounded source scope. Current local refresh classification already handles HTTP 400 `invalid_grant` as rejection. |
-| Account limits and model discovery | Account responses accept additive metadata. The merged Chief now implements retained-process model discovery; see the current checkpoint. Account quota display uses the direct account API, not the new app-server usage capability handshake. See the open gaps below. |
+| Account limits and model discovery | Account responses accept additive metadata. The merged Agent now implements retained-process model discovery; see the current checkpoint. Account quota display uses the direct account API, not the new app-server usage capability handshake. See the open gaps below. |
 | Sandbox and approvals | Current installed/main experimental shapes used by Decodex remain compatible. The retained bridge adds only the two read-only history methods. Account mutation and unowned approval responses remain rejected. Approval and user-input requests retain exact IDs and require an explicit owner response. |
-| Native collaboration | The schema check alone missed semantic losses: four v2 tool names, interrupted tool calls, and completed child activity normalized to Unknown. This follow-up adds their typed classifications. Chief still owns independent work threads; a native child completion does not resolve Chief work. |
-| Messages, usage and compaction | The earlier patch preserved stored metadata but missed delivery timing. This follow-up records async assistant messages before terminal completion, public token counters, and completed compaction observations. The merged Chief also has pending question forms and exact-turn steering; structured async-message UX and timeout behavior remain separate. Internal raw-response usage metadata is not interpreted as price. |
+| Native collaboration | The schema check alone missed semantic losses: four v2 tool names, interrupted tool calls, and completed child activity normalized to Unknown. This follow-up adds their typed classifications. Agent still owns independent work threads; a native child completion does not resolve Agent work. |
+| Messages, usage and compaction | The earlier patch preserved stored metadata but missed delivery timing. This follow-up records async assistant messages before terminal completion, public token counters, and completed compaction observations. The merged Agent also has pending question forms and exact-turn steering; structured async-message UX and timeout behavior remain separate. Internal raw-response usage metadata is not interpreted as price. |
 | Removed or optional features | Decodex has no `thread/rollback` consumer. Its removal does not require a local compatibility alias. TUI-only controls, new provider onboarding, remote-control services and optional plugin-management APIs do not require ports into the active integration. |
 
 The principal source owners are `codex-rs/app-server-protocol/src/protocol/v2/`,
@@ -944,24 +944,24 @@ remains unverified; do not advance it to the current head on this evidence alone
 
 | Capability and upstream evidence | Actual Decodex behavior and decision |
 | --- | --- |
-| Async messages and structured questions: `fb356f3d2c`, `2c79ee6dac`; core `tools/handlers/request_user_input_async.rs`, `tools/spec_plan.rs` | Upstream emits an `agentMessage` with `delivery: async`, rendered text and structured questions, then continues. It is model-catalog gated and is not a pending JSON-RPC request. Fixed immediate saved/displayed messages with exact thread/turn ownership, deduplication and restart persistence. Ordinary text replies still queue for the next Chief turn; interactive reply delivery remains open. |
+| Async messages and structured questions: `fb356f3d2c`, `2c79ee6dac`; core `tools/handlers/request_user_input_async.rs`, `tools/spec_plan.rs` | Upstream emits an `agentMessage` with `delivery: async`, rendered text and structured questions, then continues. It is model-catalog gated and is not a pending JSON-RPC request. Fixed immediate saved/displayed messages with exact thread/turn ownership, deduplication and restart persistence. Ordinary text replies still queue for the next Agent turn; interactive reply delivery remains open. |
 | Token usage: `5f79a92e39`, `2c4a95736b`, `e017e93ace`; protocol `thread.rs` and `thread_data.rs` | Added durable public `thread/tokenUsage/updated` observations, live history display and terminal receipt metadata. Show last **response** counters separately from cumulative **thread** counters. Missing context capacity stays unknown. No fabricated context occupancy, costs or quota readiness. The two-thread installed-server test now requires valid, same-turn usage before completion. |
-| Compaction and retained answers: `5971d42847`; core compaction and item projection | Codex owns compaction and retention of verified answers. Show completed compaction in Chief history without creating pending work or triggering a new model turn. No Decodex-side rewrite of native history. |
+| Compaction and retained answers: `5971d42847`; core compaction and item projection | Codex owns compaction and retention of verified answers. Show completed compaction in Agent history without creating pending work or triggering a new model turn. No Decodex-side rewrite of native history. |
 | Approval context: `9c9675d3d0`, `eb078b4f44`; protocol `item.rs`, `permissions.rs` | Fixed projection of `kind: writeStdin`, additional/network permissions, proposed policy amendments, nullable decisions, and permissions-request cwd. Old missing kind defaults to command, matching upstream. Exact callback/event ownership and explicit responses remain required. No path normalization of target-native cwd. |
-| Misalignment and rate-limit errors: `7276d67081`, `e0c727de04`; `thread_data.rs`, `shared.rs`, upstream `misalignment_policy` tests | Display saved error message and substantive explanation. Do not automatically submit the suggested continuation. Chief's generic terminal error storage accepts new classifications. A purpose-built continuation UI and auth-recovery progress display remain open. |
-| Native agent v2: `4fa6ad1730`, `b705b6b076`; protocol `item.rs` | Fixed `sendMessage`, `followupTask`, `interruptAgent`, `listAgents`, interrupted tool status and completed child activity classification. Use `agentThreadId` for the activity target and record the containing thread separately. Source emission in core `session/mod.rs` and `multi_agents_v2` shows that the containing thread can be the initiator or a peer; it does not prove a parent edge. Preserve redaction. These are native actor facts, not Chief work acceptance. |
+| Misalignment and rate-limit errors: `7276d67081`, `e0c727de04`; `thread_data.rs`, `shared.rs`, upstream `misalignment_policy` tests | Display saved error message and substantive explanation. Do not automatically submit the suggested continuation. Agent's generic terminal error storage accepts new classifications. A purpose-built continuation UI and auth-recovery progress display remain open. |
+| Native agent v2: `4fa6ad1730`, `b705b6b076`; protocol `item.rs` | Fixed `sendMessage`, `followupTask`, `interruptAgent`, `listAgents`, interrupted tool status and completed child activity classification. Use `agentThreadId` for the activity target and record the containing thread separately. Source emission in core `session/mod.rs` and `multi_agents_v2` shows that the containing thread can be the initiator or a peer; it does not prove a parent edge. Preserve redaction. These are native actor facts, not Agent work acceptance. |
 | Model discovery/access programs: `e3a52b87b2`, `94967e03e5`; `catalog_processor.rs`, `model_list.rs` tests | **Partly implemented.** Retained-process pagination and GPUI model/effort/Fast/image controls are included. Retirement guidance, access programs and account-transition acceptance remain to assess. Do not advertise an absent/null access program as denied or granted; do not auto-select a different model. |
 | Thread attachment records: `3319d9b296`; `thread_attachments.rs` processor/tests | Main-only in the reviewed exports; absent in installed/stable. Stores JSON by thread/type/identity, supports unloaded reads and idempotent add/remove, and can be unsupported by the backing store. This is a useful future PR/artifact association API, **not file upload or model input**. Decodex has no corresponding attachment product owner; do not mirror its work database into Codex. |
-| Image file references and standalone tool output: `7b8b17b97a`, `e56e4922eb`; protocol `turn.rs` | Image inputs now accept `fileId` as an alternative to inline URL. Text input remains supported. Chief now supplies localImage and non-image path references. Native fileId and externally supplied standalone tool results remain separate unimplemented flows. They require an actual input/result flow, not merely an unused allowlist entry. |
+| Image file references and standalone tool output: `7b8b17b97a`, `e56e4922eb`; protocol `turn.rs` | Image inputs now accept `fileId` as an alternative to inline URL. Text input remains supported. Agent now supplies localImage and non-image path references. Native fileId and externally supplied standalone tool results remain separate unimplemented flows. They require an actual input/result flow, not merely an unused allowlist entry. |
 | Plugin reconciliation: `bfa9646787`, `5918c743f3`; `plugins/reconcile.rs`, `plugin_reconcile.rs` tests | Installed and stable expose reconciliation. It reports changes in this pass, including removals and failed materializations; it is not proof of runtime readiness. Upstream refreshes loaded hooks. Decodex has no plugin settings/reconcile UI; this remains a product gap rather than a port of upstream bundle internals. |
 | Disabled plugins and app tool exposure: `c62d191c4c`, `0ec375eb70`, `a6d4741d39`; `thread.rs`, `turn.rs`, `config.rs` | Main adds saved disabled IDs and per-app/per-account settings. The disabled-ID contract explicitly says it does **not yet filter capabilities**. Metadata decode is fixed in #1337. Do not ship a misleading disable switch. Future settings must distinguish saved preference, actual filtering, reconciliation and loaded runtime readiness. |
-| MCP state, UI and elicitation: `343074d420`, `8f31b64c7f`, `7a6f469dcf`, `b71af39fe6`, `eec4a23cb1`, `097825f75a`, `a1dc95d5af`; `mcp.rs`, `item.rs` | MCP discovery failure differs from an empty catalog; runtime state differs from advertised capabilities. App UI metadata and scoped resources require a renderer/resource owner. Chief currently exposes four pending request methods; MCP forms and native verification are not among them. This is an open interaction gap, not proof that MCP forms work. |
+| MCP state, UI and elicitation: `343074d420`, `8f31b64c7f`, `7a6f469dcf`, `b71af39fe6`, `eec4a23cb1`, `097825f75a`, `a1dc95d5af`; `mcp.rs`, `item.rs` | MCP discovery failure differs from an empty catalog; runtime state differs from advertised capabilities. App UI metadata and scoped resources require a renderer/resource owner. Agent currently exposes four pending request methods; MCP forms and native verification are not among them. This is an open interaction gap, not proof that MCP forms work. |
 | User verification: `ad931a45b2`, `555b82afa9`, `82d4a98912`, `7b491281c8`; `user_verification.rs` | Experimental enrollment/status/verify/delete/cancel and public-key metadata require a native verification UX. No Decodex consumer exists. Do not auto-enroll, auto-answer, or enable opt-in transport as a compatibility fix. |
 | Live settings: `9695e71519`, `9112564114`, `ed42068c45`; `turn.rs`, turn processor | `turn/settings/update` affects later captures in one matching live turn; `applied` does not prove another inference occurred. Per-turn tier overrides do not change thread defaults. Per-message execution overrides are now implemented. Live model/effort/reviewer/tier controls remain a product gap. |
 | Account usage: `577a4fcd06`, `5037919777`, `79b04f1ab5`, `a4354e2d27`; account processor | New usage-read capabilities default false. Ordinary usage permission is account/user-validated and must not be inferred from percentages. Decodex does not advertise Luna Reserve fallback. Existing direct quota display remains separate; adopting fallback or backend upsell needs account-bound evidence and is not implemented here. Workspace routing is upstream-owned; accepting metadata does not select another endpoint. |
 | Managed config/provider policy: `1aaa453ce2`, `a20092a7a2`, `ce950dcf26`, `b27a6321fa`; config and turn processor | Upstream enforces provider definitions/login restrictions and adds developer/application requirements. Decodex does not write these settings. Admission errors must remain visible; empty allowed-login methods do not mean unrestricted. Browser/computer policy additions apply to optional clients Decodex does not implement. |
 | Thread identity, history and provenance: `5cb7a35de9`, `d132b69219`, `986ff1cc7c`, `728cb12fe5`, `2b554fd3f9`, `196964ef10` | #1337 adopts exact paginated history and preserves existing strict start/resume identity checks. Configured thread model is not per-turn telemetry; environment selection is not connection health; root-turn attribution does not replace execution turn identity. |
-| Other native-owned changes: realtime timeline/attachment, project recency, memory v2 readiness, interrupt hooks, rollout compression, Bedrock setup, Windows sandbox implementations, feedback prompt hash, Guardian attribution | Reviewed current public contracts and local callers. The merged Chief includes realtime voice; reassess that surface against its native consumers. Native project, memory-admin, Bedrock and Windows setup clients remain separate applicability questions. Core memory/hooks/review execution stays in the installed Codex process. Compression acknowledgment is not completion. No client call is added without a corresponding product behavior. |
+| Other native-owned changes: realtime timeline/attachment, project recency, memory v2 readiness, interrupt hooks, rollout compression, Bedrock setup, Windows sandbox implementations, feedback prompt hash, Guardian attribution | Reviewed current public contracts and local callers. The merged Agent includes realtime voice; reassess that surface against its native consumers. Native project, memory-admin, Bedrock and Windows setup clients remain separate applicability questions. Core memory/hooks/review execution stays in the installed Codex process. Compression acknowledgment is not completion. No client call is added without a corresponding product behavior. |
 | Removed/deprecated controls: rollback, detached review, personality | No active rollback/detached-review/personality control requires a compatibility alias. A separate review should use a separate thread when that product flow is added. |
 
 ## Remaining adaptation queue
@@ -1010,7 +1010,7 @@ maps `server_is_overloaded` to `serverOverloaded` and treats it as non-retryable
 for ordinary sampling. This is a deliberate Decodex behavior, not a claim that
 ordinary upstream turns already retry it.
 
-Chief and its worker threads now schedule up to three continuation attempts,
+Agent and its worker threads now schedule up to three continuation attempts,
 with waits of 15, 30 and 60 seconds. The existing 15-second service tick can add
 up to one tick of delay. Work must still be open. Both the terminal event and exact saved turn must report
 a failed `serverOverloaded` result. Missing history, quota exhaustion, other
@@ -1020,18 +1020,18 @@ Retries use the same account process, thread, model, effort and permissions. The
 send a continuation instruction against native saved context, not a second copy
 of the original user input. Completed work stays in that context. Original inbox
 delivery receipts move to the acknowledged continuation and are handled only
-after it completes. Worker capacity waits do not wake Chief with a premature
+after it completes. Worker capacity waits do not wake Agent with a premature
 worker result; final failure or explicit cancellation can report that result.
 
 Migration 16 adds the durable retry state, count, deadline and exact failure event.
 Claiming a retry and fencing dispatch is atomic. A lost acknowledgment stays
-unknown and does not trigger another attempt after restart. Fresh Chief input
+unknown and does not trigger another attempt after restart. Fresh Agent input
 takes precedence over a due retry. Explicit work judgments or a new dispatch
 cancel pending retries. The history view shows a cancel button and reports when
 the three attempts are exhausted. CLI cancellation uses:
 
 ```sh
-decodex chief cancel-retry --work-id WORK_ID --event-id EVENT_ID
+decodex agent cancel-retry --work-id WORK_ID --event-id EVENT_ID
 ```
 
 The new cancellation command uses local protocol 2.17; the desktop client and
@@ -1040,14 +1040,14 @@ service must run the same protocol version. The website and OpenWiki are unchang
 ## Voice history follow-up
 
 The merged voice consumer still requested `thread/read` with `includeTurns=true`
-at call start and recovery, although Chief threads use paginated history. Voice
+at call start and recovery, although Agent threads use paginated history. Voice
 now reads the newest native turn header as its baseline, pages newer headers back
 to that exact baseline on recovery, and loads each terminal turn through the
 existing exact-turn item reader. Missing baselines, duplicate turns and incomplete
 pages fail explicitly. Legacy history remains supported. No audio or instruction
 is replayed, and native WebRTC sideband reconnection remains owned by Codex.
 
-Validation: nine native history fixture tests and 42 Chief behavior tests pass;
+Validation: nine native history fixture tests and 42 Agent behavior tests pass;
 Clippy for Codex/runtime all targets and features passes with warnings denied.
 These checks do not simulate a live audio disconnect.
 
@@ -1086,14 +1086,14 @@ message questions remain separate work.
 
 ## Native request resolution follow-up
 
-Chief now consumes `serverRequest/resolved`. A notification must match both
+Agent now consumes `serverRequest/resolved`. A notification must match both
 the current connection's typed JSON-RPC request ID and the original thread.
 The matching pending event is resolved, its response authority is removed, and
 the UI can no longer offer it. Duplicate, unknown and wrong-thread notifications
 do not resolve another request. The receipt identifies provider resolution;
 it does not claim that Decodex sent an answer or that the work is complete.
 
-Validation: 43 Chief tests pass, including colliding item IDs, typed request
+Validation: 43 Agent tests pass, including colliding item IDs, typed request
 identity, wrong-thread and duplicate notifications, and rejection of a response
 after native resolution. The existing database receipt test also checks that
 request resolution does not change work judgment.
@@ -1104,7 +1104,7 @@ Reviewed upstream `dbf478850fb84b7d32b4b9d4c4df43aa8539be83` and
 `2808a9c348ee90a6fc94aee1570dd3fdf2c0b021`, including the final question state
 and reply implementation at `595cc91e8cbb1c2ca822d0311dcf12709410c582`.
 
-Chief projects structured async agent questions separately from request callbacks.
+Agent projects structured async agent questions separately from request callbacks.
 Each card has the upstream item/index identity, suggested options, free text and
 explicit submission. Selecting an option does not submit it. Drafts are isolated
 by work and question identity. Replies use the native desktop-compatible envelope;
@@ -1174,7 +1174,7 @@ Reviewed `protocol/v2/model.rs` and `protocol/v2/turn.rs` at
 and `ed42068c45` (turn-scoped service tier).
 
 Existing model discovery already reads all native catalog pages on the retained
-Chief process. The adapter now retains bounded availability text and suggested
+Agent process. The adapter now retains bounded availability text and suggested
 upgrade/retirement metadata. The model menu displays these notices without
 changing the selected model. Optional legacy upgrade metadata remains supported.
 A catalog read captures its process generation and discards its result if that
@@ -1190,7 +1190,7 @@ belongs to the native core's configuration-update/history pipeline. Decodex send
 request-level effort and does not inject those history items, so the native core
 owns that adaptation. `availableAccessPrograms` advertises explicit cyber program
 selection, not generic model availability. Decodex's current general-purpose
-Chief does not select a cyber program; discovering one must not silently opt in.
+Agent does not select a cyber program; discovering one must not silently opt in.
 The existing thread-level service-tier contract remains valid alongside the new
 per-turn override. These dispositions do not claim a completed review of unrelated
 model or account changes.
@@ -1295,7 +1295,7 @@ native API acceptance, not a claim of full desktop/model end-to-end coverage.
 ## MCP client admission follow-up
 
 The earlier MCP elicitation change updated service projection and GPUI controls but
-missed ChiefClient's request-method admission check. As a result, a valid MCP form
+missed AgentClient's request-method admission check. As a result, a valid MCP form
 returned by the service was rejected before it reached the UI. The client now
 admits mcpServer/elicitation/request while retaining exact event identity and
 unknown-method rejection. A real local WebSocket exchange regression failed on the
@@ -1367,7 +1367,7 @@ An isolated local OAuth/MCP fixture with codex-cli 0.155.0-alpha.9.2 verified na
 PKCE callback, exactly one token exchange, completion on two connected clients
 with matching server/thread identity, reload and authenticated MCP status. The
 fixture uses a temporary native home and file credential store, no real account,
-and no model turn. Local ChiefClient WebSocket tests also verify exact login intent
+and no model turn. Local AgentClient WebSocket tests also verify exact login intent
 transport and rejection of another session's response.
 
 

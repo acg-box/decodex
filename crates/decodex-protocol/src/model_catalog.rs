@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	ChiefModelDto, ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory,
+	AgentModelDto, ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory,
 	EntityId, ServiceTier,
 };
 
@@ -12,8 +12,8 @@ use crate::{
 pub enum ModelCatalogPurpose {
 	/// Ordinary conversation routing settings.
 	Conversation,
-	/// Chief account selection, optionally with an explicit account preference.
-	Chief,
+	/// Agent account selection, optionally with an explicit account preference.
+	Agent,
 }
 
 /// Metadata inspection without creating a thread or sending a turn.
@@ -24,7 +24,7 @@ pub struct InitialModelCatalogRequest {
 	pub working_directory: ConversationWorkingDirectory,
 	/// Account policy for the intended task.
 	pub purpose: ModelCatalogPurpose,
-	/// Explicit Chief account preference; ordinary routing uses its saved policy.
+	/// Explicit Agent account preference; ordinary routing uses its saved policy.
 	pub account_id: Option<EntityId>,
 }
 
@@ -41,7 +41,7 @@ pub enum InitialModelCatalogResult {
 		/// Directory used for native configuration resolution.
 		working_directory: ConversationWorkingDirectory,
 		/// Visible models projected from the complete native catalog.
-		models: Vec<ChiefModelDto>,
+		models: Vec<AgentModelDto>,
 		/// Native defaults, absent when an older service cannot provide them.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		defaults: Option<Box<InitialModelDefaults>>,

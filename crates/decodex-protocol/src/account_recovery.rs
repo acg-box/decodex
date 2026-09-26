@@ -105,8 +105,8 @@ impl AccountRecoveryResult {
 		account: &EntityId,
 		revision: EntityRevision,
 		current_model: &str,
-		models: &'a [crate::ChiefModelDto],
-	) -> Option<&'a crate::ChiefModelDto> {
+		models: &'a [crate::AgentModelDto],
+	) -> Option<&'a crate::AgentModelDto> {
 		let AccountRecoveryState::Current(banner) = &self.state else {
 			return None;
 		};
@@ -192,7 +192,7 @@ mod tests {
 	#[test]
 	fn ordinary_fallback_uses_backend_order_and_exact_current_source() {
 		let account = EntityId::new("10000000-0000-4000-8000-000000000001").unwrap();
-		let model = |name: &str| crate::ChiefModelDto {
+		let model = |name: &str| crate::AgentModelDto {
 			model: crate::ConversationModel::new(name).unwrap(),
 			name: name.into(),
 			efforts: vec![crate::ConversationReasoningEffort::Medium],

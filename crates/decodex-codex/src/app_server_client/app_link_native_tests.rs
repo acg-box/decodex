@@ -25,7 +25,7 @@ impl Session {
 			.unwrap();
 		let (client, events) =
 			AppServerClient::from_io(child.stdout.take().unwrap(), child.stdin.take().unwrap());
-		client.initialize(json!({"clientInfo":{"name":"isolated-app-links","version":"1"},"capabilities":InitializeCapabilities::for_chief()})).await.unwrap();
+		client.initialize(json!({"clientInfo":{"name":"isolated-app-links","version":"1"},"capabilities":InitializeCapabilities::for_agent()})).await.unwrap();
 		Self { client, child, events }
 	}
 

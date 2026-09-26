@@ -25,7 +25,7 @@ async fn prompt_edit_pages_preserve_canonical_content_and_reject_changed_evidenc
 					panic!("read only query")
 				};
 				assert!(
-					matches!(&query.payload,crate::QueryPayload::GetChiefPromptEdit {work_id,thread_id,review_token,offset} if work_id.as_str()=="root" && thread_id.as_str()=="native" && *offset==cursor as u64 && review_token.as_ref().map(|v|v.as_str())==if page==0 {None} else {Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")})
+					matches!(&query.payload,crate::QueryPayload::GetAgentPromptEdit {work_id,thread_id,review_token,offset} if work_id.as_str()=="root" && thread_id.as_str()=="native" && *offset==cursor as u64 && review_token.as_ref().map(|v|v.as_str())==if page==0 {None} else {Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")})
 				);
 				let mut end = (cursor + 64 * 1024).min(encoded.len());
 				while !encoded.is_char_boundary(end) {
@@ -57,7 +57,7 @@ async fn prompt_edit_pages_preserve_canonical_content_and_reject_changed_evidenc
 						version: CURRENT_VERSION,
 						server_id: ServerId::new(SERVER_ID).unwrap(),
 						query_id: query.query_id,
-						payload: QueryResultPayload::ChiefPromptEdit(result),
+						payload: QueryResultPayload::AgentPromptEdit(result),
 					})))
 					.await
 					.unwrap();
@@ -65,7 +65,7 @@ async fn prompt_edit_pages_preserve_canonical_content_and_reject_changed_evidenc
 			}
 			listener.cleanup().unwrap();
 		});
-		let result = crate::ChiefClient::new(profile)
+		let result = crate::AgentClient::new(profile)
 			.prompt_edit(EntityId::new("root").unwrap(), WireText::new("native").unwrap())
 			.await;
 		server.await.unwrap();
@@ -107,7 +107,7 @@ async fn prompt_upload_query_rejects_crossed_sources_and_impossible_progress() {
 				panic!("read-only query")
 			};
 			assert!(
-				matches!(&query.payload, crate::QueryPayload::GetChiefPromptInputUpload { upload } if upload == &expected)
+				matches!(&query.payload, crate::QueryPayload::GetAgentPromptInputUpload { upload } if upload == &expected)
 			);
 			let mut echoed = expected;
 			if mode == "crossed" {
@@ -122,14 +122,14 @@ async fn prompt_upload_query_rejects_crossed_sources_and_impossible_progress() {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(SERVER_ID).unwrap(),
 					query_id: query.query_id,
-					payload: QueryResultPayload::ChiefPromptInputUpload(status),
+					payload: QueryResultPayload::AgentPromptInputUpload(status),
 				})))
 				.await
 				.unwrap();
 			drop(socket);
 			listener.cleanup().unwrap();
 		});
-		let result = crate::ChiefClient::new(profile).prompt_input_upload_status(upload).await;
+		let result = crate::AgentClient::new(profile).prompt_input_upload_status(upload).await;
 		server.await.unwrap();
 		if mode == "valid" {
 			assert!(result.is_ok());
@@ -178,7 +178,7 @@ async fn prompt_upload_resumes_durable_bytes_after_lost_replies_without_submitti
 				match serde_json::from_str::<ClientMessage>(&request).unwrap() {
 					ClientMessage::Query(query) => {
 						assert!(
-							matches!(&query.payload, crate::QueryPayload::GetChiefPromptInputUpload { upload } if upload == &expected)
+							matches!(&query.payload, crate::QueryPayload::GetAgentPromptInputUpload { upload } if upload == &expected)
 						);
 						let status = if complete {
 							crate::PromptInputUploadStatus::Ready {
@@ -196,7 +196,7 @@ async fn prompt_upload_resumes_durable_bytes_after_lost_replies_without_submitti
 								version: CURRENT_VERSION,
 								server_id: ServerId::new(SERVER_ID).unwrap(),
 								query_id: query.query_id,
-								payload: QueryResultPayload::ChiefPromptInputUpload(status),
+								payload: QueryResultPayload::AgentPromptInputUpload(status),
 							})))
 							.await
 							.unwrap();
@@ -205,12 +205,12 @@ async fn prompt_upload_resumes_durable_bytes_after_lost_replies_without_submitti
 						}
 					},
 					ClientMessage::Command(command) => {
-						let crate::CommandPayload::Chief { action } = command.payload else {
+						let crate::CommandPayload::Agent { action } = command.payload else {
 							panic!("only staging commands")
 						};
 						commands += 1;
 						match *action {
-							crate::ChiefActionDto::UploadPromptInput {
+							crate::AgentActionDto::UploadPromptInput {
 								upload,
 								offset,
 								fragment,
@@ -222,7 +222,7 @@ async fn prompt_upload_resumes_durable_bytes_after_lost_replies_without_submitti
 									saved.push_str(&fragment);
 								}
 							},
-							crate::ChiefActionDto::CompletePromptInputUpload { upload } => {
+							crate::AgentActionDto::CompletePromptInputUpload { upload } => {
 								assert_eq!(upload, expected);
 								assert_eq!(saved, encoded);
 								complete = true;
@@ -236,7 +236,7 @@ async fn prompt_upload_resumes_durable_bytes_after_lost_replies_without_submitti
 			}
 			listener.cleanup().unwrap();
 		});
-		let result = crate::ChiefClient::new(profile).stage_prompt_input(upload, &input).await;
+		let result = crate::AgentClient::new(profile).stage_prompt_input(upload, &input).await;
 		server.await.unwrap();
 		if mode == "no-progress" {
 			assert_eq!(result, Err(ClientFailure::ApplicationAcceptanceUnknown));
@@ -268,9 +268,9 @@ async fn prompt_preflight_reads_current_settings_without_mutating_history() {
 				panic!("preflight must not mutate history")
 			};
 			assert!(
-				matches!(&query.payload, crate::QueryPayload::GetChiefModelSettings { work_id } if work_id.as_str()=="root")
+				matches!(&query.payload, crate::QueryPayload::GetAgentModelSettings { work_id } if work_id.as_str()=="root")
 			);
-			let state = crate::ChiefModelSettingsResult::Available {
+			let state = crate::AgentModelSettingsResult::Available {
 				work_id: EntityId::new("root").unwrap(),
 				thread_id: EntityId::new(if mode == "crossed" { "other" } else { "native" })
 					.unwrap(),
@@ -288,19 +288,19 @@ async fn prompt_preflight_reads_current_settings_without_mutating_history() {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(SERVER_ID).unwrap(),
 					query_id: query.query_id,
-					payload: QueryResultPayload::ChiefModelSettings(state),
+					payload: QueryResultPayload::AgentModelSettings(state),
 				})))
 				.await
 				.unwrap();
 			drop(socket);
 			listener.cleanup().unwrap();
 		});
-		let result = crate::ChiefClient::new(profile)
+		let result = crate::AgentClient::new(profile)
 			.preflight_prompt_input(
 				EntityId::new("root").unwrap(),
 				WireText::new("native").unwrap(),
 				&input,
-				&crate::ChiefExecutionOverrides::default(),
+				&crate::AgentExecutionOverrides::default(),
 			)
 			.await;
 		server.await.unwrap();
@@ -341,13 +341,13 @@ async fn prompt_send_readback_is_read_only_and_rejects_crossed_identity() {
 				panic!("readback must not resubmit input")
 			};
 			assert!(
-				matches!(&query.payload, crate::QueryPayload::GetChiefPromptInputSend { identity } if identity == &expected)
+				matches!(&query.payload, crate::QueryPayload::GetAgentPromptInputSend { identity } if identity == &expected)
 			);
 			let mut echoed = expected;
 			if mode == "crossed" {
 				echoed.send.command_key = IdempotencyKey::new("other").unwrap();
 			}
-			let payload = QueryResultPayload::ChiefPromptInputSend(crate::PromptInputSendStatus {
+			let payload = QueryResultPayload::AgentPromptInputSend(crate::PromptInputSendStatus {
 				identity: echoed,
 				accepted_event_id: (mode != "unknown").then_some(42),
 			});
@@ -363,7 +363,7 @@ async fn prompt_send_readback_is_read_only_and_rejects_crossed_identity() {
 			drop(socket);
 			listener.cleanup().unwrap();
 		});
-		let result = crate::ChiefClient::new(profile).prompt_input_send_status(identity).await;
+		let result = crate::AgentClient::new(profile).prompt_input_send_status(identity).await;
 		server.await.unwrap();
 		match mode {
 			"accepted" => assert_eq!(result.unwrap().accepted_event_id, Some(42)),
@@ -401,14 +401,14 @@ async fn prompt_media_resolution_preserves_parts_and_rejects_crossed_or_relative
 				panic!("resolution cannot submit")
 			};
 			assert!(
-				matches!(&query.payload, crate::QueryPayload::GetChiefPromptInputDirectory {work_id,thread_id} if work_id.as_str()=="root" && thread_id.as_str()=="native")
+				matches!(&query.payload, crate::QueryPayload::GetAgentPromptInputDirectory {work_id,thread_id} if work_id.as_str()=="root" && thread_id.as_str()=="native")
 			);
 			socket
 				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(SERVER_ID).unwrap(),
 					query_id: query.query_id,
-					payload: QueryResultPayload::ChiefPromptInputDirectory {
+					payload: QueryResultPayload::AgentPromptInputDirectory {
 						work_id: EntityId::new("root").unwrap(),
 						thread_id: WireText::new(if mode == "crossed" {
 							"other"
@@ -435,7 +435,7 @@ async fn prompt_media_resolution_preserves_parts_and_rejects_crossed_or_relative
 			drop(socket);
 			listener.cleanup().unwrap();
 		});
-		let result = crate::ChiefClient::new(profile)
+		let result = crate::AgentClient::new(profile)
 			.resolve_prompt_media(
 				EntityId::new("root").unwrap(),
 				WireText::new("native").unwrap(),

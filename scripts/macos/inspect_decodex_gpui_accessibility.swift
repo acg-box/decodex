@@ -9,7 +9,7 @@ import Foundation
 let expectedBundleIdentifier = "box.acg.decodex"
 let expectedWindowTitle = "Decodex"
 let expectedShellLabel = "Decodex operational shell"
-let destinations = ["Chief", "Workbench", "Accounts", "Health"]
+let destinations = ["Agent", "Workbench", "Accounts", "Health"]
 let focusOrder = destinations + ["Open settings"]
 let axMessagingTimeout: Float = 1.0
 let phasePollInterval = 0.05
@@ -355,7 +355,7 @@ func waitForKeyboardBaseline(
 		root: root, recorder: recorder, operation: "keyboard_baseline.final"
 	)
 	throw DiagnosticFailure.message(
-		"keyboard baseline is \(current.label ?? "missing"), expected shell or Chief"
+		"keyboard baseline is \(current.label ?? "missing"), expected shell or Agent"
 	)
 }
 
@@ -754,10 +754,10 @@ do {
 	}
 
 	_ = try phase("keyboard_enter_selection", journal: journal, results: &phaseResults) {
-		let chief = try fact("Chief", in: tree)
+		let agent = try fact("Agent", in: tree)
 		let quickTasks = try fact("Workbench", in: tree)
 		_ = try waitForNativeBool(
-			false, element: chief.element, recorder: ax, operation: "enter.chief_before"
+			false, element: agent.element, recorder: ax, operation: "enter.agent_before"
 		)
 		_ = try waitForNativeBool(
 			true, element: quickTasks.element, recorder: ax, operation: "enter.conversations_before"
@@ -766,14 +766,14 @@ do {
 		let dispatchElapsed = try postKey(36, to: parsed.pid, interval: interval)
 		try journal.append([
 			"event": "input_operation",
-			"operation": "enter_path.enter_chief",
+			"operation": "enter_path.enter_agent",
 			"key_code": 36,
 			"flags_raw_value": 0,
 			"down_up_interval_ms": interval * 1_000,
 			"elapsed_ms": dispatchElapsed,
 		])
 		let focusedAfter = try waitForFocused(
-			"Chief", root: root, recorder: ax, operation: "enter_path.focus_after"
+			"Agent", root: root, recorder: ax, operation: "enter_path.focus_after"
 		)
 		let quickTasksSelected = try waitForNativeBool(
 			false,
@@ -781,11 +781,11 @@ do {
 			recorder: ax,
 			operation: "enter.conversations_after"
 		)
-		let chiefSelected = try waitForNativeBool(
+		let agentSelected = try waitForNativeBool(
 			true,
-			element: chief.element,
+			element: agent.element,
 			recorder: ax,
-			operation: "enter.chief_after"
+			operation: "enter.agent_after"
 		)
 		return ((), [
 			"tab_readbacks": [],
@@ -793,7 +793,7 @@ do {
 			"focused_role_after_enter": focusedAfter.role,
 			"focused_native_value_after_enter": jsonValue(focusedAfter.nativeValue),
 			"conversations_selected_after": quickTasksSelected,
-			"chief_selected_after": chiefSelected,
+			"agent_selected_after": agentSelected,
 			"enter_dispatch_elapsed_ms": dispatchElapsed,
 		])
 	}

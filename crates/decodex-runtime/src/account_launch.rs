@@ -3,9 +3,9 @@
 mod activation_policy;
 pub(crate) mod api_reset_card;
 pub(crate) use activation_policy::read_activation_policy;
-mod chief_process;
+mod agent_process;
 #[cfg(all(test, unix))]
-pub(crate) use chief_process::native_tests::account_nudge::{
+pub(crate) use agent_process::native_tests::account_nudge::{
 	serve_notification as serve_native_nudge_fixture,
 	serve_notification_with_gate as serve_native_nudge_with_gate,
 };
