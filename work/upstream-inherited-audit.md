@@ -164,3 +164,28 @@ The register still has 360 rows. `requires-content-review` decreases from 227 to
 223. Other partial dispositions remain open. Summary recovery in PR1528 is not
 included in these four closures while that PR awaits merge. These are source
 reconciliation decisions, not new feature adoption or an overall completion rate.
+
+## Context and fixture dispositions on 2026-09-26
+
+Four more rows were compared in full. Their current content matches the audited
+hashes at `c69a09246eb6263665defd9d79c8bc3d88266685`; the same hashes were checked
+again on this documentation branch. All preserved snapshot hashes match.
+
+| Original path | Complete difference and evidence |
+| --- | --- |
+| `apps/decodex-gpui/src/chief_async_questions.rs` | A redundant recovery guard is removed below the existing early return. Three test DTOs add `arrived_live: false`. The cold-restore test proves that recovery retains saved answers without restoring inputs early. |
+| `apps/decodex-gpui/src/chief_detail_wire_tests.rs` | The existing read-only detail test adds command and MCP tool kinds. Every original case and assertion remains. |
+| `crates/decodex-codex/src/app_server_client/app_tool_exposure.rs` | Only two accessors are added. The runtime uses the writable file identity and reviewed version for shared configuration arbitration, delivered by PR1481. The inherited implementation is otherwise identical. |
+| `crates/decodex-runtime/src/chief/tests/external_context.rs` | Wake and delegation labels become `automation` and `goal`; the obsolete root `composer` assertion is removed. Tool output, empty user input, exact history and no-replay assertions remain. Current dispatch assigns direct root input the `user` label. Four local context tests pass; two native opt-in tests were not run for this audit. |
+
+At fixed upstream commit `595cc91e8cbb1c2ca822d0311dcf12709410c582`,
+`app-server-protocol/src/protocol/v2/turn.rs` defines `turn_trigger` as an optional
+string source classification. It is ignored when steering an active turn.
+`core/src/session/turn_input_tests.rs` verifies that an automation-labelled steer
+does not replace the active trigger. The installed 0.158.0-alpha.2 schema confirms
+this wire shape. Local tool authority remains in `toolOutput`; it does not depend
+on the spelling of the source label.
+
+These four decisions reduce pending content-review rows from 223 to 219 after
+the prior four-row batch. The register retains all 360 rows. This does not close
+shared production files, skipped native tests, or final desktop acceptance.
