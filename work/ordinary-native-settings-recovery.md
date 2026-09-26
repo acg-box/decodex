@@ -46,10 +46,39 @@ revision rejection, response ordering, idempotency, original request retention
 and durable readback. A migration test checks upgrade from schema 46, unchanged
 existing schema and preferences, an empty observation table and repeated startup.
 
-## Remaining delivery
+## Service and display delivery
 
-The process gateway must pass these response facts to the runtime. The runtime
-must record them after exact start/resume binding and project them through the
-public summary and ordinary History display. Restore and adapt those inherited
-consumers in the next batch. This foundation alone does not close R03, the shared
-file audit or desktop acceptance. Do not count it as complete end-to-end behavior.
+The process gateway now passes observed settings from successful typed start and
+resume responses. The runtime records start observations only after the exact
+thread binding succeeds, before admitting inference. Resume observations must
+pass the same source checks before the response grants continuation authority.
+A failed observation write retains the existing recovery path.
+
+Protocol 2.91 exposes the last observation and the saved original directory in
+`ConversationSummary`. Durable and live projections use the same validation.
+An observation cannot attach to an unbound conversation, and mismatched local
+thread identity is rejected. Current native settings queries remain separate.
+
+The ordinary History context inspector displays model, provider, directory and
+effort as last-read facts. Missing observations are explicit. A later submission
+uses the selected task's native directory, or its saved original directory when
+no observation exists. Missing or unusable directories do not fall back to the
+application directory. Runtime validation still owns execution admission.
+Model, effort, tier and draft choices are unchanged by observation updates.
+
+Local tests cover wire validation, durable/live projection, directory selection,
+stale observation rejection, and the rendered inspector without changing drafts
+or execution choices. The installed-native confirmation fixtures also verify
+observations in live publications and after reopening the store, while retaining
+exactly one inference despite repeated confirmation. These tests use isolated
+homes and a synthetic local provider. A separate native runtime fixture checks
+creation, same-thread continuation and continuation after service restart. Each
+finished turn publishes the expected native model, provider and directory; four
+requests correspond to the original fixture input and three explicit runtime
+submissions. Metadata reads and recovery do not replay inference.
+
+The ordinary History workspace remains optional and unexposed by current normal
+navigation. The rendered GPUI fixture is not signed desktop acceptance. No new
+navigation, application installation or public release is part of this change.
+R03, remaining shared-file reconciliation and the final desktop boundary remain
+open until their separate exit conditions are resolved.

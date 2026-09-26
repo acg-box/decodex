@@ -115,6 +115,8 @@ pub use chief_questions::{
 };
 mod client;
 mod conversation;
+mod conversation_native_settings;
+pub use conversation_native_settings::ConversationNativeSettings;
 mod dictation;
 mod doctor;
 mod domain_pack;
@@ -226,7 +228,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 90 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 91 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

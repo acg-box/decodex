@@ -1201,6 +1201,15 @@ impl AttestedProcessChild {
 		debug_assert_eq!(request_id, binding.thread_start_request_id);
 		debug_assert_eq!(request_sha256, binding.thread_start_request_sha256);
 		Ok(EstablishedOrdinaryThread {
+			settings: decodex_database::ConversationNativeSettings {
+				model: success.value.model().as_str().to_owned(),
+				model_provider: success.value.model_provider().to_owned(),
+				cwd: success.value.cwd().as_str().to_owned(),
+				reasoning_effort: success
+					.value
+					.reasoning_effort()
+					.map(|effort| effort.as_str().to_owned()),
+			},
 			codex_thread_id,
 			binding,
 			events: self.retain_ordinary_notices(success.events)?,
@@ -1234,6 +1243,15 @@ impl AttestedProcessChild {
 		};
 		let events = self.retain_ordinary_notices(events)?;
 		Ok(ResumedOrdinaryThread {
+			settings: decodex_database::ConversationNativeSettings {
+				model: success.value.model().as_str().to_owned(),
+				model_provider: success.value.model_provider().to_owned(),
+				cwd: success.value.cwd().as_str().to_owned(),
+				reasoning_effort: success
+					.value
+					.reasoning_effort()
+					.map(|effort| effort.as_str().to_owned()),
+			},
 			codex_thread_id: success.value.thread_id().as_str().to_owned(),
 			request_id: success.wire.request_id,
 			request_sha256: success.wire.request_sha256,
@@ -1383,6 +1401,7 @@ impl PreparedThreadStart {
 
 /// Successful durable thread establishment ready for the exact bind command.
 pub(crate) struct EstablishedOrdinaryThread {
+	pub(crate) settings: decodex_database::ConversationNativeSettings,
 	pub(crate) codex_thread_id: String,
 	pub(crate) binding: BindRuntimeSessionThread,
 	pub(crate) events: Vec<ConversationProcessEvent>,
@@ -1390,6 +1409,7 @@ pub(crate) struct EstablishedOrdinaryThread {
 
 /// Successful exact-thread resume facts ready for one affine runtime proof.
 pub(crate) struct ResumedOrdinaryThread {
+	pub(crate) settings: decodex_database::ConversationNativeSettings,
 	pub(crate) codex_thread_id: String,
 	pub(crate) request_id: i64,
 	pub(crate) request_sha256: String,

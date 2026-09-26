@@ -367,6 +367,7 @@ pub struct OrdinaryTaskConversationCursor {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OrdinaryTaskConversationReadback {
+	pub original_working_directory: String,
 	pub native_settings: Option<Box<ConversationNativeSettingsObservation>>,
 	pub conversation_id: ConversationId,
 	pub title: String,
@@ -1993,7 +1994,7 @@ fn conversation_projection(
 	let presentation = connection
 		.query_row(
 			"SELECT c.title, q.message, item.program_id, item.work_item_id, item.title,
-			 item.instructions, item.state, item.revision
+			 item.instructions, item.state, item.revision, q.working_directory
 			 FROM conversations AS c
 			 JOIN quick_task_requests AS q USING (conversation_id)
 			 LEFT JOIN program_work_item_executions AS execution USING (conversation_id)
@@ -2010,6 +2011,7 @@ fn conversation_projection(
 					row.get::<_, Option<String>>(5)?,
 					row.get::<_, Option<String>>(6)?,
 					row.get::<_, Option<i64>>(7)?,
+					row.get::<_, String>(8)?,
 				))
 			},
 		)
@@ -2155,6 +2157,7 @@ fn conversation_projection(
 		_ => None,
 	};
 	Ok(OrdinaryTaskConversationProjection::Current(OrdinaryTaskConversationReadback {
+		original_working_directory: presentation.8,
 		native_settings,
 		conversation_id,
 		title,

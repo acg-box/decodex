@@ -1959,6 +1959,24 @@ impl ConversationRuntime {
 			);
 			return self.ambiguous(readback, ConversationAmbiguity::ThreadBind).await;
 		}
+		if self
+			.save_native_settings(
+				&local,
+				established.settings,
+				binding.thread_start_response_id,
+				&binding.thread_start_response_sha256,
+			)
+			.await
+			.is_err()
+		{
+			return self
+				.finalize_bound_recovery(
+					local,
+					&command.turn_id,
+					ConversationManualRecovery::ProcessUnavailable,
+				)
+				.await;
+		}
 		self.dispatch_turn(
 			&command.operation_key,
 			decision,
@@ -2327,6 +2345,24 @@ impl ConversationRuntime {
 				)
 				.await;
 		}
+		if self
+			.save_native_settings(
+				&local,
+				established.settings,
+				binding.thread_start_response_id,
+				&binding.thread_start_response_sha256,
+			)
+			.await
+			.is_err()
+		{
+			return self
+				.finalize_bound_recovery(
+					local,
+					&command.turn_id,
+					ConversationManualRecovery::ProcessUnavailable,
+				)
+				.await;
+		}
 		self.dispatch_turn(
 			&command.operation_key,
 			decision,
@@ -2514,6 +2550,35 @@ impl ConversationRuntime {
 		}
 	}
 
+	async fn save_native_settings(
+		&self,
+		session: &LocalSession,
+		settings: decodex_database::ConversationNativeSettings,
+		response_id: i64,
+		response_sha256: &str,
+	) -> Result<(), ()> {
+		match self
+			.inner
+			.store
+			.record_conversation_native_settings(
+				&decodex_database::RecordConversationNativeSettings {
+					runtime_session_id: session.runtime_session_id.clone(),
+					expected_session_revision: session.runtime_session_revision,
+					codex_thread_id: session.codex_thread_id.clone(),
+					process_generation_id: session.process.generation_id().clone(),
+					expected_process_revision: session.process.revision(),
+					response_id,
+					response_sha256: response_sha256.to_owned(),
+					settings,
+				},
+			)
+			.await
+		{
+			Ok(true) => Ok(()),
+			Ok(false) | Err(_) => Err(()),
+		}
+	}
+
 	async fn resume_same_thread(
 		&self,
 		session: &LocalSession,
@@ -2547,6 +2612,14 @@ impl ConversationRuntime {
 		if !resumed.events.is_empty() {
 			return Err(SameThreadResumeRefusal::Ambiguous);
 		}
+		self.save_native_settings(
+			session,
+			resumed.settings,
+			resumed.response_id,
+			&resumed.response_sha256,
+		)
+		.await
+		.map_err(|()| SameThreadResumeRefusal::ProcessUnavailable)?;
 		FreshRuntimeSessionResume::new(
 			session.runtime_session_id.clone(),
 			session.runtime_session_revision,

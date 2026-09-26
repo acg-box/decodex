@@ -108,6 +108,5 @@ Complete-file review found another inherited gap: ordinary start/resume response
 observations no longer reach durable storage or the public summary. Model
 inheritance and the restored initial-source confirmation path do not replace
 these historical facts. See [native settings recovery](ordinary-native-settings-recovery.md)
-for the adapter/store foundation and remaining process, service and display
-consumers. This belongs to the optional ordinary History workspace and does not
+for the restored adapter, store, process, service and display consumers. This belongs to the optional ordinary History workspace and does not
 justify a new navigation control or changes to current Chief model ownership.

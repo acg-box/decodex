@@ -603,6 +603,13 @@ impl<'de> Deserialize<'de> for ConversationListCursor {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationSummary {
+	/// Original server-host directory retained for conversations without native observations.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub original_working_directory: Option<ConversationWorkingDirectory>,
+	/// Last persisted native settings; these do not select the next message settings.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub native_settings: Option<Box<crate::ConversationNativeSettings>>,
+
 	/// Stable ordinary Conversation identity.
 	pub conversation_id: EntityId,
 	/// Meaningful durable title derived from persisted product authority.
@@ -697,6 +704,8 @@ impl ConversationSummary {
 			return Err(ConversationContractError::InvalidProjection);
 		}
 		Ok(Self {
+			original_working_directory: None,
+			native_settings: None,
 			conversation_id,
 			title,
 			codex_thread_id,
@@ -710,6 +719,21 @@ impl ConversationSummary {
 			recovery_action,
 		})
 	}
+
+	/// Attach a bounded last-read observation only to an established native thread.
+	pub fn with_native_settings(
+		mut self,
+		settings: Option<crate::ConversationNativeSettings>,
+	) -> Result<Self, ConversationContractError> {
+		if settings.is_some()
+			&& (self.codex_thread_id.is_none() || self.runtime_session_id.is_none())
+		{
+			return Err(ConversationContractError::InvalidProjection);
+		}
+		self.native_settings =
+			settings.map(crate::ConversationNativeSettings::validate).transpose()?.map(Box::new);
+		Ok(self)
+	}
 }
 impl<'de> Deserialize<'de> for ConversationSummary {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -719,6 +743,8 @@ impl<'de> Deserialize<'de> for ConversationSummary {
 		#[derive(Deserialize)]
 		#[serde(deny_unknown_fields)]
 		struct Raw {
+			original_working_directory: Option<ConversationWorkingDirectory>,
+			native_settings: Option<crate::ConversationNativeSettings>,
 			conversation_id: EntityId,
 			title: ConversationTitle,
 			codex_thread_id: Option<ProviderThreadId>,
@@ -746,6 +772,10 @@ impl<'de> Deserialize<'de> for ConversationSummary {
 			raw.active_turn_id,
 			raw.recovery_action,
 		)
+		.and_then(|mut summary| {
+			summary.original_working_directory = raw.original_working_directory;
+			summary.with_native_settings(raw.native_settings)
+		})
 		.map_err(D::Error::custom)
 	}
 }
@@ -855,7 +885,7 @@ pub enum ConversationResult {
 	},
 }
 
-fn is_canonical_uuid_v4(value: &str) -> bool {
+pub(crate) fn is_canonical_uuid_v4(value: &str) -> bool {
 	let bytes = value.as_bytes();
 	bytes.len() == 36
 		&& [8, 13, 18, 23].into_iter().all(|index| bytes[index] == b'-')
