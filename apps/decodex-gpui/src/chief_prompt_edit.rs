@@ -2,6 +2,7 @@
 use super::*;
 use decodex_protocol::{DesktopPromptEditDraft, PromptDraft, PromptEditPhase};
 #[path = "chief_prompt_confirm.rs"] mod confirmation;
+#[path = "chief_prompt_handback.rs"] mod handback;
 #[path = "chief_prompt_remove.rs"] mod removal;
 
 #[derive(Default)]
@@ -465,6 +466,15 @@ impl ChiefSurface {
 			panel = panel.child(editor.clone());
 		}
 		if let Some(draft) = &self.prompt_edit.draft {
+			if draft.receipt_id.is_some() && draft.handback_pending {
+				let expected = draft.clone();
+				panel = panel.child(self.workspace_action(
+					"prompt-handback".into(),
+					"Finish restoring draft".into(),
+					move |s, cx| s.handback_prompt_editor(expected.clone(), cx),
+					cx,
+				));
+			}
 			if draft.receipt_id.is_none() {
 				let expected = draft.clone();
 				panel = panel.child(

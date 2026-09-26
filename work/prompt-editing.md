@@ -173,8 +173,8 @@ must persist the returned draft and refresh its presentation before it explicitl
 acknowledges the exact receipt ID and review token. The service rechecks native
 history and question recovery before releasing the input fence. A duplicate exact
 acknowledgement is harmless; another receipt cannot release this edit. Querying,
-recovering or acknowledging does not submit the restored draft. The current GPUI
-composer still needs canonical binding/file-ID storage and editing support.
+recovering or acknowledging does not submit the restored draft. GPUI retains canonical
+input in a separate editor; final send and recovery acceptance remain open.
 
 ## Canonical draft staging and send integration
 
@@ -198,8 +198,8 @@ settings, bounded queue payloads, repeated admission, pending handback rejection
 and changed thread or digest rejection. These tests construct native request
 parameters; they do not prove a complete desktop send or installed-native result.
 
-Complete desktop handback, fresh history presentation, explicit send, ambiguous
-send recovery, and installed-native acceptance remain required before
+Explicit send, ambiguous send recovery, and installed-native acceptance remain
+required before
 this optional feature is accepted. Local protocol and database tests do not close
 those acceptance requirements.
 
@@ -263,3 +263,24 @@ A rendered-control/socket test reads the actual draft file when the service rece
 ConfirmPromptEdit. It proves the matching confirmation key and draft are durable and
 the occupied main composer is preserved. It uses a simulated rejection and does not
 prove native success, draft handback ACK, or a subsequent model send.
+
+
+## Draft handback acknowledgement
+
+Finish restoring draft first recovers the exact native receipt. It accepts only an
+Applied or Restored receipt, then reads fresh local history and the native timeline.
+The UI requires complete question recovery and matching work/thread identities. It
+applies a new timeline epoch, replaces current history, and cancels older-page and
+visible-output tasks that could reintroduce removed content. A failed read does not
+reuse an older Available history result as acknowledgement evidence.
+
+The I/O worker waits for the UI to apply these results and confirm that the exact
+draft is saved before it sends AcknowledgePromptEditDraft. It then reads the receipt
+again and requires Restored before marking handback complete locally. An unavailable
+reply retains the draft and requires receipt recovery. Neither acknowledgement nor
+recovery submits edited input. Changes during the operation retain the edited copy.
+
+Focused UI tests cover unavailable history, incomplete question recovery, a crossed
+native thread, and replacement of old timeline rows/cursors after a fresh read. The
+full installed-native desktop confirmation/handback/send sequence still needs end-to-
+end acceptance; these projection tests do not establish that result.

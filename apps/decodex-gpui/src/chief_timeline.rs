@@ -9,6 +9,69 @@ use std::collections::BTreeSet;
 #[path = "chief_timeline_scroll.rs"] mod scroll;
 
 impl ChiefSurface {
+	pub(super) fn restore_prompt_presentation(
+		&mut self,
+		work: &str,
+		thread: &str,
+		history: ChiefHistoryResult,
+		timeline: decodex_protocol::ChiefTimelineResult,
+		cx: &mut Context<Self>,
+	) -> Result<(), &'static str> {
+		if self.selected.as_deref() != Some(work)
+			|| !self.snapshot.as_ref().is_some_and(|snapshot| {
+				snapshot
+					.work_items
+					.iter()
+					.any(|item| item.id == work && item.codex_thread_id.as_deref() == Some(thread))
+			}) {
+			return Err("History source changed");
+		}
+		if !matches!(&history, ChiefHistoryResult::Available { questions_recovering: false, .. }) {
+			return Err("Question history recovery is incomplete");
+		}
+		let decodex_protocol::ChiefTimelineResult::Available { work_id, account_id, page } =
+			timeline
+		else {
+			return Err("Native history is unavailable");
+		};
+		if work_id.as_str() != work || page.thread_id != thread {
+			return Err("Native history source changed");
+		}
+		let mut restored =
+			Timeline { epoch: self.native_history.epoch.wrapping_add(1), ..Default::default() };
+		if !restored.replace(
+			Binding {
+				work: work.into(),
+				thread: thread.into(),
+				account: account_id.as_str().into(),
+			},
+			page,
+		) {
+			return Err("Native history page could not be applied");
+		}
+		restored.requested = Some((work.into(), thread.into()));
+		self.cancel_native_scroll_anchor();
+		self.native_history = restored;
+		self.history_task = None;
+		self.older_task = None;
+		self.loading_older = false;
+		self.older_retry_after = None;
+		self.older_scroll_anchor = None;
+		self.older_history.remove(work);
+		self.output_stream = Default::default();
+		self.history_requested_for = Some(work.into());
+		self.history_read_at = Some(std::time::Instant::now());
+		self.observe_question_notices(&history);
+		self.prepare_async_question_inputs(work, &history, cx);
+		self.history_cache.insert(work.into(), history.clone());
+		self.history = Some((work.into(), history));
+		self.history_navigation = None;
+		self.history_follow_paused.remove(work);
+		self.transcript_scroll.entry(work.into()).or_default().scroll_to_bottom();
+		cx.notify();
+		Ok(())
+	}
+
 	pub(super) fn prefetch_native_history(&mut self, cx: &mut Context<Self>) -> bool {
 		let Some(binding) = self.native_history.binding.clone().filter(|binding| {
 			!self.native_history.show_saved && self.selected.as_ref() == Some(&binding.work)
@@ -484,6 +547,82 @@ pub(super) fn key(entry: &ChiefTimelineEntry) -> (u64, u8, &str) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn prompt_handback_replaces_old_history_only_with_fresh_bound_pages(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let work = s.selected.clone().unwrap();
+			s.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|item| item.id == work)
+				.unwrap()
+				.codex_thread_id = Some("thread".into());
+			let history = ChiefHistoryResult::Available {
+				questions: vec![],
+				questions_truncated: false,
+				questions_recovering: false,
+				misalignment: None,
+				usage: None,
+				entries: vec![],
+				has_more: false,
+				next_before: None,
+				live: vec![],
+			};
+			s.history = Some((work.clone(), history.clone()));
+			s.older_history.insert(work.clone(), (vec![], Some(99)));
+			let binding =
+				Binding { work: work.clone(), thread: "thread".into(), account: "account".into() };
+			s.native_history
+				.replace(binding, page(vec![boundary(9, false)], Some("old-cursor"), None));
+			let epoch = s.native_history.epoch;
+			let timeline = decodex_protocol::ChiefTimelineResult::Available {
+				work_id: EntityId::new(&work).unwrap(),
+				account_id: EntityId::new("account").unwrap(),
+				page: page(vec![boundary(1, true)], None, None),
+			};
+			assert!(
+				s.restore_prompt_presentation(
+					&work,
+					"thread",
+					ChiefHistoryResult::Unavailable,
+					timeline.clone(),
+					cx
+				)
+				.is_err()
+			);
+			assert_eq!(s.native_history.entries[0].position, 9);
+			assert!(s.older_history.contains_key(&work));
+			let mut incomplete = history.clone();
+			if let ChiefHistoryResult::Available { questions_recovering, .. } = &mut incomplete {
+				*questions_recovering = true;
+			}
+			assert!(
+				s.restore_prompt_presentation(&work, "thread", incomplete, timeline.clone(), cx)
+					.is_err()
+			);
+			let mut crossed = timeline.clone();
+			if let decodex_protocol::ChiefTimelineResult::Available { page, .. } = &mut crossed {
+				page.thread_id = "foreign".into();
+			}
+			assert!(
+				s.restore_prompt_presentation(&work, "thread", history.clone(), crossed, cx)
+					.is_err()
+			);
+			s.restore_prompt_presentation(&work, "thread", history, timeline, cx).unwrap();
+			assert_ne!(s.native_history.epoch, epoch);
+			assert_eq!(s.native_history.entries, vec![boundary(1, true)]);
+			assert!(s.native_history.older_cursor.is_none());
+			assert!(!s.older_history.contains_key(&work));
+			assert!(s.history_cache.contains_key(&work));
+		});
+	}
+
 	fn binding() -> Binding {
 		Binding { work: "work".into(), thread: "thread".into(), account: "account".into() }
 	}
