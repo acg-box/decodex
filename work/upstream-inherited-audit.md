@@ -65,7 +65,6 @@ See [Chief refusal adaptation](native-dispatch-refusals.md) and the correspondin
 PR validation records. This refresh verifies committed owners and merge ancestry;
 it does not rerun application tests or claim signed desktop acceptance.
 
-ptance.
 
 ## Optional and separately reviewed work
 
@@ -75,8 +74,8 @@ and task recaps. These are separate product or presentation scopes; scanning the
 upstream commits did not deliver them. Their inherited owners and current
 alternatives still require reconciliation. Voice preferences, public reasoning
 summaries, model-access observation and manual recaps have since been delivered
-in focused batches; see the [adoption register](upstream-adoption-review.md). In particular, existing quota windows
-are not the full analytics report contract, and existing native revert observation
+in focused batches; see the [adoption register](upstream-adoption-review.md).
+Existing quota windows are not the full analytics report contract, and existing native revert observation
 is not an edit-earlier-prompt action.
 
 For this manual fixed-cutoff pass, the user authorized completion followed by a
@@ -87,5 +86,4 @@ The scheduled automation remains paused, including after manual completion.
 
 This documentation refresh checked snapshot hashes, current committed bytes, all
 three registered migration mappings, current refusal/payload owners, stash
-identities and GitHub PR state. No application code or
-production data changed. The register deliberately leaves uncertain rows open.
+identities and GitHub PR state. No application code or production data changed. The register deliberately leaves uncertain rows open.
