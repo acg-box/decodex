@@ -31,13 +31,28 @@ pub struct DesktopPromptEditDraft {
 	pub review_token: crate::WireText,
 	/// Durable native edit receipt, absent while the user is still reviewing.
 	pub receipt_id: Option<i64>,
-	/// Draft handback has not yet been confirmed by the service.
+	/// Exact confirmation command retained before dispatch until a native receipt is read.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub confirmation_key: Option<crate::IdempotencyKey>,
+	/// Confirmation may be in flight, or draft handback is not yet confirmed by the service.
 	pub handback_pending: bool,
 	/// Complete editable input, never a flattened history preview.
 	pub input: PromptDraft,
 }
 
 impl DesktopPromptEditDraft {
+	/// Retain confirmation intent before any native history mutation can be sent.
+	pub fn begin_confirmation(&self, key: crate::IdempotencyKey) -> Result<Self, &'static str> {
+		self.validate()?;
+		if self.receipt_id.is_some() || self.handback_pending || self.confirmation_key.is_some() {
+			return Err("Recover the existing history edit first");
+		}
+		let mut pending = self.clone();
+		pending.confirmation_key = Some(key);
+		pending.handback_pending = true;
+		Ok(pending)
+	}
+
 	/// Bind a recovered native receipt without replacing the user's edited input.
 	pub fn recover_receipt(
 		&self,
@@ -59,12 +74,21 @@ impl DesktopPromptEditDraft {
 				crate::PromptEditPhase::Uncertain
 					| crate::PromptEditPhase::Applied
 					| crate::PromptEditPhase::Restored
+					| crate::PromptEditPhase::Unchanged
 			) {
 			return Err("History edit source changed; retain this draft separately");
 		}
 		let mut recovered = self.clone();
-		recovered.receipt_id = evidence.receipt_id;
-		recovered.handback_pending = status.phase != crate::PromptEditPhase::Restored;
+		recovered.confirmation_key = None;
+		recovered.receipt_id = if status.phase == crate::PromptEditPhase::Unchanged {
+			None
+		} else {
+			evidence.receipt_id
+		};
+		recovered.handback_pending = matches!(
+			status.phase,
+			crate::PromptEditPhase::Uncertain | crate::PromptEditPhase::Applied
+		);
 		Ok(recovered)
 	}
 
@@ -102,7 +126,9 @@ impl DesktopPromptEditDraft {
 			|| self.review_token.as_str().len() != 64
 			|| !self.review_token.as_str().bytes().all(|b| b.is_ascii_hexdigit())
 			|| self.receipt_id.is_some_and(|id| id <= 0)
-			|| self.handback_pending && self.receipt_id.is_none()
+			|| self.handback_pending && self.receipt_id.is_none() && self.confirmation_key.is_none()
+			|| self.confirmation_key.is_some()
+				&& (!self.handback_pending || self.receipt_id.is_some())
 		{
 			return Err("Prompt draft source is invalid");
 		}
@@ -317,6 +343,7 @@ mod tests {
 			review_token: crate::WireText::new("a".repeat(64)).unwrap(),
 			receipt_id: None,
 			handback_pending: false,
+			confirmation_key: None,
 			input: sample(),
 		};
 		let mut fresh = saved.clone();
@@ -350,9 +377,34 @@ mod tests {
 			review_token: crate::WireText::new("a".repeat(64)).unwrap(),
 			receipt_id: None,
 			handback_pending: false,
+			confirmation_key: None,
 			input: original.clone(),
 		};
 		draft.input.replace_text(0, 0..3, "Edited").unwrap();
+		draft =
+			draft.begin_confirmation(crate::IdempotencyKey::new("confirm-once").unwrap()).unwrap();
+		assert!(draft.receipt_id.is_none() && draft.handback_pending);
+		assert!(
+			draft.begin_confirmation(crate::IdempotencyKey::new("do-not-repeat").unwrap()).is_err()
+		);
+		let mut document = crate::DesktopDraftDocument::default();
+		document
+			.profiles
+			.entry("a".repeat(64))
+			.or_default()
+			.prompt_edits
+			.insert(draft.review_token.as_str().into(), draft.clone());
+		let directory = tempfile::tempdir().unwrap();
+		let path = directory.path().canonicalize().unwrap().join("desktop");
+		let store = crate::ClientDraftStore::open_at(&path).unwrap();
+		store.save(0, &document.encode().unwrap()).unwrap();
+		drop(store);
+		let reopened = crate::ClientDraftStore::open_at(&path).unwrap();
+		let restored =
+			crate::DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
+		let profile = &restored.profiles[&"a".repeat(64)];
+		assert!(profile.has_unconfirmed_delivery());
+		assert_eq!(profile.prompt_edits[draft.review_token.as_str()], draft);
 		let fragment = serde_json::to_string(&original).unwrap();
 		let mut status = crate::PromptEditStatus {
 			work_id: draft.work_id.clone(),
@@ -378,9 +430,19 @@ mod tests {
 			let recovered = draft.recover_receipt(&status, &original).unwrap();
 			assert_eq!(recovered.input, draft.input);
 			assert_eq!(recovered.receipt_id, Some(42));
+			assert!(recovered.confirmation_key.is_none());
 			assert_eq!(recovered.handback_pending, phase != crate::PromptEditPhase::Restored);
 		}
+		status.phase = crate::PromptEditPhase::Unchanged;
+		let unchanged = draft.recover_receipt(&status, &original).unwrap();
+		assert!(
+			unchanged.receipt_id.is_none()
+				&& unchanged.confirmation_key.is_none()
+				&& !unchanged.handback_pending
+		);
+		assert_eq!(unchanged.input, draft.input);
 		assert!(draft.recover_receipt(&status, &draft.input).is_err());
+		draft.confirmation_key = None;
 		draft.receipt_id = Some(43);
 		assert!(draft.recover_receipt(&status, &original).is_err());
 		draft.receipt_id = None;
@@ -522,6 +584,7 @@ mod tests {
 				review_token: WireText::new(&review).unwrap(),
 				receipt_id: Some(42),
 				handback_pending: true,
+				confirmation_key: None,
 				input,
 			},
 		);
@@ -585,6 +648,7 @@ mod tests {
 				review_token: WireText::new(&review).unwrap(),
 				receipt_id: Some(42),
 				handback_pending: true,
+				confirmation_key: None,
 				input: sample(),
 			},
 		);
@@ -631,7 +695,7 @@ mod tests {
 		let reconciled = removed.reconcile_keep_both(&restored, &remote).unwrap();
 		assert_eq!(reconciled.profiles[&scope].prompt_edits, remote.profiles[&scope].prompt_edits);
 		let old = DesktopDraftDocument::decode(br#"{"version":7,"profiles":{}}"#).unwrap();
-		assert_eq!(old.version, 8);
+		assert_eq!(old.version, 9);
 		assert!(old.profiles.is_empty());
 	}
 }

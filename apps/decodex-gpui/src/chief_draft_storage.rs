@@ -721,6 +721,7 @@ mod tests {
 			review_token: WireText::new("a".repeat(64)).unwrap(),
 			receipt_id: Some(42),
 			handback_pending: true,
+			confirmation_key: None,
 			input,
 		};
 		surface.update(cx, |s, cx| {
@@ -1635,6 +1636,7 @@ mod ordinary_owner_tests {
 						review_token: WireText::new(review).unwrap(),
 						receipt_id: Some(42),
 						handback_pending: true,
+						confirmation_key: None,
 						input: decodex_protocol::PromptDraft::new(vec![
 							serde_json::json!({"type":"image","fileId":"retained-native-file"}),
 						])

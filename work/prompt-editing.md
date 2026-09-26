@@ -180,7 +180,7 @@ composer still needs canonical binding/file-ID storage and editing support.
 
 The current feature branch adds protocol2.87 staging commands and a separate
 SendPromptInput command. The desktop editor retains complete parts and text
-markers in the existing version8 draft document. Input staging uses immutable
+markers in the existing version9 draft document. Input staging uses immutable
 SQLite records and durable 64KiB chunks. A lost staging reply permits progress
 only after a read confirms saved bytes. Staging never authorizes a model turn.
 
@@ -202,3 +202,12 @@ Desktop confirmation, durable handback, history refresh, explicit send, ambiguou
 send recovery, and full native request size qualification remain required before
 this optional feature is accepted. Local protocol and database tests do not close
 those acceptance requirements.
+
+The local version9 draft contract retains a confirmation command key before a native
+receipt exists. begin_confirmation marks handback pending and refuses a second
+confirmation. The existing draft writer must save this exact state before dispatch.
+Receipt recovery clears the local key only when exact native evidence is available.
+An Unchanged receipt permits a fresh review while preserving edited content;
+Uncertain or Applied receipts retain the handback fence. Missing or failed network
+responses do not release it. Versions1 through8 upgrade with no invented confirmation
+identity. The desktop confirmation button is not yet connected to this contract.

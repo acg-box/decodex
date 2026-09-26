@@ -33,7 +33,7 @@ pub struct DesktopDraftDocument {
 impl Default for DesktopDraftDocument {
 	fn default() -> Self {
 		Self {
-			version: 8,
+			version: 9,
 			profiles: BTreeMap::new(),
 			unbound: Default::default(),
 			unbound_ordinary: Default::default(),
@@ -201,7 +201,7 @@ impl DesktopDraftDocument {
 			}
 		}
 		value.validate()?;
-		value.version = 8;
+		value.version = 9;
 		Ok(value)
 	}
 
@@ -214,7 +214,7 @@ impl DesktopDraftDocument {
 	}
 
 	fn validate(&self) -> Result<(), &'static str> {
-		if !matches!(self.version, 1..=8) {
+		if !matches!(self.version, 1..=9) {
 			return Err("Draft snapshot version is unsupported");
 		}
 		if self.profiles.len() > 64 {
@@ -445,7 +445,7 @@ mod tests {
 			execution: Some((EntityId::new("work").unwrap(), 4)),
 		});
 		DesktopDraftDocument {
-			version: 8,
+			version: 9,
 			profiles: BTreeMap::from([("a".repeat(64), profile)]),
 			recovered: vec![],
 			unbound: Default::default(),
@@ -472,7 +472,7 @@ mod tests {
 		let bytes = document.encode().unwrap();
 		assert_eq!(DesktopDraftDocument::decode(&bytes).unwrap().unbound.creation, Some(setup));
 		let old = DesktopDraftDocument::decode(br#"{"version":1,"profiles":{}}"#).unwrap();
-		assert_eq!(old.version, 8);
+		assert_eq!(old.version, 9);
 		assert!(old.unbound.creation.is_none());
 		let mut remote = document.clone();
 		remote.unbound.creation.as_mut().unwrap().model = "other model".into();
@@ -509,7 +509,7 @@ mod tests {
 	#[test]
 	fn draft_document_rejects_changed_contract_and_ambiguous_ownership() {
 		let mut original = document();
-		original.version = 9;
+		original.version = 10;
 		assert!(original.encode().is_err());
 		let mut json = serde_json::to_value(document()).unwrap();
 		json["unexpected"] = serde_json::json!(true);

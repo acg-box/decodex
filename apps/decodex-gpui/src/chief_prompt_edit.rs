@@ -83,7 +83,8 @@ impl ChiefSurface {
 							Ok(()) => {
 								s.prompt_edit.draft = Some(recovered);
 								s.prompt_edit.feedback = match phase {
-									PromptEditPhase::Restored => "History edit receipt recovered. Edited input retained; nothing was sent.",
+									PromptEditPhase::Unchanged => "History is unchanged. Edited input retained; recheck original history before confirming again.",
+								PromptEditPhase::Restored => "History edit receipt recovered. Edited input retained; nothing was sent.",
 									PromptEditPhase::Applied => "History edit applied. Saving the retained draft; handback is still pending.",
 									_ => "History edit remains uncertain. Retain this draft and recover again; do not repeat confirmation.",
 								}.into();
@@ -236,6 +237,7 @@ impl ChiefSurface {
 								review_token: evidence.review_token,
 								receipt_id: None,
 								handback_pending: false,
+								confirmation_key: None,
 								input,
 							},
 							evidence.removed_turns,
@@ -506,6 +508,7 @@ mod tests {
 					review_token: WireText::new("b".repeat(64)).unwrap(),
 					receipt_id: None,
 					handback_pending: false,
+					confirmation_key: None,
 					input: PromptDraft::new(vec![
 						serde_json::json!({"type":"text","text":"Original"}),
 						serde_json::json!({"type":"image","fileId":"native-image"}),
@@ -567,7 +570,13 @@ mod tests {
 			s.stage_prompt_editor(later.clone(), cx).unwrap();
 			fresh.review_token = WireText::new("d".repeat(64)).unwrap();
 			assert!(s.renew_prompt_editor(&renewed, &fresh, cx).is_err());
-			assert_eq!(s.saved_prompt_editors(&work), vec![later]);
+			assert_eq!(s.saved_prompt_editors(&work), vec![later.clone()]);
+			let pending =
+				later.begin_confirmation(IdempotencyKey::new("confirm-once").unwrap()).unwrap();
+			s.stage_prompt_editor(pending.clone(), cx).unwrap();
+			assert!(s.discard_prompt_editor(&pending, cx).is_err());
+			assert!(s.renew_prompt_editor(&pending, &fresh, cx).is_err());
+			assert_eq!(s.saved_prompt_editors(&work), vec![pending]);
 			s.mark_stale(cx);
 			assert!(s.prompt_edit.draft.is_none());
 			assert!(!s.prompt_editor_source_current());
