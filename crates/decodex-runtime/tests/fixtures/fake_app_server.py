@@ -462,6 +462,10 @@ for line in sys.stdin:
             if mode == "exact-malformed-list":
                 data = [{**exact_thread, "createdAt": "not-a-timestamp"}]
             result = {"data": data, "nextCursor": None}
+            if mode in {"exact-list-more", "exact-list-empty-more"}:
+                result["nextCursor"] = "unread-candidates"
+                if mode == "exact-list-empty-more":
+                    result["data"] = []
         else:
             assert message["params"]["useStateDbOnly"] is True
             count = 101 if mode == "oversized-thread-list" else 1

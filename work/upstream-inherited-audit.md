@@ -655,3 +655,17 @@ Both complete file dispositions are closed. No application permission code,
 configuration, package or product control changes. The native owner remains
 responsible for enforcement; broader R10 and signed desktop acceptance stay open.
 See [the current evidence and scope](filesystem-policy-cwd.md).
+
+## Process adapter owners reconciled on 2026-09-26
+
+Review all 856 lines of the preserved process-file diff. Restore the missing
+complete-list guard, its two continuation fixtures and three closing-response
+settings assertions. Restore the provisioned launcher resolver and its complete
+tests; retain the current signed bundle snapshot owner instead of duplicating it.
+Verify both original file hashes and record their complete dispositions.
+
+The process module passes 108 tests with six opt-in skips. Exact-list regression
+fails before restoration and passes afterward. The explicit installed signed CLI
+snapshot check and strict runtime lint qualify the retained admission owner.
+See [process adapter reconciliation](process-adapter-reconciliation.md) for the
+complete mapping and evidence limits. The larger fake-server row remains open.
