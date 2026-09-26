@@ -679,8 +679,11 @@ impl ServiceApplication {
 		&self,
 		command: &CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
-		let CommandPayload::SetDesktopSettings { show_in_menu_bar, auto_activate_quota } =
-			&command.payload
+		let CommandPayload::SetDesktopSettings {
+			show_in_menu_bar,
+			auto_activate_quota,
+			auto_recap,
+		} = &command.payload
 		else {
 			return Err(application_unavailable("desktop settings command is invalid"));
 		};
@@ -693,7 +696,12 @@ impl ServiceApplication {
 			return Err(application_unavailable("desktop settings store is unavailable"));
 		};
 		let settings = store
-			.set_desktop_settings(expected_revision, *show_in_menu_bar, *auto_activate_quota)
+			.set_desktop_settings(
+				expected_revision,
+				*show_in_menu_bar,
+				*auto_activate_quota,
+				*auto_recap,
+			)
 			.await
 			.map_err(desktop_settings_command_error)?;
 		self.request_account_observation_refresh();
@@ -5212,6 +5220,7 @@ fn desktop_settings_dto(settings: StoreDesktopSettings) -> Result<DesktopSetting
 	let revision = u64::try_from(settings.revision).map(EntityRevision).map_err(|_| ())?;
 	let mut dto = DesktopSettingsDto::new(settings.show_in_menu_bar, revision).map_err(|_| ())?;
 	dto.auto_activate_quota = settings.auto_activate_quota;
+	dto.auto_recap = settings.auto_recap;
 	Ok(dto)
 }
 
@@ -6783,3 +6792,7 @@ mod tests {
 
 #[path = "application_account_nudge.rs"] mod account_nudge;
 #[path = "application_turn_outcomes.rs"] mod turn_outcomes;
+
+#[cfg(test)]
+#[path = "application_desktop_settings_tests.rs"]
+mod desktop_settings_tests;

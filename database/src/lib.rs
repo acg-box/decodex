@@ -657,6 +657,7 @@ mod tests {
 			super::DesktopSettings {
 				show_in_menu_bar: true,
 				auto_activate_quota: true,
+				auto_recap: false,
 				revision: 1
 			}
 		);

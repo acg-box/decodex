@@ -333,9 +333,9 @@ mod tests {
 		let (dir, store, id) = fixture().await;
 		let q = quota(0, 100);
 		assert!(store.read_desktop_settings().await.expect("default").auto_activate_quota);
-		store.set_desktop_settings(1, true, Some(false)).await.expect("disable");
+		store.set_desktop_settings(1, true, Some(false), None).await.expect("disable");
 		assert!(!store.claim_quota_activation(&id, 1, q, true, 100).await.expect("disabled"));
-		store.set_desktop_settings(2, true, Some(true)).await.expect("enable");
+		store.set_desktop_settings(2, true, Some(true), None).await.expect("enable");
 		assert!(!store.claim_quota_activation(&id, 2, q, true, 100).await.expect("revision"));
 		assert!(!store.claim_quota_activation(&id, 1, q, false, 100).await.expect("blocked"));
 		let (a, b) = tokio::join!(
@@ -343,8 +343,8 @@ mod tests {
 			store.claim_quota_activation(&id, 1, q, true, 100)
 		);
 		assert_ne!(a.expect("claim"), b.expect("claim"));
-		store.set_desktop_settings(3, true, Some(false)).await.expect("disable");
-		store.set_desktop_settings(4, true, Some(true)).await.expect("enable");
+		store.set_desktop_settings(3, true, Some(false), None).await.expect("disable");
+		store.set_desktop_settings(4, true, Some(true), None).await.expect("enable");
 		drop(store);
 		let store = SqliteStore::open_test(&dir.path().join("state.sqlite3")).expect("reopen");
 		assert!(

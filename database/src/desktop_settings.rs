@@ -11,6 +11,8 @@ pub struct DesktopSettings {
 	pub show_in_menu_bar: bool,
 	/// Whether each account receives a minimal request after its weekly reset.
 	pub auto_activate_quota: bool,
+	/// Whether the desktop may request automatic task recaps.
+	pub auto_recap: bool,
 	/// Positive optimistic revision of this singleton projection.
 	pub revision: i64,
 }
@@ -27,7 +29,7 @@ impl SqliteStore {
 		expected_revision: i64,
 		show_in_menu_bar: bool,
 	) -> Result<DesktopSettings, StoreError> {
-		self.set_desktop_settings(expected_revision, show_in_menu_bar, None).await
+		self.set_desktop_settings(expected_revision, show_in_menu_bar, None, None).await
 	}
 
 	/// Update desktop preferences under one exact revision; omitted activation stays unchanged.
@@ -36,6 +38,7 @@ impl SqliteStore {
 		expected_revision: i64,
 		show_in_menu_bar: bool,
 		auto_activate_quota: Option<bool>,
+		auto_recap: Option<bool>,
 	) -> Result<DesktopSettings, StoreError> {
 		if expected_revision <= 0 {
 			return Err(StoreError::InvalidInput("desktop settings revision must be positive"));
@@ -53,6 +56,7 @@ impl SqliteStore {
 				});
 			}
 			let auto_activate_quota = auto_activate_quota.unwrap_or(current.auto_activate_quota);
+			let auto_recap = auto_recap.unwrap_or(current.auto_recap);
 			let revision = current
 				.revision
 				.checked_add(1)
@@ -60,9 +64,15 @@ impl SqliteStore {
 			let changed = transaction
 				.execute(
 					"UPDATE desktop_settings
-					 SET show_in_menu_bar = ?1, revision = ?2, auto_activate_quota = ?4
+					 SET show_in_menu_bar = ?1, revision = ?2, auto_activate_quota = ?4, auto_recap = ?5
 					 WHERE singleton = 1 AND revision = ?3",
-					params![show_in_menu_bar, revision, expected_revision, auto_activate_quota],
+					params![
+						show_in_menu_bar,
+						revision,
+						expected_revision,
+						auto_activate_quota,
+						auto_recap
+					],
 				)
 				.map_err(sqlite_error)?;
 			if changed != 1 {
@@ -73,24 +83,29 @@ impl SqliteStore {
 				});
 			}
 			transaction.commit().map_err(sqlite_error)?;
-			Ok(DesktopSettings { show_in_menu_bar, auto_activate_quota, revision })
+			Ok(DesktopSettings { show_in_menu_bar, auto_activate_quota, auto_recap, revision })
 		})
 		.await
 	}
 }
 
 fn read_desktop_settings(connection: &Connection) -> Result<DesktopSettings, StoreError> {
-	let (show_in_menu_bar, revision, auto_activate_quota) = connection
+	let (show_in_menu_bar, revision, auto_activate_quota, auto_recap) = connection
 		.query_row(
-			"SELECT show_in_menu_bar, revision, auto_activate_quota FROM desktop_settings WHERE singleton = 1",
+			"SELECT show_in_menu_bar, revision, auto_activate_quota, auto_recap FROM desktop_settings WHERE singleton = 1",
 			[],
-			|row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, bool>(2)?)),
+			|row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, bool>(2)?, row.get::<_, bool>(3)?)),
 		)
 		.map_err(sqlite_error)?;
 	if !matches!(show_in_menu_bar, 0 | 1) || revision <= 0 {
 		return Err(StoreError::Incompatible("desktop_settings".to_owned()));
 	}
-	Ok(DesktopSettings { show_in_menu_bar: show_in_menu_bar == 1, auto_activate_quota, revision })
+	Ok(DesktopSettings {
+		show_in_menu_bar: show_in_menu_bar == 1,
+		auto_activate_quota,
+		auto_recap,
+		revision,
+	})
 }
 
 #[cfg(test)]
@@ -100,17 +115,46 @@ mod tests {
 	use crate::{SqliteStore, StoreError};
 
 	#[tokio::test]
+	async fn automatic_recap_preference_preserves_other_settings_and_survives_reopen() {
+		let dir = tempdir().expect("test directory");
+		let path = dir.path().join("settings.sqlite3");
+		let store = SqliteStore::open_test(&path).expect("store");
+		assert!(!store.read_desktop_settings().await.expect("defaults").auto_recap);
+		let enabled =
+			store.set_desktop_settings(1, true, None, Some(true)).await.expect("enable recap");
+		assert!(enabled.auto_recap && enabled.auto_activate_quota);
+		let other = store
+			.set_desktop_settings(enabled.revision, false, Some(false), None)
+			.await
+			.expect("other preferences");
+		assert!(other.auto_recap);
+		assert!(!other.show_in_menu_bar && !other.auto_activate_quota);
+		assert!(matches!(
+			store.set_desktop_settings(enabled.revision, true, None, Some(false)).await,
+			Err(StoreError::RevisionConflict { .. })
+		));
+		drop(store);
+		let store = SqliteStore::open_test(&path).expect("reopen");
+		assert_eq!(store.read_desktop_settings().await.expect("saved"), other);
+		let disabled = store
+			.set_desktop_settings(other.revision, false, None, Some(false))
+			.await
+			.expect("disable recap");
+		assert!(!disabled.auto_recap && !disabled.auto_activate_quota);
+	}
+
+	#[tokio::test]
 	async fn menu_bar_changes_preserve_enabled_quota_activation() {
 		let dir = tempdir().expect("test directory");
 		let store = SqliteStore::open_test(&dir.path().join("settings.sqlite3")).expect("store");
 		assert!(store.read_desktop_settings().await.expect("defaults").auto_activate_quota);
-		let enabled = store.set_desktop_settings(1, true, Some(true)).await.expect("enable");
+		let enabled = store.set_desktop_settings(1, true, Some(true), None).await.expect("enable");
 		let changed =
 			store.set_show_in_menu_bar(enabled.revision, false).await.expect("hide menu bar");
 		assert!(changed.auto_activate_quota);
 		assert!(!changed.show_in_menu_bar);
 		store
-			.set_desktop_settings(changed.revision, false, Some(false))
+			.set_desktop_settings(changed.revision, false, Some(false), None)
 			.await
 			.expect("disable activation");
 		drop(store);

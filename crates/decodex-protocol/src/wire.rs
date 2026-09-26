@@ -407,6 +407,8 @@ pub struct DesktopSettingsDto {
 	pub show_in_menu_bar: bool,
 	/// Automatically activate fresh weekly quota windows.
 	pub auto_activate_quota: bool,
+	/// Permit optional automatic desktop task recaps.
+	pub auto_recap: bool,
 	/// Positive optimistic revision of this singleton projection.
 	pub revision: EntityRevision,
 }
@@ -420,7 +422,7 @@ impl DesktopSettingsDto {
 		if revision.0 == 0 {
 			return Err("desktop settings revision must be positive");
 		}
-		Ok(Self { show_in_menu_bar, auto_activate_quota: true, revision })
+		Ok(Self { show_in_menu_bar, auto_activate_quota: true, auto_recap: false, revision })
 	}
 
 	/// Validate an untrusted decoded desktop settings projection.
@@ -2536,6 +2538,9 @@ pub enum CommandPayload {
 		/// Omission preserves the current activation preference.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		auto_activate_quota: Option<bool>,
+		/// Omission preserves the automatic recap preference.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		auto_recap: Option<bool>,
 	},
 	/// Create one ordinary conversation and submit its first turn.
 	CreateConversation {
@@ -4713,6 +4718,31 @@ mod tests {
 	}
 
 	#[test]
+	fn desktop_recap_preference_is_explicit_and_omission_preserves_it() {
+		let legacy = serde_json::to_value(CommandPayload::SetDesktopSettings {
+			show_in_menu_bar: true,
+			auto_activate_quota: None,
+			auto_recap: None,
+		})
+		.unwrap();
+		assert!(!legacy.to_string().contains("auto_recap"));
+		let decoded: CommandPayload = serde_json::from_value(legacy).unwrap();
+		assert!(matches!(decoded, CommandPayload::SetDesktopSettings { auto_recap: None, .. }));
+		for enabled in [false, true] {
+			let command = CommandPayload::SetDesktopSettings {
+				show_in_menu_bar: true,
+				auto_activate_quota: None,
+				auto_recap: Some(enabled),
+			};
+			let decoded: CommandPayload =
+				serde_json::from_value(serde_json::to_value(command).unwrap()).unwrap();
+			assert!(
+				matches!(decoded, CommandPayload::SetDesktopSettings { auto_recap: Some(value), .. } if value == enabled)
+			);
+		}
+	}
+
+	#[test]
 	fn hello_wire_shape_is_a_stable_json_golden() {
 		let message = ClientMessage::Hello(ClientHello {
 			version: CURRENT_VERSION,
@@ -4729,7 +4759,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":84},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":85},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4738,7 +4768,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":84},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":85},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -4780,7 +4810,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":84},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":85},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,

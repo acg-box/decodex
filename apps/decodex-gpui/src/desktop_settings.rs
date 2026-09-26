@@ -371,11 +371,16 @@ impl DesktopSettingsController {
 		match result.outcome {
 			CommandOutcome::Succeeded => {
 				if let (
-					CommandPayload::SetDesktopSettings { show_in_menu_bar, auto_activate_quota },
+					CommandPayload::SetDesktopSettings {
+						show_in_menu_bar,
+						auto_activate_quota,
+						auto_recap,
+					},
 					Some(ResultPayload::DesktopSettingsChanged { settings }),
 				) = (&in_flight.envelope.payload, result.payload.as_ref())
 					&& settings.show_in_menu_bar == *show_in_menu_bar
 					&& auto_activate_quota.is_none_or(|value| value == settings.auto_activate_quota)
+					&& auto_recap.is_none_or(|value| value == settings.auto_recap)
 					&& settings.is_valid()
 					&& result.entity_revision == Some(settings.revision)
 				{
@@ -523,7 +528,11 @@ impl State {
 			expected_revision: Some(expected_revision),
 			correlation_id: identity.correlation_id,
 			causation_id: None::<CausationId>,
-			payload: CommandPayload::SetDesktopSettings { show_in_menu_bar, auto_activate_quota },
+			payload: CommandPayload::SetDesktopSettings {
+				show_in_menu_bar,
+				auto_activate_quota,
+				auto_recap: None,
+			},
 		});
 		self.command = DesktopSettingsCommandState::Sending;
 		Ok(())
@@ -631,6 +640,7 @@ mod tests {
 						DesktopSettingsDto {
 							show_in_menu_bar: true,
 							auto_activate_quota: false,
+							auto_recap: false,
 							revision: EntityRevision(3)
 						}
 					),),
@@ -665,6 +675,7 @@ mod tests {
 						DesktopSettingsDto {
 							show_in_menu_bar: true,
 							auto_activate_quota: false,
+							auto_recap: false,
 							revision: EntityRevision(8),
 						},
 					)),
@@ -698,6 +709,7 @@ mod tests {
 			let settings = DesktopSettingsDto {
 				show_in_menu_bar: activation,
 				auto_activate_quota: activation,
+				auto_recap: false,
 				revision: EntityRevision(9),
 			};
 			assert_eq!(
