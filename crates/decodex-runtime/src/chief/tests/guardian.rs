@@ -381,3 +381,27 @@ async fn guardian_query_pages_preserve_all_reviews_and_frame_budget() {
 	}
 	assert_eq!(seen.len(), 19);
 }
+
+#[tokio::test]
+async fn guardian_expanded_approval_frame_is_rejected_before_reservation_or_rpc() {
+	let (mut chief, mut sent, _directory) = fixture_with_history(approval_history()).await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	let mut value = review("expanded-path", "denied");
+	value["action"] = json!({"type":"writeStdin","approvalId":"child",
+		"processId":"terminal","stdin":"exact input","cwd":"/".to_owned() + &"界".repeat(1_000_000)});
+	let wire = json!({"method":"item/autoApprovalReview/completed","params":value});
+	assert!(serde_json::to_vec(&wire).unwrap().len() < decodex_core::MAX_NATIVE_MESSAGE_BYTES);
+	deliver(&mut chief, wire["params"].clone()).await;
+	let saved =
+		chief.store.read_chief_guardian_reviews("chief".into(), None, 1).await.unwrap().remove(0);
+	while sent.try_recv().is_ok() {}
+	assert!(matches!(
+		chief.approve_guardian_denial("chief", saved.id, &saved.digest(), "user-click").await,
+		Err(ChiefError::Rejected(_))
+	));
+	assert!(sent.try_recv().is_err());
+	let stored =
+		chief.store.chief_guardian_review("chief".into(), saved.id).await.unwrap().unwrap();
+	assert_eq!(stored.approval_state, None);
+	assert_eq!(stored.event_json, saved.event_json);
+}
