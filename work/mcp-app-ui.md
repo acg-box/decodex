@@ -338,6 +338,28 @@ fullscreen, restoration to inline, declined picture-in-picture, and notification
 an 800 by 600 content resize. These component tests do not replace final signed visual
 acceptance. Earlier descriptions of a fixed 720 by 480-only host are superseded.
 
+## Installed-native history and callback qualification
+
+An isolated local Responses fixture and MCP server passed against installed
+codex-cli 0.158.0-alpha.2. The model invoked the MCP counter through native
+functions.exec. Native item/completed emitted one MCP item with mcpAppUi,
+mcpAppResourceUri, exact arguments, structured result and metadata. The paginated
+thread/items/list response returned that exact item under the same turn identity.
+Resource read returned its matching HTML. A direct native callback returned the new
+counter value and retained metadata without another model request.
+
+The two model requests both reached the local synthetic backend. No real account or
+external model was used. The native process and HTTP fixture were stopped. Reproducible
+probe and report are retained in the task evidence directory as
+native-app-ui-turn-20260926.py and native-app-ui-turn-20260926.json.
+
+Initial probes assumed a top-level function-call tool list. The installed binary uses
+additional_tools with a functions.exec namespace; those attempts did not produce an
+MCP history item and are not positive evidence. The final probe asserts exact item
+identity and contents, callback result metadata, completed status and unchanged model
+request count after the callback. Hosted codex_apps connection qualification and the
+combined signed desktop/service/native interaction remain separate acceptance work.
+
 ## Remaining consumer obligations
 
 - Complete signed desktop visual acceptance of the source-bound document action.
