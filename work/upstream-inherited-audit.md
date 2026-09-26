@@ -165,6 +165,23 @@ For this manual fixed-cutoff pass, the user authorized completion followed by a
 product subtraction review. Future optional additions require user selection.
 The scheduled automation remains paused, including after manual completion.
 
+## Guardian approval frame check restored on 2026-09-26
+
+`crates/decodex-codex/src/guardian/approval.rs` restores the inherited complete
+request-size check and regression. It uses the existing transport preflight
+instead of duplicating the envelope and size limit. All action conversions and
+other original tests remain. The full comparison differs only in this owner
+substitution and whitespace. The original snapshot hash matches.
+
+The runtime regression uses a valid-size native notification whose path URI
+conversion exceeds the outbound limit. It requires rejection before any RPC or
+durable approval reservation, with the saved review unchanged. Both adapter and
+runtime cases failed before the fix. See [Guardian frame preflight](guardian-frame-preflight.md).
+
+This batch closes one row from its 192-row pending baseline to 191 and retains
+all 360 entries. Parallel batches close separate rows. It does not close the
+shared runtime test file or any broader acceptance group.
+
 ## Validation boundary
 
 This documentation refresh checked snapshot hashes, current committed bytes, all

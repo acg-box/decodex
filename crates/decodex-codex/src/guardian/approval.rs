@@ -33,7 +33,7 @@ pub fn core_denial_event(observation: &GuardianReview) -> Option<Value> {
 		return None;
 	}
 	let action: Action = serde_json::from_value(event["action"].clone()).ok()?;
-	Some(json!({
+	let converted = json!({
 		"id":review.review_id,"target_item_id":review.target_item_id,
 		"turn_id":review.turn_id,"started_at_ms":review.started_at_ms,
 		"completed_at_ms":review.completed_at_ms,"status":"denied",
@@ -41,7 +41,14 @@ pub fn core_denial_event(observation: &GuardianReview) -> Option<Value> {
 		"user_authorization":event["review"]["userAuthorization"],
 		"rationale":event["review"]["rationale"],"decision_source":"agent",
 		"action":action.into_core()?
-	}))
+	});
+	// Check the complete native frame before the service reserves a submission.
+	crate::app_server_client::AppServerClient::preflight_request(
+		"thread/approveGuardianDeniedAction",
+		&json!({"threadId":review.thread_id,"event":&converted}),
+	)
+	.ok()?;
+	Some(converted)
 }
 
 fn known_keys(value: &Value, allowed: &[&str]) -> bool {
@@ -288,6 +295,15 @@ impl Permissions {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn a_retained_review_that_cannot_fit_its_approval_frame_is_not_submittable() {
+		let mut event = json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"exact rationale"},"action":{"type":"command","source":"shell","command":"","cwd":"/tmp"}});
+		let overhead = serde_json::to_vec(&event).unwrap().len();
+		event["action"]["command"] =
+			json!("x".repeat(crate::guardian::MAX_REVIEW_BYTES - overhead - 1));
+		let observed = decode_review("item/autoApprovalReview/completed", &event).unwrap();
+		assert!(core_denial_event(&observed).is_none());
+	}
 	fn convert(action: Value) -> Option<Value> {
 		let event = json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"exact rationale"},"action":action});
 		core_denial_event(&decode_review("item/autoApprovalReview/completed", &event)?)
