@@ -70,10 +70,10 @@ concurrent-exclusion test remains. Database behavior is unchanged.
 
 Still required for complete recaps:
 
-- Add desktop manual generation, progress, cancellation and plain-text presentation.
+- Complete signed desktop acceptance for the manual controls delivered in PR1503.
 - Add the upstream automatic delay, progress eligibility and opt-out controls.
-- Verify actual public socket commands, lost replies, task selection changes and
-  cold desktop state, then run signed desktop acceptance.
+- Complete end-to-end lost-reply, task-selection and cold desktop acceptance.
+  The public native socket command scenario is qualified below.
 - Integrate visible voice transcripts. Current history preparation rejects internal
   realtime handoff envelopes instead of treating them as user-visible text. It does
   not yet provide a voice-history recap.
@@ -103,3 +103,32 @@ repository's workbench capture binary. It uses synthetic text and no account.
 This is an optional product control for the final subtraction review. It does
 not complete automatic eligibility/delay/opt-out, visible voice transcript
 integration, public service command acceptance, or signed desktop acceptance.
+
+
+## Public native service qualification
+
+The opt-in `installed_recap_public_socket_preserves_parent_and_exact_request_identity`
+fixture uses the actual local ProtocolServer, ServiceApplication, ChiefHost and
+account-bound native runtime. Credentials and the Responses provider are synthetic.
+The child HOME must be a private directory under the user-owned home, outside any
+existing `.codex` directory; `/tmp` fails the normal selected-directory policy.
+The `.decodex-recap-fixture` marker contains `isolated-recap` and a newline. Set
+HOME, CODEX_HOME, DECODEX_TEST_ACCOUNT_HOME and DECODEX_TEST_CODEX_BINARY only in
+the test child. Start from a fresh directory. The fixture supplies fresh synthetic
+quota facts and shuts down its service even when an assertion fails.
+
+The installed 0.158.0-alpha.2 passed: a cold query makes no model request; a public
+Start command creates the parent; GenerateRecap reaches Ready; same-key socket
+replay does not infer again; parent latest-turn identity is unchanged; new public
+input invalidates the result; stale cancellation cannot cancel the newer request;
+exact cancellation removes its result. The separate synthetic desktop socket test
+covers a lost command reply. These are distinct from signed desktop acceptance.
+
+This fixture exposed a missing isolation setting. With model metadata selecting
+multi-agent v2, `features.multi_agent=false` and `features.multi_agent_v2=false`
+do not suppress the `collaboration` namespace. At the fixed upstream endpoint,
+`core/src/config/mod.rs::multi_agent_version_override` gives `agents.enabled=false`
+precedence over model metadata. The temporary thread now sets that value too.
+The same fixture failed on nonempty recap tools before the change and passed
+with no tools afterward. It keeps the assertion and never executes those tools.
+This changes only the temporary request config, not the parent task's agent policy.

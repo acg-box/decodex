@@ -92,6 +92,7 @@ fn isolation_config(effective: &Value, known: &[String]) -> Result<Value, Client
 	let mut config = json!({"web_search":"disabled","mcp_servers": names.into_iter()
 		.map(|name|(name,json!({"enabled":false}))).collect::<serde_json::Map<_,_>>()});
 	for key in [
+		"agents.enabled",
 		"features.apps",
 		"features.code_mode",
 		"features.code_mode_only",
