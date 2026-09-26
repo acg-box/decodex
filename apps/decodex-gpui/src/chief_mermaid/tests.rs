@@ -177,9 +177,11 @@ fn semantic_spans_distinguish_labels_from_matching_endpoint_glyphs() {
 		Role::Node
 	);
 	for direction in ["TD", "BT", "LR", "RL"] {
-		let lines =
-			super::render_spans(&format!("flowchart {direction}; A --> B"), /* max_width */ 100)
-				.expect("valid upstream diagram fixture");
+		let lines = super::render_spans(
+			&format!("flowchart {direction}; A --> B"),
+			/* max_width */ 100,
+		)
+		.expect("valid upstream diagram fixture");
 		let ports = lines
 			.iter()
 			.flatten()

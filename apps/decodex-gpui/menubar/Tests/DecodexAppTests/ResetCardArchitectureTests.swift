@@ -793,7 +793,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(script.contains("-p decodex-app-client-ffi"))
 		XCTAssertTrue(script.contains("--bin decodex"))
 		XCTAssertTrue(script.contains("--product DecodexMenuBar"))
-		XCTAssertTrue(script.contains(#"cp "$ROOT/target/release/decodex" "$HELPERS/decodex""#))
+		XCTAssertTrue(script.contains(#"cp "$BUILD_ROOT/release/decodex" "$HELPERS/decodex""#))
 		XCTAssertTrue(
 			script.contains(
 				#"DEFAULT_SIGN_IDENTITY="4EBCADF6B4D513E45CE33EC6934C08DBB0F03D7F""#

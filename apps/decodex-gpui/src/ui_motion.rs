@@ -19,7 +19,8 @@ pub(crate) fn reduced() -> bool {
 		unsafe {
 			let workspace: Retained<AnyObject> =
 				msg_send![AnyClass::get(c"NSWorkspace").expect("AppKit"), sharedWorkspace];
-			let reduce_motion: bool = msg_send![&*workspace, accessibilityDisplayShouldReduceMotion];
+			let reduce_motion: bool =
+				msg_send![&*workspace, accessibilityDisplayShouldReduceMotion];
 			let voice_over: bool = msg_send![&*workspace, isVoiceOverEnabled];
 			reduce_motion || voice_over
 		}
