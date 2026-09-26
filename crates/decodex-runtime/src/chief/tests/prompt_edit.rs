@@ -151,3 +151,71 @@ async fn prompt_edit_revalidates_content_before_reservation_or_native_mutation()
 	server.abort();
 	let _ = server.await;
 }
+
+#[tokio::test]
+async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_preview() {
+	let (mut chief, _old_reads, _directory) = fixture().await;
+	chief.start_chief("chief", "Start").await.unwrap();
+	complete(&mut chief, "chief").await;
+	let (client, _reads, server) = transport("success", history());
+	chief.client = client;
+	let review = chief
+		.prepare_prompt_edit(
+			"chief",
+			"opaque thread/1",
+			"selected",
+			"selected-input",
+			"canonical-review",
+		)
+		.await
+		.unwrap()
+		.unwrap();
+	let receipt = chief.confirm_prompt_edit(review).await.unwrap();
+	let content = vec![
+		json!({"type":"text","text":"Use $skill","text_elements":[{"byteRange":{"start":4,"end":10},"placeholder":"skill"}]}),
+		json!({"type":"image","url":format!("data:image/png;base64,{}", "A".repeat(100000)),"detail":"original"}),
+		json!({"type":"skill","name":"skill","path":"/fixture/SKILL.md"}),
+	];
+	let saved = chief
+		.store
+		.retain_chief_prompt_input(
+			"chief".into(),
+			"opaque thread/1".into(),
+			receipt.id,
+			content.clone(),
+		)
+		.await
+		.unwrap();
+	let event = decodex_database::EnqueueChiefEvent {
+		source_event_id: "canonical-send".into(), work_item_id: "chief".into(), event_kind: "user_message".into(),
+		payload: json!({"text":"BOUNDED PREVIEW ONLY","source":"user","options":{
+			"canonicalInput":{"id":saved.id,"threadId":saved.thread,"editReceiptId":receipt.id,"sha256":saved.sha256},
+			"execution":{"reasoning_effort":"high"},"attachments":[],"taskReferences":[]
+		}}).to_string(),
+	};
+	assert!(
+		chief.store.enqueue_chief_event(event.clone()).await.is_err(),
+		"handback must be acknowledged"
+	);
+	assert!(chief.store.release_chief_prompt_edit_draft(receipt.id, None).await.unwrap());
+	let queued = chief.store.enqueue_chief_event(event.clone()).await.unwrap();
+	assert!(queued.payload.len() < 2048);
+	assert_eq!(chief.store.enqueue_chief_event(event.clone()).await.unwrap().id, queued.id);
+	let item = chief.store.get_chief_work_item("chief".into()).await.unwrap();
+	let (params, _) =
+		chief.dispatch_input(&item, "BOUNDED PREVIEW ONLY", &[queued.id], false).await.unwrap();
+	assert_eq!(params["input"], json!(content));
+	assert_eq!(params["effort"], "high");
+	assert_eq!(params["turnTrigger"], "user");
+	let mut crossed = item.clone();
+	crossed.codex_thread_id = Some("replacement-thread".into());
+	assert!(chief.dispatch_input(&crossed, "preview", &[queued.id], false).await.is_err());
+	let mut foreign = event;
+	foreign.source_event_id = "foreign".into();
+	let mut payload: Value = serde_json::from_str(&foreign.payload).unwrap();
+	payload["options"]["canonicalInput"]["sha256"] = json!("0".repeat(64));
+	foreign.payload = payload.to_string();
+	assert!(chief.store.enqueue_chief_event(foreign).await.is_err());
+	server.abort();
+	let _ = server.await;
+}

@@ -103,3 +103,33 @@ impl SqliteStore {
 		self.run(move |c| read(c, id, &work, &thread)).await
 	}
 }
+
+/// Validate the source in the same transaction that admits the existing user event.
+pub(crate) fn validate_queued_input(
+	c: &Connection,
+	work: &str,
+	payload: &str,
+) -> Result<(), StoreError> {
+	// Legacy plain-text events contain no canonical input reference.
+	let Ok(payload) = serde_json::from_str::<Value>(payload) else {
+		return Ok(());
+	};
+	let Some(reference) = payload.pointer("/options/canonicalInput") else {
+		return Ok(());
+	};
+	let id = reference["id"].as_i64().ok_or(StoreError::InvalidInput("invalid input identity"))?;
+	let thread =
+		reference["threadId"].as_str().ok_or(StoreError::InvalidInput("invalid input thread"))?;
+	let receipt_id = reference["editReceiptId"]
+		.as_i64()
+		.ok_or(StoreError::InvalidInput("invalid edit receipt"))?;
+	let hash =
+		reference["sha256"].as_str().ok_or(StoreError::InvalidInput("invalid input digest"))?;
+	let valid: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM chief_prompt_inputs i JOIN chief_work_items w ON w.id=i.work_item_id AND w.codex_thread_id=i.thread_id WHERE i.id=?1 AND i.work_item_id=?2 AND i.thread_id=?3 AND i.edit_receipt_id=?4 AND i.sha256=?5)", params![id,work,thread,receipt_id,hash], |r|r.get(0)).map_err(sqlite_error)?;
+	let receipt = crate::chief_prompt_edit::receipt(c, receipt_id)?
+		.ok_or(StoreError::InvalidInput("edit receipt is missing"))?;
+	if !valid || receipt.state != "draft_restored" {
+		return Err(StoreError::InvalidInput("canonical input source is not ready"));
+	}
+	Ok(())
+}

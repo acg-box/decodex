@@ -175,3 +175,30 @@ history and question recovery before releasing the input fence. A duplicate exac
 acknowledgement is harmless; another receipt cannot release this edit. Querying,
 recovering or acknowledging does not submit the restored draft. The current GPUI
 composer still needs canonical binding/file-ID storage and editing support.
+
+## Canonical draft staging and send integration
+
+The current feature branch adds protocol2.87 staging commands and a separate
+SendPromptInput command. The desktop editor retains complete parts and text
+markers in the existing version8 draft document. Input staging uses immutable
+SQLite records and durable 64KiB chunks. A lost staging reply permits progress
+only after a read confirms saved bytes. Staging never authorizes a model turn.
+
+SendPromptInput identifies the exact work, thread, edit receipt, immutable record
+and digest, with execution settings captured at send time. Queue admission checks
+the source and acknowledged draft handback in the same transaction as the existing
+user_message event. The event contains a labeled, bounded preview and an input
+reference. It does not contain full image data. The existing dispatch owner loads
+complete parts, checks their source, applies the captured settings, and uses the
+normal dispatch fence and native request path. The preview is not model input.
+The input retains its native thread instead of triggering a tool-upgrade fork.
+
+Focused tests cover exact part and marker retention, large image data, execution
+settings, bounded queue payloads, repeated admission, pending handback rejection,
+and changed thread or digest rejection. These tests construct native request
+parameters; they do not prove a complete desktop send or installed-native result.
+
+Desktop confirmation, durable handback, history refresh, explicit send, ambiguous
+send recovery, and full native request size qualification remain required before
+this optional feature is accepted. Local protocol and database tests do not close
+those acceptance requirements.

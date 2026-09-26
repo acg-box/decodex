@@ -20,6 +20,54 @@ fn source(upload: &PromptInputUpload) -> Result<ChiefPromptUpload, ChiefHostErro
 }
 
 impl ChiefHost {
+	pub(super) async fn send_prompt_input(
+		&self,
+		key: &str,
+		action: Action,
+		active: &mut Option<(
+			String,
+			super::ChiefCoordinator,
+			tokio::sync::mpsc::Receiver<decodex_codex::app_server_client::ServerEvent>,
+		)>,
+	) -> Result<String, ChiefHostError> {
+		let Action::SendPromptInput {
+			work_id,
+			thread_id,
+			input_id,
+			edit_receipt_id,
+			sha256,
+			execution,
+		} = action
+		else {
+			return Err("Unsupported prompt input command".into());
+		};
+		let input = self
+			.store
+			.chief_prompt_input(input_id, work_id.as_str().into(), thread_id.as_str().into())
+			.await
+			.map_err(|_| "Prompt input is unavailable")?
+			.ok_or("Prompt input is unavailable")?;
+		if input.edit_receipt_id != edit_receipt_id || input.sha256 != sha256.as_str() {
+			return Err("Prompt input source changed".into());
+		}
+		decodex_protocol::PromptDraft::new(input.content.clone())
+			.map_err(|_| "Prompt input is invalid")?;
+		let text: String = input
+			.content
+			.iter()
+			.filter_map(|part| part.get("text").and_then(serde_json::Value::as_str))
+			.flat_map(|text| text.chars().chain(std::iter::once('\n')))
+			.take(2000)
+			.collect();
+		let preview = decodex_protocol::HistoryText::new(format!(
+			"[Edited input preview; full content retained]\n{text}"
+		))
+		.map_err(|_| "Prompt preview is unavailable")?;
+		let options = serde_json::json!({"execution":execution,"attachments":[],"taskReferences":[],
+			"canonicalInput":{"id":input_id,"threadId":thread_id,"editReceiptId":edit_receipt_id,"sha256":sha256}});
+		self.accept_message(&work_id, &preview, key, Some(&options), active).await
+	}
+
 	pub(super) async fn handle_prompt_upload(
 		&self,
 		action: Action,

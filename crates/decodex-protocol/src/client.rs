@@ -1535,7 +1535,8 @@ fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
 	match action {
 		crate::ChiefActionDto::UploadPromptInput { upload, .. }
 		| crate::ChiefActionDto::CompletePromptInputUpload { upload } => &upload.work_id,
-		crate::ChiefActionDto::SetLiveReviewer { work_id, .. } => work_id,
+		crate::ChiefActionDto::SendPromptInput { work_id, .. }
+		| crate::ChiefActionDto::SetLiveReviewer { work_id, .. } => work_id,
 		crate::ChiefActionDto::SelectPermissions { work_id, .. } => work_id,
 		crate::ChiefActionDto::SetTaskPlugin { work_id, .. } => work_id,
 		crate::ChiefActionDto::SetTaskModel { work_id, .. } => work_id,

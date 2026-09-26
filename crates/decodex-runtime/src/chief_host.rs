@@ -798,7 +798,7 @@ impl ChiefHost {
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
 						let history_edit = matches!(&request.action,ChiefActionDto::PreparePromptEdit{..}|ChiefActionDto::ConfirmPromptEdit{..}|ChiefActionDto::RecoverPromptEdit{..}|ChiefActionDto::AcknowledgePromptEditDraft{..}|ChiefActionDto::UploadPromptInput{..}|ChiefActionDto::CompletePromptInputUpload{..});
-						if !history_edit { self.rotate_exhausted(&mut active).await; }
+						if !history_edit && !matches!(&request.action, ChiefActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
 						let suppress_wake = history_edit || matches!(&request.action,ChiefActionDto::GenerateRecap{..}|ChiefActionDto::CancelRecap{..});
 						self.recaps.note_input(&request.action);
 						let outcome = self.handle(request.key,request.action,&mut active).await;
@@ -1205,6 +1205,8 @@ impl ChiefHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			action @ Action::SendPromptInput { .. } =>
+				self.send_prompt_input(&key, action, active).await,
 			action @ (Action::UploadPromptInput { .. }
 			| Action::CompletePromptInputUpload { .. }) => self.handle_prompt_upload(action).await,
 			action @ (Action::PreparePromptEdit { .. }

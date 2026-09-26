@@ -860,14 +860,23 @@ impl ChiefCoordinator {
 			return Err(ChiefError::DependenciesPending(unresolved));
 		}
 		let mut exact_question_target = false;
+		let mut exact_prompt_target = false;
 		for event_id in &events {
+			let event = self.store.get_chief_inbox_event(*event_id).await?;
+			exact_prompt_target |= event.event_kind == "user_message"
+				&& serde_json::from_str::<Value>(&event.payload)
+					.ok()
+					.is_some_and(|payload| payload.pointer("/options/canonicalInput").is_some());
 			exact_question_target |= self.store.get_chief_inbox_event(*event_id).await?.event_kind
 				== "async_question_answer";
 		}
 		// An answer belongs to the question's original thread. Tool upgrades can
 		// fork managers, so leave upgrades to ordinary future dispatches.
-		let item =
-			if exact_question_target { item.clone() } else { self.ensure_thread(item).await? };
+		let item = if exact_question_target || exact_prompt_target {
+			item.clone()
+		} else {
+			self.ensure_thread(item).await?
+		};
 		let thread = item
 			.codex_thread_id
 			.as_ref()
@@ -1017,6 +1026,29 @@ impl ChiefCoordinator {
 			let event = self.store.get_chief_inbox_event(*event_id).await?;
 			if event.event_kind == "user_message" {
 				has_user_input = true;
+				let payload: Value = serde_json::from_str(&event.payload)
+					.map_err(|_| ChiefError::Invalid("invalid saved input".into()))?;
+				if let Some(reference) = payload.pointer("/options/canonicalInput") {
+					let id = reference["id"]
+						.as_i64()
+						.ok_or_else(|| ChiefError::Invalid("invalid input identity".into()))?;
+					if reference["threadId"].as_str() != Some(thread) {
+						return Err(ChiefError::Invalid("canonical input thread changed".into()));
+					}
+					let input = self
+						.store
+						.chief_prompt_input(id, item.id.clone(), thread.into())
+						.await?
+						.ok_or_else(|| {
+							ChiefError::Invalid("canonical input is unavailable".into())
+						})?;
+					if reference["sha256"].as_str() != Some(input.sha256.as_str())
+						|| reference["editReceiptId"].as_i64() != Some(input.edit_receipt_id)
+					{
+						return Err(ChiefError::Invalid("canonical input identity changed".into()));
+					}
+					params["input"] = json!(input.content);
+				}
 				apply_message_options(&mut params, &event.payload)?;
 			} else if event.event_kind == "async_question_answer" {
 				has_user_input = true;
