@@ -5,6 +5,60 @@ use decodex_protocol::{
 };
 
 impl ChiefSurface {
+	#[cfg(feature = "visual-capture")]
+	#[allow(
+		dead_code,
+		reason = "Used by the separate capture binary; this module also builds into the main binary"
+	)]
+	pub(crate) fn visual_integrations(&mut self, cx: &mut Context<Self>) {
+		self.visual_workspace_fixture(cx);
+		self.profile = None;
+		self.graph_visible = false;
+		self.composer_menu = Some("agent-settings");
+		self.composer_menu_content = Some("agent-settings");
+		let apps = [
+			("calendar-disabled", false, false),
+			("calendar-empty", true, false),
+			("calendar-ready", true, true),
+		]
+		.into_iter()
+		.map(|(id, enabled, callable)| decodex_protocol::ChiefAppStatusDto {
+			id: id.into(),
+			runtime_name: Some("Calendar".into()),
+			enabled,
+			callable,
+		})
+		.collect();
+		self.integrations = Some((
+			self.selected.clone().expect("fixture selection"),
+			Some(ChiefIntegrationsResult::Available {
+				cwd: "/isolated/integration-fixture".into(),
+				mcp: ChiefMcpInventory::Available {
+					servers: vec![decodex_protocol::ChiefMcpStatusDto {
+						name: "Local MCP fixture".into(),
+						plugin_id: None,
+						runtime_status: Some("authenticationRequired".into()),
+						auth_status: "notLoggedIn".into(),
+						tool_count: 0,
+						tools_error: Some("Synthetic discovery failure".into()),
+						resource_count: 0,
+						template_count: 0,
+						advertised_capabilities: Some(vec![
+							"tools".into(),
+							"extensions/openai/settings".into(),
+						]),
+					}],
+				},
+				plugins: ChiefPluginInventory::Available {
+					plugins: vec![],
+					errors: vec!["Synthetic marketplace failure".into()],
+				},
+				apps: ChiefAppInventory::Available { apps },
+			}),
+		));
+		cx.notify();
+	}
+
 	pub(super) fn integrations_panel(
 		&self,
 		work: &str,
@@ -96,8 +150,9 @@ impl ChiefSurface {
 					panel = panel.child(integration_button(
 						format!("app-exposure-open-{index}"),
 						format!(
-							"Tool visibility for {}",
-							app.runtime_name.as_deref().unwrap_or(&app.id)
+							"Tool visibility for {} ({})",
+							app.runtime_name.as_deref().unwrap_or(&app.id),
+							app.id
 						),
 						cx,
 						move |s, cx| s.update_app_exposure(&owner, &connector, false, cx),
@@ -368,6 +423,11 @@ fn integration_text(result: &ChiefIntegrationsResult) -> String {
 					_ => "Authentication status unknown",
 				};
 				lines.push(format!("{} — {runtime}; {auth}", server.name));
+				lines.push(match &server.advertised_capabilities {
+					None => "Advertised capabilities: unavailable".into(),
+					Some(names) if names.is_empty() => "Advertised capabilities: none".into(),
+					Some(names) => format!("Advertised capabilities: {}", names.join(", ")),
+				});
 				if let Some(error) = &server.tools_error {
 					lines.push(format!("Tool discovery failed: {error}"));
 				} else {
@@ -457,29 +517,27 @@ fn integration_button(
 fn app_inventory_text(inventory: &ChiefAppInventory) -> String {
 	match inventory {
 		ChiefAppInventory::Available { apps } if apps.is_empty() =>
-			"No installed Apps were reported for this task.".into(),
-		ChiefAppInventory::Available { apps } => apps
-			.iter()
-			.map(|a| {
-				format!(
-					"{} — {}",
-					a.runtime_name.as_deref().unwrap_or(&a.id),
-					if !a.enabled {
-						"Disabled"
-					} else if !a.callable {
-						"No callable tools reported"
-					} else {
-						"Callable tools reported"
-					}
-				)
-			})
-			.collect::<Vec<_>>()
-			.join("\n"),
+			"No installed Apps were reported in the runtime snapshot.".into(),
+		ChiefAppInventory::Available { apps } => {
+			let mut lines = vec!["Installed Apps (runtime snapshot):".to_owned()];
+			for app in apps {
+				let name = app.runtime_name.as_deref().unwrap_or(&app.id);
+				let status = if !app.enabled {
+					"Disabled by effective configuration"
+				} else if app.callable {
+					"Enabled; callable tools available"
+				} else {
+					"Enabled; no callable tools reported"
+				};
+				lines.push(format!("{name} ({}) — {status}", app.id));
+			}
+			lines.join("\n")
+		},
 		ChiefAppInventory::Unsupported =>
-			"This Codex version does not report installed Apps.".into(),
+			"This provider does not support installed Apps status.".into(),
+		ChiefAppInventory::Unavailable => "Installed Apps status could not be read.".into(),
 		ChiefAppInventory::CapacityExceeded =>
-			"Installed App inventory exceeds the display limit.".into(),
-		ChiefAppInventory::Unavailable => "Installed App status could not be read.".into(),
+			"Installed Apps inventory exceeds the display limit.".into(),
 	}
 }
 
@@ -594,7 +652,10 @@ mod tests {
 					tools_error: Some("Provider discovery failed".into()),
 					resource_count: 0,
 					template_count: 0,
-					advertised_capabilities: None,
+					advertised_capabilities: Some(vec![
+						"tools".into(),
+						"extensions/openai/settings".into(),
+					]),
 				}],
 			},
 			plugins: ChiefPluginInventory::Available {
@@ -604,8 +665,35 @@ mod tests {
 		});
 		assert!(text.contains("Sign-in required"));
 		assert!(text.contains("Tool discovery failed"));
+		assert!(text.contains("Advertised capabilities: tools, extensions/openai/settings"));
 		assert!(text.contains("Plugin discovery incomplete"));
 		assert!(!text.contains("Reported tools: 0"));
 		assert!(!text.contains("No installed plugins"));
+		assert!(text.contains("Installed Apps status could not be read"));
+		assert!(!text.contains("No installed Apps"));
+	}
+
+	#[test]
+	fn apps_distinguish_policy_eligibility_from_installation_and_read_failure() {
+		let apps = [("disabled", false, false), ("empty", true, false), ("ready", true, true)]
+			.into_iter()
+			.map(|(id, enabled, callable)| decodex_protocol::ChiefAppStatusDto {
+				id: id.into(),
+				runtime_name: None,
+				enabled,
+				callable,
+			})
+			.collect();
+		let text = app_inventory_text(&ChiefAppInventory::Available { apps });
+		assert!(text.contains("disabled (disabled) — Disabled by effective configuration"));
+		assert!(text.contains("empty (empty) — Enabled; no callable tools reported"));
+		assert!(text.contains("ready (ready) — Enabled; callable tools available"));
+		for state in [
+			ChiefAppInventory::Unsupported,
+			ChiefAppInventory::Unavailable,
+			ChiefAppInventory::CapacityExceeded,
+		] {
+			assert!(!app_inventory_text(&state).contains("No installed Apps"));
+		}
 	}
 }

@@ -52,7 +52,7 @@ pub struct ChiefMcpStatusDto {
 	pub resource_count: usize,
 	/// Number of resource templates in this inventory.
 	pub template_count: usize,
-	/// Advertised capability names; None means unknown, not an empty capability set.
+	/// Advertised names, including extensions/<name>; None means unknown, not empty.
 	pub advertised_capabilities: Option<Vec<String>>,
 }
 

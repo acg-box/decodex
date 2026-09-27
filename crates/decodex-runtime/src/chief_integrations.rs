@@ -117,9 +117,13 @@ fn project_mcp(result: Result<Vec<Value>, ClientError>) -> ChiefMcpInventory {
 			tools_error: optional(&row["toolsError"]),
 			resource_count: resources.len(),
 			template_count: templates.len(),
-			advertised_capabilities: row["serverCapabilities"]
-				.as_object()
-				.map(|object| object.keys().map(|key| text(key)).collect()),
+			advertised_capabilities: row["serverCapabilities"].as_object().map(|object| {
+				let mut names: Vec<_> = object.keys().map(|key| text(key)).collect();
+				if let Some(extensions) = object.get("extensions").and_then(Value::as_object) {
+					names.extend(extensions.keys().map(|key| format!("extensions/{}", text(key))));
+				}
+				names
+			}),
 		});
 	}
 	ChiefMcpInventory::Available { servers }
@@ -195,7 +199,7 @@ mod tests {
 	#[test]
 	fn failed_discovery_and_plugin_policy_are_not_readiness() {
 		let mcp = project_mcp(Ok(vec![
-			json!({"name":"server","runtimeStatus":"authenticationRequired","authStatus":"notLoggedIn","tools":{},"toolsError":"Discovery failed","resources":[],"resourceTemplates":[],"serverCapabilities":{"tools":{},"resources":{}}}),
+			json!({"name":"server","runtimeStatus":"authenticationRequired","authStatus":"notLoggedIn","tools":{},"toolsError":"Discovery failed","resources":[],"resourceTemplates":[],"serverCapabilities":{"tools":{},"resources":{},"extensions":{"openai/settings":{"readTool":"settings.read","updateTool":"private-fixture-value"}}}}),
 		]));
 		let ChiefMcpInventory::Available { servers } = mcp else {
 			panic!("inventory");
@@ -203,7 +207,11 @@ mod tests {
 		assert_eq!(servers[0].tool_count, 0);
 		assert_eq!(servers[0].tools_error.as_deref(), Some("Discovery failed"));
 		assert_eq!(servers[0].runtime_status.as_deref(), Some("authenticationRequired"));
-		assert_eq!(servers[0].advertised_capabilities.as_ref().unwrap().len(), 2);
+		assert_eq!(
+			servers[0].advertised_capabilities.as_ref().unwrap(),
+			&["extensions", "resources", "tools", "extensions/openai/settings"]
+		);
+		assert!(!serde_json::to_string(&servers).unwrap().contains("private-fixture-value"));
 		let plugins = project_plugins(Ok(
 			json!({"marketplaces":[{"plugins":[{"id":"example@market","name":"Example","installed":true,"enabled":false,"availability":"DISABLED_BY_ADMIN","disabledReason":"disabled_by_admin"}]}],"marketplaceLoadErrors":[{"message":"Another marketplace failed"}]}),
 		));
@@ -220,7 +228,14 @@ mod tests {
 
 	#[tokio::test]
 	async fn repository_change_during_discovery_invalidates_the_combined_observation() {
-		for scenario in ["stable", "directory", "settings", "other_thread"] {
+		for scenario in [
+			"stable",
+			"directory",
+			"settings",
+			"other_thread",
+			"apps_unsupported",
+			"apps_unavailable",
+		] {
 			let (local, remote) = tokio::io::duplex(65536);
 			let (reader, writer) = tokio::io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
@@ -260,12 +275,14 @@ mod tests {
 						},
 						_ => panic!("unexpected request"),
 					};
-					writer
-						.write_all(
-							format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
-						)
-						.await
-						.unwrap();
+					let reply = if request["method"] == "app/installed"
+						&& scenario.starts_with("apps_")
+					{
+						json!({"id":request["id"],"error":{"code":if scenario == "apps_unsupported" {-32601} else {-32603},"message":"Fixture Apps failure"}})
+					} else {
+						json!({"id":request["id"],"result":result})
+					};
+					writer.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
 				}
 				let _ = finished.await;
 			});
@@ -273,12 +290,37 @@ mod tests {
 			if matches!(scenario, "directory" | "settings") {
 				assert_eq!(result, ChiefIntegrationsResult::Unavailable);
 			} else {
-				assert!(
-					matches!(result,ChiefIntegrationsResult::Available {cwd,..} if cwd=="/repo")
+				let ChiefIntegrationsResult::Available { cwd, mcp, plugins, apps } = result else {
+					panic!("independent observations")
+				};
+				assert_eq!(cwd, "/repo");
+				assert!(matches!(mcp, ChiefMcpInventory::Available { .. }));
+				assert!(matches!(plugins, ChiefPluginInventory::Available { .. }));
+				assert_eq!(
+					apps,
+					match scenario {
+						"apps_unsupported" => ChiefAppInventory::Unsupported,
+						"apps_unavailable" => ChiefAppInventory::Unavailable,
+						_ => ChiefAppInventory::Available { apps: vec![] },
+					}
 				);
 			}
 			finish.send(()).unwrap();
 			server.await.unwrap();
 		}
+	}
+
+	#[test]
+	fn apps_project_runtime_eligibility_and_keep_inventory_bounded() {
+		let row =
+			json!({"id":"connector","runtimeName":"Calendar","enabled":true,"callable":false});
+		let ChiefAppInventory::Available { apps } = project_apps(Ok(vec![row.clone()])) else {
+			panic!("snapshot")
+		};
+		assert!(apps[0].enabled);
+		assert!(!apps[0].callable);
+		assert_eq!(apps[0].runtime_name.as_deref(), Some("Calendar"));
+		assert_eq!(project_apps(Ok(vec![row; 129])), ChiefAppInventory::CapacityExceeded);
+		assert_eq!(project_apps(Err(ClientError::Closed)), ChiefAppInventory::Unavailable);
 	}
 }

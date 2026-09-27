@@ -22,6 +22,15 @@ This restores the direct lost-reply regression alongside the existing closing-
 resume receipt fixture and installed-native qualification. Close only this one
 complete file row; the shared runtime test module and broader R08 scope stay open.
 
+## Integration status restored on 2026-09-26
+
+Restore MCP extension names, independent Apps failure evidence and exact connector
+identity in the existing panel. Preserve current source invalidation and next-turn
+semantics. Close the runtime, protocol and desktop integration-file dispositions
+after complete comparison and focused validation. The shared capture tool and
+signed application acceptance remain open. See
+[integration status reconciliation](integration-status-reconciliation.md).
+
 ## Realtime history and voice tails qualified on 2026-09-26
 
 Restore the complete native realtime timeline fixture and four coordinator
