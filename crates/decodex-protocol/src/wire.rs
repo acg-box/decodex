@@ -3920,10 +3920,14 @@ fn validate_account_dto(account: &AccountDto) -> Result<(), &'static str> {
 }
 
 fn is_canonical_account_alias(value: &str) -> bool {
-	let bytes = value.as_bytes();
-	(2..=16).contains(&bytes.len())
-		&& bytes[0].is_ascii_uppercase()
-		&& bytes[1..].iter().all(u8::is_ascii_lowercase)
+	let words: Vec<_> = value.split(' ').collect();
+	(1..=2).contains(&words.len())
+		&& words.iter().all(|word| {
+			let bytes = word.as_bytes();
+			(2..=16).contains(&bytes.len())
+				&& bytes[0].is_ascii_uppercase()
+				&& bytes[1..].iter().all(u8::is_ascii_lowercase)
+		})
 }
 
 fn validate_account_profile(profile: &AccountProfileDto) -> Result<(), &'static str> {
@@ -4159,16 +4163,19 @@ mod tests {
 	}
 
 	#[test]
-	fn account_alias_accepts_only_one_canonical_word() {
+	fn account_alias_accepts_seeded_names() {
 		assert!(super::is_canonical_account_alias("Iris"));
 		assert!(super::is_canonical_account_alias("Val"));
+		assert!(super::is_canonical_account_alias("Val Abbott"));
+		assert!(!super::is_canonical_account_alias("Val-ab"));
+		assert!(!super::is_canonical_account_alias("Val-xyzz"));
 		for invalid in [
 			"",
 			"A",
 			"iris",
 			"IRIS",
 			"Iris1",
-			"Iris Smith",
+			"Iris  Smith",
 			"Account DQ6WF-G8BTT",
 			"Éden",
 			"Abcdefghijklmnopq",
