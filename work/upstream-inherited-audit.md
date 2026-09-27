@@ -1033,6 +1033,16 @@ three metadata inventory cases. Retain one shared Responses fixture owner and
 verify existing fixed-usage history and audio callers. Close only these four
 complete file dispositions. See [qualification and limits](native-code-mode-qualification.md).
 
+## Conversation read snapshot restored on 2026-09-27
+
+Restore the original transaction across conversation selection and projection.
+A deterministic concurrent-commit regression fails before restoration with an old
+revision and new title. Both list and exact-ID reads pass after restoration.
+Restore the unchanged warning-history regression and map the complete store-file
+diff in [conversation persistence](conversation-persistence-reconciliation.md).
+Thirteen conversation tests, eight restart tests and strict database lint pass.
+Close this one row; migration registry, runtime and desktop acceptance remain.
+
 ## Native filesystem evidence restored on 2026-09-26
 
 Restore `scripts/vnext/codex_exec_policy_probe.py` byte-for-byte from the preserved

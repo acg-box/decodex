@@ -72,3 +72,51 @@ Saved request integrity, source checks and no duplicate dispatch are core
 correctness. The ordinary conversation workbench and optional model controls
 remain separate product choices. This batch restores evidence for current
 behavior; it does not add an execution engine or enable automations.
+
+## Complete conversation store reconciliation
+
+The complete inherited `database/src/conversations.rs` diff was reviewed. Restore
+its read transaction around the initial conversation selection and all subsequent
+projection queries. Without that transaction, a second SQLite connection can
+commit between queries and produce an old revision with a new title.
+
+A deterministic test uses SQLite's existing profile callback only in the test
+build. After the production metadata SELECT, a second connection commits a title
+and revision update. Before restoration, the returned projection mixes revision 1
+with the new title. After restoration, both list and exact-ID reads return the
+original snapshot; a subsequent read returns the committed new title and revision.
+The probe is unregistered before its context is dropped. No dependency, production
+hook, lock abstraction or timing-dependent retry loop is added.
+
+Also restore the original warning-history regression unchanged. It records the
+same status item twice, reopens the store and proves one warning remains while
+the user's turn stays active at its original revision.
+
+The other whole-file differences retain their current owners:
+
+- Initial and stored request effort is nullable. Explicit effort still rejects
+  empty, oversized and control-character strings; model validation stays bounded.
+  Account-source revision validation remains, with generalized invalid-input text.
+- The creation-receipt reader checks the exact command and conversation without
+  reserving or replaying a creation. It proves local creation, not native execution.
+- Initial model-source fields and replay checks remain in the creation transaction.
+  The routing-successor copy now reads nullable effort; original input is retained.
+- The positive non-submission regression adds both acknowledged/unacknowledged
+  session states and rejects foreign thread evidence. The original rollback,
+  durable reopen and idempotency assertions remain. A refusal does not invent a
+  native turn or change unrelated session evidence.
+- Module order and SQL formatting changes do not introduce another persistence
+  owner. Other inherited source remains unchanged.
+
+This closes the conversation-store file row. It does not close the complete
+migration registry, runtime conversation owner or ordinary desktop acceptance.
+All tests use disposable databases. The signed desktop must be rebuilt before
+accepting this production restoration.
+
+Validation: the deterministic mixed-snapshot regression fails before restoration
+in `/tmp/decodex-conversation-snapshot-before.log`. Final source passes 13
+conversation unit tests, eight restart integration tests and strict database Clippy
+for all features and targets. Logs: `/tmp/decodex-conversation-snapshot-after.log`,
+`/tmp/decodex-conversation-snapshot-restart.log` and
+`/tmp/decodex-conversation-snapshot-clippy.log`. The read method and warning test
+match the preserved source bytes; its snapshot hash is verified.

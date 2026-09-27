@@ -1,4 +1,8 @@
 //! Ordinary Conversation conversations, turns, and normalized history.
+#[cfg(test)]
+#[path = "conversations/snapshot_tests.rs"]
+mod snapshot_tests;
+
 mod native_settings;
 pub use native_settings::{
 	ConversationNativeSettings, ConversationNativeSettingsObservation,
@@ -2610,6 +2614,9 @@ impl SqliteStore {
 		let conversation_id = conversation_id.cloned();
 		let after = after.cloned();
 		self.run(move |connection| {
+			// Keep lifecycle, source binding and native observation on one WAL snapshot.
+			let transaction = connection.transaction().map_err(sql_error)?;
+			let connection = &transaction;
 			let mut rows = Vec::new();
 			if let Some(id) = conversation_id.as_ref() {
 				let row = connection
@@ -2662,7 +2669,12 @@ impl SqliteStore {
 					rows.push(row.map_err(sql_error)?);
 				}
 			}
-			rows.into_iter().map(|row| conversation_projection(connection, row)).collect()
+			let projections = rows
+				.into_iter()
+				.map(|row| conversation_projection(connection, row))
+				.collect::<Result<Vec<_>, _>>()?;
+			transaction.commit().map_err(sql_error)?;
+			Ok(projections)
 		})
 		.await
 	}
@@ -3170,6 +3182,50 @@ mod archive_tests {
 	#[tokio::test]
 	async fn closing_resume_rejection_survives_restart_without_replacing_session() {
 		exercise_resume_rejection(super::ConversationResumeRejection::ClosingThread).await;
+	}
+
+	#[tokio::test]
+	async fn ordinary_warning_history_survives_reopen_without_terminalizing_user_turn() {
+		use crate::RecordHistoryItem;
+		use decodex_core::{
+			HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus, TurnRole,
+		};
+		let directory = tempdir().unwrap();
+		let paths = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap().paths();
+		let blobs = BlobStore::open(paths.clone()).unwrap();
+		let store = SqliteStore::open(&paths).unwrap();
+		seed_provider_less_starting_task(&store).await;
+		seed_active_user_turn(&store);
+		let command = CommandIdentity::new("ordinary-warning", b"warning fixture").unwrap();
+		let item = RecordHistoryItem {
+			conversation_id: ConversationId::new(CONVERSATION_ID).unwrap(),
+			runtime_session_id: RuntimeSessionId::new(RUNTIME_SESSION_ID).unwrap(),
+			turn_id: TurnId::new(TURN_ID).unwrap(),
+			turn_sequence: 1,
+			turn_role: TurnRole::User,
+			possible_side_effects: PossibleSideEffects::None,
+			history_item_id: HistoryItemId::new(INTERRUPTION_HISTORY_ID).unwrap(),
+			ordinal: 1,
+			kind: HistoryItemKind::Status,
+			status: ItemStatus::Completed,
+			text: "Codex warning: Previous global instructions retained".into(),
+			media_type: HistoryMediaType::new("text/markdown").unwrap(),
+			metadata: HistoryMetadata::empty(),
+			expected_revision: None,
+			artifact: None,
+		};
+		for _ in 0..2 {
+			store.record_history_item(&blobs, &command, &item).await.unwrap();
+		}
+		drop(store);
+		let store = SqliteStore::open(&paths).unwrap();
+		store.with_connection(|connection| {
+			let turn:(String,i64)=connection.query_row("SELECT status,revision FROM turns WHERE turn_id=?1",[TURN_ID],|row|Ok((row.get(0)?,row.get(1)?))).map_err(sqlite_error)?;
+			assert_eq!(turn,("active".into(),1));
+			let count:i64=connection.query_row("SELECT count(*) FROM history_items WHERE history_item_id=?1 AND kind='status' AND inline_text LIKE 'Codex warning:%'",[INTERRUPTION_HISTORY_ID],|row|row.get(0)).map_err(sqlite_error)?;
+			assert_eq!(count,1);
+			Ok(())
+		}).unwrap();
 	}
 
 	async fn exercise_resume_rejection(reason: super::ConversationResumeRejection) {
