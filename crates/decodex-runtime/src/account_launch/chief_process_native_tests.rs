@@ -354,6 +354,17 @@ async fn serve_fixture(
 	usage: Option<Value>,
 	output: impl Fn(usize) -> Value,
 ) {
+	serve_fixture_usage(listener, requests, effort, bodies, |_| usage.clone().unwrap_or_else(|| json!({"extra":{"fixture":"native-usage"},"input_tokens":0,"output_tokens":0,"total_tokens":0})), output).await;
+}
+
+async fn serve_fixture_usage(
+	listener: tokio::net::TcpListener,
+	requests: Arc<std::sync::atomic::AtomicUsize>,
+	effort: Option<&str>,
+	bodies: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
+	usage: impl Fn(usize) -> Value,
+	output: impl Fn(usize) -> Value,
+) {
 	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = tokio::io::BufReader::new(socket);
@@ -397,7 +408,7 @@ async fn serve_fixture(
 			items.into_iter().map(|item| json!({"type":"response.output_item.done","item":item})),
 		);
 		frames.extend([
-			json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":usage.clone().unwrap_or_else(||json!({"extra":{"fixture":"native-usage"},"input_tokens":0,"output_tokens":0,"total_tokens":0}))}}),
+			json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":usage(serial)}}),
 		]);
 		let data = frames
 			.iter()
@@ -427,3 +438,7 @@ async fn serve_fixture(
 
 #[path = "chief_process_native_audio_tests.rs"] mod audio;
 #[path = "chief_process_native_file_image_tests.rs"] mod file_image;
+
+#[path = "chief_process_native_code_mode_tests.rs"] mod code_mode;
+
+#[path = "chief_process_native_compaction_tests.rs"] mod compaction;

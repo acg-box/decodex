@@ -698,6 +698,15 @@ This optional Bedrock-specific display is explicitly marked for the user's
 removal review. Native credential and retry authority stays in Codex. No generic
 shared file or broad capability group is closed by this restoration.
 
+## Code Mode and compaction fixtures restored on 2026-09-26
+
+Restore the complete inherited yielded-cell, delayed MCP and compaction tests.
+Keep all original assertions; adapt only the common backend helper calls. Restore
+the exact delayed MCP server. Five explicit installed-native tests pass, including
+three metadata inventory cases. Retain one shared Responses fixture owner and
+verify existing fixed-usage history and audio callers. Close only these four
+complete file dispositions. See [qualification and limits](native-code-mode-qualification.md).
+
 ## Native filesystem evidence restored on 2026-09-26
 
 Restore `scripts/vnext/codex_exec_policy_probe.py` byte-for-byte from the preserved
