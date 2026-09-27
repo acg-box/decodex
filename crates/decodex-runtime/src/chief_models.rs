@@ -227,6 +227,7 @@ where
 		effort: expected_effort,
 		review_token: change.review.into(),
 		attempt_id: change.attempt_id.into(),
+		recovery: None,
 	};
 	let reservation = store
 		.reserve_chief_model_selection(attempt.clone())

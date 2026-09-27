@@ -18,6 +18,20 @@ pub struct ChiefModelAttempt {
 	pub effort: Option<String>,
 	pub review_token: String,
 	pub attempt_id: String,
+	/// Automatic recovery evidence. Absent in existing explicit selections.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub recovery: Option<ChiefModelRecoveryContext>,
+}
+
+/// Bind an automatic fallback to its account, banner and complete target settings.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ChiefModelRecoveryContext {
+	pub account: String,
+	pub account_revision: i64,
+	pub banner_digest: String,
+	pub from_model: String,
+	/// Expected configured tier, including an explicitly observed absence.
+	pub service_tier: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -58,12 +72,39 @@ impl ChiefModelAttempt {
 		{
 			return Err(StoreError::InvalidInput("invalid model selection"));
 		}
+		if let Some(recovery) = &self.recovery
+			&& (!valid(&recovery.account, 512)
+				|| recovery.account_revision < 1
+				|| !valid(&recovery.from_model, 256)
+				|| recovery.from_model == self.model
+				|| self.model == "gpt-reserve"
+				|| self.generation.is_none()
+				|| self.effort.is_none()
+				|| recovery.banner_digest.len() != 64
+				|| !recovery.banner_digest.bytes().all(|b| b.is_ascii_hexdigit())
+				|| recovery.service_tier.as_deref().is_some_and(|tier| !valid(tier, 128)))
+		{
+			return Err(StoreError::InvalidInput("invalid automatic model selection"));
+		}
 		Ok(())
 	}
 
 	fn key(&self) -> String {
 		// A new request ID cannot replay an already reserved review.
-		let identity = json!([self.work, self.thread, self.review_token]);
+		let identity = match &self.recovery {
+			// A new process, account refresh or request key cannot replay the same fallback.
+			Some(recovery) => json!([
+				self.work,
+				self.thread,
+				recovery.account,
+				recovery.banner_digest,
+				recovery.from_model,
+				self.model,
+				self.effort,
+				recovery.service_tier
+			]),
+			None => json!([self.work, self.thread, self.review_token]),
+		};
 		let digest: String = Sha256::digest(identity.to_string().as_bytes())
 			.iter()
 			.map(|b| format!("{b:02x}"))
@@ -79,6 +120,26 @@ pub(crate) fn pending(connection: &rusqlite::Connection, work: &str) -> Result<b
 	connection.query_row("SELECT EXISTS(SELECT 1 FROM chief_inbox_events e WHERE e.work_item_id=?1 AND e.event_kind='model_selection' AND NOT EXISTS(SELECT 1 FROM chief_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND r.event_kind='model_selection_result' AND json_extract(r.payload,'$.state')='rejected') OR (r.source_event_id=e.source_event_id||':observation' AND r.event_kind='model_selection_observation')))", [work], |r|r.get(0)).map_err(|e|sqlite_error(e).into())
 }
 
+fn recovery_source_is_current(
+	connection: &rusqlite::Connection,
+	attempt: &ChiefModelAttempt,
+) -> Result<bool, StoreError> {
+	let Some(recovery) = &attempt.recovery else { return Ok(true) };
+	let current: bool = connection.query_row(
+		"SELECT EXISTS(SELECT 1 FROM chief_work_items w JOIN chief_process_bindings b ON b.generation_id=?3 AND b.account_id=?4 JOIN accounts a ON a.account_id=b.account_id JOIN chief_inbox_events e ON e.id=?6 AND e.work_item_id=w.id WHERE w.id=?1 AND w.codex_thread_id=?2 AND w.dispatch_state='idle' AND w.active_turn_id IS NULL AND a.revision=?5 AND a.enabled=1 AND a.tombstoned_at_micros IS NULL AND e.event_kind='native_task_models' AND json_extract(e.payload,'$.settings.model')=?7)",
+		params![attempt.work, attempt.thread, attempt.generation, recovery.account, recovery.account_revision, attempt.settings_event, recovery.from_model],
+		|row| row.get(0),
+	).map_err(sqlite_error)?;
+	if !current {
+		return Ok(false);
+	}
+	let explicit_input: bool = connection.query_row(
+		"SELECT EXISTS(SELECT 1 FROM chief_inbox_events WHERE work_item_id=?1 AND event_kind='user_message' AND disposition IS NULL AND (delivered_turn_id IS NULL OR delivered_turn_id='') AND json_type(payload,'$.options.execution')='object' AND json_extract(payload,'$.options.execution')<>'{}')",
+		[&attempt.work], |row| row.get(0),
+	).map_err(sqlite_error)?;
+	Ok(!explicit_input)
+}
+
 impl SqliteStore {
 	/// Reserve one idle or running owned task edit against the exact saved observation. The caller
 	/// must bind these facts to a current transport
@@ -91,6 +152,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			if !owns_work(&tx,&attempt.work,attempt.generation.as_deref())? || crate::chief_prompt_edit::pending(&tx,&attempt.work)? || pending(&tx,&attempt.work)? || crate::chief_permissions::pending(&tx,&attempt.work)? || crate::chief_plugins::pending(&tx,&attempt.work)? { return Ok(None); }
+			if !recovery_source_is_current(&tx, &attempt)? { return Ok(None); }
 			let saved: Option<String> = tx.query_row("SELECT json_extract(e.payload,'$.settings') FROM chief_work_items w JOIN chief_inbox_events e ON e.work_item_id=w.id WHERE w.id=?1 AND w.codex_thread_id=?2 AND ((w.dispatch_state='idle' AND w.active_turn_id IS NULL) OR (w.dispatch_state='running' AND w.active_turn_id IS NOT NULL)) AND w.status<>'resolved' AND e.id=?4 AND e.event_kind='native_task_models' AND json_extract(e.payload,'$.threadId')=?2 AND json_extract(e.payload,'$.generationId') IS ?3 AND json_type(e.payload,'$.settings')='object' AND e.id=(SELECT max(n.id) FROM chief_inbox_events n WHERE n.work_item_id=w.id AND n.event_kind='native_task_models' AND json_extract(n.payload,'$.threadId')=?2 AND json_extract(n.payload,'$.generationId') IS ?3)", params![attempt.work,attempt.thread,attempt.generation,attempt.settings_event], |r|r.get(0)).optional().map_err(sqlite_error)?;
 			let current = saved.and_then(|value| serde_json::from_str::<Value>(&value).ok()).and_then(|value| model_facts(&value));
 			if current.is_none_or(|current| current.1 != attempt.model_provider || current == (attempt.model.clone(), attempt.model_provider.clone(), attempt.effort.clone())) { return Ok(None); }
@@ -160,8 +222,20 @@ pub(crate) fn observe(
 	};
 	let target: ChiefModelAttempt = serde_json::from_str(&target)
 		.map_err(|_| StoreError::InvalidInput("invalid saved model target"))?;
-	let matches = selected == (target.model, target.model_provider, target.effort);
+	let matches = selected == (target.model, target.model_provider, target.effort)
+		&& target.recovery.as_ref().is_none_or(|recovery| {
+			settings.get("serviceTier").and_then(Value::as_str) == recovery.service_tier.as_deref()
+		});
 	let state = if previous.as_deref() == generation {
+		if let Some(recovery) = &target.recovery {
+			let current: bool = connection.query_row(
+				"SELECT EXISTS(SELECT 1 FROM accounts WHERE account_id=?1 AND revision=?2 AND enabled=1 AND tombstoned_at_micros IS NULL)",
+				params![recovery.account, recovery.account_revision], |row| row.get(0),
+			).map_err(sqlite_error)?;
+			if !current {
+				return Ok(());
+			}
+		}
 		if !matches {
 			return Ok(());
 		}
@@ -174,7 +248,7 @@ pub(crate) fn observe(
 		if !dead {
 			return Ok(());
 		}
-		if matches { "target_observed" } else { "superseded" }
+		if matches && target.recovery.is_none() { "target_observed" } else { "superseded" }
 	};
 	let now = unix_micros()?;
 	connection.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'model_selection_observation',?3,?4,'resolved','Current native models observed; prior request causation is not asserted.',?4)",params![format!("{key}:observation"),work,json!({"reservation":reservation,"settingsEvent":observation,"state":state,"generationId":generation}).to_string(),now]).map_err(sqlite_error)?;
@@ -235,6 +309,7 @@ mod tests {
 			effort: Some("high".into()),
 			review_token: token.to_string().repeat(64),
 			attempt_id: format!("attempt-{token}"),
+			recovery: None,
 		}
 	}
 	async fn receipt(store: &SqliteStore) -> ChiefModelReceipt {
