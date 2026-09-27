@@ -129,6 +129,16 @@ async fn automatic_model_receipts_require_tier_and_never_replay_after_reopen() {
 	assert_eq!(receipt(&store).await.state, "unknown", "missing tier is not an observed absence");
 	publish(&store, "fallback", json!("priority"), OTHER_DIGEST).await;
 	assert_eq!(receipt(&store).await.state, "target_observed");
+	let historical = store
+		.chief_model_history("root".into(), "thread".into(), generation_id(1).as_str().into())
+		.await
+		.expect("automatic history")
+		.expect("automatic receipt");
+	assert_eq!(
+		historical.response, "unknown",
+		"native confirmation cannot rewrite the RPC outcome"
+	);
+	assert!(!historical.manual && historical.target_observed && !historical.reconciled);
 	store
 		.run(|connection| {
 			connection
@@ -229,5 +239,12 @@ async fn automatic_model_new_owner_supersedes_unknown_delivery_without_claiming_
 		OTHER_DIGEST.into(),
 	).await.unwrap().unwrap();
 	assert_eq!(receipt(&store).await.state, "superseded");
+	let historical = store
+		.chief_model_history("root".into(), "thread".into(), generation_id(2).as_str().into())
+		.await
+		.expect("reconciled history")
+		.expect("automatic receipt");
+	assert_eq!(historical.response, "unknown");
+	assert!(!historical.manual && !historical.target_observed && historical.reconciled);
 	assert!(store.begin_chief_dispatch("root".into()).await.is_ok());
 }

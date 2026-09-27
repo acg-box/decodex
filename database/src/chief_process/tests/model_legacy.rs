@@ -39,6 +39,49 @@ fn facts(tier: Value) -> String {
 	json!({"model":"target","modelProvider":"fixture","effort":"high","serviceTier":tier})
 		.to_string()
 }
+
+#[tokio::test]
+async fn current_manual_history_supersedes_legacy_history_without_rewriting_evidence() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("history.sqlite3");
+	let store = SqliteStore::open_test(&path).unwrap();
+	ready(&store, false, Some("queued")).await;
+	publish(&store, 1, Some(facts(json!("priority"))), DIGEST).await;
+	let old = history(&store, 1).await;
+	assert!(!old.manual && old.target_observed);
+	let settings = store
+		.chief_task_models("root".into(), "thread".into(), Some(generation_id(1).as_str().into()))
+		.await
+		.unwrap()
+		.unwrap();
+	let attempt = crate::ChiefModelAttempt {
+		work: "root".into(),
+		thread: "thread".into(),
+		generation: Some(generation_id(1).as_str().into()),
+		settings_event: settings.id,
+		model: "next".into(),
+		model_provider: "fixture".into(),
+		effort: Some("high".into()),
+		review_token: DIGEST.into(),
+		attempt_id: "explicit".into(),
+		recovery: None,
+	};
+	let id = store.reserve_chief_model_selection(attempt.clone()).await.unwrap().unwrap();
+	store.finish_chief_model_selection(id, attempt, "unknown".into()).await.unwrap();
+	drop(store);
+	let store = SqliteStore::open_test(&path).unwrap();
+	let current = history(&store, 1).await;
+	assert!(current.id > old.id && current.manual);
+	assert_eq!((current.model.as_str(), current.response.as_str()), ("next", "unknown"));
+	assert!(!current.target_observed && !current.reconciled);
+	let mut target: Value = serde_json::from_str(&facts(json!("priority"))).unwrap();
+	target["model"] = json!("next");
+	publish(&store, 1, Some(target.to_string()), OTHER_DIGEST).await;
+	let confirmed = history(&store, 1).await;
+	assert_eq!((confirmed.id, confirmed.response.as_str()), (current.id, "unknown"));
+	assert!(confirmed.manual && confirmed.target_observed && !confirmed.reconciled);
+	assert!(store.list_pending_chief_events(100).await.unwrap().is_empty());
+}
 async fn pending(store: &SqliteStore, generation: u8) -> Option<crate::ChiefLegacyModelPending> {
 	store
 		.pending_chief_legacy_model_change(
@@ -48,6 +91,17 @@ async fn pending(store: &SqliteStore, generation: u8) -> Option<crate::ChiefLega
 		)
 		.await
 		.unwrap()
+}
+async fn history(store: &SqliteStore, generation: u8) -> crate::ChiefModelHistory {
+	store
+		.chief_model_history(
+			"root".into(),
+			"thread".into(),
+			generation_id(generation).as_str().into(),
+		)
+		.await
+		.expect("read model history")
+		.expect("preserved history")
 }
 async fn publish(store: &SqliteStore, generation: u8, value: Option<String>, digest: &str) {
 	store
@@ -76,6 +130,31 @@ async fn legacy_manual_and_automatic_receipts_keep_tier_and_publication_rules() 
 			let receipt = pending(&store, 1).await.unwrap();
 			assert_eq!(receipt.state, expected);
 			assert_eq!(receipt.model, "target");
+			let before = history(&store, 1).await;
+			assert_eq!((before.manual, before.response.as_str()), (manual, expected));
+			assert!(!before.target_observed && !before.reconciled);
+			assert!(
+				store
+					.chief_model_history(
+						"root".into(),
+						"foreign".into(),
+						generation_id(1).as_str().into()
+					)
+					.await
+					.expect("foreign history")
+					.is_none()
+			);
+			assert!(
+				store
+					.chief_model_history(
+						"root".into(),
+						"thread".into(),
+						generation_id(2).as_str().into()
+					)
+					.await
+					.expect("foreign owner history")
+					.is_none()
+			);
 			assert!(store.has_pending_chief_model_change("root".into()).await.unwrap());
 			assert!(store.begin_chief_dispatch("root".into()).await.is_err());
 			assert!(
@@ -119,6 +198,15 @@ async fn legacy_manual_and_automatic_receipts_keep_tier_and_publication_rules() 
 			publish(&store, 1, Some(facts(json!("priority"))), OTHER_DIGEST).await;
 			publish(&store, 1, Some(facts(json!("priority"))), OTHER_DIGEST).await;
 			assert!(!store.has_pending_chief_model_change("root".into()).await.unwrap());
+			let after = history(&store, 1).await;
+			assert_eq!(
+				(after.id, after.manual, after.response.as_str()),
+				(before.id, manual, expected)
+			);
+			assert!(
+				after.target_observed && !after.reconciled,
+				"confirmation preserves the original response"
+			);
 			assert!(store.begin_chief_dispatch("root".into()).await.is_ok());
 			store
 				.run(move |connection| {
@@ -206,6 +294,9 @@ async fn legacy_unknown_reconciles_only_after_death_and_complete_new_owner_facts
 	drop(store);
 	let reopened = SqliteStore::open_test(&path).unwrap();
 	assert!(!reopened.has_pending_chief_model_change("root".into()).await.unwrap());
+	let receipt = history(&reopened, 2).await;
+	assert_eq!(receipt.response, "unknown");
+	assert!(!receipt.manual && !receipt.target_observed && receipt.reconciled);
 	assert!(reopened.begin_chief_dispatch("root".into()).await.is_ok());
 	reopened.run(|connection| {
 		let (observed,reconciled):(i64,i64)=connection.query_row("SELECT count(*) FILTER(WHERE event_kind='model_recovery_observation'),count(*) FILTER(WHERE event_kind='model_selection_reconciled') FROM chief_inbox_events",[],|r|Ok((r.get(0)?,r.get(1)?))).map_err(crate::error::sqlite_error)?;
@@ -236,6 +327,9 @@ async fn legacy_rejection_and_changed_account_do_not_gain_confirmation() {
 		}
 		publish(&store, 1, Some(facts(json!("priority"))), DIGEST).await;
 		assert_eq!(pending(&store, 1).await.is_none(), rejected);
+		let receipt = history(&store, 1).await;
+		assert_eq!(receipt.response, if rejected { "rejected" } else { "queued" });
+		assert!(!receipt.target_observed && !receipt.reconciled);
 		store
 			.run(|connection| {
 				let count: i64 = connection
