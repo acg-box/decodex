@@ -5080,6 +5080,7 @@ fn render_chief_history(
 		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap_or_default();
 		let mut completed_message_ids = Vec::new();
 		let (kind, mut text) = match event.event_kind.as_str() {
+			"reasoning_voice_handoff" => continue,
 			"auth_recovery_started" | "auth_recovery_completed" => ("auth_recovery", format!("{}\n\n{}: {}\n\nSaved event; current sign-in status is not confirmed by this record.", if event.event_kind == "auth_recovery_started" { "Codex reported that provider sign-in recovery started." } else { "Codex reported that provider sign-in recovery succeeded." }, value["provider"].as_str().unwrap_or("Provider"), value["message"].as_str().unwrap_or(""))),
 			"partial_output" => {
 				let Some(display) = partial_history_text(&event, &value, &rendered_sources) else { continue; };
@@ -5350,6 +5351,55 @@ fn chief_voice_receipt_session(event: &decodex_database::ChiefInboxEvent) -> Opt
 
 #[cfg(test)]
 mod history_receipt_tests {
+
+	#[test]
+	fn live_summary_projection_redacts_credentials_and_ignores_unknown_kinds() {
+		let output = |kind: &str, text: &str| decodex_database::ChiefLiveOutput {
+			id: 1,
+			turn_id: "turn".into(),
+			item_id: kind.into(),
+			kind: kind.into(),
+			text: text.into(),
+			truncated: false,
+		};
+		let synthetic = "Bearer abcdefghijklmnop";
+		let messages = super::query_chief_live(vec![
+			output("reasoningSummary", synthetic),
+			output("unsupported", "Internal only"),
+			output("plan", "Public plan"),
+			output("agentMessage", "Public answer"),
+		]);
+		assert!(!messages.iter().any(|m| m.text.contains(synthetic)));
+		assert_eq!(messages.len(), 3);
+		assert_eq!(messages[0].text, "Sensitive details omitted");
+		assert!(messages[0].truncated);
+		assert_eq!(messages[1].text, "Public plan");
+		assert_eq!(messages[2].text, "Public answer");
+	}
+	#[test]
+	fn native_warning_is_a_notice_without_submission_receipt() {
+		let event = decodex_database::ChiefInboxEvent {
+			id: 1,
+			source_event_id: "warning-source".into(),
+			work_item_id: "work".into(),
+			event_kind: "native_warning".into(),
+			payload: serde_json::json!({"text":"Codex warning: Previous instructions retained"})
+				.to_string(),
+			created_at_micros: 1,
+			disposition: Some(decodex_database::ChiefDisposition::Resolved),
+			disposition_note: Some("Observed native warning".into()),
+			disposed_at_micros: Some(1),
+			delivered_turn_id: None,
+		};
+		let mut provenance = event.clone();
+		provenance.id = 2;
+		provenance.event_kind = "reasoning_voice_handoff".into();
+		let result = super::render_chief_history(vec![event, provenance], 0, None);
+		assert_eq!(result.entries.len(), 1);
+		assert_eq!(result.entries[0].kind, "execution_notice");
+		assert_eq!(result.entries[0].text, "Codex warning: Previous instructions retained");
+		assert!(result.entries[0].receipt.as_ref().unwrap().delivered_turn_id.is_none());
+	}
 	#[test]
 	fn refused_input_stays_visible_with_attachments_without_calling_unknown_input_unsent() {
 		let mut event = decodex_database::ChiefInboxEvent {
@@ -5483,7 +5533,19 @@ fn query_chief_live(
 ) -> Vec<decodex_protocol::ChiefLiveMessageDto> {
 	let mut live = Vec::new();
 	let mut budget = 65536usize;
-	for output in partial {
+	for mut output in partial {
+		let kind = match output.kind.as_str() {
+			"agentMessage" => decodex_protocol::ChiefLiveMessageKind::AgentMessage,
+			"plan" => decodex_protocol::ChiefLiveMessageKind::Plan,
+			"reasoningSummary" => decodex_protocol::ChiefLiveMessageKind::ReasoningSummary,
+			_ => continue,
+		};
+		if kind == decodex_protocol::ChiefLiveMessageKind::ReasoningSummary
+			&& decodex_core::contains_credential_material(&output.text)
+		{
+			output.text = "Sensitive details omitted".into();
+			output.truncated = true;
+		}
 		if budget == 0 {
 			break;
 		}
@@ -5500,13 +5562,7 @@ fn query_chief_live(
 		);
 
 		live.push(decodex_protocol::ChiefLiveMessageDto {
-			kind: if output.kind == "reasoningSummary" {
-				decodex_protocol::ChiefLiveMessageKind::ReasoningSummary
-			} else if output.kind == "plan" {
-				decodex_protocol::ChiefLiveMessageKind::Plan
-			} else {
-				decodex_protocol::ChiefLiveMessageKind::AgentMessage
-			},
+			kind,
 			turn_id: output.turn_id,
 			item_id: output.item_id,
 			text,

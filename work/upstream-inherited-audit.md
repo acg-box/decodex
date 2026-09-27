@@ -1278,3 +1278,11 @@ The final Chief suite passes 158 tests with 15 existing opt-in cases ignored;
 strict runtime lint passes. See [the complete coordinator mapping](chief-coordinator-reconciliation.md).
 Close only chief.rs. Refresh changed helper/test owner hashes without claiming the
 full tests.rs file review or signed desktop acceptance is complete.
+
+## Application output filtering restored on 2026-09-27
+
+Restore inherited reasoning-summary credential filtering, unknown-kind exclusion
+and internal voice-provenance hiding. Both defects have failing-before synthetic
+regressions. See [the bounded repair and remaining review](application-projection-recovery.md).
+Refresh the source hash but leave application.rs marked review-required. The
+remaining shared-file coverage and metadata differences are not closed by this fix.
