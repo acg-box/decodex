@@ -486,18 +486,18 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid activity receipt"));
 		}
-		// Native subagent observations can arrive after their initiating parent turn ends.
+		// Native subagent and yielded MCP observations can outlive their originating turn.
 		// Only an exact saved terminal receipt can authorize that historical association.
-		let historical_subagent =
+		let historical_activity =
 			serde_json::from_str::<serde_json::Value>(&payload).is_ok_and(|value| {
-				value["kind"] == "subAgentActivity"
+				matches!(value["kind"].as_str(), Some("subAgentActivity" | "mcpToolCall"))
 					&& value["turn_id"] == turn
 					&& value["item_id"] == item
 			});
 		let terminal_source = serde_json::json!(["turn/completed", thread, turn]).to_string();
 		self.run(move |connection| {
 			let tx=connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
-			let work:Option<String>=tx.query_row("SELECT w.id FROM chief_work_items w WHERE w.codex_thread_id=?1 AND ((w.active_turn_id=?2 AND w.dispatch_state='running') OR (?3 AND EXISTS(SELECT 1 FROM chief_inbox_events e WHERE e.work_item_id=w.id AND e.source_event_id=?4 AND e.event_kind IN ('chief_turn_completed','worker_turn_completed','capacity_retry'))))",params![thread,turn,historical_subagent,terminal_source],|row|row.get(0)).optional().map_err(sqlite_error)?;
+			let work:Option<String>=tx.query_row("SELECT w.id FROM chief_work_items w WHERE w.codex_thread_id=?1 AND ((w.active_turn_id=?2 AND w.dispatch_state='running') OR (?3 AND EXISTS(SELECT 1 FROM chief_inbox_events e WHERE e.work_item_id=w.id AND e.source_event_id=?4 AND e.event_kind IN ('chief_turn_completed','worker_turn_completed','capacity_retry'))))",params![thread,turn,historical_activity,terminal_source],|row|row.get(0)).optional().map_err(sqlite_error)?;
 			let Some(work)=work else { return Ok(()); };
 			let count:i64=tx.query_row("SELECT count(*) FROM chief_inbox_events WHERE work_item_id=?1 AND delivered_turn_id=?2 AND event_kind IN ('activity_started','activity_completed')",params![work,turn],|row|row.get(0)).map_err(sqlite_error)?;
 			if count>=256 { return Ok(()); }
@@ -508,6 +508,42 @@ impl SqliteStore {
 			tx.commit().map_err(sqlite_error)?;
 			Ok(())
 		}).await
+	}
+}
+
+impl SqliteStore {
+	/// Save the latest observed checklist as an immutable, non-waking receipt.
+	pub async fn record_chief_checklist(
+		&self,
+		thread: String,
+		turn: String,
+		text: String,
+	) -> Result<(), StoreError> {
+		if thread.is_empty()
+			|| thread.len() > 512
+			|| turn.is_empty()
+			|| turn.len() > 512
+			|| text.len() > 32768
+		{
+			return Err(StoreError::InvalidInput("invalid checklist observation"));
+		}
+		self.run(move |connection| {
+            let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
+            let work: Option<String> = tx.query_row("SELECT id FROM chief_work_items WHERE codex_thread_id=?1 AND active_turn_id=?2 AND dispatch_state='running'",params![thread,turn],|row|row.get(0)).optional().map_err(sqlite_error)?;
+            let Some(work) = work else { return Ok(()); };
+            let previous: Option<(i64,String)> = tx.query_row("SELECT id,payload FROM chief_inbox_events WHERE work_item_id=?1 AND event_kind='plan_updated' AND delivered_turn_id=?2 AND json_extract(payload,'$.threadId')=?3 ORDER BY id DESC LIMIT 1",params![work,turn,thread],|row|Ok((row.get(0)?,row.get(1)?))).optional().map_err(sqlite_error)?;
+            let original_payload = serde_json::json!({"threadId":thread,"turnId":turn,"text":text}).to_string();
+            if previous.as_ref().is_some_and(|(_,prior)|prior == &original_payload) { return Ok(()); }
+            let count: i64 = tx.query_row("SELECT count(*) FROM chief_inbox_events WHERE work_item_id=?1 AND event_kind='plan_updated' AND delivered_turn_id=?2 AND json_extract(payload,'$.threadId')=?3",params![work,turn,thread],|row|row.get(0)).map_err(sqlite_error)?;
+            if count > 128 { return Ok(()); }
+            let text = if count == 128 { "Checklist update limit reached. Later step states are unavailable.".to_owned() } else { text };
+            let payload = serde_json::json!({"threadId":thread,"turnId":turn,"text":text}).to_string();
+            let source = serde_json::json!(["plan_updated",thread,turn,previous.map(|(id,_)|id)]).to_string();
+            let now = crate::unix_micros()?;
+            tx.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'plan_updated',?3,?4,'resolved','Observed native checklist',?4,?2,?5)",params![source,work,payload,now,turn]).map_err(sqlite_error)?;
+            tx.commit().map_err(sqlite_error)?;
+            Ok(())
+        }).await
 	}
 }
 

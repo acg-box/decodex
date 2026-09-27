@@ -2020,6 +2020,15 @@ fn history_entry_with_key(
 	entry: &decodex_protocol::ChiefHistoryEntryDto,
 	identity: &str,
 ) -> gpui::Div {
+	if entry.kind == "checklist" {
+		let id = entry.id;
+		return div()
+			.w_full()
+			.py_2()
+			.debug_selector(move || format!("checklist-receipt-{id}"))
+			.child(muted("Recorded checklist"))
+			.child(markdown::render(&entry.text, &format!("checklist-{id}")));
+	}
 	if matches!(entry.kind.as_str(), "partial_plan" | "partial_answer") {
 		return div()
 			.w_full()
