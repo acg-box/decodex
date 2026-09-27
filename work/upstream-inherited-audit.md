@@ -389,6 +389,15 @@ count further. All 360 entries remain. Complete shared-file, native and signed
 desktop acceptance boundaries are unchanged. No production code changes in this
 audit, and prior executable checks are not repeated for unchanged files.
 
+## Stored-image reference document reconciled on 2026-09-27
+
+Map the complete inherited image-reference review to the current
+[stored-image document](stored-tool-images-recovery.md), native storage owners
+and explicit unsupported byte-resolution boundary. Both file/inline cold-history
+and Guardian image-profile fixtures pass on the fingerprinted installed
+0.158.0-alpha.2.1 binary. Close only this one document row. Remote storage,
+asynchronous image admission and signed desktop presentation remain unqualified.
+
 ## Stored tool image references restored on 2026-09-26
 
 `crates/decodex-runtime/src/chief/timeline/attachments.rs` now matches the complete
