@@ -197,6 +197,13 @@ impl SqliteStore {
 			let conflict: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM chief_misalignment WHERE work_id=?1)",[&attempt.work],|r|r.get(0)).map_err(sqlite_error)?;
 			if conflict {return Ok(None);}
 			let key=attempt.key();
+            if attempt.recovery.is_some() {
+                // The legacy journal used the same stable digest with a different prefix.
+                // A terminal receipt still consumes that occurrence across upgrades.
+                let legacy_key = key.replacen("model-selection:", "model-recovery:", 1);
+                let used: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM chief_inbox_events WHERE source_event_id=?1 AND event_kind='model_recovery')", [&legacy_key], |row| row.get(0)).map_err(sqlite_error)?;
+                if used { return Ok(None); }
+            }
 			let now=unix_micros()?;
 			let changed=tx.execute("INSERT OR IGNORE INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'model_selection',?3,?4,'resolved','Model selection reserved; not confirmed.',?4)",params![key,attempt.work,json!({"attempt":attempt}).to_string(),now]).map_err(sqlite_error)?;
 			let id=tx.last_insert_rowid();tx.commit().map_err(sqlite_error)?;Ok((changed==1).then_some(id))
