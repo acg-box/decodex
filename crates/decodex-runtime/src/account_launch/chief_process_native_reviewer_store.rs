@@ -540,3 +540,5 @@ impl OwnedReviewer {
 #[path = "chief_process_native_live_model_tests.rs"] mod live_model;
 
 #[path = "chief_process_native_task_model_tests.rs"] mod task_model_tests;
+
+#[path = "chief_process_plugin_tests.rs"] mod plugin_selection_tests;

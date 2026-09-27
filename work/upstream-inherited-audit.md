@@ -31,6 +31,14 @@ restart without replay; corrected received text survives injected write failure.
 Close these three file dispositions only. See
 [realtime history qualification](native-realtime-history-qualification.md).
 
+## Plugin controller fixtures restored on 2026-09-26
+
+Restore the complete inherited plugin-selection tests. The retained-wire queued
+and lost-reply cases and the installed-native coordinator/cold-resume case pass.
+Keep current service regressions and strict lint. Close this one test-file row;
+shared owners, historical review topics and signed desktop acceptance stay open.
+See [plugin controller qualification](native-plugin-controller-qualification.md).
+
 ## Live model transport restored on 2026-09-26
 
 The current bridge rejected a valid exact-turn model request. The focused test
