@@ -85,19 +85,7 @@ fn main() -> gpui::Result<()> {
 	{
 		return Err(std::io::Error::other("Command capture requires a disposable root").into());
 	}
-	let app_ui_mode = std::env::var("DECODEX_VISUAL_APP_UI").ok();
-	if app_ui_mode
-		.as_ref()
-		.is_some_and(|mode| !["confirmation", "unknown"].contains(&mode.as_str()))
-	{
-		return Err(std::io::Error::other("Unknown App UI capture fixture").into());
-	}
-	if app_ui_mode.is_some() && std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").is_some() {
-		return Err(std::io::Error::other(
-			"App UI layout fixtures cannot be combined with service evidence",
-		)
-		.into());
-	}
+	let (app_ui_mode, integrations) = layout_fixtures()?;
 	// The explicit root supplies protocol evidence; command probes require their own flags.
 	// Never use the installed profile as an implicit screenshot source.
 	let service_projection = std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT")
@@ -109,7 +97,16 @@ fn main() -> gpui::Result<()> {
 			)
 		})
 		.transpose()?;
-	let window: gpui::AnyWindowHandle = if let Some(mode) = app_ui_mode {
+	let window: gpui::AnyWindowHandle = if integrations {
+		cx.open_offscreen_window(size(px(1180.0), px(1400.0)), |_, cx| {
+			cx.new(|cx| {
+				let mut surface = ChiefSurface::new(cx);
+				surface.visual_integrations(cx);
+				surface
+			})
+		})?
+		.into()
+	} else if let Some(mode) = app_ui_mode {
 		cx.open_offscreen_window(size(px(1248.0), px(840.0)), |_, cx| {
 			cx.new(|cx| {
 				let mut surface = ChiefSurface::new(cx);
@@ -180,11 +177,59 @@ fn main() -> gpui::Result<()> {
 		animate_panel_motion(&mut cx, window, &panel_motion)?;
 	}
 
+	if integrations {
+		capture_integrations(&mut cx, window, &output)?;
+	}
 	capture_interactions(&mut cx, window)?;
 	let screenshot = cx.capture_screenshot(window)?;
 	screenshot.save(&output)?;
 	println!("{}", output.display());
 	Ok(())
+}
+
+fn capture_integrations(
+	cx: &mut VisualTestAppContext,
+	window: gpui::AnyWindowHandle,
+	output: &std::path::Path,
+) -> gpui::Result<()> {
+	cx.capture_screenshot(window)?.save(output.with_extension("top.png"))?;
+	// The isolated 1180-pixel-wide fixture puts the status viewport below its controls.
+	cx.simulate_event(
+		window,
+		gpui::ScrollWheelEvent {
+			position: gpui::point(px(450.), px(620.)),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(-460.))),
+			..Default::default()
+		},
+	);
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+	Ok(())
+}
+
+fn layout_fixtures() -> gpui::Result<(Option<String>, bool)> {
+	let app_ui_mode = std::env::var("DECODEX_VISUAL_APP_UI").ok();
+	let integrations = std::env::var_os("DECODEX_VISUAL_INTEGRATIONS").is_some();
+	if integrations
+		&& (app_ui_mode.is_some() || std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").is_some())
+	{
+		return Err(std::io::Error::other(
+			"Integration layout fixture cannot use a service source",
+		)
+		.into());
+	}
+	if app_ui_mode
+		.as_ref()
+		.is_some_and(|mode| !["confirmation", "unknown"].contains(&mode.as_str()))
+	{
+		return Err(std::io::Error::other("Unknown App UI capture fixture").into());
+	}
+	if app_ui_mode.is_some() && std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").is_some() {
+		return Err(std::io::Error::other(
+			"App UI layout fixtures cannot be combined with service evidence",
+		)
+		.into());
+	}
+	Ok((app_ui_mode, integrations))
 }
 
 type ServiceProjection = (
