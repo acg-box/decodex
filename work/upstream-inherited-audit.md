@@ -39,6 +39,16 @@ Keep current service regressions and strict lint. Close this one test-file row;
 shared owners, historical review topics and signed desktop acceptance stay open.
 See [plugin controller qualification](native-plugin-controller-qualification.md).
 
+## Unresolved legacy model receipts preserved on 2026-09-26
+
+A pre-fix reopen regression proves that old model-recovery reservations were
+ignored by the current dispatch guard. Integrate their pending status and owned
+native observation into the current model owner. Preserve original record bytes;
+confirm same-owner targets or reconcile only after prior process death. The
+service shows old uncertainty and sends no replay. Full old producer/display
+reconciliation remains open. See
+[legacy journal compatibility](legacy-model-journal-compatibility.md).
+
 ## Live model transport restored on 2026-09-26
 
 The current bridge rejected a valid exact-turn model request. The focused test
