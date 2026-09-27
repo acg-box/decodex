@@ -18,6 +18,7 @@ use super::*;
 #[path = "chief_process_native_reviewer_tests.rs"] mod reviewer;
 #[path = "chief_process_native_steer_tests.rs"] mod steer;
 #[path = "chief_process_native_structured_tests.rs"] mod structured;
+#[path = "chief_process_native_usage_tests.rs"] mod usage;
 use serde_json::json;
 use std::{
 	io::{BufRead, BufReader},
