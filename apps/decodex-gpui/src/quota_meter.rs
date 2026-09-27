@@ -13,17 +13,17 @@ pub(super) struct ResetFill {
 	pub(super) confirmed_at_micros: i64,
 }
 impl ResetFill {
-	fn remaining(&self, quota: AccountQuotaWindowDto, now: Instant) -> Option<f32> {
+	fn remaining(&self, quota: AccountQuotaWindowDto, now: Instant, reduced: bool) -> Option<f32> {
 		let initial =
 			self.initial.iter().find(|window| window.duration_minutes == quota.duration_minutes)?;
 		let from = remaining(*initial)?;
 		let elapsed = now.saturating_duration_since(self.started);
-		if elapsed >= FILL_DURATION
+		if (reduced || elapsed >= FILL_DURATION)
 			&& quota.observed_at_unix_micros.is_some_and(|at| at > self.confirmed_at_micros)
 		{
 			return None;
 		}
-		Some(fill_value(from, elapsed))
+		Some(if reduced { 100.0 } else { fill_value(from, elapsed) })
 	}
 }
 fn fill_value(from: f32, elapsed: Duration) -> f32 {
@@ -64,9 +64,11 @@ pub(super) struct QuotaMeter {
 impl RenderOnce for QuotaMeter {
 	fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
 		let now = Instant::now();
-		let animated = self.fill.as_ref().and_then(|fill| fill.remaining(self.quota, now));
+		let reduced = crate::ui_motion::reduced();
+		let animated = self.fill.as_ref().and_then(|fill| fill.remaining(self.quota, now, reduced));
 		let value = animated.or_else(|| remaining(self.quota)).unwrap_or(0.0).clamp(0.0, 100.0);
-		if animated.is_some()
+		if !reduced
+			&& animated.is_some()
 			&& self
 				.fill
 				.as_ref()
@@ -106,7 +108,10 @@ pub(super) fn meter(
 	quota: AccountQuotaWindowDto,
 	fill: Option<ResetFill>,
 ) -> Option<gpui::AnyElement> {
-	let has_fill = fill.as_ref().and_then(|fill| fill.remaining(quota, Instant::now())).is_some();
+	let has_fill = fill
+		.as_ref()
+		.and_then(|fill| fill.remaining(quota, Instant::now(), crate::ui_motion::reduced()))
+		.is_some();
 	if quota.result == AccountQuotaStateDto::NotApplicable
 		|| (remaining(quota).is_none() && !has_fill)
 	{
@@ -161,9 +166,11 @@ mod tests {
 			started,
 			confirmed_at_micros: 10,
 		};
-		assert_eq!(fill.remaining(quota(0, 11), started), Some(36.));
-		assert_eq!(fill.remaining(quota(64, 1), started + FILL_DURATION), Some(100.));
-		assert_eq!(fill.remaining(quota(1, 11), started + FILL_DURATION), None);
+		assert_eq!(fill.remaining(quota(0, 11), started, false), Some(36.));
+		assert_eq!(fill.remaining(quota(64, 1), started + FILL_DURATION, false), Some(100.));
+		assert_eq!(fill.remaining(quota(1, 11), started + FILL_DURATION, false), None);
 		assert_eq!(remaining(quota(1, 11)), Some(99.));
+		assert_eq!(fill.remaining(quota(64, 1), started, true), Some(100.));
+		assert_eq!(fill.remaining(quota(1, 11), started, true), None);
 	}
 }

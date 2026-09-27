@@ -869,3 +869,14 @@ Retain the current draft-state and Escape owners after complete file comparison.
 Close only the three file dispositions described in
 [steer visual qualification](steer-visual-qualification.md). Shared capture and
 runtime files, signed desktop acceptance and broader recovery scope stay open.
+
+## Quota reduced motion restored on 2026-09-26
+
+Restore the inherited reduced-motion checks in the quota reset fill and frame
+request. Reuse the existing host preference reader, which also respects VoiceOver.
+Reduced motion completes the fill immediately and lets a fresh usage observation
+take over without an animation delay. Retain the current shared quota color bands
+and percentage label. The complete original/current diff is accounted for; close
+this one file row. This changes no quota, account-reset action or system setting.
+All three quota tests and strict GPUI lint with all features and targets pass.
+Signed macOS accessibility acceptance remains in the final desktop pass.
