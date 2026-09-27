@@ -1124,6 +1124,15 @@ desktop acceptance. Preserve compatibility readers when reviewing optional
 model controls for removal.
 
 
+## Shared native client reconciled on 2026-09-27
+
+Map the complete transport and three settings-helper diffs to current owners.
+Retain every inherited module and function, distinct known-unsent outcomes,
+source revisions and the common model parser. All 141 selected adapter tests pass;
+seven native cases remain ignored. Close four file rows only. See
+[the complete mapping and limits](native-client-reconciliation.md). No source
+change or new installed/desktop acceptance is claimed.
+
 ## Recap document and current signed evidence reconciled on 2026-09-27
 
 Map the complete inherited recap-gap note to the delivered temporary native,
