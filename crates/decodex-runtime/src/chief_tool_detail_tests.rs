@@ -136,7 +136,7 @@ fn image_path_and_app_context_are_descriptive_native_evidence() {
 	let item = json!({"id":"item","type":"mcpToolCall","appContext":{
   "connectorId":"app-fixture","appName":"Calendar","actionName":"Read event",
   "linkId":"link-fixture","resourceUri":"ui://event","private":"RAW_DO_NOT_RENDER"
- },"result":{"content":[{"type":"text","text":"Event found"}]}});
+ },"arguments":{"link_id":"ARGUMENT_MUST_NOT_AUTHORIZE"},"result":{"content":[{"type":"text","text":"Event found"}]}});
 	let text = project_text(&history(item.clone()), "thread", "turn", "item").unwrap();
 	for expected in [
 		"App: Calendar",
@@ -149,6 +149,7 @@ fn image_path_and_app_context_are_descriptive_native_evidence() {
 		assert!(text.contains(expected), "{expected}");
 	}
 	assert!(!text.contains("DO_NOT_RENDER"));
+	assert!(!text.contains("ARGUMENT_MUST_NOT_AUTHORIZE"));
 	let mut partial = item;
 	partial["appContext"] = json!({"appName":"Calendar","linkId":false,"resourceUri":null});
 	let text = project_text(&history(partial), "thread", "turn", "item").unwrap();

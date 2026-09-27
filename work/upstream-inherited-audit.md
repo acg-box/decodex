@@ -964,6 +964,15 @@ not a newly reproduced production failure. The complete register retains 360
 entries and has 202 pending content-review rows after this batch, down from 204.
 This does not close any shared desktop acceptance group.
 
+## Native file approval detail restored on 2026-09-27
+
+Restore complete native-history file details before request pagination. The old
+24 KiB projector loses a long diff suffix in the restored failing regression.
+Preserve the original 8 MiB complete bound and existing page limits. Restore the
+removed source-identity test and retain current tool/web/media detail owners.
+See [the complete mapping](file-approval-history-reconciliation.md). Close only
+this detail-file row; shared application and signed approval acceptance stay open.
+
 ## Conversation persistence reconciled on 2026-09-27
 
 Restore the inherited native-effort create/review/reopen test and cover both
