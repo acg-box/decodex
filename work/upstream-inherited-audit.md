@@ -22,6 +22,15 @@ This restores the direct lost-reply regression alongside the existing closing-
 resume receipt fixture and installed-native qualification. Close only this one
 complete file row; the shared runtime test module and broader R08 scope stay open.
 
+## Realtime history and voice tails qualified on 2026-09-26
+
+Restore the complete native realtime timeline fixture and four coordinator
+voice-tail regressions. Retain the current suffix/finality policy and single
+transcript save owner after full voice-actor comparison. Native history survives
+restart without replay; corrected received text survives injected write failure.
+Close these three file dispositions only. See
+[realtime history qualification](native-realtime-history-qualification.md).
+
 ## Live model transport restored on 2026-09-26
 
 The current bridge rejected a valid exact-turn model request. The focused test
