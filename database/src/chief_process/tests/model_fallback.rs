@@ -248,3 +248,48 @@ async fn automatic_model_new_owner_supersedes_unknown_delivery_without_claiming_
 	assert!(!historical.manual && !historical.target_observed && historical.reconciled);
 	assert!(store.begin_chief_dispatch("root".into()).await.is_ok());
 }
+
+#[tokio::test]
+async fn manual_model_selection_respects_queued_execution_choices() {
+	for running in [false, true] {
+		for execution in
+			[json!({"model":"queued-model"}), json!({"reasoning_effort":"high"}), json!({})]
+		{
+			let dir = tempfile::tempdir().unwrap();
+			let store = SqliteStore::open_test(&dir.path().join("manual-queue.sqlite3")).unwrap();
+			let mut attempt = ready(&store).await;
+			attempt.recovery = None;
+			attempt.model = "blocked".into();
+			attempt.effort = Some("low".into());
+			if running {
+				store.begin_chief_dispatch("root".into()).await.unwrap();
+				store
+					.acknowledge_chief_dispatch("root".into(), "active-turn".into())
+					.await
+					.unwrap();
+			}
+			store
+				.enqueue_chief_event(crate::EnqueueChiefEvent {
+					source_event_id: "queued-input".into(),
+					work_item_id: "root".into(),
+					event_kind: "user_message".into(),
+					payload: json!({"text":"Next input", "options":{"execution":execution}})
+						.to_string(),
+				})
+				.await
+				.unwrap();
+			let reserved = store.reserve_chief_model_selection(attempt).await.unwrap();
+			assert_eq!(
+				reserved.is_some(),
+				execution == json!({}),
+				"running={running}, execution={execution}"
+			);
+			let pending = store.list_pending_chief_events(100).await.unwrap();
+			assert_eq!(pending.len(), 1);
+			assert_eq!(
+				pending[0].source_event_id, "queued-input",
+				"the user's input remains queued"
+			);
+		}
+	}
+}

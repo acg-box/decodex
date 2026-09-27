@@ -132,14 +132,18 @@ fn recovery_source_is_current(
 		params![attempt.work, attempt.thread, attempt.generation, recovery.account, recovery.account_revision, attempt.settings_event, recovery.from_model],
 		|row| row.get(0),
 	).map_err(sqlite_error)?;
-	if !current {
-		return Ok(false);
-	}
+	Ok(current)
+}
+
+fn queued_execution_input(
+	connection: &rusqlite::Connection,
+	work: &str,
+) -> Result<bool, StoreError> {
 	let explicit_input: bool = connection.query_row(
 		"SELECT EXISTS(SELECT 1 FROM chief_inbox_events WHERE work_item_id=?1 AND event_kind='user_message' AND disposition IS NULL AND (delivered_turn_id IS NULL OR delivered_turn_id='') AND json_type(payload,'$.options.execution')='object' AND json_extract(payload,'$.options.execution')<>'{}')",
-		[&attempt.work], |row| row.get(0),
+		[work], |row| row.get(0),
 	).map_err(sqlite_error)?;
-	Ok(!explicit_input)
+	Ok(explicit_input)
 }
 
 impl SqliteStore {
@@ -154,7 +158,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			if !owns_work(&tx,&attempt.work,attempt.generation.as_deref())? || crate::chief_prompt_edit::pending(&tx,&attempt.work)? || pending(&tx,&attempt.work)? || crate::chief_permissions::pending(&tx,&attempt.work)? || crate::chief_plugins::pending(&tx,&attempt.work)? { return Ok(None); }
-			if !recovery_source_is_current(&tx, &attempt)? { return Ok(None); }
+			if !recovery_source_is_current(&tx, &attempt)? || queued_execution_input(&tx, &attempt.work)? { return Ok(None); }
 			let saved: Option<String> = tx.query_row("SELECT json_extract(e.payload,'$.settings') FROM chief_work_items w JOIN chief_inbox_events e ON e.work_item_id=w.id WHERE w.id=?1 AND w.codex_thread_id=?2 AND ((w.dispatch_state='idle' AND w.active_turn_id IS NULL) OR (w.dispatch_state='running' AND w.active_turn_id IS NOT NULL)) AND w.status<>'resolved' AND e.id=?4 AND e.event_kind='native_task_models' AND json_extract(e.payload,'$.threadId')=?2 AND json_extract(e.payload,'$.generationId') IS ?3 AND json_type(e.payload,'$.settings')='object' AND e.id=(SELECT max(n.id) FROM chief_inbox_events n WHERE n.work_item_id=w.id AND n.event_kind='native_task_models' AND json_extract(n.payload,'$.threadId')=?2 AND json_extract(n.payload,'$.generationId') IS ?3)", params![attempt.work,attempt.thread,attempt.generation,attempt.settings_event], |r|r.get(0)).optional().map_err(sqlite_error)?;
 			let current = saved.and_then(|value| serde_json::from_str::<Value>(&value).ok()).and_then(|value| model_facts(&value));
 			if current.is_none_or(|current| current.1 != attempt.model_provider || current == (attempt.model.clone(), attempt.model_provider.clone(), attempt.effort.clone())) { return Ok(None); }
