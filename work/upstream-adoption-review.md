@@ -304,3 +304,12 @@ requiring a catalog entry. The native provider still decides availability.
 This optional field can be removed independently of the shared execution-intent
 and draft owners. New-task input preserves independent native reasoning and tier
 defaults. Rendered tests do not close signed desktop acceptance.
+
+## Stored-image compatibility and optional retrieval
+
+The current native fixtures preserve ordered file/inline image references across
+restart and explicit continuation. The synchronous Guardian keeps its native
+text-only profile. Decodex's current consumer preserves opaque references and
+reports unavailable byte previews; remote thumbnails or uploads need a supported
+native API and a separate product decision. See
+[the complete inherited review and current evidence](stored-tool-images-recovery.md).
