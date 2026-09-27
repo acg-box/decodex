@@ -241,6 +241,7 @@ async fn legacy_unknown_reconciles_only_after_death_and_complete_new_owner_facts
 	let path = dir.path().join("legacy.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 	ready(&store, false, Some("uncertain")).await;
+	let message = visible_message(&store).await;
 	store
 		.mark_process_generation_death_unknown(
 			&generation_id(1),
@@ -298,6 +299,7 @@ async fn legacy_unknown_reconciles_only_after_death_and_complete_new_owner_facts
 	let receipt = history(&reopened, 2).await;
 	assert_eq!(receipt.response, "unknown");
 	assert!(!receipt.manual && !receipt.target_observed && receipt.reconciled);
+	assert_visible_history(&reopened, &message).await;
 	assert!(reopened.begin_chief_dispatch("root".into()).await.is_ok());
 	reopened.run(|connection| {
 		let (observed,reconciled):(i64,i64)=connection.query_row("SELECT count(*) FILTER(WHERE event_kind='model_recovery_observation'),count(*) FILTER(WHERE event_kind='model_selection_reconciled') FROM chief_inbox_events",[],|r|Ok((r.get(0)?,r.get(1)?))).map_err(crate::error::sqlite_error)?;
@@ -346,4 +348,46 @@ async fn legacy_rejection_and_changed_account_do_not_gain_confirmation() {
 			.await
 			.unwrap();
 	}
+}
+
+async fn visible_message(store: &SqliteStore) -> crate::ChiefInboxEvent {
+	store
+		.record_chief_observation(crate::EnqueueChiefEvent {
+			source_event_id: "visible-message".into(),
+			work_item_id: "root".into(),
+			event_kind: "assistant_message".into(),
+			payload: json!({"text":"Visible answer"}).to_string(),
+		})
+		.await
+		.unwrap()
+}
+
+async fn assert_visible_history(store: &SqliteStore, message: &crate::ChiefInboxEvent) {
+	for limit in [1, 20] {
+		assert_eq!(
+			store.read_chief_work_events("root".into(), limit).await.unwrap(),
+			vec![message.clone()]
+		);
+		assert_eq!(
+			store.read_chief_transcript("root".into(), None, limit).await.unwrap().0,
+			vec![message.clone()]
+		);
+	}
+}
+
+#[tokio::test]
+async fn legacy_model_journal_never_consumes_transcript_pages() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("visible-history.sqlite3");
+	let store = SqliteStore::open_test(&path).unwrap();
+	ready(&store, false, Some("queued")).await;
+	let message = visible_message(&store).await;
+	publish(&store, 1, Some(facts(json!("priority"))), DIGEST).await;
+	assert_visible_history(&store, &message).await;
+	drop(store);
+	let store = SqliteStore::open_test(&path).unwrap();
+	assert_visible_history(&store, &message).await;
+	let receipt = history(&store, 1).await;
+	assert!(receipt.target_observed);
+	assert_eq!(receipt.response, "queued");
 }
