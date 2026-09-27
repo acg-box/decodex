@@ -943,3 +943,14 @@ explicit inheritance restoration. All sixteen relevant tests pass in the full de
 run and the reviewed sources are unchanged. No code change is required. Close
 these four file rows only; signed desktop acceptance remains open. See
 [settings surface reconciliation](settings-surface-reconciliation.md).
+
+## Legacy model publication helper reconciled on 2026-09-27
+
+Close the complete inherited observation-helper row after mapping each source,
+account, tier, ordering and immutable-receipt rule to the current shared owner.
+The original snapshot hash matches. See
+[the mapping and qualification](legacy-model-observation-reconciliation.md).
+The writer and inherited test-module
+rows remain open. This closes one file row, not the full model feature or signed
+desktop acceptance. Preserve compatibility readers when reviewing optional
+model controls for removal.
