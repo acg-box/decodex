@@ -1321,3 +1321,12 @@ controller diff to current default, settings and durable recovery owners in
 [the controller comparison](conversation-controller-reconciliation.md). All 59
 conversation tests and 537 desktop tests pass; five desktop opt-in tests remain
 ignored. Close only conversations.rs. Signed desktop acceptance remains open.
+
+## Desktop shell owners reconciled on 2026-09-27
+
+Restore the existing login refresh entry for healthy accounts. The rendered test
+fails before repair and passes for healthy and failed-auth states afterwards.
+Map the complete shell diff to its current draft, settings, account and workspace
+owners in [the shell comparison](shell-owner-reconciliation.md). All 363 Shell
+tests pass with one existing opt-in case ignored; strict desktop lint passes.
+Close only shell.rs. No real login or signed desktop acceptance is claimed.
