@@ -283,5 +283,34 @@ async fn qualify_query(
 		client.steer_receipt(unrelated).await.expect("unconfirmed query"),
 		ChiefSteerReceiptResult::Unconfirmed
 	);
+	if let Some(binary) = std::env::var_os("DECODEX_TEST_STEER_VISUAL_BINARY") {
+		let output = std::env::var_os("DECODEX_TEST_STEER_VISUAL_OUTPUT")
+			.expect("explicit visual output directory");
+		let output = std::path::PathBuf::from(output).join(format!("{thread}.png"));
+		let result = tokio::process::Command::new(binary)
+			.kill_on_drop(true)
+			.env("DECODEX_VISUAL_CHIEF_ROOT", root.as_path())
+			.env("DECODEX_VISUAL_CHIEF_WORK", "chief")
+			.env(
+				"DECODEX_VISUAL_CHIEF_STEER_RECEIPT",
+				serde_json::to_string(&identity).expect("receipt identity"),
+			)
+			.env("DECODEX_VISUAL_OUTPUT", &output)
+			.output()
+			.await
+			.expect("rendered receipt proof");
+		assert!(
+			result.status.success(),
+			"visual proof failed: {}",
+			String::from_utf8_lossy(&result.stderr)
+		);
+		let evidence: Value = serde_json::from_slice(
+			&std::fs::read(output.with_extension("steer.json")).expect("visual receipt evidence"),
+		)
+		.expect("visual evidence JSON");
+		assert_eq!(evidence["before"]["uncertain"], true);
+		assert_eq!(evidence["after"]["uncertain"], false);
+		assert_eq!(evidence["after"]["draft"], "Later draft retained.");
+	}
 	server.shutdown().await.expect("query server shutdown");
 }

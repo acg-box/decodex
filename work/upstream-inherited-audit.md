@@ -720,3 +720,13 @@ current capability, settings and warning owners. Restore separate configured and
 managed defaults failure cases, empty requirements parameters and managed-tier
 coverage. Both full file dispositions are now closed; the larger model-catalog
 file remains open for its other differences.
+
+## Native receipt capture restored on 2026-09-26
+
+Restore the optional native receipt test's real service-to-GPUI capture route.
+Both live and cold receipts clear submission uncertainty, preserve later draft
+edits and leave the inference count unchanged. Inspect both generated captures.
+Retain the current draft-state and Escape owners after complete file comparison.
+Close only the three file dispositions described in
+[steer visual qualification](steer-visual-qualification.md). Shared capture and
+runtime files, signed desktop acceptance and broader recovery scope stay open.
