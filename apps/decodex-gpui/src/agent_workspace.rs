@@ -223,6 +223,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let is_tab = id.starts_with("page-");
+		let is_tree = id.starts_with("agent-open-") || id.starts_with("native-agent-open-");
 		let is_event = id.starts_with("event-");
 		let is_prompt = id.starts_with("prompt-")
 			|| id.starts_with("saved-prompt-")
@@ -284,6 +285,9 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}))
+			.when(is_tree, |button| {
+				button.px_0().py_0().h(px(ui_theme::TREE_ROW_HEIGHT)).w_full().min_w_0()
+			})
 			.when(is_event || is_prompt, |button| button.w_full().min_w_0())
 			.child(if let Some(icon) = icon {
 				icon
