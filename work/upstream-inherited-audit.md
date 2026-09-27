@@ -1375,3 +1375,12 @@ output assertions in native revert handling. All 159 Chief tests pass, with 15
 existing opt-in cases ignored; strict runtime lint passes. See
 [the restored coverage](chief-output-recovery-coverage.md). Production code is
 unchanged. Refresh the source hash without closing the full tests.rs review.
+
+## Shared Chief test owners reconciled on 2026-09-27
+
+Restore the remaining inherited async-message, MCP alias, unload-policy and
+misalignment recovery assertions. Map the complete shared test diff to current
+fixtures and dedicated modules in [the test reconciliation](chief-test-owner-reconciliation.md).
+All 159 Chief tests and strict runtime lint pass; 15 opt-in tests remain ignored.
+Close only chief/tests.rs. Shared native registry and desktop acceptance remain
+open; source-review closure is not feature completion.
