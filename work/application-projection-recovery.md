@@ -38,8 +38,8 @@ command-executor coverage, background/child approvals, enriched-diff pagination,
 model-review projection and connector/link metadata. The removed authentication
 history helper has no call site in the preserved Rust snapshot; it only filtered
 the retained test renderer by `auth_recovery`. No production route was removed
-with that helper. The oversized detail policy and remaining query-owner mapping
-still need an explicit disposition before closing this shared file.
+with that helper. The subsequent [application owner comparison](application-owner-reconciliation.md)
+records the oversized-detail policy and the complete query-owner mapping.
 
 ## Validation
 
