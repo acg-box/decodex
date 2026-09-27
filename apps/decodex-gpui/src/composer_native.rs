@@ -65,14 +65,14 @@ mod tests {
 		input.update(visual, |input, cx| {
 			input.set_native_part(original.clone(), cx).unwrap();
 			assert_eq!(input.content(), original["text"].as_str().unwrap());
-			input.replace_bytes(0..3, "hello", false, None, cx);
-			assert_eq!(input.native_part().unwrap()["text_elements"][0]["byteRange"]["start"], 6);
+			input.replace_bytes(0..3, "\thello", false, None, cx);
+			assert_eq!(input.native_part().unwrap()["text_elements"][0]["byteRange"]["start"], 7);
 		});
 		visual.update(|window, cx| input.update(cx, |input, cx| input.undo(&Undo, window, cx)));
 		input.update(visual, |input, _| assert_eq!(input.native_part(), Some(&original)));
 		visual.update(|window, cx| input.update(cx, |input, cx| input.redo(&Redo, window, cx)));
 		input.update(visual, |input, cx| {
-			assert!(input.content().starts_with("hello $skill"));
+			assert!(input.content().starts_with("\thello $skill"));
 			assert_eq!(input.native_part().unwrap()["extension"], "retain");
 			let before = input.native_part().cloned();
 			input.replace_bytes(7..8, "x", false, None, cx);
