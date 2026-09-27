@@ -274,3 +274,12 @@ Chief requires it. Do not add navigation solely to complete an acceptance fixtur
 The existing account-routing and native model-default correctness requirements
 remain distinct. See `initial-model-source-recovery.md` for the failed desktop
 attempt, preserved input, zero provider requests and the remaining boundary.
+
+## Restored optional exact model input
+
+[Exact model input](exact-model-input.md) restores an inherited existing-task
+control in the model menu. Apply an explicit ID to the next message without
+requiring a catalog entry. The native provider still decides availability.
+This optional field can be removed independently of the shared execution-intent
+and draft owners. Rendered tests do not close signed desktop acceptance or
+new-task freeform input review.

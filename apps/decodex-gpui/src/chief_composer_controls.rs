@@ -2,7 +2,10 @@
 use super::{ChiefSurface, SmoothControl, ui_theme};
 use gpui::{
 	Context, Role, SharedString, div,
-	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
+	prelude::{
+		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+		Styled,
+	},
 	px, rgb, rgba,
 };
 
@@ -68,6 +71,31 @@ pub(super) fn launch_mark() -> impl IntoElement {
 
 impl ChiefSurface {
 	pub(super) fn model_palette(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+		div()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.child(self.catalog_model_palette(cx))
+			.when(self.composer_manager.is_some() || self.root_id().is_some(), |panel| {
+				panel.child(
+					div()
+						.flex()
+						.flex_col()
+						.gap_1()
+						.child(
+							div()
+								.text_size(px(11.))
+								.text_color(rgb(ui_theme::TEXT_MUTED))
+								.child("Exact model ID"),
+						)
+						.child(div().h(px(36.)).child(self.model.clone()))
+						.child(self.apply_exact_model_button(cx)),
+				)
+			})
+			.into_any_element()
+	}
+
+	fn catalog_model_palette(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
 		let mut palette = div()
 			.id("native-model-palette")
 			.max_h(px(240.))
@@ -264,5 +292,79 @@ impl gpui::RenderOnce for PrimaryMark {
 			);
 		}
 		row
+	}
+}
+
+#[cfg(test)]
+mod exact_model_tests {
+	use super::super::*;
+	fn action(surface: &ChiefSurface, owner: &str) -> ChiefActionDto {
+		surface.configured_send(
+			EntityId::new(owner).unwrap(),
+			HistoryText::new("continue").unwrap(),
+			vec![],
+		)
+	}
+	fn choice(action: ChiefActionDto) -> decodex_protocol::ChiefExecutionOverrides {
+		let ChiefActionDto::SendConfigured { execution, .. } = action else {
+			panic!("expected queued message")
+		};
+		execution
+	}
+	struct ExactModelView {
+		surface: Entity<ChiefSurface>,
+	}
+	impl Render for ExactModelView {
+		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+			div().w(px(400.)).child(self.surface.update(cx, |s, cx| s.model_palette(cx)))
+		}
+	}
+
+	#[gpui::test]
+	fn exact_model_click_preserves_task_scope_without_a_catalog(cx: &mut gpui::TestAppContext) {
+		let (view, visual) = cx.add_window_view(|_, cx| {
+			let surface = cx.new(ChiefSurface::new);
+			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.steer = false;
+				s.model.update(cx, |input, cx| input.set_content("  provider-custom-model  ", cx));
+				assert!(choice(action(s, "chief")).is_empty());
+			});
+			ExactModelView { surface }
+		});
+		let surface = view.read_with(visual, |v, _| v.surface.clone());
+		visual.update(|window, cx| {
+			window.resize(gpui::size(px(900.), px(600.)));
+			window.draw(cx).clear();
+		});
+		let button = visual.debug_bounds("apply-exact-model").expect("exact model apply control");
+		visual.simulate_click(button.center(), Default::default());
+		surface.update(visual, |s, cx| {
+			assert_eq!(
+				choice(action(s, "chief")).model.as_ref().map(|m| m.as_str()),
+				Some("provider-custom-model"),
+				"feedback: {}",
+				s.feedback
+			);
+			assert!(choice(action(s, "other-manager")).is_empty());
+			assert!(!s.sending);
+			s.model.update(cx, |input, cx| input.set_content(" ", cx));
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(px(900.), px(600.)));
+			window.draw(cx).clear();
+		});
+		let button = visual.debug_bounds("apply-exact-model").expect("exact model apply control");
+		visual.simulate_click(button.center(), Default::default());
+		surface.update(visual, |s, _| {
+			assert_eq!(s.feedback, "Enter an exact model ID.");
+			assert_eq!(
+				choice(action(s, "chief")).model.as_ref().map(|m| m.as_str()),
+				Some("provider-custom-model"),
+				"feedback: {}",
+				s.feedback
+			);
+		});
 	}
 }
