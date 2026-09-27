@@ -55,6 +55,16 @@ six task-model tests pass, as does strict GPUI Clippy. See
 Close only this test-file row. No production behavior changes; shared source
 review and signed desktop acceptance remain open.
 
+## Optional voice settings reconciled on 2026-09-27
+
+Map all five settings source diffs and the complete inherited voice-settings note.
+Preserve the original mute/backlog and startup-failure reviews under a historical
+notice. Two GPUI and four runtime tests pass; two installed-native cases remain
+ignored. See
+[the complete mapping](voice-settings-reconciliation.md). Close these six file
+rows only; the optional picker, core effective-voice read and unpassed live-audio
+acceptance remain distinct. No product code changes.
+
 ## Usage research scope reconciled on 2026-09-27
 
 Map the complete inherited task-estimate note to its delivered runtime and panel
