@@ -9,6 +9,12 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Original PR retirement
+
+The later [PR1378 retirement review](pr1378-retirement.md) records commit-level
+coverage, the recovered MCP identity regression and the user-authorized cleanup.
+The preservation statements below describe the earlier audit state.
+
 ## Current source disposition on 2026-09-27
 
 At main `71479b917fc990847d392a483d478466c2696bf4`, all 360 rows have an
