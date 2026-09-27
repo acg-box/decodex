@@ -58,7 +58,7 @@ pub(crate) async fn record(
 		text.push_str(details);
 	}
 	let digest = Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
-	store.record_chief_config_warning(root.into(), generation.as_str().into(), digest, text).await
+	store.record_agent_config_warning(root.into(), generation.as_str().into(), digest, text).await
 }
 
 /// Shared host dispatch for process and task diagnostics.
@@ -111,7 +111,7 @@ pub(crate) async fn record_warning(
 	let text = format!("Codex warning: {}", value["message"].as_str().unwrap_or_default());
 	let digest = Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
 	store
-		.record_chief_native_warning(
+		.record_agent_native_warning(
 			root.into(),
 			generation.as_str().into(),
 			value["threadId"].as_str().map(str::to_owned),
@@ -125,7 +125,7 @@ pub(crate) async fn record_warning(
 /// Private error data and Debug output are never projected into the transcript.
 pub(crate) async fn record_settings_error(
 	store: &decodex_database::SqliteStore,
-	source: &crate::chief_usage_estimate::Source,
+	source: &crate::agent_usage_estimate::Source,
 	operation: &'static str,
 	error: &decodex_codex::app_server_client::ClientError,
 ) {

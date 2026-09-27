@@ -21,8 +21,8 @@ impl Default for InitializeCapabilities {
 	}
 }
 impl InitializeCapabilities {
-	/// Declare the form route consumed by the retained Chief request handler.
-	pub fn for_chief() -> Self {
+	/// Declare the form route consumed by the retained Agent request handler.
+	pub fn for_agent() -> Self {
 		Self { extensions: Some(json!({"openai/elicitation":{"form":{}}})), ..Self::default() }
 	}
 }
@@ -32,17 +32,17 @@ mod tests {
 	use super::InitializeCapabilities;
 	use serde_json::json;
 	#[test]
-	fn only_chief_advertises_the_supported_form_extension() {
+	fn only_agent_advertises_the_supported_form_extension() {
 		let ordinary = serde_json::to_value(InitializeCapabilities::default()).unwrap();
 		assert_eq!(
 			ordinary,
 			json!({"experimentalApi":true,"optOutNotificationMethods":["rawResponseItem/completed"]})
 		);
-		let mut chief = serde_json::to_value(InitializeCapabilities::for_chief()).unwrap();
+		let mut agent = serde_json::to_value(InitializeCapabilities::for_agent()).unwrap();
 		assert_eq!(
-			chief.as_object_mut().unwrap().remove("extensions"),
+			agent.as_object_mut().unwrap().remove("extensions"),
 			Some(json!({"openai/elicitation":{"form":{}}}))
 		);
-		assert_eq!(chief, ordinary);
+		assert_eq!(agent, ordinary);
 	}
 }

@@ -936,15 +936,14 @@ struct ResetCardAccountWire: Decodable, Sendable {
 	}
 
 	private static func isCanonicalAlias(_ value: String) -> Bool {
-		let bytes = Array(value.utf8)
-		guard (2 ... 16).contains(bytes.count),
-			let first = bytes.first,
-			(65 ... 90).contains(first)
-		else {
-			return false
-		}
-		return bytes.dropFirst().allSatisfy { (97 ... 122).contains($0) }
-	}
+        let words = value.split(separator: " ", omittingEmptySubsequences: false)
+        return (1 ... 2).contains(words.count) && words.allSatisfy { word in
+            let bytes = Array(word.utf8)
+            guard (2 ... 16).contains(bytes.count), let first = bytes.first else { return false }
+            return (65 ... 90).contains(first) && bytes.dropFirst().allSatisfy { (97 ... 122).contains($0) }
+        }
+    }
+
 }
 
 struct AccountCredentialBindingWire: Decodable, Sendable {

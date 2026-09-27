@@ -1,6 +1,6 @@
 //! Local desktop editor snapshots. These records never authorize execution.
 use crate::{
-	ChiefAttachmentDto, ChiefExecutionOverrides, ChiefSteerIdentity, ChiefTaskReferenceDto,
+	AgentAttachmentDto, AgentExecutionOverrides, AgentSteerIdentity, AgentTaskReferenceDto,
 	EntityId, WireText,
 };
 use serde::{Deserialize, Serialize};
@@ -61,7 +61,7 @@ pub struct DesktopProfileDraft {
 	/// Primary editors parked while another work item is selected.
 	pub parked: BTreeMap<String, DesktopComposerDraft>,
 	/// Explicit next-message settings and their local comparison revision.
-	pub execution: BTreeMap<String, (u64, ChiefExecutionOverrides)>,
+	pub execution: BTreeMap<String, (u64, AgentExecutionOverrides)>,
 	/// Monotonic comparison revision used by the explicit settings owner.
 	pub execution_revision: u64,
 	/// Source-bound question editors, including the retained custom alternative.
@@ -86,9 +86,9 @@ pub struct DesktopComposerDraft {
 	/// Complete editor text. An empty string is an explicit empty edit.
 	pub text: String,
 	/// Original selected files, not newly discovered attachments.
-	pub attachments: Vec<ChiefAttachmentDto>,
+	pub attachments: Vec<AgentAttachmentDto>,
 	/// Original selected tasks and their native thread identity.
-	pub references: Vec<ChiefTaskReferenceDto>,
+	pub references: Vec<AgentTaskReferenceDto>,
 }
 
 /// User choices that opt out of native new-task defaults.
@@ -103,7 +103,7 @@ pub struct DesktopCreationIntent {
 	pub service_tier: bool,
 }
 
-/// Editable setup before a Chief exists; values are drafts, never launch authority.
+/// Editable setup before a Agent exists; values are drafts, never launch authority.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopCreationSetup {
@@ -129,7 +129,7 @@ pub struct DesktopCreationSetup {
 	/// Displayed service tier, without inferring consent from discovery.
 	pub service_tier: Option<crate::ServiceTier>,
 	/// Displayed sandbox choice; runtime policy still controls admission.
-	pub sandbox: crate::ChiefSandboxDto,
+	pub sandbox: crate::AgentSandboxDto,
 }
 
 /// A retained asynchronous question editor, bound to its original source.
@@ -157,15 +157,15 @@ pub struct DesktopQuestionDraft {
 #[serde(deny_unknown_fields)]
 pub struct DesktopPendingDraft {
 	/// Exact native steering receipt identity, when this was a steering command.
-	pub steer: Option<ChiefSteerIdentity>,
+	pub steer: Option<AgentSteerIdentity>,
 	/// Original source editor's work owner.
 	pub owner: Option<EntityId>,
 	/// Text at dispatch time; later edits must not be cleared by its receipt.
 	pub text: Option<String>,
 	/// Files at dispatch time.
-	pub attachments: Option<Vec<ChiefAttachmentDto>>,
+	pub attachments: Option<Vec<AgentAttachmentDto>>,
 	/// Task references at dispatch time.
-	pub references: Option<Vec<ChiefTaskReferenceDto>>,
+	pub references: Option<Vec<AgentTaskReferenceDto>>,
 	/// Exact explicit-setting revision captured by the submitted message.
 	pub execution: Option<(EntityId, u64)>,
 }
@@ -400,12 +400,12 @@ mod tests {
 				work_id: Some(EntityId::new("work").unwrap()),
 				thread_id: Some(WireText::new("native-thread").unwrap()),
 				text: "Keep the draft — 未发送".into(),
-				attachments: vec![ChiefAttachmentDto {
+				attachments: vec![AgentAttachmentDto {
 					path: crate::ConversationWorkingDirectory::new("/tmp/selected image.png")
 						.unwrap(),
 					image: true,
 				}],
-				references: vec![ChiefTaskReferenceDto {
+				references: vec![AgentTaskReferenceDto {
 					work_id: EntityId::new("related").unwrap(),
 					thread_id: WireText::new("original-related-thread").unwrap(),
 					title: WireText::new("Reference").unwrap(),
@@ -419,7 +419,7 @@ mod tests {
 			"work".into(),
 			(
 				4,
-				ChiefExecutionOverrides {
+				AgentExecutionOverrides {
 					reasoning_effort: Some(crate::ConversationReasoningEffort::High),
 					..Default::default()
 				},
@@ -435,7 +435,7 @@ mod tests {
 			collapsed: true,
 		});
 		profile.pending = Some(DesktopPendingDraft {
-			steer: Some(ChiefSteerIdentity {
+			steer: Some(AgentSteerIdentity {
 				work_id: EntityId::new("work").unwrap(),
 				thread_id: WireText::new("native-thread").unwrap(),
 				turn_id: WireText::new("native-turn").unwrap(),
@@ -468,7 +468,7 @@ mod tests {
 			reasoning_effort: crate::ConversationReasoningEffort::High,
 			fast: false,
 			service_tier: Some(crate::ServiceTier::new("flex").unwrap()),
-			sandbox: crate::ChiefSandboxDto::ReadOnly,
+			sandbox: crate::AgentSandboxDto::ReadOnly,
 		};
 		let mut document = DesktopDraftDocument::default();
 		document.unbound.creation = Some(setup.clone());

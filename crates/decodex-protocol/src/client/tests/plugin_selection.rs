@@ -20,7 +20,7 @@ async fn plugin_selection_waits_for_its_original_reply_without_retry() {
 			panic!("command")
 		};
 		assert!(
-			matches!(&command.payload, crate::CommandPayload::Chief { action } if matches!(action.as_ref(), crate::ChiefActionDto::SetTaskPlugin { work_id, thread_id, plugin_id, enabled: false, .. } if work_id.as_str()=="work" && thread_id.as_str()=="thread" && plugin_id.as_str()=="plugin"))
+			matches!(&command.payload, crate::CommandPayload::Agent { action } if matches!(action.as_ref(), crate::AgentActionDto::SetTaskPlugin { work_id, thread_id, plugin_id, enabled: false, .. } if work_id.as_str()=="work" && thread_id.as_str()=="thread" && plugin_id.as_str()=="plugin"))
 		);
 		socket
 			.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
@@ -43,7 +43,7 @@ async fn plugin_selection_waits_for_its_original_reply_without_retry() {
 				idempotency_key: command.idempotency_key,
 				outcome: CommandOutcome::Succeeded,
 				entity_revision: Some(EntityRevision(0)),
-				payload: Some(ResultPayload::ChiefAccepted {
+				payload: Some(ResultPayload::AgentAccepted {
 					work_id: EntityId::new("work").unwrap(),
 				}),
 				error: None,
@@ -56,9 +56,9 @@ async fn plugin_selection_waits_for_its_original_reply_without_retry() {
 		);
 		listener.cleanup().unwrap();
 	});
-	let response = crate::ChiefClient::new(profile)
+	let response = crate::AgentClient::new(profile)
 		.execute(
-			crate::ChiefActionDto::SetTaskPlugin {
+			crate::AgentActionDto::SetTaskPlugin {
 				work_id: EntityId::new("work").unwrap(),
 				thread_id: EntityId::new("thread").unwrap(),
 				review_token: WireText::new("a".repeat(64)).unwrap(),
@@ -71,7 +71,7 @@ async fn plugin_selection_waits_for_its_original_reply_without_retry() {
 		.unwrap();
 	server.await.unwrap();
 	assert!(
-		matches!(response, crate::ChiefCommandResponse::Accepted { work_id } if work_id.as_str()=="work"),
+		matches!(response, crate::AgentCommandResponse::Accepted { work_id } if work_id.as_str()=="work"),
 		"The original reply must retain its native settings budget"
 	);
 }

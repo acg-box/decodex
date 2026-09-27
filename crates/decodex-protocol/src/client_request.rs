@@ -1,7 +1,7 @@
 //! Assemble selected request content without exposing incomplete actions to callers.
-use super::{ChiefClient, ClientFailure, REQUEST_CLIENT_TIMEOUT, close_one_shot_socket};
+use super::{AgentClient, ClientFailure, REQUEST_CLIENT_TIMEOUT, close_one_shot_socket};
 use crate::{
-	ChiefRequestResult as Request, ChiefRequestText, EntityId, QueryPayload, QueryResultPayload,
+	AgentRequestResult as Request, AgentRequestText, EntityId, QueryPayload, QueryResultPayload,
 	WireText,
 };
 use tokio::time;
@@ -21,7 +21,7 @@ fn valid_owner(event_id: i64, expected: i64, work: &str, method: &str) -> bool {
 }
 
 pub(super) async fn collect(
-	client: &ChiefClient,
+	client: &AgentClient,
 	expected: i64,
 	first: Request,
 ) -> Result<Request, ClientFailure> {
@@ -94,15 +94,15 @@ pub(super) async fn collect(
 				event_id: expected,
 				work_id: owner,
 				method,
-				request_json: ChiefRequestText::new(content)
+				request_json: AgentRequestText::new(content)
 					.map_err(|_| ClientFailure::ProtocolMalformed)?,
 			});
 		}
 		let completed = time::timeout(
 			REQUEST_CLIENT_TIMEOUT,
 			client.transport.query_inner(
-				"chief-request-page",
-				QueryPayload::GetChiefRequestPage {
+				"agent-request-page",
+				QueryPayload::GetAgentRequestPage {
 					event_id: expected,
 					digest: WireText::new(digest.clone())
 						.map_err(|_| ClientFailure::ProtocolMalformed)?,
@@ -113,7 +113,7 @@ pub(super) async fn collect(
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
-		let QueryResultPayload::ChiefRequest(next) = completed.value else {
+		let QueryResultPayload::AgentRequest(next) = completed.value else {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
 		page = next;

@@ -22,7 +22,7 @@ use unicode_segmentation as _;
 use unicode_width as _;
 
 use decodex_protocol::WeatherForecast as Forecast;
-#[path = "../src/chief_weather.rs"] mod weather_card;
+#[path = "../src/agent_weather.rs"] mod weather_card;
 struct Preview {
 	forecast: Forecast,
 	copied: bool,

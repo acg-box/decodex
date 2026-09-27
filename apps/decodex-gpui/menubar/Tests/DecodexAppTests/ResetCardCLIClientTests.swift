@@ -12,6 +12,17 @@ final class ResetCardNativeClientTests: XCTestCase {
 		ResetCardAuthority(profileName: "local", serverID: serverID)
 	}
 
+	func testCanonicalAccountAliasAllowsSeededNames() throws {
+		for alias in ["Val Abbott", "Emery Sinclair"] {
+			let json = nativeAccountJSON(accountID: accountID, alias: alias, revision: 1)
+			XCTAssertNoThrow(try JSONDecoder().decode(ResetCardAccountWire.self, from: Data(json.utf8)).record())
+		}
+		for alias in ["Val-a70f", "Val  Abbott", "Val Abbott Extra"] {
+			let json = nativeAccountJSON(accountID: accountID, alias: alias, revision: 1)
+			XCTAssertThrowsError(try JSONDecoder().decode(ResetCardAccountWire.self, from: Data(json.utf8)).record())
+		}
+	}
+
 	func testNativeListBindsReturnedAuthorityAndUsesRoutingOrder() async throws {
 		let accountID = accountID
 		let secondAccountID = secondAccountID

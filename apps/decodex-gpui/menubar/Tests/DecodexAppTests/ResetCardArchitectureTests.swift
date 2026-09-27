@@ -199,7 +199,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 			support.contains("override func hitTest(_: NSPoint) -> NSView?")
 		)
 		XCTAssertTrue(
-			rows.contains("isIdentityHovered || isReorderHandleHovered")
+			rows.contains("isAccountCardHovered || isReorderHandleHovered")
 		)
 		XCTAssertFalse(rows.contains("DECODEX_HOVER_DEBUG"))
 		XCTAssertFalse(panel.contains("DECODEX_HOVER_DEBUG"))

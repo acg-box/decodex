@@ -83,7 +83,7 @@ use crate::account_launch::process::{
 	ChatgptRefreshProjection, ConversationPreSpawnCheck, ConversationProcessError,
 	ConversationProcessEvent, ConversationRejectionReason, CredentialProjection, CredentialVault,
 	CredentialVaultError, EstablishedOrdinaryThread, PreparedThreadStart, PreparedTurnStart,
-	ResumedOrdinaryThread, StartedOrdinaryTurn, spawn_admitted_chief_process,
+	ResumedOrdinaryThread, StartedOrdinaryTurn, spawn_admitted_agent_process,
 	spawn_admitted_conversation_process,
 };
 
@@ -588,12 +588,12 @@ struct ConversationRuntimeInner {
 	event_stream_closed: tokio::sync::watch::Sender<bool>,
 	workers: AsyncMutex<JoinSet<()>>,
 	shutting_down: Arc<std::sync::atomic::AtomicBool>,
-	chief_launch: AsyncMutex<()>,
-	chief_process: Mutex<Option<RetainedChiefProcess>>,
+	agent_launch: AsyncMutex<()>,
+	agent_process: Mutex<Option<RetainedAgentProcess>>,
 	initial_catalog: Arc<AsyncMutex<()>>,
 }
 
-pub(crate) struct StartChiefProcess {
+pub(crate) struct StartAgentProcess {
 	pub operation_key: String,
 	pub root_id: String,
 	pub working_directory: String,
@@ -601,7 +601,7 @@ pub(crate) struct StartChiefProcess {
 }
 
 /// Already authenticated and initialized; the runtime retains process ownership.
-pub(crate) struct ChiefConnection {
+pub(crate) struct AgentConnection {
 	pub client: decodex_codex::app_server_client::AppServerClient,
 	pub events: tokio_mpsc::Receiver<decodex_codex::app_server_client::ServerEvent>,
 	pub account_id: AccountId,
@@ -609,7 +609,7 @@ pub(crate) struct ChiefConnection {
 }
 
 #[derive(Debug)]
-pub(crate) enum ChiefLaunchError {
+pub(crate) enum AgentLaunchError {
 	QuotaDepleted,
 	Unavailable,
 	Conflict,
@@ -617,52 +617,52 @@ pub(crate) enum ChiefLaunchError {
 	Process(ConversationManualRecovery),
 }
 
-impl std::fmt::Display for ChiefLaunchError {
+impl std::fmt::Display for AgentLaunchError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Self::QuotaDepleted => formatter.write_str("This Chief's account has reached its usage limit. Conversation history is preserved. Check Accounts for the reset time."),
-            Self::Unavailable => formatter.write_str("Chief process is unavailable"),
+			Self::QuotaDepleted => formatter.write_str("This Agent's account has reached its usage limit. Conversation history is preserved. Check Accounts for the reset time."),
+            Self::Unavailable => formatter.write_str("Agent process is unavailable"),
 			Self::Conflict =>
-				formatter.write_str("Chief process authority conflicts with this request"),
+				formatter.write_str("Agent process authority conflicts with this request"),
 			Self::AccountSelection(recovery) => {
-				write!(formatter, "Chief account requires recovery: {recovery:?}")
+				write!(formatter, "Agent account requires recovery: {recovery:?}")
 			},
 			Self::Process(recovery) => {
-				write!(formatter, "Chief process requires recovery: {recovery:?}")
+				write!(formatter, "Agent process requires recovery: {recovery:?}")
 			},
 		}
 	}
 }
-impl std::error::Error for ChiefLaunchError {}
+impl std::error::Error for AgentLaunchError {}
 
-struct RetainedChiefProcess {
+struct RetainedAgentProcess {
 	root_id: String,
 	working_directory: String,
 	generation_id: ProcessGenerationId,
 	client: Option<decodex_codex::app_server_client::AppServerClient>,
 }
 
-fn chief_retirement_retry(
-	slot: Option<&RetainedChiefProcess>,
+fn agent_retirement_retry(
+	slot: Option<&RetainedAgentProcess>,
 	root_id: &str,
-) -> Result<bool, ChiefLaunchError> {
+) -> Result<bool, AgentLaunchError> {
 	match slot {
 		None => Ok(false),
 		Some(slot) if slot.root_id == root_id && slot.client.is_none() => Ok(true),
-		Some(_) => Err(ChiefLaunchError::Conflict),
+		Some(_) => Err(AgentLaunchError::Conflict),
 	}
 }
 
 enum AccountLaunchAdmission {
 	Conversation(FreshConversationProcessGeneration),
-	Chief { root_id: String, operation_key: String, generation_id: ProcessGenerationId },
+	Agent { root_id: String, operation_key: String, generation_id: ProcessGenerationId },
 }
 
 impl AccountLaunchAdmission {
 	fn generation_id(&self) -> ProcessGenerationId {
 		match self {
 			Self::Conversation(admission) => admission.generation_id().clone(),
-			Self::Chief { generation_id, .. } => generation_id.clone(),
+			Self::Agent { generation_id, .. } => generation_id.clone(),
 		}
 	}
 }
@@ -720,7 +720,7 @@ enum WorkerCommand {
 	),
 	Interrupt,
 	Shutdown,
-	ModelCatalog(tokio::sync::oneshot::Sender<Option<Vec<decodex_protocol::ChiefModelDto>>>),
+	ModelCatalog(tokio::sync::oneshot::Sender<Option<Vec<decodex_protocol::AgentModelDto>>>),
 }
 
 enum WorkerOutput {
@@ -883,16 +883,16 @@ impl ConversationRuntime {
 				event_stream_closed,
 				workers: AsyncMutex::new(JoinSet::new()),
 				shutting_down: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-				chief_launch: AsyncMutex::new(()),
-				chief_process: Mutex::new(None),
+				agent_launch: AsyncMutex::new(()),
+				agent_process: Mutex::new(None),
 				initial_catalog: Arc::new(AsyncMutex::new(())),
 			}),
 		}
 	}
 
-	pub(crate) fn chief_client(&self) -> Option<decodex_codex::app_server_client::AppServerClient> {
+	pub(crate) fn agent_client(&self) -> Option<decodex_codex::app_server_client::AppServerClient> {
 		self.inner
-			.chief_process
+			.agent_process
 			.lock()
 			.unwrap_or_else(PoisonError::into_inner)
 			.as_ref()
@@ -902,9 +902,9 @@ impl ConversationRuntime {
 	pub(crate) async fn model_capabilities(
 		&self,
 		conversation: &str,
-	) -> decodex_protocol::ChiefCapabilitiesResult {
+	) -> decodex_protocol::AgentCapabilitiesResult {
 		if self.is_shutting_down() {
-			return decodex_protocol::ChiefCapabilitiesResult::Unavailable;
+			return decodex_protocol::AgentCapabilitiesResult::Unavailable;
 		}
 		let idle = {
 			let mut local = self.local();
@@ -931,7 +931,7 @@ impl ConversationRuntime {
 				.await
 				.ok()
 				.and_then(Result::ok)
-				.unwrap_or(decodex_protocol::ChiefCapabilitiesResult::Unavailable);
+				.unwrap_or(decodex_protocol::AgentCapabilitiesResult::Unavailable);
 		}
 		self.active_model_capabilities(conversation).await
 	}
@@ -940,8 +940,8 @@ impl ConversationRuntime {
 		&self,
 		conversation: String,
 		session: LocalSession,
-	) -> decodex_protocol::ChiefCapabilitiesResult {
-		use decodex_protocol::ChiefCapabilitiesResult;
+	) -> decodex_protocol::AgentCapabilitiesResult {
+		use decodex_protocol::AgentCapabilitiesResult;
 		let before =
 			self.inner.accounts.inspect(&session.account_id).await.ok().map(|v| v.account.revision);
 		let control = self.inner.process_generations.clone();
@@ -949,7 +949,7 @@ impl ConversationRuntime {
 		let result = if before.is_some() {
 			task::spawn_blocking(move || {
 				control.with_fenced_child(&process, |child| {
-					let mut pages = crate::chief_capabilities::ModelCatalogPages::default();
+					let mut pages = crate::agent_capabilities::ModelCatalogPages::default();
 					let mut cursor = None;
 					let deadline = Instant::now() + Duration::from_secs(8);
 					for _ in 0..8 {
@@ -979,78 +979,78 @@ impl ConversationRuntime {
 			self.inner.accounts.inspect(&session.account_id).await.ok().map(|v| v.account.revision);
 		let mut local = self.local();
 		let Some(task) = local.get_mut(&conversation) else {
-			return ChiefCapabilitiesResult::Unavailable;
+			return AgentCapabilitiesResult::Unavailable;
 		};
 		if !matches!(&task.state,LocalTaskState::CatalogReading(current) if same_local_process(current, &session))
 		{
-			return ChiefCapabilitiesResult::Unavailable;
+			return AgentCapabilitiesResult::Unavailable;
 		}
 		task.state = LocalTaskState::Ready(session);
 		if before.is_none() || before != after {
-			return ChiefCapabilitiesResult::Unavailable;
+			return AgentCapabilitiesResult::Unavailable;
 		}
-		result.map_or(ChiefCapabilitiesResult::Unavailable, |models| {
-			ChiefCapabilitiesResult::Available { models, memory_enabled: None }
+		result.map_or(AgentCapabilitiesResult::Unavailable, |models| {
+			AgentCapabilitiesResult::Available { models, memory_enabled: None }
 		})
 	}
 
 	async fn active_model_capabilities(
 		&self,
 		conversation: &str,
-	) -> decodex_protocol::ChiefCapabilitiesResult {
-		use decodex_protocol::ChiefCapabilitiesResult;
+	) -> decodex_protocol::AgentCapabilitiesResult {
+		use decodex_protocol::AgentCapabilitiesResult;
 		let (source, commands) = {
 			let local = self.local();
 			let Some(LocalTask { state: LocalTaskState::Active { session, commands, .. }, .. }) =
 				local.get(conversation)
 			else {
-				return ChiefCapabilitiesResult::Unavailable;
+				return AgentCapabilitiesResult::Unavailable;
 			};
 			(session.clone(), commands.clone())
 		};
 		let Ok(before) = self.inner.accounts.inspect(&source.account_id).await else {
-			return ChiefCapabilitiesResult::Unavailable;
+			return AgentCapabilitiesResult::Unavailable;
 		};
 		let (reply, result) = tokio::sync::oneshot::channel();
 		if commands.try_send(WorkerCommand::ModelCatalog(reply)).is_err() {
-			return ChiefCapabilitiesResult::Unavailable;
+			return AgentCapabilitiesResult::Unavailable;
 		}
 		let Ok(Ok(Some(models))) = tokio::time::timeout(Duration::from_secs(12), result).await
 		else {
-			return ChiefCapabilitiesResult::Unavailable;
+			return AgentCapabilitiesResult::Unavailable;
 		};
 		let Ok(after) = self.inner.accounts.inspect(&source.account_id).await else {
-			return ChiefCapabilitiesResult::Unavailable;
+			return AgentCapabilitiesResult::Unavailable;
 		};
 		if before.account.revision != after.account.revision {
-			return ChiefCapabilitiesResult::Unavailable;
+			return AgentCapabilitiesResult::Unavailable;
 		}
 		let local = self.local();
 		let same = matches!(local.get(conversation),Some(LocalTask {state:LocalTaskState::Active{session,..}|LocalTaskState::Ready(session),..}) if same_local_process(session, &source));
 		if !same {
-			return ChiefCapabilitiesResult::Unavailable;
+			return AgentCapabilitiesResult::Unavailable;
 		}
-		ChiefCapabilitiesResult::Available { models, memory_enabled: None }
+		AgentCapabilitiesResult::Available { models, memory_enabled: None }
 	}
 
-	pub(crate) fn chief_catalog_client(
+	pub(crate) fn agent_catalog_client(
 		&self,
 	) -> Option<(ProcessGenerationId, decodex_codex::app_server_client::AppServerClient)> {
-		self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner).as_ref().and_then(
+		self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner).as_ref().and_then(
 			|process| process.client.clone().map(|client| (process.generation_id.clone(), client)),
 		)
 	}
 
 	/// Actual shared process directory, not a child thread's configured directory.
-	pub(crate) fn chief_input_directory(&self, generation: &ProcessGenerationId) -> Option<String> {
-		let slot = self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner);
+	pub(crate) fn agent_input_directory(&self, generation: &ProcessGenerationId) -> Option<String> {
+		let slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner);
 		let process = slot.as_ref()?;
 		(process.generation_id == *generation && process.client.is_some())
 			.then(|| process.working_directory.clone())
 	}
 
 	/// Bind account-scoped observations to retained process admission and credential revision.
-	pub(crate) async fn chief_usage_source(
+	pub(crate) async fn agent_usage_source(
 		&self,
 	) -> Option<(
 		ProcessGenerationId,
@@ -1059,23 +1059,23 @@ impl ConversationRuntime {
 		decodex_codex::app_server_client::AppServerClient,
 	)> {
 		let (root, generation, client) = {
-			let slot = self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner);
+			let slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner);
 			let process = slot.as_ref()?;
 			(process.root_id.clone(), process.generation_id.clone(), process.client.clone()?)
 		};
-		let binding = self.inner.store.read_chief_process_binding(&root).await.ok()??;
+		let binding = self.inner.store.read_agent_process_binding(&root).await.ok()??;
 		if binding.generation_id != generation {
 			return None;
 		}
 		let inspection = self.inner.accounts.inspect(&binding.account_id).await.ok()?;
-		if self.chief_catalog_client().is_none_or(|(current, _)| current != generation) {
+		if self.agent_catalog_client().is_none_or(|(current, _)| current != generation) {
 			return None;
 		}
 		Some((generation, binding.account_id, inspection.account.revision, client))
 	}
 
-	pub(crate) async fn chief_account_exhausted(&self, root: &str) -> bool {
-		let Ok(Some(binding)) = self.inner.store.read_chief_process_binding(root).await else {
+	pub(crate) async fn agent_account_exhausted(&self, root: &str) -> bool {
+		let Ok(Some(binding)) = self.inner.store.read_agent_process_binding(root).await else {
 			return false;
 		};
 		let Ok(inspection) = self.inner.accounts.inspect(&binding.account_id).await else {
@@ -1094,12 +1094,12 @@ impl ConversationRuntime {
 		)
 	}
 
-	async fn select_chief_account(
+	async fn select_agent_account(
 		&self,
 		account: Option<&AccountId>,
 		now: i64,
-	) -> Result<crate::account_service::AccountSelectionResult, ChiefLaunchError> {
-		match self.inner.accounts.select_chief_route(account, now).await {
+	) -> Result<crate::account_service::AccountSelectionResult, AgentLaunchError> {
+		match self.inner.accounts.select_agent_route(account, now).await {
 			Ok(selected) => Ok(selected),
 			Err(failure) => {
 				if failure.recovery == decodex_core::AccountSelectionRecovery::RefreshQuota
@@ -1112,39 +1112,39 @@ impl ConversationRuntime {
 								fact.used_percent >= 100 && fact.resets_at_unix_micros > now
 							})
 						}) {
-					return Err(ChiefLaunchError::QuotaDepleted);
+					return Err(AgentLaunchError::QuotaDepleted);
 				}
-				Err(ChiefLaunchError::AccountSelection(failure.recovery))
+				Err(AgentLaunchError::AccountSelection(failure.recovery))
 			},
 		}
 	}
 
-	/// Open one retained Chief connection using stored account authority and durable admission.
-	/// The caller must first persist the Chief root. No ordinary Turn is created here.
-	pub(crate) async fn open_chief_connection(
+	/// Open one retained Agent connection using stored account authority and durable admission.
+	/// The caller must first persist the Agent root. No ordinary Turn is created here.
+	pub(crate) async fn open_agent_connection(
 		&self,
-		request: StartChiefProcess,
-	) -> Result<ChiefConnection, ChiefLaunchError> {
-		let _launch = self.inner.chief_launch.lock().await;
+		request: StartAgentProcess,
+	) -> Result<AgentConnection, AgentLaunchError> {
+		let _launch = self.inner.agent_launch.lock().await;
 		let _catalog = self.inner.initial_catalog.lock().await;
 		if self.is_shutting_down() {
-			return Err(ChiefLaunchError::Unavailable);
+			return Err(AgentLaunchError::Unavailable);
 		}
 		let retry_retirement = {
-			let slot = self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner);
-			chief_retirement_retry(slot.as_ref(), &request.root_id)?
+			let slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner);
+			agent_retirement_retry(slot.as_ref(), &request.root_id)?
 		};
 		// A prior close can outlive its bounded wait. Recheck only the revoked
 		// owner's exact death authority; never replace a live or foreign owner.
-		if retry_retirement && !self.retire_chief_slot().await {
-			return Err(ChiefLaunchError::Conflict);
+		if retry_retirement && !self.retire_agent_slot().await {
+			return Err(AgentLaunchError::Conflict);
 		}
 		let prior = self
 			.inner
 			.store
-			.read_chief_process_binding(&request.root_id)
+			.read_agent_process_binding(&request.root_id)
 			.await
-			.map_err(|_| ChiefLaunchError::Unavailable)?;
+			.map_err(|_| AgentLaunchError::Unavailable)?;
 		let account_id = prior
 			.as_ref()
 			.map(|binding| &binding.account_id)
@@ -1152,24 +1152,24 @@ impl ConversationRuntime {
 			.cloned();
 		let now = std::time::SystemTime::now()
 			.duration_since(std::time::UNIX_EPOCH)
-			.map_err(|_| ChiefLaunchError::Unavailable)?
+			.map_err(|_| AgentLaunchError::Unavailable)?
 			.as_micros();
-		let now = i64::try_from(now).map_err(|_| ChiefLaunchError::Unavailable)?;
-		let selected = self.select_chief_account(account_id.as_ref(), now).await?;
+		let now = i64::try_from(now).map_err(|_| AgentLaunchError::Unavailable)?;
+		let selected = self.select_agent_account(account_id.as_ref(), now).await?;
 		let account_id = selected.account.account_id;
 		let credential = self
 			.inner
 			.accounts
 			.process_credential(&account_id, selected.account.revision)
 			.await
-			.map_err(|error| ChiefLaunchError::Process(account_recovery(error)))?;
+			.map_err(|error| AgentLaunchError::Process(account_recovery(error)))?;
 		let generation_id = ProcessGenerationId::new(derived_uuid(
-			"chief-process-generation",
+			"agent-process-generation",
 			&[&request.root_id, &request.operation_key],
 		))
-		.map_err(|_| ChiefLaunchError::Conflict)?;
-		*self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner) =
-			Some(RetainedChiefProcess {
+		.map_err(|_| AgentLaunchError::Conflict)?;
+		*self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner) =
+			Some(RetainedAgentProcess {
 				root_id: request.root_id.clone(),
 				working_directory: request.working_directory.clone(),
 				generation_id: generation_id.clone(),
@@ -1178,7 +1178,7 @@ impl ConversationRuntime {
 		let process = match self
 			.launch_account_process(
 				&account_id,
-				AccountLaunchAdmission::Chief {
+				AccountLaunchAdmission::Agent {
 					root_id: request.root_id.clone(),
 					operation_key: request.operation_key,
 					generation_id: generation_id.clone(),
@@ -1190,62 +1190,62 @@ impl ConversationRuntime {
 		{
 			Ok(process) => process,
 			Err(error) => {
-				self.retire_chief_slot().await;
-				return Err(ChiefLaunchError::Process(error));
+				self.retire_agent_slot().await;
+				return Err(AgentLaunchError::Process(error));
 			},
 		};
 		let control = self.inner.process_generations.clone();
 		let attached = task::spawn_blocking(move || {
-			control.with_fenced_child(&process, AttestedProcessChild::retain_chief_connection)
+			control.with_fenced_child(&process, AttestedProcessChild::retain_agent_connection)
 		})
 		.await;
 		let (client, events) = match attached {
 			Ok(Ok(Ok(connection))) => connection,
 			_ => {
-				self.retire_chief_slot().await;
-				return Err(ChiefLaunchError::Unavailable);
+				self.retire_agent_slot().await;
+				return Err(AgentLaunchError::Unavailable);
 			},
 		};
 		if self.is_shutting_down() {
 			client.close();
-			self.retire_chief_slot().await;
-			return Err(ChiefLaunchError::Unavailable);
+			self.retire_agent_slot().await;
+			return Err(AgentLaunchError::Unavailable);
 		}
 		{
-			let mut slot = self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner);
+			let mut slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner);
 			let Some(slot) = slot.as_mut() else {
 				client.close();
-				return Err(ChiefLaunchError::Unavailable);
+				return Err(AgentLaunchError::Unavailable);
 			};
 			slot.client = Some(client.clone());
 			if self.is_shutting_down() {
 				client.close();
 			}
 		}
-		Ok(ChiefConnection { client, events, account_id, process_generation_id: generation_id })
+		Ok(AgentConnection { client, events, account_id, process_generation_id: generation_id })
 	}
 
 	/// Explicit host lifecycle close; completing an individual turn never calls this method.
-	pub(crate) async fn close_chief_connection(
+	pub(crate) async fn close_agent_connection(
 		&self,
 		root_id: &str,
-	) -> Result<(), ChiefLaunchError> {
-		let _launch = self.inner.chief_launch.lock().await;
+	) -> Result<(), AgentLaunchError> {
+		let _launch = self.inner.agent_launch.lock().await;
 		if self
 			.inner
-			.chief_process
+			.agent_process
 			.lock()
 			.unwrap_or_else(PoisonError::into_inner)
 			.as_ref()
 			.is_some_and(|slot| slot.root_id != root_id)
 		{
-			return Err(ChiefLaunchError::Conflict);
+			return Err(AgentLaunchError::Conflict);
 		}
-		if self.retire_chief_slot().await { Ok(()) } else { Err(ChiefLaunchError::Unavailable) }
+		if self.retire_agent_slot().await { Ok(()) } else { Err(AgentLaunchError::Unavailable) }
 	}
 
-	async fn retire_chief_slot(&self) -> bool {
-		let slot = self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner).take();
+	async fn retire_agent_slot(&self) -> bool {
+		let slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner).take();
 		let Some(mut slot) = slot else {
 			return true;
 		};
@@ -1270,7 +1270,7 @@ impl ConversationRuntime {
 				Err(_) => false,
 			};
 		if !retired {
-			*self.inner.chief_process.lock().unwrap_or_else(PoisonError::into_inner) = Some(slot);
+			*self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner) = Some(slot);
 		}
 		retired
 	}
@@ -4431,7 +4431,7 @@ impl ConversationRuntime {
 		self.inner.shutting_down.store(true, std::sync::atomic::Ordering::Release);
 		if let Some(client) = self
 			.inner
-			.chief_process
+			.agent_process
 			.lock()
 			.unwrap_or_else(PoisonError::into_inner)
 			.as_ref()
@@ -4449,8 +4449,8 @@ impl ConversationRuntime {
 
 	pub(crate) async fn wait_for_shutdown(&self) {
 		{
-			let _launch = self.inner.chief_launch.lock().await;
-			self.retire_chief_slot().await;
+			let _launch = self.inner.agent_launch.lock().await;
+			self.retire_agent_slot().await;
 		}
 		let mut workers = {
 			let mut shared = self.inner.workers.lock().await;
@@ -4683,7 +4683,7 @@ impl ConversationRuntime {
 		credential: AccountProcessCredential,
 		working_directory: &str,
 	) -> Result<FencedProcess, ConversationManualRecovery> {
-		let chief_requests = matches!(&admission, AccountLaunchAdmission::Chief { .. });
+		let agent_requests = matches!(&admission, AccountLaunchAdmission::Agent { .. });
 		let generation_id = admission.generation_id();
 		let callback: Arc<dyn ProcessAccountRefreshCallback> =
 			Arc::new(ConversationRefreshCallback {
@@ -4746,8 +4746,8 @@ impl ConversationRuntime {
 					selected_working_directory.clone(),
 				)
 				.await,
-			AccountLaunchAdmission::Chief { root_id, operation_key, generation_id } =>
-				spawn_admitted_chief_process(
+			AccountLaunchAdmission::Agent { root_id, operation_key, generation_id } =>
+				spawn_admitted_agent_process(
 					&self.inner.process_generations,
 					root_id,
 					operation_key,
@@ -4770,8 +4770,8 @@ impl ConversationRuntime {
 		let control = self.inner.process_generations.clone();
 		let initialized = task::spawn_blocking(move || {
 			control.with_fenced_child(&process_for_init, |child| {
-				if chief_requests {
-					child.initialize_chief_turns(&vault)
+				if agent_requests {
+					child.initialize_agent_turns(&vault)
 				} else {
 					child.initialize_ordinary_turns(&vault)
 				}
@@ -5830,7 +5830,7 @@ fn run_event_loop(
 				}
 			},
 			Ok(WorkerCommand::ModelCatalog(reply)) => {
-				let mut pages = crate::chief_capabilities::ModelCatalogPages::default();
+				let mut pages = crate::agent_capabilities::ModelCatalogPages::default();
 				let mut cursor = None;
 				let mut complete = false;
 				for _ in 0..8 {
@@ -6370,10 +6370,10 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn chief_retirement_retries_only_the_revoked_original_owner() {
-		let mut slot = super::RetainedChiefProcess {
+	async fn agent_retirement_retries_only_the_revoked_original_owner() {
+		let mut slot = super::RetainedAgentProcess {
 			working_directory: "/fixture".into(),
-			root_id: "chief".into(),
+			root_id: "agent".into(),
 			generation_id: decodex_core::ProcessGenerationId::new(derived_uuid(
 				"generation",
 				&["old"],
@@ -6384,16 +6384,16 @@ mod tests {
 		// A failed retirement retains this slot: later checks must still request
 		// exact retirement, not treat the existing slot as a permanent conflict.
 		for _ in 0..3 {
-			assert!(super::chief_retirement_retry(Some(&slot), "chief").unwrap());
+			assert!(super::agent_retirement_retry(Some(&slot), "agent").unwrap());
 		}
-		assert!(super::chief_retirement_retry(Some(&slot), "other").is_err());
+		assert!(super::agent_retirement_retry(Some(&slot), "other").is_err());
 		let (io, _server) = tokio::io::duplex(4096);
 		let (reader, writer) = tokio::io::split(io);
 		let (client, _) =
 			decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
 		slot.client = Some(client);
-		assert!(super::chief_retirement_retry(Some(&slot), "chief").is_err());
-		assert!(!super::chief_retirement_retry(None, "chief").unwrap());
+		assert!(super::agent_retirement_retry(Some(&slot), "agent").is_err());
+		assert!(!super::agent_retirement_retry(None, "agent").unwrap());
 	}
 
 	#[test]

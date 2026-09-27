@@ -14,7 +14,7 @@ pub(super) struct NavigationHistory {
 
 impl NavigationHistory {
 	pub(super) fn new() -> Self {
-		Self { entries: vec![Location { destination: Destination::Chief, work: None }], cursor: 0 }
+		Self { entries: vec![Location { destination: Destination::Agent, work: None }], cursor: 0 }
 	}
 
 	fn record(&mut self, location: Location) {
@@ -34,8 +34,8 @@ impl Shell {
 	pub(super) fn record_navigation(&mut self, cx: &Context<Self>) {
 		self.navigation.record(Location {
 			destination: self.selected,
-			work: if self.selected == Destination::Chief {
-				self.chief.read(cx).navigation_work()
+			work: if self.selected == Destination::Agent {
+				self.agent.read(cx).navigation_work()
 			} else {
 				None
 			},
@@ -47,8 +47,8 @@ impl Shell {
 		loop {
 			index = if forward { index.checked_add(1)? } else { index.checked_sub(1)? };
 			let location = self.navigation.entries.get(index)?;
-			if location.destination != Destination::Chief
-				|| self.chief.read(cx).can_restore_work(location.work.as_deref())
+			if location.destination != Destination::Agent
+				|| self.agent.read(cx).can_restore_work(location.work.as_deref())
 			{
 				return Some(index);
 			}
@@ -62,8 +62,8 @@ impl Shell {
 		};
 		let location = self.navigation.entries[index].clone();
 		self.navigation.cursor = index;
-		if location.destination == Destination::Chief {
-			self.chief.update(cx, |chief, cx| chief.restore_work(location.work.as_deref(), cx));
+		if location.destination == Destination::Agent {
+			self.agent.update(cx, |agent, cx| agent.restore_work(location.work.as_deref(), cx));
 		}
 		self.select_destination(location.destination, cx);
 		cx.notify();
@@ -123,7 +123,7 @@ mod tests {
 	#[test]
 	fn new_navigation_replaces_the_forward_branch_and_deduplicates_refreshes() {
 		let mut history = NavigationHistory::new();
-		let worker = Location { destination: Destination::Chief, work: Some("worker".into()) };
+		let worker = Location { destination: Destination::Agent, work: Some("worker".into()) };
 		history.record(worker.clone());
 		history.record(worker);
 		history.record(Location { destination: Destination::Settings, work: None });

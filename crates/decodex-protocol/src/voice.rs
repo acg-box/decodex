@@ -34,12 +34,12 @@ impl<'de> Deserialize<'de> for VoiceSdp {
 /// Explicit ephemeral media operations. Lost responses never authorize a new call.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
-pub enum ChiefVoiceRequest {
-	/// Authorize live voice on an existing Chief. The service persists the call identity only.
+pub enum AgentVoiceRequest {
+	/// Authorize live voice on an existing Agent. The service persists the call identity only.
 	Start {
 		/// Caller-generated unique call identity.
 		session_id: EntityId,
-		/// Exact existing Chief identity.
+		/// Exact existing Agent identity.
 		work_id: EntityId,
 		/// Private local WebRTC offer.
 		offer: VoiceSdp,
@@ -55,7 +55,7 @@ pub enum ChiefVoiceRequest {
 		session_id: EntityId,
 	},
 }
-impl ChiefVoiceRequest {
+impl AgentVoiceRequest {
 	/// Get the caller's stable call identity.
 	pub fn session_id(&self) -> &EntityId {
 		match self {
@@ -69,7 +69,7 @@ impl ChiefVoiceRequest {
 /// Service-side signaling state; the native media host separately proves audio connection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ChiefVoicePhase {
+pub enum AgentVoicePhase {
 	/// Waiting for native subscription signaling.
 	Connecting,
 	/// A remote SDP answer is available.
@@ -83,11 +83,11 @@ pub enum ChiefVoicePhase {
 /// Bounded transient call readback. No account token or audio is carried here.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct ChiefVoiceStatus {
+pub struct AgentVoiceStatus {
 	/// Exact caller identity.
 	pub session_id: EntityId,
 	/// Current signaling state.
-	pub phase: ChiefVoicePhase,
+	pub phase: AgentVoicePhase,
 	/// Private remote session description, only while this call is active.
 	pub answer: Option<VoiceSdp>,
 	/// Safe user-facing explanation, never a raw provider error.

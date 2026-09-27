@@ -1,7 +1,7 @@
 //! Opt-in subscription dictation qualification. PCM frames enter through stdin.
 use decodex_core as _;
 use decodex_protocol::{
-	ChiefClient, ClientProfile, DictationBuffer, DictationPhase, DictationRequest, EntityId,
+	AgentClient, ClientProfile, DictationBuffer, DictationPhase, DictationRequest, EntityId,
 };
 use futures_util as _;
 #[cfg(unix)] use libc as _;
@@ -19,7 +19,7 @@ use url as _;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let root = std::env::args().nth(1).ok_or("explicit service root required")?;
-	let client = ChiefClient::new(ClientProfile::load(Path::new(&root), None)?);
+	let client = AgentClient::new(ClientProfile::load(Path::new(&root), None)?);
 	let id = EntityId::new(format!(
 		"dictation-check-{}",
 		SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()

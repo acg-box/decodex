@@ -175,7 +175,6 @@ struct ResetCardAccountRow: View {
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var confirmation = ResetCardUseConfirmation()
 	@State private var confirmationSecondsRemaining = 0
-	@State private var isIdentityHovered = false
 	@State private var isReorderHandleHovered = false
 	@State private var isReorderHandleDragging = false
 
@@ -202,17 +201,12 @@ struct ResetCardAccountRow: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.compact) {
 			HStack(alignment: .center, spacing: PanelSpacing.section) {
-                HStack(spacing: PanelSpacing.micro) {
-                    reorderHandle
 				Button { detailsBinding.wrappedValue.toggle() } label: { identityHeader }
 					.buttonStyle(PanelPressButtonStyle(pressedScale: 0.99))
 					.frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(height: 20, alignment: .center)
+					.frame(height: 20, alignment: .center)
 					.accessibilityLabel(identityAccessibilityLabel)
 					.accessibilityValue(detailsBinding.wrappedValue ? "Expanded" : "Collapsed")
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .onHover { isIdentityHovered = $0 }
 				HStack(spacing: PanelSpacing.micro) {
 					AccountPrimaryActionsView(state: state, store: store)
 					AccountPowerButton(state: state, store: store)
@@ -228,11 +222,15 @@ struct ResetCardAccountRow: View {
 			.accessibilityLabel("Account usage details")
 			.opacity(state.account.enabled ? 1 : 0.45)
 			if exceptionalStatusText != nil { exceptionalStatus.transition(.panelInline) }
-			cardInventory
 			if detailsBinding.wrappedValue {
 				AccountProfileDetailView(state: state)
 					.padding(.top, PanelSpacing.related)
 					.transition(.panelInline)
+			}
+			HStack(alignment: .bottom, spacing: PanelSpacing.compact) {
+				cardInventory
+				Spacer(minLength: 0)
+				reorderHandle
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
@@ -315,7 +313,7 @@ struct ResetCardAccountRow: View {
 		store.canReorderAccounts
 			&& (
 				(
-					(isIdentityHovered || isReorderHandleHovered)
+					(isAccountCardHovered || isReorderHandleHovered)
 						&& isReorderGestureEnabled
 				)
 					|| isReorderHandleDragging
@@ -1049,7 +1047,7 @@ struct ResetCardQuotaWindowView: View {
 	}
 
 	private static func compactDateTime(_ date: Date) -> String {
-		let day = date.formatted(.dateTime.month(.abbreviated).day())
+		let day = date.formatted(.dateTime.month(.abbreviated).day(.twoDigits))
 		let time = date.formatted(
 			.dateTime
 				.hour(.twoDigits(amPM: .omitted))

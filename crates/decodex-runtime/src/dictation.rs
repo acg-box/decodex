@@ -40,7 +40,7 @@ impl DictationGateway {
 			let Some(client) = client else {
 				return failed(
 					id,
-					"The account is reconnecting. Try dictation when the Chief is ready.",
+					"The account is reconnecting. Try dictation when the Agent is ready.",
 				);
 			};
 			// Native authentication stays in this service and its same-process URLSession adapter.

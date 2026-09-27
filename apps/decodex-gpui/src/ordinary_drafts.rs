@@ -60,7 +60,7 @@ impl Shell {
 		let Some(directory) = self.conversations.working_directory() else { return };
 		self.conversations.require_saved_dispatch();
 		self.ordinary_syncing = true;
-		let stored = self.chief.read(cx).ordinary_storage_record(directory.as_str(), false);
+		let stored = self.agent.read(cx).ordinary_storage_record(directory.as_str(), false);
 		if stored != self.ordinary_last
 			&& let Some(stored) = stored.as_ref()
 		{
@@ -72,7 +72,7 @@ impl Shell {
 			} else {
 				// A live command retains its editor. Keep the requested replacement
 				// as a recoverable copy, then save subsequent local edits normally.
-				self.chief.update(cx, |surface, _| surface.defer_ordinary_restore());
+				self.agent.update(cx, |surface, _| surface.defer_ordinary_restore());
 			}
 		}
 		self.quick = self.conversations.snapshot();
@@ -101,18 +101,18 @@ impl Shell {
 		self.reconcile_pending_submission(cx);
 		if let Some(draft) = self.conversations.ordinary_draft(self.composer.read(cx).content()) {
 			let confirmed = self.conversations.confirmed_ordinary_commands();
-			let saved = self.chief.read(cx).ordinary_storage_record(directory.as_str(), true);
+			let saved = self.agent.read(cx).ordinary_storage_record(directory.as_str(), true);
 			let needs_write = stored.as_ref() != Some(&draft)
 				|| self.ordinary_last.as_ref() != Some(&draft)
 				|| saved.as_ref() != Some(&draft)
 				|| !confirmed.is_empty();
 			self.ordinary_last = Some(draft.clone());
 			if needs_write {
-				self.chief
+				self.agent
 					.update(cx, |surface, cx| surface.save_ordinary_storage(draft, &confirmed, cx));
 			}
 			if let Some(saved) =
-				self.chief.read(cx).ordinary_storage_record(directory.as_str(), true)
+				self.agent.read(cx).ordinary_storage_record(directory.as_str(), true)
 			{
 				self.conversations.release_saved_commands(&saved.unconfirmed);
 			}

@@ -16,7 +16,7 @@ GPUI embeds the images in the executable; no asset lookup depends on the checkou
 | minus.png | minus | Zoom out |
 | back.png | arrow.left | Back or parent graph scope |
 | forward.png | arrow.right | Forward in navigation history |
-| send.png | arrow.up | Send to Chief |
+| send.png | arrow.up | Send to Agent |
 
 Regenerate on macOS with the host Swift toolchain:
 

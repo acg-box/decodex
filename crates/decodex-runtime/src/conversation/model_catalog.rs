@@ -6,7 +6,7 @@ use super::{
 	SelectedWorkingDirectory, derived_uuid,
 };
 use decodex_protocol::{
-	ChiefModelDto, EntityId, InitialExecutionDefaults, InitialModelCatalogRequest,
+	AgentModelDto, EntityId, InitialExecutionDefaults, InitialModelCatalogRequest,
 	InitialModelCatalogResult, InitialModelDefaults, ModelCatalogPurpose,
 };
 use std::{
@@ -55,8 +55,8 @@ impl ConversationRuntime {
 		let now =
 			i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_micros()).ok()?;
 		let selected = match request.purpose {
-			ModelCatalogPurpose::Chief =>
-				self.select_chief_account(preferred.as_ref(), now).await.ok()?,
+			ModelCatalogPurpose::Agent =>
+				self.select_agent_account(preferred.as_ref(), now).await.ok()?,
 			ModelCatalogPurpose::Conversation if preferred.is_none() =>
 				self.inner.accounts.select_initial(now).await.ok()?,
 			ModelCatalogPurpose::Conversation => return None,
@@ -100,8 +100,8 @@ impl ConversationRuntime {
 		let now =
 			i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_micros()).ok()?;
 		let current = match request.purpose {
-			ModelCatalogPurpose::Chief =>
-				self.select_chief_account(preferred.as_ref(), now).await.ok()?,
+			ModelCatalogPurpose::Agent =>
+				self.select_agent_account(preferred.as_ref(), now).await.ok()?,
 			ModelCatalogPurpose::Conversation =>
 				self.inner.accounts.select_initial(now).await.ok()?,
 		};
@@ -126,7 +126,7 @@ impl ConversationRuntime {
 		directory: &str,
 		credential: AccountProcessCredential,
 		callback: Arc<dyn ProcessAccountRefreshCallback>,
-	) -> Option<(Vec<ChiefModelDto>, InitialModelDefaults)> {
+	) -> Option<(Vec<AgentModelDto>, InitialModelDefaults)> {
 		self.read_metadata_process(account, revision, directory, credential, callback, |child| {
 			read_initial_defaults(child, directory, || self.is_shutting_down())
 		})
@@ -175,15 +175,15 @@ impl ConversationRuntime {
 fn read_catalog(
 	child: &mut AttestedProcessChild,
 	cancelled: impl Fn() -> bool,
-) -> Option<Vec<ChiefModelDto>> {
+) -> Option<Vec<AgentModelDto>> {
 	read_catalog_with_default(child, cancelled).map(|(models, _)| models)
 }
 
 fn read_catalog_with_default(
 	child: &mut AttestedProcessChild,
 	cancelled: impl Fn() -> bool,
-) -> Option<(Vec<ChiefModelDto>, Option<decodex_protocol::ConversationModel>)> {
-	let mut pages = crate::chief_capabilities::ModelCatalogPages::default();
+) -> Option<(Vec<AgentModelDto>, Option<decodex_protocol::ConversationModel>)> {
+	let mut pages = crate::agent_capabilities::ModelCatalogPages::default();
 	let mut cursor = None;
 	let mut default_model = None;
 	let deadline = Instant::now() + Duration::from_secs(8);
@@ -233,7 +233,7 @@ fn read_initial_defaults(
 	child: &mut AttestedProcessChild,
 	directory: &str,
 	cancelled: impl Fn() -> bool,
-) -> Option<(Vec<ChiefModelDto>, InitialModelDefaults)> {
+) -> Option<(Vec<AgentModelDto>, InitialModelDefaults)> {
 	if cancelled() {
 		return None;
 	}

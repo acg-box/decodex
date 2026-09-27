@@ -39,7 +39,7 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertIn("decodex-database", transfer)
 
     def test_schema_is_versioned_and_owns_the_vertical_slice(self) -> None:
-        migration = read("database/migrations/0001_local_product.sql")
+        migration = read("database/migrations/0048_agent_baseline.sql")
         for table in (
             "schema_migrations",
             "accounts",
@@ -55,30 +55,12 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
             "provider_attempt_positive_evidence",
         ):
             with self.subTest(table=table):
-                self.assertRegex(migration, rf"CREATE TABLE {re.escape(table)}\s*\(")
+                self.assertRegex(migration, rf'CREATE TABLE "?{re.escape(table)}"?\s*\(')
         migrations = read("database/src/migrations.rs")
-        repair = read("database/migrations/0002_nonempty_task_instructions.sql")
-        execution_controls = read(
-            "database/migrations/0003_quick_task_execution_controls.sql"
-        )
-        desktop_settings = read("database/migrations/0011_desktop_settings.sql")
-        route_upgrade = read(
-            "database/migrations/0012_terminal_account_route_upgrade.sql"
-        )
-        self.assertIn("schema_migrations", migrations)
-        self.assertIn("0002_nonempty_task_instructions.sql", migrations)
-        self.assertIn("0003_quick_task_execution_controls.sql", migrations)
-        self.assertIn("0011_desktop_settings.sql", migrations)
-        self.assertIn("0012_terminal_account_route_upgrade.sql", migrations)
-        self.assertIn("BETWEEN 1 AND 65536", repair)
-        self.assertIn("Follow the user request for this task.", repair)
-        for column in ("model", "reasoning_effort", "fast"):
-            self.assertIn(f"ADD COLUMN {column}", execution_controls)
-        self.assertIn("CREATE TABLE desktop_settings", desktop_settings)
-        self.assertIn("show_in_menu_bar", desktop_settings)
-        self.assertIn("interrupted_by_upgrade", route_upgrade)
-        self.assertIn("DELETE FROM command_receipts", route_upgrade)
-        self.assertIn("legacy_account_route_interruptions", route_upgrade)
+        self.assertIn("0048_agent_baseline.sql", migrations)
+        self.assertIn("Follow the user request for this task.", migration)
+        for column in ("model", "reasoning_effort", "fast", "show_in_menu_bar"):
+            self.assertIn(column, migration)
         self.assertIn("TransactionBehavior::Immediate", migrations)
         self.assertIn("PRAGMA foreign_keys = ON", migrations)
         self.assertIn("PRAGMA synchronous = FULL", migrations)
@@ -123,7 +105,7 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertRegex(
             protocol,
             r"pub const CURRENT_VERSION:\s*ProtocolVersion\s*=\s*"
-            r"ProtocolVersion\s*\{\s*major:\s*2,\s*minor:\s*94\s*\};",
+            r"ProtocolVersion\s*\{\s*major:\s*2,\s*minor:\s*96\s*\};",
         )
         self.assertIn("Some(u64::from(CURRENT_VERSION.minor))", gpui)
         self.assertIn("decodex_app_native_client_abi_version", native_client)
@@ -170,7 +152,7 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertIn("order_out_native_windows();", main)
         self.assertIn("window.orderOut(None);", main)
         for daemon_owned_path in (
-            "database/migrations/0011_desktop_settings.sql",
+            "database/migrations/0048_agent_baseline.sql",
             "database/src/desktop_settings.rs",
             "crates/decodex-protocol/src/wire.rs",
             "crates/decodex-runtime/src/application.rs",
@@ -427,7 +409,7 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         ):
             self.assertFalse((ROOT / "crates/decodex-runtime/src" / retired).exists())
 
-    def test_chief_replaces_active_factory_but_preserves_historical_storage(self) -> None:
+    def test_agent_replaces_active_factory_but_preserves_historical_storage(self) -> None:
         wire = read("crates/decodex-protocol/src/wire.rs")
         commands = wire[wire.index("pub enum CommandPayload"):wire.index("pub enum ResultPayload")]
         for retired in ("CreateProgramCycle", "BindProgramDomainPack", "ContinueProgram", "RecordProgramReview"):
@@ -436,11 +418,11 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertNotIn("Destination::Factory", shell)
         for retired in ("programs.rs", "program_graph.rs", "factory_surface.rs"):
             self.assertFalse((ROOT / "apps/decodex-gpui/src" / retired).exists())
-        self.assertIn("GetChiefSnapshot", wire)
+        self.assertIn("GetAgentSnapshot", wire)
         self.assertIn("GetProgramCycle", wire)
         self.assertIn("ListPrograms", wire)
         self.assertIn("program_cycles", read("database/src/lib.rs"))
-        self.assertIn("chief_work_items", read("database/migrations/0013_chief_work.sql"))
+        self.assertIn("agent_work_items", read("database/migrations/0048_agent_baseline.sql"))
 
 
 if __name__ == "__main__":

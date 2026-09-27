@@ -242,10 +242,10 @@ impl Debug for ClientProfile {
 	}
 }
 
-/// Verified acceptance of one Chief command. Acceptance does not mean work completion.
+/// Verified acceptance of one Agent command. Acceptance does not mean work completion.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
-pub enum ChiefCommandResponse {
+pub enum AgentCommandResponse {
 	/// The service accepted the exact work identity.
 	Accepted {
 		/// Exact durable work identity accepted by the service.
@@ -263,11 +263,11 @@ pub enum ChiefCommandResponse {
 	},
 }
 
-/// Chief client over the existing same-UID, server-pinned transport.
-pub struct ChiefClient {
+/// Agent client over the existing same-UID, server-pinned transport.
+pub struct AgentClient {
 	transport: ResetCardClient,
 }
-impl ChiefClient {
+impl AgentClient {
 	/// Reconcile an exact send by reading its queue receipt. Never submit or retry it.
 	pub async fn prompt_input_send_status(
 		&self,
@@ -283,15 +283,15 @@ impl ChiefClient {
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
-				"chief-prompt-send",
-				QueryPayload::GetChiefPromptInputSend { identity: identity.clone() },
+				"agent-prompt-send",
+				QueryPayload::GetAgentPromptInputSend { identity: identity.clone() },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefPromptInputSend(status)
+			QueryResultPayload::AgentPromptInputSend(status)
 				if status.identity == identity
 					&& status.accepted_event_id.is_none_or(|id| id > 0) =>
 				Ok(status),
@@ -326,8 +326,8 @@ impl ChiefClient {
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
-				"chief-prompt-directory",
-				QueryPayload::GetChiefPromptInputDirectory {
+				"agent-prompt-directory",
+				QueryPayload::GetAgentPromptInputDirectory {
 					work_id: work.clone(),
 					thread_id: thread.clone(),
 				},
@@ -336,7 +336,7 @@ impl ChiefClient {
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
-		let QueryResultPayload::ChiefPromptInputDirectory {
+		let QueryResultPayload::AgentPromptInputDirectory {
 			work_id,
 			thread_id,
 			directory: Some(directory),
@@ -370,11 +370,11 @@ impl ChiefClient {
 		work: EntityId,
 		thread: crate::WireText,
 		input: &crate::PromptDraft,
-		execution: &crate::ChiefExecutionOverrides,
+		execution: &crate::AgentExecutionOverrides,
 	) -> Result<(), ClientFailure> {
 		self.transport.require_local_profile()?;
 		input.validate_native_input().map_err(|_| ClientFailure::ProtocolViolation)?;
-		let crate::ChiefModelSettingsResult::Available {
+		let crate::AgentModelSettingsResult::Available {
 			work_id,
 			thread_id,
 			model,
@@ -451,13 +451,13 @@ impl ChiefClient {
 			}
 			let complete = offset == encoded.len();
 			let action = if complete {
-				crate::ChiefActionDto::CompletePromptInputUpload { upload: upload.clone() }
+				crate::AgentActionDto::CompletePromptInputUpload { upload: upload.clone() }
 			} else {
 				let mut end = (offset + 65536).min(encoded.len());
 				while !encoded.is_char_boundary(end) {
 					end -= 1;
 				}
-				crate::ChiefActionDto::UploadPromptInput {
+				crate::AgentActionDto::UploadPromptInput {
 					upload: upload.clone(),
 					offset: offset as u64,
 					fragment: encoded[offset..end].into(),
@@ -469,10 +469,10 @@ impl ChiefClient {
 			let key = IdempotencyKey::new(decodex_core::BlobHash::digest(&bytes).to_hex())
 				.map_err(|_| ClientFailure::ProtocolMalformed)?;
 			match self.execute(action, key).await? {
-				ChiefCommandResponse::Rejected { .. } =>
+				AgentCommandResponse::Rejected { .. } =>
 					return Err(ClientFailure::ProtocolViolation),
-				ChiefCommandResponse::Accepted { .. }
-				| ChiefCommandResponse::PotentiallyDispatched { .. } => {},
+				AgentCommandResponse::Accepted { .. }
+				| AgentCommandResponse::PotentiallyDispatched { .. } => {},
 			}
 			status = self.prompt_input_upload_status(upload.clone()).await?;
 			if let crate::PromptInputUploadStatus::Receiving { received_bytes, .. } = &status
@@ -554,15 +554,15 @@ impl ChiefClient {
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
-				"chief-prompt-upload",
-				QueryPayload::GetChiefPromptInputUpload { upload: upload.clone() },
+				"agent-prompt-upload",
+				QueryPayload::GetAgentPromptInputUpload { upload: upload.clone() },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefPromptInputUpload(status)
+			QueryResultPayload::AgentPromptInputUpload(status)
 				if status.upload() == &upload && status.is_valid() =>
 				Ok(status),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -579,8 +579,8 @@ impl ChiefClient {
 		let completed = self
 			.transport
 			.query_inner(
-				"chief-prompt-edit",
-				QueryPayload::GetChiefPromptEdit {
+				"agent-prompt-edit",
+				QueryPayload::GetAgentPromptEdit {
 					work_id: work.clone(),
 					thread_id: thread.clone(),
 					review_token: review,
@@ -590,7 +590,7 @@ impl ChiefClient {
 			.await?;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefPromptEdit(status)
+			QueryResultPayload::AgentPromptEdit(status)
 				if status.work_id == work && status.thread_id == thread && status.is_valid() =>
 				Ok(status),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -603,15 +603,15 @@ impl ChiefClient {
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
-				"chief-recap",
-				QueryPayload::GetChiefRecap { work_id: work_id.clone() },
+				"agent-recap",
+				QueryPayload::GetAgentRecap { work_id: work_id.clone() },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefRecap(status)
+			QueryResultPayload::AgentRecap(status)
 				if status.work_id == work_id && status.is_valid() =>
 				Ok(status),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -622,7 +622,7 @@ impl ChiefClient {
 	pub async fn voice_settings(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::ChiefVoiceSettingsResult, ClientFailure> {
+	) -> Result<crate::AgentVoiceSettingsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -631,16 +631,16 @@ impl ChiefClient {
 		let completed = time::timeout(
 			Duration::from_secs(35),
 			transport.query_inner(
-				"chief-voice-settings",
-				QueryPayload::GetChiefVoiceSettings { work_id: work_id.clone() },
+				"agent-voice-settings",
+				QueryPayload::GetAgentVoiceSettings { work_id: work_id.clone() },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefVoiceSettings(result) => {
-				if let crate::ChiefVoiceSettingsResult::Available { work_id: actual, .. } = &result
+			QueryResultPayload::AgentVoiceSettings(result) => {
+				if let crate::AgentVoiceSettingsResult::Available { work_id: actual, .. } = &result
 					&& actual != &work_id
 				{
 					return Err(ClientFailure::ProtocolMalformed);
@@ -656,7 +656,7 @@ impl ChiefClient {
 		&self,
 		work_id: EntityId,
 		connector_id: crate::WireText,
-	) -> Result<crate::ChiefAppExposureResult, ClientFailure> {
+	) -> Result<crate::AgentAppExposureResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -665,8 +665,8 @@ impl ChiefClient {
 		let completed = time::timeout(
 			transport.timeout,
 			transport.query_inner(
-				"chief-app-exposure",
-				QueryPayload::GetChiefAppExposure {
+				"agent-app-exposure",
+				QueryPayload::GetAgentAppExposure {
 					work_id: work_id.clone(),
 					connector_id: connector_id.clone(),
 				},
@@ -676,8 +676,8 @@ impl ChiefClient {
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefAppExposure(result) => {
-				if matches!(&result,crate::ChiefAppExposureResult::Available {work_id: actual,connector_id: connector,..} if actual != &work_id || connector != &connector_id)
+			QueryResultPayload::AgentAppExposure(result) => {
+				if matches!(&result,crate::AgentAppExposureResult::Available {work_id: actual,connector_id: connector,..} if actual != &work_id || connector != &connector_id)
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -692,7 +692,7 @@ impl ChiefClient {
 		&self,
 		work_id: EntityId,
 		thread_id: EntityId,
-	) -> Result<crate::ChiefNativeGoalResult, ClientFailure> {
+	) -> Result<crate::AgentNativeGoalResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let expected = (work_id.clone(), thread_id.clone());
 		let transport = ResetCardClient {
@@ -702,16 +702,16 @@ impl ChiefClient {
 		let completed = time::timeout(
 			transport.timeout,
 			transport.query_inner(
-				"chief-native-goal",
-				QueryPayload::GetChiefNativeGoal { work_id, thread_id },
+				"agent-native-goal",
+				QueryPayload::GetAgentNativeGoal { work_id, thread_id },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefNativeGoal(result) => {
-				if matches!(&result,crate::ChiefNativeGoalResult::Available{work_id,thread_id,goal,..} if (work_id,thread_id)!=(&expected.0,&expected.1) || goal.as_ref().is_some_and(|g|g.thread_id!=expected.1.as_str()))
+			QueryResultPayload::AgentNativeGoal(result) => {
+				if matches!(&result,crate::AgentNativeGoalResult::Available{work_id,thread_id,goal,..} if (work_id,thread_id)!=(&expected.0,&expected.1) || goal.as_ref().is_some_and(|g|g.thread_id!=expected.1.as_str()))
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -726,7 +726,7 @@ impl ChiefClient {
 		&self,
 		work_id: EntityId,
 		include_models: bool,
-	) -> Result<crate::ChiefLiveReviewerState, ClientFailure> {
+	) -> Result<crate::AgentLiveReviewerState, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -735,15 +735,15 @@ impl ChiefClient {
 		let completed = time::timeout(
 			Duration::from_secs(45),
 			transport.query_inner(
-				"chief-live-reviewer",
-				QueryPayload::GetChiefLiveReviewer { work_id, include_models },
+				"agent-live-reviewer",
+				QueryPayload::GetAgentLiveReviewer { work_id, include_models },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefLiveReviewer(result) => Ok(result),
+			QueryResultPayload::AgentLiveReviewer(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -753,7 +753,7 @@ impl ChiefClient {
 		&self,
 		work_id: EntityId,
 		event_id: i64,
-	) -> Result<crate::ChiefAppSettingsResult, ClientFailure> {
+	) -> Result<crate::AgentAppSettingsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -762,15 +762,15 @@ impl ChiefClient {
 		let completed = time::timeout(
 			Duration::from_secs(45),
 			transport.query_inner(
-				"chief-app-settings",
-				QueryPayload::GetChiefAppSettings { work_id, event_id },
+				"agent-app-settings",
+				QueryPayload::GetAgentAppSettings { work_id, event_id },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefAppSettings(result) => Ok(result),
+			QueryResultPayload::AgentAppSettings(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -779,7 +779,7 @@ impl ChiefClient {
 	pub async fn saved_app_settings(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::ChiefSavedAppSettingsResult, ClientFailure> {
+	) -> Result<crate::AgentSavedAppSettingsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -788,15 +788,15 @@ impl ChiefClient {
 		let completed = time::timeout(
 			Duration::from_secs(45),
 			transport.query_inner(
-				"chief-saved-app-settings",
-				QueryPayload::GetChiefSavedAppSettings { work_id },
+				"agent-saved-app-settings",
+				QueryPayload::GetAgentSavedAppSettings { work_id },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefSavedAppSettings(result) => Ok(result),
+			QueryResultPayload::AgentSavedAppSettings(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -805,7 +805,7 @@ impl ChiefClient {
 	pub async fn hook_settings(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::ChiefHookSettingsState, ClientFailure> {
+	) -> Result<crate::AgentHookSettingsState, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -814,13 +814,13 @@ impl ChiefClient {
 		let completed = time::timeout(
 			Duration::from_secs(45),
 			transport
-				.query_inner("chief-hook-settings", QueryPayload::GetChiefHookSettings { work_id }),
+				.query_inner("agent-hook-settings", QueryPayload::GetAgentHookSettings { work_id }),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefHookSettings(result) => Ok(result),
+			QueryResultPayload::AgentHookSettings(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -829,7 +829,7 @@ impl ChiefClient {
 	pub async fn plugin_selection(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::ChiefPluginSelectionState, ClientFailure> {
+	) -> Result<crate::AgentPluginSelectionState, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -838,15 +838,15 @@ impl ChiefClient {
 		let completed = time::timeout(
 			Duration::from_secs(45),
 			transport.query_inner(
-				"chief-plugin-selection",
-				QueryPayload::GetChiefPluginSelection { work_id },
+				"agent-plugin-selection",
+				QueryPayload::GetAgentPluginSelection { work_id },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefPluginSelection(result) => Ok(result),
+			QueryResultPayload::AgentPluginSelection(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -855,7 +855,7 @@ impl ChiefClient {
 	pub async fn model_selection(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::ChiefModelSelectionState, ClientFailure> {
+	) -> Result<crate::AgentModelSelectionState, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -864,15 +864,15 @@ impl ChiefClient {
 		let completed = time::timeout(
 			Duration::from_secs(45),
 			transport.query_inner(
-				"chief-model-selection",
-				QueryPayload::GetChiefModelSelection { work_id },
+				"agent-model-selection",
+				QueryPayload::GetAgentModelSelection { work_id },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefModelSelection(result) => Ok(result),
+			QueryResultPayload::AgentModelSelection(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -881,7 +881,7 @@ impl ChiefClient {
 	pub async fn permission_profiles(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::ChiefPermissionState, ClientFailure> {
+	) -> Result<crate::AgentPermissionState, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -890,15 +890,15 @@ impl ChiefClient {
 		let completed = time::timeout(
 			Duration::from_secs(45),
 			transport.query_inner(
-				"chief-permission-profiles",
-				QueryPayload::GetChiefPermissionProfiles { work_id },
+				"agent-permission-profiles",
+				QueryPayload::GetAgentPermissionProfiles { work_id },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefPermissionProfiles(result) => Ok(result),
+			QueryResultPayload::AgentPermissionProfiles(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -908,7 +908,7 @@ impl ChiefClient {
 	pub async fn observe_output(
 		&self,
 		work_id: EntityId,
-		updates: tokio::sync::watch::Sender<Option<crate::ChiefOutputResult>>,
+		updates: tokio::sync::watch::Sender<Option<crate::AgentOutputResult>>,
 	) -> Result<(), ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
@@ -919,12 +919,12 @@ impl ChiefClient {
 			_ = updates.closed() => Ok(()),
 			result = async {
 				let mut socket = transport.connect().await?;
-				let query_id = QueryId::new("chief-output-stream").expect("fixed query id");
+				let query_id = QueryId::new("agent-output-stream").expect("fixed query id");
 				let mut after_revision = None;
 				loop {
 					transport.send(&mut socket, ClientMessage::Query(QueryEnvelope {
 						version: CURRENT_VERSION, query_id: query_id.clone(),
-						payload: QueryPayload::WaitForChiefOutput { work_id: work_id.clone(), after_revision },
+						payload: QueryPayload::WaitForAgentOutput { work_id: work_id.clone(), after_revision },
 					})).await?;
 					let mut received = false;
 					for _ in 0..MAX_INTERLEAVED_MESSAGES {
@@ -932,9 +932,9 @@ impl ChiefClient {
 							ServerMessage::QueryResult(result) => {
 								transport.verify_version_and_server(result.version, &result.server_id)?;
 								if result.query_id != query_id { return Err(ClientFailure::ProtocolMalformed); }
-								let QueryResultPayload::ChiefOutput(value) = result.payload else { return Err(ClientFailure::ProtocolMalformed); };
+								let QueryResultPayload::AgentOutput(value) = result.payload else { return Err(ClientFailure::ProtocolMalformed); };
 								match &value {
-									crate::ChiefOutputResult::Available { revision, work_id: owner, .. } if owner == &work_id => after_revision = Some(*revision),
+									crate::AgentOutputResult::Available { revision, work_id: owner, .. } if owner == &work_id => after_revision = Some(*revision),
 									_ => return Err(ClientFailure::ProtocolMalformed),
 								}
 								updates.send_if_modified(|saved| { if saved.as_ref() == Some(&value) { false } else { *saved = Some(value); true } });
@@ -954,23 +954,23 @@ impl ChiefClient {
 	/// Read positive acceptance evidence for one exact steering submission.
 	pub async fn steer_receipt(
 		&self,
-		identity: crate::ChiefSteerIdentity,
-	) -> Result<crate::ChiefSteerReceiptResult, ClientFailure> {
+		identity: crate::AgentSteerIdentity,
+	) -> Result<crate::AgentSteerReceiptResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
-				"chief-steer-receipt",
-				QueryPayload::GetChiefSteerReceipt { identity: identity.clone() },
+				"agent-steer-receipt",
+				QueryPayload::GetAgentSteerReceipt { identity: identity.clone() },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
-		let QueryResultPayload::ChiefSteerReceipt(result) = completed.value else {
+		let QueryResultPayload::AgentSteerReceipt(result) = completed.value else {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
-		if let crate::ChiefSteerReceiptResult::Confirmed { identity: actual } = &result
+		if let crate::AgentSteerReceiptResult::Confirmed { identity: actual } = &result
 			&& actual != &identity
 		{
 			return Err(ClientFailure::ProtocolMalformed);
@@ -981,19 +981,19 @@ impl ChiefClient {
 	/// Exchange one explicit voice operation. The caller must poll after a lost start response.
 	pub async fn voice(
 		&self,
-		request: crate::ChiefVoiceRequest,
-	) -> Result<crate::ChiefVoiceStatus, ClientFailure> {
+		request: crate::AgentVoiceRequest,
+	) -> Result<crate::AgentVoiceStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let session = request.session_id().clone();
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
-			self.transport.query_inner("chief-voice", QueryPayload::ExchangeChiefVoice { request }),
+			self.transport.query_inner("agent-voice", QueryPayload::ExchangeAgentVoice { request }),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefVoice(result) if result.session_id == session => Ok(result),
+			QueryResultPayload::AgentVoice(result) if result.session_id == session => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -1019,17 +1019,17 @@ impl ChiefClient {
 	}
 
 	/// Read the selected fields of one exact unresolved request.
-	pub async fn request(&self, event_id: i64) -> Result<crate::ChiefRequestResult, ClientFailure> {
+	pub async fn request(&self, event_id: i64) -> Result<crate::AgentRequestResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
 			REQUEST_CLIENT_TIMEOUT,
-			self.transport.query_inner("chief-request", QueryPayload::GetChiefRequest { event_id }),
+			self.transport.query_inner("agent-request", QueryPayload::GetAgentRequest { event_id }),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefRequest(result) => time::timeout(
+			QueryResultPayload::AgentRequest(result) => time::timeout(
 				Duration::from_secs(60),
 				request_pages::collect(self, event_id, result),
 			)
@@ -1067,7 +1067,7 @@ impl ChiefClient {
 	pub async fn history(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::ChiefHistoryResult, ClientFailure> {
+	) -> Result<crate::AgentHistoryResult, ClientFailure> {
 		self.history_page(work_id, None).await
 	}
 
@@ -1076,18 +1076,18 @@ impl ChiefClient {
 		&self,
 		work_id: EntityId,
 		before: Option<i64>,
-	) -> Result<crate::ChiefHistoryResult, ClientFailure> {
+	) -> Result<crate::AgentHistoryResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport
-				.query_inner("chief-history", QueryPayload::GetChiefHistory { work_id, before }),
+				.query_inner("agent-history", QueryPayload::GetAgentHistory { work_id, before }),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefHistory(result) => Ok(result),
+			QueryResultPayload::AgentHistory(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -1103,14 +1103,14 @@ impl ChiefClient {
 		work_id: EntityId,
 		turn_id: crate::WireText,
 		item_id: crate::WireText,
-		cursor: Option<crate::ChiefActivityDetailCursor>,
-	) -> Result<crate::ChiefActivityDetailResult, ClientFailure> {
+		cursor: Option<crate::AgentActivityDetailCursor>,
+	) -> Result<crate::AgentActivityDetailResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
-				"chief-detail",
-				QueryPayload::GetChiefActivityDetail {
+				"agent-detail",
+				QueryPayload::GetAgentActivityDetail {
 					work_id,
 					turn_id,
 					item_id,
@@ -1122,7 +1122,7 @@ impl ChiefClient {
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefActivityDetail(result)
+			QueryResultPayload::AgentActivityDetail(result)
 				if result.matches_cursor(cursor.as_ref()) =>
 				Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1134,7 +1134,7 @@ impl ChiefClient {
 		&self,
 		work_id: EntityId,
 		event_id: i64,
-	) -> Result<crate::ChiefInstallState, ClientFailure> {
+	) -> Result<crate::AgentInstallState, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -1143,15 +1143,15 @@ impl ChiefClient {
 		let completed = time::timeout(
 			Duration::from_secs(45),
 			transport.query_inner(
-				"chief-install",
-				QueryPayload::GetChiefInstallState { work_id, event_id },
+				"agent-install",
+				QueryPayload::GetAgentInstallState { work_id, event_id },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefInstallState(result) => Ok(result),
+			QueryResultPayload::AgentInstallState(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -1160,7 +1160,7 @@ impl ChiefClient {
 	pub async fn archive_state(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::ChiefArchiveResult, ClientFailure> {
+	) -> Result<crate::AgentArchiveResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -1168,13 +1168,13 @@ impl ChiefClient {
 		};
 		let completed = time::timeout(
 			Duration::from_secs(12),
-			transport.query_inner("chief-archive", QueryPayload::GetChiefArchiveState { work_id }),
+			transport.query_inner("agent-archive", QueryPayload::GetAgentArchiveState { work_id }),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefArchiveState(result) => Ok(result),
+			QueryResultPayload::AgentArchiveState(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -1184,20 +1184,20 @@ impl ChiefClient {
 		&self,
 		work_id: EntityId,
 		before: Option<i64>,
-	) -> Result<crate::ChiefGuardianReviewsResult, ClientFailure> {
+	) -> Result<crate::AgentGuardianReviewsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
-				"chief-guardian-reviews",
-				QueryPayload::GetChiefGuardianReviews { work_id, before },
+				"agent-guardian-reviews",
+				QueryPayload::GetAgentGuardianReviews { work_id, before },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefGuardianReviews(result) => Ok(result),
+			QueryResultPayload::AgentGuardianReviews(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -1209,21 +1209,21 @@ impl ChiefClient {
 		review_row: i64,
 		review_digest: crate::WireText,
 		offset: usize,
-	) -> Result<crate::ChiefGuardianDetailResult, ClientFailure> {
+	) -> Result<crate::AgentGuardianDetailResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let expected_digest = review_digest.as_str().to_owned();
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
-				"chief-guardian-detail",
-				QueryPayload::GetChiefGuardianDetail { work_id, review_row, review_digest, offset },
+				"agent-guardian-detail",
+				QueryPayload::GetAgentGuardianDetail { work_id, review_row, review_digest, offset },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefGuardianDetail(result)
+			QueryResultPayload::AgentGuardianDetail(result)
 				if result.matches_request(review_row, &expected_digest, offset) =>
 				Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1234,18 +1234,18 @@ impl ChiefClient {
 	pub async fn resources(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::ChiefResourcesResult, ClientFailure> {
+	) -> Result<crate::AgentResourcesResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport
-				.query_inner("chief-resources", QueryPayload::GetChiefResources { work_id }),
+				.query_inner("agent-resources", QueryPayload::GetAgentResources { work_id }),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefResources(result) => Ok(result),
+			QueryResultPayload::AgentResources(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -1278,7 +1278,7 @@ impl ChiefClient {
 	pub async fn usage_estimate(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::ChiefUsageEstimateResult, ClientFailure> {
+	) -> Result<crate::AgentUsageEstimateResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let expected = work_id.clone();
 		let transport = ResetCardClient {
@@ -1288,16 +1288,16 @@ impl ChiefClient {
 		let completed = time::timeout(
 			transport.timeout,
 			transport.query_inner(
-				"chief-usage-estimate",
-				QueryPayload::GetChiefUsageEstimate { work_id },
+				"agent-usage-estimate",
+				QueryPayload::GetAgentUsageEstimate { work_id },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefUsageEstimate(result) => {
-				if matches!(&result,crate::ChiefUsageEstimateResult::Available {work_id,..} if work_id!=&expected)
+			QueryResultPayload::AgentUsageEstimate(result) => {
+				if matches!(&result,crate::AgentUsageEstimateResult::Available {work_id,..} if work_id!=&expected)
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -1311,7 +1311,7 @@ impl ChiefClient {
 	pub async fn model_settings(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::ChiefModelSettingsResult, ClientFailure> {
+	) -> Result<crate::AgentModelSettingsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -1320,16 +1320,16 @@ impl ChiefClient {
 		let completed = time::timeout(
 			Duration::from_secs(45),
 			transport.query_inner(
-				"chief-model-settings",
-				QueryPayload::GetChiefModelSettings { work_id: work_id.clone() },
+				"agent-model-settings",
+				QueryPayload::GetAgentModelSettings { work_id: work_id.clone() },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefModelSettings(result) => {
-				if matches!(&result, crate::ChiefModelSettingsResult::Available {work_id: owner,..} if owner != &work_id)
+			QueryResultPayload::AgentModelSettings(result) => {
+				if matches!(&result, crate::AgentModelSettingsResult::Available {work_id: owner,..} if owner != &work_id)
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -1344,7 +1344,7 @@ impl ChiefClient {
 		&self,
 		work_id: EntityId,
 		after: Option<i64>,
-	) -> Result<crate::ChiefInputReceiptsResult, ClientFailure> {
+	) -> Result<crate::AgentInputReceiptsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		if after.is_some_and(|id| id < 1) {
 			return Err(ClientFailure::ProtocolMalformed);
@@ -1352,17 +1352,17 @@ impl ChiefClient {
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
-				"chief-input-receipts",
-				QueryPayload::GetChiefInputReceipts { work_id: work_id.clone(), after },
+				"agent-input-receipts",
+				QueryPayload::GetAgentInputReceipts { work_id: work_id.clone(), after },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
-		let QueryResultPayload::ChiefInputReceipts(result) = completed.value else {
+		let QueryResultPayload::AgentInputReceipts(result) = completed.value else {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
-		if let crate::ChiefInputReceiptsResult::Available {
+		if let crate::AgentInputReceiptsResult::Available {
 			work_id: actual,
 			entries,
 			next_after,
@@ -1393,8 +1393,8 @@ impl ChiefClient {
 	/// Read a bounded native attachment chunk without executing the thread.
 	pub async fn media(
 		&self,
-		request: crate::ChiefMediaRequest,
-	) -> Result<crate::ChiefMediaResult, ClientFailure> {
+		request: crate::AgentMediaRequest,
+	) -> Result<crate::AgentMediaResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -1403,16 +1403,16 @@ impl ChiefClient {
 		let completed = time::timeout(
 			transport.timeout,
 			transport.query_inner(
-				"chief-media",
-				QueryPayload::GetChiefMedia { request: request.clone() },
+				"agent-media",
+				QueryPayload::GetAgentMedia { request: request.clone() },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefMedia(result) => {
-				if let crate::ChiefMediaResult::Available {
+			QueryResultPayload::AgentMedia(result) => {
+				if let crate::AgentMediaResult::Available {
 					request: actual,
 					fingerprint,
 					mime_type,
@@ -1421,8 +1421,8 @@ impl ChiefClient {
 					..
 				} = &result && (actual.as_ref() != &request
 					|| bytes.is_empty()
-					|| bytes.len() > crate::CHIEF_MEDIA_CHUNK_BYTES
-					|| *total_bytes as usize > crate::MAX_CHIEF_MEDIA_BYTES
+					|| bytes.len() > crate::AGENT_MEDIA_CHUNK_BYTES
+					|| *total_bytes as usize > crate::MAX_AGENT_MEDIA_BYTES
 					|| u64::from(request.offset) + bytes.len() as u64 > u64::from(*total_bytes)
 					|| fingerprint.as_str().len() != 64
 					|| !fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
@@ -1441,22 +1441,22 @@ impl ChiefClient {
 	pub async fn pending_app_ui_call(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::ChiefPendingAppUiCall, ClientFailure> {
+	) -> Result<crate::AgentPendingAppUiCall, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
-				"chief-pending-app-ui-call",
-				QueryPayload::GetChiefPendingAppUiCall { work_id: work_id.clone() },
+				"agent-pending-app-ui-call",
+				QueryPayload::GetAgentPendingAppUiCall { work_id: work_id.clone() },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
-		let QueryResultPayload::ChiefPendingAppUiCall(result) = completed.value else {
+		let QueryResultPayload::AgentPendingAppUiCall(result) = completed.value else {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
-		if let crate::ChiefPendingAppUiCall::Available { work_id: actual, .. } = &result
+		if let crate::AgentPendingAppUiCall::Available { work_id: actual, .. } = &result
 			&& actual != &work_id
 		{
 			return Err(ClientFailure::ProtocolMalformed);
@@ -1467,8 +1467,8 @@ impl ChiefClient {
 	/// Read exact native callback evidence for a later user confirmation.
 	pub async fn review_app_ui_call(
 		&self,
-		request: crate::ChiefAppUiCall,
-	) -> Result<crate::ChiefAppUiCallReview, ClientFailure> {
+		request: crate::AgentAppUiCall,
+	) -> Result<crate::AgentAppUiCallReview, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -1477,17 +1477,17 @@ impl ChiefClient {
 		let completed = time::timeout(
 			transport.timeout,
 			transport.query_inner(
-				"chief-app-ui-review",
-				QueryPayload::ReviewChiefAppUiCall { request: request.clone() },
+				"agent-app-ui-review",
+				QueryPayload::ReviewAgentAppUiCall { request: request.clone() },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
-		let QueryResultPayload::ChiefAppUiCallReview(result) = completed.value else {
+		let QueryResultPayload::AgentAppUiCallReview(result) = completed.value else {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
-		if let crate::ChiefAppUiCallReview::Available { request: actual, review_token, .. } =
+		if let crate::AgentAppUiCallReview::Available { request: actual, review_token, .. } =
 			&result && (actual.as_ref() != &request
 			|| review_token.as_str().len() != 64
 			|| !review_token.as_str().bytes().all(|b| b.is_ascii_hexdigit()))
@@ -1512,15 +1512,15 @@ impl ChiefClient {
 		let completed = time::timeout(
 			transport.timeout,
 			transport.query_inner(
-				"chief-app-ui-source",
-				QueryPayload::GetChiefAppUiSource { work_id, thread_id, fingerprint },
+				"agent-app-ui-source",
+				QueryPayload::GetAgentAppUiSource { work_id, thread_id, fingerprint },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefAppUiSource(current) => Ok(current),
+			QueryResultPayload::AgentAppUiSource(current) => Ok(current),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -1528,8 +1528,8 @@ impl ChiefClient {
 	/// Read a bounded native App UI document chunk without executing the thread.
 	pub async fn app_ui(
 		&self,
-		request: crate::ChiefAppUiRequest,
-	) -> Result<crate::ChiefAppUiResult, ClientFailure> {
+		request: crate::AgentAppUiRequest,
+	) -> Result<crate::AgentAppUiResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -1538,16 +1538,16 @@ impl ChiefClient {
 		let completed = time::timeout(
 			transport.timeout,
 			transport.query_inner(
-				"chief-app-ui",
-				QueryPayload::GetChiefAppUi { request: request.clone() },
+				"agent-app-ui",
+				QueryPayload::GetAgentAppUi { request: request.clone() },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefAppUi(result) => {
-				if let crate::ChiefAppUiResult::Available {
+			QueryResultPayload::AgentAppUi(result) => {
+				if let crate::AgentAppUiResult::Available {
 					request: actual,
 					source_fingerprint,
 					fingerprint,
@@ -1558,8 +1558,8 @@ impl ChiefClient {
 					|| source_fingerprint.as_str().len() != 64
 					|| !source_fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
 					|| bytes.is_empty()
-					|| bytes.len() > crate::CHIEF_APP_UI_CHUNK_BYTES
-					|| *total_bytes as usize > crate::MAX_CHIEF_APP_UI_BYTES
+					|| bytes.len() > crate::AGENT_APP_UI_CHUNK_BYTES
+					|| *total_bytes as usize > crate::MAX_AGENT_APP_UI_BYTES
 					|| u64::from(request.offset) + bytes.len() as u64 > u64::from(*total_bytes)
 					|| fingerprint.as_str().len() != 64
 					|| !fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
@@ -1576,8 +1576,8 @@ impl ChiefClient {
 	/// Read a bounded durable App UI call receipt chunk without executing the thread.
 	pub async fn app_ui_receipt(
 		&self,
-		request: crate::ChiefAppUiReceiptRequest,
-	) -> Result<crate::ChiefAppUiReceiptResult, ClientFailure> {
+		request: crate::AgentAppUiReceiptRequest,
+	) -> Result<crate::AgentAppUiReceiptResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -1586,16 +1586,16 @@ impl ChiefClient {
 		let completed = time::timeout(
 			transport.timeout,
 			transport.query_inner(
-				"chief-app-ui-receipt",
-				QueryPayload::GetChiefAppUiReceipt { request: request.clone() },
+				"agent-app-ui-receipt",
+				QueryPayload::GetAgentAppUiReceipt { request: request.clone() },
 			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefAppUiReceipt(result) => {
-				if let crate::ChiefAppUiReceiptResult::Available {
+			QueryResultPayload::AgentAppUiReceipt(result) => {
+				if let crate::AgentAppUiReceiptResult::Available {
 					request: actual,
 					fingerprint,
 					total_bytes,
@@ -1603,8 +1603,8 @@ impl ChiefClient {
 					..
 				} = &result && (actual.as_ref() != &request
 					|| bytes.is_empty()
-					|| bytes.len() > crate::CHIEF_APP_UI_RECEIPT_CHUNK_BYTES
-					|| *total_bytes as usize > crate::MAX_CHIEF_APP_UI_RECEIPT_BYTES
+					|| bytes.len() > crate::AGENT_APP_UI_RECEIPT_CHUNK_BYTES
+					|| *total_bytes as usize > crate::MAX_AGENT_APP_UI_RECEIPT_BYTES
 					|| u64::from(request.offset) + bytes.len() as u64 > u64::from(*total_bytes)
 					|| fingerprint.as_str().len() != 64
 					|| !fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
@@ -1624,7 +1624,7 @@ impl ChiefClient {
 		work_id: EntityId,
 		thread_id: EntityId,
 		cursor: Option<crate::WireText>,
-	) -> Result<crate::ChiefTimelineResult, ClientFailure> {
+	) -> Result<crate::AgentTimelineResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -1633,8 +1633,8 @@ impl ChiefClient {
 		let completed = time::timeout(
 			transport.timeout,
 			transport.query_inner(
-				"chief-timeline",
-				QueryPayload::GetChiefTimeline {
+				"agent-timeline",
+				QueryPayload::GetAgentTimeline {
 					work_id: work_id.clone(),
 					thread_id: thread_id.clone(),
 					cursor,
@@ -1645,13 +1645,13 @@ impl ChiefClient {
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefTimeline(result) => {
-				if let crate::ChiefTimelineResult::Available { work_id: actual, page, .. } = &result
+			QueryResultPayload::AgentTimeline(result) => {
+				if let crate::AgentTimelineResult::Available { work_id: actual, page, .. } = &result
 					&& (actual != &work_id || page.thread_id != thread_id.as_str())
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
-				if let crate::ChiefTimelineResult::Summary {
+				if let crate::AgentTimelineResult::Summary {
 					work_id: actual,
 					thread_id: actual_thread,
 					..
@@ -1669,7 +1669,7 @@ impl ChiefClient {
 	pub async fn integrations(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::ChiefIntegrationsResult, ClientFailure> {
+	) -> Result<crate::AgentIntegrationsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -1678,13 +1678,13 @@ impl ChiefClient {
 		let completed = time::timeout(
 			transport.timeout,
 			transport
-				.query_inner("chief-integrations", QueryPayload::GetChiefIntegrations { work_id }),
+				.query_inner("agent-integrations", QueryPayload::GetAgentIntegrations { work_id }),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefIntegrations(result) => Ok(result),
+			QueryResultPayload::AgentIntegrations(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -1711,35 +1711,35 @@ impl ChiefClient {
 		}
 	}
 
-	/// Read native capabilities on the retained Chief process.
-	pub async fn capabilities(&self) -> Result<crate::ChiefCapabilitiesResult, ClientFailure> {
+	/// Read native capabilities on the retained Agent process.
+	pub async fn capabilities(&self) -> Result<crate::AgentCapabilitiesResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
-			self.transport.query_inner("chief-capabilities", QueryPayload::GetChiefCapabilities),
+			self.transport.query_inner("agent-capabilities", QueryPayload::GetAgentCapabilities),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefCapabilities(result) => Ok(result),
+			QueryResultPayload::AgentCapabilities(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
 
-	/// Read one complete bounded Chief projection without changing work or runtime state.
-	pub async fn query(&self) -> Result<crate::ChiefSnapshotResult, ClientFailure> {
+	/// Read one complete bounded Agent projection without changing work or runtime state.
+	pub async fn query(&self) -> Result<crate::AgentSnapshotResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
-			self.transport.query_inner("decodex-chief-snapshot", QueryPayload::GetChiefSnapshot),
+			self.transport.query_inner("decodex-agent-snapshot", QueryPayload::GetAgentSnapshot),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
-			QueryResultPayload::ChiefSnapshot(result) => {
-				if matches!(&result, crate::ChiefSnapshotResult::Available(snapshot) if !snapshot.is_valid())
+			QueryResultPayload::AgentSnapshot(result) => {
+				if matches!(&result, crate::AgentSnapshotResult::Available(snapshot) if !snapshot.is_valid())
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -1752,24 +1752,24 @@ impl ChiefClient {
 	/// Submit once. A timeout after the send boundary never authorizes an automatic retry.
 	pub async fn execute(
 		&self,
-		action: crate::ChiefActionDto,
+		action: crate::AgentActionDto,
 		idempotency_key: IdempotencyKey,
-	) -> Result<ChiefCommandResponse, ClientFailure> {
+	) -> Result<AgentCommandResponse, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let attempted = AtomicBool::new(false);
-		let refresh = matches!(&action, crate::ChiefActionDto::RefreshIntegrations { .. });
-		let install = matches!(&action, crate::ChiefActionDto::InstallSuggestedPlugin { .. });
-		let restore = matches!(&action, crate::ChiefActionDto::RestoreArchivedThread { .. });
-		let timeout = if matches!(&action, crate::ChiefActionDto::ConfirmAppUiTool { .. }) {
+		let refresh = matches!(&action, crate::AgentActionDto::RefreshIntegrations { .. });
+		let install = matches!(&action, crate::AgentActionDto::InstallSuggestedPlugin { .. });
+		let restore = matches!(&action, crate::AgentActionDto::RestoreArchivedThread { .. });
+		let timeout = if matches!(&action, crate::AgentActionDto::ConfirmAppUiTool { .. }) {
 			Duration::from_secs(100)
 		} else if refresh
 			|| install
 			|| matches!(
 				&action,
-				crate::ChiefActionDto::SetAppToolExposure { .. }
-					| crate::ChiefActionDto::ConfirmAppUiTool { .. }
-					| crate::ChiefActionDto::SetVoicePreference { .. }
-					| crate::ChiefActionDto::SetTaskPlugin { .. }
+				crate::AgentActionDto::SetAppToolExposure { .. }
+					| crate::AgentActionDto::ConfirmAppUiTool { .. }
+					| crate::AgentActionDto::SetVoicePreference { .. }
+					| crate::AgentActionDto::SetTaskPlugin { .. }
 			) {
 			Duration::from_secs(65)
 		} else {
@@ -1782,10 +1782,10 @@ impl ChiefClient {
 					|| restore || install
 					|| matches!(
 						&action,
-						crate::ChiefActionDto::SetAppToolExposure { .. }
-							| crate::ChiefActionDto::ConfirmAppUiTool { .. }
-							| crate::ChiefActionDto::SetVoicePreference { .. }
-							| crate::ChiefActionDto::SetTaskPlugin { .. }
+						crate::AgentActionDto::SetAppToolExposure { .. }
+							| crate::AgentActionDto::ConfirmAppUiTool { .. }
+							| crate::AgentActionDto::SetVoicePreference { .. }
+							| crate::AgentActionDto::SetTaskPlugin { .. }
 					) {
 					timeout
 				} else {
@@ -1805,7 +1805,7 @@ impl ChiefClient {
 			Err(_) => ClientFailure::ProtocolTimeout,
 		};
 		if attempted.load(Ordering::Acquire) {
-			Ok(ChiefCommandResponse::PotentiallyDispatched { failure })
+			Ok(AgentCommandResponse::PotentiallyDispatched { failure })
 		} else {
 			Err(failure)
 		}
@@ -1813,10 +1813,10 @@ impl ChiefClient {
 
 	async fn execute_inner(
 		&self,
-		action: crate::ChiefActionDto,
+		action: crate::AgentActionDto,
 		idempotency_key: IdempotencyKey,
 		attempted: &AtomicBool,
-	) -> Result<CompletedOneShot<ChiefCommandResponse>, ClientFailure> {
+	) -> Result<CompletedOneShot<AgentCommandResponse>, ClientFailure> {
 		let mut socket = self.transport.connect().await?;
 		let client_command_id = ClientCommandId::new(idempotency_key.as_str())
 			.map_err(|_| ClientFailure::ProtocolMalformed)?;
@@ -1829,7 +1829,7 @@ impl ChiefClient {
 			expected_revision: None,
 			correlation_id,
 			causation_id: None,
-			payload: CommandPayload::Chief { action: Box::new(action.clone()) },
+			payload: CommandPayload::Agent { action: Box::new(action.clone()) },
 		});
 		attempted.store(true, Ordering::Release);
 		self.transport.send(&mut socket, command).await?;
@@ -1870,18 +1870,18 @@ impl ChiefClient {
 						(
 							CommandOutcome::Succeeded,
 							Some(EntityRevision(0)),
-							Some(ResultPayload::ChiefAccepted { work_id }),
+							Some(ResultPayload::AgentAccepted { work_id }),
 							None,
-						) if &work_id == chief_action_work_id(&action) => ChiefCommandResponse::Accepted { work_id },
+						) if &work_id == agent_action_work_id(&action) => AgentCommandResponse::Accepted { work_id },
 						(CommandOutcome::Rejected, None, None, Some(error))
 							if !matches!(error, CommandError::AcceptanceUnknown) =>
-							ChiefCommandResponse::Rejected { error },
+							AgentCommandResponse::Rejected { error },
 						(
 							CommandOutcome::AcceptanceUnknown,
 							None,
 							None,
 							Some(CommandError::AcceptanceUnknown),
-						) => ChiefCommandResponse::PotentiallyDispatched {
+						) => AgentCommandResponse::PotentiallyDispatched {
 							failure: ClientFailure::ApplicationAcceptanceUnknown,
 						},
 						_ => return Err(ClientFailure::ProtocolMalformed),
@@ -1899,49 +1899,49 @@ impl ChiefClient {
 	}
 }
 
-fn chief_action_work_id(action: &crate::ChiefActionDto) -> &EntityId {
+fn agent_action_work_id(action: &crate::AgentActionDto) -> &EntityId {
 	match action {
-		crate::ChiefActionDto::AcknowledgeAppUiCall { work_id, .. } => work_id,
-		crate::ChiefActionDto::ConfirmAppUiTool { request, .. } => &request.work_id,
-		crate::ChiefActionDto::UploadPromptInput { upload, .. }
-		| crate::ChiefActionDto::CompletePromptInputUpload { upload } => &upload.work_id,
-		crate::ChiefActionDto::SendPromptInput { work_id, .. }
-		| crate::ChiefActionDto::SetLiveReviewer { work_id, .. }
-		| crate::ChiefActionDto::SetLiveModel { work_id, .. } => work_id,
-		crate::ChiefActionDto::SelectPermissions { work_id, .. } => work_id,
-		crate::ChiefActionDto::SetTaskPlugin { work_id, .. } => work_id,
-		crate::ChiefActionDto::SetTaskModel { work_id, .. } => work_id,
-		crate::ChiefActionDto::SetHookSetting { work_id, .. }
-		| crate::ChiefActionDto::SetAppToolExposure { work_id, .. }
-		| crate::ChiefActionDto::AcknowledgePromptEditDraft { work_id, .. }
-		| crate::ChiefActionDto::PreparePromptEdit { work_id, .. }
-		| crate::ChiefActionDto::ConfirmPromptEdit { work_id, .. }
-		| crate::ChiefActionDto::RecoverPromptEdit { work_id, .. }
-		| crate::ChiefActionDto::GenerateRecap { work_id, .. }
-		| crate::ChiefActionDto::CancelRecap { work_id, .. }
-		| crate::ChiefActionDto::SetVoicePreference { work_id, .. }
-		| crate::ChiefActionDto::SetAppSetting { work_id, .. }
-		| crate::ChiefActionDto::SetSavedAppSetting { work_id, .. } => work_id,
-		crate::ChiefActionDto::Start(start)
-		| crate::ChiefActionDto::StartConfigured { start, .. } => &start.root_id,
-		crate::ChiefActionDto::Send { root_id, .. }
-		| crate::ChiefActionDto::SendConfigured { root_id, .. } => root_id,
-		crate::ChiefActionDto::CancelCapacityRetry { work_id, .. }
-		| crate::ChiefActionDto::NativeAgentInput { work_id, .. }
-		| crate::ChiefActionDto::Interrupt { work_id, .. }
-		| crate::ChiefActionDto::Respond { work_id, .. }
-		| crate::ChiefActionDto::RespondWithRequestedDecision { work_id, .. }
-		| crate::ChiefActionDto::AutomationResult { work_id, .. }
-		| crate::ChiefActionDto::Steer { work_id, .. }
-		| crate::ChiefActionDto::AnswerQuestion { work_id, .. }
-		| crate::ChiefActionDto::SkipQuestion { work_id, .. }
-		| crate::ChiefActionDto::ContinueMisalignment { work_id, .. }
-		| crate::ChiefActionDto::ApproveGuardianDenial { work_id, .. }
-		| crate::ChiefActionDto::RestoreArchivedThread { work_id, .. }
-		| crate::ChiefActionDto::InstallSuggestedPlugin { work_id, .. }
-		| crate::ChiefActionDto::AddResourceLink { work_id, .. }
-		| crate::ChiefActionDto::RemoveResource { work_id, .. }
-		| crate::ChiefActionDto::RefreshIntegrations { work_id } => work_id,
+		crate::AgentActionDto::AcknowledgeAppUiCall { work_id, .. } => work_id,
+		crate::AgentActionDto::ConfirmAppUiTool { request, .. } => &request.work_id,
+		crate::AgentActionDto::UploadPromptInput { upload, .. }
+		| crate::AgentActionDto::CompletePromptInputUpload { upload } => &upload.work_id,
+		crate::AgentActionDto::SendPromptInput { work_id, .. }
+		| crate::AgentActionDto::SetLiveReviewer { work_id, .. }
+		| crate::AgentActionDto::SetLiveModel { work_id, .. } => work_id,
+		crate::AgentActionDto::SelectPermissions { work_id, .. } => work_id,
+		crate::AgentActionDto::SetTaskPlugin { work_id, .. } => work_id,
+		crate::AgentActionDto::SetTaskModel { work_id, .. } => work_id,
+		crate::AgentActionDto::SetHookSetting { work_id, .. }
+		| crate::AgentActionDto::SetAppToolExposure { work_id, .. }
+		| crate::AgentActionDto::AcknowledgePromptEditDraft { work_id, .. }
+		| crate::AgentActionDto::PreparePromptEdit { work_id, .. }
+		| crate::AgentActionDto::ConfirmPromptEdit { work_id, .. }
+		| crate::AgentActionDto::RecoverPromptEdit { work_id, .. }
+		| crate::AgentActionDto::GenerateRecap { work_id, .. }
+		| crate::AgentActionDto::CancelRecap { work_id, .. }
+		| crate::AgentActionDto::SetVoicePreference { work_id, .. }
+		| crate::AgentActionDto::SetAppSetting { work_id, .. }
+		| crate::AgentActionDto::SetSavedAppSetting { work_id, .. } => work_id,
+		crate::AgentActionDto::Start(start)
+		| crate::AgentActionDto::StartConfigured { start, .. } => &start.root_id,
+		crate::AgentActionDto::Send { root_id, .. }
+		| crate::AgentActionDto::SendConfigured { root_id, .. } => root_id,
+		crate::AgentActionDto::CancelCapacityRetry { work_id, .. }
+		| crate::AgentActionDto::NativeAgentInput { work_id, .. }
+		| crate::AgentActionDto::Interrupt { work_id, .. }
+		| crate::AgentActionDto::Respond { work_id, .. }
+		| crate::AgentActionDto::RespondWithRequestedDecision { work_id, .. }
+		| crate::AgentActionDto::AutomationResult { work_id, .. }
+		| crate::AgentActionDto::Steer { work_id, .. }
+		| crate::AgentActionDto::AnswerQuestion { work_id, .. }
+		| crate::AgentActionDto::SkipQuestion { work_id, .. }
+		| crate::AgentActionDto::ContinueMisalignment { work_id, .. }
+		| crate::AgentActionDto::ApproveGuardianDenial { work_id, .. }
+		| crate::AgentActionDto::RestoreArchivedThread { work_id, .. }
+		| crate::AgentActionDto::InstallSuggestedPlugin { work_id, .. }
+		| crate::AgentActionDto::AddResourceLink { work_id, .. }
+		| crate::AgentActionDto::RemoveResource { work_id, .. }
+		| crate::AgentActionDto::RefreshIntegrations { work_id } => work_id,
 	}
 }
 
@@ -3461,7 +3461,7 @@ mod tests {
 	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
 	#[tokio::test]
-	async fn chief_output_stream_reuses_connection_and_cancels_without_replay() {
+	async fn agent_output_stream_reuses_connection_and_cancels_without_replay() {
 		let (temp, authority) = local_transport();
 		let mut listener = authority.bind().await.unwrap();
 		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
@@ -3481,7 +3481,7 @@ mod tests {
 					panic!("read-only observation")
 				};
 				assert!(
-					matches!(query.payload, crate::QueryPayload::WaitForChiefOutput { work_id, after_revision }
+					matches!(query.payload, crate::QueryPayload::WaitForAgentOutput { work_id, after_revision }
 					if work_id.as_str() == "root" && after_revision == (revision > 1).then_some(revision - 1))
 				);
 				socket
@@ -3489,11 +3489,11 @@ mod tests {
 						version: CURRENT_VERSION,
 						server_id: ServerId::new(SERVER_ID).unwrap(),
 						query_id: query.query_id,
-						payload: QueryResultPayload::ChiefOutput(
-							crate::ChiefOutputResult::Available {
+						payload: QueryResultPayload::AgentOutput(
+							crate::AgentOutputResult::Available {
 								revision,
 								work_id: EntityId::new("root").unwrap(),
-								messages: vec![crate::ChiefLiveMessageDto {
+								messages: vec![crate::AgentLiveMessageDto {
 									kind: Default::default(),
 									turn_id: "turn".into(),
 									item_id: "item".into(),
@@ -3520,14 +3520,14 @@ mod tests {
 		});
 		let (sender, mut receiver) = tokio::sync::watch::channel(None);
 		let observer = tokio::spawn(async move {
-			crate::ChiefClient::new(profile)
+			crate::AgentClient::new(profile)
 				.observe_output(EntityId::new("root").unwrap(), sender)
 				.await
 		});
 		time::timeout(Duration::from_secs(2), async {
 			loop {
 				receiver.changed().await.unwrap();
-				if let Some(crate::ChiefOutputResult::Available { revision: 3, messages, .. }) =
+				if let Some(crate::AgentOutputResult::Available { revision: 3, messages, .. }) =
 					receiver.borrow_and_update().as_ref()
 				{
 					assert_eq!(messages[0].text, "你好世");
@@ -3547,7 +3547,7 @@ mod tests {
 		let (temp, authority) = local_transport();
 		let mut listener = authority.bind().await.unwrap();
 		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-		let expected = crate::ChiefArchiveResult::Archived { thread_id: "native-exact".into() };
+		let expected = crate::AgentArchiveResult::Archived { thread_id: "native-exact".into() };
 		let reply = expected.clone();
 		let server = tokio::spawn(async move {
 			let _temp = temp;
@@ -3564,7 +3564,7 @@ mod tests {
 				panic!("query")
 			};
 			assert!(
-				matches!(query.payload,crate::QueryPayload::GetChiefArchiveState {work_id} if work_id.as_str()=="root")
+				matches!(query.payload,crate::QueryPayload::GetAgentArchiveState {work_id} if work_id.as_str()=="root")
 			);
 			time::sleep(Duration::from_millis(5100)).await;
 			socket
@@ -3572,14 +3572,14 @@ mod tests {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(SERVER_ID).unwrap(),
 					query_id: query.query_id,
-					payload: QueryResultPayload::ChiefArchiveState(reply),
+					payload: QueryResultPayload::AgentArchiveState(reply),
 				})))
 				.await
 				.unwrap();
 			drop(socket);
 			listener.cleanup().unwrap();
 		});
-		let result = crate::ChiefClient::new(profile)
+		let result = crate::AgentClient::new(profile)
 			.archive_state(EntityId::new("root").unwrap())
 			.await
 			.unwrap();
@@ -3592,12 +3592,12 @@ mod tests {
 		let (temp, authority) = local_transport();
 		let mut listener = authority.bind().await.unwrap();
 		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-		let expected = crate::ChiefGuardianReviewsResult::Available {
-			reviews: vec![crate::ChiefGuardianReviewDto {
+		let expected = crate::AgentGuardianReviewsResult::Available {
+			reviews: vec![crate::AgentGuardianReviewDto {
 				row_id: 42,
 				digest: "digest".into(),
 				action_label: "Network access".into(),
-				status: crate::ChiefGuardianStatus::Denied,
+				status: crate::AgentGuardianStatus::Denied,
 				risk_level: Some("high".into()),
 				user_authorization: Some("low".into()),
 				rationale: Some("Not requested".into()),
@@ -3605,7 +3605,7 @@ mod tests {
 				details_unavailable: None,
 				details_paged: false,
 				current_process: false,
-				submission: Some(crate::ChiefGuardianSubmission::Pending),
+				submission: Some(crate::AgentGuardianSubmission::Pending),
 				submission_key: Some("exact-command".into()),
 				can_approve: false,
 				approval_unavailable: Some("Unconfirmed".into()),
@@ -3628,21 +3628,21 @@ mod tests {
 				panic!("query")
 			};
 			assert!(
-				matches!(query.payload,crate::QueryPayload::GetChiefGuardianReviews {work_id,before:Some(64)} if work_id.as_str()=="root")
+				matches!(query.payload,crate::QueryPayload::GetAgentGuardianReviews {work_id,before:Some(64)} if work_id.as_str()=="root")
 			);
 			socket
 				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(SERVER_ID).unwrap(),
 					query_id: query.query_id,
-					payload: QueryResultPayload::ChiefGuardianReviews(reply),
+					payload: QueryResultPayload::AgentGuardianReviews(reply),
 				})))
 				.await
 				.unwrap();
 			drop(socket);
 			listener.cleanup().unwrap();
 		});
-		let result = crate::ChiefClient::new(profile)
+		let result = crate::AgentClient::new(profile)
 			.guardian_reviews(EntityId::new("root").unwrap(), Some(64))
 			.await
 			.unwrap();
@@ -3656,7 +3656,7 @@ mod tests {
 			let (temp, authority) = local_transport();
 			let mut listener = authority.bind().await.unwrap();
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let reply = crate::ChiefGuardianDetailResult::Available {
+			let reply = crate::AgentGuardianDetailResult::Available {
 				row_id: if case == 1 { 43 } else { 42 },
 				digest: if case == 2 { "stale" } else { "exact" }.into(),
 				offset: if case == 3 { 0 } else { 3 },
@@ -3684,7 +3684,7 @@ mod tests {
 					panic!("query");
 				};
 				assert!(
-					matches!(query.payload, crate::QueryPayload::GetChiefGuardianDetail { work_id, review_row: 42, review_digest, offset: 3 }
+					matches!(query.payload, crate::QueryPayload::GetAgentGuardianDetail { work_id, review_row: 42, review_digest, offset: 3 }
 					if work_id.as_str() == "root" && review_digest.as_str() == "exact")
 				);
 				socket
@@ -3692,14 +3692,14 @@ mod tests {
 						version: CURRENT_VERSION,
 						server_id: ServerId::new(SERVER_ID).unwrap(),
 						query_id: query.query_id,
-						payload: QueryResultPayload::ChiefGuardianDetail(reply),
+						payload: QueryResultPayload::AgentGuardianDetail(reply),
 					})))
 					.await
 					.unwrap();
 				drop(socket);
 				listener.cleanup().unwrap();
 			});
-			let result = crate::ChiefClient::new(profile)
+			let result = crate::AgentClient::new(profile)
 				.guardian_detail(
 					EntityId::new("root").unwrap(),
 					42,
@@ -3715,52 +3715,52 @@ mod tests {
 		}
 	}
 
-	async fn chief_command_exchange(mode: &'static str) -> crate::ChiefCommandResponse {
+	async fn agent_command_exchange(mode: &'static str) -> crate::AgentCommandResponse {
 		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.expect("Chief protocol fixture succeeds");
+		let mut listener = authority.bind().await.expect("Agent protocol fixture succeeds");
 		let profile = ClientProfile::fixture(
 			authority,
-			ServerId::new(SERVER_ID).expect("Chief protocol fixture succeeds"),
+			ServerId::new(SERVER_ID).expect("Agent protocol fixture succeeds"),
 		);
 		let task = tokio::spawn(async move {
 			let _temp = temp;
-			let stream = listener.accept().await.expect("Chief protocol fixture succeeds");
+			let stream = listener.accept().await.expect("Agent protocol fixture succeeds");
 			let mut socket = tokio_tungstenite::accept_async(stream)
 				.await
-				.expect("Chief protocol fixture succeeds");
+				.expect("Agent protocol fixture succeeds");
 			let _ = socket.next().await;
 			for response in initial(SERVER_ID) {
-				socket.send(response).await.expect("Chief protocol fixture succeeds");
+				socket.send(response).await.expect("Agent protocol fixture succeeds");
 			}
 			let Message::Text(request) = socket
 				.next()
 				.await
-				.expect("Chief protocol fixture succeeds")
-				.expect("Chief protocol fixture succeeds")
+				.expect("Agent protocol fixture succeeds")
+				.expect("Agent protocol fixture succeeds")
 			else {
 				panic!("command text");
 			};
 			let ClientMessage::Command(command) =
-				serde_json::from_str(&request).expect("Chief protocol fixture succeeds")
+				serde_json::from_str(&request).expect("Agent protocol fixture succeeds")
 			else {
 				panic!("command envelope");
 			};
-			assert!(matches!(command.payload, crate::CommandPayload::Chief { .. }));
-			assert_eq!(command.idempotency_key.as_str(), "chief-once");
+			assert!(matches!(command.payload, crate::CommandPayload::Agent { .. }));
+			assert_eq!(command.idempotency_key.as_str(), "agent-once");
 			if mode != "dropped" {
 				if mode != "missing-receipt" {
 					socket
 						.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
 							version: CURRENT_VERSION,
 							server_id: ServerId::new(SERVER_ID)
-								.expect("Chief protocol fixture succeeds"),
+								.expect("Agent protocol fixture succeeds"),
 							client_command_id: command.client_command_id.clone(),
 							idempotency_key: command.idempotency_key.clone(),
 							disposition: ReceiptDisposition::Executed,
 							original_client_command_id: command.client_command_id.clone(),
 						})))
 						.await
-						.expect("Chief protocol fixture succeeds");
+						.expect("Agent protocol fixture succeeds");
 				}
 				socket
 					.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
@@ -3770,10 +3770,10 @@ mod tests {
 						} else {
 							SERVER_ID
 						})
-						.expect("Chief protocol fixture succeeds"),
+						.expect("Agent protocol fixture succeeds"),
 						client_command_id: command.client_command_id,
 						idempotency_key: if mode == "wrong-key" {
-							IdempotencyKey::new("other").expect("Chief protocol fixture succeeds")
+							IdempotencyKey::new("other").expect("Agent protocol fixture succeeds")
 						} else {
 							command.idempotency_key
 						},
@@ -3792,13 +3792,13 @@ mod tests {
 						payload: if matches!(mode, "rejected" | "unknown") {
 							None
 						} else {
-							Some(ResultPayload::ChiefAccepted {
+							Some(ResultPayload::AgentAccepted {
 								work_id: EntityId::new(if mode == "wrong-work" {
 									"another-root"
 								} else {
 									"personal"
 								})
-								.expect("Chief protocol fixture succeeds"),
+								.expect("Agent protocol fixture succeeds"),
 							})
 						},
 						error: if mode == "rejected" {
@@ -3810,50 +3810,50 @@ mod tests {
 						},
 					})))
 					.await
-					.expect("Chief protocol fixture succeeds");
+					.expect("Agent protocol fixture succeeds");
 			}
 			drop(socket);
 			assert!(
 				time::timeout(Duration::from_millis(30), listener.accept()).await.is_err(),
 				"client must not reconnect and retry"
 			);
-			listener.cleanup().expect("Chief protocol fixture succeeds");
+			listener.cleanup().expect("Agent protocol fixture succeeds");
 		});
-		let result = crate::ChiefClient::new(profile)
+		let result = crate::AgentClient::new(profile)
 			.execute(
-				crate::ChiefActionDto::Send {
-					root_id: EntityId::new("personal").expect("Chief protocol fixture succeeds"),
+				crate::AgentActionDto::Send {
+					root_id: EntityId::new("personal").expect("Agent protocol fixture succeeds"),
 					text: crate::HistoryText::new("Hello")
-						.expect("Chief protocol fixture succeeds"),
+						.expect("Agent protocol fixture succeeds"),
 				},
-				IdempotencyKey::new("chief-once").expect("Chief protocol fixture succeeds"),
+				IdempotencyKey::new("agent-once").expect("Agent protocol fixture succeeds"),
 			)
 			.await
-			.expect("Chief protocol fixture succeeds");
-		task.await.expect("Chief protocol fixture succeeds");
+			.expect("Agent protocol fixture succeeds");
+		task.await.expect("Agent protocol fixture succeeds");
 		result
 	}
 
 	#[tokio::test]
-	async fn chief_command_requires_exact_receipt_server_and_work_identity_without_retry() {
+	async fn agent_command_requires_exact_receipt_server_and_work_identity_without_retry() {
 		assert!(matches!(
-			chief_command_exchange("rejected").await,
-			crate::ChiefCommandResponse::Rejected { error: CommandError::IdempotencyConflict }
+			agent_command_exchange("rejected").await,
+			crate::AgentCommandResponse::Rejected { error: CommandError::IdempotencyConflict }
 		));
 		assert!(matches!(
-			chief_command_exchange("unknown").await,
-			crate::ChiefCommandResponse::PotentiallyDispatched {
+			agent_command_exchange("unknown").await,
+			crate::AgentCommandResponse::PotentiallyDispatched {
 				failure: ClientFailure::ApplicationAcceptanceUnknown
 			}
 		));
 		assert!(
-			matches!(chief_command_exchange("accepted").await, crate::ChiefCommandResponse::Accepted { work_id } if work_id.as_str() == "personal")
+			matches!(agent_command_exchange("accepted").await, crate::AgentCommandResponse::Accepted { work_id } if work_id.as_str() == "personal")
 		);
 		for mode in ["wrong-work", "wrong-key", "wrong-server", "missing-receipt", "dropped"] {
 			assert!(
 				matches!(
-					chief_command_exchange(mode).await,
-					crate::ChiefCommandResponse::PotentiallyDispatched { .. }
+					agent_command_exchange(mode).await,
+					crate::AgentCommandResponse::PotentiallyDispatched { .. }
 				),
 				"{mode}"
 			);
@@ -4359,7 +4359,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn chief_request_pages_preserve_complete_content_and_reject_changed_identity() {
+	async fn agent_request_pages_preserve_complete_content_and_reject_changed_identity() {
 		use crate::QueryPayload;
 		for failure in ["none", "digest", "offset", "expired", "content"] {
 			let (temp, authority) = local_transport();
@@ -4367,7 +4367,7 @@ mod tests {
 			let text = serde_json::json!({"command":"界🙂\\\"".repeat(4000)}).to_string();
 			let expected = text.clone();
 			let digest = decodex_core::BlobHash::digest(
-				&serde_json::to_vec(&(7, "chief", "item/commandExecution/requestApproval", &text))
+				&serde_json::to_vec(&(7, "agent", "item/commandExecution/requestApproval", &text))
 					.unwrap(),
 			)
 			.to_hex();
@@ -4394,11 +4394,11 @@ mod tests {
 					if offset == 0 {
 						assert!(matches!(
 							query.payload,
-							QueryPayload::GetChiefRequest { event_id: 7 }
+							QueryPayload::GetAgentRequest { event_id: 7 }
 						));
 					} else {
 						assert!(
-							matches!(query.payload, QueryPayload::GetChiefRequestPage { event_id:7, digest: returned, offset: requested } if requested==offset && returned.as_str()==digest)
+							matches!(query.payload, QueryPayload::GetAgentRequestPage { event_id:7, digest: returned, offset: requested } if requested==offset && returned.as_str()==digest)
 						);
 					}
 					let mut end = (offset + 8192).min(text.len());
@@ -4411,11 +4411,11 @@ mod tests {
 						offset > 0 && failure != "none"
 					};
 					let result = if fail && failure == "expired" {
-						crate::ChiefRequestResult::Unavailable
+						crate::AgentRequestResult::Unavailable
 					} else {
-						crate::ChiefRequestResult::Page {
+						crate::AgentRequestResult::Page {
 							event_id: 7,
-							work_id: "chief".into(),
+							work_id: "agent".into(),
 							method: "item/commandExecution/requestApproval".into(),
 							digest: if fail && failure == "digest" {
 								"b".repeat(64)
@@ -4441,7 +4441,7 @@ mod tests {
 							version: CURRENT_VERSION,
 							server_id: ServerId::new(SERVER_ID).unwrap(),
 							query_id: query.query_id,
-							payload: QueryResultPayload::ChiefRequest(result),
+							payload: QueryResultPayload::AgentRequest(result),
 						})))
 						.await
 						.unwrap();
@@ -4454,20 +4454,20 @@ mod tests {
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::ChiefClient::new(profile).request(7).await;
+			let result = crate::AgentClient::new(profile).request(7).await;
 			task.await.unwrap();
 			match failure {
 				"none" => assert!(
-					matches!(result, Ok(crate::ChiefRequestResult::Available { request_json, .. }) if request_json.as_str()==expected)
+					matches!(result, Ok(crate::AgentRequestResult::Available { request_json, .. }) if request_json.as_str()==expected)
 				),
-				"expired" => assert_eq!(result.unwrap(), crate::ChiefRequestResult::Unavailable),
+				"expired" => assert_eq!(result.unwrap(), crate::AgentRequestResult::Unavailable),
 				_ => assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed),
 			}
 		}
 	}
 
 	#[tokio::test]
-	async fn chief_request_transport_admits_mcp_forms_but_rejects_wrong_event_and_unknown_method() {
+	async fn agent_request_transport_admits_mcp_forms_but_rejects_wrong_event_and_unknown_method() {
 		for (method, returned, accepted) in [
 			("mcpServer/elicitation/request", 7, true),
 			("mcpServer/elicitation/request", 8, false),
@@ -4493,19 +4493,19 @@ mod tests {
 				};
 				assert!(matches!(
 					query.payload,
-					crate::QueryPayload::GetChiefRequest { event_id: 7 }
+					crate::QueryPayload::GetAgentRequest { event_id: 7 }
 				));
 				socket
 					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 						version: CURRENT_VERSION,
 						server_id: ServerId::new(SERVER_ID).unwrap(),
 						query_id: query.query_id,
-						payload: QueryResultPayload::ChiefRequest(
-							crate::ChiefRequestResult::Available {
+						payload: QueryResultPayload::AgentRequest(
+							crate::AgentRequestResult::Available {
 								event_id: returned,
-								work_id: "chief".into(),
+								work_id: "agent".into(),
 								method: method.into(),
-								request_json: crate::ChiefRequestText::new(
+								request_json: crate::AgentRequestText::new(
 									r#"{"mode":"form","requestedSchema":null,"message":"Allow this request?"}"#,
 								)
 								.unwrap(),
@@ -4518,11 +4518,11 @@ mod tests {
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::ChiefClient::new(profile).request(7).await;
+			let result = crate::AgentClient::new(profile).request(7).await;
 			task.await.unwrap();
 			if accepted {
 				assert!(
-					matches!(result,Ok(crate::ChiefRequestResult::Available {method,..}) if method=="mcpServer/elicitation/request")
+					matches!(result,Ok(crate::AgentRequestResult::Available {method,..}) if method=="mcpServer/elicitation/request")
 				);
 			} else {
 				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed);
@@ -4577,7 +4577,7 @@ mod tests {
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::ChiefClient::new(profile)
+			let result = crate::AgentClient::new(profile)
 				.mcp_login(crate::McpLoginRequest::Start {
 					session_id: EntityId::new("intent").unwrap(),
 					work_id: EntityId::new("work").unwrap(),
@@ -4618,9 +4618,9 @@ mod tests {
 					panic!("query");
 				};
 				assert!(
-					matches!(query.payload,crate::QueryPayload::GetChiefUsageEstimate {work_id} if work_id.as_str()=="work")
+					matches!(query.payload,crate::QueryPayload::GetAgentUsageEstimate {work_id} if work_id.as_str()=="work")
 				);
-				let value = crate::ChiefUsageEstimateResult::Available {
+				let value = crate::AgentUsageEstimateResult::Available {
 					work_id: EntityId::new(returned_work).unwrap(),
 					account_id: EntityId::new("account").unwrap(),
 					observed_at_micros: 1,
@@ -4636,7 +4636,7 @@ mod tests {
 						version: CURRENT_VERSION,
 						server_id: ServerId::new(SERVER_ID).unwrap(),
 						query_id: query.query_id,
-						payload: QueryResultPayload::ChiefUsageEstimate(value),
+						payload: QueryResultPayload::AgentUsageEstimate(value),
 					})))
 					.await
 					.unwrap();
@@ -4644,12 +4644,12 @@ mod tests {
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let response = crate::ChiefClient::new(profile)
+			let response = crate::AgentClient::new(profile)
 				.usage_estimate(EntityId::new("work").unwrap())
 				.await;
 			task.await.unwrap();
 			if returned_work == "work" {
-				let crate::ChiefUsageEstimateResult::Available { estimate, .. } = response.unwrap()
+				let crate::AgentUsageEstimateResult::Available { estimate, .. } = response.unwrap()
 				else {
 					panic!("estimate");
 				};
@@ -4821,7 +4821,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 95 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 96 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
@@ -5833,7 +5833,7 @@ max_entry_bytes = 0
 		{
 			let (temp, authority) = local_transport();
 			let mut listener = authority.bind().await.unwrap();
-			let request = crate::ChiefMediaRequest {
+			let request = crate::AgentMediaRequest {
 				work_id: EntityId::new("work").unwrap(),
 				thread_id: EntityId::new("thread").unwrap(),
 				turn_id: EntityId::new("turn").unwrap(),
@@ -5860,7 +5860,7 @@ max_entry_bytes = 0
 				else {
 					panic!("query")
 				};
-				let crate::QueryPayload::GetChiefMedia { request: actual } = query.payload else {
+				let crate::QueryPayload::GetAgentMedia { request: actual } = query.payload else {
 					panic!("media request")
 				};
 				assert_eq!(actual, expected);
@@ -5873,15 +5873,15 @@ max_entry_bytes = 0
 				}
 				let bytes = match change {
 					"empty" => vec![],
-					"chunk" => vec![255; crate::CHIEF_MEDIA_CHUNK_BYTES + 1],
-					_ => vec![255; crate::CHIEF_MEDIA_CHUNK_BYTES],
+					"chunk" => vec![255; crate::AGENT_MEDIA_CHUNK_BYTES + 1],
+					_ => vec![255; crate::AGENT_MEDIA_CHUNK_BYTES],
 				};
 				let total_bytes = match change {
 					"total" => 4,
-					"capacity" => crate::MAX_CHIEF_MEDIA_BYTES as u32 + 1,
-					_ => 5 + crate::CHIEF_MEDIA_CHUNK_BYTES as u32,
+					"capacity" => crate::MAX_AGENT_MEDIA_BYTES as u32 + 1,
+					_ => 5 + crate::AGENT_MEDIA_CHUNK_BYTES as u32,
 				};
-				let result = crate::ChiefMediaResult::Available {
+				let result = crate::AgentMediaResult::Available {
 					request: Box::new(returned),
 					account_id: EntityId::new("account").unwrap(),
 					fingerprint: EntityId::new(
@@ -5897,7 +5897,7 @@ max_entry_bytes = 0
 						version: CURRENT_VERSION,
 						server_id: ServerId::new(SERVER_ID).unwrap(),
 						query_id: query.query_id,
-						payload: QueryResultPayload::ChiefMedia(result),
+						payload: QueryResultPayload::AgentMedia(result),
 					})))
 					.await
 					.unwrap();
@@ -5905,10 +5905,10 @@ max_entry_bytes = 0
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::ChiefClient::new(profile).media(request).await;
+			let result = crate::AgentClient::new(profile).media(request).await;
 			task.await.unwrap();
 			if change == "none" {
-				assert!(matches!(result, Ok(crate::ChiefMediaResult::Available { .. })));
+				assert!(matches!(result, Ok(crate::AgentMediaResult::Available { .. })));
 			} else {
 				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
 			}
@@ -5921,7 +5921,7 @@ max_entry_bytes = 0
 		{
 			let (temp, authority) = local_transport();
 			let mut listener = authority.bind().await.unwrap();
-			let request = crate::ChiefAppUiRequest {
+			let request = crate::AgentAppUiRequest {
 				work_id: EntityId::new("work").unwrap(),
 				thread_id: EntityId::new("thread").unwrap(),
 				turn_id: EntityId::new("turn").unwrap(),
@@ -5947,7 +5947,7 @@ max_entry_bytes = 0
 				else {
 					panic!("query")
 				};
-				let crate::QueryPayload::GetChiefAppUi { request: actual } = query.payload else {
+				let crate::QueryPayload::GetAgentAppUi { request: actual } = query.payload else {
 					panic!("media request")
 				};
 				assert_eq!(actual, expected);
@@ -5960,15 +5960,15 @@ max_entry_bytes = 0
 				}
 				let bytes = match change {
 					"empty" => vec![],
-					"chunk" => vec![255; crate::CHIEF_APP_UI_CHUNK_BYTES + 1],
-					_ => vec![255; crate::CHIEF_APP_UI_CHUNK_BYTES],
+					"chunk" => vec![255; crate::AGENT_APP_UI_CHUNK_BYTES + 1],
+					_ => vec![255; crate::AGENT_APP_UI_CHUNK_BYTES],
 				};
 				let total_bytes = match change {
 					"total" => 4,
-					"capacity" => crate::MAX_CHIEF_APP_UI_BYTES as u32 + 1,
-					_ => 5 + crate::CHIEF_APP_UI_CHUNK_BYTES as u32,
+					"capacity" => crate::MAX_AGENT_APP_UI_BYTES as u32 + 1,
+					_ => 5 + crate::AGENT_APP_UI_CHUNK_BYTES as u32,
 				};
-				let result = crate::ChiefAppUiResult::Available {
+				let result = crate::AgentAppUiResult::Available {
 					request: Box::new(returned),
 					account_id: EntityId::new("account").unwrap(),
 					source_fingerprint: EntityId::new("c".repeat(64)).unwrap(),
@@ -5984,7 +5984,7 @@ max_entry_bytes = 0
 						version: CURRENT_VERSION,
 						server_id: ServerId::new(SERVER_ID).unwrap(),
 						query_id: query.query_id,
-						payload: QueryResultPayload::ChiefAppUi(result),
+						payload: QueryResultPayload::AgentAppUi(result),
 					})))
 					.await
 					.unwrap();
@@ -5992,10 +5992,10 @@ max_entry_bytes = 0
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::ChiefClient::new(profile).app_ui(request).await;
+			let result = crate::AgentClient::new(profile).app_ui(request).await;
 			task.await.unwrap();
 			if change == "none" {
-				assert!(matches!(result, Ok(crate::ChiefAppUiResult::Available { .. })));
+				assert!(matches!(result, Ok(crate::AgentAppUiResult::Available { .. })));
 			} else {
 				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
 			}
@@ -6008,7 +6008,7 @@ max_entry_bytes = 0
 		{
 			let (temp, authority) = local_transport();
 			let mut listener = authority.bind().await.unwrap();
-			let request = crate::ChiefAppUiReceiptRequest {
+			let request = crate::AgentAppUiReceiptRequest {
 				work_id: EntityId::new("work").unwrap(),
 				operation_id: EntityId::new("item").unwrap(),
 				offset: 5,
@@ -6032,7 +6032,7 @@ max_entry_bytes = 0
 				else {
 					panic!("query")
 				};
-				let crate::QueryPayload::GetChiefAppUiReceipt { request: actual } = query.payload
+				let crate::QueryPayload::GetAgentAppUiReceipt { request: actual } = query.payload
 				else {
 					panic!("media request")
 				};
@@ -6046,15 +6046,15 @@ max_entry_bytes = 0
 				}
 				let bytes = match change {
 					"empty" => vec![],
-					"chunk" => vec![255; crate::CHIEF_APP_UI_RECEIPT_CHUNK_BYTES + 1],
-					_ => vec![255; crate::CHIEF_APP_UI_RECEIPT_CHUNK_BYTES],
+					"chunk" => vec![255; crate::AGENT_APP_UI_RECEIPT_CHUNK_BYTES + 1],
+					_ => vec![255; crate::AGENT_APP_UI_RECEIPT_CHUNK_BYTES],
 				};
 				let total_bytes = match change {
 					"total" => 4,
-					"capacity" => crate::MAX_CHIEF_APP_UI_RECEIPT_BYTES as u32 + 1,
-					_ => 5 + crate::CHIEF_APP_UI_RECEIPT_CHUNK_BYTES as u32,
+					"capacity" => crate::MAX_AGENT_APP_UI_RECEIPT_BYTES as u32 + 1,
+					_ => 5 + crate::AGENT_APP_UI_RECEIPT_CHUNK_BYTES as u32,
 				};
-				let result = crate::ChiefAppUiReceiptResult::Available {
+				let result = crate::AgentAppUiReceiptResult::Available {
 					request: Box::new(returned),
 					fingerprint: EntityId::new(
 						if change == "fingerprint" { "b" } else { "a" }.repeat(64),
@@ -6068,7 +6068,7 @@ max_entry_bytes = 0
 						version: CURRENT_VERSION,
 						server_id: ServerId::new(SERVER_ID).unwrap(),
 						query_id: query.query_id,
-						payload: QueryResultPayload::ChiefAppUiReceipt(result),
+						payload: QueryResultPayload::AgentAppUiReceipt(result),
 					})))
 					.await
 					.unwrap();
@@ -6076,10 +6076,10 @@ max_entry_bytes = 0
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::ChiefClient::new(profile).app_ui_receipt(request).await;
+			let result = crate::AgentClient::new(profile).app_ui_receipt(request).await;
 			task.await.unwrap();
 			if change == "none" {
-				assert!(matches!(result, Ok(crate::ChiefAppUiReceiptResult::Available { .. })));
+				assert!(matches!(result, Ok(crate::AgentAppUiReceiptResult::Available { .. })));
 			} else {
 				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
 			}
@@ -6108,13 +6108,13 @@ max_entry_bytes = 0
 					panic!("query")
 				};
 				assert!(
-					matches!(&query.payload,crate::QueryPayload::GetChiefInputReceipts {work_id,after:Some(40)} if work_id.as_str()=="work")
+					matches!(&query.payload,crate::QueryPayload::GetAgentInputReceipts {work_id,after:Some(40)} if work_id.as_str()=="work")
 				);
-				let entry = crate::ChiefHistoryEntryDto {
+				let entry = crate::AgentHistoryEntryDto {
 					native_source: None,
 					turn_id: None,
 					weather: Vec::new(),
-					receipt: Some(crate::ChiefHistoryReceiptDto {
+					receipt: Some(crate::AgentHistoryReceiptDto {
 						voice_session_id: None,
 						event_kind: "user_message".into(),
 						delivered_turn_id: (change == "delivered").then(|| "turn".into()),
@@ -6128,7 +6128,7 @@ max_entry_bytes = 0
 					text: "Pending input".into(),
 					created_at_micros: 1,
 				};
-				let result = crate::ChiefInputReceiptsResult::Available {
+				let result = crate::AgentInputReceiptsResult::Available {
 					work_id: EntityId::new(if change == "work" { "other" } else { "work" })
 						.unwrap(),
 					entries: vec![entry],
@@ -6140,7 +6140,7 @@ max_entry_bytes = 0
 						version: CURRENT_VERSION,
 						server_id: ServerId::new(SERVER_ID).unwrap(),
 						query_id: query.query_id,
-						payload: QueryResultPayload::ChiefInputReceipts(result),
+						payload: QueryResultPayload::AgentInputReceipts(result),
 					})))
 					.await
 					.unwrap();
@@ -6148,12 +6148,12 @@ max_entry_bytes = 0
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::ChiefClient::new(profile)
+			let result = crate::AgentClient::new(profile)
 				.input_receipts(EntityId::new("work").unwrap(), Some(40))
 				.await;
 			task.await.unwrap();
 			if change == "none" {
-				assert!(matches!(result, Ok(crate::ChiefInputReceiptsResult::Available { .. })));
+				assert!(matches!(result, Ok(crate::AgentInputReceiptsResult::Available { .. })));
 			} else {
 				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
 			}
@@ -6164,7 +6164,7 @@ max_entry_bytes = 0
 		for change in ["none", "work", "thread", "turn", "submission"] {
 			let (temp, authority) = local_transport();
 			let mut listener = authority.bind().await.unwrap();
-			let identity = crate::ChiefSteerIdentity {
+			let identity = crate::AgentSteerIdentity {
 				work_id: EntityId::new("work").unwrap(),
 				thread_id: crate::WireText::new("thread").unwrap(),
 				turn_id: crate::WireText::new("turn").unwrap(),
@@ -6189,7 +6189,7 @@ max_entry_bytes = 0
 					panic!("query")
 				};
 				assert!(
-					matches!(&query.payload, crate::QueryPayload::GetChiefSteerReceipt { identity } if identity == &expected)
+					matches!(&query.payload, crate::QueryPayload::GetAgentSteerReceipt { identity } if identity == &expected)
 				);
 				let mut actual = expected;
 				match change {
@@ -6204,8 +6204,8 @@ max_entry_bytes = 0
 						version: CURRENT_VERSION,
 						server_id: ServerId::new(SERVER_ID).unwrap(),
 						query_id: query.query_id,
-						payload: QueryResultPayload::ChiefSteerReceipt(
-							crate::ChiefSteerReceiptResult::Confirmed { identity: actual },
+						payload: QueryResultPayload::AgentSteerReceipt(
+							crate::AgentSteerReceiptResult::Confirmed { identity: actual },
 						),
 					})))
 					.await
@@ -6214,10 +6214,10 @@ max_entry_bytes = 0
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::ChiefClient::new(profile).steer_receipt(identity.clone()).await;
+			let result = crate::AgentClient::new(profile).steer_receipt(identity.clone()).await;
 			task.await.unwrap();
 			if change == "none" {
-				assert_eq!(result.unwrap(), crate::ChiefSteerReceiptResult::Confirmed { identity });
+				assert_eq!(result.unwrap(), crate::AgentSteerReceiptResult::Confirmed { identity });
 			} else {
 				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
 			}

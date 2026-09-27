@@ -14,7 +14,7 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _, ser::Error as 
 use serde_json::Error;
 
 use crate::{
-	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, ChiefSnapshotResult,
+	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, AgentSnapshotResult,
 	ConversationExecutionSettings, ConversationListCursor, ConversationListResult,
 	ConversationListSize, ConversationRecoveryAction, ConversationResult, ConversationSummary,
 	ConversationTurnOutcome, ConversationWorkingDirectory, DoctorReport, ProtocolVersion,
@@ -2188,24 +2188,24 @@ impl AccountObservationSignal {
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
 	/// Read the current native process directory for canonical local media.
-	GetChiefPromptInputDirectory {
+	GetAgentPromptInputDirectory {
 		/// Exact task owner.
 		work_id: EntityId,
 		/// Exact native thread.
 		thread_id: WireText,
 	},
 	/// Read durable input transfer status without finalizing or submitting it.
-	GetChiefPromptInputSend {
+	GetAgentPromptInputSend {
 		/// Original source, content, command and execution identity.
 		identity: crate::PromptInputSendIdentity,
 	},
 	/// Read durable input transfer progress.
-	GetChiefPromptInputUpload {
+	GetAgentPromptInputUpload {
 		/// Exact transfer identity.
 		upload: crate::PromptInputUpload,
 	},
 	/// Read one bounded canonical-input fragment from the same reviewed history edit.
-	GetChiefPromptEdit {
+	GetAgentPromptEdit {
 		/// Local owner.
 		work_id: EntityId,
 		/// Exact native thread.
@@ -2216,57 +2216,57 @@ pub enum QueryPayload {
 		offset: u64,
 	},
 	/// Read existing recap state without starting inference.
-	GetChiefRecap {
+	GetAgentRecap {
 		/// Owning task.
 		work_id: EntityId,
 	},
 	/// Read the current native voice catalog and effective project preference.
-	GetChiefVoiceSettings {
+	GetAgentVoiceSettings {
 		/// Owning task.
 		work_id: EntityId,
 	},
 
 	/// Read connector exposure for an owned task.
-	GetChiefAppExposure {
+	GetAgentAppExposure {
 		/// Task identity.
 		work_id: EntityId,
 		/// Native connector identity.
 		connector_id: WireText,
 	},
 	/// Inspect existing native app connection overrides.
-	GetChiefSavedAppSettings {
+	GetAgentSavedAppSettings {
 		/// Originating local task.
 		work_id: EntityId,
 	},
 	/// Inspect configuration and receipts for an app request.
-	GetChiefAppSettings {
+	GetAgentAppSettings {
 		/// Originating task.
 		work_id: EntityId,
 		/// Request event, which can be resolved when reading saved state.
 		event_id: i64,
 	},
 	/// Review shared native hooks and durable configuration results.
-	GetChiefHookSettings {
+	GetAgentHookSettings {
 		/// Originating local task.
 		work_id: EntityId,
 	},
 	/// Review model settings and native choices for one task.
-	GetChiefModelSelection {
+	GetAgentModelSelection {
 		/// Owning task.
 		work_id: EntityId,
 	},
 	/// Read task plugin exclusions.
-	GetChiefPluginSelection {
+	GetAgentPluginSelection {
 		/// Owning task.
 		work_id: EntityId,
 	},
 	/// Inspect current permission facts and profile eligibility for one task.
-	GetChiefPermissionProfiles {
+	GetAgentPermissionProfiles {
 		/// Owning task.
 		work_id: EntityId,
 	},
 	/// Inspect one exact live task and its last settings publication receipt.
-	GetChiefLiveReviewer {
+	GetAgentLiveReviewer {
 		/// Owning task.
 		work_id: EntityId,
 		/// Include native model choices only for an explicit settings review.
@@ -2278,12 +2278,12 @@ pub enum QueryPayload {
 		request: crate::DictationRequest,
 	},
 	/// Exchange transient native voice signaling without a durable command receipt.
-	ExchangeChiefVoice {
+	ExchangeAgentVoice {
 		/// Exact call operation, with memory-only session descriptions.
-		request: crate::ChiefVoiceRequest,
+		request: crate::AgentVoiceRequest,
 	},
 	/// Inspect one exact native activity item without changing the conversation.
-	GetChiefActivityDetail {
+	GetAgentActivityDetail {
 		/// Work owning the native thread.
 		work_id: EntityId,
 		/// Exact source turn.
@@ -2292,10 +2292,10 @@ pub enum QueryPayload {
 		item_id: WireText,
 		/// Continuation for the unchanged source.
 		#[serde(default)]
-		cursor: Option<crate::ChiefActivityDetailCursor>,
+		cursor: Option<crate::AgentActivityDetailCursor>,
 	},
 	/// Read current native model and Memory configuration evidence.
-	GetChiefCapabilities,
+	GetAgentCapabilities,
 	/// Observe an original later-turn provider attempt without replay.
 	GetConversationTurnOutcome {
 		/// Stable original submission coordinates.
@@ -2325,58 +2325,58 @@ pub enum QueryPayload {
 		request: crate::McpLoginRequest,
 	},
 	/// Read configured native model settings for one exact task.
-	GetChiefModelSettings {
+	GetAgentModelSettings {
 		/// Exact local task whose configured native settings are requested.
 		work_id: EntityId,
 	},
 	/// Read the native goal for one exact task and thread.
-	GetChiefNativeGoal {
+	GetAgentNativeGoal {
 		/// Exact local task owner.
 		work_id: EntityId,
 		/// Intended native thread; never follows a replacement.
 		thread_id: EntityId,
 	},
 	/// Read the native usage estimate for one task.
-	GetChiefUsageEstimate {
+	GetAgentUsageEstimate {
 		/// Exact work identity.
 		work_id: EntityId,
 	},
 
 	/// Read native MCP and repository plugin observations for a task.
-	GetChiefIntegrations {
+	GetAgentIntegrations {
 		/// Exact local task identity.
 		work_id: EntityId,
 	},
 	/// Read unconfirmed local input independently of the native or saved transcript.
-	GetChiefInputReceipts {
+	GetAgentInputReceipts {
 		/// Exact local task identity.
 		work_id: EntityId,
 		/// Read current inputs strictly after this persistent event identity.
 		after: Option<i64>,
 	},
 	/// Read positive evidence for one exact steering submission.
-	GetChiefSteerReceipt {
+	GetAgentSteerReceipt {
 		/// Identity captured before dispatch.
-		identity: crate::ChiefSteerIdentity,
+		identity: crate::AgentSteerIdentity,
 	},
 	/// Read saved App UI call evidence without repeating the native call.
 	/// Discover an unresolved App UI call without a live native source.
-	GetChiefPendingAppUiCall {
+	GetAgentPendingAppUiCall {
 		/// Exact work journal owner.
 		work_id: EntityId,
 	},
 	/// Read the exact saved operation.
-	GetChiefAppUiReceipt {
+	GetAgentAppUiReceipt {
 		/// Exact saved operation and continuation.
-		request: crate::ChiefAppUiReceiptRequest,
+		request: crate::AgentAppUiReceiptRequest,
 	},
 	/// Read native evidence for a widget callback; never execute it.
-	ReviewChiefAppUiCall {
+	ReviewAgentAppUiCall {
 		/// Complete proposed invocation.
-		request: crate::ChiefAppUiCall,
+		request: crate::AgentAppUiCall,
 	},
 	/// Check whether a displayed widget still belongs to the current native source.
-	GetChiefAppUiSource {
+	GetAgentAppUiSource {
 		/// Exact work owner.
 		work_id: EntityId,
 		/// Expected native thread.
@@ -2385,17 +2385,17 @@ pub enum QueryPayload {
 		fingerprint: EntityId,
 	},
 	/// Read a source-bound MCP App UI document chunk.
-	GetChiefAppUi {
+	GetAgentAppUi {
 		/// Exact native tool item and chunk continuation.
-		request: crate::ChiefAppUiRequest,
+		request: crate::AgentAppUiRequest,
 	},
 	/// Read a bounded chunk of an exact native attachment.
-	GetChiefMedia {
+	GetAgentMedia {
 		/// Source identity and continuation.
-		request: crate::ChiefMediaRequest,
+		request: crate::AgentMediaRequest,
 	},
 	/// Read one exact native timeline page without resuming the task.
-	GetChiefTimeline {
+	GetAgentTimeline {
 		/// Current local task identity.
 		work_id: EntityId,
 		/// Exact expected native binding, including for the first page.
@@ -2404,31 +2404,31 @@ pub enum QueryPayload {
 		cursor: Option<WireText>,
 	},
 	/// Inspect native archive membership for the exact bound task.
-	GetChiefArchiveState {
+	GetAgentArchiveState {
 		/// Current local work identity.
 		work_id: EntityId,
 	},
 	/// Inspect one pending native installation suggestion without installing it.
-	GetChiefInstallState {
+	GetAgentInstallState {
 		/// Exact owning task.
 		work_id: EntityId,
 		/// Exact pending native event.
 		event_id: i64,
 	},
 	/// Read the exact work thread native resource associations.
-	GetChiefResources {
+	GetAgentResources {
 		/// Exact local work identity.
 		work_id: EntityId,
 	},
 	/// Read saved native action reviews without invoking a model or replaying an action.
-	GetChiefGuardianReviews {
+	GetAgentGuardianReviews {
 		/// Exact local work identity.
 		work_id: EntityId,
 		/// Older review cursor; None selects the newest page.
 		before: Option<i64>,
 	},
 	/// Read complete action details in bounded, digest-bound pages.
-	GetChiefGuardianDetail {
+	GetAgentGuardianDetail {
 		/// Exact local work identity.
 		work_id: EntityId,
 		/// Saved review row identity.
@@ -2439,12 +2439,12 @@ pub enum QueryPayload {
 		offset: usize,
 	},
 	/// Read one selected, bounded pending request.
-	GetChiefRequest {
+	GetAgentRequest {
 		/// Exact inbox event identity.
 		event_id: i64,
 	},
 	/// Continue an exact selected request without exposing partial content.
-	GetChiefRequestPage {
+	GetAgentRequestPage {
 		/// Exact inbox event identity.
 		event_id: i64,
 		/// Digest returned by the initial page.
@@ -2452,17 +2452,17 @@ pub enum QueryPayload {
 		/// Next UTF-8 byte offset.
 		offset: usize,
 	},
-	/// Read source-bound visible Chief or worker messages.
-	GetChiefHistory {
+	/// Read source-bound visible Agent or worker messages.
+	GetAgentHistory {
 		/// Exact work identity.
 		work_id: EntityId,
 		/// Read saved entries before this event; None selects the live head.
 		before: Option<i64>,
 	},
-	/// Read the complete bounded Chief work graph and pending result metadata.
-	GetChiefSnapshot,
+	/// Read the complete bounded Agent work graph and pending result metadata.
+	GetAgentSnapshot,
 	/// Wait for native output to change, or return a bounded heartbeat. No execution effects.
-	WaitForChiefOutput {
+	WaitForAgentOutput {
 		/// Exact managed work item.
 		work_id: EntityId,
 		/// Last wakeup revision on this connection; absent for immediate initial state.
@@ -2605,10 +2605,10 @@ pub enum CommandPayload {
 		/// NotifyOwner or URL-less RequestIncrease only.
 		action: crate::AccountRecoveryAction,
 	},
-	/// Submit one explicit Chief operation to the service-owned coordinator.
-	Chief {
+	/// Submit one explicit Agent operation to the service-owned coordinator.
+	Agent {
 		/// Bounded operation and selected execution configuration.
-		action: Box<crate::ChiefActionDto>,
+		action: Box<crate::AgentActionDto>,
 	},
 	/// Replace the persistent menu-bar preference for the sole Decodex application.
 	SetDesktopSettings {
@@ -2857,9 +2857,9 @@ pub enum EventPayload {
 		/// Native delivery evidence or uncertainty.
 		status: crate::AccountRecoveryNudgeStatus,
 	},
-	/// A Chief operation was durably accepted or an interrupt was delivered.
-	ChiefChanged {
-		/// Affected work or personal Chief identity.
+	/// A Agent operation was durably accepted or an interrupt was delivered.
+	AgentChanged {
+		/// Affected work or personal Agent identity.
 		work_id: EntityId,
 	},
 	/// Persistent desktop settings changed.
@@ -3004,9 +3004,9 @@ pub enum ResultPayload {
 		/// Native delivery evidence or uncertainty.
 		status: crate::AccountRecoveryNudgeStatus,
 	},
-	/// A Chief operation reached its explicit acceptance boundary.
-	ChiefAccepted {
-		/// Affected work or personal Chief identity.
+	/// A Agent operation reached its explicit acceptance boundary.
+	AgentAccepted {
+		/// Affected work or personal Agent identity.
 		work_id: EntityId,
 	},
 	/// Persistent desktop settings changed.
@@ -3117,11 +3117,11 @@ impl ResultPayload {
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
 	/// Durable data transfer status; not an inference receipt.
-	ChiefPromptInputUpload(crate::PromptInputUploadStatus),
+	AgentPromptInputUpload(crate::PromptInputUploadStatus),
 	/// Read-only canonical input acceptance.
-	ChiefPromptInputSend(crate::PromptInputSendStatus),
+	AgentPromptInputSend(crate::PromptInputSendStatus),
 	/// Source-bound local media base. Missing directory means unavailable.
-	ChiefPromptInputDirectory {
+	AgentPromptInputDirectory {
 		/// Requested task.
 		work_id: EntityId,
 		/// Requested native thread.
@@ -3130,35 +3130,35 @@ pub enum QueryResultPayload {
 		directory: Option<WireText>,
 	},
 	/// Service-owned task recap state.
-	ChiefRecap(crate::TaskRecapStatus),
+	AgentRecap(crate::TaskRecapStatus),
 	/// Canonical source-bound prompt-edit evidence page.
-	ChiefPromptEdit(crate::PromptEditStatus),
+	AgentPromptEdit(crate::PromptEditStatus),
 	/// Task-scoped native voice preferences.
-	ChiefVoiceSettings(crate::ChiefVoiceSettingsResult),
+	AgentVoiceSettings(crate::AgentVoiceSettingsResult),
 	/// Native connector exposure configuration.
-	ChiefAppExposure(crate::ChiefAppExposureResult),
+	AgentAppExposure(crate::AgentAppExposureResult),
 	/// Exact current-turn reviewer inspection and publication receipt.
-	ChiefLiveReviewer(crate::ChiefLiveReviewerState),
+	AgentLiveReviewer(crate::AgentLiveReviewerState),
 	/// Native permission review or pending selection.
-	ChiefPermissionProfiles(crate::ChiefPermissionState),
+	AgentPermissionProfiles(crate::AgentPermissionState),
 	/// Task plugin selections and operation receipts.
-	ChiefPluginSelection(crate::ChiefPluginSelectionState),
+	AgentPluginSelection(crate::AgentPluginSelectionState),
 	/// Native model selection and operation receipt.
-	ChiefModelSelection(crate::ChiefModelSelectionState),
+	AgentModelSelection(crate::AgentModelSelectionState),
 	/// Current shared hook review.
-	ChiefHookSettings(crate::ChiefHookSettingsState),
+	AgentHookSettings(crate::AgentHookSettingsState),
 	/// App connection settings and shared receipts.
-	ChiefAppSettings(crate::ChiefAppSettingsResult),
+	AgentAppSettings(crate::AgentAppSettingsResult),
 	/// Saved app overrides and their shared receipt.
-	ChiefSavedAppSettings(crate::ChiefSavedAppSettingsResult),
+	AgentSavedAppSettings(crate::AgentSavedAppSettingsResult),
 	/// Ephemeral voice signaling readback.
-	ChiefVoice(crate::ChiefVoiceStatus),
+	AgentVoice(crate::AgentVoiceStatus),
 	/// Latest ephemeral dictation draft.
 	Dictation(crate::DictationStatus),
 	/// Selected public tool evidence.
-	ChiefActivityDetail(crate::ChiefActivityDetailResult),
+	AgentActivityDetail(crate::AgentActivityDetailResult),
 	/// Native model and Memory configuration evidence.
-	ChiefCapabilities(crate::ChiefCapabilitiesResult),
+	AgentCapabilities(crate::AgentCapabilitiesResult),
 	/// Evidence for one original later-turn provider attempt.
 	ConversationTurnOutcome(crate::ConversationTurnOutcomeResult),
 	/// Exact local creation evidence, not provider completion.
@@ -3167,54 +3167,54 @@ pub enum QueryResultPayload {
 	InitialModelCatalog(crate::InitialModelCatalogResult),
 	/// Saved request and current choices for explicit review.
 	ConversationModelReview(crate::ConversationModelReviewResult),
-	/// Source-bound Chief history, without raw provider frames.
-	ChiefHistory(crate::ChiefHistoryResult),
+	/// Source-bound Agent history, without raw provider frames.
+	AgentHistory(crate::AgentHistoryResult),
 	/// Transient current-turn output outside retained history publication.
-	ChiefOutput(crate::ChiefOutputResult),
+	AgentOutput(crate::AgentOutputResult),
 	/// Native agent inspection result.
 	NativeAgents(crate::NativeAgentsResult),
 	/// Native resource associations for an exact work thread.
-	ChiefResources(crate::ChiefResourcesResult),
+	AgentResources(crate::AgentResourcesResult),
 	/// Saved Guardian assessments and explicit user approval receipts.
-	ChiefGuardianReviews(crate::ChiefGuardianReviewsResult),
+	AgentGuardianReviews(crate::AgentGuardianReviewsResult),
 	/// Exact saved action detail page.
-	ChiefGuardianDetail(crate::ChiefGuardianDetailResult),
+	AgentGuardianDetail(crate::AgentGuardianDetailResult),
 	/// Current native archive membership, not a cached local flag.
-	ChiefArchiveState(crate::ChiefArchiveResult),
+	AgentArchiveState(crate::AgentArchiveResult),
 	/// Fresh installation and authorization observations.
-	ChiefInstallState(crate::ChiefInstallState),
+	AgentInstallState(crate::AgentInstallState),
 	/// Source-bound task integration observations.
-	ChiefIntegrations(crate::ChiefIntegrationsResult),
+	AgentIntegrations(crate::AgentIntegrationsResult),
 	/// Bounded native mixed voice and task history.
-	ChiefTimeline(crate::ChiefTimelineResult),
+	AgentTimeline(crate::AgentTimelineResult),
 	/// Exact native attachment content.
-	ChiefMedia(crate::ChiefMediaResult),
+	AgentMedia(crate::AgentMediaResult),
 	/// Source-bound MCP App UI resource document.
-	ChiefAppUi(crate::ChiefAppUiResult),
+	AgentAppUi(crate::AgentAppUiResult),
 	/// Current source equality; this grants no tool execution authority.
-	ChiefAppUiSource(bool),
+	AgentAppUiSource(bool),
 	/// Native review for an explicit widget call confirmation.
-	ChiefAppUiCallReview(crate::ChiefAppUiCallReview),
+	AgentAppUiCallReview(crate::AgentAppUiCallReview),
 	/// A bounded chunk of durable App UI call evidence.
-	ChiefAppUiReceipt(crate::ChiefAppUiReceiptResult),
+	AgentAppUiReceipt(crate::AgentAppUiReceiptResult),
 	/// Work-owned unresolved operation discovery.
-	ChiefPendingAppUiCall(crate::ChiefPendingAppUiCall),
+	AgentPendingAppUiCall(crate::AgentPendingAppUiCall),
 	/// Exact positive steering acceptance evidence.
-	ChiefSteerReceipt(crate::ChiefSteerReceiptResult),
+	AgentSteerReceipt(crate::AgentSteerReceiptResult),
 	/// Independent unconfirmed input page.
-	ChiefInputReceipts(crate::ChiefInputReceiptsResult),
+	AgentInputReceipts(crate::AgentInputReceiptsResult),
 	/// Native goal observation.
-	ChiefNativeGoal(crate::ChiefNativeGoalResult),
+	AgentNativeGoal(crate::AgentNativeGoalResult),
 	/// Native usage estimate.
-	ChiefUsageEstimate(crate::ChiefUsageEstimateResult),
+	AgentUsageEstimate(crate::AgentUsageEstimateResult),
 	/// Configured native model settings for one exact task.
-	ChiefModelSettings(crate::ChiefModelSettingsResult),
+	AgentModelSettings(crate::AgentModelSettingsResult),
 	/// Ephemeral native MCP sign-in state.
 	McpLogin(crate::McpLoginStatus),
 	/// Selected pending request fields.
-	ChiefRequest(crate::ChiefRequestResult),
-	/// Complete bounded Chief work and pending event projection.
-	ChiefSnapshot(ChiefSnapshotResult),
+	AgentRequest(crate::AgentRequestResult),
+	/// Complete bounded Agent work and pending event projection.
+	AgentSnapshot(AgentSnapshotResult),
 	/// Complete daemon-owned desktop settings projection.
 	DesktopSettings(DesktopSettingsResult),
 	/// Bounded current Program selector projection.
@@ -3226,7 +3226,7 @@ pub enum QueryResultPayload {
 	/// One exact ordinary Conversation readback.
 	Conversation(ConversationResult),
 	/// Model choices from the exact queried Conversation process, or unavailable.
-	ConversationCapabilities(crate::ChiefCapabilitiesResult),
+	ConversationCapabilities(crate::AgentCapabilitiesResult),
 	/// Configured model metadata for the original Conversation query.
 	ConversationModelSettings(crate::ConversationModelSettingsResult),
 	/// Bounded authoritative doctor/status readback.
@@ -3604,7 +3604,7 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 			&& source.account_revision.0 <= i64::MAX as u64)
 			.then_some(())
 			.ok_or("account nudge source is invalid"),
-		CommandPayload::Chief { .. } => Ok(()),
+		CommandPayload::Agent { .. } => Ok(()),
 		CommandPayload::SetDesktopSettings { .. } =>
 			positive_expected.then_some(()).ok_or("desktop settings revision is required"),
 		CommandPayload::ReviewConversationModelSettings { .. }
@@ -3920,10 +3920,14 @@ fn validate_account_dto(account: &AccountDto) -> Result<(), &'static str> {
 }
 
 fn is_canonical_account_alias(value: &str) -> bool {
-	let bytes = value.as_bytes();
-	(2..=16).contains(&bytes.len())
-		&& bytes[0].is_ascii_uppercase()
-		&& bytes[1..].iter().all(u8::is_ascii_lowercase)
+	let words: Vec<_> = value.split(' ').collect();
+	(1..=2).contains(&words.len())
+		&& words.iter().all(|word| {
+			let bytes = word.as_bytes();
+			(2..=16).contains(&bytes.len())
+				&& bytes[0].is_ascii_uppercase()
+				&& bytes[1..].iter().all(u8::is_ascii_lowercase)
+		})
 }
 
 fn validate_account_profile(profile: &AccountProfileDto) -> Result<(), &'static str> {
@@ -4159,16 +4163,19 @@ mod tests {
 	}
 
 	#[test]
-	fn account_alias_accepts_only_one_canonical_word() {
+	fn account_alias_accepts_seeded_names() {
 		assert!(super::is_canonical_account_alias("Iris"));
 		assert!(super::is_canonical_account_alias("Val"));
+		assert!(super::is_canonical_account_alias("Val Abbott"));
+		assert!(!super::is_canonical_account_alias("Val-ab"));
+		assert!(!super::is_canonical_account_alias("Val-xyzz"));
 		for invalid in [
 			"",
 			"A",
 			"iris",
 			"IRIS",
 			"Iris1",
-			"Iris Smith",
+			"Iris  Smith",
 			"Account DQ6WF-G8BTT",
 			"Éden",
 			"Abcdefghijklmnopq",
@@ -4956,7 +4963,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":95},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":96},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -4965,7 +4972,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":95},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":96},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -5007,7 +5014,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":95},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":96},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
