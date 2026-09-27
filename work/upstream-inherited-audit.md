@@ -741,7 +741,10 @@ The current installed native bridge preserves the selected model and effort
 through overload recovery and restart. Native throttling and three quota errors
 never schedule local capacity retries. Keep the current durable owner and one
 shared synthetic Responses server. Close the fixture and its restored review
-only. See [current evidence and historical context](capacity-retry-classification.md).
+and complete coordinator-test file. Restore its four missing selection tests,
+worker draining branch and context-window classification case. Keep the current
+refusal and revert owners. Fifteen coordinator tests pass. See
+[current evidence and historical context](capacity-retry-classification.md).
 
 ## Process adapter owners reconciled on 2026-09-26
 

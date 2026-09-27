@@ -76,42 +76,57 @@ async fn successful_capacity_continuation_handles_the_original_input_once() {
 
 #[tokio::test]
 async fn worker_capacity_wait_does_not_wake_chief_and_cancel_publishes_failure() {
-	let first = json!({"id":"opaque turn/1","status":"completed","items":[]});
-	let failure = failed("opaque turn/2", "serverOverloaded");
-	let (mut chief, mut sent, _dir) = fixture_with_history(json!({
-		"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}},
-		"opaque thread/2":{"thread":{"id":"opaque thread/2","turns":[failure]}}
-	}))
-	.await;
-	chief.start_chief("chief", "coordinate").await.unwrap();
-	chief
-		.handle_event(ServerEvent::Notification {
-			method: "turn/completed".into(),
-			params: json!({"threadId":"opaque thread/1","turn":first}),
-		})
-		.await
-		.unwrap();
-	chief.create_worker("chief", "worker", "work").await.unwrap();
-	while sent.try_recv().is_ok() {}
-	chief
-		.handle_event(ServerEvent::Notification {
-			method: "turn/completed".into(),
-			params: json!({"threadId":"opaque thread/2","turn":failure}),
-		})
-		.await
-		.unwrap();
-	assert!(
-		!std::iter::from_fn(|| sent.try_recv().ok()).any(|frame| frame["method"] == "turn/start")
-	);
-	let retry = chief.store.pending_chief_capacity_retry("worker".into()).await.unwrap().unwrap();
-	chief.store.cancel_chief_capacity_retry("worker".into(), retry.event_id).await.unwrap();
-	chief.wake_pending().await.unwrap();
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
-		.filter(|frame| frame["method"] == "turn/start")
-		.collect();
-	assert_eq!(starts.len(), 1);
-	assert_eq!(starts[0]["params"]["threadId"], "opaque thread/1");
-	assert!(chief.store.pending_chief_capacity_retry("worker".into()).await.unwrap().is_none());
+	for draining in [false, true] {
+		let first = json!({"id":"opaque turn/1","status":"completed","items":[]});
+		let failure = failed("opaque turn/2", "serverOverloaded");
+		let (mut chief, mut sent, _dir) = fixture_with_history(json!({
+			"_capacity_draining":draining,
+			"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}},
+			"opaque thread/2":{"thread":{"id":"opaque thread/2","turns":[failure]}}
+		}))
+		.await;
+		chief.start_chief("chief", "coordinate").await.unwrap();
+		chief
+			.handle_event(ServerEvent::Notification {
+				method: "turn/completed".into(),
+				params: json!({"threadId":"opaque thread/1","turn":first}),
+			})
+			.await
+			.unwrap();
+		chief.create_worker("chief", "worker", "work").await.unwrap();
+		while sent.try_recv().is_ok() {}
+		chief
+			.handle_event(ServerEvent::Notification {
+				method: "turn/completed".into(),
+				params: json!({"threadId":"opaque thread/2","turn":failure}),
+			})
+			.await
+			.unwrap();
+		assert!(
+			!std::iter::from_fn(|| sent.try_recv().ok())
+				.any(|frame| frame["method"] == "turn/start")
+		);
+		let retry =
+			chief.store.pending_chief_capacity_retry("worker".into()).await.unwrap().unwrap();
+		if draining {
+			assert!(matches!(
+				chief.check_due_followups(retry.due_at_micros).await,
+				Err(ChiefError::InputNotSent(
+					decodex_database::ChiefDispatchRefusal::ServerDraining
+				))
+			));
+			while sent.try_recv().is_ok() {}
+		} else {
+			chief.store.cancel_chief_capacity_retry("worker".into(), retry.event_id).await.unwrap();
+		}
+		chief.wake_pending().await.unwrap();
+		let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+			.filter(|frame| frame["method"] == "turn/start")
+			.collect();
+		assert_eq!(starts.len(), 1);
+		assert_eq!(starts[0]["params"]["threadId"], "opaque thread/1");
+		assert!(chief.store.pending_chief_capacity_retry("worker".into()).await.unwrap().is_none());
+	}
 }
 
 #[tokio::test]
@@ -170,6 +185,7 @@ async fn quota_other_errors_and_missing_history_do_not_schedule_capacity_retries
 	for (code, history_present) in [
 		("usageLimitExceeded", true),
 		("rateLimitExceeded", true),
+		("contextWindowExceeded", true),
 		("other", true),
 		("serverOverloaded", false),
 	] {
@@ -537,4 +553,135 @@ async fn task_selection_during_capacity_backoff_cancels_old_retry() {
 	);
 	chief.check_due_followups(i64::MAX).await.unwrap();
 	assert!(!std::iter::from_fn(|| sent.try_recv().ok()).any(|v| v["method"] == "turn/start"));
+}
+
+#[tokio::test]
+async fn selected_turn_model_survives_restart_and_capacity_retry_without_startup_defaults() {
+	let first = failed("opaque turn/1", "serverOverloaded");
+	let (mut chief, mut sent, dir) = fixture_with_history(
+		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
+	)
+	.await;
+	ChiefCoordinator::reserve_root(&chief.store, "chief", "request").await.unwrap();
+	chief.store.enqueue_chief_event(EnqueueChiefEvent {
+		source_event_id:"selected-input".into(),work_item_id:"chief".into(),event_kind:"user_message".into(),
+		payload:json!({"text":"request","options":{"execution":{"model":"user-selected","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string(),
+	}).await.unwrap();
+	chief.wake_pending().await.unwrap();
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "turn/completed".into(),
+			params: json!({"threadId":"opaque thread/1","turn":first}),
+		})
+		.await
+		.unwrap();
+	let paths = decodex_core::DecodexRoot::new(dir.path().canonicalize().unwrap().join("root"))
+		.unwrap()
+		.paths();
+	let client = chief.client.clone();
+	let mut config = chief.config.clone();
+	config.model = "changed-process-default".into();
+	drop(chief);
+	let mut chief =
+		ChiefCoordinator::new(SqliteStore::open(&paths).unwrap(), client, config).unwrap();
+	chief.loaded_threads.insert("opaque thread/1".into());
+	while sent.try_recv().is_ok() {}
+	chief.check_due_followups(i64::MAX).await.unwrap();
+	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+		.filter(|v| v["method"] == "turn/start")
+		.collect();
+	assert_eq!(starts.len(), 1);
+	assert_eq!(starts[0]["params"]["model"], "user-selected");
+	assert_eq!(starts[0]["params"]["effort"], "medium");
+	let selection = chief
+		.store
+		.chief_turn_execution("chief".into(), "opaque thread/1".into(), "opaque turn/2".into())
+		.await
+		.unwrap()
+		.unwrap();
+	assert_eq!(selection.model, "user-selected");
+	assert_eq!(selection.effort.as_deref(), Some("medium"));
+}
+
+#[tokio::test]
+async fn capacity_selection_changes_do_not_revive_a_cancelled_retry_when_changed_back() {
+	let first = failed("opaque turn/1", "serverOverloaded");
+	let (mut chief, mut sent, _dir) = fixture_with_history(
+		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
+	)
+	.await;
+	chief.start_chief("chief", "request").await.unwrap();
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "turn/completed".into(),
+			params: json!({"threadId":"opaque thread/1","turn":first}),
+		})
+		.await
+		.unwrap();
+	for model in ["new-choice", "selected-model"] {
+		chief.handle_event(ServerEvent::Notification {method:"thread/settings/updated".into(),params:json!({"threadId":"opaque thread/1","threadSettings":{"model":model,"modelProvider":"openai","effort":"high","serviceTier":null}})}).await.unwrap();
+	}
+	while sent.try_recv().is_ok() {}
+	chief.check_due_followups(i64::MAX).await.unwrap();
+	assert!(!std::iter::from_fn(|| sent.try_recv().ok()).any(|v| v["method"] == "turn/start"));
+	assert!(chief.store.pending_chief_capacity_retry("chief".into()).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn ordinary_continuation_binds_current_task_choice_instead_of_initial_defaults() {
+	let (mut chief, mut sent, _dir) = fixture().await;
+	chief.start_chief("chief", "request").await.unwrap();
+	complete(&mut chief, "chief").await;
+	chief
+		.client
+		.request(
+			"thread/settings/update",
+			json!({"threadId":"opaque thread/1","model":"recovered-task-model","effort":"medium"}),
+		)
+		.await
+		.unwrap();
+	while sent.try_recv().is_ok() {}
+	chief.continue_worker("chief", "next user request").await.unwrap();
+	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+		.filter(|v| v["method"] == "turn/start")
+		.collect();
+	assert_eq!(starts.len(), 1);
+	assert_eq!(starts[0]["params"]["model"], "recovered-task-model");
+	assert_eq!(starts[0]["params"]["effort"], "medium");
+	assert_eq!(
+		chief
+			.store
+			.chief_turn_execution("chief".into(), "opaque thread/1".into(), "opaque turn/2".into())
+			.await
+			.unwrap()
+			.unwrap()
+			.model,
+		"recovered-task-model"
+	);
+}
+
+#[tokio::test]
+async fn effort_only_input_preserves_native_model_and_tier_after_recovery() {
+	let (mut chief, mut sent, _dir) = fixture().await;
+	chief.start_chief("chief", "initial").await.unwrap();
+	complete(&mut chief, "chief").await;
+	chief
+		.client
+		.request(
+			"thread/settings/update",
+			json!({"threadId":"opaque thread/1","model":"recovered-native","effort":"high"}),
+		)
+		.await
+		.unwrap();
+	chief.store.enqueue_chief_event(EnqueueChiefEvent {source_event_id:"effort-only".into(),work_item_id:"chief".into(),event_kind:"user_message".into(),payload:json!({"text":"continue","options":{"execution":{"reasoning_effort":"medium"},"attachments":[]}}).to_string()}).await.unwrap();
+	while sent.try_recv().is_ok() {}
+	chief.wake_pending().await.unwrap();
+	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+		.filter(|v| v["method"] == "turn/start")
+		.collect();
+	assert_eq!(starts.len(), 1);
+	assert_eq!(starts[0]["params"]["model"], "recovered-native");
+	assert_eq!(starts[0]["params"]["effort"], "medium");
+	assert!(starts[0]["params"].get("serviceTier").is_none());
+	assert!(starts[0]["params"].get("serviceTierForTurn").is_none());
 }

@@ -21,7 +21,7 @@ The installed Codex CLI 0.158.0-alpha.2 passes both explicit native tests:
 The current database owner requires exact failed-turn `serverOverloaded` evidence
 and eligible native readback. It limits recovery to three attempts. The runtime
 binds the saved model and effort and cancels a retry when the native selection
-changes. Eleven existing capacity tests pass, including revert, changed selection,
+changes. Fifteen capacity tests pass, including revert, changed selection,
 refused continuation and recovery without replay. Existing compaction and history
 native fixtures pass through the factored backend. Strict runtime Clippy passes
 with all features and targets.
@@ -32,7 +32,14 @@ and stream retry. No production retry policy, account, model fallback, normal
 profile or automation changes in this batch. These local synthetic tests do not
 qualify HTTP 503 timing, real account errors or signed desktop interaction.
 
-The complete fixture and this document have current dispositions. The shared
+The complete coordinator-test diff was reviewed. Restore four missing tests for
+selected-model restart, changing selection away and back, ordinary continuation,
+and effort-only input. Restore the worker draining case and context-window error
+classification. Retain current native `retry` trigger, started-turn fixture filter,
+typed dispatch refusals and exact dropped-reply transport test, plus newer revert
+coverage. All original test behaviors now have current coverage.
+
+The complete native fixture, coordinator tests and this document have current dispositions. The shared
 native-test parent and broader recovery acceptance remain open.
 
 ## Historical review
