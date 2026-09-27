@@ -1303,3 +1303,11 @@ Restore the inherited oversized-detail rejection with a failing-before synthetic
 boundary test. The test does not claim installed-native reachability. See
 [the complete source mapping](application-owner-reconciliation.md). Close only
 application.rs; native qualifications and signed desktop acceptance remain open.
+
+## Model-review draft coverage restored on 2026-09-27
+
+Restore the inherited rendered model-review test and conversation fixture helpers.
+The current behavior passes: query the saved request, confirm explicitly, and
+preserve later unsent input without another submission. See
+[the fixture and scope limits](model-review-draft-coverage.md). Refresh both source
+hashes, but keep the shared shell and conversation file reviews open.

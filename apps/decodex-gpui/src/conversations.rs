@@ -3267,6 +3267,51 @@ pub(crate) mod tests {
 		);
 	}
 
+	pub(crate) fn take_fixture_dispatch(
+		conversations: &Conversations,
+		server: &ServerId,
+	) -> Option<ConversationDispatch> {
+		conversations.try_take_dispatch(1, server)
+	}
+
+	pub(crate) fn model_review_fixture()
+	-> (Conversations, ServerId, decodex_protocol::ConversationModelReview) {
+		let (conversations, server_id, original) = catalog_conversations();
+		let snapshot = conversations.snapshot();
+		let task = conversation_summary(
+			original.conversation_id,
+			EntityRevision(1),
+			2,
+			None,
+			None,
+			ConversationState::ModelSettingsReviewRequired,
+			None,
+			Some(ConversationRecoveryAction::ReviewModelSettings),
+		)
+		.expect("review task");
+		{
+			let mut state = conversations.lock();
+			state.tasks = vec![task.clone()];
+			state.clear_catalog();
+		}
+		let review = decodex_protocol::ConversationModelReview {
+			conversation_id: task.conversation_id,
+			conversation_revision: task.conversation_revision,
+			message: HistoryText::new("Original request awaiting model review")
+				.expect("saved request"),
+			execution: snapshot.execution,
+			catalog: decodex_protocol::InitialModelCatalogResult::Available {
+				account_id: EntityId::new("11234567-89ab-4def-8123-456789abcdef").expect("account"),
+				account_revision: 7,
+				working_directory: ConversationWorkingDirectory::new("/tmp/original-request")
+					.expect("cwd"),
+				models: snapshot.catalog.expect("models"),
+				defaults: None,
+			},
+		};
+		(conversations, server_id, review)
+	}
+
 	pub(crate) fn native_settings_fixture() -> Conversations {
 		let (conversations, _, mut task) = connected_conversations();
 		task.codex_thread_id = Some(
