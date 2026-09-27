@@ -43,6 +43,7 @@ database/runtime Clippy passes with all features and targets. Logs:
 `/tmp/decodex-manual-model-source-runtime.log` and
 `/tmp/decodex-manual-model-source-clippy-final.log`.
 
-This restores core source correctness for the optional model controls. The full
-legacy owner and inherited test-file reconciliation remain open. No installed
-application, live account or maintenance automation is changed.
+This restores core source correctness for the optional model controls. See the
+[complete writer and test mapping](model-owner-reconciliation.md). Shared settings
+observers and signed desktop acceptance remain open. No installed application,
+live account or maintenance automation is changed.

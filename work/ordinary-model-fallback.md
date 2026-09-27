@@ -36,8 +36,9 @@ to current settings.
 
 Legacy pending recovery records still block conflicting work. Historical terminal
 receipts and manual/reconciled distinctions are now restored through the current
-owner; see [model selection history](model-selection-history.md). Complete legacy
-writer review, shared module rows and signed desktop acceptance remain open.
+owner; see [model selection history](model-selection-history.md) and the complete
+[writer mapping](model-owner-reconciliation.md). Shared module rows and signed
+desktop acceptance remain open.
 
 ## Upstream and native evidence
 

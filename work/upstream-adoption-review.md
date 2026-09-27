@@ -45,8 +45,9 @@ fixture pass; live-account and signed desktop acceptance are separate. See
 [the evidence and removal boundary](ordinary-model-fallback.md). Historical terminal
 receipts now retain manual/automatic origin, the original response, matching
 observation and post-restart reconciliation through the current model owner. See
-[model selection history](model-selection-history.md). Complete legacy writer
-review and signed desktop acceptance remain open. This does not enable maintenance
+[model selection history](model-selection-history.md) and the
+[complete writer mapping](model-owner-reconciliation.md). Shared observer review
+and signed desktop acceptance remain open. This does not enable maintenance
 automations.
 
 ## Live model control restoration

@@ -399,15 +399,17 @@ mod tests {
 		let observed = facts(&store, Some("readonly"), 'a').await;
 		let a = attempt(observed, 'a');
 		let b = attempt(observed, 'b');
+		let second = SqliteStore::open_test(&path).unwrap();
 		let (one, two) = tokio::join!(
 			store.reserve_chief_model_selection(a.clone()),
-			store.reserve_chief_model_selection(b.clone())
+			second.reserve_chief_model_selection(b.clone())
 		);
 		assert_ne!(one.as_ref().unwrap().is_some(), two.as_ref().unwrap().is_some());
 		let (id, winning) =
 			if let Some(id) = one.unwrap() { (id, a) } else { (two.unwrap().unwrap(), b) };
 		assert!(store.begin_chief_dispatch("work".into()).await.is_err());
 		assert!(store.list_pending_chief_events(100).await.unwrap().is_empty());
+		drop(second);
 		drop(store);
 		let store = SqliteStore::open_test(&path).unwrap();
 		assert_eq!(receipt(&store).await.state, "reserved");
