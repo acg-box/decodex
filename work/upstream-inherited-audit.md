@@ -1419,3 +1419,13 @@ eight model tests and the installed-native model test pass; strict runtime lint
 passes. Record the explicit read-parameter admission difference in
 [the complete mapping](native-bridge-owner-reconciliation.md). Close these two
 source rows only. Remaining native limitations and desktop acceptance stay open.
+
+## Policy and workspace-routing records reconciled on 2026-09-27
+
+Restore three absent inherited notes with current status notices and unchanged
+historical text. Distinguish native login policy from unimplemented independent
+enrollment integration, core managed-provider refusal handling, and optional
+activation with required routing correctness. Eight unit tests and the installed
+attested-policy test pass. See [classification and evidence limits](native-policy-routing-reconciliation.md).
+Close these document rows only; enrollment applicability and desktop acceptance
+remain open.

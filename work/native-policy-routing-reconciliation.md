@@ -1,0 +1,45 @@
+# Reconcile policy and workspace-routing records
+
+Read the complete preserved login-method, managed-provider and workspace-routing
+notes. Restore their original text under explicit historical headings, with a
+current classification before each record. Their old implementation status,
+binary versions and migration numbering are not current acceptance evidence.
+
+| Capability | Current source and classification | Remaining boundary |
+| --- | --- | --- |
+| Native login restrictions | Native `configRequirements/read` and native login enforcement are qualified. Restored fixtures verify running policy and cold restart. | `account_login.rs::run_login_session` still calls the independent browser/device-code login engine. No current production consumer of `allowedLoginMethods` was found in that path. Enrollment-policy applicability and authority remain unresolved; do not claim integration. |
+| Managed-provider refusal | Core. Chief and ordinary conversations classify the exact native refusal and preserve known-unsent input through existing transactions. Prior injection or uncertain transport remains unknown and is not replayed. | Native managed policy delivery and signed desktop recovery are separate acceptance. The old migration 40/42 description maps to current migration 38; see [database reconciliation](database-owner-reconciliation.md). |
+| Native workspace model routing | Core native compatibility. Native Codex owns discovery and model transport. Account APIs keep their account backend; model discovery does not redirect all account traffic. | Older discovery probes do not prove all production transport or desktop paths. |
+| Automatic quota activation | Optional consumer with required correctness if retained. `account_launch/activation_policy.rs` obtains exact-account policy from an attested native child. `account_api/activation.rs` retains the credential revision and lock, applies origin/routing/residency policy and sends an empty-tools, `store:false` request. | No real quota activation or signed desktop flow is claimed. The native policy probe builds the routed request; it does not send content to that origin. |
+
+The login note remains an explicit unimplemented integration question in the
+[adoption register](upstream-adoption-review.md). Restoring and classifying that
+document does not resolve the product decision or authorize a new global policy
+owner. In particular, an arbitrary active task process cannot supply policy for
+independent account enrollment.
+
+## Fresh routing evidence
+
+Eight activation and policy unit tests pass with no failures. Two opt-in cases
+are skipped in that run. The log is `/tmp/decodex-policy-routing-unit.log`.
+They cover independent routing/residency headers, changed or incomplete policy,
+unsafe origins, tool-free/non-persistent HTTP payloads, positive completion,
+redirect refusal and no replay after ambiguous failure.
+
+Run the installed-native policy case separately: it passes with no skips in
+33.21 seconds on Codex `0.158.0-alpha.2.1`. The binary SHA-256 is
+`3e11ccc743e8198a5ef84fb57c89941d845b0ea0302485ed1fbac2f0821aca5a`.
+The log is `/tmp/decodex-policy-routing-native.log`.
+It uses production executable/schema attestation, an isolated home and synthetic
+ephemeral authentication. It checks selected workspace, invalid-discovery refusal,
+fresh cold lookup, expected origin/routing header and absence of `auth.json`.
+It sends no model request and uses no real credential.
+
+The current refusal cases are covered by the recent complete Chief suite; their
+source and historical migration mapping were separately reconciled. This batch
+does not reclassify old native managed-policy probes as fresh results.
+
+Close the three document-reconciliation rows after verifying that each original
+record is retained exactly after its new status notice. Product gaps and final
+acceptance remain open in the adoption register. No production source, native
+configuration or user database changes. Automations remain paused.
