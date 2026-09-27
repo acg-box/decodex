@@ -13,6 +13,9 @@ use tokio as _;
 use unicode_width as _;
 #[cfg(test)] use {futures_util as _, tempfile as _, tokio_tungstenite as _};
 #[path = "../composer_input.rs"] mod composer_input;
+#[cfg(target_os = "macos")]
+#[path = "../native_quit.rs"]
+mod native_quit;
 #[path = "../ui_theme.rs"] mod ui_theme;
 
 #[cfg(not(target_os = "macos"))]
@@ -22,6 +25,10 @@ fn main() {
 
 #[cfg(target_os = "macos")]
 fn main() {
+	if std::env::args().any(|arg| arg == "--quit-preflight") {
+		probe::run_quit_preflight();
+		return;
+	}
 	probe::run();
 }
 
@@ -46,6 +53,37 @@ mod probe {
 		input: Entity<ComposerInput>,
 		parent: Entity<Backdrop>,
 		clear: bool,
+	}
+
+	pub fn run_quit_preflight() {
+		gpui_platform::application().run(|cx| {
+			assert!(crate::native_quit::install());
+			let attempts = std::rc::Rc::new(std::cell::Cell::new(0));
+			let notified = attempts.clone();
+			crate::native_quit::set_request_handler(move || {
+				let count = notified.get() + 1;
+				notified.set(count);
+				let saved = count == 2;
+				eprintln!("quit-probe: event attempt {count}, saved={saved}");
+				crate::native_quit::reply(saved);
+			});
+			cx.on_app_quit(|_| async {
+				eprintln!("quit-probe: original GPUI shutdown reached");
+			})
+			.detach();
+			cx.spawn(async move |cx| {
+				cx.background_executor().timer(std::time::Duration::from_millis(100)).await;
+				cx.update(|_| crate::native_quit::request());
+				while attempts.get() == 0 {
+					cx.background_executor().timer(std::time::Duration::from_millis(25)).await;
+				}
+				cx.background_executor().timer(std::time::Duration::from_millis(100)).await;
+				assert!(!crate::native_quit::awaiting_reply());
+				eprintln!("quit-probe: application retained after refused quit");
+				cx.update(|_| crate::native_quit::request());
+			})
+			.detach();
+		});
 	}
 
 	pub fn run() {
