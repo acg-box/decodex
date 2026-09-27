@@ -31,6 +31,16 @@ unqualified and retain its strict opt-in test; ordinary CI is not proof of it.
 See [the binary fingerprint, source comparison and limits](native-child-mcp-qualification.md).
 No replacement MCP approval implementation or executable update is introduced.
 
+## Ordinary automatic model fallback
+
+The inherited automatic fallback is restored through the current model journal.
+It is optional Decodex policy: a fresh ChatGPT recovery banner can select an
+advertised ordinary alternative for an idle task. It sends settings once and
+never replays input. Native partial-update qualification and a 12-scenario service
+fixture pass; live-account and signed desktop acceptance are separate. See
+[the evidence and removal boundary](ordinary-model-fallback.md). Legacy terminal
+recovery history remains open. This does not enable maintenance automations.
+
 ## Live model control restoration
 
 Current-turn model selection is optional. It differs from the delivered future-turn

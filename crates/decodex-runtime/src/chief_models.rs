@@ -1,4 +1,5 @@
 //! Source-bound model selection; the native runtime owns capability filtering.
+#[path = "chief_model_recovery.rs"] mod recovery;
 use crate::chief_usage_estimate::Source;
 use decodex_codex::app_server_client::{
 	ClientError, HistoryGuard, NativeTaskModelSettings, ThreadModelSelection,
@@ -8,6 +9,7 @@ use decodex_protocol::{
 	ChiefCapabilitiesResult, ChiefModelOutcome as Outcome, ChiefModelSelectionState as State,
 	ConversationModel, ConversationReasoningEffort, EntityId, WireText,
 };
+pub(crate) use recovery::recover_ordinary_model;
 use serde_json::json;
 use sha2::{Digest as _, Sha256};
 

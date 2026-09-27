@@ -20,6 +20,10 @@ pub use app_tool_exposure::{
 };
 mod account_nudge;
 pub use account_nudge::{AccountNudgeCreditType, AccountNudgeOutcome};
+mod model_recovery;
+pub use model_recovery::{
+	ThreadModelRecoveryQueued, ThreadModelRecoveryUpdate, is_thread_model_recovery_update,
+};
 mod recovery_auth;
 pub use recovery_auth::NativeRecoveryAuth;
 mod settings_guard;
