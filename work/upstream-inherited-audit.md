@@ -9,6 +9,18 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Current count correction on 2026-09-27
+
+A fresh count at main `c4c25cc2d976357c543768652aca8968e026f8bd` finds
+67 of 360 rows with `reconciliation == review-required`. The continuation record's
+46-row claim was incorrect. Do not carry forward arithmetic from that claim.
+This batch resolves two document rows, leaving 65 on its branch. PR1626 and
+PR1627 resolve three other rows; only their actual merge can change main's count.
+The older dated counts below are historical, not current progress.
+
+Count the third TSV field exactly. Other dispositions can retain explicit native
+or desktop qualification gaps, so this number is not a feature completion count.
+
 ## Live settings socket fixture reconciled on 2026-09-27
 
 Restore the inherited selected-model/effort receipt assertion and model-mode
