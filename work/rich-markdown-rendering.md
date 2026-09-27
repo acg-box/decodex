@@ -44,3 +44,50 @@ three-node graph routing, resizing, horizontal scrolling, formula/source copy,
 native pasteboard format retention, and existing weather cards. Full desktop and
 strict Clippy results are recorded with the delivery PR. Rendered test fixtures
 are not signed whole-application visual acceptance.
+
+## Complete inherited Markdown review on 2026-09-27
+
+The original math and Mermaid documents are consolidated here. Their fixed-cutoff
+source attribution, literal fallback, resource limits and desktop acceptance
+boundary remain applicable. Their old “unmerged” status and vulnerability totals
+are historical. The dated dependency evidence above supersedes those old totals;
+this review makes no new dependency selection or current clean-bill claim.
+
+Fresh byte comparison finds 23 inherited math/Mermaid source, notice, license and
+test files unchanged. The remaining Mermaid test file changes only the layout of
+one function call; all assertions remain. The register now records that formatting
+difference instead of claiming exact bytes.
+
+Math retains 4 KiB input, depth 32, 16 layout rows and 256 columns. Nested display
+fractions and unsupported expressions use source fallback. Display rows remain
+spatial under horizontal scrolling. Copy retains original TeX. Mermaid retains
+16 KiB source, 16 nodes, 24 edges, 16 members, eight sequence participants,
+64 sequence events, four fragment levels, 40-cell labels, 65,536 canvas cells and
+256 output columns. Comma-delimited fence information remains recognized; EOF
+without a closing fence remains source code.
+
+The complete chief_markdown.rs comparison has two functional areas: restored
+local file location handling and the retained weather fallback. Weather parsing
+preserves code spans/blocks, unknown markers and original stored text. Its prefix
+tests and rendered forecast-copy test remain. Existing parser, layout, copy and
+selection behavior is otherwise preserved; fixture DTO fields follow current
+native-source, turn and weather metadata.
+
+The current local link handler removed only one numeric suffix. A restored
+inherited regression fails for /tmp/中文.rs:12:3, revealing /tmp/中文.rs:12.
+Restore the original two-suffix helper and use it in the actual selectable-text
+click handler. Retain Unicode paths, colons inside filenames, invalid suffixes,
+and the complete Markdown link target. This reveals the file; it does not promise
+an editor jump to that line and column.
+
+The 33-test Markdown suite passes, including the restored link case, math and
+Mermaid interaction, rich clipboard, selection and weather cases. Logs:
+`/tmp/decodex-markdown-link-before.log` and
+`/tmp/decodex-markdown-reconciled.log`. Strict all-feature/all-target GPUI lint is
+recorded in `/tmp/decodex-markdown-reconciled-clippy.log`.
+
+Math, Mermaid and weather are optional presentation capabilities for the user's
+later removal decision. Correct original text, source copying and existing file
+links are core interaction requirements. No parser or dependency is added in this
+batch. Signed desktop font alignment, long-diagram interaction and whole-service
+acceptance remain open.

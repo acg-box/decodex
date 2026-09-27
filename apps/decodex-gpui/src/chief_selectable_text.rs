@@ -103,10 +103,7 @@ impl RenderOnce for SelectableText {
 					{
 						cx.open_url(url);
 					} else if url.starts_with('/') {
-						let path = url
-							.rsplit_once(':')
-							.filter(|(_, line)| line.parse::<u32>().is_ok())
-							.map_or(url.as_str(), |(path, _)| path);
+						let path = super::markdown::without_line_column(url);
 						cx.reveal_path(std::path::Path::new(path));
 					}
 				}

@@ -168,6 +168,17 @@ fn inline(nodes: &[Node], key: &str) -> AnyElement {
 	.into_any_element()
 }
 
+pub(super) fn without_line_column(path: &str) -> &str {
+	let mut path = path;
+	for _ in 0..2 {
+		let Some((prefix, number)) = path.rsplit_once(':') else { break };
+		if number.is_empty() || !number.bytes().all(|byte| byte.is_ascii_digit()) {
+			break;
+		}
+		path = prefix;
+	}
+	path
+}
 fn render_math_paragraph(nodes: &[Node], key: &str) -> AnyElement {
 	let mut elements = Vec::new();
 	let mut start = 0;
@@ -551,6 +562,30 @@ mod tests {
 				&out.text[range.clone()] == "limit" && style.font_weight == Some(FontWeight::BOLD)
 			}));
 		}
+	}
+
+	#[test]
+	fn local_link_locations_do_not_become_part_of_the_revealed_filename() {
+		for (target, expected) in [
+			("/tmp/中文.rs:12:3", "/tmp/中文.rs"),
+			("/tmp/a.rs:12", "/tmp/a.rs"),
+			("/tmp/a:b.rs:12:3", "/tmp/a:b.rs"),
+			("/tmp/a:b.rs", "/tmp/a:b.rs"),
+			("/tmp/a.rs:", "/tmp/a.rs:"),
+			("/tmp/a.rs:12x", "/tmp/a.rs:12x"),
+		] {
+			assert_eq!(without_line_column(target), expected);
+		}
+		let mut out = Inline::default();
+		append_inline(
+			&parse("| Source |\n|---|\n| [**Read** `parser`](/tmp/中文.rs:12:3) |"),
+			HighlightStyle::default(),
+			None,
+			&mut out,
+		);
+		let labels: String = out.links.iter().map(|(range, _)| &out.text[range.clone()]).collect();
+		assert_eq!(labels, "Read parser");
+		assert!(out.links.iter().all(|(_, target)| target == "/tmp/中文.rs:12:3"));
 	}
 
 	#[test]

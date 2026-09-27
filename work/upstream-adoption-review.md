@@ -27,8 +27,10 @@ Keep native user and assistant roles distinct when saved metadata has equal
 text, and retain the response copy action during streaming. The existing
 metadata, weather, prompt-review and App-widget owners remain intact. See
 [the renderer mapping and regression evidence](native-message-rendering-reconciliation.md).
-Author identity and response access are core correctness; optional presentation
-choices remain available for the later removal review.
+Author identity, response access and local file links are core correctness.
+Restore file reveal for line-and-column targets through the existing handler.
+Math, Mermaid and weather remain optional presentation choices; see the
+[consolidated source and interaction mapping](rich-markdown-rendering.md).
 
 
 ## History presentation correctness
