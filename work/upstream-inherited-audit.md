@@ -911,6 +911,16 @@ not a newly reproduced production failure. The complete register retains 360
 entries and has 202 pending content-review rows after this batch, down from 204.
 This does not close any shared desktop acceptance group.
 
+## Conversation persistence reconciled on 2026-09-27
+
+Restore the inherited native-effort create/review/reopen test and cover both
+inherited and explicit effort/tier choices in the revision-fenced review case.
+Map the complete restart-test file and old effort migration to the current
+versioned SQL and application validation owners. See
+[the complete mapping](conversation-persistence-reconciliation.md).
+Eight integration tests, two upgrade fixtures and strict database lint pass.
+Close two inherited rows only; shared owners and desktop acceptance remain open.
+
 ## Conversation history invalidation restored on 2026-09-26
 
 `apps/decodex-gpui/src/client_lifecycle.rs` again reloads an open history page

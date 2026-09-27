@@ -42,6 +42,15 @@ remain optional product choices; removal must preserve readable evidence.
 See [the source mapping and tests](history-presentation-reconciliation.md).
 Signed desktop acceptance remains open.
 
+## Conversation persistence correctness
+
+The current request owner retains native reasoning inheritance, explicit
+provider-defined effort strings and source-bound model review across restart.
+The restored tests preserve the original request and require one winner for
+concurrent confirmation. See [the SQL and test mapping](conversation-persistence-reconciliation.md),
+including the difference between registered SQL constraints and application
+validation. No schema or product behavior changes in this batch.
+
 ## Installed-native child input limit
 
 The restored child approval and service-tier qualification passes. The explicit
