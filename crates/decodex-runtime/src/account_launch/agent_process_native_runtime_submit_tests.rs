@@ -164,7 +164,7 @@ pub(super) async fn assert_warning_history(
 		decodex_protocol::ConversationHistoryResult::Page(page),
 	) = result
 	else {
-		panic!("history unavailable: {result:?}");
+		panic!("history unavailable");
 	};
 	let notices: Vec<_> = page
 		.items

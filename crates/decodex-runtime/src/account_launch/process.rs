@@ -5881,7 +5881,7 @@ pub(crate) mod tests {
 		)
 		.run(&mut CapabilityCache::default());
 
-		assert!(result.is_ok(), "legacy JSON-RPC response failed: {result:?}");
+		assert!(result.is_ok(), "legacy JSON-RPC response failed");
 
 		for mode in ["wrong-jsonrpc", "null-jsonrpc"] {
 			let temp = TempDir::new().unwrap();
