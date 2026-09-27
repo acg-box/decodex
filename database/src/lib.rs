@@ -96,8 +96,9 @@ pub use self::{
 	account_lifecycle::{
 		AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
 		AccountCommandReceiptLease, AccountEnrollmentResolution, AccountLifecycleMutation,
-		AccountLifecycleMutationOutcome, AccountLifecycleRejection, AccountOperationPreparation,
-		AccountStoreObservation, CodexAccountCapabilityAttestation, RoutingControlOutcome,
+		AccountLifecycleMutationOutcome, AccountLifecycleRejection, AccountNudgeReceipt,
+		AccountOperationPreparation, AccountStoreObservation, CodexAccountCapabilityAttestation,
+		RoutingControlOutcome,
 	},
 	account_profiles::{
 		AccountProfileDailyUsage, AccountProfileObservation, AccountProfileObservationOutcome,

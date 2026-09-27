@@ -93,3 +93,7 @@ Fresh validation passes all 46 account-service tests and strict runtime Clippy
 for all features and targets. The restored regression matches its snapshot bytes.
 Logs: `/tmp/decodex-account-recovery-restored.log` and
 `/tmp/decodex-account-recovery-restored-clippy.log`.
+
+The database still returns `AccountNudgeReceipt` from its public receipt read, but
+its inherited crate-root type export was missing. Restore that export and document
+the existing fields. The notification journal and read behavior remain unchanged.
