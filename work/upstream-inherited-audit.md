@@ -903,7 +903,8 @@ open. See [observed checklist recovery](observed-checklist-recovery.md).
 
 Map the full inherited permission/plugin desktop files to current action helpers,
 review guards and service owners. Account for the model-settings test migration
-to per-work observations. All fourteen relevant tests pass in the full desktop
+to per-work observations. The request/saved-app wire fixture also preserves its original checks and adds
+explicit inheritance restoration. All sixteen relevant tests pass in the full desktop
 run and the reviewed sources are unchanged. No code change is required. Close
-these three file rows only; signed desktop acceptance remains open. See
+these four file rows only; signed desktop acceptance remains open. See
 [settings surface reconciliation](settings-surface-reconciliation.md).
