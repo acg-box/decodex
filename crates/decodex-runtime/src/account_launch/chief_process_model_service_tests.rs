@@ -38,6 +38,7 @@ async fn scenario(outcome: &'static str) {
 		review_token = reject_restored_settings(&owned, review_token).await;
 	}
 	assert!(models.iter().any(|m| m.model.as_str() == "scoped" && m.efforts.is_empty()));
+	assert!(models.iter().all(|model| model.model.as_str() != "gpt-reserve"));
 
 	assert!(
 		write(&owned.store, source, "foreign", review_token.as_str(), "scoped", "foreign")
@@ -172,7 +173,7 @@ async fn serve(remote: tokio::io::DuplexStream, writes: Arc<AtomicUsize>, outcom
 				json!({"id":id,"result":value})
 			},
 			"model/list" =>
-				json!({"id":id,"result":{"data":[{"id":"scoped","model":"scoped","displayName":"Scoped","supportedReasoningEfforts":[],"defaultReasoningEffort":null}],"nextCursor":null}}),
+				json!({"id":id,"result":{"data":[{"id":"scoped","model":"scoped","displayName":"Scoped","supportedReasoningEfforts":[],"defaultReasoningEffort":null},{ "id":"gpt-reserve","model":"gpt-reserve","displayName":"Reserve","supportedReasoningEfforts":[{"reasoningEffort":"medium"}],"defaultReasoningEffort":"medium","hidden":false}],"nextCursor":null}}),
 			"experimentalFeature/list" => json!({"id":id,"result":{"data":[],"nextCursor":null}}),
 			"permissionProfile/list" =>
 				json!({"id":id,"result":{"data":[{"id":"scoped","allowed":true}],"nextCursor":null}}),

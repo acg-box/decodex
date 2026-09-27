@@ -76,6 +76,7 @@ impl ChiefModelAttempt {
 			.chain(self.generation.iter())
 			.any(|s| s.trim().is_empty() || s.len() > 512 || s.chars().any(char::is_control))
 			|| !valid(&self.model, 256)
+			|| self.model == "gpt-reserve"
 			|| !valid(&self.model_provider, 256)
 			|| self.effort.as_deref().is_some_and(|effort| !valid(effort, 128))
 			|| self.settings_event <= 0
@@ -97,7 +98,6 @@ impl ChiefModelAttempt {
 				|| recovery.account_revision < 1
 				|| !valid(&recovery.from_model, 256)
 				|| recovery.from_model == self.model
-				|| self.model == "gpt-reserve"
 				|| self.generation.is_none()
 				|| self.effort.is_none()
 				|| recovery.banner_digest.len() != 64
@@ -251,6 +251,12 @@ pub(crate) fn observe(
 	};
 	if !owns_work(connection, work, generation)? {
 		return Ok(());
+	}
+	if let Some(generation) = generation {
+		let active_account: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM chief_process_bindings b JOIN accounts a ON a.account_id=b.account_id WHERE b.generation_id=?1 AND a.enabled=1 AND a.tombstoned_at_micros IS NULL)", [generation], |row| row.get(0)).map_err(sqlite_error)?;
+		if !active_account {
+			return Ok(());
+		}
 	}
 	legacy::observe(connection, work, thread, generation, observation, settings)?;
 	let row:Option<(i64,String,Option<String>,String)>=connection.query_row("SELECT e.id,e.source_event_id,json_extract(e.payload,'$.attempt.generation'),json_extract(e.payload,'$.attempt') FROM chief_inbox_events e JOIN chief_work_items w ON w.id=e.work_item_id AND w.codex_thread_id=?2 WHERE e.work_item_id=?1 AND e.event_kind='model_selection' AND e.id<?3 AND json_extract(e.payload,'$.attempt.thread')=?2 AND NOT EXISTS(SELECT 1 FROM chief_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND json_extract(r.payload,'$.state')='rejected') OR r.source_event_id=e.source_event_id||':observation') ORDER BY e.id DESC LIMIT 1",params![work,thread,observation],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(sqlite_error)?;

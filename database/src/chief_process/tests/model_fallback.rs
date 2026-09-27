@@ -247,11 +247,33 @@ async fn qualify_new_owner(manual: bool) {
 	.unwrap();
 	store.bind_process_generation_identity(&generation_id(2), 1, &next).await.unwrap();
 	store.mark_process_generation_ready(&generation_id(2), 2).await.unwrap();
-	store.record_chief_task_models_publication(
-		"thread".into(), Some(generation_id(2).as_str().into()),
-		Some(json!({"model":"fallback","modelProvider":"fixture","effort":"high","serviceTier":"priority"}).to_string()),
-		OTHER_DIGEST.into(),
-	).await.unwrap().unwrap();
+	for enabled in [false, true] {
+		store
+			.run(move |connection| {
+				connection
+					.execute(
+						"UPDATE accounts SET enabled=?1 WHERE account_id=?2",
+						rusqlite::params![enabled, account_id(1).as_str()],
+					)
+					.map_err(crate::error::sqlite_error)?;
+				Ok(())
+			})
+			.await
+			.unwrap();
+		store.record_chief_task_models_publication(
+			"thread".into(), Some(generation_id(2).as_str().into()),
+			Some(json!({"model":"fallback","modelProvider":"fixture","effort":"high","serviceTier":"priority"}).to_string()),
+			OTHER_DIGEST.into(),
+		).await.unwrap().unwrap();
+		if !enabled {
+			assert_eq!(
+				receipt(&store).await.state,
+				"unknown",
+				"a disabled account cannot reconcile old delivery"
+			);
+			assert!(store.begin_chief_dispatch("root".into()).await.is_err());
+		}
+	}
 	assert_eq!(receipt(&store).await.state, "superseded");
 	let historical = store
 		.chief_model_history("root".into(), "thread".into(), generation_id(2).as_str().into())
@@ -368,4 +390,15 @@ async fn manual_model_reservation_rechecks_its_account_and_retains_old_payload_s
 	let receipt = receipt(&store).await;
 	assert_eq!(receipt.state, "target_observed");
 	assert_eq!(receipt.attempt.manual_source, attempt.manual_source);
+}
+
+#[tokio::test]
+async fn ordinary_model_selection_rejects_reserve() {
+	let dir = tempfile::tempdir().unwrap();
+	let store = SqliteStore::open_test(&dir.path().join("ordinary-model.sqlite3")).unwrap();
+	let mut attempt = ready(&store).await;
+	attempt.recovery = None;
+	attempt.model = "gpt-reserve".into();
+	assert!(store.reserve_chief_model_selection(attempt).await.is_err());
+	assert!(store.chief_model_receipt("root".into(), "thread".into()).await.unwrap().is_none());
 }

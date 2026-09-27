@@ -148,11 +148,12 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	if facts != native || !guard.is_live() {
 		return None;
 	}
-	let ChiefCapabilitiesResult::Available { models, .. } =
+	let ChiefCapabilitiesResult::Available { mut models, .. } =
 		crate::chief_capabilities::read(&source.client).await
 	else {
 		return None;
 	};
+	models.retain(|model| model.model.as_str() != "gpt-reserve");
 	if !guard.is_live() {
 		return None;
 	}
