@@ -35,7 +35,7 @@ The native run reports one pass and one failure. Preserve the failure log at
 features and targets; log `/tmp/decodex-native-flex-clippy.log`. The tests retain
 their explicit-binary opt-in requirement. Ordinary CI does not qualify them.
 
-Keep this file's ledger disposition open. The passing standard-tier fallback
+The file's source comparison is now closed in [the preservation review](source-preservation-native-limits.md). Native qualification remains failed. The passing standard-tier fallback
 fixture does not qualify explicit Flex across restart. Do not replay a settings
 write or change global config to hide this native limit. No production code,
 installed binary or maintenance automation changes in this batch.
