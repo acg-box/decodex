@@ -196,6 +196,9 @@ impl ChiefSurface {
 			return;
 		}
 		let (outcome, state) = result.unwrap_or((None, State::Unavailable));
+		if saving {
+			self.reset_model_settings();
+		}
 		self.task_models.reviewed = !saving;
 		self.task_models.feedback = match outcome {
 			Some(Ok(ChiefCommandResponse::Accepted { .. })) =>

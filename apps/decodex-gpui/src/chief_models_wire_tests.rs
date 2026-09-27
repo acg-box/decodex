@@ -47,7 +47,7 @@ async fn serve(
 	confirmed: bool,
 ) -> Vec<ChiefActionDto> {
 	let mut actions = Vec::new();
-	for index in 0..3 {
+	for index in 0..4 {
 		let mut socket =
 			tokio_tungstenite::accept_async(listener.accept().await.unwrap().0).await.unwrap();
 		let _hello = socket.next().await.unwrap().unwrap();
@@ -75,7 +75,7 @@ async fn serve(
 			panic!("text request")
 		};
 		let request: ClientMessage = serde_json::from_str(&text).unwrap();
-		if index == 1 {
+		if index == 2 {
 			let ClientMessage::Command(command) = request else { panic!("setting command") };
 			let CommandPayload::Chief { action } = command.payload else { panic!("Chief command") };
 			let ChiefActionDto::SetTaskModel { work_id, thread_id, review_token, model, effort } =
@@ -97,11 +97,36 @@ async fn serve(
 			continue;
 		}
 		let ClientMessage::Query(query) = request else { panic!("settings read") };
+		if index == 0 {
+			let QueryPayload::GetChiefModelSettings { work_id } = query.payload else {
+				panic!("native observation read")
+			};
+			assert_eq!(work_id.as_str(), "root");
+			let state = decodex_protocol::ChiefModelSettingsResult::Available {
+				work_id,
+				thread_id: EntityId::new("thread").unwrap(),
+				account_id: EntityId::new("account").unwrap(),
+				model_provider: Some(WireText::new("provider").unwrap()),
+				model: Some(WireText::new("previous-model").unwrap()),
+				reasoning_effort: Some(WireText::new("high").unwrap()),
+			};
+			let result = ServerMessage::QueryResult(QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: ServerId::new(SERVER).unwrap(),
+				query_id: query.query_id,
+				payload: QueryResultPayload::ChiefModelSettings(state),
+			});
+			socket
+				.send(Message::Text(serde_json::to_string(&result).unwrap().into()))
+				.await
+				.unwrap();
+			continue;
+		}
 		let QueryPayload::GetChiefModelSelection { work_id } = query.payload else {
 			panic!("account query")
 		};
 		assert_eq!(work_id.as_str(), "root");
-		let state = if index == 0 {
+		let state = if index == 1 {
 			available()
 		} else if confirmed {
 			let mut state = available();
@@ -220,7 +245,13 @@ struct ModelView {
 }
 impl Render for ModelView {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.surface.update(cx, |s, cx| s.task_models_panel(&work(), cx))
+		self.surface.update(cx, |s, cx| {
+			div()
+				.flex()
+				.flex_col()
+				.child(s.model_settings_panel(&work(), cx))
+				.child(s.task_models_panel(&work(), cx))
+		})
 	}
 }
 #[gpui::test]
@@ -239,6 +270,17 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut gpui::Te
 		});
 		visual.update(|w, cx| {
 			w.resize(gpui::size(px(900.), px(700.)));
+			w.draw(cx).clear();
+		});
+		let button = visual.debug_bounds("native-model-settings-read").unwrap();
+		visual.simulate_click(button.center(), Default::default());
+		visual.run_until_parked();
+		let surface = view.read_with(visual, |v, _| v.surface.clone());
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.composer_model_value(cx).as_deref(), Some("previous-model"));
+			assert_eq!(s.composer_effort_value(), "high");
+		});
+		visual.update(|w, cx| {
 			w.draw(cx).clear();
 		});
 		let button = visual.debug_bounds("task-models-read").unwrap();
@@ -268,8 +310,10 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut gpui::Te
 		visual.run_until_parked();
 		assert_eq!(server.join().unwrap().len(), 1);
 		let surface = view.read_with(visual, |v, _| v.surface.clone());
-		surface.read_with(visual, |s, cx| {
+		surface.update(visual, |s, cx| {
 			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			assert_eq!(s.composer_model_value(cx), None, "do not retain the pre-edit model");
+			assert_eq!(s.composer_effort_value(), "Inherited");
 			assert!(s.task_models.task.is_none());
 			assert!(!s.task_models.reviewed);
 			assert!(s.task_models.feedback.contains("Response was not confirmed"));
@@ -304,16 +348,19 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut gpui::Te
 #[gpui::test]
 fn model_review_is_invalidated_on_task_or_source_transition(cx: &mut gpui::TestAppContext) {
 	let surface = cx.new(ChiefSurface::new);
-	for change in ["thread", "running", "removed", "source", "resolved"] {
+	for change in ["thread", "turn", "running", "removed", "source", "resolved"] {
 		surface.update(cx, |s, _| {
 			let original = snapshot();
 			s.apply_result(Ok(ChiefSnapshotResult::Available(original.clone())));
 			s.task_models.work = Some("root".into());
 			s.task_models.state = Some(available());
+			s.task_models.reviewed = true;
+			s.task_models.selected_model = Some(ConversationModel::new("future-model").unwrap());
 			let epoch = s.task_models.epoch;
 			let mut next = original.clone();
 			match change {
 				"thread" => next.work_items[0].codex_thread_id = Some("other".into()),
+				"turn" => next.work_items[0].active_turn_id = Some("other".into()),
 				"running" => next.work_items[0].dispatch_state = ChiefDispatchStateDto::Running,
 				"removed" => next.work_items.clear(),
 				"resolved" => next.work_items[0].status = ChiefWorkStatusDto::Resolved,
@@ -323,6 +370,8 @@ fn model_review_is_invalidated_on_task_or_source_transition(cx: &mut gpui::TestA
 			assert_ne!(s.task_models.epoch, epoch, "{change}");
 			s.apply_result(Ok(ChiefSnapshotResult::Available(original)));
 			assert!(s.task_models.state.is_none());
+			assert!(!s.task_models.reviewed);
+			assert!(s.task_models.selected_model.is_none());
 		});
 	}
 }

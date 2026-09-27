@@ -9,6 +9,16 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Task model panel reconciled on 2026-09-27
+
+Map the complete inherited selector and socket tests to the current task model
+panel. Restore observation invalidation after a write: a failing rendered socket
+test shows the composer retaining the pre-edit model. The existing reset clears
+the cache and invalidates late reads without changing explicit input choices.
+See [the complete mapping](task-model-panel-reconciliation.md). Close these two
+file rows only, from 85 to 83 pending rows of 360. Shared owner reviews and signed
+desktop acceptance remain open; this count does not measure feature completion.
+
 ## Historical model receipts restored on 2026-09-27
 
 Restore the old historical status and protocol receipt through the current shared
