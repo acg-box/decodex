@@ -9,6 +9,16 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Native settings test module reconciled on 2026-09-27
+
+The complete inherited coordinator settings test module is mapped to current
+wire-based qualification for model, permission and plugin observations. Preserve
+exact scope, privacy, no-wake behavior, durable state, resume completeness and
+pending-permission confirmation rules. The original snapshot hash matches.
+See [the test mapping](native-settings-observation-tests.md), including the
+distinction between a repeated read and a new wire revision with equal values.
+Close this one test-file row only; shared production files remain open.
+
 ## Task model panel reconciled on 2026-09-27
 
 Map the complete inherited selector and socket tests to the current task model
@@ -943,13 +953,3 @@ explicit inheritance restoration. All sixteen relevant tests pass in the full de
 run and the reviewed sources are unchanged. No code change is required. Close
 these four file rows only; signed desktop acceptance remains open. See
 [settings surface reconciliation](settings-surface-reconciliation.md).
-
-## Native settings test module reconciled on 2026-09-27
-
-The complete inherited coordinator settings test module is mapped to current
-wire-based qualification for model, permission and plugin observations. Preserve
-exact scope, privacy, no-wake behavior, durable state, resume completeness and
-pending-permission confirmation rules. The original snapshot hash matches.
-See [the test mapping](native-settings-observation-tests.md), including the
-distinction between a repeated read and a new wire revision with equal values.
-Close this one test-file row only; shared production files remain open.
