@@ -115,6 +115,15 @@ complete files to their current owners in
 Close only these two rows. Shared renderer, workspace and desktop acceptance
 remain open.
 
+## Optional integration control records reconciled on 2026-09-27
+
+Map connector exposure, task plugin selection and model access metadata to current
+native, service and desktop owners. Restore the absent plugin record with a current
+status notice and retain the initial-preference distinction in the access note.
+Four service/projection tests and one installed-native catalog test pass. See
+[the removal boundaries](optional-controls-reconciliation.md). Close only these
+three document rows; external services and signed desktop acceptance remain open.
+
 ## Large approval document reconciled on 2026-09-27
 
 Map every section of the inherited approval document to retained storage, pages,
