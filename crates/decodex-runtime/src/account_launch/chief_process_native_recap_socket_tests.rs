@@ -50,6 +50,24 @@ fn interaction_seconds(interactive: bool) -> u64 {
 	}
 }
 
+async fn observe_fixture_quota(accounts: &AccountService, account: &AccountId) {
+	let observed = std::time::SystemTime::now()
+		.duration_since(std::time::UNIX_EPOCH)
+		.expect("fixture clock")
+		.as_micros() as i64;
+	for minutes in [300, 10080] {
+		accounts
+			.observe_quota(
+				account,
+				decodex_core::AccountQuotaWindow::new(minutes, 0, observed + 3_600_000_000)
+					.expect("synthetic available quota"),
+				observed,
+			)
+			.await
+			.expect("fresh fixture quota");
+	}
+}
+
 async fn qualify(home: &std::path::Path) {
 	let interactive = std::env::var_os("DECODEX_TEST_DESKTOP_APP").is_some();
 	let native_home = home.join(".codex");
@@ -91,22 +109,19 @@ async fn qualify(home: &std::path::Path) {
 		Arc::new(NoRefresh),
 	));
 	let account = enroll(&store, &accounts, home).await;
-	let observed = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.expect("fixture clock")
-		.as_micros() as i64;
-	for minutes in [300, 10080] {
-		accounts
-			.observe_quota(
-				&account,
-				decodex_core::AccountQuotaWindow::new(minutes, 0, observed + 3_600_000_000)
-					.expect("synthetic available quota"),
-				observed,
-			)
-			.await
-			.expect("fresh fixture quota");
-	}
+	observe_fixture_quota(&accounts, &account).await;
 	let directory = home.to_owned();
+	// This mode prepares accounts only. It does not qualify recap behavior.
+	if std::env::var_os("DECODEX_TEST_ACCOUNT_SEED_ONLY").is_some() {
+		assert_eq!(requests.load(Ordering::Acquire), 0, "account seed cannot infer");
+		std::fs::write(
+			home.join("account-seed.json"),
+			b"{\"prepared_only\":true,\"model_requests\":0}\n",
+		)
+		.expect("record account-only preparation, not recap acceptance");
+		backend.abort();
+		return;
+	}
 	let profile = tokio::task::spawn_blocking(move || {
 		crate::account_launch::AttestedAppServerProfile::attest(directory, Duration::from_secs(15))
 	})

@@ -209,7 +209,47 @@ native message records. This verifies actual idle unload, warm cancellation and
 cold history recovery without replay. Pending-unload/revert replacement races
 remain outside this probe.
 
-## Remaining acceptance
+## Restored desktop access and Finder reopen
+
+After the user restored desktop access, Finder menu actions and the exact signed
+Decodex window became available again. The empty-profile fixture
+`/Users/x/.decodex-a15-owned-y1pmfg8a` completed normal menu Quit with exit 0;
+GUI PID 67113 and its observed service children 67118 and 67132 were absent.
+
+In a separate fixture, `/Users/x/.decodex-a15-owned-johk7ex5`, select File > Close
+Window, then use Finder to open the exact staged Decodex.app. The main window is
+visible again in a screenshot. GUI PID 83291 remains the sole process for that
+exact executable, and service PID 83293 remains its child. Normal menu Quit exits
+with status 0 and both processes are absent. See `reopen-acceptance.json` in that
+fixture home. This qualifies Finder reopen without a second GUI process. The Dock
+tool returns timeoutReached, so a Dock click is not qualified by this result.
+
+## Active work in an app-owned service remains unqualified
+
+The signed app can start its own service from a private fixture root. A valid
+standalone service fixture needs full cache settings and its execution-authority
+file; the earlier in-process socket fixture did not supply those disk inputs.
+Prepare synthetic accounts and fresh quota observations without creating a task
+or a native process. The opt-in DECODEX_TEST_ACCOUNT_SEED_ONLY path records
+prepared_only=true and zero model requests. That mode prepares data only; a
+successful preparation is not recap or desktop acceptance.
+
+With this empty-task seed and the existing offline initialization owner, the
+public service reports conversation readiness and accepts Chief start. However,
+the native process does not reach a running model request. In
+`/Users/x/.decodex-active-gui-fzhz_5ku`, the saved events report ProcessUnavailable
+followed by a Chief process authority conflict. The provider observes no request.
+The service-child timeline retains the same child PID 85176 during the attempt;
+no service restart was observed. The cause of initialization failure remains
+unresolved. Do not treat the accepted command as proof of an active model turn.
+
+The bounded fixture is aborted, not passed. Its `start-result.json`,
+`no-request-snapshot.json`, `startup-doctor.json`, `service-children.json` and
+`result.json` retain the observations. Earlier attempts that copied a completed
+task also encountered stale quota and saved ownership/configuration conflicts;
+they are preparation failures, not successful active-work shutdown tests.
+
+## Outstanding acceptance
 
 Ordinary composer input and restart, complete foreground/background recap, live
 voice, Dock reopening, draft conflicts/export and GUI Quit during active work
