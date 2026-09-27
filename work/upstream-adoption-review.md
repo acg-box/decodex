@@ -21,6 +21,15 @@ means a product behavior or control that the user can assess for removal. Mixed
 rows need a finer split before removal. These labels are review classifications,
 not instructions to delete code or weaken native enforcement.
 
+## Application projection correctness
+
+Preserve native approval account identity, complete file evidence, model-review
+recovery and output filtering through the existing owners. The
+[application comparison](application-owner-reconciliation.md) accounts for the
+shared file and separates core correctness from optional recap, weather, settings,
+App UI and native-agent presentation. This source review does not complete signed
+desktop acceptance or approve retaining every optional surface.
+
 ## Native message rendering correctness
 
 Keep native user and assistant roles distinct when saved metadata has equal

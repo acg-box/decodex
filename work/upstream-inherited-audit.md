@@ -1295,3 +1295,11 @@ before the fix. Restore inherited background approval, complete enriched paging,
 saved child diff, native executor and pre-session model-review coverage.
 See [the recovery evidence and scope limits](application-approval-recovery.md).
 The full shared `application.rs` review remains open.
+
+## Shared application owners reconciled on 2026-09-27
+
+Complete the query-owner and projection mapping after output and approval recovery.
+Restore the inherited oversized-detail rejection with a failing-before synthetic
+boundary test. The test does not claim installed-native reachability. See
+[the complete source mapping](application-owner-reconciliation.md). Close only
+application.rs; native qualifications and signed desktop acceptance remain open.

@@ -56,7 +56,7 @@ repair is core compatibility for the retained desktop consumer. Account
 settings remain an optional product surface for the later removal review, while
 correct account identity is required if that surface is retained.
 
-The full shared `application.rs` reconciliation remains open. In particular,
-the oversized file-detail policy and the remaining query-owner mapping require
-an explicit disposition. Local projection tests do not replace installed-native
-or signed desktop acceptance. Automations remain paused.
+The subsequent [application owner comparison](application-owner-reconciliation.md)
+resolves the remaining source mapping and restores the inherited oversized-detail
+failure branch. Local projection tests do not replace installed-native or signed
+desktop acceptance. Automations remain paused.

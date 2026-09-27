@@ -4227,6 +4227,8 @@ fn attach_file_approval_detail(
 		fields["changeDetailsTruncated"] = serde_json::json!(truncated);
 		if let Ok(updated) = decodex_protocol::ChiefRequestText::new(fields.to_string()) {
 			*request_json = updated;
+		} else {
+			return decodex_protocol::ChiefRequestResult::Unavailable;
 		}
 	}
 	request
@@ -6519,6 +6521,19 @@ mod tests {
 			assert_eq!(fields["reason"], "Review");
 			assert_eq!(fields["changeDetailsTruncated"], true);
 			assert!(fields["changeDetails"].as_str().unwrap().contains("/tmp/file"));
+			let oversized = super::attach_file_approval_detail(
+				request,
+				ChiefActivityDetailResult::Available {
+					text: "x".repeat(decodex_core::MAX_APPROVAL_ENVELOPE_BYTES),
+					offset: 0,
+					next: None,
+					truncated: false,
+				},
+			);
+			assert_eq!(
+				super::page_chief_request(oversized, None, 0),
+				ChiefRequestResult::Unavailable
+			);
 		}
 	}
 
