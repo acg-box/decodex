@@ -122,6 +122,7 @@ fn project_mcp(result: Result<Vec<Value>, ClientError>) -> AgentMcpInventory {
 				if let Some(extensions) = object.get("extensions").and_then(Value::as_object) {
 					names.extend(extensions.keys().map(|key| format!("extensions/{}", text(key))));
 				}
+				names.sort_unstable();
 				names
 			}),
 		});
@@ -209,7 +210,7 @@ mod tests {
 		assert_eq!(servers[0].runtime_status.as_deref(), Some("authenticationRequired"));
 		assert_eq!(
 			servers[0].advertised_capabilities.as_ref().unwrap(),
-			&["extensions", "resources", "tools", "extensions/openai/settings"]
+			&["extensions", "extensions/openai/settings", "resources", "tools"]
 		);
 		assert!(!serde_json::to_string(&servers).unwrap().contains("private-fixture-value"));
 		let plugins = project_plugins(Ok(
