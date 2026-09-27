@@ -384,6 +384,9 @@ async fn serve(
 				"cached priority must not override Standard"
 			);
 			let serial = requests.fetch_add(1, Ordering::AcqRel);
+			if hold_shutdown_response(&mut socket).await {
+				continue;
+			}
 			let id = format!("cold-fixture-{serial}");
 			let answer = if input["text"]["format"]["type"] == "json_schema" {
 				if let Some(expected) = expected_recap {
@@ -435,6 +438,33 @@ async fn serve(
 		};
 		socket.get_mut().write_all(format!("HTTP/1.1 {status} Fixture\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.expect("loopback native backend");
 	}
+}
+
+async fn hold_shutdown_response(socket: &mut tokio::io::BufReader<tokio::net::TcpStream>) -> bool {
+	use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+	if std::env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_none() {
+		return false;
+	}
+	let home = std::path::PathBuf::from(
+		std::env::var_os("DECODEX_TEST_ACCOUNT_HOME").expect("isolated home"),
+	);
+	socket
+		.get_mut()
+		.write_all(
+			b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n",
+		)
+		.await
+		.expect("pending fixture response");
+	std::fs::write(home.join("active-provider-started"), "pending\n").expect("active witness");
+	let mut byte = [0];
+	let read = socket.read(&mut byte).await;
+	assert!(
+		matches!(read, Ok(0))
+			|| matches!(&read, Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset),
+		"provider did not observe cancellation: {read:?}"
+	);
+	std::fs::write(home.join("active-provider-closed"), "closed\n").expect("closure witness");
+	true
 }
 
 fn counter_output(input: &Value) -> Value {

@@ -1,5 +1,6 @@
 //! Real local socket, Chief host and installed Codex; only the model provider is synthetic.
 use super::*;
+#[path = "chief_process_native_active_shutdown_tests.rs"] mod active_shutdown;
 #[path = "chief_process_native_app_ui_socket_tests.rs"] mod app_ui;
 #[path = "chief_process_native_desktop_acceptance.rs"] mod desktop;
 #[path = "chief_process_native_media_socket_tests.rs"] mod media;
@@ -27,10 +28,26 @@ async fn installed_recap_public_socket_preserves_parent_and_exact_request_identi
 		"isolated-recap\n"
 	);
 	assert!(!home.join(".codex").exists());
-	let seconds = if std::env::var_os("DECODEX_TEST_DESKTOP_APP").is_some() { 1260 } else { 90 };
+	let seconds = if std::env::var_os("DECODEX_TEST_DESKTOP_BACKGROUND_RECAP").is_some() {
+		2520
+	} else if std::env::var_os("DECODEX_TEST_DESKTOP_APP").is_some() {
+		1260
+	} else {
+		90
+	};
 	tokio::time::timeout(Duration::from_secs(seconds), qualify(&home))
 		.await
 		.expect("bounded real service fixture");
+}
+
+fn interaction_seconds(interactive: bool) -> u64 {
+	if std::env::var_os("DECODEX_TEST_DESKTOP_BACKGROUND_RECAP").is_some() {
+		2460
+	} else if interactive {
+		1200
+	} else {
+		50
+	}
 }
 
 async fn qualify(home: &std::path::Path) {
@@ -124,7 +141,7 @@ async fn qualify(home: &std::path::Path) {
 		.expect("public local server");
 	use futures_util::FutureExt as _;
 	let outcome = std::panic::AssertUnwindSafe(tokio::time::timeout(
-		Duration::from_secs(if interactive { 1200 } else { 50 }),
+		Duration::from_secs(interaction_seconds(interactive)),
 		async {
 			if interactive {
 				desktop::check(&client, home, &account, &requests).await;
@@ -146,6 +163,7 @@ async fn qualify(home: &std::path::Path) {
 	.catch_unwind()
 	.await;
 	assert!(server.shutdown().await.expect("service shutdown").is_success());
+	active_shutdown::verify(home, &requests).await;
 	backend.abort();
 	if let Err(error) = backend.await {
 		assert!(error.is_cancelled(), "fixture provider failed: {error}");
@@ -161,6 +179,9 @@ async fn check(
 	account: &AccountId,
 	requests: &std::sync::atomic::AtomicUsize,
 ) {
+	if std::env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_some() {
+		return active_shutdown::prepare(client, home, account).await;
+	}
 	let work = EntityId::new("recap-root").expect("work");
 	assert_eq!(client.recap(work.clone()).await.expect("cold query").phase, Phase::Idle);
 	assert_eq!(requests.load(Ordering::Acquire), 0, "queries must not infer");
