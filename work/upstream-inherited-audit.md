@@ -1311,3 +1311,13 @@ The current behavior passes: query the saved request, confirm explicitly, and
 preserve later unsent input without another submission. See
 [the fixture and scope limits](model-review-draft-coverage.md). Refresh both source
 hashes, but keep the shared shell and conversation file reviews open.
+
+## Ordinary conversation controller reconciled on 2026-09-27
+
+Restore archive cache accounting and its inherited regression: stale byte counts
+could evict the next conversation's output. Restore provider-defined effort
+coverage and adapt the warning test to the dedicated history event. Map the full
+controller diff to current default, settings and durable recovery owners in
+[the controller comparison](conversation-controller-reconciliation.md). All 59
+conversation tests and 537 desktop tests pass; five desktop opt-in tests remain
+ignored. Close only conversations.rs. Signed desktop acceptance remains open.

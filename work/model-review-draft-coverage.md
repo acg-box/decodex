@@ -24,8 +24,8 @@ Clippy passes for all features and targets. Logs:
 
 The complete 2,156-line shell comparison has been read. Its source was unchanged
 from the comparison base before this restoration. The remaining account-control
-and settings-owner dispositions are not closed by this test. The full conversation
-controller comparison also remains open. Neither a GPUI test window nor the
+and settings-owner dispositions are not closed by this test. The subsequent [controller comparison](conversation-controller-reconciliation.md)
+closes the conversation source review. Neither a GPUI test window nor the
 restored debug selector establishes signed desktop acceptance.
 
 Model-review confirmation and preserving unsent input are core behavior for the

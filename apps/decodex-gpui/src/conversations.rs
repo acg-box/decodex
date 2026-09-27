@@ -1991,6 +1991,8 @@ impl State {
 	fn remove_task(&mut self, conversation_id: &EntityId) {
 		self.tasks.retain(|task| &task.conversation_id != conversation_id);
 		self.live_deltas.retain(|delta| &delta.conversation_id != conversation_id);
+		self.live_delta_bytes =
+			self.live_deltas.iter().map(|delta| delta.text.as_str().len()).sum();
 		if self.selected.as_ref() == Some(conversation_id) {
 			// Never retarget an unsent composer draft to a different provider thread.
 			self.selected = None;
@@ -2545,6 +2547,65 @@ pub(crate) mod tests {
 
 		assert!(task_needs_reconciliation(&task));
 		assert!(!task_accepts_turn(&task));
+	}
+
+	#[test]
+	fn model_defined_effort_is_selected_and_sent_without_replacement() {
+		let (conversations, server_id, _) = catalog_conversations();
+		let custom =
+			ConversationReasoningEffort::new("provider-defined-effort").expect("custom effort");
+		conversations.lock().catalog.as_mut().expect("catalog")[0].efforts.push(custom.clone());
+		conversations.cycle_reasoning_effort();
+		assert_eq!(conversations.snapshot().execution.reasoning_effort, Some(custom));
+		conversations.submit("Use the advertised effort").expect("explicit send");
+		let command = conversations
+			.try_take_dispatch(1, &server_id)
+			.expect("dispatch")
+			.command()
+			.expect("command")
+			.clone();
+		let encoded = serde_json::to_string(&decodex_protocol::ClientMessage::Command(command))
+			.expect("wire command");
+		let decoded =
+			decodex_protocol::decode_client_message(&encoded).expect("admitted custom effort");
+		let decodex_protocol::ClientMessage::Command(command) = decoded else {
+			panic!("command");
+		};
+		let CommandPayload::SubmitConversationTurn { execution, .. } = command.payload else {
+			panic!("turn");
+		};
+		assert_eq!(
+			execution.reasoning_effort.as_ref().unwrap().as_str(),
+			"provider-defined-effort"
+		);
+		assert!(encoded.contains("provider-defined-effort"));
+	}
+
+	#[test]
+	fn warning_history_publication_does_not_finish_an_active_command() {
+		let (conversations, server_id, mut task) = connected_conversations();
+		task.state = ConversationState::Running;
+		task.active_turn_id = Some(EntityId::new("active-turn").unwrap());
+		task.conversation_revision = EntityRevision(2);
+		task.projection_updated_at_micros = 2;
+		conversations.lock().upsert_task(task.clone());
+		conversations.lock().command = ConversationCommandState::Accepted;
+		let event = EventEnvelope {
+			version: decodex_protocol::CURRENT_VERSION,
+			server_id,
+			cursor: decodex_protocol::Cursor(1),
+			channel: decodex_protocol::Channel::ConversationStream,
+			entity_id: EntityId::new("warning-history").unwrap(),
+			entity_revision: EntityRevision(1),
+			correlation_id: decodex_protocol::CorrelationId::new("warning-observation").unwrap(),
+			causation_id: None,
+			payload: EventPayload::ConversationHistoryChanged {
+				conversation_id: task.conversation_id.clone(),
+			},
+		};
+		conversations.apply_event(&event);
+		assert_eq!(conversations.lock().command, ConversationCommandState::Accepted);
+		assert_eq!(conversations.lock().tasks[0].active_turn_id, task.active_turn_id);
 	}
 
 	#[test]
@@ -3696,6 +3757,14 @@ pub(crate) mod tests {
 	#[test]
 	fn archive_result_removes_the_exact_selected_task() {
 		let (conversations, server_id, task) = connected_conversations();
+		for index in 0..4 {
+			conversations.lock().push_delta(ConversationLiveDelta {
+				history_item_id: EntityId::new(format!("archived-item-{index}")).unwrap(),
+				conversation_id: task.conversation_id.clone(),
+				turn_id: EntityId::new("archived-turn").unwrap(),
+				text: HistoryText::new("x".repeat(MAX_LIVE_DELTA_BYTES / 4)).unwrap(),
+			});
+		}
 		assert_eq!(conversations.archive_selected(), Ok(()));
 		let dispatch = conversations
 			.try_take_dispatch(1, &server_id)
@@ -3729,6 +3798,15 @@ pub(crate) mod tests {
 		let snapshot = conversations.snapshot();
 		assert!(snapshot.tasks.is_empty());
 		assert_eq!(snapshot.selected, None);
+		assert!(snapshot.live_deltas.is_empty());
+		let next_delta = ConversationLiveDelta {
+			history_item_id: EntityId::new("next-item").unwrap(),
+			conversation_id: EntityId::new("next-conversation").unwrap(),
+			turn_id: EntityId::new("next-turn").unwrap(),
+			text: HistoryText::new("Next task output").unwrap(),
+		};
+		conversations.lock().push_delta(next_delta.clone());
+		assert_eq!(conversations.snapshot().live_deltas, vec![next_delta]);
 	}
 
 	#[test]
