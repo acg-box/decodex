@@ -1410,3 +1410,12 @@ modules and consolidated fixture helpers in [the registry reconciliation](native
 Close only this shared source row. Separate native limitations and signed desktop
 acceptance remain open. The current branch has 24 files in the union of the two
 open review fields; this is not a feature-completion measure.
+
+## Native bridge and model test owners reconciled on 2026-09-27
+
+Restore omitted write-scope assertions and map removed model tests to current
+read, mutation and installed-native owners. Twenty-one bridge/plugin tests,
+eight model tests and the installed-native model test pass; strict runtime lint
+passes. Record the explicit read-parameter admission difference in
+[the complete mapping](native-bridge-owner-reconciliation.md). Close these two
+source rows only. Remaining native limitations and desktop acceptance stay open.
