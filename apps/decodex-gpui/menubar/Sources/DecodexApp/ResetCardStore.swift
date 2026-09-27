@@ -3635,6 +3635,11 @@ final class ResetCardStore {
 		guard generation == codexProjectionRequestGeneration else {
 			return false
 		}
+		// Waiting for a stable auth-file read is inconclusive, just like a transport
+		// failure. Keep the last confirmed projection until a definitive read changes it.
+		guard projection != .unavailable else {
+			return false
+		}
 		if case .current(let accountID, let accountRevision, _) = projection {
 			guard accountRevision > 0,
 				let account = accountRecord(accountID),

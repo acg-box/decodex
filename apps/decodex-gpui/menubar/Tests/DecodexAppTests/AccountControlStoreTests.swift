@@ -1517,6 +1517,41 @@ final class AccountControlStoreTests: XCTestCase {
 		)
 	}
 
+	func testUnavailableProjectionRetainsConfirmedRouteUntilDefinitiveChange() async throws {
+		let account = accountRecord()
+		let routing = AccountRoutingControl(
+			revision: 9, mode: .fixed(accountID: accountID), order: [accountID]
+		)
+		let confirmed = CodexAuthProjection.current(
+			accountID: accountID, accountRevision: 7,
+			projectionDigest: String(repeating: "a", count: 64)
+		)
+		let client = AccountControlStoreClient(
+			account: account, authority: authority, routing: routing, projection: confirmed
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client, pendingStore: fixture.store, startupRetryDelays: []
+		)
+		await store.refresh()
+		XCTAssertTrue(store.isCodexProjection(accountID))
+		for projection in [CodexAuthProjection.unavailable, confirmed, .unavailable] {
+			await client.commitRoute(account: account, routing: routing, projection: projection)
+			await store.refresh()
+			XCTAssertTrue(
+				store.isCodexProjection(accountID),
+				"An inconclusive read must not undo a confirmed route."
+			)
+		}
+		await client.commitRoute(account: account, routing: routing, projection: .unmanaged)
+		await store.refresh()
+		XCTAssertFalse(
+			store.isCodexProjection(accountID),
+			"A confirmed external login change must still clear the selection."
+		)
+	}
+
 	func testRouteAccountSerializesSharedProjectionAcrossAccounts() async throws {
 		let secondAccountID = "22222222-2222-4222-8222-222222222222"
 		let account = accountRecord()
