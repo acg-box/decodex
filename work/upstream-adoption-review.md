@@ -30,11 +30,12 @@ not instructions to delete code or weaken native enforcement.
 
 The fresh [a15fe830 signed artifact](signed-desktop-a15fe830-acceptance.md) passes
 bundle contracts and signing checks. Its embedded source identity is exact and
-clean. Two isolated launches could not be selected by the UI tool, which reports
-cgWindowNotFound. App-owned service startup and parent-exit cleanup have process
-and protocol evidence; normal GUI quit and the required desktop interactions
-remain unverified. The older 0658 interaction record is historical, not acceptance
-of the later repairs. R06/R07/R12 remain open.
+clean. Window access is now restored. Normal GUI quit and empty-profile owned-service
+cleanup are verified. An unconfirmed history-edit draft survives normal quit and
+relaunch without input replay. Ordinary composer interaction remains unverified:
+its native child window is absent from the observed main-window accessibility tree.
+The older 0658 interaction record remains historical. The current record lists
+precise accepted boundaries and remaining R06/R07/R12 work.
 
 ## Application projection correctness
 
