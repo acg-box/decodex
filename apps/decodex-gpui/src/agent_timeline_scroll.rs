@@ -112,6 +112,10 @@ impl AgentSurface {
 			self.cancel_native_scroll_anchor();
 		}
 		let accepted = self.native_history.prepend(binding, cursor, page);
+		if accepted {
+			// The saved viewport anchor now owns the offset in the new layout.
+			self.wheel_scroll = None;
+		}
 		if !accepted {
 			self.cancel_native_scroll_anchor();
 		}

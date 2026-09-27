@@ -901,6 +901,7 @@ impl AgentSurface {
 			self.older_scroll_anchor = None;
 			return;
 		}
+		self.wheel_scroll = None;
 		if let Some(scroll) = self.transcript_scroll.get(&id).cloned() {
 			let entity = cx.entity();
 			cx.defer(move |cx| {
