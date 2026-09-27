@@ -1,6 +1,6 @@
 //! Resolve only an exact positive receipt; pending-list absence is not evidence.
 use super::*;
-#[cfg(test)] use decodex_protocol::ChiefSteerIdentity;
+#[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::ChiefSteerIdentity;
 use decodex_protocol::ChiefSteerReceiptResult;
 
 impl ChiefSurface {
@@ -53,6 +53,33 @@ impl ChiefSurface {
 			Ok(ChiefCommandResponse::Accepted { work_id: identity.work_id }),
 			cx,
 		);
+	}
+
+	#[cfg(feature = "visual-capture")]
+	#[allow(dead_code, reason = "opt-in native acceptance fixture")]
+	pub(crate) fn visual_uncertain_steer(
+		&mut self,
+		profile: ClientProfile,
+		identity: ChiefSteerIdentity,
+		cx: &mut Context<Self>,
+	) {
+		self.profile = Some(profile);
+		self.composer_manager = Some(identity.work_id.as_str().into());
+		self.composer.update(cx, |input, cx| input.set_content("Later draft retained.", cx));
+		self.uncertain = true;
+		self.feedback = "Acceptance unknown. Waiting for the exact native receipt.".into();
+		self.submission.pending = Some(PendingCommand {
+			recovery: None,
+			key: Some(identity.submission_id.clone()),
+			owner: Some(identity.work_id.as_str().into()),
+			steer: Some(identity),
+			epoch: self.command_epoch,
+			execution_intent: None,
+			draft: Some("Identical fixture input".into()),
+			attachments: None,
+			references: None,
+		});
+		cx.notify();
 	}
 }
 

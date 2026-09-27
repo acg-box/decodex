@@ -72,10 +72,15 @@ fn main() -> gpui::Result<()> {
 	let inspector_visible = std::env::var("DECODEX_VISUAL_CONTEXT").as_deref() != Ok("hidden");
 	let panel_motion = std::env::var("DECODEX_VISUAL_PANEL_MOTION").ok();
 	let send_message = std::env::var("DECODEX_VISUAL_CHIEF_SEND").ok();
+	let steer_receipt = std::env::var("DECODEX_VISUAL_CHIEF_STEER_RECEIPT").ok();
 	let live_app_ui = std::env::var_os("DECODEX_VISUAL_APP_UI_EXECUTE").is_some();
 	let live_media = std::env::var_os("DECODEX_VISUAL_MEDIA").is_some();
 	let automatic_recap = std::env::var_os("DECODEX_VISUAL_AUTO_RECAP").is_some();
-	if (send_message.is_some() || automatic_recap || live_app_ui || live_media)
+	if (send_message.is_some()
+		|| steer_receipt.is_some()
+		|| automatic_recap
+		|| live_app_ui
+		|| live_media)
 		&& std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").is_none()
 	{
 		return Err(std::io::Error::other("Command capture requires a disposable root").into());
@@ -140,7 +145,10 @@ fn main() -> gpui::Result<()> {
 			prove_automatic_recap(&mut cx, handle, profile.clone(), &output)?;
 		}
 		if let Some(message) = send_message {
-			prove_composer_send(&mut cx, handle, profile, &message, &output)?;
+			prove_composer_send(&mut cx, handle, profile.clone(), &message, &output)?;
+		}
+		if let Some(identity) = steer_receipt {
+			prove_steer_receipt(&mut cx, handle, profile, &identity, &output)?;
 		}
 		handle.into()
 	} else {
@@ -589,4 +597,57 @@ fn prove_media(
 		cx.advance_clock(std::time::Duration::from_millis(100));
 	}
 	Err(std::io::Error::other("Native media preview did not load").into())
+}
+
+fn prove_steer_receipt(
+	cx: &mut VisualTestAppContext,
+	handle: gpui::WindowHandle<ChiefSurface>,
+	profile: decodex_protocol::ClientProfile,
+	identity: &str,
+	output: &std::path::Path,
+) -> gpui::Result<()> {
+	let identity: decodex_protocol::ChiefSteerIdentity = serde_json::from_str(identity)?;
+	let before = cx.update_window(handle.into(), |view, window, cx| {
+		let evidence = view.downcast::<ChiefSurface>().expect("Chief capture root").update(
+			cx,
+			|surface, cx| {
+				surface.visual_uncertain_steer(profile, identity.clone(), cx);
+				surface.visual_send_evidence(cx)
+			},
+		);
+		window.draw(cx).clear();
+		evidence
+	})?;
+	if before["uncertain"] != true {
+		return Err(std::io::Error::other("fixture uncertainty was not established").into());
+	}
+	for _ in 0..40 {
+		cx.update_window(handle.into(), |view, _, cx| {
+			view.downcast::<ChiefSurface>()
+				.expect("Chief capture root")
+				.update(cx, ChiefSurface::refresh)
+		})?;
+		cx.run_until_parked();
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		cx.run_until_parked();
+		let after = cx.update_window(handle.into(), |view, window, cx| {
+			window.draw(cx).clear();
+			view.downcast::<ChiefSurface>()
+				.expect("Chief capture root")
+				.update(cx, |surface, cx| surface.visual_send_evidence(cx))
+		})?;
+		if after["uncertain"] == false {
+			if after["draft"] != "Later draft retained." {
+				return Err(std::io::Error::other("receipt overwrote the later draft").into());
+			}
+			std::fs::write(
+				output.with_extension("steer.json"),
+				serde_json::to_vec_pretty(
+					&serde_json::json!({"identity":identity,"before":before,"after":after}),
+				)?,
+			)?;
+			return Ok(());
+		}
+	}
+	Err(std::io::Error::other("exact receipt did not settle UI uncertainty").into())
 }
