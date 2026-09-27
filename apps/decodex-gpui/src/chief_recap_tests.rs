@@ -305,3 +305,46 @@ fn active_voice_rejection_is_shown_without_retrying_generation() {
 	});
 	server.join().unwrap();
 }
+
+#[gpui::test]
+fn completed_recap_remains_reachable_with_pixel_and_line_scrolling(cx: &mut gpui::TestAppContext) {
+	let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+	visual.simulate_resize(gpui::size(px(1400.), px(500.)));
+	surface.update(visual, |s, cx| {
+		s.visual_workspace_fixture(cx);
+		s.graph_visible = false;
+		s.visual_recap();
+		s.recap.state.as_mut().unwrap().recap.as_mut().unwrap().summary =
+			WireText::new("Recap.\n".repeat(60)).unwrap();
+		assert!(s.recap.state.as_ref().unwrap().recap.as_ref().unwrap().is_valid());
+		cx.notify();
+	});
+	visual.update(|window, cx| window.draw(cx).clear());
+	let scroll = surface.read_with(visual, |s, _| s.transcript_scroll["chief"].clone());
+	assert!(scroll.max_offset().y > px(1000.));
+	for delta in [
+		gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(10000.))),
+		gpui::ScrollDelta::Lines(gpui::point(0., 1000.)),
+	] {
+		surface.update(visual, |s, cx| {
+			scroll.scroll_to_bottom();
+			s.latest_follow_work = Some("chief".into());
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		visual.simulate_event(gpui::ScrollWheelEvent {
+			position: scroll.bounds().center(),
+			delta,
+			..Default::default()
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		surface.read_with(visual, |s, _| {
+			assert!(s.latest_follow_work.is_none());
+			assert!(s.history_follow_paused.contains("chief"));
+		});
+		assert!(scroll.offset().y.abs() < px(1.), "recap start must be reachable");
+		let toggle = visual.debug_bounds("recap-toggle").expect("recap heading");
+		assert!(toggle.top() >= scroll.bounds().top());
+		assert!(toggle.bottom() <= scroll.bounds().bottom());
+	}
+}

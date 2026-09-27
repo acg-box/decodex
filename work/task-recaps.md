@@ -256,3 +256,29 @@ readback: an accessibility inspection can reopen an app after it has quit.
 - Normal installed application lifecycle acceptance remains shared with R07/R12.
 
 The upstream maintainer remains paused, including after manual completion.
+
+
+## Inherited document reconciliation and current signed evidence
+
+The original 33-line task-recaps.md described an implementation gap. Its complete
+requirements now map to the owners documented above: temporary_structured.rs owns
+ephemeral isolation and exact cancellation; chief_recap history/excerpts/prompt
+own the eight-exchange and 32-KiB input policy; response.rs and TaskRecap validate
+700/200-character structured output; the service owns source/request identity;
+the desktop automatic owner uses the existing focus/preference lifecycle and
+30-minute deadline. No background title producer is added to copy an unused
+upstream title-generation path.
+
+The old statement that recap was unimplemented is superseded by these deliveries.
+The document review closes; its remaining acceptance does not. In particular,
+local cancellation is not proof of immediate native termination, and a query
+cannot start or replay inference.
+
+The current clean signed artifact at 0658d23f has visible manual recap, normal
+quit/relaunch and unsent draft/model restoration evidence. See the
+[scoped desktop record](signed-desktop-0658-acceptance.md), including unresolved
+recap clipping and a post-quit tool relaunch. This updates the earlier blank
+screenshot limitation without rewriting that historical observation. The current
+13-test GPUI recap suite includes a valid multiline full-workspace scroll case;
+it does not establish physical foreground/background, opt-out or live-voice
+acceptance. Recap remains optional, and maintenance remains paused.

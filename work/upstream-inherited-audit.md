@@ -1060,3 +1060,14 @@ The writer and inherited test-module
 rows remain open. This closes one file row, not the full model feature or signed
 desktop acceptance. Preserve compatibility readers when reviewing optional
 model controls for removal.
+
+
+## Recap document and current signed evidence reconciled on 2026-09-27
+
+Map the complete inherited recap-gap note to the delivered temporary native,
+service and desktop owners in [task recaps](task-recaps.md). Record the clean
+signed application interaction and its remaining limits separately in
+[desktop acceptance](signed-desktop-0658-acceptance.md). A valid multiline recap
+passes full-workspace pixel/line scroll tests; the physical-window scroll
+observation remains open. Close this one document row only. R06/R07/R12 and
+shared production-file reviews remain open.
