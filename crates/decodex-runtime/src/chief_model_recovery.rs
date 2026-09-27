@@ -160,6 +160,7 @@ fn prepare_recovery(
 		effort: Some(effort),
 		review_token: digest.clone(),
 		attempt_id: format!("fallback:{digest}"),
+		manual_source: None,
 		recovery: Some(ChiefModelRecoveryContext {
 			account: source.key.account.as_str().into(),
 			account_revision: source.key.revision,

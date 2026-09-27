@@ -69,6 +69,7 @@ async fn scenario(outcome: &'static str) {
 		write(&owned.store, source, "thread", review_token.as_str(), "scoped", "first").await;
 	assert_eq!(result.is_ok(), matches!(outcome, "queued" | "queued-unobserved"));
 	assert_eq!(writes.load(Ordering::Acquire), 1);
+	assert_manual_source(&owned).await;
 	if outcome == "queued" {
 		let state = crate::chief_models::read(&owned.store, source).await;
 		assert!(matches!(
@@ -131,6 +132,22 @@ async fn scenario(outcome: &'static str) {
 	);
 	assert!(reopened.list_pending_chief_events(10).await.expect("pending").is_empty());
 	backend.abort();
+}
+
+async fn assert_manual_source(owned: &OwnedReviewer) {
+	let captured = owned
+		.store
+		.chief_model_receipt("root".into(), "thread".into())
+		.await
+		.expect("saved receipt")
+		.expect("reserved selection");
+	assert_eq!(
+		captured.attempt.manual_source,
+		Some(decodex_database::ChiefManualModelSource {
+			account: owned.key.account.as_str().into(),
+			account_revision: owned.key.revision
+		})
+	);
 }
 
 async fn serve(remote: tokio::io::DuplexStream, writes: Arc<AtomicUsize>, outcome: &str) {

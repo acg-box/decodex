@@ -64,6 +64,7 @@ async fn current_manual_history_supersedes_legacy_history_without_rewriting_evid
 		effort: Some("high".into()),
 		review_token: DIGEST.into(),
 		attempt_id: "explicit".into(),
+		manual_source: None,
 		recovery: None,
 	};
 	let id = store.reserve_chief_model_selection(attempt.clone()).await.unwrap().unwrap();

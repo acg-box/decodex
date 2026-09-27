@@ -278,6 +278,10 @@ where
 		effort: expected_effort,
 		review_token: change.review.into(),
 		attempt_id: change.attempt_id.into(),
+		manual_source: Some(decodex_database::ChiefManualModelSource {
+			account: before.key.account.as_str().into(),
+			account_revision: before.key.revision,
+		}),
 		recovery: None,
 	};
 	let reservation = store

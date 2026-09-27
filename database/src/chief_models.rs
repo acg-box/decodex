@@ -20,9 +20,19 @@ pub struct ChiefModelAttempt {
 	pub effort: Option<String>,
 	pub review_token: String,
 	pub attempt_id: String,
+	/// Account identity captured by the manual selection owner. Older records omit it.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub manual_source: Option<ChiefManualModelSource>,
 	/// Automatic recovery evidence. Absent in existing explicit selections.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub recovery: Option<ChiefModelRecoveryContext>,
+}
+
+/// Bind an explicit model choice to the account revision reviewed before reservation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ChiefManualModelSource {
+	pub account: String,
+	pub account_revision: i64,
 }
 
 /// Bind an automatic fallback to its account, banner and complete target settings.
@@ -73,6 +83,14 @@ impl ChiefModelAttempt {
 			|| !self.review_token.bytes().all(|b| b.is_ascii_hexdigit())
 		{
 			return Err(StoreError::InvalidInput("invalid model selection"));
+		}
+		if let Some(source) = &self.manual_source
+			&& (!valid(&source.account, 512)
+				|| source.account_revision < 1
+				|| self.generation.is_none()
+				|| self.recovery.is_some())
+		{
+			return Err(StoreError::InvalidInput("invalid manual model source"));
 		}
 		if let Some(recovery) = &self.recovery
 			&& (!valid(&recovery.account, 512)
@@ -146,6 +164,19 @@ fn queued_execution_input(
 	Ok(explicit_input)
 }
 
+fn manual_source_is_current(
+	connection: &rusqlite::Connection,
+	generation: Option<&str>,
+	source: Option<&ChiefManualModelSource>,
+) -> Result<bool, StoreError> {
+	let Some(source) = source else { return Ok(true) };
+	connection.query_row(
+		"SELECT EXISTS(SELECT 1 FROM chief_process_bindings b JOIN accounts a ON a.account_id=b.account_id WHERE b.generation_id=?1 AND b.account_id=?2 AND a.revision=?3 AND a.enabled=1 AND a.tombstoned_at_micros IS NULL)",
+		params![generation, source.account, source.account_revision],
+		|row| row.get(0),
+	).map_err(|error| sqlite_error(error).into())
+}
+
 impl SqliteStore {
 	/// Reserve one idle or running owned task edit against the exact saved observation. The caller
 	/// must bind these facts to a current transport
@@ -158,7 +189,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			if !owns_work(&tx,&attempt.work,attempt.generation.as_deref())? || crate::chief_prompt_edit::pending(&tx,&attempt.work)? || pending(&tx,&attempt.work)? || crate::chief_permissions::pending(&tx,&attempt.work)? || crate::chief_plugins::pending(&tx,&attempt.work)? { return Ok(None); }
-			if !recovery_source_is_current(&tx, &attempt)? || queued_execution_input(&tx, &attempt.work)? { return Ok(None); }
+			if !recovery_source_is_current(&tx, &attempt)? || !manual_source_is_current(&tx, attempt.generation.as_deref(), attempt.manual_source.as_ref())? || queued_execution_input(&tx, &attempt.work)? { return Ok(None); }
 			let saved: Option<String> = tx.query_row("SELECT json_extract(e.payload,'$.settings') FROM chief_work_items w JOIN chief_inbox_events e ON e.work_item_id=w.id WHERE w.id=?1 AND w.codex_thread_id=?2 AND ((w.dispatch_state='idle' AND w.active_turn_id IS NULL) OR (w.dispatch_state='running' AND w.active_turn_id IS NOT NULL)) AND w.status<>'resolved' AND e.id=?4 AND e.event_kind='native_task_models' AND json_extract(e.payload,'$.threadId')=?2 AND json_extract(e.payload,'$.generationId') IS ?3 AND json_type(e.payload,'$.settings')='object' AND e.id=(SELECT max(n.id) FROM chief_inbox_events n WHERE n.work_item_id=w.id AND n.event_kind='native_task_models' AND json_extract(n.payload,'$.threadId')=?2 AND json_extract(n.payload,'$.generationId') IS ?3)", params![attempt.work,attempt.thread,attempt.generation,attempt.settings_event], |r|r.get(0)).optional().map_err(sqlite_error)?;
 			let current = saved.and_then(|value| serde_json::from_str::<Value>(&value).ok()).and_then(|value| model_facts(&value));
 			if current.is_none_or(|current| current.1 != attempt.model_provider || current == (attempt.model.clone(), attempt.model_provider.clone(), attempt.effort.clone())) { return Ok(None); }
@@ -233,6 +264,9 @@ pub(crate) fn observe(
 			settings.get("serviceTier").and_then(Value::as_str) == recovery.service_tier.as_deref()
 		});
 	let state = if previous.as_deref() == generation {
+		if !manual_source_is_current(connection, generation, target.manual_source.as_ref())? {
+			return Ok(());
+		}
 		if let Some(recovery) = &target.recovery {
 			let current: bool = connection.query_row(
 				"SELECT EXISTS(SELECT 1 FROM accounts WHERE account_id=?1 AND revision=?2 AND enabled=1 AND tombstoned_at_micros IS NULL)",
@@ -254,7 +288,11 @@ pub(crate) fn observe(
 		if !dead {
 			return Ok(());
 		}
-		if matches && target.recovery.is_none() { "target_observed" } else { "superseded" }
+		if matches && target.recovery.is_none() && target.manual_source.is_none() {
+			"target_observed"
+		} else {
+			"superseded"
+		}
 	};
 	let now = unix_micros()?;
 	connection.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'model_selection_observation',?3,?4,'resolved','Current native models observed; prior request causation is not asserted.',?4)",params![format!("{key}:observation"),work,json!({"reservation":reservation,"settingsEvent":observation,"state":state,"generationId":generation}).to_string(),now]).map_err(sqlite_error)?;
@@ -315,6 +353,7 @@ mod tests {
 			effort: Some("high".into()),
 			review_token: token.to_string().repeat(64),
 			attempt_id: format!("attempt-{token}"),
+			manual_source: None,
 			recovery: None,
 		}
 	}
