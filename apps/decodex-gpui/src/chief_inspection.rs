@@ -49,6 +49,7 @@ impl ChiefSurface {
 			.when_some(work.parent_goal_id.as_ref(), |panel, parent| {
 				panel.child(self.relation("Reports to", snapshot, parent, cx))
 			})
+			.child(self.inspection_relations(snapshot, work, cx))
 			.when_some(work.next_check_at_micros, |panel, due| {
 				panel.child(muted(format!("Next check · {}", next_check_text(due))))
 			})
@@ -66,6 +67,42 @@ impl ChiefSurface {
 						)),
 				)
 			})
+	}
+
+	fn inspection_relations(
+		&self,
+		snapshot: &ChiefSnapshotDto,
+		work: &ChiefWorkItemDto,
+		cx: &mut Context<Self>,
+	) -> gpui::Div {
+		let mut panel = div().flex().flex_col().gap(px(4.));
+		for (label, id) in snapshot
+			.dependencies
+			.iter()
+			.filter_map(|edge| {
+				if edge.work_item_id == work.id {
+					Some(("Requires", edge.depends_on_id.as_str()))
+				} else if edge.depends_on_id == work.id {
+					Some(("Required by", edge.work_item_id.as_str()))
+				} else {
+					None
+				}
+			})
+			.chain(
+				snapshot
+					.work_items
+					.iter()
+					.filter(|child| child.parent_goal_id.as_ref() == Some(&work.id))
+					.map(|child| ("Coordinates", child.id.as_str())),
+			) {
+			let selector = format!("inspection-{label}-{id}");
+			panel = panel.child(
+				div()
+					.debug_selector(move || selector.clone())
+					.child(self.relation(label, snapshot, id, cx)),
+			);
+		}
+		panel
 	}
 
 	fn inspection_resources(&self, work: &str, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -116,6 +153,36 @@ impl ChiefSurface {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn inspection_retains_dependencies_outside_the_current_graph_scope(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.snapshot.as_mut().unwrap().dependencies.push(decodex_protocol::ChiefDependencyDto {
+				work_item_id: "improve".into(),
+				depends_on_id: "chief".into(),
+			});
+			s.selected = Some("improve".into());
+			s.details_visible = true;
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		for selector in [
+			"inspection-Requires-chief",
+			"inspection-Requires-trace",
+			"inspection-Required by-impact",
+		] {
+			assert!(visual.debug_bounds(selector).is_some(), "{selector}");
+		}
+		surface.update(visual, |s, cx| {
+			s.selected = Some("release".into());
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(visual.debug_bounds("inspection-Coordinates-improve").is_some());
+	}
+
 	#[gpui::test]
 	fn inspection_does_not_resize_or_scroll_the_transcript(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));

@@ -275,6 +275,13 @@ struct PendingCommand {
 	references: Option<Vec<decodex_protocol::ChiefTaskReferenceDto>>,
 }
 
+#[derive(Clone)]
+struct RequestReadSource {
+	profile_epoch: u64,
+	runtime_source: Option<EntityId>,
+	event: decodex_protocol::ChiefPendingEventDto,
+}
+
 #[path = "chief_creation_defaults.rs"] mod creation_defaults;
 #[path = "chief_creation_setup.rs"] mod creation_setup;
 
@@ -684,8 +691,23 @@ impl ChiefSurface {
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
+		let Some(snapshot) = self.snapshot.as_ref() else { return };
+		let Some(event) = snapshot
+			.pending_events
+			.iter()
+			.find(|event| {
+				event.id == event_id && self.selected.as_ref() == Some(&event.work_item_id)
+			})
+			.cloned()
+		else {
+			return;
+		};
+		let source = RequestReadSource {
+			profile_epoch: self.command_epoch,
+			runtime_source: snapshot.runtime_source.clone(),
+			event,
+		};
 		self.request = None;
-		let selected = self.selected.clone();
 
 		let request = cx.background_executor().spawn(async move {
 			let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build()
@@ -699,25 +721,39 @@ impl ChiefSurface {
 		self.request_task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |surface, cx| {
-				surface.request_task = None;
-				if surface.selected == selected {
-					if let Some(scroll) =
-						selected.as_ref().and_then(|id| surface.transcript_scroll.get(id))
-						&& surface.voice.is_none()
-						&& !selected
-							.as_ref()
-							.is_some_and(|id| surface.history_follow_paused.contains(id))
-						&& (scroll.offset().y + scroll.max_offset().y).abs() < px(24.0)
-					{
-						scroll.scroll_to_bottom();
-					}
-					surface.prepare_question_inputs(&result, cx);
-					surface.request = Some(result);
-					cx.notify();
-				}
+				surface.finish_request(source, result, cx);
 			});
 		}));
 		cx.notify();
+	}
+
+	fn finish_request(
+		&mut self,
+		source: RequestReadSource,
+		result: ChiefRequestResult,
+		cx: &mut Context<Self>,
+	) {
+		if self.command_epoch != source.profile_epoch {
+			return;
+		}
+		self.request_task = None;
+		if self.selected.as_ref() == Some(&source.event.work_item_id)
+			&& matches!(self.displayed_load_state(), LoadState::Ready | LoadState::Loading)
+			&& self.snapshot.as_ref().is_some_and(|snapshot| {
+				snapshot.runtime_source == source.runtime_source
+					&& snapshot.pending_events.contains(&source.event)
+			}) {
+			if let Some(scroll) = self.transcript_scroll.get(&source.event.work_item_id)
+				&& self.voice.is_none()
+				&& !self.history_follow_paused.contains(&source.event.work_item_id)
+				&& (scroll.offset().y + scroll.max_offset().y).abs() < px(24.0)
+			{
+				scroll.scroll_to_bottom();
+			}
+			self.prepare_question_inputs(&result, cx);
+			self.request = Some(result);
+			cx.notify();
+		}
 	}
 
 	fn respond(&mut self, json: String, cx: &mut Context<Self>) {
@@ -2345,6 +2381,10 @@ fn resource_field(
 ) -> Entity<ComposerInput> {
 	cx.new(|cx| ComposerInput::with_placeholder(40, placeholder, label, cx))
 }
+
+#[cfg(test)]
+#[path = "chief_request_source_tests.rs"]
+mod request_source_tests;
 
 #[cfg(test)]
 mod tests {
