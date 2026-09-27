@@ -5506,6 +5506,109 @@ mod tests {
 		assert_eq!(store.read_account_routing_control().await.unwrap(), routing);
 	}
 
+	#[tokio::test]
+	async fn recovery_preparation_rechecks_current_account_revision_and_observation() {
+		use crate::account_observation::AccountObservationService;
+		use decodex_protocol::{
+			AccountRecoveryAction as A, AccountRecoveryDestination as D,
+			AccountRecoveryPreparation as P, EntityId, EntityRevision,
+		};
+		let (_directory, store, service, account, shared) =
+			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
+		let service = Arc::new(service);
+		let revision = service.inspect(&account).await.unwrap().account.revision;
+		let observations = AccountObservationService::new(Arc::clone(&service), None, None, None);
+		let usage = |title: &str| {
+			decodex_codex::decode_account_api_usage(json!({
+			"account_id":"observed-account","user_id":"fixture-user","plan_type":"team",
+			"rate_limit":{},"rate_limit_upsell":{"banner_type":"limit","title":title,
+			"description":"Ask your workspace owner","ctas":[{"action":"notify_owner","label":"Notify owner"}]}
+		}).to_string().as_bytes()).unwrap()
+		};
+		observations
+			.cache_recovery_fixture(
+				account.clone(),
+				revision,
+				usage("Limit reached"),
+				"observed-account",
+				"fixture-user",
+			)
+			.await;
+		let entity = EntityId::new(account.as_str()).unwrap();
+		let source = observations.recovery(&entity, EntityRevision(revision as u64)).await;
+		assert!(matches!(
+			observations.prepare_recovery(&source, A::NotifyOwner).await,
+			P::Ready { destination: D::RequestCredits, .. }
+		));
+		assert!(
+			matches!(
+				observations.prepare_recovery(&source, A::RequestIncrease).await,
+				P::Unavailable
+			),
+			"unoffered action must not be substituted"
+		);
+		observations.invalidate_account(&account).await;
+		assert!(matches!(
+			observations.prepare_recovery(&source, A::NotifyOwner).await,
+			P::Unavailable
+		));
+		observations
+			.cache_recovery_fixture(
+				account.clone(),
+				revision,
+				usage("New limit"),
+				"observed-account",
+				"fixture-user",
+			)
+			.await;
+		assert!(
+			matches!(observations.prepare_recovery(&source, A::NotifyOwner).await, P::Unavailable),
+			"changed copy invalidates an old click even at the same account revision"
+		);
+		let current = observations.recovery(&entity, EntityRevision(revision as u64)).await;
+		assert!(matches!(
+			observations.prepare_recovery(&current, A::NotifyOwner).await,
+			P::Ready { destination: D::RequestCredits, .. }
+		));
+		let identity =
+			CommandIdentity::new("disable-before-nudge", b"disable fixture account").unwrap();
+		let AccountCommandReceiptClaim::Owned(lease) = store
+			.reserve_account_command(
+				&identity,
+				AccountCommandKind::SetEnabled,
+				account.as_str(),
+				Some(revision),
+			)
+			.await
+			.unwrap()
+		else {
+			panic!("disable owner")
+		};
+		service
+			.set_account_enabled_command(lease, &account, revision, false, |_, _| {
+				Ok(json!({"disabled":true}))
+			})
+			.await
+			.unwrap();
+		let disabled = service.inspect(&account).await.unwrap().account;
+		assert!(!disabled.enabled);
+		assert!(disabled.revision > revision);
+		assert!(matches!(
+			observations.prepare_recovery(&current, A::NotifyOwner).await,
+			P::Unavailable
+		));
+		assert!(matches!(
+			service.process_credential(&account, revision).await,
+			Err(AccountLifecycleError::StaleAccount)
+		));
+		let restarted = AccountObservationService::new(service, None, None, None);
+		assert!(matches!(
+			restarted.prepare_recovery(&current, A::NotifyOwner).await,
+			P::Unavailable
+		));
+		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
+	}
+
 	struct RefreshRaceState {
 		provider: ProviderIdentity,
 		bundle: CredentialSecretBundle,

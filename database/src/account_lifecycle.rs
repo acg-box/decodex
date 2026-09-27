@@ -2853,9 +2853,13 @@ mod optional_quota_tests {
 
 /// One durable account notification receipt; absence of a response means uncertain delivery.
 pub struct AccountNudgeReceipt {
+	/// Original notification command key.
 	pub operation_key: String,
+	/// Account revision captured by the command.
 	pub account_revision: i64,
+	/// Time when the command was reserved, in Unix microseconds.
 	pub reserved_at_unix_micros: i64,
+	/// Saved response; absence does not authorize another notification.
 	pub response: Option<Value>,
 }
 impl SqliteStore {

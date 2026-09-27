@@ -67,6 +67,17 @@ complete file rows, from 76 to 73 pending files. The broader composer and signed
 desktop acceptance remain open. New-task input retains model-only explicit intent
 and leaves native reasoning and tier defaults independent.
 
+## Account service reconciled on 2026-09-27
+
+Restore the exact inherited recovery-preparation regression for changed account
+revision, invalidated or changed observations, unoffered actions, disable and
+restart. The complete remaining file delta consists of retained route diagnostics
+and their fixture. See [the mapping](account-recovery-notices.md#inherited-account-service-reconciliation).
+Also restore the missing public notification-receipt type export and map the
+complete [database root](database-root-reconciliation.md) to its retained owners.
+Close these two rows. Account/login integration and signed acceptance remain open;
+no account or credential data is changed.
+
 ## Native settings test module reconciled on 2026-09-27
 
 The complete inherited coordinator settings test module is mapped to current
