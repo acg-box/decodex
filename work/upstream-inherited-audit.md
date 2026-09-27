@@ -898,3 +898,13 @@ inherited delayed-MCP activity association. Preserve no-wake, exact-source and
 latest-observation rules, plus current output notifications and partial-output
 retention. Close the two complete database file dispositions; shared owners stay
 open. See [observed checklist recovery](observed-checklist-recovery.md).
+
+## Retained settings surfaces reconciled on 2026-09-26
+
+Map the full inherited permission/plugin desktop files to current action helpers,
+review guards and service owners. Account for the model-settings test migration
+to per-work observations. The request/saved-app wire fixture also preserves its original checks and adds
+explicit inheritance restoration. All sixteen relevant tests pass in the full desktop
+run and the reviewed sources are unchanged. No code change is required. Close
+these four file rows only; signed desktop acceptance remains open. See
+[settings surface reconciliation](settings-surface-reconciliation.md).
