@@ -1,0 +1,172 @@
+original_path	current_owner	evidence
+Cargo.lock	Cargo.lock	Complete inherited-file audit: preserved-with-delivered-graph-edge
+apps/decodex-gpui/Cargo.toml	apps/decodex-gpui/Cargo.toml	Complete inherited-file audit: preserved-with-delivered-feature-extension
+apps/decodex-gpui/src/chief_activity.rs	apps/decodex-gpui/src/agent_activity.rs	Complete inherited-file audit: retained-history-navigation-with-message-anchors
+apps/decodex-gpui/src/chief_app_settings.rs	apps/decodex-gpui/src/agent_app_settings.rs	Complete inherited-file audit: retained-explicit-app-review-panel
+apps/decodex-gpui/src/chief_app_settings_wire_tests.rs	apps/decodex-gpui/src/agent_app_settings_wire_tests.rs	Complete inherited-file audit: preserved-request-and-saved-app-wire-tests
+apps/decodex-gpui/src/chief_archive.rs	apps/decodex-gpui/src/agent_archive.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+apps/decodex-gpui/src/chief_async_questions.rs	apps/decodex-gpui/src/agent_async_questions.rs	Complete inherited-file audit: preserved-semantic-equivalent
+apps/decodex-gpui/src/chief_capabilities.rs	apps/decodex-gpui/src/agent_capabilities.rs	Complete inherited-file audit: desktop-catalog-and-request-owners-reconciled
+apps/decodex-gpui/src/chief_composer.rs	apps/decodex-gpui/src/agent_composer.rs	Complete inherited-file audit: shared-chief-composer-reconciled
+apps/decodex-gpui/src/chief_composer_controls.rs	apps/decodex-gpui/src/agent_composer_controls.rs	Complete inherited-file audit: retained-catalog-controls-with-restored-exact-input
+apps/decodex-gpui/src/chief_detail.rs	apps/decodex-gpui/src/agent_detail.rs	Complete inherited-file audit: preserved-with-delivered-owner
+apps/decodex-gpui/src/chief_detail_wire_tests.rs	apps/decodex-gpui/src/agent_detail_wire_tests.rs	Complete inherited-file audit: preserved-with-expanded-test-coverage
+apps/decodex-gpui/src/chief_drafts.rs	apps/decodex-gpui/src/agent_drafts.rs	Complete inherited-file audit: preserved-with-creation-and-unbound-drafts
+apps/decodex-gpui/src/chief_effort_slider.rs	apps/decodex-gpui/src/agent_effort_slider.rs	Complete inherited-file audit: catalog-and-effort-consumers-reconciled
+apps/decodex-gpui/src/chief_goal.rs	apps/decodex-gpui/src/agent_native_goal.rs	Native goal reader, wire result and panel replace old goal owner; source/ancestry checks and unavailable/empty distinction remain
+apps/decodex-gpui/src/chief_guardian.rs	apps/decodex-gpui/src/agent_guardian.rs	Complete inherited-file audit: restored-complete-guardian-details
+apps/decodex-gpui/src/chief_install.rs	apps/decodex-gpui/src/agent_install.rs	Complete inherited-file audit: exact-content
+apps/decodex-gpui/src/chief_integrations.rs	apps/decodex-gpui/src/agent_integrations.rs	Complete inherited-file audit: restored-integration-status-with-current-source-guards
+apps/decodex-gpui/src/chief_live_settings.rs	apps/decodex-gpui/src/agent_live_settings.rs	Complete inherited-file audit: restored-with-current-live-settings-owners
+apps/decodex-gpui/src/chief_live_settings_wire_tests.rs	apps/decodex-gpui/src/agent_live_settings_wire_tests.rs	Complete inherited-file audit: live-settings-socket-fixture-reconciled
+apps/decodex-gpui/src/chief_markdown.rs	apps/decodex-gpui/src/agent_markdown.rs	Complete inherited-file audit: restored-file-links-and-reconciled-rich-markdown
+apps/decodex-gpui/src/chief_mcp_forms.rs	apps/decodex-gpui/src/agent_mcp_forms.rs	Complete inherited-file audit: restored-account-context-with-current-form-guards
+apps/decodex-gpui/src/chief_misalignment.rs	apps/decodex-gpui/src/agent_misalignment.rs	Complete inherited-file audit: exact-content
+apps/decodex-gpui/src/chief_model_settings.rs	apps/decodex-gpui/src/agent_model_settings.rs	Complete inherited-file audit: retained-source-bound-per-task-model-observations
+apps/decodex-gpui/src/chief_model_settings_wire_tests.rs	apps/decodex-gpui/src/agent_model_settings_wire_tests.rs	Complete inherited-file audit: preserved-settings-review-and-model-observation
+apps/decodex-gpui/src/chief_progress.rs	apps/decodex-gpui/src/agent_progress.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+apps/decodex-gpui/src/chief_requests.rs	apps/decodex-gpui/src/agent_requests.rs	Complete inherited-file audit: desktop-catalog-and-request-owners-reconciled
+apps/decodex-gpui/src/chief_resources.rs	apps/decodex-gpui/src/agent_resources.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+apps/decodex-gpui/src/chief_surface.rs	apps/decodex-gpui/src/agent_surface.rs	Complete inherited-file audit: shared-desktop-surface-and-capture-reconciled
+apps/decodex-gpui/src/chief_task_references.rs	apps/decodex-gpui/src/agent_task_references.rs	Complete inherited-file audit: preserved-with-expanded-build-availability
+apps/decodex-gpui/src/chief_timeline.rs	apps/decodex-gpui/src/agent_timeline.rs	Complete inherited-file audit: restored-summary-scroll-and-reconciled-history-presentation
+apps/decodex-gpui/src/chief_timeline_inputs.rs	apps/decodex-gpui/src/agent_timeline_inputs.rs	Complete inherited-file audit: preserved-with-fixture-adaptation
+apps/decodex-gpui/src/chief_timeline_media.rs	apps/decodex-gpui/src/agent_timeline_media.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+apps/decodex-gpui/src/chief_timeline_media_wire_tests.rs	apps/decodex-gpui/src/agent_timeline_media_wire_tests.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+apps/decodex-gpui/src/chief_timeline_receipts.rs	apps/decodex-gpui/src/agent_timeline_receipts.rs	Complete inherited-file audit: restored-summary-scroll-and-reconciled-history-presentation
+apps/decodex-gpui/src/chief_timeline_render.rs	apps/decodex-gpui/src/agent_timeline_render.rs	Complete inherited-file audit: restored-native-role-and-stream-copy-with-reconciled-renderer
+apps/decodex-gpui/src/chief_timeline_scroll.rs	apps/decodex-gpui/src/agent_timeline_scroll.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+apps/decodex-gpui/src/chief_usage_estimates.rs	apps/decodex-gpui/src/agent_usage_estimates.rs	Complete inherited-file audit: preserved-with-fixture-adaptation
+apps/decodex-gpui/src/chief_voice.rs	apps/decodex-gpui/src/agent_voice.rs	Complete inherited-file audit: restored-call-bound-captions-and-control-loss-cleanup
+apps/decodex-gpui/src/chief_workspace.rs	apps/decodex-gpui/src/agent_workspace.rs	Complete inherited-file audit: workspace-controls-restored-and-reconciled
+apps/decodex-gpui/src/conversations.rs	apps/decodex-gpui/src/conversations.rs	Complete inherited-file audit: restored-cache-accounting-with-current-recovery-owners
+apps/decodex-gpui/src/shell.rs	apps/decodex-gpui/src/shell.rs	Complete inherited-file audit: restored-account-entry-with-current-shell-owners
+crates/decodex-codex/src/account_api.rs	crates/decodex-codex/src/account_api.rs	Complete inherited-file audit: exact-content
+crates/decodex-codex/src/app_server_client.rs	crates/decodex-codex/src/app_server_client.rs	Complete inherited-file audit: shared-native-client-and-settings-reconciled
+crates/decodex-codex/src/app_server_client/app_link_settings.rs	crates/decodex-codex/src/app_server_client/app_link_settings.rs	Complete inherited-file audit: retained-shared-config-receipt-owner
+crates/decodex-codex/src/app_server_client/initialize.rs	crates/decodex-codex/src/app_server_client/initialize.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-codex/src/app_server_client/integrations.rs	crates/decodex-codex/src/app_server_client/integrations.rs	Complete inherited-file audit: retained-integration-owner-with-restored-failure-test
+crates/decodex-codex/src/app_server_client/live_reviews.rs	crates/decodex-codex/src/app_server_client/live_reviews.rs	Complete inherited-file audit: restored-exact-snapshot
+crates/decodex-codex/src/app_server_client/live_settings.rs	crates/decodex-codex/src/app_server_client/live_settings.rs	Complete inherited-file audit: restored-with-shared-foreign-guard-test
+crates/decodex-codex/src/app_server_client/resume.rs	crates/decodex-codex/src/app_server_client/resume.rs	Complete inherited-file audit: restored-with-close-notification-coverage
+crates/decodex-codex/src/app_server_client/server_requests.rs	crates/decodex-codex/src/app_server_client/server_requests.rs	Complete inherited-file audit: retained-current-settings-and-request-owners
+crates/decodex-codex/src/app_server_client/thread_model_settings.rs	crates/decodex-codex/src/app_server_client/thread_model_settings.rs	Complete inherited-file audit: shared-native-client-and-settings-reconciled
+crates/decodex-codex/src/app_server_client/timeline.rs	crates/decodex-codex/src/app_server_client/timeline.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-codex/src/lib.rs	crates/decodex-codex/src/lib.rs	Complete inherited-file audit: exact-content
+crates/decodex-codex/src/protocol.rs	crates/decodex-codex/src/protocol.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-codex/src/response_usage.rs	crates/decodex-codex/src/response_usage.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-codex/src/usage.rs	crates/decodex-codex/src/usage.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-core/src/account.rs	crates/decodex-core/src/account.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-core/src/lib.rs	crates/decodex-core/src/lib.rs	Complete inherited-file audit: root-module-owners-and-contract-differences-reconciled
+crates/decodex-protocol/src/chief.rs	crates/decodex-protocol/src/agent.rs	Complete inherited-file audit: shared-wire-and-chief-contracts-reconciled
+crates/decodex-protocol/src/chief_app_settings.rs	crates/decodex-protocol/src/agent_app_settings.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-protocol/src/chief_goal.rs	crates/decodex-protocol/src/agent_native_goal.rs	Native goal reader, wire result and panel replace old goal owner; source/ancestry checks and unavailable/empty distinction remain
+crates/decodex-protocol/src/chief_live_settings.rs	crates/decodex-protocol/src/agent_live_settings.rs	Complete inherited-file audit: restored-with-current-live-settings-owners
+crates/decodex-protocol/src/chief_media.rs	crates/decodex-protocol/src/agent_media.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-protocol/src/chief_model_settings.rs	crates/decodex-protocol/src/agent_model_settings.rs	Complete inherited-file audit: exactly-in-main
+crates/decodex-protocol/src/chief_questions.rs	crates/decodex-protocol/src/agent_questions.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-protocol/src/chief_timeline.rs	crates/decodex-protocol/src/agent_timeline.rs	Complete inherited-file audit: preserved-with-app-ui-metadata
+crates/decodex-protocol/src/client.rs	crates/decodex-protocol/src/client.rs	Complete inherited-file audit: shared-protocol-client-restored-and-reconciled
+crates/decodex-protocol/src/conversation.rs	crates/decodex-protocol/src/conversation.rs	Complete inherited-file audit: conversation-dto-inheritance-and-receipts-reconciled
+crates/decodex-protocol/src/lib.rs	crates/decodex-protocol/src/lib.rs	Complete inherited-file audit: root-module-owners-and-contract-differences-reconciled
+crates/decodex-protocol/src/mcp_elicitation.rs	crates/decodex-protocol/src/mcp_elicitation.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-protocol/src/mcp_install.rs	crates/decodex-protocol/src/mcp_install.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-protocol/src/wire.rs	crates/decodex-protocol/src/wire.rs	Complete inherited-file audit: shared-wire-and-chief-contracts-reconciled
+crates/decodex-runtime/examples/chief_service_smoke.rs	crates/decodex-runtime/examples/agent_service_smoke.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/examples/chief_service_smoke/evidence.rs	crates/decodex-runtime/examples/agent_service_smoke/evidence.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/account_api.rs	crates/decodex-runtime/src/account_api.rs	Complete inherited-file audit: runtime-evidence-owner-reconciled
+crates/decodex-runtime/src/account_api/activation.rs	crates/decodex-runtime/src/account_api/activation.rs	Complete inherited-file audit: native-configuration-and-routing-consumer-reconciled
+crates/decodex-runtime/src/account_import.rs	crates/decodex-runtime/src/account_import.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/account_launch/api_reset_card/tests.rs	crates/decodex-runtime/src/account_launch/api_reset_card/tests.rs	Complete inherited-file audit: preserved-equivalent-test-fixture
+crates/decodex-runtime/src/account_launch/chief_process.rs	crates/decodex-runtime/src/account_launch/agent_process.rs	Complete inherited-file audit: native-bridge-and-model-test-owners-reconciled
+crates/decodex-runtime/src/account_launch/chief_process_model_settings_tests.rs	crates/decodex-runtime/src/account_launch/agent_process_model_settings_tests.rs	Complete inherited-file audit: native-bridge-and-model-test-owners-reconciled
+crates/decodex-runtime/src/account_launch/chief_process_native_context_tests.rs	crates/decodex-runtime/src/account_launch/agent_process_native_context_tests.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/account_launch/chief_process_native_detail_tests.rs	crates/decodex-runtime/src/account_launch/agent_process_native_detail_tests.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/account_launch/chief_process_native_misalignment_tests.rs	crates/decodex-runtime/src/account_launch/agent_process_native_misalignment_tests.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/account_launch/chief_process_native_realtime_tests.rs	crates/decodex-runtime/src/account_launch/agent_process_native_realtime_tests.rs	Complete inherited-file audit: restored-native-realtime-history-fixture
+crates/decodex-runtime/src/account_launch/chief_process_native_reviewer_store.rs	crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_store.rs	Complete inherited-file audit: shared-native-reviewer-fixture-reconciled
+crates/decodex-runtime/src/account_launch/chief_process_native_reviewer_tests.rs	crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs	Complete inherited-file audit: restored-guardian-evidence-and-complete-reviewer-coverage
+crates/decodex-runtime/src/account_launch/chief_process_native_tests.rs	crates/decodex-runtime/src/account_launch/agent_process_native_tests.rs	Complete inherited-file audit: restored-native-fixtures-and-registry-reconciled
+crates/decodex-runtime/src/account_launch/chief_process_native_usage_tests.rs	crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/account_launch/exact_history.rs	crates/decodex-runtime/src/account_launch/exact_history.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/account_launch/process.rs	crates/decodex-runtime/src/account_launch/process.rs	Complete inherited-file audit: retained-process-owners-with-inherited-gaps-restored
+crates/decodex-runtime/src/account_launch/protocol.rs	crates/decodex-runtime/src/account_launch/protocol.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/account_observation.rs	crates/decodex-runtime/src/account_observation.rs	Complete inherited-file audit: exactly-in-main
+crates/decodex-runtime/src/account_service.rs	crates/decodex-runtime/src/account_service.rs	Complete inherited-file audit: account-service-recovery-regression-reconciled
+crates/decodex-runtime/src/application.rs	crates/decodex-runtime/src/application.rs	Complete inherited-file audit: restored-projection-with-current-query-owners
+crates/decodex-runtime/src/chief.rs	crates/decodex-runtime/src/agent.rs	Complete inherited-file audit: chief-recovery-restored-and-coordinator-reconciled
+crates/decodex-runtime/src/chief/async_projection.rs	crates/decodex-runtime/src/agent/async_projection.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/checklist.rs	crates/decodex-runtime/src/agent/checklist.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/guardian.rs	crates/decodex-runtime/src/agent/guardian.rs	Complete inherited-file audit: preserved-with-native-settings-owner
+crates/decodex-runtime/src/chief/misalignment.rs	crates/decodex-runtime/src/agent/misalignment.rs	Complete inherited-file audit: preserved-with-native-resume-owner
+crates/decodex-runtime/src/chief/native_turns.rs	crates/decodex-runtime/src/agent/native_turns.rs	Complete inherited-file audit: restored-with-current-native-settings-owner
+crates/decodex-runtime/src/chief/observations.rs	crates/decodex-runtime/src/agent/observations.rs	Complete inherited-file audit: native-observation-recovery-paths-reconciled
+crates/decodex-runtime/src/chief/resume_recovery.rs	crates/decodex-runtime/src/agent/resume_recovery.rs	Complete inherited-file audit: retained-canonical-recovery-and-history-owners
+crates/decodex-runtime/src/chief/tests.rs	crates/decodex-runtime/src/agent/tests.rs	Complete inherited-file audit: restored-chief-coverage-and-current-test-owners
+crates/decodex-runtime/src/chief/tests/async_recovery.rs	crates/decodex-runtime/src/agent/tests/async_recovery.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/tests/auth_recovery.rs	crates/decodex-runtime/src/agent/tests/auth_recovery.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/tests/capacity.rs	crates/decodex-runtime/src/agent/tests/capacity.rs	Complete inherited-file audit: retained-capacity-owners-with-restored-regressions
+crates/decodex-runtime/src/chief/tests/closing_resume.rs	crates/decodex-runtime/src/agent/tests/closing_resume.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/tests/install.rs	crates/decodex-runtime/src/agent/tests/install.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/tests/native_checklist.rs	crates/decodex-runtime/src/agent/tests/native_checklist.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/tests/native_form_server.py	crates/decodex-runtime/src/agent/tests/native_form_server.py	Complete inherited-file audit: restored-exact-snapshot
+crates/decodex-runtime/src/chief/tests/native_goal_recovery.rs	crates/decodex-runtime/src/agent/tests/native_goal_recovery.rs	Complete inherited-file audit: restored-with-current-native-settings-owner
+crates/decodex-runtime/src/chief/tests/native_goals.rs	crates/decodex-runtime/src/agent/tests/native_goals.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/tests/native_mcp_forms.rs	crates/decodex-runtime/src/agent/tests/native_mcp_forms.rs	Complete inherited-file audit: preserved-with-explicit-imports
+crates/decodex-runtime/src/chief/tests/native_permissions.rs	crates/decodex-runtime/src/agent/tests/native_permissions.rs	Complete inherited-file audit: preserved-with-current-native-permission-owner
+crates/decodex-runtime/src/chief/tests/native_plan.rs	crates/decodex-runtime/src/agent/tests/native_plan.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/tests/native_subagent_live.rs	crates/decodex-runtime/src/agent/tests/native_subagent_live.rs	Complete inherited-file audit: source-preserved-native-group-qualification-incomplete
+crates/decodex-runtime/src/chief/tests/native_subagents.rs	crates/decodex-runtime/src/agent/tests/native_subagents.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/tests/request_liveness.rs	crates/decodex-runtime/src/agent_host.rs	Retained-host live request guard and reused-RPC identity regression replace coordinator-local request test
+crates/decodex-runtime/src/chief/timeline.rs	crates/decodex-runtime/src/agent/timeline.rs	Complete inherited-file audit: retained-timeline-owner-with-restored-auth-status
+crates/decodex-runtime/src/chief/timeline/attachments.rs	crates/decodex-runtime/src/agent/timeline/attachments.rs	Complete inherited-file audit: restored-exact-snapshot
+crates/decodex-runtime/src/chief/timeline/media.rs	crates/decodex-runtime/src/agent/timeline/media.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/timeline/media_tests.rs	crates/decodex-runtime/src/agent/timeline/media_tests.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/timeline/metrics.rs	crates/decodex-runtime/src/agent/timeline/metrics.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/timeline/promotion_tests.rs	crates/decodex-runtime/src/agent/timeline/promotion_tests.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/timeline/promotions.rs	crates/decodex-runtime/src/agent/timeline/promotions.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/chief/timeline/tool_output.rs	crates/decodex-runtime/src/agent/timeline/tool_output.rs	Complete inherited-file audit: preserved-with-shared-detail-projection
+crates/decodex-runtime/src/chief/voice.rs	crates/decodex-runtime/src/agent/voice.rs	Complete inherited-file audit: retained-native-voice-and-durable-transcript-owner
+crates/decodex-runtime/src/chief_app_settings.rs	crates/decodex-runtime/src/agent_app_settings.rs	Complete inherited-file audit: retained-shared-app-setting-owner
+crates/decodex-runtime/src/chief_capabilities.rs	crates/decodex-runtime/src/agent_capabilities.rs	Complete inherited-file audit: catalog-and-effort-consumers-reconciled
+crates/decodex-runtime/src/chief_detail.rs	crates/decodex-runtime/src/agent_detail.rs	Complete inherited-file audit: complete-native-file-approval-history-restored
+crates/decodex-runtime/src/chief_goal.rs	crates/decodex-runtime/src/agent_native_goal.rs	Native goal reader, wire result and panel replace old goal owner; source/ancestry checks and unavailable/empty distinction remain
+crates/decodex-runtime/src/chief_host.rs	crates/decodex-runtime/src/agent_host.rs	Complete inherited-file audit: shared-chief-host-routing-and-source-boundaries-reconciled
+crates/decodex-runtime/src/chief_install.rs	crates/decodex-runtime/src/agent_install.rs	Complete inherited-file audit: preserved-with-delivered-owner
+crates/decodex-runtime/src/chief_live_settings.rs	crates/decodex-runtime/src/agent_live_settings.rs	Complete inherited-file audit: restored-with-current-live-settings-owners
+crates/decodex-runtime/src/chief_model_settings.rs	crates/decodex-runtime/src/agent_model_settings.rs	Complete inherited-file audit: preserved-with-test-registration
+crates/decodex-runtime/src/chief_usage_estimate.rs	crates/decodex-runtime/src/agent_usage_estimate.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/conversation.rs	crates/decodex-runtime/src/conversation.rs	Complete inherited-file audit: ordinary-runtime-and-non-submission-reconciled
+crates/decodex-runtime/src/conversation/resume_retry.rs	crates/decodex-runtime/src/conversation/resume_retry.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+crates/decodex-runtime/src/lib.rs	crates/decodex-runtime/src/lib.rs	Complete inherited-file audit: root-module-owners-and-contract-differences-reconciled
+crates/decodex-runtime/src/mcp_login.rs	crates/decodex-runtime/src/mcp_login.rs	Production implementation retained; restore missing package-style OAuth identity test from 852b55eeb
+crates/decodex-runtime/tests/fixtures/fake_app_server.py	crates/decodex-runtime/tests/fixtures/fake_app_server.py	Complete inherited-file audit: retained-fixture-owners-with-inherited-cases-restored
+database/migrations/0031_chief_live_output_kind.sql	database/migrations/0048_agent_baseline.sql	Schema 48 baseline retains live output kind and independent account usage observations/conditions; schema 49 advances current native settings
+database/migrations/0032_account_usage_observation.sql	database/migrations/0048_agent_baseline.sql	Schema 48 baseline retains live output kind and independent account usage observations/conditions; schema 49 advances current native settings
+database/migrations/0033_account_usage_conditions.sql	database/migrations/0048_agent_baseline.sql	Schema 48 baseline retains live output kind and independent account usage observations/conditions; schema 49 advances current native settings
+database/src/account_lifecycle.rs	database/src/account_lifecycle.rs	Complete inherited-file audit: exactly-in-main
+database/src/account_usage.rs	database/src/account_usage.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+database/src/chief.rs	database/src/agent.rs	Complete inherited-file audit: chief-persistence-admission-and-projection-reconciled
+database/src/chief/capacity.rs	database/src/agent/capacity.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+database/src/chief/tests/activity.rs	database/src/agent/tests/activity.rs	Complete inherited-file audit: restored-checklist-and-historical-activity
+database/src/chief/tests/native_turns.rs	database/src/agent/tests/native_turns.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+database/src/chief_app_settings.rs	database/src/agent_app_settings.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+database/src/chief_auth_recovery.rs	database/src/agent_auth_recovery.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+database/src/chief_install.rs	database/src/agent_install.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+database/src/chief_live_settings.rs	database/src/agent_live_settings.rs	Complete inherited-file audit: restored-with-current-transcript-and-wake-checks
+database/src/chief_native_turns.rs	database/src/agent_native_turns.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+database/src/chief_output.rs	database/src/agent_output.rs	Complete inherited-file audit: restored-checklist-and-historical-activity
+database/src/chief_process.rs	database/src/agent_process.rs	Complete inherited-file audit: chief-persistence-admission-and-projection-reconciled
+database/src/chief_process/tests/auth_recovery.rs	database/src/agent_process/tests/auth_recovery.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+database/src/chief_process/tests/native_turns.rs	database/src/agent_process/tests/native_turns.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+database/src/chief_process/tests/response_usage.rs	database/src/agent_process/tests/response_usage.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+database/src/chief_question_rebuild.rs	database/src/agent_question_rebuild.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+database/src/chief_response_usage.rs	database/src/agent_response_usage.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+database/src/conversations.rs	database/src/conversations.rs	Complete inherited-file audit: conversation-read-snapshot-and-warning-regression-restored
+database/src/conversations/resume_rejection.rs	database/src/conversations/resume_rejection.rs	Complete inherited-file audit: preserved-with-native-refusal-copy
+database/src/lib.rs	database/src/lib.rs	Complete inherited-file audit: database-root-owners-and-receipt-api-reconciled
+database/src/migrations.rs	database/src/migrations.rs	Complete inherited-file audit: preserved-with-current-database-owners
+database/tests/conversation_restart.rs	database/tests/conversation_restart.rs	Complete inherited-file audit: restored-effort-review-and-reconciled-conversation-restart-tests
+database/transfer/src/main.rs	database/transfer/src/main.rs	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+scripts/vnext/local_database_gate.py	scripts/vnext/local_database_gate.py	Compared full old-head content to current owner after Chief/Agent normalization; retained or extended behavior
+tests/scripts/test_vnext_architecture.py	tests/scripts/test_vnext_architecture.py	Complete inherited-file audit: preserved-with-delivered-owner
