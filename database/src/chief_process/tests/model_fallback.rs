@@ -402,3 +402,65 @@ async fn ordinary_model_selection_rejects_reserve() {
 	assert!(store.reserve_chief_model_selection(attempt).await.is_err());
 	assert!(store.chief_model_receipt("root".into(), "thread".into()).await.unwrap().is_none());
 }
+
+#[tokio::test]
+async fn completed_legacy_fallback_cannot_replay_in_the_current_journal() {
+	use sha2::{Digest as _, Sha256};
+	for terminal in ["rejected", "observed", "reconciled"] {
+		let dir = tempfile::tempdir().unwrap();
+		let path = dir.path().join("legacy-identity.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+		let attempt = ready(&store).await;
+		let recovery = attempt.recovery.as_ref().unwrap();
+		let identity = json!([
+			attempt.work,
+			attempt.thread,
+			recovery.account,
+			recovery.banner_digest,
+			recovery.from_model,
+			attempt.model,
+			attempt.effort,
+			recovery.service_tier
+		]);
+		let digest: String = Sha256::digest(identity.to_string().as_bytes())
+			.iter()
+			.map(|byte| format!("{byte:02x}"))
+			.collect();
+		let key = format!("model-recovery:{digest}");
+		let original = json!({"attempt":{
+            "work":attempt.work,"thread":attempt.thread,"generation":attempt.generation,
+            "account":recovery.account,"account_revision":recovery.account_revision,
+            "settings_event":attempt.settings_event,"banner_digest":recovery.banner_digest,
+            "from_model":recovery.from_model,"model":attempt.model,"effort":attempt.effort,
+            "service_tier":recovery.service_tier},"state":"claimed"})
+		.to_string();
+		store.run(move |connection| {
+            let insert = |key: &str, kind: &str, payload: &str| {
+                connection.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,'root',?2,?3,1,'resolved','Preserved legacy fixture',1)",rusqlite::params![key,kind,payload]).map_err(crate::error::sqlite_error)
+            };
+            insert(&key,"model_recovery",&original)?;
+            let id=connection.last_insert_rowid();
+            let (suffix, kind, state)=match terminal {
+                "rejected" => ("result","model_recovery_result","rejected"),
+                "observed" => ("observation","model_recovery_observation","target_observed"),
+                _ => ("reconciliation","model_selection_reconciled","superseded"),
+            };
+            insert(&format!("{key}:{suffix}"),kind,&json!({"reservation":id,"state":state}).to_string())?;
+            Ok(())
+        }).await.unwrap();
+		drop(store);
+		let store = SqliteStore::open_test(&path).unwrap();
+		assert!(!store.has_pending_chief_model_change("root".into()).await.unwrap());
+		assert!(
+			store.reserve_chief_model_selection(attempt.clone()).await.unwrap().is_none(),
+			"a completed legacy {terminal} occurrence must remain single-use"
+		);
+		assert!(store.chief_model_receipt("root".into(), "thread".into()).await.unwrap().is_none());
+		let mut next = attempt;
+		next.recovery.as_mut().unwrap().banner_digest = OTHER_DIGEST.into();
+		assert!(
+			store.reserve_chief_model_selection(next).await.unwrap().is_some(),
+			"a distinct banner occurrence may reserve"
+		);
+	}
+}
