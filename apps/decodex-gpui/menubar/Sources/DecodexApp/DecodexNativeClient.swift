@@ -209,6 +209,9 @@ final class DecodexNativeClient: @unchecked Sendable, CustomDebugStringConvertib
 	typealias TestRequest = @Sendable (Data, ResetCardAuthority?) async throws -> Data
 
 	private static let sharedSession = DecodexNativeSession()
+    // The FFI waits synchronously, including long-poll observation requests.
+    // Keep it off Swift's cooperative executor so other async requests can start.
+    private static let transportQueue = DispatchQueue(label: "box.acg.decodex.native-client", qos: .userInitiated, attributes: .concurrent)
 
 	private let request: TestRequest
 	private let authorityLock = NSLock()
@@ -216,9 +219,11 @@ final class DecodexNativeClient: @unchecked Sendable, CustomDebugStringConvertib
 
 	init() {
 		request = { data, authority in
-			try await Task.detached {
-				try Self.sharedSession.request(data, authority: authority)
-			}.value
+            try await withCheckedThrowingContinuation { continuation in
+                Self.transportQueue.async {
+                    continuation.resume(with: Result { try Self.sharedSession.request(data, authority: authority) })
+                }
+            }
 		}
 	}
 
@@ -231,9 +236,12 @@ final class DecodexNativeClient: @unchecked Sendable, CustomDebugStringConvertib
 	}
 
 	static func shutdownSharedSession() async {
-		await Task.detached {
-			sharedSession.shutdown()
-		}.value
+        await withCheckedContinuation { continuation in
+            transportQueue.async {
+                sharedSession.shutdown()
+                continuation.resume()
+            }
+        }
 	}
 
 	func perform<Payload: Decodable>(
