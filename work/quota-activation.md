@@ -8,10 +8,19 @@ Percentages do not decide activation. Missing quota, disabled accounts, missing
 credentials, and a currently exhausted five-hour window block the request.
 
 The request uses the existing Rust HTTP client and AccountService credential lock.
-It calls the ChatGPT Codex Responses endpoint with `gpt-5.6-sol`, low reasoning,
-one short message, no tools, `store: false`, and streaming enabled. It does not start
-a process, create a Codex home, or create a Decodex conversation. The credential owner
-handles token refresh. This feature does not promise zero provider-side retention.
+Before sending model input, a short-lived attested native process reads the selected
+account's workspace route and managed requirements. It performs no model request
+and is shut down after discovery. The same account credential lock covers discovery
+and the direct HTTP request. If no attested profile is available, activation is
+skipped while account health observation continues. A discovery failure makes no
+model request and uses the existing rejection backoff.
+
+The direct request uses the native backend origin, account-routing header and
+residency requirement. It sends `gpt-5.6-sol`, low reasoning, one short message, no
+tools, `store: false`, and streaming enabled. It creates no Decodex conversation.
+The credential owner handles token refresh. The HTTP client does not follow
+redirects or retry the request. This feature does not promise zero provider-side
+retention. Account/profile/reset APIs retain their separate backend owner.
 
 SQLite migration 30 adds the preference and one reservation row per account. The
 daemon reserves before sending, so concurrent checks, restarts, and toggling the
@@ -37,11 +46,14 @@ Reference: `openai/codex` main commit
 - `codex-rs/codex-api/src/endpoint/responses.rs`: HTTP POST and SSE transport.
 - `codex-rs/codex-api/tests/sse_end_to_end.rs`: completion event and response identity.
 
-Installed CLI inspected: `0.155.0-alpha.9.2`. Its generated
+The original qualification inspected CLI `0.155.0-alpha.9.2`. Its generated
 `v2/GetAccountRateLimitsResponse.json` declares integer `usedPercent` and nullable
-`resetsAt`; it does not provide a precise unused-cycle flag. The feature does not
-depend on that binary at runtime. Upstream main is a wire reference, not evidence
-that every account accepts the selected model or that quota reset behavior is fixed.
+`resetsAt`; it does not provide a precise unused-cycle flag. The current route adapter additionally depends on native account and requirement
+reads from the attested binary. At fixed upstream
+`595cc91e8cbb1c2ca822d0311dcf12709410c582`, workspace routing is owned by
+`app-server/src/request_processors/account_processor/workspace_routing.rs`.
+Upstream source is not evidence that every account accepts the selected model or
+that quota reset behavior is fixed.
 
 The small completion reader recognizes only bounded SSE data events and positive
 completion. No existing streaming SSE decoder is present in this runtime. Adding
@@ -65,3 +77,17 @@ The loopback HTTP tests cover completion, connection failure, and ambiguous resu
 The protocol and runtime libraries, GPUI settings controller and surface, strict
 Clippy, architecture scripts, and local database gate are checked on the PR revision.
 No real-account activation, app installation, or live settings change was performed.
+
+## Current inherited-consumer review
+
+The complete `account_api/activation.rs` diff retains the original activation
+body, quota eligibility and durable no-replay behavior. Its differences add the
+native route policy and a production-client redirect/retry regression. Eight
+focused runtime tests pass; two opt-in native tests are not run in this batch.
+No real-account activation, preference change or automation enablement occurs.
+See [consumer reconciliation](core-consumer-reconciliation.md).
+
+Weekly quota activation predates this upstream scan. Its existing preference is
+separate from the paused upstream-maintainer automation. The scan's core change
+is preserving native routing restrictions if this product feature is retained.
+Do not classify the whole quota feature as a newly adopted upstream capability.
