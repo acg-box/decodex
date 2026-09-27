@@ -335,8 +335,14 @@ fn plugin_settings_bridge_accepts_only_bounded_exact_exclusions() {
 	let mut requests = HashSet::new();
 	let mut frame = json!({"id":42,"method":"thread/settings/update","params":{"threadId":"thread","disabledPluginIds":["sample@test"]}});
 	assert!(validate_outbound(&frame, &mut requests).is_ok());
-	frame["params"]["permissions"] = json!(":full-access");
-	assert!(validate_outbound(&frame, &mut requests).is_err());
+	for field in ["permissions", "model", "config", "approvalPolicy"] {
+		let mut mixed = frame.clone();
+		mixed["params"][field] = json!("unexpected");
+		assert!(validate_outbound(&mixed, &mut requests).is_err());
+	}
+	let mut shared = frame.clone();
+	shared["method"] = json!("config/batchWrite");
+	assert!(validate_outbound(&shared, &mut requests).is_err());
 	frame["params"] =
 		json!({"threadId":"thread","disabledPluginIds":["sample@test","sample@test"]});
 	assert!(validate_outbound(&frame, &mut requests).is_err());
@@ -407,7 +413,15 @@ mod tests {
 	fn permission_bridge_rejects_unrelated_setting_changes() {
 		let mut request = json!({"id":42,"method":"thread/settings/update","params":{"threadId":"thread","permissions":"scoped"}});
 		assert!(validate_outbound(&request, &mut HashSet::new()).is_ok());
-		for field in ["model", "sandboxPolicy", "approvalPolicy", "approvalsReviewer", "cwd"] {
+		for field in [
+			"model",
+			"sandboxPolicy",
+			"sandbox",
+			"config",
+			"approvalPolicy",
+			"approvalsReviewer",
+			"cwd",
+		] {
 			request["params"][field] = json!("unrelated");
 			assert!(validate_outbound(&request, &mut HashSet::new()).is_err());
 			request["params"].as_object_mut().unwrap().remove(field);
@@ -625,21 +639,46 @@ mod tests {
 	}
 
 	#[test]
-	fn app_link_edits_do_not_expand_to_unscoped_or_arbitrary_config_writes() {
+	fn account_settings_bridge_accepts_only_versioned_single_leaf_edits() {
 		let mut requests = HashSet::new();
-		let mut request = json!({"id":42,"method":"config/batchWrite","params":{"filePath":"/native/config.toml","expectedVersion":"v1","reloadUserConfig":true,"edits":[{"keyPath":"apps.\"calendar\".links.\"work\".approvals_reviewer","value":"user","mergeStrategy":"replace"}]}});
-		assert!(validate_outbound(&request, &mut requests).is_ok());
-		request["params"]["edits"][0]["value"] = Value::Null;
-		assert!(validate_outbound(&request, &mut requests).is_ok());
+		let valid = json!({"id":42,"method":"config/batchWrite","params":{
+			"filePath":"/fixture/config.toml","expectedVersion":"v1","reloadUserConfig":true,
+			"edits":[{"keyPath":"apps.\"日历.app\".links.\"work.\\\"link\\\\one\".approvals_reviewer",
+				"mergeStrategy":"replace","value":"auto_review"}]}});
+		assert!(validate_outbound(&valid, &mut requests).is_ok());
 		for path in [
+			"approvals_reviewer",
 			"apps.\"calendar\".enabled",
-			"apps.\"calendar\".links.\"work\".enabled",
-			"model",
-			"apps.\"calendar\".links.\"work\".approvals_reviewer.extra",
+			"apps.app.links.work.approvals_reviewer",
+			"apps.\"app\".links.\"work\".enabled",
+			"apps.\"app\".links.\"work\".approvals_reviewer.extra",
+			"apps.\"\".links.\"work\".approvals_reviewer",
+			"apps.\"app\".links.\"work",
 		] {
-			request["params"]["edits"][0]["keyPath"] = json!(path);
-			assert!(validate_outbound(&request, &mut requests).is_err());
+			let mut invalid = valid.clone();
+			invalid["params"]["edits"][0]["keyPath"] = json!(path);
+			assert!(validate_outbound(&invalid, &mut requests).is_err(), "{path}");
 		}
+		for (pointer, replacement) in [
+			("/params/expectedVersion", Value::Null),
+			("/params/filePath", json!("relative.toml")),
+			("/params/reloadUserConfig", json!(false)),
+			("/params/edits/0/mergeStrategy", json!("upsert")),
+			("/params/edits/0/value", json!("future_unknown")),
+		] {
+			let mut invalid = valid.clone();
+			*invalid.pointer_mut(pointer).unwrap() = replacement;
+			assert!(validate_outbound(&invalid, &mut requests).is_err(), "{pointer}");
+		}
+		let mut invalid = valid.clone();
+		invalid["params"]["edits"]
+			.as_array_mut()
+			.unwrap()
+			.push(json!({"keyPath":"model","value":"other","mergeStrategy":"replace"}));
+		assert!(validate_outbound(&invalid, &mut requests).is_err());
+		let mut clear = valid;
+		clear["params"]["edits"][0]["value"] = Value::Null;
+		assert!(validate_outbound(&clear, &mut requests).is_ok());
 	}
 
 	#[test]
