@@ -40,6 +40,16 @@ and native feature checks, shared durable journal, desktop control and installed
 native current-turn/next-turn qualification remain open. No local protocol,
 configuration, feature flag or automation changes occur in this batch.
 
+## Native task-default selection qualified on 2026-09-26
+
+Restore the full inherited task-default model fixture through the current service
+and journal. Normal and Plan modes preserve the admitted turn, publish the saved
+selection for later turns, retain the service tier and isolate a second task.
+Verify queued and observed receipts separately, plus cold continuation and an
+unchanged configuration file. Close this test-file disposition only; persisted
+legacy recovery compatibility and shared owners remain open. See
+[native task model qualification](native-task-model-qualification.md).
+
 ## Current-turn model control restored on 2026-09-26
 
 Verify the original SHA-256 and read the full snapshot difference for five files.
