@@ -70,6 +70,11 @@ the service fixture qualifies automatic ChatGPT eligibility with synthetic
 metadata. Neither proves a live account fallback or signed desktop acceptance.
 No user configuration, installed application or automation is changed.
 
+A separate inherited Flex fixture finds a restart limit in the installed binary:
+an explicit settings update uses Flex live but resumes with a null tier. Configured
+Flex survives. The four passing cases above cover standard/preserved initial tiers,
+not that explicit Flex case. See [the open qualification](native-flex-qualification.md).
+
 ## Removal boundary
 
 To remove automatic fallback, remove the Chief tick hook, observation attachment,
