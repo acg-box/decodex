@@ -84,7 +84,7 @@ impl ChiefSurface {
 							.text_color(rgb(ui_theme::TEXT_MUTED))
 							.child("Exact model ID"),
 					)
-					.child(div().h(px(36.)).child(self.model.clone()))
+					.child(div().h(px(36.)).child(self.exact_model_input.clone()))
 					.child(self.apply_exact_model_button(cx)),
 			)
 			.into_any_element()
@@ -323,7 +323,8 @@ mod exact_model_tests {
 			surface.update(cx, |s, cx| {
 				s.visual_workspace_fixture(cx);
 				s.steer = false;
-				s.model.update(cx, |input, cx| input.set_content("  provider-custom-model  ", cx));
+				s.exact_model_input
+					.update(cx, |input, cx| input.set_content("  provider-custom-model  ", cx));
 				assert!(choice(action(s, "chief")).is_empty());
 			});
 			ExactModelView { surface }
@@ -344,7 +345,7 @@ mod exact_model_tests {
 			);
 			assert!(choice(action(s, "other-manager")).is_empty());
 			assert!(!s.sending);
-			s.model.update(cx, |input, cx| input.set_content(" ", cx));
+			s.exact_model_input.update(cx, |input, cx| input.set_content(" ", cx));
 		});
 		visual.update(|window, cx| {
 			window.resize(gpui::size(px(900.), px(600.)));
@@ -368,7 +369,10 @@ mod exact_model_tests {
 			let surface = cx.new(ChiefSurface::new);
 			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
 			surface.update(cx, |s, cx| {
-				s.model.update(cx, |input, cx| input.set_content("  custom-start-model  ", cx));
+				let selected = s.model.read(cx).content().to_owned();
+				s.exact_model_input
+					.update(cx, |input, cx| input.set_content("  custom-start-model  ", cx));
+				assert_eq!(s.model.read(cx).content(), selected);
 				s.creation_inherit_effort = true;
 				assert!(!s.creation_intent.model);
 			});

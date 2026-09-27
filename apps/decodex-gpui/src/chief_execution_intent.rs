@@ -59,7 +59,7 @@ impl ChiefSurface {
 			false,
 			cx,
 			|s, cx| {
-				let value = s.model.read(cx).content().trim().to_owned();
+				let value = s.exact_model_input.read(cx).content().trim().to_owned();
 				if ConversationModel::new(&value).is_err() {
 					s.feedback = "Enter an exact model ID.".into();
 					cx.notify();

@@ -6,7 +6,10 @@ ID for a new or existing task. Restore that field and the original explicit appl
 handler. Keep it in the model menu instead of the retired advanced-defaults form.
 The field remains available when catalog discovery is unavailable.
 
-Editing text alone does not create a next-message override. Apply trims the input,
+Keep unapplied text in a separate transient input. The new-task send path reads
+the selected model, so reusing that field would apply edits before the button
+was pressed. Editing text alone changes neither the selected model nor a
+next-message override. Apply trims the input,
 uses the existing bounded `ConversationModel` validator and calls the same
 `select_composer_option` path as catalog selection. Invalid input preserves the
 previous choice. The existing task owner, draft persistence, effort reconciliation
@@ -27,7 +30,8 @@ Verify the original snapshot SHA-256 and compare the complete file:
 
 - Revision tracking, saved choices, per-owner updates, action capture and
   revision-bound acceptance retain their original behavior.
-- Restore `apply_exact_model_button` with its original validation and action.
+- Restore `apply_exact_model_button` with its original validation and action;
+  read the separate unapplied input instead of the selected model field.
 - Keep current creation-intent and inherited-effort handling. These additions
   prevent native creation defaults from replacing an explicit user choice.
 - Keep both inherited regression cases: an effort-only change does not apply
