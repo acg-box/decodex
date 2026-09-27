@@ -27,12 +27,23 @@ not an equivalent identity check for the current transport revision owner. The
 new test explicitly verifies both cases, plus A-B-A preservation. No production
 behavior is changed to make these assertions pass.
 
-This restores common projection qualification, not the complete inherited test
-file. Its resumed-response and pending-permission receipt scenarios still need
-complete consumer mapping. Keep that file row open. No schema, installed native
-binary, live account or maintenance automation changes. These fixtures do not
-establish signed desktop acceptance.
+## Complete inherited test mapping
 
-All three restored qualification tests pass. Strict runtime Clippy passes with
-all features and targets. Logs: `/tmp/decodex-native-settings-observations-final.log`
-and `/tmp/decodex-native-settings-observations-clippy.log`.
+| Inherited test | Current qualification |
+| --- | --- |
+| Plugin publications survive reopen without waking or exposing settings | The combined wire test checks the exact plugin projection, empty exclusions, null invalidation, exact source scope, saved records and no native writes or wake events. |
+| Hydration accepts native changes but rejects foreign or malformed replies | The original pure validator test retains every assertion. |
+| Resumed settings require an exact thread and complete reply | The resume fixture crosses the real RPC boundary, rejects a foreign response, accepts known null effort and tier, and invalidates a later response with a missing effort field. |
+| Native settings retain transitions without waking or exposing instructions | The combined test verifies model projection, private-field exclusion, A-B-A events, source-scoped reads and writes, invalidation and reopen. |
+| Permission observations are separate, durable and invalidated by incomplete facts | The same fixture verifies a distinct permission event, exact profile and no model/plugin field substitution, then tests incomplete metadata and reopen. |
+| Queued or historical permission facts cannot confirm selection | A queued raw payload and an actual `thread/read` reply both retain the queued receipt and dispatch fence. A subsequent wire publication can confirm; that receipt survives reopen. |
+
+The complete inherited test file was compared with these current fixtures. Close
+only its file row. The shared production observer and other writer files retain
+their separate open reviews. No schema, installed native binary, live account or
+maintenance automation changes. These fixtures do not establish signed desktop
+acceptance.
+
+All five qualification tests pass. Strict runtime Clippy passes with all
+features and targets. Logs: `/tmp/decodex-settings-response-final.log` and
+`/tmp/decodex-settings-response-clippy.log`.
