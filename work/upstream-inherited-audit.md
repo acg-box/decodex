@@ -9,6 +9,20 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Native message renderer reconciled on 2026-09-27
+
+Preserve native author roles when equal user and assistant text share a turn.
+Restore copying during response streaming and the saved reasoning regression.
+Both new defects have failing-before evidence; all 39 timeline tests and strict
+GPUI lint pass. See [the complete renderer mapping](native-message-rendering-reconciliation.md).
+The same rendering batch restores local file line/column handling and maps the
+complete Markdown file plus the two inherited math/Mermaid documents to
+[the retained rich renderer](rich-markdown-rendering.md). Its 33-test suite passes.
+Close four pending rows in this batch. Correct one previously exact Mermaid
+test row to formatting equivalence. Shared surface and output-stream review,
+broader history acceptance and signed desktop acceptance remain open.
+
+
 ## History presentation reconciled on 2026-09-27
 
 Restore the summary latest-scroll request and the inherited unfinished-output

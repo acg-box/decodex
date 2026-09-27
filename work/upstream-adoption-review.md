@@ -21,6 +21,18 @@ means a product behavior or control that the user can assess for removal. Mixed
 rows need a finer split before removal. These labels are review classifications,
 not instructions to delete code or weaken native enforcement.
 
+## Native message rendering correctness
+
+Keep native user and assistant roles distinct when saved metadata has equal
+text, and retain the response copy action during streaming. The existing
+metadata, weather, prompt-review and App-widget owners remain intact. See
+[the renderer mapping and regression evidence](native-message-rendering-reconciliation.md).
+Author identity, response access and local file links are core correctness.
+Restore file reveal for line-and-column targets through the existing handler.
+Math, Mermaid and weather remain optional presentation choices; see the
+[consolidated source and interaction mapping](rich-markdown-rendering.md).
+
+
 ## History presentation correctness
 
 Restore the requested latest scroll after summary recovery and preserve
