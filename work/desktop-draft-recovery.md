@@ -4,7 +4,7 @@
 
 Editable Chief text, attachments, task references, and asynchronous question editors belong to the exact service profile. Disconnecting keeps the editors. Returning to a profile restores its in-memory inputs. A late command result cannot clear a different profile or newer text.
 
-Next-message model, effort, and tier choices belong to the conversation and carry a revision. SendConfigured contains only explicit changes. Acceptance clears only the captured revision. Steering keeps next-message choices. Full legacy execution objects remain readable. Protocol version: 2.48.
+Next-message model, effort, and tier choices belong to the conversation and carry a revision. SendConfigured contains only explicit changes. Acceptance clears only the captured revision. Steering keeps next-message choices. Full legacy execution objects remain readable. The original batch used protocol 2.48; the current exact service revision is defined by CURRENT_VERSION.
 
 The desktop captures profile-owned text, files, task references, explicit conversation settings, and question editors in a private revisioned store. It waits for publication of the exact command identity and original input before RPC dispatch. The original in-flight copy remains available if later edits are saved before a reply. Acceptance removes that exact copy; a known failure can retain it beside newer input. Unknown delivery blocks automatic replay after reopening.
 
@@ -38,7 +38,7 @@ Older local steering records without the original thread identity remain unconfi
 
 ## Ordinary input before service setup
 
-Local draft schema 7 stores ordinary input by exact working directory before a
+Local draft schema 7 introduced ordinary input by exact working directory before a
 service profile is selected. These records cannot contain a conversation ID,
 parked conversation editors, or unresolved commands. They use the existing shared
 writer and quit flush.
@@ -49,3 +49,10 @@ A conflicting saved profile remains recoverable, and unresolved delivery records
 remain in the selected profile. Later profile changes do not move that input again.
 The schema checks the aggregate encoded size and existing recovery capacity before
 publication. No restore or migration authorizes a send.
+
+## Complete inherited owner reconciliation
+
+The [current reconciliation](desktop-draft-reconciliation.md) maps the complete
+inherited document and three shared storage files. Local schema 10 and the 32 MiB
+aggregate bound supersede older schema/capacity notes. Source and test evidence
+do not close the remaining signed desktop acceptance above.
