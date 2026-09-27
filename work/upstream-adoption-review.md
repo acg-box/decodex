@@ -6,10 +6,10 @@ The detailed tables below retain historical delivery evidence; their broad Mixed
 and Optional labels are refined by that decision inventory.
 
 Original capability-table snapshot: Decodex `3f131d80b9e90d2badf2394249bbf3b0266f72d3`.
-Current delivery snapshot: `eaba4009094d203d28ef39422d6baa51accd379e` (through PR1547).
+Historical delivery snapshot: `eaba4009094d203d28ef39422d6baa51accd379e` (through PR1547).
 The inherited byte-comparison baseline remains PR1507. Subsequent source and
 dependency dispositions are recorded in the inherited-file audit; the register
-is not closed.
+now classifies all 360 paths. Runtime acceptance remains open.
 Fixed upstream range:
 `a397079287e6638b39dda329835350d93222681f..595cc91e8cbb1c2ca822d0311dcf12709410c582`.
 
@@ -32,8 +32,11 @@ The fresh [a15fe830 signed artifact](signed-desktop-a15fe830-acceptance.md) pass
 bundle contracts and signing checks. Its embedded source identity is exact and
 clean. Window access is now restored. Normal GUI quit and empty-profile owned-service
 cleanup are verified. An unconfirmed history-edit draft survives normal quit and
-relaunch without input replay. Ordinary composer interaction remains unverified:
-its native child window is absent from the observed main-window accessibility tree.
+relaunch without input replay. Automatic recap opt-out survives restart. Closing
+the main window retains the application with Settings open. Separate installed-native
+and service fixtures verify shutdown during an active model request, and native
+unload/resume preserves history without another model request. Ordinary composer
+interaction remains unverified and is deferred until last by user instruction.
 The older 0658 interaction record remains historical. The current record lists
 precise accepted boundaries and remaining R06/R07/R12 work.
 
@@ -141,9 +144,9 @@ Later implementation does not close a group without its remaining acceptance.
 | R03 Models, defaults and routing | Native defaults, explicit choices, ordinary recovery and profileless drafts are merged. PR1537/1538 restore ordinary model-source review with installed-native qualification. | Current routing and native rotation were qualified by PR1519. The signed desktop does not expose the ordinary History entry; classify this surface separately for optional removal review. Its desktop confirmation was not accepted. See [source review](initial-model-source-recovery.md). Shared signed lifecycle remains R07/R12. |
 | R04 Attachments, media and context | Native/public media reads, signed desktop Preview, resource add/list/remove and native context authority qualified. | Closed by PR1522; see [media acceptance and limits](upstream-media-acceptance.md). Shared installed lifecycle remains R07/R12. |
 | R05 Interactive MCP App UI | Closed by PR1521: exact native documents, isolated WebKit, confirmed callbacks and durable recovery. | See [App UI contract and limits](mcp-app-ui.md). Signed local packaging and installed-native/service/desktop fixture passed; shared installed lifecycle remains R07/R12. Optional capability. |
-| R06 Prompt editing and recap | Recap service/UI and opt-in automatic eligibility are implemented. The [current signed run](signed-desktop-0658-acceptance.md) adds visible manual recap and restart evidence. Prompt editing includes canonical desktop editing, durable confirmation, history handback and explicit resend. | PR1523 verifies combined lost-reply recovery and normal signed-app recap/quit/relaunch interactions. Foreground/background, opt-out, live voice and remaining shared desktop acceptance in R07/R12 stay open. See the feature notes below. |
-| R07 Draft and signed desktop lifecycle | Draft persistence and source-bound recovery have targeted evidence. The [current signed run](signed-desktop-0658-acceptance.md) verifies unsent draft and explicit model restoration across two normal GUI exits. | Blank-task/worktree, Dock, conflict cancellation, broader draft recovery, export and app-owned service shutdown acceptance remain. Both signed fixtures kept their service alive across GUI relaunches. |
-| R08 Uncertain dispatch and closing | Known-unsent, refusal and no-replay recovery fixes are merged. | Reconcile general ambiguous replies and installed shutdown/unload races with current evidence. |
+| R06 Prompt editing and recap | Recap service/UI and opt-in automatic eligibility are implemented. The [older signed run](signed-desktop-0658-acceptance.md) adds visible manual recap and restart evidence; the [current artifact](signed-desktop-a15fe830-acceptance.md) verifies opt-out persistence. Prompt editing includes canonical desktop editing, durable confirmation, history handback and explicit resend. | PR1523 verifies combined lost-reply recovery and normal signed-app recap/quit/relaunch interactions. Complete foreground/background recap, live voice and remaining shared desktop acceptance in R07/R12 stay open. See the feature notes below. |
+| R07 Draft and signed desktop lifecycle | Draft persistence and source-bound recovery have targeted evidence. The [older signed run](signed-desktop-0658-acceptance.md) verifies unsent draft and explicit model restoration. The [current artifact](signed-desktop-a15fe830-acceptance.md) verifies history-edit draft persistence, empty-profile app-owned service cleanup and main-window close behavior. | Blank-task/worktree, Dock, conflict cancellation, broader draft recovery, export and normal GUI Quit during active work remain. Conversation fixtures keep their test-owned service alive across GUI relaunches; the empty-profile owned-service result is separate. |
+| R08 Uncertain dispatch and closing | Known-unsent, refusal and no-replay recovery fixes are merged. [Current lifecycle evidence](signed-desktop-a15fe830-acceptance.md) verifies active native EOF, active Decodex service shutdown, actual idle unload, warm cancellation and cold history recovery. | General ambiguous replies, pending-unload/revert replacement races and GUI Quit during active work retain their narrower acceptance boundaries. |
 | R09 Other runtime consumers | [Applicability classification](upstream-runtime-consumer-boundaries.md) covers Analytics, voice, provider notices, freeform messages, external writers, accessibility and child/OS behavior. | Classification is complete. Physical voice, combined cross-client desktop behavior and system accessibility acceptance remain unverified; native child MCP limits remain explicit. Optional research is not a new implementation requirement. |
 | R10 Native execution and security | Native CLI admission and account routing-cookie fixes are merged. [Fixed-source ownership](upstream-native-owner-boundaries.md) maps Guardian checkpoints, proxy cancellation, unload and OS execution to native owners. | Ownership is resolved; the listed native race/qualification limits remain unproven. Shared desktop acceptance is separate. No replacement runtime is required. |
 | R11 Historical baseline and inherited changes | Main register has 360 classified paths; all 357 saved file hashes match and three deletions are recorded. Original PR1378 and both stashes are preserved. | Source preservation and file-level reconciliation are complete. Four native qualification limits remain explicit; preservation is not runtime acceptance. See the inherited-file audit. |
