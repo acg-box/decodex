@@ -1358,3 +1358,12 @@ Codex test passes the original cumulative counter, second-turn delta, absent
 receipt and no-replay checks after process restart. Strict runtime lint passes.
 See [the restored assertions and test scope](native-usage-recovery-coverage.md).
 Refresh the native registry hash while keeping its full source review open.
+
+## Native continuation restart coverage restored on 2026-09-27
+
+Restore the original retained-bridge continuation fixture without changing its
+assertions. Installed Codex passes live-details, explicit native override and
+post-restart stale-authority rejection checks. The existing direct-client test
+remains, as it covers repeat submission in the live process. See
+[the coverage mapping](native-continuation-recovery-coverage.md). Keep the shared
+native registry and signed desktop acceptance open.
