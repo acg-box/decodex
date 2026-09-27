@@ -1,5 +1,10 @@
 # Upstream adoption review
 
+Start with [the feature decision inventory](upstream-feature-decisions.md) for the
+current core/optional split, unimplemented proposals and removal dependencies.
+The detailed tables below retain historical delivery evidence; their broad Mixed
+and Optional labels are refined by that decision inventory.
+
 Original capability-table snapshot: Decodex `3f131d80b9e90d2badf2394249bbf3b0266f72d3`.
 Current delivery snapshot: `eaba4009094d203d28ef39422d6baa51accd379e` (through PR1547).
 The inherited byte-comparison baseline remains PR1507. Subsequent source and
