@@ -99,8 +99,11 @@ impl ChiefSurface {
 				match history {
 					super::ChiefHistoryResult::Available { entries, .. } =>
 						entries.iter().find(|entry| {
-							!matches!(entry.kind.as_str(), "partial_answer" | "partial_plan")
-								&& entry.turn_id.as_deref() == Some(turn_id)
+							matches!(
+								(kind, entry.kind.as_str()),
+								("userMessage", "user" | "instruction")
+									| ("agentMessage", "assistant")
+							) && entry.turn_id.as_deref() == Some(turn_id)
 								&& entry.text == text
 						}),
 					_ => None,
@@ -216,6 +219,11 @@ impl ChiefSurface {
 					text: text.into(),
 					key: identity.into(),
 				})
+				.child(markdown::response_copy_button(
+					&format!("copy-response-{identity}"),
+					"Copy response",
+					text.to_owned(),
+				))
 			} else {
 				body.child(super::super::history_entry_with_key(&message, identity))
 			};
@@ -388,7 +396,142 @@ mod tests {
 	use super::*;
 	use crate::shell::chief_surface::native_timeline::{Binding, Timeline};
 	use decodex_protocol::ChiefTimelinePage;
-	use gpui::{px, size};
+	use gpui::{AppContext, px, size};
+
+	#[gpui::test]
+	fn native_message_metadata_preserves_the_provider_role(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let work = s
+				.snapshot
+				.as_ref()
+				.unwrap()
+				.work_items
+				.iter()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap()
+				.clone();
+			let mut user = s.native_message_entry(&work, "same-turn", "Echo", "userMessage");
+			user.id = 91;
+			user.kind = "user".into();
+			let mut assistant = user.clone();
+			assistant.id = 92;
+			assistant.kind = "assistant".into();
+			assistant.duration_ms = Some(500);
+			for rows in
+				[vec![user.clone(), assistant.clone()], vec![assistant.clone(), user.clone()]]
+			{
+				let (_, super::super::ChiefHistoryResult::Available { entries, .. }) =
+					s.history.as_mut().unwrap()
+				else {
+					panic!("fixture history")
+				};
+				*entries = rows;
+				let reply = s.native_message_entry(&work, "same-turn", "Echo", "agentMessage");
+				assert_eq!(reply.kind, "assistant");
+				assert_eq!(reply.id, 92);
+				assert_eq!(reply.duration_ms, Some(500));
+				let prompt = s.native_message_entry(&work, "same-turn", "Echo", "userMessage");
+				assert_eq!(prompt.kind, "user");
+				assert_eq!(prompt.id, 91);
+				assert_eq!(prompt.duration_ms, None);
+			}
+			let (_, super::super::ChiefHistoryResult::Available { entries, .. }) =
+				s.history.as_mut().unwrap()
+			else {
+				panic!("fixture history")
+			};
+			user.kind = "instruction".into();
+			*entries = vec![user];
+			let prompt = s.native_message_entry(&work, "same-turn", "Echo", "userMessage");
+			assert_eq!(prompt.kind, "instruction");
+			let reply = s.native_message_entry(&work, "same-turn", "Echo", "agentMessage");
+			assert_eq!(reply.kind, "assistant");
+			assert_eq!(reply.id, 0);
+			assert_eq!(reply.text, "Echo");
+		});
+	}
+
+	#[gpui::test]
+	fn native_answer_stays_copyable_during_streaming(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(1400.)));
+		let original = "Draft response\n\n$$\n\\frac{a}{b}";
+		let selector = surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("native-thread".into());
+			let work = work.clone();
+			let mut entry = rendered_entries()[1].clone();
+			if let Content::Item { text, .. } = &mut entry.content {
+				*text = original.into();
+			}
+			let identity =
+				serde_json::json!([work.id, work.codex_thread_id, super::key(&entry)]).to_string();
+			s.native_history.replace(
+				Binding {
+					work: work.id.clone(),
+					thread: "native-thread".into(),
+					account: "account".into(),
+				},
+				ChiefTimelinePage {
+					thread_id: "native-thread".into(),
+					entries: vec![entry],
+					next_cursor: None,
+					active_realtime_session_at_page_start: None,
+				},
+			);
+			let (_, super::super::ChiefHistoryResult::Available { entries, live, .. }) =
+				s.history.as_mut().unwrap()
+			else {
+				panic!("fixture history")
+			};
+			entries.clear();
+			*live = vec![decodex_protocol::ChiefLiveMessageDto {
+				kind: decodex_protocol::ChiefLiveMessageKind::AgentMessage,
+				turn_id: "turn".into(),
+				item_id: "message".into(),
+				text: original.into(),
+				truncated: false,
+			}];
+			cx.notify();
+			format!("copy-response-{identity}")
+		});
+		let selector = Box::leak(selector.into_boxed_str());
+		for completed in [false, true] {
+			if completed {
+				surface.update(visual, |s, cx| {
+					let (_, super::super::ChiefHistoryResult::Available { live, .. }) =
+						s.history.as_mut().unwrap()
+					else {
+						panic!("fixture history")
+					};
+					live.clear();
+					cx.notify();
+				});
+			}
+			visual.update(|window, cx| {
+				window.draw(cx).clear();
+			});
+			let copy = visual.debug_bounds(selector).expect("native response remains copyable");
+			visual.simulate_click(copy.center(), Default::default());
+			visual.update(|_, cx| {
+				assert_eq!(
+					cx.read_from_clipboard().and_then(|item| item.text()),
+					Some(original.into())
+				);
+			});
+		}
+	}
 
 	fn plan_entry() -> ChiefTimelineEntry {
 		ChiefTimelineEntry {
@@ -599,7 +742,20 @@ mod tests {
 				.find(|work| Some(&work.id) == s.selected.as_ref())
 				.unwrap();
 			work.codex_thread_id = Some("native-thread".into());
-			let entries = rendered_entries();
+			let mut entries = rendered_entries();
+			entries.push(ChiefTimelineEntry {
+				position: 100,
+				content: Content::Item {
+					app_ui: false,
+					turn_id: "summary-turn".into(),
+					item_id: "summary-item".into(),
+					kind: "reasoning".into(),
+					text: "Checking the request.".into(),
+					truncated: false,
+					activity: None,
+					attachments: vec![],
+				},
+			});
 			let selectors = entries
 				.iter()
 				.map(|entry| {
@@ -639,6 +795,7 @@ mod tests {
 		assert!(visual.debug_bounds("native-turn-usage").is_some());
 		assert!(visual.debug_bounds("native-plan-content").is_some());
 		assert!(visual.debug_bounds("native-promotion-content").is_some());
+		assert!(visual.debug_bounds("native-reasoning-summary").is_some());
 		assert!(visual.debug_bounds("saved-local-history").is_none());
 		let toggle = visual.debug_bounds("native-history-source-toggle").unwrap();
 		visual.simulate_click(toggle.center(), Default::default());
