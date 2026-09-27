@@ -101,6 +101,15 @@ optional-feature review:
 
 ## Acceptance evidence and its scope
 
+The inherited proposal also mentioned native event-stream start/stop and catalog
+discovery for records without captured widget metadata. Those are not implemented
+consumer paths here. The bridge does not admit native event-stream methods, and
+`mcp_app_for_item` returns unsupported when all three resource-URI fields are
+absent. Existing legacy URI fields are supported; a current catalog is not used
+to invent a historical resource identity. Keep these restrictions visible in the
+optional-feature decision. Closing the panel tears down implemented resources;
+it is not evidence of event-stream subscription cancellation.
+
 The adapter, database, protocol, runtime and desktop tests cover exact source and
 catalog selection, changed arguments, stale ownership, large chunked results,
 reservation replay, process death, cold discovery, lost replies and acknowledgement.

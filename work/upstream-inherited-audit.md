@@ -1438,3 +1438,12 @@ activation with required routing correctness. Eight unit tests and the installed
 attested-policy test pass. See [classification and evidence limits](native-policy-routing-reconciliation.md).
 Close these document rows only; enrollment applicability and desktop acceptance
 remain open.
+
+## Native tools and App UI records reconciled on 2026-09-27
+
+Restore the original Code Mode record with a current status notice. Map its native
+execution and local presentation ownership, and state the App UI consumer's
+unimplemented stream and missing-resource discovery paths explicitly. Two native
+Code Mode tests and six App UI runtime tests pass. See
+[the evidence and limitations](native-tools-record-reconciliation.md). Close only
+these two document rows; native policy limits and desktop acceptance remain open.
