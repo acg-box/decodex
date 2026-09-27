@@ -195,7 +195,14 @@ mod tests {
 	fn latest_arrival_scrolls_new_layout_but_respects_a_later_wheel_gesture(
 		cx: &mut gpui::TestAppContext,
 	) {
-		for (cancel, cold) in [(false, false), (true, false), (false, true)] {
+		for (cancel, cold, summary) in [
+			(false, false, false),
+			(true, false, false),
+			(false, true, false),
+			(false, false, true),
+			(true, false, true),
+			(false, true, true),
+		] {
 			let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 			visual.simulate_resize(gpui::size(px(1400.), px(500.)));
 			let binding = surface.update(visual, |s, cx| {
@@ -252,15 +259,22 @@ mod tests {
 				if cold {
 					s.transcript_scroll.remove(&binding.work);
 				}
-				assert!(s.refresh_native_history(
-					binding.clone(),
-					ChiefTimelinePage {
-						thread_id: "thread".into(),
-						entries: (100..105).map(row).collect(),
-						next_cursor: None,
-						active_realtime_session_at_page_start: None,
-					}
-				));
+				if summary {
+					s.refresh_native_summary(
+						binding.clone(),
+						(100..105).map(|position| row(position).content).collect(),
+					);
+				} else {
+					assert!(s.refresh_native_history(
+						binding.clone(),
+						ChiefTimelinePage {
+							thread_id: "thread".into(),
+							entries: (100..105).map(row).collect(),
+							next_cursor: None,
+							active_realtime_session_at_page_start: None,
+						}
+					));
+				}
 				cx.notify();
 			});
 			visual.update(|window, cx| {
@@ -273,7 +287,7 @@ mod tests {
 			if cancel {
 				assert!(distance > px(100.));
 			} else {
-				assert!(distance < px(1.));
+				assert!(distance < px(1.), "summary={summary} cold={cold}: {distance:?}");
 			}
 		}
 	}
