@@ -4398,6 +4398,53 @@ mod tests {
 	}
 
 	#[test]
+	fn initial_model_source_roundtrips_and_rejects_invalid_coordinates() {
+		let mut command = CommandEnvelope {
+			version: CURRENT_VERSION,
+			client_command_id: ClientCommandId::new("source-create").expect("command ID"),
+			idempotency_key: IdempotencyKey::new("source-create").expect("command key"),
+			expected_revision: None,
+			correlation_id: CorrelationId::new("source-create").expect("correlation"),
+			causation_id: None,
+			payload: CommandPayload::CreateConversation {
+				conversation_id: EntityId::new("01234567-89ab-4def-8123-456789abcdef")
+					.expect("conversation"),
+				message: HistoryText::new("Use reviewed defaults").expect("message"),
+				working_directory: ConversationWorkingDirectory::new("/tmp").expect("directory"),
+				execution: crate::ConversationExecutionSettings::new(
+					crate::ConversationModel::new("gpt-6-astra").expect("model"),
+					crate::ConversationReasoningEffort::Low,
+					false,
+				),
+				initial_model_source: None,
+			},
+		};
+		for (account, revision, accepted) in [
+			("11234567-89ab-4def-8123-456789abcdef", 1, true),
+			("11234567-89ab-4def-8123-456789abcdef", 0, false),
+			("11234567-89ab-4def-8123-456789abcdef", -1, false),
+			("noncanonical-account", 1, false),
+		] {
+			let CommandPayload::CreateConversation { initial_model_source, .. } =
+				&mut command.payload
+			else {
+				panic!("creation fixture");
+			};
+			*initial_model_source = Some(Box::new(crate::InitialModelSource {
+				account_id: EntityId::new(account).expect("bounded account"),
+				account_revision: revision,
+			}));
+			let message = ClientMessage::Command(command.clone());
+			let encoded = serde_json::to_string(&message).expect("serialize source");
+			let decoded = decode_client_message(&encoded);
+			assert_eq!(decoded.is_ok(), accepted);
+			if accepted {
+				assert_eq!(decoded.expect("valid source"), message);
+			}
+		}
+	}
+
+	#[test]
 	fn conversation_routing_recovery_has_clean_break_wire_shapes() {
 		let source =
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical source ID");
@@ -5216,7 +5263,7 @@ mod tests {
 			outcome: ResetCardOutcome::Reset,
 		};
 
-		for version in [legacy, future] {
+		for version in [legacy, crate::ProtocolVersion { major: 2, minor: 47 }, future] {
 			assert!(!query.is_supported_in(version));
 			assert!(!command.is_supported_in(version));
 			assert!(!event.is_supported_in(version));
