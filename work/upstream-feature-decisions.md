@@ -17,7 +17,8 @@ to a15fe830. The [signed draft acceptance](signed-draft-acceptance.md) verifies 
 Agent composer restart and shared-store conflict, cancelled Quit and export.
 It also records response delivery after Hide and recap display on return, separately
 from automatic eligibility. The other listed interaction limits remain open. Implemented does not mean fully accepted, installed or released.
-No removal is authorized here.
+The user retained O01–O23 and O25–O26 on 2026-09-27 and retired O24.
+Retention does not close the listed acceptance limits.
 
 ## Core compatibility to retain
 
@@ -37,10 +38,10 @@ animations. Removing an animation is optional; making retained animation ignore
 accessibility preferences is not the equivalent subtraction. Likewise, source
 access and readable text are core even if convenience copy buttons are removed.
 
-## Implemented optional behavior for the user's decision
+## Optional behavior and recorded user decisions
 
-All rows have implementation or restored owners. Their linked records define
-testing and acceptance limits. Decisions are **undecided**, not approved removal.
+The user retained every optional row except O24. Their linked records define
+testing and acceptance limits. O24 is retired; only saved-history reading remains.
 
 | ID | Optional behavior | When it is useful | Removal boundary |
 | --- | --- | --- | --- |
@@ -67,14 +68,12 @@ testing and acceptance limits. Decisions are **undecided**, not approved removal
 | O21 | Ordinary direct-conversation History workbench | Use a separate ordinary conversation/settings view. | Currently not exposed by normal startup navigation. Remove its complete consumer only after mapping shared routing, drafts and recovery dependencies. Do not add navigation just for acceptance. [Scope](initial-model-source-recovery.md) |
 | O22 | Voice preference picker | Select native preferences for future calls. | Remove this control separately from effective settings and capture correctness for retained voice. [Voice settings](voice-settings.md) |
 | O23 | Catalog access-program notices | Inspect native model metadata. | Remove the notice and dedicated projection; preserve model discovery. This display grants no entitlement and is not a Daybreak selector. [Controls](optional-controls-reconciliation.md) |
-| O24 | Native provider sign-in recovery history | Inspect AWS/Bedrock recovery notices if those providers are used. | Baseline restoration, not a new scan feature. Remove this specialized display without removing general authentication diagnostics. [Provider scope](provider-auth-recovery-history.md) |
+| O24 | Retired: native provider sign-in recovery history | Not needed by the user. | New notification consumption and receipt writes are removed. Keep saved receipts readable and preserve native authentication. [Retirement](provider-auth-recovery-history.md) |
 | O25 | Existing Live voice and dictation | Use subscription audio in the composer. | Baseline product scope, not entirely new scan adoption. Any removal must retire capture safely and keep historical transcripts and drafts readable. Physical audio acceptance remains open. [Voice](voice-input.md) |
 | O26 | Existing automatic quota activation | Apply the existing account activation policy. | Separate product scope; retained activation must preserve account policy, residency and routing. Do not remove routing correctness from other consumers. [Routing](native-policy-routing-reconciliation.md) |
 
-For a first subtraction review, O21 and O24 have explicit applicability questions;
-O04, O02 and O25 carry additional acceptance or runtime obligations. O23's access
-notice is informational. These are review priorities, not claims that the user
-does not need them. The user decides which rows remain.
+The user completed this subtraction review: retire O24 and retain the other
+optional capabilities. Do not revive earlier removal suggestions as pending work.
 
 ## Proposals and native capabilities not delivered as local product features
 
@@ -121,5 +120,5 @@ the failure they repair. New controls, workflows, dashboards or policies are
 optional proposals: notify the user with value, dependency and maintenance impact
 before implementing them. A broad upstream scan is discovery, not authorization
 to implement every native capability. Maintenance remains paused, including after
-this manual pass. No deletion, feature enablement or scheduled resumption occurs
-as a result of this decision inventory.
+this manual pass. The O24 retirement above is authorized. Retention of other features does not
+authorize enabling scheduled maintenance, which remains paused.
