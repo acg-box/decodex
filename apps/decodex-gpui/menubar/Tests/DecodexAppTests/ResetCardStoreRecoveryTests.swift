@@ -18,7 +18,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			try await Task.sleep(for: .milliseconds(20))
 		}
 		XCTAssertTrue(store.pendingAttempts.isEmpty)
-		XCTAssertEqual(store.message, ResetCardStoreMessage(tone: .success, text: "Usage restored."))
+		XCTAssertEqual(store.message, ResetCardStoreMessage(tone: .success, accountID: "018f0f9e-7b6e-4a31-8f4c-1d2e3f405160", text: "Usage restored."))
 		XCTAssertEqual(fixture.pendingStore.load(), .available([]))
 	}
 
@@ -54,7 +54,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		XCTAssertEqual(store.pendingAttempts, [])
 		XCTAssertEqual(
 			store.message,
-			ResetCardStoreMessage(tone: .success, text: "Usage restored.")
+			ResetCardStoreMessage(tone: .success, accountID: "018f0f9e-7b6e-4a31-8f4c-1d2e3f405160", text: "Usage restored.")
 		)
 		XCTAssertEqual(fixture.pendingStore.load(), .available([]))
 		XCTAssertTrue(store.quotaFills.isEmpty)
@@ -200,6 +200,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			store.message,
 			ResetCardStoreMessage(
 				tone: .error,
+				accountID: "018f0f9e-7b6e-4a31-8f4c-1d2e3f405160",
 				text: "The reset-card request was rejected. Refresh and try again."
 			)
 		)
@@ -293,6 +294,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			store.message,
 			ResetCardStoreMessage(
 				tone: .error,
+				accountID: "018f0f9e-7b6e-4a31-8f4c-1d2e3f405160",
 				text: "The pending reset-card limit is reached. Resolve an existing request before starting another."
 			)
 		)
@@ -486,6 +488,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			completingStore.message,
 			ResetCardStoreMessage(
 				tone: .success,
+				accountID: "018f0f9e-7b6e-4a31-8f4c-1d2e3f405160",
 				text: "Usage restored."
 			)
 		)

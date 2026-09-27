@@ -229,6 +229,7 @@ struct ResetCardStoreMessage: Equatable {
 	}
 
 	let tone: Tone
+	var accountID: String? = nil
 	let text: String
 }
 
@@ -1210,6 +1211,7 @@ final class ResetCardStore {
 		else {
 			message = ResetCardStoreMessage(
 				tone: .error,
+				accountID: attempt.target.accountID,
 				text: "The reset cards changed. Refresh and select the card again."
 			)
 			return ResetCardUseCompletion(resolved: true)
@@ -1231,6 +1233,7 @@ final class ResetCardStore {
 		guard remember(attempt) else {
 			message = ResetCardStoreMessage(
 				tone: .error,
+				accountID: attempt.target.accountID,
 				text: "The pending reset-card limit is reached. Resolve an existing request before starting another."
 			)
 			return ResetCardUseCompletion(resolved: true)
@@ -1900,6 +1903,7 @@ final class ResetCardStore {
 		case .commandRejected:
 			message = ResetCardStoreMessage(
 				tone: .error,
+				accountID: attempt.target.accountID,
 				text: error.localizedDescription
 			)
 			if removeTerminalAttempt {
@@ -1936,6 +1940,7 @@ final class ResetCardStore {
 			}
 			message = ResetCardStoreMessage(
 				tone: Self.messageTone(for: state),
+				accountID: attempt.target.accountID,
 				text: state.presentation
 			)
 			if removeTerminalAttempt {
@@ -3468,16 +3473,19 @@ final class ResetCardStore {
 		} catch let error as AccountControlError {
 			message = ResetCardStoreMessage(
 				tone: .error,
+				accountID: accountID,
 				text: error.localizedDescription
 			)
 		} catch let error as ResetCardClientError {
 			message = ResetCardStoreMessage(
 				tone: .error,
+				accountID: accountID,
 				text: error.localizedDescription
 			)
 		} catch {
 			message = ResetCardStoreMessage(
 				tone: .error,
+				accountID: accountID,
 				text: AccountControlError.invalidResponse.localizedDescription
 			)
 		}

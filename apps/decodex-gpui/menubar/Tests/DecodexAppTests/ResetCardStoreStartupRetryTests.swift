@@ -554,7 +554,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 			)
 		XCTAssertEqual(
 			store.message,
-			ResetCardStoreMessage(tone: .success, text: "Usage restored.")
+			ResetCardStoreMessage(tone: .success, accountID: "018f0f9e-7b6e-4a31-8f4c-1d2e3f405160", text: "Usage restored.")
 		)
 	}
 
