@@ -773,11 +773,17 @@ mod timing_tests {
 		});
 	}
 	#[gpui::test]
-	fn permission_panel_shows_only_the_native_executor(cx: &mut gpui::TestAppContext) {
-		use super::{ChiefRequestResult, ChiefSurface, px};
+	fn approval_panels_show_only_the_native_executor(cx: &mut gpui::TestAppContext) {
+		use super::*;
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
-		for environment in [Some("remote/工作"), None, Some("")] {
-			surface.update(visual, |s, cx| {
+		for method in ["item/permissions/requestApproval", "item/commandExecution/requestApproval"]
+		{
+			for (environment, cwd) in [
+				(Some("remote/工作"), r"C:\工作\repo"),
+				(None, "/workspace"),
+				(Some(""), r"\\server\share\repo"),
+			] {
+				surface.update(visual, |s, cx| {
 				s.visual_workspace_fixture(cx);
 				s.graph_visible = false;
 				let work = s.selected.clone().unwrap();
@@ -785,20 +791,29 @@ mod timing_tests {
 					id:902, source_event_id:"executor-request".into(), work_item_id:work.clone(), event_kind:"permission_pending".into(), created_at_micros:1, delivery_claimed:false,
 				}];
 				s.request = Some(ChiefRequestResult::Available {
-					event_id:902, work_id:work, method:"item/permissions/requestApproval".into(),
-					request_json:decodex_protocol::ChiefRequestText::new(json!({"environmentId":environment,"cwd":"/workspace","permissions":{"network":{"enabled":true}}}).to_string()).unwrap(),
+					event_id:902, work_id:work, method:method.into(),
+					request_json:decodex_protocol::ChiefRequestText::new(json!({"environmentId":environment,"cwd":cwd,"permissions":{"network":{"enabled":true}}}).to_string()).unwrap(),
 				});
 				cx.notify();
 			});
-			visual.update(|window, cx| {
-				window.resize(gpui::size(px(1180.), px(1200.)));
-				window.draw(cx).clear();
-			});
-			assert!(visual.debug_bounds("approval-kind-permissions").is_some());
-			assert_eq!(
-				visual.debug_bounds("approval-executor-environment").is_some(),
-				environment.is_some_and(|id| !id.is_empty())
-			);
+				visual.update(|window, cx| {
+					window.resize(gpui::size(px(1180.), px(1200.)));
+					window.draw(cx).clear();
+				});
+				assert!(
+					visual
+						.debug_bounds(if method == "item/permissions/requestApproval" {
+							"approval-kind-permissions"
+						} else {
+							"approval-kind-command"
+						})
+						.is_some()
+				);
+				assert_eq!(
+					visual.debug_bounds("approval-executor-environment").is_some(),
+					environment.is_some_and(|id| !id.is_empty())
+				);
+			}
 		}
 	}
 	#[gpui::test]

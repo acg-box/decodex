@@ -24,16 +24,31 @@ impl ChiefSurface {
 				model.service_tiers.iter().filter(|tier| tier.id.as_str() != "default").cloned(),
 			);
 		}
-		let selected = self
-			.service_tier
-			.clone()
-			.unwrap_or_else(|| decodex_protocol::ServiceTier::from_fast(self.fast));
-		if selected.as_str() == "flex" && !tiers.iter().any(|tier| tier.id == selected) {
+		let selected = if let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id())
+		{
+			self.draft_profiles.execution.choice(&owner).selected_service_tier()
+		} else {
+			Some(
+				self.service_tier
+					.clone()
+					.unwrap_or_else(|| decodex_protocol::ServiceTier::from_fast(self.fast)),
+			)
+		};
+		if selected.is_none() {
+			panel = panel.child(
+				gpui::div()
+					.debug_selector(|| "tier-inherited".into())
+					.child(super::muted("Use task speed unless changed.")),
+			);
+		}
+		if selected.as_ref().is_some_and(|selected| {
+			selected.as_str() == "flex" && !tiers.iter().any(|tier| &tier.id == selected)
+		}) {
 			panel = panel.child("Flex · configured");
 		}
 		for tier in tiers {
 			let id = tier.id.clone();
-			let chosen = selected == id;
+			let chosen = selected.as_ref() == Some(&id);
 			panel = panel.child(
 				gpui::div()
 					.id(gpui::SharedString::from(format!("tier-{}", id.as_str())))
@@ -102,6 +117,17 @@ impl ChiefSurface {
 					panel = panel.child(super::muted(notice.clone()));
 				}
 			}
+		} else if matches!(
+			self.current_model_catalog(cx),
+			Some(ChiefCapabilitiesResult::Available { .. })
+		) && let Some(model) =
+			self.composer_model_value(cx).filter(|model| !model.is_empty())
+		{
+			panel = panel.child(gpui::div().debug_selector(|| "model-not-listed".into()).child(
+				super::muted(format!(
+					"{model} is not listed in the current model catalog. You can choose a listed model below."
+				)),
+			));
 		}
 		panel.into_any_element()
 	}
@@ -488,6 +514,7 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+		assert!(visual.debug_bounds("tier-inherited").is_some());
 		let bounds = visual.debug_bounds("tier-ultrafast").expect("advertised tier visible");
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, cx| {
@@ -498,6 +525,11 @@ mod tests {
 			}
 			s.reconcile_model_options(cx);
 			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "default");
+			let owner = s.composer_manager.clone().or_else(|| s.root_id()).unwrap();
+			assert_eq!(
+				s.draft_profiles.execution.choice(&owner).selected_service_tier().unwrap().as_str(),
+				"default"
+			);
 		});
 	}
 
@@ -519,6 +551,57 @@ mod tests {
 			s.cwd.update(cx, |input, cx| input.set_content("/different-project", cx));
 			assert!(s.current_model_catalog(cx).is_none());
 		});
+	}
+
+	#[gpui::test]
+	fn missing_model_notice_requires_a_current_catalog(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.model.update(cx, |input, cx| input.set_content("saved-model", cx));
+			s.mark_model_intent(cx);
+			s.composer_menu = Some("model");
+			s.composer_menu_content = Some("model");
+			s.capabilities_context = s.catalog_context(cx);
+		});
+		for (catalog, expected) in [
+			(None, false),
+			(Some(ChiefCapabilitiesResult::Unavailable), false),
+			(
+				Some(ChiefCapabilitiesResult::Available { models: vec![], memory_enabled: None }),
+				true,
+			),
+		] {
+			surface.update(visual, |s, cx| {
+				s.capabilities = catalog;
+				s.reconcile_model_options(cx);
+				assert_eq!(s.composer_model_value(cx).as_deref(), Some("saved-model"));
+				cx.notify();
+			});
+			visual.update(|window, cx| {
+				window.resize(gpui::size(gpui::px(1280.0), gpui::px(1200.0)));
+				window.draw(cx).clear();
+			});
+			assert_eq!(visual.debug_bounds("model-not-listed").is_some(), expected);
+		}
+		surface.update(visual, |s, cx| {
+			s.account.update(cx, |input, cx| {
+				input.set_content("00000000-0000-4000-8000-000000000099", cx)
+			});
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(visual.debug_bounds("model-not-listed").is_none());
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.composer_model_value(cx).as_deref(), Some("saved-model"));
+			s.draft_profiles.execution = Default::default();
+			s.capabilities_context = s.catalog_context(cx);
+			assert_eq!(s.composer_model_value(cx), None);
+			assert_eq!(s.composer_model_label(cx), "Task model");
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(visual.debug_bounds("model-not-listed").is_none());
 	}
 
 	#[gpui::test]
