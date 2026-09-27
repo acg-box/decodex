@@ -9,6 +9,19 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Exact model input restored on 2026-09-27
+
+Restore the inherited explicit model-ID action in the existing task model menu.
+The rendered regression fails before restoration and passes after it. Input
+editing alone does not create an override; applying a valid value retains task
+scope and does not submit. Keep current creation defaults and both inherited
+execution-intent regressions. See [the complete mapping](exact-model-input.md).
+Reconcile the complete model-observation and composer-control files through
+[their current owners](model-display-reconciliation.md). Close these three
+complete file rows, from 76 to 73 pending files. The broader composer and signed
+desktop acceptance remain open. New-task input retains model-only explicit intent
+and leaves native reasoning and tier defaults independent.
+
 ## Native settings test module reconciled on 2026-09-27
 
 The complete inherited coordinator settings test module is mapped to current
