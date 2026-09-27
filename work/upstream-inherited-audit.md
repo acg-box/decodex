@@ -37,6 +37,14 @@ rendered tests pass. See [the complete mapping](chief-composer-reconciliation.md
 Close only the composer file row. No production code changes; the wider workspace,
 shared surface and signed native-composer acceptance remain open.
 
+## Shared Chief workspace reconciled on 2026-09-27
+
+Restore the inherited held-key guard and the missing explicit running-worker stop
+control. Both defects have rendered before-fix failures. All nine workspace tests,
+534 desktop tests (five existing ignored) and strict GPUI lint pass. Map the complete
+workspace diff in [the owner review](chief-workspace-reconciliation.md). Close only
+this file row; shared surface and final signed desktop acceptance remain open.
+
 ## Live settings socket fixture reconciled on 2026-09-27
 
 Restore the inherited selected-model/effort receipt assertion and model-mode

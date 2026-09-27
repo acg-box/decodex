@@ -279,7 +279,7 @@ impl ChiefSurface {
 			.hover(|s| s.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL)))
 			.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
 			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
-				if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					keyboard(s, cx);
 					cx.stop_propagation();
 				}
@@ -956,7 +956,27 @@ impl ChiefSurface {
 			},
 			cx,
 		));
-		footer.into_any_element()
+		footer
+			.when(
+				self.command_connection_ready()
+					&& self.running_turn().is_some_and(|(id, _)| id.as_str() == work.id),
+				|footer| {
+					footer.child(
+						self.workspace_action(
+							"worker-stop".into(),
+							if self.interrupting.is_some() {
+								"Stopping response…"
+							} else {
+								"Stop response"
+							}
+							.into(),
+							|s, cx| s.interrupt_current(cx),
+							cx,
+						),
+					)
+				},
+			)
+			.into_any_element()
 	}
 
 	pub(super) fn work_label(&self, work: &ChiefWorkItemDto) -> String {
@@ -1915,6 +1935,75 @@ mod tests {
 			assert!(s.composer_unavailable_reason().is_none());
 			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
 		});
+	}
+
+	struct ActionView(gpui::Entity<ChiefSurface>);
+	impl Render for ActionView {
+		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+			self.0.update(cx, |s, cx| {
+				s.workspace_action(
+					"test-action".into(),
+					"Action".into(),
+					|s, _| s.feedback.push('x'),
+					cx,
+				)
+			})
+		}
+	}
+
+	#[gpui::test]
+	fn held_keys_do_not_repeat_workspace_actions(cx: &mut gpui::TestAppContext) {
+		let (view, visual) = cx.add_window_view(|_, cx| ActionView(cx.new(ChiefSurface::new)));
+		let surface = view.read_with(visual, |v, _| v.0.clone());
+		visual.update(|window, cx| window.draw(cx).clear());
+		let bounds = visual.debug_bounds("test-action").expect("workspace action");
+		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+		surface.read_with(visual, |s, _| assert_eq!(s.feedback, "x", "click activates action"));
+		for key in ["enter", "space"] {
+			visual.simulate_event(gpui::KeyDownEvent {
+				keystroke: gpui::Keystroke::parse(key).expect("activation key"),
+				is_held: true,
+				prefer_character_input: false,
+			});
+			surface
+				.read_with(visual, |s, _| assert_eq!(s.feedback, "x", "held key repeats action"));
+		}
+		visual.simulate_keystrokes("enter space");
+		surface
+			.read_with(visual, |s, _| assert_eq!(s.feedback, "xxx", "fresh keys activate action"));
+	}
+
+	#[gpui::test]
+	fn running_worker_keeps_an_explicit_stop_control(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.open_page("verify", cx);
+			s.snapshot
+				.as_mut()
+				.expect("snapshot")
+				.work_items
+				.iter_mut()
+				.find(|work| work.id == "verify")
+				.expect("worker")
+				.active_turn_id = Some("worker-turn".into());
+			s.composer.update(cx, |input, cx| input.set_content("Retained manager draft", cx));
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(px(1180.), px(1200.)));
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("worker-stop").is_some(), "running worker has no stop control");
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.running_turn().expect("running worker").0.as_str(), "verify");
+			s.interrupt_current(cx);
+			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.composer.read(cx).content(), "Retained manager draft");
+			s.state = LoadState::Unavailable;
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(visual.debug_bounds("worker-stop").is_none(), "disconnected worker cannot stop");
 	}
 
 	#[gpui::test]
