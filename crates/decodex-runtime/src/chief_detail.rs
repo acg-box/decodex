@@ -176,18 +176,10 @@ fn project(
 	item: &str,
 ) -> Option<ChiefActivityDetailResult> {
 	let text = project_text(history, thread, turn, item)?;
-	let limit = 24 * 1024;
-	let truncated = text.len() > limit;
-	let mut end = text.len().min(limit);
-	while !text.is_char_boundary(end) {
-		end -= 1;
+	if text.len() > decodex_core::MAX_NATIVE_MESSAGE_BYTES {
+		return None;
 	}
-	Some(ChiefActivityDetailResult::Available {
-		text: text[..end].into(),
-		truncated,
-		offset: 0,
-		next: None,
-	})
+	Some(ChiefActivityDetailResult::Available { text, truncated: false, offset: 0, next: None })
 }
 
 fn web_details(item: &Value) -> Vec<String> {
@@ -310,7 +302,7 @@ mod tests {
 					("thread/turns/list", json!({"data":[{"id":"turn"}],"nextCursor":null})),
 					(
 						"thread/items/list",
-						json!({"data":[{"turnId":"turn","item":{"id":"patch","type":kind,"command":"must not show command", "changes":[{"path":"C:\\remote\\old.txt","kind":{"type":"update","move_path":"C:\\remote\\new.txt"},"diff":"-old\n+new"}]}}],"nextCursor":null}),
+						json!({"data":[{"turnId":"turn","item":{"id":"patch","type":kind,"command":"must not show command", "changes":[{"path":"C:\\remote\\old.txt","kind":{"type":"update","move_path":"C:\\remote\\new.txt"},"diff":format!("-old\n+new{} REQUIRED PATCH SUFFIX", "界".repeat(20000))}]}}],"nextCursor":null}),
 					),
 				] {
 					let request: Value =
@@ -335,6 +327,8 @@ mod tests {
 				assert!(text.contains("Move destination: C:"));
 				assert!(text.contains("new.txt"));
 				assert!(text.contains("-old\n+new"));
+				assert!(text.ends_with("REQUIRED PATCH SUFFIX"));
+				assert!(text.len() > 24 * 1024);
 				assert!(!text.contains("must not show"));
 				assert!(!truncated);
 			} else {
@@ -353,5 +347,113 @@ mod tests {
 		};
 		assert!(truncated);
 		assert!(text.len() <= 24 * 1024);
+	}
+	#[test]
+	fn complete_detail_is_not_shortened_before_request_paging() {
+		let history = json!({"thread":{"id":"t","turns":[{"id":"u","items":[{"id":"i","type":"commandExecution","aggregatedOutput":"界".repeat(10000)}]}]}});
+		let Some(ChiefActivityDetailResult::Available { text, truncated, .. }) =
+			project(&history, "t", "u", "i")
+		else {
+			panic!("detail");
+		};
+		assert!(!truncated);
+		assert_eq!(text, "界".repeat(10000));
+	}
+	#[tokio::test]
+	async fn activity_detail_rejects_changed_or_missing_source() {
+		use crate::chief_usage_estimate::{Source, SourceKey};
+		use decodex_core::{AccountId, ProcessGenerationId};
+		use std::sync::atomic::{AtomicUsize, Ordering};
+		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+		for change in [
+			"none", "account", "process", "revision", "history", "thread", "work", "closed",
+			"absent",
+		] {
+			let (local, remote) = tokio::io::duplex(65536);
+			let (reader, writer) = tokio::io::split(local);
+			let (client, _events) = AppServerClient::from_io(reader, writer);
+			let server = tokio::spawn(async move {
+				let (reader, mut writer) = tokio::io::split(remote);
+				let mut lines = BufReader::new(reader).lines();
+				if change == "absent" {
+					assert!(lines.next_line().await.unwrap().is_none());
+					return;
+				}
+				for (method, result) in [
+					("thread/read", json!({"thread":{"id":"thread","historyMode":"paginated"}})),
+					("thread/turns/list", json!({"data":[{"id":"turn"}],"nextCursor":null})),
+					(
+						"thread/items/list",
+						json!({"data":[{"turnId":"turn","item":{"id":"item","type":"commandExecution","aggregatedOutput":"Passed"}}],"nextCursor":null}),
+					),
+				] {
+					let request: Value =
+						serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+					assert_eq!(request["method"], method);
+					assert_eq!(request["params"]["threadId"], "thread");
+					writer
+						.write_all(
+							format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+						)
+						.await
+						.unwrap();
+				}
+			});
+			let calls = AtomicUsize::new(0);
+			let result = read_bound(
+				|| {
+					let later = calls.fetch_add(1, Ordering::SeqCst) > 0;
+					let client = client.clone();
+					async move {
+						if change == "absent" || (later && change == "closed") {
+							return None;
+						}
+						Some(Source {
+							client,
+							key: SourceKey {
+								generation: ProcessGenerationId::new(
+									if later && change == "process" {
+										"20000000-0000-4000-8000-000000000002"
+									} else {
+										"10000000-0000-4000-8000-000000000001"
+									},
+								)
+								.unwrap(),
+								account: AccountId::new(if later && change == "account" {
+									"40000000-0000-4000-8000-000000000004"
+								} else {
+									"30000000-0000-4000-8000-000000000003"
+								})
+								.unwrap(),
+								revision: i64::from(later && change == "revision"),
+								history_revision: u64::from(later && change == "history"),
+								thread: if later && change == "thread" {
+									"other"
+								} else {
+									"thread"
+								}
+								.into(),
+								work: if later && change == "work" { "other" } else { "work" }
+									.into(),
+							},
+						})
+					}
+				},
+				"turn",
+				"item",
+				None,
+			)
+			.await;
+			if change == "none" {
+				assert!(
+					matches!(result, ChiefActivityDetailResult::Available { text, .. } if text == "Passed")
+				);
+			} else {
+				assert_eq!(result, ChiefActivityDetailResult::Unavailable, "{change}");
+			}
+			assert_eq!(calls.load(Ordering::SeqCst), if change == "absent" { 1 } else { 2 });
+			drop(client);
+			server.await.unwrap();
+		}
 	}
 }
