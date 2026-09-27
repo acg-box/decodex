@@ -1286,3 +1286,12 @@ and internal voice-provenance hiding. Both defects have failing-before synthetic
 regressions. See [the bounded repair and remaining review](application-projection-recovery.md).
 Refresh the source hash but leave application.rs marked review-required. The
 remaining shared-file coverage and metadata differences are not closed by this fix.
+
+## Application approval coverage restored on 2026-09-27
+
+Restore native connector and account-link metadata required by the existing
+desktop account label and settings entry. The restored projection test failed
+before the fix. Restore inherited background approval, complete enriched paging,
+saved child diff, native executor and pre-session model-review coverage.
+See [the recovery evidence and scope limits](application-approval-recovery.md).
+The full shared `application.rs` review remains open.
