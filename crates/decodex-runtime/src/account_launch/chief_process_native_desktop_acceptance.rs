@@ -32,6 +32,23 @@ pub(super) async fn check(
 	)
 	.await;
 	let thread = settled(client).await;
+	let background_recap = std::env::var_os("DECODEX_TEST_DESKTOP_BACKGROUND_RECAP").is_some();
+	if background_recap {
+		for index in 1..=2 {
+			accepted(
+				client,
+				Action::Send {
+					root_id: EntityId::new("recap-root").expect("fixture root"),
+					text: HistoryText::new(format!("Complete background recap step {index}."))
+						.expect("fixture input"),
+				},
+				&format!("desktop-background-{index}"),
+			)
+			.await;
+			assert_eq!(settled(client).await, thread);
+		}
+		assert_eq!(requests.load(Ordering::Acquire), 3);
+	}
 	let launch = || {
 		let log = std::fs::OpenOptions::new()
 			.create(true)
@@ -55,7 +72,13 @@ pub(super) async fn check(
 		std::fs::write(home.join("desktop-ready.json"), serde_json::to_vec_pretty(&json!({"pid":pid,"launches":launches,"exits":exits,"thread":thread,"root":home.join(".decodex"),"model_requests":requests.load(Ordering::Acquire)})).expect("serialize desktop process evidence")).expect("write desktop process evidence");
 	};
 	write(child.id(), launches, exits);
+	let mut observed_requests = requests.load(Ordering::Acquire);
 	loop {
+		let current_requests = requests.load(Ordering::Acquire);
+		if current_requests != observed_requests {
+			observed_requests = current_requests;
+			write(child.id(), launches, exits);
+		}
 		if !exited && let Some(status) = child.try_wait().expect("read desktop exit status") {
 			assert!(status.success(), "signed desktop failed; inspect desktop.log");
 			exited = true;
@@ -74,6 +97,14 @@ pub(super) async fn check(
 		if home.join("desktop-finish").exists() {
 			assert!(exited, "quit the desktop before completing acceptance");
 			assert_eq!(launches, exits);
+			if background_recap {
+				assert_eq!(requests.load(Ordering::Acquire), 4, "three turns and one recap");
+				let recap = client
+					.recap(EntityId::new("recap-root").expect("fixture root"))
+					.await
+					.expect("read final recap");
+				assert_eq!(recap.phase, decodex_protocol::TaskRecapPhase::Ready);
+			}
 			break;
 		}
 		tokio::time::sleep(Duration::from_millis(100)).await;
