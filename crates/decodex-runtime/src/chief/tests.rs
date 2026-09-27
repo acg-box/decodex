@@ -1838,8 +1838,19 @@ async fn native_activity_notifications_reach_history_without_agent_delivery() {
 
 #[tokio::test]
 async fn native_revert_retires_exact_thread_requests_without_replies_or_replay() {
-	let (mut chief, mut sent, _directory) = fixture().await;
+	let (mut chief, mut sent, directory) = fixture().await;
 	chief.start_chief("chief", "Coordinate").await.unwrap();
+	chief.handle_event(ServerEvent::Notification {
+		method: "item/agentMessage/delta".into(),
+		params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"partial","delta":"Removed native output"}),
+	}).await.unwrap();
+	assert_eq!(chief.store.read_chief_output("chief".into()).await.unwrap().len(), 1);
+	chief
+		.store
+		.invalidate_chief_output("opaque thread/1".into(), Some("unbound-generation".into()))
+		.await
+		.unwrap();
+	assert_eq!(chief.store.read_chief_output("chief".into()).await.unwrap().len(), 1);
 	while sent.try_recv().is_ok() {}
 	let id = RequestId::Number(73);
 	chief.handle_event(ServerEvent::Request { id: id.clone(), method: "item/commandExecution/requestApproval".into(), params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"item","command":"pwd"}) }).await.unwrap();
@@ -1852,6 +1863,7 @@ async fn native_revert_retires_exact_thread_requests_without_replies_or_replay()
 		.await
 		.unwrap();
 	assert!(chief.pending_requests.contains_key(&id));
+	assert_eq!(chief.store.read_chief_output("chief".into()).await.unwrap().len(), 1);
 	for _ in 0..2 {
 		chief
 			.handle_event(ServerEvent::Notification {
@@ -1862,6 +1874,12 @@ async fn native_revert_retires_exact_thread_requests_without_replies_or_replay()
 			.unwrap();
 	}
 	assert!(!chief.pending_requests.contains_key(&id));
+	assert!(chief.store.read_chief_output("chief".into()).await.unwrap().is_empty());
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	let reopened = SqliteStore::open(&root.paths()).unwrap();
+	assert!(reopened.read_chief_output("chief".into()).await.unwrap().is_empty());
 	let event = chief.store.get_chief_inbox_event(event_id).await.unwrap();
 	assert_eq!(event.disposition, Some(ChiefDisposition::Resolved));
 	assert!(chief.respond_pending_event(event_id, json!({"decision":"accept"})).await.is_err());
@@ -3072,4 +3090,55 @@ async fn missed_native_active_turn_recovery_rejects_reverted_readback() {
 			}
 		}
 	}
+}
+
+#[tokio::test]
+async fn live_plan_finality_and_kind_survive_restart() {
+	let (mut coordinator, _sent, directory) = fixture().await;
+	let work = coordinator.start_chief("chief", "Plan").await.unwrap();
+	let turn = work.active_turn_id.as_deref().unwrap();
+	let delta = |turn: &str, text: &str| ServerEvent::Notification {
+		method: "item/plan/delta".into(),
+		params: json!({"threadId":work.codex_thread_id,"turnId":turn,"itemId":"plan","delta":text}),
+	};
+	coordinator.handle_event(delta("wrong-turn", "Wrong")).await.unwrap();
+	assert!(coordinator.store.read_chief_output("chief".into()).await.unwrap().is_empty());
+	coordinator.handle_event(delta(turn, &"界".repeat(30000))).await.unwrap();
+	let partial = coordinator.store.read_chief_output("chief".into()).await.unwrap();
+	assert_eq!(partial[0].kind, "plan");
+	assert!(partial[0].truncated && partial[0].text.len() <= 65536);
+	coordinator.handle_event(ServerEvent::Notification {
+        method: "item/completed".into(),
+        params: json!({"threadId":work.codex_thread_id,"turnId":turn,"item":{"id":"plan","type":"plan","text":"Final plan"}}),
+    }).await.unwrap();
+	let thread = work.codex_thread_id.unwrap();
+	let turn = turn.to_owned();
+	drop(coordinator);
+	let paths =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap()
+			.paths();
+	let store = SqliteStore::open(&paths).unwrap();
+	store
+		.update_chief_output_record(decodex_database::ChiefOutputUpdate {
+			thread_id: thread.clone(),
+			turn_id: turn.clone(),
+			item_id: "plan".into(),
+			kind: "plan".into(),
+			text: "Late draft".into(),
+			completed: false,
+		})
+		.await
+		.unwrap();
+	assert!(
+		store
+			.update_chief_output(thread, turn, "plan".into(), "Wrong kind".into(), true)
+			.await
+			.is_err()
+	);
+	let saved = store.read_chief_output("chief".into()).await.unwrap();
+	assert_eq!(saved.len(), 1);
+	assert_eq!(saved[0].text, "Final plan");
+	assert_eq!(saved[0].kind, "plan");
+	assert!(!saved[0].truncated);
 }

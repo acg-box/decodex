@@ -1367,3 +1367,11 @@ post-restart stale-authority rejection checks. The existing direct-client test
 remains, as it covers repeat submission in the live process. See
 [the coverage mapping](native-continuation-recovery-coverage.md). Keep the shared
 native registry and signed desktop acceptance open.
+
+## Chief output recovery coverage restored on 2026-09-27
+
+Restore plan finality and kind assertions after database reopen, plus the removed
+output assertions in native revert handling. All 159 Chief tests pass, with 15
+existing opt-in cases ignored; strict runtime lint passes. See
+[the restored coverage](chief-output-recovery-coverage.md). Production code is
+unchanged. Refresh the source hash without closing the full tests.rs review.
