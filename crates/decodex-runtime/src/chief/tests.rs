@@ -19,12 +19,12 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/native_permissions.rs"] mod native_permissions;
 #[path = "tests/native_plan.rs"] mod native_plan;
 #[path = "tests/native_settings.rs"] mod native_settings;
-#[path = "tests/settings_observations.rs"] mod settings_observations;
 #[path = "tests/native_subagent_live.rs"] mod native_subagent_live;
 #[path = "tests/native_subagents.rs"] mod native_subagents;
 #[path = "tests/native_task_references.rs"] mod native_task_references;
 #[path = "tests/prompt_edit.rs"] mod prompt_edit;
 #[path = "tests/reasoning_summary.rs"] mod reasoning_summary;
+#[path = "tests/settings_observations.rs"] mod settings_observations;
 #[path = "tests/steer_receipts.rs"] mod steer_receipts;
 #[path = "tests/task_history.rs"] mod task_history;
 #[path = "tests/unsent_input.rs"] mod unsent_input;
@@ -580,7 +580,7 @@ async fn serve_fixture(
 					.get(id)
 					.cloned()
 					.unwrap_or_else(|| json!({"model":"selected-model","reasoningEffort":"high"}));
-				json!({"thread":{"id":id,"turns":history[id]["thread"]["turns"]},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
+				json!({"thread":{"id":id,"turns":if request["params"]["excludeTurns"] == true { json!([]) } else { history[id]["thread"]["turns"].clone() }},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
 			},
 			Some("thread/start") => {
 				threads += 1;
@@ -2970,8 +2970,11 @@ async fn skipped_question_survives_rebuild_only_while_native_content_is_unchange
 
 #[tokio::test]
 async fn unfinished_native_text_keeps_source_and_display_only_status_after_reopen() {
-	for final_readback in ["missing", "complete", "empty"] {
-		let items = if final_readback != "missing" {
+	for final_readback in ["missing", "complete", "empty", "complete_plan"] {
+		let items = if final_readback == "complete_plan" {
+			json!([{"id":"answer","type":"agentMessage","text":"Authoritative final answer"},
+				{"id":"plan","type":"plan","text":"Authoritative final plan"}])
+		} else if final_readback != "missing" {
 			json!([{"id":"answer","type":"agentMessage","text":if final_readback == "complete" { "Authoritative final answer" } else { "" }}])
 		} else {
 			json!([])
@@ -3004,7 +3007,14 @@ async fn unfinished_native_text_keeps_source_and_display_only_status_after_reope
 		let rendered = crate::application::render_chief_history_for_test(events);
 		let partial: Vec<_> =
 			rendered.iter().filter(|entry| entry.kind.starts_with("partial_")).collect();
-		assert_eq!(partial.len(), if final_readback == "complete" { 1 } else { 2 });
+		assert_eq!(
+			partial.len(),
+			match final_readback {
+				"complete_plan" => 0,
+				"complete" => 1,
+				_ => 2,
+			}
+		);
 		for entry in partial {
 			assert_eq!(entry.text, source);
 			assert_eq!(entry.turn_id.as_deref(), Some("opaque turn/1"));

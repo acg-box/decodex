@@ -301,23 +301,7 @@ impl ChiefCoordinator {
 					for entry in
 						exact_turn.and_then(|turn| turn["items"].as_array()).into_iter().flatten()
 					{
-						self.observe_steer_receipt(&thread, &turn, entry).await?;
-						self.observe_async_question_item(&thread, &turn, entry).await?;
-						if entry["type"] == "subAgentActivity"
-							&& let Some(activity) =
-								activity::project(&json!({"turnId":turn,"item":entry}), true)
-						{
-							self.store
-								.record_chief_activity(
-									thread.clone(),
-									turn.clone(),
-									activity.item_id.clone(),
-									true,
-									serde_json::to_string(&activity)
-										.expect("serializable activity"),
-								)
-								.await?;
-						}
+						self.observe_terminal_item(&thread, &turn, entry).await?;
 					}
 				}
 				let (messages, truncated) = result_messages::collect(exact_turn);
@@ -381,6 +365,40 @@ impl ChiefCoordinator {
 			)
 			.await?;
 		self.recover_async_questions().await?;
+		Ok(())
+	}
+
+	async fn observe_terminal_item(
+		&mut self,
+		thread: &str,
+		turn: &str,
+		entry: &Value,
+	) -> Result<(), ChiefError> {
+		if matches!(entry["type"].as_str(), Some("agentMessage" | "plan"))
+			&& entry["id"].as_str().is_some_and(|id| !id.is_empty())
+			&& entry["text"].as_str().is_some_and(|text| !text.is_empty())
+		{
+			self.observe_live_text(
+				"item/completed",
+				&json!({"threadId":thread,"turnId":turn,"item":entry}),
+			)
+			.await?;
+		}
+		self.observe_steer_receipt(thread, turn, entry).await?;
+		self.observe_async_question_item(thread, turn, entry).await?;
+		if entry["type"] == "subAgentActivity"
+			&& let Some(activity) = activity::project(&json!({"turnId":turn,"item":entry}), true)
+		{
+			self.store
+				.record_chief_activity(
+					thread.to_owned(),
+					turn.to_owned(),
+					activity.item_id.clone(),
+					true,
+					serde_json::to_string(&activity).expect("serializable activity"),
+				)
+				.await?;
+		}
 		Ok(())
 	}
 
@@ -457,15 +475,32 @@ impl ChiefCoordinator {
 		Ok(self.store.get_chief_work_item(id.into()).await?)
 	}
 
-	fn expect_usage_replay(&mut self, thread: &str, response: &Value) {
-		let turns = response
+	async fn expect_usage_replay(&mut self, thread: &str, response: &Value) -> Option<String> {
+		if response.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
+			return None;
+		}
+		let revision = self.client.history_revision();
+		let mut turns: Vec<String> = response
 			.pointer("/thread/turns")
 			.and_then(Value::as_array)
 			.into_iter()
 			.flatten()
 			.filter_map(|turn| turn["id"].as_str().map(str::to_owned))
 			.collect();
-		self.usage_replays.insert(thread.into(), turns);
+		// excludeTurns resumes omit the history used to identify the replayed counter.
+		// Read only the latest native turn; do not hydrate unbounded history or replay input.
+		if turns.is_empty()
+			&& let Ok(Some(turn)) = self.client.thread_latest_turn_id(thread).await
+		{
+			turns.push(turn);
+		}
+		if self.client.history_revision() != revision {
+			self.usage_replays.remove(thread);
+			return None;
+		}
+		let latest = turns.last().cloned();
+		self.usage_replays.insert(thread.into(), turns.into_iter().collect());
+		latest
 	}
 
 	fn thread_params(&self, chief: bool) -> Value {
