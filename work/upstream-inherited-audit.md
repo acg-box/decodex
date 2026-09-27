@@ -1330,3 +1330,12 @@ Map the complete shell diff to its current draft, settings, account and workspac
 owners in [the shell comparison](shell-owner-reconciliation.md). All 363 Shell
 tests pass with one existing opt-in case ignored; strict desktop lint passes.
 Close only shell.rs. No real login or signed desktop acceptance is claimed.
+
+## Remaining database owners reconciled on 2026-09-27
+
+Map eight remaining database paths to their current registry, question, summary,
+approval-payload and shared App/Hook owners. All 176 database library tests pass
+with none ignored. No production code, migration history or user database changes.
+See [the complete mapping and historical-schema limits](database-owner-reconciliation.md).
+Close these eight source rows only; signed desktop and remaining native acceptance
+are separate.
