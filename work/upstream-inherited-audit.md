@@ -121,6 +121,18 @@ and native-test parent modules have other differences and remain open. See
 [folder trust and native resume](folder-trust.md) for optional surface and acceptance
 limits. No trust mutation, UI entry point or automation enablement is added.
 
+## Flex evidence refreshed on 2026-09-26
+
+Restore the complete historical `work/service-tier-flex.md` with a current native
+qualification section. A fresh installed run disproved the old null-tier oracle.
+The corrected fixture checks explicit Fast-off configuration, empty-catalog Flex,
+actual outbound request values and cold continuation. The advertised per-turn case
+and all ordinary effort inheritance cases still pass.
+
+This closes the document disposition only. The original Flex fixture's separate
+model-recovery setter remains unresolved with its old adapter/service owner; that
+file row stays open. See [current Flex evidence](service-tier-flex.md).
+
 ## Four settings and review owners reconciled on 2026-09-26
 
 Verify the original SHA-256 and inspect every difference in these complete files.
