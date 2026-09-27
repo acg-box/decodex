@@ -23,6 +23,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/native_task_references.rs"] mod native_task_references;
 #[path = "tests/prompt_edit.rs"] mod prompt_edit;
 #[path = "tests/reasoning_summary.rs"] mod reasoning_summary;
+#[path = "tests/steer_receipts.rs"] mod steer_receipts;
 #[path = "tests/task_history.rs"] mod task_history;
 #[path = "tests/unsent_input.rs"] mod unsent_input;
 

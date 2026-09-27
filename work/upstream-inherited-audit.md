@@ -9,6 +9,19 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Lost steer reply regression restored on 2026-09-26
+
+Restore the complete inherited `chief/tests/steer_receipts.rs` file byte-for-byte
+and register it with the current runtime test owner. All three cases pass: live
+receipt, running-turn restart and terminal-turn restart. The fixture deliberately
+loses the steer reply, rejects an older client identity, tolerates duplicate exact
+receipts, reopens storage, retains one receipt and verifies no input replay or
+undelivered event remains. No production owner or schema changes.
+
+This restores the direct lost-reply regression alongside the existing closing-
+resume receipt fixture and installed-native qualification. Close only this one
+complete file row; the shared runtime test module and broader R08 scope stay open.
+
 ## Live model transport restored on 2026-09-26
 
 The current bridge rejected a valid exact-turn model request. The focused test
