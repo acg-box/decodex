@@ -1136,6 +1136,15 @@ tests and strict runtime lint pass. Close the two evidence files and the fully
 compared native reviewer test file; keep the shared ownership fixture and broader
 Guardian acceptance open. See [evidence and limits](native-guardian-evidence-qualification.md).
 
+## Desktop draft owners reconciled on 2026-09-27
+
+Map the complete draft document, recovery and desktop storage diffs, including
+ordinary inputs, canonical prompt editors and exact dispatch fences. Retain all
+inherited functions/tests and document the schema and capacity changes. The
+reviewed sources match the recent passing suites: 12 protocol and 39 desktop
+storage cases. See [the complete mapping](desktop-draft-reconciliation.md).
+Close these three source rows and one document row only; R07/R12 remain open.
+
 ## Native receipt capture restored on 2026-09-26
 
 Restore the optional native receipt test's real service-to-GPUI capture route.
