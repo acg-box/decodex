@@ -871,15 +871,14 @@ impl ChiefHost {
 	}
 
 	pub(crate) async fn capabilities(&self) -> decodex_protocol::ChiefCapabilitiesResult {
-		let Some((generation, client)) = self.runtime.chief_catalog_client() else {
-			return decodex_protocol::ChiefCapabilitiesResult::Unavailable;
-		};
-		let result = crate::chief_capabilities::read(&client).await;
-		if self.runtime.chief_catalog_client().is_some_and(|(current, _)| current == generation) {
-			result
-		} else {
-			decodex_protocol::ChiefCapabilitiesResult::Unavailable
-		}
+		crate::chief_capabilities::read_scoped(|| async {
+			let (generation, account, revision, client) = self.runtime.chief_usage_source().await?;
+			if !self.store.account_is_ready_at_revision(&account, revision).await.ok()? {
+				return None;
+			}
+			Some(((generation, account, revision), client))
+		})
+		.await
 	}
 
 	pub(crate) async fn submit(
