@@ -4,7 +4,10 @@ use std::{
 	collections::{HashMap, HashSet},
 	future::{self, Future},
 	pin::Pin,
-	sync::Arc,
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
 	time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -282,6 +285,7 @@ impl ProductState for ProductStore {
 
 /// Runtime-owned application service retaining the selected adapter and doctor report.
 pub(crate) struct ServiceApplication {
+	agent_publication_revision: AtomicU64,
 	agent: Option<crate::agent_host::AgentHost>,
 	store: ProductStore,
 	process_generations: Option<ProcessGenerationControl>,
@@ -614,6 +618,7 @@ impl ServiceApplication {
 			_ => None,
 		};
 		Self {
+			agent_publication_revision: AtomicU64::new(0),
 			agent,
 			store,
 			process_generations,
@@ -2216,13 +2221,7 @@ impl Application for ServiceApplication {
 					})?;
 				let work_id = EntityId::new(id)
 					.map_err(|_| application_unavailable("invalid Agent identity"))?;
-				Ok(ApplicationPublication {
-					channel: Channel::ProjectWork,
-					entity_id: work_id.clone(),
-					entity_revision: EntityRevision(0),
-					result: ResultPayload::AgentAccepted { work_id: work_id.clone() },
-					event: EventPayload::AgentChanged { work_id },
-				})
+				agent_command_publication(&self.agent_publication_revision, work_id)
 			},
 			CommandPayload::SetDesktopSettings { .. } =>
 				self.execute_desktop_settings(command).await,
@@ -5715,6 +5714,24 @@ fn desktop_settings_command_error(error: StoreError) -> CommandError {
 	}
 }
 
+// Agent notifications have no durable row revision. This counter belongs to the
+// service publication lifetime; reconnecting to another publication requires a snapshot.
+fn agent_command_publication(
+	revision: &AtomicU64,
+	work_id: EntityId,
+) -> Result<ApplicationPublication, CommandError> {
+	let previous = revision
+		.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1))
+		.map_err(|_| CommandError::AcceptanceUnknown)?;
+	Ok(ApplicationPublication {
+		channel: Channel::ProjectWork,
+		entity_id: work_id.clone(),
+		entity_revision: EntityRevision(previous + 1),
+		result: ResultPayload::AgentAccepted { work_id: work_id.clone() },
+		event: EventPayload::AgentChanged { work_id },
+	})
+}
+
 fn application_unavailable(message: &'static str) -> CommandError {
 	CommandError::ApplicationUnavailable {
 		message: WireText::new(message).expect("static application message is bounded"),
@@ -5864,6 +5881,21 @@ fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn repeated_agent_notifications_preserve_entity_revision_order() {
+		let revision = std::sync::atomic::AtomicU64::new(0);
+		let mut observed = std::collections::HashMap::new();
+		for work in ["first", "second", "first", "first"] {
+			let id = decodex_protocol::EntityId::new(work).unwrap();
+			let event = super::agent_command_publication(&revision, id.clone()).unwrap();
+			assert_eq!(event.entity_id, id);
+			assert_eq!(event.event, decodex_protocol::EventPayload::AgentChanged { work_id: id });
+			if let Some(previous) = observed.insert(work, event.entity_revision) {
+				assert!(event.entity_revision > previous, "same-entity publication must advance");
+			}
+		}
+	}
+
 	#[test]
 	fn async_reply_history_is_readable_without_interpreting_partial_envelopes() {
 		let question = decodex_protocol::AgentAsyncQuestionDto {

@@ -1869,7 +1869,7 @@ impl AgentClient {
 					) {
 						(
 							CommandOutcome::Succeeded,
-							Some(EntityRevision(0)),
+							Some(_),
 							Some(ResultPayload::AgentAccepted { work_id }),
 							None,
 						) if &work_id == agent_action_work_id(&action) => AgentCommandResponse::Accepted { work_id },
@@ -3716,6 +3716,8 @@ mod tests {
 	}
 
 	async fn agent_command_exchange(mode: &'static str) -> crate::AgentCommandResponse {
+		let revision = (!matches!(mode, "rejected" | "unknown" | "missing-revision"))
+			.then_some(EntityRevision(if mode == "accepted-revision" { 42 } else { 0 }));
 		let (temp, authority) = local_transport();
 		let mut listener = authority.bind().await.expect("Agent protocol fixture succeeds");
 		let profile = ClientProfile::fixture(
@@ -3784,11 +3786,7 @@ mod tests {
 						} else {
 							CommandOutcome::Succeeded
 						},
-						entity_revision: if matches!(mode, "rejected" | "unknown") {
-							None
-						} else {
-							Some(EntityRevision(0))
-						},
+						entity_revision: revision,
 						payload: if matches!(mode, "rejected" | "unknown") {
 							None
 						} else {
@@ -3849,7 +3847,18 @@ mod tests {
 		assert!(
 			matches!(agent_command_exchange("accepted").await, crate::AgentCommandResponse::Accepted { work_id } if work_id.as_str() == "personal")
 		);
-		for mode in ["wrong-work", "wrong-key", "wrong-server", "missing-receipt", "dropped"] {
+		assert!(matches!(
+			agent_command_exchange("accepted-revision").await,
+			crate::AgentCommandResponse::Accepted { .. }
+		));
+		for mode in [
+			"wrong-work",
+			"wrong-key",
+			"wrong-server",
+			"missing-receipt",
+			"missing-revision",
+			"dropped",
+		] {
 			assert!(
 				matches!(
 					agent_command_exchange(mode).await,
@@ -4821,7 +4830,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 96 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 97 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
