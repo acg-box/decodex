@@ -25,7 +25,7 @@ The regression test publishes repeated notifications for the same work with an
 intervening notification for another work. It verifies stable work identity and
 strictly increasing revisions for each repeated entity. The previous zero-revision
 behavior fails this test; the corrected behavior passes. Signed desktop
-verification of the original first-click symptom remains required.
+verification of the original first-click symptom is recorded below.
 
 Diagnostic evidence: /Users/x/.decodex-active-gui-cpybb08l/desktop.log.
 The temporary lifecycle logging was restored and is not part of this change.
@@ -36,3 +36,22 @@ protocol_malformed. Keep the receipt, server, command, key and work checks, and
 continue to reject a missing revision. The protocol fixture fails on a positive
 revision before this correction. Protocol 2.97 prevents old strict-zero clients
 from silently accepting a session whose command results they cannot decode.
+
+## Signed desktop verification
+
+Build cc0895c3a440a544d6c414028456abd0b469cc77 with dirty=false using the
+repository stage script. Bundle contracts and deep strict signatures pass.
+The app-owned fixture /Users/x/.decodex-active-gui-mstskkkr starts a native turn,
+completes its initial answer and retains the exact native thread
+01a0e38e-72a9-7c72-bb05-164fd11d5b5b. Open Task recap and select Generate recap
+exactly once. The panel progresses through Cancel recap to the full summary:
+The requested fix was tested; installation is still pending.
+No reconnect banner or panel reset appears in the observations. Provider requests
+increase from one to two; the second is the structured recap. The observed
+service child remains PID 6071. Normal menu Quit exits 0, with two total requests.
+See first-click-acceptance.json and provider-observations.json in that fixture.
+This is local signed acceptance, not installation, notarization or release.
+
+The final protocol suite passes all 168 tests. Strict runtime and protocol Clippy
+passes with all features and targets. Broader draft, background and media
+acceptance remains separate; maintenance automation stays paused.
