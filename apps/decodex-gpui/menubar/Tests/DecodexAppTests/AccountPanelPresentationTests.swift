@@ -602,7 +602,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 			source.distance(from: source.startIndex, to: valueRange.lowerBound)
 		)
 		XCTAssertFalse(source.contains("valueColumnWidth"))
-		XCTAssertFalse(source.contains("resetDateColumnWidth"))
+		XCTAssertFalse(source.contains("dateColumnWidth"))
 	}
 
 	func testResetCardChipAndAccessibilityExposeExpiryOnly() {
