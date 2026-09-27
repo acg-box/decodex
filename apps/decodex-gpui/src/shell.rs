@@ -5591,6 +5591,7 @@ fn composer_recover(
 ) -> AnyElement {
 	div()
 		.id("conversation-recover")
+		.debug_selector(|| "conversation-recover".into())
 		.role(Role::Button)
 		.aria_label(recovery_label)
 		.h(px(23.0))
@@ -7086,6 +7087,107 @@ mod tests {
 			});
 		}
 	}
+	#[gpui::test]
+	fn model_review_clicks_preserve_later_composer_draft(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		let (conversations, server_id, review) =
+			crate::conversations::tests::model_review_fixture();
+		shell.update(visual, |s, cx| {
+			s.select_destination(Destination::Conversations, cx);
+			s.conversations = conversations.clone();
+			s.ordinary_syncing = true; // Controller-only fixture; shared writer tests use a real store.
+			s.synchronize_conversations(cx);
+			s.composer.update(cx, |composer, cx| composer.set_content("Later unsent draft", cx));
+		});
+		visual.update(|window, cx| {
+			window.resize(size(px(1440.), px(1000.)));
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("model-review-original-input").is_none());
+		let bounds = visual.debug_bounds("conversation-recover").expect("review button");
+		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+		let dispatch =
+			crate::conversations::tests::take_fixture_dispatch(&conversations, &server_id)
+				.expect("review query");
+		let query = dispatch.query().expect("click only queries");
+		assert!(matches!(
+			query.payload,
+			decodex_protocol::QueryPayload::GetConversationModelReview { .. }
+		));
+		conversations.route_query_result(
+			1,
+			&server_id,
+			&decodex_protocol::QueryResultEnvelope {
+				version: decodex_protocol::CURRENT_VERSION,
+				server_id: server_id.clone(),
+				query_id: query.query_id.clone(),
+				payload: decodex_protocol::QueryResultPayload::ConversationModelReview(
+					decodex_protocol::ConversationModelReviewResult::Available(Box::new(
+						review.clone(),
+					)),
+				),
+			},
+		);
+		assert!(
+			crate::conversations::tests::take_fixture_dispatch(&conversations, &server_id)
+				.is_none(),
+			"discovery cannot start"
+		);
+		shell.update(visual, |s, cx| {
+			s.synchronize_conversations(cx);
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(
+			visual.debug_bounds("model-review-original-input").is_some(),
+			"saved request is rendered"
+		);
+		let tier = visual.debug_bounds("conversation-tier-ultrafast").expect("advertised tier");
+		visual.simulate_click(tier.center(), gpui::Modifiers::default());
+		let bounds = visual.debug_bounds("conversation-recover").expect("confirmation button");
+		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+		let dispatch =
+			crate::conversations::tests::take_fixture_dispatch(&conversations, &server_id)
+				.expect("explicit confirmation");
+		let command = dispatch.command().expect("confirmation command").clone();
+		assert!(
+			matches!(&command.payload, decodex_protocol::CommandPayload::ReviewConversationModelSettings {
+            conversation_id, execution, ..
+        } if conversation_id.as_str() == review.conversation_id.as_str() && execution.effective_service_tier().as_str() == "ultrafast")
+		);
+		conversations.command_sent(&dispatch);
+		let mut accepted = conversations.snapshot().selected_task().expect("task").clone();
+		accepted.state = ConversationState::RoutingPending;
+		accepted.conversation_revision = decodex_protocol::EntityRevision(2);
+		accepted.recovery_action = Some(ConversationRecoveryAction::ResumeRouting);
+		conversations.route_command_result(
+			1,
+			&server_id,
+			&decodex_protocol::CommandResultEnvelope {
+				version: decodex_protocol::CURRENT_VERSION,
+				server_id: server_id.clone(),
+				client_command_id: command.client_command_id,
+				idempotency_key: command.idempotency_key,
+				outcome: decodex_protocol::CommandOutcome::Succeeded,
+				entity_revision: Some(accepted.conversation_revision),
+				payload: Some(decodex_protocol::ResultPayload::ConversationAccepted {
+					conversation: accepted,
+				}),
+				error: None,
+			},
+		);
+		shell.update(visual, |s, cx| {
+			s.synchronize_conversations(cx);
+			s.reconcile_pending_submission(cx);
+			cx.notify();
+		});
+		shell.read_with(visual, |s, cx| {
+			assert_eq!(s.composer.read(cx).content(), "Later unsent draft");
+			assert!(s.pending_submission.is_none());
+			assert_eq!(s.quick.submission_result_generation, 0);
+		});
+	}
+
 	#[gpui::test]
 	fn native_settings_inspector_preserves_draft_and_next_message_settings(
 		cx: &mut TestAppContext,
