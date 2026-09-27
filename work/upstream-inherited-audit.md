@@ -69,6 +69,15 @@ test row to formatting equivalence. Shared surface and output-stream review,
 broader history acceptance and signed desktop acceptance remain open.
 
 
+## Shared Chief service host reconciled on 2026-09-27
+
+Map the complete host diff, including moved action handlers, settings and native
+observation routes, actor scheduling, request identity and recovery outcomes.
+Record the read-only archive and file-approval constraint differences explicitly.
+Twenty-two focused host/detail/projection tests pass, with none ignored. See
+[the complete host mapping](chief-host-reconciliation.md). Close only chief_host.rs;
+no production code changes or broader installed/desktop acceptance are claimed.
+
 ## Native observation file reconciled on 2026-09-27
 
 Map the complete observation diff: exact historical steering receipts, revoked
