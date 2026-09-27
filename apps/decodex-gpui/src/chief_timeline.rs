@@ -239,6 +239,16 @@ impl ChiefSurface {
 		self.load_native_timeline(work, thread, false, cx);
 	}
 
+	fn refresh_native_summary(&mut self, binding: Binding, items: Vec<Content>) {
+		let jump = self.native_history.viewport.take_latest_request();
+		let work = binding.work.clone();
+		self.cancel_native_scroll_anchor();
+		self.native_history.accept_summary(binding, items);
+		if jump {
+			self.transcript_scroll.entry(work).or_default().scroll_to_bottom();
+		}
+	}
+
 	fn refresh_native_history(&mut self, binding: Binding, page: ChiefTimelinePage) -> bool {
 		let jump = self.native_history.viewport.take_latest_request();
 		let work = binding.work.clone();
@@ -320,8 +330,7 @@ impl ChiefSurface {
 					&& work_id.as_str() == work
 					&& thread_id == &thread
 				{
-					s.cancel_native_scroll_anchor();
-					s.native_history.accept_summary(
+					s.refresh_native_summary(
 						Binding {
 							work: work.clone(),
 							thread: thread.clone(),

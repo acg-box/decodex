@@ -206,6 +206,79 @@ fn receipt_label(entry: &ChiefHistoryEntryDto) -> Option<&'static str> {
 mod tests {
 	use super::*;
 	#[gpui::test]
+	fn unfinished_output_is_visible_in_saved_and_native_views(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			let Some((_, ChiefHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture history")
+			};
+			entries.clear();
+			for (id, kind) in [(91, "partial_answer"), (92, "partial_plan")] {
+				entries.push(ChiefHistoryEntryDto {
+					native_source: None,
+					turn_id: None,
+					weather: Vec::new(),
+					id,
+					kind: kind.into(),
+					text: "Unfinished source\n\n$$\n\\frac{a+b}{c}".into(),
+					created_at_micros: 1,
+					receipt: None,
+					activity: None,
+					usage: None,
+					duration_ms: None,
+				});
+			}
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		for copy_id in ["copy-partial-91", "copy-partial-92"] {
+			let copy = visual.debug_bounds(copy_id).expect("visible unfinished output");
+			visual.simulate_click(copy.center(), Default::default());
+			visual.update(|_, cx| {
+				assert_eq!(
+					cx.read_from_clipboard().and_then(|item| item.text()).as_deref(),
+					Some("Unfinished source\n\n$$\n\\frac{a+b}{c}")
+				);
+			});
+		}
+		surface.update(visual, |s, cx| {
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| Some(&w.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("native-thread".into());
+			s.native_history.binding = Some(super::super::Binding {
+				work: work.id.clone(),
+				thread: "native-thread".into(),
+				account: "account".into(),
+			});
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		for copy_id in ["copy-partial-91", "copy-partial-92"] {
+			let copy = visual.debug_bounds(copy_id).expect("visible unfinished output");
+			visual.simulate_click(copy.center(), Default::default());
+			visual.update(|_, cx| {
+				assert_eq!(
+					cx.read_from_clipboard().and_then(|item| item.text()).as_deref(),
+					Some("Unfinished source\n\n$$\n\\frac{a+b}{c}")
+				);
+			});
+		}
+	}
+
+	#[gpui::test]
 	fn recorded_checklist_renders_in_saved_and_native_views(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
 		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));

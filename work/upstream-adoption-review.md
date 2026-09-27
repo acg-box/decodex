@@ -21,6 +21,15 @@ means a product behavior or control that the user can assess for removal. Mixed
 rows need a finer split before removal. These labels are review classifications,
 not instructions to delete code or weaken native enforcement.
 
+## History presentation correctness
+
+Restore the requested latest scroll after summary recovery and preserve
+copyable unfinished output in saved and native views. These are correctness
+requirements for the existing consumers. Summary and saved-record presentation
+remain optional product choices; removal must preserve readable evidence.
+See [the source mapping and tests](history-presentation-reconciliation.md).
+Signed desktop acceptance remains open.
+
 ## Installed-native child input limit
 
 The restored child approval and service-tier qualification passes. The explicit

@@ -9,6 +9,16 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## History presentation reconciled on 2026-09-27
+
+Restore the summary latest-scroll request and the inherited unfinished-output
+regression in both saved and native views. The before-fix rendered test fails;
+all 38 timeline tests and strict GPUI lint pass after restoration. Map both
+complete files to their current owners in
+[history presentation reconciliation](history-presentation-reconciliation.md).
+Close only these two rows. Shared renderer, workspace and desktop acceptance
+remain open.
+
 ## Exact model input restored on 2026-09-27
 
 Restore the inherited explicit model-ID action in the existing task model menu.
