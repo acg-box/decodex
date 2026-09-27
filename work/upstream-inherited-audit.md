@@ -734,6 +734,15 @@ configuration, package or product control changes. The native owner remains
 responsible for enforcement; broader R10 and signed desktop acceptance stay open.
 See [the current evidence and scope](filesystem-policy-cwd.md).
 
+## Native capacity recovery qualified on 2026-09-26
+
+Restore the complete inherited capacity fixture with its original assertions.
+The current installed native bridge preserves the selected model and effort
+through overload recovery and restart. Native throttling and three quota errors
+never schedule local capacity retries. Keep the current durable owner and one
+shared synthetic Responses server. Close the fixture and its restored review
+only. See [current evidence and historical context](capacity-retry-classification.md).
+
 ## Process adapter owners reconciled on 2026-09-26
 
 Review all 856 lines of the preserved process-file diff. Restore the missing
