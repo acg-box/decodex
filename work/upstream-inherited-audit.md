@@ -904,6 +904,15 @@ The register still has 360 rows. `requires-content-review` decreases from 227 to
 included in these four closures while that PR awaits merge. These are source
 reconciliation decisions, not new feature adoption or an overall completion rate.
 
+## Shared wire and Chief contracts reconciled on 2026-09-27
+
+Restore the inherited initial-model source coordinate regression and the older
+same-generation protocol refusal case. Map the complete wire/Chief DTO changes,
+including renamed permission/model/goal contracts and exact-current compatibility
+limits. All 166 protocol tests and strict lint pass. See
+[the complete two-file mapping](shared-wire-contract-reconciliation.md). Close
+these two rows only; shared runtime and signed acceptance remain open.
+
 ## Context and fixture dispositions on 2026-09-26
 
 Four more rows were compared in full. Their current content matches the audited
