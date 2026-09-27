@@ -9,6 +9,26 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Separate review counts on 2026-09-27
+
+At main `c4c25cc2d976357c543768652aca8968e026f8bd`, the register has
+360 rows. Two different columns describe different review boundaries:
+
+| Exact field and value | Rows | Meaning |
+| --- | ---: | --- |
+| reconciliation = review-required | 67 | Complete file comparison remains recorded as open |
+| recorded_disposition = requires-content-review | 46 | Earlier delivery disposition still requires content review |
+| Both values above | 39 | The two open sets overlap |
+| Either value above | 74 | Union, including seven partial dispositions outside the first set |
+
+The earlier continuation's 46 counted the second field. Calling that count
+incorrect because the first field has 67 was itself incorrect. Do not mix these
+measures or infer that an adapted/historical-successor disposition closes a full
+file comparison. This batch resolves two rows present in both sets. Other PRs
+change main only after merge. Read the exact fields at the actual main revision;
+older dated counts below are historical. Neither measure proves feature or
+native/desktop acceptance.
+
 ## Live settings socket fixture reconciled on 2026-09-27
 
 Restore the inherited selected-model/effort receipt assertion and model-mode
@@ -18,6 +38,14 @@ six task-model tests pass, as does strict GPUI Clippy. See
 [the complete fixture mapping](live-model-control.md#inherited-socket-fixture-reconciliation).
 Close only this test-file row. No production behavior changes; shared source
 review and signed desktop acceptance remain open.
+
+## Usage research scope reconciled on 2026-09-27
+
+Map the complete inherited task-estimate note to its delivered runtime and panel
+owners. Preserve the complete Analytics research with an explicit optional,
+unimplemented status. The delivered profile correction is not a dashboard. See
+[the scope mapping](usage-scope-reconciliation.md). Close only these two document
+rows; retain the user's optional-feature decision and final acceptance gaps.
 
 ## Native message renderer reconciled on 2026-09-27
 

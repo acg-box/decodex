@@ -202,7 +202,10 @@ are recorded in the feature note.
 
 [Account peak correction](account-profile-peak.md) preserves missing versus reported
 profile statistics after this baseline. This fixes the existing profile; it does
-not deliver full Analytics reports or Top chats.
+not deliver full Analytics reports or Top chats. Full Analytics is an
+optional, unimplemented proposal for the user's decision, not a delivered feature
+or a new core implementation backlog. The complete inherited research and current
+owner mapping are retained in [usage scope reconciliation](usage-scope-reconciliation.md).
 
 [Dependency repair](dependency-security-repair.md) resolves three inherited RustSec
 findings in [PR1499](https://github.com/acg-box/decodex/pull/1499). It also restores
