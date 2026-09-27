@@ -18,6 +18,7 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<ChiefActivityDt
 			_ => "Running command",
 		},
 		"fileChange" => "Editing files",
+		"mcpToolCall" if completed && authentication_required(item) => "Sign-in required",
 		"mcpToolCall" | "dynamicToolCall" => "Using tool",
 		"webSearch" => match item.pointer("/action/type").and_then(Value::as_str) {
 			Some("openPage") => "Opening web page",
@@ -94,6 +95,18 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<ChiefActivityDt
 	})
 }
 
+fn authentication_required(item: &Value) -> bool {
+	if item["status"] != "failed" {
+		return false;
+	}
+	// Native MCP uses a string for local expiry and an array for HTTP challenges.
+	// Only project the reconnect signal, never challenge URLs or transport details.
+	let valid = |value: &Value| value.as_str().is_some_and(|text| !text.trim().is_empty());
+	let challenge = &item["result"]["_meta"]["mcp/www_authenticate"];
+	valid(challenge)
+		|| challenge.as_array().is_some_and(|values| !values.is_empty() && values.iter().all(valid))
+}
+
 // Upstream 71406edb: search exit 1 can mean no matches. Keep the code visible
 // without classifying the whole command as a failure or claiming search success.
 fn search_exit_without_failure(item: &Value) -> bool {
@@ -107,7 +120,46 @@ fn search_exit_without_failure(item: &Value) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::project;
+	#[test]
+	fn web_action_labels_do_not_expose_raw_parameters() {
+		for (kind, label) in [
+			("search", "Searching the web"),
+			("openPage", "Opening web page"),
+			("findInPage", "Finding text on page"),
+			("other", "Searching the web"),
+		] {
+			let params = serde_json::json!({"turnId":"t","item":{"id":"i","type":"webSearch","action":{"type":kind,"url":"private","pattern":"private"}}});
+			let activity = project(&params, true).unwrap();
+			assert_eq!(activity.label, label);
+			assert!(activity.detail.is_empty());
+			assert_eq!(activity.status, "completed");
+		}
+	}
 	use serde_json::json;
+	#[test]
+	fn mcp_authentication_challenge_is_visible_without_exposing_metadata() {
+		let mut value = json!({"turnId":"turn","item":{"id":"item","type":"mcpToolCall",
+			"server":"docs","tool":"search","status":"failed","result":{"content":[],
+			"_meta":{"mcp/www_authenticate":"Bearer PRIVATE"}}}});
+		for challenge in [json!("Bearer PRIVATE"), json!(["Basic PRIVATE", "Bearer PRIVATE"])] {
+			value["item"]["result"]["_meta"]["mcp/www_authenticate"] = challenge;
+			let activity = project(&value, true).expect("activity");
+			assert_eq!(activity.label, "Sign-in required");
+			assert_eq!(activity.status, "failed");
+			assert_eq!(activity.detail, "docs · search");
+			assert!(!serde_json::to_string(&activity).expect("json").contains("PRIVATE"));
+			assert_eq!(project(&value, false).expect("started").label, "Using tool");
+		}
+		value["item"]["status"] = json!("completed");
+		assert_eq!(project(&value, true).expect("success").label, "Using tool");
+		value["item"]["status"] = json!("failed");
+		for challenge in [json!(null), json!(" "), json!([]), json!([1]), json!({"url":"PRIVATE"})]
+		{
+			value["item"]["result"]["_meta"]["mcp/www_authenticate"] = challenge;
+			assert_eq!(project(&value, true).expect("other failure").label, "Using tool");
+		}
+	}
+
 	#[test]
 	fn subagent_projection_rejects_unknown_or_malformed_identity() {
 		let good = json!({"turnId":"turn","item":{"id":"item","type":"subAgentActivity","kind":"started","agentThreadId":"child","agentPath":"/root/worker"}});

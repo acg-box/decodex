@@ -467,6 +467,21 @@ mod tests {
 	}
 
 	#[test]
+	fn mcp_authentication_challenge_survives_history_projection_without_raw_metadata() {
+		let page = json!({"data":[{"type":"item","position":1,"turnId":"turn","item":{
+			"type":"mcpToolCall","id":"call","server":"docs","tool":"search","status":"failed",
+			"result":{"content":[{"type":"text","text":"Authentication required"}],
+			"_meta":{"mcp/www_authenticate":["Bearer PRIVATE"]}}}}],"nextCursor":null,
+			"activeRealtimeSessionAtPageStart":null});
+		let projected = project("thread", &page).expect("history");
+		let Content::Item { activity: Some(activity), .. } = &projected.entries[0].content else {
+			panic!("missing tool activity");
+		};
+		assert_eq!(activity.label, "Sign-in required");
+		assert_eq!(activity.status, "failed");
+		assert!(!serde_json::to_string(&projected).expect("json").contains("PRIVATE"));
+	}
+	#[test]
 	fn proposed_plan_history_preserves_authoritative_text_and_bounds() {
 		let mut row = json!({"type":"item","position":4,"turnId":"turn","item":{"type":"plan","id":"plan-item","text":"## Final plan\n1. Verify the source\n2. Apply the change"}});
 		assert!(

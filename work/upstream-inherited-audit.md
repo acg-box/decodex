@@ -131,6 +131,15 @@ remaining whole-file rows and correct the adapter's earlier incomplete rationale
 assessment. Shared modules and signed desktop acceptance remain open. See
 [Guardian detail pages](guardian-detail-pages.md).
 
+## Activity and history owners reconciled on 2026-09-27
+
+Restore the inherited MCP authentication label in live activity and history
+without exposing raw challenges. Both restored regressions fail before the fix.
+Retain current search-exit handling, summary fallback, App UI metadata and
+message-position scroll anchors. See [the complete three-file mapping](activity-timeline-reconciliation.md).
+Close only runtime activity, runtime timeline and desktop activity rows. Larger
+rendering/workspace files, live OAuth and signed desktop acceptance stay open.
+
 ## Realtime history and voice tails qualified on 2026-09-26
 
 Restore the complete native realtime timeline fixture and four coordinator
