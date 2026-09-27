@@ -70,21 +70,25 @@ impl AgentSurface {
 		turn: &str,
 		item: &str,
 	) -> Option<&decodex_protocol::AgentLiveMessageDto> {
+		let (_, super::AgentHistoryResult::Available { live, .. }) =
+			self.history.as_ref().filter(|(id, _)| id == &work.id)?
+		else {
+			return None;
+		};
+		let message = self
+			.streamed_output(work)
+			.unwrap_or(live.as_slice())
+			.iter()
+			.find(|message| message.turn_id == turn && message.item_id == item)?;
+		// Historical rows have no live draft. Do not scan the entire timeline
+		// for every such row on every scroll frame.
 		if self.native_history.entries.iter().any(|entry| {
 			matches!(&entry.content,
 			Content::TurnBoundary { turn_id, completed: true, .. } if turn_id == turn)
 		}) {
 			return None;
 		}
-		let (_, super::AgentHistoryResult::Available { live, .. }) =
-			self.history.as_ref().filter(|(id, _)| id == &work.id)?
-		else {
-			return None;
-		};
-		self.streamed_output(work)
-			.unwrap_or(live.as_slice())
-			.iter()
-			.find(|message| message.turn_id == turn && message.item_id == item)
+		Some(message)
 	}
 
 	fn native_message_entry(

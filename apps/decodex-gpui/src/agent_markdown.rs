@@ -2,7 +2,14 @@
 use super::*;
 use gpui::{AnyElement, FontStyle, HighlightStyle};
 use pulldown_cmark::{Event, Options, Parser, Tag};
-use std::ops::Range;
+use std::{
+	cell::{OnceCell, RefCell},
+	collections::HashMap,
+	ops::Range,
+	rc::Rc,
+};
+
+#[path = "agent_markdown_cache.rs"] mod cache;
 
 #[path = "agent_clipboard.rs"] mod clipboard;
 #[path = "agent_math/mod.rs"] mod math;
@@ -454,6 +461,10 @@ fn render_item(nodes: &[Node], key: &str) -> Vec<AnyElement> {
 }
 
 pub(super) fn plain_text(text: &str) -> String {
+	cache::document(text).plain.get_or_init(|| parse_plain_text(text)).clone()
+}
+
+fn parse_plain_text(text: &str) -> String {
 	Parser::new_ext(text, Options::ENABLE_TABLES)
 		.filter_map(|event| match event {
 			Event::Text(text) | Event::Code(text) => Some(text.into_string()),
@@ -513,6 +524,7 @@ pub(super) fn response_text(text: &str) -> String {
 }
 
 pub(super) fn render(text: &str, key: &str) -> AnyElement {
+	let document = cache::document(text);
 	div()
 		.flex()
 		.flex_col()
@@ -520,7 +532,9 @@ pub(super) fn render(text: &str, key: &str) -> AnyElement {
 		.text_size(px(ui_theme::BODY_SIZE))
 		.line_height(px(ui_theme::BODY_LINE_HEIGHT))
 		.children(
-			parse(text)
+			document
+				.nodes
+				.get_or_init(|| parse(text))
 				.iter()
 				.enumerate()
 				.map(|(i, node)| render_node(node, &format!("{key}-{i}"))),
