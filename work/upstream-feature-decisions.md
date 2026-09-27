@@ -15,7 +15,8 @@ and normal exit. See the [revision fix and evidence](agent-publication-revisions
 The [earlier signed record](signed-desktop-a15fe830-acceptance.md) remains specific
 to a15fe830. The [signed draft acceptance](signed-draft-acceptance.md) verifies ordinary
 Agent composer restart and shared-store conflict, cancelled Quit and export.
-The other listed interaction limits remain open. Implemented does not mean fully accepted, installed or released.
+It also records response delivery after Hide and recap display on return, separately
+from automatic eligibility. The other listed interaction limits remain open. Implemented does not mean fully accepted, installed or released.
 No removal is authorized here.
 
 ## Core compatibility to retain

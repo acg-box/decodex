@@ -1,4 +1,4 @@
-# Signed desktop draft acceptance
+# Signed desktop draft and recap-return acceptance
 
 ## Artifact and scope
 
@@ -64,10 +64,30 @@ This case verifies shared draft-storage conflict handling through the history-ed
 consumer. It does not claim a second ordinary-composer interaction result. No
 history edit was confirmed and no input was submitted.
 
+## Recap response after Hide and result on return
+
+Fixture: `/Users/x/.decodex-active-gui-ztcuu0ad`.
+Native thread: `01a0e3c1-0fd2-7932-aede-a50ded36bec3`.
+Evidence: `recap-held.json`, `hidden-release.json`,
+`background-display-acceptance.json` and `background-return.png` in that directory.
+
+Request one manual recap from the signed desktop. The synthetic provider holds
+its response and records the second request. Select Hide Decodex, then release
+the held response. Return to the application and select its main window through
+the Window menu. The expected summary is visible. Keyboard Quit returns exit 0,
+and the request count remains two: the original fixture turn and the one recap.
+
+The first return observation still displayed Cancel recap. Thus this case proves
+response delivery after the Hide action and eventual display on return; it does
+not prove that processing completed entirely before the first return observation.
+It does not test automatic eligibility or the 30-minute timer. The older a15fe830
+record separately observed the real 1,817-second automatic trigger and service
+result. These two cases must not be presented as one complete automatic test.
+
 ## Remaining acceptance
 
 Basic ordinary composer restart, shared-store conflict cancellation, keep-both
 recovery, explicit export and keyboard Quit now have signed interaction evidence.
-Dock reopening, background recap presentation, physical voice/media and the native
+Dock reopening, combined automatic recap interaction, physical voice/media and the native
 limitations in the adoption inventory remain separate. Broader recovery scenarios
 must retain their own evidence boundaries. Automations remain paused.
