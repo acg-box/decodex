@@ -69,4 +69,32 @@ Full feature, non-Unix, native binary and signed desktop acceptance remain separ
 Fresh validation: 88 core and 164 protocol tests pass, plus the 17-case native-goal
 service test. Logs: `/tmp/decodex-root-module-contracts.log` and
 `/tmp/decodex-root-native-goal.log`. The original snapshot hashes of all three
-root files match. Only these root-file reconciliation rows close.
+root files match. These root-file reconciliation rows close. The separate conversation DTO mapping
+below closes one additional row; broader wire/client/service rows remain open.
+
+## Ordinary conversation DTO
+
+The complete `crates/decodex-protocol/src/conversation.rs` diff was also read.
+Existing model, reasoning, path and thread-identity validation remains. The
+provider-thread tests move unchanged; comment wording and match-arm order do not
+change those contracts. The substantive differences are:
+
+- Reasoning effort becomes optional so absent/null inherits native state. The
+  existing explicit constructor wraps its argument in `Some`. Literal `none`
+  and provider-defined effort strings remain explicit values. The dedicated
+  inherited-execution test covers these distinctions.
+- `ConversationResult::Archived` reports current local archive state and revision.
+  It is explicitly not a receipt for a particular client command. The existing
+  routing-successor result remains separate.
+- Model settings readback distinguishes native provider/model/effort observations
+  from the same live session's requested tier. A cold read cannot invent that
+  requested tier. `Unavailable` remains distinct from inherited/unset values.
+- Explicit execution-override flags remain separate from saved legacy execution.
+  The wire regression preserves original legacy bytes and separately round-trips
+  modern intent, with distinct command identities.
+- The canonical UUID helper changes from parent visibility to crate visibility
+  for current protocol consumers. The validation body remains unchanged.
+
+All of this DTO source was covered by the same fresh 164-test protocol run.
+This mapping does not qualify ordinary desktop navigation, live native recovery
+or archive command acknowledgement. Those owners keep separate acceptance work.

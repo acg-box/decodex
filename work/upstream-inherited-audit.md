@@ -73,7 +73,9 @@ Record exact-version admission, goal shape/presentation changes and the removed
 Unix annotations without claiming cross-platform equivalence. The fixed upstream
 goal schema matches the current six statuses and counter types. Fresh validation
 passes 88 core tests, 164 protocol tests and the 17-case goal service test. See
-[the complete mapping](root-module-reconciliation.md). Close these three root rows;
+[the complete mapping](root-module-reconciliation.md). Also map the complete
+ordinary conversation DTO: nullable effort, archive state, native model readback
+and explicit override intent retain their distinct meanings. Close these four rows;
 shared client/wire/service files and full feature acceptance remain separate.
 
 ## Task model panel reconciled on 2026-09-27
