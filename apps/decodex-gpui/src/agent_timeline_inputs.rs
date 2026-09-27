@@ -190,6 +190,7 @@ mod tests {
 					thread_id: "thread".into(),
 					entries: vec![],
 					next_cursor: None,
+					weather: Default::default(),
 					active_realtime_session_at_page_start: None
 				}
 			));

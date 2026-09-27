@@ -392,6 +392,7 @@ pub(super) struct Timeline {
 	pub epoch: u64,
 	pub binding: Option<Binding>,
 	pub entries: Vec<AgentTimelineEntry>,
+	pub weather: std::collections::BTreeMap<String, Vec<decodex_protocol::WeatherForecast>>,
 	summary: Vec<Content>,
 	pub older_cursor: Option<String>,
 	pub opening_session: Option<String>,
@@ -472,6 +473,7 @@ impl Timeline {
 		self.viewport = Default::default();
 		self.binding = None;
 		self.entries.clear();
+		self.weather.clear();
 		self.summary.clear();
 		self.older_cursor = None;
 		self.opening_session = None;
@@ -496,6 +498,7 @@ impl Timeline {
 			&& page.entries.len() >= self.entries.len() - start
 			&& bounded(self.entries[..start].iter().chain(&page.entries))
 		{
+			self.weather.extend(page.weather);
 			self.entries.splice(start.., page.entries);
 			return true;
 		}
@@ -518,6 +521,7 @@ impl Timeline {
 			self.app_ui.clear();
 		}
 		self.binding = Some(binding);
+		self.weather = page.weather;
 		self.entries = page.entries;
 		self.older_cursor = page.next_cursor;
 		self.opening_session = page.active_realtime_session_at_page_start;
@@ -561,6 +565,7 @@ impl Timeline {
 		if !page.entries.is_empty() {
 			self.opening_session = page.active_realtime_session_at_page_start;
 		}
+		self.weather.extend(page.weather);
 		self.entries.splice(0..0, page.entries);
 		while !bounded(&self.entries) {
 			self.entries.pop();
@@ -702,6 +707,7 @@ mod tests {
 				thread_id: "thread".into(),
 				entries: vec![AgentTimelineEntry { position: 77, content: item }],
 				next_cursor: Some("real-cursor".into()),
+				weather: Default::default(),
 				active_realtime_session_at_page_start: None
 			}
 		));
@@ -800,6 +806,7 @@ mod tests {
 				completed,
 				status: None,
 				duration_ms: None,
+				usage: None,
 				usage_summary: None,
 				error: None,
 			},
@@ -814,6 +821,7 @@ mod tests {
 			thread_id: "thread".into(),
 			entries,
 			next_cursor: next.map(str::to_owned),
+			weather: Default::default(),
 			active_realtime_session_at_page_start: session.map(str::to_owned),
 		}
 	}

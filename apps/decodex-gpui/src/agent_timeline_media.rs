@@ -269,6 +269,7 @@ mod tests {
 				thread_id: binding.thread.clone(),
 				entries: vec![],
 				next_cursor: None,
+				weather: Default::default(),
 				active_realtime_session_at_page_start: None,
 			};
 			assert!(surface.native_history.replace(binding.clone(), page.clone()));
@@ -340,6 +341,7 @@ mod tests {
 					},
 				}],
 				next_cursor: None,
+				weather: Default::default(),
 				active_realtime_session_at_page_start: None,
 			};
 			assert!(surface.native_history.replace(binding.clone(), page.clone()));
@@ -398,6 +400,7 @@ mod tests {
 				thread_id: "native-thread".into(),
 				entries: vec![],
 				next_cursor: None,
+				weather: Default::default(),
 				active_realtime_session_at_page_start: None,
 			};
 			assert!(surface.native_history.replace(binding.clone(), page.clone()));

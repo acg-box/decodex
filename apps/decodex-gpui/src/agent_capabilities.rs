@@ -13,7 +13,7 @@ pub(super) struct CatalogContext {
 
 impl AgentSurface {
 	pub(super) fn service_tier_picker(&self, cx: &Context<Self>) -> gpui::AnyElement {
-		let mut panel = gpui::div().id("service-tier-picker").flex().flex_col().gap_2();
+		let mut panel = gpui::div().id("service-tier-picker").flex().items_center().gap_1();
 		let mut tiers = vec![decodex_protocol::AgentServiceTierDto {
 			id: decodex_protocol::ServiceTier::standard(),
 			name: "Standard".into(),
@@ -36,9 +36,7 @@ impl AgentSurface {
 		};
 		if selected.is_none() {
 			panel = panel.child(
-				gpui::div()
-					.debug_selector(|| "tier-inherited".into())
-					.child(super::muted("Use task speed unless changed.")),
+				gpui::div().debug_selector(|| "tier-inherited".into()).child(super::muted("Auto")),
 			);
 		}
 		if selected.as_ref().is_some_and(|selected| {
@@ -60,7 +58,10 @@ impl AgentSurface {
 					.px_2()
 					.py_1()
 					.child(format!("{}{}", if chosen { "✓ " } else { "" }, tier.name))
-					.child(super::muted(tier.description))
+					.text_size(gpui::px(11.))
+					.rounded(gpui::px(8.))
+					.bg(gpui::rgba(if chosen { 0xffffff16 } else { 0x00000000 }))
+					.hover(|s| s.bg(gpui::rgba(0xffffff20)))
 					.on_click(cx.listener(move |s, _, _, cx| {
 						if id.as_str() == "default"
 							|| s.selected_model(cx).is_some_and(|model| {
@@ -558,6 +559,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+			s.expanded_records.insert("model-notices".into());
 			s.model.update(cx, |input, cx| input.set_content("saved-model", cx));
 			s.mark_model_intent(cx);
 			s.composer_menu = Some("model");
@@ -638,6 +640,16 @@ mod tests {
 		});
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1280.0), gpui::px(1200.0)));
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("model-catalog-notices").is_none());
+		std::thread::sleep(std::time::Duration::from_millis(220));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let info = visual.debug_bounds("model-info-toggle").unwrap();
+		visual.simulate_click(info.center(), Default::default());
+		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
 		let bounds = visual.debug_bounds("model-catalog-notices").expect("visible model notices");

@@ -825,6 +825,7 @@ mod tests {
 					thread_id: "thread".into(),
 					entries: vec![row(10, true), row(11, false), row(20, true), row(21, false)],
 					next_cursor: Some("older".into()),
+					weather: Default::default(),
 					active_realtime_session_at_page_start: None,
 				}
 			));
@@ -852,6 +853,7 @@ mod tests {
 					thread_id: "thread".into(),
 					entries: vec![row(1, false)],
 					next_cursor: None,
+					weather: Default::default(),
 					active_realtime_session_at_page_start: None,
 				}
 			));
@@ -940,6 +942,7 @@ mod tests {
 					thread_id: "native-thread".into(),
 					entries,
 					next_cursor: None,
+					weather: Default::default(),
 					active_realtime_session_at_page_start: None
 				}
 			));

@@ -386,32 +386,70 @@ impl AgentSurface {
 	pub(super) fn render_composer_popover(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let menu = self.composer_menu.or(self.composer_menu_content);
 		let left = matches!(menu, Some("attachments" | "microphone" | "tasks" | "agent-settings"));
-		gpui::deferred(
-			div()
-				.absolute()
-				.bottom(gpui::relative(1.))
-				.mb(px(if left { 8. } else { 10. }))
-				.when(left, |d| d.left(px(0.)))
-				// Align with the model trigger: inset + mic/send widths + toolbar gaps.
-				.when(!left, |d| d.right(px(79.)))
-				.w(px(if menu == Some("agent-settings") {
-					380.
-				} else if left {
-					280.
-				} else {
-					232.
-				}))
-				.child(
-					crate::ui_motion::popover(
-						"composer-popover-motion",
-						if left { "attachments" } else { menu.unwrap_or("model") },
-						self.composer_menu.is_some(),
-						self.composer_options(cx).unwrap_or_else(|| div().into_any_element()),
+		div()
+			.absolute()
+			.inset_0()
+			.child(
+				gpui::deferred(
+					div()
+						.absolute()
+						.bottom(gpui::relative(1.))
+						.mb(px(if left { 8. } else { 10. }))
+						.when(left, |d| d.left(px(0.)))
+						// Align with the model trigger: inset + mic/send widths + toolbar gaps.
+						.when(!left, |d| d.right(px(79.)))
+						.w(px(if menu == Some("agent-settings") {
+							380.
+						} else if left {
+							280.
+						} else {
+							232.
+						}))
+						.child(
+							crate::ui_motion::popover(
+								"composer-popover-motion",
+								if left { "attachments" } else { menu.unwrap_or("model") },
+								self.composer_menu.is_some(),
+								self.composer_options(cx)
+									.unwrap_or_else(|| div().into_any_element()),
+							)
+							.unframed(menu == Some("model")),
+						),
+				)
+				.priority(2),
+			)
+			.when(self.context_tip_visible && self.composer_menu.is_none(), |d| {
+				let detail = self.history.as_ref().and_then(|(_, h)| match h {
+					AgentHistoryResult::Available { usage: Some(u), .. } =>
+						u.context_window.filter(|n| *n > 0).map(|capacity| {
+							format!(
+								"Context · {:.0}%\n{} / {} tokens",
+								u.context_tokens as f64 / capacity as f64 * 100.,
+								compact_tokens(u.context_tokens),
+								compact_tokens(capacity)
+							)
+						}),
+					_ => None,
+				});
+				d.children(detail.map(|text| {
+					gpui::deferred(
+						div()
+							.absolute()
+							.bottom(gpui::relative(1.))
+							.mb(px(10.))
+							.right(px(160.))
+							.w(px(220.))
+							.debug_selector(|| "composer-context-detail".into())
+							.p(px(12.))
+							.rounded(px(12.))
+							.bg(rgb(0x29292d))
+							.text_size(px(12.))
+							.text_color(rgb(ui_theme::TEXT))
+							.child(text),
 					)
-					.unframed(menu == Some("model")),
-				),
-		)
-		.priority(2)
+					.priority(3)
+				}))
+			})
 	}
 
 	fn attachment_options(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -497,7 +535,7 @@ impl AgentSurface {
 			.flex()
 			.items_center()
 			.gap(px(4.0))
-			.children(self.usage_line())
+			.children(self.usage_line(cx))
 			.child(self.composer_control(
 				"model",
 				model,
@@ -805,7 +843,39 @@ impl AgentSurface {
 								.rounded(px(14.))
 								.bg(rgb(0x29292d))
 								.child(self.model_palette(cx))
-								.child(self.model_notice_panel(cx)),
+								.child(
+									div()
+										.mt(px(6.))
+										.flex()
+										.items_center()
+										.justify_between()
+										.child(self.service_tier_picker(cx))
+										.child(
+											div()
+												.id("model-info-toggle")
+												.debug_selector(|| "model-info-toggle".into())
+												.cursor_pointer()
+												.text_size(px(11.))
+												.text_color(rgb(ui_theme::TEXT_MUTED))
+												.size(px(20.))
+												.flex()
+												.items_center()
+												.justify_center()
+												.rounded(px(5.))
+												.hover(|s| s.bg(gpui::rgba(0xffffff12)))
+												.child("ⓘ")
+												.on_click(cx.listener(|s, _, _, cx| {
+													if !s.expanded_records.remove("model-notices") {
+														s.expanded_records
+															.insert("model-notices".into());
+													}
+													cx.notify();
+												})),
+										),
+								)
+								.when(self.expanded_records.contains("model-notices"), |d| {
+									d.child(self.model_notice_panel(cx))
+								}),
 						)
 						.child(
 							div()
@@ -818,7 +888,6 @@ impl AgentSurface {
 								.child(self.creation_effort_toggle(cx))
 								.child(div().flex_1().min_w_0().child(self.effort_scale(cx))),
 						)
-						.child(self.service_tier_picker(cx))
 						.into_any_element()
 				})
 				.into_any_element(),
@@ -845,7 +914,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn usage_line(&self) -> Option<gpui::AnyElement> {
+	pub(super) fn usage_line(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
 		let (id, AgentHistoryResult::Available { usage: Some(usage), .. }) =
 			self.history.as_ref()?
 		else {
@@ -856,11 +925,7 @@ impl AgentSurface {
 		}
 		let capacity = usage.context_window.filter(|size| *size > 0)?;
 		let percent = usage.context_tokens as f64 / capacity as f64 * 100.0;
-		let detail = format!(
-			"Context · {percent:.0}%\n{} / {} tokens",
-			compact_tokens(usage.context_tokens),
-			compact_tokens(capacity)
-		);
+
 		Some(
 			div()
 				.id("composer-context")
@@ -871,7 +936,10 @@ impl AgentSurface {
 				.text_size(px(10.5))
 				.text_color(rgb(ui_theme::TEXT_MUTED))
 				.aria_label(format!("Context {percent:.0}%"))
-				.tooltip(move |_, cx| cx.new(|_| ComposerTip(detail.clone())).into())
+				.on_hover(cx.listener(|s, hovered, _, cx| {
+					s.context_tip_visible = *hovered;
+					cx.notify();
+				}))
 				.justify_center()
 				.child(context_ring((percent / 100.0).clamp(0.0, 1.0) as f32))
 				.into_any_element(),

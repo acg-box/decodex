@@ -42,7 +42,31 @@ impl AgentSurface {
 				.into_any_element();
 		};
 		let cursor = self.older_history.get(&work.id).map_or(*next_before, |(_, cursor)| *cursor);
-		panel = panel.children(self.earlier_local_records(cursor.is_some(), cx));
+		let records_key = format!("local-records-{}", work.id);
+		let expanded = self.expanded_records.contains(&records_key);
+		let has_records = cursor.is_some()
+			|| entries.iter().any(|entry| {
+				entry.kind == "auth_recovery"
+					|| receipt_label(entry) == Some("Local execution record")
+			});
+		if has_records {
+			panel = panel.child(
+				div()
+					.id("local-records-toggle")
+					.cursor_pointer()
+					.text_size(gpui::px(11.))
+					.child(muted(if expanded { "Activity ⌃" } else { "Activity ›" }))
+					.on_click(cx.listener(move |s, _, _, cx| {
+						if !s.expanded_records.remove(&records_key) {
+							s.expanded_records.insert(records_key.clone());
+						}
+						cx.notify();
+					})),
+			);
+		}
+		if expanded {
+			panel = panel.children(self.earlier_local_records(cursor.is_some(), cx));
+		}
 		let mut saved = std::collections::BTreeMap::new();
 		if let Some((older, _)) = self.older_history.get(&work.id) {
 			for entry in older {
@@ -55,6 +79,9 @@ impl AgentSurface {
 				continue;
 			}
 			if entry.kind == "auth_recovery" {
+				if !expanded && entry.receipt.as_ref().is_some_and(|r| r.disposed) {
+					continue;
+				}
 				panel = panel.child(auth_recovery_entry(entry));
 				continue;
 			}
@@ -78,6 +105,9 @@ impl AgentSurface {
 			let Some(label) = receipt_label(entry) else {
 				continue;
 			};
+			if label == "Local execution record" && !expanded {
+				continue;
+			}
 			let mut row = div()
 				.debug_selector({
 					let id = entry.id;
@@ -448,6 +478,7 @@ mod tests {
 				completed: true,
 				status: None,
 				duration_ms: None,
+				usage: None,
 				usage_summary: None,
 				error: None,
 			},

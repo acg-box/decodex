@@ -8,6 +8,10 @@ use std::{
 	io::{BufRead, BufReader, Read},
 };
 
+fn has_weather(text: &str) -> bool {
+	["weather", "forecast"].iter().any(|kind| text.contains(&format!("\u{e200}{kind}\u{e202}")))
+}
+
 pub(super) struct CachedWeather {
 	thread: String,
 	turns: HashMap<String, Vec<WeatherForecast>>,
@@ -17,14 +21,20 @@ fn attach(
 	weather: &HashMap<String, Vec<WeatherForecast>>,
 ) {
 	for entry in entries {
+		if entry.kind != "assistant" {
+			continue;
+		}
 		let Some(turn) = &entry.turn_id else { continue };
 		if let Some(forecasts) = weather.get(turn) {
 			entry.weather = forecasts
 				.iter()
 				.filter(|forecast| {
-					entry
-						.text
-						.contains(&format!("\u{e200}weather\u{e202}{}\u{e201}", forecast.reference))
+					["weather", "forecast"].iter().any(|kind| {
+						entry.text.contains(&format!(
+							"\u{e200}{kind}\u{e202}{}\u{e201}",
+							forecast.reference
+						))
+					})
 				})
 				.take(4)
 				.cloned()
@@ -34,53 +44,107 @@ fn attach(
 }
 
 impl AgentHost {
-	pub(crate) async fn enrich_weather(&self, work_id: &str, history: &mut AgentHistoryResult) {
-		let AgentHistoryResult::Available { entries, .. } = history else { return };
-		if !entries.iter().any(|entry| {
-			entry.kind == "assistant" && entry.text.contains("\u{e200}weather\u{e202}")
-		}) {
-			return;
+	async fn weather_for_turns(
+		&self,
+		thread: &str,
+		turns: &std::collections::BTreeSet<String>,
+	) -> HashMap<String, Vec<WeatherForecast>> {
+		if turns.is_empty() {
+			return HashMap::new();
 		}
-		let Ok(work) = self.store.get_agent_work_item(work_id.into()).await else { return };
-		let Some(thread) = work.codex_thread_id else { return };
 		if let Some(cache) = self.weather_cache.lock().await.as_ref()
 			&& cache.thread == thread
-			&& entries
-				.iter()
-				.filter(|e| e.text.contains("\u{e200}weather\u{e202}"))
-				.all(|e| e.turn_id.as_ref().is_some_and(|turn| cache.turns.contains_key(turn)))
+			&& turns.iter().all(|turn| cache.turns.contains_key(turn))
 		{
-			attach(entries, &cache.turns);
-			return;
+			return cache
+				.turns
+				.iter()
+				.filter(|(turn, _)| turns.contains(*turn))
+				.map(|(k, v)| (k.clone(), v.clone()))
+				.collect();
 		}
-
-		let Some((_, client)) = self.runtime.agent_catalog_client() else { return };
+		let Some((_, client)) = self.runtime.agent_catalog_client() else {
+			return HashMap::new();
+		};
 		let Ok(Ok(readback)) = tokio::time::timeout(
 			std::time::Duration::from_secs(2),
 			client.thread_read(json!({"threadId":thread,"includeTurns":false})),
 		)
 		.await
 		else {
-			return;
+			return HashMap::new();
 		};
-		if readback.pointer("/thread/id").and_then(Value::as_str) != Some(thread.as_str()) {
-			return;
+		if readback.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
+			return HashMap::new();
 		}
 		let Some(path) =
 			readback.pointer("/thread/path").and_then(Value::as_str).map(str::to_owned)
 		else {
-			return;
+			return HashMap::new();
 		};
-		let source_thread = thread.clone();
+		let source_thread = thread.to_owned();
 		let Ok(weather) =
 			tokio::task::spawn_blocking(move || read_weather(&path, &source_thread)).await
 		else {
+			return HashMap::new();
+		};
+		let selected = weather
+			.iter()
+			.filter(|(turn, _)| turns.contains(*turn))
+			.map(|(k, v)| (k.clone(), v.clone()))
+			.collect();
+		*self.weather_cache.lock().await =
+			Some(CachedWeather { thread: thread.into(), turns: weather });
+		selected
+	}
+
+	pub(crate) async fn enrich_timeline_weather(
+		&self,
+		page: &mut decodex_protocol::AgentTimelinePage,
+	) {
+		use decodex_protocol::AgentTimelineContent as Content;
+		let turns = page
+			.entries
+			.iter()
+			.filter_map(|entry| match &entry.content {
+				Content::Item { kind, text, turn_id, .. }
+					if kind == "agentMessage" && has_weather(text) =>
+					Some(turn_id.clone()),
+				_ => None,
+			})
+			.collect();
+		page.weather = self.weather_for_turns(&page.thread_id, &turns).await.into_iter().collect();
+		// Preserve the native page's existing wire budget; prose remains readable if a card cannot
+		// fit.
+		while !page.weather.is_empty()
+			&& serde_json::to_vec(page).map_or(true, |bytes| bytes.len() > 60 * 1024)
+		{
+			page.weather.pop_last();
+		}
+	}
+
+	pub(crate) async fn enrich_weather(&self, work_id: &str, history: &mut AgentHistoryResult) {
+		let AgentHistoryResult::Available { entries, .. } = history else {
 			return;
 		};
-		attach(entries, &weather);
-		*self.weather_cache.lock().await = Some(CachedWeather { thread, turns: weather });
+		let turns: std::collections::BTreeSet<_> = entries
+			.iter()
+			.filter(|entry| entry.kind == "assistant" && has_weather(&entry.text))
+			.filter_map(|entry| entry.turn_id.clone())
+			.collect();
+		if turns.is_empty() {
+			return;
+		}
+		let Ok(work) = self.store.get_agent_work_item(work_id.into()).await else {
+			return;
+		};
+		let Some(thread) = work.codex_thread_id else {
+			return;
+		};
+		attach(entries, &self.weather_for_turns(&thread, &turns).await);
 	}
 }
+
 fn read_weather(path: &str, thread: &str) -> HashMap<String, Vec<WeatherForecast>> {
 	let mut result = HashMap::new();
 	let Ok(file) = std::fs::File::open(path) else { return result };
@@ -126,6 +190,36 @@ fn read_weather(path: &str, thread: &str) -> HashMap<String, Vec<WeatherForecast
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn weather_and_forecast_aliases_attach_only_exact_assistant_references() {
+		let forecast = WeatherForecast::parse(include_str!(
+			"../../../apps/decodex-gpui/examples/fixtures/singapore-weather.txt"
+		))
+		.unwrap();
+		let weather = HashMap::from([("turn-a".into(), vec![forecast.clone()])]);
+		let mut entry = decodex_protocol::AgentHistoryEntryDto {
+			native_source: None,
+			id: 1,
+			kind: "assistant".into(),
+			text: String::new(),
+			created_at_micros: 0,
+			duration_ms: None,
+			usage: None,
+			activity: None,
+			receipt: None,
+			turn_id: Some("turn-a".into()),
+			weather: vec![],
+		};
+		for marker in ["weather", "forecast"] {
+			entry.text = format!("\u{e200}{marker}\u{e202}{}\u{e201}", forecast.reference);
+			attach(std::slice::from_mut(&mut entry), &weather);
+			assert_eq!(entry.weather, vec![forecast.clone()]);
+		}
+		entry.text = "\u{e200}forecast\u{e202}unrelated\u{e201}".into();
+		attach(std::slice::from_mut(&mut entry), &weather);
+		assert!(entry.weather.is_empty());
+	}
+
 	#[test]
 	fn weather_history_is_bound_to_the_exact_thread_and_turn() {
 		use std::io::Write;

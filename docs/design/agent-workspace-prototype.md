@@ -172,3 +172,24 @@ The menu-bar account list now uses the same account interaction model as Setting
 - In-flight commands block conflicting input without changing unrelated glyphs, opacity, or layout. The affected icon pulses when motion is enabled.
 
 This is presentation parity across GPUI and SwiftUI, not a second routing or account-state owner.
+
+
+## Conversation presentation
+
+Protocol 2.98 carries typed turn token counts and weather cards on native timeline
+pages. Saved history and native history use the same response body and copy action.
+A completed reply shows a compact duration and In/Out counts. The information icon
+opens full usage details; response IDs and recovery records are not answer text.
+Local execution records stay in the collapsed Activity section. Pending delivery,
+retry controls, and actual execution failures remain visible.
+
+Weather cards accept both `weather` and `forecast` references. The native timeline
+uses the existing exact-thread weather adapter without requiring a duplicate local
+assistant message. The card requires the same turn and reference. If data is
+missing, readable prose remains and the widget marker is omitted outside code.
+
+The model menu uses catalog choices only. Speed choices stay in the model card;
+the reasoning slider stays in the separate attached capsule. Model metadata is
+collapsed behind an information control. Selection keeps the menu open. Context
+details render in the parent window above the composer, outside the bounds of the
+native glass input window.

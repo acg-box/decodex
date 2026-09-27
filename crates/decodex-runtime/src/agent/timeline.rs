@@ -218,6 +218,7 @@ fn project_fields(
 		thread_id: id(&Value::String(thread.into()))?,
 		entries: rows.iter().filter(visible).map(entry).collect::<Option<Vec<_>>>()?,
 		next_cursor: nullable_text(value.get("nextCursor")?, 4096)?,
+		weather: Default::default(),
 		active_realtime_session_at_page_start: nullable_text(
 			value.get("activeRealtimeSessionAtPageStart")?,
 			512,
@@ -246,6 +247,7 @@ fn entry(row: &Value) -> Option<AgentTimelineEntry> {
 				completed,
 				status,
 				duration_ms: row["durationMs"].as_u64(),
+				usage: None,
 				usage_summary: None,
 				error: if completed && !row["error"].is_null() {
 					let (message, truncated) = visible_text(row["error"]["message"].as_str()?);

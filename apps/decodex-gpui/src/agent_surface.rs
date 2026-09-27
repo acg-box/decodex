@@ -181,6 +181,8 @@ pub(crate) struct AgentSurface {
 	interrupting: Option<(String, String)>,
 	interrupt_task: Option<Task<()>>,
 	composer_menu_content: Option<&'static str>,
+	context_tip_visible: bool,
+	expanded_records: std::collections::BTreeSet<String>,
 	attachments: Vec<decodex_protocol::AgentAttachmentDto>,
 	task_references: Vec<decodex_protocol::AgentTaskReferenceDto>,
 	task_reference_search: Entity<ComposerInput>,
@@ -197,7 +199,6 @@ pub(crate) struct AgentSurface {
 	saved_app_settings: saved_app_settings::Panel,
 	native_goal: native_goal::Panel,
 	model: Entity<ComposerInput>,
-	exact_model_input: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
 	account: Entity<ComposerInput>,
 	effort: ConversationReasoningEffort,
@@ -399,6 +400,8 @@ impl AgentSurface {
 			interrupting: None,
 			interrupt_task: None,
 			composer_menu_content: None,
+			context_tip_visible: false,
+			expanded_records: Default::default(),
 			attachments: vec![],
 			task_references: vec![],
 			task_reference_search: Self::new_task_reference_search(cx),
@@ -445,7 +448,6 @@ impl AgentSurface {
 			composer,
 			composer_footer_height: 74.,
 			model,
-			exact_model_input: resource_field("Model ID", "Exact model ID", cx),
 			model_settings: Default::default(),
 			live_reviewer: Default::default(),
 			permission_profiles: Default::default(),
@@ -513,7 +515,7 @@ impl AgentSurface {
 	fn new_inputs(cx: &mut Context<Self>) -> AgentInputs {
 		Self::refresh_prompt(cx);
 		let model =
-			cx.new(|cx| ComposerInput::with_placeholder(31, "Exact model ID", "Agent model", cx));
+			cx.new(|cx| ComposerInput::with_placeholder(31, "Select model", "Agent model", cx));
 		model.update(cx, |input, cx| input.set_content(creation_setup::DEFAULT_MODEL, cx));
 		let cwd = cx.new(|cx| {
 			ComposerInput::with_placeholder(
@@ -2068,6 +2070,14 @@ fn history_entry_with_key(
 	entry: &decodex_protocol::AgentHistoryEntryDto,
 	identity: &str,
 ) -> gpui::Div {
+	history_entry_with_metrics(entry, identity, None)
+}
+
+fn history_entry_with_metrics(
+	entry: &decodex_protocol::AgentHistoryEntryDto,
+	identity: &str,
+	metrics: Option<gpui::AnyElement>,
+) -> gpui::Div {
 	if entry.kind == "checklist" {
 		let id = entry.id;
 		return div()
@@ -2147,6 +2157,7 @@ fn history_entry_with_key(
 						entry.created_at_micros / 1_000_000,
 					)
 					.ok()
+					.filter(|_| entry.created_at_micros > 0)
 					.map(|d| format!("{} · Saved forecast", d.date()))
 					.unwrap_or_else(|| "Saved forecast".into());
 					weather::render(forecast, &date, &format!("{identity}-{i}"))
@@ -2156,9 +2167,11 @@ fn history_entry_with_key(
 						div()
 							.mt(px(ui_theme::METADATA_GAP))
 							.flex()
-							.items_center()
+							.items_start()
 							.gap(px(8.))
-							.child(reply_metrics(entry))
+							.child(
+								metrics.unwrap_or_else(|| reply_metrics(entry).into_any_element()),
+							)
 							.when(entry.kind == "assistant", |row| {
 								row.child(markdown::response_copy_button(
 									&format!("copy-response-{identity}"),
@@ -2451,13 +2464,41 @@ mod tests {
 	fn context_is_hidden_without_reported_usage(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(super::AgentSurface::new);
 		surface.update(cx, |s, cx| {
-			assert!(s.usage_line().is_none());
+			assert!(s.usage_line(cx).is_none());
 			s.visual_workspace_fixture(cx);
-			assert!(s.usage_line().is_none());
+			assert!(s.usage_line(cx).is_none());
 			s.visual_workspace_page("markdown", cx);
-			assert!(s.usage_line().is_some());
+			assert!(s.usage_line(cx).is_some());
 		});
 	}
+	#[gpui::test]
+	fn context_detail_uses_space_above_the_composer(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| super::AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1000.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_workspace_page("markdown", cx);
+			s.context_tip_visible = true;
+			s.composer_menu = None;
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let detail =
+			visual.debug_bounds("composer-context-detail").expect("context shown by parent");
+		assert!(detail.size.height > gpui::px(42.));
+		assert!(detail.top() >= gpui::px(0.));
+		surface.update(visual, |s, cx| {
+			s.context_tip_visible = false;
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("composer-context-detail").is_none());
+	}
+
 	use super::*;
 	use decodex_protocol::AgentWorkKindDto;
 	use gpui::Focusable;

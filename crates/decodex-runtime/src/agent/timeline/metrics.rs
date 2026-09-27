@@ -21,9 +21,17 @@ pub(crate) async fn enrich(
 		store.read_agent_response_usage(work.into(), page.thread_id.clone(), turns.clone()).await?;
 	let saved = store.read_agent_turn_metrics(work.into(), page.thread_id.clone(), turns).await?;
 	for entry in &mut page.entries {
-		if let Content::TurnBoundary { turn_id, completed: true, usage_summary, .. } =
+		if let Content::TurnBoundary { turn_id, completed: true, usage_summary, usage, .. } =
 			&mut entry.content
 		{
+			*usage = saved
+				.iter()
+				.find(|saved| &saved.turn_id == turn_id)
+				.and_then(|saved| saved.usage_json.as_deref())
+				.and_then(|value| serde_json::from_str::<AgentTurnUsageDto>(value).ok())
+				.filter(|u| {
+					u.input_tokens <= i64::MAX as u64 && u.output_tokens <= i64::MAX as u64
+				});
 			let tokens = saved.iter().find(|saved| &saved.turn_id == turn_id).and_then(summary);
 			let response = response_summary(&responses, turn_id);
 			let parts = [tokens, response].into_iter().flatten().collect::<Vec<_>>();
