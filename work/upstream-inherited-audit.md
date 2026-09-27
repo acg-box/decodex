@@ -19,6 +19,14 @@ six task-model tests pass, as does strict GPUI Clippy. See
 Close only this test-file row. No production behavior changes; shared source
 review and signed desktop acceptance remain open.
 
+## Usage research scope reconciled on 2026-09-27
+
+Map the complete inherited task-estimate note to its delivered runtime and panel
+owners. Preserve the complete Analytics research with an explicit optional,
+unimplemented status. The delivered profile correction is not a dashboard. See
+[the scope mapping](usage-scope-reconciliation.md). Close only these two document
+rows; retain the user's optional-feature decision and final acceptance gaps.
+
 ## Native message renderer reconciled on 2026-09-27
 
 Preserve native author roles when equal user and assistant text share a turn.
