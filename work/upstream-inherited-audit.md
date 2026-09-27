@@ -33,6 +33,15 @@ test row to formatting equivalence. Shared surface and output-stream review,
 broader history acceptance and signed desktop acceptance remain open.
 
 
+## Native observation file reconciled on 2026-09-27
+
+Map the complete observation diff: exact historical steering receipts, revoked
+closing/capacity retries after revert, and live versus recovered question arrivals.
+Preserve the distinction between receipt recording and final question-projection
+revision checks. Nineteen focused runtime tests pass. See
+[the complete mapping](observation-reconciliation.md). Close this one file row;
+shared coordinator, combined races and real desktop acceptance remain separate.
+
 ## History presentation reconciled on 2026-09-27
 
 Restore the summary latest-scroll request and the inherited unfinished-output
