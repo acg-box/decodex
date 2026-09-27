@@ -118,6 +118,7 @@ pub(crate) struct ChiefSurface {
 	capabilities_context: Option<capabilities::CatalogContext>,
 	capabilities_checked: Option<std::time::Instant>,
 	capability_task: Option<Task<()>>,
+	capability_generation: u64,
 	expanded_progress: std::collections::BTreeSet<String>,
 	pages: Vec<String>,
 	graph_visible: bool,
@@ -369,6 +370,7 @@ impl ChiefSurface {
 			capabilities_context: None,
 			capabilities_checked: None,
 			capability_task: None,
+			capability_generation: 0,
 			fast: false,
 			service_tier: None,
 			steer: true,
@@ -1155,14 +1157,11 @@ impl ChiefSurface {
 		self.resource_feedback.clear();
 		self.resource_title.update(cx, |input, cx| input.clear(cx));
 		self.resource_url.update(cx, |input, cx| input.clear(cx));
-		self.capability_task = None;
-		self.capabilities = None;
-		self.capabilities_context = None;
+		self.reset_capabilities();
 		if self.composer_manager.is_some() {
 			self.fast = false;
 			self.service_tier = None;
 		}
-		self.capabilities_checked = None;
 		self.reset_model_settings();
 		self.reset_live_reviewer();
 		self.reset_permission_profiles();
@@ -1229,6 +1228,7 @@ impl ChiefSurface {
 	}
 
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
+		self.reset_capabilities();
 		self.reset_model_settings();
 		self.reset_app_exposure();
 		self.reset_app_settings();
