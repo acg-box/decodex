@@ -13,6 +13,15 @@ fn identity(number: u32) -> decodex_core::ProcessIdentity {
 	.unwrap()
 }
 async fn ready(store: &SqliteStore, manual: bool, response: Option<&str>) -> String {
+	ready_with_tier(store, manual, response, json!("priority")).await
+}
+
+async fn ready_with_tier(
+	store: &SqliteStore,
+	manual: bool,
+	response: Option<&str>,
+	tier: Value,
+) -> String {
 	seed(store).await;
 	store.bind_chief_thread("root".into(), "thread".into()).await.unwrap();
 	store
@@ -21,7 +30,7 @@ async fn ready(store: &SqliteStore, manual: bool, response: Option<&str>) -> Str
 		.unwrap();
 	store.bind_process_generation_identity(&generation_id(1), 1, &identity(123)).await.unwrap();
 	store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
-	let attempt = json!({"work":"root","thread":"thread","generation":generation_id(1).as_str(),"account":account_id(1).as_str(),"account_revision":1,"settings_event":1,"banner_digest":OTHER_DIGEST,"manual_review":manual.then_some(DIGEST),"from_model":"old","model":"target","effort":"high","service_tier":"priority"});
+	let attempt = json!({"work":"root","thread":"thread","generation":generation_id(1).as_str(),"account":account_id(1).as_str(),"account_revision":1,"settings_event":1,"banner_digest":OTHER_DIGEST,"manual_review":manual.then_some(DIGEST),"from_model":"old","model":"target","effort":"high","service_tier":tier});
 	let original = json!({"attempt":attempt,"state":"claimed"}).to_string();
 	let saved = original.clone();
 	let response = response.map(str::to_owned);
@@ -64,6 +73,7 @@ async fn current_manual_history_supersedes_legacy_history_without_rewriting_evid
 		effort: Some("high".into()),
 		review_token: DIGEST.into(),
 		attempt_id: "explicit".into(),
+		manual_source: None,
 		recovery: None,
 	};
 	let id = store.reserve_chief_model_selection(attempt.clone()).await.unwrap().unwrap();
@@ -240,6 +250,7 @@ async fn legacy_unknown_reconciles_only_after_death_and_complete_new_owner_facts
 	let path = dir.path().join("legacy.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 	ready(&store, false, Some("uncertain")).await;
+	let message = visible_message(&store).await;
 	store
 		.mark_process_generation_death_unknown(
 			&generation_id(1),
@@ -297,6 +308,7 @@ async fn legacy_unknown_reconciles_only_after_death_and_complete_new_owner_facts
 	let receipt = history(&reopened, 2).await;
 	assert_eq!(receipt.response, "unknown");
 	assert!(!receipt.manual && !receipt.target_observed && receipt.reconciled);
+	assert_visible_history(&reopened, &message).await;
 	assert!(reopened.begin_chief_dispatch("root".into()).await.is_ok());
 	reopened.run(|connection| {
 		let (observed,reconciled):(i64,i64)=connection.query_row("SELECT count(*) FILTER(WHERE event_kind='model_recovery_observation'),count(*) FILTER(WHERE event_kind='model_selection_reconciled') FROM chief_inbox_events",[],|r|Ok((r.get(0)?,r.get(1)?))).map_err(crate::error::sqlite_error)?;
@@ -345,4 +357,67 @@ async fn legacy_rejection_and_changed_account_do_not_gain_confirmation() {
 			.await
 			.unwrap();
 	}
+}
+
+async fn visible_message(store: &SqliteStore) -> crate::ChiefInboxEvent {
+	store
+		.record_chief_observation(crate::EnqueueChiefEvent {
+			source_event_id: "visible-message".into(),
+			work_item_id: "root".into(),
+			event_kind: "assistant_message".into(),
+			payload: json!({"text":"Visible answer"}).to_string(),
+		})
+		.await
+		.unwrap()
+}
+
+async fn assert_visible_history(store: &SqliteStore, message: &crate::ChiefInboxEvent) {
+	for limit in [1, 20] {
+		assert_eq!(
+			store.read_chief_work_events("root".into(), limit).await.unwrap(),
+			vec![message.clone()]
+		);
+		assert_eq!(
+			store.read_chief_transcript("root".into(), None, limit).await.unwrap().0,
+			vec![message.clone()]
+		);
+	}
+}
+
+#[tokio::test]
+async fn legacy_model_journal_never_consumes_transcript_pages() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("visible-history.sqlite3");
+	let store = SqliteStore::open_test(&path).unwrap();
+	ready(&store, false, Some("queued")).await;
+	let message = visible_message(&store).await;
+	publish(&store, 1, Some(facts(json!("priority"))), DIGEST).await;
+	assert_visible_history(&store, &message).await;
+	drop(store);
+	let store = SqliteStore::open_test(&path).unwrap();
+	assert_visible_history(&store, &message).await;
+	let receipt = history(&store, 1).await;
+	assert!(receipt.target_observed);
+	assert_eq!(receipt.response, "queued");
+}
+
+#[tokio::test]
+async fn legacy_automatic_unset_tier_requires_an_explicit_null_publication() {
+	let dir = tempfile::tempdir().unwrap();
+	let store = SqliteStore::open_test(&dir.path().join("unset-legacy.sqlite3")).unwrap();
+	ready_with_tier(&store, false, Some("queued"), Value::Null).await;
+	for tier in [None, Some(json!(false)), Some(json!("priority"))] {
+		let mut settings = json!({"model":"target","modelProvider":"fixture","effort":"high"});
+		if let Some(tier) = tier {
+			settings["serviceTier"] = tier;
+		}
+		publish(&store, 1, Some(settings.to_string()), DIGEST).await;
+		assert!(pending(&store, 1).await.is_some());
+		assert!(!history(&store, 1).await.target_observed);
+	}
+	publish(&store, 1, Some(facts(Value::Null)), OTHER_DIGEST).await;
+	assert!(pending(&store, 1).await.is_none());
+	let receipt = history(&store, 1).await;
+	assert!(receipt.target_observed && !receipt.manual && !receipt.reconciled);
+	assert_eq!(receipt.response, "queued");
 }

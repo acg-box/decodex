@@ -78,7 +78,7 @@ impl SqliteStore {
 	}
 }
 
-// The caller has validated complete current model facts and exact process ownership.
+// The caller has validated complete current model facts, account availability and ownership.
 pub(super) fn observe(
 	connection: &rusqlite::Connection,
 	work: &str,
@@ -90,10 +90,6 @@ pub(super) fn observe(
 	let Some(generation) = generation else {
 		return Ok(());
 	};
-	let active_account: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM chief_process_bindings b JOIN accounts a ON a.account_id=b.account_id WHERE b.generation_id=?1 AND a.enabled=1 AND a.tombstoned_at_micros IS NULL)", [generation], |row| row.get(0)).map_err(sqlite_error)?;
-	if !active_account {
-		return Ok(());
-	}
 	let row: Option<(i64, String, String)> = connection.query_row(&format!("SELECT e.id,e.source_event_id,json_extract(e.payload,'$.attempt') FROM chief_inbox_events e WHERE e.work_item_id=?1 AND json_extract(e.payload,'$.attempt.thread')=?2 AND e.id<?3 AND {UNRESOLVED} ORDER BY e.id DESC LIMIT 1"), params![work,thread,observation], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).optional().map_err(sqlite_error)?;
 	let Some((reservation, key, raw)) = row else {
 		return Ok(());

@@ -34,8 +34,8 @@ mod chief_prompt_upload;
 pub use chief_prompt_upload::ChiefPromptUpload;
 mod chief_models;
 pub use chief_models::{
-	ChiefLegacyModelPending, ChiefModelAttempt, ChiefModelHistory, ChiefModelReceipt,
-	ChiefModelRecoveryContext,
+	ChiefLegacyModelPending, ChiefManualModelSource, ChiefModelAttempt, ChiefModelHistory,
+	ChiefModelReceipt, ChiefModelRecoveryContext,
 };
 mod chief_plugins;
 pub use chief_plugins::{ChiefPluginAttempt, ChiefPluginReceipt};

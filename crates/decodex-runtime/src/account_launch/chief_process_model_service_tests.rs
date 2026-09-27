@@ -38,6 +38,7 @@ async fn scenario(outcome: &'static str) {
 		review_token = reject_restored_settings(&owned, review_token).await;
 	}
 	assert!(models.iter().any(|m| m.model.as_str() == "scoped" && m.efforts.is_empty()));
+	assert!(models.iter().all(|model| model.model.as_str() != "gpt-reserve"));
 
 	assert!(
 		write(&owned.store, source, "foreign", review_token.as_str(), "scoped", "foreign")
@@ -69,6 +70,7 @@ async fn scenario(outcome: &'static str) {
 		write(&owned.store, source, "thread", review_token.as_str(), "scoped", "first").await;
 	assert_eq!(result.is_ok(), matches!(outcome, "queued" | "queued-unobserved"));
 	assert_eq!(writes.load(Ordering::Acquire), 1);
+	assert_manual_source(&owned).await;
 	if outcome == "queued" {
 		let state = crate::chief_models::read(&owned.store, source).await;
 		assert!(matches!(
@@ -133,6 +135,22 @@ async fn scenario(outcome: &'static str) {
 	backend.abort();
 }
 
+async fn assert_manual_source(owned: &OwnedReviewer) {
+	let captured = owned
+		.store
+		.chief_model_receipt("root".into(), "thread".into())
+		.await
+		.expect("saved receipt")
+		.expect("reserved selection");
+	assert_eq!(
+		captured.attempt.manual_source,
+		Some(decodex_database::ChiefManualModelSource {
+			account: owned.key.account.as_str().into(),
+			account_revision: owned.key.revision
+		})
+	);
+}
+
 async fn serve(remote: tokio::io::DuplexStream, writes: Arc<AtomicUsize>, outcome: &str) {
 	let (r, mut w) = tokio::io::split(remote);
 	let mut lines = BufReader::new(r).lines();
@@ -155,7 +173,7 @@ async fn serve(remote: tokio::io::DuplexStream, writes: Arc<AtomicUsize>, outcom
 				json!({"id":id,"result":value})
 			},
 			"model/list" =>
-				json!({"id":id,"result":{"data":[{"id":"scoped","model":"scoped","displayName":"Scoped","supportedReasoningEfforts":[],"defaultReasoningEffort":null}],"nextCursor":null}}),
+				json!({"id":id,"result":{"data":[{"id":"scoped","model":"scoped","displayName":"Scoped","supportedReasoningEfforts":[],"defaultReasoningEffort":null},{ "id":"gpt-reserve","model":"gpt-reserve","displayName":"Reserve","supportedReasoningEfforts":[{"reasoningEffort":"medium"}],"defaultReasoningEffort":"medium","hidden":false}],"nextCursor":null}}),
 			"experimentalFeature/list" => json!({"id":id,"result":{"data":[],"nextCursor":null}}),
 			"permissionProfile/list" =>
 				json!({"id":id,"result":{"data":[{"id":"scoped","allowed":true}],"nextCursor":null}}),

@@ -148,11 +148,12 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	if facts != native || !guard.is_live() {
 		return None;
 	}
-	let ChiefCapabilitiesResult::Available { models, .. } =
+	let ChiefCapabilitiesResult::Available { mut models, .. } =
 		crate::chief_capabilities::read(&source.client).await
 	else {
 		return None;
 	};
+	models.retain(|model| model.model.as_str() != "gpt-reserve");
 	if !guard.is_live() {
 		return None;
 	}
@@ -278,6 +279,10 @@ where
 		effort: expected_effort,
 		review_token: change.review.into(),
 		attempt_id: change.attempt_id.into(),
+		manual_source: Some(decodex_database::ChiefManualModelSource {
+			account: before.key.account.as_str().into(),
+			account_revision: before.key.revision,
+		}),
 		recovery: None,
 	};
 	let reservation = store

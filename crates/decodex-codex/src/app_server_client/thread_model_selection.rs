@@ -28,6 +28,7 @@ impl ThreadModelSelection {
 		};
 		valid(&self.thread_id, 512)
 			&& valid(&self.model, 256)
+			&& self.model != "gpt-reserve"
 			&& self.effort.as_deref().is_none_or(|effort| valid(effort, 128))
 	}
 }
@@ -70,6 +71,12 @@ impl AppServerClient {
 mod tests {
 	use super::*;
 	use serde_json::json;
+
+	#[test]
+	fn ordinary_model_selection_rejects_reserve() {
+		assert!(ThreadModelSelection::new("task", "gpt-reserve", Some("medium".into())).is_err());
+		assert!(!is_thread_model_selection(&json!({"threadId":"task","model":"gpt-reserve"})));
+	}
 
 	#[test]
 	fn model_selection_preserves_other_settings_and_native_effort_spelling() {
