@@ -33,6 +33,15 @@ complete files to their current owners in
 Close only these two rows. Shared renderer, workspace and desktop acceptance
 remain open.
 
+## Large approval document reconciled on 2026-09-27
+
+Map every section of the inherited approval document to retained storage, pages,
+decisions, file evidence and native Guardian owners. Preserve the explicit
+reader-policy difference and the historical shutdown/compaction evidence limits.
+Fresh storage, coordinator and rendered reader checks pass. See
+[the complete mapping](large-approval-reconciliation.md). Close only this document
+row; shared source files and signed approval acceptance remain open.
+
 ## Exact model input restored on 2026-09-27
 
 Restore the inherited explicit model-ID action in the existing task model menu.
