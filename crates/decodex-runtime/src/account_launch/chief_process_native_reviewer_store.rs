@@ -276,6 +276,7 @@ fn seed_account(root: &DecodexRoot) {
 #[path = "chief_process_native_reviewer_outcome_tests.rs"] mod outcome_tests;
 
 #[path = "chief_process_permission_service_tests.rs"] mod permission_service_tests;
+#[path = "chief_process_permission_tests.rs"] mod permission_owner_tests;
 
 impl OwnedReviewer {
 	pub(super) async fn select_permission(&self) {
