@@ -209,10 +209,95 @@ native message records. This verifies actual idle unload, warm cancellation and
 cold history recovery without replay. Pending-unload/revert replacement races
 remain outside this probe.
 
-## Remaining acceptance
+## Restored desktop access and Finder reopen
 
-Ordinary composer input and restart, complete foreground/background recap, live
-voice, Dock reopening, draft conflicts/export and GUI Quit during active work
+After the user restored desktop access, Finder menu actions and the exact signed
+Decodex window became available again. The empty-profile fixture
+`/Users/x/.decodex-a15-owned-y1pmfg8a` completed normal menu Quit with exit 0;
+GUI PID 67113 and its observed service children 67118 and 67132 were absent.
+
+In a separate fixture, `/Users/x/.decodex-a15-owned-johk7ex5`, select File > Close
+Window, then use Finder to open the exact staged Decodex.app. The main window is
+visible again in a screenshot. GUI PID 83291 remains the sole process for that
+exact executable, and service PID 83293 remains its child. Normal menu Quit exits
+with status 0 and both processes are absent. See `reopen-acceptance.json` in that
+fixture home. This qualifies Finder reopen without a second GUI process. The Dock
+tool returns timeoutReached, so a Dock click is not qualified by this result.
+
+## Active work in an app-owned service
+
+The signed app can start its own service from a private fixture root. A valid
+standalone service fixture needs full cache settings and its execution-authority
+file; the earlier in-process socket fixture did not supply those disk inputs.
+Prepare synthetic accounts and fresh quota observations without creating a task
+or a native process. The opt-in DECODEX_TEST_ACCOUNT_SEED_ONLY path records
+prepared_only=true and zero model requests. That mode prepares data only; a
+successful preparation is not recap or desktop acceptance.
+
+With this empty-task seed and the existing offline initialization owner, the
+public service reports conversation readiness and accepts Chief start. However,
+the native process does not reach a running model request. In
+`/Users/x/.decodex-active-gui-fzhz_5ku`, the saved events report ProcessUnavailable
+followed by a Chief process authority conflict. The provider observes no request.
+The service-child timeline retains the same child PID 85176 during the attempt;
+no service restart was observed. A standalone signed-service probe reproduces the same failure without a GUI.
+A temporary debug helper narrows the error to account/read returning -32603.
+The external fixture returned an empty object for every GET request. It omitted
+workspace routing from accounts/check. Upstream commit
+595cc91e8cbb1c2ca822d0311dcf12709410c582 reads this routing during account/read;
+the existing native fixture already supplies it. Restore the equivalent synthetic
+routing response in the external fixture. No production source change is needed.
+The temporary diagnostic source was restored before further acceptance.
+
+The unchanged signed helper then reaches Running with a native active turn and
+one held provider request in `/Users/x/.decodex-active-gui-kb_f6kgh`.
+Controlled service stop exits 0, disconnects the provider and removes all observed
+children. This is the standalone comparison, not GUI acceptance.
+
+The app-owned fixture `/Users/x/.decodex-active-gui-ofj0aivx` then reaches Running
+with native thread 01a0e36c-50a1-7c62-a173-11e4888caf79 and active turn
+01a0e36c-50df-7343-a602-4542982a60af. The exact signed window exposes
+Agent is working. Select Decodex > Quit Decodex through the desktop tool.
+The GUI exits 0, the held provider connection closes, and observed descendants
+88020, 88057, 88058, 88059 and 88060 are absent. The model request count remains
+one. The runner completes successfully. See result.json and active-before.json
+in that private fixture. This qualifies normal GUI Quit during active work,
+owned-service cleanup and absence of input replay for this synthetic case.
+
+Earlier aborted fixtures retain their original failure evidence. They are not
+retroactively marked passed. The corrected fixture establishes that their
+initialization error came from missing synthetic routing metadata.
+
+## Manual foreground recap
+
+In the app-owned fixture `/Users/x/.decodex-active-gui-jt611px0`, the signed GUI
+shows the completed native prompt and Saved native answer. Open Task recap and
+select Generate recap. The first attempt is interrupted by a transient GUI
+connection-unavailable state; the provider count remains one and the service
+process remains alive. After the interface recovers, reopen the panel and select
+Generate recap. The provider count becomes two, with a structured recap response.
+The screenshot displays the full expected summary:
+The requested fix was tested; installation is still pending.
+
+Normal menu Quit exits 0. See foreground-recap-acceptance.json and
+provider-observations.json in that fixture. This qualifies foreground summary
+presentation and exit for the successful attempt. It does not erase the observed
+transient connection failure or establish complete background interaction.
+
+## Ordinary input focus boundary
+
+The app-owned fixture `/Users/x/.decodex-active-gui-no36sav5` reaches a completed
+native conversation. The ordinary composer is visible in the screenshot. A
+coordinate click followed by text input leaves focus on the main operational
+shell; the test text is not displayed. The Window menu lists only the main
+Decodex window, and the app inventory supplies no child-window selector.
+The input and restart check needs a successful focus action before it can pass.
+Do not substitute history-edit persistence for ordinary composer acceptance.
+
+## Outstanding acceptance
+
+Ordinary composer input and restart, complete background recap interaction, live
+voice, Dock reopening and draft conflicts/export
 remain unverified to their required scope. Real background generation and its
 Ready service result are verified; the complete interactive fixture was aborted
 and is not a passing result. Existing approval/media and
