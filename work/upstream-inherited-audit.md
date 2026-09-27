@@ -777,6 +777,15 @@ managed defaults failure cases, empty requirements parameters and managed-tier
 coverage. Both full file dispositions are now closed; the larger model-catalog
 file remains open for its other differences.
 
+## Native Guardian evidence restored on 2026-09-26
+
+Restore the complete native answer/compaction/restart and image-profile fixtures,
+large-action/tool-isolation test and both reviewer-switch directions. Retain the
+current pending-approval and completed-target regression. Five installed-native
+tests and strict runtime lint pass. Close the two evidence files and the fully
+compared native reviewer test file; keep the shared ownership fixture and broader
+Guardian acceptance open. See [evidence and limits](native-guardian-evidence-qualification.md).
+
 ## Native receipt capture restored on 2026-09-26
 
 Restore the optional native receipt test's real service-to-GPUI capture route.

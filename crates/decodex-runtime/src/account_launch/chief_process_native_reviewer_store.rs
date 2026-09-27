@@ -27,6 +27,17 @@ pub(super) struct OwnedReviewer {
 }
 
 impl OwnedReviewer {
+	pub(super) async fn observe_model(&self) {
+		let state = crate::chief_model_settings::read(&self.store, || async {
+			Some(self.source(&self.key))
+		})
+		.await;
+		assert!(matches!(state, decodex_protocol::ChiefModelSettingsResult::Available {
+			work_id, thread_id, account_id, model: Some(model), model_provider:Some(provider), ..
+		} if work_id.as_str() == "root" && thread_id.as_str() == self.key.thread
+			&& account_id.as_str() == ACCOUNT && model.as_str() == "gpt-5.6-sol" && provider.as_str()=="fixture"));
+	}
+
 	pub(super) async fn new(
 		home: &std::path::Path,
 		client: &AppServerClient,
