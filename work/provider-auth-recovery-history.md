@@ -1,4 +1,20 @@
-# Optional provider authentication recovery history
+# Retired provider authentication recovery history
+
+The user retired O24 on 2026-09-27. Decodex no longer consumes provider recovery
+notifications or writes new provider recovery receipts. The dedicated database
+writer and its ownership-only tests are removed. Native authentication, credential
+refresh, account routing and ordinary sign-in diagnostics are unchanged.
+
+Existing receipts remain readable in saved history and the timeline. A focused
+regression verifies that new notifications create no receipts or outgoing work,
+while a pre-retirement receipt stays readable after the store is reopened. No
+user data or schema is removed. Do not restore this optional consumer during
+upstream maintenance without a new user decision.
+
+## Historical implementation record
+
+The following describes the implementation before retirement, not current scope.
+
 
 ## Applicability and removal choice
 

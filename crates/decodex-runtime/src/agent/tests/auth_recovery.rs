@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn auth_recovery_receipts_survive_reopen_without_retry_or_completion() {
+async fn retired_auth_recovery_ignores_notifications_and_preserves_saved_history() {
 	let (mut agent, mut sent, directory) = fixture().await;
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 	while sent.try_recv().is_ok() {}
@@ -23,43 +23,34 @@ async fn auth_recovery_receipts_survive_reopen_without_retry_or_completion() {
 			.unwrap();
 		agent.handle_event(event).await.unwrap();
 	}
-	for (field, value) in [
-		("threadId", json!("foreign")),
-		("turnId", json!("old")),
-		("provider", json!(false)),
-		("message", json!("x".repeat(4097))),
-	] {
-		let mut invalid = params.clone();
-		invalid[field] = value;
-		agent
-			.handle_event(ServerEvent::Notification {
-				method: "modelProvider/authRecoveryCompleted".into(),
-				params: invalid,
-			})
-			.await
-			.unwrap();
-	}
 	let store = agent.store.clone();
 	let work = store.get_agent_work_item("agent".into()).await.unwrap();
 	assert_eq!(work.dispatch_state, decodex_database::AgentDispatchState::Running);
 	let rows = store.read_agent_work_events("agent".into(), 32).await.unwrap();
 	let receipts: Vec<_> =
 		rows.iter().filter(|row| row.event_kind.starts_with("auth_recovery_")).collect();
-	assert_eq!(receipts.len(), 3);
-	assert_eq!(receipts[1].event_kind, "auth_recovery_completed");
-	assert!(receipts.iter().all(|row| row.disposition.is_some()
-		&& row.delivered_turn_id.as_deref() == Some("opaque turn/1")));
+	assert!(receipts.is_empty());
+	// Load a receipt saved before retirement. No production writer remains.
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	{
+		let connection = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+		connection.execute(
+			"INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros,delivery_work_item_id,delivered_turn_id) VALUES('legacy-auth-recovery','agent','auth_recovery_started',?1,1,'resolved','Historical provider notice',1,'agent','opaque turn/1')",
+			[params.to_string()],
+		).unwrap();
+	}
 	let (transcript, _) = store.read_agent_transcript("agent".into(), None, 32).await.unwrap();
 	let projected = crate::application::render_agent_history_for_test(transcript)
 		.into_iter()
 		.filter(|entry| entry.kind == "auth_recovery")
 		.collect::<Vec<_>>();
-	assert_eq!(projected.len(), 3);
+	assert_eq!(projected.len(), 1);
 	assert!(projected.iter().all(|row| row.kind == "auth_recovery"
 		&& row.text.contains("Saved event")
 		&& !row.text.contains("Disposition:")));
-	assert!(projected[1].text.contains("succeeded"));
-	assert!(projected[2].text.contains("started"));
+	assert!(projected[0].text.contains("started"));
 	assert!(store.list_pending_agent_events(32).await.unwrap().is_empty());
 	assert!(store.list_agent_wake_events("agent".into(), 32).await.unwrap().is_empty());
 	agent.wake_pending().await.unwrap();
@@ -68,9 +59,6 @@ async fn auth_recovery_receipts_survive_reopen_without_retry_or_completion() {
 	drop(write);
 	drop(agent);
 	drop(store);
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
 	let reopened = SqliteStore::open(&root.paths()).unwrap();
 	let (rows, _) = reopened.read_agent_transcript("agent".into(), None, 32).await.unwrap();
 	let after = crate::application::render_agent_history_for_test(rows)

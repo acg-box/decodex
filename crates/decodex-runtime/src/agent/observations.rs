@@ -181,32 +181,6 @@ impl AgentCoordinator {
 		method: &str,
 		params: &Value,
 	) -> Result<(), AgentError> {
-		if matches!(
-			method,
-			"modelProvider/authRecoveryStarted" | "modelProvider/authRecoveryCompleted"
-		) {
-			if ["threadId", "turnId", "provider", "message"].iter().all(|key| {
-				params[*key].as_str().is_some_and(|value| {
-					!value.is_empty() && value.len() <= if *key == "message" { 4096 } else { 512 }
-				})
-			}) {
-				self.store
-					.record_agent_auth_recovery(decodex_database::AgentAuthRecoveryObservation {
-						thread_id: exact(params, "/threadId")?,
-						turn_id: exact(params, "/turnId")?,
-						provider: exact(params, "/provider")?,
-						message: exact(params, "/message")?,
-						completed: method == "modelProvider/authRecoveryCompleted",
-						connection_id: self.connection_id.clone(),
-						generation_id: self
-							.native_generation
-							.as_ref()
-							.map(|id| id.as_str().to_owned()),
-					})
-					.await?;
-			}
-			return Ok(());
-		}
 		if method == "rawResponse/completed" {
 			if let Some(usage) = decodex_codex::decode_response_usage(params) {
 				let payload = serde_json::to_string(&usage)
