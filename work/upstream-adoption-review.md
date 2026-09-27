@@ -33,6 +33,10 @@ No replacement MCP approval implementation or executable update is introduced.
 
 ## Ordinary automatic model fallback
 
+Explicit Flex after a native settings update is not qualified across process
+restart on the installed binary. The restored inherited test fails with a null
+tier; configured Flex passes. See [the evidence](native-flex-qualification.md).
+
 The inherited automatic fallback is restored through the current model journal.
 It is optional Decodex policy: a fresh ChatGPT recovery banner can select an
 advertised ordinary alternative for an idle task. It sends settings once and

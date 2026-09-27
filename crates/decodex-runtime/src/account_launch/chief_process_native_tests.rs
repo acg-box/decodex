@@ -6,6 +6,7 @@ use super::*;
 #[path = "chief_process_native_cold_settings_tests.rs"] mod cold_settings;
 #[path = "chief_process_native_effort_tests.rs"] mod effort;
 #[path = "chief_process_native_file_approval_tests.rs"] mod file_approval;
+#[path = "chief_process_native_flex_tests.rs"] mod flex;
 #[path = "chief_process_native_folder_trust_tests.rs"] mod folder_trust;
 #[path = "chief_process_native_goal_tests.rs"] mod goals;
 #[path = "chief_process_native_model_recovery_tests.rs"] mod model_recovery;
