@@ -1477,3 +1477,14 @@ Thirteen catalog/model tests, seven request tests and strict GPUI Clippy pass.
 See [the complete source mapping](desktop-catalog-request-reconciliation.md). Close
 these two shared-file rows; seven file comparisons remain in the current union.
 Fresh signed desktop and native qualification limits remain open.
+
+## Shared desktop surface and capture reconciled on 2026-09-27
+
+Read both complete differences and retain all 16 inherited surface tests. Restore
+request completion ownership after reproducing a resolved-event late reply. Restore
+dependency and child navigation inside the existing inspection overlay, including
+relationships outside the scoped graph. Map moved settings, history, draft and
+capture owners in [the complete reconciliation](shared-desktop-surface-reconciliation.md).
+The desktop suite passes 541 tests with five opt-in skips; strict GPUI Clippy passes.
+Close these two file comparisons. Five remain: the overall review record and four
+files with explicit native qualification failures. Final signed acceptance remains open.
