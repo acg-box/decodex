@@ -7,12 +7,15 @@ Rows below group related behavior so the user can decide what Decodex needs.
 They include restored baseline behavior as well as scan additions. The detailed
 [adoption register](upstream-adoption-review.md) retains PR and source ownership.
 
-Status: source reconciliation is complete; the reconciliation and inventory batches
-through PR1666 are merged. Native limitations and signed desktop interaction remain
-open. The [current signed artifact](signed-desktop-a15fe830-acceptance.md) has valid
-contracts and signatures. Main-window access and normal exits are now verified;
-ordinary composer interaction remains unverified. Implemented
-does not mean fully accepted, installed or released. No removal is authorized here.
+Status: source reconciliation and the inventory batches are merged. PR1668
+integrated the Agent terminology and desktop changes. PR1669 added account-only
+acceptance preparation. PR1670 corrected repeated Agent command publication
+revisions; its clean signed cc0895c3 artifact passed first-click foreground recap
+and normal exit. See the [revision fix and evidence](agent-publication-revisions.md).
+The [earlier signed record](signed-desktop-a15fe830-acceptance.md) remains specific
+to a15fe830. Ordinary composer restart and the other listed interaction limits
+remain open. Implemented does not mean fully accepted, installed or released.
+No removal is authorized here.
 
 ## Core compatibility to retain
 
