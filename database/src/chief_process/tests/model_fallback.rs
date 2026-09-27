@@ -195,11 +195,13 @@ async fn automatic_model_confirmation_refuses_changed_account_revision() {
 #[tokio::test]
 async fn automatic_model_new_owner_supersedes_unknown_delivery_without_claiming_success() {
 	for manual in [false, true] {
-		qualify_new_owner(manual).await;
+		for model in ["blocked", "fallback"] {
+			qualify_new_owner(manual, model).await;
+		}
 	}
 }
 
-async fn qualify_new_owner(manual: bool) {
+async fn qualify_new_owner(manual: bool, observed_model: &str) {
 	let dir = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&dir.path().join("automatic.sqlite3")).unwrap();
 	let mut attempt = ready(&store).await;
@@ -262,7 +264,7 @@ async fn qualify_new_owner(manual: bool) {
 			.unwrap();
 		store.record_chief_task_models_publication(
 			"thread".into(), Some(generation_id(2).as_str().into()),
-			Some(json!({"model":"fallback","modelProvider":"fixture","effort":"high","serviceTier":"priority"}).to_string()),
+			Some(json!({"model":observed_model,"modelProvider":"fixture","effort":"high","serviceTier":"priority"}).to_string()),
 			OTHER_DIGEST.into(),
 		).await.unwrap().unwrap();
 		if !enabled {
@@ -283,7 +285,33 @@ async fn qualify_new_owner(manual: bool) {
 	assert_eq!(historical.response, "unknown");
 	assert_eq!(historical.manual, manual);
 	assert!(!historical.target_observed && historical.reconciled);
+	assert_permissions_after_reconciliation(&store).await;
 	assert!(store.begin_chief_dispatch("root".into()).await.is_ok());
+}
+
+async fn assert_permissions_after_reconciliation(store: &SqliteStore) {
+	let generation = Some(generation_id(2).as_str().to_owned());
+	let observed = store.record_chief_task_permissions_publication(
+        "thread".into(), generation.clone(),
+        Some(json!({"profileId":":read-only","cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"}}).to_string()),
+        OTHER_DIGEST.into()).await.unwrap().unwrap();
+	let permission = crate::ChiefPermissionAttempt {
+		work: "root".into(),
+		thread: "thread".into(),
+		generation,
+		settings_event: observed,
+		profile: ":workspace".into(),
+		review_token: OTHER_DIGEST.into(),
+		attempt_id: "after-reconciliation".into(),
+	};
+	let id = store
+		.reserve_chief_permission_selection(permission.clone())
+		.await
+		.unwrap()
+		.expect("reconciled model request must not block permission changes");
+	assert!(
+		store.finish_chief_permission_selection(id, permission, "rejected".into()).await.unwrap()
+	);
 }
 
 #[tokio::test]

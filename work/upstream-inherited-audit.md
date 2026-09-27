@@ -29,6 +29,16 @@ See [the complete mapping](task-model-panel-reconciliation.md). Close these two
 file rows only, from 85 to 83 pending rows of 360. Shared owner reviews and signed
 desktop acceptance remain open; this count does not measure feature completion.
 
+## Model reservation owner reconciled on 2026-09-27
+
+Map the complete inherited database writer, manual service producer and model
+regression module to the current shared owner. Strengthen the independent-client
+reservation race and four-case restart reconciliation, including subsequent
+permission admission. All three original snapshot hashes match. Close those
+three file rows only. See [the full mapping](model-owner-reconciliation.md).
+Shared observers, remaining history consumers and signed desktop acceptance stay
+open. Optional model controls do not make saved-state compatibility optional.
+
 ## Historical model receipts restored on 2026-09-27
 
 Restore the old historical status and protocol receipt through the current shared
