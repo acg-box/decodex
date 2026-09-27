@@ -1,14 +1,19 @@
 # Current login-policy classification
 
-Native capability: available and qualified through the installed process.
-Decodex independent browser/device-code enrollment: not integrated with this
-native policy; do not advertise enforcement. AccountLoginManager still uses the
-separate account-login engine. Applicability and the enrollment policy authority
-remain unresolved in the adoption register and must stay visible for the user's
-scope decision. Reading an arbitrary task's policy is not a valid substitute.
+Native execution admission is available and qualified. Decodex projects external
+ChatGPT credentials through native account/login/start, which enforces the
+running authentication category and workspace restrictions. API versus ChatGPT
+policy is distinct from browser versus device-code login; both local choices are
+ChatGPT enrollment methods.
 
-The restored native tests cover running policy and cold restart; they do not
-prove desktop enrollment enforcement. See [current reconciliation](native-policy-routing-reconciliation.md).
+Independent account enrollment is not integrated with a native enrollment-policy
+authority. Do not advertise such enforcement or infer a global policy from an
+arbitrary task process. This remains an unimplemented integration for the user's
+scope review, not evidence that native execution bypasses its own restrictions.
+See [the exact source and fresh restriction test](native-policy-routing-reconciliation.md).
+
+The original note below remains unchanged as historical evidence. Its suggested
+integration is not an implemented global policy owner.
 
 ## Preserved historical record
 

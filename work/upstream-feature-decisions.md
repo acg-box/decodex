@@ -92,9 +92,11 @@ does not need them. The user decides which rows remain.
    of required root handoff on the tested binary. Keep the strict failing fixture.
 3. Voice WebRTC/media, physical audio and late remote caption identity remain
    qualified only to the precise limits of their records.
-4. Independent Decodex browser/device-code enrollment does not currently consume
-   the native allowed-login-method policy. Applicability/authority needs resolution;
-   the native policy probe does not prove local UI enforcement.
+4. Independent Decodex browser/device-code enrollment has no native enrollment-policy
+   authority integration. Native execution admission separately enforces its own
+   authentication restrictions, including external ChatGPT credentials. A global
+   enrollment-policy owner remains an unimplemented scope decision; local UI
+   enforcement is not claimed.
 5. Main-window interaction and history-edit draft restart are verified. Ordinary
    composer interaction remains unverified because its native child window is not
    exposed in the observed main-window accessibility tree. Broader lifecycle and
