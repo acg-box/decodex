@@ -21,6 +21,16 @@ means a product behavior or control that the user can assess for removal. Mixed
 rows need a finer split before removal. These labels are review classifications,
 not instructions to delete code or weaken native enforcement.
 
+## Current signed artifact
+
+The fresh [a15fe830 signed artifact](signed-desktop-a15fe830-acceptance.md) passes
+bundle contracts and signing checks. Its embedded source identity is exact and
+clean. Two isolated launches could not be selected by the UI tool, which reports
+cgWindowNotFound. App-owned service startup and parent-exit cleanup have process
+and protocol evidence; normal GUI quit and the required desktop interactions
+remain unverified. The older 0658 interaction record is historical, not acceptance
+of the later repairs. R06/R07/R12 remain open.
+
 ## Application projection correctness
 
 Preserve native approval account identity, complete file evidence, model-review
