@@ -851,6 +851,15 @@ active and completed turns after a closing refusal. No production code changes
 are required. Close this one runtime file entry; broader R08 acceptance remains
 open. See [recovery ownership](closing-resume-recovery.md).
 
+## Shared protocol client restored and reconciled on 2026-09-27
+
+Reproduce a delayed successful plugin-setting reply being reported as uncertain
+after five seconds. Restore its inherited 65-second budget without retry. Restore
+native-goal wire coverage and map the complete client/execution/request-helper
+differences. All 167 protocol tests and strict lint pass. See
+[the full mapping](shared-protocol-client-reconciliation.md). Close three source
+rows only; broader wire/runtime and signed acceptance remain open.
+
 ## Validation boundary
 
 This documentation refresh checked snapshot hashes, current committed bytes, all

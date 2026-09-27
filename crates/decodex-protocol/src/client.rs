@@ -1769,6 +1769,7 @@ impl ChiefClient {
 				crate::ChiefActionDto::SetAppToolExposure { .. }
 					| crate::ChiefActionDto::ConfirmAppUiTool { .. }
 					| crate::ChiefActionDto::SetVoicePreference { .. }
+					| crate::ChiefActionDto::SetTaskPlugin { .. }
 			) {
 			Duration::from_secs(65)
 		} else {
@@ -1784,6 +1785,7 @@ impl ChiefClient {
 						crate::ChiefActionDto::SetAppToolExposure { .. }
 							| crate::ChiefActionDto::ConfirmAppUiTool { .. }
 							| crate::ChiefActionDto::SetVoicePreference { .. }
+							| crate::ChiefActionDto::SetTaskPlugin { .. }
 					) {
 					timeout
 				} else {
@@ -3430,6 +3432,8 @@ fn version_failure(_version: ProtocolVersion) -> ClientFailure {
 
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests {
+	mod native_goal;
+	mod plugin_selection;
 	mod prompt_edit;
 	mod timeline;
 	#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
