@@ -11,17 +11,21 @@ one shared file can contain both delivered and outstanding behavior.
 
 ## Current source disposition on 2026-09-27
 
-On the reconciliation branch following PR1662, all 360 rows have an explicit
-source disposition. Neither review field has an unclassified row. Four rows
-retain explicit native qualification failure or incomplete-group status; they
-are not passing capabilities. Pending merges must still reach main before this
-branch count describes main. See [source and native boundaries](source-preservation-native-limits.md).
+At main `71479b917fc990847d392a483d478466c2696bf4`, all 360 rows have an
+explicit source disposition. The main register exactly matches the reconciled
+working register; neither review field has an unclassified row. All 357 preserved
+file hashes match again. The three absent paths are the recorded deletions.
+Four rows retain explicit native qualification failure or incomplete-group status;
+they are not passing capabilities. See [source and native boundaries](source-preservation-native-limits.md).
 
-All 357 preserved file hashes were checked again. The complete original top-level
-review is restored under a current notice. No existing snapshot, stash or original
-PR is removed. The counts below remain historical. Final native/desktop acceptance
-and the feature removal inventory are separate work, and the manual task remains
-incomplete. Automations remain paused.
+The original PR1378 remains open at
+`4e370c07464ea3528ed1334fd6ce75fcc5ca595a`. Both preserved stashes remain:
+`9187391b7ffc569f8d304ae3bfdfea5c32d566cc` and
+`3a9454d5457882473cb49697872ea6403ecf4b29`. This readback confirms preservation,
+not approval to remove these resources. The feature decision inventory through
+PR1665 is also merged. Source preservation and file classification are complete;
+native limitations and final desktop acceptance remain separate, open requirements.
+The counts below are historical. Automations remain paused.
 
 ## Separate review counts on 2026-09-27
 
