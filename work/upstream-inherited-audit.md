@@ -1457,3 +1457,13 @@ and five voice GPUI tests pass without skips. See [current evidence and remainin
 acceptance](prompt-voice-record-reconciliation.md). Close only these two document
 rows; the current union contains 12 open file comparisons. Physical audio, late
 remote caption identity and fresh signed desktop acceptance remain open.
+
+## Overview records and desktop module root reconciled on 2026-09-27
+
+Restore both complete inherited overview records with current notices. Preserve
+native ownership, optional proposals and historical acceptance limits. Correct
+intermediate model-control gaps and distinguish superseded native outcomes from
+current child MCP failure. The tab-paste rendered regression passes. The complete
+main.rs diff only adds two retained modules. See [the complete scope mapping](overview-record-reconciliation.md).
+Close these three rows only; nine file comparisons remain in the current union.
+Signed desktop and native qualification limits remain open.
