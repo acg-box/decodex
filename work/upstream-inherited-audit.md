@@ -1339,3 +1339,14 @@ with none ignored. No production code, migration history or user database change
 See [the complete mapping and historical-schema limits](database-owner-reconciliation.md).
 Close these eight source rows only; signed desktop and remaining native acceptance
 are separate.
+
+## Runtime evidence owners reconciled on 2026-09-27
+
+Close five complete source comparisons for account observation, pending file
+evidence, the shared voice classifier, known-unsent refusal tests and the native
+file-approval fixture. The runtime suite passes 703 tests and skips 93 opt-in
+tests. The separate file-approval test passes against installed Codex
+0.158.0-alpha.2.1. See [the mapping and remaining native gaps](runtime-evidence-owner-reconciliation.md).
+The current branch has 19 full-file reviews and 24 delivery reviews open, with
+17 in both sets and 26 in their union. These are file-review counts, not feature
+completion. Shared native fixtures and signed desktop acceptance remain open.
