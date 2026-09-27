@@ -365,6 +365,28 @@ async fn serve_fixture_usage(
 	usage: impl Fn(usize) -> Value,
 	output: impl Fn(usize) -> Value,
 ) {
+	serve_fixture_frames(listener, requests, effort, bodies, |serial| {
+			let id = format!("fixture-{serial}");
+			let output = output(serial);
+			let items = output.as_array().cloned().unwrap_or_else(|| vec![output]);
+			let mut frames = vec![json!({"type":"response.created","response":{"id":id}})];
+			frames.extend(
+				items.into_iter().map(|item| json!({"type":"response.output_item.done","item":item})),
+			);
+			frames.extend([
+				json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":usage(serial)}}),
+			]);
+			frames
+		}).await;
+}
+
+async fn serve_fixture_frames(
+	listener: tokio::net::TcpListener,
+	requests: Arc<std::sync::atomic::AtomicUsize>,
+	effort: Option<&str>,
+	bodies: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
+	frames: impl Fn(usize) -> Vec<Value>,
+) {
 	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = tokio::io::BufReader::new(socket);
@@ -400,16 +422,7 @@ async fn serve_fixture_usage(
 			bodies.lock().expect("fixture bodies").push(body);
 		}
 		let serial = requests.fetch_add(1, Ordering::AcqRel);
-		let id = format!("fixture-{serial}");
-		let output = output(serial);
-		let items = output.as_array().cloned().unwrap_or_else(|| vec![output]);
-		let mut frames = vec![json!({"type":"response.created","response":{"id":id}})];
-		frames.extend(
-			items.into_iter().map(|item| json!({"type":"response.output_item.done","item":item})),
-		);
-		frames.extend([
-			json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":usage(serial)}}),
-		]);
+		let frames = frames(serial);
 		let data = frames
 			.iter()
 			.map(|v| {
@@ -442,3 +455,5 @@ async fn serve_fixture_usage(
 #[path = "chief_process_native_code_mode_tests.rs"] mod code_mode;
 
 #[path = "chief_process_native_compaction_tests.rs"] mod compaction;
+
+#[path = "chief_process_native_capacity_tests.rs"] mod capacity;
