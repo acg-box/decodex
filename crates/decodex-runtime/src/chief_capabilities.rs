@@ -3,6 +3,24 @@ use decodex_codex::app_server_client::AppServerClient;
 use decodex_protocol::{ChiefCapabilitiesResult, ChiefModelDto, ConversationModel};
 use serde_json::{Value, json};
 
+/// Discard a catalog if its account revision or retained process changed during discovery.
+pub(crate) async fn read_scoped<K, F, Fut>(source: F) -> ChiefCapabilitiesResult
+where
+	K: PartialEq,
+	F: Fn() -> Fut,
+	Fut: std::future::Future<Output = Option<(K, AppServerClient)>>,
+{
+	let Some((before, client)) = source().await else {
+		return ChiefCapabilitiesResult::Unavailable;
+	};
+	let result = read(&client).await;
+	if source().await.is_some_and(|(after, _)| after == before) {
+		result
+	} else {
+		ChiefCapabilitiesResult::Unavailable
+	}
+}
+
 pub(crate) async fn read(client: &AppServerClient) -> ChiefCapabilitiesResult {
 	tokio::time::timeout(std::time::Duration::from_secs(8), read_inner(client))
 		.await
@@ -227,6 +245,64 @@ fn project_model(value: &Value) -> Option<ChiefModelDto> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[tokio::test]
+	async fn catalog_discards_account_changes_while_native_discovery_is_in_flight() {
+		use std::sync::atomic::{AtomicU64, Ordering};
+		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+		for change in [0, 1, 2] {
+			let revision = std::sync::Arc::new(AtomicU64::new(1));
+			let (client_io, server_io) = tokio::io::duplex(65536);
+			let (reader, writer) = tokio::io::split(client_io);
+			let (client, _events) = AppServerClient::from_io(reader, writer);
+			let current = revision.clone();
+			let server = tokio::spawn(async move {
+				let (reader, mut writer) = tokio::io::split(server_io);
+				let mut lines = BufReader::new(reader).lines();
+				for method in ["model/list", "experimentalFeature/list"] {
+					let request: Value =
+						serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+					assert_eq!(request["method"], method);
+					if method == "model/list" && change != 0 {
+						current.store(if change == 1 { 2 } else { 0 }, Ordering::SeqCst);
+					}
+					writer
+						.write_all(
+							format!(
+								"{}\n",
+								json!({"id":request["id"],"result":{"data":[],"nextCursor":null}})
+							)
+							.as_bytes(),
+						)
+						.await
+						.unwrap();
+				}
+			});
+			let result = read_scoped(|| async {
+				let revision = revision.load(Ordering::SeqCst);
+				(revision != 0).then(|| (revision, client.clone()))
+			})
+			.await;
+			server.await.unwrap();
+			assert_eq!(matches!(result, ChiefCapabilitiesResult::Available { .. }), change == 0);
+		}
+	}
+
+	#[test]
+	fn model_defined_efforts_survive_native_catalog_projection() {
+		let value = json!({"model":"custom","displayName":"Custom",
+            "supportedReasoningEfforts":[{"reasoningEffort":"none"},{"reasoningEffort":"minimal"},{"reasoningEffort":"provider-defined-effort"}],
+            "defaultReasoningEffort":"provider-defined-effort"});
+		let model = project_model(&value).expect("native model-defined effort");
+		assert_eq!(
+			model.efforts.iter().map(|effort| effort.as_str()).collect::<Vec<_>>(),
+			["none", "minimal", "provider-defined-effort"]
+		);
+		assert_eq!(
+			model.default_effort.as_ref().map(|effort| effort.as_str()),
+			Some("provider-defined-effort")
+		);
+	}
+
 	#[test]
 	fn access_programs_preserve_unknown_empty_and_changed_catalog_metadata() {
 		let mut value = json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[],"defaultReasoningEffort":"high"});

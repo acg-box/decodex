@@ -69,6 +69,15 @@ service shows old uncertainty and sends no replay. Full old producer/display
 reconciliation remains open. See
 [legacy journal compatibility](legacy-model-journal-compatibility.md).
 
+## Catalog and effort consumers reconciled on 2026-09-26
+
+Restore account/revision/readiness checks around Chief catalog discovery. Keep the
+ordinary metadata-process owner and native defaults parser, restore their inherited
+validation matrix and exact effort serialization, and map the retained desktop
+slider behavior to current tests. Close these three whole-file rows only. Shared
+owners, optional notices and automatic fallback remain open. See
+[catalog source reconciliation](catalog-source-reconciliation.md).
+
 ## Live model transport restored on 2026-09-26
 
 The current bridge rejected a valid exact-turn model request. The focused test

@@ -253,6 +253,70 @@ fn read_initial_defaults(
 #[cfg(test)]
 mod tests {
 	use super::read_catalog;
+	#[test]
+	fn defaults_projection_distinguishes_absent_from_invalid() {
+		use serde_json::json;
+		let project_defaults = |value: &serde_json::Value, managed| {
+			use decodex_codex::app_server_client::NativeExecutionDefaults;
+			let native = if managed {
+				NativeExecutionDefaults::from_requirements_response(value)
+			} else {
+				NativeExecutionDefaults::from_config_response(value)
+			};
+			native.ok().and_then(super::project_native_defaults)
+		};
+		assert_eq!(
+			project_defaults(&json!({"requirements":null}), true),
+			Some(decodex_protocol::InitialExecutionDefaults::default())
+		);
+		assert_eq!(
+			project_defaults(&json!({"config":{}}), false),
+			Some(decodex_protocol::InitialExecutionDefaults::default())
+		);
+		for invalid in [
+			json!({}),
+			json!({"requirements":false}),
+			json!({"requirements":{"models":false}}),
+			json!({"requirements":{"models":{"newThread":{"model":42}}}}),
+		] {
+			assert!(project_defaults(&invalid, true).is_none());
+		}
+		let custom = project_defaults(
+			&json!({"config":{"model_reasoning_effort":"provider-defined-effort"}}),
+			false,
+		)
+		.expect("native custom default");
+		assert_eq!(
+			custom.reasoning_effort.expect("default effort").as_str(),
+			"provider-defined-effort"
+		);
+		for config in [
+			json!({"model":"bad\nmodel"}),
+			json!({"model_reasoning_effort":"bad\neffort"}),
+			json!({"service_tier":42}),
+		] {
+			assert!(project_defaults(&json!({"config":config}), false).is_none());
+		}
+	}
+
+	#[test]
+	fn selected_native_effort_reaches_turn_start_without_fallback() {
+		for value in ["none", "minimal", "persistent", "provider-defined-effort", "x_high"] {
+			let effort: decodex_protocol::ConversationReasoningEffort =
+				serde_json::from_value(serde_json::json!(value)).expect("protocol effort");
+			let request = decodex_codex::ConversationTurnStartRequest::new(
+				decodex_codex::ExactThreadId::new("fixture-thread").expect("thread"),
+				decodex_codex::ConversationTurnInput::text("Use the selected effort")
+					.expect("input"),
+				"fixture-model",
+				effort.as_str(),
+			)
+			.expect("native turn request");
+			let encoded = serde_json::to_value(request).expect("native wire");
+			assert_eq!(encoded["effort"], if value == "x_high" { "xhigh" } else { value });
+		}
+	}
+
 	use crate::account_launch::process::tests::ordinary_catalog_child;
 
 	#[test]
