@@ -57,3 +57,18 @@ The child approval result is positive; the human-input handoff result is a known
 qualification failure. Re-run the strict fixture against the eventual delivery
 binary before claiming the fixed-cutoff behavior. Include this limit in the final
 capability review; signed desktop and broader child acceptance remain open.
+
+## Recheck on Codex 0.158.0-alpha.2.1
+
+The installed executable changed independently of this task. Re-run the same
+strict fixture without changing its assertions or synthetic server:
+
+- Version: `codex-cli 0.158.0-alpha.2.1`.
+- SHA-256: `3e11ccc743e8198a5ef84fb57c89941d845b0ea0302485ed1fbac2f0821aca5a`.
+- Log: `/tmp/decodex-child-mcp-alpha-2-1.log`.
+
+Both markers again return `result.action: accept` and empty content. The test
+fails with two failed marker cases. The fixture shuts down each native process
+and aborts its local response server before reporting the failure. The cause
+remains unqualified, and the three inherited-file rows remain open. This newer
+binary must not be treated as a fix based on its version alone.
