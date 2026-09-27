@@ -146,9 +146,15 @@ impl AgentSurface {
 		if self.native_history.requested.as_ref().is_some_and(|(id, thread)| {
 			id == &work.id && Some(thread) == work.codex_thread_id.as_ref()
 		}) {
-			if self.native_history.task.is_some() {
+			// A background refresh must not change transcript height. Inserting a
+			// loading row on every poll makes bottom-follow repeatedly scroll back.
+			let has_history = self.native_history.binding.as_ref().is_some_and(|binding| {
+				binding.work == work.id && Some(&binding.thread) == work.codex_thread_id.as_ref()
+			});
+			if self.native_history.task.is_some() && !has_history {
 				panel = panel.child(muted("Loading native history…"));
-			} else if let Some(message) = self.native_history.notice {
+			}
+			if let Some(message) = self.native_history.notice {
 				panel = panel.child(
 					div().debug_selector(|| "native-history-notice".into()).child(muted(message)),
 				);

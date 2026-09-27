@@ -296,6 +296,69 @@ mod tests {
 		}
 	}
 
+	#[gpui::test]
+	fn background_refresh_keeps_history_height_and_reading_position(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(px(1400.), px(700.)));
+		let work = surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			let work = s.selected.clone().unwrap();
+			s.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|item| item.id == work)
+				.unwrap()
+				.codex_thread_id = Some("thread".into());
+			s.native_history.requested = Some((work.clone(), "thread".into()));
+			assert!(s.native_history.replace(
+				Binding { work: work.clone(), thread: "thread".into(), account: "account".into() },
+				AgentTimelinePage {
+					thread_id: "thread".into(),
+					entries: (0..4).map(row).collect(),
+					next_cursor: None,
+					active_realtime_session_at_page_start: None
+				}
+			));
+			s.latest_follow_work = None;
+			s.history_follow_paused.insert(work.clone());
+			cx.notify();
+			work
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let scroll = surface.read_with(visual, |s, _| s.transcript_scroll[&work].clone());
+		scroll.set_offset(point(px(0.), px(-300.)));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let maximum = scroll.max_offset();
+		let offset = scroll.offset();
+		for pending in [true, false, true, false] {
+			surface.update(visual, |s, cx| {
+				s.native_history.task =
+					pending.then(|| cx.spawn(async |_, _| std::future::pending::<()>().await));
+				cx.notify();
+			});
+			visual.update(|window, cx| {
+				window.draw(cx).clear();
+			});
+			assert_eq!(
+				scroll.max_offset(),
+				maximum,
+				"background refresh must not insert or remove rows"
+			);
+			assert_eq!(
+				scroll.offset(),
+				offset,
+				"background refresh must preserve reading position"
+			);
+		}
+	}
+
 	#[test]
 	fn evicted_rows_and_obsolete_layout_callbacks_cannot_move_the_viewport() {
 		let viewport = Viewport::default();
