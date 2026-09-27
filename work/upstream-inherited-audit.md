@@ -788,6 +788,15 @@ This batch closes one row from its 192-row pending baseline to 191 and retains
 all 360 entries. Parallel batches close separate rows. It does not close the
 shared runtime test file or any broader acceptance group.
 
+## Ordinary runtime and non-submission owners reconciled on 2026-09-27
+
+Map the complete ordinary runtime and both positive non-submission helper diffs.
+Preserve native inheritance, exact creation/readback identity, interleaved events
+and atomic evidence ownership. Document the prototype fingerprint difference.
+Eighteen runtime cases, one source-bound creation case and one multi-scenario
+database case pass. See [the complete mapping](ordinary-runtime-reconciliation.md).
+Close these three file rows only; broader signed acceptance remains open.
+
 ## Native permission restoration qualified on 2026-09-26
 
 Restore `chief/tests/native_permissions.rs` with its complete warm/cold scenario
