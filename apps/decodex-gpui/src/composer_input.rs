@@ -770,7 +770,7 @@ fn bounded_input(value: &str, maximum_bytes: usize) -> String {
 			}
 			character = '\n';
 		}
-		if character.is_control() && character != '\n' {
+		if character.is_control() && !matches!(character, '\n' | '\t') {
 			continue;
 		}
 		if output.len().saturating_add(character.len_utf8()) > maximum_bytes {
@@ -784,6 +784,27 @@ fn bounded_input(value: &str, maximum_bytes: usize) -> String {
 #[cfg(test)]
 mod multiline_tests {
 	use super::*;
+
+	#[gpui::test]
+	fn pasted_tabs_preserve_indentation_and_undo(cx: &mut gpui::TestAppContext) {
+		cx.update(bind_keys);
+		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+		visual.update(|window, cx| {
+			window.focus(&input.focus_handle(cx), cx);
+			cx.write_to_clipboard(ClipboardItem::new_string("界\tfirst\r\n\t\tsecond\n".into()));
+			input.update(cx, |input, cx| {
+				input.paste(&Paste, window, cx);
+				let expected = "界\tfirst\n\t\tsecond\n";
+				assert_eq!(input.content(), expected);
+				input.undo(&Undo, window, cx);
+				assert_eq!(input.content(), "");
+				input.redo(&Redo, window, cx);
+				assert_eq!(input.content(), expected);
+				assert_eq!(decodex_protocol::WireText::new(expected).unwrap().as_str(), expected);
+			});
+		});
+		assert_eq!(bounded_input("界\t\u{0}\u{1b}文", 5), "界\t");
+	}
 
 	#[gpui::test]
 	fn ordinary_draft_preserves_composition_undo_and_redo(cx: &mut gpui::TestAppContext) {
