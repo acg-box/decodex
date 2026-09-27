@@ -57,6 +57,15 @@ and native feature checks, shared durable journal, desktop control and installed
 native current-turn/next-turn qualification remain open. No local protocol,
 configuration, feature flag or automation changes occur in this batch.
 
+## Permission controller fixtures restored on 2026-09-26
+
+Restore the complete five-scenario permission-owner file. Preserve source and
+no-replay checks, session profiles, ordinary native resume and pending-tool
+identity. Adapt only the obsolete named-profile idle restriction to the current
+qualified native behavior. Five restored tests, the current named-profile and
+service tests, and strict lint pass. Close this test-file row only. See
+[permission controller qualification](native-permission-controller-qualification.md).
+
 ## Native task-default selection qualified on 2026-09-26
 
 Restore the full inherited task-default model fixture through the current service
