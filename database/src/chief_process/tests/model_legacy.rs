@@ -13,6 +13,15 @@ fn identity(number: u32) -> decodex_core::ProcessIdentity {
 	.unwrap()
 }
 async fn ready(store: &SqliteStore, manual: bool, response: Option<&str>) -> String {
+	ready_with_tier(store, manual, response, json!("priority")).await
+}
+
+async fn ready_with_tier(
+	store: &SqliteStore,
+	manual: bool,
+	response: Option<&str>,
+	tier: Value,
+) -> String {
 	seed(store).await;
 	store.bind_chief_thread("root".into(), "thread".into()).await.unwrap();
 	store
@@ -21,7 +30,7 @@ async fn ready(store: &SqliteStore, manual: bool, response: Option<&str>) -> Str
 		.unwrap();
 	store.bind_process_generation_identity(&generation_id(1), 1, &identity(123)).await.unwrap();
 	store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
-	let attempt = json!({"work":"root","thread":"thread","generation":generation_id(1).as_str(),"account":account_id(1).as_str(),"account_revision":1,"settings_event":1,"banner_digest":OTHER_DIGEST,"manual_review":manual.then_some(DIGEST),"from_model":"old","model":"target","effort":"high","service_tier":"priority"});
+	let attempt = json!({"work":"root","thread":"thread","generation":generation_id(1).as_str(),"account":account_id(1).as_str(),"account_revision":1,"settings_event":1,"banner_digest":OTHER_DIGEST,"manual_review":manual.then_some(DIGEST),"from_model":"old","model":"target","effort":"high","service_tier":tier});
 	let original = json!({"attempt":attempt,"state":"claimed"}).to_string();
 	let saved = original.clone();
 	let response = response.map(str::to_owned);
@@ -389,5 +398,26 @@ async fn legacy_model_journal_never_consumes_transcript_pages() {
 	assert_visible_history(&store, &message).await;
 	let receipt = history(&store, 1).await;
 	assert!(receipt.target_observed);
+	assert_eq!(receipt.response, "queued");
+}
+
+#[tokio::test]
+async fn legacy_automatic_unset_tier_requires_an_explicit_null_publication() {
+	let dir = tempfile::tempdir().unwrap();
+	let store = SqliteStore::open_test(&dir.path().join("unset-legacy.sqlite3")).unwrap();
+	ready_with_tier(&store, false, Some("queued"), Value::Null).await;
+	for tier in [None, Some(json!(false)), Some(json!("priority"))] {
+		let mut settings = json!({"model":"target","modelProvider":"fixture","effort":"high"});
+		if let Some(tier) = tier {
+			settings["serviceTier"] = tier;
+		}
+		publish(&store, 1, Some(settings.to_string()), DIGEST).await;
+		assert!(pending(&store, 1).await.is_some());
+		assert!(!history(&store, 1).await.target_observed);
+	}
+	publish(&store, 1, Some(facts(Value::Null)), OTHER_DIGEST).await;
+	assert!(pending(&store, 1).await.is_none());
+	let receipt = history(&store, 1).await;
+	assert!(receipt.target_observed && !receipt.manual && !receipt.reconciled);
 	assert_eq!(receipt.response, "queued");
 }
