@@ -31,6 +31,17 @@ after complete comparison and focused validation. The shared capture tool and
 signed application acceptance remain open. See
 [integration status reconciliation](integration-status-reconciliation.md).
 
+## Complete Guardian details restored on 2026-09-26
+
+Restore saved-row/digest-bound paging, public client/service routing and the
+desktop's complete-review gate. A restored restart test also proves that the
+64 KiB rationale check dropped completion events. Remove that unsupported field
+limit while retaining the total native-message bound. Restore all inherited
+coordinator regressions and keep current cold-resume/frame checks. Close four
+remaining whole-file rows and correct the adapter's earlier incomplete rationale
+assessment. Shared modules and signed desktop acceptance remain open. See
+[Guardian detail pages](guardian-detail-pages.md).
+
 ## Realtime history and voice tails qualified on 2026-09-26
 
 Restore the complete native realtime timeline fixture and four coordinator

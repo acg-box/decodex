@@ -297,14 +297,34 @@ pub(crate) struct ServiceApplication {
 	doctor: DoctorReport,
 }
 impl ServiceApplication {
-	async fn query_guardian_review_page(
-		&self,
-		work: &str,
-		before: Option<i64>,
-	) -> QueryResultPayload {
-		QueryResultPayload::ChiefGuardianReviews(
-			query_guardian_reviews(&self.store, self.chief.as_ref(), work, before).await,
-		)
+	async fn query_guardian(&self, query: &QueryPayload) -> QueryResultPayload {
+		match query {
+			QueryPayload::GetChiefGuardianReviews { work_id, before } =>
+				QueryResultPayload::ChiefGuardianReviews(
+					query_guardian_reviews(
+						&self.store,
+						self.chief.as_ref(),
+						work_id.as_str(),
+						*before,
+					)
+					.await,
+				),
+			QueryPayload::GetChiefGuardianDetail { work_id, review_row, review_digest, offset } =>
+				QueryResultPayload::ChiefGuardianDetail(match &self.store {
+					ProductStore::Available(store) =>
+						crate::chief_guardian::detail(
+							store,
+							work_id.as_str(),
+							*review_row,
+							review_digest.as_str(),
+							*offset,
+						)
+						.await,
+					ProductStore::Unavailable(_) =>
+						decodex_protocol::ChiefGuardianDetailResult::Unavailable,
+				}),
+			_ => unreachable!("only Guardian queries reach this owner"),
+		}
 	}
 
 	async fn query_native_goal(&self, work: &str, thread: &str) -> QueryResultPayload {
@@ -2370,8 +2390,8 @@ impl Application for ServiceApplication {
 				self.query_history(work_id.as_str(), *before).await,
 			QueryPayload::GetChiefArchiveState { .. }
 			| QueryPayload::GetChiefInstallState { .. } => self.query_native_lifecycle(&query.payload).await,
-			QueryPayload::GetChiefGuardianReviews { work_id, before } =>
-				self.query_guardian_review_page(work_id.as_str(), *before).await,
+			QueryPayload::GetChiefGuardianReviews { .. }
+			| QueryPayload::GetChiefGuardianDetail { .. } => self.query_guardian(&query.payload).await,
 			QueryPayload::GetChiefSnapshot => self.query_chief_snapshot().await,
 			QueryPayload::GetDesktopSettings =>
 				QueryResultPayload::DesktopSettings(self.desktop_settings().await),

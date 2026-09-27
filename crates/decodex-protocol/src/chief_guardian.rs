@@ -51,6 +51,8 @@ pub struct ChiefGuardianReviewDto {
 	pub action_json: Option<String>,
 	/// Why action or rationale content could not be shown.
 	pub details_unavailable: Option<String>,
+	/// Complete details are available through the digest-bound detail reader.
+	pub details_paged: bool,
 	/// Whether the observation came from the currently retained native process.
 	pub current_process: bool,
 	/// Separate explicit approval receipt.
@@ -77,4 +79,79 @@ pub enum ChiefGuardianReviewsResult {
 	},
 	/// The work or its saved evidence cannot be read.
 	Unavailable,
+}
+
+/// Maximum UTF-8 text bytes in one detail page, before JSON escaping.
+pub const GUARDIAN_DETAIL_PAGE_BYTES: usize = 8 * 1024;
+
+/// A page of complete saved action and rationale text. No action is truncated.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ChiefGuardianDetailResult {
+	/// One contiguous UTF-8 slice of the requested immutable observation.
+	Available {
+		/// Saved review row identity.
+		row_id: i64,
+		/// Digest of the complete observation.
+		digest: String,
+		/// Starting UTF-8 byte offset.
+		offset: usize,
+		/// Total UTF-8 bytes in the complete document.
+		total_bytes: usize,
+		/// Unmodified text at this offset.
+		text: String,
+		/// Next offset; absent at the document end.
+		next_offset: Option<usize>,
+	},
+	/// Missing, changed, or undisplayable evidence. Refresh the review list.
+	Unavailable,
+}
+
+impl ChiefGuardianDetailResult {
+	/// Verify response identity and contiguous bounds before showing a page.
+	pub fn matches_request(&self, row: i64, expected_digest: &str, start: usize) -> bool {
+		match self {
+			Self::Unavailable => true,
+			Self::Available { row_id, digest, offset, total_bytes, text, next_offset } => {
+				let Some(end) = offset.checked_add(text.len()) else {
+					return false;
+				};
+				*row_id == row
+					&& digest == expected_digest
+					&& *offset == start
+					&& !text.is_empty()
+					&& text.len() <= GUARDIAN_DETAIL_PAGE_BYTES
+					&& end <= *total_bytes
+					&& *total_bytes <= decodex_core::MAX_NATIVE_MESSAGE_BYTES
+					&& *next_offset == (end < *total_bytes).then_some(end)
+			},
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn detail_pages_bind_identity_and_exact_continuation() {
+		let page = ChiefGuardianDetailResult::Available {
+			row_id: 4,
+			digest: "exact".into(),
+			offset: 3,
+			total_bytes: 9,
+			text: "中文".into(),
+			next_offset: None,
+		};
+		assert!(page.matches_request(4, "exact", 3));
+		for (row, digest, offset) in [(5, "exact", 3), (4, "stale", 3), (4, "exact", 0)] {
+			assert!(!page.matches_request(row, digest, offset));
+		}
+		for next_offset in [Some(3), Some(8), Some(9), Some(10)] {
+			let mut bad = page.clone();
+			if let ChiefGuardianDetailResult::Available { next_offset: next, .. } = &mut bad {
+				*next = next_offset;
+			}
+			assert!(!bad.matches_request(4, "exact", 3));
+		}
+	}
 }

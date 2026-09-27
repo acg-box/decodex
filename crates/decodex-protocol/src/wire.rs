@@ -2427,6 +2427,17 @@ pub enum QueryPayload {
 		/// Older review cursor; None selects the newest page.
 		before: Option<i64>,
 	},
+	/// Read complete action details in bounded, digest-bound pages.
+	GetChiefGuardianDetail {
+		/// Exact local work identity.
+		work_id: EntityId,
+		/// Saved review row identity.
+		review_row: i64,
+		/// Digest from the displayed review list.
+		review_digest: WireText,
+		/// UTF-8 byte offset returned by the previous page, or zero.
+		offset: usize,
+	},
 	/// Read one selected, bounded pending request.
 	GetChiefRequest {
 		/// Exact inbox event identity.
@@ -3166,6 +3177,8 @@ pub enum QueryResultPayload {
 	ChiefResources(crate::ChiefResourcesResult),
 	/// Saved Guardian assessments and explicit user approval receipts.
 	ChiefGuardianReviews(crate::ChiefGuardianReviewsResult),
+	/// Exact saved action detail page.
+	ChiefGuardianDetail(crate::ChiefGuardianDetailResult),
 	/// Current native archive membership, not a cached local flag.
 	ChiefArchiveState(crate::ChiefArchiveResult),
 	/// Fresh installation and authorization observations.

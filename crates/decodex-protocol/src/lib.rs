@@ -26,8 +26,8 @@ mod chief_archive;
 pub use chief_archive::ChiefArchiveResult;
 mod chief_guardian;
 pub use chief_guardian::{
-	ChiefGuardianReviewDto, ChiefGuardianReviewsResult, ChiefGuardianStatus,
-	ChiefGuardianSubmission,
+	ChiefGuardianDetailResult, ChiefGuardianReviewDto, ChiefGuardianReviewsResult,
+	ChiefGuardianStatus, ChiefGuardianSubmission, GUARDIAN_DETAIL_PAGE_BYTES,
 };
 mod chief_integrations;
 pub use chief_integrations::{ChiefAppInventory, ChiefAppStatusDto};
@@ -230,7 +230,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 92 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 93 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

@@ -1202,6 +1202,34 @@ impl ChiefClient {
 		}
 	}
 
+	/// Read one page of the exact saved Guardian action and rationale.
+	pub async fn guardian_detail(
+		&self,
+		work_id: EntityId,
+		review_row: i64,
+		review_digest: crate::WireText,
+		offset: usize,
+	) -> Result<crate::ChiefGuardianDetailResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let expected_digest = review_digest.as_str().to_owned();
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"chief-guardian-detail",
+				QueryPayload::GetChiefGuardianDetail { work_id, review_row, review_digest, offset },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ChiefGuardianDetail(result)
+				if result.matches_request(review_row, &expected_digest, offset) =>
+				Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read native resource associations without loading or running the thread.
 	pub async fn resources(
 		&self,
@@ -3571,6 +3599,7 @@ mod tests {
 				rationale: Some("Not requested".into()),
 				action_json: Some("{}".into()),
 				details_unavailable: None,
+				details_paged: false,
 				current_process: false,
 				submission: Some(crate::ChiefGuardianSubmission::Pending),
 				submission_key: Some("exact-command".into()),
@@ -3615,6 +3644,71 @@ mod tests {
 			.unwrap();
 		server.await.unwrap();
 		assert_eq!(result, expected);
+	}
+
+	#[tokio::test]
+	async fn guardian_detail_query_rejects_mismatched_native_evidence_pages() {
+		for case in 0..6 {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let reply = crate::ChiefGuardianDetailResult::Available {
+				row_id: if case == 1 { 43 } else { 42 },
+				digest: if case == 2 { "stale" } else { "exact" }.into(),
+				offset: if case == 3 { 0 } else { 3 },
+				total_bytes: 9,
+				text: if case == 5 {
+					"x".repeat(crate::GUARDIAN_DETAIL_PAGE_BYTES + 1)
+				} else {
+					"中文".into()
+				},
+				next_offset: (case == 4).then_some(9),
+			};
+			let server = tokio::spawn(async move {
+				let _temp = temp;
+				let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap())
+					.await
+					.unwrap();
+				let _ = socket.next().await;
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+					panic!("query frame");
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+					panic!("query");
+				};
+				assert!(
+					matches!(query.payload, crate::QueryPayload::GetChiefGuardianDetail { work_id, review_row: 42, review_digest, offset: 3 }
+					if work_id.as_str() == "root" && review_digest.as_str() == "exact")
+				);
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::ChiefGuardianDetail(reply),
+					})))
+					.await
+					.unwrap();
+				drop(socket);
+				listener.cleanup().unwrap();
+			});
+			let result = crate::ChiefClient::new(profile)
+				.guardian_detail(
+					EntityId::new("root").unwrap(),
+					42,
+					crate::WireText::new("exact").unwrap(),
+					3,
+				)
+				.await;
+			server.await.unwrap();
+			assert_eq!(result.is_ok(), case == 0);
+			if case != 0 {
+				assert!(matches!(result, Err(ClientFailure::ProtocolMalformed)));
+			}
+		}
 	}
 
 	async fn chief_command_exchange(mode: &'static str) -> crate::ChiefCommandResponse {
@@ -4723,7 +4817,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 92 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 93 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
