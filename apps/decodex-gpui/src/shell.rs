@@ -808,7 +808,7 @@ impl Shell {
 		shell
 	}
 
-	#[cfg(feature = "visual-capture")]
+	#[cfg(any(test, feature = "visual-capture"))]
 	fn visual_accounts_and_health(&mut self) {
 		use decodex_protocol::{AccountRoutingControlDto, EntityRevision, WireText};
 		let visual_account =
@@ -3646,28 +3646,31 @@ fn account_management_actions(
 				.flex()
 				.items_center()
 				.gap_1()
-				.when(account_needs_login(account), |row| {
-					row.child(
-						account_icon_action(
-							"account-login",
-							index,
-							"Sign in again",
-							workspace_symbols::Symbol::AccountLogout,
-							presentation.login_available,
-						)
-						.when(presentation.login_available, |button| {
-							button.on_click(cx.listener(move |shell, _, _, cx| {
-								cx.stop_propagation();
-								shell.start_account_reauthentication(
-									login_account_id.clone(),
-									login_account_revision,
-									login_recovery_operation_id.clone(),
-									cx,
-								);
-							}))
-						}),
+				.child(
+					account_icon_action(
+						"account-login",
+						index,
+						if account_needs_login(account) {
+							"Sign in again"
+						} else {
+							"Refresh account login"
+						},
+						workspace_symbols::Symbol::AccountLogout,
+						presentation.login_available,
 					)
-				})
+					.debug_selector(move || format!("account-login-{index}"))
+					.when(presentation.login_available, |button| {
+						button.on_click(cx.listener(move |shell, _, _, cx| {
+							cx.stop_propagation();
+							shell.start_account_reauthentication(
+								login_account_id.clone(),
+								login_account_revision,
+								login_recovery_operation_id.clone(),
+								cx,
+							);
+						}))
+					}),
+				)
 				.child(
 					account_icon_action(
 						"account-logout",
@@ -6200,6 +6203,23 @@ mod tests {
 		assert_eq!(adjacent_conversation_index(Some(0), 3, -1), Some(0));
 		assert_eq!(adjacent_conversation_index(Some(1), 3, 1), Some(2));
 		assert_eq!(adjacent_conversation_index(Some(2), 3, 1), Some(2));
+	}
+
+	#[gpui::test]
+	fn account_reauthentication_is_visible_before_credentials_fail(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		for observed in [AccountObservedStateDto::Available, AccountObservedStateDto::AuthFailed] {
+			shell.update(visual, |s, _| {
+				s.visual_accounts_and_health();
+				s.accounts.accounts[0].observed_state = observed;
+				s.selected = Destination::Accounts;
+			});
+			visual.update(|window, cx| {
+				window.resize(size(px(1440.), px(1000.)));
+				window.draw(cx).clear();
+			});
+			assert!(visual.debug_bounds("account-login-0").is_some());
+		}
 	}
 
 	#[test]

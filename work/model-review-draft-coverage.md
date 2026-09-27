@@ -23,8 +23,8 @@ Clippy passes for all features and targets. Logs:
 - `/tmp/decodex-model-review-draft-clippy.log`
 
 The complete 2,156-line shell comparison has been read. Its source was unchanged
-from the comparison base before this restoration. The remaining account-control
-and settings-owner dispositions are not closed by this test. The subsequent [controller comparison](conversation-controller-reconciliation.md)
+from the comparison base before this restoration. The subsequent [shell comparison](shell-owner-reconciliation.md) records the
+account-control and settings-owner dispositions. The subsequent [controller comparison](conversation-controller-reconciliation.md)
 closes the conversation source review. Neither a GPUI test window nor the
 restored debug selector establishes signed desktop acceptance.
 
