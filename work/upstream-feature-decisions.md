@@ -13,8 +13,9 @@ acceptance preparation. PR1670 corrected repeated Agent command publication
 revisions; its clean signed cc0895c3 artifact passed first-click foreground recap
 and normal exit. See the [revision fix and evidence](agent-publication-revisions.md).
 The [earlier signed record](signed-desktop-a15fe830-acceptance.md) remains specific
-to a15fe830. Ordinary composer restart and the other listed interaction limits
-remain open. Implemented does not mean fully accepted, installed or released.
+to a15fe830. The [signed draft acceptance](signed-draft-acceptance.md) verifies ordinary
+Agent composer restart and shared-store conflict, cancelled Quit and export.
+The other listed interaction limits remain open. Implemented does not mean fully accepted, installed or released.
 No removal is authorized here.
 
 ## Core compatibility to retain
@@ -101,11 +102,11 @@ does not need them. The user decides which rows remain.
    authentication restrictions, including external ChatGPT credentials. A global
    enrollment-policy owner remains an unimplemented scope decision; local UI
    enforcement is not claimed.
-5. Main-window interaction and history-edit draft restart are verified. Ordinary
-   composer interaction remains unverified and is deferred until last by user
-   instruction. A later fixture exposed the separate composer accessibility tree;
-   that observation does not establish successful input. Broader lifecycle and
-   physical audio acceptance remain open.
+5. Main-window interaction, history-edit restart and ordinary Agent composer
+   input/restart have scoped evidence. The [signed draft record](signed-draft-acceptance.md)
+   also verifies shared-store conflict cancellation, keep-both recovery and export
+   through the history-edit consumer. Child-window selection remains inconsistent;
+   no focus repair is claimed. Dock, broader lifecycle and physical audio remain open.
 
 See [native limits](source-preservation-native-limits.md) and
 [signed acceptance](signed-desktop-a15fe830-acceptance.md). The current known native
