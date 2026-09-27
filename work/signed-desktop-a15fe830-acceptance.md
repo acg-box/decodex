@@ -134,6 +134,41 @@ This verifies that closing the main window can retain the application and its
 Settings window. The Window menu does not list the hidden main window in this
 observation. Dock reopening remains unverified.
 
+## Real background recap timing
+
+The isolated signed application at
+`/Users/x/.decodex-background-recap-jvyedqde` starts with three completed native
+turns and three provider requests. Enable automatic recap through Settings, select
+the main window, then use Hide Decodex. The post-action observation timestamp is
+2026-09-27 12:43:29.884155 UTC. The production clock and 30-minute delay are unchanged.
+Read-only observations retain three requests before the check point. At 13:13:47
+UTC, 1817 seconds after the recorded hiding observation, the count is four.
+
+The existing public ChiefClient recap query returns Ready for the exact original
+thread, with a valid request identity and the complete expected synthetic summary:
+The requested fix was tested; installation is still pending. The readback itself
+does not issue an inference command, and the provider count remains four. The
+public task snapshot is Idle with no active turn. This verifies real background
+generation and the service result without a controlled-clock substitution.
+
+Evidence in the fixture home: `background-observation.json`,
+`background-trigger-observed.json`, `background-after-snapshot.json`,
+`background-recap-service-readback.txt` and `desktop-ready.json`. The read-only
+probe uses the existing compiled protocol library through ChiefClient; it does
+not introduce a production command or replace the recap owner.
+
+After this result, the window tool returns cgWindowNotFound for the exact staged
+bundle and its existing handle. The visible result and normal menu Quit remain
+unverified in this run. Before the fixture deadline, terminate only the verified
+isolated GUI PID 60154. Its normal-exit assertion fails as expected; the enclosing
+fixture ends with exit 101 after 2373.07 seconds. This is an intentional acceptance
+abort caused by unavailable window access, not an observed product crash or a
+passing interactive test. Readback confirms that the test and its three observed
+descendants are absent. Restore auto_recap=0 only in the stopped private fixture
+database; this cleanup is not Settings UI acceptance. See acceptance-aborted.json
+and aborted-run.log in the same home. The successful service readback above
+remains a separate result.
+
 ## Shutdown during an active native request
 
 The installed Codex binary is 0.158.0-alpha.2.1, SHA-256
@@ -178,8 +213,9 @@ remain outside this probe.
 
 Ordinary composer input and restart, complete foreground/background recap, live
 voice, Dock reopening, draft conflicts/export and GUI Quit during active work
-remain unverified to their required scope. The real 30-minute background fixture
-is in progress and is not a passing result. Existing approval/media and
+remain unverified to their required scope. Real background generation and its
+Ready service result are verified; the complete interactive fixture was aborted
+and is not a passing result. Existing approval/media and
 rendered/native fixture results remain separate evidence. Main-window access is
 restored; the composer interaction work is deferred by user instruction.
 Maintenance automation remains paused, and the overall manual update remains
