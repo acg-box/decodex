@@ -4,6 +4,24 @@ import XCTest
 
 @MainActor
 final class ResetCardStoreRecoveryTests: XCTestCase {
+	func testNewPendingUseAutomaticallyObservesCompletionWithoutManualRefresh() async throws {
+		let fixture = try makeSubmissionFixture(
+			useDocument: "prepared", exitCode: 0,
+			statusDocument: #"{"state":"completed","data":{"outcome":"reset"}}"#
+		)
+		defer { fixture.remove() }
+		let store = ResetCardStore(client: fixture.client, pendingStore: fixture.pendingStore)
+		await store.refresh()
+		_ = await store.use(fixture.attempt)
+		let deadline = Date().addingTimeInterval(5)
+		while !store.pendingAttempts.isEmpty && Date() < deadline {
+			try await Task.sleep(for: .milliseconds(20))
+		}
+		XCTAssertTrue(store.pendingAttempts.isEmpty)
+		XCTAssertEqual(store.message, ResetCardStoreMessage(tone: .success, text: "Usage restored."))
+		XCTAssertEqual(fixture.pendingStore.load(), .available([]))
+	}
+
 	func testOnlyConfirmedLiveResetStartsQuotaFill() async throws {
 		for outcome in ["reset", "no_credit", "nothing_to_reset"] {
 			let fixture = try makeSubmissionFixture(
