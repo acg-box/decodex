@@ -2,10 +2,7 @@
 use super::{ChiefSurface, SmoothControl, ui_theme};
 use gpui::{
 	Context, Role, SharedString, div,
-	prelude::{
-		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
-		Styled,
-	},
+	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
 	px, rgb, rgba,
 };
 
@@ -76,22 +73,20 @@ impl ChiefSurface {
 			.flex_col()
 			.gap_2()
 			.child(self.catalog_model_palette(cx))
-			.when(self.composer_manager.is_some() || self.root_id().is_some(), |panel| {
-				panel.child(
-					div()
-						.flex()
-						.flex_col()
-						.gap_1()
-						.child(
-							div()
-								.text_size(px(11.))
-								.text_color(rgb(ui_theme::TEXT_MUTED))
-								.child("Exact model ID"),
-						)
-						.child(div().h(px(36.)).child(self.model.clone()))
-						.child(self.apply_exact_model_button(cx)),
-				)
-			})
+			.child(
+				div()
+					.flex()
+					.flex_col()
+					.gap_1()
+					.child(
+						div()
+							.text_size(px(11.))
+							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.child("Exact model ID"),
+					)
+					.child(div().h(px(36.)).child(self.model.clone()))
+					.child(self.apply_exact_model_button(cx)),
+			)
 			.into_any_element()
 	}
 
@@ -365,6 +360,36 @@ mod exact_model_tests {
 				"feedback: {}",
 				s.feedback
 			);
+		});
+	}
+	#[gpui::test]
+	fn exact_model_creation_keeps_unselected_native_defaults(cx: &mut gpui::TestAppContext) {
+		let (view, visual) = cx.add_window_view(|_, cx| {
+			let surface = cx.new(ChiefSurface::new);
+			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+			surface.update(cx, |s, cx| {
+				s.model.update(cx, |input, cx| input.set_content("  custom-start-model  ", cx));
+				s.creation_inherit_effort = true;
+				assert!(!s.creation_intent.model);
+			});
+			ExactModelView { surface }
+		});
+		let surface = view.read_with(visual, |v, _| v.surface.clone());
+		visual.update(|window, cx| {
+			window.resize(gpui::size(px(900.), px(600.)));
+			window.draw(cx).clear();
+		});
+		let button =
+			visual.debug_bounds("apply-exact-model").expect("new-task exact model control");
+		visual.simulate_click(button.center(), Default::default());
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.model.read(cx).content(), "custom-start-model");
+			assert!(s.creation_intent.model);
+			assert!(!s.creation_intent.reasoning && !s.creation_intent.service_tier);
+			assert!(s.creation_inherit_effort);
+			assert!(s.creation_defaults_need_refresh(cx));
+			assert!(s.draft_profiles.execution.choice("chief").is_empty());
+			assert!(!s.sending && s.submission.command.is_none());
 		});
 	}
 }

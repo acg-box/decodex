@@ -2,7 +2,7 @@
 
 Classification: optional model control restored from the inherited snapshot.
 The existing model menu had catalog buttons but no field to apply an exact model
-ID to an existing task. Restore that field and the original explicit apply
+ID for a new or existing task. Restore that field and the original explicit apply
 handler. Keep it in the model menu instead of the retired advanced-defaults form.
 The field remains available when catalog discovery is unavailable.
 
@@ -37,8 +37,9 @@ Verify the original snapshot SHA-256 and compare the complete file:
 
 The complete execution-intent file is reconciled. The larger composer, controls,
 surface and creation-input reviews remain separate. In particular, this recovery
-covers existing-task next-message input; new-task freeform input still needs its
-own disposition. Do not use one button test to close the entire desktop scope.
+covers both new-task model input and existing-task next-message input. Applying
+a new-task model sets only explicit model intent; reasoning and tier retain their
+separate native-default rules. Do not use one button test to close the entire desktop scope.
 
 ## Qualification boundary
 
@@ -46,8 +47,11 @@ A rendered GPUI regression first fails because the apply button is absent. It
 then clicks the restored control without a model catalog, verifies the trimmed
 model on the owned next-message action, excludes another task and confirms no
 submission. A second click with blank input preserves the earlier choice.
-All 14 composer tests, both execution-intent regressions and strict all-feature,
-all-target GPUI Clippy pass. Signed desktop interaction remains unqualified. The previous signed package
+All 15 composer tests, five creation-default tests, six model-observation tests
+and both execution-intent regressions pass. Strict all-feature, all-target GPUI
+Clippy also passes. The new-task rendered test first fails without the control,
+then proves model-only intent, preserved reasoning inheritance, no task override
+and no submission. Missing native defaults still require a refresh. Signed desktop interaction remains unqualified. The previous signed package
 predates this UI change and is not acceptance evidence for the restored field.
 
 Removing this optional field and button does not require removing the native

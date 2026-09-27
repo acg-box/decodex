@@ -16,8 +16,11 @@ The rendered regression fails before restoration and passes after it. Input
 editing alone does not create an override; applying a valid value retains task
 scope and does not submit. Keep current creation defaults and both inherited
 execution-intent regressions. See [the complete mapping](exact-model-input.md).
-Close only the complete execution-intent file row, from 76 to 75 pending files.
-The broader composer and signed desktop acceptance remain open.
+Reconcile the complete model-observation and composer-control files through
+[their current owners](model-display-reconciliation.md). Close these three
+complete file rows, from 76 to 73 pending files. The broader composer and signed
+desktop acceptance remain open. New-task input retains model-only explicit intent
+and leaves native reasoning and tier defaults independent.
 
 ## Native settings test module reconciled on 2026-09-27
 

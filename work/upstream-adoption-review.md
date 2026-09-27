@@ -277,9 +277,9 @@ attempt, preserved input, zero provider requests and the remaining boundary.
 
 ## Restored optional exact model input
 
-[Exact model input](exact-model-input.md) restores an inherited existing-task
-control in the model menu. Apply an explicit ID to the next message without
+[Exact model input](exact-model-input.md) restores an inherited model
+control for new and existing tasks in the model menu. Apply an explicit ID to the next message without
 requiring a catalog entry. The native provider still decides availability.
 This optional field can be removed independently of the shared execution-intent
-and draft owners. Rendered tests do not close signed desktop acceptance or
-new-task freeform input review.
+and draft owners. New-task input preserves independent native reasoning and tier
+defaults. Rendered tests do not close signed desktop acceptance.
