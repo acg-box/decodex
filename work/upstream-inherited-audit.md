@@ -1447,3 +1447,13 @@ unimplemented stream and missing-resource discovery paths explicitly. Two native
 Code Mode tests and six App UI runtime tests pass. See
 [the evidence and limitations](native-tools-record-reconciliation.md). Close only
 these two document rows; native policy limits and desktop acceptance remain open.
+
+## Prompt and voice records reconciled on 2026-09-27
+
+Map the complete inherited prompt-editing requirements to the implemented native,
+service and desktop owners. Correct its obsolete pending-merge statement. Restore
+the removed voice source review unchanged beneath a historical notice. Nine prompt
+and five voice GPUI tests pass without skips. See [current evidence and remaining
+acceptance](prompt-voice-record-reconciliation.md). Close only these two document
+rows; the current union contains 12 open file comparisons. Physical audio, late
+remote caption identity and fresh signed desktop acceptance remain open.

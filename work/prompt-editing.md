@@ -5,9 +5,15 @@ input editing, durable confirmation, history refresh, draft handback and explici
 resend are implemented. Native Codex owns history mutation and execution. The
 existing Decodex draft store and service inbox retain recovery and send identities.
 
-The feature is pending final combined validation, local signed-app checks and PR
-merge. It is not installed or publicly released. Core native envelope qualification
-and revert observation remain useful independently of this optional editor.
+The implementation and its staged validation records are in main. Fresh combined
+validation and signed desktop acceptance remain open. This record does not establish
+installation or public release. Core native envelope qualification and revert
+observation remain useful independently of this optional editor.
+
+The sections below record successive implementation stages. Their local statements
+that a later integration is still required are historical stage boundaries. Use
+[the current reconciliation](prompt-voice-record-reconciliation.md) for the current
+evidence and remaining acceptance work.
 
 ## Native authority
 
