@@ -1,9 +1,66 @@
 //! Bounded review projection; only the daemon can retrieve original approval payloads.
 use decodex_database::{ChiefGuardianReview, SqliteStore};
 use decodex_protocol::{
-	ChiefGuardianReviewDto, ChiefGuardianReviewsResult, ChiefGuardianStatus as Status,
-	ChiefGuardianSubmission as Submission,
+	ChiefGuardianDetailResult as Detail, ChiefGuardianReviewDto, ChiefGuardianReviewsResult,
+	ChiefGuardianStatus as Status, ChiefGuardianSubmission as Submission,
+	GUARDIAN_DETAIL_PAGE_BYTES,
 };
+
+/// Read complete details from the existing saved observation. No native request is sent.
+pub(crate) async fn detail(
+	store: &SqliteStore,
+	work: &str,
+	row_id: i64,
+	digest: &str,
+	offset: usize,
+) -> Detail {
+	let Ok(Some(row)) = store.chief_guardian_review(work.into(), row_id).await else {
+		return Detail::Unavailable;
+	};
+	if row.digest() != digest {
+		return Detail::Unavailable;
+	}
+	let Ok(event) = serde_json::from_str::<serde_json::Value>(&row.event_json) else {
+		return Detail::Unavailable;
+	};
+	let method = if row.status == "inProgress" {
+		"item/autoApprovalReview/started"
+	} else {
+		"item/autoApprovalReview/completed"
+	};
+	if decodex_codex::guardian::decode_review(method, &event).is_none() {
+		return Detail::Unavailable;
+	}
+	let action = match serde_json::to_string(&event["action"]) {
+		Ok(action) => action,
+		Err(_) => return Detail::Unavailable,
+	};
+	let rationale = event["review"]["rationale"].as_str().unwrap_or("");
+	if decodex_core::contains_credential_material(&action)
+		|| decodex_core::contains_credential_material(rationale)
+	{
+		return Detail::Unavailable;
+	}
+	let text = format!("Action\n{action}\n\nFindings\n{rationale}");
+	if text.len() > decodex_core::MAX_NATIVE_MESSAGE_BYTES
+		|| offset >= text.len()
+		|| !text.is_char_boundary(offset)
+	{
+		return Detail::Unavailable;
+	}
+	let mut end = offset.saturating_add(GUARDIAN_DETAIL_PAGE_BYTES).min(text.len());
+	while !text.is_char_boundary(end) {
+		end -= 1;
+	}
+	Detail::Available {
+		row_id,
+		digest: digest.into(),
+		offset,
+		total_bytes: text.len(),
+		text: text[offset..end].into(),
+		next_offset: (end < text.len()).then_some(end),
+	}
+}
 
 pub(crate) async fn read(
 	store: &SqliteStore,
@@ -95,8 +152,9 @@ fn project(row: &ChiefGuardianReview, generation: Option<&str>) -> Option<ChiefG
 		risk_level: event["review"]["riskLevel"].as_str().map(str::to_owned),
 		user_authorization: event["review"]["userAuthorization"].as_str().map(str::to_owned),
 		rationale: event["review"]["rationale"].as_str().map(str::to_owned),
-		action_json: Some(serde_json::to_string_pretty(&event["action"]).ok()?),
+		action_json: Some(serde_json::to_string(&event["action"]).ok()?),
 		details_unavailable: None,
+		details_paged: false,
 		current_process: generation.is_some() && generation == row.generation_id.as_deref(),
 		submission,
 		submission_key: row.approval_key.clone(),
@@ -113,7 +171,7 @@ fn project(row: &ChiefGuardianReview, generation: Option<&str>) -> Option<ChiefG
 	} else if serde_json::to_vec(&result).ok()?.len() > 96 * 1024 {
 		result.action_json = None;
 		result.rationale = None;
-		result.details_unavailable=Some("Review details exceed the display limit. Inspect the action in the native Codex conversation.".into());
+		result.details_paged = true;
 	}
 	if status == Status::Denied {
 		result.approval_unavailable =
@@ -163,11 +221,8 @@ mod tests {
 	}
 	#[test]
 	fn withheld_or_unknown_action_details_cannot_be_approved() {
-		for command in [
-			"sk-".to_owned() + &"A".repeat(60),
-			"x".repeat(100_000),
-			"界".repeat(100_000) + " exact-required-suffix",
-		] {
+		{
+			let command = "sk-".to_owned() + &"A".repeat(60);
 			let mut row = denial();
 			let mut event: serde_json::Value = serde_json::from_str(&row.event_json).unwrap();
 			event["action"]["command"] = json!(command);
@@ -186,5 +241,20 @@ mod tests {
 		row.event_json = event.to_string();
 		let result = project(&row, None).unwrap();
 		assert!(!result.can_approve && result.action_json.unwrap().contains("futureField"));
+	}
+
+	#[test]
+	fn large_action_details_use_complete_paging() {
+		for command in ["x".repeat(100_000), "界".repeat(100_000) + " exact-required-suffix"] {
+			let mut row = denial();
+			let mut event: serde_json::Value = serde_json::from_str(&row.event_json).unwrap();
+			event["action"]["command"] = json!(command);
+			row.event_json = event.to_string();
+			let result = project(&row, None).unwrap();
+			assert!(result.can_approve && result.details_paged);
+			assert!(result.action_json.is_none() && result.rationale.is_none());
+			assert!(result.details_unavailable.is_none());
+			assert!(serde_json::to_vec(&result).unwrap().len() < 4096);
+		}
 	}
 }

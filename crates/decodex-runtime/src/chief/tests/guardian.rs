@@ -1,5 +1,108 @@
 use super::*;
 
+#[tokio::test]
+async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
+	use decodex_protocol::ChiefGuardianDetailResult as Detail;
+	let (mut chief, mut sent, directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let command = "echo 中文\\n\"quoted\" ".repeat(20_000) + "FINAL ACTION SUFFIX";
+	let mut event = review("large-command", "inProgress");
+	event["action"] = json!({"type":"command","source":"shell","command":command,"cwd":"/tmp"});
+	deliver(&mut chief, event.clone()).await;
+	event["completedAtMs"] = json!(101);
+	event["decisionSource"] = json!("agent");
+	event["review"]["status"] = json!("denied");
+	event["review"]["rationale"] = json!("Long findings. ".repeat(6_000));
+	deliver(&mut chief, event.clone()).await;
+	assert!(sent.try_recv().is_err(), "retaining a review must not send native work");
+	let row =
+		chief.store.read_chief_guardian_reviews("chief".into(), None, 1).await.unwrap().remove(0);
+	assert!(row.event_json.len() > 256 * 1024);
+	let digest = row.digest();
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	drop(chief);
+	let store = SqliteStore::open(&root.paths()).unwrap();
+	let saved = store.chief_guardian_review("chief".into(), row.id).await.unwrap().unwrap();
+	assert_eq!(saved.event_json, event.to_string());
+	let summary = crate::chief_guardian::read(&store, "chief", None, None).await;
+	let decodex_protocol::ChiefGuardianReviewsResult::Available { reviews, .. } = summary else {
+		panic!("saved review missing");
+	};
+	assert!(reviews[0].details_paged && reviews[0].can_approve);
+	assert!(reviews[0].action_json.is_none() && reviews[0].rationale.is_none());
+	assert!(serde_json::to_vec(&reviews).unwrap().len() < 4096);
+	let peer = SqliteStore::open(&root.paths()).unwrap();
+	let app = detail_service(peer.clone());
+	let mut offset = 0;
+	let mut complete = String::new();
+	loop {
+		let query = decodex_protocol::QueryEnvelope {
+			version: decodex_protocol::CURRENT_VERSION,
+			query_id: decodex_protocol::QueryId::new("guardian-page").unwrap(),
+			payload: decodex_protocol::QueryPayload::GetChiefGuardianDetail {
+				work_id: decodex_protocol::EntityId::new("chief").unwrap(),
+				review_row: row.id,
+				review_digest: decodex_protocol::WireText::new(&digest).unwrap(),
+				offset,
+			},
+		};
+		let decodex_protocol::QueryResultPayload::ChiefGuardianDetail(page) =
+			crate::application::Application::query(&app, &query).await
+		else {
+			panic!("detail result");
+		};
+		assert!(page.matches_request(row.id, &digest, offset));
+		assert!(serde_json::to_vec(&page).unwrap().len() < 60 * 1024);
+		let Detail::Available { text, next_offset, .. } = page else {
+			panic!("missing detail page");
+		};
+		complete.push_str(&text);
+		let Some(next) = next_offset else {
+			break;
+		};
+		offset = next;
+	}
+	assert_eq!(
+		complete,
+		format!(
+			"Action\n{}\n\nFindings\n{}",
+			event["action"],
+			event["review"]["rationale"].as_str().unwrap()
+		)
+	);
+	for (work, expected, offset) in [
+		("other", digest.as_str(), 0),
+		("chief", "stale", 0),
+		("chief", digest.as_str(), complete.len()),
+		("chief", digest.as_str(), complete.find('中').unwrap() + 1),
+	] {
+		assert_eq!(
+			crate::chief_guardian::detail(&peer, work, row.id, expected, offset).await,
+			Detail::Unavailable
+		);
+	}
+	// A second writer conflicts with the saved action. An earlier page digest must stop working.
+	event["action"]["command"] = json!("different action");
+	store
+		.record_chief_guardian_review(decodex_database::ChiefGuardianObservation {
+			thread_id: saved.thread_id.clone(),
+			turn_id: saved.turn_id.clone(),
+			review_id: saved.review_id.clone(),
+			connection_id: saved.connection_id.clone(),
+			generation_id: saved.generation_id.clone(),
+			event_json: event.to_string(),
+		})
+		.await
+		.unwrap();
+	assert_eq!(
+		crate::chief_guardian::detail(&peer, "chief", saved.id, &digest, 0).await,
+		Detail::Unavailable
+	);
+}
+
 fn review(id: &str, status: &str) -> Value {
 	let mut value = json!({"threadId":"opaque thread/1","turnId":"opaque turn/1",
 		"reviewId":id,"targetItemId":null,"startedAtMs":100,
@@ -425,4 +528,224 @@ async fn strict_review_from_unbound_native_generation_is_not_retained() {
 	assert!(!history.iter().any(|event| event.event_kind == "strict_review_notice"));
 	assert!(sent.try_recv().is_err());
 	assert!(chief.store.list_chief_wake_events("chief".into(), 32).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn guardian_review_failure_preserves_absent_assessment_after_restart() {
+	let (mut chief, mut sent, directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let mut event = review("failed-review", "denied");
+	let rationale = "Automatic approval review failed: temporary review error";
+	event["review"]["rationale"] = json!(rationale);
+	deliver(&mut chief, event.clone()).await;
+	assert!(sent.try_recv().is_err(), "review failure must not replay the action");
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	drop(chief);
+	let store = SqliteStore::open(&root.paths()).unwrap();
+	let decodex_protocol::ChiefGuardianReviewsResult::Available { reviews, .. } =
+		crate::chief_guardian::read(&store, "chief", None, None).await
+	else {
+		panic!("saved review missing");
+	};
+	assert_eq!(reviews.len(), 1);
+	assert_eq!(reviews[0].status, decodex_protocol::ChiefGuardianStatus::Denied);
+	assert_eq!(reviews[0].risk_level, None);
+	assert_eq!(reviews[0].user_authorization, None);
+	assert_eq!(reviews[0].rationale.as_deref(), Some(rationale));
+	let saved = store.read_chief_guardian_reviews("chief".into(), None, 1).await.unwrap();
+	assert_eq!(saved[0].event_json, event.to_string());
+	assert_eq!(saved[0].approval_state, None);
+}
+
+#[tokio::test]
+async fn finished_command_survives_late_network_review_cancellation() {
+	let (mut chief, mut sent, directory) = fixture().await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let mut pending = review("network", "inProgress");
+	pending["targetItemId"] = json!("command");
+	deliver(&mut chief, pending.clone()).await;
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "item/completed".into(),
+			params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1",
+			"item":{"id":"command","type":"commandExecution","status":"completed",
+				"exitCode":0,"aggregatedOutput":"build complete\n"}}),
+		})
+		.await
+		.unwrap();
+	chief
+		.handle_event(ServerEvent::Notification {
+			method: "turn/completed".into(),
+			params: json!({"threadId":"opaque thread/1",
+			"turn":{"id":"opaque turn/1","status":"completed","items":[]}}),
+		})
+		.await
+		.unwrap();
+	let mut cancelled = review("network", "aborted");
+	cancelled["targetItemId"] = json!("command");
+	cancelled["review"]["rationale"] = json!(null);
+	deliver(&mut chief, cancelled.clone()).await;
+	deliver(&mut chief, pending).await;
+	deliver(&mut chief, cancelled.clone()).await;
+	chief.wake_pending().await.unwrap();
+	while let Ok(request) = sent.try_recv() {
+		assert_ne!(request["method"], "turn/start");
+		assert_ne!(request["method"], "thread/approveGuardianDeniedAction");
+	}
+	assert!(chief.pending_requests.is_empty());
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	drop(chief);
+	let store = SqliteStore::open(&root.paths()).unwrap();
+	let rows = store.read_chief_guardian_reviews("chief".into(), None, 100).await.unwrap();
+	assert_eq!(rows.len(), 1);
+	assert_eq!(rows[0].status, "aborted");
+	assert!(!rows[0].conflicted);
+	assert!(rows[0].approval_state.is_none());
+	assert_eq!(serde_json::from_str::<Value>(&rows[0].event_json).unwrap(), cancelled);
+	let (events, _) = store.read_chief_transcript("chief".into(), None, 32).await.unwrap();
+	let activities: Vec<decodex_protocol::ChiefActivityDto> = events
+		.iter()
+		.filter(|event| event.event_kind.starts_with("activity_"))
+		.map(|event| serde_json::from_str(&event.payload).unwrap())
+		.collect();
+	assert_eq!(activities.len(), 1);
+	assert_eq!(activities[0].item_id, "command");
+	assert_eq!(activities[0].status, "completed");
+	assert_eq!(activities[0].detail, "Exit code 0");
+	assert_eq!(
+		store.get_chief_work_item("chief".into()).await.unwrap().dispatch_state,
+		decodex_database::ChiefDispatchState::Idle
+	);
+	assert!(store.list_chief_wake_events("chief".into(), 32).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn large_guardian_approval_keeps_the_complete_action_on_the_native_request() {
+	let (mut chief, mut sent, _directory) = fixture_with_history(approval_history()).await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	let command = "echo 中\\\" ".repeat(40_000) + "EXACT FINAL ARGUMENT";
+	let mut event = review("large-denial", "denied");
+	event["action"] = json!({"type":"command","source":"shell","command":command,"cwd":"/tmp"});
+	deliver(&mut chief, event).await;
+	let saved =
+		chief.store.read_chief_guardian_reviews("chief".into(), None, 1).await.unwrap().remove(0);
+	while sent.try_recv().is_ok() {}
+	chief
+		.approve_guardian_denial("chief", saved.id, &saved.digest(), "large-approval")
+		.await
+		.unwrap();
+	let mut approvals = Vec::new();
+	while let Ok(request) = sent.try_recv() {
+		assert_ne!(request["method"], "turn/start");
+		if request["method"] == "thread/approveGuardianDeniedAction" {
+			approvals.push(request);
+		}
+	}
+	assert_eq!(approvals.len(), 1);
+	assert_eq!(approvals[0]["params"]["event"]["action"]["command"], command);
+	assert_eq!(
+		chief
+			.store
+			.chief_guardian_review("chief".into(), saved.id)
+			.await
+			.unwrap()
+			.unwrap()
+			.approval_state
+			.as_deref(),
+		Some("submitted")
+	);
+}
+
+#[tokio::test]
+async fn foreign_guardian_paths_survive_storage_and_explicit_approval() {
+	let (mut chief, mut sent, directory) = fixture_with_history(approval_history()).await;
+	chief.start_chief("chief", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let paths = [r"C:\work\中文 %23", r"\\executor\share\work", "/C:/literal/%23"];
+	let mut saved_events = Vec::new();
+	for (index, path) in paths.iter().enumerate() {
+		for kind in ["command", "applyPatch"] {
+			let mut event = review(&format!("foreign-{index}-{kind}"), "denied");
+			event["action"] = if kind == "command" {
+				json!({"type":kind,"source":"unifiedExec","command":"inspect","cwd":path})
+			} else {
+				json!({"type":kind,"cwd":path,"files":[format!("{path}/file #.txt")]})
+			};
+			deliver(&mut chief, event.clone()).await;
+			assert!(sent.try_recv().is_err(), "observation cannot submit approval");
+			let saved = chief
+				.store
+				.read_chief_guardian_reviews("chief".into(), None, 1)
+				.await
+				.unwrap()
+				.remove(0);
+			assert_eq!(serde_json::from_str::<Value>(&saved.event_json).unwrap(), event);
+			chief
+				.approve_guardian_denial(
+					"chief",
+					saved.id,
+					&saved.digest(),
+					&format!("click-{index}-{kind}"),
+				)
+				.await
+				.unwrap();
+			let mut approvals = Vec::new();
+			while let Ok(request) = sent.try_recv() {
+				assert_ne!(request["method"], "turn/start");
+				if request["method"] == "thread/approveGuardianDeniedAction" {
+					approvals.push(request["params"]["event"]["action"].clone());
+				}
+			}
+			let mut expected = event["action"].clone();
+			if kind == "command" {
+				expected["source"] = json!("unified_exec");
+			} else {
+				expected["type"] = json!("apply_patch");
+			}
+			assert_eq!(approvals, vec![expected]);
+			saved_events.push((saved.id, event));
+		}
+	}
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	drop(chief);
+	let store = SqliteStore::open(&root.paths()).unwrap();
+	for (id, event) in saved_events {
+		let restored = store.chief_guardian_review("chief".into(), id).await.unwrap().unwrap();
+		assert_eq!(serde_json::from_str::<Value>(&restored.event_json).unwrap(), event);
+		assert_eq!(restored.approval_state.as_deref(), Some("submitted"));
+	}
+}
+
+fn detail_service(store: SqliteStore) -> crate::application::ServiceApplication {
+	use decodex_protocol::{DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus};
+	let doctor = DoctorReport::new(
+		decodex_protocol::ServerId::new("guardian-fixture").unwrap(),
+		decodex_protocol::CURRENT_VERSION,
+		DoctorComponent::ALL
+			.into_iter()
+			.map(|component| {
+				DoctorCheck::new(component, DoctorStatus::Unavailable(DoctorIssue::NotProbed))
+			})
+			.collect(),
+	)
+	.unwrap();
+	crate::application::ServiceApplication::new(
+		crate::application::ProductStore::Available(store),
+		None,
+		None,
+		decodex_codex::CodexAdapter::unavailable(),
+		None,
+		crate::conversation::ConversationCapability::Unavailable(
+			decodex_protocol::ConversationUnavailableReason::AppServerProfile,
+		),
+		doctor,
+	)
 }

@@ -70,7 +70,8 @@ struct Assessment {
 	status: ReviewStatus,
 	risk_level: Option<String>,
 	user_authorization: Option<String>,
-	rationale: Option<String>,
+	#[serde(rename = "rationale")]
+	_rationale: Option<String>,
 }
 
 /// Decode one lifecycle notification. Unknown action variants are retained as
@@ -106,7 +107,6 @@ pub fn decode_review(method: &str, params: &Value) -> Option<GuardianReview> {
 			.user_authorization
 			.as_deref()
 			.is_some_and(|level| !["unknown", "low", "medium", "high"].contains(&level))
-		|| event.review.rationale.as_ref().is_some_and(|text| text.len() > 65536)
 		|| (completed && params["decisionSource"].as_str() != Some("agent"))
 	{
 		return None;
@@ -146,6 +146,7 @@ mod tests {
 		let command = "界".repeat(100_000) + " exact-required-suffix";
 		let mut event = denial();
 		event["action"] = json!({"type":"command","source":"shell","command":command,"cwd":"/tmp"});
+		event["review"]["rationale"] = json!("Complete findings. ".repeat(6000));
 		assert!(event.to_string().len() > 256 * 1024);
 		assert!(event.to_string().len() < decodex_core::MAX_NATIVE_MESSAGE_BYTES);
 		let observed = decode_review(COMPLETED, &event).expect("complete native review");
@@ -211,7 +212,6 @@ mod tests {
 			("/review/status", json!("unknown")),
 			("/review/riskLevel", json!("safe")),
 			("/review/userAuthorization", json!("approved")),
-			("/review/rationale", json!("x".repeat(65537))),
 			("/action", json!([])),
 			("/action/type", json!(null)),
 		] {

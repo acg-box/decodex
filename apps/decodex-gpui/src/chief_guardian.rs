@@ -1,8 +1,8 @@
 //! Exact saved action reviews and explicit approval submission, independent of execution.
 use super::*;
 use decodex_protocol::{
-	ChiefGuardianReviewsResult as Reviews, ChiefGuardianStatus as Status,
-	ChiefGuardianSubmission as Submission,
+	ChiefGuardianDetailResult as Detail, ChiefGuardianReviewsResult as Reviews,
+	ChiefGuardianStatus as Status, ChiefGuardianSubmission as Submission,
 };
 
 #[derive(Default)]
@@ -19,6 +19,42 @@ pub(super) struct Panel {
 	request: Option<Task<()>>,
 	mutation: Option<Task<()>>,
 	mutation_key: Option<String>,
+	detail: Option<DetailReader>,
+	detail_request: Option<Task<()>>,
+	detail_serial: u64,
+}
+
+struct DetailReader {
+	row: i64,
+	digest: String,
+	page: Option<Detail>,
+	starts: Vec<usize>,
+	visited_end: usize,
+	complete: bool,
+}
+
+impl DetailReader {
+	fn observe(&mut self, result: Detail) {
+		if let Detail::Available { offset, text, total_bytes, .. } = &result {
+			if matches!(&self.page, Some(Detail::Available { total_bytes: previous, .. }) if previous != total_bytes)
+			{
+				self.observe(Detail::Unavailable);
+				return;
+			}
+			if *offset <= self.visited_end {
+				self.visited_end = self.visited_end.max(offset + text.len());
+			}
+			self.complete = self.visited_end == *total_bytes;
+			if !self.starts.contains(offset) {
+				self.starts.push(*offset);
+			}
+		} else {
+			self.complete = false;
+			self.visited_end = 0;
+			self.starts.clear();
+		}
+		self.page = Some(result);
+	}
 }
 
 impl Panel {
@@ -53,6 +89,17 @@ impl Panel {
 
 	fn observe(&mut self, result: Reviews) {
 		if let Reviews::Available { reviews, .. } = &result {
+			if self.detail.as_ref().is_some_and(|detail| {
+				!reviews.iter().any(|review| {
+					review.row_id == detail.row
+						&& review.digest == detail.digest
+						&& review.details_paged
+				})
+			}) {
+				self.detail = None;
+				self.detail_request = None;
+				self.detail_serial = self.detail_serial.wrapping_add(1);
+			}
 			for review in reviews {
 				if review.submission.is_some()
 					&& let Some(key) = &review.submission_key
@@ -141,6 +188,8 @@ impl ChiefSurface {
 		self.guardian.mutation = None;
 		self.guardian.mutation_key = None;
 		self.guardian.stale = true;
+		self.guardian.detail_request = None;
+		self.guardian.detail_serial = self.guardian.detail_serial.wrapping_add(1);
 	}
 
 	fn guardian_page(&mut self, before: Option<i64>, cx: &mut Context<Self>) {
@@ -149,6 +198,9 @@ impl ChiefSurface {
 		self.guardian.before = before;
 		self.guardian.result = None;
 		self.guardian.reviewed = None;
+		self.guardian.detail = None;
+		self.guardian.detail_request = None;
+		self.guardian.detail_serial = self.guardian.detail_serial.wrapping_add(1);
 		self.load_guardian_reviews(cx);
 		cx.notify();
 	}
@@ -166,7 +218,12 @@ impl ChiefSurface {
 		let Some(Reviews::Available { reviews, .. }) = &self.guardian.result else {
 			return;
 		};
-		if !reviews.iter().any(|r| r.row_id == row && r.digest == digest && r.can_approve) {
+		if !reviews.iter().any(|r| {
+			r.row_id == row
+				&& r.digest == digest
+				&& r.can_approve
+				&& self.guardian_detail_complete(r)
+		}) {
 			return;
 		}
 		let Some(profile) = self.profile.clone() else {
@@ -215,6 +272,86 @@ impl ChiefSurface {
 				s.guardian.request = None;
 				s.guardian.epoch = s.guardian.epoch.wrapping_add(1);
 				s.load_guardian_reviews(cx);
+				cx.notify();
+			});
+		}));
+		cx.notify();
+	}
+
+	fn guardian_detail_complete(&self, review: &decodex_protocol::ChiefGuardianReviewDto) -> bool {
+		!review.details_paged
+			|| self.guardian.detail.as_ref().is_some_and(|detail| {
+				detail.row == review.row_id && detail.digest == review.digest && detail.complete
+			})
+	}
+
+	fn load_guardian_detail(
+		&mut self,
+		row: i64,
+		digest: String,
+		offset: usize,
+		cx: &mut Context<Self>,
+	) {
+		let (Some(work), Some(profile)) = (self.selected.clone(), self.profile.clone()) else {
+			return;
+		};
+		if self.guardian.owner.as_ref() != Some(&work) {
+			return;
+		}
+		let Some(Reviews::Available { reviews, .. }) = &self.guardian.result else {
+			return;
+		};
+		if !reviews.iter().any(|r| r.row_id == row && r.digest == digest && r.details_paged) {
+			return;
+		}
+		let (Ok(work_id), Ok(review_digest)) =
+			(EntityId::new(work.clone()), WireText::new(&digest))
+		else {
+			return;
+		};
+		if !self.guardian.detail.as_ref().is_some_and(|d| d.row == row && d.digest == digest) {
+			self.guardian.detail = Some(DetailReader {
+				row,
+				digest: digest.clone(),
+				page: None,
+				starts: Vec::new(),
+				visited_end: 0,
+				complete: false,
+			});
+		}
+		self.guardian.detail_serial = self.guardian.detail_serial.wrapping_add(1);
+		let serial = self.guardian.detail_serial;
+		let generation = self.generation;
+		let epoch = self.guardian.epoch;
+		let request = cx.background_executor().spawn(async move {
+			let runtime =
+				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			runtime
+				.block_on(ChiefClient::new(profile).guardian_detail(
+					work_id,
+					row,
+					review_digest,
+					offset,
+				))
+				.ok()
+		});
+		self.guardian.detail_request = Some(cx.spawn(async move |surface, cx| {
+			let result = request.await.unwrap_or(Detail::Unavailable);
+			let _ = surface.update(cx, |s, cx| {
+				if s.generation != generation
+					|| s.selected.as_ref() != Some(&work)
+					|| s.guardian.epoch != epoch
+					|| s.guardian.detail_serial != serial
+				{
+					return;
+				}
+				s.guardian.detail_request = None;
+				if let Some(detail) = &mut s.guardian.detail
+					&& detail.row == row
+					&& detail.digest == digest
+				{
+					detail.observe(result);
+				}
 				cx.notify();
 			});
 		}));
@@ -295,6 +432,72 @@ impl ChiefSurface {
 		panel.into_any_element()
 	}
 
+	fn guardian_detail_panel(
+		&self,
+		review: &decodex_protocol::ChiefGuardianReviewDto,
+		cx: &mut Context<Self>,
+	) -> gpui::AnyElement {
+		let row = review.row_id;
+		let digest = review.digest.clone();
+		let reader = self.guardian.detail.as_ref().filter(|d| d.row == row && d.digest == digest);
+		let mut panel = div().flex().flex_col().gap_2().min_w_0();
+		if let Some(Detail::Available { offset, text, next_offset, .. }) =
+			reader.and_then(|d| d.page.as_ref())
+		{
+			let position =
+				reader.and_then(|d| d.starts.iter().position(|start| start == offset)).unwrap_or(0);
+			panel = panel.child(format!("Action details · page {}", position + 1)).child(
+				div()
+					.id("guardian-detail-text")
+					.max_h(px(240.))
+					.overflow_scroll()
+					.text_size(px(12.))
+					.child(text.clone()),
+			);
+			if self.guardian.detail_request.is_none() {
+				if let Some(previous) =
+					reader.and_then(|d| position.checked_sub(1).map(|i| d.starts[i]))
+				{
+					let digest = digest.clone();
+					panel = panel.child(button(
+						"guardian-detail-previous".into(),
+						"Previous details".into(),
+						cx,
+						move |s, cx| s.load_guardian_detail(row, digest.clone(), previous, cx),
+					));
+				}
+				if let Some(next) = *next_offset {
+					let digest = digest.clone();
+					panel = panel.child(button(
+						"guardian-detail-next".into(),
+						"Next details".into(),
+						cx,
+						move |s, cx| s.load_guardian_detail(row, digest.clone(), next, cx),
+					));
+				}
+			}
+			if reader.is_some_and(|d| d.complete) {
+				panel = panel.child(muted("All detail pages opened."));
+			}
+		} else if self.guardian.detail_request.is_none() {
+			panel = panel.child("Open the complete action and findings before approving.").child(
+				button(
+					"guardian-detail-reload".into(),
+					"Read complete details".into(),
+					cx,
+					move |s, cx| s.load_guardian_detail(row, digest.clone(), 0, cx),
+				),
+			);
+			if matches!(reader.and_then(|d| d.page.as_ref()), Some(Detail::Unavailable)) {
+				panel = panel.child("Details are unavailable or changed. Refresh the review list.");
+			}
+		}
+		if self.guardian.detail_request.is_some() {
+			panel = panel.child("Loading review details…");
+		}
+		panel.into_any_element()
+	}
+
 	fn guardian_review_card(
 		&self,
 		work: &ChiefWorkItemDto,
@@ -342,10 +545,14 @@ impl ChiefSurface {
 				cx,
 				move |s, cx| {
 					s.guardian.reviewed = Some(identity.clone());
+					s.load_guardian_detail(identity.0, identity.1.clone(), 0, cx);
 					cx.notify();
 				},
 			));
 		} else {
+			if review.details_paged {
+				card = card.child(self.guardian_detail_panel(review, cx));
+			}
 			if let Some(reason) = &review.rationale {
 				card = card.child(reason.clone());
 			}
@@ -359,6 +566,7 @@ impl ChiefSurface {
 				card = card.child(muted(reason));
 			}
 			if review.can_approve
+				&& self.guardian_detail_complete(review)
 				&& !self.guardian.stale
 				&& !self.guardian.pending.contains_key(&review.row_id)
 				&& self.guardian.mutation.is_none()
@@ -411,6 +619,71 @@ fn button(
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[gpui::test]
+	fn paged_guardian_action_requires_every_page_and_discards_changed_evidence(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		let page = |offset: usize, text: &str, next_offset| Detail::Available {
+			row_id: 1,
+			digest: "original".into(),
+			offset,
+			text: text.into(),
+			total_bytes: 15,
+			next_offset,
+		};
+		surface.update(visual, |s, _| {
+			seed(s);
+			if let Some(Reviews::Available { reviews, .. }) = &mut s.guardian.result {
+				reviews[0].details_paged = true;
+				reviews[0].action_json = None;
+			}
+			s.guardian.reviewed = Some((1, "original".into()));
+			s.guardian.detail = Some(DetailReader {
+				row: 1,
+				digest: "original".into(),
+				page: None,
+				starts: Vec::new(),
+				visited_end: 0,
+				complete: false,
+			});
+			s.guardian.detail.as_mut().unwrap().observe(page(0, "first", Some(5)));
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(px(1180.), px(1200.)));
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("guardian-detail-next").is_some());
+		assert!(visual.debug_bounds("guardian-approve-1").is_none());
+		surface.update(visual, |s, cx| {
+			let detail = s.guardian.detail.as_mut().unwrap();
+			detail.observe(page(10, "FINAL", None));
+			assert!(!detail.complete, "a skipped page must not enable approval");
+			detail.observe(page(5, " next", Some(10)));
+			detail.observe(page(10, "FINAL", None));
+			assert!(detail.complete);
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("guardian-approve-1").is_some());
+		surface.update(visual, |s, cx| {
+			let mut changed = review();
+			changed.details_paged = true;
+			changed.digest = "changed".into();
+			s.guardian.observe(Reviews::Available { reviews: vec![changed], next_before: None });
+			assert!(s.guardian.detail.is_none());
+			s.approve_guardian("root", 1, "original", cx);
+			assert!(s.guardian.feedback.is_empty());
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("guardian-approve-1").is_none());
+	}
 	fn review() -> decodex_protocol::ChiefGuardianReviewDto {
 		decodex_protocol::ChiefGuardianReviewDto {
 			row_id: 1,
@@ -422,6 +695,7 @@ mod tests {
 			rationale: Some("This command was not requested.".into()),
 			action_json: Some("{\"command\":\"echo fixture\",\"cwd\":\"/tmp\"}".into()),
 			details_unavailable: None,
+			details_paged: false,
 			current_process: true,
 			submission: None,
 			submission_key: None,
