@@ -40,6 +40,16 @@ acceptance boundary. Close these two complete file rows only; both original
 snapshot hashes match. The 360-row register has 85 pending content-review rows,
 down from 87. Legacy writers, shared files and signed desktop acceptance stay open.
 
+## Shared settings observers reconciled on 2026-09-27
+
+Map the complete inherited shared database and coordinator settings observers to
+their current owners. Preserve exact source checks, publication-only confirmation,
+private projections, durable invalidation and no-wake behavior. Document the model
+event-kind change and transport revision semantics rather than restoring a second
+cache. See [the source and consumer mapping](shared-settings-observer-reconciliation.md).
+Both original snapshot hashes match. Close only these two file rows; broad
+coordinator/history reviews and signed desktop acceptance remain open.
+
 ## Ordinary automatic fallback restored on 2026-09-26
 
 Restore the bounded native adapter, automatic policy and installed-native
