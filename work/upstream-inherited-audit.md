@@ -1392,3 +1392,11 @@ Installed Codex passes external-result deduplication, delegated tool provenance,
 exact response amount and equal history after restart with no replay. See
 [the coverage and scope](native-context-recovery-coverage.md). No production
 changes. Keep the shared native fixture registry review open.
+
+## Native patch paging coverage restored on 2026-09-27
+
+Restore the fourth lost pre-snapshot native fixture. Installed Codex passes
+complete Unicode patch paging, stale cursor rejection after restart and equal
+fresh readback without another inference request. See
+[the completed-patch qualification](native-patch-recovery-coverage.md). No
+production changes. The shared native registry still has other open comparisons.
