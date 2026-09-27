@@ -88,7 +88,7 @@ impl ChiefCoordinator {
 		if !Self::hydrated_thread_matches(&resumed, thread) {
 			return Ok(());
 		}
-		self.expect_usage_replay(thread, &resumed);
+		self.expect_usage_replay(thread, &resumed).await;
 		self.loaded_threads.insert(thread.clone());
 		self.persist_task_settings(thread).await?;
 		let Ok(history) = self.client.thread_read_turn(thread, turn).await else {

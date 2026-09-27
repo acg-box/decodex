@@ -12,14 +12,8 @@ impl ChiefCoordinator {
 			if !Self::hydrated_thread_matches(&response, thread) {
 				return Err(ChiefError::Invalid("resumed thread settings are invalid".into()));
 			}
-			let last_turn = response
-				.pointer("/thread/turns")
-				.and_then(Value::as_array)
-				.and_then(|turns| turns.last())
-				.and_then(|turn| turn["id"].as_str())
-				.map(str::to_owned);
+			let last_turn = self.expect_usage_replay(thread, &response).await;
 			self.store.validate_chief_usage_resume(thread.to_owned(), last_turn).await?;
-			self.expect_usage_replay(thread, &response);
 			self.loaded_threads.insert(thread.to_owned());
 			self.persist_task_settings(thread).await?;
 		}

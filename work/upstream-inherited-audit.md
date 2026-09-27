@@ -1241,3 +1241,13 @@ signed application interaction and its remaining limits separately in
 passes full-workspace pixel/line scroll tests; the physical-window scroll
 observation remains open. Close this one document row only. R06/R07/R12 and
 shared production-file reviews remain open.
+
+## Shared Chief coordinator reconciled on 2026-09-27
+
+Restore usage replay after native resumes that omit history, and apply complete
+terminal text before preserving partial output. Both losses have failing-before
+fixtures. Keep id-less historical results and empty-readback partials valid.
+The final Chief suite passes 158 tests with 15 existing opt-in cases ignored;
+strict runtime lint passes. See [the complete coordinator mapping](chief-coordinator-reconciliation.md).
+Close only chief.rs. Refresh changed helper/test owner hashes without claiming the
+full tests.rs file review or signed desktop acceptance is complete.
