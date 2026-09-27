@@ -457,3 +457,4 @@ async fn serve_fixture_frames(
 #[path = "chief_process_native_compaction_tests.rs"] mod compaction;
 
 #[path = "chief_process_native_capacity_tests.rs"] mod capacity;
+#[path = "chief_process_native_realtime_tests.rs"] mod realtime;

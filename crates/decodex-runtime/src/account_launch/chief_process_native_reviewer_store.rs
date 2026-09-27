@@ -535,6 +535,8 @@ impl OwnedReviewer {
 
 #[path = "chief_process_app_ui_call_tests.rs"] mod app_ui_call;
 
+#[path = "chief_process_voice_tail_tests.rs"] mod voice_tail_tests;
+
 #[path = "chief_process_native_live_model_tests.rs"] mod live_model;
 
 #[path = "chief_process_native_task_model_tests.rs"] mod task_model_tests;
