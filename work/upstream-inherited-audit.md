@@ -29,6 +29,14 @@ change main only after merge. Read the exact fields at the actual main revision;
 older dated counts below are historical. Neither measure proves feature or
 native/desktop acceptance.
 
+## Shared Chief composer reconciled on 2026-09-27
+
+Map the complete inherited composer diff to the retained cancellation, draft,
+model-intent and voice owners. Six composer, seven workspace and one active-voice
+rendered tests pass. See [the complete mapping](chief-composer-reconciliation.md).
+Close only the composer file row. No production code changes; the wider workspace,
+shared surface and signed native-composer acceptance remain open.
+
 ## Live settings socket fixture reconciled on 2026-09-27
 
 Restore the inherited selected-model/effort receipt assertion and model-mode
