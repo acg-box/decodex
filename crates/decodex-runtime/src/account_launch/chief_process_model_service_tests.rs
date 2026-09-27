@@ -263,3 +263,48 @@ async fn reject_restored_settings(
 fn settings(model: &str) -> Value {
 	json!({"model":model,"modelProvider":"fixture","effort":"high","serviceTier":"priority","cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"},"disabledPluginIds":[],"activePermissionProfile":{"id":":read-only"}})
 }
+
+#[tokio::test]
+async fn legacy_model_request_blocks_current_service_mutations_without_native_writes() {
+	let home = tempfile::tempdir().expect("fixture home");
+	let (local, remote) = tokio::io::duplex(32768);
+	let (r, w) = tokio::io::split(local);
+	let (client, _events) = AppServerClient::from_io(r, w);
+	let writes = Arc::new(AtomicUsize::new(0));
+	let backend = tokio::spawn(serve(remote, writes.clone(), "queued"));
+	client.thread_resume(json!({"threadId":"thread"})).await.expect("hydrate");
+	let owned = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
+	let connection =
+		rusqlite::Connection::open(owned.root.paths().product_database_file()).unwrap();
+	let attempt = json!({"work":"root","thread":"thread","generation":owned.key.generation.as_str(),"account":owned.key.account.as_str(),"account_revision":owned.key.revision,"settings_event":1,"banner_digest":"b".repeat(64),"from_model":"original","model":"scoped","effort":"high","service_tier":"priority"});
+	connection.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service','root','model_recovery',?1,1,'resolved','Legacy fixture',1)",[json!({"attempt":attempt,"state":"claimed"}).to_string()]).unwrap();
+	let reservation = connection.last_insert_rowid();
+	connection.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service:result','root','model_recovery_result',?1,2,'resolved','Legacy response',2)",[json!({"reservation":reservation,"state":"uncertain"}).to_string()]).unwrap();
+	drop(connection);
+	let source = || async { Some(owned.source(&owned.key)) };
+	let state = crate::chief_models::read(&owned.store, source).await;
+	assert!(
+		matches!(state,ChiefModelSelectionState::Pending{model,state:decodex_protocol::ChiefModelOutcome::Unknown,..} if model.as_str()=="scoped")
+	);
+	assert!(write(&owned.store, source, "thread", "old-review", "scoped", "retry").await.is_err());
+	assert!(matches!(
+		crate::chief_permissions::read(&owned.store, source).await,
+		decodex_protocol::ChiefPermissionState::Available { can_update: false, .. }
+	));
+	assert_eq!(writes.load(Ordering::Acquire), 0);
+	let reopened = SqliteStore::open(&owned.root.paths()).unwrap();
+	assert_eq!(
+		reopened
+			.pending_chief_legacy_model_change(
+				"root".into(),
+				"thread".into(),
+				owned.key.generation.as_str().into()
+			)
+			.await
+			.unwrap()
+			.unwrap()
+			.state,
+		"unknown"
+	);
+	backend.abort();
+}

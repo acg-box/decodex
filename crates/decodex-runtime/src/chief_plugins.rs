@@ -91,11 +91,7 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 			&& work.active_turn_id.is_some()))
 		&& work.status != decodex_database::ChiefWorkStatus::Resolved
 		&& !other_pending
-		&& !store
-			.chief_model_receipt(k.work.clone(), k.thread.clone())
-			.await
-			.ok()?
-			.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown"));
+		&& !store.has_pending_chief_model_change(k.work.clone()).await.ok()?;
 
 	let identity = json!([
 		k.work,

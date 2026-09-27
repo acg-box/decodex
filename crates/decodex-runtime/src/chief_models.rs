@@ -27,6 +27,17 @@ fn outcome(value: &str) -> Option<Outcome> {
 		_ => return None,
 	})
 }
+fn pending(model: &str, effort: Option<&str>, state: Outcome) -> Option<Inspection> {
+	Some(Inspection {
+		state: State::Pending {
+			model: ConversationModel::new(model).ok()?,
+			effort: effort.map(ConversationReasoningEffort::new).transpose().ok()?,
+			state,
+		},
+		settings_event: 0,
+		guard: None,
+	})
+}
 async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	let k = &source.key;
 	if !store
@@ -43,6 +54,17 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	persist_current(store, &source.client, &k.thread, Some(k.generation.as_str().into()))
 		.await
 		.ok()?;
+	if let Some(legacy) = store
+		.pending_chief_legacy_model_change(
+			k.work.clone(),
+			k.thread.clone(),
+			k.generation.as_str().into(),
+		)
+		.await
+		.ok()?
+	{
+		return pending(&legacy.model, Some(&legacy.effort), outcome(&legacy.state)?);
+	}
 	let prior = store.chief_model_receipt(k.work.clone(), k.thread.clone()).await.ok()?;
 	let last_outcome = match &prior {
 		Some(receipt) => Some(outcome(&receipt.state)?),
@@ -51,21 +73,7 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	if let Some(prior) = &prior
 		&& matches!(last_outcome, Some(Outcome::Reserved | Outcome::Queued | Outcome::Unknown))
 	{
-		return Some(Inspection {
-			state: State::Pending {
-				model: ConversationModel::new(prior.attempt.model.clone()).ok()?,
-				effort: prior
-					.attempt
-					.effort
-					.as_deref()
-					.map(ConversationReasoningEffort::new)
-					.transpose()
-					.ok()?,
-				state: last_outcome?,
-			},
-			settings_event: 0,
-			guard: None,
-		});
+		return pending(&prior.attempt.model, prior.attempt.effort.as_deref(), last_outcome?);
 	}
 	let (native, guard) = source.client.configured_task_models(&k.thread)?;
 	let saved = store

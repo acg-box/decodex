@@ -33,7 +33,7 @@ pub use chief_prompt_inputs::ChiefPromptInput;
 mod chief_prompt_upload;
 pub use chief_prompt_upload::ChiefPromptUpload;
 mod chief_models;
-pub use chief_models::{ChiefModelAttempt, ChiefModelReceipt};
+pub use chief_models::{ChiefLegacyModelPending, ChiefModelAttempt, ChiefModelReceipt};
 mod chief_plugins;
 pub use chief_plugins::{ChiefPluginAttempt, ChiefPluginReceipt};
 mod chief_permissions;

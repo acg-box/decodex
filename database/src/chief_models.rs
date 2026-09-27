@@ -1,5 +1,7 @@
 //! Durable model selection attempts. A queued response never proves application.
+#[path = "chief_model_legacy.rs"] mod legacy;
 use crate::{SqliteStore, StoreError, chief_process::owns_work, error::sqlite_error, unix_micros};
+pub use legacy::ChiefLegacyModelPending;
 use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -71,6 +73,9 @@ impl ChiefModelAttempt {
 }
 
 pub(crate) fn pending(connection: &rusqlite::Connection, work: &str) -> Result<bool, StoreError> {
+	if legacy::pending(connection, work)? {
+		return Ok(true);
+	}
 	connection.query_row("SELECT EXISTS(SELECT 1 FROM chief_inbox_events e WHERE e.work_item_id=?1 AND e.event_kind='model_selection' AND NOT EXISTS(SELECT 1 FROM chief_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND r.event_kind='model_selection_result' AND json_extract(r.payload,'$.state')='rejected') OR (r.source_event_id=e.source_event_id||':observation' AND r.event_kind='model_selection_observation')))", [work], |r|r.get(0)).map_err(|e|sqlite_error(e).into())
 }
 
@@ -148,6 +153,7 @@ pub(crate) fn observe(
 	if !owns_work(connection, work, generation)? {
 		return Ok(());
 	}
+	legacy::observe(connection, work, thread, generation, observation, settings)?;
 	let row:Option<(i64,String,Option<String>,String)>=connection.query_row("SELECT e.id,e.source_event_id,json_extract(e.payload,'$.attempt.generation'),json_extract(e.payload,'$.attempt') FROM chief_inbox_events e JOIN chief_work_items w ON w.id=e.work_item_id AND w.codex_thread_id=?2 WHERE e.work_item_id=?1 AND e.event_kind='model_selection' AND e.id<?3 AND json_extract(e.payload,'$.attempt.thread')=?2 AND NOT EXISTS(SELECT 1 FROM chief_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND json_extract(r.payload,'$.state')='rejected') OR r.source_event_id=e.source_event_id||':observation') ORDER BY e.id DESC LIMIT 1",params![work,thread,observation],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(sqlite_error)?;
 	let Some((reservation, key, previous, target)) = row else {
 		return Ok(());
@@ -233,6 +239,23 @@ mod tests {
 	}
 	async fn receipt(store: &SqliteStore) -> ChiefModelReceipt {
 		store.chief_model_receipt("work".into(), "thread".into()).await.unwrap().unwrap()
+	}
+
+	#[tokio::test]
+	async fn legacy_model_recovery_blocks_dispatch_after_reopen() {
+		let dir = tempfile::tempdir().unwrap();
+		let path = dir.path().join("legacy.sqlite3");
+		let store = setup(&path).await;
+		store.run(|connection| {
+			connection.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy','work','model_recovery',?1,1,'resolved','Legacy fixture',1)", [json!({"attempt":{"work":"work","thread":"thread","generation":"old","account":"account","account_revision":1,"settings_event":1,"banner_digest":"b".repeat(64),"from_model":"original","model":"scoped","effort":"high","service_tier":"priority"},"state":"claimed"}).to_string()]).map_err(sqlite_error)?;
+			Ok(())
+		}).await.unwrap();
+		drop(store);
+		let reopened = SqliteStore::open_test(&path).unwrap();
+		assert!(
+			reopened.begin_chief_dispatch("work".into()).await.is_err(),
+			"an unresolved legacy request must not be ignored after upgrade"
+		);
 	}
 
 	#[tokio::test]
