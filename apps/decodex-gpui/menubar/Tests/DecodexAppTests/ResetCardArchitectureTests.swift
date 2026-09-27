@@ -17,9 +17,9 @@ final class ResetCardArchitectureTests: XCTestCase {
 			encoding: .utf8
 		)
 
-		XCTAssertTrue(rows.contains("Text(status.text)"))
+		XCTAssertTrue(rows.contains("InlineAccountFeedback("))
 		XCTAssertTrue(
-			rows.contains("Decodex checks this saved request automatically.")
+			rows.contains("Decodex checks automatically; do not use another card.")
 		)
 		XCTAssertTrue(
 			rows.contains(".frame(maxWidth: .infinity, alignment: .leading)")

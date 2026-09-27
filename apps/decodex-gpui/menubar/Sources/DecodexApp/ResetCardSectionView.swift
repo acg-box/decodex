@@ -1,121 +1,34 @@
 import SwiftUI
 
-struct ResetCardMessageView: View {
-	let message: ResetCardStoreMessage
-	let dismiss: () -> Void
+/// Compact feedback stays beside its owner and never changes panel height.
+struct InlineAccountFeedback: View {
+	let text: String
+	var isPending = false
+	var dismiss: () -> Void = {}
+	@State private var expanded = false
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.related) {
-			Image(systemName: symbol)
-				.font(PanelFont.tertiary)
-				.foregroundStyle(color)
-				.accessibilityHidden(true)
-
-			Text(message.text)
-				.font(PanelFont.tertiary)
-				.foregroundStyle(color)
-				.frame(maxWidth: .infinity, alignment: .leading)
-				.fixedSize(horizontal: false, vertical: true)
-				.layoutPriority(1)
-
-			Button(action: dismiss) {
-				Image(systemName: "xmark")
-					.font(PanelFont.tertiary)
-			}
-			.buttonStyle(PanelPressButtonStyle(pressedScale: 0.9))
-			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-			.fixedSize()
-			.help("Dismiss message")
-			.accessibilityLabel("Dismiss message")
+		Button { expanded.toggle() } label: {
+			Image(systemName: isPending ? "arrow.triangle.2.circlepath" : "exclamationmark.circle")
+				.font(.system(size: 11, weight: .medium))
+				.foregroundStyle(isPending ? PanelPalette.secondaryText(colorScheme) : PanelPalette.warning(colorScheme))
+				.symbolEffect(.pulse, options: .repeating, isActive: isPending && !reduceMotion)
+				.frame(width: 20, height: 20)
+				.contentShape(Rectangle())
 		}
-		.padding(.horizontal, PanelSpacing.cardHorizontal)
-		.padding(.vertical, PanelSpacing.cardVertical)
-		.panelCardSurface(cornerRadius: 14)
-	}
-
-	private var symbol: String {
-		switch message.tone {
-		case .information:
-			return "info.circle"
-		case .success:
-			return "checkmark.circle"
-		case .error:
-			return "exclamationmark.triangle"
-		}
-	}
-
-	private var color: Color {
-		switch message.tone {
-		case .information:
-			return PanelPalette.secondaryText(colorScheme)
-		case .success:
-			return PanelPalette.routeAccent(colorScheme)
-		case .error:
-			return PanelPalette.destructive(colorScheme)
-		}
-	}
-}
-
-struct ResetCardPendingAttemptsView: View {
-	let store: ResetCardStore
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		VStack(alignment: .leading, spacing: PanelSpacing.related) {
-			ForEach(store.pendingAttempts, id: \.idempotencyKey) { attempt in
-				let accountLabel = store.accountLabel(for: attempt.target.accountID)
-				let status = store.pendingStatus(for: attempt)
-
-				HStack(spacing: PanelSpacing.related) {
-					Image(systemName: "clock.arrow.circlepath")
-						.font(PanelFont.tertiary)
-						.foregroundStyle(PanelPalette.warning(colorScheme))
-						.accessibilityHidden(true)
-
-					Text(accountLabel)
-						.font(PanelFont.tertiary)
-						.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.88))
-						.lineLimit(1)
-						.truncationMode(.tail)
-
-					Text("·")
-						.font(PanelFont.tertiary)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-						.fixedSize()
-
-					Text(status.text)
-						.font(PanelFont.tertiary)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-						.lineLimit(1)
-						.fixedSize(horizontal: true, vertical: false)
-						.layoutPriority(1)
-
-					Spacer(minLength: 0)
+		.buttonStyle(PanelPressButtonStyle(pressedScale: 0.94))
+		.help(text)
+		.accessibilityLabel(text)
+		.popover(isPresented: $expanded, arrowEdge: .bottom) {
+			VStack(alignment: .leading, spacing: 10) {
+				Text(text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+				if !isPending {
+					Button("Dismiss") { expanded = false; dismiss() }.buttonStyle(.plain)
 				}
-				.help(helpText(for: status, attempt: attempt))
-				.accessibilityElement(children: .ignore)
-				.accessibilityLabel("\(accountLabel). \(status.accessibilityText).")
-				.accessibilityHint(
-					"Saved operation ending in \(attempt.idempotencyKey.suffix(8)). Decodex checks automatically."
-				)
-			}
+			}.padding(12).frame(width: 240, alignment: .leading)
 		}
-		.padding(.horizontal, PanelSpacing.cardHorizontal)
-		.padding(.vertical, PanelSpacing.cardVertical)
-		.panelCardSurface(cornerRadius: 14)
-	}
-
-	private func helpText(
-		for status: ResetCardPendingStatus,
-		attempt: ResetCardUseAttempt
-	) -> String {
-		let automaticCheck = "Decodex checks this saved request automatically."
-		let operation = "Operation …\(attempt.idempotencyKey.suffix(8))."
-		guard let detail = status.detail else {
-			return "\(automaticCheck) \(operation)"
-		}
-		return "\(detail) \(automaticCheck) \(operation)"
 	}
 }
 
@@ -208,6 +121,10 @@ struct ResetCardAccountRow: View {
 					.accessibilityLabel(identityAccessibilityLabel)
 					.accessibilityValue(detailsBinding.wrappedValue ? "Expanded" : "Collapsed")
 				HStack(spacing: PanelSpacing.micro) {
+					if let message = store.message, message.accountID == state.account.accountID,
+						message.tone != .success {
+						InlineAccountFeedback(text: message.text) { store.dismissMessage() }
+					}
 					AccountPrimaryActionsView(state: state, store: store)
 					AccountPowerButton(state: state, store: store)
 					AccountUtilityActionsView(state: state, store: store)
@@ -229,6 +146,12 @@ struct ResetCardAccountRow: View {
 			}
 			HStack(alignment: .bottom, spacing: PanelSpacing.compact) {
 				cardInventory
+				if let pending = store.pendingAttempts.first(where: { $0.target.accountID == state.account.accountID }) {
+					InlineAccountFeedback(
+						text: store.pendingStatus(for: pending).text + " Decodex checks automatically; do not use another card.",
+						isPending: true
+					)
+				}
 				Spacer(minLength: 0)
 				reorderHandle
 			}
@@ -520,7 +443,7 @@ struct ResetCardAccountRow: View {
 						.buttonStyle(
 							ResetCardChipButtonStyle(
 								isArmed: confirmation.isArmed(target),
-								isBusy: confirmation.isSubmitting(target)
+								isBusy: store.blocksNewAttempt(for: target) && confirmation.isSubmitting(target)
 							)
 						)
 						.disabled(store.blocksNewAttempt(for: target))
@@ -578,12 +501,6 @@ struct ResetCardAccountRow: View {
 				.hidden()
 
 			HStack(spacing: PanelSpacing.micro) {
-				if confirmation.isSubmitting(target) {
-					ProgressView()
-						.controlSize(.mini)
-						.accessibilityHidden(true)
-				}
-
 				Text(cardChipTitle(target))
 					.contentTransition(.opacity)
 			}
@@ -611,7 +528,7 @@ struct ResetCardAccountRow: View {
 
 	private func cardChipTitle(_ target: ResetCardUseTarget) -> String {
 		if confirmation.isSubmitting(target) {
-			return "Using…"
+			return normalCardChipTitle(target)
 		}
 		if confirmation.isArmed(target) {
 			let seconds =

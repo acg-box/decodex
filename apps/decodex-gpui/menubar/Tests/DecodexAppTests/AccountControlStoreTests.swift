@@ -1446,6 +1446,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertFalse(store.isCodexProjection(accountID))
 		XCTAssertEqual(store.routing?.mode, .balanced)
 		XCTAssertNotNil(store.message)
+		XCTAssertEqual(store.message?.accountID, accountID)
 	}
 
 	func testRouteAccountIsNoOpWhenBothStatesAreCurrent() async throws {

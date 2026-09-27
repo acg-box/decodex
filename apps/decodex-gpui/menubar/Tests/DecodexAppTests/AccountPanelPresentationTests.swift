@@ -394,13 +394,13 @@ final class AccountPanelPresentationTests: XCTestCase {
 			startupRetryDelays: []
 		)
 		let hostingView = NSHostingView(
-			rootView: ResetCardPendingAttemptsView(store: store)
+			rootView: InlineAccountFeedback(text: store.pendingStatus(for: attempt).text, isPending: true)
 				.frame(width: 276)
 		)
 
 		hostingView.layoutSubtreeIfNeeded()
 
-		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 44)
+		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 22)
 	}
 
 	func testUnavailableProfileUnauthorizedPresentsLoginRecoveryWithoutHidingCanonicalInventory()
@@ -801,7 +801,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 1_350)
 	}
 
-	func testPendingRequestsUseTheirOwnBoundedScrollWithoutHidingAccounts() async throws {
+	func testPendingRequestsStayInlineWithoutAddingAnotherScrollRegion() async throws {
 		let directory = FileManager.default.temporaryDirectory
 			.appendingPathComponent(UUID().uuidString, isDirectory: true)
 		defer { try? FileManager.default.removeItem(at: directory) }
@@ -866,15 +866,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 			}
 			return documentView.bounds.height > scrollView.contentView.bounds.height + 1
 		}
-		XCTAssertGreaterThanOrEqual(overflowingScrollViews.count, 2)
-		XCTAssertTrue(
-			overflowingScrollViews.contains { scrollView in
-				abs(
-					scrollView.contentView.bounds.height
-						- AccountPanelLayout.statusMaximumHeight
-				) < 4
-			}
-		)
+		XCTAssertEqual(overflowingScrollViews.count, 1, "Only the account list scrolls; pending feedback stays inline.")
 		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 675)
 	}
 }

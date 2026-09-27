@@ -125,14 +125,9 @@ struct AccountPanelView: View {
 		VStack(alignment: .leading, spacing: PanelSpacing.section) {
 			headerOverview
 
-			if hasTransientStatus {
-				transientStatus
-					.transition(.panelSection)
-			}
 
 			accountContent
 		}
-		.animation(panelLayoutAnimation, value: hasTransientStatus)
 	}
 
 	private var headerOverview: some View {
@@ -179,6 +174,12 @@ struct AccountPanelView: View {
 				.foregroundStyle(PanelPalette.primaryText(colorScheme))
 
 			Spacer(minLength: 4)
+			if let feedback = globalFeedback {
+				InlineAccountFeedback(text: feedback) {
+					fastMode.dismissError()
+					store.dismissMessage()
+				}
+			}
 
 			PanelIconButtonView(
 				symbol: accountPrivacy == AccountPrivacy.visible ? "eye" : "eye.slash",
@@ -262,69 +263,16 @@ struct AccountPanelView: View {
 		}
 	}
 
-	private var hasTransientStatus: Bool {
-		hasBoundedTransientStatus
-			|| displayedIntrinsicMessage != nil
-	}
-
-	private var hasBoundedTransientStatus: Bool {
-		fastMode.errorMessage != nil
-			|| store.message?.tone == .error
-			|| store.pendingAttempts.isEmpty == false
-	}
-
-	private var transientStatus: some View {
-		VStack(alignment: .leading, spacing: PanelSpacing.related) {
-			if hasBoundedTransientStatus {
-				ScrollView(.vertical, showsIndicators: false) {
-					VStack(alignment: .leading, spacing: PanelSpacing.related) {
-						if let errorMessage = fastMode.errorMessage {
-							ResetCardMessageView(
-								message: ResetCardStoreMessage(
-									tone: .error,
-									text: errorMessage
-								)
-							) {
-								fastMode.dismissError()
-							}
-						}
-
-						if let message = store.message, message.tone == .error {
-							ResetCardMessageView(message: message) {
-								store.dismissMessage()
-							}
-						}
-
-						if store.pendingAttempts.isEmpty == false,
-							store.message?.tone != .error
-						{
-							ResetCardPendingAttemptsView(store: store)
-						}
-					}
-				}
-				.frame(maxHeight: AccountPanelLayout.statusMaximumHeight)
-			}
-
-			if let message = displayedIntrinsicMessage {
-				ResetCardMessageView(message: message) {
-					store.dismissMessage()
-				}
-			}
+	private var globalFeedback: String? {
+		if let error = fastMode.errorMessage { return error }
+		if let message = store.message, message.tone != .success,
+			message.accountID == nil || !store.accounts.contains(where: { $0.id == message.accountID }) {
+			return message.text
 		}
-		.accessibilityLabel("Decodex status and pending requests")
-	}
-
-	private var displayedIntrinsicMessage: ResetCardStoreMessage? {
-		guard let message = store.message, message.tone != .error else {
-			return nil
-		}
-		if message.tone == .success,
-			message.text == "Fixed account selected."
-				|| message.text == "Balanced account selection enabled."
-		{
-			return nil
-		}
-		return message
+		if let attempt = store.pendingAttempts.first(where: { attempt in
+			!store.accounts.contains(where: { $0.id == attempt.target.accountID })
+		}) { return store.pendingStatus(for: attempt).text }
+		return nil
 	}
 
 	private var profileAggregate: AccountProfileAggregate? {
@@ -622,9 +570,7 @@ struct AccountPanelView: View {
 			accountCount: store.accounts.count,
 			measuredContentHeight: measuredAccountListContentHeight,
 			windowVisibleFrame: layoutVisibleFrameOverride ?? panelScreenVisibleFrame,
-				additionalChromeHeight: hasTransientStatus
-					? AccountPanelLayout.statusMaximumHeight
-					: 0
+				additionalChromeHeight: 0
 		)
 	}
 
