@@ -1384,3 +1384,11 @@ fixtures and dedicated modules in [the test reconciliation](chief-test-owner-rec
 All 159 Chief tests and strict runtime lint pass; 15 opt-in tests remain ignored.
 Close only chief/tests.rs. Shared native registry and desktop acceptance remain
 open; source-review closure is not feature completion.
+
+## Native context restart coverage restored on 2026-09-27
+
+Restore the original tool-context fixture through the retained native bridge.
+Installed Codex passes external-result deduplication, delegated tool provenance,
+exact response amount and equal history after restart with no replay. See
+[the coverage and scope](native-context-recovery-coverage.md). No production
+changes. Keep the shared native fixture registry review open.
