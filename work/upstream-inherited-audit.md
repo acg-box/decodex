@@ -1400,3 +1400,13 @@ complete Unicode patch paging, stale cursor rejection after restart and equal
 fresh readback without another inference request. See
 [the completed-patch qualification](native-patch-recovery-coverage.md). No
 production changes. The shared native registry still has other open comparisons.
+
+## Shared native fixture registry reconciled on 2026-09-27
+
+Restore connection, login-policy and initial preference tests, and extend the
+existing voice fixture with its missing original assertions. All four installed
+native cases and strict runtime lint pass. Map moved tests, four restored base
+modules and consolidated fixture helpers in [the registry reconciliation](native-fixture-registry-reconciliation.md).
+Close only this shared source row. Separate native limitations and signed desktop
+acceptance remain open. The current branch has 24 files in the union of the two
+open review fields; this is not a feature-completion measure.

@@ -131,14 +131,18 @@ async fn installed_voice_preference_bridge_saves_absent_file_and_rejects_old_con
 	let cwd = home.path().to_str().unwrap();
 	let before = session.client.realtime_voice_settings(cwd).await.unwrap();
 	assert_eq!(before.preference, None);
+	assert!(before.voices.iter().any(|voice| voice == "juniper"));
 	let saved = session.client.write_realtime_voice(&before, "juniper").await.unwrap();
 	assert_eq!(saved.preference.as_deref(), Some("juniper"));
 	assert_eq!(saved.effective.as_deref(), Some("juniper"));
+	assert!(matches!(
+		session.client.write_realtime_voice(&before, "maple").await,
+		Err(decodex_codex::app_server_client::ClientError::Remote(_))
+	));
 	drop(session);
 	let session = NativeSession::start(&binary, home.path());
 	assert!(session.client.write_realtime_voice(&saved, "maple").await.is_err());
-	assert_eq!(
-		session.client.realtime_voice_settings(cwd).await.unwrap().preference.as_deref(),
-		Some("juniper")
-	);
+	let cold = session.client.realtime_voice_settings(cwd).await.unwrap();
+	assert_eq!(cold.preference.as_deref(), Some("juniper"));
+	assert_eq!(cold.effective.as_deref(), Some("juniper"));
 }
