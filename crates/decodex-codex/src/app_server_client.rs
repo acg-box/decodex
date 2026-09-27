@@ -20,6 +20,8 @@ pub use app_tool_exposure::{
 };
 mod account_nudge;
 pub use account_nudge::{AccountNudgeCreditType, AccountNudgeOutcome};
+mod recovery_auth;
+pub use recovery_auth::NativeRecoveryAuth;
 mod settings_guard;
 mod task_settings;
 mod thread_model_selection;
