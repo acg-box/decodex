@@ -100,6 +100,17 @@ This restores the direct lost-reply regression alongside the existing closing-
 resume receipt fixture and installed-native qualification. Close only this one
 complete file row; the shared runtime test module and broader R08 scope stay open.
 
+## App settings owners and legacy outcomes reconciled on 2026-09-27
+
+Map the complete inherited runtime App-settings, runtime exposure and desktop
+App-settings files to their current owners. Restore the missing legacy exposure
+outcome read without recreating the old writer or inventing native file scope.
+The regression first returns no old outcome; after recovery it preserves four
+states across reopen, separates native preferences and rejects stale reviews.
+See [the complete mapping](app-settings-owner-reconciliation.md). Close these
+three file rows and correct the old database replacement record. Shared files,
+native-provider acceptance and signed desktop interaction remain open.
+
 ## Integration status restored on 2026-09-26
 
 Restore MCP extension names, independent Apps failure evidence and exact connector
