@@ -33,12 +33,13 @@ history-change events, optional recap settings, App UI and prompt input routes,
 bounded request details, partial-output identities and question provenance.
 Reading those hunks does not by itself close their behavior or test coverage.
 
-Before closing application.rs, reconcile the removed command-executor coverage,
-background/child approval tests, enriched-diff pagination, model-review projection
-case and authentication-history test helper. Determine the disposition of removed
-connector/link metadata in the elicitation projection. Existing source-specific
-tests and native settings readers can provide evidence, but do not silently treat
-a renamed or narrower test as coverage of every inherited case.
+The subsequent [approval recovery](application-approval-recovery.md) restores
+command-executor coverage, background/child approvals, enriched-diff pagination,
+model-review projection and connector/link metadata. The removed authentication
+history helper has no call site in the preserved Rust snapshot; it only filtered
+the retained test renderer by `auth_recovery`. No production route was removed
+with that helper. The oversized detail policy and remaining query-owner mapping
+still need an explicit disposition before closing this shared file.
 
 ## Validation
 

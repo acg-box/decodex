@@ -4517,6 +4517,9 @@ fn chief_request_metadata(value: &serde_json::Value) -> Option<serde_json::Value
 				"codex_approval_kind",
 				"persist",
 				"connector_name",
+				"connector_id",
+				"link_id",
+				"link_is_implicit",
 				"tool_name",
 				"tool_title",
 				"tool_description",
@@ -6576,7 +6579,7 @@ mod tests {
 				_ =>
 					serde_json::json!({"type":"object","properties":{"date":{"type":"string","format":"date"}}}),
 			};
-			let payload = serde_json::json!({"method":"mcpServer/elicitation/request","params":{"threadId":thread,"turnId":turn,"serverName":"calendar","mode":mode,"message":"Choose a date","requestedSchema":schema,"challenge":"PRIVATE_CHALLENGE","_meta":{"tool_name":"calendar.create","private_token":"PRIVATE_TOKEN"}}});
+			let payload = serde_json::json!({"method":"mcpServer/elicitation/request","params":{"threadId":thread,"turnId":turn,"serverName":"calendar","mode":mode,"message":"Choose a date","requestedSchema":schema,"challenge":"PRIVATE_CHALLENGE","_meta":{"tool_name":"calendar.create","connector_id":"calendar","link_id":"work-link","link_is_implicit":false,"private_token":"PRIVATE_TOKEN"}}});
 			let event = store
 				.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
 					source_event_id: format!("elicitation-{index}"),
@@ -6596,8 +6599,157 @@ mod tests {
 				assert_eq!(value["mode"], mode);
 				assert_eq!(value["requestedSchema"], schema);
 				assert_eq!(value["_meta"]["tool_name"], "calendar.create");
+				assert_eq!(value["_meta"]["connector_id"], "calendar");
+				assert_eq!(value["_meta"]["link_id"], "work-link");
+				assert_eq!(value["_meta"]["link_is_implicit"], false);
 				assert!(!request_json.as_str().contains("PRIVATE_"));
 			}
+		}
+	}
+
+	#[tokio::test]
+	async fn live_background_approval_is_visible_after_its_origin_turn_ends() {
+		use decodex_database::EnqueueChiefEvent;
+		use decodex_protocol::ChiefRequestResult;
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		chief_query_work(&store, "worker").await;
+		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
+		store.begin_chief_dispatch("worker".into()).await.unwrap();
+		store.acknowledge_chief_dispatch("worker".into(), "new-turn".into()).await.unwrap();
+		let owner = ProductStore::Available(store.clone());
+		for (index, thread) in ["thread", "foreign"].into_iter().enumerate() {
+			let event = store.enqueue_chief_event(EnqueueChiefEvent {
+				source_event_id:format!("background-approval-{index}"),work_item_id:"worker".into(),event_kind:"permission_pending".into(),
+				payload:serde_json::json!({"id":index,"method":"item/commandExecution/requestApproval","params":{"threadId":thread,"turnId":"old-turn","command":"curl https://example.test","cwd":"/original","environmentId":"original-executor","networkApprovalContext":{"host":"example.test","protocol":"https"},"availableDecisions":["accept","decline"]}}).to_string(),
+			}).await.unwrap();
+			assert_eq!(
+				super::query_chief_request_scoped(&owner, event.id, false).await,
+				ChiefRequestResult::Unavailable
+			);
+			let live = super::query_chief_request_scoped(&owner, event.id, true).await;
+			if index == 1 {
+				assert_eq!(live, ChiefRequestResult::Unavailable);
+				continue;
+			}
+			let ChiefRequestResult::Available { request_json, .. } = live else {
+				panic!("still-live background approval")
+			};
+			let fields: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
+			assert_eq!(fields["cwd"], "/original");
+			assert_eq!(fields["environmentId"], "original-executor");
+			assert_eq!(fields["networkApprovalContext"]["host"], "example.test");
+			store.acknowledge_chief_request_event(event.id).await.unwrap();
+			assert_eq!(
+				super::query_chief_request_scoped(&owner, event.id, true).await,
+				ChiefRequestResult::Unavailable
+			);
+		}
+	}
+
+	#[tokio::test]
+	async fn complete_file_approval_pages_bind_the_enriched_diff() {
+		use decodex_protocol::{ChiefActivityDetailResult, ChiefRequestResult};
+		let request = ChiefRequestResult::Available {
+			event_id: 77,
+			work_id: "work".into(),
+			method: "item/fileChange/requestApproval".into(),
+			request_json: decodex_protocol::ChiefRequestText::new(
+				"{\"reason\":\"Review changes\"}",
+			)
+			.unwrap(),
+		};
+		let diff = format!("Path: /tmp/patch\n{} REQUIRED DIFF SUFFIX", "+界\n".repeat(20000));
+		let enriched = super::attach_file_approval_detail(
+			request.clone(),
+			ChiefActivityDetailResult::Available {
+				text: diff.clone(),
+				truncated: false,
+				offset: 0,
+				next: None,
+			},
+		);
+		let mut page = super::page_chief_request(enriched.clone(), None, 0);
+		let mut complete = String::new();
+		loop {
+			let ChiefRequestResult::Page { text, digest, next_offset, .. } = page else {
+				panic!("file detail page")
+			};
+			complete.push_str(text.as_str());
+			let Some(offset) = next_offset else { break };
+			assert_eq!(
+				super::page_chief_request(request.clone(), Some(&digest), offset),
+				ChiefRequestResult::Unavailable
+			);
+			page = super::page_chief_request(enriched.clone(), Some(&digest), offset);
+		}
+		let fields: serde_json::Value = serde_json::from_str(&complete).unwrap();
+		assert_eq!(fields["changeDetails"], diff);
+		assert_eq!(fields["changeDetailsTruncated"], false);
+		let changed = super::attach_file_approval_detail(
+			request,
+			ChiefActivityDetailResult::Available {
+				text: format!("{diff} CHANGED"),
+				truncated: false,
+				offset: 0,
+				next: None,
+			},
+		);
+		let ChiefRequestResult::Page { digest, next_offset: Some(offset), .. } =
+			super::page_chief_request(enriched, None, 0)
+		else {
+			panic!("first page")
+		};
+		assert_eq!(
+			super::page_chief_request(changed, Some(&digest), offset),
+			ChiefRequestResult::Unavailable
+		);
+	}
+
+	#[tokio::test]
+	async fn saved_child_file_approval_projects_exact_diff_without_parent_active_turn() {
+		use decodex_database::EnqueueChiefEvent;
+		use decodex_protocol::ChiefRequestResult;
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		chief_query_work(&store, "parent").await;
+		store.bind_chief_thread("parent".into(), "parent-thread".into()).await.unwrap();
+		let diff = format!("+{} FINAL DIFF", "界".repeat(30000));
+		let payload = serde_json::json!({"id":7,"method":"item/fileChange/requestApproval","ownerThreadId":"parent-thread",
+			"params":{"threadId":"child-thread","turnId":"child-turn","itemId":"patch"},
+			"fileChange":{"id":"patch","type":"fileChange","changes":[{"path":"/tmp/file","kind":{"type":"add"},"diff":diff}]}});
+		for (index, owner_thread) in ["parent-thread", "wrong-parent"].into_iter().enumerate() {
+			let mut payload = payload.clone();
+			payload["ownerThreadId"] = serde_json::json!(owner_thread);
+			let event = store
+				.enqueue_chief_event(EnqueueChiefEvent {
+					source_event_id: format!("child-file-{index}"),
+					work_item_id: "parent".into(),
+					event_kind: "permission_pending".into(),
+					payload: payload.to_string(),
+				})
+				.await
+				.unwrap();
+			let owner = ProductStore::Available(SqliteStore::open(&root.paths()).unwrap());
+			let projected = super::query_chief_request_scoped(&owner, event.id, true).await;
+			if index == 1 {
+				assert_eq!(projected, ChiefRequestResult::Unavailable);
+				continue;
+			}
+			let ChiefRequestResult::Available { work_id, request_json, .. } = projected else {
+				panic!("saved child detail")
+			};
+			assert_eq!(work_id, "parent");
+			let fields: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
+			assert!(fields["changeDetails"].as_str().unwrap().ends_with(&diff));
+			assert_eq!(fields["changeDetailsTruncated"], false);
+			store.acknowledge_chief_request_event(event.id).await.unwrap();
+			assert_eq!(
+				super::query_chief_request_scoped(&owner, event.id, true).await,
+				ChiefRequestResult::Unavailable
+			);
 		}
 	}
 
@@ -6853,7 +7005,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn permission_request_projection_preserves_the_native_executor() {
+	async fn approval_request_projection_preserves_the_native_executor() {
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
@@ -6862,36 +7014,41 @@ mod tests {
 		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
 		store.begin_chief_dispatch("worker".into()).await.unwrap();
 		store.acknowledge_chief_dispatch("worker".into(), "turn".into()).await.unwrap();
-		for (index, environment) in
-			[serde_json::json!("remote/工作"), serde_json::Value::Null, serde_json::json!(42)]
-				.into_iter()
-				.enumerate()
+		for method in ["item/permissions/requestApproval", "item/commandExecution/requestApproval"]
 		{
-			let permissions = serde_json::json!({"fileSystem":{"entries":[{"path":{"type":"special","value":{"kind":"project_roots"}},"access":"write"}]}});
-			let payload = serde_json::json!({"method":"item/permissions/requestApproval","params":{"threadId":"thread","turnId":"turn","environmentId":environment,"cwd":"C:\\workspace","permissions":permissions,"privateToken":"hidden"}});
-			let event = store
-				.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
-					source_event_id: format!("executor-{index}"),
-					work_item_id: "worker".into(),
-					event_kind: "permission_pending".into(),
-					payload: payload.to_string(),
-				})
-				.await
-				.unwrap();
-			let result = super::query_chief_request(&owner, event.id).await;
-			if environment.is_number() {
-				assert_eq!(result, decodex_protocol::ChiefRequestResult::Unavailable);
-				continue;
+			for (index, environment) in
+				[serde_json::json!("remote/工作"), serde_json::Value::Null, serde_json::json!(42)]
+					.into_iter()
+					.enumerate()
+			{
+				let permissions = serde_json::json!({"fileSystem":{"entries":[{"path":{"type":"special","value":{"kind":"project_roots"}},"access":"write"}]}});
+				let payload = serde_json::json!({"method":method,"params":{"threadId":"thread","turnId":"turn","environmentId":environment,"cwd":"C:\\workspace","permissions":permissions,"privateToken":"hidden"}});
+				let event = store
+					.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
+						source_event_id: format!("executor-{method}-{index}"),
+						work_item_id: "worker".into(),
+						event_kind: "permission_pending".into(),
+						payload: payload.to_string(),
+					})
+					.await
+					.unwrap();
+				let result = super::query_chief_request(&owner, event.id).await;
+				if environment.is_number() {
+					assert_eq!(result, decodex_protocol::ChiefRequestResult::Unavailable);
+					continue;
+				}
+				let decodex_protocol::ChiefRequestResult::Available { request_json, .. } = result
+				else {
+					panic!("permission request")
+				};
+				let value: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
+				assert_eq!(value["environmentId"], environment);
+				assert_eq!(value["cwd"], "C:\\workspace");
+				if method == "item/permissions/requestApproval" {
+					assert_eq!(value["permissions"], permissions);
+				}
+				assert!(value.get("privateToken").is_none());
 			}
-			let decodex_protocol::ChiefRequestResult::Available { request_json, .. } = result
-			else {
-				panic!("permission request")
-			};
-			let value: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
-			assert_eq!(value["environmentId"], environment);
-			assert_eq!(value["cwd"], "C:\\workspace");
-			assert_eq!(value["permissions"], permissions);
-			assert!(value.get("privateToken").is_none());
 		}
 	}
 
@@ -7065,6 +7222,16 @@ mod tests {
 		)
 		.unwrap();
 
+		let review = conversation_summary_from_row(
+			pre_session_conversation(
+				OrdinaryTaskPreSessionState::ModelSettingsReviewRequired,
+				None,
+			),
+			None,
+		)
+		.expect("source review projection");
+		assert_eq!(review.state, ConversationState::ModelSettingsReviewRequired);
+		assert_eq!(review.recovery_action, Some(ConversationRecoveryAction::ReviewModelSettings));
 		assert_eq!(routing.state, ConversationState::RoutingPending);
 		assert_eq!(routing.recovery_action, Some(ConversationRecoveryAction::ResumeRouting));
 		assert_eq!(establishment.state, ConversationState::EstablishmentPending);
