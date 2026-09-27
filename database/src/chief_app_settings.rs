@@ -98,6 +98,22 @@ fn unresolved(state: &str) -> bool {
 	matches!(state, "reserved" | "unknown")
 }
 impl SqliteStore {
+	/// Read a historical connector result without assigning it a current config-file scope.
+	/// The event identity can bind a review; this reader never reserves or replays a write.
+	pub async fn legacy_chief_app_exposure_outcome(
+		&self,
+		work: String,
+		thread: String,
+		connector: String,
+	) -> Result<Option<(i64, String)>, StoreError> {
+		self.run(move |connection| {
+			Ok(connection.query_row(
+				"SELECT e.id,COALESCE(json_extract(r.payload,'$.state'),'reserved') FROM chief_inbox_events e LEFT JOIN chief_inbox_events r ON r.source_event_id=e.source_event_id||':result' AND r.event_kind='app_exposure_result' WHERE e.work_item_id=?1 AND e.event_kind='app_exposure_attempt' AND json_extract(e.payload,'$.attempt.thread')=?2 AND json_extract(e.payload,'$.attempt.connector')=?3 ORDER BY e.id DESC LIMIT 1",
+				params![work, thread, connector], |row| Ok((row.get(0)?, row.get(1)?)),
+			).optional().map_err(sqlite_error)?)
+		}).await
+	}
+
 	/// Read the latest receipt for the entire writable config, across tasks and accounts.
 	pub async fn chief_app_settings_receipt(
 		&self,

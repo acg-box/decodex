@@ -190,7 +190,7 @@ impl ChiefSurface {
 		}
 		if let Some(outcome) = last_outcome {
 			panel = panel.child(format!(
-				"Last shared configuration write: {}",
+				"Last recorded configuration write: {}",
 				match outcome.as_str() {
 					"saved" => "Configuration read back",
 					"overridden" => "Saved; another configuration layer takes precedence",

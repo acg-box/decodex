@@ -77,3 +77,12 @@ or MCP changes applied. The adapter sends each stage once and does not retry.
 The fixed upstream `request_processors/apps_processor/installed.rs` owns runtime
 publication through `thread.refresh_codex_apps_tools()`. This corrects the existing
 sync flow; it does not create another local tool registry.
+
+## Historical exposure outcomes
+
+The current shared journal now retains access to the inherited exposure-only
+outcomes through a read-only compatibility query. Native configuration remains
+the only source for current preferences. A modern shared receipt takes precedence;
+otherwise the original work/thread/connector result remains visible. No old write
+is replayed or assigned an invented config-file scope. See
+[the owner mapping and qualification](app-settings-owner-reconciliation.md).

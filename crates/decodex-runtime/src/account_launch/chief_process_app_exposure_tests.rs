@@ -182,3 +182,98 @@ async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 
 	backend.abort();
 }
+
+#[tokio::test]
+async fn legacy_app_exposure_outcomes_survive_reopen_without_becoming_native_preferences() {
+	let home = tempfile::tempdir().expect("legacy exposure fixture");
+	let (local, remote) = tokio::io::duplex(65536);
+	let (reader, writer) = tokio::io::split(local);
+	let (client, _events) = AppServerClient::from_io(reader, writer);
+	let config = Arc::new(std::sync::Mutex::new(Config::default()));
+	let backend = tokio::spawn(server(remote, config.clone()));
+	let owner = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
+	let mut previous_review: Option<String> = None;
+	for state in ["reserved", "saved", "rejected", "unknown"] {
+		let connection = rusqlite::Connection::open(owner.root.paths().product_database_file())
+			.expect("fixture database");
+		let source = format!("app-exposure:legacy-{state}");
+		let payload = json!({"attempt":{"work":owner.key.work,"thread":"thread","generation":owner.key.generation.as_str(),"connector":"calendar","review_token":"a".repeat(64),"preference":["direct"],"attempt_id":"legacy"}}).to_string();
+		connection.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'app_exposure_attempt',?3,1,'resolved','legacy reservation',1)",rusqlite::params![source,owner.key.work,payload]).expect("legacy attempt");
+		if state != "reserved" {
+			let result =
+				json!({"reservation":connection.last_insert_rowid(),"state":state}).to_string();
+			connection.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'app_exposure_result',?3,2,'resolved','legacy result',2)",rusqlite::params![format!("{source}:result"),owner.key.work,result]).expect("legacy result");
+		}
+		drop(connection);
+		let reopened = SqliteStore::open(&owner.root.paths()).expect("reopen legacy records");
+		let State::Available { last_outcome, preference, review_token, .. } =
+			read(&reopened, || async { Some(owner.source(&owner.key)) }, "calendar").await
+		else {
+			panic!("legacy state")
+		};
+		assert_eq!(last_outcome.as_deref(), Some(state));
+		assert_eq!(preference, None, "history is not current configuration");
+		for (work, thread, connector) in [
+			("other-work", "thread", "calendar"),
+			(owner.key.work.as_str(), "other-thread", "calendar"),
+			(owner.key.work.as_str(), "thread", "other-connector"),
+		] {
+			assert!(
+				reopened
+					.legacy_chief_app_exposure_outcome(work.into(), thread.into(), connector.into())
+					.await
+					.expect("scoped legacy read")
+					.is_none()
+			);
+		}
+
+		assert!(
+			reopened
+				.chief_app_settings_receipt(crate::chief_config_settings::digest(
+					"/fixture/config.toml"
+				))
+				.await
+				.expect("shared journal")
+				.is_none()
+		);
+		if let Some(review) = previous_review.as_ref() {
+			assert!(
+				write(
+					&reopened,
+					|| async { Some(owner.source(&owner.key)) },
+					Change {
+						connector: "calendar",
+						review,
+						omit: Some(vec![Surface::Direct]),
+						attempt: "stale-legacy-review"
+					}
+				)
+				.await
+				.is_err()
+			);
+		}
+		previous_review = Some(review_token.as_str().to_owned());
+		assert_eq!(config.lock().expect("fixture config").writes, 0);
+	}
+	write(
+		&owner.store,
+		|| async { Some(owner.source(&owner.key)) },
+		Change {
+			connector: "calendar",
+			review: previous_review.as_deref().expect("fresh review"),
+			omit: Some(vec![Surface::Direct]),
+			attempt: "explicit-current-edit",
+		},
+	)
+	.await
+	.expect("new reviewed edit");
+	let State::Available { last_outcome, preference, .. } =
+		read(&owner.store, || async { Some(owner.source(&owner.key)) }, "calendar").await
+	else {
+		panic!("current state")
+	};
+	assert_eq!(last_outcome.as_deref(), Some("saved"));
+	assert_eq!(preference, Some(vec!["direct".into()]));
+	assert_eq!(config.lock().expect("fixture config").writes, 1);
+	backend.abort();
+}
