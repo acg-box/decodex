@@ -9,6 +9,20 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Current source disposition on 2026-09-27
+
+On the reconciliation branch following PR1662, all 360 rows have an explicit
+source disposition. Neither review field has an unclassified row. Four rows
+retain explicit native qualification failure or incomplete-group status; they
+are not passing capabilities. Pending merges must still reach main before this
+branch count describes main. See [source and native boundaries](source-preservation-native-limits.md).
+
+All 357 preserved file hashes were checked again. The complete original top-level
+review is restored under a current notice. No existing snapshot, stash or original
+PR is removed. The counts below remain historical. Final native/desktop acceptance
+and the feature removal inventory are separate work, and the manual task remains
+incomplete. Automations remain paused.
+
 ## Separate review counts on 2026-09-27
 
 At main `c4c25cc2d976357c543768652aca8968e026f8bd`, the register has

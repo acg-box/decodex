@@ -1,13 +1,838 @@
+# Codex integration review: current status
+
+The fixed upstream cutoff is `595cc91e8cbb1c2ca822d0311dcf12709410c582`.
+The manual update is incomplete. Use [Upstream adoption review](work/upstream-adoption-review.md)
+for core and optional classification, and [Inherited change reconciliation](work/upstream-inherited-audit.md)
+for source preservation. Source comparison, native qualification, merged delivery
+and signed desktop acceptance are separate results.
+
+The original review record below is restored byte for byte. Its 1460/1569 cursor,
+next-commit instructions, version numbers, unmerged labels and intermediate missing
+features are historical. Do not restart the scan from that cursor or implement an
+optional proposal solely because it appears in the historical record. The 1569
+commits describe the scan range, not the number of adopted product features.
+
+Current prompt editing, MCP App UI, task permissions, live/task model controls and
+native policy routing have later implementation and reconciliation records. They
+must be assessed through their current feature notes. Analytics, collaboration-mode
+selection, memory readiness controls and other optional proposals are not delivered
+merely because their native schemas were discovered. Native/TUI/Windows/Linux
+internals without a Decodex consumer do not require local replacement code.
+
+The old spawn-description failure has later positive qualification, while the old
+child MCP handoff success is contradicted by the current installed binary. Explicit
+Flex cold recovery also remains unqualified. Read [native qualification boundaries](work/source-preservation-native-limits.md)
+for exact evidence. Historical test success is not current signed desktop acceptance.
+The signed 0658 artifact predates subsequent fixes and is not the final artifact.
+
+Automations remain paused, including after manual completion, until the user
+explicitly requests resumption. This instruction supersedes historical scheduling
+or completion instructions in the restored record.
+
+## Original historical record
+
 # Codex integration review
 
-## Current reconciliation: 2026-09-25
+## Current manual review: 2026-09-23
 
-Read [Upstream adoption review](work/upstream-adoption-review.md) for verified merged
-capabilities, core versus optional classifications, and remaining work. The manual
-update is incomplete. The September 19 cursor and capability statements below are
-historical evidence, not current delivery status. Do not restart the fixed-range
-scan from that old cursor. The maintainer remains paused after manual completion
-until the user explicitly requests resumption.
+The fixed upstream cutoff is `595cc91e8cbb1c2ca822d0311dcf12709410c582`.
+Consecutive source review covers 1460 of 1,569 commits from the historical lower
+boundary `a397079287e6638b39dda329835350d93222681f`. The next commit is
+`0a5b9991698e8e3c126da6101aa9e4da421f7ddd`. The lower boundary is not a certified
+audit of earlier changes. The manual catch-up is incomplete; the maintainer stays paused.
+
+### Reviews 1458–1460
+
+- `8b78600d` preserves explicit Windows MXC selection through configuration,
+  environment attachment, command execution, patch writes, stdin approval and
+  metadata. Read primary consumers, configuration/selection/TUI tests and Wine
+  routing coverage. Repeated constructor fixture changes were sampled. Legacy
+  implementation requirements still do not constrain MXC. At cutoff, private
+  desktop settings are removed and MXC managed networking requires local binding.
+  Decodex has no Windows sandbox configuration consumer; do not add one to its
+  macOS path. Windows execution was not tested here.
+- `3ed49879` changes only upstream R2 release upload settings: classic transfers,
+  one concurrent part per object and standard retries with six attempts. The
+  cutoff workflow is unchanged. No matching release upload owner was found in
+  Decodex scripts; no product or app-server adaptation is required.
+- `d7f8e48d` places changing Guardian review/tool/skill attestations after history
+  and permissions, before the current action. Read the full patch and cache-prefix
+  test, including retained and legacy history. The final composer is unchanged.
+  Decodex consumes native review events instead of composing this prompt. Native
+  repeated-review prefix behavior is not yet qualified; this is source evidence.
+
+### Reviews 1456–1457
+
+- `608825d5` adds visible single-grapheme accents, symbols and named delimiters.
+  The ahead-of-cursor GPUI adaptation already contains these rules. Reread the
+  production delta and upstream tests; final renderer is unchanged. Four current
+  math behavior/rendered tests pass. Signed desktop acceptance remains open.
+- `3d3ae496` adds borrowed filesystem access with captured permissions and opaque
+  weak-identity cache keys. Read the complete accessor and local/remote regression
+  tests. Open streams outlive accessors; the unrestricted constructor is still
+  available. Decodex uses the native app-server owner, not these internal crates.
+  No public protocol adaptation is introduced; later consumer migrations remain
+  part of the unread review. See `work/filesystem-policy-cwd.md`.
+
+### Reviews 1450–1455
+
+- `c11fdc94`, `32b54cff` and `2833985d` improve Windows provisioning error chains,
+  empty registry cleanup, service-first repair and runtime-child read/execute ACLs.
+  Read all changed production and regression tests. Repairs preserve denials and
+  skip reparse points. Final source adds pending-cleanup state to registration;
+  the reviewed provisioning and ACL behavior remains. No corresponding macOS
+  Decodex owner requires migration. Windows execution was not tested here.
+- `fcf05456` publishes Guardian score, authorization and covered call index under
+  one lock. Read publication, observation, approval snapshots, timestamp and
+  delayed-score tests. Final score owners are unchanged. Decodex projects native
+  review events and has no separate risk-score cache. Native concurrent scoring
+  acceptance remains open; source inspection does not prove the installed race fix.
+- `96aca987` maps prepared image IDs back to original user-input positions before
+  emitting display history. Read mapping, preparation and live/persisted tests;
+  final mapping is unchanged. Existing mixed file/inline native history and cold
+  continuation qualification passes again on alpha.16.3. It does not cover an
+  injected uploading store or file-ID byte resolution. See stored-image notes.
+- `16f49ccd` removes one default V2 delegation-guidance sentence; no parameters or
+  execution behavior change. Final description is unchanged. Decodex does not
+  duplicate this text. Installed catalog-description qualification remains failed
+  as recorded under 1445; this source change does not alter task delegation policy.
+
+### Review 1449
+
+`7abf2a3b` preserves explicit Flex without fast-mode or catalog support and omits
+tiers from native Bedrock requests. Reviewed production and startup/settings,
+request, review and TUI tests. Decodex already preserves and forwards the setting.
+The new native qualification exposes an installed-runtime gap: alpha.16.3 accepts
+the settings update but omits Flex from its outbound request with fast mode off.
+Keep that failure open; details are in `work/service-tier-flex.md`.
+
+### Reviews 1446–1448
+
+- `1bd1bfa7` identifies the opened daemon socket mount through fdinfo/statx and
+  checks ancestry, exposed aliases and nested mounts. WSL masks persist through
+  proc preflight. Read production, layout tests and disposable namespace fixture.
+  Final source only parses path roots on the socket filesystem, allowing unrelated
+  nsfs roots without dropping their destination checks. This Linux-native owner
+  has no macOS Decodex implementation to migrate; Linux execution was not tested.
+- `b0659c53` records actual CLI/TUI daemon connection and update outcomes with
+  consent, bounded setting-presence tags and one handoff observation. Read consent,
+  launch and handoff tests. Final daemon feature overrides do not change telemetry
+  ownership. Decodex's supervised stdio launch does not enter these CLI daemon
+  paths; no duplicate telemetry exporter or daemon startup is added.
+- `e269f216` retains reviewer-only sender evidence for accepted native desktop/TUI
+  delegation deliveries. Read admission, budget, replay, rollback and fork behavior.
+  Decodex has no producer for that specific host delivery protocol. Preserve native
+  ownership and do not invent provenance; see `work/chief-upstream-integration.md`.
+
+### Review 1445
+
+`c5d07947` selects model-owned V2 spawn descriptions from the active step's
+catalog. Reviewed production, sparse/empty serialization, generated guidance,
+outbound schema and mid-turn change tests. At the cutoff, the native wrapper also
+supports other V2 descriptions and parameter schemas, preserving encrypted fields.
+Decodex already leaves native tool construction to app-server. However, the
+installed alpha.16.3 fails the new catalog-description qualification despite
+loading the synthetic catalog. This remains an explicit compatibility gap in
+`work/chief-upstream-integration.md`; source review is not feature acceptance.
+
+### Review 1444
+
+`a4ee536f` separates read and write sandbox dispatch. Full-disk reads can bypass
+the sandbox helper without granting mutation rights. Reviewed local and remote
+dispatch, skill and discovery consumers, permission conventions, direct-read
+regressions, old discovery capability handling and Windows write tests. Final
+source retains these decisions. The installed executor passes ten isolated checks,
+including four denied mutation APIs with unchanged files. See
+`work/filesystem-policy-cwd.md` for evidence and limits. No Decodex permission
+evaluator replaces the native owner; Chief and signed desktop acceptance remain.
+
+### Review 1443
+
+`70e8fe1b` adds opt-in daemon startup to interactive CLI launches. Read startup,
+connection failure handling, exclusions, experimental persistence and CLI/TUI
+regression tests. The toggle defaults off and persists explicit false. Eligible
+automatic startup requires a connection; excluded launches retain embedded mode.
+Final source adds worktree preparation, four shared-service feature compatibility
+checks, structured code-mode fallback checks and launch telemetry. Compatibility
+failure selects embedded mode; startup failure retains manual fallback guidance.
+
+Decodex launches an account-bound `app-server --stdio` through its existing
+supervisor, not the interactive CLI startup owner. No daemon installation,
+automatic startup or TUI flag is added to that command. Native feature discovery
+already accepts an optional thread scope. No local behavior change is required
+for this CLI-only option. Upstream tests were read, not executed; this conclusion
+does not certify shared-daemon use by Decodex.
+
+### Review 1442
+
+`4b0f19d6` makes web and image activity compact in the TUI while retaining full
+details. Reviewed action rendering, full image paths, owning MCP image results,
+live/replay tests and transcript export. Final search and image owners are unchanged;
+later MCP changes use the shared three-row preview reviewed under 1432. Later
+transcript changes concern asynchronous question replies.
+
+Decodex now distinguishes search, open-page and find-in-page activity. Its existing
+source-bound detail reader exposes all search queries, full URLs, patterns and
+image paths through the existing paged disclosure. Credential filtering remains
+in that reader. No image bytes or path-derived media permissions are inferred.
+MCP attachments already belong to their native item. TUI row budgets and keyboard
+shortcuts do not define GPUI presentation.
+
+Validation: nine runtime detail tests, one action-label matrix and one rendered
+socket pagination test covering four item kinds pass. Full runtime and GPUI
+Clippy contracts pass. Signed desktop acceptance and combined native replay remain
+open; these checks do not establish full catch-up or merged delivery.
+
+### Review 1441
+
+`841b5490` separates selected filesystem policy cwd from helper launch cwd.
+Strict internal contexts retain cwd and roots; additive wire policy context keeps
+legacy clients compatible. Dynamic legacy permissions without cwd fail closed;
+static legacy requests use the executor's own cwd. Foreign permission paths are
+validated at executor ingress. Helpers can launch from the filesystem root after
+the selected directory disappears without moving permission anchors. Read core
+propagation, wire conversions, legacy read/open/discovery/process matrices,
+removed-directory patch test and Windows relative-denial tests. Mechanical
+fixture constructor updates were not exhaustively reread. Final owners retain
+policy context; later read/write-specific dispatch still validates foreign paths.
+
+Added an isolated installed-executor probe. On CLI `0.155.0-alpha.16.3`, five
+checks pass: modern and legacy allowed/denied reads after selected cwd removal,
+and rejection of a missing cwd for dynamic permissions. Native executor version
+metadata is `0.0.0`; CLI version is recorded separately. Missing-cwd error code is
+`-32600` here versus `-32602` in fixed source; both reject the request. Decodex does
+not speak this internal executor protocol. Full Chief/apply-patch, remote Windows
+and signed desktop acceptance are not proved by this direct-executor probe.
+
+### Review 1440
+
+`108e6a6d` removes persistent Sites migration exclusions and catalog-time migration
+waits. The runtime loader instead suppresses bundled Sites when the active remote
+catalog has a loadable cached remote Sites entry, including a disabled entry.
+Without that bundle the bundled fallback remains. Catalog listing and install
+resolution no longer hide the old identity using migration state. Read the loader,
+manager/caller changes, removed catalog assertions and the three-case agent-turn
+regression. Mechanical install-signature substitutions were inspected as such.
+Final loader guard is unchanged; later manager changes concern metadata refresh
+and onboarding skill paths.
+
+Decodex reads `plugin/installed` for the exact task cwd and preserves native IDs,
+enabled flags and marketplace errors. It has no Sites-specific exclusion state or
+same-name deduplication. No local migration or client-side blacklist is required.
+This source review does not newly qualify remote plugin service/cache behavior in
+the installed binary. Sites plugin compatibility is distinct from the retired
+Decodex website.
+
+### Review 1437–1439
+
+`f3da3861` adds a brief Astra starfield to the TUI composer. Scoped review covered
+new/resumed/forked task identity, model-picker action routing, queued automatic
+model updates, normal/image submission, replay dismissal, display eligibility
+and final deltas. Read fresh-task and picker-race tests; did not exhaustively
+review raster math or decorative snapshots. The action wrapper still dispatches
+the existing model operation and gates only animation on the original task and
+confirmed effective model. No protocol/runtime feature is introduced. GPUI uses
+its own presentation and source-bound model selection; do not add terminal
+starfield rendering as a compatibility requirement. Existing signed model and
+blank-task acceptance gaps remain independent.
+
+`16f59db9` pauses terminal events in the fresh-task regression test. No production
+change or local test migration. `77c1feb0` boxes the initialized app-server request
+future to reduce stack temporaries. Final dispatch retains admission checks,
+serialization and error delivery; only account-processor sharing changes later.
+Native Codex owns this internal executor. No client request/response or local
+async ownership change is needed.
+
+### Review 1435–1436
+
+`8452164c` marks a finished, losslessly observed Code Mode cell complete even when
+it invoked no tools. Complete metadata includes `executed_tool_calls: []`; absence
+still means unverified. Read retry/history revalidation, late-call, wait freshness,
+error/termination and feature-gating tests. Final recorder/protocol owners are
+unchanged. Decodex does not interpret this internal metadata as tool success or UI
+loading state. Extended installed-native compaction/restart qualification passes
+for tool execution, discovery-only output and a thrown error. Both next model and
+compaction requests retain exact completeness metadata. Full runtime Clippy passes.
+
+`787823cf` adds TUI `--no-daemon`, bypassing daemon discovery even when running,
+and rejects agents/queue/remote combinations that need another owner. Read launch,
+resume/fork propagation, negative CLI and PTY discovery tests. Final startup policy
+adds compatible-feature checks, explicit startup failure handling and telemetry;
+`--no-daemon` still excludes discovery/startup. Decodex launches its attested
+`app-server --stdio` directly, not the interactive TUI entrypoint. Do not append a
+TUI option to this command or start a shared daemon to mirror terminal behavior.
+
+### Review 1433–1434
+
+`800d183e` builds child model, effective effort and summary from captured step
+settings after active-turn updates. Both spawn versions validate an effort-only
+override against that captured model. Runtime permissions/cwd still come from
+the turn. Read production, unit and four upstream real-turn cases, plus final
+deltas (agent type moves, description overrides and environment permissions).
+Installed-native qualification through Decodex live-settings write passes: a
+paused sol/low parent switches to terra/high, then its new V2 child makes exactly
+one request with terra/high and completes under the correct parent identity.
+Full runtime Clippy passes. V1, explicit effort overrides, summary and signed
+cross-client combinations are not covered by this added native case.
+
+`1e9564fb` keeps the TUI startup composer responsive during config/trust/hooks,
+thread creation and attachment. It retains a failed draft for retry, does not
+send a first turn and skips descendant scans for new sessions. Final attachment
+marks only immediate creation as fresh. Read production/test changes and final
+delta. Decodex still lacks native blank-session/worktree creation; existing draft
+retention is not equivalent. Added the responsive draft/retry requirements to
+[Command Center](work/command-center-upstream.md); implementation remains open.
+
+### Review 1432
+
+`6749535c` bounds Code Mode previews across result blocks after wrapping and keeps
+complete transcript output. Its initial head/tail preview is superseded at the
+cutoff by the shared three-row `ToolOutputPreview`, with hidden-line counts,
+UTF-8/combining-character work bounds and full expanded text. Read initial tests,
+final MCP consumer and final preview implementation/tests.
+
+Decodex MCP and dynamic calls already use compact activity rows and source-bound
+paged details. Found and fixed a separate gap: standalone `functionCallOutput`
+was shortened to an 8 KiB preview without a detail entrypoint. It now uses the
+same full native detail reader, privacy filter, cursor and GPUI disclosure. Text
+blocks retain order and trailing diagnostics; media remains separate. Runtime
+five-test selection and rendered two-kind pagination pass, as do full runtime
+and GPUI Clippy. Signed desktop/native standalone-output acceptance remains open.
+
+### Review 1431
+
+`b974893c` charges file images in native context and compaction budgets, preserves
+file references in Guardian composition, and accounts for reference-byte/count
+limits and reviewer deduplication. Read the full production/test patch and final
+owner deltas. Original-detail file images reserve the maximum patch count because
+reference IDs do not contain dimensions. No local token-budget replacement.
+
+Installed-native cold-resume qualification passes: the primary model retains two
+file references in order; synchronous Guardian retains the user restriction and
+uses its native text-only profile. Initial test expected image admission, but
+source confirms synchronous collection passes `images: None`; asynchronous
+Guardian has a different profile. Full runtime Clippy passes. Native image-budget
+thresholds and asynchronous admission remain unqualified. See
+[Stored images](work/stored-image-references.md) for exact boundaries.
+
+### Review 1427–1430
+
+| Upstream commit | Local applicability and evidence |
+| --- | --- |
+| `e22e6523`: completion timestamp labels | Removes the TUI `done` prefix. Typed separator normalization now preserves timestamp-like answer text; cumulative duration and interrupted/failed status tests remain. Final separator owner unchanged. GPUI renders structured turn status and duration through `chief_timeline_render` and `reply_metrics`, with no parsed TUI label. No protocol or local label migration is required. |
+| `172f8a29`: inline code and path colors | TUI uses syntax-theme markup scopes with a cyan fallback. Read dark/light/ANSI/fallback and test-thread theme isolation changes. Final markdown and streaming owners unchanged; later highlight changes add theme resolution and diff background handling. GPUI uses its own text/background/link palette, not terminal syntax themes. Do not import the TUI theme registry for this presentation change. |
+| `36b84c81`: skill budget warnings | Native skills stop warning for shortened descriptions but still warn when skills are omitted. Catalog accounting and nonempty shortened descriptions remain; app-server test explicitly forces omission with a 1,000-token budget. Final rendering owner unchanged. Decodex projects native warning events and has no duplicate skill-budget warning producer. No client-side message suppression is needed. Installed-native warning behavior was not newly tested in this batch. |
+| `ce03f22a`: configurable voice toggle | TUI F8 starts/stops through the existing voice owner, only on press outside popups. Existing bindings/chord prefixes win; printable input and reserved shortcuts cannot be stolen. Read remapping/unbinding, draft preservation, side-conversation guard and conflict tests. Final keymap/interaction owners unchanged. GPUI has native start/stop controls and a separate desktop keymap; it does not consume `tui.keymap`. Desktop keyboard access remains to verify with signed voice acceptance; no F8 equivalence is claimed. |
+
+### Review 1426
+
+`40584fad` prevents native non-root MCP requests from opening user prompts.
+Browser-auth and explicit user-input metadata take precedence even with an empty
+schema and Full Access. Automatic permission/reviewer decisions remain available;
+requests with no automatic decision return parent-handoff guidance. Reused MCP
+connections receive current interaction authority. Authentication diagnostics are
+preserved subject to normal output limits. Read the production path, policy and
+reuse tests, real-turn root/subagent tests and final delta. Final prompt guards are
+unchanged; later session changes concern environment/auth refresh and step inputs.
+
+Decodex resolves ownership only for actual native server requests. It does not
+create prompts from handoff text or retry the refused action. New installed-native
+Chief test passes for browser-auth and explicit-user-input markers under Full
+Access: no local pending prompt, one MCP call, exact child gets handoff output.
+Full runtime Clippy passes. Native automatic-review/root-browser UI combinations
+and signed desktop acceptance remain separate from this two-case test.
+
+### Review 1425
+
+`5e636ea7` routes resized message/tool images through the injected attachment store,
+preserves inline data on upload failure and avoids uploads during history replay.
+Guardian image comparison reuses resizing without upload. Final preparation/store
+owners are unchanged; ordinary app-server still injects the inline store. No new
+public upload/resolution RPC is available. Extended installed-native qualification
+passes for cold continuation with exact file/inline/file ordering and no duplicate
+images in both notification-media modes. See [Stored images](work/stored-image-references.md)
+for the distinction from remote upload, resizing and signed display acceptance.
+
+### Review 1421–1424
+
+| Upstream commit | Local applicability and evidence |
+| --- | --- |
+| `f915e0de`: streamed Mermaid rendering | Read renderer, closing-fence logic, theme roles, nested-block holdback, resize/raw-mode progress and tests. Final renderer/controller unchanged. Existing Decodex native diagram renderer already preserves source, supports nested/incomplete fences and scrolls without wrapping; corrected comma-delimited fence info recognition. All 18 Mermaid tests and full GPUI Clippy pass. Signed font/long-diagram acceptance remains open. |
+| `8ace915a`: realtime analytics attribution | Internal reducer tags turn/App/MCP/skill events with the active voice session, queues a handoff after voice closes and avoids tagging the next text turn after steering. Only the handoff marker enters telemetry, not speech. Final attribution logic unchanged; tests moved to reducer-ordering suite. No new app-server field. Local voice receipt identity is a separate durable record; do not equate it with native analytics attribution or duplicate native telemetry. |
+| `e412b93d`: Guardian test trimming | Removed standalone tests and strengthened exact transcript separators/action header/parent ID assertions before snapshot normalization. No production change. Decodex retains its native reviewer and receipt tests; removal upstream does not remove a local requirement. |
+| `08663cc9`: shared Guardian test boundaries | Approval-policy/reviewer matrix moves to the shared routing owner; parent config isolation and manual-approval developer-message preservation remain covered. Production routing file only adds a test module. Final routing/shared transcript test owners unchanged. No local routing replacement or new protocol field. |
+
+### Review 1417–1420
+
+| Upstream commit | Local applicability and evidence |
+| --- | --- |
+| `51c30ad8`: expired Windows sandbox passwords | Full setup repairs expired offline or online passwords and reloads protected credentials; refresh cannot rotate them. Tests cover either account, failed repair and preservation of enterprise flags. Final code also removes stale credential files and prefers the installed service, with fallback only when unavailable. Current Decodex macOS does not provision Windows sandbox accounts. |
+| `20f4d12f`: Code Mode compaction metadata | Inspected pending/retained metadata, shortened retry preservation, separate Code Mode budget and direct-history binding checks. Final metadata owner and remote-v2 call site unchanged; later local compaction separately stages post-turn output until success. Installed-native MCP/helper-to-compaction and cold-checkpoint continuation test passes. See [Code Mode](work/code-mode.md) for exact remaining cases. |
+| `821ad43f`: rollout compression trigger metrics | Startup and RPC entrypoints now tag run/file/scan/cleanup counts, timings and sizes; materialization errors have no trigger. Final compression owner unchanged. Best-effort RPC acknowledgement is still not completion. Decodex uses native thread history and does not implement rollout compression or consume these counters. |
+| `c56dda71`: WebSocket continuation metrics | Inspected first reset-reason retention, full versus incremental input, warmup/generation, resume/fork/account-switch tests and metric semantics. Final continuation owner unchanged; later client changes concern effort updates, Bedrock tier and auth retry classification. Native Codex owns model WebSockets; Decodex local service WebSocket is a different transport. The counter measures send attempts, not disconnect rate or cache reuse; no new local app-server DTO is required. |
+
+### Review 1416
+
+`b97abdbe` adds native MCP `openai/readOnly` metadata to discovery and invocation,
+preserves arguments/pagination/other metadata, overrides a caller-supplied false,
+and isolates connections and tool caches. Inspected modern/legacy request tests,
+recovery tests, shared Apps-cache and connection-reuse tests, and the final owners.
+The final ordinary `Config::mcp_config` still sets the policy false. The installed
+alpha.16 public schema has no `requiresReadOnlyMcpTools` field. The added scenario
+source contains only a comment, so its checked-in snapshot is not evidence of an
+active end-to-end test. Decodex delegates native MCP transport and has no competing
+tool cache. Do not advertise MCP read-only enforcement from the filesystem sandbox
+profile or add an unsupported app-server field. This is native infrastructure at
+the fixed cutoff, not a newly exposed Decodex setting.
+
+### Review 1412–1415
+
+| Upstream commit | Local applicability and evidence |
+| --- | --- |
+| `4fa7e822`: preserve reviewer config error causes | Final TUI handler retains `format_config_error`; the real malformed-config regression is unchanged. Local account and connector config reads/writes now retain bounded actionable RPC causes in source-owned, non-waking task diagnostics. Private error data is excluded and credential-like messages are hidden. Unknown writes stay unknown and are never retried. Installed-native malformed-config test and host reopen/diagnostic tests pass; signed display acceptance remains open. |
+| `4cf84b76`: Windows sandbox DACL tests | Adds owner WRITE_DAC permission and sandbox-group denial assertions, and releases the SID allocation. No production change; final test file is unchanged. Decodex's current macOS desktop does not implement Windows sandbox ACL provisioning. |
+| `515530d9`: screen-reader animation default | Inspected one-time 450 ms detection, both marker values, explicit/user-layer/CLI precedence, concurrent edits, failed persistence, platform probes and rendering/startup tests. Final detection and local-settings owners are unchanged. Decodex uses native desktop preferences, not TUI configuration: VoiceOver now joins Reduce Motion in the existing animation owner. Existing transition tests and native-compiled lint pass; signed VoiceOver acceptance remains open. |
+| `78e7825a`: Guardian test request identity | Tests force HTTP, inspect the last yielded request and wait for the Guardian metadata marker before cancellation. Final helper retains that marker; later test changes include step-input/environment refactors. Existing Decodex native Guardian fixtures explicitly disable WebSockets and classify Guardian requests by the same metadata. No production protocol change or new local retry behavior. Broader Guardian acceptance remains tracked separately. |
+
+### Review 1405–1411
+
+| Upstream commit | Local applicability and evidence |
+| --- | --- |
+| `a8c36ca6`: central model-message rendering | Inspected message-family resolution, permission rendering, Guardian composition and call sites, model serialization, and behavior tests. Missing versus empty overrides, configured precedence, literal templates and content attribution remain distinct. Final prompt-owner changes add multi-agent tool catalog accessors. Local Chief supplies coordination instructions, not a replacement model-message renderer; Guardian presentation distinguishes timeout from denial. No local wire migration follows from the internal crate move. Combined native acceptance remains open. |
+| `47c27cbf`: domain question-mark patterns | Documentation and tests specify that `?` matches one character, including a dot, in allow and deny entries. The final matcher is unchanged. Decodex has no competing proxy hostname matcher. |
+| `2b2b0fa8`: browser cleanup on interrupt | Native bundled-hook authorization adds Interrupt for the registered browser connector, with empty arguments and existing policy checks. Final authorization code is unchanged. Local ordinary interrupt sends the exact native turn interrupt and retains the process; no local browser cleanup call is required. Signed interrupt and shutdown acceptance remain open. |
+| `105fe876`: Noise relay handshake cooldown | After eight failures, native admission pauses for ten seconds while existing streams and admitted validations continue. Tests cover encrypted round trips, recovery, duplicate handshakes and early data. Final owner is unchanged. Decodex uses the local stdio process bridge and does not implement this remote relay. |
+| `73bf1812`: forced macOS managed preferences | Native loading checks forced status before and after reading and type-checks the value. Tests cover ordinary defaults, disappearing force, missing values, strings and redacted invalid-type errors. The final owner is unchanged. Decodex has no independent managed-preference loader; native MDM acceptance remains open. |
+| `29e6bc81`: orchestrator skill cache reuse | Native caches use a weak server connection identity and invalidation generation. Plugin changes and explicit refresh invalidate resources; ordinary publication can reuse them. Final code also separates reprojection from refresh and adds auth-scoped cache identities. Decodex does not own this resource cache; existing native plugin reload remains authoritative. |
+| `a6d4741d`: per-App tool exposure | Confirmed a local settings gap. Installed-native config write, inheritance, cross-client conflict and restart checks pass, and the local host, durable reservation, service and settings control are implemented. Full signed/native tool-exposure acceptance remains open. See [App tool exposure](work/app-tool-exposure.md). |
+
+### Review 1400–1404
+
+| Upstream commit | Local applicability and evidence |
+| --- | --- |
+| `bee042d1`: managed residency at provider construction | Native provider construction now overrides configured residency headers for model and realtime requests. The final enforcement owner and original provider/realtime tests were inspected. Direct quota activation bypasses this owner and still needs adaptation; see [workspace routing](work/workspace-backend-routing.md). No new native residency acceptance is claimed. |
+| `a2f62e88`: shared permission shortcut selection | The final shortcut and selection owners retain the notification-based confirmation path. Local permission selection already records queued, unknown and observed states separately; the GPUI panel does not treat an accepted command as an applied profile. The prior running-profile native test covers this distinction. There is no separate local shortcut that optimistically changes permissions. |
+| `fc2ea82e`: disable executor skills per environment | This is a native extension-provider API, keyed by environment and exact skill-document URI. Its direct and cached discovery tests retain other environments and omit disabled skills from model context. The final owner retains this behavior. Decodex does not construct executor skill providers or inject a competing skill catalog; no local API migration is required. |
+| `6d75b52`: hosted Apps MCP protocol override | Native registration keeps hosted provenance when selecting a protocol version. Original tests distinguish a hosted contribution from a custom server with the same name and preserve native user verification. Final contribution and registration code retain that distinction. Decodex does not choose MCP transport versions; widget presentation and signed verification acceptance remain separate open work. |
+| `0d083092`: experimental rollout compression | The RPC schedules a best-effort local-store pass and returns an empty acknowledgment. Final code adds the RPC telemetry trigger without changing completion semantics. Original tests cover experimental gating, non-local refusal and lossless readback. Decodex reads native history through RPC and has no rollout-file reader or manual compression surface to migrate. Do not add automatic calls or report completed compression from this acknowledgment. |
+
+Native summary recovery after full history failure is implemented. Native restart,
+source-change and rendered copy tests pass; signed desktop acceptance remains open.
+See [history recovery](work/history-summary-recovery.md).
+
+MCP App widget presentation remains unimplemented; see [MCP App UI](work/mcp-app-ui.md).
+Editing an earlier prompt also remains unimplemented; existing revert invalidation
+does not supply the full action. See [prompt editing](work/prompt-editing.md).
+
+Mermaid code fences now use the upstream bounded native text renderer. Parser and
+GPUI scroll/copy tests pass; signed desktop visual acceptance remains open. See
+[Mermaid rendering](work/mermaid-rendering.md).
+
+Account analytics remains unimplemented. Typed upstream report contracts and final
+normalization differences are recorded in [account analytics](work/account-analytics.md).
+Account-bound report reads and the dashboard still need integration. Model workspace
+routing is not a prerequisite for Analytics; direct activation routing remains open.
+
+Desktop math now uses the final upstream bounded parser, including display
+fractions and accents. Formula scrolling and source-copy interaction tests pass;
+signed desktop acceptance remains open. See [math rendering](work/math-rendering.md).
+
+Interrupted answer and plan text now survives terminal handling, database reopen
+and the next turn as display-only records. Native and rendered fixture tests pass;
+signed desktop and cross-client acceptance remain open. See
+[unfinished output retention](work/partial-output.md).
+
+Model access-program metadata now reaches the shared catalog and model detail
+panel. Missing, empty and populated observations stay distinct. Installed-native
+cold starts and fixed-ETag refresh pass; authorization remains native. See
+[model access metadata](work/model-access-programs.md).
+
+Code Mode helper execution and delayed MCP native history now have installed-native
+qualification. Chief retains late MCP activity under its original terminal turn
+without changing the active dispatch. Database reopen and source rejection tests
+pass. Signed desktop and further cross-turn acceptance remain open; see
+[Code Mode integration](work/code-mode.md).
+
+MCP status now displays advertised capability and extension names independently
+of tool discovery. Installed-native tests cover failed discovery, failed initialization
+and fresh connections after restart. Enterprise OAuth fallback and trusted-project
+authentication downgrades are rejected by the installed native owner. These changes
+are unmerged; signed desktop acceptance remains open.
+
+Permission catalog qualification confirms that each requested working directory
+controls native profile availability. Duplicate configuration and thread warnings
+now produce one notice per task and process; native owner and restart checks pass.
+
+Global instruction refresh is native-owned. Installed-native tests cover live edits,
+read failure, recovery, removal and cold resume. Native warnings now reach Chief
+and ordinary history as display-only notices. Native bridge, owner persistence,
+restart and history projection checks pass; combined signed desktop acceptance
+remains open.
+
+Caller turn triggers now distinguish actual user input, delegated instructions,
+automatic wakes and capacity retries. Installed-native metadata and cold-resume
+checks pass. GPUI animations now honor system reduced motion; signed desktop
+accessibility acceptance remains open.
+
+Voice settings now include per-start project resolution, native catalog selection,
+versioned persistence and effective readback. The service and desktop picker are
+connected. Installed-native bridge, concurrent-client configuration, restart and
+GPUI interaction tests pass. Signed desktop/audio acceptance remains open; see
+[voice settings](work/voice-settings.md). Protocol 2.63 is unmerged.
+
+Large ordinary approvals now have exact database storage, privacy-selected 8 KiB
+transport pages, complete client assembly and a bounded desktop reader. Protocol
+2.59, request and desktop regressions pass. The installed native binary preserves
+a 300 KB action when optional review falls back to explicit user approval; a
+decline completes the turn. Large prescribed permission and policy replies now use compact
+explicit decisions and retain exact native payloads. Actual desktop/service
+acceptance and complete file-approval detail remain open. Native qualification
+shows that pending file diffs arrive in `item/started` before they appear in
+history. That evidence is now retained in the exact approval envelope; the installed
+native bridge and coordinator test passes. Signed desktop acceptance remains open. Continue from [the implementation note](work/large-user-approval.md)
+before advancing the source cursor.
+
+Guardian failure records now have a restart regression that preserves absent risk
+and authorization. The desktop labels denied actions as blocked without implying
+a completed risk assessment. An installed-native test also confirms that a prompt
+is saved before a pre-turn compaction error and remains unique after restart.
+These changes are unmerged; desktop acceptance remains open.
+
+Archiving an ordinary conversation now releases the byte budget used by its
+removed live text. A regression reproduced missing output in the next task after
+a full archived buffer. All 34 Conversations tests and strict GPUI Clippy pass.
+This fix is unmerged; native desktop lifecycle acceptance remains open.
+
+Provisioned macOS CLI packages add a shell launcher at `bin/codex`. The new
+resolver recognizes the exact upstream launcher and package metadata, then sends
+the bundle-native image through existing executable validation and attestation.
+The reference snapshot now preserves the signed bundle context, and static/dynamic
+path checks accept its exact main-executable relationship while retaining CDHash
+validation. A real official alpha.16.3 package passes production attested control
+startup through a symlink and relocated path. Four regressions and strict runtime
+Clippy pass. Code Mode/helper/voice resource execution and full desktop acceptance
+remain open. These changes are unmerged.
+
+An isolated installed alpha.16 audio test confirms that native preparation replaces
+empty tool audio with a text explanation and preserves adjacent text. The local
+media reader already rejects empty decoded bytes; eight focused media tests pass.
+Microphone and full voice desktop acceptance remain separate open checks.
+
+Guardian now retains reviews within the native 8 MiB frame bound and serves large
+actions in 8 KiB pages under protocol 2.58. Approval requires complete inspection;
+changed review identities invalidate that inspection. Tests cover database reopen,
+exact page reconstruction, stale identities and full submission without truncation.
+An isolated installed alpha.16 test verifies a 300 KB action reaches Guardian and
+its complete review events reach Decodex. Native request text is split into content
+parts; reconstruction verifies the complete action. Full desktop, root/child and
+compaction acceptance remains open. These changes are unmerged.
+
+An installed alpha.16 WebSocket probe now verifies shutdown refusal for ten
+new-work/lifecycle methods while reads and interruption remain available. The
+admitted turn was interrupted and the host exited cleanly. Native queue/goal
+suppression and combined desktop shutdown acceptance remain unverified. A focused
+history-state regression rejects stale task/thread/account pages. Native voice
+release resources belong to complete packages; binary version alone does not
+prove helper availability or desktop audio acceptance.
+
+MCP reconnect review confirms that native Codex owns expired-token recovery and
+invalidates MCP runtimes after successful login. Existing local live/history
+signals and scoped login tests pass (9 tests). Attachment adapter tests pass
+(3 tests), and an isolated installed-binary probe verifies concurrent duplicate
+adds, task isolation, restart readback, and repeated removal. Empty native threads
+need persisted history before attachment mutations. Four resume regressions pass.
+Full OAuth and resume/revert desktop acceptance remains open.
+
+A further isolated native probe verifies attachment pagination across process
+restart and rejection of another task's cursor. Saved disabled-plugin IDs survive
+restart and default fork; an explicit empty list remains cleared after restart.
+A separate native check verifies that referenced parents cannot be deleted,
+rejected deletion preserves attachments, and deletion of the fork followed by its
+parent removes their attachments across restart. The installed schema does not promise capability filtering. Historical fork
+boundaries and per-task plugin controls still need separate acceptance.
+
+Chief now records an exact native host-drain refusal as unsent when no context
+injection preceded it. Input remains in history for a new send after reconnect;
+uncertain writes keep their existing dispatch fence. Schema 40 permits cancellation
+of a claimed capacity retry only with an exact refusal receipt. It restores the
+original input's failed-turn identity and notifies a parent task when needed.
+All 13 capacity tests and the migration test pass. Ordinary conversations now use
+the existing positive non-submission evidence owner: evidence, local turn failure,
+and a readable history record commit atomically. Database tests pass (111 unit,
+5 restart integration). An installed alpha.16 WebSocket probe confirms that drain
+rejects new turns while admitted work completes before a clean exit. Stdio does
+not enable signal-driven graceful drain. Combined Decodex desktop acceptance
+remains open.
+
+Native history now displays public reasoning summaries and excludes raw reasoning
+content. Projection and rendered GPUI tests pass. An isolated alpha.16 provider
+fixture confirms completed summaries survive restart. During streaming, the native
+timeline contains no reasoning item; summary deltas arrive as events instead.
+Public summary events now retain ordered parts in DB schema 39. Completion replaces
+partial text and late deltas cannot append to it. Protocol 2.57 and GPUI distinguish
+these summaries from plans and assistant messages. Tests cover database reopen,
+migration, voice handoff filtering, and exact native-item display deduplication.
+Saved voice origins also filter later history pages. When local origins are absent,
+the reader checks every native item page for that turn before showing a summary.
+Cross-page regression and installed alpha.16 cold item-page probes pass. Full
+retained-process reconnect and desktop acceptance remain open. The cutoff TUI
+defaults summaries to `none`, superseding the earlier `detailed` default; Decodex
+does not force that intermediate default. Source review is not delivery acceptance.
+
+The local account API now retains the scoped `__oailb` routing cookie in memory.
+Two cookie regressions and strict runtime lint pass. The lockfile now selects
+rustls 0.23.45 to fix RUSTSEC-2026-0285, anyhow 1.0.103 and event-listener 5.4.2
+to fix two unsoundness advisories. Runtime unit tests pass (554 passed, 31 ignored).
+The next audit reports no vulnerabilities or unsoundness warnings. Four existing
+unmaintained dependencies belong to the pinned GPUI/image stack. The yanked
+chacha20 package remains in the lockfile but is absent from the resolved workspace
+graph, including all features and targets. These maintenance risks remain visible;
+this change does not replace the GUI dependency stack or suppress audit findings.
+
+Chief model discovery now rejects results if the account revision or process
+changes during the request, or the account becomes unavailable. A regression
+covers a stable account, revision change and source loss. Native Codex owns
+provider/auth cache identities and Apps tool-catalog propagation. Cold Chief
+catalog invalidation and full cross-client acceptance remain open.
+
+An isolated alpha.16 test confirms cold account/provider changes fetch the current
+catalog and change its persisted identity. The same identity stays stable across
+restart, but a fetch still occurs; offline cache reuse is not verified. This binary
+ignores the upstream-only `model_catalog_url` setting. Do not treat that setting
+as an available installed capability.
+
+Installed Codex supports memory V2 readiness reads. Isolated warm/cold checks
+verify typed results and threshold rejection. The current memory badge reports
+only the feature flag; version selection and readiness integration remain open.
+
+Automatic MCP user verification at this cutoff admits only the embedded Codex TUI
+or the local named Codex Desktop host on supported devices. Decodex is not eligible
+through its current identity. Direct local verification RPC support is separate;
+backend registration and complete native verification acceptance remain unresolved.
+
+Live voice now keeps the draft, attachments and task references visible. A GPUI
+render and editing regression passes at narrow and wide widths. Native mixed-input
+acceptance, cold voice labels and workspace file links remain incomplete.
+
+Voice control connection failures now retire local media for the exact call.
+The GPUI regression, native WebKit offer/stop check and strict lint pass.
+Received transcript tails now survive control transport loss as resolved history.
+Long delta streams retain the most recent 32 KiB at UTF-8 boundaries; accumulated
+and single-chunk Unicode overflow tests pass.
+Coordinator tests cover database reopen, partial write failure and repeated closure
+without sending new input. Startup retry and combined desktop disconnect acceptance
+remain incomplete. Final transcript writes now keep the corrected text until storage
+succeeds; oversized finals preserve a UTF-8 prefix within the existing 32 KiB limit.
+Fault-injection and database-reopen tests pass. Persistent storage failure during
+transport teardown and subsequent deltas after a failed final remain unqualified.
+
+Native terminal events now retain original start and completion timestamps with
+the duration. Result and paginated recovery tests pass; timestamp presentation
+and full desktop replay acceptance remain incomplete.
+
+Strict-review notices now require the current ready native process in addition to
+the exact running thread and turn. A regression reproduced the old unowned-process
+acceptance; database and runtime tests cover rejection, deduplication and restart.
+The native Guardian owns cached decisions, fresh review and authorization changes.
+Concurrent native compaction and answer acceptance still need qualification.
+
+Named task permission selection remains incomplete. A bounded native profile
+catalog adapter and typed selection route now pass transport tests and an
+installed-binary warm/cold test. The queue ACK does not prove application.
+Source-bound permission observations now persist separately from model facts.
+Transport snapshots now carry settings guards and reject stale writes before
+coordinator event consumption. Late hydration cannot replace newer or invalidated
+facts. Durable permission attempts now distinguish reserved, queued, unknown,
+rejected and target-observed state. Only wire-current observations can settle a
+selection. Pending attempts block task dispatch, tool upgrade and model recovery.
+Database, observer and native warm/cold receipt tests pass. Runtime review/write
+now binds account, task, current wire facts and complete native catalog before a
+single durable selection. Protocol 2.53 exposes the review and selection route.
+Controller tests cover stale sources, disabled profiles and lost acknowledgments.
+Cold reconciliation now requires confirmed old-process death and complete current
+owner facts. The GPUI profile panel passes rendered socket click tests, including
+lost replies, disabled choices and draft preservation. Native warm/cold tests also
+verify idle permission availability without an extra resume. The new controller also passes installed-native qualification through the
+retained bridge. A fresh signed application bundle passes contract checks, but
+the UI tool cannot select the isolated window; full desktop acceptance remains open. Live-turn reviewer
+publication is a separate operation and does not close this gap.
+
+The fixed upstream cutoff includes a macOS Secure Enclave verification provider.
+Platform support does not establish device readiness or backend registration.
+User verification RPCs exist in the installed binary, including cancellation.
+An isolated unauthenticated status call returns `providerUnavailable`. At the
+fixed cutoff, upstream enables verification elicitations only for its named
+local desktop host and embedded TUI. Decodex is not eligible and advertises only
+form support. A supported activation route, registration ownership and native
+consent/cancellation acceptance are required before offering this capability.
+The initial contract-only stub does not describe the final native implementation.
+
+Explicit integration refresh now calls native `app/installed` with the exact
+thread and `forceRefresh: true` after directory refresh. Directory metadata alone
+cannot acknowledge a live tool refresh. A native error, unsupported method, or
+invalid response keeps the operation unsuccessful without replaying earlier
+mutations. Adapter and retained-bridge tests pass. The installed binary also
+accepts reads and refreshes on an isolated thread with Apps disabled; hosted tool
+replacement and failure retention still need native acceptance. The integration
+panel now displays installed Apps with separate enabled and callable states.
+Independent Apps errors do not hide MCP or plugin observations. This response
+change requires local protocol 2.52.
+
+The working branch includes signed commit `2ffa385c3b49efe6a4109de0fd7353fb64abd2c5`
+after rebase onto main `79d15ef92cdb448abd67ca3972996ab304fea255`.
+Account recovery changes after that commit remain uncommitted and unmerged.
+Native command, account credential, same-UID client, peer event, concurrent claim,
+source invalidation during launch, and database reopen checks have passed with
+synthetic accounts and a loopback backend. Provider observation scheduling and
+the complete GPUI click-to-effect flow are not covered by that combined fixture.
+
+The Chief no longer forces the TUI realtime feature flag during thread creation
+or voice resume. App-server realtime does not require that flag. The installed
+native fixture passes with the flag disabled, including timeline persistence and
+cold resume. Microphone and rendered WebRTC acceptance remain separate gaps.
+
+Async questions now have per-work collapse/reopen controls and an explicit local
+skip action. Schema 37 stores skips separately from native reply evidence;
+protocol 2.51 binds skip to the displayed work, thread and question. Replay and
+database reopen keep skipped cards hidden. Recovery, changed ownership and
+pending replies reject the action. It sends no native input. Custom drafts now retain their editor across named-choice selection, and repeated
+Enter events cannot submit an answer. Suggested answers now require their full
+rendered option to be visible; resize and scroll regressions pass. Service profile
+switches and disconnects now preserve each question editor. Changed native thread
+identity discards the previous editor. Cold application drafts and connected
+native desktop acceptance remain open. The private revisioned client draft
+file store now passes save/reopen, concurrent-writer, corruption and path checks.
+The bounded editor document and exact service-profile namespace also pass file
+round-trip checks. GPUI background autosave and profile-scoped restore are now
+connected. Fresh native history admits saved question editors; incomplete recovery
+cannot create a duplicate editor record. Isolated save/reopen and writer-conflict
+tests pass. Command dispatch now waits for a saved snapshot containing the original
+command ID and delivery fence. Save conflicts prevent dispatch, and profile changes
+cancel commands that have not started. Close-time flushing, conflict resolution,
+and native desktop restart acceptance remain incomplete. Current GPUI tests pass
+(335 passed, 5 ignored), as does strict Clippy. Temporary writer contention retries
+without dispatch. Accepted or definitely failed commands immediately publish their
+settled editor state. The GPUI Quit action now waits for saved drafts and cancels
+exit on failure. Native AppKit termination now enters the same preflight without
+replacing GPUI's delegate. A separate native process verifies cancel, continued
+operation, accepted retry, and GPUI shutdown. Complete editor restart acceptance
+remains open. Input entered before profile configuration now saves in an unbound
+slot and moves atomically to the first profile. Later profile switches keep it
+with that profile. The Keep both drafts action now resolves writer and startup
+seed conflicts while retaining source-bound alternatives and later edits. The
+current-profile alternative-copy list and explicit restore are now connected and
+click-tested. Full-record export, confirmed removal, and capacity recovery are
+implemented; unknown-delivery copies remain protected. Complete native editor
+restart acceptance remains open. These changes are not yet merged.
+
+Daybreak response decoding is covered, but its user control is not implemented.
+The installed server supports a saved `daybreakEnabled` preference on persistent
+threads, including initial `thread/start`, and a separate per-turn
+`cyberAccessProgram`. The preference does not grant access or select a turn's
+program. Integration must restore the native preference, preserve independent
+fork choices, and keep running-turn settings unchanged. Account and model
+eligibility, explicit selection, native persistence and UI acceptance remain open.
+
+Safety buffering is an additional confirmed gap. The installed server publishes
+`model/safetyBuffering/updated`, but Decodex has no consumer or retry UI yet.
+Upstream requires explicit confirmation to interrupt and fork before resubmitting
+the original input with the server-selected model. Keep this flow separate from
+peak-capacity retry and account model fallback. Response streaming, completion,
+and source changes must invalidate stale offers.
+
+Collaboration-mode discovery is also missing. The installed protocol exposes
+`collaborationMode/list`, but Decodex only checks its schema and has no production
+catalog consumer or mode selector. Fetch optional choices from the current native
+source and refresh on reconnect. Preserve the current task mode and editable input
+when discovery fails. Explicit selection must apply the server mask and clear old
+mode prompt overrides so the server supplies its current instructions.
+
+Permission-profile discovery and selection are confirmed gaps. The installed
+server returns project-specific profiles through permissionProfile/list with cwd.
+Consume its catalog and configRequirements/read for the current native task scope.
+The cutoff supports server-owned custom selection through thread/settings/update;
+confirm published permissions and retain input on failure or uncertain replies.
+The existing reviewer-only control and fixed new-task sandbox choices do not cover
+this capability. Managed-policy enforcement was not exercised by the scope probe.
+
+Historical misalignment reconciliation now retains precautions that stopped
+realtime voice. Schema 34 stores this cause across native stop and process restart;
+only an acknowledged explicit continuation clears it. Legacy precautions with an
+unknown cause also require explicit acknowledgment. Database and runtime fixtures
+cover successful/lost stop replies and reopen; microphone acceptance remains open.
+
+Steering recovery now confirms exact native client-message receipts after lost RPC
+replies, including cold history reads. GPUI retains the submission identity with
+its service profile and uses a positive receipt query to settle uncertainty.
+Layer tests cover different identities, profile switches, later draft edits and
+attachments. An isolated installed-native live/cold fixture now carries positive
+receipts through the real service query into rendered GPUI automatic recovery.
+It seeds the uncertain UI state; it does not inject an actual transport loss after
+a composer click. App-restart draft persistence remains incomplete. Absence of
+pending rows is not proof of acceptance.
+
+### Automatic model fallback is partly connected
+
+The earlier manual plan described explicit fallback selection. That does not
+cover the upstream behavior. At the fixed cutoff, ordinary model fallback is
+automatic and separate from LunaReserve, which remains outside this task.
+
+Source: `codex-rs/tui/src/chatwidget/backend_banners.rs`,
+`codex-rs/tui/src/app/backend_banner_fallback.rs`, and
+`codex-rs/tui/src/app/tests/backend_banner_fallback_tests.rs` in the official
+`openai/codex` repository at the cutoff above.
+
+| Required behavior | Current evidence and remaining adaptation |
+| --- | --- |
+| Select the first eligible backend fallback | Upstream requires the current model to equal `blocked_model_slug`, then selects the first different, visible catalog model in backend order. The Chief timer now consumes the account-bound list with the complete visible native catalog. Ordinary conversation integration remains missing. |
+| Change only the exact current task | Upstream rejects stale recovery generations and mismatched active threads. The Chief owner checks the current account revision, native ChatGPT authentication, task, process generation, and settings guard before and after its durable reservation. An Accounts-panel selection cannot identify a task by itself. |
+| Preserve task policy | Upstream preserves collaboration mode and permissions, keeps supported reasoning effort or uses the target default, and resolves the target service tier. Model permission defaults must not be applied during automatic recovery. |
+| Wait for native acceptance | Upstream sends `thread/settings/update` and updates local state only after success. The installed `0.155.0-alpha.9.2` schema includes this method. The uncommitted narrow adapter and retained bridge now admit only model, effort, and service tier. Installed-native tests confirm Default/Plan mode, instructions, and permission preservation after `thread/settings/updated`, with no extra inference or global config change. The Chief timer now calls the adapter. Its full automatic trigger-to-UI flow remains unverified. |
+| Preserve user intent and input | A manual selection queued during the update wins afterward. Recovery does not write global defaults, replay a turn, or automatically return from an ordinary fallback when usage recovers. Failed or unsupported updates leave the existing selection and recovery options available. |
+
+Cold resume and ordinary continuations now preserve the native task model and
+effort. Explicit per-message choices still override these settings. The installed
+binary test covers Default and Plan, process restart, and the model and effort in
+the next inference request. The same native fixture also verifies omitted service tier in both modes. Fast disabled preserves the current tier, including an unset tier; unknown Fast support does not authorize a new tier. These checks do not prove automatic fallback delivery.
+
+The composer now submits only explicit next-message changes for an existing task.
+An unchanged model, effort, or tier inherits the native setting. Legacy complete
+execution selections retain their meaning. Pending choices are scoped to the task
+and service profile. An acceptance clears only the captured choice revision, so
+later user edits survive. Native model reads cannot replace pending choices or
+an exact-ID draft. The open model picker refreshes its task observation, and a
+read invalidated by a native settings publication is discarded.
+
+Installed-native evidence covers an effort-only message after capacity recovery:
+the request keeps the recovered model and uses the newly selected effort. This
+does not yet prove the ordinary conversation composer or automatic fallback owner.
+
+Peak retries now use the requested selection saved with the exact native turn
+acknowledgment. An ordinary turn reads and binds the current native model and
+effort; an explicit per-message selection takes precedence. A newer selection
+cancels the old retry. A connection-local settings guard also rejects stale
+retry writes before the owner processes the notification. An installed-native
+test verifies an actual overload, process and database restart, the same selected
+model and effort, and no duplicate user input in the retry request.
+
+This receipt describes the submitted choice, not inference telemetry. The
+installed Turn schema has no model field. Native-owned turns and lost local
+acknowledgments have no such receipt yet; these cases must not fall back to the
+coordinator defaults. Their complete automatic-continuation adaptation remains
+part of the manual catch-up.
+
+Recovery reservations now survive restarts and concurrent clients in the existing
+event journal. Native replies and matching later settings publications are separate
+immutable records. A queue acknowledgment does not prove publication. Only a live
+notification from the original owned process can record the full target settings;
+a start/resume readback cannot settle the pending reservation. This establishes
+observed state, without asserting that the recovery request caused it. The Chief timer now reserves and sends the guarded update. Pending native events
+block recovery until the normal reducer consumes them, including a notification
+that arrived before the current settings guard was captured. Complete automatic-flow
+acceptance, supersession handling, and the ordinary-conversation path remain unfinished.
+
+Implement and verify this task-scoped path before claiming model recovery is
+complete. Keep peak `serverOverloaded` retry separate from usage-limit fallback.
 
 ## Historical checkpoint: 2026-09-19
 
@@ -590,3 +1415,124 @@ model backend origin. Broader custom-backend/FedRAMP applicability remains under
 review. TUI Analytics independently binds both account and user and selects reports
 from the server's accounts/check plan, not token plan claims; its remaining report
 capabilities still need disposition.
+
+
+### Server-advertised experimental settings (source 792)
+
+Commit `048a936a23b88c8653f4820e68f987de10e3c583` and the fixed cutoff
+use native feature discovery and configuration writes for server-advertised
+experimental controls. The client must retain uncertain selections, read back
+configured values after a write, report overrides, and keep active task settings
+separate from defaults for new tasks. Dedicated permission and native voice
+controls keep their own behavior.
+
+Decodex currently shows only a read-only memory flag from Chief capabilities.
+It has no complete feature settings editor or source-bound write/readback owner.
+The installed protocol supports these operations, but the existing app-link
+settings writer does not implement this feature. This gap remains open.
+
+
+### Voice helper negotiation (source 793)
+
+The upstream private helper owns bounded WebRTC negotiation and reports transport
+readiness after its ordered event channel opens. At the fixed cutoff, its README
+still lists receive/decode and TUI integration as future stages. It does not yet
+replace the existing Decodex bidirectional media host.
+
+The WebKit host now reports connected only after both the peer and its local
+ordered event channel are ready. It closes remote-created channels and retires
+the call on channel loss. Production-script tests cover callback order, deadlines,
+cleanup and stale callbacks. A native WebKit synthetic-audio offer/mute/stop test
+also passes. Full remote negotiation, physical devices and voice UI acceptance
+remain open independently.
+
+
+### Native sandbox settings (sources 796–798)
+
+The installed Codex 0.155.0-alpha.9.2 enforces the macOS user-config opt-in for
+symlinked writable roots beneath CODEX_HOME. Isolated native execution refused a
+write with the setting disabled and wrote the expected file with it enabled.
+Decodex retains its fixed shared-home binding and lets native Codex resolve this
+policy; separate credential and executable checks stay in place.
+
+A native execution fixture also verified unified_exec_tty=false: explicit TTY
+execution was refused, while false and omitted TTY settings ran successfully.
+These are native model-tool settings, not new Decodex execution owners. Neither
+probe used user credentials or a real model provider.
+
+
+### Model-owned Guardian policy (source 799)
+
+Native Guardian binds cached assessments to model policy, thread settings,
+environments and authorization context. At the cutoff, Code Mode wrappers have
+no separate approval scope; their nested tools follow the resolved policy.
+Managed review requirements remain authoritative.
+
+The installed public model catalog does not expose this private policy. Decodex
+must continue to show observed native reviews and submit only exact user-approved
+denials, without caching risk scores or guessing policy from model names. The
+complete native policy and rendered approval matrix remains unverified.
+
+
+### Native provider and restore metadata (sources 898–900)
+
+Chief model details now show the provider ID from an exact native thread read.
+Missing metadata does not inherit a local provider label or URL. Source checks,
+rendered socket tests and installed-native observations pass (current protocol 2.56).
+Ordinary resume now sends only thread identity and excludes turns; it no longer
+reapplies saved model, directory, instructions or service tier. Contract and
+installed-native tests pass. The ordinary typed start/resume response now retains
+and validates the current top-level provider ID. A three-process native fixture
+changes the saved model and directory through another client, then verifies that
+cold resume reports those values, rejects the old directory, and sends no model
+request during resume. This is adapter evidence, not desktop acceptance.
+
+Ordinary start/resume now retains source-bound observations in SQLite (schema 38).
+The read-only conversation projection and inspector show the last native model,
+provider, directory and effort (protocol 2.56). The source binds the exact session,
+thread, ready process and account revision; late responses cannot replace newer
+facts. A replacement process needs confirmed prior death. Original request and
+next-message execution settings remain separate. Conversation list/detail reads
+use one SQLite snapshot for lifecycle, source binding and observation data.
+
+Native directory changes still require explicit local reconciliation before
+execution. The existing mismatch gate remains. A rendered fixture checks draft
+and execution preservation; installed adapter and database restart tests remain
+separate evidence, not full native desktop acceptance. Live settings publications
+and explicit directory reconciliation still need integration. No active local
+fork or rollout-file restoration path was found, so the CLI fork and rollout-parser
+changes need no equivalent route.
+
+
+### Resume and directory event stacks (source 901)
+
+Upstream defers TUI resume-picker and directory transitions until event dispatch
+returns. It rechecks the source session, directory and idle state. Its directory
+command forks saved history or starts a new thread after destination configuration
+and permission checks. Decodex has no embedded TUI or local fork route, so this
+stack fix requires no local counterpart.
+
+Ordinary continuation now sends the selected thread's persisted native directory,
+when available, instead of the application launch default. An invalid observed
+path does not fall back to a different workspace. Explicit message settings stay
+unchanged and runtime still validates the path and exact resumed thread. For older tasks without native observations, the protocol now supplies the original
+request directory from SQLite. Continuation uses that saved path and never falls
+back to the current application default; absent saved paths prevent submission.
+Native cwd changes rejected by the current resume gate and full context recovery
+remain incomplete.
+
+
+### Guardian classifier transport (sources 902–903)
+
+Codex keeps WebSocket establishment outside classification dispatch. When no
+healthy idle socket exists, it uses HTTP with the same concurrency and sampling
+retry limits. Native cancellation covers header waits and response draining.
+The cutoff routes classifier requests through `/responses` with native Guardian
+headers. Decodex has no classifier transport implementation; it must reuse Codex
+and keep explicit approval receipts separate from classification outcomes.
+
+Local Guardian controller tests pass. The installed binary is now
+`0.155.0-alpha.16`; six relevant experimental start/resume and Guardian schemas
+match the prior `0.155.0-alpha.9.2` bundle. This does not verify native stalled
+handshake recovery, Guardian V2 cold reverts or full desktop acceptance. Those
+gaps remain. Source 903 changes only two TUI test fixture initializers.

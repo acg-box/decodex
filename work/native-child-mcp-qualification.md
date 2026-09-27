@@ -52,7 +52,7 @@ installed executable, product configuration or production policy is changed.
 The application does not receive the internally accepted elicitation, so this
 batch does not claim a local enforcement fix or add a second MCP approval owner.
 
-Keep all three inherited-file rows open for final native compatibility review.
+The three source comparisons are closed in [the preservation review](source-preservation-native-limits.md). Keep native compatibility qualification open.
 The child approval result is positive; the human-input handoff result is a known
 qualification failure. Re-run the strict fixture against the eventual delivery
 binary before claiming the fixed-cutoff behavior. Include this limit in the final
@@ -70,5 +70,5 @@ strict fixture without changing its assertions or synthetic server:
 Both markers again return `result.action: accept` and empty content. The test
 fails with two failed marker cases. The fixture shuts down each native process
 and aborts its local response server before reporting the failure. The cause
-remains unqualified, and the three inherited-file rows remain open. This newer
+remains unqualified, and native compatibility qualification remains open. Source preservation is a separate completed comparison. This newer
 binary must not be treated as a fix based on its version alone.
