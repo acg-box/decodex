@@ -63,6 +63,15 @@ shared reviewer fixture: all original child modules remain registered and the
 current non-opt-in selection passes 22 tests with 14 native skips. Close these
 two rows; shared production files and signed approval acceptance remain open.
 
+## Shared Chief persistence reconciled on 2026-09-27
+
+Map the complete Chief store and process-store diffs: filtered conversation pages
+retain original journals, model/prompt-edit admission retains no-replay boundaries,
+and account changes respect pending edits. Map added Guardian, question provenance
+and voice persistence evidence plus the current model test owners. Twelve focused
+fixtures pass. See [the complete mapping](chief-persistence-reconciliation.md).
+Close these two rows; conversation/migration and native/desktop acceptance remain.
+
 ## Exact model input restored on 2026-09-27
 
 Restore the inherited explicit model-ID action in the existing task model menu.
