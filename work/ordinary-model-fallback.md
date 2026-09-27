@@ -34,9 +34,10 @@ to current settings.
 - Retain the inherited native model-recovery fixture and all its assertions.
   Adapt only the shared Responses fixture helper.
 
-Legacy pending recovery records still block conflicting work. Their complete
-terminal-history presentation and manual/reconciled distinctions remain a
-separate open review. This batch does not close those files or shared module rows.
+Legacy pending recovery records still block conflicting work. Historical terminal
+receipts and manual/reconciled distinctions are now restored through the current
+owner; see [model selection history](model-selection-history.md). Complete legacy
+writer review, shared module rows and signed desktop acceptance remain open.
 
 ## Upstream and native evidence
 

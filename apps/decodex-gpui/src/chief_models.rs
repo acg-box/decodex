@@ -247,6 +247,7 @@ impl ChiefSurface {
 				models,
 				can_update,
 				last_outcome,
+				last_receipt,
 				..
 			}) => {
 				panel = panel.child(format!(
@@ -255,7 +256,14 @@ impl ChiefSurface {
 					model_provider.as_str(),
 					current_effort.as_ref().map_or("default", |e| e.as_str())
 				));
-				if let Some(state) = last_outcome {
+				if let Some(receipt) = last_receipt {
+					panel = panel.child(
+						div()
+							.id("task-model-receipt")
+							.debug_selector(|| "task-model-receipt".into())
+							.child(history_label(receipt)),
+					);
+				} else if let Some(state) = last_outcome {
 					panel = panel.child(label(*state));
 				}
 				if *can_update
@@ -272,10 +280,18 @@ impl ChiefSurface {
 					));
 				}
 			},
-			Some(State::Pending { model, state, .. }) => {
+			Some(State::Pending { model, state, last_receipt, .. }) => {
 				panel = panel
 					.child(format!("{} · {}", model.as_str(), label(*state)))
 					.child("Refresh to check confirmation. The change will not be resent.");
+				if let Some(receipt) = last_receipt {
+					panel = panel.child(
+						div()
+							.id("task-model-receipt")
+							.debug_selector(|| "task-model-receipt".into())
+							.child(history_label(receipt)),
+					);
+				}
 			},
 			Some(State::Unavailable) => {
 				panel = panel
@@ -368,6 +384,29 @@ fn label(state: Outcome) -> &'static str {
 		Outcome::TargetObserved => "Saved for subsequent turns",
 		Outcome::Superseded => "Replaced by current settings",
 	}
+}
+
+fn history_label(receipt: &decodex_protocol::ChiefModelSelectionReceipt) -> String {
+	use decodex_protocol::ChiefModelResponse as Response;
+	let response = match receipt.response {
+		Response::Reserved => "awaiting response",
+		Response::Queued => "queued",
+		Response::Rejected => "rejected",
+		Response::Unknown => "delivery unconfirmed",
+	};
+	let observation = if receipt.reconciled {
+		"; current settings reviewed after restart, earlier delivery unconfirmed"
+	} else if receipt.target_observed {
+		"; matching native settings observed"
+	} else {
+		""
+	};
+	format!(
+		"Last {}: {} / {} — {response}{observation}",
+		if receipt.manual { "manual selection" } else { "automatic fallback" },
+		receipt.model.as_str(),
+		receipt.effort.as_ref().map_or("default", |effort| effort.as_str())
+	)
 }
 
 #[cfg(test)]

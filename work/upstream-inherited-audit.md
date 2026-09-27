@@ -9,6 +9,17 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Historical model receipts restored on 2026-09-27
+
+Restore the old historical status and protocol receipt through the current shared
+model owner. Preserve manual/automatic origin, the original native response,
+target observation and post-restart reconciliation. Historical requested settings
+remain distinct from current native configuration. See
+[model selection history](model-selection-history.md) for the source mapping and
+acceptance boundary. Close these two complete file rows only; both original
+snapshot hashes match. The 360-row register has 85 pending content-review rows,
+down from 87. Legacy writers, shared files and signed desktop acceptance stay open.
+
 ## Ordinary automatic fallback restored on 2026-09-26
 
 Restore the bounded native adapter, automatic policy and installed-native

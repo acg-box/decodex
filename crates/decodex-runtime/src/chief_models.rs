@@ -6,8 +6,9 @@ use decodex_codex::app_server_client::{
 };
 use decodex_database::{ChiefModelAttempt, SqliteStore};
 use decodex_protocol::{
-	ChiefCapabilitiesResult, ChiefModelOutcome as Outcome, ChiefModelSelectionState as State,
-	ConversationModel, ConversationReasoningEffort, EntityId, WireText,
+	ChiefCapabilitiesResult, ChiefModelOutcome as Outcome, ChiefModelResponse as Response,
+	ChiefModelSelectionReceipt as Receipt, ChiefModelSelectionState as State, ConversationModel,
+	ConversationReasoningEffort, EntityId, WireText,
 };
 pub(crate) use recovery::recover_ordinary_model;
 use serde_json::json;
@@ -29,16 +30,63 @@ fn outcome(value: &str) -> Option<Outcome> {
 		_ => return None,
 	})
 }
-fn pending(model: &str, effort: Option<&str>, state: Outcome) -> Option<Inspection> {
+fn pending(
+	model: &str,
+	effort: Option<&str>,
+	state: Outcome,
+	last_receipt: Option<Receipt>,
+) -> Option<Inspection> {
 	Some(Inspection {
 		state: State::Pending {
 			model: ConversationModel::new(model).ok()?,
 			effort: effort.map(ConversationReasoningEffort::new).transpose().ok()?,
 			state,
+			last_receipt,
 		},
 		settings_event: 0,
 		guard: None,
 	})
+}
+fn historical_receipt(history: &decodex_database::ChiefModelHistory) -> Option<Receipt> {
+	Some(Receipt {
+		model: ConversationModel::new(history.model.clone()).ok()?,
+		effort: history.effort.as_deref().map(ConversationReasoningEffort::new).transpose().ok()?,
+		manual: history.manual,
+		response: match history.response.as_str() {
+			"reserved" => Response::Reserved,
+			"queued" => Response::Queued,
+			"rejected" => Response::Rejected,
+			"unknown" => Response::Unknown,
+			_ => return None,
+		},
+		target_observed: history.target_observed,
+		reconciled: history.reconciled,
+	})
+}
+async fn selection_editable(
+	store: &SqliteStore,
+	source: &Source,
+	work: &decodex_database::ChiefWorkItem,
+) -> Option<bool> {
+	let k = &source.key;
+	let permission_pending = store
+		.chief_permission_receipt(k.work.clone(), k.thread.clone())
+		.await
+		.ok()?
+		.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown"));
+	Some(
+		((work.dispatch_state == decodex_database::ChiefDispatchState::Idle
+			&& work.active_turn_id.is_none())
+			|| (work.dispatch_state == decodex_database::ChiefDispatchState::Running
+				&& work.active_turn_id.is_some()))
+			&& work.status != decodex_database::ChiefWorkStatus::Resolved
+			&& !permission_pending
+			&& !store
+				.chief_plugin_receipt(k.work.clone(), k.thread.clone())
+				.await
+				.ok()?
+				.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown")),
+	)
 }
 async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	let k = &source.key;
@@ -56,6 +104,14 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	persist_current(store, &source.client, &k.thread, Some(k.generation.as_str().into()))
 		.await
 		.ok()?;
+	let history = store
+		.chief_model_history(k.work.clone(), k.thread.clone(), k.generation.as_str().into())
+		.await
+		.ok()?;
+	let last_receipt = match &history {
+		Some(history) => Some(historical_receipt(history)?),
+		None => None,
+	};
 	if let Some(legacy) = store
 		.pending_chief_legacy_model_change(
 			k.work.clone(),
@@ -65,7 +121,7 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 		.await
 		.ok()?
 	{
-		return pending(&legacy.model, Some(&legacy.effort), outcome(&legacy.state)?);
+		return pending(&legacy.model, Some(&legacy.effort), outcome(&legacy.state)?, last_receipt);
 	}
 	let prior = store.chief_model_receipt(k.work.clone(), k.thread.clone()).await.ok()?;
 	let last_outcome = match &prior {
@@ -75,7 +131,12 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	if let Some(prior) = &prior
 		&& matches!(last_outcome, Some(Outcome::Reserved | Outcome::Queued | Outcome::Unknown))
 	{
-		return pending(&prior.attempt.model, prior.attempt.effort.as_deref(), last_outcome?);
+		return pending(
+			&prior.attempt.model,
+			prior.attempt.effort.as_deref(),
+			last_outcome?,
+			last_receipt,
+		);
 	}
 	let (native, guard) = source.client.configured_task_models(&k.thread)?;
 	let saved = store
@@ -95,22 +156,7 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	if !guard.is_live() {
 		return None;
 	}
-	let permission_pending = store
-		.chief_permission_receipt(k.work.clone(), k.thread.clone())
-		.await
-		.ok()?
-		.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown"));
-	let can_update = ((work.dispatch_state == decodex_database::ChiefDispatchState::Idle
-		&& work.active_turn_id.is_none())
-		|| (work.dispatch_state == decodex_database::ChiefDispatchState::Running
-			&& work.active_turn_id.is_some()))
-		&& work.status != decodex_database::ChiefWorkStatus::Resolved
-		&& !permission_pending
-		&& !store
-			.chief_plugin_receipt(k.work.clone(), k.thread.clone())
-			.await
-			.ok()?
-			.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown"));
+	let can_update = selection_editable(store, source, &work).await?;
 
 	let identity = json!([
 		k.work,
@@ -124,6 +170,8 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 		models,
 		prior.as_ref().map(|r| r.id),
 		last_outcome,
+		history.as_ref().map(|receipt| receipt.id),
+		last_receipt,
 		can_update
 	]);
 	let token: String = Sha256::digest(identity.to_string().as_bytes())
@@ -148,6 +196,7 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 			models,
 			can_update,
 			last_outcome,
+			last_receipt,
 		},
 	})
 }

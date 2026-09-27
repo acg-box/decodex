@@ -75,6 +75,13 @@ async fn scenario(outcome: &'static str) {
 			state,
 			ChiefModelSelectionState::Available {
 				last_outcome: Some(decodex_protocol::ChiefModelOutcome::TargetObserved),
+				last_receipt: Some(decodex_protocol::ChiefModelSelectionReceipt {
+					manual: true,
+					response: decodex_protocol::ChiefModelResponse::Queued,
+					target_observed: true,
+					reconciled: false,
+					..
+				}),
 				..
 			}
 		));
@@ -284,7 +291,7 @@ async fn legacy_model_request_blocks_current_service_mutations_without_native_wr
 	let source = || async { Some(owned.source(&owned.key)) };
 	let state = crate::chief_models::read(&owned.store, source).await;
 	assert!(
-		matches!(state,ChiefModelSelectionState::Pending{model,state:decodex_protocol::ChiefModelOutcome::Unknown,..} if model.as_str()=="scoped")
+		matches!(state,ChiefModelSelectionState::Pending{model,state:decodex_protocol::ChiefModelOutcome::Unknown,last_receipt:Some(decodex_protocol::ChiefModelSelectionReceipt{manual:false,response:decodex_protocol::ChiefModelResponse::Unknown,target_observed:false,reconciled:false,..}),..} if model.as_str()=="scoped")
 	);
 	assert!(write(&owned.store, source, "thread", "old-review", "scoped", "retry").await.is_err());
 	assert!(matches!(
@@ -306,5 +313,37 @@ async fn legacy_model_request_blocks_current_service_mutations_without_native_wr
 			.state,
 		"unknown"
 	);
+	// Historical confirmation must stay visible even after native settings change again.
+	let connection =
+		rusqlite::Connection::open(owned.root.paths().product_database_file()).unwrap();
+	connection.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service:observation','root','model_recovery_observation',?1,3,'resolved','Historical fixture',3)",[json!({"reservation":reservation,"settingsEvent":1,"state":"target_observed"}).to_string()]).unwrap();
+	drop(connection);
+	let state = crate::chief_models::read(&reopened, source).await;
+	let ChiefModelSelectionState::Available { ref review_token, .. } = state else {
+		panic!("historical receipt with current settings")
+	};
+	let previous_review = review_token.clone();
+	assert!(matches!(state, ChiefModelSelectionState::Available {
+		model, last_receipt: Some(decodex_protocol::ChiefModelSelectionReceipt {
+			model: requested, manual: false, response: decodex_protocol::ChiefModelResponse::Unknown,
+			target_observed: true, reconciled: false, ..
+		}), ..
+	} if model.as_str() == "original" && requested.as_str() == "scoped"));
+	let connection =
+		rusqlite::Connection::open(owned.root.paths().product_database_file()).unwrap();
+	connection.execute("INSERT INTO chief_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service:reconciliation','root','model_selection_reconciled',?1,4,'resolved','Historical reconciliation',4)",[json!({"reservation":reservation,"settingsEvent":1,"generationId":owned.key.generation.as_str()}).to_string()]).unwrap();
+	drop(connection);
+	let state = crate::chief_models::read(&reopened, source).await;
+	assert!(matches!(state, ChiefModelSelectionState::Available {
+		review_token, last_receipt: Some(decodex_protocol::ChiefModelSelectionReceipt {
+			response: decodex_protocol::ChiefModelResponse::Unknown, reconciled: true, ..
+		}), ..
+	} if review_token != previous_review));
+	assert!(
+		write(&reopened, source, "thread", previous_review.as_str(), "scoped", "stale-history")
+			.await
+			.is_err()
+	);
+	assert_eq!(writes.load(Ordering::Acquire), 0, "history reads never replay the old request");
 	backend.abort();
 }

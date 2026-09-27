@@ -1,6 +1,8 @@
 //! Durable model selection attempts. A queued response never proves application.
+#[path = "chief_model_history.rs"] mod history;
 #[path = "chief_model_legacy.rs"] mod legacy;
 use crate::{SqliteStore, StoreError, chief_process::owns_work, error::sqlite_error, unix_micros};
+pub use history::ChiefModelHistory;
 pub use legacy::ChiefLegacyModelPending;
 use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};

@@ -16,8 +16,40 @@ pub enum ChiefModelOutcome {
 	Rejected,
 	/// Current native settings report the requested selection for subsequent turns.
 	TargetObserved,
-	/// A replacement native owner reports another selection after confirmed process death.
+	/// A replacement native owner reviewed current settings after confirmed process death.
 	Superseded,
+}
+
+/// Original response to one model settings request, independent of later observations.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChiefModelResponse {
+	/// Reserved before a response was recorded.
+	Reserved,
+	/// Native accepted the request for processing.
+	Queued,
+	/// Native or source validation rejected the request.
+	Rejected,
+	/// Delivery remains uncertain; do not replay the request.
+	Unknown,
+}
+
+/// Historical model request evidence; it does not describe the current inference.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChiefModelSelectionReceipt {
+	/// Requested model.
+	pub model: ConversationModel,
+	/// Expected configured effort, including a known unset value.
+	pub effort: Option<ConversationReasoningEffort>,
+	/// True for an explicit selection; false for automatic fallback.
+	pub manual: bool,
+	/// Original response, retained after confirmation or reconciliation.
+	pub response: ChiefModelResponse,
+	/// Matching native settings were observed after the request.
+	pub target_observed: bool,
+	/// Current settings were reviewed after the original process was confirmed dead.
+	pub reconciled: bool,
 }
 
 /// Review facts for a task-local model selection.
@@ -44,6 +76,8 @@ pub enum ChiefModelSelectionState {
 		can_update: bool,
 		/// Last settled selection attempt, if any.
 		last_outcome: Option<ChiefModelOutcome>,
+		/// Latest request across current and preserved journals, with its original evidence.
+		last_receipt: Option<ChiefModelSelectionReceipt>,
 	},
 	/// A durable request remains unconfirmed. Do not submit another selection.
 	Pending {
@@ -53,6 +87,8 @@ pub enum ChiefModelSelectionState {
 		effort: Option<ConversationReasoningEffort>,
 		/// Current unresolved receipt state.
 		state: ChiefModelOutcome,
+		/// Historical request evidence; refreshing this state does not resend the request.
+		last_receipt: Option<ChiefModelSelectionReceipt>,
 	},
 	/// Current source-bound native facts cannot be established.
 	Unavailable,

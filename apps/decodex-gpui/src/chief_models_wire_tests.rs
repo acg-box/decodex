@@ -105,7 +105,7 @@ async fn serve(
 			available()
 		} else if confirmed {
 			let mut state = available();
-			if let State::Available { model, effort, last_outcome, .. } = &mut state {
+			if let State::Available { model, effort, last_outcome, last_receipt, .. } = &mut state {
 				*model =
 					ConversationModel::new(if preserve { "plain-model" } else { "future-model" })
 						.unwrap();
@@ -115,6 +115,7 @@ async fn serve(
 					Some(ConversationReasoningEffort::new(EFFORT).unwrap())
 				};
 				*last_outcome = Some(Outcome::TargetObserved);
+				*last_receipt = Some(receipt(preserve, true));
 			}
 			state
 		} else {
@@ -127,6 +128,7 @@ async fn serve(
 				.unwrap(),
 				effort: None,
 				state: Outcome::Unknown,
+				last_receipt: Some(receipt(preserve, false)),
 			}
 		};
 		let result = ServerMessage::QueryResult(QueryResultEnvelope {
@@ -141,6 +143,21 @@ async fn serve(
 }
 
 const EFFORT: &str = "future-provider-reasoning-effort-over-32-bytes";
+fn receipt(preserve: bool, confirmed: bool) -> decodex_protocol::ChiefModelSelectionReceipt {
+	decodex_protocol::ChiefModelSelectionReceipt {
+		model: ConversationModel::new(if preserve { "plain-model" } else { "future-model" })
+			.unwrap(),
+		effort: if preserve {
+			None
+		} else {
+			Some(ConversationReasoningEffort::new(EFFORT).unwrap())
+		},
+		manual: true,
+		response: decodex_protocol::ChiefModelResponse::Unknown,
+		target_observed: confirmed,
+		reconciled: false,
+	}
+}
 fn available() -> State {
 	State::Available {
 		work_id: EntityId::new("root").unwrap(),
@@ -155,6 +172,7 @@ fn available() -> State {
 		],
 		can_update: true,
 		last_outcome: None,
+		last_receipt: None,
 	}
 }
 fn model(id: &str, efforts: Vec<ConversationReasoningEffort>) -> decodex_protocol::ChiefModelDto {
@@ -271,6 +289,10 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut gpui::Te
 			w.draw(cx).clear();
 		});
 		assert!(visual.debug_bounds("task-model-0").is_none());
+		assert!(
+			visual.debug_bounds("task-model-receipt").is_some(),
+			"render the durable receipt after a lost reply"
+		);
 		surface.update(visual, |s, _| s.apply_result(Ok(ChiefSnapshotResult::Unavailable)));
 		surface.read_with(visual, |s, _| {
 			assert!(s.task_models.state.is_none());
@@ -389,4 +411,41 @@ fn late_model_read_cannot_attach_to_a_changed_task(cx: &mut gpui::TestAppContext
 			assert!(!s.task_models.reviewed);
 		});
 	}
+}
+
+#[gpui::test]
+fn model_history_renders_automatic_reconciliation_without_claiming_delivery(
+	cx: &mut gpui::TestAppContext,
+) {
+	let (view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(ChiefSurface::new);
+		surface.update(cx, |s, _| {
+			s.apply_result(Ok(ChiefSnapshotResult::Available(snapshot())));
+			s.task_models.work = Some("root".into());
+			let mut state = available();
+			let mut historical = receipt(false, false);
+			historical.manual = false;
+			historical.reconciled = true;
+			let text = history_label(&historical);
+			assert!(text.contains("automatic fallback"));
+			assert!(text.contains("delivery unconfirmed"));
+			assert!(text.contains("current settings reviewed after restart"));
+			assert!(!text.contains("matching native settings observed"));
+			if let State::Available { last_receipt, .. } = &mut state {
+				*last_receipt = Some(historical);
+			}
+			s.task_models.state = Some(state);
+		});
+		ModelView { surface }
+	});
+	visual.update(|w, cx| {
+		w.resize(gpui::size(px(900.), px(700.)));
+		w.draw(cx).clear();
+	});
+	assert!(visual.debug_bounds("task-model-receipt").is_some());
+	let surface = view.read_with(visual, |view, _| view.surface.clone());
+	surface.read_with(visual, |surface, _| {
+		assert!(surface.task_models.task.is_none());
+		assert!(!surface.task_models.reviewed);
+	});
 }
