@@ -1350,3 +1350,11 @@ tests. The separate file-approval test passes against installed Codex
 The current branch has 19 full-file reviews and 24 delivery reviews open, with
 17 in both sets and 26 in their union. These are file-review counts, not feature
 completion. Shared native fixtures and signed desktop acceptance remain open.
+
+## Native usage restart coverage restored on 2026-09-27
+
+Restore the pre-snapshot native usage module and its registry entry. The installed
+Codex test passes the original cumulative counter, second-turn delta, absent
+receipt and no-replay checks after process restart. Strict runtime lint passes.
+See [the restored assertions and test scope](native-usage-recovery-coverage.md).
+Refresh the native registry hash while keeping its full source review open.
