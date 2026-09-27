@@ -9,6 +9,7 @@ use super::*;
 #[path = "chief_process_native_flex_tests.rs"] mod flex;
 #[path = "chief_process_native_folder_trust_tests.rs"] mod folder_trust;
 #[path = "chief_process_native_goal_tests.rs"] mod goals;
+#[path = "chief_process_native_misalignment_tests.rs"] mod misalignment;
 #[path = "chief_process_native_model_recovery_tests.rs"] mod model_recovery;
 #[path = "chief_process_native_model_tests.rs"] mod models;
 #[path = "chief_process_native_ordinary_effort_tests.rs"] mod ordinary_effort;
