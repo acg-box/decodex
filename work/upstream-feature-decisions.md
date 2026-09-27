@@ -7,10 +7,10 @@ Rows below group related behavior so the user can decide what Decodex needs.
 They include restored baseline behavior as well as scan additions. The detailed
 [adoption register](upstream-adoption-review.md) retains PR and source ownership.
 
-Status: source reconciliation is complete on the current branch; pending batches
-still require merge. Native limitations and signed desktop interaction remain
+Status: source reconciliation is complete on the current branch; the reconciliation and inventory batches through PR1665 are merged. Native limitations and signed desktop interaction remain
 open. The [current signed artifact](signed-desktop-a15fe830-acceptance.md) has valid
-contracts and signatures, but the UI tool could not locate its window. Implemented
+contracts and signatures. Main-window access and normal exits are now verified;
+ordinary composer interaction remains unverified. Implemented
 does not mean fully accepted, installed or released. No removal is authorized here.
 
 ## Core compatibility to retain
@@ -92,11 +92,15 @@ does not need them. The user decides which rows remain.
    of required root handoff on the tested binary. Keep the strict failing fixture.
 3. Voice WebRTC/media, physical audio and late remote caption identity remain
    qualified only to the precise limits of their records.
-4. Independent Decodex browser/device-code enrollment does not currently consume
-   the native allowed-login-method policy. Applicability/authority needs resolution;
-   the native policy probe does not prove local UI enforcement.
-5. Current signed desktop interaction remains unverified because the UI tool
-   cannot locate the exact staged window. App startup and signing are not substitutes.
+4. Independent Decodex browser/device-code enrollment has no native enrollment-policy
+   authority integration. Native execution admission separately enforces its own
+   authentication restrictions, including external ChatGPT credentials. A global
+   enrollment-policy owner remains an unimplemented scope decision; local UI
+   enforcement is not claimed.
+5. Main-window interaction and history-edit draft restart are verified. Ordinary
+   composer interaction remains unverified because its native child window is not
+   exposed in the observed main-window accessibility tree. Broader lifecycle and
+   physical audio acceptance remain open.
 
 See [native limits](source-preservation-native-limits.md) and
 [signed acceptance](signed-desktop-a15fe830-acceptance.md). The current known native

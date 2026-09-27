@@ -30,11 +30,12 @@ not instructions to delete code or weaken native enforcement.
 
 The fresh [a15fe830 signed artifact](signed-desktop-a15fe830-acceptance.md) passes
 bundle contracts and signing checks. Its embedded source identity is exact and
-clean. Two isolated launches could not be selected by the UI tool, which reports
-cgWindowNotFound. App-owned service startup and parent-exit cleanup have process
-and protocol evidence; normal GUI quit and the required desktop interactions
-remain unverified. The older 0658 interaction record is historical, not acceptance
-of the later repairs. R06/R07/R12 remain open.
+clean. Window access is now restored. Normal GUI quit and empty-profile owned-service
+cleanup are verified. An unconfirmed history-edit draft survives normal quit and
+relaunch without input replay. Ordinary composer interaction remains unverified:
+its native child window is absent from the observed main-window accessibility tree.
+The older 0658 interaction record remains historical. The current record lists
+precise accepted boundaries and remaining R06/R07/R12 work.
 
 ## Application projection correctness
 
@@ -127,8 +128,10 @@ unchanged and retain this optional control in the user's removal review.
 
 The source inventory covers 1,569 commits. It does not establish feature delivery.
 The original acceptance ledger has twelve unequal groups. R01, R02, R04 and R05
-have recorded closure. R03 is reopened for inherited initial-source review; R06
-through R12 remain open. The table below retains those boundaries.
+have recorded closure. Source classifications for R03 and R09 through R11 now
+have explicit dispositions. R06 through R08 and final shared acceptance remain
+open; native qualification limits are retained. The table below separates these
+boundaries.
 Later implementation does not close a group without its remaining acceptance.
 
 | Group | Delivered or recorded evidence | Remaining exit condition |
@@ -141,9 +144,9 @@ Later implementation does not close a group without its remaining acceptance.
 | R06 Prompt editing and recap | Recap service/UI and opt-in automatic eligibility are implemented. The [current signed run](signed-desktop-0658-acceptance.md) adds visible manual recap and restart evidence. Prompt editing includes canonical desktop editing, durable confirmation, history handback and explicit resend. | PR1523 verifies combined lost-reply recovery and normal signed-app recap/quit/relaunch interactions. Foreground/background, opt-out, live voice and remaining shared desktop acceptance in R07/R12 stay open. See the feature notes below. |
 | R07 Draft and signed desktop lifecycle | Draft persistence and source-bound recovery have targeted evidence. The [current signed run](signed-desktop-0658-acceptance.md) verifies unsent draft and explicit model restoration across two normal GUI exits. | Blank-task/worktree, Dock, conflict cancellation, broader draft recovery, export and app-owned service shutdown acceptance remain. Both signed fixtures kept their service alive across GUI relaunches. |
 | R08 Uncertain dispatch and closing | Known-unsent, refusal and no-replay recovery fixes are merged. | Reconcile general ambiguous replies and installed shutdown/unload races with current evidence. |
-| R09 Other runtime consumers | Usage estimates, voice preferences, reasoning summaries and connector exposure have deliveries. | Close remaining Analytics, voice, provider/freeform, external-writer, accessibility and child/OS notice applicability. Do not rebuild existing usage owners. |
-| R10 Native execution and security | Native CLI admission and account routing-cookie fixes are merged. | Map remaining Guardian/context, network/checkpoint and OS execution changes to native or local owners. Native ownership needs source evidence, not a duplicate implementation. |
-| R11 Historical baseline and inherited changes | Preserved 360-entry snapshot, two stashes and original PR1378; partial adaptation evidence. | Complete pre-scan consumer dispositions and file-level reconciliation. Recheck version-specific limitations before presenting them as current. |
+| R09 Other runtime consumers | [Applicability classification](upstream-runtime-consumer-boundaries.md) covers Analytics, voice, provider notices, freeform messages, external writers, accessibility and child/OS behavior. | Classification is complete. Physical voice, combined cross-client desktop behavior and system accessibility acceptance remain unverified; native child MCP limits remain explicit. Optional research is not a new implementation requirement. |
+| R10 Native execution and security | Native CLI admission and account routing-cookie fixes are merged. [Fixed-source ownership](upstream-native-owner-boundaries.md) maps Guardian checkpoints, proxy cancellation, unload and OS execution to native owners. | Ownership is resolved; the listed native race/qualification limits remain unproven. Shared desktop acceptance is separate. No replacement runtime is required. |
+| R11 Historical baseline and inherited changes | Main register has 360 classified paths; all 357 saved file hashes match and three deletions are recorded. Original PR1378 and both stashes are preserved. | Source preservation and file-level reconciliation are complete. Four native qualification limits remain explicit; preservation is not runtime acceptance. See the inherited-file audit. |
 | R12 Final acceptance and handoff | Individual batches have merge and targeted validation evidence. | Close R01–R11, reconcile the final artifact, and deliver the complete core/optional/removal-dependency inventory. Keep maintenance paused. |
 
 This is the remaining acceptance scope, not a new implementation backlog. Resolve
@@ -180,7 +183,7 @@ integration. The 268 non-identical inherited rows from the PR1507 audit are not
 | Provider-owned sign-in recovery history | Optional; removal candidate if Bedrock is unused | Save native AWS/Bedrock recovery notices as history. They do not authorize login, retry, account health or task completion. | Pre-scan baseline restoration; not a new scan adoption | [Recovery scope and removal boundary](provider-auth-recovery-history.md) |
 | Connector tool visibility controls | Optional | Edit per-connector omissions for initial tools, tool search and Code Mode. Share the existing config journal; native Codex owns actual filtering. | [1480](https://github.com/acg-box/decodex/pull/1480), [1481](https://github.com/acg-box/decodex/pull/1481) | [work/app-tool-exposure.md](../work/app-tool-exposure.md) |
 | Unfinished output and live proposed plans | Mixed | Retain existing assistant text after termination/restart (core). Stream proposed plans with a distinct label (optional). Replace fallback only with exact complete native content. | [1486](https://github.com/acg-box/decodex/pull/1486) | [work/partial-output-retention.md](../work/partial-output-retention.md) |
-| Reduced-motion transitions | Optional | Honor system reduced-motion and VoiceOver preferences. | [1478](https://github.com/acg-box/decodex/pull/1478) | [apps/decodex-gpui/src/ui_motion.rs](../apps/decodex-gpui/src/ui_motion.rs) |
+| Reduced-motion transitions | Core while animation is retained | Honor system reduced-motion and VoiceOver preferences. | [1478](https://github.com/acg-box/decodex/pull/1478) | [apps/decodex-gpui/src/ui_motion.rs](../apps/decodex-gpui/src/ui_motion.rs) |
 | Configuration warnings and subagent activity | Core | Retain bounded native startup warnings and native subagent observations. Chief settings errors retain public native causes; ordinary warnings persist as Status history with exact history refresh. Partial-output retention remains a separate batch. | [1356](https://github.com/acg-box/decodex/pull/1356), [1357](https://github.com/acg-box/decodex/pull/1357), [1484](https://github.com/acg-box/decodex/pull/1484), [1485](https://github.com/acg-box/decodex/pull/1485) | [crates/decodex-runtime/src/native_config_warning.rs](../crates/decodex-runtime/src/native_config_warning.rs) |
 
 ## Deliveries after the original table

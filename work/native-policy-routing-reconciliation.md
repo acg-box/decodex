@@ -18,6 +18,39 @@ document does not resolve the product decision or authorize a new global policy
 owner. In particular, an arbitrary active task process cannot supply policy for
 independent account enrollment.
 
+## Enrollment and execution are separate policy boundaries
+
+A further fixed-source review resolves which entry points the native policy owns.
+At upstream `595cc91e8cbb1c2ca822d0311dcf12709410c582`,
+`app-server/src/request_processors/config_processor.rs` publishes the current
+AuthManager allowed methods. `login/src/auth/manager.rs` computes them from
+managed policy, forced login method and the effective workspace. The values are
+API and ChatGPT authentication categories, not browser versus device-code choices.
+
+In `app-server/src/request_processors/account_processor.rs`, both
+login_chatgpt_common and login_chatgpt_auth_tokens_response reject disallowed
+ChatGPT authentication. The latter also checks permitted workspaces. Decodex's
+`account_launch/process.rs::CredentialProjection::authenticate_chatgpt` calls
+that native account/login/start path and maps rejection to ProjectionRejected.
+Independent enrollment therefore does not itself bypass native process admission.
+
+The installed-native restriction test was run again against the unchanged binary
+hash below. One test passed, with zero failures or skips. It checks API-only and
+ChatGPT-only policies, running-policy stability after a file edit, rejection of
+the prohibited authentication category, and zero model/provider requests on those
+rejections. Log: `/tmp/decodex-final-login-policy-boundary.log`. This uses only
+synthetic tokens and local disposable fixtures.
+
+The separate `AccountLoginManager::run_login_session` creates a temporary login
+home, runs decodex-account-login, and installs the result through AccountService.
+It still has no native policy observation bound to an enrollment authority.
+There is no current global enrollment-policy integration to claim. Adding one
+requires an explicit owner and lifecycle for that authority, including managed
+policy, restart and concurrent clients; reading an arbitrary task's policy is
+incorrect. Keep that unimplemented integration visible for the user's scope
+review. No local policy is relaxed, no live account is enrolled, and no new global
+policy owner is introduced by this classification.
+
 ## Fresh routing evidence
 
 Eight activation and policy unit tests pass with no failures. Two opt-in cases
