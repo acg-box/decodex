@@ -57,8 +57,8 @@ Strict all-target, all-feature checks cover protocol, runtime and GPUI.
 
 These checks do not constitute signed desktop visual acceptance, installation or
 a release. The shared signed artifact and lifecycle acceptance remain open in
-R07/R12. The inherited wire-test helper also included saved-task model cases;
-that file and other shared modules retain their separate reconciliation entries.
+R07/R12. The shared production modules retain their separate reconciliation entries.
+The inherited wire-test helper is mapped below.
 
 ## Removal decision
 
@@ -66,3 +66,36 @@ The user can remove this optional control without removing saved-task model
 selection or native approval enforcement. Remove its UI/action/service publisher
 together, then remove unreferenced transport code. Keep historical journal records
 readable and retain the reviewer sequence. No removal is part of this update.
+
+## Inherited socket fixture reconciliation
+
+The complete inherited `chief_live_settings_wire_tests.rs` differs from the
+current file in these ways:
+
+- The reviewer and current-turn model modes use the same private Unix socket
+  fixture. Keep the exact task, turn, review token and action assertions. Restore
+  the model-mode guard and the inherited assertion that lost-response readback
+  retains the selected model and reasoning effort.
+- The old task-model modes moved to `chief_models_wire_tests.rs`. Its four-case
+  fixture covers explicit or preserved effort and pending or observed readback.
+  It asserts one `SetTaskModel` command, preserves the input draft and invalidates
+  the old model observation. The separate rendered history case preserves
+  restart reconciliation without claiming that unknown delivery succeeded.
+- Task defaults now use `GetChiefModelSelection` and the current flat action
+  fields. Current-turn settings still use `GetChiefLiveReviewer` and
+  `SetLiveModel`. Private helper visibility replaces the former shared helper;
+  it does not remove a product entry point.
+- Current tests add a fresh-review requirement after receipt readback, reject a
+  repeated click and invalidate edits on child navigation. Disconnect now uses
+  the actual `apply_result` path. The existing task/thread/turn/source transition
+  test remains present.
+
+This closes only the inherited socket-test file. It does not close shared
+production-file review, native binary limitations or signed desktop acceptance.
+The changes restore test evidence; they do not change runtime behavior.
+
+Fresh validation: four current-turn socket tests and six task-model socket/rendered
+tests pass. Strict GPUI Clippy passes for all targets and features. Evidence:
+`/tmp/decodex-live-settings-receipts-tests.log`,
+`/tmp/decodex-live-settings-task-mapping-tests.log` and
+`/tmp/decodex-live-settings-receipts-clippy.log`.

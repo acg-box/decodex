@@ -9,6 +9,16 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Live settings socket fixture reconciled on 2026-09-27
+
+Restore the inherited selected-model/effort receipt assertion and model-mode
+command guard. Map the removed task-default fixture modes to the existing model
+panel socket tests and rendered reconciliation case. All four live-setting and
+six task-model tests pass, as does strict GPUI Clippy. See
+[the complete fixture mapping](live-model-control.md#inherited-socket-fixture-reconciliation).
+Close only this test-file row. No production behavior changes; shared source
+review and signed desktop acceptance remain open.
+
 ## Native message renderer reconciled on 2026-09-27
 
 Preserve native author roles when equal user and assistant text share a turn.

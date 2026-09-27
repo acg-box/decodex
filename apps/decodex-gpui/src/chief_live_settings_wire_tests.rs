@@ -77,8 +77,14 @@ async fn serve(listener: tokio::net::UnixListener, model: bool) -> Vec<ChiefActi
 					assert_eq!(*reviewer, Reviewer::User);
 					(work_id, turn_id, review_token)
 				},
-				ChiefActionDto::SetLiveModel { work_id, turn_id, review_token, model, effort } => {
-					assert_eq!(model.as_str(), "selected");
+				ChiefActionDto::SetLiveModel {
+					work_id,
+					turn_id,
+					review_token,
+					model: selected,
+					effort,
+				} if model => {
+					assert_eq!(selected.as_str(), "selected");
 					assert_eq!(effort.as_str(), "high");
 					(work_id, turn_id, review_token)
 				},
@@ -266,6 +272,13 @@ fn exercise_live_settings(cx: &mut gpui::TestAppContext, model: bool) {
 	surface.read_with(visual, |s, _| {
 		assert!(s.live_reviewer.task.is_none());
 		assert!(s.live_reviewer.feedback.contains("could not be confirmed"));
+		if model {
+			assert!(matches!(
+				&s.live_reviewer.state,
+				Some(State::Available { last_model: Some(selection), .. })
+					if selection.model.as_str() == "selected" && selection.effort.as_str() == "high"
+			));
+		}
 		assert!(matches!(
 			s.live_reviewer.state,
 			Some(State::Available {
