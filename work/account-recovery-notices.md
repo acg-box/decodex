@@ -61,3 +61,35 @@ Final batch validation: protocol 133, adapter 182, database 116, runtime 559 and
 GPUI 458 tests passed; 50 opt-in tests were skipped. The explicit installed-native
 notification test passed separately. Strict all-target/all-feature Clippy passed
 for all five affected packages. No real provider notification was sent.
+
+## Inherited account service reconciliation
+
+The complete `account_service.rs` difference from the preserved snapshot consists
+of the route-diagnostic changes documented in
+[route failure diagnostics](account-route-failure-diagnostics.md), their isolated
+classification test, and one removed recovery-preparation regression. Restore that
+regression unchanged. The rest of the inherited service source remains present.
+
+The restored case verifies the exact offered action, explicit observation
+invalidation, changed banner content at the same account revision, current source
+recovery, account disable with a newer revision, stale credential rejection and
+cold observation-service restart. It asserts zero shared-auth projection attempts.
+It prepares a destination only; it does not send a notification or contact a real
+provider.
+
+The diagnostic changes preserve synchronous route ownership and its lease. They
+classify initial/final auth reads, source-account matching, credential
+reconciliation, target confirmation and projection readback separately. The cause
+uses a closed credential-negative projection error enum, a fixed lifecycle error
+message or a literal. The existing database owner commits that diagnostic with
+the response in one transaction. These changes do not replace auth data to resolve
+a failure or establish the cause of the historical incident.
+
+This closes the complete inherited account-service file after validation. Account
+recovery remains optional. The broader account/login integration and signed desktop
+acceptance remain separate; no user account or live credential store is changed.
+
+Fresh validation passes all 46 account-service tests and strict runtime Clippy
+for all features and targets. The restored regression matches its snapshot bytes.
+Logs: `/tmp/decodex-account-recovery-restored.log` and
+`/tmp/decodex-account-recovery-restored-clippy.log`.
