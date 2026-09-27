@@ -39,8 +39,10 @@ Map every section of the inherited approval document to retained storage, pages,
 decisions, file evidence and native Guardian owners. Preserve the explicit
 reader-policy difference and the historical shutdown/compaction evidence limits.
 Fresh storage, coordinator and rendered reader checks pass. See
-[the complete mapping](large-approval-reconciliation.md). Close only this document
-row; shared source files and signed approval acceptance remain open.
+[the complete mapping](large-approval-reconciliation.md). Also map the complete
+shared reviewer fixture: all original child modules remain registered and the
+current non-opt-in selection passes 22 tests with 14 native skips. Close these
+two rows; shared production files and signed approval acceptance remain open.
 
 ## Exact model input restored on 2026-09-27
 

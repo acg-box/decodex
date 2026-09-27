@@ -3,7 +3,8 @@
 This maps the complete preserved `work/large-user-approval.md` from the manual
 catch-up to current owners. The original snapshot and its dated evidence remain
 preserved. The fixed upstream is `595cc91e8cbb1c2ca822d0311dcf12709410c582`.
-This document closes a document reconciliation row, not approval acceptance.
+This document closes the inherited document and shared reviewer fixture rows.
+It does not close approval acceptance.
 
 ## Implementation mapping
 
@@ -60,3 +61,35 @@ contract. The signed 0658 artifact's limited acceptance does not cover approval
 inspection, accept/decline, stale resolution, reconnect or uncertain replies.
 Those paths, maximum-size page latency and broader R08/R10/R12 remain open.
 Automations stay paused, including after manual completion.
+
+## Shared reviewer fixture
+
+The complete diff of
+`account_launch/chief_process_native_reviewer_store.rs` was also reviewed.
+The inert account, capability attestation, process-generation binding, task/thread
+binding and source-key setup remain unchanged. Explicit imports replace a glob,
+`ChiefAppReviewer` becomes `ChiefReviewer`, and `observe_model` moves without a
+behavior change. Reviewer publication still rejects a stale source and duplicate
+review, reads the durable applied receipt after reopening, leaves no pending
+local event and rejects a completed native target.
+
+Every original child test module remains registered: model settings, permissions,
+voice tails, plugins, warnings, live models, task models and App exposure. Some
+move within the file or change the local module name. Added outcome, service,
+App UI, hook and voice-start modules do not replace those original modules.
+New helper methods use existing permission, model, plugin and hook service owners.
+They check native readback or saved hook trust, reject a reused review and retain
+the relevant durable receipt checks.
+
+This reconciles the shared fixture source, not all features that use it. The
+fixture seeds synthetic admission and inert credential rows. It does not qualify
+real credential enrollment, kernel process admission or complete desktop behavior.
+Native cases keep their explicit opt-in requirement and their separate evidence
+records. No live native case is inferred from a skipped test.
+
+Fresh shared-fixture validation passes 22 tests with 14 explicit native skips in
+`/tmp/decodex-reviewer-store-reconciliation.log`. The original module-path set is
+a subset of the current set. Source comparison and existing native qualification
+records establish the retained helper mapping; the 22-test run alone does not
+qualify the skipped native cases. No production or test source changes are made
+in this reconciliation batch.
