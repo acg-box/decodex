@@ -49,3 +49,12 @@ selections passed eight plus three tests; protocol passed136 unit and six
 integration tests; GPUI passed465 with five opt-in skips. Strict protocol, runtime
 and GPUI Clippy passed for all targets and features. No signed application or
 real enterprise account authorization test was performed.
+
+## Initial preference remains distinct
+
+The inherited initial `daybreakEnabled` note concerns a native thread preference,
+not this catalog display. Decodex still has no preference control and omits that
+field on its normal creation path. The restored installed-native configuration
+fixture verifies true, false and omitted values plus ephemeral-thread rejection;
+see [native fixture reconciliation](native-fixture-registry-reconciliation.md).
+That result does not prove an enterprise grant or inference under a chosen program.
